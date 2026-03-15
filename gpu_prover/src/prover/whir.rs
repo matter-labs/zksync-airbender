@@ -1,12 +1,15 @@
 use era_cudart::memory::{memory_copy, memory_copy_async};
 use era_cudart::result::CudaResult;
+use era_cudart::slice::DeviceSlice;
 use field::{Field, FieldExtension};
 use prover::merkle_trees::MerkleTreeCapVarLength;
 use prover::utils::{extension_field_from_base_coeffs, extension_field_into_base_coeffs};
 
 use crate::allocator::tracker::AllocationPlacement;
 use crate::ops::blake2s::Digest;
-use crate::ops::complex::{bit_reverse_in_place, pack_rows_for_whir_leaves};
+use crate::ops::complex::{
+    bit_reverse_in_place, pack_rows_for_whir_leaves, serialize_whir_e4_columns,
+};
 use crate::primitives::context::{HostAllocation, ProverContext};
 use crate::primitives::device_structures::{DeviceMatrix, DeviceMatrixChunkMut, DeviceMatrixMut};
 use crate::primitives::field::{BF, E4};
@@ -37,6 +40,27 @@ impl GpuWhirExtensionOracle {
         tree_cap_size: usize,
         context: &ProverContext,
     ) -> CudaResult<Self> {
+        let monomial_coeffs_host = alloc_host_and_copy(context, monomial_coeffs);
+        let mut monomial_coeffs_device =
+            context.alloc(monomial_coeffs.len(), AllocationPlacement::BestFit)?;
+        let stream = context.get_exec_stream();
+        memory_copy_async(&mut monomial_coeffs_device, &monomial_coeffs_host, stream)?;
+        Self::from_device_monomial_coeffs(
+            &monomial_coeffs_device,
+            lde_factor,
+            values_per_leaf,
+            tree_cap_size,
+            context,
+        )
+    }
+
+    pub(crate) fn from_device_monomial_coeffs(
+        monomial_coeffs: &DeviceSlice<E4>,
+        lde_factor: usize,
+        values_per_leaf: usize,
+        tree_cap_size: usize,
+        context: &ProverContext,
+    ) -> CudaResult<Self> {
         assert!(!monomial_coeffs.is_empty());
         assert!(monomial_coeffs.len().is_power_of_two());
         assert!(lde_factor.is_power_of_two());
@@ -57,16 +81,10 @@ impl GpuWhirExtensionOracle {
         let packed_leaf_count_log2 = packed_leaf_count.trailing_zeros();
         let total_leaf_count_log2 = packed_leaf_count_log2 + log_lde_factor;
 
-        let serialized_coeffs = serialize_extension_columns(monomial_coeffs);
-        let serialized_coeffs_host = alloc_host_and_copy(context, &serialized_coeffs);
         let mut serialized_coeffs_device =
-            context.alloc(serialized_coeffs.len(), AllocationPlacement::BestFit)?;
+            context.alloc(trace_len * EXT4_DEGREE, AllocationPlacement::BestFit)?;
         let stream = context.get_exec_stream();
-        memory_copy_async(
-            &mut serialized_coeffs_device,
-            &serialized_coeffs_host,
-            stream,
-        )?;
+        serialize_whir_e4_columns(monomial_coeffs, &mut serialized_coeffs_device, stream)?;
         {
             let mut coeffs_matrix = DeviceMatrixMut::new(&mut serialized_coeffs_device, trace_len);
             bit_reverse_in_place(&mut coeffs_matrix, stream)?;
@@ -82,7 +100,7 @@ impl GpuWhirExtensionOracle {
             context,
         )?;
         let mut natural_coset_values =
-            context.alloc(serialized_coeffs.len(), AllocationPlacement::BestFit)?;
+            context.alloc(trace_len * EXT4_DEGREE, AllocationPlacement::BestFit)?;
 
         for coset_index in 0..lde_factor {
             for base_column in 0..EXT4_DEGREE {
@@ -134,6 +152,14 @@ impl GpuWhirExtensionOracle {
         self.trace_holder.get_tree_caps().pop().unwrap()
     }
 
+    pub(crate) fn lde_factor(&self) -> usize {
+        self.lde_factor
+    }
+
+    pub(crate) fn values_per_leaf(&self) -> usize {
+        self.values_per_leaf
+    }
+
     pub(crate) fn query_for_folded_index(
         &mut self,
         index: usize,
@@ -147,7 +173,7 @@ impl GpuWhirExtensionOracle {
             bitreverse_index(coset_index, self.lde_factor.trailing_zeros() as u32);
         let logical_row_index = stage1_coset_index * self.packed_leaf_count + internal_index;
 
-        let host_value_index = alloc_host_and_copy(context, &[logical_row_index as u32]);
+        let host_value_index = alloc_transient_host_and_copy(context, &[logical_row_index as u32]);
         let mut device_value_index = context.alloc(1, AllocationPlacement::BestFit)?;
         memory_copy_async(
             &mut device_value_index,
@@ -157,7 +183,7 @@ impl GpuWhirExtensionOracle {
         let value_query =
             self.trace_holder
                 .get_leafs_and_merkle_paths(0, &device_value_index, context)?;
-        let host_path_index = alloc_host_and_copy(context, &[index as u32]);
+        let host_path_index = alloc_transient_host_and_copy(context, &[index as u32]);
         let mut device_path_index = context.alloc(1, AllocationPlacement::BestFit)?;
         memory_copy_async(
             &mut device_path_index,
@@ -206,6 +232,20 @@ impl GpuWhirExtensionOracle {
 
 fn alloc_host_and_copy<T: Copy>(context: &ProverContext, values: &[T]) -> HostAllocation<[T]> {
     let mut allocation = unsafe { context.alloc_host_uninit_slice(values.len()) };
+    unsafe {
+        allocation
+            .get_mut_accessor()
+            .get_mut()
+            .copy_from_slice(values);
+    }
+    allocation
+}
+
+fn alloc_transient_host_and_copy<T: Copy>(
+    context: &ProverContext,
+    values: &[T],
+) -> HostAllocation<[T]> {
+    let mut allocation = unsafe { context.alloc_transient_host_uninit_slice(values.len()) };
     unsafe {
         allocation
             .get_mut_accessor()

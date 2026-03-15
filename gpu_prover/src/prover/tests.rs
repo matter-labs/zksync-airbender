@@ -17,8 +17,13 @@ use crate::primitives::circuit_type::{
 use crate::primitives::context::ProverContext;
 use crate::primitives::field::{BF, E4};
 use crate::prover::test_utils::make_test_context;
+use crate::prover::trace_holder::TraceHolder;
 use crate::prover::tracing_data::{TracingDataDevice, UnrolledTracingDataDevice};
 use crate::prover::whir::GpuWhirExtensionOracle;
+use crate::prover::whir_fold::{
+    debug_build_initial_batched_main_domain_poly_for_test, debug_build_initial_state_for_test,
+    debug_build_initial_state_snapshots_for_test, gpu_whir_fold_supported_path,
+};
 use crate::witness::trace_unrolled::UnrolledNonMemoryTraceDevice;
 use cs::definitions::*;
 use cs::gkr_compiler::{GKRCircuitArtifact, GKRLayerDescription, NoFieldGKRRelation, OutputType};
@@ -540,10 +545,13 @@ fn fold_coset_for_test(
 fn assert_recursive_whir_oracle_parity_for_supported_path(
     mem_oracle: &ColumnMajorBaseOracleForLDE<BF, DefaultTreeConstructor>,
     mem_polys_claims: &[E4],
+    gpu_mem_trace_holder: &TraceHolder<BF>,
     wit_oracle: &ColumnMajorBaseOracleForLDE<BF, DefaultTreeConstructor>,
     wit_polys_claims: &[E4],
+    gpu_wit_trace_holder: &TraceHolder<BF>,
     setup_oracle: &ColumnMajorBaseOracleForLDE<BF, DefaultTreeConstructor>,
     setup_polys_claims: &[E4],
+    gpu_setup_trace_holder: &TraceHolder<BF>,
     original_evaluation_point: &[E4],
     original_lde_factor: usize,
     batching_challenge: E4,
@@ -593,6 +601,18 @@ fn assert_recursive_whir_oracle_parity_for_supported_path(
         }
     }
 
+    let gpu_batched_poly_on_main_domain = debug_build_initial_batched_main_domain_poly_for_test(
+        gpu_mem_trace_holder,
+        mem_polys_claims,
+        gpu_wit_trace_holder,
+        wit_polys_claims,
+        gpu_setup_trace_holder,
+        setup_polys_claims,
+        batching_challenge,
+        context,
+    )
+    .unwrap();
+    assert_eq!(gpu_batched_poly_on_main_domain, batched_poly_on_main_domain);
     let mut sumchecked_poly_monomial_form =
         compute_column_major_monomial_form_from_main_domain_owned_for_test(
             batched_poly_on_main_domain,
@@ -622,6 +642,46 @@ fn assert_recursive_whir_oracle_parity_for_supported_path(
         .pop()
         .unwrap()
         .into_vec();
+    let (gpu_pre_eq_evaluation_form, gpu_post_eq_evaluation_form) =
+        debug_build_initial_state_snapshots_for_test(
+            gpu_mem_trace_holder,
+            mem_polys_claims,
+            gpu_wit_trace_holder,
+            wit_polys_claims,
+            gpu_setup_trace_holder,
+            setup_polys_claims,
+            original_evaluation_point,
+            batching_challenge,
+            context,
+        )
+        .unwrap();
+    assert_eq!(gpu_pre_eq_evaluation_form, sumchecked_poly_evaluation_form);
+    assert_eq!(gpu_post_eq_evaluation_form, sumchecked_poly_evaluation_form);
+    let (gpu_batch_challenges, gpu_claim, gpu_monomial_form, gpu_evaluation_form, gpu_eq_poly) =
+        debug_build_initial_state_for_test(
+            gpu_mem_trace_holder,
+            mem_polys_claims,
+            gpu_wit_trace_holder,
+            wit_polys_claims,
+            gpu_setup_trace_holder,
+            setup_polys_claims,
+            original_evaluation_point,
+            batching_challenge,
+            context,
+        )
+        .unwrap();
+    assert_eq!(
+        gpu_batch_challenges,
+        [
+            base_mem_powers.to_vec(),
+            base_wit_powers.to_vec(),
+            base_setup_powers.to_vec(),
+        ]
+    );
+    assert_eq!(gpu_claim, claim);
+    assert_eq!(gpu_monomial_form, sumchecked_poly_monomial_form);
+    assert_eq!(gpu_evaluation_form, sumchecked_poly_evaluation_form);
+    assert_eq!(gpu_eq_poly, eq_poly);
     let mut poly_size_log2 = trace_len_log2;
 
     let mut whir_steps_schedule = whir_schedule.whir_steps_schedule.iter().copied().peekable();
@@ -1716,6 +1776,87 @@ fn assert_sumcheck_intermediate_values_eq_for_test<F: PrimeField, E: FieldExtens
         actual.final_step_evaluations,
         expected.final_step_evaluations
     );
+}
+
+fn assert_base_field_query_eq_for_test(
+    actual: &prover::gkr::whir::BaseFieldQuery<BF, DefaultTreeConstructor>,
+    expected: &prover::gkr::whir::BaseFieldQuery<BF, DefaultTreeConstructor>,
+) {
+    assert_eq!(actual.index, expected.index);
+    assert_eq!(
+        actual.leaf_values_concatenated,
+        expected.leaf_values_concatenated
+    );
+    assert_eq!(actual.path, expected.path);
+}
+
+fn assert_extension_field_query_eq_for_test(
+    actual: &prover::gkr::whir::ExtensionFieldQuery<BF, E4, DefaultTreeConstructor>,
+    expected: &prover::gkr::whir::ExtensionFieldQuery<BF, E4, DefaultTreeConstructor>,
+) {
+    assert_eq!(actual.index, expected.index);
+    assert_eq!(
+        actual.leaf_values_concatenated,
+        expected.leaf_values_concatenated
+    );
+    assert_eq!(actual.path, expected.path);
+}
+
+fn assert_whir_proof_eq_for_test(
+    actual: &prover::gkr::whir::WhirPolyCommitProof<BF, E4, DefaultTreeConstructor>,
+    expected: &prover::gkr::whir::WhirPolyCommitProof<BF, E4, DefaultTreeConstructor>,
+) {
+    assert_eq!(actual.sumcheck_polys, expected.sumcheck_polys);
+    assert_eq!(actual.ood_samples, expected.ood_samples);
+    assert_eq!(actual.pow_nonces, expected.pow_nonces);
+    assert_eq!(actual.final_monomials, expected.final_monomials);
+
+    for (actual_commitment, expected_commitment) in [
+        (&actual.memory_commitment, &expected.memory_commitment),
+        (&actual.witness_commitment, &expected.witness_commitment),
+        (&actual.setup_commitment, &expected.setup_commitment),
+    ] {
+        assert_eq!(
+            actual_commitment.commitment.cap,
+            expected_commitment.commitment.cap
+        );
+        assert_eq!(
+            actual_commitment.num_columns,
+            expected_commitment.num_columns
+        );
+        assert_eq!(actual_commitment.evals, expected_commitment.evals);
+        assert_eq!(
+            actual_commitment.queries.len(),
+            expected_commitment.queries.len()
+        );
+        for (actual_query, expected_query) in actual_commitment
+            .queries
+            .iter()
+            .zip(expected_commitment.queries.iter())
+        {
+            assert_base_field_query_eq_for_test(actual_query, expected_query);
+        }
+    }
+
+    assert_eq!(
+        actual.intermediate_whir_oracles.len(),
+        expected.intermediate_whir_oracles.len()
+    );
+    for (actual_oracle, expected_oracle) in actual
+        .intermediate_whir_oracles
+        .iter()
+        .zip(expected.intermediate_whir_oracles.iter())
+    {
+        assert_eq!(actual_oracle.commitment.cap, expected_oracle.commitment.cap);
+        assert_eq!(actual_oracle.queries.len(), expected_oracle.queries.len());
+        for (actual_query, expected_query) in actual_oracle
+            .queries
+            .iter()
+            .zip(expected_oracle.queries.iter())
+        {
+            assert_extension_field_query_eq_for_test(actual_query, expected_query);
+        }
+    }
 }
 
 fn stage1_caps_from_tree<T: ColumnMajorMerkleTreeConstructor<BF>>(
@@ -2892,15 +3033,30 @@ fn run_basic_unrolled_test() {
 
     let whir_batching_challenge = draw_random_field_els::<BF, E4>(&mut seed, 1)[0];
     let whir_schedule = whir_schedule.clone();
+    stage1_output
+        .memory_trace_holder
+        .ensure_cosets_materialized(&context)
+        .unwrap();
+    stage1_output
+        .witness_trace_holder
+        .ensure_cosets_materialized(&context)
+        .unwrap();
+    gpu_setup_transfer
+        .trace_holder
+        .ensure_cosets_materialized(&context)
+        .unwrap();
     {
         let _range = range!("test.gpu.whir.recursive_oracle_parity");
         assert_recursive_whir_oracle_parity_for_supported_path(
             &mem_oracle,
             &gpu_base_claims.mem_polys_claims,
+            &stage1_output.memory_trace_holder,
             &wit_oracle,
             &gpu_base_claims.wit_polys_claims,
+            &stage1_output.witness_trace_holder,
             &setup_commitment,
             &gpu_base_claims.setup_polys_claims,
+            &gpu_setup_transfer.trace_holder,
             base_layer_z,
             whir_schedule.base_lde_factor,
             whir_batching_challenge,
@@ -2912,7 +3068,31 @@ fn run_basic_unrolled_test() {
             &context,
         );
     }
-    let whir_proof = {
+    let gpu_whir_proof = {
+        let _range = range!("test.gpu.whir_fold");
+        gpu_whir_fold_supported_path(
+            &mut stage1_output.memory_trace_holder,
+            gpu_base_claims.mem_polys_claims.clone(),
+            &mut stage1_output.witness_trace_holder,
+            gpu_base_claims.wit_polys_claims.clone(),
+            &mut gpu_setup_transfer.trace_holder,
+            gpu_base_claims.setup_polys_claims.clone(),
+            base_layer_z.clone(),
+            whir_schedule.base_lde_factor,
+            whir_batching_challenge,
+            whir_schedule.whir_steps_schedule.clone(),
+            whir_schedule.whir_queries_schedule.clone(),
+            whir_schedule.whir_steps_lde_factors.clone(),
+            whir_schedule.whir_pow_schedule.clone(),
+            seed.clone(),
+            whir_schedule.cap_size,
+            trace_len.trailing_zeros() as usize,
+            &worker,
+            &context,
+        )
+        .unwrap()
+    };
+    let cpu_whir_proof = {
         let _range = range!("test.cpu.whir_fold");
         whir_fold(
             mem_oracle,
@@ -2935,6 +3115,8 @@ fn run_basic_unrolled_test() {
             &worker,
         )
     };
+    assert_whir_proof_eq_for_test(&gpu_whir_proof, &cpu_whir_proof);
+    let whir_proof = gpu_whir_proof;
 
     let [read_set_computed, write_set_computed] = final_explicit_evaluations
         .get(&OutputType::PermutationProduct)
