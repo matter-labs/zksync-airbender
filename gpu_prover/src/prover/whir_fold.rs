@@ -67,10 +67,9 @@ struct GpuWhirState {
 pub(crate) struct GpuScheduledBaseFieldQuery {
     pub(crate) index: usize,
     pub(crate) coset_index: usize,
+    // Keeps index-fill callbacks alive until the stream executes them.
     #[allow(dead_code)]
-    value_index_host: HostAllocation<[u32]>,
-    #[allow(dead_code)]
-    path_index_host: HostAllocation<[u32]>,
+    callbacks: Callbacks<'static>,
     #[allow(dead_code)]
     leafs: HostAllocation<[BF]>,
     #[allow(dead_code)]
@@ -139,7 +138,7 @@ fn schedule_unknown_coset_base_field_query(
     let values_per_leaf = 1usize << trace_holder.log_rows_per_leaf;
     let coset_tree_size = (1usize << trace_holder.log_domain_size) / values_per_leaf;
     let mut callbacks = Callbacks::new();
-    let mut value_internal_index = unsafe { context.alloc_transient_host_uninit_slice(1) };
+    let mut value_internal_index = unsafe { context.alloc_host_uninit_slice(1) };
     let value_internal_accessor = value_internal_index.get_mut_accessor();
     let query_index_accessor = query_index.get_accessor();
     callbacks.schedule(
@@ -149,7 +148,7 @@ fn schedule_unknown_coset_base_field_query(
         },
         context.get_exec_stream(),
     )?;
-    let mut path_internal_index = unsafe { context.alloc_transient_host_uninit_slice(1) };
+    let mut path_internal_index = unsafe { context.alloc_host_uninit_slice(1) };
     let path_internal_accessor = path_internal_index.get_mut_accessor();
     let query_index_accessor = query_index.get_accessor();
     callbacks.schedule(
@@ -165,12 +164,14 @@ fn schedule_unknown_coset_base_field_query(
         &value_internal_index,
         context.get_exec_stream(),
     )?;
+    drop(value_internal_index);
     let mut device_path_index = context.alloc(1, AllocationPlacement::BestFit)?;
     memory_copy_async(
         &mut device_path_index,
         &path_internal_index,
         context.get_exec_stream(),
     )?;
+    drop(path_internal_index);
 
     let mut value_leafs = Vec::with_capacity(lde_factor);
     let mut path_merkle_paths = Vec::with_capacity(lde_factor);
@@ -190,8 +191,6 @@ fn schedule_unknown_coset_base_field_query(
     Ok(ScheduledUnknownCosetBaseFieldQuery {
         callbacks,
         query_index,
-        value_internal_index,
-        path_internal_index,
         value_leafs,
         path_merkle_paths,
         values_per_leaf,
@@ -209,8 +208,6 @@ struct WhirHostUpload<T> {
 struct ScheduledUnknownCosetBaseFieldQuery {
     callbacks: Callbacks<'static>,
     query_index: HostAllocation<[u32]>,
-    value_internal_index: HostAllocation<[u32]>,
-    path_internal_index: HostAllocation<[u32]>,
     value_leafs: Vec<HostAllocation<[BF]>>,
     path_merkle_paths: Vec<HostAllocation<[Digest]>>,
     values_per_leaf: usize,
@@ -237,8 +234,6 @@ pub(crate) struct GpuWhirFoldScheduledExecution {
     #[allow(dead_code)]
     base_caps_keepalive: [Vec<HostAllocation<[Digest]>>; 3],
     #[allow(dead_code)]
-    weight_uploads: Vec<WhirHostUpload<E4>>,
-    #[allow(dead_code)]
     fold_eval_readbacks: Vec<HostAllocation<[E4]>>,
     #[allow(dead_code)]
     folding_challenges: Vec<WhirHostUpload<E4>>,
@@ -261,12 +256,7 @@ pub(crate) struct GpuWhirFoldScheduledExecution {
     #[allow(dead_code)]
     base_queries: Vec<[Vec<ScheduledUnknownCosetBaseFieldQuery>; 3]>,
     #[allow(dead_code)]
-    recursive_queries: Vec<
-        Vec<(
-            Callbacks<'static>,
-            crate::prover::whir::GpuWhirScheduledExtensionQuery,
-        )>,
-    >,
+    recursive_queries: Vec<Vec<crate::prover::whir::GpuWhirScheduledExtensionQuery>>,
     #[allow(dead_code)]
     final_callbacks: Callbacks<'static>,
     shared_state: std::sync::Arc<std::sync::Mutex<ScheduledWhirProofState>>,
@@ -339,27 +329,13 @@ impl GpuWhirState {
     }
 }
 
-fn alloc_transient_host_and_copy<T: Copy>(
-    context: &ProverContext,
-    values: &[T],
-) -> HostAllocation<[T]> {
-    let mut allocation = unsafe { context.alloc_transient_host_uninit_slice(values.len()) };
-    unsafe {
-        allocation
-            .get_mut_accessor()
-            .get_mut()
-            .copy_from_slice(values);
-    }
-    allocation
-}
-
 fn schedule_callback_populated_upload<T: Copy + 'static>(
     context: &ProverContext,
     len: usize,
     fill: impl Fn(&mut [T]) + Send + Sync + 'static,
 ) -> CudaResult<(WhirHostUpload<T>, DeviceAllocation<T>)> {
     let mut callbacks = Callbacks::new();
-    let mut host = unsafe { context.alloc_transient_host_uninit_slice(len) };
+    let mut host = unsafe { context.alloc_host_uninit_slice(len) };
     let host_accessor = host.get_mut_accessor();
     callbacks.schedule(
         move || unsafe {
@@ -395,7 +371,7 @@ fn read_reduce_outputs(
     context: &ProverContext,
 ) -> CudaResult<Vec<E4>> {
     let stream = context.get_exec_stream();
-    let mut host = unsafe { context.alloc_transient_host_uninit_slice(count) };
+    let mut host = unsafe { context.alloc_host_uninit_slice(count) };
     memory_copy_async(&mut host, &state.reduce_out[..count], stream)?;
     stream.synchronize()?;
     Ok(unsafe { host.get_accessor().get().to_vec() })
@@ -406,7 +382,7 @@ fn schedule_reduce_outputs_readback(
     state: &mut GpuWhirState,
     context: &ProverContext,
 ) -> CudaResult<HostAllocation<[E4]>> {
-    let mut host = unsafe { context.alloc_transient_host_uninit_slice(count) };
+    let mut host = unsafe { context.alloc_host_uninit_slice(count) };
     memory_copy_async(
         &mut host,
         &state.reduce_out[..count],
@@ -531,6 +507,10 @@ fn decode_base_leaf_values(
 }
 
 fn bitreverse_index(index: usize, num_bits: u32) -> usize {
+    if num_bits == 0 {
+        debug_assert_eq!(index, 0);
+        return 0;
+    }
     index.reverse_bits() >> (usize::BITS - num_bits)
 }
 
@@ -562,33 +542,45 @@ pub(crate) fn schedule_query_base_trace_holder_for_folded_index(
     assert!(index < (1usize << trace_holder.log_domain_size) * lde_factor / values_per_leaf);
     let value_coset_index = index & (lde_factor - 1);
     let value_internal_index = index / lde_factor;
-    let host_value_index = alloc_transient_host_and_copy(context, &[value_internal_index as u32]);
+    let mut callbacks = Callbacks::new();
+    let mut host_value_index = unsafe { context.alloc_host_uninit_slice(1) };
+    let vi_accessor = host_value_index.get_mut_accessor();
+    callbacks.schedule(
+        move || unsafe { vi_accessor.get_mut()[0] = value_internal_index as u32 },
+        context.get_exec_stream(),
+    )?;
     let mut device_value_index = context.alloc(1, AllocationPlacement::BestFit)?;
     memory_copy_async(
         &mut device_value_index,
         &host_value_index,
         context.get_exec_stream(),
     )?;
+    drop(host_value_index);
     let value_query =
         trace_holder.get_leafs_and_merkle_paths(value_coset_index, &device_value_index, context)?;
 
     let stage1_coset_index = index / coset_tree_size;
     let path_coset_index = bitreverse_index(stage1_coset_index, trace_holder.log_lde_factor);
     let path_internal_index = index % coset_tree_size;
-    let host_path_index = alloc_transient_host_and_copy(context, &[path_internal_index as u32]);
+    let mut host_path_index = unsafe { context.alloc_host_uninit_slice(1) };
+    let pi_accessor = host_path_index.get_mut_accessor();
+    callbacks.schedule(
+        move || unsafe { pi_accessor.get_mut()[0] = path_internal_index as u32 },
+        context.get_exec_stream(),
+    )?;
     let mut device_path_index = context.alloc(1, AllocationPlacement::BestFit)?;
     memory_copy_async(
         &mut device_path_index,
         &host_path_index,
         context.get_exec_stream(),
     )?;
+    drop(host_path_index);
     let path_query =
         trace_holder.get_leafs_and_merkle_paths(path_coset_index, &device_path_index, context)?;
     Ok(GpuScheduledBaseFieldQuery {
         index,
         coset_index: value_coset_index,
-        value_index_host: host_value_index,
-        path_index_host: host_path_index,
+        callbacks,
         leafs: value_query.leafs,
         merkle_paths: path_query.merkle_paths,
         values_per_leaf,
@@ -1517,7 +1509,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         stream,
     )?;
     let mut base_layer_point_host =
-        unsafe { context.alloc_transient_host_uninit_slice(base_layer_point_len) };
+        unsafe { context.alloc_host_uninit_slice(base_layer_point_len) };
     let base_layer_point_accessor = base_layer_point_host.get_mut_accessor();
     start_callbacks.schedule(
         move || unsafe {
@@ -1566,14 +1558,6 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         &mut state,
         context,
     )?;
-    let weight_uploads = batch_challenges
-        .iter()
-        .map(|weights| WhirHostUpload {
-            callbacks: Callbacks::new(),
-            host: alloc_transient_host_and_copy(context, weights),
-        })
-        .collect::<Vec<_>>();
-
     memory_copy_async(
         &mut state.point_pows[..base_layer_point_len],
         &base_layer_point_host,
@@ -1713,7 +1697,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
                 dst[0] = draw_random_field_els::<BF, E4>(seed_accessor.get_mut(), 1)[0];
             })?;
         let ood_partials = schedule_monomial_eval_device(&mut state, &ood_point_device, context)?;
-        let mut ood_value_host = unsafe { context.alloc_transient_host_uninit_slice(1) };
+        let mut ood_value_host = unsafe { context.alloc_host_uninit_slice(1) };
         let ood_value_accessor = ood_value_host.get_mut_accessor();
         final_callbacks.schedule(
             {
@@ -1750,7 +1734,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         let query_domain_size = 1u64 << query_domain_log2;
         let query_domain_generator = domain_generator_for_size::<BF>(query_domain_size);
         let mut query_indexes_host =
-            unsafe { context.alloc_transient_host_uninit_slice(num_queries) };
+            unsafe { context.alloc_host_uninit_slice(num_queries) };
         let query_indexes_accessor = query_indexes_host.get_mut_accessor();
         let nonce_accessor = nonce_host.get_mut_accessor();
         let mut query_index_callbacks_for_round = Callbacks::new();
@@ -1853,11 +1837,11 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         let mut round_base_queries = [Vec::new(), Vec::new(), Vec::new()];
         for query_idx in 0..num_queries {
             let mut memory_query_index_host =
-                unsafe { context.alloc_transient_host_uninit_slice(1) };
+                unsafe { context.alloc_host_uninit_slice(1) };
             let mut witness_query_index_host =
-                unsafe { context.alloc_transient_host_uninit_slice(1) };
+                unsafe { context.alloc_host_uninit_slice(1) };
             let mut setup_query_index_host =
-                unsafe { context.alloc_transient_host_uninit_slice(1) };
+                unsafe { context.alloc_host_uninit_slice(1) };
             let query_indexes_accessor = query_indexes_host.get_accessor();
             let mut copy_callbacks = Callbacks::new();
             for single_accessor in [
@@ -2055,7 +2039,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
                 dst[0] = E4::from_base(BF::from_u32_unchecked(42));
             })?;
         let ood_partials = schedule_monomial_eval_device(&mut state, &ood_point_device, context)?;
-        let mut ood_value_host = unsafe { context.alloc_transient_host_uninit_slice(1) };
+        let mut ood_value_host = unsafe { context.alloc_host_uninit_slice(1) };
         let ood_value_accessor = ood_value_host.get_mut_accessor();
         final_callbacks.schedule(
             {
@@ -2091,7 +2075,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         let query_domain_size = 1u64 << query_domain_log2;
         let query_domain_generator = domain_generator_for_size::<BF>(query_domain_size);
         let mut query_indexes_host =
-            unsafe { context.alloc_transient_host_uninit_slice(num_queries) };
+            unsafe { context.alloc_host_uninit_slice(num_queries) };
         let query_indexes_accessor = query_indexes_host.get_mut_accessor();
         let nonce_accessor = nonce_host.get_mut_accessor();
         let mut query_index_callbacks_for_round = Callbacks::new();
@@ -2193,7 +2177,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
 
         let mut round_recursive_queries = Vec::new();
         for query_idx in 0..num_queries {
-            let mut single_query_index = unsafe { context.alloc_transient_host_uninit_slice(1) };
+            let mut single_query_index = unsafe { context.alloc_host_uninit_slice(1) };
             let single_query_index_accessor = single_query_index.get_mut_accessor();
             let query_indexes_accessor = query_indexes_host.get_accessor();
             let mut copy_callbacks = Callbacks::new();
@@ -2204,7 +2188,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
                 },
                 stream,
             )?;
-            let (query_callbacks, query) = oracle_to_query
+            let query = oracle_to_query
                 .schedule_query_for_folded_index_from_host(single_query_index, context)?;
             let query_leafs_accessor = query.leafs_accessor();
             let query_paths_accessor = query.merkle_paths_accessor();
@@ -2252,7 +2236,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
                 },
                 stream,
             )?;
-            round_recursive_queries.push((query_callbacks, query));
+            round_recursive_queries.push(query);
         }
         recursive_caps_keepalive.push(oracle_to_query.into_host_tree_caps());
         recursive_queries.push(round_recursive_queries);
@@ -2274,7 +2258,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         let query_domain_size = 1u64 << query_domain_log2;
         let mut nonce_host = unsafe { context.alloc_host_uninit::<u64>() };
         let mut query_indexes_host =
-            unsafe { context.alloc_transient_host_uninit_slice(num_queries) };
+            unsafe { context.alloc_host_uninit_slice(num_queries) };
         let query_indexes_accessor = query_indexes_host.get_mut_accessor();
         let nonce_accessor = nonce_host.get_mut_accessor();
         let mut query_index_callbacks_for_round = Callbacks::new();
@@ -2358,7 +2342,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         let mut round_recursive_queries = Vec::new();
         let final_oracle_index = num_whir_steps.saturating_sub(1);
         for query_idx in 0..num_queries {
-            let mut single_query_index = unsafe { context.alloc_transient_host_uninit_slice(1) };
+            let mut single_query_index = unsafe { context.alloc_host_uninit_slice(1) };
             let single_query_index_accessor = single_query_index.get_mut_accessor();
             let query_indexes_accessor = query_indexes_host.get_accessor();
             let mut copy_callbacks = Callbacks::new();
@@ -2369,7 +2353,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
                 },
                 stream,
             )?;
-            let (query_callbacks, query) = oracle_to_query
+            let query = oracle_to_query
                 .schedule_query_for_folded_index_from_host(single_query_index, context)?;
             let query_leafs_accessor = query.leafs_accessor();
             let query_paths_accessor = query.merkle_paths_accessor();
@@ -2399,7 +2383,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
                 },
                 stream,
             )?;
-            round_recursive_queries.push((query_callbacks, query));
+            round_recursive_queries.push(query);
         }
         recursive_caps_keepalive.push(oracle_to_query.into_host_tree_caps());
         recursive_queries.push(round_recursive_queries);
@@ -2417,7 +2401,6 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         seed_host,
         base_layer_point_host,
         base_caps_keepalive,
-        weight_uploads,
         fold_eval_readbacks,
         folding_challenges,
         recursive_caps_keepalive,
