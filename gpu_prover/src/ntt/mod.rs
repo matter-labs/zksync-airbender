@@ -16,7 +16,7 @@ mod tests;
 
 mod ntt;
 #[allow(unused)]
-pub use ntt::{natural_evals_to_bitreversed_monomials, bitreversed_monomials_to_natural_evals};
+pub use ntt::{bitreversed_monomials_to_natural_evals, natural_evals_to_bitreversed_monomials};
 #[cfg(test)]
 pub(crate) use ntt::{
     evals_to_monomials_2_pass, evals_to_monomials_3_pass, monomials_to_evals_2_pass,

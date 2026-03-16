@@ -20,7 +20,7 @@ use worker::Worker;
 
 use super::{
     bitreversed_coeffs_to_natural_coset, evals_to_monomials_2_pass, evals_to_monomials_3_pass,
-    hypercube_evals_natural_to_bitreversed_coeffs, hypercube_coeffs_natural_to_natural_evals,
+    hypercube_coeffs_natural_to_natural_evals, hypercube_evals_natural_to_bitreversed_coeffs,
     monomials_to_evals_2_pass, monomials_to_evals_3_pass, natural_evals_to_bitreversed_coeffs,
     OMEGA_LOG_ORDER,
 };

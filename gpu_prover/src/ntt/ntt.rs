@@ -414,7 +414,8 @@ pub(crate) fn monomials_to_evals_2_pass(
             log_n as i32,
             coset_factor_power as i32,
         );
-        let function = MonomialsToEvalsInitialFunction(ab_monomials_to_evals_first_14_stages_kernel);
+        let function =
+            MonomialsToEvalsInitialFunction(ab_monomials_to_evals_first_14_stages_kernel);
         let func_ptr = function.as_ptr();
         unsafe {
             cudaFuncSetAttribute(
