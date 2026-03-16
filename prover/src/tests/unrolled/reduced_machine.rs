@@ -8,8 +8,8 @@ use crate::unrolled::UnifiedRiscvCircuitOracle;
 use common_constants::delegation_types::blake2s_with_control::BLAKE2S_DELEGATION_CSR_REGISTER;
 use cs::cs::circuit::Circuit;
 use cs::machine::NON_DETERMINISM_CSR;
-use risc_v_simulator::abstractions::non_determinism::QuasiUARTSource;
-use risc_v_simulator::machine_mode_only_unrolled::UnifiedOpcodeTracingDataWithTimestamp;
+use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
+use riscv_transpiler::machine_mode_only_unrolled::UnifiedOpcodeTracingDataWithTimestamp;
 use riscv_transpiler::witness::UnifiedDestinationHolder;
 
 use crate::prover_stages::unrolled_prover::prove_configured_for_unrolled_circuits;

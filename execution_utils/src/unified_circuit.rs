@@ -263,7 +263,7 @@ mod test {
     fn test_unified_over_unrolled_verifier() {
         skip_if_ci!();
         use crate::setups::read_and_pad_binary;
-        use risc_v_simulator::cycle::IWithoutByteAccessIsaConfigWithDelegation;
+        use riscv_transpiler::cycle::IWithoutByteAccessIsaConfigWithDelegation;
         use std::fs::File;
         use std::path::Path;
 
@@ -303,7 +303,7 @@ mod test {
     fn test_unified_over_unified_verifier() {
         skip_if_ci!();
         use crate::setups::read_and_pad_binary;
-        use risc_v_simulator::cycle::IWithoutByteAccessIsaConfigWithDelegation;
+        use riscv_transpiler::cycle::IWithoutByteAccessIsaConfigWithDelegation;
         use std::fs::File;
         use std::path::Path;
 
@@ -342,7 +342,7 @@ mod test {
     fn test_unified_x2_over_unified_verifier() {
         skip_if_ci!();
         use crate::setups::read_and_pad_binary;
-        use risc_v_simulator::cycle::IWithoutByteAccessIsaConfigWithDelegation;
+        use riscv_transpiler::cycle::IWithoutByteAccessIsaConfigWithDelegation;
         use std::fs::File;
         use std::path::Path;
 
@@ -382,8 +382,8 @@ mod test {
         use crate::setups::read_and_pad_binary;
         use crate::unified_circuit::flatten_proof_into_responses_for_unified_recursion;
         use crate::unrolled::*;
-        use risc_v_simulator::abstractions::non_determinism::QuasiUARTSource;
-        use risc_v_simulator::cycle::IWithoutByteAccessIsaConfigWithDelegation;
+        use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
+        use riscv_transpiler::cycle::IWithoutByteAccessIsaConfigWithDelegation;
         use std::fs::File;
         use std::path::Path;
 

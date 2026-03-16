@@ -21,7 +21,7 @@ use serde_json::Value;
 use std::path::Path;
 use std::{fs, iter};
 
-use prover::risc_v_simulator::abstractions::non_determinism::QuasiUARTSource;
+use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
 
 const DEFAULT_CYCLES: usize = 32_000_000;
 const DEFAULT_RUN_RAM_BOUND_BYTES: usize = 1 << 30;

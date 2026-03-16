@@ -59,7 +59,7 @@ pub use self::tracer::*;
 #[cfg(feature = "prover")]
 pub use self::witness_evaluator::*;
 #[cfg(feature = "prover")]
-pub use risc_v_simulator;
+pub use riscv_transpiler;
 
 #[cfg(any(test, feature = "test"))]
 pub mod tests;

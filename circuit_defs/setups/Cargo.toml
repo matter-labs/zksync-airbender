@@ -11,6 +11,7 @@ categories.workspace = true
 
 [dependencies]
 prover = { workspace = true, features = ["prover"] }
+riscv_transpiler = { workspace = true }
 
 blake2_with_compression = { workspace = true }
 bigint_with_control = { workspace = true }

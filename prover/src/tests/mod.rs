@@ -270,7 +270,7 @@ fn read_binary(path: &std::path::Path) -> (Vec<u8>, Vec<u32>) {
 //         );
 
 //         serialize_to_file(&circuit, "poseidon2_layout");
-//         use risc_v_simulator::delegations::poseidon2_provide_witness_and_compress::POSEIDON2_WITNESS_AND_COMPRESS_ACCESS_ID;
+//         use riscv_transpiler::delegations::poseidon2_provide_witness_and_compress::POSEIDON2_WITNESS_AND_COMPRESS_ACCESS_ID;
 
 //         let delegation_type = POSEIDON2_WITNESS_AND_COMPRESS_ACCESS_ID;
 //         let description = DelegationProcessorDescription {

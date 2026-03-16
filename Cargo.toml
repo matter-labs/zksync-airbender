@@ -13,8 +13,6 @@ members = [
     "test_utils",
     "transcript",
     "non_determinism_source",
-    "risc_v_simulator",
-
     "verifier_common",
     "verifier_generator",
     "witness_eval_generator",
@@ -77,7 +75,6 @@ default-members = [
     "poseidon2",
     "prover",
     "reduced_keccak",
-    "risc_v_simulator",
     "riscv_transpiler",
     # "tools/cli",
     "tools/generator",
@@ -151,7 +148,6 @@ setups = { path = "./circuit_defs/setups" }
 poseidon2 = { path = "./poseidon2", default-features = false }
 
 non_determinism_source = { path = "./non_determinism_source", default-features = false }
-risc_v_simulator = { path = "./risc_v_simulator", default-features = false }
 riscv_transpiler = { path = "./riscv_transpiler", default-features = false }
 execution_utils = { path = "./execution_utils", default-features = false }
 witness_eval_generator = { path = "./witness_eval_generator", default-features = false }

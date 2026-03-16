@@ -3,7 +3,7 @@ use cs::cs::oracle::Oracle;
 use cs::cs::placeholder::Placeholder;
 use cs::definitions::TimestampScalar;
 use field::PrimeField;
-use risc_v_simulator::machine_mode_only_unrolled::{
+use riscv_transpiler::machine_mode_only_unrolled::{
     MemoryOpcodeTracingDataWithTimestamp, MEM_LOAD_TRACE_DATA_MARKER, MEM_STORE_TRACE_DATA_MARKER,
 };
 

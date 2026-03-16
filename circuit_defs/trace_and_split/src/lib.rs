@@ -2,15 +2,15 @@
 #![feature(generic_const_exprs)]
 
 use crate::cs::cs::oracle::ExecutorFamilyDecoderData;
-use crate::risc_v_simulator::machine_mode_only_unrolled::MemoryOpcodeTracingDataWithTimestamp;
-use crate::risc_v_simulator::machine_mode_only_unrolled::NonMemoryOpcodeTracingDataWithTimestamp;
 use common_constants::INITIAL_PC;
 use merkle_trees::MerkleTreeCapVarLength;
 use prover::cs::definitions::TimestampScalar;
 use prover::cs::utils::split_timestamp;
 use prover::definitions::LazyInitAndTeardown;
-use prover::risc_v_simulator::machine_mode_only_unrolled::UnifiedOpcodeTracingDataWithTimestamp;
 use prover::tracers::oracles::transpiler_oracles::delegation::DelegationOracle;
+use riscv_transpiler::machine_mode_only_unrolled::MemoryOpcodeTracingDataWithTimestamp;
+use riscv_transpiler::machine_mode_only_unrolled::NonMemoryOpcodeTracingDataWithTimestamp;
+use riscv_transpiler::machine_mode_only_unrolled::UnifiedOpcodeTracingDataWithTimestamp;
 use riscv_transpiler::witness::DelegationAbiDescription;
 use setups::prover::definitions::OPTIMAL_FOLDING_PROPERTIES;
 use setups::prover::fft::*;
