@@ -31,7 +31,7 @@ use crate::ops::simple::{
     add_into_y, mul, mul_into_x, mul_into_y, set_arithmetic_sequence, set_by_ref, set_by_val,
     sub_into_x, Add, BinaryOp, Mul, SetByRef, SetByVal, Sub,
 };
-use crate::primitives::context::{DeviceAllocation, HostAllocation, ProverContext};
+use crate::primitives::context::{DeviceAllocation, HostAllocation, ProverContext, UnsafeAccessor};
 use crate::primitives::device_structures::{
     DeviceMatrix, DeviceMatrixMut, DeviceVectorChunk, DeviceVectorChunkMut,
 };
@@ -56,6 +56,20 @@ pub(crate) struct GpuGKRTranscriptHandoff<E> {
 }
 
 impl<E: Copy> GpuGKRTranscriptHandoff<E> {
+    pub(crate) fn explicit_evaluation_accessors(
+        &self,
+    ) -> BTreeMap<OutputType, [UnsafeAccessor<[E]>; 2]> {
+        self.explicit_evaluations
+            .iter()
+            .map(|(output_type, evals)| {
+                (
+                    *output_type,
+                    [evals[0].get_accessor(), evals[1].get_accessor()],
+                )
+            })
+            .collect()
+    }
+
     pub(crate) fn final_explicit_evaluations(&self) -> BTreeMap<OutputType, [Vec<E>; 2]> {
         self.explicit_evaluations
             .iter()
