@@ -1,9 +1,28 @@
 #![allow(unexpected_cfgs)]
 
 use era_cudart_sys::{get_cuda_lib_path, get_cuda_version, is_no_cuda, no_cuda_message};
+use std::fs;
+use std::path::Path;
+
+fn emit_rerun_if_changed_recursive(path: &Path) {
+    println!("cargo:rerun-if-changed={}", path.display());
+    if path.is_dir() {
+        let mut entries = fs::read_dir(path)
+            .unwrap_or_else(|err| panic!("failed to read {}: {err}", path.display()))
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap_or_else(|err| panic!("failed to enumerate {}: {err}", path.display()));
+        entries.sort_by_key(|entry| entry.path());
+        for entry in entries {
+            emit_rerun_if_changed_recursive(&entry.path());
+        }
+    }
+}
 
 fn main() {
     println!("cargo::rustc-check-cfg=cfg(no_cuda)");
+    println!("cargo:rerun-if-env-changed=CARGO_FEATURE_BENCH");
+    emit_rerun_if_changed_recursive(Path::new("build"));
+    emit_rerun_if_changed_recursive(Path::new("native"));
     if is_no_cuda() {
         println!("cargo::warning={}", no_cuda_message!());
         println!("cargo::rustc-cfg=no_cuda");
@@ -15,9 +34,15 @@ fn main() {
             println!("cargo::warning=CUDA Toolkit version {cuda_version} detected. This crate is only tested with CUDA Toolkit versions 12.* and 13.*.");
         }
         let cudaarchs = var("CUDAARCHS").unwrap_or("native".to_string());
+        let build_bench = if var("CARGO_FEATURE_BENCH").is_ok() {
+            "ON"
+        } else {
+            "OFF"
+        };
         let dst = cmake::Config::new("native")
             .profile("Release")
             .define("CMAKE_CUDA_ARCHITECTURES", cudaarchs)
+            .define("GPU_PROVER_BUILD_BENCH", build_bench)
             .build();
         let gpu_prover_native_path = dst.to_str().unwrap();
         println!("cargo:rustc-link-search=native={gpu_prover_native_path}");

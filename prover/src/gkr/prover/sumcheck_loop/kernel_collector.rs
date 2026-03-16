@@ -472,10 +472,14 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
             SingleInputTypeBatchSumcheckEvaluationKernelCore,
         };
 
-        use crate::gkr::prover::dimension_reduction::kernels::{logup::LookupPairDimensionReducingGKRRelationKernel, pairwise_product::PairwiseProductDimensionReducingGKRRelationKernel, DimensionReducingEvaluationKernel};
+        use crate::gkr::prover::dimension_reduction::kernels::{
+            logup::LookupPairDimensionReducingGKRRelationKernel,
+            pairwise_product::PairwiseProductDimensionReducingGKRRelationKernel,
+            DimensionReducingEvaluationKernel,
+        };
 
         let mut acc = [E::ZERO; 2];
-        
+
         let get = |addr: GKRAddress, j: usize| -> E {
             last_evaluations
                 .get(&addr)
@@ -523,9 +527,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
                             E,
                             2,
                             1,
-                        >::pointwise_eval(
-                            &k, &[in0, in1]
-                        );
+                        >::pointwise_eval(&k, &[in0, in1]);
                         val.mul_assign(&challenge[0]);
                         acc[j].add_assign(&val);
                     }
@@ -666,10 +668,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
                             2,
                             2,
                         >::pointwise_eval(
-                            &k,
-                            &[in_base0, in_base1],
-                            &[in_ext0, in_ext1],
-                            &(),
+                            &k, &[in_base0, in_base1], &[in_ext0, in_ext1], &()
                         );
 
                         let mut val0 = computed[0];

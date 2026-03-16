@@ -144,6 +144,93 @@ TRANSPOSE_KERNEL(e2, 4);
 TRANSPOSE_KERNEL(e4, 3);
 TRANSPOSE_KERNEL(e6, 3);
 
+EXTERN __global__ void ab_serialize_whir_e4_columns_kernel(const e4 *src, bf *dst, const unsigned count) {
+  const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
+  if (gid >= count)
+    return;
+
+  const e4 value = load<e4, ld_modifier::cs>(src, gid);
+  store<bf, st_modifier::cs>(dst, value.base_coefficient_from_flat_idx(0), gid);
+  store<bf, st_modifier::cs>(dst, value.base_coefficient_from_flat_idx(1), count + gid);
+  store<bf, st_modifier::cs>(dst, value.base_coefficient_from_flat_idx(2), 2 * count + gid);
+  store<bf, st_modifier::cs>(dst, value.base_coefficient_from_flat_idx(3), 3 * count + gid);
+}
+
+EXTERN __global__ void ab_deserialize_whir_e4_columns_kernel(const bf *src, e4 *dst, const unsigned count) {
+  const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
+  if (gid >= count)
+    return;
+
+  const bf coeffs[4] = {
+      load<bf, ld_modifier::cs>(src, gid),
+      load<bf, ld_modifier::cs>(src, count + gid),
+      load<bf, ld_modifier::cs>(src, 2 * count + gid),
+      load<bf, ld_modifier::cs>(src, 3 * count + gid),
+  };
+  store<e4, st_modifier::cs>(dst, e4(coeffs), gid);
+}
+
+EXTERN __global__ void ab_accumulate_whir_base_columns_e4_kernel(
+    const bf *values, const unsigned stride, const e4 *weights, const unsigned cols, e4 *result, const unsigned rows) {
+  const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
+  if (gid >= rows)
+    return;
+
+  e4 acc = load<e4, ld_modifier::cs>(result, gid);
+  for (unsigned col = 0; col < cols; ++col) {
+    const bf value = load<bf, ld_modifier::cs>(values, col * stride + gid);
+    const e4 weight = load<e4, ld_modifier::cs>(weights, col);
+    acc = e4::add(acc, e4::mul(weight, value));
+  }
+  store<e4, st_modifier::cs>(result, acc, gid);
+}
+
+EXTERN __global__ void ab_whir_fold_monomial_e4_kernel(const e4 *src, const e4 *challenge, e4 *dst, const unsigned half_len) {
+  const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
+  if (gid >= half_len)
+    return;
+
+  const e4 c0 = load<e4, ld_modifier::cs>(src, 2 * gid);
+  const e4 c1 = load<e4, ld_modifier::cs>(src, 2 * gid + 1);
+  const e4 folded = e4::add(c0, e4::mul(c1, *challenge));
+  store<e4, st_modifier::cs>(dst, folded, gid);
+}
+
+EXTERN __global__ void ab_whir_fold_split_half_e4_kernel(e4 *values, const e4 *challenge, const unsigned half_len) {
+  const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
+  if (gid >= half_len)
+    return;
+
+  const e4 a = load<e4, ld_modifier::cs>(values, gid);
+  const e4 b = load<e4, ld_modifier::cs>(values, half_len + gid);
+  const e4 diff = e4::sub(b, a);
+  const e4 folded = e4::add(a, e4::mul(*challenge, diff));
+  store<e4, st_modifier::cs>(values, folded, gid);
+}
+
+DEVICE_FORCEINLINE unsigned bitreverse_low_bits(const unsigned value, const unsigned num_bits) {
+  return __brev(value) >> (32 - num_bits);
+}
+
+EXTERN __global__ void ab_pack_rows_for_whir_leaves_bf_kernel(const matrix_getter<bf, ld_modifier::cs> src,
+                                                              const matrix_setter<bf, st_modifier::cs> dst,
+                                                              const unsigned log_values_per_leaf, const unsigned dst_rows_per_slot,
+                                                              const unsigned row_stride, const unsigned row_offset,
+                                                              const unsigned src_cols) {
+  const unsigned row = blockIdx.x * blockDim.x + threadIdx.x;
+  if (row >= dst_rows_per_slot)
+    return;
+  const unsigned col = blockIdx.y * blockDim.y + threadIdx.y;
+  const unsigned dst_cols = src_cols << log_values_per_leaf;
+  if (col >= dst_cols)
+    return;
+  const unsigned value_slot = col / src_cols;
+  const unsigned coeff_col = col % src_cols;
+  const unsigned src_row = row + bitreverse_low_bits(value_slot, log_values_per_leaf) * dst_rows_per_slot;
+  const unsigned dst_row = row * row_stride + row_offset;
+  dst.set(dst_row, col, src.get(src_row, coeff_col));
+}
+
 template <class T>
 DEVICE_FORCEINLINE void bit_reverse_naive(const matrix_getter<T, ld_modifier::cs> src, const matrix_setter<T, st_modifier::cs> dst, const unsigned log_count) {
   const unsigned row = blockIdx.x * blockDim.x + threadIdx.x;
@@ -251,5 +338,1422 @@ BIT_REVERSE(dg, e4, 1);
 //   const e4 result = sum + diff;
 //   dst[gid] = result;
 // }
+
+template <typename E> struct gkr_ext_initial_source {
+  const E *start;
+  size_t next_layer_size;
+};
+
+template <typename B> struct gkr_base_initial_source {
+  const B *start;
+  size_t next_layer_size;
+};
+
+template <typename B, typename E> struct gkr_base_after_one_source {
+  size_t base_layer_half_size;
+  size_t next_layer_size;
+  const B *base_input_start;
+};
+
+template <typename B, typename E> struct gkr_base_after_two_source {
+  const B *base_input_start;
+  E *this_layer_cache_start;
+  size_t base_layer_half_size;
+  size_t base_quarter_size;
+  size_t next_layer_size;
+  bool first_access;
+};
+
+template <typename E> struct gkr_ext_continuing_source {
+  const E *previous_layer_start;
+  E *this_layer_start;
+  size_t this_layer_size;
+  size_t next_layer_size;
+  bool first_access;
+};
+
+template <typename E> struct gkr_main_constraint_quadratic_term {
+  u32 lhs;
+  u32 rhs;
+  E challenge;
+};
+
+template <typename E> struct gkr_main_constraint_linear_term {
+  u32 input;
+  E challenge;
+};
+
+enum gkr_main_kernel_kind : u32 {
+  GKR_MAIN_BASE_COPY = 0,
+  GKR_MAIN_EXT_COPY = 1,
+  GKR_MAIN_PRODUCT = 2,
+  GKR_MAIN_MASK_IDENTITY = 3,
+  GKR_MAIN_LOOKUP_PAIR = 4,
+  GKR_MAIN_LOOKUP_BASE_PAIR = 5,
+  GKR_MAIN_LOOKUP_BASE_MINUS_MULTIPLICITY = 6,
+  GKR_MAIN_LOOKUP_UNBALANCED = 7,
+  GKR_MAIN_LOOKUP_WITH_CACHED_DENS_AND_SETUP = 8,
+  GKR_MAIN_ENFORCE_CONSTRAINTS = 9,
+};
+
+template <typename E>
+DEVICE_FORCEINLINE E gkr_lift_base(const bf value) {
+  return E::mul(E::ONE(), value);
+}
+
+template <typename E>
+DEVICE_FORCEINLINE E gkr_get_initial_base_value(const gkr_base_initial_source<bf> &source, const unsigned index) {
+  return gkr_lift_base<E>(load<bf, ld_modifier::cs>(source.start, index));
+}
+
+template <typename E>
+DEVICE_FORCEINLINE E gkr_get_initial_base_delta(const gkr_base_initial_source<bf> &source, const unsigned index) {
+  const bf f0 = load<bf, ld_modifier::cs>(source.start, index);
+  const bf f1 = load<bf, ld_modifier::cs>(source.start, source.next_layer_size + index);
+  return gkr_lift_base<E>(bf::sub(f1, f0));
+}
+
+template <typename E>
+DEVICE_FORCEINLINE E gkr_get_initial_value(const gkr_ext_initial_source<E> &source, const unsigned index) {
+  return load<E, ld_modifier::cs>(source.start, index);
+}
+
+template <typename E>
+DEVICE_FORCEINLINE E gkr_get_continuing_value(const gkr_ext_continuing_source<E> &source, const E folding_challenge, const unsigned index) {
+  if (!source.first_access)
+    return load<E, ld_modifier::cs>(source.this_layer_start, index);
+
+  const E f0 = load<E, ld_modifier::cs>(source.previous_layer_start, index);
+  const E f1 = load<E, ld_modifier::cs>(source.previous_layer_start, source.this_layer_size + index);
+  const E diff = E::sub(f1, f0);
+  const E folded = E::add(f0, E::mul(folding_challenge, diff));
+  store<E, st_modifier::cs>(source.this_layer_start, folded, index);
+  return folded;
+}
+
+template <typename E>
+DEVICE_FORCEINLINE E gkr_get_initial_delta(const gkr_ext_initial_source<E> &source, const unsigned index) {
+  const E f0 = gkr_get_initial_value(source, index);
+  const E f1 = gkr_get_initial_value(source, source.next_layer_size + index);
+  return E::sub(f1, f0);
+}
+
+template <typename E>
+DEVICE_FORCEINLINE E gkr_get_base_after_one_value(
+    const gkr_base_after_one_source<bf, E> &source, const E first_folding_challenge, const unsigned index) {
+  const bf f0 = load<bf, ld_modifier::cs>(source.base_input_start, index);
+  const bf f1 = load<bf, ld_modifier::cs>(source.base_input_start, source.base_layer_half_size + index);
+  const bf diff = bf::sub(f1, f0);
+  return E::add(E::mul(first_folding_challenge, diff), f0);
+}
+
+template <typename E, bool EXPLICIT_FORM>
+DEVICE_FORCEINLINE void gkr_get_base_after_one_points(
+    const gkr_base_after_one_source<bf, E> &source, const E first_folding_challenge, const unsigned index, E &f0, E &f1_or_delta) {
+  f0 = gkr_get_base_after_one_value(source, first_folding_challenge, index);
+  const E f1 = gkr_get_base_after_one_value(source, first_folding_challenge, source.next_layer_size + index);
+  if constexpr (EXPLICIT_FORM) {
+    f1_or_delta = f1;
+  } else {
+    f1_or_delta = E::sub(f1, f0);
+  }
+}
+
+template <typename E>
+DEVICE_FORCEINLINE E gkr_get_base_after_two_value(
+    const gkr_base_after_two_source<bf, E> &source, const E first_folding_challenge, const E second_folding_challenge, const unsigned index) {
+  if (!source.first_access)
+    return load<E, ld_modifier::cs>(source.this_layer_cache_start, index);
+
+  const bf f00 = load<bf, ld_modifier::cs>(source.base_input_start, index);
+  const bf f01 = load<bf, ld_modifier::cs>(source.base_input_start, source.base_layer_half_size + index);
+  const bf f10 = load<bf, ld_modifier::cs>(source.base_input_start, source.base_quarter_size + index);
+  const bf f11 = load<bf, ld_modifier::cs>(source.base_input_start, source.base_layer_half_size + source.base_quarter_size + index);
+
+  const bf c01 = bf::sub(f01, f00);
+  const bf c10 = bf::sub(f10, f00);
+  bf c11 = f00;
+  c11 = bf::sub(c11, f01);
+  c11 = bf::sub(c11, f10);
+  c11 = bf::add(c11, f11);
+
+  E combined_challenges = E::mul(first_folding_challenge, second_folding_challenge);
+  E result = E::mul(first_folding_challenge, c01);
+  result = E::add(result, E::mul(second_folding_challenge, c10));
+  result = E::add(result, E::mul(combined_challenges, c11));
+  result = E::add(result, f00);
+
+  store<E, st_modifier::cs>(source.this_layer_cache_start, result, index);
+  return result;
+}
+
+template <typename E, bool EXPLICIT_FORM>
+DEVICE_FORCEINLINE void gkr_get_base_after_two_points(
+    const gkr_base_after_two_source<bf, E> &source,
+    const E first_folding_challenge,
+    const E second_folding_challenge,
+    const unsigned index,
+    E &f0,
+    E &f1_or_delta) {
+  f0 = gkr_get_base_after_two_value(source, first_folding_challenge, second_folding_challenge, index);
+  const E f1 = gkr_get_base_after_two_value(source, first_folding_challenge, second_folding_challenge, source.next_layer_size + index);
+  if constexpr (EXPLICIT_FORM) {
+    f1_or_delta = f1;
+  } else {
+    f1_or_delta = E::sub(f1, f0);
+  }
+}
+
+template <typename E, bool EXPLICIT_FORM>
+DEVICE_FORCEINLINE void gkr_get_continuing_points(
+    const gkr_ext_continuing_source<E> &source, const E folding_challenge, const unsigned index, E &f0, E &f1_or_delta) {
+  f0 = gkr_get_continuing_value(source, folding_challenge, index);
+  const E f1 = gkr_get_continuing_value(source, folding_challenge, source.next_layer_size + index);
+  if constexpr (EXPLICIT_FORM) {
+    f1_or_delta = f1;
+  } else {
+    f1_or_delta = E::sub(f1, f0);
+  }
+}
+
+template <typename E>
+DEVICE_FORCEINLINE void gkr_store_contribution(E *dst, const unsigned index, const E c0, const E c1) {
+  store<E, st_modifier::cs>(dst, c0, 2 * index);
+  store<E, st_modifier::cs>(dst, c1, 2 * index + 1);
+}
+
+template <typename E>
+DEVICE_FORCEINLINE void gkr_pairwise_round0(
+    const gkr_ext_initial_source<E> *inputs, const gkr_ext_initial_source<E> *outputs, const E *batch_challenges, E *contributions,
+    const unsigned acc_size) {
+  const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
+  if (gid >= acc_size)
+    return;
+  const E batch_challenge = batch_challenges[0];
+
+  const unsigned even_index = gid * 2;
+  const unsigned odd_index = even_index + 1;
+
+  const E output_value = gkr_get_initial_value(outputs[0], gid);
+  const E delta_even = gkr_get_initial_delta(inputs[0], even_index);
+  const E delta_odd = gkr_get_initial_delta(inputs[0], odd_index);
+
+  const E c0 = E::mul(batch_challenge, output_value);
+  const E c1 = E::mul(batch_challenge, E::mul(delta_even, delta_odd));
+  gkr_store_contribution(contributions, gid, c0, c1);
+}
+
+template <typename E>
+DEVICE_FORCEINLINE void gkr_lookup_round0(
+    const gkr_ext_initial_source<E> *inputs, const gkr_ext_initial_source<E> *outputs, const E *batch_challenges,
+    E *contributions, const unsigned acc_size) {
+  const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
+  if (gid >= acc_size)
+    return;
+  const E batch_challenge_0 = batch_challenges[0];
+  const E batch_challenge_1 = batch_challenges[1];
+
+  const unsigned even_index = gid * 2;
+  const unsigned odd_index = even_index + 1;
+
+  const E output_num = gkr_get_initial_value(outputs[0], gid);
+  const E output_den = gkr_get_initial_value(outputs[1], gid);
+
+  const E a = gkr_get_initial_delta(inputs[0], even_index);
+  const E b = gkr_get_initial_delta(inputs[1], even_index);
+  const E c = gkr_get_initial_delta(inputs[0], odd_index);
+  const E d = gkr_get_initial_delta(inputs[1], odd_index);
+
+  const E num = E::add(E::mul(a, d), E::mul(c, b));
+  const E den = E::mul(b, d);
+
+  const E c0 = E::add(E::mul(batch_challenge_0, output_num), E::mul(batch_challenge_1, output_den));
+  const E c1 = E::add(E::mul(batch_challenge_0, num), E::mul(batch_challenge_1, den));
+  gkr_store_contribution(contributions, gid, c0, c1);
+}
+
+template <typename E, bool EXPLICIT_FORM>
+DEVICE_FORCEINLINE void gkr_pairwise_continuation(
+    const gkr_ext_continuing_source<E> *inputs, const E *folding_challenge, const E *batch_challenges, E *contributions, const unsigned acc_size) {
+  const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
+  if (gid >= acc_size)
+    return;
+  const E current_folding_challenge = folding_challenge[0];
+  const E batch_challenge = batch_challenges[0];
+
+  const unsigned even_index = gid * 2;
+  const unsigned odd_index = even_index + 1;
+
+  E even_f0;
+  E even_f1_or_delta;
+  gkr_get_continuing_points<E, EXPLICIT_FORM>(inputs[0], current_folding_challenge, even_index, even_f0, even_f1_or_delta);
+
+  E odd_f0;
+  E odd_f1_or_delta;
+  gkr_get_continuing_points<E, EXPLICIT_FORM>(inputs[0], current_folding_challenge, odd_index, odd_f0, odd_f1_or_delta);
+
+  const E c0 = E::mul(batch_challenge, E::mul(even_f0, odd_f0));
+  const E c1 = E::mul(batch_challenge, E::mul(even_f1_or_delta, odd_f1_or_delta));
+  gkr_store_contribution(contributions, gid, c0, c1);
+}
+
+template <typename E, bool EXPLICIT_FORM>
+DEVICE_FORCEINLINE void gkr_lookup_continuation(
+    const gkr_ext_continuing_source<E> *inputs, const E *folding_challenge, const E *batch_challenges, E *contributions,
+    const unsigned acc_size) {
+  const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
+  if (gid >= acc_size)
+    return;
+  const E current_folding_challenge = folding_challenge[0];
+  const E batch_challenge_0 = batch_challenges[0];
+  const E batch_challenge_1 = batch_challenges[1];
+
+  const unsigned even_index = gid * 2;
+  const unsigned odd_index = even_index + 1;
+
+  E a0;
+  E a1;
+  gkr_get_continuing_points<E, EXPLICIT_FORM>(inputs[0], current_folding_challenge, even_index, a0, a1);
+  E b0;
+  E b1;
+  gkr_get_continuing_points<E, EXPLICIT_FORM>(inputs[1], current_folding_challenge, even_index, b0, b1);
+  E c0;
+  E c1;
+  gkr_get_continuing_points<E, EXPLICIT_FORM>(inputs[0], current_folding_challenge, odd_index, c0, c1);
+  E d0;
+  E d1;
+  gkr_get_continuing_points<E, EXPLICIT_FORM>(inputs[1], current_folding_challenge, odd_index, d0, d1);
+
+  const E num0 = E::add(E::mul(a0, d0), E::mul(c0, b0));
+  const E den0 = E::mul(b0, d0);
+  const E num1 = E::add(E::mul(a1, d1), E::mul(c1, b1));
+  const E den1 = E::mul(b1, d1);
+
+  const E out0 = E::add(E::mul(batch_challenge_0, num0), E::mul(batch_challenge_1, den0));
+  const E out1 = E::add(E::mul(batch_challenge_0, num1), E::mul(batch_challenge_1, den1));
+  gkr_store_contribution(contributions, gid, out0, out1);
+}
+
+template <typename E>
+DEVICE_FORCEINLINE void gkr_weight_contributions(
+    const E *contributions, const unsigned kernel_count, const E *eq_values, E *weighted_rows, const unsigned acc_size) {
+  const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
+  if (gid >= acc_size)
+    return;
+
+  E acc0 = E::ZERO();
+  E acc1 = E::ZERO();
+  for (unsigned kernel_idx = 0; kernel_idx < kernel_count; ++kernel_idx) {
+    const unsigned base = kernel_idx * acc_size * 2 + gid * 2;
+    acc0 = E::add(acc0, load<E, ld_modifier::cs>(contributions, base));
+    acc1 = E::add(acc1, load<E, ld_modifier::cs>(contributions, base + 1));
+  }
+  const E eq = load<E, ld_modifier::cs>(eq_values, gid);
+  store<E, st_modifier::cs>(weighted_rows, E::mul(acc0, eq), gid);
+  store<E, st_modifier::cs>(weighted_rows, E::mul(acc1, eq), acc_size + gid);
+}
+
+template <typename E>
+DEVICE_FORCEINLINE void gkr_build_eq_values(
+    const E *claim_point, const unsigned challenge_offset, const unsigned challenge_count, E *eq_values, const unsigned acc_size) {
+  const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
+  if (gid >= acc_size)
+    return;
+
+  E acc = E::ONE();
+  for (unsigned i = 0; i < challenge_count; ++i) {
+    const E challenge = load<E, ld_modifier::cs>(claim_point, challenge_offset + i);
+    const bool bit = ((gid >> (challenge_count - 1 - i)) & 1u) != 0;
+    const E term = bit ? challenge : E::sub(E::ONE(), challenge);
+    acc = E::mul(acc, term);
+  }
+
+  store<E, st_modifier::cs>(eq_values, acc, gid);
+}
+
+template <typename E>
+DEVICE_FORCEINLINE void gkr_eval_product(const E a, const E b, E &value) {
+  value = E::mul(a, b);
+}
+
+template <typename E>
+DEVICE_FORCEINLINE void gkr_eval_mask_identity(const E mask, const E value, E &result) {
+  result = E::sub(value, E::ONE());
+  result = E::mul(result, mask);
+  result = E::add(result, E::ONE());
+}
+
+template <typename E>
+DEVICE_FORCEINLINE void gkr_eval_mask_identity_quadratic(const E mask, const E value, E &result) {
+  result = E::mul(value, mask);
+}
+
+template <typename E>
+DEVICE_FORCEINLINE void gkr_eval_lookup_pair(const E a, const E b, const E c, const E d, E &num, E &den) {
+  num = E::add(E::mul(a, d), E::mul(c, b));
+  den = E::mul(b, d);
+}
+
+template <typename E>
+DEVICE_FORCEINLINE void gkr_eval_lookup_base_pair(const E b, const E d, const E gamma, E &num, E &den) {
+  const E shifted_b = E::add(b, gamma);
+  const E shifted_d = E::add(d, gamma);
+  num = E::add(shifted_b, shifted_d);
+  den = E::mul(shifted_b, shifted_d);
+}
+
+template <typename E>
+DEVICE_FORCEINLINE void gkr_eval_lookup_base_pair_quadratic(const E b, const E d, E &num, E &den) {
+  num = E::ZERO();
+  den = E::mul(b, d);
+}
+
+template <typename E>
+DEVICE_FORCEINLINE void gkr_eval_lookup_base_minus_multiplicity(
+    const E b, const E c, const E d, const E gamma, E &num, E &den) {
+  const E shifted_b = E::add(b, gamma);
+  const E shifted_d = E::add(d, gamma);
+  num = E::sub(shifted_d, E::mul(c, shifted_b));
+  den = E::mul(shifted_b, shifted_d);
+}
+
+template <typename E>
+DEVICE_FORCEINLINE void gkr_eval_lookup_base_minus_multiplicity_quadratic(const E b, const E c, const E d, E &num, E &den) {
+  (void)d;
+  num = E::neg(E::mul(c, b));
+  den = E::mul(b, d);
+}
+
+template <typename E>
+DEVICE_FORCEINLINE void gkr_eval_lookup_unbalanced(const E d, const E a, const E b, const E gamma, E &num, E &den) {
+  const E shifted_d = E::add(d, gamma);
+  num = E::add(E::mul(a, shifted_d), b);
+  den = E::mul(b, shifted_d);
+}
+
+template <typename E>
+DEVICE_FORCEINLINE void gkr_eval_lookup_unbalanced_quadratic(const E d, const E a, const E b, E &num, E &den) {
+  num = E::mul(d, a);
+  den = E::mul(d, b);
+}
+
+template <typename E>
+DEVICE_FORCEINLINE void gkr_eval_lookup_cached_dens_and_setup(const E a, const E b, const E c, const E d, E &num, E &den) {
+  num = E::sub(E::mul(a, d), E::mul(c, b));
+  den = E::mul(b, d);
+}
+
+template <typename E>
+DEVICE_FORCEINLINE E gkr_eval_constraints_round0(
+    const gkr_base_initial_source<bf> *base_inputs,
+    const unsigned gid,
+    const gkr_main_constraint_quadratic_term<E> *quadratic_terms,
+    const unsigned quadratic_terms_count) {
+  E result = E::ZERO();
+  for (unsigned i = 0; i < quadratic_terms_count; ++i) {
+    const auto term = quadratic_terms[i];
+    E lhs = gkr_get_initial_base_delta<E>(base_inputs[term.lhs], gid);
+    const E rhs = gkr_get_initial_base_delta<E>(base_inputs[term.rhs], gid);
+    lhs = E::mul(lhs, rhs);
+    lhs = E::mul(lhs, term.challenge);
+    result = E::add(result, lhs);
+  }
+
+  return result;
+}
+
+template <typename E, bool EXPLICIT_FORM>
+DEVICE_FORCEINLINE void gkr_eval_constraints_round1(
+    const gkr_base_after_one_source<bf, E> *base_inputs,
+    const E first_folding_challenge,
+    const unsigned gid,
+    const gkr_main_constraint_quadratic_term<E> *quadratic_terms,
+    const unsigned quadratic_terms_count,
+    const gkr_main_constraint_linear_term<E> *linear_terms,
+    const unsigned linear_terms_count,
+    const E constant_offset,
+    E &eval0,
+    E &eval1) {
+  eval0 = constant_offset;
+  eval1 = EXPLICIT_FORM ? constant_offset : E::ZERO();
+  for (unsigned i = 0; i < quadratic_terms_count; ++i) {
+    const auto term = quadratic_terms[i];
+    E lhs0;
+    E lhs1;
+    gkr_get_base_after_one_points<E, EXPLICIT_FORM>(base_inputs[term.lhs], first_folding_challenge, gid, lhs0, lhs1);
+    E rhs0;
+    E rhs1;
+    gkr_get_base_after_one_points<E, EXPLICIT_FORM>(base_inputs[term.rhs], first_folding_challenge, gid, rhs0, rhs1);
+
+    eval0 = E::add(eval0, E::mul(E::mul(lhs0, rhs0), term.challenge));
+    eval1 = E::add(eval1, E::mul(E::mul(lhs1, rhs1), term.challenge));
+  }
+  if constexpr (EXPLICIT_FORM) {
+    for (unsigned i = 0; i < linear_terms_count; ++i) {
+      const auto term = linear_terms[i];
+      E input0;
+      E input1;
+      gkr_get_base_after_one_points<E, true>(base_inputs[term.input], first_folding_challenge, gid, input0, input1);
+      eval0 = E::add(eval0, E::mul(input0, term.challenge));
+      eval1 = E::add(eval1, E::mul(input1, term.challenge));
+    }
+  } else {
+    for (unsigned i = 0; i < linear_terms_count; ++i) {
+      const auto term = linear_terms[i];
+      E input0;
+      E input1;
+      gkr_get_base_after_one_points<E, false>(base_inputs[term.input], first_folding_challenge, gid, input0, input1);
+      (void)input1;
+      eval0 = E::add(eval0, E::mul(input0, term.challenge));
+    }
+  }
+}
+
+template <typename E, bool EXPLICIT_FORM>
+DEVICE_FORCEINLINE void gkr_eval_constraints_round2(
+    const gkr_base_after_two_source<bf, E> *base_inputs,
+    const E first_folding_challenge,
+    const E second_folding_challenge,
+    const unsigned gid,
+    const gkr_main_constraint_quadratic_term<E> *quadratic_terms,
+    const unsigned quadratic_terms_count,
+    const gkr_main_constraint_linear_term<E> *linear_terms,
+    const unsigned linear_terms_count,
+    const E constant_offset,
+    E &eval0,
+    E &eval1) {
+  eval0 = constant_offset;
+  eval1 = EXPLICIT_FORM ? constant_offset : E::ZERO();
+  for (unsigned i = 0; i < quadratic_terms_count; ++i) {
+    const auto term = quadratic_terms[i];
+    E lhs0;
+    E lhs1;
+    gkr_get_base_after_two_points<E, EXPLICIT_FORM>(base_inputs[term.lhs], first_folding_challenge, second_folding_challenge, gid, lhs0, lhs1);
+    E rhs0;
+    E rhs1;
+    gkr_get_base_after_two_points<E, EXPLICIT_FORM>(base_inputs[term.rhs], first_folding_challenge, second_folding_challenge, gid, rhs0, rhs1);
+
+    eval0 = E::add(eval0, E::mul(E::mul(lhs0, rhs0), term.challenge));
+    eval1 = E::add(eval1, E::mul(E::mul(lhs1, rhs1), term.challenge));
+  }
+  if constexpr (EXPLICIT_FORM) {
+    for (unsigned i = 0; i < linear_terms_count; ++i) {
+      const auto term = linear_terms[i];
+      E input0;
+      E input1;
+      gkr_get_base_after_two_points<E, true>(base_inputs[term.input], first_folding_challenge, second_folding_challenge, gid, input0, input1);
+      eval0 = E::add(eval0, E::mul(input0, term.challenge));
+      eval1 = E::add(eval1, E::mul(input1, term.challenge));
+    }
+  } else {
+    for (unsigned i = 0; i < linear_terms_count; ++i) {
+      const auto term = linear_terms[i];
+      E input0;
+      E input1;
+      gkr_get_base_after_two_points<E, false>(base_inputs[term.input], first_folding_challenge, second_folding_challenge, gid, input0, input1);
+      (void)input1;
+      eval0 = E::add(eval0, E::mul(input0, term.challenge));
+    }
+  }
+}
+
+template <typename E, bool EXPLICIT_FORM>
+DEVICE_FORCEINLINE void gkr_eval_constraints_round3(
+    const gkr_ext_continuing_source<E> *base_inputs,
+    const E folding_challenge,
+    const unsigned gid,
+    const gkr_main_constraint_quadratic_term<E> *quadratic_terms,
+    const unsigned quadratic_terms_count,
+    const gkr_main_constraint_linear_term<E> *linear_terms,
+    const unsigned linear_terms_count,
+    const E constant_offset,
+    E &eval0,
+    E &eval1) {
+  eval0 = constant_offset;
+  eval1 = EXPLICIT_FORM ? constant_offset : E::ZERO();
+  for (unsigned i = 0; i < quadratic_terms_count; ++i) {
+    const auto term = quadratic_terms[i];
+    E lhs0;
+    E lhs1;
+    gkr_get_continuing_points<E, EXPLICIT_FORM>(base_inputs[term.lhs], folding_challenge, gid, lhs0, lhs1);
+    E rhs0;
+    E rhs1;
+    gkr_get_continuing_points<E, EXPLICIT_FORM>(base_inputs[term.rhs], folding_challenge, gid, rhs0, rhs1);
+
+    eval0 = E::add(eval0, E::mul(E::mul(lhs0, rhs0), term.challenge));
+    eval1 = E::add(eval1, E::mul(E::mul(lhs1, rhs1), term.challenge));
+  }
+  if constexpr (EXPLICIT_FORM) {
+    for (unsigned i = 0; i < linear_terms_count; ++i) {
+      const auto term = linear_terms[i];
+      E input0;
+      E input1;
+      gkr_get_continuing_points<E, true>(base_inputs[term.input], folding_challenge, gid, input0, input1);
+      eval0 = E::add(eval0, E::mul(input0, term.challenge));
+      eval1 = E::add(eval1, E::mul(input1, term.challenge));
+    }
+  } else {
+    for (unsigned i = 0; i < linear_terms_count; ++i) {
+      const auto term = linear_terms[i];
+      E input0;
+      E input1;
+      gkr_get_continuing_points<E, false>(base_inputs[term.input], folding_challenge, gid, input0, input1);
+      (void)input1;
+      eval0 = E::add(eval0, E::mul(input0, term.challenge));
+    }
+  }
+}
+
+template <typename E>
+DEVICE_FORCEINLINE void gkr_main_round0(
+    const unsigned kind,
+    const gkr_base_initial_source<bf> *base_inputs,
+    const gkr_ext_initial_source<E> *ext_inputs,
+    const gkr_base_initial_source<bf> *base_outputs,
+    const gkr_ext_initial_source<E> *ext_outputs,
+    const E *batch_challenges,
+    const E aux_challenge,
+    const gkr_main_constraint_quadratic_term<E> *constraint_quadratic_terms,
+    const unsigned constraint_quadratic_terms_count,
+    const gkr_main_constraint_linear_term<E> *constraint_linear_terms,
+    const unsigned constraint_linear_terms_count,
+    const E constraint_constant_offset,
+    E *contributions,
+    const unsigned acc_size) {
+  const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
+  if (gid >= acc_size)
+    return;
+  const E batch_challenge_0 = batch_challenges[0];
+  const E batch_challenge_1 = batch_challenges[1];
+
+  E c0 = E::ZERO();
+  E c1 = E::ZERO();
+  switch (kind) {
+  case GKR_MAIN_BASE_COPY: {
+    const E output_value = gkr_get_initial_base_value<E>(base_outputs[0], gid);
+    c0 = E::mul(batch_challenge_0, output_value);
+    break;
+  }
+  case GKR_MAIN_EXT_COPY: {
+    const E output_value = gkr_get_initial_value(ext_outputs[0], gid);
+    c0 = E::mul(batch_challenge_0, output_value);
+    break;
+  }
+  case GKR_MAIN_PRODUCT: {
+    const E output_value = gkr_get_initial_value(ext_outputs[0], gid);
+    const E delta_a = gkr_get_initial_delta(ext_inputs[0], gid);
+    const E delta_b = gkr_get_initial_delta(ext_inputs[1], gid);
+    c0 = E::mul(batch_challenge_0, output_value);
+    c1 = E::mul(batch_challenge_0, E::mul(delta_a, delta_b));
+    break;
+  }
+  case GKR_MAIN_MASK_IDENTITY: {
+    const E output_value = gkr_get_initial_value(ext_outputs[0], gid);
+    const E delta_mask = gkr_get_initial_base_delta<E>(base_inputs[0], gid);
+    const E delta_value = gkr_get_initial_delta(ext_inputs[0], gid);
+    c0 = E::mul(batch_challenge_0, output_value);
+    c1 = E::mul(batch_challenge_0, E::mul(delta_mask, delta_value));
+    break;
+  }
+  case GKR_MAIN_LOOKUP_PAIR: {
+    const E output_num = gkr_get_initial_value(ext_outputs[0], gid);
+    const E output_den = gkr_get_initial_value(ext_outputs[1], gid);
+    const E delta_a = gkr_get_initial_delta(ext_inputs[0], gid);
+    const E delta_b = gkr_get_initial_delta(ext_inputs[1], gid);
+    const E delta_c = gkr_get_initial_delta(ext_inputs[2], gid);
+    const E delta_d = gkr_get_initial_delta(ext_inputs[3], gid);
+    E num;
+    E den;
+    gkr_eval_lookup_pair(delta_a, delta_b, delta_c, delta_d, num, den);
+    c0 = E::add(E::mul(batch_challenge_0, output_num), E::mul(batch_challenge_1, output_den));
+    c1 = E::add(E::mul(batch_challenge_0, num), E::mul(batch_challenge_1, den));
+    break;
+  }
+  case GKR_MAIN_LOOKUP_BASE_PAIR: {
+    const E output_num = gkr_get_initial_value(ext_outputs[0], gid);
+    const E output_den = gkr_get_initial_value(ext_outputs[1], gid);
+    const E delta_b = gkr_get_initial_base_delta<E>(base_inputs[0], gid);
+    const E delta_d = gkr_get_initial_base_delta<E>(base_inputs[1], gid);
+    E num;
+    E den;
+    gkr_eval_lookup_base_pair_quadratic(delta_b, delta_d, num, den);
+    c0 = E::add(E::mul(batch_challenge_0, output_num), E::mul(batch_challenge_1, output_den));
+    c1 = E::add(E::mul(batch_challenge_0, num), E::mul(batch_challenge_1, den));
+    break;
+  }
+  case GKR_MAIN_LOOKUP_BASE_MINUS_MULTIPLICITY: {
+    const E output_num = gkr_get_initial_value(ext_outputs[0], gid);
+    const E output_den = gkr_get_initial_value(ext_outputs[1], gid);
+    const E delta_b = gkr_get_initial_base_delta<E>(base_inputs[0], gid);
+    const E delta_c = gkr_get_initial_base_delta<E>(base_inputs[1], gid);
+    const E delta_d = gkr_get_initial_base_delta<E>(base_inputs[2], gid);
+    E num;
+    E den;
+    gkr_eval_lookup_base_minus_multiplicity_quadratic(delta_b, delta_c, delta_d, num, den);
+    c0 = E::add(E::mul(batch_challenge_0, output_num), E::mul(batch_challenge_1, output_den));
+    c1 = E::add(E::mul(batch_challenge_0, num), E::mul(batch_challenge_1, den));
+    break;
+  }
+  case GKR_MAIN_LOOKUP_UNBALANCED: {
+    const E output_num = gkr_get_initial_value(ext_outputs[0], gid);
+    const E output_den = gkr_get_initial_value(ext_outputs[1], gid);
+    const E delta_d = gkr_get_initial_base_delta<E>(base_inputs[0], gid);
+    const E delta_a = gkr_get_initial_delta(ext_inputs[0], gid);
+    const E delta_b = gkr_get_initial_delta(ext_inputs[1], gid);
+    E num;
+    E den;
+    gkr_eval_lookup_unbalanced_quadratic(delta_d, delta_a, delta_b, num, den);
+    c0 = E::add(E::mul(batch_challenge_0, output_num), E::mul(batch_challenge_1, output_den));
+    c1 = E::add(E::mul(batch_challenge_0, num), E::mul(batch_challenge_1, den));
+    break;
+  }
+  case GKR_MAIN_LOOKUP_WITH_CACHED_DENS_AND_SETUP: {
+    const E output_num = gkr_get_initial_value(ext_outputs[0], gid);
+    const E output_den = gkr_get_initial_value(ext_outputs[1], gid);
+    const E delta_a = gkr_get_initial_base_delta<E>(base_inputs[0], gid);
+    const E delta_b = gkr_get_initial_delta(ext_inputs[0], gid);
+    const E delta_c = gkr_get_initial_base_delta<E>(base_inputs[1], gid);
+    const E delta_d = gkr_get_initial_delta(ext_inputs[1], gid);
+    E num;
+    E den;
+    gkr_eval_lookup_cached_dens_and_setup(delta_a, delta_b, delta_c, delta_d, num, den);
+    c0 = E::add(E::mul(batch_challenge_0, output_num), E::mul(batch_challenge_1, output_den));
+    c1 = E::add(E::mul(batch_challenge_0, num), E::mul(batch_challenge_1, den));
+    break;
+  }
+  case GKR_MAIN_ENFORCE_CONSTRAINTS: {
+    c1 = E::mul(batch_challenge_0, gkr_eval_constraints_round0(base_inputs, gid, constraint_quadratic_terms, constraint_quadratic_terms_count));
+    break;
+  }
+  default:
+    return;
+  }
+
+  gkr_store_contribution(contributions, gid, c0, c1);
+}
+
+template <typename E, bool EXPLICIT_FORM>
+DEVICE_FORCEINLINE void gkr_main_round1(
+    const unsigned kind,
+    const gkr_base_after_one_source<bf, E> *base_inputs,
+    const gkr_ext_continuing_source<E> *ext_inputs,
+    const E *batch_challenges,
+    const E *folding_challenge,
+    const E aux_challenge,
+    const gkr_main_constraint_quadratic_term<E> *constraint_quadratic_terms,
+    const unsigned constraint_quadratic_terms_count,
+    const gkr_main_constraint_linear_term<E> *constraint_linear_terms,
+    const unsigned constraint_linear_terms_count,
+    const E constraint_constant_offset,
+    E *contributions,
+    const unsigned acc_size) {
+  const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
+  if (gid >= acc_size)
+    return;
+  const E batch_challenge_0 = batch_challenges[0];
+  const E batch_challenge_1 = batch_challenges[1];
+  const E current_folding_challenge = folding_challenge[0];
+
+  E c0 = E::ZERO();
+  E c1 = E::ZERO();
+  switch (kind) {
+  case GKR_MAIN_BASE_COPY: {
+    E f0;
+    E f1_or_delta;
+    gkr_get_base_after_one_points<E, EXPLICIT_FORM>(base_inputs[0], current_folding_challenge, gid, f0, f1_or_delta);
+    c0 = E::mul(batch_challenge_0, f0);
+    c1 = EXPLICIT_FORM ? E::mul(batch_challenge_0, f1_or_delta) : E::ZERO();
+    break;
+  }
+  case GKR_MAIN_EXT_COPY: {
+    E f0;
+    E f1_or_delta;
+    gkr_get_continuing_points<E, EXPLICIT_FORM>(ext_inputs[0], current_folding_challenge, gid, f0, f1_or_delta);
+    c0 = E::mul(batch_challenge_0, f0);
+    c1 = EXPLICIT_FORM ? E::mul(batch_challenge_0, f1_or_delta) : E::ZERO();
+    break;
+  }
+  case GKR_MAIN_PRODUCT: {
+    E a0;
+    E a1;
+    gkr_get_continuing_points<E, EXPLICIT_FORM>(ext_inputs[0], current_folding_challenge, gid, a0, a1);
+    E b0;
+    E b1;
+    gkr_get_continuing_points<E, EXPLICIT_FORM>(ext_inputs[1], current_folding_challenge, gid, b0, b1);
+    E eval0;
+    E eval1;
+    gkr_eval_product(a0, b0, eval0);
+    gkr_eval_product(a1, b1, eval1);
+    c0 = E::mul(batch_challenge_0, eval0);
+    c1 = E::mul(batch_challenge_0, eval1);
+    break;
+  }
+  case GKR_MAIN_MASK_IDENTITY: {
+    E mask0;
+    E mask1;
+    gkr_get_base_after_one_points<E, EXPLICIT_FORM>(base_inputs[0], current_folding_challenge, gid, mask0, mask1);
+    E value0;
+    E value1;
+    gkr_get_continuing_points<E, EXPLICIT_FORM>(ext_inputs[0], current_folding_challenge, gid, value0, value1);
+    E eval0;
+    E eval1;
+    gkr_eval_mask_identity(mask0, value0, eval0);
+    if constexpr (EXPLICIT_FORM) {
+      gkr_eval_mask_identity(mask1, value1, eval1);
+    } else {
+      gkr_eval_mask_identity_quadratic(mask1, value1, eval1);
+    }
+    c0 = E::mul(batch_challenge_0, eval0);
+    c1 = E::mul(batch_challenge_0, eval1);
+    break;
+  }
+  case GKR_MAIN_LOOKUP_PAIR: {
+    E a0;
+    E a1;
+    gkr_get_continuing_points<E, EXPLICIT_FORM>(ext_inputs[0], current_folding_challenge, gid, a0, a1);
+    E b0;
+    E b1;
+    gkr_get_continuing_points<E, EXPLICIT_FORM>(ext_inputs[1], current_folding_challenge, gid, b0, b1);
+    E c0_in;
+    E c1_in;
+    gkr_get_continuing_points<E, EXPLICIT_FORM>(ext_inputs[2], current_folding_challenge, gid, c0_in, c1_in);
+    E d0;
+    E d1;
+    gkr_get_continuing_points<E, EXPLICIT_FORM>(ext_inputs[3], current_folding_challenge, gid, d0, d1);
+    E num0;
+    E den0;
+    E num1;
+    E den1;
+    gkr_eval_lookup_pair(a0, b0, c0_in, d0, num0, den0);
+    gkr_eval_lookup_pair(a1, b1, c1_in, d1, num1, den1);
+    c0 = E::add(E::mul(batch_challenge_0, num0), E::mul(batch_challenge_1, den0));
+    c1 = E::add(E::mul(batch_challenge_0, num1), E::mul(batch_challenge_1, den1));
+    break;
+  }
+  case GKR_MAIN_LOOKUP_BASE_PAIR: {
+    E b0;
+    E b1;
+    gkr_get_base_after_one_points<E, EXPLICIT_FORM>(base_inputs[0], current_folding_challenge, gid, b0, b1);
+    E d0;
+    E d1;
+    gkr_get_base_after_one_points<E, EXPLICIT_FORM>(base_inputs[1], current_folding_challenge, gid, d0, d1);
+    E num0;
+    E den0;
+    E num1;
+    E den1;
+    gkr_eval_lookup_base_pair(b0, d0, aux_challenge, num0, den0);
+    if constexpr (EXPLICIT_FORM) {
+      gkr_eval_lookup_base_pair(b1, d1, aux_challenge, num1, den1);
+    } else {
+      gkr_eval_lookup_base_pair_quadratic(b1, d1, num1, den1);
+    }
+    c0 = E::add(E::mul(batch_challenge_0, num0), E::mul(batch_challenge_1, den0));
+    c1 = E::add(E::mul(batch_challenge_0, num1), E::mul(batch_challenge_1, den1));
+    break;
+  }
+  case GKR_MAIN_LOOKUP_BASE_MINUS_MULTIPLICITY: {
+    E b0;
+    E b1;
+    gkr_get_base_after_one_points<E, EXPLICIT_FORM>(base_inputs[0], current_folding_challenge, gid, b0, b1);
+    E c0_in;
+    E c1_in;
+    gkr_get_base_after_one_points<E, EXPLICIT_FORM>(base_inputs[1], current_folding_challenge, gid, c0_in, c1_in);
+    E d0;
+    E d1;
+    gkr_get_base_after_one_points<E, EXPLICIT_FORM>(base_inputs[2], current_folding_challenge, gid, d0, d1);
+    E num0;
+    E den0;
+    E num1;
+    E den1;
+    gkr_eval_lookup_base_minus_multiplicity(b0, c0_in, d0, aux_challenge, num0, den0);
+    if constexpr (EXPLICIT_FORM) {
+      gkr_eval_lookup_base_minus_multiplicity(b1, c1_in, d1, aux_challenge, num1, den1);
+    } else {
+      gkr_eval_lookup_base_minus_multiplicity_quadratic(b1, c1_in, d1, num1, den1);
+    }
+    c0 = E::add(E::mul(batch_challenge_0, num0), E::mul(batch_challenge_1, den0));
+    c1 = E::add(E::mul(batch_challenge_0, num1), E::mul(batch_challenge_1, den1));
+    break;
+  }
+  case GKR_MAIN_LOOKUP_UNBALANCED: {
+    E d0;
+    E d1;
+    gkr_get_base_after_one_points<E, EXPLICIT_FORM>(base_inputs[0], current_folding_challenge, gid, d0, d1);
+    E a0;
+    E a1;
+    gkr_get_continuing_points<E, EXPLICIT_FORM>(ext_inputs[0], current_folding_challenge, gid, a0, a1);
+    E b0;
+    E b1;
+    gkr_get_continuing_points<E, EXPLICIT_FORM>(ext_inputs[1], current_folding_challenge, gid, b0, b1);
+    E num0;
+    E den0;
+    E num1;
+    E den1;
+    gkr_eval_lookup_unbalanced(d0, a0, b0, aux_challenge, num0, den0);
+    if constexpr (EXPLICIT_FORM) {
+      gkr_eval_lookup_unbalanced(d1, a1, b1, aux_challenge, num1, den1);
+    } else {
+      gkr_eval_lookup_unbalanced_quadratic(d1, a1, b1, num1, den1);
+    }
+    c0 = E::add(E::mul(batch_challenge_0, num0), E::mul(batch_challenge_1, den0));
+    c1 = E::add(E::mul(batch_challenge_0, num1), E::mul(batch_challenge_1, den1));
+    break;
+  }
+  case GKR_MAIN_LOOKUP_WITH_CACHED_DENS_AND_SETUP: {
+    E a0;
+    E a1;
+    gkr_get_base_after_one_points<E, EXPLICIT_FORM>(base_inputs[0], current_folding_challenge, gid, a0, a1);
+    E c0_in;
+    E c1_in;
+    gkr_get_base_after_one_points<E, EXPLICIT_FORM>(base_inputs[1], current_folding_challenge, gid, c0_in, c1_in);
+    E b0;
+    E b1;
+    gkr_get_continuing_points<E, EXPLICIT_FORM>(ext_inputs[0], current_folding_challenge, gid, b0, b1);
+    E d0;
+    E d1;
+    gkr_get_continuing_points<E, EXPLICIT_FORM>(ext_inputs[1], current_folding_challenge, gid, d0, d1);
+    E num0;
+    E den0;
+    E num1;
+    E den1;
+    gkr_eval_lookup_cached_dens_and_setup(a0, b0, c0_in, d0, num0, den0);
+    gkr_eval_lookup_cached_dens_and_setup(a1, b1, c1_in, d1, num1, den1);
+    c0 = E::add(E::mul(batch_challenge_0, num0), E::mul(batch_challenge_1, den0));
+    c1 = E::add(E::mul(batch_challenge_0, num1), E::mul(batch_challenge_1, den1));
+    break;
+  }
+  case GKR_MAIN_ENFORCE_CONSTRAINTS: {
+    E eval0;
+    E eval1;
+    gkr_eval_constraints_round1<E, EXPLICIT_FORM>(
+        base_inputs, current_folding_challenge, gid, constraint_quadratic_terms, constraint_quadratic_terms_count, constraint_linear_terms,
+        constraint_linear_terms_count, constraint_constant_offset, eval0, eval1);
+    c0 = E::mul(batch_challenge_0, eval0);
+    c1 = E::mul(batch_challenge_0, eval1);
+    break;
+  }
+  default:
+    return;
+  }
+
+  gkr_store_contribution(contributions, gid, c0, c1);
+}
+
+template <typename E, bool EXPLICIT_FORM>
+DEVICE_FORCEINLINE void gkr_main_round2(
+    const unsigned kind,
+    const gkr_base_after_two_source<bf, E> *base_inputs,
+    const gkr_ext_continuing_source<E> *ext_inputs,
+    const E *batch_challenges,
+    const E *folding_challenges,
+    const E aux_challenge,
+    const gkr_main_constraint_quadratic_term<E> *constraint_quadratic_terms,
+    const unsigned constraint_quadratic_terms_count,
+    const gkr_main_constraint_linear_term<E> *constraint_linear_terms,
+    const unsigned constraint_linear_terms_count,
+    const E constraint_constant_offset,
+    E *contributions,
+    const unsigned acc_size) {
+  const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
+  if (gid >= acc_size)
+    return;
+  const E batch_challenge_0 = batch_challenges[0];
+  const E batch_challenge_1 = batch_challenges[1];
+  const E first_folding_challenge = folding_challenges[0];
+  const E second_folding_challenge = folding_challenges[1];
+
+  E c0 = E::ZERO();
+  E c1 = E::ZERO();
+  switch (kind) {
+  case GKR_MAIN_BASE_COPY: {
+    E f0;
+    E f1_or_delta;
+    gkr_get_base_after_two_points<E, EXPLICIT_FORM>(base_inputs[0], first_folding_challenge, second_folding_challenge, gid, f0, f1_or_delta);
+    c0 = E::mul(batch_challenge_0, f0);
+    c1 = EXPLICIT_FORM ? E::mul(batch_challenge_0, f1_or_delta) : E::ZERO();
+    break;
+  }
+  case GKR_MAIN_EXT_COPY: {
+    E f0;
+    E f1_or_delta;
+    gkr_get_continuing_points<E, EXPLICIT_FORM>(ext_inputs[0], second_folding_challenge, gid, f0, f1_or_delta);
+    c0 = E::mul(batch_challenge_0, f0);
+    c1 = EXPLICIT_FORM ? E::mul(batch_challenge_0, f1_or_delta) : E::ZERO();
+    break;
+  }
+  case GKR_MAIN_PRODUCT: {
+    E a0;
+    E a1;
+    gkr_get_continuing_points<E, EXPLICIT_FORM>(ext_inputs[0], second_folding_challenge, gid, a0, a1);
+    E b0;
+    E b1;
+    gkr_get_continuing_points<E, EXPLICIT_FORM>(ext_inputs[1], second_folding_challenge, gid, b0, b1);
+    E eval0;
+    E eval1;
+    gkr_eval_product(a0, b0, eval0);
+    gkr_eval_product(a1, b1, eval1);
+    c0 = E::mul(batch_challenge_0, eval0);
+    c1 = E::mul(batch_challenge_0, eval1);
+    break;
+  }
+  case GKR_MAIN_MASK_IDENTITY: {
+    E mask0;
+    E mask1;
+    gkr_get_base_after_two_points<E, EXPLICIT_FORM>(base_inputs[0], first_folding_challenge, second_folding_challenge, gid, mask0, mask1);
+    E value0;
+    E value1;
+    gkr_get_continuing_points<E, EXPLICIT_FORM>(ext_inputs[0], second_folding_challenge, gid, value0, value1);
+    E eval0;
+    E eval1;
+    gkr_eval_mask_identity(mask0, value0, eval0);
+    if constexpr (EXPLICIT_FORM) {
+      gkr_eval_mask_identity(mask1, value1, eval1);
+    } else {
+      gkr_eval_mask_identity_quadratic(mask1, value1, eval1);
+    }
+    c0 = E::mul(batch_challenge_0, eval0);
+    c1 = E::mul(batch_challenge_0, eval1);
+    break;
+  }
+  case GKR_MAIN_LOOKUP_PAIR: {
+    E a0;
+    E a1;
+    gkr_get_continuing_points<E, EXPLICIT_FORM>(ext_inputs[0], second_folding_challenge, gid, a0, a1);
+    E b0;
+    E b1;
+    gkr_get_continuing_points<E, EXPLICIT_FORM>(ext_inputs[1], second_folding_challenge, gid, b0, b1);
+    E c0_in;
+    E c1_in;
+    gkr_get_continuing_points<E, EXPLICIT_FORM>(ext_inputs[2], second_folding_challenge, gid, c0_in, c1_in);
+    E d0;
+    E d1;
+    gkr_get_continuing_points<E, EXPLICIT_FORM>(ext_inputs[3], second_folding_challenge, gid, d0, d1);
+    E num0;
+    E den0;
+    E num1;
+    E den1;
+    gkr_eval_lookup_pair(a0, b0, c0_in, d0, num0, den0);
+    gkr_eval_lookup_pair(a1, b1, c1_in, d1, num1, den1);
+    c0 = E::add(E::mul(batch_challenge_0, num0), E::mul(batch_challenge_1, den0));
+    c1 = E::add(E::mul(batch_challenge_0, num1), E::mul(batch_challenge_1, den1));
+    break;
+  }
+  case GKR_MAIN_LOOKUP_BASE_PAIR: {
+    E b0;
+    E b1;
+    gkr_get_base_after_two_points<E, EXPLICIT_FORM>(base_inputs[0], first_folding_challenge, second_folding_challenge, gid, b0, b1);
+    E d0;
+    E d1;
+    gkr_get_base_after_two_points<E, EXPLICIT_FORM>(base_inputs[1], first_folding_challenge, second_folding_challenge, gid, d0, d1);
+    E num0;
+    E den0;
+    E num1;
+    E den1;
+    gkr_eval_lookup_base_pair(b0, d0, aux_challenge, num0, den0);
+    if constexpr (EXPLICIT_FORM) {
+      gkr_eval_lookup_base_pair(b1, d1, aux_challenge, num1, den1);
+    } else {
+      gkr_eval_lookup_base_pair_quadratic(b1, d1, num1, den1);
+    }
+    c0 = E::add(E::mul(batch_challenge_0, num0), E::mul(batch_challenge_1, den0));
+    c1 = E::add(E::mul(batch_challenge_0, num1), E::mul(batch_challenge_1, den1));
+    break;
+  }
+  case GKR_MAIN_LOOKUP_BASE_MINUS_MULTIPLICITY: {
+    E b0;
+    E b1;
+    gkr_get_base_after_two_points<E, EXPLICIT_FORM>(base_inputs[0], first_folding_challenge, second_folding_challenge, gid, b0, b1);
+    E c0_in;
+    E c1_in;
+    gkr_get_base_after_two_points<E, EXPLICIT_FORM>(base_inputs[1], first_folding_challenge, second_folding_challenge, gid, c0_in, c1_in);
+    E d0;
+    E d1;
+    gkr_get_base_after_two_points<E, EXPLICIT_FORM>(base_inputs[2], first_folding_challenge, second_folding_challenge, gid, d0, d1);
+    E num0;
+    E den0;
+    E num1;
+    E den1;
+    gkr_eval_lookup_base_minus_multiplicity(b0, c0_in, d0, aux_challenge, num0, den0);
+    if constexpr (EXPLICIT_FORM) {
+      gkr_eval_lookup_base_minus_multiplicity(b1, c1_in, d1, aux_challenge, num1, den1);
+    } else {
+      gkr_eval_lookup_base_minus_multiplicity_quadratic(b1, c1_in, d1, num1, den1);
+    }
+    c0 = E::add(E::mul(batch_challenge_0, num0), E::mul(batch_challenge_1, den0));
+    c1 = E::add(E::mul(batch_challenge_0, num1), E::mul(batch_challenge_1, den1));
+    break;
+  }
+  case GKR_MAIN_LOOKUP_UNBALANCED: {
+    E d0;
+    E d1;
+    gkr_get_base_after_two_points<E, EXPLICIT_FORM>(base_inputs[0], first_folding_challenge, second_folding_challenge, gid, d0, d1);
+    E a0;
+    E a1;
+    gkr_get_continuing_points<E, EXPLICIT_FORM>(ext_inputs[0], second_folding_challenge, gid, a0, a1);
+    E b0;
+    E b1;
+    gkr_get_continuing_points<E, EXPLICIT_FORM>(ext_inputs[1], second_folding_challenge, gid, b0, b1);
+    E num0;
+    E den0;
+    E num1;
+    E den1;
+    gkr_eval_lookup_unbalanced(d0, a0, b0, aux_challenge, num0, den0);
+    if constexpr (EXPLICIT_FORM) {
+      gkr_eval_lookup_unbalanced(d1, a1, b1, aux_challenge, num1, den1);
+    } else {
+      gkr_eval_lookup_unbalanced_quadratic(d1, a1, b1, num1, den1);
+    }
+    c0 = E::add(E::mul(batch_challenge_0, num0), E::mul(batch_challenge_1, den0));
+    c1 = E::add(E::mul(batch_challenge_0, num1), E::mul(batch_challenge_1, den1));
+    break;
+  }
+  case GKR_MAIN_LOOKUP_WITH_CACHED_DENS_AND_SETUP: {
+    E a0;
+    E a1;
+    gkr_get_base_after_two_points<E, EXPLICIT_FORM>(base_inputs[0], first_folding_challenge, second_folding_challenge, gid, a0, a1);
+    E c0_in;
+    E c1_in;
+    gkr_get_base_after_two_points<E, EXPLICIT_FORM>(base_inputs[1], first_folding_challenge, second_folding_challenge, gid, c0_in, c1_in);
+    E b0;
+    E b1;
+    gkr_get_continuing_points<E, EXPLICIT_FORM>(ext_inputs[0], second_folding_challenge, gid, b0, b1);
+    E d0;
+    E d1;
+    gkr_get_continuing_points<E, EXPLICIT_FORM>(ext_inputs[1], second_folding_challenge, gid, d0, d1);
+    E num0;
+    E den0;
+    E num1;
+    E den1;
+    gkr_eval_lookup_cached_dens_and_setup(a0, b0, c0_in, d0, num0, den0);
+    gkr_eval_lookup_cached_dens_and_setup(a1, b1, c1_in, d1, num1, den1);
+    c0 = E::add(E::mul(batch_challenge_0, num0), E::mul(batch_challenge_1, den0));
+    c1 = E::add(E::mul(batch_challenge_0, num1), E::mul(batch_challenge_1, den1));
+    break;
+  }
+  case GKR_MAIN_ENFORCE_CONSTRAINTS: {
+    E eval0;
+    E eval1;
+    gkr_eval_constraints_round2<E, EXPLICIT_FORM>(
+        base_inputs, first_folding_challenge, second_folding_challenge, gid, constraint_quadratic_terms, constraint_quadratic_terms_count, constraint_linear_terms,
+        constraint_linear_terms_count, constraint_constant_offset, eval0, eval1);
+    c0 = E::mul(batch_challenge_0, eval0);
+    c1 = E::mul(batch_challenge_0, eval1);
+    break;
+  }
+  default:
+    return;
+  }
+
+  gkr_store_contribution(contributions, gid, c0, c1);
+}
+
+template <typename E, bool EXPLICIT_FORM>
+DEVICE_FORCEINLINE void gkr_main_round3(
+    const unsigned kind,
+    const gkr_ext_continuing_source<E> *base_inputs,
+    const gkr_ext_continuing_source<E> *ext_inputs,
+    const E *batch_challenges,
+    const E *folding_challenge,
+    const E aux_challenge,
+    const gkr_main_constraint_quadratic_term<E> *constraint_quadratic_terms,
+    const unsigned constraint_quadratic_terms_count,
+    const gkr_main_constraint_linear_term<E> *constraint_linear_terms,
+    const unsigned constraint_linear_terms_count,
+    const E constraint_constant_offset,
+    E *contributions,
+    const unsigned acc_size) {
+  const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
+  if (gid >= acc_size)
+    return;
+  const E batch_challenge_0 = batch_challenges[0];
+  const E batch_challenge_1 = batch_challenges[1];
+  const E current_folding_challenge = folding_challenge[0];
+
+  E c0 = E::ZERO();
+  E c1 = E::ZERO();
+  switch (kind) {
+  case GKR_MAIN_BASE_COPY: {
+    E f0;
+    E f1_or_delta;
+    gkr_get_continuing_points<E, EXPLICIT_FORM>(base_inputs[0], current_folding_challenge, gid, f0, f1_or_delta);
+    c0 = E::mul(batch_challenge_0, f0);
+    c1 = EXPLICIT_FORM ? E::mul(batch_challenge_0, f1_or_delta) : E::ZERO();
+    break;
+  }
+  case GKR_MAIN_EXT_COPY: {
+    E f0;
+    E f1_or_delta;
+    gkr_get_continuing_points<E, EXPLICIT_FORM>(ext_inputs[0], current_folding_challenge, gid, f0, f1_or_delta);
+    c0 = E::mul(batch_challenge_0, f0);
+    c1 = EXPLICIT_FORM ? E::mul(batch_challenge_0, f1_or_delta) : E::ZERO();
+    break;
+  }
+  case GKR_MAIN_PRODUCT: {
+    E a0;
+    E a1;
+    gkr_get_continuing_points<E, EXPLICIT_FORM>(ext_inputs[0], current_folding_challenge, gid, a0, a1);
+    E b0;
+    E b1;
+    gkr_get_continuing_points<E, EXPLICIT_FORM>(ext_inputs[1], current_folding_challenge, gid, b0, b1);
+    E eval0;
+    E eval1;
+    gkr_eval_product(a0, b0, eval0);
+    gkr_eval_product(a1, b1, eval1);
+    c0 = E::mul(batch_challenge_0, eval0);
+    c1 = E::mul(batch_challenge_0, eval1);
+    break;
+  }
+  case GKR_MAIN_MASK_IDENTITY: {
+    E mask0;
+    E mask1;
+    gkr_get_continuing_points<E, EXPLICIT_FORM>(base_inputs[0], current_folding_challenge, gid, mask0, mask1);
+    E value0;
+    E value1;
+    gkr_get_continuing_points<E, EXPLICIT_FORM>(ext_inputs[0], current_folding_challenge, gid, value0, value1);
+    E eval0;
+    E eval1;
+    gkr_eval_mask_identity(mask0, value0, eval0);
+    if constexpr (EXPLICIT_FORM) {
+      gkr_eval_mask_identity(mask1, value1, eval1);
+    } else {
+      gkr_eval_mask_identity_quadratic(mask1, value1, eval1);
+    }
+    c0 = E::mul(batch_challenge_0, eval0);
+    c1 = E::mul(batch_challenge_0, eval1);
+    break;
+  }
+  case GKR_MAIN_LOOKUP_PAIR: {
+    E a0;
+    E a1;
+    gkr_get_continuing_points<E, EXPLICIT_FORM>(ext_inputs[0], current_folding_challenge, gid, a0, a1);
+    E b0;
+    E b1;
+    gkr_get_continuing_points<E, EXPLICIT_FORM>(ext_inputs[1], current_folding_challenge, gid, b0, b1);
+    E c0_in;
+    E c1_in;
+    gkr_get_continuing_points<E, EXPLICIT_FORM>(ext_inputs[2], current_folding_challenge, gid, c0_in, c1_in);
+    E d0;
+    E d1;
+    gkr_get_continuing_points<E, EXPLICIT_FORM>(ext_inputs[3], current_folding_challenge, gid, d0, d1);
+    E num0;
+    E den0;
+    E num1;
+    E den1;
+    gkr_eval_lookup_pair(a0, b0, c0_in, d0, num0, den0);
+    gkr_eval_lookup_pair(a1, b1, c1_in, d1, num1, den1);
+    c0 = E::add(E::mul(batch_challenge_0, num0), E::mul(batch_challenge_1, den0));
+    c1 = E::add(E::mul(batch_challenge_0, num1), E::mul(batch_challenge_1, den1));
+    break;
+  }
+  case GKR_MAIN_LOOKUP_BASE_PAIR: {
+    E b0;
+    E b1;
+    gkr_get_continuing_points<E, EXPLICIT_FORM>(base_inputs[0], current_folding_challenge, gid, b0, b1);
+    E d0;
+    E d1;
+    gkr_get_continuing_points<E, EXPLICIT_FORM>(base_inputs[1], current_folding_challenge, gid, d0, d1);
+    E num0;
+    E den0;
+    E num1;
+    E den1;
+    gkr_eval_lookup_base_pair(b0, d0, aux_challenge, num0, den0);
+    if constexpr (EXPLICIT_FORM) {
+      gkr_eval_lookup_base_pair(b1, d1, aux_challenge, num1, den1);
+    } else {
+      gkr_eval_lookup_base_pair_quadratic(b1, d1, num1, den1);
+    }
+    c0 = E::add(E::mul(batch_challenge_0, num0), E::mul(batch_challenge_1, den0));
+    c1 = E::add(E::mul(batch_challenge_0, num1), E::mul(batch_challenge_1, den1));
+    break;
+  }
+  case GKR_MAIN_LOOKUP_BASE_MINUS_MULTIPLICITY: {
+    E b0;
+    E b1;
+    gkr_get_continuing_points<E, EXPLICIT_FORM>(base_inputs[0], current_folding_challenge, gid, b0, b1);
+    E c0_in;
+    E c1_in;
+    gkr_get_continuing_points<E, EXPLICIT_FORM>(base_inputs[1], current_folding_challenge, gid, c0_in, c1_in);
+    E d0;
+    E d1;
+    gkr_get_continuing_points<E, EXPLICIT_FORM>(base_inputs[2], current_folding_challenge, gid, d0, d1);
+    E num0;
+    E den0;
+    E num1;
+    E den1;
+    gkr_eval_lookup_base_minus_multiplicity(b0, c0_in, d0, aux_challenge, num0, den0);
+    if constexpr (EXPLICIT_FORM) {
+      gkr_eval_lookup_base_minus_multiplicity(b1, c1_in, d1, aux_challenge, num1, den1);
+    } else {
+      gkr_eval_lookup_base_minus_multiplicity_quadratic(b1, c1_in, d1, num1, den1);
+    }
+    c0 = E::add(E::mul(batch_challenge_0, num0), E::mul(batch_challenge_1, den0));
+    c1 = E::add(E::mul(batch_challenge_0, num1), E::mul(batch_challenge_1, den1));
+    break;
+  }
+  case GKR_MAIN_LOOKUP_UNBALANCED: {
+    E d0;
+    E d1;
+    gkr_get_continuing_points<E, EXPLICIT_FORM>(base_inputs[0], current_folding_challenge, gid, d0, d1);
+    E a0;
+    E a1;
+    gkr_get_continuing_points<E, EXPLICIT_FORM>(ext_inputs[0], current_folding_challenge, gid, a0, a1);
+    E b0;
+    E b1;
+    gkr_get_continuing_points<E, EXPLICIT_FORM>(ext_inputs[1], current_folding_challenge, gid, b0, b1);
+    E num0;
+    E den0;
+    E num1;
+    E den1;
+    gkr_eval_lookup_unbalanced(d0, a0, b0, aux_challenge, num0, den0);
+    if constexpr (EXPLICIT_FORM) {
+      gkr_eval_lookup_unbalanced(d1, a1, b1, aux_challenge, num1, den1);
+    } else {
+      gkr_eval_lookup_unbalanced_quadratic(d1, a1, b1, num1, den1);
+    }
+    c0 = E::add(E::mul(batch_challenge_0, num0), E::mul(batch_challenge_1, den0));
+    c1 = E::add(E::mul(batch_challenge_0, num1), E::mul(batch_challenge_1, den1));
+    break;
+  }
+  case GKR_MAIN_LOOKUP_WITH_CACHED_DENS_AND_SETUP: {
+    E a0;
+    E a1;
+    gkr_get_continuing_points<E, EXPLICIT_FORM>(base_inputs[0], current_folding_challenge, gid, a0, a1);
+    E c0_in;
+    E c1_in;
+    gkr_get_continuing_points<E, EXPLICIT_FORM>(base_inputs[1], current_folding_challenge, gid, c0_in, c1_in);
+    E b0;
+    E b1;
+    gkr_get_continuing_points<E, EXPLICIT_FORM>(ext_inputs[0], current_folding_challenge, gid, b0, b1);
+    E d0;
+    E d1;
+    gkr_get_continuing_points<E, EXPLICIT_FORM>(ext_inputs[1], current_folding_challenge, gid, d0, d1);
+    E num0;
+    E den0;
+    E num1;
+    E den1;
+    gkr_eval_lookup_cached_dens_and_setup(a0, b0, c0_in, d0, num0, den0);
+    gkr_eval_lookup_cached_dens_and_setup(a1, b1, c1_in, d1, num1, den1);
+    c0 = E::add(E::mul(batch_challenge_0, num0), E::mul(batch_challenge_1, den0));
+    c1 = E::add(E::mul(batch_challenge_0, num1), E::mul(batch_challenge_1, den1));
+    break;
+  }
+  case GKR_MAIN_ENFORCE_CONSTRAINTS: {
+    E eval0;
+    E eval1;
+    gkr_eval_constraints_round3<E, EXPLICIT_FORM>(
+        base_inputs, current_folding_challenge, gid, constraint_quadratic_terms, constraint_quadratic_terms_count, constraint_linear_terms,
+        constraint_linear_terms_count, constraint_constant_offset, eval0, eval1);
+    c0 = E::mul(batch_challenge_0, eval0);
+    c1 = E::mul(batch_challenge_0, eval1);
+    break;
+  }
+  default:
+    return;
+  }
+
+  gkr_store_contribution(contributions, gid, c0, c1);
+}
+
+#define GKR_DIM_REDUCING_KERNELS(arg_t)                                                                                                                       \
+  EXTERN __global__ void ab_gkr_dim_reducing_pairwise_round0_##arg_t##_kernel(                                                                                \
+      const gkr_ext_initial_source<arg_t> *inputs, const gkr_ext_initial_source<arg_t> *outputs, const arg_t *batch_challenges, arg_t *contributions,         \
+      const unsigned acc_size) {                                                                                                                               \
+    gkr_pairwise_round0(inputs, outputs, batch_challenges, contributions, acc_size);                                                                          \
+  }                                                                                                                                                            \
+  EXTERN __global__ void ab_gkr_dim_reducing_lookup_round0_##arg_t##_kernel(                                                                                  \
+      const gkr_ext_initial_source<arg_t> *inputs, const gkr_ext_initial_source<arg_t> *outputs, const arg_t *batch_challenges, arg_t *contributions,         \
+      const unsigned acc_size) {                                                                                                                               \
+    gkr_lookup_round0(inputs, outputs, batch_challenges, contributions, acc_size);                                                                            \
+  }                                                                                                                                                            \
+  EXTERN __global__ void ab_gkr_dim_reducing_pairwise_continuation_##arg_t##_kernel(                                                                          \
+      const gkr_ext_continuing_source<arg_t> *inputs, const arg_t *folding_challenge, const arg_t *batch_challenges, const bool explicit_form,                \
+      arg_t *contributions,                                                                                                                                    \
+      const unsigned acc_size) {                                                                                                                               \
+    if (explicit_form)                                                                                                                                         \
+      gkr_pairwise_continuation<arg_t, true>(inputs, folding_challenge, batch_challenges, contributions, acc_size);                                           \
+    else                                                                                                                                                       \
+      gkr_pairwise_continuation<arg_t, false>(inputs, folding_challenge, batch_challenges, contributions, acc_size);                                          \
+  }                                                                                                                                                            \
+  EXTERN __global__ void ab_gkr_dim_reducing_lookup_continuation_##arg_t##_kernel(                                                                            \
+      const gkr_ext_continuing_source<arg_t> *inputs, const arg_t *folding_challenge, const arg_t *batch_challenges, const bool explicit_form,                \
+      arg_t *contributions, const unsigned acc_size) {                                                                                                         \
+    if (explicit_form)                                                                                                                                         \
+      gkr_lookup_continuation<arg_t, true>(inputs, folding_challenge, batch_challenges, contributions, acc_size);                                             \
+    else                                                                                                                                                       \
+      gkr_lookup_continuation<arg_t, false>(inputs, folding_challenge, batch_challenges, contributions, acc_size);                                            \
+  }                                                                                                                                                            \
+  EXTERN __global__ void ab_gkr_dim_reducing_build_eq_##arg_t##_kernel(                                                                                       \
+      const arg_t *claim_point, const unsigned challenge_offset, const unsigned challenge_count, arg_t *eq_values, const unsigned acc_size) {                 \
+    gkr_build_eq_values(claim_point, challenge_offset, challenge_count, eq_values, acc_size);                                                                 \
+  }                                                                                                                                                            \
+  EXTERN __global__ void ab_gkr_dim_reducing_weight_contributions_##arg_t##_kernel(                                                                           \
+      const arg_t *contributions, const unsigned kernel_count, const arg_t *eq_values, arg_t *weighted_rows, const unsigned acc_size) {                       \
+    gkr_weight_contributions(contributions, kernel_count, eq_values, weighted_rows, acc_size);                                                                \
+  }
+
+GKR_DIM_REDUCING_KERNELS(e2);
+GKR_DIM_REDUCING_KERNELS(e4);
+GKR_DIM_REDUCING_KERNELS(e6);
+
+#define GKR_MAIN_LAYER_KERNELS(arg_t)                                                                                                                                      \
+  EXTERN __global__ void ab_gkr_main_round0_##arg_t##_kernel(                                                                                                               \
+      const unsigned kind, const gkr_base_initial_source<bf> *base_inputs, const gkr_ext_initial_source<arg_t> *ext_inputs,                                              \
+      const gkr_base_initial_source<bf> *base_outputs, const gkr_ext_initial_source<arg_t> *ext_outputs, const arg_t *batch_challenges,                                 \
+      const arg_t aux_challenge, const gkr_main_constraint_quadratic_term<arg_t> *constraint_quadratic_terms,                                                             \
+      const unsigned constraint_quadratic_terms_count, const gkr_main_constraint_linear_term<arg_t> *constraint_linear_terms,                                            \
+      const unsigned constraint_linear_terms_count, const arg_t constraint_constant_offset, arg_t *contributions, const unsigned acc_size) {                             \
+    gkr_main_round0(kind, base_inputs, ext_inputs, base_outputs, ext_outputs, batch_challenges, aux_challenge,                                                           \
+        constraint_quadratic_terms, constraint_quadratic_terms_count, constraint_linear_terms, constraint_linear_terms_count,                                             \
+        constraint_constant_offset, contributions, acc_size);                                                                                                                \
+  }                                                                                                                                                                           \
+  EXTERN __global__ void ab_gkr_main_round1_##arg_t##_kernel(                                                                                                               \
+      const unsigned kind, const gkr_base_after_one_source<bf, arg_t> *base_inputs, const gkr_ext_continuing_source<arg_t> *ext_inputs,                                 \
+      const arg_t *batch_challenges, const arg_t *folding_challenge, const arg_t aux_challenge,                                                                           \
+      const gkr_main_constraint_quadratic_term<arg_t> *constraint_quadratic_terms, const unsigned constraint_quadratic_terms_count,                                       \
+      const gkr_main_constraint_linear_term<arg_t> *constraint_linear_terms, const unsigned constraint_linear_terms_count,                                                 \
+      const arg_t constraint_constant_offset, const bool explicit_form, arg_t *contributions, const unsigned acc_size) {                                                  \
+    if (explicit_form)                                                                                                                                                        \
+      gkr_main_round1<arg_t, true>(kind, base_inputs, ext_inputs, batch_challenges, folding_challenge, aux_challenge,                                                    \
+          constraint_quadratic_terms, constraint_quadratic_terms_count, constraint_linear_terms, constraint_linear_terms_count,                                            \
+          constraint_constant_offset, contributions, acc_size);                                                                                                              \
+    else                                                                                                                                                                      \
+      gkr_main_round1<arg_t, false>(kind, base_inputs, ext_inputs, batch_challenges, folding_challenge, aux_challenge,                                                   \
+          constraint_quadratic_terms, constraint_quadratic_terms_count, constraint_linear_terms, constraint_linear_terms_count,                                            \
+          constraint_constant_offset, contributions, acc_size);                                                                                                              \
+  }                                                                                                                                                                           \
+  EXTERN __global__ void ab_gkr_main_round2_##arg_t##_kernel(                                                                                                               \
+      const unsigned kind, const gkr_base_after_two_source<bf, arg_t> *base_inputs, const gkr_ext_continuing_source<arg_t> *ext_inputs,                                 \
+      const arg_t *batch_challenges, const arg_t *folding_challenges, const arg_t aux_challenge,                                                                          \
+      const gkr_main_constraint_quadratic_term<arg_t> *constraint_quadratic_terms, const unsigned constraint_quadratic_terms_count,                                       \
+      const gkr_main_constraint_linear_term<arg_t> *constraint_linear_terms, const unsigned constraint_linear_terms_count,                                                 \
+      const arg_t constraint_constant_offset, const bool explicit_form, arg_t *contributions, const unsigned acc_size) {                                                  \
+    if (explicit_form)                                                                                                                                                        \
+      gkr_main_round2<arg_t, true>(kind, base_inputs, ext_inputs, batch_challenges, folding_challenges, aux_challenge,                                                   \
+          constraint_quadratic_terms, constraint_quadratic_terms_count, constraint_linear_terms, constraint_linear_terms_count,                                            \
+          constraint_constant_offset, contributions, acc_size);                                                                                                              \
+    else                                                                                                                                                                      \
+      gkr_main_round2<arg_t, false>(kind, base_inputs, ext_inputs, batch_challenges, folding_challenges, aux_challenge,                                                  \
+          constraint_quadratic_terms, constraint_quadratic_terms_count, constraint_linear_terms, constraint_linear_terms_count,                                            \
+          constraint_constant_offset, contributions, acc_size);                                                                                                              \
+  }                                                                                                                                                                           \
+  EXTERN __global__ void ab_gkr_main_round3_##arg_t##_kernel(                                                                                                               \
+      const unsigned kind, const gkr_ext_continuing_source<arg_t> *base_inputs, const gkr_ext_continuing_source<arg_t> *ext_inputs,                                      \
+      const arg_t *batch_challenges, const arg_t *folding_challenge, const arg_t aux_challenge,                                                                           \
+      const gkr_main_constraint_quadratic_term<arg_t> *constraint_quadratic_terms, const unsigned constraint_quadratic_terms_count,                                       \
+      const gkr_main_constraint_linear_term<arg_t> *constraint_linear_terms, const unsigned constraint_linear_terms_count,                                                 \
+      const arg_t constraint_constant_offset, const bool explicit_form, arg_t *contributions, const unsigned acc_size) {                                                  \
+    if (explicit_form)                                                                                                                                                        \
+      gkr_main_round3<arg_t, true>(kind, base_inputs, ext_inputs, batch_challenges, folding_challenge, aux_challenge,                                                    \
+          constraint_quadratic_terms, constraint_quadratic_terms_count, constraint_linear_terms, constraint_linear_terms_count,                                            \
+          constraint_constant_offset, contributions, acc_size);                                                                                                              \
+    else                                                                                                                                                                      \
+      gkr_main_round3<arg_t, false>(kind, base_inputs, ext_inputs, batch_challenges, folding_challenge, aux_challenge,                                                   \
+          constraint_quadratic_terms, constraint_quadratic_terms_count, constraint_linear_terms, constraint_linear_terms_count,                                            \
+          constraint_constant_offset, contributions, acc_size);                                                                                                              \
+  }
+
+GKR_MAIN_LAYER_KERNELS(e2);
+GKR_MAIN_LAYER_KERNELS(e4);
+GKR_MAIN_LAYER_KERNELS(e6);
 
 } // namespace airbender::ops::complex

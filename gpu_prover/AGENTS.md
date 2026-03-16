@@ -1,47 +1,36 @@
 # AGENTS.md
 
-## Project Overview
-`gpu_prover` is a Rust crate in the `zksync-airbender` workspace that builds CUDA-backed proving components. It uses a custom build script at `build/main.rs` and depends on `era_cudart`/`era_cudart_sys` for CUDA integration.
+`gpu_prover` is the CUDA-backed prover crate. It uses `build/main.rs` and depends on `era_cudart` and `era_cudart_sys`.
 
-## Hard Constraints
+## Constraints
 - Do not modify CMake/CUDA flags.
 - Do not change build configuration behavior unless explicitly requested.
-
-## Working Agreements
-- Prefer small, targeted changes with a clear rationale.
-- Keep edits ASCII unless the file already uses Unicode.
-- Avoid changing public APIs unless the request explicitly calls for it.
-
-## Scope Control
-- Keep changes task-focused; avoid unrelated refactors.
-- Avoid dependency/version churn unless explicitly requested.
 
 ## Key Files and Structure
 - `build/main.rs`: build script that wires cmake/CUDA integration.
 - `native/`: native CUDA/C++ sources and build artifacts managed by the build script.
-- `src/`: crate modules; follow existing layout and naming.
-- `Cargo.toml`: dependency and feature definitions for this crate.
+- `src/`: crate modules.
+
+## Legacy Reference
+- `../gpu_prover_old/` is the old prover crate. It is kept only as a reference and must not be modified.
+- `gpu_prover_old` is not an implementation target for new work; all active prover development belongs in `gpu_prover`.
+- `gpu_prover` already overlaps heavily with `gpu_prover_old` across allocator, NTT, ops, witness generation, trace-holder logic, and many CUDA kernels, and more legacy behavior may continue to be reimplemented here.
+- Before adding prover logic in `gpu_prover`, first check whether the needed behavior already exists here, then consult the corresponding code in `gpu_prover_old` for reference behavior and invariants.
+- Use `gpu_prover_old` to understand behavior, not as a place to land fixes or feature work. Port behavior deliberately into `gpu_prover` rather than copying legacy structure mechanically.
 
 ## Build and Test
 - Minimum validation for any code change: `cargo check -p gpu_prover`
 - Build: `cargo build -p gpu_prover`
 - Test: `cargo test -p gpu_prover`
-- Benches: `cargo bench -p gpu_prover`
-- Some tests are compute-intensive and should not be run in debug mode; use release mode for those tests: `cargo test -p gpu_prover --release`.
+- Bench: `cargo bench -p gpu_prover`
+- For compute-heavy GPU tests or prover flows, use `cargo test -p gpu_prover --release` by default. Use debug-mode execution only for quick smoke tests or when debug assertions/symbols are specifically needed.
+- For Rust GPU tests, compile first with `cargo test --no-run`, then run the produced test binary under `.agents/bin/with_gpu_lock.sh`. Do not run locked `cargo test ...` directly when the binary can be built first.
 
-## Build Script Boundaries
-- `build/main.rs` is the only Rust entrypoint that wires CMake.
+## Build Script
 - Unless explicitly requested, changes in `build/main.rs` must be non-behavioral.
 
-## Code Conventions
+## Code Notes
 - Use `log` for diagnostic output rather than `println!`.
 - Prefer `rayon` for CPU parallelism when applicable.
 - Keep unsafe blocks minimal and justified; comment on non-obvious invariants.
 - Add `// SAFETY:` comments for non-trivial unsafe blocks.
-
-## CUDA Notes
-- CUDA runtime dependencies are pinned via `era_cudart` and `era_cudart_sys`.
-- Do not modify CMake/CUDA flags.
-
-## Pull Requests
-- Use `.github/pull_request_template.md` when preparing PR descriptions.
