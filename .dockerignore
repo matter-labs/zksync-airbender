@@ -16,7 +16,6 @@ tools/verifier/target
 !gpu_prover
 !gpu_witness_eval_generator
 !non_determinism_source
-!poseidon2
 !prover
 !reduced_keccak
 !risc_v_simulator

@@ -29,8 +29,6 @@ inits_and_teardowns_verifier = {path = "../circuit_defs/unrolled_circuits/inits_
 
 unified_reduced_machine_verifier = {path = "../circuit_defs/unrolled_circuits/unified_reduced_machine/verifier", default-features = false, optional = true }
 
-# poseidon2_compression_with_witness_verifier = {path = "../circuit_defs/poseidon2_compression_with_witness/verifier", default-features = false}
-
 # setups = { workspace = true, default-features = false } // TODO: import as dependency if we make it no-std
 
 [features]

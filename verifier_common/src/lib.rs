@@ -150,9 +150,6 @@ pub type DefaultNonDeterminismSource = non_determinism_source::CSRBasedSource;
 #[cfg(not(all(target_arch = "riscv32", feature = "blake2_with_compression")))]
 pub type DefaultLeafInclusionVerifier = prover::definitions::Blake2sForEverythingVerifier;
 
-// pub type DefaultLeafInclusionVerifier =
-//     prover::definitions::Blake2sForLeafsPoseidon2ForNodesVerifier;
-
 #[cfg(all(target_arch = "riscv32", feature = "blake2_with_compression"))]
 pub type DefaultLeafInclusionVerifier =
     prover::definitions::Blake2sForEverythingVerifierWithAlternativeCompression;

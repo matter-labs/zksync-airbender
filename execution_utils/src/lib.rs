@@ -1127,23 +1127,6 @@ pub mod verifier_binaries {
 //         //     }
 //         // }
 
-//         // #[test]
-//         // fn debug_poseidon2() {
-//         //     use verifier_common::ProofPublicInputs;
-
-//         //     let mut src = std::fs::File::open("../prover/poseidon2_proof").unwrap();
-//         //     let proofs: Proof = serde_json::from_reader(&mut src).unwrap();
-//         //     let source = flatten_full_proof(&proofs, false);
-//         //     verifier_common::prover::nd_source_std::set_iterator(source.into_iter());
-
-//         //     let verifier_fn =
-//         //         full_statement_verifier::RECURSION_LAYER_CIRCUITS_VERIFICATION_PARAMETERS[1].2;
-//         //     unsafe {
-//         //         (verifier_fn)(
-//         //             &mut std::mem::MaybeUninit::uninit().assume_init(),
-//         //             &mut ProofPublicInputs::uninit(),
-//         //         );
-//         //     }
 //         // }
 //     }
 // }

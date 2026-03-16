@@ -14,7 +14,6 @@ What follows is a very rough and partly incomplete layout of our repo. What is N
 - gpu_prover/ - main Rust->CUDA gpu prover implementation
 - gpu_witness_eval_generator/ - Rust->CUDA gpu prover's witness generator
 - non_determinism_source/ - NonDeterminism storage reader trait, implemented in `prover` crate
-- poseidon2/ - native poseidon2 implementation
 - prover/ - main cpu prover implementation with its 5 stages
 - riscv_common/ - custom RiscV bytecode to be used by "kernel" OS programs
 - riscv_transpiler/ - bytecode preprocessing, transpiler VM execution, replay, and witness layouts used by the active proving path
