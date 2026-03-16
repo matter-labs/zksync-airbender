@@ -17,7 +17,9 @@ use crate::primitives::field::BF;
 fn make_context() -> ProverContext {
     let mut config = ProverContextConfig::default();
     config.max_device_allocation_blocks_count = Some(256);
-    config.host_allocator_blocks_count = 32;
+    // 32 MB host pool: with 8 KB blocks this is 4096 blocks
+    let host_block_size = 1usize << config.host_allocator_block_log_size;
+    config.host_allocator_blocks_count = (32 * 1024 * 1024) / host_block_size;
     ProverContext::new(&config).unwrap()
 }
 
