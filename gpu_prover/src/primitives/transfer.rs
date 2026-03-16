@@ -83,6 +83,10 @@ impl<'a> Transfer<'a> {
             .get_exec_stream()
             .wait_event(&self.transferred, CudaStreamWaitEventFlags::DEFAULT)
     }
+
+    pub(crate) fn into_callbacks(self) -> Callbacks<'a> {
+        self.callbacks
+    }
 }
 
 #[cfg(test)]
