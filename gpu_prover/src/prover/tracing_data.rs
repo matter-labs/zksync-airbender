@@ -226,6 +226,15 @@ impl<'a, A: GoodAllocator + 'a> TracingDataTransfer<'a, A> {
         }
         self.transfer.record_transferred(context)
     }
+
+    pub(crate) fn into_host_keepalive(self) -> crate::primitives::callbacks::Callbacks<'a> {
+        let Self {
+            data_host: _,
+            data_device: _,
+            transfer,
+        } = self;
+        transfer.into_callbacks()
+    }
 }
 
 pub(crate) struct InitsAndTeardownsTransfer<'a, A: GoodAllocator> {
@@ -261,5 +270,14 @@ impl<'a, A: GoodAllocator + 'a> InitsAndTeardownsTransfer<'a, A> {
             context,
         )?;
         self.transfer.record_transferred(context)
+    }
+
+    pub(crate) fn into_host_keepalive(self) -> crate::primitives::callbacks::Callbacks<'a> {
+        let Self {
+            data_host: _,
+            data_device: _,
+            transfer,
+        } = self;
+        transfer.into_callbacks()
     }
 }
