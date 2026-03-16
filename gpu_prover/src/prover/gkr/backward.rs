@@ -31,16 +31,14 @@ use prover::transcript::Seed;
 
 use super::forward::GpuGKRForwardScratch;
 use super::{
-    alloc_host_and_copy, GpuBaseFieldPolySource,
+    alloc_host_and_schedule_copy, GpuBaseFieldPolySource,
     GpuBaseFieldPolySourceAfterOneFoldingLaunchDescriptor,
     GpuBaseFieldPolySourceAfterTwoFoldingsLaunchDescriptor,
     GpuExtensionFieldPolyContinuingLaunchDescriptor, GpuExtensionFieldPolyInitialSource,
     GpuGKRStorage, GpuSumcheckRound0HostLaunchDescriptors,
-    GpuSumcheckRound0ScheduledLaunchDescriptors, GpuSumcheckRound1HostLaunchDescriptors,
-    GpuSumcheckRound1PreparedStorage, GpuSumcheckRound1ScheduledLaunchDescriptors,
-    GpuSumcheckRound2HostLaunchDescriptors, GpuSumcheckRound2PreparedStorage,
-    GpuSumcheckRound2ScheduledLaunchDescriptors, GpuSumcheckRound3AndBeyondHostLaunchDescriptors,
-    GpuSumcheckRound3AndBeyondPreparedStorage,
+    GpuSumcheckRound0ScheduledLaunchDescriptors, GpuSumcheckRound1PreparedStorage,
+    GpuSumcheckRound1ScheduledLaunchDescriptors, GpuSumcheckRound2PreparedStorage,
+    GpuSumcheckRound2ScheduledLaunchDescriptors, GpuSumcheckRound3AndBeyondPreparedStorage,
     GpuSumcheckRound3AndBeyondScheduledLaunchDescriptors,
 };
 use crate::allocator::tracker::AllocationPlacement;
@@ -222,46 +220,38 @@ enum ScheduledDimensionReducingRoundState<B, E> {
     },
 }
 
-enum HostScheduledDimensionReducingRoundState<B, E> {
-    Round1 {
-        callbacks: Callbacks<'static>,
-        host: Vec<GpuSumcheckRound1HostLaunchDescriptors<B, E>>,
-    },
-    Round2 {
-        callbacks: Callbacks<'static>,
-        host: Vec<GpuSumcheckRound2HostLaunchDescriptors<B, E>>,
-    },
-    Round3AndBeyond {
-        callbacks: Callbacks<'static>,
-        host: Vec<GpuSumcheckRound3AndBeyondHostLaunchDescriptors<E>>,
-    },
+enum HostScheduledDimensionReducingRoundState {
+    Round1 { callbacks: Callbacks<'static> },
+    Round2 { callbacks: Callbacks<'static> },
+    Round3AndBeyond { callbacks: Callbacks<'static> },
 }
 
 struct ScheduledDimensionReducingReductionState<E> {
     callbacks: Callbacks<'static>,
-    reduction_output: HostAllocation<[E]>,
+    #[allow(dead_code)]
+    _phantom: std::marker::PhantomData<E>,
 }
 
 struct ScheduledChallengeBuffer<E> {
     callbacks: Callbacks<'static>,
-    host: HostAllocation<[E]>,
     device: DeviceAllocation<E>,
 }
 
 struct HostScheduledChallengeBuffer<E> {
     callbacks: Callbacks<'static>,
-    host: HostAllocation<[E]>,
+    #[allow(dead_code)]
+    _phantom: std::marker::PhantomData<E>,
 }
 
 struct ScheduledUpload<T> {
     callbacks: Callbacks<'static>,
-    host: HostAllocation<[T]>,
     device: DeviceAllocation<T>,
 }
 
 struct HostScheduledUpload<T> {
     callbacks: Callbacks<'static>,
-    host: HostAllocation<[T]>,
+    #[allow(dead_code)]
+    _phantom: std::marker::PhantomData<T>,
 }
 
 struct ScheduledMainLayerConstraintMetadataUpload<E> {
@@ -280,7 +270,8 @@ struct HostScheduledMainLayerConstraintMetadataUpload<E> {
 
 struct ScheduledDimensionReducingFinalReadback<E> {
     callbacks: Callbacks<'static>,
-    evaluations: BTreeMap<GKRAddress, HostAllocation<[E]>>,
+    #[allow(dead_code)]
+    _phantom: std::marker::PhantomData<E>,
 }
 
 struct ScheduledDimensionReducingLayerExecutionState<E: FieldExtension<BF> + Field> {
@@ -306,9 +297,6 @@ pub(crate) struct GpuGKRDimensionReducingScheduledLayerExecution<B, E: FieldExte
     // Keeps layer-start callbacks alive until the stream consumes them.
     start_callbacks: Callbacks<'static>,
     #[allow(dead_code)]
-    // Keeps the async claim-point upload source alive until the stream consumes it.
-    claim_point_host: HostAllocation<[E]>,
-    #[allow(dead_code)]
     // Keeps per-kernel batch challenge uploads alive until the stream consumes them.
     batch_challenge_buffers: Vec<ScheduledChallengeBuffer<E>>,
     #[allow(dead_code)]
@@ -323,6 +311,9 @@ pub(crate) struct GpuGKRDimensionReducingScheduledLayerExecution<B, E: FieldExte
     #[allow(dead_code)]
     // Keeps final-step readbacks and callback alive until the stream consumes them.
     final_readback: ScheduledDimensionReducingFinalReadback<E>,
+    #[allow(dead_code)]
+    // Keeps round-0 descriptor callbacks alive until the stream consumes them.
+    round0_callbacks: Vec<Callbacks<'static>>,
     shared_state: Arc<Mutex<ScheduledDimensionReducingLayerExecutionState<E>>>,
 }
 
@@ -427,28 +418,15 @@ enum ScheduledMainLayerRoundState<E> {
     },
 }
 
-enum HostScheduledMainLayerRoundState<E> {
-    Round1 {
-        callbacks: Callbacks<'static>,
-        host: Vec<GpuSumcheckRound1HostLaunchDescriptors<BF, E>>,
-    },
-    Round2 {
-        callbacks: Callbacks<'static>,
-        host: Vec<GpuSumcheckRound2HostLaunchDescriptors<BF, E>>,
-    },
-    Round3AndBeyond {
-        callbacks: Callbacks<'static>,
-        host: Vec<GpuSumcheckRound3AndBeyondHostLaunchDescriptors<E>>,
-    },
+enum HostScheduledMainLayerRoundState {
+    Round1 { callbacks: Callbacks<'static> },
+    Round2 { callbacks: Callbacks<'static> },
+    Round3AndBeyond { callbacks: Callbacks<'static> },
 }
 
 pub(crate) struct GpuGKRMainLayerScheduledLayerExecution<E: FieldExtension<BF> + Field> {
     #[allow(dead_code)]
     start_callbacks: Callbacks<'static>,
-    #[allow(dead_code)]
-    claim_point_host: HostAllocation<[E]>,
-    #[allow(dead_code)]
-    main_layer_challenges_host: HostAllocation<[E]>,
     #[allow(dead_code)]
     batch_challenge_buffers: Vec<ScheduledChallengeBuffer<E>>,
     #[allow(dead_code)]
@@ -463,6 +441,9 @@ pub(crate) struct GpuGKRMainLayerScheduledLayerExecution<E: FieldExtension<BF> +
     reduction_states: Vec<ScheduledDimensionReducingReductionState<E>>,
     #[allow(dead_code)]
     final_readback: ScheduledDimensionReducingFinalReadback<E>,
+    #[allow(dead_code)]
+    // Keeps round-0 descriptor callbacks alive until the stream consumes them.
+    round0_callbacks: Vec<Callbacks<'static>>,
     shared_state: Arc<Mutex<ScheduledMainLayerExecutionState<E>>>,
 }
 
@@ -498,17 +479,20 @@ pub(crate) struct GpuGKRDimensionReducingHostKeepalive<B, E: FieldExtension<BF> 
     #[allow(dead_code)]
     start_callbacks: Callbacks<'static>,
     #[allow(dead_code)]
-    claim_point_host: HostAllocation<[E]>,
-    #[allow(dead_code)]
     batch_challenge_buffers: Vec<HostScheduledChallengeBuffer<E>>,
     #[allow(dead_code)]
     round_challenge_buffers: Vec<HostScheduledChallengeBuffer<E>>,
     #[allow(dead_code)]
-    round_states: Vec<HostScheduledDimensionReducingRoundState<B, E>>,
+    round_states: Vec<HostScheduledDimensionReducingRoundState>,
+    #[allow(dead_code)]
+    _phantom: std::marker::PhantomData<B>,
     #[allow(dead_code)]
     reduction_states: Vec<ScheduledDimensionReducingReductionState<E>>,
     #[allow(dead_code)]
     final_readback: ScheduledDimensionReducingFinalReadback<E>,
+    #[allow(dead_code)]
+    // Keeps round-0 descriptor HostFn closures alive until the stream executes them.
+    round0_callbacks: Vec<Callbacks<'static>>,
     #[allow(dead_code)]
     shared_state: Arc<Mutex<ScheduledDimensionReducingLayerExecutionState<E>>>,
 }
@@ -516,10 +500,6 @@ pub(crate) struct GpuGKRDimensionReducingHostKeepalive<B, E: FieldExtension<BF> 
 pub(crate) struct GpuGKRMainLayerHostKeepalive<E: FieldExtension<BF> + Field> {
     #[allow(dead_code)]
     start_callbacks: Callbacks<'static>,
-    #[allow(dead_code)]
-    claim_point_host: HostAllocation<[E]>,
-    #[allow(dead_code)]
-    main_layer_challenges_host: HostAllocation<[E]>,
     #[allow(dead_code)]
     batch_challenge_buffers: Vec<HostScheduledChallengeBuffer<E>>,
     #[allow(dead_code)]
@@ -529,11 +509,14 @@ pub(crate) struct GpuGKRMainLayerHostKeepalive<E: FieldExtension<BF> + Field> {
     #[allow(dead_code)]
     round_challenge_buffers: Vec<HostScheduledChallengeBuffer<E>>,
     #[allow(dead_code)]
-    round_states: Vec<HostScheduledMainLayerRoundState<E>>,
+    round_states: Vec<HostScheduledMainLayerRoundState>,
     #[allow(dead_code)]
     reduction_states: Vec<ScheduledDimensionReducingReductionState<E>>,
     #[allow(dead_code)]
     final_readback: ScheduledDimensionReducingFinalReadback<E>,
+    #[allow(dead_code)]
+    // Keeps round-0 descriptor HostFn closures alive until the stream executes them.
+    round0_callbacks: Vec<Callbacks<'static>>,
     #[allow(dead_code)]
     shared_state: Arc<Mutex<ScheduledMainLayerExecutionState<E>>>,
 }
@@ -691,19 +674,23 @@ fn challenge_buffer_into_host_keepalive<E>(
 ) -> HostScheduledChallengeBuffer<E> {
     let ScheduledChallengeBuffer {
         callbacks,
-        host,
         device: _,
     } = buffer;
-    HostScheduledChallengeBuffer { callbacks, host }
+    HostScheduledChallengeBuffer {
+        callbacks,
+        _phantom: std::marker::PhantomData,
+    }
 }
 
 fn upload_into_host_keepalive<T>(upload: ScheduledUpload<T>) -> HostScheduledUpload<T> {
     let ScheduledUpload {
         callbacks,
-        host,
         device: _,
     } = upload;
-    HostScheduledUpload { callbacks, host }
+    HostScheduledUpload {
+        callbacks,
+        _phantom: std::marker::PhantomData,
+    }
 }
 
 fn constraint_upload_into_host_keepalive<E>(
@@ -725,99 +712,61 @@ fn constraint_upload_into_host_keepalive<E>(
 
 fn dimension_reducing_round_state_into_host_keepalive<B, E>(
     state: ScheduledDimensionReducingRoundState<B, E>,
-) -> HostScheduledDimensionReducingRoundState<B, E> {
+) -> HostScheduledDimensionReducingRoundState {
     match state {
         ScheduledDimensionReducingRoundState::Round1 {
             callbacks,
-            scheduled,
-        } => HostScheduledDimensionReducingRoundState::Round1 {
-            callbacks,
-            host: scheduled
-                .into_iter()
-                .map(|scheduled| scheduled.host)
-                .collect(),
-        },
+            scheduled: _,
+        } => HostScheduledDimensionReducingRoundState::Round1 { callbacks },
         ScheduledDimensionReducingRoundState::Round2 {
             callbacks,
-            scheduled,
-        } => HostScheduledDimensionReducingRoundState::Round2 {
-            callbacks,
-            host: scheduled
-                .into_iter()
-                .map(|scheduled| scheduled.host)
-                .collect(),
-        },
+            scheduled: _,
+        } => HostScheduledDimensionReducingRoundState::Round2 { callbacks },
         ScheduledDimensionReducingRoundState::Round3AndBeyond {
             callbacks,
-            scheduled,
-        } => HostScheduledDimensionReducingRoundState::Round3AndBeyond {
-            callbacks,
-            host: scheduled
-                .into_iter()
-                .map(|scheduled| scheduled.host)
-                .collect(),
-        },
+            scheduled: _,
+        } => HostScheduledDimensionReducingRoundState::Round3AndBeyond { callbacks },
     }
 }
 
 fn main_layer_round_state_into_host_keepalive<E>(
     state: ScheduledMainLayerRoundState<E>,
-) -> HostScheduledMainLayerRoundState<E> {
+) -> HostScheduledMainLayerRoundState {
     match state {
         ScheduledMainLayerRoundState::Round1 {
             callbacks,
-            scheduled,
-        } => HostScheduledMainLayerRoundState::Round1 {
-            callbacks,
-            host: scheduled
-                .into_iter()
-                .map(|scheduled| scheduled.host)
-                .collect(),
-        },
+            scheduled: _,
+        } => HostScheduledMainLayerRoundState::Round1 { callbacks },
         ScheduledMainLayerRoundState::Round2 {
             callbacks,
-            scheduled,
-        } => HostScheduledMainLayerRoundState::Round2 {
-            callbacks,
-            host: scheduled
-                .into_iter()
-                .map(|scheduled| scheduled.host)
-                .collect(),
-        },
+            scheduled: _,
+        } => HostScheduledMainLayerRoundState::Round2 { callbacks },
         ScheduledMainLayerRoundState::Round3AndBeyond {
             callbacks,
-            scheduled,
-        } => HostScheduledMainLayerRoundState::Round3AndBeyond {
-            callbacks,
-            host: scheduled
-                .into_iter()
-                .map(|scheduled| scheduled.host)
-                .collect(),
-        },
+            scheduled: _,
+        } => HostScheduledMainLayerRoundState::Round3AndBeyond { callbacks },
     }
 }
 
-fn schedule_immediate_field_upload<E: Field>(
+fn schedule_immediate_field_upload<E: Field + Send + Sync + 'static>(
     context: &ProverContext,
     padded_len: usize,
     values: &[E],
 ) -> CudaResult<ScheduledChallengeBuffer<E>> {
     assert!(values.len() <= padded_len);
-    let mut host = unsafe { context.alloc_transient_host_uninit_slice(padded_len) };
-    unsafe {
-        let host_accessor = host.get_mut_accessor();
-        let slice = host_accessor.get_mut();
-        slice.fill(E::ZERO);
-        slice[..values.len()].copy_from_slice(values);
-    }
-    let mut device = context.alloc(padded_len, AllocationPlacement::Top)?;
-    memory_copy_async(&mut device, &host, context.get_exec_stream())?;
-
-    Ok(ScheduledChallengeBuffer {
-        callbacks: Callbacks::new(),
-        host,
-        device,
-    })
+    let values = values.to_vec();
+    let mut callbacks = Callbacks::new();
+    let (host, device) = schedule_callback_populated_field_upload(
+        context,
+        padded_len,
+        &mut callbacks,
+        move |slice| {
+            slice[..values.len()].copy_from_slice(&values);
+        },
+    )?;
+    // host is H2D staging only — drop it, no CPU readback needed
+    drop(host);
+    Ok(ScheduledChallengeBuffer { callbacks, device })
 }
 
 fn schedule_callback_populated_field_upload<'a, E: Field + 'a>(
@@ -826,7 +775,7 @@ fn schedule_callback_populated_field_upload<'a, E: Field + 'a>(
     callbacks: &mut Callbacks<'a>,
     fill: impl Fn(&mut [E]) + Send + Sync + 'a,
 ) -> CudaResult<(HostAllocation<[E]>, DeviceAllocation<E>)> {
-    let mut host = unsafe { context.alloc_transient_host_uninit_slice(padded_len) };
+    let mut host = unsafe { context.alloc_host_uninit_slice(padded_len) };
     let host_accessor = host.get_mut_accessor();
     callbacks.schedule(
         move || unsafe {
@@ -847,7 +796,7 @@ fn schedule_callback_populated_upload<'a, T: Copy + 'a>(
     callbacks: &mut Callbacks<'a>,
     fill: impl Fn(&mut [T]) + Send + Sync + 'a,
 ) -> CudaResult<ScheduledUpload<T>> {
-    let mut host = unsafe { context.alloc_transient_host_uninit_slice(len) };
+    let mut host = unsafe { context.alloc_host_uninit_slice(len) };
     let host_accessor = host.get_mut_accessor();
     callbacks.schedule(
         move || unsafe {
@@ -857,9 +806,9 @@ fn schedule_callback_populated_upload<'a, T: Copy + 'a>(
     )?;
     let mut device = context.alloc(len, AllocationPlacement::Top)?;
     memory_copy_async(&mut device, &host, context.get_exec_stream())?;
+    drop(host);
     Ok(ScheduledUpload {
         callbacks: Callbacks::new(),
-        host,
         device,
     })
 }
@@ -915,11 +864,7 @@ fn schedule_deferred_main_layer_constraint_metadata_upload<
     })?;
     Ok(ScheduledMainLayerConstraintMetadataUpload {
         callbacks,
-        quadratic_terms: ScheduledUpload {
-            callbacks: quadratic_terms.callbacks,
-            host: quadratic_terms.host,
-            device: quadratic_terms.device,
-        },
+        quadratic_terms,
         linear_terms,
         constant_offset,
     })
@@ -1042,51 +987,22 @@ where
             fill_batch_challenge_slice(dst, batch_challenge_base, offset, count);
         },
     )?;
+    drop(host);
 
-    Ok(ScheduledChallengeBuffer {
-        callbacks,
-        host,
-        device,
-    })
+    Ok(ScheduledChallengeBuffer { callbacks, device })
 }
 
 fn empty_round0_host_launch_descriptors<B, E>(
     context: &ProverContext,
 ) -> GpuSumcheckRound0HostLaunchDescriptors<B, E> {
     GpuSumcheckRound0HostLaunchDescriptors {
-        base_field_inputs: unsafe { context.alloc_transient_host_uninit_slice(0) },
-        extension_field_inputs: unsafe { context.alloc_transient_host_uninit_slice(0) },
-        base_field_outputs: unsafe { context.alloc_transient_host_uninit_slice(0) },
-        extension_field_outputs: unsafe { context.alloc_transient_host_uninit_slice(0) },
+        base_field_inputs: unsafe { context.alloc_host_uninit_slice(0) },
+        extension_field_inputs: unsafe { context.alloc_host_uninit_slice(0) },
+        base_field_outputs: unsafe { context.alloc_host_uninit_slice(0) },
+        extension_field_outputs: unsafe { context.alloc_host_uninit_slice(0) },
     }
 }
 
-fn empty_round1_host_launch_descriptors<B, E>(
-    context: &ProverContext,
-) -> GpuSumcheckRound1HostLaunchDescriptors<B, E> {
-    GpuSumcheckRound1HostLaunchDescriptors {
-        base_field_inputs: unsafe { context.alloc_transient_host_uninit_slice(0) },
-        extension_field_inputs: unsafe { context.alloc_transient_host_uninit_slice(0) },
-    }
-}
-
-fn empty_round2_host_launch_descriptors<B, E>(
-    context: &ProverContext,
-) -> GpuSumcheckRound2HostLaunchDescriptors<B, E> {
-    GpuSumcheckRound2HostLaunchDescriptors {
-        base_field_inputs: unsafe { context.alloc_transient_host_uninit_slice(0) },
-        extension_field_inputs: unsafe { context.alloc_transient_host_uninit_slice(0) },
-    }
-}
-
-fn empty_round3_host_launch_descriptors<E>(
-    context: &ProverContext,
-) -> GpuSumcheckRound3AndBeyondHostLaunchDescriptors<E> {
-    GpuSumcheckRound3AndBeyondHostLaunchDescriptors {
-        base_field_inputs: unsafe { context.alloc_transient_host_uninit_slice(0) },
-        extension_field_inputs: unsafe { context.alloc_transient_host_uninit_slice(0) },
-    }
-}
 
 const GKR_DIM_REDUCING_THREADS_PER_BLOCK: u32 = WARP_SIZE * 4;
 
@@ -2602,7 +2518,7 @@ impl<E: Field> GpuGKRDimensionReducingBackwardState<BF, E> {
     }
 }
 
-impl<B, E: Field + Reduce> GpuGKRDimensionReducingBackwardState<B, E> {
+impl<B: 'static, E: Field + Reduce> GpuGKRDimensionReducingBackwardState<B, E> {
     pub(crate) fn prepare_next_layer(
         &mut self,
         batch_challenge_base: E,
@@ -3031,49 +2947,45 @@ impl<E> GpuGKRMainLayerSumcheckLayerPlan<E> {
     ) -> &[GpuSumcheckRound0ScheduledLaunchDescriptors<BF, E>] {
         &self.round0_descriptors
     }
+}
 
-    pub(crate) fn schedule_round_1<'a>(
+impl<E: Field + 'static> GpuGKRMainLayerSumcheckLayerPlan<E> {
+    pub(crate) fn schedule_round_1(
         &self,
+        callbacks: &mut Callbacks<'static>,
         context: &ProverContext,
-    ) -> CudaResult<Vec<GpuSumcheckRound1ScheduledLaunchDescriptors<BF, E>>>
-    where
-        E: Field + 'a,
-    {
+    ) -> CudaResult<Vec<GpuSumcheckRound1ScheduledLaunchDescriptors<BF, E>>> {
         self.kernel_plans
             .iter()
             .map(|kernel| {
                 kernel
                     .round1_prepared
-                    .schedule_upload_launch_descriptors(context)
+                    .schedule_upload_launch_descriptors(context, callbacks)
             })
             .collect()
     }
 
-    pub(crate) fn schedule_round_2<'a>(
+    pub(crate) fn schedule_round_2(
         &self,
+        callbacks: &mut Callbacks<'static>,
         context: &ProverContext,
-    ) -> CudaResult<Vec<GpuSumcheckRound2ScheduledLaunchDescriptors<BF, E>>>
-    where
-        E: Field + 'a,
-    {
+    ) -> CudaResult<Vec<GpuSumcheckRound2ScheduledLaunchDescriptors<BF, E>>> {
         self.kernel_plans
             .iter()
             .map(|kernel| {
                 kernel
                     .round2_prepared
-                    .schedule_upload_launch_descriptors(context)
+                    .schedule_upload_launch_descriptors(context, callbacks)
             })
             .collect()
     }
 
-    pub(crate) fn schedule_round_3_and_beyond<'a>(
+    pub(crate) fn schedule_round_3_and_beyond(
         &self,
         step: usize,
+        callbacks: &mut Callbacks<'static>,
         context: &ProverContext,
-    ) -> CudaResult<Vec<GpuSumcheckRound3AndBeyondScheduledLaunchDescriptors<E>>>
-    where
-        E: Field + 'a,
-    {
+    ) -> CudaResult<Vec<GpuSumcheckRound3AndBeyondScheduledLaunchDescriptors<E>>> {
         self.kernel_plans
             .iter()
             .map(|kernel| {
@@ -3083,39 +2995,33 @@ impl<E> GpuGKRMainLayerSumcheckLayerPlan<E> {
                     .find(|prepared| prepared.step == step)
                     .unwrap_or_else(|| panic!("missing prepared round 3+ storage for step {step}"))
                     .prepared
-                    .schedule_upload_launch_descriptors(context)
+                    .schedule_upload_launch_descriptors(context, callbacks)
             })
             .collect()
     }
 }
 
-impl<B, E: Field> GpuGKRDimensionReducingSumcheckLayerPlan<B, E> {
-    pub(crate) fn schedule_round_1<'a>(
+impl<B: 'static, E: Field + 'static> GpuGKRDimensionReducingSumcheckLayerPlan<B, E> {
+    pub(crate) fn schedule_round_1(
         &self,
+        callbacks: &mut Callbacks<'static>,
         context: &ProverContext,
-    ) -> CudaResult<Vec<GpuSumcheckRound1ScheduledLaunchDescriptors<B, E>>>
-    where
-        B: 'a,
-        E: 'a,
-    {
+    ) -> CudaResult<Vec<GpuSumcheckRound1ScheduledLaunchDescriptors<B, E>>> {
         self.kernel_plans
             .iter()
             .map(|kernel| {
                 kernel
                     .round1_prepared
-                    .schedule_upload_launch_descriptors(context)
+                    .schedule_upload_launch_descriptors(context, callbacks)
             })
             .collect()
     }
 
-    pub(crate) fn schedule_round_2<'a>(
+    pub(crate) fn schedule_round_2(
         &self,
+        callbacks: &mut Callbacks<'static>,
         context: &ProverContext,
-    ) -> CudaResult<Vec<GpuSumcheckRound2ScheduledLaunchDescriptors<B, E>>>
-    where
-        B: 'a,
-        E: 'a,
-    {
+    ) -> CudaResult<Vec<GpuSumcheckRound2ScheduledLaunchDescriptors<B, E>>> {
         assert!(
             self.folding_steps >= 3,
             "round 2 scheduling requires at least three folding steps"
@@ -3127,19 +3033,17 @@ impl<B, E: Field> GpuGKRDimensionReducingSumcheckLayerPlan<B, E> {
                     .round2_prepared
                     .as_ref()
                     .expect("round 2 storage must be prepared")
-                    .schedule_upload_launch_descriptors(context)
+                    .schedule_upload_launch_descriptors(context, callbacks)
             })
             .collect()
     }
 
-    pub(crate) fn schedule_round_3_and_beyond<'a>(
+    pub(crate) fn schedule_round_3_and_beyond(
         &self,
         step: usize,
+        callbacks: &mut Callbacks<'static>,
         context: &ProverContext,
-    ) -> CudaResult<Vec<GpuSumcheckRound3AndBeyondScheduledLaunchDescriptors<E>>>
-    where
-        E: 'a,
-    {
+    ) -> CudaResult<Vec<GpuSumcheckRound3AndBeyondScheduledLaunchDescriptors<E>>> {
         assert!(step >= 3, "round 3+ scheduling starts at step 3");
         self.kernel_plans
             .iter()
@@ -3150,13 +3054,13 @@ impl<B, E: Field> GpuGKRDimensionReducingSumcheckLayerPlan<B, E> {
                     .find(|prepared| prepared.step == step)
                     .unwrap_or_else(|| panic!("missing prepared round 3+ storage for step {step}"))
                     .prepared
-                    .schedule_upload_launch_descriptors(context)
+                    .schedule_upload_launch_descriptors(context, callbacks)
             })
             .collect()
     }
 }
 
-impl<B: 'static, E> GpuGKRDimensionReducingSumcheckLayerPlan<B, E>
+impl<B: 'static, E: 'static> GpuGKRDimensionReducingSumcheckLayerPlan<B, E>
 where
     E: Field + FieldExtension<BF> + Reduce + GpuDimensionReducingKernelSet,
     [(); E::DEGREE]: Sized,
@@ -3439,7 +3343,7 @@ where
             context.get_exec_stream(),
         )?;
 
-        let mut reduction_host = unsafe { context.alloc_transient_host_uninit_slice(2) };
+        let mut reduction_host = unsafe { context.alloc_host_uninit_slice(2) };
         memory_copy_async(
             &mut reduction_host,
             &self.round_scratch.reduction_output,
@@ -3455,7 +3359,7 @@ where
         context: &ProverContext,
     ) -> CudaResult<HostAllocation<[E]>> {
         let device = unsafe { DeviceSlice::from_raw_parts(ptr, len) };
-        let mut host = unsafe { context.alloc_transient_host_uninit_slice(len) };
+        let mut host = unsafe { context.alloc_host_uninit_slice(len) };
         memory_copy_async(&mut host, device, context.get_exec_stream())?;
         Ok(host)
     }
@@ -3573,12 +3477,16 @@ where
             )?);
         }
         let mut round_challenge_buffers = Vec::with_capacity(last_step);
-        let claim_point_host = alloc_host_and_copy(context, previous_claim_point);
+        let mut start_callbacks = Callbacks::new();
+        let claim_point_values = previous_claim_point.to_vec();
+        let claim_point_host =
+            alloc_host_and_schedule_copy(context, &mut start_callbacks, claim_point_values);
         memory_copy_async(
             &mut self.round_scratch.claim_point,
             &claim_point_host,
             context.get_exec_stream(),
         )?;
+        drop(claim_point_host);
 
         let shared_state = Arc::new(Mutex::new(ScheduledDimensionReducingLayerExecutionState {
             seed,
@@ -3598,8 +3506,8 @@ where
             } else {
                 match step {
                     1 => {
-                        let callbacks = Callbacks::new();
-                        let scheduled = self.schedule_round_1(context)?;
+                        let mut callbacks = Callbacks::new();
+                        let scheduled = self.schedule_round_1(&mut callbacks, context)?;
                         self.launch_round1_kernels(
                             &scheduled,
                             &round_challenge_buffers[step - 1],
@@ -3614,8 +3522,8 @@ where
                         });
                     }
                     2 => {
-                        let callbacks = Callbacks::new();
-                        let scheduled = self.schedule_round_2(context)?;
+                        let mut callbacks = Callbacks::new();
+                        let scheduled = self.schedule_round_2(&mut callbacks, context)?;
                         self.launch_round2_kernels(
                             &scheduled,
                             &round_challenge_buffers[step - 1],
@@ -3630,8 +3538,9 @@ where
                         });
                     }
                     _ => {
-                        let callbacks = Callbacks::new();
-                        let scheduled = self.schedule_round_3_and_beyond(step, context)?;
+                        let mut callbacks = Callbacks::new();
+                        let scheduled =
+                            self.schedule_round_3_and_beyond(step, &mut callbacks, context)?;
                         self.launch_round3_kernels(
                             &scheduled,
                             &round_challenge_buffers[step - 1],
@@ -3652,7 +3561,7 @@ where
                 self.schedule_round_coefficients_reduction(step, acc_size, context)?;
             let reduction_accessor = reduction_output.get_accessor();
             let mut next_round_challenges = if step < last_step {
-                let host = unsafe { context.alloc_transient_host_uninit_slice(1) };
+                let host = unsafe { context.alloc_host_uninit_slice(1) };
                 let device = context.alloc(1, AllocationPlacement::Top)?;
                 Some((host, device))
             } else {
@@ -3700,22 +3609,23 @@ where
             )?;
             if let Some((host, mut device)) = next_round_challenges {
                 memory_copy_async(&mut device, &host, context.get_exec_stream())?;
+                drop(host);
                 round_challenge_buffers.push(ScheduledChallengeBuffer {
                     callbacks: Callbacks::new(),
-                    host,
                     device,
                 });
             }
+            drop(reduction_output);
             reduction_states.push(ScheduledDimensionReducingReductionState {
                 callbacks,
-                reduction_output,
+                _phantom: std::marker::PhantomData,
             });
         }
 
         let final_round_state = match last_step {
             1 => {
-                let callbacks = Callbacks::new();
-                let scheduled = self.schedule_round_1(context)?;
+                let mut callbacks = Callbacks::new();
+                let scheduled = self.schedule_round_1(&mut callbacks, context)?;
                 self.launch_round1_kernels(
                     &scheduled,
                     &round_challenge_buffers[last_step - 1],
@@ -3730,8 +3640,8 @@ where
                 }
             }
             2 => {
-                let callbacks = Callbacks::new();
-                let scheduled = self.schedule_round_2(context)?;
+                let mut callbacks = Callbacks::new();
+                let scheduled = self.schedule_round_2(&mut callbacks, context)?;
                 self.launch_round2_kernels(
                     &scheduled,
                     &round_challenge_buffers[last_step - 1],
@@ -3746,8 +3656,8 @@ where
                 }
             }
             step => {
-                let callbacks = Callbacks::new();
-                let scheduled = self.schedule_round_3_and_beyond(step, context)?;
+                let mut callbacks = Callbacks::new();
+                let scheduled = self.schedule_round_3_and_beyond(step, &mut callbacks, context)?;
                 self.launch_round3_kernels(
                     &scheduled,
                     &round_challenge_buffers[last_step - 1],
@@ -3824,8 +3734,7 @@ where
         )?;
 
         Ok(GpuGKRDimensionReducingScheduledLayerExecution {
-            start_callbacks: Callbacks::new(),
-            claim_point_host,
+            start_callbacks,
             batch_challenge_buffers,
             round_challenge_buffers,
             round_states: {
@@ -3834,10 +3743,14 @@ where
                 states
             },
             reduction_states,
-            final_readback: ScheduledDimensionReducingFinalReadback {
-                callbacks: final_readback_callbacks,
-                evaluations: final_evaluations,
+            final_readback: {
+                drop(final_evaluations);
+                ScheduledDimensionReducingFinalReadback {
+                    callbacks: final_readback_callbacks,
+                    _phantom: std::marker::PhantomData,
+                }
             },
+            round0_callbacks: self.round0_descriptors.iter_mut().map(|d| std::mem::replace(&mut d.callbacks, Callbacks::new())).collect(),
             shared_state,
         })
     }
@@ -3859,7 +3772,7 @@ where
         }));
 
         let mut claim_point_host =
-            unsafe { context.alloc_transient_host_uninit_slice(self.folding_steps) };
+            unsafe { context.alloc_host_uninit_slice(self.folding_steps) };
         let claim_point_accessor = claim_point_host.get_mut_accessor();
         let workflow_state_for_start = Arc::clone(&workflow_state);
         let shared_state_for_start = Arc::clone(&shared_state);
@@ -3933,9 +3846,8 @@ where
             } else {
                 match step {
                     1 => {
-                        let callbacks = Callbacks::new();
-                        let mut scheduled = self.schedule_round_1(context)?;
-                        let mut callbacks = callbacks;
+                        let mut callbacks = Callbacks::new();
+                        let mut scheduled = self.schedule_round_1(&mut callbacks, context)?;
                         self.launch_round1_kernels(
                             &scheduled,
                             &round_challenge_buffers[step - 1],
@@ -3950,9 +3862,8 @@ where
                         });
                     }
                     2 => {
-                        let callbacks = Callbacks::new();
-                        let mut scheduled = self.schedule_round_2(context)?;
-                        let mut callbacks = callbacks;
+                        let mut callbacks = Callbacks::new();
+                        let mut scheduled = self.schedule_round_2(&mut callbacks, context)?;
                         self.launch_round2_kernels(
                             &scheduled,
                             &round_challenge_buffers[step - 1],
@@ -3967,9 +3878,9 @@ where
                         });
                     }
                     _ => {
-                        let callbacks = Callbacks::new();
-                        let mut scheduled = self.schedule_round_3_and_beyond(step, context)?;
-                        let mut callbacks = callbacks;
+                        let mut callbacks = Callbacks::new();
+                        let mut scheduled =
+                            self.schedule_round_3_and_beyond(step, &mut callbacks, context)?;
                         self.launch_round3_kernels(
                             &scheduled,
                             &round_challenge_buffers[step - 1],
@@ -3990,7 +3901,7 @@ where
                 self.schedule_round_coefficients_reduction(step, acc_size, context)?;
             let reduction_accessor = reduction_output.get_accessor();
             let mut next_round_challenges = if step < last_step {
-                let host = unsafe { context.alloc_transient_host_uninit_slice(1) };
+                let host = unsafe { context.alloc_host_uninit_slice(1) };
                 let device = context.alloc(1, AllocationPlacement::Top)?;
                 Some((host, device))
             } else {
@@ -4042,23 +3953,23 @@ where
             )?;
             if let Some((host, mut device)) = next_round_challenges {
                 memory_copy_async(&mut device, &host, context.get_exec_stream())?;
+                drop(host);
                 round_challenge_buffers.push(ScheduledChallengeBuffer {
                     callbacks: Callbacks::new(),
-                    host,
                     device,
                 });
             }
+            drop(reduction_output);
             reduction_states.push(ScheduledDimensionReducingReductionState {
                 callbacks,
-                reduction_output,
+                _phantom: std::marker::PhantomData,
             });
         }
 
         let final_round_state = match last_step {
             1 => {
-                let callbacks = Callbacks::new();
-                let mut scheduled = self.schedule_round_1(context)?;
-                let mut callbacks = callbacks;
+                let mut callbacks = Callbacks::new();
+                let mut scheduled = self.schedule_round_1(&mut callbacks, context)?;
                 self.launch_round1_kernels(
                     &scheduled,
                     &round_challenge_buffers[last_step - 1],
@@ -4073,9 +3984,8 @@ where
                 }
             }
             2 => {
-                let callbacks = Callbacks::new();
-                let mut scheduled = self.schedule_round_2(context)?;
-                let mut callbacks = callbacks;
+                let mut callbacks = Callbacks::new();
+                let mut scheduled = self.schedule_round_2(&mut callbacks, context)?;
                 self.launch_round2_kernels(
                     &scheduled,
                     &round_challenge_buffers[last_step - 1],
@@ -4090,9 +4000,9 @@ where
                 }
             }
             step => {
-                let callbacks = Callbacks::new();
-                let mut scheduled = self.schedule_round_3_and_beyond(step, context)?;
-                let mut callbacks = callbacks;
+                let mut callbacks = Callbacks::new();
+                let mut scheduled =
+                    self.schedule_round_3_and_beyond(step, &mut callbacks, context)?;
                 self.launch_round3_kernels(
                     &scheduled,
                     &round_challenge_buffers[last_step - 1],
@@ -4185,9 +4095,9 @@ where
             context.get_exec_stream(),
         )?;
 
+        drop(claim_point_host);
         Ok(GpuGKRDimensionReducingScheduledLayerExecution {
             start_callbacks,
-            claim_point_host,
             batch_challenge_buffers,
             round_challenge_buffers,
             round_states: {
@@ -4196,10 +4106,14 @@ where
                 states
             },
             reduction_states,
-            final_readback: ScheduledDimensionReducingFinalReadback {
-                callbacks: final_readback_callbacks,
-                evaluations: final_evaluations,
+            final_readback: {
+                drop(final_evaluations);
+                ScheduledDimensionReducingFinalReadback {
+                    callbacks: final_readback_callbacks,
+                    _phantom: std::marker::PhantomData,
+                }
             },
+            round0_callbacks: self.round0_descriptors.iter_mut().map(|d| std::mem::replace(&mut d.callbacks, Callbacks::new())).collect(),
             shared_state,
         })
     }
@@ -4209,17 +4123,16 @@ impl<B, E: FieldExtension<BF> + Field> GpuGKRDimensionReducingScheduledLayerExec
     pub(crate) fn into_host_keepalive(self) -> GpuGKRDimensionReducingHostKeepalive<B, E> {
         let Self {
             start_callbacks,
-            claim_point_host,
             batch_challenge_buffers,
             round_challenge_buffers,
             round_states,
             reduction_states,
             final_readback,
+            round0_callbacks,
             shared_state,
         } = self;
         GpuGKRDimensionReducingHostKeepalive {
             start_callbacks,
-            claim_point_host,
             batch_challenge_buffers: batch_challenge_buffers
                 .into_iter()
                 .map(challenge_buffer_into_host_keepalive)
@@ -4234,7 +4147,9 @@ impl<B, E: FieldExtension<BF> + Field> GpuGKRDimensionReducingScheduledLayerExec
                 .collect(),
             reduction_states,
             final_readback,
+            round0_callbacks,
             shared_state,
+            _phantom: std::marker::PhantomData,
         }
     }
 
@@ -4248,7 +4163,7 @@ impl<B, E: FieldExtension<BF> + Field> GpuGKRDimensionReducingScheduledLayerExec
     }
 }
 
-impl<E> GpuGKRMainLayerSumcheckLayerPlan<E>
+impl<E: 'static> GpuGKRMainLayerSumcheckLayerPlan<E>
 where
     E: Field + FieldExtension<BF> + Reduce + GpuMainLayerKernelSet,
     [(); E::DEGREE]: Sized,
@@ -4505,7 +4420,7 @@ where
             context.get_exec_stream(),
         )?;
 
-        let mut reduction_host = unsafe { context.alloc_transient_host_uninit_slice(2) };
+        let mut reduction_host = unsafe { context.alloc_host_uninit_slice(2) };
         memory_copy_async(
             &mut reduction_host,
             &self.round_scratch.reduction_output,
@@ -4521,7 +4436,7 @@ where
         context: &ProverContext,
     ) -> CudaResult<HostAllocation<[E]>> {
         let device = unsafe { DeviceSlice::from_raw_parts(ptr, len) };
-        let mut host = unsafe { context.alloc_transient_host_uninit_slice(len) };
+        let mut host = unsafe { context.alloc_host_uninit_slice(len) };
         memory_copy_async(&mut host, device, context.get_exec_stream())?;
         Ok(host)
     }
@@ -4613,14 +4528,27 @@ where
             )?);
         }
         let mut round_challenge_buffers = Vec::with_capacity(last_step);
-        let claim_point_host = alloc_host_and_copy(context, previous_claim_point);
-        let main_layer_challenges_host = alloc_host_and_copy(context, &[E::ZERO, E::ZERO]);
-        let main_layer_challenges = main_layer_challenges_host.get_accessor();
+        let mut start_callbacks = Callbacks::new();
+        let claim_point_values = previous_claim_point.to_vec();
+        let claim_point_host =
+            alloc_host_and_schedule_copy(context, &mut start_callbacks, claim_point_values);
         memory_copy_async(
             &mut self.round_scratch.claim_point,
             &claim_point_host,
             context.get_exec_stream(),
         )?;
+        drop(claim_point_host);
+        let mut main_layer_challenges_host = unsafe { context.alloc_host_uninit_slice(2) };
+        let challenges_fill_accessor = main_layer_challenges_host.get_mut_accessor();
+        start_callbacks.schedule(
+            move || unsafe {
+                let dst = challenges_fill_accessor.get_mut();
+                dst[0] = E::ZERO;
+                dst[1] = E::ZERO;
+            },
+            context.get_exec_stream(),
+        )?;
+        let main_layer_challenges = main_layer_challenges_host.get_accessor();
 
         let shared_state = Arc::new(Mutex::new(ScheduledMainLayerExecutionState {
             seed,
@@ -4644,6 +4572,7 @@ where
                 context,
             )?);
         }
+        drop(main_layer_challenges_host);
         let mut round_states = Vec::with_capacity(last_step);
         let mut reduction_states = Vec::with_capacity(last_step);
 
@@ -4660,8 +4589,8 @@ where
             } else {
                 match step {
                     1 => {
-                        let callbacks = Callbacks::new();
-                        let scheduled = self.schedule_round_1(context)?;
+                        let mut callbacks = Callbacks::new();
+                        let scheduled = self.schedule_round_1(&mut callbacks, context)?;
                         self.launch_round1_kernels(
                             &scheduled,
                             &round_challenge_buffers[step - 1],
@@ -4678,8 +4607,8 @@ where
                         });
                     }
                     2 => {
-                        let callbacks = Callbacks::new();
-                        let scheduled = self.schedule_round_2(context)?;
+                        let mut callbacks = Callbacks::new();
+                        let scheduled = self.schedule_round_2(&mut callbacks, context)?;
                         self.launch_round2_kernels(
                             &scheduled,
                             &round_challenge_buffers[step - 1],
@@ -4696,8 +4625,9 @@ where
                         });
                     }
                     _ => {
-                        let callbacks = Callbacks::new();
-                        let scheduled = self.schedule_round_3_and_beyond(step, context)?;
+                        let mut callbacks = Callbacks::new();
+                        let scheduled =
+                            self.schedule_round_3_and_beyond(step, &mut callbacks, context)?;
                         self.launch_round3_kernels(
                             &scheduled,
                             &round_challenge_buffers[step - 1],
@@ -4729,7 +4659,7 @@ where
                 None
             };
             let mut next_round_challenges = if let Some(len) = next_round_len {
-                let host = unsafe { context.alloc_transient_host_uninit_slice(len) };
+                let host = unsafe { context.alloc_host_uninit_slice(len) };
                 let device = context.alloc(len, AllocationPlacement::Top)?;
                 Some((host, device))
             } else {
@@ -4785,21 +4715,23 @@ where
             )?;
             if let Some((host, mut device)) = next_round_challenges {
                 memory_copy_async(&mut device, &host, context.get_exec_stream())?;
+                drop(host);
                 round_challenge_buffers.push(ScheduledChallengeBuffer {
                     callbacks: Callbacks::new(),
-                    host,
                     device,
                 });
             }
+            drop(reduction_output);
             reduction_states.push(ScheduledDimensionReducingReductionState {
                 callbacks,
-                reduction_output,
+                _phantom: std::marker::PhantomData,
             });
         }
 
         let final_round_state = {
-            let callbacks = Callbacks::new();
-            let scheduled = self.schedule_round_3_and_beyond(last_step, context)?;
+            let mut callbacks = Callbacks::new();
+            let scheduled =
+                self.schedule_round_3_and_beyond(last_step, &mut callbacks, context)?;
             self.launch_round3_kernels(
                 &scheduled,
                 &round_challenge_buffers[last_step - 1],
@@ -4871,19 +4803,21 @@ where
         all_round_states.push(final_round_state);
 
         Ok(GpuGKRMainLayerScheduledLayerExecution {
-            start_callbacks: Callbacks::new(),
-            claim_point_host,
-            main_layer_challenges_host,
+            start_callbacks,
             batch_challenge_buffers,
             auxiliary_uploads,
             constraint_uploads,
             round_challenge_buffers,
             round_states: all_round_states,
             reduction_states,
-            final_readback: ScheduledDimensionReducingFinalReadback {
-                callbacks: final_readback_callbacks,
-                evaluations: final_evaluations,
+            final_readback: {
+                drop(final_evaluations);
+                ScheduledDimensionReducingFinalReadback {
+                    callbacks: final_readback_callbacks,
+                    _phantom: std::marker::PhantomData,
+                }
             },
+            round0_callbacks: self.round0_descriptors.iter_mut().map(|d| std::mem::replace(&mut d.callbacks, Callbacks::new())).collect(),
             shared_state,
         })
     }
@@ -4906,10 +4840,10 @@ where
         }));
 
         let mut claim_point_host =
-            unsafe { context.alloc_transient_host_uninit_slice(self.folding_steps) };
+            unsafe { context.alloc_host_uninit_slice(self.folding_steps) };
         let claim_point_accessor = claim_point_host.get_mut_accessor();
         let mut main_layer_challenges_host =
-            unsafe { context.alloc_transient_host_uninit_slice(2) };
+            unsafe { context.alloc_host_uninit_slice(2) };
         let main_layer_challenges_accessor = main_layer_challenges_host.get_mut_accessor();
         let main_layer_challenges = main_layer_challenges_host.get_accessor();
         let workflow_state_for_start = Arc::clone(&workflow_state);
@@ -5014,9 +4948,8 @@ where
             } else {
                 match step {
                     1 => {
-                        let callbacks = Callbacks::new();
-                        let mut scheduled = self.schedule_round_1(context)?;
-                        let mut callbacks = callbacks;
+                        let mut callbacks = Callbacks::new();
+                        let mut scheduled = self.schedule_round_1(&mut callbacks, context)?;
                         self.launch_round1_kernels(
                             &scheduled,
                             &round_challenge_buffers[step - 1],
@@ -5033,9 +4966,8 @@ where
                         });
                     }
                     2 => {
-                        let callbacks = Callbacks::new();
-                        let mut scheduled = self.schedule_round_2(context)?;
-                        let mut callbacks = callbacks;
+                        let mut callbacks = Callbacks::new();
+                        let mut scheduled = self.schedule_round_2(&mut callbacks, context)?;
                         self.launch_round2_kernels(
                             &scheduled,
                             &round_challenge_buffers[step - 1],
@@ -5052,9 +4984,9 @@ where
                         });
                     }
                     _ => {
-                        let callbacks = Callbacks::new();
-                        let mut scheduled = self.schedule_round_3_and_beyond(step, context)?;
-                        let mut callbacks = callbacks;
+                        let mut callbacks = Callbacks::new();
+                        let mut scheduled =
+                            self.schedule_round_3_and_beyond(step, &mut callbacks, context)?;
                         self.launch_round3_kernels(
                             &scheduled,
                             &round_challenge_buffers[step - 1],
@@ -5086,7 +5018,7 @@ where
                 None
             };
             let mut next_round_challenges = if let Some(len) = next_round_len {
-                let host = unsafe { context.alloc_transient_host_uninit_slice(len) };
+                let host = unsafe { context.alloc_host_uninit_slice(len) };
                 let device = context.alloc(len, AllocationPlacement::Top)?;
                 Some((host, device))
             } else {
@@ -5146,22 +5078,23 @@ where
             )?;
             if let Some((host, mut device)) = next_round_challenges {
                 memory_copy_async(&mut device, &host, context.get_exec_stream())?;
+                drop(host);
                 round_challenge_buffers.push(ScheduledChallengeBuffer {
                     callbacks: Callbacks::new(),
-                    host,
                     device,
                 });
             }
+            drop(reduction_output);
             reduction_states.push(ScheduledDimensionReducingReductionState {
                 callbacks,
-                reduction_output,
+                _phantom: std::marker::PhantomData,
             });
         }
 
         let final_round_state = {
-            let callbacks = Callbacks::new();
-            let mut scheduled = self.schedule_round_3_and_beyond(last_step, context)?;
-            let mut callbacks = callbacks;
+            let mut callbacks = Callbacks::new();
+            let mut scheduled =
+                self.schedule_round_3_and_beyond(last_step, &mut callbacks, context)?;
             self.launch_round3_kernels(
                 &scheduled,
                 &round_challenge_buffers[last_step - 1],
@@ -5249,20 +5182,24 @@ where
         let mut all_round_states = round_states;
         all_round_states.push(final_round_state);
 
+        drop(claim_point_host);
+        drop(main_layer_challenges_host);
         Ok(GpuGKRMainLayerScheduledLayerExecution {
             start_callbacks,
-            claim_point_host,
-            main_layer_challenges_host,
             batch_challenge_buffers,
             auxiliary_uploads,
             constraint_uploads,
             round_challenge_buffers,
             round_states: all_round_states,
             reduction_states,
-            final_readback: ScheduledDimensionReducingFinalReadback {
-                callbacks: final_readback_callbacks,
-                evaluations: final_evaluations,
+            final_readback: {
+                drop(final_evaluations);
+                ScheduledDimensionReducingFinalReadback {
+                    callbacks: final_readback_callbacks,
+                    _phantom: std::marker::PhantomData,
+                }
             },
+            round0_callbacks: self.round0_descriptors.iter_mut().map(|d| std::mem::replace(&mut d.callbacks, Callbacks::new())).collect(),
             shared_state,
         })
     }
@@ -5272,8 +5209,6 @@ impl<E: FieldExtension<BF> + Field> GpuGKRMainLayerScheduledLayerExecution<E> {
     pub(crate) fn into_host_keepalive(self) -> GpuGKRMainLayerHostKeepalive<E> {
         let Self {
             start_callbacks,
-            claim_point_host,
-            main_layer_challenges_host,
             batch_challenge_buffers,
             auxiliary_uploads,
             constraint_uploads,
@@ -5281,12 +5216,11 @@ impl<E: FieldExtension<BF> + Field> GpuGKRMainLayerScheduledLayerExecution<E> {
             round_states,
             reduction_states,
             final_readback,
+            round0_callbacks,
             shared_state,
         } = self;
         GpuGKRMainLayerHostKeepalive {
             start_callbacks,
-            claim_point_host,
-            main_layer_challenges_host,
             batch_challenge_buffers: batch_challenge_buffers
                 .into_iter()
                 .map(challenge_buffer_into_host_keepalive)
@@ -5309,6 +5243,7 @@ impl<E: FieldExtension<BF> + Field> GpuGKRMainLayerScheduledLayerExecution<E> {
                 .collect(),
             reduction_states,
             final_readback,
+            round0_callbacks,
             shared_state,
         }
     }
@@ -5461,6 +5396,7 @@ mod tests {
     use crate::primitives::context::{DeviceAllocation, ProverContext};
     use crate::primitives::device_structures::DeviceMatrix;
     use crate::primitives::field::{BF, E4};
+    use crate::primitives::callbacks::Callbacks;
     use crate::prover::gkr::{
         GpuBaseFieldPolySource, GpuExtensionFieldPolyContinuingLaunchDescriptor,
         GpuExtensionFieldPolyInitialSource, GpuSumcheckRound0DeviceLaunchDescriptors,
@@ -5685,6 +5621,7 @@ mod tests {
         let mut contributions = alloc_and_copy(&context, &[E4::ZERO; 4]);
 
         let mut round0 = GpuSumcheckRound0ScheduledLaunchDescriptors {
+            callbacks: Callbacks::new(),
             host: GpuSumcheckRound0HostLaunchDescriptors {
                 base_field_inputs: unsafe {
                     context.alloc_host_uninit_slice::<GpuBaseFieldPolySource<BF>>(0)
@@ -5798,6 +5735,7 @@ mod tests {
         let batch_challenges_dev = alloc_and_copy(&context, &[batch0, batch1]);
 
         let mut round0 = GpuSumcheckRound0ScheduledLaunchDescriptors {
+            callbacks: Callbacks::new(),
             host: GpuSumcheckRound0HostLaunchDescriptors {
                 base_field_inputs: unsafe {
                     context.alloc_host_uninit_slice::<GpuBaseFieldPolySource<BF>>(0)
@@ -6245,6 +6183,7 @@ mod tests {
         let auxiliary_challenge_dev = alloc_and_copy(&context, &[E4::ZERO]);
 
         let mut round0 = GpuSumcheckRound0ScheduledLaunchDescriptors {
+            callbacks: Callbacks::new(),
             host: GpuSumcheckRound0HostLaunchDescriptors {
                 base_field_inputs: unsafe {
                     context.alloc_host_uninit_slice::<GpuBaseFieldPolySource<BF>>(1)
@@ -6349,6 +6288,7 @@ mod tests {
         let auxiliary_challenge_dev = alloc_and_copy(&context, &[lookup_additive_challenge]);
 
         let mut round0 = GpuSumcheckRound0ScheduledLaunchDescriptors {
+            callbacks: Callbacks::new(),
             host: GpuSumcheckRound0HostLaunchDescriptors {
                 base_field_inputs: unsafe {
                     context.alloc_host_uninit_slice::<GpuBaseFieldPolySource<BF>>(2)

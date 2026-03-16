@@ -6,7 +6,7 @@ orchestration concurrency.
 
 ## Stream ordering
 
-All GPU prover allocations, frees, callbacks, descriptor uploads, and kernel
+All GPU prover allocations, frees, callbacks, H2D/D2H copies and kernel
 launches are logically ordered on the **exec stream**. The stream serializes
 execution, so no explicit synchronization is needed between these operations.
 
@@ -21,20 +21,37 @@ by the already-queued exec-stream work, not by Rust ownership. A
 `DeviceAllocation` handle may be dropped after scheduling returns — the
 GPU-side data remains valid for all previously enqueued operations.
 
-### Transient host allocations
+### Host allocations
 
-Allocated via `alloc_transient_host_uninit_slice`. These follow the **same
-stream-ordered lifetime** as device allocations. They are used to stage data
-for async H2D copies and callback-populated uploads. Once the copy or callback
-is enqueued on the exec stream, the transient buffer's lifetime is governed by
-the stream, not by Rust's `Drop`.
+Allocated via `alloc_host_uninit_slice` / `alloc_host_uninit`. All context host
+allocations follow the **same stream-ordered lifetime** as device allocations.
 
-### Persistent host allocations
+The logical lifetime of a host allocation is defined by stream execution order:
 
-Allocated via `alloc_host_uninit_slice`. These **survive beyond scheduling** and
-are owned by the enclosing prover job. They are used for proof output buffers
-where the host must read back results after the exec stream completes. They must
-remain alive until the results have been consumed on the CPU side.
+- Once all stream operations that *use* a buffer have been **scheduled** (not
+  completed), the Rust handle may be dropped. Pool recycling is safe because any
+  subsequent write to a recycled pool block is enqueued via a callback that runs
+  after the current scheduling point — stream ordering prevents races.
+
+- The only hard Rust-lifetime obligation: a handle must **not** be dropped
+  before the stream operation that holds a raw `UnsafeAccessor` pointer into it
+  has been scheduled.
+
+**Caller obligations:**
+
+- Writes to a host buffer must go through the callback system, not through
+  synchronous CPU writes during the scheduling phase. Synchronous reads of host
+  pool memory during scheduling are equally forbidden.
+
+- H2D staging buffers (written by callback + copied to device) may be dropped
+  immediately after `memory_copy_async` is scheduled.
+
+- D2H readback buffers (copied from device, then read by a subsequent callback)
+  must remain alive until the read callback is scheduled.
+
+**Proof output buffers**: All proof data is assembled inside callbacks into
+non-pool heap memory (`Vec`, `BTreeMap`, `Arc<Mutex<Option<Proof>>>`). No
+context host allocation needs to outlive the scheduling phase.
 
 ## Callback restrictions
 

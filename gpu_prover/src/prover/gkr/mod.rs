@@ -301,6 +301,10 @@ impl<B> Clone for GpuBaseFieldPolySource<B> {
 
 impl<B> Copy for GpuBaseFieldPolySource<B> {}
 
+// SAFETY: contains only a device pointer and a size — safe to send across threads.
+unsafe impl<B> Send for GpuBaseFieldPolySource<B> {}
+unsafe impl<B> Sync for GpuBaseFieldPolySource<B> {}
+
 impl<B> GpuBaseFieldPolySource<B> {
     pub(crate) fn empty() -> Self {
         Self {
@@ -329,6 +333,10 @@ impl<B, E: Copy> Clone for GpuBaseFieldPolySourceAfterOneFoldingLaunchDescriptor
 
 impl<B, E: Copy> Copy for GpuBaseFieldPolySourceAfterOneFoldingLaunchDescriptor<B, E> {}
 
+// SAFETY: contains only device pointers and sizes — safe to send across threads.
+unsafe impl<B, E> Send for GpuBaseFieldPolySourceAfterOneFoldingLaunchDescriptor<B, E> {}
+unsafe impl<B, E> Sync for GpuBaseFieldPolySourceAfterOneFoldingLaunchDescriptor<B, E> {}
+
 #[derive(Debug)]
 #[repr(C)]
 pub(crate) struct GpuBaseFieldPolySourceAfterTwoFoldingsLaunchDescriptor<B, E> {
@@ -348,6 +356,10 @@ impl<B, E: Copy> Clone for GpuBaseFieldPolySourceAfterTwoFoldingsLaunchDescripto
 
 impl<B, E: Copy> Copy for GpuBaseFieldPolySourceAfterTwoFoldingsLaunchDescriptor<B, E> {}
 
+// SAFETY: contains only device pointers and sizes — safe to send across threads.
+unsafe impl<B, E> Send for GpuBaseFieldPolySourceAfterTwoFoldingsLaunchDescriptor<B, E> {}
+unsafe impl<B, E> Sync for GpuBaseFieldPolySourceAfterTwoFoldingsLaunchDescriptor<B, E> {}
+
 #[derive(Debug)]
 #[repr(C)]
 pub(crate) struct GpuExtensionFieldPolyInitialSource<E> {
@@ -362,6 +374,10 @@ impl<E> Clone for GpuExtensionFieldPolyInitialSource<E> {
 }
 
 impl<E> Copy for GpuExtensionFieldPolyInitialSource<E> {}
+
+// SAFETY: contains only a device pointer and a size — safe to send across threads.
+unsafe impl<E> Send for GpuExtensionFieldPolyInitialSource<E> {}
+unsafe impl<E> Sync for GpuExtensionFieldPolyInitialSource<E> {}
 
 impl<E> GpuExtensionFieldPolyInitialSource<E> {
     pub(crate) fn empty() -> Self {
@@ -389,6 +405,10 @@ impl<E: Copy> Clone for GpuExtensionFieldPolyContinuingLaunchDescriptor<E> {
 }
 
 impl<E: Copy> Copy for GpuExtensionFieldPolyContinuingLaunchDescriptor<E> {}
+
+// SAFETY: contains only device pointers and sizes — safe to send across threads.
+unsafe impl<E> Send for GpuExtensionFieldPolyContinuingLaunchDescriptor<E> {}
+unsafe impl<E> Sync for GpuExtensionFieldPolyContinuingLaunchDescriptor<E> {}
 
 #[derive(Debug)]
 pub(crate) struct GpuSumcheckRound0LaunchDescriptors<B, E> {
@@ -424,16 +444,11 @@ pub(crate) struct GpuSumcheckRound0DeviceLaunchDescriptors<B, E> {
 }
 
 pub(crate) struct GpuSumcheckRound0ScheduledLaunchDescriptors<B, E> {
+    #[allow(dead_code)] // Keeps callback closures alive until the stream executes them.
+    pub(crate) callbacks: Callbacks<'static>,
     #[allow(dead_code)] // Keeps pinned host descriptors alive until queued uploads complete.
     pub(crate) host: GpuSumcheckRound0HostLaunchDescriptors<B, E>,
     pub(crate) device: GpuSumcheckRound0DeviceLaunchDescriptors<B, E>,
-}
-
-pub(crate) struct GpuSumcheckRound1HostLaunchDescriptors<B, E> {
-    pub(crate) base_field_inputs:
-        HostAllocation<[GpuBaseFieldPolySourceAfterOneFoldingLaunchDescriptor<B, E>]>,
-    pub(crate) extension_field_inputs:
-        HostAllocation<[GpuExtensionFieldPolyContinuingLaunchDescriptor<E>]>,
 }
 
 pub(crate) struct GpuSumcheckRound1DeviceLaunchDescriptors<B, E> {
@@ -444,15 +459,7 @@ pub(crate) struct GpuSumcheckRound1DeviceLaunchDescriptors<B, E> {
 }
 
 pub(crate) struct GpuSumcheckRound1ScheduledLaunchDescriptors<B, E> {
-    pub(crate) host: GpuSumcheckRound1HostLaunchDescriptors<B, E>,
     pub(crate) device: GpuSumcheckRound1DeviceLaunchDescriptors<B, E>,
-}
-
-pub(crate) struct GpuSumcheckRound2HostLaunchDescriptors<B, E> {
-    pub(crate) base_field_inputs:
-        HostAllocation<[GpuBaseFieldPolySourceAfterTwoFoldingsLaunchDescriptor<B, E>]>,
-    pub(crate) extension_field_inputs:
-        HostAllocation<[GpuExtensionFieldPolyContinuingLaunchDescriptor<E>]>,
 }
 
 pub(crate) struct GpuSumcheckRound2DeviceLaunchDescriptors<B, E> {
@@ -463,15 +470,7 @@ pub(crate) struct GpuSumcheckRound2DeviceLaunchDescriptors<B, E> {
 }
 
 pub(crate) struct GpuSumcheckRound2ScheduledLaunchDescriptors<B, E> {
-    pub(crate) host: GpuSumcheckRound2HostLaunchDescriptors<B, E>,
     pub(crate) device: GpuSumcheckRound2DeviceLaunchDescriptors<B, E>,
-}
-
-pub(crate) struct GpuSumcheckRound3AndBeyondHostLaunchDescriptors<E> {
-    pub(crate) base_field_inputs:
-        HostAllocation<[GpuExtensionFieldPolyContinuingLaunchDescriptor<E>]>,
-    pub(crate) extension_field_inputs:
-        HostAllocation<[GpuExtensionFieldPolyContinuingLaunchDescriptor<E>]>,
 }
 
 pub(crate) struct GpuSumcheckRound3AndBeyondDeviceLaunchDescriptors<E> {
@@ -482,7 +481,6 @@ pub(crate) struct GpuSumcheckRound3AndBeyondDeviceLaunchDescriptors<E> {
 }
 
 pub(crate) struct GpuSumcheckRound3AndBeyondScheduledLaunchDescriptors<E> {
-    pub(crate) host: GpuSumcheckRound3AndBeyondHostLaunchDescriptors<E>,
     pub(crate) device: GpuSumcheckRound3AndBeyondDeviceLaunchDescriptors<E>,
 }
 
@@ -601,16 +599,24 @@ pub(crate) struct GpuSumcheckRound3AndBeyondPreparedStorage<E> {
     pub(crate) sumcheck_step: usize,
 }
 
-fn alloc_host_and_copy<T: Copy>(context: &ProverContext, values: &[T]) -> HostAllocation<[T]> {
-    let mut allocation = unsafe { context.alloc_transient_host_uninit_slice(values.len()) };
-    unsafe {
-        allocation
-            .get_mut_accessor()
-            .get_mut()
-            .copy_from_slice(values);
-    }
-    allocation
+pub(super) fn alloc_host_and_schedule_copy<T: Copy + Send + Sync + 'static>(
+    context: &ProverContext,
+    callbacks: &mut Callbacks<'static>,
+    values: Vec<T>,
+) -> HostAllocation<[T]> {
+    let mut host = unsafe { context.alloc_host_uninit_slice(values.len()) };
+    let host_accessor = host.get_mut_accessor();
+    callbacks
+        .schedule(
+            move || unsafe {
+                host_accessor.get_mut().copy_from_slice(&values);
+            },
+            context.get_exec_stream(),
+        )
+        .expect("failed to schedule host copy callback");
+    host
 }
+
 
 fn alloc_device_and_schedule_upload<T: Copy>(
     context: &ProverContext,
@@ -627,7 +633,7 @@ fn schedule_callback_populated_upload<'a, T: Copy + 'a>(
     callbacks: &mut Callbacks<'a>,
     fill: impl Fn(&mut [T]) + Send + Sync + 'a,
 ) -> CudaResult<(HostAllocation<[T]>, DeviceAllocation<T>)> {
-    let mut host = unsafe { context.alloc_transient_host_uninit_slice(len) };
+    let mut host = unsafe { context.alloc_host_uninit_slice(len) };
     let host_accessor = host.get_mut_accessor();
     callbacks.schedule(
         move || unsafe { fill(host_accessor.get_mut()) },
@@ -740,7 +746,7 @@ impl<B, E> GpuGKRStorage<B, E> {
     }
 }
 
-impl<B, E: Field> GpuGKRStorage<B, E> {
+impl<B: 'static, E: Field> GpuGKRStorage<B, E> {
     fn round_input_layer(address: GKRAddress) -> usize {
         match address {
             GKRAddress::OptimizedOut(..) => unreachable!(),
@@ -1025,16 +1031,27 @@ impl<B, E: Field> GpuGKRStorage<B, E> {
         context: &ProverContext,
     ) -> CudaResult<GpuSumcheckRound0ScheduledLaunchDescriptors<B, E>> {
         let host_values = self.get_for_sumcheck_round_0(inputs);
+        let mut callbacks = Callbacks::new();
         let host = GpuSumcheckRound0HostLaunchDescriptors {
-            base_field_inputs: alloc_host_and_copy(context, &host_values.base_field_inputs),
-            extension_field_inputs: alloc_host_and_copy(
+            base_field_inputs: alloc_host_and_schedule_copy(
                 context,
-                &host_values.extension_field_inputs,
+                &mut callbacks,
+                host_values.base_field_inputs,
             ),
-            base_field_outputs: alloc_host_and_copy(context, &host_values.base_field_outputs),
-            extension_field_outputs: alloc_host_and_copy(
+            extension_field_inputs: alloc_host_and_schedule_copy(
                 context,
-                &host_values.extension_field_outputs,
+                &mut callbacks,
+                host_values.extension_field_inputs,
+            ),
+            base_field_outputs: alloc_host_and_schedule_copy(
+                context,
+                &mut callbacks,
+                host_values.base_field_outputs,
+            ),
+            extension_field_outputs: alloc_host_and_schedule_copy(
+                context,
+                &mut callbacks,
+                host_values.extension_field_outputs,
             ),
         };
         let device = GpuSumcheckRound0DeviceLaunchDescriptors {
@@ -1053,7 +1070,11 @@ impl<B, E: Field> GpuGKRStorage<B, E> {
             )?,
         };
 
-        Ok(GpuSumcheckRound0ScheduledLaunchDescriptors { host, device })
+        Ok(GpuSumcheckRound0ScheduledLaunchDescriptors {
+            callbacks,
+            host,
+            device,
+        })
     }
 
     pub(crate) fn prepare_for_sumcheck_round_1(
@@ -1172,10 +1193,11 @@ impl<B, E: Field> GpuGKRStorage<B, E> {
     }
 }
 
-impl<B, E: Field> GpuSumcheckRound1PreparedStorage<B, E> {
+impl<B: 'static, E: Field + 'static> GpuSumcheckRound1PreparedStorage<B, E> {
     pub(crate) fn schedule_upload_launch_descriptors(
         &self,
         context: &ProverContext,
+        callbacks: &mut Callbacks<'static>,
     ) -> CudaResult<GpuSumcheckRound1ScheduledLaunchDescriptors<B, E>> {
         let base_field_inputs_values = self
             .base_field_inputs
@@ -1200,29 +1222,28 @@ impl<B, E: Field> GpuSumcheckRound1PreparedStorage<B, E> {
                 first_access: plan.first_access,
             })
             .collect::<Vec<_>>();
-        let base_field_inputs = alloc_host_and_copy(context, &base_field_inputs_values);
-        let extension_field_inputs = alloc_host_and_copy(context, &extension_field_inputs_values);
-        let base_field_inputs_device =
-            alloc_device_and_schedule_upload(context, &base_field_inputs)?;
+        let host_base =
+            alloc_host_and_schedule_copy(context, callbacks, base_field_inputs_values);
+        let base_field_inputs_device = alloc_device_and_schedule_upload(context, &host_base)?;
+        drop(host_base);
+        let host_ext =
+            alloc_host_and_schedule_copy(context, callbacks, extension_field_inputs_values);
         let extension_field_inputs_device =
-            alloc_device_and_schedule_upload(context, &extension_field_inputs)?;
+            alloc_device_and_schedule_upload(context, &host_ext)?;
+        drop(host_ext);
         let device = GpuSumcheckRound1DeviceLaunchDescriptors {
             base_field_inputs: base_field_inputs_device,
             extension_field_inputs: extension_field_inputs_device,
         };
-        let host = GpuSumcheckRound1HostLaunchDescriptors {
-            base_field_inputs,
-            extension_field_inputs,
-        };
-
-        Ok(GpuSumcheckRound1ScheduledLaunchDescriptors { host, device })
+        Ok(GpuSumcheckRound1ScheduledLaunchDescriptors { device })
     }
 }
 
-impl<B, E: Field> GpuSumcheckRound2PreparedStorage<B, E> {
+impl<B: 'static, E: Field + 'static> GpuSumcheckRound2PreparedStorage<B, E> {
     pub(crate) fn schedule_upload_launch_descriptors(
         &self,
         context: &ProverContext,
+        callbacks: &mut Callbacks<'static>,
     ) -> CudaResult<GpuSumcheckRound2ScheduledLaunchDescriptors<B, E>> {
         let base_field_inputs_values = self
             .base_field_inputs
@@ -1249,29 +1270,28 @@ impl<B, E: Field> GpuSumcheckRound2PreparedStorage<B, E> {
                 first_access: plan.first_access,
             })
             .collect::<Vec<_>>();
-        let base_field_inputs = alloc_host_and_copy(context, &base_field_inputs_values);
-        let extension_field_inputs = alloc_host_and_copy(context, &extension_field_inputs_values);
-        let base_field_inputs_device =
-            alloc_device_and_schedule_upload(context, &base_field_inputs)?;
+        let host_base =
+            alloc_host_and_schedule_copy(context, callbacks, base_field_inputs_values);
+        let base_field_inputs_device = alloc_device_and_schedule_upload(context, &host_base)?;
+        drop(host_base);
+        let host_ext =
+            alloc_host_and_schedule_copy(context, callbacks, extension_field_inputs_values);
         let extension_field_inputs_device =
-            alloc_device_and_schedule_upload(context, &extension_field_inputs)?;
+            alloc_device_and_schedule_upload(context, &host_ext)?;
+        drop(host_ext);
         let device = GpuSumcheckRound2DeviceLaunchDescriptors {
             base_field_inputs: base_field_inputs_device,
             extension_field_inputs: extension_field_inputs_device,
         };
-        let host = GpuSumcheckRound2HostLaunchDescriptors {
-            base_field_inputs,
-            extension_field_inputs,
-        };
-
-        Ok(GpuSumcheckRound2ScheduledLaunchDescriptors { host, device })
+        Ok(GpuSumcheckRound2ScheduledLaunchDescriptors { device })
     }
 }
 
-impl<E: Field> GpuSumcheckRound3AndBeyondPreparedStorage<E> {
+impl<E: Field + 'static> GpuSumcheckRound3AndBeyondPreparedStorage<E> {
     pub(crate) fn schedule_upload_launch_descriptors(
         &self,
         context: &ProverContext,
+        callbacks: &mut Callbacks<'static>,
     ) -> CudaResult<GpuSumcheckRound3AndBeyondScheduledLaunchDescriptors<E>> {
         let base_field_inputs_values = self
             .base_field_inputs
@@ -1295,22 +1315,20 @@ impl<E: Field> GpuSumcheckRound3AndBeyondPreparedStorage<E> {
                 first_access: plan.first_access,
             })
             .collect::<Vec<_>>();
-        let base_field_inputs = alloc_host_and_copy(context, &base_field_inputs_values);
-        let extension_field_inputs = alloc_host_and_copy(context, &extension_field_inputs_values);
-        let base_field_inputs_device =
-            alloc_device_and_schedule_upload(context, &base_field_inputs)?;
+        let host_base =
+            alloc_host_and_schedule_copy(context, callbacks, base_field_inputs_values);
+        let base_field_inputs_device = alloc_device_and_schedule_upload(context, &host_base)?;
+        drop(host_base);
+        let host_ext =
+            alloc_host_and_schedule_copy(context, callbacks, extension_field_inputs_values);
         let extension_field_inputs_device =
-            alloc_device_and_schedule_upload(context, &extension_field_inputs)?;
+            alloc_device_and_schedule_upload(context, &host_ext)?;
+        drop(host_ext);
         let device = GpuSumcheckRound3AndBeyondDeviceLaunchDescriptors {
             base_field_inputs: base_field_inputs_device,
             extension_field_inputs: extension_field_inputs_device,
         };
-        let host = GpuSumcheckRound3AndBeyondHostLaunchDescriptors {
-            base_field_inputs,
-            extension_field_inputs,
-        };
-
-        Ok(GpuSumcheckRound3AndBeyondScheduledLaunchDescriptors { host, device })
+        Ok(GpuSumcheckRound3AndBeyondScheduledLaunchDescriptors { device })
     }
 }
 
@@ -1583,21 +1601,13 @@ mod tests {
 
         let r1 = sample_ext(100);
         {
+            let mut callbacks = Callbacks::new();
             let round1 = storage
                 .prepare_for_sumcheck_round_1(&inputs, &context)
                 .unwrap()
-                .schedule_upload_launch_descriptors(&context)
+                .schedule_upload_launch_descriptors(&context, &mut callbacks)
                 .unwrap();
             context.get_exec_stream().synchronize().unwrap();
-            let round1_base_inputs_accessor = round1.host.base_field_inputs.get_accessor();
-            let round1_base_inputs = unsafe { round1_base_inputs_accessor.get() };
-            let round1_ext_inputs_accessor = round1.host.extension_field_inputs.get_accessor();
-            let round1_ext_inputs = unsafe { round1_ext_inputs_accessor.get() };
-            assert_eq!(round1_base_inputs[0].base_input_start, base_input_ptr);
-            assert!(round1_base_inputs[1].base_input_start.is_null());
-            assert_eq!(round1_ext_inputs[0].previous_layer_start, ext_input_ptr);
-            assert!(round1_ext_inputs[0].first_access);
-            assert!(round1_ext_inputs[1].previous_layer_start.is_null());
             let round1_base_inputs_device =
                 copy_device_values(&context, &round1.device.base_field_inputs);
             let round1_ext_inputs_device =
@@ -1606,146 +1616,121 @@ mod tests {
                 round1_base_inputs_device[0].base_input_start,
                 base_input_ptr
             );
+            assert!(round1_base_inputs_device[1].base_input_start.is_null());
             assert_eq!(
                 round1_ext_inputs_device[0].previous_layer_start,
                 ext_input_ptr
             );
+            assert!(round1_ext_inputs_device[0].first_access);
+            assert!(round1_ext_inputs_device[1].previous_layer_start.is_null());
         }
         let used_after_round1 = context.get_used_mem_current();
         assert!(used_after_round1 > baseline);
 
         let r2 = sample_ext(200);
         let (base_round2_cache_ptr, ext_round2_cache_ptr) = {
+            let mut callbacks = Callbacks::new();
             let round2_first = storage
                 .prepare_for_sumcheck_round_2(&inputs, &context)
                 .unwrap()
-                .schedule_upload_launch_descriptors(&context)
+                .schedule_upload_launch_descriptors(&context, &mut callbacks)
                 .unwrap();
             context.get_exec_stream().synchronize().unwrap();
-            let round2_first_base_inputs_accessor =
-                round2_first.host.base_field_inputs.get_accessor();
-            let round2_first_base_inputs = unsafe { round2_first_base_inputs_accessor.get() };
-            let round2_first_ext_inputs_accessor =
-                round2_first.host.extension_field_inputs.get_accessor();
-            let round2_first_ext_inputs = unsafe { round2_first_ext_inputs_accessor.get() };
-            assert!(round2_first_base_inputs[0].first_access);
-            assert!(round2_first_ext_inputs[0].first_access);
             let round2_first_base_inputs_device =
                 copy_device_values(&context, &round2_first.device.base_field_inputs);
             let round2_first_ext_inputs_device =
                 copy_device_values(&context, &round2_first.device.extension_field_inputs);
-            assert_eq!(
-                round2_first_base_inputs_device[0].this_layer_cache_start,
-                round2_first_base_inputs[0].this_layer_cache_start
-            );
-            assert_eq!(
-                round2_first_ext_inputs_device[0].this_layer_start,
-                round2_first_ext_inputs[0].this_layer_start
-            );
+            assert!(round2_first_base_inputs_device[0].first_access);
+            assert!(round2_first_ext_inputs_device[0].first_access);
             (
-                round2_first_base_inputs[0].this_layer_cache_start,
-                round2_first_ext_inputs[0].this_layer_start,
+                round2_first_base_inputs_device[0].this_layer_cache_start,
+                round2_first_ext_inputs_device[0].this_layer_start,
             )
         };
 
         {
+            let mut callbacks = Callbacks::new();
             let round2_second = storage
                 .prepare_for_sumcheck_round_2(&inputs, &context)
                 .unwrap()
-                .schedule_upload_launch_descriptors(&context)
+                .schedule_upload_launch_descriptors(&context, &mut callbacks)
                 .unwrap();
             context.get_exec_stream().synchronize().unwrap();
-            let round2_second_base_inputs_accessor =
-                round2_second.host.base_field_inputs.get_accessor();
-            let round2_second_base_inputs = unsafe { round2_second_base_inputs_accessor.get() };
-            let round2_second_ext_inputs_accessor =
-                round2_second.host.extension_field_inputs.get_accessor();
-            let round2_second_ext_inputs = unsafe { round2_second_ext_inputs_accessor.get() };
-            assert!(!round2_second_base_inputs[0].first_access);
-            assert!(!round2_second_ext_inputs[0].first_access);
+            let round2_second_base_inputs_device =
+                copy_device_values(&context, &round2_second.device.base_field_inputs);
+            let round2_second_ext_inputs_device =
+                copy_device_values(&context, &round2_second.device.extension_field_inputs);
+            assert!(!round2_second_base_inputs_device[0].first_access);
+            assert!(!round2_second_ext_inputs_device[0].first_access);
             assert_eq!(
-                round2_second_base_inputs[0].this_layer_cache_start,
+                round2_second_base_inputs_device[0].this_layer_cache_start,
                 base_round2_cache_ptr
             );
             assert_eq!(
-                round2_second_ext_inputs[0].this_layer_start,
+                round2_second_ext_inputs_device[0].this_layer_start,
                 ext_round2_cache_ptr
             );
         }
 
         let r3 = sample_ext(300);
         let (round3_base_cache_ptr, round3_ext_cache_ptr) = {
+            let mut callbacks = Callbacks::new();
             let round3_first = storage
                 .prepare_for_sumcheck_round_3_and_beyond(&inputs, 3, &context)
                 .unwrap()
-                .schedule_upload_launch_descriptors(&context)
+                .schedule_upload_launch_descriptors(&context, &mut callbacks)
                 .unwrap();
             context.get_exec_stream().synchronize().unwrap();
-            let round3_first_base_inputs_accessor =
-                round3_first.host.base_field_inputs.get_accessor();
-            let round3_first_base_inputs = unsafe { round3_first_base_inputs_accessor.get() };
-            let round3_first_ext_inputs_accessor =
-                round3_first.host.extension_field_inputs.get_accessor();
-            let round3_first_ext_inputs = unsafe { round3_first_ext_inputs_accessor.get() };
-            assert!(round3_first_base_inputs[0].first_access);
-            assert!(round3_first_ext_inputs[0].first_access);
             let round3_first_base_inputs_device =
                 copy_device_values(&context, &round3_first.device.base_field_inputs);
             let round3_first_ext_inputs_device =
                 copy_device_values(&context, &round3_first.device.extension_field_inputs);
-            assert_eq!(
-                round3_first_base_inputs_device[0].this_layer_start,
-                round3_first_base_inputs[0].this_layer_start
-            );
-            assert_eq!(
-                round3_first_ext_inputs_device[0].this_layer_start,
-                round3_first_ext_inputs[0].this_layer_start
-            );
+            assert!(round3_first_base_inputs_device[0].first_access);
+            assert!(round3_first_ext_inputs_device[0].first_access);
             assert_eq!(
                 unsafe {
-                    round3_first_base_inputs[0]
+                    round3_first_base_inputs_device[0]
                         .this_layer_start
-                        .offset_from(round3_first_base_inputs[0].previous_layer_start)
+                        .offset_from(round3_first_base_inputs_device[0].previous_layer_start)
                 },
                 2
             );
             assert_eq!(
                 unsafe {
-                    round3_first_ext_inputs[0]
+                    round3_first_ext_inputs_device[0]
                         .this_layer_start
-                        .offset_from(round3_first_ext_inputs[0].previous_layer_start)
+                        .offset_from(round3_first_ext_inputs_device[0].previous_layer_start)
                 },
                 1
             );
-            assert_eq!(round3_first_base_inputs[0].this_layer_size, 1);
-            assert_eq!(round3_first_ext_inputs[0].this_layer_size, 1);
+            assert_eq!(round3_first_base_inputs_device[0].this_layer_size, 1);
+            assert_eq!(round3_first_ext_inputs_device[0].this_layer_size, 1);
             (
-                round3_first_base_inputs[0].this_layer_start,
-                round3_first_ext_inputs[0].this_layer_start,
+                round3_first_base_inputs_device[0].this_layer_start,
+                round3_first_ext_inputs_device[0].this_layer_start,
             )
         };
 
         {
+            let mut callbacks = Callbacks::new();
             let round3_second = storage
                 .prepare_for_sumcheck_round_3_and_beyond(&inputs, 3, &context)
                 .unwrap()
-                .schedule_upload_launch_descriptors(&context)
+                .schedule_upload_launch_descriptors(&context, &mut callbacks)
                 .unwrap();
             context.get_exec_stream().synchronize().unwrap();
-            let round3_second_base_inputs_accessor =
-                round3_second.host.base_field_inputs.get_accessor();
-            let round3_second_base_inputs = unsafe { round3_second_base_inputs_accessor.get() };
-            let round3_second_ext_inputs_accessor =
-                round3_second.host.extension_field_inputs.get_accessor();
-            let round3_second_ext_inputs = unsafe { round3_second_ext_inputs_accessor.get() };
-            assert!(!round3_second_base_inputs[0].first_access);
-            assert!(!round3_second_ext_inputs[0].first_access);
+            let round3_second_base_inputs_device =
+                copy_device_values(&context, &round3_second.device.base_field_inputs);
+            let round3_second_ext_inputs_device =
+                copy_device_values(&context, &round3_second.device.extension_field_inputs);
+            assert!(!round3_second_base_inputs_device[0].first_access);
+            assert!(!round3_second_ext_inputs_device[0].first_access);
             assert_eq!(
-                round3_second_base_inputs[0].this_layer_start,
+                round3_second_base_inputs_device[0].this_layer_start,
                 round3_base_cache_ptr
             );
             assert_eq!(
-                round3_second_ext_inputs[0].this_layer_start,
+                round3_second_ext_inputs_device[0].this_layer_start,
                 round3_ext_cache_ptr
             );
         }

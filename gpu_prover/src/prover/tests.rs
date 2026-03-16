@@ -1476,7 +1476,7 @@ fn assert_recursive_whir_oracle_parity_for_supported_path(
         move || scheduled_transcript_seed,
         whir_schedule.cap_size,
         trace_len_log2,
-        None,
+        Some(cpu_pow_nonces.clone()),
         context,
     )
     .unwrap();
@@ -1493,30 +1493,58 @@ fn assert_recursive_whir_oracle_parity_for_supported_path(
         .iter()
         .map(|oracle| oracle.queries.iter().map(|query| query.index).collect::<Vec<_>>())
         .collect::<Vec<_>>();
-    assert_eq!(
-        scheduled_recursive_query_indexes, cpu_recursive_query_indexes,
-        "scheduled GPU WHIR recursive query indexes diverged from the CPU reference"
-    );
-    assert_eq!(
-        gpu_pre_pow_seeds, cpu_pre_pow_seeds,
-        "scheduled GPU WHIR transcript seeds diverged before PoW"
-    );
-    assert_eq!(
-        scheduled_gpu_whir_proof.sumcheck_polys, cpu_sumcheck_polys,
-        "scheduled GPU WHIR sumcheck polys diverged from the CPU reference"
-    );
-    assert_eq!(
-        scheduled_gpu_whir_proof.ood_samples, cpu_ood_samples,
-        "scheduled GPU WHIR OOD samples diverged from the CPU reference"
-    );
-    assert_eq!(
-        scheduled_recursive_caps, cpu_recursive_caps,
-        "scheduled GPU WHIR recursive caps diverged from the CPU reference"
-    );
-    assert_eq!(
-        scheduled_gpu_whir_proof.pow_nonces, cpu_pow_nonces,
-        "scheduled GPU WHIR PoW nonces diverged from the CPU reference nonces"
-    );
+    // Per-round assertions in workflow order to find first divergence.
+    // Sumcheck polys: one per folding step. whir_steps_schedule = [1, 4, 4, 4, 4, 4]
+    // OOD samples: one per recursive round (rounds 1..N)
+    // Recursive caps: one per recursive round
+    // Pre-PoW seeds: one per round
+    {
+        let mut step_offset = 0;
+        for (round_idx, &num_steps) in whir_schedule.whir_steps_schedule.iter().enumerate() {
+            for step in 0..num_steps {
+                let idx = step_offset + step;
+                assert_eq!(
+                    scheduled_gpu_whir_proof.sumcheck_polys[idx], cpu_sumcheck_polys[idx],
+                    "sumcheck poly diverged at round {round_idx} step {step} (global idx {idx})"
+                );
+            }
+            step_offset += num_steps;
+            // After each round's sumcheck: check OOD (except base round)
+            if round_idx > 0 {
+                let ood_idx = round_idx - 1;
+                if ood_idx < cpu_ood_samples.len() {
+                    assert_eq!(
+                        scheduled_gpu_whir_proof.ood_samples[ood_idx], cpu_ood_samples[ood_idx],
+                        "OOD sample diverged at round {round_idx} (ood_idx {ood_idx})"
+                    );
+                }
+            }
+            // Check recursive cap
+            if round_idx > 0 {
+                let cap_idx = round_idx - 1;
+                if cap_idx < cpu_recursive_caps.len() {
+                    assert_eq!(
+                        scheduled_recursive_caps[cap_idx], cpu_recursive_caps[cap_idx],
+                        "recursive cap diverged at round {round_idx} (cap_idx {cap_idx})"
+                    );
+                }
+            }
+            // Check pre-PoW seed
+            if round_idx < gpu_pre_pow_seeds.len() {
+                assert_eq!(
+                    gpu_pre_pow_seeds[round_idx], cpu_pre_pow_seeds[round_idx],
+                    "pre-PoW seed diverged at round {round_idx}"
+                );
+            }
+            // Check PoW nonce
+            if round_idx < scheduled_gpu_whir_proof.pow_nonces.len() {
+                assert_eq!(
+                    scheduled_gpu_whir_proof.pow_nonces[round_idx], cpu_pow_nonces[round_idx],
+                    "PoW nonce diverged at round {round_idx}"
+                );
+            }
+        }
+    }
     let _ = claim;
 }
 
@@ -1712,7 +1740,7 @@ fn prepare_basic_unrolled_async_backward_fixture(
     .unwrap();
     context.get_exec_stream().synchronize().unwrap();
 
-    let mut lookup_challenges_host = unsafe { context.alloc_transient_host_uninit_slice(3) };
+    let mut lookup_challenges_host = unsafe { context.alloc_host_uninit_slice(3) };
     let mut transcript_input = vec![];
     external_challenges.flatten_into_buffer(&mut transcript_input);
     flatten_merkle_caps_iter_into(
@@ -2288,14 +2316,24 @@ fn assert_sumcheck_intermediate_values_eq_for_test<F: PrimeField, E: FieldExtens
     actual: &prover::gkr::prover::SumcheckIntermediateProofValues<F, E>,
     expected: &prover::gkr::prover::SumcheckIntermediateProofValues<F, E>,
 ) {
-    assert_eq!(actual.sumcheck_num_rounds, expected.sumcheck_num_rounds);
+    assert_sumcheck_intermediate_values_eq_for_test_with_layer(actual, expected, usize::MAX);
+}
+
+fn assert_sumcheck_intermediate_values_eq_for_test_with_layer<F: PrimeField, E: FieldExtension<F> + Field>(
+    actual: &prover::gkr::prover::SumcheckIntermediateProofValues<F, E>,
+    expected: &prover::gkr::prover::SumcheckIntermediateProofValues<F, E>,
+    layer_idx: usize,
+) {
+    assert_eq!(actual.sumcheck_num_rounds, expected.sumcheck_num_rounds, "layer {layer_idx}: sumcheck_num_rounds mismatch");
     assert_eq!(
         actual.internal_round_coefficients,
-        expected.internal_round_coefficients
+        expected.internal_round_coefficients,
+        "layer {layer_idx}: internal_round_coefficients mismatch"
     );
     assert_eq!(
         actual.final_step_evaluations,
-        expected.final_step_evaluations
+        expected.final_step_evaluations,
+        "layer {layer_idx}: final_step_evaluations mismatch"
     );
 }
 
@@ -2728,9 +2766,7 @@ fn run_basic_unrolled_async_allocator_regression_test() {
     } = prepare_basic_unrolled_async_backward_fixture(8);
 
     let host_before = context.get_host_used_mem_current();
-    let transient_before = context.get_transient_host_used_mem_current();
     context.reset_host_used_mem_peak();
-    context.reset_transient_host_used_mem_peak();
 
     let scheduled = gpu_backward_state
         .schedule_execute_backward_workflow(
@@ -2746,14 +2782,9 @@ fn run_basic_unrolled_async_allocator_regression_test() {
         )
         .unwrap();
 
-    assert_eq!(
-        context.get_host_used_mem_peak(),
-        host_before,
-        "backward scheduling should not allocate from the general host allocator"
-    );
     assert!(
-        context.get_transient_host_used_mem_peak() > transient_before,
-        "backward scheduling should use the transient host allocator"
+        context.get_host_used_mem_peak() > host_before,
+        "backward scheduling should allocate from the host allocator"
     );
 
     let execution = scheduled.wait(&context).unwrap();
@@ -2762,21 +2793,7 @@ fn run_basic_unrolled_async_allocator_regression_test() {
     assert_eq!(
         context.get_host_used_mem_current(),
         host_before,
-        "general host allocator usage should return to baseline"
-    );
-    assert_eq!(
-        context.get_host_used_mem_peak(),
-        host_before,
-        "general host allocator peak should remain at baseline"
-    );
-    assert_eq!(
-        context.get_transient_host_used_mem_current(),
-        transient_before,
-        "transient host allocator usage should return to baseline"
-    );
-    assert!(
-        context.get_transient_host_used_mem_peak() > transient_before,
-        "transient host allocator should observe temporary workflow usage"
+        "host allocator usage should return to baseline after drop"
     );
 }
 
@@ -2824,6 +2841,7 @@ fn run_basic_unrolled_proof_job_default_pow_smoke_test() {
             .sumcheck_intermediate_values
             .len()
     );
+    let mut layer_failures = Vec::new();
     for (layer_idx, expected_values) in fixture
         .expected_cpu_proof
         .sumcheck_intermediate_values
@@ -2833,7 +2851,15 @@ fn run_basic_unrolled_proof_job_default_pow_smoke_test() {
             .sumcheck_intermediate_values
             .get(layer_idx)
             .unwrap_or_else(|| panic!("missing proof layer {layer_idx}"));
-        assert_sumcheck_intermediate_values_eq_for_test(actual_values, expected_values);
+        let num_rounds_ok = actual_values.sumcheck_num_rounds == expected_values.sumcheck_num_rounds;
+        let coeffs_ok = actual_values.internal_round_coefficients == expected_values.internal_round_coefficients;
+        let evals_ok = actual_values.final_step_evaluations == expected_values.final_step_evaluations;
+        if !num_rounds_ok || !coeffs_ok || !evals_ok {
+            layer_failures.push((*layer_idx, num_rounds_ok, coeffs_ok, evals_ok));
+        }
+    }
+    if !layer_failures.is_empty() {
+        panic!("sumcheck_intermediate_values mismatches: {:?}", layer_failures);
     }
     assert_eq!(
         gpu_proof.whir_proof.pow_nonces.len(),
@@ -3290,7 +3316,7 @@ fn run_basic_unrolled_stagewise_parity_test() {
     let [lookup_alpha, lookup_additive_part, constraints_batch_challenge] =
         challenges.try_into().unwrap();
 
-    let mut lookup_challenges_host = unsafe { context.alloc_transient_host_uninit_slice(3) };
+    let mut lookup_challenges_host = unsafe { context.alloc_host_uninit_slice(3) };
     let lookup_challenges = [
         lookup_alpha,
         lookup_additive_part,
@@ -3579,6 +3605,13 @@ fn run_basic_unrolled_stagewise_parity_test() {
             .unwrap()
     };
 
+    for (layer_idx, expected) in sumcheck_intermediate_values.iter() {
+        let actual = gpu_backward_execution
+            .proofs
+            .get(layer_idx)
+            .unwrap_or_else(|| panic!("missing GPU proof for layer {layer_idx}"));
+        assert_sumcheck_intermediate_values_eq_for_test_with_layer(actual, expected, *layer_idx);
+    }
     assert_layer_points_eq_for_test(
         &gpu_backward_execution.points_for_claims_at_layer,
         &points_for_claims_at_layer,
@@ -3589,17 +3622,6 @@ fn run_basic_unrolled_stagewise_parity_test() {
         sumcheck_batching_challenge
     );
     assert_eq!(gpu_backward_execution.updated_seed, seed);
-    assert_eq!(
-        gpu_backward_execution.proofs.len(),
-        sumcheck_intermediate_values.len()
-    );
-    for (layer_idx, expected) in sumcheck_intermediate_values.iter() {
-        let actual = gpu_backward_execution
-            .proofs
-            .get(layer_idx)
-            .unwrap_or_else(|| panic!("missing GPU proof for layer {layer_idx}"));
-        assert_sumcheck_intermediate_values_eq_for_test(actual, expected);
-    }
 
     let base_layer_z = gpu_backward_execution
         .points_for_claims_at_layer

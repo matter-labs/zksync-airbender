@@ -36,12 +36,9 @@ pub(crate) struct GpuWhirExtensionOracle {
 pub(crate) struct GpuWhirScheduledExtensionQuery {
     pub(crate) index: usize,
     pub(crate) coset_index: usize,
+    // Keeps index-fill and query-index callbacks alive until the stream executes them.
     #[allow(dead_code)]
-    query_index_host: Option<HostAllocation<[u32]>>,
-    #[allow(dead_code)]
-    value_index_host: HostAllocation<[u32]>,
-    #[allow(dead_code)]
-    path_index_host: HostAllocation<[u32]>,
+    callbacks: Callbacks<'static>,
     #[allow(dead_code)]
     leafs: HostAllocation<[BF]>,
     #[allow(dead_code)]
@@ -90,11 +87,13 @@ impl GpuWhirExtensionOracle {
         tree_cap_size: usize,
         context: &ProverContext,
     ) -> CudaResult<Self> {
-        let monomial_coeffs_host = alloc_host_and_copy(context, monomial_coeffs);
+        let mut host = unsafe { context.alloc_host_uninit_slice(monomial_coeffs.len()) };
+        unsafe { host.get_mut_accessor().get_mut().copy_from_slice(monomial_coeffs) };
         let mut monomial_coeffs_device =
             context.alloc(monomial_coeffs.len(), AllocationPlacement::BestFit)?;
         let stream = context.get_exec_stream();
-        memory_copy_async(&mut monomial_coeffs_device, &monomial_coeffs_host, stream)?;
+        memory_copy_async(&mut monomial_coeffs_device, &host, stream)?;
+        drop(host);
         Self::from_device_monomial_coeffs(
             &monomial_coeffs_device,
             lde_factor,
@@ -283,32 +282,43 @@ impl GpuWhirExtensionOracle {
             bitreverse_index(coset_index, self.lde_factor.trailing_zeros() as u32);
         let logical_row_index = stage1_coset_index * self.packed_leaf_count + internal_index;
 
-        let host_value_index = alloc_transient_host_and_copy(context, &[logical_row_index as u32]);
+        let mut callbacks = Callbacks::new();
+        let mut host_value_index = unsafe { context.alloc_host_uninit_slice(1) };
+        let vi_accessor = host_value_index.get_mut_accessor();
+        callbacks.schedule(
+            move || unsafe { vi_accessor.get_mut()[0] = logical_row_index as u32 },
+            context.get_exec_stream(),
+        )?;
         let mut device_value_index = context.alloc(1, AllocationPlacement::BestFit)?;
         memory_copy_async(
             &mut device_value_index,
             &host_value_index,
             context.get_exec_stream(),
         )?;
+        drop(host_value_index);
         let value_query =
             self.trace_holder
                 .get_leafs_and_merkle_paths(0, &device_value_index, context)?;
-        let host_path_index = alloc_transient_host_and_copy(context, &[index as u32]);
+        let mut host_path_index = unsafe { context.alloc_host_uninit_slice(1) };
+        let pi_accessor = host_path_index.get_mut_accessor();
+        callbacks.schedule(
+            move || unsafe { pi_accessor.get_mut()[0] = index as u32 },
+            context.get_exec_stream(),
+        )?;
         let mut device_path_index = context.alloc(1, AllocationPlacement::BestFit)?;
         memory_copy_async(
             &mut device_path_index,
             &host_path_index,
             context.get_exec_stream(),
         )?;
+        drop(host_path_index);
         let path_query =
             self.trace_holder
                 .get_leafs_and_merkle_paths(0, &device_path_index, context)?;
         Ok(GpuWhirScheduledExtensionQuery {
             index,
             coset_index,
-            query_index_host: None,
-            value_index_host: host_value_index,
-            path_index_host: host_path_index,
+            callbacks,
             leafs: value_query.leafs,
             merkle_paths: path_query.merkle_paths,
             values_per_leaf: self.values_per_leaf,
@@ -319,11 +329,11 @@ impl GpuWhirExtensionOracle {
         &mut self,
         query_index: HostAllocation<[u32]>,
         context: &ProverContext,
-    ) -> CudaResult<(Callbacks<'static>, GpuWhirScheduledExtensionQuery)> {
+    ) -> CudaResult<GpuWhirScheduledExtensionQuery> {
         let mut callbacks = Callbacks::new();
-        let mut value_index = unsafe { context.alloc_transient_host_uninit_slice(1) };
+        let mut value_index = unsafe { context.alloc_host_uninit_slice(1) };
         let value_index_accessor = value_index.get_mut_accessor();
-        let mut path_index = unsafe { context.alloc_transient_host_uninit_slice(1) };
+        let mut path_index = unsafe { context.alloc_host_uninit_slice(1) };
         let path_index_accessor = path_index.get_mut_accessor();
         let query_index_accessor = query_index.get_accessor();
         let lde_factor = self.lde_factor;
@@ -347,31 +357,29 @@ impl GpuWhirExtensionOracle {
             &value_index,
             context.get_exec_stream(),
         )?;
+        drop(value_index);
         let mut device_path_index = context.alloc(1, AllocationPlacement::BestFit)?;
         memory_copy_async(
             &mut device_path_index,
             &path_index,
             context.get_exec_stream(),
         )?;
+        drop(path_index);
+        drop(query_index);
         let value_query =
             self.trace_holder
                 .get_leafs_and_merkle_paths(0, &device_value_index, context)?;
         let path_query =
             self.trace_holder
                 .get_leafs_and_merkle_paths(0, &device_path_index, context)?;
-        Ok((
+        Ok(GpuWhirScheduledExtensionQuery {
+            index: 0,
+            coset_index: 0,
             callbacks,
-            GpuWhirScheduledExtensionQuery {
-                index: 0,
-                coset_index: 0,
-                query_index_host: Some(query_index),
-                value_index_host: value_index,
-                path_index_host: path_index,
-                leafs: value_query.leafs,
-                merkle_paths: path_query.merkle_paths,
-                values_per_leaf: self.values_per_leaf,
-            },
-        ))
+            leafs: value_query.leafs,
+            merkle_paths: path_query.merkle_paths,
+            values_per_leaf: self.values_per_leaf,
+        })
     }
 
     #[cfg(test)]
@@ -394,31 +402,6 @@ impl GpuWhirExtensionOracle {
         }
         decode_packed_coset_values(&packed_coset, self.packed_leaf_count, self.values_per_leaf)
     }
-}
-
-fn alloc_host_and_copy<T: Copy>(context: &ProverContext, values: &[T]) -> HostAllocation<[T]> {
-    let mut allocation = unsafe { context.alloc_host_uninit_slice(values.len()) };
-    unsafe {
-        allocation
-            .get_mut_accessor()
-            .get_mut()
-            .copy_from_slice(values);
-    }
-    allocation
-}
-
-fn alloc_transient_host_and_copy<T: Copy>(
-    context: &ProverContext,
-    values: &[T],
-) -> HostAllocation<[T]> {
-    let mut allocation = unsafe { context.alloc_transient_host_uninit_slice(values.len()) };
-    unsafe {
-        allocation
-            .get_mut_accessor()
-            .get_mut()
-            .copy_from_slice(values);
-    }
-    allocation
 }
 
 fn serialize_extension_columns(values: &[E4]) -> Vec<BF> {
@@ -681,11 +664,11 @@ pub(crate) mod tests {
             let (_cpu_coset_index, cpu_values, cpu_query) = cpu.query_for_folded_index(query_index);
 
             let mut host_query_index =
-                unsafe { context.alloc_transient_host_uninit_slice::<u32>(1) };
+                unsafe { context.alloc_host_uninit_slice::<u32>(1) };
             unsafe {
                 host_query_index.get_mut_accessor().get_mut()[0] = query_index as u32;
             }
-            let (_callbacks, scheduled_query) = gpu
+            let scheduled_query = gpu
                 .schedule_query_for_folded_index_from_host(host_query_index, &context)
                 .unwrap();
             context.get_exec_stream().synchronize().unwrap();
