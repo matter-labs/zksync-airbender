@@ -28,9 +28,9 @@ use prover::definitions::{
 use prover::merkle_trees::MerkleTreeCapVarLength;
 use prover::prover_stages::unrolled_prover::UnrolledModeProof;
 use prover::prover_stages::Proof;
-use prover::risc_v_simulator::abstractions::non_determinism::QuasiUARTSource;
 use rayon::iter::IntoParallelIterator;
 use rayon::iter::ParallelIterator;
+use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
 use riscv_transpiler::ir::{
     preprocess_bytecode, FullMachineDecoderConfig, FullUnsignedMachineDecoderConfig,
     ReducedMachineDecoderConfig,
@@ -1408,7 +1408,7 @@ mod tests {
     use crate::execution::prover::{ExecutionKind, ExecutionProver, ExecutionProverConfiguration};
     use crate::machine_type::MachineType;
     use crate::tests::init_logger;
-    use prover::risc_v_simulator::abstractions::non_determinism::QuasiUARTSource;
+    use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
     use setups::read_binary;
     use std::path::Path;
 

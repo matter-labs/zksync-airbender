@@ -15,7 +15,7 @@ use memory_witness::delegation_circuit::process_delegation_requests_execution;
 use memory_witness::main_circuit::process_delegation_requests;
 use memory_witness::main_circuit::process_lazy_init_work;
 use memory_witness::main_circuit::process_shuffle_ram_accesses;
-use risc_v_simulator::cycle::state::NUM_REGISTERS;
+use riscv_transpiler::cycle::state::NUM_REGISTERS;
 use std::alloc::Allocator;
 use std::collections::HashMap;
 use trace_holder::*;

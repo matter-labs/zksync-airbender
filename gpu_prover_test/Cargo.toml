@@ -12,7 +12,7 @@ categories.workspace = true
 [dependencies]
 execution_utils = { workspace = true, features = ["prover", "gpu_prover"] }
 gpu_prover = { workspace = true }
-risc_v_simulator = { workspace = true }
+riscv_transpiler = { workspace = true }
 
 log = { workspace = true }
 

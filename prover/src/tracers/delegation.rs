@@ -1,6 +1,6 @@
 use cs::definitions::TimestampData;
 use fft::GoodAllocator;
-use risc_v_simulator::abstractions::tracer::{
+use riscv_transpiler::abstractions::tracer::{
     RegisterOrIndirectReadData, RegisterOrIndirectReadWriteData,
     RegisterOrIndirectVariableOffsetData,
 };

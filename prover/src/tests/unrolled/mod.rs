@@ -727,7 +727,7 @@ fn test_bigint_with_replayer_oracle() {
 
 #[test]
 fn test_reference_block_exec() {
-    use risc_v_simulator::abstractions::non_determinism::QuasiUARTSource;
+    use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
     use riscv_transpiler::ir::*;
     use riscv_transpiler::vm::*;
     use std::path::Path;

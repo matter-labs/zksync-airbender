@@ -24,13 +24,13 @@
 //     fft::GoodAllocator,
 //     field::{Field, Mersenne31Quartic},
 //     merkle_trees::{DefaultTreeConstructor, MerkleTreeConstructor},
-//     risc_v_simulator::cycle::{IMStandardIsaConfig, IWithoutByteAccessIsaConfigWithDelegation},
+//     riscv_transpiler::cycle::{IMStandardIsaConfig, IWithoutByteAccessIsaConfigWithDelegation},
 // };
 //
 // use prover::{
 //     definitions::OPTIMAL_FOLDING_PROPERTIES,
 //     prover_stages::Proof,
-//     risc_v_simulator::{
+//     riscv_transpiler::{
 //         abstractions::non_determinism::NonDeterminismCSRSource, cycle::MachineConfig,
 //     },
 //     tracers::oracles::chunk_lazy_init_and_teardown,

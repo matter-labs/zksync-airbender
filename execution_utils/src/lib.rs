@@ -10,7 +10,7 @@ compile_error!(
 );
 
 use clap::ValueEnum;
-use risc_v_simulator::cycle::MachineConfig;
+use riscv_transpiler::cycle::MachineConfig;
 use serde::{Deserialize, Serialize};
 use verifier_common::prover::definitions::MerkleTreeCap;
 use verifier_common::transcript::Blake2sBufferingTranscript;
@@ -333,14 +333,14 @@ pub mod verifier_binaries {
 
 //     #[allow(deprecated)]
 //     pub fn run_verifier_binary(binary: &[u8], reads: Vec<u32>) -> Option<[u32; 16]> {
-//         use risc_v_simulator::cycle::IMIsaConfigWithAllDelegations;
+//         use riscv_transpiler::cycle::IMIsaConfigWithAllDelegations;
 
 //         let final_pc = find_binary_exit_point(binary);
 //         println!("Expected final PC = 0x{:08x}", final_pc);
 
 //         let source = QuasiUARTSource::new_with_reads(reads);
 
-//         let final_state = risc_v_simulator::runner::run_simple_for_num_cycles::<
+//         let final_state = riscv_transpiler::runner::run_simple_for_num_cycles::<
 //             _,
 //             IMIsaConfigWithAllDelegations,
 //         >(binary, 0, 1 << 30, source);

@@ -1,12 +1,12 @@
 use super::*;
-use risc_v_simulator::abstractions::non_determinism::QuasiUARTSource;
+use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
 use riscv_transpiler::replayer::*;
 use std::collections::BTreeSet;
 
 #[cfg(test)]
 use test_utils::skip_if_ci;
 
-use risc_v_simulator::machine_mode_only_unrolled::*;
+use riscv_transpiler::machine_mode_only_unrolled::*;
 use riscv_transpiler::witness::*;
 
 use cs::definitions::INITIAL_TIMESTAMP;
