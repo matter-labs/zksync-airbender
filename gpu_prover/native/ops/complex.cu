@@ -912,12 +912,12 @@ DEVICE_FORCEINLINE void gkr_main_round0(
     const gkr_base_initial_source<bf> *base_outputs,
     const gkr_ext_initial_source<E> *ext_outputs,
     const E *batch_challenges,
-    const E aux_challenge,
+    const E *aux_challenge,
     const gkr_main_constraint_quadratic_term<E> *constraint_quadratic_terms,
     const unsigned constraint_quadratic_terms_count,
     const gkr_main_constraint_linear_term<E> *constraint_linear_terms,
     const unsigned constraint_linear_terms_count,
-    const E constraint_constant_offset,
+    const E *constraint_constant_offset,
     E *contributions,
     const unsigned acc_size) {
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
@@ -1039,12 +1039,12 @@ DEVICE_FORCEINLINE void gkr_main_round1(
     const gkr_ext_continuing_source<E> *ext_inputs,
     const E *batch_challenges,
     const E *folding_challenge,
-    const E aux_challenge,
+    const E *aux_challenge,
     const gkr_main_constraint_quadratic_term<E> *constraint_quadratic_terms,
     const unsigned constraint_quadratic_terms_count,
     const gkr_main_constraint_linear_term<E> *constraint_linear_terms,
     const unsigned constraint_linear_terms_count,
-    const E constraint_constant_offset,
+    const E *constraint_constant_offset,
     E *contributions,
     const unsigned acc_size) {
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
@@ -1053,6 +1053,7 @@ DEVICE_FORCEINLINE void gkr_main_round1(
   const E batch_challenge_0 = batch_challenges[0];
   const E batch_challenge_1 = batch_challenges[1];
   const E current_folding_challenge = folding_challenge[0];
+  const E current_aux_challenge = aux_challenge[0];
 
   E c0 = E::ZERO();
   E c1 = E::ZERO();
@@ -1141,9 +1142,9 @@ DEVICE_FORCEINLINE void gkr_main_round1(
     E den0;
     E num1;
     E den1;
-    gkr_eval_lookup_base_pair(b0, d0, aux_challenge, num0, den0);
+    gkr_eval_lookup_base_pair(b0, d0, current_aux_challenge, num0, den0);
     if constexpr (EXPLICIT_FORM) {
-      gkr_eval_lookup_base_pair(b1, d1, aux_challenge, num1, den1);
+      gkr_eval_lookup_base_pair(b1, d1, current_aux_challenge, num1, den1);
     } else {
       gkr_eval_lookup_base_pair_quadratic(b1, d1, num1, den1);
     }
@@ -1165,9 +1166,9 @@ DEVICE_FORCEINLINE void gkr_main_round1(
     E den0;
     E num1;
     E den1;
-    gkr_eval_lookup_base_minus_multiplicity(b0, c0_in, d0, aux_challenge, num0, den0);
+    gkr_eval_lookup_base_minus_multiplicity(b0, c0_in, d0, current_aux_challenge, num0, den0);
     if constexpr (EXPLICIT_FORM) {
-      gkr_eval_lookup_base_minus_multiplicity(b1, c1_in, d1, aux_challenge, num1, den1);
+      gkr_eval_lookup_base_minus_multiplicity(b1, c1_in, d1, current_aux_challenge, num1, den1);
     } else {
       gkr_eval_lookup_base_minus_multiplicity_quadratic(b1, c1_in, d1, num1, den1);
     }
@@ -1189,9 +1190,9 @@ DEVICE_FORCEINLINE void gkr_main_round1(
     E den0;
     E num1;
     E den1;
-    gkr_eval_lookup_unbalanced(d0, a0, b0, aux_challenge, num0, den0);
+    gkr_eval_lookup_unbalanced(d0, a0, b0, current_aux_challenge, num0, den0);
     if constexpr (EXPLICIT_FORM) {
-      gkr_eval_lookup_unbalanced(d1, a1, b1, aux_challenge, num1, den1);
+      gkr_eval_lookup_unbalanced(d1, a1, b1, current_aux_challenge, num1, den1);
     } else {
       gkr_eval_lookup_unbalanced_quadratic(d1, a1, b1, num1, den1);
     }
@@ -1227,7 +1228,7 @@ DEVICE_FORCEINLINE void gkr_main_round1(
     E eval1;
     gkr_eval_constraints_round1<E, EXPLICIT_FORM>(
         base_inputs, current_folding_challenge, gid, constraint_quadratic_terms, constraint_quadratic_terms_count, constraint_linear_terms,
-        constraint_linear_terms_count, constraint_constant_offset, eval0, eval1);
+        constraint_linear_terms_count, constraint_constant_offset[0], eval0, eval1);
     c0 = E::mul(batch_challenge_0, eval0);
     c1 = E::mul(batch_challenge_0, eval1);
     break;
@@ -1246,12 +1247,12 @@ DEVICE_FORCEINLINE void gkr_main_round2(
     const gkr_ext_continuing_source<E> *ext_inputs,
     const E *batch_challenges,
     const E *folding_challenges,
-    const E aux_challenge,
+    const E *aux_challenge,
     const gkr_main_constraint_quadratic_term<E> *constraint_quadratic_terms,
     const unsigned constraint_quadratic_terms_count,
     const gkr_main_constraint_linear_term<E> *constraint_linear_terms,
     const unsigned constraint_linear_terms_count,
-    const E constraint_constant_offset,
+    const E *constraint_constant_offset,
     E *contributions,
     const unsigned acc_size) {
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
@@ -1261,6 +1262,7 @@ DEVICE_FORCEINLINE void gkr_main_round2(
   const E batch_challenge_1 = batch_challenges[1];
   const E first_folding_challenge = folding_challenges[0];
   const E second_folding_challenge = folding_challenges[1];
+  const E current_aux_challenge = aux_challenge[0];
 
   E c0 = E::ZERO();
   E c1 = E::ZERO();
@@ -1349,9 +1351,9 @@ DEVICE_FORCEINLINE void gkr_main_round2(
     E den0;
     E num1;
     E den1;
-    gkr_eval_lookup_base_pair(b0, d0, aux_challenge, num0, den0);
+    gkr_eval_lookup_base_pair(b0, d0, current_aux_challenge, num0, den0);
     if constexpr (EXPLICIT_FORM) {
-      gkr_eval_lookup_base_pair(b1, d1, aux_challenge, num1, den1);
+      gkr_eval_lookup_base_pair(b1, d1, current_aux_challenge, num1, den1);
     } else {
       gkr_eval_lookup_base_pair_quadratic(b1, d1, num1, den1);
     }
@@ -1373,9 +1375,9 @@ DEVICE_FORCEINLINE void gkr_main_round2(
     E den0;
     E num1;
     E den1;
-    gkr_eval_lookup_base_minus_multiplicity(b0, c0_in, d0, aux_challenge, num0, den0);
+    gkr_eval_lookup_base_minus_multiplicity(b0, c0_in, d0, current_aux_challenge, num0, den0);
     if constexpr (EXPLICIT_FORM) {
-      gkr_eval_lookup_base_minus_multiplicity(b1, c1_in, d1, aux_challenge, num1, den1);
+      gkr_eval_lookup_base_minus_multiplicity(b1, c1_in, d1, current_aux_challenge, num1, den1);
     } else {
       gkr_eval_lookup_base_minus_multiplicity_quadratic(b1, c1_in, d1, num1, den1);
     }
@@ -1397,9 +1399,9 @@ DEVICE_FORCEINLINE void gkr_main_round2(
     E den0;
     E num1;
     E den1;
-    gkr_eval_lookup_unbalanced(d0, a0, b0, aux_challenge, num0, den0);
+    gkr_eval_lookup_unbalanced(d0, a0, b0, current_aux_challenge, num0, den0);
     if constexpr (EXPLICIT_FORM) {
-      gkr_eval_lookup_unbalanced(d1, a1, b1, aux_challenge, num1, den1);
+      gkr_eval_lookup_unbalanced(d1, a1, b1, current_aux_challenge, num1, den1);
     } else {
       gkr_eval_lookup_unbalanced_quadratic(d1, a1, b1, num1, den1);
     }
@@ -1435,7 +1437,7 @@ DEVICE_FORCEINLINE void gkr_main_round2(
     E eval1;
     gkr_eval_constraints_round2<E, EXPLICIT_FORM>(
         base_inputs, first_folding_challenge, second_folding_challenge, gid, constraint_quadratic_terms, constraint_quadratic_terms_count, constraint_linear_terms,
-        constraint_linear_terms_count, constraint_constant_offset, eval0, eval1);
+        constraint_linear_terms_count, constraint_constant_offset[0], eval0, eval1);
     c0 = E::mul(batch_challenge_0, eval0);
     c1 = E::mul(batch_challenge_0, eval1);
     break;
@@ -1454,12 +1456,12 @@ DEVICE_FORCEINLINE void gkr_main_round3(
     const gkr_ext_continuing_source<E> *ext_inputs,
     const E *batch_challenges,
     const E *folding_challenge,
-    const E aux_challenge,
+    const E *aux_challenge,
     const gkr_main_constraint_quadratic_term<E> *constraint_quadratic_terms,
     const unsigned constraint_quadratic_terms_count,
     const gkr_main_constraint_linear_term<E> *constraint_linear_terms,
     const unsigned constraint_linear_terms_count,
-    const E constraint_constant_offset,
+    const E *constraint_constant_offset,
     E *contributions,
     const unsigned acc_size) {
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
@@ -1468,6 +1470,7 @@ DEVICE_FORCEINLINE void gkr_main_round3(
   const E batch_challenge_0 = batch_challenges[0];
   const E batch_challenge_1 = batch_challenges[1];
   const E current_folding_challenge = folding_challenge[0];
+  const E current_aux_challenge = aux_challenge[0];
 
   E c0 = E::ZERO();
   E c1 = E::ZERO();
@@ -1556,9 +1559,9 @@ DEVICE_FORCEINLINE void gkr_main_round3(
     E den0;
     E num1;
     E den1;
-    gkr_eval_lookup_base_pair(b0, d0, aux_challenge, num0, den0);
+    gkr_eval_lookup_base_pair(b0, d0, current_aux_challenge, num0, den0);
     if constexpr (EXPLICIT_FORM) {
-      gkr_eval_lookup_base_pair(b1, d1, aux_challenge, num1, den1);
+      gkr_eval_lookup_base_pair(b1, d1, current_aux_challenge, num1, den1);
     } else {
       gkr_eval_lookup_base_pair_quadratic(b1, d1, num1, den1);
     }
@@ -1580,9 +1583,9 @@ DEVICE_FORCEINLINE void gkr_main_round3(
     E den0;
     E num1;
     E den1;
-    gkr_eval_lookup_base_minus_multiplicity(b0, c0_in, d0, aux_challenge, num0, den0);
+    gkr_eval_lookup_base_minus_multiplicity(b0, c0_in, d0, current_aux_challenge, num0, den0);
     if constexpr (EXPLICIT_FORM) {
-      gkr_eval_lookup_base_minus_multiplicity(b1, c1_in, d1, aux_challenge, num1, den1);
+      gkr_eval_lookup_base_minus_multiplicity(b1, c1_in, d1, current_aux_challenge, num1, den1);
     } else {
       gkr_eval_lookup_base_minus_multiplicity_quadratic(b1, c1_in, d1, num1, den1);
     }
@@ -1604,9 +1607,9 @@ DEVICE_FORCEINLINE void gkr_main_round3(
     E den0;
     E num1;
     E den1;
-    gkr_eval_lookup_unbalanced(d0, a0, b0, aux_challenge, num0, den0);
+    gkr_eval_lookup_unbalanced(d0, a0, b0, current_aux_challenge, num0, den0);
     if constexpr (EXPLICIT_FORM) {
-      gkr_eval_lookup_unbalanced(d1, a1, b1, aux_challenge, num1, den1);
+      gkr_eval_lookup_unbalanced(d1, a1, b1, current_aux_challenge, num1, den1);
     } else {
       gkr_eval_lookup_unbalanced_quadratic(d1, a1, b1, num1, den1);
     }
@@ -1642,7 +1645,7 @@ DEVICE_FORCEINLINE void gkr_main_round3(
     E eval1;
     gkr_eval_constraints_round3<E, EXPLICIT_FORM>(
         base_inputs, current_folding_challenge, gid, constraint_quadratic_terms, constraint_quadratic_terms_count, constraint_linear_terms,
-        constraint_linear_terms_count, constraint_constant_offset, eval0, eval1);
+        constraint_linear_terms_count, constraint_constant_offset[0], eval0, eval1);
     c0 = E::mul(batch_challenge_0, eval0);
     c1 = E::mul(batch_challenge_0, eval1);
     break;
@@ -1699,19 +1702,19 @@ GKR_DIM_REDUCING_KERNELS(e6);
   EXTERN __global__ void ab_gkr_main_round0_##arg_t##_kernel(                                                                                                               \
       const unsigned kind, const gkr_base_initial_source<bf> *base_inputs, const gkr_ext_initial_source<arg_t> *ext_inputs,                                              \
       const gkr_base_initial_source<bf> *base_outputs, const gkr_ext_initial_source<arg_t> *ext_outputs, const arg_t *batch_challenges,                                 \
-      const arg_t aux_challenge, const gkr_main_constraint_quadratic_term<arg_t> *constraint_quadratic_terms,                                                             \
+      const arg_t *aux_challenge, const gkr_main_constraint_quadratic_term<arg_t> *constraint_quadratic_terms,                                                            \
       const unsigned constraint_quadratic_terms_count, const gkr_main_constraint_linear_term<arg_t> *constraint_linear_terms,                                            \
-      const unsigned constraint_linear_terms_count, const arg_t constraint_constant_offset, arg_t *contributions, const unsigned acc_size) {                             \
+      const unsigned constraint_linear_terms_count, const arg_t *constraint_constant_offset, arg_t *contributions, const unsigned acc_size) {                            \
     gkr_main_round0(kind, base_inputs, ext_inputs, base_outputs, ext_outputs, batch_challenges, aux_challenge,                                                           \
         constraint_quadratic_terms, constraint_quadratic_terms_count, constraint_linear_terms, constraint_linear_terms_count,                                             \
         constraint_constant_offset, contributions, acc_size);                                                                                                                \
   }                                                                                                                                                                           \
   EXTERN __global__ void ab_gkr_main_round1_##arg_t##_kernel(                                                                                                               \
       const unsigned kind, const gkr_base_after_one_source<bf, arg_t> *base_inputs, const gkr_ext_continuing_source<arg_t> *ext_inputs,                                 \
-      const arg_t *batch_challenges, const arg_t *folding_challenge, const arg_t aux_challenge,                                                                           \
+      const arg_t *batch_challenges, const arg_t *folding_challenge, const arg_t *aux_challenge,                                                                          \
       const gkr_main_constraint_quadratic_term<arg_t> *constraint_quadratic_terms, const unsigned constraint_quadratic_terms_count,                                       \
       const gkr_main_constraint_linear_term<arg_t> *constraint_linear_terms, const unsigned constraint_linear_terms_count,                                                 \
-      const arg_t constraint_constant_offset, const bool explicit_form, arg_t *contributions, const unsigned acc_size) {                                                  \
+      const arg_t *constraint_constant_offset, const bool explicit_form, arg_t *contributions, const unsigned acc_size) {                                                 \
     if (explicit_form)                                                                                                                                                        \
       gkr_main_round1<arg_t, true>(kind, base_inputs, ext_inputs, batch_challenges, folding_challenge, aux_challenge,                                                    \
           constraint_quadratic_terms, constraint_quadratic_terms_count, constraint_linear_terms, constraint_linear_terms_count,                                            \
@@ -1723,10 +1726,10 @@ GKR_DIM_REDUCING_KERNELS(e6);
   }                                                                                                                                                                           \
   EXTERN __global__ void ab_gkr_main_round2_##arg_t##_kernel(                                                                                                               \
       const unsigned kind, const gkr_base_after_two_source<bf, arg_t> *base_inputs, const gkr_ext_continuing_source<arg_t> *ext_inputs,                                 \
-      const arg_t *batch_challenges, const arg_t *folding_challenges, const arg_t aux_challenge,                                                                          \
+      const arg_t *batch_challenges, const arg_t *folding_challenges, const arg_t *aux_challenge,                                                                         \
       const gkr_main_constraint_quadratic_term<arg_t> *constraint_quadratic_terms, const unsigned constraint_quadratic_terms_count,                                       \
       const gkr_main_constraint_linear_term<arg_t> *constraint_linear_terms, const unsigned constraint_linear_terms_count,                                                 \
-      const arg_t constraint_constant_offset, const bool explicit_form, arg_t *contributions, const unsigned acc_size) {                                                  \
+      const arg_t *constraint_constant_offset, const bool explicit_form, arg_t *contributions, const unsigned acc_size) {                                                 \
     if (explicit_form)                                                                                                                                                        \
       gkr_main_round2<arg_t, true>(kind, base_inputs, ext_inputs, batch_challenges, folding_challenges, aux_challenge,                                                   \
           constraint_quadratic_terms, constraint_quadratic_terms_count, constraint_linear_terms, constraint_linear_terms_count,                                            \
@@ -1738,10 +1741,10 @@ GKR_DIM_REDUCING_KERNELS(e6);
   }                                                                                                                                                                           \
   EXTERN __global__ void ab_gkr_main_round3_##arg_t##_kernel(                                                                                                               \
       const unsigned kind, const gkr_ext_continuing_source<arg_t> *base_inputs, const gkr_ext_continuing_source<arg_t> *ext_inputs,                                      \
-      const arg_t *batch_challenges, const arg_t *folding_challenge, const arg_t aux_challenge,                                                                           \
+      const arg_t *batch_challenges, const arg_t *folding_challenge, const arg_t *aux_challenge,                                                                          \
       const gkr_main_constraint_quadratic_term<arg_t> *constraint_quadratic_terms, const unsigned constraint_quadratic_terms_count,                                       \
       const gkr_main_constraint_linear_term<arg_t> *constraint_linear_terms, const unsigned constraint_linear_terms_count,                                                 \
-      const arg_t constraint_constant_offset, const bool explicit_form, arg_t *contributions, const unsigned acc_size) {                                                  \
+      const arg_t *constraint_constant_offset, const bool explicit_form, arg_t *contributions, const unsigned acc_size) {                                                 \
     if (explicit_form)                                                                                                                                                        \
       gkr_main_round3<arg_t, true>(kind, base_inputs, ext_inputs, batch_challenges, folding_challenge, aux_challenge,                                                    \
           constraint_quadratic_terms, constraint_quadratic_terms_count, constraint_linear_terms, constraint_linear_terms_count,                                            \

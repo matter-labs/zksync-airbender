@@ -16,15 +16,30 @@ use crate::primitives::circuit_type::{
 };
 use crate::primitives::context::ProverContext;
 use crate::primitives::field::{BF, E4};
+use crate::primitives::static_host::alloc_static_pinned_vec_from_slice;
+use crate::prover::decoder::{DecoderTableTransfer, DECODER_TABLE_STATIC_HOST_LOG_CHUNK_SIZE};
+use crate::prover::proof::{prove, GkrExternalPowChallenges, GpuGKRProofJob};
 use crate::prover::test_utils::make_test_context;
 use crate::prover::trace_holder::TraceHolder;
-use crate::prover::tracing_data::{TracingDataDevice, UnrolledTracingDataDevice};
+use crate::prover::tracing_data::{
+    TracingDataDevice, TracingDataHost, TracingDataTransfer, UnrolledTracingDataDevice,
+    UnrolledTracingDataHost,
+};
 use crate::prover::whir::GpuWhirExtensionOracle;
 use crate::prover::whir_fold::{
-    debug_build_initial_batched_main_domain_poly_for_test, debug_build_initial_state_for_test,
-    debug_build_initial_state_snapshots_for_test, gpu_whir_fold_supported_path,
+    clone_scheduled_whir_pre_pow_seeds,
+    debug_apply_initial_fold_challenge_for_test,
+    debug_build_initial_batched_main_domain_poly_for_test,
+    debug_build_initial_fold_state_for_test,
+    debug_build_initial_state_for_test,
+    debug_build_initial_state_snapshots_for_test,
+    debug_initial_round_checkpoint_for_test,
+    gpu_whir_fold_supported_path,
+    gpu_whir_fold_supported_path_with_external_pow,
+    schedule_gpu_whir_fold_with_sources,
 };
-use crate::witness::trace_unrolled::UnrolledNonMemoryTraceDevice;
+use crate::witness::trace::ChunkedTraceHolder;
+use crate::witness::trace_unrolled::{ExecutorFamilyDecoderData, UnrolledNonMemoryTraceDevice};
 use cs::definitions::*;
 use cs::gkr_compiler::{GKRCircuitArtifact, GKRLayerDescription, NoFieldGKRRelation, OutputType};
 use cs::machine::ops::unrolled::add_sub_lui_auipc_mop::{
@@ -39,6 +54,7 @@ use cs::machine::ops::unrolled::{
 use cs::tables::TableDriver;
 use era_cudart::event::{CudaEvent, CudaEventCreateFlags};
 use era_cudart::memory::memory_copy;
+use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 use fft::{
     batch_inverse_inplace, bitreverse_enumeration_inplace, domain_generator_for_size,
@@ -53,6 +69,7 @@ use nvtx::range;
 use prover::definitions::Transcript;
 use prover::gkr::prover::dimension_reduction::{self, forward::DimensionReducingInputOutput};
 use prover::gkr::prover::forward_loop;
+use prover::gkr::prover::prove_configured_with_gkr;
 use prover::gkr::prover::setup::GKRSetup;
 use prover::gkr::prover::stages::stage1;
 use prover::gkr::prover::stages::stage1::ColumnMajorCosetBoundTracePart;
@@ -235,6 +252,296 @@ fn compute_initial_sumcheck_claims_from_explicit_evaluations_for_test<E: Field>(
     }
 
     evals.try_into().unwrap()
+}
+
+fn make_decoder_table_host_for_test(
+    witness_gen_data: &[cs::cs::oracle::ExecutorFamilyDecoderData],
+) -> Arc<Vec<ExecutorFamilyDecoderData, crate::allocator::host::ConcurrentStaticHostAllocator>> {
+    let data: Vec<_> = witness_gen_data
+        .iter()
+        .copied()
+        .map(ExecutorFamilyDecoderData::from)
+        .collect();
+    Arc::new(
+        alloc_static_pinned_vec_from_slice(&data, DECODER_TABLE_STATIC_HOST_LOG_CHUNK_SIZE)
+            .expect("decoder table should fit in static pinned host memory"),
+    )
+}
+
+fn make_non_memory_tracing_host_for_test(
+    buffer: Vec<NonMemoryOpcodeTracingDataWithTimestamp>,
+) -> TracingDataHost<Global> {
+    TracingDataHost::Unrolled(UnrolledTracingDataHost::NonMemory(ChunkedTraceHolder {
+        chunks: vec![Arc::new(buffer)],
+    }))
+}
+
+struct BasicUnrolledProofFixture {
+    context: ProverContext,
+    circuit_type: CircuitType,
+    compiled_circuit: GKRCircuitArtifact<BF>,
+    external_challenges: GKRExternalChallenges<BF, E4>,
+    whir_schedule: WhirSchedule,
+    final_trace_size_log_2: usize,
+    gpu_setup_host: Arc<GpuGKRSetupHost>,
+    decoder_table_host:
+        Arc<Vec<ExecutorFamilyDecoderData, crate::allocator::host::ConcurrentStaticHostAllocator>>,
+    tracing_data_host: TracingDataHost<Global>,
+    expected_cpu_proof: GKRProof<BF, E4, DefaultTreeConstructor>,
+}
+
+impl BasicUnrolledProofFixture {
+    fn override_pow_challenges(&self) -> GkrExternalPowChallenges {
+        GkrExternalPowChallenges {
+            whir_pow_nonces: self.expected_cpu_proof.whir_proof.pow_nonces.clone(),
+        }
+    }
+
+    fn schedule_prove(
+        &self,
+        external_pow_challenges: Option<GkrExternalPowChallenges>,
+    ) -> CudaResult<GpuGKRProofJob<'static>> {
+        let setup_transfer =
+            GpuGKRSetupTransfer::new(Arc::clone(&self.gpu_setup_host), &self.context)?;
+        let decoder_transfer = if self.compiled_circuit.has_decoder_lookup {
+            Some(DecoderTableTransfer::new(
+                Arc::clone(&self.decoder_table_host),
+                &self.context,
+            )?)
+        } else {
+            None
+        };
+        let tracing_data_transfer =
+            TracingDataTransfer::new(self.tracing_data_host.clone(), &self.context)?;
+
+        prove::<Global>(
+            self.circuit_type,
+            self.compiled_circuit.clone(),
+            self.external_challenges,
+            self.whir_schedule.clone(),
+            self.final_trace_size_log_2,
+            setup_transfer,
+            decoder_transfer,
+            None,
+            tracing_data_transfer,
+            external_pow_challenges,
+            &self.context,
+        )
+    }
+}
+
+fn prepare_basic_unrolled_proof_fixture() -> BasicUnrolledProofFixture {
+    type CountersT = DelegationsAndFamiliesCounters;
+
+    const TRACE_LEN_LOG2: usize = 24;
+    const NUM_CYCLES_PER_CHUNK: usize = 1 << TRACE_LEN_LOG2;
+    const FINAL_TRACE_SIZE_LOG_2: usize = 4;
+
+    let trace_len: usize = 1 << TRACE_LEN_LOG2;
+    let worker = Worker::new_with_num_threads(8);
+
+    let binary = std::fs::read(test_artifact_path("examples/hashed_fibonacci/app.bin")).unwrap();
+    assert_eq!(binary.len() % 4, 0);
+    let binary: Vec<_> = binary
+        .as_chunks::<4>()
+        .0
+        .into_iter()
+        .map(|el| u32::from_le_bytes(*el))
+        .collect();
+
+    let text_section =
+        std::fs::read(test_artifact_path("examples/hashed_fibonacci/app.text")).unwrap();
+    assert_eq!(text_section.len() % 4, 0);
+    let text_section: Vec<_> = text_section
+        .as_chunks::<4>()
+        .0
+        .into_iter()
+        .map(|el| u32::from_le_bytes(*el))
+        .collect();
+
+    let instructions: Vec<Instruction> =
+        preprocess_bytecode::<FullUnsignedMachineDecoderConfig>(&text_section);
+    let tape = SimpleTape::new(&instructions);
+    let mut ram = RamWithRomRegion::<{ ROM_SECOND_WORD_BITS }>::from_rom_content(&binary, 1 << 30);
+    let cycles_bound = 1 << 20;
+
+    let mut state = State::initial_with_counters(CountersT::default());
+    let mut snapshotter =
+        SimpleSnapshotter::<CountersT, { ROM_SECOND_WORD_BITS }>::new_with_cycle_limit(
+            cycles_bound,
+            state,
+        );
+    let mut non_determinism = QuasiUARTSource::new_with_reads(vec![15, 1]);
+
+    let is_program_finished = VM::<CountersT>::run_basic_unrolled::<_, _, _>(
+        &mut state,
+        &mut ram,
+        &mut snapshotter,
+        &tape,
+        cycles_bound,
+        &mut non_determinism,
+    );
+    assert!(is_program_finished);
+
+    let counters = snapshotter.snapshots.last().unwrap().state.counters;
+    let mut preprocessing_data = process_binary_into_separate_tables_ext::<BF, true, Global>(
+        &text_section,
+        &opcodes_for_full_machine_with_unsigned_mul_div_only_with_mem_word_access_specialization(),
+        1 << 20,
+        &[
+            NON_DETERMINISM_CSR as u16,
+            BLAKE2S_DELEGATION_CSR_REGISTER as u16,
+            BIGINT_OPS_WITH_CONTROL_CSR_REGISTER as u16,
+            KECCAK_SPECIAL5_CSR_REGISTER as u16,
+        ],
+    );
+
+    let compiled_circuit = compile_unrolled_circuit_state_transition_into_gkr::<BF>(
+        &|cs| add_sub_lui_auipc_mop_table_addition_fn(cs),
+        &|cs| add_sub_lui_auipc_mop_circuit_with_preprocessed_bytecode_for_gkr(cs),
+        1 << 20,
+        TRACE_LEN_LOG2,
+    );
+
+    let num_calls =
+        counters.get_calls_to_circuit_family::<ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX>();
+    let mut replay_state = snapshotter.initial_snapshot.state;
+    let mut ram_log_buffers = snapshotter
+        .reads_buffer
+        .make_range(0..snapshotter.reads_buffer.len());
+    let mut replay_ram = ReplayerRam::<{ ROM_SECOND_WORD_BITS }> {
+        ram_log: &mut ram_log_buffers,
+    };
+    let mut buffer = vec![NonMemoryOpcodeTracingDataWithTimestamp::default(); num_calls];
+    let mut buffers = vec![&mut buffer[..]];
+    let mut tracer = NonMemDestinationHolder::<ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX> {
+        buffers: &mut buffers[..],
+    };
+    ReplayerVM::<CountersT>::replay_basic_unrolled::<_, _>(
+        &mut replay_state,
+        &mut replay_ram,
+        &tape,
+        &mut (),
+        cycles_bound,
+        &mut tracer,
+    );
+    drop(replay_ram);
+    drop(snapshotter);
+    drop(ram);
+    drop(non_determinism);
+    drop(tape);
+    drop(instructions);
+    drop(text_section);
+    drop(binary);
+
+    let (decoder_table_data, witness_gen_data) = preprocessing_data
+        .remove(&ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX)
+        .expect("fixture must contain preprocessed data for the add/sub family");
+    drop(preprocessing_data);
+
+    let memory_argument_alpha =
+        E4::from_array_of_base([BF::new(2), BF::new(5), BF::new(42), BF::new(123)]);
+    let permutation_argument_additive_part =
+        E4::from_array_of_base([BF::new(7), BF::new(11), BF::new(1024), BF::new(8000)]);
+    let permutation_argument_linearization_challenges: [E4; NUM_MEM_ARGUMENT_KEY_PARTS - 1] =
+        materialize_powers_serial_starting_with_elem::<_, Global>(
+            memory_argument_alpha,
+            NUM_MEM_ARGUMENT_KEY_PARTS - 1,
+        )
+        .try_into()
+        .unwrap();
+    let external_challenges = GKRExternalChallenges {
+        permutation_argument_linearization_challenges,
+        permutation_argument_additive_part,
+        _marker: std::marker::PhantomData,
+    };
+
+    let oracle = NonMemoryCircuitOracle {
+        inner: &buffer[..],
+        decoder_table: &witness_gen_data,
+        default_pc_value_in_padding: 4,
+    };
+
+    let memory_trace = evaluate_gkr_memory_witness_for_executor_family::<BF, _, _, _>(
+        &compiled_circuit,
+        NUM_CYCLES_PER_CHUNK,
+        &oracle,
+        &worker,
+        Global,
+        Global,
+    );
+    let full_trace = evaluate_gkr_witness_for_executor_family::<BF, _, _, _>(
+        &compiled_circuit,
+        add_sub_lui_auipc_mod::witness_eval_fn,
+        NUM_CYCLES_PER_CHUNK,
+        &oracle,
+        &TableDriver::new(),
+        &worker,
+        Global,
+        Global,
+    );
+    ensure_memory_trace_consistency(&memory_trace, &full_trace);
+    drop(memory_trace);
+
+    let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, &worker);
+    let whir_schedule = WhirSchedule::default_for_tests_80_bits();
+    let setup = GKRSetup::construct(
+        &TableDriver::new(),
+        &decoder_table_data,
+        trace_len,
+        &compiled_circuit,
+    );
+    let setup_commitment = setup.commit(
+        &twiddles,
+        whir_schedule.base_lde_factor,
+        whir_schedule.whir_steps_schedule[0],
+        whir_schedule.cap_size,
+        trace_len.trailing_zeros() as usize,
+        &worker,
+    );
+    let context = make_test_context(64 * 1024, 1024);
+    let gpu_setup_host = Arc::new(
+        GpuGKRSetupHost::precompute_from_cpu_setup(
+            &setup,
+            whir_schedule.base_lde_factor.trailing_zeros(),
+            1,
+            whir_schedule.cap_size.trailing_zeros(),
+            &context,
+        )
+        .unwrap(),
+    );
+    let decoder_table_host = make_decoder_table_host_for_test(&witness_gen_data);
+    eprintln!("fixture: decoder host ready");
+    let expected_cpu_proof = prove_configured_with_gkr::<BF, E4, DefaultTreeConstructor>(
+        &compiled_circuit,
+        &external_challenges,
+        full_trace,
+        &setup,
+        &setup_commitment,
+        &twiddles,
+        &whir_schedule,
+        None,
+        trace_len,
+        &worker,
+    );
+    eprintln!("fixture: cpu proof ready");
+    let tracing_data_host = make_non_memory_tracing_host_for_test(buffer);
+    eprintln!("fixture: tracing host ready");
+
+    BasicUnrolledProofFixture {
+        context,
+        circuit_type: CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
+            UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop,
+        )),
+        compiled_circuit,
+        external_challenges,
+        whir_schedule,
+        final_trace_size_log_2: FINAL_TRACE_SIZE_LOG_2,
+        gpu_setup_host,
+        decoder_table_host,
+        tracing_data_host,
+        expected_cpu_proof,
+    }
 }
 
 fn compute_column_major_lde_from_monomial_form_for_test(
@@ -545,13 +852,13 @@ fn fold_coset_for_test(
 fn assert_recursive_whir_oracle_parity_for_supported_path(
     mem_oracle: &ColumnMajorBaseOracleForLDE<BF, DefaultTreeConstructor>,
     mem_polys_claims: &[E4],
-    gpu_mem_trace_holder: &TraceHolder<BF>,
+    gpu_mem_trace_holder: &mut TraceHolder<BF>,
     wit_oracle: &ColumnMajorBaseOracleForLDE<BF, DefaultTreeConstructor>,
     wit_polys_claims: &[E4],
-    gpu_wit_trace_holder: &TraceHolder<BF>,
+    gpu_wit_trace_holder: &mut TraceHolder<BF>,
     setup_oracle: &ColumnMajorBaseOracleForLDE<BF, DefaultTreeConstructor>,
     setup_polys_claims: &[E4],
-    gpu_setup_trace_holder: &TraceHolder<BF>,
+    gpu_setup_trace_holder: &mut TraceHolder<BF>,
     original_evaluation_point: &[E4],
     original_lde_factor: usize,
     batching_challenge: E4,
@@ -563,6 +870,7 @@ fn assert_recursive_whir_oracle_parity_for_supported_path(
     context: &ProverContext,
 ) {
     let two_inv = BF::from_u32_unchecked(2).inverse().unwrap();
+    let scheduled_transcript_seed = transcript_seed;
     let oracle_refs = [mem_oracle, wit_oracle, setup_oracle];
     let evals_refs = [mem_polys_claims, wit_polys_claims, setup_polys_claims];
     let total_base_oracles = oracle_refs.iter().map(|oracle| oracle.num_columns()).sum();
@@ -688,15 +996,40 @@ fn assert_recursive_whir_oracle_parity_for_supported_path(
     let mut whir_queries_schedule = whir_schedule.whir_queries_schedule.iter().copied();
     let mut whir_steps_lde_factors = whir_schedule.whir_steps_lde_factors.iter().copied();
     let mut whir_pow_schedule = whir_schedule.whir_pow_schedule.iter().copied();
+    let mut cpu_pre_pow_seeds = Vec::with_capacity(whir_schedule.whir_pow_schedule.len());
+    let mut cpu_pow_nonces = Vec::with_capacity(whir_schedule.whir_pow_schedule.len());
+    let mut cpu_sumcheck_polys =
+        Vec::with_capacity(whir_schedule.whir_steps_schedule.iter().sum::<usize>());
+    let mut cpu_recursive_caps = Vec::with_capacity(whir_schedule.whir_steps_lde_factors.len());
+    let mut cpu_ood_samples = Vec::with_capacity(whir_schedule.whir_steps_lde_factors.len());
+    let mut cpu_recursive_query_indexes =
+        Vec::with_capacity(whir_schedule.whir_steps_lde_factors.len());
+    let transcript_seed_before_initial_rounds = transcript_seed.clone();
 
     let num_initial_folding_rounds = whir_steps_schedule.next().unwrap();
     let initial_queries = whir_queries_schedule.next().unwrap();
     let initial_pow_bits = whir_pow_schedule.next().unwrap();
+    let mut gpu_initial_fold_state = debug_build_initial_fold_state_for_test(
+        gpu_mem_trace_holder,
+        mem_polys_claims,
+        gpu_wit_trace_holder,
+        wit_polys_claims,
+        gpu_setup_trace_holder,
+        setup_polys_claims,
+        original_evaluation_point,
+        batching_challenge,
+        context,
+    )
+    .unwrap();
+    let mut gpu_monomial_after_initial_rounds = Vec::new();
     let mut folding_challenges_in_round = Vec::with_capacity(num_initial_folding_rounds);
-    for _ in 0..num_initial_folding_rounds {
+    let mut initial_round_sumcheck_polys = Vec::with_capacity(num_initial_folding_rounds);
+    for folding_round in 0..num_initial_folding_rounds {
         let (f0, f1, f_half) =
             special_three_point_eval_for_test(&sumchecked_poly_evaluation_form, &eq_poly);
         let coeffs = special_lagrange_interpolate_for_test(f0, f1, f_half, E4::from_base(two_inv));
+        initial_round_sumcheck_polys.push(coeffs);
+        cpu_sumcheck_polys.push(coeffs);
         commit_field_els::<BF, E4>(&mut transcript_seed, &coeffs);
         let folding_challenge = draw_random_field_els::<BF, E4>(&mut transcript_seed, 1)[0];
         folding_challenges_in_round.push(folding_challenge);
@@ -704,6 +1037,24 @@ fn assert_recursive_whir_oracle_parity_for_supported_path(
         fold_monomial_form_for_test(&mut sumchecked_poly_monomial_form, folding_challenge);
         fold_evaluation_form_for_test(&mut sumchecked_poly_evaluation_form, folding_challenge);
         fold_eq_poly_for_test(&mut eq_poly, folding_challenge);
+        let gpu_monomial_after_round = debug_apply_initial_fold_challenge_for_test(
+            &mut gpu_initial_fold_state,
+            folding_challenge,
+            context,
+        )
+        .unwrap();
+        gpu_monomial_after_initial_rounds = gpu_monomial_after_round.clone();
+        if gpu_monomial_after_round != sumchecked_poly_monomial_form {
+            let first_mismatch = gpu_monomial_after_round
+                .iter()
+                .zip(sumchecked_poly_monomial_form.iter())
+                .enumerate()
+                .find(|(_, (gpu, cpu))| gpu != cpu)
+                .map(|(idx, (gpu, cpu))| (idx, *gpu, *cpu));
+            panic!(
+                "initial WHIR monomial fold diverged at round {folding_round}; first_mismatch={first_mismatch:?}"
+            );
+        }
     }
     poly_size_log2 -= num_initial_folding_rounds;
 
@@ -731,6 +1082,27 @@ fn assert_recursive_whir_oracle_parity_for_supported_path(
             &cpu_rs_oracle.tree,
         )
     );
+    cpu_recursive_caps.push(
+        <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<BF>>::get_cap(&cpu_rs_oracle.tree),
+    );
+    let gpu_initial_round_checkpoint = debug_initial_round_checkpoint_for_test(
+        gpu_mem_trace_holder,
+        mem_polys_claims,
+        gpu_wit_trace_holder,
+        wit_polys_claims,
+        gpu_setup_trace_holder,
+        setup_polys_claims,
+        original_evaluation_point,
+        original_lde_factor,
+        batching_challenge,
+        num_initial_folding_rounds,
+        first_lde_factor,
+        next_folding_steps,
+        whir_schedule.cap_size,
+        transcript_seed_before_initial_rounds,
+        context,
+    )
+    .unwrap();
     add_whir_commitment_to_transcript(
         &mut transcript_seed,
         &WhirCommitment::<BF, DefaultTreeConstructor> {
@@ -743,7 +1115,67 @@ fn assert_recursive_whir_oracle_parity_for_supported_path(
 
     let ood_point = draw_random_field_els::<BF, E4>(&mut transcript_seed, 1)[0];
     let ood_value = evaluate_monomial_form_for_test(&sumchecked_poly_monomial_form, ood_point);
+    cpu_ood_samples.push(ood_value);
     commit_field_els::<BF, E4>(&mut transcript_seed, &[ood_value]);
+    assert_eq!(
+        gpu_initial_round_checkpoint.sumcheck_polys,
+        initial_round_sumcheck_polys,
+        "initial WHIR sumcheck polys diverged before PoW",
+    );
+    assert_eq!(
+        gpu_initial_round_checkpoint.folding_challenges,
+        folding_challenges_in_round,
+        "initial WHIR folding challenges diverged before recursive commitment",
+    );
+    assert_eq!(
+        gpu_initial_round_checkpoint.folded_monomial_form,
+        gpu_monomial_after_initial_rounds,
+        "all-in-one initial WHIR checkpoint diverged from the stepwise GPU fold path",
+    );
+    let gpu_materialized_initial_rs_oracle = GpuWhirExtensionOracle::from_monomial_coeffs(
+        &gpu_initial_round_checkpoint.folded_monomial_form,
+        first_lde_factor,
+        1 << next_folding_steps,
+        whir_schedule.cap_size,
+        context,
+    )
+    .unwrap();
+    assert_eq!(
+        gpu_initial_round_checkpoint.recursive_cap,
+        gpu_materialized_initial_rs_oracle.get_tree_cap(),
+        "initial recursive WHIR commitment does not match the cap rebuilt from the materialized folded monomial form",
+    );
+    if gpu_initial_round_checkpoint.folded_monomial_form != sumchecked_poly_monomial_form {
+        let first_mismatch = gpu_initial_round_checkpoint
+            .folded_monomial_form
+            .iter()
+            .zip(sumchecked_poly_monomial_form.iter())
+            .enumerate()
+            .find(|(_, (gpu, cpu))| gpu != cpu)
+            .map(|(idx, (gpu, cpu))| (idx, *gpu, *cpu));
+        panic!(
+            "initial folded WHIR monomial form diverged before recursive commitment; first_mismatch={first_mismatch:?}"
+        );
+    }
+    assert_eq!(
+        gpu_initial_round_checkpoint.recursive_cap,
+        <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<BF>>::get_cap(
+            &cpu_rs_oracle.tree,
+        ),
+        "initial recursive WHIR commitment diverged before PoW",
+    );
+    assert_eq!(
+        gpu_initial_round_checkpoint.ood_point, ood_point,
+        "initial WHIR OOD point diverged before PoW",
+    );
+    assert_eq!(
+        gpu_initial_round_checkpoint.ood_value, ood_value,
+        "initial WHIR OOD value diverged before PoW",
+    );
+    assert_eq!(
+        gpu_initial_round_checkpoint.transcript_seed, transcript_seed,
+        "initial WHIR transcript seed diverged before PoW",
+    );
     let rs_domain_log2 = trace_len_log2 + original_lde_factor.trailing_zeros() as usize;
     let query_domain_log2 = rs_domain_log2 - num_initial_folding_rounds;
     let query_domain_size = 1u64 << query_domain_log2;
@@ -757,12 +1189,14 @@ fn assert_recursive_whir_oracle_parity_for_supported_path(
     );
     bitreverse_enumeration_inplace(&mut high_powers_offsets);
     let query_index_bits = query_domain_size.trailing_zeros() as usize;
-    let (.., mut bit_source) = draw_query_bits(
+    cpu_pre_pow_seeds.push(transcript_seed);
+    let (initial_nonce, mut bit_source) = draw_query_bits(
         &mut transcript_seed,
         initial_queries * query_index_bits,
         initial_pow_bits,
         worker,
     );
+    cpu_pow_nonces.push(initial_nonce);
     let delinearization_challenge = draw_random_field_els::<BF, E4>(&mut transcript_seed, 1)[0];
     let mut claim_correction = {
         let mut t = ood_value;
@@ -822,6 +1256,7 @@ fn assert_recursive_whir_oracle_parity_for_supported_path(
                 special_three_point_eval_for_test(&sumchecked_poly_evaluation_form, &eq_poly);
             let coeffs =
                 special_lagrange_interpolate_for_test(f0, f1, f_half, E4::from_base(two_inv));
+            cpu_sumcheck_polys.push(coeffs);
             commit_field_els::<BF, E4>(&mut transcript_seed, &coeffs);
             let folding_challenge = draw_random_field_els::<BF, E4>(&mut transcript_seed, 1)[0];
             folding_challenges_in_round.push(folding_challenge);
@@ -856,9 +1291,15 @@ fn assert_recursive_whir_oracle_parity_for_supported_path(
                 &next_cpu_oracle.tree,
             )
         );
+        cpu_recursive_caps.push(
+            <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<BF>>::get_cap(
+                &next_cpu_oracle.tree,
+            ),
+        );
 
         let ood_point = E4::from_base(BF::from_u32_unchecked(42));
         let ood_value = evaluate_monomial_form_for_test(&sumchecked_poly_monomial_form, ood_point);
+        cpu_ood_samples.push(ood_value);
         let query_domain_size = 1u64 << query_domain_log2;
         let query_domain_generator = domain_generator_for_size::<BF>(query_domain_size);
         let extended_generator = domain_generator_for_size::<BF>(1u64 << rs_domain_log2);
@@ -870,12 +1311,14 @@ fn assert_recursive_whir_oracle_parity_for_supported_path(
         );
         bitreverse_enumeration_inplace(&mut high_powers_offsets);
         let query_index_bits = query_domain_size.trailing_zeros() as usize;
-        let (.., mut bit_source) = draw_query_bits(
+        cpu_pre_pow_seeds.push(transcript_seed);
+        let (nonce, mut bit_source) = draw_query_bits(
             &mut transcript_seed,
             num_queries * query_index_bits,
             pow_bits,
             worker,
         );
+        cpu_pow_nonces.push(nonce);
         let delinearization_challenge = draw_random_field_els::<BF, E4>(&mut transcript_seed, 1)[0];
         let mut claim_correction = {
             let mut t = ood_value;
@@ -883,8 +1326,10 @@ fn assert_recursive_whir_oracle_parity_for_supported_path(
             t
         };
         let mut in_domain_samples = Vec::with_capacity(num_queries);
+        let mut recursive_round_query_indexes = Vec::with_capacity(num_queries);
         for _ in 0..num_queries {
             let query_index = assemble_query_index(query_index_bits, &mut bit_source);
+            recursive_round_query_indexes.push(query_index);
             let (_, cpu_values, cpu_query) = cpu_rs_oracle.query_for_folded_index(query_index);
             let (_, gpu_values, gpu_query) = gpu_rs_oracle
                 .query_for_folded_index(query_index, context)
@@ -918,6 +1363,7 @@ fn assert_recursive_whir_oracle_parity_for_supported_path(
             &[(ood_point, delinearization_challenge)],
             &in_domain_samples,
         );
+        cpu_recursive_query_indexes.push(recursive_round_query_indexes);
         claim.add_assign(&claim_correction);
 
         cpu_rs_oracle = next_cpu_oracle;
@@ -934,6 +1380,7 @@ fn assert_recursive_whir_oracle_parity_for_supported_path(
         let (f0, f1, f_half) =
             special_three_point_eval_for_test(&sumchecked_poly_evaluation_form, &eq_poly);
         let coeffs = special_lagrange_interpolate_for_test(f0, f1, f_half, E4::from_base(two_inv));
+        cpu_sumcheck_polys.push(coeffs);
         commit_field_els::<BF, E4>(&mut transcript_seed, &coeffs);
         let folding_challenge = draw_random_field_els::<BF, E4>(&mut transcript_seed, 1)[0];
         folding_challenges_in_round.push(folding_challenge);
@@ -954,14 +1401,18 @@ fn assert_recursive_whir_oracle_parity_for_supported_path(
     );
     bitreverse_enumeration_inplace(&mut high_powers_offsets);
     let query_index_bits = query_domain_size.trailing_zeros() as usize;
-    let (.., mut bit_source) = draw_query_bits(
+    cpu_pre_pow_seeds.push(transcript_seed);
+    let (final_nonce, mut bit_source) = draw_query_bits(
         &mut transcript_seed,
         final_queries * query_index_bits,
         final_pow_bits,
         worker,
     );
+    cpu_pow_nonces.push(final_nonce);
+    let mut final_round_query_indexes = Vec::with_capacity(final_queries);
     for _ in 0..final_queries {
         let query_index = assemble_query_index(query_index_bits, &mut bit_source);
+        final_round_query_indexes.push(query_index);
         let (_, cpu_values, cpu_query) = cpu_rs_oracle.query_for_folded_index(query_index);
         let (_, gpu_values, gpu_query) = gpu_rs_oracle
             .query_for_folded_index(query_index, context)
@@ -996,6 +1447,76 @@ fn assert_recursive_whir_oracle_parity_for_supported_path(
             )
         );
     }
+    cpu_recursive_query_indexes.push(final_round_query_indexes);
+    let mem_polys_claims_for_schedule = mem_polys_claims.to_vec();
+    let wit_polys_claims_for_schedule = wit_polys_claims.to_vec();
+    let setup_polys_claims_for_schedule = setup_polys_claims.to_vec();
+    let original_evaluation_point_for_schedule = original_evaluation_point.to_vec();
+    let memory_base_caps_keepalive = gpu_mem_trace_holder.take_tree_caps_host();
+    let witness_base_caps_keepalive = gpu_wit_trace_holder.take_tree_caps_host();
+    let setup_base_caps_keepalive = gpu_setup_trace_holder.take_tree_caps_host();
+    let scheduled_gpu_whir = schedule_gpu_whir_fold_with_sources(
+        gpu_mem_trace_holder,
+        memory_base_caps_keepalive,
+        move |dst| dst.copy_from_slice(&mem_polys_claims_for_schedule),
+        gpu_wit_trace_holder,
+        witness_base_caps_keepalive,
+        move |dst| dst.copy_from_slice(&wit_polys_claims_for_schedule),
+        gpu_setup_trace_holder,
+        setup_base_caps_keepalive,
+        move |dst| dst.copy_from_slice(&setup_polys_claims_for_schedule),
+        original_evaluation_point_for_schedule.len(),
+        move |dst| dst.copy_from_slice(&original_evaluation_point_for_schedule),
+        original_lde_factor,
+        move || batching_challenge,
+        whir_schedule.whir_steps_schedule.clone(),
+        whir_schedule.whir_queries_schedule.clone(),
+        whir_schedule.whir_steps_lde_factors.clone(),
+        whir_schedule.whir_pow_schedule.clone(),
+        move || scheduled_transcript_seed,
+        whir_schedule.cap_size,
+        trace_len_log2,
+        None,
+        context,
+    )
+    .unwrap();
+    let scheduled_shared_state = scheduled_gpu_whir.shared_state_handle();
+    let scheduled_gpu_whir_proof = scheduled_gpu_whir.wait(context).unwrap();
+    let gpu_pre_pow_seeds = clone_scheduled_whir_pre_pow_seeds(&scheduled_shared_state);
+    let scheduled_recursive_caps = scheduled_gpu_whir_proof
+        .intermediate_whir_oracles
+        .iter()
+        .map(|oracle| oracle.commitment.cap.clone())
+        .collect::<Vec<_>>();
+    let scheduled_recursive_query_indexes = scheduled_gpu_whir_proof
+        .intermediate_whir_oracles
+        .iter()
+        .map(|oracle| oracle.queries.iter().map(|query| query.index).collect::<Vec<_>>())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        scheduled_recursive_query_indexes, cpu_recursive_query_indexes,
+        "scheduled GPU WHIR recursive query indexes diverged from the CPU reference"
+    );
+    assert_eq!(
+        gpu_pre_pow_seeds, cpu_pre_pow_seeds,
+        "scheduled GPU WHIR transcript seeds diverged before PoW"
+    );
+    assert_eq!(
+        scheduled_gpu_whir_proof.sumcheck_polys, cpu_sumcheck_polys,
+        "scheduled GPU WHIR sumcheck polys diverged from the CPU reference"
+    );
+    assert_eq!(
+        scheduled_gpu_whir_proof.ood_samples, cpu_ood_samples,
+        "scheduled GPU WHIR OOD samples diverged from the CPU reference"
+    );
+    assert_eq!(
+        scheduled_recursive_caps, cpu_recursive_caps,
+        "scheduled GPU WHIR recursive caps diverged from the CPU reference"
+    );
+    assert_eq!(
+        scheduled_gpu_whir_proof.pow_nonces, cpu_pow_nonces,
+        "scheduled GPU WHIR PoW nonces diverged from the CPU reference nonces"
+    );
     let _ = claim;
 }
 
@@ -1686,8 +2207,8 @@ fn assert_main_layer_plan_for_test<E: Field + std::fmt::Debug>(
         assert_eq!(kernel_plan.inputs, expected.inputs);
         assert_eq!(kernel_plan.batch_challenges, expected.batch_challenges);
         assert_eq!(
-            kernel_plan.auxiliary_challenge,
-            expected.auxiliary_challenge
+            kernel_plan.auxiliary_challenge_summary(),
+            Some(expected.auxiliary_challenge)
         );
         assert_eq!(
             kernel_plan.constraint_metadata_summary(),
@@ -1778,6 +2299,28 @@ fn assert_sumcheck_intermediate_values_eq_for_test<F: PrimeField, E: FieldExtens
     );
 }
 
+fn assert_layer_points_eq_for_test<E: Field + std::fmt::Debug>(
+    actual: &BTreeMap<usize, Vec<E>>,
+    expected: &BTreeMap<usize, Vec<E>>,
+) {
+    assert_eq!(
+        actual.len(),
+        expected.len(),
+        "layer-point map sizes differ: actual keys {:?}, expected keys {:?}",
+        actual.keys().collect::<Vec<_>>(),
+        expected.keys().collect::<Vec<_>>(),
+    );
+    for (layer_idx, expected_point) in expected.iter() {
+        let actual_point = actual
+            .get(layer_idx)
+            .unwrap_or_else(|| panic!("missing actual point for layer {layer_idx}"));
+        assert_eq!(
+            actual_point, expected_point,
+            "layer point mismatch at layer {layer_idx}: actual={actual_point:?} expected={expected_point:?}"
+        );
+    }
+}
+
 fn assert_base_field_query_eq_for_test(
     actual: &prover::gkr::whir::BaseFieldQuery<BF, DefaultTreeConstructor>,
     expected: &prover::gkr::whir::BaseFieldQuery<BF, DefaultTreeConstructor>,
@@ -1806,10 +2349,40 @@ fn assert_whir_proof_eq_for_test(
     actual: &prover::gkr::whir::WhirPolyCommitProof<BF, E4, DefaultTreeConstructor>,
     expected: &prover::gkr::whir::WhirPolyCommitProof<BF, E4, DefaultTreeConstructor>,
 ) {
-    assert_eq!(actual.sumcheck_polys, expected.sumcheck_polys);
-    assert_eq!(actual.ood_samples, expected.ood_samples);
-    assert_eq!(actual.pow_nonces, expected.pow_nonces);
-    assert_eq!(actual.final_monomials, expected.final_monomials);
+    assert_eq!(
+        actual.sumcheck_polys.len(),
+        expected.sumcheck_polys.len(),
+        "WHIR sumcheck round count diverged",
+    );
+    for (round_idx, (actual_poly, expected_poly)) in actual
+        .sumcheck_polys
+        .iter()
+        .zip(expected.sumcheck_polys.iter())
+        .enumerate()
+    {
+        assert_eq!(
+            actual_poly.len(),
+            expected_poly.len(),
+            "WHIR sumcheck polynomial degree diverged at round {round_idx}",
+        );
+        for (coeff_idx, (&actual_coeff, &expected_coeff)) in actual_poly
+            .iter()
+            .zip(expected_poly.iter())
+            .enumerate()
+        {
+            assert_eq!(
+                actual_coeff, expected_coeff,
+                "WHIR sumcheck coefficient diverged at round {round_idx}, coeff {coeff_idx}",
+            );
+        }
+    }
+    assert_eq!(actual.ood_samples, expected.ood_samples, "WHIR OOD samples diverged");
+    assert_eq!(actual.pow_nonces, expected.pow_nonces, "WHIR PoW nonces diverged");
+    assert_eq!(
+        actual.final_monomials,
+        expected.final_monomials,
+        "WHIR final monomials diverged",
+    );
 
     for (actual_commitment, expected_commitment) in [
         (&actual.memory_commitment, &expected.memory_commitment),
@@ -1857,6 +2430,33 @@ fn assert_whir_proof_eq_for_test(
             assert_extension_field_query_eq_for_test(actual_query, expected_query);
         }
     }
+}
+
+fn assert_gkr_proof_eq_for_test(
+    actual: &GKRProof<BF, E4, DefaultTreeConstructor>,
+    expected: &GKRProof<BF, E4, DefaultTreeConstructor>,
+) {
+    assert_eq!(actual.external_challenges, expected.external_challenges);
+    assert_eq!(
+        actual.final_explicit_evaluations,
+        expected.final_explicit_evaluations
+    );
+    assert_eq!(
+        actual.grand_product_accumulator_computed,
+        expected.grand_product_accumulator_computed
+    );
+    assert_eq!(
+        actual.sumcheck_intermediate_values.len(),
+        expected.sumcheck_intermediate_values.len()
+    );
+    for (layer_idx, expected_values) in expected.sumcheck_intermediate_values.iter() {
+        let actual_values = actual
+            .sumcheck_intermediate_values
+            .get(layer_idx)
+            .unwrap_or_else(|| panic!("missing proof layer {layer_idx}"));
+        assert_sumcheck_intermediate_values_eq_for_test(actual_values, expected_values);
+    }
+    assert_whir_proof_eq_for_test(&actual.whir_proof, &expected.whir_proof);
 }
 
 fn stage1_caps_from_tree<T: ColumnMajorMerkleTreeConstructor<BF>>(
@@ -2183,6 +2783,95 @@ fn run_basic_unrolled_async_allocator_regression_test() {
 #[test]
 #[serial]
 fn run_basic_unrolled_test() {
+    let fixture = prepare_basic_unrolled_proof_fixture();
+    let proof_job = fixture
+        .schedule_prove(Some(fixture.override_pow_challenges()))
+        .unwrap();
+
+    assert!(
+        !proof_job.is_finished().unwrap(),
+        "prove() should return before the scheduled proof completes"
+    );
+
+    let (gpu_proof, _proof_time_ms) = proof_job.finish().unwrap();
+    assert_gkr_proof_eq_for_test(&gpu_proof, &fixture.expected_cpu_proof);
+}
+
+#[test]
+#[serial]
+fn run_basic_unrolled_proof_job_default_pow_smoke_test() {
+    let fixture = prepare_basic_unrolled_proof_fixture();
+    let proof_job = fixture.schedule_prove(None).unwrap();
+
+    assert!(
+        !proof_job.is_finished().unwrap(),
+        "prove() should remain non-blocking without external PoW overrides"
+    );
+
+    let (gpu_proof, _proof_time_ms) = proof_job.finish().unwrap();
+    assert_eq!(
+        gpu_proof.external_challenges,
+        fixture.expected_cpu_proof.external_challenges
+    );
+    assert_eq!(
+        gpu_proof.final_explicit_evaluations,
+        fixture.expected_cpu_proof.final_explicit_evaluations
+    );
+    assert_eq!(
+        gpu_proof.sumcheck_intermediate_values.len(),
+        fixture
+            .expected_cpu_proof
+            .sumcheck_intermediate_values
+            .len()
+    );
+    for (layer_idx, expected_values) in fixture
+        .expected_cpu_proof
+        .sumcheck_intermediate_values
+        .iter()
+    {
+        let actual_values = gpu_proof
+            .sumcheck_intermediate_values
+            .get(layer_idx)
+            .unwrap_or_else(|| panic!("missing proof layer {layer_idx}"));
+        assert_sumcheck_intermediate_values_eq_for_test(actual_values, expected_values);
+    }
+    assert_eq!(
+        gpu_proof.whir_proof.pow_nonces.len(),
+        fixture.whir_schedule.whir_pow_schedule.len()
+    );
+    assert!(!gpu_proof.whir_proof.final_monomials.is_empty());
+}
+
+#[test]
+#[serial]
+fn run_basic_unrolled_proof_job_multi_schedule_test() {
+    let fixture = prepare_basic_unrolled_proof_fixture();
+    let baseline_device_usage = fixture.context.get_used_mem_current();
+    let pow_override = fixture.override_pow_challenges();
+
+    let proof_job_0 = fixture.schedule_prove(Some(pow_override.clone())).unwrap();
+    assert_eq!(
+        fixture.context.get_used_mem_current(),
+        baseline_device_usage,
+        "prove() must not retain device allocations after scheduling returns"
+    );
+
+    let proof_job_1 = fixture.schedule_prove(Some(pow_override)).unwrap();
+    assert_eq!(
+        fixture.context.get_used_mem_current(),
+        baseline_device_usage,
+        "back-to-back proof scheduling must not retain stage VRAM"
+    );
+
+    let (gpu_proof_0, _proof_time_ms_0) = proof_job_0.finish().unwrap();
+    let (gpu_proof_1, _proof_time_ms_1) = proof_job_1.finish().unwrap();
+    assert_gkr_proof_eq_for_test(&gpu_proof_0, &fixture.expected_cpu_proof);
+    assert_gkr_proof_eq_for_test(&gpu_proof_1, &fixture.expected_cpu_proof);
+}
+
+#[test]
+#[serial]
+fn run_basic_unrolled_stagewise_parity_test() {
     type CountersT = DelegationsAndFamiliesCounters;
 
     // NOTE: these constants must match with ones used in CS crate to produce
@@ -2890,9 +3579,9 @@ fn run_basic_unrolled_test() {
             .unwrap()
     };
 
-    assert_eq!(
-        gpu_backward_execution.points_for_claims_at_layer,
-        points_for_claims_at_layer
+    assert_layer_points_eq_for_test(
+        &gpu_backward_execution.points_for_claims_at_layer,
+        &points_for_claims_at_layer,
     );
     assert_eq!(gpu_backward_execution.claims_for_layers, claims_for_layers);
     assert_eq!(
@@ -3050,13 +3739,13 @@ fn run_basic_unrolled_test() {
         assert_recursive_whir_oracle_parity_for_supported_path(
             &mem_oracle,
             &gpu_base_claims.mem_polys_claims,
-            &stage1_output.memory_trace_holder,
+            &mut stage1_output.memory_trace_holder,
             &wit_oracle,
             &gpu_base_claims.wit_polys_claims,
-            &stage1_output.witness_trace_holder,
+            &mut stage1_output.witness_trace_holder,
             &setup_commitment,
             &gpu_base_claims.setup_polys_claims,
-            &gpu_setup_transfer.trace_holder,
+            &mut gpu_setup_transfer.trace_holder,
             base_layer_z,
             whir_schedule.base_lde_factor,
             whir_batching_challenge,
@@ -3068,9 +3757,32 @@ fn run_basic_unrolled_test() {
             &context,
         );
     }
+    let cpu_whir_proof = {
+        let _range = range!("test.cpu.whir_fold");
+        whir_fold(
+            mem_oracle,
+            gpu_base_claims.mem_polys_claims.clone(),
+            wit_oracle,
+            gpu_base_claims.wit_polys_claims.clone(),
+            &setup_commitment,
+            gpu_base_claims.setup_polys_claims.clone(),
+            base_layer_z.clone(),
+            whir_schedule.base_lde_factor,
+            whir_batching_challenge,
+            whir_schedule.whir_steps_schedule.clone(),
+            whir_schedule.whir_queries_schedule.clone(),
+            whir_schedule.whir_steps_lde_factors.clone(),
+            whir_schedule.whir_pow_schedule.clone(),
+            &twiddles,
+            seed,
+            whir_schedule.cap_size,
+            trace_len.trailing_zeros() as usize,
+            &worker,
+        )
+    };
     let gpu_whir_proof = {
         let _range = range!("test.gpu.whir_fold");
-        gpu_whir_fold_supported_path(
+        gpu_whir_fold_supported_path_with_external_pow(
             &mut stage1_output.memory_trace_holder,
             gpu_base_claims.mem_polys_claims.clone(),
             &mut stage1_output.witness_trace_holder,
@@ -3087,33 +3799,11 @@ fn run_basic_unrolled_test() {
             seed.clone(),
             whir_schedule.cap_size,
             trace_len.trailing_zeros() as usize,
+            Some(cpu_whir_proof.pow_nonces.clone()),
             &worker,
             &context,
         )
         .unwrap()
-    };
-    let cpu_whir_proof = {
-        let _range = range!("test.cpu.whir_fold");
-        whir_fold(
-            mem_oracle,
-            gpu_base_claims.mem_polys_claims,
-            wit_oracle,
-            gpu_base_claims.wit_polys_claims,
-            &setup_commitment,
-            gpu_base_claims.setup_polys_claims,
-            base_layer_z.clone(),
-            whir_schedule.base_lde_factor,
-            whir_batching_challenge,
-            whir_schedule.whir_steps_schedule,
-            whir_schedule.whir_queries_schedule,
-            whir_schedule.whir_steps_lde_factors,
-            whir_schedule.whir_pow_schedule,
-            &twiddles,
-            seed,
-            whir_schedule.cap_size,
-            trace_len.trailing_zeros() as usize,
-            &worker,
-        )
     };
     assert_whir_proof_eq_for_test(&gpu_whir_proof, &cpu_whir_proof);
     let whir_proof = gpu_whir_proof;

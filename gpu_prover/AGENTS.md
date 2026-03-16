@@ -29,6 +29,9 @@
 ## Build Script
 - Unless explicitly requested, changes in `build/main.rs` must be non-behavioral.
 
+## Design Documents
+- `docs/gpu_scheduling_contract.md`: Async scheduling contract for GPU stream-ordered prover work (GKR, WHIR). Covers memory lifetime rules for device, transient host, and persistent host allocations, plus callback restrictions. Does not cover higher-level orchestration concurrency.
+
 ## Code Notes
 - Use `log` for diagnostic output rather than `println!`.
 - Prefer `rayon` for CPU parallelism when applicable.

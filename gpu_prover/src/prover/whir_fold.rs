@@ -1,5 +1,6 @@
 use core::marker::PhantomData;
 
+use blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS;
 use era_cudart::memory::{memory_copy, memory_copy_async};
 use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
@@ -7,7 +8,8 @@ use fft::{
     batch_inverse_inplace, bitreverse_enumeration_inplace, domain_generator_for_size,
     materialize_powers_serial_starting_with_one,
 };
-use field::{Field, FieldExtension, PrimeField};
+use field::{Field, FieldExtension, FixedArrayConvertible, PrimeField};
+use prover::definitions::Transcript;
 use prover::gkr::prover::transcript_utils::{
     add_whir_commitment_to_transcript, commit_field_els, draw_query_bits, draw_random_field_els,
 };
@@ -19,22 +21,31 @@ use prover::gkr::whir::{
 use prover::merkle_trees::{DefaultTreeConstructor, MerkleTreeCapVarLength};
 use prover::prover_stages::query_producer::assemble_query_index;
 use prover::transcript::Seed;
+use prover::utils::extension_field_from_base_coeffs;
 use worker::Worker;
 
 use crate::allocator::tracker::AllocationPlacement;
 use crate::ntt::{hypercube_coeffs_natural_to_natural_evals, natural_evals_to_bitreversed_coeffs};
+use crate::ops::blake2s::Digest;
 use crate::ops::complex::{
     accumulate_whir_base_columns, bit_reverse, bit_reverse_in_place, deserialize_whir_e4_columns,
-    get_powers_by_val, serialize_whir_e4_columns, whir_fold_monomial,
+    get_powers_by_ref, get_powers_by_val, serialize_whir_e4_columns, whir_fold_monomial,
     whir_fold_split_half_in_place,
 };
 use crate::ops::cub::device_reduce::{get_reduce_temp_storage_bytes, reduce, ReduceOperation};
 use crate::ops::simple::{add, add_into_y, mul, mul_into_x, set_to_zero};
+use crate::primitives::callbacks::Callbacks;
 use crate::primitives::context::{DeviceAllocation, HostAllocation, ProverContext};
 use crate::primitives::device_structures::{DeviceMatrix, DeviceMatrixMut};
+use crate::primitives::device_tracing::Range;
 use crate::primitives::field::{BF, E4};
+use crate::primitives::static_host::alloc_static_pinned_vec_uninit;
 use crate::prover::gkr::backward::launch_build_eq_values;
-use crate::prover::trace_holder::TraceHolder;
+use crate::prover::pow::search_pow_challenge;
+use crate::prover::proof::{
+    draw_query_bits_after_verified_pow, draw_query_bits_with_external_nonce,
+};
+use crate::prover::trace_holder::{get_tree_caps, TraceHolder};
 use crate::prover::whir::{GpuWhirExtensionOracle, GpuWhirExtensionQuery};
 
 const EXT4_DEGREE: usize = <E4 as FieldExtension<BF>>::DEGREE;
@@ -51,6 +62,253 @@ struct GpuWhirState {
     reduce_temp: DeviceAllocation<u8>,
     reduce_out: DeviceAllocation<E4>,
     current_len: usize,
+}
+
+pub(crate) struct GpuScheduledBaseFieldQuery {
+    pub(crate) index: usize,
+    pub(crate) coset_index: usize,
+    #[allow(dead_code)]
+    value_index_host: HostAllocation<[u32]>,
+    #[allow(dead_code)]
+    path_index_host: HostAllocation<[u32]>,
+    #[allow(dead_code)]
+    leafs: HostAllocation<[BF]>,
+    #[allow(dead_code)]
+    merkle_paths: HostAllocation<[Digest]>,
+    values_per_leaf: usize,
+    columns_count: usize,
+}
+
+impl GpuScheduledBaseFieldQuery {
+    pub(crate) fn decode(&self) -> (Vec<Vec<BF>>, BaseFieldQuery<BF, DefaultTreeConstructor>) {
+        let leafs_accessor = self.leafs.get_accessor();
+        let path_accessor = self.merkle_paths.get_accessor();
+        let leafs = unsafe { leafs_accessor.get() };
+        let path = unsafe { path_accessor.get().to_vec() };
+        let decoded = decode_base_leaf_values(leafs, self.values_per_leaf, self.columns_count);
+        let cpu_query = BaseFieldQuery {
+            index: self.index,
+            leaf_values_concatenated: decoded.iter().flatten().copied().collect(),
+            path,
+            _marker: PhantomData,
+        };
+
+        (decoded, cpu_query)
+    }
+}
+
+impl ScheduledUnknownCosetBaseFieldQuery {
+    fn decode(
+        &self,
+    ) -> (
+        usize,
+        Vec<Vec<BF>>,
+        BaseFieldQuery<BF, DefaultTreeConstructor>,
+    ) {
+        let index = unsafe { self.query_index.get_accessor().get()[0] as usize };
+        let lde_factor = 1usize << self.log_lde_factor;
+        let value_coset_index = index & (lde_factor - 1);
+        let stage1_coset_index = index / self.coset_tree_size;
+        let path_coset_index = bitreverse_index(stage1_coset_index, self.log_lde_factor);
+        let leafs_accessor = self.value_leafs[value_coset_index].get_accessor();
+        let leafs = unsafe { leafs_accessor.get() };
+        let path = unsafe {
+            self.path_merkle_paths[path_coset_index]
+                .get_accessor()
+                .get()
+                .to_vec()
+        };
+        let decoded = decode_base_leaf_values(leafs, self.values_per_leaf, self.columns_count);
+        let cpu_query = BaseFieldQuery {
+            index,
+            leaf_values_concatenated: decoded.iter().flatten().copied().collect(),
+            path,
+            _marker: PhantomData,
+        };
+
+        (value_coset_index, decoded, cpu_query)
+    }
+}
+
+fn schedule_unknown_coset_base_field_query(
+    trace_holder: &mut TraceHolder<BF>,
+    query_index: HostAllocation<[u32]>,
+    context: &ProverContext,
+) -> CudaResult<ScheduledUnknownCosetBaseFieldQuery> {
+    let lde_factor = 1usize << trace_holder.log_lde_factor;
+    let values_per_leaf = 1usize << trace_holder.log_rows_per_leaf;
+    let coset_tree_size = (1usize << trace_holder.log_domain_size) / values_per_leaf;
+    let mut callbacks = Callbacks::new();
+    let mut value_internal_index = unsafe { context.alloc_transient_host_uninit_slice(1) };
+    let value_internal_accessor = value_internal_index.get_mut_accessor();
+    let query_index_accessor = query_index.get_accessor();
+    callbacks.schedule(
+        move || unsafe {
+            value_internal_accessor.get_mut()[0] =
+                query_index_accessor.get()[0] / (lde_factor as u32);
+        },
+        context.get_exec_stream(),
+    )?;
+    let mut path_internal_index = unsafe { context.alloc_transient_host_uninit_slice(1) };
+    let path_internal_accessor = path_internal_index.get_mut_accessor();
+    let query_index_accessor = query_index.get_accessor();
+    callbacks.schedule(
+        move || unsafe {
+            path_internal_accessor.get_mut()[0] =
+                query_index_accessor.get()[0] % (coset_tree_size as u32);
+        },
+        context.get_exec_stream(),
+    )?;
+    let mut device_value_index = context.alloc(1, AllocationPlacement::BestFit)?;
+    memory_copy_async(
+        &mut device_value_index,
+        &value_internal_index,
+        context.get_exec_stream(),
+    )?;
+    let mut device_path_index = context.alloc(1, AllocationPlacement::BestFit)?;
+    memory_copy_async(
+        &mut device_path_index,
+        &path_internal_index,
+        context.get_exec_stream(),
+    )?;
+
+    let mut value_leafs = Vec::with_capacity(lde_factor);
+    let mut path_merkle_paths = Vec::with_capacity(lde_factor);
+    for coset_index in 0..lde_factor {
+        value_leafs.push(
+            trace_holder
+                .get_leafs_and_merkle_paths(coset_index, &device_value_index, context)?
+                .leafs,
+        );
+        path_merkle_paths.push(
+            trace_holder
+                .get_leafs_and_merkle_paths(coset_index, &device_path_index, context)?
+                .merkle_paths,
+        );
+    }
+
+    Ok(ScheduledUnknownCosetBaseFieldQuery {
+        callbacks,
+        query_index,
+        value_internal_index,
+        path_internal_index,
+        value_leafs,
+        path_merkle_paths,
+        values_per_leaf,
+        columns_count: trace_holder.columns_count,
+        coset_tree_size,
+        log_lde_factor: trace_holder.log_lde_factor,
+    })
+}
+
+struct WhirHostUpload<T> {
+    callbacks: Callbacks<'static>,
+    host: HostAllocation<[T]>,
+}
+
+struct ScheduledUnknownCosetBaseFieldQuery {
+    callbacks: Callbacks<'static>,
+    query_index: HostAllocation<[u32]>,
+    value_internal_index: HostAllocation<[u32]>,
+    path_internal_index: HostAllocation<[u32]>,
+    value_leafs: Vec<HostAllocation<[BF]>>,
+    path_merkle_paths: Vec<HostAllocation<[Digest]>>,
+    values_per_leaf: usize,
+    columns_count: usize,
+    coset_tree_size: usize,
+    log_lde_factor: u32,
+}
+
+pub(crate) struct ScheduledWhirProofState {
+    proof: Option<WhirPolyCommitProof<BF, E4, DefaultTreeConstructor>>,
+    #[cfg(test)]
+    pre_pow_seeds: Vec<Seed>,
+}
+
+pub(crate) struct GpuWhirFoldScheduledExecution {
+    #[allow(dead_code)]
+    tracing_ranges: Vec<Range>,
+    #[allow(dead_code)]
+    start_callbacks: Callbacks<'static>,
+    #[allow(dead_code)]
+    seed_host: HostAllocation<Seed>,
+    #[allow(dead_code)]
+    base_layer_point_host: HostAllocation<[E4]>,
+    #[allow(dead_code)]
+    base_caps_keepalive: [Vec<HostAllocation<[Digest]>>; 3],
+    #[allow(dead_code)]
+    weight_uploads: Vec<WhirHostUpload<E4>>,
+    #[allow(dead_code)]
+    fold_eval_readbacks: Vec<HostAllocation<[E4]>>,
+    #[allow(dead_code)]
+    folding_challenges: Vec<WhirHostUpload<E4>>,
+    #[allow(dead_code)]
+    recursive_caps_keepalive: Vec<Vec<HostAllocation<[Digest]>>>,
+    #[allow(dead_code)]
+    ood_points: Vec<WhirHostUpload<E4>>,
+    #[allow(dead_code)]
+    ood_partial_readbacks: Vec<Vec<HostAllocation<[E4]>>>,
+    #[allow(dead_code)]
+    ood_values: Vec<HostAllocation<[E4]>>,
+    #[allow(dead_code)]
+    query_index_callbacks: Vec<Callbacks<'static>>,
+    #[allow(dead_code)]
+    query_indexes: Vec<HostAllocation<[u32]>>,
+    #[allow(dead_code)]
+    delinearization_challenges: Vec<WhirHostUpload<E4>>,
+    #[allow(dead_code)]
+    pow_nonces: Vec<HostAllocation<u64>>,
+    #[allow(dead_code)]
+    base_queries: Vec<[Vec<ScheduledUnknownCosetBaseFieldQuery>; 3]>,
+    #[allow(dead_code)]
+    recursive_queries: Vec<
+        Vec<(
+            Callbacks<'static>,
+            crate::prover::whir::GpuWhirScheduledExtensionQuery,
+        )>,
+    >,
+    #[allow(dead_code)]
+    final_callbacks: Callbacks<'static>,
+    shared_state: std::sync::Arc<std::sync::Mutex<ScheduledWhirProofState>>,
+}
+
+impl GpuWhirFoldScheduledExecution {
+    pub(crate) fn shared_state_handle(
+        &self,
+    ) -> std::sync::Arc<std::sync::Mutex<ScheduledWhirProofState>> {
+        std::sync::Arc::clone(&self.shared_state)
+    }
+
+    pub(crate) fn wait(
+        self,
+        context: &ProverContext,
+    ) -> CudaResult<WhirPolyCommitProof<BF, E4, DefaultTreeConstructor>> {
+        context.get_exec_stream().synchronize()?;
+        self.shared_state
+            .lock()
+            .unwrap()
+            .proof
+            .take()
+            .ok_or(era_cudart_sys::CudaError::ErrorInvalidValue)
+    }
+}
+
+pub(crate) fn take_scheduled_whir_proof(
+    shared_state: &std::sync::Arc<std::sync::Mutex<ScheduledWhirProofState>>,
+) -> WhirPolyCommitProof<BF, E4, DefaultTreeConstructor> {
+    shared_state
+        .lock()
+        .unwrap()
+        .proof
+        .take()
+        .expect("scheduled WHIR proof must be available")
+}
+
+#[cfg(test)]
+pub(crate) fn clone_scheduled_whir_pre_pow_seeds(
+    shared_state: &std::sync::Arc<std::sync::Mutex<ScheduledWhirProofState>>,
+) -> Vec<Seed> {
+    shared_state.lock().unwrap().pre_pow_seeds.clone()
 }
 
 impl GpuWhirState {
@@ -95,6 +353,25 @@ fn alloc_transient_host_and_copy<T: Copy>(
     allocation
 }
 
+fn schedule_callback_populated_upload<T: Copy + 'static>(
+    context: &ProverContext,
+    len: usize,
+    fill: impl Fn(&mut [T]) + Send + Sync + 'static,
+) -> CudaResult<(WhirHostUpload<T>, DeviceAllocation<T>)> {
+    let mut callbacks = Callbacks::new();
+    let mut host = unsafe { context.alloc_transient_host_uninit_slice(len) };
+    let host_accessor = host.get_mut_accessor();
+    callbacks.schedule(
+        move || unsafe {
+            fill(host_accessor.get_mut());
+        },
+        context.get_exec_stream(),
+    )?;
+    let mut device = context.alloc(len, AllocationPlacement::BestFit)?;
+    memory_copy_async(&mut device, &host, context.get_exec_stream())?;
+    Ok((WhirHostUpload { callbacks, host }, device))
+}
+
 fn copy_small_to_device<T: Copy>(
     dst: &mut DeviceSlice<T>,
     values: &[T],
@@ -124,6 +401,20 @@ fn read_reduce_outputs(
     Ok(unsafe { host.get_accessor().get().to_vec() })
 }
 
+fn schedule_reduce_outputs_readback(
+    count: usize,
+    state: &mut GpuWhirState,
+    context: &ProverContext,
+) -> CudaResult<HostAllocation<[E4]>> {
+    let mut host = unsafe { context.alloc_transient_host_uninit_slice(count) };
+    memory_copy_async(
+        &mut host,
+        &state.reduce_out[..count],
+        context.get_exec_stream(),
+    )?;
+    Ok(host)
+}
+
 fn full_cap_from_trace_holder(trace_holder: &TraceHolder<BF>) -> MerkleTreeCapVarLength {
     MerkleTreeCapVarLength {
         cap: trace_holder
@@ -132,6 +423,94 @@ fn full_cap_from_trace_holder(trace_holder: &TraceHolder<BF>) -> MerkleTreeCapVa
             .flat_map(|subcap| subcap.cap)
             .collect(),
     }
+}
+
+fn full_cap_from_host_caps(
+    tree_caps: &[HostAllocation<[Digest]>],
+    log_lde_factor: u32,
+) -> MerkleTreeCapVarLength {
+    MerkleTreeCapVarLength {
+        cap: get_tree_caps(
+            &tree_caps
+                .iter()
+                .map(HostAllocation::get_accessor)
+                .collect::<Vec<_>>(),
+            log_lde_factor,
+        )
+        .into_iter()
+        .flat_map(|subcap| subcap.cap)
+        .collect(),
+    }
+}
+
+fn full_cap_from_accessors(
+    accessors: &[crate::primitives::context::UnsafeAccessor<[Digest]>],
+    log_lde_factor: u32,
+) -> MerkleTreeCapVarLength {
+    MerkleTreeCapVarLength {
+        cap: get_tree_caps(accessors, log_lde_factor)
+            .into_iter()
+            .flat_map(|subcap| subcap.cap)
+            .collect(),
+    }
+}
+
+fn cap_digest_count_from_accessors(
+    accessors: &[crate::primitives::context::UnsafeAccessor<[Digest]>],
+) -> usize {
+    accessors.iter().map(|accessor| unsafe { accessor.get().len() }).sum()
+}
+
+fn fill_full_cap_from_accessors(
+    dst: &mut [Digest],
+    accessors: &[crate::primitives::context::UnsafeAccessor<[Digest]>],
+    log_lde_factor: u32,
+) {
+    let lde_factor = 1usize << log_lde_factor;
+    assert_eq!(accessors.len(), lde_factor);
+    let expected_len = accessors
+        .iter()
+        .map(|accessor| unsafe { accessor.get().len() })
+        .sum::<usize>();
+    assert_eq!(dst.len(), expected_len, "WHIR cap destination length mismatch");
+    let mut offset = 0;
+    for stage1_pos in 0..lde_factor {
+        let natural_coset_index = bitreverse_index(stage1_pos, log_lde_factor);
+        let src = unsafe { accessors[natural_coset_index].get() };
+        let len = src.len();
+        dst[offset..offset + len].copy_from_slice(src);
+        offset += len;
+    }
+}
+
+fn make_preallocated_base_queries(
+    count: usize,
+    leaf_values_len: usize,
+    path_len: usize,
+) -> Vec<BaseFieldQuery<BF, DefaultTreeConstructor>> {
+    (0..count)
+        .map(|_| BaseFieldQuery {
+            index: 0,
+            leaf_values_concatenated: vec![BF::ZERO; leaf_values_len],
+            path: vec![Digest::default(); path_len],
+            _marker: PhantomData,
+        })
+        .collect()
+}
+
+fn make_preallocated_extension_queries(
+    count: usize,
+    values_per_leaf: usize,
+    path_len: usize,
+) -> Vec<ExtensionFieldQuery<BF, E4, DefaultTreeConstructor>> {
+    (0..count)
+        .map(|_| ExtensionFieldQuery {
+            index: 0,
+            leaf_values_concatenated: vec![E4::ZERO; values_per_leaf],
+            path: vec![Digest::default(); path_len],
+            _marker: PhantomData,
+        })
+        .collect()
 }
 
 fn decode_base_leaf_values(
@@ -164,6 +543,18 @@ pub(crate) fn query_base_trace_holder_for_folded_index(
     Vec<Vec<BF>>,
     BaseFieldQuery<BF, DefaultTreeConstructor>,
 )> {
+    let scheduled =
+        schedule_query_base_trace_holder_for_folded_index(trace_holder, index, context)?;
+    context.get_exec_stream().synchronize()?;
+    let (decoded, cpu_query) = scheduled.decode();
+    Ok((scheduled.coset_index, decoded, cpu_query))
+}
+
+pub(crate) fn schedule_query_base_trace_holder_for_folded_index(
+    trace_holder: &mut TraceHolder<BF>,
+    index: usize,
+    context: &ProverContext,
+) -> CudaResult<GpuScheduledBaseFieldQuery> {
     let lde_factor = 1usize << trace_holder.log_lde_factor;
     let values_per_leaf = 1usize << trace_holder.log_rows_per_leaf;
     let coset_tree_size = (1usize << trace_holder.log_domain_size) / values_per_leaf;
@@ -193,17 +584,16 @@ pub(crate) fn query_base_trace_holder_for_folded_index(
     )?;
     let path_query =
         trace_holder.get_leafs_and_merkle_paths(path_coset_index, &device_path_index, context)?;
-    context.get_exec_stream().synchronize()?;
-    let leafs = unsafe { value_query.leafs.get_accessor().get().to_vec() };
-    let path = unsafe { path_query.merkle_paths.get_accessor().get().to_vec() };
-    let decoded = decode_base_leaf_values(&leafs, values_per_leaf, trace_holder.columns_count);
-    let cpu_query = BaseFieldQuery {
+    Ok(GpuScheduledBaseFieldQuery {
         index,
-        leaf_values_concatenated: decoded.iter().flatten().copied().collect(),
-        path,
-        _marker: PhantomData,
-    };
-    Ok((value_coset_index, decoded, cpu_query))
+        coset_index: value_coset_index,
+        value_index_host: host_value_index,
+        path_index_host: host_path_index,
+        leafs: value_query.leafs,
+        merkle_paths: path_query.merkle_paths,
+        values_per_leaf,
+        columns_count: trace_holder.columns_count,
+    })
 }
 
 fn into_extension_query(
@@ -282,6 +672,132 @@ fn special_lagrange_interpolate(
     }
 
     result
+}
+
+fn decode_unknown_coset_base_field_query_from_accessors(
+    index: usize,
+    coset_tree_size: usize,
+    log_lde_factor: u32,
+    values_per_leaf: usize,
+    columns_count: usize,
+    value_leafs: &[crate::primitives::context::UnsafeAccessor<[BF]>],
+    path_merkle_paths: &[crate::primitives::context::UnsafeAccessor<[Digest]>],
+) -> (
+    usize,
+    Vec<Vec<BF>>,
+    BaseFieldQuery<BF, DefaultTreeConstructor>,
+) {
+    let lde_factor = 1usize << log_lde_factor;
+    let value_coset_index = index & (lde_factor - 1);
+    let stage1_coset_index = index / coset_tree_size;
+    let path_coset_index = bitreverse_index(stage1_coset_index, log_lde_factor);
+    let leafs = unsafe { value_leafs[value_coset_index].get() };
+    let path = unsafe { path_merkle_paths[path_coset_index].get().to_vec() };
+    let decoded = decode_base_leaf_values(leafs, values_per_leaf, columns_count);
+    let cpu_query = BaseFieldQuery {
+        index,
+        leaf_values_concatenated: decoded.iter().flatten().copied().collect(),
+        path,
+        _marker: PhantomData,
+    };
+
+    (value_coset_index, decoded, cpu_query)
+}
+
+fn fill_unknown_coset_base_field_query_from_accessors(
+    dst: &mut BaseFieldQuery<BF, DefaultTreeConstructor>,
+    index: usize,
+    coset_tree_size: usize,
+    log_lde_factor: u32,
+    values_per_leaf: usize,
+    columns_count: usize,
+    value_leafs: &[crate::primitives::context::UnsafeAccessor<[BF]>],
+    path_merkle_paths: &[crate::primitives::context::UnsafeAccessor<[Digest]>],
+) {
+    let lde_factor = 1usize << log_lde_factor;
+    let value_coset_index = index & (lde_factor - 1);
+    let stage1_coset_index = index / coset_tree_size;
+    let path_coset_index = bitreverse_index(stage1_coset_index, log_lde_factor);
+    let leafs = unsafe { value_leafs[value_coset_index].get() };
+    let path = unsafe { path_merkle_paths[path_coset_index].get() };
+    let expected_leaf_values = values_per_leaf * columns_count;
+    assert_eq!(
+        dst.leaf_values_concatenated.len(),
+        expected_leaf_values,
+        "base-field query leaf destination length mismatch"
+    );
+    assert_eq!(
+        dst.path.len(),
+        path.len(),
+        "base-field query path destination length mismatch"
+    );
+    dst.index = index;
+    for value_index in 0..values_per_leaf {
+        for column in 0..columns_count {
+            dst.leaf_values_concatenated[value_index * columns_count + column] =
+                leafs[column * values_per_leaf + value_index];
+        }
+    }
+    dst.path.copy_from_slice(path);
+}
+
+fn decode_extension_query_from_accessors(
+    index: usize,
+    values_per_leaf: usize,
+    leafs_accessor: crate::primitives::context::UnsafeAccessor<[BF]>,
+    path_accessor: crate::primitives::context::UnsafeAccessor<[Digest]>,
+) -> GpuWhirExtensionQuery {
+    let leafs = unsafe { leafs_accessor.get() };
+    assert_eq!(leafs.len(), values_per_leaf * EXT4_DEGREE);
+    let mut leaf_values_concatenated = Vec::with_capacity(values_per_leaf);
+    for value_index in 0..values_per_leaf {
+        let mut coeffs = [BF::ZERO; EXT4_DEGREE];
+        for column in 0..EXT4_DEGREE {
+            coeffs[column] = leafs[value_index * EXT4_DEGREE + column];
+        }
+        leaf_values_concatenated.push(extension_field_from_base_coeffs::<BF, E4>(coeffs));
+    }
+    let path = unsafe { path_accessor.get().to_vec() };
+    GpuWhirExtensionQuery {
+        index,
+        leaf_values_concatenated,
+        path,
+    }
+}
+
+fn fill_extension_query_from_accessors(
+    dst: &mut ExtensionFieldQuery<BF, E4, DefaultTreeConstructor>,
+    index: usize,
+    values_per_leaf: usize,
+    leafs_accessor: crate::primitives::context::UnsafeAccessor<[BF]>,
+    path_accessor: crate::primitives::context::UnsafeAccessor<[Digest]>,
+) {
+    let leafs = unsafe { leafs_accessor.get() };
+    let path = unsafe { path_accessor.get() };
+    assert_eq!(
+        leafs.len(),
+        values_per_leaf * EXT4_DEGREE,
+        "extension query leaf source length mismatch"
+    );
+    assert_eq!(
+        dst.leaf_values_concatenated.len(),
+        values_per_leaf,
+        "extension query leaf destination length mismatch"
+    );
+    assert_eq!(
+        dst.path.len(),
+        path.len(),
+        "extension query path destination length mismatch"
+    );
+    dst.index = index;
+    for value_index in 0..values_per_leaf {
+        let mut coeffs = [BF::ZERO; EXT4_DEGREE];
+        for column in 0..EXT4_DEGREE {
+            coeffs[column] = leafs[value_index * EXT4_DEGREE + column];
+        }
+        dst.leaf_values_concatenated[value_index] = extension_field_from_base_coeffs::<BF, E4>(coeffs);
+    }
+    dst.path.copy_from_slice(path);
 }
 
 fn fold_coset(
@@ -451,7 +967,6 @@ fn initialize_batched_forms(
         &mut state.sumchecked_poly_evaluation_form[..trace_len],
         stream,
     )?;
-    stream.synchronize()?;
 
     Ok([
         memory_weights.to_vec(),
@@ -579,6 +1094,61 @@ fn special_three_point_eval_device(
     Ok((outputs[0], outputs[1], outputs[2]))
 }
 
+fn schedule_special_three_point_eval_device(
+    state: &mut GpuWhirState,
+    context: &ProverContext,
+) -> CudaResult<HostAllocation<[E4]>> {
+    let half = state.current_len / 2;
+    assert!(half <= state.scratch0.len());
+    let stream = context.get_exec_stream();
+
+    {
+        let (eval_low, _) =
+            state.sumchecked_poly_evaluation_form[..state.current_len].split_at(half);
+        let (eq_low, _) = state.eq_poly[..state.current_len].split_at(half);
+        mul(eval_low, eq_low, &mut state.scratch0[..half], stream)?;
+    }
+    reduce(
+        ReduceOperation::Sum,
+        &mut state.reduce_temp,
+        &state.scratch0[..half],
+        &mut state.reduce_out[0],
+        stream,
+    )?;
+
+    {
+        let (_, eval_high) =
+            state.sumchecked_poly_evaluation_form[..state.current_len].split_at(half);
+        let (_, eq_high) = state.eq_poly[..state.current_len].split_at(half);
+        mul(eval_high, eq_high, &mut state.scratch0[..half], stream)?;
+    }
+    reduce(
+        ReduceOperation::Sum,
+        &mut state.reduce_temp,
+        &state.scratch0[..half],
+        &mut state.reduce_out[1],
+        stream,
+    )?;
+
+    {
+        let (eval_low, eval_high) =
+            state.sumchecked_poly_evaluation_form[..state.current_len].split_at(half);
+        let (eq_low, eq_high) = state.eq_poly[..state.current_len].split_at(half);
+        add(eval_low, eval_high, &mut state.scratch0[..half], stream)?;
+        add(eq_low, eq_high, &mut state.scratch1[..half], stream)?;
+    }
+    mul_into_x(&mut state.scratch0[..half], &state.scratch1[..half], stream)?;
+    reduce(
+        ReduceOperation::Sum,
+        &mut state.reduce_temp,
+        &state.scratch0[..half],
+        &mut state.reduce_out[2],
+        stream,
+    )?;
+
+    schedule_reduce_outputs_readback(3, state, context)
+}
+
 fn fold_monomial_form_in_place_device(
     state: &mut GpuWhirState,
     challenge: E4,
@@ -655,6 +1225,35 @@ fn evaluate_monomial_form_device(
     Ok(result)
 }
 
+fn schedule_monomial_eval_device(
+    state: &mut GpuWhirState,
+    point: &DeviceSlice<E4>,
+    context: &ProverContext,
+) -> CudaResult<Vec<HostAllocation<[E4]>>> {
+    let stream = context.get_exec_stream();
+    let chunk_size = state.scratch0.len().min(state.current_len);
+    let mut partials = Vec::new();
+
+    for chunk_start in (0..state.current_len).step_by(chunk_size) {
+        let chunk_len = chunk_size.min(state.current_len - chunk_start);
+        let coeffs = &state.sumchecked_poly_monomial_form[chunk_start..chunk_start + chunk_len];
+        let powers = &mut state.scratch0[..chunk_len];
+        let products = &mut state.scratch1[..chunk_len];
+        get_powers_by_ref(&point[0], chunk_start as u32, false, powers, stream)?;
+        mul(coeffs, powers, products, stream)?;
+        reduce(
+            ReduceOperation::Sum,
+            &mut state.reduce_temp,
+            &state.scratch1[..chunk_len],
+            &mut state.reduce_out[0],
+            stream,
+        )?;
+        partials.push(schedule_reduce_outputs_readback(1, state, context)?);
+    }
+
+    Ok(partials)
+}
+
 fn accumulate_eq_sample_in_place_device(
     state: &mut GpuWhirState,
     point: E4,
@@ -686,26 +1285,61 @@ fn accumulate_eq_sample_in_place_device(
     )
 }
 
-pub(crate) fn gpu_whir_fold_supported_path(
+fn schedule_accumulate_eq_sample_in_place_device(
+    state: &mut GpuWhirState,
+    fill_point_pows: impl Fn(&mut [E4]) + Send + Sync + 'static,
+    challenge: &DeviceSlice<E4>,
+    context: &ProverContext,
+) -> CudaResult<WhirHostUpload<E4>> {
+    let log_n = state.current_len.trailing_zeros() as usize;
+    let (point_pows_upload, point_pows_device) =
+        schedule_callback_populated_upload(context, log_n, fill_point_pows)?;
+    launch_build_eq_values(
+        point_pows_device.as_ptr(),
+        0,
+        log_n,
+        state.scratch0.as_mut_ptr(),
+        state.current_len,
+        context,
+    )?;
+    mul_into_x(
+        &mut state.scratch0[..state.current_len],
+        &challenge[0],
+        context.get_exec_stream(),
+    )?;
+    add_into_y(
+        &state.scratch0[..state.current_len],
+        &mut state.eq_poly[..state.current_len],
+        context.get_exec_stream(),
+    )?;
+    Ok(point_pows_upload)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn schedule_gpu_whir_fold_with_sources(
     memory_trace_holder: &mut TraceHolder<BF>,
-    mem_polys_claims: Vec<E4>,
+    memory_base_caps_keepalive: Vec<HostAllocation<[Digest]>>,
+    fill_mem_polys_claims: impl Fn(&mut [E4]) + Send + Sync + 'static,
     witness_trace_holder: &mut TraceHolder<BF>,
-    wit_polys_claims: Vec<E4>,
+    witness_base_caps_keepalive: Vec<HostAllocation<[Digest]>>,
+    fill_wit_polys_claims: impl Fn(&mut [E4]) + Send + Sync + 'static,
     setup_trace_holder: &mut TraceHolder<BF>,
-    setup_polys_claims: Vec<E4>,
-    original_evaluation_point: Vec<E4>,
+    setup_base_caps_keepalive: Vec<HostAllocation<[Digest]>>,
+    fill_setup_polys_claims: impl Fn(&mut [E4]) + Send + Sync + 'static,
+    base_layer_point_len: usize,
+    fill_base_layer_point: impl Fn(&mut [E4]) + Send + Sync + 'static,
     original_lde_factor: usize,
-    batching_challenge: E4,
+    _batching_challenge_source: impl Fn() -> E4 + Send + Sync + 'static,
     whir_steps_schedule: Vec<usize>,
     whir_queries_schedule: Vec<usize>,
     whir_steps_lde_factors: Vec<usize>,
     whir_pow_schedule: Vec<u32>,
-    mut transcript_seed: Seed,
+    seed_source: impl Fn() -> Seed + Send + Sync + 'static,
     tree_cap_size: usize,
     trace_len_log2: usize,
-    worker: &Worker,
+    external_pow_nonces: Option<Vec<u64>>,
     context: &ProverContext,
-) -> CudaResult<WhirPolyCommitProof<BF, E4, DefaultTreeConstructor>> {
+) -> CudaResult<GpuWhirFoldScheduledExecution> {
     let trace_len = 1usize << trace_len_log2;
     assert_eq!(memory_trace_holder.log_domain_size as usize, trace_len_log2);
     assert_eq!(
@@ -729,396 +1363,1175 @@ pub(crate) fn gpu_whir_fold_supported_path(
         1usize << setup_trace_holder.log_rows_per_leaf,
         1usize << whir_steps_schedule[0]
     );
+    assert_eq!(whir_steps_schedule.len(), whir_queries_schedule.len());
+    assert_eq!(whir_steps_schedule.len(), whir_pow_schedule.len());
+    assert_eq!(whir_steps_schedule.len(), whir_steps_lde_factors.len() + 1);
+    if let Some(external_pow_nonces) = external_pow_nonces.as_ref() {
+        assert_eq!(external_pow_nonces.len(), whir_pow_schedule.len());
+    }
 
     memory_trace_holder.ensure_cosets_materialized(context)?;
     witness_trace_holder.ensure_cosets_materialized(context)?;
     setup_trace_holder.ensure_cosets_materialized(context)?;
 
-    let mut proof = WhirPolyCommitProof {
+    let stream = context.get_exec_stream();
+    let mut tracing_ranges = Vec::new();
+    let schedule_range = Range::new("gkr.whir.schedule")?;
+    schedule_range.start(stream)?;
+
+    let base_caps_keepalive = [
+        memory_base_caps_keepalive,
+        witness_base_caps_keepalive,
+        setup_base_caps_keepalive,
+    ];
+    let total_sumcheck_polys = whir_steps_schedule.iter().sum::<usize>();
+    let initial_query_count = whir_queries_schedule[0];
+    let intermediate_query_counts = whir_queries_schedule[1..].to_vec();
+    let whir_pow_rounds = whir_pow_schedule.len();
+    let memory_caps_accessors = base_caps_keepalive[0]
+        .iter()
+        .map(HostAllocation::get_accessor)
+        .collect::<Vec<_>>();
+    let witness_caps_accessors = base_caps_keepalive[1]
+        .iter()
+        .map(HostAllocation::get_accessor)
+        .collect::<Vec<_>>();
+    let setup_caps_accessors = base_caps_keepalive[2]
+        .iter()
+        .map(HostAllocation::get_accessor)
+        .collect::<Vec<_>>();
+    let memory_log_lde_factor = memory_trace_holder.log_lde_factor;
+    let witness_log_lde_factor = witness_trace_holder.log_lde_factor;
+    let setup_log_lde_factor = setup_trace_holder.log_lde_factor;
+    let memory_columns_count = memory_trace_holder.columns_count;
+    let witness_columns_count = witness_trace_holder.columns_count;
+    let setup_columns_count = setup_trace_holder.columns_count;
+    let num_intermediate_oracles = whir_steps_lde_factors.len();
+    let initial_values_per_leaf = 1usize << whir_steps_schedule[0];
+    let tree_cap_log2 = tree_cap_size.trailing_zeros() as usize;
+    let memory_base_query_path_len = (memory_trace_holder.log_domain_size
+        - memory_trace_holder.log_rows_per_leaf
+        - (memory_trace_holder.log_tree_cap_size - memory_trace_holder.log_lde_factor))
+        as usize;
+    let witness_base_query_path_len = (witness_trace_holder.log_domain_size
+        - witness_trace_holder.log_rows_per_leaf
+        - (witness_trace_holder.log_tree_cap_size - witness_trace_holder.log_lde_factor))
+        as usize;
+    let setup_base_query_path_len = (setup_trace_holder.log_domain_size
+        - setup_trace_holder.log_rows_per_leaf
+        - (setup_trace_holder.log_tree_cap_size - setup_trace_holder.log_lde_factor))
+        as usize;
+    let mut folded_trace_len_log2 = trace_len_log2;
+    let intermediate_query_specs = whir_steps_lde_factors
+        .iter()
+        .enumerate()
+        .map(|(oracle_idx, &lde_factor)| {
+            folded_trace_len_log2 -= whir_steps_schedule[oracle_idx];
+            let values_per_leaf_log2 = whir_steps_schedule[oracle_idx + 1];
+            let path_len = folded_trace_len_log2 + lde_factor.trailing_zeros() as usize
+                - values_per_leaf_log2
+                - tree_cap_log2;
+            (
+                whir_queries_schedule[oracle_idx + 1],
+                1usize << values_per_leaf_log2,
+                path_len,
+            )
+        })
+        .collect::<Vec<_>>();
+    let scheduled_proof = WhirPolyCommitProof {
         witness_commitment: WhirBaseLayerCommitmentAndQueries {
             commitment: WhirCommitment {
-                cap: full_cap_from_trace_holder(witness_trace_holder),
+                cap: MerkleTreeCapVarLength {
+                    cap: vec![Digest::default(); cap_digest_count_from_accessors(&witness_caps_accessors)],
+                },
                 _marker: PhantomData,
             },
-            num_columns: witness_trace_holder.columns_count,
-            evals: wit_polys_claims.clone(),
-            queries: vec![],
+            num_columns: witness_columns_count,
+            evals: vec![E4::ZERO; witness_columns_count],
+            queries: make_preallocated_base_queries(
+                initial_query_count,
+                witness_columns_count * initial_values_per_leaf,
+                witness_base_query_path_len,
+            ),
         },
         memory_commitment: WhirBaseLayerCommitmentAndQueries {
             commitment: WhirCommitment {
-                cap: full_cap_from_trace_holder(memory_trace_holder),
+                cap: MerkleTreeCapVarLength {
+                    cap: vec![Digest::default(); cap_digest_count_from_accessors(&memory_caps_accessors)],
+                },
                 _marker: PhantomData,
             },
-            num_columns: memory_trace_holder.columns_count,
-            evals: mem_polys_claims.clone(),
-            queries: vec![],
+            num_columns: memory_columns_count,
+            evals: vec![E4::ZERO; memory_columns_count],
+            queries: make_preallocated_base_queries(
+                initial_query_count,
+                memory_columns_count * initial_values_per_leaf,
+                memory_base_query_path_len,
+            ),
         },
         setup_commitment: WhirBaseLayerCommitmentAndQueries {
             commitment: WhirCommitment {
-                cap: full_cap_from_trace_holder(setup_trace_holder),
+                cap: MerkleTreeCapVarLength {
+                    cap: vec![Digest::default(); cap_digest_count_from_accessors(&setup_caps_accessors)],
+                },
                 _marker: PhantomData,
             },
-            num_columns: setup_trace_holder.columns_count,
-            evals: setup_polys_claims.clone(),
-            queries: vec![],
+            num_columns: setup_columns_count,
+            evals: vec![E4::ZERO; setup_columns_count],
+            queries: make_preallocated_base_queries(
+                initial_query_count,
+                setup_columns_count * initial_values_per_leaf,
+                setup_base_query_path_len,
+            ),
         },
-        sumcheck_polys: vec![],
-        intermediate_whir_oracles: Vec::with_capacity(whir_steps_lde_factors.len()),
-        ood_samples: vec![],
-        pow_nonces: vec![],
+        sumcheck_polys: vec![[E4::ZERO; 3]; total_sumcheck_polys],
+        intermediate_whir_oracles: intermediate_query_specs
+            .iter()
+            .map(|&(count, values_per_leaf, path_len)| WhirIntermediateCommitmentAndQueries {
+                commitment: WhirCommitment {
+                    cap: MerkleTreeCapVarLength {
+                        cap: vec![Digest::default(); tree_cap_size],
+                    },
+                    _marker: PhantomData,
+                },
+                queries: make_preallocated_extension_queries(count, values_per_leaf, path_len),
+            })
+            .collect(),
+        ood_samples: vec![E4::ZERO; num_intermediate_oracles],
+        pow_nonces: vec![0u64; whir_pow_rounds],
         final_monomials: vec![],
     };
 
+    let shared_state = std::sync::Arc::new(std::sync::Mutex::new(ScheduledWhirProofState {
+        proof: Some(scheduled_proof),
+        #[cfg(test)]
+        pre_pow_seeds: vec![Seed::default(); whir_pow_schedule.len()],
+    }));
+    let mut start_callbacks = Callbacks::new();
+    let mut seed_host = unsafe { context.alloc_host_uninit::<Seed>() };
+    let seed_accessor = seed_host.get_mut_accessor();
+    start_callbacks.schedule(
+        move || unsafe {
+            seed_accessor.set(seed_source());
+        },
+        stream,
+    )?;
+    let mut base_layer_point_host =
+        unsafe { context.alloc_transient_host_uninit_slice(base_layer_point_len) };
+    let base_layer_point_accessor = base_layer_point_host.get_mut_accessor();
+    start_callbacks.schedule(
+        move || unsafe {
+            fill_base_layer_point(base_layer_point_accessor.get_mut());
+        },
+        stream,
+    )?;
+    start_callbacks.schedule(
+        {
+            let shared_state = std::sync::Arc::clone(&shared_state);
+            move || {
+                let mut proof_state = shared_state.lock().unwrap();
+                let proof = proof_state.proof.as_mut().unwrap();
+                fill_full_cap_from_accessors(
+                    &mut proof.witness_commitment.commitment.cap.cap,
+                    &witness_caps_accessors,
+                    witness_log_lde_factor,
+                );
+                fill_full_cap_from_accessors(
+                    &mut proof.memory_commitment.commitment.cap.cap,
+                    &memory_caps_accessors,
+                    memory_log_lde_factor,
+                );
+                fill_full_cap_from_accessors(
+                    &mut proof.setup_commitment.commitment.cap.cap,
+                    &setup_caps_accessors,
+                    setup_log_lde_factor,
+                );
+                fill_wit_polys_claims(&mut proof.witness_commitment.evals);
+                fill_mem_polys_claims(&mut proof.memory_commitment.evals);
+                fill_setup_polys_claims(&mut proof.setup_commitment.evals);
+            }
+        },
+        stream,
+    )?;
+
     let mut state = GpuWhirState::new(trace_len, context)?;
-    let (batch_challenges, mut claim) = build_initial_state(
+    let batch_challenges = initialize_batched_forms(
         memory_trace_holder,
-        &mem_polys_claims,
         witness_trace_holder,
-        &wit_polys_claims,
         setup_trace_holder,
-        &setup_polys_claims,
-        &original_evaluation_point,
-        batching_challenge,
+        memory_trace_holder.columns_count,
+        witness_trace_holder.columns_count,
+        setup_trace_holder.columns_count,
+        E4::ZERO,
         &mut state,
         context,
     )?;
+    let weight_uploads = batch_challenges
+        .iter()
+        .map(|weights| WhirHostUpload {
+            callbacks: Callbacks::new(),
+            host: alloc_transient_host_and_copy(context, weights),
+        })
+        .collect::<Vec<_>>();
 
+    memory_copy_async(
+        &mut state.point_pows[..base_layer_point_len],
+        &base_layer_point_host,
+        stream,
+    )?;
+    launch_build_eq_values(
+        state.point_pows.as_ptr(),
+        0,
+        base_layer_point_len,
+        state.eq_poly.as_mut_ptr(),
+        trace_len,
+        context,
+    )?;
+
+    let quart = BF::from_u32_unchecked(4).inverse().unwrap();
+    let two_inv = BF::from_u32_unchecked(2).inverse().unwrap();
     let mut whir_steps_schedule = whir_steps_schedule.into_iter().peekable();
     let mut whir_queries_schedule = whir_queries_schedule.into_iter();
     let mut whir_steps_lde_factors = whir_steps_lde_factors.into_iter();
-    let mut whir_pow_schedule = whir_pow_schedule.into_iter();
-    let two_inv = BF::from_u32_unchecked(2).inverse().unwrap();
-    let num_whir_steps = proof.intermediate_whir_oracles.capacity();
-    let mut rs_oracle;
+    let mut whir_pow_schedule = whir_pow_schedule.into_iter().enumerate();
+    let num_whir_steps = num_intermediate_oracles;
+    let mut rs_oracle: Option<GpuWhirExtensionOracle> = None;
+
+    let mut fold_eval_readbacks = Vec::new();
+    let mut folding_challenges = Vec::new();
+    let mut recursive_caps_keepalive = Vec::new();
+    let mut ood_points = Vec::new();
+    let mut ood_partial_readbacks = Vec::new();
+    let mut ood_values = Vec::new();
+    let mut query_index_callbacks = Vec::new();
+    let mut query_indexes = Vec::new();
+    let mut delinearization_challenges = Vec::new();
+    let mut pow_nonces = Vec::new();
+    let mut base_queries = Vec::new();
+    let mut recursive_queries = Vec::new();
+    let mut final_callbacks = Callbacks::new();
+    let mut scheduled_sumcheck_poly_idx = 0usize;
+
+    let mut schedule_fold_round =
+        |num_folding_steps: usize, state: &mut GpuWhirState| -> CudaResult<()> {
+            for _ in 0..num_folding_steps {
+                let readback = schedule_special_three_point_eval_device(state, context)?;
+                let readback_accessor = readback.get_accessor();
+                let shared_state = std::sync::Arc::clone(&shared_state);
+                let sumcheck_poly_idx = scheduled_sumcheck_poly_idx;
+                scheduled_sumcheck_poly_idx += 1;
+                let (challenge_upload, challenge_device) =
+                    schedule_callback_populated_upload(context, 1, move |dst: &mut [E4]| unsafe {
+                        let values = readback_accessor.get();
+                        let mut f_half = values[2];
+                        f_half.mul_assign_by_base(&quart);
+                        let coeffs = special_lagrange_interpolate(
+                            values[0],
+                            values[1],
+                            f_half,
+                            E4::from_base(two_inv),
+                        );
+                        let mut proof_state = shared_state.lock().unwrap();
+                        let proof = proof_state
+                            .proof
+                            .as_mut()
+                            .expect("proof must be initialized");
+                        proof.sumcheck_polys[sumcheck_poly_idx] = coeffs;
+                        commit_field_els::<BF, E4>(seed_accessor.get_mut(), &coeffs);
+                        dst[0] = draw_random_field_els::<BF, E4>(seed_accessor.get_mut(), 1)[0];
+                    })?;
+                let current_len = state.current_len;
+                let next_len = current_len / 2;
+                whir_fold_monomial(
+                    &state.sumchecked_poly_monomial_form[..current_len],
+                    &challenge_device[0],
+                    &mut state.monomial_buffer[..next_len],
+                    stream,
+                )?;
+                core::mem::swap(
+                    &mut state.sumchecked_poly_monomial_form,
+                    &mut state.monomial_buffer,
+                );
+                whir_fold_split_half_in_place(
+                    &mut state.sumchecked_poly_evaluation_form[..current_len],
+                    &challenge_device[0],
+                    stream,
+                )?;
+                whir_fold_split_half_in_place(
+                    &mut state.eq_poly[..current_len],
+                    &challenge_device[0],
+                    stream,
+                )?;
+                state.current_len = next_len;
+                fold_eval_readbacks.push(readback);
+                folding_challenges.push(challenge_upload);
+            }
+            Ok(())
+        };
 
     {
-        let num_initial_folding_rounds = whir_steps_schedule.next().unwrap();
+        let num_folding_steps = whir_steps_schedule.next().unwrap();
         let num_queries = whir_queries_schedule.next().unwrap();
-        let pow_bits = whir_pow_schedule.next().unwrap();
-        let rs_domain_log2 = trace_len_log2 + (original_lde_factor.trailing_zeros() as usize);
-        let query_domain_log2 = rs_domain_log2 - num_initial_folding_rounds;
-        let mut folding_challenges_in_round = Vec::with_capacity(num_initial_folding_rounds);
-
-        for _ in 0..num_initial_folding_rounds {
-            let (f0, f1, f_half) = special_three_point_eval_device(&mut state, context)?;
-            let coeffs = special_lagrange_interpolate(f0, f1, f_half, E4::from_base(two_inv));
-            proof.sumcheck_polys.push(coeffs);
-            commit_field_els::<BF, E4>(&mut transcript_seed, &coeffs);
-            let folding_challenge = draw_random_field_els::<BF, E4>(&mut transcript_seed, 1)[0];
-            folding_challenges_in_round.push(folding_challenge);
-            claim = evaluate_small_univariate_poly::<BF, E4, 3>(&coeffs, &folding_challenge);
-            fold_monomial_form_in_place_device(&mut state, folding_challenge, context)?;
-            fold_evaluation_form_in_place_device(&mut state, folding_challenge, context)?;
-            fold_eq_poly_in_place_device(&mut state, folding_challenge, context)?;
-            state.current_len /= 2;
-        }
+        let (pow_round_idx, pow_bits) = whir_pow_schedule.next().unwrap();
+        schedule_fold_round(num_folding_steps, &mut state)?;
 
         let lde_factor = whir_steps_lde_factors.next().unwrap();
         let next_folding_steps = *whir_steps_schedule.peek().unwrap();
-        rs_oracle = GpuWhirExtensionOracle::from_device_monomial_coeffs(
+        let oracle = GpuWhirExtensionOracle::schedule_from_device_monomial_coeffs(
             &state.sumchecked_poly_monomial_form[..state.current_len],
             lde_factor,
             1 << next_folding_steps,
             tree_cap_size,
             context,
         )?;
-        let commitment = WhirIntermediateCommitmentAndQueries {
-            commitment: WhirCommitment {
-                cap: rs_oracle.get_tree_cap(),
-                _marker: PhantomData,
+        let oracle_cap_accessors = oracle.tree_cap_accessors();
+        final_callbacks.schedule(
+            {
+                let shared_state = std::sync::Arc::clone(&shared_state);
+                move || unsafe {
+                    let mut proof_state = shared_state.lock().unwrap();
+                    let commitment = &mut proof_state
+                        .proof
+                        .as_mut()
+                        .unwrap()
+                        .intermediate_whir_oracles[0]
+                        .commitment;
+                    fill_full_cap_from_accessors(
+                        &mut commitment.cap.cap,
+                        &oracle_cap_accessors,
+                        0,
+                    );
+                    add_whir_commitment_to_transcript(seed_accessor.get_mut(), commitment);
+                }
             },
-            queries: vec![],
-        };
-        add_whir_commitment_to_transcript(&mut transcript_seed, &commitment.commitment);
-        proof.intermediate_whir_oracles.push(commitment);
+            stream,
+        )?;
+        rs_oracle = Some(oracle);
 
-        let ood_point = draw_random_field_els::<BF, E4>(&mut transcript_seed, 1)[0];
-        let ood_value = evaluate_monomial_form_device(&mut state, ood_point, context)?;
-        commit_field_els::<BF, E4>(&mut transcript_seed, &[ood_value]);
-        proof.ood_samples.push(ood_value);
+        let (ood_point_upload, ood_point_device) =
+            schedule_callback_populated_upload(context, 1, move |dst: &mut [E4]| unsafe {
+                dst[0] = draw_random_field_els::<BF, E4>(seed_accessor.get_mut(), 1)[0];
+            })?;
+        let ood_partials = schedule_monomial_eval_device(&mut state, &ood_point_device, context)?;
+        let mut ood_value_host = unsafe { context.alloc_transient_host_uninit_slice(1) };
+        let ood_value_accessor = ood_value_host.get_mut_accessor();
+        final_callbacks.schedule(
+            {
+                let shared_state = std::sync::Arc::clone(&shared_state);
+                let partial_accessors = ood_partials
+                    .iter()
+                    .map(HostAllocation::get_accessor)
+                    .collect::<Vec<_>>();
+                move || unsafe {
+                    let mut value = E4::ZERO;
+                    for partial in partial_accessors.iter() {
+                        value.add_assign(&partial.get()[0]);
+                    }
+                    ood_value_accessor.get_mut()[0] = value;
+                    commit_field_els::<BF, E4>(seed_accessor.get_mut(), &[value]);
+                    shared_state
+                        .lock()
+                        .unwrap()
+                        .proof
+                        .as_mut()
+                        .unwrap()
+                        .ood_samples[0] = value;
+                }
+            },
+            stream,
+        )?;
+        ood_partial_readbacks.push(ood_partials);
+        ood_points.push(ood_point_upload);
+        ood_values.push(ood_value_host);
 
+        let mut nonce_host = unsafe { context.alloc_host_uninit::<u64>() };
+        let query_domain_log2 =
+            trace_len_log2 + original_lde_factor.trailing_zeros() as usize - num_folding_steps;
         let query_domain_size = 1u64 << query_domain_log2;
         let query_domain_generator = domain_generator_for_size::<BF>(query_domain_size);
-        let extended_generator = domain_generator_for_size::<BF>(1u64 << rs_domain_log2);
-        let mut high_powers_offsets =
-            materialize_powers_serial_starting_with_one::<BF, std::alloc::Global>(
-                domain_generator_for_size::<BF>(1u64 << num_initial_folding_rounds)
-                    .inverse()
-                    .unwrap(),
-                1 << (num_initial_folding_rounds - 1),
-            );
-        bitreverse_enumeration_inplace(&mut high_powers_offsets);
-        let query_index_bits = query_domain_size.trailing_zeros() as usize;
-        let (nonce, mut bit_source) = draw_query_bits(
-            &mut transcript_seed,
-            num_queries * query_index_bits,
-            pow_bits,
-            worker,
-        );
-        proof.pow_nonces.push(nonce);
-        let delinearization_challenge = draw_random_field_els::<BF, E4>(&mut transcript_seed, 1)[0];
-        let mut claim_correction = {
-            let mut t = ood_value;
-            t.mul_assign(&delinearization_challenge);
-            t
-        };
-        accumulate_eq_sample_in_place_device(
+        let mut query_indexes_host =
+            unsafe { context.alloc_transient_host_uninit_slice(num_queries) };
+        let query_indexes_accessor = query_indexes_host.get_mut_accessor();
+        let nonce_accessor = nonce_host.get_mut_accessor();
+        let mut query_index_callbacks_for_round = Callbacks::new();
+        if let Some(external_nonce) = external_pow_nonces
+            .as_ref()
+            .map(|nonces| nonces[pow_round_idx])
+        {
+            query_index_callbacks_for_round.schedule(
+                {
+                    let shared_state = std::sync::Arc::clone(&shared_state);
+                    move || unsafe {
+                        #[cfg(test)]
+                        {
+                            shared_state.lock().unwrap().pre_pow_seeds[pow_round_idx] =
+                                *seed_accessor.get();
+                        }
+                        let (_, mut bit_source) = draw_query_bits_with_external_nonce(
+                            seed_accessor.get_mut(),
+                            num_queries * query_domain_log2,
+                            pow_bits,
+                            external_nonce,
+                        );
+                        *nonce_accessor.get_mut() = external_nonce;
+                        for dst in query_indexes_accessor.get_mut().iter_mut() {
+                            *dst = assemble_query_index(query_domain_log2, &mut bit_source) as u32;
+                        }
+                        shared_state
+                            .lock()
+                            .unwrap()
+                            .proof
+                            .as_mut()
+                            .unwrap()
+                            .pow_nonces[pow_round_idx] = external_nonce;
+                    }
+                },
+                stream,
+            )?;
+        } else {
+            #[cfg(test)]
+            query_index_callbacks_for_round.schedule(
+                {
+                    let shared_state = std::sync::Arc::clone(&shared_state);
+                    move || unsafe {
+                        shared_state.lock().unwrap().pre_pow_seeds[pow_round_idx] =
+                            *seed_accessor.get();
+                    }
+                },
+                stream,
+            )?;
+            search_pow_challenge(
+                &mut seed_host,
+                &mut nonce_host,
+                pow_bits,
+                None,
+                &mut final_callbacks,
+                context,
+            )?;
+            query_index_callbacks_for_round.schedule(
+                {
+                    let shared_state = std::sync::Arc::clone(&shared_state);
+                    move || unsafe {
+                        let mut bit_source = draw_query_bits_after_verified_pow(
+                            seed_accessor.get_mut(),
+                            num_queries * query_domain_log2,
+                        );
+                        for dst in query_indexes_accessor.get_mut().iter_mut() {
+                            *dst = assemble_query_index(query_domain_log2, &mut bit_source) as u32;
+                        }
+                        shared_state
+                            .lock()
+                            .unwrap()
+                            .proof
+                            .as_mut()
+                            .unwrap()
+                            .pow_nonces[pow_round_idx] = *nonce_accessor.get();
+                    }
+                },
+                stream,
+            )?;
+        }
+        let (delinearization_upload, delinearization_device) =
+            schedule_callback_populated_upload(context, 1, move |dst: &mut [E4]| unsafe {
+                dst[0] = draw_random_field_els::<BF, E4>(seed_accessor.get_mut(), 1)[0];
+            })?;
+        let ood_point_accessor = ood_points.last().unwrap().host.get_accessor();
+        let eq_upload = schedule_accumulate_eq_sample_in_place_device(
             &mut state,
-            ood_point,
-            delinearization_challenge,
+            move |dst| unsafe {
+                let mut value = ood_point_accessor.get()[0];
+                for dst_el in dst.iter_mut() {
+                    *dst_el = value;
+                    value.square();
+                }
+            },
+            &delinearization_device,
             context,
         )?;
+        ood_points.push(eq_upload);
 
-        for _ in 0..num_queries {
-            let query_index = assemble_query_index(query_index_bits, &mut bit_source);
-            let query_point = query_domain_generator.pow(query_index as u32);
-            let base_root = extended_generator.pow(query_index as u32);
-            let base_root_inv = base_root.inverse().unwrap();
-            let mut batched_evals = vec![E4::ZERO; 1 << num_initial_folding_rounds];
-
-            for (leaf_values, weights) in [
-                {
-                    let (_, leaf_values, query) = query_base_trace_holder_for_folded_index(
-                        memory_trace_holder,
-                        query_index,
-                        context,
-                    )?;
-                    proof.memory_commitment.queries.push(query);
-                    (leaf_values, &batch_challenges[0])
-                },
-                {
-                    let (_, leaf_values, query) = query_base_trace_holder_for_folded_index(
-                        witness_trace_holder,
-                        query_index,
-                        context,
-                    )?;
-                    proof.witness_commitment.queries.push(query);
-                    (leaf_values, &batch_challenges[1])
-                },
-                {
-                    let (_, leaf_values, query) = query_base_trace_holder_for_folded_index(
-                        setup_trace_holder,
-                        query_index,
-                        context,
-                    )?;
-                    proof.setup_commitment.queries.push(query);
-                    (leaf_values, &batch_challenges[2])
-                },
+        let mut round_base_queries = [Vec::new(), Vec::new(), Vec::new()];
+        for query_idx in 0..num_queries {
+            let mut memory_query_index_host =
+                unsafe { context.alloc_transient_host_uninit_slice(1) };
+            let mut witness_query_index_host =
+                unsafe { context.alloc_transient_host_uninit_slice(1) };
+            let mut setup_query_index_host =
+                unsafe { context.alloc_transient_host_uninit_slice(1) };
+            let query_indexes_accessor = query_indexes_host.get_accessor();
+            let mut copy_callbacks = Callbacks::new();
+            for single_accessor in [
+                memory_query_index_host.get_mut_accessor(),
+                witness_query_index_host.get_mut_accessor(),
+                setup_query_index_host.get_mut_accessor(),
             ] {
-                for (dst, src) in batched_evals.iter_mut().zip(leaf_values.iter()) {
-                    for (value, weight) in src.iter().zip(weights.iter()) {
-                        let mut term = *weight;
-                        term.mul_assign_by_base(value);
-                        dst.add_assign(&term);
-                    }
-                }
+                let query_indexes_accessor = query_indexes_accessor;
+                copy_callbacks.schedule(
+                    move || unsafe {
+                        single_accessor.get_mut()[0] = query_indexes_accessor.get()[query_idx];
+                    },
+                    stream,
+                )?;
             }
 
-            let folded = fold_coset(
-                batched_evals,
-                num_initial_folding_rounds,
-                &folding_challenges_in_round,
-                &base_root_inv,
-                &high_powers_offsets,
-                &two_inv,
-            );
-            let mut t = folded;
-            t.mul_assign(&delinearization_challenge);
-            claim_correction.add_assign(&t);
-            accumulate_eq_sample_in_place_device(
-                &mut state,
-                E4::from_base(query_point),
-                delinearization_challenge,
+            let memory_query = schedule_unknown_coset_base_field_query(
+                memory_trace_holder,
+                memory_query_index_host,
                 context,
             )?;
+            let witness_query = schedule_unknown_coset_base_field_query(
+                witness_trace_holder,
+                witness_query_index_host,
+                context,
+            )?;
+            let setup_query = schedule_unknown_coset_base_field_query(
+                setup_trace_holder,
+                setup_query_index_host,
+                context,
+            )?;
+
+            let memory_query_index_accessor = memory_query.query_index.get_accessor();
+            let memory_leaf_accessors = memory_query
+                .value_leafs
+                .iter()
+                .map(HostAllocation::get_accessor)
+                .collect::<Vec<_>>();
+            let memory_path_accessors = memory_query
+                .path_merkle_paths
+                .iter()
+                .map(HostAllocation::get_accessor)
+                .collect::<Vec<_>>();
+            let witness_query_index_accessor = witness_query.query_index.get_accessor();
+            let witness_leaf_accessors = witness_query
+                .value_leafs
+                .iter()
+                .map(HostAllocation::get_accessor)
+                .collect::<Vec<_>>();
+            let witness_path_accessors = witness_query
+                .path_merkle_paths
+                .iter()
+                .map(HostAllocation::get_accessor)
+                .collect::<Vec<_>>();
+            let setup_query_index_accessor = setup_query.query_index.get_accessor();
+            let setup_leaf_accessors = setup_query
+                .value_leafs
+                .iter()
+                .map(HostAllocation::get_accessor)
+                .collect::<Vec<_>>();
+            let setup_path_accessors = setup_query
+                .path_merkle_paths
+                .iter()
+                .map(HostAllocation::get_accessor)
+                .collect::<Vec<_>>();
+
+            let query_indexes_accessor = query_indexes_host.get_accessor();
+            let eq_upload = schedule_accumulate_eq_sample_in_place_device(
+                &mut state,
+                move |dst| unsafe {
+                    let point = E4::from_base(
+                        query_domain_generator.pow(query_indexes_accessor.get()[query_idx]),
+                    );
+                    let mut value = point;
+                    for dst_el in dst.iter_mut() {
+                        *dst_el = value;
+                        value.square();
+                    }
+                },
+                &delinearization_device,
+                context,
+            )?;
+            ood_points.push(eq_upload);
+
+            final_callbacks.extend(copy_callbacks);
+            final_callbacks.schedule(
+                {
+                    let shared_state = std::sync::Arc::clone(&shared_state);
+                    let memory_values_per_leaf = memory_query.values_per_leaf;
+                    let memory_columns_count = memory_query.columns_count;
+                    let memory_coset_tree_size = memory_query.coset_tree_size;
+                    let memory_log_lde_factor = memory_query.log_lde_factor;
+                    let witness_values_per_leaf = witness_query.values_per_leaf;
+                    let witness_columns_count = witness_query.columns_count;
+                    let witness_coset_tree_size = witness_query.coset_tree_size;
+                    let witness_log_lde_factor = witness_query.log_lde_factor;
+                    let setup_values_per_leaf = setup_query.values_per_leaf;
+                    let setup_columns_count = setup_query.columns_count;
+                    let setup_coset_tree_size = setup_query.coset_tree_size;
+                    let setup_log_lde_factor = setup_query.log_lde_factor;
+                    move || {
+                        let mut proof_state = shared_state.lock().unwrap();
+                        let proof = proof_state.proof.as_mut().unwrap();
+                        let memory_index = unsafe { memory_query_index_accessor.get()[0] as usize };
+                        fill_unknown_coset_base_field_query_from_accessors(
+                            &mut proof.memory_commitment.queries[query_idx],
+                            memory_index,
+                            memory_coset_tree_size,
+                            memory_log_lde_factor,
+                            memory_values_per_leaf,
+                            memory_columns_count,
+                            &memory_leaf_accessors,
+                            &memory_path_accessors,
+                        );
+                        let witness_index =
+                            unsafe { witness_query_index_accessor.get()[0] as usize };
+                        fill_unknown_coset_base_field_query_from_accessors(
+                            &mut proof.witness_commitment.queries[query_idx],
+                            witness_index,
+                            witness_coset_tree_size,
+                            witness_log_lde_factor,
+                            witness_values_per_leaf,
+                            witness_columns_count,
+                            &witness_leaf_accessors,
+                            &witness_path_accessors,
+                        );
+                        let setup_index = unsafe { setup_query_index_accessor.get()[0] as usize };
+                        fill_unknown_coset_base_field_query_from_accessors(
+                            &mut proof.setup_commitment.queries[query_idx],
+                            setup_index,
+                            setup_coset_tree_size,
+                            setup_log_lde_factor,
+                            setup_values_per_leaf,
+                            setup_columns_count,
+                            &setup_leaf_accessors,
+                            &setup_path_accessors,
+                        );
+                    }
+                },
+                stream,
+            )?;
+
+            round_base_queries[0].push(memory_query);
+            round_base_queries[1].push(witness_query);
+            round_base_queries[2].push(setup_query);
         }
-        claim.add_assign(&claim_correction);
+        base_queries.push(round_base_queries);
+        query_index_callbacks.push(query_index_callbacks_for_round);
+        query_indexes.push(query_indexes_host);
+        delinearization_challenges.push(delinearization_upload);
+        pow_nonces.push(nonce_host);
     }
 
-    let num_internal_whir_steps = num_whir_steps - 1;
-    for _ in 0..num_internal_whir_steps {
+    let num_internal_whir_steps = num_whir_steps.saturating_sub(1);
+    for internal_round_idx in 0..num_internal_whir_steps {
         let num_folding_steps = whir_steps_schedule.next().unwrap();
         let num_queries = whir_queries_schedule.next().unwrap();
-        let pow_bits = whir_pow_schedule.next().unwrap();
-        let rs_domain_log2 = state.current_len.trailing_zeros() as usize
-            + rs_oracle.lde_factor().trailing_zeros() as usize;
-        let query_domain_log2 = rs_domain_log2 - num_folding_steps;
-        let mut folding_challenges_in_round = Vec::with_capacity(num_folding_steps);
-
-        for _ in 0..num_folding_steps {
-            let (f0, f1, f_half) = special_three_point_eval_device(&mut state, context)?;
-            let coeffs = special_lagrange_interpolate(f0, f1, f_half, E4::from_base(two_inv));
-            proof.sumcheck_polys.push(coeffs);
-            commit_field_els::<BF, E4>(&mut transcript_seed, &coeffs);
-            let folding_challenge = draw_random_field_els::<BF, E4>(&mut transcript_seed, 1)[0];
-            folding_challenges_in_round.push(folding_challenge);
-            claim = evaluate_small_univariate_poly::<BF, E4, 3>(&coeffs, &folding_challenge);
-            fold_monomial_form_in_place_device(&mut state, folding_challenge, context)?;
-            fold_evaluation_form_in_place_device(&mut state, folding_challenge, context)?;
-            fold_eq_poly_in_place_device(&mut state, folding_challenge, context)?;
-            state.current_len /= 2;
-        }
+        let (pow_round_idx, pow_bits) = whir_pow_schedule.next().unwrap();
+        schedule_fold_round(num_folding_steps, &mut state)?;
 
         let lde_factor = whir_steps_lde_factors.next().unwrap();
         let next_folding_steps = *whir_steps_schedule.peek().unwrap();
-        let next_oracle = GpuWhirExtensionOracle::from_device_monomial_coeffs(
+        let next_oracle = GpuWhirExtensionOracle::schedule_from_device_monomial_coeffs(
             &state.sumchecked_poly_monomial_form[..state.current_len],
             lde_factor,
             1 << next_folding_steps,
             tree_cap_size,
             context,
         )?;
-        proof
-            .intermediate_whir_oracles
-            .push(WhirIntermediateCommitmentAndQueries {
-                commitment: WhirCommitment {
-                    cap: next_oracle.get_tree_cap(),
-                    _marker: PhantomData,
-                },
-                queries: vec![],
-            });
-        let mut rs_oracle_to_query = rs_oracle;
-        rs_oracle = next_oracle;
+        let next_oracle_cap_accessors = next_oracle.tree_cap_accessors();
+        final_callbacks.schedule(
+            {
+                let shared_state = std::sync::Arc::clone(&shared_state);
+                move || {
+                    let mut proof_state = shared_state.lock().unwrap();
+                    let commitment = &mut proof_state
+                        .proof
+                        .as_mut()
+                        .unwrap()
+                        .intermediate_whir_oracles[internal_round_idx + 1]
+                        .commitment;
+                    fill_full_cap_from_accessors(
+                        &mut commitment.cap.cap,
+                        &next_oracle_cap_accessors,
+                        0,
+                    );
+                }
+            },
+            stream,
+        )?;
+        let mut oracle_to_query = rs_oracle.replace(next_oracle).unwrap();
 
-        let ood_point = E4::from_base(BF::from_u32_unchecked(42));
-        let ood_value = evaluate_monomial_form_device(&mut state, ood_point, context)?;
-        proof.ood_samples.push(ood_value);
+        let (ood_point_upload, ood_point_device) =
+            schedule_callback_populated_upload(context, 1, move |dst: &mut [E4]| {
+                dst[0] = E4::from_base(BF::from_u32_unchecked(42));
+            })?;
+        let ood_partials = schedule_monomial_eval_device(&mut state, &ood_point_device, context)?;
+        let mut ood_value_host = unsafe { context.alloc_transient_host_uninit_slice(1) };
+        let ood_value_accessor = ood_value_host.get_mut_accessor();
+        final_callbacks.schedule(
+            {
+                let shared_state = std::sync::Arc::clone(&shared_state);
+                let partial_accessors = ood_partials
+                    .iter()
+                    .map(HostAllocation::get_accessor)
+                    .collect::<Vec<_>>();
+                move || unsafe {
+                    let mut value = E4::ZERO;
+                    for partial in partial_accessors.iter() {
+                        value.add_assign(&partial.get()[0]);
+                    }
+                    ood_value_accessor.get_mut()[0] = value;
+                    shared_state
+                        .lock()
+                        .unwrap()
+                        .proof
+                        .as_mut()
+                        .unwrap()
+                        .ood_samples[internal_round_idx + 1] = value;
+                }
+            },
+            stream,
+        )?;
+        ood_partial_readbacks.push(ood_partials);
+        ood_points.push(ood_point_upload);
+        ood_values.push(ood_value_host);
 
+        let mut nonce_host = unsafe { context.alloc_host_uninit::<u64>() };
+        let query_domain_log2 = state.current_len.trailing_zeros() as usize
+            + oracle_to_query.lde_factor().trailing_zeros() as usize;
         let query_domain_size = 1u64 << query_domain_log2;
         let query_domain_generator = domain_generator_for_size::<BF>(query_domain_size);
-        let extended_generator = domain_generator_for_size::<BF>(1u64 << rs_domain_log2);
-        let mut high_powers_offsets =
-            materialize_powers_serial_starting_with_one::<BF, std::alloc::Global>(
-                domain_generator_for_size::<BF>(1u64 << num_folding_steps)
-                    .inverse()
-                    .unwrap(),
-                1 << (num_folding_steps - 1),
-            );
-        bitreverse_enumeration_inplace(&mut high_powers_offsets);
-        let query_index_bits = query_domain_size.trailing_zeros() as usize;
-        let (nonce, mut bit_source) = draw_query_bits(
-            &mut transcript_seed,
-            num_queries * query_index_bits,
-            pow_bits,
-            worker,
-        );
-        proof.pow_nonces.push(nonce);
-        let delinearization_challenge = draw_random_field_els::<BF, E4>(&mut transcript_seed, 1)[0];
-        let mut claim_correction = {
-            let mut t = ood_value;
-            t.mul_assign(&delinearization_challenge);
-            t
-        };
-        accumulate_eq_sample_in_place_device(
-            &mut state,
-            ood_point,
-            delinearization_challenge,
-            context,
-        )?;
-
-        for _ in 0..num_queries {
-            let query_index = assemble_query_index(query_index_bits, &mut bit_source);
-            let query_point = query_domain_generator.pow(query_index as u32);
-            let base_root = extended_generator.pow(query_index as u32);
-            let base_root_inv = base_root.inverse().unwrap();
-            let (_, evals, query) =
-                rs_oracle_to_query.query_for_folded_index(query_index, context)?;
-            let intermediate_oracle_idx = proof.intermediate_whir_oracles.len() - 2;
-            let intermediate_oracle = &mut proof.intermediate_whir_oracles[intermediate_oracle_idx];
-            intermediate_oracle
-                .queries
-                .push(into_extension_query(query));
-            let folded = fold_coset(
-                evals,
-                num_folding_steps,
-                &folding_challenges_in_round,
-                &base_root_inv,
-                &high_powers_offsets,
-                &two_inv,
-            );
-            let mut t = folded;
-            t.mul_assign(&delinearization_challenge);
-            claim_correction.add_assign(&t);
-            accumulate_eq_sample_in_place_device(
-                &mut state,
-                E4::from_base(query_point),
-                delinearization_challenge,
+        let mut query_indexes_host =
+            unsafe { context.alloc_transient_host_uninit_slice(num_queries) };
+        let query_indexes_accessor = query_indexes_host.get_mut_accessor();
+        let nonce_accessor = nonce_host.get_mut_accessor();
+        let mut query_index_callbacks_for_round = Callbacks::new();
+        if let Some(external_nonce) = external_pow_nonces
+            .as_ref()
+            .map(|nonces| nonces[pow_round_idx])
+        {
+            query_index_callbacks_for_round.schedule(
+                {
+                    let shared_state = std::sync::Arc::clone(&shared_state);
+                    move || unsafe {
+                        #[cfg(test)]
+                        {
+                            shared_state.lock().unwrap().pre_pow_seeds[pow_round_idx] =
+                                *seed_accessor.get();
+                        }
+                        let (_, mut bit_source) = draw_query_bits_with_external_nonce(
+                            seed_accessor.get_mut(),
+                            num_queries * query_domain_log2,
+                            pow_bits,
+                            external_nonce,
+                        );
+                        *nonce_accessor.get_mut() = external_nonce;
+                        for dst in query_indexes_accessor.get_mut().iter_mut() {
+                            *dst = assemble_query_index(query_domain_log2, &mut bit_source) as u32;
+                        }
+                        shared_state
+                            .lock()
+                            .unwrap()
+                            .proof
+                            .as_mut()
+                            .unwrap()
+                            .pow_nonces[pow_round_idx] = external_nonce;
+                    }
+                },
+                stream,
+            )?;
+        } else {
+            #[cfg(test)]
+            query_index_callbacks_for_round.schedule(
+                {
+                    let shared_state = std::sync::Arc::clone(&shared_state);
+                    move || unsafe {
+                        shared_state.lock().unwrap().pre_pow_seeds[pow_round_idx] =
+                            *seed_accessor.get();
+                    }
+                },
+                stream,
+            )?;
+            search_pow_challenge(
+                &mut seed_host,
+                &mut nonce_host,
+                pow_bits,
+                None,
+                &mut final_callbacks,
                 context,
             )?;
+            query_index_callbacks_for_round.schedule(
+                {
+                    let shared_state = std::sync::Arc::clone(&shared_state);
+                    move || unsafe {
+                        let mut bit_source = draw_query_bits_after_verified_pow(
+                            seed_accessor.get_mut(),
+                            num_queries * query_domain_log2,
+                        );
+                        for dst in query_indexes_accessor.get_mut().iter_mut() {
+                            *dst = assemble_query_index(query_domain_log2, &mut bit_source) as u32;
+                        }
+                        shared_state
+                            .lock()
+                            .unwrap()
+                            .proof
+                            .as_mut()
+                            .unwrap()
+                            .pow_nonces[pow_round_idx] = *nonce_accessor.get();
+                    }
+                },
+                stream,
+            )?;
         }
+        let (delinearization_upload, delinearization_device) =
+            schedule_callback_populated_upload(context, 1, move |dst: &mut [E4]| unsafe {
+                dst[0] = draw_random_field_els::<BF, E4>(seed_accessor.get_mut(), 1)[0];
+            })?;
+        let ood_point_accessor = ood_points.last().unwrap().host.get_accessor();
+        let eq_upload = schedule_accumulate_eq_sample_in_place_device(
+            &mut state,
+            move |dst| unsafe {
+                let mut value = ood_point_accessor.get()[0];
+                for dst_el in dst.iter_mut() {
+                    *dst_el = value;
+                    value.square();
+                }
+            },
+            &delinearization_device,
+            context,
+        )?;
+        ood_points.push(eq_upload);
 
-        claim.add_assign(&claim_correction);
+        let mut round_recursive_queries = Vec::new();
+        for query_idx in 0..num_queries {
+            let mut single_query_index = unsafe { context.alloc_transient_host_uninit_slice(1) };
+            let single_query_index_accessor = single_query_index.get_mut_accessor();
+            let query_indexes_accessor = query_indexes_host.get_accessor();
+            let mut copy_callbacks = Callbacks::new();
+            copy_callbacks.schedule(
+                move || unsafe {
+                    single_query_index_accessor.get_mut()[0] =
+                        query_indexes_accessor.get()[query_idx];
+                },
+                stream,
+            )?;
+            let (query_callbacks, query) = oracle_to_query
+                .schedule_query_for_folded_index_from_host(single_query_index, context)?;
+            let query_leafs_accessor = query.leafs_accessor();
+            let query_paths_accessor = query.merkle_paths_accessor();
+            let query_values_per_leaf = query.values_per_leaf();
+            let query_indexes_accessor = query_indexes_host.get_accessor();
+            let eq_upload = schedule_accumulate_eq_sample_in_place_device(
+                &mut state,
+                move |dst| unsafe {
+                    let point = E4::from_base(
+                        query_domain_generator.pow(query_indexes_accessor.get()[query_idx]),
+                    );
+                    let mut value = point;
+                    for dst_el in dst.iter_mut() {
+                        *dst_el = value;
+                        value.square();
+                    }
+                },
+                &delinearization_device,
+                context,
+            )?;
+            ood_points.push(eq_upload);
+
+            final_callbacks.extend(copy_callbacks);
+            final_callbacks.schedule(
+                {
+                    let shared_state = std::sync::Arc::clone(&shared_state);
+                    let query_indexes_accessor = query_indexes_host.get_accessor();
+                    move || {
+                        let index = unsafe { query_indexes_accessor.get()[query_idx] as usize };
+                        fill_extension_query_from_accessors(
+                            &mut shared_state
+                                .lock()
+                                .unwrap()
+                                .proof
+                                .as_mut()
+                                .unwrap()
+                                .intermediate_whir_oracles[internal_round_idx]
+                                .queries[query_idx],
+                            index,
+                            query_values_per_leaf,
+                            query_leafs_accessor,
+                            query_paths_accessor,
+                        );
+                    }
+                },
+                stream,
+            )?;
+            round_recursive_queries.push((query_callbacks, query));
+        }
+        recursive_caps_keepalive.push(oracle_to_query.into_host_tree_caps());
+        recursive_queries.push(round_recursive_queries);
+        query_index_callbacks.push(query_index_callbacks_for_round);
+        query_indexes.push(query_indexes_host);
+        delinearization_challenges.push(delinearization_upload);
+        pow_nonces.push(nonce_host);
     }
 
     {
         let num_folding_steps = whir_steps_schedule.next().unwrap();
         let num_queries = whir_queries_schedule.next().unwrap();
-        let pow_bits = whir_pow_schedule.next().unwrap();
-        let rs_domain_log2 = state.current_len.trailing_zeros() as usize
-            + rs_oracle.lde_factor().trailing_zeros() as usize;
-        let query_domain_log2 = rs_domain_log2 - num_folding_steps;
-        let mut folding_challenges_in_round = Vec::with_capacity(num_folding_steps);
+        let (pow_round_idx, pow_bits) = whir_pow_schedule.next().unwrap();
+        schedule_fold_round(num_folding_steps, &mut state)?;
 
-        for _ in 0..num_folding_steps {
-            let (f0, f1, f_half) = special_three_point_eval_device(&mut state, context)?;
-            let coeffs = special_lagrange_interpolate(f0, f1, f_half, E4::from_base(two_inv));
-            proof.sumcheck_polys.push(coeffs);
-            commit_field_els::<BF, E4>(&mut transcript_seed, &coeffs);
-            let folding_challenge = draw_random_field_els::<BF, E4>(&mut transcript_seed, 1)[0];
-            folding_challenges_in_round.push(folding_challenge);
-            claim = evaluate_small_univariate_poly::<BF, E4, 3>(&coeffs, &folding_challenge);
-            fold_monomial_form_in_place_device(&mut state, folding_challenge, context)?;
-            fold_evaluation_form_in_place_device(&mut state, folding_challenge, context)?;
-            fold_eq_poly_in_place_device(&mut state, folding_challenge, context)?;
-            state.current_len /= 2;
-        }
-
+        let mut oracle_to_query = rs_oracle.take().unwrap();
+        let query_domain_log2 = state.current_len.trailing_zeros() as usize
+            + oracle_to_query.lde_factor().trailing_zeros() as usize;
         let query_domain_size = 1u64 << query_domain_log2;
-        let query_domain_generator = domain_generator_for_size::<BF>(query_domain_size);
-        let extended_generator = domain_generator_for_size::<BF>(1u64 << rs_domain_log2);
-        let mut high_powers_offsets =
-            materialize_powers_serial_starting_with_one::<BF, std::alloc::Global>(
-                domain_generator_for_size::<BF>(1u64 << num_folding_steps)
-                    .inverse()
-                    .unwrap(),
-                1 << (num_folding_steps - 1),
-            );
-        bitreverse_enumeration_inplace(&mut high_powers_offsets);
-        let query_index_bits = query_domain_size.trailing_zeros() as usize;
-        let (nonce, mut bit_source) = draw_query_bits(
-            &mut transcript_seed,
-            num_queries * query_index_bits,
-            pow_bits,
-            worker,
-        );
-        proof.pow_nonces.push(nonce);
-
-        for _ in 0..num_queries {
-            let query_index = assemble_query_index(query_index_bits, &mut bit_source);
-            let query_point = query_domain_generator.pow(query_index as u32);
-            let base_root = extended_generator.pow(query_index as u32);
-            let base_root_inv = base_root.inverse().unwrap();
-            let (_, evals, query) = rs_oracle.query_for_folded_index(query_index, context)?;
-            proof
-                .intermediate_whir_oracles
-                .last_mut()
-                .unwrap()
-                .queries
-                .push(into_extension_query(query));
-            let _folded = fold_coset(
-                evals,
-                num_folding_steps,
-                &folding_challenges_in_round,
-                &base_root_inv,
-                &high_powers_offsets,
-                &two_inv,
-            );
-            let _ = query_point;
+        let mut nonce_host = unsafe { context.alloc_host_uninit::<u64>() };
+        let mut query_indexes_host =
+            unsafe { context.alloc_transient_host_uninit_slice(num_queries) };
+        let query_indexes_accessor = query_indexes_host.get_mut_accessor();
+        let nonce_accessor = nonce_host.get_mut_accessor();
+        let mut query_index_callbacks_for_round = Callbacks::new();
+        if let Some(external_nonce) = external_pow_nonces
+            .as_ref()
+            .map(|nonces| nonces[pow_round_idx])
+        {
+            query_index_callbacks_for_round.schedule(
+                {
+                    let shared_state = std::sync::Arc::clone(&shared_state);
+                    move || unsafe {
+                        #[cfg(test)]
+                        {
+                            shared_state.lock().unwrap().pre_pow_seeds[pow_round_idx] =
+                                *seed_accessor.get();
+                        }
+                        let (_, mut bit_source) = draw_query_bits_with_external_nonce(
+                            seed_accessor.get_mut(),
+                            num_queries * query_domain_log2,
+                            pow_bits,
+                            external_nonce,
+                        );
+                        *nonce_accessor.get_mut() = external_nonce;
+                        for dst in query_indexes_accessor.get_mut().iter_mut() {
+                            *dst = assemble_query_index(query_domain_log2, &mut bit_source) as u32;
+                        }
+                        shared_state
+                            .lock()
+                            .unwrap()
+                            .proof
+                            .as_mut()
+                            .unwrap()
+                            .pow_nonces[pow_round_idx] = external_nonce;
+                    }
+                },
+                stream,
+            )?;
+        } else {
+            #[cfg(test)]
+            query_index_callbacks_for_round.schedule(
+                {
+                    let shared_state = std::sync::Arc::clone(&shared_state);
+                    move || unsafe {
+                        shared_state.lock().unwrap().pre_pow_seeds[pow_round_idx] =
+                            *seed_accessor.get();
+                    }
+                },
+                stream,
+            )?;
+            search_pow_challenge(
+                &mut seed_host,
+                &mut nonce_host,
+                pow_bits,
+                None,
+                &mut final_callbacks,
+                context,
+            )?;
+            query_index_callbacks_for_round.schedule(
+                {
+                    let shared_state = std::sync::Arc::clone(&shared_state);
+                    move || unsafe {
+                        let mut bit_source = draw_query_bits_after_verified_pow(
+                            seed_accessor.get_mut(),
+                            num_queries * query_domain_log2,
+                        );
+                        for dst in query_indexes_accessor.get_mut().iter_mut() {
+                            *dst = assemble_query_index(query_domain_log2, &mut bit_source) as u32;
+                        }
+                        shared_state
+                            .lock()
+                            .unwrap()
+                            .proof
+                            .as_mut()
+                            .unwrap()
+                            .pow_nonces[pow_round_idx] = *nonce_accessor.get();
+                    }
+                },
+                stream,
+            )?;
         }
+        let mut round_recursive_queries = Vec::new();
+        let final_oracle_index = num_whir_steps.saturating_sub(1);
+        for query_idx in 0..num_queries {
+            let mut single_query_index = unsafe { context.alloc_transient_host_uninit_slice(1) };
+            let single_query_index_accessor = single_query_index.get_mut_accessor();
+            let query_indexes_accessor = query_indexes_host.get_accessor();
+            let mut copy_callbacks = Callbacks::new();
+            copy_callbacks.schedule(
+                move || unsafe {
+                    single_query_index_accessor.get_mut()[0] =
+                        query_indexes_accessor.get()[query_idx];
+                },
+                stream,
+            )?;
+            let (query_callbacks, query) = oracle_to_query
+                .schedule_query_for_folded_index_from_host(single_query_index, context)?;
+            let query_leafs_accessor = query.leafs_accessor();
+            let query_paths_accessor = query.merkle_paths_accessor();
+            let query_values_per_leaf = query.values_per_leaf();
+            final_callbacks.extend(copy_callbacks);
+            final_callbacks.schedule(
+                {
+                    let shared_state = std::sync::Arc::clone(&shared_state);
+                    let query_indexes_accessor = query_indexes_host.get_accessor();
+                    move || {
+                        let index = unsafe { query_indexes_accessor.get()[query_idx] as usize };
+                        fill_extension_query_from_accessors(
+                            &mut shared_state
+                                .lock()
+                                .unwrap()
+                                .proof
+                                .as_mut()
+                                .unwrap()
+                                .intermediate_whir_oracles[final_oracle_index]
+                                .queries[query_idx],
+                            index,
+                            query_values_per_leaf,
+                            query_leafs_accessor,
+                            query_paths_accessor,
+                        );
+                    }
+                },
+                stream,
+            )?;
+            round_recursive_queries.push((query_callbacks, query));
+        }
+        recursive_caps_keepalive.push(oracle_to_query.into_host_tree_caps());
+        recursive_queries.push(round_recursive_queries);
+        query_index_callbacks.push(query_index_callbacks_for_round);
+        query_indexes.push(query_indexes_host);
+        pow_nonces.push(nonce_host);
     }
 
-    debug_assert!(!claim.is_zero() || claim == E4::ZERO);
-    Ok(proof)
+    schedule_range.end(stream)?;
+    tracing_ranges.push(schedule_range);
+
+    Ok(GpuWhirFoldScheduledExecution {
+        tracing_ranges,
+        start_callbacks,
+        seed_host,
+        base_layer_point_host,
+        base_caps_keepalive,
+        weight_uploads,
+        fold_eval_readbacks,
+        folding_challenges,
+        recursive_caps_keepalive,
+        ood_points,
+        ood_partial_readbacks,
+        ood_values,
+        query_index_callbacks,
+        query_indexes,
+        delinearization_challenges,
+        pow_nonces,
+        base_queries,
+        recursive_queries,
+        final_callbacks,
+        shared_state,
+    })
+}
+
+pub(crate) fn gpu_whir_fold_supported_path_with_external_pow(
+    memory_trace_holder: &mut TraceHolder<BF>,
+    mem_polys_claims: Vec<E4>,
+    witness_trace_holder: &mut TraceHolder<BF>,
+    wit_polys_claims: Vec<E4>,
+    setup_trace_holder: &mut TraceHolder<BF>,
+    setup_polys_claims: Vec<E4>,
+    original_evaluation_point: Vec<E4>,
+    original_lde_factor: usize,
+    batching_challenge: E4,
+    whir_steps_schedule: Vec<usize>,
+    whir_queries_schedule: Vec<usize>,
+    whir_steps_lde_factors: Vec<usize>,
+    whir_pow_schedule: Vec<u32>,
+    mut transcript_seed: Seed,
+    tree_cap_size: usize,
+    trace_len_log2: usize,
+    external_pow_nonces: Option<Vec<u64>>,
+    _worker: &Worker,
+    context: &ProverContext,
+) -> CudaResult<WhirPolyCommitProof<BF, E4, DefaultTreeConstructor>> {
+    let memory_base_caps_keepalive = memory_trace_holder.take_tree_caps_host();
+    let witness_base_caps_keepalive = witness_trace_holder.take_tree_caps_host();
+    let setup_base_caps_keepalive = setup_trace_holder.take_tree_caps_host();
+    let mem_polys_claims_for_source = mem_polys_claims.clone();
+    let wit_polys_claims_for_source = wit_polys_claims.clone();
+    let setup_polys_claims_for_source = setup_polys_claims.clone();
+    let original_evaluation_point_len = original_evaluation_point.len();
+
+    schedule_gpu_whir_fold_with_sources(
+        memory_trace_holder,
+        memory_base_caps_keepalive,
+        move |dst| dst.copy_from_slice(&mem_polys_claims_for_source),
+        witness_trace_holder,
+        witness_base_caps_keepalive,
+        move |dst| dst.copy_from_slice(&wit_polys_claims_for_source),
+        setup_trace_holder,
+        setup_base_caps_keepalive,
+        move |dst| dst.copy_from_slice(&setup_polys_claims_for_source),
+        original_evaluation_point_len,
+        move |dst| dst.copy_from_slice(&original_evaluation_point),
+        original_lde_factor,
+        move || batching_challenge,
+        whir_steps_schedule,
+        whir_queries_schedule,
+        whir_steps_lde_factors,
+        whir_pow_schedule,
+        move || transcript_seed.clone(),
+        tree_cap_size,
+        trace_len_log2,
+        external_pow_nonces,
+        context,
+    )?
+    .wait(context)
+}
+
+pub(crate) fn gpu_whir_fold_supported_path(
+    memory_trace_holder: &mut TraceHolder<BF>,
+    mem_polys_claims: Vec<E4>,
+    witness_trace_holder: &mut TraceHolder<BF>,
+    wit_polys_claims: Vec<E4>,
+    setup_trace_holder: &mut TraceHolder<BF>,
+    setup_polys_claims: Vec<E4>,
+    original_evaluation_point: Vec<E4>,
+    original_lde_factor: usize,
+    batching_challenge: E4,
+    whir_steps_schedule: Vec<usize>,
+    whir_queries_schedule: Vec<usize>,
+    whir_steps_lde_factors: Vec<usize>,
+    whir_pow_schedule: Vec<u32>,
+    transcript_seed: Seed,
+    tree_cap_size: usize,
+    trace_len_log2: usize,
+    worker: &Worker,
+    context: &ProverContext,
+) -> CudaResult<WhirPolyCommitProof<BF, E4, DefaultTreeConstructor>> {
+    gpu_whir_fold_supported_path_with_external_pow(
+        memory_trace_holder,
+        mem_polys_claims,
+        witness_trace_holder,
+        wit_polys_claims,
+        setup_trace_holder,
+        setup_polys_claims,
+        original_evaluation_point,
+        original_lde_factor,
+        batching_challenge,
+        whir_steps_schedule,
+        whir_queries_schedule,
+        whir_steps_lde_factors,
+        whir_pow_schedule,
+        transcript_seed,
+        tree_cap_size,
+        trace_len_log2,
+        None,
+        worker,
+        context,
+    )
 }
 
 #[cfg(test)]
@@ -1288,6 +2701,170 @@ pub(crate) fn debug_build_initial_state_snapshots_for_test(
 }
 
 #[cfg(test)]
+pub(crate) struct DebugInitialWhirRoundCheckpoint {
+    pub(crate) sumcheck_polys: Vec<[E4; 3]>,
+    pub(crate) folding_challenges: Vec<E4>,
+    pub(crate) folded_monomial_form: Vec<E4>,
+    pub(crate) recursive_cap: MerkleTreeCapVarLength,
+    pub(crate) ood_point: E4,
+    pub(crate) ood_value: E4,
+    pub(crate) transcript_seed: Seed,
+}
+
+#[cfg(test)]
+const DEBUG_STATIC_HOST_LOG_CHUNK_SIZE: u32 = 12;
+
+#[cfg(test)]
+pub(crate) struct DebugWhirInitialFoldState {
+    state: GpuWhirState,
+}
+
+#[cfg(test)]
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn debug_initial_round_checkpoint_for_test(
+    memory_trace_holder: &TraceHolder<BF>,
+    mem_polys_claims: &[E4],
+    witness_trace_holder: &TraceHolder<BF>,
+    wit_polys_claims: &[E4],
+    setup_trace_holder: &TraceHolder<BF>,
+    setup_polys_claims: &[E4],
+    original_evaluation_point: &[E4],
+    original_lde_factor: usize,
+    batching_challenge: E4,
+    num_initial_folding_rounds: usize,
+    first_recursive_lde_factor: usize,
+    next_folding_steps: usize,
+    tree_cap_size: usize,
+    transcript_seed: Seed,
+    context: &ProverContext,
+) -> CudaResult<DebugInitialWhirRoundCheckpoint> {
+    let two_inv = BF::from_u32_unchecked(2).inverse().unwrap();
+    let trace_len = 1usize << memory_trace_holder.log_domain_size;
+    let mut state = GpuWhirState::new(trace_len, context)?;
+    build_initial_state(
+        memory_trace_holder,
+        mem_polys_claims,
+        witness_trace_holder,
+        wit_polys_claims,
+        setup_trace_holder,
+        setup_polys_claims,
+        original_evaluation_point,
+        batching_challenge,
+        &mut state,
+        context,
+    )?;
+
+    let mut transcript_seed = transcript_seed;
+    let mut sumcheck_polys = Vec::with_capacity(num_initial_folding_rounds);
+    let mut folding_challenges = Vec::with_capacity(num_initial_folding_rounds);
+    for _ in 0..num_initial_folding_rounds {
+        let (f0, f1, f_half) = special_three_point_eval_device(&mut state, context)?;
+        let coeffs = special_lagrange_interpolate(f0, f1, f_half, E4::from_base(two_inv));
+        sumcheck_polys.push(coeffs);
+        commit_field_els::<BF, E4>(&mut transcript_seed, &coeffs);
+        let folding_challenge = draw_random_field_els::<BF, E4>(&mut transcript_seed, 1)[0];
+        folding_challenges.push(folding_challenge);
+        fold_monomial_form_in_place_device(&mut state, folding_challenge, context)?;
+        fold_evaluation_form_in_place_device(&mut state, folding_challenge, context)?;
+        fold_eq_poly_in_place_device(&mut state, folding_challenge, context)?;
+        state.current_len /= 2;
+    }
+
+    context.get_exec_stream().synchronize()?;
+    let mut folded_monomial_form_host =
+        alloc_static_pinned_vec_uninit(state.current_len, DEBUG_STATIC_HOST_LOG_CHUNK_SIZE)?;
+    memory_copy(
+        &mut folded_monomial_form_host,
+        &state.sumchecked_poly_monomial_form[..state.current_len],
+    )?;
+    let folded_monomial_form = folded_monomial_form_host.to_vec();
+
+    let oracle = GpuWhirExtensionOracle::from_device_monomial_coeffs(
+        &state.sumchecked_poly_monomial_form[..state.current_len],
+        first_recursive_lde_factor,
+        1 << next_folding_steps,
+        tree_cap_size,
+        context,
+    )?;
+    let recursive_cap = oracle.get_tree_cap();
+    add_whir_commitment_to_transcript(
+        &mut transcript_seed,
+        &WhirCommitment::<BF, DefaultTreeConstructor> {
+            cap: recursive_cap.clone(),
+            _marker: PhantomData,
+        },
+    );
+
+    let _rs_domain_log2 = trace_len.trailing_zeros() as usize
+        + original_lde_factor.trailing_zeros() as usize
+        - num_initial_folding_rounds;
+    let ood_point = draw_random_field_els::<BF, E4>(&mut transcript_seed, 1)[0];
+    let ood_value = evaluate_monomial_form_device(&mut state, ood_point, context)?;
+    commit_field_els::<BF, E4>(&mut transcript_seed, &[ood_value]);
+
+    Ok(DebugInitialWhirRoundCheckpoint {
+        sumcheck_polys,
+        folding_challenges,
+        folded_monomial_form,
+        recursive_cap,
+        ood_point,
+        ood_value,
+        transcript_seed,
+    })
+}
+
+#[cfg(test)]
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn debug_build_initial_fold_state_for_test(
+    memory_trace_holder: &TraceHolder<BF>,
+    mem_polys_claims: &[E4],
+    witness_trace_holder: &TraceHolder<BF>,
+    wit_polys_claims: &[E4],
+    setup_trace_holder: &TraceHolder<BF>,
+    setup_polys_claims: &[E4],
+    original_evaluation_point: &[E4],
+    batching_challenge: E4,
+    context: &ProverContext,
+) -> CudaResult<DebugWhirInitialFoldState> {
+    let trace_len = 1usize << memory_trace_holder.log_domain_size;
+    let mut state = GpuWhirState::new(trace_len, context)?;
+    build_initial_state(
+        memory_trace_holder,
+        mem_polys_claims,
+        witness_trace_holder,
+        wit_polys_claims,
+        setup_trace_holder,
+        setup_polys_claims,
+        original_evaluation_point,
+        batching_challenge,
+        &mut state,
+        context,
+    )?;
+    Ok(DebugWhirInitialFoldState { state })
+}
+
+#[cfg(test)]
+pub(crate) fn debug_apply_initial_fold_challenge_for_test(
+    debug_state: &mut DebugWhirInitialFoldState,
+    challenge: E4,
+    context: &ProverContext,
+) -> CudaResult<Vec<E4>> {
+    fold_monomial_form_in_place_device(&mut debug_state.state, challenge, context)?;
+    fold_evaluation_form_in_place_device(&mut debug_state.state, challenge, context)?;
+    fold_eq_poly_in_place_device(&mut debug_state.state, challenge, context)?;
+    debug_state.state.current_len /= 2;
+
+    context.get_exec_stream().synchronize()?;
+    let mut host =
+        alloc_static_pinned_vec_uninit(debug_state.state.current_len, DEBUG_STATIC_HOST_LOG_CHUNK_SIZE)?;
+    memory_copy(
+        &mut host,
+        &debug_state.state.sumchecked_poly_monomial_form[..debug_state.state.current_len],
+    )?;
+    Ok(host.to_vec())
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -1448,6 +3025,31 @@ mod tests {
         assert_eq!(actual, expected);
     }
 
+    #[test]
+    #[cfg(not(no_cuda))]
+    #[serial]
+    fn scheduled_whir_special_three_point_eval_matches_cpu() {
+        let context = make_test_context(256, 32);
+        let mut state = GpuWhirState::new(8, &context).unwrap();
+        let evals = (0..8)
+            .map(|i| sample_ext(10 * i as u32))
+            .collect::<Vec<_>>();
+        let eq = (0..8)
+            .map(|i| sample_ext(100 + 10 * i as u32))
+            .collect::<Vec<_>>();
+        state.current_len = evals.len();
+        state.sumchecked_poly_evaluation_form = alloc_and_copy(&evals, &context);
+        state.eq_poly = alloc_and_copy(&eq, &context);
+
+        let scheduled = schedule_special_three_point_eval_device(&mut state, &context).unwrap();
+        context.get_exec_stream().synchronize().unwrap();
+        let mut actual = unsafe { scheduled.get_accessor().get() }.to_vec();
+        actual[2].mul_assign_by_base(&BF::from_u32_unchecked(4).inverse().unwrap());
+
+        let expected = special_three_point_eval_for_test(&evals, &eq);
+        assert_eq!(actual.as_slice(), &[expected.0, expected.1, expected.2]);
+    }
+
     fn make_trace_holder(columns: &[Vec<BF>], context: &ProverContext) -> TraceHolder<BF> {
         assert!(!columns.is_empty());
         let rows = columns[0].len();
@@ -1563,6 +3165,181 @@ mod tests {
     #[test]
     #[cfg(not(no_cuda))]
     #[serial]
+    fn whir_multi_step_fold_helpers_match_cpu() {
+        let context = make_test_context(256, 32);
+        let mut state = GpuWhirState::new(16, &context).unwrap();
+
+        let monomial = (0..16)
+            .map(|i| sample_ext(20 * i as u32))
+            .collect::<Vec<_>>();
+        let evals = (0..16)
+            .map(|i| sample_ext(200 + 20 * i as u32))
+            .collect::<Vec<_>>();
+        let eq = (0..16)
+            .map(|i| sample_ext(400 + 20 * i as u32))
+            .collect::<Vec<_>>();
+        let challenges = [sample_ext(777), sample_ext(888), sample_ext(999), sample_ext(1111)];
+
+        state.current_len = monomial.len();
+        state.sumchecked_poly_monomial_form = alloc_and_copy(&monomial, &context);
+        state.monomial_buffer = context.alloc(8, AllocationPlacement::BestFit).unwrap();
+        state.sumchecked_poly_evaluation_form = alloc_and_copy(&evals, &context);
+        state.eq_poly = alloc_and_copy(&eq, &context);
+
+        let mut expected_monomial = monomial;
+        let mut expected_evals = evals;
+        let mut expected_eq = eq;
+
+        for (step_idx, challenge) in challenges.into_iter().enumerate() {
+            fold_monomial_form_for_test(&mut expected_monomial, challenge);
+            fold_evaluation_form_for_test(&mut expected_evals, challenge);
+            fold_evaluation_form_for_test(&mut expected_eq, challenge);
+
+            fold_monomial_form_in_place_device(&mut state, challenge, &context).unwrap();
+            fold_evaluation_form_in_place_device(&mut state, challenge, &context).unwrap();
+            fold_eq_poly_in_place_device(&mut state, challenge, &context).unwrap();
+            state.current_len /= 2;
+
+            assert_eq!(
+                copy_back(
+                    &state.sumchecked_poly_monomial_form[..state.current_len],
+                    &context
+                ),
+                expected_monomial,
+                "monomial fold diverged at step {step_idx}",
+            );
+            assert_eq!(
+                copy_back(
+                    &state.sumchecked_poly_evaluation_form[..state.current_len],
+                    &context
+                ),
+                expected_evals,
+                "evaluation fold diverged at step {step_idx}",
+            );
+            assert_eq!(
+                copy_back(&state.eq_poly[..state.current_len], &context),
+                expected_eq,
+                "eq fold diverged at step {step_idx}",
+            );
+        }
+    }
+
+    #[test]
+    #[cfg(not(no_cuda))]
+    #[serial]
+    fn whir_large_multi_step_monomial_fold_matches_cpu() {
+        const LOG_LEN: usize = 18;
+        const LEN: usize = 1 << LOG_LEN;
+        let context = make_test_context(256, 32);
+        let mut state = GpuWhirState::new(LEN, &context).unwrap();
+
+        let monomial = (0..LEN)
+            .map(|i| sample_ext(10_000 + i as u32))
+            .collect::<Vec<_>>();
+        let challenges = [
+            sample_ext(777),
+            sample_ext(888),
+            sample_ext(999),
+            sample_ext(1111),
+            sample_ext(1222),
+            sample_ext(1333),
+        ];
+
+        state.current_len = monomial.len();
+        state.sumchecked_poly_monomial_form = alloc_and_copy(&monomial, &context);
+        state.monomial_buffer = context.alloc(LEN / 2, AllocationPlacement::BestFit).unwrap();
+
+        let mut expected_monomial = monomial;
+        for (step_idx, challenge) in challenges.into_iter().enumerate() {
+            fold_monomial_form_for_test(&mut expected_monomial, challenge);
+            fold_monomial_form_in_place_device(&mut state, challenge, &context).unwrap();
+            state.current_len /= 2;
+
+            assert_eq!(
+                copy_back(
+                    &state.sumchecked_poly_monomial_form[..state.current_len],
+                    &context
+                ),
+                expected_monomial,
+                "large monomial fold diverged at step {step_idx}",
+            );
+        }
+    }
+
+    #[test]
+    #[cfg(not(no_cuda))]
+    #[serial]
+    fn whir_large_multi_step_fold_helpers_match_cpu() {
+        const LOG_LEN: usize = 18;
+        const LEN: usize = 1 << LOG_LEN;
+        let context = make_test_context(256, 32);
+        let mut state = GpuWhirState::new(LEN, &context).unwrap();
+
+        let monomial = (0..LEN)
+            .map(|i| sample_ext(20_000 + i as u32))
+            .collect::<Vec<_>>();
+        let evals = (0..LEN)
+            .map(|i| sample_ext(40_000 + i as u32))
+            .collect::<Vec<_>>();
+        let eq = (0..LEN)
+            .map(|i| sample_ext(60_000 + i as u32))
+            .collect::<Vec<_>>();
+        let challenges = [
+            sample_ext(1777),
+            sample_ext(1888),
+            sample_ext(1999),
+            sample_ext(2111),
+            sample_ext(2222),
+            sample_ext(2333),
+        ];
+
+        state.current_len = LEN;
+        state.sumchecked_poly_monomial_form = alloc_and_copy(&monomial, &context);
+        state.monomial_buffer = context.alloc(LEN / 2, AllocationPlacement::BestFit).unwrap();
+        state.sumchecked_poly_evaluation_form = alloc_and_copy(&evals, &context);
+        state.eq_poly = alloc_and_copy(&eq, &context);
+
+        let mut expected_monomial = monomial;
+        let mut expected_evals = evals;
+        let mut expected_eq = eq;
+
+        for (step_idx, challenge) in challenges.into_iter().enumerate() {
+            fold_monomial_form_for_test(&mut expected_monomial, challenge);
+            fold_evaluation_form_for_test(&mut expected_evals, challenge);
+            fold_evaluation_form_for_test(&mut expected_eq, challenge);
+
+            fold_monomial_form_in_place_device(&mut state, challenge, &context).unwrap();
+            fold_evaluation_form_in_place_device(&mut state, challenge, &context).unwrap();
+            fold_eq_poly_in_place_device(&mut state, challenge, &context).unwrap();
+            state.current_len /= 2;
+
+            assert_eq!(
+                copy_back(
+                    &state.sumchecked_poly_monomial_form[..state.current_len],
+                    &context
+                ),
+                expected_monomial,
+                "large combined fold monomial state diverged at step {step_idx}",
+            );
+            assert_eq!(
+                copy_back(
+                    &state.sumchecked_poly_evaluation_form[..state.current_len],
+                    &context
+                ),
+                expected_evals,
+                "large combined fold evaluation state diverged at step {step_idx}",
+            );
+            assert_eq!(
+                copy_back(&state.eq_poly[..state.current_len], &context),
+                expected_eq,
+                "large combined fold eq state diverged at step {step_idx}",
+            );
+        }
+    }
+
+    #[test]
+    #[cfg(not(no_cuda))]
+    #[serial]
     fn whir_evaluate_monomial_matches_cpu() {
         let context = make_test_context(256, 32);
         let mut state = GpuWhirState::new(8, &context).unwrap();
@@ -1576,6 +3353,31 @@ mod tests {
         let actual = evaluate_monomial_form_device(&mut state, point, &context).unwrap();
         let expected = evaluate_monomial_form_for_test(&coeffs, point);
 
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    #[cfg(not(no_cuda))]
+    #[serial]
+    fn scheduled_whir_evaluate_monomial_matches_cpu() {
+        let context = make_test_context(256, 32);
+        let mut state = GpuWhirState::new(8, &context).unwrap();
+        let coeffs = (0..8)
+            .map(|i| sample_ext(50 * i as u32))
+            .collect::<Vec<_>>();
+        let point = sample_ext(999);
+        state.current_len = coeffs.len();
+        state.sumchecked_poly_monomial_form = alloc_and_copy(&coeffs, &context);
+        let point_device = alloc_and_copy(&[point], &context);
+
+        let partials = schedule_monomial_eval_device(&mut state, &point_device, &context).unwrap();
+        context.get_exec_stream().synchronize().unwrap();
+        let mut actual = E4::ZERO;
+        for partial in partials.iter() {
+            actual.add_assign(&unsafe { partial.get_accessor().get() }[0]);
+        }
+
+        let expected = evaluate_monomial_form_for_test(&coeffs, point);
         assert_eq!(actual, expected);
     }
 

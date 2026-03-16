@@ -1,13 +1,4 @@
-// Async scheduling contract for GPU GKR storage:
-// - All GKR allocations, frees, callbacks, descriptor uploads, and kernel launches are treated as
-//   logically ordered on the exec stream.
-// - Host callbacks only materialize challenge-dependent host data; they must not call CUDA APIs or
-//   perform device allocation/deallocation.
-// - Device allocations do not need to remain owned after scheduling returns: their logical
-//   lifetime is determined by the already-queued exec-stream work.
-// - Host buffers that are referenced by queued callbacks or async copies must remain owned by the
-//   enclosing prover job until the stream has consumed them. Any proof data needed after execution
-//   must be copied back to host as part of the scheduled workflow.
+// GPU scheduling contract: see docs/gpu_scheduling_contract.md
 
 pub(crate) mod backward;
 pub(crate) mod base_layer_claims;

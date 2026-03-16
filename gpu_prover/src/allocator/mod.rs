@@ -132,7 +132,15 @@ impl<B: StaticAllocationBackend> InnerStaticAllocatorWrapper<B>
     }
 
     fn execute<R>(&self, f: impl FnOnce(&mut InnerStaticAllocator<B>) -> R) -> R {
-        f(&mut self.borrow_mut())
+        match self.try_borrow_mut() {
+            Ok(mut inner) => f(&mut inner),
+            Err(err) => {
+                panic!(
+                    "non-concurrent allocator re-entered on the wrong thread or from overlapping ownership: {err}\n{}",
+                    std::backtrace::Backtrace::force_capture()
+                );
+            }
+        }
     }
 }
 

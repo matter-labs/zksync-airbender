@@ -137,6 +137,12 @@ impl<T> TraceHolder<T> {
         get_tree_caps_for_accessors(&tree_caps_accessors, self.log_lde_factor)
     }
 
+    pub(crate) fn take_tree_caps_host(&mut self) -> Vec<HostAllocation<[Digest]>> {
+        self.tree_caps
+            .take()
+            .expect("tree caps must be materialized before keepalive extraction")
+    }
+
     #[allow(dead_code)] // Preserved for transcript-commit flows mirrored from gpu_prover_old.
     fn flatten_tree_caps(&self) -> Vec<u32> {
         let tree_caps_accessors = self.get_tree_caps_accessors();
@@ -228,6 +234,23 @@ impl<T> TraceHolder<T> {
                 dst.get_mut_accessor()
                     .get_mut()
                     .copy_from_slice(src.get_accessor().get());
+            }
+        }
+        assert!(self.tree_caps.replace(caps).is_none());
+    }
+
+    pub(crate) fn clone_tree_caps_from_slices<S: AsRef<[Digest]>>(
+        &mut self,
+        source: &[S],
+        context: &ProverContext,
+    ) {
+        assert_eq!(source.len(), 1usize << self.log_lde_factor);
+        let mut caps = allocate_tree_caps(self.log_lde_factor, self.log_tree_cap_size, context);
+        for (src, dst) in source.iter().zip(caps.iter_mut()) {
+            unsafe {
+                dst.get_mut_accessor()
+                    .get_mut()
+                    .copy_from_slice(src.as_ref());
             }
         }
         assert!(self.tree_caps.replace(caps).is_none());

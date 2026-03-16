@@ -10,7 +10,8 @@ use crate::ops::blake2s::Digest;
 use crate::ops::complex::{
     bit_reverse_in_place, pack_rows_for_whir_leaves, serialize_whir_e4_columns,
 };
-use crate::primitives::context::{HostAllocation, ProverContext};
+use crate::primitives::callbacks::Callbacks;
+use crate::primitives::context::{HostAllocation, ProverContext, UnsafeAccessor};
 use crate::primitives::device_structures::{DeviceMatrix, DeviceMatrixChunkMut, DeviceMatrixMut};
 use crate::primitives::field::{BF, E4};
 use crate::prover::trace_holder::{TraceHolder, TreesCacheMode};
@@ -30,6 +31,55 @@ pub(crate) struct GpuWhirExtensionOracle {
     lde_factor: usize,
     trace_len_log2: usize,
     packed_leaf_count: usize,
+}
+
+pub(crate) struct GpuWhirScheduledExtensionQuery {
+    pub(crate) index: usize,
+    pub(crate) coset_index: usize,
+    #[allow(dead_code)]
+    query_index_host: Option<HostAllocation<[u32]>>,
+    #[allow(dead_code)]
+    value_index_host: HostAllocation<[u32]>,
+    #[allow(dead_code)]
+    path_index_host: HostAllocation<[u32]>,
+    #[allow(dead_code)]
+    leafs: HostAllocation<[BF]>,
+    #[allow(dead_code)]
+    merkle_paths: HostAllocation<[Digest]>,
+    values_per_leaf: usize,
+}
+
+impl GpuWhirScheduledExtensionQuery {
+    pub(crate) fn leafs_accessor(&self) -> UnsafeAccessor<[BF]> {
+        self.leafs.get_accessor()
+    }
+
+    pub(crate) fn merkle_paths_accessor(&self) -> UnsafeAccessor<[Digest]> {
+        self.merkle_paths.get_accessor()
+    }
+
+    pub(crate) fn values_per_leaf(&self) -> usize {
+        self.values_per_leaf
+    }
+
+    pub(crate) fn decode(&self) -> (Vec<E4>, GpuWhirExtensionQuery) {
+        self.decode_with_index(self.index)
+    }
+
+    pub(crate) fn decode_with_index(&self, index: usize) -> (Vec<E4>, GpuWhirExtensionQuery) {
+        let leaf_values_concatenated = decode_leaf_values(
+            unsafe { self.leafs.get_accessor().get() },
+            self.values_per_leaf,
+        );
+        let path = unsafe { self.merkle_paths.get_accessor().get().to_vec() };
+        let query = GpuWhirExtensionQuery {
+            index,
+            leaf_values_concatenated: leaf_values_concatenated.clone(),
+            path,
+        };
+
+        (leaf_values_concatenated, query)
+    }
 }
 
 impl GpuWhirExtensionOracle {
@@ -60,6 +110,41 @@ impl GpuWhirExtensionOracle {
         values_per_leaf: usize,
         tree_cap_size: usize,
         context: &ProverContext,
+    ) -> CudaResult<Self> {
+        Self::from_device_monomial_coeffs_impl(
+            monomial_coeffs,
+            lde_factor,
+            values_per_leaf,
+            tree_cap_size,
+            context,
+            true,
+        )
+    }
+
+    pub(crate) fn schedule_from_device_monomial_coeffs(
+        monomial_coeffs: &DeviceSlice<E4>,
+        lde_factor: usize,
+        values_per_leaf: usize,
+        tree_cap_size: usize,
+        context: &ProverContext,
+    ) -> CudaResult<Self> {
+        Self::from_device_monomial_coeffs_impl(
+            monomial_coeffs,
+            lde_factor,
+            values_per_leaf,
+            tree_cap_size,
+            context,
+            false,
+        )
+    }
+
+    fn from_device_monomial_coeffs_impl(
+        monomial_coeffs: &DeviceSlice<E4>,
+        lde_factor: usize,
+        values_per_leaf: usize,
+        tree_cap_size: usize,
+        context: &ProverContext,
+        synchronize_at_end: bool,
     ) -> CudaResult<Self> {
         assert!(!monomial_coeffs.is_empty());
         assert!(monomial_coeffs.len().is_power_of_two());
@@ -137,7 +222,9 @@ impl GpuWhirExtensionOracle {
 
         trace_holder.mark_cosets_materialized();
         trace_holder.commit_all(context)?;
-        stream.synchronize()?;
+        if synchronize_at_end {
+            stream.synchronize()?;
+        }
 
         Ok(Self {
             trace_holder,
@@ -160,11 +247,34 @@ impl GpuWhirExtensionOracle {
         self.values_per_leaf
     }
 
+    pub(crate) fn tree_cap_accessors(&self) -> Vec<UnsafeAccessor<[Digest]>> {
+        self.trace_holder.get_tree_caps_accessors()
+    }
+
+    pub(crate) fn into_host_tree_caps(self) -> Vec<HostAllocation<[Digest]>> {
+        let Self {
+            mut trace_holder, ..
+        } = self;
+        trace_holder.take_tree_caps_host()
+    }
+
     pub(crate) fn query_for_folded_index(
         &mut self,
         index: usize,
         context: &ProverContext,
     ) -> CudaResult<(usize, Vec<E4>, GpuWhirExtensionQuery)> {
+        let scheduled = self.schedule_query_for_folded_index(index, context)?;
+        context.get_exec_stream().synchronize()?;
+        let (leaf_values_concatenated, query) = scheduled.decode();
+
+        Ok((scheduled.coset_index, leaf_values_concatenated, query))
+    }
+
+    pub(crate) fn schedule_query_for_folded_index(
+        &mut self,
+        index: usize,
+        context: &ProverContext,
+    ) -> CudaResult<GpuWhirScheduledExtensionQuery> {
         assert!(index < (1usize << self.trace_len_log2) * self.lde_factor / self.values_per_leaf);
 
         let coset_index = index & (self.lde_factor - 1);
@@ -193,19 +303,75 @@ impl GpuWhirExtensionOracle {
         let path_query =
             self.trace_holder
                 .get_leafs_and_merkle_paths(0, &device_path_index, context)?;
-        context.get_exec_stream().synchronize()?;
-        let leafs_accessor = value_query.leafs.get_accessor();
-        let path_accessor = path_query.merkle_paths.get_accessor();
-        let leaf_values_concatenated =
-            decode_leaf_values(unsafe { leafs_accessor.get() }, self.values_per_leaf);
-        let path = unsafe { path_accessor.get().to_vec() };
-        let query = GpuWhirExtensionQuery {
+        Ok(GpuWhirScheduledExtensionQuery {
             index,
-            leaf_values_concatenated: leaf_values_concatenated.clone(),
-            path,
-        };
+            coset_index,
+            query_index_host: None,
+            value_index_host: host_value_index,
+            path_index_host: host_path_index,
+            leafs: value_query.leafs,
+            merkle_paths: path_query.merkle_paths,
+            values_per_leaf: self.values_per_leaf,
+        })
+    }
 
-        Ok((coset_index, leaf_values_concatenated, query))
+    pub(crate) fn schedule_query_for_folded_index_from_host(
+        &mut self,
+        query_index: HostAllocation<[u32]>,
+        context: &ProverContext,
+    ) -> CudaResult<(Callbacks<'static>, GpuWhirScheduledExtensionQuery)> {
+        let mut callbacks = Callbacks::new();
+        let mut value_index = unsafe { context.alloc_transient_host_uninit_slice(1) };
+        let value_index_accessor = value_index.get_mut_accessor();
+        let mut path_index = unsafe { context.alloc_transient_host_uninit_slice(1) };
+        let path_index_accessor = path_index.get_mut_accessor();
+        let query_index_accessor = query_index.get_accessor();
+        let lde_factor = self.lde_factor;
+        let packed_leaf_count = self.packed_leaf_count;
+        callbacks.schedule(
+            move || unsafe {
+                let index = query_index_accessor.get()[0] as usize;
+                let coset_index = index & (lde_factor - 1);
+                let internal_index = index / lde_factor;
+                let stage1_coset_index =
+                    bitreverse_index(coset_index, lde_factor.trailing_zeros() as u32);
+                value_index_accessor.get_mut()[0] =
+                    (stage1_coset_index * packed_leaf_count + internal_index) as u32;
+                path_index_accessor.get_mut()[0] = index as u32;
+            },
+            context.get_exec_stream(),
+        )?;
+        let mut device_value_index = context.alloc(1, AllocationPlacement::BestFit)?;
+        memory_copy_async(
+            &mut device_value_index,
+            &value_index,
+            context.get_exec_stream(),
+        )?;
+        let mut device_path_index = context.alloc(1, AllocationPlacement::BestFit)?;
+        memory_copy_async(
+            &mut device_path_index,
+            &path_index,
+            context.get_exec_stream(),
+        )?;
+        let value_query =
+            self.trace_holder
+                .get_leafs_and_merkle_paths(0, &device_value_index, context)?;
+        let path_query =
+            self.trace_holder
+                .get_leafs_and_merkle_paths(0, &device_path_index, context)?;
+        Ok((
+            callbacks,
+            GpuWhirScheduledExtensionQuery {
+                index: 0,
+                coset_index: 0,
+                query_index_host: Some(query_index),
+                value_index_host: value_index,
+                path_index_host: path_index,
+                leafs: value_query.leafs,
+                merkle_paths: path_query.merkle_paths,
+                values_per_leaf: self.values_per_leaf,
+            },
+        ))
     }
 
     #[cfg(test)]
@@ -314,6 +480,7 @@ fn bitreverse_index(index: usize, num_bits: u32) -> usize {
 pub(crate) mod tests {
     use std::alloc::Global;
 
+    use era_cudart::memory::memory_copy;
     use fft::{bitreverse_enumeration_inplace, domain_generator_for_size, Twiddles};
     use field::Field;
     use prover::gkr::prover::stages::stage1::ColumnMajorCosetBoundTracePart;
@@ -467,6 +634,63 @@ pub(crate) mod tests {
                 "query {} uses an unexpected coset mapping",
                 query_index
             );
+            assert_eq!(
+                gpu_values, cpu_values,
+                "query {} leaf values diverged",
+                query_index
+            );
+            assert_eq!(gpu_query.index, cpu_query.index);
+            assert_eq!(
+                gpu_query.leaf_values_concatenated,
+                cpu_query.leaf_values_concatenated
+            );
+            assert_eq!(gpu_query.path, cpu_query.path);
+        }
+    }
+
+    #[test]
+    fn scheduled_recursive_oracle_caps_and_queries_match_cpu() {
+        let worker = Worker::new();
+        let context = make_test_context(256, 32);
+        let monomial_coeffs = sample_monomial_coeffs(1 << 5);
+        let twiddles = Twiddles::<BF, Global>::new(monomial_coeffs.len(), &worker);
+        let cpu =
+            cpu_extension_oracle_from_monomial_form(&monomial_coeffs, &twiddles, 4, 2, 4, &worker);
+
+        let mut monomial_coeffs_device = context
+            .alloc(monomial_coeffs.len(), crate::allocator::tracker::AllocationPlacement::BestFit)
+            .unwrap();
+        memory_copy(&mut monomial_coeffs_device, &monomial_coeffs).unwrap();
+
+        let mut gpu = GpuWhirExtensionOracle::schedule_from_device_monomial_coeffs(
+            &monomial_coeffs_device,
+            4,
+            2,
+            4,
+            &context,
+        )
+        .unwrap();
+        context.get_exec_stream().synchronize().unwrap();
+
+        assert_eq!(
+            gpu.get_tree_cap(),
+            <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<BF>>::get_cap(&cpu.tree)
+        );
+
+        for query_index in [0usize, 1, 7, 13] {
+            let (_cpu_coset_index, cpu_values, cpu_query) = cpu.query_for_folded_index(query_index);
+
+            let mut host_query_index =
+                unsafe { context.alloc_transient_host_uninit_slice::<u32>(1) };
+            unsafe {
+                host_query_index.get_mut_accessor().get_mut()[0] = query_index as u32;
+            }
+            let (_callbacks, scheduled_query) = gpu
+                .schedule_query_for_folded_index_from_host(host_query_index, &context)
+                .unwrap();
+            context.get_exec_stream().synchronize().unwrap();
+            let (gpu_values, gpu_query) = scheduled_query.decode_with_index(query_index);
+
             assert_eq!(
                 gpu_values, cpu_values,
                 "query {} leaf values diverged",

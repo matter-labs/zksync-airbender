@@ -20,14 +20,19 @@ use crate::primitives::context::{DeviceAllocation, HostAllocation, ProverContext
 use crate::primitives::device_structures::DeviceVectorChunk;
 use crate::primitives::device_tracing::Range;
 use crate::primitives::field::BF;
+use crate::primitives::static_host::{
+    alloc_static_pinned_vec_from_slice, alloc_static_pinned_vec_uninit, StaticPinnedVec,
+};
 use crate::primitives::transfer::Transfer;
 use crate::prover::trace_holder::{TraceHolder, TreesCacheMode, TreesHolder};
 use prover::gkr::prover::setup::GKRSetup as CpuGKRSetup;
 
+const SETUP_TREE_STATIC_HOST_LOG_CHUNK_SIZE: u32 = 12;
+
 pub(crate) struct GpuGKRSetupHost {
-    pub(crate) raw_hypercube_evals: HostAllocation<[BF]>,
-    pub(crate) partial_trees: Vec<HostAllocation<[Digest]>>,
-    pub(crate) tree_caps: Vec<HostAllocation<[Digest]>>,
+    pub(crate) raw_hypercube_evals: StaticPinnedVec<BF>,
+    pub(crate) partial_trees: Vec<StaticPinnedVec<Digest>>,
+    pub(crate) tree_caps: Vec<StaticPinnedVec<Digest>>,
     pub(crate) trace_len: usize,
     pub(crate) log_domain_size: u32,
     pub(crate) columns_count: usize,
@@ -57,7 +62,7 @@ impl GpuGKRSetupHost {
         }
 
         let raw_hypercube_evals =
-            flatten_setup_columns_into_pinned_buffer(setup, columns_count, trace_len, context);
+            flatten_setup_columns_into_pinned_buffer(setup, columns_count, trace_len)?;
         let (partial_trees, tree_caps) = precompute_partial_tree_cache(
             &raw_hypercube_evals,
             log_domain_size,
@@ -115,6 +120,13 @@ pub(crate) struct GpuGKRSetupTransfer<'a> {
     pub(crate) transfer: Transfer<'a>,
 }
 
+pub(crate) struct GpuGKRSetupTransferHostKeepalive<'a> {
+    #[allow(dead_code)]
+    host: Arc<GpuGKRSetupHost>,
+    #[allow(dead_code)]
+    transfer_callbacks: Callbacks<'a>,
+}
+
 impl<'a> GpuGKRSetupTransfer<'a> {
     pub(crate) fn new(host: Arc<GpuGKRSetupHost>, context: &ProverContext) -> CudaResult<Self> {
         let trace_holder = TraceHolder::<BF>::new(
@@ -140,7 +152,7 @@ impl<'a> GpuGKRSetupTransfer<'a> {
         let stream = context.get_h2d_stream();
         memory_copy_async(
             self.trace_holder.get_uninit_hypercube_evals_mut(),
-            &self.host.raw_hypercube_evals,
+            self.host.raw_hypercube_evals.as_slice(),
             stream,
         )?;
         assert_eq!(
@@ -153,15 +165,27 @@ impl<'a> GpuGKRSetupTransfer<'a> {
                 .trace_holder
                 .get_uninit_tree_mut(coset_index)
                 .expect("setup transfers require partial-tree caching");
-            memory_copy_async(dst_tree, src_tree, stream)?;
+            memory_copy_async(dst_tree, src_tree.as_slice(), stream)?;
         }
         self.trace_holder
-            .clone_tree_caps_from_host(&self.host.tree_caps, context);
+            .clone_tree_caps_from_slices(&self.host.tree_caps, context);
         self.transfer.record_transferred(context)
     }
 
     pub(crate) fn ensure_transferred(&self, context: &ProverContext) -> CudaResult<()> {
         self.transfer.ensure_transferred(context)
+    }
+
+    pub(crate) fn into_host_keepalive(self) -> GpuGKRSetupTransferHostKeepalive<'a> {
+        let Self {
+            host,
+            trace_holder: _,
+            transfer,
+        } = self;
+        GpuGKRSetupTransferHostKeepalive {
+            host,
+            transfer_callbacks: transfer.into_callbacks(),
+        }
     }
 
     pub(crate) fn bind_setup_columns_into_storage<E>(&self, storage: &mut GpuGKRStorage<BF, E>) {
@@ -377,6 +401,19 @@ pub(crate) struct GpuGKRForwardSetup<E> {
     generic_lookup: Option<DeviceAllocation<E>>,
 }
 
+pub(crate) struct GpuGKRForwardSetupHostKeepalive<E> {
+    #[allow(dead_code)]
+    tracing_ranges: Vec<Range>,
+    #[allow(dead_code)]
+    lookup_challenges: HostAllocation<[E]>,
+    #[allow(dead_code)]
+    callbacks: Callbacks<'static>,
+    #[allow(dead_code)]
+    host_lookup_additive_part: HostAllocation<[E]>,
+    #[allow(dead_code)]
+    host_lookup_alpha_powers: Option<HostAllocation<[E]>>,
+}
+
 impl<E> GpuGKRForwardSetup<E> {
     pub(crate) fn has_generic_lookup(&self) -> bool {
         self.generic_lookup.is_some()
@@ -402,36 +439,52 @@ impl<E> GpuGKRForwardSetup<E> {
     pub(crate) fn release_generic_lookup(&mut self) {
         self.generic_lookup = None;
     }
+
+    pub(crate) fn into_host_keepalive(self) -> GpuGKRForwardSetupHostKeepalive<E> {
+        let Self {
+            tracing_ranges,
+            lookup_challenges,
+            callbacks,
+            host_lookup_additive_part,
+            host_lookup_alpha_powers,
+            device_lookup_additive_part: _,
+            generic_lookup: _,
+        } = self;
+        GpuGKRForwardSetupHostKeepalive {
+            tracing_ranges,
+            lookup_challenges,
+            callbacks,
+            host_lookup_additive_part,
+            host_lookup_alpha_powers,
+        }
+    }
 }
 
 fn flatten_setup_columns_into_pinned_buffer(
     setup: &CpuGKRSetup<BF>,
     columns_count: usize,
     trace_len: usize,
-    context: &ProverContext,
-) -> HostAllocation<[BF]> {
+) -> CudaResult<StaticPinnedVec<BF>> {
+    let column_bytes = trace_len * core::mem::size_of::<BF>();
+    let log_chunk_size = column_bytes.trailing_zeros();
     let mut raw_hypercube_evals =
-        unsafe { context.alloc_host_uninit_slice(columns_count * trace_len) };
-    unsafe {
-        let raw_hypercube_accessor = raw_hypercube_evals.get_mut_accessor();
-        let dst = raw_hypercube_accessor.get_mut();
-        for (column_idx, src_column) in setup.hypercube_evals.iter().enumerate() {
-            let dst_range = column_idx * trace_len..(column_idx + 1) * trace_len;
-            dst[dst_range].copy_from_slice(src_column.as_ref());
-        }
+        alloc_static_pinned_vec_uninit(columns_count * trace_len, log_chunk_size)?;
+    for (column_idx, src_column) in setup.hypercube_evals.iter().enumerate() {
+        let dst_range = column_idx * trace_len..(column_idx + 1) * trace_len;
+        raw_hypercube_evals[dst_range].copy_from_slice(src_column.as_ref());
     }
-    raw_hypercube_evals
+    Ok(raw_hypercube_evals)
 }
 
 fn precompute_partial_tree_cache(
-    raw_hypercube_evals: &HostAllocation<[BF]>,
+    raw_hypercube_evals: &StaticPinnedVec<BF>,
     log_domain_size: u32,
     log_lde_factor: u32,
     log_rows_per_leaf: u32,
     log_tree_cap_size: u32,
     columns_count: usize,
     context: &ProverContext,
-) -> CudaResult<(Vec<HostAllocation<[Digest]>>, Vec<HostAllocation<[Digest]>>)> {
+) -> CudaResult<(Vec<StaticPinnedVec<Digest>>, Vec<StaticPinnedVec<Digest>>)> {
     let mut trace_holder = TraceHolder::<BF>::new(
         log_domain_size,
         log_lde_factor,
@@ -443,7 +496,7 @@ fn precompute_partial_tree_cache(
     )?;
     memory_copy_async(
         trace_holder.get_uninit_hypercube_evals_mut(),
-        raw_hypercube_evals,
+        raw_hypercube_evals.as_slice(),
         context.get_exec_stream(),
     )?;
     trace_holder.ensure_cosets_materialized(context)?;
@@ -469,11 +522,12 @@ fn precompute_partial_tree_cache(
 fn copy_partial_trees_to_pinned_host(
     trees: &[DeviceAllocation<Digest>],
     context: &ProverContext,
-) -> CudaResult<Vec<HostAllocation<[Digest]>>> {
+) -> CudaResult<Vec<StaticPinnedVec<Digest>>> {
     let mut result = Vec::with_capacity(trees.len());
     for tree in trees.iter() {
-        let mut host_tree = unsafe { context.alloc_host_uninit_slice(tree.len()) };
-        memory_copy_async(&mut host_tree, tree, context.get_exec_stream())?;
+        let mut host_tree =
+            alloc_static_pinned_vec_uninit(tree.len(), SETUP_TREE_STATIC_HOST_LOG_CHUNK_SIZE)?;
+        memory_copy_async(host_tree.as_mut_slice(), tree, context.get_exec_stream())?;
         result.push(host_tree);
     }
     Ok(result)
@@ -481,16 +535,10 @@ fn copy_partial_trees_to_pinned_host(
 
 fn copy_host_allocation<T: Copy>(
     source: &HostAllocation<[T]>,
-    context: &ProverContext,
-) -> HostAllocation<[T]> {
-    let mut destination = unsafe { context.alloc_host_uninit_slice(source.len()) };
-    unsafe {
-        destination
-            .get_mut_accessor()
-            .get_mut()
-            .copy_from_slice(source.get_accessor().get());
-    }
-    destination
+    _: &ProverContext,
+) -> StaticPinnedVec<T> {
+    alloc_static_pinned_vec_from_slice(unsafe { source.get_accessor().get() }, 10)
+        .expect("static setup host copies must fit in pinned host memory")
 }
 
 #[cfg(test)]
@@ -561,14 +609,14 @@ mod tests {
         }
     }
 
-    fn stage1_caps_from_host_allocations(
-        caps: &[HostAllocation<[Digest]>],
+    fn stage1_caps_from_host_allocations<S: AsRef<[Digest]>>(
+        caps: &[S],
         log_lde_factor: u32,
     ) -> Vec<MerkleTreeCapVarLength> {
         (0..(1usize << log_lde_factor))
             .map(|stage1_pos| {
                 let natural_coset_index = bitreverse_index(stage1_pos, log_lde_factor);
-                let cap = unsafe { caps[natural_coset_index].get_accessor().get().to_vec() };
+                let cap = caps[natural_coset_index].as_ref().to_vec();
                 MerkleTreeCapVarLength { cap }
             })
             .collect_vec()
@@ -648,10 +696,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(
-            unsafe { host.raw_hypercube_evals.get_accessor().get() },
-            flatten_setup(&setup)
-        );
+        assert_eq!(host.raw_hypercube_evals.as_slice(), flatten_setup(&setup));
 
         let worker = Worker::new();
         let twiddles: fft::Twiddles<BF, Global> = fft::Twiddles::new(trace_len, &worker);
