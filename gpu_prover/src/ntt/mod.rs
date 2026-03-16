@@ -15,19 +15,12 @@ use crate::primitives::utils::get_grid_block_dims_for_threads_count;
 mod tests;
 
 mod ntt;
-pub use ntt::{evals_to_monomials, monomials_to_evals};
+#[allow(unused)]
+pub use ntt::{natural_evals_to_bitreversed_monomials, bitreversed_monomials_to_natural_evals};
 #[cfg(test)]
 pub(crate) use ntt::{
     evals_to_monomials_2_pass, evals_to_monomials_3_pass, monomials_to_evals_2_pass,
     monomials_to_evals_3_pass,
-};
-
-mod hypercube;
-pub use hypercube::{hypercube_evals_to_monomials, hypercube_monomials_to_evals};
-#[cfg(test)]
-pub(crate) use hypercube::{
-    hypercube_evals_to_monomials_2_pass, hypercube_evals_to_monomials_3_pass,
-    hypercube_monomials_to_evals_2_pass, hypercube_monomials_to_evals_3_pass,
 };
 
 cuda_kernel!(

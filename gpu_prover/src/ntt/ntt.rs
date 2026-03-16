@@ -460,7 +460,7 @@ pub(crate) fn monomials_to_evals_2_pass(
 }
 
 #[allow(unused)]
-pub fn monomials_to_evals(
+pub fn bitreversed_monomials_to_natural_evals(
     inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
     outputs_matrix: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),
     log_n: usize,
@@ -497,7 +497,7 @@ pub fn monomials_to_evals(
 }
 
 #[allow(unused)]
-pub fn evals_to_monomials(
+pub fn natural_evals_to_bitreversed_monomials(
     inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
     outputs_matrix: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),
     log_n: usize,

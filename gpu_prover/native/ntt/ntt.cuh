@@ -1,6 +1,6 @@
-#include "context.cuh"
 #include "../primitives/field.cuh"
 #include "../primitives/memory.cuh"
+#include "context.cuh"
 #include <cuda_pipeline.h>
 
 namespace airbender::ntt {
