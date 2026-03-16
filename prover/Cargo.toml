@@ -19,7 +19,6 @@ seq-macro = { workspace = true, optional = true }
 fft = { workspace = true, optional = true }
 cs = { workspace = true, default-features = false }
 blake2s_u32 = { workspace = true, default-features = false }
-poseidon2 = { workspace = true, default-features = false }
 serde = { workspace = true }
 serde-big-array = "*"
 transcript = { workspace = true }

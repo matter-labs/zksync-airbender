@@ -29,8 +29,7 @@ members = [
 
     "gpu_prover",
     "gpu_prover_test",
-    
-    "poseidon2",
+
     "reduced_keccak",
 
     "tools/cli",
@@ -72,7 +71,6 @@ default-members = [
     # "full_statement_verifier",
     # gpu_prover is not a default member because it needs CUDA installation to compile
     "non_determinism_source",
-    "poseidon2",
     "prover",
     "reduced_keccak",
     "riscv_transpiler",
@@ -144,8 +142,6 @@ setups = { path = "./circuit_defs/setups" }
 # verifier = {path = "./verifier", default-features = false}
 
 # full_statement_verifier  = { path = "./full_statement_verifier", default-features = false }
-
-poseidon2 = { path = "./poseidon2", default-features = false }
 
 non_determinism_source = { path = "./non_determinism_source", default-features = false }
 riscv_transpiler = { path = "./riscv_transpiler", default-features = false }
