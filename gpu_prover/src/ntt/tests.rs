@@ -1,9 +1,7 @@
 use std::alloc::Global;
 use std::ops::Range;
 
-use era_cudart::memory::{
-    memory_copy_async, CudaHostAllocFlags, DeviceAllocation, HostAllocation,
-};
+use era_cudart::memory::{memory_copy_async, CudaHostAllocFlags, DeviceAllocation, HostAllocation};
 use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::CudaStream;
