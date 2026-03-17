@@ -124,8 +124,6 @@ pub(crate) struct GpuGKRSetupTransferHostKeepalive<'a> {
     #[allow(dead_code)]
     host: Arc<GpuGKRSetupHost>,
     #[allow(dead_code)]
-    trace_holder: TraceHolder<BF>,
-    #[allow(dead_code)]
     transfer_callbacks: Callbacks<'a>,
 }
 
@@ -181,12 +179,13 @@ impl<'a> GpuGKRSetupTransfer<'a> {
     pub(crate) fn into_host_keepalive(self) -> GpuGKRSetupTransferHostKeepalive<'a> {
         let Self {
             host,
-            trace_holder,
+            trace_holder: _,
             transfer,
         } = self;
+        // trace_holder (device alloc) drops here — all exec-stream ops that used it
+        // have already been scheduled.
         GpuGKRSetupTransferHostKeepalive {
             host,
-            trace_holder,
             transfer_callbacks: transfer.into_callbacks(),
         }
     }
@@ -415,10 +414,6 @@ pub(crate) struct GpuGKRForwardSetupHostKeepalive<E> {
     host_lookup_additive_part: HostAllocation<[E]>,
     #[allow(dead_code)]
     host_lookup_alpha_powers: Option<HostAllocation<[E]>>,
-    #[allow(dead_code)]
-    device_lookup_additive_part: DeviceAllocation<E>,
-    #[allow(dead_code)]
-    generic_lookup: Option<DeviceAllocation<E>>,
 }
 
 impl<E> GpuGKRForwardSetup<E> {
@@ -454,17 +449,17 @@ impl<E> GpuGKRForwardSetup<E> {
             callbacks,
             host_lookup_additive_part,
             host_lookup_alpha_powers,
-            device_lookup_additive_part,
-            generic_lookup,
+            device_lookup_additive_part: _,
+            generic_lookup: _,
         } = self;
+        // device_lookup_additive_part and generic_lookup (device allocs) drop here —
+        // all exec-stream ops that used them have already been scheduled.
         GpuGKRForwardSetupHostKeepalive {
             tracing_ranges,
             lookup_challenges,
             callbacks,
             host_lookup_additive_part,
             host_lookup_alpha_powers,
-            device_lookup_additive_part,
-            generic_lookup,
         }
     }
 }
@@ -557,7 +552,7 @@ mod tests {
     use std::sync::Arc;
 
     use cs::definitions::TIMESTAMP_COLUMNS_NUM_BITS;
-    use era_cudart::memory::memory_copy;
+    use era_cudart::memory::memory_copy_async;
     use field::PrimeField;
     use itertools::Itertools;
     use prover::merkle_trees::{
@@ -643,7 +638,7 @@ mod tests {
         let mut source = context
             .alloc(values.len(), AllocationPlacement::BestFit)
             .unwrap();
-        memory_copy(&mut source, values).unwrap();
+        memory_copy_async(&mut source, values, context.get_exec_stream()).unwrap();
         let mut trace_holder = TraceHolder::<BF>::new(
             trace_len.trailing_zeros(),
             log_lde_factor,
@@ -676,10 +671,9 @@ mod tests {
             context.get_exec_stream(),
         )
         .unwrap();
-        context.get_exec_stream().synchronize().unwrap();
-
         let mut host = vec![BF::ZERO; poly.len()];
-        memory_copy(&mut host, &tmp).unwrap();
+        memory_copy_async(&mut host, &tmp, context.get_exec_stream()).unwrap();
+        context.get_exec_stream().synchronize().unwrap();
         host
     }
 
@@ -761,7 +755,8 @@ mod tests {
         context.get_h2d_stream().synchronize().unwrap();
 
         let mut raw = vec![BF::ZERO; transfer.trace_holder.get_hypercube_evals().len()];
-        memory_copy(&mut raw, transfer.trace_holder.get_hypercube_evals()).unwrap();
+        memory_copy_async(&mut raw, transfer.trace_holder.get_hypercube_evals(), context.get_exec_stream()).unwrap();
+        context.get_exec_stream().synchronize().unwrap();
         assert_eq!(raw, flatten_setup(&setup));
         assert!(!transfer.trace_holder.are_cosets_materialized());
 
@@ -778,7 +773,7 @@ mod tests {
         let mut fresh_source = context
             .alloc(raw.len(), AllocationPlacement::BestFit)
             .unwrap();
-        memory_copy(&mut fresh_source, &raw).unwrap();
+        memory_copy_async(&mut fresh_source, &raw, context.get_exec_stream()).unwrap();
         let mut fresh_holder = TraceHolder::<BF>::new(
             trace_len.trailing_zeros(),
             log_lde_factor,
@@ -797,7 +792,7 @@ mod tests {
         let mut indexes_device = context
             .alloc(query_indexes.len(), AllocationPlacement::BestFit)
             .unwrap();
-        memory_copy(&mut indexes_device, &query_indexes).unwrap();
+        memory_copy_async(&mut indexes_device, &query_indexes, context.get_exec_stream()).unwrap();
 
         transfer.ensure_transferred(&context).unwrap();
         let transferred_queries = transfer
