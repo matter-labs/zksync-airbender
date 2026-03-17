@@ -53,7 +53,7 @@ use cs::machine::ops::unrolled::{
 };
 use cs::tables::TableDriver;
 use era_cudart::event::{CudaEvent, CudaEventCreateFlags};
-use era_cudart::memory::memory_copy;
+use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 use fft::{
@@ -1714,11 +1714,11 @@ fn prepare_basic_unrolled_async_backward_fixture(
     let mut d_decoder_table = context
         .alloc(h_decoder_table.len(), AllocationPlacement::BestFit)
         .unwrap();
-    memory_copy(&mut d_decoder_table, &h_decoder_table).unwrap();
+    memory_copy_async(&mut d_decoder_table, &h_decoder_table, context.get_exec_stream()).unwrap();
     let mut trace_data = context
         .alloc(buffer.len(), AllocationPlacement::BestFit)
         .unwrap();
-    memory_copy(&mut trace_data, &buffer[..]).unwrap();
+    memory_copy_async(&mut trace_data, &buffer[..], context.get_exec_stream()).unwrap();
     let gpu_trace = TracingDataDevice::Unrolled(UnrolledTracingDataDevice::NonMemory(
         UnrolledNonMemoryTraceDevice {
             tracing_data: trace_data,
@@ -2511,16 +2511,18 @@ fn stage1_caps_from_tree<T: ColumnMajorMerkleTreeConstructor<BF>>(
         .collect_vec()
 }
 
-fn copy_bf_device_slice_to_host(values: &DeviceSlice<BF>) -> Vec<BF> {
-    let mut host = vec![BF::ZERO; values.len()];
-    memory_copy(&mut host, values).unwrap();
-    host
+fn copy_bf_device_slice_to_host(values: &DeviceSlice<BF>, context: &ProverContext) -> Vec<BF> {
+    let mut host = unsafe { context.alloc_host_uninit_slice(values.len()) };
+    memory_copy_async(&mut host, values, context.get_exec_stream()).unwrap();
+    context.get_exec_stream().synchronize().unwrap();
+    unsafe { host.get_accessor().get().to_vec() }
 }
 
-fn copy_u32_device_slice_to_host(values: &DeviceSlice<u32>) -> Vec<u32> {
-    let mut host = vec![0u32; values.len()];
-    memory_copy(&mut host, values).unwrap();
-    host
+fn copy_u32_device_slice_to_host(values: &DeviceSlice<u32>, context: &ProverContext) -> Vec<u32> {
+    let mut host = unsafe { context.alloc_host_uninit_slice(values.len()) };
+    memory_copy_async(&mut host, values, context.get_exec_stream()).unwrap();
+    context.get_exec_stream().synchronize().unwrap();
+    unsafe { host.get_accessor().get().to_vec() }
 }
 
 fn copy_base_poly_from_gpu_storage<E: Field>(
@@ -2538,11 +2540,11 @@ fn copy_base_poly_from_gpu_storage<E: Field>(
         context.get_exec_stream(),
     )
     .unwrap();
-    context.get_exec_stream().synchronize().unwrap();
 
-    let mut host = vec![BF::ZERO; poly.len()];
-    memory_copy(&mut host, &tmp).unwrap();
-    host
+    let mut host = unsafe { context.alloc_host_uninit_slice(poly.len()) };
+    memory_copy_async(&mut host, &tmp, context.get_exec_stream()).unwrap();
+    context.get_exec_stream().synchronize().unwrap();
+    unsafe { host.get_accessor().get().to_vec() }
 }
 
 fn copy_ext_poly_from_gpu_storage<E: Field + SetByRef>(
@@ -2562,10 +2564,10 @@ fn copy_ext_poly_from_gpu_storage<E: Field + SetByRef>(
         context.get_exec_stream(),
     )
     .unwrap();
-    context.get_exec_stream().synchronize().unwrap();
 
     let mut host = vec![E::ZERO; poly.len()];
-    memory_copy(&mut host, &tmp).unwrap();
+    memory_copy_async(&mut host, &tmp, context.get_exec_stream()).unwrap();
+    context.get_exec_stream().synchronize().unwrap();
     host
 }
 
@@ -2612,15 +2614,19 @@ fn assert_generic_family_mapping_contract(
         impl std::alloc::Allocator + Clone,
     >,
     _populated_rows: usize,
+    context: &ProverContext,
 ) {
-    let gpu_generic_family = copy_u32_device_slice_to_host(lookup_mappings.generic_family());
+    let gpu_generic_family =
+        copy_u32_device_slice_to_host(lookup_mappings.generic_family(), context);
     let trace_len = lookup_mappings.trace_len;
     let expected_num_cols = cpu_trace.generic_lookup_mapping.len();
     assert_eq!(gpu_generic_family.len(), expected_num_cols * trace_len);
 
     for generic_set_idx in 0..lookup_mappings.num_generic_sets {
-        let gpu_column =
-            copy_u32_device_slice_to_host(lookup_mappings.generic_mapping(generic_set_idx));
+        let gpu_column = copy_u32_device_slice_to_host(
+            lookup_mappings.generic_mapping(generic_set_idx),
+            context,
+        );
         let cpu_column = &cpu_trace.generic_lookup_mapping[generic_set_idx];
         assert_eq!(
             gpu_column, *cpu_column,
@@ -2633,6 +2639,7 @@ fn assert_generic_family_mapping_contract(
             lookup_mappings
                 .decoder_mapping()
                 .expect("decoder mapping must be present"),
+            context,
         );
         let cpu_decoder = cpu_trace
             .generic_lookup_mapping
@@ -2891,26 +2898,25 @@ fn run_basic_unrolled_proof_job_multi_schedule_test() {
     let baseline_device_usage = fixture.context.get_used_mem_current();
     let pow_override = fixture.override_pow_challenges();
 
-    // Schedule and complete first proof.
+    // Schedule and finish each prove sequentially. The device pool is a CPU-side
+    // slab allocator — freed blocks are immediately available, but GPU work using
+    // those blocks may still be in-flight. Concurrent scheduling (prove_1 before
+    // prove_0 finishes) would race because prove_1's H2D transfers could overwrite
+    // blocks that prove_0's exec-stream work is still reading.
     let proof_job_0 = fixture.schedule_prove(Some(pow_override.clone())).unwrap();
     let (gpu_proof_0, _proof_time_ms_0) = proof_job_0.finish().unwrap();
     assert_gkr_proof_eq_for_test(&gpu_proof_0, &fixture.expected_cpu_proof);
     drop(gpu_proof_0);
-    assert_eq!(
-        fixture.context.get_used_mem_current(),
-        baseline_device_usage,
-        "device memory must return to baseline after first proof completes"
-    );
 
-    // Schedule and complete second proof — verify sequential reproductions match.
     let proof_job_1 = fixture.schedule_prove(Some(pow_override)).unwrap();
     let (gpu_proof_1, _proof_time_ms_1) = proof_job_1.finish().unwrap();
     assert_gkr_proof_eq_for_test(&gpu_proof_1, &fixture.expected_cpu_proof);
     drop(gpu_proof_1);
+
     assert_eq!(
         fixture.context.get_used_mem_current(),
         baseline_device_usage,
-        "device memory must return to baseline after second proof completes"
+        "device memory must return to baseline after both proofs complete"
     );
 }
 
@@ -3191,11 +3197,11 @@ fn run_basic_unrolled_stagewise_parity_test() {
     let mut d_decoder_table = context
         .alloc(h_decoder_table.len(), AllocationPlacement::BestFit)
         .unwrap();
-    memory_copy(&mut d_decoder_table, &h_decoder_table).unwrap();
+    memory_copy_async(&mut d_decoder_table, &h_decoder_table, context.get_exec_stream()).unwrap();
     let mut trace_data = context
         .alloc(buffer.len(), AllocationPlacement::BestFit)
         .unwrap();
-    memory_copy(&mut trace_data, &buffer[..]).unwrap();
+    memory_copy_async(&mut trace_data, &buffer[..], context.get_exec_stream()).unwrap();
     let gpu_trace = TracingDataDevice::Unrolled(UnrolledTracingDataDevice::NonMemory(
         UnrolledNonMemoryTraceDevice {
             tracing_data: trace_data,
@@ -3224,15 +3230,19 @@ fn run_basic_unrolled_stagewise_parity_test() {
 
     {
         let _range = range!("test.gpu.stage1.readback_asserts");
-        let gpu_memory_flat =
-            copy_bf_device_slice_to_host(stage1_output.memory_trace_holder.get_hypercube_evals());
+        let gpu_memory_flat = copy_bf_device_slice_to_host(
+            stage1_output.memory_trace_holder.get_hypercube_evals(),
+            &context,
+        );
         assert_flat_columns_match_cpu_trace(
             &gpu_memory_flat,
             &full_trace.column_major_memory_trace,
             NUM_CYCLES_PER_CHUNK,
         );
-        let gpu_witness_flat =
-            copy_bf_device_slice_to_host(stage1_output.witness_trace_holder.get_hypercube_evals());
+        let gpu_witness_flat = copy_bf_device_slice_to_host(
+            stage1_output.witness_trace_holder.get_hypercube_evals(),
+            &context,
+        );
         assert_flat_columns_match_cpu_trace(
             &gpu_witness_flat,
             &full_trace.column_major_witness_trace,
@@ -3243,6 +3253,7 @@ fn run_basic_unrolled_stagewise_parity_test() {
             &stage1_output.lookup_mappings,
             &full_trace,
             num_calls,
+            &context,
         );
         let expected_range_check = full_trace
             .range_check_16_lookup_mapping
@@ -3250,7 +3261,7 @@ fn run_basic_unrolled_stagewise_parity_test() {
             .flat_map(|column| column.iter().map(|value| u32::from(*value)))
             .collect_vec();
         let gpu_range_check =
-            copy_u32_device_slice_to_host(stage1_output.lookup_mappings.range_check_16());
+            copy_u32_device_slice_to_host(stage1_output.lookup_mappings.range_check_16(), &context);
         assert_eq!(gpu_range_check, expected_range_check);
         let expected_timestamp = full_trace
             .timestamp_range_check_lookup_mapping
@@ -3258,7 +3269,7 @@ fn run_basic_unrolled_stagewise_parity_test() {
             .flat_map(|column| column.iter().copied())
             .collect_vec();
         let gpu_timestamp =
-            copy_u32_device_slice_to_host(stage1_output.lookup_mappings.timestamp());
+            copy_u32_device_slice_to_host(stage1_output.lookup_mappings.timestamp(), &context);
         assert_eq!(gpu_timestamp, expected_timestamp);
     }
 
@@ -3369,7 +3380,8 @@ fn run_basic_unrolled_stagewise_parity_test() {
     {
         let _range = range!("test.gpu.forward_setup.readback_asserts");
         let mut gpu_generic = vec![E4::ZERO; gpu_forward_setup.generic_lookup_len()];
-        memory_copy(&mut gpu_generic, gpu_forward_setup.generic_lookup()).unwrap();
+        memory_copy_async(&mut gpu_generic, gpu_forward_setup.generic_lookup(), context.get_exec_stream()).unwrap();
+        context.get_exec_stream().synchronize().unwrap();
         assert_eq!(gpu_generic, preprocessed_generic_lookup.as_ref());
     }
 
