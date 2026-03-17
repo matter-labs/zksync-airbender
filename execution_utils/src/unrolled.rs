@@ -667,7 +667,6 @@ mod test {
             )
             .expect("bigint example should emit bigint delegation proofs");
         assert!(!bigint_proofs.is_empty());
-
     }
 
     #[test]
