@@ -124,6 +124,8 @@ pub(crate) struct GpuGKRSetupTransferHostKeepalive<'a> {
     #[allow(dead_code)]
     host: Arc<GpuGKRSetupHost>,
     #[allow(dead_code)]
+    trace_holder: TraceHolder<BF>,
+    #[allow(dead_code)]
     transfer_callbacks: Callbacks<'a>,
 }
 
@@ -179,11 +181,12 @@ impl<'a> GpuGKRSetupTransfer<'a> {
     pub(crate) fn into_host_keepalive(self) -> GpuGKRSetupTransferHostKeepalive<'a> {
         let Self {
             host,
-            trace_holder: _,
+            trace_holder,
             transfer,
         } = self;
         GpuGKRSetupTransferHostKeepalive {
             host,
+            trace_holder,
             transfer_callbacks: transfer.into_callbacks(),
         }
     }
@@ -412,6 +415,10 @@ pub(crate) struct GpuGKRForwardSetupHostKeepalive<E> {
     host_lookup_additive_part: HostAllocation<[E]>,
     #[allow(dead_code)]
     host_lookup_alpha_powers: Option<HostAllocation<[E]>>,
+    #[allow(dead_code)]
+    device_lookup_additive_part: DeviceAllocation<E>,
+    #[allow(dead_code)]
+    generic_lookup: Option<DeviceAllocation<E>>,
 }
 
 impl<E> GpuGKRForwardSetup<E> {
@@ -447,8 +454,8 @@ impl<E> GpuGKRForwardSetup<E> {
             callbacks,
             host_lookup_additive_part,
             host_lookup_alpha_powers,
-            device_lookup_additive_part: _,
-            generic_lookup: _,
+            device_lookup_additive_part,
+            generic_lookup,
         } = self;
         GpuGKRForwardSetupHostKeepalive {
             tracing_ranges,
@@ -456,6 +463,8 @@ impl<E> GpuGKRForwardSetup<E> {
             callbacks,
             host_lookup_additive_part,
             host_lookup_alpha_powers,
+            device_lookup_additive_part,
+            generic_lookup,
         }
     }
 }

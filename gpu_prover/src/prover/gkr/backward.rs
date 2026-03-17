@@ -468,6 +468,10 @@ pub(crate) struct GpuGKRBackwardExecution<E: FieldExtension<BF> + Field> {
 }
 
 pub(crate) struct GpuGKRBackwardScheduledExecution<B, E: FieldExtension<BF> + Field> {
+    #[allow(dead_code)] // Keeps device memory alive until the stream finishes reading it.
+    storage: GpuGKRStorage<B, E>,
+    #[allow(dead_code)]
+    forward_scratch: GpuGKRForwardScratch,
     #[allow(dead_code)]
     dimension_reducing_layers: Vec<GpuGKRDimensionReducingScheduledLayerExecution<B, E>>,
     #[allow(dead_code)]
@@ -522,6 +526,10 @@ pub(crate) struct GpuGKRMainLayerHostKeepalive<E: FieldExtension<BF> + Field> {
 }
 
 pub(crate) struct GpuGKRBackwardHostKeepalive<B, E: FieldExtension<BF> + Field> {
+    #[allow(dead_code)] // Keeps device memory alive until the stream finishes reading it.
+    storage: GpuGKRStorage<B, E>,
+    #[allow(dead_code)]
+    forward_scratch: GpuGKRForwardScratch,
     #[allow(dead_code)]
     dimension_reducing_layers: Vec<GpuGKRDimensionReducingHostKeepalive<B, E>>,
     #[allow(dead_code)]
@@ -5264,11 +5272,15 @@ where
 {
     pub(crate) fn into_host_keepalive(self) -> GpuGKRBackwardHostKeepalive<B, E> {
         let Self {
+            storage,
+            forward_scratch,
             dimension_reducing_layers,
             main_layers,
             shared_state,
         } = self;
         GpuGKRBackwardHostKeepalive {
+            storage,
+            forward_scratch,
             dimension_reducing_layers: dimension_reducing_layers
                 .into_iter()
                 .map(GpuGKRDimensionReducingScheduledLayerExecution::into_host_keepalive)
@@ -5335,7 +5347,15 @@ where
             main_backward_state.purge_up_to_layer(layer_idx);
         }
 
+        let GpuGKRMainLayerBackwardState {
+            storage,
+            forward_scratch,
+            ..
+        } = main_backward_state;
+
         Ok(GpuGKRBackwardScheduledExecution {
+            storage,
+            forward_scratch,
             dimension_reducing_layers,
             main_layers,
             shared_state,
