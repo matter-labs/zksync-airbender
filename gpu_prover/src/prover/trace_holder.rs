@@ -9,7 +9,7 @@ use prover::transcript::Seed;
 
 use crate::allocator::tracker::AllocationPlacement;
 use crate::ntt::{
-    bitreversed_coeffs_to_natural_coset, hypercube_evals_natural_to_bitreversed_coeffs,
+    bitreversed_monomials_to_natural_evals, hypercube_evals_natural_to_bitreversed_coeffs,
 };
 use crate::ops::blake2s::{
     build_merkle_tree, build_merkle_tree_nodes, gather_leaf_rows, gather_merkle_paths_device,
@@ -248,13 +248,18 @@ impl TraceHolder<BF> {
                 CosetsHolder::Full(cosets) => {
                     for (coset_index, coset) in cosets.iter_mut().enumerate() {
                         let dst_column = &mut coset[offset..offset + domain_size];
-                        bitreversed_coeffs_to_natural_coset(
-                            &coeff_scratch,
+                        // "&coeff_scratch" won't deref-coerce all the way to DeviceMatrixChunkImpl
+                        // expected by the API, so we insert a manual DeviceSlice coercion first
+                        let monomials = &coeff_scratch[0..domain_size];
+                        bitreversed_monomials_to_natural_evals(
+                            monomials,
                             dst_column,
                             self.log_domain_size as usize,
                             self.log_lde_factor as usize,
                             coset_index,
+                            false, // transposed_monomials
                             stream,
+                            context.get_device_properties(),
                         )?;
                     }
                 }
