@@ -402,7 +402,7 @@ mod tests {
     use std::default::Default;
 
     use blake2s_u32::Blake2sState;
-    use era_cudart::memory::{memory_copy, memory_copy_async, DeviceAllocation};
+    use era_cudart::memory::{memory_copy_async, DeviceAllocation};
     use field::Field;
     use itertools::Itertools;
     use rand::Rng;
@@ -752,10 +752,12 @@ mod tests {
             [value; STATE_SIZE]
         });
         let mut values_device = DeviceAllocation::alloc(values_host.len()).unwrap();
-        memory_copy(&mut values_device, &values_host).unwrap();
+        let stream = CudaStream::create().unwrap();
+        memory_copy_async(&mut values_device, &values_host, &stream).unwrap();
         let cap_device = super::merkle_tree_cap(&values_device, LOG_CAP_SIZE);
         let mut cap_host = vec![Digest::default(); CAP_SIZE];
-        memory_copy(&mut cap_host, cap_device).unwrap();
+        memory_copy_async(&mut cap_host, cap_device, &stream).unwrap();
+        stream.synchronize().unwrap();
         assert_eq!(cap_host.len(), CAP_SIZE);
         assert_eq!(cap_host, values_host[N..3 * N / 2]);
     }
