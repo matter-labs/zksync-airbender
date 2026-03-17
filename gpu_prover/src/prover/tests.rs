@@ -16,8 +16,8 @@ use crate::primitives::circuit_type::{
 };
 use crate::primitives::context::ProverContext;
 use crate::primitives::field::{BF, E4};
-use crate::primitives::static_host::alloc_static_pinned_vec_from_slice;
-use crate::prover::decoder::{DecoderTableTransfer, DECODER_TABLE_STATIC_HOST_LOG_CHUNK_SIZE};
+use crate::primitives::static_host::alloc_static_pinned_box_from_slice;
+use crate::prover::decoder::DecoderTableTransfer;
 use crate::prover::proof::{prove, GkrExternalPowChallenges, GpuGKRProofJob};
 use crate::prover::test_utils::make_test_context;
 use crate::prover::trace_holder::TraceHolder;
@@ -256,14 +256,14 @@ fn compute_initial_sumcheck_claims_from_explicit_evaluations_for_test<E: Field>(
 
 fn make_decoder_table_host_for_test(
     witness_gen_data: &[cs::cs::oracle::ExecutorFamilyDecoderData],
-) -> Arc<Vec<ExecutorFamilyDecoderData, crate::allocator::host::ConcurrentStaticHostAllocator>> {
+) -> Arc<crate::primitives::static_host::StaticPinnedBox<ExecutorFamilyDecoderData>> {
     let data: Vec<_> = witness_gen_data
         .iter()
         .copied()
         .map(ExecutorFamilyDecoderData::from)
         .collect();
     Arc::new(
-        alloc_static_pinned_vec_from_slice(&data, DECODER_TABLE_STATIC_HOST_LOG_CHUNK_SIZE)
+        alloc_static_pinned_box_from_slice(&data)
             .expect("decoder table should fit in static pinned host memory"),
     )
 }
@@ -284,8 +284,7 @@ struct BasicUnrolledProofFixture {
     whir_schedule: WhirSchedule,
     final_trace_size_log_2: usize,
     gpu_setup_host: Arc<GpuGKRSetupHost>,
-    decoder_table_host:
-        Arc<Vec<ExecutorFamilyDecoderData, crate::allocator::host::ConcurrentStaticHostAllocator>>,
+    decoder_table_host: Arc<crate::primitives::static_host::StaticPinnedBox<ExecutorFamilyDecoderData>>,
     tracing_data_host: TracingDataHost<Global>,
     expected_cpu_proof: GKRProof<BF, E4, DefaultTreeConstructor>,
 }

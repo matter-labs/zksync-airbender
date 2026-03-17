@@ -1,23 +1,20 @@
-use crate::allocator::host::ConcurrentStaticHostAllocator;
 use crate::allocator::tracker::AllocationPlacement;
 use crate::primitives::context::{DeviceAllocation, ProverContext};
-use crate::primitives::static_host::StaticPinnedVec;
+use crate::primitives::static_host::StaticPinnedBox;
 use crate::primitives::transfer::Transfer;
 use crate::witness::trace_unrolled::ExecutorFamilyDecoderData;
 use era_cudart::result::CudaResult;
 use std::sync::Arc;
 
-pub(crate) const DECODER_TABLE_STATIC_HOST_LOG_CHUNK_SIZE: u32 = 22;
-
 pub(crate) struct DecoderTableTransfer<'a> {
-    pub(crate) data_host: Arc<Vec<ExecutorFamilyDecoderData, ConcurrentStaticHostAllocator>>,
+    pub(crate) data_host: Arc<StaticPinnedBox<ExecutorFamilyDecoderData>>,
     pub(crate) data_device: DeviceAllocation<ExecutorFamilyDecoderData>,
     pub(crate) transfer: Transfer<'a>,
 }
 
 impl<'a> DecoderTableTransfer<'a> {
     pub(crate) fn new(
-        data_host: Arc<StaticPinnedVec<ExecutorFamilyDecoderData>>,
+        data_host: Arc<StaticPinnedBox<ExecutorFamilyDecoderData>>,
         context: &ProverContext,
     ) -> CudaResult<Self> {
         let transfer = Transfer::new()?;

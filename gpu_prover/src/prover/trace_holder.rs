@@ -222,39 +222,6 @@ impl<T> TraceHolder<T> {
         }
     }
 
-    pub(crate) fn clone_tree_caps_from_host(
-        &mut self,
-        source: &[HostAllocation<[Digest]>],
-        context: &ProverContext,
-    ) {
-        assert_eq!(source.len(), 1usize << self.log_lde_factor);
-        let mut caps = allocate_tree_caps(self.log_lde_factor, self.log_tree_cap_size, context);
-        for (src, dst) in source.iter().zip(caps.iter_mut()) {
-            unsafe {
-                dst.get_mut_accessor()
-                    .get_mut()
-                    .copy_from_slice(src.get_accessor().get());
-            }
-        }
-        assert!(self.tree_caps.replace(caps).is_none());
-    }
-
-    pub(crate) fn clone_tree_caps_from_slices<S: AsRef<[Digest]>>(
-        &mut self,
-        source: &[S],
-        context: &ProverContext,
-    ) {
-        assert_eq!(source.len(), 1usize << self.log_lde_factor);
-        let mut caps = allocate_tree_caps(self.log_lde_factor, self.log_tree_cap_size, context);
-        for (src, dst) in source.iter().zip(caps.iter_mut()) {
-            unsafe {
-                dst.get_mut_accessor()
-                    .get_mut()
-                    .copy_from_slice(src.as_ref());
-            }
-        }
-        assert!(self.tree_caps.replace(caps).is_none());
-    }
 }
 
 impl TraceHolder<BF> {

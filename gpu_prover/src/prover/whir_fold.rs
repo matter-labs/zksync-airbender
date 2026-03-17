@@ -39,7 +39,9 @@ use crate::primitives::context::{DeviceAllocation, HostAllocation, ProverContext
 use crate::primitives::device_structures::{DeviceMatrix, DeviceMatrixMut};
 use crate::primitives::device_tracing::Range;
 use crate::primitives::field::{BF, E4};
-use crate::primitives::static_host::alloc_static_pinned_vec_uninit;
+use crate::primitives::static_host::{
+    alloc_static_pinned_box_from_slice, alloc_static_pinned_box_uninit,
+};
 use crate::prover::gkr::backward::launch_build_eq_values;
 use crate::prover::pow::search_pow_challenge;
 use crate::prover::proof::{
@@ -49,7 +51,6 @@ use crate::prover::trace_holder::{get_tree_caps, TraceHolder};
 use crate::prover::whir::{GpuWhirExtensionOracle, GpuWhirExtensionQuery};
 
 const EXT4_DEGREE: usize = <E4 as FieldExtension<BF>>::DEGREE;
-
 struct GpuWhirState {
     sumchecked_poly_monomial_form: DeviceAllocation<E4>,
     monomial_buffer: DeviceAllocation<E4>,
@@ -354,7 +355,30 @@ fn copy_small_to_device<T: Copy>(
     context: &ProverContext,
 ) -> CudaResult<()> {
     assert_eq!(dst.len(), values.len());
-    memory_copy_async(dst, values, context.get_exec_stream())
+    let host = alloc_static_pinned_box_from_slice(values)?;
+    memory_copy_async(dst, &host[..], context.get_exec_stream())
+}
+
+fn schedule_copy_small_to_device<T: Copy + Send + Sync + 'static>(
+    dst: &mut DeviceSlice<T>,
+    values: &[T],
+    callbacks: &mut Callbacks<'static>,
+    context: &ProverContext,
+) -> CudaResult<()> {
+    assert_eq!(dst.len(), values.len());
+    let values = values.to_vec();
+    let mut host = unsafe { context.alloc_host_uninit_slice(values.len()) };
+    let host_accessor = host.get_mut_accessor();
+    callbacks.schedule(
+        move || unsafe {
+            // SAFETY: the callback owns the raw accessor into `host`, and both the callback and
+            // the H2D copy are queued on exec_stream before `host` is dropped at the end of this
+            // function, satisfying the stream-ordered host-lifetime contract.
+            host_accessor.get_mut().copy_from_slice(&values);
+        },
+        context.get_exec_stream(),
+    )?;
+    memory_copy_async(dst, &host, context.get_exec_stream())
 }
 
 fn copy_scalar_to_device(
@@ -391,7 +415,9 @@ fn schedule_reduce_outputs_readback(
     Ok(host)
 }
 
-fn full_cap_from_trace_holder(trace_holder: &TraceHolder<BF>) -> MerkleTreeCapVarLength {
+fn full_cap_from_trace_holder(
+    trace_holder: &TraceHolder<BF>,
+) -> MerkleTreeCapVarLength {
     MerkleTreeCapVarLength {
         cap: trace_holder
             .get_tree_caps()
@@ -434,7 +460,10 @@ fn full_cap_from_accessors(
 fn cap_digest_count_from_accessors(
     accessors: &[crate::primitives::context::UnsafeAccessor<[Digest]>],
 ) -> usize {
-    accessors.iter().map(|accessor| unsafe { accessor.get().len() }).sum()
+    accessors
+        .iter()
+        .map(|accessor| unsafe { accessor.get().len() })
+        .sum()
 }
 
 fn fill_full_cap_from_accessors(
@@ -448,7 +477,11 @@ fn fill_full_cap_from_accessors(
         .iter()
         .map(|accessor| unsafe { accessor.get().len() })
         .sum::<usize>();
-    assert_eq!(dst.len(), expected_len, "WHIR cap destination length mismatch");
+    assert_eq!(
+        dst.len(),
+        expected_len,
+        "WHIR cap destination length mismatch"
+    );
     let mut offset = 0;
     for stage1_pos in 0..lde_factor {
         let natural_coset_index = bitreverse_index(stage1_pos, log_lde_factor);
@@ -787,7 +820,8 @@ fn fill_extension_query_from_accessors(
         for column in 0..EXT4_DEGREE {
             coeffs[column] = leafs[value_index * EXT4_DEGREE + column];
         }
-        dst.leaf_values_concatenated[value_index] = extension_field_from_base_coeffs::<BF, E4>(coeffs);
+        dst.leaf_values_concatenated[value_index] =
+            extension_field_from_base_coeffs::<BF, E4>(coeffs);
     }
     dst.path.copy_from_slice(path);
 }
@@ -830,7 +864,7 @@ fn fold_coset(
     }
 }
 
-fn build_initial_batched_main_domain_poly_device(
+fn build_initial_batched_main_domain_poly_device_impl(
     memory_trace_holder: &TraceHolder<BF>,
     memory_weights: &[E4],
     witness_trace_holder: &TraceHolder<BF>,
@@ -838,6 +872,7 @@ fn build_initial_batched_main_domain_poly_device(
     setup_trace_holder: &TraceHolder<BF>,
     setup_weights: &[E4],
     result: &mut DeviceSlice<E4>,
+    mut upload_weights: impl FnMut(&mut DeviceSlice<E4>, &[E4], &ProverContext) -> CudaResult<()>,
     context: &ProverContext,
 ) -> CudaResult<Vec<DeviceAllocation<E4>>> {
     let stream = context.get_exec_stream();
@@ -857,7 +892,7 @@ fn build_initial_batched_main_domain_poly_device(
             "WHIR initial state requires materialized main-domain cosets",
         );
         let mut device_weights = context.alloc(weights.len(), AllocationPlacement::BestFit)?;
-        copy_small_to_device(&mut device_weights, weights, context)?;
+        upload_weights(&mut device_weights, weights, context)?;
         let values = DeviceMatrix::new(trace_holder.get_evaluations(), result.len());
         accumulate_whir_base_columns(&values, &device_weights, result, stream)?;
         weight_buffers.push(device_weights);
@@ -866,7 +901,54 @@ fn build_initial_batched_main_domain_poly_device(
     Ok(weight_buffers)
 }
 
-fn initialize_batched_forms(
+fn build_initial_batched_main_domain_poly_device(
+    memory_trace_holder: &TraceHolder<BF>,
+    memory_weights: &[E4],
+    witness_trace_holder: &TraceHolder<BF>,
+    witness_weights: &[E4],
+    setup_trace_holder: &TraceHolder<BF>,
+    setup_weights: &[E4],
+    result: &mut DeviceSlice<E4>,
+    context: &ProverContext,
+) -> CudaResult<Vec<DeviceAllocation<E4>>> {
+    build_initial_batched_main_domain_poly_device_impl(
+        memory_trace_holder,
+        memory_weights,
+        witness_trace_holder,
+        witness_weights,
+        setup_trace_holder,
+        setup_weights,
+        result,
+        |dst, values, context| copy_small_to_device(dst, values, context),
+        context,
+    )
+}
+
+fn schedule_build_initial_batched_main_domain_poly_device(
+    memory_trace_holder: &TraceHolder<BF>,
+    memory_weights: &[E4],
+    witness_trace_holder: &TraceHolder<BF>,
+    witness_weights: &[E4],
+    setup_trace_holder: &TraceHolder<BF>,
+    setup_weights: &[E4],
+    result: &mut DeviceSlice<E4>,
+    callbacks: &mut Callbacks<'static>,
+    context: &ProverContext,
+) -> CudaResult<Vec<DeviceAllocation<E4>>> {
+    build_initial_batched_main_domain_poly_device_impl(
+        memory_trace_holder,
+        memory_weights,
+        witness_trace_holder,
+        witness_weights,
+        setup_trace_holder,
+        setup_weights,
+        result,
+        |dst, values, context| schedule_copy_small_to_device(dst, values, callbacks, context),
+        context,
+    )
+}
+
+fn initialize_batched_forms_impl(
     memory_trace_holder: &TraceHolder<BF>,
     witness_trace_holder: &TraceHolder<BF>,
     setup_trace_holder: &TraceHolder<BF>,
@@ -875,6 +957,16 @@ fn initialize_batched_forms(
     setup_polys_claims_len: usize,
     batching_challenge: E4,
     state: &mut GpuWhirState,
+    mut build_initial_form: impl FnMut(
+        &TraceHolder<BF>,
+        &[E4],
+        &TraceHolder<BF>,
+        &[E4],
+        &TraceHolder<BF>,
+        &[E4],
+        &mut DeviceSlice<E4>,
+        &ProverContext,
+    ) -> CudaResult<Vec<DeviceAllocation<E4>>>,
     context: &ProverContext,
 ) -> CudaResult<[Vec<E4>; 3]> {
     let trace_len = state.current_len;
@@ -900,7 +992,7 @@ fn initialize_batched_forms(
     let (witness_weights, setup_weights) = rest.split_at(wit_polys_claims_len);
     debug_assert_eq!(setup_weights.len(), setup_polys_claims_len);
 
-    let _weight_buffers = build_initial_batched_main_domain_poly_device(
+    let _weight_buffers = build_initial_form(
         memory_trace_holder,
         memory_weights,
         witness_trace_holder,
@@ -965,6 +1057,94 @@ fn initialize_batched_forms(
         witness_weights.to_vec(),
         setup_weights.to_vec(),
     ])
+}
+
+fn initialize_batched_forms(
+    memory_trace_holder: &TraceHolder<BF>,
+    witness_trace_holder: &TraceHolder<BF>,
+    setup_trace_holder: &TraceHolder<BF>,
+    mem_polys_claims_len: usize,
+    wit_polys_claims_len: usize,
+    setup_polys_claims_len: usize,
+    batching_challenge: E4,
+    state: &mut GpuWhirState,
+    context: &ProverContext,
+) -> CudaResult<[Vec<E4>; 3]> {
+    initialize_batched_forms_impl(
+        memory_trace_holder,
+        witness_trace_holder,
+        setup_trace_holder,
+        mem_polys_claims_len,
+        wit_polys_claims_len,
+        setup_polys_claims_len,
+        batching_challenge,
+        state,
+        |memory_trace_holder,
+         memory_weights,
+         witness_trace_holder,
+         witness_weights,
+         setup_trace_holder,
+         setup_weights,
+         result,
+         context| {
+            build_initial_batched_main_domain_poly_device(
+                memory_trace_holder,
+                memory_weights,
+                witness_trace_holder,
+                witness_weights,
+                setup_trace_holder,
+                setup_weights,
+                result,
+                context,
+            )
+        },
+        context,
+    )
+}
+
+fn schedule_initialize_batched_forms(
+    memory_trace_holder: &TraceHolder<BF>,
+    witness_trace_holder: &TraceHolder<BF>,
+    setup_trace_holder: &TraceHolder<BF>,
+    mem_polys_claims_len: usize,
+    wit_polys_claims_len: usize,
+    setup_polys_claims_len: usize,
+    batching_challenge: E4,
+    state: &mut GpuWhirState,
+    callbacks: &mut Callbacks<'static>,
+    context: &ProverContext,
+) -> CudaResult<[Vec<E4>; 3]> {
+    initialize_batched_forms_impl(
+        memory_trace_holder,
+        witness_trace_holder,
+        setup_trace_holder,
+        mem_polys_claims_len,
+        wit_polys_claims_len,
+        setup_polys_claims_len,
+        batching_challenge,
+        state,
+        |memory_trace_holder,
+         memory_weights,
+         witness_trace_holder,
+         witness_weights,
+         setup_trace_holder,
+         setup_weights,
+         result,
+         context| {
+            schedule_build_initial_batched_main_domain_poly_device(
+                memory_trace_holder,
+                memory_weights,
+                witness_trace_holder,
+                witness_weights,
+                setup_trace_holder,
+                setup_weights,
+                result,
+                callbacks,
+                context,
+            )
+        },
+        context,
+    )
 }
 
 fn build_initial_state(
@@ -1434,7 +1614,10 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         witness_commitment: WhirBaseLayerCommitmentAndQueries {
             commitment: WhirCommitment {
                 cap: MerkleTreeCapVarLength {
-                    cap: vec![Digest::default(); cap_digest_count_from_accessors(&witness_caps_accessors)],
+                    cap: vec![
+                        Digest::default();
+                        cap_digest_count_from_accessors(&witness_caps_accessors)
+                    ],
                 },
                 _marker: PhantomData,
             },
@@ -1449,7 +1632,10 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         memory_commitment: WhirBaseLayerCommitmentAndQueries {
             commitment: WhirCommitment {
                 cap: MerkleTreeCapVarLength {
-                    cap: vec![Digest::default(); cap_digest_count_from_accessors(&memory_caps_accessors)],
+                    cap: vec![
+                        Digest::default();
+                        cap_digest_count_from_accessors(&memory_caps_accessors)
+                    ],
                 },
                 _marker: PhantomData,
             },
@@ -1464,7 +1650,10 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         setup_commitment: WhirBaseLayerCommitmentAndQueries {
             commitment: WhirCommitment {
                 cap: MerkleTreeCapVarLength {
-                    cap: vec![Digest::default(); cap_digest_count_from_accessors(&setup_caps_accessors)],
+                    cap: vec![
+                        Digest::default();
+                        cap_digest_count_from_accessors(&setup_caps_accessors)
+                    ],
                 },
                 _marker: PhantomData,
             },
@@ -1479,15 +1668,17 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         sumcheck_polys: vec![[E4::ZERO; 3]; total_sumcheck_polys],
         intermediate_whir_oracles: intermediate_query_specs
             .iter()
-            .map(|&(count, values_per_leaf, path_len)| WhirIntermediateCommitmentAndQueries {
-                commitment: WhirCommitment {
-                    cap: MerkleTreeCapVarLength {
-                        cap: vec![Digest::default(); tree_cap_size],
+            .map(
+                |&(count, values_per_leaf, path_len)| WhirIntermediateCommitmentAndQueries {
+                    commitment: WhirCommitment {
+                        cap: MerkleTreeCapVarLength {
+                            cap: vec![Digest::default(); tree_cap_size],
+                        },
+                        _marker: PhantomData,
                     },
-                    _marker: PhantomData,
+                    queries: make_preallocated_extension_queries(count, values_per_leaf, path_len),
                 },
-                queries: make_preallocated_extension_queries(count, values_per_leaf, path_len),
-            })
+            )
             .collect(),
         ood_samples: vec![E4::ZERO; num_intermediate_oracles],
         pow_nonces: vec![0u64; whir_pow_rounds],
@@ -1547,7 +1738,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
     )?;
 
     let mut state = GpuWhirState::new(trace_len, context)?;
-    let batch_challenges = initialize_batched_forms(
+    let batch_challenges = schedule_initialize_batched_forms(
         memory_trace_holder,
         witness_trace_holder,
         setup_trace_holder,
@@ -1556,6 +1747,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         setup_trace_holder.columns_count,
         E4::ZERO,
         &mut state,
+        &mut start_callbacks,
         context,
     )?;
     memory_copy_async(
@@ -1680,11 +1872,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
                         .unwrap()
                         .intermediate_whir_oracles[0]
                         .commitment;
-                    fill_full_cap_from_accessors(
-                        &mut commitment.cap.cap,
-                        &oracle_cap_accessors,
-                        0,
-                    );
+                    fill_full_cap_from_accessors(&mut commitment.cap.cap, &oracle_cap_accessors, 0);
                     add_whir_commitment_to_transcript(seed_accessor.get_mut(), commitment);
                 }
             },
@@ -1733,8 +1921,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
             trace_len_log2 + original_lde_factor.trailing_zeros() as usize - num_folding_steps;
         let query_domain_size = 1u64 << query_domain_log2;
         let query_domain_generator = domain_generator_for_size::<BF>(query_domain_size);
-        let mut query_indexes_host =
-            unsafe { context.alloc_host_uninit_slice(num_queries) };
+        let mut query_indexes_host = unsafe { context.alloc_host_uninit_slice(num_queries) };
         let query_indexes_accessor = query_indexes_host.get_mut_accessor();
         let nonce_accessor = nonce_host.get_mut_accessor();
         let mut query_index_callbacks_for_round = Callbacks::new();
@@ -1836,12 +2023,9 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
 
         let mut round_base_queries = [Vec::new(), Vec::new(), Vec::new()];
         for query_idx in 0..num_queries {
-            let mut memory_query_index_host =
-                unsafe { context.alloc_host_uninit_slice(1) };
-            let mut witness_query_index_host =
-                unsafe { context.alloc_host_uninit_slice(1) };
-            let mut setup_query_index_host =
-                unsafe { context.alloc_host_uninit_slice(1) };
+            let mut memory_query_index_host = unsafe { context.alloc_host_uninit_slice(1) };
+            let mut witness_query_index_host = unsafe { context.alloc_host_uninit_slice(1) };
+            let mut setup_query_index_host = unsafe { context.alloc_host_uninit_slice(1) };
             let query_indexes_accessor = query_indexes_host.get_accessor();
             let mut copy_callbacks = Callbacks::new();
             for single_accessor in [
@@ -2074,8 +2258,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
             + oracle_to_query.lde_factor().trailing_zeros() as usize;
         let query_domain_size = 1u64 << query_domain_log2;
         let query_domain_generator = domain_generator_for_size::<BF>(query_domain_size);
-        let mut query_indexes_host =
-            unsafe { context.alloc_host_uninit_slice(num_queries) };
+        let mut query_indexes_host = unsafe { context.alloc_host_uninit_slice(num_queries) };
         let query_indexes_accessor = query_indexes_host.get_mut_accessor();
         let nonce_accessor = nonce_host.get_mut_accessor();
         let mut query_index_callbacks_for_round = Callbacks::new();
@@ -2257,8 +2440,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
             + oracle_to_query.lde_factor().trailing_zeros() as usize;
         let query_domain_size = 1u64 << query_domain_log2;
         let mut nonce_host = unsafe { context.alloc_host_uninit::<u64>() };
-        let mut query_indexes_host =
-            unsafe { context.alloc_host_uninit_slice(num_queries) };
+        let mut query_indexes_host = unsafe { context.alloc_host_uninit_slice(num_queries) };
         let query_indexes_accessor = query_indexes_host.get_mut_accessor();
         let nonce_accessor = nonce_host.get_mut_accessor();
         let mut query_index_callbacks_for_round = Callbacks::new();
@@ -2694,9 +2876,6 @@ pub(crate) struct DebugInitialWhirRoundCheckpoint {
 }
 
 #[cfg(test)]
-const DEBUG_STATIC_HOST_LOG_CHUNK_SIZE: u32 = 12;
-
-#[cfg(test)]
 pub(crate) struct DebugWhirInitialFoldState {
     state: GpuWhirState,
 }
@@ -2752,8 +2931,7 @@ pub(crate) fn debug_initial_round_checkpoint_for_test(
         state.current_len /= 2;
     }
 
-    let mut folded_monomial_form_host =
-        alloc_static_pinned_vec_uninit(state.current_len, DEBUG_STATIC_HOST_LOG_CHUNK_SIZE)?;
+    let mut folded_monomial_form_host = alloc_static_pinned_box_uninit(state.current_len)?;
     memory_copy_async(
         &mut folded_monomial_form_host,
         &state.sumchecked_poly_monomial_form[..state.current_len],
@@ -2837,8 +3015,7 @@ pub(crate) fn debug_apply_initial_fold_challenge_for_test(
     fold_eq_poly_in_place_device(&mut debug_state.state, challenge, context)?;
     debug_state.state.current_len /= 2;
 
-    let mut host =
-        alloc_static_pinned_vec_uninit(debug_state.state.current_len, DEBUG_STATIC_HOST_LOG_CHUNK_SIZE)?;
+    let mut host = alloc_static_pinned_box_uninit(debug_state.state.current_len)?;
     memory_copy_async(
         &mut host,
         &debug_state.state.sumchecked_poly_monomial_form[..debug_state.state.current_len],

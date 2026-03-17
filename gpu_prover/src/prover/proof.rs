@@ -365,7 +365,7 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
             .host
             .tree_caps
             .iter()
-            .map(|cap| cap.as_slice())
+            .map(|cap| &cap[..])
             .collect::<Vec<_>>(),
         setup_log_lde_factor,
     );
