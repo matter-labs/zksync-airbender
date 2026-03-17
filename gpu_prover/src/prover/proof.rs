@@ -51,6 +51,8 @@ pub(crate) struct GkrExternalPowChallenges {
 
 struct GpuGKRProofJobKeepalive<'a> {
     #[allow(dead_code)]
+    stage1: GpuGKRStage1Output,
+    #[allow(dead_code)]
     setup: GpuGKRSetupTransferHostKeepalive<'a>,
     #[allow(dead_code)]
     forward_setup: GpuGKRForwardSetupHostKeepalive<E4>,
@@ -587,6 +589,7 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
         proof,
         ranges,
         keepalive: GpuGKRProofJobKeepalive {
+            stage1: stage1_output,
             setup: setup_keepalive,
             forward_setup: forward_setup_keepalive,
             transcript_handoff,
