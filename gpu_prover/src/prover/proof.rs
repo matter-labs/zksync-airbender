@@ -37,7 +37,7 @@ use crate::prover::gkr::forward::{schedule_forward_pass, GpuGKRTranscriptHandoff
 use crate::prover::gkr::setup::{
     GpuGKRForwardSetupHostKeepalive, GpuGKRSetupTransfer, GpuGKRSetupTransferHostKeepalive,
 };
-use crate::prover::gkr::stage1::GpuGKRStage1Output;
+use crate::prover::gkr::stage1::{GpuGKRStage1Keepalive, GpuGKRStage1Output};
 use crate::prover::trace_holder::flatten_tree_caps;
 use crate::prover::tracing_data::{InitsAndTeardownsTransfer, TracingDataTransfer};
 use crate::prover::whir_fold::{
@@ -50,6 +50,8 @@ pub(crate) struct GkrExternalPowChallenges {
 }
 
 struct GpuGKRProofJobKeepalive<'a> {
+    #[allow(dead_code)]
+    stage1: GpuGKRStage1Keepalive,
     #[allow(dead_code)]
     setup: GpuGKRSetupTransferHostKeepalive<'a>,
     #[allow(dead_code)]
@@ -363,14 +365,14 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
             .host
             .tree_caps
             .iter()
-            .map(|cap| cap.as_slice())
+            .map(|cap| &cap[..])
             .collect::<Vec<_>>(),
         setup_log_lde_factor,
     );
 
     let mut seed_host = unsafe { context.alloc_host_uninit::<Seed>() };
     let seed_accessor = seed_host.get_mut_accessor();
-    let mut lookup_challenges_host = unsafe { context.alloc_transient_host_uninit_slice(3) };
+    let mut lookup_challenges_host = unsafe { context.alloc_host_uninit_slice(3) };
     let lookup_challenges_write_accessor = lookup_challenges_host.get_mut_accessor();
     let lookup_challenges_read_accessor = lookup_challenges_host.get_accessor();
     let external_challenges_for_seed = external_challenges.clone();
@@ -520,7 +522,14 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
         whir_schedule.whir_pow_schedule.clone(),
         {
             let backward_shared_state = Arc::clone(&backward_shared_state);
-            move || current_backward_seed(&backward_shared_state)
+            move || {
+                let mut seed = current_backward_seed(&backward_shared_state);
+                // The CPU prover draws the WHIR batching challenge from the seed
+                // before entering whir_fold. We must advance the seed here to match.
+                let _whir_batching_challenge =
+                    draw_random_field_els::<BF, E4>(&mut seed, 1);
+                seed
+            }
         },
         whir_schedule.cap_size,
         compiled_circuit.trace_len.trailing_zeros() as usize,
@@ -580,6 +589,7 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
         proof,
         ranges,
         keepalive: GpuGKRProofJobKeepalive {
+            stage1: stage1_output.into_keepalive(),
             setup: setup_keepalive,
             forward_setup: forward_setup_keepalive,
             transcript_handoff,

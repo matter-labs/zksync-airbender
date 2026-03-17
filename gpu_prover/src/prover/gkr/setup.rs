@@ -21,18 +21,16 @@ use crate::primitives::device_structures::DeviceVectorChunk;
 use crate::primitives::device_tracing::Range;
 use crate::primitives::field::BF;
 use crate::primitives::static_host::{
-    alloc_static_pinned_vec_from_slice, alloc_static_pinned_vec_uninit, StaticPinnedVec,
+    alloc_static_pinned_box_from_slice, alloc_static_pinned_box_uninit, StaticPinnedBox,
 };
 use crate::primitives::transfer::Transfer;
-use crate::prover::trace_holder::{TraceHolder, TreesCacheMode, TreesHolder};
+use crate::prover::trace_holder::{allocate_tree_caps, TraceHolder, TreesCacheMode, TreesHolder};
 use prover::gkr::prover::setup::GKRSetup as CpuGKRSetup;
 
-const SETUP_TREE_STATIC_HOST_LOG_CHUNK_SIZE: u32 = 12;
-
 pub(crate) struct GpuGKRSetupHost {
-    pub(crate) raw_hypercube_evals: StaticPinnedVec<BF>,
-    pub(crate) partial_trees: Vec<StaticPinnedVec<Digest>>,
-    pub(crate) tree_caps: Vec<StaticPinnedVec<Digest>>,
+    pub(crate) raw_hypercube_evals: StaticPinnedBox<BF>,
+    pub(crate) partial_trees: Vec<StaticPinnedBox<Digest>>,
+    pub(crate) tree_caps: Vec<StaticPinnedBox<Digest>>,
     pub(crate) trace_len: usize,
     pub(crate) log_domain_size: u32,
     pub(crate) columns_count: usize,
@@ -152,7 +150,7 @@ impl<'a> GpuGKRSetupTransfer<'a> {
         let stream = context.get_h2d_stream();
         memory_copy_async(
             self.trace_holder.get_uninit_hypercube_evals_mut(),
-            self.host.raw_hypercube_evals.as_slice(),
+            &self.host.raw_hypercube_evals[..],
             stream,
         )?;
         assert_eq!(
@@ -165,10 +163,9 @@ impl<'a> GpuGKRSetupTransfer<'a> {
                 .trace_holder
                 .get_uninit_tree_mut(coset_index)
                 .expect("setup transfers require partial-tree caching");
-            memory_copy_async(dst_tree, src_tree.as_slice(), stream)?;
+            memory_copy_async(dst_tree, &src_tree[..], stream)?;
         }
-        self.trace_holder
-            .clone_tree_caps_from_slices(&self.host.tree_caps, context);
+        self.schedule_tree_caps_clone(context)?;
         self.transfer.record_transferred(context)
     }
 
@@ -182,6 +179,8 @@ impl<'a> GpuGKRSetupTransfer<'a> {
             trace_holder: _,
             transfer,
         } = self;
+        // trace_holder (device alloc) drops here — all exec-stream ops that used it
+        // have already been scheduled.
         GpuGKRSetupTransferHostKeepalive {
             host,
             transfer_callbacks: transfer.into_callbacks(),
@@ -271,11 +270,11 @@ impl<'a> GpuGKRSetupTransfer<'a> {
         let mut tracing_ranges = Vec::new();
         let schedule_range = Range::new("gkr.forward_setup.schedule")?;
         schedule_range.start(stream)?;
-        let mut host_lookup_additive_part = unsafe { context.alloc_transient_host_uninit_slice(1) };
+        let mut host_lookup_additive_part = unsafe { context.alloc_host_uninit_slice(1) };
         let mut device_lookup_additive_part = context.alloc(1, AllocationPlacement::BestFit)?;
         let mut host_lookup_alpha_powers = if self.host.columns_count > 3 && generic_lookup_len > 0
         {
-            Some(unsafe { context.alloc_transient_host_uninit_slice(self.host.columns_count - 2) })
+            Some(unsafe { context.alloc_host_uninit_slice(self.host.columns_count - 2) })
         } else {
             None
         };
@@ -384,6 +383,31 @@ impl<'a> GpuGKRSetupTransfer<'a> {
             generic_lookup,
         })
     }
+
+    fn schedule_tree_caps_clone(&mut self, context: &ProverContext) -> CudaResult<()> {
+        let host = Arc::clone(&self.host);
+        let mut tree_caps =
+            allocate_tree_caps(host.log_lde_factor, host.log_tree_cap_size, context);
+        let tree_cap_accessors = tree_caps
+            .iter_mut()
+            .map(HostAllocation::get_mut_accessor)
+            .collect::<Vec<_>>();
+        self.transfer.callbacks.schedule(
+            move || unsafe {
+                // SAFETY: the callback owns raw accessors into `tree_caps`, and those host
+                // allocations are kept alive by the returned `trace_holder` keepalive until all
+                // exec-stream users have been scheduled. Queuing the copy on exec_stream preserves
+                // the contract's stream-ordered host lifetime semantics for pooled tree-cap
+                // buffers.
+                for (src, dst) in host.tree_caps.iter().zip(tree_cap_accessors.iter()) {
+                    dst.get_mut().copy_from_slice(&src[..]);
+                }
+            },
+            context.get_exec_stream(),
+        )?;
+        assert!(self.trace_holder.tree_caps.replace(tree_caps).is_none());
+        Ok(())
+    }
 }
 
 pub(crate) struct GpuGKRForwardSetup<E> {
@@ -450,6 +474,8 @@ impl<E> GpuGKRForwardSetup<E> {
             device_lookup_additive_part: _,
             generic_lookup: _,
         } = self;
+        // device_lookup_additive_part and generic_lookup (device allocs) drop here —
+        // all exec-stream ops that used them have already been scheduled.
         GpuGKRForwardSetupHostKeepalive {
             tracing_ranges,
             lookup_challenges,
@@ -464,11 +490,8 @@ fn flatten_setup_columns_into_pinned_buffer(
     setup: &CpuGKRSetup<BF>,
     columns_count: usize,
     trace_len: usize,
-) -> CudaResult<StaticPinnedVec<BF>> {
-    let column_bytes = trace_len * core::mem::size_of::<BF>();
-    let log_chunk_size = column_bytes.trailing_zeros();
-    let mut raw_hypercube_evals =
-        alloc_static_pinned_vec_uninit(columns_count * trace_len, log_chunk_size)?;
+) -> CudaResult<StaticPinnedBox<BF>> {
+    let mut raw_hypercube_evals = alloc_static_pinned_box_uninit(columns_count * trace_len)?;
     for (column_idx, src_column) in setup.hypercube_evals.iter().enumerate() {
         let dst_range = column_idx * trace_len..(column_idx + 1) * trace_len;
         raw_hypercube_evals[dst_range].copy_from_slice(src_column.as_ref());
@@ -477,14 +500,14 @@ fn flatten_setup_columns_into_pinned_buffer(
 }
 
 fn precompute_partial_tree_cache(
-    raw_hypercube_evals: &StaticPinnedVec<BF>,
+    raw_hypercube_evals: &StaticPinnedBox<BF>,
     log_domain_size: u32,
     log_lde_factor: u32,
     log_rows_per_leaf: u32,
     log_tree_cap_size: u32,
     columns_count: usize,
     context: &ProverContext,
-) -> CudaResult<(Vec<StaticPinnedVec<Digest>>, Vec<StaticPinnedVec<Digest>>)> {
+) -> CudaResult<(Vec<StaticPinnedBox<Digest>>, Vec<StaticPinnedBox<Digest>>)> {
     let mut trace_holder = TraceHolder::<BF>::new(
         log_domain_size,
         log_lde_factor,
@@ -496,7 +519,7 @@ fn precompute_partial_tree_cache(
     )?;
     memory_copy_async(
         trace_holder.get_uninit_hypercube_evals_mut(),
-        raw_hypercube_evals.as_slice(),
+        &raw_hypercube_evals[..],
         context.get_exec_stream(),
     )?;
     trace_holder.ensure_cosets_materialized(context)?;
@@ -522,12 +545,11 @@ fn precompute_partial_tree_cache(
 fn copy_partial_trees_to_pinned_host(
     trees: &[DeviceAllocation<Digest>],
     context: &ProverContext,
-) -> CudaResult<Vec<StaticPinnedVec<Digest>>> {
+) -> CudaResult<Vec<StaticPinnedBox<Digest>>> {
     let mut result = Vec::with_capacity(trees.len());
     for tree in trees.iter() {
-        let mut host_tree =
-            alloc_static_pinned_vec_uninit(tree.len(), SETUP_TREE_STATIC_HOST_LOG_CHUNK_SIZE)?;
-        memory_copy_async(host_tree.as_mut_slice(), tree, context.get_exec_stream())?;
+        let mut host_tree = alloc_static_pinned_box_uninit(tree.len())?;
+        memory_copy_async(&mut host_tree[..], tree, context.get_exec_stream())?;
         result.push(host_tree);
     }
     Ok(result)
@@ -536,8 +558,8 @@ fn copy_partial_trees_to_pinned_host(
 fn copy_host_allocation<T: Copy>(
     source: &HostAllocation<[T]>,
     _: &ProverContext,
-) -> StaticPinnedVec<T> {
-    alloc_static_pinned_vec_from_slice(unsafe { source.get_accessor().get() }, 10)
+) -> StaticPinnedBox<T> {
+    alloc_static_pinned_box_from_slice(unsafe { source.get_accessor().get() })
         .expect("static setup host copies must fit in pinned host memory")
 }
 
@@ -548,7 +570,7 @@ mod tests {
     use std::sync::Arc;
 
     use cs::definitions::TIMESTAMP_COLUMNS_NUM_BITS;
-    use era_cudart::memory::memory_copy;
+    use era_cudart::memory::memory_copy_async;
     use field::PrimeField;
     use itertools::Itertools;
     use prover::merkle_trees::{
@@ -634,7 +656,7 @@ mod tests {
         let mut source = context
             .alloc(values.len(), AllocationPlacement::BestFit)
             .unwrap();
-        memory_copy(&mut source, values).unwrap();
+        memory_copy_async(&mut source, values, context.get_exec_stream()).unwrap();
         let mut trace_holder = TraceHolder::<BF>::new(
             trace_len.trailing_zeros(),
             log_lde_factor,
@@ -667,10 +689,9 @@ mod tests {
             context.get_exec_stream(),
         )
         .unwrap();
-        context.get_exec_stream().synchronize().unwrap();
-
         let mut host = vec![BF::ZERO; poly.len()];
-        memory_copy(&mut host, &tmp).unwrap();
+        memory_copy_async(&mut host, &tmp, context.get_exec_stream()).unwrap();
+        context.get_exec_stream().synchronize().unwrap();
         host
     }
 
@@ -696,7 +717,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(host.raw_hypercube_evals.as_slice(), flatten_setup(&setup));
+        assert_eq!(&host.raw_hypercube_evals[..], flatten_setup(&setup));
 
         let worker = Worker::new();
         let twiddles: fft::Twiddles<BF, Global> = fft::Twiddles::new(trace_len, &worker);
@@ -752,7 +773,8 @@ mod tests {
         context.get_h2d_stream().synchronize().unwrap();
 
         let mut raw = vec![BF::ZERO; transfer.trace_holder.get_hypercube_evals().len()];
-        memory_copy(&mut raw, transfer.trace_holder.get_hypercube_evals()).unwrap();
+        memory_copy_async(&mut raw, transfer.trace_holder.get_hypercube_evals(), context.get_exec_stream()).unwrap();
+        context.get_exec_stream().synchronize().unwrap();
         assert_eq!(raw, flatten_setup(&setup));
         assert!(!transfer.trace_holder.are_cosets_materialized());
 
@@ -769,7 +791,7 @@ mod tests {
         let mut fresh_source = context
             .alloc(raw.len(), AllocationPlacement::BestFit)
             .unwrap();
-        memory_copy(&mut fresh_source, &raw).unwrap();
+        memory_copy_async(&mut fresh_source, &raw, context.get_exec_stream()).unwrap();
         let mut fresh_holder = TraceHolder::<BF>::new(
             trace_len.trailing_zeros(),
             log_lde_factor,
@@ -788,7 +810,7 @@ mod tests {
         let mut indexes_device = context
             .alloc(query_indexes.len(), AllocationPlacement::BestFit)
             .unwrap();
-        memory_copy(&mut indexes_device, &query_indexes).unwrap();
+        memory_copy_async(&mut indexes_device, &query_indexes, context.get_exec_stream()).unwrap();
 
         transfer.ensure_transferred(&context).unwrap();
         let transferred_queries = transfer

@@ -222,39 +222,6 @@ impl<T> TraceHolder<T> {
         }
     }
 
-    pub(crate) fn clone_tree_caps_from_host(
-        &mut self,
-        source: &[HostAllocation<[Digest]>],
-        context: &ProverContext,
-    ) {
-        assert_eq!(source.len(), 1usize << self.log_lde_factor);
-        let mut caps = allocate_tree_caps(self.log_lde_factor, self.log_tree_cap_size, context);
-        for (src, dst) in source.iter().zip(caps.iter_mut()) {
-            unsafe {
-                dst.get_mut_accessor()
-                    .get_mut()
-                    .copy_from_slice(src.get_accessor().get());
-            }
-        }
-        assert!(self.tree_caps.replace(caps).is_none());
-    }
-
-    pub(crate) fn clone_tree_caps_from_slices<S: AsRef<[Digest]>>(
-        &mut self,
-        source: &[S],
-        context: &ProverContext,
-    ) {
-        assert_eq!(source.len(), 1usize << self.log_lde_factor);
-        let mut caps = allocate_tree_caps(self.log_lde_factor, self.log_tree_cap_size, context);
-        for (src, dst) in source.iter().zip(caps.iter_mut()) {
-            unsafe {
-                dst.get_mut_accessor()
-                    .get_mut()
-                    .copy_from_slice(src.as_ref());
-            }
-        }
-        assert!(self.tree_caps.replace(caps).is_none());
-    }
 }
 
 impl TraceHolder<BF> {
@@ -718,7 +685,7 @@ mod test {
     use std::alloc::Global;
 
     use blake2s_u32::{Blake2sState, BLAKE2S_BLOCK_SIZE_U32_WORDS, BLAKE2S_DIGEST_SIZE_U32_WORDS};
-    use era_cudart::memory::memory_copy;
+    use era_cudart::memory::memory_copy_async;
     use field::{Field, PrimeField};
     use prover::gkr::whir::hypercube_to_monomial::multivariate_coeffs_into_hypercube_evals;
     use prover::merkle_trees::blake2s_for_everything_tree::Blake2sU32MerkleTreeWithCap;
@@ -919,7 +886,7 @@ mod test {
         let mut source_device = context
             .alloc(source_host.len(), AllocationPlacement::BestFit)
             .unwrap();
-        memory_copy(&mut source_device, &source_host).unwrap();
+        memory_copy_async(&mut source_device, &source_host, context.get_exec_stream()).unwrap();
 
         let mut trace_holder = TraceHolder::<BF>::new(
             log_domain_size,
@@ -935,7 +902,8 @@ mod test {
             .materialize_from_hypercube_evals(&source_device, &context)
             .unwrap();
         let mut raw_hypercube = vec![BF::ZERO; source_host.len()];
-        memory_copy(&mut raw_hypercube, trace_holder.get_hypercube_evals()).unwrap();
+        memory_copy_async(&mut raw_hypercube, trace_holder.get_hypercube_evals(), context.get_exec_stream()).unwrap();
+        context.get_exec_stream().synchronize().unwrap();
         assert_eq!(raw_hypercube, source_host);
         assert!(trace_holder.are_cosets_materialized());
 
@@ -943,7 +911,8 @@ mod test {
             CosetsHolder::Full(cosets) => {
                 for (coset_idx, coset) in cosets.iter().enumerate() {
                     let mut gpu = vec![BF::ZERO; coset.len()];
-                    memory_copy(&mut gpu, coset).unwrap();
+                    memory_copy_async(&mut gpu, coset, context.get_exec_stream()).unwrap();
+                    context.get_exec_stream().synchronize().unwrap();
                     assert_eq!(gpu, cpu_cosets[coset_idx], "coset {}", coset_idx);
                 }
             }
@@ -991,10 +960,11 @@ mod test {
             &context,
         )
         .unwrap();
-        memory_copy(trace_holder.get_uninit_hypercube_evals_mut(), &source_host).unwrap();
+        memory_copy_async(trace_holder.get_uninit_hypercube_evals_mut(), &source_host, context.get_exec_stream()).unwrap();
 
         let mut raw_hypercube = vec![BF::ZERO; source_host.len()];
-        memory_copy(&mut raw_hypercube, trace_holder.get_hypercube_evals()).unwrap();
+        memory_copy_async(&mut raw_hypercube, trace_holder.get_hypercube_evals(), context.get_exec_stream()).unwrap();
+        context.get_exec_stream().synchronize().unwrap();
         assert_eq!(raw_hypercube, source_host);
         assert!(!trace_holder.are_cosets_materialized());
 
@@ -1005,7 +975,8 @@ mod test {
             CosetsHolder::Full(cosets) => {
                 for (coset_idx, coset) in cosets.iter().enumerate() {
                     let mut gpu = vec![BF::ZERO; coset.len()];
-                    memory_copy(&mut gpu, coset).unwrap();
+                    memory_copy_async(&mut gpu, coset, context.get_exec_stream()).unwrap();
+                    context.get_exec_stream().synchronize().unwrap();
                     assert_eq!(gpu, cpu_cosets[coset_idx], "coset {}", coset_idx);
                 }
             }
@@ -1049,7 +1020,7 @@ mod test {
         let mut source_device = context
             .alloc(source_host.len(), AllocationPlacement::BestFit)
             .unwrap();
-        memory_copy(&mut source_device, &source_host).unwrap();
+        memory_copy_async(&mut source_device, &source_host, context.get_exec_stream()).unwrap();
 
         let mut full_holder = TraceHolder::<BF>::new(
             log_domain_size,
@@ -1097,7 +1068,7 @@ mod test {
         let mut indexes_device = context
             .alloc(query_indexes.len(), AllocationPlacement::BestFit)
             .unwrap();
-        memory_copy(&mut indexes_device, &query_indexes).unwrap();
+        memory_copy_async(&mut indexes_device, &query_indexes, context.get_exec_stream()).unwrap();
 
         let full = full_holder
             .get_leafs_and_merkle_paths(1, &indexes_device, &context)

@@ -1,7 +1,7 @@
 use core::marker::PhantomData;
 
 use blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS;
-use era_cudart::memory::{memory_copy, memory_copy_async};
+use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 use fft::{
@@ -39,7 +39,9 @@ use crate::primitives::context::{DeviceAllocation, HostAllocation, ProverContext
 use crate::primitives::device_structures::{DeviceMatrix, DeviceMatrixMut};
 use crate::primitives::device_tracing::Range;
 use crate::primitives::field::{BF, E4};
-use crate::primitives::static_host::alloc_static_pinned_vec_uninit;
+use crate::primitives::static_host::{
+    alloc_static_pinned_box_from_slice, alloc_static_pinned_box_uninit,
+};
 use crate::prover::gkr::backward::launch_build_eq_values;
 use crate::prover::pow::search_pow_challenge;
 use crate::prover::proof::{
@@ -49,7 +51,6 @@ use crate::prover::trace_holder::{get_tree_caps, TraceHolder};
 use crate::prover::whir::{GpuWhirExtensionOracle, GpuWhirExtensionQuery};
 
 const EXT4_DEGREE: usize = <E4 as FieldExtension<BF>>::DEGREE;
-
 struct GpuWhirState {
     sumchecked_poly_monomial_form: DeviceAllocation<E4>,
     monomial_buffer: DeviceAllocation<E4>,
@@ -67,10 +68,9 @@ struct GpuWhirState {
 pub(crate) struct GpuScheduledBaseFieldQuery {
     pub(crate) index: usize,
     pub(crate) coset_index: usize,
+    // Keeps index-fill callbacks alive until the stream executes them.
     #[allow(dead_code)]
-    value_index_host: HostAllocation<[u32]>,
-    #[allow(dead_code)]
-    path_index_host: HostAllocation<[u32]>,
+    callbacks: Callbacks<'static>,
     #[allow(dead_code)]
     leafs: HostAllocation<[BF]>,
     #[allow(dead_code)]
@@ -139,7 +139,7 @@ fn schedule_unknown_coset_base_field_query(
     let values_per_leaf = 1usize << trace_holder.log_rows_per_leaf;
     let coset_tree_size = (1usize << trace_holder.log_domain_size) / values_per_leaf;
     let mut callbacks = Callbacks::new();
-    let mut value_internal_index = unsafe { context.alloc_transient_host_uninit_slice(1) };
+    let mut value_internal_index = unsafe { context.alloc_host_uninit_slice(1) };
     let value_internal_accessor = value_internal_index.get_mut_accessor();
     let query_index_accessor = query_index.get_accessor();
     callbacks.schedule(
@@ -149,7 +149,7 @@ fn schedule_unknown_coset_base_field_query(
         },
         context.get_exec_stream(),
     )?;
-    let mut path_internal_index = unsafe { context.alloc_transient_host_uninit_slice(1) };
+    let mut path_internal_index = unsafe { context.alloc_host_uninit_slice(1) };
     let path_internal_accessor = path_internal_index.get_mut_accessor();
     let query_index_accessor = query_index.get_accessor();
     callbacks.schedule(
@@ -165,12 +165,14 @@ fn schedule_unknown_coset_base_field_query(
         &value_internal_index,
         context.get_exec_stream(),
     )?;
+    drop(value_internal_index);
     let mut device_path_index = context.alloc(1, AllocationPlacement::BestFit)?;
     memory_copy_async(
         &mut device_path_index,
         &path_internal_index,
         context.get_exec_stream(),
     )?;
+    drop(path_internal_index);
 
     let mut value_leafs = Vec::with_capacity(lde_factor);
     let mut path_merkle_paths = Vec::with_capacity(lde_factor);
@@ -190,8 +192,6 @@ fn schedule_unknown_coset_base_field_query(
     Ok(ScheduledUnknownCosetBaseFieldQuery {
         callbacks,
         query_index,
-        value_internal_index,
-        path_internal_index,
         value_leafs,
         path_merkle_paths,
         values_per_leaf,
@@ -209,8 +209,6 @@ struct WhirHostUpload<T> {
 struct ScheduledUnknownCosetBaseFieldQuery {
     callbacks: Callbacks<'static>,
     query_index: HostAllocation<[u32]>,
-    value_internal_index: HostAllocation<[u32]>,
-    path_internal_index: HostAllocation<[u32]>,
     value_leafs: Vec<HostAllocation<[BF]>>,
     path_merkle_paths: Vec<HostAllocation<[Digest]>>,
     values_per_leaf: usize,
@@ -237,8 +235,6 @@ pub(crate) struct GpuWhirFoldScheduledExecution {
     #[allow(dead_code)]
     base_caps_keepalive: [Vec<HostAllocation<[Digest]>>; 3],
     #[allow(dead_code)]
-    weight_uploads: Vec<WhirHostUpload<E4>>,
-    #[allow(dead_code)]
     fold_eval_readbacks: Vec<HostAllocation<[E4]>>,
     #[allow(dead_code)]
     folding_challenges: Vec<WhirHostUpload<E4>>,
@@ -261,12 +257,7 @@ pub(crate) struct GpuWhirFoldScheduledExecution {
     #[allow(dead_code)]
     base_queries: Vec<[Vec<ScheduledUnknownCosetBaseFieldQuery>; 3]>,
     #[allow(dead_code)]
-    recursive_queries: Vec<
-        Vec<(
-            Callbacks<'static>,
-            crate::prover::whir::GpuWhirScheduledExtensionQuery,
-        )>,
-    >,
+    recursive_queries: Vec<Vec<crate::prover::whir::GpuWhirScheduledExtensionQuery>>,
     #[allow(dead_code)]
     final_callbacks: Callbacks<'static>,
     shared_state: std::sync::Arc<std::sync::Mutex<ScheduledWhirProofState>>,
@@ -339,27 +330,13 @@ impl GpuWhirState {
     }
 }
 
-fn alloc_transient_host_and_copy<T: Copy>(
-    context: &ProverContext,
-    values: &[T],
-) -> HostAllocation<[T]> {
-    let mut allocation = unsafe { context.alloc_transient_host_uninit_slice(values.len()) };
-    unsafe {
-        allocation
-            .get_mut_accessor()
-            .get_mut()
-            .copy_from_slice(values);
-    }
-    allocation
-}
-
 fn schedule_callback_populated_upload<T: Copy + 'static>(
     context: &ProverContext,
     len: usize,
     fill: impl Fn(&mut [T]) + Send + Sync + 'static,
 ) -> CudaResult<(WhirHostUpload<T>, DeviceAllocation<T>)> {
     let mut callbacks = Callbacks::new();
-    let mut host = unsafe { context.alloc_transient_host_uninit_slice(len) };
+    let mut host = unsafe { context.alloc_host_uninit_slice(len) };
     let host_accessor = host.get_mut_accessor();
     callbacks.schedule(
         move || unsafe {
@@ -375,10 +352,33 @@ fn schedule_callback_populated_upload<T: Copy + 'static>(
 fn copy_small_to_device<T: Copy>(
     dst: &mut DeviceSlice<T>,
     values: &[T],
-    _context: &ProverContext,
+    context: &ProverContext,
 ) -> CudaResult<()> {
     assert_eq!(dst.len(), values.len());
-    memory_copy(dst, values)
+    let host = alloc_static_pinned_box_from_slice(values)?;
+    memory_copy_async(dst, &host[..], context.get_exec_stream())
+}
+
+fn schedule_copy_small_to_device<T: Copy + Send + Sync + 'static>(
+    dst: &mut DeviceSlice<T>,
+    values: &[T],
+    callbacks: &mut Callbacks<'static>,
+    context: &ProverContext,
+) -> CudaResult<()> {
+    assert_eq!(dst.len(), values.len());
+    let values = values.to_vec();
+    let mut host = unsafe { context.alloc_host_uninit_slice(values.len()) };
+    let host_accessor = host.get_mut_accessor();
+    callbacks.schedule(
+        move || unsafe {
+            // SAFETY: the callback owns the raw accessor into `host`, and both the callback and
+            // the H2D copy are queued on exec_stream before `host` is dropped at the end of this
+            // function, satisfying the stream-ordered host-lifetime contract.
+            host_accessor.get_mut().copy_from_slice(&values);
+        },
+        context.get_exec_stream(),
+    )?;
+    memory_copy_async(dst, &host, context.get_exec_stream())
 }
 
 fn copy_scalar_to_device(
@@ -395,7 +395,7 @@ fn read_reduce_outputs(
     context: &ProverContext,
 ) -> CudaResult<Vec<E4>> {
     let stream = context.get_exec_stream();
-    let mut host = unsafe { context.alloc_transient_host_uninit_slice(count) };
+    let mut host = unsafe { context.alloc_host_uninit_slice(count) };
     memory_copy_async(&mut host, &state.reduce_out[..count], stream)?;
     stream.synchronize()?;
     Ok(unsafe { host.get_accessor().get().to_vec() })
@@ -406,7 +406,7 @@ fn schedule_reduce_outputs_readback(
     state: &mut GpuWhirState,
     context: &ProverContext,
 ) -> CudaResult<HostAllocation<[E4]>> {
-    let mut host = unsafe { context.alloc_transient_host_uninit_slice(count) };
+    let mut host = unsafe { context.alloc_host_uninit_slice(count) };
     memory_copy_async(
         &mut host,
         &state.reduce_out[..count],
@@ -415,7 +415,9 @@ fn schedule_reduce_outputs_readback(
     Ok(host)
 }
 
-fn full_cap_from_trace_holder(trace_holder: &TraceHolder<BF>) -> MerkleTreeCapVarLength {
+fn full_cap_from_trace_holder(
+    trace_holder: &TraceHolder<BF>,
+) -> MerkleTreeCapVarLength {
     MerkleTreeCapVarLength {
         cap: trace_holder
             .get_tree_caps()
@@ -458,7 +460,10 @@ fn full_cap_from_accessors(
 fn cap_digest_count_from_accessors(
     accessors: &[crate::primitives::context::UnsafeAccessor<[Digest]>],
 ) -> usize {
-    accessors.iter().map(|accessor| unsafe { accessor.get().len() }).sum()
+    accessors
+        .iter()
+        .map(|accessor| unsafe { accessor.get().len() })
+        .sum()
 }
 
 fn fill_full_cap_from_accessors(
@@ -472,7 +477,11 @@ fn fill_full_cap_from_accessors(
         .iter()
         .map(|accessor| unsafe { accessor.get().len() })
         .sum::<usize>();
-    assert_eq!(dst.len(), expected_len, "WHIR cap destination length mismatch");
+    assert_eq!(
+        dst.len(),
+        expected_len,
+        "WHIR cap destination length mismatch"
+    );
     let mut offset = 0;
     for stage1_pos in 0..lde_factor {
         let natural_coset_index = bitreverse_index(stage1_pos, log_lde_factor);
@@ -531,6 +540,10 @@ fn decode_base_leaf_values(
 }
 
 fn bitreverse_index(index: usize, num_bits: u32) -> usize {
+    if num_bits == 0 {
+        debug_assert_eq!(index, 0);
+        return 0;
+    }
     index.reverse_bits() >> (usize::BITS - num_bits)
 }
 
@@ -562,33 +575,45 @@ pub(crate) fn schedule_query_base_trace_holder_for_folded_index(
     assert!(index < (1usize << trace_holder.log_domain_size) * lde_factor / values_per_leaf);
     let value_coset_index = index & (lde_factor - 1);
     let value_internal_index = index / lde_factor;
-    let host_value_index = alloc_transient_host_and_copy(context, &[value_internal_index as u32]);
+    let mut callbacks = Callbacks::new();
+    let mut host_value_index = unsafe { context.alloc_host_uninit_slice(1) };
+    let vi_accessor = host_value_index.get_mut_accessor();
+    callbacks.schedule(
+        move || unsafe { vi_accessor.get_mut()[0] = value_internal_index as u32 },
+        context.get_exec_stream(),
+    )?;
     let mut device_value_index = context.alloc(1, AllocationPlacement::BestFit)?;
     memory_copy_async(
         &mut device_value_index,
         &host_value_index,
         context.get_exec_stream(),
     )?;
+    drop(host_value_index);
     let value_query =
         trace_holder.get_leafs_and_merkle_paths(value_coset_index, &device_value_index, context)?;
 
     let stage1_coset_index = index / coset_tree_size;
     let path_coset_index = bitreverse_index(stage1_coset_index, trace_holder.log_lde_factor);
     let path_internal_index = index % coset_tree_size;
-    let host_path_index = alloc_transient_host_and_copy(context, &[path_internal_index as u32]);
+    let mut host_path_index = unsafe { context.alloc_host_uninit_slice(1) };
+    let pi_accessor = host_path_index.get_mut_accessor();
+    callbacks.schedule(
+        move || unsafe { pi_accessor.get_mut()[0] = path_internal_index as u32 },
+        context.get_exec_stream(),
+    )?;
     let mut device_path_index = context.alloc(1, AllocationPlacement::BestFit)?;
     memory_copy_async(
         &mut device_path_index,
         &host_path_index,
         context.get_exec_stream(),
     )?;
+    drop(host_path_index);
     let path_query =
         trace_holder.get_leafs_and_merkle_paths(path_coset_index, &device_path_index, context)?;
     Ok(GpuScheduledBaseFieldQuery {
         index,
         coset_index: value_coset_index,
-        value_index_host: host_value_index,
-        path_index_host: host_path_index,
+        callbacks,
         leafs: value_query.leafs,
         merkle_paths: path_query.merkle_paths,
         values_per_leaf,
@@ -795,7 +820,8 @@ fn fill_extension_query_from_accessors(
         for column in 0..EXT4_DEGREE {
             coeffs[column] = leafs[value_index * EXT4_DEGREE + column];
         }
-        dst.leaf_values_concatenated[value_index] = extension_field_from_base_coeffs::<BF, E4>(coeffs);
+        dst.leaf_values_concatenated[value_index] =
+            extension_field_from_base_coeffs::<BF, E4>(coeffs);
     }
     dst.path.copy_from_slice(path);
 }
@@ -838,7 +864,7 @@ fn fold_coset(
     }
 }
 
-fn build_initial_batched_main_domain_poly_device(
+fn build_initial_batched_main_domain_poly_device_impl(
     memory_trace_holder: &TraceHolder<BF>,
     memory_weights: &[E4],
     witness_trace_holder: &TraceHolder<BF>,
@@ -846,6 +872,7 @@ fn build_initial_batched_main_domain_poly_device(
     setup_trace_holder: &TraceHolder<BF>,
     setup_weights: &[E4],
     result: &mut DeviceSlice<E4>,
+    mut upload_weights: impl FnMut(&mut DeviceSlice<E4>, &[E4], &ProverContext) -> CudaResult<()>,
     context: &ProverContext,
 ) -> CudaResult<Vec<DeviceAllocation<E4>>> {
     let stream = context.get_exec_stream();
@@ -865,7 +892,7 @@ fn build_initial_batched_main_domain_poly_device(
             "WHIR initial state requires materialized main-domain cosets",
         );
         let mut device_weights = context.alloc(weights.len(), AllocationPlacement::BestFit)?;
-        copy_small_to_device(&mut device_weights, weights, context)?;
+        upload_weights(&mut device_weights, weights, context)?;
         let values = DeviceMatrix::new(trace_holder.get_evaluations(), result.len());
         accumulate_whir_base_columns(&values, &device_weights, result, stream)?;
         weight_buffers.push(device_weights);
@@ -874,7 +901,54 @@ fn build_initial_batched_main_domain_poly_device(
     Ok(weight_buffers)
 }
 
-fn initialize_batched_forms(
+fn build_initial_batched_main_domain_poly_device(
+    memory_trace_holder: &TraceHolder<BF>,
+    memory_weights: &[E4],
+    witness_trace_holder: &TraceHolder<BF>,
+    witness_weights: &[E4],
+    setup_trace_holder: &TraceHolder<BF>,
+    setup_weights: &[E4],
+    result: &mut DeviceSlice<E4>,
+    context: &ProverContext,
+) -> CudaResult<Vec<DeviceAllocation<E4>>> {
+    build_initial_batched_main_domain_poly_device_impl(
+        memory_trace_holder,
+        memory_weights,
+        witness_trace_holder,
+        witness_weights,
+        setup_trace_holder,
+        setup_weights,
+        result,
+        |dst, values, context| copy_small_to_device(dst, values, context),
+        context,
+    )
+}
+
+fn schedule_build_initial_batched_main_domain_poly_device(
+    memory_trace_holder: &TraceHolder<BF>,
+    memory_weights: &[E4],
+    witness_trace_holder: &TraceHolder<BF>,
+    witness_weights: &[E4],
+    setup_trace_holder: &TraceHolder<BF>,
+    setup_weights: &[E4],
+    result: &mut DeviceSlice<E4>,
+    callbacks: &mut Callbacks<'static>,
+    context: &ProverContext,
+) -> CudaResult<Vec<DeviceAllocation<E4>>> {
+    build_initial_batched_main_domain_poly_device_impl(
+        memory_trace_holder,
+        memory_weights,
+        witness_trace_holder,
+        witness_weights,
+        setup_trace_holder,
+        setup_weights,
+        result,
+        |dst, values, context| schedule_copy_small_to_device(dst, values, callbacks, context),
+        context,
+    )
+}
+
+fn initialize_batched_forms_impl(
     memory_trace_holder: &TraceHolder<BF>,
     witness_trace_holder: &TraceHolder<BF>,
     setup_trace_holder: &TraceHolder<BF>,
@@ -883,6 +957,16 @@ fn initialize_batched_forms(
     setup_polys_claims_len: usize,
     batching_challenge: E4,
     state: &mut GpuWhirState,
+    mut build_initial_form: impl FnMut(
+        &TraceHolder<BF>,
+        &[E4],
+        &TraceHolder<BF>,
+        &[E4],
+        &TraceHolder<BF>,
+        &[E4],
+        &mut DeviceSlice<E4>,
+        &ProverContext,
+    ) -> CudaResult<Vec<DeviceAllocation<E4>>>,
     context: &ProverContext,
 ) -> CudaResult<[Vec<E4>; 3]> {
     let trace_len = state.current_len;
@@ -908,7 +992,7 @@ fn initialize_batched_forms(
     let (witness_weights, setup_weights) = rest.split_at(wit_polys_claims_len);
     debug_assert_eq!(setup_weights.len(), setup_polys_claims_len);
 
-    let _weight_buffers = build_initial_batched_main_domain_poly_device(
+    let _weight_buffers = build_initial_form(
         memory_trace_holder,
         memory_weights,
         witness_trace_holder,
@@ -973,6 +1057,94 @@ fn initialize_batched_forms(
         witness_weights.to_vec(),
         setup_weights.to_vec(),
     ])
+}
+
+fn initialize_batched_forms(
+    memory_trace_holder: &TraceHolder<BF>,
+    witness_trace_holder: &TraceHolder<BF>,
+    setup_trace_holder: &TraceHolder<BF>,
+    mem_polys_claims_len: usize,
+    wit_polys_claims_len: usize,
+    setup_polys_claims_len: usize,
+    batching_challenge: E4,
+    state: &mut GpuWhirState,
+    context: &ProverContext,
+) -> CudaResult<[Vec<E4>; 3]> {
+    initialize_batched_forms_impl(
+        memory_trace_holder,
+        witness_trace_holder,
+        setup_trace_holder,
+        mem_polys_claims_len,
+        wit_polys_claims_len,
+        setup_polys_claims_len,
+        batching_challenge,
+        state,
+        |memory_trace_holder,
+         memory_weights,
+         witness_trace_holder,
+         witness_weights,
+         setup_trace_holder,
+         setup_weights,
+         result,
+         context| {
+            build_initial_batched_main_domain_poly_device(
+                memory_trace_holder,
+                memory_weights,
+                witness_trace_holder,
+                witness_weights,
+                setup_trace_holder,
+                setup_weights,
+                result,
+                context,
+            )
+        },
+        context,
+    )
+}
+
+fn schedule_initialize_batched_forms(
+    memory_trace_holder: &TraceHolder<BF>,
+    witness_trace_holder: &TraceHolder<BF>,
+    setup_trace_holder: &TraceHolder<BF>,
+    mem_polys_claims_len: usize,
+    wit_polys_claims_len: usize,
+    setup_polys_claims_len: usize,
+    batching_challenge: E4,
+    state: &mut GpuWhirState,
+    callbacks: &mut Callbacks<'static>,
+    context: &ProverContext,
+) -> CudaResult<[Vec<E4>; 3]> {
+    initialize_batched_forms_impl(
+        memory_trace_holder,
+        witness_trace_holder,
+        setup_trace_holder,
+        mem_polys_claims_len,
+        wit_polys_claims_len,
+        setup_polys_claims_len,
+        batching_challenge,
+        state,
+        |memory_trace_holder,
+         memory_weights,
+         witness_trace_holder,
+         witness_weights,
+         setup_trace_holder,
+         setup_weights,
+         result,
+         context| {
+            schedule_build_initial_batched_main_domain_poly_device(
+                memory_trace_holder,
+                memory_weights,
+                witness_trace_holder,
+                witness_weights,
+                setup_trace_holder,
+                setup_weights,
+                result,
+                callbacks,
+                context,
+            )
+        },
+        context,
+    )
 }
 
 fn build_initial_state(
@@ -1442,7 +1614,10 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         witness_commitment: WhirBaseLayerCommitmentAndQueries {
             commitment: WhirCommitment {
                 cap: MerkleTreeCapVarLength {
-                    cap: vec![Digest::default(); cap_digest_count_from_accessors(&witness_caps_accessors)],
+                    cap: vec![
+                        Digest::default();
+                        cap_digest_count_from_accessors(&witness_caps_accessors)
+                    ],
                 },
                 _marker: PhantomData,
             },
@@ -1457,7 +1632,10 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         memory_commitment: WhirBaseLayerCommitmentAndQueries {
             commitment: WhirCommitment {
                 cap: MerkleTreeCapVarLength {
-                    cap: vec![Digest::default(); cap_digest_count_from_accessors(&memory_caps_accessors)],
+                    cap: vec![
+                        Digest::default();
+                        cap_digest_count_from_accessors(&memory_caps_accessors)
+                    ],
                 },
                 _marker: PhantomData,
             },
@@ -1472,7 +1650,10 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         setup_commitment: WhirBaseLayerCommitmentAndQueries {
             commitment: WhirCommitment {
                 cap: MerkleTreeCapVarLength {
-                    cap: vec![Digest::default(); cap_digest_count_from_accessors(&setup_caps_accessors)],
+                    cap: vec![
+                        Digest::default();
+                        cap_digest_count_from_accessors(&setup_caps_accessors)
+                    ],
                 },
                 _marker: PhantomData,
             },
@@ -1487,15 +1668,17 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         sumcheck_polys: vec![[E4::ZERO; 3]; total_sumcheck_polys],
         intermediate_whir_oracles: intermediate_query_specs
             .iter()
-            .map(|&(count, values_per_leaf, path_len)| WhirIntermediateCommitmentAndQueries {
-                commitment: WhirCommitment {
-                    cap: MerkleTreeCapVarLength {
-                        cap: vec![Digest::default(); tree_cap_size],
+            .map(
+                |&(count, values_per_leaf, path_len)| WhirIntermediateCommitmentAndQueries {
+                    commitment: WhirCommitment {
+                        cap: MerkleTreeCapVarLength {
+                            cap: vec![Digest::default(); tree_cap_size],
+                        },
+                        _marker: PhantomData,
                     },
-                    _marker: PhantomData,
+                    queries: make_preallocated_extension_queries(count, values_per_leaf, path_len),
                 },
-                queries: make_preallocated_extension_queries(count, values_per_leaf, path_len),
-            })
+            )
             .collect(),
         ood_samples: vec![E4::ZERO; num_intermediate_oracles],
         pow_nonces: vec![0u64; whir_pow_rounds],
@@ -1517,7 +1700,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         stream,
     )?;
     let mut base_layer_point_host =
-        unsafe { context.alloc_transient_host_uninit_slice(base_layer_point_len) };
+        unsafe { context.alloc_host_uninit_slice(base_layer_point_len) };
     let base_layer_point_accessor = base_layer_point_host.get_mut_accessor();
     start_callbacks.schedule(
         move || unsafe {
@@ -1555,7 +1738,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
     )?;
 
     let mut state = GpuWhirState::new(trace_len, context)?;
-    let batch_challenges = initialize_batched_forms(
+    let batch_challenges = schedule_initialize_batched_forms(
         memory_trace_holder,
         witness_trace_holder,
         setup_trace_holder,
@@ -1564,16 +1747,9 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         setup_trace_holder.columns_count,
         E4::ZERO,
         &mut state,
+        &mut start_callbacks,
         context,
     )?;
-    let weight_uploads = batch_challenges
-        .iter()
-        .map(|weights| WhirHostUpload {
-            callbacks: Callbacks::new(),
-            host: alloc_transient_host_and_copy(context, weights),
-        })
-        .collect::<Vec<_>>();
-
     memory_copy_async(
         &mut state.point_pows[..base_layer_point_len],
         &base_layer_point_host,
@@ -1696,11 +1872,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
                         .unwrap()
                         .intermediate_whir_oracles[0]
                         .commitment;
-                    fill_full_cap_from_accessors(
-                        &mut commitment.cap.cap,
-                        &oracle_cap_accessors,
-                        0,
-                    );
+                    fill_full_cap_from_accessors(&mut commitment.cap.cap, &oracle_cap_accessors, 0);
                     add_whir_commitment_to_transcript(seed_accessor.get_mut(), commitment);
                 }
             },
@@ -1713,7 +1885,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
                 dst[0] = draw_random_field_els::<BF, E4>(seed_accessor.get_mut(), 1)[0];
             })?;
         let ood_partials = schedule_monomial_eval_device(&mut state, &ood_point_device, context)?;
-        let mut ood_value_host = unsafe { context.alloc_transient_host_uninit_slice(1) };
+        let mut ood_value_host = unsafe { context.alloc_host_uninit_slice(1) };
         let ood_value_accessor = ood_value_host.get_mut_accessor();
         final_callbacks.schedule(
             {
@@ -1749,8 +1921,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
             trace_len_log2 + original_lde_factor.trailing_zeros() as usize - num_folding_steps;
         let query_domain_size = 1u64 << query_domain_log2;
         let query_domain_generator = domain_generator_for_size::<BF>(query_domain_size);
-        let mut query_indexes_host =
-            unsafe { context.alloc_transient_host_uninit_slice(num_queries) };
+        let mut query_indexes_host = unsafe { context.alloc_host_uninit_slice(num_queries) };
         let query_indexes_accessor = query_indexes_host.get_mut_accessor();
         let nonce_accessor = nonce_host.get_mut_accessor();
         let mut query_index_callbacks_for_round = Callbacks::new();
@@ -1852,12 +2023,9 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
 
         let mut round_base_queries = [Vec::new(), Vec::new(), Vec::new()];
         for query_idx in 0..num_queries {
-            let mut memory_query_index_host =
-                unsafe { context.alloc_transient_host_uninit_slice(1) };
-            let mut witness_query_index_host =
-                unsafe { context.alloc_transient_host_uninit_slice(1) };
-            let mut setup_query_index_host =
-                unsafe { context.alloc_transient_host_uninit_slice(1) };
+            let mut memory_query_index_host = unsafe { context.alloc_host_uninit_slice(1) };
+            let mut witness_query_index_host = unsafe { context.alloc_host_uninit_slice(1) };
+            let mut setup_query_index_host = unsafe { context.alloc_host_uninit_slice(1) };
             let query_indexes_accessor = query_indexes_host.get_accessor();
             let mut copy_callbacks = Callbacks::new();
             for single_accessor in [
@@ -2055,7 +2223,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
                 dst[0] = E4::from_base(BF::from_u32_unchecked(42));
             })?;
         let ood_partials = schedule_monomial_eval_device(&mut state, &ood_point_device, context)?;
-        let mut ood_value_host = unsafe { context.alloc_transient_host_uninit_slice(1) };
+        let mut ood_value_host = unsafe { context.alloc_host_uninit_slice(1) };
         let ood_value_accessor = ood_value_host.get_mut_accessor();
         final_callbacks.schedule(
             {
@@ -2090,8 +2258,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
             + oracle_to_query.lde_factor().trailing_zeros() as usize;
         let query_domain_size = 1u64 << query_domain_log2;
         let query_domain_generator = domain_generator_for_size::<BF>(query_domain_size);
-        let mut query_indexes_host =
-            unsafe { context.alloc_transient_host_uninit_slice(num_queries) };
+        let mut query_indexes_host = unsafe { context.alloc_host_uninit_slice(num_queries) };
         let query_indexes_accessor = query_indexes_host.get_mut_accessor();
         let nonce_accessor = nonce_host.get_mut_accessor();
         let mut query_index_callbacks_for_round = Callbacks::new();
@@ -2193,7 +2360,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
 
         let mut round_recursive_queries = Vec::new();
         for query_idx in 0..num_queries {
-            let mut single_query_index = unsafe { context.alloc_transient_host_uninit_slice(1) };
+            let mut single_query_index = unsafe { context.alloc_host_uninit_slice(1) };
             let single_query_index_accessor = single_query_index.get_mut_accessor();
             let query_indexes_accessor = query_indexes_host.get_accessor();
             let mut copy_callbacks = Callbacks::new();
@@ -2204,7 +2371,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
                 },
                 stream,
             )?;
-            let (query_callbacks, query) = oracle_to_query
+            let query = oracle_to_query
                 .schedule_query_for_folded_index_from_host(single_query_index, context)?;
             let query_leafs_accessor = query.leafs_accessor();
             let query_paths_accessor = query.merkle_paths_accessor();
@@ -2252,7 +2419,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
                 },
                 stream,
             )?;
-            round_recursive_queries.push((query_callbacks, query));
+            round_recursive_queries.push(query);
         }
         recursive_caps_keepalive.push(oracle_to_query.into_host_tree_caps());
         recursive_queries.push(round_recursive_queries);
@@ -2273,8 +2440,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
             + oracle_to_query.lde_factor().trailing_zeros() as usize;
         let query_domain_size = 1u64 << query_domain_log2;
         let mut nonce_host = unsafe { context.alloc_host_uninit::<u64>() };
-        let mut query_indexes_host =
-            unsafe { context.alloc_transient_host_uninit_slice(num_queries) };
+        let mut query_indexes_host = unsafe { context.alloc_host_uninit_slice(num_queries) };
         let query_indexes_accessor = query_indexes_host.get_mut_accessor();
         let nonce_accessor = nonce_host.get_mut_accessor();
         let mut query_index_callbacks_for_round = Callbacks::new();
@@ -2358,7 +2524,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         let mut round_recursive_queries = Vec::new();
         let final_oracle_index = num_whir_steps.saturating_sub(1);
         for query_idx in 0..num_queries {
-            let mut single_query_index = unsafe { context.alloc_transient_host_uninit_slice(1) };
+            let mut single_query_index = unsafe { context.alloc_host_uninit_slice(1) };
             let single_query_index_accessor = single_query_index.get_mut_accessor();
             let query_indexes_accessor = query_indexes_host.get_accessor();
             let mut copy_callbacks = Callbacks::new();
@@ -2369,7 +2535,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
                 },
                 stream,
             )?;
-            let (query_callbacks, query) = oracle_to_query
+            let query = oracle_to_query
                 .schedule_query_for_folded_index_from_host(single_query_index, context)?;
             let query_leafs_accessor = query.leafs_accessor();
             let query_paths_accessor = query.merkle_paths_accessor();
@@ -2399,7 +2565,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
                 },
                 stream,
             )?;
-            round_recursive_queries.push((query_callbacks, query));
+            round_recursive_queries.push(query);
         }
         recursive_caps_keepalive.push(oracle_to_query.into_host_tree_caps());
         recursive_queries.push(round_recursive_queries);
@@ -2417,7 +2583,6 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         seed_host,
         base_layer_point_host,
         base_caps_keepalive,
-        weight_uploads,
         fold_eval_readbacks,
         folding_challenges,
         recursive_caps_keepalive,
@@ -2547,9 +2712,9 @@ pub(crate) fn debug_build_initial_state_for_test(
     context: &ProverContext,
 ) -> CudaResult<([Vec<E4>; 3], E4, Vec<E4>, Vec<E4>, Vec<E4>)> {
     fn copy_back(values: &DeviceSlice<E4>, context: &ProverContext) -> Vec<E4> {
-        context.get_exec_stream().synchronize().unwrap();
         let mut host = unsafe { context.alloc_host_uninit_slice(values.len()) };
-        memory_copy(&mut host, values).unwrap();
+        memory_copy_async(&mut host, values, context.get_exec_stream()).unwrap();
+        context.get_exec_stream().synchronize().unwrap();
         unsafe { host.get_accessor().get().to_vec() }
     }
 
@@ -2589,16 +2754,16 @@ pub(crate) fn debug_build_initial_batched_main_domain_poly_for_test(
     context: &ProverContext,
 ) -> CudaResult<Vec<E4>> {
     fn copy_back(values: &DeviceSlice<E4>, context: &ProverContext) -> Vec<E4> {
-        context.get_exec_stream().synchronize().unwrap();
         let mut host = unsafe { context.alloc_host_uninit_slice(values.len()) };
-        memory_copy(&mut host, values).unwrap();
+        memory_copy_async(&mut host, values, context.get_exec_stream()).unwrap();
+        context.get_exec_stream().synchronize().unwrap();
         unsafe { host.get_accessor().get().to_vec() }
     }
 
     fn copy_back_bf(values: &DeviceSlice<BF>, context: &ProverContext) -> Vec<BF> {
-        context.get_exec_stream().synchronize().unwrap();
         let mut host = unsafe { context.alloc_host_uninit_slice(values.len()) };
-        memory_copy(&mut host, values).unwrap();
+        memory_copy_async(&mut host, values, context.get_exec_stream()).unwrap();
+        context.get_exec_stream().synchronize().unwrap();
         unsafe { host.get_accessor().get().to_vec() }
     }
 
@@ -2626,7 +2791,6 @@ pub(crate) fn debug_build_initial_batched_main_domain_poly_for_test(
         &mut state.sumchecked_poly_evaluation_form,
         context,
     )?;
-    context.get_exec_stream().synchronize()?;
     Ok(copy_back(
         &state.sumchecked_poly_evaluation_form[..trace_len],
         context,
@@ -2646,9 +2810,9 @@ pub(crate) fn debug_build_initial_state_snapshots_for_test(
     context: &ProverContext,
 ) -> CudaResult<(Vec<E4>, Vec<E4>)> {
     fn copy_back(values: &DeviceSlice<E4>, context: &ProverContext) -> Vec<E4> {
-        context.get_exec_stream().synchronize().unwrap();
         let mut host = unsafe { context.alloc_host_uninit_slice(values.len()) };
-        memory_copy(&mut host, values).unwrap();
+        memory_copy_async(&mut host, values, context.get_exec_stream()).unwrap();
+        context.get_exec_stream().synchronize().unwrap();
         unsafe { host.get_accessor().get().to_vec() }
     }
 
@@ -2712,9 +2876,6 @@ pub(crate) struct DebugInitialWhirRoundCheckpoint {
 }
 
 #[cfg(test)]
-const DEBUG_STATIC_HOST_LOG_CHUNK_SIZE: u32 = 12;
-
-#[cfg(test)]
 pub(crate) struct DebugWhirInitialFoldState {
     state: GpuWhirState,
 }
@@ -2770,13 +2931,13 @@ pub(crate) fn debug_initial_round_checkpoint_for_test(
         state.current_len /= 2;
     }
 
-    context.get_exec_stream().synchronize()?;
-    let mut folded_monomial_form_host =
-        alloc_static_pinned_vec_uninit(state.current_len, DEBUG_STATIC_HOST_LOG_CHUNK_SIZE)?;
-    memory_copy(
+    let mut folded_monomial_form_host = alloc_static_pinned_box_uninit(state.current_len)?;
+    memory_copy_async(
         &mut folded_monomial_form_host,
         &state.sumchecked_poly_monomial_form[..state.current_len],
+        context.get_exec_stream(),
     )?;
+    context.get_exec_stream().synchronize()?;
     let folded_monomial_form = folded_monomial_form_host.to_vec();
 
     let oracle = GpuWhirExtensionOracle::from_device_monomial_coeffs(
@@ -2854,13 +3015,13 @@ pub(crate) fn debug_apply_initial_fold_challenge_for_test(
     fold_eq_poly_in_place_device(&mut debug_state.state, challenge, context)?;
     debug_state.state.current_len /= 2;
 
-    context.get_exec_stream().synchronize()?;
-    let mut host =
-        alloc_static_pinned_vec_uninit(debug_state.state.current_len, DEBUG_STATIC_HOST_LOG_CHUNK_SIZE)?;
-    memory_copy(
+    let mut host = alloc_static_pinned_box_uninit(debug_state.state.current_len)?;
+    memory_copy_async(
         &mut host,
         &debug_state.state.sumchecked_poly_monomial_form[..debug_state.state.current_len],
+        context.get_exec_stream(),
     )?;
+    context.get_exec_stream().synchronize()?;
     Ok(host.to_vec())
 }
 
@@ -2870,7 +3031,7 @@ mod tests {
 
     use std::alloc::Global;
 
-    use era_cudart::memory::memory_copy;
+    use era_cudart::memory::memory_copy_async;
     use fft::{bitreverse_enumeration_inplace, Twiddles};
     use prover::gkr::sumcheck::eq_poly::make_eq_poly_in_full;
     use prover::gkr::whir::hypercube_to_monomial::multivariate_coeffs_into_hypercube_evals;
@@ -2895,21 +3056,21 @@ mod tests {
         let mut device = context
             .alloc(values.len(), AllocationPlacement::BestFit)
             .unwrap();
-        memory_copy(&mut device, values).unwrap();
+        memory_copy_async(&mut device, values, context.get_exec_stream()).unwrap();
         device
     }
 
     fn copy_back(values: &DeviceSlice<E4>, context: &ProverContext) -> Vec<E4> {
-        context.get_exec_stream().synchronize().unwrap();
         let mut host = unsafe { context.alloc_host_uninit_slice(values.len()) };
-        memory_copy(&mut host, values).unwrap();
+        memory_copy_async(&mut host, values, context.get_exec_stream()).unwrap();
+        context.get_exec_stream().synchronize().unwrap();
         unsafe { host.get_accessor().get().to_vec() }
     }
 
     fn copy_back_bf(values: &DeviceSlice<BF>, context: &ProverContext) -> Vec<BF> {
-        context.get_exec_stream().synchronize().unwrap();
         let mut host = unsafe { context.alloc_host_uninit_slice(values.len()) };
-        memory_copy(&mut host, values).unwrap();
+        memory_copy_async(&mut host, values, context.get_exec_stream()).unwrap();
+        context.get_exec_stream().synchronize().unwrap();
         unsafe { host.get_accessor().get().to_vec() }
     }
 
@@ -3067,7 +3228,7 @@ mod tests {
             .iter()
             .flat_map(|column| column.iter().copied())
             .collect::<Vec<_>>();
-        memory_copy(trace_holder.get_uninit_hypercube_evals_mut(), &flat).unwrap();
+        memory_copy_async(trace_holder.get_uninit_hypercube_evals_mut(), &flat, context.get_exec_stream()).unwrap();
         trace_holder
             .materialize_cosets_from_owned_hypercube(context)
             .unwrap();
@@ -3097,7 +3258,7 @@ mod tests {
             .iter()
             .flat_map(|column| column.iter().copied())
             .collect::<Vec<_>>();
-        memory_copy(trace_holder.get_uninit_hypercube_evals_mut(), &flat).unwrap();
+        memory_copy_async(trace_holder.get_uninit_hypercube_evals_mut(), &flat, context.get_exec_stream()).unwrap();
         trace_holder
             .materialize_cosets_from_owned_hypercube(context)
             .unwrap();
@@ -3612,13 +3773,11 @@ mod tests {
         let mut expected_head = vec![E4::ZERO; sample_len];
         let mut expected_mid = vec![E4::ZERO; sample_len];
         let mut expected_tail = vec![E4::ZERO; sample_len];
-        memory_copy(&mut expected_head, &evals[..sample_len]).unwrap();
-        memory_copy(&mut expected_mid, &evals[mid..mid + sample_len]).unwrap();
-        memory_copy(
-            &mut expected_tail,
-            &evals[trace_len - sample_len..trace_len],
-        )
-        .unwrap();
+        memory_copy_async(&mut expected_head, &evals[..sample_len], stream).unwrap();
+        memory_copy_async(&mut expected_mid, &evals[mid..mid + sample_len], stream).unwrap();
+        memory_copy_async(&mut expected_tail, &evals[trace_len - sample_len..trace_len], stream)
+            .unwrap();
+        stream.synchronize().unwrap();
 
         let mut point = context.alloc(24, AllocationPlacement::BestFit).unwrap();
         let coordinates = (0..24)
@@ -3650,9 +3809,11 @@ mod tests {
         let mut actual_head = vec![E4::ZERO; sample_len];
         let mut actual_mid = vec![E4::ZERO; sample_len];
         let mut actual_tail = vec![E4::ZERO; sample_len];
-        memory_copy(&mut actual_head, &evals[..sample_len]).unwrap();
-        memory_copy(&mut actual_mid, &evals[mid..mid + sample_len]).unwrap();
-        memory_copy(&mut actual_tail, &evals[trace_len - sample_len..trace_len]).unwrap();
+        memory_copy_async(&mut actual_head, &evals[..sample_len], stream).unwrap();
+        memory_copy_async(&mut actual_mid, &evals[mid..mid + sample_len], stream).unwrap();
+        memory_copy_async(&mut actual_tail, &evals[trace_len - sample_len..trace_len], stream)
+            .unwrap();
+        stream.synchronize().unwrap();
 
         assert_eq!(actual_head, expected_head);
         assert_eq!(actual_mid, expected_mid);
@@ -3686,9 +3847,11 @@ mod tests {
         let mut actual_head = vec![E4::ZERO; sample_len];
         let mut actual_mid = vec![E4::ZERO; sample_len];
         let mut actual_tail = vec![E4::ZERO; sample_len];
-        memory_copy(&mut actual_head, &values[..sample_len]).unwrap();
-        memory_copy(&mut actual_mid, &values[mid..mid + sample_len]).unwrap();
-        memory_copy(&mut actual_tail, &values[trace_len - sample_len..trace_len]).unwrap();
+        memory_copy_async(&mut actual_head, &values[..sample_len], stream).unwrap();
+        memory_copy_async(&mut actual_mid, &values[mid..mid + sample_len], stream).unwrap();
+        memory_copy_async(&mut actual_tail, &values[trace_len - sample_len..trace_len], stream)
+            .unwrap();
+        stream.synchronize().unwrap();
 
         let expected_for_index = |index: usize| {
             fill.pow(

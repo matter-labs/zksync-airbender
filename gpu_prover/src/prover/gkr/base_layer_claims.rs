@@ -178,17 +178,6 @@ impl<E> GpuGKRBaseLayerClaimsScheduledExecution<E> {
     }
 }
 
-fn alloc_host_and_copy<T: Copy>(context: &ProverContext, values: &[T]) -> HostAllocation<[T]> {
-    let mut allocation = unsafe { context.alloc_transient_host_uninit_slice(values.len()) };
-    unsafe {
-        allocation
-            .get_mut_accessor()
-            .get_mut()
-            .copy_from_slice(values);
-    }
-    allocation
-}
-
 fn claim_from_dense_vectors<E: Copy>(
     mem_polys_claims: &[E],
     wit_polys_claims: &[E],
@@ -316,7 +305,7 @@ where
             add_into_y(partial_sums_slice, batch_sums_slice, stream)?;
         }
 
-        let mut host_batch_sums = unsafe { context.alloc_transient_host_uninit_slice(batch_cols) };
+        let mut host_batch_sums = unsafe { context.alloc_host_uninit_slice(batch_cols) };
         {
             let batch_sums_slice = &batch_sums[..batch_cols];
             memory_copy_async(&mut host_batch_sums, batch_sums_slice, stream)?;
@@ -367,7 +356,7 @@ where
 
     let mut start_callbacks = Callbacks::new();
     let mut claim_point_host =
-        unsafe { context.alloc_transient_host_uninit_slice(claim_point_len) };
+        unsafe { context.alloc_host_uninit_slice(claim_point_len) };
     let claim_point_accessor = claim_point_host.get_mut_accessor();
     start_callbacks.schedule(
         move || unsafe {
@@ -516,7 +505,7 @@ mod tests {
 
     use cs::definitions::GKRAddress;
     use cs::gkr_compiler::GKRLayerDescription;
-    use era_cudart::memory::memory_copy;
+    use era_cudart::memory::memory_copy_async;
     use field::{Field, FieldExtension, PrimeField};
     use prover::gkr::sumcheck::eq_poly::make_eq_poly_in_full;
     use serial_test::serial;
@@ -557,7 +546,7 @@ mod tests {
             context,
         )
         .unwrap();
-        memory_copy(trace_holder.get_uninit_hypercube_evals_mut(), values).unwrap();
+        memory_copy_async(trace_holder.get_uninit_hypercube_evals_mut(), values, context.get_exec_stream()).unwrap();
         trace_holder
     }
 

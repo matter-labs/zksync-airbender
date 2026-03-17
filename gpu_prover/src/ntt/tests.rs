@@ -2,7 +2,7 @@ use std::alloc::Global;
 use std::ops::Range;
 
 use era_cudart::memory::{
-    memory_copy, memory_copy_async, CudaHostAllocFlags, DeviceAllocation, HostAllocation,
+    memory_copy_async, CudaHostAllocFlags, DeviceAllocation, HostAllocation,
 };
 use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
@@ -37,7 +37,9 @@ use crate::primitives::field::BF;
 fn make_context() -> ProverContext {
     let mut config = ProverContextConfig::default();
     config.max_device_allocation_blocks_count = Some(256);
-    config.host_allocator_blocks_count = 32;
+    // 32 MB host pool: with 8 KB blocks this is 4096 blocks
+    let host_block_size = 1usize << config.host_allocator_block_log_size;
+    config.host_allocator_blocks_count = (32 * 1024 * 1024) / host_block_size;
     ProverContext::new(&config).unwrap()
 }
 
@@ -98,11 +100,12 @@ fn hypercube_evals_natural_to_bitreversed_coeffs_matches_cpu() {
 
         let mut src = context.alloc(n, AllocationPlacement::BestFit).unwrap();
         let mut dst = context.alloc(n, AllocationPlacement::BestFit).unwrap();
-        memory_copy(&mut src, &evals).unwrap();
+        memory_copy_async(&mut src, &evals, stream).unwrap();
         hypercube_evals_natural_to_bitreversed_coeffs(&src, &mut dst, log_n, stream).unwrap();
 
         let mut actual = vec![BF::ZERO; n];
-        memory_copy(&mut actual, &dst).unwrap();
+        memory_copy_async(&mut actual, &dst, stream).unwrap();
+        stream.synchronize().unwrap();
         assert_eq!(actual, expected, "log_n={}", log_n);
     }
 }
@@ -126,11 +129,12 @@ fn hypercube_coeffs_natural_to_natural_evals_matches_cpu() {
 
         let mut src = context.alloc(n, AllocationPlacement::BestFit).unwrap();
         let mut dst = context.alloc(n, AllocationPlacement::BestFit).unwrap();
-        memory_copy(&mut src, &coeffs).unwrap();
+        memory_copy_async(&mut src, &coeffs, stream).unwrap();
         hypercube_coeffs_natural_to_natural_evals(&src, &mut dst, log_n, stream).unwrap();
 
         let mut actual = vec![BF::ZERO; n];
-        memory_copy(&mut actual, &dst).unwrap();
+        memory_copy_async(&mut actual, &dst, stream).unwrap();
+        stream.synchronize().unwrap();
         assert_eq!(actual, expected, "log_n={}", log_n);
     }
 }
@@ -160,11 +164,12 @@ fn natural_evals_to_bitreversed_coeffs_matches_cpu() {
 
         let mut src = context.alloc(n, AllocationPlacement::BestFit).unwrap();
         let mut dst = context.alloc(n, AllocationPlacement::BestFit).unwrap();
-        memory_copy(&mut src, &evals).unwrap();
+        memory_copy_async(&mut src, &evals, stream).unwrap();
         natural_evals_to_bitreversed_coeffs(&src, &mut dst, log_n, stream).unwrap();
 
         let mut actual = vec![BF::ZERO; n];
-        memory_copy(&mut actual, &dst).unwrap();
+        memory_copy_async(&mut actual, &dst, stream).unwrap();
+        stream.synchronize().unwrap();
         assert_eq!(actual, expected, "log_n={}", log_n);
     }
 }
@@ -189,7 +194,7 @@ fn bitreversed_coeffs_to_natural_coset_matches_cpu() {
 
         let mut src = context.alloc(n, AllocationPlacement::BestFit).unwrap();
         let mut dst = context.alloc(n, AllocationPlacement::BestFit).unwrap();
-        memory_copy(&mut src, &coeffs_bitreversed).unwrap();
+        memory_copy_async(&mut src, &coeffs_bitreversed, stream).unwrap();
 
         for log_lde_factor in [1usize, 2, 3] {
             let tau = domain_generator_for_size::<BF>(1u64 << (log_n + log_lde_factor));
@@ -205,7 +210,8 @@ fn bitreversed_coeffs_to_natural_coset_matches_cpu() {
                 .unwrap();
 
                 let mut actual = vec![BF::ZERO; n];
-                memory_copy(&mut actual, &dst).unwrap();
+                memory_copy_async(&mut actual, &dst, stream).unwrap();
+                stream.synchronize().unwrap();
 
                 let mut expected = coeffs_natural.clone();
                 if coset_index != 0 {
