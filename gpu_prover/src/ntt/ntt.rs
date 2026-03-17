@@ -7,6 +7,8 @@ use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::CudaStream;
 use era_cudart_sys::{cudaFuncSetAttribute, CudaFuncAttribute};
 
+use super::bitreversed_coeffs_to_natural_coset;
+
 use crate::device_structures::{
     DeviceMatrixChunk, DeviceMatrixChunkImpl, DeviceMatrixChunkMut, DeviceMatrixChunkMutImpl,
     MutPtrAndStride, PtrAndStride,
@@ -471,12 +473,40 @@ pub fn bitreversed_monomials_to_natural_evals(
     stream: &CudaStream,
     device_properties: &DeviceProperties,
 ) -> CudaResult<()> {
+    if log_n < 21 {
+        // Fallback (uses 1 stage at a time kernels)
+        assert!(
+            !transposed_monomials,
+            "fallback path does not support transposed monomials",
+        );
+        let cols = inputs_matrix.cols();
+        let rows = inputs_matrix.rows();
+        assert_eq!(cols, outputs_matrix.cols());
+        assert_eq!(rows, outputs_matrix.rows());
+        let inputs_stride = inputs_matrix.stride();
+        let outputs_stride = outputs_matrix.stride();
+        let inputs_offset = inputs_matrix.offset();
+        let outputs_offset = outputs_matrix.offset();
+        let inputs_slice = &(inputs_matrix.slice())[inputs_offset..];
+        let outputs_slice = &mut (outputs_matrix.slice_mut())[outputs_offset..];
+        for col in 0..cols {
+            bitreversed_coeffs_to_natural_coset(
+                &inputs_slice[col * inputs_stride..col * inputs_stride + rows],
+                &mut outputs_slice[col * outputs_stride..col * outputs_stride + rows],
+                log_n,
+                log_lde_factor,
+                coset_index,
+                stream,
+            )?;
+        }
+        return Ok(());
+    }
     let coset_factor_power = coset_index << (OMEGA_LOG_ORDER as usize - log_n - log_lde_factor);
     // Quick and dirty heuristic: use 3-pass if one column fits in L2, 2-pass otherwise
     let l2_bytes = device_properties.l2_cache_size_bytes;
     let column_bytes = (1 << log_n) * size_of::<BF>();
-    if l2_bytes > column_bytes {
-        monomials_to_evals_3_pass(
+    if (column_bytes >= l2_bytes) && (log_n >= 23) {
+        monomials_to_evals_2_pass(
             inputs_matrix,
             outputs_matrix,
             log_n,
@@ -485,7 +515,7 @@ pub fn bitreversed_monomials_to_natural_evals(
             stream,
         )?;
     } else {
-        monomials_to_evals_2_pass(
+        monomials_to_evals_3_pass(
             inputs_matrix,
             outputs_matrix,
             log_n,
@@ -509,8 +539,8 @@ pub fn natural_evals_to_bitreversed_monomials(
     // Quick and dirty heuristic: use 3-pass if one column fits in L2, 2-pass otherwise
     let l2_bytes = device_properties.l2_cache_size_bytes;
     let column_bytes = (1 << log_n) * size_of::<BF>();
-    if l2_bytes > column_bytes {
-        evals_to_monomials_3_pass(
+    if (column_bytes >= l2_bytes) && (log_n >= 23) {
+        evals_to_monomials_2_pass(
             inputs_matrix,
             outputs_matrix,
             log_n,
@@ -518,7 +548,7 @@ pub fn natural_evals_to_bitreversed_monomials(
             stream,
         )?;
     } else {
-        evals_to_monomials_2_pass(
+        evals_to_monomials_3_pass(
             inputs_matrix,
             outputs_matrix,
             log_n,
