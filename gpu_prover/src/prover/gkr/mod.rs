@@ -1339,14 +1339,14 @@ mod tests {
     use crate::primitives::callbacks::Callbacks;
     use crate::primitives::field::{BF, E4};
     use crate::prover::test_utils::make_test_context;
-    use era_cudart::memory::memory_copy;
+    use era_cudart::memory::memory_copy_async;
     use serial_test::serial;
 
     fn alloc_and_copy<T: Copy>(context: &ProverContext, values: &[T]) -> DeviceAllocation<T> {
         let mut allocation = context
             .alloc(values.len(), AllocationPlacement::BestFit)
             .unwrap();
-        memory_copy(&mut allocation, values).unwrap();
+        memory_copy_async(&mut allocation, values, context.get_exec_stream()).unwrap();
         allocation
     }
 
@@ -1366,7 +1366,8 @@ mod tests {
         values: &DeviceAllocation<T>,
     ) -> Vec<T> {
         let mut allocation = unsafe { context.alloc_host_uninit_slice(values.len()) };
-        memory_copy(&mut allocation, values).unwrap();
+        memory_copy_async(&mut allocation, values, context.get_exec_stream()).unwrap();
+        context.get_exec_stream().synchronize().unwrap();
         unsafe { allocation.get_accessor().get().to_vec() }
     }
 

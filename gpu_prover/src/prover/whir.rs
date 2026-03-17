@@ -1,4 +1,4 @@
-use era_cudart::memory::{memory_copy, memory_copy_async};
+use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 use field::{Field, FieldExtension};
@@ -383,11 +383,12 @@ impl GpuWhirExtensionOracle {
     }
 
     #[cfg(test)]
-    fn copy_coset_values(&self, coset_index: usize) -> Vec<E4> {
+    fn copy_coset_values(&self, coset_index: usize, context: &ProverContext) -> Vec<E4> {
         let total_leaf_count = self.packed_leaf_count * self.lde_factor;
         let full_trace = self.trace_holder.get_coset_evaluations(0);
         let mut host = vec![BF::ZERO; full_trace.len()];
-        memory_copy(&mut host, full_trace).unwrap();
+        memory_copy_async(&mut host, full_trace, context.get_exec_stream()).unwrap();
+        context.get_exec_stream().synchronize().unwrap();
         let stage1_coset_index =
             bitreverse_index(coset_index, self.lde_factor.trailing_zeros() as u32);
         let row_offset = stage1_coset_index * self.packed_leaf_count;
@@ -463,7 +464,7 @@ fn bitreverse_index(index: usize, num_bits: u32) -> usize {
 pub(crate) mod tests {
     use std::alloc::Global;
 
-    use era_cudart::memory::memory_copy;
+    use era_cudart::memory::memory_copy_async;
     use fft::{bitreverse_enumeration_inplace, domain_generator_for_size, Twiddles};
     use field::Field;
     use prover::gkr::prover::stages::stage1::ColumnMajorCosetBoundTracePart;
@@ -582,7 +583,7 @@ pub(crate) mod tests {
 
         for coset_index in 0..4 {
             assert_eq!(
-                gpu.copy_coset_values(coset_index),
+                gpu.copy_coset_values(coset_index, &context),
                 cpu.cosets[coset_index].values_normal_order.column.to_vec(),
                 "coset {} diverged",
                 coset_index
@@ -643,7 +644,7 @@ pub(crate) mod tests {
         let mut monomial_coeffs_device = context
             .alloc(monomial_coeffs.len(), crate::allocator::tracker::AllocationPlacement::BestFit)
             .unwrap();
-        memory_copy(&mut monomial_coeffs_device, &monomial_coeffs).unwrap();
+        memory_copy_async(&mut monomial_coeffs_device, &monomial_coeffs, context.get_exec_stream()).unwrap();
 
         let mut gpu = GpuWhirExtensionOracle::schedule_from_device_monomial_coeffs(
             &monomial_coeffs_device,

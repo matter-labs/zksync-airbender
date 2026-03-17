@@ -505,7 +505,7 @@ mod tests {
 
     use cs::definitions::GKRAddress;
     use cs::gkr_compiler::GKRLayerDescription;
-    use era_cudart::memory::memory_copy;
+    use era_cudart::memory::memory_copy_async;
     use field::{Field, FieldExtension, PrimeField};
     use prover::gkr::sumcheck::eq_poly::make_eq_poly_in_full;
     use serial_test::serial;
@@ -546,7 +546,7 @@ mod tests {
             context,
         )
         .unwrap();
-        memory_copy(trace_holder.get_uninit_hypercube_evals_mut(), values).unwrap();
+        memory_copy_async(trace_holder.get_uninit_hypercube_evals_mut(), values, context.get_exec_stream()).unwrap();
         trace_holder
     }
 
