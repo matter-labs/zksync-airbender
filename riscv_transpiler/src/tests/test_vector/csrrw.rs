@@ -32,7 +32,7 @@ fn test_vector_csrrw() {
     expected = "detected transpiler marker CSR during replay; programs containing development cycle markers must not be proved"
 )]
 fn test_vector_marker_csr_is_rejected_by_replayer() {
-    const CSRRW_MARKER_OPCODE: u32 = 0x7ff11073; // csrrw x0, 2047, x2
+    const CSRRW_MARKER_OPCODE: u32 = 0x7ff01073; // csrrw x0, 2047, x0
 
     execute_case::<FullUnsignedMachineDecoderConfig>(
         &[CSRRW_MARKER_OPCODE],

@@ -8,7 +8,7 @@ use std::collections::HashMap;
 
 use crate::vm::{Counters, ExecutionObserver, State};
 use common_constants::{
-    dev::TRANSPILER_MARKER_CSR, TimestampScalar, INITIAL_TIMESTAMP, TIMESTAMP_STEP,
+    internal_features::TRANSPILER_MARKER_CSR, TimestampScalar, INITIAL_TIMESTAMP, TIMESTAMP_STEP,
 };
 
 /// An execution observer which collects the cycle markers and delegation counts

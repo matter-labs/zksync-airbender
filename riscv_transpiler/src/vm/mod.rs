@@ -514,7 +514,7 @@ pub(crate) mod test {
     #[test]
     #[serial_test::serial]
     fn test_cycle_markers_follow_vm_execution() {
-        const MARKER_OPCODE: u32 = 0x7ff09073; // csrrw x0, 2047, x1
+        const MARKER_OPCODE: u32 = 0x7ff01073; // csrrw x0, 2047, x0
         const ADDI_OPCODE: u32 = 0x00100093; // addi x1, x0, 1
 
         let program = vec![MARKER_OPCODE, ADDI_OPCODE, MARKER_OPCODE];
