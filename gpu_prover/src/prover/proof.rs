@@ -37,7 +37,7 @@ use crate::prover::gkr::forward::{schedule_forward_pass, GpuGKRTranscriptHandoff
 use crate::prover::gkr::setup::{
     GpuGKRForwardSetupHostKeepalive, GpuGKRSetupTransfer, GpuGKRSetupTransferHostKeepalive,
 };
-use crate::prover::gkr::stage1::GpuGKRStage1Output;
+use crate::prover::gkr::stage1::{GpuGKRStage1Keepalive, GpuGKRStage1Output};
 use crate::prover::trace_holder::flatten_tree_caps;
 use crate::prover::tracing_data::{InitsAndTeardownsTransfer, TracingDataTransfer};
 use crate::prover::whir_fold::{
@@ -51,7 +51,7 @@ pub(crate) struct GkrExternalPowChallenges {
 
 struct GpuGKRProofJobKeepalive<'a> {
     #[allow(dead_code)]
-    stage1: GpuGKRStage1Output,
+    stage1: GpuGKRStage1Keepalive,
     #[allow(dead_code)]
     setup: GpuGKRSetupTransferHostKeepalive<'a>,
     #[allow(dead_code)]
@@ -589,7 +589,7 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
         proof,
         ranges,
         keepalive: GpuGKRProofJobKeepalive {
-            stage1: stage1_output,
+            stage1: stage1_output.into_keepalive(),
             setup: setup_keepalive,
             forward_setup: forward_setup_keepalive,
             transcript_handoff,
