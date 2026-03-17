@@ -14,10 +14,10 @@ use crate::primitives::callbacks::Callbacks;
 use crate::primitives::context::{HostAllocation, ProverContext, UnsafeAccessor};
 use crate::primitives::device_structures::{DeviceMatrix, DeviceMatrixChunkMut, DeviceMatrixMut};
 use crate::primitives::field::{BF, E4};
+use crate::primitives::static_host::alloc_static_pinned_box_from_slice;
 use crate::prover::trace_holder::{TraceHolder, TreesCacheMode};
 
 const EXT4_DEGREE: usize = <E4 as FieldExtension<BF>>::DEGREE;
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct GpuWhirExtensionQuery {
     pub(crate) index: usize,
@@ -87,13 +87,11 @@ impl GpuWhirExtensionOracle {
         tree_cap_size: usize,
         context: &ProverContext,
     ) -> CudaResult<Self> {
-        let mut host = unsafe { context.alloc_host_uninit_slice(monomial_coeffs.len()) };
-        unsafe { host.get_mut_accessor().get_mut().copy_from_slice(monomial_coeffs) };
         let mut monomial_coeffs_device =
             context.alloc(monomial_coeffs.len(), AllocationPlacement::BestFit)?;
         let stream = context.get_exec_stream();
-        memory_copy_async(&mut monomial_coeffs_device, &host, stream)?;
-        drop(host);
+        let host = alloc_static_pinned_box_from_slice(monomial_coeffs)?;
+        memory_copy_async(&mut monomial_coeffs_device, &host[..], stream)?;
         Self::from_device_monomial_coeffs(
             &monomial_coeffs_device,
             lde_factor,
@@ -235,7 +233,10 @@ impl GpuWhirExtensionOracle {
     }
 
     pub(crate) fn get_tree_cap(&self) -> MerkleTreeCapVarLength {
-        self.trace_holder.get_tree_caps().pop().unwrap()
+        self.trace_holder
+            .get_tree_caps()
+            .pop()
+            .expect("whir oracle must materialize at least one tree cap")
     }
 
     pub(crate) fn lde_factor(&self) -> usize {
