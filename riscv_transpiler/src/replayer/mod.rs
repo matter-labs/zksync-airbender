@@ -207,6 +207,9 @@ impl<C: Counters> ReplayerVM<C> {
                     InstructionName::ZicsrNonDeterminismWrite => {
                         zicsr::nd_write::<C, R>(state, ram, instr, tracer)
                     }
+                    InstructionName::ZicsrMarkerCsr => panic!(
+                        "detected transpiler marker CSR during replay; programs containing development cycle markers must not be proved"
+                    ),
                     InstructionName::ZicsrDelegation => {
                         zicsr::call_delegation::<C, R>(state, ram, instr, tracer)
                     }

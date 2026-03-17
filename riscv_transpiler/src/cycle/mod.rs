@@ -1,10 +1,7 @@
 use std::hash::Hash;
 
-// These machine profiles remain here because the rest of the workspace still
-// keys decoder selection, setup generation, and recursion layout on them.
-//
-// The old simulator state machines are gone, but the marker types still define
-// the supported ISA surface for the active proving path.
+// Machine profiles tie together the ISA features used by preprocessing, setup
+// generation, and recursion layout.
 pub trait MachineConfig:
     'static
     + Clone
@@ -34,13 +31,13 @@ pub trait MachineConfig:
     const ALLOWED_DELEGATION_CSRS: &'static [u32];
 }
 
-// The active witnesses still use the architectural register count through the
-// historical `cycle::state::NUM_REGISTERS` path, so we preserve that path as a
-// tiny compatibility shim instead of touching unrelated consumers.
+mod markers;
+
 pub mod state {
     pub const NUM_REGISTERS: usize = 32;
 }
 
+pub use self::markers::{CycleMarker, CycleMarkerHooks, Mark};
 pub use state::NUM_REGISTERS;
 
 #[derive(

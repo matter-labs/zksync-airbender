@@ -11,7 +11,12 @@ const PRECOMPILE_CHI1: u32 = 5;
 const PRECOMPILE_CHI2: u32 = 6;
 
 #[inline(never)]
-pub(crate) fn keccak_special5_call<C: Counters, S: Snapshotter<C>, R: RAM>(
+pub(crate) fn keccak_special5_call<
+    C: Counters,
+    S: Snapshotter<C>,
+    R: RAM,
+    E: ExecutionObserver<C>,
+>(
     state: &mut State<C>,
     ram: &mut R,
     snapshotter: &mut S,
@@ -92,6 +97,11 @@ pub(crate) fn keccak_special5_call<C: Counters, S: Snapshotter<C>, R: RAM>(
     state
         .counters
         .bump_keccak_special5(common_constants::NUM_DELEGATION_CALLS_FOR_KECCAK_F1600);
+    E::on_delegation(
+        state,
+        KECCAK_SPECIAL5_CSR_REGISTER,
+        common_constants::NUM_DELEGATION_CALLS_FOR_KECCAK_F1600 as u64,
+    );
     state.pc = state.pc.wrapping_add(
         (core::mem::size_of::<u32>() * common_constants::NUM_DELEGATION_CALLS_FOR_KECCAK_F1600)
             as u32,

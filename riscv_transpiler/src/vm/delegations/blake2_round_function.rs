@@ -59,7 +59,12 @@ fn write_back_words<C: Counters, S: Snapshotter<C>, R: RAM, const N: usize>(
 }
 
 #[inline(never)]
-pub(crate) fn blake2_round_function_call<C: Counters, S: Snapshotter<C>, R: RAM>(
+pub(crate) fn blake2_round_function_call<
+    C: Counters,
+    S: Snapshotter<C>,
+    R: RAM,
+    E: ExecutionObserver<C>,
+>(
     state: &mut State<C>,
     ram: &mut R,
     snapshotter: &mut S,
@@ -250,6 +255,7 @@ pub(crate) fn blake2_round_function_call<C: Counters, S: Snapshotter<C>, R: RAM>
     // But timestamp needs 1 less bump
     state.timestamp += ((num_rounds - 1) as TimestampScalar) * TIMESTAMP_STEP;
     state.counters.bump_blake2_round_function(num_rounds);
+    E::on_delegation(state, BLAKE2S_DELEGATION_CSR_REGISTER, num_rounds as u64);
     state.pc = state
         .pc
         .wrapping_add((core::mem::size_of::<u32>() * num_rounds) as u32);
@@ -259,7 +265,7 @@ pub(crate) fn blake2_round_function_call<C: Counters, S: Snapshotter<C>, R: RAM>
 }
 
 // #[inline(never)]
-// pub(crate) fn blake2_round_function_call<C: Counters, S: Snapshotter<C>, R: RAM>(
+// pub(crate) fn blake2_round_function_call<C: Counters, S: Snapshotter<C>, R: RAM, E: ExecutionObserver<C>>(
 //     state: &mut State<C>,
 //     ram: &mut R,
 //     snapshotter: &mut S,
