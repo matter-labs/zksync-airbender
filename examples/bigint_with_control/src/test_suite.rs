@@ -1,17 +1,17 @@
-/// Test suite for 256-bit integer operations with control delegation.
-///
-/// Each test case is expressed as a `TestVector`: a pair of `TestInput` (operands + mask)
-/// and `ExpectedOutput` (the 8 result limbs + the output flag).
-///
-/// Operation masks are built from bit indices defined in `common_constants`:
-///   - bit 0: ADD
-///   - bit 1: SUB
-///   - bit 2: SUB_AND_NEGATE (computes b - a)
-///   - bit 3: MUL_LOW
-///   - bit 4: MUL_HIGH
-///   - bit 5: EQ
-///   - bit 6: CARRY / BORROW-IN
-///   - bit 7: MEMCOPY
+//! Test suite for 256-bit integer operations with control delegation.
+//!
+//! Each test case is expressed as a `TestVector`: a pair of `TestInput` (operands + mask)
+//! and `ExpectedOutput` (the 8 result limbs + the output flag).
+//!
+//! Operation masks are built from bit indices defined in `common_constants`:
+//!   - bit 0: ADD
+//!   - bit 1: SUB
+//!   - bit 2: SUB_AND_NEGATE (computes b - a)
+//!   - bit 3: MUL_LOW
+//!   - bit 4: MUL_HIGH
+//!   - bit 5: EQ
+//!   - bit 6: CARRY / BORROW-IN
+//!   - bit 7: MEMCOPY
 use common_constants::delegation_types::bigint_with_control::*;
 
 #[repr(C, align(32))]
