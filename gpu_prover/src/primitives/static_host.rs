@@ -3,12 +3,9 @@ use era_cudart::memory::{CudaHostAllocFlags, HostAllocation as CudaHostAllocatio
 use era_cudart::result::CudaResult;
 use std::mem::size_of;
 
-pub(crate) type StaticPinnedVec<T> = Vec<T, ConcurrentStaticHostAllocator>;
+pub(crate) type StaticPinnedBox<T> = Box<[T], ConcurrentStaticHostAllocator>;
 
-pub(crate) fn alloc_static_pinned_vec_uninit<T>(
-    len: usize,
-    log_chunk_size: u32,
-) -> CudaResult<StaticPinnedVec<T>> {
+pub(crate) fn alloc_static_pinned_box_uninit<T>(len: usize) -> CudaResult<StaticPinnedBox<T>> {
     assert!(len > 0, "static pinned allocations must be non-empty");
     let bytes = len
         .checked_mul(size_of::<T>())
@@ -17,22 +14,19 @@ pub(crate) fn alloc_static_pinned_vec_uninit<T>(
         bytes > 0,
         "zero-sized static pinned element types are unsupported"
     );
-    let chunk_size = 1usize << log_chunk_size;
-    let allocation_bytes = bytes.next_multiple_of(chunk_size);
-    let allocation = CudaHostAllocation::alloc(allocation_bytes, CudaHostAllocFlags::DEFAULT)?;
-    let allocator = ConcurrentStaticHostAllocator::new([allocation], log_chunk_size);
-    let mut values = Vec::with_capacity_in(len, allocator);
-    unsafe {
-        values.set_len(len);
-    }
-    Ok(values)
+    let allocation = CudaHostAllocation::alloc(bytes, CudaHostAllocFlags::DEFAULT)?;
+    // These boxed slices own a dedicated pinned allocation each, so they do not need chunked
+    // reuse. Use 1-byte chunks to make the allocator's bookkeeping match the exact byte size.
+    let allocator = ConcurrentStaticHostAllocator::new([allocation], 0);
+    // SAFETY: the boxed slice is backed by a fresh pinned allocation sized exactly for `len`
+    // elements of `T`, and callers initialize every element before reading it.
+    unsafe { Ok(Box::<[T], _>::new_uninit_slice_in(len, allocator).assume_init()) }
 }
 
-pub(crate) fn alloc_static_pinned_vec_from_slice<T: Copy>(
+pub(crate) fn alloc_static_pinned_box_from_slice<T: Copy>(
     values: &[T],
-    log_chunk_size: u32,
-) -> CudaResult<StaticPinnedVec<T>> {
-    let mut allocation = alloc_static_pinned_vec_uninit(values.len(), log_chunk_size)?;
+) -> CudaResult<StaticPinnedBox<T>> {
+    let mut allocation = alloc_static_pinned_box_uninit(values.len())?;
     allocation.copy_from_slice(values);
     Ok(allocation)
 }
