@@ -1,6 +1,6 @@
 use std::alloc::Global;
 
-use era_cudart::memory::memory_copy;
+use era_cudart::memory::memory_copy_async;
 use fft::field_utils::{distribute_powers_serial, domain_generator_for_size};
 use field::{Field, PrimeField};
 use serial_test::serial;
@@ -80,11 +80,12 @@ fn hypercube_evals_natural_to_bitreversed_coeffs_matches_cpu() {
 
         let mut src = context.alloc(n, AllocationPlacement::BestFit).unwrap();
         let mut dst = context.alloc(n, AllocationPlacement::BestFit).unwrap();
-        memory_copy(&mut src, &evals).unwrap();
+        memory_copy_async(&mut src, &evals, stream).unwrap();
         hypercube_evals_natural_to_bitreversed_coeffs(&src, &mut dst, log_n, stream).unwrap();
 
         let mut actual = vec![BF::ZERO; n];
-        memory_copy(&mut actual, &dst).unwrap();
+        memory_copy_async(&mut actual, &dst, stream).unwrap();
+        stream.synchronize().unwrap();
         assert_eq!(actual, expected, "log_n={}", log_n);
     }
 }
@@ -108,11 +109,12 @@ fn hypercube_coeffs_natural_to_natural_evals_matches_cpu() {
 
         let mut src = context.alloc(n, AllocationPlacement::BestFit).unwrap();
         let mut dst = context.alloc(n, AllocationPlacement::BestFit).unwrap();
-        memory_copy(&mut src, &coeffs).unwrap();
+        memory_copy_async(&mut src, &coeffs, stream).unwrap();
         hypercube_coeffs_natural_to_natural_evals(&src, &mut dst, log_n, stream).unwrap();
 
         let mut actual = vec![BF::ZERO; n];
-        memory_copy(&mut actual, &dst).unwrap();
+        memory_copy_async(&mut actual, &dst, stream).unwrap();
+        stream.synchronize().unwrap();
         assert_eq!(actual, expected, "log_n={}", log_n);
     }
 }
@@ -142,11 +144,12 @@ fn natural_evals_to_bitreversed_coeffs_matches_cpu() {
 
         let mut src = context.alloc(n, AllocationPlacement::BestFit).unwrap();
         let mut dst = context.alloc(n, AllocationPlacement::BestFit).unwrap();
-        memory_copy(&mut src, &evals).unwrap();
+        memory_copy_async(&mut src, &evals, stream).unwrap();
         natural_evals_to_bitreversed_coeffs(&src, &mut dst, log_n, stream).unwrap();
 
         let mut actual = vec![BF::ZERO; n];
-        memory_copy(&mut actual, &dst).unwrap();
+        memory_copy_async(&mut actual, &dst, stream).unwrap();
+        stream.synchronize().unwrap();
         assert_eq!(actual, expected, "log_n={}", log_n);
     }
 }
@@ -171,7 +174,7 @@ fn bitreversed_coeffs_to_natural_coset_matches_cpu() {
 
         let mut src = context.alloc(n, AllocationPlacement::BestFit).unwrap();
         let mut dst = context.alloc(n, AllocationPlacement::BestFit).unwrap();
-        memory_copy(&mut src, &coeffs_bitreversed).unwrap();
+        memory_copy_async(&mut src, &coeffs_bitreversed, stream).unwrap();
 
         for log_lde_factor in [1usize, 2, 3] {
             let tau = domain_generator_for_size::<BF>(1u64 << (log_n + log_lde_factor));
@@ -187,7 +190,8 @@ fn bitreversed_coeffs_to_natural_coset_matches_cpu() {
                 .unwrap();
 
                 let mut actual = vec![BF::ZERO; n];
-                memory_copy(&mut actual, &dst).unwrap();
+                memory_copy_async(&mut actual, &dst, stream).unwrap();
+                stream.synchronize().unwrap();
 
                 let mut expected = coeffs_natural.clone();
                 if coset_index != 0 {

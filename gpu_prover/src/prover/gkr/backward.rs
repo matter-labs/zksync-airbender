@@ -468,10 +468,6 @@ pub(crate) struct GpuGKRBackwardExecution<E: FieldExtension<BF> + Field> {
 }
 
 pub(crate) struct GpuGKRBackwardScheduledExecution<B, E: FieldExtension<BF> + Field> {
-    #[allow(dead_code)] // Keeps device memory alive until the stream finishes reading it.
-    storage: GpuGKRStorage<B, E>,
-    #[allow(dead_code)]
-    forward_scratch: GpuGKRForwardScratch,
     #[allow(dead_code)]
     dimension_reducing_layers: Vec<GpuGKRDimensionReducingScheduledLayerExecution<B, E>>,
     #[allow(dead_code)]
@@ -526,10 +522,6 @@ pub(crate) struct GpuGKRMainLayerHostKeepalive<E: FieldExtension<BF> + Field> {
 }
 
 pub(crate) struct GpuGKRBackwardHostKeepalive<B, E: FieldExtension<BF> + Field> {
-    #[allow(dead_code)] // Keeps device memory alive until the stream finishes reading it.
-    storage: GpuGKRStorage<B, E>,
-    #[allow(dead_code)]
-    forward_scratch: GpuGKRForwardScratch,
     #[allow(dead_code)]
     dimension_reducing_layers: Vec<GpuGKRDimensionReducingHostKeepalive<B, E>>,
     #[allow(dead_code)]
@@ -5272,15 +5264,11 @@ where
 {
     pub(crate) fn into_host_keepalive(self) -> GpuGKRBackwardHostKeepalive<B, E> {
         let Self {
-            storage,
-            forward_scratch,
             dimension_reducing_layers,
             main_layers,
             shared_state,
         } = self;
         GpuGKRBackwardHostKeepalive {
-            storage,
-            forward_scratch,
             dimension_reducing_layers: dimension_reducing_layers
                 .into_iter()
                 .map(GpuGKRDimensionReducingScheduledLayerExecution::into_host_keepalive)
@@ -5348,14 +5336,14 @@ where
         }
 
         let GpuGKRMainLayerBackwardState {
-            storage,
-            forward_scratch,
+            storage: _,
+            forward_scratch: _,
             ..
         } = main_backward_state;
+        // storage and forward_scratch (device allocs) drop here —
+        // all exec-stream ops that used them have already been scheduled.
 
         Ok(GpuGKRBackwardScheduledExecution {
-            storage,
-            forward_scratch,
             dimension_reducing_layers,
             main_layers,
             shared_state,
@@ -5428,7 +5416,7 @@ mod tests {
         GKRLayerDescription, GateArtifacts, NoFieldGKRRelation,
         NoFieldMaxQuadraticConstraintsGKRRelation, OutputType,
     };
-    use era_cudart::memory::{memory_copy, memory_copy_async};
+    use era_cudart::memory::memory_copy_async;
     use era_cudart::slice::{CudaSlice, CudaSliceMut, DeviceSlice};
     use field::{Field, FieldExtension};
     use prover::gkr::prover::dimension_reduction::forward::DimensionReducingInputOutput;
@@ -5462,7 +5450,7 @@ mod tests {
         let mut allocation = context
             .alloc(values.len(), AllocationPlacement::BestFit)
             .unwrap();
-        memory_copy(&mut allocation, values).unwrap();
+        memory_copy_async(&mut allocation, values, context.get_exec_stream()).unwrap();
         allocation
     }
 
@@ -5710,10 +5698,9 @@ mod tests {
             &context,
         )
         .unwrap();
-        context.get_exec_stream().synchronize().unwrap();
-
         let mut host = unsafe { context.alloc_host_uninit_slice(4) };
-        memory_copy(&mut host, &contributions).unwrap();
+        memory_copy_async(&mut host, &contributions, context.get_exec_stream()).unwrap();
+        context.get_exec_stream().synchronize().unwrap();
         let actual = unsafe { host.get_accessor().get().to_vec() };
 
         let mut expected = Vec::new();
@@ -5840,10 +5827,9 @@ mod tests {
             &context,
         )
         .unwrap();
-        context.get_exec_stream().synchronize().unwrap();
-
         let mut host = unsafe { context.alloc_host_uninit_slice(4) };
-        memory_copy(&mut host, &contributions).unwrap();
+        memory_copy_async(&mut host, &contributions, context.get_exec_stream()).unwrap();
+        context.get_exec_stream().synchronize().unwrap();
         let actual = unsafe { host.get_accessor().get().to_vec() };
 
         let mut expected = Vec::new();
@@ -5934,10 +5920,9 @@ mod tests {
             &context,
         )
         .unwrap();
-        context.get_exec_stream().synchronize().unwrap();
-
         let mut host = unsafe { context.alloc_host_uninit_slice(4) };
-        memory_copy(&mut host, &contributions).unwrap();
+        memory_copy_async(&mut host, &contributions, context.get_exec_stream()).unwrap();
+        context.get_exec_stream().synchronize().unwrap();
         let actual = unsafe { host.get_accessor().get().to_vec() };
 
         let fold = |values: &[E4], idx: usize| {
@@ -6024,10 +6009,9 @@ mod tests {
             &context,
         )
         .unwrap();
-        context.get_exec_stream().synchronize().unwrap();
-
         let mut host = unsafe { context.alloc_host_uninit_slice(4) };
-        memory_copy(&mut host, &contributions).unwrap();
+        memory_copy_async(&mut host, &contributions, context.get_exec_stream()).unwrap();
+        context.get_exec_stream().synchronize().unwrap();
         let actual = unsafe { host.get_accessor().get().to_vec() };
 
         let fold = |values: &[E4], idx: usize| {
@@ -6115,10 +6099,9 @@ mod tests {
             context.get_exec_stream(),
         )
         .unwrap();
-        context.get_exec_stream().synchronize().unwrap();
-
         let mut host = unsafe { context.alloc_host_uninit_slice(2) };
-        memory_copy(&mut host, &reduced).unwrap();
+        memory_copy_async(&mut host, &reduced, context.get_exec_stream()).unwrap();
+        context.get_exec_stream().synchronize().unwrap();
         let actual = unsafe { host.get_accessor().get().to_vec() };
 
         let mut expected = [E4::ZERO; 2];
@@ -6160,10 +6143,9 @@ mod tests {
             &context,
         )
         .unwrap();
-        context.get_exec_stream().synchronize().unwrap();
-
         let mut host = unsafe { context.alloc_host_uninit_slice(4) };
-        memory_copy(&mut host, &eq_values).unwrap();
+        memory_copy_async(&mut host, &eq_values, context.get_exec_stream()).unwrap();
+        context.get_exec_stream().synchronize().unwrap();
         let actual = unsafe { host.get_accessor().get().to_vec() };
 
         let r0 = claim_point[1];
@@ -6269,10 +6251,9 @@ mod tests {
             &context,
         )
         .unwrap();
-        context.get_exec_stream().synchronize().unwrap();
-
         let mut host = unsafe { context.alloc_host_uninit_slice(4) };
-        memory_copy(&mut host, &contributions).unwrap();
+        memory_copy_async(&mut host, &contributions, context.get_exec_stream()).unwrap();
+        context.get_exec_stream().synchronize().unwrap();
         let actual = unsafe { host.get_accessor().get().to_vec() };
 
         let mut expected = Vec::new();
@@ -6390,10 +6371,9 @@ mod tests {
             &context,
         )
         .unwrap();
-        context.get_exec_stream().synchronize().unwrap();
-
         let mut host = unsafe { context.alloc_host_uninit_slice(4) };
-        memory_copy(&mut host, &contributions).unwrap();
+        memory_copy_async(&mut host, &contributions, context.get_exec_stream()).unwrap();
+        context.get_exec_stream().synchronize().unwrap();
         let actual = unsafe { host.get_accessor().get().to_vec() };
 
         let mut expected = Vec::new();

@@ -1,7 +1,7 @@
 use core::marker::PhantomData;
 
 use blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS;
-use era_cudart::memory::{memory_copy, memory_copy_async};
+use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 use fft::{
@@ -351,10 +351,10 @@ fn schedule_callback_populated_upload<T: Copy + 'static>(
 fn copy_small_to_device<T: Copy>(
     dst: &mut DeviceSlice<T>,
     values: &[T],
-    _context: &ProverContext,
+    context: &ProverContext,
 ) -> CudaResult<()> {
     assert_eq!(dst.len(), values.len());
-    memory_copy(dst, values)
+    memory_copy_async(dst, values, context.get_exec_stream())
 }
 
 fn copy_scalar_to_device(
@@ -2530,9 +2530,9 @@ pub(crate) fn debug_build_initial_state_for_test(
     context: &ProverContext,
 ) -> CudaResult<([Vec<E4>; 3], E4, Vec<E4>, Vec<E4>, Vec<E4>)> {
     fn copy_back(values: &DeviceSlice<E4>, context: &ProverContext) -> Vec<E4> {
-        context.get_exec_stream().synchronize().unwrap();
         let mut host = unsafe { context.alloc_host_uninit_slice(values.len()) };
-        memory_copy(&mut host, values).unwrap();
+        memory_copy_async(&mut host, values, context.get_exec_stream()).unwrap();
+        context.get_exec_stream().synchronize().unwrap();
         unsafe { host.get_accessor().get().to_vec() }
     }
 
@@ -2572,16 +2572,16 @@ pub(crate) fn debug_build_initial_batched_main_domain_poly_for_test(
     context: &ProverContext,
 ) -> CudaResult<Vec<E4>> {
     fn copy_back(values: &DeviceSlice<E4>, context: &ProverContext) -> Vec<E4> {
-        context.get_exec_stream().synchronize().unwrap();
         let mut host = unsafe { context.alloc_host_uninit_slice(values.len()) };
-        memory_copy(&mut host, values).unwrap();
+        memory_copy_async(&mut host, values, context.get_exec_stream()).unwrap();
+        context.get_exec_stream().synchronize().unwrap();
         unsafe { host.get_accessor().get().to_vec() }
     }
 
     fn copy_back_bf(values: &DeviceSlice<BF>, context: &ProverContext) -> Vec<BF> {
-        context.get_exec_stream().synchronize().unwrap();
         let mut host = unsafe { context.alloc_host_uninit_slice(values.len()) };
-        memory_copy(&mut host, values).unwrap();
+        memory_copy_async(&mut host, values, context.get_exec_stream()).unwrap();
+        context.get_exec_stream().synchronize().unwrap();
         unsafe { host.get_accessor().get().to_vec() }
     }
 
@@ -2609,7 +2609,6 @@ pub(crate) fn debug_build_initial_batched_main_domain_poly_for_test(
         &mut state.sumchecked_poly_evaluation_form,
         context,
     )?;
-    context.get_exec_stream().synchronize()?;
     Ok(copy_back(
         &state.sumchecked_poly_evaluation_form[..trace_len],
         context,
@@ -2629,9 +2628,9 @@ pub(crate) fn debug_build_initial_state_snapshots_for_test(
     context: &ProverContext,
 ) -> CudaResult<(Vec<E4>, Vec<E4>)> {
     fn copy_back(values: &DeviceSlice<E4>, context: &ProverContext) -> Vec<E4> {
-        context.get_exec_stream().synchronize().unwrap();
         let mut host = unsafe { context.alloc_host_uninit_slice(values.len()) };
-        memory_copy(&mut host, values).unwrap();
+        memory_copy_async(&mut host, values, context.get_exec_stream()).unwrap();
+        context.get_exec_stream().synchronize().unwrap();
         unsafe { host.get_accessor().get().to_vec() }
     }
 
@@ -2753,13 +2752,14 @@ pub(crate) fn debug_initial_round_checkpoint_for_test(
         state.current_len /= 2;
     }
 
-    context.get_exec_stream().synchronize()?;
     let mut folded_monomial_form_host =
         alloc_static_pinned_vec_uninit(state.current_len, DEBUG_STATIC_HOST_LOG_CHUNK_SIZE)?;
-    memory_copy(
+    memory_copy_async(
         &mut folded_monomial_form_host,
         &state.sumchecked_poly_monomial_form[..state.current_len],
+        context.get_exec_stream(),
     )?;
+    context.get_exec_stream().synchronize()?;
     let folded_monomial_form = folded_monomial_form_host.to_vec();
 
     let oracle = GpuWhirExtensionOracle::from_device_monomial_coeffs(
@@ -2837,13 +2837,14 @@ pub(crate) fn debug_apply_initial_fold_challenge_for_test(
     fold_eq_poly_in_place_device(&mut debug_state.state, challenge, context)?;
     debug_state.state.current_len /= 2;
 
-    context.get_exec_stream().synchronize()?;
     let mut host =
         alloc_static_pinned_vec_uninit(debug_state.state.current_len, DEBUG_STATIC_HOST_LOG_CHUNK_SIZE)?;
-    memory_copy(
+    memory_copy_async(
         &mut host,
         &debug_state.state.sumchecked_poly_monomial_form[..debug_state.state.current_len],
+        context.get_exec_stream(),
     )?;
+    context.get_exec_stream().synchronize()?;
     Ok(host.to_vec())
 }
 
@@ -2853,7 +2854,7 @@ mod tests {
 
     use std::alloc::Global;
 
-    use era_cudart::memory::memory_copy;
+    use era_cudart::memory::memory_copy_async;
     use fft::{bitreverse_enumeration_inplace, Twiddles};
     use prover::gkr::sumcheck::eq_poly::make_eq_poly_in_full;
     use prover::gkr::whir::hypercube_to_monomial::multivariate_coeffs_into_hypercube_evals;
@@ -2878,21 +2879,21 @@ mod tests {
         let mut device = context
             .alloc(values.len(), AllocationPlacement::BestFit)
             .unwrap();
-        memory_copy(&mut device, values).unwrap();
+        memory_copy_async(&mut device, values, context.get_exec_stream()).unwrap();
         device
     }
 
     fn copy_back(values: &DeviceSlice<E4>, context: &ProverContext) -> Vec<E4> {
-        context.get_exec_stream().synchronize().unwrap();
         let mut host = unsafe { context.alloc_host_uninit_slice(values.len()) };
-        memory_copy(&mut host, values).unwrap();
+        memory_copy_async(&mut host, values, context.get_exec_stream()).unwrap();
+        context.get_exec_stream().synchronize().unwrap();
         unsafe { host.get_accessor().get().to_vec() }
     }
 
     fn copy_back_bf(values: &DeviceSlice<BF>, context: &ProverContext) -> Vec<BF> {
-        context.get_exec_stream().synchronize().unwrap();
         let mut host = unsafe { context.alloc_host_uninit_slice(values.len()) };
-        memory_copy(&mut host, values).unwrap();
+        memory_copy_async(&mut host, values, context.get_exec_stream()).unwrap();
+        context.get_exec_stream().synchronize().unwrap();
         unsafe { host.get_accessor().get().to_vec() }
     }
 
@@ -3050,7 +3051,7 @@ mod tests {
             .iter()
             .flat_map(|column| column.iter().copied())
             .collect::<Vec<_>>();
-        memory_copy(trace_holder.get_uninit_hypercube_evals_mut(), &flat).unwrap();
+        memory_copy_async(trace_holder.get_uninit_hypercube_evals_mut(), &flat, context.get_exec_stream()).unwrap();
         trace_holder
             .materialize_cosets_from_owned_hypercube(context)
             .unwrap();
@@ -3080,7 +3081,7 @@ mod tests {
             .iter()
             .flat_map(|column| column.iter().copied())
             .collect::<Vec<_>>();
-        memory_copy(trace_holder.get_uninit_hypercube_evals_mut(), &flat).unwrap();
+        memory_copy_async(trace_holder.get_uninit_hypercube_evals_mut(), &flat, context.get_exec_stream()).unwrap();
         trace_holder
             .materialize_cosets_from_owned_hypercube(context)
             .unwrap();
@@ -3595,13 +3596,11 @@ mod tests {
         let mut expected_head = vec![E4::ZERO; sample_len];
         let mut expected_mid = vec![E4::ZERO; sample_len];
         let mut expected_tail = vec![E4::ZERO; sample_len];
-        memory_copy(&mut expected_head, &evals[..sample_len]).unwrap();
-        memory_copy(&mut expected_mid, &evals[mid..mid + sample_len]).unwrap();
-        memory_copy(
-            &mut expected_tail,
-            &evals[trace_len - sample_len..trace_len],
-        )
-        .unwrap();
+        memory_copy_async(&mut expected_head, &evals[..sample_len], stream).unwrap();
+        memory_copy_async(&mut expected_mid, &evals[mid..mid + sample_len], stream).unwrap();
+        memory_copy_async(&mut expected_tail, &evals[trace_len - sample_len..trace_len], stream)
+            .unwrap();
+        stream.synchronize().unwrap();
 
         let mut point = context.alloc(24, AllocationPlacement::BestFit).unwrap();
         let coordinates = (0..24)
@@ -3633,9 +3632,11 @@ mod tests {
         let mut actual_head = vec![E4::ZERO; sample_len];
         let mut actual_mid = vec![E4::ZERO; sample_len];
         let mut actual_tail = vec![E4::ZERO; sample_len];
-        memory_copy(&mut actual_head, &evals[..sample_len]).unwrap();
-        memory_copy(&mut actual_mid, &evals[mid..mid + sample_len]).unwrap();
-        memory_copy(&mut actual_tail, &evals[trace_len - sample_len..trace_len]).unwrap();
+        memory_copy_async(&mut actual_head, &evals[..sample_len], stream).unwrap();
+        memory_copy_async(&mut actual_mid, &evals[mid..mid + sample_len], stream).unwrap();
+        memory_copy_async(&mut actual_tail, &evals[trace_len - sample_len..trace_len], stream)
+            .unwrap();
+        stream.synchronize().unwrap();
 
         assert_eq!(actual_head, expected_head);
         assert_eq!(actual_mid, expected_mid);
@@ -3669,9 +3670,11 @@ mod tests {
         let mut actual_head = vec![E4::ZERO; sample_len];
         let mut actual_mid = vec![E4::ZERO; sample_len];
         let mut actual_tail = vec![E4::ZERO; sample_len];
-        memory_copy(&mut actual_head, &values[..sample_len]).unwrap();
-        memory_copy(&mut actual_mid, &values[mid..mid + sample_len]).unwrap();
-        memory_copy(&mut actual_tail, &values[trace_len - sample_len..trace_len]).unwrap();
+        memory_copy_async(&mut actual_head, &values[..sample_len], stream).unwrap();
+        memory_copy_async(&mut actual_mid, &values[mid..mid + sample_len], stream).unwrap();
+        memory_copy_async(&mut actual_tail, &values[trace_len - sample_len..trace_len], stream)
+            .unwrap();
+        stream.synchronize().unwrap();
 
         let expected_for_index = |index: usize| {
             fill.pow(
