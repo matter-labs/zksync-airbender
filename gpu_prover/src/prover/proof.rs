@@ -315,12 +315,15 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
     context: &ProverContext,
 ) -> CudaResult<GpuGKRProofJob<'a>> {
     let stream = context.get_exec_stream();
+    let h2d_stream = context.get_h2d_stream();
     let mut callbacks = Callbacks::new();
     let proof = Arc::new(Mutex::new(None));
     let mut ranges = Vec::new();
     let proof_range = Range::new("gkr.proof")?;
     proof_range.start(stream)?;
 
+    let transfer_range = Range::new("gkr.proof.h2d_transfers")?;
+    transfer_range.start(h2d_stream)?;
     setup_transfer.schedule_transfer(context)?;
     if let Some(decoder_transfer) = decoder_transfer.as_mut() {
         decoder_transfer.schedule_transfer(context)?;
@@ -328,6 +331,8 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
     }
     tracing_data_transfer.schedule_transfer(context)?;
     tracing_data_transfer.transfer.ensure_transferred(context)?;
+    transfer_range.end(h2d_stream)?;
+    ranges.push(transfer_range);
     if let Some(mut inits_and_teardowns_transfer) = inits_and_teardowns_transfer {
         callbacks.extend(inits_and_teardowns_transfer.into_host_keepalive());
     }
@@ -376,6 +381,8 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
     let lookup_challenges_write_accessor = lookup_challenges_host.get_mut_accessor();
     let lookup_challenges_read_accessor = lookup_challenges_host.get_accessor();
     let external_challenges_for_seed = external_challenges.clone();
+    let transcript_init_range = Range::new("gkr.proof.transcript_init")?;
+    transcript_init_range.start(stream)?;
     callbacks.schedule(
         move || unsafe {
             let mut transcript_input = Vec::new();
@@ -397,6 +404,8 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
         },
         stream,
     )?;
+    transcript_init_range.end(stream)?;
+    ranges.push(transcript_init_range);
 
     let mut forward_setup = setup_transfer.schedule_forward_setup(
         &compiled_circuit,
@@ -423,6 +432,8 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
     let mut forward_setup_keepalive = forward_setup.into_host_keepalive();
 
     let backward_shared_state = make_deferred_backward_workflow_state();
+    let transcript_update_range = Range::new("gkr.proof.transcript_update")?;
+    transcript_update_range.start(stream)?;
     callbacks.schedule(
         {
             let backward_shared_state = Arc::clone(&backward_shared_state);
@@ -459,6 +470,8 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
         },
         stream,
     )?;
+    transcript_update_range.end(stream)?;
+    ranges.push(transcript_update_range);
 
     let backward_scheduled = backward_state.schedule_execute_backward_workflow_from_shared_state(
         compiled_circuit.clone(),
@@ -541,6 +554,8 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
     let backward_keepalive = backward_scheduled.into_host_keepalive();
     let setup_keepalive = setup_transfer.into_host_keepalive();
 
+    let finalize_range = Range::new("gkr.proof.finalize")?;
+    finalize_range.start(stream)?;
     callbacks.schedule(
         {
             let proof_slot = Arc::clone(&proof);
@@ -569,6 +584,8 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
         },
         stream,
     )?;
+    finalize_range.end(stream)?;
+    ranges.push(finalize_range);
 
     {
         let event = CudaEvent::create_with_flags(CudaEventCreateFlags::DISABLE_TIMING)?;
