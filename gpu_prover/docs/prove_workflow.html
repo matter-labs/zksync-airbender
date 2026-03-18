@@ -1,0 +1,975 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GPU prove() Workflow</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --card: #161b22;
+    --border: #30363d;
+    --text: #c9d1d9;
+    --heading: #f0f6fc;
+    --blue: #58a6ff;
+    --green: #3fb950;
+    --orange: #d29922;
+    --red: #f85149;
+    --cyan: #79c0ff;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding: 40px;
+    line-height: 1.6;
+  }
+  h1 { color: var(--heading); font-size: 2em; margin-bottom: 8px; }
+  h2 { color: var(--blue); font-size: 1.5em; margin: 48px 0 16px 0; }
+  p, li { color: var(--text); margin-bottom: 8px; font-size: 0.95em; }
+  .subtitle { color: #8b949e; font-size: 1.1em; margin-bottom: 32px; }
+  .diagram-container {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px;
+    margin: 20px 0;
+    overflow-x: auto;
+  }
+  .diagram-container svg { display: block; margin: 0 auto; }
+  .note {
+    background: #1c2128;
+    border-left: 3px solid var(--blue);
+    padding: 12px 16px;
+    border-radius: 0 8px 8px 0;
+    margin: 16px 0;
+    font-size: 0.9em;
+  }
+  .section { margin-bottom: 48px; }
+</style>
+</head>
+<body>
+
+<h1>GPU prove() Workflow</h1>
+<p class="subtitle">GKR + WHIR proof generation pipeline &mdash; stage-by-stage data flow</p>
+
+<!-- ================================================================== -->
+<!-- SECTION 1: HIGH-LEVEL PIPELINE -->
+<!-- ================================================================== -->
+<div class="section">
+<h2>1. High-Level Pipeline</h2>
+<p>The <code>prove()</code> function (proof.rs:304) orchestrates 6 GPU-compute stages interleaved with small host callbacks for Fiat-Shamir transcript hashing. Everything is enqueued asynchronously onto the GPU exec_stream; the host returns a <code>ProofJob</code> handle immediately.</p>
+
+<div class="diagram-container">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 810" width="1100" height="810">
+  <defs>
+    <marker id="arr" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#58a6ff"/></marker>
+    <marker id="arr-g" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#3fb950"/></marker>
+    <marker id="arr-o" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#d29922"/></marker>
+  </defs>
+
+  <!-- Host inputs -->
+  <rect x="30" y="20" width="1040" height="70" rx="10" fill="none" stroke="#30363d" stroke-width="1.5" stroke-dasharray="6,3"/>
+  <text x="550" y="40" text-anchor="middle" fill="#8b949e" font-size="12" font-weight="600">HOST INPUTS</text>
+  <text x="160" y="66" text-anchor="middle" fill="#c9d1d9" font-size="12">Compiled Circuit</text>
+  <text x="380" y="66" text-anchor="middle" fill="#c9d1d9" font-size="12">External Challenges</text>
+  <text x="620" y="66" text-anchor="middle" fill="#c9d1d9" font-size="12">Setup Data + Merkle Caches</text>
+  <text x="880" y="66" text-anchor="middle" fill="#c9d1d9" font-size="12">Witness / Trace Data</text>
+
+  <!-- H2D -->
+  <line x1="550" y1="90" x2="550" y2="118" stroke="#d29922" stroke-width="2" marker-end="url(#arr-o)"/>
+  <rect x="370" y="118" width="360" height="32" rx="6" fill="#2d1f00" stroke="#d29922" stroke-width="1.5"/>
+  <text x="550" y="139" text-anchor="middle" fill="#d29922" font-size="12" font-weight="600">H2D Transfer (h2d_stream, async DMA)</text>
+
+  <!-- Stage 1 -->
+  <line x1="550" y1="150" x2="550" y2="178" stroke="#58a6ff" stroke-width="2" marker-end="url(#arr)"/>
+  <rect x="280" y="178" width="540" height="60" rx="10" fill="#0d2137" stroke="#58a6ff" stroke-width="2"/>
+  <text x="550" y="202" text-anchor="middle" fill="#58a6ff" font-size="14" font-weight="700">Stage 1: Witness Generation + LDE + Merkle Commit</text>
+  <text x="550" y="224" text-anchor="middle" fill="#8b949e" font-size="11">GPU: build traces &rarr; lookup mappings &rarr; multiplicities &rarr; NTT &rarr; Blake2s trees &rarr; caps D2H</text>
+
+  <!-- Transcript Init -->
+  <line x1="550" y1="238" x2="550" y2="264" stroke="#3fb950" stroke-width="2" marker-end="url(#arr-g)"/>
+  <rect x="310" y="264" width="480" height="32" rx="6" fill="#0d2d0d" stroke="#3fb950" stroke-width="1.5"/>
+  <text x="550" y="285" text-anchor="middle" fill="#3fb950" font-size="12" font-weight="600">Transcript Init: hash all caps &rarr; seed, draw 3 lookup challenges</text>
+
+  <!-- Forward Setup -->
+  <line x1="550" y1="296" x2="550" y2="320" stroke="#58a6ff" stroke-width="2" marker-end="url(#arr)"/>
+  <rect x="330" y="320" width="440" height="32" rx="6" fill="#0d2137" stroke="#58a6ff" stroke-width="1.5"/>
+  <text x="550" y="341" text-anchor="middle" fill="#58a6ff" font-size="12" font-weight="600">Forward Setup: materialize lookup tables on GPU</text>
+
+  <!-- Stage 2 -->
+  <line x1="550" y1="352" x2="550" y2="376" stroke="#58a6ff" stroke-width="2" marker-end="url(#arr)"/>
+  <rect x="280" y="376" width="540" height="60" rx="10" fill="#0d2137" stroke="#58a6ff" stroke-width="2"/>
+  <text x="550" y="400" text-anchor="middle" fill="#58a6ff" font-size="14" font-weight="700">Stage 2: Forward Pass (GKR Dimension Reduction)</text>
+  <text x="550" y="422" text-anchor="middle" fill="#8b949e" font-size="11">GPU: layer-by-layer constraint eval &rarr; dimension reduction &rarr; explicit evals D2H (~128 E4)</text>
+
+  <!-- Transcript Update -->
+  <line x1="550" y1="436" x2="550" y2="462" stroke="#3fb950" stroke-width="2" marker-end="url(#arr-g)"/>
+  <rect x="280" y="462" width="540" height="32" rx="6" fill="#0d2d0d" stroke="#3fb950" stroke-width="1.5"/>
+  <text x="550" y="483" text-anchor="middle" fill="#3fb950" font-size="12" font-weight="600">Transcript Update: commit evals &rarr; draw evaluation_point + batching_challenge + top claims</text>
+
+  <!-- Stage 3 -->
+  <line x1="550" y1="494" x2="550" y2="518" stroke="#58a6ff" stroke-width="2" marker-end="url(#arr)"/>
+  <rect x="300" y="518" width="500" height="60" rx="10" fill="#0d2137" stroke="#58a6ff" stroke-width="2"/>
+  <text x="550" y="542" text-anchor="middle" fill="#58a6ff" font-size="14" font-weight="700">Stage 3: Backward Pass (Sumcheck)</text>
+  <text x="550" y="560" text-anchor="middle" fill="#8b949e" font-size="11">GPU kernels + host callbacks per round: reduce &rarr; commit to transcript &rarr; draw challenge</text>
+
+  <!-- Stage 4 -->
+  <line x1="550" y1="578" x2="550" y2="602" stroke="#58a6ff" stroke-width="2" marker-end="url(#arr)"/>
+  <rect x="320" y="602" width="460" height="50" rx="10" fill="#0d2137" stroke="#58a6ff" stroke-width="2"/>
+  <text x="550" y="622" text-anchor="middle" fill="#58a6ff" font-size="14" font-weight="700">Stage 4: Base Layer Claims</text>
+  <text x="550" y="640" text-anchor="middle" fill="#8b949e" font-size="11">GPU: compute eq(r,x) &rarr; reduce traces &rarr; per-column claim values</text>
+
+  <!-- Stage 5 -->
+  <line x1="550" y1="652" x2="550" y2="676" stroke="#58a6ff" stroke-width="2" marker-end="url(#arr)"/>
+  <rect x="260" y="676" width="580" height="60" rx="10" fill="#0d2137" stroke="#58a6ff" stroke-width="2"/>
+  <text x="550" y="700" text-anchor="middle" fill="#58a6ff" font-size="14" font-weight="700">Stage 5: WHIR / FRI Folding (Polynomial Commitment)</text>
+  <text x="550" y="720" text-anchor="middle" fill="#8b949e" font-size="11">GPU: batch polys &rarr; fold rounds (3-pt eval + fold) &rarr; Merkle oracles &rarr; PoW &rarr; query proofs</text>
+
+  <!-- Final Assembly -->
+  <line x1="550" y1="736" x2="550" y2="756" stroke="#3fb950" stroke-width="2" marker-end="url(#arr-g)"/>
+  <rect x="350" y="756" width="400" height="28" rx="6" fill="#0d2d0d" stroke="#3fb950" stroke-width="1.5"/>
+  <text x="550" y="775" text-anchor="middle" fill="#3fb950" font-size="12" font-weight="600">Final Assembly: collect all pieces &rarr; GKRProof</text>
+
+  <!-- Legend -->
+  <rect x="30" y="120" width="230" height="100" rx="8" fill="#161b22" stroke="#30363d"/>
+  <text x="40" y="140" fill="#8b949e" font-size="11" font-weight="600">COLOR LEGEND</text>
+  <rect x="40" y="150" width="12" height="12" rx="2" fill="#0d2137" stroke="#58a6ff"/>
+  <text x="58" y="161" fill="#c9d1d9" font-size="11">GPU compute (CUDA kernels)</text>
+  <rect x="40" y="168" width="12" height="12" rx="2" fill="#0d2d0d" stroke="#3fb950"/>
+  <text x="58" y="179" fill="#c9d1d9" font-size="11">Host callback (tiny: hash + draw)</text>
+  <rect x="40" y="186" width="12" height="12" rx="2" fill="#2d1f00" stroke="#d29922"/>
+  <text x="58" y="197" fill="#c9d1d9" font-size="11">H2D / D2H data transfer</text>
+</svg>
+</div>
+</div>
+
+<!-- ================================================================== -->
+<!-- SECTION 2: STAGE 1 -->
+<!-- ================================================================== -->
+<div class="section">
+<h2>2. Stage 1 &mdash; Witness Generation, LDE, and Merkle Commitment</h2>
+<p>The prover's opening move: commit to the witness before seeing any challenges. Raw execution trace is processed into committed polynomial evaluations. Everything in this stage runs on GPU except the tiny tree-cap readback.</p>
+
+<div class="diagram-container">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1040 600" width="1040" height="600">
+  <defs>
+    <marker id="a1" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#58a6ff"/></marker>
+    <marker id="a1o" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#d29922"/></marker>
+  </defs>
+
+  <!-- Inputs -->
+  <rect x="40" y="15" width="180" height="44" rx="6" fill="#1c2128" stroke="#30363d" stroke-width="1.5"/>
+  <text x="130" y="34" text-anchor="middle" fill="#c9d1d9" font-size="12" font-weight="600">Witness Trace</text>
+  <text x="130" y="50" text-anchor="middle" fill="#8b949e" font-size="10">(device, from H2D)</text>
+
+  <rect x="260" y="15" width="180" height="44" rx="6" fill="#1c2128" stroke="#30363d" stroke-width="1.5"/>
+  <text x="350" y="34" text-anchor="middle" fill="#c9d1d9" font-size="12" font-weight="600">Setup Polynomials</text>
+  <text x="350" y="50" text-anchor="middle" fill="#8b949e" font-size="10">(device, from H2D)</text>
+
+  <rect x="480" y="15" width="180" height="44" rx="6" fill="#1c2128" stroke="#30363d" stroke-width="1.5"/>
+  <text x="570" y="34" text-anchor="middle" fill="#c9d1d9" font-size="12" font-weight="600">Decoder Table</text>
+  <text x="570" y="50" text-anchor="middle" fill="#8b949e" font-size="10">(optional, device)</text>
+
+  <!-- Step 1: Witness value generation -->
+  <!-- Witness Trace → Build Memory Trace -->
+  <line x1="130" y1="59" x2="130" y2="88" stroke="#58a6ff" stroke-width="1.5" marker-end="url(#a1)"/>
+  <!-- Setup Polynomials → Build Witness Trace (dashed, both traces use setup) -->
+  <line x1="350" y1="59" x2="330" y2="88" stroke="#58a6ff" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#a1)"/>
+  <!-- Decoder Table → Build Witness Trace (dashed, optional input) -->
+  <line x1="570" y1="59" x2="400" y2="88" stroke="#58a6ff" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#a1)"/>
+
+  <rect x="30" y="88" width="200" height="50" rx="8" fill="#0d2137" stroke="#58a6ff" stroke-width="1.5"/>
+  <text x="130" y="108" text-anchor="middle" fill="#58a6ff" font-size="12" font-weight="600">Build Memory Trace</text>
+  <text x="130" y="126" text-anchor="middle" fill="#8b949e" font-size="10">addr, timestamp, r/w values</text>
+
+  <rect x="260" y="88" width="200" height="50" rx="8" fill="#0d2137" stroke="#58a6ff" stroke-width="1.5"/>
+  <text x="360" y="108" text-anchor="middle" fill="#58a6ff" font-size="12" font-weight="600">Build Witness Trace</text>
+  <text x="360" y="126" text-anchor="middle" fill="#8b949e" font-size="10">registers, flags, intermediates</text>
+
+  <!-- Step 2: Lookup mappings -->
+  <line x1="130" y1="138" x2="130" y2="166" stroke="#58a6ff" stroke-width="1.5" marker-end="url(#a1)"/>
+  <line x1="360" y1="138" x2="360" y2="166" stroke="#58a6ff" stroke-width="1.5" marker-end="url(#a1)"/>
+
+  <rect x="30" y="166" width="430" height="50" rx="8" fill="#0d2137" stroke="#58a6ff" stroke-width="1.5"/>
+  <text x="245" y="186" text-anchor="middle" fill="#58a6ff" font-size="12" font-weight="600">Generate Lookup Mappings (GPU kernels)</text>
+  <text x="245" y="204" text-anchor="middle" fill="#8b949e" font-size="10">generic family (table indices) &bull; range-check 16-bit &bull; timestamp</text>
+
+  <!-- Step 3: Multiplicities -->
+  <line x1="245" y1="216" x2="245" y2="242" stroke="#58a6ff" stroke-width="1.5" marker-end="url(#a1)"/>
+
+  <rect x="30" y="242" width="430" height="50" rx="8" fill="#0d2137" stroke="#58a6ff" stroke-width="1.5"/>
+  <text x="245" y="262" text-anchor="middle" fill="#58a6ff" font-size="12" font-weight="600">Compute Multiplicities (GPU: sort + RLE + scatter)</text>
+  <text x="245" y="280" text-anchor="middle" fill="#8b949e" font-size="10">For each lookup type: radix sort mappings &rarr; run-length encode &rarr; write counts to witness cols</text>
+
+  <!-- Step 4: NTT/LDE -->
+  <line x1="130" y1="292" x2="130" y2="318" stroke="#58a6ff" stroke-width="1.5" marker-end="url(#a1)"/>
+  <line x1="360" y1="292" x2="360" y2="318" stroke="#58a6ff" stroke-width="1.5" marker-end="url(#a1)"/>
+
+  <rect x="30" y="318" width="200" height="50" rx="8" fill="#0d2137" stroke="#79c0ff" stroke-width="1.5"/>
+  <text x="130" y="338" text-anchor="middle" fill="#79c0ff" font-size="12" font-weight="600">NTT / LDE</text>
+  <text x="130" y="356" text-anchor="middle" fill="#8b949e" font-size="10">memory: coset evaluations</text>
+
+  <rect x="260" y="318" width="200" height="50" rx="8" fill="#0d2137" stroke="#79c0ff" stroke-width="1.5"/>
+  <text x="360" y="338" text-anchor="middle" fill="#79c0ff" font-size="12" font-weight="600">NTT / LDE</text>
+  <text x="360" y="356" text-anchor="middle" fill="#8b949e" font-size="10">witness: coset evaluations</text>
+
+  <!-- Step 5: Merkle tree -->
+  <line x1="130" y1="368" x2="130" y2="394" stroke="#58a6ff" stroke-width="1.5" marker-end="url(#a1)"/>
+  <line x1="360" y1="368" x2="360" y2="394" stroke="#58a6ff" stroke-width="1.5" marker-end="url(#a1)"/>
+
+  <rect x="30" y="394" width="200" height="50" rx="8" fill="#0d2137" stroke="#58a6ff" stroke-width="1.5"/>
+  <text x="130" y="414" text-anchor="middle" fill="#58a6ff" font-size="12" font-weight="600">Blake2s Merkle Tree</text>
+  <text x="130" y="432" text-anchor="middle" fill="#8b949e" font-size="10">GPU: hash leaves &rarr; nodes</text>
+
+  <rect x="260" y="394" width="200" height="50" rx="8" fill="#0d2137" stroke="#58a6ff" stroke-width="1.5"/>
+  <text x="360" y="414" text-anchor="middle" fill="#58a6ff" font-size="12" font-weight="600">Blake2s Merkle Tree</text>
+  <text x="360" y="432" text-anchor="middle" fill="#8b949e" font-size="10">GPU: hash leaves &rarr; nodes</text>
+
+  <!-- D2H caps -->
+  <line x1="130" y1="444" x2="130" y2="470" stroke="#d29922" stroke-width="1.5" marker-end="url(#a1o)"/>
+  <line x1="360" y1="444" x2="360" y2="470" stroke="#d29922" stroke-width="1.5" marker-end="url(#a1o)"/>
+
+  <rect x="50" y="470" width="160" height="26" rx="5" fill="#2d1f00" stroke="#d29922"/>
+  <text x="130" y="488" text-anchor="middle" fill="#d29922" font-size="10">tree caps D2H (tiny)</text>
+  <rect x="280" y="470" width="160" height="26" rx="5" fill="#2d1f00" stroke="#d29922"/>
+  <text x="360" y="488" text-anchor="middle" fill="#d29922" font-size="10">tree caps D2H (tiny)</text>
+
+  <!-- Lookup mappings (side box) -->
+  <rect x="530" y="166" width="240" height="126" rx="8" fill="#0d2137" stroke="#58a6ff" stroke-width="1.5"/>
+  <text x="650" y="190" text-anchor="middle" fill="#58a6ff" font-size="12" font-weight="600">Lookup Mappings (device)</text>
+  <text x="650" y="212" text-anchor="middle" fill="#8b949e" font-size="10">generic_family: u32 indices</text>
+  <text x="650" y="228" text-anchor="middle" fill="#8b949e" font-size="10">range_check_16: u32 indices</text>
+  <text x="650" y="244" text-anchor="middle" fill="#8b949e" font-size="10">timestamp: u32 indices</text>
+  <text x="650" y="268" text-anchor="middle" fill="#8b949e" font-size="10">(consumed by Forward Pass,</text>
+  <text x="650" y="282" text-anchor="middle" fill="#8b949e" font-size="10">released per-type after last use)</text>
+
+  <!-- Outputs -->
+  <rect x="30" y="516" width="740" height="70" rx="10" fill="none" stroke="#30363d" stroke-width="1.5" stroke-dasharray="6,3"/>
+  <text x="400" y="536" text-anchor="middle" fill="#c9d1d9" font-size="12" font-weight="600">STAGE 1 OUTPUTS</text>
+  <rect x="50" y="548" width="210" height="26" rx="5" fill="#1c2128" stroke="#58a6ff"/>
+  <text x="155" y="566" text-anchor="middle" fill="#79c0ff" font-size="10">memory_trace_holder (device)</text>
+  <rect x="280" y="548" width="210" height="26" rx="5" fill="#1c2128" stroke="#58a6ff"/>
+  <text x="385" y="566" text-anchor="middle" fill="#79c0ff" font-size="10">witness_trace_holder (device)</text>
+  <rect x="510" y="548" width="210" height="26" rx="5" fill="#1c2128" stroke="#58a6ff"/>
+  <text x="615" y="566" text-anchor="middle" fill="#79c0ff" font-size="10">lookup_mappings (device)</text>
+
+  <text x="400" y="600" text-anchor="middle" fill="#8b949e" font-size="10">Each trace_holder contains: raw hypercube evals + LDE cosets + Merkle trees (device) + tree caps (host)</text>
+</svg>
+</div>
+</div>
+
+<!-- ================================================================== -->
+<!-- SECTION 3: STAGE 2 FORWARD PASS -->
+<!-- ================================================================== -->
+<div class="section">
+<h2>3. Stage 2 &mdash; Forward Pass (GKR Dimension Reduction)</h2>
+<p>The GKR protocol's core computation. The circuit has multiple layers. At each layer, all constraints are evaluated on GPU and the polynomial domain is halved. After all layers, a final dimension reduction collapses the 4 output types (PermutationProduct, Lookup16Bits, LookupTimestamps, GenericLookup) down to small polynomials that are read back to host.</p>
+
+<div class="diagram-container">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1040 680" width="1040" height="680">
+  <defs>
+    <marker id="a2" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#58a6ff"/></marker>
+    <marker id="a2o" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#d29922"/></marker>
+  </defs>
+
+  <!-- Inputs -->
+  <rect x="30" y="10" width="980" height="55" rx="8" fill="none" stroke="#30363d" stroke-dasharray="5,3"/>
+  <text x="520" y="28" text-anchor="middle" fill="#8b949e" font-size="11" font-weight="600">INPUTS</text>
+  <text x="140" y="50" text-anchor="middle" fill="#c9d1d9" font-size="11">trace_holders (device)</text>
+  <text x="340" y="50" text-anchor="middle" fill="#c9d1d9" font-size="11">lookup_mappings (device)</text>
+  <text x="540" y="50" text-anchor="middle" fill="#c9d1d9" font-size="11">forward_setup (GPU lookup tables)</text>
+  <text x="760" y="50" text-anchor="middle" fill="#c9d1d9" font-size="11">3 lookup challenges</text>
+  <text x="940" y="50" text-anchor="middle" fill="#c9d1d9" font-size="11">ext. challenges</text>
+
+  <line x1="520" y1="65" x2="520" y2="92" stroke="#58a6ff" stroke-width="1.5" marker-end="url(#a2)"/>
+
+  <!-- Bootstrap -->
+  <rect x="280" y="92" width="480" height="32" rx="6" fill="#0d2137" stroke="#58a6ff" stroke-width="1.5"/>
+  <text x="520" y="113" text-anchor="middle" fill="#58a6ff" font-size="12" font-weight="600">Bootstrap GKRStorage: bind setup + memory + witness columns at layer 0</text>
+
+  <line x1="520" y1="124" x2="520" y2="150" stroke="#58a6ff" stroke-width="1.5" marker-end="url(#a2)"/>
+
+  <!-- Layer loop -->
+  <rect x="80" y="150" width="880" height="300" rx="12" fill="#0a1520" stroke="#58a6ff" stroke-width="2"/>
+  <text x="520" y="175" text-anchor="middle" fill="#58a6ff" font-size="13" font-weight="700">FOR EACH GKR CIRCUIT LAYER  (all GPU)</text>
+
+  <!-- Current layer -->
+  <rect x="140" y="192" width="280" height="34" rx="6" fill="#1c2128" stroke="#30363d"/>
+  <text x="280" y="214" text-anchor="middle" fill="#c9d1d9" font-size="11">Layer k: polynomials of size 2<tspan baseline-shift="super" font-size="9">n&minus;k</tspan></text>
+
+  <line x1="280" y1="226" x2="280" y2="252" stroke="#58a6ff" stroke-width="1.5" marker-end="url(#a2)"/>
+
+  <!-- Cached relations -->
+  <rect x="120" y="252" width="360" height="90" rx="8" fill="#0d2137" stroke="#79c0ff" stroke-width="1.5"/>
+  <text x="300" y="273" text-anchor="middle" fill="#79c0ff" font-size="12" font-weight="600">Cache Relations (GPU)</text>
+  <text x="300" y="293" text-anchor="middle" fill="#8b949e" font-size="10">SingleColumnLookup: gather from range-check/timestamp tables</text>
+  <text x="300" y="308" text-anchor="middle" fill="#8b949e" font-size="10">VectorizedLookup: gather from generic lookup tables</text>
+  <text x="300" y="323" text-anchor="middle" fill="#8b949e" font-size="10">MemoryTuple: build permutation argument polynomial</text>
+
+  <line x1="300" y1="342" x2="300" y2="365" stroke="#58a6ff" stroke-width="1.5" marker-end="url(#a2)"/>
+
+  <!-- Gate constraints -->
+  <rect x="120" y="365" width="360" height="70" rx="8" fill="#0d2137" stroke="#79c0ff" stroke-width="1.5"/>
+  <text x="300" y="386" text-anchor="middle" fill="#79c0ff" font-size="12" font-weight="600">Gate Constraints (GPU)</text>
+  <text x="300" y="404" text-anchor="middle" fill="#8b949e" font-size="10">Copy, TrivialProduct, MaskIntoIdentityProduct,</text>
+  <text x="300" y="419" text-anchor="middle" fill="#8b949e" font-size="10">LookupPair variants, InitialGrandProduct</text>
+
+  <!-- Loop back: route well outside the box border (x=80) -->
+  <path d="M 120,430 L 50,430 L 50,210 L 140,210" fill="none" stroke="#58a6ff" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#a2)"/>
+  <text x="36" y="320" text-anchor="middle" fill="#58a6ff" font-size="10" transform="rotate(-90,36,320)">next layer</text>
+
+  <!-- Side: storage -->
+  <rect x="540" y="192" width="380" height="102" rx="8" fill="#1c2128" stroke="#30363d" stroke-width="1.5"/>
+  <text x="730" y="215" text-anchor="middle" fill="#d29922" font-size="12" font-weight="600">GKRStorage (device)</text>
+  <text x="730" y="237" text-anchor="middle" fill="#c9d1d9" font-size="10">Per layer: BTreeMap&lt;GKRAddress &rarr; Polynomial&gt;</text>
+  <text x="730" y="255" text-anchor="middle" fill="#c9d1d9" font-size="10">Base field (BF) + Extension field (E4) polys</text>
+  <text x="730" y="275" text-anchor="middle" fill="#8b949e" font-size="10">Consumed by backward pass, then purged layer-by-layer</text>
+
+  <!-- Side: resource release -->
+  <rect x="540" y="316" width="380" height="80" rx="8" fill="#1c2128" stroke="#30363d" stroke-width="1.5"/>
+  <text x="730" y="338" text-anchor="middle" fill="#d29922" font-size="12" font-weight="600">Resource Release (per type)</text>
+  <text x="730" y="358" text-anchor="middle" fill="#8b949e" font-size="10">generic_mapping freed after last VectorizedLookup layer</text>
+  <text x="730" y="374" text-anchor="middle" fill="#8b949e" font-size="10">range_check_16 freed after last SingleColumnLookup(16) layer</text>
+  <text x="730" y="390" text-anchor="middle" fill="#8b949e" font-size="10">timestamp freed after last SingleColumnLookup(ts) layer</text>
+
+  <!-- Dimension reduction -->
+  <line x1="520" y1="450" x2="520" y2="476" stroke="#58a6ff" stroke-width="2" marker-end="url(#a2)"/>
+
+  <rect x="160" y="476" width="720" height="70" rx="10" fill="#0d2137" stroke="#58a6ff" stroke-width="2"/>
+  <text x="520" y="498" text-anchor="middle" fill="#58a6ff" font-size="13" font-weight="700">Dimension Reduction (GPU, multi-round)</text>
+  <text x="520" y="516" text-anchor="middle" fill="#c9d1d9" font-size="11">Each round halves the polynomial size:</text>
+  <text x="520" y="534" text-anchor="middle" fill="#8b949e" font-size="10">PermutationProduct: new[i] = old[2i] &times; old[2i+1] &nbsp;&nbsp;|&nbsp;&nbsp; Lookups: new_num = num_even &times; den_odd + num_odd &times; den_even, new_den = den_even &times; den_odd</text>
+
+  <!-- Readback -->
+  <line x1="520" y1="546" x2="520" y2="572" stroke="#d29922" stroke-width="2" marker-end="url(#a2o)"/>
+
+  <rect x="250" y="572" width="540" height="32" rx="6" fill="#2d1f00" stroke="#d29922" stroke-width="1.5"/>
+  <text x="520" y="593" text-anchor="middle" fill="#d29922" font-size="12" font-weight="600">D2H: explicit evaluations &mdash; 4 types &times; 2 polys &times; ~16 E4 values &asymp; 128 E4 total (tiny)</text>
+
+  <!-- Outputs -->
+  <rect x="80" y="624" width="880" height="50" rx="10" fill="none" stroke="#30363d" stroke-width="1.5" stroke-dasharray="6,3"/>
+  <text x="520" y="642" text-anchor="middle" fill="#c9d1d9" font-size="12" font-weight="600">STAGE 2 OUTPUTS</text>
+  <rect x="100" y="650" width="300" height="20" rx="4" fill="#1c2128" stroke="#58a6ff"/>
+  <text x="250" y="664" text-anchor="middle" fill="#79c0ff" font-size="10">GKRStorage: all layer polynomials (device)</text>
+  <rect x="430" y="650" width="300" height="20" rx="4" fill="#2d1f00" stroke="#d29922"/>
+  <text x="580" y="664" text-anchor="middle" fill="#d29922" font-size="10">explicit_evaluations (host, ~128 E4)</text>
+  <rect x="760" y="650" width="180" height="20" rx="4" fill="#1c2128" stroke="#30363d"/>
+  <text x="850" y="664" text-anchor="middle" fill="#8b949e" font-size="10">dim_reducing_inputs</text>
+</svg>
+</div>
+</div>
+
+<!-- ================================================================== -->
+<!-- SECTION 4: STAGE 3 BACKWARD PASS -->
+<!-- ================================================================== -->
+<div class="section">
+<h2>4. Stage 3 &mdash; Backward Pass (Sumcheck Protocol)</h2>
+<p>"Was the forward dimension reduction done correctly?" The backward pass proves it via sumcheck, layer by layer top&rarr;base. Each layer's sumcheck has <b>multiple rounds</b>, each consisting of a GPU reduction kernel followed by a tiny host callback (commit univariate coefficients to transcript, draw next challenge).</p>
+
+<div class="diagram-container">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1040 600" width="1040" height="600">
+  <defs>
+    <marker id="a3" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#58a6ff"/></marker>
+    <marker id="a3g" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#3fb950"/></marker>
+  </defs>
+
+  <!-- Inputs -->
+  <rect x="180" y="10" width="680" height="50" rx="8" fill="none" stroke="#30363d" stroke-dasharray="5,3"/>
+  <text x="520" y="28" text-anchor="middle" fill="#8b949e" font-size="11" font-weight="600">FROM TRANSCRIPT UPDATE CALLBACK (via backward_shared_state)</text>
+  <text x="280" y="47" text-anchor="middle" fill="#c9d1d9" font-size="11">top_layer_claims</text>
+  <text x="460" y="47" text-anchor="middle" fill="#c9d1d9" font-size="11">evaluation_point</text>
+  <text x="640" y="47" text-anchor="middle" fill="#c9d1d9" font-size="11">batching_challenge</text>
+  <text x="790" y="47" text-anchor="middle" fill="#c9d1d9" font-size="11">seed</text>
+
+  <line x1="520" y1="60" x2="520" y2="88" stroke="#58a6ff" stroke-width="1.5" marker-end="url(#a3)"/>
+
+  <!-- Outer layer loop -->
+  <rect x="60" y="88" width="920" height="410" rx="12" fill="#0a1520" stroke="#58a6ff" stroke-width="2"/>
+  <text x="520" y="114" text-anchor="middle" fill="#58a6ff" font-size="13" font-weight="700">FOR EACH LAYER  (top &rarr; base)</text>
+
+  <!-- Layer start callback -->
+  <rect x="120" y="130" width="400" height="30" rx="6" fill="#0d2d0d" stroke="#3fb950" stroke-width="1.5"/>
+  <text x="320" y="150" text-anchor="middle" fill="#3fb950" font-size="11" font-weight="600">Host: read claims from shared state, batch with challenge powers</text>
+
+  <line x1="320" y1="160" x2="320" y2="184" stroke="#58a6ff" stroke-width="1.5" marker-end="url(#a3)"/>
+
+  <!-- Inner round loop -->
+  <rect x="100" y="184" width="540" height="240" rx="10" fill="#0c1825" stroke="#79c0ff" stroke-width="1.5"/>
+  <text x="370" y="208" text-anchor="middle" fill="#79c0ff" font-size="12" font-weight="700">FOR EACH SUMCHECK ROUND</text>
+
+  <!-- GPU kernel -->
+  <rect x="130" y="222" width="340" height="46" rx="6" fill="#0d2137" stroke="#58a6ff" stroke-width="1.5"/>
+  <text x="300" y="240" text-anchor="middle" fill="#58a6ff" font-size="11" font-weight="600">GPU: round kernel (fold + evaluate)</text>
+  <text x="300" y="257" text-anchor="middle" fill="#8b949e" font-size="10">Pairwise or lookup continuation at current fold level</text>
+
+  <line x1="300" y1="268" x2="300" y2="290" stroke="#58a6ff" stroke-width="1.5" marker-end="url(#a3)"/>
+
+  <!-- GPU reduction -->
+  <rect x="130" y="290" width="340" height="46" rx="6" fill="#0d2137" stroke="#58a6ff" stroke-width="1.5"/>
+  <text x="300" y="308" text-anchor="middle" fill="#58a6ff" font-size="11" font-weight="600">GPU: build EQ values + weight + batch_reduce</text>
+  <text x="300" y="325" text-anchor="middle" fill="#8b949e" font-size="10">&rarr; c0, c2 coefficients (2 values D2H)</text>
+
+  <line x1="300" y1="336" x2="300" y2="358" stroke="#3fb950" stroke-width="1.5" marker-end="url(#a3g)"/>
+
+  <!-- Host callback -->
+  <rect x="130" y="358" width="340" height="52" rx="6" fill="#0d2d0d" stroke="#3fb950" stroke-width="1.5"/>
+  <text x="300" y="376" text-anchor="middle" fill="#3fb950" font-size="11" font-weight="600">Host: univariate from c0, c2</text>
+  <text x="300" y="394" text-anchor="middle" fill="#8b949e" font-size="10">Commit coefficients &rarr; transcript &rarr; draw folding challenge r</text>
+
+  <!-- Loop back: route outside the inner round loop box (border at x=100) -->
+  <path d="M 130,400 L 70,400 L 70,240 L 130,240" fill="none" stroke="#79c0ff" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#a3)"/>
+
+  <!-- Side: what's produced per round -->
+  <rect x="680" y="130" width="280" height="110" rx="8" fill="#1c2128" stroke="#30363d" stroke-width="1.5"/>
+  <text x="820" y="152" text-anchor="middle" fill="#d29922" font-size="12" font-weight="600">Stored per round</text>
+  <text x="820" y="174" text-anchor="middle" fill="#c9d1d9" font-size="10">Univariate coefficients [E4; 4]</text>
+  <text x="820" y="192" text-anchor="middle" fill="#c9d1d9" font-size="10">Folding challenge r</text>
+  <text x="820" y="216" text-anchor="middle" fill="#8b949e" font-size="10">(verifier reconstructs and</text>
+  <text x="820" y="232" text-anchor="middle" fill="#8b949e" font-size="10">checks each round)</text>
+
+  <!-- Final readback -->
+  <rect x="680" y="270" width="280" height="100" rx="8" fill="#1c2128" stroke="#30363d" stroke-width="1.5"/>
+  <text x="820" y="292" text-anchor="middle" fill="#d29922" font-size="12" font-weight="600">After all rounds in layer</text>
+  <text x="820" y="314" text-anchor="middle" fill="#c9d1d9" font-size="10">GPU: read final evaluations D2H</text>
+  <text x="820" y="334" text-anchor="middle" fill="#3fb950" font-size="10">Host: commit evals, draw 3 challenges</text>
+  <text x="820" y="354" text-anchor="middle" fill="#3fb950" font-size="10">&rarr; new claim_point, new claims</text>
+
+  <!-- Layer storage purge -->
+  <rect x="680" y="400" width="280" height="56" rx="6" fill="#1c2128" stroke="#30363d" stroke-width="1.5"/>
+  <text x="820" y="420" text-anchor="middle" fill="#8b949e" font-size="11" font-weight="600">purge_up_to_layer(k)</text>
+  <text x="820" y="440" text-anchor="middle" fill="#8b949e" font-size="10">Free consumed GKRStorage layers</text>
+
+  <!-- Outer loop back: exits bottom of inner content, goes left outside box, up, re-enters at top -->
+  <path d="M 320,424 L 320,480 L 36,480 L 36,145 L 120,145" fill="none" stroke="#58a6ff" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#a3)"/>
+  <text x="22" y="310" text-anchor="middle" fill="#58a6ff" font-size="10" transform="rotate(-90,22,310)">next layer</text>
+
+  <!-- Outputs -->
+  <rect x="60" y="515" width="920" height="70" rx="10" fill="none" stroke="#30363d" stroke-width="1.5" stroke-dasharray="6,3"/>
+  <text x="520" y="535" text-anchor="middle" fill="#c9d1d9" font-size="12" font-weight="600">STAGE 3 OUTPUTS (in backward_shared_state)</text>
+  <rect x="80" y="548" width="340" height="26" rx="5" fill="#1c2128" stroke="#30363d"/>
+  <text x="250" y="566" text-anchor="middle" fill="#c9d1d9" font-size="10">sumcheck_intermediate_values: per-layer univariate proofs</text>
+  <rect x="450" y="548" width="260" height="26" rx="5" fill="#1c2128" stroke="#30363d"/>
+  <text x="580" y="566" text-anchor="middle" fill="#c9d1d9" font-size="10">base-layer eval_point (Vec&lt;E4&gt;)</text>
+  <rect x="740" y="548" width="220" height="26" rx="5" fill="#1c2128" stroke="#30363d"/>
+  <text x="850" y="566" text-anchor="middle" fill="#c9d1d9" font-size="10">base-layer claims + seed</text>
+</svg>
+</div>
+</div>
+
+<!-- ================================================================== -->
+<!-- SECTION 5: STAGE 4 BASE LAYER CLAIMS -->
+<!-- ================================================================== -->
+<div class="section">
+<h2>5. Stage 4 &mdash; Base Layer Claims</h2>
+<p>The backward pass ended with: "the base-layer polynomials should evaluate to X at random point r." This stage computes those evaluations on GPU from the committed trace data (still on device from Stage 1). It uses the equality polynomial eq(r,x) and batch reductions.</p>
+
+<div class="diagram-container">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 400" width="960" height="400">
+  <defs>
+    <marker id="a4" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#58a6ff"/></marker>
+    <marker id="a4o" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#d29922"/></marker>
+  </defs>
+
+  <!-- Inputs -->
+  <rect x="280" y="10" width="400" height="42" rx="6" fill="#1c2128" stroke="#30363d"/>
+  <text x="480" y="28" text-anchor="middle" fill="#c9d1d9" font-size="11" font-weight="600">evaluation_point r (from backward_shared_state, via closure)</text>
+  <text x="480" y="44" text-anchor="middle" fill="#8b949e" font-size="10">+ claims for cached relations at base layer</text>
+
+  <line x1="480" y1="52" x2="480" y2="80" stroke="#58a6ff" stroke-width="1.5" marker-end="url(#a4)"/>
+
+  <!-- EQ poly -->
+  <rect x="280" y="80" width="400" height="36" rx="6" fill="#0d2137" stroke="#58a6ff" stroke-width="1.5"/>
+  <text x="480" y="103" text-anchor="middle" fill="#58a6ff" font-size="12" font-weight="600">GPU: copy point to device &rarr; build eq(r, x) polynomial</text>
+
+  <line x1="480" y1="116" x2="480" y2="146" stroke="#58a6ff" stroke-width="1.5" marker-end="url(#a4)"/>
+
+  <!-- Three parallel reductions -->
+  <rect x="30" y="146" width="260" height="120" rx="8" fill="#0d2137" stroke="#58a6ff" stroke-width="1.5"/>
+  <text x="160" y="168" text-anchor="middle" fill="#58a6ff" font-size="12" font-weight="600">Memory Trace (GPU)</text>
+  <text x="160" y="190" text-anchor="middle" fill="#c9d1d9" font-size="10">For each column (batches of 8):</text>
+  <text x="160" y="208" text-anchor="middle" fill="#c9d1d9" font-size="10">weighted = col[i] &times; eq[i]</text>
+  <text x="160" y="226" text-anchor="middle" fill="#c9d1d9" font-size="10">claim = CUB reduce_sum(weighted)</text>
+  <text x="160" y="252" text-anchor="middle" fill="#8b949e" font-size="10">&rarr; one E4 per column</text>
+
+  <rect x="340" y="146" width="260" height="120" rx="8" fill="#0d2137" stroke="#58a6ff" stroke-width="1.5"/>
+  <text x="470" y="168" text-anchor="middle" fill="#58a6ff" font-size="12" font-weight="600">Witness Trace (GPU)</text>
+  <text x="470" y="190" text-anchor="middle" fill="#c9d1d9" font-size="10">For each column (batches of 8):</text>
+  <text x="470" y="208" text-anchor="middle" fill="#c9d1d9" font-size="10">weighted = col[i] &times; eq[i]</text>
+  <text x="470" y="226" text-anchor="middle" fill="#c9d1d9" font-size="10">claim = CUB reduce_sum(weighted)</text>
+  <text x="470" y="252" text-anchor="middle" fill="#8b949e" font-size="10">&rarr; one E4 per column</text>
+
+  <rect x="650" y="146" width="260" height="120" rx="8" fill="#0d2137" stroke="#58a6ff" stroke-width="1.5"/>
+  <text x="780" y="168" text-anchor="middle" fill="#58a6ff" font-size="12" font-weight="600">Setup Trace (GPU)</text>
+  <text x="780" y="190" text-anchor="middle" fill="#c9d1d9" font-size="10">For each column (batches of 8):</text>
+  <text x="780" y="208" text-anchor="middle" fill="#c9d1d9" font-size="10">weighted = col[i] &times; eq[i]</text>
+  <text x="780" y="226" text-anchor="middle" fill="#c9d1d9" font-size="10">claim = CUB reduce_sum(weighted)</text>
+  <text x="780" y="252" text-anchor="middle" fill="#8b949e" font-size="10">&rarr; one E4 per column</text>
+
+  <!-- D2H -->
+  <line x1="160" y1="266" x2="160" y2="296" stroke="#d29922" stroke-width="1.5" marker-end="url(#a4o)"/>
+  <line x1="470" y1="266" x2="470" y2="296" stroke="#d29922" stroke-width="1.5" marker-end="url(#a4o)"/>
+  <line x1="780" y1="266" x2="780" y2="296" stroke="#d29922" stroke-width="1.5" marker-end="url(#a4o)"/>
+
+  <rect x="60" y="296" width="200" height="24" rx="5" fill="#2d1f00" stroke="#d29922"/>
+  <text x="160" y="313" text-anchor="middle" fill="#d29922" font-size="10">mem_polys_claims (host)</text>
+  <rect x="370" y="296" width="200" height="24" rx="5" fill="#2d1f00" stroke="#d29922"/>
+  <text x="470" y="313" text-anchor="middle" fill="#d29922" font-size="10">wit_polys_claims (host)</text>
+  <rect x="680" y="296" width="200" height="24" rx="5" fill="#2d1f00" stroke="#d29922"/>
+  <text x="780" y="313" text-anchor="middle" fill="#d29922" font-size="10">setup_polys_claims (host)</text>
+
+  <!-- Final callback -->
+  <line x1="470" y1="320" x2="470" y2="348" stroke="#3fb950" stroke-width="1.5" marker-end="url(#a4)"/>
+  <rect x="230" y="348" width="480" height="32" rx="6" fill="#0d2d0d" stroke="#3fb950" stroke-width="1.5"/>
+  <text x="470" y="369" text-anchor="middle" fill="#3fb950" font-size="11" font-weight="600">Host callback: aggregate batched claims + fill cached dependency claims &rarr; shared state</text>
+
+  <text x="480" y="400" text-anchor="middle" fill="#8b949e" font-size="10">Output: base_layer_claims_shared_state (Arc&lt;Mutex&gt;) with mem/wit/setup claim vectors + completed_claims map</text>
+</svg>
+</div>
+</div>
+
+<!-- ================================================================== -->
+<!-- SECTION 6: STAGE 5 WHIR/FRI -->
+<!-- ================================================================== -->
+<div class="section">
+<h2>6. Stage 5 &mdash; WHIR / FRI Folding (Polynomial Commitment Proof)</h2>
+<p>The prover committed to polynomials in Stage 1 and claims they evaluate to specific values (Stage 4) at a random point (Stage 3). WHIR proves this. First, all 3 trace holders are batched into a single polynomial. Then, iterative sumcheck-style folding rounds halve the degree, producing intermediate Merkle-committed "oracles." Finally, query proofs open the committed polynomials at random positions.</p>
+
+<div class="diagram-container">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1060 820" width="1060" height="820">
+  <defs>
+    <marker id="a5" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#58a6ff"/></marker>
+    <marker id="a5b" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#58a6ff"/></marker>
+    <marker id="a5g" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#3fb950"/></marker>
+  </defs>
+
+  <!-- Inputs -->
+  <rect x="30" y="10" width="1000" height="60" rx="8" fill="none" stroke="#30363d" stroke-dasharray="5,3"/>
+  <text x="530" y="28" text-anchor="middle" fill="#8b949e" font-size="11" font-weight="600">INPUTS (some via closures from upstream shared states)</text>
+  <text x="130" y="52" text-anchor="middle" fill="#c9d1d9" font-size="10">3 trace_holders (device)</text>
+  <text x="340" y="52" text-anchor="middle" fill="#c9d1d9" font-size="10">claims (from Stage 4)</text>
+  <text x="530" y="52" text-anchor="middle" fill="#c9d1d9" font-size="10">eval_point (from Stage 3)</text>
+  <text x="720" y="52" text-anchor="middle" fill="#c9d1d9" font-size="10">batching_chal, seed</text>
+  <text x="920" y="52" text-anchor="middle" fill="#c9d1d9" font-size="10">whir_schedule</text>
+
+  <line x1="530" y1="70" x2="530" y2="98" stroke="#58a6ff" stroke-width="1.5" marker-end="url(#a5)"/>
+
+  <!-- Batching phase -->
+  <rect x="120" y="98" width="820" height="80" rx="10" fill="#0d2137" stroke="#58a6ff" stroke-width="2"/>
+  <text x="530" y="122" text-anchor="middle" fill="#58a6ff" font-size="13" font-weight="700">Step 0: Batch all polynomials into one (GPU)</text>
+  <text x="530" y="144" text-anchor="middle" fill="#c9d1d9" font-size="11">Combined(x) = &Sigma;<tspan font-size="9" baseline-shift="sub">i</tspan> &alpha;<tspan font-size="9" baseline-shift="super">i</tspan> &middot; column<tspan font-size="9" baseline-shift="sub">i</tspan>(x)&nbsp;&nbsp;&nbsp;across all memory + witness + setup columns</text>
+  <text x="530" y="165" text-anchor="middle" fill="#8b949e" font-size="10">GPU: weighted column sum &rarr; eval_to_coeffs (NTT) &rarr; bit-reverse &rarr; coeffs_to_evals (NTT) &rarr; monomial + evaluation forms</text>
+
+  <line x1="530" y1="178" x2="530" y2="206" stroke="#58a6ff" stroke-width="1.5" marker-end="url(#a5)"/>
+
+  <!-- EQ poly init -->
+  <rect x="280" y="206" width="500" height="32" rx="6" fill="#0d2137" stroke="#58a6ff" stroke-width="1.5"/>
+  <text x="530" y="227" text-anchor="middle" fill="#58a6ff" font-size="12" font-weight="600">GPU: build eq(eval_point, x) for base layer</text>
+
+  <line x1="530" y1="238" x2="530" y2="266" stroke="#58a6ff" stroke-width="1.5" marker-end="url(#a5)"/>
+
+  <!-- Folding rounds outer loop -->
+  <rect x="60" y="266" width="940" height="340" rx="12" fill="#120a20" stroke="#58a6ff" stroke-width="2"/>
+  <text x="530" y="292" text-anchor="middle" fill="#58a6ff" font-size="13" font-weight="700">FOR EACH ORACLE ROUND (per whir_steps_schedule)</text>
+
+  <!-- Inner fold step loop -->
+  <rect x="90" y="308" width="560" height="210" rx="10" fill="#0f0820" stroke="#58a6ff" stroke-width="1.5"/>
+  <text x="370" y="330" text-anchor="middle" fill="#58a6ff" font-size="12" font-weight="700">FOR EACH FOLD STEP in this round</text>
+
+  <!-- 3-point eval -->
+  <rect x="120" y="344" width="340" height="38" rx="6" fill="#0d2137" stroke="#58a6ff" stroke-width="1.5"/>
+  <text x="290" y="360" text-anchor="middle" fill="#58a6ff" font-size="11" font-weight="600">GPU: 3-point evaluation</text>
+  <text x="290" y="376" text-anchor="middle" fill="#8b949e" font-size="9">f(0), f(1), f(&frac12;) via split + multiply by EQ + reduce_sum</text>
+
+  <line x1="290" y1="382" x2="290" y2="400" stroke="#3fb950" stroke-width="1.5" marker-end="url(#a5g)"/>
+
+  <!-- Interpolation -->
+  <rect x="120" y="400" width="340" height="30" rx="6" fill="#0d2d0d" stroke="#3fb950" stroke-width="1.5"/>
+  <text x="290" y="420" text-anchor="middle" fill="#3fb950" font-size="11" font-weight="600">Host: Lagrange interpolate &rarr; 3 sumcheck coefficients &rarr; draw &beta;</text>
+
+  <line x1="290" y1="430" x2="290" y2="448" stroke="#58a6ff" stroke-width="1.5" marker-end="url(#a5)"/>
+
+  <!-- Fold -->
+  <rect x="120" y="448" width="340" height="56" rx="6" fill="#0d2137" stroke="#58a6ff" stroke-width="1.5"/>
+  <text x="290" y="466" text-anchor="middle" fill="#58a6ff" font-size="11" font-weight="600">GPU: fold at challenge &beta;</text>
+  <text x="290" y="484" text-anchor="middle" fill="#8b949e" font-size="9">whir_fold_monomial (monomial form), whir_fold_split_half (eval form + EQ poly)</text>
+  <text x="290" y="498" text-anchor="middle" fill="#8b949e" font-size="9">polynomial degree halved, domain halved</text>
+
+  <!-- Loop back fold steps: route between inner (x=90) and outer (x=60) borders -->
+  <path d="M 120,500 L 75,500 L 75,358 L 120,358" fill="none" stroke="#79c0ff" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#a5)"/>
+
+  <!-- After fold steps: oracle creation -->
+  <rect x="680" y="308" width="300" height="136" rx="8" fill="#0d2137" stroke="#58a6ff" stroke-width="1.5"/>
+  <text x="830" y="330" text-anchor="middle" fill="#58a6ff" font-size="12" font-weight="600">After all fold steps (GPU)</text>
+  <text x="830" y="354" text-anchor="middle" fill="#c9d1d9" font-size="10">Create intermediate oracle:</text>
+  <text x="830" y="372" text-anchor="middle" fill="#c9d1d9" font-size="10">NTT &rarr; LDE coset evaluations</text>
+  <text x="830" y="390" text-anchor="middle" fill="#c9d1d9" font-size="10">Blake2s Merkle tree (GPU)</text>
+  <text x="830" y="408" text-anchor="middle" fill="#c9d1d9" font-size="10">OOD evaluation (GPU)</text>
+  <text x="830" y="430" text-anchor="middle" fill="#8b949e" font-size="10">Cap &rarr; host &rarr; transcript &rarr; draw</text>
+
+  <!-- PoW + queries -->
+  <rect x="680" y="460" width="300" height="80" rx="8" fill="#0d2137" stroke="#58a6ff" stroke-width="1.5"/>
+  <text x="830" y="480" text-anchor="middle" fill="#58a6ff" font-size="12" font-weight="600">PoW + Query Phase (GPU)</text>
+  <text x="830" y="502" text-anchor="middle" fill="#c9d1d9" font-size="10">Verify/search PoW nonce</text>
+  <text x="830" y="518" text-anchor="middle" fill="#c9d1d9" font-size="10">Draw query indices from seed</text>
+  <text x="830" y="534" text-anchor="middle" fill="#c9d1d9" font-size="10">Gather leaf values + Merkle paths</text>
+
+  <!-- Outer loop back: start from inner fold box bottom, route outside outer box (x=60) -->
+  <path d="M 370,518 L 370,580 L 35,580 L 35,310 L 60,310" fill="none" stroke="#58a6ff" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#a5)"/>
+  <text x="21" y="445" text-anchor="middle" fill="#58a6ff" font-size="10" transform="rotate(-90,21,445)">next oracle round</text>
+
+  <!-- Degree progression note -->
+  <rect x="120" y="530" width="520" height="60" rx="8" fill="#1c2128" stroke="#30363d" stroke-width="1.5"/>
+  <text x="380" y="550" text-anchor="middle" fill="#d29922" font-size="11" font-weight="600">Degree progression (example whir_steps_schedule = [4, 3, 2])</text>
+  <text x="380" y="568" text-anchor="middle" fill="#c9d1d9" font-size="10">Round 0: 4 fold steps &rarr; deg 2<tspan font-size="8" baseline-shift="super">n</tspan> to 2<tspan font-size="8" baseline-shift="super">n&minus;4</tspan> &nbsp;&nbsp; Round 1: 3 steps &rarr; to 2<tspan font-size="8" baseline-shift="super">n&minus;7</tspan> &nbsp;&nbsp; Round 2: 2 steps &rarr; to 2<tspan font-size="8" baseline-shift="super">n&minus;9</tspan></text>
+  <text x="380" y="586" text-anchor="middle" fill="#8b949e" font-size="10">Each fold step halves the polynomial. Each oracle round = several fold steps + one Merkle commit.</text>
+
+  <!-- Output -->
+  <rect x="60" y="630" width="940" height="180" rx="10" fill="none" stroke="#30363d" stroke-width="1.5" stroke-dasharray="6,3"/>
+  <text x="530" y="652" text-anchor="middle" fill="#c9d1d9" font-size="12" font-weight="600">STAGE 5 OUTPUT: WhirPolyCommitProof</text>
+
+  <rect x="80" y="668" width="260" height="42" rx="6" fill="#1c2128" stroke="#30363d"/>
+  <text x="210" y="684" text-anchor="middle" fill="#c9d1d9" font-size="10" font-weight="600">Base layer commitments</text>
+  <text x="210" y="700" text-anchor="middle" fill="#8b949e" font-size="9">memory/witness/setup caps + evals + queries</text>
+
+  <rect x="360" y="668" width="260" height="42" rx="6" fill="#1c2128" stroke="#30363d"/>
+  <text x="490" y="684" text-anchor="middle" fill="#c9d1d9" font-size="10" font-weight="600">Intermediate oracles</text>
+  <text x="490" y="700" text-anchor="middle" fill="#8b949e" font-size="9">per-round: caps + queries + OOD samples</text>
+
+  <rect x="640" y="668" width="170" height="42" rx="6" fill="#1c2128" stroke="#30363d"/>
+  <text x="725" y="684" text-anchor="middle" fill="#c9d1d9" font-size="10" font-weight="600">Sumcheck polys</text>
+  <text x="725" y="700" text-anchor="middle" fill="#8b949e" font-size="9">[3 coeffs] per fold step</text>
+
+  <rect x="830" y="668" width="150" height="42" rx="6" fill="#1c2128" stroke="#30363d"/>
+  <text x="905" y="684" text-anchor="middle" fill="#c9d1d9" font-size="10" font-weight="600">PoW nonces</text>
+  <text x="905" y="700" text-anchor="middle" fill="#8b949e" font-size="9">per oracle round</text>
+
+  <rect x="80" y="726" width="320" height="26" rx="5" fill="#1c2128" stroke="#30363d"/>
+  <text x="240" y="744" text-anchor="middle" fill="#8b949e" font-size="10">Query proofs: leaf values + Merkle auth paths per query index</text>
+
+  <rect x="430" y="726" width="260" height="26" rx="5" fill="#1c2128" stroke="#30363d"/>
+  <text x="560" y="744" text-anchor="middle" fill="#8b949e" font-size="10">Final monomials (small poly sent in full)</text>
+
+  <text x="530" y="786" text-anchor="middle" fill="#8b949e" font-size="10">First round: base field queries into Stage 1 Merkle trees &nbsp;&nbsp;|&nbsp;&nbsp; Later rounds: extension field queries into intermediate oracles</text>
+</svg>
+</div>
+</div>
+
+<!-- ================================================================== -->
+<!-- SECTION 7: COMPLETE DATA FLOW -->
+<!-- ================================================================== -->
+<div class="section">
+<h2>7. Complete Data Flow Between Stages</h2>
+<p>Each stage shows its inputs (left annotations) and key outputs (below). Long-lived data that spans multiple stages is noted in the summary.</p>
+
+<div class="diagram-container">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 980" width="700" height="980">
+  <defs>
+    <marker id="af" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#58a6ff"/></marker>
+    <marker id="afg" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#3fb950"/></marker>
+    <marker id="afo" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#d29922"/></marker>
+    <marker id="afr" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#f85149"/></marker>
+  </defs>
+
+  <!-- ============ STAGE 1 ============ -->
+  <rect x="150" y="15" width="400" height="50" rx="10" fill="#0d2137" stroke="#58a6ff" stroke-width="2"/>
+  <text x="350" y="35" text-anchor="middle" fill="#58a6ff" font-size="13" font-weight="700">Stage 1: Witness Gen + LDE + Commit</text>
+  <text x="350" y="53" text-anchor="middle" fill="#8b949e" font-size="10">GPU: traces &rarr; NTT &rarr; Blake2s Merkle trees</text>
+
+  <!-- outputs -->
+  <line x1="350" y1="65" x2="350" y2="84" stroke="#58a6ff" stroke-width="1.5" marker-end="url(#af)"/>
+  <rect x="30" y="84" width="640" height="40" rx="6" fill="#1c2128" stroke="#30363d"/>
+  <text x="350" y="101" text-anchor="middle" fill="#79c0ff" font-size="10">trace_holders (device) &nbsp;&bull;&nbsp; lookup_mappings (device) &nbsp;&bull;&nbsp; <tspan fill="#d29922">tree_caps (host)</tspan></text>
+  <text x="350" y="117" text-anchor="middle" fill="#8b949e" font-size="9">trace_holders persist through Stages 2, 4, 5</text>
+
+  <!-- Transcript Init + Forward Setup -->
+  <line x1="350" y1="124" x2="350" y2="142" stroke="#3fb950" stroke-width="1.5" marker-end="url(#afg)"/>
+  <rect x="100" y="142" width="500" height="24" rx="5" fill="#0d2d0d" stroke="#3fb950" stroke-width="1.5"/>
+  <text x="350" y="159" text-anchor="middle" fill="#3fb950" font-size="10" font-weight="600">Transcript Init (hash caps &rarr; seed) + Forward Setup (GPU lookup tables)</text>
+
+  <!-- ============ STAGE 2 ============ -->
+  <line x1="350" y1="166" x2="350" y2="188" stroke="#58a6ff" stroke-width="1.5" marker-end="url(#af)"/>
+  <rect x="150" y="188" width="400" height="50" rx="10" fill="#0d2137" stroke="#58a6ff" stroke-width="2"/>
+  <text x="350" y="208" text-anchor="middle" fill="#58a6ff" font-size="13" font-weight="700">Stage 2: Forward Pass</text>
+  <text x="350" y="226" text-anchor="middle" fill="#8b949e" font-size="10">GPU: layer-by-layer constraints &rarr; dim reduction &rarr; explicit evals D2H</text>
+
+  <!-- outputs -->
+  <line x1="350" y1="238" x2="350" y2="256" stroke="#58a6ff" stroke-width="1.5" marker-end="url(#af)"/>
+  <rect x="30" y="256" width="640" height="40" rx="6" fill="#1c2128" stroke="#30363d"/>
+  <text x="350" y="273" text-anchor="middle" fill="#79c0ff" font-size="10">GKRStorage: all layer polys (device) &nbsp;&bull;&nbsp; <tspan fill="#d29922">explicit_evaluations ~128 E4 (host)</tspan></text>
+  <text x="350" y="289" text-anchor="middle" fill="#8b949e" font-size="9">explicit_evaluations persists to final proof</text>
+
+  <!-- Transcript Update -->
+  <line x1="350" y1="296" x2="350" y2="314" stroke="#3fb950" stroke-width="1.5" marker-end="url(#afg)"/>
+  <rect x="100" y="314" width="500" height="24" rx="5" fill="#0d2d0d" stroke="#3fb950" stroke-width="1.5"/>
+  <text x="350" y="331" text-anchor="middle" fill="#3fb950" font-size="10" font-weight="600">Transcript Update: commit evals &rarr; eval_point + batching_challenge + top_layer_claims</text>
+
+  <!-- ============ STAGE 3 ============ -->
+  <line x1="350" y1="338" x2="350" y2="360" stroke="#58a6ff" stroke-width="1.5" marker-end="url(#af)"/>
+  <rect x="150" y="360" width="400" height="50" rx="10" fill="#0d2137" stroke="#58a6ff" stroke-width="2"/>
+  <text x="350" y="380" text-anchor="middle" fill="#58a6ff" font-size="13" font-weight="700">Stage 3: Backward Pass (Sumcheck)</text>
+  <text x="350" y="398" text-anchor="middle" fill="#8b949e" font-size="10">GPU kernels + host callbacks per round</text>
+
+  <!-- outputs -->
+  <line x1="350" y1="410" x2="350" y2="428" stroke="#58a6ff" stroke-width="1.5" marker-end="url(#af)"/>
+  <rect x="30" y="428" width="640" height="40" rx="6" fill="#1c2128" stroke="#30363d"/>
+  <text x="350" y="445" text-anchor="middle" fill="#f85149" font-size="10">sumcheck_intermediate_values &rarr; PROOF</text>
+  <text x="350" y="461" text-anchor="middle" fill="#79c0ff" font-size="10">eval_point + claims + seed &rarr; backward_shared_state (used by Stages 4, 5)</text>
+
+  <!-- ============ STAGE 4 ============ -->
+  <line x1="350" y1="468" x2="350" y2="490" stroke="#58a6ff" stroke-width="1.5" marker-end="url(#af)"/>
+  <text x="146" y="510" text-anchor="end" fill="#8b949e" font-size="9">+ trace_holders</text>
+  <rect x="150" y="490" width="400" height="50" rx="10" fill="#0d2137" stroke="#58a6ff" stroke-width="2"/>
+  <text x="350" y="510" text-anchor="middle" fill="#58a6ff" font-size="13" font-weight="700">Stage 4: Base Layer Claims</text>
+  <text x="350" y="528" text-anchor="middle" fill="#8b949e" font-size="10">GPU: eq(r,x) &rarr; reduce traces &rarr; per-column claims</text>
+
+  <!-- outputs -->
+  <line x1="350" y1="540" x2="350" y2="558" stroke="#d29922" stroke-width="1.5" marker-end="url(#afo)"/>
+  <rect x="80" y="558" width="540" height="24" rx="6" fill="#2d1f00" stroke="#d29922"/>
+  <text x="350" y="575" text-anchor="middle" fill="#d29922" font-size="10">mem_polys_claims &nbsp;&bull;&nbsp; wit_polys_claims &nbsp;&bull;&nbsp; setup_polys_claims</text>
+
+  <!-- ============ STAGE 5 ============ -->
+  <line x1="350" y1="582" x2="350" y2="604" stroke="#58a6ff" stroke-width="1.5" marker-end="url(#af)"/>
+  <text x="146" y="620" text-anchor="end" fill="#8b949e" font-size="9">+ trace_holders</text>
+  <text x="146" y="634" text-anchor="end" fill="#8b949e" font-size="9">+ eval_point + seed</text>
+  <rect x="150" y="604" width="400" height="50" rx="10" fill="#0d2137" stroke="#58a6ff" stroke-width="2"/>
+  <text x="350" y="624" text-anchor="middle" fill="#58a6ff" font-size="13" font-weight="700">Stage 5: WHIR / FRI Folding</text>
+  <text x="350" y="642" text-anchor="middle" fill="#8b949e" font-size="10">GPU: batch &rarr; fold rounds &rarr; Merkle oracles &rarr; PoW &rarr; queries</text>
+
+  <!-- output -->
+  <line x1="350" y1="654" x2="350" y2="672" stroke="#f85149" stroke-width="1.5" marker-end="url(#afr)"/>
+  <rect x="130" y="672" width="440" height="24" rx="6" fill="#1c2128" stroke="#f85149"/>
+  <text x="350" y="689" text-anchor="middle" fill="#f85149" font-size="10">whir_proof &rarr; PROOF</text>
+
+  <!-- ============ FINAL ASSEMBLY ============ -->
+  <line x1="350" y1="696" x2="350" y2="720" stroke="#58a6ff" stroke-width="1.5" marker-end="url(#af)"/>
+  <rect x="100" y="720" width="500" height="50" rx="10" fill="#1a1008" stroke="#d29922" stroke-width="2"/>
+  <text x="350" y="740" text-anchor="middle" fill="#d29922" font-size="13" font-weight="700">Final Assembly &rarr; GKRProof</text>
+  <text x="350" y="760" text-anchor="middle" fill="#c9d1d9" font-size="10">{ external_challenges, explicit_evals, sumcheck_values, whir_proof, grand_product }</text>
+
+  <!-- ============ SUMMARY ============ -->
+  <rect x="20" y="800" width="660" height="170" rx="8" fill="#1c2128" stroke="#30363d"/>
+  <text x="350" y="822" text-anchor="middle" fill="#c9d1d9" font-size="11" font-weight="600">Data flow summary</text>
+
+  <line x1="36" y1="838" x2="56" y2="838" stroke="#58a6ff" stroke-width="2"/>
+  <text x="64" y="842" fill="#c9d1d9" font-size="10">GPU-resident: trace_holders, GKRStorage, device polynomials</text>
+  <line x1="36" y1="856" x2="56" y2="856" stroke="#d29922" stroke-width="2"/>
+  <text x="64" y="860" fill="#c9d1d9" font-size="10">Host readback: tree_caps, explicit_evaluations, per-column claims (all small)</text>
+  <line x1="36" y1="874" x2="56" y2="874" stroke="#3fb950" stroke-width="2"/>
+  <text x="64" y="878" fill="#c9d1d9" font-size="10">Host callbacks: transcript hash &rarr; seed &rarr; challenges (via Arc&lt;Mutex&gt; shared state)</text>
+  <line x1="36" y1="892" x2="56" y2="892" stroke="#f85149" stroke-width="2"/>
+  <text x="64" y="896" fill="#c9d1d9" font-size="10">Proof components: sumcheck_values (S3) + whir_proof (S5) + explicit_evals (S2) + grand_product</text>
+
+  <text x="350" y="924" text-anchor="middle" fill="#79c0ff" font-size="9">Long-lived: trace_holders (S1) &rarr; S2, S4, S5 &nbsp;&nbsp;|&nbsp;&nbsp; backward_shared_state (S3) &rarr; S4, S5 &nbsp;&nbsp;|&nbsp;&nbsp; explicit_evals (S2) &rarr; final proof</text>
+  <text x="350" y="942" text-anchor="middle" fill="#8b949e" font-size="9">Seed lineage: caps hash &rarr; lookup challenges &rarr; commit evals &rarr; eval_point &rarr; sumcheck rounds &rarr; WHIR fold rounds</text>
+  <text x="350" y="960" text-anchor="middle" fill="#8b949e" font-size="9">All data between host callbacks flows via Arc&lt;Mutex&gt; shared state objects and source closures</text>
+</svg>
+</div>
+</div>
+
+<!-- ================================================================== -->
+<!-- SECTION 8: ASYNC SCHEDULING -->
+<!-- ================================================================== -->
+<div class="section">
+<h2>8. Async Scheduling Model</h2>
+<p>All stages are <b>enqueued</b> onto the GPU exec_stream before any execute. The host thread returns a <code>ProofJob</code> handle immediately. Host callbacks (green stripes) are interleaved <em>inside</em> every stage &mdash; for transcript hashing, challenge drawing, and shared state updates. They fire inline when the stream reaches their position.</p>
+
+<div class="diagram-container">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 940 340" width="940" height="340">
+
+  <!-- Row labels -->
+  <text x="38" y="32" fill="#8b949e" font-size="12" font-weight="700">HOST THREAD</text>
+  <text x="38" y="112" fill="#8b949e" font-size="12" font-weight="700">GPU EXEC</text>
+  <text x="38" y="128" fill="#8b949e" font-size="12" font-weight="700">STREAM</text>
+  <text x="38" y="222" fill="#8b949e" font-size="12" font-weight="700">H2D STREAM</text>
+  <text x="38" y="310" fill="#8b949e" font-size="12" font-weight="700">CALLER</text>
+
+  <!-- Host timeline -->
+  <line x1="130" y1="28" x2="440" y2="28" stroke="#30363d" stroke-width="2"/>
+  <rect x="130" y="14" width="290" height="28" rx="4" fill="#162230" stroke="#79c0ff" stroke-width="1"/>
+  <text x="275" y="33" text-anchor="middle" fill="#79c0ff" font-size="10">Enqueue all stages + callbacks (fast, no GPU wait)</text>
+  <circle cx="440" cy="28" r="5" fill="#3fb950"/>
+  <text x="455" y="33" fill="#3fb950" font-size="10" font-weight="600">returns ProofJob</text>
+
+  <!-- Exec stream baseline -->
+  <line x1="130" y1="120" x2="870" y2="120" stroke="#30363d" stroke-width="2"/>
+
+  <!-- S1 Witness (has transcript callback at end) -->
+  <rect x="130" y="96" width="80" height="44" rx="4" fill="#0d2137" stroke="#58a6ff" stroke-width="1"/>
+  <line x1="200" y1="96" x2="200" y2="140" stroke="#3fb950" stroke-width="2"/>
+  <text x="165" y="114" text-anchor="middle" fill="#58a6ff" font-size="9" font-weight="600">S1 Witness</text>
+  <text x="165" y="130" text-anchor="middle" fill="#8b949e" font-size="7">+LDE +Commit</text>
+
+  <!-- S2 Forward Pass (has transcript callback at end) -->
+  <rect x="215" y="96" width="130" height="44" rx="4" fill="#0d2137" stroke="#58a6ff" stroke-width="1"/>
+  <line x1="224" y1="96" x2="224" y2="140" stroke="#3fb950" stroke-width="2"/>
+  <line x1="336" y1="96" x2="336" y2="140" stroke="#3fb950" stroke-width="2"/>
+  <text x="280" y="114" text-anchor="middle" fill="#58a6ff" font-size="9" font-weight="600">S2 Forward Pass</text>
+  <text x="280" y="130" text-anchor="middle" fill="#8b949e" font-size="7">GKR dim reduction</text>
+
+  <!-- S3 Backward (many interleaved callbacks) -->
+  <rect x="350" y="96" width="130" height="44" rx="4" fill="#0d2137" stroke="#58a6ff" stroke-width="1"/>
+  <!-- Multiple green stripes to show many callbacks -->
+  <line x1="365" y1="96" x2="365" y2="140" stroke="#3fb950" stroke-width="1.5"/>
+  <line x1="380" y1="96" x2="380" y2="140" stroke="#3fb950" stroke-width="1.5"/>
+  <line x1="395" y1="96" x2="395" y2="140" stroke="#3fb950" stroke-width="1.5"/>
+  <line x1="410" y1="96" x2="410" y2="140" stroke="#3fb950" stroke-width="1.5"/>
+  <line x1="425" y1="96" x2="425" y2="140" stroke="#3fb950" stroke-width="1.5"/>
+  <line x1="440" y1="96" x2="440" y2="140" stroke="#3fb950" stroke-width="1.5"/>
+  <line x1="455" y1="96" x2="455" y2="140" stroke="#3fb950" stroke-width="1.5"/>
+  <line x1="470" y1="96" x2="470" y2="140" stroke="#3fb950" stroke-width="1.5"/>
+  <text x="415" y="114" text-anchor="middle" fill="#58a6ff" font-size="9" font-weight="600">S3 Backward</text>
+  <text x="415" y="130" text-anchor="middle" fill="#8b949e" font-size="7">Sumcheck (many rounds)</text>
+
+  <!-- S4 Base Claims -->
+  <rect x="485" y="96" width="60" height="44" rx="4" fill="#0d2137" stroke="#58a6ff" stroke-width="1"/>
+  <line x1="536" y1="96" x2="536" y2="140" stroke="#3fb950" stroke-width="2"/>
+  <text x="515" y="114" text-anchor="middle" fill="#58a6ff" font-size="9" font-weight="600">S4</text>
+  <text x="515" y="130" text-anchor="middle" fill="#8b949e" font-size="7">Claims</text>
+
+  <!-- S5 WHIR (many interleaved callbacks) -->
+  <rect x="550" y="96" width="190" height="44" rx="4" fill="#0d2137" stroke="#58a6ff" stroke-width="1"/>
+  <line x1="575" y1="96" x2="575" y2="140" stroke="#3fb950" stroke-width="1.5"/>
+  <line x1="595" y1="96" x2="595" y2="140" stroke="#3fb950" stroke-width="1.5"/>
+  <line x1="615" y1="96" x2="615" y2="140" stroke="#3fb950" stroke-width="1.5"/>
+  <line x1="635" y1="96" x2="635" y2="140" stroke="#3fb950" stroke-width="1.5"/>
+  <line x1="655" y1="96" x2="655" y2="140" stroke="#3fb950" stroke-width="1.5"/>
+  <line x1="675" y1="96" x2="675" y2="140" stroke="#3fb950" stroke-width="1.5"/>
+  <line x1="695" y1="96" x2="695" y2="140" stroke="#3fb950" stroke-width="1.5"/>
+  <line x1="715" y1="96" x2="715" y2="140" stroke="#3fb950" stroke-width="1.5"/>
+  <line x1="730" y1="96" x2="730" y2="140" stroke="#3fb950" stroke-width="1.5"/>
+  <text x="645" y="114" text-anchor="middle" fill="#58a6ff" font-size="9" font-weight="600">S5 WHIR Folding</text>
+  <text x="645" y="130" text-anchor="middle" fill="#8b949e" font-size="7">Fold + oracle + query rounds</text>
+
+  <!-- Final Assembly (host callback) -->
+  <rect x="745" y="96" width="50" height="44" rx="4" fill="#0d2d0d" stroke="#3fb950" stroke-width="1"/>
+  <text x="770" y="114" text-anchor="middle" fill="#3fb950" font-size="8">Final</text>
+  <text x="770" y="130" text-anchor="middle" fill="#3fb950" font-size="8">Asm</text>
+
+  <!-- Done event -->
+  <circle cx="815" cy="120" r="6" fill="#f85149"/>
+  <text x="832" y="124" fill="#f85149" font-size="9" font-weight="600">done</text>
+
+  <!-- Green stripe = host callback legend -->
+  <rect x="130" y="152" width="250" height="20" rx="4" fill="#1c2128" stroke="#30363d"/>
+  <line x1="137" y1="155" x2="137" y2="169" stroke="#3fb950" stroke-width="2"/>
+  <text x="148" y="166" fill="#8b949e" font-size="9">= host callback (transcript hash, draw challenge, shared state update)</text>
+
+  <!-- H2D stream -->
+  <line x1="130" y1="218" x2="350" y2="218" stroke="#30363d" stroke-width="2"/>
+  <rect x="130" y="204" width="160" height="28" rx="4" fill="#2d1f00" stroke="#d29922" stroke-width="1"/>
+  <text x="210" y="223" text-anchor="middle" fill="#d29922" font-size="9">DMA: setup + witness data</text>
+
+  <!-- Event fences below exec stream, above H2D -->
+  <line x1="155" y1="140" x2="155" y2="204" stroke="#d29922" stroke-width="1" stroke-dasharray="3,2"/>
+  <text x="141" y="175" fill="#d29922" font-size="7">alloc</text>
+  <line x1="290" y1="204" x2="290" y2="140" stroke="#d29922" stroke-width="1" stroke-dasharray="3,2"/>
+  <text x="296" y="175" fill="#d29922" font-size="7">ready</text>
+
+  <!-- End fence -->
+  <line x1="800" y1="140" x2="800" y2="204" stroke="#d29922" stroke-width="1" stroke-dasharray="3,2"/>
+  <rect x="770" y="204" width="100" height="28" rx="4" fill="#1c2128" stroke="#d29922" stroke-width="1"/>
+  <text x="820" y="223" text-anchor="middle" fill="#d29922" font-size="8">end fence</text>
+
+  <!-- Caller timeline -->
+  <line x1="440" y1="306" x2="870" y2="306" stroke="#30363d" stroke-width="2"/>
+  <rect x="440" y="292" width="180" height="28" rx="4" fill="#1c2128" stroke="#30363d"/>
+  <text x="530" y="311" text-anchor="middle" fill="#8b949e" font-size="9">... other work or more proofs ...</text>
+  <rect x="640" y="292" width="140" height="28" rx="4" fill="#0d2d0d" stroke="#3fb950" stroke-width="1"/>
+  <text x="710" y="311" text-anchor="middle" fill="#3fb950" font-size="9" font-weight="600">job.finish() blocks</text>
+
+  <!-- done event to caller -->
+  <line x1="815" y1="126" x2="815" y2="280" stroke="#f85149" stroke-width="1.5" stroke-dasharray="4,3"/>
+  <line x1="815" y1="280" x2="790" y2="292" stroke="#f85149" stroke-width="1.5" stroke-dasharray="4,3"/>
+  <circle cx="790" cy="306" r="4" fill="#3fb950"/>
+  <text x="800" y="311" fill="#3fb950" font-size="9">&rarr; GKRProof</text>
+</svg>
+</div>
+
+<div class="note">
+<b>Seed lineage through the pipeline:</b> initial_seed (from caps hash) &rarr; draw 3 lookup challenges &rarr; forward pass uses them &rarr; commit explicit evaluations &rarr; draw eval_point + batching_challenge &rarr; snapshot into backward_shared_state &rarr; backward pass advances seed per sumcheck round &rarr; WHIR reads seed (advances by drawing WHIR batching challenge) &rarr; WHIR draws per-round challenges from seed.
+</div>
+</div>
+
+<!-- ================================================================== -->
+<!-- SECTION 9: PROTOCOL SUMMARY -->
+<!-- ================================================================== -->
+<div class="section">
+<h2>9. What the Proof Proves</h2>
+
+<div class="diagram-container">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 460" width="960" height="460">
+  <defs>
+    <marker id="ap" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#58a6ff"/></marker>
+  </defs>
+
+  <text x="480" y="28" text-anchor="middle" fill="#f0f6fc" font-size="15" font-weight="700">GKR + WHIR Protocol: What Each Stage Proves</text>
+
+  <!-- 5 boxes -->
+  <rect x="20" y="52" width="170" height="150" rx="10" fill="#0d2137" stroke="#58a6ff" stroke-width="2"/>
+  <text x="105" y="76" text-anchor="middle" fill="#58a6ff" font-size="12" font-weight="700">COMMIT</text>
+  <text x="105" y="100" text-anchor="middle" fill="#c9d1d9" font-size="10">"Here are my</text>
+  <text x="105" y="116" text-anchor="middle" fill="#c9d1d9" font-size="10">polynomials,</text>
+  <text x="105" y="132" text-anchor="middle" fill="#c9d1d9" font-size="10">Merkle-committed.</text>
+  <text x="105" y="148" text-anchor="middle" fill="#c9d1d9" font-size="10">I can't change</text>
+  <text x="105" y="164" text-anchor="middle" fill="#c9d1d9" font-size="10">them later."</text>
+  <text x="105" y="192" text-anchor="middle" fill="#8b949e" font-size="10">Stage 1</text>
+
+  <line x1="190" y1="127" x2="210" y2="127" stroke="#58a6ff" stroke-width="2" marker-end="url(#ap)"/>
+
+  <rect x="210" y="52" width="170" height="150" rx="10" fill="#0d2137" stroke="#58a6ff" stroke-width="2"/>
+  <text x="295" y="76" text-anchor="middle" fill="#58a6ff" font-size="12" font-weight="700">REDUCE</text>
+  <text x="295" y="100" text-anchor="middle" fill="#c9d1d9" font-size="10">"The circuit</text>
+  <text x="295" y="116" text-anchor="middle" fill="#c9d1d9" font-size="10">output equals</text>
+  <text x="295" y="132" text-anchor="middle" fill="#c9d1d9" font-size="10">these specific</text>
+  <text x="295" y="148" text-anchor="middle" fill="#c9d1d9" font-size="10">values (explicit</text>
+  <text x="295" y="164" text-anchor="middle" fill="#c9d1d9" font-size="10">evaluations)."</text>
+  <text x="295" y="192" text-anchor="middle" fill="#8b949e" font-size="10">Stage 2</text>
+
+  <line x1="380" y1="127" x2="400" y2="127" stroke="#58a6ff" stroke-width="2" marker-end="url(#ap)"/>
+
+  <rect x="400" y="52" width="170" height="150" rx="10" fill="#0d2137" stroke="#58a6ff" stroke-width="2"/>
+  <text x="485" y="76" text-anchor="middle" fill="#58a6ff" font-size="12" font-weight="700">VERIFY</text>
+  <text x="485" y="100" text-anchor="middle" fill="#c9d1d9" font-size="10">"The reduction</text>
+  <text x="485" y="116" text-anchor="middle" fill="#c9d1d9" font-size="10">was correct. At</text>
+  <text x="485" y="132" text-anchor="middle" fill="#c9d1d9" font-size="10">random point r,</text>
+  <text x="485" y="148" text-anchor="middle" fill="#c9d1d9" font-size="10">the base polys</text>
+  <text x="485" y="164" text-anchor="middle" fill="#c9d1d9" font-size="10">have these values."</text>
+  <text x="485" y="192" text-anchor="middle" fill="#8b949e" font-size="10">Stage 3</text>
+
+  <line x1="570" y1="127" x2="590" y2="127" stroke="#58a6ff" stroke-width="2" marker-end="url(#ap)"/>
+
+  <rect x="590" y="52" width="170" height="150" rx="10" fill="#0d2137" stroke="#58a6ff" stroke-width="2"/>
+  <text x="675" y="76" text-anchor="middle" fill="#58a6ff" font-size="12" font-weight="700">EVALUATE</text>
+  <text x="675" y="100" text-anchor="middle" fill="#c9d1d9" font-size="10">"Here are the</text>
+  <text x="675" y="116" text-anchor="middle" fill="#c9d1d9" font-size="10">actual values</text>
+  <text x="675" y="132" text-anchor="middle" fill="#c9d1d9" font-size="10">of my committed</text>
+  <text x="675" y="148" text-anchor="middle" fill="#c9d1d9" font-size="10">polynomials at</text>
+  <text x="675" y="164" text-anchor="middle" fill="#c9d1d9" font-size="10">point r."</text>
+  <text x="675" y="192" text-anchor="middle" fill="#8b949e" font-size="10">Stage 4</text>
+
+  <!-- WHIR connecting Stages 1 and 4 -->
+  <line x1="105" y1="202" x2="105" y2="260" stroke="#58a6ff" stroke-width="1.5"/>
+  <line x1="675" y1="202" x2="675" y2="260" stroke="#58a6ff" stroke-width="1.5"/>
+  <line x1="105" y1="260" x2="320" y2="290" stroke="#58a6ff" stroke-width="1.5"/>
+  <line x1="675" y1="260" x2="560" y2="290" stroke="#58a6ff" stroke-width="1.5"/>
+
+  <rect x="240" y="290" width="400" height="90" rx="10" fill="#0d2137" stroke="#58a6ff" stroke-width="2"/>
+  <text x="440" y="315" text-anchor="middle" fill="#58a6ff" font-size="13" font-weight="700">PROVE CONSISTENCY (WHIR/FRI)</text>
+  <text x="440" y="338" text-anchor="middle" fill="#c9d1d9" font-size="10">"My committed polynomials (Stage 1 Merkle trees)</text>
+  <text x="440" y="354" text-anchor="middle" fill="#c9d1d9" font-size="10">really evaluate to the claimed values (Stage 4),</text>
+  <text x="440" y="370" text-anchor="middle" fill="#c9d1d9" font-size="10">and really have the low degree I claimed."</text>
+  <text x="610" y="376" text-anchor="end" fill="#8b949e" font-size="10">Stage 5</text>
+
+  <!-- Verifier -->
+  <line x1="440" y1="380" x2="440" y2="410" stroke="#f85149" stroke-width="1.5"/>
+  <rect x="140" y="410" width="600" height="40" rx="8" fill="#200d0d" stroke="#f85149" stroke-width="1.5"/>
+  <text x="440" y="430" text-anchor="middle" fill="#f85149" font-size="11" font-weight="600">Verifier checks: Merkle roots + sumcheck univariates + FRI query paths</text>
+  <text x="440" y="446" text-anchor="middle" fill="#f85149" font-size="10">&rarr; convinced the circuit was evaluated correctly with O(log n) work</text>
+</svg>
+</div>
+</div>
+
+</body>
+</html>
