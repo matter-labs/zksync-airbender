@@ -19,6 +19,10 @@ pub struct SubwordOnlyMemoryFamilyCircuitMask {
 }
 
 impl SubwordOnlyMemoryFamilyCircuitMask {
+    pub fn from_mask(mask: [Boolean; SUBWORD_ONLY_MEMORY_FAMILY_NUM_FLAGS]) -> Self {
+        Self { inner: mask }
+    }
+
     // getters for our opcodes
     pub fn perform_write(&self) -> Boolean {
         self.inner[WRITE_BIT]
