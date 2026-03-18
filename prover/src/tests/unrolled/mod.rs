@@ -764,7 +764,7 @@ fn test_reference_block_exec() {
     let mut snapshotter = SimpleSnapshotter::new_with_cycle_limit(cycles_bound, state);
 
     let now = std::time::Instant::now();
-    VM::run_basic_unrolled::<_, _, _>(
+    VM::<DelegationsAndFamiliesCounters>::run_basic_unrolled::<_, _, _>(
         &mut state,
         &mut ram,
         &mut snapshotter,
