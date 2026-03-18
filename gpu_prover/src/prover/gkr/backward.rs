@@ -293,6 +293,8 @@ struct ScheduledMainLayerExecutionState<E: FieldExtension<BF> + Field> {
 }
 
 pub(crate) struct GpuGKRDimensionReducingScheduledLayerExecution<B, E: FieldExtension<BF> + Field> {
+    #[allow(dead_code)] // Keeps queued NVTX host callbacks alive until the stream consumes them.
+    tracing_ranges: Vec<Range>,
     #[allow(dead_code)]
     // Keeps layer-start callbacks alive until the stream consumes them.
     start_callbacks: Callbacks<'static>,
@@ -425,6 +427,8 @@ enum HostScheduledMainLayerRoundState {
 }
 
 pub(crate) struct GpuGKRMainLayerScheduledLayerExecution<E: FieldExtension<BF> + Field> {
+    #[allow(dead_code)] // Keeps queued NVTX host callbacks alive until the stream consumes them.
+    tracing_ranges: Vec<Range>,
     #[allow(dead_code)]
     start_callbacks: Callbacks<'static>,
     #[allow(dead_code)]
@@ -479,6 +483,8 @@ pub(crate) struct GpuGKRBackwardScheduledExecution<B, E: FieldExtension<BF> + Fi
 
 pub(crate) struct GpuGKRDimensionReducingHostKeepalive<B, E: FieldExtension<BF> + Field> {
     #[allow(dead_code)]
+    tracing_ranges: Vec<Range>,
+    #[allow(dead_code)]
     start_callbacks: Callbacks<'static>,
     #[allow(dead_code)]
     batch_challenge_buffers: Vec<HostScheduledChallengeBuffer<E>>,
@@ -500,6 +506,8 @@ pub(crate) struct GpuGKRDimensionReducingHostKeepalive<B, E: FieldExtension<BF> 
 }
 
 pub(crate) struct GpuGKRMainLayerHostKeepalive<E: FieldExtension<BF> + Field> {
+    #[allow(dead_code)]
+    tracing_ranges: Vec<Range>,
     #[allow(dead_code)]
     start_callbacks: Callbacks<'static>,
     #[allow(dead_code)]
@@ -3737,6 +3745,7 @@ where
         )?;
 
         Ok(GpuGKRDimensionReducingScheduledLayerExecution {
+            tracing_ranges: Vec::new(),
             start_callbacks,
             batch_challenge_buffers,
             round_challenge_buffers,
@@ -3767,6 +3776,11 @@ where
         workflow_state: Arc<Mutex<ScheduledBackwardWorkflowState<E>>>,
         context: &ProverContext,
     ) -> CudaResult<GpuGKRDimensionReducingScheduledLayerExecution<B, E>> {
+        let stream = context.get_exec_stream();
+        let mut tracing_ranges = Vec::new();
+        let layer_name = format!("gkr.backward.dimension_reducing.layer.{}", self.layer_idx);
+        let layer_range = Range::new(layer_name.clone())?;
+        layer_range.start(stream)?;
         let last_step = self.folding_steps - 1;
         let mut start_callbacks = Callbacks::new();
         let shared_state = Arc::new(Mutex::new(ScheduledDimensionReducingLayerExecutionState {
@@ -3821,18 +3835,16 @@ where
                 layer_state.folding_challenges.clear();
                 layer_state.internal_round_coefficients.clear();
             },
-            context.get_exec_stream(),
+            stream,
         )?;
         memory_copy_async(
             &mut self.round_scratch.claim_point,
             &claim_point_host,
-            context.get_exec_stream(),
+            stream,
         )?;
 
         let mut batch_challenge_buffers = Vec::with_capacity(self.kernel_plans.len());
         for kernel in self.kernel_plans.iter() {
-            // Main-layer kernels always read two batch-challenge slots on device,
-            // even when the logical relation uses only the first one.
             batch_challenge_buffers.push(schedule_workflow_batch_challenge_upload(
                 context,
                 Arc::clone(&workflow_state),
@@ -3844,9 +3856,25 @@ where
         let mut round_challenge_buffers = Vec::with_capacity(last_step);
         let mut round_states = Vec::with_capacity(last_step.saturating_sub(1) + 1);
         let mut reduction_states = Vec::with_capacity(last_step);
+        let mut round3_plus_range = None;
 
         for step in 0..last_step {
             let acc_size = 1usize << (self.folding_steps - step - 1);
+            let mut round_range = match step {
+                0 => Some(Range::new(format!("{layer_name}.round0"))?),
+                1 => Some(Range::new(format!("{layer_name}.round1"))?),
+                2 => Some(Range::new(format!("{layer_name}.round2"))?),
+                _ => None,
+            };
+            if let Some(range) = round_range.as_ref() {
+                range.start(stream)?;
+            }
+            if step == 3 {
+                let range = Range::new(format!("{layer_name}.round3_plus"))?;
+                range.start(stream)?;
+                round3_plus_range = Some(range);
+            }
+
             if step == 0 {
                 self.launch_round0_kernels(&batch_challenge_buffers, acc_size, context)?;
             } else {
@@ -3955,10 +3983,10 @@ where
                         next_round_challenges.get_mut()[0] = folding_challenge;
                     }
                 },
-                context.get_exec_stream(),
+                stream,
             )?;
             if let Some((host, mut device)) = next_round_challenges {
-                memory_copy_async(&mut device, &host, context.get_exec_stream())?;
+                memory_copy_async(&mut device, &host, stream)?;
                 drop(host);
                 round_challenge_buffers.push(ScheduledChallengeBuffer {
                     callbacks: Callbacks::new(),
@@ -3970,6 +3998,25 @@ where
                 callbacks,
                 _phantom: std::marker::PhantomData,
             });
+
+            if let Some(range) = round_range.take() {
+                range.end(stream)?;
+                tracing_ranges.push(range);
+            }
+        }
+
+        let mut final_round_range = match last_step {
+            1 => Some(Range::new(format!("{layer_name}.round1"))?),
+            2 => Some(Range::new(format!("{layer_name}.round2"))?),
+            _ => None,
+        };
+        if let Some(range) = final_round_range.as_ref() {
+            range.start(stream)?;
+        }
+        if last_step >= 3 && round3_plus_range.is_none() {
+            let range = Range::new(format!("{layer_name}.round3_plus"))?;
+            range.start(stream)?;
+            round3_plus_range = Some(range);
         }
 
         let final_round_state = match last_step {
@@ -4023,6 +4070,17 @@ where
                 }
             }
         };
+        if let Some(range) = final_round_range.take() {
+            range.end(stream)?;
+            tracing_ranges.push(range);
+        }
+        if let Some(range) = round3_plus_range.take() {
+            range.end(stream)?;
+            tracing_ranges.push(range);
+        }
+
+        let finalize_range = Range::new(format!("{layer_name}.finalize"))?;
+        finalize_range.start(stream)?;
         let final_evaluations = self.schedule_last_evaluations_readback(last_step, context)?;
         let final_evaluation_accessors: Vec<_> = final_evaluations
             .iter()
@@ -4098,11 +4156,16 @@ where
                     updated_seed: state.seed,
                 });
             },
-            context.get_exec_stream(),
+            stream,
         )?;
+        finalize_range.end(stream)?;
+        tracing_ranges.push(finalize_range);
+        layer_range.end(stream)?;
+        tracing_ranges.push(layer_range);
 
         drop(claim_point_host);
         Ok(GpuGKRDimensionReducingScheduledLayerExecution {
+            tracing_ranges,
             start_callbacks,
             batch_challenge_buffers,
             round_challenge_buffers,
@@ -4132,6 +4195,7 @@ where
 impl<B, E: FieldExtension<BF> + Field> GpuGKRDimensionReducingScheduledLayerExecution<B, E> {
     pub(crate) fn into_host_keepalive(self) -> GpuGKRDimensionReducingHostKeepalive<B, E> {
         let Self {
+            tracing_ranges,
             start_callbacks,
             batch_challenge_buffers,
             round_challenge_buffers,
@@ -4142,6 +4206,7 @@ impl<B, E: FieldExtension<BF> + Field> GpuGKRDimensionReducingScheduledLayerExec
             shared_state,
         } = self;
         GpuGKRDimensionReducingHostKeepalive {
+            tracing_ranges,
             start_callbacks,
             batch_challenge_buffers: batch_challenge_buffers
                 .into_iter()
@@ -4812,6 +4877,7 @@ where
         all_round_states.push(final_round_state);
 
         Ok(GpuGKRMainLayerScheduledLayerExecution {
+            tracing_ranges: Vec::new(),
             start_callbacks,
             batch_challenge_buffers,
             auxiliary_uploads,
@@ -4840,6 +4906,11 @@ where
         workflow_state: Arc<Mutex<ScheduledBackwardWorkflowState<E>>>,
         context: &ProverContext,
     ) -> CudaResult<GpuGKRMainLayerScheduledLayerExecution<E>> {
+        let stream = context.get_exec_stream();
+        let mut tracing_ranges = Vec::new();
+        let layer_name = format!("gkr.backward.main.layer.{}", self.layer_idx);
+        let layer_range = Range::new(layer_name.clone())?;
+        layer_range.start(stream)?;
         let last_step = self.folding_steps - 1;
         assert!(last_step >= 3);
         let mut start_callbacks = Callbacks::new();
@@ -4910,12 +4981,12 @@ where
                 layer_state.folding_challenges.clear();
                 layer_state.internal_round_coefficients.clear();
             },
-            context.get_exec_stream(),
+            stream,
         )?;
         memory_copy_async(
             &mut self.round_scratch.claim_point,
             &claim_point_host,
-            context.get_exec_stream(),
+            stream,
         )?;
 
         let mut batch_challenge_buffers = Vec::with_capacity(self.kernel_plans.len());
@@ -4945,9 +5016,25 @@ where
         let mut round_challenge_buffers = Vec::with_capacity(last_step);
         let mut round_states = Vec::with_capacity(last_step);
         let mut reduction_states = Vec::with_capacity(last_step);
+        let mut round3_plus_range = None;
 
         for step in 0..last_step {
             let acc_size = 1usize << (self.folding_steps - step - 1);
+            let mut round_range = match step {
+                0 => Some(Range::new(format!("{layer_name}.round0"))?),
+                1 => Some(Range::new(format!("{layer_name}.round1"))?),
+                2 => Some(Range::new(format!("{layer_name}.round2"))?),
+                _ => None,
+            };
+            if let Some(range) = round_range.as_ref() {
+                range.start(stream)?;
+            }
+            if step == 3 {
+                let range = Range::new(format!("{layer_name}.round3_plus"))?;
+                range.start(stream)?;
+                round3_plus_range = Some(range);
+            }
+
             if step == 0 {
                 self.launch_round0_kernels(
                     &batch_challenge_buffers,
@@ -5085,10 +5172,10 @@ where
                         }
                     }
                 },
-                context.get_exec_stream(),
+                stream,
             )?;
             if let Some((host, mut device)) = next_round_challenges {
-                memory_copy_async(&mut device, &host, context.get_exec_stream())?;
+                memory_copy_async(&mut device, &host, stream)?;
                 drop(host);
                 round_challenge_buffers.push(ScheduledChallengeBuffer {
                     callbacks: Callbacks::new(),
@@ -5100,8 +5187,18 @@ where
                 callbacks,
                 _phantom: std::marker::PhantomData,
             });
+
+            if let Some(range) = round_range.take() {
+                range.end(stream)?;
+                tracing_ranges.push(range);
+            }
         }
 
+        if round3_plus_range.is_none() {
+            let range = Range::new(format!("{layer_name}.round3_plus"))?;
+            range.start(stream)?;
+            round3_plus_range = Some(range);
+        }
         let final_round_state = {
             let mut callbacks = Callbacks::new();
             let mut scheduled =
@@ -5121,6 +5218,13 @@ where
                 scheduled,
             }
         };
+        if let Some(range) = round3_plus_range.take() {
+            range.end(stream)?;
+            tracing_ranges.push(range);
+        }
+
+        let finalize_range = Range::new(format!("{layer_name}.finalize"))?;
+        finalize_range.start(stream)?;
         let final_evaluations = self.schedule_last_evaluations_readback(last_step, context)?;
         let final_evaluation_accessors: Vec<_> = final_evaluations
             .iter()
@@ -5187,8 +5291,12 @@ where
                     updated_seed: state.seed,
                 });
             },
-            context.get_exec_stream(),
+            stream,
         )?;
+        finalize_range.end(stream)?;
+        tracing_ranges.push(finalize_range);
+        layer_range.end(stream)?;
+        tracing_ranges.push(layer_range);
 
         let mut all_round_states = round_states;
         all_round_states.push(final_round_state);
@@ -5196,6 +5304,7 @@ where
         drop(claim_point_host);
         drop(main_layer_challenges_host);
         Ok(GpuGKRMainLayerScheduledLayerExecution {
+            tracing_ranges,
             start_callbacks,
             batch_challenge_buffers,
             auxiliary_uploads,
@@ -5223,6 +5332,7 @@ where
 impl<E: FieldExtension<BF> + Field> GpuGKRMainLayerScheduledLayerExecution<E> {
     pub(crate) fn into_host_keepalive(self) -> GpuGKRMainLayerHostKeepalive<E> {
         let Self {
+            tracing_ranges,
             start_callbacks,
             batch_challenge_buffers,
             auxiliary_uploads,
@@ -5235,6 +5345,7 @@ impl<E: FieldExtension<BF> + Field> GpuGKRMainLayerScheduledLayerExecution<E> {
             shared_state,
         } = self;
         GpuGKRMainLayerHostKeepalive {
+            tracing_ranges,
             start_callbacks,
             batch_challenge_buffers: batch_challenge_buffers
                 .into_iter()
@@ -5331,6 +5442,8 @@ where
         let workflow_range = Range::new("gkr.backward.schedule")?;
         workflow_range.start(stream)?;
         let mut dimension_reducing_layers = Vec::new();
+        let dimension_reducing_layers_range = Range::new("gkr.backward.dimension_reducing_layers")?;
+        dimension_reducing_layers_range.start(stream)?;
         while let Some(mut prepared_layer) = self.prepare_next_layer_static(context)? {
             dimension_reducing_layers.push(
                 prepared_layer.schedule_execute_dimension_reducing_layer_from_workflow_state(
@@ -5339,10 +5452,14 @@ where
                 )?,
             );
         }
+        dimension_reducing_layers_range.end(stream)?;
+        tracing_ranges.push(dimension_reducing_layers_range);
 
         let mut main_backward_state =
             self.into_main_layer_backward_state(compiled_circuit, E::ZERO, E::ZERO);
         let mut main_layers = Vec::new();
+        let main_layers_range = Range::new("gkr.backward.main_layers")?;
+        main_layers_range.start(stream)?;
         while let Some(mut prepared_layer) =
             main_backward_state.prepare_next_layer_static(context)?
         {
@@ -5355,6 +5472,8 @@ where
             );
             main_backward_state.purge_up_to_layer(layer_idx);
         }
+        main_layers_range.end(stream)?;
+        tracing_ranges.push(main_layers_range);
 
         let GpuGKRMainLayerBackwardState {
             storage: _,

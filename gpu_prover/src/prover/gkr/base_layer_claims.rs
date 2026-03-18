@@ -241,8 +241,10 @@ fn fill_missing_cached_dependency_claims<E: Copy>(
 }
 
 fn schedule_reduce_trace_holder_claims<E>(
+    label: &str,
     trace_holder: &TraceHolder<BF>,
     eq_values: &DeviceSlice<E>,
+    tracing_ranges: &mut Vec<Range>,
     context: &ProverContext,
 ) -> CudaResult<Vec<HostAllocation<[E]>>>
 where
@@ -280,6 +282,8 @@ where
     )?;
     let mut reduction_temp = context.alloc(reduction_temp_bytes, AllocationPlacement::BestFit)?;
     let stream = context.get_exec_stream();
+    let reduction_range = Range::new(format!("gkr.base_layer_claims.reduce.{label}"))?;
+    reduction_range.start(stream)?;
     let raw_values = trace_holder.get_hypercube_evals();
     let mut host_batches = Vec::with_capacity(columns_count.div_ceil(columns_per_batch));
 
@@ -324,6 +328,8 @@ where
         }
         host_batches.push(host_batch_sums);
     }
+    reduction_range.end(stream)?;
+    tracing_ranges.push(reduction_range);
 
     Ok(host_batches)
 }
@@ -366,6 +372,8 @@ where
     let schedule_range = Range::new("gkr.base_layer_claims.schedule")?;
     schedule_range.start(stream)?;
 
+    let claim_point_range = Range::new("gkr.base_layer_claims.claim_point")?;
+    claim_point_range.start(stream)?;
     let mut start_callbacks = Callbacks::new();
     let mut claim_point_host = unsafe { context.alloc_host_uninit_slice(claim_point_len) };
     let claim_point_accessor = claim_point_host.get_mut_accessor();
@@ -377,6 +385,11 @@ where
     )?;
     let mut claim_point_device = context.alloc(claim_point_len, AllocationPlacement::BestFit)?;
     memory_copy_async(&mut claim_point_device, &claim_point_host, stream)?;
+    claim_point_range.end(stream)?;
+    tracing_ranges.push(claim_point_range);
+
+    let eq_values_range = Range::new("gkr.base_layer_claims.eq_values")?;
+    eq_values_range.start(stream)?;
     let mut eq_values = context.alloc(trace_len, AllocationPlacement::BestFit)?;
     launch_build_eq_values(
         claim_point_device.as_ptr(),
@@ -386,15 +399,34 @@ where
         trace_len,
         context,
     )?;
+    eq_values_range.end(stream)?;
+    tracing_ranges.push(eq_values_range);
 
-    let mem_polys_claims =
-        schedule_reduce_trace_holder_claims(memory_trace_holder, &eq_values, context)?;
-    let wit_polys_claims =
-        schedule_reduce_trace_holder_claims(witness_trace_holder, &eq_values, context)?;
-    let setup_polys_claims =
-        schedule_reduce_trace_holder_claims(setup_trace_holder, &eq_values, context)?;
+    let mem_polys_claims = schedule_reduce_trace_holder_claims(
+        "memory",
+        memory_trace_holder,
+        &eq_values,
+        &mut tracing_ranges,
+        context,
+    )?;
+    let wit_polys_claims = schedule_reduce_trace_holder_claims(
+        "witness",
+        witness_trace_holder,
+        &eq_values,
+        &mut tracing_ranges,
+        context,
+    )?;
+    let setup_polys_claims = schedule_reduce_trace_holder_claims(
+        "setup",
+        setup_trace_holder,
+        &eq_values,
+        &mut tracing_ranges,
+        context,
+    )?;
 
     let shared_state = Arc::new(Mutex::new(ScheduledBaseLayerClaimsState { result: None }));
+    let finalize_range = Range::new("gkr.base_layer_claims.finalize")?;
+    finalize_range.start(stream)?;
     let mut finish_callbacks = Callbacks::new();
     let mem_polys_claims_accessors = mem_polys_claims
         .iter()
@@ -440,6 +472,8 @@ where
         },
         stream,
     )?;
+    finalize_range.end(stream)?;
+    tracing_ranges.push(finalize_range);
 
     schedule_range.end(stream)?;
     tracing_ranges.push(schedule_range);
