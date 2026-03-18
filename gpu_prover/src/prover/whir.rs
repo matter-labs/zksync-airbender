@@ -643,9 +643,17 @@ pub(crate) mod tests {
             cpu_extension_oracle_from_monomial_form(&monomial_coeffs, &twiddles, 4, 2, 4, &worker);
 
         let mut monomial_coeffs_device = context
-            .alloc(monomial_coeffs.len(), crate::allocator::tracker::AllocationPlacement::BestFit)
+            .alloc(
+                monomial_coeffs.len(),
+                crate::allocator::tracker::AllocationPlacement::BestFit,
+            )
             .unwrap();
-        memory_copy_async(&mut monomial_coeffs_device, &monomial_coeffs, context.get_exec_stream()).unwrap();
+        memory_copy_async(
+            &mut monomial_coeffs_device,
+            &monomial_coeffs,
+            context.get_exec_stream(),
+        )
+        .unwrap();
 
         let mut gpu = GpuWhirExtensionOracle::schedule_from_device_monomial_coeffs(
             &monomial_coeffs_device,
@@ -665,8 +673,7 @@ pub(crate) mod tests {
         for query_index in [0usize, 1, 7, 13] {
             let (_cpu_coset_index, cpu_values, cpu_query) = cpu.query_for_folded_index(query_index);
 
-            let mut host_query_index =
-                unsafe { context.alloc_host_uninit_slice::<u32>(1) };
+            let mut host_query_index = unsafe { context.alloc_host_uninit_slice::<u32>(1) };
             unsafe {
                 host_query_index.get_mut_accessor().get_mut()[0] = query_index as u32;
             }
