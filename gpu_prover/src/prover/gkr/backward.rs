@@ -468,6 +468,8 @@ pub(crate) struct GpuGKRBackwardExecution<E: FieldExtension<BF> + Field> {
 }
 
 pub(crate) struct GpuGKRBackwardScheduledExecution<B, E: FieldExtension<BF> + Field> {
+    #[allow(dead_code)] // Keeps queued NVTX host callbacks alive until the stream consumes them.
+    tracing_ranges: Vec<Range>,
     #[allow(dead_code)]
     dimension_reducing_layers: Vec<GpuGKRDimensionReducingScheduledLayerExecution<B, E>>,
     #[allow(dead_code)]
@@ -522,6 +524,8 @@ pub(crate) struct GpuGKRMainLayerHostKeepalive<E: FieldExtension<BF> + Field> {
 }
 
 pub(crate) struct GpuGKRBackwardHostKeepalive<B, E: FieldExtension<BF> + Field> {
+    #[allow(dead_code)]
+    tracing_ranges: Vec<Range>,
     #[allow(dead_code)]
     dimension_reducing_layers: Vec<GpuGKRDimensionReducingHostKeepalive<B, E>>,
     #[allow(dead_code)]
@@ -5264,11 +5268,13 @@ where
 {
     pub(crate) fn into_host_keepalive(self) -> GpuGKRBackwardHostKeepalive<B, E> {
         let Self {
+            tracing_ranges,
             dimension_reducing_layers,
             main_layers,
             shared_state,
         } = self;
         GpuGKRBackwardHostKeepalive {
+            tracing_ranges,
             dimension_reducing_layers: dimension_reducing_layers
                 .into_iter()
                 .map(GpuGKRDimensionReducingScheduledLayerExecution::into_host_keepalive)
@@ -5309,6 +5315,10 @@ where
         shared_state: Arc<Mutex<ScheduledBackwardWorkflowState<E>>>,
         context: &ProverContext,
     ) -> CudaResult<GpuGKRBackwardScheduledExecution<BF, E>> {
+        let stream = context.get_exec_stream();
+        let mut tracing_ranges = Vec::new();
+        let workflow_range = Range::new("gkr.backward.schedule")?;
+        workflow_range.start(stream)?;
         let mut dimension_reducing_layers = Vec::new();
         while let Some(mut prepared_layer) = self.prepare_next_layer_static(context)? {
             dimension_reducing_layers.push(
@@ -5342,8 +5352,11 @@ where
         } = main_backward_state;
         // storage and forward_scratch (device allocs) drop here —
         // all exec-stream ops that used them have already been scheduled.
+        workflow_range.end(stream)?;
+        tracing_ranges.push(workflow_range);
 
         Ok(GpuGKRBackwardScheduledExecution {
+            tracing_ranges,
             dimension_reducing_layers,
             main_layers,
             shared_state,
