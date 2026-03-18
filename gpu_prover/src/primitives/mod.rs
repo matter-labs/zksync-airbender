@@ -6,6 +6,7 @@ pub mod device_structures;
 pub(crate) mod device_tracing;
 pub mod field;
 pub mod machine_type;
+pub(crate) mod nvtx_registered;
 pub(crate) mod static_host;
 pub(crate) mod transfer;
 pub mod utils;

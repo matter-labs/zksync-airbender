@@ -773,7 +773,12 @@ mod tests {
         context.get_h2d_stream().synchronize().unwrap();
 
         let mut raw = vec![BF::ZERO; transfer.trace_holder.get_hypercube_evals().len()];
-        memory_copy_async(&mut raw, transfer.trace_holder.get_hypercube_evals(), context.get_exec_stream()).unwrap();
+        memory_copy_async(
+            &mut raw,
+            transfer.trace_holder.get_hypercube_evals(),
+            context.get_exec_stream(),
+        )
+        .unwrap();
         context.get_exec_stream().synchronize().unwrap();
         assert_eq!(raw, flatten_setup(&setup));
         assert!(!transfer.trace_holder.are_cosets_materialized());
@@ -810,7 +815,12 @@ mod tests {
         let mut indexes_device = context
             .alloc(query_indexes.len(), AllocationPlacement::BestFit)
             .unwrap();
-        memory_copy_async(&mut indexes_device, &query_indexes, context.get_exec_stream()).unwrap();
+        memory_copy_async(
+            &mut indexes_device,
+            &query_indexes,
+            context.get_exec_stream(),
+        )
+        .unwrap();
 
         transfer.ensure_transferred(&context).unwrap();
         let transferred_queries = transfer
