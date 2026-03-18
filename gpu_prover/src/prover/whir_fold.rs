@@ -1739,7 +1739,14 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         stream,
     )?;
 
+    let initialize_state_range = Range::new("gkr.whir.initialize_state")?;
+    initialize_state_range.start(stream)?;
     let mut state = GpuWhirState::new(trace_len, context)?;
+    initialize_state_range.end(stream)?;
+    tracing_ranges.push(initialize_state_range);
+
+    let initialize_batched_forms_range = Range::new("gkr.whir.initialize_batched_forms")?;
+    initialize_batched_forms_range.start(stream)?;
     let batch_challenges = schedule_initialize_batched_forms(
         memory_trace_holder,
         witness_trace_holder,
@@ -1752,6 +1759,11 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         &mut start_callbacks,
         context,
     )?;
+    initialize_batched_forms_range.end(stream)?;
+    tracing_ranges.push(initialize_batched_forms_range);
+
+    let base_eq_values_range = Range::new("gkr.whir.base_eq_values")?;
+    base_eq_values_range.start(stream)?;
     memory_copy_async(
         &mut state.point_pows[..base_layer_point_len],
         &base_layer_point_host,
@@ -1765,6 +1777,8 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         trace_len,
         context,
     )?;
+    base_eq_values_range.end(stream)?;
+    tracing_ranges.push(base_eq_values_range);
 
     let quart = BF::from_u32_unchecked(4).inverse().unwrap();
     let two_inv = BF::from_u32_unchecked(2).inverse().unwrap();
@@ -1848,13 +1862,21 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         };
 
     {
+        let round_range = Range::new("gkr.whir.base_round.0")?;
+        round_range.start(stream)?;
         let num_folding_steps = whir_steps_schedule.next().unwrap();
         let num_queries = whir_queries_schedule.next().unwrap();
         let (pow_round_idx, pow_bits) = whir_pow_schedule.next().unwrap();
+        let folds_range = Range::new("gkr.whir.base_round.0.folds")?;
+        folds_range.start(stream)?;
         schedule_fold_round(num_folding_steps, &mut state)?;
+        folds_range.end(stream)?;
+        tracing_ranges.push(folds_range);
 
         let lde_factor = whir_steps_lde_factors.next().unwrap();
         let next_folding_steps = *whir_steps_schedule.peek().unwrap();
+        let commit_next_oracle_range = Range::new("gkr.whir.base_round.0.commit_next_oracle")?;
+        commit_next_oracle_range.start(stream)?;
         let oracle = GpuWhirExtensionOracle::schedule_from_device_monomial_coeffs(
             &state.sumchecked_poly_monomial_form[..state.current_len],
             lde_factor,
@@ -1880,8 +1902,12 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
             },
             stream,
         )?;
+        commit_next_oracle_range.end(stream)?;
+        tracing_ranges.push(commit_next_oracle_range);
         rs_oracle = Some(oracle);
 
+        let ood_sample_range = Range::new("gkr.whir.base_round.0.ood_sample")?;
+        ood_sample_range.start(stream)?;
         let (ood_point_upload, ood_point_device) =
             schedule_callback_populated_upload(context, 1, move |dst: &mut [E4]| unsafe {
                 dst[0] = draw_random_field_els::<BF, E4>(seed_accessor.get_mut(), 1)[0];
@@ -1917,7 +1943,12 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         ood_partial_readbacks.push(ood_partials);
         ood_points.push(ood_point_upload);
         ood_values.push(ood_value_host);
+        ood_sample_range.end(stream)?;
+        tracing_ranges.push(ood_sample_range);
 
+        let pow_and_query_indexes_range =
+            Range::new("gkr.whir.base_round.0.pow_and_query_indexes")?;
+        pow_and_query_indexes_range.start(stream)?;
         let mut nonce_host = unsafe { context.alloc_host_uninit::<u64>() };
         let query_domain_log2 =
             trace_len_log2 + original_lde_factor.trailing_zeros() as usize - num_folding_steps;
@@ -2004,6 +2035,11 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
                 stream,
             )?;
         }
+        pow_and_query_indexes_range.end(stream)?;
+        tracing_ranges.push(pow_and_query_indexes_range);
+
+        let delinearization_eq_range = Range::new("gkr.whir.base_round.0.delinearization_eq")?;
+        delinearization_eq_range.start(stream)?;
         let (delinearization_upload, delinearization_device) =
             schedule_callback_populated_upload(context, 1, move |dst: &mut [E4]| unsafe {
                 dst[0] = draw_random_field_els::<BF, E4>(seed_accessor.get_mut(), 1)[0];
@@ -2022,7 +2058,11 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
             context,
         )?;
         ood_points.push(eq_upload);
+        delinearization_eq_range.end(stream)?;
+        tracing_ranges.push(delinearization_eq_range);
 
+        let queries_range = Range::new("gkr.whir.base_round.0.queries")?;
+        queries_range.start(stream)?;
         let mut round_base_queries = [Vec::new(), Vec::new(), Vec::new()];
         for query_idx in 0..num_queries {
             let mut memory_query_index_host = unsafe { context.alloc_host_uninit_slice(1) };
@@ -2174,22 +2214,37 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
             round_base_queries[1].push(witness_query);
             round_base_queries[2].push(setup_query);
         }
+        queries_range.end(stream)?;
+        tracing_ranges.push(queries_range);
         base_queries.push(round_base_queries);
         query_index_callbacks.push(query_index_callbacks_for_round);
         query_indexes.push(query_indexes_host);
         delinearization_challenges.push(delinearization_upload);
         pow_nonces.push(nonce_host);
+        round_range.end(stream)?;
+        tracing_ranges.push(round_range);
     }
 
     let num_internal_whir_steps = num_whir_steps.saturating_sub(1);
     for internal_round_idx in 0..num_internal_whir_steps {
+        let round_name = format!("gkr.whir.internal_round.{}", internal_round_idx);
+        let round_range = Range::new(&*round_name)?;
+        round_range.start(stream)?;
         let num_folding_steps = whir_steps_schedule.next().unwrap();
         let num_queries = whir_queries_schedule.next().unwrap();
         let (pow_round_idx, pow_bits) = whir_pow_schedule.next().unwrap();
+        let folds_name = format!("{round_name}.folds");
+        let folds_range = Range::new(&*folds_name)?;
+        folds_range.start(stream)?;
         schedule_fold_round(num_folding_steps, &mut state)?;
+        folds_range.end(stream)?;
+        tracing_ranges.push(folds_range);
 
         let lde_factor = whir_steps_lde_factors.next().unwrap();
         let next_folding_steps = *whir_steps_schedule.peek().unwrap();
+        let commit_name = format!("{round_name}.commit_next_oracle");
+        let commit_next_oracle_range = Range::new(&*commit_name)?;
+        commit_next_oracle_range.start(stream)?;
         let next_oracle = GpuWhirExtensionOracle::schedule_from_device_monomial_coeffs(
             &state.sumchecked_poly_monomial_form[..state.current_len],
             lde_factor,
@@ -2218,8 +2273,13 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
             },
             stream,
         )?;
+        commit_next_oracle_range.end(stream)?;
+        tracing_ranges.push(commit_next_oracle_range);
         let mut oracle_to_query = rs_oracle.replace(next_oracle).unwrap();
 
+        let ood_sample_name = format!("{round_name}.ood_sample");
+        let ood_sample_range = Range::new(&*ood_sample_name)?;
+        ood_sample_range.start(stream)?;
         let (ood_point_upload, ood_point_device) =
             schedule_callback_populated_upload(context, 1, move |dst: &mut [E4]| {
                 dst[0] = E4::from_base(BF::from_u32_unchecked(42));
@@ -2254,7 +2314,12 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         ood_partial_readbacks.push(ood_partials);
         ood_points.push(ood_point_upload);
         ood_values.push(ood_value_host);
+        ood_sample_range.end(stream)?;
+        tracing_ranges.push(ood_sample_range);
 
+        let pow_and_query_indexes_name = format!("{round_name}.pow_and_query_indexes");
+        let pow_and_query_indexes_range = Range::new(&*pow_and_query_indexes_name)?;
+        pow_and_query_indexes_range.start(stream)?;
         let mut nonce_host = unsafe { context.alloc_host_uninit::<u64>() };
         let query_domain_log2 = state.current_len.trailing_zeros() as usize
             + oracle_to_query.lde_factor().trailing_zeros() as usize;
@@ -2341,6 +2406,12 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
                 stream,
             )?;
         }
+        pow_and_query_indexes_range.end(stream)?;
+        tracing_ranges.push(pow_and_query_indexes_range);
+
+        let delinearization_eq_name = format!("{round_name}.delinearization_eq");
+        let delinearization_eq_range = Range::new(&*delinearization_eq_name)?;
+        delinearization_eq_range.start(stream)?;
         let (delinearization_upload, delinearization_device) =
             schedule_callback_populated_upload(context, 1, move |dst: &mut [E4]| unsafe {
                 dst[0] = draw_random_field_els::<BF, E4>(seed_accessor.get_mut(), 1)[0];
@@ -2359,7 +2430,12 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
             context,
         )?;
         ood_points.push(eq_upload);
+        delinearization_eq_range.end(stream)?;
+        tracing_ranges.push(delinearization_eq_range);
 
+        let queries_name = format!("{round_name}.queries");
+        let queries_range = Range::new(&*queries_name)?;
+        queries_range.start(stream)?;
         let mut round_recursive_queries = Vec::new();
         for query_idx in 0..num_queries {
             let mut single_query_index = unsafe { context.alloc_host_uninit_slice(1) };
@@ -2423,24 +2499,36 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
             )?;
             round_recursive_queries.push(query);
         }
+        queries_range.end(stream)?;
+        tracing_ranges.push(queries_range);
         recursive_caps_keepalive.push(oracle_to_query.into_host_tree_caps());
         recursive_queries.push(round_recursive_queries);
         query_index_callbacks.push(query_index_callbacks_for_round);
         query_indexes.push(query_indexes_host);
         delinearization_challenges.push(delinearization_upload);
         pow_nonces.push(nonce_host);
+        round_range.end(stream)?;
+        tracing_ranges.push(round_range);
     }
 
     {
+        let round_range = Range::new("gkr.whir.final_round")?;
+        round_range.start(stream)?;
         let num_folding_steps = whir_steps_schedule.next().unwrap();
         let num_queries = whir_queries_schedule.next().unwrap();
         let (pow_round_idx, pow_bits) = whir_pow_schedule.next().unwrap();
+        let folds_range = Range::new("gkr.whir.final_round.folds")?;
+        folds_range.start(stream)?;
         schedule_fold_round(num_folding_steps, &mut state)?;
+        folds_range.end(stream)?;
+        tracing_ranges.push(folds_range);
 
         let mut oracle_to_query = rs_oracle.take().unwrap();
         let query_domain_log2 = state.current_len.trailing_zeros() as usize
             + oracle_to_query.lde_factor().trailing_zeros() as usize;
         let query_domain_size = 1u64 << query_domain_log2;
+        let pow_and_query_indexes_range = Range::new("gkr.whir.final_round.pow_and_query_indexes")?;
+        pow_and_query_indexes_range.start(stream)?;
         let mut nonce_host = unsafe { context.alloc_host_uninit::<u64>() };
         let mut query_indexes_host = unsafe { context.alloc_host_uninit_slice(num_queries) };
         let query_indexes_accessor = query_indexes_host.get_mut_accessor();
@@ -2523,6 +2611,10 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
                 stream,
             )?;
         }
+        pow_and_query_indexes_range.end(stream)?;
+        tracing_ranges.push(pow_and_query_indexes_range);
+        let queries_range = Range::new("gkr.whir.final_round.queries")?;
+        queries_range.start(stream)?;
         let mut round_recursive_queries = Vec::new();
         let final_oracle_index = num_whir_steps.saturating_sub(1);
         for query_idx in 0..num_queries {
@@ -2569,11 +2661,15 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
             )?;
             round_recursive_queries.push(query);
         }
+        queries_range.end(stream)?;
+        tracing_ranges.push(queries_range);
         recursive_caps_keepalive.push(oracle_to_query.into_host_tree_caps());
         recursive_queries.push(round_recursive_queries);
         query_index_callbacks.push(query_index_callbacks_for_round);
         query_indexes.push(query_indexes_host);
         pow_nonces.push(nonce_host);
+        round_range.end(stream)?;
+        tracing_ranges.push(round_range);
     }
 
     schedule_range.end(stream)?;
