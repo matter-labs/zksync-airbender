@@ -2896,19 +2896,20 @@ fn run_basic_unrolled_proof_job_multi_schedule_test() {
     let fixture = prepare_basic_unrolled_proof_fixture();
     let baseline_device_usage = fixture.context.get_used_mem_current();
     let pow_override = fixture.override_pow_challenges();
-
-    // Schedule and finish each prove sequentially. The device pool is a CPU-side
-    // slab allocator — freed blocks are immediately available, but GPU work using
-    // those blocks may still be in-flight. Concurrent scheduling (prove_1 before
-    // prove_0 finishes) would race because prove_1's H2D transfers could overwrite
-    // blocks that prove_0's exec-stream work is still reading.
+    let t0 = std::time::Instant::now();
     let proof_job_0 = fixture.schedule_prove(Some(pow_override.clone())).unwrap();
-    let (gpu_proof_0, _proof_time_ms_0) = proof_job_0.finish().unwrap();
+    eprintln!("schedule_prove #0 took {:?}", t0.elapsed());
+    let t1 = std::time::Instant::now();
+    let proof_job_1 = fixture.schedule_prove(Some(pow_override)).unwrap();
+    eprintln!("schedule_prove #1 took {:?}", t1.elapsed());
+    
+    let (gpu_proof_0, proof_time_ms_0) = proof_job_0.finish().unwrap();
+    eprintln!("proof_job_0 proof time: {proof_time_ms_0} ms");
     assert_gkr_proof_eq_for_test(&gpu_proof_0, &fixture.expected_cpu_proof);
     drop(gpu_proof_0);
 
-    let proof_job_1 = fixture.schedule_prove(Some(pow_override)).unwrap();
-    let (gpu_proof_1, _proof_time_ms_1) = proof_job_1.finish().unwrap();
+    let (gpu_proof_1, proof_time_ms_1) = proof_job_1.finish().unwrap();
+    eprintln!("proof_job_1 proof time: {proof_time_ms_1} ms");
     assert_gkr_proof_eq_for_test(&gpu_proof_1, &fixture.expected_cpu_proof);
     drop(gpu_proof_1);
 
