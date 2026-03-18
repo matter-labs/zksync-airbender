@@ -5,7 +5,6 @@ pub const DIGEST_SIZE_U32_WORDS: usize = 8;
 
 const _: () = const {
     assert!(DIGEST_SIZE_U32_WORDS == blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS);
-    assert!(DIGEST_SIZE_U32_WORDS == poseidon2::m31::HASH_SIZE_U32_WORDS);
 
     ()
 };

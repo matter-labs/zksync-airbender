@@ -18,7 +18,6 @@ prover = { workspace = true, default-features = false, features = ["definitions_
 serde = { workspace = true, default-features = false, features = ["derive", "alloc"] }
 unroll = { workspace = true }
 non_determinism_source = { workspace = true }
-poseidon2 = { workspace = true, default-features = false }
 
 [dev-dependencies]
 prover = { workspace = true, features = ["prover"] }

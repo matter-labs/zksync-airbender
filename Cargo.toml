@@ -32,7 +32,6 @@ members = [
     "full_statement_verifier",
     "gpu_prover",
     "non_determinism_source",
-    "poseidon2",
     "prover",
     "risc_v_simulator",
     "tools/cli",
@@ -42,7 +41,6 @@ members = [
     "circuit_defs/risc_v_cycles/verifier",
     "full_statement_verifier",
     "verifier_common",
-    "poseidon2",
     "non_determinism_source",
     "reduced_keccak",
     "risc_v_simulator",
@@ -75,7 +73,6 @@ default-members = [
     "full_statement_verifier",
     # gpu_prover is not a default member because it needs CUDA installation to compile
     "non_determinism_source",
-    "poseidon2",
     "prover",
     "reduced_keccak",
     "risc_v_simulator",
@@ -124,7 +121,6 @@ setups = { path = "./circuit_defs/setups" }
 # verifier = {path = "./verifier", default-features = false}
 verifier_common = { path = "./verifier_common", default-features = false }
 # full_statement_verifier  = { path = "./full_statement_verifier", default-features = false }
-poseidon2 = { path = "./poseidon2", default-features = false }
 non_determinism_source = { path = "./non_determinism_source", default-features = false }
 risc_v_simulator = { path = "./risc_v_simulator", default-features = false }
 execution_utils = { path = "./execution_utils", default-features = false }

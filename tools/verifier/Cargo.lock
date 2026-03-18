@@ -103,16 +103,6 @@ name = "non_determinism_source"
 version = "0.1.0"
 
 [[package]]
-name = "poseidon2"
-version = "0.1.0"
-dependencies = [
- "field",
- "non_determinism_source",
- "rand",
- "unroll",
-]
-
-[[package]]
 name = "proc-macro2"
 version = "1.0.95"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -129,7 +119,6 @@ dependencies = [
  "cs",
  "field",
  "non_determinism_source",
- "poseidon2",
  "serde",
  "transcript",
  "unroll",
@@ -292,7 +281,6 @@ dependencies = [
  "cs",
  "field",
  "non_determinism_source",
- "poseidon2",
  "prover",
  "serde",
  "transcript",

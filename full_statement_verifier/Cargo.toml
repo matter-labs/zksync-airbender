@@ -19,17 +19,13 @@ blake2_with_compression_verifier = {path = "../circuit_defs/blake2_with_compress
 bigint_with_control_verifier = {path = "../circuit_defs/bigint_with_control/verifier", default-features = false}
 
 # blake2_single_round_verifier = {path = "../circuit_defs/blake2_single_round/verifier", default-features = false}
-# poseidon2_compression_with_witness_verifier = {path = "../circuit_defs/poseidon2_compression_with_witness/verifier", default-features = false}
 
 # setups = { workspace = true, default-features = false } // TODO: import as dependency if we make it no-std
 
 
 [features]
-# delegation = ["verifier_common/delegation", "blake2_single_round_verifier/delegation", "risc_v_cycles_verifier/delegation", "reduced_risc_v_machine_verifier/delegation", "poseidon2_compression_with_witness_verifier/delegation"]
-# single_round_delegation = ["verifier_common/single_round_delegation", "blake2_single_round_verifier/single_round_delegation", "risc_v_cycles_verifier/single_round_delegation", "reduced_risc_v_machine_verifier/single_round_delegation", "poseidon2_compression_with_witness_verifier/single_round_delegation"]
 blake2_with_compression = ["verifier_common/blake2_with_compression", "risc_v_cycles_verifier/blake2_with_compression", "reduced_risc_v_machine_verifier/blake2_with_compression", "reduced_risc_v_log_23_machine_verifier/blake2_with_compression", "final_reduced_risc_v_machine_verifier/blake2_with_compression", "blake2_with_compression_verifier/blake2_with_compression", "bigint_with_control_verifier/blake2_with_compression"]
 modular_ops = ["verifier_common/modular_ops", "risc_v_cycles_verifier/modular_ops", "reduced_risc_v_machine_verifier/modular_ops", "reduced_risc_v_log_23_machine_verifier/modular_ops", "final_reduced_risc_v_machine_verifier/modular_ops", "blake2_with_compression_verifier/modular_ops", "bigint_with_control_verifier/modular_ops"]
-# modular_ops = ["verifier_common/modular_ops", "blake2_single_round_verifier/modular_ops", "risc_v_cycles_verifier/modular_ops", "reduced_risc_v_machine_verifier/modular_ops", "poseidon2_compression_with_witness_verifier/modular_ops"]
 verifier_program = ["modular_ops"]
 replace_csr = ["verifier_common/replace_csr"]
 

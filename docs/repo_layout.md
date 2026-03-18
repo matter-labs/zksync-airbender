@@ -15,7 +15,6 @@ What follows is a very rough and partly incomplete layout of our repo. What is N
 - gpu_prover/ - main `Rust -> CUDA` GPU prover implementation.
 - gpu_witness_eval_generator/ - `Rust -> CUDA` GPU prover's witness generator.
 - non_determinism_source/ - `NonDeterminism` storage reader trait, implemented in `prover` crate.
-- poseidon2/ - native Poseidon2 implementation.
 - prover/ - main CPU prover implementation with its five stages.
 - risc_v_simulator/ - simple RISC-V simulator used for some forms of witness tracing.
 - riscv_common/ - custom RISC-V bytecode to be used by "kernel" OS programs.

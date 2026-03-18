@@ -20,7 +20,6 @@ inferno = "0.12"
 blake2s_u32 = { workspace = true, optional = true }
 cs = { workspace = true, default-features = false }
 field = { workspace = true, optional = true }
-poseidon2 = { workspace = true, optional = true }
 rand = { workspace = true, features = ["std", "thread_rng", "std_rng"]}
 ruint = { version = "1.15", optional = true, default-features = false }
 serde = { workspace = true }
@@ -33,7 +32,7 @@ opcode_stats = []
 cycle_marker = []
 default = ["field", "delegation"]
 # default = ["delegation"]
-delegation = ["blake2s_u32", "field", "poseidon2", "ruint"]
+delegation = ["blake2s_u32", "field", "ruint"]
 
 [[bin]]
 name = "runner"

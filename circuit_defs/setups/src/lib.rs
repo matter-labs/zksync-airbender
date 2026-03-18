@@ -215,10 +215,6 @@ pub fn all_delegation_circuits_precomputations<A: GoodAllocator, B: GoodAllocato
         //     blake2_single_round::DELEGATION_TYPE_ID,
         //     get_blake2_single_round_circuit_setup(worker),
         // ),
-        // (
-        //     poseidon2_compression_with_witness::DELEGATION_TYPE_ID,
-        //     get_poseidon2_compress_with_witness_circuit_setup(worker),
-        // ),
     ]
 }
 
