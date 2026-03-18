@@ -415,9 +415,7 @@ fn schedule_reduce_outputs_readback(
     Ok(host)
 }
 
-fn full_cap_from_trace_holder(
-    trace_holder: &TraceHolder<BF>,
-) -> MerkleTreeCapVarLength {
+fn full_cap_from_trace_holder(trace_holder: &TraceHolder<BF>) -> MerkleTreeCapVarLength {
     MerkleTreeCapVarLength {
         cap: trace_holder
             .get_tree_caps()
@@ -3232,7 +3230,12 @@ mod tests {
             .iter()
             .flat_map(|column| column.iter().copied())
             .collect::<Vec<_>>();
-        memory_copy_async(trace_holder.get_uninit_hypercube_evals_mut(), &flat, context.get_exec_stream()).unwrap();
+        memory_copy_async(
+            trace_holder.get_uninit_hypercube_evals_mut(),
+            &flat,
+            context.get_exec_stream(),
+        )
+        .unwrap();
         trace_holder
             .materialize_cosets_from_owned_hypercube(context)
             .unwrap();
@@ -3262,7 +3265,12 @@ mod tests {
             .iter()
             .flat_map(|column| column.iter().copied())
             .collect::<Vec<_>>();
-        memory_copy_async(trace_holder.get_uninit_hypercube_evals_mut(), &flat, context.get_exec_stream()).unwrap();
+        memory_copy_async(
+            trace_holder.get_uninit_hypercube_evals_mut(),
+            &flat,
+            context.get_exec_stream(),
+        )
+        .unwrap();
         trace_holder
             .materialize_cosets_from_owned_hypercube(context)
             .unwrap();
@@ -3343,7 +3351,12 @@ mod tests {
         let eq = (0..16)
             .map(|i| sample_ext(400 + 20 * i as u32))
             .collect::<Vec<_>>();
-        let challenges = [sample_ext(777), sample_ext(888), sample_ext(999), sample_ext(1111)];
+        let challenges = [
+            sample_ext(777),
+            sample_ext(888),
+            sample_ext(999),
+            sample_ext(1111),
+        ];
 
         state.current_len = monomial.len();
         state.sumchecked_poly_monomial_form = alloc_and_copy(&monomial, &context);
@@ -3412,7 +3425,9 @@ mod tests {
 
         state.current_len = monomial.len();
         state.sumchecked_poly_monomial_form = alloc_and_copy(&monomial, &context);
-        state.monomial_buffer = context.alloc(LEN / 2, AllocationPlacement::BestFit).unwrap();
+        state.monomial_buffer = context
+            .alloc(LEN / 2, AllocationPlacement::BestFit)
+            .unwrap();
 
         let mut expected_monomial = monomial;
         for (step_idx, challenge) in challenges.into_iter().enumerate() {
@@ -3460,7 +3475,9 @@ mod tests {
 
         state.current_len = LEN;
         state.sumchecked_poly_monomial_form = alloc_and_copy(&monomial, &context);
-        state.monomial_buffer = context.alloc(LEN / 2, AllocationPlacement::BestFit).unwrap();
+        state.monomial_buffer = context
+            .alloc(LEN / 2, AllocationPlacement::BestFit)
+            .unwrap();
         state.sumchecked_poly_evaluation_form = alloc_and_copy(&evals, &context);
         state.eq_poly = alloc_and_copy(&eq, &context);
 
@@ -3779,8 +3796,12 @@ mod tests {
         let mut expected_tail = vec![E4::ZERO; sample_len];
         memory_copy_async(&mut expected_head, &evals[..sample_len], stream).unwrap();
         memory_copy_async(&mut expected_mid, &evals[mid..mid + sample_len], stream).unwrap();
-        memory_copy_async(&mut expected_tail, &evals[trace_len - sample_len..trace_len], stream)
-            .unwrap();
+        memory_copy_async(
+            &mut expected_tail,
+            &evals[trace_len - sample_len..trace_len],
+            stream,
+        )
+        .unwrap();
         stream.synchronize().unwrap();
 
         let mut point = context.alloc(24, AllocationPlacement::BestFit).unwrap();
@@ -3815,8 +3836,12 @@ mod tests {
         let mut actual_tail = vec![E4::ZERO; sample_len];
         memory_copy_async(&mut actual_head, &evals[..sample_len], stream).unwrap();
         memory_copy_async(&mut actual_mid, &evals[mid..mid + sample_len], stream).unwrap();
-        memory_copy_async(&mut actual_tail, &evals[trace_len - sample_len..trace_len], stream)
-            .unwrap();
+        memory_copy_async(
+            &mut actual_tail,
+            &evals[trace_len - sample_len..trace_len],
+            stream,
+        )
+        .unwrap();
         stream.synchronize().unwrap();
 
         assert_eq!(actual_head, expected_head);
@@ -3853,8 +3878,12 @@ mod tests {
         let mut actual_tail = vec![E4::ZERO; sample_len];
         memory_copy_async(&mut actual_head, &values[..sample_len], stream).unwrap();
         memory_copy_async(&mut actual_mid, &values[mid..mid + sample_len], stream).unwrap();
-        memory_copy_async(&mut actual_tail, &values[trace_len - sample_len..trace_len], stream)
-            .unwrap();
+        memory_copy_async(
+            &mut actual_tail,
+            &values[trace_len - sample_len..trace_len],
+            stream,
+        )
+        .unwrap();
         stream.synchronize().unwrap();
 
         let expected_for_index = |index: usize| {
