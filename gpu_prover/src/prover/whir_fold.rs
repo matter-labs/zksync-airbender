@@ -1542,12 +1542,16 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         assert_eq!(external_pow_nonces.len(), whir_pow_schedule.len());
     }
 
+    let stream = context.get_exec_stream();
+    let mut tracing_ranges = Vec::new();
+    let materialize_cosets_range = Range::new("gkr.whir.materialize_cosets")?;
+    materialize_cosets_range.start(stream)?;
     memory_trace_holder.ensure_cosets_materialized(context)?;
     witness_trace_holder.ensure_cosets_materialized(context)?;
     setup_trace_holder.ensure_cosets_materialized(context)?;
+    materialize_cosets_range.end(stream)?;
+    tracing_ranges.push(materialize_cosets_range);
 
-    let stream = context.get_exec_stream();
-    let mut tracing_ranges = Vec::new();
     let schedule_range = Range::new("gkr.whir.schedule")?;
     schedule_range.start(stream)?;
 
