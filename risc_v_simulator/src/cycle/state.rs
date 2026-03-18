@@ -222,6 +222,11 @@ thread_local! {
 }
 
 #[cfg(feature = "cycle_marker")]
+pub(crate) fn reset_cycle_marker() {
+    CYCLE_MARKER.with_borrow_mut(|cm| *cm = CycleMarker::new());
+}
+
+#[cfg(feature = "cycle_marker")]
 pub fn take_cycle_marker() -> CycleMarker {
     CYCLE_MARKER.with(|cm| std::mem::take(&mut *cm.borrow_mut()))
 }
@@ -406,6 +411,8 @@ impl<Config: MachineConfig> RiscV32State<Config> {
 
         #[cfg(feature = "opcode_stats")]
         OPCODES_COUNTER.with_borrow_mut(|el| el.clear());
+        #[cfg(feature = "cycle_marker")]
+        reset_cycle_marker();
 
         Self {
             observable: RiscV32ObservableState { registers, pc },
@@ -420,6 +427,9 @@ impl<Config: MachineConfig> RiscV32State<Config> {
 
     pub fn new_random(initial_pc: u32, is_user_mode: bool, is_halted: bool) -> Self {
         let mut rng = rand::thread_rng();
+
+        #[cfg(feature = "cycle_marker")]
+        reset_cycle_marker();
 
         let mut extra_flags = ExtraFlags(0u32);
         extra_flags.set_mode(if is_user_mode {

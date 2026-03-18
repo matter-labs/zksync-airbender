@@ -22,7 +22,7 @@ use crate::cycle::state::NUM_REGISTERS;
 #[cfg(feature = "opcode_stats")]
 use crate::cycle::state::OPCODES_COUNTER;
 #[cfg(feature = "cycle_marker")]
-use crate::cycle::state::{CycleMarker, Mark, CYCLE_MARKER};
+use crate::cycle::state::{reset_cycle_marker, CYCLE_MARKER};
 use crate::cycle::status_registers::TrapReason;
 use crate::cycle::IMStandardIsaConfig;
 use crate::cycle::MachineConfig;
@@ -214,6 +214,8 @@ impl<Config: MachineConfig> RiscV32StateForUnrolledProver<Config> {
 
         #[cfg(feature = "opcode_stats")]
         OPCODES_COUNTER.with_borrow_mut(|el| el.clear());
+        #[cfg(feature = "cycle_marker")]
+        reset_cycle_marker();
 
         Self {
             observable: RiscV32ObservableState { registers, pc },

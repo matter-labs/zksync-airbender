@@ -1,4 +1,6 @@
 use crate::abstractions::csr_processor::NoExtraCSRs;
+#[cfg(feature = "cycle_marker")]
+use crate::cycle::state::take_cycle_marker;
 use crate::cycle::state_new::RiscV32StateForUnrolledProver;
 use crate::cycle::IMStandardIsaConfig;
 use crate::{
@@ -20,6 +22,24 @@ mod sltu;
 mod sra;
 
 const INITIAL_PC: u32 = 0;
+#[cfg(feature = "cycle_marker")]
+const MARKER_OPCODE: u32 = 0x7ff01073; // csrrw x0, 2047, x0
+#[cfg(feature = "cycle_marker")]
+const ADDI_OPCODE: u32 = 0x00100093; // addi x1, x0, 1
+
+#[cfg(feature = "cycle_marker")]
+fn memory_for_opcodes(opcodes: &[u32]) -> VectorMemoryImpl {
+    let mut memory =
+        VectorMemoryImpl::new_for_byte_size((opcodes.len() * core::mem::size_of::<u32>()).max(4));
+    for (idx, opcode) in opcodes.iter().enumerate() {
+        memory.populate(
+            INITIAL_PC + idx as u32 * (core::mem::size_of::<u32>() as u32),
+            *opcode,
+        );
+    }
+
+    memory
+}
 
 fn test_reg_reg_op(op_name: &str, expected: u32, op1: u32, op2: u32) {
     {
@@ -184,4 +204,56 @@ fn test_reg_reg_op_64(op_name: &str, expected: u64, op1: u64, op2: u64) {
 fn test_reg_imm_op_64(op_name: &str, expected: u64, op1: u64, imm: u16) {
     // truncate
     test_reg_imm_op(op_name, expected as u32, op1 as u32, imm)
+}
+
+#[cfg(feature = "cycle_marker")]
+#[test]
+fn cycle_markers_reset_for_fresh_state() {
+    {
+        let _ = take_cycle_marker();
+
+        let mut warmup_state = RiscV32State::<IMStandardIsaConfig>::initial(INITIAL_PC);
+        let mut warmup_memory = memory_for_opcodes(&[ADDI_OPCODE]);
+        let mut mmu = NoMMU::default();
+        warmup_state.cycle(&mut warmup_memory, &mut (), &mut mmu, &mut ZeroedSource);
+
+        let mut measured_state = RiscV32State::<IMStandardIsaConfig>::initial(INITIAL_PC);
+        let mut measured_memory = memory_for_opcodes(&[MARKER_OPCODE]);
+        let mut mmu = NoMMU::default();
+        measured_state.cycle(&mut measured_memory, &mut (), &mut mmu, &mut ZeroedSource);
+
+        let marker = take_cycle_marker();
+        assert_eq!(marker.markers.len(), 1);
+        assert_eq!(marker.markers[0].cycles, 0);
+    }
+
+    {
+        let _ = take_cycle_marker();
+
+        let mut warmup_state =
+            RiscV32StateForUnrolledProver::<IMStandardIsaConfig>::initial(INITIAL_PC);
+        let mut warmup_memory = memory_for_opcodes(&[ADDI_OPCODE]);
+        let _ = warmup_state.run_cycles(
+            &mut warmup_memory,
+            &mut (),
+            &mut ZeroedSource,
+            &mut NoExtraCSRs,
+            1,
+        );
+
+        let mut measured_state =
+            RiscV32StateForUnrolledProver::<IMStandardIsaConfig>::initial(INITIAL_PC);
+        let mut measured_memory = memory_for_opcodes(&[MARKER_OPCODE]);
+        let _ = measured_state.run_cycles(
+            &mut measured_memory,
+            &mut (),
+            &mut ZeroedSource,
+            &mut NoExtraCSRs,
+            1,
+        );
+
+        let marker = take_cycle_marker();
+        assert_eq!(marker.markers.len(), 1);
+        assert_eq!(marker.markers[0].cycles, 0);
+    }
 }
