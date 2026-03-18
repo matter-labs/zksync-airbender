@@ -539,9 +539,11 @@ pub(crate) mod test {
 
         assert_eq!(marker_state.markers.len(), 2);
         assert!(marker_state.delegation_counter.is_empty());
+        assert_eq!(marker_state.markers[0].cycles, 0);
+        assert_eq!(marker_state.markers[1].cycles, 1);
 
         let diff = marker_state.markers[1].diff(&marker_state.markers[0]);
-        assert_eq!(diff.cycles, 2);
+        assert_eq!(diff.cycles, 1);
         assert!(diff.delegations.is_empty());
     }
 

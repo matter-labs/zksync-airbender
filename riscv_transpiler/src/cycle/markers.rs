@@ -98,8 +98,11 @@ impl CycleMarker {
 
     #[inline(always)]
     fn add_marker(&mut self) {
+        // Marker instructions are profiling boundaries, not profiled work. Normalize
+        // the raw VM cycle counter so `Mark::diff` reports only non-marker cycles.
+        let cycles = self.cycle_counter - self.markers.len() as u64;
         self.markers.push(Mark {
-            cycles: self.cycle_counter,
+            cycles,
             delegations: self.delegation_counter.clone(),
         });
     }
