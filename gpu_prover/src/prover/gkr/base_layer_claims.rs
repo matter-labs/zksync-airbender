@@ -108,7 +108,11 @@ pub(crate) fn fill_mem_polys_claims<E>(
         .as_ref()
         .expect("base-layer claims result must be available")
         .mem_polys_claims;
-    assert_eq!(dst.len(), src.len(), "memory claims destination length mismatch");
+    assert_eq!(
+        dst.len(),
+        src.len(),
+        "memory claims destination length mismatch"
+    );
     dst.copy_from_slice(src);
 }
 
@@ -124,7 +128,11 @@ pub(crate) fn fill_wit_polys_claims<E>(
         .as_ref()
         .expect("base-layer claims result must be available")
         .wit_polys_claims;
-    assert_eq!(dst.len(), src.len(), "witness claims destination length mismatch");
+    assert_eq!(
+        dst.len(),
+        src.len(),
+        "witness claims destination length mismatch"
+    );
     dst.copy_from_slice(src);
 }
 
@@ -140,7 +148,11 @@ pub(crate) fn fill_setup_polys_claims<E>(
         .as_ref()
         .expect("base-layer claims result must be available")
         .setup_polys_claims;
-    assert_eq!(dst.len(), src.len(), "setup claims destination length mismatch");
+    assert_eq!(
+        dst.len(),
+        src.len(),
+        "setup claims destination length mismatch"
+    );
     dst.copy_from_slice(src);
 }
 
@@ -355,8 +367,7 @@ where
     schedule_range.start(stream)?;
 
     let mut start_callbacks = Callbacks::new();
-    let mut claim_point_host =
-        unsafe { context.alloc_host_uninit_slice(claim_point_len) };
+    let mut claim_point_host = unsafe { context.alloc_host_uninit_slice(claim_point_len) };
     let claim_point_accessor = claim_point_host.get_mut_accessor();
     start_callbacks.schedule(
         move || unsafe {
@@ -546,7 +557,12 @@ mod tests {
             context,
         )
         .unwrap();
-        memory_copy_async(trace_holder.get_uninit_hypercube_evals_mut(), values, context.get_exec_stream()).unwrap();
+        memory_copy_async(
+            trace_holder.get_uninit_hypercube_evals_mut(),
+            values,
+            context.get_exec_stream(),
+        )
+        .unwrap();
         trace_holder
     }
 
