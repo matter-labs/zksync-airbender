@@ -16,9 +16,12 @@ use crate::primitives::circuit_type::{
 };
 use crate::primitives::context::ProverContext;
 use crate::primitives::field::{BF, E4};
+use crate::primitives::nvtx_registered::start_registered_range;
 use crate::primitives::static_host::alloc_static_pinned_box_from_slice;
 use crate::prover::decoder::DecoderTableTransfer;
-use crate::prover::proof::{prove, GkrExternalPowChallenges, GpuGKRProofJob};
+use crate::prover::proof::{
+    prove, prove_with_transfer_scheduling, GkrExternalPowChallenges, GpuGKRProofJob,
+};
 use crate::prover::test_utils::make_test_context;
 use crate::prover::trace_holder::TraceHolder;
 use crate::prover::tracing_data::{
@@ -27,16 +30,11 @@ use crate::prover::tracing_data::{
 };
 use crate::prover::whir::GpuWhirExtensionOracle;
 use crate::prover::whir_fold::{
-    clone_scheduled_whir_pre_pow_seeds,
-    debug_apply_initial_fold_challenge_for_test,
-    debug_build_initial_batched_main_domain_poly_for_test,
-    debug_build_initial_fold_state_for_test,
-    debug_build_initial_state_for_test,
-    debug_build_initial_state_snapshots_for_test,
-    debug_initial_round_checkpoint_for_test,
-    gpu_whir_fold_supported_path,
-    gpu_whir_fold_supported_path_with_external_pow,
-    schedule_gpu_whir_fold_with_sources,
+    clone_scheduled_whir_pre_pow_seeds, debug_apply_initial_fold_challenge_for_test,
+    debug_build_initial_batched_main_domain_poly_for_test, debug_build_initial_fold_state_for_test,
+    debug_build_initial_state_for_test, debug_build_initial_state_snapshots_for_test,
+    debug_initial_round_checkpoint_for_test, gpu_whir_fold_supported_path,
+    gpu_whir_fold_supported_path_with_external_pow, schedule_gpu_whir_fold_with_sources,
 };
 use crate::witness::trace::ChunkedTraceHolder;
 use crate::witness::trace_unrolled::{ExecutorFamilyDecoderData, UnrolledNonMemoryTraceDevice};
@@ -276,7 +274,7 @@ fn make_non_memory_tracing_host_for_test(
     }))
 }
 
-struct BasicUnrolledProofFixture {
+struct BasicUnrolledFixture {
     context: ProverContext,
     circuit_type: CircuitType,
     compiled_circuit: GKRCircuitArtifact<BF>,
@@ -284,22 +282,34 @@ struct BasicUnrolledProofFixture {
     whir_schedule: WhirSchedule,
     final_trace_size_log_2: usize,
     gpu_setup_host: Arc<GpuGKRSetupHost>,
-    decoder_table_host: Arc<crate::primitives::static_host::StaticPinnedBox<ExecutorFamilyDecoderData>>,
+    decoder_table_host:
+        Arc<crate::primitives::static_host::StaticPinnedBox<ExecutorFamilyDecoderData>>,
     tracing_data_host: TracingDataHost<Global>,
+}
+
+struct BasicUnrolledTransfers<'a> {
+    setup_transfer: GpuGKRSetupTransfer<'a>,
+    decoder_transfer: Option<DecoderTableTransfer<'a>>,
+    tracing_data_transfer: TracingDataTransfer<'a, Global>,
+}
+
+impl<'a> BasicUnrolledTransfers<'a> {
+    fn schedule(&mut self, context: &ProverContext) -> CudaResult<()> {
+        self.setup_transfer.schedule_transfer(context)?;
+        if let Some(decoder_transfer) = self.decoder_transfer.as_mut() {
+            decoder_transfer.schedule_transfer(context)?;
+        }
+        self.tracing_data_transfer.schedule_transfer(context)
+    }
+}
+
+struct BasicUnrolledProofFixture {
+    base: BasicUnrolledFixture,
     expected_cpu_proof: GKRProof<BF, E4, DefaultTreeConstructor>,
 }
 
-impl BasicUnrolledProofFixture {
-    fn override_pow_challenges(&self) -> GkrExternalPowChallenges {
-        GkrExternalPowChallenges {
-            whir_pow_nonces: self.expected_cpu_proof.whir_proof.pow_nonces.clone(),
-        }
-    }
-
-    fn schedule_prove(
-        &self,
-        external_pow_challenges: Option<GkrExternalPowChallenges>,
-    ) -> CudaResult<GpuGKRProofJob<'static>> {
+impl BasicUnrolledFixture {
+    fn create_transfers(&self) -> CudaResult<BasicUnrolledTransfers<'static>> {
         let setup_transfer =
             GpuGKRSetupTransfer::new(Arc::clone(&self.gpu_setup_host), &self.context)?;
         let decoder_transfer = if self.compiled_circuit.has_decoder_lookup {
@@ -312,6 +322,30 @@ impl BasicUnrolledProofFixture {
         };
         let tracing_data_transfer =
             TracingDataTransfer::new(self.tracing_data_host.clone(), &self.context)?;
+
+        Ok(BasicUnrolledTransfers {
+            setup_transfer,
+            decoder_transfer,
+            tracing_data_transfer,
+        })
+    }
+
+    fn schedule_transfers(&self) -> CudaResult<BasicUnrolledTransfers<'static>> {
+        let mut transfers = self.create_transfers()?;
+        transfers.schedule(&self.context)?;
+        Ok(transfers)
+    }
+
+    fn prove(
+        &self,
+        transfers: BasicUnrolledTransfers<'static>,
+        external_pow_challenges: Option<GkrExternalPowChallenges>,
+    ) -> CudaResult<GpuGKRProofJob<'static>> {
+        let BasicUnrolledTransfers {
+            setup_transfer,
+            decoder_transfer,
+            tracing_data_transfer,
+        } = transfers;
 
         prove::<Global>(
             self.circuit_type,
@@ -327,9 +361,61 @@ impl BasicUnrolledProofFixture {
             &self.context,
         )
     }
+
+    fn schedule_prove(
+        &self,
+        external_pow_challenges: Option<GkrExternalPowChallenges>,
+    ) -> CudaResult<GpuGKRProofJob<'static>> {
+        let BasicUnrolledTransfers {
+            setup_transfer,
+            decoder_transfer,
+            tracing_data_transfer,
+        } = self.create_transfers()?;
+
+        prove_with_transfer_scheduling::<Global>(
+            self.circuit_type,
+            self.compiled_circuit.clone(),
+            self.external_challenges,
+            self.whir_schedule.clone(),
+            self.final_trace_size_log_2,
+            setup_transfer,
+            decoder_transfer,
+            None,
+            tracing_data_transfer,
+            external_pow_challenges,
+            &self.context,
+        )
+    }
 }
 
-fn prepare_basic_unrolled_proof_fixture() -> BasicUnrolledProofFixture {
+impl BasicUnrolledProofFixture {
+    fn override_pow_challenges(&self) -> GkrExternalPowChallenges {
+        GkrExternalPowChallenges {
+            whir_pow_nonces: self.expected_cpu_proof.whir_proof.pow_nonces.clone(),
+        }
+    }
+
+    fn schedule_prove(
+        &self,
+        external_pow_challenges: Option<GkrExternalPowChallenges>,
+    ) -> CudaResult<GpuGKRProofJob<'static>> {
+        self.base.schedule_prove(external_pow_challenges)
+    }
+}
+
+struct BasicUnrolledFixtureBuildConfig<'a> {
+    binary_path: &'a str,
+    text_path: &'a str,
+    non_determinism_reads: &'a [u32],
+    compute_cpu_reference: bool,
+}
+
+fn prepare_basic_unrolled_fixture(
+    build_config: BasicUnrolledFixtureBuildConfig<'_>,
+) -> (
+    BasicUnrolledFixture,
+    Option<GKRProof<BF, E4, DefaultTreeConstructor>>,
+) {
     type CountersT = DelegationsAndFamiliesCounters;
 
     const TRACE_LEN_LOG2: usize = 24;
@@ -337,9 +423,8 @@ fn prepare_basic_unrolled_proof_fixture() -> BasicUnrolledProofFixture {
     const FINAL_TRACE_SIZE_LOG_2: usize = 4;
 
     let trace_len: usize = 1 << TRACE_LEN_LOG2;
-    let worker = Worker::new_with_num_threads(8);
 
-    let binary = std::fs::read(test_artifact_path("examples/hashed_fibonacci/app.bin")).unwrap();
+    let binary = std::fs::read(test_artifact_path(build_config.binary_path)).unwrap();
     assert_eq!(binary.len() % 4, 0);
     let binary: Vec<_> = binary
         .as_chunks::<4>()
@@ -348,8 +433,7 @@ fn prepare_basic_unrolled_proof_fixture() -> BasicUnrolledProofFixture {
         .map(|el| u32::from_le_bytes(*el))
         .collect();
 
-    let text_section =
-        std::fs::read(test_artifact_path("examples/hashed_fibonacci/app.text")).unwrap();
+    let text_section = std::fs::read(test_artifact_path(build_config.text_path)).unwrap();
     assert_eq!(text_section.len() % 4, 0);
     let text_section: Vec<_> = text_section
         .as_chunks::<4>()
@@ -370,7 +454,8 @@ fn prepare_basic_unrolled_proof_fixture() -> BasicUnrolledProofFixture {
             cycles_bound,
             state,
         );
-    let mut non_determinism = QuasiUARTSource::new_with_reads(vec![15, 1]);
+    let mut non_determinism =
+        QuasiUARTSource::new_with_reads(build_config.non_determinism_reads.to_vec());
 
     let is_program_finished = VM::<CountersT>::run_basic_unrolled::<_, _, _>(
         &mut state,
@@ -455,48 +540,12 @@ fn prepare_basic_unrolled_proof_fixture() -> BasicUnrolledProofFixture {
         _marker: std::marker::PhantomData,
     };
 
-    let oracle = NonMemoryCircuitOracle {
-        inner: &buffer[..],
-        decoder_table: &witness_gen_data,
-        default_pc_value_in_padding: 4,
-    };
-
-    let memory_trace = evaluate_gkr_memory_witness_for_executor_family::<BF, _, _, _>(
-        &compiled_circuit,
-        NUM_CYCLES_PER_CHUNK,
-        &oracle,
-        &worker,
-        Global,
-        Global,
-    );
-    let full_trace = evaluate_gkr_witness_for_executor_family::<BF, _, _, _>(
-        &compiled_circuit,
-        add_sub_lui_auipc_mod::witness_eval_fn,
-        NUM_CYCLES_PER_CHUNK,
-        &oracle,
-        &TableDriver::new(),
-        &worker,
-        Global,
-        Global,
-    );
-    ensure_memory_trace_consistency(&memory_trace, &full_trace);
-    drop(memory_trace);
-
-    let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, &worker);
     let whir_schedule = WhirSchedule::default_for_tests_80_bits();
     let setup = GKRSetup::construct(
         &TableDriver::new(),
         &decoder_table_data,
         trace_len,
         &compiled_circuit,
-    );
-    let setup_commitment = setup.commit(
-        &twiddles,
-        whir_schedule.base_lde_factor,
-        whir_schedule.whir_steps_schedule[0],
-        whir_schedule.cap_size,
-        trace_len.trailing_zeros() as usize,
-        &worker,
     );
     let context = make_test_context(64 * 1024, 1024);
     let gpu_setup_host = Arc::new(
@@ -511,36 +560,112 @@ fn prepare_basic_unrolled_proof_fixture() -> BasicUnrolledProofFixture {
     );
     let decoder_table_host = make_decoder_table_host_for_test(&witness_gen_data);
     eprintln!("fixture: decoder host ready");
-    let expected_cpu_proof = prove_configured_with_gkr::<BF, E4, DefaultTreeConstructor>(
-        &compiled_circuit,
-        &external_challenges,
-        full_trace,
-        &setup,
-        &setup_commitment,
-        &twiddles,
-        &whir_schedule,
-        None,
-        trace_len,
-        &worker,
-    );
-    eprintln!("fixture: cpu proof ready");
+
+    let expected_cpu_proof = if build_config.compute_cpu_reference {
+        let worker = Worker::new_with_num_threads(8);
+        let oracle = NonMemoryCircuitOracle {
+            inner: &buffer[..],
+            decoder_table: &witness_gen_data,
+            default_pc_value_in_padding: 4,
+        };
+
+        let memory_trace = evaluate_gkr_memory_witness_for_executor_family::<BF, _, _, _>(
+            &compiled_circuit,
+            NUM_CYCLES_PER_CHUNK,
+            &oracle,
+            &worker,
+            Global,
+            Global,
+        );
+        let full_trace = evaluate_gkr_witness_for_executor_family::<BF, _, _, _>(
+            &compiled_circuit,
+            add_sub_lui_auipc_mod::witness_eval_fn,
+            NUM_CYCLES_PER_CHUNK,
+            &oracle,
+            &TableDriver::new(),
+            &worker,
+            Global,
+            Global,
+        );
+        ensure_memory_trace_consistency(&memory_trace, &full_trace);
+        drop(memory_trace);
+
+        let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, &worker);
+        let setup_commitment = setup.commit(
+            &twiddles,
+            whir_schedule.base_lde_factor,
+            whir_schedule.whir_steps_schedule[0],
+            whir_schedule.cap_size,
+            trace_len.trailing_zeros() as usize,
+            &worker,
+        );
+        let expected_cpu_proof = prove_configured_with_gkr::<BF, E4, DefaultTreeConstructor>(
+            &compiled_circuit,
+            &external_challenges,
+            full_trace,
+            &setup,
+            &setup_commitment,
+            &twiddles,
+            &whir_schedule,
+            None,
+            trace_len,
+            &worker,
+        );
+        eprintln!("fixture: cpu proof ready");
+        Some(expected_cpu_proof)
+    } else {
+        None
+    };
+
     let tracing_data_host = make_non_memory_tracing_host_for_test(buffer);
     eprintln!("fixture: tracing host ready");
 
-    BasicUnrolledProofFixture {
-        context,
-        circuit_type: CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
-            UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop,
-        )),
-        compiled_circuit,
-        external_challenges,
-        whir_schedule,
-        final_trace_size_log_2: FINAL_TRACE_SIZE_LOG_2,
-        gpu_setup_host,
-        decoder_table_host,
-        tracing_data_host,
+    (
+        BasicUnrolledFixture {
+            context,
+            circuit_type: CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
+                UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop,
+            )),
+            compiled_circuit,
+            external_challenges,
+            whir_schedule,
+            final_trace_size_log_2: FINAL_TRACE_SIZE_LOG_2,
+            gpu_setup_host,
+            decoder_table_host,
+            tracing_data_host,
+        },
         expected_cpu_proof,
+    )
+}
+
+fn prepare_basic_unrolled_proof_fixture() -> BasicUnrolledProofFixture {
+    let (base, expected_cpu_proof) =
+        prepare_basic_unrolled_fixture(BasicUnrolledFixtureBuildConfig {
+            binary_path: "examples/hashed_fibonacci/app.bin",
+            text_path: "examples/hashed_fibonacci/app.text",
+            non_determinism_reads: &[15, 1],
+            compute_cpu_reference: true,
+        });
+    BasicUnrolledProofFixture {
+        base,
+        expected_cpu_proof: expected_cpu_proof
+            .expect("proof fixture must include the CPU reference proof"),
     }
+}
+
+fn prepare_basic_unrolled_profiling_fixture() -> BasicUnrolledFixture {
+    let (fixture, expected_cpu_proof) =
+        prepare_basic_unrolled_fixture(BasicUnrolledFixtureBuildConfig {
+            binary_path: "examples/basic_fibonacci/app.bin",
+            text_path: "examples/basic_fibonacci/app.text",
+            non_determinism_reads: &[],
+            compute_cpu_reference: false,
+        });
+    assert!(
+        expected_cpu_proof.is_none(),
+        "profiling fixture must not compute the CPU reference proof",
+    );
+    fixture
 }
 
 fn compute_column_major_lde_from_monomial_form_for_test(
@@ -1082,7 +1207,9 @@ fn assert_recursive_whir_oracle_parity_for_supported_path(
         )
     );
     cpu_recursive_caps.push(
-        <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<BF>>::get_cap(&cpu_rs_oracle.tree),
+        <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<BF>>::get_cap(
+            &cpu_rs_oracle.tree,
+        ),
     );
     let gpu_initial_round_checkpoint = debug_initial_round_checkpoint_for_test(
         gpu_mem_trace_holder,
@@ -1117,18 +1244,15 @@ fn assert_recursive_whir_oracle_parity_for_supported_path(
     cpu_ood_samples.push(ood_value);
     commit_field_els::<BF, E4>(&mut transcript_seed, &[ood_value]);
     assert_eq!(
-        gpu_initial_round_checkpoint.sumcheck_polys,
-        initial_round_sumcheck_polys,
+        gpu_initial_round_checkpoint.sumcheck_polys, initial_round_sumcheck_polys,
         "initial WHIR sumcheck polys diverged before PoW",
     );
     assert_eq!(
-        gpu_initial_round_checkpoint.folding_challenges,
-        folding_challenges_in_round,
+        gpu_initial_round_checkpoint.folding_challenges, folding_challenges_in_round,
         "initial WHIR folding challenges diverged before recursive commitment",
     );
     assert_eq!(
-        gpu_initial_round_checkpoint.folded_monomial_form,
-        gpu_monomial_after_initial_rounds,
+        gpu_initial_round_checkpoint.folded_monomial_form, gpu_monomial_after_initial_rounds,
         "all-in-one initial WHIR checkpoint diverged from the stepwise GPU fold path",
     );
     let gpu_materialized_initial_rs_oracle = GpuWhirExtensionOracle::from_monomial_coeffs(
@@ -1490,7 +1614,13 @@ fn assert_recursive_whir_oracle_parity_for_supported_path(
     let scheduled_recursive_query_indexes = scheduled_gpu_whir_proof
         .intermediate_whir_oracles
         .iter()
-        .map(|oracle| oracle.queries.iter().map(|query| query.index).collect::<Vec<_>>())
+        .map(|oracle| {
+            oracle
+                .queries
+                .iter()
+                .map(|query| query.index)
+                .collect::<Vec<_>>()
+        })
         .collect::<Vec<_>>();
     // Per-round assertions in workflow order to find first divergence.
     // Sumcheck polys: one per folding step. whir_steps_schedule = [1, 4, 4, 4, 4, 4]
@@ -1713,7 +1843,12 @@ fn prepare_basic_unrolled_async_backward_fixture(
     let mut d_decoder_table = context
         .alloc(h_decoder_table.len(), AllocationPlacement::BestFit)
         .unwrap();
-    memory_copy_async(&mut d_decoder_table, &h_decoder_table, context.get_exec_stream()).unwrap();
+    memory_copy_async(
+        &mut d_decoder_table,
+        &h_decoder_table,
+        context.get_exec_stream(),
+    )
+    .unwrap();
     let mut trace_data = context
         .alloc(buffer.len(), AllocationPlacement::BestFit)
         .unwrap();
@@ -2319,20 +2454,24 @@ fn assert_sumcheck_intermediate_values_eq_for_test<F: PrimeField, E: FieldExtens
     assert_sumcheck_intermediate_values_eq_for_test_with_layer(actual, expected, usize::MAX);
 }
 
-fn assert_sumcheck_intermediate_values_eq_for_test_with_layer<F: PrimeField, E: FieldExtension<F> + Field>(
+fn assert_sumcheck_intermediate_values_eq_for_test_with_layer<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+>(
     actual: &prover::gkr::prover::SumcheckIntermediateProofValues<F, E>,
     expected: &prover::gkr::prover::SumcheckIntermediateProofValues<F, E>,
     layer_idx: usize,
 ) {
-    assert_eq!(actual.sumcheck_num_rounds, expected.sumcheck_num_rounds, "layer {layer_idx}: sumcheck_num_rounds mismatch");
     assert_eq!(
-        actual.internal_round_coefficients,
-        expected.internal_round_coefficients,
+        actual.sumcheck_num_rounds, expected.sumcheck_num_rounds,
+        "layer {layer_idx}: sumcheck_num_rounds mismatch"
+    );
+    assert_eq!(
+        actual.internal_round_coefficients, expected.internal_round_coefficients,
         "layer {layer_idx}: internal_round_coefficients mismatch"
     );
     assert_eq!(
-        actual.final_step_evaluations,
-        expected.final_step_evaluations,
+        actual.final_step_evaluations, expected.final_step_evaluations,
         "layer {layer_idx}: final_step_evaluations mismatch"
     );
 }
@@ -2403,10 +2542,8 @@ fn assert_whir_proof_eq_for_test(
             expected_poly.len(),
             "WHIR sumcheck polynomial degree diverged at round {round_idx}",
         );
-        for (coeff_idx, (&actual_coeff, &expected_coeff)) in actual_poly
-            .iter()
-            .zip(expected_poly.iter())
-            .enumerate()
+        for (coeff_idx, (&actual_coeff, &expected_coeff)) in
+            actual_poly.iter().zip(expected_poly.iter()).enumerate()
         {
             assert_eq!(
                 actual_coeff, expected_coeff,
@@ -2414,11 +2551,16 @@ fn assert_whir_proof_eq_for_test(
             );
         }
     }
-    assert_eq!(actual.ood_samples, expected.ood_samples, "WHIR OOD samples diverged");
-    assert_eq!(actual.pow_nonces, expected.pow_nonces, "WHIR PoW nonces diverged");
     assert_eq!(
-        actual.final_monomials,
-        expected.final_monomials,
+        actual.ood_samples, expected.ood_samples,
+        "WHIR OOD samples diverged"
+    );
+    assert_eq!(
+        actual.pow_nonces, expected.pow_nonces,
+        "WHIR PoW nonces diverged"
+    );
+    assert_eq!(
+        actual.final_monomials, expected.final_monomials,
         "WHIR final monomials diverged",
     );
 
@@ -2495,6 +2637,32 @@ fn assert_gkr_proof_eq_for_test(
         assert_sumcheck_intermediate_values_eq_for_test(actual_values, expected_values);
     }
     assert_whir_proof_eq_for_test(&actual.whir_proof, &expected.whir_proof);
+}
+
+fn assert_gkr_proof_structure_for_test(
+    proof: &GKRProof<BF, E4, DefaultTreeConstructor>,
+    whir_schedule: &WhirSchedule,
+) {
+    assert!(
+        !proof.sumcheck_intermediate_values.is_empty(),
+        "proof must contain sumcheck intermediate values",
+    );
+    for key in [
+        OutputType::PermutationProduct,
+        OutputType::Lookup16Bits,
+        OutputType::LookupTimestamps,
+        OutputType::GenericLookup,
+    ] {
+        assert!(
+            proof.final_explicit_evaluations.contains_key(&key),
+            "proof must contain explicit evaluations for {key:?}",
+        );
+    }
+    assert_eq!(
+        proof.whir_proof.pow_nonces.len(),
+        whir_schedule.whir_pow_schedule.len(),
+        "proof must contain one PoW nonce per WHIR round",
+    );
 }
 
 fn stage1_caps_from_tree<T: ColumnMajorMerkleTreeConstructor<BF>>(
@@ -2863,8 +3031,7 @@ fn run_basic_unrolled_proof_job_default_pow_smoke_test() {
             .get(layer_idx)
             .unwrap_or_else(|| panic!("missing proof layer {layer_idx}"));
         assert_eq!(
-            actual_values.sumcheck_num_rounds,
-            expected_values.sumcheck_num_rounds,
+            actual_values.sumcheck_num_rounds, expected_values.sumcheck_num_rounds,
             "layer {layer_idx}: sumcheck_num_rounds must match"
         );
         assert_eq!(
@@ -2880,7 +3047,7 @@ fn run_basic_unrolled_proof_job_default_pow_smoke_test() {
     }
     assert_eq!(
         gpu_proof.whir_proof.pow_nonces.len(),
-        fixture.whir_schedule.whir_pow_schedule.len()
+        fixture.base.whir_schedule.whir_pow_schedule.len()
     );
     // final_monomials is not yet populated by the proof pipeline; just check
     // it matches whatever the CPU reference has.
@@ -2894,7 +3061,7 @@ fn run_basic_unrolled_proof_job_default_pow_smoke_test() {
 #[serial]
 fn run_basic_unrolled_proof_job_multi_schedule_test() {
     let fixture = prepare_basic_unrolled_proof_fixture();
-    let baseline_device_usage = fixture.context.get_used_mem_current();
+    let baseline_device_usage = fixture.base.context.get_used_mem_current();
     let pow_override = fixture.override_pow_challenges();
     let t0 = std::time::Instant::now();
     let proof_job_0 = fixture.schedule_prove(Some(pow_override.clone())).unwrap();
@@ -2902,7 +3069,7 @@ fn run_basic_unrolled_proof_job_multi_schedule_test() {
     let t1 = std::time::Instant::now();
     let proof_job_1 = fixture.schedule_prove(Some(pow_override)).unwrap();
     eprintln!("schedule_prove #1 took {:?}", t1.elapsed());
-    
+
     let (gpu_proof_0, proof_time_ms_0) = proof_job_0.finish().unwrap();
     eprintln!("proof_job_0 proof time: {proof_time_ms_0} ms");
     assert_gkr_proof_eq_for_test(&gpu_proof_0, &fixture.expected_cpu_proof);
@@ -2914,9 +3081,53 @@ fn run_basic_unrolled_proof_job_multi_schedule_test() {
     drop(gpu_proof_1);
 
     assert_eq!(
-        fixture.context.get_used_mem_current(),
+        fixture.base.context.get_used_mem_current(),
         baseline_device_usage,
         "device memory must return to baseline after both proofs complete"
+    );
+}
+
+#[test]
+#[serial]
+#[ignore]
+fn run_basic_unrolled_proof_job_profile_test() {
+    const NSYS_CAPTURE_DOMAIN: &std::ffi::CStr = c"gpu_prover.tests";
+    const NSYS_CAPTURE_MESSAGE: &std::ffi::CStr = c"test.gpu.prove.profiled_call";
+
+    let fixture = prepare_basic_unrolled_profiling_fixture();
+    let baseline_device_usage = fixture.context.get_used_mem_current();
+
+    let warmup_transfers = fixture.schedule_transfers().unwrap();
+    fixture.context.get_h2d_stream().synchronize().unwrap();
+    let warmup_job = fixture.prove(warmup_transfers, None).unwrap();
+    assert!(
+        !warmup_job.is_finished().unwrap(),
+        "prove() should remain non-blocking after transfers are ready",
+    );
+    let (warmup_proof, warmup_time_ms) = warmup_job.finish().unwrap();
+    eprintln!("warmup proof time: {warmup_time_ms} ms");
+    assert_gkr_proof_structure_for_test(&warmup_proof, &fixture.whir_schedule);
+    drop(warmup_proof);
+
+    let profiled_transfers = fixture.schedule_transfers().unwrap();
+    fixture.context.get_h2d_stream().synchronize().unwrap();
+    let (profiled_proof, profiled_time_ms) = {
+        let _range = start_registered_range(NSYS_CAPTURE_DOMAIN, NSYS_CAPTURE_MESSAGE);
+        let profiled_job = fixture.prove(profiled_transfers, None).unwrap();
+        assert!(
+            !profiled_job.is_finished().unwrap(),
+            "prove() should remain non-blocking for the profiled call",
+        );
+        profiled_job.finish().unwrap()
+    };
+    eprintln!("profiled proof time: {profiled_time_ms} ms");
+    assert_gkr_proof_structure_for_test(&profiled_proof, &fixture.whir_schedule);
+    drop(profiled_proof);
+
+    assert_eq!(
+        fixture.context.get_used_mem_current(),
+        baseline_device_usage,
+        "device memory must return to baseline after warmup and profiled proofs complete",
     );
 }
 
@@ -3197,7 +3408,12 @@ fn run_basic_unrolled_stagewise_parity_test() {
     let mut d_decoder_table = context
         .alloc(h_decoder_table.len(), AllocationPlacement::BestFit)
         .unwrap();
-    memory_copy_async(&mut d_decoder_table, &h_decoder_table, context.get_exec_stream()).unwrap();
+    memory_copy_async(
+        &mut d_decoder_table,
+        &h_decoder_table,
+        context.get_exec_stream(),
+    )
+    .unwrap();
     let mut trace_data = context
         .alloc(buffer.len(), AllocationPlacement::BestFit)
         .unwrap();
@@ -3380,7 +3596,12 @@ fn run_basic_unrolled_stagewise_parity_test() {
     {
         let _range = range!("test.gpu.forward_setup.readback_asserts");
         let mut gpu_generic = vec![E4::ZERO; gpu_forward_setup.generic_lookup_len()];
-        memory_copy_async(&mut gpu_generic, gpu_forward_setup.generic_lookup(), context.get_exec_stream()).unwrap();
+        memory_copy_async(
+            &mut gpu_generic,
+            gpu_forward_setup.generic_lookup(),
+            context.get_exec_stream(),
+        )
+        .unwrap();
         context.get_exec_stream().synchronize().unwrap();
         assert_eq!(gpu_generic, preprocessed_generic_lookup.as_ref());
     }

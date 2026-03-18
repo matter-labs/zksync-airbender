@@ -1,6 +1,8 @@
 #![allow(unexpected_cfgs)]
 
-use era_cudart_sys::{get_cuda_lib_path, get_cuda_version, is_no_cuda, no_cuda_message};
+use era_cudart_sys::{
+    get_cuda_include_path, get_cuda_lib_path, get_cuda_version, is_no_cuda, no_cuda_message,
+};
 use std::fs;
 use std::path::Path;
 
@@ -30,11 +32,17 @@ fn main() {
         println!("cargo::rustc-cfg=no_cuda");
     } else {
         use std::env::var;
+        let cuda_include_path =
+            get_cuda_include_path().expect("Failed to determine the CUDA Toolkit include path.");
         let cuda_version =
             get_cuda_version().expect("Failed to determine the CUDA Toolkit version.");
         if !(cuda_version.starts_with("12.") || cuda_version.starts_with("13.")) {
             println!("cargo::warning=CUDA Toolkit version {cuda_version} detected. This crate is only tested with CUDA Toolkit versions 12.* and 13.*.");
         }
+        cc::Build::new()
+            .file("native/nvtx_registered.c")
+            .include(&cuda_include_path)
+            .compile("gpu_prover_nvtx");
         let cudaarchs = var("CUDAARCHS").unwrap_or("native".to_string());
         let mut config = cmake::Config::new("native");
         config.profile("Release");

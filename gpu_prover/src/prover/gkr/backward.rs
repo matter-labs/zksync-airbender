@@ -1007,7 +1007,6 @@ fn empty_round0_host_launch_descriptors<B, E>(
     }
 }
 
-
 const GKR_DIM_REDUCING_THREADS_PER_BLOCK: u32 = WARP_SIZE * 4;
 
 cuda_kernel_signature_arguments_and_function!(
@@ -3754,7 +3753,11 @@ where
                     _phantom: std::marker::PhantomData,
                 }
             },
-            round0_callbacks: self.round0_descriptors.iter_mut().map(|d| std::mem::replace(&mut d.callbacks, Callbacks::new())).collect(),
+            round0_callbacks: self
+                .round0_descriptors
+                .iter_mut()
+                .map(|d| std::mem::replace(&mut d.callbacks, Callbacks::new()))
+                .collect(),
             shared_state,
         })
     }
@@ -3775,8 +3778,7 @@ where
             result: None,
         }));
 
-        let mut claim_point_host =
-            unsafe { context.alloc_host_uninit_slice(self.folding_steps) };
+        let mut claim_point_host = unsafe { context.alloc_host_uninit_slice(self.folding_steps) };
         let claim_point_accessor = claim_point_host.get_mut_accessor();
         let workflow_state_for_start = Arc::clone(&workflow_state);
         let shared_state_for_start = Arc::clone(&shared_state);
@@ -4117,7 +4119,11 @@ where
                     _phantom: std::marker::PhantomData,
                 }
             },
-            round0_callbacks: self.round0_descriptors.iter_mut().map(|d| std::mem::replace(&mut d.callbacks, Callbacks::new())).collect(),
+            round0_callbacks: self
+                .round0_descriptors
+                .iter_mut()
+                .map(|d| std::mem::replace(&mut d.callbacks, Callbacks::new()))
+                .collect(),
             shared_state,
         })
     }
@@ -4734,8 +4740,7 @@ where
 
         let final_round_state = {
             let mut callbacks = Callbacks::new();
-            let scheduled =
-                self.schedule_round_3_and_beyond(last_step, &mut callbacks, context)?;
+            let scheduled = self.schedule_round_3_and_beyond(last_step, &mut callbacks, context)?;
             self.launch_round3_kernels(
                 &scheduled,
                 &round_challenge_buffers[last_step - 1],
@@ -4821,7 +4826,11 @@ where
                     _phantom: std::marker::PhantomData,
                 }
             },
-            round0_callbacks: self.round0_descriptors.iter_mut().map(|d| std::mem::replace(&mut d.callbacks, Callbacks::new())).collect(),
+            round0_callbacks: self
+                .round0_descriptors
+                .iter_mut()
+                .map(|d| std::mem::replace(&mut d.callbacks, Callbacks::new()))
+                .collect(),
             shared_state,
         })
     }
@@ -4843,11 +4852,9 @@ where
             result: None,
         }));
 
-        let mut claim_point_host =
-            unsafe { context.alloc_host_uninit_slice(self.folding_steps) };
+        let mut claim_point_host = unsafe { context.alloc_host_uninit_slice(self.folding_steps) };
         let claim_point_accessor = claim_point_host.get_mut_accessor();
-        let mut main_layer_challenges_host =
-            unsafe { context.alloc_host_uninit_slice(2) };
+        let mut main_layer_challenges_host = unsafe { context.alloc_host_uninit_slice(2) };
         let main_layer_challenges_accessor = main_layer_challenges_host.get_mut_accessor();
         let main_layer_challenges = main_layer_challenges_host.get_accessor();
         let workflow_state_for_start = Arc::clone(&workflow_state);
@@ -5203,7 +5210,11 @@ where
                     _phantom: std::marker::PhantomData,
                 }
             },
-            round0_callbacks: self.round0_descriptors.iter_mut().map(|d| std::mem::replace(&mut d.callbacks, Callbacks::new())).collect(),
+            round0_callbacks: self
+                .round0_descriptors
+                .iter_mut()
+                .map(|d| std::mem::replace(&mut d.callbacks, Callbacks::new()))
+                .collect(),
             shared_state,
         })
     }
@@ -5414,10 +5425,10 @@ mod tests {
     use crate::ops::cub::device_reduce::{
         batch_reduce, get_batch_reduce_temp_storage_bytes, ReduceOperation,
     };
+    use crate::primitives::callbacks::Callbacks;
     use crate::primitives::context::{DeviceAllocation, ProverContext};
     use crate::primitives::device_structures::DeviceMatrix;
     use crate::primitives::field::{BF, E4};
-    use crate::primitives::callbacks::Callbacks;
     use crate::prover::gkr::{
         GpuBaseFieldPolySource, GpuExtensionFieldPolyContinuingLaunchDescriptor,
         GpuExtensionFieldPolyInitialSource, GpuSumcheckRound0DeviceLaunchDescriptors,

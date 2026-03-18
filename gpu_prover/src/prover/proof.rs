@@ -23,15 +23,14 @@ use crate::primitives::device_tracing::Range;
 use crate::primitives::field::{BF, E4};
 use crate::prover::decoder::DecoderTableTransfer;
 use crate::prover::gkr::backward::{
-    clone_backward_claims_for_layer, fill_backward_claim_point_for_layer,
-    current_backward_batching_challenge, current_backward_seed,
-    make_deferred_backward_workflow_state, populate_backward_workflow_state,
-    take_backward_execution_from_shared_state, GpuGKRBackwardHostKeepalive,
+    clone_backward_claims_for_layer, current_backward_batching_challenge, current_backward_seed,
+    fill_backward_claim_point_for_layer, make_deferred_backward_workflow_state,
+    populate_backward_workflow_state, take_backward_execution_from_shared_state,
+    GpuGKRBackwardHostKeepalive,
 };
 use crate::prover::gkr::base_layer_claims::{
     fill_mem_polys_claims, fill_setup_polys_claims, fill_wit_polys_claims,
-    schedule_prepare_base_layer_claims_with_sources,
-    GpuGKRBaseLayerClaimsScheduledExecution,
+    schedule_prepare_base_layer_claims_with_sources, GpuGKRBaseLayerClaimsScheduledExecution,
 };
 use crate::prover::gkr::forward::{schedule_forward_pass, GpuGKRTranscriptHandoff};
 use crate::prover::gkr::setup::{
@@ -314,26 +313,25 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
     external_pow_challenges: Option<GkrExternalPowChallenges>,
     context: &ProverContext,
 ) -> CudaResult<GpuGKRProofJob<'a>> {
+    setup_transfer.ensure_transferred(context)?;
+    if let Some(decoder_transfer) = decoder_transfer.as_ref() {
+        decoder_transfer.transfer.ensure_transferred(context)?;
+    }
+    if let Some(inits_and_teardowns_transfer) = inits_and_teardowns_transfer.as_ref() {
+        inits_and_teardowns_transfer
+            .transfer
+            .ensure_transferred(context)?;
+    }
+    tracing_data_transfer.transfer.ensure_transferred(context)?;
+
     let stream = context.get_exec_stream();
-    let h2d_stream = context.get_h2d_stream();
     let mut callbacks = Callbacks::new();
     let proof = Arc::new(Mutex::new(None));
     let mut ranges = Vec::new();
     let proof_range = Range::new("gkr.proof")?;
     proof_range.start(stream)?;
 
-    let transfer_range = Range::new("gkr.proof.h2d_transfers")?;
-    transfer_range.start(h2d_stream)?;
-    setup_transfer.schedule_transfer(context)?;
-    if let Some(decoder_transfer) = decoder_transfer.as_mut() {
-        decoder_transfer.schedule_transfer(context)?;
-        decoder_transfer.transfer.ensure_transferred(context)?;
-    }
-    tracing_data_transfer.schedule_transfer(context)?;
-    tracing_data_transfer.transfer.ensure_transferred(context)?;
-    transfer_range.end(h2d_stream)?;
-    ranges.push(transfer_range);
-    if let Some(mut inits_and_teardowns_transfer) = inits_and_teardowns_transfer {
+    if let Some(inits_and_teardowns_transfer) = inits_and_teardowns_transfer {
         callbacks.extend(inits_and_teardowns_transfer.into_host_keepalive());
     }
 
@@ -539,8 +537,7 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
                 let mut seed = current_backward_seed(&backward_shared_state);
                 // The CPU prover draws the WHIR batching challenge from the seed
                 // before entering whir_fold. We must advance the seed here to match.
-                let _whir_batching_challenge =
-                    draw_random_field_els::<BF, E4>(&mut seed, 1);
+                let _whir_batching_challenge = draw_random_field_els::<BF, E4>(&mut seed, 1);
                 seed
             }
         },
@@ -617,6 +614,50 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
     })
 }
 
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn prove_with_transfer_scheduling<'a, A: GoodAllocator + 'a>(
+    circuit_type: CircuitType,
+    compiled_circuit: GKRCircuitArtifact<BF>,
+    external_challenges: GKRExternalChallenges<BF, E4>,
+    whir_schedule: WhirSchedule,
+    final_trace_size_log_2: usize,
+    mut setup_transfer: GpuGKRSetupTransfer<'a>,
+    mut decoder_transfer: Option<DecoderTableTransfer<'a>>,
+    mut inits_and_teardowns_transfer: Option<InitsAndTeardownsTransfer<'a, A>>,
+    mut tracing_data_transfer: TracingDataTransfer<'a, A>,
+    external_pow_challenges: Option<GkrExternalPowChallenges>,
+    context: &ProverContext,
+) -> CudaResult<GpuGKRProofJob<'a>> {
+    let h2d_stream = context.get_h2d_stream();
+    let transfer_range = Range::new("gkr.proof.h2d_transfers")?;
+    transfer_range.start(h2d_stream)?;
+    setup_transfer.schedule_transfer(context)?;
+    if let Some(decoder_transfer) = decoder_transfer.as_mut() {
+        decoder_transfer.schedule_transfer(context)?;
+    }
+    if let Some(inits_and_teardowns_transfer) = inits_and_teardowns_transfer.as_mut() {
+        inits_and_teardowns_transfer.schedule_transfer(context)?;
+    }
+    tracing_data_transfer.schedule_transfer(context)?;
+    transfer_range.end(h2d_stream)?;
+
+    let mut proof_job = prove(
+        circuit_type,
+        compiled_circuit,
+        external_challenges,
+        whir_schedule,
+        final_trace_size_log_2,
+        setup_transfer,
+        decoder_transfer,
+        inits_and_teardowns_transfer,
+        tracing_data_transfer,
+        external_pow_challenges,
+        context,
+    )?;
+    proof_job.ranges.insert(0, transfer_range);
+    Ok(proof_job)
+}
+
 fn evaluate_ext_poly_with_eq<E: Field>(values: &[E], eq: &[E]) -> E {
     assert_eq!(values.len(), eq.len());
     let mut result = E::ZERO;
@@ -663,9 +704,24 @@ mod tests {
         let worker = Worker::new();
         let cases = [
             (Seed([1, 2, 3, 4, 5, 6, 7, 8]), 23usize, 22usize, 24u32),
-            (Seed([11, 12, 13, 14, 15, 16, 17, 18]), 12usize, 21usize, 24u32),
-            (Seed([21, 22, 23, 24, 25, 26, 27, 28]), 10usize, 18usize, 16u32),
-            (Seed([31, 32, 33, 34, 35, 36, 37, 38]), 10usize, 14usize, 0u32),
+            (
+                Seed([11, 12, 13, 14, 15, 16, 17, 18]),
+                12usize,
+                21usize,
+                24u32,
+            ),
+            (
+                Seed([21, 22, 23, 24, 25, 26, 27, 28]),
+                10usize,
+                18usize,
+                16u32,
+            ),
+            (
+                Seed([31, 32, 33, 34, 35, 36, 37, 38]),
+                10usize,
+                14usize,
+                0u32,
+            ),
         ];
 
         for (seed, num_queries, query_index_bits, pow_bits) in cases {

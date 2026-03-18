@@ -617,7 +617,6 @@ pub(super) fn alloc_host_and_schedule_copy<T: Copy + Send + Sync + 'static>(
     host
 }
 
-
 fn alloc_device_and_schedule_upload<T: Copy>(
     context: &ProverContext,
     host: &HostAllocation<[T]>,
@@ -1222,14 +1221,12 @@ impl<B: 'static, E: Field + 'static> GpuSumcheckRound1PreparedStorage<B, E> {
                 first_access: plan.first_access,
             })
             .collect::<Vec<_>>();
-        let host_base =
-            alloc_host_and_schedule_copy(context, callbacks, base_field_inputs_values);
+        let host_base = alloc_host_and_schedule_copy(context, callbacks, base_field_inputs_values);
         let base_field_inputs_device = alloc_device_and_schedule_upload(context, &host_base)?;
         drop(host_base);
         let host_ext =
             alloc_host_and_schedule_copy(context, callbacks, extension_field_inputs_values);
-        let extension_field_inputs_device =
-            alloc_device_and_schedule_upload(context, &host_ext)?;
+        let extension_field_inputs_device = alloc_device_and_schedule_upload(context, &host_ext)?;
         drop(host_ext);
         let device = GpuSumcheckRound1DeviceLaunchDescriptors {
             base_field_inputs: base_field_inputs_device,
@@ -1270,14 +1267,12 @@ impl<B: 'static, E: Field + 'static> GpuSumcheckRound2PreparedStorage<B, E> {
                 first_access: plan.first_access,
             })
             .collect::<Vec<_>>();
-        let host_base =
-            alloc_host_and_schedule_copy(context, callbacks, base_field_inputs_values);
+        let host_base = alloc_host_and_schedule_copy(context, callbacks, base_field_inputs_values);
         let base_field_inputs_device = alloc_device_and_schedule_upload(context, &host_base)?;
         drop(host_base);
         let host_ext =
             alloc_host_and_schedule_copy(context, callbacks, extension_field_inputs_values);
-        let extension_field_inputs_device =
-            alloc_device_and_schedule_upload(context, &host_ext)?;
+        let extension_field_inputs_device = alloc_device_and_schedule_upload(context, &host_ext)?;
         drop(host_ext);
         let device = GpuSumcheckRound2DeviceLaunchDescriptors {
             base_field_inputs: base_field_inputs_device,
@@ -1315,14 +1310,12 @@ impl<E: Field + 'static> GpuSumcheckRound3AndBeyondPreparedStorage<E> {
                 first_access: plan.first_access,
             })
             .collect::<Vec<_>>();
-        let host_base =
-            alloc_host_and_schedule_copy(context, callbacks, base_field_inputs_values);
+        let host_base = alloc_host_and_schedule_copy(context, callbacks, base_field_inputs_values);
         let base_field_inputs_device = alloc_device_and_schedule_upload(context, &host_base)?;
         drop(host_base);
         let host_ext =
             alloc_host_and_schedule_copy(context, callbacks, extension_field_inputs_values);
-        let extension_field_inputs_device =
-            alloc_device_and_schedule_upload(context, &host_ext)?;
+        let extension_field_inputs_device = alloc_device_and_schedule_upload(context, &host_ext)?;
         drop(host_ext);
         let device = GpuSumcheckRound3AndBeyondDeviceLaunchDescriptors {
             base_field_inputs: base_field_inputs_device,

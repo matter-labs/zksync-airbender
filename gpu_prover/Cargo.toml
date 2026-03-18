@@ -42,6 +42,7 @@ security_100 = ["verifier_common/security_100"]
 test_no_inline = ["field/no_inline"]
 
 [build-dependencies]
+cc = "1"
 cmake = "0.1"
 era_cudart_sys = "0.154"
 

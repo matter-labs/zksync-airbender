@@ -221,7 +221,6 @@ impl<T> TraceHolder<T> {
             TreesHolder::None => None,
         }
     }
-
 }
 
 impl TraceHolder<BF> {
@@ -902,7 +901,12 @@ mod test {
             .materialize_from_hypercube_evals(&source_device, &context)
             .unwrap();
         let mut raw_hypercube = vec![BF::ZERO; source_host.len()];
-        memory_copy_async(&mut raw_hypercube, trace_holder.get_hypercube_evals(), context.get_exec_stream()).unwrap();
+        memory_copy_async(
+            &mut raw_hypercube,
+            trace_holder.get_hypercube_evals(),
+            context.get_exec_stream(),
+        )
+        .unwrap();
         context.get_exec_stream().synchronize().unwrap();
         assert_eq!(raw_hypercube, source_host);
         assert!(trace_holder.are_cosets_materialized());
@@ -960,10 +964,20 @@ mod test {
             &context,
         )
         .unwrap();
-        memory_copy_async(trace_holder.get_uninit_hypercube_evals_mut(), &source_host, context.get_exec_stream()).unwrap();
+        memory_copy_async(
+            trace_holder.get_uninit_hypercube_evals_mut(),
+            &source_host,
+            context.get_exec_stream(),
+        )
+        .unwrap();
 
         let mut raw_hypercube = vec![BF::ZERO; source_host.len()];
-        memory_copy_async(&mut raw_hypercube, trace_holder.get_hypercube_evals(), context.get_exec_stream()).unwrap();
+        memory_copy_async(
+            &mut raw_hypercube,
+            trace_holder.get_hypercube_evals(),
+            context.get_exec_stream(),
+        )
+        .unwrap();
         context.get_exec_stream().synchronize().unwrap();
         assert_eq!(raw_hypercube, source_host);
         assert!(!trace_holder.are_cosets_materialized());
@@ -1068,7 +1082,12 @@ mod test {
         let mut indexes_device = context
             .alloc(query_indexes.len(), AllocationPlacement::BestFit)
             .unwrap();
-        memory_copy_async(&mut indexes_device, &query_indexes, context.get_exec_stream()).unwrap();
+        memory_copy_async(
+            &mut indexes_device,
+            &query_indexes,
+            context.get_exec_stream(),
+        )
+        .unwrap();
 
         let full = full_holder
             .get_leafs_and_merkle_paths(1, &indexes_device, &context)
