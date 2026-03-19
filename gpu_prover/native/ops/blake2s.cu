@@ -269,6 +269,7 @@ EXTERN __global__ void ab_gather_rows_and_merkle_paths_kernel(const unsigned *in
 
 EXTERN __global__ void ab_blake2s_pow_kernel(const u64 *seed, const u32 bits_count, const u64 max_nonce, volatile u64 *result) {
   const u32 digest_mask = 0xffffffff << 32 - bits_count;
+  const auto result_ptr = reinterpret_cast<unsigned long long *>(const_cast<u64 *>(result));
   __align__(8) u32 m_u32[BLOCK_SIZE] = {};
   auto m_u64 = reinterpret_cast<u64 *>(m_u32);
 #pragma unroll
@@ -282,10 +283,20 @@ EXTERN __global__ void ab_blake2s_pow_kernel(const u64 *seed, const u32 bits_cou
     u32 t = 0;
     compress<true>(state, t, m_u32, STATE_SIZE + 2);
     if (!(state[0] & digest_mask)) {
-      atomicCAS(reinterpret_cast<unsigned long long *>(const_cast<u64 *>(result)), UINT64_MAX, nonce);
+#ifdef AB_DETERMINISTIC_POW
+      atomicMin(result_ptr, static_cast<unsigned long long>(nonce));
+#else
+      atomicCAS(result_ptr, UINT64_MAX, nonce);
+#endif
       __threadfence();
     }
-    if (*result != UINT64_MAX)
+    if (*result
+#ifdef AB_DETERMINISTIC_POW
+        <= nonce
+#else
+        != UINT64_MAX
+#endif
+    )
       return;
   }
 }
