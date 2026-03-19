@@ -256,12 +256,12 @@ pub unsafe fn verify_unified_circuit_statement<const BASE_LAYER: bool>(
     let pow_challenge_high = verifier_common::DefaultNonDeterminismSource::read_word();
     let pow_challenge = (pow_challenge_high as u64) << 32 | (pow_challenge_low as u64);
 
-
-    let expected_challenges = ExternalChallenges::draw_from_transcript_seed_with_delegation_and_state_permutation(
-        memory_seed,
-        MEMORY_DELEGATION_POW_BITS,
-        pow_challenge,
-    );
+    let expected_challenges =
+        ExternalChallenges::draw_from_transcript_seed_with_delegation_and_state_permutation(
+            memory_seed,
+            MEMORY_DELEGATION_POW_BITS,
+            pow_challenge,
+        );
 
     assert_eq!(
         expected_challenges.memory_argument,
