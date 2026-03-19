@@ -1,4 +1,5 @@
-use super::*;
+use proc_macro2::TokenStream;
+use quote::quote;
 
 pub trait MersenneWrapper {
     fn field_struct() -> TokenStream;

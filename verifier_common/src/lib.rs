@@ -42,21 +42,6 @@ pub struct SizedProofSecurityConfig<const NUM_FOLDINGS: usize> {
     pub num_queries: usize,
 }
 
-#[cfg(any(test, feature = "proof_utils"))]
-impl<const NUM_FOLDINGS: usize> SizedProofSecurityConfig<NUM_FOLDINGS> {
-    pub fn for_prover(&self) -> prover::prover_stages::ProofSecurityConfig {
-        prover::prover_stages::ProofSecurityConfig {
-            lookup_pow_bits: self.lookup_pow_bits,
-            quotient_alpha_pow_bits: self.quotient_alpha_pow_bits,
-            quotient_z_pow_bits: self.quotient_z_pow_bits,
-            deep_poly_alpha_pow_bits: self.deep_poly_alpha_pow_bits,
-            foldings_pow_bits: self.foldings_pow_bits.to_vec(),
-            fri_queries_pow_bits: self.fri_queries_pow_bits,
-            num_queries: self.num_queries,
-        }
-    }
-}
-
 // The file should be generated with tools/pow_config_generator
 #[cfg(not(feature = "worst_case_config_generation"))]
 #[allow(dead_code)]
@@ -126,8 +111,6 @@ pub use non_determinism_source;
 pub use prover;
 pub use transcript;
 pub mod fri_folding;
-#[cfg(any(test, feature = "proof_utils"))]
-pub mod proof_flattener;
 
 pub mod inline_ops;
 pub mod no_inline_ops;
