@@ -405,7 +405,11 @@ mod tests {
     use era_cudart::memory::{memory_copy_async, DeviceAllocation};
     use field::Field;
     use itertools::Itertools;
+    #[cfg(feature = "deterministic_pow")]
+    use prover::transcript::{Blake2sTranscript, Seed};
     use rand::Rng;
+    #[cfg(feature = "deterministic_pow")]
+    use worker::Worker;
 
     use super::*;
     use crate::ops::simple::set_to_zero;
@@ -782,5 +786,43 @@ mod tests {
         let mut digest = Digest::default();
         state.absorb_final_block::<USE_REDUCED_BLAKE2_ROUNDS>(&block, STATE_SIZE + 2, &mut digest);
         assert!(digest[0].leading_zeros() >= BITS_COUNT);
+    }
+
+    #[cfg(feature = "deterministic_pow")]
+    #[test]
+    fn pow_deterministic_matches_cpu_baseline() {
+        let seeds = [
+            Seed([0, 1, 2, 3, 4, 5, 6, 7]),
+            Seed([42, 42, 42, 42, 42, 42, 42, 42]),
+            Seed([
+                0x01234567,
+                0x89abcdef,
+                0xfedcba98,
+                0x76543210,
+                0x0f0f0f0f,
+                0xf0f0f0f0,
+                0x13579bdf,
+                0x2468ace0,
+            ]),
+        ];
+        let worker = Worker::new_with_num_threads(4);
+        let stream = CudaStream::default();
+
+        for seed in seeds {
+            for pow_bits in [17, 18, 20] {
+                let (_, expected_nonce) = Blake2sTranscript::search_pow(&seed, pow_bits, &worker);
+                let mut h_result = [0u64; 1];
+                let mut d_seed = DeviceAllocation::alloc(STATE_SIZE).unwrap();
+                let mut d_result = DeviceAllocation::alloc(1).unwrap();
+                memory_copy_async(&mut d_seed, &seed.0, &stream).unwrap();
+                blake2s_pow(&d_seed, pow_bits, u64::MAX, &mut d_result[0], &stream).unwrap();
+                memory_copy_async(&mut h_result, &d_result, &stream).unwrap();
+                stream.synchronize().unwrap();
+                assert_eq!(
+                    h_result[0], expected_nonce,
+                    "seed={seed:?}, pow_bits={pow_bits}"
+                );
+            }
+        }
     }
 }
