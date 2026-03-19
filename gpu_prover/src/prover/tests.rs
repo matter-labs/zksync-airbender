@@ -99,12 +99,12 @@ use prover::merkle_trees::{
 };
 use prover::prover_stages::flatten_merkle_caps_iter_into;
 use prover::prover_stages::query_producer::assemble_query_index;
-use prover::risc_v_simulator::abstractions::non_determinism::QuasiUARTSource;
-use prover::risc_v_simulator::machine_mode_only_unrolled::NonMemoryOpcodeTracingDataWithTimestamp;
 use prover::tracers::oracles::chunk_lazy_init_and_teardown;
 use prover::transcript::Seed;
 use prover::unrolled::NonMemoryCircuitOracle;
+use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
 use riscv_transpiler::ir::{preprocess_bytecode, FullUnsignedMachineDecoderConfig, Instruction};
+use riscv_transpiler::machine_mode_only_unrolled::NonMemoryOpcodeTracingDataWithTimestamp;
 use riscv_transpiler::replayer::{ReplayerRam, ReplayerVM};
 use riscv_transpiler::vm::{
     Counters, DelegationsAndFamiliesCounters, RamWithRomRegion, ReplayBuffer, SimpleSnapshotter,
