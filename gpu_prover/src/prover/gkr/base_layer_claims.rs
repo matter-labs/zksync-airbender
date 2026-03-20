@@ -8,12 +8,12 @@ use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 use field::{Field, FieldExtension};
 
-use super::backward::{launch_build_eq_values, GpuDimensionReducingKernelSet};
+use super::backward::{GpuDimensionReducingKernelSet, launch_build_eq_values};
 use crate::allocator::tracker::AllocationPlacement;
 use crate::ops::cub::device_reduce::{
-    batch_reduce, get_batch_reduce_temp_storage_bytes, ReduceOperation,
+    ReduceOperation, batch_reduce, get_batch_reduce_temp_storage_bytes,
 };
-use crate::ops::simple::{add_into_y, mul, set_to_zero, Add, BinaryOp, Mul};
+use crate::ops::simple::{Add, BinaryOp, Mul, add_into_y, mul, set_to_zero};
 use crate::primitives::callbacks::Callbacks;
 use crate::primitives::context::{HostAllocation, ProverContext};
 use crate::primitives::device_structures::{DeviceMatrixChunk, DeviceMatrixMut, DeviceVectorChunk};
@@ -28,6 +28,8 @@ const MAX_COLUMN_BATCH: usize = 8;
 #[derive(Clone)]
 pub(crate) struct GpuGKRBaseLayerTailOutput<E> {
     pub(crate) completed_claims: BTreeMap<GKRAddress, E>,
+    pub(crate) extra_evaluations_from_caching_relations: BTreeMap<GKRAddress, E>,
+    pub(crate) extra_evaluations_transcript_batches: Vec<Vec<E>>,
     pub(crate) mem_polys_claims: Vec<E>,
     pub(crate) wit_polys_claims: Vec<E>,
     pub(crate) setup_polys_claims: Vec<E>,
@@ -156,6 +158,38 @@ pub(crate) fn fill_setup_polys_claims<E>(
     dst.copy_from_slice(src);
 }
 
+pub(crate) fn clone_base_layer_extra_evaluations_from_caching_relations<E>(
+    shared_state: &Arc<Mutex<ScheduledBaseLayerClaimsState<E>>>,
+) -> BTreeMap<GKRAddress, E>
+where
+    E: Clone,
+{
+    shared_state
+        .lock()
+        .unwrap()
+        .result
+        .as_ref()
+        .expect("base-layer claims result must be available")
+        .extra_evaluations_from_caching_relations
+        .clone()
+}
+
+pub(crate) fn clone_base_layer_extra_evaluations_transcript_batches<E>(
+    shared_state: &Arc<Mutex<ScheduledBaseLayerClaimsState<E>>>,
+) -> Vec<Vec<E>>
+where
+    E: Clone,
+{
+    shared_state
+        .lock()
+        .unwrap()
+        .result
+        .as_ref()
+        .expect("base-layer claims result must be available")
+        .extra_evaluations_transcript_batches
+        .clone()
+}
+
 pub(crate) struct GpuGKRBaseLayerClaimsScheduledExecution<E> {
     #[allow(dead_code)]
     tracing_ranges: Vec<Range>,
@@ -210,7 +244,9 @@ fn fill_missing_cached_dependency_claims<E: Copy>(
     mem_polys_claims: &[E],
     wit_polys_claims: &[E],
     setup_polys_claims: &[E],
-) {
+) -> (BTreeMap<GKRAddress, E>, Vec<Vec<E>>) {
+    let mut extra_evaluations_from_caching_relations = BTreeMap::new();
+    let mut extra_evaluations_transcript_batches = Vec::new();
     for (cached_addr, relation) in layer_desc.cached_relations.iter() {
         debug_assert!(
             completed_claims.contains_key(cached_addr),
@@ -236,8 +272,23 @@ fn fill_missing_cached_dependency_claims<E: Copy>(
                 )
             });
             completed_claims.insert(dep, value);
+            extra_evaluations_from_caching_relations.insert(dep, value);
+        }
+
+        if !extra_evaluations_from_caching_relations.is_empty() {
+            extra_evaluations_transcript_batches.push(
+                extra_evaluations_from_caching_relations
+                    .values()
+                    .copied()
+                    .collect(),
+            );
         }
     }
+
+    (
+        extra_evaluations_from_caching_relations,
+        extra_evaluations_transcript_batches,
+    )
 }
 
 fn schedule_reduce_trace_holder_claims<E>(
@@ -456,15 +507,18 @@ where
             let wit_polys_claims = collect(&wit_polys_claims_accessors);
             let setup_polys_claims = collect(&setup_polys_claims_accessors);
             let mut completed_claims = initial_claims();
-            fill_missing_cached_dependency_claims(
-                &layer_desc,
-                &mut completed_claims,
-                &mem_polys_claims,
-                &wit_polys_claims,
-                &setup_polys_claims,
-            );
+            let (extra_evaluations_from_caching_relations, extra_evaluations_transcript_batches) =
+                fill_missing_cached_dependency_claims(
+                    &layer_desc,
+                    &mut completed_claims,
+                    &mem_polys_claims,
+                    &wit_polys_claims,
+                    &setup_polys_claims,
+                );
             shared_state_for_callback.lock().unwrap().result = Some(GpuGKRBaseLayerTailOutput {
                 completed_claims,
+                extra_evaluations_from_caching_relations,
+                extra_evaluations_transcript_batches,
                 mem_polys_claims,
                 wit_polys_claims,
                 setup_polys_claims,

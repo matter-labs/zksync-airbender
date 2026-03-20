@@ -32,7 +32,7 @@ use crate::ops::complex::{
     get_powers_by_ref, get_powers_by_val, serialize_whir_e4_columns, whir_fold_monomial,
     whir_fold_split_half_in_place,
 };
-use crate::ops::cub::device_reduce::{get_reduce_temp_storage_bytes, reduce, ReduceOperation};
+use crate::ops::cub::device_reduce::{ReduceOperation, get_reduce_temp_storage_bytes, reduce};
 use crate::ops::simple::{add, add_into_y, mul, mul_into_x, set_to_zero};
 use crate::primitives::callbacks::Callbacks;
 use crate::primitives::context::{DeviceAllocation, HostAllocation, ProverContext};
@@ -47,7 +47,7 @@ use crate::prover::pow::search_pow_challenge;
 use crate::prover::proof::{
     draw_query_bits_after_verified_pow, draw_query_bits_with_external_nonce,
 };
-use crate::prover::trace_holder::{get_tree_caps, TraceHolder};
+use crate::prover::trace_holder::{TraceHolder, get_tree_caps};
 use crate::prover::whir::{GpuWhirExtensionOracle, GpuWhirExtensionQuery};
 
 const EXT4_DEGREE: usize = <E4 as FieldExtension<BF>>::DEGREE;
@@ -2281,8 +2281,8 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         let ood_sample_range = Range::new(&*ood_sample_name)?;
         ood_sample_range.start(stream)?;
         let (ood_point_upload, ood_point_device) =
-            schedule_callback_populated_upload(context, 1, move |dst: &mut [E4]| {
-                dst[0] = E4::from_base(BF::from_u32_unchecked(42));
+            schedule_callback_populated_upload(context, 1, move |dst: &mut [E4]| unsafe {
+                dst[0] = draw_random_field_els::<BF, E4>(seed_accessor.get_mut(), 1)[0];
             })?;
         let ood_partials = schedule_monomial_eval_device(&mut state, &ood_point_device, context)?;
         let mut ood_value_host = unsafe { context.alloc_host_uninit_slice(1) };
@@ -3130,11 +3130,11 @@ mod tests {
     use std::alloc::Global;
 
     use era_cudart::memory::memory_copy_async;
-    use fft::{bitreverse_enumeration_inplace, Twiddles};
+    use fft::{Twiddles, bitreverse_enumeration_inplace};
     use prover::gkr::sumcheck::eq_poly::make_eq_poly_in_full;
     use prover::gkr::whir::hypercube_to_monomial::multivariate_coeffs_into_hypercube_evals;
-    use prover::merkle_trees::blake2s_for_everything_tree::Blake2sU32MerkleTreeWithCap;
     use prover::merkle_trees::ColumnMajorMerkleTreeConstructor;
+    use prover::merkle_trees::blake2s_for_everything_tree::Blake2sU32MerkleTreeWithCap;
     use serial_test::serial;
 
     use crate::allocator::tracker::AllocationPlacement;
@@ -3673,12 +3673,16 @@ mod tests {
                 .map(|i| BF::from_u32_unchecked(30 + i as u32))
                 .collect(),
         ];
-        let witness_columns = vec![(0..8)
-            .map(|i| BF::from_u32_unchecked(50 + i as u32))
-            .collect()];
-        let setup_columns = vec![(0..8)
-            .map(|i| BF::from_u32_unchecked(70 + i as u32))
-            .collect()];
+        let witness_columns = vec![
+            (0..8)
+                .map(|i| BF::from_u32_unchecked(50 + i as u32))
+                .collect(),
+        ];
+        let setup_columns = vec![
+            (0..8)
+                .map(|i| BF::from_u32_unchecked(70 + i as u32))
+                .collect(),
+        ];
 
         let memory_trace_holder = make_trace_holder(&memory_columns, &context);
         let witness_trace_holder = make_trace_holder(&witness_columns, &context);
