@@ -23,19 +23,18 @@ use crate::primitives::device_tracing::Range;
 use crate::primitives::field::{BF, E4};
 use crate::prover::decoder::DecoderTableTransfer;
 use crate::prover::gkr::backward::{
-    GpuGKRBackwardHostKeepalive, apply_base_layer_extra_evaluations_to_workflow_state,
-    clone_backward_claims_for_layer, current_backward_batching_challenge, current_backward_seed,
-    fill_backward_claim_point_for_layer, make_deferred_backward_workflow_state,
-    populate_backward_workflow_state, take_backward_execution_from_shared_state,
+    apply_base_layer_extra_evaluations_to_workflow_state, clone_backward_claims_for_layer,
+    current_backward_seed, fill_backward_claim_point_for_layer,
+    make_deferred_backward_workflow_state, populate_backward_workflow_state,
+    take_backward_execution_from_shared_state, GpuGKRBackwardHostKeepalive,
 };
 use crate::prover::gkr::base_layer_claims::{
-    GpuGKRBaseLayerClaimsScheduledExecution,
     clone_base_layer_extra_evaluations_from_caching_relations,
     clone_base_layer_extra_evaluations_transcript_batches, fill_mem_polys_claims,
     fill_setup_polys_claims, fill_wit_polys_claims,
-    schedule_prepare_base_layer_claims_with_sources,
+    schedule_prepare_base_layer_claims_with_sources, GpuGKRBaseLayerClaimsScheduledExecution,
 };
-use crate::prover::gkr::forward::{GpuGKRTranscriptHandoff, schedule_forward_pass};
+use crate::prover::gkr::forward::{schedule_forward_pass, GpuGKRTranscriptHandoff};
 use crate::prover::gkr::setup::{
     GpuGKRForwardSetupHostKeepalive, GpuGKRSetupTransfer, GpuGKRSetupTransferHostKeepalive,
 };
@@ -43,7 +42,7 @@ use crate::prover::gkr::stage1::{GpuGKRStage1Keepalive, GpuGKRStage1Output};
 use crate::prover::trace_holder::flatten_tree_caps;
 use crate::prover::tracing_data::{InitsAndTeardownsTransfer, TracingDataTransfer};
 use crate::prover::whir_fold::{
-    GpuWhirFoldScheduledExecution, schedule_gpu_whir_fold_with_sources, take_scheduled_whir_proof,
+    schedule_gpu_whir_fold_with_sources, take_scheduled_whir_proof, GpuWhirFoldScheduledExecution,
 };
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -135,16 +134,8 @@ pub(crate) fn build_top_layer_claims(
     >,
     claims: [E4; 8],
 ) -> BTreeMap<GKRAddress, E4> {
-    let [
-        claim_readset,
-        claim_writeset,
-        claim_rangechecknum,
-        claim_rangecheckden,
-        claim_timechecknum,
-        claim_timecheckden,
-        claim_lookupnum,
-        claim_lookupden,
-    ] = claims;
+    let [claim_readset, claim_writeset, claim_rangechecknum, claim_rangecheckden, claim_timechecknum, claim_timecheckden, claim_lookupnum, claim_lookupden] =
+        claims;
     let mut top_layer_claims = BTreeMap::new();
     top_layer_claims.insert(
         output_layer_for_sumcheck[&OutputType::PermutationProduct].output[0],
@@ -558,7 +549,10 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
         whir_schedule.base_lde_factor,
         {
             let backward_shared_state = Arc::clone(&backward_shared_state);
-            move || current_backward_batching_challenge(&backward_shared_state)
+            move || {
+                let mut seed = current_backward_seed(&backward_shared_state);
+                draw_random_field_els::<BF, E4>(&mut seed, 1)[0]
+            }
         },
         whir_schedule.whir_steps_schedule.clone(),
         whir_schedule.whir_queries_schedule.clone(),
