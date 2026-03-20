@@ -55,8 +55,10 @@ impl<B: StaticAllocationBackend> InnerStaticAllocator<B> {
     ) -> CudaResult<StaticAllocationData<T>> {
         let size_of_t = size_of::<T>();
         let lcs = self.log_chunk_size;
-        let alloc_len = (len * size_of_t).next_multiple_of(1 << lcs);
-        match self.tracker.alloc(alloc_len, placement) {
+        let alignment = align_of::<T>();
+        let alloc_granularity = (1 << lcs).max(alignment);
+        let alloc_len = (len * size_of_t).next_multiple_of(alloc_granularity);
+        match self.tracker.alloc_aligned(alloc_len, placement, alignment) {
             Ok(ptr) => {
                 assert!(ptr.is_aligned_to(align_of::<T>()));
                 let ptr = ptr.cast::<T>();
