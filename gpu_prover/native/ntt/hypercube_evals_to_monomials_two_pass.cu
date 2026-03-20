@@ -217,11 +217,6 @@ EXTERN __launch_bounds__(512, 1) __global__
   reg_exchg_hypercube_inv<2, 4, 8>(vals);
   reg_exchg_hypercube_inv<1, 2, 16>(vals);
 
-  const bf size_inv = ab_inv_sizes[log_n];
-#pragma unroll
-  for (int i = 0; i < 32; i++)
-    vals[i] = bf::mul(vals[i], size_inv);
-
   if (transposed_monomials) {
 #pragma unroll
     for (int i{0}, row{lane_id}; i < VALS_PER_THREAD; i++, row += WARP_SIZE)

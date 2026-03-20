@@ -23,6 +23,14 @@ pub(crate) use ntt::{
     monomials_to_evals_3_pass,
 };
 
+mod hypercube;
+#[allow(unused)]
+pub use hypercube::hypercube_natural_evals_to_bitreversed_monomials;
+#[cfg(test)]
+pub(crate) use hypercube::{
+    hypercube_evals_to_monomials_2_pass, hypercube_evals_to_monomials_3_pass
+};
+
 cuda_kernel!(
     HypercubeStage,
     ab_hypercube_evals_natural_to_bitreversed_coeffs_stage_kernel(
