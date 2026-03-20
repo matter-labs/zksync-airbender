@@ -15,7 +15,7 @@ static constexpr u32 NON_DETERMINISM_CSR = 0x7c0;
 struct ExecutorFamilyDecoderData {
   const u32 imm;
   const u8 rs1_index;
-  const u8 rs2_index;
+  const u16 rs2_index;
   const u8 rd_index;
   const bool rd_is_zero;
   const u8 funct3;
@@ -222,7 +222,16 @@ struct UnrolledMemoryOracle {
   DEVICE_FORCEINLINE u16 get_witness_from_placeholder_u16(const Placeholder placeholder, const unsigned trace_step) const {
     if (trace_step >= trace.cycles_count)
       return 0;
+    const ExecutorFamilyDecoderData decoded = get_executor_family_data(trace_step);
     switch (placeholder.tag) {
+    case ShuffleRamAddress: {
+      switch (placeholder.payload[0]) {
+      case 0:
+        return decoded.rs1_index;
+      default:
+        __trap();
+      }
+    }
     default:
       __trap();
     }
@@ -411,7 +420,20 @@ struct UnrolledNonMemoryOracle {
     if (trace_step >= trace.cycles_count)
       return 0;
     const NonMemoryOpcodeTracingData *const opcode_data = &trace.tracing_data[trace_step].opcode_data;
+    const ExecutorFamilyDecoderData decoded = get_executor_family_data(trace_step);
     switch (placeholder.tag) {
+    case ShuffleRamAddress: {
+      switch (placeholder.payload[0]) {
+      case 0:
+        return decoded.rs1_index;
+      case 1:
+        return decoded.rs2_index;
+      case 2:
+        return decoded.rd_index;
+      default:
+        __trap();
+      }
+    }
     case DelegationType: {
       const u16 delegation_type = opcode_data->delegation_type;
       return delegation_type != 0 && delegation_type != NON_DETERMINISM_CSR ? delegation_type : 0;
@@ -770,7 +792,46 @@ struct UnrolledUnifiedOracle {
     if (trace_step >= trace.cycles_count)
       return 0;
     const UnifiedOpcodeTracingDataWithTimestamp *const cycle_data = &trace.tracing_data[trace_step];
+    const ExecutorFamilyDecoderData decoded = get_executor_family_data(trace_step);
     switch (placeholder.tag) {
+    case ShuffleRamAddress: {
+      switch (placeholder.payload[0]) {
+      case 0:
+        return decoded.rs1_index;
+      case 1: {
+        switch (cycle_data->tag) {
+        case Mem:
+          switch (cycle_data->value.mem.discr) {
+          case MEM_STORE_TRACE_DATA_MARKER:
+            return decoded.rs2_index;
+          default:
+            __trap();
+          }
+        case NonMem:
+          return decoded.rs2_index;
+        default:
+          __trap();
+        }
+      }
+      case 2: {
+        switch (cycle_data->tag) {
+        case Mem:
+          switch (cycle_data->value.mem.discr) {
+          case MEM_LOAD_TRACE_DATA_MARKER:
+            return decoded.rd_index;
+          default:
+            __trap();
+          }
+        case NonMem:
+          return decoded.rd_index;
+        default:
+          __trap();
+        }
+      }
+      default:
+        __trap();
+      }
+    }
     case DelegationType: {
       const u16 delegation_type = cycle_data->delegation_type();
       return delegation_type != 0 && delegation_type != NON_DETERMINISM_CSR ? delegation_type : 0;
