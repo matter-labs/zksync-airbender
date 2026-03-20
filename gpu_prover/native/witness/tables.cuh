@@ -8,58 +8,40 @@ namespace airbender::witness::tables {
 
 enum TableType : u16 {
   ZeroEntry = 0,
-  OpTypeBitmask,
-  PowersOf2,
-  InsnEncodingChecker,
+  RegIsZero,
+  JumpCleanupOffset,
+  GetSignExtensionByte,
   Xor = 4,
-  CsrBitmask,
+  U16GetSign,
   Or = 6,
   And = 7,
+  TruncateShiftAmountAndRangeCheck8,
+  ShiftImplementationOverBytes,
   RangeCheck8x8,
   AndNot,
-  QuickDecodeDecompositionCheck4x4x4,
-  QuickDecodeDecompositionCheck7x3x6,
-  MRetProcessLow,
-  MRetClearHigh,
-  TrapProcessLow,
   U16GetSignAndHighByte,
-  JumpCleanupOffset,
   MemoryOffsetGetBits,
   MemoryLoadGetSigns,
-  SRASignFiller,
-  ConditionalOpUnsignedConditionsResolver,
-  ConditionalOpAllConditionsResolver,
   RomAddressSpaceSeparator,
   RomRead,
-  SpecialCSRProperties,
   Xor3,
   Xor4,
   Xor7,
   Xor9,
   Xor12,
-  U16SplitAsBytes,
   RangeCheck9x9,
   RangeCheck10x10,
   RangeCheck11,
   RangeCheck12,
   RangeCheck13,
-  ShiftImplementation,
   U16SelectByteAndGetByteSign,
   ExtendLoadedValue,
   StoreByteSourceContribution,
   StoreByteExistingContribution,
-  TruncateShift,
   ConditionalJmpBranchSlt,
   MemoryGetOffsetAndMaskWithTrap,
   MemoryLoadHalfwordOrByte,
   AlignedRomRead,
-  TruncateShiftAmount,
-  SllWith16BitInputLow,
-  SllWith16BitInputHigh,
-  SrlWith16BitInputLow,
-  SrlWith16BitInputHigh,
-  Sra16BitInputSignFill,
-  RangeCheck16WithZeroPads,
   MemStoreClearOriginalRamValueLimb,
   MemStoreClearWrittenValueLimb,
   KeccakPermutationIndices12,
@@ -119,33 +101,23 @@ template <unsigned K, unsigned V> struct TableDriver {
     switch (table_type) {
     case ZeroEntry:
       return 0;
-    case OpTypeBitmask:
-    case PowersOf2:
-    case U16GetSignAndHighByte:
+    case RegIsZero:
     case JumpCleanupOffset:
+    case GetSignExtensionByte:
+    case U16GetSign:
+    case U16GetSignAndHighByte:
     case MemoryOffsetGetBits:
     case MemoryLoadGetSigns:
-    case SRASignFiller:
-    case ConditionalOpAllConditionsResolver:
     case RomAddressSpaceSeparator:
-    case SpecialCSRProperties:
-    case U16SplitAsBytes:
     case RangeCheck11:
     case RangeCheck12:
     case RangeCheck13:
-    case ShiftImplementation:
     case U16SelectByteAndGetByteSign:
     case ExtendLoadedValue:
+    case ConditionalJmpBranchSlt:
     case MemoryGetOffsetAndMaskWithTrap:
     case MemoryLoadHalfwordOrByte:
     case AlignedRomRead:
-    case TruncateShiftAmount:
-    case SllWith16BitInputLow:
-    case SllWith16BitInputHigh:
-    case SrlWith16BitInputLow:
-    case SrlWith16BitInputHigh:
-    case Sra16BitInputSignFill:
-    case RangeCheck16WithZeroPads:
     case MemStoreClearOriginalRamValueLimb:
     case MemStoreClearWrittenValueLimb:
     case KeccakPermutationIndices12:
@@ -159,10 +131,8 @@ template <unsigned K, unsigned V> struct TableDriver {
       return index_for_keys<0, 8>(keys);
     case StoreByteSourceContribution:
     case StoreByteExistingContribution:
-    case TruncateShift:
       return index_for_keys<1, 0>(keys);
     case Xor3:
-    case ConditionalJmpBranchSlt:
       return index_for_keys<3, 0>(keys);
     case Xor4:
       return index_for_keys<4, 0>(keys);
@@ -171,6 +141,7 @@ template <unsigned K, unsigned V> struct TableDriver {
     case Xor:
     case Or:
     case And:
+    case TruncateShiftAmountAndRangeCheck8:
     case RangeCheck8x8:
     case AndNot:
       return index_for_keys<8, 0>(keys);
@@ -181,10 +152,8 @@ template <unsigned K, unsigned V> struct TableDriver {
       return index_for_keys<10, 0>(keys);
     case Xor12:
       return index_for_keys<12, 0>(keys);
-    case QuickDecodeDecompositionCheck4x4x4:
-      return index_for_keys<8, 4, 0>(keys);
-    case QuickDecodeDecompositionCheck7x3x6:
-      return index_for_keys<9, 6, 0>(keys);
+    case ShiftImplementationOverBytes:
+      return index_for_keys<16, 8, 3, 0>(keys);
     case RomRead:
       return bf::into_canonical_u32(keys[0]) >> 2;
     default:

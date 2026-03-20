@@ -13,8 +13,8 @@ use super::stage1::GpuGKRStage1Output;
 use super::{GpuBaseFieldPoly, GpuGKRStorage};
 use crate::allocator::tracker::AllocationPlacement;
 use crate::ops::blake2s::Digest;
-use crate::ops::complex::{batch_inv_in_place, BatchInv};
-use crate::ops::simple::{add_into_y, mul_into_y, set_by_ref, Add, BinaryOp, Mul, SetByRef};
+use crate::ops::complex::BatchInv;
+use crate::ops::simple::{add_into_y, mul_into_y, set_by_ref, set_by_val, Add, BinaryOp, Mul, SetByRef, SetByVal};
 use crate::primitives::callbacks::Callbacks;
 use crate::primitives::context::{DeviceAllocation, HostAllocation, ProverContext};
 use crate::primitives::device_structures::DeviceVectorChunk;
@@ -253,7 +253,7 @@ impl<'a> GpuGKRSetupTransfer<'a> {
         context: &ProverContext,
     ) -> CudaResult<GpuGKRForwardSetup<E>>
     where
-        E: Field + SetByRef + BatchInv + 'static,
+        E: Field + SetByRef + SetByVal + BatchInv + 'static,
         Add: BinaryOp<E, E, E>,
         Add: BinaryOp<BF, E, E>,
         Mul: BinaryOp<BF, E, E>,
@@ -279,7 +279,7 @@ impl<'a> GpuGKRSetupTransfer<'a> {
             None
         };
         let mut generic_lookup = if generic_lookup_len > 0 {
-            Some(context.alloc(generic_lookup_len, AllocationPlacement::BestFit)?)
+            Some(context.alloc::<E>(generic_lookup_len, AllocationPlacement::BestFit)?)
         } else {
             None
         };
@@ -334,16 +334,15 @@ impl<'a> GpuGKRSetupTransfer<'a> {
             let generic_lookup_range = Range::new("gkr.forward_setup.build_generic_lookup")?;
             generic_lookup_range.start(stream)?;
             let raw = self.trace_holder.get_hypercube_evals();
-            let lookup_additive_part = DeviceVectorChunk::new(&device_lookup_additive_part, 0, 1);
 
             let mut weighted_column = if self.host.columns_count > 3 {
-                Some(context.alloc(generic_lookup.len(), AllocationPlacement::BestFit)?)
+                Some(context.alloc::<E>(generic_lookup.len(), AllocationPlacement::BestFit)?)
             } else {
                 None
             };
-            set_by_ref(&lookup_additive_part, generic_lookup.deref_mut(), stream)?;
             let base_column =
                 DeviceVectorChunk::new(raw, self.host.column_offset(2), generic_lookup.len());
+            set_by_val(E::ZERO, generic_lookup.deref_mut(), stream)?;
             add_into_y(&base_column, generic_lookup.deref_mut(), stream)?;
 
             if let (Some(weighted_column), Some(alpha_powers)) = (
@@ -364,7 +363,6 @@ impl<'a> GpuGKRSetupTransfer<'a> {
                     add_into_y(&weighted_column_chunk, generic_lookup.deref_mut(), stream)?;
                 }
             }
-            batch_inv_in_place(generic_lookup, stream)?;
             generic_lookup_range.end(stream)?;
             tracing_ranges.push(generic_lookup_range);
         }
