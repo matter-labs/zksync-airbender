@@ -1,6 +1,5 @@
 use std::ffi::{c_char, CStr};
-use std::ptr::null_mut;
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
 
 #[repr(C)]
 struct NvtxDomainRegistration {
@@ -18,10 +17,15 @@ type NvtxRangeId = u64;
 
 #[link(name = "gpu_prover_nvtx")]
 unsafe extern "C" {
+    fn gpu_prover_nvtx_domain_create(name: *const c_char) -> NvtxDomainHandle;
     fn gpu_prover_nvtx_register_string(
         domain: NvtxDomainHandle,
         string: *const c_char,
     ) -> NvtxStringHandle;
+    fn gpu_prover_nvtx_domain_ascii_range_start(
+        domain: NvtxDomainHandle,
+        message: *const c_char,
+    ) -> NvtxRangeId;
     fn gpu_prover_nvtx_registered_range_start(
         domain: NvtxDomainHandle,
         string: NvtxStringHandle,
@@ -30,12 +34,17 @@ unsafe extern "C" {
     fn gpu_prover_nvtx_range_end(id: NvtxRangeId);
 }
 
+#[derive(Clone, Copy)]
 enum RegisteredRangeMessage {
     Registered(NvtxStringHandle),
-    Ascii(&'static CStr),
+    DomainAscii(&'static CStr),
+    GlobalAscii(&'static CStr),
 }
 
+#[derive(Clone, Copy)]
 struct RegisteredRangeMetadata {
+    domain_name: &'static CStr,
+    message_name: &'static CStr,
     domain: NvtxDomainHandle,
     message: RegisteredRangeMessage,
 }
@@ -60,31 +69,57 @@ impl Drop for RegisteredRangeGuard {
 }
 
 pub(crate) fn start_registered_range(
-    _domain_name: &'static CStr,
+    domain_name: &'static CStr,
     message_name: &'static CStr,
 ) -> RegisteredRangeGuard {
-    static REGISTRY: OnceLock<RegisteredRangeMetadata> = OnceLock::new();
-    let metadata = REGISTRY.get_or_init(|| {
-        let domain = null_mut();
+    static REGISTRY: OnceLock<Mutex<Vec<RegisteredRangeMetadata>>> = OnceLock::new();
+    let registry = REGISTRY.get_or_init(|| Mutex::new(Vec::new()));
+    let mut registry = registry.lock().unwrap();
 
-        // SAFETY: The global NVTX domain is represented by a null handle, and the message is static.
-        let message = unsafe { gpu_prover_nvtx_register_string(domain, message_name.as_ptr()) };
-        let message = if message.is_null() {
-            RegisteredRangeMessage::Ascii(message_name)
-        } else {
-            RegisteredRangeMessage::Registered(message)
-        };
+    let metadata = registry
+        .iter()
+        .find(|metadata| {
+            metadata.domain_name.to_bytes() == domain_name.to_bytes()
+                && metadata.message_name.to_bytes() == message_name.to_bytes()
+        })
+        .cloned()
+        .unwrap_or_else(|| {
+            // SAFETY: The domain name is a static NUL-terminated C string.
+            let domain = unsafe { gpu_prover_nvtx_domain_create(domain_name.as_ptr()) };
 
-        RegisteredRangeMetadata { domain, message }
-    });
+            // SAFETY: The domain handle comes from NVTX and the message is static.
+            let message = unsafe { gpu_prover_nvtx_register_string(domain, message_name.as_ptr()) };
+            let message = if !message.is_null() {
+                RegisteredRangeMessage::Registered(message)
+            } else if !domain.is_null() {
+                RegisteredRangeMessage::DomainAscii(message_name)
+            } else {
+                RegisteredRangeMessage::GlobalAscii(message_name)
+            };
+
+            let metadata = RegisteredRangeMetadata {
+                domain_name,
+                message_name,
+                domain,
+                message,
+            };
+            registry.push(metadata.clone());
+            metadata
+        });
+
+    drop(registry);
 
     let id = match metadata.message {
         // SAFETY: `metadata` contains valid process-global handles created during one-time init.
         RegisteredRangeMessage::Registered(message) => unsafe {
             gpu_prover_nvtx_registered_range_start(metadata.domain, message)
         },
+        // SAFETY: `metadata.domain` is a valid NVTX domain handle and the message is static.
+        RegisteredRangeMessage::DomainAscii(message) => unsafe {
+            gpu_prover_nvtx_domain_ascii_range_start(metadata.domain, message.as_ptr())
+        },
         // SAFETY: `message` is a static NUL-terminated C string.
-        RegisteredRangeMessage::Ascii(message) => unsafe {
+        RegisteredRangeMessage::GlobalAscii(message) => unsafe {
             gpu_prover_nvtx_ascii_range_start(message.as_ptr())
         },
     };

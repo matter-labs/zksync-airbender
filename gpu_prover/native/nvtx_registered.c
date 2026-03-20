@@ -12,6 +12,18 @@ nvtxStringHandle_t gpu_prover_nvtx_register_string(
     return nvtxDomainRegisterStringA(domain, string);
 }
 
+uint64_t gpu_prover_nvtx_domain_ascii_range_start(
+    nvtxDomainHandle_t domain,
+    const char *message
+) {
+    nvtxEventAttributes_t event_attrib = {0};
+    event_attrib.version = NVTX_VERSION;
+    event_attrib.size = NVTX_EVENT_ATTRIB_STRUCT_SIZE;
+    event_attrib.messageType = NVTX_MESSAGE_TYPE_ASCII;
+    event_attrib.message.ascii = message;
+    return nvtxDomainRangeStartEx(domain, &event_attrib);
+}
+
 uint64_t gpu_prover_nvtx_registered_range_start(
     nvtxDomainHandle_t domain,
     nvtxStringHandle_t string
