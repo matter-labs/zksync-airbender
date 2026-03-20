@@ -95,6 +95,16 @@ impl AllocationsTracker {
             .expect("tracked allocation address range overflowed")
     }
 
+    fn align_up(addr: Addr, alignment: usize) -> Addr {
+        debug_assert!(alignment.is_power_of_two());
+        Self::end_addr(addr, alignment - 1) & !(alignment - 1)
+    }
+
+    fn align_down(addr: Addr, alignment: usize) -> Addr {
+        debug_assert!(alignment.is_power_of_two());
+        addr & !(alignment - 1)
+    }
+
     fn region_end(&self, idx: usize) -> Addr {
         Self::end_addr(self.ptrs[idx], self.lens[idx])
     }
@@ -119,11 +129,7 @@ impl AllocationsTracker {
             "free block must fit fully inside its region"
         );
         assert!(self.free_len_by_addr.insert(addr, len).is_none());
-        assert!(self
-            .free_addrs_by_len
-            .entry(len)
-            .or_default()
-            .insert(addr));
+        assert!(self.free_addrs_by_len.entry(len).or_default().insert(addr));
     }
 
     fn remove_free_block(&mut self, addr: Addr, len: usize) {
@@ -148,94 +154,132 @@ impl AllocationsTracker {
         }
     }
 
-    fn insert_remainder(
-        &mut self,
+    fn aligned_addr_in_free_block(
         free_addr: Addr,
         free_len: usize,
         len: usize,
         placement: AllocationPlacement,
-    ) -> Addr {
-        assert!(free_len > len);
-        let remainder_len = free_len - len;
-        let (addr, remainder_addr) = match placement {
-            AllocationPlacement::Top => (Self::end_addr(free_addr, remainder_len), free_addr),
-            _ => (free_addr, Self::end_addr(free_addr, len)),
-        };
-        self.insert_free_block(remainder_addr, remainder_len);
-        addr
+        alignment: usize,
+    ) -> Option<Addr> {
+        let free_end = Self::end_addr(free_addr, free_len);
+        match placement {
+            AllocationPlacement::Top => {
+                let latest_start = free_end.checked_sub(len)?;
+                let aligned_addr = Self::align_down(latest_start, alignment);
+                (aligned_addr >= free_addr).then_some(aligned_addr)
+            }
+            AllocationPlacement::BestFit | AllocationPlacement::Bottom => {
+                let aligned_addr = Self::align_up(free_addr, alignment);
+                (Self::end_addr(aligned_addr, len) <= free_end).then_some(aligned_addr)
+            }
+        }
     }
 
-    fn alloc_best_fit(&mut self, len: usize) -> Result<Addr, AllocError> {
-        let mut cursor = self.free_addrs_by_len.lower_bound_mut(Bound::Included(&len));
-        if let Some((&free_len, free_addrs)) = cursor.peek_next() {
-            let free_addr = free_addrs.pop_first().unwrap();
-            if free_addrs.is_empty() {
-                cursor.remove_next();
-            }
-            assert_eq!(self.free_len_by_addr.remove(&free_addr), Some(free_len));
-            Ok(if free_len == len {
-                free_addr
-            } else {
-                self.insert_remainder(free_addr, free_len, len, AllocationPlacement::BestFit)
+    fn take_allocation_from_free_block(
+        &mut self,
+        free_addr: Addr,
+        free_len: usize,
+        alloc_addr: Addr,
+        len: usize,
+    ) -> Addr {
+        self.remove_free_block(free_addr, free_len);
+
+        let prefix_len = alloc_addr - free_addr;
+        if prefix_len > 0 {
+            self.insert_free_block(free_addr, prefix_len);
+        }
+
+        let alloc_end = Self::end_addr(alloc_addr, len);
+        let free_end = Self::end_addr(free_addr, free_len);
+        let suffix_len = free_end - alloc_end;
+        if suffix_len > 0 {
+            self.insert_free_block(alloc_end, suffix_len);
+        }
+
+        alloc_addr
+    }
+
+    fn alloc_best_fit(&mut self, len: usize, alignment: usize) -> Result<Addr, AllocError> {
+        if let Some((free_addr, free_len, alloc_addr)) = self
+            .free_addrs_by_len
+            .range(len..)
+            .find_map(|(&free_len, free_addrs)| {
+                free_addrs.iter().copied().find_map(|free_addr| {
+                    Self::aligned_addr_in_free_block(
+                        free_addr,
+                        free_len,
+                        len,
+                        AllocationPlacement::BestFit,
+                        alignment,
+                    )
+                    .map(|alloc_addr| (free_addr, free_len, alloc_addr))
+                })
             })
+        {
+            Ok(self.take_allocation_from_free_block(free_addr, free_len, alloc_addr, len))
         } else {
             Err(AllocError)
         }
     }
 
-    fn find_free_addr_by_len<'a>(
+    fn find_free_addr<'a>(
         mut iter: impl Iterator<Item = (&'a Addr, &'a usize)>,
         len: usize,
-    ) -> Option<Addr> {
-        iter.find_map(|(&addr, &l)| if l >= len { Some(addr) } else { None })
+        placement: AllocationPlacement,
+        alignment: usize,
+    ) -> Option<(Addr, usize, Addr)> {
+        iter.find_map(|(&free_addr, &free_len)| {
+            Self::aligned_addr_in_free_block(free_addr, free_len, len, placement, alignment)
+                .map(|alloc_addr| (free_addr, free_len, alloc_addr))
+        })
     }
 
     fn alloc_at_free_addr(
         &mut self,
-        free_addr: Option<Addr>,
+        free_block: Option<(Addr, usize, Addr)>,
         len: usize,
-        placement: AllocationPlacement,
     ) -> Result<Addr, AllocError> {
-        if let Some(free_addr) = free_addr {
-            let free_len = self
-                .free_len_by_addr
-                .get(&free_addr)
-                .copied()
-                .expect("free block must exist");
-            self.remove_free_block(free_addr, free_len);
-            assert!(free_len >= len);
-            Ok(if free_len == len {
-                free_addr
-            } else {
-                self.insert_remainder(free_addr, free_len, len, placement)
-            })
+        if let Some((free_addr, free_len, alloc_addr)) = free_block {
+            Ok(self.take_allocation_from_free_block(free_addr, free_len, alloc_addr, len))
         } else {
             Err(AllocError)
         }
     }
 
-    fn alloc_bottom(&mut self, len: usize) -> Result<Addr, AllocError> {
-        let free_addr = Self::find_free_addr_by_len(self.free_len_by_addr.iter(), len);
-        self.alloc_at_free_addr(free_addr, len, AllocationPlacement::Bottom)
+    fn alloc_bottom(&mut self, len: usize, alignment: usize) -> Result<Addr, AllocError> {
+        let free_block = Self::find_free_addr(
+            self.free_len_by_addr.iter(),
+            len,
+            AllocationPlacement::Bottom,
+            alignment,
+        );
+        self.alloc_at_free_addr(free_block, len)
     }
 
-    fn alloc_top(&mut self, len: usize) -> Result<Addr, AllocError> {
-        let free_addr = Self::find_free_addr_by_len(self.free_len_by_addr.iter().rev(), len);
-        self.alloc_at_free_addr(free_addr, len, AllocationPlacement::Top)
+    fn alloc_top(&mut self, len: usize, alignment: usize) -> Result<Addr, AllocError> {
+        let free_block = Self::find_free_addr(
+            self.free_len_by_addr.iter().rev(),
+            len,
+            AllocationPlacement::Top,
+            alignment,
+        );
+        self.alloc_at_free_addr(free_block, len)
     }
 
-    pub fn alloc(
+    pub fn alloc_aligned(
         &mut self,
         len: usize,
         placement: AllocationPlacement,
+        alignment: usize,
     ) -> Result<NonNull<u8>, AllocError> {
+        assert!(alignment.is_power_of_two());
         if len == 0 {
             return Ok(Self::ptr_from_addr(self.ptrs[0]));
         }
         let result = match placement {
-            AllocationPlacement::BestFit => self.alloc_best_fit(len),
-            AllocationPlacement::Bottom => self.alloc_bottom(len),
-            AllocationPlacement::Top => self.alloc_top(len),
+            AllocationPlacement::BestFit => self.alloc_best_fit(len, alignment),
+            AllocationPlacement::Bottom => self.alloc_bottom(len, alignment),
+            AllocationPlacement::Top => self.alloc_top(len, alignment),
         };
         if result.is_ok() {
             self.used_mem_current += len;
@@ -243,6 +287,14 @@ impl AllocationsTracker {
             self.assert_invariants();
         }
         result.map(Self::ptr_from_addr)
+    }
+
+    pub fn alloc(
+        &mut self,
+        len: usize,
+        placement: AllocationPlacement,
+    ) -> Result<NonNull<u8>, AllocError> {
+        self.alloc_aligned(len, placement, 1)
     }
 
     pub fn free(&mut self, mut ptr: NonNull<u8>, mut len: usize) {
@@ -412,8 +464,12 @@ mod tests {
     fn multi_region_free_does_not_merge_across_regions() {
         let mut tracker = tracker(&[(REGION_A, REGION_LEN), (REGION_B, REGION_LEN)]);
 
-        let first = tracker.alloc(REGION_LEN, AllocationPlacement::Bottom).unwrap();
-        let second = tracker.alloc(REGION_LEN, AllocationPlacement::Bottom).unwrap();
+        let first = tracker
+            .alloc(REGION_LEN, AllocationPlacement::Bottom)
+            .unwrap();
+        let second = tracker
+            .alloc(REGION_LEN, AllocationPlacement::Bottom)
+            .unwrap();
 
         assert_eq!(first.as_ptr() as usize, REGION_A);
         assert_eq!(second.as_ptr() as usize, REGION_B);
@@ -433,8 +489,12 @@ mod tests {
     fn adjacent_regions_do_not_coalesce_even_when_addresses_touch() {
         let mut tracker = tracker(&[(REGION_A, REGION_LEN), (REGION_ADJACENT_B, REGION_LEN)]);
 
-        let first = tracker.alloc(REGION_LEN, AllocationPlacement::Bottom).unwrap();
-        let second = tracker.alloc(REGION_LEN, AllocationPlacement::Bottom).unwrap();
+        let first = tracker
+            .alloc(REGION_LEN, AllocationPlacement::Bottom)
+            .unwrap();
+        let second = tracker
+            .alloc(REGION_LEN, AllocationPlacement::Bottom)
+            .unwrap();
 
         tracker.free(first, REGION_LEN);
         tracker.free(second, REGION_LEN);
