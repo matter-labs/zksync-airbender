@@ -12,11 +12,11 @@ use crate::ntt::{
     bitreversed_monomials_to_natural_evals, hypercube_evals_natural_to_bitreversed_coeffs,
 };
 use crate::ops::blake2s::{
-    build_merkle_tree, build_merkle_tree_nodes, gather_leaf_rows, gather_merkle_paths_device,
-    gather_rows_and_merkle_paths, merkle_tree_cap, Digest,
+    Digest, build_merkle_tree, build_merkle_tree_nodes, gather_leaf_rows,
+    gather_merkle_paths_device, gather_merkle_paths_from_rows, merkle_tree_cap,
 };
 use crate::primitives::context::{DeviceAllocation, HostAllocation, ProverContext, UnsafeAccessor};
-use crate::primitives::device_structures::{DeviceMatrix, DeviceMatrixImpl, DeviceMatrixMut};
+use crate::primitives::device_structures::{DeviceMatrix, DeviceMatrixMut};
 use crate::primitives::field::BF;
 
 pub const PARTIAL_TREE_REDUCTION_LAYERS: u32 = crate::primitives::utils::LOG_WARP_SIZE;
@@ -370,43 +370,67 @@ impl TraceHolder<BF> {
         self.commit_all(context)
     }
 
-    pub fn get_leafs_and_merkle_paths(
+    fn query_leafs_layout(&self, queries_count: usize) -> (usize, usize) {
+        let domain_size = 1usize << self.log_domain_size;
+        let values_per_column_count = queries_count << self.log_rows_per_leaf;
+        let leafs_len = values_per_column_count * self.columns_count;
+        (domain_size, leafs_len)
+    }
+
+    fn query_merkle_path_layout(&self, queries_count: usize) -> (u32, usize) {
+        let layers_count = self.log_domain_size
+            - self.log_rows_per_leaf
+            - (self.log_tree_cap_size - self.log_lde_factor);
+        let digests_len = queries_count * layers_count as usize;
+        (layers_count, digests_len)
+    }
+
+    pub(crate) fn get_query_leafs(
         &mut self,
         coset_index: usize,
         indexes: &DeviceSlice<u32>,
         context: &ProverContext,
-    ) -> CudaResult<LeafsAndMerklePaths> {
+    ) -> CudaResult<HostAllocation<[BF]>> {
         self.ensure_cosets_materialized(context)?;
         let queries_count = indexes.len();
-        let log_domain_size = self.log_domain_size;
-        let log_rows_per_index = self.log_rows_per_leaf;
-        let domain_size = 1 << log_domain_size;
+        let (domain_size, leafs_len) = self.query_leafs_layout(queries_count);
         let values = self.get_coset_evaluations(coset_index);
         let values_matrix = DeviceMatrix::new(values, domain_size);
-        let columns_count = values_matrix.cols();
-        let values_per_column_count = queries_count << log_rows_per_index;
-        let leafs_len = values_per_column_count * columns_count;
-        let layers_count = log_domain_size
-            - self.log_rows_per_leaf
-            - (self.log_tree_cap_size - self.log_lde_factor);
-        let digests_len = queries_count * layers_count as usize;
         let stream = context.get_exec_stream();
         let mut d_leafs = context.alloc(leafs_len, AllocationPlacement::BestFit)?;
-        let mut leafs_matrix = DeviceMatrixMut::new(&mut d_leafs, values_per_column_count);
+        let mut leafs_matrix =
+            DeviceMatrixMut::new(&mut d_leafs, queries_count << self.log_rows_per_leaf);
+        gather_leaf_rows(
+            indexes,
+            false,
+            self.log_rows_per_leaf,
+            &values_matrix,
+            &mut leafs_matrix,
+            stream,
+        )?;
+        let mut leafs = unsafe { context.alloc_host_uninit_slice(leafs_len) };
+        memory_copy_async(
+            unsafe { leafs.get_mut_accessor().get_mut() },
+            &d_leafs,
+            stream,
+        )?;
+        Ok(leafs)
+    }
+
+    pub(crate) fn get_query_merkle_paths(
+        &mut self,
+        coset_index: usize,
+        indexes: &DeviceSlice<u32>,
+        context: &ProverContext,
+    ) -> CudaResult<HostAllocation<[Digest]>> {
+        self.ensure_cosets_materialized(context)?;
+        let queries_count = indexes.len();
+        let (_, digests_len) = self.query_merkle_path_layout(queries_count);
+        let stream = context.get_exec_stream();
         let mut d_merkle_paths = context.alloc(digests_len, AllocationPlacement::BestFit)?;
+        let (layers_count, _) = self.query_merkle_path_layout(queries_count);
         match &self.trees {
             TreesHolder::Full(trees) => {
-                // Full-tree queries work in the natural per-coset leaf index space. They still
-                // need leaf-aware row extraction, but can read all Merkle layers directly from the
-                // cached tree without the fused partial-tree path.
-                gather_leaf_rows(
-                    indexes,
-                    false,
-                    log_rows_per_index,
-                    &values_matrix,
-                    &mut leafs_matrix,
-                    stream,
-                )?;
                 let tree = &trees[coset_index];
                 gather_merkle_paths_device(
                     indexes,
@@ -418,12 +442,12 @@ impl TraceHolder<BF> {
             }
             TreesHolder::Partial(trees) => {
                 let tree_bottom = &trees[coset_index];
-                gather_rows_and_merkle_paths(
+                gather_merkle_paths_from_rows(
                     indexes,
                     false,
-                    values,
-                    log_rows_per_index,
-                    &mut leafs_matrix,
+                    self.get_coset_evaluations(coset_index),
+                    self.log_rows_per_leaf,
+                    self.columns_count,
                     tree_bottom,
                     &mut d_merkle_paths,
                     layers_count,
@@ -431,20 +455,13 @@ impl TraceHolder<BF> {
                 )?;
             }
             TreesHolder::None => {
-                gather_leaf_rows(
-                    indexes,
-                    false,
-                    log_rows_per_index,
-                    &values_matrix,
-                    &mut leafs_matrix,
-                    stream,
-                )?;
+                let values = self.get_coset_evaluations(coset_index);
                 let mut tree =
                     allocate_tree(self.log_domain_size, self.log_rows_per_leaf, context)?;
                 build_merkle_tree(
                     values,
                     &mut tree,
-                    log_rows_per_index,
+                    self.log_rows_per_leaf,
                     stream,
                     layers_count,
                     false,
@@ -458,18 +475,23 @@ impl TraceHolder<BF> {
                 )?;
             }
         };
-        let mut leafs = unsafe { context.alloc_host_uninit_slice(leafs_len) };
-        memory_copy_async(
-            unsafe { leafs.get_mut_accessor().get_mut() },
-            &d_leafs,
-            stream,
-        )?;
         let mut merkle_paths = unsafe { context.alloc_host_uninit_slice(digests_len) };
         memory_copy_async(
             unsafe { merkle_paths.get_mut_accessor().get_mut() },
             &d_merkle_paths,
             stream,
         )?;
+        Ok(merkle_paths)
+    }
+
+    pub fn get_leafs_and_merkle_paths(
+        &mut self,
+        coset_index: usize,
+        indexes: &DeviceSlice<u32>,
+        context: &ProverContext,
+    ) -> CudaResult<LeafsAndMerklePaths> {
+        let leafs = self.get_query_leafs(coset_index, indexes, context)?;
+        let merkle_paths = self.get_query_merkle_paths(coset_index, indexes, context)?;
         Ok(LeafsAndMerklePaths {
             leafs,
             merkle_paths,
@@ -683,12 +705,12 @@ pub(crate) fn get_tree_caps(
 mod test {
     use std::alloc::Global;
 
-    use blake2s_u32::{Blake2sState, BLAKE2S_BLOCK_SIZE_U32_WORDS, BLAKE2S_DIGEST_SIZE_U32_WORDS};
+    use blake2s_u32::{BLAKE2S_BLOCK_SIZE_U32_WORDS, BLAKE2S_DIGEST_SIZE_U32_WORDS, Blake2sState};
     use era_cudart::memory::memory_copy_async;
     use field::{Field, PrimeField};
     use prover::gkr::whir::hypercube_to_monomial::multivariate_coeffs_into_hypercube_evals;
-    use prover::merkle_trees::blake2s_for_everything_tree::Blake2sU32MerkleTreeWithCap;
     use prover::merkle_trees::ColumnMajorMerkleTreeConstructor;
+    use prover::merkle_trees::blake2s_for_everything_tree::Blake2sU32MerkleTreeWithCap;
     use serial_test::serial;
     use worker::Worker;
 
@@ -1092,11 +1114,29 @@ mod test {
         let full = full_holder
             .get_leafs_and_merkle_paths(1, &indexes_device, &context)
             .unwrap();
+        let full_leafs_only = full_holder
+            .get_query_leafs(1, &indexes_device, &context)
+            .unwrap();
+        let full_paths_only = full_holder
+            .get_query_merkle_paths(1, &indexes_device, &context)
+            .unwrap();
         let partial = partial_holder
             .get_leafs_and_merkle_paths(1, &indexes_device, &context)
             .unwrap();
+        let partial_leafs_only = partial_holder
+            .get_query_leafs(1, &indexes_device, &context)
+            .unwrap();
+        let partial_paths_only = partial_holder
+            .get_query_merkle_paths(1, &indexes_device, &context)
+            .unwrap();
         let none = none_holder
             .get_leafs_and_merkle_paths(1, &indexes_device, &context)
+            .unwrap();
+        let none_leafs_only = none_holder
+            .get_query_leafs(1, &indexes_device, &context)
+            .unwrap();
+        let none_paths_only = none_holder
+            .get_query_merkle_paths(1, &indexes_device, &context)
             .unwrap();
         context.get_exec_stream().synchronize().unwrap();
 
@@ -1111,6 +1151,24 @@ mod test {
         let none_paths = unsafe { none.merkle_paths.get_accessor().get().to_vec() };
         assert_eq!(partial_paths, full_paths);
         assert_eq!(none_paths, full_paths);
+        assert_eq!(unsafe { full_leafs_only.get_accessor().get() }, unsafe {
+            full.leafs.get_accessor().get()
+        });
+        assert_eq!(unsafe { partial_leafs_only.get_accessor().get() }, unsafe {
+            partial.leafs.get_accessor().get()
+        });
+        assert_eq!(unsafe { none_leafs_only.get_accessor().get() }, unsafe {
+            none.leafs.get_accessor().get()
+        });
+        assert_eq!(unsafe { full_paths_only.get_accessor().get() }, unsafe {
+            full.merkle_paths.get_accessor().get()
+        });
+        assert_eq!(unsafe { partial_paths_only.get_accessor().get() }, unsafe {
+            partial.merkle_paths.get_accessor().get()
+        });
+        assert_eq!(unsafe { none_paths_only.get_accessor().get() }, unsafe {
+            none.merkle_paths.get_accessor().get()
+        });
 
         let stage1_caps = full_holder.get_tree_caps();
         let cpu_caps = stage1_caps_from_cpu_cosets(
