@@ -15,7 +15,7 @@ use crate::primitives::context::{HostAllocation, ProverContext, UnsafeAccessor};
 use crate::primitives::device_structures::{DeviceMatrix, DeviceMatrixChunkMut, DeviceMatrixMut};
 use crate::primitives::field::{BF, E4};
 use crate::primitives::static_host::alloc_static_pinned_box_from_slice;
-use crate::prover::trace_holder::{TraceHolder, TreesCacheMode};
+use crate::prover::trace_holder::{PARTIAL_TREE_REDUCTION_LAYERS, TraceHolder, TreesCacheMode};
 
 const EXT4_DEGREE: usize = <E4 as FieldExtension<BF>>::DEGREE;
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -80,6 +80,17 @@ impl GpuWhirScheduledExtensionQuery {
 }
 
 impl GpuWhirExtensionOracle {
+    fn recursive_tree_cache_mode(
+        total_leaf_count_log2: u32,
+        log_tree_cap_size: u32,
+    ) -> TreesCacheMode {
+        if total_leaf_count_log2 > PARTIAL_TREE_REDUCTION_LAYERS + log_tree_cap_size {
+            TreesCacheMode::CachePartial
+        } else {
+            TreesCacheMode::CacheFull
+        }
+    }
+
     pub(crate) fn from_monomial_coeffs(
         monomial_coeffs: &[E4],
         lde_factor: usize,
@@ -162,6 +173,8 @@ impl GpuWhirExtensionOracle {
         let packed_leaf_count = trace_len / values_per_leaf;
         let packed_leaf_count_log2 = packed_leaf_count.trailing_zeros();
         let total_leaf_count_log2 = packed_leaf_count_log2 + log_lde_factor;
+        let trees_cache_mode =
+            Self::recursive_tree_cache_mode(total_leaf_count_log2, log_tree_cap_size);
 
         let mut serialized_coeffs_device =
             context.alloc(trace_len * EXT4_DEGREE, AllocationPlacement::BestFit)?;
@@ -178,7 +191,7 @@ impl GpuWhirExtensionOracle {
             0,
             log_tree_cap_size,
             EXT4_DEGREE * values_per_leaf,
-            TreesCacheMode::CacheFull,
+            trees_cache_mode,
             context,
         )?;
         let mut natural_coset_values =
@@ -297,9 +310,9 @@ impl GpuWhirExtensionOracle {
             context.get_exec_stream(),
         )?;
         drop(host_value_index);
-        let value_query =
-            self.trace_holder
-                .get_leafs_and_merkle_paths(0, &device_value_index, context)?;
+        let value_query = self
+            .trace_holder
+            .get_query_leafs(0, &device_value_index, context)?;
         let mut host_path_index = unsafe { context.alloc_host_uninit_slice(1) };
         let pi_accessor = host_path_index.get_mut_accessor();
         callbacks.schedule(
@@ -315,13 +328,13 @@ impl GpuWhirExtensionOracle {
         drop(host_path_index);
         let path_query =
             self.trace_holder
-                .get_leafs_and_merkle_paths(0, &device_path_index, context)?;
+                .get_query_merkle_paths(0, &device_path_index, context)?;
         Ok(GpuWhirScheduledExtensionQuery {
             index,
             coset_index,
             callbacks,
-            leafs: value_query.leafs,
-            merkle_paths: path_query.merkle_paths,
+            leafs: value_query,
+            merkle_paths: path_query,
             values_per_leaf: self.values_per_leaf,
         })
     }
@@ -367,18 +380,18 @@ impl GpuWhirExtensionOracle {
         )?;
         drop(path_index);
         drop(query_index);
-        let value_query =
-            self.trace_holder
-                .get_leafs_and_merkle_paths(0, &device_value_index, context)?;
+        let value_query = self
+            .trace_holder
+            .get_query_leafs(0, &device_value_index, context)?;
         let path_query =
             self.trace_holder
-                .get_leafs_and_merkle_paths(0, &device_path_index, context)?;
+                .get_query_merkle_paths(0, &device_path_index, context)?;
         Ok(GpuWhirScheduledExtensionQuery {
             index: 0,
             coset_index: 0,
             callbacks,
-            leafs: value_query.leafs,
-            merkle_paths: path_query.merkle_paths,
+            leafs: value_query,
+            merkle_paths: path_query,
             values_per_leaf: self.values_per_leaf,
         })
     }
@@ -466,7 +479,7 @@ pub(crate) mod tests {
     use std::alloc::Global;
 
     use era_cudart::memory::memory_copy_async;
-    use fft::{bitreverse_enumeration_inplace, domain_generator_for_size, Twiddles};
+    use fft::{Twiddles, bitreverse_enumeration_inplace, domain_generator_for_size};
     use field::Field;
     use prover::gkr::prover::stages::stage1::ColumnMajorCosetBoundTracePart;
     use prover::gkr::whir::{ColumnMajorExtensionOracleForCoset, ColumnMajorExtensionOracleForLDE};
@@ -476,6 +489,7 @@ pub(crate) mod tests {
     use super::GpuWhirExtensionOracle;
     use crate::primitives::field::{BF, E4};
     use crate::prover::test_utils::make_test_context;
+    use crate::prover::trace_holder::TreesHolder;
 
     fn sample_monomial_coeffs(size: usize) -> Vec<E4> {
         (0..size)
@@ -571,6 +585,67 @@ pub(crate) mod tests {
         }
     }
 
+    fn assert_recursive_oracle_caps_and_queries_match_cpu(
+        monomial_coeffs: &[E4],
+        values_per_leaf: usize,
+        expected_partial_cache: bool,
+    ) {
+        let worker = Worker::new();
+        let context = make_test_context(256, 32);
+        let twiddles = Twiddles::<BF, Global>::new(monomial_coeffs.len(), &worker);
+        let cpu = cpu_extension_oracle_from_monomial_form(
+            monomial_coeffs,
+            &twiddles,
+            4,
+            values_per_leaf,
+            4,
+            &worker,
+        );
+        let mut gpu = GpuWhirExtensionOracle::from_monomial_coeffs(
+            monomial_coeffs,
+            4,
+            values_per_leaf,
+            4,
+            &context,
+        )
+        .unwrap();
+
+        match (&gpu.trace_holder.trees, expected_partial_cache) {
+            (TreesHolder::Partial(_), true) | (TreesHolder::Full(_), false) => {}
+            _ => panic!("unexpected recursive cache mode"),
+        }
+
+        assert_eq!(
+            gpu.get_tree_cap(),
+            <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<BF>>::get_cap(&cpu.tree)
+        );
+
+        let query_indexes = [
+            0usize,
+            1,
+            7,
+            (monomial_coeffs.len() * 4 / values_per_leaf) / 2,
+            (monomial_coeffs.len() * 4 / values_per_leaf) - 1,
+        ];
+        for query_index in query_indexes {
+            let (cpu_coset_index, cpu_values, cpu_query) = cpu.query_for_folded_index(query_index);
+            let (gpu_coset_index, gpu_values, gpu_query) =
+                gpu.query_for_folded_index(query_index, &context).unwrap();
+
+            assert_eq!(
+                gpu_coset_index, cpu_coset_index,
+                "query {query_index} coset mismatch"
+            );
+            assert_eq!(gpu_values, cpu_values, "query {query_index} leaf mismatch");
+            assert_eq!(gpu_query.index, cpu_query.index);
+            assert_eq!(
+                gpu_query.leaf_values_concatenated,
+                cpu_query.leaf_values_concatenated
+            );
+            assert_eq!(gpu_query.path, cpu_query.path);
+        }
+    }
+
     #[test]
     fn recursive_oracle_lde_matches_cpu() {
         let worker = Worker::new();
@@ -594,43 +669,14 @@ pub(crate) mod tests {
 
     #[test]
     fn recursive_oracle_caps_and_queries_match_cpu() {
-        let worker = Worker::new();
-        let context = make_test_context(256, 32);
         let monomial_coeffs = sample_monomial_coeffs(1 << 5);
-        let twiddles = Twiddles::<BF, Global>::new(monomial_coeffs.len(), &worker);
-        let cpu =
-            cpu_extension_oracle_from_monomial_form(&monomial_coeffs, &twiddles, 4, 2, 4, &worker);
-        let mut gpu =
-            GpuWhirExtensionOracle::from_monomial_coeffs(&monomial_coeffs, 4, 2, 4, &context)
-                .unwrap();
+        assert_recursive_oracle_caps_and_queries_match_cpu(&monomial_coeffs, 2, false);
+    }
 
-        assert_eq!(
-            gpu.get_tree_cap(),
-            <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<BF>>::get_cap(&cpu.tree)
-        );
-
-        for query_index in [0usize, 1, 7, 13] {
-            let (cpu_coset_index, cpu_values, cpu_query) = cpu.query_for_folded_index(query_index);
-            let (gpu_coset_index, gpu_values, gpu_query) =
-                gpu.query_for_folded_index(query_index, &context).unwrap();
-
-            assert_eq!(
-                gpu_coset_index, cpu_coset_index,
-                "query {} uses an unexpected coset mapping",
-                query_index
-            );
-            assert_eq!(
-                gpu_values, cpu_values,
-                "query {} leaf values diverged",
-                query_index
-            );
-            assert_eq!(gpu_query.index, cpu_query.index);
-            assert_eq!(
-                gpu_query.leaf_values_concatenated,
-                cpu_query.leaf_values_concatenated
-            );
-            assert_eq!(gpu_query.path, cpu_query.path);
-        }
+    #[test]
+    fn recursive_oracle_large_partial_cache_matches_cpu() {
+        let monomial_coeffs = sample_monomial_coeffs(1 << 8);
+        assert_recursive_oracle_caps_and_queries_match_cpu(&monomial_coeffs, 2, true);
     }
 
     #[test]
@@ -694,6 +740,94 @@ pub(crate) mod tests {
                 cpu_query.leaf_values_concatenated
             );
             assert_eq!(gpu_query.path, cpu_query.path);
+        }
+    }
+
+    #[test]
+    fn recursive_oracle_cache_mode_branch_selection() {
+        let context = make_test_context(256, 32);
+        let small = sample_monomial_coeffs(1 << 5);
+        let large = sample_monomial_coeffs(1 << 8);
+
+        let small_oracle =
+            GpuWhirExtensionOracle::from_monomial_coeffs(&small, 4, 2, 4, &context).unwrap();
+        let large_oracle =
+            GpuWhirExtensionOracle::from_monomial_coeffs(&large, 4, 2, 4, &context).unwrap();
+
+        assert!(matches!(
+            small_oracle.trace_holder.trees,
+            TreesHolder::Full(_)
+        ));
+        assert!(matches!(
+            large_oracle.trace_holder.trees,
+            TreesHolder::Partial(_)
+        ));
+    }
+
+    #[test]
+    fn recursive_query_leaf_and_path_helpers_match_combined_queries() {
+        let context = make_test_context(256, 32);
+        let monomial_coeffs = sample_monomial_coeffs(1 << 8);
+        let mut oracle =
+            GpuWhirExtensionOracle::from_monomial_coeffs(&monomial_coeffs, 4, 2, 4, &context)
+                .unwrap();
+
+        for query_index in [0usize, 1, 17, 63, 127, 255] {
+            let coset_index = query_index & (oracle.lde_factor - 1);
+            let internal_index = query_index / oracle.lde_factor;
+            let stage1_coset_index =
+                super::bitreverse_index(coset_index, oracle.lde_factor.trailing_zeros() as u32);
+            let logical_row_index = stage1_coset_index * oracle.packed_leaf_count + internal_index;
+
+            let mut value_index = context
+                .alloc(1, crate::allocator::tracker::AllocationPlacement::BestFit)
+                .unwrap();
+            let mut path_index = context
+                .alloc(1, crate::allocator::tracker::AllocationPlacement::BestFit)
+                .unwrap();
+            memory_copy_async(
+                &mut value_index,
+                &[logical_row_index as u32],
+                context.get_exec_stream(),
+            )
+            .unwrap();
+            memory_copy_async(
+                &mut path_index,
+                &[query_index as u32],
+                context.get_exec_stream(),
+            )
+            .unwrap();
+
+            let combined_leafs = oracle
+                .trace_holder
+                .get_leafs_and_merkle_paths(0, &value_index, &context)
+                .unwrap()
+                .leafs;
+            let separate_leafs = oracle
+                .trace_holder
+                .get_query_leafs(0, &value_index, &context)
+                .unwrap();
+            let combined_paths = oracle
+                .trace_holder
+                .get_leafs_and_merkle_paths(0, &path_index, &context)
+                .unwrap()
+                .merkle_paths;
+            let separate_paths = oracle
+                .trace_holder
+                .get_query_merkle_paths(0, &path_index, &context)
+                .unwrap();
+
+            context.get_exec_stream().synchronize().unwrap();
+            assert_eq!(
+                unsafe { separate_leafs.get_accessor().get() },
+                unsafe { combined_leafs.get_accessor().get() },
+                "query {query_index} leaf helper diverged"
+            );
+            assert_eq!(
+                unsafe { separate_paths.get_accessor().get() },
+                unsafe { combined_paths.get_accessor().get() },
+                "query {query_index} path helper diverged"
+            );
         }
     }
 }
