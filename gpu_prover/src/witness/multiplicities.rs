@@ -195,7 +195,7 @@ pub fn generate_range_check_lookup_mappings(
     assert_eq!(witness.stride(), trace_len);
     assert_eq!(witness.cols(), num_witness_cols);
     let mut range_check_16_lookup_mapping_allocation = context.alloc(
-        witness_layout.range_check_16_lookup_expressions.len() * trace_len,
+        circuit.range_check_16_lookup_expressions.len() * trace_len,
         AllocationPlacement::BestFit,
     )?;
     set_to_zero(
@@ -205,10 +205,7 @@ pub fn generate_range_check_lookup_mappings(
     let mut range_check_16_lookup_mapping =
         DeviceMatrixMut::new(&mut range_check_16_lookup_mapping_allocation, trace_len);
     let mut range_check_timestamp_lookup_mapping_allocation = context.alloc(
-        witness_layout
-            .timestamp_range_check_lookup_expressions
-            .len()
-            * trace_len,
+        circuit.timestamp_range_check_lookup_expressions.len() * trace_len,
         AllocationPlacement::BestFit,
     )?;
     set_to_zero(
@@ -220,12 +217,9 @@ pub fn generate_range_check_lookup_mappings(
         trace_len,
     );
     {
-        let range_check_16_lookup_expressions =
-            (&circuit.witness_layout.range_check_16_lookup_expressions).into();
-        let range_check_timestamp_lookup_expressions = (&circuit
-            .witness_layout
-            .timestamp_range_check_lookup_expressions)
-            .into();
+        let range_check_16_lookup_expressions = (&circuit.range_check_16_lookup_expressions).into();
+        let range_check_timestamp_lookup_expressions =
+            (&circuit.timestamp_range_check_lookup_expressions).into();
         let stream = context.get_exec_stream();
         let witness = witness.as_ptr_and_stride();
         let memory = memory.as_ptr_and_stride();

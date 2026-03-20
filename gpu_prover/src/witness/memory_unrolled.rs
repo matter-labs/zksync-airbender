@@ -64,7 +64,6 @@ pub struct DecoderPlacementDescription {
     pub circuit_family_mask_bits_count: u32,
     pub circuit_family_mask_bits: [Address; MAX_CIRCUIT_FAMILY_MASK_BITS],
     pub decoder_witness_is_in_memory: bool,
-    pub rd_is_zero: u32,
     pub imm: [u32; REGISTER_SIZE],
     pub funct3: Option<u32>,
 }
@@ -86,7 +85,6 @@ impl From<cs::definitions::gkr::DecoderPlacementDescription> for DecoderPlacemen
             *dst = src.into();
         }
         let decoder_witness_is_in_memory = value.decoder_witness_is_in_memory;
-        let rd_is_zero = value.rd_is_zero as u32;
         let imm = value.imm.map(|x| x as u32);
         let funct3 = value.funct3.map(|x| x as u32).into();
         Self {
@@ -96,7 +94,6 @@ impl From<cs::definitions::gkr::DecoderPlacementDescription> for DecoderPlacemen
             circuit_family_mask_bits_count,
             circuit_family_mask_bits,
             decoder_witness_is_in_memory,
-            rd_is_zero,
             imm,
             funct3,
         }
@@ -119,7 +116,7 @@ impl UnrolledMemoryLayout {
     pub fn from_parts(value: &GKRMemoryLayout, decoder_lookup_offset: u32) -> Self {
         assert!(value.register_and_indirect_accesses.is_empty());
         let (shuffle_ram_access_sets_count, shuffle_ram_access_sets) = {
-            let ram_access_sets = &value.shuffle_ram_access_sets;
+            let ram_access_sets = &value.ram_access_sets;
             let len = ram_access_sets.len();
             assert!(len <= MAX_SHUFFLE_RAM_ACCESS_SETS_COUNT);
             let count = len as u32;

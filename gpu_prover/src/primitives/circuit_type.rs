@@ -1,11 +1,55 @@
 use crate::primitives::machine_type::MachineType;
-use prover::definitions::OPTIMAL_FOLDING_PROPERTIES;
-use prover::prover_stages::ProofSecurityConfig;
-use setups::{
-    add_sub_lui_auipc_mop, bigint_with_control, blake2_with_compression, inits_and_teardowns,
-    jump_branch_slt, keccak_special5, load_store_subword_only, load_store_word_only, mul_div,
-    mul_div_unsigned, shift_binary_csr, unified_reduced_machine,
+use common_constants::circuit_families::{
+    ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX, INITS_AND_TEARDOWNS_FORMAL_CIRCUIT_FAMILY_IDX,
+    JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX, LOAD_STORE_SUBWORD_ONLY_CIRCUIT_FAMILY_IDX,
+    LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX, MUL_DIV_CIRCUIT_FAMILY_IDX,
+    REDUCED_MACHINE_CIRCUIT_FAMILY_IDX, SHIFT_BINARY_CIRCUIT_FAMILY_IDX,
 };
+use common_constants::delegation_types::{
+    bigint_with_control::BIGINT_OPS_WITH_CONTROL_CSR_REGISTER,
+    blake2s_with_control::BLAKE2S_DELEGATION_CSR_REGISTER,
+    keccak_special5::KECCAK_SPECIAL5_CSR_REGISTER,
+    NON_DETERMINISM_CSR,
+};
+use prover::definitions::OPTIMAL_FOLDING_PROPERTIES;
+
+const DEFAULT_LDE_FACTOR: usize = 2;
+const DEFAULT_LDE_SOURCE_COSETS: &[usize] = &[0, 1];
+
+const BIGINT_DOMAIN_SIZE: usize = 1 << 21;
+const BLAKE_DOMAIN_SIZE: usize = 1 << 20;
+const KECCAK_DOMAIN_SIZE: usize = 1 << 22;
+
+const ADD_SUB_DOMAIN_SIZE: usize = 1 << 24;
+const JUMP_BRANCH_DOMAIN_SIZE: usize = 1 << 24;
+const SHIFT_BINARY_DOMAIN_SIZE: usize = 1 << 24;
+const LOAD_STORE_WORD_DOMAIN_SIZE: usize = 1 << 24;
+const LOAD_STORE_SUBWORD_DOMAIN_SIZE: usize = 1 << 24;
+const INITS_AND_TEARDOWNS_DOMAIN_SIZE: usize = 1 << 24;
+const MUL_DIV_DOMAIN_SIZE: usize = 1 << 23;
+const MUL_DIV_UNSIGNED_DOMAIN_SIZE: usize = 1 << 23;
+const UNIFIED_REDUCED_DOMAIN_SIZE: usize = 1 << 23;
+
+const SHIFT_BINARY_ALLOWED_DELEGATION_CSRS: &[u32] = &[
+    NON_DETERMINISM_CSR,
+    BLAKE2S_DELEGATION_CSR_REGISTER,
+    BIGINT_OPS_WITH_CONTROL_CSR_REGISTER,
+    KECCAK_SPECIAL5_CSR_REGISTER,
+];
+
+const UNIFIED_REDUCED_ALLOWED_DELEGATION_CSRS: &[u32] =
+    &[NON_DETERMINISM_CSR, BLAKE2S_DELEGATION_CSR_REGISTER];
+
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub struct ProofSecurityConfig {
+    pub lookup_pow_bits: u32,
+    pub quotient_alpha_pow_bits: u32,
+    pub quotient_z_pow_bits: u32,
+    pub deep_poly_alpha_pow_bits: u32,
+    pub foldings_pow_bits: Vec<u32>,
+    pub fri_queries_pow_bits: u32,
+    pub num_queries: usize,
+}
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub enum CircuitType {
@@ -88,9 +132,9 @@ impl CircuitType {
 #[repr(u32)]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub enum DelegationCircuitType {
-    BigIntWithControl = bigint_with_control::DELEGATION_TYPE_ID,
-    Blake2WithCompression = blake2_with_compression::DELEGATION_TYPE_ID,
-    KeccakSpecial5 = keccak_special5::DELEGATION_TYPE_ID,
+    BigIntWithControl = BIGINT_OPS_WITH_CONTROL_CSR_REGISTER,
+    Blake2WithCompression = BLAKE2S_DELEGATION_CSR_REGISTER,
+    KeccakSpecial5 = KECCAK_SPECIAL5_CSR_REGISTER,
 }
 
 impl DelegationCircuitType {
@@ -111,28 +155,20 @@ impl DelegationCircuitType {
     #[inline(always)]
     pub const fn get_domain_size(&self) -> usize {
         match self {
-            Self::BigIntWithControl => bigint_with_control::DOMAIN_SIZE,
-            Self::Blake2WithCompression => blake2_with_compression::DOMAIN_SIZE,
-            Self::KeccakSpecial5 => keccak_special5::DOMAIN_SIZE,
+            Self::BigIntWithControl => BIGINT_DOMAIN_SIZE,
+            Self::Blake2WithCompression => BLAKE_DOMAIN_SIZE,
+            Self::KeccakSpecial5 => KECCAK_DOMAIN_SIZE,
         }
     }
 
     #[inline(always)]
     pub const fn get_lde_factor(&self) -> usize {
-        match self {
-            Self::BigIntWithControl => bigint_with_control::LDE_FACTOR,
-            Self::Blake2WithCompression => blake2_with_compression::LDE_FACTOR,
-            Self::KeccakSpecial5 => keccak_special5::LDE_FACTOR,
-        }
+        DEFAULT_LDE_FACTOR
     }
 
     #[inline(always)]
     pub const fn get_lde_source_cosets(&self) -> &'static [usize] {
-        match self {
-            Self::BigIntWithControl => bigint_with_control::LDE_SOURCE_COSETS,
-            Self::Blake2WithCompression => blake2_with_compression::LDE_SOURCE_COSETS,
-            Self::KeccakSpecial5 => keccak_special5::LDE_SOURCE_COSETS,
-        }
+        DEFAULT_LDE_SOURCE_COSETS
     }
 
     #[inline(always)]
@@ -166,13 +202,9 @@ impl DelegationCircuitType {
 
     pub fn get_security_config(&self) -> ProofSecurityConfig {
         match self {
-            Self::BigIntWithControl => {
-                get_security_config::<{ bigint_with_control::DOMAIN_SIZE }>()
-            }
-            Self::Blake2WithCompression => {
-                get_security_config::<{ blake2_with_compression::DOMAIN_SIZE }>()
-            }
-            Self::KeccakSpecial5 => get_security_config::<{ keccak_special5::DOMAIN_SIZE }>(),
+            Self::BigIntWithControl => get_security_config::<BIGINT_DOMAIN_SIZE>(),
+            Self::Blake2WithCompression => get_security_config::<BLAKE_DOMAIN_SIZE>(),
+            Self::KeccakSpecial5 => get_security_config::<KECCAK_DOMAIN_SIZE>(),
         }
     }
 }
@@ -181,9 +213,9 @@ impl From<u16> for DelegationCircuitType {
     #[inline(always)]
     fn from(delegation_type: u16) -> Self {
         match delegation_type as u32 {
-            bigint_with_control::DELEGATION_TYPE_ID => Self::BigIntWithControl,
-            blake2_with_compression::DELEGATION_TYPE_ID => Self::Blake2WithCompression,
-            keccak_special5::DELEGATION_TYPE_ID => Self::KeccakSpecial5,
+            BIGINT_OPS_WITH_CONTROL_CSR_REGISTER => Self::BigIntWithControl,
+            BLAKE2S_DELEGATION_CSR_REGISTER => Self::Blake2WithCompression,
+            KECCAK_SPECIAL5_CSR_REGISTER => Self::KeccakSpecial5,
             _ => panic!("unknown delegation type {}", delegation_type),
         }
     }
@@ -227,30 +259,30 @@ impl UnrolledCircuitType {
     #[inline(always)]
     pub const fn get_domain_size(&self) -> usize {
         match self {
-            Self::InitsAndTeardowns => inits_and_teardowns::DOMAIN_SIZE,
+            Self::InitsAndTeardowns => INITS_AND_TEARDOWNS_DOMAIN_SIZE,
             Self::Memory(circuit_type) => circuit_type.get_domain_size(),
             Self::NonMemory(circuit_type) => circuit_type.get_domain_size(),
-            Self::Unified => unified_reduced_machine::DOMAIN_SIZE,
+            Self::Unified => UNIFIED_REDUCED_DOMAIN_SIZE,
         }
     }
 
     #[inline(always)]
     pub const fn get_lde_factor(&self) -> usize {
         match self {
-            Self::InitsAndTeardowns => inits_and_teardowns::LDE_FACTOR,
+            Self::InitsAndTeardowns => DEFAULT_LDE_FACTOR,
             Self::Memory(circuit_type) => circuit_type.get_lde_factor(),
             Self::NonMemory(circuit_type) => circuit_type.get_lde_factor(),
-            Self::Unified => unified_reduced_machine::LDE_FACTOR,
+            Self::Unified => DEFAULT_LDE_FACTOR,
         }
     }
 
     #[inline(always)]
     pub const fn get_lde_source_cosets(&self) -> &'static [usize] {
         match self {
-            Self::InitsAndTeardowns => inits_and_teardowns::LDE_SOURCE_COSETS,
+            Self::InitsAndTeardowns => DEFAULT_LDE_SOURCE_COSETS,
             Self::Memory(circuit_type) => circuit_type.get_lde_source_cosets(),
             Self::NonMemory(circuit_type) => circuit_type.get_lde_source_cosets(),
-            Self::Unified => unified_reduced_machine::LDE_SOURCE_COSETS,
+            Self::Unified => DEFAULT_LDE_SOURCE_COSETS,
         }
     }
 
@@ -269,10 +301,10 @@ impl UnrolledCircuitType {
     #[inline(always)]
     pub const fn get_family_idx(&self) -> u8 {
         match self {
-            Self::InitsAndTeardowns => inits_and_teardowns::FAMILY_IDX,
+            Self::InitsAndTeardowns => INITS_AND_TEARDOWNS_FORMAL_CIRCUIT_FAMILY_IDX,
             Self::Memory(circuit_type) => circuit_type.get_family_idx(),
             Self::NonMemory(circuit_type) => circuit_type.get_family_idx(),
-            Self::Unified => unified_reduced_machine::FAMILY_IDX,
+            Self::Unified => REDUCED_MACHINE_CIRCUIT_FAMILY_IDX,
         }
     }
 
@@ -281,7 +313,7 @@ impl UnrolledCircuitType {
             Self::InitsAndTeardowns => &[],
             Self::Memory(_) => &[],
             Self::NonMemory(circuit_type) => circuit_type.get_allowed_delegation_csrs(),
-            Self::Unified => unified_reduced_machine::ALLOWED_DELEGATION_CSRS,
+            Self::Unified => UNIFIED_REDUCED_ALLOWED_DELEGATION_CSRS,
         }
     }
 
@@ -295,12 +327,10 @@ impl UnrolledCircuitType {
 
     pub fn get_security_config(&self) -> ProofSecurityConfig {
         match self {
-            Self::InitsAndTeardowns => {
-                get_security_config::<{ inits_and_teardowns::DOMAIN_SIZE }>()
-            }
+            Self::InitsAndTeardowns => get_security_config::<INITS_AND_TEARDOWNS_DOMAIN_SIZE>(),
             Self::Memory(circuit_type) => circuit_type.get_security_config(),
             Self::NonMemory(circuit_type) => circuit_type.get_security_config(),
-            Self::Unified => get_security_config::<{ unified_reduced_machine::DOMAIN_SIZE }>(),
+            Self::Unified => get_security_config::<UNIFIED_REDUCED_DOMAIN_SIZE>(),
         }
     }
 }
@@ -324,40 +354,34 @@ impl UnrolledMemoryCircuitType {
     #[inline(always)]
     pub const fn get_domain_size(&self) -> usize {
         match self {
-            Self::LoadStoreSubwordOnly => load_store_subword_only::DOMAIN_SIZE,
-            Self::LoadStoreWordOnly => load_store_word_only::DOMAIN_SIZE,
+            Self::LoadStoreSubwordOnly => LOAD_STORE_SUBWORD_DOMAIN_SIZE,
+            Self::LoadStoreWordOnly => LOAD_STORE_WORD_DOMAIN_SIZE,
         }
     }
 
     #[inline(always)]
     pub const fn get_lde_factor(&self) -> usize {
-        match self {
-            Self::LoadStoreSubwordOnly => load_store_subword_only::LDE_FACTOR,
-            Self::LoadStoreWordOnly => load_store_word_only::LDE_FACTOR,
-        }
+        DEFAULT_LDE_FACTOR
     }
 
     #[inline(always)]
     pub const fn get_lde_source_cosets(&self) -> &'static [usize] {
-        match self {
-            Self::LoadStoreSubwordOnly => load_store_subword_only::LDE_SOURCE_COSETS,
-            Self::LoadStoreWordOnly => load_store_word_only::LDE_SOURCE_COSETS,
-        }
+        DEFAULT_LDE_SOURCE_COSETS
     }
 
     #[inline(always)]
     pub const fn get_tree_cap_size(&self) -> usize {
         match self {
-            Self::LoadStoreSubwordOnly => load_store_subword_only::TREE_CAP_SIZE,
-            Self::LoadStoreWordOnly => load_store_word_only::TREE_CAP_SIZE,
+            Self::LoadStoreSubwordOnly => get_tree_cap_size_for_domain_size(LOAD_STORE_SUBWORD_DOMAIN_SIZE),
+            Self::LoadStoreWordOnly => get_tree_cap_size_for_domain_size(LOAD_STORE_WORD_DOMAIN_SIZE),
         }
     }
 
     #[inline(always)]
     pub const fn get_family_idx(&self) -> u8 {
         match self {
-            Self::LoadStoreSubwordOnly => load_store_subword_only::FAMILY_IDX,
-            Self::LoadStoreWordOnly => load_store_word_only::FAMILY_IDX,
+            Self::LoadStoreSubwordOnly => LOAD_STORE_SUBWORD_ONLY_CIRCUIT_FAMILY_IDX,
+            Self::LoadStoreWordOnly => LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX,
         }
     }
 
@@ -377,17 +401,17 @@ impl UnrolledMemoryCircuitType {
         };
         match machine_type {
             MachineType::Full => match family_idx {
-                load_store_subword_only::FAMILY_IDX => Self::LoadStoreSubwordOnly,
-                load_store_word_only::FAMILY_IDX => Self::LoadStoreWordOnly,
+                LOAD_STORE_SUBWORD_ONLY_CIRCUIT_FAMILY_IDX => Self::LoadStoreSubwordOnly,
+                LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX => Self::LoadStoreWordOnly,
                 _ => panic(),
             },
             MachineType::FullUnsigned => match family_idx {
-                load_store_subword_only::FAMILY_IDX => Self::LoadStoreSubwordOnly,
-                load_store_word_only::FAMILY_IDX => Self::LoadStoreWordOnly,
+                LOAD_STORE_SUBWORD_ONLY_CIRCUIT_FAMILY_IDX => Self::LoadStoreSubwordOnly,
+                LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX => Self::LoadStoreWordOnly,
                 _ => panic(),
             },
             MachineType::Reduced => match family_idx {
-                load_store_word_only::FAMILY_IDX => Self::LoadStoreWordOnly,
+                LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX => Self::LoadStoreWordOnly,
                 _ => panic(),
             },
         }
@@ -395,12 +419,8 @@ impl UnrolledMemoryCircuitType {
 
     pub fn get_security_config(&self) -> ProofSecurityConfig {
         match self {
-            Self::LoadStoreSubwordOnly => {
-                get_security_config::<{ load_store_subword_only::DOMAIN_SIZE }>()
-            }
-            Self::LoadStoreWordOnly => {
-                get_security_config::<{ load_store_word_only::DOMAIN_SIZE }>()
-            }
+            Self::LoadStoreSubwordOnly => get_security_config::<LOAD_STORE_SUBWORD_DOMAIN_SIZE>(),
+            Self::LoadStoreWordOnly => get_security_config::<LOAD_STORE_WORD_DOMAIN_SIZE>(),
         }
     }
 }
@@ -430,55 +450,43 @@ impl UnrolledNonMemoryCircuitType {
     #[inline(always)]
     pub const fn get_domain_size(&self) -> usize {
         match self {
-            Self::AddSubLuiAuipcMop => add_sub_lui_auipc_mop::DOMAIN_SIZE,
-            Self::JumpBranchSlt => jump_branch_slt::DOMAIN_SIZE,
-            Self::MulDiv => mul_div::DOMAIN_SIZE,
-            Self::MulDivUnsigned => mul_div_unsigned::DOMAIN_SIZE,
-            Self::ShiftBinaryCsr => shift_binary_csr::DOMAIN_SIZE,
+            Self::AddSubLuiAuipcMop => ADD_SUB_DOMAIN_SIZE,
+            Self::JumpBranchSlt => JUMP_BRANCH_DOMAIN_SIZE,
+            Self::MulDiv => MUL_DIV_DOMAIN_SIZE,
+            Self::MulDivUnsigned => MUL_DIV_UNSIGNED_DOMAIN_SIZE,
+            Self::ShiftBinaryCsr => SHIFT_BINARY_DOMAIN_SIZE,
         }
     }
 
     #[inline(always)]
     pub const fn get_lde_factor(&self) -> usize {
-        match self {
-            Self::AddSubLuiAuipcMop => add_sub_lui_auipc_mop::LDE_FACTOR,
-            Self::JumpBranchSlt => jump_branch_slt::LDE_FACTOR,
-            Self::MulDiv => mul_div::LDE_FACTOR,
-            Self::MulDivUnsigned => mul_div_unsigned::LDE_FACTOR,
-            Self::ShiftBinaryCsr => shift_binary_csr::LDE_FACTOR,
-        }
+        DEFAULT_LDE_FACTOR
     }
 
     #[inline(always)]
     pub const fn get_lde_source_cosets(&self) -> &'static [usize] {
-        match self {
-            Self::AddSubLuiAuipcMop => add_sub_lui_auipc_mop::LDE_SOURCE_COSETS,
-            Self::JumpBranchSlt => jump_branch_slt::LDE_SOURCE_COSETS,
-            Self::MulDiv => mul_div::LDE_SOURCE_COSETS,
-            Self::MulDivUnsigned => mul_div_unsigned::LDE_SOURCE_COSETS,
-            Self::ShiftBinaryCsr => shift_binary_csr::LDE_SOURCE_COSETS,
-        }
+        DEFAULT_LDE_SOURCE_COSETS
     }
 
     #[inline(always)]
     pub const fn get_tree_cap_size(&self) -> usize {
         match self {
-            Self::AddSubLuiAuipcMop => add_sub_lui_auipc_mop::TREE_CAP_SIZE,
-            Self::JumpBranchSlt => jump_branch_slt::TREE_CAP_SIZE,
-            Self::MulDiv => mul_div::TREE_CAP_SIZE,
-            Self::MulDivUnsigned => mul_div_unsigned::TREE_CAP_SIZE,
-            Self::ShiftBinaryCsr => shift_binary_csr::TREE_CAP_SIZE,
+            Self::AddSubLuiAuipcMop => get_tree_cap_size_for_domain_size(ADD_SUB_DOMAIN_SIZE),
+            Self::JumpBranchSlt => get_tree_cap_size_for_domain_size(JUMP_BRANCH_DOMAIN_SIZE),
+            Self::MulDiv => get_tree_cap_size_for_domain_size(MUL_DIV_DOMAIN_SIZE),
+            Self::MulDivUnsigned => get_tree_cap_size_for_domain_size(MUL_DIV_UNSIGNED_DOMAIN_SIZE),
+            Self::ShiftBinaryCsr => get_tree_cap_size_for_domain_size(SHIFT_BINARY_DOMAIN_SIZE),
         }
     }
 
     #[inline(always)]
     pub const fn get_family_idx(&self) -> u8 {
         match self {
-            Self::AddSubLuiAuipcMop => add_sub_lui_auipc_mop::FAMILY_IDX,
-            Self::JumpBranchSlt => jump_branch_slt::FAMILY_IDX,
-            Self::MulDiv => mul_div::FAMILY_IDX,
-            Self::MulDivUnsigned => mul_div_unsigned::FAMILY_IDX,
-            Self::ShiftBinaryCsr => shift_binary_csr::FAMILY_IDX,
+            Self::AddSubLuiAuipcMop => ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX,
+            Self::JumpBranchSlt => JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX,
+            Self::MulDiv => MUL_DIV_CIRCUIT_FAMILY_IDX,
+            Self::MulDivUnsigned => MUL_DIV_CIRCUIT_FAMILY_IDX,
+            Self::ShiftBinaryCsr => SHIFT_BINARY_CIRCUIT_FAMILY_IDX,
         }
     }
 
@@ -488,7 +496,7 @@ impl UnrolledNonMemoryCircuitType {
             Self::JumpBranchSlt => &[],
             Self::MulDiv => &[],
             Self::MulDivUnsigned => &[],
-            Self::ShiftBinaryCsr => shift_binary_csr::ALLOWED_DELEGATION_CSRS,
+            Self::ShiftBinaryCsr => SHIFT_BINARY_ALLOWED_DELEGATION_CSRS,
         }
     }
 
@@ -526,23 +534,23 @@ impl UnrolledNonMemoryCircuitType {
         };
         match machine_type {
             MachineType::Full => match family_idx {
-                add_sub_lui_auipc_mop::FAMILY_IDX => Self::AddSubLuiAuipcMop,
-                jump_branch_slt::FAMILY_IDX => Self::JumpBranchSlt,
-                mul_div::FAMILY_IDX => Self::MulDiv,
-                shift_binary_csr::FAMILY_IDX => Self::ShiftBinaryCsr,
+                ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX => Self::AddSubLuiAuipcMop,
+                JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX => Self::JumpBranchSlt,
+                MUL_DIV_CIRCUIT_FAMILY_IDX => Self::MulDiv,
+                SHIFT_BINARY_CIRCUIT_FAMILY_IDX => Self::ShiftBinaryCsr,
                 _ => panic(),
             },
             MachineType::FullUnsigned => match family_idx {
-                add_sub_lui_auipc_mop::FAMILY_IDX => Self::AddSubLuiAuipcMop,
-                jump_branch_slt::FAMILY_IDX => Self::JumpBranchSlt,
-                mul_div_unsigned::FAMILY_IDX => Self::MulDivUnsigned,
-                shift_binary_csr::FAMILY_IDX => Self::ShiftBinaryCsr,
+                ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX => Self::AddSubLuiAuipcMop,
+                JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX => Self::JumpBranchSlt,
+                MUL_DIV_CIRCUIT_FAMILY_IDX => Self::MulDivUnsigned,
+                SHIFT_BINARY_CIRCUIT_FAMILY_IDX => Self::ShiftBinaryCsr,
                 _ => panic(),
             },
             MachineType::Reduced => match family_idx {
-                add_sub_lui_auipc_mop::FAMILY_IDX => Self::AddSubLuiAuipcMop,
-                jump_branch_slt::FAMILY_IDX => Self::JumpBranchSlt,
-                shift_binary_csr::FAMILY_IDX => Self::ShiftBinaryCsr,
+                ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX => Self::AddSubLuiAuipcMop,
+                JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX => Self::JumpBranchSlt,
+                SHIFT_BINARY_CIRCUIT_FAMILY_IDX => Self::ShiftBinaryCsr,
                 _ => panic(),
             },
         }
@@ -561,13 +569,11 @@ impl UnrolledNonMemoryCircuitType {
 
     pub fn get_security_config(&self) -> ProofSecurityConfig {
         match self {
-            Self::AddSubLuiAuipcMop => {
-                get_security_config::<{ add_sub_lui_auipc_mop::DOMAIN_SIZE }>()
-            }
-            Self::JumpBranchSlt => get_security_config::<{ jump_branch_slt::DOMAIN_SIZE }>(),
-            Self::MulDiv => get_security_config::<{ mul_div::DOMAIN_SIZE }>(),
-            Self::MulDivUnsigned => get_security_config::<{ mul_div_unsigned::DOMAIN_SIZE }>(),
-            Self::ShiftBinaryCsr => get_security_config::<{ shift_binary_csr::DOMAIN_SIZE }>(),
+            Self::AddSubLuiAuipcMop => get_security_config::<ADD_SUB_DOMAIN_SIZE>(),
+            Self::JumpBranchSlt => get_security_config::<JUMP_BRANCH_DOMAIN_SIZE>(),
+            Self::MulDiv => get_security_config::<MUL_DIV_DOMAIN_SIZE>(),
+            Self::MulDivUnsigned => get_security_config::<MUL_DIV_UNSIGNED_DOMAIN_SIZE>(),
+            Self::ShiftBinaryCsr => get_security_config::<SHIFT_BINARY_DOMAIN_SIZE>(),
         }
     }
 }
@@ -604,5 +610,13 @@ where
     let config = verifier_common::SizedProofSecurityConfig::<{
         get_num_foldings::<DOMAIN_SIZE>()
     }>::worst_case_config();
-    config.for_prover()
+    ProofSecurityConfig {
+        lookup_pow_bits: config.lookup_pow_bits,
+        quotient_alpha_pow_bits: config.quotient_alpha_pow_bits,
+        quotient_z_pow_bits: config.quotient_z_pow_bits,
+        deep_poly_alpha_pow_bits: config.deep_poly_alpha_pow_bits,
+        foldings_pow_bits: config.foldings_pow_bits.to_vec(),
+        fri_queries_pow_bits: config.fri_queries_pow_bits,
+        num_queries: config.num_queries,
+    }
 }

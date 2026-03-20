@@ -3,7 +3,8 @@ use std::mem::{align_of, size_of};
 use std::ops::DerefMut;
 
 use cs::definitions::{
-    gkr::DECODER_LOOKUP_FORMAL_SET_INDEX, GKRAddress,
+    gkr::{DECODER_LOOKUP_FORMAL_SET_INDEX, RamWordRepresentation},
+    GKRAddress,
     MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX, MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX,
     MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX,
     MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX, MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX,
@@ -421,7 +422,7 @@ where
                     GpuExtensionFieldPoly::new(dst),
                 );
             }
-            NoFieldGKRRelation::LookupPair { input, output } => {
+            NoFieldGKRRelation::AggregateLookupRationalPair { input, output } => {
                 let [a, b] = input[0].map(|addr| storage.get_ext_poly(addr).clone_shared());
                 let [c, d] = input[1].map(|addr| storage.get_ext_poly(addr).clone_shared());
                 let mut num = alloc_ext(trace_len, context)?;
@@ -470,36 +471,58 @@ where
                 let b = storage.get_ext_poly(input[1]).clone_shared();
                 let c = storage.get_base_layer(setup[0]).clone_shared();
                 let d = storage.get_ext_poly(setup[1]).clone_shared();
+                let mut shifted_b = alloc_ext(trace_len, context)?;
+                let mut shifted_d = alloc_ext(trace_len, context)?;
                 let mut num = alloc_ext(trace_len, context)?;
                 let mut den = alloc_ext(trace_len, context)?;
                 let mut temp = alloc_ext(trace_len, context)?;
-                mul(
+                set_by_ref(
                     &b.as_device_chunk(),
+                    shifted_b.deref_mut(),
+                    context.get_exec_stream(),
+                )?;
+                add_ext_device_scalar_in_place(
+                    &mut shifted_b,
+                    forward_setup.lookup_additive_part_device(),
+                    context,
+                )?;
+                set_by_ref(
                     &d.as_device_chunk(),
+                    shifted_d.deref_mut(),
+                    context.get_exec_stream(),
+                )?;
+                add_ext_device_scalar_in_place(
+                    &mut shifted_d,
+                    forward_setup.lookup_additive_part_device(),
+                    context,
+                )?;
+                mul(
+                    &DeviceVectorChunk::new(&shifted_b, 0, trace_len),
+                    &DeviceVectorChunk::new(&shifted_d, 0, trace_len),
                     den.deref_mut(),
                     context.get_exec_stream(),
                 )?;
                 mul(
                     &a.as_device_chunk(),
-                    &d.as_device_chunk(),
-                    num.deref_mut(),
+                    &DeviceVectorChunk::new(&shifted_d, 0, trace_len),
+                    temp.deref_mut(),
                     context.get_exec_stream(),
                 )?;
                 mul(
                     &c.as_device_chunk(),
-                    &b.as_device_chunk(),
-                    temp.deref_mut(),
+                    &DeviceVectorChunk::new(&shifted_b, 0, trace_len),
+                    num.deref_mut(),
                     context.get_exec_stream(),
                 )?;
                 sub_into_x(
-                    num.deref_mut(),
-                    &DeviceVectorChunk::new(&temp, 0, trace_len),
+                    temp.deref_mut(),
+                    &DeviceVectorChunk::new(&num, 0, trace_len),
                     context.get_exec_stream(),
                 )?;
                 storage.insert_extension_at_layer(
                     expected_output_layer,
                     output[0],
-                    GpuExtensionFieldPoly::new(num),
+                    GpuExtensionFieldPoly::new(temp),
                 );
                 storage.insert_extension_at_layer(
                     expected_output_layer,
@@ -636,11 +659,50 @@ where
                     GpuExtensionFieldPoly::new(den),
                 );
             }
+            NoFieldGKRRelation::LookupUnbalancedPairWithMaterializedVectorInputs {
+                input,
+                remainder,
+                output,
+            } => {
+                let [a, b] = input.map(|addr| storage.get_ext_poly(addr).clone_shared());
+                let shifted_remainder = storage.get_ext_poly(*remainder).clone_shared();
+                let mut den = alloc_ext(trace_len, context)?;
+                let mut num = alloc_ext(trace_len, context)?;
+                mul(
+                    &b.as_device_chunk(),
+                    &shifted_remainder.as_device_chunk(),
+                    den.deref_mut(),
+                    context.get_exec_stream(),
+                )?;
+                mul(
+                    &a.as_device_chunk(),
+                    &shifted_remainder.as_device_chunk(),
+                    num.deref_mut(),
+                    context.get_exec_stream(),
+                )?;
+                add_into_y(
+                    &b.as_device_chunk(),
+                    num.deref_mut(),
+                    context.get_exec_stream(),
+                )?;
+                storage.insert_extension_at_layer(
+                    expected_output_layer,
+                    output[0],
+                    GpuExtensionFieldPoly::new(num),
+                );
+                storage.insert_extension_at_layer(
+                    expected_output_layer,
+                    output[1],
+                    GpuExtensionFieldPoly::new(den),
+                );
+            }
             NoFieldGKRRelation::EnforceConstraintsMaxQuadratic { .. } => {}
-            NoFieldGKRRelation::LookupFromBaseInputsWithSetup { .. }
+            NoFieldGKRRelation::LinearBaseFieldRelation { .. }
+            | NoFieldGKRRelation::MaxQuadratic { .. }
             | NoFieldGKRRelation::LookupPairFromVectorInputs { .. }
             | NoFieldGKRRelation::LookupPairFromBaseInputs { .. }
-            | NoFieldGKRRelation::LookupUnbalancedPairWithBaseInputs { .. }
+            | NoFieldGKRRelation::LookupPairFromMaterializedVectorInputs { .. }
+            | NoFieldGKRRelation::LookupPairFromCachedVectorInputs { .. }
             | NoFieldGKRRelation::MaterializeSingleLookupInput { .. }
             | NoFieldGKRRelation::MaterializedVectorLookupInput { .. }
             | NoFieldGKRRelation::UnbalancedGrandProductWithCache { .. } => {
@@ -780,11 +842,7 @@ where
         }
         NoFieldGKRCacheRelation::VectorizedLookupSetup(_) => {
             let mut dst = alloc_ext(trace_len, context)?;
-            set_by_ref(
-                &DeviceVectorChunk::new(forward_setup.lookup_additive_part_device(), 0, 1),
-                dst.deref_mut(),
-                context.get_exec_stream(),
-            )?;
+            set_by_val(E::ZERO, dst.deref_mut(), context.get_exec_stream())?;
             if forward_setup.generic_lookup_len() > 0 {
                 let src = DeviceVectorChunk::new(
                     forward_setup.generic_lookup(),
@@ -910,20 +968,27 @@ where
                 context,
             )?;
 
-            for (challenge_idx, offset) in [
-                (MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX, rel.value[0]),
-                (MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX, rel.value[1]),
-            ] {
-                let source = storage
-                    .get_base_layer(GKRAddress::BaseLayerMemory(offset))
-                    .clone_shared();
-                scale_and_add_base_column(
-                    &mut dst,
-                    &source,
-                    external_challenges.permutation_argument_linearization_challenges
-                        [challenge_idx],
-                    context,
-                )?;
+            match rel.value {
+                RamWordRepresentation::U16Limbs(read_value) => {
+                    for (challenge_idx, offset) in [
+                        (MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX, read_value[0]),
+                        (MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX, read_value[1]),
+                    ] {
+                        let source = storage
+                            .get_base_layer(GKRAddress::BaseLayerMemory(offset))
+                            .clone_shared();
+                        scale_and_add_base_column(
+                            &mut dst,
+                            &source,
+                            external_challenges.permutation_argument_linearization_challenges
+                                [challenge_idx],
+                            context,
+                        )?;
+                    }
+                }
+                RamWordRepresentation::U8Limbs(..) => {
+                    unimplemented!("GPU forward memory tuples do not yet support byte-limb values")
+                }
             }
 
             storage.insert_extension_at_layer(0, address, GpuExtensionFieldPoly::new(dst));
@@ -1086,6 +1151,22 @@ where
     set_by_val(scalar, scalar_device.deref_mut(), context.get_exec_stream())?;
     add_into_y(
         &DeviceVectorChunk::new(&scalar_device, 0, 1),
+        dst.deref_mut(),
+        context.get_exec_stream(),
+    )
+}
+
+fn add_ext_device_scalar_in_place<E>(
+    dst: &mut DeviceAllocation<E>,
+    scalar_device: &DeviceAllocation<E>,
+    context: &ProverContext,
+) -> CudaResult<()>
+where
+    E: Field,
+    Add: BinaryOp<E, E, E>,
+{
+    add_into_y(
+        &DeviceVectorChunk::new(scalar_device, 0, 1),
         dst.deref_mut(),
         context.get_exec_stream(),
     )
