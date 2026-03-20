@@ -382,11 +382,10 @@ where
         assert_eq!(a.cosets[0].original_values_normal_order.len(), b.len());
     }
 
-    let mut challenge_powers = materialize_powers_serial_starting_with_one::<E, Global>(
+    let challenge_powers = materialize_powers_serial_starting_with_one::<E, Global>(
         batching_challenge,
         total_base_oracles,
     );
-    challenge_powers[1..].fill(E::ZERO);
 
     let (base_mem_powers, rest) = challenge_powers.split_at(evals_refs[0].len());
     let (base_witness_powers, base_setup_powers) = rest.split_at(evals_refs[1].len());

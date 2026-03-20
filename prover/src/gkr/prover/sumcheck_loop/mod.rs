@@ -327,14 +327,14 @@ where
                 }
             }
 
-            if extra_evaluations_from_caching_relations.is_empty() == false {
-                // flatten and add to transcript
-                let transcript_input = extra_evaluations_from_caching_relations
-                    .iter()
-                    .map(|(_, v)| *v)
-                    .collect::<Vec<_>>();
-                commit_field_els(seed, &transcript_input);
-            }
+        }
+
+        if !extra_evaluations_from_caching_relations.is_empty() {
+            let transcript_input = extra_evaluations_from_caching_relations
+                .values()
+                .copied()
+                .collect::<Vec<_>>();
+            commit_field_els(seed, &transcript_input);
         }
 
         #[cfg(feature = "gkr_self_checks")]
