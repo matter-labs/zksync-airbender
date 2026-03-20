@@ -8,12 +8,12 @@ use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 use field::{Field, FieldExtension};
 
-use super::backward::{GpuDimensionReducingKernelSet, launch_build_eq_values};
+use super::backward::{launch_build_eq_values, GpuDimensionReducingKernelSet};
 use crate::allocator::tracker::AllocationPlacement;
 use crate::ops::cub::device_reduce::{
-    ReduceOperation, batch_reduce, get_batch_reduce_temp_storage_bytes,
+    batch_reduce, get_batch_reduce_temp_storage_bytes, ReduceOperation,
 };
-use crate::ops::simple::{Add, BinaryOp, Mul, add_into_y, mul, set_to_zero};
+use crate::ops::simple::{add_into_y, mul, set_to_zero, Add, BinaryOp, Mul};
 use crate::primitives::callbacks::Callbacks;
 use crate::primitives::context::{HostAllocation, ProverContext};
 use crate::primitives::device_structures::{DeviceMatrixChunk, DeviceMatrixMut, DeviceVectorChunk};
@@ -274,15 +274,15 @@ fn fill_missing_cached_dependency_claims<E: Copy>(
             completed_claims.insert(dep, value);
             extra_evaluations_from_caching_relations.insert(dep, value);
         }
+    }
 
-        if !extra_evaluations_from_caching_relations.is_empty() {
-            extra_evaluations_transcript_batches.push(
-                extra_evaluations_from_caching_relations
-                    .values()
-                    .copied()
-                    .collect(),
-            );
-        }
+    if !extra_evaluations_from_caching_relations.is_empty() {
+        extra_evaluations_transcript_batches.push(
+            extra_evaluations_from_caching_relations
+                .values()
+                .copied()
+                .collect(),
+        );
     }
 
     (
