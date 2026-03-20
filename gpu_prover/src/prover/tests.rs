@@ -39,14 +39,14 @@ use crate::prover::whir_fold::{
 use crate::witness::trace::ChunkedTraceHolder;
 use crate::witness::trace_unrolled::{ExecutorFamilyDecoderData, UnrolledNonMemoryTraceDevice};
 use cs::definitions::*;
-use cs::gkr_compiler::{GKRCircuitArtifact, GKRLayerDescription, NoFieldGKRRelation, OutputType};
-use cs::gkr_compiler::compile_unrolled_circuit_state_transition_into_gkr;
 use cs::gkr_circuits::{
-    add_sub_lui_auipc_mop_table_addition_fn,
     add_sub_lui_auipc_mop_circuit_with_preprocessed_bytecode_for_gkr,
+    add_sub_lui_auipc_mop_table_addition_fn,
     opcodes_for_full_machine_with_unsigned_mul_div_only_with_mem_word_access_specialization,
     process_binary_into_separate_tables_ext,
 };
+use cs::gkr_compiler::compile_unrolled_circuit_state_transition_into_gkr;
+use cs::gkr_compiler::{GKRCircuitArtifact, GKRLayerDescription, NoFieldGKRRelation, OutputType};
 use cs::tables::TableDriver;
 use era_cudart::event::{CudaEvent, CudaEventCreateFlags};
 use era_cudart::memory::memory_copy_async;
@@ -69,11 +69,11 @@ use prover::gkr::prover::prove_configured_with_gkr;
 use prover::gkr::prover::setup::GKRSetup;
 use prover::gkr::prover::stages::stage1;
 use prover::gkr::prover::stages::stage1::ColumnMajorCosetBoundTracePart;
-use prover::gkr::prover::utils::flatten_merkle_caps_iter_into;
 use prover::gkr::prover::sumcheck_loop;
 use prover::gkr::prover::transcript_utils::{
     add_whir_commitment_to_transcript, commit_field_els, draw_query_bits, draw_random_field_els,
 };
+use prover::gkr::prover::utils::flatten_merkle_caps_iter_into;
 use prover::gkr::prover::{GKRExternalChallenges, GKRProof, WhirSchedule};
 use prover::gkr::sumcheck::access_and_fold::GKRStorage;
 use prover::gkr::sumcheck::eq_poly::make_eq_poly_in_full;
@@ -315,8 +315,7 @@ impl BasicUnrolledFixture {
         &self,
         context: &ProverContext,
     ) -> CudaResult<BasicUnrolledTransfers<'static>> {
-        let setup_transfer =
-            GpuGKRSetupTransfer::new(Arc::clone(&self.gpu_setup_host), context)?;
+        let setup_transfer = GpuGKRSetupTransfer::new(Arc::clone(&self.gpu_setup_host), context)?;
         let decoder_transfer = if self.compiled_circuit.has_decoder_lookup {
             Some(DecoderTableTransfer::new(
                 Arc::clone(&self.decoder_table_host),
@@ -325,7 +324,8 @@ impl BasicUnrolledFixture {
         } else {
             None
         };
-        let tracing_data_transfer = TracingDataTransfer::new(self.tracing_data_host.clone(), context)?;
+        let tracing_data_transfer =
+            TracingDataTransfer::new(self.tracing_data_host.clone(), context)?;
 
         Ok(BasicUnrolledTransfers {
             setup_transfer,
@@ -1444,7 +1444,7 @@ fn assert_recursive_whir_oracle_parity_for_supported_path(
             ),
         );
 
-        let ood_point = E4::from_base(BF::from_u32_unchecked(42));
+        let ood_point = draw_random_field_els::<BF, E4>(&mut transcript_seed, 1)[0];
         let ood_value = evaluate_monomial_form_for_test(&sumchecked_poly_monomial_form, ood_point);
         cpu_ood_samples.push(ood_value);
         let query_domain_size = 1u64 << query_domain_log2;
@@ -1746,7 +1746,11 @@ fn build_basic_unrolled_async_backward_fixture_from_base(
     base.external_challenges
         .flatten_into_buffer(&mut transcript_input);
     flatten_merkle_caps_iter_into(
-        transfers.setup_transfer.trace_holder.get_tree_caps().into_iter(),
+        transfers
+            .setup_transfer
+            .trace_holder
+            .get_tree_caps()
+            .into_iter(),
         &mut transcript_input,
     );
     flatten_merkle_caps_iter_into(
@@ -2147,9 +2151,10 @@ pub(crate) fn expected_main_layer_kernel_specs_for_test<E: Field + FieldExtensio
                 };
                 specs.push(ExpectedMainLayerKernelSpec {
                     kind: GpuGKRMainLayerKernelKind::LookupWithCachedDensAndSetup,
-                    inputs: <LookupBaseExtMinusBaseExtGKRRelation<BF, E> as BatchedGKRKernel<BF, E>>::get_inputs(
-                        &relation,
-                    ),
+                    inputs: <LookupBaseExtMinusBaseExtGKRRelation<BF, E> as BatchedGKRKernel<
+                        BF,
+                        E,
+                    >>::get_inputs(&relation),
                     batch_challenges: vec![get_challenge(), get_challenge()],
                     auxiliary_challenge: lookup_additive_challenge,
                     constraint_metadata: None,
@@ -2469,6 +2474,44 @@ fn assert_layer_points_eq_for_test<E: Field + std::fmt::Debug>(
     }
 }
 
+fn assert_backward_claims_eq_before_base_layer_expansion<E: Field + std::fmt::Debug>(
+    actual: &BTreeMap<usize, BTreeMap<GKRAddress, E>>,
+    expected: &BTreeMap<usize, BTreeMap<GKRAddress, E>>,
+) {
+    assert_eq!(
+        actual.len(),
+        expected.len(),
+        "layer-claim map sizes differ: actual keys {:?}, expected keys {:?}",
+        actual.keys().collect::<Vec<_>>(),
+        expected.keys().collect::<Vec<_>>(),
+    );
+
+    for (layer_idx, expected_claims) in expected.iter() {
+        let actual_claims = actual
+            .get(layer_idx)
+            .unwrap_or_else(|| panic!("missing actual claims for layer {layer_idx}"));
+        if *layer_idx == 0 {
+            let filtered_expected = expected_claims
+                .iter()
+                .filter_map(|(address, claim)| {
+                    actual_claims
+                        .contains_key(address)
+                        .then_some((*address, *claim))
+                })
+                .collect::<BTreeMap<_, _>>();
+            assert_eq!(
+                actual_claims, &filtered_expected,
+                "layer 0 claims diverged before base-layer dependency expansion"
+            );
+        } else {
+            assert_eq!(
+                actual_claims, expected_claims,
+                "layer {layer_idx} claims diverged before base-layer dependency expansion"
+            );
+        }
+    }
+}
+
 fn assert_base_field_query_eq_for_test(
     actual: &prover::gkr::whir::BaseFieldQuery<BF, DefaultTreeConstructor>,
     expected: &prover::gkr::whir::BaseFieldQuery<BF, DefaultTreeConstructor>,
@@ -2711,41 +2754,6 @@ fn copy_ext_poly_from_gpu_storage<E: Field + SetByRef>(
     memory_copy_async(&mut host, &tmp, context.get_exec_stream()).unwrap();
     context.get_exec_stream().synchronize().unwrap();
     host
-}
-
-fn assert_storage_base_columns_match_cpu_trace<Column: AsRef<[BF]>, E: Field>(
-    storage: &GpuGKRStorage<BF, E>,
-    make_address: impl Fn(usize) -> GKRAddress,
-    cpu_columns: &[Column],
-    context: &ProverContext,
-) {
-    for (column_idx, cpu_column) in cpu_columns.iter().enumerate() {
-        let address = make_address(column_idx);
-        let gpu_column = copy_base_poly_from_gpu_storage(storage, address, context);
-        assert_eq!(
-            gpu_column,
-            cpu_column.as_ref(),
-            "storage column {:?} diverged",
-            address,
-        );
-    }
-}
-
-fn assert_flat_columns_match_cpu_trace<Column: AsRef<[BF]>>(
-    gpu_flat_columns: &[BF],
-    cpu_columns: &[Column],
-    trace_len: usize,
-) {
-    assert_eq!(gpu_flat_columns.len(), cpu_columns.len() * trace_len);
-    for (column_idx, cpu_column) in cpu_columns.iter().enumerate() {
-        let gpu_column = &gpu_flat_columns[column_idx * trace_len..(column_idx + 1) * trace_len];
-        assert_eq!(
-            gpu_column,
-            cpu_column.as_ref(),
-            "column {} diverged",
-            column_idx
-        );
-    }
 }
 
 fn describe_first_flat_column_mismatch<Column: AsRef<[BF]>>(
@@ -3071,7 +3079,10 @@ fn run_basic_unrolled_main_layer0_plan_matches_cpu_test() {
         expected_proof_layers: _,
     } = prepare_basic_unrolled_async_backward_fixture(8);
 
-    while let Some(layer_plan) = gpu_backward_state.prepare_next_layer_static(&context).unwrap() {
+    while let Some(layer_plan) = gpu_backward_state
+        .prepare_next_layer_static(&context)
+        .unwrap()
+    {
         drop(layer_plan);
     }
 
@@ -3109,7 +3120,9 @@ fn run_basic_unrolled_main_layer0_plan_matches_cpu_test() {
     assert_main_layer_plan_for_test(&layer0_plan, main_layer_state.storage(), &expected);
 
     let mut callbacks = crate::primitives::callbacks::Callbacks::new();
-    let round1 = layer0_plan.schedule_round_1(&mut callbacks, &context).unwrap();
+    let round1 = layer0_plan
+        .schedule_round_1(&mut callbacks, &context)
+        .unwrap();
     context.get_exec_stream().synchronize().unwrap();
     for (idx, (scheduled, kernel)) in round1
         .iter()
@@ -3119,8 +3132,9 @@ fn run_basic_unrolled_main_layer0_plan_matches_cpu_test() {
         let base_inputs: Vec<
             crate::prover::gkr::GpuBaseFieldPolySourceAfterOneFoldingLaunchDescriptor<BF, E4>,
         > = copy_device_values(&context, &scheduled.device.base_field_inputs);
-        let ext_inputs: Vec<crate::prover::gkr::GpuExtensionFieldPolyContinuingLaunchDescriptor<E4>> =
-            copy_device_values(&context, &scheduled.device.extension_field_inputs);
+        let ext_inputs: Vec<
+            crate::prover::gkr::GpuExtensionFieldPolyContinuingLaunchDescriptor<E4>,
+        > = copy_device_values(&context, &scheduled.device.extension_field_inputs);
 
         for (descriptor, address) in base_inputs.iter().zip(kernel.inputs.inputs_in_base.iter()) {
             if *address == GKRAddress::placeholder() {
@@ -3147,7 +3161,10 @@ fn run_basic_unrolled_main_layer0_plan_matches_cpu_test() {
                 address
             );
         }
-        for (descriptor, address) in ext_inputs.iter().zip(kernel.inputs.inputs_in_extension.iter()) {
+        for (descriptor, address) in ext_inputs
+            .iter()
+            .zip(kernel.inputs.inputs_in_extension.iter())
+        {
             if *address == GKRAddress::placeholder() {
                 assert!(descriptor.previous_layer_start.is_null());
                 continue;
@@ -3197,7 +3214,10 @@ fn run_basic_unrolled_main_layer0_static_plan_matches_cpu_test() {
         expected_proof_layers: _,
     } = prepare_basic_unrolled_async_backward_fixture(8);
 
-    while let Some(layer_plan) = gpu_backward_state.prepare_next_layer_static(&context).unwrap() {
+    while let Some(layer_plan) = gpu_backward_state
+        .prepare_next_layer_static(&context)
+        .unwrap()
+    {
         drop(layer_plan);
     }
 
@@ -3208,7 +3228,10 @@ fn run_basic_unrolled_main_layer0_static_plan_matches_cpu_test() {
     );
 
     let layer0_plan = loop {
-        let Some(layer_plan) = main_layer_state.prepare_next_layer_static(&context).unwrap() else {
+        let Some(layer_plan) = main_layer_state
+            .prepare_next_layer_static(&context)
+            .unwrap()
+        else {
             panic!("expected to reach main layer 0 static plan");
         };
         if layer_plan.layer_idx == 0 {
@@ -3238,15 +3261,20 @@ fn run_basic_unrolled_main_layer0_static_plan_matches_cpu_test() {
         .zip(expected.iter())
         .enumerate()
     {
-        assert_eq!(kernel_plan.kind, expected_spec.kind, "kernel {idx} kind mismatch");
-        assert_eq!(kernel_plan.inputs, expected_spec.inputs, "kernel {idx} inputs mismatch");
+        assert_eq!(
+            kernel_plan.kind, expected_spec.kind,
+            "kernel {idx} kind mismatch"
+        );
+        assert_eq!(
+            kernel_plan.inputs, expected_spec.inputs,
+            "kernel {idx} inputs mismatch"
+        );
         assert!(
             kernel_plan.batch_challenges.is_empty(),
             "kernel {idx} static plan should not embed immediate batch challenges"
         );
         assert_eq!(
-            kernel_plan.batch_challenge_offset,
-            expected_offset,
+            kernel_plan.batch_challenge_offset, expected_offset,
             "kernel {idx} batch challenge offset mismatch"
         );
         assert_eq!(
@@ -3312,7 +3340,10 @@ fn run_basic_unrolled_main_layer0_kernel_kind_trace_test() {
         ..
     } = prepare_basic_unrolled_async_backward_fixture(8);
 
-    while let Some(layer_plan) = gpu_backward_state.prepare_next_layer_static(&context).unwrap() {
+    while let Some(layer_plan) = gpu_backward_state
+        .prepare_next_layer_static(&context)
+        .unwrap()
+    {
         drop(layer_plan);
     }
 
@@ -3363,7 +3394,10 @@ fn run_basic_unrolled_first_main_layer_static_vs_dynamic_execution_test() {
         Seed,
         E4,
     ) {
-        while let Some(mut plan) = state.prepare_next_layer(batching_challenge, context).unwrap() {
+        while let Some(mut plan) = state
+            .prepare_next_layer(batching_challenge, context)
+            .unwrap()
+        {
             let scheduled = plan
                 .schedule_execute_dimension_reducing_layer(
                     &current_claims,
@@ -3426,23 +3460,18 @@ fn run_basic_unrolled_first_main_layer_static_vs_dynamic_execution_test() {
     );
     eprintln!("first-main-layer: dynamic dimension reduction ready");
 
-    let (
-        mut static_state,
-        static_claims,
-        static_point,
-        static_seed,
-        static_batching_challenge,
-    ) = advance_dimension_reduction(
-        fixture_static.gpu_backward_state,
-        &fixture_static.compiled_circuit,
-        fixture_static.top_layer_claims,
-        fixture_static.evaluation_point,
-        fixture_static.seed,
-        fixture_static.batching_challenge,
-        fixture_static.lookup_additive_part,
-        fixture_static.constraints_batch_challenge,
-        &fixture_static.context,
-    );
+    let (mut static_state, static_claims, static_point, static_seed, static_batching_challenge) =
+        advance_dimension_reduction(
+            fixture_static.gpu_backward_state,
+            &fixture_static.compiled_circuit,
+            fixture_static.top_layer_claims,
+            fixture_static.evaluation_point,
+            fixture_static.seed,
+            fixture_static.batching_challenge,
+            fixture_static.lookup_additive_part,
+            fixture_static.constraints_batch_challenge,
+            &fixture_static.context,
+        );
     eprintln!("first-main-layer: static dimension reduction ready");
 
     let mut dynamic_plan = dynamic_state
@@ -3465,7 +3494,11 @@ fn run_basic_unrolled_first_main_layer_static_vs_dynamic_execution_test() {
         )
         .unwrap();
     eprintln!("first-main-layer: dynamic main-layer scheduled");
-    fixture_dynamic.context.get_exec_stream().synchronize().unwrap();
+    fixture_dynamic
+        .context
+        .get_exec_stream()
+        .synchronize()
+        .unwrap();
     eprintln!("first-main-layer: dynamic main-layer synchronized");
     let dynamic_execution = dynamic_scheduled.into_execution();
 
@@ -3487,7 +3520,11 @@ fn run_basic_unrolled_first_main_layer_static_vs_dynamic_execution_test() {
         )
         .unwrap();
     eprintln!("first-main-layer: static main-layer scheduled");
-    fixture_static.context.get_exec_stream().synchronize().unwrap();
+    fixture_static
+        .context
+        .get_exec_stream()
+        .synchronize()
+        .unwrap();
     eprintln!("first-main-layer: static main-layer synchronized");
     let static_execution = static_scheduled.into_execution();
 
@@ -3505,7 +3542,10 @@ fn run_basic_unrolled_first_main_layer_static_vs_dynamic_execution_test() {
         dynamic_execution.next_batching_challenge,
         static_execution.next_batching_challenge
     );
-    assert_eq!(dynamic_execution.updated_seed, static_execution.updated_seed);
+    assert_eq!(
+        dynamic_execution.updated_seed,
+        static_execution.updated_seed
+    );
 }
 
 #[test]
@@ -3528,7 +3568,10 @@ fn run_basic_unrolled_main_layers_static_vs_dynamic_execution_test() {
         Seed,
         E4,
     ) {
-        while let Some(mut plan) = state.prepare_next_layer(batching_challenge, context).unwrap() {
+        while let Some(mut plan) = state
+            .prepare_next_layer(batching_challenge, context)
+            .unwrap()
+        {
             let scheduled = plan
                 .schedule_execute_dimension_reducing_layer(
                     &current_claims,
@@ -3618,7 +3661,11 @@ fn run_basic_unrolled_main_layers_static_vs_dynamic_execution_test() {
                 &fixture_dynamic.context,
             )
             .unwrap();
-        fixture_dynamic.context.get_exec_stream().synchronize().unwrap();
+        fixture_dynamic
+            .context
+            .get_exec_stream()
+            .synchronize()
+            .unwrap();
         let dynamic_execution = dynamic_scheduled.into_execution();
 
         let shared_state = crate::prover::gkr::backward::make_deferred_backward_workflow_state();
@@ -3638,7 +3685,11 @@ fn run_basic_unrolled_main_layers_static_vs_dynamic_execution_test() {
                 &fixture_static.context,
             )
             .unwrap();
-        fixture_static.context.get_exec_stream().synchronize().unwrap();
+        fixture_static
+            .context
+            .get_exec_stream()
+            .synchronize()
+            .unwrap();
         let static_execution = static_scheduled.into_execution();
 
         assert_sumcheck_intermediate_values_eq_for_test_with_layer(
@@ -3732,7 +3783,9 @@ fn run_basic_unrolled_async_allocator_regression_test() {
 #[serial]
 fn run_basic_unrolled_test() {
     let fixture = prepare_basic_unrolled_proof_fixture();
-    let proof_job = fixture.schedule_prove(fixture.parity_pow_challenges()).unwrap();
+    let proof_job = fixture
+        .schedule_prove(fixture.parity_pow_challenges())
+        .unwrap();
 
     assert!(
         !proof_job.is_finished().unwrap(),
@@ -3817,10 +3870,14 @@ fn run_basic_unrolled_proof_job_multi_schedule_test() {
     let fixture = prepare_basic_unrolled_proof_fixture();
     let baseline_device_usage = fixture.base.context.get_used_mem_current();
     let t0 = std::time::Instant::now();
-    let proof_job_0 = fixture.schedule_prove(fixture.parity_pow_challenges()).unwrap();
+    let proof_job_0 = fixture
+        .schedule_prove(fixture.parity_pow_challenges())
+        .unwrap();
     eprintln!("schedule_prove #0 took {:?}", t0.elapsed());
     let t1 = std::time::Instant::now();
-    let proof_job_1 = fixture.schedule_prove(fixture.parity_pow_challenges()).unwrap();
+    let proof_job_1 = fixture
+        .schedule_prove(fixture.parity_pow_challenges())
+        .unwrap();
     eprintln!("schedule_prove #1 took {:?}", t1.elapsed());
 
     let (gpu_proof_0, proof_time_ms_0) = proof_job_0.finish().unwrap();
@@ -3844,8 +3901,9 @@ fn run_basic_unrolled_proof_job_multi_schedule_test() {
 #[serial]
 #[ignore]
 fn run_basic_unrolled_proof_job_profile_test() {
-    const NSYS_CAPTURE_DOMAIN: &std::ffi::CStr = c"gpu_prover.tests";
-    const NSYS_CAPTURE_MESSAGE: &std::ffi::CStr = c"test.gpu.prove.profiled_call";
+    let nsys_capture_domain = std::ffi::CStr::from_bytes_with_nul(b"gpu_prover.tests\0").unwrap();
+    let nsys_capture_message =
+        std::ffi::CStr::from_bytes_with_nul(b"test.gpu.prove.profiled_call\0").unwrap();
 
     let fixture = prepare_basic_unrolled_profiling_fixture();
     let baseline_device_usage = fixture.context.get_used_mem_current();
@@ -3865,7 +3923,7 @@ fn run_basic_unrolled_proof_job_profile_test() {
     let profiled_transfers = fixture.schedule_transfers().unwrap();
     fixture.context.get_h2d_stream().synchronize().unwrap();
     let (profiled_proof, profiled_time_ms) = {
-        let _range = start_registered_range(NSYS_CAPTURE_DOMAIN, NSYS_CAPTURE_MESSAGE);
+        let _range = start_registered_range(nsys_capture_domain, nsys_capture_message);
         let profiled_job = fixture.prove(profiled_transfers, None).unwrap();
         assert!(
             !profiled_job.is_finished().unwrap(),
@@ -4243,7 +4301,11 @@ fn run_basic_unrolled_workflow_input_parity_test() {
         lookup_challenges_host
             .get_mut_accessor()
             .get_mut()
-            .copy_from_slice(&[lookup_alpha, lookup_additive_part, constraints_batch_challenge]);
+            .copy_from_slice(&[
+                lookup_alpha,
+                lookup_additive_part,
+                constraints_batch_challenge,
+            ]);
     }
 
     let mut gpu_forward_setup = gpu_setup_transfer
@@ -4268,7 +4330,8 @@ fn run_basic_unrolled_workflow_input_parity_test() {
     )
     .unwrap();
     context.get_exec_stream().synchronize().unwrap();
-    let first_mismatch = describe_first_vec_mismatch(&gpu_generic, preprocessed_generic_lookup.as_ref());
+    let first_mismatch =
+        describe_first_vec_mismatch(&gpu_generic, preprocessed_generic_lookup.as_ref());
     assert!(
         first_mismatch.is_none(),
         "preprocessed generic lookup diverged: {}",
@@ -4417,7 +4480,10 @@ fn run_basic_unrolled_stagewise_parity_test() {
 
     let shuffle_ram_touched_addresses = ram.collect_inits_and_teardowns(&worker, Global);
     let total_shuffle_entries: usize = shuffle_ram_touched_addresses.iter().map(Vec::len).sum();
-    assert_ne!(total_shuffle_entries, 0, "expected RAM touches for stagewise parity test");
+    assert_ne!(
+        total_shuffle_entries, 0,
+        "expected RAM touches for stagewise parity test"
+    );
 
     // let flattened_inits_and_teardowns: Vec<_> = shuffle_ram_touched_addresses
     //     .into_iter()
@@ -4661,51 +4727,6 @@ fn run_basic_unrolled_stagewise_parity_test() {
         stage1_output
     };
 
-    {
-        let _range = range!("test.gpu.stage1.readback_asserts");
-        let gpu_memory_flat = copy_bf_device_slice_to_host(
-            stage1_output.memory_trace_holder.get_hypercube_evals(),
-            &context,
-        );
-        assert_flat_columns_match_cpu_trace(
-            &gpu_memory_flat,
-            &full_trace.column_major_memory_trace,
-            NUM_CYCLES_PER_CHUNK,
-        );
-        let gpu_witness_flat = copy_bf_device_slice_to_host(
-            stage1_output.witness_trace_holder.get_hypercube_evals(),
-            &context,
-        );
-        assert_flat_columns_match_cpu_trace(
-            &gpu_witness_flat,
-            &full_trace.column_major_witness_trace,
-            NUM_CYCLES_PER_CHUNK,
-        );
-
-        assert_generic_family_mapping_contract(
-            &stage1_output.lookup_mappings,
-            &full_trace,
-            num_calls,
-            &context,
-        );
-        let expected_range_check = full_trace
-            .range_check_16_lookup_mapping
-            .iter()
-            .flat_map(|column| column.iter().map(|value| u32::from(*value)))
-            .collect_vec();
-        let gpu_range_check =
-            copy_u32_device_slice_to_host(stage1_output.lookup_mappings.range_check_16(), &context);
-        assert_eq!(gpu_range_check, expected_range_check);
-        let expected_timestamp = full_trace
-            .timestamp_range_check_lookup_mapping
-            .iter()
-            .flat_map(|column| column.iter().copied())
-            .collect_vec();
-        let gpu_timestamp =
-            copy_u32_device_slice_to_host(stage1_output.lookup_mappings.timestamp(), &context);
-        assert_eq!(gpu_timestamp, expected_timestamp);
-    }
-
     let memory_caps = stage1_caps_from_tree(&mem_oracle.tree, subcap_size);
     assert_eq!(
         stage1_output.memory_trace_holder.get_tree_caps(),
@@ -4715,33 +4736,6 @@ fn run_basic_unrolled_stagewise_parity_test() {
     assert_eq!(
         stage1_output.witness_trace_holder.get_tree_caps(),
         witness_caps
-    );
-
-    let gpu_gkr_storage = gpu_setup_transfer.bootstrap_storage_from_stage1::<E4>(&stage1_output);
-    assert_eq!(gpu_gkr_storage.layers.len(), 1);
-    assert!(gpu_gkr_storage.layers[0].extension_field_inputs.is_empty());
-    let setup_columns = setup
-        .hypercube_evals
-        .iter()
-        .map(|column| column.as_ref().as_ref())
-        .collect_vec();
-    assert_storage_base_columns_match_cpu_trace(
-        &gpu_gkr_storage,
-        GKRAddress::Setup,
-        &setup_columns,
-        &context,
-    );
-    assert_storage_base_columns_match_cpu_trace(
-        &gpu_gkr_storage,
-        GKRAddress::BaseLayerMemory,
-        &full_trace.column_major_memory_trace,
-        &context,
-    );
-    assert_storage_base_columns_match_cpu_trace(
-        &gpu_gkr_storage,
-        GKRAddress::BaseLayerWitness,
-        &full_trace.column_major_witness_trace,
-        &context,
     );
 
     let mut transcript_input = vec![];
@@ -4808,19 +4802,6 @@ fn run_basic_unrolled_stagewise_parity_test() {
         &mut gkr_storage,
         &worker,
     );
-
-    {
-        let _range = range!("test.gpu.forward_setup.readback_asserts");
-        let mut gpu_generic = vec![E4::ZERO; gpu_forward_setup.generic_lookup_len()];
-        memory_copy_async(
-            &mut gpu_generic,
-            gpu_forward_setup.generic_lookup(),
-            context.get_exec_stream(),
-        )
-        .unwrap();
-        context.get_exec_stream().synchronize().unwrap();
-        assert_eq!(gpu_generic, preprocessed_generic_lookup.as_ref());
-    }
 
     let mut witness_eval_data = full_trace;
     for (layer_idx, layer) in add_sub_circuit.layers.iter().enumerate() {
@@ -4890,7 +4871,6 @@ fn run_basic_unrolled_stagewise_parity_test() {
             gpu_forward_output.dimension_reducing_inputs,
             dimension_reducing_inputs
         );
-        assert_gpu_and_cpu_gkr_storage_match(&gpu_forward_output.storage, &gkr_storage, &context);
         assert_eq!(gpu_final_explicit_evaluations, final_explicit_evaluations);
         assert_eq!(gpu_evals_flattened, evals_flattened);
     }
@@ -5078,7 +5058,10 @@ fn run_basic_unrolled_stagewise_parity_test() {
         &gpu_backward_execution.points_for_claims_at_layer,
         &points_for_claims_at_layer,
     );
-    assert_eq!(gpu_backward_execution.claims_for_layers, claims_for_layers);
+    assert_backward_claims_eq_before_base_layer_expansion(
+        &gpu_backward_execution.claims_for_layers,
+        &claims_for_layers,
+    );
     assert_eq!(
         gpu_backward_execution
             .points_for_claims_at_layer
@@ -5104,18 +5087,31 @@ fn run_basic_unrolled_stagewise_parity_test() {
         gpu_backward_execution.next_batching_challenge,
         sumcheck_batching_challenge
     );
-    assert_eq!(gpu_backward_execution.updated_seed, seed);
 
     let base_layer_z = gpu_backward_execution
         .points_for_claims_at_layer
         .get(&0)
         .expect("must have base layer point");
+    let raw_gpu_base_layer_claims = gpu_backward_execution
+        .claims_for_layers
+        .get(&0)
+        .cloned()
+        .expect("must have raw layer-0 claims after backward");
     let eq_precomputed = make_eq_poly_in_full(base_layer_z, &worker);
     let eq_at_z = eq_precomputed.last().unwrap();
     let layer_desc = &add_sub_circuit.layers[0];
 
-    let (cpu_base_layer_claims, cpu_mem_polys_claims, cpu_wit_polys_claims, cpu_setup_polys_claims) = {
-        let mut cpu_base_layer_claims = claims_for_layers.get(&0).cloned().unwrap_or_default();
+    let (
+        cpu_base_layer_claims,
+        cpu_extra_evaluations_from_caching_relations,
+        cpu_extra_evaluations_transcript_batches,
+        cpu_mem_polys_claims,
+        cpu_wit_polys_claims,
+        cpu_setup_polys_claims,
+    ) = {
+        let mut cpu_base_layer_claims = raw_gpu_base_layer_claims.clone();
+        let mut cpu_extra_evaluations_from_caching_relations = BTreeMap::new();
+        let mut cpu_extra_evaluations_transcript_batches = Vec::new();
         for (cached_addr, relation) in layer_desc.cached_relations.iter() {
             debug_assert!(
                 cpu_base_layer_claims.contains_key(cached_addr),
@@ -5134,6 +5130,7 @@ fn run_basic_unrolled_stagewise_parity_test() {
                         let values = gkr_storage.get_base_layer(dep);
                         let evaluation = evaluate_base_poly_with_eq::<BF, E4>(values, &eq_at_z[..]);
                         cpu_base_layer_claims.insert(dep, evaluation);
+                        cpu_extra_evaluations_from_caching_relations.insert(dep, evaluation);
                     }
                     _ => {
                         panic!(
@@ -5142,6 +5139,15 @@ fn run_basic_unrolled_stagewise_parity_test() {
                         );
                     }
                 }
+            }
+
+            if !cpu_extra_evaluations_from_caching_relations.is_empty() {
+                cpu_extra_evaluations_transcript_batches.push(
+                    cpu_extra_evaluations_from_caching_relations
+                        .values()
+                        .copied()
+                        .collect_vec(),
+                );
             }
         }
 
@@ -5171,6 +5177,8 @@ fn run_basic_unrolled_stagewise_parity_test() {
 
         (
             cpu_base_layer_claims,
+            cpu_extra_evaluations_from_caching_relations,
+            cpu_extra_evaluations_transcript_batches,
             mem_polys_claims,
             wit_polys_claims,
             setup_polys_claims,
@@ -5182,10 +5190,7 @@ fn run_basic_unrolled_stagewise_parity_test() {
         prepare_base_layer_claims(
             layer_desc,
             base_layer_z,
-            gpu_backward_execution
-                .claims_for_layers
-                .get(&0)
-                .expect("must have layer-0 claims after backward"),
+            &raw_gpu_base_layer_claims,
             &gpu_setup_transfer.trace_holder,
             &stage1_output.memory_trace_holder,
             &stage1_output.witness_trace_holder,
@@ -5195,6 +5200,14 @@ fn run_basic_unrolled_stagewise_parity_test() {
     };
 
     assert_eq!(gpu_base_claims.completed_claims, cpu_base_layer_claims);
+    assert_eq!(
+        gpu_base_claims.extra_evaluations_from_caching_relations,
+        cpu_extra_evaluations_from_caching_relations
+    );
+    assert_eq!(
+        gpu_base_claims.extra_evaluations_transcript_batches,
+        cpu_extra_evaluations_transcript_batches
+    );
     assert_eq!(gpu_base_claims.mem_polys_claims, cpu_mem_polys_claims);
     assert_eq!(gpu_base_claims.wit_polys_claims, cpu_wit_polys_claims);
     assert_eq!(gpu_base_claims.setup_polys_claims, cpu_setup_polys_claims);
@@ -5217,6 +5230,12 @@ fn run_basic_unrolled_stagewise_parity_test() {
             Some(cpu_setup_polys_claims[i]),
         );
     }
+
+    let mut gpu_seed_after_base_layer_claims = gpu_backward_execution.updated_seed;
+    for transcript_input in gpu_base_claims.extra_evaluations_transcript_batches.iter() {
+        commit_field_els::<BF, E4>(&mut gpu_seed_after_base_layer_claims, &transcript_input);
+    }
+    assert_eq!(gpu_seed_after_base_layer_claims, seed);
 
     drop(preprocessed_generic_lookup);
     gpu_backward_execution
@@ -5333,7 +5352,9 @@ mod add_sub_lui_auipc_mod {
     use prover::gkr::witness_gen::oracles::NonMemoryCircuitOracle;
     use prover::gkr::witness_gen::witness_proxy::WitnessProxy;
 
-    include!("../../../prover/compiled_circuits/add_sub_lui_auipc_mop_preprocessed_generated_gkr.rs");
+    include!(
+        "../../../prover/compiled_circuits/add_sub_lui_auipc_mop_preprocessed_generated_gkr.rs"
+    );
 
     pub fn witness_eval_fn<'a, 'b>(
         proxy: &'_ mut ColumnMajorWitnessProxy<'a, NonMemoryCircuitOracle<'b>, BF>,
