@@ -738,7 +738,28 @@ DEVICE_FORCEINLINE void gkr_eval_lookup_unbalanced_quadratic(const E d, const E 
 }
 
 template <typename E>
-DEVICE_FORCEINLINE void gkr_eval_lookup_cached_dens_and_setup(const E a, const E b, const E c, const E d, E &num, E &den) {
+DEVICE_FORCEINLINE void gkr_eval_lookup_cached_dens_and_setup(
+    const E a,
+    const E b,
+    const E c,
+    const E d,
+    const E gamma,
+    E &num,
+    E &den) {
+  const E shifted_b = E::add(b, gamma);
+  const E shifted_d = E::add(d, gamma);
+  num = E::sub(E::mul(a, shifted_d), E::mul(c, shifted_b));
+  den = E::mul(shifted_b, shifted_d);
+}
+
+template <typename E>
+DEVICE_FORCEINLINE void gkr_eval_lookup_cached_dens_and_setup_quadratic(
+    const E a,
+    const E b,
+    const E c,
+    const E d,
+    E &num,
+    E &den) {
   num = E::sub(E::mul(a, d), E::mul(c, b));
   den = E::mul(b, d);
 }
@@ -1016,7 +1037,7 @@ DEVICE_FORCEINLINE void gkr_main_round0(
     const E delta_d = gkr_get_initial_delta(ext_inputs[1], gid);
     E num;
     E den;
-    gkr_eval_lookup_cached_dens_and_setup(delta_a, delta_b, delta_c, delta_d, num, den);
+    gkr_eval_lookup_cached_dens_and_setup_quadratic(delta_a, delta_b, delta_c, delta_d, num, den);
     c0 = E::add(E::mul(batch_challenge_0, output_num), E::mul(batch_challenge_1, output_den));
     c1 = E::add(E::mul(batch_challenge_0, num), E::mul(batch_challenge_1, den));
     break;
@@ -1217,8 +1238,12 @@ DEVICE_FORCEINLINE void gkr_main_round1(
     E den0;
     E num1;
     E den1;
-    gkr_eval_lookup_cached_dens_and_setup(a0, b0, c0_in, d0, num0, den0);
-    gkr_eval_lookup_cached_dens_and_setup(a1, b1, c1_in, d1, num1, den1);
+    gkr_eval_lookup_cached_dens_and_setup(a0, b0, c0_in, d0, current_aux_challenge, num0, den0);
+    if constexpr (EXPLICIT_FORM) {
+      gkr_eval_lookup_cached_dens_and_setup(a1, b1, c1_in, d1, current_aux_challenge, num1, den1);
+    } else {
+      gkr_eval_lookup_cached_dens_and_setup_quadratic(a1, b1, c1_in, d1, num1, den1);
+    }
     c0 = E::add(E::mul(batch_challenge_0, num0), E::mul(batch_challenge_1, den0));
     c1 = E::add(E::mul(batch_challenge_0, num1), E::mul(batch_challenge_1, den1));
     break;
@@ -1426,8 +1451,12 @@ DEVICE_FORCEINLINE void gkr_main_round2(
     E den0;
     E num1;
     E den1;
-    gkr_eval_lookup_cached_dens_and_setup(a0, b0, c0_in, d0, num0, den0);
-    gkr_eval_lookup_cached_dens_and_setup(a1, b1, c1_in, d1, num1, den1);
+    gkr_eval_lookup_cached_dens_and_setup(a0, b0, c0_in, d0, current_aux_challenge, num0, den0);
+    if constexpr (EXPLICIT_FORM) {
+      gkr_eval_lookup_cached_dens_and_setup(a1, b1, c1_in, d1, current_aux_challenge, num1, den1);
+    } else {
+      gkr_eval_lookup_cached_dens_and_setup_quadratic(a1, b1, c1_in, d1, num1, den1);
+    }
     c0 = E::add(E::mul(batch_challenge_0, num0), E::mul(batch_challenge_1, den0));
     c1 = E::add(E::mul(batch_challenge_0, num1), E::mul(batch_challenge_1, den1));
     break;
@@ -1634,8 +1663,12 @@ DEVICE_FORCEINLINE void gkr_main_round3(
     E den0;
     E num1;
     E den1;
-    gkr_eval_lookup_cached_dens_and_setup(a0, b0, c0_in, d0, num0, den0);
-    gkr_eval_lookup_cached_dens_and_setup(a1, b1, c1_in, d1, num1, den1);
+    gkr_eval_lookup_cached_dens_and_setup(a0, b0, c0_in, d0, current_aux_challenge, num0, den0);
+    if constexpr (EXPLICIT_FORM) {
+      gkr_eval_lookup_cached_dens_and_setup(a1, b1, c1_in, d1, current_aux_challenge, num1, den1);
+    } else {
+      gkr_eval_lookup_cached_dens_and_setup_quadratic(a1, b1, c1_in, d1, num1, den1);
+    }
     c0 = E::add(E::mul(batch_challenge_0, num0), E::mul(batch_challenge_1, den0));
     c1 = E::add(E::mul(batch_challenge_0, num1), E::mul(batch_challenge_1, den1));
     break;

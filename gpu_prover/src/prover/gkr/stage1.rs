@@ -167,7 +167,7 @@ impl GpuGKRStage1Output {
             context,
         )?;
 
-        let num_generic_sets = compiled_circuit.witness_layout.generic_lookups.len();
+        let num_generic_sets = compiled_circuit.generic_lookups.len();
         let has_decoder = compiled_circuit.has_decoder_lookup;
         let num_generic_family_cols = num_generic_sets + usize::from(has_decoder);
         let mut generic_family = context.alloc(

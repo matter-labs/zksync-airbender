@@ -649,7 +649,7 @@ impl<B, E> GpuGKRStorage<B, E> {
             GKRAddress::BaseLayerMemory(..)
             | GKRAddress::BaseLayerWitness(..)
             | GKRAddress::Setup(..) => Some(0),
-            GKRAddress::OptimizedOut(..) => None,
+            GKRAddress::ScratchSpace(..) => None,
         }
     }
 
@@ -659,7 +659,7 @@ impl<B, E> GpuGKRStorage<B, E> {
             GKRAddress::BaseLayerMemory(..)
             | GKRAddress::BaseLayerWitness(..)
             | GKRAddress::Setup(..)
-            | GKRAddress::OptimizedOut(..) => None,
+            | GKRAddress::ScratchSpace(..) => None,
         }
     }
 
@@ -748,7 +748,7 @@ impl<B, E> GpuGKRStorage<B, E> {
 impl<B: 'static, E: Field> GpuGKRStorage<B, E> {
     fn round_input_layer(address: GKRAddress) -> usize {
         match address {
-            GKRAddress::OptimizedOut(..) => unreachable!(),
+            GKRAddress::ScratchSpace(..) => unreachable!(),
             GKRAddress::Cached { layer, .. } => {
                 assert_eq!(layer, 0);
                 0
@@ -762,7 +762,7 @@ impl<B: 'static, E: Field> GpuGKRStorage<B, E> {
 
     fn round_output_layer(address: GKRAddress) -> usize {
         match address {
-            GKRAddress::OptimizedOut(..)
+            GKRAddress::ScratchSpace(..)
             | GKRAddress::BaseLayerMemory(..)
             | GKRAddress::BaseLayerWitness(..)
             | GKRAddress::Setup(..) => unreachable!(),

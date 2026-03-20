@@ -14,7 +14,7 @@ enum AddressTag : u32 {
   BaseLayerMemory,
   InnerLayer,
   Setup,
-  OptimizedOut,
+  ScratchSpace,
   Cached,
 };
 

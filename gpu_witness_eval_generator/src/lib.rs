@@ -1,17 +1,19 @@
-use cs::cs::placeholder::Placeholder;
-use cs::cs::witness_placer::graph_description::{
+use cs::oracle::Placeholder;
+use cs::witness_placer::graph_description::{
     BoolNodeExpression, Expression, FieldNodeExpression, FixedWidthIntegerNodeExpression,
     RawExpression,
 };
 use cs::definitions::{ColumnAddress, GKRAddress, Variable};
 use cs::gkr_compiler::GKRCircuitArtifact;
 use std::collections::BTreeMap;
+use std::fs::File;
+use std::path::Path;
 
 mod boolean;
 mod field;
 mod integer;
 
-type F = ::field::baby_bear::base::BabyBearField;
+pub type F = ::field::baby_bear::base::BabyBearField;
 
 pub struct Generator {
     write_into_memory: bool,
@@ -29,13 +31,21 @@ impl Generator {
         num_lookup_mappings: usize,
         write_into_memory: bool,
     ) -> Self {
+        let scratch_size = layout
+            .values()
+            .filter_map(|address| match address {
+                ColumnAddress::OptimizedOut(idx) => Some(idx + 1),
+                _ => None,
+            })
+            .max()
+            .unwrap_or(0);
         Self {
             layout: layout.clone(),
             num_lookup_mappings,
             write_into_memory,
             next_var_idx: 0,
             output: String::new(),
-            scratch_size: 0,
+            scratch_size,
             fn_indexes: Vec::new(),
         }
     }
@@ -312,8 +322,9 @@ impl Generator {
         circuit: &GKRCircuitArtifact<F>,
         perform_assignments_to_memory: bool,
     ) -> String {
-        let num_lookup_mappings = circuit.witness_layout.generic_lookups.len();
+        let num_lookup_mappings = circuit.num_generic_lookups;
         let mut layout = BTreeMap::new();
+        let mut next_scratch_slot = 0usize;
         for (var, pos) in circuit.placement_data.iter() {
             match pos {
                 GKRAddress::BaseLayerMemory(offset) => {
@@ -322,8 +333,14 @@ impl Generator {
                 GKRAddress::BaseLayerWitness(offset) => {
                     layout.insert(*var, ColumnAddress::WitnessSubtree(*offset));
                 }
-                _ => {
-                    unreachable!()
+                GKRAddress::InnerLayer { .. }
+                | GKRAddress::Cached { .. }
+                | GKRAddress::ScratchSpace(..) => {
+                    layout.insert(*var, ColumnAddress::OptimizedOut(next_scratch_slot));
+                    next_scratch_slot += 1;
+                }
+                GKRAddress::Setup(..) => {
+                    unreachable!("setup placements are not expected in GPU witness generation")
                 }
             }
         }
@@ -336,32 +353,37 @@ impl Generator {
     }
 }
 
+pub fn generate_from_files(
+    layout_path: impl AsRef<Path>,
+    ssa_path: impl AsRef<Path>,
+    perform_assignments_to_memory: bool,
+) -> Result<String, Box<dyn std::error::Error>> {
+    let layout = File::open(layout_path)?;
+    let ssa = File::open(ssa_path)?;
+    let compiled_circuit: GKRCircuitArtifact<F> = serde_json::from_reader(layout)?;
+    let compiled_graph: Vec<Vec<RawExpression<F>>> = serde_json::from_reader(ssa)?;
+
+    Ok(Generator::generate(
+        &compiled_graph,
+        &compiled_circuit,
+        perform_assignments_to_memory,
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use test_utils::skip_if_ci;
 
-    use crate::F;
-    use cs::cs::witness_placer::graph_description::RawExpression;
-    use cs::gkr_compiler::GKRCircuitArtifact;
-    use serde::de;
+    use crate::generate_from_files;
     use std::fs::File;
     use std::io::Write;
 
-    fn deserialize_from_file<T: de::DeserializeOwned>(filename: &str) -> T {
-        let src = File::open(filename).unwrap();
-        serde_json::from_reader(src).unwrap()
-    }
-
     fn generate(id: &str) {
-        let layout_path = format!("../cs/{id}_layout_gkr.json");
-        let ssa_path = format!("../cs/{id}_ssa_gkr.json");
+        let layout_path = format!("../cs/compiled_circuits/{id}_layout_gkr.json");
+        let ssa_path = format!("../cs/compiled_circuits/{id}_ssa_gkr.json");
         let generated_cu_path = format!("{id}.cuh");
-        // println!("{layout_path}");
-        let compiled_circuit: GKRCircuitArtifact<F> = deserialize_from_file(&layout_path);
-        // println!("{ssa_path}");
-        let compiled_graph: Vec<Vec<RawExpression<F>>> = deserialize_from_file(&ssa_path);
         println!("{generated_cu_path}");
-        let code = super::Generator::generate(&compiled_graph, &compiled_circuit, false);
+        let code = generate_from_files(&layout_path, &ssa_path, false).unwrap();
         File::create(&generated_cu_path)
             .unwrap()
             .write_all(&code.as_bytes())

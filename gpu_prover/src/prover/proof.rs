@@ -13,7 +13,7 @@ use prover::definitions::Transcript;
 use prover::gkr::prover::transcript_utils::{commit_field_els, draw_random_field_els};
 use prover::gkr::prover::{GKRExternalChallenges, GKRProof, WhirSchedule};
 use prover::merkle_trees::DefaultTreeConstructor;
-use prover::prover_stages::query_producer::BitSource;
+use prover::query_utils::BitSource;
 use prover::transcript::Seed;
 
 use crate::circuit_type::CircuitType;
@@ -695,7 +695,7 @@ fn make_eq_poly_in_full_serial<E: Field>(challenges: &[E]) -> Vec<E> {
 mod tests {
     use super::draw_query_bits_with_external_nonce;
     use prover::gkr::prover::transcript_utils::draw_query_bits;
-    use prover::prover_stages::query_producer::assemble_query_index;
+    use prover::query_utils::assemble_query_index;
     use prover::transcript::Seed;
     use worker::Worker;
 

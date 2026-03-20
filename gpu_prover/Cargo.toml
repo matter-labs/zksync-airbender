@@ -12,14 +12,13 @@ build = "build/main.rs"
 
 [dependencies]
 blake2s_u32 = { workspace = true }
-cs = { workspace = true }
+common_constants = { workspace = true }
+cs = { workspace = true, features = ["compiler"] }
 fft = { workspace = true }
 field = { workspace = true }
-prover = { workspace = true }
+prover = { workspace = true, features = ["prover"] }
 riscv_transpiler = { workspace = true, features = ["jit"] }
-setups = { workspace = true }
-trace_and_split = { workspace = true }
-verifier_common = { workspace = true, features = ["proof_utils"] }
+verifier_common = { workspace = true }
 worker = { workspace = true }
 
 era_cudart = "0.154"

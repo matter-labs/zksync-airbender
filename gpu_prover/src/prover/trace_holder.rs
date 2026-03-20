@@ -3,8 +3,8 @@ use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::CudaStream;
 use itertools::Itertools;
+use prover::definitions::Transcript;
 use prover::merkle_trees::MerkleTreeCapVarLength;
-use prover::prover_stages::Transcript;
 use prover::transcript::Seed;
 
 use crate::allocator::tracker::AllocationPlacement;
