@@ -1,13 +1,9 @@
 use super::option::u8::Option;
 use crate::primitives::context::DeviceAllocation;
-use crate::primitives::field::BF;
 use crate::witness::trace::ChunkedTraceHolder;
-use cs::definitions::split_timestamp;
-use cs::one_row_compiler::CompiledCircuitArtifact;
-use cs::utils::split_u32_into_pair_u16;
-use fft::GoodAllocator;
+use cs::gkr_circuits::ExecutorFamilyDecoderData as CSExecutorFamilyDecoderData;
 use prover::definitions::LazyInitAndTeardown;
-use riscv_transpiler::machine_mode_only_unrolled::{
+use riscv_transpiler::witness::{
     MemoryOpcodeTracingDataWithTimestamp, NonMemoryOpcodeTracingDataWithTimestamp,
     UnifiedOpcodeTracingDataWithTimestamp,
 };
@@ -17,7 +13,7 @@ use riscv_transpiler::machine_mode_only_unrolled::{
 pub struct ExecutorFamilyDecoderData {
     pub imm: u32,
     pub rs1_index: u8,
-    pub rs2_index: u8,
+    pub rs2_index: u16,
     pub rd_index: u8,
     pub rd_is_zero: bool,
     pub funct3: u8,
@@ -25,15 +21,15 @@ pub struct ExecutorFamilyDecoderData {
     pub opcode_family_bits: u32,
 }
 
-impl From<cs::cs::oracle::ExecutorFamilyDecoderData> for ExecutorFamilyDecoderData {
-    fn from(value: cs::cs::oracle::ExecutorFamilyDecoderData) -> Self {
+impl From<CSExecutorFamilyDecoderData> for ExecutorFamilyDecoderData {
+    fn from(value: CSExecutorFamilyDecoderData) -> Self {
         Self {
             imm: value.imm,
             rs1_index: value.rs1_index,
             rs2_index: value.rs2_index,
             rd_index: value.rd_index,
-            rd_is_zero: value.rd_is_zero,
-            funct3: value.funct3,
+            rd_is_zero: value.rd_index == 0,
+            funct3: value.funct3.unwrap_or_default(),
             funct7: value.funct7.into(),
             opcode_family_bits: value.opcode_family_bits,
         }

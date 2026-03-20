@@ -58,7 +58,6 @@ struct DecoderPlacementDescription {
   const u32 circuit_family_mask_bits_count;
   const Address circuit_family_mask_bits[MAX_CIRCUIT_FAMILY_MASK_BITS];
   const bool decoder_witness_is_in_memory;
-  const u32 rd_is_zero;
   const u32 imm[REGISTER_SIZE];
   const OptionU32::Option<u32> funct3;
 };
@@ -187,9 +186,9 @@ DEVICE_FORCEINLINE void process_machine_state_assuming_preprocessed_decoder(cons
     return;
   if (decoder_input.rs2_index.tag == BaseLayerWitness) {
     const u32 rs2_index_column = decoder_input.rs2_index.offset;
-    const u8 rs2_index_value = decoder_data.rs2_index;
-    write_u8_value(rs2_index_column, rs2_index_value, witness);
-    PRINT_U8(W, rs2_index_column, rs2_index_value);
+    const u16 rs2_index_value = decoder_data.rs2_index;
+    write_u16_value(rs2_index_column, rs2_index_value, witness);
+    PRINT_U16(W, rs2_index_column, rs2_index_value);
   }
   if (decoder_input.rd_index.tag == BaseLayerWitness) {
     const u32 rd_index_column = decoder_input.rd_index.offset;
@@ -211,10 +210,6 @@ DEVICE_FORCEINLINE void process_machine_state_assuming_preprocessed_decoder(cons
   }
   if (decoder_input.decoder_witness_is_in_memory)
     return;
-  const u32 rd_is_zero_column = decoder_input.rd_is_zero;
-  const bool rd_is_zero_value = decoder_data.rd_is_zero;
-  write_bool_value(rd_is_zero_column, rd_is_zero_value, witness);
-  PRINT_U16(W, rd_is_zero_column, rd_is_zero_value);
   u32 imm_columns[REGISTER_SIZE] = {};
   copy_register(decoder_input.imm, imm_columns);
   const u32 imm_value = decoder_data.imm;
@@ -261,9 +256,9 @@ DEVICE_FORCEINLINE void process_shuffle_ram_access_sets(const UnrolledMemoryLayo
     switch (address.tag) {
     case RegisterOnly: {
       const u32 register_index = address.payload.register_only_access_address.register_index;
-      const u8 value = oracle.get_witness_from_placeholder_u8({ShuffleRamAddress, i}, index);
-      write_u8_value(register_index, value, memory);
-      PRINT_U8(M, register_index, value);
+      const u16 value = oracle.get_witness_from_placeholder_u16({ShuffleRamAddress, i}, index);
+      write_u16_value(register_index, value, memory);
+      PRINT_U16(M, register_index, value);
       break;
     }
     case RegisterOrRam: {

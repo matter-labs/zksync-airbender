@@ -22,7 +22,7 @@ pub enum Address {
     BaseLayerMemory(u32),
     InnerLayer { offset: u32, layer: u32 },
     Setup(u32),
-    OptimizedOut(u32),
+    ScratchSpace(u32),
     Cached { offset: u32, layer: u32 },
 }
 
@@ -42,7 +42,7 @@ impl From<GKRAddress> for Address {
                 layer: layer as u32,
             },
             GKRAddress::Setup(x) => Self::Setup(x as u32),
-            GKRAddress::OptimizedOut(x) => Self::OptimizedOut(x as u32),
+            GKRAddress::ScratchSpace(x) => Self::ScratchSpace(x as u32),
             GKRAddress::Cached { layer, offset } => Self::Cached {
                 offset: offset as u32,
                 layer: layer as u32,

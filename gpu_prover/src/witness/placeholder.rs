@@ -100,7 +100,7 @@ impl Default for Placeholder {
     }
 }
 
-type CSPlaceholder = cs::cs::placeholder::Placeholder;
+type CSPlaceholder = cs::oracle::Placeholder;
 
 impl From<CSPlaceholder> for Placeholder {
     fn from(value: CSPlaceholder) -> Self {
