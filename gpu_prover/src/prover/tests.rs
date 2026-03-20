@@ -1,4 +1,5 @@
 use super::gkr::{
+    GpuGKRStorage,
     backward::{
         GpuGKRDimensionReducingBackwardState, GpuGKRDimensionReducingSumcheckLayerPlan,
         GpuGKRMainLayerKernelKind, GpuGKRMainLayerSumcheckLayerPlan,
@@ -7,10 +8,9 @@ use super::gkr::{
     forward::schedule_forward_pass,
     setup::{GpuGKRSetupHost, GpuGKRSetupTransfer},
     stage1::GpuGKRStage1Output,
-    GpuGKRStorage,
 };
 use crate::allocator::tracker::AllocationPlacement;
-use crate::ops::simple::{set_by_ref, SetByRef};
+use crate::ops::simple::{SetByRef, set_by_ref};
 use crate::primitives::circuit_type::{
     CircuitType, UnrolledCircuitType, UnrolledNonMemoryCircuitType,
 };
@@ -20,9 +20,11 @@ use crate::primitives::nvtx_registered::start_registered_range;
 use crate::primitives::static_host::alloc_static_pinned_box_from_slice;
 use crate::prover::decoder::DecoderTableTransfer;
 use crate::prover::proof::{
-    prove, prove_with_transfer_scheduling, GkrExternalPowChallenges, GpuGKRProofJob,
+    GkrExternalPowChallenges, GpuGKRProofJob, prove, prove_with_transfer_scheduling,
 };
-use crate::prover::test_utils::make_test_context;
+use crate::prover::test_utils::{
+    make_test_context, make_test_context_with_device_allocator_block_log_size,
+};
 use crate::prover::trace_holder::TraceHolder;
 use crate::prover::tracing_data::{
     TracingDataDevice, TracingDataHost, TracingDataTransfer, UnrolledTracingDataDevice,
@@ -53,9 +55,8 @@ use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 use fft::{
-    batch_inverse_inplace, bitreverse_enumeration_inplace, domain_generator_for_size,
+    Twiddles, batch_inverse_inplace, bitreverse_enumeration_inplace, domain_generator_for_size,
     materialize_powers_serial_starting_with_elem, materialize_powers_serial_starting_with_one,
-    Twiddles,
 };
 use field::baby_bear::base::BabyBearField;
 use field::baby_bear::ext4::BabyBearExt4;
@@ -86,12 +87,12 @@ use prover::gkr::sumcheck::evaluation_kernels::{
     SameSizeProductGKRRelation,
 };
 use prover::gkr::whir::{
-    whir_fold, ColumnMajorBaseOracleForLDE, ColumnMajorExtensionOracleForCoset,
-    ColumnMajorExtensionOracleForLDE, WhirCommitment, WhirPolyCommitProof,
+    ColumnMajorBaseOracleForLDE, ColumnMajorExtensionOracleForCoset,
+    ColumnMajorExtensionOracleForLDE, WhirCommitment, WhirPolyCommitProof, whir_fold,
 };
 use prover::gkr::witness_gen::family_circuits::{
-    evaluate_gkr_memory_witness_for_executor_family, evaluate_gkr_witness_for_executor_family,
     GKRFullWitnessTrace, GKRMemoryOnlyWitnessTrace,
+    evaluate_gkr_memory_witness_for_executor_family, evaluate_gkr_witness_for_executor_family,
 };
 use prover::gkr::witness_gen::oracles::NonMemoryCircuitOracle;
 use prover::merkle_trees::{
@@ -100,8 +101,8 @@ use prover::merkle_trees::{
 use prover::query_utils::assemble_query_index;
 use prover::transcript::Seed;
 use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
-use riscv_transpiler::ir::simple_instruction_set::{preprocess_bytecode, Instruction};
 use riscv_transpiler::ir::FullUnsignedMachineDecoderConfig;
+use riscv_transpiler::ir::simple_instruction_set::{Instruction, preprocess_bytecode};
 use riscv_transpiler::replayer::{ReplayerRam, ReplayerVM};
 use riscv_transpiler::vm::{
     Counters, DelegationsAndFamiliesCounters, RamWithRomRegion, ReplayBuffer, SimpleSnapshotter,
@@ -423,6 +424,7 @@ struct BasicUnrolledFixtureBuildConfig<'a> {
     text_path: &'a str,
     non_determinism_reads: &'a [u32],
     compute_cpu_reference: bool,
+    device_allocator_block_log_size: u32,
 }
 
 fn prepare_basic_unrolled_fixture(
@@ -436,6 +438,8 @@ fn prepare_basic_unrolled_fixture(
     const TRACE_LEN_LOG2: usize = 24;
     const NUM_CYCLES_PER_CHUNK: usize = 1 << TRACE_LEN_LOG2;
     const FINAL_TRACE_SIZE_LOG_2: usize = 4;
+    const DEVICE_ALLOCATOR_ARENA_BYTES: usize = 64usize << 30;
+    const HOST_POOL_SIZE_MB: usize = 1024;
 
     let trace_len: usize = 1 << TRACE_LEN_LOG2;
 
@@ -571,7 +575,13 @@ fn prepare_basic_unrolled_fixture(
         trace_len,
         &compiled_circuit,
     );
-    let context = make_test_context(64 * 1024, 1024);
+    let device_block_size = 1usize << build_config.device_allocator_block_log_size;
+    let max_device_allocation_blocks_count = DEVICE_ALLOCATOR_ARENA_BYTES / device_block_size;
+    let context = make_test_context_with_device_allocator_block_log_size(
+        max_device_allocation_blocks_count,
+        HOST_POOL_SIZE_MB,
+        build_config.device_allocator_block_log_size,
+    );
     let gpu_setup_host = Arc::new(
         GpuGKRSetupHost::precompute_from_cpu_setup(
             &setup,
@@ -669,6 +679,7 @@ pub(crate) fn prepare_basic_unrolled_proof_fixture() -> BasicUnrolledProofFixtur
             text_path: "examples/hashed_fibonacci/app.text",
             non_determinism_reads: &[15, 1],
             compute_cpu_reference: true,
+            device_allocator_block_log_size: 20,
         });
     BasicUnrolledProofFixture {
         base,
@@ -684,6 +695,7 @@ fn prepare_basic_unrolled_profiling_fixture() -> BasicUnrolledFixture {
             text_path: "examples/basic_fibonacci/app.text",
             non_determinism_reads: &[],
             compute_cpu_reference: false,
+            device_allocator_block_log_size: 0,
         });
     assert!(
         expected_cpu_proof.is_none(),
@@ -1768,8 +1780,11 @@ fn build_basic_unrolled_async_backward_fixture_from_base(
     );
     let mut seed = Transcript::commit_initial(&transcript_input);
     let challenges: Vec<E4> = draw_random_field_els::<BF, E4>(&mut seed, 3);
-    let [lookup_alpha, lookup_additive_part, constraints_batch_challenge] =
-        challenges.try_into().unwrap();
+    let [
+        lookup_alpha,
+        lookup_additive_part,
+        constraints_batch_challenge,
+    ] = challenges.try_into().unwrap();
     unsafe {
         lookup_challenges_host
             .get_mut_accessor()
@@ -1812,12 +1827,20 @@ fn build_basic_unrolled_async_backward_fixture_from_base(
     let batching_challenge = challenges.pop().unwrap();
     let evaluation_point = challenges;
 
-    let [claim_readset, claim_writeset, claim_rangechecknum, claim_rangecheckden, claim_timechecknum, claim_timecheckden, claim_lookupnum, claim_lookupden] =
-        compute_initial_sumcheck_claims_from_explicit_evaluations_for_test(
-            &gpu_final_explicit_evaluations,
-            &evaluation_point,
-            &worker,
-        );
+    let [
+        claim_readset,
+        claim_writeset,
+        claim_rangechecknum,
+        claim_rangecheckden,
+        claim_timechecknum,
+        claim_timecheckden,
+        claim_lookupnum,
+        claim_lookupden,
+    ] = compute_initial_sumcheck_claims_from_explicit_evaluations_for_test(
+        &gpu_final_explicit_evaluations,
+        &evaluation_point,
+        &worker,
+    );
 
     let output_layer_for_sumcheck = gpu_forward_output
         .dimension_reducing_inputs
@@ -1890,6 +1913,7 @@ pub(crate) fn prepare_basic_unrolled_async_backward_fixture(
             text_path: "examples/hashed_fibonacci/app.text",
             non_determinism_reads: &[15, 1],
             compute_cpu_reference: false,
+            device_allocator_block_log_size: 20,
         });
     assert!(
         expected_cpu_proof.is_none(),
@@ -3433,6 +3457,7 @@ fn run_basic_unrolled_first_main_layer_static_vs_dynamic_execution_test() {
             text_path: "examples/hashed_fibonacci/app.text",
             non_determinism_reads: &[15, 1],
             compute_cpu_reference: false,
+            device_allocator_block_log_size: 20,
         });
     assert!(expected_cpu_proof.is_none());
     let fixture_dynamic = build_basic_unrolled_async_backward_fixture_from_base(&base_fixture);
@@ -3780,6 +3805,115 @@ fn run_basic_unrolled_async_allocator_regression_test() {
 
 #[test]
 #[serial]
+fn forward_to_backward_handoff_releases_forward_scratch() {
+    let (base, expected_cpu_proof) =
+        prepare_basic_unrolled_fixture(BasicUnrolledFixtureBuildConfig {
+            binary_path: "examples/hashed_fibonacci/app.bin",
+            text_path: "examples/hashed_fibonacci/app.text",
+            non_determinism_reads: &[15, 1],
+            compute_cpu_reference: false,
+            device_allocator_block_log_size: 20,
+        });
+    assert!(expected_cpu_proof.is_none());
+
+    let worker = Worker::new_with_num_threads(8);
+    let context = make_test_context(64 * 1024, 1024);
+    let mut transfers = base.create_transfers_for_context(&context).unwrap();
+    transfers.schedule(&context).unwrap();
+    context.get_h2d_stream().synchronize().unwrap();
+
+    let mut stage1_output = GpuGKRStage1Output::generate(
+        base.circuit_type,
+        &base.compiled_circuit,
+        &transfers.setup_transfer,
+        transfers
+            .decoder_transfer
+            .as_ref()
+            .map(|transfer| &transfer.data_device[..]),
+        &transfers.tracing_data_transfer.data_device,
+        &context,
+    )
+    .unwrap();
+    context.get_exec_stream().synchronize().unwrap();
+
+    let mut lookup_challenges_host = unsafe { context.alloc_host_uninit_slice(3) };
+    let mut transcript_input = vec![];
+    base.external_challenges
+        .flatten_into_buffer(&mut transcript_input);
+    flatten_merkle_caps_iter_into(
+        transfers
+            .setup_transfer
+            .trace_holder
+            .get_tree_caps()
+            .into_iter(),
+        &mut transcript_input,
+    );
+    flatten_merkle_caps_iter_into(
+        stage1_output
+            .memory_trace_holder
+            .get_tree_caps()
+            .into_iter(),
+        &mut transcript_input,
+    );
+    flatten_merkle_caps_iter_into(
+        stage1_output
+            .witness_trace_holder
+            .get_tree_caps()
+            .into_iter(),
+        &mut transcript_input,
+    );
+    let mut seed = Transcript::commit_initial(&transcript_input);
+    let challenges: Vec<E4> = draw_random_field_els::<BF, E4>(&mut seed, 3);
+    let [
+        lookup_alpha,
+        lookup_additive_part,
+        constraints_batch_challenge,
+    ] = challenges.try_into().unwrap();
+    unsafe {
+        lookup_challenges_host
+            .get_mut_accessor()
+            .get_mut()
+            .copy_from_slice(&[
+                lookup_alpha,
+                lookup_additive_part,
+                constraints_batch_challenge,
+            ]);
+    }
+    let mut gpu_forward_setup = transfers
+        .setup_transfer
+        .schedule_forward_setup(&base.compiled_circuit, lookup_challenges_host, &context)
+        .unwrap();
+    context.get_exec_stream().synchronize().unwrap();
+
+    let gpu_forward_output = schedule_forward_pass(
+        &transfers.setup_transfer,
+        &mut stage1_output,
+        &mut gpu_forward_setup,
+        &base.compiled_circuit,
+        &base.external_challenges,
+        base.final_trace_size_log_2,
+        &context,
+    )
+    .unwrap();
+    context.get_exec_stream().synchronize().unwrap();
+
+    drop(gpu_forward_setup);
+    drop(transfers);
+    drop(stage1_output);
+
+    let before_handoff = context.get_used_mem_current();
+    let backward_state = gpu_forward_output.into_dimension_reducing_backward_state();
+    let after_handoff = context.get_used_mem_current();
+
+    assert!(
+        after_handoff < before_handoff,
+        "forward scratch should be released at the forward/backward handoff"
+    );
+    drop(backward_state);
+}
+
+#[test]
+#[serial]
 fn run_basic_unrolled_test() {
     let fixture = prepare_basic_unrolled_proof_fixture();
     let proof_job = fixture
@@ -3921,6 +4055,7 @@ fn run_basic_unrolled_proof_job_profile_test() {
 
     let profiled_transfers = fixture.schedule_transfers().unwrap();
     fixture.context.get_h2d_stream().synchronize().unwrap();
+    fixture.context.reset_used_mem_peak();
     let (profiled_proof, profiled_time_ms) = {
         let _range = start_registered_range(nsys_capture_domain, nsys_capture_message);
         let profiled_job = fixture.prove(profiled_transfers, None).unwrap();
@@ -3933,6 +4068,16 @@ fn run_basic_unrolled_proof_job_profile_test() {
     eprintln!("profiled proof time: {profiled_time_ms} ms");
     assert_gkr_proof_structure_for_test(&profiled_proof, &fixture.whir_schedule);
     drop(profiled_proof);
+    let peak_device_usage = fixture.context.get_used_mem_peak();
+    eprintln!(
+        "peak device memory: {} bytes ({:.3} GiB)",
+        peak_device_usage,
+        peak_device_usage as f64 / (1 << 30) as f64,
+    );
+    assert!(
+        peak_device_usage > baseline_device_usage,
+        "profile run should increase device memory usage above baseline"
+    );
 
     assert_eq!(
         fixture.context.get_used_mem_current(),
@@ -4293,8 +4438,11 @@ fn run_basic_unrolled_workflow_input_parity_test() {
         "lookup challenges diverged after matching transcript inputs",
     );
 
-    let [lookup_alpha, lookup_additive_part, constraints_batch_challenge]: [E4; 3] =
-        cpu_lookup_challenges.try_into().unwrap();
+    let [
+        lookup_alpha,
+        lookup_additive_part,
+        constraints_batch_challenge,
+    ]: [E4; 3] = cpu_lookup_challenges.try_into().unwrap();
     let mut lookup_challenges_host = unsafe { context.alloc_host_uninit_slice(3) };
     unsafe {
         lookup_challenges_host
@@ -4769,8 +4917,11 @@ fn run_basic_unrolled_stagewise_parity_test() {
 
     let mut seed = Transcript::commit_initial(&transcript_input);
     let challenges: Vec<E4> = draw_random_field_els::<BF, E4>(&mut seed, 3);
-    let [lookup_alpha, lookup_additive_part, constraints_batch_challenge] =
-        challenges.try_into().unwrap();
+    let [
+        lookup_alpha,
+        lookup_additive_part,
+        constraints_batch_challenge,
+    ] = challenges.try_into().unwrap();
 
     let mut lookup_challenges_host = unsafe { context.alloc_host_uninit_slice(3) };
     let lookup_challenges = [
@@ -4941,8 +5092,16 @@ fn run_basic_unrolled_stagewise_parity_test() {
         &worker,
     );
     assert_eq!(gpu_initial_claims, cpu_initial_claims);
-    let [claim_readset, claim_writeset, claim_rangechecknum, claim_rangecheckden, claim_timechecknum, claim_timecheckden, claim_lookupnum, claim_lookupden] =
-        cpu_initial_claims;
+    let [
+        claim_readset,
+        claim_writeset,
+        claim_rangechecknum,
+        claim_rangecheckden,
+        claim_timechecknum,
+        claim_timecheckden,
+        claim_lookupnum,
+        claim_lookupden,
+    ] = cpu_initial_claims;
     let gpu_backward_state = gpu_forward_output.into_dimension_reducing_backward_state();
 
     let output_map = output_layer_for_sumcheck;
@@ -5339,12 +5498,12 @@ fn run_basic_unrolled_stagewise_parity_test() {
 mod add_sub_lui_auipc_mod {
     use crate::primitives::field::BF;
     use cs::oracle::Placeholder;
-    use cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
     use cs::witness_placer::WitnessTypeSet;
+    use cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
     use cs::witness_placer::{
         WitnessComputationCore, WitnessComputationalField, WitnessComputationalI32,
-        WitnessComputationalInteger, WitnessComputationalU16, WitnessComputationalU32,
-        WitnessComputationalU8, WitnessMask,
+        WitnessComputationalInteger, WitnessComputationalU8, WitnessComputationalU16,
+        WitnessComputationalU32, WitnessMask,
     };
     use field::baby_bear::base::BabyBearField;
     use prover::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;

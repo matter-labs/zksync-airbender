@@ -267,6 +267,83 @@ EXTERN __global__ void ab_gather_rows_and_merkle_paths_kernel(const unsigned *in
   }
 }
 
+EXTERN __global__ void ab_gather_merkle_paths_from_rows_kernel(const unsigned *indexes, const unsigned indexes_count, const bool bit_reverse_indexes,
+                                                               const bf *values, const unsigned log_rows_per_leaf, const unsigned cols_count,
+                                                               const unsigned log_total_leaves_count, const u32 *tree_bottom, const unsigned layers_count,
+                                                               u32 *merkle_paths) {
+  const unsigned lane_idx = threadIdx.x;
+  const unsigned idx = blockIdx.x;
+  if (idx >= indexes_count)
+    return;
+  const unsigned query_index = indexes[idx];
+  const unsigned index_lane = (query_index & ~WARP_MASK) | lane_idx;
+  const bool is_output_lane = query_index == index_lane;
+  const unsigned leaf_index = bit_reverse_indexes ? __brev(index_lane) >> (32 - log_total_leaves_count) : index_lane;
+  const unsigned log_rows_count = log_total_leaves_count + log_rows_per_leaf;
+  const unsigned leaves_count = 1u << log_total_leaves_count;
+  merkle_paths += idx * STATE_SIZE;
+  auto read = [=](const unsigned offset) {
+    const unsigned row_slot = offset & ((1u << log_rows_per_leaf) - 1);
+    const unsigned col = offset >> log_rows_per_leaf;
+    const unsigned row = leaf_index + bitreverse_low_bits(row_slot, log_rows_per_leaf) * leaves_count;
+    const auto address = values + row + (col << log_rows_count);
+    return col < cols_count ? bf::into_raw_u32(load_cs(address)) : 0;
+  };
+  u32 state[STATE_SIZE];
+  u32 block[BLOCK_SIZE];
+  initialize(state);
+  u32 t = 0;
+  const unsigned values_count = cols_count << log_rows_per_leaf;
+  unsigned offset = 0;
+  while (offset < values_count) {
+    const unsigned remaining = values_count - offset;
+    const bool is_final_block = remaining <= BLOCK_SIZE;
+#pragma unroll
+    for (unsigned i = 0; i < BLOCK_SIZE; i++, offset++)
+      block[i] = read(offset);
+    if (is_final_block)
+      compress<true>(state, t, block, remaining);
+    else
+      compress<false>(state, t, block, BLOCK_SIZE);
+  }
+#pragma unroll
+  for (unsigned layer = 0; layer < LOG_WARP_SIZE; layer++) {
+    u32 other_state[STATE_SIZE];
+    const bool take_other_first = (lane_idx >> layer) & 1;
+#pragma unroll
+    for (unsigned i = 0; i < STATE_SIZE; i++) {
+      other_state[i] = __shfl_xor_sync(FULL_MASK, state[i], 1 << layer);
+      if (is_output_lane)
+        merkle_paths[i] = other_state[i];
+      if (take_other_first) {
+        block[i] = other_state[i];
+        block[i + STATE_SIZE] = state[i];
+      } else {
+        block[i] = state[i];
+        block[i + STATE_SIZE] = other_state[i];
+      }
+    }
+    initialize(state);
+    t = 0;
+    compress<true>(state, t, block, BLOCK_SIZE);
+    merkle_paths += indexes_count * STATE_SIZE;
+  }
+  if (lane_idx >= STATE_SIZE)
+    return;
+  unsigned digest_index = query_index >> LOG_WARP_SIZE;
+  unsigned log_digests_count = log_total_leaves_count - LOG_WARP_SIZE;
+  const u32 *tree_layer = tree_bottom + lane_idx;
+  u32 *merkle_paths_dst = merkle_paths + lane_idx;
+  for (unsigned layer = LOG_WARP_SIZE; layer < layers_count; layer++) {
+    const unsigned other_index = digest_index ^ 1;
+    *merkle_paths_dst = *(tree_layer + other_index * STATE_SIZE);
+    digest_index >>= 1;
+    tree_layer += (1u << log_digests_count) * STATE_SIZE;
+    log_digests_count--;
+    merkle_paths_dst += indexes_count * STATE_SIZE;
+  }
+}
+
 EXTERN __global__ void ab_blake2s_pow_kernel(const u64 *seed, const u32 bits_count, const u64 max_nonce, volatile u64 *result) {
   const u32 digest_mask = 0xffffffff << 32 - bits_count;
   const auto result_ptr = reinterpret_cast<unsigned long long *>(const_cast<u64 *>(result));
