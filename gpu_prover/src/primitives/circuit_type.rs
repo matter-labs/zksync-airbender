@@ -8,8 +8,7 @@ use common_constants::circuit_families::{
 use common_constants::delegation_types::{
     bigint_with_control::BIGINT_OPS_WITH_CONTROL_CSR_REGISTER,
     blake2s_with_control::BLAKE2S_DELEGATION_CSR_REGISTER,
-    keccak_special5::KECCAK_SPECIAL5_CSR_REGISTER,
-    NON_DETERMINISM_CSR,
+    keccak_special5::KECCAK_SPECIAL5_CSR_REGISTER, NON_DETERMINISM_CSR,
 };
 use prover::definitions::OPTIMAL_FOLDING_PROPERTIES;
 
@@ -372,8 +371,12 @@ impl UnrolledMemoryCircuitType {
     #[inline(always)]
     pub const fn get_tree_cap_size(&self) -> usize {
         match self {
-            Self::LoadStoreSubwordOnly => get_tree_cap_size_for_domain_size(LOAD_STORE_SUBWORD_DOMAIN_SIZE),
-            Self::LoadStoreWordOnly => get_tree_cap_size_for_domain_size(LOAD_STORE_WORD_DOMAIN_SIZE),
+            Self::LoadStoreSubwordOnly => {
+                get_tree_cap_size_for_domain_size(LOAD_STORE_SUBWORD_DOMAIN_SIZE)
+            }
+            Self::LoadStoreWordOnly => {
+                get_tree_cap_size_for_domain_size(LOAD_STORE_WORD_DOMAIN_SIZE)
+            }
         }
     }
 
