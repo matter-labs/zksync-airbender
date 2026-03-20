@@ -1,5 +1,5 @@
 use super::*;
-use cs::cs::witness_placer::graph_description::BoolNodeExpression;
+use cs::witness_placer::graph_description::BoolNodeExpression;
 use cs::definitions::ColumnAddress;
 
 impl Generator {
