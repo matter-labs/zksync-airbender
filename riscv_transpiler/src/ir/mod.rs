@@ -3,9 +3,9 @@ pub(crate) mod encoding_types;
 pub(crate) mod instructions;
 pub mod simple_instruction_set;
 
-use self::decode::*;
-use self::encoding_types::*;
-use self::instructions::*;
+pub(crate) use self::decode::*;
+pub(crate) use self::encoding_types::*;
+pub(crate) use self::instructions::*;
 
 pub trait DecodingOptions: 'static + Sized {
     const SUPPORT_SUBWORD_MEM_ACCESS: bool;
