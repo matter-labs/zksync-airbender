@@ -1,6 +1,10 @@
 use riscv_transpiler::ir::{
     FullMachineDecoderConfig, FullUnsignedMachineDecoderConfig, ReducedMachineDecoderConfig,
 };
+use riscv_transpiler::cycle::{
+    IMStandardIsaConfig, IMStandardIsaConfigWithUnsignedMulDiv,
+    IWithoutByteAccessIsaConfigWithDelegation,
+};
 use std::any::{type_name, TypeId};
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
@@ -12,11 +16,12 @@ pub enum MachineType {
 
 impl MachineType {
     pub fn from_machine_config<C: riscv_transpiler::cycle::MachineConfig>() -> Self {
-        if setups::is_default_machine_configuration::<C>() {
+        let id = TypeId::of::<C>();
+        if id == TypeId::of::<IMStandardIsaConfig>() {
             MachineType::Full
-        } else if setups::is_machine_without_signed_mul_div_configuration::<C>() {
+        } else if id == TypeId::of::<IMStandardIsaConfigWithUnsignedMulDiv>() {
             MachineType::FullUnsigned
-        } else if setups::is_reduced_machine_configuration::<C>() {
+        } else if id == TypeId::of::<IWithoutByteAccessIsaConfigWithDelegation>() {
             MachineType::Reduced
         } else {
             panic!("unknown machine configuration {:?}", type_name::<C>());
