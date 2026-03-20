@@ -1022,11 +1022,10 @@ fn assert_recursive_whir_oracle_parity_for_supported_path(
     let oracle_refs = [mem_oracle, wit_oracle, setup_oracle];
     let evals_refs = [mem_polys_claims, wit_polys_claims, setup_polys_claims];
     let total_base_oracles = oracle_refs.iter().map(|oracle| oracle.num_columns()).sum();
-    let mut challenge_powers = materialize_powers_serial_starting_with_one::<E4, Global>(
+    let challenge_powers = materialize_powers_serial_starting_with_one::<E4, Global>(
         batching_challenge,
         total_base_oracles,
     );
-    challenge_powers[1..].fill(E4::ZERO);
     let (base_mem_powers, rest) = challenge_powers.split_at(evals_refs[0].len());
     let (base_wit_powers, base_setup_powers) = rest.split_at(evals_refs[1].len());
 
@@ -5140,15 +5139,15 @@ fn run_basic_unrolled_stagewise_parity_test() {
                     }
                 }
             }
+        }
 
-            if !cpu_extra_evaluations_from_caching_relations.is_empty() {
-                cpu_extra_evaluations_transcript_batches.push(
-                    cpu_extra_evaluations_from_caching_relations
-                        .values()
-                        .copied()
-                        .collect_vec(),
-                );
-            }
+        if !cpu_extra_evaluations_from_caching_relations.is_empty() {
+            cpu_extra_evaluations_transcript_batches.push(
+                cpu_extra_evaluations_from_caching_relations
+                    .values()
+                    .copied()
+                    .collect_vec(),
+            );
         }
 
         let mut mem_polys_claims = Vec::with_capacity(add_sub_circuit.memory_layout.total_width);
