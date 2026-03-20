@@ -1,6 +1,7 @@
 use crate::ir::DelegationType;
 use crate::ir::Instruction;
 use crate::ir::InstructionName;
+use crate::machine_mode_only_unrolled::TimestampData;
 use crate::vm::Counters;
 use crate::vm::InstructionTape;
 use crate::vm::NonDeterminismCSRSource;
@@ -10,7 +11,6 @@ use crate::witness::WitnessTracer;
 use common_constants::circuit_families::*;
 use common_constants::TimestampScalar;
 use common_constants::TIMESTAMP_STEP;
-use risc_v_simulator::machine_mode_only_unrolled::TimestampData;
 
 mod delegations;
 mod instructions;
@@ -207,6 +207,9 @@ impl<C: Counters> ReplayerVM<C> {
                     InstructionName::ZicsrNonDeterminismWrite => {
                         zicsr::nd_write::<C, R>(state, ram, instr, tracer)
                     }
+                    InstructionName::ZicsrMarkerCsr => panic!(
+                        "detected transpiler marker CSR during replay; programs containing development cycle markers must not be proved"
+                    ),
                     InstructionName::ZicsrDelegation => {
                         zicsr::call_delegation::<C, R>(state, ram, instr, tracer)
                     }
@@ -226,8 +229,8 @@ impl<C: Counters> ReplayerVM<C> {
 
 #[cfg(test)]
 mod test {
+    use crate::machine_mode_only_unrolled::NonMemoryOpcodeTracingDataWithTimestamp;
     use common_constants::INITIAL_TIMESTAMP;
-    use risc_v_simulator::machine_mode_only_unrolled::NonMemoryOpcodeTracingDataWithTimestamp;
 
     use crate::ir::preprocess_bytecode;
     use crate::ir::FullUnsignedMachineDecoderConfig;

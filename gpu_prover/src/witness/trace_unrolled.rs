@@ -7,7 +7,7 @@ use cs::one_row_compiler::CompiledCircuitArtifact;
 use cs::utils::split_u32_into_pair_u16;
 use fft::GoodAllocator;
 use prover::definitions::{AuxArgumentsBoundaryValues, LazyInitAndTeardown};
-use prover::risc_v_simulator::machine_mode_only_unrolled::{
+use riscv_transpiler::machine_mode_only_unrolled::{
     MemoryOpcodeTracingDataWithTimestamp, NonMemoryOpcodeTracingDataWithTimestamp,
     UnifiedOpcodeTracingDataWithTimestamp,
 };

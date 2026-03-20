@@ -1,4 +1,4 @@
-use risc_v_simulator::abstractions::non_determinism::QuasiUARTSource;
+use crate::abstractions::non_determinism::QuasiUARTSource;
 
 use super::*;
 use crate::{
@@ -95,7 +95,7 @@ fn test_ensure_proof_correctness() {
     let mut state = State::initial_with_counters(DelegationsAndFamiliesCounters::default());
 
     let now = std::time::Instant::now();
-    VM::run_basic_unrolled::<_, _, _>(
+    VM::<DelegationsAndFamiliesCounters>::run_basic_unrolled::<_, _, _>(
         &mut state,
         &mut ram,
         &mut (),
@@ -190,7 +190,7 @@ fn run_reference_for_num_cycles(
 
     let mut state = State::initial_with_counters(DelegationsAndFamiliesCounters::default());
 
-    VM::run_by_timestamp_bound::<_, _, _>(
+    VM::<DelegationsAndFamiliesCounters>::run_by_timestamp_bound::<_, _, _>(
         &mut state,
         &mut ram,
         &mut (),
@@ -233,7 +233,7 @@ fn run_reference_for_num_cycles_with_snapshots(
     let mut state = State::initial_with_counters(DelegationsAndFamiliesCounters::default());
     let mut snapshotter = SimpleSnapshotter::<_, {common_constants::rom::ROM_SECOND_WORD_BITS }>::new_with_cycle_limit(1 << 31, state);
 
-    VM::run_by_timestamp_bound::<_, _, _>(
+    VM::<DelegationsAndFamiliesCounters>::run_by_timestamp_bound::<_, _, _>(
         &mut state,
         &mut ram,
         &mut snapshotter,
@@ -279,7 +279,7 @@ fn test_reference_block_exec() {
     let mut snapshotter = SimpleSnapshotter::<_, { common_constants::rom::ROM_SECOND_WORD_BITS }>::new_with_cycle_limit(cycles_bound, state);
 
     let now = std::time::Instant::now();
-    VM::run_basic_unrolled::<_, _, _>(
+    VM::<DelegationsAndFamiliesCounters>::run_basic_unrolled::<_, _, _>(
         &mut state,
         &mut ram,
         &mut snapshotter,

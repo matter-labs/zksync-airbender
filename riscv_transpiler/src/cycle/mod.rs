@@ -1,12 +1,7 @@
 use std::hash::Hash;
 
-mod decoder_utils;
-pub mod opcode_formats;
-pub mod state;
-pub mod state_new;
-pub mod status_registers;
-mod utils;
-
+// Machine profiles tie together the ISA features used by preprocessing, setup
+// generation, and recursion layout.
 pub trait MachineConfig:
     'static
     + Clone
@@ -36,6 +31,15 @@ pub trait MachineConfig:
     const ALLOWED_DELEGATION_CSRS: &'static [u32];
 }
 
+mod markers;
+
+pub mod state {
+    pub const NUM_REGISTERS: usize = 32;
+}
+
+pub use self::markers::{CycleMarker, CycleMarkerHooks, Mark};
+pub use state::NUM_REGISTERS;
+
 #[derive(
     Clone, Copy, Debug, Hash, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize,
 )]
@@ -57,12 +61,11 @@ impl MachineConfig for IMStandardIsaConfig {
     #[cfg(not(feature = "delegation"))]
     const ALLOWED_DELEGATION_CSRS: &'static [u32] = &[];
     #[cfg(feature = "delegation")]
-    const ALLOWED_DELEGATION_CSRS: &'static [u32] =
-        &[
-            common_constants::delegation_types::blake2s_with_control::BLAKE2S_DELEGATION_CSR_REGISTER,
-            common_constants::delegation_types::bigint_with_control::BIGINT_OPS_WITH_CONTROL_CSR_REGISTER,
-            common_constants::delegation_types::keccak_special5::KECCAK_SPECIAL5_CSR_REGISTER,
-        ];
+    const ALLOWED_DELEGATION_CSRS: &'static [u32] = &[
+        common_constants::delegation_types::blake2s_with_control::BLAKE2S_DELEGATION_CSR_REGISTER,
+        common_constants::delegation_types::bigint_with_control::BIGINT_OPS_WITH_CONTROL_CSR_REGISTER,
+        common_constants::delegation_types::keccak_special5::KECCAK_SPECIAL5_CSR_REGISTER,
+    ];
 }
 
 #[derive(
@@ -86,12 +89,11 @@ impl MachineConfig for IMStandardIsaConfigWithUnsignedMulDiv {
     #[cfg(not(feature = "delegation"))]
     const ALLOWED_DELEGATION_CSRS: &'static [u32] = &[];
     #[cfg(feature = "delegation")]
-    const ALLOWED_DELEGATION_CSRS: &'static [u32] =
-        &[
-            common_constants::delegation_types::blake2s_with_control::BLAKE2S_DELEGATION_CSR_REGISTER,
-            common_constants::delegation_types::bigint_with_control::BIGINT_OPS_WITH_CONTROL_CSR_REGISTER,
-            common_constants::delegation_types::keccak_special5::KECCAK_SPECIAL5_CSR_REGISTER,
-        ];
+    const ALLOWED_DELEGATION_CSRS: &'static [u32] = &[
+        common_constants::delegation_types::blake2s_with_control::BLAKE2S_DELEGATION_CSR_REGISTER,
+        common_constants::delegation_types::bigint_with_control::BIGINT_OPS_WITH_CONTROL_CSR_REGISTER,
+        common_constants::delegation_types::keccak_special5::KECCAK_SPECIAL5_CSR_REGISTER,
+    ];
 }
 
 #[derive(

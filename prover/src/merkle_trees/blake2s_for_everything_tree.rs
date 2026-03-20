@@ -78,8 +78,8 @@ impl<B: GoodAllocator> MerkleTreeConstructor for Blake2sU32MerkleTreeWithCap<B> 
         &self,
         idx: usize,
     ) -> (
-        [u32; HASH_SIZE_U32_WORDS],
-        Vec<[u32; HASH_SIZE_U32_WORDS], C>,
+        [u32; DIGEST_SIZE_U32_WORDS],
+        Vec<[u32; DIGEST_SIZE_U32_WORDS], C>,
     ) {
         let depth = self.node_hashes_enumerated_from_leafs.len(); // we do not need the element of the cap
         let mut result = Vec::with_capacity_in(depth, C::default());

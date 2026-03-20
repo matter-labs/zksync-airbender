@@ -1,6 +1,6 @@
 # CLI Tool
 
-`cli` generates and verifies program proof artifacts, and runs binaries in the simulator.
+`cli` generates and verifies program proof artifacts, and runs binaries through the transpiler VM.
 
 ## Build
 

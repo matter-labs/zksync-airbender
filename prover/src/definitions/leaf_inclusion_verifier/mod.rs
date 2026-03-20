@@ -3,9 +3,6 @@ use blake2s_u32::AlignedSlice64;
 use core::fmt::Debug;
 use non_determinism_source::NonDeterminismSource;
 
-mod blake2s_leafs_and_poseidon2_nodes;
-pub use self::blake2s_leafs_and_poseidon2_nodes::Blake2sForLeafsPoseidon2ForNodesVerifier;
-
 mod blake2s_for_everything;
 pub use self::blake2s_for_everything::Blake2sForEverythingVerifier;
 

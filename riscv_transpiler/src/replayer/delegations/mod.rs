@@ -1,9 +1,9 @@
 use super::*;
+use crate::abstractions::tracer::RegisterOrIndirectReadData;
+use crate::abstractions::tracer::RegisterOrIndirectReadWriteData;
+use crate::machine_mode_only_unrolled::*;
 use crate::replayer::instructions::*;
 use crate::vm::Counters;
-use risc_v_simulator::abstractions::tracer::RegisterOrIndirectReadData;
-use risc_v_simulator::abstractions::tracer::RegisterOrIndirectReadWriteData;
-use risc_v_simulator::machine_mode_only_unrolled::*;
 
 pub mod bigint;
 pub mod blake2_round_function;

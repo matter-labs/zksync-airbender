@@ -1,4 +1,5 @@
-use super::run_test_vector_opcode;
+use super::{execute_case, run_test_vector_opcode, ExpectedOutcome};
+use crate::ir::FullUnsignedMachineDecoderConfig;
 
 #[test]
 fn test_vector_csrrw() {
@@ -23,5 +24,23 @@ fn test_vector_csrrw() {
         Some(CSRRW_U256BIGINTOPS_OPCODE),
         [0; 32],
         None,
+    );
+}
+
+#[test]
+#[should_panic(
+    expected = "detected transpiler marker CSR during replay; programs containing development cycle markers must not be proved"
+)]
+fn test_vector_marker_csr_is_rejected_by_replayer() {
+    const CSRRW_MARKER_OPCODE: u32 = 0x7ff01073; // csrrw x0, 2047, x0
+
+    execute_case::<FullUnsignedMachineDecoderConfig>(
+        &[CSRRW_MARKER_OPCODE],
+        [0; 32],
+        &ExpectedOutcome {
+            final_pc: 4,
+            register_checks: vec![],
+            memory_checks: vec![],
+        },
     );
 }

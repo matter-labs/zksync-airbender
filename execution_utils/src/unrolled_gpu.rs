@@ -17,13 +17,13 @@ use crate::unified_circuit::{
     compute_unified_setup_for_machine_configuration,
     flatten_proof_into_responses_for_unified_recursion,
 };
-use ::prover::risc_v_simulator::{
-    abstractions::non_determinism::QuasiUARTSource,
-    cycle::{IMStandardIsaConfigWithUnsignedMulDiv, IWithoutByteAccessIsaConfigWithDelegation},
-};
 use gpu_prover::execution::prover::ProveResult;
 use log::info;
 use riscv_transpiler::common_constants::{INITIAL_TIMESTAMP, TIMESTAMP_STEP};
+use riscv_transpiler::{
+    abstractions::non_determinism::QuasiUARTSource,
+    cycle::{IMStandardIsaConfigWithUnsignedMulDiv, IWithoutByteAccessIsaConfigWithDelegation},
+};
 use std::collections::BTreeMap;
 use std::{io::Read, path::Path};
 

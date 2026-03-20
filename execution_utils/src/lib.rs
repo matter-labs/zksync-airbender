@@ -10,11 +10,9 @@ compile_error!(
 );
 
 use clap::ValueEnum;
-use risc_v_simulator::cycle::MachineConfig;
+use riscv_transpiler::cycle::MachineConfig;
 use serde::{Deserialize, Serialize};
 use verifier_common::prover::definitions::MerkleTreeCap;
-use verifier_common::prover::fft::GoodAllocator;
-use verifier_common::prover::prover_stages::flatten_merkle_caps;
 use verifier_common::transcript::Blake2sBufferingTranscript;
 
 pub use prover_examples;
@@ -98,20 +96,6 @@ pub fn find_binary_exit_point(binary: &[u8]) -> u32 {
     let final_pc = (start + EXIT_SEQUENCE.len() - 1) * core::mem::size_of::<u32>();
 
     final_pc as u32
-}
-
-pub fn compute_end_parameters<C: MachineConfig, A: GoodAllocator>(
-    expected_final_pc: u32,
-    setup: &trace_and_split::setups::MainCircuitPrecomputations<C, A, impl GoodAllocator>,
-) -> [u32; 8] {
-    let mut result_hasher = Blake2sBufferingTranscript::new();
-    result_hasher.absorb(&[expected_final_pc]);
-
-    let caps = flatten_merkle_caps(&setup.setup.trees);
-    result_hasher.absorb(&caps);
-    let end_params_output = result_hasher.finalize_reset();
-
-    end_params_output.0
 }
 
 pub fn compute_end_parameters_for_unrolled_circuits(
@@ -349,14 +333,14 @@ pub mod verifier_binaries {
 
 //     #[allow(deprecated)]
 //     pub fn run_verifier_binary(binary: &[u8], reads: Vec<u32>) -> Option<[u32; 16]> {
-//         use risc_v_simulator::cycle::IMIsaConfigWithAllDelegations;
+//         use riscv_transpiler::cycle::IMIsaConfigWithAllDelegations;
 
 //         let final_pc = find_binary_exit_point(binary);
 //         println!("Expected final PC = 0x{:08x}", final_pc);
 
 //         let source = QuasiUARTSource::new_with_reads(reads);
 
-//         let final_state = risc_v_simulator::runner::run_simple_for_num_cycles::<
+//         let final_state = riscv_transpiler::runner::run_simple_for_num_cycles::<
 //             _,
 //             IMIsaConfigWithAllDelegations,
 //         >(binary, 0, 1 << 30, source);
@@ -1143,23 +1127,6 @@ pub mod verifier_binaries {
 //         //     }
 //         // }
 
-//         // #[test]
-//         // fn debug_poseidon2() {
-//         //     use verifier_common::ProofPublicInputs;
-
-//         //     let mut src = std::fs::File::open("../prover/poseidon2_proof").unwrap();
-//         //     let proofs: Proof = serde_json::from_reader(&mut src).unwrap();
-//         //     let source = flatten_full_proof(&proofs, false);
-//         //     verifier_common::prover::nd_source_std::set_iterator(source.into_iter());
-
-//         //     let verifier_fn =
-//         //         full_statement_verifier::RECURSION_LAYER_CIRCUITS_VERIFICATION_PARAMETERS[1].2;
-//         //     unsafe {
-//         //         (verifier_fn)(
-//         //             &mut std::mem::MaybeUninit::uninit().assume_init(),
-//         //             &mut ProofPublicInputs::uninit(),
-//         //         );
-//         //     }
 //         // }
 //     }
 // }

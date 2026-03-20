@@ -9,20 +9,22 @@ use cli_lib::prover_utils::{
     CpuConfig, GpuConfig, ProgramProver, ProgramProverConfig, ProgramSource, ProofArtifact,
     ProofTarget, ProverBackend,
 };
+use execution_utils::setups::read_binary;
 use reqwest::blocking::Client;
+use riscv_transpiler::ir::{
+    preprocess_bytecode, DecodingOptions, FullUnsignedMachineDecoderConfig,
+    ReducedMachineDecoderConfig,
+};
+use riscv_transpiler::vm::{DelegationsCounters, RamWithRomRegion, SimpleTape, State, VM};
 use serde::Serialize;
 use serde_json::Value;
 use std::path::Path;
 use std::{fs, iter};
 
-use prover::risc_v_simulator::{
-    abstractions::non_determinism::QuasiUARTSource,
-    cycle::{IMStandardIsaConfigWithUnsignedMulDiv, IWithoutByteAccessIsaConfigWithDelegation},
-    runner::run_simple_with_entry_point_and_non_determimism_source_for_config,
-    sim::SimulatorConfig,
-};
+use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
 
 const DEFAULT_CYCLES: usize = 32_000_000;
+const DEFAULT_RUN_RAM_BOUND_BYTES: usize = 1 << 30;
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
@@ -153,10 +155,12 @@ enum Commands {
         #[arg(long)]
         text: Option<String>,
     },
-    /// Run binary in the simulator.
+    /// Run binary via the transpiler VM.
     Run {
         #[arg(short, long)]
         bin: String,
+        #[arg(long)]
+        text: Option<String>,
         #[clap(flatten)]
         input: InputConfig,
         #[arg(long)]
@@ -413,6 +417,7 @@ fn main() {
         }
         Commands::Run {
             bin,
+            text,
             input,
             cycles,
             expected_results,
@@ -421,8 +426,9 @@ fn main() {
             let input_words = fetch_input_data(&input)
                 .expect("Failed to fetch input")
                 .unwrap_or_default();
+            let source = ProgramSource::from_paths(bin, text);
             run_binary(
-                &bin,
+                &source,
                 cycles.unwrap_or(DEFAULT_CYCLES),
                 input_words,
                 expected_results,
@@ -433,40 +439,36 @@ fn main() {
 }
 
 fn run_binary(
-    bin_path: &str,
+    source: &ProgramSource,
     cycles: usize,
     input_data: Vec<u32>,
     expected_results: Option<Vec<u32>>,
     machine: RunMachine,
 ) {
-    let config = SimulatorConfig {
-        bin: prover::risc_v_simulator::sim::BinarySource::Path(bin_path.into()),
-        cycles,
-        entry_point: 0,
-        diagnostics: None,
+    let (_, binary_image) = read_binary(Path::new(&source.bin_path));
+    let (_, text_section) = read_binary(Path::new(&source.text_path));
+
+    let (registers, finished) = match machine {
+        RunMachine::FullUnsigned => run_binary_with_decoder::<FullUnsignedMachineDecoderConfig>(
+            &binary_image,
+            &text_section,
+            cycles,
+            input_data,
+        ),
+        RunMachine::Reduced => run_binary_with_decoder::<ReducedMachineDecoderConfig>(
+            &binary_image,
+            &text_section,
+            cycles,
+            input_data,
+        ),
     };
 
-    let mut non_determinism_source = QuasiUARTSource::default();
-    for entry in input_data {
-        non_determinism_source.oracle.push_back(entry);
+    if !finished {
+        println!(
+            "Program did not finish within {} cycles; reporting current register state",
+            cycles
+        );
     }
-
-    let registers = match machine {
-        RunMachine::FullUnsigned => {
-            let result = run_simple_with_entry_point_and_non_determimism_source_for_config::<
-                _,
-                IMStandardIsaConfigWithUnsignedMulDiv,
-            >(config, non_determinism_source);
-            result.state.registers
-        }
-        RunMachine::Reduced => {
-            let result = run_simple_with_entry_point_and_non_determimism_source_for_config::<
-                _,
-                IWithoutByteAccessIsaConfigWithDelegation,
-            >(config, non_determinism_source);
-            result.state.registers
-        }
-    };
 
     let result = registers[10..26]
         .iter()
@@ -491,4 +493,36 @@ fn run_binary(
             }
         }
     }
+}
+
+fn run_binary_with_decoder<D: DecodingOptions>(
+    binary_image: &[u32],
+    text_section: &[u32],
+    cycles: usize,
+    input_data: Vec<u32>,
+) -> ([u32; 32], bool) {
+    // The CLI now mirrors the active proving path: ROM comes from `.bin`, while
+    // instruction decoding comes from the paired `.text` section.
+    let instructions = preprocess_bytecode::<D>(text_section);
+    let tape = SimpleTape::new(&instructions);
+    let mut ram =
+        RamWithRomRegion::<{ prover::common_constants::rom::ROM_SECOND_WORD_BITS }>::from_rom_content(
+            binary_image,
+            DEFAULT_RUN_RAM_BOUND_BYTES,
+        );
+
+    // We only need final registers for `cli run`, so counters are enough and
+    // the no-op snapshotter keeps the execution path lightweight.
+    let mut state = State::initial_with_counters(DelegationsCounters::default());
+    let mut non_determinism_source = QuasiUARTSource::new_with_reads(input_data);
+    let finished = VM::<DelegationsCounters>::run_basic_unrolled(
+        &mut state,
+        &mut ram,
+        &mut (),
+        &tape,
+        cycles,
+        &mut non_determinism_source,
+    );
+
+    (state.registers.map(|register| register.value), finished)
 }
