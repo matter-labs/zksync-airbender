@@ -19,7 +19,7 @@ use prover::gkr::whir::{
     WhirIntermediateCommitmentAndQueries, WhirPolyCommitProof,
 };
 use prover::merkle_trees::{DefaultTreeConstructor, MerkleTreeCapVarLength};
-use prover::prover_stages::query_producer::assemble_query_index;
+use prover::query_utils::assemble_query_index;
 use prover::transcript::Seed;
 use prover::utils::extension_field_from_base_coeffs;
 use worker::Worker;

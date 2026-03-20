@@ -6,6 +6,16 @@ type CSRegisterOnlyAccessAddress = cs::definitions::gkr::RegisterOnlyAccessAddre
 type CSIsRegisterAddress = cs::definitions::gkr::IsRegisterAddress;
 type CSRamAddress = cs::definitions::gkr::RamAddress;
 type CSRegisterOrRamAccessAddress = cs::definitions::gkr::RegisterOrRamAccessAddress;
+type CSRamWordRepresentation = cs::definitions::gkr::RamWordRepresentation;
+
+fn ram_word_to_u16_limbs(value: CSRamWordRepresentation) -> [u32; REGISTER_SIZE] {
+    match value {
+        CSRamWordRepresentation::U16Limbs(value) => value.map(|x| x as u32),
+        CSRamWordRepresentation::U8Limbs(_) => {
+            unimplemented!("GPU GKR RAM tuples do not yet support byte-limb word representation")
+        }
+    }
+}
 
 #[repr(C)]
 #[derive(Clone, Copy, Default, Debug)]
@@ -105,7 +115,7 @@ impl From<cs::definitions::gkr::RamReadQuery> for RamReadQuery {
             in_cycle_write_index: value.in_cycle_write_index as u32,
             address: value.address.into(),
             read_timestamp: value.read_timestamp.map(|x| x as u32),
-            read_value: value.read_value.map(|x| x as u32),
+            read_value: ram_word_to_u16_limbs(value.read_value),
         }
     }
 }
@@ -126,8 +136,8 @@ impl From<cs::definitions::gkr::RamWriteQuery> for RamWriteQuery {
             in_cycle_write_index: value.in_cycle_write_index as u32,
             address: value.address.into(),
             read_timestamp: value.read_timestamp.map(|x| x as u32),
-            read_value: value.read_value.map(|x| x as u32),
-            write_value: value.write_value.map(|x| x as u32),
+            read_value: ram_word_to_u16_limbs(value.read_value),
+            write_value: ram_word_to_u16_limbs(value.write_value),
         }
     }
 }
