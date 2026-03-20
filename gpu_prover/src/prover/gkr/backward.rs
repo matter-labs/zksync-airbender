@@ -14,9 +14,9 @@ use era_cudart::result::CudaResult;
 use era_cudart::slice::{CudaSliceMut, DeviceSlice};
 use era_cudart::{cuda_kernel_declaration, cuda_kernel_signature_arguments_and_function};
 use field::{Field, FieldExtension, PrimeField};
-use prover::gkr::prover::SumcheckIntermediateProofValues;
 use prover::gkr::prover::dimension_reduction::forward::DimensionReducingInputOutput;
 use prover::gkr::prover::transcript_utils::{commit_field_els, draw_random_field_els};
+use prover::gkr::prover::SumcheckIntermediateProofValues;
 use prover::gkr::sumcheck::evaluation_kernels::{
     BaseFieldCopyGKRRelation, BatchConstraintEvalGKRRelation, BatchedGKRKernel,
     ExtensionCopyGKRRelation, GKRInputs, LookupBaseExtMinusBaseExtGKRRelation,
@@ -32,25 +32,26 @@ use prover::transcript::Seed;
 
 use super::forward::GpuGKRForwardScratch;
 use super::{
-    GpuBaseFieldPolySource, GpuBaseFieldPolySourceAfterOneFoldingLaunchDescriptor,
+    alloc_host_and_schedule_copy, GpuBaseFieldPolySource,
+    GpuBaseFieldPolySourceAfterOneFoldingLaunchDescriptor,
     GpuBaseFieldPolySourceAfterTwoFoldingsLaunchDescriptor,
     GpuExtensionFieldPolyContinuingLaunchDescriptor, GpuExtensionFieldPolyInitialSource,
     GpuGKRStorage, GpuSumcheckRound0HostLaunchDescriptors,
     GpuSumcheckRound0ScheduledLaunchDescriptors, GpuSumcheckRound1PreparedStorage,
     GpuSumcheckRound1ScheduledLaunchDescriptors, GpuSumcheckRound2PreparedStorage,
     GpuSumcheckRound2ScheduledLaunchDescriptors, GpuSumcheckRound3AndBeyondPreparedStorage,
-    GpuSumcheckRound3AndBeyondScheduledLaunchDescriptors, alloc_host_and_schedule_copy,
+    GpuSumcheckRound3AndBeyondScheduledLaunchDescriptors,
 };
 use crate::allocator::tracker::AllocationPlacement;
 use crate::ops::cub::device_reduce::{
-    Reduce, ReduceOperation, batch_reduce, get_batch_reduce_temp_storage_bytes,
+    batch_reduce, get_batch_reduce_temp_storage_bytes, Reduce, ReduceOperation,
 };
 use crate::primitives::callbacks::Callbacks;
 use crate::primitives::context::{DeviceAllocation, HostAllocation, ProverContext, UnsafeAccessor};
 use crate::primitives::device_structures::DeviceMatrix;
 use crate::primitives::device_tracing::Range;
 use crate::primitives::field::{BF, E2, E4, E6};
-use crate::primitives::utils::{WARP_SIZE, get_grid_block_dims_for_threads_count};
+use crate::primitives::utils::{get_grid_block_dims_for_threads_count, WARP_SIZE};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct DimensionReducingKernelBlueprint<E> {
@@ -561,8 +562,8 @@ where
     }
 }
 
-pub(crate) fn make_deferred_backward_workflow_state<E>()
--> Arc<Mutex<ScheduledBackwardWorkflowState<E>>>
+pub(crate) fn make_deferred_backward_workflow_state<E>(
+) -> Arc<Mutex<ScheduledBackwardWorkflowState<E>>>
 where
     E: FieldExtension<BF> + Field,
 {
@@ -5647,17 +5648,18 @@ where
 #[cfg(test)]
 mod tests {
     use super::{
+        build_dimension_reducing_kernel_blueprints, build_main_layer_kernel_blueprints,
+        launch_build_eq_values, launch_lookup_continuation, launch_lookup_round0,
+        launch_main_round0, launch_pairwise_continuation, launch_pairwise_round0,
+        launch_weight_contributions, make_deferred_backward_workflow_state,
+        populate_backward_workflow_state, schedule_workflow_batch_challenge_upload,
         GKRCircuitArtifact, GpuGKRDimensionReducingBackwardState,
         GpuGKRMainLayerConstraintLinearTerm, GpuGKRMainLayerConstraintQuadraticTerm,
-        GpuGKRMainLayerKernelKind, build_dimension_reducing_kernel_blueprints,
-        build_main_layer_kernel_blueprints, launch_build_eq_values, launch_lookup_continuation,
-        launch_lookup_round0, launch_main_round0, launch_pairwise_continuation,
-        launch_pairwise_round0, launch_weight_contributions, make_deferred_backward_workflow_state,
-        populate_backward_workflow_state, schedule_workflow_batch_challenge_upload,
+        GpuGKRMainLayerKernelKind,
     };
     use crate::allocator::tracker::AllocationPlacement;
     use crate::ops::cub::device_reduce::{
-        ReduceOperation, batch_reduce, get_batch_reduce_temp_storage_bytes,
+        batch_reduce, get_batch_reduce_temp_storage_bytes, ReduceOperation,
     };
     use crate::primitives::callbacks::Callbacks;
     use crate::primitives::context::{DeviceAllocation, ProverContext};

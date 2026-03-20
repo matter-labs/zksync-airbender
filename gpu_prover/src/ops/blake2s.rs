@@ -795,13 +795,7 @@ mod tests {
             Seed([0, 1, 2, 3, 4, 5, 6, 7]),
             Seed([42, 42, 42, 42, 42, 42, 42, 42]),
             Seed([
-                0x01234567,
-                0x89abcdef,
-                0xfedcba98,
-                0x76543210,
-                0x0f0f0f0f,
-                0xf0f0f0f0,
-                0x13579bdf,
+                0x01234567, 0x89abcdef, 0xfedcba98, 0x76543210, 0x0f0f0f0f, 0xf0f0f0f0, 0x13579bdf,
                 0x2468ace0,
             ]),
         ];

@@ -14,7 +14,9 @@ use super::{GpuBaseFieldPoly, GpuGKRStorage};
 use crate::allocator::tracker::AllocationPlacement;
 use crate::ops::blake2s::Digest;
 use crate::ops::complex::BatchInv;
-use crate::ops::simple::{add_into_y, mul_into_y, set_by_ref, set_by_val, Add, BinaryOp, Mul, SetByRef, SetByVal};
+use crate::ops::simple::{
+    add_into_y, mul_into_y, set_by_ref, set_by_val, Add, BinaryOp, Mul, SetByRef, SetByVal,
+};
 use crate::primitives::callbacks::Callbacks;
 use crate::primitives::context::{DeviceAllocation, HostAllocation, ProverContext};
 use crate::primitives::device_structures::DeviceVectorChunk;

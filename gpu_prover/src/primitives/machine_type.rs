@@ -1,9 +1,9 @@
-use riscv_transpiler::ir::{
-    FullMachineDecoderConfig, FullUnsignedMachineDecoderConfig, ReducedMachineDecoderConfig,
-};
 use riscv_transpiler::cycle::{
     IMStandardIsaConfig, IMStandardIsaConfigWithUnsignedMulDiv,
     IWithoutByteAccessIsaConfigWithDelegation,
+};
+use riscv_transpiler::ir::{
+    FullMachineDecoderConfig, FullUnsignedMachineDecoderConfig, ReducedMachineDecoderConfig,
 };
 use std::any::{type_name, TypeId};
 
