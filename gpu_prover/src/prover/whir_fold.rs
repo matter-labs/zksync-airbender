@@ -32,7 +32,7 @@ use crate::ops::complex::{
     get_powers_by_ref, get_powers_by_val, serialize_whir_e4_columns, whir_fold_monomial,
     whir_fold_split_half_in_place,
 };
-use crate::ops::cub::device_reduce::{get_reduce_temp_storage_bytes, reduce, ReduceOperation};
+use crate::ops::cub::device_reduce::{ReduceOperation, get_reduce_temp_storage_bytes, reduce};
 use crate::ops::simple::{add, add_into_y, mul, mul_into_x, set_to_zero};
 use crate::primitives::callbacks::Callbacks;
 use crate::primitives::context::{DeviceAllocation, HostAllocation, ProverContext};
@@ -47,7 +47,7 @@ use crate::prover::pow::search_pow_challenge;
 use crate::prover::proof::{
     draw_query_bits_after_verified_pow, draw_query_bits_with_external_nonce,
 };
-use crate::prover::trace_holder::{get_tree_caps, TraceHolder};
+use crate::prover::trace_holder::{TraceHolder, get_tree_caps};
 use crate::prover::whir::{GpuWhirExtensionOracle, GpuWhirExtensionQuery};
 
 const EXT4_DEGREE: usize = <E4 as FieldExtension<BF>>::DEGREE;
@@ -177,16 +177,16 @@ fn schedule_unknown_coset_base_field_query(
     let mut value_leafs = Vec::with_capacity(lde_factor);
     let mut path_merkle_paths = Vec::with_capacity(lde_factor);
     for coset_index in 0..lde_factor {
-        value_leafs.push(
-            trace_holder
-                .get_leafs_and_merkle_paths(coset_index, &device_value_index, context)?
-                .leafs,
-        );
-        path_merkle_paths.push(
-            trace_holder
-                .get_leafs_and_merkle_paths(coset_index, &device_path_index, context)?
-                .merkle_paths,
-        );
+        value_leafs.push(trace_holder.get_query_leafs(
+            coset_index,
+            &device_value_index,
+            context,
+        )?);
+        path_merkle_paths.push(trace_holder.get_query_merkle_paths(
+            coset_index,
+            &device_path_index,
+            context,
+        )?);
     }
 
     Ok(ScheduledUnknownCosetBaseFieldQuery {
@@ -588,7 +588,7 @@ pub(crate) fn schedule_query_base_trace_holder_for_folded_index(
     )?;
     drop(host_value_index);
     let value_query =
-        trace_holder.get_leafs_and_merkle_paths(value_coset_index, &device_value_index, context)?;
+        trace_holder.get_query_leafs(value_coset_index, &device_value_index, context)?;
 
     let stage1_coset_index = index / coset_tree_size;
     let path_coset_index = bitreverse_index(stage1_coset_index, trace_holder.log_lde_factor);
@@ -607,13 +607,13 @@ pub(crate) fn schedule_query_base_trace_holder_for_folded_index(
     )?;
     drop(host_path_index);
     let path_query =
-        trace_holder.get_leafs_and_merkle_paths(path_coset_index, &device_path_index, context)?;
+        trace_holder.get_query_merkle_paths(path_coset_index, &device_path_index, context)?;
     Ok(GpuScheduledBaseFieldQuery {
         index,
         coset_index: value_coset_index,
         callbacks,
-        leafs: value_query.leafs,
-        merkle_paths: path_query.merkle_paths,
+        leafs: value_query,
+        merkle_paths: path_query,
         values_per_leaf,
         columns_count: trace_holder.columns_count,
     })
@@ -3208,11 +3208,11 @@ mod tests {
     use std::alloc::Global;
 
     use era_cudart::memory::memory_copy_async;
-    use fft::{bitreverse_enumeration_inplace, Twiddles};
+    use fft::{Twiddles, bitreverse_enumeration_inplace};
     use prover::gkr::sumcheck::eq_poly::make_eq_poly_in_full;
     use prover::gkr::whir::hypercube_to_monomial::multivariate_coeffs_into_hypercube_evals;
-    use prover::merkle_trees::blake2s_for_everything_tree::Blake2sU32MerkleTreeWithCap;
     use prover::merkle_trees::ColumnMajorMerkleTreeConstructor;
+    use prover::merkle_trees::blake2s_for_everything_tree::Blake2sU32MerkleTreeWithCap;
     use serial_test::serial;
 
     use crate::allocator::tracker::AllocationPlacement;
@@ -3751,12 +3751,16 @@ mod tests {
                 .map(|i| BF::from_u32_unchecked(30 + i as u32))
                 .collect(),
         ];
-        let witness_columns = vec![(0..8)
-            .map(|i| BF::from_u32_unchecked(50 + i as u32))
-            .collect()];
-        let setup_columns = vec![(0..8)
-            .map(|i| BF::from_u32_unchecked(70 + i as u32))
-            .collect()];
+        let witness_columns = vec![
+            (0..8)
+                .map(|i| BF::from_u32_unchecked(50 + i as u32))
+                .collect(),
+        ];
+        let setup_columns = vec![
+            (0..8)
+                .map(|i| BF::from_u32_unchecked(70 + i as u32))
+                .collect(),
+        ];
 
         let memory_trace_holder = make_trace_holder(&memory_columns, &context);
         let witness_trace_holder = make_trace_holder(&witness_columns, &context);
@@ -3944,6 +3948,85 @@ mod tests {
                     query_index,
                 );
             assert_eq!(gpu_query.path, cpu_path, "query_index={}", query_index);
+        }
+    }
+
+    #[test]
+    #[cfg(not(no_cuda))]
+    #[serial]
+    fn base_query_leaf_and_path_helpers_match_combined_queries() {
+        let context = make_test_context(256, 32);
+        let columns: Vec<Vec<BF>> = vec![
+            (0..8)
+                .map(|i| BF::from_u32_unchecked(10 + i as u32))
+                .collect(),
+            (0..8)
+                .map(|i| BF::from_u32_unchecked(30 + i as u32))
+                .collect(),
+        ];
+        let log_lde_factor = 2u32;
+        let log_rows_per_leaf = 1u32;
+        let log_tree_cap_size = 3u32;
+        let mut trace_holder = make_lde_trace_holder(
+            &columns,
+            log_lde_factor,
+            log_rows_per_leaf,
+            log_tree_cap_size,
+            &context,
+        );
+        let lde_factor = 1usize << log_lde_factor;
+        let values_per_leaf = 1usize << log_rows_per_leaf;
+        let coset_tree_size = (1usize << trace_holder.log_domain_size) / values_per_leaf;
+        let total_queries = (columns[0].len() << log_lde_factor) >> log_rows_per_leaf;
+
+        for query_index in [0usize, 1, 5, total_queries - 1] {
+            let value_coset_index = query_index & (lde_factor - 1);
+            let value_internal_index = query_index / lde_factor;
+            let stage1_coset_index = query_index / coset_tree_size;
+            let path_coset_index = super::bitreverse_index(stage1_coset_index, log_lde_factor);
+            let path_internal_index = query_index % coset_tree_size;
+
+            let mut value_index = context.alloc(1, AllocationPlacement::BestFit).unwrap();
+            let mut path_index = context.alloc(1, AllocationPlacement::BestFit).unwrap();
+            memory_copy_async(
+                &mut value_index,
+                &[value_internal_index as u32],
+                context.get_exec_stream(),
+            )
+            .unwrap();
+            memory_copy_async(
+                &mut path_index,
+                &[path_internal_index as u32],
+                context.get_exec_stream(),
+            )
+            .unwrap();
+
+            let combined_leafs = trace_holder
+                .get_leafs_and_merkle_paths(value_coset_index, &value_index, &context)
+                .unwrap()
+                .leafs;
+            let separate_leafs = trace_holder
+                .get_query_leafs(value_coset_index, &value_index, &context)
+                .unwrap();
+            let combined_paths = trace_holder
+                .get_leafs_and_merkle_paths(path_coset_index, &path_index, &context)
+                .unwrap()
+                .merkle_paths;
+            let separate_paths = trace_holder
+                .get_query_merkle_paths(path_coset_index, &path_index, &context)
+                .unwrap();
+
+            context.get_exec_stream().synchronize().unwrap();
+            assert_eq!(
+                unsafe { separate_leafs.get_accessor().get() },
+                unsafe { combined_leafs.get_accessor().get() },
+                "query {query_index} leaf helper diverged"
+            );
+            assert_eq!(
+                unsafe { separate_paths.get_accessor().get() },
+                unsafe { combined_paths.get_accessor().get() },
+                "query {query_index} path helper diverged"
+            );
         }
     }
 

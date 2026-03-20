@@ -3,12 +3,12 @@ use std::mem::{align_of, size_of};
 use std::ops::DerefMut;
 
 use cs::definitions::{
-    gkr::{RamWordRepresentation, DECODER_LOOKUP_FORMAL_SET_INDEX},
     GKRAddress, MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX,
     MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX,
     MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX,
     MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX, MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX,
     MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX,
+    gkr::{DECODER_LOOKUP_FORMAL_SET_INDEX, RamWordRepresentation},
 };
 use cs::gkr_compiler::{
     CompiledAddressSpaceRelationStrict, CompiledAddressStrict, GKRCircuitArtifact,
@@ -18,8 +18,8 @@ use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 use field::{Field, FieldExtension, PrimeField};
-use prover::gkr::prover::dimension_reduction::forward::DimensionReducingInputOutput;
 use prover::gkr::prover::GKRExternalChallenges;
+use prover::gkr::prover::dimension_reduction::forward::DimensionReducingInputOutput;
 
 use super::backward::GpuGKRDimensionReducingBackwardState;
 use super::setup::{GpuGKRForwardSetup, GpuGKRSetupTransfer};
@@ -29,8 +29,8 @@ use crate::allocator::tracker::AllocationPlacement;
 use crate::ops::blake2s::gather_rows;
 use crate::ops::complex::BatchInv;
 use crate::ops::simple::{
-    add_into_y, mul, mul_into_x, mul_into_y, set_arithmetic_sequence, set_by_ref, set_by_val,
-    sub_into_x, Add, BinaryOp, Mul, SetByRef, SetByVal, Sub,
+    Add, BinaryOp, Mul, SetByRef, SetByVal, Sub, add_into_y, mul, mul_into_x, mul_into_y,
+    set_arithmetic_sequence, set_by_ref, set_by_val, sub_into_x,
 };
 use crate::primitives::context::{DeviceAllocation, HostAllocation, ProverContext, UnsafeAccessor};
 use crate::primitives::device_structures::{
@@ -144,7 +144,6 @@ impl<B, E> GpuGKRForwardOutput<B, E> {
     ) -> GpuGKRDimensionReducingBackwardState<B, E> {
         GpuGKRDimensionReducingBackwardState::new(
             self.tracing_ranges,
-            self.forward_scratch,
             self.storage,
             self.initial_layer_for_sumcheck,
             self.dimension_reducing_inputs,
