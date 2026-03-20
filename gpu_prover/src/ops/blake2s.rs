@@ -3,7 +3,7 @@ use crate::primitives::device_structures::{
     DeviceMatrixChunkImpl, DeviceMatrixChunkMutImpl, MutPtrAndStride, PtrAndStride,
 };
 use crate::primitives::field::BF;
-use crate::primitives::utils::{get_grid_block_dims_for_threads_count, LOG_WARP_SIZE, WARP_SIZE};
+use crate::primitives::utils::{LOG_WARP_SIZE, WARP_SIZE, get_grid_block_dims_for_threads_count};
 use era_cudart::cuda_kernel;
 use era_cudart::device::{device_get_attribute, get_device};
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
@@ -356,6 +356,64 @@ pub fn gather_rows_and_merkle_paths(
     GatherRowsAndMerklePathsFunction::default().launch(&config, &args)
 }
 
+cuda_kernel!(
+    GatherMerklePathsFromRows,
+    ab_gather_merkle_paths_from_rows_kernel(
+        indexes: *const u32,
+        indexes_count: u32,
+        bit_reverse_indexes: bool,
+        values: *const BF,
+        log_rows_per_leaf: u32,
+        cols_count: u32,
+        log_total_leaves_count: u32,
+        tree_bottom: *const Digest,
+        layers_count: u32,
+        merkle_paths: *mut Digest,
+    )
+);
+
+pub fn gather_merkle_paths_from_rows(
+    indexes: &DeviceSlice<u32>,
+    bit_reverse_indexes: bool,
+    values: &DeviceSlice<BF>,
+    log_rows_per_leaf: u32,
+    cols_count: usize,
+    tree_bottom: &DeviceSlice<Digest>,
+    merkle_paths: &mut DeviceSlice<Digest>,
+    layers_count: u32,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    let indexes_len = indexes.len();
+    let values_len = values.len();
+    assert_eq!(values_len % cols_count, 0);
+    let log_rows_count = (values_len / cols_count).trailing_zeros();
+    assert!(indexes_len <= u32::MAX as usize);
+    let indexes_count = indexes_len as u32;
+    assert!(layers_count >= LOG_WARP_SIZE);
+    assert_eq!(indexes_len * layers_count as usize, merkle_paths.len());
+    assert!(cols_count <= u32::MAX as usize);
+    let cols_count = cols_count as u32;
+    let log_total_leaves_count = log_rows_count as u32 - log_rows_per_leaf;
+    let config = CudaLaunchConfig::basic(indexes_count, WARP_SIZE, stream);
+    let indexes = indexes.as_ptr();
+    let values = values.as_ptr();
+    let tree_bottom = tree_bottom.as_ptr();
+    let merkle_paths = merkle_paths.as_mut_ptr();
+    let args = GatherMerklePathsFromRowsArguments::new(
+        indexes,
+        indexes_count,
+        bit_reverse_indexes,
+        values,
+        log_rows_per_leaf,
+        cols_count,
+        log_total_leaves_count,
+        tree_bottom,
+        layers_count,
+        merkle_paths,
+    );
+    GatherMerklePathsFromRowsFunction::default().launch(&config, &args)
+}
+
 pub fn merkle_tree_cap(values: &DeviceSlice<DG>, log_tree_cap_size: u32) -> &DeviceSlice<DG> {
     let values_len = values.len();
     assert_ne!(values_len, 0);
@@ -402,7 +460,7 @@ mod tests {
     use std::default::Default;
 
     use blake2s_u32::Blake2sState;
-    use era_cudart::memory::{memory_copy_async, DeviceAllocation};
+    use era_cudart::memory::{DeviceAllocation, memory_copy_async};
     use field::Field;
     use itertools::Itertools;
     #[cfg(feature = "deterministic_pow")]
