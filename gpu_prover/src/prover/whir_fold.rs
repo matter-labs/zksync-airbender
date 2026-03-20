@@ -32,7 +32,7 @@ use crate::ops::complex::{
     get_powers_by_ref, get_powers_by_val, serialize_whir_e4_columns, whir_fold_monomial,
     whir_fold_split_half_in_place,
 };
-use crate::ops::cub::device_reduce::{ReduceOperation, get_reduce_temp_storage_bytes, reduce};
+use crate::ops::cub::device_reduce::{get_reduce_temp_storage_bytes, reduce, ReduceOperation};
 use crate::ops::simple::{add, add_into_y, mul, mul_into_x, set_to_zero};
 use crate::primitives::callbacks::Callbacks;
 use crate::primitives::context::{DeviceAllocation, HostAllocation, ProverContext};
@@ -47,7 +47,7 @@ use crate::prover::pow::search_pow_challenge;
 use crate::prover::proof::{
     draw_query_bits_after_verified_pow, draw_query_bits_with_external_nonce,
 };
-use crate::prover::trace_holder::{TraceHolder, get_tree_caps};
+use crate::prover::trace_holder::{get_tree_caps, TraceHolder};
 use crate::prover::whir::{GpuWhirExtensionOracle, GpuWhirExtensionQuery};
 
 const EXT4_DEGREE: usize = <E4 as FieldExtension<BF>>::DEGREE;
@@ -981,11 +981,10 @@ fn initialize_batched_forms_impl(
     let total_base_oracles = memory_trace_holder.columns_count
         + witness_trace_holder.columns_count
         + setup_trace_holder.columns_count;
-    let mut challenge_powers = materialize_powers_serial_starting_with_one::<E4, std::alloc::Global>(
+    let challenge_powers = materialize_powers_serial_starting_with_one::<E4, std::alloc::Global>(
         batching_challenge,
         total_base_oracles,
     );
-    challenge_powers[1..].fill(E4::ZERO);
     let (memory_weights, rest) = challenge_powers.split_at(mem_polys_claims_len);
     let (witness_weights, setup_weights) = rest.split_at(wit_polys_claims_len);
     debug_assert_eq!(setup_weights.len(), setup_polys_claims_len);
@@ -1107,42 +1106,122 @@ fn schedule_initialize_batched_forms(
     mem_polys_claims_len: usize,
     wit_polys_claims_len: usize,
     setup_polys_claims_len: usize,
-    batching_challenge: E4,
+    batching_challenge_source: impl Fn() -> E4 + Send + Sync + 'static,
     state: &mut GpuWhirState,
     callbacks: &mut Callbacks<'static>,
     context: &ProverContext,
-) -> CudaResult<[Vec<E4>; 3]> {
-    initialize_batched_forms_impl(
-        memory_trace_holder,
-        witness_trace_holder,
-        setup_trace_holder,
-        mem_polys_claims_len,
-        wit_polys_claims_len,
-        setup_polys_claims_len,
-        batching_challenge,
-        state,
-        |memory_trace_holder,
-         memory_weights,
-         witness_trace_holder,
-         witness_weights,
-         setup_trace_holder,
-         setup_weights,
-         result,
-         context| {
-            schedule_build_initial_batched_main_domain_poly_device(
-                memory_trace_holder,
-                memory_weights,
-                witness_trace_holder,
-                witness_weights,
-                setup_trace_holder,
-                setup_weights,
-                result,
-                callbacks,
-                context,
-            )
+) -> CudaResult<()> {
+    let trace_len = state.current_len;
+    assert_eq!(
+        memory_trace_holder.log_domain_size,
+        witness_trace_holder.log_domain_size
+    );
+    assert_eq!(
+        memory_trace_holder.log_domain_size,
+        setup_trace_holder.log_domain_size
+    );
+    assert_eq!(trace_len, 1usize << memory_trace_holder.log_domain_size);
+
+    let total_base_oracles = memory_trace_holder.columns_count
+        + witness_trace_holder.columns_count
+        + setup_trace_holder.columns_count;
+    let stream = context.get_exec_stream();
+
+    let mut challenge_powers_host = unsafe { context.alloc_host_uninit_slice(total_base_oracles) };
+    let challenge_powers_accessor = challenge_powers_host.get_mut_accessor();
+    callbacks.schedule(
+        move || unsafe {
+            let challenge_powers = materialize_powers_serial_starting_with_one::<
+                E4,
+                std::alloc::Global,
+            >(batching_challenge_source(), total_base_oracles);
+            challenge_powers_accessor
+                .get_mut()
+                .copy_from_slice(&challenge_powers);
         },
-        context,
-    )
+        stream,
+    )?;
+    let mut challenge_powers_device =
+        context.alloc(total_base_oracles, AllocationPlacement::BestFit)?;
+    memory_copy_async(&mut challenge_powers_device, &challenge_powers_host, stream)?;
+
+    set_to_zero(&mut state.sumchecked_poly_evaluation_form, stream)?;
+    let mut offset = 0usize;
+    for (trace_holder, weights_len) in [
+        (memory_trace_holder, mem_polys_claims_len),
+        (witness_trace_holder, wit_polys_claims_len),
+        (setup_trace_holder, setup_polys_claims_len),
+    ] {
+        if weights_len == 0 {
+            continue;
+        }
+        assert!(
+            trace_holder.are_cosets_materialized(),
+            "WHIR initial state requires materialized main-domain cosets",
+        );
+        let values = DeviceMatrix::new(
+            trace_holder.get_evaluations(),
+            state.sumchecked_poly_evaluation_form.len(),
+        );
+        accumulate_whir_base_columns(
+            &values,
+            &challenge_powers_device[offset..offset + weights_len],
+            &mut state.sumchecked_poly_evaluation_form,
+            stream,
+        )?;
+        offset += weights_len;
+    }
+    debug_assert_eq!(offset, total_base_oracles);
+
+    let mut serialized = context.alloc(trace_len * EXT4_DEGREE, AllocationPlacement::BestFit)?;
+    let mut bf_scratch = context.alloc(trace_len, AllocationPlacement::BestFit)?;
+    serialize_whir_e4_columns(
+        &state.sumchecked_poly_evaluation_form[..trace_len],
+        &mut serialized,
+        stream,
+    )?;
+    for column in 0..EXT4_DEGREE {
+        let src = &serialized[column * trace_len..(column + 1) * trace_len];
+        natural_evals_to_bitreversed_coeffs(
+            src,
+            &mut bf_scratch,
+            trace_len.trailing_zeros() as usize,
+            stream,
+        )?;
+        let dst = &mut serialized[column * trace_len..(column + 1) * trace_len];
+        memory_copy_async(dst, &bf_scratch, stream)?;
+    }
+    {
+        let mut coeffs_matrix = DeviceMatrixMut::new(&mut serialized, trace_len);
+        bit_reverse_in_place(&mut coeffs_matrix, stream)?;
+    }
+    deserialize_whir_e4_columns(
+        &serialized,
+        &mut state.sumchecked_poly_monomial_form[..trace_len],
+        stream,
+    )?;
+    for column in 0..EXT4_DEGREE {
+        let src = &serialized[column * trace_len..(column + 1) * trace_len];
+        hypercube_coeffs_natural_to_natural_evals(
+            src,
+            &mut bf_scratch,
+            trace_len.trailing_zeros() as usize,
+            stream,
+        )?;
+        let dst = &mut serialized[column * trace_len..(column + 1) * trace_len];
+        memory_copy_async(dst, &bf_scratch, stream)?;
+    }
+    {
+        let mut evals_matrix = DeviceMatrixMut::new(&mut serialized, trace_len);
+        bit_reverse_in_place(&mut evals_matrix, stream)?;
+    }
+    deserialize_whir_e4_columns(
+        &serialized,
+        &mut state.sumchecked_poly_evaluation_form[..trace_len],
+        stream,
+    )?;
+
+    Ok(())
 }
 
 fn build_initial_state(
@@ -1499,7 +1578,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
     base_layer_point_len: usize,
     fill_base_layer_point: impl Fn(&mut [E4]) + Send + Sync + 'static,
     original_lde_factor: usize,
-    _batching_challenge_source: impl Fn() -> E4 + Send + Sync + 'static,
+    batching_challenge_source: impl Fn() -> E4 + Send + Sync + 'static,
     whir_steps_schedule: Vec<usize>,
     whir_queries_schedule: Vec<usize>,
     whir_steps_lde_factors: Vec<usize>,
@@ -1747,14 +1826,14 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
 
     let initialize_batched_forms_range = Range::new("gkr.whir.initialize_batched_forms")?;
     initialize_batched_forms_range.start(stream)?;
-    let batch_challenges = schedule_initialize_batched_forms(
+    schedule_initialize_batched_forms(
         memory_trace_holder,
         witness_trace_holder,
         setup_trace_holder,
         memory_trace_holder.columns_count,
         witness_trace_holder.columns_count,
         setup_trace_holder.columns_count,
-        E4::ZERO,
+        batching_challenge_source,
         &mut state,
         &mut start_callbacks,
         context,
@@ -2870,11 +2949,10 @@ pub(crate) fn debug_build_initial_batched_main_domain_poly_for_test(
     let total_base_oracles = memory_trace_holder.columns_count
         + witness_trace_holder.columns_count
         + setup_trace_holder.columns_count;
-    let mut challenge_powers = materialize_powers_serial_starting_with_one::<E4, std::alloc::Global>(
+    let challenge_powers = materialize_powers_serial_starting_with_one::<E4, std::alloc::Global>(
         batching_challenge,
         total_base_oracles,
     );
-    challenge_powers[1..].fill(E4::ZERO);
     let (memory_weights, rest) = challenge_powers.split_at(mem_polys_claims.len());
     let (witness_weights, setup_weights) = rest.split_at(wit_polys_claims.len());
     debug_assert_eq!(setup_weights.len(), setup_polys_claims.len());
@@ -3130,11 +3208,11 @@ mod tests {
     use std::alloc::Global;
 
     use era_cudart::memory::memory_copy_async;
-    use fft::{Twiddles, bitreverse_enumeration_inplace};
+    use fft::{bitreverse_enumeration_inplace, Twiddles};
     use prover::gkr::sumcheck::eq_poly::make_eq_poly_in_full;
     use prover::gkr::whir::hypercube_to_monomial::multivariate_coeffs_into_hypercube_evals;
-    use prover::merkle_trees::ColumnMajorMerkleTreeConstructor;
     use prover::merkle_trees::blake2s_for_everything_tree::Blake2sU32MerkleTreeWithCap;
+    use prover::merkle_trees::ColumnMajorMerkleTreeConstructor;
     use serial_test::serial;
 
     use crate::allocator::tracker::AllocationPlacement;
@@ -3673,16 +3751,12 @@ mod tests {
                 .map(|i| BF::from_u32_unchecked(30 + i as u32))
                 .collect(),
         ];
-        let witness_columns = vec![
-            (0..8)
-                .map(|i| BF::from_u32_unchecked(50 + i as u32))
-                .collect(),
-        ];
-        let setup_columns = vec![
-            (0..8)
-                .map(|i| BF::from_u32_unchecked(70 + i as u32))
-                .collect(),
-        ];
+        let witness_columns = vec![(0..8)
+            .map(|i| BF::from_u32_unchecked(50 + i as u32))
+            .collect()];
+        let setup_columns = vec![(0..8)
+            .map(|i| BF::from_u32_unchecked(70 + i as u32))
+            .collect()];
 
         let memory_trace_holder = make_trace_holder(&memory_columns, &context);
         let witness_trace_holder = make_trace_holder(&witness_columns, &context);
@@ -3723,11 +3797,10 @@ mod tests {
         .unwrap();
 
         let total_base_oracles = 4usize;
-        let mut challenge_powers = materialize_powers_serial_starting_with_one::<
-            E4,
-            std::alloc::Global,
-        >(batching_challenge, total_base_oracles);
-        challenge_powers[1..].fill(E4::ZERO);
+        let challenge_powers = materialize_powers_serial_starting_with_one::<E4, std::alloc::Global>(
+            batching_challenge,
+            total_base_oracles,
+        );
         let (memory_weights, rest) = challenge_powers.split_at(mem_polys_claims.len());
         let (witness_weights, setup_weights) = rest.split_at(wit_polys_claims.len());
 
