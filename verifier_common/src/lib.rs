@@ -130,8 +130,34 @@ pub mod field_ops {
 
 pub mod structs;
 
-#[cfg(not(target_arch = "riscv32"))]
+#[cfg(all(
+    not(target_arch = "riscv32"),
+    any(test, feature = "proof_utils", feature = "replace_csr")
+))]
 pub type DefaultNonDeterminismSource = prover::nd_source_std::ThreadLocalBasedSource;
+
+#[cfg(all(
+    not(target_arch = "riscv32"),
+    not(any(test, feature = "proof_utils", feature = "replace_csr"))
+))]
+#[derive(Clone, Copy, Debug)]
+pub struct DefaultNonDeterminismSource;
+
+#[cfg(all(
+    not(target_arch = "riscv32"),
+    not(any(test, feature = "proof_utils", feature = "replace_csr"))
+))]
+impl non_determinism_source::NonDeterminismSource for DefaultNonDeterminismSource {
+    #[inline(always)]
+    fn read_word() -> u32 {
+        panic!("host non-determinism source requires verifier_common proof_utils/replace_csr")
+    }
+
+    #[inline(always)]
+    fn read_reduced_field_element(_modulus: u32) -> u32 {
+        panic!("host non-determinism source requires verifier_common proof_utils/replace_csr")
+    }
+}
 
 #[cfg(target_arch = "riscv32")]
 pub type DefaultNonDeterminismSource = non_determinism_source::CSRBasedSource;
