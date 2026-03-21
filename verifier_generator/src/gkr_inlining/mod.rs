@@ -263,11 +263,25 @@ fn compute_max_pow(layer: &GKRLayerDescription) -> usize {
     max_pow
 }
 
+/// Output of the GKR inlined code generator, split into per-file token streams.
+pub struct GeneratedGKRFiles {
+    /// Per-circuit compile-time constants (GKR_ROUNDS, GKR_ADDRS, etc.) and static data.
+    pub constants: TokenStream,
+    /// GKR verifier: layer functions and the main `verify_gkr_sumcheck` entry point.
+    pub gkr: TokenStream,
+    /// Module root: re-exports.
+    pub mod_rs: TokenStream,
+    /// WHIR round functions (stub until M1 step 12).
+    pub whir: TokenStream,
+    /// Merkle path verification (stub until M1 step 8).
+    pub merkle: TokenStream,
+}
+
 pub fn generate_gkr_inlined<MW: MersenneWrapper, F: PrimeField, E: FieldExtension<F> + Field, T>(
     compiled_circuit: &GKRCircuitArtifact<F>,
     proof: &GKRProof<F, E, T>,
     final_trace_size_log_2: usize,
-) -> TokenStream
+) -> GeneratedGKRFiles
 where
     T: ColumnMajorMerkleTreeConstructor<F>,
     [(); E::DEGREE]: Sized,
@@ -531,7 +545,7 @@ where
         let mut addrs_stream = TokenStream::new();
         addrs_stream.append_separated(sorted.iter().map(|a| transform_gkr_address(a)), quote! {,});
         static_data.extend(quote! {
-            const LAYER_0_SORTED_ADDRS: &[GKRAddress] = &[#addrs_stream];
+            pub const LAYER_0_SORTED_ADDRS: &[GKRAddress] = &[#addrs_stream];
         });
     }
 
@@ -896,8 +910,25 @@ where
 
     let field_use_stmts = MW::field_use_statements();
 
-    // --- Assemble the final TokenStream ---
-    quote! {
+    // --- Assemble per-file TokenStreams ---
+
+    let constants = quote! {
+        use ::verifier_common::cs::definitions::GKRAddress;
+
+        pub const GKR_ROUNDS: usize = #max_sumcheck_rounds;
+        pub const GKR_ADDRS: usize = #max_addrs;
+        pub const GKR_EVALS: usize = #max_evals;
+        pub const GKR_TRANSCRIPT_U32: usize = #initial_transcript_num_u32_words;
+        pub const GKR_MAX_POW: usize = #max_pow;
+        pub const GKR_EVAL_BUF: usize = #eval_buf_size;
+        pub const GKR_COMMIT_BUF: usize = #commit_buf_size;
+
+        #static_data
+
+        pub const BASE_LAYER_ADDITIONAL_OPENINGS: &[GKRAddress] = &[#base_openings_stream];
+    };
+
+    let gkr = quote! {
         #field_use_stmts
         use ::verifier_common::cs::definitions::GKRAddress;
         use ::verifier_common::gkr::{
@@ -917,17 +948,7 @@ where
         use ::verifier_common::field::{Field, FieldExtension, PrimeField};
         use ::verifier_common::non_determinism_source::NonDeterminismSource;
 
-        pub const GKR_ROUNDS: usize = #max_sumcheck_rounds;
-        pub const GKR_ADDRS: usize = #max_addrs;
-        pub const GKR_EVALS: usize = #max_evals;
-        pub const GKR_TRANSCRIPT_U32: usize = #initial_transcript_num_u32_words;
-        pub const GKR_MAX_POW: usize = #max_pow;
-        pub const GKR_EVAL_BUF: usize = #eval_buf_size;
-        pub const GKR_COMMIT_BUF: usize = #commit_buf_size;
-
-        #static_data
-
-        const BASE_LAYER_ADDITIONAL_OPENINGS: &[GKRAddress] = &[#base_openings_stream];
+        use super::constants::*;
 
         #layer_functions
 
@@ -940,5 +961,32 @@ where
                 #main_body
             }
         }
+    };
+
+    let mod_rs = quote! {
+        pub mod constants;
+        pub mod gkr;
+        pub mod whir;
+        pub mod merkle;
+
+        pub use gkr::verify_gkr_sumcheck;
+    };
+
+    let whir = quote! {
+        //! WHIR round functions — generated per-circuit.
+        //! Populated starting from M1 step 12.
+    };
+
+    let merkle = quote! {
+        //! Merkle path verification — generated per-circuit.
+        //! Populated starting from M1 step 8.
+    };
+
+    GeneratedGKRFiles {
+        constants,
+        gkr,
+        mod_rs,
+        whir,
+        merkle,
     }
 }

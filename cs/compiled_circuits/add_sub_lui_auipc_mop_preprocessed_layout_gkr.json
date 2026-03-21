@@ -5200,9 +5200,9 @@
     "38": "intermediate carry for out",
     "39": "carry for out",
     "40": "MULMOD intermediate value",
-    "41": "query 0, interm ts borrow",
-    "42": "query 1, interm ts borrow",
-    "43": "query 2, interm ts borrow",
+    "41": "query 0, interim ts borrow",
+    "42": "query 1, interim ts borrow",
+    "43": "query 2, interim ts borrow",
     "44": "Multiplicity for range check 16",
     "45": "Multiplicity for timestamp range check",
     "46": "Multiplicity for generic lookup"

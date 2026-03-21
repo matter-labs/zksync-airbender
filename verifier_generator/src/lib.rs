@@ -21,6 +21,16 @@ mod test {
         serde_json::from_reader(src).unwrap()
     }
 
+    fn write_and_fmt(path: &str, content: &proc_macro2::TokenStream) {
+        let mut dst = std::fs::File::create(path).unwrap();
+        dst.write_all(content.to_string().as_bytes()).unwrap();
+        drop(dst);
+        std::process::Command::new("rustfmt")
+            .arg(path)
+            .status()
+            .ok();
+    }
+
     #[test]
     fn generate_gkr_inlined() {
         use crate::mersenne_wrapper::DefaultBabyBearField;
@@ -41,20 +51,20 @@ mod test {
             let proof: GKRProof<BabyBearField, BabyBearExt4, DefaultTreeConstructor> =
                 deserialize_from_file(&format!("../prover/test_proofs/{}_gkr_proof.json", name));
 
-            let result = gkr_inlining::generate_gkr_inlined::<DefaultBabyBearField, _, _, _>(
+            let files = gkr_inlining::generate_gkr_inlined::<DefaultBabyBearField, _, _, _>(
                 &compiled_circuit,
                 &proof,
                 4,
             );
 
-            let path = format!("../verifier/src/generated/{}_gkr_verifier.rs", name);
-            let mut dst = std::fs::File::create(&path).unwrap();
-            dst.write_all(&result.to_string().as_bytes()).unwrap();
-            drop(dst);
-            std::process::Command::new("rustfmt")
-                .arg(&path)
-                .status()
-                .ok();
+            let dir = format!("../verifier/src/generated/{}", name);
+            std::fs::create_dir_all(&dir).unwrap();
+
+            write_and_fmt(&format!("{}/mod.rs", dir), &files.mod_rs);
+            write_and_fmt(&format!("{}/constants.rs", dir), &files.constants);
+            write_and_fmt(&format!("{}/gkr.rs", dir), &files.gkr);
+            write_and_fmt(&format!("{}/whir.rs", dir), &files.whir);
+            write_and_fmt(&format!("{}/merkle.rs", dir), &files.merkle);
         }
     }
 }

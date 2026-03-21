@@ -9,15 +9,15 @@ use riscv_common::zksync_os_finish_success;
 use verifier_common::gkr::GKRVerificationError;
 
 #[cfg(feature = "add_sub")]
-#[path = "../../../verifier/src/generated/add_sub_lui_auipc_mop_gkr_verifier.rs"]
+#[path = "../../../verifier/src/generated/add_sub_lui_auipc_mop/mod.rs"]
 mod generated_gkr;
 
 #[cfg(feature = "jump_branch_slt")]
-#[path = "../../../verifier/src/generated/jump_branch_slt_gkr_verifier.rs"]
+#[path = "../../../verifier/src/generated/jump_branch_slt/mod.rs"]
 mod generated_gkr;
 
 #[cfg(feature = "shift_binop")]
-#[path = "../../../verifier/src/generated/shift_binop_gkr_verifier.rs"]
+#[path = "../../../verifier/src/generated/shift_binop/mod.rs"]
 mod generated_gkr;
 
 #[no_mangle]

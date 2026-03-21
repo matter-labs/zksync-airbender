@@ -4,15 +4,15 @@ fn deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &str) -> T {
 }
 
 #[cfg(feature = "gkr_verify")]
-#[path = "generated/add_sub_lui_auipc_mop_gkr_verifier.rs"]
+#[path = "generated/add_sub_lui_auipc_mop/mod.rs"]
 mod generated_add_sub_lui_auipc_mop;
 
 #[cfg(feature = "gkr_verify")]
-#[path = "generated/jump_branch_slt_gkr_verifier.rs"]
+#[path = "generated/jump_branch_slt/mod.rs"]
 mod generated_jump_branch_slt;
 
 #[cfg(feature = "gkr_verify")]
-#[path = "generated/shift_binop_gkr_verifier.rs"]
+#[path = "generated/shift_binop/mod.rs"]
 mod generated_shift_binop;
 
 #[cfg(feature = "gkr_verify")]
