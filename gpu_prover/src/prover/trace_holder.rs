@@ -10,6 +10,7 @@ use prover::transcript::Seed;
 use crate::allocator::tracker::AllocationPlacement;
 use crate::ntt::{
     bitreversed_monomials_to_natural_evals, hypercube_evals_natural_to_bitreversed_coeffs,
+    hypercube_natural_evals_to_bitreversed_monomials,
 };
 use crate::ops::blake2s::{
     Digest, build_merkle_tree, build_merkle_tree_nodes, gather_leaf_rows,
@@ -236,11 +237,19 @@ impl TraceHolder<BF> {
         for column in 0..self.columns_count {
             let offset = column * domain_size;
             let source_column = &source[offset..offset + domain_size];
-            hypercube_evals_natural_to_bitreversed_coeffs(
+            // hypercube_evals_natural_to_bitreversed_coeffs(
+            //     source_column,
+            //     &mut coeff_scratch,
+            //     self.log_domain_size as usize,
+            //     stream,
+            // )?;
+            hypercube_natural_evals_to_bitreversed_monomials(
                 source_column,
-                &mut coeff_scratch,
+                &mut coeff_scratch[0..domain_size],
                 self.log_domain_size as usize,
+                true, // transposed_monomials
                 stream,
+                context.get_device_properties(),
             )?;
 
             match &mut self.cosets {
@@ -256,7 +265,7 @@ impl TraceHolder<BF> {
                             self.log_domain_size as usize,
                             self.log_lde_factor as usize,
                             coset_index,
-                            false, // transposed_monomials
+                            true, // transposed_monomials
                             stream,
                             context.get_device_properties(),
                         )?;
