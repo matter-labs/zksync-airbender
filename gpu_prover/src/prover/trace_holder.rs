@@ -678,7 +678,7 @@ pub(crate) fn flatten_tree_caps(
     flatten_tree_caps_for_accessors(accessors, log_lde_factor)
 }
 
-fn get_tree_caps_for_accessors(
+pub(crate) fn get_tree_caps_for_accessors(
     accessors: &[UnsafeAccessor<[Digest]>],
     log_lde_factor: u32,
 ) -> Vec<MerkleTreeCapVarLength> {

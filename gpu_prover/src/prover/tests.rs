@@ -5494,6 +5494,205 @@ fn run_basic_unrolled_stagewise_parity_test() {
     let _elapsed = now.elapsed();
 }
 
+#[test]
+#[ignore]
+fn test_commit_memory_matches_cpu() {
+    use crate::prover::memory::commit_memory;
+    use prover::gkr::prover::stages::stage1::commit_trace_part;
+    use prover::gkr::witness_gen::family_circuits::{
+        evaluate_gkr_memory_witness_for_executor_family, GKRMemoryOnlyWitnessTrace,
+    };
+
+    let (fixture, _expected_cpu_proof) =
+        prepare_basic_unrolled_fixture(BasicUnrolledFixtureBuildConfig {
+            binary_path: "examples/basic_fibonacci/app.bin",
+            text_path: "examples/basic_fibonacci/app.text",
+            non_determinism_reads: &[],
+            compute_cpu_reference: false,
+            device_allocator_block_log_size: 20,
+        });
+
+    // Replay to get oracle data for CPU memory trace generation
+    let binary = std::fs::read(test_artifact_path("examples/basic_fibonacci/app.bin")).unwrap();
+    let binary: Vec<_> = binary
+        .as_chunks::<4>()
+        .0
+        .into_iter()
+        .map(|el| u32::from_le_bytes(*el))
+        .collect();
+    let text_section =
+        std::fs::read(test_artifact_path("examples/basic_fibonacci/app.text")).unwrap();
+    let text_section: Vec<_> = text_section
+        .as_chunks::<4>()
+        .0
+        .into_iter()
+        .map(|el| u32::from_le_bytes(*el))
+        .collect();
+    let instructions: Vec<Instruction> =
+        preprocess_bytecode::<FullUnsignedMachineDecoderConfig>(&text_section);
+    let tape = SimpleTape::new(&instructions);
+    let mut ram = RamWithRomRegion::<{ ROM_SECOND_WORD_BITS }>::from_rom_content(&binary, 1 << 30);
+    let cycles_bound = 1 << 20;
+    let mut state =
+        State::initial_with_counters(DelegationsAndFamiliesCounters::default());
+    let mut snapshotter = SimpleSnapshotter::<
+        DelegationsAndFamiliesCounters,
+        { ROM_SECOND_WORD_BITS },
+    >::new_with_cycle_limit(cycles_bound, state);
+    let mut non_determinism = QuasiUARTSource::new_with_reads(vec![]);
+    let is_finished = VM::<DelegationsAndFamiliesCounters>::run_basic_unrolled::<_, _, _, BF>(
+        &mut state,
+        &mut ram,
+        &mut snapshotter,
+        &tape,
+        cycles_bound,
+        &mut non_determinism,
+    );
+    assert!(is_finished);
+
+    let counters = snapshotter.snapshots.last().unwrap().state.counters;
+    let num_calls =
+        counters.get_calls_to_circuit_family::<ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX>();
+    let mut replay_state = snapshotter.initial_snapshot.state;
+    let mut ram_log_buffers = snapshotter
+        .reads_buffer
+        .make_range(0..snapshotter.reads_buffer.len());
+    let mut replay_ram = ReplayerRam::<{ ROM_SECOND_WORD_BITS }> {
+        ram_log: &mut ram_log_buffers,
+    };
+    let mut buffer = vec![NonMemoryOpcodeTracingDataWithTimestamp::default(); num_calls];
+    let mut buffers = vec![&mut buffer[..]];
+    let mut tracer = NonMemDestinationHolder::<ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX> {
+        buffers: &mut buffers[..],
+    };
+    ReplayerVM::<DelegationsAndFamiliesCounters>::replay_basic_unrolled::<_, _, BF>(
+        &mut replay_state,
+        &mut replay_ram,
+        &tape,
+        &mut (),
+        cycles_bound,
+        &mut tracer,
+    );
+    drop(replay_ram);
+
+    let mut preprocessing_data = process_binary_into_separate_tables_ext::<
+        BF,
+        FullUnsignedMachineDecoderConfig,
+        true,
+        Global,
+    >(
+        &text_section,
+        &opcodes_for_full_machine_with_unsigned_mul_div_only_with_mem_word_access_specialization(),
+        1 << 20,
+        &[
+            NON_DETERMINISM_CSR as u16,
+            BLAKE2S_DELEGATION_CSR_REGISTER as u16,
+            BIGINT_OPS_WITH_CONTROL_CSR_REGISTER as u16,
+            KECCAK_SPECIAL5_CSR_REGISTER as u16,
+        ],
+    );
+    let decoder_table_data = preprocessing_data
+        .remove(&ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX)
+        .expect("must have data");
+    let witness_gen_data = decoder_table_data
+        .iter()
+        .map(|entry| entry.unwrap_or_default())
+        .collect_vec();
+
+    // Generate CPU memory trace
+    let worker = Worker::new_with_num_threads(8);
+    let oracle = NonMemoryCircuitOracle {
+        inner: &buffer[..],
+        decoder_table: &witness_gen_data,
+        default_pc_value_in_padding: 4,
+    };
+    let trace_len = fixture.compiled_circuit.trace_len;
+    let num_cycles_per_chunk = 1usize << 24;
+    let cpu_memory_trace =
+        evaluate_gkr_memory_witness_for_executor_family::<BF, _, _, _>(
+            &fixture.compiled_circuit,
+            num_cycles_per_chunk,
+            &oracle,
+            &worker,
+            Global,
+            Global,
+        );
+
+    // Commit on CPU
+    let twiddles: fft::Twiddles<BF, Global> = fft::Twiddles::new(trace_len, &worker);
+    let mem_inputs: Vec<_> = cpu_memory_trace
+        .column_major_trace
+        .iter()
+        .map(|col| &col[..])
+        .collect();
+    let cpu_mem_oracle = commit_trace_part::<BF, DefaultTreeConstructor>(
+        &mem_inputs,
+        &twiddles,
+        fixture.whir_schedule.base_lde_factor,
+        fixture.whir_schedule.whir_steps_schedule[0],
+        fixture.whir_schedule.cap_size,
+        trace_len.trailing_zeros() as usize,
+        &worker,
+    );
+    let mut cpu_transcript = vec![];
+    let cpu_cap: MerkleTreeCapVarLength =
+        ColumnMajorMerkleTreeConstructor::<BF>::get_cap(&cpu_mem_oracle.tree);
+    flatten_merkle_caps_iter_into(Some(cpu_cap).into_iter(), &mut cpu_transcript);
+    drop(cpu_memory_trace);
+    drop(cpu_mem_oracle);
+    eprintln!("CPU memory commitment ready");
+
+    // Commit on GPU
+    let mut transfers = fixture.create_transfers().unwrap();
+    transfers.schedule(&fixture.context).unwrap();
+    transfers
+        .setup_transfer
+        .ensure_transferred(&fixture.context)
+        .unwrap();
+    if let Some(ref decoder_transfer) = transfers.decoder_transfer {
+        decoder_transfer
+            .transfer
+            .ensure_transferred(&fixture.context)
+            .unwrap();
+    }
+    transfers
+        .tracing_data_transfer
+        .transfer
+        .ensure_transferred(&fixture.context)
+        .unwrap();
+
+    let log_lde_factor = fixture.whir_schedule.base_lde_factor.trailing_zeros();
+    let log_rows_per_leaf = fixture.whir_schedule.whir_steps_schedule[0] as u32;
+    let log_tree_cap_size = fixture.whir_schedule.cap_size.trailing_zeros();
+
+    let job = commit_memory(
+        fixture.circuit_type,
+        &fixture.compiled_circuit,
+        transfers
+            .decoder_transfer
+            .as_ref()
+            .map(|t| &t.data_device[..]),
+        &transfers.tracing_data_transfer.data_device,
+        log_lde_factor,
+        log_rows_per_leaf,
+        log_tree_cap_size,
+        &fixture.context,
+    )
+    .unwrap();
+
+    let (gpu_tree_caps, elapsed_ms) = job.finish().unwrap();
+    eprintln!("GPU memory commitment ready in {elapsed_ms:.1}ms");
+
+    let mut gpu_transcript = vec![];
+    flatten_merkle_caps_iter_into(gpu_tree_caps.into_iter(), &mut gpu_transcript);
+
+    assert_eq!(
+        cpu_transcript, gpu_transcript,
+        "GPU memory tree caps must match CPU"
+    );
+    eprintln!("Memory commitment tree caps match!");
+}
+
 #[allow(unused_imports)]
 mod add_sub_lui_auipc_mod {
     use crate::primitives::field::BF;
