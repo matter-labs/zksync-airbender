@@ -17,7 +17,7 @@ pub fn jump_branch_slt_circuit_setup<A: GoodAllocator + 'static, B: GoodAllocato
     let decoder_table = materialize_flattened_decoder_table::<Mersenne31Field>(&decoder_table_data);
 
     let twiddles = Twiddles::get(::jump_branch_slt::DOMAIN_SIZE, &worker);
-    let lde_precomputations = LdePrecomputations::new(
+    let lde_precomputations = LdePrecomputations::get(
         ::jump_branch_slt::DOMAIN_SIZE,
         ::jump_branch_slt::LDE_FACTOR,
         ::jump_branch_slt::LDE_SOURCE_COSETS,

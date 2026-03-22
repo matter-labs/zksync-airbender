@@ -180,7 +180,7 @@ pub struct UnrolledCircuitPrecomputations<A: GoodAllocator, B: GoodAllocator = G
     pub compiled_circuit: cs::one_row_compiler::CompiledCircuitArtifact<Mersenne31Field>,
     pub table_driver: TableDriver<Mersenne31Field>,
     pub twiddles: Arc<Twiddles<Mersenne31Complex, A>>,
-    pub lde_precomputations: LdePrecomputations<A>,
+    pub lde_precomputations: Arc<LdePrecomputations<A>>,
     pub setup: SetupPrecomputations<DEFAULT_TRACE_PADDING_MULTIPLE, A, DefaultTreeConstructor>,
     pub witness_eval_fn_for_gpu_tracer: Option<UnrolledCircuitWitnessEvalFn<B>>,
 }
@@ -191,7 +191,7 @@ pub struct DelegationCircuitPrecomputations<A: GoodAllocator, B: GoodAllocator =
     pub tree_cap_size: usize,
     pub compiled_circuit: DelegationProcessorDescription,
     pub twiddles: Arc<Twiddles<Mersenne31Complex, A>>,
-    pub lde_precomputations: LdePrecomputations<A>,
+    pub lde_precomputations: Arc<LdePrecomputations<A>>,
     pub setup: SetupPrecomputations<DEFAULT_TRACE_PADDING_MULTIPLE, A, DefaultTreeConstructor>,
     pub witness_eval_fn_for_gpu_tracer:
         fn(&mut SimpleWitnessProxy<'_, DelegationCircuitOracle<'_, B>>),

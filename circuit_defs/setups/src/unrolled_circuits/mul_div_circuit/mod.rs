@@ -16,7 +16,7 @@ pub fn mul_div_circuit_setup<A: GoodAllocator + 'static, B: GoodAllocator>(
     let decoder_table = materialize_flattened_decoder_table::<Mersenne31Field>(&decoder_table_data);
 
     let twiddles = Twiddles::get(::mul_div::DOMAIN_SIZE, &worker);
-    let lde_precomputations = LdePrecomputations::new(
+    let lde_precomputations = LdePrecomputations::get(
         ::mul_div::DOMAIN_SIZE,
         ::mul_div::LDE_FACTOR,
         ::mul_div::LDE_SOURCE_COSETS,
