@@ -284,6 +284,7 @@ pub(crate) struct BasicUnrolledFixture {
     pub(crate) decoder_table_host:
         Arc<crate::primitives::static_host::StaticPinnedBox<ExecutorFamilyDecoderData>>,
     pub(crate) tracing_data_host: TracingDataHost<Global>,
+    pub(crate) memory_tree_caps: Vec<MerkleTreeCapVarLength>,
 }
 
 struct BasicUnrolledTransfers<'a> {
@@ -362,6 +363,7 @@ impl BasicUnrolledFixture {
             decoder_transfer,
             None,
             tracing_data_transfer,
+            &self.memory_tree_caps,
             external_pow_challenges,
             &self.context,
         )
@@ -387,6 +389,7 @@ impl BasicUnrolledFixture {
             decoder_transfer,
             None,
             tracing_data_transfer,
+            &self.memory_tree_caps,
             external_pow_challenges,
             &self.context,
         )
@@ -654,6 +657,25 @@ fn prepare_basic_unrolled_fixture(
     let tracing_data_host = make_non_memory_tracing_host_for_test(buffer);
     eprintln!("fixture: tracing host ready");
 
+    // Extract per-coset memory tree caps from the CPU proof (needed for the new prove signature).
+    let memory_tree_caps = if let Some(ref cpu_proof) = expected_cpu_proof {
+        let combined_cap = &cpu_proof.whir_proof.memory_commitment.commitment.cap;
+        let lde_factor = whir_schedule.base_lde_factor;
+        let subcap_size = combined_cap.cap.len() / lde_factor;
+        combined_cap
+            .cap
+            .chunks_exact(subcap_size)
+            .map(|chunk| MerkleTreeCapVarLength {
+                cap: chunk.to_vec(),
+            })
+            .collect_vec()
+    } else {
+        // Profiling fixture without CPU proof: caps will be computed on-GPU as a fallback.
+        // For now use empty caps — profiling tests don't verify proof correctness.
+        let lde_factor = whir_schedule.base_lde_factor;
+        vec![MerkleTreeCapVarLength::default(); lde_factor]
+    };
+
     (
         BasicUnrolledFixture {
             context,
@@ -667,6 +689,7 @@ fn prepare_basic_unrolled_fixture(
             gpu_setup_host,
             decoder_table_host,
             tracing_data_host,
+            memory_tree_caps,
         },
         expected_cpu_proof,
     )
