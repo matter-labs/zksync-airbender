@@ -129,7 +129,7 @@ pub(crate) struct GpuGKRSetupTransferHostKeepalive<'a> {
 
 impl<'a> GpuGKRSetupTransfer<'a> {
     pub(crate) fn new(host: Arc<GpuGKRSetupHost>, context: &ProverContext) -> CudaResult<Self> {
-        let trace_holder = TraceHolder::<BF>::new(
+        let trace_holder = TraceHolder::<BF>::new_without_cosets(
             host.log_domain_size,
             host.log_lde_factor,
             host.log_rows_per_leaf,

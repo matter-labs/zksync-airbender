@@ -156,9 +156,13 @@ impl GpuGKRStage1Output {
         let stage1_range = Range::new("gkr.stage1.generate")?;
         stage1_range.start(stream)?;
 
-        let mut memory_trace_holder = Self::allocate_trace_holder(
+        let mut memory_trace_holder = TraceHolder::new_without_cosets(
+            setup.trace_holder.log_domain_size,
+            setup.trace_holder.log_lde_factor,
+            setup.trace_holder.log_rows_per_leaf,
+            setup.trace_holder.log_tree_cap_size,
             compiled_circuit.memory_layout.total_width,
-            setup,
+            TreesCacheMode::CacheNone,
             context,
         )?;
         let mut witness_trace_holder = Self::allocate_trace_holder(
@@ -296,11 +300,8 @@ impl GpuGKRStage1Output {
         drop(memory_matrix);
         drop(witness_matrix);
 
-        let memory_commit_range = Range::new("gkr.stage1.commit.memory_trace")?;
-        memory_commit_range.start(stream)?;
-        memory_trace_holder.commit_all(context)?;
-        memory_commit_range.end(stream)?;
-        tracing_ranges.push(memory_commit_range);
+        // Memory commit is deferred: cosets and trees are materialized right before WHIR fold
+        // queries. Tree caps for memory are provided externally to prove().
 
         let witness_commit_range = Range::new("gkr.stage1.commit.witness_trace")?;
         witness_commit_range.start(stream)?;
