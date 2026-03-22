@@ -2,6 +2,7 @@
 
 pub(crate) mod decoder;
 pub(crate) mod gkr;
+pub(crate) mod memory;
 mod pow;
 pub(crate) mod proof;
 pub(crate) mod trace_holder;
