@@ -39,7 +39,12 @@ use crate::prover::gkr::setup::{
     GpuGKRForwardSetupHostKeepalive, GpuGKRSetupTransfer, GpuGKRSetupTransferHostKeepalive,
 };
 use crate::prover::gkr::stage1::{GpuGKRStage1Keepalive, GpuGKRStage1Output};
-use crate::prover::trace_holder::flatten_tree_caps;
+use crate::ops::blake2s::Digest;
+use crate::prover::trace_holder::{
+    allocate_tree_caps, allocate_trees, flatten_tree_caps, TreesHolder,
+    PARTIAL_TREE_REDUCTION_LAYERS,
+};
+use prover::merkle_trees::MerkleTreeCapVarLength;
 use crate::prover::tracing_data::{InitsAndTeardownsTransfer, TracingDataTransfer};
 use crate::prover::whir_fold::{
     schedule_gpu_whir_fold_with_sources, take_scheduled_whir_proof, GpuWhirFoldScheduledExecution,
@@ -312,6 +317,7 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
     mut decoder_transfer: Option<DecoderTableTransfer<'a>>,
     inits_and_teardowns_transfer: Option<InitsAndTeardownsTransfer<'a, A>>,
     mut tracing_data_transfer: TracingDataTransfer<'a, A>,
+    memory_tree_caps: &[MerkleTreeCapVarLength],
     external_pow_challenges: Option<GkrExternalPowChallenges>,
     context: &ProverContext,
 ) -> CudaResult<GpuGKRProofJob<'a>> {
@@ -337,6 +343,7 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
         callbacks.extend(inits_and_teardowns_transfer.into_host_keepalive());
     }
 
+    context.reset_used_mem_peak();
     let mut stage1_output = GpuGKRStage1Output::generate(
         circuit_type,
         &compiled_circuit,
@@ -352,17 +359,40 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
     }
     callbacks.extend(tracing_data_transfer.into_host_keepalive());
 
-    let memory_base_caps_keepalive = stage1_output.memory_trace_holder.take_tree_caps_host();
-    let witness_base_caps_keepalive = stage1_output.witness_trace_holder.take_tree_caps_host();
-    let memory_base_caps_accessors = memory_base_caps_keepalive
-        .iter()
-        .map(HostAllocation::get_accessor)
+    // Memory tree caps are provided externally — flatten eagerly for the transcript.
+    let memory_log_lde_factor = stage1_output.memory_trace_holder.log_lde_factor;
+    let memory_log_tree_cap_size = stage1_output.memory_trace_holder.log_tree_cap_size;
+    let flattened_memory_tree_caps = flatten_tree_caps_from_slices(
+        &memory_tree_caps.iter().map(|c| c.cap.as_slice()).collect::<Vec<_>>(),
+        memory_log_lde_factor,
+    );
+
+    // Clone memory tree caps into pool-managed HostAllocations for the WHIR fold (via callback
+    // to respect the stream-ordered allocation contract).
+    let mut memory_base_caps_keepalive =
+        allocate_tree_caps(memory_log_lde_factor, memory_log_tree_cap_size, context);
+    let memory_cap_dst_accessors = memory_base_caps_keepalive
+        .iter_mut()
+        .map(|h| h.get_mut_accessor())
         .collect::<Vec<_>>();
+    let memory_tree_caps_owned: Vec<Vec<Digest>> = memory_tree_caps
+        .iter()
+        .map(|c| c.cap.clone())
+        .collect::<Vec<_>>();
+    callbacks.schedule(
+        move || unsafe {
+            for (src, dst) in memory_tree_caps_owned.iter().zip(memory_cap_dst_accessors.iter()) {
+                dst.get_mut().copy_from_slice(src);
+            }
+        },
+        stream,
+    )?;
+
+    let witness_base_caps_keepalive = stage1_output.witness_trace_holder.take_tree_caps_host();
     let witness_base_caps_accessors = witness_base_caps_keepalive
         .iter()
         .map(HostAllocation::get_accessor)
         .collect::<Vec<_>>();
-    let memory_log_lde_factor = stage1_output.memory_trace_holder.log_lde_factor;
     let witness_log_lde_factor = stage1_output.witness_trace_holder.log_lde_factor;
     let setup_log_lde_factor = setup_transfer.host.log_lde_factor;
     let flattened_setup_tree_caps = flatten_tree_caps_from_slices(
@@ -388,10 +418,7 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
             let mut transcript_input = Vec::new();
             external_challenges_for_seed.flatten_into_buffer(&mut transcript_input);
             transcript_input.extend_from_slice(&flattened_setup_tree_caps);
-            transcript_input.extend(flatten_tree_caps(
-                &memory_base_caps_accessors,
-                memory_log_lde_factor,
-            ));
+            transcript_input.extend_from_slice(&flattened_memory_tree_caps);
             transcript_input.extend(flatten_tree_caps(
                 &witness_base_caps_accessors,
                 witness_log_lde_factor,
@@ -519,6 +546,47 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
         },
         stream,
     )?;
+    // Measure peak device memory before WHIR fold materialization.
+    stream.synchronize()?;
+    let peak_before_whir_materialization = context.get_used_mem_peak();
+    let current_before_whir_materialization = context.get_used_mem_current();
+    eprintln!(
+        "[mem] before WHIR materialization: current={:.2} GB, peak={:.2} GB",
+        current_before_whir_materialization as f64 / (1u64 << 30) as f64,
+        peak_before_whir_materialization as f64 / (1u64 << 30) as f64,
+    );
+    context.reset_used_mem_peak();
+
+    // Materialize deferred cosets for setup and memory right before WHIR fold queries.
+    // Setup: cosets allocated on demand; partial trees already transferred from host.
+    setup_transfer.trace_holder.ensure_cosets_materialized(context)?;
+    // Memory: cosets allocated on demand, then build and cache partial trees from cosets.
+    stage1_output
+        .memory_trace_holder
+        .ensure_cosets_materialized(context)?;
+    {
+        let instances_count = 1usize << stage1_output.memory_trace_holder.log_lde_factor;
+        stage1_output.memory_trace_holder.trees = TreesHolder::Partial(allocate_trees(
+            instances_count,
+            stage1_output.memory_trace_holder.log_domain_size - PARTIAL_TREE_REDUCTION_LAYERS,
+            stage1_output.memory_trace_holder.log_rows_per_leaf,
+            context,
+        )?);
+        stage1_output
+            .memory_trace_holder
+            .build_and_cache_partial_trees(context)?;
+    }
+
+    // Measure peak device memory after WHIR fold materialization.
+    stream.synchronize()?;
+    let peak_after_whir_materialization = context.get_used_mem_peak();
+    let current_after_whir_materialization = context.get_used_mem_current();
+    eprintln!(
+        "[mem] after WHIR materialization: current={:.2} GB, peak={:.2} GB",
+        current_after_whir_materialization as f64 / (1u64 << 30) as f64,
+        peak_after_whir_materialization as f64 / (1u64 << 30) as f64,
+    );
+
     let setup_base_caps_keepalive = setup_transfer.trace_holder.take_tree_caps_host();
     let whir_scheduled = schedule_gpu_whir_fold_with_sources(
         &mut stage1_output.memory_trace_holder,
@@ -652,6 +720,7 @@ pub(crate) fn prove_with_transfer_scheduling<'a, A: GoodAllocator + 'a>(
     mut decoder_transfer: Option<DecoderTableTransfer<'a>>,
     mut inits_and_teardowns_transfer: Option<InitsAndTeardownsTransfer<'a, A>>,
     mut tracing_data_transfer: TracingDataTransfer<'a, A>,
+    memory_tree_caps: &[MerkleTreeCapVarLength],
     external_pow_challenges: Option<GkrExternalPowChallenges>,
     context: &ProverContext,
 ) -> CudaResult<GpuGKRProofJob<'a>> {
@@ -678,6 +747,7 @@ pub(crate) fn prove_with_transfer_scheduling<'a, A: GoodAllocator + 'a>(
         decoder_transfer,
         inits_and_teardowns_transfer,
         tracing_data_transfer,
+        memory_tree_caps,
         external_pow_challenges,
         context,
     )?;
