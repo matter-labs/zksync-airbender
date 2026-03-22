@@ -70,8 +70,8 @@ pub(crate) fn hypercube_evals_to_monomials_3_pass(
     assert_eq!(inputs_matrix.slice().as_ptr() as usize % 16, 0);
     assert_eq!(outputs_matrix.slice().as_ptr() as usize % 16, 0);
     assert_eq!((inputs_matrix.stride() * size_of::<BF>()) % 16, 0);
-    assert_eq!((outputs_matrix.offset() * size_of::<BF>()) % 16, 0);
-    assert_eq!((inputs_matrix.stride() * size_of::<BF>()) % 16, 0);
+    assert_eq!((outputs_matrix.stride() * size_of::<BF>()) % 16, 0);
+    assert_eq!((inputs_matrix.offset() * size_of::<BF>()) % 16, 0);
     assert_eq!((outputs_matrix.offset() * size_of::<BF>()) % 16, 0);
     let num_ntts = outputs_matrix.cols();
     let inputs_slice = inputs_matrix.slice();
@@ -172,8 +172,8 @@ pub(crate) fn hypercube_evals_to_monomials_2_pass(
     assert_eq!(inputs_matrix.slice().as_ptr() as usize % 16, 0);
     assert_eq!(outputs_matrix.slice().as_ptr() as usize % 16, 0);
     assert_eq!((inputs_matrix.stride() * size_of::<BF>()) % 16, 0);
-    assert_eq!((outputs_matrix.offset() * size_of::<BF>()) % 16, 0);
-    assert_eq!((inputs_matrix.stride() * size_of::<BF>()) % 16, 0);
+    assert_eq!((outputs_matrix.stride() * size_of::<BF>()) % 16, 0);
+    assert_eq!((inputs_matrix.offset() * size_of::<BF>()) % 16, 0);
     assert_eq!((outputs_matrix.offset() * size_of::<BF>()) % 16, 0);
     let num_ntts = outputs_matrix.cols();
     let inputs_slice = inputs_matrix.slice();
@@ -203,7 +203,6 @@ pub(crate) fn hypercube_evals_to_monomials_2_pass(
         let threads = 512;
         let blocks = n.get_chunks_count(bf_vals_per_block);
         let mut grid_dim: Dim3 = (blocks as u32).into();
-        // grid_dim.y = num_ntts as u32;
         grid_dim.y = 1;
         let mut config = CudaLaunchConfig::basic(grid_dim, threads as u32, stream);
         config.dynamic_smem_bytes = smem_bytes;
@@ -227,8 +226,7 @@ pub(crate) fn hypercube_evals_to_monomials_2_pass(
         }
         function.launch(&config, &args)?;
         let bf_vals_per_block = 1 << 14; // 16384
-        let smem_twiddles_per_block = 1 << 13; // 8192
-        let smem_bytes = (bf_vals_per_block + smem_twiddles_per_block) * size_of::<BF>();
+        let smem_bytes = bf_vals_per_block * size_of::<BF>();
         let threads = 512;
         let blocks = n.get_chunks_count(bf_vals_per_block);
         let mut config = CudaLaunchConfig::basic(blocks as u32, threads as u32, stream);

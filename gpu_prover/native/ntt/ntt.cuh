@@ -215,10 +215,10 @@ template <int GROUP> DEVICE_FORCEINLINE void exchg_pipeline_group(bf *vals, cons
 }
 
 template <int GROUP> DEVICE_FORCEINLINE void exchg_pipeline_group_hypercube(bf *vals) {
- vals[GROUP + 16] = bf::sub(vals[GROUP + 16], vals[GROUP]);
- vals[GROUP + 24] = bf::sub(vals[GROUP + 24], vals[GROUP + 8]);
- vals[GROUP + 8] = bf::sub(vals[GROUP + 8], vals[GROUP]);
- vals[GROUP + 24] = bf::sub(vals[GROUP + 24], vals[GROUP + 16]);
+  vals[GROUP + 16] = bf::sub(vals[GROUP + 16], vals[GROUP]);
+  vals[GROUP + 24] = bf::sub(vals[GROUP + 24], vals[GROUP + 8]);
+  vals[GROUP + 8] = bf::sub(vals[GROUP + 8], vals[GROUP]);
+  vals[GROUP + 24] = bf::sub(vals[GROUP + 24], vals[GROUP + 16]);
 }
 
 template <int GROUP, int IL_GMEM_STRIDE, int PL_GROUP_SIZE, int PL_STRIDE>

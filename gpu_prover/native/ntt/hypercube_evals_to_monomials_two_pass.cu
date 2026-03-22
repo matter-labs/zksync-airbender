@@ -2,6 +2,7 @@
 
 namespace airbender::ntt {
 
+// For log_n = 2^24 only. log_n argument is only present for API symmetry.
 EXTERN __launch_bounds__(512, 1) __global__
     void ab_hypercube_evals_to_monomials_first_10_stages_kernel(bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out,
                                                                 const int log_n, const int start_stage /*unused, for symmetry with three-pass API*/) {
@@ -76,6 +77,7 @@ EXTERN __launch_bounds__(512, 1) __global__
     gmem_out.set_at_row(row, vals[i]); // write consecutive gmem tiles
 }
 
+// For log_n = 2^23 only. log_n argument is only present for API symmetry.
 EXTERN __launch_bounds__(512, 1) __global__
     void ab_hypercube_evals_to_monomials_first_9_stages_kernel(bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out,
                                                                const int log_n, const int start_stage /*unused, for symmetry with three-pass API*/) {
@@ -96,9 +98,6 @@ EXTERN __launch_bounds__(512, 1) __global__
   const int gmem_block_offset = blockIdx.x << LOG_DATA_TILE_SIZE;
   gmem_in.add_row(gmem_block_offset);
   gmem_out.add_row(gmem_block_offset);
-
-  gmem_in.add_col(blockIdx.y);
-  gmem_out.add_col(blockIdx.y);
 
   extern __shared__ bf smem_block[]; // 16384 * 4 bytes
 

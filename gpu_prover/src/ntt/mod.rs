@@ -24,7 +24,6 @@ pub(crate) use ntt::{
 };
 
 mod hypercube;
-#[allow(unused)]
 pub use hypercube::hypercube_natural_evals_to_bitreversed_monomials;
 #[cfg(test)]
 pub(crate) use hypercube::{

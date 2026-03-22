@@ -9,8 +9,7 @@ use prover::transcript::Seed;
 
 use crate::allocator::tracker::AllocationPlacement;
 use crate::ntt::{
-    bitreversed_monomials_to_natural_evals, hypercube_evals_natural_to_bitreversed_coeffs,
-    hypercube_natural_evals_to_bitreversed_monomials,
+    bitreversed_monomials_to_natural_evals, hypercube_natural_evals_to_bitreversed_monomials,
 };
 use crate::ops::blake2s::{
     Digest, build_merkle_tree, build_merkle_tree_nodes, gather_leaf_rows,

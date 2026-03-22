@@ -96,8 +96,8 @@ pub(crate) fn evals_to_monomials_3_pass(
     assert_eq!(inputs_matrix.slice().as_ptr() as usize % 16, 0);
     assert_eq!(outputs_matrix.slice().as_ptr() as usize % 16, 0);
     assert_eq!((inputs_matrix.stride() * size_of::<BF>()) % 16, 0);
-    assert_eq!((outputs_matrix.offset() * size_of::<BF>()) % 16, 0);
-    assert_eq!((inputs_matrix.stride() * size_of::<BF>()) % 16, 0);
+    assert_eq!((outputs_matrix.stride() * size_of::<BF>()) % 16, 0);
+    assert_eq!((inputs_matrix.offset() * size_of::<BF>()) % 16, 0);
     assert_eq!((outputs_matrix.offset() * size_of::<BF>()) % 16, 0);
     let num_ntts = outputs_matrix.cols();
     let inputs_slice = inputs_matrix.slice();
@@ -190,8 +190,8 @@ pub(crate) fn evals_to_monomials_2_pass(
     assert_eq!(inputs_matrix.slice().as_ptr() as usize % 16, 0);
     assert_eq!(outputs_matrix.slice().as_ptr() as usize % 16, 0);
     assert_eq!((inputs_matrix.stride() * size_of::<BF>()) % 16, 0);
-    assert_eq!((outputs_matrix.offset() * size_of::<BF>()) % 16, 0);
-    assert_eq!((inputs_matrix.stride() * size_of::<BF>()) % 16, 0);
+    assert_eq!((outputs_matrix.stride() * size_of::<BF>()) % 16, 0);
+    assert_eq!((inputs_matrix.offset() * size_of::<BF>()) % 16, 0);
     assert_eq!((outputs_matrix.offset() * size_of::<BF>()) % 16, 0);
     let num_ntts = outputs_matrix.cols();
     let inputs_slice = inputs_matrix.slice();
@@ -285,8 +285,8 @@ pub(crate) fn monomials_to_evals_3_pass(
     assert_eq!(inputs_matrix.slice().as_ptr() as usize % 16, 0);
     assert_eq!(outputs_matrix.slice().as_ptr() as usize % 16, 0);
     assert_eq!((inputs_matrix.stride() * size_of::<BF>()) % 16, 0);
-    assert_eq!((outputs_matrix.offset() * size_of::<BF>()) % 16, 0);
-    assert_eq!((inputs_matrix.stride() * size_of::<BF>()) % 16, 0);
+    assert_eq!((outputs_matrix.stride() * size_of::<BF>()) % 16, 0);
+    assert_eq!((inputs_matrix.offset() * size_of::<BF>()) % 16, 0);
     assert_eq!((outputs_matrix.offset() * size_of::<BF>()) % 16, 0);
     let num_ntts = outputs_matrix.cols();
     let inputs_slice = inputs_matrix.slice();
@@ -376,8 +376,8 @@ pub(crate) fn monomials_to_evals_2_pass(
     assert_eq!(inputs_matrix.slice().as_ptr() as usize % 16, 0);
     assert_eq!(outputs_matrix.slice().as_ptr() as usize % 16, 0);
     assert_eq!((inputs_matrix.stride() * size_of::<BF>()) % 16, 0);
-    assert_eq!((outputs_matrix.offset() * size_of::<BF>()) % 16, 0);
-    assert_eq!((inputs_matrix.stride() * size_of::<BF>()) % 16, 0);
+    assert_eq!((outputs_matrix.stride() * size_of::<BF>()) % 16, 0);
+    assert_eq!((inputs_matrix.offset() * size_of::<BF>()) % 16, 0);
     assert_eq!((outputs_matrix.offset() * size_of::<BF>()) % 16, 0);
     let num_ntts = outputs_matrix.cols();
     let inputs_slice = inputs_matrix.slice();
