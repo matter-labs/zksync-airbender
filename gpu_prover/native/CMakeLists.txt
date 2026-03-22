@@ -23,6 +23,10 @@ set_target_properties(gpu_prover_native PROPERTIES CUDA_RESOLVE_DEVICE_SYMBOLS O
 if (AB_DETERMINISTIC_POW)
     target_compile_definitions(gpu_prover_native PRIVATE AB_DETERMINISTIC_POW=1)
 endif ()
+# CCCL headers in CUDA 12+ require MSVC's standard conforming preprocessor.
+if (MSVC)
+    target_compile_options(gpu_prover_native PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/Zc:preprocessor>)
+endif ()
 target_compile_options(gpu_prover_native PRIVATE --expt-relaxed-constexpr)
 target_compile_options(gpu_prover_native PRIVATE --ptxas-options=-v)
 #target_compile_options(gpu_prover_native PRIVATE -lineinfo)
