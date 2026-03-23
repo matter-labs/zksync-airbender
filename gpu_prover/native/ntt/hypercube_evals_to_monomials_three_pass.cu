@@ -25,7 +25,6 @@ EXTERN __launch_bounds__(512, 2) __global__
   gmem_in.add_row(gmem_block_offset);
   gmem_out.add_row(gmem_block_offset);
 
-  // __shared__ bf smem_block[49152];
   __shared__ bf smem_block[8192];
 
   bf vals[VALS_PER_THREAD];

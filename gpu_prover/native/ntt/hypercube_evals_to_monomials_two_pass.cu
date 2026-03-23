@@ -221,12 +221,6 @@ EXTERN __launch_bounds__(512, 1) __global__
     for (int i{0}, row{lane_id}; i < VALS_PER_THREAD; i++, row += WARP_SIZE)
       gmem_out.set_at_row(row, vals[i]);
   } else {
-    // uncoalesced, but vectorized and should fire off quickly
-    //     uint4 *gmem_monomials_out_ptr = reinterpret_cast<uint4 *>(gmem_out.ptr + 32 * lane_id);
-    // #pragma unroll
-    //     for (int i{0}; i < 32; i += 4, gmem_monomials_out_ptr++)
-    //       *gmem_monomials_out_ptr = {vals[i].limb, vals[i + 1].limb, vals[i + 2].limb, vals[i + 3].limb};
-
     // un-swizzling + coalesced stores performs better on 5090
     __syncwarp();
 #pragma unroll
