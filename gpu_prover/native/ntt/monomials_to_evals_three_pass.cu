@@ -25,7 +25,6 @@ EXTERN __launch_bounds__(512, 2) __global__
   gmem_in.add_row(gmem_block_offset);
   gmem_out.add_row(gmem_block_offset);
 
-  // __shared__ bf smem_block[49152];
   __shared__ bf smem_block[8192];
 
   bf vals[VALS_PER_THREAD];
@@ -70,16 +69,13 @@ EXTERN __launch_bounds__(512, 2) __global__
   for (int i{0}, addr{thread_il_smem_start}; i < VALS_PER_THREAD; i++, addr += TILE_SIZE * THREAD_TILES_PER_BLOCK)
     vals[i] = smem_block[addr]; // read interleaved smem tiles
 
-  int block_exchg_region_offset = alternating_block_idx_y << 3;
   if (start_stage == log_n - 8) {
-    reg_exchg_fwd<1, 2, 8>(vals, block_exchg_region_offset);
-    block_exchg_region_offset >>= 1;
-    reg_exchg_fwd<2, 4, 4>(vals, block_exchg_region_offset);
-    block_exchg_region_offset >>= 1;
-    reg_exchg_fwd<4, 8, 2>(vals, block_exchg_region_offset);
-    block_exchg_region_offset >>= 1;
-    reg_exchg_fwd<8, 16, 1>(vals, block_exchg_region_offset);
+    reg_exchg_fwd<1, 2, 8>(vals);
+    reg_exchg_fwd<2, 4, 4>(vals);
+    reg_exchg_fwd<4, 8, 2>(vals);
+    reg_exchg_final_fwd<8>(vals);
   } else {
+    int block_exchg_region_offset = alternating_block_idx_y << 3;
     reg_exchg_cmem_twiddles_fwd<1, 2, 8>(vals, block_exchg_region_offset);
     block_exchg_region_offset >>= 1;
     reg_exchg_cmem_twiddles_fwd<2, 4, 4>(vals, block_exchg_region_offset);
