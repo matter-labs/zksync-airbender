@@ -7,7 +7,7 @@ use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::CudaStream;
 use era_cudart_sys::{cudaFuncSetAttribute, CudaFuncAttribute};
 
-use super::bitreversed_coeffs_to_natural_coset;
+use super::{bitreversed_coeffs_to_natural_coset, MIN_LOG_N_FOR_MULTISTAGE_KERNELS};
 
 use crate::device_structures::{
     DeviceMatrixChunk, DeviceMatrixChunkImpl, DeviceMatrixChunkMut, DeviceMatrixChunkMutImpl,
@@ -473,7 +473,7 @@ pub fn bitreversed_monomials_to_natural_evals(
     stream: &CudaStream,
     device_properties: &DeviceProperties,
 ) -> CudaResult<()> {
-    if log_n < 21 {
+    if log_n < MIN_LOG_N_FOR_MULTISTAGE_KERNELS {
         // Fallback (uses 1 stage at a time kernels)
         assert!(
             !transposed_monomials,

@@ -77,6 +77,11 @@ cuda_kernel!(
     )
 );
 
+cuda_kernel!(
+    TransposeMonomialsNaive,
+    ab_transpose_monomials_naive_kernel(values: *mut BF, log_n: u32,)
+);
+
 fn launch_dims(count: usize) -> (era_cudart::execution::Dim3, era_cudart::execution::Dim3) {
     assert!(count <= u32::MAX as usize);
     get_grid_block_dims_for_threads_count(256, count as u32)
@@ -163,6 +168,17 @@ fn launch_natural_evals_to_bitreversed_coeffs_ntt_stage(
     NaturalEvalsToBitreversedCoeffsNttStageFunction::default().launch(&config, &args)
 }
 
+fn launch_transpose_monomials_naive(
+    values: &mut DeviceSlice<BF>,
+    log_n: usize,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    let tile_count = 1usize << (log_n - 10);
+    let config = CudaLaunchConfig::basic(tile_count as u32, 32, stream);
+    let args = TransposeMonomialsNaiveArguments::new(values.as_mut_ptr(), log_n as u32);
+    TransposeMonomialsNaiveFunction::default().launch(&config, &args)
+}
+
 pub(crate) fn hypercube_evals_natural_to_bitreversed_coeffs(
     src: &DeviceSlice<BF>,
     dst: &mut DeviceSlice<BF>,
@@ -224,6 +240,18 @@ pub(crate) fn natural_evals_to_bitreversed_coeffs(
     Ok(())
 }
 
+#[allow(unused)]
+pub(crate) fn transpose_monomials_naive(
+    values: &mut DeviceSlice<BF>,
+    log_n: usize,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    assert!(log_n <= OMEGA_LOG_ORDER as usize);
+    assert!(log_n >= 10);
+    assert_eq!(values.len(), 1usize << log_n);
+    launch_transpose_monomials_naive(values, log_n, stream)
+}
+
 pub(crate) fn bitreversed_coeffs_to_natural_coset(
     src: &DeviceSlice<BF>,
     dst: &mut DeviceSlice<BF>,
@@ -251,4 +279,10 @@ pub(crate) fn bitreversed_coeffs_to_natural_coset(
         launch_bitreversed_coeffs_to_natural_ntt_stage(dst, log_n, stage, stream)?;
     }
     Ok(())
+}
+
+pub(crate) const MIN_LOG_N_FOR_MULTISTAGE_KERNELS: usize = 21;
+
+pub fn log_size_supports_transposed_monomials(log_n: usize) -> bool {
+    log_n >= MIN_LOG_N_FOR_MULTISTAGE_KERNELS
 }

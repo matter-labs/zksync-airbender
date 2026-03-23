@@ -24,7 +24,7 @@ use super::{
     hypercube_coeffs_natural_to_natural_evals, hypercube_evals_natural_to_bitreversed_coeffs,
     hypercube_evals_to_monomials_2_pass, hypercube_evals_to_monomials_3_pass,
     monomials_to_evals_2_pass, monomials_to_evals_3_pass, natural_evals_to_bitreversed_coeffs,
-    OMEGA_LOG_ORDER,
+    transpose_monomials_naive, OMEGA_LOG_ORDER,
 };
 use crate::allocator::tracker::AllocationPlacement;
 use crate::device_context::DeviceContext;
@@ -225,6 +225,31 @@ fn bitreversed_coeffs_to_natural_coset_matches_cpu() {
                 );
             }
         }
+    }
+}
+
+#[test]
+#[cfg(not(no_cuda))]
+#[serial]
+fn transpose_monomials_naive_matches_cpu() {
+    let context = make_context();
+    let stream = context.get_exec_stream();
+
+    for &log_n in &[10usize, 12, 14] {
+        let n = 1usize << log_n;
+        let mut expected = (0..n)
+            .map(|idx| BF::new((37 + idx * 31) as u32))
+            .collect::<Vec<_>>();
+        let mut actual = expected.clone();
+        transpose_monomials(&mut expected);
+
+        let mut values = context.alloc(n, AllocationPlacement::BestFit).unwrap();
+        memory_copy_async(&mut values, &actual, stream).unwrap();
+        transpose_monomials_naive(&mut values, log_n, stream).unwrap();
+        memory_copy_async(&mut actual, &values, stream).unwrap();
+        stream.synchronize().unwrap();
+
+        assert_eq!(actual, expected, "log_n={}", log_n);
     }
 }
 
@@ -435,7 +460,7 @@ fn run_monomials_to_evals(
         HostAllocation::<BF>::alloc(max_memory_size, CudaHostAllocFlags::DEFAULT).unwrap();
     let mut outputs_host =
         HostAllocation::<BF>::alloc(max_memory_size, CudaHostAllocFlags::DEFAULT).unwrap();
-    let mut flush_l2_host =
+    let flush_l2_host =
         HostAllocation::<BF>::alloc(flush_l2_size, CudaHostAllocFlags::DEFAULT).unwrap();
     let mut inputs_device = DeviceAllocation::<BF>::alloc(max_memory_size).unwrap();
     let mut outputs_device = DeviceAllocation::<BF>::alloc(max_memory_size).unwrap();

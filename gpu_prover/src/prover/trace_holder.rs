@@ -10,10 +10,11 @@ use prover::transcript::Seed;
 use crate::allocator::tracker::AllocationPlacement;
 use crate::ntt::{
     bitreversed_monomials_to_natural_evals, hypercube_natural_evals_to_bitreversed_monomials,
+    log_size_supports_transposed_monomials,
 };
 use crate::ops::blake2s::{
-    Digest, build_merkle_tree, build_merkle_tree_nodes, gather_leaf_rows,
-    gather_merkle_paths_device, gather_merkle_paths_from_rows, merkle_tree_cap,
+    build_merkle_tree, build_merkle_tree_nodes, gather_leaf_rows, gather_merkle_paths_device,
+    gather_merkle_paths_from_rows, merkle_tree_cap, Digest,
 };
 use crate::primitives::context::{DeviceAllocation, HostAllocation, ProverContext, UnsafeAccessor};
 use crate::primitives::device_structures::{DeviceMatrix, DeviceMatrixMut};
@@ -233,20 +234,16 @@ impl TraceHolder<BF> {
 
         let mut coeff_scratch = context.alloc(domain_size, AllocationPlacement::BestFit)?;
         let stream = context.get_exec_stream();
+        let use_transposed_monomials =
+            log_size_supports_transposed_monomials(self.log_domain_size as usize);
         for column in 0..self.columns_count {
             let offset = column * domain_size;
             let source_column = &source[offset..offset + domain_size];
-            // hypercube_evals_natural_to_bitreversed_coeffs(
-            //     source_column,
-            //     &mut coeff_scratch,
-            //     self.log_domain_size as usize,
-            //     stream,
-            // )?;
             hypercube_natural_evals_to_bitreversed_monomials(
                 source_column,
                 &mut coeff_scratch[0..domain_size],
                 self.log_domain_size as usize,
-                true, // transposed_monomials
+                use_transposed_monomials,
                 stream,
                 context.get_device_properties(),
             )?;
@@ -264,7 +261,7 @@ impl TraceHolder<BF> {
                             self.log_domain_size as usize,
                             self.log_lde_factor as usize,
                             coset_index,
-                            true, // transposed_monomials
+                            use_transposed_monomials,
                             stream,
                             context.get_device_properties(),
                         )?;
@@ -713,12 +710,12 @@ pub(crate) fn get_tree_caps(
 mod test {
     use std::alloc::Global;
 
-    use blake2s_u32::{BLAKE2S_BLOCK_SIZE_U32_WORDS, BLAKE2S_DIGEST_SIZE_U32_WORDS, Blake2sState};
+    use blake2s_u32::{Blake2sState, BLAKE2S_BLOCK_SIZE_U32_WORDS, BLAKE2S_DIGEST_SIZE_U32_WORDS};
     use era_cudart::memory::memory_copy_async;
     use field::{Field, PrimeField};
     use prover::gkr::whir::hypercube_to_monomial::multivariate_coeffs_into_hypercube_evals;
-    use prover::merkle_trees::ColumnMajorMerkleTreeConstructor;
     use prover::merkle_trees::blake2s_for_everything_tree::Blake2sU32MerkleTreeWithCap;
+    use prover::merkle_trees::ColumnMajorMerkleTreeConstructor;
     use serial_test::serial;
     use worker::Worker;
 
