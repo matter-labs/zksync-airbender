@@ -1,5 +1,4 @@
 use super::gkr::{
-    GpuGKRStorage,
     backward::{
         GpuGKRDimensionReducingBackwardState, GpuGKRDimensionReducingSumcheckLayerPlan,
         GpuGKRMainLayerKernelKind, GpuGKRMainLayerSumcheckLayerPlan,
@@ -8,9 +7,10 @@ use super::gkr::{
     forward::schedule_forward_pass,
     setup::{GpuGKRSetupHost, GpuGKRSetupTransfer},
     stage1::GpuGKRStage1Output,
+    GpuGKRStorage,
 };
 use crate::allocator::tracker::AllocationPlacement;
-use crate::ops::simple::{SetByRef, set_by_ref};
+use crate::ops::simple::{set_by_ref, SetByRef};
 use crate::primitives::circuit_type::{
     CircuitType, UnrolledCircuitType, UnrolledNonMemoryCircuitType,
 };
@@ -19,8 +19,9 @@ use crate::primitives::field::{BF, E4};
 use crate::primitives::nvtx_registered::start_registered_range;
 use crate::primitives::static_host::alloc_static_pinned_box_from_slice;
 use crate::prover::decoder::DecoderTableTransfer;
+use crate::prover::memory::commit_memory;
 use crate::prover::proof::{
-    GkrExternalPowChallenges, GpuGKRProofJob, prove, prove_with_transfer_scheduling,
+    prove, prove_with_transfer_scheduling, GkrExternalPowChallenges, GpuGKRProofJob,
 };
 use crate::prover::test_utils::{
     make_test_context, make_test_context_with_device_allocator_block_log_size,
@@ -55,8 +56,9 @@ use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 use fft::{
-    Twiddles, batch_inverse_inplace, bitreverse_enumeration_inplace, domain_generator_for_size,
+    batch_inverse_inplace, bitreverse_enumeration_inplace, domain_generator_for_size,
     materialize_powers_serial_starting_with_elem, materialize_powers_serial_starting_with_one,
+    Twiddles,
 };
 use field::baby_bear::base::BabyBearField;
 use field::baby_bear::ext4::BabyBearExt4;
@@ -87,12 +89,12 @@ use prover::gkr::sumcheck::evaluation_kernels::{
     SameSizeProductGKRRelation,
 };
 use prover::gkr::whir::{
-    ColumnMajorBaseOracleForLDE, ColumnMajorExtensionOracleForCoset,
-    ColumnMajorExtensionOracleForLDE, WhirCommitment, WhirPolyCommitProof, whir_fold,
+    whir_fold, ColumnMajorBaseOracleForLDE, ColumnMajorExtensionOracleForCoset,
+    ColumnMajorExtensionOracleForLDE, WhirCommitment, WhirPolyCommitProof,
 };
 use prover::gkr::witness_gen::family_circuits::{
-    GKRFullWitnessTrace, GKRMemoryOnlyWitnessTrace,
     evaluate_gkr_memory_witness_for_executor_family, evaluate_gkr_witness_for_executor_family,
+    GKRFullWitnessTrace, GKRMemoryOnlyWitnessTrace,
 };
 use prover::gkr::witness_gen::oracles::NonMemoryCircuitOracle;
 use prover::merkle_trees::{
@@ -101,8 +103,8 @@ use prover::merkle_trees::{
 use prover::query_utils::assemble_query_index;
 use prover::transcript::Seed;
 use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
+use riscv_transpiler::ir::simple_instruction_set::{preprocess_bytecode, Instruction};
 use riscv_transpiler::ir::FullUnsignedMachineDecoderConfig;
-use riscv_transpiler::ir::simple_instruction_set::{Instruction, preprocess_bytecode};
 use riscv_transpiler::replayer::{ReplayerRam, ReplayerVM};
 use riscv_transpiler::vm::{
     Counters, DelegationsAndFamiliesCounters, RamWithRomRegion, ReplayBuffer, SimpleSnapshotter,
@@ -284,6 +286,7 @@ pub(crate) struct BasicUnrolledFixture {
     pub(crate) decoder_table_host:
         Arc<crate::primitives::static_host::StaticPinnedBox<ExecutorFamilyDecoderData>>,
     pub(crate) tracing_data_host: TracingDataHost<Global>,
+    pub(crate) memory_tree_caps: Vec<MerkleTreeCapVarLength>,
 }
 
 struct BasicUnrolledTransfers<'a> {
@@ -362,6 +365,7 @@ impl BasicUnrolledFixture {
             decoder_transfer,
             None,
             tracing_data_transfer,
+            &self.memory_tree_caps,
             external_pow_challenges,
             &self.context,
         )
@@ -387,6 +391,7 @@ impl BasicUnrolledFixture {
             decoder_transfer,
             None,
             tracing_data_transfer,
+            &self.memory_tree_caps,
             external_pow_challenges,
             &self.context,
         )
@@ -654,6 +659,71 @@ fn prepare_basic_unrolled_fixture(
     let tracing_data_host = make_non_memory_tracing_host_for_test(buffer);
     eprintln!("fixture: tracing host ready");
 
+    let compute_memory_tree_caps_for_fixture = || {
+        let mut setup_transfer =
+            GpuGKRSetupTransfer::new(Arc::clone(&gpu_setup_host), &context).unwrap();
+        let mut decoder_transfer = if compiled_circuit.has_decoder_lookup {
+            Some(DecoderTableTransfer::new(Arc::clone(&decoder_table_host), &context).unwrap())
+        } else {
+            None
+        };
+        let mut tracing_data_transfer =
+            TracingDataTransfer::new(tracing_data_host.clone(), &context).unwrap();
+
+        setup_transfer.schedule_transfer(&context).unwrap();
+        if let Some(decoder_transfer) = decoder_transfer.as_mut() {
+            decoder_transfer.schedule_transfer(&context).unwrap();
+        }
+        tracing_data_transfer.schedule_transfer(&context).unwrap();
+
+        setup_transfer.ensure_transferred(&context).unwrap();
+        if let Some(decoder_transfer) = decoder_transfer.as_ref() {
+            decoder_transfer
+                .transfer
+                .ensure_transferred(&context)
+                .unwrap();
+        }
+        tracing_data_transfer
+            .transfer
+            .ensure_transferred(&context)
+            .unwrap();
+
+        let log_lde_factor = whir_schedule.base_lde_factor.trailing_zeros();
+        let log_rows_per_leaf = whir_schedule.whir_steps_schedule[0] as u32;
+        let log_tree_cap_size = whir_schedule.cap_size.trailing_zeros();
+        let job = commit_memory(
+            CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
+                UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop,
+            )),
+            &compiled_circuit,
+            decoder_transfer.as_ref().map(|t| &t.data_device[..]),
+            &tracing_data_transfer.data_device,
+            log_lde_factor,
+            log_rows_per_leaf,
+            log_tree_cap_size,
+            &context,
+        )
+        .unwrap();
+        let (tree_caps, _) = job.finish().unwrap();
+        tree_caps
+    };
+
+    // Extract per-coset memory tree caps from the CPU proof (needed for the new prove signature).
+    let memory_tree_caps = if let Some(ref cpu_proof) = expected_cpu_proof {
+        let combined_cap = &cpu_proof.whir_proof.memory_commitment.commitment.cap;
+        let lde_factor = whir_schedule.base_lde_factor;
+        let subcap_size = combined_cap.cap.len() / lde_factor;
+        combined_cap
+            .cap
+            .chunks_exact(subcap_size)
+            .map(|chunk| MerkleTreeCapVarLength {
+                cap: chunk.to_vec(),
+            })
+            .collect_vec()
+    } else {
+        compute_memory_tree_caps_for_fixture()
+    };
+
     (
         BasicUnrolledFixture {
             context,
@@ -667,6 +737,7 @@ fn prepare_basic_unrolled_fixture(
             gpu_setup_host,
             decoder_table_host,
             tracing_data_host,
+            memory_tree_caps,
         },
         expected_cpu_proof,
     )
@@ -1780,11 +1851,8 @@ fn build_basic_unrolled_async_backward_fixture_from_base(
     );
     let mut seed = Transcript::commit_initial(&transcript_input);
     let challenges: Vec<E4> = draw_random_field_els::<BF, E4>(&mut seed, 3);
-    let [
-        lookup_alpha,
-        lookup_additive_part,
-        constraints_batch_challenge,
-    ] = challenges.try_into().unwrap();
+    let [lookup_alpha, lookup_additive_part, constraints_batch_challenge] =
+        challenges.try_into().unwrap();
     unsafe {
         lookup_challenges_host
             .get_mut_accessor()
@@ -1827,20 +1895,12 @@ fn build_basic_unrolled_async_backward_fixture_from_base(
     let batching_challenge = challenges.pop().unwrap();
     let evaluation_point = challenges;
 
-    let [
-        claim_readset,
-        claim_writeset,
-        claim_rangechecknum,
-        claim_rangecheckden,
-        claim_timechecknum,
-        claim_timecheckden,
-        claim_lookupnum,
-        claim_lookupden,
-    ] = compute_initial_sumcheck_claims_from_explicit_evaluations_for_test(
-        &gpu_final_explicit_evaluations,
-        &evaluation_point,
-        &worker,
-    );
+    let [claim_readset, claim_writeset, claim_rangechecknum, claim_rangecheckden, claim_timechecknum, claim_timecheckden, claim_lookupnum, claim_lookupden] =
+        compute_initial_sumcheck_claims_from_explicit_evaluations_for_test(
+            &gpu_final_explicit_evaluations,
+            &evaluation_point,
+            &worker,
+        );
 
     let output_layer_for_sumcheck = gpu_forward_output
         .dimension_reducing_inputs
@@ -3864,11 +3924,8 @@ fn forward_to_backward_handoff_releases_forward_scratch() {
     );
     let mut seed = Transcript::commit_initial(&transcript_input);
     let challenges: Vec<E4> = draw_random_field_els::<BF, E4>(&mut seed, 3);
-    let [
-        lookup_alpha,
-        lookup_additive_part,
-        constraints_batch_challenge,
-    ] = challenges.try_into().unwrap();
+    let [lookup_alpha, lookup_additive_part, constraints_batch_challenge] =
+        challenges.try_into().unwrap();
     unsafe {
         lookup_challenges_host
             .get_mut_accessor()
@@ -4438,11 +4495,8 @@ fn run_basic_unrolled_workflow_input_parity_test() {
         "lookup challenges diverged after matching transcript inputs",
     );
 
-    let [
-        lookup_alpha,
-        lookup_additive_part,
-        constraints_batch_challenge,
-    ]: [E4; 3] = cpu_lookup_challenges.try_into().unwrap();
+    let [lookup_alpha, lookup_additive_part, constraints_batch_challenge]: [E4; 3] =
+        cpu_lookup_challenges.try_into().unwrap();
     let mut lookup_challenges_host = unsafe { context.alloc_host_uninit_slice(3) };
     unsafe {
         lookup_challenges_host
@@ -4917,11 +4971,8 @@ fn run_basic_unrolled_stagewise_parity_test() {
 
     let mut seed = Transcript::commit_initial(&transcript_input);
     let challenges: Vec<E4> = draw_random_field_els::<BF, E4>(&mut seed, 3);
-    let [
-        lookup_alpha,
-        lookup_additive_part,
-        constraints_batch_challenge,
-    ] = challenges.try_into().unwrap();
+    let [lookup_alpha, lookup_additive_part, constraints_batch_challenge] =
+        challenges.try_into().unwrap();
 
     let mut lookup_challenges_host = unsafe { context.alloc_host_uninit_slice(3) };
     let lookup_challenges = [
@@ -5092,16 +5143,8 @@ fn run_basic_unrolled_stagewise_parity_test() {
         &worker,
     );
     assert_eq!(gpu_initial_claims, cpu_initial_claims);
-    let [
-        claim_readset,
-        claim_writeset,
-        claim_rangechecknum,
-        claim_rangecheckden,
-        claim_timechecknum,
-        claim_timecheckden,
-        claim_lookupnum,
-        claim_lookupden,
-    ] = cpu_initial_claims;
+    let [claim_readset, claim_writeset, claim_rangechecknum, claim_rangecheckden, claim_timechecknum, claim_timecheckden, claim_lookupnum, claim_lookupden] =
+        cpu_initial_claims;
     let gpu_backward_state = gpu_forward_output.into_dimension_reducing_backward_state();
 
     let output_map = output_layer_for_sumcheck;
@@ -5494,16 +5537,213 @@ fn run_basic_unrolled_stagewise_parity_test() {
     let _elapsed = now.elapsed();
 }
 
+#[test]
+#[ignore]
+fn test_commit_memory_matches_cpu() {
+    use crate::prover::memory::commit_memory;
+    use prover::gkr::prover::stages::stage1::commit_trace_part;
+    use prover::gkr::witness_gen::family_circuits::{
+        evaluate_gkr_memory_witness_for_executor_family, GKRMemoryOnlyWitnessTrace,
+    };
+
+    let (fixture, _expected_cpu_proof) =
+        prepare_basic_unrolled_fixture(BasicUnrolledFixtureBuildConfig {
+            binary_path: "examples/basic_fibonacci/app.bin",
+            text_path: "examples/basic_fibonacci/app.text",
+            non_determinism_reads: &[],
+            compute_cpu_reference: false,
+            device_allocator_block_log_size: 20,
+        });
+
+    // Replay to get oracle data for CPU memory trace generation
+    let binary = std::fs::read(test_artifact_path("examples/basic_fibonacci/app.bin")).unwrap();
+    let binary: Vec<_> = binary
+        .as_chunks::<4>()
+        .0
+        .into_iter()
+        .map(|el| u32::from_le_bytes(*el))
+        .collect();
+    let text_section =
+        std::fs::read(test_artifact_path("examples/basic_fibonacci/app.text")).unwrap();
+    let text_section: Vec<_> = text_section
+        .as_chunks::<4>()
+        .0
+        .into_iter()
+        .map(|el| u32::from_le_bytes(*el))
+        .collect();
+    let instructions: Vec<Instruction> =
+        preprocess_bytecode::<FullUnsignedMachineDecoderConfig>(&text_section);
+    let tape = SimpleTape::new(&instructions);
+    let mut ram = RamWithRomRegion::<{ ROM_SECOND_WORD_BITS }>::from_rom_content(&binary, 1 << 30);
+    let cycles_bound = 1 << 20;
+    let mut state = State::initial_with_counters(DelegationsAndFamiliesCounters::default());
+    let mut snapshotter = SimpleSnapshotter::<
+        DelegationsAndFamiliesCounters,
+        { ROM_SECOND_WORD_BITS },
+    >::new_with_cycle_limit(cycles_bound, state);
+    let mut non_determinism = QuasiUARTSource::new_with_reads(vec![]);
+    let is_finished = VM::<DelegationsAndFamiliesCounters>::run_basic_unrolled::<_, _, _, BF>(
+        &mut state,
+        &mut ram,
+        &mut snapshotter,
+        &tape,
+        cycles_bound,
+        &mut non_determinism,
+    );
+    assert!(is_finished);
+
+    let counters = snapshotter.snapshots.last().unwrap().state.counters;
+    let num_calls =
+        counters.get_calls_to_circuit_family::<ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX>();
+    let mut replay_state = snapshotter.initial_snapshot.state;
+    let mut ram_log_buffers = snapshotter
+        .reads_buffer
+        .make_range(0..snapshotter.reads_buffer.len());
+    let mut replay_ram = ReplayerRam::<{ ROM_SECOND_WORD_BITS }> {
+        ram_log: &mut ram_log_buffers,
+    };
+    let mut buffer = vec![NonMemoryOpcodeTracingDataWithTimestamp::default(); num_calls];
+    let mut buffers = vec![&mut buffer[..]];
+    let mut tracer = NonMemDestinationHolder::<ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX> {
+        buffers: &mut buffers[..],
+    };
+    ReplayerVM::<DelegationsAndFamiliesCounters>::replay_basic_unrolled::<_, _, BF>(
+        &mut replay_state,
+        &mut replay_ram,
+        &tape,
+        &mut (),
+        cycles_bound,
+        &mut tracer,
+    );
+    drop(replay_ram);
+
+    let mut preprocessing_data = process_binary_into_separate_tables_ext::<
+        BF,
+        FullUnsignedMachineDecoderConfig,
+        true,
+        Global,
+    >(
+        &text_section,
+        &opcodes_for_full_machine_with_unsigned_mul_div_only_with_mem_word_access_specialization(),
+        1 << 20,
+        &[
+            NON_DETERMINISM_CSR as u16,
+            BLAKE2S_DELEGATION_CSR_REGISTER as u16,
+            BIGINT_OPS_WITH_CONTROL_CSR_REGISTER as u16,
+            KECCAK_SPECIAL5_CSR_REGISTER as u16,
+        ],
+    );
+    let decoder_table_data = preprocessing_data
+        .remove(&ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX)
+        .expect("must have data");
+    let witness_gen_data = decoder_table_data
+        .iter()
+        .map(|entry| entry.unwrap_or_default())
+        .collect_vec();
+
+    // Generate CPU memory trace
+    let worker = Worker::new_with_num_threads(8);
+    let oracle = NonMemoryCircuitOracle {
+        inner: &buffer[..],
+        decoder_table: &witness_gen_data,
+        default_pc_value_in_padding: 4,
+    };
+    let trace_len = fixture.compiled_circuit.trace_len;
+    let num_cycles_per_chunk = 1usize << 24;
+    let cpu_memory_trace = evaluate_gkr_memory_witness_for_executor_family::<BF, _, _, _>(
+        &fixture.compiled_circuit,
+        num_cycles_per_chunk,
+        &oracle,
+        &worker,
+        Global,
+        Global,
+    );
+
+    // Commit on CPU
+    let twiddles: fft::Twiddles<BF, Global> = fft::Twiddles::new(trace_len, &worker);
+    let mem_inputs: Vec<_> = cpu_memory_trace
+        .column_major_trace
+        .iter()
+        .map(|col| &col[..])
+        .collect();
+    let cpu_mem_oracle = commit_trace_part::<BF, DefaultTreeConstructor>(
+        &mem_inputs,
+        &twiddles,
+        fixture.whir_schedule.base_lde_factor,
+        fixture.whir_schedule.whir_steps_schedule[0],
+        fixture.whir_schedule.cap_size,
+        trace_len.trailing_zeros() as usize,
+        &worker,
+    );
+    let mut cpu_transcript = vec![];
+    let cpu_cap: MerkleTreeCapVarLength =
+        ColumnMajorMerkleTreeConstructor::<BF>::get_cap(&cpu_mem_oracle.tree);
+    flatten_merkle_caps_iter_into(Some(cpu_cap).into_iter(), &mut cpu_transcript);
+    drop(cpu_memory_trace);
+    drop(cpu_mem_oracle);
+    eprintln!("CPU memory commitment ready");
+
+    // Commit on GPU
+    let mut transfers = fixture.create_transfers().unwrap();
+    transfers.schedule(&fixture.context).unwrap();
+    transfers
+        .setup_transfer
+        .ensure_transferred(&fixture.context)
+        .unwrap();
+    if let Some(ref decoder_transfer) = transfers.decoder_transfer {
+        decoder_transfer
+            .transfer
+            .ensure_transferred(&fixture.context)
+            .unwrap();
+    }
+    transfers
+        .tracing_data_transfer
+        .transfer
+        .ensure_transferred(&fixture.context)
+        .unwrap();
+
+    let log_lde_factor = fixture.whir_schedule.base_lde_factor.trailing_zeros();
+    let log_rows_per_leaf = fixture.whir_schedule.whir_steps_schedule[0] as u32;
+    let log_tree_cap_size = fixture.whir_schedule.cap_size.trailing_zeros();
+
+    let job = commit_memory(
+        fixture.circuit_type,
+        &fixture.compiled_circuit,
+        transfers
+            .decoder_transfer
+            .as_ref()
+            .map(|t| &t.data_device[..]),
+        &transfers.tracing_data_transfer.data_device,
+        log_lde_factor,
+        log_rows_per_leaf,
+        log_tree_cap_size,
+        &fixture.context,
+    )
+    .unwrap();
+
+    let (gpu_tree_caps, elapsed_ms) = job.finish().unwrap();
+    eprintln!("GPU memory commitment ready in {elapsed_ms:.1}ms");
+
+    let mut gpu_transcript = vec![];
+    flatten_merkle_caps_iter_into(gpu_tree_caps.into_iter(), &mut gpu_transcript);
+
+    assert_eq!(
+        cpu_transcript, gpu_transcript,
+        "GPU memory tree caps must match CPU"
+    );
+    eprintln!("Memory commitment tree caps match!");
+}
+
 #[allow(unused_imports)]
 mod add_sub_lui_auipc_mod {
     use crate::primitives::field::BF;
     use cs::oracle::Placeholder;
-    use cs::witness_placer::WitnessTypeSet;
     use cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
+    use cs::witness_placer::WitnessTypeSet;
     use cs::witness_placer::{
         WitnessComputationCore, WitnessComputationalField, WitnessComputationalI32,
-        WitnessComputationalInteger, WitnessComputationalU8, WitnessComputationalU16,
-        WitnessComputationalU32, WitnessMask,
+        WitnessComputationalInteger, WitnessComputationalU16, WitnessComputationalU32,
+        WitnessComputationalU8, WitnessMask,
     };
     use field::baby_bear::base::BabyBearField;
     use prover::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;

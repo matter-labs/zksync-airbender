@@ -36,9 +36,15 @@ use crate::primitives::context::DeviceProperties;
 use crate::primitives::context::{ProverContext, ProverContextConfig};
 use crate::primitives::field::BF;
 
+const TEST_DEVICE_ALLOCATOR_BLOCK_LOG_SIZE: u32 = 2;
+
 fn make_context() -> ProverContext {
     let mut config = ProverContextConfig::default();
-    config.max_device_allocation_blocks_count = Some(256);
+    let default_block_log_size = config.allocator_block_log_size;
+    let arena_bytes = 256usize << default_block_log_size;
+    config.allocator_block_log_size = TEST_DEVICE_ALLOCATOR_BLOCK_LOG_SIZE;
+    config.max_device_allocation_blocks_count =
+        Some(arena_bytes >> TEST_DEVICE_ALLOCATOR_BLOCK_LOG_SIZE);
     // 32 MB host pool: with 8 KB blocks this is 4096 blocks
     let host_block_size = 1usize << config.host_allocator_block_log_size;
     config.host_allocator_blocks_count = (32 * 1024 * 1024) / host_block_size;

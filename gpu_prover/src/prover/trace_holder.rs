@@ -31,6 +31,7 @@ pub enum TreesCacheMode {
 
 pub(crate) enum CosetsHolder<T> {
     Full(Vec<DeviceAllocation<T>>),
+    None(std::marker::PhantomData<T>),
 }
 
 #[allow(unused)]
@@ -124,6 +125,51 @@ impl<T> TraceHolder<T> {
         })
     }
 
+    /// Creates a trace holder that allocates only the hypercube evaluation buffer and
+    /// (optionally) tree storage, but defers coset allocation until `ensure_cosets_materialized`.
+    pub(crate) fn new_without_cosets(
+        log_domain_size: u32,
+        log_lde_factor: u32,
+        log_rows_per_leaf: u32,
+        log_tree_cap_size: u32,
+        columns_count: usize,
+        trees_cache_mode: TreesCacheMode,
+        context: &ProverContext,
+    ) -> CudaResult<Self> {
+        let instances_count = 1usize << log_lde_factor;
+        let raw_hypercube_evals = std::sync::Arc::new(context.alloc(
+            columns_count << log_domain_size,
+            AllocationPlacement::Bottom,
+        )?);
+        let trees = match trees_cache_mode {
+            TreesCacheMode::CacheNone => TreesHolder::None,
+            TreesCacheMode::CachePartial => TreesHolder::Partial(allocate_trees(
+                instances_count,
+                log_domain_size - PARTIAL_TREE_REDUCTION_LAYERS,
+                log_rows_per_leaf,
+                context,
+            )?),
+            TreesCacheMode::CacheFull => TreesHolder::Full(allocate_trees(
+                instances_count,
+                log_domain_size,
+                log_rows_per_leaf,
+                context,
+            )?),
+        };
+        Ok(Self {
+            log_domain_size,
+            log_lde_factor,
+            log_rows_per_leaf,
+            log_tree_cap_size,
+            columns_count,
+            raw_hypercube_evals,
+            cosets_materialized: false,
+            cosets: CosetsHolder::None(std::marker::PhantomData),
+            trees,
+            tree_caps: None,
+        })
+    }
+
     pub(crate) fn get_tree_caps_accessors(&self) -> Vec<UnsafeAccessor<[Digest]>> {
         self.tree_caps
             .as_ref()
@@ -187,6 +233,9 @@ impl<T> TraceHolder<T> {
         );
         match &self.cosets {
             CosetsHolder::Full(evaluations) => &evaluations[coset_index],
+            CosetsHolder::None(_) => {
+                panic!("cosets not allocated — call ensure_cosets_materialized first")
+            }
         }
     }
 
@@ -198,6 +247,9 @@ impl<T> TraceHolder<T> {
         assert!(coset_index < (1usize << self.log_lde_factor));
         match &mut self.cosets {
             CosetsHolder::Full(evaluations) => &mut evaluations[coset_index],
+            CosetsHolder::None(_) => {
+                panic!("cosets not allocated — call ensure_cosets_materialized first")
+            }
         }
     }
 
@@ -267,6 +319,9 @@ impl TraceHolder<BF> {
                         )?;
                     }
                 }
+                CosetsHolder::None(_) => {
+                    panic!("cosets not allocated — call ensure_cosets_materialized first")
+                }
             }
         }
         self.cosets_materialized = true;
@@ -275,6 +330,15 @@ impl TraceHolder<BF> {
 
     pub(crate) fn ensure_cosets_materialized(&mut self, context: &ProverContext) -> CudaResult<()> {
         if !self.cosets_materialized {
+            if matches!(&self.cosets, CosetsHolder::None(_)) {
+                let instances_count = 1usize << self.log_lde_factor;
+                self.cosets = CosetsHolder::Full(allocate_cosets(
+                    instances_count,
+                    self.log_domain_size,
+                    self.columns_count,
+                    context,
+                )?);
+            }
             self.materialize_cosets_from_owned_hypercube(context)?;
         }
         Ok(())
@@ -362,6 +426,51 @@ impl TraceHolder<BF> {
         assert!(self.tree_caps.replace(tree_caps).is_none());
         for coset_index in 0..(1usize << self.log_lde_factor) {
             self.commit_and_transfer_tree_caps(coset_index, context)?;
+        }
+        Ok(())
+    }
+
+    /// Builds and caches partial trees from already-materialized coset evaluations.
+    /// The caller must set `self.trees` to `TreesHolder::Partial(...)` with allocated
+    /// storage before calling this method.
+    pub(crate) fn build_and_cache_partial_trees(
+        &mut self,
+        context: &ProverContext,
+    ) -> CudaResult<()> {
+        assert!(
+            self.cosets_materialized,
+            "cosets must be materialized before building partial trees"
+        );
+        let log_domain_size = self.log_domain_size;
+        let log_lde_factor = self.log_lde_factor;
+        let log_rows_per_leaf = self.log_rows_per_leaf;
+        let log_tree_cap_size = self.log_tree_cap_size;
+        let columns_count = self.columns_count;
+        let instances_count = 1usize << log_lde_factor;
+        let stream = context.get_exec_stream();
+        for coset_index in 0..instances_count {
+            let mut tree_top = allocate_tree(log_domain_size, log_rows_per_leaf, context)?;
+            let mut tree_bottom = match &mut self.trees {
+                TreesHolder::Partial(trees) => trees.remove(coset_index),
+                _ => panic!("build_and_cache_partial_trees requires TreesHolder::Partial"),
+            };
+            let evaluations = self.get_coset_evaluations(coset_index);
+            commit_trace_with_partial_tree(
+                evaluations,
+                &mut tree_top,
+                &mut tree_bottom,
+                log_domain_size,
+                log_lde_factor,
+                log_rows_per_leaf,
+                log_tree_cap_size,
+                columns_count,
+                stream,
+            )?;
+            match &mut self.trees {
+                TreesHolder::Partial(trees) => trees.insert(coset_index, tree_bottom),
+                _ => unreachable!(),
+            };
+            // tree_top drops here — frees temporary full-tree allocation
         }
         Ok(())
     }
@@ -537,7 +646,7 @@ fn allocate_tree(
     context.alloc(size, AllocationPlacement::Bottom)
 }
 
-fn allocate_trees(
+pub(crate) fn allocate_trees(
     instances_count: usize,
     log_domain_size: u32,
     log_rows_per_leaf: u32,
@@ -683,7 +792,7 @@ pub(crate) fn flatten_tree_caps(
     flatten_tree_caps_for_accessors(accessors, log_lde_factor)
 }
 
-fn get_tree_caps_for_accessors(
+pub(crate) fn get_tree_caps_for_accessors(
     accessors: &[UnsafeAccessor<[Digest]>],
     log_lde_factor: u32,
 ) -> Vec<MerkleTreeCapVarLength> {
@@ -947,6 +1056,7 @@ mod test {
                     assert_eq!(gpu, cpu_cosets[coset_idx], "coset {}", coset_idx);
                 }
             }
+            CosetsHolder::None(_) => panic!("expected Full cosets in test"),
         }
 
         trace_holder.commit_all(&context).unwrap();
@@ -1021,6 +1131,7 @@ mod test {
                     assert_eq!(gpu, cpu_cosets[coset_idx], "coset {}", coset_idx);
                 }
             }
+            CosetsHolder::None(_) => panic!("expected Full cosets in test"),
         }
     }
 
