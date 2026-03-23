@@ -4,9 +4,7 @@ use std::fs;
 use std::path::PathBuf;
 
 fn usage(program: &str) -> String {
-    format!(
-        "usage: {program} <layout.json> <ssa.json> <output.cuh> [--write-memory]"
-    )
+    format!("usage: {program} <layout.json> <ssa.json> <output.cuh> [--write-memory]")
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

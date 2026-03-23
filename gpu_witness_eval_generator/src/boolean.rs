@@ -1,6 +1,6 @@
 use super::*;
-use cs::witness_placer::graph_description::BoolNodeExpression;
 use cs::definitions::ColumnAddress;
+use cs::witness_placer::graph_description::BoolNodeExpression;
 
 impl Generator {
     pub(crate) fn add_boolean_expr(&mut self, expr: &BoolNodeExpression<F>) {

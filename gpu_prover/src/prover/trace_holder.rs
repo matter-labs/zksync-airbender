@@ -12,8 +12,8 @@ use crate::ntt::{
     bitreversed_monomials_to_natural_evals, hypercube_evals_natural_to_bitreversed_coeffs,
 };
 use crate::ops::blake2s::{
-    Digest, build_merkle_tree, build_merkle_tree_nodes, gather_leaf_rows,
-    gather_merkle_paths_device, gather_merkle_paths_from_rows, merkle_tree_cap,
+    build_merkle_tree, build_merkle_tree_nodes, gather_leaf_rows, gather_merkle_paths_device,
+    gather_merkle_paths_from_rows, merkle_tree_cap, Digest,
 };
 use crate::primitives::context::{DeviceAllocation, HostAllocation, ProverContext, UnsafeAccessor};
 use crate::primitives::device_structures::{DeviceMatrix, DeviceMatrixMut};
@@ -232,7 +232,9 @@ impl<T> TraceHolder<T> {
         );
         match &self.cosets {
             CosetsHolder::Full(evaluations) => &evaluations[coset_index],
-            CosetsHolder::None(_) => panic!("cosets not allocated — call ensure_cosets_materialized first"),
+            CosetsHolder::None(_) => {
+                panic!("cosets not allocated — call ensure_cosets_materialized first")
+            }
         }
     }
 
@@ -244,7 +246,9 @@ impl<T> TraceHolder<T> {
         assert!(coset_index < (1usize << self.log_lde_factor));
         match &mut self.cosets {
             CosetsHolder::Full(evaluations) => &mut evaluations[coset_index],
-            CosetsHolder::None(_) => panic!("cosets not allocated — call ensure_cosets_materialized first"),
+            CosetsHolder::None(_) => {
+                panic!("cosets not allocated — call ensure_cosets_materialized first")
+            }
         }
     }
 
@@ -310,7 +314,9 @@ impl TraceHolder<BF> {
                         )?;
                     }
                 }
-                CosetsHolder::None(_) => panic!("cosets not allocated — call ensure_cosets_materialized first"),
+                CosetsHolder::None(_) => {
+                    panic!("cosets not allocated — call ensure_cosets_materialized first")
+                }
             }
         }
         self.cosets_materialized = true;
@@ -808,12 +814,12 @@ pub(crate) fn get_tree_caps(
 mod test {
     use std::alloc::Global;
 
-    use blake2s_u32::{BLAKE2S_BLOCK_SIZE_U32_WORDS, BLAKE2S_DIGEST_SIZE_U32_WORDS, Blake2sState};
+    use blake2s_u32::{Blake2sState, BLAKE2S_BLOCK_SIZE_U32_WORDS, BLAKE2S_DIGEST_SIZE_U32_WORDS};
     use era_cudart::memory::memory_copy_async;
     use field::{Field, PrimeField};
     use prover::gkr::whir::hypercube_to_monomial::multivariate_coeffs_into_hypercube_evals;
-    use prover::merkle_trees::ColumnMajorMerkleTreeConstructor;
     use prover::merkle_trees::blake2s_for_everything_tree::Blake2sU32MerkleTreeWithCap;
+    use prover::merkle_trees::ColumnMajorMerkleTreeConstructor;
     use serial_test::serial;
     use worker::Worker;
 
