@@ -134,3 +134,19 @@ pub const BASE_LAYER_ADDITIONAL_OPENINGS: &[GKRAddress] = &[
     GKRAddress::Setup(8usize),
     GKRAddress::Setup(9usize),
 ];
+pub const TRACE_LEN_LOG2: usize = 24usize;
+pub const WHIR_ROUNDS: usize = 6usize;
+pub const WHIR_FOLD_STEPS: [usize; 6usize] = [1usize, 4usize, 4usize, 4usize, 4usize, 4usize];
+pub const WHIR_QUERIES: [usize; 6usize] = [68usize, 23usize, 12usize, 10usize, 10usize, 10usize];
+pub const WHIR_POW_BITS: [u32; 6usize] = [24u32, 24u32, 24u32, 24u32, 24u32, 24u32];
+pub const WHIR_BASE_LDE_FACTOR: usize = 2usize;
+pub const WHIR_LDE_FACTORS: [usize; 5usize] = [8usize, 64usize, 128usize, 128usize, 128usize];
+pub const WHIR_CAP_SIZE: usize = 16usize;
+pub const FINAL_M: usize = 3usize;
+pub const FINAL_MONOMIALS_LEN: usize = 8usize;
+pub const NUM_BASE_CLAIMS: usize = 40usize;
+pub const NUM_MEMORY_CLAIMS: usize = 17usize;
+pub const NUM_WITNESS_CLAIMS: usize = 21usize;
+pub const NUM_SETUP_CLAIMS: usize = 2usize;
+pub const BASE_ORACLE_DEPTH: usize = 20usize;
+pub const WHIR_ORACLE_DEPTHS: [usize; 5usize] = [18usize, 17usize, 14usize, 10usize, 6usize];

@@ -37,10 +37,11 @@ mod test {
         use prover::cs::gkr_compiler::GKRCircuitArtifact;
         use prover::field::baby_bear::base::BabyBearField;
         use prover::field::baby_bear::ext4::BabyBearExt4;
-        use prover::gkr::prover::GKRProof;
+        use prover::gkr::prover::{GKRProof, WhirSchedule};
         use prover::merkle_trees::DefaultTreeConstructor;
 
         let circuit_names = vec!["add_sub_lui_auipc_mop", "jump_branch_slt", "shift_binop"];
+        let whir_schedule = WhirSchedule::default_for_tests_80_bits();
 
         for name in circuit_names {
             let compiled_circuit: GKRCircuitArtifact<BabyBearField> =
@@ -55,6 +56,7 @@ mod test {
                 &compiled_circuit,
                 &proof,
                 4,
+                &whir_schedule,
             );
 
             let dir = format!("../verifier/src/generated/{}", name);

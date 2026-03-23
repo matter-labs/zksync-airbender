@@ -7,7 +7,7 @@ use prover::cs::gkr_compiler::{
     GKRCircuitArtifact, GKRLayerDescription, NoFieldGKRRelation, OutputType,
 };
 use prover::field::{Field, FieldExtension, PrimeField};
-use prover::gkr::prover::GKRProof;
+use prover::gkr::prover::{GKRProof, WhirSchedule};
 use prover::merkle_trees::ColumnMajorMerkleTreeConstructor;
 
 pub mod constraint_kernel;
@@ -281,6 +281,7 @@ pub fn generate_gkr_inlined<MW: MersenneWrapper, F: PrimeField, E: FieldExtensio
     compiled_circuit: &GKRCircuitArtifact<F>,
     proof: &GKRProof<F, E, T>,
     final_trace_size_log_2: usize,
+    whir_schedule: &WhirSchedule,
 ) -> GeneratedGKRFiles
 where
     T: ColumnMajorMerkleTreeConstructor<F>,
@@ -910,7 +911,73 @@ where
 
     let field_use_stmts = MW::field_use_statements();
 
-    // --- Assemble per-file TokenStreams ---
+    // trace_len_log2 = number of sumcheck rounds at the base (layer 0)
+    let trace_len_log2 = proof
+        .sumcheck_intermediate_values
+        .get(&0)
+        .expect("proof must have sumcheck values for layer 0")
+        .sumcheck_num_rounds;
+
+    let whir_rounds = whir_schedule.whir_steps_schedule.len();
+    let whir_fold_steps = &whir_schedule.whir_steps_schedule;
+    let whir_queries = &whir_schedule.whir_queries_schedule;
+    let whir_pow_bits = &whir_schedule.whir_pow_schedule;
+    let whir_lde_factors = &whir_schedule.whir_steps_lde_factors;
+    let whir_base_lde_factor = whir_schedule.base_lde_factor;
+    let whir_cap_size = whir_schedule.cap_size;
+    let whir_cap_size_log2 = whir_cap_size.trailing_zeros() as usize;
+
+    let total_fold_steps: usize = whir_fold_steps.iter().sum();
+    assert!(
+        trace_len_log2 >= total_fold_steps,
+        "total fold steps ({}) exceed trace_len_log2 ({})",
+        total_fold_steps,
+        trace_len_log2
+    );
+    let final_m = trace_len_log2 - total_fold_steps;
+    let final_monomials_len = 1usize << final_m;
+
+    // Per-oracle claim counts from base layer (layer 0) sorted addresses
+    let (num_memory_claims, num_witness_claims, num_setup_claims) = if !standard_sorted_addrs
+        .is_empty()
+    {
+        let mut mem = 0usize;
+        let mut wit = 0usize;
+        let mut setup = 0usize;
+        for addr in &standard_sorted_addrs[0] {
+            match addr {
+                GKRAddress::BaseLayerMemory(_) => mem += 1,
+                GKRAddress::BaseLayerWitness(_) => wit += 1,
+                GKRAddress::Setup(_) => setup += 1,
+                _ => {} // inner/cached/scratch don't appear at base layer
+            }
+        }
+        (mem, wit, setup)
+    } else {
+        (0, 0, 0)
+    };
+    let num_base_claims = num_memory_claims + num_witness_claims + num_setup_claims;
+
+    // Base oracle depth: tree_depth = trace_len_log2 + log2(base_lde_factor) - initial_fold_steps
+    // oracle_depth = tree_depth - log2(cap_size)
+    let base_lde_factor_log2 = whir_base_lde_factor.trailing_zeros() as usize;
+    let initial_fold_steps = whir_fold_steps[0];
+    let base_oracle_depth =
+        trace_len_log2 + base_lde_factor_log2 - initial_fold_steps - whir_cap_size_log2;
+
+    // Intermediate oracle depths (one per round except the last)
+    let num_intermediate_oracles = whir_rounds - 1;
+    let mut whir_oracle_depths = Vec::with_capacity(num_intermediate_oracles);
+    {
+        let mut poly_size_log2 = trace_len_log2;
+        for i in 0..num_intermediate_oracles {
+            poly_size_log2 -= whir_fold_steps[i];
+            let lde_factor_log2 = whir_lde_factors[i].trailing_zeros() as usize;
+            let next_fold_steps = whir_fold_steps[i + 1];
+            let depth = poly_size_log2 + lde_factor_log2 - next_fold_steps - whir_cap_size_log2;
+            whir_oracle_depths.push(depth);
+        }
+    }
 
     let constants = quote! {
         use ::verifier_common::cs::definitions::GKRAddress;
@@ -926,6 +993,25 @@ where
         #static_data
 
         pub const BASE_LAYER_ADDITIONAL_OPENINGS: &[GKRAddress] = &[#base_openings_stream];
+
+        pub const WHIR_ROUNDS: usize = #whir_rounds;
+        pub const WHIR_FOLD_STEPS: [usize; #whir_rounds] = [#(#whir_fold_steps),*];
+        pub const WHIR_QUERIES: [usize; #whir_rounds] = [#(#whir_queries),*];
+        pub const WHIR_POW_BITS: [u32; #whir_rounds] = [#(#whir_pow_bits),*];
+        pub const WHIR_BASE_LDE_FACTOR: usize = #whir_base_lde_factor;
+        pub const WHIR_LDE_FACTORS: [usize; #num_intermediate_oracles] = [#(#whir_lde_factors),*];
+        pub const WHIR_CAP_SIZE: usize = #whir_cap_size;
+
+        pub const FINAL_M: usize = #final_m;
+        pub const FINAL_MONOMIALS_LEN: usize = #final_monomials_len;
+
+        pub const NUM_BASE_CLAIMS: usize = #num_base_claims;
+        pub const NUM_MEMORY_CLAIMS: usize = #num_memory_claims;
+        pub const NUM_WITNESS_CLAIMS: usize = #num_witness_claims;
+        pub const NUM_SETUP_CLAIMS: usize = #num_setup_claims;
+
+        pub const BASE_ORACLE_DEPTH: usize = #base_oracle_depth;
+        pub const WHIR_ORACLE_DEPTHS: [usize; #num_intermediate_oracles] = [#(#whir_oracle_depths),*];
     };
 
     let gkr = quote! {
