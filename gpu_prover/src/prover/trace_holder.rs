@@ -9,7 +9,8 @@ use prover::transcript::Seed;
 
 use crate::allocator::tracker::AllocationPlacement;
 use crate::ntt::{
-    bitreversed_monomials_to_natural_evals, hypercube_evals_natural_to_bitreversed_coeffs,
+    bitreversed_monomials_to_natural_evals, hypercube_natural_evals_to_bitreversed_monomials,
+    log_size_supports_transposed_monomials,
 };
 use crate::ops::blake2s::{
     build_merkle_tree, build_merkle_tree_nodes, gather_leaf_rows, gather_merkle_paths_device,
@@ -285,14 +286,18 @@ impl TraceHolder<BF> {
 
         let mut coeff_scratch = context.alloc(domain_size, AllocationPlacement::BestFit)?;
         let stream = context.get_exec_stream();
+        let use_transposed_monomials =
+            log_size_supports_transposed_monomials(self.log_domain_size as usize);
         for column in 0..self.columns_count {
             let offset = column * domain_size;
             let source_column = &source[offset..offset + domain_size];
-            hypercube_evals_natural_to_bitreversed_coeffs(
+            hypercube_natural_evals_to_bitreversed_monomials(
                 source_column,
-                &mut coeff_scratch,
+                &mut coeff_scratch[0..domain_size],
                 self.log_domain_size as usize,
+                use_transposed_monomials,
                 stream,
+                context.get_device_properties(),
             )?;
 
             match &mut self.cosets {
@@ -308,7 +313,7 @@ impl TraceHolder<BF> {
                             self.log_domain_size as usize,
                             self.log_lde_factor as usize,
                             coset_index,
-                            false, // transposed_monomials
+                            use_transposed_monomials,
                             stream,
                             context.get_device_properties(),
                         )?;
