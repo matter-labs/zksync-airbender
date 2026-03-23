@@ -1,10 +1,10 @@
+use cs::definitions::{ColumnAddress, GKRAddress, Variable};
+use cs::gkr_compiler::GKRCircuitArtifact;
 use cs::oracle::Placeholder;
 use cs::witness_placer::graph_description::{
     BoolNodeExpression, Expression, FieldNodeExpression, FixedWidthIntegerNodeExpression,
     RawExpression,
 };
-use cs::definitions::{ColumnAddress, GKRAddress, Variable};
-use cs::gkr_compiler::GKRCircuitArtifact;
 use std::collections::BTreeMap;
 use std::fs::File;
 use std::path::Path;
