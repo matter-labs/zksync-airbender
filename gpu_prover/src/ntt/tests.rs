@@ -1,7 +1,7 @@
 use std::alloc::Global;
 use std::ops::Range;
 
-use era_cudart::memory::{memory_copy_async, CudaHostAllocFlags, DeviceAllocation, HostAllocation};
+use era_cudart::memory::{CudaHostAllocFlags, DeviceAllocation, HostAllocation, memory_copy_async};
 use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::CudaStream;
@@ -17,10 +17,10 @@ use serial_test::serial;
 use worker::Worker;
 
 use super::{
-    bitreversed_coeffs_to_natural_coset, evals_to_monomials_2_pass, evals_to_monomials_3_pass,
-    hypercube_coeffs_natural_to_natural_evals, hypercube_evals_natural_to_bitreversed_coeffs,
-    monomials_to_evals_2_pass, monomials_to_evals_3_pass, natural_evals_to_bitreversed_coeffs,
-    OMEGA_LOG_ORDER,
+    OMEGA_LOG_ORDER, bitreversed_coeffs_to_natural_coset, evals_to_monomials_2_pass,
+    evals_to_monomials_3_pass, hypercube_coeffs_natural_to_natural_evals,
+    hypercube_evals_natural_to_bitreversed_coeffs, monomials_to_evals_2_pass,
+    monomials_to_evals_3_pass, natural_evals_to_bitreversed_coeffs,
 };
 use crate::allocator::tracker::AllocationPlacement;
 use crate::device_context::DeviceContext;
@@ -32,9 +32,15 @@ use crate::primitives::context::DeviceProperties;
 use crate::primitives::context::{ProverContext, ProverContextConfig};
 use crate::primitives::field::BF;
 
+const TEST_DEVICE_ALLOCATOR_BLOCK_LOG_SIZE: u32 = 2;
+
 fn make_context() -> ProverContext {
     let mut config = ProverContextConfig::default();
-    config.max_device_allocation_blocks_count = Some(256);
+    let default_block_log_size = config.allocator_block_log_size;
+    let arena_bytes = 256usize << default_block_log_size;
+    config.allocator_block_log_size = TEST_DEVICE_ALLOCATOR_BLOCK_LOG_SIZE;
+    config.max_device_allocation_blocks_count =
+        Some(arena_bytes >> TEST_DEVICE_ALLOCATOR_BLOCK_LOG_SIZE);
     // 32 MB host pool: with 8 KB blocks this is 4096 blocks
     let host_block_size = 1usize << config.host_allocator_block_log_size;
     config.host_allocator_blocks_count = (32 * 1024 * 1024) / host_block_size;
