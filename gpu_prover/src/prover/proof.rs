@@ -17,38 +17,39 @@ use prover::query_utils::BitSource;
 use prover::transcript::Seed;
 
 use crate::circuit_type::CircuitType;
+use crate::ops::blake2s::Digest;
 use crate::primitives::callbacks::Callbacks;
 use crate::primitives::context::{HostAllocation, ProverContext, UnsafeAccessor};
 use crate::primitives::device_tracing::Range;
 use crate::primitives::field::{BF, E4};
 use crate::prover::decoder::DecoderTableTransfer;
 use crate::prover::gkr::backward::{
-    apply_base_layer_extra_evaluations_to_workflow_state, clone_backward_claims_for_layer,
-    current_backward_seed, fill_backward_claim_point_for_layer,
+    GpuGKRBackwardHostKeepalive, apply_base_layer_extra_evaluations_to_workflow_state,
+    clone_backward_claims_for_layer, current_backward_seed, fill_backward_claim_point_for_layer,
     make_deferred_backward_workflow_state, populate_backward_workflow_state,
-    take_backward_execution_from_shared_state, GpuGKRBackwardHostKeepalive,
+    take_backward_execution_from_shared_state,
 };
 use crate::prover::gkr::base_layer_claims::{
+    GpuGKRBaseLayerClaimsScheduledExecution,
     clone_base_layer_extra_evaluations_from_caching_relations,
     clone_base_layer_extra_evaluations_transcript_batches, fill_mem_polys_claims,
     fill_setup_polys_claims, fill_wit_polys_claims,
-    schedule_prepare_base_layer_claims_with_sources, GpuGKRBaseLayerClaimsScheduledExecution,
+    schedule_prepare_base_layer_claims_with_sources,
 };
-use crate::prover::gkr::forward::{schedule_forward_pass, GpuGKRTranscriptHandoff};
+use crate::prover::gkr::forward::{GpuGKRTranscriptHandoff, schedule_forward_pass};
 use crate::prover::gkr::setup::{
     GpuGKRForwardSetupHostKeepalive, GpuGKRSetupTransfer, GpuGKRSetupTransferHostKeepalive,
 };
 use crate::prover::gkr::stage1::{GpuGKRStage1Keepalive, GpuGKRStage1Output};
-use crate::ops::blake2s::Digest;
 use crate::prover::trace_holder::{
-    allocate_tree_caps, allocate_trees, flatten_tree_caps, TreesHolder,
-    PARTIAL_TREE_REDUCTION_LAYERS,
+    PARTIAL_TREE_REDUCTION_LAYERS, TreesHolder, allocate_tree_caps, allocate_trees,
+    flatten_tree_caps,
 };
-use prover::merkle_trees::MerkleTreeCapVarLength;
 use crate::prover::tracing_data::{InitsAndTeardownsTransfer, TracingDataTransfer};
 use crate::prover::whir_fold::{
-    schedule_gpu_whir_fold_with_sources, take_scheduled_whir_proof, GpuWhirFoldScheduledExecution,
+    GpuWhirFoldScheduledExecution, schedule_gpu_whir_fold_with_sources, take_scheduled_whir_proof,
 };
+use prover::merkle_trees::MerkleTreeCapVarLength;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct GkrExternalPowChallenges {
@@ -139,8 +140,16 @@ pub(crate) fn build_top_layer_claims(
     >,
     claims: [E4; 8],
 ) -> BTreeMap<GKRAddress, E4> {
-    let [claim_readset, claim_writeset, claim_rangechecknum, claim_rangecheckden, claim_timechecknum, claim_timecheckden, claim_lookupnum, claim_lookupden] =
-        claims;
+    let [
+        claim_readset,
+        claim_writeset,
+        claim_rangechecknum,
+        claim_rangecheckden,
+        claim_timechecknum,
+        claim_timecheckden,
+        claim_lookupnum,
+        claim_lookupden,
+    ] = claims;
     let mut top_layer_claims = BTreeMap::new();
     top_layer_claims.insert(
         output_layer_for_sumcheck[&OutputType::PermutationProduct].output[0],
@@ -363,7 +372,10 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
     let memory_log_lde_factor = stage1_output.memory_trace_holder.log_lde_factor;
     let memory_log_tree_cap_size = stage1_output.memory_trace_holder.log_tree_cap_size;
     let flattened_memory_tree_caps = flatten_tree_caps_from_slices(
-        &memory_tree_caps.iter().map(|c| c.cap.as_slice()).collect::<Vec<_>>(),
+        &memory_tree_caps
+            .iter()
+            .map(|c| c.cap.as_slice())
+            .collect::<Vec<_>>(),
         memory_log_lde_factor,
     );
 
@@ -381,7 +393,10 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
         .collect::<Vec<_>>();
     callbacks.schedule(
         move || unsafe {
-            for (src, dst) in memory_tree_caps_owned.iter().zip(memory_cap_dst_accessors.iter()) {
+            for (src, dst) in memory_tree_caps_owned
+                .iter()
+                .zip(memory_cap_dst_accessors.iter())
+            {
                 dst.get_mut().copy_from_slice(src);
             }
         },
@@ -559,7 +574,9 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
 
     // Materialize deferred cosets for setup and memory right before WHIR fold queries.
     // Setup: cosets allocated on demand; partial trees already transferred from host.
-    setup_transfer.trace_holder.ensure_cosets_materialized(context)?;
+    setup_transfer
+        .trace_holder
+        .ensure_cosets_materialized(context)?;
     // Memory: cosets allocated on demand, then build and cache partial trees from cosets.
     stage1_output
         .memory_trace_holder
