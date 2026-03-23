@@ -12,8 +12,7 @@ DEVICE_FORCEINLINE unsigned get_inverse_stage_twiddle_power(const unsigned group
   return exponent;
 }
 
-EXTERN __global__ void ab_copy_scale_bitreversed_coeffs_kernel(const bf *src, bf *dst, const bf coset_offset, const bool apply_scale,
-                                                               const unsigned log_n) {
+EXTERN __global__ void ab_copy_scale_bitreversed_coeffs_kernel(const bf *src, bf *dst, const bf coset_offset, const bool apply_scale, const unsigned log_n) {
   const unsigned count = 1u << log_n;
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
   if (gid >= count)
@@ -80,6 +79,32 @@ EXTERN __global__ void ab_natural_evals_to_bitreversed_coeffs_ntt_stage_kernel(b
   } else {
     store_cg(values + left_idx, left_out);
     store_cg(values + right_idx, right_out);
+  }
+}
+
+EXTERN __launch_bounds__(32, 8) __global__ void ab_transpose_monomials_naive_kernel(bf *values, const unsigned log_n) {
+  constexpr unsigned TILE_ROWS = 32;
+  constexpr unsigned TILE_COLS = 32;
+  constexpr unsigned TILE_SIZE = TILE_ROWS * TILE_COLS;
+
+  const unsigned count = 1u << log_n;
+  const unsigned tile_offset = blockIdx.x * TILE_SIZE;
+  if (tile_offset >= count)
+    return;
+
+  const unsigned row = threadIdx.x;
+  if (row >= TILE_ROWS)
+    return;
+
+  bf *tile = values + tile_offset;
+#pragma unroll
+  for (unsigned col = 0; col < row; col++) {
+    const unsigned a_idx = row * TILE_COLS + col;
+    const unsigned b_idx = col * TILE_COLS + row;
+    const bf a = load_cg(tile + a_idx);
+    const bf b = load_cg(tile + b_idx);
+    store_cg(tile + a_idx, b);
+    store_cg(tile + b_idx, a);
   }
 }
 
