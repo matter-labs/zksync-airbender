@@ -44,11 +44,12 @@ use super::{
 };
 use crate::allocator::tracker::AllocationPlacement;
 use crate::ops::cub::device_reduce::{
-    batch_reduce, get_batch_reduce_temp_storage_bytes, Reduce, ReduceOperation,
+    get_reduce_temp_storage_bytes, reduce, Reduce, ReduceOperation,
 };
+use crate::ops::simple::{mul_into_y, set_to_zero, BinaryOp, Mul};
 use crate::primitives::callbacks::Callbacks;
 use crate::primitives::context::{DeviceAllocation, HostAllocation, ProverContext, UnsafeAccessor};
-use crate::primitives::device_structures::DeviceMatrix;
+use crate::primitives::device_structures::{DeviceVectorChunk, DeviceVectorChunkMut};
 use crate::primitives::device_tracing::Range;
 use crate::primitives::field::{BF, E2, E4, E6};
 use crate::primitives::utils::{get_grid_block_dims_for_threads_count, WARP_SIZE};
@@ -162,8 +163,7 @@ struct GpuGKRDimensionReducingRound3Prepared<E> {
 struct GpuGKRDimensionReducingRoundScratch<E> {
     claim_point: DeviceAllocation<E>,
     eq_values: DeviceAllocation<E>,
-    contributions: DeviceAllocation<E>,
-    weighted_rows: DeviceAllocation<E>,
+    accumulator: DeviceAllocation<E>,
     reduction_output: DeviceAllocation<E>,
     reduction_temp_storage: DeviceAllocation<u8>,
 }
@@ -378,8 +378,7 @@ struct GpuGKRMainLayerRound3Prepared<E> {
 struct GpuGKRMainLayerRoundScratch<E> {
     claim_point: DeviceAllocation<E>,
     eq_values: DeviceAllocation<E>,
-    contributions: DeviceAllocation<E>,
-    weighted_rows: DeviceAllocation<E>,
+    accumulator: DeviceAllocation<E>,
     reduction_output: DeviceAllocation<E>,
     reduction_temp_storage: DeviceAllocation<u8>,
 }
@@ -1296,22 +1295,12 @@ cuda_kernel_signature_arguments_and_function!(
     acc_size: u32,
 );
 
-cuda_kernel_signature_arguments_and_function!(
-    GpuDimensionReducingWeightContributions<T>,
-    contributions: *const T,
-    kernel_count: u32,
-    eq_values: *const T,
-    weighted_rows: *mut T,
-    acc_size: u32,
-);
-
 pub(crate) trait GpuDimensionReducingKernelSet: Reduce + Copy + Sized {
     const PAIRWISE_ROUND0: GpuDimensionReducingPairwiseRound0Signature<Self>;
     const LOOKUP_ROUND0: GpuDimensionReducingLookupRound0Signature<Self>;
     const PAIRWISE_CONTINUATION: GpuDimensionReducingPairwiseContinuationSignature<Self>;
     const LOOKUP_CONTINUATION: GpuDimensionReducingLookupContinuationSignature<Self>;
     const BUILD_EQ: GpuDimensionReducingBuildEqSignature<Self>;
-    const WEIGHT_CONTRIBUTIONS: GpuDimensionReducingWeightContributionsSignature<Self>;
 }
 
 macro_rules! gkr_dim_reducing_kernels {
@@ -1364,15 +1353,6 @@ macro_rules! gkr_dim_reducing_kernels {
                     acc_size: u32,
                 )
             );
-            cuda_kernel_declaration!(
-                [<ab_gkr_dim_reducing_weight_contributions_ $type:lower _kernel>](
-                    contributions: *const $type,
-                    kernel_count: u32,
-                    eq_values: *const $type,
-                    weighted_rows: *mut $type,
-                    acc_size: u32,
-                )
-            );
 
             impl GpuDimensionReducingKernelSet for $type {
                 const PAIRWISE_ROUND0: GpuDimensionReducingPairwiseRound0Signature<Self> =
@@ -1385,8 +1365,6 @@ macro_rules! gkr_dim_reducing_kernels {
                     [<ab_gkr_dim_reducing_lookup_continuation_ $type:lower _kernel>];
                 const BUILD_EQ: GpuDimensionReducingBuildEqSignature<Self> =
                     [<ab_gkr_dim_reducing_build_eq_ $type:lower _kernel>];
-                const WEIGHT_CONTRIBUTIONS: GpuDimensionReducingWeightContributionsSignature<Self> =
-                    [<ab_gkr_dim_reducing_weight_contributions_ $type:lower _kernel>];
             }
         }
     };
@@ -1662,26 +1640,6 @@ fn launch_lookup_continuation<E: GpuDimensionReducingKernelSet>(
     GpuDimensionReducingLookupContinuationFunction(E::LOOKUP_CONTINUATION).launch(&config, &args)
 }
 
-fn launch_weight_contributions<E: GpuDimensionReducingKernelSet>(
-    contributions: *const E,
-    kernel_count: usize,
-    eq_values: *const E,
-    weighted_rows: *mut E,
-    acc_size: usize,
-    context: &ProverContext,
-) -> CudaResult<()> {
-    let config = gkr_dim_reducing_launch_config(acc_size as u32, context);
-    let args = GpuDimensionReducingWeightContributionsArguments::new(
-        contributions,
-        kernel_count as u32,
-        eq_values,
-        weighted_rows,
-        acc_size as u32,
-    );
-
-    GpuDimensionReducingWeightContributionsFunction(E::WEIGHT_CONTRIBUTIONS).launch(&config, &args)
-}
-
 pub(crate) fn launch_build_eq_values<E: GpuDimensionReducingKernelSet>(
     claim_point: *const E,
     challenge_offset: usize,
@@ -1700,6 +1658,54 @@ pub(crate) fn launch_build_eq_values<E: GpuDimensionReducingKernelSet>(
     );
 
     GpuDimensionReducingBuildEqFunction(E::BUILD_EQ).launch(&config, &args)
+}
+
+fn apply_eq_and_reduce_accumulator<E>(
+    eq_values: &DeviceAllocation<E>,
+    accumulator: &mut DeviceAllocation<E>,
+    reduction_output: &mut DeviceAllocation<E>,
+    reduction_temp_storage: &mut DeviceAllocation<u8>,
+    acc_size: usize,
+    context: &ProverContext,
+) -> CudaResult<()>
+where
+    E: Field + Reduce,
+    Mul: BinaryOp<E, E, E>,
+{
+    let stream = context.get_exec_stream();
+    let eq_values = DeviceVectorChunk::new(eq_values, 0, acc_size);
+    let reduction_temp = unsafe {
+        DeviceSlice::from_raw_parts_mut(
+            reduction_temp_storage.as_mut_ptr(),
+            reduction_temp_storage.len(),
+        )
+    };
+
+    {
+        let mut low_half = DeviceVectorChunkMut::new(accumulator, 0, acc_size);
+        mul_into_y(&eq_values, &mut low_half, stream)?;
+        reduce(
+            ReduceOperation::Sum,
+            reduction_temp,
+            &low_half,
+            &mut reduction_output[0],
+            stream,
+        )?;
+    }
+
+    {
+        let mut high_half = DeviceVectorChunkMut::new(accumulator, acc_size, acc_size);
+        mul_into_y(&eq_values, &mut high_half, stream)?;
+        reduce(
+            ReduceOperation::Sum,
+            reduction_temp,
+            &high_half,
+            &mut reduction_output[1],
+            stream,
+        )?;
+    }
+
+    Ok(())
 }
 
 fn constraint_metadata_args<E>(
@@ -2887,18 +2893,14 @@ impl<B: 'static, E: Field + Reduce> GpuGKRDimensionReducingBackwardState<B, E> {
             });
         }
 
-        let kernel_count = kernel_plans.len();
         let max_acc_size = trace_len_after_reduction / 2;
-        let weighted_rows_len = max_acc_size * 2;
-        let contributions_len = kernel_count * weighted_rows_len;
         let reduction_temp_storage_bytes =
-            get_batch_reduce_temp_storage_bytes::<E>(ReduceOperation::Sum, 2, max_acc_size as i32)?;
+            get_reduce_temp_storage_bytes::<E>(ReduceOperation::Sum, max_acc_size as i32)?;
 
         let round_scratch = GpuGKRDimensionReducingRoundScratch {
             claim_point: context.alloc(folding_steps, AllocationPlacement::Top)?,
             eq_values: context.alloc(max_acc_size, AllocationPlacement::Top)?,
-            contributions: context.alloc(contributions_len, AllocationPlacement::Top)?,
-            weighted_rows: context.alloc(weighted_rows_len, AllocationPlacement::Top)?,
+            accumulator: context.alloc(max_acc_size * 2, AllocationPlacement::Top)?,
             reduction_output: context.alloc(2, AllocationPlacement::Top)?,
             reduction_temp_storage: context
                 .alloc(reduction_temp_storage_bytes, AllocationPlacement::Top)?,
@@ -2971,18 +2973,14 @@ impl<B: 'static, E: Field + Reduce> GpuGKRDimensionReducingBackwardState<B, E> {
             });
         }
 
-        let kernel_count = kernel_plans.len();
         let max_acc_size = trace_len_after_reduction / 2;
-        let weighted_rows_len = max_acc_size * 2;
-        let contributions_len = kernel_count * weighted_rows_len;
         let reduction_temp_storage_bytes =
-            get_batch_reduce_temp_storage_bytes::<E>(ReduceOperation::Sum, 2, max_acc_size as i32)?;
+            get_reduce_temp_storage_bytes::<E>(ReduceOperation::Sum, max_acc_size as i32)?;
 
         let round_scratch = GpuGKRDimensionReducingRoundScratch {
             claim_point: context.alloc(folding_steps, AllocationPlacement::Top)?,
             eq_values: context.alloc(max_acc_size, AllocationPlacement::Top)?,
-            contributions: context.alloc(contributions_len, AllocationPlacement::Top)?,
-            weighted_rows: context.alloc(weighted_rows_len, AllocationPlacement::Top)?,
+            accumulator: context.alloc(max_acc_size * 2, AllocationPlacement::Top)?,
             reduction_output: context.alloc(2, AllocationPlacement::Top)?,
             reduction_temp_storage: context
                 .alloc(reduction_temp_storage_bytes, AllocationPlacement::Top)?,
@@ -3100,17 +3098,13 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
             });
         }
 
-        let kernel_count = kernel_plans.len();
         let max_acc_size = self.trace_len / 2;
-        let weighted_rows_len = max_acc_size * 2;
-        let contributions_len = kernel_count * weighted_rows_len;
         let reduction_temp_storage_bytes =
-            get_batch_reduce_temp_storage_bytes::<E>(ReduceOperation::Sum, 2, max_acc_size as i32)?;
+            get_reduce_temp_storage_bytes::<E>(ReduceOperation::Sum, max_acc_size as i32)?;
         let round_scratch = GpuGKRMainLayerRoundScratch {
             claim_point: context.alloc(folding_steps, AllocationPlacement::Top)?,
             eq_values: context.alloc(max_acc_size, AllocationPlacement::Top)?,
-            contributions: context.alloc(contributions_len, AllocationPlacement::Top)?,
-            weighted_rows: context.alloc(weighted_rows_len, AllocationPlacement::Top)?,
+            accumulator: context.alloc(max_acc_size * 2, AllocationPlacement::Top)?,
             reduction_output: context.alloc(2, AllocationPlacement::Top)?,
             reduction_temp_storage: context
                 .alloc(reduction_temp_storage_bytes, AllocationPlacement::Top)?,
@@ -3210,17 +3204,13 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
             });
         }
 
-        let kernel_count = kernel_plans.len();
         let max_acc_size = self.trace_len / 2;
-        let weighted_rows_len = max_acc_size * 2;
-        let contributions_len = kernel_count * weighted_rows_len;
         let reduction_temp_storage_bytes =
-            get_batch_reduce_temp_storage_bytes::<E>(ReduceOperation::Sum, 2, max_acc_size as i32)?;
+            get_reduce_temp_storage_bytes::<E>(ReduceOperation::Sum, max_acc_size as i32)?;
         let round_scratch = GpuGKRMainLayerRoundScratch {
             claim_point: context.alloc(folding_steps, AllocationPlacement::Top)?,
             eq_values: context.alloc(max_acc_size, AllocationPlacement::Top)?,
-            contributions: context.alloc(contributions_len, AllocationPlacement::Top)?,
-            weighted_rows: context.alloc(weighted_rows_len, AllocationPlacement::Top)?,
+            accumulator: context.alloc(max_acc_size * 2, AllocationPlacement::Top)?,
             reduction_output: context.alloc(2, AllocationPlacement::Top)?,
             reduction_temp_storage: context
                 .alloc(reduction_temp_storage_bytes, AllocationPlacement::Top)?,
@@ -3375,6 +3365,7 @@ impl<B: 'static, E: Field + 'static> GpuGKRDimensionReducingSumcheckLayerPlan<B,
 impl<B: 'static, E: 'static> GpuGKRDimensionReducingSumcheckLayerPlan<B, E>
 where
     E: Field + FieldExtension<BF> + Reduce + GpuDimensionReducingKernelSet,
+    Mul: BinaryOp<E, E, E>,
     [(); E::DEGREE]: Sized,
 {
     fn evaluate_with_precomputed_eq_ext(values: &[E], eq: &[E]) -> E {
@@ -3438,27 +3429,29 @@ where
         acc_size: usize,
         context: &ProverContext,
     ) -> CudaResult<()> {
-        let contributions_base = self.round_scratch.contributions.as_mut_ptr();
-        for (idx, ((kernel, descriptors), batch_challenges)) in self
+        set_to_zero(
+            &mut self.round_scratch.accumulator[..acc_size * 2],
+            context.get_exec_stream(),
+        )?;
+        let accumulator = self.round_scratch.accumulator.as_mut_ptr();
+        for ((kernel, descriptors), batch_challenges) in self
             .kernel_plans
             .iter()
             .zip(self.round0_descriptors.iter())
             .zip(batch_challenge_buffers.iter())
-            .enumerate()
         {
-            let contributions = unsafe { contributions_base.add(idx * acc_size * 2) };
             match kernel.batch_challenge_count {
                 1 => launch_pairwise_round0(
                     descriptors,
                     batch_challenges.as_ptr(),
-                    contributions,
+                    accumulator,
                     acc_size,
                     context,
                 )?,
                 2 => launch_lookup_round0(
                     descriptors,
                     batch_challenges.as_ptr(),
-                    contributions,
+                    accumulator,
                     acc_size,
                     context,
                 )?,
@@ -3478,15 +3471,17 @@ where
         explicit_form: bool,
         context: &ProverContext,
     ) -> CudaResult<()> {
-        let contributions_base = self.round_scratch.contributions.as_mut_ptr();
-        for (idx, ((kernel, descriptors), batch_challenges)) in self
+        set_to_zero(
+            &mut self.round_scratch.accumulator[..acc_size * 2],
+            context.get_exec_stream(),
+        )?;
+        let accumulator = self.round_scratch.accumulator.as_mut_ptr();
+        for ((kernel, descriptors), batch_challenges) in self
             .kernel_plans
             .iter()
             .zip(scheduled.iter())
             .zip(batch_challenge_buffers.iter())
-            .enumerate()
         {
-            let contributions = unsafe { contributions_base.add(idx * acc_size * 2) };
             let input_descriptors = descriptors.device.extension_field_inputs.as_ptr();
             match kernel.batch_challenge_count {
                 1 => launch_pairwise_continuation(
@@ -3494,7 +3489,7 @@ where
                     folding_challenge.as_ptr(),
                     batch_challenges.as_ptr(),
                     explicit_form,
-                    contributions,
+                    accumulator,
                     acc_size,
                     context,
                 )?,
@@ -3503,7 +3498,7 @@ where
                     folding_challenge.as_ptr(),
                     batch_challenges.as_ptr(),
                     explicit_form,
-                    contributions,
+                    accumulator,
                     acc_size,
                     context,
                 )?,
@@ -3523,15 +3518,17 @@ where
         explicit_form: bool,
         context: &ProverContext,
     ) -> CudaResult<()> {
-        let contributions_base = self.round_scratch.contributions.as_mut_ptr();
-        for (idx, ((kernel, descriptors), batch_challenges)) in self
+        set_to_zero(
+            &mut self.round_scratch.accumulator[..acc_size * 2],
+            context.get_exec_stream(),
+        )?;
+        let accumulator = self.round_scratch.accumulator.as_mut_ptr();
+        for ((kernel, descriptors), batch_challenges) in self
             .kernel_plans
             .iter()
             .zip(scheduled.iter())
             .zip(batch_challenge_buffers.iter())
-            .enumerate()
         {
-            let contributions = unsafe { contributions_base.add(idx * acc_size * 2) };
             let input_descriptors = descriptors.device.extension_field_inputs.as_ptr();
             match kernel.batch_challenge_count {
                 1 => launch_pairwise_continuation(
@@ -3539,7 +3536,7 @@ where
                     folding_challenge.as_ptr(),
                     batch_challenges.as_ptr(),
                     explicit_form,
-                    contributions,
+                    accumulator,
                     acc_size,
                     context,
                 )?,
@@ -3548,7 +3545,7 @@ where
                     folding_challenge.as_ptr(),
                     batch_challenges.as_ptr(),
                     explicit_form,
-                    contributions,
+                    accumulator,
                     acc_size,
                     context,
                 )?,
@@ -3568,15 +3565,17 @@ where
         explicit_form: bool,
         context: &ProverContext,
     ) -> CudaResult<()> {
-        let contributions_base = self.round_scratch.contributions.as_mut_ptr();
-        for (idx, ((kernel, descriptors), batch_challenges)) in self
+        set_to_zero(
+            &mut self.round_scratch.accumulator[..acc_size * 2],
+            context.get_exec_stream(),
+        )?;
+        let accumulator = self.round_scratch.accumulator.as_mut_ptr();
+        for ((kernel, descriptors), batch_challenges) in self
             .kernel_plans
             .iter()
             .zip(scheduled.iter())
             .zip(batch_challenge_buffers.iter())
-            .enumerate()
         {
-            let contributions = unsafe { contributions_base.add(idx * acc_size * 2) };
             let input_descriptors = descriptors.device.extension_field_inputs.as_ptr();
             match kernel.batch_challenge_count {
                 1 => launch_pairwise_continuation(
@@ -3584,7 +3583,7 @@ where
                     folding_challenge.as_ptr(),
                     batch_challenges.as_ptr(),
                     explicit_form,
-                    contributions,
+                    accumulator,
                     acc_size,
                     context,
                 )?,
@@ -3593,7 +3592,7 @@ where
                     folding_challenge.as_ptr(),
                     batch_challenges.as_ptr(),
                     explicit_form,
-                    contributions,
+                    accumulator,
                     acc_size,
                     context,
                 )?,
@@ -3621,38 +3620,13 @@ where
             acc_size,
             context,
         )?;
-
-        launch_weight_contributions(
-            self.round_scratch.contributions.as_ptr(),
-            self.kernel_plans.len(),
-            self.round_scratch.eq_values.as_ptr(),
-            self.round_scratch.weighted_rows.as_mut_ptr(),
+        apply_eq_and_reduce_accumulator(
+            &self.round_scratch.eq_values,
+            &mut self.round_scratch.accumulator,
+            &mut self.round_scratch.reduction_output,
+            &mut self.round_scratch.reduction_temp_storage,
             acc_size,
             context,
-        )?;
-
-        let weighted_rows = unsafe {
-            DeviceSlice::from_raw_parts_mut(
-                self.round_scratch.weighted_rows.as_mut_ptr(),
-                acc_size * 2,
-            )
-        };
-        let weighted_matrix = DeviceMatrix::new(weighted_rows, acc_size);
-        let reduction_output = unsafe {
-            DeviceSlice::from_raw_parts_mut(self.round_scratch.reduction_output.as_mut_ptr(), 2)
-        };
-        let reduction_temp = unsafe {
-            DeviceSlice::from_raw_parts_mut(
-                self.round_scratch.reduction_temp_storage.as_mut_ptr(),
-                self.round_scratch.reduction_temp_storage.len(),
-            )
-        };
-        batch_reduce(
-            ReduceOperation::Sum,
-            reduction_temp,
-            &weighted_matrix,
-            reduction_output,
-            context.get_exec_stream(),
         )?;
 
         let mut reduction_host = unsafe { context.alloc_host_uninit_slice(2) };
@@ -4554,6 +4528,7 @@ impl<B, E: FieldExtension<BF> + Field> GpuGKRDimensionReducingScheduledLayerExec
 impl<E: 'static> GpuGKRMainLayerSumcheckLayerPlan<E>
 where
     E: Field + FieldExtension<BF> + Reduce + GpuMainLayerKernelSet,
+    Mul: BinaryOp<E, E, E>,
     [(); E::DEGREE]: Sized,
 {
     fn compute_combined_claim(&self, output_claims: &BTreeMap<GKRAddress, E>) -> E {
@@ -4619,7 +4594,11 @@ where
         acc_size: usize,
         context: &ProverContext,
     ) -> CudaResult<()> {
-        let contributions_base = self.round_scratch.contributions.as_mut_ptr();
+        set_to_zero(
+            &mut self.round_scratch.accumulator[..acc_size * 2],
+            context.get_exec_stream(),
+        )?;
+        let accumulator = self.round_scratch.accumulator.as_mut_ptr();
         for (idx, (((kernel, descriptors), batch_challenges), auxiliary_upload)) in self
             .kernel_plans
             .iter()
@@ -4628,14 +4607,13 @@ where
             .zip(auxiliary_uploads.iter())
             .enumerate()
         {
-            let contributions = unsafe { contributions_base.add(idx * acc_size * 2) };
             launch_main_round0(
                 kernel.kind,
                 descriptors,
                 batch_challenges.as_ptr(),
                 auxiliary_upload.device.as_ptr(),
                 constraint_uploads[idx].as_ref(),
-                contributions,
+                accumulator,
                 acc_size,
                 context,
             )?;
@@ -4655,7 +4633,11 @@ where
         explicit_form: bool,
         context: &ProverContext,
     ) -> CudaResult<()> {
-        let contributions_base = self.round_scratch.contributions.as_mut_ptr();
+        set_to_zero(
+            &mut self.round_scratch.accumulator[..acc_size * 2],
+            context.get_exec_stream(),
+        )?;
+        let accumulator = self.round_scratch.accumulator.as_mut_ptr();
         for (idx, (((kernel, descriptors), batch_challenges), auxiliary_upload)) in self
             .kernel_plans
             .iter()
@@ -4664,7 +4646,6 @@ where
             .zip(auxiliary_uploads.iter())
             .enumerate()
         {
-            let contributions = unsafe { contributions_base.add(idx * acc_size * 2) };
             launch_main_round1(
                 kernel.kind,
                 descriptors,
@@ -4673,7 +4654,7 @@ where
                 auxiliary_upload.device.as_ptr(),
                 constraint_uploads[idx].as_ref(),
                 explicit_form,
-                contributions,
+                accumulator,
                 acc_size,
                 context,
             )?;
@@ -4693,7 +4674,11 @@ where
         explicit_form: bool,
         context: &ProverContext,
     ) -> CudaResult<()> {
-        let contributions_base = self.round_scratch.contributions.as_mut_ptr();
+        set_to_zero(
+            &mut self.round_scratch.accumulator[..acc_size * 2],
+            context.get_exec_stream(),
+        )?;
+        let accumulator = self.round_scratch.accumulator.as_mut_ptr();
         for (idx, (((kernel, descriptors), batch_challenges), auxiliary_upload)) in self
             .kernel_plans
             .iter()
@@ -4702,7 +4687,6 @@ where
             .zip(auxiliary_uploads.iter())
             .enumerate()
         {
-            let contributions = unsafe { contributions_base.add(idx * acc_size * 2) };
             launch_main_round2(
                 kernel.kind,
                 descriptors,
@@ -4711,7 +4695,7 @@ where
                 auxiliary_upload.device.as_ptr(),
                 constraint_uploads[idx].as_ref(),
                 explicit_form,
-                contributions,
+                accumulator,
                 acc_size,
                 context,
             )?;
@@ -4731,7 +4715,11 @@ where
         explicit_form: bool,
         context: &ProverContext,
     ) -> CudaResult<()> {
-        let contributions_base = self.round_scratch.contributions.as_mut_ptr();
+        set_to_zero(
+            &mut self.round_scratch.accumulator[..acc_size * 2],
+            context.get_exec_stream(),
+        )?;
+        let accumulator = self.round_scratch.accumulator.as_mut_ptr();
         for (idx, (((kernel, descriptors), batch_challenges), auxiliary_upload)) in self
             .kernel_plans
             .iter()
@@ -4740,7 +4728,6 @@ where
             .zip(auxiliary_uploads.iter())
             .enumerate()
         {
-            let contributions = unsafe { contributions_base.add(idx * acc_size * 2) };
             launch_main_round3(
                 kernel.kind,
                 descriptors,
@@ -4749,7 +4736,7 @@ where
                 auxiliary_upload.device.as_ptr(),
                 constraint_uploads[idx].as_ref(),
                 explicit_form,
-                contributions,
+                accumulator,
                 acc_size,
                 context,
             )?;
@@ -4775,37 +4762,13 @@ where
             acc_size,
             context,
         )?;
-        launch_weight_contributions(
-            self.round_scratch.contributions.as_ptr(),
-            self.kernel_plans.len(),
-            self.round_scratch.eq_values.as_ptr(),
-            self.round_scratch.weighted_rows.as_mut_ptr(),
+        apply_eq_and_reduce_accumulator(
+            &self.round_scratch.eq_values,
+            &mut self.round_scratch.accumulator,
+            &mut self.round_scratch.reduction_output,
+            &mut self.round_scratch.reduction_temp_storage,
             acc_size,
             context,
-        )?;
-
-        let weighted_rows = unsafe {
-            DeviceSlice::from_raw_parts_mut(
-                self.round_scratch.weighted_rows.as_mut_ptr(),
-                acc_size * 2,
-            )
-        };
-        let weighted_matrix = DeviceMatrix::new(weighted_rows, acc_size);
-        let reduction_output = unsafe {
-            DeviceSlice::from_raw_parts_mut(self.round_scratch.reduction_output.as_mut_ptr(), 2)
-        };
-        let reduction_temp = unsafe {
-            DeviceSlice::from_raw_parts_mut(
-                self.round_scratch.reduction_temp_storage.as_mut_ptr(),
-                self.round_scratch.reduction_temp_storage.len(),
-            )
-        };
-        batch_reduce(
-            ReduceOperation::Sum,
-            reduction_temp,
-            &weighted_matrix,
-            reduction_output,
-            context.get_exec_stream(),
         )?;
 
         let mut reduction_host = unsafe { context.alloc_host_uninit_slice(2) };
@@ -5738,6 +5701,7 @@ where
 impl<E> GpuGKRDimensionReducingBackwardState<BF, E>
 where
     E: Field + FieldExtension<BF> + Reduce + GpuMainLayerKernelSet + 'static,
+    Mul: BinaryOp<E, E, E>,
     [(); E::DEGREE]: Sized,
 {
     pub(crate) fn schedule_execute_backward_workflow_from_shared_state(
@@ -5845,19 +5809,15 @@ mod tests {
         build_dimension_reducing_kernel_blueprints, build_main_layer_kernel_blueprints,
         launch_build_eq_values, launch_lookup_continuation, launch_lookup_round0,
         launch_main_round0, launch_pairwise_continuation, launch_pairwise_round0,
-        launch_weight_contributions, make_deferred_backward_workflow_state,
-        populate_backward_workflow_state, schedule_workflow_batch_challenge_upload,
-        GKRCircuitArtifact, GpuGKRDimensionReducingBackwardState,
-        GpuGKRMainLayerConstraintLinearTerm, GpuGKRMainLayerConstraintQuadraticTerm,
-        GpuGKRMainLayerKernelKind,
+        make_deferred_backward_workflow_state, populate_backward_workflow_state,
+        schedule_workflow_batch_challenge_upload, GKRCircuitArtifact,
+        GpuGKRDimensionReducingBackwardState, GpuGKRMainLayerConstraintLinearTerm,
+        GpuGKRMainLayerConstraintQuadraticTerm, GpuGKRMainLayerKernelKind,
     };
     use crate::allocator::tracker::AllocationPlacement;
-    use crate::ops::cub::device_reduce::{
-        batch_reduce, get_batch_reduce_temp_storage_bytes, ReduceOperation,
-    };
+    use crate::ops::cub::device_reduce::{get_reduce_temp_storage_bytes, ReduceOperation};
     use crate::primitives::callbacks::Callbacks;
     use crate::primitives::context::{DeviceAllocation, ProverContext};
-    use crate::primitives::device_structures::DeviceMatrix;
     use crate::primitives::field::{BF, E4};
     use crate::prover::gkr::{
         GpuBaseFieldPolySource, GpuExtensionFieldPolyContinuingLaunchDescriptor,
@@ -5901,6 +5861,19 @@ mod tests {
                 result
             })
             .collect()
+    }
+
+    fn interleaved_pairs_to_strided<T: Copy>(values: &[T]) -> Vec<T> {
+        assert_eq!(values.len() % 2, 0);
+        let pair_count = values.len() / 2;
+        let mut result = Vec::with_capacity(values.len());
+        for idx in 0..pair_count {
+            result.push(values[idx * 2]);
+        }
+        for idx in 0..pair_count {
+            result.push(values[idx * 2 + 1]);
+        }
+        result
     }
 
     fn alloc_and_copy<T: Copy>(context: &ProverContext, values: &[T]) -> DeviceAllocation<T> {
@@ -6912,43 +6885,56 @@ mod tests {
         for output_index in 0..2 {
             let idx = output_index * 2;
             let a0 = fold(&prev0, idx);
-            let a1 = fold(&prev0, idx + 4);
-            let mut da = a1;
+            let a1_full = fold(&prev0, idx + 4);
+            let mut da = a1_full;
             da.sub_assign(&a0);
             let b0 = fold(&prev1, idx);
-            let b1 = fold(&prev1, idx + 4);
-            let mut db = b1;
+            let b1_full = fold(&prev1, idx + 4);
+            let mut db = b1_full;
             db.sub_assign(&b0);
 
             let c0 = fold(&prev0, idx + 1);
-            let c1 = fold(&prev0, idx + 5);
-            let mut dc = c1;
+            let c1_full = fold(&prev0, idx + 5);
+            let mut dc = c1_full;
             dc.sub_assign(&c0);
             let d0 = fold(&prev1, idx + 1);
-            let d1 = fold(&prev1, idx + 5);
-            let mut dd = d1;
+            let d1_full = fold(&prev1, idx + 5);
+            let mut dd = d1_full;
             dd.sub_assign(&d0);
 
-            let mut num = da;
-            num.mul_assign(&dd);
-            let mut t = dc;
-            t.mul_assign(&db);
-            num.add_assign(&t);
+            let mut num0 = a0;
+            num0.mul_assign(&d0);
+            let mut t0 = c0;
+            t0.mul_assign(&b0);
+            num0.add_assign(&t0);
+            let mut den0 = b0;
+            den0.mul_assign(&d0);
 
-            let mut den = db;
-            den.mul_assign(&dd);
+            let mut num1 = da;
+            num1.mul_assign(&dd);
+            let mut t1 = dc;
+            t1.mul_assign(&db);
+            num1.add_assign(&t1);
+            let mut den1 = db;
+            den1.mul_assign(&dd);
 
             let mut e0 = batch0;
-            e0.mul_assign(&num);
-            let mut e1 = batch1;
-            e1.mul_assign(&den);
-            e0.add_assign(&e1);
+            e0.mul_assign(&num0);
+            let mut e0_den = batch1;
+            e0_den.mul_assign(&den0);
+            e0.add_assign(&e0_den);
 
-            expected.push(E4::ZERO);
+            let mut e1 = batch0;
+            e1.mul_assign(&num1);
+            let mut e1_den = batch1;
+            e1_den.mul_assign(&den1);
+            e1.add_assign(&e1_den);
+
             expected.push(e0);
+            expected.push(e1);
         }
 
-        assert_eq!(actual, expected);
+        assert_eq!(actual, interleaved_pairs_to_strided(&expected));
     }
 
     #[test]
@@ -7023,57 +7009,37 @@ mod tests {
             expected.push(c1);
         }
 
-        assert_eq!(actual, expected);
+        assert_eq!(actual, interleaved_pairs_to_strided(&expected));
     }
 
     #[test]
     #[cfg(not(no_cuda))]
     #[serial]
-    fn weight_contributions_and_reduce_match_cpu() {
+    fn accumulator_eq_multiply_and_reduce_match_cpu() {
         let context = make_test_context(64, 8);
-        let contributions = vec![
+        let accumulator = vec![
             sample_ext(10),
-            sample_ext(11),
-            sample_ext(12),
-            sample_ext(13),
             sample_ext(20),
+            sample_ext(11),
             sample_ext(21),
-            sample_ext(22),
-            sample_ext(23),
         ];
         let eq = vec![sample_ext(30), sample_ext(31)];
-        let contributions_dev = alloc_and_copy(&context, &contributions);
         let eq_dev = alloc_and_copy(&context, &eq);
-        let mut weighted_rows = context.alloc(4, AllocationPlacement::Top).unwrap();
+        let mut accumulator_dev = alloc_and_copy(&context, &accumulator);
+        let temp_bytes = get_reduce_temp_storage_bytes::<E4>(ReduceOperation::Sum, 2).unwrap();
+        let mut temp = context.alloc(temp_bytes, AllocationPlacement::Top).unwrap();
+        let mut reduced = context.alloc(2, AllocationPlacement::Top).unwrap();
 
-        launch_weight_contributions::<E4>(
-            contributions_dev.as_ptr(),
-            2,
-            eq_dev.as_ptr(),
-            weighted_rows.as_mut_ptr(),
+        super::apply_eq_and_reduce_accumulator(
+            &eq_dev,
+            &mut accumulator_dev,
+            &mut reduced,
+            &mut temp,
             2,
             &context,
         )
         .unwrap();
 
-        let temp_bytes =
-            get_batch_reduce_temp_storage_bytes::<E4>(ReduceOperation::Sum, 2, 2).unwrap();
-        let mut temp = context.alloc(temp_bytes, AllocationPlacement::Top).unwrap();
-        let mut reduced = context.alloc(2, AllocationPlacement::Top).unwrap();
-        let weighted_rows_slice =
-            unsafe { DeviceSlice::from_raw_parts(weighted_rows.as_ptr(), weighted_rows.len()) };
-        let weighted_matrix = DeviceMatrix::new(weighted_rows_slice, 2);
-        let temp_slice = unsafe { DeviceSlice::from_raw_parts_mut(temp.as_mut_ptr(), temp.len()) };
-        let reduced_slice =
-            unsafe { DeviceSlice::from_raw_parts_mut(reduced.as_mut_ptr(), reduced.len()) };
-        batch_reduce(
-            ReduceOperation::Sum,
-            temp_slice,
-            &weighted_matrix,
-            reduced_slice,
-            context.get_exec_stream(),
-        )
-        .unwrap();
         let mut host = unsafe { context.alloc_host_uninit_slice(2) };
         memory_copy_async(&mut host, &reduced, context.get_exec_stream()).unwrap();
         context.get_exec_stream().synchronize().unwrap();
@@ -7081,15 +7047,127 @@ mod tests {
 
         let mut expected = [E4::ZERO; 2];
         for row in 0..2 {
-            let mut row0 = contributions[row * 2];
-            row0.add_assign(&contributions[4 + row * 2]);
+            let mut row0 = accumulator[row];
             row0.mul_assign(&eq[row]);
             expected[0].add_assign(&row0);
 
-            let mut row1 = contributions[row * 2 + 1];
-            row1.add_assign(&contributions[4 + row * 2 + 1]);
+            let mut row1 = accumulator[2 + row];
             row1.mul_assign(&eq[row]);
             expected[1].add_assign(&row1);
+        }
+
+        assert_eq!(actual, interleaved_pairs_to_strided(&expected));
+    }
+
+    #[test]
+    #[cfg(not(no_cuda))]
+    #[serial]
+    fn pairwise_round0_kernel_accumulates_into_existing_buffer() {
+        let context = make_test_context(64, 8);
+        let input_values = (0..8).map(|i| sample_ext(10 + i)).collect::<Vec<_>>();
+        let output_values = (0..4).map(|i| sample_ext(100 + i)).collect::<Vec<_>>();
+        let batch_challenge = sample_ext(200);
+        let batch_challenges_dev = alloc_and_copy(&context, &[batch_challenge]);
+        let input = alloc_and_copy(&context, &input_values);
+        let output = alloc_and_copy(&context, &output_values);
+        let initial = vec![
+            sample_ext(300),
+            sample_ext(301),
+            sample_ext(302),
+            sample_ext(303),
+        ];
+        let mut contributions = alloc_and_copy(&context, &initial);
+
+        let mut round0 = GpuSumcheckRound0ScheduledLaunchDescriptors {
+            callbacks: Callbacks::new(),
+            host: GpuSumcheckRound0HostLaunchDescriptors {
+                base_field_inputs: unsafe {
+                    context.alloc_host_uninit_slice::<GpuBaseFieldPolySource<BF>>(0)
+                },
+                extension_field_inputs: unsafe {
+                    context.alloc_host_uninit_slice::<GpuExtensionFieldPolyInitialSource<E4>>(1)
+                },
+                base_field_outputs: unsafe {
+                    context.alloc_host_uninit_slice::<GpuBaseFieldPolySource<BF>>(0)
+                },
+                extension_field_outputs: unsafe {
+                    context.alloc_host_uninit_slice::<GpuExtensionFieldPolyInitialSource<E4>>(1)
+                },
+            },
+            device: GpuSumcheckRound0DeviceLaunchDescriptors {
+                base_field_inputs: context
+                    .alloc::<GpuBaseFieldPolySource<BF>>(0, AllocationPlacement::Top)
+                    .unwrap(),
+                extension_field_inputs: context
+                    .alloc::<GpuExtensionFieldPolyInitialSource<E4>>(1, AllocationPlacement::Top)
+                    .unwrap(),
+                base_field_outputs: context
+                    .alloc::<GpuBaseFieldPolySource<BF>>(0, AllocationPlacement::Top)
+                    .unwrap(),
+                extension_field_outputs: context
+                    .alloc::<GpuExtensionFieldPolyInitialSource<E4>>(1, AllocationPlacement::Top)
+                    .unwrap(),
+            },
+        };
+        unsafe {
+            round0
+                .host
+                .extension_field_inputs
+                .get_mut_accessor()
+                .get_mut()[0] = GpuExtensionFieldPolyInitialSource {
+                start: input.as_ptr(),
+                next_layer_size: 4,
+            };
+            round0
+                .host
+                .extension_field_outputs
+                .get_mut_accessor()
+                .get_mut()[0] = GpuExtensionFieldPolyInitialSource {
+                start: output.as_ptr(),
+                next_layer_size: 2,
+            };
+        }
+        memory_copy_async(
+            &mut round0.device.extension_field_inputs,
+            &round0.host.extension_field_inputs,
+            context.get_exec_stream(),
+        )
+        .unwrap();
+        memory_copy_async(
+            &mut round0.device.extension_field_outputs,
+            &round0.host.extension_field_outputs,
+            context.get_exec_stream(),
+        )
+        .unwrap();
+
+        launch_pairwise_round0::<E4>(
+            &round0,
+            batch_challenges_dev.as_ptr(),
+            contributions.as_mut_ptr(),
+            2,
+            &context,
+        )
+        .unwrap();
+        let mut host = unsafe { context.alloc_host_uninit_slice(4) };
+        memory_copy_async(&mut host, &contributions, context.get_exec_stream()).unwrap();
+        context.get_exec_stream().synchronize().unwrap();
+        let actual = unsafe { host.get_accessor().get().to_vec() };
+
+        let mut expected = initial;
+        for output_index in 0..2 {
+            let index = output_index * 2;
+            let mut c0 = batch_challenge;
+            c0.mul_assign(&output_values[output_index]);
+            expected[output_index].add_assign(&c0);
+
+            let mut a = input_values[4 + index];
+            a.sub_assign(&input_values[index]);
+            let mut b = input_values[4 + index + 1];
+            b.sub_assign(&input_values[index + 1]);
+            let mut c1 = a;
+            c1.mul_assign(&b);
+            c1.mul_assign(&batch_challenge);
+            expected[2 + output_index].add_assign(&c1);
         }
 
         assert_eq!(actual, expected);
@@ -7141,7 +7219,7 @@ mod tests {
 
         let expected = vec![expected_00, expected_01, expected_10, expected_11];
 
-        assert_eq!(actual, expected);
+        assert_eq!(actual, interleaved_pairs_to_strided(&expected));
     }
 
     #[test]
@@ -7239,7 +7317,7 @@ mod tests {
             expected.push(E4::ZERO);
         }
 
-        assert_eq!(actual, expected);
+        assert_eq!(actual, interleaved_pairs_to_strided(&expected));
     }
 
     #[test]
@@ -7317,7 +7395,7 @@ mod tests {
             expected.push(E4::ZERO);
         }
 
-        assert_eq!(actual, expected);
+        assert_eq!(actual, interleaved_pairs_to_strided(&expected));
     }
 
     #[test]
@@ -7392,7 +7470,7 @@ mod tests {
             expected.push(E4::ZERO);
         }
 
-        assert_eq!(actual, expected);
+        assert_eq!(actual, interleaved_pairs_to_strided(&expected));
     }
 
     #[test]
@@ -7497,7 +7575,7 @@ mod tests {
             expected.push(c1);
         }
 
-        assert_eq!(actual, expected);
+        assert_eq!(actual, interleaved_pairs_to_strided(&expected));
     }
 
     #[test]
@@ -7665,7 +7743,7 @@ mod tests {
             expected.push(c1);
         }
 
-        assert_eq!(actual, expected);
+        assert_eq!(actual, interleaved_pairs_to_strided(&expected));
     }
 
     #[test]
@@ -7799,7 +7877,7 @@ mod tests {
             expected.push(c1);
         }
 
-        assert_eq!(actual, expected);
+        assert_eq!(actual, interleaved_pairs_to_strided(&expected));
     }
 
     #[test]
@@ -7963,7 +8041,7 @@ mod tests {
             expected.push(c1);
         }
 
-        assert_eq!(actual, expected);
+        assert_eq!(actual, interleaved_pairs_to_strided(&expected));
     }
 
     #[test]
@@ -8086,7 +8164,7 @@ mod tests {
             expected.push(c1);
         }
 
-        assert_eq!(actual, expected);
+        assert_eq!(actual, interleaved_pairs_to_strided(&expected));
     }
 
     #[test]
@@ -8226,7 +8304,7 @@ mod tests {
             expected.push(c1);
         }
 
-        assert_eq!(actual, expected);
+        assert_eq!(actual, interleaved_pairs_to_strided(&expected));
     }
 
     #[test]
