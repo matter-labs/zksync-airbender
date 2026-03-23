@@ -119,6 +119,14 @@ exec_stream:
    work for this proof is complete. This is a general completion signal,
    separate from the fence above.
 
+`prove()` itself must stay enqueue-only: it may add stream waits/fences/events,
+but it must not block the host thread waiting for exec_stream progress. Host
+blocking is reserved for `GpuGKRProofJob::finish()` via `is_finished_event`.
+
+In particular, debug or profiling instrumentation inside `prove()` must not
+introduce `stream.synchronize()` or similar host waits just to sample memory
+usage or timing mid-workflow.
+
 ## Callback restrictions
 
 Host callbacks (the `Callbacks` system) execute on a CPU thread when exec_stream
