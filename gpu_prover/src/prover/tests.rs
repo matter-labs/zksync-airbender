@@ -19,6 +19,7 @@ use crate::primitives::field::{BF, E4};
 use crate::primitives::nvtx_registered::start_registered_range;
 use crate::primitives::static_host::alloc_static_pinned_box_from_slice;
 use crate::prover::decoder::DecoderTableTransfer;
+use crate::prover::memory::commit_memory;
 use crate::prover::proof::{
     GkrExternalPowChallenges, GpuGKRProofJob, prove, prove_with_transfer_scheduling,
 };
@@ -657,6 +658,55 @@ fn prepare_basic_unrolled_fixture(
     let tracing_data_host = make_non_memory_tracing_host_for_test(buffer);
     eprintln!("fixture: tracing host ready");
 
+    let compute_memory_tree_caps_for_fixture = || {
+        let mut setup_transfer =
+            GpuGKRSetupTransfer::new(Arc::clone(&gpu_setup_host), &context).unwrap();
+        let mut decoder_transfer = if compiled_circuit.has_decoder_lookup {
+            Some(DecoderTableTransfer::new(Arc::clone(&decoder_table_host), &context).unwrap())
+        } else {
+            None
+        };
+        let mut tracing_data_transfer =
+            TracingDataTransfer::new(tracing_data_host.clone(), &context).unwrap();
+
+        setup_transfer.schedule_transfer(&context).unwrap();
+        if let Some(decoder_transfer) = decoder_transfer.as_mut() {
+            decoder_transfer.schedule_transfer(&context).unwrap();
+        }
+        tracing_data_transfer.schedule_transfer(&context).unwrap();
+
+        setup_transfer.ensure_transferred(&context).unwrap();
+        if let Some(decoder_transfer) = decoder_transfer.as_ref() {
+            decoder_transfer
+                .transfer
+                .ensure_transferred(&context)
+                .unwrap();
+        }
+        tracing_data_transfer
+            .transfer
+            .ensure_transferred(&context)
+            .unwrap();
+
+        let log_lde_factor = whir_schedule.base_lde_factor.trailing_zeros();
+        let log_rows_per_leaf = whir_schedule.whir_steps_schedule[0] as u32;
+        let log_tree_cap_size = whir_schedule.cap_size.trailing_zeros();
+        let job = commit_memory(
+            CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
+                UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop,
+            )),
+            &compiled_circuit,
+            decoder_transfer.as_ref().map(|t| &t.data_device[..]),
+            &tracing_data_transfer.data_device,
+            log_lde_factor,
+            log_rows_per_leaf,
+            log_tree_cap_size,
+            &context,
+        )
+        .unwrap();
+        let (tree_caps, _) = job.finish().unwrap();
+        tree_caps
+    };
+
     // Extract per-coset memory tree caps from the CPU proof (needed for the new prove signature).
     let memory_tree_caps = if let Some(ref cpu_proof) = expected_cpu_proof {
         let combined_cap = &cpu_proof.whir_proof.memory_commitment.commitment.cap;
@@ -670,10 +720,7 @@ fn prepare_basic_unrolled_fixture(
             })
             .collect_vec()
     } else {
-        // Profiling fixture without CPU proof: caps will be computed on-GPU as a fallback.
-        // For now use empty caps — profiling tests don't verify proof correctness.
-        let lde_factor = whir_schedule.base_lde_factor;
-        vec![MerkleTreeCapVarLength::default(); lde_factor]
+        compute_memory_tree_caps_for_fixture()
     };
 
     (
@@ -5523,7 +5570,7 @@ fn test_commit_memory_matches_cpu() {
     use crate::prover::memory::commit_memory;
     use prover::gkr::prover::stages::stage1::commit_trace_part;
     use prover::gkr::witness_gen::family_circuits::{
-        evaluate_gkr_memory_witness_for_executor_family, GKRMemoryOnlyWitnessTrace,
+        GKRMemoryOnlyWitnessTrace, evaluate_gkr_memory_witness_for_executor_family,
     };
 
     let (fixture, _expected_cpu_proof) =
@@ -5556,8 +5603,7 @@ fn test_commit_memory_matches_cpu() {
     let tape = SimpleTape::new(&instructions);
     let mut ram = RamWithRomRegion::<{ ROM_SECOND_WORD_BITS }>::from_rom_content(&binary, 1 << 30);
     let cycles_bound = 1 << 20;
-    let mut state =
-        State::initial_with_counters(DelegationsAndFamiliesCounters::default());
+    let mut state = State::initial_with_counters(DelegationsAndFamiliesCounters::default());
     let mut snapshotter = SimpleSnapshotter::<
         DelegationsAndFamiliesCounters,
         { ROM_SECOND_WORD_BITS },
@@ -5631,15 +5677,14 @@ fn test_commit_memory_matches_cpu() {
     };
     let trace_len = fixture.compiled_circuit.trace_len;
     let num_cycles_per_chunk = 1usize << 24;
-    let cpu_memory_trace =
-        evaluate_gkr_memory_witness_for_executor_family::<BF, _, _, _>(
-            &fixture.compiled_circuit,
-            num_cycles_per_chunk,
-            &oracle,
-            &worker,
-            Global,
-            Global,
-        );
+    let cpu_memory_trace = evaluate_gkr_memory_witness_for_executor_family::<BF, _, _, _>(
+        &fixture.compiled_circuit,
+        num_cycles_per_chunk,
+        &oracle,
+        &worker,
+        Global,
+        Global,
+    );
 
     // Commit on CPU
     let twiddles: fft::Twiddles<BF, Global> = fft::Twiddles::new(trace_len, &worker);
