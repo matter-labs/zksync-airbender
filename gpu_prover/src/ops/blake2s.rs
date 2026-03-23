@@ -3,7 +3,7 @@ use crate::primitives::device_structures::{
     DeviceMatrixChunkImpl, DeviceMatrixChunkMutImpl, MutPtrAndStride, PtrAndStride,
 };
 use crate::primitives::field::BF;
-use crate::primitives::utils::{LOG_WARP_SIZE, WARP_SIZE, get_grid_block_dims_for_threads_count};
+use crate::primitives::utils::{get_grid_block_dims_for_threads_count, LOG_WARP_SIZE, WARP_SIZE};
 use era_cudart::cuda_kernel;
 use era_cudart::device::{device_get_attribute, get_device};
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
@@ -460,7 +460,7 @@ mod tests {
     use std::default::Default;
 
     use blake2s_u32::Blake2sState;
-    use era_cudart::memory::{DeviceAllocation, memory_copy_async};
+    use era_cudart::memory::{memory_copy_async, DeviceAllocation};
     use field::Field;
     use itertools::Itertools;
     #[cfg(feature = "deterministic_pow")]
