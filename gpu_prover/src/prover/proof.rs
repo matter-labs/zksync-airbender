@@ -552,17 +552,6 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
         },
         stream,
     )?;
-    // Measure peak device memory before WHIR fold materialization.
-    stream.synchronize()?;
-    let peak_before_whir_materialization = context.get_used_mem_peak();
-    let current_before_whir_materialization = context.get_used_mem_current();
-    eprintln!(
-        "[mem] before WHIR materialization: current={:.2} GB, peak={:.2} GB",
-        current_before_whir_materialization as f64 / (1u64 << 30) as f64,
-        peak_before_whir_materialization as f64 / (1u64 << 30) as f64,
-    );
-    context.reset_used_mem_peak();
-
     // Materialize deferred cosets for setup and memory right before WHIR fold queries.
     // Setup: cosets allocated on demand; partial trees already transferred from host.
     setup_transfer
@@ -584,16 +573,6 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
             .memory_trace_holder
             .build_and_cache_partial_trees(context)?;
     }
-
-    // Measure peak device memory after WHIR fold materialization.
-    stream.synchronize()?;
-    let peak_after_whir_materialization = context.get_used_mem_peak();
-    let current_after_whir_materialization = context.get_used_mem_current();
-    eprintln!(
-        "[mem] after WHIR materialization: current={:.2} GB, peak={:.2} GB",
-        current_after_whir_materialization as f64 / (1u64 << 30) as f64,
-        peak_after_whir_materialization as f64 / (1u64 << 30) as f64,
-    );
 
     let setup_base_caps_keepalive = setup_transfer.trace_holder.take_tree_caps_host();
     let whir_scheduled = schedule_gpu_whir_fold_with_sources(
