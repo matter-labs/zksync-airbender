@@ -938,24 +938,23 @@ where
     let final_monomials_len = 1usize << final_m;
 
     // Per-oracle claim counts from base layer (layer 0) sorted addresses
-    let (num_memory_claims, num_witness_claims, num_setup_claims) = if !standard_sorted_addrs
-        .is_empty()
-    {
-        let mut mem = 0usize;
-        let mut wit = 0usize;
-        let mut setup = 0usize;
-        for addr in &standard_sorted_addrs[0] {
-            match addr {
-                GKRAddress::BaseLayerMemory(_) => mem += 1,
-                GKRAddress::BaseLayerWitness(_) => wit += 1,
-                GKRAddress::Setup(_) => setup += 1,
-                _ => {} // inner/cached/scratch don't appear at base layer
+    let (num_memory_claims, num_witness_claims, num_setup_claims) =
+        if !standard_sorted_addrs.is_empty() {
+            let mut mem = 0usize;
+            let mut wit = 0usize;
+            let mut setup = 0usize;
+            for addr in &standard_sorted_addrs[0] {
+                match addr {
+                    GKRAddress::BaseLayerMemory(_) => mem += 1,
+                    GKRAddress::BaseLayerWitness(_) => wit += 1,
+                    GKRAddress::Setup(_) => setup += 1,
+                    _ => {} // inner/cached/scratch don't appear at base layer
+                }
             }
-        }
-        (mem, wit, setup)
-    } else {
-        (0, 0, 0)
-    };
+            (mem, wit, setup)
+        } else {
+            (0, 0, 0)
+        };
     let num_base_claims = num_memory_claims + num_witness_claims + num_setup_claims;
 
     // Base oracle depth: tree_depth = trace_len_log2 + log2(base_lde_factor) - initial_fold_steps

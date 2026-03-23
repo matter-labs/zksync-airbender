@@ -250,7 +250,10 @@ impl<F: PrimeField> GKRCompiler<F> {
                     &mut layers_mapping,
                 );
                 boolean_vars.push(borrow_var);
-                variable_names.insert(borrow_var, format!("query {}, interim ts borrow", query_idx));
+                variable_names.insert(
+                    borrow_var,
+                    format!("query {}, interim ts borrow", query_idx),
+                );
 
                 borrow_var
             };
