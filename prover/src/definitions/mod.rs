@@ -382,7 +382,7 @@ impl ExternalChallenges {
         }
     }
 
-    pub fn draw_from_transcript_seed_with_state_permutation(
+    pub fn draw_from_transcript_seed_with_delegation_and_state_permutation(
         mut seed: Seed,
         pow_bits: usize,
         pow_challenge: u64,
