@@ -7,7 +7,7 @@ use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::CudaStream;
 use era_cudart_sys::{cudaFuncSetAttribute, CudaFuncAttribute};
 
-use super::bitreversed_coeffs_to_natural_coset;
+use super::{bitreversed_coeffs_to_natural_coset, MIN_LOG_N_FOR_MULTISTAGE_KERNELS};
 
 use crate::device_structures::{
     DeviceMatrixChunk, DeviceMatrixChunkImpl, DeviceMatrixChunkMut, DeviceMatrixChunkMutImpl,
@@ -96,8 +96,8 @@ pub(crate) fn evals_to_monomials_3_pass(
     assert_eq!(inputs_matrix.slice().as_ptr() as usize % 16, 0);
     assert_eq!(outputs_matrix.slice().as_ptr() as usize % 16, 0);
     assert_eq!((inputs_matrix.stride() * size_of::<BF>()) % 16, 0);
-    assert_eq!((outputs_matrix.offset() * size_of::<BF>()) % 16, 0);
-    assert_eq!((inputs_matrix.stride() * size_of::<BF>()) % 16, 0);
+    assert_eq!((outputs_matrix.stride() * size_of::<BF>()) % 16, 0);
+    assert_eq!((inputs_matrix.offset() * size_of::<BF>()) % 16, 0);
     assert_eq!((outputs_matrix.offset() * size_of::<BF>()) % 16, 0);
     let num_ntts = outputs_matrix.cols();
     let inputs_slice = inputs_matrix.slice();
@@ -190,8 +190,8 @@ pub(crate) fn evals_to_monomials_2_pass(
     assert_eq!(inputs_matrix.slice().as_ptr() as usize % 16, 0);
     assert_eq!(outputs_matrix.slice().as_ptr() as usize % 16, 0);
     assert_eq!((inputs_matrix.stride() * size_of::<BF>()) % 16, 0);
-    assert_eq!((outputs_matrix.offset() * size_of::<BF>()) % 16, 0);
-    assert_eq!((inputs_matrix.stride() * size_of::<BF>()) % 16, 0);
+    assert_eq!((outputs_matrix.stride() * size_of::<BF>()) % 16, 0);
+    assert_eq!((inputs_matrix.offset() * size_of::<BF>()) % 16, 0);
     assert_eq!((outputs_matrix.offset() * size_of::<BF>()) % 16, 0);
     let num_ntts = outputs_matrix.cols();
     let inputs_slice = inputs_matrix.slice();
@@ -285,8 +285,8 @@ pub(crate) fn monomials_to_evals_3_pass(
     assert_eq!(inputs_matrix.slice().as_ptr() as usize % 16, 0);
     assert_eq!(outputs_matrix.slice().as_ptr() as usize % 16, 0);
     assert_eq!((inputs_matrix.stride() * size_of::<BF>()) % 16, 0);
-    assert_eq!((outputs_matrix.offset() * size_of::<BF>()) % 16, 0);
-    assert_eq!((inputs_matrix.stride() * size_of::<BF>()) % 16, 0);
+    assert_eq!((outputs_matrix.stride() * size_of::<BF>()) % 16, 0);
+    assert_eq!((inputs_matrix.offset() * size_of::<BF>()) % 16, 0);
     assert_eq!((outputs_matrix.offset() * size_of::<BF>()) % 16, 0);
     let num_ntts = outputs_matrix.cols();
     let inputs_slice = inputs_matrix.slice();
@@ -376,8 +376,8 @@ pub(crate) fn monomials_to_evals_2_pass(
     assert_eq!(inputs_matrix.slice().as_ptr() as usize % 16, 0);
     assert_eq!(outputs_matrix.slice().as_ptr() as usize % 16, 0);
     assert_eq!((inputs_matrix.stride() * size_of::<BF>()) % 16, 0);
-    assert_eq!((outputs_matrix.offset() * size_of::<BF>()) % 16, 0);
-    assert_eq!((inputs_matrix.stride() * size_of::<BF>()) % 16, 0);
+    assert_eq!((outputs_matrix.stride() * size_of::<BF>()) % 16, 0);
+    assert_eq!((inputs_matrix.offset() * size_of::<BF>()) % 16, 0);
     assert_eq!((outputs_matrix.offset() * size_of::<BF>()) % 16, 0);
     let num_ntts = outputs_matrix.cols();
     let inputs_slice = inputs_matrix.slice();
@@ -473,7 +473,7 @@ pub fn bitreversed_monomials_to_natural_evals(
     stream: &CudaStream,
     device_properties: &DeviceProperties,
 ) -> CudaResult<()> {
-    if log_n < 21 {
+    if log_n < MIN_LOG_N_FOR_MULTISTAGE_KERNELS {
         // Fallback (uses 1 stage at a time kernels)
         assert!(
             !transposed_monomials,
