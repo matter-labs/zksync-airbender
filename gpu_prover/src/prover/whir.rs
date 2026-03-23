@@ -15,7 +15,7 @@ use crate::primitives::context::{HostAllocation, ProverContext, UnsafeAccessor};
 use crate::primitives::device_structures::{DeviceMatrix, DeviceMatrixChunkMut, DeviceMatrixMut};
 use crate::primitives::field::{BF, E4};
 use crate::primitives::static_host::alloc_static_pinned_box_from_slice;
-use crate::prover::trace_holder::{PARTIAL_TREE_REDUCTION_LAYERS, TraceHolder, TreesCacheMode};
+use crate::prover::trace_holder::{TraceHolder, TreesCacheMode, PARTIAL_TREE_REDUCTION_LAYERS};
 
 const EXT4_DEGREE: usize = <E4 as FieldExtension<BF>>::DEGREE;
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -479,7 +479,7 @@ pub(crate) mod tests {
     use std::alloc::Global;
 
     use era_cudart::memory::memory_copy_async;
-    use fft::{Twiddles, bitreverse_enumeration_inplace, domain_generator_for_size};
+    use fft::{bitreverse_enumeration_inplace, domain_generator_for_size, Twiddles};
     use field::Field;
     use prover::gkr::prover::stages::stage1::ColumnMajorCosetBoundTracePart;
     use prover::gkr::whir::{ColumnMajorExtensionOracleForCoset, ColumnMajorExtensionOracleForLDE};
