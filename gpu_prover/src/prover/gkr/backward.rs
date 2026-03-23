@@ -15,9 +15,9 @@ use era_cudart::result::CudaResult;
 use era_cudart::slice::{CudaSliceMut, DeviceSlice};
 use era_cudart::{cuda_kernel_declaration, cuda_kernel_signature_arguments_and_function};
 use field::{Field, FieldExtension, PrimeField};
-use prover::gkr::prover::SumcheckIntermediateProofValues;
 use prover::gkr::prover::dimension_reduction::forward::DimensionReducingInputOutput;
 use prover::gkr::prover::transcript_utils::{commit_field_els, draw_random_field_els};
+use prover::gkr::prover::SumcheckIntermediateProofValues;
 use prover::gkr::sumcheck::evaluation_kernels::{
     BaseFieldCopyGKRRelation, BatchConstraintEvalGKRRelation, BatchedGKRKernel,
     ExtensionCopyGKRRelation, GKRInputs, LookupBaseExtMinusBaseExtGKRRelation,
@@ -32,25 +32,26 @@ use prover::gkr::sumcheck::{
 use prover::transcript::Seed;
 
 use super::{
-    GpuBaseFieldPolySource, GpuBaseFieldPolySourceAfterOneFoldingLaunchDescriptor,
+    alloc_host_and_schedule_copy, GpuBaseFieldPolySource,
+    GpuBaseFieldPolySourceAfterOneFoldingLaunchDescriptor,
     GpuBaseFieldPolySourceAfterTwoFoldingsLaunchDescriptor,
     GpuExtensionFieldPolyContinuingLaunchDescriptor, GpuExtensionFieldPolyInitialSource,
     GpuGKRStorage, GpuSumcheckRound0HostLaunchDescriptors,
     GpuSumcheckRound0ScheduledLaunchDescriptors, GpuSumcheckRound1PreparedStorage,
     GpuSumcheckRound1ScheduledLaunchDescriptors, GpuSumcheckRound2PreparedStorage,
     GpuSumcheckRound2ScheduledLaunchDescriptors, GpuSumcheckRound3AndBeyondPreparedStorage,
-    GpuSumcheckRound3AndBeyondScheduledLaunchDescriptors, alloc_host_and_schedule_copy,
+    GpuSumcheckRound3AndBeyondScheduledLaunchDescriptors,
 };
 use crate::allocator::tracker::AllocationPlacement;
 use crate::ops::cub::device_reduce::{
-    Reduce, ReduceOperation, batch_reduce, get_batch_reduce_temp_storage_bytes,
+    batch_reduce, get_batch_reduce_temp_storage_bytes, Reduce, ReduceOperation,
 };
 use crate::primitives::callbacks::Callbacks;
 use crate::primitives::context::{DeviceAllocation, HostAllocation, ProverContext, UnsafeAccessor};
 use crate::primitives::device_structures::DeviceMatrix;
 use crate::primitives::device_tracing::Range;
 use crate::primitives::field::{BF, E2, E4, E6};
-use crate::primitives::utils::{WARP_SIZE, get_grid_block_dims_for_threads_count};
+use crate::primitives::utils::{get_grid_block_dims_for_threads_count, WARP_SIZE};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct DimensionReducingKernelBlueprint<E> {
@@ -608,8 +609,8 @@ where
     }
 }
 
-pub(crate) fn make_deferred_backward_workflow_state<E>()
--> Arc<Mutex<ScheduledBackwardWorkflowState<E>>>
+pub(crate) fn make_deferred_backward_workflow_state<E>(
+) -> Arc<Mutex<ScheduledBackwardWorkflowState<E>>>
 where
     E: FieldExtension<BF> + Field,
 {
@@ -2793,6 +2794,10 @@ impl<B, E> GpuGKRDimensionReducingBackwardState<B, E> {
 
     pub(crate) fn storage(&self) -> &GpuGKRStorage<B, E> {
         &self.storage
+    }
+
+    pub(crate) fn purge_up_to_layer(&mut self, layer: usize) {
+        self.storage.purge_up_to_layer(layer);
     }
 }
 
@@ -5749,12 +5754,16 @@ where
         let dimension_reducing_layers_range = Range::new("gkr.backward.dimension_reducing_layers")?;
         dimension_reducing_layers_range.start(stream)?;
         while let Some(mut prepared_layer) = self.prepare_next_layer_static(context)? {
+            let layer_idx = prepared_layer.layer_idx;
             dimension_reducing_layers.push(
                 prepared_layer.schedule_execute_dimension_reducing_layer_from_workflow_state(
                     Arc::clone(&shared_state),
                     context,
                 )?,
             );
+            // Stream-ordered storage can be dropped once the layer's uploads and kernels have
+            // been fully enqueued on exec_stream.
+            self.purge_up_to_layer(layer_idx);
         }
         dimension_reducing_layers_range.end(stream)?;
         tracing_ranges.push(dimension_reducing_layers_range);
@@ -5833,17 +5842,18 @@ where
 #[cfg(test)]
 mod tests {
     use super::{
+        build_dimension_reducing_kernel_blueprints, build_main_layer_kernel_blueprints,
+        launch_build_eq_values, launch_lookup_continuation, launch_lookup_round0,
+        launch_main_round0, launch_pairwise_continuation, launch_pairwise_round0,
+        launch_weight_contributions, make_deferred_backward_workflow_state,
+        populate_backward_workflow_state, schedule_workflow_batch_challenge_upload,
         GKRCircuitArtifact, GpuGKRDimensionReducingBackwardState,
         GpuGKRMainLayerConstraintLinearTerm, GpuGKRMainLayerConstraintQuadraticTerm,
-        GpuGKRMainLayerKernelKind, build_dimension_reducing_kernel_blueprints,
-        build_main_layer_kernel_blueprints, launch_build_eq_values, launch_lookup_continuation,
-        launch_lookup_round0, launch_main_round0, launch_pairwise_continuation,
-        launch_pairwise_round0, launch_weight_contributions, make_deferred_backward_workflow_state,
-        populate_backward_workflow_state, schedule_workflow_batch_challenge_upload,
+        GpuGKRMainLayerKernelKind,
     };
     use crate::allocator::tracker::AllocationPlacement;
     use crate::ops::cub::device_reduce::{
-        ReduceOperation, batch_reduce, get_batch_reduce_temp_storage_bytes,
+        batch_reduce, get_batch_reduce_temp_storage_bytes, ReduceOperation,
     };
     use crate::primitives::callbacks::Callbacks;
     use crate::primitives::context::{DeviceAllocation, ProverContext};
@@ -5906,6 +5916,86 @@ mod tests {
         memory_copy_async(&mut allocation, values, context.get_exec_stream()).unwrap();
         context.get_exec_stream().synchronize().unwrap();
         unsafe { allocation.get_accessor().get().to_vec() }
+    }
+
+    #[test]
+    #[serial]
+    fn shared_state_dimension_reduction_purges_storage_after_each_layer() {
+        let fixture = crate::prover::tests::prepare_basic_unrolled_async_backward_fixture(8);
+        let context = &fixture.context;
+        let expected_dimension_reducing_layers =
+            fixture.initial_output_layer_idx - fixture.compiled_circuit.layers.len();
+        assert!(
+            expected_dimension_reducing_layers >= 2,
+            "fixture must include multiple dimension-reducing layers"
+        );
+
+        let mut backward_state = fixture.gpu_backward_state;
+        let shared_state = make_deferred_backward_workflow_state();
+        populate_backward_workflow_state(
+            &shared_state,
+            fixture.initial_output_layer_idx,
+            fixture.top_layer_claims,
+            fixture.evaluation_point,
+            fixture.seed,
+            fixture.batching_challenge,
+            fixture.lookup_additive_part,
+            fixture.constraints_batch_challenge,
+        );
+
+        let mut dimension_reducing_layers = Vec::new();
+        let mut purged_layers = 0usize;
+        while let Some(mut prepared_layer) =
+            backward_state.prepare_next_layer_static(context).unwrap()
+        {
+            let layer_idx = prepared_layer.layer_idx;
+            let scheduled = prepared_layer
+                .schedule_execute_dimension_reducing_layer_from_workflow_state(
+                    std::sync::Arc::clone(&shared_state),
+                    context,
+                )
+                .unwrap();
+            dimension_reducing_layers.push(scheduled);
+            backward_state.purge_up_to_layer(layer_idx);
+            purged_layers += 1;
+
+            assert_eq!(
+                backward_state.storage().layers.len(),
+                layer_idx + 1,
+                "storage should be truncated through scheduled dimension-reducing layer {layer_idx}"
+            );
+            assert!(
+                backward_state.storage().layers.get(layer_idx + 1).is_none(),
+                "layers above {layer_idx} should be purged after scheduling"
+            );
+        }
+
+        assert_eq!(purged_layers, expected_dimension_reducing_layers);
+
+        let mut main_state = backward_state.into_main_layer_backward_state(
+            fixture.compiled_circuit,
+            E4::ZERO,
+            E4::ZERO,
+        );
+        let mut first_main_layer = main_state
+            .prepare_next_layer_static(context)
+            .unwrap()
+            .expect("expected first main-layer plan after dimension reduction");
+        let first_main_layer_idx = first_main_layer.layer_idx;
+        let _first_main_layer_execution = first_main_layer
+            .schedule_execute_main_layer_from_workflow_state(
+                std::sync::Arc::clone(&shared_state),
+                context,
+            )
+            .unwrap();
+
+        context.get_exec_stream().synchronize().unwrap();
+
+        let execution = super::take_backward_execution_from_shared_state(&shared_state);
+        assert!(
+            execution.proofs.contains_key(&first_main_layer_idx),
+            "shared-state workflow should still schedule the first main layer after purging"
+        );
     }
 
     #[test]
