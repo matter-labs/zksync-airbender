@@ -56,11 +56,11 @@ EXTERN __launch_bounds__(512, 1) __global__
   for (int i{0}, addr{thread_il_smem_start}; i < 32; i++, addr += TILE_SIZE * THREAD_TILES_PER_BLOCK)
     vals[i] = smem_block[addr]; // read interleaved smem tiles
 
-  reg_exchg_fwd<1, 2, 16>(vals, 0);
-  reg_exchg_fwd<2, 4, 8>(vals, 0);
-  reg_exchg_fwd<4, 8, 4>(vals, 0);
-  reg_exchg_fwd<8, 16, 2>(vals, 0);
-  reg_exchg_fwd<16, 32, 1>(vals, 0);
+  reg_exchg_fwd<1, 2, 16>(vals);
+  reg_exchg_fwd<2, 4, 8>(vals);
+  reg_exchg_fwd<4, 8, 4>(vals);
+  reg_exchg_fwd<8, 16, 2>(vals);
+  reg_exchg_final_fwd<16>(vals);
 
   for (int i{0}, addr{thread_il_gmem_start}; i < 32; i++, addr += IL_GMEM_STRIDE)
     gmem_out.set_at_row(addr, vals[i]); // write interleaved gmem tiles
