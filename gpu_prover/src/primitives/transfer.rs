@@ -99,7 +99,9 @@ mod tests {
 
     #[test]
     fn test_transfer() -> CudaResult<()> {
-        let context = ProverContext::new(&ProverContextConfig::default())?;
+        let mut config = ProverContextConfig::default();
+        config.allocator_block_log_size = 2;
+        let context = ProverContext::new(&config)?;
         let src = Arc::new(vec![0; 1024]);
         let mut transfer = Transfer::new()?;
         let mut dst = context.alloc(1024, AllocationPlacement::BestFit)?;
