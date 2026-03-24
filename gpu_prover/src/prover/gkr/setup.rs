@@ -1,3 +1,4 @@
+use std::marker::PhantomData;
 use std::ops::DerefMut;
 use std::sync::Arc;
 
@@ -121,10 +122,7 @@ pub(crate) struct GpuGKRSetupTransfer<'a> {
 }
 
 pub(crate) struct GpuGKRSetupTransferHostKeepalive<'a> {
-    #[allow(dead_code)]
-    host: Arc<GpuGKRSetupHost>,
-    #[allow(dead_code)]
-    transfer_callbacks: Callbacks<'a>,
+    _transfer_callbacks: Callbacks<'a>,
 }
 
 impl<'a> GpuGKRSetupTransfer<'a> {
@@ -177,15 +175,14 @@ impl<'a> GpuGKRSetupTransfer<'a> {
 
     pub(crate) fn into_host_keepalive(self) -> GpuGKRSetupTransferHostKeepalive<'a> {
         let Self {
-            host,
+            host: _,
             trace_holder: _,
             transfer,
         } = self;
-        // trace_holder (device alloc) drops here — all exec-stream ops that used it
-        // have already been scheduled.
+        // trace_holder (device alloc) and host drop here — all exec-stream ops that
+        // used them have already been scheduled.
         GpuGKRSetupTransferHostKeepalive {
-            host,
-            transfer_callbacks: transfer.into_callbacks(),
+            _transfer_callbacks: transfer.into_callbacks(),
         }
     }
 
@@ -251,7 +248,7 @@ impl<'a> GpuGKRSetupTransfer<'a> {
     pub(crate) fn schedule_forward_setup<E>(
         &self,
         compiled_circuit: &GKRCircuitArtifact<BF>,
-        lookup_challenges: HostAllocation<[E]>,
+        lookup_challenges: &HostAllocation<[E]>,
         context: &ProverContext,
     ) -> CudaResult<GpuGKRForwardSetup<E>>
     where
@@ -373,12 +370,12 @@ impl<'a> GpuGKRSetupTransfer<'a> {
         schedule_range.end(stream)?;
         tracing_ranges.push(schedule_range);
 
+        drop(host_lookup_additive_part);
+        drop(host_lookup_alpha_powers);
+
         Ok(GpuGKRForwardSetup {
-            tracing_ranges,
-            lookup_challenges,
-            callbacks,
-            host_lookup_additive_part,
-            host_lookup_alpha_powers,
+            _tracing_ranges: tracing_ranges,
+            _callbacks: callbacks,
             device_lookup_additive_part,
             generic_lookup,
         })
@@ -411,31 +408,16 @@ impl<'a> GpuGKRSetupTransfer<'a> {
 }
 
 pub(crate) struct GpuGKRForwardSetup<E> {
-    #[allow(dead_code)] // Keeps queued NVTX host callbacks alive until the stream consumes them.
-    tracing_ranges: Vec<Range>,
-    #[allow(dead_code)] // Keeps challenge source alive until queued callbacks consume it.
-    lookup_challenges: HostAllocation<[E]>,
-    #[allow(dead_code)] // Keeps queued setup callbacks alive until the stream consumes them.
-    callbacks: Callbacks<'static>,
-    #[allow(dead_code)] // Keeps async H2D sources alive until the queued copies complete.
-    host_lookup_additive_part: HostAllocation<[E]>,
-    #[allow(dead_code)] // Keeps async H2D sources alive until the queued copies complete.
-    host_lookup_alpha_powers: Option<HostAllocation<[E]>>,
+    _tracing_ranges: Vec<Range>,
+    _callbacks: Callbacks<'static>,
     device_lookup_additive_part: DeviceAllocation<E>,
     generic_lookup: Option<DeviceAllocation<E>>,
 }
 
 pub(crate) struct GpuGKRForwardSetupHostKeepalive<E> {
-    #[allow(dead_code)]
-    tracing_ranges: Vec<Range>,
-    #[allow(dead_code)]
-    lookup_challenges: HostAllocation<[E]>,
-    #[allow(dead_code)]
-    callbacks: Callbacks<'static>,
-    #[allow(dead_code)]
-    host_lookup_additive_part: HostAllocation<[E]>,
-    #[allow(dead_code)]
-    host_lookup_alpha_powers: Option<HostAllocation<[E]>>,
+    _tracing_ranges: Vec<Range>,
+    _callbacks: Callbacks<'static>,
+    _marker: PhantomData<E>,
 }
 
 impl<E> GpuGKRForwardSetup<E> {
@@ -466,22 +448,17 @@ impl<E> GpuGKRForwardSetup<E> {
 
     pub(crate) fn into_host_keepalive(self) -> GpuGKRForwardSetupHostKeepalive<E> {
         let Self {
-            tracing_ranges,
-            lookup_challenges,
-            callbacks,
-            host_lookup_additive_part,
-            host_lookup_alpha_powers,
+            _tracing_ranges,
+            _callbacks,
             device_lookup_additive_part: _,
             generic_lookup: _,
         } = self;
         // device_lookup_additive_part and generic_lookup (device allocs) drop here —
         // all exec-stream ops that used them have already been scheduled.
         GpuGKRForwardSetupHostKeepalive {
-            tracing_ranges,
-            lookup_challenges,
-            callbacks,
-            host_lookup_additive_part,
-            host_lookup_alpha_powers,
+            _tracing_ranges,
+            _callbacks,
+            _marker: PhantomData,
         }
     }
 }
