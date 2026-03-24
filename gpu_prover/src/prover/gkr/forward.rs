@@ -37,9 +37,7 @@ use crate::ops::simple::{
     sub_into_x, Add, BinaryOp, Mul, SetByRef, SetByVal, Sub,
 };
 use crate::primitives::context::{DeviceAllocation, HostAllocation, ProverContext, UnsafeAccessor};
-use crate::primitives::device_structures::{
-    DeviceMatrix, DeviceMatrixMut, DeviceVectorChunk, DeviceVectorChunkMut,
-};
+use crate::primitives::device_structures::{DeviceMatrix, DeviceMatrixMut, DeviceVectorChunk};
 use crate::primitives::device_tracing::Range;
 use crate::primitives::field::{BF, E2, E4, E6};
 use crate::primitives::utils::{get_grid_block_dims_for_threads_count, WARP_SIZE};
@@ -201,6 +199,14 @@ struct ForwardLookupUsage {
 
 const GKR_FORWARD_MAX_GATES_PER_LAYER: usize = 64;
 const GKR_FORWARD_THREADS_PER_BLOCK: u32 = WARP_SIZE * 4;
+const MAX_CACHE_RELATIONS_PER_LAYER: usize = 20;
+const MEMORY_TUPLE_LINEAR_TERMS: usize = 6;
+const MEMORY_TUPLE_ADDRESS_LOW_TERM: usize = 0;
+const MEMORY_TUPLE_ADDRESS_HIGH_TERM: usize = 1;
+const MEMORY_TUPLE_TIMESTAMP_LOW_TERM: usize = 2;
+const MEMORY_TUPLE_TIMESTAMP_HIGH_TERM: usize = 3;
+const MEMORY_TUPLE_VALUE_LOW_TERM: usize = 4;
+const MEMORY_TUPLE_VALUE_HIGH_TERM: usize = 5;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u32)]
@@ -656,6 +662,129 @@ gkr_forward_layer_kernels!(E2);
 gkr_forward_layer_kernels!(E4);
 gkr_forward_layer_kernels!(E6);
 
+#[repr(u32)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum GpuGKRForwardCacheKind {
+    #[default]
+    Empty = 0,
+    SingleColumnLookup = 1,
+    VectorizedLookup = 2,
+    VectorizedLookupSetup = 3,
+    MemoryTuple = 4,
+}
+
+#[repr(u32)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum GpuGKRForwardCacheAddressSpaceKind {
+    #[default]
+    Empty = 0,
+    Constant = 1,
+    Is = 2,
+    Not = 3,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct GpuGKRForwardCacheDescriptor<E> {
+    kind: GpuGKRForwardCacheKind,
+    address_space_kind: GpuGKRForwardCacheAddressSpaceKind,
+    mapping: *const u32,
+    setup_values: *const BF,
+    generic_lookup: *const E,
+    base_output: *mut BF,
+    ext_output: *mut E,
+    generic_lookup_len: u32,
+    address_space_ptr: *const BF,
+    address_space_constant: BF,
+    constant_term: E,
+    linear_inputs: [*const BF; MEMORY_TUPLE_LINEAR_TERMS],
+    linear_challenges: [E; MEMORY_TUPLE_LINEAR_TERMS],
+}
+
+impl<E: Field> Default for GpuGKRForwardCacheDescriptor<E> {
+    fn default() -> Self {
+        Self {
+            kind: GpuGKRForwardCacheKind::Empty,
+            address_space_kind: GpuGKRForwardCacheAddressSpaceKind::Empty,
+            mapping: null(),
+            setup_values: null(),
+            generic_lookup: null(),
+            base_output: null::<BF>().cast_mut(),
+            ext_output: null::<E>().cast_mut(),
+            generic_lookup_len: 0,
+            address_space_ptr: null(),
+            address_space_constant: BF::ZERO,
+            constant_term: E::ZERO,
+            linear_inputs: [null(); MEMORY_TUPLE_LINEAR_TERMS],
+            linear_challenges: [E::ZERO; MEMORY_TUPLE_LINEAR_TERMS],
+        }
+    }
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct GpuGKRForwardCacheBatch<E> {
+    count: u32,
+    descriptors: [GpuGKRForwardCacheDescriptor<E>; MAX_CACHE_RELATIONS_PER_LAYER],
+}
+
+impl<E: Field> Default for GpuGKRForwardCacheBatch<E> {
+    fn default() -> Self {
+        Self {
+            count: 0,
+            descriptors: [GpuGKRForwardCacheDescriptor::default(); MAX_CACHE_RELATIONS_PER_LAYER],
+        }
+    }
+}
+
+cuda_kernel_signature_arguments_and_function!(
+    GpuGKRForwardCache<T>,
+    batch: GpuGKRForwardCacheBatch<T>,
+    trace_len: u32,
+);
+
+pub(crate) trait GpuGKRForwardCacheKernelSet: Copy + Sized {
+    const FORWARD_CACHE: GpuGKRForwardCacheSignature<Self>;
+}
+
+macro_rules! gkr_forward_cache_kernels {
+    ($type:ty) => {
+        paste! {
+            cuda_kernel_declaration!(
+                [<ab_gkr_forward_cache_ $type:lower _kernel>](
+                    batch: GpuGKRForwardCacheBatch<$type>,
+                    trace_len: u32,
+                )
+            );
+
+            impl GpuGKRForwardCacheKernelSet for $type {
+                const FORWARD_CACHE: GpuGKRForwardCacheSignature<Self> =
+                    [<ab_gkr_forward_cache_ $type:lower _kernel>];
+            }
+        }
+    };
+}
+
+gkr_forward_cache_kernels!(E2);
+gkr_forward_cache_kernels!(E4);
+gkr_forward_cache_kernels!(E6);
+
+fn gkr_forward_cache_launch_config(count: u32, context: &ProverContext) -> CudaLaunchConfig<'_> {
+    let (grid_dim, block_dim) = get_grid_block_dims_for_threads_count(WARP_SIZE * 4, count.max(1));
+    CudaLaunchConfig::basic(grid_dim, block_dim, context.get_exec_stream())
+}
+
+fn launch_forward_cache<E: GpuGKRForwardCacheKernelSet>(
+    batch: GpuGKRForwardCacheBatch<E>,
+    trace_len: usize,
+    context: &ProverContext,
+) -> CudaResult<()> {
+    assert!(trace_len <= u32::MAX as usize);
+    let config = gkr_forward_cache_launch_config(trace_len as u32, context);
+    let args = GpuGKRForwardCacheArguments::new(batch, trace_len as u32);
+    GpuGKRForwardCacheFunction(E::FORWARD_CACHE).launch(&config, &args)
+}
+
 pub(crate) fn schedule_forward_pass<E>(
     setup: &GpuGKRSetupTransfer<'_>,
     stage1: &mut GpuGKRStage1Output,
@@ -666,7 +795,13 @@ pub(crate) fn schedule_forward_pass<E>(
     context: &ProverContext,
 ) -> CudaResult<GpuGKRForwardOutput<BF, E>>
 where
-    E: FieldExtension<BF> + Field + SetByRef + SetByVal + BatchInv + GpuGKRForwardKernelSet,
+    E: FieldExtension<BF>
+        + Field
+        + SetByRef
+        + SetByVal
+        + BatchInv
+        + GpuGKRForwardKernelSet
+        + GpuGKRForwardCacheKernelSet,
     Add: BinaryOp<E, E, E>,
     Add: BinaryOp<BF, E, E>,
     Add: BinaryOp<E, BF, E>,
@@ -787,7 +922,13 @@ fn schedule_layer<E>(
     context: &ProverContext,
 ) -> CudaResult<()>
 where
-    E: FieldExtension<BF> + Field + SetByRef + SetByVal + BatchInv + GpuGKRForwardKernelSet,
+    E: FieldExtension<BF>
+        + Field
+        + SetByRef
+        + SetByVal
+        + BatchInv
+        + GpuGKRForwardKernelSet
+        + GpuGKRForwardCacheKernelSet,
     Add: BinaryOp<E, E, E>,
     Add: BinaryOp<BF, E, E>,
     Add: BinaryOp<E, BF, E>,
@@ -801,19 +942,16 @@ where
     let stream = context.get_exec_stream();
     let cache_range = Range::new(format!("gkr.forward.layer.{layer_idx}.cache"))?;
     cache_range.start(stream)?;
-    for (address, cache_relation) in layer.cached_relations.iter() {
-        schedule_cache_relation(
-            layer_idx,
-            *address,
-            cache_relation,
-            storage,
-            stage1,
-            forward_setup,
-            external_challenges,
-            trace_len,
-            context,
-        )?;
-    }
+    schedule_cache_relations(
+        layer_idx,
+        &layer.cached_relations,
+        storage,
+        stage1,
+        forward_setup,
+        external_challenges,
+        trace_len,
+        context,
+    )?;
     cache_range.end(stream)?;
     tracing_ranges.push(cache_range);
 
@@ -1163,7 +1301,32 @@ fn release_forward_lookup_resources_after_layer<E>(
     }
 }
 
-fn schedule_cache_relation<E>(
+fn cache_relation_layer(layer_idx: usize, address: GKRAddress) -> usize {
+    let GKRAddress::Cached { layer, .. } = address else {
+        panic!(
+            "forward cache scheduler expects cached address, got {:?}",
+            address
+        );
+    };
+    assert_eq!(
+        layer, layer_idx,
+        "cached relation address {:?} does not belong to scheduled layer {}",
+        address, layer_idx
+    );
+    layer
+}
+
+fn add_memory_tuple_linear_term<E: Field>(
+    descriptor: &mut GpuGKRForwardCacheDescriptor<E>,
+    term_idx: usize,
+    input: *const BF,
+    challenge: E,
+) {
+    descriptor.linear_inputs[term_idx] = input;
+    descriptor.linear_challenges[term_idx] = challenge;
+}
+
+fn lower_cache_relation<E>(
     layer_idx: usize,
     address: GKRAddress,
     relation: &NoFieldGKRCacheRelation,
@@ -1173,7 +1336,7 @@ fn schedule_cache_relation<E>(
     external_challenges: &GKRExternalChallenges<BF, E>,
     trace_len: usize,
     context: &ProverContext,
-) -> CudaResult<()>
+) -> CudaResult<GpuGKRForwardCacheDescriptor<E>>
 where
     E: FieldExtension<BF> + Field + SetByRef + SetByVal + BatchInv,
     Add: BinaryOp<E, E, E>,
@@ -1186,6 +1349,13 @@ where
     Sub: BinaryOp<E, BF, E>,
     Sub: BinaryOp<BF, BF, BF>,
 {
+    let cache_layer = cache_relation_layer(layer_idx, address);
+    let generic_lookup = if forward_setup.generic_lookup_len() > 0 {
+        forward_setup.generic_lookup().as_ptr()
+    } else {
+        null()
+    };
+
     match relation {
         NoFieldGKRCacheRelation::SingleColumnLookup {
             relation,
@@ -1203,18 +1373,17 @@ where
             let setup_column = if *range_check_width == 16 { 0 } else { 1 };
             let setup_values = storage
                 .get_base_layer(GKRAddress::Setup(setup_column))
-                .clone_shared();
+                .as_ptr();
             let mut dst = alloc_base(trace_len, context)?;
-            gather_rows(
-                mapping,
-                false,
-                0,
-                &setup_values.as_device_chunk(),
-                dst.deref_mut(),
-                context.get_exec_stream(),
-            )?;
-            assert_eq!(layer_idx, 0);
-            storage.insert_base_field_at_layer(0, address, GpuBaseFieldPoly::new(dst));
+            let base_output = dst.as_mut_ptr();
+            storage.insert_base_field_at_layer(cache_layer, address, GpuBaseFieldPoly::new(dst));
+            Ok(GpuGKRForwardCacheDescriptor {
+                kind: GpuGKRForwardCacheKind::SingleColumnLookup,
+                mapping: mapping.as_ptr(),
+                setup_values,
+                base_output,
+                ..GpuGKRForwardCacheDescriptor::default()
+            })
         }
         NoFieldGKRCacheRelation::VectorizedLookup(rel) => {
             let mapping = if rel.lookup_set_index != DECODER_LOOKUP_FORMAL_SET_INDEX {
@@ -1226,66 +1395,61 @@ where
                     .expect("decoder mapping must be present for decoder lookup relation")
             };
             let mut dst = alloc_ext(trace_len, context)?;
-            gather_ext_rows_into_ext(
-                mapping,
-                forward_setup.generic_lookup(),
-                0,
-                forward_setup.generic_lookup_len(),
-                &mut dst,
-                context,
-            )?;
-            storage.insert_extension_at_layer(0, address, GpuExtensionFieldPoly::new(dst));
+            let ext_output = dst.as_mut_ptr();
+            storage.insert_extension_at_layer(
+                cache_layer,
+                address,
+                GpuExtensionFieldPoly::new(dst),
+            );
+            Ok(GpuGKRForwardCacheDescriptor {
+                kind: GpuGKRForwardCacheKind::VectorizedLookup,
+                mapping: mapping.as_ptr(),
+                generic_lookup,
+                ext_output,
+                ..GpuGKRForwardCacheDescriptor::default()
+            })
         }
         NoFieldGKRCacheRelation::VectorizedLookupSetup(_) => {
             let mut dst = alloc_ext(trace_len, context)?;
-            set_by_val(E::ZERO, dst.deref_mut(), context.get_exec_stream())?;
-            if forward_setup.generic_lookup_len() > 0 {
-                let src = DeviceVectorChunk::new(
-                    forward_setup.generic_lookup(),
-                    0,
-                    forward_setup.generic_lookup_len(),
-                );
-                let mut prefix =
-                    DeviceVectorChunkMut::new(&mut dst, 0, forward_setup.generic_lookup_len());
-                set_by_ref(&src, &mut prefix, context.get_exec_stream())?;
-            }
-            storage.insert_extension_at_layer(0, address, GpuExtensionFieldPoly::new(dst));
+            let ext_output = dst.as_mut_ptr();
+            storage.insert_extension_at_layer(
+                cache_layer,
+                address,
+                GpuExtensionFieldPoly::new(dst),
+            );
+            Ok(GpuGKRForwardCacheDescriptor {
+                kind: GpuGKRForwardCacheKind::VectorizedLookupSetup,
+                generic_lookup,
+                ext_output,
+                generic_lookup_len: forward_setup.generic_lookup_len() as u32,
+                ..GpuGKRForwardCacheDescriptor::default()
+            })
         }
         NoFieldGKRCacheRelation::MemoryTuple(rel) => {
             let mut dst = alloc_ext(trace_len, context)?;
-            set_by_val(
-                external_challenges.permutation_argument_additive_part,
-                dst.deref_mut(),
-                context.get_exec_stream(),
-            )?;
+            let ext_output = dst.as_mut_ptr();
+            let mut descriptor = GpuGKRForwardCacheDescriptor {
+                kind: GpuGKRForwardCacheKind::MemoryTuple,
+                ext_output,
+                constant_term: external_challenges.permutation_argument_additive_part,
+                ..GpuGKRForwardCacheDescriptor::default()
+            };
             match rel.address_space {
                 CompiledAddressSpaceRelationStrict::Constant(c) => {
-                    add_ext_scalar_in_place(
-                        &mut dst,
-                        ext_from_base(BF::from_u32_unchecked(c)),
-                        context,
-                    )?;
+                    descriptor.address_space_kind = GpuGKRForwardCacheAddressSpaceKind::Constant;
+                    descriptor.address_space_constant = BF::from_u32_unchecked(c);
                 }
                 CompiledAddressSpaceRelationStrict::Is(offset) => {
-                    let source = storage
+                    descriptor.address_space_kind = GpuGKRForwardCacheAddressSpaceKind::Is;
+                    descriptor.address_space_ptr = storage
                         .get_base_layer(GKRAddress::BaseLayerMemory(offset))
-                        .clone_shared();
-                    add_into_y(
-                        &source.as_device_chunk(),
-                        dst.deref_mut(),
-                        context.get_exec_stream(),
-                    )?;
+                        .as_ptr();
                 }
                 CompiledAddressSpaceRelationStrict::Not(offset) => {
-                    add_ext_scalar_in_place(&mut dst, E::ONE, context)?;
-                    let source = storage
+                    descriptor.address_space_kind = GpuGKRForwardCacheAddressSpaceKind::Not;
+                    descriptor.address_space_ptr = storage
                         .get_base_layer(GKRAddress::BaseLayerMemory(offset))
-                        .clone_shared();
-                    sub_into_x(
-                        dst.deref_mut(),
-                        &source.as_device_chunk(),
-                        context.get_exec_stream(),
-                    )?;
+                        .as_ptr();
                 }
             }
 
@@ -1295,36 +1459,38 @@ where
                         .permutation_argument_linearization_challenges
                         [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
                     contribution.mul_assign_by_base(&BF::from_u32_unchecked(c));
-                    add_ext_scalar_in_place(&mut dst, contribution, context)?;
+                    descriptor.constant_term.add_assign(&contribution);
                 }
                 CompiledAddressStrict::U16Space(offset) => {
-                    let source = storage
-                        .get_base_layer(GKRAddress::BaseLayerMemory(offset))
-                        .clone_shared();
-                    scale_and_add_base_column(
-                        &mut dst,
-                        &source,
+                    add_memory_tuple_linear_term(
+                        &mut descriptor,
+                        MEMORY_TUPLE_ADDRESS_LOW_TERM,
+                        storage
+                            .get_base_layer(GKRAddress::BaseLayerMemory(offset))
+                            .as_ptr(),
                         external_challenges.permutation_argument_linearization_challenges
                             [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX],
-                        context,
-                    )?;
+                    );
                 }
                 CompiledAddressStrict::U32Space([low, high]) => {
-                    for (challenge_idx, offset) in [
-                        (MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX, low),
-                        (MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX, high),
-                    ] {
-                        let source = storage
-                            .get_base_layer(GKRAddress::BaseLayerMemory(offset))
-                            .clone_shared();
-                        scale_and_add_base_column(
-                            &mut dst,
-                            &source,
-                            external_challenges.permutation_argument_linearization_challenges
-                                [challenge_idx],
-                            context,
-                        )?;
-                    }
+                    add_memory_tuple_linear_term(
+                        &mut descriptor,
+                        MEMORY_TUPLE_ADDRESS_LOW_TERM,
+                        storage
+                            .get_base_layer(GKRAddress::BaseLayerMemory(low))
+                            .as_ptr(),
+                        external_challenges.permutation_argument_linearization_challenges
+                            [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX],
+                    );
+                    add_memory_tuple_linear_term(
+                        &mut descriptor,
+                        MEMORY_TUPLE_ADDRESS_HIGH_TERM,
+                        storage
+                            .get_base_layer(GKRAddress::BaseLayerMemory(high))
+                            .as_ptr(),
+                        external_challenges.permutation_argument_linearization_challenges
+                            [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX],
+                    );
                 }
                 CompiledAddressStrict::U32SpaceGeneric(..)
                 | CompiledAddressStrict::U32SpaceSpecialIndirect { .. } => {
@@ -1335,66 +1501,126 @@ where
                 }
             }
 
-            let timestamp_low = storage
-                .get_base_layer(GKRAddress::BaseLayerMemory(rel.timestamp[0]))
-                .clone_shared();
-            scale_and_add_base_column(
-                &mut dst,
-                &timestamp_low,
+            add_memory_tuple_linear_term(
+                &mut descriptor,
+                MEMORY_TUPLE_TIMESTAMP_LOW_TERM,
+                storage
+                    .get_base_layer(GKRAddress::BaseLayerMemory(rel.timestamp[0]))
+                    .as_ptr(),
                 external_challenges.permutation_argument_linearization_challenges
                     [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX],
-                context,
-            )?;
+            );
             if rel.timestamp_offset != 0 {
                 let mut contribution = external_challenges
                     .permutation_argument_linearization_challenges
                     [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
                 contribution
                     .mul_assign_by_base(&BF::from_u32_unchecked(rel.timestamp_offset as u32));
-                add_ext_scalar_in_place(&mut dst, contribution, context)?;
+                descriptor.constant_term.add_assign(&contribution);
             }
-            let timestamp_high = storage
-                .get_base_layer(GKRAddress::BaseLayerMemory(rel.timestamp[1]))
-                .clone_shared();
-            scale_and_add_base_column(
-                &mut dst,
-                &timestamp_high,
+            add_memory_tuple_linear_term(
+                &mut descriptor,
+                MEMORY_TUPLE_TIMESTAMP_HIGH_TERM,
+                storage
+                    .get_base_layer(GKRAddress::BaseLayerMemory(rel.timestamp[1]))
+                    .as_ptr(),
                 external_challenges.permutation_argument_linearization_challenges
                     [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX],
-                context,
-            )?;
+            );
 
             match rel.value {
                 RamWordRepresentation::U16Limbs(read_value) => {
-                    for (challenge_idx, offset) in [
-                        (MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX, read_value[0]),
-                        (MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX, read_value[1]),
-                    ] {
-                        let source = storage
-                            .get_base_layer(GKRAddress::BaseLayerMemory(offset))
-                            .clone_shared();
-                        scale_and_add_base_column(
-                            &mut dst,
-                            &source,
-                            external_challenges.permutation_argument_linearization_challenges
-                                [challenge_idx],
-                            context,
-                        )?;
-                    }
+                    add_memory_tuple_linear_term(
+                        &mut descriptor,
+                        MEMORY_TUPLE_VALUE_LOW_TERM,
+                        storage
+                            .get_base_layer(GKRAddress::BaseLayerMemory(read_value[0]))
+                            .as_ptr(),
+                        external_challenges.permutation_argument_linearization_challenges
+                            [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX],
+                    );
+                    add_memory_tuple_linear_term(
+                        &mut descriptor,
+                        MEMORY_TUPLE_VALUE_HIGH_TERM,
+                        storage
+                            .get_base_layer(GKRAddress::BaseLayerMemory(read_value[1]))
+                            .as_ptr(),
+                        external_challenges.permutation_argument_linearization_challenges
+                            [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX],
+                    );
                 }
                 RamWordRepresentation::U8Limbs(..) => {
                     unimplemented!("GPU forward memory tuples do not yet support byte-limb values")
                 }
             }
 
-            storage.insert_extension_at_layer(0, address, GpuExtensionFieldPoly::new(dst));
+            storage.insert_extension_at_layer(
+                cache_layer,
+                address,
+                GpuExtensionFieldPoly::new(dst),
+            );
+            Ok(descriptor)
         }
         NoFieldGKRCacheRelation::LongLinear => {
             unimplemented!("unsupported GPU cache relation: {:?}", relation)
         }
     }
+}
 
-    Ok(())
+fn schedule_cache_relations<E>(
+    layer_idx: usize,
+    relations: &BTreeMap<GKRAddress, NoFieldGKRCacheRelation>,
+    storage: &mut GpuGKRStorage<BF, E>,
+    stage1: &GpuGKRStage1Output,
+    forward_setup: &GpuGKRForwardSetup<E>,
+    external_challenges: &GKRExternalChallenges<BF, E>,
+    trace_len: usize,
+    context: &ProverContext,
+) -> CudaResult<()>
+where
+    E: FieldExtension<BF> + Field + SetByRef + SetByVal + BatchInv + GpuGKRForwardCacheKernelSet,
+    Add: BinaryOp<E, E, E>,
+    Add: BinaryOp<BF, E, E>,
+    Add: BinaryOp<E, BF, E>,
+    Mul: BinaryOp<E, E, E>,
+    Mul: BinaryOp<BF, E, E>,
+    Mul: BinaryOp<E, BF, E>,
+    Sub: BinaryOp<E, E, E>,
+    Sub: BinaryOp<E, BF, E>,
+    Sub: BinaryOp<BF, BF, BF>,
+{
+    if relations.is_empty() {
+        return Ok(());
+    }
+    assert!(
+        relations.len() <= MAX_CACHE_RELATIONS_PER_LAYER,
+        "layer {} has {} cache relations, exceeds hard limit {}",
+        layer_idx,
+        relations.len(),
+        MAX_CACHE_RELATIONS_PER_LAYER
+    );
+    assert!(
+        forward_setup.generic_lookup_len() <= u32::MAX as usize,
+        "generic lookup runtime too large for fused forward cache kernel"
+    );
+
+    let mut batch = GpuGKRForwardCacheBatch::default();
+    for ((address, relation), descriptor) in relations.iter().zip(batch.descriptors.iter_mut()) {
+        *descriptor = lower_cache_relation(
+            layer_idx,
+            *address,
+            relation,
+            storage,
+            stage1,
+            forward_setup,
+            external_challenges,
+            trace_len,
+            context,
+        )?;
+        batch.count += 1;
+    }
+
+    launch_forward_cache(batch, trace_len, context)
 }
 
 fn schedule_dimension_reduction_forward<E>(

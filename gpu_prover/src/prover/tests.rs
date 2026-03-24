@@ -47,9 +47,14 @@ use cs::gkr_circuits::{
     add_sub_lui_auipc_mop_table_addition_fn,
     opcodes_for_full_machine_with_unsigned_mul_div_only_with_mem_word_access_specialization,
     process_binary_into_separate_tables_ext,
+    shift_binop_circuit_with_preprocessed_bytecode_for_gkr, shift_binop_table_addition_fn,
+    shift_binop_table_driver_fn,
 };
 use cs::gkr_compiler::compile_unrolled_circuit_state_transition_into_gkr;
-use cs::gkr_compiler::{GKRCircuitArtifact, GKRLayerDescription, NoFieldGKRRelation, OutputType};
+use cs::gkr_compiler::{
+    GKRCircuitArtifact, GKRLayerDescription, NoFieldGKRCacheRelation, NoFieldGKRRelation,
+    OutputType,
+};
 use cs::tables::TableDriver;
 use era_cudart::event::{CudaEvent, CudaEventCreateFlags};
 use era_cudart::memory::memory_copy_async;
@@ -4374,6 +4379,25 @@ fn run_basic_unrolled_workflow_input_parity_test() {
     )
     .unwrap();
     context.get_exec_stream().synchronize().unwrap();
+    let (gpu_memory_caps, _gpu_memory_commitment_ms) = commit_memory(
+        CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
+            UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop,
+        )),
+        &add_sub_circuit,
+        if add_sub_circuit.has_decoder_lookup {
+            Some(&d_decoder_table)
+        } else {
+            None
+        },
+        &gpu_trace,
+        whir_schedule.base_lde_factor.trailing_zeros(),
+        whir_schedule.whir_steps_schedule[0] as u32,
+        whir_schedule.cap_size.trailing_zeros(),
+        &context,
+    )
+    .unwrap()
+    .finish()
+    .unwrap();
 
     let (mem_oracle, wit_oracle) = stage1::stage1::<BF, DefaultTreeConstructor>(
         &full_trace,
@@ -4385,7 +4409,6 @@ fn run_basic_unrolled_workflow_input_parity_test() {
         &worker,
     );
     let cpu_memory_caps = stage1_caps_from_tree(&mem_oracle.tree, subcap_size);
-    let gpu_memory_caps = stage1_output.memory_trace_holder.get_tree_caps();
     if gpu_memory_caps != cpu_memory_caps {
         let first_mismatch = describe_first_trace_holder_column_mismatch(
             &stage1_output.memory_trace_holder,
@@ -4597,6 +4620,432 @@ fn run_basic_unrolled_workflow_input_parity_test() {
     assert!(!stage1_output.lookup_mappings.has_range_check_16());
     assert!(!stage1_output.lookup_mappings.has_timestamp());
     assert!(!gpu_forward_setup.has_generic_lookup());
+    assert_eq!(
+        gpu_forward_output.initial_layer_for_sumcheck,
+        initial_layer_for_sumcheck
+    );
+    assert_eq!(
+        gpu_forward_output.dimension_reducing_inputs,
+        dimension_reducing_inputs
+    );
+    assert_gpu_and_cpu_gkr_storage_match(&gpu_forward_output.storage, &gkr_storage, &context);
+    assert_eq!(gpu_final_explicit_evaluations, final_explicit_evaluations);
+    assert_eq!(gpu_evals_flattened, evals_flattened);
+}
+
+#[test]
+fn shift_binop_forward_cache_layout_regression_test() {
+    const TRACE_LEN_LOG2: usize = 24;
+
+    let shift_binop_circuit = compile_unrolled_circuit_state_transition_into_gkr::<BF>(
+        &|cs| shift_binop_table_addition_fn(cs),
+        &|cs| shift_binop_circuit_with_preprocessed_bytecode_for_gkr(cs),
+        1 << 20,
+        TRACE_LEN_LOG2,
+    );
+
+    let mut layer0_cache_kinds = BTreeMap::<&'static str, usize>::new();
+    for relation in shift_binop_circuit.layers[0].cached_relations.values() {
+        let kind = match relation {
+            NoFieldGKRCacheRelation::SingleColumnLookup { .. } => "SingleColumnLookup",
+            NoFieldGKRCacheRelation::VectorizedLookup(_) => "VectorizedLookup",
+            NoFieldGKRCacheRelation::VectorizedLookupSetup(..) => "VectorizedLookupSetup",
+            NoFieldGKRCacheRelation::MemoryTuple(..) => "MemoryTuple",
+            NoFieldGKRCacheRelation::LongLinear => "LongLinear",
+        };
+        *layer0_cache_kinds.entry(kind).or_default() += 1;
+    }
+    for required_kind in [
+        "SingleColumnLookup",
+        "VectorizedLookup",
+        "VectorizedLookupSetup",
+        "MemoryTuple",
+    ] {
+        assert!(
+            layer0_cache_kinds.contains_key(required_kind),
+            "expected layer 0 to contain {required_kind} cache relations"
+        );
+    }
+    assert!(
+        shift_binop_circuit.layers.len() > 1,
+        "shift_binop regression expects a later cache-bearing layer"
+    );
+    let layer1_cached = &shift_binop_circuit.layers[1].cached_relations;
+    assert!(
+        !layer1_cached.is_empty(),
+        "shift_binop regression expects cached relations on layer 1"
+    );
+    assert!(layer1_cached
+        .keys()
+        .all(|address| matches!(address, GKRAddress::Cached { layer: 1, .. })));
+    assert!(layer1_cached
+        .values()
+        .all(|relation| matches!(relation, NoFieldGKRCacheRelation::VectorizedLookup(_))));
+}
+
+#[test]
+#[serial]
+#[ignore = "requires GPU witness U8-limb RAM tuple support"]
+fn run_shift_binop_forward_cache_parity_test() {
+    type CountersT = DelegationsAndFamiliesCounters;
+
+    const TRACE_LEN_LOG2: usize = 24;
+    const NUM_CYCLES_PER_CHUNK: usize = 1 << TRACE_LEN_LOG2;
+    const FINAL_TRACE_SIZE_LOG_2: usize = 4;
+
+    let trace_len: usize = 1 << TRACE_LEN_LOG2;
+    let worker = Worker::new_with_num_threads(8);
+
+    let binary = std::fs::read(test_artifact_path("examples/hashed_fibonacci/app.bin")).unwrap();
+    assert_eq!(binary.len() % 4, 0);
+    let binary: Vec<_> = binary
+        .as_chunks::<4>()
+        .0
+        .into_iter()
+        .map(|el| u32::from_le_bytes(*el))
+        .collect();
+
+    let text_section =
+        std::fs::read(test_artifact_path("examples/hashed_fibonacci/app.text")).unwrap();
+    assert_eq!(text_section.len() % 4, 0);
+    let text_section: Vec<_> = text_section
+        .as_chunks::<4>()
+        .0
+        .into_iter()
+        .map(|el| u32::from_le_bytes(*el))
+        .collect();
+
+    let instructions: Vec<Instruction> =
+        preprocess_bytecode::<FullUnsignedMachineDecoderConfig>(&text_section);
+    let tape = SimpleTape::new(&instructions);
+    let mut ram = RamWithRomRegion::<{ ROM_SECOND_WORD_BITS }>::from_rom_content(&binary, 1 << 30);
+    let cycles_bound = 1 << 20;
+
+    let mut state = State::initial_with_counters(CountersT::default());
+    let mut snapshotter =
+        SimpleSnapshotter::<CountersT, { ROM_SECOND_WORD_BITS }>::new_with_cycle_limit(
+            cycles_bound,
+            state,
+        );
+    let mut non_determinism = QuasiUARTSource::new_with_reads(vec![15, 1]);
+
+    let is_program_finished = VM::<CountersT>::run_basic_unrolled::<_, _, _, BF>(
+        &mut state,
+        &mut ram,
+        &mut snapshotter,
+        &tape,
+        cycles_bound,
+        &mut non_determinism,
+    );
+    assert!(is_program_finished);
+
+    let counters = snapshotter.snapshots.last().unwrap().state.counters;
+    let mut expected_final_state = state;
+    expected_final_state.counters = Default::default();
+
+    let shift_binop_circuit = compile_unrolled_circuit_state_transition_into_gkr::<BF>(
+        &|cs| shift_binop_table_addition_fn(cs),
+        &|cs| shift_binop_circuit_with_preprocessed_bytecode_for_gkr(cs),
+        1 << 20,
+        TRACE_LEN_LOG2,
+    );
+    let num_calls = counters.get_calls_to_circuit_family::<SHIFT_BINARY_CIRCUIT_FAMILY_IDX>();
+    assert!(
+        num_calls > 0,
+        "expected hashed_fibonacci to exercise the shift family"
+    );
+    assert!(num_calls < NUM_CYCLES_PER_CHUNK);
+
+    let mut layer0_cache_kinds = BTreeMap::<&'static str, usize>::new();
+    for relation in shift_binop_circuit.layers[0].cached_relations.values() {
+        let kind = match relation {
+            NoFieldGKRCacheRelation::SingleColumnLookup { .. } => "SingleColumnLookup",
+            NoFieldGKRCacheRelation::VectorizedLookup(_) => "VectorizedLookup",
+            NoFieldGKRCacheRelation::VectorizedLookupSetup(..) => "VectorizedLookupSetup",
+            NoFieldGKRCacheRelation::MemoryTuple(..) => "MemoryTuple",
+            NoFieldGKRCacheRelation::LongLinear => "LongLinear",
+        };
+        *layer0_cache_kinds.entry(kind).or_default() += 1;
+    }
+    for required_kind in [
+        "SingleColumnLookup",
+        "VectorizedLookup",
+        "VectorizedLookupSetup",
+        "MemoryTuple",
+    ] {
+        assert!(
+            layer0_cache_kinds.contains_key(required_kind),
+            "expected layer 0 to contain {required_kind} cache relations"
+        );
+    }
+    assert!(
+        shift_binop_circuit.layers.len() > 1,
+        "shift_binop regression expects a later cache-bearing layer"
+    );
+    let layer1_cached = &shift_binop_circuit.layers[1].cached_relations;
+    assert!(
+        !layer1_cached.is_empty(),
+        "shift_binop regression expects cached relations on layer 1"
+    );
+    assert!(layer1_cached
+        .keys()
+        .all(|address| matches!(address, GKRAddress::Cached { layer: 1, .. })));
+    assert!(layer1_cached
+        .values()
+        .all(|relation| matches!(relation, NoFieldGKRCacheRelation::VectorizedLookup(_))));
+
+    let mut replay_state = snapshotter.initial_snapshot.state;
+    let mut ram_log_buffers = snapshotter
+        .reads_buffer
+        .make_range(0..snapshotter.reads_buffer.len());
+    let mut replay_ram = ReplayerRam::<{ ROM_SECOND_WORD_BITS }> {
+        ram_log: &mut ram_log_buffers,
+    };
+    let mut buffer = vec![NonMemoryOpcodeTracingDataWithTimestamp::default(); num_calls];
+    let mut buffers = vec![&mut buffer[..]];
+    let mut tracer = NonMemDestinationHolder::<SHIFT_BINARY_CIRCUIT_FAMILY_IDX> {
+        buffers: &mut buffers[..],
+    };
+
+    ReplayerVM::<CountersT>::replay_basic_unrolled::<_, _, BF>(
+        &mut replay_state,
+        &mut replay_ram,
+        &tape,
+        &mut (),
+        cycles_bound,
+        &mut tracer,
+    );
+    assert_eq!(expected_final_state, replay_state);
+
+    let preprocessing_data = process_binary_into_separate_tables_ext::<
+        BF,
+        FullUnsignedMachineDecoderConfig,
+        true,
+        Global,
+    >(
+        &text_section,
+        &opcodes_for_full_machine_with_unsigned_mul_div_only_with_mem_word_access_specialization(),
+        1 << 20,
+        &[
+            NON_DETERMINISM_CSR as u16,
+            BLAKE2S_DELEGATION_CSR_REGISTER as u16,
+            BIGINT_OPS_WITH_CONTROL_CSR_REGISTER as u16,
+            KECCAK_SPECIAL5_CSR_REGISTER as u16,
+        ],
+    );
+    let decoder_table_data = &preprocessing_data[&SHIFT_BINARY_CIRCUIT_FAMILY_IDX];
+    let witness_gen_data = decoder_table_data
+        .iter()
+        .map(|entry| entry.unwrap_or_default())
+        .collect_vec();
+
+    let oracle = NonMemoryCircuitOracle {
+        inner: &buffer[..],
+        decoder_table: &witness_gen_data,
+        default_pc_value_in_padding: 4,
+    };
+    let mut table_driver = TableDriver::new();
+    shift_binop_table_driver_fn(&mut table_driver);
+    let memory_trace = evaluate_gkr_memory_witness_for_executor_family::<BF, _, _, _>(
+        &shift_binop_circuit,
+        NUM_CYCLES_PER_CHUNK,
+        &oracle,
+        &worker,
+        Global,
+        Global,
+    );
+    let full_trace = evaluate_gkr_witness_for_executor_family::<BF, _, _, _>(
+        &shift_binop_circuit,
+        shift_binop_mod::witness_eval_fn,
+        NUM_CYCLES_PER_CHUNK,
+        &oracle,
+        &table_driver,
+        &worker,
+        Global,
+        Global,
+    );
+    ensure_memory_trace_consistency(&memory_trace, &full_trace);
+
+    let whir_schedule = WhirSchedule::default_for_tests_80_bits();
+    let setup = GKRSetup::construct(
+        &table_driver,
+        &decoder_table_data,
+        trace_len,
+        &shift_binop_circuit,
+    );
+    let context = make_test_context(64 * 1024, 1024);
+    let gpu_setup_host = Arc::new(
+        GpuGKRSetupHost::precompute_from_cpu_setup(
+            &setup,
+            whir_schedule.base_lde_factor.trailing_zeros(),
+            whir_schedule.whir_steps_schedule[0] as u32,
+            whir_schedule.cap_size.trailing_zeros(),
+            &context,
+        )
+        .unwrap(),
+    );
+    let mut gpu_setup_transfer =
+        GpuGKRSetupTransfer::new(Arc::clone(&gpu_setup_host), &context).unwrap();
+    gpu_setup_transfer.schedule_transfer(&context).unwrap();
+    context.get_h2d_stream().synchronize().unwrap();
+
+    let h_decoder_table = witness_gen_data
+        .iter()
+        .copied()
+        .map(ExecutorFamilyDecoderData::from)
+        .collect_vec();
+    let mut d_decoder_table = context
+        .alloc(h_decoder_table.len(), AllocationPlacement::BestFit)
+        .unwrap();
+    memory_copy_async(
+        &mut d_decoder_table,
+        &h_decoder_table,
+        context.get_exec_stream(),
+    )
+    .unwrap();
+    let mut trace_data = context
+        .alloc(buffer.len(), AllocationPlacement::BestFit)
+        .unwrap();
+    memory_copy_async(&mut trace_data, &buffer[..], context.get_exec_stream()).unwrap();
+    let gpu_trace = TracingDataDevice::Unrolled(UnrolledTracingDataDevice::NonMemory(
+        UnrolledNonMemoryTraceDevice {
+            tracing_data: trace_data,
+        },
+    ));
+    let mut stage1_output = GpuGKRStage1Output::generate(
+        CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
+            UnrolledNonMemoryCircuitType::ShiftBinaryCsr,
+        )),
+        &shift_binop_circuit,
+        &gpu_setup_transfer,
+        if shift_binop_circuit.has_decoder_lookup {
+            Some(&d_decoder_table)
+        } else {
+            None
+        },
+        &gpu_trace,
+        &context,
+    )
+    .unwrap();
+    context.get_exec_stream().synchronize().unwrap();
+
+    let memory_argument_alpha =
+        E4::from_array_of_base([BF::new(2), BF::new(5), BF::new(42), BF::new(123)]);
+    let permutation_argument_additive_part =
+        E4::from_array_of_base([BF::new(7), BF::new(11), BF::new(1024), BF::new(8000)]);
+    let permutation_argument_linearization_challenges: [E4; NUM_MEM_ARGUMENT_KEY_PARTS - 1] =
+        materialize_powers_serial_starting_with_elem::<_, Global>(
+            memory_argument_alpha,
+            NUM_MEM_ARGUMENT_KEY_PARTS - 1,
+        )
+        .try_into()
+        .unwrap();
+    let external_challenges: GKRExternalChallenges<BF, E4> = GKRExternalChallenges {
+        permutation_argument_linearization_challenges,
+        permutation_argument_additive_part,
+        _marker: std::marker::PhantomData,
+    };
+
+    let lookup_alpha = E4::from_array_of_base([BF::new(3), BF::new(5), BF::new(7), BF::new(11)]);
+    let lookup_additive_part =
+        E4::from_array_of_base([BF::new(13), BF::new(17), BF::new(19), BF::new(23)]);
+    let constraints_batch_challenge =
+        E4::from_array_of_base([BF::new(29), BF::new(31), BF::new(37), BF::new(41)]);
+    let mut lookup_challenges_host = unsafe { context.alloc_host_uninit_slice(3) };
+    unsafe {
+        lookup_challenges_host
+            .get_mut_accessor()
+            .get_mut()
+            .copy_from_slice(&[
+                lookup_alpha,
+                lookup_additive_part,
+                constraints_batch_challenge,
+            ]);
+    }
+    let mut gpu_forward_setup = gpu_setup_transfer
+        .schedule_forward_setup(&shift_binop_circuit, &lookup_challenges_host, &context)
+        .unwrap();
+    context.get_exec_stream().synchronize().unwrap();
+    assert!(
+        gpu_forward_setup.has_generic_lookup(),
+        "shift_binop forward cache regression expects a generic lookup runtime"
+    );
+
+    let mut gkr_storage = GKRStorage::<BF, E4>::default();
+    let preprocessed_generic_lookup = setup.preprocess_generic_lookups(
+        &shift_binop_circuit,
+        lookup_alpha,
+        trace_len,
+        &mut gkr_storage,
+        &worker,
+    );
+
+    let mut gpu_generic = vec![E4::ZERO; gpu_forward_setup.generic_lookup_len()];
+    memory_copy_async(
+        &mut gpu_generic,
+        gpu_forward_setup.generic_lookup(),
+        context.get_exec_stream(),
+    )
+    .unwrap();
+    context.get_exec_stream().synchronize().unwrap();
+    let first_mismatch =
+        describe_first_vec_mismatch(&gpu_generic, preprocessed_generic_lookup.as_ref());
+    assert!(
+        first_mismatch.is_none(),
+        "preprocessed generic lookup diverged: {}",
+        first_mismatch.unwrap()
+    );
+
+    let mut witness_eval_data = full_trace;
+    for (layer_idx, layer) in shift_binop_circuit.layers.iter().enumerate() {
+        forward_loop::evaluate_layer(
+            layer_idx,
+            layer,
+            &mut gkr_storage,
+            &shift_binop_circuit,
+            &external_challenges,
+            &mut witness_eval_data,
+            trace_len,
+            &preprocessed_generic_lookup,
+            lookup_additive_part,
+            constraints_batch_challenge,
+            &worker,
+        );
+    }
+
+    let (initial_layer_for_sumcheck, dimension_reducing_inputs) =
+        dimension_reduction::forward::evaluate_dimension_reduction_forward(
+            &mut gkr_storage,
+            &shift_binop_circuit,
+            trace_len.trailing_zeros() as usize,
+            FINAL_TRACE_SIZE_LOG_2,
+            &worker,
+        );
+    let output_layer_for_sumcheck = &dimension_reducing_inputs[&initial_layer_for_sumcheck];
+    let (final_explicit_evaluations, evals_flattened) = collect_final_explicit_evaluations_for_test(
+        &gkr_storage,
+        output_layer_for_sumcheck,
+        1 << FINAL_TRACE_SIZE_LOG_2,
+    );
+
+    let gpu_forward_output = schedule_forward_pass(
+        &gpu_setup_transfer,
+        &mut stage1_output,
+        &mut gpu_forward_setup,
+        &shift_binop_circuit,
+        &external_challenges,
+        FINAL_TRACE_SIZE_LOG_2,
+        &context,
+    )
+    .unwrap();
+    let gpu_transcript_handoff = gpu_forward_output
+        .schedule_transcript_handoff(&context)
+        .unwrap();
+    context.get_exec_stream().synchronize().unwrap();
+    let gpu_final_explicit_evaluations = gpu_transcript_handoff.final_explicit_evaluations();
+    let gpu_evals_flattened = gpu_transcript_handoff.flattened_transcript_evaluations();
+    drop(gpu_transcript_handoff);
+
     assert_eq!(
         gpu_forward_output.initial_layer_for_sumcheck,
         initial_layer_for_sumcheck
@@ -5753,6 +6202,35 @@ mod add_sub_lui_auipc_mod {
     include!(
         "../../../prover/compiled_circuits/add_sub_lui_auipc_mop_preprocessed_generated_gkr.rs"
     );
+
+    pub fn witness_eval_fn<'a, 'b>(
+        proxy: &'_ mut ColumnMajorWitnessProxy<'a, NonMemoryCircuitOracle<'b>, BF>,
+    ) {
+        let fn_ptr = evaluate_witness_fn::<
+            ScalarWitnessTypeSet<BF, true>,
+            ColumnMajorWitnessProxy<'a, NonMemoryCircuitOracle<'b>, BF>,
+        >;
+        fn_ptr(proxy);
+    }
+}
+
+#[allow(unused_imports)]
+mod shift_binop_mod {
+    use crate::primitives::field::BF;
+    use cs::oracle::Placeholder;
+    use cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
+    use cs::witness_placer::WitnessTypeSet;
+    use cs::witness_placer::{
+        WitnessComputationCore, WitnessComputationalField, WitnessComputationalI32,
+        WitnessComputationalInteger, WitnessComputationalU16, WitnessComputationalU32,
+        WitnessComputationalU8, WitnessMask,
+    };
+    use field::baby_bear::base::BabyBearField;
+    use prover::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
+    use prover::gkr::witness_gen::oracles::NonMemoryCircuitOracle;
+    use prover::gkr::witness_gen::witness_proxy::WitnessProxy;
+
+    include!("../../../prover/compiled_circuits/shift_binop_preprocessed_generated_gkr.rs");
 
     pub fn witness_eval_fn<'a, 'b>(
         proxy: &'_ mut ColumnMajorWitnessProxy<'a, NonMemoryCircuitOracle<'b>, BF>,

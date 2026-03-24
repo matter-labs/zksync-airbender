@@ -494,7 +494,111 @@ template <typename E> struct gkr_forward_layer_batch {
   gkr_forward_gate_descriptor<E> descriptors[GKR_FORWARD_MAX_GATES_PER_LAYER];
 };
 
+constexpr unsigned GKR_FORWARD_CACHE_MAX_RELATIONS = 20;
+constexpr unsigned GKR_FORWARD_CACHE_MEMORY_LINEAR_TERMS = 6;
+
+enum gkr_forward_cache_kind : u32 {
+  GKR_FORWARD_CACHE_EMPTY = 0,
+  GKR_FORWARD_CACHE_SINGLE_COLUMN_LOOKUP = 1,
+  GKR_FORWARD_CACHE_VECTORIZED_LOOKUP = 2,
+  GKR_FORWARD_CACHE_VECTORIZED_LOOKUP_SETUP = 3,
+  GKR_FORWARD_CACHE_MEMORY_TUPLE = 4,
+};
+
+enum gkr_forward_cache_address_space_kind : u32 {
+  GKR_FORWARD_CACHE_ADDRESS_SPACE_EMPTY = 0,
+  GKR_FORWARD_CACHE_ADDRESS_SPACE_CONSTANT = 1,
+  GKR_FORWARD_CACHE_ADDRESS_SPACE_IS = 2,
+  GKR_FORWARD_CACHE_ADDRESS_SPACE_NOT = 3,
+};
+
+template <typename E> struct gkr_forward_cache_descriptor {
+  gkr_forward_cache_kind kind;
+  gkr_forward_cache_address_space_kind address_space_kind;
+  const u32 *mapping;
+  const bf *setup_values;
+  const E *generic_lookup;
+  bf *base_output;
+  E *ext_output;
+  u32 generic_lookup_len;
+  const bf *address_space_ptr;
+  bf address_space_constant;
+  E constant_term;
+  const bf *linear_inputs[GKR_FORWARD_CACHE_MEMORY_LINEAR_TERMS];
+  E linear_challenges[GKR_FORWARD_CACHE_MEMORY_LINEAR_TERMS];
+};
+
+template <typename E> struct gkr_forward_cache_batch {
+  u32 count;
+  gkr_forward_cache_descriptor<E> descriptors[GKR_FORWARD_CACHE_MAX_RELATIONS];
+};
+
 template <typename E> DEVICE_FORCEINLINE E gkr_lift_base(const bf value) { return E::mul(E::ONE(), value); }
+
+template <typename E> DEVICE_FORCEINLINE void gkr_forward_cache_memory_tuple(const gkr_forward_cache_descriptor<E> &descriptor, const unsigned gid) {
+  E value = descriptor.constant_term;
+  switch (descriptor.address_space_kind) {
+  case GKR_FORWARD_CACHE_ADDRESS_SPACE_CONSTANT:
+    value = E::add(value, gkr_lift_base<E>(descriptor.address_space_constant));
+    break;
+  case GKR_FORWARD_CACHE_ADDRESS_SPACE_IS:
+    value = E::add(value, gkr_lift_base<E>(load<bf, ld_modifier::cs>(descriptor.address_space_ptr, gid)));
+    break;
+  case GKR_FORWARD_CACHE_ADDRESS_SPACE_NOT:
+    value = E::add(value, E::sub(E::ONE(), gkr_lift_base<E>(load<bf, ld_modifier::cs>(descriptor.address_space_ptr, gid))));
+    break;
+  case GKR_FORWARD_CACHE_ADDRESS_SPACE_EMPTY:
+    break;
+  }
+
+#pragma unroll
+  for (unsigned term = 0; term < GKR_FORWARD_CACHE_MEMORY_LINEAR_TERMS; ++term) {
+    if (descriptor.linear_inputs[term] == nullptr)
+      continue;
+    const bf input = load<bf, ld_modifier::cs>(descriptor.linear_inputs[term], gid);
+    value = E::add(value, E::mul(descriptor.linear_challenges[term], input));
+  }
+
+  store<E, st_modifier::cs>(descriptor.ext_output, value, gid);
+}
+
+template <typename E> DEVICE_FORCEINLINE void gkr_forward_cache(const gkr_forward_cache_batch<E> &batch, const unsigned trace_len) {
+  const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
+  if (gid >= trace_len)
+    return;
+
+#pragma unroll
+  for (unsigned relation_idx = 0; relation_idx < GKR_FORWARD_CACHE_MAX_RELATIONS; ++relation_idx) {
+    if (relation_idx >= batch.count)
+      return;
+
+    const auto &descriptor = batch.descriptors[relation_idx];
+    switch (descriptor.kind) {
+    case GKR_FORWARD_CACHE_SINGLE_COLUMN_LOOKUP: {
+      const unsigned mapping = descriptor.mapping[gid];
+      const bf value = load<bf, ld_modifier::cs>(descriptor.setup_values, mapping);
+      store<bf, st_modifier::cs>(descriptor.base_output, value, gid);
+      break;
+    }
+    case GKR_FORWARD_CACHE_VECTORIZED_LOOKUP: {
+      const unsigned mapping = descriptor.mapping[gid];
+      const E value = load<E, ld_modifier::cs>(descriptor.generic_lookup, mapping);
+      store<E, st_modifier::cs>(descriptor.ext_output, value, gid);
+      break;
+    }
+    case GKR_FORWARD_CACHE_VECTORIZED_LOOKUP_SETUP: {
+      const E value = gid < descriptor.generic_lookup_len ? load<E, ld_modifier::cs>(descriptor.generic_lookup, gid) : E::ZERO();
+      store<E, st_modifier::cs>(descriptor.ext_output, value, gid);
+      break;
+    }
+    case GKR_FORWARD_CACHE_MEMORY_TUPLE:
+      gkr_forward_cache_memory_tuple(descriptor, gid);
+      break;
+    case GKR_FORWARD_CACHE_EMPTY:
+      return;
+    }
+  }
+}
 
 template <typename E> DEVICE_FORCEINLINE E gkr_get_initial_base_value(const gkr_base_initial_source<bf> &source, const unsigned index) {
   return gkr_lift_base<E>(load<bf, ld_modifier::cs>(source.start, index));
@@ -798,8 +902,7 @@ template <typename E> DEVICE_FORCEINLINE void gkr_eval_lookup_cached_dens_and_se
   den = E::mul(b, d);
 }
 
-template <typename E>
-DEVICE_FORCEINLINE void gkr_forward_layer(const gkr_forward_layer_batch<E> &batch, const unsigned count) {
+template <typename E> DEVICE_FORCEINLINE void gkr_forward_layer(const gkr_forward_layer_batch<E> &batch, const unsigned count) {
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
   if (gid >= count)
     return;
@@ -1778,7 +1881,7 @@ gkr_main_round3(const unsigned kind, const gkr_ext_continuing_source<E> *base_in
 }
 
 #define GKR_DIM_REDUCING_KERNELS(arg_t)                                                                                                                        \
-  EXTERN __global__ void ab_gkr_forward_layer_##arg_t##_kernel(const __grid_constant__ gkr_forward_layer_batch<arg_t> batch, const unsigned count) {         \
+  EXTERN __global__ void ab_gkr_forward_layer_##arg_t##_kernel(const __grid_constant__ gkr_forward_layer_batch<arg_t> batch, const unsigned count) {           \
     gkr_forward_layer(batch, count);                                                                                                                           \
   }                                                                                                                                                            \
   EXTERN __global__ void ab_gkr_dim_reducing_pairwise_round0_##arg_t##_kernel(const gkr_ext_initial_source<arg_t> *inputs,                                     \
@@ -1876,5 +1979,14 @@ GKR_DIM_REDUCING_KERNELS(e6);
 GKR_MAIN_LAYER_KERNELS(e2);
 GKR_MAIN_LAYER_KERNELS(e4);
 GKR_MAIN_LAYER_KERNELS(e6);
+
+#define GKR_FORWARD_CACHE_KERNELS(arg_t)                                                                                                                       \
+  EXTERN __global__ void ab_gkr_forward_cache_##arg_t##_kernel(const __grid_constant__ gkr_forward_cache_batch<arg_t> batch, const unsigned trace_len) {       \
+    gkr_forward_cache(batch, trace_len);                                                                                                                       \
+  }
+
+GKR_FORWARD_CACHE_KERNELS(e2);
+GKR_FORWARD_CACHE_KERNELS(e4);
+GKR_FORWARD_CACHE_KERNELS(e6);
 
 } // namespace airbender::ops::complex
