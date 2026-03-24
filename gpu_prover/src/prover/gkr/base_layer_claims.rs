@@ -10,9 +10,7 @@ use field::{Field, FieldExtension};
 
 use super::backward::{launch_build_eq_values, GpuDimensionReducingKernelSet};
 use crate::allocator::tracker::AllocationPlacement;
-use crate::ops::cub::device_reduce::{
-    batch_reduce, get_batch_reduce_temp_storage_bytes, ReduceOperation,
-};
+use crate::ops::cub::device_reduce::{get_reduce_temp_storage_bytes, reduce, ReduceOperation};
 use crate::ops::simple::{add_into_y, mul, set_to_zero, Add, BinaryOp, Mul};
 use crate::primitives::callbacks::Callbacks;
 use crate::primitives::context::{HostAllocation, ProverContext};
@@ -326,11 +324,8 @@ where
     )?;
     let mut partial_sums = context.alloc(columns_per_batch, AllocationPlacement::BestFit)?;
     let mut batch_sums = context.alloc(columns_per_batch, AllocationPlacement::BestFit)?;
-    let reduction_temp_bytes = get_batch_reduce_temp_storage_bytes::<E>(
-        ReduceOperation::Sum,
-        columns_per_batch as i32,
-        row_chunk_size as i32,
-    )?;
+    let reduction_temp_bytes =
+        get_reduce_temp_storage_bytes::<E>(ReduceOperation::Sum, row_chunk_size as i32)?;
     let mut reduction_temp = context.alloc(reduction_temp_bytes, AllocationPlacement::BestFit)?;
     let stream = context.get_exec_stream();
     let reduction_range = Range::new(format!("gkr.base_layer_claims.reduce.{label}"))?;
@@ -357,14 +352,24 @@ where
                 let weighted_slice = &mut weighted_rows[..batch_cols * row_chunk_size];
                 let mut weighted_matrix = DeviceMatrixMut::new(weighted_slice, row_chunk_size);
                 mul(&values_chunk, &eq_chunk, &mut weighted_matrix, stream)?;
-                let partial_sums_slice = &mut partial_sums[..batch_cols];
-                batch_reduce(
-                    ReduceOperation::Sum,
-                    &mut reduction_temp,
-                    &weighted_matrix,
-                    partial_sums_slice,
-                    stream,
-                )?;
+            }
+
+            {
+                let weighted_slice = &weighted_rows[..batch_cols * row_chunk_size];
+                for column in 0..batch_cols {
+                    let weighted_column = DeviceVectorChunk::new(
+                        weighted_slice,
+                        column * row_chunk_size,
+                        row_chunk_size,
+                    );
+                    reduce(
+                        ReduceOperation::Sum,
+                        &mut reduction_temp,
+                        &weighted_column,
+                        &mut partial_sums[column],
+                        stream,
+                    )?;
+                }
             }
 
             let partial_sums_slice = &partial_sums[..batch_cols];
