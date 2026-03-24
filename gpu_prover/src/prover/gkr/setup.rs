@@ -1,12 +1,15 @@
 use std::marker::PhantomData;
-use std::ops::DerefMut;
+use std::ptr::{null, null_mut};
 use std::sync::Arc;
 
 use cs::definitions::GKRAddress;
 use cs::gkr_compiler::GKRCircuitArtifact;
+use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
 use era_cudart::memory::memory_copy_async;
+use era_cudart::paste::paste;
 use era_cudart::result::CudaResult;
 use era_cudart::slice::CudaSlice;
+use era_cudart::{cuda_kernel_declaration, cuda_kernel_signature_arguments_and_function};
 use fft::materialize_powers_serial_starting_with_one;
 use field::Field;
 
@@ -14,21 +17,20 @@ use super::stage1::GpuGKRStage1Output;
 use super::{GpuBaseFieldPoly, GpuGKRStorage};
 use crate::allocator::tracker::AllocationPlacement;
 use crate::ops::blake2s::Digest;
-use crate::ops::complex::BatchInv;
-use crate::ops::simple::{
-    add_into_y, mul_into_y, set_by_ref, set_by_val, Add, BinaryOp, Mul, SetByRef, SetByVal,
-};
 use crate::primitives::callbacks::Callbacks;
 use crate::primitives::context::{DeviceAllocation, HostAllocation, ProverContext};
-use crate::primitives::device_structures::DeviceVectorChunk;
 use crate::primitives::device_tracing::Range;
-use crate::primitives::field::BF;
+use crate::primitives::field::{BF, E2, E4, E6};
 use crate::primitives::static_host::{
     alloc_static_pinned_box_from_slice, alloc_static_pinned_box_uninit, StaticPinnedBox,
 };
 use crate::primitives::transfer::Transfer;
+use crate::primitives::utils::{get_grid_block_dims_for_threads_count, WARP_SIZE};
 use crate::prover::trace_holder::{allocate_tree_caps, TraceHolder, TreesCacheMode, TreesHolder};
 use prover::gkr::prover::setup::GKRSetup as CpuGKRSetup;
+
+const GKR_FORWARD_SETUP_GENERIC_LOOKUP_MAX_COLUMNS: usize = 10;
+const GKR_FORWARD_SETUP_THREADS_PER_BLOCK: u32 = WARP_SIZE * 4;
 
 pub(crate) struct GpuGKRSetupHost {
     pub(crate) raw_hypercube_evals: StaticPinnedBox<BF>,
@@ -115,6 +117,156 @@ fn bind_trace_holder_columns_into_storage<E>(
     }
 }
 
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+struct GpuGKRForwardSetupGenericLookupDescriptor {
+    input: *const BF,
+}
+
+impl Default for GpuGKRForwardSetupGenericLookupDescriptor {
+    fn default() -> Self {
+        Self { input: null() }
+    }
+}
+
+#[repr(C)]
+struct GpuGKRForwardSetupGenericLookupBatch<
+    E,
+    const MAX_COLUMNS: usize = GKR_FORWARD_SETUP_GENERIC_LOOKUP_MAX_COLUMNS,
+> {
+    column_count: u32,
+    _reserved: u32,
+    alpha_powers: *const E,
+    output: *mut E,
+    descriptors: [GpuGKRForwardSetupGenericLookupDescriptor; MAX_COLUMNS],
+}
+
+impl<E, const MAX_COLUMNS: usize> Copy for GpuGKRForwardSetupGenericLookupBatch<E, MAX_COLUMNS> {}
+
+impl<E, const MAX_COLUMNS: usize> Clone for GpuGKRForwardSetupGenericLookupBatch<E, MAX_COLUMNS> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<E, const MAX_COLUMNS: usize> Default for GpuGKRForwardSetupGenericLookupBatch<E, MAX_COLUMNS> {
+    fn default() -> Self {
+        Self {
+            column_count: 0,
+            _reserved: 0,
+            alpha_powers: null(),
+            output: null_mut(),
+            descriptors: [GpuGKRForwardSetupGenericLookupDescriptor::default(); MAX_COLUMNS],
+        }
+    }
+}
+
+cuda_kernel_signature_arguments_and_function!(
+    GpuGKRForwardSetupGenericLookup<T>,
+    batch: GpuGKRForwardSetupGenericLookupBatch<T>,
+    row_count: u32,
+);
+
+pub(crate) trait GpuGKRForwardSetupGenericLookupKernelSet: Copy + Sized {
+    const FORWARD_SETUP_GENERIC_LOOKUP: GpuGKRForwardSetupGenericLookupSignature<Self>;
+}
+
+macro_rules! gkr_forward_setup_generic_lookup_kernels {
+    ($type:ty) => {
+        paste! {
+            cuda_kernel_declaration!(
+                [<ab_gkr_forward_setup_generic_lookup_ $type:lower _kernel>](
+                    batch: GpuGKRForwardSetupGenericLookupBatch<$type>,
+                    row_count: u32,
+                )
+            );
+
+            impl GpuGKRForwardSetupGenericLookupKernelSet for $type {
+                const FORWARD_SETUP_GENERIC_LOOKUP:
+                    GpuGKRForwardSetupGenericLookupSignature<Self> =
+                    [<ab_gkr_forward_setup_generic_lookup_ $type:lower _kernel>];
+            }
+        }
+    };
+}
+
+gkr_forward_setup_generic_lookup_kernels!(E2);
+gkr_forward_setup_generic_lookup_kernels!(E4);
+gkr_forward_setup_generic_lookup_kernels!(E6);
+
+fn pack_forward_setup_generic_lookup_batch<E>(
+    setup_columns: &[*const BF],
+    alpha_powers: *const E,
+    output: *mut E,
+) -> GpuGKRForwardSetupGenericLookupBatch<E> {
+    assert!(
+        setup_columns.len() <= GKR_FORWARD_SETUP_GENERIC_LOOKUP_MAX_COLUMNS,
+        "generic lookup setup has {} columns, exceeding the fused setup cap of {}",
+        setup_columns.len(),
+        GKR_FORWARD_SETUP_GENERIC_LOOKUP_MAX_COLUMNS
+    );
+
+    let mut batch = GpuGKRForwardSetupGenericLookupBatch::default();
+    batch.column_count = setup_columns.len() as u32;
+    batch.alpha_powers = alpha_powers;
+    batch.output = output;
+    for (input, descriptor) in setup_columns.iter().zip(batch.descriptors.iter_mut()) {
+        descriptor.input = *input;
+    }
+
+    batch
+}
+
+fn lower_forward_setup_generic_lookup_batch<E>(
+    host: &GpuGKRSetupHost,
+    raw: &(impl CudaSlice<BF> + ?Sized),
+    generic_lookup_width: usize,
+    alpha_powers: &DeviceAllocation<E>,
+    generic_lookup: &mut DeviceAllocation<E>,
+) -> GpuGKRForwardSetupGenericLookupBatch<E> {
+    assert!(
+        generic_lookup_width <= GKR_FORWARD_SETUP_GENERIC_LOOKUP_MAX_COLUMNS,
+        "generic lookup setup width {} exceeds the fused setup cap of {}",
+        generic_lookup_width,
+        GKR_FORWARD_SETUP_GENERIC_LOOKUP_MAX_COLUMNS
+    );
+    assert!(
+        generic_lookup_width > 0,
+        "generic lookup setup expects at least one setup column when total_tables_size > 0",
+    );
+
+    let setup_columns = (0..generic_lookup_width)
+        .map(|column_idx| unsafe { raw.as_ptr().add(host.column_offset(column_idx + 2)) })
+        .collect::<Vec<_>>();
+    pack_forward_setup_generic_lookup_batch(
+        &setup_columns,
+        alpha_powers.as_ptr(),
+        generic_lookup.as_mut_ptr(),
+    )
+}
+
+fn gkr_forward_setup_generic_lookup_launch_config(
+    row_count: u32,
+    context: &ProverContext,
+) -> CudaLaunchConfig<'_> {
+    let (grid_dim, block_dim) = get_grid_block_dims_for_threads_count(
+        GKR_FORWARD_SETUP_THREADS_PER_BLOCK,
+        row_count.max(1),
+    );
+    CudaLaunchConfig::basic(grid_dim, block_dim, context.get_exec_stream())
+}
+
+fn launch_forward_setup_generic_lookup<E: GpuGKRForwardSetupGenericLookupKernelSet>(
+    batch: &GpuGKRForwardSetupGenericLookupBatch<E>,
+    row_count: usize,
+    context: &ProverContext,
+) -> CudaResult<()> {
+    assert!(row_count <= u32::MAX as usize);
+    let config = gkr_forward_setup_generic_lookup_launch_config(row_count as u32, context);
+    let args = GpuGKRForwardSetupGenericLookupArguments::new(*batch, row_count as u32);
+    GpuGKRForwardSetupGenericLookupFunction(E::FORWARD_SETUP_GENERIC_LOOKUP).launch(&config, &args)
+}
+
 pub(crate) struct GpuGKRSetupTransfer<'a> {
     pub(crate) host: Arc<GpuGKRSetupHost>,
     pub(crate) trace_holder: TraceHolder<BF>,
@@ -126,6 +278,122 @@ pub(crate) struct GpuGKRSetupTransferHostKeepalive<'a> {
 }
 
 impl<'a> GpuGKRSetupTransfer<'a> {
+    fn schedule_forward_setup_for_shape<E>(
+        &self,
+        trace_len: usize,
+        generic_lookup_width: usize,
+        generic_lookup_len: usize,
+        lookup_challenges: &HostAllocation<[E]>,
+        context: &ProverContext,
+    ) -> CudaResult<GpuGKRForwardSetup<E>>
+    where
+        E: Field + GpuGKRForwardSetupGenericLookupKernelSet + 'static,
+    {
+        self.ensure_transferred(context)?;
+        assert_eq!(trace_len, self.host.trace_len);
+        assert_eq!(generic_lookup_width + 2, self.host.columns_count);
+
+        assert!(
+            generic_lookup_len == 0
+                || generic_lookup_width <= GKR_FORWARD_SETUP_GENERIC_LOOKUP_MAX_COLUMNS,
+            "generic lookup setup width {} exceeds the fused setup cap of {}",
+            generic_lookup_width,
+            GKR_FORWARD_SETUP_GENERIC_LOOKUP_MAX_COLUMNS
+        );
+        let stream = context.get_exec_stream();
+        let mut tracing_ranges = Vec::new();
+        let schedule_range = Range::new("gkr.forward_setup.schedule")?;
+        schedule_range.start(stream)?;
+        let mut host_lookup_additive_part = unsafe { context.alloc_host_uninit_slice(1) };
+        let mut device_lookup_additive_part = context.alloc(1, AllocationPlacement::BestFit)?;
+        let mut host_lookup_alpha_powers = if generic_lookup_len > 0 {
+            Some(unsafe { context.alloc_host_uninit_slice(self.host.columns_count - 2) })
+        } else {
+            None
+        };
+        let mut generic_lookup = if generic_lookup_len > 0 {
+            Some(context.alloc::<E>(generic_lookup_len, AllocationPlacement::BestFit)?)
+        } else {
+            None
+        };
+        let lookup_challenges_accessor = lookup_challenges.get_accessor();
+        let mut callbacks = Callbacks::new();
+
+        let lookup_additive_part_accessor = host_lookup_additive_part.get_mut_accessor();
+        let alpha_powers_accessor = host_lookup_alpha_powers
+            .as_mut()
+            .map(HostAllocation::get_mut_accessor);
+        let alpha_powers_len = host_lookup_alpha_powers
+            .as_ref()
+            .map(HostAllocation::len)
+            .unwrap_or(0);
+        callbacks.schedule(
+            move || unsafe {
+                let lookup_challenges = lookup_challenges_accessor.get();
+                assert!(
+                    lookup_challenges.len() >= 2,
+                    "lookup scheduling expects [lookup_alpha, lookup_additive_part, ...]",
+                );
+                let lookup_alpha = lookup_challenges[0];
+                let lookup_additive_part = lookup_challenges[1];
+                lookup_additive_part_accessor.get_mut()[0] = lookup_additive_part;
+                if let Some(alpha_powers_accessor) = alpha_powers_accessor.as_ref() {
+                    let powers = materialize_powers_serial_starting_with_one::<
+                        E,
+                        std::alloc::Global,
+                    >(lookup_alpha, alpha_powers_len);
+                    alpha_powers_accessor.get_mut().copy_from_slice(&powers);
+                }
+            },
+            context.get_exec_stream(),
+        )?;
+
+        memory_copy_async(
+            &mut device_lookup_additive_part,
+            &host_lookup_additive_part,
+            context.get_exec_stream(),
+        )?;
+        let device_lookup_alpha_powers =
+            if let Some(host_alpha_powers) = host_lookup_alpha_powers.as_ref() {
+                let mut device =
+                    context.alloc(host_alpha_powers.len(), AllocationPlacement::BestFit)?;
+                memory_copy_async(&mut device, host_alpha_powers, context.get_exec_stream())?;
+                Some(device)
+            } else {
+                None
+            };
+
+        if let (Some(generic_lookup), Some(device_lookup_alpha_powers)) =
+            (generic_lookup.as_mut(), device_lookup_alpha_powers.as_ref())
+        {
+            let generic_lookup_range = Range::new("gkr.forward_setup.build_generic_lookup")?;
+            generic_lookup_range.start(stream)?;
+            let raw = self.trace_holder.get_hypercube_evals();
+            let batch = lower_forward_setup_generic_lookup_batch(
+                &self.host,
+                raw,
+                generic_lookup_width,
+                device_lookup_alpha_powers,
+                generic_lookup,
+            );
+            launch_forward_setup_generic_lookup(&batch, generic_lookup.len(), context)?;
+            generic_lookup_range.end(stream)?;
+            tracing_ranges.push(generic_lookup_range);
+        }
+        schedule_range.end(stream)?;
+        tracing_ranges.push(schedule_range);
+
+        Ok(GpuGKRForwardSetup {
+            _tracing_ranges: tracing_ranges,
+            _callbacks: callbacks,
+            _host_lookup_additive_part: host_lookup_additive_part,
+            _host_lookup_alpha_powers: host_lookup_alpha_powers,
+            device_lookup_additive_part,
+            _device_lookup_alpha_powers: device_lookup_alpha_powers,
+            generic_lookup,
+        })
+    }
+
     pub(crate) fn new(host: Arc<GpuGKRSetupHost>, context: &ProverContext) -> CudaResult<Self> {
         let trace_holder = TraceHolder::<BF>::new_without_cosets(
             host.log_domain_size,
@@ -252,133 +520,15 @@ impl<'a> GpuGKRSetupTransfer<'a> {
         context: &ProverContext,
     ) -> CudaResult<GpuGKRForwardSetup<E>>
     where
-        E: Field + SetByRef + SetByVal + BatchInv + 'static,
-        Add: BinaryOp<E, E, E>,
-        Add: BinaryOp<BF, E, E>,
-        Mul: BinaryOp<BF, E, E>,
+        E: Field + GpuGKRForwardSetupGenericLookupKernelSet + 'static,
     {
-        self.ensure_transferred(context)?;
-        assert_eq!(compiled_circuit.trace_len, self.host.trace_len);
-        assert_eq!(
-            compiled_circuit.generic_lookup_tables_width + 2,
-            self.host.columns_count
-        );
-
-        let generic_lookup_len = compiled_circuit.total_tables_size;
-        let stream = context.get_exec_stream();
-        let mut tracing_ranges = Vec::new();
-        let schedule_range = Range::new("gkr.forward_setup.schedule")?;
-        schedule_range.start(stream)?;
-        let mut host_lookup_additive_part = unsafe { context.alloc_host_uninit_slice(1) };
-        let mut device_lookup_additive_part = context.alloc(1, AllocationPlacement::BestFit)?;
-        let mut host_lookup_alpha_powers = if self.host.columns_count > 3 && generic_lookup_len > 0
-        {
-            Some(unsafe { context.alloc_host_uninit_slice(self.host.columns_count - 2) })
-        } else {
-            None
-        };
-        let mut generic_lookup = if generic_lookup_len > 0 {
-            Some(context.alloc::<E>(generic_lookup_len, AllocationPlacement::BestFit)?)
-        } else {
-            None
-        };
-        let lookup_challenges_accessor = lookup_challenges.get_accessor();
-        let mut callbacks = Callbacks::new();
-
-        let lookup_additive_part_accessor = host_lookup_additive_part.get_mut_accessor();
-        let alpha_powers_accessor = host_lookup_alpha_powers
-            .as_mut()
-            .map(HostAllocation::get_mut_accessor);
-        let alpha_powers_len = host_lookup_alpha_powers
-            .as_ref()
-            .map(HostAllocation::len)
-            .unwrap_or(0);
-        callbacks.schedule(
-            move || unsafe {
-                let lookup_challenges = lookup_challenges_accessor.get();
-                assert!(
-                    lookup_challenges.len() >= 2,
-                    "lookup scheduling expects [lookup_alpha, lookup_additive_part, ...]",
-                );
-                let lookup_alpha = lookup_challenges[0];
-                let lookup_additive_part = lookup_challenges[1];
-                lookup_additive_part_accessor.get_mut()[0] = lookup_additive_part;
-                if let Some(alpha_powers_accessor) = alpha_powers_accessor.as_ref() {
-                    let powers = materialize_powers_serial_starting_with_one::<
-                        E,
-                        std::alloc::Global,
-                    >(lookup_alpha, alpha_powers_len);
-                    alpha_powers_accessor.get_mut().copy_from_slice(&powers);
-                }
-            },
-            context.get_exec_stream(),
-        )?;
-
-        memory_copy_async(
-            &mut device_lookup_additive_part,
-            &host_lookup_additive_part,
-            context.get_exec_stream(),
-        )?;
-        let mut device_lookup_alpha_powers =
-            if let Some(host_alpha_powers) = host_lookup_alpha_powers.as_ref() {
-                let mut device =
-                    context.alloc(host_alpha_powers.len(), AllocationPlacement::BestFit)?;
-                memory_copy_async(&mut device, host_alpha_powers, context.get_exec_stream())?;
-                Some(device)
-            } else {
-                None
-            };
-
-        if let Some(generic_lookup) = generic_lookup.as_mut() {
-            let generic_lookup_range = Range::new("gkr.forward_setup.build_generic_lookup")?;
-            generic_lookup_range.start(stream)?;
-            let raw = self.trace_holder.get_hypercube_evals();
-
-            let mut weighted_column = if self.host.columns_count > 3 {
-                Some(context.alloc::<E>(generic_lookup.len(), AllocationPlacement::BestFit)?)
-            } else {
-                None
-            };
-            let base_column =
-                DeviceVectorChunk::new(raw, self.host.column_offset(2), generic_lookup.len());
-            set_by_val(E::ZERO, generic_lookup.deref_mut(), stream)?;
-            add_into_y(&base_column, generic_lookup.deref_mut(), stream)?;
-
-            if let (Some(weighted_column), Some(alpha_powers)) = (
-                weighted_column.as_mut(),
-                device_lookup_alpha_powers.as_ref(),
-            ) {
-                for setup_column in 3..self.host.columns_count {
-                    let source = DeviceVectorChunk::new(
-                        raw,
-                        self.host.column_offset(setup_column),
-                        generic_lookup.len(),
-                    );
-                    let challenge_power = DeviceVectorChunk::new(alpha_powers, setup_column - 2, 1);
-                    set_by_ref(&challenge_power, weighted_column.deref_mut(), stream)?;
-                    mul_into_y(&source, weighted_column.deref_mut(), stream)?;
-                    let weighted_column_chunk =
-                        DeviceVectorChunk::new(&*weighted_column, 0, weighted_column.len());
-                    add_into_y(&weighted_column_chunk, generic_lookup.deref_mut(), stream)?;
-                }
-            }
-            generic_lookup_range.end(stream)?;
-            tracing_ranges.push(generic_lookup_range);
-        }
-
-        drop(device_lookup_alpha_powers);
-        schedule_range.end(stream)?;
-        tracing_ranges.push(schedule_range);
-
-        drop(host_lookup_additive_part);
-        drop(host_lookup_alpha_powers);
-
-        Ok(GpuGKRForwardSetup {
-            _tracing_ranges: tracing_ranges,
-            _callbacks: callbacks,
-            device_lookup_additive_part,
-            generic_lookup,
-        })
+        self.schedule_forward_setup_for_shape(
+            compiled_circuit.trace_len,
+            compiled_circuit.generic_lookup_tables_width,
+            compiled_circuit.total_tables_size,
+            lookup_challenges,
+            context,
+        )
     }
 
     fn schedule_tree_caps_clone(&mut self, context: &ProverContext) -> CudaResult<()> {
@@ -410,13 +560,18 @@ impl<'a> GpuGKRSetupTransfer<'a> {
 pub(crate) struct GpuGKRForwardSetup<E> {
     _tracing_ranges: Vec<Range>,
     _callbacks: Callbacks<'static>,
+    _host_lookup_additive_part: HostAllocation<[E]>,
+    _host_lookup_alpha_powers: Option<HostAllocation<[E]>>,
     device_lookup_additive_part: DeviceAllocation<E>,
+    _device_lookup_alpha_powers: Option<DeviceAllocation<E>>,
     generic_lookup: Option<DeviceAllocation<E>>,
 }
 
 pub(crate) struct GpuGKRForwardSetupHostKeepalive<E> {
     _tracing_ranges: Vec<Range>,
     _callbacks: Callbacks<'static>,
+    _host_lookup_additive_part: HostAllocation<[E]>,
+    _host_lookup_alpha_powers: Option<HostAllocation<[E]>>,
     _marker: PhantomData<E>,
 }
 
@@ -450,7 +605,10 @@ impl<E> GpuGKRForwardSetup<E> {
         let Self {
             _tracing_ranges,
             _callbacks,
+            _host_lookup_additive_part,
+            _host_lookup_alpha_powers,
             device_lookup_additive_part: _,
+            _device_lookup_alpha_powers: _,
             generic_lookup: _,
         } = self;
         // device_lookup_additive_part and generic_lookup (device allocs) drop here —
@@ -458,6 +616,8 @@ impl<E> GpuGKRForwardSetup<E> {
         GpuGKRForwardSetupHostKeepalive {
             _tracing_ranges,
             _callbacks,
+            _host_lookup_additive_part,
+            _host_lookup_alpha_powers,
             _marker: PhantomData,
         }
     }
@@ -548,7 +708,7 @@ mod tests {
 
     use cs::definitions::TIMESTAMP_COLUMNS_NUM_BITS;
     use era_cudart::memory::memory_copy_async;
-    use field::PrimeField;
+    use field::{FieldExtension, PrimeField};
     use itertools::Itertools;
     use prover::merkle_trees::{
         ColumnMajorMerkleTreeConstructor, DefaultTreeConstructor, MerkleTreeCapVarLength,
@@ -670,6 +830,92 @@ mod tests {
         memory_copy_async(&mut host, &tmp, context.get_exec_stream()).unwrap();
         context.get_exec_stream().synchronize().unwrap();
         host
+    }
+
+    fn read_ext_allocation(values: &DeviceAllocation<E4>, context: &ProverContext) -> Vec<E4> {
+        let mut host = vec![E4::ZERO; values.len()];
+        memory_copy_async(&mut host, values, context.get_exec_stream()).unwrap();
+        context.get_exec_stream().synchronize().unwrap();
+        host
+    }
+
+    fn expected_generic_lookup_preprocessing(
+        setup: &CpuGKRSetup<BF>,
+        generic_lookup_width: usize,
+        generic_lookup_len: usize,
+        lookup_alpha: E4,
+    ) -> Vec<E4> {
+        let powers = materialize_powers_serial_starting_with_one::<E4, Global>(
+            lookup_alpha,
+            generic_lookup_width,
+        );
+        let mut result = Vec::with_capacity(generic_lookup_len);
+        for row in 0..generic_lookup_len {
+            let mut value = E4::ZERO;
+            for column in 0..generic_lookup_width {
+                let mut contribution = powers[column];
+                contribution.mul_assign_by_base(&setup.hypercube_evals[2 + column][row]);
+                value.add_assign(&contribution);
+            }
+            result.push(value);
+        }
+        result
+    }
+
+    fn launch_generic_lookup_preprocessing(
+        setup: &CpuGKRSetup<BF>,
+        generic_lookup_width: usize,
+        generic_lookup_len: usize,
+        lookup_alpha: E4,
+        context: &ProverContext,
+    ) -> Vec<E4> {
+        let log_lde_factor = 1u32;
+        let log_rows_per_leaf = 1u32;
+        let log_tree_cap_size = 1u32;
+        let host = Arc::new(
+            GpuGKRSetupHost::precompute_from_cpu_setup(
+                setup,
+                log_lde_factor,
+                log_rows_per_leaf,
+                log_tree_cap_size,
+                context,
+            )
+            .unwrap(),
+        );
+        let mut transfer = GpuGKRSetupTransfer::new(Arc::clone(&host), context).unwrap();
+        transfer.schedule_transfer(context).unwrap();
+        context.get_h2d_stream().synchronize().unwrap();
+
+        let powers = materialize_powers_serial_starting_with_one::<E4, Global>(
+            lookup_alpha,
+            generic_lookup_width,
+        );
+        let mut device_lookup_alpha_powers = context
+            .alloc(powers.len(), AllocationPlacement::BestFit)
+            .unwrap();
+        memory_copy_async(
+            &mut device_lookup_alpha_powers,
+            &powers,
+            context.get_exec_stream(),
+        )
+        .unwrap();
+        let mut generic_lookup = context
+            .alloc(generic_lookup_len, AllocationPlacement::BestFit)
+            .unwrap();
+        let batch = lower_forward_setup_generic_lookup_batch(
+            host.as_ref(),
+            transfer.trace_holder.get_hypercube_evals(),
+            generic_lookup_width,
+            &device_lookup_alpha_powers,
+            &mut generic_lookup,
+        );
+        launch_forward_setup_generic_lookup::<E4>(&batch, generic_lookup_len, context).unwrap();
+
+        read_ext_allocation(&generic_lookup, context)
+    }
+
+    fn read_host_ext_allocation(values: &HostAllocation<[E4]>) -> Vec<E4> {
+        unsafe { values.get_accessor().get().to_vec() }
     }
 
     #[test]
@@ -912,5 +1158,162 @@ mod tests {
                 expected,
             );
         }
+    }
+
+    #[test]
+    #[cfg(not(no_cuda))]
+    #[serial]
+    fn forward_setup_generic_lookup_fused_kernel_matches_expected_for_max_width() {
+        let trace_len = 1usize << 10;
+        let generic_lookup_width = GKR_FORWARD_SETUP_GENERIC_LOOKUP_MAX_COLUMNS;
+        let generic_lookup_len = 64;
+        let setup = make_test_cpu_setup(trace_len, generic_lookup_width, generic_lookup_len);
+        let context = make_test_context(256, 64);
+        let lookup_alpha =
+            E4::from_array_of_base([BF::new(3), BF::new(5), BF::new(7), BF::new(11)]);
+
+        let actual = launch_generic_lookup_preprocessing(
+            &setup,
+            generic_lookup_width,
+            generic_lookup_len,
+            lookup_alpha,
+            &context,
+        );
+        let expected = expected_generic_lookup_preprocessing(
+            &setup,
+            generic_lookup_width,
+            generic_lookup_len,
+            lookup_alpha,
+        );
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    #[cfg(not(no_cuda))]
+    #[serial]
+    fn forward_setup_generic_lookup_fused_kernel_handles_single_column() {
+        let trace_len = 1usize << 8;
+        let generic_lookup_width = 1;
+        let generic_lookup_len = 32;
+        let setup = make_test_cpu_setup(trace_len, generic_lookup_width, generic_lookup_len);
+        let context = make_test_context(256, 64);
+        let lookup_alpha =
+            E4::from_array_of_base([BF::new(13), BF::new(17), BF::new(19), BF::new(23)]);
+
+        let actual = launch_generic_lookup_preprocessing(
+            &setup,
+            generic_lookup_width,
+            generic_lookup_len,
+            lookup_alpha,
+            &context,
+        );
+        let expected = expected_generic_lookup_preprocessing(
+            &setup,
+            generic_lookup_width,
+            generic_lookup_len,
+            lookup_alpha,
+        );
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    #[cfg(not(no_cuda))]
+    #[serial]
+    fn forward_setup_schedule_generic_lookup_matches_cpu_and_powers() {
+        let trace_len = 1usize << 10;
+        let generic_lookup_width = 4;
+        let generic_lookup_len = 32;
+        let setup = make_test_cpu_setup(trace_len, generic_lookup_width, generic_lookup_len);
+        let context = make_test_context(256, 64);
+        let log_lde_factor = 1u32;
+        let log_rows_per_leaf = 1u32;
+        let log_tree_cap_size = 1u32;
+        let host = Arc::new(
+            GpuGKRSetupHost::precompute_from_cpu_setup(
+                &setup,
+                log_lde_factor,
+                log_rows_per_leaf,
+                log_tree_cap_size,
+                &context,
+            )
+            .unwrap(),
+        );
+        let mut transfer = GpuGKRSetupTransfer::new(Arc::clone(&host), &context).unwrap();
+        transfer.schedule_transfer(&context).unwrap();
+        context.get_h2d_stream().synchronize().unwrap();
+
+        let lookup_alpha =
+            E4::from_array_of_base([BF::new(3), BF::new(5), BF::new(7), BF::new(11)]);
+        let lookup_additive_part =
+            E4::from_array_of_base([BF::new(13), BF::new(17), BF::new(19), BF::new(23)]);
+        let constraints_batch_challenge =
+            E4::from_array_of_base([BF::new(29), BF::new(31), BF::new(37), BF::new(41)]);
+        let mut lookup_challenges = unsafe { context.alloc_host_uninit_slice(3) };
+        unsafe {
+            lookup_challenges
+                .get_mut_accessor()
+                .get_mut()
+                .copy_from_slice(&[
+                    lookup_alpha,
+                    lookup_additive_part,
+                    constraints_batch_challenge,
+                ]);
+        }
+
+        let scheduled = transfer
+            .schedule_forward_setup_for_shape(
+                trace_len,
+                generic_lookup_width,
+                generic_lookup_len,
+                &lookup_challenges,
+                &context,
+            )
+            .unwrap();
+        context.get_exec_stream().synchronize().unwrap();
+
+        let expected_powers = materialize_powers_serial_starting_with_one::<E4, Global>(
+            lookup_alpha,
+            generic_lookup_width,
+        );
+        let actual_host_powers = read_host_ext_allocation(
+            scheduled
+                ._host_lookup_alpha_powers
+                .as_ref()
+                .expect("expected host alpha powers"),
+        );
+        assert_eq!(actual_host_powers, expected_powers);
+
+        let actual_device_powers = read_ext_allocation(
+            scheduled
+                ._device_lookup_alpha_powers
+                .as_ref()
+                .expect("expected device alpha powers"),
+            &context,
+        );
+        assert_eq!(actual_device_powers, expected_powers);
+
+        let actual_generic_lookup = read_ext_allocation(
+            scheduled
+                .generic_lookup
+                .as_ref()
+                .expect("expected generic lookup"),
+            &context,
+        );
+        let expected_generic_lookup = expected_generic_lookup_preprocessing(
+            &setup,
+            generic_lookup_width,
+            generic_lookup_len,
+            lookup_alpha,
+        );
+        assert_eq!(actual_generic_lookup, expected_generic_lookup);
+    }
+
+    #[test]
+    #[should_panic(expected = "exceeding the fused setup cap")]
+    fn forward_setup_generic_lookup_batch_panics_when_width_exceeds_cap() {
+        let setup_columns = vec![null(); GKR_FORWARD_SETUP_GENERIC_LOOKUP_MAX_COLUMNS + 1];
+        let _ = pack_forward_setup_generic_lookup_batch::<E4>(&setup_columns, null(), null_mut());
     }
 }
