@@ -554,10 +554,16 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
     )?;
     // Materialize deferred cosets for setup and memory right before WHIR fold queries.
     // Setup: cosets allocated on demand; partial trees already transferred from host.
+    let pre_whir_setup_cosets_range = Range::new("gkr.proof.pre_whir.setup_cosets")?;
+    pre_whir_setup_cosets_range.start(stream)?;
     setup_transfer
         .trace_holder
         .ensure_cosets_materialized(context)?;
+    pre_whir_setup_cosets_range.end(stream)?;
+    ranges.push(pre_whir_setup_cosets_range);
     // Memory: cosets allocated on demand, then build and cache partial trees from cosets.
+    let pre_whir_memory_commit_range = Range::new("gkr.proof.pre_whir.memory_commit")?;
+    pre_whir_memory_commit_range.start(stream)?;
     stage1_output
         .memory_trace_holder
         .ensure_cosets_materialized(context)?;
@@ -573,6 +579,8 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
             .memory_trace_holder
             .build_and_cache_partial_trees(context)?;
     }
+    pre_whir_memory_commit_range.end(stream)?;
+    ranges.push(pre_whir_memory_commit_range);
 
     let setup_base_caps_keepalive = setup_transfer.trace_holder.take_tree_caps_host();
     let whir_scheduled = schedule_gpu_whir_fold_with_sources(
