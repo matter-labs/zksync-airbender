@@ -56,20 +56,13 @@ pub(crate) struct GkrExternalPowChallenges {
 }
 
 struct GpuGKRProofJobKeepalive<'a> {
-    #[allow(dead_code)]
-    stage1: GpuGKRStage1Keepalive,
-    #[allow(dead_code)]
-    setup: GpuGKRSetupTransferHostKeepalive<'a>,
-    #[allow(dead_code)]
-    forward_setup: GpuGKRForwardSetupHostKeepalive<E4>,
-    #[allow(dead_code)]
-    transcript_handoff: GpuGKRTranscriptHandoff<E4>,
-    #[allow(dead_code)]
-    backward: GpuGKRBackwardHostKeepalive<BF, E4>,
-    #[allow(dead_code)]
-    base_layer_claims: GpuGKRBaseLayerClaimsScheduledExecution<E4>,
-    #[allow(dead_code)]
-    whir: GpuWhirFoldScheduledExecution,
+    _stage1: GpuGKRStage1Keepalive,
+    _setup: GpuGKRSetupTransferHostKeepalive<'a>,
+    _forward_setup: GpuGKRForwardSetupHostKeepalive<E4>,
+    _transcript_handoff: GpuGKRTranscriptHandoff<E4>,
+    _backward: GpuGKRBackwardHostKeepalive<BF, E4>,
+    _base_layer_claims: GpuGKRBaseLayerClaimsScheduledExecution<E4>,
+    _whir: GpuWhirFoldScheduledExecution,
 }
 
 pub(crate) struct GpuGKRProofJob<'a> {
@@ -77,7 +70,6 @@ pub(crate) struct GpuGKRProofJob<'a> {
     pub(crate) callbacks: Callbacks<'a>,
     pub(crate) proof: Arc<Mutex<Option<GKRProof<BF, E4, DefaultTreeConstructor>>>>,
     pub(crate) ranges: Vec<Range>,
-    #[allow(dead_code)]
     keepalive: GpuGKRProofJobKeepalive<'a>,
 }
 
@@ -415,7 +407,6 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
     let seed_accessor = seed_host.get_mut_accessor();
     let mut lookup_challenges_host = unsafe { context.alloc_host_uninit_slice(3) };
     let lookup_challenges_write_accessor = lookup_challenges_host.get_mut_accessor();
-    let lookup_challenges_read_accessor = lookup_challenges_host.get_accessor();
     let external_challenges_for_seed = external_challenges.clone();
     let transcript_init_range = Range::new("gkr.proof.transcript_init")?;
     transcript_init_range.start(stream)?;
@@ -442,7 +433,7 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
 
     let mut forward_setup = setup_transfer.schedule_forward_setup(
         &compiled_circuit,
-        lookup_challenges_host,
+        &lookup_challenges_host,
         context,
     )?;
     let forward_output = schedule_forward_pass(
@@ -462,15 +453,15 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
     let output_layer_for_sumcheck =
         forward_output.dimension_reducing_inputs[&initial_layer_for_sumcheck].clone();
     let backward_state = forward_output.into_dimension_reducing_backward_state();
-    let mut forward_setup_keepalive = forward_setup.into_host_keepalive();
+    let forward_setup_keepalive = forward_setup.into_host_keepalive();
 
     let backward_shared_state = make_deferred_backward_workflow_state();
     let transcript_update_range = Range::new("gkr.proof.transcript_update")?;
     transcript_update_range.start(stream)?;
+    let lookup_challenges_read_accessor = lookup_challenges_host.get_accessor();
     callbacks.schedule(
         {
             let backward_shared_state = Arc::clone(&backward_shared_state);
-            let lookup_challenges_read_accessor = lookup_challenges_read_accessor;
             move || unsafe {
                 let final_explicit_evaluations = collect_explicit_evaluations_from_accessors(
                     &transcript_handoff_accessors_for_backward,
@@ -503,6 +494,7 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
         },
         stream,
     )?;
+    drop(lookup_challenges_host);
     transcript_update_range.end(stream)?;
     ranges.push(transcript_update_range);
 
@@ -693,13 +685,13 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
         proof,
         ranges,
         keepalive: GpuGKRProofJobKeepalive {
-            stage1: stage1_output.into_keepalive(),
-            setup: setup_keepalive,
-            forward_setup: forward_setup_keepalive,
-            transcript_handoff,
-            backward: backward_keepalive,
-            base_layer_claims: base_layer_claims_scheduled,
-            whir: whir_scheduled,
+            _stage1: stage1_output.into_keepalive(),
+            _setup: setup_keepalive,
+            _forward_setup: forward_setup_keepalive,
+            _transcript_handoff: transcript_handoff,
+            _backward: backward_keepalive,
+            _base_layer_claims: base_layer_claims_scheduled,
+            _whir: whir_scheduled,
         },
     })
 }
