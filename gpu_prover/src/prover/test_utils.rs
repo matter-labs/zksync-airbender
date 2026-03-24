@@ -1,6 +1,6 @@
 use crate::primitives::context::{ProverContext, ProverContextConfig};
 
-const TEST_DEVICE_ALLOCATOR_BLOCK_LOG_SIZE: u32 = 2;
+const TEST_DEVICE_ALLOCATOR_BLOCK_LOG_SIZE: u32 = 4;
 
 pub(crate) fn make_test_context(
     max_device_allocation_blocks_count: usize,
