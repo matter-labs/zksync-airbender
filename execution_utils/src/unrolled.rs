@@ -485,10 +485,10 @@ mod test {
     use super::*;
     use std::path::Path;
 
-    use risc_v_simulator::abstractions::non_determinism::QuasiUARTSource;
-    use risc_v_simulator::cycle::IMStandardIsaConfigWithUnsignedMulDiv;
-    use risc_v_simulator::cycle::IWithoutByteAccessIsaConfigWithDelegation;
-    use risc_v_simulator::cycle::MachineConfig;
+    use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
+    use riscv_transpiler::cycle::IMStandardIsaConfigWithUnsignedMulDiv;
+    use riscv_transpiler::cycle::IWithoutByteAccessIsaConfigWithDelegation;
+    use riscv_transpiler::cycle::MachineConfig;
 
     struct TestProgram {
         binary_image: Vec<u8>,

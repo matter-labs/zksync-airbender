@@ -1,6 +1,6 @@
 // Code related to verifiers (creating oracles a.k.a input data etc).
 
-use risc_v_simulator::cycle::{
+use riscv_transpiler::cycle::{
     IMStandardIsaConfig, IWithoutByteAccessIsaConfigWithDelegation, MachineConfig,
 };
 use verifier_common::cs::utils::split_timestamp;

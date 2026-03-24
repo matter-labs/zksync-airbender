@@ -1,5 +1,5 @@
 use crate::fft::GoodAllocator;
-use risc_v_simulator::machine_mode_only_unrolled::{
+use riscv_transpiler::machine_mode_only_unrolled::{
     MemoryOpcodeTracingDataWithTimestamp, NonMemoryOpcodeTracingDataWithTimestamp,
 };
 use std::alloc::Global;

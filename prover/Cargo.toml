@@ -19,13 +19,11 @@ seq-macro = { workspace = true, optional = true }
 fft = { workspace = true, optional = true }
 cs = { workspace = true, default-features = false }
 blake2s_u32 = { workspace = true, default-features = false }
-poseidon2 = { workspace = true, default-features = false }
 serde = { workspace = true }
 serde-big-array = "*"
 transcript = { workspace = true }
 non_determinism_source = { workspace = true }
-risc_v_simulator = { workspace = true, features = ["delegation"], optional = true }
-riscv_transpiler = { workspace = true, optional = true }
+riscv_transpiler = { workspace = true, optional = true, features = ["delegation"] }
 itertools = { workspace = true, optional = true }
 
 proc-macro2 = { version = "1", optional = true }
@@ -46,7 +44,7 @@ name = "pow_bench"
 harness = false
 
 [features]
-prover = ["trace_holder", "worker", "seq-macro", "fft", "cs/compiler", "transcript/pow",  "risc_v_simulator", "riscv_transpiler", "proc-macro2", "quote", "serde_json", "itertools"]
+prover = ["trace_holder", "worker", "seq-macro", "fft", "cs/compiler", "transcript/pow", "riscv_transpiler", "proc-macro2", "quote", "serde_json", "itertools"]
 deterministic_pow = ["transcript/deterministic_pow"]
 definitions_only = ["cs/definitions_only"]
 # Print logs related to timings only.

@@ -1,5 +1,4 @@
 use crate::bincode_serialize_to_file;
-use crate::risc_v_simulator::cycle::MachineConfig;
 use crate::u32_from_field_elems;
 use crate::DUMP_WITNESS_VAR;
 use crate::MEMORY_DELEGATION_POW_BITS;
@@ -22,6 +21,7 @@ use prover::ExecutorFamilyWitnessEvaluationAuxData;
 use prover::WitnessEvaluationData;
 use prover::WitnessEvaluationDataForExecutionFamily;
 use prover::DEFAULT_TRACE_PADDING_MULTIPLE;
+use riscv_transpiler::cycle::MachineConfig;
 use riscv_transpiler::witness::delegation::bigint::BigintAbiDescription;
 use riscv_transpiler::witness::delegation::blake2_round_function::Blake2sRoundFunctionAbiDescription;
 use riscv_transpiler::witness::delegation::keccak_special5::KeccakSpecial5AbiDescription;
@@ -463,11 +463,12 @@ pub fn prove_unrolled_execution_with_replayer<
         0
     };
 
-    let external_challenges = ExternalChallenges::draw_from_transcript_seed_with_state_permutation(
-        all_challenges_seed,
-        MEMORY_DELEGATION_POW_BITS,
-        pow_challenge,
-    );
+    let external_challenges =
+        ExternalChallenges::draw_from_transcript_seed_with_delegation_and_state_permutation(
+            all_challenges_seed,
+            MEMORY_DELEGATION_POW_BITS,
+            pow_challenge,
+        );
 
     #[cfg(feature = "debug_logs")]
     println!("External challenges = {:?}", external_challenges);
@@ -1110,8 +1111,8 @@ pub(crate) mod test {
     use test_utils::skip_if_ci;
 
     use super::*;
-    use crate::risc_v_simulator::abstractions::non_determinism::QuasiUARTSource;
-    use crate::risc_v_simulator::cycle::IMStandardIsaConfigWithUnsignedMulDiv;
+    use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
+    use riscv_transpiler::cycle::IMStandardIsaConfigWithUnsignedMulDiv;
     use std::alloc::Global;
     use std::path::Path;
 

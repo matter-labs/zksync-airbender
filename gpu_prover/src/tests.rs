@@ -24,9 +24,6 @@ use prover::definitions::{
     ExternalMemoryArgumentChallenges, ExternalValues, Transcript, OPTIMAL_FOLDING_PROPERTIES,
 };
 use prover::merkle_trees::DefaultTreeConstructor;
-use prover::risc_v_simulator::abstractions::non_determinism::QuasiUARTSource;
-use prover::risc_v_simulator::cycle::IMStandardIsaConfigWithUnsignedMulDiv;
-use prover::risc_v_simulator::cycle::MachineConfig;
 use prover::tracers::oracles::chunk_lazy_init_and_teardown;
 use prover::unrolled::{
     evaluate_init_and_teardown_witness, evaluate_memory_witness_for_unified_executor,
@@ -41,6 +38,9 @@ use prover::{
     common_constants, ExecutorFamilyWitnessEvaluationAuxData, WitnessEvaluationData,
     WitnessEvaluationDataForExecutionFamily,
 };
+use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
+use riscv_transpiler::cycle::IMStandardIsaConfigWithUnsignedMulDiv;
+use riscv_transpiler::cycle::MachineConfig;
 
 use crate::allocator::tracker::AllocationPlacement;
 use crate::circuit_type::CircuitType::Unrolled;
@@ -68,9 +68,9 @@ use prover::prover_stages::unrolled_prover::{
     prove_configured_for_unrolled_circuits, UnrolledModeProof,
 };
 use prover::prover_stages::Proof;
-use prover::risc_v_simulator::machine_mode_only_unrolled::UnifiedOpcodeTracingDataWithTimestamp;
 use prover::tracers::oracles::transpiler_oracles::delegation::DelegationOracle;
 use riscv_transpiler::ir::{preprocess_bytecode, Instruction, ReducedMachineDecoderConfig};
+use riscv_transpiler::machine_mode_only_unrolled::UnifiedOpcodeTracingDataWithTimestamp;
 use riscv_transpiler::replayer::{ReplayerRam, ReplayerVM};
 use riscv_transpiler::vm::{
     DelegationsCounters, RamWithRomRegion, ReplayBuffer, SimpleSnapshotter, SimpleTape, State, VM,
@@ -3881,11 +3881,12 @@ pub fn prove_unrolled_execution_with_replayer<
         .1
     };
 
-    let external_challenges = ExternalChallenges::draw_from_transcript_seed_with_state_permutation(
-        all_challenges_seed,
-        MEMORY_DELEGATION_POW_BITS,
-        pow_challenge,
-    );
+    let external_challenges =
+        ExternalChallenges::draw_from_transcript_seed_with_delegation_and_state_permutation(
+            all_challenges_seed,
+            MEMORY_DELEGATION_POW_BITS,
+            pow_challenge,
+        );
 
     let mut aux_memory_trees = vec![];
 

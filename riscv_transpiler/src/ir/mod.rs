@@ -648,6 +648,19 @@ pub fn preprocess_bytecode<OPT: DecodingOptions>(bytecode: &[u32]) -> Vec<Instru
                             // short-cut
                             continue;
                         }
+                        common_constants::internal_features::TRANSPILER_MARKER_CSR => {
+                            // We only support the write-only marker form
+                            // `csrrw x0, 0x7ff, x0`.
+                            assert_eq!(rd, 0);
+                            assert_eq!(formal_rs1, 0);
+                            Instruction::from_imm(
+                                InstructionName::ZicsrMarkerCsr,
+                                formal_rs1,
+                                0,
+                                0,
+                                0,
+                            )
+                        }
                         CYCLE_CSR_INDEX => {
                             // It is canonical CSR to encode UNIMP instruction
                             illegal_instr

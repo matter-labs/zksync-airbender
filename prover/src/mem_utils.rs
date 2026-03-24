@@ -1,7 +1,7 @@
 use ::field::*;
 use cs::definitions::*;
 use fft::GoodAllocator;
-use risc_v_simulator::cycle::state::NUM_REGISTERS;
+use riscv_transpiler::cycle::state::NUM_REGISTERS;
 use trace_holder::RowMajorTrace;
 
 use super::*;

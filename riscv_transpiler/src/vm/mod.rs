@@ -5,7 +5,9 @@ use crate::jit::{MachineState, MAX_NUM_COUNTERS};
 use common_constants::circuit_families::*;
 use common_constants::{TimestampScalar, INITIAL_TIMESTAMP, TIMESTAMP_STEP};
 use std::fmt::Debug;
+use std::marker::PhantomData;
 
+mod execution_observer;
 #[cfg(feature = "flamegraph")]
 mod flamegraph;
 mod instructions;
@@ -15,6 +17,7 @@ mod simple_tape;
 
 pub(crate) mod delegations;
 
+pub use self::execution_observer::ExecutionObserver;
 #[cfg(feature = "flamegraph")]
 pub use self::flamegraph::*;
 pub use self::ram_with_rom_region::RamWithRomRegion;
@@ -200,11 +203,12 @@ impl NonDeterminismCSRSource for crate::abstractions::non_determinism::QuasiUART
     }
 }
 
-pub struct VM<C: Counters> {
+pub struct VM<C: Counters, E: ExecutionObserver<C> = ()> {
     pub state: State<C>,
+    pub(crate) observer: PhantomData<E>,
 }
 
-impl<C: Counters> VM<C> {
+impl<C: Counters, E: ExecutionObserver<C>> VM<C, E> {
     pub fn run_basic_unrolled<S: Snapshotter<C>, R: RAM, ND: NonDeterminismCSRSource>(
         state: &mut State<C>,
         ram: &mut R,
@@ -448,8 +452,11 @@ impl<C: Counters> VM<C> {
                 InstructionName::ZicsrNonDeterminismWrite => {
                     zicsr::nd_write::<C, S, R, ND>(state, ram, snapshotter, instr, nd)
                 }
+                InstructionName::ZicsrMarkerCsr => {
+                    zicsr::marker::<C, S, R, E>(state, ram, snapshotter, instr)
+                }
                 InstructionName::ZicsrDelegation => {
-                    zicsr::call_delegation::<C, S, R>(state, ram, snapshotter, instr)
+                    zicsr::call_delegation::<C, S, R, E>(state, ram, snapshotter, instr)
                 }
                 a @ _ => {
                     panic!("Unknown instruction {:?}", a);
@@ -502,6 +509,42 @@ pub(crate) mod test {
         }
 
         (buffer, binary)
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_cycle_markers_follow_vm_execution() {
+        const MARKER_OPCODE: u32 = 0x7ff01073; // csrrw x0, 2047, x0
+        const ADDI_OPCODE: u32 = 0x00100093; // addi x1, x0, 1
+
+        let program = vec![MARKER_OPCODE, ADDI_OPCODE, MARKER_OPCODE];
+        let instructions: Vec<Instruction> =
+            preprocess_bytecode::<FullUnsignedMachineDecoderConfig>(&program);
+        let tape = SimpleTape::new(&instructions);
+        let mut ram = RamWithRomRegion::<5>::from_rom_content(&program, 1 << 22);
+        let mut state = State::initial_with_counters(DelegationsCounters::default());
+
+        let (finished, marker_state) =
+            crate::cycle::CycleMarkerHooks::with(|| {
+                VM::<DelegationsCounters, crate::cycle::CycleMarkerHooks>::run_basic_unrolled::<
+                    _,
+                    _,
+                    _,
+                >(&mut state, &mut ram, &mut (), &tape, program.len(), &mut ())
+            });
+
+        assert!(!finished);
+        assert_eq!(state.pc, 12);
+        assert_eq!(state.registers[1].value, 1);
+
+        assert_eq!(marker_state.markers.len(), 2);
+        assert!(marker_state.delegation_counter.is_empty());
+        assert_eq!(marker_state.markers[0].cycles, 0);
+        assert_eq!(marker_state.markers[1].cycles, 1);
+
+        let diff = marker_state.markers[1].diff(&marker_state.markers[0]);
+        assert_eq!(diff.cycles, 1);
+        assert!(diff.delegations.is_empty());
     }
 
     #[test]

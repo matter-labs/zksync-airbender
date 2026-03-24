@@ -14,10 +14,6 @@ pub(crate) fn create_blake_with_compression_delegation_layout() -> (
 //     setups::blake2_single_round::get_delegation_circuit().compiled_circuit
 // }
 
-// pub(crate) fn create_poseidon2_delegation_layout() -> CompiledCircuitArtifact<Mersenne31Field> {
-//     setups::poseidon2_compression_with_witness::get_delegation_circuit().compiled_circuit
-// }
-
 pub(crate) fn create_bigint_with_control_delegation_layout() -> (
     CompiledCircuitArtifact<Mersenne31Field>,
     Vec<Vec<RawExpression<Mersenne31Field>>>,

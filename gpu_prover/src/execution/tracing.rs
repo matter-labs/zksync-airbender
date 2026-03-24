@@ -18,11 +18,11 @@ use cs::definitions::{
     SHIFT_BINARY_CSR_CIRCUIT_FAMILY_IDX,
 };
 use itertools::Itertools;
-use prover::risc_v_simulator::machine_mode_only_unrolled::{
+use riscv_transpiler::jit::{CounterType, MAX_NUM_COUNTERS};
+use riscv_transpiler::machine_mode_only_unrolled::{
     MemoryOpcodeTracingDataWithTimestamp, NonMemoryOpcodeTracingDataWithTimestamp,
     UnifiedOpcodeTracingDataWithTimestamp,
 };
-use riscv_transpiler::jit::{CounterType, MAX_NUM_COUNTERS};
 use riscv_transpiler::vm::{
     Counters, DelegationsAndFamiliesCounters, DelegationsAndUnifiedCounters,
 };

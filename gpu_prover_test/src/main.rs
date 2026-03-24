@@ -25,8 +25,8 @@ mod tests {
     };
     use gpu_prover::machine_type::MachineType;
     use log::info;
-    use risc_v_simulator::abstractions::non_determinism::QuasiUARTSource;
-    use risc_v_simulator::cycle::{
+    use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
+    use riscv_transpiler::cycle::{
         IMStandardIsaConfigWithUnsignedMulDiv, IWithoutByteAccessIsaConfigWithDelegation,
     };
     use std::fs::File;

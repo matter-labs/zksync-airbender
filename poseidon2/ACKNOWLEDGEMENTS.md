@@ -1,4 +1,0 @@
-This implementation was based upon the following resources:
-- https://github.com/HorizenLabs/poseidon2/blob/main/plain_implementations/src/poseidon2/poseidon2.rs dual-licensed under [MIT](https://github.com/HorizenLabs/poseidon2/blob/main/LICENSE-MIT) and [Apache-2.0](https://github.com/HorizenLabs/poseidon2/blob/main/LICENSE-APACHE).
-- https://eprint.iacr.org/2023/323.pdf
-- https://github.com/Plonky3/Plonky3/blob/main/mersenne-31/src/poseidon2.rs for parameters. Dual-licensed under [MIT](https://github.com/Plonky3/Plonky3/blob/main/LICENSE-MIT) and [Apache-2.0](https://github.com/Plonky3/Plonky3/blob/main/LICENSE-APACHE).

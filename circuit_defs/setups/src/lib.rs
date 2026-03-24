@@ -21,11 +21,11 @@ use prover::unrolled::NonMemoryCircuitOracle;
 use prover::unrolled::UnifiedRiscvCircuitOracle;
 use prover::DEFAULT_TRACE_PADDING_MULTIPLE;
 use prover::*;
-use risc_v_simulator::cycle::IMStandardIsaConfig;
-use risc_v_simulator::cycle::IMStandardIsaConfigWithUnsignedMulDiv;
-use risc_v_simulator::cycle::IWithoutByteAccessIsaConfig;
-use risc_v_simulator::cycle::IWithoutByteAccessIsaConfigWithDelegation;
-use risc_v_simulator::cycle::MachineConfig;
+use riscv_transpiler::cycle::IMStandardIsaConfig;
+use riscv_transpiler::cycle::IMStandardIsaConfigWithUnsignedMulDiv;
+use riscv_transpiler::cycle::IWithoutByteAccessIsaConfig;
+use riscv_transpiler::cycle::IWithoutByteAccessIsaConfigWithDelegation;
+use riscv_transpiler::cycle::MachineConfig;
 use std::alloc::Global;
 use std::collections::HashMap;
 use std::path::Path;
@@ -280,10 +280,6 @@ pub fn all_delegation_circuits_precomputations<A: GoodAllocator + 'static, B: Go
             keccak_special5::DELEGATION_TYPE_ID,
             get_keccak_special5_circuit_setup(worker),
         ),
-        // (
-        //     poseidon2_compression_with_witness::DELEGATION_TYPE_ID,
-        //     get_poseidon2_compress_with_witness_circuit_setup(worker),
-        // ),
     ]
 }
 

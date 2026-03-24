@@ -2,8 +2,8 @@ use core::mem::MaybeUninit;
 
 use super::*;
 use crate::tracers::unrolled::tracer::*;
-use risc_v_simulator::cycle::MachineConfig;
-use risc_v_simulator::machine_mode_only_unrolled::UnifiedOpcodeTracingDataWithTimestamp;
+use riscv_transpiler::cycle::MachineConfig;
+use riscv_transpiler::machine_mode_only_unrolled::UnifiedOpcodeTracingDataWithTimestamp;
 use riscv_transpiler::witness::delegation::bigint::BigintDelegationWitness;
 use riscv_transpiler::witness::delegation::blake2_round_function::Blake2sRoundFunctionDelegationWitness;
 use riscv_transpiler::witness::delegation::keccak_special5::KeccakSpecial5DelegationWitness;
@@ -52,15 +52,15 @@ pub fn run_unrolled_machine<
     let mut ram = RamWithRomRegion::from_rom_content(rom_image, ram_bound_bytes);
 
     let preprocessed_bytecode: Vec<_> = if core::any::TypeId::of::<C>()
-        == core::any::TypeId::of::<risc_v_simulator::cycle::IMStandardIsaConfig>()
+        == core::any::TypeId::of::<riscv_transpiler::cycle::IMStandardIsaConfig>()
     {
         riscv_transpiler::ir::preprocess_bytecode::<FullMachineDecoderConfig>(text_section)
     } else if core::any::TypeId::of::<C>()
-        == core::any::TypeId::of::<risc_v_simulator::cycle::IMStandardIsaConfigWithUnsignedMulDiv>()
+        == core::any::TypeId::of::<riscv_transpiler::cycle::IMStandardIsaConfigWithUnsignedMulDiv>()
     {
         riscv_transpiler::ir::preprocess_bytecode::<FullUnsignedMachineDecoderConfig>(text_section)
     } else if core::any::TypeId::of::<C>()
-        == core::any::TypeId::of::<risc_v_simulator::cycle::IWithoutByteAccessIsaConfigWithDelegation>(
+        == core::any::TypeId::of::<riscv_transpiler::cycle::IWithoutByteAccessIsaConfigWithDelegation>(
         )
     {
         riscv_transpiler::ir::preprocess_bytecode::<ReducedMachineDecoderConfig>(text_section)
@@ -117,15 +117,15 @@ pub fn run_unrolled_machine<
 
     let replay_subword_mem_circuits = core::any::TypeId::of::<C>()
         != core::any::TypeId::of::<
-            risc_v_simulator::cycle::IWithoutByteAccessIsaConfigWithDelegation,
+            riscv_transpiler::cycle::IWithoutByteAccessIsaConfigWithDelegation,
         >();
     let replay_blake_only_delegations = core::any::TypeId::of::<C>()
         == core::any::TypeId::of::<
-            risc_v_simulator::cycle::IWithoutByteAccessIsaConfigWithDelegation,
+            riscv_transpiler::cycle::IWithoutByteAccessIsaConfigWithDelegation,
         >();
     let replay_mul_circuits = core::any::TypeId::of::<C>()
         != core::any::TypeId::of::<
-            risc_v_simulator::cycle::IWithoutByteAccessIsaConfigWithDelegation,
+            riscv_transpiler::cycle::IWithoutByteAccessIsaConfigWithDelegation,
         >();
 
     let mut non_mem_circuits = HashMap::new();
@@ -377,15 +377,15 @@ pub fn run_unified_machine<
     let mut ram = RamWithRomRegion::from_rom_content(rom_image, ram_bound_bytes);
 
     let preprocessed_bytecode: Vec<_> = if core::any::TypeId::of::<C>()
-        == core::any::TypeId::of::<risc_v_simulator::cycle::IMStandardIsaConfig>()
+        == core::any::TypeId::of::<riscv_transpiler::cycle::IMStandardIsaConfig>()
     {
         riscv_transpiler::ir::preprocess_bytecode::<FullMachineDecoderConfig>(text_section)
     } else if core::any::TypeId::of::<C>()
-        == core::any::TypeId::of::<risc_v_simulator::cycle::IMStandardIsaConfigWithUnsignedMulDiv>()
+        == core::any::TypeId::of::<riscv_transpiler::cycle::IMStandardIsaConfigWithUnsignedMulDiv>()
     {
         riscv_transpiler::ir::preprocess_bytecode::<FullUnsignedMachineDecoderConfig>(text_section)
     } else if core::any::TypeId::of::<C>()
-        == core::any::TypeId::of::<risc_v_simulator::cycle::IWithoutByteAccessIsaConfigWithDelegation>(
+        == core::any::TypeId::of::<riscv_transpiler::cycle::IWithoutByteAccessIsaConfigWithDelegation>(
         )
     {
         riscv_transpiler::ir::preprocess_bytecode::<ReducedMachineDecoderConfig>(text_section)
@@ -441,11 +441,11 @@ pub fn run_unified_machine<
     // now replay. We will replay in parallel inside of every circuit family for simplicity
     let replay_blake_only_delegations = core::any::TypeId::of::<C>()
         == core::any::TypeId::of::<
-            risc_v_simulator::cycle::IWithoutByteAccessIsaConfigWithDelegation,
+            riscv_transpiler::cycle::IWithoutByteAccessIsaConfigWithDelegation,
         >();
     let _replay_mul_circuits = core::any::TypeId::of::<C>()
         != core::any::TypeId::of::<
-            risc_v_simulator::cycle::IWithoutByteAccessIsaConfigWithDelegation,
+            riscv_transpiler::cycle::IWithoutByteAccessIsaConfigWithDelegation,
         >();
 
     let main_circuits = {
@@ -579,7 +579,7 @@ pub(crate) fn replay_non_mem<
     cycles_per_circuit: usize,
     worker: &Worker,
 ) -> Vec<NonMemTracingFamilyChunk<A>> {
-    use risc_v_simulator::machine_mode_only_unrolled::*;
+    use riscv_transpiler::machine_mode_only_unrolled::*;
     use riscv_transpiler::vm::Counters;
 
     let counters = snapshotter
@@ -821,7 +821,7 @@ pub(crate) fn replay_mem<
     cycles_per_circuit: usize,
     worker: &Worker,
 ) -> Vec<MemTracingFamilyChunk<A>> {
-    use risc_v_simulator::machine_mode_only_unrolled::*;
+    use riscv_transpiler::machine_mode_only_unrolled::*;
     use riscv_transpiler::vm::Counters;
 
     let counters = snapshotter

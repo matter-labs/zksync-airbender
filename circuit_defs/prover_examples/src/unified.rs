@@ -13,12 +13,11 @@ use prover::get_aux_boundary_data;
 use prover::merkle_trees::DefaultTreeConstructor;
 use prover::prover_stages::unrolled_prover::UnrolledModeProof;
 use prover::prover_stages::Proof;
-use prover::risc_v_simulator;
 use prover::tracers::oracles::transpiler_oracles::delegation::DelegationOracle;
 use prover::unrolled::UnifiedRiscvCircuitOracle;
 use prover::worker;
 use prover::DEFAULT_TRACE_PADDING_MULTIPLE;
-use risc_v_simulator::cycle::MachineConfig;
+use riscv_transpiler::cycle::MachineConfig;
 use riscv_transpiler::witness::delegation::bigint::BigintAbiDescription;
 use riscv_transpiler::witness::delegation::blake2_round_function::Blake2sRoundFunctionAbiDescription;
 use riscv_transpiler::witness::delegation::keccak_special5::KeccakSpecial5AbiDescription;
@@ -344,11 +343,12 @@ pub fn prove_unified_execution_with_replayer<
         0
     };
 
-    let external_challenges = ExternalChallenges::draw_from_transcript_seed_with_state_permutation(
-        all_challenges_seed,
-        MEMORY_DELEGATION_POW_BITS,
-        pow_challenge,
-    );
+    let external_challenges =
+        ExternalChallenges::draw_from_transcript_seed_with_delegation_and_state_permutation(
+            all_challenges_seed,
+            MEMORY_DELEGATION_POW_BITS,
+            pow_challenge,
+        );
 
     #[cfg(feature = "debug_logs")]
     println!("External challenges = {:?}", external_challenges);

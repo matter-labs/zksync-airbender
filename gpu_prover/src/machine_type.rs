@@ -11,7 +11,7 @@ pub enum MachineType {
 }
 
 impl MachineType {
-    pub fn from_machine_config<C: prover::risc_v_simulator::cycle::MachineConfig>() -> Self {
+    pub fn from_machine_config<C: riscv_transpiler::cycle::MachineConfig>() -> Self {
         if setups::is_default_machine_configuration::<C>() {
             MachineType::Full
         } else if setups::is_machine_without_signed_mul_div_configuration::<C>() {

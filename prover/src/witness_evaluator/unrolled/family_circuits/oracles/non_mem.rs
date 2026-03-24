@@ -3,7 +3,7 @@ use cs::cs::placeholder::Placeholder;
 use cs::definitions::TimestampScalar;
 use cs::{cs::oracle::Oracle, machine::NON_DETERMINISM_CSR};
 use field::PrimeField;
-use risc_v_simulator::machine_mode_only_unrolled::NonMemoryOpcodeTracingDataWithTimestamp;
+use riscv_transpiler::machine_mode_only_unrolled::NonMemoryOpcodeTracingDataWithTimestamp;
 
 pub struct NonMemoryCircuitOracle<'a> {
     pub inner: &'a [NonMemoryOpcodeTracingDataWithTimestamp],

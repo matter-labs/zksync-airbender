@@ -21,11 +21,11 @@ use execution_utils::unrolled_gpu::{UnrolledProver, UnrolledProverLevel};
 use execution_utils::verifier_binaries::{
     RECURSION_UNIFIED_BIN, RECURSION_UNIFIED_TXT, RECURSION_UNROLLED_BIN, RECURSION_UNROLLED_TXT,
 };
-use prover::risc_v_simulator::abstractions::non_determinism::QuasiUARTSource;
-use prover::risc_v_simulator::cycle::{
+use prover::transcript::Blake2sBufferingTranscript;
+use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
+use riscv_transpiler::cycle::{
     IMStandardIsaConfigWithUnsignedMulDiv, IWithoutByteAccessIsaConfigWithDelegation,
 };
-use prover::transcript::Blake2sBufferingTranscript;
 use serde::{Deserialize, Serialize};
 use sha3::{Digest, Keccak256};
 use std::path::{Path, PathBuf};
