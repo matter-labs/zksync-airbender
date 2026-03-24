@@ -1841,10 +1841,7 @@ fn build_basic_unrolled_async_backward_fixture_from_base(
         &mut transcript_input,
     );
     flatten_merkle_caps_iter_into(
-        stage1_output
-            .memory_trace_holder
-            .get_tree_caps()
-            .into_iter(),
+        base.memory_tree_caps.clone().into_iter(),
         &mut transcript_input,
     );
     flatten_merkle_caps_iter_into(
@@ -3914,10 +3911,7 @@ fn forward_to_backward_handoff_releases_forward_scratch() {
         &mut transcript_input,
     );
     flatten_merkle_caps_iter_into(
-        stage1_output
-            .memory_trace_holder
-            .get_tree_caps()
-            .into_iter(),
+        base.memory_tree_caps.clone().into_iter(),
         &mut transcript_input,
     );
     flatten_merkle_caps_iter_into(
@@ -5377,11 +5371,20 @@ fn run_basic_unrolled_stagewise_parity_test() {
         stage1_output
     };
 
+    // Stage1 does not commit memory traces in production; this parity test needs the
+    // memory caps later for the WHIR helper, so materialize them explicitly here.
+    stage1_output
+        .memory_trace_holder
+        .commit_all(&context)
+        .unwrap();
+    context.get_exec_stream().synchronize().unwrap();
+
     let memory_caps = stage1_caps_from_tree(&mem_oracle.tree, subcap_size);
     assert_eq!(
         stage1_output.memory_trace_holder.get_tree_caps(),
         memory_caps
     );
+
     let witness_caps = stage1_caps_from_tree(&wit_oracle.tree, subcap_size);
     assert_eq!(
         stage1_output.witness_trace_holder.get_tree_caps(),

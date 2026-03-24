@@ -392,6 +392,7 @@ enum gkr_main_kernel_kind : u32 {
 
 static constexpr unsigned GKR_FORWARD_MAX_GATES_PER_LAYER = 64;
 static constexpr unsigned GKR_DIM_REDUCING_FORWARD_MAX_INPUTS = 5;
+static constexpr unsigned GKR_FORWARD_SETUP_GENERIC_LOOKUP_MAX_COLUMNS = 10;
 
 enum gkr_forward_gate_kind : u32 {
   GKR_FORWARD_NO_OP = 0,
@@ -533,6 +534,18 @@ template <typename E> struct gkr_dim_reducing_forward_batch {
   u32 input_count;
   u32 reserved;
   gkr_dim_reducing_forward_input_descriptor<E> descriptors[GKR_DIM_REDUCING_FORWARD_MAX_INPUTS];
+};
+
+struct gkr_forward_setup_generic_lookup_descriptor {
+  const bf *input;
+};
+
+template <typename E> struct gkr_forward_setup_generic_lookup_batch {
+  u32 column_count;
+  u32 reserved;
+  const E *alpha_powers;
+  E *output;
+  gkr_forward_setup_generic_lookup_descriptor descriptors[GKR_FORWARD_SETUP_GENERIC_LOOKUP_MAX_COLUMNS];
 };
 
 constexpr unsigned GKR_FORWARD_CACHE_MAX_RELATIONS = 20;
@@ -1098,6 +1111,28 @@ template <typename E> DEVICE_FORCEINLINE void gkr_dim_reducing_forward(const gkr
       return;
     }
   }
+}
+
+template <typename E>
+DEVICE_FORCEINLINE void gkr_forward_setup_generic_lookup(const gkr_forward_setup_generic_lookup_batch<E> &batch, const unsigned row_count) {
+  const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
+  if (gid >= row_count)
+    return;
+
+  E value = E::ZERO();
+
+#pragma unroll
+  for (unsigned column_idx = 0; column_idx < GKR_FORWARD_SETUP_GENERIC_LOOKUP_MAX_COLUMNS; ++column_idx) {
+    if (column_idx >= batch.column_count)
+      break;
+
+    const auto descriptor = batch.descriptors[column_idx];
+    const bf input = load<bf, ld_modifier::cs>(descriptor.input, gid);
+    const E alpha_power = load<E, ld_modifier::ca>(batch.alpha_powers, column_idx);
+    value = E::add(value, E::mul(gkr_lift_base<E>(input), alpha_power));
+  }
+
+  store<E, st_modifier::cs>(batch.output, value, gid);
 }
 
 template <typename E>
@@ -1969,6 +2004,10 @@ gkr_main_round3(const unsigned kind, const gkr_ext_continuing_source<E> *base_in
 #define GKR_DIM_REDUCING_KERNELS(arg_t)                                                                                                                        \
   EXTERN __global__ void ab_gkr_forward_layer_##arg_t##_kernel(const __grid_constant__ gkr_forward_layer_batch<arg_t> batch, const unsigned count) {           \
     gkr_forward_layer(batch, count);                                                                                                                           \
+  }                                                                                                                                                            \
+  EXTERN __global__ void ab_gkr_forward_setup_generic_lookup_##arg_t##_kernel(const __grid_constant__ gkr_forward_setup_generic_lookup_batch<arg_t> batch,     \
+                                                                              const unsigned row_count) {                                                      \
+    gkr_forward_setup_generic_lookup(batch, row_count);                                                                                                        \
   }                                                                                                                                                            \
   EXTERN __global__ void ab_gkr_dim_reducing_forward_##arg_t##_kernel(const __grid_constant__ gkr_dim_reducing_forward_batch<arg_t> batch,                     \
                                                                       const unsigned row_count) {                                                              \
