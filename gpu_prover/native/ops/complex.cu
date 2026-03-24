@@ -390,6 +390,110 @@ enum gkr_main_kernel_kind : u32 {
   GKR_MAIN_ENFORCE_CONSTRAINTS = 9,
 };
 
+static constexpr unsigned GKR_FORWARD_MAX_GATES_PER_LAYER = 64;
+
+enum gkr_forward_gate_kind : u32 {
+  GKR_FORWARD_NO_OP = 0,
+  GKR_FORWARD_PRODUCT = 1,
+  GKR_FORWARD_MASK_IDENTITY = 2,
+  GKR_FORWARD_LOOKUP_PAIR = 3,
+  GKR_FORWARD_LOOKUP_WITH_CACHED_DENS_AND_SETUP = 4,
+  GKR_FORWARD_LOOKUP_BASE_PAIR = 5,
+  GKR_FORWARD_LOOKUP_BASE_MINUS_MULTIPLICITY_BY_BASE = 6,
+  GKR_FORWARD_LOOKUP_UNBALANCED_BASE = 7,
+  GKR_FORWARD_LOOKUP_UNBALANCED_EXTENSION = 8,
+};
+
+struct gkr_forward_no_op_descriptor {
+  size_t reserved;
+};
+
+template <typename E> struct gkr_forward_product_descriptor {
+  const E *lhs;
+  const E *rhs;
+  E *dst;
+};
+
+template <typename E> struct gkr_forward_mask_identity_descriptor {
+  const E *input;
+  const bf *mask;
+  E *dst;
+};
+
+template <typename E> struct gkr_forward_lookup_pair_descriptor {
+  const E *a;
+  const E *b;
+  const E *c;
+  const E *d;
+  E *num;
+  E *den;
+};
+
+template <typename E> struct gkr_forward_lookup_with_cached_dens_and_setup_descriptor {
+  const bf *a;
+  const E *b;
+  const bf *c;
+  const E *d;
+  E *num;
+  E *den;
+};
+
+template <typename E> struct gkr_forward_lookup_base_pair_descriptor {
+  const bf *lhs;
+  const bf *rhs;
+  E *num;
+  E *den;
+};
+
+template <typename E> struct gkr_forward_lookup_base_minus_multiplicity_by_base_descriptor {
+  const bf *b;
+  const bf *c;
+  const bf *d;
+  E *num;
+  E *den;
+};
+
+template <typename E> struct gkr_forward_lookup_unbalanced_base_descriptor {
+  const E *a;
+  const E *b;
+  const bf *remainder;
+  E *num;
+  E *den;
+};
+
+template <typename E> struct gkr_forward_lookup_unbalanced_extension_descriptor {
+  const E *a;
+  const E *b;
+  const E *remainder;
+  E *num;
+  E *den;
+};
+
+template <typename E> union gkr_forward_gate_payload {
+  gkr_forward_no_op_descriptor no_op;
+  gkr_forward_product_descriptor<E> product;
+  gkr_forward_mask_identity_descriptor<E> mask_identity;
+  gkr_forward_lookup_pair_descriptor<E> lookup_pair;
+  gkr_forward_lookup_with_cached_dens_and_setup_descriptor<E> lookup_with_cached_dens_and_setup;
+  gkr_forward_lookup_base_pair_descriptor<E> lookup_base_pair;
+  gkr_forward_lookup_base_minus_multiplicity_by_base_descriptor<E> lookup_base_minus_multiplicity_by_base;
+  gkr_forward_lookup_unbalanced_base_descriptor<E> lookup_unbalanced_base;
+  gkr_forward_lookup_unbalanced_extension_descriptor<E> lookup_unbalanced_extension;
+};
+
+template <typename E> struct gkr_forward_gate_descriptor {
+  u32 kind;
+  u32 reserved;
+  gkr_forward_gate_payload<E> payload;
+};
+
+template <typename E> struct gkr_forward_layer_batch {
+  u32 gate_count;
+  u32 reserved;
+  const E *lookup_additive_challenge;
+  gkr_forward_gate_descriptor<E> descriptors[GKR_FORWARD_MAX_GATES_PER_LAYER];
+};
+
 template <typename E> DEVICE_FORCEINLINE E gkr_lift_base(const bf value) { return E::mul(E::ONE(), value); }
 
 template <typename E> DEVICE_FORCEINLINE E gkr_get_initial_base_value(const gkr_base_initial_source<bf> &source, const unsigned index) {
@@ -692,6 +796,119 @@ template <typename E> DEVICE_FORCEINLINE void gkr_eval_lookup_cached_dens_and_se
 template <typename E> DEVICE_FORCEINLINE void gkr_eval_lookup_cached_dens_and_setup_quadratic(const E a, const E b, const E c, const E d, E &num, E &den) {
   num = E::sub(E::mul(a, d), E::mul(c, b));
   den = E::mul(b, d);
+}
+
+template <typename E>
+DEVICE_FORCEINLINE void gkr_forward_layer(const gkr_forward_layer_batch<E> &batch, const unsigned count) {
+  const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
+  if (gid >= count)
+    return;
+
+  for (unsigned gate_idx = 0; gate_idx < batch.gate_count; ++gate_idx) {
+    const auto descriptor = batch.descriptors[gate_idx];
+    switch (descriptor.kind) {
+    case GKR_FORWARD_NO_OP:
+      break;
+    case GKR_FORWARD_PRODUCT: {
+      const auto params = descriptor.payload.product;
+      const E lhs = load<E, ld_modifier::cs>(params.lhs, gid);
+      const E rhs = load<E, ld_modifier::cs>(params.rhs, gid);
+      E value;
+      gkr_eval_product(lhs, rhs, value);
+      store<E, st_modifier::cs>(params.dst, value, gid);
+      break;
+    }
+    case GKR_FORWARD_MASK_IDENTITY: {
+      const auto params = descriptor.payload.mask_identity;
+      const E input = load<E, ld_modifier::cs>(params.input, gid);
+      const E mask = gkr_lift_base<E>(load<bf, ld_modifier::cs>(params.mask, gid));
+      E value;
+      gkr_eval_mask_identity(mask, input, value);
+      store<E, st_modifier::cs>(params.dst, value, gid);
+      break;
+    }
+    case GKR_FORWARD_LOOKUP_PAIR: {
+      const auto params = descriptor.payload.lookup_pair;
+      const E a = load<E, ld_modifier::cs>(params.a, gid);
+      const E b = load<E, ld_modifier::cs>(params.b, gid);
+      const E c = load<E, ld_modifier::cs>(params.c, gid);
+      const E d = load<E, ld_modifier::cs>(params.d, gid);
+      E num;
+      E den;
+      gkr_eval_lookup_pair(a, b, c, d, num, den);
+      store<E, st_modifier::cs>(params.num, num, gid);
+      store<E, st_modifier::cs>(params.den, den, gid);
+      break;
+    }
+    case GKR_FORWARD_LOOKUP_WITH_CACHED_DENS_AND_SETUP: {
+      const auto params = descriptor.payload.lookup_with_cached_dens_and_setup;
+      const E a = gkr_lift_base<E>(load<bf, ld_modifier::cs>(params.a, gid));
+      const E b = load<E, ld_modifier::cs>(params.b, gid);
+      const E c = gkr_lift_base<E>(load<bf, ld_modifier::cs>(params.c, gid));
+      const E d = load<E, ld_modifier::cs>(params.d, gid);
+      const E gamma = load<E, ld_modifier::cs>(batch.lookup_additive_challenge, 0);
+      E num;
+      E den;
+      gkr_eval_lookup_cached_dens_and_setup(a, b, c, d, gamma, num, den);
+      store<E, st_modifier::cs>(params.num, num, gid);
+      store<E, st_modifier::cs>(params.den, den, gid);
+      break;
+    }
+    case GKR_FORWARD_LOOKUP_BASE_PAIR: {
+      const auto params = descriptor.payload.lookup_base_pair;
+      const E b = gkr_lift_base<E>(load<bf, ld_modifier::cs>(params.lhs, gid));
+      const E d = gkr_lift_base<E>(load<bf, ld_modifier::cs>(params.rhs, gid));
+      const E gamma = load<E, ld_modifier::cs>(batch.lookup_additive_challenge, 0);
+      E num;
+      E den;
+      gkr_eval_lookup_base_pair(b, d, gamma, num, den);
+      store<E, st_modifier::cs>(params.num, num, gid);
+      store<E, st_modifier::cs>(params.den, den, gid);
+      break;
+    }
+    case GKR_FORWARD_LOOKUP_BASE_MINUS_MULTIPLICITY_BY_BASE: {
+      const auto params = descriptor.payload.lookup_base_minus_multiplicity_by_base;
+      const E b = gkr_lift_base<E>(load<bf, ld_modifier::cs>(params.b, gid));
+      const E c = gkr_lift_base<E>(load<bf, ld_modifier::cs>(params.c, gid));
+      const E d = gkr_lift_base<E>(load<bf, ld_modifier::cs>(params.d, gid));
+      const E gamma = load<E, ld_modifier::cs>(batch.lookup_additive_challenge, 0);
+      E num;
+      E den;
+      gkr_eval_lookup_base_minus_multiplicity(b, c, d, gamma, num, den);
+      store<E, st_modifier::cs>(params.num, num, gid);
+      store<E, st_modifier::cs>(params.den, den, gid);
+      break;
+    }
+    case GKR_FORWARD_LOOKUP_UNBALANCED_BASE: {
+      const auto params = descriptor.payload.lookup_unbalanced_base;
+      const E a = load<E, ld_modifier::cs>(params.a, gid);
+      const E b = load<E, ld_modifier::cs>(params.b, gid);
+      const E d = gkr_lift_base<E>(load<bf, ld_modifier::cs>(params.remainder, gid));
+      const E gamma = load<E, ld_modifier::cs>(batch.lookup_additive_challenge, 0);
+      E num;
+      E den;
+      gkr_eval_lookup_unbalanced(d, a, b, gamma, num, den);
+      store<E, st_modifier::cs>(params.num, num, gid);
+      store<E, st_modifier::cs>(params.den, den, gid);
+      break;
+    }
+    case GKR_FORWARD_LOOKUP_UNBALANCED_EXTENSION: {
+      const auto params = descriptor.payload.lookup_unbalanced_extension;
+      const E a = load<E, ld_modifier::cs>(params.a, gid);
+      const E b = load<E, ld_modifier::cs>(params.b, gid);
+      const E d = load<E, ld_modifier::cs>(params.remainder, gid);
+      const E gamma = load<E, ld_modifier::cs>(batch.lookup_additive_challenge, 0);
+      E num;
+      E den;
+      gkr_eval_lookup_unbalanced(d, a, b, gamma, num, den);
+      store<E, st_modifier::cs>(params.num, num, gid);
+      store<E, st_modifier::cs>(params.den, den, gid);
+      break;
+    }
+    default:
+      return;
+    }
+  }
 }
 
 template <typename E>
@@ -1561,6 +1778,9 @@ gkr_main_round3(const unsigned kind, const gkr_ext_continuing_source<E> *base_in
 }
 
 #define GKR_DIM_REDUCING_KERNELS(arg_t)                                                                                                                        \
+  EXTERN __global__ void ab_gkr_forward_layer_##arg_t##_kernel(const __grid_constant__ gkr_forward_layer_batch<arg_t> batch, const unsigned count) {         \
+    gkr_forward_layer(batch, count);                                                                                                                           \
+  }                                                                                                                                                            \
   EXTERN __global__ void ab_gkr_dim_reducing_pairwise_round0_##arg_t##_kernel(const gkr_ext_initial_source<arg_t> *inputs,                                     \
                                                                               const gkr_ext_initial_source<arg_t> *outputs, const arg_t *batch_challenges,     \
                                                                               arg_t *contributions, const unsigned acc_size) {                                 \

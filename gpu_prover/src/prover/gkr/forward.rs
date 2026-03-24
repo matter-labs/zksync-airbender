@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
-use std::mem::{align_of, size_of};
+use std::mem::{align_of, size_of, ManuallyDrop};
 use std::ops::DerefMut;
+use std::ptr::null;
 
 use cs::definitions::{
     gkr::{RamWordRepresentation, DECODER_LOOKUP_FORMAL_SET_INDEX},
@@ -14,9 +15,12 @@ use cs::gkr_compiler::{
     CompiledAddressSpaceRelationStrict, CompiledAddressStrict, GKRCircuitArtifact,
     GKRLayerDescription, NoFieldGKRCacheRelation, NoFieldGKRRelation, OutputType,
 };
+use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
 use era_cudart::memory::memory_copy_async;
+use era_cudart::paste::paste;
 use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
+use era_cudart::{cuda_kernel_declaration, cuda_kernel_signature_arguments_and_function};
 use field::{Field, FieldExtension, PrimeField};
 use prover::gkr::prover::dimension_reduction::forward::DimensionReducingInputOutput;
 use prover::gkr::prover::GKRExternalChallenges;
@@ -29,7 +33,7 @@ use crate::allocator::tracker::AllocationPlacement;
 use crate::ops::blake2s::gather_rows;
 use crate::ops::complex::BatchInv;
 use crate::ops::simple::{
-    add_into_y, mul, mul_into_x, mul_into_y, set_arithmetic_sequence, set_by_ref, set_by_val,
+    add_into_y, mul_into_x, mul_into_y, set_arithmetic_sequence, set_by_ref, set_by_val,
     sub_into_x, Add, BinaryOp, Mul, SetByRef, SetByVal, Sub,
 };
 use crate::primitives::context::{DeviceAllocation, HostAllocation, ProverContext, UnsafeAccessor};
@@ -37,7 +41,8 @@ use crate::primitives::device_structures::{
     DeviceMatrix, DeviceMatrixMut, DeviceVectorChunk, DeviceVectorChunkMut,
 };
 use crate::primitives::device_tracing::Range;
-use crate::primitives::field::BF;
+use crate::primitives::field::{BF, E2, E4, E6};
+use crate::primitives::utils::{get_grid_block_dims_for_threads_count, WARP_SIZE};
 
 pub(crate) struct GpuGKRForwardOutput<B, E> {
     tracing_ranges: Vec<Range>,
@@ -194,6 +199,463 @@ struct ForwardLookupUsage {
     last_generic_lookup_layer: Option<usize>,
 }
 
+const GKR_FORWARD_MAX_GATES_PER_LAYER: usize = 64;
+const GKR_FORWARD_THREADS_PER_BLOCK: u32 = WARP_SIZE * 4;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u32)]
+enum GpuGKRForwardGateKind {
+    NoOp = 0,
+    Product = 1,
+    MaskIdentity = 2,
+    LookupPair = 3,
+    LookupWithCachedDensAndSetup = 4,
+    LookupBasePair = 5,
+    LookupBaseMinusMultiplicityByBase = 6,
+    LookupUnbalancedBase = 7,
+    LookupUnbalancedExtension = 8,
+}
+
+impl GpuGKRForwardGateKind {
+    const fn as_u32(self) -> u32 {
+        self as u32
+    }
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+struct GpuGKRForwardNoOpDescriptor {
+    reserved: usize,
+}
+
+#[repr(C)]
+#[derive(Debug, Default)]
+struct GpuGKRForwardProductDescriptor<E> {
+    lhs: *const E,
+    rhs: *const E,
+    dst: *mut E,
+}
+
+impl<E> Copy for GpuGKRForwardProductDescriptor<E> {}
+
+impl<E> Clone for GpuGKRForwardProductDescriptor<E> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+#[repr(C)]
+#[derive(Debug, Default)]
+struct GpuGKRForwardMaskIdentityDescriptor<E> {
+    input: *const E,
+    mask: *const BF,
+    dst: *mut E,
+}
+
+impl<E> Copy for GpuGKRForwardMaskIdentityDescriptor<E> {}
+
+impl<E> Clone for GpuGKRForwardMaskIdentityDescriptor<E> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+#[repr(C)]
+#[derive(Debug, Default)]
+struct GpuGKRForwardLookupPairDescriptor<E> {
+    a: *const E,
+    b: *const E,
+    c: *const E,
+    d: *const E,
+    num: *mut E,
+    den: *mut E,
+}
+
+impl<E> Copy for GpuGKRForwardLookupPairDescriptor<E> {}
+
+impl<E> Clone for GpuGKRForwardLookupPairDescriptor<E> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+#[repr(C)]
+#[derive(Debug, Default)]
+struct GpuGKRForwardLookupWithCachedDensAndSetupDescriptor<E> {
+    a: *const BF,
+    b: *const E,
+    c: *const BF,
+    d: *const E,
+    num: *mut E,
+    den: *mut E,
+}
+
+impl<E> Copy for GpuGKRForwardLookupWithCachedDensAndSetupDescriptor<E> {}
+
+impl<E> Clone for GpuGKRForwardLookupWithCachedDensAndSetupDescriptor<E> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+#[repr(C)]
+#[derive(Debug, Default)]
+struct GpuGKRForwardLookupBasePairDescriptor<E> {
+    lhs: *const BF,
+    rhs: *const BF,
+    num: *mut E,
+    den: *mut E,
+}
+
+impl<E> Copy for GpuGKRForwardLookupBasePairDescriptor<E> {}
+
+impl<E> Clone for GpuGKRForwardLookupBasePairDescriptor<E> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+#[repr(C)]
+#[derive(Debug, Default)]
+struct GpuGKRForwardLookupBaseMinusMultiplicityByBaseDescriptor<E> {
+    b: *const BF,
+    c: *const BF,
+    d: *const BF,
+    num: *mut E,
+    den: *mut E,
+}
+
+impl<E> Copy for GpuGKRForwardLookupBaseMinusMultiplicityByBaseDescriptor<E> {}
+
+impl<E> Clone for GpuGKRForwardLookupBaseMinusMultiplicityByBaseDescriptor<E> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+#[repr(C)]
+#[derive(Debug, Default)]
+struct GpuGKRForwardLookupUnbalancedBaseDescriptor<E> {
+    a: *const E,
+    b: *const E,
+    remainder: *const BF,
+    num: *mut E,
+    den: *mut E,
+}
+
+impl<E> Copy for GpuGKRForwardLookupUnbalancedBaseDescriptor<E> {}
+
+impl<E> Clone for GpuGKRForwardLookupUnbalancedBaseDescriptor<E> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+#[repr(C)]
+#[derive(Debug, Default)]
+struct GpuGKRForwardLookupUnbalancedExtensionDescriptor<E> {
+    a: *const E,
+    b: *const E,
+    remainder: *const E,
+    num: *mut E,
+    den: *mut E,
+}
+
+impl<E> Copy for GpuGKRForwardLookupUnbalancedExtensionDescriptor<E> {}
+
+impl<E> Clone for GpuGKRForwardLookupUnbalancedExtensionDescriptor<E> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+#[repr(C)]
+union GpuGKRForwardGatePayload<E> {
+    no_op: ManuallyDrop<GpuGKRForwardNoOpDescriptor>,
+    product: ManuallyDrop<GpuGKRForwardProductDescriptor<E>>,
+    mask_identity: ManuallyDrop<GpuGKRForwardMaskIdentityDescriptor<E>>,
+    lookup_pair: ManuallyDrop<GpuGKRForwardLookupPairDescriptor<E>>,
+    lookup_with_cached_dens_and_setup:
+        ManuallyDrop<GpuGKRForwardLookupWithCachedDensAndSetupDescriptor<E>>,
+    lookup_base_pair: ManuallyDrop<GpuGKRForwardLookupBasePairDescriptor<E>>,
+    lookup_base_minus_multiplicity_by_base:
+        ManuallyDrop<GpuGKRForwardLookupBaseMinusMultiplicityByBaseDescriptor<E>>,
+    lookup_unbalanced_base: ManuallyDrop<GpuGKRForwardLookupUnbalancedBaseDescriptor<E>>,
+    lookup_unbalanced_extension: ManuallyDrop<GpuGKRForwardLookupUnbalancedExtensionDescriptor<E>>,
+}
+
+impl<E> Copy for GpuGKRForwardGatePayload<E> {}
+
+impl<E> Clone for GpuGKRForwardGatePayload<E> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<E> Default for GpuGKRForwardGatePayload<E> {
+    fn default() -> Self {
+        Self {
+            no_op: ManuallyDrop::new(GpuGKRForwardNoOpDescriptor::default()),
+        }
+    }
+}
+
+#[repr(C)]
+#[derive(Default)]
+struct GpuGKRForwardGateDescriptor<E> {
+    kind: u32,
+    _reserved: u32,
+    payload: GpuGKRForwardGatePayload<E>,
+}
+
+impl<E> Copy for GpuGKRForwardGateDescriptor<E> {}
+
+impl<E> Clone for GpuGKRForwardGateDescriptor<E> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<E> GpuGKRForwardGateDescriptor<E> {
+    fn no_op() -> Self {
+        Self {
+            kind: GpuGKRForwardGateKind::NoOp.as_u32(),
+            _reserved: 0,
+            payload: GpuGKRForwardGatePayload::default(),
+        }
+    }
+
+    fn with_product(lhs: *const E, rhs: *const E, dst: *mut E) -> Self {
+        Self {
+            kind: GpuGKRForwardGateKind::Product.as_u32(),
+            _reserved: 0,
+            payload: GpuGKRForwardGatePayload {
+                product: ManuallyDrop::new(GpuGKRForwardProductDescriptor { lhs, rhs, dst }),
+            },
+        }
+    }
+
+    fn with_mask_identity(input: *const E, mask: *const BF, dst: *mut E) -> Self {
+        Self {
+            kind: GpuGKRForwardGateKind::MaskIdentity.as_u32(),
+            _reserved: 0,
+            payload: GpuGKRForwardGatePayload {
+                mask_identity: ManuallyDrop::new(GpuGKRForwardMaskIdentityDescriptor {
+                    input,
+                    mask,
+                    dst,
+                }),
+            },
+        }
+    }
+
+    fn with_lookup_pair(
+        a: *const E,
+        b: *const E,
+        c: *const E,
+        d: *const E,
+        num: *mut E,
+        den: *mut E,
+    ) -> Self {
+        Self {
+            kind: GpuGKRForwardGateKind::LookupPair.as_u32(),
+            _reserved: 0,
+            payload: GpuGKRForwardGatePayload {
+                lookup_pair: ManuallyDrop::new(GpuGKRForwardLookupPairDescriptor {
+                    a,
+                    b,
+                    c,
+                    d,
+                    num,
+                    den,
+                }),
+            },
+        }
+    }
+
+    fn with_lookup_cached_dens_and_setup(
+        a: *const BF,
+        b: *const E,
+        c: *const BF,
+        d: *const E,
+        num: *mut E,
+        den: *mut E,
+    ) -> Self {
+        Self {
+            kind: GpuGKRForwardGateKind::LookupWithCachedDensAndSetup.as_u32(),
+            _reserved: 0,
+            payload: GpuGKRForwardGatePayload {
+                lookup_with_cached_dens_and_setup: ManuallyDrop::new(
+                    GpuGKRForwardLookupWithCachedDensAndSetupDescriptor {
+                        a,
+                        b,
+                        c,
+                        d,
+                        num,
+                        den,
+                    },
+                ),
+            },
+        }
+    }
+
+    fn with_lookup_base_pair(lhs: *const BF, rhs: *const BF, num: *mut E, den: *mut E) -> Self {
+        Self {
+            kind: GpuGKRForwardGateKind::LookupBasePair.as_u32(),
+            _reserved: 0,
+            payload: GpuGKRForwardGatePayload {
+                lookup_base_pair: ManuallyDrop::new(GpuGKRForwardLookupBasePairDescriptor {
+                    lhs,
+                    rhs,
+                    num,
+                    den,
+                }),
+            },
+        }
+    }
+
+    fn with_lookup_base_minus_multiplicity_by_base(
+        b: *const BF,
+        c: *const BF,
+        d: *const BF,
+        num: *mut E,
+        den: *mut E,
+    ) -> Self {
+        Self {
+            kind: GpuGKRForwardGateKind::LookupBaseMinusMultiplicityByBase.as_u32(),
+            _reserved: 0,
+            payload: GpuGKRForwardGatePayload {
+                lookup_base_minus_multiplicity_by_base: ManuallyDrop::new(
+                    GpuGKRForwardLookupBaseMinusMultiplicityByBaseDescriptor { b, c, d, num, den },
+                ),
+            },
+        }
+    }
+
+    fn with_lookup_unbalanced_base(
+        a: *const E,
+        b: *const E,
+        remainder: *const BF,
+        num: *mut E,
+        den: *mut E,
+    ) -> Self {
+        Self {
+            kind: GpuGKRForwardGateKind::LookupUnbalancedBase.as_u32(),
+            _reserved: 0,
+            payload: GpuGKRForwardGatePayload {
+                lookup_unbalanced_base: ManuallyDrop::new(
+                    GpuGKRForwardLookupUnbalancedBaseDescriptor {
+                        a,
+                        b,
+                        remainder,
+                        num,
+                        den,
+                    },
+                ),
+            },
+        }
+    }
+
+    fn with_lookup_unbalanced_extension(
+        a: *const E,
+        b: *const E,
+        remainder: *const E,
+        num: *mut E,
+        den: *mut E,
+    ) -> Self {
+        Self {
+            kind: GpuGKRForwardGateKind::LookupUnbalancedExtension.as_u32(),
+            _reserved: 0,
+            payload: GpuGKRForwardGatePayload {
+                lookup_unbalanced_extension: ManuallyDrop::new(
+                    GpuGKRForwardLookupUnbalancedExtensionDescriptor {
+                        a,
+                        b,
+                        remainder,
+                        num,
+                        den,
+                    },
+                ),
+            },
+        }
+    }
+}
+
+#[repr(C)]
+struct GpuGKRForwardLayerBatch<E, const MAX_GATES: usize = GKR_FORWARD_MAX_GATES_PER_LAYER> {
+    gate_count: u32,
+    _reserved: u32,
+    lookup_additive_challenge: *const E,
+    descriptors: [GpuGKRForwardGateDescriptor<E>; MAX_GATES],
+}
+
+impl<E, const MAX_GATES: usize> Copy for GpuGKRForwardLayerBatch<E, MAX_GATES> {}
+
+impl<E, const MAX_GATES: usize> Clone for GpuGKRForwardLayerBatch<E, MAX_GATES> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<E, const MAX_GATES: usize> Default for GpuGKRForwardLayerBatch<E, MAX_GATES> {
+    fn default() -> Self {
+        Self {
+            gate_count: 0,
+            _reserved: 0,
+            lookup_additive_challenge: null(),
+            descriptors: [GpuGKRForwardGateDescriptor::no_op(); MAX_GATES],
+        }
+    }
+}
+
+impl<E, const MAX_GATES: usize> GpuGKRForwardLayerBatch<E, MAX_GATES> {
+    fn new(lookup_additive_challenge: *const E) -> Self {
+        Self {
+            lookup_additive_challenge,
+            ..Self::default()
+        }
+    }
+}
+
+struct LoweredGpuGKRForwardLayer<E> {
+    batch: GpuGKRForwardLayerBatch<E>,
+    computed_extension_outputs: Vec<(GKRAddress, GpuExtensionFieldPoly<E>)>,
+    aliased_base_outputs: Vec<(GKRAddress, GpuBaseFieldPoly<BF>)>,
+    aliased_extension_outputs: Vec<(GKRAddress, GpuExtensionFieldPoly<E>)>,
+}
+
+cuda_kernel_signature_arguments_and_function!(
+    GpuGKRForwardLayer<T>,
+    batch: GpuGKRForwardLayerBatch<T>,
+    count: u32,
+);
+
+pub(crate) trait GpuGKRForwardKernelSet: Copy + Sized {
+    const FORWARD_LAYER: GpuGKRForwardLayerSignature<Self>;
+}
+
+macro_rules! gkr_forward_layer_kernels {
+    ($type:ty) => {
+        paste! {
+            cuda_kernel_declaration!(
+                [<ab_gkr_forward_layer_ $type:lower _kernel>](
+                    batch: GpuGKRForwardLayerBatch<$type>,
+                    count: u32,
+                )
+            );
+
+            impl GpuGKRForwardKernelSet for $type {
+                const FORWARD_LAYER: GpuGKRForwardLayerSignature<Self> =
+                    [<ab_gkr_forward_layer_ $type:lower _kernel>];
+            }
+        }
+    };
+}
+
+gkr_forward_layer_kernels!(E2);
+gkr_forward_layer_kernels!(E4);
+gkr_forward_layer_kernels!(E6);
+
 pub(crate) fn schedule_forward_pass<E>(
     setup: &GpuGKRSetupTransfer<'_>,
     stage1: &mut GpuGKRStage1Output,
@@ -204,7 +666,7 @@ pub(crate) fn schedule_forward_pass<E>(
     context: &ProverContext,
 ) -> CudaResult<GpuGKRForwardOutput<BF, E>>
 where
-    E: FieldExtension<BF> + Field + SetByRef + SetByVal + BatchInv,
+    E: FieldExtension<BF> + Field + SetByRef + SetByVal + BatchInv + GpuGKRForwardKernelSet,
     Add: BinaryOp<E, E, E>,
     Add: BinaryOp<BF, E, E>,
     Add: BinaryOp<E, BF, E>,
@@ -247,6 +709,7 @@ where
         layer_range.start(stream)?;
         schedule_layer(
             layer_idx,
+            compiled_circuit.layers.len(),
             layer,
             &mut tracing_ranges,
             &mut storage,
@@ -313,6 +776,7 @@ fn schedule_ext_poly_readback<B, E: Copy>(
 
 fn schedule_layer<E>(
     layer_idx: usize,
+    total_layers: usize,
     layer: &GKRLayerDescription,
     tracing_ranges: &mut Vec<Range>,
     storage: &mut GpuGKRStorage<BF, E>,
@@ -323,7 +787,7 @@ fn schedule_layer<E>(
     context: &ProverContext,
 ) -> CudaResult<()>
 where
-    E: FieldExtension<BF> + Field + SetByRef + SetByVal + BatchInv,
+    E: FieldExtension<BF> + Field + SetByRef + SetByVal + BatchInv + GpuGKRForwardKernelSet,
     Add: BinaryOp<E, E, E>,
     Add: BinaryOp<BF, E, E>,
     Add: BinaryOp<E, BF, E>,
@@ -355,343 +819,236 @@ where
 
     let gates_range = Range::new(format!("gkr.forward.layer.{layer_idx}.gates"))?;
     gates_range.start(stream)?;
-
+    assert_forward_layer_invariants(layer_idx, total_layers, layer);
     let expected_output_layer = layer_idx + 1;
-    let gates = layer
+    let lowered = lower_forward_layer(
+        layer_idx,
+        layer,
+        storage,
+        forward_setup.lookup_additive_part_device().as_ptr(),
+        trace_len,
+        context,
+    )?;
+    launch_forward_layer(&lowered.batch, trace_len, context)?;
+    commit_lowered_forward_layer(expected_output_layer, storage, lowered);
+    gates_range.end(stream)?;
+    tracing_ranges.push(gates_range);
+
+    Ok(())
+}
+
+fn assert_forward_layer_invariants(
+    layer_idx: usize,
+    total_layers: usize,
+    layer: &GKRLayerDescription,
+) {
+    assert!(
+        layer.gates.is_empty() ^ layer.gates_with_external_connections.is_empty(),
+        "layer {layer_idx} must use exactly one gate collection"
+    );
+    if layer_idx + 1 != total_layers {
+        assert!(
+            layer.gates_with_external_connections.is_empty(),
+            "non-final layer {layer_idx} must not use external gate connections"
+        );
+    } else {
+        assert!(
+            layer.gates.is_empty(),
+            "final layer {layer_idx} must use external gate connections only"
+        );
+    }
+}
+
+fn lower_forward_layer<E>(
+    layer_idx: usize,
+    layer: &GKRLayerDescription,
+    storage: &GpuGKRStorage<BF, E>,
+    lookup_additive_challenge: *const E,
+    trace_len: usize,
+    context: &ProverContext,
+) -> CudaResult<LoweredGpuGKRForwardLayer<E>> {
+    let expected_output_layer = layer_idx + 1;
+    let total_gates = layer.gates.len() + layer.gates_with_external_connections.len();
+    assert!(
+        total_gates <= GKR_FORWARD_MAX_GATES_PER_LAYER,
+        "layer {layer_idx} has {total_gates} gates, exceeding the fused forward cap of {}",
+        GKR_FORWARD_MAX_GATES_PER_LAYER
+    );
+
+    let mut batch = GpuGKRForwardLayerBatch::new(lookup_additive_challenge);
+    batch.gate_count = total_gates as u32;
+
+    let mut computed_extension_outputs = Vec::new();
+    let mut aliased_base_outputs = Vec::new();
+    let mut aliased_extension_outputs = Vec::new();
+
+    for (gate_idx, gate) in layer
         .gates
         .iter()
-        .chain(layer.gates_with_external_connections.iter());
-    for gate in gates {
-        match &gate.enforced_relation {
+        .chain(layer.gates_with_external_connections.iter())
+        .enumerate()
+    {
+        assert_eq!(gate.output_layer, expected_output_layer);
+        batch.descriptors[gate_idx] = match &gate.enforced_relation {
             NoFieldGKRRelation::Copy { input, output } => {
-                if let Some(source) = storage
-                    .try_get_base_poly(*input)
-                    .map(|poly| poly.clone_shared())
-                {
-                    storage.insert_base_field_at_layer(expected_output_layer, *output, source);
+                if let Some(source) = storage.try_get_base_poly(*input) {
+                    aliased_base_outputs.push((*output, source.clone_shared()));
                 } else {
-                    let source = storage.get_ext_poly(*input).clone_shared();
-                    storage.insert_extension_at_layer(expected_output_layer, *output, source);
+                    aliased_extension_outputs
+                        .push((*output, storage.get_ext_poly(*input).clone_shared()));
                 }
+                GpuGKRForwardGateDescriptor::no_op()
             }
             NoFieldGKRRelation::InitialGrandProductFromCaches { input, output }
             | NoFieldGKRRelation::TrivialProduct { input, output } => {
-                let lhs = storage.get_ext_poly(input[0]).clone_shared();
-                let rhs = storage.get_ext_poly(input[1]).clone_shared();
+                let lhs = storage.get_ext_poly(input[0]);
+                let rhs = storage.get_ext_poly(input[1]);
                 let mut dst = alloc_ext(trace_len, context)?;
-                mul(
-                    &lhs.as_device_chunk(),
-                    &rhs.as_device_chunk(),
-                    dst.deref_mut(),
-                    context.get_exec_stream(),
-                )?;
-                storage.insert_extension_at_layer(
-                    expected_output_layer,
-                    *output,
-                    GpuExtensionFieldPoly::new(dst),
-                );
+                let dst_ptr = dst.as_mut_ptr();
+                computed_extension_outputs.push((*output, GpuExtensionFieldPoly::new(dst)));
+                GpuGKRForwardGateDescriptor::with_product(lhs.as_ptr(), rhs.as_ptr(), dst_ptr)
             }
             NoFieldGKRRelation::MaskIntoIdentityProduct {
                 input,
                 mask,
                 output,
             } => {
-                let input = storage.get_ext_poly(*input).clone_shared();
-                let mask = storage.get_base_layer(*mask).clone_shared();
+                let input = storage.get_ext_poly(*input);
+                let mask = storage.get_base_layer(*mask);
                 let mut dst = alloc_ext(trace_len, context)?;
-                set_by_ref(
-                    &input.as_device_chunk(),
-                    dst.deref_mut(),
-                    context.get_exec_stream(),
-                )?;
-                sub_ext_scalar_in_place(&mut dst, E::ONE, context)?;
-                mul_into_x(
-                    dst.deref_mut(),
-                    &mask.as_device_chunk(),
-                    context.get_exec_stream(),
-                )?;
-                add_ext_scalar_in_place(&mut dst, E::ONE, context)?;
-                storage.insert_extension_at_layer(
-                    expected_output_layer,
-                    *output,
-                    GpuExtensionFieldPoly::new(dst),
-                );
+                let dst_ptr = dst.as_mut_ptr();
+                computed_extension_outputs.push((*output, GpuExtensionFieldPoly::new(dst)));
+                GpuGKRForwardGateDescriptor::with_mask_identity(
+                    input.as_ptr(),
+                    mask.as_ptr(),
+                    dst_ptr,
+                )
             }
             NoFieldGKRRelation::AggregateLookupRationalPair { input, output } => {
-                let [a, b] = input[0].map(|addr| storage.get_ext_poly(addr).clone_shared());
-                let [c, d] = input[1].map(|addr| storage.get_ext_poly(addr).clone_shared());
+                let [a, b] = input[0].map(|addr| storage.get_ext_poly(addr));
+                let [c, d] = input[1].map(|addr| storage.get_ext_poly(addr));
                 let mut num = alloc_ext(trace_len, context)?;
                 let mut den = alloc_ext(trace_len, context)?;
-                let mut temp = alloc_ext(trace_len, context)?;
-                mul(
-                    &b.as_device_chunk(),
-                    &d.as_device_chunk(),
-                    den.deref_mut(),
-                    context.get_exec_stream(),
-                )?;
-                mul(
-                    &a.as_device_chunk(),
-                    &d.as_device_chunk(),
-                    num.deref_mut(),
-                    context.get_exec_stream(),
-                )?;
-                mul(
-                    &c.as_device_chunk(),
-                    &b.as_device_chunk(),
-                    temp.deref_mut(),
-                    context.get_exec_stream(),
-                )?;
-                add_into_y(
-                    &DeviceVectorChunk::new(&temp, 0, trace_len),
-                    num.deref_mut(),
-                    context.get_exec_stream(),
-                )?;
-                storage.insert_extension_at_layer(
-                    expected_output_layer,
-                    output[0],
-                    GpuExtensionFieldPoly::new(num),
-                );
-                storage.insert_extension_at_layer(
-                    expected_output_layer,
-                    output[1],
-                    GpuExtensionFieldPoly::new(den),
-                );
+                let num_ptr = num.as_mut_ptr();
+                let den_ptr = den.as_mut_ptr();
+                computed_extension_outputs.push((output[0], GpuExtensionFieldPoly::new(num)));
+                computed_extension_outputs.push((output[1], GpuExtensionFieldPoly::new(den)));
+                GpuGKRForwardGateDescriptor::with_lookup_pair(
+                    a.as_ptr(),
+                    b.as_ptr(),
+                    c.as_ptr(),
+                    d.as_ptr(),
+                    num_ptr,
+                    den_ptr,
+                )
             }
             NoFieldGKRRelation::LookupWithCachedDensAndSetup {
                 input,
                 setup,
                 output,
             } => {
-                let a = storage.get_base_layer(input[0]).clone_shared();
-                let b = storage.get_ext_poly(input[1]).clone_shared();
-                let c = storage.get_base_layer(setup[0]).clone_shared();
-                let d = storage.get_ext_poly(setup[1]).clone_shared();
-                let mut shifted_b = alloc_ext(trace_len, context)?;
-                let mut shifted_d = alloc_ext(trace_len, context)?;
+                let a = storage.get_base_layer(input[0]);
+                let b = storage.get_ext_poly(input[1]);
+                let c = storage.get_base_layer(setup[0]);
+                let d = storage.get_ext_poly(setup[1]);
                 let mut num = alloc_ext(trace_len, context)?;
                 let mut den = alloc_ext(trace_len, context)?;
-                let mut temp = alloc_ext(trace_len, context)?;
-                set_by_ref(
-                    &b.as_device_chunk(),
-                    shifted_b.deref_mut(),
-                    context.get_exec_stream(),
-                )?;
-                add_ext_device_scalar_in_place(
-                    &mut shifted_b,
-                    forward_setup.lookup_additive_part_device(),
-                    context,
-                )?;
-                set_by_ref(
-                    &d.as_device_chunk(),
-                    shifted_d.deref_mut(),
-                    context.get_exec_stream(),
-                )?;
-                add_ext_device_scalar_in_place(
-                    &mut shifted_d,
-                    forward_setup.lookup_additive_part_device(),
-                    context,
-                )?;
-                mul(
-                    &DeviceVectorChunk::new(&shifted_b, 0, trace_len),
-                    &DeviceVectorChunk::new(&shifted_d, 0, trace_len),
-                    den.deref_mut(),
-                    context.get_exec_stream(),
-                )?;
-                mul(
-                    &a.as_device_chunk(),
-                    &DeviceVectorChunk::new(&shifted_d, 0, trace_len),
-                    temp.deref_mut(),
-                    context.get_exec_stream(),
-                )?;
-                mul(
-                    &c.as_device_chunk(),
-                    &DeviceVectorChunk::new(&shifted_b, 0, trace_len),
-                    num.deref_mut(),
-                    context.get_exec_stream(),
-                )?;
-                sub_into_x(
-                    temp.deref_mut(),
-                    &DeviceVectorChunk::new(&num, 0, trace_len),
-                    context.get_exec_stream(),
-                )?;
-                storage.insert_extension_at_layer(
-                    expected_output_layer,
-                    output[0],
-                    GpuExtensionFieldPoly::new(temp),
-                );
-                storage.insert_extension_at_layer(
-                    expected_output_layer,
-                    output[1],
-                    GpuExtensionFieldPoly::new(den),
-                );
+                let num_ptr = num.as_mut_ptr();
+                let den_ptr = den.as_mut_ptr();
+                computed_extension_outputs.push((output[0], GpuExtensionFieldPoly::new(num)));
+                computed_extension_outputs.push((output[1], GpuExtensionFieldPoly::new(den)));
+                GpuGKRForwardGateDescriptor::with_lookup_cached_dens_and_setup(
+                    a.as_ptr(),
+                    b.as_ptr(),
+                    c.as_ptr(),
+                    d.as_ptr(),
+                    num_ptr,
+                    den_ptr,
+                )
             }
             NoFieldGKRRelation::LookupPairFromMaterializedBaseInputs { input, output } => {
-                let lhs = storage.get_base_layer(input[0]).clone_shared();
-                let rhs = storage.get_base_layer(input[1]).clone_shared();
-                let mut num = shifted_base_to_ext(
-                    &lhs,
-                    forward_setup.lookup_additive_part_device(),
-                    context,
-                )?;
-                let tmp = shifted_base_to_ext(
-                    &rhs,
-                    forward_setup.lookup_additive_part_device(),
-                    context,
-                )?;
+                let lhs = storage.get_base_layer(input[0]);
+                let rhs = storage.get_base_layer(input[1]);
+                let mut num = alloc_ext(trace_len, context)?;
                 let mut den = alloc_ext(trace_len, context)?;
-                mul(
-                    &DeviceVectorChunk::new(&num, 0, trace_len),
-                    &DeviceVectorChunk::new(&tmp, 0, trace_len),
-                    den.deref_mut(),
-                    context.get_exec_stream(),
-                )?;
-                add_into_y(
-                    &DeviceVectorChunk::new(&tmp, 0, trace_len),
-                    num.deref_mut(),
-                    context.get_exec_stream(),
-                )?;
-                storage.insert_extension_at_layer(
-                    expected_output_layer,
-                    output[0],
-                    GpuExtensionFieldPoly::new(num),
-                );
-                storage.insert_extension_at_layer(
-                    expected_output_layer,
-                    output[1],
-                    GpuExtensionFieldPoly::new(den),
-                );
+                let num_ptr = num.as_mut_ptr();
+                let den_ptr = den.as_mut_ptr();
+                computed_extension_outputs.push((output[0], GpuExtensionFieldPoly::new(num)));
+                computed_extension_outputs.push((output[1], GpuExtensionFieldPoly::new(den)));
+                GpuGKRForwardGateDescriptor::with_lookup_base_pair(
+                    lhs.as_ptr(),
+                    rhs.as_ptr(),
+                    num_ptr,
+                    den_ptr,
+                )
             }
             NoFieldGKRRelation::LookupFromMaterializedBaseInputWithSetup {
                 input,
                 setup,
                 output,
             } => {
-                let base_input = storage.get_base_layer(*input).clone_shared();
-                let c = storage.get_base_layer(setup[0]).clone_shared();
-                let d = storage.get_base_layer(setup[1]).clone_shared();
-                let shifted = shifted_base_to_ext(
-                    &base_input,
-                    forward_setup.lookup_additive_part_device(),
-                    context,
-                )?;
-                let shifted_d =
-                    shifted_base_to_ext(&d, forward_setup.lookup_additive_part_device(), context)?;
+                let b = storage.get_base_layer(*input);
+                let c = storage.get_base_layer(setup[0]);
+                let d = storage.get_base_layer(setup[1]);
                 let mut num = alloc_ext(trace_len, context)?;
                 let mut den = alloc_ext(trace_len, context)?;
-                let mut temp = alloc_ext(trace_len, context)?;
-                mul(
-                    &DeviceVectorChunk::new(&shifted, 0, trace_len),
-                    &DeviceVectorChunk::new(&shifted_d, 0, trace_len),
-                    den.deref_mut(),
-                    context.get_exec_stream(),
-                )?;
-                mul(
-                    &DeviceVectorChunk::new(&shifted, 0, trace_len),
-                    &c.as_device_chunk(),
-                    temp.deref_mut(),
-                    context.get_exec_stream(),
-                )?;
-                set_by_ref(
-                    &DeviceVectorChunk::new(&shifted_d, 0, trace_len),
-                    num.deref_mut(),
-                    context.get_exec_stream(),
-                )?;
-                sub_into_x(
-                    num.deref_mut(),
-                    &DeviceVectorChunk::new(&temp, 0, trace_len),
-                    context.get_exec_stream(),
-                )?;
-                storage.insert_extension_at_layer(
-                    expected_output_layer,
-                    output[0],
-                    GpuExtensionFieldPoly::new(num),
-                );
-                storage.insert_extension_at_layer(
-                    expected_output_layer,
-                    output[1],
-                    GpuExtensionFieldPoly::new(den),
-                );
+                let num_ptr = num.as_mut_ptr();
+                let den_ptr = den.as_mut_ptr();
+                computed_extension_outputs.push((output[0], GpuExtensionFieldPoly::new(num)));
+                computed_extension_outputs.push((output[1], GpuExtensionFieldPoly::new(den)));
+                GpuGKRForwardGateDescriptor::with_lookup_base_minus_multiplicity_by_base(
+                    b.as_ptr(),
+                    c.as_ptr(),
+                    d.as_ptr(),
+                    num_ptr,
+                    den_ptr,
+                )
             }
             NoFieldGKRRelation::LookupUnbalancedPairWithMaterializedBaseInputs {
                 input,
                 remainder,
                 output,
             } => {
-                let [a, b] = input.map(|addr| storage.get_ext_poly(addr).clone_shared());
-                let remainder = storage.get_base_layer(*remainder).clone_shared();
-                let shifted = shifted_base_to_ext(
-                    &remainder,
-                    forward_setup.lookup_additive_part_device(),
-                    context,
-                )?;
+                let [a, b] = input.map(|addr| storage.get_ext_poly(addr));
+                let remainder = storage.get_base_layer(*remainder);
                 let mut num = alloc_ext(trace_len, context)?;
                 let mut den = alloc_ext(trace_len, context)?;
-                mul(
-                    &b.as_device_chunk(),
-                    &DeviceVectorChunk::new(&shifted, 0, trace_len),
-                    den.deref_mut(),
-                    context.get_exec_stream(),
-                )?;
-                mul(
-                    &a.as_device_chunk(),
-                    &DeviceVectorChunk::new(&shifted, 0, trace_len),
-                    num.deref_mut(),
-                    context.get_exec_stream(),
-                )?;
-                add_into_y(
-                    &b.as_device_chunk(),
-                    num.deref_mut(),
-                    context.get_exec_stream(),
-                )?;
-                storage.insert_extension_at_layer(
-                    expected_output_layer,
-                    output[0],
-                    GpuExtensionFieldPoly::new(num),
-                );
-                storage.insert_extension_at_layer(
-                    expected_output_layer,
-                    output[1],
-                    GpuExtensionFieldPoly::new(den),
-                );
+                let num_ptr = num.as_mut_ptr();
+                let den_ptr = den.as_mut_ptr();
+                computed_extension_outputs.push((output[0], GpuExtensionFieldPoly::new(num)));
+                computed_extension_outputs.push((output[1], GpuExtensionFieldPoly::new(den)));
+                GpuGKRForwardGateDescriptor::with_lookup_unbalanced_base(
+                    a.as_ptr(),
+                    b.as_ptr(),
+                    remainder.as_ptr(),
+                    num_ptr,
+                    den_ptr,
+                )
             }
             NoFieldGKRRelation::LookupUnbalancedPairWithMaterializedVectorInputs {
                 input,
                 remainder,
                 output,
             } => {
-                let [a, b] = input.map(|addr| storage.get_ext_poly(addr).clone_shared());
-                let shifted_remainder = storage.get_ext_poly(*remainder).clone_shared();
-                let mut den = alloc_ext(trace_len, context)?;
+                let [a, b] = input.map(|addr| storage.get_ext_poly(addr));
+                let remainder = storage.get_ext_poly(*remainder);
                 let mut num = alloc_ext(trace_len, context)?;
-                mul(
-                    &b.as_device_chunk(),
-                    &shifted_remainder.as_device_chunk(),
-                    den.deref_mut(),
-                    context.get_exec_stream(),
-                )?;
-                mul(
-                    &a.as_device_chunk(),
-                    &shifted_remainder.as_device_chunk(),
-                    num.deref_mut(),
-                    context.get_exec_stream(),
-                )?;
-                add_into_y(
-                    &b.as_device_chunk(),
-                    num.deref_mut(),
-                    context.get_exec_stream(),
-                )?;
-                storage.insert_extension_at_layer(
-                    expected_output_layer,
-                    output[0],
-                    GpuExtensionFieldPoly::new(num),
-                );
-                storage.insert_extension_at_layer(
-                    expected_output_layer,
-                    output[1],
-                    GpuExtensionFieldPoly::new(den),
-                );
+                let mut den = alloc_ext(trace_len, context)?;
+                let num_ptr = num.as_mut_ptr();
+                let den_ptr = den.as_mut_ptr();
+                computed_extension_outputs.push((output[0], GpuExtensionFieldPoly::new(num)));
+                computed_extension_outputs.push((output[1], GpuExtensionFieldPoly::new(den)));
+                GpuGKRForwardGateDescriptor::with_lookup_unbalanced_extension(
+                    a.as_ptr(),
+                    b.as_ptr(),
+                    remainder.as_ptr(),
+                    num_ptr,
+                    den_ptr,
+                )
             }
-            NoFieldGKRRelation::EnforceConstraintsMaxQuadratic { .. } => {}
+            NoFieldGKRRelation::EnforceConstraintsMaxQuadratic { .. } => {
+                GpuGKRForwardGateDescriptor::no_op()
+            }
             NoFieldGKRRelation::LinearBaseFieldRelation { .. }
             | NoFieldGKRRelation::MaxQuadratic { .. }
             | NoFieldGKRRelation::LookupPairFromVectorInputs { .. }
@@ -706,12 +1063,56 @@ where
                     gate.enforced_relation
                 )
             }
-        }
+        };
     }
-    gates_range.end(stream)?;
-    tracing_ranges.push(gates_range);
 
-    Ok(())
+    Ok(LoweredGpuGKRForwardLayer {
+        batch,
+        computed_extension_outputs,
+        aliased_base_outputs,
+        aliased_extension_outputs,
+    })
+}
+
+fn commit_lowered_forward_layer<E>(
+    expected_output_layer: usize,
+    storage: &mut GpuGKRStorage<BF, E>,
+    lowered: LoweredGpuGKRForwardLayer<E>,
+) {
+    let LoweredGpuGKRForwardLayer {
+        batch: _,
+        computed_extension_outputs,
+        aliased_base_outputs,
+        aliased_extension_outputs,
+    } = lowered;
+
+    for (address, poly) in computed_extension_outputs {
+        storage.insert_extension_at_layer(expected_output_layer, address, poly);
+    }
+    for (address, poly) in aliased_base_outputs {
+        storage.insert_base_field_at_layer(expected_output_layer, address, poly);
+    }
+    for (address, poly) in aliased_extension_outputs {
+        storage.insert_extension_at_layer(expected_output_layer, address, poly);
+    }
+}
+
+fn gkr_forward_launch_config(count: u32, context: &ProverContext) -> CudaLaunchConfig<'_> {
+    let (grid_dim, block_dim) =
+        get_grid_block_dims_for_threads_count(GKR_FORWARD_THREADS_PER_BLOCK, count.max(1));
+    CudaLaunchConfig::basic(grid_dim, block_dim, context.get_exec_stream())
+}
+
+fn launch_forward_layer<E: GpuGKRForwardKernelSet>(
+    batch: &GpuGKRForwardLayerBatch<E>,
+    trace_len: usize,
+    context: &ProverContext,
+) -> CudaResult<()> {
+    assert!(trace_len <= u32::MAX as usize);
+    let count = trace_len as u32;
+    let config = gkr_forward_launch_config(count, context);
+    let args = GpuGKRForwardLayerArguments::new(*batch, count);
+    GpuGKRForwardLayerFunction(E::FORWARD_LAYER).launch(&config, &args)
 }
 
 fn analyze_forward_lookup_usage(compiled_circuit: &GKRCircuitArtifact<BF>) -> ForwardLookupUsage {
@@ -1460,4 +1861,268 @@ where
         GpuExtensionFieldPoly::new(new_den),
     );
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::allocator::tracker::AllocationPlacement;
+    use crate::ops::simple::set_by_val;
+    use crate::primitives::field::E4;
+    use crate::prover::test_utils::make_test_context;
+    use cs::gkr_compiler::{GateArtifacts, NoFieldMaxQuadraticConstraintsGKRRelation};
+    use era_cudart::memory::memory_copy_async;
+    use serial_test::serial;
+
+    fn sample_ext(seed: u32) -> E4 {
+        E4::from_array_of_base([
+            BF::new(seed),
+            BF::new(seed + 1),
+            BF::new(seed + 2),
+            BF::new(seed + 3),
+        ])
+    }
+
+    fn upload_base_poly(values: &[BF], context: &ProverContext) -> GpuBaseFieldPoly<BF> {
+        let mut device = context
+            .alloc(values.len(), AllocationPlacement::Top)
+            .unwrap();
+        memory_copy_async(&mut device, values, context.get_exec_stream()).unwrap();
+        context.get_exec_stream().synchronize().unwrap();
+        GpuBaseFieldPoly::new(device)
+    }
+
+    fn upload_ext_poly(values: &[E4], context: &ProverContext) -> GpuExtensionFieldPoly<E4> {
+        let mut device = context
+            .alloc(values.len(), AllocationPlacement::Top)
+            .unwrap();
+        memory_copy_async(&mut device, values, context.get_exec_stream()).unwrap();
+        context.get_exec_stream().synchronize().unwrap();
+        GpuExtensionFieldPoly::new(device)
+    }
+
+    fn read_ext_poly(poly: &GpuExtensionFieldPoly<E4>, context: &ProverContext) -> Vec<E4> {
+        let mut host = vec![E4::ZERO; poly.len()];
+        memory_copy_async(&mut host, poly.as_device_slice(), context.get_exec_stream()).unwrap();
+        context.get_exec_stream().synchronize().unwrap();
+        host
+    }
+
+    fn empty_constraints() -> NoFieldMaxQuadraticConstraintsGKRRelation {
+        NoFieldMaxQuadraticConstraintsGKRRelation {
+            quadratic_terms: Vec::new().into_boxed_slice(),
+            linear_terms: Vec::new().into_boxed_slice(),
+            constants: Vec::new().into_boxed_slice(),
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "exceeding the fused forward cap")]
+    fn forward_layer_panics_when_gate_count_exceeds_cap() {
+        let context = make_test_context(64, 8);
+        let trace_len = 8;
+        let mut storage = GpuGKRStorage::<BF, E4>::default();
+        let input = GKRAddress::BaseLayerMemory(0);
+        storage.insert_base_field_at_layer(
+            0,
+            input,
+            upload_base_poly(&vec![BF::new(1); trace_len], &context),
+        );
+
+        let layer = GKRLayerDescription {
+            layer: 0,
+            gates_with_external_connections: Vec::new(),
+            cached_relations: BTreeMap::new(),
+            gates: (0..(GKR_FORWARD_MAX_GATES_PER_LAYER + 1))
+                .map(|offset| GateArtifacts {
+                    output_layer: 1,
+                    enforced_relation: NoFieldGKRRelation::Copy {
+                        input,
+                        output: GKRAddress::InnerLayer { layer: 1, offset },
+                    },
+                })
+                .collect(),
+            additional_base_layer_openings: Vec::new(),
+        };
+
+        let _ = lower_forward_layer(0, &layer, &storage, null(), trace_len, &context);
+    }
+
+    #[test]
+    #[serial]
+    fn forward_layer_lowering_and_launch_match_expected_outputs() {
+        let context = make_test_context(256, 32);
+        let trace_len = 8;
+        let copy_input = GKRAddress::BaseLayerMemory(0);
+        let lookup_lhs = GKRAddress::BaseLayerMemory(1);
+        let lookup_rhs = GKRAddress::BaseLayerWitness(0);
+        let product_lhs = GKRAddress::InnerLayer {
+            layer: 0,
+            offset: 0,
+        };
+        let product_rhs = GKRAddress::InnerLayer {
+            layer: 0,
+            offset: 1,
+        };
+        let copy_output = GKRAddress::InnerLayer {
+            layer: 1,
+            offset: 0,
+        };
+        let product_output = GKRAddress::InnerLayer {
+            layer: 1,
+            offset: 1,
+        };
+        let lookup_num_output = GKRAddress::InnerLayer {
+            layer: 1,
+            offset: 2,
+        };
+        let lookup_den_output = GKRAddress::InnerLayer {
+            layer: 1,
+            offset: 3,
+        };
+
+        let copy_values = (0..trace_len)
+            .map(|idx| BF::new((idx + 1) as u32))
+            .collect::<Vec<_>>();
+        let lookup_lhs_values = [2u32, 3, 5, 7, 11, 13, 17, 19].map(BF::new);
+        let lookup_rhs_values = [23u32, 29, 31, 37, 41, 43, 47, 53].map(BF::new);
+        let product_lhs_values = (0..trace_len)
+            .map(|idx| sample_ext(10 + idx as u32))
+            .collect::<Vec<_>>();
+        let product_rhs_values = (0..trace_len)
+            .map(|idx| sample_ext(30 + idx as u32))
+            .collect::<Vec<_>>();
+        let lookup_additive_challenge = sample_ext(90);
+
+        let mut storage = GpuGKRStorage::<BF, E4>::default();
+        storage.insert_base_field_at_layer(0, copy_input, upload_base_poly(&copy_values, &context));
+        storage.insert_base_field_at_layer(
+            0,
+            lookup_lhs,
+            upload_base_poly(&lookup_lhs_values, &context),
+        );
+        storage.insert_base_field_at_layer(
+            0,
+            lookup_rhs,
+            upload_base_poly(&lookup_rhs_values, &context),
+        );
+        storage.insert_extension_at_layer(
+            0,
+            product_lhs,
+            upload_ext_poly(&product_lhs_values, &context),
+        );
+        storage.insert_extension_at_layer(
+            0,
+            product_rhs,
+            upload_ext_poly(&product_rhs_values, &context),
+        );
+
+        let mut lookup_additive_device = context.alloc(1, AllocationPlacement::BestFit).unwrap();
+        set_by_val(
+            lookup_additive_challenge,
+            lookup_additive_device.deref_mut(),
+            context.get_exec_stream(),
+        )
+        .unwrap();
+        context.get_exec_stream().synchronize().unwrap();
+
+        let layer = GKRLayerDescription {
+            layer: 0,
+            gates_with_external_connections: Vec::new(),
+            cached_relations: BTreeMap::new(),
+            gates: vec![
+                GateArtifacts {
+                    output_layer: 1,
+                    enforced_relation: NoFieldGKRRelation::Copy {
+                        input: copy_input,
+                        output: copy_output,
+                    },
+                },
+                GateArtifacts {
+                    output_layer: 1,
+                    enforced_relation: NoFieldGKRRelation::TrivialProduct {
+                        input: [product_lhs, product_rhs],
+                        output: product_output,
+                    },
+                },
+                GateArtifacts {
+                    output_layer: 1,
+                    enforced_relation: NoFieldGKRRelation::LookupPairFromMaterializedBaseInputs {
+                        input: [lookup_lhs, lookup_rhs],
+                        output: [lookup_num_output, lookup_den_output],
+                    },
+                },
+                GateArtifacts {
+                    output_layer: 1,
+                    enforced_relation: NoFieldGKRRelation::EnforceConstraintsMaxQuadratic {
+                        input: empty_constraints(),
+                    },
+                },
+            ],
+            additional_base_layer_openings: Vec::new(),
+        };
+
+        assert_forward_layer_invariants(0, 2, &layer);
+        let lowered = lower_forward_layer(
+            0,
+            &layer,
+            &storage,
+            lookup_additive_device.as_ptr(),
+            trace_len,
+            &context,
+        )
+        .unwrap();
+        assert_eq!(lowered.batch.gate_count, layer.gates.len() as u32);
+
+        launch_forward_layer::<E4>(&lowered.batch, trace_len, &context).unwrap();
+        commit_lowered_forward_layer(1, &mut storage, lowered);
+        context.get_exec_stream().synchronize().unwrap();
+
+        let copied = storage
+            .try_get_base_poly(copy_output)
+            .expect("copy output must remain in base storage");
+        assert!(storage
+            .get_base_layer(copy_input)
+            .shares_backing_with(copied));
+
+        let expected_product = product_lhs_values
+            .iter()
+            .zip(product_rhs_values.iter())
+            .map(|(lhs, rhs)| {
+                let mut value = *lhs;
+                value.mul_assign(rhs);
+                value
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            read_ext_poly(storage.get_ext_poly(product_output), &context),
+            expected_product
+        );
+
+        let mut expected_lookup_num = Vec::with_capacity(trace_len);
+        let mut expected_lookup_den = Vec::with_capacity(trace_len);
+        for (&lhs, &rhs) in lookup_lhs_values.iter().zip(lookup_rhs_values.iter()) {
+            let mut shifted_lhs = ext_from_base::<E4>(lhs);
+            shifted_lhs.add_assign(&lookup_additive_challenge);
+            let mut shifted_rhs = ext_from_base::<E4>(rhs);
+            shifted_rhs.add_assign(&lookup_additive_challenge);
+
+            let mut num = shifted_lhs;
+            num.add_assign(&shifted_rhs);
+            let mut den = shifted_lhs;
+            den.mul_assign(&shifted_rhs);
+
+            expected_lookup_num.push(num);
+            expected_lookup_den.push(den);
+        }
+
+        assert_eq!(
+            read_ext_poly(storage.get_ext_poly(lookup_num_output), &context),
+            expected_lookup_num
+        );
+        assert_eq!(
+            read_ext_poly(storage.get_ext_poly(lookup_den_output), &context),
+            expected_lookup_den
+        );
+    }
 }
