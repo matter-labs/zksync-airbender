@@ -445,3 +445,448 @@ fn test_whir_sumcheck_step_rejects_invalid() {
 
     assert!(result.is_err(), "verifier should reject mismatched claim");
 }
+
+#[test]
+#[cfg(feature = "gkr_verify")]
+fn test_batch_claims() {
+    use field::baby_bear::base::BabyBearField;
+    use field::baby_bear::ext4::BabyBearExt4;
+    use field::{Field, FieldExtension, PrimeField};
+    use verifier_common::gkr::LazyVec;
+
+    let sigma0 = <BabyBearExt4 as FieldExtension<BabyBearField>>::from_base(
+        BabyBearField::from_u32_unchecked(5),
+    );
+    let sigma1 = <BabyBearExt4 as FieldExtension<BabyBearField>>::from_base(
+        BabyBearField::from_u32_unchecked(11),
+    );
+    let sigma2 = <BabyBearExt4 as FieldExtension<BabyBearField>>::from_base(
+        BabyBearField::from_u32_unchecked(17),
+    );
+
+    let gamma = <BabyBearExt4 as FieldExtension<BabyBearField>>::from_base(
+        BabyBearField::from_u32_unchecked(3),
+    );
+
+    let mut claims: LazyVec<BabyBearExt4, 8> = LazyVec::new();
+    claims.push(sigma0);
+    claims.push(sigma1);
+    claims.push(sigma2);
+
+    let gamma_powers =
+        generated_add_sub_lui_auipc_mop::common::materialize_gamma_powers::<3>(gamma);
+
+    assert_eq!(gamma_powers[0], BabyBearExt4::ONE);
+    assert_eq!(gamma_powers[1], gamma);
+    let mut gamma_sq = gamma;
+    gamma_sq.mul_assign(&gamma);
+    assert_eq!(gamma_powers[2], gamma_sq);
+
+    let batched =
+        generated_add_sub_lui_auipc_mop::common::batch_claims::<3, 8>(&claims, &gamma_powers);
+
+    let mut expected = sigma0;
+    let mut term = gamma_powers[1];
+    term.mul_assign(&sigma1);
+    expected.add_assign(&term);
+    let mut term = gamma_powers[2];
+    term.mul_assign(&sigma2);
+    expected.add_assign(&term);
+
+    assert_eq!(batched, expected);
+
+    // Test with non-trivial extension field elements (all 4 limbs nonzero)
+    let ext = |a: u32, b: u32, c: u32, d: u32| -> BabyBearExt4 {
+        <BabyBearExt4 as FieldExtension<BabyBearField>>::from_coeffs([
+            BabyBearField::from_u32_unchecked(a),
+            BabyBearField::from_u32_unchecked(b),
+            BabyBearField::from_u32_unchecked(c),
+            BabyBearField::from_u32_unchecked(d),
+        ])
+    };
+
+    let s0 = ext(1, 2, 3, 4);
+    let s1 = ext(5, 6, 7, 8);
+    let g = ext(9, 10, 11, 12);
+
+    let mut claims2: LazyVec<BabyBearExt4, 4> = LazyVec::new();
+    claims2.push(s0);
+    claims2.push(s1);
+
+    let gp = generated_add_sub_lui_auipc_mop::common::materialize_gamma_powers::<2>(g);
+    let batched2 = generated_add_sub_lui_auipc_mop::common::batch_claims::<2, 4>(&claims2, &gp);
+
+    let mut expected2 = s0;
+    let mut t = gp[1];
+    t.mul_assign(&s1);
+    expected2.add_assign(&t);
+    assert_eq!(batched2, expected2, "batch with full ext4 elements");
+}
+
+#[test]
+#[cfg(feature = "gkr_verify")]
+fn test_verify_merkle_path() {
+    use verifier_common::blake2s_u32::{
+        Blake2sState, DelegatedBlake2sState, BLAKE2S_BLOCK_SIZE_U32_WORDS,
+        BLAKE2S_DIGEST_SIZE_U32_WORDS,
+    };
+    use verifier_common::prover::nd_source_std::*;
+
+    let leaves: [[u32; 8]; 4] = [
+        [1, 2, 3, 4, 5, 6, 7, 8],
+        [9, 10, 11, 12, 13, 14, 15, 16],
+        [17, 18, 19, 20, 21, 22, 23, 24],
+        [25, 26, 27, 28, 29, 30, 31, 32],
+    ];
+
+    let mut node_01 = [0u32; BLAKE2S_DIGEST_SIZE_U32_WORDS];
+    let mut block = [0u32; BLAKE2S_BLOCK_SIZE_U32_WORDS];
+    block[..8].copy_from_slice(&leaves[0]);
+    block[8..].copy_from_slice(&leaves[1]);
+    Blake2sState::compress_two_to_one::<true>(&block, &mut node_01);
+
+    let mut node_23 = [0u32; BLAKE2S_DIGEST_SIZE_U32_WORDS];
+    block[..8].copy_from_slice(&leaves[2]);
+    block[8..].copy_from_slice(&leaves[3]);
+    Blake2sState::compress_two_to_one::<true>(&block, &mut node_23);
+
+    let mut root = [0u32; BLAKE2S_DIGEST_SIZE_U32_WORDS];
+    block[..8].copy_from_slice(&node_01);
+    block[8..].copy_from_slice(&node_23);
+    Blake2sState::compress_two_to_one::<true>(&block, &mut root);
+
+    {
+        let mut nds_words = Vec::new();
+        nds_words.extend_from_slice(&leaves[1]);
+        nds_words.extend_from_slice(&node_23);
+
+        let result = std::thread::Builder::new()
+            .name("merkle_valid".into())
+            .stack_size(1 << 24)
+            .spawn(move || {
+                set_iterator(nds_words.into_iter());
+                let mut hasher = DelegatedBlake2sState::new();
+                hasher.state = leaves[0];
+
+                verifier_common::whir::verify_merkle_path::<ThreadLocalBasedSource>(
+                    &mut hasher,
+                    0,
+                    2,
+                    &root,
+                )
+            })
+            .unwrap()
+            .join()
+            .expect("thread should not panic");
+
+        assert!(result, "valid Merkle path should verify");
+    }
+
+    {
+        let mut nds_words = Vec::new();
+        nds_words.extend_from_slice(&leaves[2]);
+        nds_words.extend_from_slice(&node_01);
+
+        let result = std::thread::Builder::new()
+            .name("merkle_valid_leaf3".into())
+            .stack_size(1 << 24)
+            .spawn(move || {
+                set_iterator(nds_words.into_iter());
+                let mut hasher = DelegatedBlake2sState::new();
+                hasher.state = leaves[3];
+
+                verifier_common::whir::verify_merkle_path::<ThreadLocalBasedSource>(
+                    &mut hasher,
+                    3,
+                    2,
+                    &root,
+                )
+            })
+            .unwrap()
+            .join()
+            .expect("thread should not panic");
+
+        assert!(result, "valid Merkle path for leaf 3 should verify");
+    }
+
+    {
+        let mut bad_sibling = leaves[1];
+        bad_sibling[0] ^= 0xDEADBEEF;
+
+        let mut nds_words = Vec::new();
+        nds_words.extend_from_slice(&bad_sibling);
+        nds_words.extend_from_slice(&node_23);
+
+        let result = std::thread::Builder::new()
+            .name("merkle_invalid".into())
+            .stack_size(1 << 24)
+            .spawn(move || {
+                set_iterator(nds_words.into_iter());
+                let mut hasher = DelegatedBlake2sState::new();
+                hasher.state = leaves[0];
+
+                verifier_common::whir::verify_merkle_path::<ThreadLocalBasedSource>(
+                    &mut hasher,
+                    0,
+                    2,
+                    &root,
+                )
+            })
+            .unwrap()
+            .join()
+            .expect("thread should not panic");
+
+        assert!(!result, "corrupted sibling should fail verification");
+    }
+}
+
+#[test]
+#[cfg(feature = "gkr_verify")]
+fn test_fold_coset() {
+    use field::baby_bear::base::BabyBearField;
+    use field::baby_bear::ext4::BabyBearExt4;
+    use field::{Field, FieldExtension, PrimeField};
+
+    let from_base = |v: u32| -> BabyBearExt4 {
+        <BabyBearExt4 as FieldExtension<BabyBearField>>::from_base(
+            BabyBearField::from_u32_unchecked(v),
+        )
+    };
+
+    let two_inv = BabyBearField::from_u32_unchecked(2).inverse().unwrap();
+
+    {
+        let evals = [from_base(10), from_base(20)];
+        let challenge = from_base(7);
+        let root_inv = BabyBearField::from_u32_unchecked(5);
+        let offsets = [BabyBearField::ONE]; // single pair
+
+        let mut buf_a = [BabyBearExt4::ZERO; 1];
+        let mut buf_b = [BabyBearExt4::ZERO; 1];
+
+        let result = generated_add_sub_lui_auipc_mop::common::fold_coset(
+            &evals,
+            1,
+            &[challenge],
+            root_inv,
+            &offsets,
+            two_inv,
+            &mut buf_a,
+            &mut buf_b,
+        );
+
+        let a = evals[0];
+        let b = evals[1];
+        let mut expected = a;
+        expected.sub_assign(&b);
+        expected.mul_assign(&challenge);
+        let mut root = root_inv;
+        root.mul_assign(&offsets[0]);
+        expected.mul_assign_by_base(&root);
+        expected.add_assign(&a);
+        expected.add_assign(&b);
+        expected.mul_assign_by_base(&two_inv);
+
+        assert_eq!(result, expected, "K=1 fold_coset");
+    }
+
+    {
+        let evals = [from_base(3), from_base(7), from_base(11), from_base(13)];
+        let challenges = [from_base(2), from_base(5)];
+        let root_inv = BabyBearField::from_u32_unchecked(3);
+        let offsets = [BabyBearField::ONE, BabyBearField::from_u32_unchecked(9)];
+
+        let mut buf_a = [BabyBearExt4::ZERO; 2];
+        let mut buf_b = [BabyBearExt4::ZERO; 2];
+
+        let result = generated_add_sub_lui_auipc_mop::common::fold_coset(
+            &evals,
+            2,
+            &challenges,
+            root_inv,
+            &offsets,
+            two_inv,
+            &mut buf_a,
+            &mut buf_b,
+        );
+
+        let fold_pair = |a: BabyBearExt4,
+                         b: BabyBearExt4,
+                         ch: BabyBearExt4,
+                         ri: BabyBearField,
+                         off: BabyBearField,
+                         ti: BabyBearField|
+         -> BabyBearExt4 {
+            let mut t = a;
+            t.sub_assign(&b);
+            t.mul_assign(&ch);
+            let mut r = ri;
+            r.mul_assign(&off);
+            t.mul_assign_by_base(&r);
+            t.add_assign(&a);
+            t.add_assign(&b);
+            t.mul_assign_by_base(&ti);
+            t
+        };
+
+        let t0 = fold_pair(
+            evals[0],
+            evals[1],
+            challenges[0],
+            root_inv,
+            offsets[0],
+            two_inv,
+        );
+        let t1 = fold_pair(
+            evals[2],
+            evals[3],
+            challenges[0],
+            root_inv,
+            offsets[1],
+            two_inv,
+        );
+
+        let mut root_inv_sq = root_inv;
+        root_inv_sq.square();
+        let expected = fold_pair(t0, t1, challenges[1], root_inv_sq, offsets[0], two_inv);
+
+        assert_eq!(result, expected, "K=2 fold_coset");
+    }
+}
+
+#[test]
+#[cfg(feature = "gkr_verify")]
+fn test_read_and_verify_pow_valid_nonce() {
+    use prover::worker::Worker;
+    use verifier_common::prover::nd_source_std::*;
+    use verifier_common::transcript::Blake2sTranscript;
+    use verifier_common::whir::read_and_verify_pow;
+
+    let seed = Blake2sTranscript::commit_initial(&[1, 2, 3, 4, 5, 6, 7, 8]);
+    let pow_bits = 8u32;
+
+    let worker = Worker::new_with_num_threads(1);
+    let (post_pow_seed, nonce) = Blake2sTranscript::search_pow(&seed, pow_bits, &worker);
+
+    std::thread::Builder::new()
+        .stack_size(1 << 24)
+        .spawn(move || {
+            let nonce_lo = nonce as u32;
+            let nonce_hi = (nonce >> 32) as u32;
+            set_iterator(vec![nonce_lo, nonce_hi].into_iter());
+
+            let mut seed_copy = seed;
+            read_and_verify_pow::<ThreadLocalBasedSource>(&mut seed_copy, pow_bits);
+            assert_eq!(seed_copy, post_pow_seed);
+        })
+        .unwrap()
+        .join()
+        .unwrap();
+}
+
+#[test]
+#[cfg(feature = "gkr_verify")]
+fn test_read_and_verify_pow_invalid_nonce_panics() {
+    use prover::worker::Worker;
+    use verifier_common::prover::nd_source_std::*;
+    use verifier_common::transcript::Blake2sTranscript;
+    use verifier_common::whir::read_and_verify_pow;
+
+    let seed = Blake2sTranscript::commit_initial(&[1, 2, 3, 4, 5, 6, 7, 8]);
+    let pow_bits = 8u32;
+
+    let worker = Worker::new_with_num_threads(1);
+    let (_, nonce) = Blake2sTranscript::search_pow(&seed, pow_bits, &worker);
+
+    let bad_nonce = nonce.wrapping_add(1);
+    let result = std::thread::Builder::new()
+        .stack_size(1 << 24)
+        .spawn(move || {
+            let nonce_lo = bad_nonce as u32;
+            let nonce_hi = (bad_nonce >> 32) as u32;
+            set_iterator(vec![nonce_lo, nonce_hi].into_iter());
+
+            let mut seed_copy = seed;
+            read_and_verify_pow::<ThreadLocalBasedSource>(&mut seed_copy, pow_bits);
+        })
+        .unwrap()
+        .join();
+
+    assert!(
+        result.is_err(),
+        "Off-by-one nonce should cause verify_pow to panic"
+    );
+}
+
+#[test]
+#[cfg(feature = "gkr_verify")]
+fn test_draw_query_indices_deterministic() {
+    use verifier_common::blake2s_u32::{DelegatedBlake2sState, BLAKE2S_DIGEST_SIZE_U32_WORDS};
+    use verifier_common::transcript::Blake2sTranscript;
+    use verifier_common::whir::draw_query_indices_vec;
+
+    let seed = Blake2sTranscript::commit_initial(&[10, 20, 30, 40, 50, 60, 70, 80]);
+    let num_queries = 16usize;
+    let query_index_bits = 18usize;
+    let num_required_words = (query_index_bits * num_queries).next_multiple_of(32) / 32;
+    let draw_words = (num_required_words + 1).next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS);
+
+    let mut seed1 = seed;
+    let mut hasher1 = DelegatedBlake2sState::new();
+    let indices1 = draw_query_indices_vec(
+        &mut hasher1,
+        &mut seed1,
+        num_queries,
+        query_index_bits,
+        draw_words,
+    );
+
+    let mut seed2 = seed;
+    let mut hasher2 = DelegatedBlake2sState::new();
+    let indices2 = draw_query_indices_vec(
+        &mut hasher2,
+        &mut seed2,
+        num_queries,
+        query_index_bits,
+        draw_words,
+    );
+
+    assert_eq!(
+        indices1, indices2,
+        "Same seed should produce same query indices"
+    );
+    assert_eq!(seed1, seed2, "Seeds should match after drawing");
+}
+
+#[test]
+#[cfg(feature = "gkr_verify")]
+fn test_draw_query_indices_in_range() {
+    use verifier_common::blake2s_u32::{DelegatedBlake2sState, BLAKE2S_DIGEST_SIZE_U32_WORDS};
+    use verifier_common::transcript::Blake2sTranscript;
+    use verifier_common::whir::draw_query_indices_vec;
+
+    let seed = Blake2sTranscript::commit_initial(&[99, 98, 97, 96, 95, 94, 93, 92]);
+    let num_queries = 32usize;
+    let query_index_bits = 12usize;
+    let max_index = 1usize << query_index_bits;
+    let num_required_words = (query_index_bits * num_queries).next_multiple_of(32) / 32;
+    let draw_words = (num_required_words + 1).next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS);
+
+    let mut seed_copy = seed;
+    let mut hasher = DelegatedBlake2sState::new();
+    let indices = draw_query_indices_vec(
+        &mut hasher,
+        &mut seed_copy,
+        num_queries,
+        query_index_bits,
+        draw_words,
+    );
+
+    assert_eq!(indices.len(), num_queries);
+    for (i, &idx) in indices.iter().enumerate() {
+        assert!(
+            idx < max_index,
+            "Query index {i} = {idx} exceeds max {max_index}"
+        );
+    }
+}

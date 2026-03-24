@@ -281,3 +281,86 @@ pub fn lagrange_eval_3pt(
     field_ops::add_assign(&mut inner, &a);
     inner
 }
+#[inline(always)]
+pub fn materialize_gamma_powers<const N: usize>(gamma: BabyBearExt4) -> [BabyBearExt4; N] {
+    debug_assert!(N > 1);
+    let mut powers: LazyVec<BabyBearExt4, N> = LazyVec::new();
+    powers.push(BabyBearExt4::ONE);
+    let mut i = 1;
+    let mut gamma_pow = gamma;
+    while i < N - 1 {
+        powers.push(gamma_pow);
+        field_ops::mul_assign(&mut gamma_pow, &gamma);
+        i += 1;
+    }
+    powers.push(gamma_pow);
+    unsafe { powers.into_array() }
+}
+#[inline(always)]
+pub fn batch_claims<const NUM_CLAIMS: usize, const CAP: usize>(
+    claims: &LazyVec<BabyBearExt4, CAP>,
+    gamma_powers: &[BabyBearExt4; NUM_CLAIMS],
+) -> BabyBearExt4 {
+    debug_assert!(NUM_CLAIMS > 0);
+    debug_assert!(NUM_CLAIMS <= CAP);
+    let mut batched = *claims.get(0);
+    let mut i = 1;
+    while i < NUM_CLAIMS {
+        let claim_i = *claims.get(i);
+        let mut term = gamma_powers[i];
+        field_ops::mul_assign(&mut term, &claim_i);
+        field_ops::add_assign(&mut batched, &term);
+        i += 1;
+    }
+    batched
+}
+#[inline(always)]
+pub fn fold_coset(
+    evals: &[BabyBearExt4],
+    num_rounds: usize,
+    folding_challenges: &[BabyBearExt4],
+    mut root_inv: BabyBearField,
+    high_powers_offsets: &[BabyBearField],
+    two_inv: BabyBearField,
+    buf_a: &mut [BabyBearExt4],
+    buf_b: &mut [BabyBearExt4],
+) -> BabyBearExt4 {
+    debug_assert!(num_rounds == 0 || high_powers_offsets.len() >= 1 << (num_rounds - 1));
+    let mut round = 0;
+    while round < num_rounds {
+        let half = 1 << (num_rounds - round - 1);
+        let challenge = folding_challenges[round];
+        let (src, dst) = if round == 0 {
+            (evals, &mut buf_a[..half])
+        } else if round % 2 == 1 {
+            (&buf_a[..half * 2], &mut buf_b[..half])
+        } else {
+            (&buf_b[..half * 2], &mut buf_a[..half])
+        };
+        let mut pair_idx = 0;
+        while pair_idx < half {
+            let a = src[pair_idx * 2];
+            let b = src[pair_idx * 2 + 1];
+            let mut t = a;
+            field_ops::sub_assign(&mut t, &b);
+            field_ops::mul_assign(&mut t, &challenge);
+            let mut root = root_inv;
+            field_ops::mul_assign(&mut root, &high_powers_offsets[pair_idx]);
+            field_ops::mul_assign_by_base(&mut t, &root);
+            field_ops::add_assign(&mut t, &a);
+            field_ops::add_assign(&mut t, &b);
+            field_ops::mul_assign_by_base(&mut t, &two_inv);
+            dst[pair_idx] = t;
+            pair_idx += 1;
+        }
+        field_ops::square(&mut root_inv);
+        round += 1;
+    }
+    if num_rounds == 0 {
+        evals[0]
+    } else if num_rounds % 2 == 1 {
+        buf_a[0]
+    } else {
+        buf_b[0]
+    }
+}
