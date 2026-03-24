@@ -37,11 +37,8 @@ pub(crate) struct GpuWhirScheduledExtensionQuery {
     pub(crate) index: usize,
     pub(crate) coset_index: usize,
     // Keeps index-fill and query-index callbacks alive until the stream executes them.
-    #[allow(dead_code)]
-    callbacks: Callbacks<'static>,
-    #[allow(dead_code)]
+    _callbacks: Callbacks<'static>,
     leafs: HostAllocation<[BF]>,
-    #[allow(dead_code)]
     merkle_paths: HostAllocation<[Digest]>,
     values_per_leaf: usize,
 }
@@ -332,7 +329,7 @@ impl GpuWhirExtensionOracle {
         Ok(GpuWhirScheduledExtensionQuery {
             index,
             coset_index,
-            callbacks,
+            _callbacks: callbacks,
             leafs: value_query,
             merkle_paths: path_query,
             values_per_leaf: self.values_per_leaf,
@@ -389,7 +386,7 @@ impl GpuWhirExtensionOracle {
         Ok(GpuWhirScheduledExtensionQuery {
             index: 0,
             coset_index: 0,
-            callbacks,
+            _callbacks: callbacks,
             leafs: value_query,
             merkle_paths: path_query,
             values_per_leaf: self.values_per_leaf,

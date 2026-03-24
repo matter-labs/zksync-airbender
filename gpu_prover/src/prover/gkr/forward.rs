@@ -40,10 +40,7 @@ use crate::primitives::device_tracing::Range;
 use crate::primitives::field::BF;
 
 pub(crate) struct GpuGKRForwardOutput<B, E> {
-    #[allow(dead_code)] // Keeps queued NVTX host callbacks alive until the stream consumes them.
     tracing_ranges: Vec<Range>,
-    #[allow(dead_code)] // Keeps async reduction index uploads alive until queued work completes.
-    forward_scratch: GpuGKRForwardScratch,
     pub(crate) storage: GpuGKRStorage<B, E>,
     pub(crate) initial_layer_for_sumcheck: usize,
     pub(crate) dimension_reducing_inputs:
@@ -51,8 +48,7 @@ pub(crate) struct GpuGKRForwardOutput<B, E> {
 }
 
 pub(crate) struct GpuGKRTranscriptHandoff<E> {
-    #[allow(dead_code)] // Keeps queued NVTX host callbacks alive until the stream consumes them.
-    tracing_ranges: Vec<Range>,
+    _tracing_ranges: Vec<Range>,
     explicit_evaluations: BTreeMap<OutputType, [HostAllocation<[E]>; 2]>,
 }
 
@@ -132,7 +128,7 @@ impl<B, E: Copy> GpuGKRForwardOutput<B, E> {
         tracing_ranges.push(handoff_range);
 
         Ok(GpuGKRTranscriptHandoff {
-            tracing_ranges,
+            _tracing_ranges: tracing_ranges,
             explicit_evaluations,
         })
     }
@@ -290,12 +286,12 @@ where
         )?;
     dimension_reduction_range.end(stream)?;
     tracing_ranges.push(dimension_reduction_range);
+    drop(forward_scratch);
     forward_range.end(stream)?;
     tracing_ranges.push(forward_range);
 
     Ok(GpuGKRForwardOutput {
         tracing_ranges,
-        forward_scratch,
         storage,
         initial_layer_for_sumcheck,
         dimension_reducing_inputs,

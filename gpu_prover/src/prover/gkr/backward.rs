@@ -288,8 +288,6 @@ impl<E> ScheduledChallengeBuffer<E> {
 
 struct HostScheduledChallengeBuffer<E> {
     callbacks: Arc<Callbacks<'static>>,
-    device: Arc<SharedChallengeDevice<E>>,
-    #[allow(dead_code)]
     _phantom: std::marker::PhantomData<E>,
 }
 
@@ -774,13 +772,12 @@ fn challenge_buffer_into_host_keepalive<E>(
 ) -> HostScheduledChallengeBuffer<E> {
     let ScheduledChallengeBuffer {
         callbacks,
-        device,
+        device: _,
         offset: _,
         len: _,
     } = buffer;
     HostScheduledChallengeBuffer {
         callbacks,
-        device,
         _phantom: std::marker::PhantomData,
     }
 }

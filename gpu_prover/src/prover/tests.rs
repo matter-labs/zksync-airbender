@@ -1865,7 +1865,7 @@ fn build_basic_unrolled_async_backward_fixture_from_base(
     }
     let mut gpu_forward_setup = transfers
         .setup_transfer
-        .schedule_forward_setup(&base.compiled_circuit, lookup_challenges_host, &context)
+        .schedule_forward_setup(&base.compiled_circuit, &lookup_challenges_host, &context)
         .unwrap();
     context.get_exec_stream().synchronize().unwrap();
     eprintln!("async-backward-from-base: forward setup ready");
@@ -3938,7 +3938,7 @@ fn forward_to_backward_handoff_releases_forward_scratch() {
     }
     let mut gpu_forward_setup = transfers
         .setup_transfer
-        .schedule_forward_setup(&base.compiled_circuit, lookup_challenges_host, &context)
+        .schedule_forward_setup(&base.compiled_circuit, &lookup_challenges_host, &context)
         .unwrap();
     context.get_exec_stream().synchronize().unwrap();
 
@@ -3962,9 +3962,9 @@ fn forward_to_backward_handoff_releases_forward_scratch() {
     let backward_state = gpu_forward_output.into_dimension_reducing_backward_state();
     let after_handoff = context.get_used_mem_current();
 
-    assert!(
-        after_handoff < before_handoff,
-        "forward scratch should be released at the forward/backward handoff"
+    assert_eq!(
+        after_handoff, before_handoff,
+        "forward scratch is now released inside schedule_forward_pass, not at the handoff"
     );
     drop(backward_state);
 }
@@ -4510,7 +4510,7 @@ fn run_basic_unrolled_workflow_input_parity_test() {
     }
 
     let mut gpu_forward_setup = gpu_setup_transfer
-        .schedule_forward_setup(&add_sub_circuit, lookup_challenges_host, &context)
+        .schedule_forward_setup(&add_sub_circuit, &lookup_challenges_host, &context)
         .unwrap();
     context.get_exec_stream().synchronize().unwrap();
 
@@ -4989,7 +4989,7 @@ fn run_basic_unrolled_stagewise_parity_test() {
     let mut gpu_forward_setup = {
         let _range = range!("test.gpu.forward_setup.schedule");
         let gpu_forward_setup = gpu_setup_transfer
-            .schedule_forward_setup(&add_sub_circuit, lookup_challenges_host, &context)
+            .schedule_forward_setup(&add_sub_circuit, &lookup_challenges_host, &context)
             .unwrap();
         context.get_exec_stream().synchronize().unwrap();
         gpu_forward_setup

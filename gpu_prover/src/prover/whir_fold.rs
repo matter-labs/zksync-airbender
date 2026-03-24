@@ -202,8 +202,8 @@ fn schedule_unknown_coset_base_field_query(
 }
 
 struct WhirHostUpload<T> {
-    callbacks: Callbacks<'static>,
-    host: HostAllocation<[T]>,
+    _callbacks: Callbacks<'static>,
+    _phantom: std::marker::PhantomData<T>,
 }
 
 struct ScheduledUnknownCosetBaseFieldQuery {
@@ -225,41 +225,23 @@ pub(crate) struct ScheduledWhirProofState {
 
 pub(crate) struct GpuWhirFoldScheduledExecution {
     #[allow(dead_code)]
-    tracing_ranges: Vec<Range>,
+    _tracing_ranges: Vec<Range>,
     #[allow(dead_code)]
-    start_callbacks: Callbacks<'static>,
+    _start_callbacks: Callbacks<'static>,
     #[allow(dead_code)]
-    seed_host: HostAllocation<Seed>,
+    _folding_challenges: Vec<WhirHostUpload<E4>>,
     #[allow(dead_code)]
-    base_layer_point_host: HostAllocation<[E4]>,
+    _ood_points: Vec<WhirHostUpload<E4>>,
     #[allow(dead_code)]
-    base_caps_keepalive: [Vec<HostAllocation<[Digest]>>; 3],
+    _query_index_callbacks: Vec<Callbacks<'static>>,
     #[allow(dead_code)]
-    fold_eval_readbacks: Vec<HostAllocation<[E4]>>,
+    _delinearization_challenges: Vec<WhirHostUpload<E4>>,
     #[allow(dead_code)]
-    folding_challenges: Vec<WhirHostUpload<E4>>,
+    _base_queries: Vec<[Vec<ScheduledUnknownCosetBaseFieldQuery>; 3]>,
     #[allow(dead_code)]
-    recursive_caps_keepalive: Vec<Vec<HostAllocation<[Digest]>>>,
+    _recursive_queries: Vec<Vec<crate::prover::whir::GpuWhirScheduledExtensionQuery>>,
     #[allow(dead_code)]
-    ood_points: Vec<WhirHostUpload<E4>>,
-    #[allow(dead_code)]
-    ood_partial_readbacks: Vec<Vec<HostAllocation<[E4]>>>,
-    #[allow(dead_code)]
-    ood_values: Vec<HostAllocation<[E4]>>,
-    #[allow(dead_code)]
-    query_index_callbacks: Vec<Callbacks<'static>>,
-    #[allow(dead_code)]
-    query_indexes: Vec<HostAllocation<[u32]>>,
-    #[allow(dead_code)]
-    delinearization_challenges: Vec<WhirHostUpload<E4>>,
-    #[allow(dead_code)]
-    pow_nonces: Vec<HostAllocation<u64>>,
-    #[allow(dead_code)]
-    base_queries: Vec<[Vec<ScheduledUnknownCosetBaseFieldQuery>; 3]>,
-    #[allow(dead_code)]
-    recursive_queries: Vec<Vec<crate::prover::whir::GpuWhirScheduledExtensionQuery>>,
-    #[allow(dead_code)]
-    final_callbacks: Callbacks<'static>,
+    _final_callbacks: Callbacks<'static>,
     shared_state: std::sync::Arc<std::sync::Mutex<ScheduledWhirProofState>>,
 }
 
@@ -334,7 +316,7 @@ fn schedule_callback_populated_upload<T: Copy + 'static>(
     context: &ProverContext,
     len: usize,
     fill: impl Fn(&mut [T]) + Send + Sync + 'static,
-) -> CudaResult<(WhirHostUpload<T>, DeviceAllocation<T>)> {
+) -> CudaResult<(WhirHostUpload<T>, HostAllocation<[T]>, DeviceAllocation<T>)> {
     let mut callbacks = Callbacks::new();
     let mut host = unsafe { context.alloc_host_uninit_slice(len) };
     let host_accessor = host.get_mut_accessor();
@@ -346,7 +328,14 @@ fn schedule_callback_populated_upload<T: Copy + 'static>(
     )?;
     let mut device = context.alloc(len, AllocationPlacement::BestFit)?;
     memory_copy_async(&mut device, &host, context.get_exec_stream())?;
-    Ok((WhirHostUpload { callbacks, host }, device))
+    Ok((
+        WhirHostUpload {
+            _callbacks: callbacks,
+            _phantom: std::marker::PhantomData,
+        },
+        host,
+        device,
+    ))
 }
 
 fn copy_small_to_device<T: Copy>(
@@ -1539,9 +1528,9 @@ fn schedule_accumulate_eq_sample_in_place_device(
     fill_point_pows: impl Fn(&mut [E4]) + Send + Sync + 'static,
     challenge: &DeviceSlice<E4>,
     context: &ProverContext,
-) -> CudaResult<WhirHostUpload<E4>> {
+) -> CudaResult<(WhirHostUpload<E4>, HostAllocation<[E4]>)> {
     let log_n = state.current_len.trailing_zeros() as usize;
-    let (point_pows_upload, point_pows_device) =
+    let (point_pows_upload, _point_pows_host, point_pows_device) =
         schedule_callback_populated_upload(context, log_n, fill_point_pows)?;
     launch_build_eq_values(
         point_pows_device.as_ptr(),
@@ -1561,7 +1550,7 @@ fn schedule_accumulate_eq_sample_in_place_device(
         &mut state.eq_poly[..state.current_len],
         context.get_exec_stream(),
     )?;
-    Ok(point_pows_upload)
+    Ok((point_pows_upload, _point_pows_host))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1891,7 +1880,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
                 let shared_state = std::sync::Arc::clone(&shared_state);
                 let sumcheck_poly_idx = scheduled_sumcheck_poly_idx;
                 scheduled_sumcheck_poly_idx += 1;
-                let (challenge_upload, challenge_device) =
+                let (challenge_upload, _challenge_host, challenge_device) =
                     schedule_callback_populated_upload(context, 1, move |dst: &mut [E4]| unsafe {
                         let values = readback_accessor.get();
                         let mut f_half = values[2];
@@ -1987,7 +1976,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
 
         let ood_sample_range = Range::new("gkr.whir.base_round.0.ood_sample")?;
         ood_sample_range.start(stream)?;
-        let (ood_point_upload, ood_point_device) =
+        let (ood_point_upload, ood_point_host, ood_point_device) =
             schedule_callback_populated_upload(context, 1, move |dst: &mut [E4]| unsafe {
                 dst[0] = draw_random_field_els::<BF, E4>(seed_accessor.get_mut(), 1)[0];
             })?;
@@ -2119,12 +2108,12 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
 
         let delinearization_eq_range = Range::new("gkr.whir.base_round.0.delinearization_eq")?;
         delinearization_eq_range.start(stream)?;
-        let (delinearization_upload, delinearization_device) =
+        let (delinearization_upload, _delinearization_host, delinearization_device) =
             schedule_callback_populated_upload(context, 1, move |dst: &mut [E4]| unsafe {
                 dst[0] = draw_random_field_els::<BF, E4>(seed_accessor.get_mut(), 1)[0];
             })?;
-        let ood_point_accessor = ood_points.last().unwrap().host.get_accessor();
-        let eq_upload = schedule_accumulate_eq_sample_in_place_device(
+        let ood_point_accessor = ood_point_host.get_accessor();
+        let (eq_upload, _eq_host) = schedule_accumulate_eq_sample_in_place_device(
             &mut state,
             move |dst| unsafe {
                 let mut value = ood_point_accessor.get()[0];
@@ -2214,7 +2203,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
                 .collect::<Vec<_>>();
 
             let query_indexes_accessor = query_indexes_host.get_accessor();
-            let eq_upload = schedule_accumulate_eq_sample_in_place_device(
+            let (eq_upload, _eq_host) = schedule_accumulate_eq_sample_in_place_device(
                 &mut state,
                 move |dst| unsafe {
                     let point = E4::from_base(
@@ -2359,7 +2348,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         let ood_sample_name = format!("{round_name}.ood_sample");
         let ood_sample_range = Range::new(&*ood_sample_name)?;
         ood_sample_range.start(stream)?;
-        let (ood_point_upload, ood_point_device) =
+        let (ood_point_upload, ood_point_host, ood_point_device) =
             schedule_callback_populated_upload(context, 1, move |dst: &mut [E4]| unsafe {
                 dst[0] = draw_random_field_els::<BF, E4>(seed_accessor.get_mut(), 1)[0];
             })?;
@@ -2491,12 +2480,12 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         let delinearization_eq_name = format!("{round_name}.delinearization_eq");
         let delinearization_eq_range = Range::new(&*delinearization_eq_name)?;
         delinearization_eq_range.start(stream)?;
-        let (delinearization_upload, delinearization_device) =
+        let (delinearization_upload, _delinearization_host, delinearization_device) =
             schedule_callback_populated_upload(context, 1, move |dst: &mut [E4]| unsafe {
                 dst[0] = draw_random_field_els::<BF, E4>(seed_accessor.get_mut(), 1)[0];
             })?;
-        let ood_point_accessor = ood_points.last().unwrap().host.get_accessor();
-        let eq_upload = schedule_accumulate_eq_sample_in_place_device(
+        let ood_point_accessor = ood_point_host.get_accessor();
+        let (eq_upload, _eq_host) = schedule_accumulate_eq_sample_in_place_device(
             &mut state,
             move |dst| unsafe {
                 let mut value = ood_point_accessor.get()[0];
@@ -2534,7 +2523,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
             let query_paths_accessor = query.merkle_paths_accessor();
             let query_values_per_leaf = query.values_per_leaf();
             let query_indexes_accessor = query_indexes_host.get_accessor();
-            let eq_upload = schedule_accumulate_eq_sample_in_place_device(
+            let (eq_upload, _eq_host) = schedule_accumulate_eq_sample_in_place_device(
                 &mut state,
                 move |dst| unsafe {
                     let point = E4::from_base(
@@ -2755,24 +2744,15 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
     tracing_ranges.push(schedule_range);
 
     Ok(GpuWhirFoldScheduledExecution {
-        tracing_ranges,
-        start_callbacks,
-        seed_host,
-        base_layer_point_host,
-        base_caps_keepalive,
-        fold_eval_readbacks,
-        folding_challenges,
-        recursive_caps_keepalive,
-        ood_points,
-        ood_partial_readbacks,
-        ood_values,
-        query_index_callbacks,
-        query_indexes,
-        delinearization_challenges,
-        pow_nonces,
-        base_queries,
-        recursive_queries,
-        final_callbacks,
+        _tracing_ranges: tracing_ranges,
+        _start_callbacks: start_callbacks,
+        _folding_challenges: folding_challenges,
+        _ood_points: ood_points,
+        _query_index_callbacks: query_index_callbacks,
+        _delinearization_challenges: delinearization_challenges,
+        _base_queries: base_queries,
+        _recursive_queries: recursive_queries,
+        _final_callbacks: final_callbacks,
         shared_state,
     })
 }
