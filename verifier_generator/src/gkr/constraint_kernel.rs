@@ -21,7 +21,6 @@ pub fn generate_constraint_kernel<MW: MersenneWrapper, F: PrimeField>(
         let mut result = #quartic_zero;
     };
 
-    // Constants: coeff * challenge_powers[pow]
     for &(coeff, pow) in &rel.constants {
         let mont = coeff_to_internal_repr::<F>(coeff);
         let field_coeff = MW::field_new(quote! { #mont });
@@ -36,7 +35,6 @@ pub fn generate_constraint_kernel<MW: MersenneWrapper, F: PrimeField>(
         });
     }
 
-    // Linear terms: val * coeff * challenge_powers[pow]
     for (addr, terms) in &rel.linear_terms {
         let idx = addr_to_idx(addr, input_sorted_addrs);
         let mut term_body = TokenStream::new();
@@ -63,7 +61,6 @@ pub fn generate_constraint_kernel<MW: MersenneWrapper, F: PrimeField>(
         });
     }
 
-    // Quadratic terms: (va * vb) * coeff * challenge_powers[pow]
     for ((addr_a, addr_b), terms) in &rel.quadratic_terms {
         let idx_a = addr_to_idx(addr_a, input_sorted_addrs);
         let idx_b = addr_to_idx(addr_b, input_sorted_addrs);

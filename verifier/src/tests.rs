@@ -318,3 +318,130 @@ fn test_gkr_verifier_in_transpiler() {
         run_gkr_verifier_in_transpiler(name, proof_path, circuit_path, binary_suffix);
     }
 }
+
+#[cfg(feature = "gkr_verify")]
+fn flatten_ext4(el: field::baby_bear::ext4::BabyBearExt4) -> [u32; 4] {
+    use field::baby_bear::{base::BabyBearField, ext4::BabyBearExt4};
+    use field::{FieldExtension, FixedArrayConvertible, PrimeField};
+
+    let coeffs = <BabyBearExt4 as FieldExtension<BabyBearField>>::into_coeffs(el);
+    let arr: [BabyBearField; 4] = coeffs.into_array();
+    arr.map(|f| f.as_u32_raw_repr_reduced())
+}
+
+#[test]
+#[cfg(feature = "gkr_verify")]
+fn test_whir_sumcheck_step_valid() {
+    use field::baby_bear::base::BabyBearField;
+    use field::baby_bear::ext4::BabyBearExt4;
+    use field::{Field, FieldExtension, PrimeField};
+    use verifier_common::prover::nd_source_std::*;
+
+    let c0 = <BabyBearExt4 as FieldExtension<BabyBearField>>::from_base(
+        BabyBearField::from_u32_unchecked(42),
+    );
+    let c1 = <BabyBearExt4 as FieldExtension<BabyBearField>>::from_base(
+        BabyBearField::from_u32_unchecked(7),
+    );
+    let c2 = <BabyBearExt4 as FieldExtension<BabyBearField>>::from_base(
+        BabyBearField::from_u32_unchecked(13),
+    );
+    let coeffs = [c0, c1, c2];
+
+    let mut p1 = c0;
+    p1.add_assign(&c1);
+    p1.add_assign(&c2);
+    let mut claim = c0;
+    claim.add_assign(&p1);
+
+    let mut nds_words = Vec::new();
+    for &c in &coeffs {
+        nds_words.extend(flatten_ext4(c));
+    }
+
+    let result = std::thread::Builder::new()
+        .name("whir_sumcheck_step".into())
+        .stack_size(1 << 24)
+        .spawn(move || {
+            set_iterator(nds_words.into_iter());
+
+            use verifier_common::blake2s_u32::DelegatedBlake2sState;
+            use verifier_common::transcript::Seed;
+
+            let mut seed = Seed::default();
+            let mut hasher = DelegatedBlake2sState::new();
+
+            let result = generated_add_sub_lui_auipc_mop::common::verify_whir_sumcheck_step::<
+                ThreadLocalBasedSource,
+            >(&mut hasher, &mut seed, claim, 0);
+
+            let (new_claim, alpha) = result.expect("valid sumcheck step should pass");
+
+            let mut expected = c2;
+            expected.mul_assign(&alpha);
+            expected.add_assign(&c1);
+            expected.mul_assign(&alpha);
+            expected.add_assign(&c0);
+            assert_eq!(new_claim, expected,);
+        })
+        .unwrap()
+        .join();
+
+    match result {
+        Ok(()) => println!("whir sumcheck step: valid test passed"),
+        Err(e) => std::panic::resume_unwind(e),
+    }
+}
+
+#[test]
+#[cfg(feature = "gkr_verify")]
+fn test_whir_sumcheck_step_rejects_invalid() {
+    use field::baby_bear::base::BabyBearField;
+    use field::baby_bear::ext4::BabyBearExt4;
+    use field::{Field, FieldExtension, PrimeField};
+    use verifier_common::prover::nd_source_std::*;
+
+    let c0 = <BabyBearExt4 as FieldExtension<BabyBearField>>::from_base(
+        BabyBearField::from_u32_unchecked(42),
+    );
+    let c1 = <BabyBearExt4 as FieldExtension<BabyBearField>>::from_base(
+        BabyBearField::from_u32_unchecked(7),
+    );
+    let c2 = <BabyBearExt4 as FieldExtension<BabyBearField>>::from_base(
+        BabyBearField::from_u32_unchecked(13),
+    );
+
+    let mut p1 = c0;
+    p1.add_assign(&c1);
+    p1.add_assign(&c2);
+    let mut claim = c0;
+    claim.add_assign(&p1);
+    claim.add_assign(&BabyBearExt4::ONE); // corrupt the claim
+
+    let mut nds_words = Vec::new();
+    for &c in &[c0, c1, c2] {
+        nds_words.extend(flatten_ext4(c));
+    }
+
+    let result = std::thread::Builder::new()
+        .name("whir_sumcheck_step_invalid".into())
+        .stack_size(1 << 24)
+        .spawn(move || {
+            set_iterator(nds_words.into_iter());
+
+            use verifier_common::blake2s_u32::DelegatedBlake2sState;
+            use verifier_common::transcript::Seed;
+
+            let mut seed = Seed::default();
+            let mut hasher = DelegatedBlake2sState::new();
+
+            generated_add_sub_lui_auipc_mop::common::verify_whir_sumcheck_step::<
+                ThreadLocalBasedSource,
+            >(&mut hasher, &mut seed, claim, 0)
+        })
+        .unwrap()
+        .join()
+        .expect("thread should not panic");
+
+    assert!(result.is_err(), "verifier should reject mismatched claim");
+}

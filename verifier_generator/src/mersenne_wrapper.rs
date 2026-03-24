@@ -21,6 +21,11 @@ pub trait MersenneWrapper {
 
     fn negate(a: TokenStream) -> TokenStream;
 
+    /// Convert a raw u32 word to a base field element (from NDS).
+    fn field_from_reduced_raw_repr(value: TokenStream) -> TokenStream;
+    /// Convert a u32 to a base field element with reduction (from transcript randomness).
+    fn field_from_u32_with_reduction(value: TokenStream) -> TokenStream;
+
     // For ConstraintSystem in circuits
     fn generic_function_parameters() -> TokenStream;
     fn additional_function_arguments() -> TokenStream;
@@ -93,6 +98,14 @@ impl MersenneWrapper for DefaultBabyBearField {
 
     fn negate(a: TokenStream) -> TokenStream {
         quote! { field_ops::negate(&mut #a) }
+    }
+
+    fn field_from_reduced_raw_repr(value: TokenStream) -> TokenStream {
+        quote! { BabyBearField::from_reduced_raw_repr(#value) }
+    }
+
+    fn field_from_u32_with_reduction(value: TokenStream) -> TokenStream {
+        quote! { BabyBearField::from_u32_with_reduction(#value) }
     }
 
     fn generic_function_parameters() -> TokenStream {
@@ -180,6 +193,14 @@ impl MersenneWrapper for DefaultMersenne31Field {
 
     fn negate(a: TokenStream) -> TokenStream {
         quote! { field_ops::negate(&mut #a) }
+    }
+
+    fn field_from_reduced_raw_repr(value: TokenStream) -> TokenStream {
+        quote! { Mersenne31Field(#value) }
+    }
+
+    fn field_from_u32_with_reduction(value: TokenStream) -> TokenStream {
+        quote! { Mersenne31Field::from_u32_with_reduction(#value) }
     }
 
     fn generic_function_parameters() -> TokenStream {

@@ -31,7 +31,6 @@ pub fn generate_layer_compute_claim<MW: MersenneWrapper>(
     let quartic_one = MW::quartic_one();
 
     let mut body = quote! {
-        let mut combined = #quartic_zero;
         let mut current_batch = #quartic_one;
     };
 
@@ -43,6 +42,7 @@ pub fn generate_layer_compute_claim<MW: MersenneWrapper>(
         .chain(layer.gates_with_external_connections.iter())
         .collect();
     let num_gates = gates.len();
+    let mut first_contributing = true;
 
     for (gate_idx, gate) in gates.into_iter().enumerate() {
         let is_last = gate_idx == num_gates - 1;
@@ -66,22 +66,37 @@ pub fn generate_layer_compute_claim<MW: MersenneWrapper>(
             | R::MaterializedVectorLookupInput { output, .. } => {
                 let out_idx = addr_to_idx(output, output_sorted_addrs);
                 let mul_t = MW::mul_assign(quote! { t }, quote! { claim });
-                let add_combined = MW::add_assign(quote! { combined }, quote! { t });
                 let advance = if is_last {
                     quote! {}
                 } else {
                     quote! { #mul_batch; }
                 };
-                body.extend(quote! {
-                    {
-                        let bc = current_batch;
-                        #advance
-                        let claim = output_claims.get(#out_idx);
-                        let mut t = bc;
-                        #mul_t;
-                        #add_combined;
-                    }
-                });
+                if first_contributing {
+                    first_contributing = false;
+                    body.extend(quote! {
+                        let combined = {
+                            let bc = current_batch;
+                            #advance
+                            let claim = output_claims.get(#out_idx);
+                            let mut t = bc;
+                            #mul_t;
+                            t
+                        };
+                        let mut combined = combined;
+                    });
+                } else {
+                    let add_combined = MW::add_assign(quote! { combined }, quote! { t });
+                    body.extend(quote! {
+                        {
+                            let bc = current_batch;
+                            #advance
+                            let claim = output_claims.get(#out_idx);
+                            let mut t = bc;
+                            #mul_t;
+                            #add_combined;
+                        }
+                    });
+                }
             }
             R::AggregateLookupRationalPair { output, .. }
             | R::LookupPairFromBaseInputs { output, .. }
@@ -96,30 +111,52 @@ pub fn generate_layer_compute_claim<MW: MersenneWrapper>(
                 let o0 = addr_to_idx(&output[0], output_sorted_addrs);
                 let o1 = addr_to_idx(&output[1], output_sorted_addrs);
                 let mul_t0 = MW::mul_assign(quote! { t0 }, quote! { c0 });
-                let add_t0 = MW::add_assign(quote! { combined }, quote! { t0 });
                 let mul_t1 = MW::mul_assign(quote! { t1 }, quote! { c1 });
-                let add_t1 = MW::add_assign(quote! { combined }, quote! { t1 });
                 let advance = if is_last {
                     quote! {}
                 } else {
                     quote! { #mul_batch; }
                 };
-                body.extend(quote! {
-                    {
-                        let bc0 = current_batch;
-                        #mul_batch;
-                        let bc1 = current_batch;
-                        #advance
-                        let c0 = output_claims.get(#o0);
-                        let c1 = output_claims.get(#o1);
-                        let mut t0 = bc0;
-                        #mul_t0;
-                        #add_t0;
-                        let mut t1 = bc1;
-                        #mul_t1;
-                        #add_t1;
-                    }
-                });
+                if first_contributing {
+                    first_contributing = false;
+                    let add_t1 = MW::add_assign(quote! { t0 }, quote! { t1 });
+                    body.extend(quote! {
+                        let combined = {
+                            let bc0 = current_batch;
+                            #mul_batch;
+                            let bc1 = current_batch;
+                            #advance
+                            let c0 = output_claims.get(#o0);
+                            let c1 = output_claims.get(#o1);
+                            let mut t0 = bc0;
+                            #mul_t0;
+                            let mut t1 = bc1;
+                            #mul_t1;
+                            #add_t1;
+                            t0
+                        };
+                        let mut combined = combined;
+                    });
+                } else {
+                    let add_t0 = MW::add_assign(quote! { combined }, quote! { t0 });
+                    let add_t1 = MW::add_assign(quote! { combined }, quote! { t1 });
+                    body.extend(quote! {
+                        {
+                            let bc0 = current_batch;
+                            #mul_batch;
+                            let bc1 = current_batch;
+                            #advance
+                            let c0 = output_claims.get(#o0);
+                            let c1 = output_claims.get(#o1);
+                            let mut t0 = bc0;
+                            #mul_t0;
+                            #add_t0;
+                            let mut t1 = bc1;
+                            #mul_t1;
+                            #add_t1;
+                        }
+                    });
+                }
             }
         }
     }

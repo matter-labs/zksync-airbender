@@ -159,7 +159,6 @@ pub const BASE_LAYER_ADDITIONAL_OPENINGS: &[GKRAddress] = &[
     GKRAddress::Setup(10usize),
     GKRAddress::Setup(11usize),
 ];
-pub const TRACE_LEN_LOG2: usize = 24usize;
 pub const WHIR_ROUNDS: usize = 6usize;
 pub const WHIR_FOLD_STEPS: [usize; 6usize] = [1usize, 4usize, 4usize, 4usize, 4usize, 4usize];
 pub const WHIR_QUERIES: [usize; 6usize] = [68usize, 23usize, 12usize, 10usize, 10usize, 10usize];

@@ -8,7 +8,9 @@ use prover::field::*;
 pub mod mersenne_wrapper;
 pub use self::mersenne_wrapper::*;
 
-pub mod gkr_inlining;
+pub mod gkr;
+pub mod utils;
+pub mod whir;
 
 #[cfg(test)]
 mod test {
@@ -43,6 +45,46 @@ mod test {
         let circuit_names = vec!["add_sub_lui_auipc_mop", "jump_branch_slt", "shift_binop"];
         let whir_schedule = WhirSchedule::default_for_tests_80_bits();
 
+        // Generate shared common/mod.rs by assembling fragments from each module
+        let common_dir = "../verifier/src/generated/common";
+        std::fs::create_dir_all(common_dir).unwrap();
+        let common = {
+            use crate::mersenne_wrapper::MersenneWrapper;
+            let field_use_stmts = DefaultBabyBearField::field_use_statements();
+            let field_struct = DefaultBabyBearField::field_struct();
+            let quartic_struct = DefaultBabyBearField::quartic_struct();
+
+            let transcript_fns =
+                utils::transcript::generate_transcript_helpers::<DefaultBabyBearField>();
+            let sumcheck_fns = utils::sumcheck::generate_sumcheck_helpers::<DefaultBabyBearField>();
+            let gkr_fns = gkr::generate_gkr_common::<DefaultBabyBearField>();
+            let whir_fns = whir::generate_whir_common::<DefaultBabyBearField>();
+
+            quote::quote! {
+                use core::mem::MaybeUninit;
+                use ::verifier_common::field_ops;
+                use ::verifier_common::field::{Field, FieldExtension, PrimeField};
+                use ::verifier_common::blake2s_u32::{
+                    AlignedArray64, DelegatedBlake2sState,
+                    BLAKE2S_DIGEST_SIZE_U32_WORDS,
+                };
+                use ::verifier_common::non_determinism_source::NonDeterminismSource;
+                use ::verifier_common::transcript::{Blake2sTranscript, Seed};
+                use ::verifier_common::gkr::{GKRVerificationError, LazyVec};
+                #field_use_stmts
+
+                const EXT_DEGREE: usize =
+                    <#quartic_struct as FieldExtension<#field_struct>>::DEGREE;
+                const DRAW_BUF_CAPACITY: usize = 64;
+
+                #transcript_fns
+                #sumcheck_fns
+                #gkr_fns
+                #whir_fns
+            }
+        };
+        write_and_fmt(&format!("{}/mod.rs", common_dir), &common);
+
         for name in circuit_names {
             let compiled_circuit: GKRCircuitArtifact<BabyBearField> =
                 deserialize_from_file(&format!(
@@ -52,7 +94,7 @@ mod test {
             let proof: GKRProof<BabyBearField, BabyBearExt4, DefaultTreeConstructor> =
                 deserialize_from_file(&format!("../prover/test_proofs/{}_gkr_proof.json", name));
 
-            let files = gkr_inlining::generate_gkr_inlined::<DefaultBabyBearField, _, _, _>(
+            let files = gkr::generate_gkr_inlined::<DefaultBabyBearField, _, _, _>(
                 &compiled_circuit,
                 &proof,
                 4,
@@ -62,11 +104,22 @@ mod test {
             let dir = format!("../verifier/src/generated/{}", name);
             std::fs::create_dir_all(&dir).unwrap();
 
-            write_and_fmt(&format!("{}/mod.rs", dir), &files.mod_rs);
+            let mod_rs = quote::quote! {
+                pub mod constants;
+                pub mod gkr;
+                pub mod whir;
+                pub mod merkle;
+                #[path = "../common/mod.rs"]
+                pub mod common;
+                pub use gkr::verify_gkr_sumcheck;
+            };
+
+            write_and_fmt(&format!("{}/mod.rs", dir), &mod_rs);
             write_and_fmt(&format!("{}/constants.rs", dir), &files.constants);
             write_and_fmt(&format!("{}/gkr.rs", dir), &files.gkr);
-            write_and_fmt(&format!("{}/whir.rs", dir), &files.whir);
-            write_and_fmt(&format!("{}/merkle.rs", dir), &files.merkle);
+            // Per-circuit WHIR and Merkle stubs — populated in later steps
+            write_and_fmt(&format!("{}/whir.rs", dir), &quote::quote! {});
+            write_and_fmt(&format!("{}/merkle.rs", dir), &quote::quote! {});
         }
     }
 }

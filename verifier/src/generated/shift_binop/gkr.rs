@@ -1,3 +1,7 @@
+use super::common::{
+    commit_field_els, dot_eq, draw_field_els_into, fold_standard_claims, make_eq_poly,
+    read_field_el, read_field_els, verify_final_step_check, verify_sumcheck_rounds,
+};
 use super::constants::*;
 use verifier_common::blake2s_u32::{
     AlignedArray64, DelegatedBlake2sState, BLAKE2S_DIGEST_SIZE_U32_WORDS,
@@ -8,9 +12,8 @@ use verifier_common::field::baby_bear::ext4::BabyBearExt4;
 use verifier_common::field::{Field, FieldExtension, PrimeField};
 use verifier_common::field_ops;
 use verifier_common::gkr::{
-    commit_eval_buffer, commit_field_els, dot_eq, draw_field_els_into, fold_standard_claims,
-    make_eq_poly, read_eval_data_from_nds, read_field_el, read_field_els, verify_final_step_check,
-    verify_sumcheck_rounds, GKRVerificationError, GKRVerifierOutput, LayerState, LazyVec,
+    commit_eval_buffer, read_eval_data_from_nds, GKRVerificationError, GKRVerifierOutput,
+    LayerState, LazyVec,
 };
 use verifier_common::non_determinism_source::NonDeterminismSource;
 use verifier_common::transcript::{Blake2sTranscript, Seed};
@@ -19,16 +22,16 @@ unsafe fn layer_0_compute_claim(
     output_claims: &LazyVec<BabyBearExt4, GKR_ADDRS>,
     batch_base: BabyBearExt4,
 ) -> BabyBearExt4 {
-    let mut combined = BabyBearExt4::ZERO;
     let mut current_batch = BabyBearExt4::ONE;
-    {
+    let combined = {
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
         let claim = output_claims.get(0usize);
         let mut t = bc;
         field_ops::mul_assign(&mut t, &claim);
-        field_ops::add_assign(&mut combined, &t);
-    }
+        t
+    };
+    let mut combined = combined;
     {
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
@@ -2597,16 +2600,16 @@ unsafe fn layer_1_compute_claim(
     output_claims: &LazyVec<BabyBearExt4, GKR_ADDRS>,
     batch_base: BabyBearExt4,
 ) -> BabyBearExt4 {
-    let mut combined = BabyBearExt4::ZERO;
     let mut current_batch = BabyBearExt4::ONE;
-    {
+    let combined = {
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
         let claim = output_claims.get(0usize);
         let mut t = bc;
         field_ops::mul_assign(&mut t, &claim);
-        field_ops::add_assign(&mut combined, &t);
-    }
+        t
+    };
+    let mut combined = combined;
     {
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
@@ -2968,16 +2971,16 @@ unsafe fn layer_2_compute_claim(
     output_claims: &LazyVec<BabyBearExt4, GKR_ADDRS>,
     batch_base: BabyBearExt4,
 ) -> BabyBearExt4 {
-    let mut combined = BabyBearExt4::ZERO;
     let mut current_batch = BabyBearExt4::ONE;
-    {
+    let combined = {
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
         let claim = output_claims.get(0usize);
         let mut t = bc;
         field_ops::mul_assign(&mut t, &claim);
-        field_ops::add_assign(&mut combined, &t);
-    }
+        t
+    };
+    let mut combined = combined;
     {
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
@@ -3229,9 +3232,8 @@ unsafe fn layer_3_compute_claim(
     output_claims: &LazyVec<BabyBearExt4, GKR_ADDRS>,
     batch_base: BabyBearExt4,
 ) -> BabyBearExt4 {
-    let mut combined = BabyBearExt4::ZERO;
     let mut current_batch = BabyBearExt4::ONE;
-    {
+    let combined = {
         let bc0 = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
         let bc1 = current_batch;
@@ -3240,11 +3242,12 @@ unsafe fn layer_3_compute_claim(
         let c1 = output_claims.get(1usize);
         let mut t0 = bc0;
         field_ops::mul_assign(&mut t0, &c0);
-        field_ops::add_assign(&mut combined, &t0);
         let mut t1 = bc1;
         field_ops::mul_assign(&mut t1, &c1);
-        field_ops::add_assign(&mut combined, &t1);
-    }
+        field_ops::add_assign(&mut t0, &t1);
+        t0
+    };
+    let mut combined = combined;
     {
         let bc0 = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
@@ -3410,16 +3413,16 @@ unsafe fn dim_reducing_4_compute_claim(
     output_claims: &LazyVec<BabyBearExt4, GKR_ADDRS>,
     batch_base: BabyBearExt4,
 ) -> BabyBearExt4 {
-    let mut combined = BabyBearExt4::ZERO;
     let mut current_batch = BabyBearExt4::ONE;
-    {
+    let combined = {
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
         let claim = output_claims.get(0usize);
         let mut t = bc;
         field_ops::mul_assign(&mut t, &claim);
-        field_ops::add_assign(&mut combined, &t);
-    }
+        t
+    };
+    let mut combined = combined;
     {
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
@@ -3656,16 +3659,16 @@ unsafe fn dim_reducing_5_compute_claim(
     output_claims: &LazyVec<BabyBearExt4, GKR_ADDRS>,
     batch_base: BabyBearExt4,
 ) -> BabyBearExt4 {
-    let mut combined = BabyBearExt4::ZERO;
     let mut current_batch = BabyBearExt4::ONE;
-    {
+    let combined = {
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
         let claim = output_claims.get(0usize);
         let mut t = bc;
         field_ops::mul_assign(&mut t, &claim);
-        field_ops::add_assign(&mut combined, &t);
-    }
+        t
+    };
+    let mut combined = combined;
     {
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
@@ -3902,16 +3905,16 @@ unsafe fn dim_reducing_6_compute_claim(
     output_claims: &LazyVec<BabyBearExt4, GKR_ADDRS>,
     batch_base: BabyBearExt4,
 ) -> BabyBearExt4 {
-    let mut combined = BabyBearExt4::ZERO;
     let mut current_batch = BabyBearExt4::ONE;
-    {
+    let combined = {
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
         let claim = output_claims.get(0usize);
         let mut t = bc;
         field_ops::mul_assign(&mut t, &claim);
-        field_ops::add_assign(&mut combined, &t);
-    }
+        t
+    };
+    let mut combined = combined;
     {
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
@@ -4148,16 +4151,16 @@ unsafe fn dim_reducing_7_compute_claim(
     output_claims: &LazyVec<BabyBearExt4, GKR_ADDRS>,
     batch_base: BabyBearExt4,
 ) -> BabyBearExt4 {
-    let mut combined = BabyBearExt4::ZERO;
     let mut current_batch = BabyBearExt4::ONE;
-    {
+    let combined = {
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
         let claim = output_claims.get(0usize);
         let mut t = bc;
         field_ops::mul_assign(&mut t, &claim);
-        field_ops::add_assign(&mut combined, &t);
-    }
+        t
+    };
+    let mut combined = combined;
     {
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
@@ -4394,16 +4397,16 @@ unsafe fn dim_reducing_8_compute_claim(
     output_claims: &LazyVec<BabyBearExt4, GKR_ADDRS>,
     batch_base: BabyBearExt4,
 ) -> BabyBearExt4 {
-    let mut combined = BabyBearExt4::ZERO;
     let mut current_batch = BabyBearExt4::ONE;
-    {
+    let combined = {
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
         let claim = output_claims.get(0usize);
         let mut t = bc;
         field_ops::mul_assign(&mut t, &claim);
-        field_ops::add_assign(&mut combined, &t);
-    }
+        t
+    };
+    let mut combined = combined;
     {
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
@@ -4640,16 +4643,16 @@ unsafe fn dim_reducing_9_compute_claim(
     output_claims: &LazyVec<BabyBearExt4, GKR_ADDRS>,
     batch_base: BabyBearExt4,
 ) -> BabyBearExt4 {
-    let mut combined = BabyBearExt4::ZERO;
     let mut current_batch = BabyBearExt4::ONE;
-    {
+    let combined = {
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
         let claim = output_claims.get(0usize);
         let mut t = bc;
         field_ops::mul_assign(&mut t, &claim);
-        field_ops::add_assign(&mut combined, &t);
-    }
+        t
+    };
+    let mut combined = combined;
     {
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
@@ -4886,16 +4889,16 @@ unsafe fn dim_reducing_10_compute_claim(
     output_claims: &LazyVec<BabyBearExt4, GKR_ADDRS>,
     batch_base: BabyBearExt4,
 ) -> BabyBearExt4 {
-    let mut combined = BabyBearExt4::ZERO;
     let mut current_batch = BabyBearExt4::ONE;
-    {
+    let combined = {
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
         let claim = output_claims.get(0usize);
         let mut t = bc;
         field_ops::mul_assign(&mut t, &claim);
-        field_ops::add_assign(&mut combined, &t);
-    }
+        t
+    };
+    let mut combined = combined;
     {
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
@@ -5132,16 +5135,16 @@ unsafe fn dim_reducing_11_compute_claim(
     output_claims: &LazyVec<BabyBearExt4, GKR_ADDRS>,
     batch_base: BabyBearExt4,
 ) -> BabyBearExt4 {
-    let mut combined = BabyBearExt4::ZERO;
     let mut current_batch = BabyBearExt4::ONE;
-    {
+    let combined = {
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
         let claim = output_claims.get(0usize);
         let mut t = bc;
         field_ops::mul_assign(&mut t, &claim);
-        field_ops::add_assign(&mut combined, &t);
-    }
+        t
+    };
+    let mut combined = combined;
     {
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
@@ -5378,16 +5381,16 @@ unsafe fn dim_reducing_12_compute_claim(
     output_claims: &LazyVec<BabyBearExt4, GKR_ADDRS>,
     batch_base: BabyBearExt4,
 ) -> BabyBearExt4 {
-    let mut combined = BabyBearExt4::ZERO;
     let mut current_batch = BabyBearExt4::ONE;
-    {
+    let combined = {
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
         let claim = output_claims.get(0usize);
         let mut t = bc;
         field_ops::mul_assign(&mut t, &claim);
-        field_ops::add_assign(&mut combined, &t);
-    }
+        t
+    };
+    let mut combined = combined;
     {
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
@@ -5624,16 +5627,16 @@ unsafe fn dim_reducing_13_compute_claim(
     output_claims: &LazyVec<BabyBearExt4, GKR_ADDRS>,
     batch_base: BabyBearExt4,
 ) -> BabyBearExt4 {
-    let mut combined = BabyBearExt4::ZERO;
     let mut current_batch = BabyBearExt4::ONE;
-    {
+    let combined = {
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
         let claim = output_claims.get(0usize);
         let mut t = bc;
         field_ops::mul_assign(&mut t, &claim);
-        field_ops::add_assign(&mut combined, &t);
-    }
+        t
+    };
+    let mut combined = combined;
     {
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
@@ -5870,16 +5873,16 @@ unsafe fn dim_reducing_14_compute_claim(
     output_claims: &LazyVec<BabyBearExt4, GKR_ADDRS>,
     batch_base: BabyBearExt4,
 ) -> BabyBearExt4 {
-    let mut combined = BabyBearExt4::ZERO;
     let mut current_batch = BabyBearExt4::ONE;
-    {
+    let combined = {
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
         let claim = output_claims.get(0usize);
         let mut t = bc;
         field_ops::mul_assign(&mut t, &claim);
-        field_ops::add_assign(&mut combined, &t);
-    }
+        t
+    };
+    let mut combined = combined;
     {
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
@@ -6116,16 +6119,16 @@ unsafe fn dim_reducing_15_compute_claim(
     output_claims: &LazyVec<BabyBearExt4, GKR_ADDRS>,
     batch_base: BabyBearExt4,
 ) -> BabyBearExt4 {
-    let mut combined = BabyBearExt4::ZERO;
     let mut current_batch = BabyBearExt4::ONE;
-    {
+    let combined = {
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
         let claim = output_claims.get(0usize);
         let mut t = bc;
         field_ops::mul_assign(&mut t, &claim);
-        field_ops::add_assign(&mut combined, &t);
-    }
+        t
+    };
+    let mut combined = combined;
     {
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
@@ -6362,16 +6365,16 @@ unsafe fn dim_reducing_16_compute_claim(
     output_claims: &LazyVec<BabyBearExt4, GKR_ADDRS>,
     batch_base: BabyBearExt4,
 ) -> BabyBearExt4 {
-    let mut combined = BabyBearExt4::ZERO;
     let mut current_batch = BabyBearExt4::ONE;
-    {
+    let combined = {
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
         let claim = output_claims.get(0usize);
         let mut t = bc;
         field_ops::mul_assign(&mut t, &claim);
-        field_ops::add_assign(&mut combined, &t);
-    }
+        t
+    };
+    let mut combined = combined;
     {
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
@@ -6608,16 +6611,16 @@ unsafe fn dim_reducing_17_compute_claim(
     output_claims: &LazyVec<BabyBearExt4, GKR_ADDRS>,
     batch_base: BabyBearExt4,
 ) -> BabyBearExt4 {
-    let mut combined = BabyBearExt4::ZERO;
     let mut current_batch = BabyBearExt4::ONE;
-    {
+    let combined = {
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
         let claim = output_claims.get(0usize);
         let mut t = bc;
         field_ops::mul_assign(&mut t, &claim);
-        field_ops::add_assign(&mut combined, &t);
-    }
+        t
+    };
+    let mut combined = combined;
     {
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
@@ -6854,16 +6857,16 @@ unsafe fn dim_reducing_18_compute_claim(
     output_claims: &LazyVec<BabyBearExt4, GKR_ADDRS>,
     batch_base: BabyBearExt4,
 ) -> BabyBearExt4 {
-    let mut combined = BabyBearExt4::ZERO;
     let mut current_batch = BabyBearExt4::ONE;
-    {
+    let combined = {
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
         let claim = output_claims.get(0usize);
         let mut t = bc;
         field_ops::mul_assign(&mut t, &claim);
-        field_ops::add_assign(&mut combined, &t);
-    }
+        t
+    };
+    let mut combined = combined;
     {
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
@@ -7100,16 +7103,16 @@ unsafe fn dim_reducing_19_compute_claim(
     output_claims: &LazyVec<BabyBearExt4, GKR_ADDRS>,
     batch_base: BabyBearExt4,
 ) -> BabyBearExt4 {
-    let mut combined = BabyBearExt4::ZERO;
     let mut current_batch = BabyBearExt4::ONE;
-    {
+    let combined = {
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
         let claim = output_claims.get(0usize);
         let mut t = bc;
         field_ops::mul_assign(&mut t, &claim);
-        field_ops::add_assign(&mut combined, &t);
-    }
+        t
+    };
+    let mut combined = combined;
     {
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
@@ -7346,16 +7349,16 @@ unsafe fn dim_reducing_20_compute_claim(
     output_claims: &LazyVec<BabyBearExt4, GKR_ADDRS>,
     batch_base: BabyBearExt4,
 ) -> BabyBearExt4 {
-    let mut combined = BabyBearExt4::ZERO;
     let mut current_batch = BabyBearExt4::ONE;
-    {
+    let combined = {
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
         let claim = output_claims.get(0usize);
         let mut t = bc;
         field_ops::mul_assign(&mut t, &claim);
-        field_ops::add_assign(&mut combined, &t);
-    }
+        t
+    };
+    let mut combined = combined;
     {
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
@@ -7592,16 +7595,16 @@ unsafe fn dim_reducing_21_compute_claim(
     output_claims: &LazyVec<BabyBearExt4, GKR_ADDRS>,
     batch_base: BabyBearExt4,
 ) -> BabyBearExt4 {
-    let mut combined = BabyBearExt4::ZERO;
     let mut current_batch = BabyBearExt4::ONE;
-    {
+    let combined = {
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
         let claim = output_claims.get(0usize);
         let mut t = bc;
         field_ops::mul_assign(&mut t, &claim);
-        field_ops::add_assign(&mut combined, &t);
-    }
+        t
+    };
+    let mut combined = combined;
     {
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
@@ -7838,16 +7841,16 @@ unsafe fn dim_reducing_22_compute_claim(
     output_claims: &LazyVec<BabyBearExt4, GKR_ADDRS>,
     batch_base: BabyBearExt4,
 ) -> BabyBearExt4 {
-    let mut combined = BabyBearExt4::ZERO;
     let mut current_batch = BabyBearExt4::ONE;
-    {
+    let combined = {
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
         let claim = output_claims.get(0usize);
         let mut t = bc;
         field_ops::mul_assign(&mut t, &claim);
-        field_ops::add_assign(&mut combined, &t);
-    }
+        t
+    };
+    let mut combined = combined;
     {
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
@@ -8084,16 +8087,16 @@ unsafe fn dim_reducing_23_compute_claim(
     output_claims: &LazyVec<BabyBearExt4, GKR_ADDRS>,
     batch_base: BabyBearExt4,
 ) -> BabyBearExt4 {
-    let mut combined = BabyBearExt4::ZERO;
     let mut current_batch = BabyBearExt4::ONE;
-    {
+    let combined = {
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
         let claim = output_claims.get(0usize);
         let mut t = bc;
         field_ops::mul_assign(&mut t, &claim);
-        field_ops::add_assign(&mut combined, &t);
-    }
+        t
+    };
+    let mut combined = combined;
     {
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
@@ -8336,11 +8339,7 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>(
         let mut seed = Blake2sTranscript::commit_initial(transcript_buf.as_slice());
         let mut hasher = DelegatedBlake2sState::new();
         let mut init_challenges = [BabyBearExt4::ZERO; 3];
-        draw_field_els_into::<BabyBearField, BabyBearExt4>(
-            &mut hasher,
-            &mut seed,
-            &mut init_challenges,
-        );
+        draw_field_els_into(&mut hasher, &mut seed, &mut init_challenges);
         let lookup_additive_challenge = init_challenges[1];
         let constraints_batch_challenge = init_challenges[2];
         let mut evals_flat = [core::mem::MaybeUninit::<BabyBearExt4>::uninit(); GKR_EVALS];
@@ -8349,16 +8348,12 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>(
                 evals_flat.as_mut_ptr().cast::<BabyBearExt4>(),
                 128usize,
             );
-            read_field_els::<BabyBearField, BabyBearExt4, I>(dst);
+            read_field_els::<I>(dst);
             core::slice::from_raw_parts(evals_flat.as_ptr().cast::<BabyBearExt4>(), 128usize)
         };
-        commit_field_els::<BabyBearField, BabyBearExt4>(&mut seed, evals_slice);
+        commit_field_els(&mut seed, evals_slice);
         let mut all_challenges = [BabyBearExt4::ZERO; GKR_ROUNDS + 1];
-        draw_field_els_into::<BabyBearField, BabyBearExt4>(
-            &mut hasher,
-            &mut seed,
-            &mut all_challenges[..5usize],
-        );
+        draw_field_els_into(&mut hasher, &mut seed, &mut all_challenges[..5usize]);
         let batching_challenge = all_challenges[5usize - 1];
         let mut eq_buf = LazyVec::<BabyBearExt4, 16usize>::new();
         let eq_challenges: &[BabyBearExt4; 4usize] =
@@ -8435,7 +8430,7 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>(
             let initial_claim =
                 dim_reducing_23_compute_claim(&state.prev_claims, state.batching_challenge);
             let (final_claim, final_eq_prefactor) =
-                verify_sumcheck_rounds::<BabyBearField, BabyBearExt4, I, 3usize, GKR_COMMIT_BUF>(
+                verify_sumcheck_rounds::<I, 3usize, GKR_COMMIT_BUF>(
                     &mut seed,
                     initial_claim,
                     &mut state.prev_point,
@@ -8448,7 +8443,7 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>(
                 let evals: &[[BabyBearExt4; 4]] =
                     eval_buf.transmute_subslice(BLAKE2S_DIGEST_SIZE_U32_WORDS, 8usize);
                 let f = dim_reducing_23_final_step_accumulator(evals, state.batching_challenge);
-                verify_final_step_check::<BabyBearField, BabyBearExt4>(
+                verify_final_step_check(
                     f,
                     *state.prev_point.get_unchecked(state.prev_point_len - 1),
                     final_eq_prefactor,
@@ -8458,11 +8453,7 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>(
             }
             commit_eval_buffer(&mut eval_buf, &mut hasher, &mut seed, data_words);
             let mut draw_buf = [BabyBearExt4::ZERO; 3];
-            draw_field_els_into::<BabyBearField, BabyBearExt4>(
-                &mut hasher,
-                &mut seed,
-                &mut draw_buf,
-            );
+            draw_field_els_into(&mut hasher, &mut seed, &mut draw_buf);
             let r_before_last = draw_buf[0];
             let r_last = draw_buf[1];
             let next_batching = draw_buf[2];
@@ -8490,7 +8481,7 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>(
             let initial_claim =
                 dim_reducing_22_compute_claim(&state.prev_claims, state.batching_challenge);
             let (final_claim, final_eq_prefactor) =
-                verify_sumcheck_rounds::<BabyBearField, BabyBearExt4, I, 4usize, GKR_COMMIT_BUF>(
+                verify_sumcheck_rounds::<I, 4usize, GKR_COMMIT_BUF>(
                     &mut seed,
                     initial_claim,
                     &mut state.prev_point,
@@ -8503,7 +8494,7 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>(
                 let evals: &[[BabyBearExt4; 4]] =
                     eval_buf.transmute_subslice(BLAKE2S_DIGEST_SIZE_U32_WORDS, 8usize);
                 let f = dim_reducing_22_final_step_accumulator(evals, state.batching_challenge);
-                verify_final_step_check::<BabyBearField, BabyBearExt4>(
+                verify_final_step_check(
                     f,
                     *state.prev_point.get_unchecked(state.prev_point_len - 1),
                     final_eq_prefactor,
@@ -8513,11 +8504,7 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>(
             }
             commit_eval_buffer(&mut eval_buf, &mut hasher, &mut seed, data_words);
             let mut draw_buf = [BabyBearExt4::ZERO; 3];
-            draw_field_els_into::<BabyBearField, BabyBearExt4>(
-                &mut hasher,
-                &mut seed,
-                &mut draw_buf,
-            );
+            draw_field_els_into(&mut hasher, &mut seed, &mut draw_buf);
             let r_before_last = draw_buf[0];
             let r_last = draw_buf[1];
             let next_batching = draw_buf[2];
@@ -8545,7 +8532,7 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>(
             let initial_claim =
                 dim_reducing_21_compute_claim(&state.prev_claims, state.batching_challenge);
             let (final_claim, final_eq_prefactor) =
-                verify_sumcheck_rounds::<BabyBearField, BabyBearExt4, I, 5usize, GKR_COMMIT_BUF>(
+                verify_sumcheck_rounds::<I, 5usize, GKR_COMMIT_BUF>(
                     &mut seed,
                     initial_claim,
                     &mut state.prev_point,
@@ -8558,7 +8545,7 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>(
                 let evals: &[[BabyBearExt4; 4]] =
                     eval_buf.transmute_subslice(BLAKE2S_DIGEST_SIZE_U32_WORDS, 8usize);
                 let f = dim_reducing_21_final_step_accumulator(evals, state.batching_challenge);
-                verify_final_step_check::<BabyBearField, BabyBearExt4>(
+                verify_final_step_check(
                     f,
                     *state.prev_point.get_unchecked(state.prev_point_len - 1),
                     final_eq_prefactor,
@@ -8568,11 +8555,7 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>(
             }
             commit_eval_buffer(&mut eval_buf, &mut hasher, &mut seed, data_words);
             let mut draw_buf = [BabyBearExt4::ZERO; 3];
-            draw_field_els_into::<BabyBearField, BabyBearExt4>(
-                &mut hasher,
-                &mut seed,
-                &mut draw_buf,
-            );
+            draw_field_els_into(&mut hasher, &mut seed, &mut draw_buf);
             let r_before_last = draw_buf[0];
             let r_last = draw_buf[1];
             let next_batching = draw_buf[2];
@@ -8600,7 +8583,7 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>(
             let initial_claim =
                 dim_reducing_20_compute_claim(&state.prev_claims, state.batching_challenge);
             let (final_claim, final_eq_prefactor) =
-                verify_sumcheck_rounds::<BabyBearField, BabyBearExt4, I, 6usize, GKR_COMMIT_BUF>(
+                verify_sumcheck_rounds::<I, 6usize, GKR_COMMIT_BUF>(
                     &mut seed,
                     initial_claim,
                     &mut state.prev_point,
@@ -8613,7 +8596,7 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>(
                 let evals: &[[BabyBearExt4; 4]] =
                     eval_buf.transmute_subslice(BLAKE2S_DIGEST_SIZE_U32_WORDS, 8usize);
                 let f = dim_reducing_20_final_step_accumulator(evals, state.batching_challenge);
-                verify_final_step_check::<BabyBearField, BabyBearExt4>(
+                verify_final_step_check(
                     f,
                     *state.prev_point.get_unchecked(state.prev_point_len - 1),
                     final_eq_prefactor,
@@ -8623,11 +8606,7 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>(
             }
             commit_eval_buffer(&mut eval_buf, &mut hasher, &mut seed, data_words);
             let mut draw_buf = [BabyBearExt4::ZERO; 3];
-            draw_field_els_into::<BabyBearField, BabyBearExt4>(
-                &mut hasher,
-                &mut seed,
-                &mut draw_buf,
-            );
+            draw_field_els_into(&mut hasher, &mut seed, &mut draw_buf);
             let r_before_last = draw_buf[0];
             let r_last = draw_buf[1];
             let next_batching = draw_buf[2];
@@ -8655,7 +8634,7 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>(
             let initial_claim =
                 dim_reducing_19_compute_claim(&state.prev_claims, state.batching_challenge);
             let (final_claim, final_eq_prefactor) =
-                verify_sumcheck_rounds::<BabyBearField, BabyBearExt4, I, 7usize, GKR_COMMIT_BUF>(
+                verify_sumcheck_rounds::<I, 7usize, GKR_COMMIT_BUF>(
                     &mut seed,
                     initial_claim,
                     &mut state.prev_point,
@@ -8668,7 +8647,7 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>(
                 let evals: &[[BabyBearExt4; 4]] =
                     eval_buf.transmute_subslice(BLAKE2S_DIGEST_SIZE_U32_WORDS, 8usize);
                 let f = dim_reducing_19_final_step_accumulator(evals, state.batching_challenge);
-                verify_final_step_check::<BabyBearField, BabyBearExt4>(
+                verify_final_step_check(
                     f,
                     *state.prev_point.get_unchecked(state.prev_point_len - 1),
                     final_eq_prefactor,
@@ -8678,11 +8657,7 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>(
             }
             commit_eval_buffer(&mut eval_buf, &mut hasher, &mut seed, data_words);
             let mut draw_buf = [BabyBearExt4::ZERO; 3];
-            draw_field_els_into::<BabyBearField, BabyBearExt4>(
-                &mut hasher,
-                &mut seed,
-                &mut draw_buf,
-            );
+            draw_field_els_into(&mut hasher, &mut seed, &mut draw_buf);
             let r_before_last = draw_buf[0];
             let r_last = draw_buf[1];
             let next_batching = draw_buf[2];
@@ -8710,7 +8685,7 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>(
             let initial_claim =
                 dim_reducing_18_compute_claim(&state.prev_claims, state.batching_challenge);
             let (final_claim, final_eq_prefactor) =
-                verify_sumcheck_rounds::<BabyBearField, BabyBearExt4, I, 8usize, GKR_COMMIT_BUF>(
+                verify_sumcheck_rounds::<I, 8usize, GKR_COMMIT_BUF>(
                     &mut seed,
                     initial_claim,
                     &mut state.prev_point,
@@ -8723,7 +8698,7 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>(
                 let evals: &[[BabyBearExt4; 4]] =
                     eval_buf.transmute_subslice(BLAKE2S_DIGEST_SIZE_U32_WORDS, 8usize);
                 let f = dim_reducing_18_final_step_accumulator(evals, state.batching_challenge);
-                verify_final_step_check::<BabyBearField, BabyBearExt4>(
+                verify_final_step_check(
                     f,
                     *state.prev_point.get_unchecked(state.prev_point_len - 1),
                     final_eq_prefactor,
@@ -8733,11 +8708,7 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>(
             }
             commit_eval_buffer(&mut eval_buf, &mut hasher, &mut seed, data_words);
             let mut draw_buf = [BabyBearExt4::ZERO; 3];
-            draw_field_els_into::<BabyBearField, BabyBearExt4>(
-                &mut hasher,
-                &mut seed,
-                &mut draw_buf,
-            );
+            draw_field_els_into(&mut hasher, &mut seed, &mut draw_buf);
             let r_before_last = draw_buf[0];
             let r_last = draw_buf[1];
             let next_batching = draw_buf[2];
@@ -8765,7 +8736,7 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>(
             let initial_claim =
                 dim_reducing_17_compute_claim(&state.prev_claims, state.batching_challenge);
             let (final_claim, final_eq_prefactor) =
-                verify_sumcheck_rounds::<BabyBearField, BabyBearExt4, I, 9usize, GKR_COMMIT_BUF>(
+                verify_sumcheck_rounds::<I, 9usize, GKR_COMMIT_BUF>(
                     &mut seed,
                     initial_claim,
                     &mut state.prev_point,
@@ -8778,7 +8749,7 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>(
                 let evals: &[[BabyBearExt4; 4]] =
                     eval_buf.transmute_subslice(BLAKE2S_DIGEST_SIZE_U32_WORDS, 8usize);
                 let f = dim_reducing_17_final_step_accumulator(evals, state.batching_challenge);
-                verify_final_step_check::<BabyBearField, BabyBearExt4>(
+                verify_final_step_check(
                     f,
                     *state.prev_point.get_unchecked(state.prev_point_len - 1),
                     final_eq_prefactor,
@@ -8788,11 +8759,7 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>(
             }
             commit_eval_buffer(&mut eval_buf, &mut hasher, &mut seed, data_words);
             let mut draw_buf = [BabyBearExt4::ZERO; 3];
-            draw_field_els_into::<BabyBearField, BabyBearExt4>(
-                &mut hasher,
-                &mut seed,
-                &mut draw_buf,
-            );
+            draw_field_els_into(&mut hasher, &mut seed, &mut draw_buf);
             let r_before_last = draw_buf[0];
             let r_last = draw_buf[1];
             let next_batching = draw_buf[2];
@@ -8820,7 +8787,7 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>(
             let initial_claim =
                 dim_reducing_16_compute_claim(&state.prev_claims, state.batching_challenge);
             let (final_claim, final_eq_prefactor) =
-                verify_sumcheck_rounds::<BabyBearField, BabyBearExt4, I, 10usize, GKR_COMMIT_BUF>(
+                verify_sumcheck_rounds::<I, 10usize, GKR_COMMIT_BUF>(
                     &mut seed,
                     initial_claim,
                     &mut state.prev_point,
@@ -8833,7 +8800,7 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>(
                 let evals: &[[BabyBearExt4; 4]] =
                     eval_buf.transmute_subslice(BLAKE2S_DIGEST_SIZE_U32_WORDS, 8usize);
                 let f = dim_reducing_16_final_step_accumulator(evals, state.batching_challenge);
-                verify_final_step_check::<BabyBearField, BabyBearExt4>(
+                verify_final_step_check(
                     f,
                     *state.prev_point.get_unchecked(state.prev_point_len - 1),
                     final_eq_prefactor,
@@ -8843,11 +8810,7 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>(
             }
             commit_eval_buffer(&mut eval_buf, &mut hasher, &mut seed, data_words);
             let mut draw_buf = [BabyBearExt4::ZERO; 3];
-            draw_field_els_into::<BabyBearField, BabyBearExt4>(
-                &mut hasher,
-                &mut seed,
-                &mut draw_buf,
-            );
+            draw_field_els_into(&mut hasher, &mut seed, &mut draw_buf);
             let r_before_last = draw_buf[0];
             let r_last = draw_buf[1];
             let next_batching = draw_buf[2];
@@ -8875,7 +8838,7 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>(
             let initial_claim =
                 dim_reducing_15_compute_claim(&state.prev_claims, state.batching_challenge);
             let (final_claim, final_eq_prefactor) =
-                verify_sumcheck_rounds::<BabyBearField, BabyBearExt4, I, 11usize, GKR_COMMIT_BUF>(
+                verify_sumcheck_rounds::<I, 11usize, GKR_COMMIT_BUF>(
                     &mut seed,
                     initial_claim,
                     &mut state.prev_point,
@@ -8888,7 +8851,7 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>(
                 let evals: &[[BabyBearExt4; 4]] =
                     eval_buf.transmute_subslice(BLAKE2S_DIGEST_SIZE_U32_WORDS, 8usize);
                 let f = dim_reducing_15_final_step_accumulator(evals, state.batching_challenge);
-                verify_final_step_check::<BabyBearField, BabyBearExt4>(
+                verify_final_step_check(
                     f,
                     *state.prev_point.get_unchecked(state.prev_point_len - 1),
                     final_eq_prefactor,
@@ -8898,11 +8861,7 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>(
             }
             commit_eval_buffer(&mut eval_buf, &mut hasher, &mut seed, data_words);
             let mut draw_buf = [BabyBearExt4::ZERO; 3];
-            draw_field_els_into::<BabyBearField, BabyBearExt4>(
-                &mut hasher,
-                &mut seed,
-                &mut draw_buf,
-            );
+            draw_field_els_into(&mut hasher, &mut seed, &mut draw_buf);
             let r_before_last = draw_buf[0];
             let r_last = draw_buf[1];
             let next_batching = draw_buf[2];
@@ -8930,7 +8889,7 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>(
             let initial_claim =
                 dim_reducing_14_compute_claim(&state.prev_claims, state.batching_challenge);
             let (final_claim, final_eq_prefactor) =
-                verify_sumcheck_rounds::<BabyBearField, BabyBearExt4, I, 12usize, GKR_COMMIT_BUF>(
+                verify_sumcheck_rounds::<I, 12usize, GKR_COMMIT_BUF>(
                     &mut seed,
                     initial_claim,
                     &mut state.prev_point,
@@ -8943,7 +8902,7 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>(
                 let evals: &[[BabyBearExt4; 4]] =
                     eval_buf.transmute_subslice(BLAKE2S_DIGEST_SIZE_U32_WORDS, 8usize);
                 let f = dim_reducing_14_final_step_accumulator(evals, state.batching_challenge);
-                verify_final_step_check::<BabyBearField, BabyBearExt4>(
+                verify_final_step_check(
                     f,
                     *state.prev_point.get_unchecked(state.prev_point_len - 1),
                     final_eq_prefactor,
@@ -8953,11 +8912,7 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>(
             }
             commit_eval_buffer(&mut eval_buf, &mut hasher, &mut seed, data_words);
             let mut draw_buf = [BabyBearExt4::ZERO; 3];
-            draw_field_els_into::<BabyBearField, BabyBearExt4>(
-                &mut hasher,
-                &mut seed,
-                &mut draw_buf,
-            );
+            draw_field_els_into(&mut hasher, &mut seed, &mut draw_buf);
             let r_before_last = draw_buf[0];
             let r_last = draw_buf[1];
             let next_batching = draw_buf[2];
@@ -8985,7 +8940,7 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>(
             let initial_claim =
                 dim_reducing_13_compute_claim(&state.prev_claims, state.batching_challenge);
             let (final_claim, final_eq_prefactor) =
-                verify_sumcheck_rounds::<BabyBearField, BabyBearExt4, I, 13usize, GKR_COMMIT_BUF>(
+                verify_sumcheck_rounds::<I, 13usize, GKR_COMMIT_BUF>(
                     &mut seed,
                     initial_claim,
                     &mut state.prev_point,
@@ -8998,7 +8953,7 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>(
                 let evals: &[[BabyBearExt4; 4]] =
                     eval_buf.transmute_subslice(BLAKE2S_DIGEST_SIZE_U32_WORDS, 8usize);
                 let f = dim_reducing_13_final_step_accumulator(evals, state.batching_challenge);
-                verify_final_step_check::<BabyBearField, BabyBearExt4>(
+                verify_final_step_check(
                     f,
                     *state.prev_point.get_unchecked(state.prev_point_len - 1),
                     final_eq_prefactor,
@@ -9008,11 +8963,7 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>(
             }
             commit_eval_buffer(&mut eval_buf, &mut hasher, &mut seed, data_words);
             let mut draw_buf = [BabyBearExt4::ZERO; 3];
-            draw_field_els_into::<BabyBearField, BabyBearExt4>(
-                &mut hasher,
-                &mut seed,
-                &mut draw_buf,
-            );
+            draw_field_els_into(&mut hasher, &mut seed, &mut draw_buf);
             let r_before_last = draw_buf[0];
             let r_last = draw_buf[1];
             let next_batching = draw_buf[2];
@@ -9040,7 +8991,7 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>(
             let initial_claim =
                 dim_reducing_12_compute_claim(&state.prev_claims, state.batching_challenge);
             let (final_claim, final_eq_prefactor) =
-                verify_sumcheck_rounds::<BabyBearField, BabyBearExt4, I, 14usize, GKR_COMMIT_BUF>(
+                verify_sumcheck_rounds::<I, 14usize, GKR_COMMIT_BUF>(
                     &mut seed,
                     initial_claim,
                     &mut state.prev_point,
@@ -9053,7 +9004,7 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>(
                 let evals: &[[BabyBearExt4; 4]] =
                     eval_buf.transmute_subslice(BLAKE2S_DIGEST_SIZE_U32_WORDS, 8usize);
                 let f = dim_reducing_12_final_step_accumulator(evals, state.batching_challenge);
-                verify_final_step_check::<BabyBearField, BabyBearExt4>(
+                verify_final_step_check(
                     f,
                     *state.prev_point.get_unchecked(state.prev_point_len - 1),
                     final_eq_prefactor,
@@ -9063,11 +9014,7 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>(
             }
             commit_eval_buffer(&mut eval_buf, &mut hasher, &mut seed, data_words);
             let mut draw_buf = [BabyBearExt4::ZERO; 3];
-            draw_field_els_into::<BabyBearField, BabyBearExt4>(
-                &mut hasher,
-                &mut seed,
-                &mut draw_buf,
-            );
+            draw_field_els_into(&mut hasher, &mut seed, &mut draw_buf);
             let r_before_last = draw_buf[0];
             let r_last = draw_buf[1];
             let next_batching = draw_buf[2];
@@ -9095,7 +9042,7 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>(
             let initial_claim =
                 dim_reducing_11_compute_claim(&state.prev_claims, state.batching_challenge);
             let (final_claim, final_eq_prefactor) =
-                verify_sumcheck_rounds::<BabyBearField, BabyBearExt4, I, 15usize, GKR_COMMIT_BUF>(
+                verify_sumcheck_rounds::<I, 15usize, GKR_COMMIT_BUF>(
                     &mut seed,
                     initial_claim,
                     &mut state.prev_point,
@@ -9108,7 +9055,7 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>(
                 let evals: &[[BabyBearExt4; 4]] =
                     eval_buf.transmute_subslice(BLAKE2S_DIGEST_SIZE_U32_WORDS, 8usize);
                 let f = dim_reducing_11_final_step_accumulator(evals, state.batching_challenge);
-                verify_final_step_check::<BabyBearField, BabyBearExt4>(
+                verify_final_step_check(
                     f,
                     *state.prev_point.get_unchecked(state.prev_point_len - 1),
                     final_eq_prefactor,
@@ -9118,11 +9065,7 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>(
             }
             commit_eval_buffer(&mut eval_buf, &mut hasher, &mut seed, data_words);
             let mut draw_buf = [BabyBearExt4::ZERO; 3];
-            draw_field_els_into::<BabyBearField, BabyBearExt4>(
-                &mut hasher,
-                &mut seed,
-                &mut draw_buf,
-            );
+            draw_field_els_into(&mut hasher, &mut seed, &mut draw_buf);
             let r_before_last = draw_buf[0];
             let r_last = draw_buf[1];
             let next_batching = draw_buf[2];
@@ -9150,7 +9093,7 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>(
             let initial_claim =
                 dim_reducing_10_compute_claim(&state.prev_claims, state.batching_challenge);
             let (final_claim, final_eq_prefactor) =
-                verify_sumcheck_rounds::<BabyBearField, BabyBearExt4, I, 16usize, GKR_COMMIT_BUF>(
+                verify_sumcheck_rounds::<I, 16usize, GKR_COMMIT_BUF>(
                     &mut seed,
                     initial_claim,
                     &mut state.prev_point,
@@ -9163,7 +9106,7 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>(
                 let evals: &[[BabyBearExt4; 4]] =
                     eval_buf.transmute_subslice(BLAKE2S_DIGEST_SIZE_U32_WORDS, 8usize);
                 let f = dim_reducing_10_final_step_accumulator(evals, state.batching_challenge);
-                verify_final_step_check::<BabyBearField, BabyBearExt4>(
+                verify_final_step_check(
                     f,
                     *state.prev_point.get_unchecked(state.prev_point_len - 1),
                     final_eq_prefactor,
@@ -9173,11 +9116,7 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>(
             }
             commit_eval_buffer(&mut eval_buf, &mut hasher, &mut seed, data_words);
             let mut draw_buf = [BabyBearExt4::ZERO; 3];
-            draw_field_els_into::<BabyBearField, BabyBearExt4>(
-                &mut hasher,
-                &mut seed,
-                &mut draw_buf,
-            );
+            draw_field_els_into(&mut hasher, &mut seed, &mut draw_buf);
             let r_before_last = draw_buf[0];
             let r_last = draw_buf[1];
             let next_batching = draw_buf[2];
@@ -9205,7 +9144,7 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>(
             let initial_claim =
                 dim_reducing_9_compute_claim(&state.prev_claims, state.batching_challenge);
             let (final_claim, final_eq_prefactor) =
-                verify_sumcheck_rounds::<BabyBearField, BabyBearExt4, I, 17usize, GKR_COMMIT_BUF>(
+                verify_sumcheck_rounds::<I, 17usize, GKR_COMMIT_BUF>(
                     &mut seed,
                     initial_claim,
                     &mut state.prev_point,
@@ -9218,7 +9157,7 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>(
                 let evals: &[[BabyBearExt4; 4]] =
                     eval_buf.transmute_subslice(BLAKE2S_DIGEST_SIZE_U32_WORDS, 8usize);
                 let f = dim_reducing_9_final_step_accumulator(evals, state.batching_challenge);
-                verify_final_step_check::<BabyBearField, BabyBearExt4>(
+                verify_final_step_check(
                     f,
                     *state.prev_point.get_unchecked(state.prev_point_len - 1),
                     final_eq_prefactor,
@@ -9228,11 +9167,7 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>(
             }
             commit_eval_buffer(&mut eval_buf, &mut hasher, &mut seed, data_words);
             let mut draw_buf = [BabyBearExt4::ZERO; 3];
-            draw_field_els_into::<BabyBearField, BabyBearExt4>(
-                &mut hasher,
-                &mut seed,
-                &mut draw_buf,
-            );
+            draw_field_els_into(&mut hasher, &mut seed, &mut draw_buf);
             let r_before_last = draw_buf[0];
             let r_last = draw_buf[1];
             let next_batching = draw_buf[2];
@@ -9260,7 +9195,7 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>(
             let initial_claim =
                 dim_reducing_8_compute_claim(&state.prev_claims, state.batching_challenge);
             let (final_claim, final_eq_prefactor) =
-                verify_sumcheck_rounds::<BabyBearField, BabyBearExt4, I, 18usize, GKR_COMMIT_BUF>(
+                verify_sumcheck_rounds::<I, 18usize, GKR_COMMIT_BUF>(
                     &mut seed,
                     initial_claim,
                     &mut state.prev_point,
@@ -9273,7 +9208,7 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>(
                 let evals: &[[BabyBearExt4; 4]] =
                     eval_buf.transmute_subslice(BLAKE2S_DIGEST_SIZE_U32_WORDS, 8usize);
                 let f = dim_reducing_8_final_step_accumulator(evals, state.batching_challenge);
-                verify_final_step_check::<BabyBearField, BabyBearExt4>(
+                verify_final_step_check(
                     f,
                     *state.prev_point.get_unchecked(state.prev_point_len - 1),
                     final_eq_prefactor,
@@ -9283,11 +9218,7 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>(
             }
             commit_eval_buffer(&mut eval_buf, &mut hasher, &mut seed, data_words);
             let mut draw_buf = [BabyBearExt4::ZERO; 3];
-            draw_field_els_into::<BabyBearField, BabyBearExt4>(
-                &mut hasher,
-                &mut seed,
-                &mut draw_buf,
-            );
+            draw_field_els_into(&mut hasher, &mut seed, &mut draw_buf);
             let r_before_last = draw_buf[0];
             let r_last = draw_buf[1];
             let next_batching = draw_buf[2];
@@ -9315,7 +9246,7 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>(
             let initial_claim =
                 dim_reducing_7_compute_claim(&state.prev_claims, state.batching_challenge);
             let (final_claim, final_eq_prefactor) =
-                verify_sumcheck_rounds::<BabyBearField, BabyBearExt4, I, 19usize, GKR_COMMIT_BUF>(
+                verify_sumcheck_rounds::<I, 19usize, GKR_COMMIT_BUF>(
                     &mut seed,
                     initial_claim,
                     &mut state.prev_point,
@@ -9328,7 +9259,7 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>(
                 let evals: &[[BabyBearExt4; 4]] =
                     eval_buf.transmute_subslice(BLAKE2S_DIGEST_SIZE_U32_WORDS, 8usize);
                 let f = dim_reducing_7_final_step_accumulator(evals, state.batching_challenge);
-                verify_final_step_check::<BabyBearField, BabyBearExt4>(
+                verify_final_step_check(
                     f,
                     *state.prev_point.get_unchecked(state.prev_point_len - 1),
                     final_eq_prefactor,
@@ -9338,11 +9269,7 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>(
             }
             commit_eval_buffer(&mut eval_buf, &mut hasher, &mut seed, data_words);
             let mut draw_buf = [BabyBearExt4::ZERO; 3];
-            draw_field_els_into::<BabyBearField, BabyBearExt4>(
-                &mut hasher,
-                &mut seed,
-                &mut draw_buf,
-            );
+            draw_field_els_into(&mut hasher, &mut seed, &mut draw_buf);
             let r_before_last = draw_buf[0];
             let r_last = draw_buf[1];
             let next_batching = draw_buf[2];
@@ -9370,7 +9297,7 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>(
             let initial_claim =
                 dim_reducing_6_compute_claim(&state.prev_claims, state.batching_challenge);
             let (final_claim, final_eq_prefactor) =
-                verify_sumcheck_rounds::<BabyBearField, BabyBearExt4, I, 20usize, GKR_COMMIT_BUF>(
+                verify_sumcheck_rounds::<I, 20usize, GKR_COMMIT_BUF>(
                     &mut seed,
                     initial_claim,
                     &mut state.prev_point,
@@ -9383,7 +9310,7 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>(
                 let evals: &[[BabyBearExt4; 4]] =
                     eval_buf.transmute_subslice(BLAKE2S_DIGEST_SIZE_U32_WORDS, 8usize);
                 let f = dim_reducing_6_final_step_accumulator(evals, state.batching_challenge);
-                verify_final_step_check::<BabyBearField, BabyBearExt4>(
+                verify_final_step_check(
                     f,
                     *state.prev_point.get_unchecked(state.prev_point_len - 1),
                     final_eq_prefactor,
@@ -9393,11 +9320,7 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>(
             }
             commit_eval_buffer(&mut eval_buf, &mut hasher, &mut seed, data_words);
             let mut draw_buf = [BabyBearExt4::ZERO; 3];
-            draw_field_els_into::<BabyBearField, BabyBearExt4>(
-                &mut hasher,
-                &mut seed,
-                &mut draw_buf,
-            );
+            draw_field_els_into(&mut hasher, &mut seed, &mut draw_buf);
             let r_before_last = draw_buf[0];
             let r_last = draw_buf[1];
             let next_batching = draw_buf[2];
@@ -9425,7 +9348,7 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>(
             let initial_claim =
                 dim_reducing_5_compute_claim(&state.prev_claims, state.batching_challenge);
             let (final_claim, final_eq_prefactor) =
-                verify_sumcheck_rounds::<BabyBearField, BabyBearExt4, I, 21usize, GKR_COMMIT_BUF>(
+                verify_sumcheck_rounds::<I, 21usize, GKR_COMMIT_BUF>(
                     &mut seed,
                     initial_claim,
                     &mut state.prev_point,
@@ -9438,7 +9361,7 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>(
                 let evals: &[[BabyBearExt4; 4]] =
                     eval_buf.transmute_subslice(BLAKE2S_DIGEST_SIZE_U32_WORDS, 8usize);
                 let f = dim_reducing_5_final_step_accumulator(evals, state.batching_challenge);
-                verify_final_step_check::<BabyBearField, BabyBearExt4>(
+                verify_final_step_check(
                     f,
                     *state.prev_point.get_unchecked(state.prev_point_len - 1),
                     final_eq_prefactor,
@@ -9448,11 +9371,7 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>(
             }
             commit_eval_buffer(&mut eval_buf, &mut hasher, &mut seed, data_words);
             let mut draw_buf = [BabyBearExt4::ZERO; 3];
-            draw_field_els_into::<BabyBearField, BabyBearExt4>(
-                &mut hasher,
-                &mut seed,
-                &mut draw_buf,
-            );
+            draw_field_els_into(&mut hasher, &mut seed, &mut draw_buf);
             let r_before_last = draw_buf[0];
             let r_last = draw_buf[1];
             let next_batching = draw_buf[2];
@@ -9480,7 +9399,7 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>(
             let initial_claim =
                 dim_reducing_4_compute_claim(&state.prev_claims, state.batching_challenge);
             let (final_claim, final_eq_prefactor) =
-                verify_sumcheck_rounds::<BabyBearField, BabyBearExt4, I, 22usize, GKR_COMMIT_BUF>(
+                verify_sumcheck_rounds::<I, 22usize, GKR_COMMIT_BUF>(
                     &mut seed,
                     initial_claim,
                     &mut state.prev_point,
@@ -9493,7 +9412,7 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>(
                 let evals: &[[BabyBearExt4; 4]] =
                     eval_buf.transmute_subslice(BLAKE2S_DIGEST_SIZE_U32_WORDS, 8usize);
                 let f = dim_reducing_4_final_step_accumulator(evals, state.batching_challenge);
-                verify_final_step_check::<BabyBearField, BabyBearExt4>(
+                verify_final_step_check(
                     f,
                     *state.prev_point.get_unchecked(state.prev_point_len - 1),
                     final_eq_prefactor,
@@ -9503,11 +9422,7 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>(
             }
             commit_eval_buffer(&mut eval_buf, &mut hasher, &mut seed, data_words);
             let mut draw_buf = [BabyBearExt4::ZERO; 3];
-            draw_field_els_into::<BabyBearField, BabyBearExt4>(
-                &mut hasher,
-                &mut seed,
-                &mut draw_buf,
-            );
+            draw_field_els_into(&mut hasher, &mut seed, &mut draw_buf);
             let r_before_last = draw_buf[0];
             let r_last = draw_buf[1];
             let next_batching = draw_buf[2];
@@ -9543,7 +9458,7 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>(
         {
             let initial_claim = layer_3_compute_claim(&state.prev_claims, state.batching_challenge);
             let (final_claim, final_eq_prefactor) =
-                verify_sumcheck_rounds::<BabyBearField, BabyBearExt4, I, 23usize, GKR_COMMIT_BUF>(
+                verify_sumcheck_rounds::<I, 23usize, GKR_COMMIT_BUF>(
                     &mut seed,
                     initial_claim,
                     &mut state.prev_point,
@@ -9561,7 +9476,7 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>(
                     lookup_additive_challenge,
                     &challenge_powers,
                 );
-                verify_final_step_check::<BabyBearField, BabyBearExt4>(
+                verify_final_step_check(
                     f,
                     *state.prev_point.get_unchecked(state.prev_point_len - 1),
                     final_eq_prefactor,
@@ -9571,16 +9486,12 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>(
             }
             commit_eval_buffer(&mut eval_buf, &mut hasher, &mut seed, data_words);
             let mut draw_buf = [BabyBearExt4::ZERO; 2];
-            draw_field_els_into::<BabyBearField, BabyBearExt4>(
-                &mut hasher,
-                &mut seed,
-                &mut draw_buf,
-            );
+            draw_field_els_into(&mut hasher, &mut seed, &mut draw_buf);
             let last_r = draw_buf[0];
             let next_batching = draw_buf[1];
             *state.prev_point.get_unchecked_mut(fc_len) = last_r;
             fc_len += 1;
-            fold_standard_claims::<BabyBearField, BabyBearExt4, 12usize, GKR_ADDRS, GKR_EVAL_BUF>(
+            fold_standard_claims::<12usize, GKR_ADDRS, GKR_EVAL_BUF>(
                 &eval_buf,
                 last_r,
                 &mut state.prev_claims,
@@ -9591,7 +9502,7 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>(
         {
             let initial_claim = layer_2_compute_claim(&state.prev_claims, state.batching_challenge);
             let (final_claim, final_eq_prefactor) =
-                verify_sumcheck_rounds::<BabyBearField, BabyBearExt4, I, 23usize, GKR_COMMIT_BUF>(
+                verify_sumcheck_rounds::<I, 23usize, GKR_COMMIT_BUF>(
                     &mut seed,
                     initial_claim,
                     &mut state.prev_point,
@@ -9609,7 +9520,7 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>(
                     lookup_additive_challenge,
                     &challenge_powers,
                 );
-                verify_final_step_check::<BabyBearField, BabyBearExt4>(
+                verify_final_step_check(
                     f,
                     *state.prev_point.get_unchecked(state.prev_point_len - 1),
                     final_eq_prefactor,
@@ -9619,16 +9530,12 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>(
             }
             commit_eval_buffer(&mut eval_buf, &mut hasher, &mut seed, data_words);
             let mut draw_buf = [BabyBearExt4::ZERO; 2];
-            draw_field_els_into::<BabyBearField, BabyBearExt4>(
-                &mut hasher,
-                &mut seed,
-                &mut draw_buf,
-            );
+            draw_field_els_into(&mut hasher, &mut seed, &mut draw_buf);
             let last_r = draw_buf[0];
             let next_batching = draw_buf[1];
             *state.prev_point.get_unchecked_mut(fc_len) = last_r;
             fc_len += 1;
-            fold_standard_claims::<BabyBearField, BabyBearExt4, 17usize, GKR_ADDRS, GKR_EVAL_BUF>(
+            fold_standard_claims::<17usize, GKR_ADDRS, GKR_EVAL_BUF>(
                 &eval_buf,
                 last_r,
                 &mut state.prev_claims,
@@ -9639,7 +9546,7 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>(
         {
             let initial_claim = layer_1_compute_claim(&state.prev_claims, state.batching_challenge);
             let (final_claim, final_eq_prefactor) =
-                verify_sumcheck_rounds::<BabyBearField, BabyBearExt4, I, 23usize, GKR_COMMIT_BUF>(
+                verify_sumcheck_rounds::<I, 23usize, GKR_COMMIT_BUF>(
                     &mut seed,
                     initial_claim,
                     &mut state.prev_point,
@@ -9657,7 +9564,7 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>(
                     lookup_additive_challenge,
                     &challenge_powers,
                 );
-                verify_final_step_check::<BabyBearField, BabyBearExt4>(
+                verify_final_step_check(
                     f,
                     *state.prev_point.get_unchecked(state.prev_point_len - 1),
                     final_eq_prefactor,
@@ -9667,18 +9574,14 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>(
             }
             commit_eval_buffer(&mut eval_buf, &mut hasher, &mut seed, data_words);
             let mut draw_buf = [BabyBearExt4::ZERO; 2];
-            draw_field_els_into::<BabyBearField, BabyBearExt4>(
-                &mut hasher,
-                &mut seed,
-                &mut draw_buf,
-            );
+            draw_field_els_into(&mut hasher, &mut seed, &mut draw_buf);
             let last_r = draw_buf[0];
             let next_batching = draw_buf[1];
             *state.prev_point.get_unchecked_mut(fc_len) = last_r;
             fc_len += 1;
             let mut extra_evals = [BabyBearExt4::ZERO; 40usize];
-            read_field_els::<BabyBearField, BabyBearExt4, I>(&mut extra_evals);
-            commit_field_els::<BabyBearField, BabyBearExt4>(&mut seed, &extra_evals);
+            read_field_els::<I>(&mut extra_evals);
+            commit_field_els(&mut seed, &extra_evals);
             let final_step_evals: &[[BabyBearExt4; 2]] =
                 eval_buf.transmute_subslice(BLAKE2S_DIGEST_SIZE_U32_WORDS, 24usize);
             state.prev_claims.clear();
@@ -9944,7 +9847,7 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>(
         {
             let initial_claim = layer_0_compute_claim(&state.prev_claims, state.batching_challenge);
             let (final_claim, final_eq_prefactor) =
-                verify_sumcheck_rounds::<BabyBearField, BabyBearExt4, I, 23usize, GKR_COMMIT_BUF>(
+                verify_sumcheck_rounds::<I, 23usize, GKR_COMMIT_BUF>(
                     &mut seed,
                     initial_claim,
                     &mut state.prev_point,
@@ -9962,7 +9865,7 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>(
                     lookup_additive_challenge,
                     &challenge_powers,
                 );
-                verify_final_step_check::<BabyBearField, BabyBearExt4>(
+                verify_final_step_check(
                     f,
                     *state.prev_point.get_unchecked(state.prev_point_len - 1),
                     final_eq_prefactor,
@@ -9972,18 +9875,14 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>(
             }
             commit_eval_buffer(&mut eval_buf, &mut hasher, &mut seed, data_words);
             let mut draw_buf = [BabyBearExt4::ZERO; 2];
-            draw_field_els_into::<BabyBearField, BabyBearExt4>(
-                &mut hasher,
-                &mut seed,
-                &mut draw_buf,
-            );
+            draw_field_els_into(&mut hasher, &mut seed, &mut draw_buf);
             let last_r = draw_buf[0];
             let next_batching = draw_buf[1];
             *state.prev_point.get_unchecked_mut(fc_len) = last_r;
             fc_len += 1;
             let mut extra_evals = [BabyBearExt4::ZERO; 21usize];
-            read_field_els::<BabyBearField, BabyBearExt4, I>(&mut extra_evals);
-            commit_field_els::<BabyBearField, BabyBearExt4>(&mut seed, &extra_evals);
+            read_field_els::<I>(&mut extra_evals);
+            commit_field_els(&mut seed, &extra_evals);
             let final_step_evals: &[[BabyBearExt4; 2]] =
                 eval_buf.transmute_subslice(BLAKE2S_DIGEST_SIZE_U32_WORDS, 65usize);
             state.prev_claims.clear();
@@ -10596,11 +10495,10 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>(
             state.batching_challenge = next_batching;
             state.prev_point_len = fc_len;
         }
-        let grand_product_accumulator: BabyBearExt4 =
-            read_field_el::<BabyBearField, BabyBearExt4, I>();
-        commit_field_els::<BabyBearField, BabyBearExt4>(&mut seed, &[grand_product_accumulator]);
+        let grand_product_accumulator: BabyBearExt4 = read_field_el::<I>();
+        commit_field_els(&mut seed, &[grand_product_accumulator]);
         let mut draw_buf = [BabyBearExt4::ZERO; 1];
-        draw_field_els_into::<BabyBearField, BabyBearExt4>(&mut hasher, &mut seed, &mut draw_buf);
+        draw_field_els_into(&mut hasher, &mut seed, &mut draw_buf);
         let whir_batching_challenge = draw_buf[0];
         Ok(GKRVerifierOutput {
             base_layer_claims: state.prev_claims,

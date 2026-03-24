@@ -16,12 +16,12 @@ pub fn generate_dim_reducing_compute_claim<MW: MersenneWrapper>(
     let quartic_one = MW::quartic_one();
 
     let mut body = quote! {
-        let mut combined = #quartic_zero;
         let mut current_batch = #quartic_one;
     };
 
     let mul_batch = MW::mul_assign(quote! { current_batch }, quote! { batch_base });
     let mut out_idx = 0usize;
+    let mut first_contributing = true;
 
     for group in output_groups {
         match group.output_type {
@@ -30,20 +30,41 @@ pub fn generate_dim_reducing_compute_claim<MW: MersenneWrapper>(
                     let idx = out_idx;
                     out_idx += 1;
                     let mul_t = MW::mul_assign(quote! { t }, quote! { claim });
-                    let add_combined = MW::add_assign(quote! { combined }, quote! { t });
-                    body.extend(quote! {
-                        {
-                            let bc = current_batch;
-                            #mul_batch;
-                            let claim = output_claims.get(#idx);
-                            let mut t = bc;
-                            #mul_t;
-                            #add_combined;
-                        }
-                    });
+                    if first_contributing {
+                        first_contributing = false;
+                        body.extend(quote! {
+                            let combined = {
+                                let bc = current_batch;
+                                #mul_batch;
+                                let claim = output_claims.get(#idx);
+                                let mut t = bc;
+                                #mul_t;
+                                t
+                            };
+                            let mut combined = combined;
+                        });
+                    } else {
+                        let add_combined = MW::add_assign(quote! { combined }, quote! { t });
+                        body.extend(quote! {
+                            {
+                                let bc = current_batch;
+                                #mul_batch;
+                                let claim = output_claims.get(#idx);
+                                let mut t = bc;
+                                #mul_t;
+                                #add_combined;
+                            }
+                        });
+                    }
                 }
             }
             OutputType::Lookup16Bits | OutputType::LookupTimestamps | OutputType::GenericLookup => {
+                // Lookup groups always come after PP in BTreeMap order,
+                // so first_contributing is always false here.
+                assert!(
+                    !first_contributing,
+                    "lookup group cannot be first contributing gate"
+                );
                 let idx0 = out_idx;
                 let idx1 = out_idx + 1;
                 out_idx += 2;
@@ -137,10 +158,6 @@ pub fn generate_dim_reducing_final_step_accumulator<MW: MersenneWrapper>(
                 let si0 = input_sorted_indices[iter_idx];
                 let si1 = input_sorted_indices[iter_idx + 1];
                 iter_idx += 2;
-                // j=0: v0[0]*v1[1] + v0[1]*v1[0], v1[0]*v1[1]
-                // j=1: v0[2]*v1[3] + v0[3]*v1[2], v1[2]*v1[3]
-                // Lookup: num = v0[a]*v1[b] + v0[b]*v1[a], den = v1[a]*v1[b]
-                // For j=0: a-indices=0,1; For j=1: a-indices=2,3
                 let mul_assign_fn = MW::mul_assign;
                 let add_assign_fn = MW::add_assign;
 
