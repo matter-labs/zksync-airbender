@@ -748,10 +748,7 @@ impl<B: 'static, E: Field> GpuGKRStorage<B, E> {
     fn round_input_layer(address: GKRAddress) -> usize {
         match address {
             GKRAddress::ScratchSpace(..) => unreachable!(),
-            GKRAddress::Cached { layer, .. } => {
-                assert_eq!(layer, 0);
-                0
-            }
+            GKRAddress::Cached { layer, .. } => layer,
             GKRAddress::InnerLayer { layer, .. } => layer,
             GKRAddress::BaseLayerMemory(..)
             | GKRAddress::BaseLayerWitness(..)
