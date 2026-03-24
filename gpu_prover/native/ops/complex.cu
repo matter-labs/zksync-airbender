@@ -391,6 +391,7 @@ enum gkr_main_kernel_kind : u32 {
 };
 
 static constexpr unsigned GKR_FORWARD_MAX_GATES_PER_LAYER = 64;
+static constexpr unsigned GKR_DIM_REDUCING_FORWARD_MAX_INPUTS = 5;
 
 enum gkr_forward_gate_kind : u32 {
   GKR_FORWARD_NO_OP = 0,
@@ -492,6 +493,46 @@ template <typename E> struct gkr_forward_layer_batch {
   u32 reserved;
   const E *lookup_additive_challenge;
   gkr_forward_gate_descriptor<E> descriptors[GKR_FORWARD_MAX_GATES_PER_LAYER];
+};
+
+enum gkr_dim_reducing_forward_input_kind : u32 {
+  GKR_DIM_REDUCING_FORWARD_NO_OP = 0,
+  GKR_DIM_REDUCING_FORWARD_PAIRWISE_PRODUCT = 1,
+  GKR_DIM_REDUCING_FORWARD_LOOKUP_PAIR = 2,
+};
+
+struct gkr_dim_reducing_forward_no_op_descriptor {
+  size_t reserved;
+};
+
+template <typename E> struct gkr_dim_reducing_forward_pairwise_product_descriptor {
+  const E *input;
+  E *output;
+};
+
+template <typename E> struct gkr_dim_reducing_forward_lookup_pair_descriptor {
+  const E *num;
+  const E *den;
+  E *output_num;
+  E *output_den;
+};
+
+template <typename E> union gkr_dim_reducing_forward_input_payload {
+  gkr_dim_reducing_forward_no_op_descriptor no_op;
+  gkr_dim_reducing_forward_pairwise_product_descriptor<E> pairwise_product;
+  gkr_dim_reducing_forward_lookup_pair_descriptor<E> lookup_pair;
+};
+
+template <typename E> struct gkr_dim_reducing_forward_input_descriptor {
+  u32 kind;
+  u32 reserved;
+  gkr_dim_reducing_forward_input_payload<E> payload;
+};
+
+template <typename E> struct gkr_dim_reducing_forward_batch {
+  u32 input_count;
+  u32 reserved;
+  gkr_dim_reducing_forward_input_descriptor<E> descriptors[GKR_DIM_REDUCING_FORWARD_MAX_INPUTS];
 };
 
 constexpr unsigned GKR_FORWARD_CACHE_MAX_RELATIONS = 20;
@@ -1006,6 +1047,51 @@ template <typename E> DEVICE_FORCEINLINE void gkr_forward_layer(const gkr_forwar
       gkr_eval_lookup_unbalanced(d, a, b, gamma, num, den);
       store<E, st_modifier::cs>(params.num, num, gid);
       store<E, st_modifier::cs>(params.den, den, gid);
+      break;
+    }
+    default:
+      return;
+    }
+  }
+}
+
+template <typename E> DEVICE_FORCEINLINE void gkr_dim_reducing_forward(const gkr_dim_reducing_forward_batch<E> &batch, const unsigned row_count) {
+  const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
+  if (gid >= row_count)
+    return;
+
+  const unsigned even = gid * 2;
+  const unsigned odd = even + 1;
+
+#pragma unroll
+  for (unsigned input_idx = 0; input_idx < GKR_DIM_REDUCING_FORWARD_MAX_INPUTS; ++input_idx) {
+    if (input_idx >= batch.input_count)
+      return;
+
+    const auto descriptor = batch.descriptors[input_idx];
+    switch (descriptor.kind) {
+    case GKR_DIM_REDUCING_FORWARD_NO_OP:
+      break;
+    case GKR_DIM_REDUCING_FORWARD_PAIRWISE_PRODUCT: {
+      const auto params = descriptor.payload.pairwise_product;
+      const E lhs = load<E, ld_modifier::cs>(params.input, even);
+      const E rhs = load<E, ld_modifier::cs>(params.input, odd);
+      E value;
+      gkr_eval_product(lhs, rhs, value);
+      store<E, st_modifier::cs>(params.output, value, gid);
+      break;
+    }
+    case GKR_DIM_REDUCING_FORWARD_LOOKUP_PAIR: {
+      const auto params = descriptor.payload.lookup_pair;
+      const E a = load<E, ld_modifier::cs>(params.num, even);
+      const E b = load<E, ld_modifier::cs>(params.den, even);
+      const E c = load<E, ld_modifier::cs>(params.num, odd);
+      const E d = load<E, ld_modifier::cs>(params.den, odd);
+      E num;
+      E den;
+      gkr_eval_lookup_pair(a, b, c, d, num, den);
+      store<E, st_modifier::cs>(params.output_num, num, gid);
+      store<E, st_modifier::cs>(params.output_den, den, gid);
       break;
     }
     default:
@@ -1883,6 +1969,10 @@ gkr_main_round3(const unsigned kind, const gkr_ext_continuing_source<E> *base_in
 #define GKR_DIM_REDUCING_KERNELS(arg_t)                                                                                                                        \
   EXTERN __global__ void ab_gkr_forward_layer_##arg_t##_kernel(const __grid_constant__ gkr_forward_layer_batch<arg_t> batch, const unsigned count) {           \
     gkr_forward_layer(batch, count);                                                                                                                           \
+  }                                                                                                                                                            \
+  EXTERN __global__ void ab_gkr_dim_reducing_forward_##arg_t##_kernel(const __grid_constant__ gkr_dim_reducing_forward_batch<arg_t> batch,                     \
+                                                                      const unsigned row_count) {                                                              \
+    gkr_dim_reducing_forward(batch, row_count);                                                                                                                \
   }                                                                                                                                                            \
   EXTERN __global__ void ab_gkr_dim_reducing_pairwise_round0_##arg_t##_kernel(const gkr_ext_initial_source<arg_t> *inputs,                                     \
                                                                               const gkr_ext_initial_source<arg_t> *outputs, const arg_t *batch_challenges,     \
