@@ -104,12 +104,10 @@ impl GpuGKRLookupMappings {
 }
 
 pub(crate) struct GpuGKRStage1Keepalive {
-    #[allow(dead_code)] // Keeps queued NVTX host callbacks alive until the stream consumes them.
-    tracing_ranges: Vec<Range>,
+    _tracing_ranges: Vec<Range>,
 }
 
 pub(crate) struct GpuGKRStage1Output {
-    #[allow(dead_code)] // Keeps queued NVTX host callbacks alive until the stream consumes them.
     tracing_ranges: Vec<Range>,
     pub(crate) memory_trace_holder: TraceHolder<BF>,
     pub(crate) witness_trace_holder: TraceHolder<BF>,
@@ -121,7 +119,9 @@ impl GpuGKRStage1Output {
         let Self { tracing_ranges, .. } = self;
         // memory_trace_holder, witness_trace_holder, lookup_mappings drop here —
         // all exec-stream ops that used them have already been scheduled.
-        GpuGKRStage1Keepalive { tracing_ranges }
+        GpuGKRStage1Keepalive {
+            _tracing_ranges: tracing_ranges,
+        }
     }
 
     fn allocate_trace_holder(

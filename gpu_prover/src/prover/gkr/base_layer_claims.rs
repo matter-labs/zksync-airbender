@@ -189,20 +189,9 @@ where
 }
 
 pub(crate) struct GpuGKRBaseLayerClaimsScheduledExecution<E> {
-    #[allow(dead_code)]
-    tracing_ranges: Vec<Range>,
-    #[allow(dead_code)]
-    claim_point_host: HostAllocation<[E]>,
-    #[allow(dead_code)]
-    start_callbacks: Callbacks<'static>,
-    #[allow(dead_code)]
-    mem_polys_claims: Vec<HostAllocation<[E]>>,
-    #[allow(dead_code)]
-    wit_polys_claims: Vec<HostAllocation<[E]>>,
-    #[allow(dead_code)]
-    setup_polys_claims: Vec<HostAllocation<[E]>>,
-    #[allow(dead_code)]
-    finish_callbacks: Callbacks<'static>,
+    _tracing_ranges: Vec<Range>,
+    _start_callbacks: Callbacks<'static>,
+    _finish_callbacks: Callbacks<'static>,
     shared_state: Arc<Mutex<ScheduledBaseLayerClaimsState<E>>>,
 }
 
@@ -538,13 +527,9 @@ where
     tracing_ranges.push(schedule_range);
 
     Ok(GpuGKRBaseLayerClaimsScheduledExecution {
-        tracing_ranges,
-        claim_point_host,
-        start_callbacks,
-        mem_polys_claims,
-        wit_polys_claims,
-        setup_polys_claims,
-        finish_callbacks,
+        _tracing_ranges: tracing_ranges,
+        _start_callbacks: start_callbacks,
+        _finish_callbacks: finish_callbacks,
         shared_state,
     })
 }
