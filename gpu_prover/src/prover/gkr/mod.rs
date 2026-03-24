@@ -444,9 +444,8 @@ pub(crate) struct GpuSumcheckRound0DeviceLaunchDescriptors<B, E> {
 }
 
 pub(crate) struct GpuSumcheckRound0ScheduledLaunchDescriptors<B, E> {
-    #[allow(dead_code)] // Keeps callback closures alive until the stream executes them.
     pub(crate) callbacks: Callbacks<'static>,
-    #[allow(dead_code)] // Keeps pinned host descriptors alive until queued uploads complete.
+    #[cfg(test)]
     pub(crate) host: GpuSumcheckRound0HostLaunchDescriptors<B, E>,
     pub(crate) device: GpuSumcheckRound0DeviceLaunchDescriptors<B, E>,
 }
@@ -1071,6 +1070,7 @@ impl<B: 'static, E: Field> GpuGKRStorage<B, E> {
 
         Ok(GpuSumcheckRound0ScheduledLaunchDescriptors {
             callbacks,
+            #[cfg(test)]
             host,
             device,
         })
