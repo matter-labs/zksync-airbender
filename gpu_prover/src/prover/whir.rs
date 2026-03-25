@@ -6,16 +6,15 @@ use prover::merkle_trees::MerkleTreeCapVarLength;
 use prover::utils::{extension_field_from_base_coeffs, extension_field_into_base_coeffs};
 
 use crate::allocator::tracker::AllocationPlacement;
+use crate::ops::bit_reverse::bit_reverse_in_place;
 use crate::ops::blake2s::Digest;
-use crate::ops::complex::{
-    bit_reverse_in_place, pack_rows_for_whir_leaves, serialize_whir_e4_columns,
-};
 use crate::primitives::callbacks::Callbacks;
 use crate::primitives::context::{HostAllocation, ProverContext, UnsafeAccessor};
 use crate::primitives::device_structures::{DeviceMatrix, DeviceMatrixChunkMut, DeviceMatrixMut};
 use crate::primitives::field::{BF, E4};
 use crate::primitives::static_host::alloc_static_pinned_box_from_slice;
 use crate::prover::trace_holder::{TraceHolder, TreesCacheMode, PARTIAL_TREE_REDUCTION_LAYERS};
+use crate::prover::whir_kernels::{pack_rows_for_whir_leaves, serialize_whir_e4_columns};
 
 const EXT4_DEGREE: usize = <E4 as FieldExtension<BF>>::DEGREE;
 #[derive(Clone, Debug, PartialEq, Eq)]
