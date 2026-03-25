@@ -5340,25 +5340,9 @@ where
             )))
         };
         let mut reduction_states = Vec::with_capacity(last_step);
-        let mut round3_plus_range = None;
 
         for step in 0..last_step {
             let acc_size = 1usize << (self.folding_steps - step - 1);
-            let mut round_range = match step {
-                0 => Some(Range::new(format!("{layer_name}.round0"))?),
-                1 => Some(Range::new(format!("{layer_name}.round1"))?),
-                2 => Some(Range::new(format!("{layer_name}.round2"))?),
-                _ => None,
-            };
-            if let Some(range) = round_range.as_ref() {
-                range.start(stream)?;
-            }
-            if step == 3 {
-                let range = Range::new(format!("{layer_name}.round3_plus"))?;
-                range.start(stream)?;
-                round3_plus_range = Some(range);
-            }
-
             if step == 0 {
                 self.launch_round0_kernels(acc_size, static_spill_upload.as_ref(), context)?;
             } else {
@@ -5452,25 +5436,6 @@ where
                 callbacks,
                 _phantom: std::marker::PhantomData,
             });
-
-            if let Some(range) = round_range.take() {
-                range.end(stream)?;
-                tracing_ranges.push(range);
-            }
-        }
-
-        let mut final_round_range = match last_step {
-            1 => Some(Range::new(format!("{layer_name}.round1"))?),
-            2 => Some(Range::new(format!("{layer_name}.round2"))?),
-            _ => None,
-        };
-        if let Some(range) = final_round_range.as_ref() {
-            range.start(stream)?;
-        }
-        if last_step >= 3 && round3_plus_range.is_none() {
-            let range = Range::new(format!("{layer_name}.round3_plus"))?;
-            range.start(stream)?;
-            round3_plus_range = Some(range);
         }
 
         match last_step {
@@ -5497,17 +5462,6 @@ where
                 context,
             )?,
         }
-        if let Some(range) = final_round_range.take() {
-            range.end(stream)?;
-            tracing_ranges.push(range);
-        }
-        if let Some(range) = round3_plus_range.take() {
-            range.end(stream)?;
-            tracing_ranges.push(range);
-        }
-
-        let finalize_range = Range::new(format!("{layer_name}.finalize"))?;
-        finalize_range.start(stream)?;
         let final_evaluations = self.schedule_last_evaluations_readback(last_step, context)?;
         let final_evaluation_accessors: Vec<_> = final_evaluations
             .iter()
@@ -5586,8 +5540,6 @@ where
             },
             stream,
         )?;
-        finalize_range.end(stream)?;
-        tracing_ranges.push(finalize_range);
         layer_range.end(stream)?;
         tracing_ranges.push(layer_range);
 
@@ -6248,25 +6200,9 @@ where
         ));
         let mut next_round_challenge_offset = 0usize;
         let mut reduction_states = Vec::with_capacity(last_step);
-        let mut round3_plus_range = None;
 
         for step in 0..last_step {
             let acc_size = 1usize << (self.folding_steps - step - 1);
-            let mut round_range = match step {
-                0 => Some(Range::new(format!("{layer_name}.round0"))?),
-                1 => Some(Range::new(format!("{layer_name}.round1"))?),
-                2 => Some(Range::new(format!("{layer_name}.round2"))?),
-                _ => None,
-            };
-            if let Some(range) = round_range.as_ref() {
-                range.start(stream)?;
-            }
-            if step == 3 {
-                let range = Range::new(format!("{layer_name}.round3_plus"))?;
-                range.start(stream)?;
-                round3_plus_range = Some(range);
-            }
-
             if step == 0 {
                 self.launch_round0_kernels(acc_size, static_spill_upload.as_ref(), context)?;
             } else {
@@ -6370,17 +6306,6 @@ where
                 callbacks,
                 _phantom: std::marker::PhantomData,
             });
-
-            if let Some(range) = round_range.take() {
-                range.end(stream)?;
-                tracing_ranges.push(range);
-            }
-        }
-
-        if round3_plus_range.is_none() {
-            let range = Range::new(format!("{layer_name}.round3_plus"))?;
-            range.start(stream)?;
-            round3_plus_range = Some(range);
         }
         self.launch_round3_kernels(
             last_step,
@@ -6390,13 +6315,6 @@ where
             static_spill_upload.as_ref(),
             context,
         )?;
-        if let Some(range) = round3_plus_range.take() {
-            range.end(stream)?;
-            tracing_ranges.push(range);
-        }
-
-        let finalize_range = Range::new(format!("{layer_name}.finalize"))?;
-        finalize_range.start(stream)?;
         let final_evaluations = self.schedule_last_evaluations_readback(last_step, context)?;
         let final_evaluation_accessors: Vec<_> = final_evaluations
             .iter()
@@ -6466,8 +6384,6 @@ where
             },
             stream,
         )?;
-        finalize_range.end(stream)?;
-        tracing_ranges.push(finalize_range);
         layer_range.end(stream)?;
         tracing_ranges.push(layer_range);
 
