@@ -1,337 +1,13 @@
-#include "complex.cuh"
-// #include "context.cuh"
+#pragma once
+
+#include "../../common.cuh"
+#include "../../primitives/field.cuh"
+#include "../../primitives/memory.cuh"
 
 using namespace ::airbender::primitives::field;
 using namespace ::airbender::primitives::memory;
 
-namespace airbender::ops::complex {
-
-struct __align__(32) dg { bf values[8]; };
-
-template <typename F>
-DEVICE_FORCEINLINE void get_powers(const F &base, const unsigned offset, const bool bit_reverse, vector_setter<F, st_modifier::cs> result,
-                                   const unsigned count) {
-  const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
-  if (gid >= count)
-    return;
-  const unsigned power = (bit_reverse ? __brev(gid) : gid) + offset;
-  const F value = F::pow(base, power);
-  result.set(gid, value);
-}
-
-#define GET_POWERS_BY_VAL_KERNEL(arg_t)                                                                                                                        \
-  EXTERN __global__ void ab_get_powers_by_val_##arg_t##_kernel(const arg_t base, const unsigned offset, const bool bit_reverse,                                \
-                                                               vector_setter<arg_t, st_modifier::cs> result, const unsigned count) {                           \
-    get_powers(base, offset, bit_reverse, result, count);                                                                                                      \
-  }
-#define GET_POWERS_BY_REF_KERNEL(arg_t)                                                                                                                        \
-  EXTERN __global__ void ab_get_powers_by_ref_##arg_t##_kernel(const arg_t *base, const unsigned offset, const bool bit_reverse,                               \
-                                                               vector_setter<arg_t, st_modifier::cs> result, const unsigned count) {                           \
-    get_powers(*base, offset, bit_reverse, result, count);                                                                                                     \
-  }
-
-GET_POWERS_BY_VAL_KERNEL(bf);
-GET_POWERS_BY_VAL_KERNEL(e2);
-GET_POWERS_BY_VAL_KERNEL(e4);
-GET_POWERS_BY_VAL_KERNEL(e6);
-GET_POWERS_BY_REF_KERNEL(bf);
-GET_POWERS_BY_REF_KERNEL(e2);
-GET_POWERS_BY_REF_KERNEL(e4);
-GET_POWERS_BY_REF_KERNEL(e6);
-
-template <typename T, typename GETTER, typename SETTER> DEVICE_FORCEINLINE void batch_inv_impl(GETTER src, SETTER dst, const unsigned count) {
-  constexpr unsigned INV_BATCH = InvBatch<T>::INV_BATCH;
-
-  // ints for indexing because some bounds checks count down and check if an index drops below 0
-  const int gid = static_cast<int>(blockIdx.x * blockDim.x + threadIdx.x);
-
-  // If count < grid size, the kernel is inefficient no matter what (because each thread processes just one element)
-  // but we should still bail out if a thread has no assigned elems at all.
-  if (gid >= count)
-    return;
-
-  const int grid_size = static_cast<int>(blockDim.x * gridDim.x);
-
-  T inputs[INV_BATCH];
-  T outputs[INV_BATCH];
-
-  int runtime_batch_size = 0;
-  int g = gid;
-#pragma unroll
-  for (int i = 0; i < INV_BATCH; i++, g += grid_size)
-    if (g < count) {
-      inputs[i] = src.get(g);
-      runtime_batch_size++;
-    }
-
-  if (runtime_batch_size < INV_BATCH) {
-    batch_inv_registers<T, INV_BATCH, false>(inputs, outputs, runtime_batch_size);
-  } else {
-    batch_inv_registers<T, INV_BATCH, true>(inputs, outputs, runtime_batch_size);
-  }
-
-  g -= grid_size;
-#pragma unroll
-  for (int i = INV_BATCH - 1; i >= 0; --i, g -= grid_size)
-    if (i < runtime_batch_size)
-      dst.set(g, outputs[i]);
-}
-
-EXTERN __launch_bounds__(128, 8) __global__
-    void ab_batch_inv_bf_kernel(const bf_vector_getter<ld_modifier::cs> src, const bf_vector_setter<st_modifier::cs> dst, const unsigned count) {
-  batch_inv_impl<bf>(src, dst, count);
-}
-
-EXTERN __launch_bounds__(128, 8) __global__
-    void ab_batch_inv_e2_kernel(const e2_vector_getter<ld_modifier::cs> src, const e2_vector_setter<st_modifier::cs> dst, const unsigned count) {
-  batch_inv_impl<e2>(src, dst, count);
-}
-
-EXTERN __launch_bounds__(128, 8) __global__
-    void ab_batch_inv_e4_kernel(const e4_vector_getter<ld_modifier::cs> src, const e4_vector_setter<st_modifier::cs> dst, const unsigned count) {
-  batch_inv_impl<e4>(src, dst, count);
-}
-
-template <typename T, unsigned LOG_TILE_DIM>
-DEVICE_FORCEINLINE void transpose(const matrix_getter<T, ld_modifier::cs> src, const matrix_setter<T, st_modifier::cs> dst, const unsigned src_rows,
-                                  const unsigned src_cols) {
-  constexpr unsigned LOG_BLOCK_SIZE = 7;
-  constexpr unsigned TILE_DIM = 1u << LOG_TILE_DIM;
-  constexpr unsigned LOG_TILES_COUNT = LOG_BLOCK_SIZE - LOG_TILE_DIM;
-  constexpr unsigned TILES_COUNT = 1u << LOG_TILES_COUNT;
-  __shared__ T tiles[TILES_COUNT][TILE_DIM][TILE_DIM];
-  const unsigned tid = threadIdx.x;
-  const unsigned block_tile_index = threadIdx.y;
-  auto tile = tiles[block_tile_index];
-  const unsigned flat_tile_index = blockIdx.x * blockDim.y + block_tile_index;
-  const unsigned src_tiles_per_row = (src_cols + TILE_DIM - 1) / TILE_DIM;
-  const unsigned src_tile_row_offset = flat_tile_index / src_tiles_per_row * TILE_DIM;
-  const unsigned src_tile_col_offset = flat_tile_index % src_tiles_per_row * TILE_DIM;
-  const unsigned dst_tile_row_offset = src_tile_col_offset;
-  const unsigned dst_tile_col_offset = src_tile_row_offset;
-  const unsigned src_row = src_tile_row_offset + tid;
-  const unsigned dst_row = dst_tile_row_offset + tid;
-#pragma unroll
-  for (unsigned i = 0; i < TILE_DIM; i++) {
-    const unsigned src_col = src_tile_col_offset + i;
-    const unsigned row_swizzled = tid ^ i;
-    if (src_row < src_rows && src_col < src_cols)
-      tile[i][row_swizzled] = src.get(src_row, src_col);
-  }
-  if (LOG_TILE_DIM <= 5)
-    __syncwarp();
-  else
-    __syncthreads();
-#pragma unroll
-  for (unsigned i = 0; i < TILE_DIM; i++) {
-    const unsigned dst_col = dst_tile_col_offset + i;
-    const unsigned row_swizzled = tid ^ i;
-    if (dst_row < src_cols && dst_col < src_rows)
-      dst.set(dst_row, dst_col, tile[tid][row_swizzled]);
-  }
-}
-
-#define TRANSPOSE_KERNEL(arg_t, log_tile_dim)                                                                                                                  \
-  EXTERN __global__ void ab_transpose_##arg_t##_kernel(const matrix_getter<arg_t, ld_modifier::cs> src, const matrix_setter<arg_t, st_modifier::cs> dst,       \
-                                                       const unsigned src_rows, const unsigned src_cols) {                                                     \
-    transpose<arg_t, log_tile_dim>(src, dst, src_rows, src_cols);                                                                                              \
-  }
-
-TRANSPOSE_KERNEL(bf, 5);
-TRANSPOSE_KERNEL(e2, 4);
-TRANSPOSE_KERNEL(e4, 3);
-TRANSPOSE_KERNEL(e6, 3);
-
-EXTERN __global__ void ab_serialize_whir_e4_columns_kernel(const e4 *src, bf *dst, const unsigned count) {
-  const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
-  if (gid >= count)
-    return;
-
-  const e4 value = load<e4, ld_modifier::cs>(src, gid);
-  store<bf, st_modifier::cs>(dst, value.base_coefficient_from_flat_idx(0), gid);
-  store<bf, st_modifier::cs>(dst, value.base_coefficient_from_flat_idx(1), count + gid);
-  store<bf, st_modifier::cs>(dst, value.base_coefficient_from_flat_idx(2), 2 * count + gid);
-  store<bf, st_modifier::cs>(dst, value.base_coefficient_from_flat_idx(3), 3 * count + gid);
-}
-
-EXTERN __global__ void ab_deserialize_whir_e4_columns_kernel(const bf *src, e4 *dst, const unsigned count) {
-  const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
-  if (gid >= count)
-    return;
-
-  const bf coeffs[4] = {
-      load<bf, ld_modifier::cs>(src, gid),
-      load<bf, ld_modifier::cs>(src, count + gid),
-      load<bf, ld_modifier::cs>(src, 2 * count + gid),
-      load<bf, ld_modifier::cs>(src, 3 * count + gid),
-  };
-  store<e4, st_modifier::cs>(dst, e4(coeffs), gid);
-}
-
-EXTERN __global__ void ab_accumulate_whir_base_columns_e4_kernel(const bf *values, const unsigned stride, const e4 *weights, const unsigned cols, e4 *result,
-                                                                 const unsigned rows) {
-  const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
-  if (gid >= rows)
-    return;
-
-  e4 acc = load<e4, ld_modifier::cs>(result, gid);
-  for (unsigned col = 0; col < cols; ++col) {
-    const bf value = load<bf, ld_modifier::cs>(values, col * stride + gid);
-    const e4 weight = load<e4, ld_modifier::cs>(weights, col);
-    acc = e4::add(acc, e4::mul(weight, value));
-  }
-  store<e4, st_modifier::cs>(result, acc, gid);
-}
-
-EXTERN __global__ void ab_whir_fold_monomial_e4_kernel(const e4 *src, const e4 *challenge, e4 *dst, const unsigned half_len) {
-  const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
-  if (gid >= half_len)
-    return;
-
-  const e4 c0 = load<e4, ld_modifier::cs>(src, 2 * gid);
-  const e4 c1 = load<e4, ld_modifier::cs>(src, 2 * gid + 1);
-  const e4 folded = e4::add(c0, e4::mul(c1, *challenge));
-  store<e4, st_modifier::cs>(dst, folded, gid);
-}
-
-EXTERN __global__ void ab_whir_fold_split_half_e4_kernel(e4 *values, const e4 *challenge, const unsigned half_len) {
-  const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
-  if (gid >= half_len)
-    return;
-
-  const e4 a = load<e4, ld_modifier::cs>(values, gid);
-  const e4 b = load<e4, ld_modifier::cs>(values, half_len + gid);
-  const e4 diff = e4::sub(b, a);
-  const e4 folded = e4::add(a, e4::mul(*challenge, diff));
-  store<e4, st_modifier::cs>(values, folded, gid);
-}
-
-DEVICE_FORCEINLINE unsigned bitreverse_low_bits(const unsigned value, const unsigned num_bits) { return __brev(value) >> (32 - num_bits); }
-
-EXTERN __global__ void ab_pack_rows_for_whir_leaves_bf_kernel(const matrix_getter<bf, ld_modifier::cs> src, const matrix_setter<bf, st_modifier::cs> dst,
-                                                              const unsigned log_values_per_leaf, const unsigned dst_rows_per_slot, const unsigned row_stride,
-                                                              const unsigned row_offset, const unsigned src_cols) {
-  const unsigned row = blockIdx.x * blockDim.x + threadIdx.x;
-  if (row >= dst_rows_per_slot)
-    return;
-  const unsigned col = blockIdx.y * blockDim.y + threadIdx.y;
-  const unsigned dst_cols = src_cols << log_values_per_leaf;
-  if (col >= dst_cols)
-    return;
-  const unsigned value_slot = col / src_cols;
-  const unsigned coeff_col = col % src_cols;
-  const unsigned src_row = row + bitreverse_low_bits(value_slot, log_values_per_leaf) * dst_rows_per_slot;
-  const unsigned dst_row = row * row_stride + row_offset;
-  dst.set(dst_row, col, src.get(src_row, coeff_col));
-}
-
-template <class T>
-DEVICE_FORCEINLINE void bit_reverse_naive(const matrix_getter<T, ld_modifier::cs> src, const matrix_setter<T, st_modifier::cs> dst, const unsigned log_count) {
-  const unsigned row = blockIdx.x * blockDim.x + threadIdx.x;
-  if (row >= 1u << log_count)
-    return;
-  const unsigned col = blockIdx.y;
-  const unsigned l_index = row;
-  const unsigned r_index = __brev(l_index) >> (32 - log_count);
-  if (l_index > r_index)
-    return;
-  const T l_value = src.get(l_index, col);
-  const T r_value = src.get(r_index, col);
-  dst.set(l_index, col, r_value);
-  dst.set(r_index, col, l_value);
-}
-
-#define BIT_REVERSE_NAIVE(arg_t)                                                                                                                               \
-  EXTERN __global__ void ab_bit_reverse_naive_##arg_t##_kernel(const matrix_getter<arg_t, ld_modifier::cs> src,                                                \
-                                                               const matrix_setter<arg_t, st_modifier::cs> dst, const unsigned log_count) {                    \
-    bit_reverse_naive(src, dst, log_count);                                                                                                                    \
-  }
-
-BIT_REVERSE_NAIVE(bf);
-BIT_REVERSE_NAIVE(e2);
-BIT_REVERSE_NAIVE(e4);
-BIT_REVERSE_NAIVE(dg);
-
-DEVICE_FORCEINLINE uint2 triangular_index_flat_to_two_dim(const unsigned index, const unsigned m) {
-  const unsigned ii = m * (m + 1) / 2 - 1 - index;
-  const unsigned k = floor((sqrtf(static_cast<float>(8 * ii + 1)) - 1) / 2);
-  const unsigned jj = ii - k * (k + 1) / 2;
-  const unsigned x = m - 1 - jj;
-  const unsigned y = m - 1 - k;
-  return {x, y};
-}
-
-template <class T, unsigned LOG_CHUNK_SIZE>
-DEVICE_FORCEINLINE void bit_reverse(const matrix_getter<T, ld_modifier::cs> src, const matrix_setter<T, st_modifier::cs> dst, const unsigned log_count) {
-  static constexpr unsigned CHUNK_SIZE = 1u << LOG_CHUNK_SIZE;
-  static constexpr unsigned LOG_TILE_DIM = 5 - LOG_CHUNK_SIZE;
-  static constexpr unsigned TILE_DIM = 1u << LOG_TILE_DIM;
-  static constexpr unsigned BLOCK_ROWS = 2;
-  __shared__ T tile[2][TILE_DIM][(TILE_DIM + 1) << LOG_CHUNK_SIZE];
-  const unsigned tid_x = threadIdx.x;
-  const unsigned tid_y = threadIdx.y;
-  const unsigned col = blockIdx.z;
-  const unsigned half_log_count = log_count >> 1;
-  const unsigned shift = 32 - half_log_count;
-  const unsigned stride = gridDim.y << (half_log_count + LOG_CHUNK_SIZE);
-  const unsigned x_offset = (blockIdx.y << (half_log_count + LOG_CHUNK_SIZE)) + tid_x;
-  const unsigned m = 1u << (half_log_count - LOG_TILE_DIM);
-  const auto [x, y] = triangular_index_flat_to_two_dim(blockIdx.x, m);
-  const bool is_diagonal = x == y;
-  const unsigned is_reverse = threadIdx.z;
-  if (is_diagonal && is_reverse)
-    return;
-  const unsigned tile_x = is_reverse ? y : x;
-  const unsigned tile_y = is_reverse ? x : y;
-  const unsigned tile_x_offset = tile_x * TILE_DIM;
-  const unsigned tile_y_offset = tile_y * TILE_DIM;
-  const unsigned x_src = (tile_x_offset << LOG_CHUNK_SIZE) + x_offset;
-  const unsigned y_src = tile_y_offset + tid_y;
-  const unsigned x_dst = (tile_y_offset << LOG_CHUNK_SIZE) + x_offset;
-  const unsigned y_dst = tile_x_offset + tid_y;
-#pragma unroll
-  for (int i = 0; i < TILE_DIM; i += BLOCK_ROWS) {
-    const unsigned idx = tid_y + i;
-    const unsigned ry = __brev(y_src + i) >> shift;
-    const T value = src.get(ry * stride + x_src, col);
-    tile[is_reverse][idx][tid_x] = value;
-  }
-  __syncthreads();
-#pragma unroll
-  for (int i = 0; i < TILE_DIM; i += BLOCK_ROWS) {
-    const unsigned idx = tid_y + i;
-    const unsigned ry = __brev(y_dst + i) >> shift;
-    T value = tile[is_reverse][tid_x >> LOG_CHUNK_SIZE][idx << LOG_CHUNK_SIZE | (tid_x & (CHUNK_SIZE - 1))];
-    dst.set(ry * stride + x_dst, col, value);
-  }
-}
-
-#define BIT_REVERSE(name, arg_t, lcs)                                                                                                                          \
-  EXTERN __launch_bounds__(128) __global__ void ab_bit_reverse_##name##_kernel(const matrix_getter<arg_t, ld_modifier::cs> src,                                \
-                                                                               const matrix_setter<arg_t, st_modifier::cs> dst, const unsigned log_count) {    \
-    bit_reverse<arg_t, lcs>(src, dst, log_count);                                                                                                              \
-  }
-
-BIT_REVERSE(bf, bf, 0);
-BIT_REVERSE(e2, e2, 0);
-BIT_REVERSE(e4, e4, 0);
-BIT_REVERSE(dg, e4, 1);
-
-// EXTERN __global__ void ab_fold_kernel(const e4 *challenge, const e4 *src, e4 *dst, const unsigned root_offset, const unsigned log_count) {
-//   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
-//   if (gid >= 1u << log_count)
-//     return;
-//   const e4 even = src[2 * gid];
-//   const e4 odd = src[2 * gid + 1];
-//   const e4 sum = even + odd;
-//   e4 diff = even - odd;
-//   const unsigned root_index = __brev(gid + root_offset) >> (32 - CIRCLE_GROUP_LOG_ORDER + 1);
-//   const e2 root = get_power_of_w(root_index, true);
-//   diff *= root;
-//   diff *= *challenge;
-//   const e4 result = sum + diff;
-//   dst[gid] = result;
-// }
+namespace airbender::prover::gkr {
 
 template <typename E> struct gkr_ext_initial_source {
   const E *start;
@@ -538,9 +214,7 @@ template <typename E> struct gkr_main_round3_batch {
   u8 inline_payload[GKR_BACKWARD_MAX_INLINE_ROUND_BATCH_BYTES];
 };
 
-DEVICE_FORCEINLINE bool gkr_main_batch_descriptors_inline(const u32 record_mode) {
-  return record_mode != GKR_MAIN_BATCH_POINTER_DESCRIPTORS;
-}
+DEVICE_FORCEINLINE bool gkr_main_batch_descriptors_inline(const u32 record_mode) { return record_mode != GKR_MAIN_BATCH_POINTER_DESCRIPTORS; }
 
 template <typename T, typename Batch>
 DEVICE_FORCEINLINE const T *gkr_main_batch_payload_ptr(const Batch &batch, const gkr_main_payload_range &range, const bool from_inline) {
@@ -550,8 +224,7 @@ DEVICE_FORCEINLINE const T *gkr_main_batch_payload_ptr(const Batch &batch, const
   return reinterpret_cast<const T *>(base + range.offset);
 }
 
-template <typename E>
-DEVICE_FORCEINLINE const E *gkr_main_batch_challenges(const E *batch_challenge_base, const u32 offset, const u32 count, E (&storage)[2]) {
+template <typename E> DEVICE_FORCEINLINE const E *gkr_main_batch_challenges(const E *batch_challenge_base, const u32 offset, const u32 count, E (&storage)[2]) {
   storage[0] = E::ZERO();
   storage[1] = E::ZERO();
   if (count == 0)
@@ -565,12 +238,12 @@ DEVICE_FORCEINLINE const E *gkr_main_batch_challenges(const E *batch_challenge_b
 }
 
 template <typename E, typename Batch, typename Record>
-DEVICE_FORCEINLINE void gkr_main_batch_constraint_metadata(
-    const Batch &batch, const Record &record, const gkr_main_constraint_quadratic_term<E> *&quadratic_terms, unsigned &quadratic_terms_count,
-    const gkr_main_constraint_linear_term<E> *&linear_terms, unsigned &linear_terms_count, E &constant_offset) {
+DEVICE_FORCEINLINE void gkr_main_batch_constraint_metadata(const Batch &batch, const Record &record,
+                                                           const gkr_main_constraint_quadratic_term<E> *&quadratic_terms, unsigned &quadratic_terms_count,
+                                                           const gkr_main_constraint_linear_term<E> *&linear_terms, unsigned &linear_terms_count,
+                                                           E &constant_offset) {
   const bool metadata_inline = record.metadata_inline != 0;
-  quadratic_terms =
-      gkr_main_batch_payload_ptr<gkr_main_constraint_quadratic_term<E>>(batch, record.quadratic_terms, metadata_inline);
+  quadratic_terms = gkr_main_batch_payload_ptr<gkr_main_constraint_quadratic_term<E>>(batch, record.quadratic_terms, metadata_inline);
   quadratic_terms_count = record.quadratic_terms.count;
   linear_terms = gkr_main_batch_payload_ptr<gkr_main_constraint_linear_term<E>>(batch, record.linear_terms, metadata_inline);
   linear_terms_count = record.linear_terms.count;
@@ -669,9 +342,7 @@ template <typename E> struct gkr_dim_reducing_round3_batch {
   u8 inline_payload[GKR_BACKWARD_MAX_INLINE_ROUND_BATCH_BYTES];
 };
 
-DEVICE_FORCEINLINE bool gkr_dim_reducing_batch_descriptors_inline(const u32 record_mode) {
-  return record_mode == GKR_DIM_REDUCING_BATCH_INLINE_DESCRIPTORS;
-}
+DEVICE_FORCEINLINE bool gkr_dim_reducing_batch_descriptors_inline(const u32 record_mode) { return record_mode == GKR_DIM_REDUCING_BATCH_INLINE_DESCRIPTORS; }
 
 enum gkr_forward_gate_kind : u32 {
   GKR_FORWARD_NO_OP = 0,
@@ -1046,8 +717,8 @@ template <typename E> DEVICE_FORCEINLINE void gkr_accumulate_contribution(E *dst
 }
 
 template <typename E>
-DEVICE_FORCEINLINE void gkr_pairwise_round0_values(const gkr_ext_initial_source<E> *inputs, const gkr_ext_initial_source<E> *outputs,
-                                                   const E *batch_challenges, const unsigned gid, E &c0, E &c1) {
+DEVICE_FORCEINLINE void gkr_pairwise_round0_values(const gkr_ext_initial_source<E> *inputs, const gkr_ext_initial_source<E> *outputs, const E *batch_challenges,
+                                                   const unsigned gid, E &c0, E &c1) {
   const E batch_challenge = batch_challenges[0];
 
   const unsigned even_index = gid * 2;
@@ -1062,8 +733,8 @@ DEVICE_FORCEINLINE void gkr_pairwise_round0_values(const gkr_ext_initial_source<
 }
 
 template <typename E>
-DEVICE_FORCEINLINE void gkr_lookup_round0_values(const gkr_ext_initial_source<E> *inputs, const gkr_ext_initial_source<E> *outputs,
-                                                 const E *batch_challenges, const unsigned gid, E &c0, E &c1) {
+DEVICE_FORCEINLINE void gkr_lookup_round0_values(const gkr_ext_initial_source<E> *inputs, const gkr_ext_initial_source<E> *outputs, const E *batch_challenges,
+                                                 const unsigned gid, E &c0, E &c1) {
   const E batch_challenge_0 = batch_challenges[0];
   const E batch_challenge_1 = batch_challenges[1];
 
@@ -1086,8 +757,8 @@ DEVICE_FORCEINLINE void gkr_lookup_round0_values(const gkr_ext_initial_source<E>
 }
 
 template <typename E, bool EXPLICIT_FORM>
-DEVICE_FORCEINLINE void gkr_pairwise_continuation_values(const gkr_ext_continuing_source<E> *inputs, const E *folding_challenge,
-                                                         const E *batch_challenges, const unsigned gid, E &c0, E &c1) {
+DEVICE_FORCEINLINE void gkr_pairwise_continuation_values(const gkr_ext_continuing_source<E> *inputs, const E *folding_challenge, const E *batch_challenges,
+                                                         const unsigned gid, E &c0, E &c1) {
   const E current_folding_challenge = folding_challenge[0];
   const E batch_challenge = batch_challenges[0];
 
@@ -1107,8 +778,8 @@ DEVICE_FORCEINLINE void gkr_pairwise_continuation_values(const gkr_ext_continuin
 }
 
 template <typename E, bool EXPLICIT_FORM>
-DEVICE_FORCEINLINE void gkr_lookup_continuation_values(const gkr_ext_continuing_source<E> *inputs, const E *folding_challenge,
-                                                       const E *batch_challenges, const unsigned gid, E &out0, E &out1) {
+DEVICE_FORCEINLINE void gkr_lookup_continuation_values(const gkr_ext_continuing_source<E> *inputs, const E *folding_challenge, const E *batch_challenges,
+                                                       const unsigned gid, E &out0, E &out1) {
   const E current_folding_challenge = folding_challenge[0];
   const E batch_challenge_0 = batch_challenges[0];
   const E batch_challenge_1 = batch_challenges[1];
@@ -1734,12 +1405,10 @@ gkr_main_round0(const unsigned kind, const gkr_base_initial_source<bf> *base_inp
 
 template <typename E, bool EXPLICIT_FORM>
 DEVICE_FORCEINLINE void gkr_main_round1_values(const unsigned kind, const gkr_base_after_one_source<bf, E> *base_inputs,
-                                               const gkr_ext_continuing_source<E> *ext_inputs, const E *batch_challenges,
-                                               const E *folding_challenge, const E aux_challenge,
-                                               const gkr_main_constraint_quadratic_term<E> *constraint_quadratic_terms,
+                                               const gkr_ext_continuing_source<E> *ext_inputs, const E *batch_challenges, const E *folding_challenge,
+                                               const E aux_challenge, const gkr_main_constraint_quadratic_term<E> *constraint_quadratic_terms,
                                                const unsigned constraint_quadratic_terms_count,
-                                               const gkr_main_constraint_linear_term<E> *constraint_linear_terms,
-                                               const unsigned constraint_linear_terms_count,
+                                               const gkr_main_constraint_linear_term<E> *constraint_linear_terms, const unsigned constraint_linear_terms_count,
                                                const E constraint_constant_offset, const unsigned gid, E &c0, E &c1) {
   const E batch_challenge_0 = batch_challenges[0];
   const E batch_challenge_1 = batch_challenges[1];
@@ -1945,21 +1614,18 @@ DEVICE_FORCEINLINE void gkr_main_round1(const unsigned kind, const gkr_base_afte
 
   E c0;
   E c1;
-  gkr_main_round1_values<E, EXPLICIT_FORM>(
-      kind, base_inputs, ext_inputs, batch_challenges, folding_challenge, aux_challenge ? aux_challenge[0] : E::ZERO(),
-      constraint_quadratic_terms, constraint_quadratic_terms_count, constraint_linear_terms, constraint_linear_terms_count,
-      constraint_constant_offset ? constraint_constant_offset[0] : E::ZERO(), gid, c0, c1);
+  gkr_main_round1_values<E, EXPLICIT_FORM>(kind, base_inputs, ext_inputs, batch_challenges, folding_challenge, aux_challenge ? aux_challenge[0] : E::ZERO(),
+                                           constraint_quadratic_terms, constraint_quadratic_terms_count, constraint_linear_terms, constraint_linear_terms_count,
+                                           constraint_constant_offset ? constraint_constant_offset[0] : E::ZERO(), gid, c0, c1);
   gkr_accumulate_contribution(contributions, gid, acc_size, c0, c1);
 }
 
 template <typename E, bool EXPLICIT_FORM>
 DEVICE_FORCEINLINE void gkr_main_round2_values(const unsigned kind, const gkr_base_after_two_source<bf, E> *base_inputs,
-                                               const gkr_ext_continuing_source<E> *ext_inputs, const E *batch_challenges,
-                                               const E *folding_challenges, const E aux_challenge,
-                                               const gkr_main_constraint_quadratic_term<E> *constraint_quadratic_terms,
+                                               const gkr_ext_continuing_source<E> *ext_inputs, const E *batch_challenges, const E *folding_challenges,
+                                               const E aux_challenge, const gkr_main_constraint_quadratic_term<E> *constraint_quadratic_terms,
                                                const unsigned constraint_quadratic_terms_count,
-                                               const gkr_main_constraint_linear_term<E> *constraint_linear_terms,
-                                               const unsigned constraint_linear_terms_count,
+                                               const gkr_main_constraint_linear_term<E> *constraint_linear_terms, const unsigned constraint_linear_terms_count,
                                                const E constraint_constant_offset, const unsigned gid, E &c0, E &c1) {
   const E batch_challenge_0 = batch_challenges[0];
   const E batch_challenge_1 = batch_challenges[1];
@@ -2167,20 +1833,19 @@ DEVICE_FORCEINLINE void gkr_main_round2(const unsigned kind, const gkr_base_afte
 
   E c0;
   E c1;
-  gkr_main_round2_values<E, EXPLICIT_FORM>(
-      kind, base_inputs, ext_inputs, batch_challenges, folding_challenges, aux_challenge ? aux_challenge[0] : E::ZERO(),
-      constraint_quadratic_terms, constraint_quadratic_terms_count, constraint_linear_terms, constraint_linear_terms_count,
-      constraint_constant_offset ? constraint_constant_offset[0] : E::ZERO(), gid, c0, c1);
+  gkr_main_round2_values<E, EXPLICIT_FORM>(kind, base_inputs, ext_inputs, batch_challenges, folding_challenges, aux_challenge ? aux_challenge[0] : E::ZERO(),
+                                           constraint_quadratic_terms, constraint_quadratic_terms_count, constraint_linear_terms, constraint_linear_terms_count,
+                                           constraint_constant_offset ? constraint_constant_offset[0] : E::ZERO(), gid, c0, c1);
   gkr_accumulate_contribution(contributions, gid, acc_size, c0, c1);
 }
 
 template <typename E, bool EXPLICIT_FORM>
-DEVICE_FORCEINLINE void
-gkr_main_round3_values(const unsigned kind, const gkr_ext_continuing_source<E> *base_inputs, const gkr_ext_continuing_source<E> *ext_inputs,
-                       const E *batch_challenges, const E *folding_challenge, const E aux_challenge,
-                       const gkr_main_constraint_quadratic_term<E> *constraint_quadratic_terms,
-                       const unsigned constraint_quadratic_terms_count, const gkr_main_constraint_linear_term<E> *constraint_linear_terms,
-                       const unsigned constraint_linear_terms_count, const E constraint_constant_offset, const unsigned gid, E &c0, E &c1) {
+DEVICE_FORCEINLINE void gkr_main_round3_values(const unsigned kind, const gkr_ext_continuing_source<E> *base_inputs,
+                                               const gkr_ext_continuing_source<E> *ext_inputs, const E *batch_challenges, const E *folding_challenge,
+                                               const E aux_challenge, const gkr_main_constraint_quadratic_term<E> *constraint_quadratic_terms,
+                                               const unsigned constraint_quadratic_terms_count,
+                                               const gkr_main_constraint_linear_term<E> *constraint_linear_terms, const unsigned constraint_linear_terms_count,
+                                               const E constraint_constant_offset, const unsigned gid, E &c0, E &c1) {
   const E batch_challenge_0 = batch_challenges[0];
   const E batch_challenge_1 = batch_challenges[1];
   const E current_folding_challenge = folding_challenge[0];
@@ -2384,15 +2049,13 @@ gkr_main_round3(const unsigned kind, const gkr_ext_continuing_source<E> *base_in
 
   E c0;
   E c1;
-  gkr_main_round3_values<E, EXPLICIT_FORM>(
-      kind, base_inputs, ext_inputs, batch_challenges, folding_challenge, aux_challenge ? aux_challenge[0] : E::ZERO(),
-      constraint_quadratic_terms, constraint_quadratic_terms_count, constraint_linear_terms, constraint_linear_terms_count,
-      constraint_constant_offset ? constraint_constant_offset[0] : E::ZERO(), gid, c0, c1);
+  gkr_main_round3_values<E, EXPLICIT_FORM>(kind, base_inputs, ext_inputs, batch_challenges, folding_challenge, aux_challenge ? aux_challenge[0] : E::ZERO(),
+                                           constraint_quadratic_terms, constraint_quadratic_terms_count, constraint_linear_terms, constraint_linear_terms_count,
+                                           constraint_constant_offset ? constraint_constant_offset[0] : E::ZERO(), gid, c0, c1);
   gkr_accumulate_contribution(contributions, gid, acc_size, c0, c1);
 }
 
-template <typename E>
-DEVICE_FORCEINLINE void gkr_dim_reducing_round0_batched(const gkr_dim_reducing_round0_batch<E> &batch, const unsigned acc_size) {
+template <typename E> DEVICE_FORCEINLINE void gkr_dim_reducing_round0_batched(const gkr_dim_reducing_round0_batch<E> &batch, const unsigned acc_size) {
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
   if (gid >= acc_size)
     return;
@@ -2464,8 +2127,7 @@ DEVICE_FORCEINLINE void gkr_dim_reducing_continuation_batched(const Batch &batch
   store<E, st_modifier::cs>(batch.contributions + acc_size, E::mul(total1, eq), gid);
 }
 
-template <typename E>
-DEVICE_FORCEINLINE void gkr_main_round0_batched(const gkr_main_round0_batch<E> &batch, const unsigned acc_size) {
+template <typename E> DEVICE_FORCEINLINE void gkr_main_round0_batched(const gkr_main_round0_batch<E> &batch, const unsigned acc_size) {
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
   if (gid >= acc_size)
     return;
@@ -2501,8 +2163,7 @@ DEVICE_FORCEINLINE void gkr_main_round0_batched(const gkr_main_round0_batch<E> &
   store<E, st_modifier::cs>(batch.contributions + acc_size, E::mul(total1, eq), gid);
 }
 
-template <typename E, bool EXPLICIT_FORM>
-DEVICE_FORCEINLINE void gkr_main_round1_batched(const gkr_main_round1_batch<E> &batch, const unsigned acc_size) {
+template <typename E, bool EXPLICIT_FORM> DEVICE_FORCEINLINE void gkr_main_round1_batched(const gkr_main_round1_batch<E> &batch, const unsigned acc_size) {
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
   if (gid >= acc_size)
     return;
@@ -2526,9 +2187,8 @@ DEVICE_FORCEINLINE void gkr_main_round1_batched(const gkr_main_round1_batch<E> &
     gkr_main_batch_constraint_metadata(batch, record, quadratic_terms, quadratic_terms_count, linear_terms, linear_terms_count, constant_offset);
     E c0;
     E c1;
-    gkr_main_round1_values<E, EXPLICIT_FORM>(record.kind, base_inputs, extension_inputs, batch_challenges, batch.folding_challenge,
-                                             record.auxiliary_challenge, quadratic_terms, quadratic_terms_count, linear_terms,
-                                             linear_terms_count, constant_offset, gid, c0, c1);
+    gkr_main_round1_values<E, EXPLICIT_FORM>(record.kind, base_inputs, extension_inputs, batch_challenges, batch.folding_challenge, record.auxiliary_challenge,
+                                             quadratic_terms, quadratic_terms_count, linear_terms, linear_terms_count, constant_offset, gid, c0, c1);
     total0 = E::add(total0, c0);
     total1 = E::add(total1, c1);
   }
@@ -2537,8 +2197,7 @@ DEVICE_FORCEINLINE void gkr_main_round1_batched(const gkr_main_round1_batch<E> &
   store<E, st_modifier::cs>(batch.contributions + acc_size, E::mul(total1, eq), gid);
 }
 
-template <typename E, bool EXPLICIT_FORM>
-DEVICE_FORCEINLINE void gkr_main_round2_batched(const gkr_main_round2_batch<E> &batch, const unsigned acc_size) {
+template <typename E, bool EXPLICIT_FORM> DEVICE_FORCEINLINE void gkr_main_round2_batched(const gkr_main_round2_batch<E> &batch, const unsigned acc_size) {
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
   if (gid >= acc_size)
     return;
@@ -2562,9 +2221,8 @@ DEVICE_FORCEINLINE void gkr_main_round2_batched(const gkr_main_round2_batch<E> &
     gkr_main_batch_constraint_metadata(batch, record, quadratic_terms, quadratic_terms_count, linear_terms, linear_terms_count, constant_offset);
     E c0;
     E c1;
-    gkr_main_round2_values<E, EXPLICIT_FORM>(record.kind, base_inputs, extension_inputs, batch_challenges, batch.folding_challenges,
-                                             record.auxiliary_challenge, quadratic_terms, quadratic_terms_count, linear_terms,
-                                             linear_terms_count, constant_offset, gid, c0, c1);
+    gkr_main_round2_values<E, EXPLICIT_FORM>(record.kind, base_inputs, extension_inputs, batch_challenges, batch.folding_challenges, record.auxiliary_challenge,
+                                             quadratic_terms, quadratic_terms_count, linear_terms, linear_terms_count, constant_offset, gid, c0, c1);
     total0 = E::add(total0, c0);
     total1 = E::add(total1, c1);
   }
@@ -2573,8 +2231,7 @@ DEVICE_FORCEINLINE void gkr_main_round2_batched(const gkr_main_round2_batch<E> &
   store<E, st_modifier::cs>(batch.contributions + acc_size, E::mul(total1, eq), gid);
 }
 
-template <typename E, bool EXPLICIT_FORM>
-DEVICE_FORCEINLINE void gkr_main_round3_batched(const gkr_main_round3_batch<E> &batch, const unsigned acc_size) {
+template <typename E, bool EXPLICIT_FORM> DEVICE_FORCEINLINE void gkr_main_round3_batched(const gkr_main_round3_batch<E> &batch, const unsigned acc_size) {
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
   if (gid >= acc_size)
     return;
@@ -2598,9 +2255,8 @@ DEVICE_FORCEINLINE void gkr_main_round3_batched(const gkr_main_round3_batch<E> &
     gkr_main_batch_constraint_metadata(batch, record, quadratic_terms, quadratic_terms_count, linear_terms, linear_terms_count, constant_offset);
     E c0;
     E c1;
-    gkr_main_round3_values<E, EXPLICIT_FORM>(record.kind, base_inputs, extension_inputs, batch_challenges, batch.folding_challenge,
-                                             record.auxiliary_challenge, quadratic_terms, quadratic_terms_count, linear_terms,
-                                             linear_terms_count, constant_offset, gid, c0, c1);
+    gkr_main_round3_values<E, EXPLICIT_FORM>(record.kind, base_inputs, extension_inputs, batch_challenges, batch.folding_challenge, record.auxiliary_challenge,
+                                             quadratic_terms, quadratic_terms_count, linear_terms, linear_terms_count, constant_offset, gid, c0, c1);
     total0 = E::add(total0, c0);
     total1 = E::add(total1, c1);
   }
@@ -2609,167 +2265,4 @@ DEVICE_FORCEINLINE void gkr_main_round3_batched(const gkr_main_round3_batch<E> &
   store<E, st_modifier::cs>(batch.contributions + acc_size, E::mul(total1, eq), gid);
 }
 
-#define GKR_DIM_REDUCING_KERNELS(arg_t)                                                                                                                        \
-  EXTERN __global__ void ab_gkr_forward_layer_##arg_t##_kernel(const __grid_constant__ gkr_forward_layer_batch<arg_t> batch, const unsigned count) {           \
-    gkr_forward_layer(batch, count);                                                                                                                           \
-  }                                                                                                                                                            \
-  EXTERN __global__ void ab_gkr_forward_setup_generic_lookup_##arg_t##_kernel(const __grid_constant__ gkr_forward_setup_generic_lookup_batch<arg_t> batch,     \
-                                                                              const unsigned row_count) {                                                      \
-    gkr_forward_setup_generic_lookup(batch, row_count);                                                                                                        \
-  }                                                                                                                                                            \
-  EXTERN __global__ void ab_gkr_dim_reducing_forward_##arg_t##_kernel(const __grid_constant__ gkr_dim_reducing_forward_batch<arg_t> batch,                     \
-                                                                      const unsigned row_count) {                                                              \
-    gkr_dim_reducing_forward(batch, row_count);                                                                                                                \
-  }                                                                                                                                                            \
-  EXTERN __global__ void ab_gkr_dim_reducing_pairwise_round0_##arg_t##_kernel(const gkr_ext_initial_source<arg_t> *inputs,                                     \
-                                                                              const gkr_ext_initial_source<arg_t> *outputs, const arg_t *batch_challenges,     \
-                                                                              arg_t *contributions, const unsigned acc_size) {                                 \
-    gkr_pairwise_round0(inputs, outputs, batch_challenges, contributions, acc_size);                                                                           \
-  }                                                                                                                                                            \
-  EXTERN __global__ void ab_gkr_dim_reducing_lookup_round0_##arg_t##_kernel(const gkr_ext_initial_source<arg_t> *inputs,                                       \
-                                                                            const gkr_ext_initial_source<arg_t> *outputs, const arg_t *batch_challenges,       \
-                                                                            arg_t *contributions, const unsigned acc_size) {                                   \
-    gkr_lookup_round0(inputs, outputs, batch_challenges, contributions, acc_size);                                                                             \
-  }                                                                                                                                                            \
-  EXTERN __global__ void ab_gkr_dim_reducing_pairwise_continuation_##arg_t##_kernel(const gkr_ext_continuing_source<arg_t> *inputs,                            \
-                                                                                    const arg_t *folding_challenge, const arg_t *batch_challenges,             \
-                                                                                    const bool explicit_form, arg_t *contributions, const unsigned acc_size) { \
-    if (explicit_form)                                                                                                                                         \
-      gkr_pairwise_continuation<arg_t, true>(inputs, folding_challenge, batch_challenges, contributions, acc_size);                                            \
-    else                                                                                                                                                       \
-      gkr_pairwise_continuation<arg_t, false>(inputs, folding_challenge, batch_challenges, contributions, acc_size);                                           \
-  }                                                                                                                                                            \
-  EXTERN __global__ void ab_gkr_dim_reducing_lookup_continuation_##arg_t##_kernel(const gkr_ext_continuing_source<arg_t> *inputs,                              \
-                                                                                  const arg_t *folding_challenge, const arg_t *batch_challenges,               \
-                                                                                  const bool explicit_form, arg_t *contributions, const unsigned acc_size) {   \
-    if (explicit_form)                                                                                                                                         \
-      gkr_lookup_continuation<arg_t, true>(inputs, folding_challenge, batch_challenges, contributions, acc_size);                                              \
-    else                                                                                                                                                       \
-      gkr_lookup_continuation<arg_t, false>(inputs, folding_challenge, batch_challenges, contributions, acc_size);                                             \
-  }                                                                                                                                                            \
-  EXTERN __global__ void ab_gkr_dim_reducing_build_eq_##arg_t##_kernel(const arg_t *claim_point, const unsigned challenge_offset,                              \
-                                                                       const unsigned challenge_count, arg_t *eq_values, const unsigned acc_size) {            \
-    gkr_build_eq_values(claim_point, challenge_offset, challenge_count, eq_values, acc_size);                                                                  \
-  }                                                                                                                                                            \
-  EXTERN __global__ void ab_gkr_dim_reducing_round0_batched_##arg_t##_kernel(const __grid_constant__ gkr_dim_reducing_round0_batch<arg_t> batch,              \
-                                                                              const unsigned acc_size) {                                                        \
-    gkr_dim_reducing_round0_batched(batch, acc_size);                                                                                                          \
-  }                                                                                                                                                            \
-  EXTERN __global__ void ab_gkr_dim_reducing_round1_batched_##arg_t##_kernel(const __grid_constant__ gkr_dim_reducing_round1_batch<arg_t> batch,              \
-                                                                              const unsigned acc_size) {                                                        \
-    if (batch.explicit_form)                                                                                                                                   \
-      gkr_dim_reducing_continuation_batched<arg_t, true>(batch, acc_size);                                                                                     \
-    else                                                                                                                                                       \
-      gkr_dim_reducing_continuation_batched<arg_t, false>(batch, acc_size);                                                                                    \
-  }                                                                                                                                                            \
-  EXTERN __global__ void ab_gkr_dim_reducing_round2_batched_##arg_t##_kernel(const __grid_constant__ gkr_dim_reducing_round2_batch<arg_t> batch,              \
-                                                                              const unsigned acc_size) {                                                        \
-    if (batch.explicit_form)                                                                                                                                   \
-      gkr_dim_reducing_continuation_batched<arg_t, true>(batch, acc_size);                                                                                     \
-    else                                                                                                                                                       \
-      gkr_dim_reducing_continuation_batched<arg_t, false>(batch, acc_size);                                                                                    \
-  }                                                                                                                                                            \
-  EXTERN __global__ void ab_gkr_dim_reducing_round3_batched_##arg_t##_kernel(const __grid_constant__ gkr_dim_reducing_round3_batch<arg_t> batch,              \
-                                                                              const unsigned acc_size) {                                                        \
-    if (batch.explicit_form)                                                                                                                                   \
-      gkr_dim_reducing_continuation_batched<arg_t, true>(batch, acc_size);                                                                                     \
-    else                                                                                                                                                       \
-      gkr_dim_reducing_continuation_batched<arg_t, false>(batch, acc_size);                                                                                    \
-  }
-
-GKR_DIM_REDUCING_KERNELS(e2);
-GKR_DIM_REDUCING_KERNELS(e4);
-GKR_DIM_REDUCING_KERNELS(e6);
-
-#define GKR_MAIN_LAYER_KERNELS(arg_t)                                                                                                                          \
-  EXTERN __global__ void ab_gkr_main_round0_##arg_t##_kernel(                                                                                                  \
-      const unsigned kind, const gkr_base_initial_source<bf> *base_inputs, const gkr_ext_initial_source<arg_t> *ext_inputs,                                    \
-      const gkr_base_initial_source<bf> *base_outputs, const gkr_ext_initial_source<arg_t> *ext_outputs, const arg_t *batch_challenges,                        \
-      const arg_t *aux_challenge, const gkr_main_constraint_quadratic_term<arg_t> *constraint_quadratic_terms,                                                 \
-      const unsigned constraint_quadratic_terms_count, const gkr_main_constraint_linear_term<arg_t> *constraint_linear_terms,                                  \
-      const unsigned constraint_linear_terms_count, const arg_t *constraint_constant_offset, arg_t *contributions, const unsigned acc_size) {                  \
-    gkr_main_round0(kind, base_inputs, ext_inputs, base_outputs, ext_outputs, batch_challenges, aux_challenge, constraint_quadratic_terms,                     \
-                    constraint_quadratic_terms_count, constraint_linear_terms, constraint_linear_terms_count, constraint_constant_offset, contributions,       \
-                    acc_size);                                                                                                                                 \
-  }                                                                                                                                                            \
-  EXTERN __global__ void ab_gkr_main_round1_##arg_t##_kernel(                                                                                                  \
-      const unsigned kind, const gkr_base_after_one_source<bf, arg_t> *base_inputs, const gkr_ext_continuing_source<arg_t> *ext_inputs,                        \
-      const arg_t *batch_challenges, const arg_t *folding_challenge, const arg_t *aux_challenge,                                                               \
-      const gkr_main_constraint_quadratic_term<arg_t> *constraint_quadratic_terms, const unsigned constraint_quadratic_terms_count,                            \
-      const gkr_main_constraint_linear_term<arg_t> *constraint_linear_terms, const unsigned constraint_linear_terms_count,                                     \
-      const arg_t *constraint_constant_offset, const bool explicit_form, arg_t *contributions, const unsigned acc_size) {                                      \
-    if (explicit_form)                                                                                                                                         \
-      gkr_main_round1<arg_t, true>(kind, base_inputs, ext_inputs, batch_challenges, folding_challenge, aux_challenge, constraint_quadratic_terms,              \
-                                   constraint_quadratic_terms_count, constraint_linear_terms, constraint_linear_terms_count, constraint_constant_offset,       \
-                                   contributions, acc_size);                                                                                                   \
-    else                                                                                                                                                       \
-      gkr_main_round1<arg_t, false>(kind, base_inputs, ext_inputs, batch_challenges, folding_challenge, aux_challenge, constraint_quadratic_terms,             \
-                                    constraint_quadratic_terms_count, constraint_linear_terms, constraint_linear_terms_count, constraint_constant_offset,      \
-                                    contributions, acc_size);                                                                                                  \
-  }                                                                                                                                                            \
-  EXTERN __global__ void ab_gkr_main_round2_##arg_t##_kernel(                                                                                                  \
-      const unsigned kind, const gkr_base_after_two_source<bf, arg_t> *base_inputs, const gkr_ext_continuing_source<arg_t> *ext_inputs,                        \
-      const arg_t *batch_challenges, const arg_t *folding_challenges, const arg_t *aux_challenge,                                                              \
-      const gkr_main_constraint_quadratic_term<arg_t> *constraint_quadratic_terms, const unsigned constraint_quadratic_terms_count,                            \
-      const gkr_main_constraint_linear_term<arg_t> *constraint_linear_terms, const unsigned constraint_linear_terms_count,                                     \
-      const arg_t *constraint_constant_offset, const bool explicit_form, arg_t *contributions, const unsigned acc_size) {                                      \
-    if (explicit_form)                                                                                                                                         \
-      gkr_main_round2<arg_t, true>(kind, base_inputs, ext_inputs, batch_challenges, folding_challenges, aux_challenge, constraint_quadratic_terms,             \
-                                   constraint_quadratic_terms_count, constraint_linear_terms, constraint_linear_terms_count, constraint_constant_offset,       \
-                                   contributions, acc_size);                                                                                                   \
-    else                                                                                                                                                       \
-      gkr_main_round2<arg_t, false>(kind, base_inputs, ext_inputs, batch_challenges, folding_challenges, aux_challenge, constraint_quadratic_terms,            \
-                                    constraint_quadratic_terms_count, constraint_linear_terms, constraint_linear_terms_count, constraint_constant_offset,      \
-                                    contributions, acc_size);                                                                                                  \
-  }                                                                                                                                                            \
-  EXTERN __global__ void ab_gkr_main_round3_##arg_t##_kernel(                                                                                                  \
-      const unsigned kind, const gkr_ext_continuing_source<arg_t> *base_inputs, const gkr_ext_continuing_source<arg_t> *ext_inputs,                            \
-      const arg_t *batch_challenges, const arg_t *folding_challenge, const arg_t *aux_challenge,                                                               \
-      const gkr_main_constraint_quadratic_term<arg_t> *constraint_quadratic_terms, const unsigned constraint_quadratic_terms_count,                            \
-      const gkr_main_constraint_linear_term<arg_t> *constraint_linear_terms, const unsigned constraint_linear_terms_count,                                     \
-      const arg_t *constraint_constant_offset, const bool explicit_form, arg_t *contributions, const unsigned acc_size) {                                      \
-    if (explicit_form)                                                                                                                                         \
-      gkr_main_round3<arg_t, true>(kind, base_inputs, ext_inputs, batch_challenges, folding_challenge, aux_challenge, constraint_quadratic_terms,              \
-                                   constraint_quadratic_terms_count, constraint_linear_terms, constraint_linear_terms_count, constraint_constant_offset,       \
-                                   contributions, acc_size);                                                                                                   \
-    else                                                                                                                                                       \
-      gkr_main_round3<arg_t, false>(kind, base_inputs, ext_inputs, batch_challenges, folding_challenge, aux_challenge, constraint_quadratic_terms,             \
-                                    constraint_quadratic_terms_count, constraint_linear_terms, constraint_linear_terms_count, constraint_constant_offset,      \
-                                    contributions, acc_size);                                                                                                  \
-  }                                                                                                                                                            \
-  EXTERN __global__ void ab_gkr_main_round0_batched_##arg_t##_kernel(const __grid_constant__ gkr_main_round0_batch<arg_t> batch, const unsigned acc_size) {    \
-    gkr_main_round0_batched(batch, acc_size);                                                                                                                  \
-  }                                                                                                                                                            \
-  EXTERN __global__ void ab_gkr_main_round1_batched_##arg_t##_kernel(const __grid_constant__ gkr_main_round1_batch<arg_t> batch, const unsigned acc_size) {    \
-    if (batch.explicit_form)                                                                                                                                    \
-      gkr_main_round1_batched<arg_t, true>(batch, acc_size);                                                                                                   \
-    else                                                                                                                                                       \
-      gkr_main_round1_batched<arg_t, false>(batch, acc_size);                                                                                                  \
-  }                                                                                                                                                            \
-  EXTERN __global__ void ab_gkr_main_round2_batched_##arg_t##_kernel(const __grid_constant__ gkr_main_round2_batch<arg_t> batch, const unsigned acc_size) {    \
-    if (batch.explicit_form)                                                                                                                                    \
-      gkr_main_round2_batched<arg_t, true>(batch, acc_size);                                                                                                   \
-    else                                                                                                                                                       \
-      gkr_main_round2_batched<arg_t, false>(batch, acc_size);                                                                                                  \
-  }                                                                                                                                                            \
-  EXTERN __global__ void ab_gkr_main_round3_batched_##arg_t##_kernel(const __grid_constant__ gkr_main_round3_batch<arg_t> batch, const unsigned acc_size) {    \
-    if (batch.explicit_form)                                                                                                                                    \
-      gkr_main_round3_batched<arg_t, true>(batch, acc_size);                                                                                                   \
-    else                                                                                                                                                       \
-      gkr_main_round3_batched<arg_t, false>(batch, acc_size);                                                                                                  \
-  }
-
-GKR_MAIN_LAYER_KERNELS(e2);
-GKR_MAIN_LAYER_KERNELS(e4);
-GKR_MAIN_LAYER_KERNELS(e6);
-
-#define GKR_FORWARD_CACHE_KERNELS(arg_t)                                                                                                                       \
-  EXTERN __global__ void ab_gkr_forward_cache_##arg_t##_kernel(const __grid_constant__ gkr_forward_cache_batch<arg_t> batch, const unsigned trace_len) {       \
-    gkr_forward_cache(batch, trace_len);                                                                                                                       \
-  }
-
-GKR_FORWARD_CACHE_KERNELS(e2);
-GKR_FORWARD_CACHE_KERNELS(e4);
-GKR_FORWARD_CACHE_KERNELS(e6);
-
-} // namespace airbender::ops::complex
+} // namespace airbender::prover::gkr
