@@ -28,37 +28,20 @@ DEVICE_FORCEINLINE void bench(bf *bf_values, const unsigned count, const binary_
     values[i] = r[i];
 }
 
-EXTERN __launch_bounds__(1024, 1) __global__ void ab_add_bf_bench_kernel(bf *values, const unsigned count) {
-  bench<bf, 1024, 32, 32>(values, count, bf::add);
-}
+EXTERN __launch_bounds__(1024, 1) __global__ void ab_add_bf_bench_kernel(bf *values, const unsigned count) { bench<bf, 1024, 32, 32>(values, count, bf::add); }
 
-EXTERN __launch_bounds__(1024, 1) __global__ void ab_mul_bf_bench_kernel(bf *values, const unsigned count) {
-  bench<bf, 1024, 32, 32>(values, count, bf::mul);
-}
+EXTERN __launch_bounds__(1024, 1) __global__ void ab_mul_bf_bench_kernel(bf *values, const unsigned count) { bench<bf, 1024, 32, 32>(values, count, bf::mul); }
 
-EXTERN __launch_bounds__(1024, 1) __global__ void ab_add_e2_bench_kernel(bf *values, const unsigned count) {
-  bench<e2, 1024, 16, 16>(values, count, e2::add);
-}
+EXTERN __launch_bounds__(1024, 1) __global__ void ab_add_e2_bench_kernel(bf *values, const unsigned count) { bench<e2, 1024, 16, 16>(values, count, e2::add); }
 
-EXTERN __launch_bounds__(1024, 1) __global__ void ab_mul_e2_bench_kernel(bf *values, const unsigned count) {
-  bench<e2, 1024, 16, 16>(values, count, e2::mul);
-}
+EXTERN __launch_bounds__(1024, 1) __global__ void ab_mul_e2_bench_kernel(bf *values, const unsigned count) { bench<e2, 1024, 16, 16>(values, count, e2::mul); }
 
-EXTERN __launch_bounds__(1024, 1) __global__ void ab_add_e4_bench_kernel(bf *values, const unsigned count) {
-  bench<e4, 1024, 8, 8>(values, count, e4::add);
-}
+EXTERN __launch_bounds__(1024, 1) __global__ void ab_add_e4_bench_kernel(bf *values, const unsigned count) { bench<e4, 1024, 8, 8>(values, count, e4::add); }
 
-EXTERN __launch_bounds__(1024, 1) __global__ void ab_mul_e4_bench_kernel(bf *values, const unsigned count) {
-  bench<e4, 1024, 8, 8>(values, count, e4::mul);
-}
+EXTERN __launch_bounds__(1024, 1) __global__ void ab_mul_e4_bench_kernel(bf *values, const unsigned count) { bench<e4, 1024, 8, 8>(values, count, e4::mul); }
 
-EXTERN __launch_bounds__(1024, 1) __global__ void ab_add_e6_bench_kernel(bf *values, const unsigned count) {
-  bench<e6, 1024, 5, 5>(values, count, e6::add);
-}
+EXTERN __launch_bounds__(1024, 1) __global__ void ab_add_e6_bench_kernel(bf *values, const unsigned count) { bench<e6, 1024, 5, 5>(values, count, e6::add); }
 
-EXTERN __launch_bounds__(1024, 1) __global__ void ab_mul_e6_bench_kernel(bf *values, const unsigned count) {
-  bench<e6, 1024, 5, 5>(values, count, e6::mul);
-}
-
+EXTERN __launch_bounds__(1024, 1) __global__ void ab_mul_e6_bench_kernel(bf *values, const unsigned count) { bench<e6, 1024, 5, 5>(values, count, e6::mul); }
 
 } // namespace airbender::primitives::field

@@ -12,7 +12,7 @@ struct RegisterOnlyAccessAddress {
   u32 register_index;
 };
 
-enum IsRegisterAddressTag: u32 {
+enum IsRegisterAddressTag : u32 {
   Is,
   Not,
 };

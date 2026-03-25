@@ -1,9 +1,12 @@
 // GPU scheduling contract: see docs/gpu_scheduling_contract.md
 
 pub(crate) mod backward;
+pub(crate) mod backward_kernels;
 pub(crate) mod base_layer_claims;
 pub(crate) mod forward;
+pub(crate) mod forward_kernels;
 pub(crate) mod setup;
+pub(crate) mod setup_kernels;
 pub(crate) mod stage1;
 
 use std::collections::BTreeMap;

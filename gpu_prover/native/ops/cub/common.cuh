@@ -1,7 +1,7 @@
 #pragma once
 
-#include "../../primitives/memory.cuh"
 #include "../../primitives/field.cuh"
+#include "../../primitives/memory.cuh"
 #include <cub/cub.cuh>
 
 using namespace ::cub;

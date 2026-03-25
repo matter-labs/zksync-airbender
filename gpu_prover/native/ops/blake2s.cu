@@ -145,8 +145,7 @@ EXTERN __global__ void ab_gather_rows_kernel(const unsigned *indexes, const unsi
 
 EXTERN __global__ void ab_gather_leaf_rows_kernel(const unsigned *indexes, const unsigned indexes_count, const bool bit_reverse_indexes,
                                                   const unsigned log_leaves_count, const unsigned log_rows_per_leaf,
-                                                  const matrix_getter<bf, ld_modifier::cs> values,
-                                                  const matrix_setter<bf, st_modifier::cs> results) {
+                                                  const matrix_getter<bf, ld_modifier::cs> values, const matrix_setter<bf, st_modifier::cs> results) {
   const unsigned idx = threadIdx.y + blockIdx.x * blockDim.y;
   if (idx >= indexes_count)
     return;

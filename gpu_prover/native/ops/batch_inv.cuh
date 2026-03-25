@@ -1,10 +1,11 @@
 #pragma once
 
+#include "../common.cuh"
 #include "../primitives/field.cuh"
 
 using namespace ::airbender::primitives::field;
 
-namespace airbender::ops::complex {
+namespace airbender::ops {
 
 // I could also remove INV_BATCH as a separate arg and use T::INV_BATCH internally
 // But with nvcc 12.3 and 12.4, the max inv batch I can use with triggering a compile-hang
@@ -59,4 +60,4 @@ template <> struct InvBatch<e6> {
   static constexpr unsigned INV_BATCH = 3;
 };
 
-} // namespace airbender::ops::complex
+} // namespace airbender::ops
