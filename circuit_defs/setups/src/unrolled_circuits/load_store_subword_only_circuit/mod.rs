@@ -17,7 +17,7 @@ pub fn load_store_subword_only_circuit_setup<A: GoodAllocator + 'static, B: Good
     let decoder_table = materialize_flattened_decoder_table::<Mersenne31Field>(&decoder_table_data);
 
     let twiddles = Twiddles::get(::load_store_subword_only::DOMAIN_SIZE, &worker);
-    let lde_precomputations = LdePrecomputations::new(
+    let lde_precomputations = LdePrecomputations::get(
         ::load_store_subword_only::DOMAIN_SIZE,
         ::load_store_subword_only::LDE_FACTOR,
         ::load_store_subword_only::LDE_SOURCE_COSETS,

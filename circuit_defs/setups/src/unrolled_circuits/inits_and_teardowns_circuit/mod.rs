@@ -11,7 +11,7 @@ pub fn inits_and_teardowns_circuit_setup<A: GoodAllocator + 'static, B: GoodAllo
     let table_driver = ::inits_and_teardowns::get_table_driver(binary_image);
 
     let twiddles = Twiddles::get(::inits_and_teardowns::DOMAIN_SIZE, &worker);
-    let lde_precomputations = LdePrecomputations::new(
+    let lde_precomputations = LdePrecomputations::get(
         ::inits_and_teardowns::DOMAIN_SIZE,
         ::inits_and_teardowns::LDE_FACTOR,
         ::inits_and_teardowns::LDE_SOURCE_COSETS,

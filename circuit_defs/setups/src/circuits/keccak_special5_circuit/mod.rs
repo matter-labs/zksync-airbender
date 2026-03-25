@@ -7,7 +7,7 @@ pub fn get_keccak_special5_circuit_setup<A: GoodAllocator + 'static, B: GoodAllo
     let table_driver = keccak_special5::get_table_driver();
 
     let twiddles = Twiddles::get(keccak_special5::DOMAIN_SIZE, &worker);
-    let lde_precomputations = LdePrecomputations::new(
+    let lde_precomputations = LdePrecomputations::get(
         keccak_special5::DOMAIN_SIZE,
         keccak_special5::LDE_FACTOR,
         keccak_special5::LDE_SOURCE_COSETS,

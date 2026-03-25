@@ -17,7 +17,7 @@ pub fn shift_binary_csr_circuit_setup<A: GoodAllocator + 'static, B: GoodAllocat
     let decoder_table = materialize_flattened_decoder_table::<Mersenne31Field>(&decoder_table_data);
 
     let twiddles = Twiddles::get(::shift_binary_csr::DOMAIN_SIZE, &worker);
-    let lde_precomputations = LdePrecomputations::new(
+    let lde_precomputations = LdePrecomputations::get(
         ::shift_binary_csr::DOMAIN_SIZE,
         ::shift_binary_csr::LDE_FACTOR,
         ::shift_binary_csr::LDE_SOURCE_COSETS,

@@ -274,6 +274,29 @@ pub struct LdePrecomputations<A: GoodAllocator> {
     pub lde_factor: usize,
 }
 
+impl<A: GoodAllocator + 'static> LdePrecomputations<A> {
+    pub fn get(
+        domain_size: usize,
+        lde_factor: usize,
+        source_cosets: &[usize],
+        worker: &Worker,
+    ) -> std::sync::Arc<Self> {
+        use std::collections::HashMap;
+        use std::sync::{Arc, LazyLock, Mutex};
+        use type_map::concurrent::TypeMap;
+        static CACHE: LazyLock<Mutex<TypeMap>> = LazyLock::new(|| Mutex::new(TypeMap::default()));
+        let key = (domain_size, lde_factor, source_cosets.to_vec());
+        let mut guard = CACHE.lock().unwrap();
+        let map = guard
+            .entry()
+            .or_insert_with(HashMap::<(usize, usize, Vec<usize>), Arc<Self>>::new);
+        let entry = map
+            .entry(key)
+            .or_insert_with(|| Arc::new(Self::new(domain_size, lde_factor, source_cosets, worker)));
+        entry.clone()
+    }
+}
+
 impl<A: GoodAllocator> LdePrecomputations<A> {
     pub fn new(
         domain_size: usize,
