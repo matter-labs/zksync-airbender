@@ -26,13 +26,11 @@ use worker::Worker;
 
 use crate::allocator::tracker::AllocationPlacement;
 use crate::ntt::{hypercube_coeffs_natural_to_natural_evals, natural_evals_to_bitreversed_coeffs};
+use crate::ops::batch_inv::BatchInv;
+use crate::ops::bit_reverse::{bit_reverse, bit_reverse_in_place};
 use crate::ops::blake2s::Digest;
-use crate::ops::complex::{
-    accumulate_whir_base_columns, bit_reverse, bit_reverse_in_place, deserialize_whir_e4_columns,
-    get_powers_by_ref, get_powers_by_val, serialize_whir_e4_columns, whir_fold_monomial,
-    whir_fold_split_half_in_place,
-};
 use crate::ops::cub::device_reduce::{get_reduce_temp_storage_bytes, reduce, ReduceOperation};
+use crate::ops::powers::{get_powers_by_ref, get_powers_by_val};
 use crate::ops::simple::{add, add_into_y, mul, mul_into_x, set_to_zero};
 use crate::primitives::callbacks::Callbacks;
 use crate::primitives::context::{DeviceAllocation, HostAllocation, ProverContext};
@@ -49,6 +47,10 @@ use crate::prover::proof::{
 };
 use crate::prover::trace_holder::{get_tree_caps, TraceHolder};
 use crate::prover::whir::{GpuWhirExtensionOracle, GpuWhirExtensionQuery};
+use crate::prover::whir_kernels::{
+    accumulate_whir_base_columns, deserialize_whir_e4_columns, pack_rows_for_whir_leaves,
+    serialize_whir_e4_columns, whir_fold_monomial, whir_fold_split_half_in_place,
+};
 
 const EXT4_DEGREE: usize = <E4 as FieldExtension<BF>>::DEGREE;
 struct GpuWhirState {

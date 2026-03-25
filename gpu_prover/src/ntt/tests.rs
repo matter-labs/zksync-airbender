@@ -31,7 +31,7 @@ use crate::device_context::DeviceContext;
 use crate::device_structures::{
     DeviceMatrixChunk, DeviceMatrixChunkImpl, DeviceMatrixChunkMut, DeviceMatrixChunkMutImpl,
 };
-use crate::ops::complex::bit_reverse_in_place;
+use crate::ops::bit_reverse::bit_reverse_in_place;
 use crate::primitives::context::DeviceProperties;
 use crate::primitives::context::{ProverContext, ProverContextConfig};
 use crate::primitives::field::BF;
