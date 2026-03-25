@@ -8,20 +8,20 @@ use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 use field::{Field, FieldExtension};
 
-use super::backward::{launch_build_eq_values, GpuDimensionReducingKernelSet};
+use super::backward::{
+    launch_build_eq_values, launch_trace_holder_block_partials, GpuDimensionReducingKernelSet,
+    GKR_TRACE_HOLDER_PARTIALS_COLUMNS_PER_CHUNK,
+};
 use crate::allocator::tracker::AllocationPlacement;
-use crate::ops::cub::device_reduce::{get_reduce_temp_storage_bytes, reduce, ReduceOperation};
-use crate::ops::simple::{add_into_y, mul, set_to_zero, Add, BinaryOp, Mul};
+use crate::ops::cub::device_reduce::{
+    batch_reduce, get_batch_reduce_temp_storage_bytes, ReduceOperation,
+};
 use crate::primitives::callbacks::Callbacks;
 use crate::primitives::context::{HostAllocation, ProverContext};
-use crate::primitives::device_structures::{DeviceMatrixChunk, DeviceMatrixMut, DeviceVectorChunk};
+use crate::primitives::device_structures::DeviceMatrix;
 use crate::primitives::device_tracing::Range;
 use crate::primitives::field::BF;
 use crate::prover::trace_holder::TraceHolder;
-
-const MAX_REDUCTION_ROW_CHUNK_LOG2: u32 = 20;
-const TARGET_WEIGHTED_BUFFER_BYTES: usize = 64 * 1024 * 1024;
-const MAX_COLUMN_BATCH: usize = 8;
 
 #[derive(Clone)]
 pub(crate) struct GpuGKRBaseLayerTailOutput<E> {
@@ -284,99 +284,73 @@ fn schedule_reduce_trace_holder_claims<E>(
     eq_values: &DeviceSlice<E>,
     tracing_ranges: &mut Vec<Range>,
     context: &ProverContext,
-) -> CudaResult<Vec<HostAllocation<[E]>>>
+) -> CudaResult<HostAllocation<[E]>>
 where
     E: GpuDimensionReducingKernelSet + Field + 'static,
-    Add: BinaryOp<E, E, E>,
-    Mul: BinaryOp<BF, E, E>,
 {
     let trace_len = 1usize << trace_holder.log_domain_size;
     assert_eq!(eq_values.len(), trace_len);
+    assert!(trace_len <= u32::MAX as usize);
+    assert!(trace_len <= i32::MAX as usize);
+    assert_eq!(
+        trace_len % 4,
+        0,
+        "base-layer claims require trace lengths divisible by 4"
+    );
     let columns_count = trace_holder.columns_count;
+    assert!(columns_count <= u32::MAX as usize);
+    assert!(columns_count <= i32::MAX as usize);
     if columns_count == 0 {
-        return Ok(Vec::new());
+        return Ok(unsafe { context.alloc_host_uninit_slice(0) });
     }
 
-    let row_chunk_size = trace_len.min(1usize << MAX_REDUCTION_ROW_CHUNK_LOG2);
-    assert!(row_chunk_size.is_power_of_two());
-    assert_eq!(trace_len % row_chunk_size, 0);
+    let blocks_count = context.get_device_properties().sm_count;
+    assert!(blocks_count > 0, "device must expose at least one SM");
+    assert!(blocks_count <= u32::MAX as usize);
+    assert!(blocks_count <= i32::MAX as usize);
 
-    let max_values_per_batch =
-        (TARGET_WEIGHTED_BUFFER_BYTES / core::mem::size_of::<E>()).max(row_chunk_size);
-    let columns_per_batch = (max_values_per_batch / row_chunk_size)
-        .clamp(1, MAX_COLUMN_BATCH)
-        .min(columns_count);
-
-    let mut weighted_rows = context.alloc(
-        columns_per_batch * row_chunk_size,
-        AllocationPlacement::BestFit,
+    let mut block_partials =
+        context.alloc(columns_count * blocks_count, AllocationPlacement::BestFit)?;
+    let mut claims_device = context.alloc(columns_count, AllocationPlacement::BestFit)?;
+    let reduction_temp_bytes = get_batch_reduce_temp_storage_bytes::<E>(
+        ReduceOperation::Sum,
+        columns_count as i32,
+        blocks_count as i32,
     )?;
-    let mut partial_sums = context.alloc(columns_per_batch, AllocationPlacement::BestFit)?;
-    let mut batch_sums = context.alloc(columns_per_batch, AllocationPlacement::BestFit)?;
-    let reduction_temp_bytes =
-        get_reduce_temp_storage_bytes::<E>(ReduceOperation::Sum, row_chunk_size as i32)?;
     let mut reduction_temp = context.alloc(reduction_temp_bytes, AllocationPlacement::BestFit)?;
     let stream = context.get_exec_stream();
     let reduction_range = Range::new(format!("gkr.base_layer_claims.reduce.{label}"))?;
     reduction_range.start(stream)?;
     let raw_values = trace_holder.get_hypercube_evals();
-    let mut host_batches = Vec::with_capacity(columns_count.div_ceil(columns_per_batch));
-
-    for column_start in (0..columns_count).step_by(columns_per_batch) {
-        let batch_cols = columns_per_batch.min(columns_count - column_start);
-        {
-            let batch_sums_slice = &mut batch_sums[..batch_cols];
-            set_to_zero(batch_sums_slice, stream)?;
-        }
-
-        let column_offset = column_start * trace_len;
-        let batch_values = &raw_values[column_offset..column_offset + batch_cols * trace_len];
-
-        for row_start in (0..trace_len).step_by(row_chunk_size) {
-            let eq_chunk = DeviceVectorChunk::new(eq_values, row_start, row_chunk_size);
-            let values_chunk =
-                DeviceMatrixChunk::new(batch_values, trace_len, row_start, row_chunk_size);
-
-            {
-                let weighted_slice = &mut weighted_rows[..batch_cols * row_chunk_size];
-                let mut weighted_matrix = DeviceMatrixMut::new(weighted_slice, row_chunk_size);
-                mul(&values_chunk, &eq_chunk, &mut weighted_matrix, stream)?;
-            }
-
-            {
-                let weighted_slice = &weighted_rows[..batch_cols * row_chunk_size];
-                for column in 0..batch_cols {
-                    let weighted_column = DeviceVectorChunk::new(
-                        weighted_slice,
-                        column * row_chunk_size,
-                        row_chunk_size,
-                    );
-                    reduce(
-                        ReduceOperation::Sum,
-                        &mut reduction_temp,
-                        &weighted_column,
-                        &mut partial_sums[column],
-                        stream,
-                    )?;
-                }
-            }
-
-            let partial_sums_slice = &partial_sums[..batch_cols];
-            let batch_sums_slice = &mut batch_sums[..batch_cols];
-            add_into_y(partial_sums_slice, batch_sums_slice, stream)?;
-        }
-
-        let mut host_batch_sums = unsafe { context.alloc_host_uninit_slice(batch_cols) };
-        {
-            let batch_sums_slice = &batch_sums[..batch_cols];
-            memory_copy_async(&mut host_batch_sums, batch_sums_slice, stream)?;
-        }
-        host_batches.push(host_batch_sums);
+    for column_start in (0..columns_count).step_by(GKR_TRACE_HOLDER_PARTIALS_COLUMNS_PER_CHUNK) {
+        let chunk_cols =
+            (columns_count - column_start).min(GKR_TRACE_HOLDER_PARTIALS_COLUMNS_PER_CHUNK);
+        launch_trace_holder_block_partials(
+            raw_values.as_ptr(),
+            eq_values.as_ptr(),
+            block_partials.as_mut_ptr(),
+            trace_len,
+            column_start,
+            chunk_cols,
+            blocks_count,
+            context,
+        )?;
     }
+    let block_partials_matrix = DeviceMatrix::new(&block_partials, blocks_count);
+    batch_reduce(
+        ReduceOperation::Sum,
+        &mut reduction_temp,
+        &block_partials_matrix,
+        &mut claims_device,
+        stream,
+    )?;
+
+    let mut host_claims = unsafe { context.alloc_host_uninit_slice(columns_count) };
+    memory_copy_async(&mut host_claims, &claims_device, stream)?;
     reduction_range.end(stream)?;
     tracing_ranges.push(reduction_range);
 
-    Ok(host_batches)
+    Ok(host_claims)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -392,8 +366,6 @@ pub(crate) fn schedule_prepare_base_layer_claims_with_sources<E>(
 ) -> CudaResult<GpuGKRBaseLayerClaimsScheduledExecution<E>>
 where
     E: GpuDimensionReducingKernelSet + FieldExtension<BF> + Field + 'static,
-    Add: BinaryOp<E, E, E>,
-    Mul: BinaryOp<BF, E, E>,
 {
     for (label, trace_holder) in [
         ("memory", memory_trace_holder),
@@ -473,33 +445,19 @@ where
     let finalize_range = Range::new("gkr.base_layer_claims.finalize")?;
     finalize_range.start(stream)?;
     let mut finish_callbacks = Callbacks::new();
-    let mem_polys_claims_accessors = mem_polys_claims
-        .iter()
-        .map(HostAllocation::get_accessor)
-        .collect::<Vec<_>>();
-    let wit_polys_claims_accessors = wit_polys_claims
-        .iter()
-        .map(HostAllocation::get_accessor)
-        .collect::<Vec<_>>();
-    let setup_polys_claims_accessors = setup_polys_claims
-        .iter()
-        .map(HostAllocation::get_accessor)
-        .collect::<Vec<_>>();
+    let mem_polys_claims_accessor = mem_polys_claims.get_accessor();
+    let wit_polys_claims_accessor = wit_polys_claims.get_accessor();
+    let setup_polys_claims_accessor = setup_polys_claims.get_accessor();
     let shared_state_for_callback = Arc::clone(&shared_state);
     finish_callbacks.schedule(
         move || unsafe {
-            let collect = |accessors: &[crate::primitives::context::UnsafeAccessor<[E]>]| {
-                let total_len = accessors.iter().map(|accessor| accessor.get().len()).sum();
-                let mut values = Vec::with_capacity(total_len);
-                for accessor in accessors.iter() {
-                    values.extend_from_slice(accessor.get());
-                }
-                values
+            let collect = |accessor: crate::primitives::context::UnsafeAccessor<[E]>| {
+                accessor.get().iter().copied().collect::<Vec<_>>()
             };
 
-            let mem_polys_claims = collect(&mem_polys_claims_accessors);
-            let wit_polys_claims = collect(&wit_polys_claims_accessors);
-            let setup_polys_claims = collect(&setup_polys_claims_accessors);
+            let mem_polys_claims = collect(mem_polys_claims_accessor);
+            let wit_polys_claims = collect(wit_polys_claims_accessor);
+            let setup_polys_claims = collect(setup_polys_claims_accessor);
             let mut completed_claims = initial_claims();
             let (extra_evaluations_from_caching_relations, extra_evaluations_transcript_batches) =
                 fill_missing_cached_dependency_claims(
@@ -545,8 +503,6 @@ pub(crate) fn schedule_prepare_base_layer_claims<E>(
 ) -> CudaResult<GpuGKRBaseLayerClaimsScheduledExecution<E>>
 where
     E: GpuDimensionReducingKernelSet + FieldExtension<BF> + Field + 'static,
-    Add: BinaryOp<E, E, E>,
-    Mul: BinaryOp<BF, E, E>,
 {
     let base_layer_point = base_layer_point.to_vec();
     let layer_0_claims = layer_0_claims.clone();
@@ -573,8 +529,6 @@ pub(crate) fn prepare_base_layer_claims<E>(
 ) -> CudaResult<GpuGKRBaseLayerTailOutput<E>>
 where
     E: GpuDimensionReducingKernelSet + FieldExtension<BF> + Field + 'static,
-    Add: BinaryOp<E, E, E>,
-    Mul: BinaryOp<BF, E, E>,
 {
     schedule_prepare_base_layer_claims(
         layer_desc,

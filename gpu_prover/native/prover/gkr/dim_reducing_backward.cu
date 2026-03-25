@@ -33,6 +33,11 @@ namespace airbender::prover::gkr {
                                                                        const unsigned challenge_count, arg_t *eq_values, const unsigned acc_size) {            \
     gkr_build_eq_values(claim_point, challenge_offset, challenge_count, eq_values, acc_size);                                                                  \
   }                                                                                                                                                            \
+  EXTERN __global__ void ab_gkr_dim_reducing_trace_holder_block_partials_##arg_t##_kernel(const bf *raw_values, const arg_t *eq_values, arg_t *block_partials, \
+                                                                                          const unsigned trace_len, const unsigned column_start,               \
+                                                                                          const unsigned chunk_cols, const unsigned blocks_count) {            \
+    gkr_trace_holder_block_partials(raw_values, eq_values, block_partials, trace_len, column_start, chunk_cols, blocks_count);                                 \
+  }                                                                                                                                                            \
   EXTERN __global__ void ab_gkr_dim_reducing_round0_batched_##arg_t##_kernel(const __grid_constant__ gkr_dim_reducing_round0_batch<arg_t> batch,               \
                                                                              const unsigned acc_size) {                                                        \
     gkr_dim_reducing_round0_batched(batch, acc_size);                                                                                                          \
