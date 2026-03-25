@@ -9,6 +9,7 @@ pub(crate) mod trace_holder;
 pub(crate) mod tracing_data;
 pub(crate) mod whir;
 pub(crate) mod whir_fold;
+pub(crate) mod whir_kernels;
 
 #[cfg(test)]
 pub(crate) mod test_utils;

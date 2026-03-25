@@ -1,4 +1,4 @@
-use crate::ops::complex::bit_reverse_in_place;
+use crate::ops::bit_reverse::bit_reverse_in_place;
 use crate::primitives::device_structures::{
     DeviceMatrixChunkImpl, DeviceMatrixChunkMutImpl, MutPtrAndStride, PtrAndStride,
 };
