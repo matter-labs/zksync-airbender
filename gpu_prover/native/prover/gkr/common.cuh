@@ -71,6 +71,10 @@ static constexpr unsigned GKR_BACKWARD_MAX_KERNELS_PER_LAYER = 64;
 static constexpr unsigned GKR_BACKWARD_MAX_INLINE_ROUND_BATCH_BYTES = 12 * 1024;
 static constexpr unsigned GKR_DIM_REDUCING_FORWARD_MAX_INPUTS = 5;
 static constexpr unsigned GKR_FORWARD_SETUP_GENERIC_LOOKUP_MAX_COLUMNS = 10;
+static constexpr unsigned GKR_TRACE_HOLDER_PARTIALS_THREADS_PER_BLOCK = 512;
+static constexpr unsigned GKR_TRACE_HOLDER_PARTIALS_COLUMNS_PER_CHUNK = 4;
+static constexpr unsigned GKR_TRACE_HOLDER_PARTIALS_WARP_SIZE = 32;
+static constexpr unsigned GKR_TRACE_HOLDER_PARTIALS_WARPS_PER_BLOCK = GKR_TRACE_HOLDER_PARTIALS_THREADS_PER_BLOCK / GKR_TRACE_HOLDER_PARTIALS_WARP_SIZE;
 
 enum gkr_main_batch_record_mode : u32 {
   GKR_MAIN_BATCH_INLINE_ALL = 0,
@@ -873,6 +877,118 @@ DEVICE_FORCEINLINE void gkr_build_eq_values(const E *claim_point, const unsigned
   }
 
   store<E, st_modifier::cs>(eq_values, acc, gid);
+}
+
+template <typename E>
+DEVICE_FORCEINLINE E gkr_trace_holder_partials_shfl_xor_words(const E value, const int lane_mask, const unsigned mask, const unsigned width) {
+  E result;
+  constexpr unsigned words_count = sizeof(E) / sizeof(unsigned);
+  const unsigned *src = reinterpret_cast<const unsigned *>(&value);
+  unsigned *dst = reinterpret_cast<unsigned *>(&result);
+#pragma unroll
+  for (unsigned i = 0; i < words_count; ++i)
+    dst[i] = shfl_xor(mask, src[i], lane_mask, width);
+  return result;
+}
+
+template <typename E> DEVICE_FORCEINLINE E gkr_trace_holder_partials_shfl_xor(const E value, const int lane_mask, const unsigned mask = UINT32_MAX) {
+  if constexpr (sizeof(E) % sizeof(uint4) == 0) {
+    E result;
+    constexpr unsigned words_count = sizeof(E) / sizeof(uint4);
+    const uint4 *src = reinterpret_cast<const uint4 *>(&value);
+    uint4 *dst = reinterpret_cast<uint4 *>(&result);
+#pragma unroll
+    for (unsigned i = 0; i < words_count; ++i)
+      dst[i] = shfl_xor(mask, src[i], lane_mask, GKR_TRACE_HOLDER_PARTIALS_WARP_SIZE);
+    return result;
+  } else if constexpr (sizeof(E) % sizeof(uint2) == 0) {
+    E result;
+    constexpr unsigned words_count = sizeof(E) / sizeof(uint2);
+    const uint2 *src = reinterpret_cast<const uint2 *>(&value);
+    uint2 *dst = reinterpret_cast<uint2 *>(&result);
+#pragma unroll
+    for (unsigned i = 0; i < words_count; ++i)
+      dst[i] = shfl_xor(mask, src[i], lane_mask, GKR_TRACE_HOLDER_PARTIALS_WARP_SIZE);
+    return result;
+  } else {
+    return gkr_trace_holder_partials_shfl_xor_words(value, lane_mask, mask, GKR_TRACE_HOLDER_PARTIALS_WARP_SIZE);
+  }
+}
+
+template <typename E> DEVICE_FORCEINLINE E gkr_trace_holder_partials_warp_reduce_sum(E value) {
+#pragma unroll
+  for (int lane_mask = GKR_TRACE_HOLDER_PARTIALS_WARP_SIZE >> 1; lane_mask > 0; lane_mask >>= 1)
+    value = E::add(value, gkr_trace_holder_partials_shfl_xor(value, lane_mask));
+  return value;
+}
+
+struct __align__(16) gkr_trace_holder_bf4 { bf values[4]; };
+
+template <typename E>
+DEVICE_FORCEINLINE void gkr_trace_holder_block_partials(const bf *raw_values, const E *eq_values, E *block_partials, const unsigned trace_len,
+                                                        const unsigned column_start, const unsigned chunk_cols, const unsigned blocks_count) {
+  static_assert(GKR_TRACE_HOLDER_PARTIALS_THREADS_PER_BLOCK % GKR_TRACE_HOLDER_PARTIALS_WARP_SIZE == 0);
+  static_assert(sizeof(gkr_trace_holder_bf4) == 4 * sizeof(bf));
+
+  const unsigned tid = threadIdx.x;
+  const unsigned lane_id = tid & (GKR_TRACE_HOLDER_PARTIALS_WARP_SIZE - 1);
+  const unsigned warp_id = tid / GKR_TRACE_HOLDER_PARTIALS_WARP_SIZE;
+  const unsigned packed_trace_len = trace_len >> 2;
+  const unsigned packed_gid = blockIdx.x * blockDim.x + tid;
+  const unsigned packed_stride = gridDim.x * blockDim.x;
+  E accumulators[GKR_TRACE_HOLDER_PARTIALS_COLUMNS_PER_CHUNK] = {
+      E::ZERO(),
+      E::ZERO(),
+      E::ZERO(),
+      E::ZERO(),
+  };
+
+  for (unsigned packed_row = packed_gid; packed_row < packed_trace_len; packed_row += packed_stride) {
+    const unsigned row = packed_row << 2;
+    const E eq0 = load<E, ld_modifier::cs>(eq_values, row);
+    const E eq1 = load<E, ld_modifier::cs>(eq_values, row + 1);
+    const E eq2 = load<E, ld_modifier::cs>(eq_values, row + 2);
+    const E eq3 = load<E, ld_modifier::cs>(eq_values, row + 3);
+#pragma unroll
+    for (unsigned local_col = 0; local_col < GKR_TRACE_HOLDER_PARTIALS_COLUMNS_PER_CHUNK; ++local_col) {
+      if (local_col >= chunk_cols)
+        break;
+      const unsigned column = column_start + local_col;
+      const size_t row_offset = static_cast<size_t>(column) * trace_len + row;
+      const auto values = load<gkr_trace_holder_bf4, ld_modifier::cs>(reinterpret_cast<const gkr_trace_holder_bf4 *>(raw_values), row_offset >> 2);
+      E partial = E::mul(values.values[0], eq0);
+      partial = E::add(partial, E::mul(values.values[1], eq1));
+      partial = E::add(partial, E::mul(values.values[2], eq2));
+      partial = E::add(partial, E::mul(values.values[3], eq3));
+      accumulators[local_col] = E::add(accumulators[local_col], partial);
+    }
+  }
+
+  __shared__ E warp_partials[GKR_TRACE_HOLDER_PARTIALS_COLUMNS_PER_CHUNK][GKR_TRACE_HOLDER_PARTIALS_WARPS_PER_BLOCK];
+#pragma unroll
+  for (unsigned local_col = 0; local_col < GKR_TRACE_HOLDER_PARTIALS_COLUMNS_PER_CHUNK; ++local_col) {
+    if (local_col >= chunk_cols)
+      break;
+    const E warp_sum = gkr_trace_holder_partials_warp_reduce_sum(accumulators[local_col]);
+    if (lane_id == 0)
+      warp_partials[local_col][warp_id] = warp_sum;
+  }
+  __syncthreads();
+
+  if (warp_id != 0)
+    return;
+
+#pragma unroll
+  for (unsigned local_col = 0; local_col < GKR_TRACE_HOLDER_PARTIALS_COLUMNS_PER_CHUNK; ++local_col) {
+    if (local_col >= chunk_cols)
+      break;
+    E block_sum = lane_id < GKR_TRACE_HOLDER_PARTIALS_WARPS_PER_BLOCK ? warp_partials[local_col][lane_id] : E::ZERO();
+    block_sum = gkr_trace_holder_partials_warp_reduce_sum(block_sum);
+    if (lane_id == 0) {
+      const size_t partial_offset = static_cast<size_t>(column_start + local_col) * blocks_count + blockIdx.x;
+      store<E, st_modifier::cs>(block_partials, block_sum, partial_offset);
+    }
+  }
 }
 
 template <typename E>

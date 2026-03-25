@@ -1761,6 +1761,8 @@ pub(super) fn empty_round0_host_launch_descriptors<B, E>(
 }
 
 pub(super) const GKR_DIM_REDUCING_THREADS_PER_BLOCK: u32 = WARP_SIZE * 4;
+pub(super) const GKR_TRACE_HOLDER_PARTIALS_THREADS_PER_BLOCK: u32 = 512;
+pub(super) const GKR_TRACE_HOLDER_PARTIALS_COLUMNS_PER_CHUNK: usize = 4;
 
 cuda_kernel_signature_arguments_and_function!(
     GpuDimensionReducingPairwiseRound0<T>,
@@ -1810,6 +1812,17 @@ cuda_kernel_signature_arguments_and_function!(
 );
 
 cuda_kernel_signature_arguments_and_function!(
+    GpuDimensionReducingTraceHolderBlockPartials<T>,
+    raw_values: *const BF,
+    eq_values: *const T,
+    block_partials: *mut T,
+    trace_len: u32,
+    column_start: u32,
+    chunk_cols: u32,
+    blocks_count: u32,
+);
+
+cuda_kernel_signature_arguments_and_function!(
     GpuDimensionReducingRound0Batched<T>,
     batch: GpuGKRDimensionReducingRound0Batch<T>,
     acc_size: u32,
@@ -1839,6 +1852,7 @@ pub(crate) trait GpuDimensionReducingKernelSet: Reduce + Copy + Sized {
     const PAIRWISE_CONTINUATION: GpuDimensionReducingPairwiseContinuationSignature<Self>;
     const LOOKUP_CONTINUATION: GpuDimensionReducingLookupContinuationSignature<Self>;
     const BUILD_EQ: GpuDimensionReducingBuildEqSignature<Self>;
+    const TRACE_HOLDER_BLOCK_PARTIALS: GpuDimensionReducingTraceHolderBlockPartialsSignature<Self>;
     const ROUND0_BATCHED: GpuDimensionReducingRound0BatchedSignature<Self>;
     const ROUND1_BATCHED: GpuDimensionReducingRound1BatchedSignature<Self>;
     const ROUND2_BATCHED: GpuDimensionReducingRound2BatchedSignature<Self>;
@@ -1896,6 +1910,17 @@ macro_rules! gkr_dim_reducing_kernels {
                 )
             );
             cuda_kernel_declaration!(
+                [<ab_gkr_dim_reducing_trace_holder_block_partials_ $type:lower _kernel>](
+                    raw_values: *const BF,
+                    eq_values: *const $type,
+                    block_partials: *mut $type,
+                    trace_len: u32,
+                    column_start: u32,
+                    chunk_cols: u32,
+                    blocks_count: u32,
+                )
+            );
+            cuda_kernel_declaration!(
                 [<ab_gkr_dim_reducing_round0_batched_ $type:lower _kernel>](
                     batch: GpuGKRDimensionReducingRound0Batch<$type>,
                     acc_size: u32,
@@ -1931,6 +1956,8 @@ macro_rules! gkr_dim_reducing_kernels {
                     [<ab_gkr_dim_reducing_lookup_continuation_ $type:lower _kernel>];
                 const BUILD_EQ: GpuDimensionReducingBuildEqSignature<Self> =
                     [<ab_gkr_dim_reducing_build_eq_ $type:lower _kernel>];
+                const TRACE_HOLDER_BLOCK_PARTIALS: GpuDimensionReducingTraceHolderBlockPartialsSignature<Self> =
+                    [<ab_gkr_dim_reducing_trace_holder_block_partials_ $type:lower _kernel>];
                 const ROUND0_BATCHED: GpuDimensionReducingRound0BatchedSignature<Self> =
                     [<ab_gkr_dim_reducing_round0_batched_ $type:lower _kernel>];
                 const ROUND1_BATCHED: GpuDimensionReducingRound1BatchedSignature<Self> =
@@ -2174,6 +2201,17 @@ pub(super) fn gkr_dim_reducing_launch_config(
     CudaLaunchConfig::basic(grid_dim, block_dim, context.get_exec_stream())
 }
 
+pub(super) fn gkr_trace_holder_partials_launch_config(
+    blocks_count: u32,
+    context: &ProverContext,
+) -> CudaLaunchConfig<'_> {
+    CudaLaunchConfig::basic(
+        blocks_count,
+        GKR_TRACE_HOLDER_PARTIALS_THREADS_PER_BLOCK,
+        context.get_exec_stream(),
+    )
+}
+
 pub(super) fn launch_pairwise_round0<E: GpuDimensionReducingKernelSet>(
     descriptors: &GpuSumcheckRound0ScheduledLaunchDescriptors<impl Sized, E>,
     batch_challenges: *const E,
@@ -2319,6 +2357,35 @@ pub(crate) fn launch_build_eq_values<E: GpuDimensionReducingKernelSet>(
     );
 
     GpuDimensionReducingBuildEqFunction(E::BUILD_EQ).launch(&config, &args)
+}
+
+pub(crate) fn launch_trace_holder_block_partials<E: GpuDimensionReducingKernelSet>(
+    raw_values: *const BF,
+    eq_values: *const E,
+    block_partials: *mut E,
+    trace_len: usize,
+    column_start: usize,
+    chunk_cols: usize,
+    blocks_count: usize,
+    context: &ProverContext,
+) -> CudaResult<()> {
+    assert!(trace_len <= u32::MAX as usize);
+    assert!(column_start <= u32::MAX as usize);
+    assert!(chunk_cols <= u32::MAX as usize);
+    assert!(blocks_count <= u32::MAX as usize);
+    let config = gkr_trace_holder_partials_launch_config(blocks_count as u32, context);
+    let args = GpuDimensionReducingTraceHolderBlockPartialsArguments::new(
+        raw_values,
+        eq_values,
+        block_partials,
+        trace_len as u32,
+        column_start as u32,
+        chunk_cols as u32,
+        blocks_count as u32,
+    );
+
+    GpuDimensionReducingTraceHolderBlockPartialsFunction(E::TRACE_HOLDER_BLOCK_PARTIALS)
+        .launch(&config, &args)
 }
 
 pub(super) fn apply_eq_and_reduce_accumulator<E>(
