@@ -410,7 +410,7 @@ impl<E: Copy> Copy for GpuExtensionFieldPolyContinuingLaunchDescriptor<E> {}
 unsafe impl<E> Send for GpuExtensionFieldPolyContinuingLaunchDescriptor<E> {}
 unsafe impl<E> Sync for GpuExtensionFieldPolyContinuingLaunchDescriptor<E> {}
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub(crate) struct GpuSumcheckRound0LaunchDescriptors<B, E> {
     pub(crate) base_field_inputs: Vec<GpuBaseFieldPolySource<B>>,
     pub(crate) extension_field_inputs: Vec<GpuExtensionFieldPolyInitialSource<E>>,
@@ -461,6 +461,12 @@ pub(crate) struct GpuSumcheckRound1ScheduledLaunchDescriptors<B, E> {
     pub(crate) device: GpuSumcheckRound1DeviceLaunchDescriptors<B, E>,
 }
 
+#[derive(Clone, Debug)]
+pub(crate) struct GpuSumcheckRound1HostLaunchDescriptors<B, E: Copy> {
+    pub(crate) base_field_inputs: Vec<GpuBaseFieldPolySourceAfterOneFoldingLaunchDescriptor<B, E>>,
+    pub(crate) extension_field_inputs: Vec<GpuExtensionFieldPolyContinuingLaunchDescriptor<E>>,
+}
+
 pub(crate) struct GpuSumcheckRound2DeviceLaunchDescriptors<B, E> {
     pub(crate) base_field_inputs:
         DeviceAllocation<GpuBaseFieldPolySourceAfterTwoFoldingsLaunchDescriptor<B, E>>,
@@ -472,6 +478,12 @@ pub(crate) struct GpuSumcheckRound2ScheduledLaunchDescriptors<B, E> {
     pub(crate) device: GpuSumcheckRound2DeviceLaunchDescriptors<B, E>,
 }
 
+#[derive(Clone, Debug)]
+pub(crate) struct GpuSumcheckRound2HostLaunchDescriptors<B, E: Copy> {
+    pub(crate) base_field_inputs: Vec<GpuBaseFieldPolySourceAfterTwoFoldingsLaunchDescriptor<B, E>>,
+    pub(crate) extension_field_inputs: Vec<GpuExtensionFieldPolyContinuingLaunchDescriptor<E>>,
+}
+
 pub(crate) struct GpuSumcheckRound3AndBeyondDeviceLaunchDescriptors<E> {
     pub(crate) base_field_inputs:
         DeviceAllocation<GpuExtensionFieldPolyContinuingLaunchDescriptor<E>>,
@@ -481,6 +493,12 @@ pub(crate) struct GpuSumcheckRound3AndBeyondDeviceLaunchDescriptors<E> {
 
 pub(crate) struct GpuSumcheckRound3AndBeyondScheduledLaunchDescriptors<E> {
     pub(crate) device: GpuSumcheckRound3AndBeyondDeviceLaunchDescriptors<E>,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct GpuSumcheckRound3AndBeyondHostLaunchDescriptors<E: Copy> {
+    pub(crate) base_field_inputs: Vec<GpuExtensionFieldPolyContinuingLaunchDescriptor<E>>,
+    pub(crate) extension_field_inputs: Vec<GpuExtensionFieldPolyContinuingLaunchDescriptor<E>>,
 }
 
 #[derive(Debug)]
@@ -1190,12 +1208,8 @@ impl<B: 'static, E: Field> GpuGKRStorage<B, E> {
 }
 
 impl<B: 'static, E: Field + 'static> GpuSumcheckRound1PreparedStorage<B, E> {
-    pub(crate) fn schedule_upload_launch_descriptors(
-        &self,
-        context: &ProverContext,
-        callbacks: &mut Callbacks<'static>,
-    ) -> CudaResult<GpuSumcheckRound1ScheduledLaunchDescriptors<B, E>> {
-        let base_field_inputs_values = self
+    pub(crate) fn build_launch_descriptors(&self) -> GpuSumcheckRound1HostLaunchDescriptors<B, E> {
+        let base_field_inputs = self
             .base_field_inputs
             .iter()
             .map(
@@ -1206,8 +1220,8 @@ impl<B: 'static, E: Field + 'static> GpuSumcheckRound1PreparedStorage<B, E> {
                     _marker: core::marker::PhantomData,
                 },
             )
-            .collect::<Vec<_>>();
-        let extension_field_inputs_values = self
+            .collect();
+        let extension_field_inputs = self
             .extension_field_inputs
             .iter()
             .map(|plan| GpuExtensionFieldPolyContinuingLaunchDescriptor {
@@ -1217,12 +1231,25 @@ impl<B: 'static, E: Field + 'static> GpuSumcheckRound1PreparedStorage<B, E> {
                 next_layer_size: plan.next_layer_size,
                 first_access: plan.first_access,
             })
-            .collect::<Vec<_>>();
-        let host_base = alloc_host_and_schedule_copy(context, callbacks, base_field_inputs_values);
+            .collect();
+        GpuSumcheckRound1HostLaunchDescriptors {
+            base_field_inputs,
+            extension_field_inputs,
+        }
+    }
+
+    pub(crate) fn schedule_upload_launch_descriptors(
+        &self,
+        context: &ProverContext,
+        callbacks: &mut Callbacks<'static>,
+    ) -> CudaResult<GpuSumcheckRound1ScheduledLaunchDescriptors<B, E>> {
+        let descriptors = self.build_launch_descriptors();
+        let host_base =
+            alloc_host_and_schedule_copy(context, callbacks, descriptors.base_field_inputs);
         let base_field_inputs_device = alloc_device_and_schedule_upload(context, &host_base)?;
         drop(host_base);
         let host_ext =
-            alloc_host_and_schedule_copy(context, callbacks, extension_field_inputs_values);
+            alloc_host_and_schedule_copy(context, callbacks, descriptors.extension_field_inputs);
         let extension_field_inputs_device = alloc_device_and_schedule_upload(context, &host_ext)?;
         drop(host_ext);
         let device = GpuSumcheckRound1DeviceLaunchDescriptors {
@@ -1234,12 +1261,8 @@ impl<B: 'static, E: Field + 'static> GpuSumcheckRound1PreparedStorage<B, E> {
 }
 
 impl<B: 'static, E: Field + 'static> GpuSumcheckRound2PreparedStorage<B, E> {
-    pub(crate) fn schedule_upload_launch_descriptors(
-        &self,
-        context: &ProverContext,
-        callbacks: &mut Callbacks<'static>,
-    ) -> CudaResult<GpuSumcheckRound2ScheduledLaunchDescriptors<B, E>> {
-        let base_field_inputs_values = self
+    pub(crate) fn build_launch_descriptors(&self) -> GpuSumcheckRound2HostLaunchDescriptors<B, E> {
+        let base_field_inputs = self
             .base_field_inputs
             .iter()
             .map(
@@ -1252,8 +1275,8 @@ impl<B: 'static, E: Field + 'static> GpuSumcheckRound2PreparedStorage<B, E> {
                     first_access: plan.first_access,
                 },
             )
-            .collect::<Vec<_>>();
-        let extension_field_inputs_values = self
+            .collect();
+        let extension_field_inputs = self
             .extension_field_inputs
             .iter()
             .map(|plan| GpuExtensionFieldPolyContinuingLaunchDescriptor {
@@ -1263,12 +1286,25 @@ impl<B: 'static, E: Field + 'static> GpuSumcheckRound2PreparedStorage<B, E> {
                 next_layer_size: plan.next_layer_size,
                 first_access: plan.first_access,
             })
-            .collect::<Vec<_>>();
-        let host_base = alloc_host_and_schedule_copy(context, callbacks, base_field_inputs_values);
+            .collect();
+        GpuSumcheckRound2HostLaunchDescriptors {
+            base_field_inputs,
+            extension_field_inputs,
+        }
+    }
+
+    pub(crate) fn schedule_upload_launch_descriptors(
+        &self,
+        context: &ProverContext,
+        callbacks: &mut Callbacks<'static>,
+    ) -> CudaResult<GpuSumcheckRound2ScheduledLaunchDescriptors<B, E>> {
+        let descriptors = self.build_launch_descriptors();
+        let host_base =
+            alloc_host_and_schedule_copy(context, callbacks, descriptors.base_field_inputs);
         let base_field_inputs_device = alloc_device_and_schedule_upload(context, &host_base)?;
         drop(host_base);
         let host_ext =
-            alloc_host_and_schedule_copy(context, callbacks, extension_field_inputs_values);
+            alloc_host_and_schedule_copy(context, callbacks, descriptors.extension_field_inputs);
         let extension_field_inputs_device = alloc_device_and_schedule_upload(context, &host_ext)?;
         drop(host_ext);
         let device = GpuSumcheckRound2DeviceLaunchDescriptors {
@@ -1280,12 +1316,10 @@ impl<B: 'static, E: Field + 'static> GpuSumcheckRound2PreparedStorage<B, E> {
 }
 
 impl<E: Field + 'static> GpuSumcheckRound3AndBeyondPreparedStorage<E> {
-    pub(crate) fn schedule_upload_launch_descriptors(
+    pub(crate) fn build_launch_descriptors(
         &self,
-        context: &ProverContext,
-        callbacks: &mut Callbacks<'static>,
-    ) -> CudaResult<GpuSumcheckRound3AndBeyondScheduledLaunchDescriptors<E>> {
-        let base_field_inputs_values = self
+    ) -> GpuSumcheckRound3AndBeyondHostLaunchDescriptors<E> {
+        let base_field_inputs = self
             .base_field_inputs
             .iter()
             .map(|plan| GpuExtensionFieldPolyContinuingLaunchDescriptor {
@@ -1295,8 +1329,8 @@ impl<E: Field + 'static> GpuSumcheckRound3AndBeyondPreparedStorage<E> {
                 next_layer_size: plan.next_layer_size,
                 first_access: plan.first_access,
             })
-            .collect::<Vec<_>>();
-        let extension_field_inputs_values = self
+            .collect();
+        let extension_field_inputs = self
             .extension_field_inputs
             .iter()
             .map(|plan| GpuExtensionFieldPolyContinuingLaunchDescriptor {
@@ -1306,12 +1340,25 @@ impl<E: Field + 'static> GpuSumcheckRound3AndBeyondPreparedStorage<E> {
                 next_layer_size: plan.next_layer_size,
                 first_access: plan.first_access,
             })
-            .collect::<Vec<_>>();
-        let host_base = alloc_host_and_schedule_copy(context, callbacks, base_field_inputs_values);
+            .collect();
+        GpuSumcheckRound3AndBeyondHostLaunchDescriptors {
+            base_field_inputs,
+            extension_field_inputs,
+        }
+    }
+
+    pub(crate) fn schedule_upload_launch_descriptors(
+        &self,
+        context: &ProverContext,
+        callbacks: &mut Callbacks<'static>,
+    ) -> CudaResult<GpuSumcheckRound3AndBeyondScheduledLaunchDescriptors<E>> {
+        let descriptors = self.build_launch_descriptors();
+        let host_base =
+            alloc_host_and_schedule_copy(context, callbacks, descriptors.base_field_inputs);
         let base_field_inputs_device = alloc_device_and_schedule_upload(context, &host_base)?;
         drop(host_base);
         let host_ext =
-            alloc_host_and_schedule_copy(context, callbacks, extension_field_inputs_values);
+            alloc_host_and_schedule_copy(context, callbacks, descriptors.extension_field_inputs);
         let extension_field_inputs_device = alloc_device_and_schedule_upload(context, &host_ext)?;
         drop(host_ext);
         let device = GpuSumcheckRound3AndBeyondDeviceLaunchDescriptors {
