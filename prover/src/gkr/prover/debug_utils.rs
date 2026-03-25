@@ -206,10 +206,13 @@ pub(crate) fn verify_cache_relations<F: PrimeField, E: FieldExtension<F> + Field
                 };
                 let expected = evaluate_memory_tuple_from_claims(rel, claims, external_challenges);
                 if expected != cached_claim {
+                    println!(
+                        "Memory tuple {:?} claim failure: expected {}, got {}",
+                        rel, expected, cached_claim
+                    );
                     return false;
                 }
             }
-            NoFieldGKRCacheRelation::LongLinear => {}
             NoFieldGKRCacheRelation::SingleColumnLookup {
                 relation: _,
                 range_check_width: _,
@@ -288,8 +291,9 @@ fn evaluate_memory_tuple_from_claims<F: PrimeField, E: FieldExtension<F> + Field
                 let mut low = claims[&GKRAddress::BaseLayerMemory(*low_base)];
                 low.add_assign_base(&F::from_u32_unchecked(*low_offset));
                 if let Some((c, offset)) = *low_dynamic_offset {
-                    let mut t = claims[&GKRAddress::BaseLayerMemory(offset)];
-                    t.mul_assign_by_base(&F::from_u32_unchecked(c as u32));
+                    let mut var_offset = claims[&GKRAddress::BaseLayerMemory(offset)];
+                    var_offset.mul_assign_by_base(&F::from_u32_unchecked(c as u32));
+                    low.add_assign(&var_offset);
                 }
                 t.mul_assign(&low);
                 result.add_assign(&t);

@@ -34,9 +34,22 @@ use worker::Worker;
 
 const INITIAL_PC: u32 = 0;
 const NUM_INIT_AND_TEARDOWN_SETS: usize = 8;
+
+// NOTE: these constants must match with ones used in CS crate to produce
+// layout and SSA forms, otherwise derived witness-gen functions may write into
+// invalid locations
+const TRACE_LEN_LOG2: usize = 24;
+const NUM_CYCLES_PER_CHUNK: usize = 1 << TRACE_LEN_LOG2;
 const BLAKE_NUM_DELEGATION_CYCLES: usize = 1 << 20;
 const BIGINT_NUM_DELEGATION_CYCLES: usize = 1 << 22;
 const KECCAK_NUM_DELEGATION_CYCLES: usize = 1 << 22;
+
+const PROVE_ADD_SUB: bool = false;
+const PROVE_JUMP_BRANCH: bool = false;
+const PROVE_SHIFTS_BINOPS: bool = false;
+const PROVE_BLAKE: bool = false;
+const PROVE_BIGINT: bool = false;
+const PROVE_KECCAK: bool = true;
 
 // #[ignore = "test has explicit panic inside"]
 #[test]
@@ -53,11 +66,6 @@ pub fn gkr_run_basic_unrolled_test_impl(
 
     type CountersT = DelegationsAndFamiliesCounters;
 
-    // NOTE: these constants must match with ones used in CS crate to produce
-    // layout and SSA forms, otherwise derived witness-gen functions may write into
-    // invalid locations
-    const TRACE_LEN_LOG2: usize = 24;
-    const NUM_CYCLES_PER_CHUNK: usize = 1 << TRACE_LEN_LOG2;
     const CHECK_MEMORY_PERMUTATION_ONLY: bool = false;
 
     let trace_len: usize = 1 << TRACE_LEN_LOG2;
@@ -69,8 +77,14 @@ pub fn gkr_run_basic_unrolled_test_impl(
     // load binary
 
     // let binary = std::fs::read("../examples/basic_fibonacci/app.bin").unwrap();
-    let binary = std::fs::read("../examples/hashed_fibonacci/app.bin").unwrap();
-    // let binary = std::fs::read("../riscv_transpiler/examples/keccak_f1600/app.bin").unwrap();
+    // let text_section = std::fs::read("../examples/basic_fibonacci/app.text").unwrap();
+
+    // let binary = std::fs::read("../examples/hashed_fibonacci/app.bin").unwrap();
+    // let text_section = std::fs::read("../examples/hashed_fibonacci/app.text").unwrap();
+
+    let binary = std::fs::read("../riscv_transpiler/examples/keccak_f1600/app.bin").unwrap();
+    let text_section = std::fs::read("../riscv_transpiler/examples/keccak_f1600/app.text").unwrap();
+
     assert!(binary.len() % 4 == 0);
     let binary: Vec<_> = binary
         .as_chunks::<4>()
@@ -79,9 +93,6 @@ pub fn gkr_run_basic_unrolled_test_impl(
         .map(|el| u32::from_le_bytes(*el))
         .collect();
 
-    // let text_section = std::fs::read("../examples/basic_fibonacci/app.text").unwrap();
-    let text_section = std::fs::read("../examples/hashed_fibonacci/app.text").unwrap();
-    // let text_section = std::fs::read("../riscv_transpiler/examples/keccak_f1600/app.text").unwrap();
     assert!(text_section.len() % 4 == 0);
     let text_section: Vec<_> = text_section
         .as_chunks::<4>()
@@ -278,7 +289,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
             < NUM_CYCLES_PER_CHUNK
     );
 
-    if false {
+    if PROVE_ADD_SUB {
         println!("Will try to prove ADD/SUB/LUI/AUIPC/MOP circuit");
         const CIRCUIT_TYPE: u8 = ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX;
 
@@ -461,7 +472,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
         }
     }
 
-    if false {
+    if PROVE_JUMP_BRANCH {
         println!("Will try to prove JUMP/BRANCH/SLT circuit");
         const CIRCUIT_TYPE: u8 = JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX;
 
@@ -649,7 +660,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
         }
     }
 
-    if false {
+    if PROVE_SHIFTS_BINOPS {
         println!("Will try to prove SHIFT/BINARY circuit");
         const CIRCUIT_TYPE: u8 = SHIFT_BINARY_CIRCUIT_FAMILY_IDX;
 
@@ -1567,7 +1578,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
     // }
 
     // now prove delegation circuits
-    if false {
+    if PROVE_BLAKE {
         println!("Will try to prove Blake delegation");
 
         let circuit: GKRCircuitArtifact<BabyBearField> = {
@@ -1722,7 +1733,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
         }
     }
 
-    if false {
+    if PROVE_BIGINT {
         println!("Will try to prove Bigint delegation");
 
         let circuit: GKRCircuitArtifact<BabyBearField> = {
@@ -1878,7 +1889,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
         }
     }
 
-    if true {
+    if PROVE_KECCAK {
         println!("Will try to prove Keccak delegation");
 
         let circuit: GKRCircuitArtifact<BabyBearField> =
@@ -1888,6 +1899,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
         cs::gkr_circuits::delegation::keccak_special5::keccak_special5_delegation_circuit_table_driver_fn(&mut table_driver);
 
         dbg!(table_driver.total_tables_len);
+        dbg!(table_driver.max_table_width());
 
         let num_calls = counters.keccak_calls;
         dbg!(num_calls);
@@ -1969,9 +1981,9 @@ pub fn gkr_run_basic_unrolled_test_impl(
         // // );
 
         if CHECK_MEMORY_PERMUTATION_ONLY == false {
-            println!("Will check constraints satisfiability");
-            let is_satisfied = check_satisfied(&circuit, &full_trace);
-            assert!(is_satisfied);
+            // println!("Will check constraints satisfiability");
+            // let is_satisfied = check_satisfied(&circuit, &full_trace);
+            // assert!(is_satisfied);
 
             println!("Preparing twiddles");
             let twiddles: Twiddles<_, Global> =

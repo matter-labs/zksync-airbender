@@ -542,7 +542,8 @@ impl<F: PrimeField> LookupTable<F> {
         assert!(total_width_including_id > 0);
         assert!(
             self.width() < total_width_including_id,
-            "trying to dump table of width {} into trace of width {} (with table ID)",
+            "trying to dump table `{}` of width {} into trace of width {} (with table ID)",
+            self.name,
             self.width(),
             total_width_including_id
         );
@@ -557,6 +558,7 @@ impl<F: PrimeField> LookupTable<F> {
         for row in self.data.iter() {
             let mut assembled_row = row.clone();
             assert_eq!(row.len(), self.width());
+            assert!(self.width() <= padding_width);
             for _ in self.width()..padding_width {
                 assembled_row.push(F::ZERO);
             }
@@ -1049,6 +1051,10 @@ impl<F: PrimeField> TableDriver<F> {
         self.update_table_offsets();
     }
 
+    pub fn max_table_width(&self) -> usize {
+        self.tables.iter().map(|el| el.width()).max().unwrap_or(0)
+    }
+
     pub fn materialize_table<const TOTAL_WIDTH: usize>(&mut self, table_type: TableType) {
         static CACHE: LazyLock<Mutex<TypeMap>> = LazyLock::new(|| Mutex::new(TypeMap::default()));
         let mut guard = CACHE.lock().unwrap();
@@ -1144,6 +1150,15 @@ impl<F: PrimeField> TableDriver<F> {
         &self,
         total_width_including_id: usize,
     ) -> Vec<ArrayVec<F, MAX_TABLE_WIDTH>> {
+        let max_width_without_id = self.max_table_width();
+        if max_width_without_id >= total_width_including_id {
+            for t in self.tables.iter() {
+                if let LookupWrapper::Initialized(t) = t {
+                    println!("Table `{}` has width {} (without ID)", &t.name, t.width());
+                }
+            }
+            panic!("trying to dump tables with max width {} (without ID) into total of {} columns (with ID)", max_width_without_id, total_width_including_id);
+        }
         let mut result = Vec::with_capacity(self.total_tables_len);
         for table in self.tables.iter() {
             if table.get_size() == 0 {

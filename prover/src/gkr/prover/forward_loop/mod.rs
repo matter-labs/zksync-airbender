@@ -34,9 +34,6 @@ fn evaluate_cache_relation<F: PrimeField, E: FieldExtension<F> + Field>(
     assert!(address.is_cache());
     unsafe {
         match relation {
-            NoFieldGKRCacheRelation::LongLinear => {
-                todo!();
-            }
             NoFieldGKRCacheRelation::SingleColumnLookup {
                 relation,
                 range_check_width,

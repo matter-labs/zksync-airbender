@@ -43,8 +43,6 @@
     1325056,
     1325056,
     1325056,
-    1325056,
-    1325056,
     1390592
   ],
   "total_tables_size": 1390592,
@@ -2956,7 +2954,7 @@
                 },
                 {
                   "linear_terms": [],
-                  "constant": 43
+                  "constant": 41
                 }
               ],
               "lookup_set_index": 0
@@ -3018,7 +3016,7 @@
                 },
                 {
                   "linear_terms": [],
-                  "constant": 43
+                  "constant": 41
                 }
               ],
               "lookup_set_index": 1
@@ -3059,7 +3057,7 @@
                 },
                 {
                   "linear_terms": [],
-                  "constant": 43
+                  "constant": 41
                 }
               ],
               "lookup_set_index": 2
@@ -3100,7 +3098,7 @@
                 },
                 {
                   "linear_terms": [],
-                  "constant": 43
+                  "constant": 41
                 }
               ],
               "lookup_set_index": 3
@@ -3141,7 +3139,7 @@
                 },
                 {
                   "linear_terms": [],
-                  "constant": 43
+                  "constant": 41
                 }
               ],
               "lookup_set_index": 4
@@ -3182,7 +3180,7 @@
                 },
                 {
                   "linear_terms": [],
-                  "constant": 43
+                  "constant": 41
                 }
               ],
               "lookup_set_index": 5
@@ -3223,7 +3221,7 @@
                 },
                 {
                   "linear_terms": [],
-                  "constant": 43
+                  "constant": 41
                 }
               ],
               "lookup_set_index": 6
@@ -3264,7 +3262,7 @@
                 },
                 {
                   "linear_terms": [],
-                  "constant": 43
+                  "constant": 41
                 }
               ],
               "lookup_set_index": 7
@@ -3305,7 +3303,7 @@
                 },
                 {
                   "linear_terms": [],
-                  "constant": 43
+                  "constant": 41
                 }
               ],
               "lookup_set_index": 8
@@ -3346,7 +3344,7 @@
                 },
                 {
                   "linear_terms": [],
-                  "constant": 43
+                  "constant": 41
                 }
               ],
               "lookup_set_index": 9
@@ -3387,7 +3385,7 @@
                 },
                 {
                   "linear_terms": [],
-                  "constant": 43
+                  "constant": 41
                 }
               ],
               "lookup_set_index": 10
@@ -3428,7 +3426,7 @@
                 },
                 {
                   "linear_terms": [],
-                  "constant": 43
+                  "constant": 41
                 }
               ],
               "lookup_set_index": 11
@@ -3469,7 +3467,7 @@
                 },
                 {
                   "linear_terms": [],
-                  "constant": 43
+                  "constant": 41
                 }
               ],
               "lookup_set_index": 12
@@ -3510,7 +3508,7 @@
                 },
                 {
                   "linear_terms": [],
-                  "constant": 43
+                  "constant": 41
                 }
               ],
               "lookup_set_index": 13
@@ -3551,7 +3549,7 @@
                 },
                 {
                   "linear_terms": [],
-                  "constant": 43
+                  "constant": 41
                 }
               ],
               "lookup_set_index": 14
@@ -3592,7 +3590,7 @@
                 },
                 {
                   "linear_terms": [],
-                  "constant": 43
+                  "constant": 41
                 }
               ],
               "lookup_set_index": 15
@@ -3633,7 +3631,7 @@
                 },
                 {
                   "linear_terms": [],
-                  "constant": 43
+                  "constant": 41
                 }
               ],
               "lookup_set_index": 16
@@ -3674,7 +3672,7 @@
                 },
                 {
                   "linear_terms": [],
-                  "constant": 43
+                  "constant": 41
                 }
               ],
               "lookup_set_index": 17
@@ -3715,7 +3713,7 @@
                 },
                 {
                   "linear_terms": [],
-                  "constant": 43
+                  "constant": 41
                 }
               ],
               "lookup_set_index": 18
@@ -3756,7 +3754,7 @@
                 },
                 {
                   "linear_terms": [],
-                  "constant": 43
+                  "constant": 41
                 }
               ],
               "lookup_set_index": 19
@@ -3797,7 +3795,7 @@
                 },
                 {
                   "linear_terms": [],
-                  "constant": 43
+                  "constant": 41
                 }
               ],
               "lookup_set_index": 20
@@ -3838,7 +3836,7 @@
                 },
                 {
                   "linear_terms": [],
-                  "constant": 43
+                  "constant": 41
                 }
               ],
               "lookup_set_index": 21
@@ -3879,7 +3877,7 @@
                 },
                 {
                   "linear_terms": [],
-                  "constant": 43
+                  "constant": 41
                 }
               ],
               "lookup_set_index": 22
@@ -3920,7 +3918,7 @@
                 },
                 {
                   "linear_terms": [],
-                  "constant": 43
+                  "constant": 41
                 }
               ],
               "lookup_set_index": 23
@@ -3961,7 +3959,7 @@
                 },
                 {
                   "linear_terms": [],
-                  "constant": 43
+                  "constant": 41
                 }
               ],
               "lookup_set_index": 24
@@ -4002,7 +4000,7 @@
                 },
                 {
                   "linear_terms": [],
-                  "constant": 43
+                  "constant": 41
                 }
               ],
               "lookup_set_index": 25
@@ -4043,7 +4041,7 @@
                 },
                 {
                   "linear_terms": [],
-                  "constant": 43
+                  "constant": 41
                 }
               ],
               "lookup_set_index": 26
@@ -4084,7 +4082,7 @@
                 },
                 {
                   "linear_terms": [],
-                  "constant": 43
+                  "constant": 41
                 }
               ],
               "lookup_set_index": 27
@@ -4125,7 +4123,7 @@
                 },
                 {
                   "linear_terms": [],
-                  "constant": 43
+                  "constant": 41
                 }
               ],
               "lookup_set_index": 28
@@ -4166,7 +4164,7 @@
                 },
                 {
                   "linear_terms": [],
-                  "constant": 43
+                  "constant": 41
                 }
               ],
               "lookup_set_index": 29
@@ -4207,7 +4205,7 @@
                 },
                 {
                   "linear_terms": [],
-                  "constant": 43
+                  "constant": 41
                 }
               ],
               "lookup_set_index": 30
@@ -4248,7 +4246,7 @@
                 },
                 {
                   "linear_terms": [],
-                  "constant": 43
+                  "constant": 41
                 }
               ],
               "lookup_set_index": 31
@@ -56093,7 +56091,7 @@
         },
         {
           "linear_terms": [],
-          "constant": 43
+          "constant": 41
         }
       ],
       "lookup_set_index": 0
@@ -56124,7 +56122,7 @@
         },
         {
           "linear_terms": [],
-          "constant": 43
+          "constant": 41
         }
       ],
       "lookup_set_index": 1
@@ -56155,7 +56153,7 @@
         },
         {
           "linear_terms": [],
-          "constant": 43
+          "constant": 41
         }
       ],
       "lookup_set_index": 2
@@ -56186,7 +56184,7 @@
         },
         {
           "linear_terms": [],
-          "constant": 43
+          "constant": 41
         }
       ],
       "lookup_set_index": 3
@@ -56217,7 +56215,7 @@
         },
         {
           "linear_terms": [],
-          "constant": 43
+          "constant": 41
         }
       ],
       "lookup_set_index": 4
@@ -56248,7 +56246,7 @@
         },
         {
           "linear_terms": [],
-          "constant": 43
+          "constant": 41
         }
       ],
       "lookup_set_index": 5
@@ -56279,7 +56277,7 @@
         },
         {
           "linear_terms": [],
-          "constant": 43
+          "constant": 41
         }
       ],
       "lookup_set_index": 6
@@ -56310,7 +56308,7 @@
         },
         {
           "linear_terms": [],
-          "constant": 43
+          "constant": 41
         }
       ],
       "lookup_set_index": 7
@@ -56341,7 +56339,7 @@
         },
         {
           "linear_terms": [],
-          "constant": 43
+          "constant": 41
         }
       ],
       "lookup_set_index": 8
@@ -56372,7 +56370,7 @@
         },
         {
           "linear_terms": [],
-          "constant": 43
+          "constant": 41
         }
       ],
       "lookup_set_index": 9
@@ -56403,7 +56401,7 @@
         },
         {
           "linear_terms": [],
-          "constant": 43
+          "constant": 41
         }
       ],
       "lookup_set_index": 10
@@ -56434,7 +56432,7 @@
         },
         {
           "linear_terms": [],
-          "constant": 43
+          "constant": 41
         }
       ],
       "lookup_set_index": 11
@@ -56465,7 +56463,7 @@
         },
         {
           "linear_terms": [],
-          "constant": 43
+          "constant": 41
         }
       ],
       "lookup_set_index": 12
@@ -56496,7 +56494,7 @@
         },
         {
           "linear_terms": [],
-          "constant": 43
+          "constant": 41
         }
       ],
       "lookup_set_index": 13
@@ -56527,7 +56525,7 @@
         },
         {
           "linear_terms": [],
-          "constant": 43
+          "constant": 41
         }
       ],
       "lookup_set_index": 14
@@ -56558,7 +56556,7 @@
         },
         {
           "linear_terms": [],
-          "constant": 43
+          "constant": 41
         }
       ],
       "lookup_set_index": 15
@@ -56589,7 +56587,7 @@
         },
         {
           "linear_terms": [],
-          "constant": 43
+          "constant": 41
         }
       ],
       "lookup_set_index": 16
@@ -56620,7 +56618,7 @@
         },
         {
           "linear_terms": [],
-          "constant": 43
+          "constant": 41
         }
       ],
       "lookup_set_index": 17
@@ -56651,7 +56649,7 @@
         },
         {
           "linear_terms": [],
-          "constant": 43
+          "constant": 41
         }
       ],
       "lookup_set_index": 18
@@ -56682,7 +56680,7 @@
         },
         {
           "linear_terms": [],
-          "constant": 43
+          "constant": 41
         }
       ],
       "lookup_set_index": 19
@@ -56713,7 +56711,7 @@
         },
         {
           "linear_terms": [],
-          "constant": 43
+          "constant": 41
         }
       ],
       "lookup_set_index": 20
@@ -56744,7 +56742,7 @@
         },
         {
           "linear_terms": [],
-          "constant": 43
+          "constant": 41
         }
       ],
       "lookup_set_index": 21
@@ -56775,7 +56773,7 @@
         },
         {
           "linear_terms": [],
-          "constant": 43
+          "constant": 41
         }
       ],
       "lookup_set_index": 22
@@ -56806,7 +56804,7 @@
         },
         {
           "linear_terms": [],
-          "constant": 43
+          "constant": 41
         }
       ],
       "lookup_set_index": 23
@@ -56837,7 +56835,7 @@
         },
         {
           "linear_terms": [],
-          "constant": 43
+          "constant": 41
         }
       ],
       "lookup_set_index": 24
@@ -56868,7 +56866,7 @@
         },
         {
           "linear_terms": [],
-          "constant": 43
+          "constant": 41
         }
       ],
       "lookup_set_index": 25
@@ -56899,7 +56897,7 @@
         },
         {
           "linear_terms": [],
-          "constant": 43
+          "constant": 41
         }
       ],
       "lookup_set_index": 26
@@ -56930,7 +56928,7 @@
         },
         {
           "linear_terms": [],
-          "constant": 43
+          "constant": 41
         }
       ],
       "lookup_set_index": 27
@@ -56961,7 +56959,7 @@
         },
         {
           "linear_terms": [],
-          "constant": 43
+          "constant": 41
         }
       ],
       "lookup_set_index": 28
@@ -56992,7 +56990,7 @@
         },
         {
           "linear_terms": [],
-          "constant": 43
+          "constant": 41
         }
       ],
       "lookup_set_index": 29
@@ -57023,7 +57021,7 @@
         },
         {
           "linear_terms": [],
-          "constant": 43
+          "constant": 41
         }
       ],
       "lookup_set_index": 30
@@ -57054,7 +57052,7 @@
         },
         {
           "linear_terms": [],
-          "constant": 43
+          "constant": 41
         }
       ],
       "lookup_set_index": 31
@@ -59524,38 +59522,38 @@
     "96": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::299",
     "97": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::299",
     "98": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::299",
-    "99": "Variable at cs/src/cs/circuit_impl.rs::892",
-    "100": "Variable at cs/src/cs/circuit_impl.rs::892",
-    "101": "Variable at cs/src/cs/circuit_impl.rs::892",
-    "102": "Variable at cs/src/cs/circuit_impl.rs::892",
-    "103": "Variable at cs/src/cs/circuit_impl.rs::892",
-    "104": "Variable at cs/src/cs/circuit_impl.rs::892",
-    "105": "Variable at cs/src/cs/circuit_impl.rs::892",
-    "106": "Variable at cs/src/cs/circuit_impl.rs::892",
-    "107": "Variable at cs/src/cs/circuit_impl.rs::892",
-    "108": "Variable at cs/src/cs/circuit_impl.rs::892",
-    "109": "Variable at cs/src/cs/circuit_impl.rs::892",
-    "110": "Variable at cs/src/cs/circuit_impl.rs::892",
-    "111": "Variable at cs/src/cs/circuit_impl.rs::892",
-    "112": "Variable at cs/src/cs/circuit_impl.rs::892",
-    "113": "Variable at cs/src/cs/circuit_impl.rs::892",
-    "114": "Variable at cs/src/cs/circuit_impl.rs::892",
-    "115": "Variable at cs/src/cs/circuit_impl.rs::892",
-    "116": "Variable at cs/src/cs/circuit_impl.rs::892",
-    "117": "Variable at cs/src/cs/circuit_impl.rs::892",
-    "118": "Variable at cs/src/cs/circuit_impl.rs::892",
-    "119": "Variable at cs/src/cs/circuit_impl.rs::892",
-    "120": "Variable at cs/src/cs/circuit_impl.rs::892",
-    "121": "Variable at cs/src/cs/circuit_impl.rs::892",
-    "122": "Variable at cs/src/cs/circuit_impl.rs::892",
-    "123": "Variable at cs/src/cs/circuit_impl.rs::892",
-    "124": "Variable at cs/src/cs/circuit_impl.rs::892",
-    "125": "Variable at cs/src/cs/circuit_impl.rs::892",
-    "126": "Variable at cs/src/cs/circuit_impl.rs::892",
-    "127": "Variable at cs/src/cs/circuit_impl.rs::892",
-    "128": "Variable at cs/src/cs/circuit_impl.rs::892",
-    "129": "Variable at cs/src/cs/circuit_impl.rs::892",
-    "130": "Variable at cs/src/cs/circuit_impl.rs::892",
+    "99": "Variable at cs/src/cs/circuit_impl.rs::931",
+    "100": "Variable at cs/src/cs/circuit_impl.rs::931",
+    "101": "Variable at cs/src/cs/circuit_impl.rs::931",
+    "102": "Variable at cs/src/cs/circuit_impl.rs::931",
+    "103": "Variable at cs/src/cs/circuit_impl.rs::931",
+    "104": "Variable at cs/src/cs/circuit_impl.rs::931",
+    "105": "Variable at cs/src/cs/circuit_impl.rs::931",
+    "106": "Variable at cs/src/cs/circuit_impl.rs::931",
+    "107": "Variable at cs/src/cs/circuit_impl.rs::931",
+    "108": "Variable at cs/src/cs/circuit_impl.rs::931",
+    "109": "Variable at cs/src/cs/circuit_impl.rs::931",
+    "110": "Variable at cs/src/cs/circuit_impl.rs::931",
+    "111": "Variable at cs/src/cs/circuit_impl.rs::931",
+    "112": "Variable at cs/src/cs/circuit_impl.rs::931",
+    "113": "Variable at cs/src/cs/circuit_impl.rs::931",
+    "114": "Variable at cs/src/cs/circuit_impl.rs::931",
+    "115": "Variable at cs/src/cs/circuit_impl.rs::931",
+    "116": "Variable at cs/src/cs/circuit_impl.rs::931",
+    "117": "Variable at cs/src/cs/circuit_impl.rs::931",
+    "118": "Variable at cs/src/cs/circuit_impl.rs::931",
+    "119": "Variable at cs/src/cs/circuit_impl.rs::931",
+    "120": "Variable at cs/src/cs/circuit_impl.rs::931",
+    "121": "Variable at cs/src/cs/circuit_impl.rs::931",
+    "122": "Variable at cs/src/cs/circuit_impl.rs::931",
+    "123": "Variable at cs/src/cs/circuit_impl.rs::931",
+    "124": "Variable at cs/src/cs/circuit_impl.rs::931",
+    "125": "Variable at cs/src/cs/circuit_impl.rs::931",
+    "126": "Variable at cs/src/cs/circuit_impl.rs::931",
+    "127": "Variable at cs/src/cs/circuit_impl.rs::931",
+    "128": "Variable at cs/src/cs/circuit_impl.rs::931",
+    "129": "Variable at cs/src/cs/circuit_impl.rs::931",
+    "130": "Variable at cs/src/cs/circuit_impl.rs::931",
     "131": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::556",
     "132": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::556",
     "133": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::556",

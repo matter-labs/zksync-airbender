@@ -791,7 +791,6 @@ impl NoFieldGKRRelation {
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum NoFieldGKRCacheRelation {
-    LongLinear,
     SingleColumnLookup {
         relation: NoFieldSingleColumnLookupRelation,
         range_check_width: usize,
@@ -804,9 +803,6 @@ pub enum NoFieldGKRCacheRelation {
 impl NoFieldGKRCacheRelation {
     pub fn dependencies(&self) -> Vec<GKRAddress> {
         match self {
-            Self::LongLinear => {
-                vec![]
-            }
             Self::SingleColumnLookup { relation, .. } => {
                 let mut result = vec![];
                 for (_, pos) in relation.input.linear_terms.iter() {
