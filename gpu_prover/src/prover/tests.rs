@@ -2325,14 +2325,10 @@ fn assert_dimension_reducing_layer_plan_for_test<E: Field + std::fmt::Debug>(
         assert_eq!(&kernel_plan.batch_challenges, expected_batch_challenges);
 
         let round0 = &layer_plan.round0_descriptors()[idx];
-        let ext_inputs_accessor = round0.host.extension_field_inputs.get_accessor();
-        let ext_inputs = unsafe { ext_inputs_accessor.get() };
-        let ext_outputs_accessor = round0.host.extension_field_outputs.get_accessor();
-        let ext_outputs = unsafe { ext_outputs_accessor.get() };
-        let base_inputs_accessor = round0.host.base_field_inputs.get_accessor();
-        let base_inputs = unsafe { base_inputs_accessor.get() };
-        let base_outputs_accessor = round0.host.base_field_outputs.get_accessor();
-        let base_outputs = unsafe { base_outputs_accessor.get() };
+        let ext_inputs = &round0.extension_field_inputs;
+        let ext_outputs = &round0.extension_field_outputs;
+        let base_inputs = &round0.base_field_inputs;
+        let base_outputs = &round0.base_field_outputs;
 
         assert!(base_inputs.is_empty());
         assert!(base_outputs.is_empty());
