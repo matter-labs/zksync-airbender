@@ -577,6 +577,102 @@ DEVICE_FORCEINLINE void gkr_main_batch_constraint_metadata(
   constant_offset = record.constant_offset;
 }
 
+enum gkr_dim_reducing_kernel_kind : u32 {
+  GKR_DIM_REDUCING_PAIRWISE = 0,
+  GKR_DIM_REDUCING_LOOKUP = 1,
+};
+
+enum gkr_dim_reducing_batch_record_mode : u32 {
+  GKR_DIM_REDUCING_BATCH_INLINE_DESCRIPTORS = 0,
+  GKR_DIM_REDUCING_BATCH_POINTER_DESCRIPTORS = 1,
+};
+
+struct gkr_dim_reducing_round0_batch_record {
+  u32 kind;
+  u32 record_mode;
+  u32 reserved0;
+  u32 reserved1;
+  gkr_main_payload_range extension_inputs;
+  gkr_main_payload_range extension_outputs;
+  u32 batch_challenge_offset;
+  u32 batch_challenge_count;
+};
+
+struct gkr_dim_reducing_continuation_batch_record {
+  u32 kind;
+  u32 record_mode;
+  u32 reserved0;
+  u32 reserved1;
+  gkr_main_payload_range extension_inputs;
+  u32 batch_challenge_offset;
+  u32 batch_challenge_count;
+};
+
+template <typename E> struct gkr_dim_reducing_round0_batch {
+  u32 record_count;
+  u32 challenge_offset;
+  u32 challenge_count;
+  u32 reserved;
+  const E *claim_point;
+  const E *batch_challenge_base;
+  E *contributions;
+  const u8 *spill_payload;
+  gkr_dim_reducing_round0_batch_record records[GKR_BACKWARD_MAX_KERNELS_PER_LAYER];
+  u8 inline_payload[GKR_BACKWARD_MAX_INLINE_ROUND_BATCH_BYTES];
+};
+
+template <typename E> struct gkr_dim_reducing_round1_batch {
+  u32 record_count;
+  u32 challenge_offset;
+  u32 challenge_count;
+  u32 reserved;
+  const E *claim_point;
+  const E *batch_challenge_base;
+  const E *folding_challenge;
+  E *contributions;
+  const u8 *spill_payload;
+  bool explicit_form;
+  u8 padding[7];
+  gkr_dim_reducing_continuation_batch_record records[GKR_BACKWARD_MAX_KERNELS_PER_LAYER];
+  u8 inline_payload[GKR_BACKWARD_MAX_INLINE_ROUND_BATCH_BYTES];
+};
+
+template <typename E> struct gkr_dim_reducing_round2_batch {
+  u32 record_count;
+  u32 challenge_offset;
+  u32 challenge_count;
+  u32 reserved;
+  const E *claim_point;
+  const E *batch_challenge_base;
+  const E *folding_challenge;
+  E *contributions;
+  const u8 *spill_payload;
+  bool explicit_form;
+  u8 padding[7];
+  gkr_dim_reducing_continuation_batch_record records[GKR_BACKWARD_MAX_KERNELS_PER_LAYER];
+  u8 inline_payload[GKR_BACKWARD_MAX_INLINE_ROUND_BATCH_BYTES];
+};
+
+template <typename E> struct gkr_dim_reducing_round3_batch {
+  u32 record_count;
+  u32 challenge_offset;
+  u32 challenge_count;
+  u32 reserved;
+  const E *claim_point;
+  const E *batch_challenge_base;
+  const E *folding_challenge;
+  E *contributions;
+  const u8 *spill_payload;
+  bool explicit_form;
+  u8 padding[7];
+  gkr_dim_reducing_continuation_batch_record records[GKR_BACKWARD_MAX_KERNELS_PER_LAYER];
+  u8 inline_payload[GKR_BACKWARD_MAX_INLINE_ROUND_BATCH_BYTES];
+};
+
+DEVICE_FORCEINLINE bool gkr_dim_reducing_batch_descriptors_inline(const u32 record_mode) {
+  return record_mode == GKR_DIM_REDUCING_BATCH_INLINE_DESCRIPTORS;
+}
+
 enum gkr_forward_gate_kind : u32 {
   GKR_FORWARD_NO_OP = 0,
   GKR_FORWARD_PRODUCT = 1,
@@ -950,11 +1046,8 @@ template <typename E> DEVICE_FORCEINLINE void gkr_accumulate_contribution(E *dst
 }
 
 template <typename E>
-DEVICE_FORCEINLINE void gkr_pairwise_round0(const gkr_ext_initial_source<E> *inputs, const gkr_ext_initial_source<E> *outputs, const E *batch_challenges,
-                                            E *contributions, const unsigned acc_size) {
-  const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
-  if (gid >= acc_size)
-    return;
+DEVICE_FORCEINLINE void gkr_pairwise_round0_values(const gkr_ext_initial_source<E> *inputs, const gkr_ext_initial_source<E> *outputs,
+                                                   const E *batch_challenges, const unsigned gid, E &c0, E &c1) {
   const E batch_challenge = batch_challenges[0];
 
   const unsigned even_index = gid * 2;
@@ -964,17 +1057,13 @@ DEVICE_FORCEINLINE void gkr_pairwise_round0(const gkr_ext_initial_source<E> *inp
   const E delta_even = gkr_get_initial_delta(inputs[0], even_index);
   const E delta_odd = gkr_get_initial_delta(inputs[0], odd_index);
 
-  const E c0 = E::mul(batch_challenge, output_value);
-  const E c1 = E::mul(batch_challenge, E::mul(delta_even, delta_odd));
-  gkr_accumulate_contribution(contributions, gid, acc_size, c0, c1);
+  c0 = E::mul(batch_challenge, output_value);
+  c1 = E::mul(batch_challenge, E::mul(delta_even, delta_odd));
 }
 
 template <typename E>
-DEVICE_FORCEINLINE void gkr_lookup_round0(const gkr_ext_initial_source<E> *inputs, const gkr_ext_initial_source<E> *outputs, const E *batch_challenges,
-                                          E *contributions, const unsigned acc_size) {
-  const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
-  if (gid >= acc_size)
-    return;
+DEVICE_FORCEINLINE void gkr_lookup_round0_values(const gkr_ext_initial_source<E> *inputs, const gkr_ext_initial_source<E> *outputs,
+                                                 const E *batch_challenges, const unsigned gid, E &c0, E &c1) {
   const E batch_challenge_0 = batch_challenges[0];
   const E batch_challenge_1 = batch_challenges[1];
 
@@ -992,17 +1081,13 @@ DEVICE_FORCEINLINE void gkr_lookup_round0(const gkr_ext_initial_source<E> *input
   const E num = E::add(E::mul(a, d), E::mul(c, b));
   const E den = E::mul(b, d);
 
-  const E c0 = E::add(E::mul(batch_challenge_0, output_num), E::mul(batch_challenge_1, output_den));
-  const E c1 = E::add(E::mul(batch_challenge_0, num), E::mul(batch_challenge_1, den));
-  gkr_accumulate_contribution(contributions, gid, acc_size, c0, c1);
+  c0 = E::add(E::mul(batch_challenge_0, output_num), E::mul(batch_challenge_1, output_den));
+  c1 = E::add(E::mul(batch_challenge_0, num), E::mul(batch_challenge_1, den));
 }
 
 template <typename E, bool EXPLICIT_FORM>
-DEVICE_FORCEINLINE void gkr_pairwise_continuation(const gkr_ext_continuing_source<E> *inputs, const E *folding_challenge, const E *batch_challenges,
-                                                  E *contributions, const unsigned acc_size) {
-  const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
-  if (gid >= acc_size)
-    return;
+DEVICE_FORCEINLINE void gkr_pairwise_continuation_values(const gkr_ext_continuing_source<E> *inputs, const E *folding_challenge,
+                                                         const E *batch_challenges, const unsigned gid, E &c0, E &c1) {
   const E current_folding_challenge = folding_challenge[0];
   const E batch_challenge = batch_challenges[0];
 
@@ -1017,17 +1102,13 @@ DEVICE_FORCEINLINE void gkr_pairwise_continuation(const gkr_ext_continuing_sourc
   E odd_f1_or_delta;
   gkr_get_continuing_points<E, EXPLICIT_FORM>(inputs[0], current_folding_challenge, odd_index, odd_f0, odd_f1_or_delta);
 
-  const E c0 = E::mul(batch_challenge, E::mul(even_f0, odd_f0));
-  const E c1 = E::mul(batch_challenge, E::mul(even_f1_or_delta, odd_f1_or_delta));
-  gkr_accumulate_contribution(contributions, gid, acc_size, c0, c1);
+  c0 = E::mul(batch_challenge, E::mul(even_f0, odd_f0));
+  c1 = E::mul(batch_challenge, E::mul(even_f1_or_delta, odd_f1_or_delta));
 }
 
 template <typename E, bool EXPLICIT_FORM>
-DEVICE_FORCEINLINE void gkr_lookup_continuation(const gkr_ext_continuing_source<E> *inputs, const E *folding_challenge, const E *batch_challenges,
-                                                E *contributions, const unsigned acc_size) {
-  const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
-  if (gid >= acc_size)
-    return;
+DEVICE_FORCEINLINE void gkr_lookup_continuation_values(const gkr_ext_continuing_source<E> *inputs, const E *folding_challenge,
+                                                       const E *batch_challenges, const unsigned gid, E &out0, E &out1) {
   const E current_folding_challenge = folding_challenge[0];
   const E batch_challenge_0 = batch_challenges[0];
   const E batch_challenge_1 = batch_challenges[1];
@@ -1053,8 +1134,55 @@ DEVICE_FORCEINLINE void gkr_lookup_continuation(const gkr_ext_continuing_source<
   const E num1 = E::add(E::mul(a1, d1), E::mul(c1, b1));
   const E den1 = E::mul(b1, d1);
 
-  const E out0 = E::add(E::mul(batch_challenge_0, num0), E::mul(batch_challenge_1, den0));
-  const E out1 = E::add(E::mul(batch_challenge_0, num1), E::mul(batch_challenge_1, den1));
+  out0 = E::add(E::mul(batch_challenge_0, num0), E::mul(batch_challenge_1, den0));
+  out1 = E::add(E::mul(batch_challenge_0, num1), E::mul(batch_challenge_1, den1));
+}
+
+template <typename E>
+DEVICE_FORCEINLINE void gkr_pairwise_round0(const gkr_ext_initial_source<E> *inputs, const gkr_ext_initial_source<E> *outputs, const E *batch_challenges,
+                                            E *contributions, const unsigned acc_size) {
+  const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
+  if (gid >= acc_size)
+    return;
+  E c0;
+  E c1;
+  gkr_pairwise_round0_values(inputs, outputs, batch_challenges, gid, c0, c1);
+  gkr_accumulate_contribution(contributions, gid, acc_size, c0, c1);
+}
+
+template <typename E>
+DEVICE_FORCEINLINE void gkr_lookup_round0(const gkr_ext_initial_source<E> *inputs, const gkr_ext_initial_source<E> *outputs, const E *batch_challenges,
+                                          E *contributions, const unsigned acc_size) {
+  const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
+  if (gid >= acc_size)
+    return;
+  E c0;
+  E c1;
+  gkr_lookup_round0_values(inputs, outputs, batch_challenges, gid, c0, c1);
+  gkr_accumulate_contribution(contributions, gid, acc_size, c0, c1);
+}
+
+template <typename E, bool EXPLICIT_FORM>
+DEVICE_FORCEINLINE void gkr_pairwise_continuation(const gkr_ext_continuing_source<E> *inputs, const E *folding_challenge, const E *batch_challenges,
+                                                  E *contributions, const unsigned acc_size) {
+  const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
+  if (gid >= acc_size)
+    return;
+  E c0;
+  E c1;
+  gkr_pairwise_continuation_values<E, EXPLICIT_FORM>(inputs, folding_challenge, batch_challenges, gid, c0, c1);
+  gkr_accumulate_contribution(contributions, gid, acc_size, c0, c1);
+}
+
+template <typename E, bool EXPLICIT_FORM>
+DEVICE_FORCEINLINE void gkr_lookup_continuation(const gkr_ext_continuing_source<E> *inputs, const E *folding_challenge, const E *batch_challenges,
+                                                E *contributions, const unsigned acc_size) {
+  const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
+  if (gid >= acc_size)
+    return;
+  E out0;
+  E out1;
+  gkr_lookup_continuation_values<E, EXPLICIT_FORM>(inputs, folding_challenge, batch_challenges, gid, out0, out1);
   gkr_accumulate_contribution(contributions, gid, acc_size, out0, out1);
 }
 
@@ -2264,6 +2392,79 @@ gkr_main_round3(const unsigned kind, const gkr_ext_continuing_source<E> *base_in
 }
 
 template <typename E>
+DEVICE_FORCEINLINE void gkr_dim_reducing_round0_batched(const gkr_dim_reducing_round0_batch<E> &batch, const unsigned acc_size) {
+  const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
+  if (gid >= acc_size)
+    return;
+
+  const E eq = gkr_eq_weight_at(batch.claim_point, batch.challenge_offset, batch.challenge_count, gid);
+  E total0 = E::ZERO();
+  E total1 = E::ZERO();
+  for (unsigned i = 0; i < batch.record_count; ++i) {
+    const auto &record = batch.records[i];
+    const bool descriptors_inline = gkr_dim_reducing_batch_descriptors_inline(record.record_mode);
+    const auto *inputs = gkr_main_batch_payload_ptr<gkr_ext_initial_source<E>>(batch, record.extension_inputs, descriptors_inline);
+    const auto *outputs = gkr_main_batch_payload_ptr<gkr_ext_initial_source<E>>(batch, record.extension_outputs, descriptors_inline);
+    E batch_challenge_storage[2];
+    const E *batch_challenges =
+        gkr_main_batch_challenges(batch.batch_challenge_base, record.batch_challenge_offset, record.batch_challenge_count, batch_challenge_storage);
+    E c0;
+    E c1;
+    switch (record.kind) {
+    case GKR_DIM_REDUCING_PAIRWISE:
+      gkr_pairwise_round0_values(inputs, outputs, batch_challenges, gid, c0, c1);
+      break;
+    case GKR_DIM_REDUCING_LOOKUP:
+      gkr_lookup_round0_values(inputs, outputs, batch_challenges, gid, c0, c1);
+      break;
+    default:
+      return;
+    }
+    total0 = E::add(total0, c0);
+    total1 = E::add(total1, c1);
+  }
+
+  store<E, st_modifier::cs>(batch.contributions, E::mul(total0, eq), gid);
+  store<E, st_modifier::cs>(batch.contributions + acc_size, E::mul(total1, eq), gid);
+}
+
+template <typename E, bool EXPLICIT_FORM, typename Batch>
+DEVICE_FORCEINLINE void gkr_dim_reducing_continuation_batched(const Batch &batch, const unsigned acc_size) {
+  const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
+  if (gid >= acc_size)
+    return;
+
+  const E eq = gkr_eq_weight_at(batch.claim_point, batch.challenge_offset, batch.challenge_count, gid);
+  E total0 = E::ZERO();
+  E total1 = E::ZERO();
+  for (unsigned i = 0; i < batch.record_count; ++i) {
+    const auto &record = batch.records[i];
+    const bool descriptors_inline = gkr_dim_reducing_batch_descriptors_inline(record.record_mode);
+    const auto *inputs = gkr_main_batch_payload_ptr<gkr_ext_continuing_source<E>>(batch, record.extension_inputs, descriptors_inline);
+    E batch_challenge_storage[2];
+    const E *batch_challenges =
+        gkr_main_batch_challenges(batch.batch_challenge_base, record.batch_challenge_offset, record.batch_challenge_count, batch_challenge_storage);
+    E c0;
+    E c1;
+    switch (record.kind) {
+    case GKR_DIM_REDUCING_PAIRWISE:
+      gkr_pairwise_continuation_values<E, EXPLICIT_FORM>(inputs, batch.folding_challenge, batch_challenges, gid, c0, c1);
+      break;
+    case GKR_DIM_REDUCING_LOOKUP:
+      gkr_lookup_continuation_values<E, EXPLICIT_FORM>(inputs, batch.folding_challenge, batch_challenges, gid, c0, c1);
+      break;
+    default:
+      return;
+    }
+    total0 = E::add(total0, c0);
+    total1 = E::add(total1, c1);
+  }
+
+  store<E, st_modifier::cs>(batch.contributions, E::mul(total0, eq), gid);
+  store<E, st_modifier::cs>(batch.contributions + acc_size, E::mul(total1, eq), gid);
+}
+
+template <typename E>
 DEVICE_FORCEINLINE void gkr_main_round0_batched(const gkr_main_round0_batch<E> &batch, const unsigned acc_size) {
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
   if (gid >= acc_size)
@@ -2449,6 +2650,31 @@ DEVICE_FORCEINLINE void gkr_main_round3_batched(const gkr_main_round3_batch<E> &
   EXTERN __global__ void ab_gkr_dim_reducing_build_eq_##arg_t##_kernel(const arg_t *claim_point, const unsigned challenge_offset,                              \
                                                                        const unsigned challenge_count, arg_t *eq_values, const unsigned acc_size) {            \
     gkr_build_eq_values(claim_point, challenge_offset, challenge_count, eq_values, acc_size);                                                                  \
+  }                                                                                                                                                            \
+  EXTERN __global__ void ab_gkr_dim_reducing_round0_batched_##arg_t##_kernel(const __grid_constant__ gkr_dim_reducing_round0_batch<arg_t> batch,              \
+                                                                              const unsigned acc_size) {                                                        \
+    gkr_dim_reducing_round0_batched(batch, acc_size);                                                                                                          \
+  }                                                                                                                                                            \
+  EXTERN __global__ void ab_gkr_dim_reducing_round1_batched_##arg_t##_kernel(const __grid_constant__ gkr_dim_reducing_round1_batch<arg_t> batch,              \
+                                                                              const unsigned acc_size) {                                                        \
+    if (batch.explicit_form)                                                                                                                                   \
+      gkr_dim_reducing_continuation_batched<arg_t, true>(batch, acc_size);                                                                                     \
+    else                                                                                                                                                       \
+      gkr_dim_reducing_continuation_batched<arg_t, false>(batch, acc_size);                                                                                    \
+  }                                                                                                                                                            \
+  EXTERN __global__ void ab_gkr_dim_reducing_round2_batched_##arg_t##_kernel(const __grid_constant__ gkr_dim_reducing_round2_batch<arg_t> batch,              \
+                                                                              const unsigned acc_size) {                                                        \
+    if (batch.explicit_form)                                                                                                                                   \
+      gkr_dim_reducing_continuation_batched<arg_t, true>(batch, acc_size);                                                                                     \
+    else                                                                                                                                                       \
+      gkr_dim_reducing_continuation_batched<arg_t, false>(batch, acc_size);                                                                                    \
+  }                                                                                                                                                            \
+  EXTERN __global__ void ab_gkr_dim_reducing_round3_batched_##arg_t##_kernel(const __grid_constant__ gkr_dim_reducing_round3_batch<arg_t> batch,              \
+                                                                              const unsigned acc_size) {                                                        \
+    if (batch.explicit_form)                                                                                                                                   \
+      gkr_dim_reducing_continuation_batched<arg_t, true>(batch, acc_size);                                                                                     \
+    else                                                                                                                                                       \
+      gkr_dim_reducing_continuation_batched<arg_t, false>(batch, acc_size);                                                                                    \
   }
 
 GKR_DIM_REDUCING_KERNELS(e2);
