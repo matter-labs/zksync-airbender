@@ -388,3 +388,30 @@ mod bigint_with_extended_control {
         (fn_ptr)(proxy);
     }
 }
+
+mod keccak_special5 {
+    use crate::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
+    use crate::gkr::witness_gen::witness_proxy::WitnessProxy;
+    use crate::tracers::oracles::transpiler_oracles::delegation::KeccakDelegationOracle;
+    use ::cs::oracle::Placeholder;
+    use ::cs::witness_placer::WitnessTypeSet;
+    use ::cs::witness_placer::{
+        WitnessComputationCore, WitnessComputationalField, WitnessComputationalI32,
+        WitnessComputationalInteger, WitnessComputationalU16, WitnessComputationalU32,
+        WitnessComputationalU8, WitnessMask,
+    };
+    use ::field::baby_bear::base::BabyBearField;
+    use cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
+
+    include!("../../../compiled_circuits/keccak_special5_generated_gkr.rs");
+
+    pub fn witness_eval_fn<'a, 'b>(
+        proxy: &'_ mut ColumnMajorWitnessProxy<'a, KeccakDelegationOracle<'b>, BabyBearField>,
+    ) {
+        let fn_ptr = evaluate_witness_fn::<
+            ScalarWitnessTypeSet<BabyBearField, true>,
+            ColumnMajorWitnessProxy<'a, KeccakDelegationOracle<'b>, BabyBearField>,
+        >;
+        (fn_ptr)(proxy);
+    }
+}

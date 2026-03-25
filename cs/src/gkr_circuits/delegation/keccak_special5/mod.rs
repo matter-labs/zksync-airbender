@@ -1,18 +1,9 @@
 use super::*;
 use crate::cs::circuit::*;
-use crate::cs::witness_placer::WitnessComputationCore;
-use crate::cs::witness_placer::WitnessComputationalField;
-use crate::cs::witness_placer::WitnessComputationalInteger;
-use crate::cs::witness_placer::WitnessComputationalU16;
-use crate::cs::witness_placer::WitnessComputationalU32;
-use crate::cs::witness_placer::WitnessComputationalU8;
-use crate::cs::witness_placer::WitnessMask;
-use crate::cs::witness_placer::WitnessPlacer;
-use crate::cs::witness_placer::WitnessTypeSet;
 use crate::definitions::*;
-use crate::one_row_compiler::LookupInput;
 use crate::types::Boolean;
 use crate::types::Num;
+use crate::witness_placer::*;
 // use common_constants::delegation_types::keccak_special5::*;
 use core::array::from_fn;
 
@@ -175,12 +166,12 @@ impl<F: PrimeField> LongRegisterRotation<F> {
     }
 }
 
+const TOTAL_TABLE_WIDTH: usize = 7;
+
 pub fn all_table_types() -> Vec<TableType> {
     vec![
         TableType::ZeroEntry, // this is a possibility when delegation is disabled and all mem reads become 0
-        TableType::KeccakPermutationIndices12,
-        TableType::KeccakPermutationIndices34,
-        TableType::KeccakPermutationIndices56,
+        TableType::KeccakPermutationIndices,
         TableType::Xor,
         TableType::XorSpecialIota,
         TableType::AndN,
@@ -190,15 +181,23 @@ pub fn all_table_types() -> Vec<TableType> {
 
 pub fn keccak_special5_delegation_circuit_create_table_driver<F: PrimeField>() -> TableDriver<F> {
     let mut table_driver = TableDriver::new();
-    for el in all_table_types() {
-        table_driver.materialize_table(el);
-    }
+    keccak_special5_delegation_circuit_table_driver_fn(&mut table_driver);
     table_driver
 }
 
-pub fn materialize_tables_into_cs<F: PrimeField, CS: Circuit<F>>(cs: &mut CS) {
+pub fn keccak_special5_delegation_circuit_table_driver_fn<F: PrimeField>(
+    table_driver: &mut TableDriver<F>,
+) {
     for el in all_table_types() {
-        cs.materialize_table(el);
+        table_driver.materialize_table::<TOTAL_TABLE_WIDTH>(el);
+    }
+}
+
+pub fn keccak_special5_delegation_circuit_table_addition_fn<F: PrimeField, CS: Circuit<F>>(
+    cs: &mut CS,
+) {
+    for el in all_table_types() {
+        cs.materialize_table::<TOTAL_TABLE_WIDTH>(el);
     }
 }
 
@@ -209,15 +208,8 @@ pub fn define_keccak_special5_delegation_circuit<
 >(
     cs: &mut CS,
 ) {
-    // add tables
-    materialize_tables_into_cs(cs);
-
-    // The only convention we must eventually satisfy is that if we do NOT process delegation request,
-    // THEN all memory writes in ABI must be 0s.
-    // This is handled automatically by a custom stage3 constraint to mask all mem accesses,
-    // then you just need to ensure that all 0 execute flags does not break/unsatisfy the circuit.
-    // Therefore: we CAN safely ignore this variable, but the circuit author must design the circuit carefully.
-    let execute = cs.process_delegation_request();
+    let (execute, _invocation_ts) =
+        cs.allocate_delegation_state(KECCAK_SPECIAL5_CSR_REGISTER as u16);
 
     // FIRST: process all memory accesses
     let (control, control_next) = {
@@ -227,7 +219,11 @@ pub fn define_keccak_special5_delegation_circuit<
             indirects_alignment_log2: 0, // no indirects, contains explicit control value
             indirect_accesses: vec![],
         };
-        let x10_and_indirects = cs.create_register_and_indirect_memory_accesses(x10_request);
+        let x10_and_indirects = cs.request_register_and_indirect_memory_accesses(
+            x10_request,
+            "x10 control register read/write",
+            2,
+        );
         assert!(x10_and_indirects.indirect_accesses.is_empty());
         let RegisterAccessType::Write {
             read_value: control_reg,
@@ -372,18 +368,8 @@ pub fn define_keccak_special5_delegation_circuit<
                 Constraint::from(control) + Term::from(1 << 11) * Term::from(execute);
             let [s1, s2, s3, s4, s5, s6] = [s1, s2, s3, s4, s5, s6].map(Constraint::from);
             cs.enforce_lookup_tuple_for_fixed_table(
-                &[control_with_exe.clone(), s1, s2].map(LookupInput::from),
-                TableType::KeccakPermutationIndices12,
-                false,
-            );
-            cs.enforce_lookup_tuple_for_fixed_table(
-                &[control_with_exe.clone(), s3, s4].map(LookupInput::from),
-                TableType::KeccakPermutationIndices34,
-                false,
-            );
-            cs.enforce_lookup_tuple_for_fixed_table(
-                &[control_with_exe, s5, s6].map(LookupInput::from),
-                TableType::KeccakPermutationIndices56,
+                &[control_with_exe.clone(), s1, s2, s3, s4, s5, s6].map(LookupInput::from),
+                TableType::KeccakPermutationIndices,
                 false,
             );
         }
@@ -417,7 +403,8 @@ pub fn define_keccak_special5_delegation_circuit<
             indirects_alignment_log2: 8, // 256 bytes: 25 u64 state + 6 u64 scratch = 248 bytes
             indirect_accesses: state_accesses, // we just r/w 6 u64 words
         };
-        let x11_and_indirects = cs.create_register_and_indirect_memory_accesses(x11_request);
+        let x11_and_indirects =
+            cs.request_register_and_indirect_memory_accesses(x11_request, "x11 indirect access", 2);
         assert_eq!(x11_and_indirects.indirect_accesses.len(), 12);
         let mut state_inputs = [LongRegister {
             low32: Register([Num::Constant(F::ZERO); 2]),
@@ -457,32 +444,27 @@ pub fn define_keccak_special5_delegation_circuit<
         if DEBUG {
             // set state_inputs based off of stress test data
             // first: re-set the index vars as they were overwritten by faulty simulator placeholder data
-            assert!(!execute.get_value(cs).unwrap());
+            assert!(!Boolean::Is(execute).get_value(cs).unwrap());
             let value_fn = move |placer: &mut CS::WitnessPlacer| {
                 let truebool =
                     <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Mask::constant(true);
-                placer.assign_mask(execute.get_variable().unwrap(), &truebool);
+                placer.assign_mask(execute, &truebool);
             };
             cs.set_values(value_fn);
             let control_with_exe =
                 Constraint::from(control) + Term::from(1 << 11) * Term::from(execute);
             cs.peek_lookup_value_unconstrained_ext(
                 &[LookupInput::from(control_with_exe.clone())],
-                &[state_indexes[0], state_indexes[1]],
-                TableType::KeccakPermutationIndices12.to_num(),
-                execute,
-            );
-            cs.peek_lookup_value_unconstrained_ext(
-                &[LookupInput::from(control_with_exe.clone())],
-                &[state_indexes[2], state_indexes[3]],
-                TableType::KeccakPermutationIndices34.to_num(),
-                execute,
-            );
-            cs.peek_lookup_value_unconstrained_ext(
-                &[LookupInput::from(control_with_exe)],
-                &[state_indexes[4], state_indexes[5]],
-                TableType::KeccakPermutationIndices56.to_num(),
-                execute,
+                &[
+                    state_indexes[0],
+                    state_indexes[1],
+                    state_indexes[2],
+                    state_indexes[3],
+                    state_indexes[4],
+                    state_indexes[5],
+                ],
+                TableType::KeccakPermutationIndices.to_num(),
+                Boolean::Is(execute),
             );
             // then: go ahead and process state_inputs
             let state_indexes_usize =
@@ -582,7 +564,7 @@ pub fn define_keccak_special5_delegation_circuit<
                 round_bools[i] = round_value.shr(i as u32).and(&one_value).is_one();
             }
             // beware that keccak padding (inactive) mode does not follow correct bitmask rules
-            let execute_bool = placer.get_boolean(execute.get_variable().unwrap());
+            let execute_bool = placer.get_boolean(Boolean::Is(execute).get_variable().unwrap());
             precompile_bitmask_bools[0] = precompile_bitmask_bools[0].and(&execute_bool);
             iter_bitmask_bools[0] = iter_bitmask_bools[0].and(&execute_bool);
             // assign bits/bitmasks
@@ -626,8 +608,10 @@ pub fn define_keccak_special5_delegation_circuit<
             cs.add_constraint(
                 Constraint::from(execute) * (iter_bitmask_sum.clone() - Term::from(1)),
             );
-            cs.add_constraint(Constraint::from(execute.toggle()) * precompile_bitmask_sum);
-            cs.add_constraint(Constraint::from(execute.toggle()) * iter_bitmask_sum);
+            cs.add_constraint(
+                Constraint::from(Boolean::Is(execute).toggle()) * precompile_bitmask_sum,
+            );
+            cs.add_constraint(Constraint::from(Boolean::Is(execute).toggle()) * iter_bitmask_sum);
         }
 
         (precompile_bitmask, iter_bitmask, precompile, iter, round)
@@ -1522,15 +1506,17 @@ fn enforce_binop<F: PrimeField, CS: Circuit<F>, const N: usize, const DEBUG: boo
 
     // FIRST enforce all 8 binop lookups
     {
-        let table_id = cs
-            .choose_from_orthogonal_variants(
-                &precompile_flags,
-                &precompile_table_ids.map(TableType::to_num),
-            )
-            .get_variable();
+        let mut table_id = Constraint::<F>::empty();
+        for (flag, table) in precompile_flags.iter().zip(precompile_table_ids.iter()) {
+            table_id += Term::from(*flag) * Term::from(table.to_num());
+        }
+        assert_eq!(table_id.degree(), 1);
         let tuples: [[Variable; 3]; 8] = from_fn(|i| [a[i], b[i], c[i]]);
         for tuple in tuples {
-            cs.enforce_lookup_tuple_for_variable_table(&tuple.map(LookupInput::from), table_id);
+            cs.enforce_lookup_tuple(
+                &tuple.map(LookupInput::from),
+                LookupQueryTableType::Expression(LookupInput::from(table_id.clone())),
+            );
         }
     }
 
@@ -1723,75 +1709,86 @@ mod test {
     use test_utils::skip_if_ci;
 
     use super::*;
-    use crate::cs::cs_reference::BasicAssembly;
-    use crate::one_row_compiler::OneRowCompiler;
+    use crate::gkr_compiler::compile_delegation_circuit_into_gkr;
+    use crate::gkr_compiler::dump_ssa_witness_eval_form;
     use crate::utils::serialize_to_file;
-    use field::Mersenne31Field;
 
     #[test]
-    fn compile_keccak_special5() {
+    fn compile_keccak_special5_into_gkr() {
         skip_if_ci!();
-        let mut cs = BasicAssembly::<Mersenne31Field>::new();
-        define_keccak_special5_delegation_circuit::<_, _, false>(&mut cs);
-        let (circuit_output, _) = cs.finalize();
-        let compiler = OneRowCompiler::default();
-        let compiled = compiler.compile_to_evaluate_delegations(circuit_output, 20);
-        serialize_to_file(&compiled, "keccak_delegation_layout.json");
-    }
+        use ::field::baby_bear::base::BabyBearField;
 
-    #[test]
-    #[serial_test::serial(cs_codegen)]
-    fn keccak_delegation_get_witness_graph() {
-        skip_if_ci!();
-        let ssa_forms = dump_ssa_witness_eval_form_for_delegation::<Mersenne31Field, _>(
-            define_keccak_special5_delegation_circuit::<_, _, false>,
+        let gkr_compiled = compile_delegation_circuit_into_gkr::<BabyBearField>(
+            &|cs| keccak_special5_delegation_circuit_table_addition_fn(cs),
+            &|cs| {
+                let _ = define_keccak_special5_delegation_circuit::<_, _, false>(cs);
+            },
+            22,
         );
-        serialize_to_file(&ssa_forms, "keccak_delegation_ssa.json");
+
+        serialize_to_file(
+            &gkr_compiled,
+            "compiled_circuits/keccak_special5_layout_gkr.json",
+        );
     }
 
     #[test]
-    fn stress_test_compile_keccak_special5() {
+    fn compile_keccak_special5_witness_graph() {
         skip_if_ci!();
-        use crate::cs::witness_placer::cs_debug_evaluator::CSDebugWitnessEvaluator;
-        fn to_u16_chunks(x: u64) -> [u16; 4] {
-            [
-                x as u16,
-                (x >> 16) as u16,
-                (x >> 32) as u16,
-                (x >> 48) as u16,
-            ]
-        }
-        for i in 0..DEBUG_INFO.len() {
-            println!("trying out debug info {i}/{}..", DEBUG_INFO.len());
-            unsafe {
-                update_select(i);
-                println!(
-                    "\tgiven_inputs: {:?}",
-                    DEBUG_INDEXES.map(|i| DEBUG_INPUT_STATE[i])
-                );
-                println!(
-                    "\t.           : {:?}",
-                    DEBUG_INDEXES.map(|i| to_u16_chunks(DEBUG_INPUT_STATE[i]))
-                );
-                println!(
-                    "\texpected_outputs: {:?}",
-                    DEBUG_INDEXES.map(|i| DEBUG_OUTPUT_STATE[i])
-                );
-                println!(
-                    "\t.               : {:?}",
-                    DEBUG_INDEXES.map(|i| to_u16_chunks(DEBUG_OUTPUT_STATE[i]))
-                );
-                println!(
-                    "\texpected control update (bitform): {:011b} -> {:011b}",
-                    DEBUG_CONTROL as u16, DEBUG_CONTROL_NEXT as u16
-                );
-            }
-            let mut cs = BasicAssembly::<Mersenne31Field>::new();
-            cs.witness_placer = Some(CSDebugWitnessEvaluator::new()); // necessary to debug witnessgen
-            define_keccak_special5_delegation_circuit::<_, _, true>(&mut cs);
-            let (circuit_output, _) = cs.finalize();
-            let _compiled =
-                OneRowCompiler::default().compile_to_evaluate_delegations(circuit_output, 20);
-        }
+        use ::field::baby_bear::base::BabyBearField;
+
+        let ssa_forms = dump_ssa_witness_eval_form::<BabyBearField>(
+            &|cs| keccak_special5_delegation_circuit_table_addition_fn(cs),
+            &|cs| {
+                let _ = define_keccak_special5_delegation_circuit::<_, _, false>(cs);
+            },
+        );
+        serialize_to_file(&ssa_forms, "compiled_circuits/keccak_special5_ssa_gkr.json");
     }
+
+    // #[test]
+    // fn stress_test_compile_keccak_special5() {
+    //     skip_if_ci!();
+    //     use crate::witness_placer::cs_debug_evaluator::CSDebugWitnessEvaluator;
+    //     fn to_u16_chunks(x: u64) -> [u16; 4] {
+    //         [
+    //             x as u16,
+    //             (x >> 16) as u16,
+    //             (x >> 32) as u16,
+    //             (x >> 48) as u16,
+    //         ]
+    //     }
+    //     for i in 0..DEBUG_INFO.len() {
+    //         println!("trying out debug info {i}/{}..", DEBUG_INFO.len());
+    //         unsafe {
+    //             update_select(i);
+    //             println!(
+    //                 "\tgiven_inputs: {:?}",
+    //                 DEBUG_INDEXES.map(|i| DEBUG_INPUT_STATE[i])
+    //             );
+    //             println!(
+    //                 "\t.           : {:?}",
+    //                 DEBUG_INDEXES.map(|i| to_u16_chunks(DEBUG_INPUT_STATE[i]))
+    //             );
+    //             println!(
+    //                 "\texpected_outputs: {:?}",
+    //                 DEBUG_INDEXES.map(|i| DEBUG_OUTPUT_STATE[i])
+    //             );
+    //             println!(
+    //                 "\t.               : {:?}",
+    //                 DEBUG_INDEXES.map(|i| to_u16_chunks(DEBUG_OUTPUT_STATE[i]))
+    //             );
+    //             println!(
+    //                 "\texpected control update (bitform): {:011b} -> {:011b}",
+    //                 DEBUG_CONTROL as u16, DEBUG_CONTROL_NEXT as u16
+    //             );
+    //         }
+    //         let mut cs = BasicAssembly::<Mersenne31Field>::new();
+    //         cs.witness_placer = Some(CSDebugWitnessEvaluator::new()); // necessary to debug witnessgen
+    //         define_keccak_special5_delegation_circuit::<_, _, true>(&mut cs);
+    //         let (circuit_output, _) = cs.finalize();
+    //         let _compiled =
+    //             OneRowCompiler::default().compile_to_evaluate_delegations(circuit_output, 20);
+    //     }
+    // }
 }

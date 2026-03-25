@@ -883,6 +883,45 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
     }
 
     #[track_caller]
+    fn enforce_lookup_tuple<const M: usize>(
+        &mut self,
+        inputs: &[LookupInput<F>; M],
+        table_type: LookupQueryTableType<F>,
+    ) {
+        assert!(M < MAX_TABLE_WIDTH);
+
+        // NOTE: we will add formal witness eval function here to ensure that we can use it for "act of lookup"
+        // if we want, and to count multiplicities
+
+        let inputs_vars = inputs.clone();
+        let table = table_type.clone();
+        let value_fn = move |placer: &mut Self::WitnessPlacer| {
+            let table_id = match &table {
+                LookupQueryTableType::Constant(table_id) => {
+                    <Self::WitnessPlacer as WitnessTypeSet<F>>::U16::constant(
+                        *table_id as u32 as u16,
+                    )
+                }
+                LookupQueryTableType::Variable(var) => placer.get_u16(*var),
+                LookupQueryTableType::Expression(input) => {
+                    input.evaluate(placer).as_integer().truncate()
+                }
+            };
+            let input_values: [_; M] = std::array::from_fn(|i| inputs_vars[i].evaluate(placer));
+            placer.lookup_enforce::<M>(&input_values, &table_id);
+        };
+        if Self::WitnessPlacer::MERGE_LOOKUP_AND_MULTIPLICITY_COUNT {
+            self.set_values(value_fn);
+        }
+
+        let query = LookupQuery {
+            row: inputs.to_vec(),
+            table: table_type,
+        };
+        self.lookup_storage.push(query);
+    }
+
+    #[track_caller]
     fn get_variables_from_lookup_constrained<const M: usize, const N: usize>(
         &mut self,
         inputs: &[LookupInput<F>; M],
@@ -906,7 +945,6 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
         output_variables: &[Variable; N],
         table_type: LookupQueryTableType<F>,
     ) {
-        // assert!(M + N < self.table_driver.);
         assert!(lookup_inputs.len() > 0);
 
         let output_variables: [Variable; N] = output_variables.clone();

@@ -698,6 +698,12 @@ pub trait Circuit<F: PrimeField>: Sized {
         table_type: Variable,
     );
 
+    fn enforce_lookup_tuple<const M: usize>(
+        &mut self,
+        inputs: &[LookupInput<F>; M],
+        table_type: LookupQueryTableType<F>,
+    );
+
     #[track_caller]
     fn get_variables_from_lookup_constrained<const M: usize, const N: usize>(
         &mut self,

@@ -4,22 +4,22 @@ use crate::cs::circuit_trait::{
     WordRepresentation,
 };
 use crate::definitions::Variable;
+use crate::gkr_compiler::graph::CopyNode;
 
 #[derive(Clone, Hash, Debug, PartialEq, Eq)]
 pub enum GrandProductAccumulationStep {
-    Base {
+    BasePair {
         lhs: MemoryPermutationExpression,
         rhs: MemoryPermutationExpression,
         is_write: bool,
     },
-    Aggregation {
+    AggregationPair {
         lhs: GKRAddress,
         rhs: GKRAddress,
         is_write: bool,
     },
-    Unbalanced {
-        lhs: GKRAddress,
-        rhs: MemoryPermutationExpression,
+    MaterializeBase {
+        access: MemoryPermutationExpression,
         is_write: bool,
     },
 }
@@ -27,9 +27,9 @@ pub enum GrandProductAccumulationStep {
 impl GrandProductAccumulationStep {
     fn is_write(&self) -> bool {
         match self {
-            Self::Base { is_write, .. }
-            | Self::Aggregation { is_write, .. }
-            | Self::Unbalanced { is_write, .. } => *is_write,
+            Self::BasePair { is_write, .. }
+            | Self::AggregationPair { is_write, .. }
+            | Self::MaterializeBase { is_write, .. } => *is_write,
         }
     }
 }
@@ -40,25 +40,25 @@ impl GKRGate for GrandProductAccumulationStep {
     fn short_name(&self) -> String {
         let is_write = self.is_write();
         match self {
-            Self::Base { .. } => {
+            Self::BasePair { .. } => {
                 if is_write {
                     "Memory grand product base write accumulation node".to_string()
                 } else {
                     "Memory grand product base read accumulation node".to_string()
                 }
             }
-            Self::Aggregation { .. } => {
+            Self::AggregationPair { .. } => {
                 if is_write {
                     "Memory grand product aggregation write accumulation node".to_string()
                 } else {
                     "Memory grand product aggregation read accumulation node".to_string()
                 }
             }
-            Self::Unbalanced { .. } => {
+            Self::MaterializeBase { .. } => {
                 if is_write {
-                    "Memory grand product unbalanced write accumulation node".to_string()
+                    "Materialize single write node".to_string()
                 } else {
-                    "Memory grand product unbalanced read accumulation node".to_string()
+                    "Materialize single read node".to_string()
                 }
             }
         }
@@ -73,7 +73,7 @@ impl GKRGate for GrandProductAccumulationStep {
         let output = graph.add_intermediate_variable_at_layer(output_layer);
         // create caches
         match self {
-            Self::Base { lhs, rhs, .. } => {
+            Self::BasePair { lhs, rhs, .. } => {
                 assert_ne!(lhs, rhs);
                 let input = [lhs, rhs].map(|el| {
                     let expr = mem_permutation_expr_into_cached_expr(el, graph);
@@ -86,7 +86,7 @@ impl GKRGate for GrandProductAccumulationStep {
 
                 (output, relation)
             }
-            Self::Aggregation { lhs, rhs, .. } => {
+            Self::AggregationPair { lhs, rhs, .. } => {
                 assert_ne!(lhs, rhs);
                 let input = [*lhs, *rhs];
                 let relation = NoFieldGKRRelation::TrivialProduct { input, output };
@@ -98,8 +98,15 @@ impl GKRGate for GrandProductAccumulationStep {
 
                 (output, relation)
             }
-            Self::Unbalanced { .. } => {
-                todo!();
+            Self::MaterializeBase { access, .. } => {
+                let expr = mem_permutation_expr_into_cached_expr(access, graph);
+                assert!(output_layer > 0);
+                let cache_layer = output_layer - 1;
+                let cached = graph.add_cached_relation(expr, cache_layer);
+
+                // and copy it
+                let copy_node = CopyNode::FromBase(cached);
+                copy_node.add_at_layer(graph, output_layer)
             }
         }
     }
@@ -261,7 +268,7 @@ pub(crate) fn layout_initial_grand_product_accumulation(
             write_set.push(write_set_el);
         }
 
-        let read_set_node = GrandProductAccumulationStep::Base {
+        let read_set_node = GrandProductAccumulationStep::BasePair {
             lhs: read_set[0].clone(),
             rhs: read_set[1].clone(),
             is_write: false,
@@ -269,7 +276,7 @@ pub(crate) fn layout_initial_grand_product_accumulation(
         let (read_set_node, _) = read_set_node.add_at_layer(graph, PLACEMENT_LAYER);
         grand_product_read_accumulation_nodes.push(read_set_node);
 
-        let write_set_node = GrandProductAccumulationStep::Base {
+        let write_set_node = GrandProductAccumulationStep::BasePair {
             lhs: write_set[0].clone(),
             rhs: write_set[1].clone(),
             is_write: true,
@@ -278,15 +285,13 @@ pub(crate) fn layout_initial_grand_product_accumulation(
         grand_product_write_accumulation_nodes.push(write_set_node);
     }
 
-    if ram_augmented_sets.as_chunks::<2>().1.is_empty() == false {
-        let last_el = ram_augmented_sets.as_chunks::<2>().1[0].clone();
-        // we tread PC permutation as a part of our global permutation under all the same rules
-
+    {
         let mut read_set = vec![];
         let mut write_set = vec![];
 
-        // memory
-        {
+        if ram_augmented_sets.as_chunks::<2>().1.is_empty() == false {
+            let last_el = ram_augmented_sets.as_chunks::<2>().1[0].clone();
+
             let (query, aux) = last_el;
             let read_set_el = match query {
                 MemoryAccess::RegisterOnly(RegisterAccess { reg_idx, .. }) => {
@@ -310,9 +315,23 @@ pub(crate) fn layout_initial_grand_product_accumulation(
                         timestamp_offset: 0,
                     }
                 }
-                MemoryAccess::RamIndirect(..) => {
-                    todo!()
-                }
+                MemoryAccess::RamIndirect(RegisterIndirectRamAccess {
+                    variable_offset,
+                    base_address,
+                    constant_offset,
+                    ..
+                }) => MemoryPermutationExpression {
+                    address: AddressSpaceAddress::U32SpaceSpecialIndirect {
+                        low_base: base_address[0],
+                        low_dynamic_offset: variable_offset.map(|(c, v, _)| (c as u16, v)),
+                        offset: constant_offset,
+                        high: base_address[1],
+                    },
+                    address_space: AddressSpace::Constant(AddressSpaceType::RAM),
+                    timestamp: MemoryPermutationTimestamp::Normal(aux.read_timestamp),
+                    value: query.read_value(),
+                    timestamp_offset: 0,
+                },
             };
             read_set.push(read_set_el);
 
@@ -342,9 +361,25 @@ pub(crate) fn layout_initial_grand_product_accumulation(
                         timestamp_offset: query.local_timestamp_in_cycle(),
                     }
                 }
-                MemoryAccess::RamIndirect(..) => {
-                    todo!()
-                }
+                MemoryAccess::RamIndirect(RegisterIndirectRamAccess {
+                    variable_offset,
+                    base_address,
+                    constant_offset,
+                    ..
+                }) => MemoryPermutationExpression {
+                    address: AddressSpaceAddress::U32SpaceSpecialIndirect {
+                        low_base: base_address[0],
+                        low_dynamic_offset: variable_offset.map(|(c, v, _)| (c as u16, v)),
+                        offset: constant_offset,
+                        high: base_address[1],
+                    },
+                    address_space: AddressSpace::Constant(AddressSpaceType::RAM),
+                    timestamp: MemoryPermutationTimestamp::Normal(
+                        mem_accesses_base_write_timestamp,
+                    ),
+                    value: query.write_value(),
+                    timestamp_offset: query.local_timestamp_in_cycle(),
+                },
             };
             write_set.push(write_set_el);
         }
@@ -373,49 +408,65 @@ pub(crate) fn layout_initial_grand_product_accumulation(
                 timestamp_offset: 0,
             };
             write_set.push(write_set_el);
-        } else {
-            if let Some((reg_idx, delegation_ts)) = delegation_permutation {
-                assert!(pc_permutation.is_none());
-                let read_set_el = MemoryPermutationExpression {
-                    address: AddressSpaceAddress::ConstantU16Limb(reg_idx),
-                    address_space: AddressSpace::Constant(AddressSpaceType::Register),
-                    timestamp: MemoryPermutationTimestamp::Normal(delegation_ts),
-                    value: WordRepresentation::Zero,
-                    timestamp_offset: 0,
-                };
-                read_set.push(read_set_el);
+        }
+        if let Some((reg_idx, delegation_ts)) = delegation_permutation {
+            assert!(pc_permutation.is_none());
+            let read_set_el = MemoryPermutationExpression {
+                address: AddressSpaceAddress::ConstantU16Limb(reg_idx),
+                address_space: AddressSpace::Constant(AddressSpaceType::Register),
+                timestamp: MemoryPermutationTimestamp::Normal(delegation_ts),
+                value: WordRepresentation::Zero,
+                timestamp_offset: 0,
+            };
+            read_set.push(read_set_el);
 
-                let write_set_el = MemoryPermutationExpression {
-                    address: AddressSpaceAddress::ConstantU16Limb(reg_idx),
-                    address_space: AddressSpace::Constant(AddressSpaceType::Register),
-                    timestamp: MemoryPermutationTimestamp::Zero, // delegation in the corresponding family uses read ts == 0, and some write TS,
-                    // so here we have to use non-zero read TS, and zero write TS to ensure a permutation
-                    value: WordRepresentation::Zero,
-                    timestamp_offset: 0,
-                };
-                write_set.push(write_set_el);
-            } else {
-                todo!()
-            }
+            let write_set_el = MemoryPermutationExpression {
+                address: AddressSpaceAddress::ConstantU16Limb(reg_idx),
+                address_space: AddressSpace::Constant(AddressSpaceType::Register),
+                timestamp: MemoryPermutationTimestamp::Zero, // delegation in the corresponding family uses read ts == 0, and some write TS,
+                // so here we have to use non-zero read TS, and zero write TS to ensure a permutation
+                value: WordRepresentation::Zero,
+                timestamp_offset: 0,
+            };
+            write_set.push(write_set_el);
         }
 
-        let read_set_node = GrandProductAccumulationStep::Base {
-            lhs: read_set[0].clone(),
-            rhs: read_set[1].clone(),
-            is_write: false,
-        };
-        let (read_set_node, _) = read_set_node.add_at_layer(graph, PLACEMENT_LAYER);
-        grand_product_read_accumulation_nodes.push(read_set_node);
+        if read_set.len() == 1 {
+            assert_eq!(write_set.len(), 1);
+            // materialize it
+            let read_set_node = GrandProductAccumulationStep::MaterializeBase {
+                access: read_set[0].clone(),
+                is_write: false,
+            };
+            let (read_set_node, _) = read_set_node.add_at_layer(graph, PLACEMENT_LAYER);
+            grand_product_read_accumulation_nodes.push(read_set_node);
 
-        let write_set_node = GrandProductAccumulationStep::Base {
-            lhs: write_set[0].clone(),
-            rhs: write_set[1].clone(),
-            is_write: true,
-        };
-        let (write_set_node, _) = write_set_node.add_at_layer(graph, PLACEMENT_LAYER);
-        grand_product_write_accumulation_nodes.push(write_set_node);
-    } else {
-        todo!();
+            let write_set_node = GrandProductAccumulationStep::MaterializeBase {
+                access: write_set[0].clone(),
+                is_write: true,
+            };
+            let (write_set_node, _) = write_set_node.add_at_layer(graph, PLACEMENT_LAYER);
+            grand_product_write_accumulation_nodes.push(write_set_node);
+        } else {
+            assert_eq!(read_set.len(), 2);
+            assert_eq!(write_set.len(), 2);
+
+            let read_set_node = GrandProductAccumulationStep::BasePair {
+                lhs: read_set[0].clone(),
+                rhs: read_set[1].clone(),
+                is_write: false,
+            };
+            let (read_set_node, _) = read_set_node.add_at_layer(graph, PLACEMENT_LAYER);
+            grand_product_read_accumulation_nodes.push(read_set_node);
+
+            let write_set_node = GrandProductAccumulationStep::BasePair {
+                lhs: write_set[0].clone(),
+                rhs: write_set[1].clone(),
+                is_write: true,
+            };
+            let (write_set_node, _) = write_set_node.add_at_layer(graph, PLACEMENT_LAYER);
+            grand_product_write_accumulation_nodes.push(write_set_node);
+        }
     }
 
     (
@@ -472,7 +523,7 @@ pub(crate) fn accumulate_memory_like_grand_product(
         for [a, b] in source.as_chunks::<2>().0.iter() {
             a.assert_as_dependency_for_layer(output_layer);
             b.assert_as_dependency_for_layer(output_layer);
-            let el = GrandProductAccumulationStep::Aggregation {
+            let el = GrandProductAccumulationStep::AggregationPair {
                 lhs: *a,
                 rhs: *b,
                 is_write,
@@ -536,7 +587,7 @@ pub(crate) fn accumulate_memory_like_grand_product(
                 for [a, b] in source.as_chunks::<2>().0.iter() {
                     a.assert_as_dependency_for_layer(output_layer);
                     b.assert_as_dependency_for_layer(output_layer);
-                    let el = GrandProductAccumulationStep::Aggregation {
+                    let el = GrandProductAccumulationStep::AggregationPair {
                         lhs: *a,
                         rhs: *b,
                         is_write,

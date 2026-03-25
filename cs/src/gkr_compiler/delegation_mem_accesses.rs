@@ -295,25 +295,41 @@ pub(crate) fn compile_register_and_indirect_mem_accesses<F: PrimeField>(
                 RamWordRepresentation::U16Limbs(read_value)
             };
 
-            let variable_offset_compiled =
-                if let Some((offset, var, indirect_access_var_idx)) = variable_offset {
-                    assert!(offset < 1 << 16);
+            let variable_offset_compiled = if let Some((offset, var, indirect_access_var_idx)) =
+                variable_offset
+            {
+                assert!(offset < 1 << 16);
+                let offset_place = if let Some(offset_place) = graph.get_fixed_layout_pos(&var) {
+                    offset_place
+                } else {
                     let [offset_place] = graph.layout_memory_subtree_multiple_variables(
                         [var],
                         all_variables_to_place,
                         layers_mapping,
                     );
-                    let existing = indirect_access_variable_offsets
-                        .insert(indirect_access_var_idx, offset_place);
-                    assert!(existing.is_none());
-                    let GKRAddress::BaseLayerMemory(offset_place) = offset_place else {
-                        unreachable!()
-                    };
-
-                    Some((offset as u16, offset_place))
-                } else {
-                    None
+                    offset_place
                 };
+
+                dbg!(query_idx);
+                dbg!(indirect_access_idx);
+                dbg!(indirect_access_var_idx);
+                dbg!(offset);
+                dbg!(&offset_place);
+
+                let existing =
+                    indirect_access_variable_offsets.insert(indirect_access_var_idx, offset_place);
+                if let Some(existing) = existing {
+                    assert_eq!(existing, offset_place);
+                }
+                // assert!(existing.is_none(), "duplicate variable for indirect access variable part index {}: inserting {:?}, but {:?} was present already", indirect_access_var_idx, offset_place, existing.unwrap());
+                let GKRAddress::BaseLayerMemory(offset_place) = offset_place else {
+                    unreachable!()
+                };
+
+                Some((offset as u16, offset_place))
+            } else {
+                None
+            };
 
             let address = RamAddress::IndirectRam(IndirectRamAccessAddress {
                 base_register_value: register_read_value_raw,

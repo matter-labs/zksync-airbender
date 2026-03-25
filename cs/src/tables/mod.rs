@@ -15,7 +15,7 @@ use type_map::concurrent::TypeMap;
 mod binops;
 mod integer_ops;
 mod jump_branch_opcode_related;
-// mod keccak_precompile_related;
+mod keccak_precompile_related;
 // mod memory_opcode_related;
 // mod range_checks_and_decompositions;
 // mod rom_related;
@@ -26,7 +26,7 @@ mod zero_entry;
 pub use self::binops::*;
 pub use self::integer_ops::*;
 pub use self::jump_branch_opcode_related::*;
-// pub use self::keccak_precompile_related::*;
+pub use self::keccak_precompile_related::*;
 // pub use self::memory_opcode_related::*;
 // pub use self::range_checks_and_decompositions::*;
 // pub use self::rom_related::*;
@@ -829,20 +829,14 @@ impl TableType {
             // TableType::RangeCheck16WithZeroPads => LookupWrapper::Dimensional3(
             //     create_formal_width_3_range_check_table_for_single_entry::<F, 16>(id),
             // ),
-            // TableType::KeccakPermutationIndices12 => {
-            //     LookupWrapper::Dimensional3(create_keccak_permutation_indices_table::<F, 0, 1>(id))
-            // }
-            // TableType::KeccakPermutationIndices34 => {
-            //     LookupWrapper::Dimensional3(create_keccak_permutation_indices_table::<F, 2, 3>(id))
-            // }
-            // TableType::KeccakPermutationIndices56 => {
-            //     LookupWrapper::Dimensional3(create_keccak_permutation_indices_table::<F, 4, 5>(id))
-            // }
-            // TableType::XorSpecialIota => {
-            //     LookupWrapper::Dimensional3(create_xor_special_keccak_iota_table::<F>(id))
-            // }
-            // TableType::AndN => LookupWrapper::Dimensional3(create_andn_table::<F>(id)),
-            // TableType::RotL => LookupWrapper::Dimensional3(create_rotl_table::<F>(id)),
+            TableType::KeccakPermutationIndices => {
+                LookupWrapper::Initialized(create_keccak_permutation_indices_table::<F>(id))
+            }
+            TableType::XorSpecialIota => {
+                LookupWrapper::Initialized(create_xor_special_keccak_iota_table::<F>(id))
+            }
+            TableType::AndN => LookupWrapper::Initialized(create_andn_table::<F>(id)),
+            TableType::RotL => LookupWrapper::Initialized(create_rotl_table::<F>(id)),
             a @ _ => {
                 todo!("Support {:?}", a);
             }
