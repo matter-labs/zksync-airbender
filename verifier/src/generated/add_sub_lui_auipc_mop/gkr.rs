@@ -7977,13 +7977,30 @@ unsafe fn dim_reducing_23_final_step_accumulator(
     acc
 }
 #[allow(unused_braces, unused_mut, unused_variables, unused_unsafe)]
-pub fn verify_gkr_sumcheck<I: NonDeterminismSource>(
-) -> Result<GKRVerifierOutput<'static, BabyBearExt4, GKR_ROUNDS, GKR_ADDRS>, GKRVerificationError> {
+pub fn verify_gkr_sumcheck<I: NonDeterminismSource>() -> Result<
+    GKRVerifierOutput<'static, BabyBearExt4, GKR_ROUNDS, GKR_ADDRS, WHIR_CAP_WORDS>,
+    GKRVerificationError,
+> {
     unsafe {
         let mut transcript_buf = LazyVec::<u32, GKR_TRANSCRIPT_U32>::new();
         for _ in 0..GKR_TRANSCRIPT_U32 {
             transcript_buf.push(I::read_word());
         }
+        let setup_cap: [u32; WHIR_CAP_WORDS] = {
+            let src = &transcript_buf.as_slice()
+                [CAPS_OFFSET_IN_TRANSCRIPT..CAPS_OFFSET_IN_TRANSCRIPT + WHIR_CAP_WORDS];
+            *<&[u32; WHIR_CAP_WORDS]>::try_from(src).unwrap_unchecked()
+        };
+        let memory_cap: [u32; WHIR_CAP_WORDS] = {
+            let src = &transcript_buf.as_slice()[CAPS_OFFSET_IN_TRANSCRIPT + WHIR_CAP_WORDS
+                ..CAPS_OFFSET_IN_TRANSCRIPT + 2 * WHIR_CAP_WORDS];
+            *<&[u32; WHIR_CAP_WORDS]>::try_from(src).unwrap_unchecked()
+        };
+        let witness_cap: [u32; WHIR_CAP_WORDS] = {
+            let src = &transcript_buf.as_slice()[CAPS_OFFSET_IN_TRANSCRIPT + 2 * WHIR_CAP_WORDS
+                ..CAPS_OFFSET_IN_TRANSCRIPT + 3 * WHIR_CAP_WORDS];
+            *<&[u32; WHIR_CAP_WORDS]>::try_from(src).unwrap_unchecked()
+        };
         let mut seed = Blake2sTranscript::commit_initial(transcript_buf.as_slice());
         let mut hasher = DelegatedBlake2sState::new();
         let mut init_challenges = [BabyBearExt4::ZERO; 3];
@@ -9801,11 +9818,10 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>(
             state.batching_challenge = next_batching;
             state.prev_point_len = fc_len;
         }
-        let grand_product_accumulator: BabyBearExt4 = read_field_el::<I>();
-        commit_field_els(&mut seed, &[grand_product_accumulator]);
         let mut draw_buf = [BabyBearExt4::ZERO; 1];
         draw_field_els_into(&mut hasher, &mut seed, &mut draw_buf);
         let whir_batching_challenge = draw_buf[0];
+        let grand_product_accumulator: BabyBearExt4 = read_field_el::<I>();
         Ok(GKRVerifierOutput {
             base_layer_claims: state.prev_claims,
             base_layer_addrs: LAYER_0_SORTED_ADDRS,
@@ -9815,6 +9831,9 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>(
             additional_base_layer_openings: BASE_LAYER_ADDITIONAL_OPENINGS,
             whir_batching_challenge,
             whir_transcript_seed: seed,
+            setup_cap,
+            memory_cap,
+            witness_cap,
         })
     }
 }

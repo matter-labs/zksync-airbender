@@ -58,7 +58,7 @@ mod test {
                 utils::transcript::generate_transcript_helpers::<DefaultBabyBearField>();
             let sumcheck_fns = utils::sumcheck::generate_sumcheck_helpers::<DefaultBabyBearField>();
             let gkr_fns = gkr::generate_gkr_common::<DefaultBabyBearField>();
-            let whir_fns = whir::generate_whir_common::<DefaultBabyBearField>();
+            let whir_fns = whir::generate_whir_common::<DefaultBabyBearField>(&whir_schedule);
 
             quote::quote! {
                 use core::mem::MaybeUninit;
@@ -73,9 +73,9 @@ mod test {
                 use ::verifier_common::gkr::{GKRVerificationError, LazyVec};
                 #field_use_stmts
 
-                const EXT_DEGREE: usize =
+                pub const EXT_DEGREE: usize =
                     <#quartic_struct as FieldExtension<#field_struct>>::DEGREE;
-                const DRAW_BUF_CAPACITY: usize = 64;
+                pub const DRAW_BUF_CAPACITY: usize = 64;
 
                 #transcript_fns
                 #sumcheck_fns
@@ -117,8 +117,28 @@ mod test {
             write_and_fmt(&format!("{}/mod.rs", dir), &mod_rs);
             write_and_fmt(&format!("{}/constants.rs", dir), &files.constants);
             write_and_fmt(&format!("{}/gkr.rs", dir), &files.gkr);
-            // Per-circuit WHIR and Merkle stubs — populated in later steps
-            write_and_fmt(&format!("{}/whir.rs", dir), &quote::quote! {});
+
+            let whir_initial = whir::generate_whir_inlined::<DefaultBabyBearField>(
+                &whir_schedule,
+                files.num_mem_oracle_cols,
+                files.num_wit_oracle_cols,
+                files.num_setup_oracle_cols,
+                files.trace_len_log2,
+            );
+            let whir_internal = whir::generate_whir_internal_rounds::<DefaultBabyBearField>(
+                &whir_schedule,
+                files.trace_len_log2,
+            );
+            let whir_final = whir::generate_whir_final_round::<DefaultBabyBearField>(
+                &whir_schedule,
+                files.trace_len_log2,
+            );
+            let whir_code = quote::quote! {
+                #whir_initial
+                #whir_internal
+                #whir_final
+            };
+            write_and_fmt(&format!("{}/whir.rs", dir), &whir_code);
             write_and_fmt(&format!("{}/merkle.rs", dir), &quote::quote! {});
         }
     }

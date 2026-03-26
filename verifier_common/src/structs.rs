@@ -13,7 +13,7 @@ impl<'a> BitSource<'a> {
 }
 
 impl<'a> Iterator for BitSource<'a> {
-    type Item = bool;
+    type Item = usize;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.index >= self.u32_values.len() * (u32::BITS as usize) {
@@ -22,19 +22,23 @@ impl<'a> Iterator for BitSource<'a> {
 
         let word_index = self.index / (u32::BITS as usize);
         let bit_index = self.index % (u32::BITS as usize);
-        let bit = self.u32_values[word_index] & (1 << bit_index) != 0;
+        // Use read_volatile to force a full 32-bit load and prevent the
+        // compiler from optimizing into a subword (lhu/lbu) load, which
+        // the reduced RISC-V transpiler does not support.
+        let word = unsafe { core::ptr::read_volatile(&self.u32_values[word_index]) };
+        let bit = (word >> bit_index) & 1;
         self.index += 1;
 
-        Some(bit)
+        Some(bit as usize)
     }
 }
 
-pub fn assemble_query_index(num_bits: usize, bit_source: &mut impl Iterator<Item = bool>) -> usize {
+pub fn assemble_query_index(num_bits: usize, bit_source: &mut impl Iterator<Item = usize>) -> usize {
     // assemble as LE
     assert!(num_bits <= usize::BITS as usize);
     let mut result = 0usize;
     for i in 0..num_bits {
-        result |= (bit_source.next().expect("must have enough bits") as usize) << i;
+        result |= bit_source.next().expect("must have enough bits") << i;
     }
 
     result

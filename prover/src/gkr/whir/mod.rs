@@ -75,8 +75,8 @@ use crate::gkr::PAR_THRESHOLD;
 use crate::query_utils::assemble_query_index;
 use crate::{gkr::prover::apply_row_wise, merkle_trees::ColumnMajorMerkleTreeConstructor};
 use fft::{
-    batch_inverse_inplace, bitreverse_enumeration_inplace, domain_generator_for_size,
-    materialize_powers_serial_starting_with_one, Twiddles,
+    batch_inverse_inplace, bitreverse_enumeration_inplace, bitreverse_index,
+    domain_generator_for_size, materialize_powers_serial_starting_with_one, Twiddles,
 };
 use field::{Field, FieldExtension, PrimeField, TwoAdicField};
 use std::alloc::Global;
@@ -151,20 +151,87 @@ impl<F: PrimeField + TwoAdicField, T: ColumnMajorMerkleTreeConstructor<F>>
         &self,
         index: usize,
     ) -> (usize, Vec<Vec<F>>, BaseFieldQuery<F, T>) {
-        let coset_index = index & (self.cosets.len() - 1);
-        let internal_index = index / self.cosets.len();
-        assert!(internal_index < (1 << self.trace_len_log2) / self.values_per_leaf);
+        let num_cosets = self.cosets.len();
+        let coset_index = index & (num_cosets - 1);
+        let internal_index = index / num_cosets;
+        let coset_tree_size = (1 << self.trace_len_log2) / self.values_per_leaf;
+        assert!(internal_index < coset_tree_size);
         let values =
             self.cosets[coset_index].values_for_folded_index(internal_index, self.values_per_leaf);
 
-        let (_, path) = self.tree.get_proof(index);
+        // Tree leaves are laid out sequentially by coset (with bit-reversed coset
+        // order).  For 2 cosets the bit-reversal is identity, so the tree index is
+        // simply coset_index * coset_tree_size + internal_index.
+        let coset_dest_index = bitreverse_index(coset_index, num_cosets.trailing_zeros());
+        let tree_index = coset_dest_index * coset_tree_size + internal_index;
+
+        let (_leaf_hash, path) = self.tree.get_proof(tree_index);
+
+        #[cfg(feature = "gkr_self_checks")]
+        {
+            let recomputed = Self::compute_base_field_leaf_hash(
+                &self.cosets[coset_index],
+                internal_index,
+                self.values_per_leaf,
+            );
+            assert_eq!(
+                recomputed, _leaf_hash,
+                "Leaf hash mismatch at query_index={index}, tree_index={tree_index}"
+            );
+        }
+
         let query = BaseFieldQuery::<F, T> {
-            index,
+            index: tree_index,
             leaf_values_concatenated: values.iter().flatten().copied().collect(),
             path,
             _marker: core::marker::PhantomData,
         };
         (coset_index, values, query)
+    }
+
+    /// Hash leaf data the same way `blake2s_leaf_hashes_from_cosets` does:
+    /// column-major with bit-reversed offsets.
+    #[cfg(feature = "gkr_self_checks")]
+    fn compute_base_field_leaf_hash(
+        coset: &ColumnMajorBaseOracleForCoset<F>,
+        internal_index: usize,
+        values_per_leaf: usize,
+    ) -> [u32; 8] {
+        use blake2s_u32::{Blake2sState, BLAKE2S_BLOCK_SIZE_U32_WORDS};
+
+        let trace_len = 1 << coset.trace_len_log2;
+        let offsets = offsets_vec_for_leaf_construction(trace_len, values_per_leaf);
+
+        let mut buffer = Vec::new();
+        for col in coset.original_values_normal_order.iter() {
+            for &offset in offsets.iter() {
+                buffer.push(col.column[offset + internal_index].as_u32_raw_repr_reduced());
+            }
+        }
+
+        let mut h = Blake2sState::new();
+        let num_words = buffer.len();
+        let num_full_blocks = num_words / BLAKE2S_BLOCK_SIZE_U32_WORDS;
+        let remainder = num_words % BLAKE2S_BLOCK_SIZE_U32_WORDS;
+        let mut output = [0u32; 8];
+
+        for block_idx in 0..num_full_blocks {
+            let block_start = block_idx * BLAKE2S_BLOCK_SIZE_U32_WORDS;
+            let block: &[u32; BLAKE2S_BLOCK_SIZE_U32_WORDS] = unsafe {
+                &*(buffer.as_ptr().add(block_start) as *const [u32; BLAKE2S_BLOCK_SIZE_U32_WORDS])
+            };
+            if block_idx == num_full_blocks - 1 && remainder == 0 {
+                h.absorb_final_block::<true>(block, BLAKE2S_BLOCK_SIZE_U32_WORDS, &mut output);
+                return output;
+            }
+            h.absorb::<true>(block);
+        }
+
+        let mut last_block = [0u32; BLAKE2S_BLOCK_SIZE_U32_WORDS];
+        let tail_start = num_full_blocks * BLAKE2S_BLOCK_SIZE_U32_WORDS;
+        last_block[..remainder].copy_from_slice(&buffer[tail_start..]);
+        h.absorb_final_block::<true>(&last_block, remainder, &mut output);
+        output
     }
 }
 
@@ -282,13 +349,19 @@ impl<
         &self,
         index: usize,
     ) -> (usize, Vec<E>, ExtensionFieldQuery<F, E, T>) {
-        let coset_index = index & (self.cosets.len() - 1);
-        let internal_index = index / self.cosets.len();
+        let num_cosets = self.cosets.len();
+        let coset_index = index & (num_cosets - 1);
+        let internal_index = index / num_cosets;
+        let coset_tree_size = (1 << self.trace_len_log2) / self.values_per_leaf;
         let values =
             self.cosets[coset_index].values_for_folded_index(internal_index, self.values_per_leaf);
-        let (_leaf_hash, path) = self.tree.get_proof(index);
+
+        let coset_dest_index = bitreverse_index(coset_index, num_cosets.trailing_zeros());
+        let tree_index = coset_dest_index * coset_tree_size + internal_index;
+
+        let (_leaf_hash, path) = self.tree.get_proof(tree_index);
         let query = ExtensionFieldQuery {
-            index,
+            index: tree_index,
             leaf_values_concatenated: values.clone(),
             path,
             _marker: core::marker::PhantomData,
@@ -703,7 +776,6 @@ where
         }
         let mut current_delinearization_challenge = delinearization_challenge;
         current_delinearization_challenge.square();
-
         for &query_index in query_indexes.iter() {
             assert!(query_index < query_domain_size as usize);
             let query_point = query_domain_generator.pow(query_index as u32);
@@ -915,6 +987,7 @@ where
         assert_eq!(sumchecked_poly_evaluation_form.len(), 1 << poly_size_log2);
         assert_eq!(sumchecked_poly_monomial_form.len(), 1 << poly_size_log2);
         assert_eq!(eq_poly.len(), 1 << poly_size_log2);
+
 
         #[cfg(feature = "gkr_self_checks")]
         {
@@ -1277,6 +1350,26 @@ where
     assert!(whir_steps_schedule.next().is_none());
     assert!(whir_queries_schedule.next().is_none());
     assert!(whir_pow_schedule.next().is_none());
+
+    proof.final_monomials = sumchecked_poly_monomial_form;
+
+    #[cfg(feature = "gkr_self_checks")]
+    {
+        // Verify monomials → hypercube evals matches the evaluation form.
+        // The evaluation form lives in sumchecked_poly_evaluation_form_vec but
+        // was folded in-place; the first 2^final_poly_log2 elements are valid.
+        let final_len = 1usize << final_poly_log2;
+        let mut hypercube_evals = proof.final_monomials.clone();
+        multivariate_coeffs_into_hypercube_evals(
+            &mut hypercube_evals,
+            final_poly_log2 as u32,
+        );
+        assert_eq!(
+            &hypercube_evals[..],
+            &sumchecked_poly_evaluation_form_vec[..final_len],
+            "final monomials → hypercube evals mismatch"
+        );
+    }
 
     proof
 }

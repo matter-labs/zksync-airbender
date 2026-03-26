@@ -19,7 +19,7 @@ mod generated_shift_binop;
 fn run_gkr_verify_for_circuit(name: &str, proof_path: &str, circuit_path: &str, verify_fn: fn()) {
     use field::baby_bear::base::BabyBearField;
     use field::baby_bear::ext4::BabyBearExt4;
-    use prover::gkr::prover::GKRProof;
+    use prover::gkr::prover::{GKRProof, WhirSchedule};
     use prover::merkle_trees::DefaultTreeConstructor;
     use verifier_common::cs::gkr_compiler::GKRCircuitArtifact;
     use verifier_common::gkr::flatten::flatten_gkr_proof_for_nds;
@@ -28,12 +28,13 @@ fn run_gkr_verify_for_circuit(name: &str, proof_path: &str, circuit_path: &str, 
     let proof: GKRProof<BabyBearField, BabyBearExt4, DefaultTreeConstructor> =
         deserialize_from_file(proof_path);
     let compiled_circuit: GKRCircuitArtifact<BabyBearField> = deserialize_from_file(circuit_path);
+    let whir_schedule = WhirSchedule::default_for_tests_80_bits();
 
     let oracle_data = flatten_gkr_proof_for_nds::<
         BabyBearField,
         BabyBearExt4,
         DefaultTreeConstructor,
-    >(&proof, &compiled_circuit);
+    >(&proof, &compiled_circuit, &whir_schedule);
 
     let circuit_name = name.to_string();
     let result = std::thread::Builder::new()
@@ -55,22 +56,91 @@ fn run_gkr_verify_for_circuit(name: &str, proof_path: &str, circuit_path: &str, 
 #[cfg(feature = "gkr_verify")]
 fn verify_add_sub() {
     use verifier_common::prover::nd_source_std::ThreadLocalBasedSource;
-    generated_add_sub_lui_auipc_mop::verify_gkr_sumcheck::<ThreadLocalBasedSource>()
-        .unwrap_or_else(|e| panic!("GKR verification failed: {:?}", e));
+    let gkr_output =
+        generated_add_sub_lui_auipc_mop::verify_gkr_sumcheck::<ThreadLocalBasedSource>()
+            .unwrap_or_else(|e| panic!("GKR verification failed: {:?}", e));
+    let mut seed = gkr_output.whir_transcript_seed;
+    let (mut claim, mut cap) =
+        generated_add_sub_lui_auipc_mop::whir::verify_initial_whir_round::<ThreadLocalBasedSource>(
+            &mut seed,
+            gkr_output.whir_batching_challenge,
+            &gkr_output.setup_cap,
+            &gkr_output.memory_cap,
+            &gkr_output.witness_cap,
+        )
+        .unwrap_or_else(|e| panic!("WHIR initial round failed: {:?}", e));
+    for round_idx in 1..=generated_add_sub_lui_auipc_mop::whir::NUM_INTERNAL_ROUNDS {
+        let (new_claim, new_cap) =
+            generated_add_sub_lui_auipc_mop::whir::verify_internal_whir_round::<
+                ThreadLocalBasedSource,
+            >(&mut seed, claim, &cap, round_idx)
+            .unwrap_or_else(|e| panic!("WHIR internal round {} failed: {:?}", round_idx, e));
+        claim = new_claim;
+        cap = new_cap;
+    }
+    let _final_claim = generated_add_sub_lui_auipc_mop::whir::verify_final_whir_round::<
+        ThreadLocalBasedSource,
+    >(&mut seed, claim, &cap)
+    .unwrap_or_else(|e| panic!("WHIR final round failed: {:?}", e));
 }
 
 #[cfg(feature = "gkr_verify")]
 fn verify_jump_branch_slt() {
     use verifier_common::prover::nd_source_std::ThreadLocalBasedSource;
-    generated_jump_branch_slt::verify_gkr_sumcheck::<ThreadLocalBasedSource>()
+    let gkr_output = generated_jump_branch_slt::verify_gkr_sumcheck::<ThreadLocalBasedSource>()
         .unwrap_or_else(|e| panic!("GKR verification failed: {:?}", e));
+    let mut seed = gkr_output.whir_transcript_seed;
+    let (mut claim, mut cap) =
+        generated_jump_branch_slt::whir::verify_initial_whir_round::<ThreadLocalBasedSource>(
+            &mut seed,
+            gkr_output.whir_batching_challenge,
+            &gkr_output.setup_cap,
+            &gkr_output.memory_cap,
+            &gkr_output.witness_cap,
+        )
+        .unwrap_or_else(|e| panic!("WHIR initial round failed: {:?}", e));
+    for round_idx in 1..=generated_jump_branch_slt::whir::NUM_INTERNAL_ROUNDS {
+        let (new_claim, new_cap) = generated_jump_branch_slt::whir::verify_internal_whir_round::<
+            ThreadLocalBasedSource,
+        >(&mut seed, claim, &cap, round_idx)
+        .unwrap_or_else(|e| panic!("WHIR internal round {} failed: {:?}", round_idx, e));
+        claim = new_claim;
+        cap = new_cap;
+    }
+    let _final_claim = generated_jump_branch_slt::whir::verify_final_whir_round::<
+        ThreadLocalBasedSource,
+    >(&mut seed, claim, &cap)
+    .unwrap_or_else(|e| panic!("WHIR final round failed: {:?}", e));
 }
 
 #[cfg(feature = "gkr_verify")]
 fn verify_shift_binop() {
     use verifier_common::prover::nd_source_std::ThreadLocalBasedSource;
-    generated_shift_binop::verify_gkr_sumcheck::<ThreadLocalBasedSource>()
+    let gkr_output = generated_shift_binop::verify_gkr_sumcheck::<ThreadLocalBasedSource>()
         .unwrap_or_else(|e| panic!("GKR verification failed: {:?}", e));
+    let mut seed = gkr_output.whir_transcript_seed;
+    let (mut claim, mut cap) =
+        generated_shift_binop::whir::verify_initial_whir_round::<ThreadLocalBasedSource>(
+            &mut seed,
+            gkr_output.whir_batching_challenge,
+            &gkr_output.setup_cap,
+            &gkr_output.memory_cap,
+            &gkr_output.witness_cap,
+        )
+        .unwrap_or_else(|e| panic!("WHIR initial round failed: {:?}", e));
+    for round_idx in 1..=generated_shift_binop::whir::NUM_INTERNAL_ROUNDS {
+        let (new_claim, new_cap) = generated_shift_binop::whir::verify_internal_whir_round::<
+            ThreadLocalBasedSource,
+        >(&mut seed, claim, &cap, round_idx)
+        .unwrap_or_else(|e| panic!("WHIR internal round {} failed: {:?}", round_idx, e));
+        claim = new_claim;
+        cap = new_cap;
+    }
+    let _final_claim =
+        generated_shift_binop::whir::verify_final_whir_round::<ThreadLocalBasedSource>(
+            &mut seed, claim, &cap,
+        )
+        .unwrap_or_else(|e| panic!("WHIR final round failed: {:?}", e));
 }
 
 #[test]
@@ -107,7 +177,7 @@ fn test_gkr_sumcheck_verify_inlined() {
 fn test_gkr_sumcheck_verify_inlined_rejects_corrupted_proof() {
     use field::baby_bear::base::BabyBearField;
     use field::baby_bear::ext4::BabyBearExt4;
-    use prover::gkr::prover::GKRProof;
+    use prover::gkr::prover::{GKRProof, WhirSchedule};
     use prover::merkle_trees::DefaultTreeConstructor;
     use verifier_common::cs::gkr_compiler::GKRCircuitArtifact;
     use verifier_common::gkr::flatten::flatten_gkr_proof_for_nds;
@@ -118,15 +188,18 @@ fn test_gkr_sumcheck_verify_inlined_rejects_corrupted_proof() {
     let compiled_circuit: GKRCircuitArtifact<BabyBearField> = deserialize_from_file(
         "../cs/compiled_circuits/add_sub_lui_auipc_mop_preprocessed_layout_gkr.json",
     );
+    let whir_schedule = WhirSchedule::default_for_tests_80_bits();
 
     let mut oracle_data = flatten_gkr_proof_for_nds::<
         BabyBearField,
         BabyBearExt4,
         DefaultTreeConstructor,
-    >(&proof, &compiled_circuit);
+    >(&proof, &compiled_circuit, &whir_schedule);
 
-    // Corrupt a word in the sumcheck coefficient region (past the transcript preamble and evaluations)
-    let corrupt_idx = oracle_data.len() / 2;
+    // Corrupt a word in the GKR sumcheck region.
+    // The transcript preamble is GKR_TRANSCRIPT_U32 words, followed by evaluations and sumcheck data.
+    // Target the sumcheck coefficient area which is well past the preamble.
+    let corrupt_idx = generated_add_sub_lui_auipc_mop::constants::GKR_TRANSCRIPT_U32 + 100;
     oracle_data[corrupt_idx] ^= 1;
 
     let result = std::thread::Builder::new()
@@ -155,7 +228,7 @@ fn run_gkr_verifier_in_transpiler(
 ) {
     use field::baby_bear::base::BabyBearField;
     use field::baby_bear::ext4::BabyBearExt4;
-    use prover::gkr::prover::GKRProof;
+    use prover::gkr::prover::{GKRProof, WhirSchedule};
     use prover::merkle_trees::DefaultTreeConstructor;
     use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
     use riscv_transpiler::ir::simple_instruction_set::*;
@@ -167,12 +240,13 @@ fn run_gkr_verifier_in_transpiler(
     let proof: GKRProof<BabyBearField, BabyBearExt4, DefaultTreeConstructor> =
         deserialize_from_file(proof_path);
     let compiled_circuit: GKRCircuitArtifact<BabyBearField> = deserialize_from_file(circuit_path);
+    let whir_schedule = WhirSchedule::default_for_tests_80_bits();
 
     let oracle_data = flatten_gkr_proof_for_nds::<
         BabyBearField,
         BabyBearExt4,
         DefaultTreeConstructor,
-    >(&proof, &compiled_circuit);
+    >(&proof, &compiled_circuit, &whir_schedule);
 
     println!(
         "{}: oracle data length: {} u32 words",
@@ -273,7 +347,8 @@ fn run_gkr_verifier_in_transpiler(
                 name, layer, round
             ),
             2 => panic!("{}: GKR FinalStepCheckFailed at layer={}", name, layer),
-            _ => panic!("{}: GKR unknown error code={}", name, error_code),
+            3 => panic!("{}: WHIR verification failed", name),
+            _ => panic!("{}: unknown error code={}", name, error_code),
         }
     }
     assert_eq!(
@@ -889,4 +964,74 @@ fn test_draw_query_indices_in_range() {
             "Query index {i} = {idx} exceeds max {max_index}"
         );
     }
+}
+
+/// Regression test: fold_coset must produce the same result as the prover.
+/// Values captured from prover debug output for add_sub circuit, initial round, query 0.
+#[cfg(feature = "gkr_verify")]
+#[test]
+fn test_fold_coset_regression() {
+    use verifier_common::field::baby_bear::base::BabyBearField;
+    use verifier_common::field::baby_bear::ext2::BabyBearExt2;
+    use verifier_common::field::baby_bear::ext4::BabyBearExt4;
+    use verifier_common::field::{Field, PrimeField};
+
+    // Helper: construct ext4 from RAW Montgomery u32 values (from memory dump).
+    fn mk_raw(a: u32, b: u32, c: u32, d: u32) -> BabyBearExt4 {
+        BabyBearExt4 {
+            c0: BabyBearExt2 {
+                c0: BabyBearField::from_reduced_raw_repr(a),
+                c1: BabyBearField::from_reduced_raw_repr(b),
+            },
+            c1: BabyBearExt2 {
+                c0: BabyBearField::from_reduced_raw_repr(c),
+                c1: BabyBearField::from_reduced_raw_repr(d),
+            },
+        }
+    }
+
+    // Verifier debug RAW output for query 0:
+    // batched_evals RAW: [306318869, 1907084536, 1797869115, 1287377876, 1951996694, 794927674, 900199616, 1212033572]
+    let evals = [
+        mk_raw(306318869, 1907084536, 1797869115, 1287377876),
+        mk_raw(1951996694, 794927674, 900199616, 1212033572),
+    ];
+    // base_root_inv (canonical 458751993) — need raw form
+    // For base field, from_u32_with_reduction converts canonical → Montgomery
+    let base_root_inv = BabyBearField::from_u32_with_reduction(458751993);
+    // folding_challenges RAW: [354977378, 36539480, 1801955855, 544615086]
+    let folding_challenges = [mk_raw(354977378, 36539480, 1801955855, 544615086)];
+    let high_powers_offsets = [BabyBearField::ONE];
+    let two_inv = BabyBearField::from_u32_with_reduction(2).inverse().unwrap();
+
+    // Use MaybeUninit like the actual verifier does
+    let mut buf_a_mu = core::mem::MaybeUninit::<[BabyBearExt4; 1]>::uninit();
+    let mut buf_b_mu = core::mem::MaybeUninit::<[BabyBearExt4; 1]>::uninit();
+    let (buf_a, buf_b) = unsafe { (&mut *buf_a_mu.as_mut_ptr(), &mut *buf_b_mu.as_mut_ptr()) };
+
+    let result = generated_add_sub_lui_auipc_mop::common::fold_coset(
+        &evals,
+        1,
+        &folding_challenges,
+        base_root_inv,
+        &high_powers_offsets,
+        two_inv,
+        &mut buf_a[..],
+        &mut buf_b[..],
+    );
+
+    // Expected from prover (canonical values — need from_u32_with_reduction):
+    fn mk_canonical(a: u32, b: u32, c: u32, d: u32) -> BabyBearExt4 {
+        let f = |v: u32| BabyBearField::from_u32_with_reduction(v);
+        BabyBearExt4 {
+            c0: BabyBearExt2 { c0: f(a), c1: f(b) },
+            c1: BabyBearExt2 { c0: f(c), c1: f(d) },
+        }
+    }
+    let expected = mk_canonical(938757393, 296318715, 62413625, 940152508);
+    assert_eq!(
+        result, expected,
+        "fold_coset result diverges from prover.\nGot:      {:?}\nExpected: {:?}",
+        result, expected
+    );
 }

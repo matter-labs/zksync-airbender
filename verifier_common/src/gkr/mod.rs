@@ -130,7 +130,13 @@ pub enum GKRVerificationError {
     FinalStepCheckFailed { layer: usize },
 }
 
-pub struct GKRVerifierOutput<'a, E: Field, const ROUNDS: usize, const ADDRS: usize> {
+pub struct GKRVerifierOutput<
+    'a,
+    E: Field,
+    const ROUNDS: usize,
+    const ADDRS: usize,
+    const CAP_WORDS: usize,
+> {
     pub base_layer_addrs: &'a [GKRAddress],
     pub evaluation_point: [E; ROUNDS],
     pub evaluation_point_len: usize,
@@ -139,4 +145,7 @@ pub struct GKRVerifierOutput<'a, E: Field, const ROUNDS: usize, const ADDRS: usi
     pub whir_batching_challenge: E,
     pub whir_transcript_seed: Seed,
     pub base_layer_claims: LazyVec<E, ADDRS>,
+    pub setup_cap: [u32; CAP_WORDS],
+    pub memory_cap: [u32; CAP_WORDS],
+    pub witness_cap: [u32; CAP_WORDS],
 }

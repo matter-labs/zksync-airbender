@@ -19,6 +19,10 @@ pub mod standard_layer;
 pub struct GKRGeneratedFiles {
     pub constants: TokenStream,
     pub gkr: TokenStream,
+    pub num_mem_oracle_cols: usize,
+    pub num_wit_oracle_cols: usize,
+    pub num_setup_oracle_cols: usize,
+    pub trace_len_log2: usize,
 }
 
 #[derive(Clone, Debug)]
@@ -491,6 +495,26 @@ where
         for _ in 0..GKR_TRANSCRIPT_U32 {
             transcript_buf.push(I::read_word());
         }
+
+        // Extract oracle caps before committing the transcript buffer.
+        let setup_cap: [u32; WHIR_CAP_WORDS] = {
+            let src = &transcript_buf.as_slice()
+                [CAPS_OFFSET_IN_TRANSCRIPT..CAPS_OFFSET_IN_TRANSCRIPT + WHIR_CAP_WORDS];
+            *<&[u32; WHIR_CAP_WORDS]>::try_from(src).unwrap_unchecked()
+        };
+        let memory_cap: [u32; WHIR_CAP_WORDS] = {
+            let src = &transcript_buf.as_slice()
+                [CAPS_OFFSET_IN_TRANSCRIPT + WHIR_CAP_WORDS
+                    ..CAPS_OFFSET_IN_TRANSCRIPT + 2 * WHIR_CAP_WORDS];
+            *<&[u32; WHIR_CAP_WORDS]>::try_from(src).unwrap_unchecked()
+        };
+        let witness_cap: [u32; WHIR_CAP_WORDS] = {
+            let src = &transcript_buf.as_slice()
+                [CAPS_OFFSET_IN_TRANSCRIPT + 2 * WHIR_CAP_WORDS
+                    ..CAPS_OFFSET_IN_TRANSCRIPT + 3 * WHIR_CAP_WORDS];
+            *<&[u32; WHIR_CAP_WORDS]>::try_from(src).unwrap_unchecked()
+        };
+
         let mut seed = Blake2sTranscript::commit_initial(transcript_buf.as_slice());
         let mut hasher = DelegatedBlake2sState::new();
 
@@ -741,11 +765,14 @@ where
     }
 
     main_body.extend(quote! {
-        let grand_product_accumulator: #quartic_struct = read_field_el::<I>();
-        commit_field_els(&mut seed, &[grand_product_accumulator]);
+        // Draw WHIR batching challenge BEFORE reading the grand product.
+        // The prover draws this from the post-sumcheck seed, without committing
+        // the grand product first (grand product is computed later).
         let mut draw_buf = [#quartic_zero; 1];
         draw_field_els_into(&mut hasher, &mut seed, &mut draw_buf);
         let whir_batching_challenge = draw_buf[0];
+
+        let grand_product_accumulator: #quartic_struct = read_field_el::<I>();
         Ok(GKRVerifierOutput {
             base_layer_claims: state.prev_claims,
             base_layer_addrs: LAYER_0_SORTED_ADDRS,
@@ -755,6 +782,9 @@ where
             additional_base_layer_openings: BASE_LAYER_ADDITIONAL_OPENINGS,
             whir_batching_challenge,
             whir_transcript_seed: seed,
+            setup_cap,
+            memory_cap,
+            witness_cap,
         })
     });
 
@@ -804,10 +834,19 @@ where
         };
     let num_base_claims = num_memory_claims + num_witness_claims + num_setup_claims;
 
+    // Actual oracle column counts (from the proof, includes columns not in GKR base layer)
+    let num_mem_oracle_cols = proof.whir_proof.memory_commitment.num_columns;
+    let num_wit_oracle_cols = proof.whir_proof.witness_commitment.num_columns;
+    let num_setup_oracle_cols = proof.whir_proof.setup_commitment.num_columns;
+    let total_oracle_cols = num_mem_oracle_cols + num_wit_oracle_cols + num_setup_oracle_cols;
+
     let base_lde_factor_log2 = whir_base_lde_factor.trailing_zeros() as usize;
     let initial_fold_steps = whir_fold_steps[0];
     let base_oracle_depth =
         trace_len_log2 + base_lde_factor_log2 - initial_fold_steps - whir_cap_size_log2;
+
+    let whir_cap_words = whir_cap_size * 8; // BLAKE2S_DIGEST_SIZE_U32_WORDS
+    let caps_offset_in_transcript = initial_transcript_num_u32_words - 3 * whir_cap_words;
 
     let num_intermediate_oracles = whir_rounds - 1;
     let mut whir_oracle_depths = Vec::with_capacity(num_intermediate_oracles);
@@ -848,6 +887,15 @@ where
         pub const NUM_SETUP_CLAIMS: usize = #num_setup_claims;
         pub const BASE_ORACLE_DEPTH: usize = #base_oracle_depth;
         pub const WHIR_ORACLE_DEPTHS: [usize; #num_intermediate_oracles] = [#(#whir_oracle_depths),*];
+        pub const WHIR_CAP_WORDS: usize = #whir_cap_words;
+        pub const TRACE_LEN_LOG2: usize = #trace_len_log2;
+        pub const CAPS_OFFSET_IN_TRANSCRIPT: usize = #caps_offset_in_transcript;
+        /// Actual oracle column counts (may differ from NUM_*_CLAIMS which only
+        /// count GKR base layer addresses).
+        pub const NUM_MEM_ORACLE_COLS: usize = #num_mem_oracle_cols;
+        pub const NUM_WIT_ORACLE_COLS: usize = #num_wit_oracle_cols;
+        pub const NUM_SETUP_ORACLE_COLS: usize = #num_setup_oracle_cols;
+        pub const TOTAL_ORACLE_COLS: usize = #total_oracle_cols;
     };
 
     let gkr = quote! {
@@ -872,10 +920,17 @@ where
 
         #[allow(unused_braces, unused_mut, unused_variables, unused_unsafe)]
         pub fn verify_gkr_sumcheck<I: NonDeterminismSource,
-        >() -> Result<GKRVerifierOutput<'static, #quartic_struct, GKR_ROUNDS, GKR_ADDRS>, GKRVerificationError> {
+        >() -> Result<GKRVerifierOutput<'static, #quartic_struct, GKR_ROUNDS, GKR_ADDRS, WHIR_CAP_WORDS>, GKRVerificationError> {
             unsafe { #main_body }
         }
     };
 
-    GKRGeneratedFiles { constants, gkr }
+    GKRGeneratedFiles {
+        constants,
+        gkr,
+        num_mem_oracle_cols,
+        num_wit_oracle_cols,
+        num_setup_oracle_cols,
+        trace_len_log2,
+    }
 }

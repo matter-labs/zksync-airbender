@@ -9,8 +9,8 @@ use verifier_common::field_ops;
 use verifier_common::gkr::{GKRVerificationError, LazyVec};
 use verifier_common::non_determinism_source::NonDeterminismSource;
 use verifier_common::transcript::{Blake2sTranscript, Seed};
-const EXT_DEGREE: usize = <BabyBearExt4 as FieldExtension<BabyBearField>>::DEGREE;
-const DRAW_BUF_CAPACITY: usize = 64;
+pub const EXT_DEGREE: usize = <BabyBearExt4 as FieldExtension<BabyBearField>>::DEGREE;
+pub const DRAW_BUF_CAPACITY: usize = 64;
 #[inline(always)]
 pub fn read_field_el<I: NonDeterminismSource>() -> BabyBearExt4 {
     let mut words = LazyVec::<BabyBearField, EXT_DEGREE>::new();
@@ -363,4 +363,57 @@ pub fn fold_coset(
     } else {
         buf_b[0]
     }
+}
+pub const MAX_HIGH_POWERS: usize = 8usize;
+#[inline(always)]
+pub fn bitreverse_inplace<T: Copy>(arr: &mut [T]) {
+    let n = arr.len();
+    if n <= 1 {
+        return;
+    }
+    let log_n = n.trailing_zeros();
+    let mut i = 0;
+    while i < n {
+        let j = (i as u32).reverse_bits().wrapping_shr(32 - log_n) as usize;
+        if i < j {
+            let tmp = arr[i];
+            arr[i] = arr[j];
+            arr[j] = tmp;
+        }
+        i += 1;
+    }
+}
+#[doc = r" Compute bit-reversed high powers of the set-generator inverse for fold_coset."]
+#[doc = r" Returns the number of valid entries written (== 1 << (fold_steps - 1))."]
+#[inline(always)]
+pub fn compute_high_powers_offsets(
+    fold_steps: usize,
+    dst: &mut [BabyBearField; MAX_HIGH_POWERS],
+) -> usize {
+    let count = 1usize << (fold_steps - 1);
+    let set_gen_inv = BabyBearField::TWO_ADICITY_GENERATORS[fold_steps]
+        .inverse()
+        .unwrap();
+    dst[0] = BabyBearField::ONE;
+    let mut pow = set_gen_inv;
+    let mut i = 1;
+    while i < count {
+        dst[i] = pow;
+        field_ops::mul_assign(&mut pow, &set_gen_inv);
+        i += 1;
+    }
+    bitreverse_inplace(&mut dst[..count]);
+    count
+}
+#[doc = r" Reconstruct an extension field element from raw u32 words in a buffer."]
+#[inline(always)]
+pub fn ext_from_raw_words(words: &[u32]) -> BabyBearExt4 {
+    debug_assert!(words.len() >= EXT_DEGREE);
+    let mut coeffs = LazyVec::<BabyBearField, EXT_DEGREE>::new();
+    let mut i = 0;
+    while i < EXT_DEGREE {
+        coeffs.push(BabyBearField::from_reduced_raw_repr(words[i]));
+        i += 1;
+    }
+    unsafe { core::ptr::read(coeffs.as_slice().as_ptr().cast::<BabyBearExt4>()) }
 }

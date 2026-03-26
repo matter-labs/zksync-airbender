@@ -58,7 +58,8 @@ pub fn gkr_run_basic_unrolled_test_impl(
 
     let trace_len: usize = 1 << TRACE_LEN_LOG2;
     let lde_factor = 2;
-    let tree_cap_size = 32;
+    let whir_schedule = WhirSchedule::default_for_tests_80_bits();
+    let tree_cap_size = whir_schedule.cap_size;
 
     // let worker = Worker::new_with_num_threads(1);
     let worker = Worker::new_with_num_threads(8);
@@ -397,8 +398,6 @@ pub fn gkr_run_basic_unrolled_test_impl(
             //     None
             // };
 
-            let whir_schedule = WhirSchedule::default_for_tests_80_bits();
-
             println!("Trying to prove");
 
             let now = std::time::Instant::now();
@@ -585,8 +584,6 @@ pub fn gkr_run_basic_unrolled_test_impl(
             //     None
             // };
 
-            let whir_schedule = WhirSchedule::default_for_tests_80_bits();
-
             println!("Trying to prove");
 
             let now = std::time::Instant::now();
@@ -770,8 +767,6 @@ pub fn gkr_run_basic_unrolled_test_impl(
             // } else {
             //     None
             // };
-
-            let whir_schedule = WhirSchedule::default_for_tests_80_bits();
 
             println!("Trying to prove");
 
