@@ -1060,9 +1060,9 @@ impl<F: PrimeField> TableDriver<F> {
         let mut guard = CACHE.lock().unwrap();
         let map = guard
             .entry()
-            .or_insert_with(HashMap::<TableType, LookupWrapper<F>>::new);
+            .or_insert_with(HashMap::<(TableType, usize), LookupWrapper<F>>::new);
         let wrapper = map
-            .entry(table_type)
+            .entry((table_type, TOTAL_WIDTH))
             .or_insert_with(|| table_type.generate_table::<F, TOTAL_WIDTH>());
         let table = wrapper.clone();
         self.add_table_with_content(table_type, table);

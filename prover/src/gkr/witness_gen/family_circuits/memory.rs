@@ -224,28 +224,34 @@ pub(crate) unsafe fn gkr_process_machine_state_assuming_preprocessed_decoder<
         .oracle
         .get_executor_family_data(proxy.absolute_row_idx);
 
-    // rare case when it's in memory
-    for (i, el) in decoder_input.circuit_family_mask_bits.iter().enumerate() {
-        if let GKRAddress::BaseLayerMemory(circuit_family_extra_mask) = *el {
-            let bit = (decoder_data.opcode_family_bits & (1 << i)) > 0;
-            proxy.write_boolean_value_into_columns::<true>(circuit_family_extra_mask, bit);
+    assert!(decoder_input.decoder_witness_is_in_memory == false);
+
+    // all decoder values that can be in memory
+    {
+        if let GKRAddress::BaseLayerMemory(offset) = decoder_input.rs2_index {
+            proxy.write_u16_value_into_columns::<true>(offset, decoder_data.rs2_index);
+        }
+        if let GKRAddress::BaseLayerMemory(offset) = decoder_input.rd_index {
+            proxy.write_u8_value_into_columns::<true>(offset, decoder_data.rd_index);
+        }
+        // rare case when it's in memory
+        for (i, el) in decoder_input.circuit_family_mask_bits.iter().enumerate() {
+            if let GKRAddress::BaseLayerMemory(circuit_family_extra_mask) = *el {
+                let bit = (decoder_data.opcode_family_bits & (1 << i)) > 0;
+                proxy.write_boolean_value_into_columns::<true>(circuit_family_extra_mask, bit);
+            }
         }
     }
 
     if COMPUTE_WITNESS {
-        let decoder_data = proxy
-            .oracle
-            .get_executor_family_data(proxy.absolute_row_idx);
+        // same decoder values that can be in witness
 
-        // and maybe some decoder values, that wouldn't end up as RS2/RD indexes and so on
         if let GKRAddress::BaseLayerWitness(offset) = decoder_input.rs2_index {
             proxy.write_u16_value_into_columns::<false>(offset, decoder_data.rs2_index);
         }
-
         if let GKRAddress::BaseLayerWitness(offset) = decoder_input.rd_index {
             proxy.write_u8_value_into_columns::<false>(offset, decoder_data.rd_index);
         }
-
         for (i, el) in decoder_input.circuit_family_mask_bits.iter().enumerate() {
             if let GKRAddress::BaseLayerWitness(circuit_family_extra_mask) = *el {
                 let bit = (decoder_data.opcode_family_bits & (1 << i)) > 0;
@@ -270,14 +276,14 @@ pub(crate) unsafe fn gkr_process_machine_state_assuming_preprocessed_decoder<
             if execute {
                 assert!(initial_pc % 4 == 0);
                 let idx = (initial_pc / 4) as usize;
+                let idx_with_decoder_offset = idx + compiled_circuit.offset_for_decoder_table;
                 // count for mapping purposes
                 proxy
                     .lookup_mapping_rows_starts
                     .last_mut()
                     .expect("must exist")
-                    .write((idx + compiled_circuit.offset_for_decoder_table) as u32);
-                proxy.multiplicity_counting_scratch
-                    [idx + compiled_circuit.offset_for_decoder_table] += 1;
+                    .write(idx_with_decoder_offset as u32);
+                proxy.multiplicity_counting_scratch[idx_with_decoder_offset] += 1;
             }
         } else {
             todo!();

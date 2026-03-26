@@ -4,6 +4,7 @@ use crate::utils::compute_aggregated_key_value_dyn;
 use common_constants::TIMESTAMP_COLUMNS_NUM_BITS;
 use cs::definitions::GKRAddress;
 use cs::gkr_circuits::materialize_flattened_decoder_table_with_bitmask;
+use cs::gkr_circuits::DecoderTableEntry;
 use cs::gkr_circuits::ExecutorFamilyDecoderData;
 use cs::tables::{TableDriver, TableType};
 use fft::{materialize_powers_serial_starting_with_one, GoodAllocator};
@@ -93,15 +94,24 @@ impl<F: PrimeField + TwoAdicField> GKRSetup<F> {
                 &compiled_circuit.decode_table_columns_mask,
             );
             let width = table[0].len();
-            assert_eq!(
-                2 + width + (compiled_circuit.tables_ids_in_generic_lookups as usize),
-                result.len()
-            );
+            let padding_len = if compiled_circuit.tables_ids_in_generic_lookups {
+                compiled_circuit.generic_lookup_tables_width - 1
+            } else {
+                compiled_circuit.generic_lookup_tables_width
+            };
             for row_idx in 0..decoder_table.len() {
+                let row = &table[row_idx];
+                assert_eq!(row.len(), width);
+                assert!(row.len() <= padding_len);
+
                 for column in 0..width {
                     result[2 + column][row_idx + offset] = table[row_idx][column];
                 }
+                for column in width..padding_len {
+                    result[2 + column][row_idx + offset] = F::ZERO;
+                }
                 if compiled_circuit.tables_ids_in_generic_lookups {
+                    assert!(result.last().unwrap()[row_idx + offset].is_zero());
                     result.last_mut().unwrap()[row_idx + offset] =
                         F::from_u32_unchecked(TableType::Decoder as u32);
                 }
@@ -122,7 +132,7 @@ impl<F: PrimeField + TwoAdicField> GKRSetup<F> {
         trace_len: usize,
         gkr_storage: &mut GKRStorage<F, E>,
         worker: &Worker,
-    ) -> Box<[E]> {
+    ) -> (Box<[E]>, E) {
         // fill storage with all setup columns
         for (i, eval) in self.hypercube_evals.iter().enumerate() {
             gkr_storage.insert_base_field_at_layer(
@@ -149,15 +159,18 @@ impl<F: PrimeField + TwoAdicField> GKRSetup<F> {
         lookup_alpha: E,
         trace_len: usize,
         worker: &Worker,
-    ) -> Box<[E], A> {
+    ) -> (Box<[E], A>, E) {
         let generic_lookup_tables_size = compiled_circuit.total_tables_size;
         assert!(trace_len >= generic_lookup_tables_size);
 
         if generic_lookup_tables_size > 0 {
-            assert!(self.hypercube_evals.len() > 2);
             let challenge_powers = materialize_powers_serial_starting_with_one::<E, Global>(
                 lookup_alpha,
-                self.hypercube_evals.len() - 2,
+                compiled_circuit.generic_lookup_tables_width,
+            );
+            assert_eq!(
+                challenge_powers.len(),
+                compiled_circuit.generic_lookup_tables_width
             );
 
             let mut generic_lookup_preprocessing = Vec::with_capacity_in(trace_len, A::default());
@@ -202,9 +215,30 @@ impl<F: PrimeField + TwoAdicField> GKRSetup<F> {
                 generic_lookup_preprocessing.set_len(generic_lookup_tables_size);
             }
 
-            generic_lookup_preprocessing.into_boxed_slice()
+            let decoder_lookup_fill_value = if compiled_circuit.tables_ids_in_generic_lookups {
+                assert!(DecoderTableEntry::<F>::from_executor_family_data(
+                    0,
+                    &ExecutorFamilyDecoderData::default()
+                )
+                .flatten()
+                .iter()
+                .all(|el| el.is_zero()));
+                // no additive constant, modeled as all zeroes, just last column has table ID
+                let mut t =
+                    lookup_alpha.pow((compiled_circuit.generic_lookup_tables_width - 1) as u32);
+                t.mul_assign_by_base(&F::from_u32_unchecked(TableType::Decoder as u32));
+
+                t
+            } else {
+                E::ZERO
+            };
+
+            (
+                generic_lookup_preprocessing.into_boxed_slice(),
+                decoder_lookup_fill_value,
+            )
         } else {
-            Vec::new_in(A::default()).into_boxed_slice()
+            (Vec::new_in(A::default()).into_boxed_slice(), E::ZERO)
         }
     }
 

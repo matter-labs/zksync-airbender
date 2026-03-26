@@ -288,21 +288,33 @@ fn apply_shift_binop_inner<F: PrimeField, CS: Circuit<F>>(
 
             let byte_index = i;
 
+            // rs1 byte for the binary op, or byte index for shift
             constraints[0] += Term::from(is_binary_op) * Term::from(rs1_limbs[i]);
             constraints[0] += Term::from(is_shift) * Term::from(byte_index as u32);
 
+            let binary_op_imm = if i >= 2 {
+                binary_ops_imm_sign_ext
+            } else {
+                inputs.decoder_data.imm[i]
+            };
+
+            // rs2 byte or imm extension for binary op, or rs1 byte for shift
             constraints[1] += Term::from(is_binary_op) * Term::from(rs2_limbs[i]);
+            constraints[1] += Term::from(is_binary_op) * Term::from(binary_op_imm);
             constraints[1] += Term::from(is_shift) * Term::from(rs1_limbs[i]);
 
+            // output for the binary op, or shift amount for shift
             constraints[2] += Term::from(is_binary_op) * Term::from(binary_ops_outputs[i]);
             constraints[2] += shift_amount_constraint.clone() * Term::from(is_shift);
 
+            // only shift is used for inputs below. funct3 here
             constraints[3] +=
                 Term::from(is_shift) * Term::from(inputs.decoder_data.funct3.expect("is present"));
 
             let shift_outputs = shift_output_chunks[i];
 
             for j in 0..4 {
+                // and outputs of shifts here
                 constraints[4 + j] += Term::from(is_shift) * Term::from(shift_outputs[j]);
             }
 

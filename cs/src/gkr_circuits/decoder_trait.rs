@@ -260,9 +260,12 @@ pub fn materialize_flattened_decoder_table_with_bitmask<F: PrimeField>(
             // NOTE: we do not use 0 here, but instead some value that doesn't pass range check and so can not be
             // a valid PC
             let mut selected_row = arrayvec::ArrayVec::new();
-            for _ in 0..fields_bitmask.len() {
-                selected_row.push(F::MINUS_ONE);
+            for mask in fields_bitmask.iter() {
+                if *mask {
+                    selected_row.push(F::MINUS_ONE);
+                }
             }
+
             result.push(selected_row);
         }
     }
@@ -279,7 +282,7 @@ pub fn preprocess_bytecode<F: PrimeField, OPT: DecodingOptions, A: GoodAllocator
     assert!(binary.len() <= bytecode_size_words);
 
     let preprocessed_bytecode =
-        riscv_transpiler::ir::simple_instruction_set::preprocess_bytecode::<OPT>(binary);
+        riscv_transpiler::ir::simple_instruction_set::preprocess_bytecode::<OPT, false>(binary);
     let mut witness_eval_decoder_data = Vec::with_capacity_in(bytecode_size_words, A::default());
     witness_eval_decoder_data.resize(bytecode_size_words, None);
 
@@ -288,7 +291,12 @@ pub fn preprocess_bytecode<F: PrimeField, OPT: DecodingOptions, A: GoodAllocator
             continue;
         };
         if opcode.name == InstructionName::ZicsrDelegation {
-            assert!(supported_csrs.contains(&(opcode.imm as u32 as u16)));
+            assert!(
+                supported_csrs.contains(&(opcode.imm as u32 as u16)),
+                "unsupported CSR 0x{:04x} at PC = 0x{:08x}",
+                opcode.imm,
+                i * core::mem::size_of::<u32>()
+            );
         }
 
         witness_eval_decoder_data[i] = Some(data);

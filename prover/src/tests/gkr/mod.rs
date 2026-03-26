@@ -14,7 +14,7 @@ fn serialize_to_file<T: serde::Serialize>(el: &T, filename: &str) {
 }
 
 fn deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &str) -> T {
-    let mut src = std::fs::File::open(filename).unwrap();
+    let src = std::fs::File::open(filename).unwrap();
     serde_json::from_reader(src).unwrap()
 }
 

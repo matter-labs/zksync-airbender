@@ -1028,6 +1028,19 @@
                 "quadratic_terms": [
                   [
                     {
+                      "BaseLayerWitness": 0
+                    },
+                    [
+                      [
+                        1,
+                        {
+                          "BaseLayerWitness": 4
+                        }
+                      ]
+                    ]
+                  ],
+                  [
+                    {
                       "BaseLayerWitness": 3
                     },
                     [
@@ -1367,6 +1380,19 @@
             "MaxQuadratic": {
               "input": {
                 "quadratic_terms": [
+                  [
+                    {
+                      "BaseLayerWitness": 1
+                    },
+                    [
+                      [
+                        1,
+                        {
+                          "BaseLayerWitness": 4
+                        }
+                      ]
+                    ]
+                  ],
                   [
                     {
                       "BaseLayerWitness": 3
@@ -1729,6 +1755,12 @@
                       [
                         1,
                         {
+                          "BaseLayerWitness": 5
+                        }
+                      ],
+                      [
+                        1,
+                        {
                           "BaseLayerMemory": 11
                         }
                       ]
@@ -2067,6 +2099,12 @@
                       "BaseLayerWitness": 4
                     },
                     [
+                      [
+                        1,
+                        {
+                          "BaseLayerWitness": 5
+                        }
+                      ],
                       [
                         1,
                         {

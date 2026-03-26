@@ -64,7 +64,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> GKRStorage<F, E> {
     pub(crate) fn try_get_base_poly(&self, address: GKRAddress) -> Option<&[F]> {
         match address {
             GKRAddress::InnerLayer { layer, .. } | GKRAddress::Cached { layer, .. } => {
-                let source = &self.layers[layer];
+                let source = &self.layers.get(layer)?;
                 source
                     .base_field_inputs
                     .get(&address)
@@ -73,7 +73,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> GKRStorage<F, E> {
             GKRAddress::BaseLayerMemory(..)
             | GKRAddress::BaseLayerWitness(..)
             | GKRAddress::Setup(..) => {
-                let source = &self.layers[0];
+                let source = &self.layers.get(0)?;
                 source
                     .base_field_inputs
                     .get(&address)
@@ -85,14 +85,64 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> GKRStorage<F, E> {
         }
     }
 
+    pub(crate) fn try_get_base_poly_arc_cloned(
+        &self,
+        address: GKRAddress,
+    ) -> Option<BaseFieldPoly<F>> {
+        match address {
+            GKRAddress::InnerLayer { layer, .. } | GKRAddress::Cached { layer, .. } => {
+                let source = self.layers.get(layer)?;
+                source
+                    .base_field_inputs
+                    .get(&address)
+                    .map(|el| el.arc_clone())
+            }
+            GKRAddress::BaseLayerMemory(..)
+            | GKRAddress::BaseLayerWitness(..)
+            | GKRAddress::Setup(..) => {
+                let source = self.layers.get(0)?;
+                source
+                    .base_field_inputs
+                    .get(&address)
+                    .map(|el| el.arc_clone())
+            }
+            a @ _ => {
+                unreachable!("trying to get poly for address {:?}", a);
+            }
+        }
+    }
+
     pub(crate) fn try_get_ext_poly(&self, address: GKRAddress) -> Option<&[E]> {
         match address {
             GKRAddress::InnerLayer { layer, .. } | GKRAddress::Cached { layer, .. } => {
-                let source = &self.layers[layer];
+                let source = self.layers.get(layer)?;
                 source
                     .extension_field_inputs
                     .get(&address)
                     .map(|el| &el.values[..])
+            }
+            GKRAddress::BaseLayerMemory(..)
+            | GKRAddress::BaseLayerWitness(..)
+            | GKRAddress::Setup(..) => {
+                unreachable!("base layer is only in base field");
+            }
+            a @ _ => {
+                unreachable!("trying to gey poly for address {:?}", a);
+            }
+        }
+    }
+
+    pub(crate) fn try_get_ext_poly_arc_cloned(
+        &self,
+        address: GKRAddress,
+    ) -> Option<ExtensionFieldPoly<F, E>> {
+        match address {
+            GKRAddress::InnerLayer { layer, .. } | GKRAddress::Cached { layer, .. } => {
+                let source = self.layers.get(layer)?;
+                source
+                    .extension_field_inputs
+                    .get(&address)
+                    .map(|el| el.arc_clone())
             }
             GKRAddress::BaseLayerMemory(..)
             | GKRAddress::BaseLayerWitness(..)

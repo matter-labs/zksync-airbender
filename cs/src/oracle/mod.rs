@@ -41,8 +41,5 @@ pub trait Oracle<F: PrimeField>: Send + Sync {
         trace_row: usize,
     ) -> TimestampScalar;
 
-    fn get_executor_family_data(&self, trace_row: usize) -> ExecutorFamilyDecoderData {
-        let _ = trace_row;
-        unimplemented!("unimplemented by default")
-    }
+    fn get_executor_family_data(&self, trace_row: usize) -> ExecutorFamilyDecoderData;
 }

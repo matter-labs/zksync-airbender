@@ -361,13 +361,14 @@ where
     // Now we can use lookup challenges to preprocess tables into values like (column_0 + alpha * column_1 + ...),
     // but without(!) additive term, so we can use the same values for both cached and copied values,
     // and other gates (like non-vectorized lookups)
-    let preprocessed_generic_lookup = setup.preprocess_generic_lookups(
-        compiled_circuit,
-        lookup_alpha,
-        trace_len,
-        &mut gkr_storage,
-        worker,
-    );
+    let (preprocessed_generic_lookup, decoder_lookup_fill_value) = setup
+        .preprocess_generic_lookups(
+            compiled_circuit,
+            lookup_alpha,
+            trace_len,
+            &mut gkr_storage,
+            worker,
+        );
 
     // now we should perform "forward" evaluation, and fill the GKR storage
     let mut witness_eval_data = witness_eval_data;
@@ -382,7 +383,9 @@ where
             &mut witness_eval_data,
             trace_len,
             &preprocessed_generic_lookup,
+            lookup_alpha,
             lookup_additive_part,
+            decoder_lookup_fill_value,
             constraints_batch_challenge,
             worker,
         );

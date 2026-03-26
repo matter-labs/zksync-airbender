@@ -44,11 +44,11 @@ const BLAKE_NUM_DELEGATION_CYCLES: usize = 1 << 20;
 const BIGINT_NUM_DELEGATION_CYCLES: usize = 1 << 22;
 const KECCAK_NUM_DELEGATION_CYCLES: usize = 1 << 22;
 
-const PROVE_ADD_SUB: bool = false;
-const PROVE_JUMP_BRANCH: bool = false;
-const PROVE_SHIFTS_BINOPS: bool = false;
-const PROVE_BLAKE: bool = false;
-const PROVE_BIGINT: bool = false;
+const PROVE_ADD_SUB: bool = true;
+const PROVE_JUMP_BRANCH: bool = true;
+const PROVE_SHIFTS_BINOPS: bool = true;
+const PROVE_BLAKE: bool = true;
+const PROVE_BIGINT: bool = true;
 const PROVE_KECCAK: bool = true;
 
 // #[ignore = "test has explicit panic inside"]
@@ -103,8 +103,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
 
     // first run to capture minimal information
     let instructions: Vec<Instruction> =
-        preprocess_bytecode::<FullUnsignedMachineDecoderConfig>(&text_section);
-
+        preprocess_bytecode::<FullUnsignedMachineDecoderConfig, true>(&text_section);
     let tape = SimpleTape::new(&instructions);
     let mut ram = RamWithRomRegion::<{ common_constants::ROM_SECOND_WORD_BITS }>::from_rom_content(
         &binary,
@@ -337,8 +336,9 @@ pub fn gkr_run_basic_unrolled_test_impl(
             .map(|el| el.unwrap_or(Default::default()))
             .collect::<Vec<_>>();
 
-        // let row = 401;
+        // let row = 337;
         // dbg!(buffer[row]);
+        // dbg!(decoder_table_data[(buffer[row].opcode_data.initial_pc / 4) as usize]);
         // dbg!(witness_gen_data[(buffer[row].opcode_data.initial_pc / 4) as usize]);
 
         let oracle = NonMemoryCircuitOracle {
@@ -346,6 +346,8 @@ pub fn gkr_run_basic_unrolled_test_impl(
             decoder_table: &witness_gen_data,
             default_pc_value_in_padding: 4,
         };
+
+        dbg!(oracle.inner.len());
 
         let is_empty = oracle.inner.is_empty();
 
@@ -710,8 +712,12 @@ pub fn gkr_run_basic_unrolled_test_impl(
             .map(|el| el.unwrap_or(Default::default()))
             .collect::<Vec<_>>();
 
-        // let row = 0;
+        // let row = 1;
         // dbg!(buffer[row]);
+        // println!(
+        //     "Opcode = 0x{:08x}",
+        //     text_section[(buffer[row].opcode_data.initial_pc / 4) as usize]
+        // );
         // dbg!(decoder_table_data[(buffer[row].opcode_data.initial_pc / 4) as usize]);
         // dbg!(witness_gen_data[(buffer[row].opcode_data.initial_pc / 4) as usize]);
 

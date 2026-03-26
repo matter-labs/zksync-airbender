@@ -566,14 +566,18 @@ pub(crate) fn mem_permutation_expr_into_cached_expr(
 ) -> NoFieldGKRCacheRelation {
     let address_space = match mem.address_space {
         AddressSpace::Constant(c) => CompiledAddressSpaceRelationStrict::Constant(c as u8 as u32),
-        AddressSpace::RegisterOrRam(is_reg) => match is_reg {
-            AddressSpaceIsRegister::Is(v) => CompiledAddressSpaceRelationStrict::Is(
-                graph.get_address_for_variable(v).as_memory(),
-            ),
-            AddressSpaceIsRegister::Not(v) => CompiledAddressSpaceRelationStrict::Not(
-                graph.get_address_for_variable(v).as_memory(),
-            ),
-        },
+        AddressSpace::RegisterOrRam(is_reg) => {
+            assert_eq!(AddressSpaceType::Register as u8, 0);
+            match is_reg {
+                AddressSpaceIsRegister::Is(v) => CompiledAddressSpaceRelationStrict::Not(
+                    // NOTE: if v == 1 we should have 0, and vice versa below
+                    graph.get_address_for_variable(v).as_memory(),
+                ),
+                AddressSpaceIsRegister::Not(v) => CompiledAddressSpaceRelationStrict::Is(
+                    graph.get_address_for_variable(v).as_memory(),
+                ),
+            }
+        }
     };
     let address = match mem.address {
         AddressSpaceAddress::Empty => CompiledAddressStrict::Constant(0),
