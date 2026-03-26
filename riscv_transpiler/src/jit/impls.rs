@@ -2007,7 +2007,7 @@ impl<I: ContextImpl> Context<I> {
         self.implementation.read_nondeterminism()
     }
 
-    extern "sysv64" fn write_nondeterminism(&mut self, value: u32, memory: &[u32; RAM_SIZE]) {
+    extern "sysv64" fn write_nondeterminism(&mut self, value: u32, memory: &RamImage) {
         self.implementation.write_nondeterminism(value, memory)
     }
 
