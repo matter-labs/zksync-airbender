@@ -135,8 +135,9 @@ pub fn hash_leaf_data_into_state<const N: usize>(
     use blake2s_u32::BLAKE2S_BLOCK_SIZE_U32_WORDS;
 
     debug_assert_eq!(N % BLAKE2S_BLOCK_SIZE_U32_WORDS, 0);
-    let num_full_blocks = num_words / BLAKE2S_BLOCK_SIZE_U32_WORDS;
-    let last_block_words = num_words % BLAKE2S_BLOCK_SIZE_U32_WORDS;
+    const BLOCK_LOG2: usize = BLAKE2S_BLOCK_SIZE_U32_WORDS.trailing_zeros() as usize;
+    let num_full_blocks = num_words >> BLOCK_LOG2;
+    let last_block_words = num_words & (BLAKE2S_BLOCK_SIZE_U32_WORDS - 1);
     let num_blocks = num_full_blocks + if last_block_words > 0 { 1 } else { 0 };
     debug_assert!(num_blocks > 0);
 

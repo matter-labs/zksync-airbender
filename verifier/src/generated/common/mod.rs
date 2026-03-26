@@ -6,7 +6,8 @@ use verifier_common::field::baby_bear::base::BabyBearField;
 use verifier_common::field::baby_bear::ext4::BabyBearExt4;
 use verifier_common::field::{Field, FieldExtension, PrimeField};
 use verifier_common::field_ops;
-use verifier_common::gkr::{GKRVerificationError, LazyVec};
+use verifier_common::gkr::GKRVerificationError;
+use verifier_common::lazy_vec::LazyVec;
 use verifier_common::non_determinism_source::NonDeterminismSource;
 use verifier_common::transcript::{Blake2sTranscript, Seed};
 pub const EXT_DEGREE: usize = <BabyBearExt4 as FieldExtension<BabyBearField>>::DEGREE;
@@ -235,7 +236,7 @@ pub fn compute_tree_index(
     coset_tree_size: usize,
 ) -> usize {
     let coset_index = query_index & (num_cosets - 1);
-    let internal_index = query_index / num_cosets;
+    let internal_index = query_index >> num_cosets_log2;
     if num_cosets == 1 {
         internal_index
     } else {
@@ -246,6 +247,7 @@ pub fn compute_tree_index(
 #[derive(Clone, Debug)]
 pub enum WhirVerificationError {
     SumcheckFailed { round: usize },
+    FoldAgreementFailed { query: usize },
 }
 #[inline(always)]
 pub fn verify_whir_sumcheck_step<I: NonDeterminismSource>(
@@ -277,31 +279,6 @@ pub fn verify_whir_sumcheck_step<I: NonDeterminismSource>(
     field_ops::mul_assign(&mut new_claim, &alpha);
     field_ops::add_assign(&mut new_claim, &c0);
     Ok((new_claim, alpha))
-}
-#[inline(always)]
-pub fn lagrange_eval_3pt(
-    a: BabyBearExt4,
-    b: BabyBearExt4,
-    c: BabyBearExt4,
-    alpha: BabyBearExt4,
-) -> BabyBearExt4 {
-    let mut p2 = a;
-    field_ops::add_assign(&mut p2, &a);
-    field_ops::add_assign(&mut p2, &b);
-    field_ops::add_assign(&mut p2, &b);
-    field_ops::sub_assign(&mut p2, &c);
-    field_ops::sub_assign(&mut p2, &c);
-    field_ops::sub_assign(&mut p2, &c);
-    field_ops::sub_assign(&mut p2, &c);
-    let mut p1 = b;
-    field_ops::sub_assign(&mut p1, &a);
-    field_ops::sub_assign(&mut p1, &p2);
-    let mut inner = p2;
-    field_ops::mul_assign(&mut inner, &alpha);
-    field_ops::add_assign(&mut inner, &p1);
-    field_ops::mul_assign(&mut inner, &alpha);
-    field_ops::add_assign(&mut inner, &a);
-    inner
 }
 #[inline(always)]
 pub fn materialize_gamma_powers<const N: usize>(gamma: BabyBearExt4) -> [BabyBearExt4; N] {

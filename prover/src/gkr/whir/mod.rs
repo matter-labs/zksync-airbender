@@ -988,7 +988,6 @@ where
         assert_eq!(sumchecked_poly_monomial_form.len(), 1 << poly_size_log2);
         assert_eq!(eq_poly.len(), 1 << poly_size_log2);
 
-
         #[cfg(feature = "gkr_self_checks")]
         {
             let full_sum = dot_product(&sumchecked_poly_evaluation_form, &eq_poly, worker);
@@ -1360,10 +1359,7 @@ where
         // was folded in-place; the first 2^final_poly_log2 elements are valid.
         let final_len = 1usize << final_poly_log2;
         let mut hypercube_evals = proof.final_monomials.clone();
-        multivariate_coeffs_into_hypercube_evals(
-            &mut hypercube_evals,
-            final_poly_log2 as u32,
-        );
+        multivariate_coeffs_into_hypercube_evals(&mut hypercube_evals, final_poly_log2 as u32);
         assert_eq!(
             &hypercube_evals[..],
             &sumchecked_poly_evaluation_form_vec[..final_len],

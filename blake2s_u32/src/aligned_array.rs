@@ -37,7 +37,7 @@ impl<T, A, const N: usize> AlignedArray<T, A, N> {
     pub fn new_uninit() -> AlignedArray<MaybeUninit<T>, A, N> {
         AlignedArray {
             _aligner: [],
-            data: [const { MaybeUninit::uninit() }; N],
+            data: unsafe { MaybeUninit::uninit().assume_init() },
         }
     }
 
@@ -56,7 +56,7 @@ impl<T, A, const N: usize> AlignedArray<T, A, N> {
     pub unsafe fn transmute_subslice<U>(&self, offset: usize, count: usize) -> &[U] {
         let ptr = self.data.as_ptr().add(offset).cast::<U>();
         debug_assert!(
-            (ptr as usize) % core::mem::align_of::<U>() == 0,
+            (ptr as usize).is_multiple_of(core::mem::align_of::<U>()),
             "transmute_subslice: pointer not aligned for target type"
         );
         core::slice::from_raw_parts(ptr, count)
@@ -112,6 +112,28 @@ impl<T, A, const N: usize> AlignedArray<MaybeUninit<T>, A, N> {
     pub unsafe fn zero_range(&mut self, start: usize, end: usize) {
         debug_assert!(end <= N);
         core::ptr::write_bytes(self.data.as_mut_ptr().add(start), 0, end - start);
+    }
+
+    /// Reinterpret the first `M` elements as an initialized `AlignedArray<T, A, M>`.
+    ///
+    /// # Safety
+    /// The caller must ensure that elements `0..M` have been initialized.
+    #[inline(always)]
+    pub unsafe fn assume_init_subarray<const M: usize>(&self) -> &AlignedArray<T, A, M> {
+        debug_assert!(M <= N);
+        &*(self as *const Self).cast::<AlignedArray<T, A, M>>()
+    }
+
+    /// Mutable version of `assume_init_subarray`.
+    ///
+    /// # Safety
+    /// The caller must ensure that elements `0..M` have been initialized.
+    #[inline(always)]
+    pub unsafe fn assume_init_subarray_mut<const M: usize>(
+        &mut self,
+    ) -> &mut AlignedArray<T, A, M> {
+        debug_assert!(M <= N);
+        &mut *(self as *mut Self).cast::<AlignedArray<T, A, M>>()
     }
 }
 

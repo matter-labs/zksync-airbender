@@ -33,7 +33,10 @@ impl<'a> Iterator for BitSource<'a> {
     }
 }
 
-pub fn assemble_query_index(num_bits: usize, bit_source: &mut impl Iterator<Item = usize>) -> usize {
+pub fn assemble_query_index(
+    num_bits: usize,
+    bit_source: &mut impl Iterator<Item = usize>,
+) -> usize {
     // assemble as LE
     assert!(num_bits <= usize::BITS as usize);
     let mut result = 0usize;

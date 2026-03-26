@@ -117,6 +117,7 @@ pub mod gkr;
 pub mod whir;
 
 pub mod inline_ops;
+pub mod lazy_vec;
 pub mod no_inline_ops;
 
 /// Wrappers for common field operations used by the verifier.

@@ -4,6 +4,7 @@ use super::common::{
     WhirVerificationError,
 };
 use super::constants::*;
+use core::mem::MaybeUninit;
 use verifier_common::blake2s_u32::{
     AlignedArray64, DelegatedBlake2sState, BLAKE2S_DIGEST_SIZE_U32_WORDS,
 };
@@ -11,7 +12,7 @@ use verifier_common::field::baby_bear::base::BabyBearField;
 use verifier_common::field::baby_bear::ext4::BabyBearExt4;
 use verifier_common::field::{Field, FieldExtension, PrimeField};
 use verifier_common::field_ops;
-use verifier_common::gkr::LazyVec;
+use verifier_common::lazy_vec::LazyVec;
 use verifier_common::non_determinism_source::NonDeterminismSource;
 use verifier_common::transcript::{Blake2sTranscript, Seed};
 use verifier_common::whir::{
@@ -82,7 +83,7 @@ unsafe fn batch_leaf_values(
 #[inline(always)]
 unsafe fn process_oracle_query<I: NonDeterminismSource>(
     hasher: &mut DelegatedBlake2sState,
-    hash_buf: &mut AlignedArray64<u32, HASH_BUF_SIZE>,
+    hash_buf: &mut AlignedArray64<MaybeUninit<u32>, WHIR_HASH_BUF_SIZE>,
     num_columns: usize,
     leaf_words: usize,
     query_index: usize,
@@ -91,12 +92,11 @@ unsafe fn process_oracle_query<I: NonDeterminismSource>(
     gamma_offset: usize,
     batched_evals: &mut [BabyBearExt4],
 ) {
-    read_and_reorder_leaf::<I>(&mut hash_buf[..leaf_words], num_columns);
-    let padded_end = (leaf_words + 15) / 16 * 16;
-    for z in leaf_words..padded_end {
-        *hash_buf.get_unchecked_mut(z) = 0;
-    }
-    hash_leaf_data_into_state(hasher, hash_buf, leaf_words);
+    let buf = hash_buf.assume_init_subarray_mut::<HASH_BUF_SIZE>();
+    read_and_reorder_leaf::<I>(&mut buf[..leaf_words], num_columns);
+    hash_buf.zero_range(leaf_words, HASH_BUF_SIZE);
+    let buf = hash_buf.assume_init_subarray::<HASH_BUF_SIZE>();
+    hash_leaf_data_into_state(hasher, buf, leaf_words);
     assert!(verify_merkle_path::<I>(
         hasher,
         query_index,
@@ -104,7 +104,7 @@ unsafe fn process_oracle_query<I: NonDeterminismSource>(
         cap
     ));
     batch_leaf_values(
-        &hash_buf[..leaf_words],
+        &buf[..leaf_words],
         num_columns,
         gamma_powers,
         gamma_offset,
@@ -113,6 +113,8 @@ unsafe fn process_oracle_query<I: NonDeterminismSource>(
 }
 #[allow(unused_braces, unused_mut, unused_variables, unused_unsafe)]
 pub fn verify_initial_whir_round<I: NonDeterminismSource>(
+    hasher: &mut DelegatedBlake2sState,
+    hash_buf: &mut AlignedArray64<MaybeUninit<u32>, WHIR_HASH_BUF_SIZE>,
     seed: &mut Seed,
     batching_challenge: BabyBearExt4,
     setup_cap: &[u32; WHIR_CAP_WORDS],
@@ -120,7 +122,6 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource>(
     witness_cap: &[u32; WHIR_CAP_WORDS],
 ) -> Result<(BabyBearExt4, [u32; WHIR_CAP_WORDS]), WhirVerificationError> {
     unsafe {
-        let mut hasher = DelegatedBlake2sState::new();
         let gamma_powers: [BabyBearExt4; TOTAL_ORACLE_COLS] =
             materialize_gamma_powers(batching_challenge);
         let mut claim = BabyBearExt4::ZERO;
@@ -158,30 +159,30 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource>(
         let mut round_idx = 0;
         while round_idx < WHIR_FOLD_STEPS[0] {
             let (new_claim, alpha) =
-                verify_whir_sumcheck_step::<I>(&mut hasher, seed, claim, round_idx)?;
+                verify_whir_sumcheck_step::<I>(hasher, seed, claim, round_idx)?;
             claim = new_claim;
             folding_challenges.push(alpha);
             round_idx += 1;
         }
         let intermediate_cap = read_commit_return_merkle_cap::<I, WHIR_CAP_WORDS>(seed);
         let ood_point = {
-            let mut buf = core::mem::MaybeUninit::<[BabyBearExt4; 1]>::uninit();
-            draw_field_els_into(&mut hasher, seed, &mut *buf.as_mut_ptr());
+            let mut buf = MaybeUninit::<[BabyBearExt4; 1]>::uninit();
+            draw_field_els_into(hasher, seed, &mut *buf.as_mut_ptr());
             (*buf.as_ptr())[0]
         };
         let ood_value: BabyBearExt4 = read_field_el::<I>();
         commit_field_els(seed, &[ood_value]);
         read_and_verify_pow::<I>(seed, INITIAL_POW_BITS);
         let query_indices = draw_query_indices::<INITIAL_NUM_QUERIES, INITIAL_DRAW_WORDS>(
-            &mut hasher,
+            hasher,
             seed,
             INITIAL_NUM_QUERIES,
             INITIAL_QUERY_INDEX_BITS,
             INITIAL_DRAW_WORDS,
         );
         let delinearization_challenge = {
-            let mut buf = core::mem::MaybeUninit::<[BabyBearExt4; 1]>::uninit();
-            draw_field_els_into(&mut hasher, seed, &mut *buf.as_mut_ptr());
+            let mut buf = MaybeUninit::<[BabyBearExt4; 1]>::uninit();
+            draw_field_els_into(hasher, seed, &mut *buf.as_mut_ptr());
             (*buf.as_ptr())[0]
         };
         let mut claim_correction = ood_value;
@@ -189,9 +190,8 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource>(
         let extended_generator = BabyBearField::TWO_ADICITY_GENERATORS[INITIAL_RS_DOMAIN_LOG2];
         let two_inv = two_inv();
         let high_powers_offsets = [BabyBearField::ONE; 1 << (WHIR_FOLD_STEPS[0] - 1)];
-        let mut fold_buf_a = core::mem::MaybeUninit::<[BabyBearExt4; FOLD_BUF_HALF]>::uninit();
-        let mut fold_buf_b = core::mem::MaybeUninit::<[BabyBearExt4; FOLD_BUF_HALF]>::uninit();
-        let mut hash_buf = AlignedArray64::<u32, HASH_BUF_SIZE>::from_value(0u32);
+        let mut fold_buf_a = MaybeUninit::<[BabyBearExt4; FOLD_BUF_HALF]>::uninit();
+        let mut fold_buf_b = MaybeUninit::<[BabyBearExt4; FOLD_BUF_HALF]>::uninit();
         let mut q = 0;
         while q < INITIAL_NUM_QUERIES {
             let query_index = *query_indices.get(q);
@@ -201,8 +201,8 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource>(
                 compute_tree_index(query_index, NUM_COSETS, NUM_COSETS_LOG2, COSET_TREE_SIZE);
             let mut batched_evals = [BabyBearExt4::ZERO; INITIAL_VALUES_PER_LEAF];
             process_oracle_query::<I>(
-                &mut hasher,
-                &mut hash_buf,
+                hasher,
+                hash_buf,
                 NUM_MEM_ORACLE_COLS,
                 MEM_LEAF_WORDS,
                 tree_index,
@@ -212,8 +212,8 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource>(
                 &mut batched_evals,
             );
             process_oracle_query::<I>(
-                &mut hasher,
-                &mut hash_buf,
+                hasher,
+                hash_buf,
                 NUM_WIT_ORACLE_COLS,
                 WIT_LEAF_WORDS,
                 tree_index,
@@ -223,8 +223,8 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource>(
                 &mut batched_evals,
             );
             process_oracle_query::<I>(
-                &mut hasher,
-                &mut hash_buf,
+                hasher,
+                hash_buf,
                 NUM_SETUP_ORACLE_COLS,
                 SETUP_LEAF_WORDS,
                 tree_index,
@@ -275,13 +275,14 @@ const INTERNAL_DRAW_WORDS: [usize; NUM_INTERNAL_ROUNDS] = [24usize, 16usize, 8us
 #[doc = r" Returns (new_claim, next_intermediate_cap)."]
 #[allow(unused_braces, unused_mut, unused_variables, unused_unsafe)]
 pub fn verify_internal_whir_round<I: NonDeterminismSource>(
+    hasher: &mut DelegatedBlake2sState,
+    hash_buf: &mut AlignedArray64<MaybeUninit<u32>, WHIR_HASH_BUF_SIZE>,
     seed: &mut Seed,
     claim: BabyBearExt4,
     prev_oracle_cap: &[u32; WHIR_CAP_WORDS],
     round_idx: usize,
 ) -> Result<(BabyBearExt4, [u32; WHIR_CAP_WORDS]), WhirVerificationError> {
     unsafe {
-        let mut hasher = DelegatedBlake2sState::new();
         let fold_steps = WHIR_FOLD_STEPS[round_idx];
         let num_queries = WHIR_QUERIES[round_idx];
         let values_per_leaf = 1usize << fold_steps;
@@ -291,16 +292,15 @@ pub fn verify_internal_whir_round<I: NonDeterminismSource>(
         let mut folding_challenges: LazyVec<BabyBearExt4, MAX_INTERNAL_FOLD_STEPS> = LazyVec::new();
         let mut round = 0;
         while round < fold_steps {
-            let (new_claim, alpha) =
-                verify_whir_sumcheck_step::<I>(&mut hasher, seed, claim, round)?;
+            let (new_claim, alpha) = verify_whir_sumcheck_step::<I>(hasher, seed, claim, round)?;
             claim = new_claim;
             folding_challenges.push(alpha);
             round += 1;
         }
         let intermediate_cap = read_return_merkle_cap::<I, WHIR_CAP_WORDS>();
         let ood_point = {
-            let mut buf = core::mem::MaybeUninit::<[BabyBearExt4; 1]>::uninit();
-            draw_field_els_into(&mut hasher, seed, &mut *buf.as_mut_ptr());
+            let mut buf = MaybeUninit::<[BabyBearExt4; 1]>::uninit();
+            draw_field_els_into(hasher, seed, &mut *buf.as_mut_ptr());
             (*buf.as_ptr())[0]
         };
         let ood_value: BabyBearExt4 = read_field_el::<I>();
@@ -308,15 +308,15 @@ pub fn verify_internal_whir_round<I: NonDeterminismSource>(
         let query_index_bits = INTERNAL_QUERY_INDEX_BITS[ir];
         let draw_words = INTERNAL_DRAW_WORDS[ir];
         let query_indices = draw_query_indices::<MAX_INTERNAL_NUM_QUERIES, MAX_INTERNAL_DRAW_WORDS>(
-            &mut hasher,
+            hasher,
             seed,
             num_queries,
             query_index_bits,
             draw_words,
         );
         let delinearization_challenge = {
-            let mut buf = core::mem::MaybeUninit::<[BabyBearExt4; 1]>::uninit();
-            draw_field_els_into(&mut hasher, seed, &mut *buf.as_mut_ptr());
+            let mut buf = MaybeUninit::<[BabyBearExt4; 1]>::uninit();
+            draw_field_els_into(hasher, seed, &mut *buf.as_mut_ptr());
             (*buf.as_ptr())[0]
         };
         let mut claim_correction = ood_value;
@@ -330,11 +330,8 @@ pub fn verify_internal_whir_round<I: NonDeterminismSource>(
         let oracle_depth = WHIR_ORACLE_DEPTHS[round_idx - 1];
         let mut high_powers_offsets = [BabyBearField::ONE; MAX_HIGH_POWERS];
         compute_high_powers_offsets(fold_steps, &mut high_powers_offsets);
-        let mut fold_buf_a =
-            core::mem::MaybeUninit::<[BabyBearExt4; MAX_INTERNAL_FOLD_BUF_HALF]>::uninit();
-        let mut fold_buf_b =
-            core::mem::MaybeUninit::<[BabyBearExt4; MAX_INTERNAL_FOLD_BUF_HALF]>::uninit();
-        let mut hash_buf = AlignedArray64::<u32, INTERNAL_HASH_BUF_SIZE>::from_value(0u32);
+        let mut fold_buf_a = MaybeUninit::<[BabyBearExt4; MAX_INTERNAL_FOLD_BUF_HALF]>::uninit();
+        let mut fold_buf_b = MaybeUninit::<[BabyBearExt4; MAX_INTERNAL_FOLD_BUF_HALF]>::uninit();
         let mut q = 0;
         while q < num_queries {
             let query_index = *query_indices.get(q);
@@ -344,28 +341,28 @@ pub fn verify_internal_whir_round<I: NonDeterminismSource>(
                 compute_tree_index(query_index, num_cosets, num_cosets_log2, coset_tree_size);
             let mut i = 0;
             while i < leaf_ext_words {
-                *hash_buf.get_unchecked_mut(i) = I::read_word();
+                hash_buf.write(i, I::read_word());
                 i += 1;
             }
-            while i < INTERNAL_HASH_BUF_SIZE {
-                *hash_buf.get_unchecked_mut(i) = 0;
-                i += 1;
-            }
-            hash_leaf_data_into_state(&mut hasher, &hash_buf, leaf_ext_words);
+            hash_buf.zero_range(leaf_ext_words, INTERNAL_HASH_BUF_SIZE);
+            let init_buf = hash_buf.assume_init_subarray::<INTERNAL_HASH_BUF_SIZE>();
+            hash_leaf_data_into_state(hasher, init_buf, leaf_ext_words);
             assert!(verify_merkle_path::<I>(
-                &mut hasher,
+                hasher,
                 tree_index,
                 oracle_depth,
                 prev_oracle_cap,
             ));
-            let mut evals = [BabyBearExt4::ZERO; MAX_INTERNAL_VALUES_PER_LEAF];
+            let mut evals: LazyVec<BabyBearExt4, MAX_INTERNAL_VALUES_PER_LEAF> = LazyVec::new();
             let mut j = 0;
             while j < values_per_leaf {
-                evals[j] = ext_from_raw_words(&hash_buf[j * EXT_DEGREE..(j + 1) * EXT_DEGREE]);
+                evals.push(ext_from_raw_words(
+                    &init_buf[j * EXT_DEGREE..(j + 1) * EXT_DEGREE],
+                ));
                 j += 1;
             }
             let folded = fold_coset(
-                &evals[..values_per_leaf],
+                evals.as_slice(),
                 fold_steps,
                 folding_challenges.as_slice(),
                 base_root_inv,
@@ -402,25 +399,25 @@ const FINAL_ORACLE_DEPTH_IDX: usize = 4usize;
 #[doc = r" Queries verify against `prev_oracle_cap` (the last intermediate oracle's cap)."]
 #[allow(unused_braces, unused_mut, unused_variables, unused_unsafe)]
 pub fn verify_final_whir_round<I: NonDeterminismSource>(
+    hasher: &mut DelegatedBlake2sState,
+    hash_buf: &mut AlignedArray64<MaybeUninit<u32>, WHIR_HASH_BUF_SIZE>,
     seed: &mut Seed,
     claim: BabyBearExt4,
     prev_oracle_cap: &[u32; WHIR_CAP_WORDS],
 ) -> Result<(BabyBearExt4, [u32; WHIR_CAP_WORDS]), WhirVerificationError> {
     unsafe {
-        let mut hasher = DelegatedBlake2sState::new();
         let mut claim = claim;
         let mut folding_challenges: LazyVec<BabyBearExt4, FINAL_FOLD_STEPS> = LazyVec::new();
         let mut round = 0;
         while round < FINAL_FOLD_STEPS {
-            let (new_claim, alpha) =
-                verify_whir_sumcheck_step::<I>(&mut hasher, seed, claim, round)?;
+            let (new_claim, alpha) = verify_whir_sumcheck_step::<I>(hasher, seed, claim, round)?;
             claim = new_claim;
             folding_challenges.push(alpha);
             round += 1;
         }
         read_and_verify_pow::<I>(seed, FINAL_POW_BITS);
         let query_indices = draw_query_indices::<MAX_INTERNAL_NUM_QUERIES, MAX_INTERNAL_DRAW_WORDS>(
-            &mut hasher,
+            hasher,
             seed,
             FINAL_NUM_QUERIES,
             FINAL_QUERY_INDEX_BITS,
@@ -431,15 +428,10 @@ pub fn verify_final_whir_round<I: NonDeterminismSource>(
         let oracle_depth = WHIR_ORACLE_DEPTHS[FINAL_ORACLE_DEPTH_IDX];
         let mut high_powers_offsets = [BabyBearField::ONE; MAX_HIGH_POWERS];
         compute_high_powers_offsets(FINAL_FOLD_STEPS, &mut high_powers_offsets);
-        let mut fold_buf_a =
-            core::mem::MaybeUninit::<[BabyBearExt4; FINAL_FOLD_BUF_HALF]>::uninit();
-        let mut fold_buf_b =
-            core::mem::MaybeUninit::<[BabyBearExt4; FINAL_FOLD_BUF_HALF]>::uninit();
-        let mut hash_buf = AlignedArray64::<u32, FINAL_HASH_BUF_SIZE>::from_value(0u32);
-        let mut folded_values: [BabyBearExt4; FINAL_NUM_QUERIES] =
-            [BabyBearExt4::ZERO; FINAL_NUM_QUERIES];
-        let mut query_base_roots: [BabyBearField; FINAL_NUM_QUERIES] =
-            [BabyBearField::ONE; FINAL_NUM_QUERIES];
+        let mut fold_buf_a = MaybeUninit::<[BabyBearExt4; FINAL_FOLD_BUF_HALF]>::uninit();
+        let mut fold_buf_b = MaybeUninit::<[BabyBearExt4; FINAL_FOLD_BUF_HALF]>::uninit();
+        let mut folded_values: LazyVec<BabyBearExt4, FINAL_NUM_QUERIES> = LazyVec::new();
+        let mut query_base_roots: LazyVec<BabyBearField, FINAL_NUM_QUERIES> = LazyVec::new();
         let mut q = 0;
         while q < FINAL_NUM_QUERIES {
             let query_index = *query_indices.get(q);
@@ -453,28 +445,28 @@ pub fn verify_final_whir_round<I: NonDeterminismSource>(
             );
             let mut i = 0;
             while i < FINAL_LEAF_EXT_WORDS {
-                *hash_buf.get_unchecked_mut(i) = I::read_word();
+                hash_buf.write(i, I::read_word());
                 i += 1;
             }
-            while i < FINAL_HASH_BUF_SIZE {
-                *hash_buf.get_unchecked_mut(i) = 0;
-                i += 1;
-            }
-            hash_leaf_data_into_state(&mut hasher, &hash_buf, FINAL_LEAF_EXT_WORDS);
+            hash_buf.zero_range(FINAL_LEAF_EXT_WORDS, FINAL_HASH_BUF_SIZE);
+            let init_buf = hash_buf.assume_init_subarray::<FINAL_HASH_BUF_SIZE>();
+            hash_leaf_data_into_state(hasher, init_buf, FINAL_LEAF_EXT_WORDS);
             assert!(verify_merkle_path::<I>(
-                &mut hasher,
+                hasher,
                 tree_index,
                 oracle_depth,
                 prev_oracle_cap,
             ));
-            let mut evals = [BabyBearExt4::ZERO; FINAL_VALUES_PER_LEAF];
+            let mut evals: LazyVec<BabyBearExt4, FINAL_VALUES_PER_LEAF> = LazyVec::new();
             let mut j = 0;
             while j < FINAL_VALUES_PER_LEAF {
-                evals[j] = ext_from_raw_words(&hash_buf[j * EXT_DEGREE..(j + 1) * EXT_DEGREE]);
+                evals.push(ext_from_raw_words(
+                    &init_buf[j * EXT_DEGREE..(j + 1) * EXT_DEGREE],
+                ));
                 j += 1;
             }
             let folded = fold_coset(
-                &evals[..],
+                evals.as_slice(),
                 FINAL_FOLD_STEPS,
                 folding_challenges.as_slice(),
                 base_root_inv,
@@ -483,15 +475,15 @@ pub fn verify_final_whir_round<I: NonDeterminismSource>(
                 &mut *fold_buf_a.as_mut_ptr(),
                 &mut *fold_buf_b.as_mut_ptr(),
             );
-            *folded_values.get_unchecked_mut(q) = folded;
-            *query_base_roots.get_unchecked_mut(q) = base_root;
+            folded_values.push(folded);
+            query_base_roots.push(base_root);
             q += 1;
         }
         let mut monomials = [BabyBearExt4::ZERO; FINAL_MONOMIALS_LEN];
         read_field_els::<I>(&mut monomials);
         let mut q = 0;
         while q < FINAL_NUM_QUERIES {
-            let query_point = query_base_roots[q].pow(16u32);
+            let query_point = query_base_roots.get(q).pow(16u32);
             let mut eval = monomials[FINAL_MONOMIALS_LEN - 1];
             let mut j = FINAL_MONOMIALS_LEN - 1;
             while j > 0 {
@@ -500,22 +492,29 @@ pub fn verify_final_whir_round<I: NonDeterminismSource>(
                 let coeff = monomials[j];
                 field_ops::add_assign(&mut eval, &coeff);
             }
-            assert!(eval == folded_values[q]);
+            if eval != *folded_values.get(q) {
+                return Err(WhirVerificationError::FoldAgreementFailed { query: q });
+            }
             q += 1;
         }
         Ok((claim, *prev_oracle_cap))
     }
 }
+pub const WHIR_HASH_BUF_SIZE: usize = 64usize;
 #[doc = r" Run the full WHIR verification: initial round, all internal rounds, final round."]
 #[allow(unused_braces, unused_mut, unused_variables, unused_unsafe)]
 pub fn verify_whir<I: NonDeterminismSource>(
+    hasher: &mut DelegatedBlake2sState,
     seed: &mut Seed,
     batching_challenge: BabyBearExt4,
     setup_cap: &[u32; WHIR_CAP_WORDS],
     memory_cap: &[u32; WHIR_CAP_WORDS],
     witness_cap: &[u32; WHIR_CAP_WORDS],
 ) -> Result<(), WhirVerificationError> {
+    let mut hash_buf = AlignedArray64::<u32, WHIR_HASH_BUF_SIZE>::new_uninit();
     let (mut claim, mut cap) = verify_initial_whir_round::<I>(
+        hasher,
+        &mut hash_buf,
         seed,
         batching_challenge,
         setup_cap,
@@ -524,11 +523,12 @@ pub fn verify_whir<I: NonDeterminismSource>(
     )?;
     let mut round_idx = 1;
     while round_idx <= NUM_INTERNAL_ROUNDS {
-        let (new_claim, new_cap) = verify_internal_whir_round::<I>(seed, claim, &cap, round_idx)?;
+        let (new_claim, new_cap) =
+            verify_internal_whir_round::<I>(hasher, &mut hash_buf, seed, claim, &cap, round_idx)?;
         claim = new_claim;
         cap = new_cap;
         round_idx += 1;
     }
-    let _ = verify_final_whir_round::<I>(seed, claim, &cap)?;
+    let _ = verify_final_whir_round::<I>(hasher, &mut hash_buf, seed, claim, &cap)?;
     Ok(())
 }

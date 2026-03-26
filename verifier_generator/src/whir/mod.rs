@@ -62,6 +62,7 @@ pub fn generate_whir_inlined<MW: MersenneWrapper>(
 
     quote! {
         #field_use_stmts
+        use core::mem::MaybeUninit;
         use ::verifier_common::field::{Field, FieldExtension, PrimeField};
         use ::verifier_common::field_ops;
         use ::verifier_common::transcript::{Blake2sTranscript, Seed};
@@ -69,7 +70,7 @@ pub fn generate_whir_inlined<MW: MersenneWrapper>(
             AlignedArray64, DelegatedBlake2sState, BLAKE2S_DIGEST_SIZE_U32_WORDS,
         };
         use ::verifier_common::non_determinism_source::NonDeterminismSource;
-        use ::verifier_common::gkr::LazyVec;
+        use ::verifier_common::lazy_vec::LazyVec;
         use ::verifier_common::whir::{
             read_and_commit_merkle_cap, read_commit_return_merkle_cap,
             read_and_verify_pow,
@@ -158,7 +159,7 @@ pub fn generate_whir_inlined<MW: MersenneWrapper>(
         #[inline(always)]
         unsafe fn process_oracle_query<I: NonDeterminismSource>(
             hasher: &mut DelegatedBlake2sState,
-            hash_buf: &mut AlignedArray64<u32, HASH_BUF_SIZE>,
+            hash_buf: &mut AlignedArray64<MaybeUninit<u32>, WHIR_HASH_BUF_SIZE>,
             num_columns: usize,
             leaf_words: usize,
             query_index: usize,
@@ -167,24 +168,25 @@ pub fn generate_whir_inlined<MW: MersenneWrapper>(
             gamma_offset: usize,
             batched_evals: &mut [#quartic_struct],
         ) {
+            let buf = hash_buf.assume_init_subarray_mut::<HASH_BUF_SIZE>();
             read_and_reorder_leaf::<I>(
-                &mut hash_buf[..leaf_words], num_columns,
+                &mut buf[..leaf_words], num_columns,
             );
 
-            let padded_end = (leaf_words + 15) / 16 * 16;
-            for z in leaf_words..padded_end {
-                *hash_buf.get_unchecked_mut(z) = 0;
-            }
-            hash_leaf_data_into_state(hasher, hash_buf, leaf_words);
+            hash_buf.zero_range(leaf_words, HASH_BUF_SIZE);
+            let buf = hash_buf.assume_init_subarray::<HASH_BUF_SIZE>();
+            hash_leaf_data_into_state(hasher, buf, leaf_words);
             assert!(verify_merkle_path::<I>(hasher, query_index, BASE_ORACLE_DEPTH, cap));
             batch_leaf_values(
-                &hash_buf[..leaf_words], num_columns,
+                &buf[..leaf_words], num_columns,
                 gamma_powers, gamma_offset, batched_evals,
             );
         }
 
         #[allow(unused_braces, unused_mut, unused_variables, unused_unsafe)]
         pub fn verify_initial_whir_round<I: NonDeterminismSource>(
+            hasher: &mut DelegatedBlake2sState,
+            hash_buf: &mut AlignedArray64<MaybeUninit<u32>, WHIR_HASH_BUF_SIZE>,
             seed: &mut Seed,
             batching_challenge: #quartic_struct,
             setup_cap: &[u32; WHIR_CAP_WORDS],
@@ -192,7 +194,6 @@ pub fn generate_whir_inlined<MW: MersenneWrapper>(
             witness_cap: &[u32; WHIR_CAP_WORDS],
         ) -> Result<(#quartic_struct, [u32; WHIR_CAP_WORDS]), WhirVerificationError> {
             unsafe {
-                let mut hasher = DelegatedBlake2sState::new();
 
                 // --- 0. Read all oracle evals from NDS and batch ---
                 // The prover provides evals for ALL oracle columns (not just GKR base layer).
@@ -240,7 +241,7 @@ pub fn generate_whir_inlined<MW: MersenneWrapper>(
                 let mut round_idx = 0;
                 while round_idx < WHIR_FOLD_STEPS[0] {
                     let (new_claim, alpha) = verify_whir_sumcheck_step::<I>(
-                        &mut hasher, seed, claim, round_idx,
+                        hasher, seed, claim, round_idx,
                     )?;
                     claim = new_claim;
                     folding_challenges.push(alpha);
@@ -253,8 +254,8 @@ pub fn generate_whir_inlined<MW: MersenneWrapper>(
 
                 // --- 3. OOD: draw point, read value, commit ---
                 let ood_point = {
-                    let mut buf = core::mem::MaybeUninit::<[#quartic_struct; 1]>::uninit();
-                    draw_field_els_into(&mut hasher, seed, &mut *buf.as_mut_ptr());
+                    let mut buf = MaybeUninit::<[#quartic_struct; 1]>::uninit();
+                    draw_field_els_into(hasher, seed, &mut *buf.as_mut_ptr());
                     (*buf.as_ptr())[0]
                 };
 
@@ -264,14 +265,14 @@ pub fn generate_whir_inlined<MW: MersenneWrapper>(
                 // --- 4. PoW + query indices ---
                 read_and_verify_pow::<I>(seed, INITIAL_POW_BITS);
                 let query_indices = draw_query_indices::<INITIAL_NUM_QUERIES, INITIAL_DRAW_WORDS>(
-                    &mut hasher, seed, INITIAL_NUM_QUERIES, INITIAL_QUERY_INDEX_BITS,
+                    hasher, seed, INITIAL_NUM_QUERIES, INITIAL_QUERY_INDEX_BITS,
                     INITIAL_DRAW_WORDS,
                 );
 
                 // --- 5. Delinearization challenge ---
                 let delinearization_challenge = {
-                    let mut buf = core::mem::MaybeUninit::<[#quartic_struct; 1]>::uninit();
-                    draw_field_els_into(&mut hasher, seed, &mut *buf.as_mut_ptr());
+                    let mut buf = MaybeUninit::<[#quartic_struct; 1]>::uninit();
+                    draw_field_els_into(hasher, seed, &mut *buf.as_mut_ptr());
                     (*buf.as_ptr())[0]
                 };
 
@@ -285,10 +286,8 @@ pub fn generate_whir_inlined<MW: MersenneWrapper>(
                 let high_powers_offsets = [#field_one; 1 << (WHIR_FOLD_STEPS[0] - 1)];
 
                 // Scratch buffers — fully written before read each iteration
-                let mut fold_buf_a = core::mem::MaybeUninit::<[#quartic_struct; FOLD_BUF_HALF]>::uninit();
-                let mut fold_buf_b = core::mem::MaybeUninit::<[#quartic_struct; FOLD_BUF_HALF]>::uninit();
-                let mut hash_buf = AlignedArray64::<u32, HASH_BUF_SIZE>::from_value(0u32);
-
+                let mut fold_buf_a = MaybeUninit::<[#quartic_struct; FOLD_BUF_HALF]>::uninit();
+                let mut fold_buf_b = MaybeUninit::<[#quartic_struct; FOLD_BUF_HALF]>::uninit();
                 let mut q = 0;
                 while q < INITIAL_NUM_QUERIES {
                     let query_index = *query_indices.get(q);
@@ -309,19 +308,19 @@ pub fn generate_whir_inlined<MW: MersenneWrapper>(
 
                     // Memory oracle
                     process_oracle_query::<I>(
-                        &mut hasher, &mut hash_buf,
+                        hasher, hash_buf,
                         NUM_MEM_ORACLE_COLS, MEM_LEAF_WORDS, tree_index,
                         memory_cap, &gamma_powers[..], 0, &mut batched_evals,
                     );
                     // Witness oracle
                     process_oracle_query::<I>(
-                        &mut hasher, &mut hash_buf,
+                        hasher, hash_buf,
                         NUM_WIT_ORACLE_COLS, WIT_LEAF_WORDS, tree_index,
                         witness_cap, &gamma_powers[..], NUM_MEM_ORACLE_COLS, &mut batched_evals,
                     );
                     // Setup oracle
                     process_oracle_query::<I>(
-                        &mut hasher, &mut hash_buf,
+                        hasher, hash_buf,
                         NUM_SETUP_ORACLE_COLS, SETUP_LEAF_WORDS, tree_index,
                         setup_cap, &gamma_powers[..],
                         NUM_MEM_ORACLE_COLS + NUM_WIT_ORACLE_COLS, &mut batched_evals,
@@ -460,13 +459,14 @@ pub fn generate_whir_internal_rounds<MW: MersenneWrapper>(
         /// Returns (new_claim, next_intermediate_cap).
         #[allow(unused_braces, unused_mut, unused_variables, unused_unsafe)]
         pub fn verify_internal_whir_round<I: NonDeterminismSource>(
+            hasher: &mut DelegatedBlake2sState,
+            hash_buf: &mut AlignedArray64<MaybeUninit<u32>, WHIR_HASH_BUF_SIZE>,
             seed: &mut Seed,
             claim: #quartic_struct,
             prev_oracle_cap: &[u32; WHIR_CAP_WORDS],
             round_idx: usize,
         ) -> Result<(#quartic_struct, [u32; WHIR_CAP_WORDS]), WhirVerificationError> {
             unsafe {
-                let mut hasher = DelegatedBlake2sState::new();
                 let fold_steps = WHIR_FOLD_STEPS[round_idx];
                 let num_queries = WHIR_QUERIES[round_idx];
                 let values_per_leaf = 1usize << fold_steps;
@@ -480,7 +480,7 @@ pub fn generate_whir_internal_rounds<MW: MersenneWrapper>(
                 let mut round = 0;
                 while round < fold_steps {
                     let (new_claim, alpha) = verify_whir_sumcheck_step::<I>(
-                        &mut hasher, seed, claim, round,
+                        hasher, seed, claim, round,
                     )?;
                     claim = new_claim;
                     folding_challenges.push(alpha);
@@ -493,8 +493,8 @@ pub fn generate_whir_internal_rounds<MW: MersenneWrapper>(
 
                 // --- 3. OOD: draw point, read value (NOT committed to transcript) ---
                 let ood_point = {
-                    let mut buf = core::mem::MaybeUninit::<[#quartic_struct; 1]>::uninit();
-                    draw_field_els_into(&mut hasher, seed, &mut *buf.as_mut_ptr());
+                    let mut buf = MaybeUninit::<[#quartic_struct; 1]>::uninit();
+                    draw_field_els_into(hasher, seed, &mut *buf.as_mut_ptr());
                     (*buf.as_ptr())[0]
                 };
                 let ood_value: #quartic_struct = read_field_el::<I>();
@@ -505,13 +505,13 @@ pub fn generate_whir_internal_rounds<MW: MersenneWrapper>(
                 let draw_words = INTERNAL_DRAW_WORDS[ir];
                 let query_indices =
                     draw_query_indices::<MAX_INTERNAL_NUM_QUERIES, MAX_INTERNAL_DRAW_WORDS>(
-                        &mut hasher, seed, num_queries, query_index_bits, draw_words,
+                        hasher, seed, num_queries, query_index_bits, draw_words,
                     );
 
                 // --- 5. Delinearization challenge ---
                 let delinearization_challenge = {
-                    let mut buf = core::mem::MaybeUninit::<[#quartic_struct; 1]>::uninit();
-                    draw_field_els_into(&mut hasher, seed, &mut *buf.as_mut_ptr());
+                    let mut buf = MaybeUninit::<[#quartic_struct; 1]>::uninit();
+                    draw_field_els_into(hasher, seed, &mut *buf.as_mut_ptr());
                     (*buf.as_ptr())[0]
                 };
 
@@ -533,12 +533,9 @@ pub fn generate_whir_internal_rounds<MW: MersenneWrapper>(
 
                 // Scratch buffers
                 let mut fold_buf_a =
-                    core::mem::MaybeUninit::<[#quartic_struct; MAX_INTERNAL_FOLD_BUF_HALF]>::uninit();
+                    MaybeUninit::<[#quartic_struct; MAX_INTERNAL_FOLD_BUF_HALF]>::uninit();
                 let mut fold_buf_b =
-                    core::mem::MaybeUninit::<[#quartic_struct; MAX_INTERNAL_FOLD_BUF_HALF]>::uninit();
-                let mut hash_buf =
-                    AlignedArray64::<u32, INTERNAL_HASH_BUF_SIZE>::from_value(0u32);
-
+                    MaybeUninit::<[#quartic_struct; MAX_INTERNAL_FOLD_BUF_HALF]>::uninit();
                 let mut q = 0;
                 while q < num_queries {
                     let query_index = *query_indices.get(q);
@@ -553,35 +550,33 @@ pub fn generate_whir_internal_rounds<MW: MersenneWrapper>(
                     // Read extension field leaf values from NDS
                     let mut i = 0;
                     while i < leaf_ext_words {
-                        *hash_buf.get_unchecked_mut(i) = I::read_word();
+                        hash_buf.write(i, I::read_word());
                         i += 1;
                     }
-                    // Zero-pad remaining
-                    while i < INTERNAL_HASH_BUF_SIZE {
-                        *hash_buf.get_unchecked_mut(i) = 0;
-                        i += 1;
-                    }
+                    // Zero-pad remaining (up to this round's padded size)
+                    hash_buf.zero_range(leaf_ext_words, INTERNAL_HASH_BUF_SIZE);
 
                     // Hash and verify Merkle path
-                    hash_leaf_data_into_state(&mut hasher, &hash_buf, leaf_ext_words);
+                    let init_buf = hash_buf.assume_init_subarray::<INTERNAL_HASH_BUF_SIZE>();
+                    hash_leaf_data_into_state(hasher, init_buf, leaf_ext_words);
                     assert!(verify_merkle_path::<I>(
-                        &mut hasher, tree_index, oracle_depth, prev_oracle_cap,
+                        hasher, tree_index, oracle_depth, prev_oracle_cap,
                     ));
 
                     // Reconstruct extension field elements from buffer
-                    let mut evals =
-                        [#quartic_zero; MAX_INTERNAL_VALUES_PER_LEAF];
+                    let mut evals: LazyVec<#quartic_struct, MAX_INTERNAL_VALUES_PER_LEAF> =
+                        LazyVec::new();
                     let mut j = 0;
                     while j < values_per_leaf {
-                        evals[j] = ext_from_raw_words(
-                            &hash_buf[j * EXT_DEGREE..(j + 1) * EXT_DEGREE],
-                        );
+                        evals.push(ext_from_raw_words(
+                            &init_buf[j * EXT_DEGREE..(j + 1) * EXT_DEGREE],
+                        ));
                         j += 1;
                     }
 
                     // Fold
                     let folded = fold_coset(
-                        &evals[..values_per_leaf], fold_steps,
+                        evals.as_slice(), fold_steps,
                         folding_challenges.as_slice(),
                         base_root_inv, &high_powers_offsets[..], two_inv,
                         &mut *fold_buf_a.as_mut_ptr(), &mut *fold_buf_b.as_mut_ptr(),
@@ -673,12 +668,13 @@ pub fn generate_whir_final_round<MW: MersenneWrapper>(
         /// Queries verify against `prev_oracle_cap` (the last intermediate oracle's cap).
         #[allow(unused_braces, unused_mut, unused_variables, unused_unsafe)]
         pub fn verify_final_whir_round<I: NonDeterminismSource>(
+            hasher: &mut DelegatedBlake2sState,
+            hash_buf: &mut AlignedArray64<MaybeUninit<u32>, WHIR_HASH_BUF_SIZE>,
             seed: &mut Seed,
             claim: #quartic_struct,
             prev_oracle_cap: &[u32; WHIR_CAP_WORDS],
         ) -> Result<(#quartic_struct, [u32; WHIR_CAP_WORDS]), WhirVerificationError> {
             unsafe {
-                let mut hasher = DelegatedBlake2sState::new();
 
                 // --- 1. Sumcheck folds ---
                 let mut claim = claim;
@@ -687,7 +683,7 @@ pub fn generate_whir_final_round<MW: MersenneWrapper>(
                 let mut round = 0;
                 while round < FINAL_FOLD_STEPS {
                     let (new_claim, alpha) = verify_whir_sumcheck_step::<I>(
-                        &mut hasher, seed, claim, round,
+                        hasher, seed, claim, round,
                     )?;
                     claim = new_claim;
                     folding_challenges.push(alpha);
@@ -701,7 +697,7 @@ pub fn generate_whir_final_round<MW: MersenneWrapper>(
                 read_and_verify_pow::<I>(seed, FINAL_POW_BITS);
                 let query_indices =
                     draw_query_indices::<MAX_INTERNAL_NUM_QUERIES, MAX_INTERNAL_DRAW_WORDS>(
-                        &mut hasher, seed, FINAL_NUM_QUERIES, FINAL_QUERY_INDEX_BITS, FINAL_DRAW_WORDS,
+                        hasher, seed, FINAL_NUM_QUERIES, FINAL_QUERY_INDEX_BITS, FINAL_DRAW_WORDS,
                     );
 
                 // --- 3. Per-query processing ---
@@ -714,17 +710,14 @@ pub fn generate_whir_final_round<MW: MersenneWrapper>(
 
                 // Scratch buffers
                 let mut fold_buf_a =
-                    core::mem::MaybeUninit::<[#quartic_struct; FINAL_FOLD_BUF_HALF]>::uninit();
+                    MaybeUninit::<[#quartic_struct; FINAL_FOLD_BUF_HALF]>::uninit();
                 let mut fold_buf_b =
-                    core::mem::MaybeUninit::<[#quartic_struct; FINAL_FOLD_BUF_HALF]>::uninit();
-                let mut hash_buf =
-                    AlignedArray64::<u32, FINAL_HASH_BUF_SIZE>::from_value(0u32);
-
+                    MaybeUninit::<[#quartic_struct; FINAL_FOLD_BUF_HALF]>::uninit();
                 // Buffers to store per-query results for fold-agreement check
-                let mut folded_values: [#quartic_struct; FINAL_NUM_QUERIES] =
-                    [#quartic_zero; FINAL_NUM_QUERIES];
-                let mut query_base_roots: [#field_struct; FINAL_NUM_QUERIES] =
-                    [#field_one; FINAL_NUM_QUERIES];
+                let mut folded_values: LazyVec<#quartic_struct, FINAL_NUM_QUERIES> =
+                    LazyVec::new();
+                let mut query_base_roots: LazyVec<#field_struct, FINAL_NUM_QUERIES> =
+                    LazyVec::new();
 
                 let mut q = 0;
                 while q < FINAL_NUM_QUERIES {
@@ -740,42 +733,41 @@ pub fn generate_whir_final_round<MW: MersenneWrapper>(
                     // Read extension field leaf values from NDS
                     let mut i = 0;
                     while i < FINAL_LEAF_EXT_WORDS {
-                        *hash_buf.get_unchecked_mut(i) = I::read_word();
+                        hash_buf.write(i, I::read_word());
                         i += 1;
                     }
-                    // Zero-pad remaining
-                    while i < FINAL_HASH_BUF_SIZE {
-                        *hash_buf.get_unchecked_mut(i) = 0;
-                        i += 1;
-                    }
+                    // Zero-pad remaining (up to this round's padded size)
+                    hash_buf.zero_range(FINAL_LEAF_EXT_WORDS, FINAL_HASH_BUF_SIZE);
 
                     // Hash and verify Merkle path
-                    hash_leaf_data_into_state(&mut hasher, &hash_buf, FINAL_LEAF_EXT_WORDS);
+                    let init_buf = hash_buf.assume_init_subarray::<FINAL_HASH_BUF_SIZE>();
+                    hash_leaf_data_into_state(hasher, init_buf, FINAL_LEAF_EXT_WORDS);
                     assert!(verify_merkle_path::<I>(
-                        &mut hasher, tree_index, oracle_depth, prev_oracle_cap,
+                        hasher, tree_index, oracle_depth, prev_oracle_cap,
                     ));
 
                     // Reconstruct extension field elements from buffer
-                    let mut evals = [#quartic_zero; FINAL_VALUES_PER_LEAF];
+                    let mut evals: LazyVec<#quartic_struct, FINAL_VALUES_PER_LEAF> =
+                        LazyVec::new();
                     let mut j = 0;
                     while j < FINAL_VALUES_PER_LEAF {
-                        evals[j] = ext_from_raw_words(
-                            &hash_buf[j * EXT_DEGREE..(j + 1) * EXT_DEGREE],
-                        );
+                        evals.push(ext_from_raw_words(
+                            &init_buf[j * EXT_DEGREE..(j + 1) * EXT_DEGREE],
+                        ));
                         j += 1;
                     }
 
                     // Fold
                     let folded = fold_coset(
-                        &evals[..], FINAL_FOLD_STEPS,
+                        evals.as_slice(), FINAL_FOLD_STEPS,
                         folding_challenges.as_slice(),
                         base_root_inv, &high_powers_offsets[..], two_inv,
                         &mut *fold_buf_a.as_mut_ptr(), &mut *fold_buf_b.as_mut_ptr(),
                     );
 
                     // Store for fold-agreement check after reading monomials
-                    *folded_values.get_unchecked_mut(q) = folded;
-                    *query_base_roots.get_unchecked_mut(q) = base_root;
+                    folded_values.push(folded);
+                    query_base_roots.push(base_root);
 
                     q += 1;
                 }
@@ -790,7 +782,7 @@ pub fn generate_whir_final_round<MW: MersenneWrapper>(
                 let mut q = 0;
                 while q < FINAL_NUM_QUERIES {
                     // query_point = base_root^(2^fold_steps) (in the query domain)
-                    let query_point = query_base_roots[q].pow(#final_fold_power);
+                    let query_point = query_base_roots.get(q).pow(#final_fold_power);
 
                     // Horner evaluation: poly(r) = c_{n-1}*r^{n-1} + ... + c_1*r + c_0
                     let mut eval = monomials[FINAL_MONOMIALS_LEN - 1];
@@ -802,7 +794,9 @@ pub fn generate_whir_final_round<MW: MersenneWrapper>(
                         #horner_add;
                     }
 
-                    assert!(eval == folded_values[q]);
+                    if eval != *folded_values.get(q) {
+                        return Err(WhirVerificationError::FoldAgreementFailed { query: q });
+                    }
                     q += 1;
                 }
 
@@ -813,32 +807,37 @@ pub fn generate_whir_final_round<MW: MersenneWrapper>(
 }
 
 /// Generate a unified `verify_whir` function that chains initial -> internal -> final rounds.
-pub fn generate_whir_verify<MW: MersenneWrapper>() -> TokenStream {
+/// Creates the hash buffer and passes it + hasher to each round.
+pub fn generate_whir_verify<MW: MersenneWrapper>(whir_hash_buf_size: usize) -> TokenStream {
     let quartic_struct = MW::quartic_struct();
 
     quote! {
+        pub const WHIR_HASH_BUF_SIZE: usize = #whir_hash_buf_size;
+
         /// Run the full WHIR verification: initial round, all internal rounds, final round.
         #[allow(unused_braces, unused_mut, unused_variables, unused_unsafe)]
         pub fn verify_whir<I: NonDeterminismSource>(
+            hasher: &mut DelegatedBlake2sState,
             seed: &mut Seed,
             batching_challenge: #quartic_struct,
             setup_cap: &[u32; WHIR_CAP_WORDS],
             memory_cap: &[u32; WHIR_CAP_WORDS],
             witness_cap: &[u32; WHIR_CAP_WORDS],
         ) -> Result<(), WhirVerificationError> {
+            let mut hash_buf = AlignedArray64::<u32, WHIR_HASH_BUF_SIZE>::new_uninit();
             let (mut claim, mut cap) = verify_initial_whir_round::<I>(
-                seed, batching_challenge, setup_cap, memory_cap, witness_cap,
+                hasher, &mut hash_buf, seed, batching_challenge, setup_cap, memory_cap, witness_cap,
             )?;
             let mut round_idx = 1;
             while round_idx <= NUM_INTERNAL_ROUNDS {
                 let (new_claim, new_cap) = verify_internal_whir_round::<I>(
-                    seed, claim, &cap, round_idx,
+                    hasher, &mut hash_buf, seed, claim, &cap, round_idx,
                 )?;
                 claim = new_claim;
                 cap = new_cap;
                 round_idx += 1;
             }
-            let _ = verify_final_whir_round::<I>(seed, claim, &cap)?;
+            let _ = verify_final_whir_round::<I>(hasher, &mut hash_buf, seed, claim, &cap)?;
             Ok(())
         }
     }
@@ -877,16 +876,6 @@ pub fn generate_whir_common<MW: MersenneWrapper>(whir_schedule: &WhirSchedule) -
     let fc_add_t_b = MW::add_assign(quote! { t }, quote! { b });
     let fc_mul_t_two_inv = MW::mul_assign_by_base(quote! { t }, quote! { two_inv });
 
-    let add_p2_a = MW::add_assign(quote! { p2 }, quote! { a });
-    let add_p2_b = MW::add_assign(quote! { p2 }, quote! { b });
-    let sub_p2_c = MW::sub_assign(quote! { p2 }, quote! { c });
-    let sub_p1_a = MW::sub_assign(quote! { p1 }, quote! { a });
-    let sub_p1_p2 = MW::sub_assign(quote! { p1 }, quote! { p2 });
-    let mul_inner_alpha1 = MW::mul_assign(quote! { inner }, quote! { alpha });
-    let add_inner_p1 = MW::add_assign(quote! { inner }, quote! { p1 });
-    let mul_inner_alpha2 = MW::mul_assign(quote! { inner }, quote! { alpha });
-    let add_inner_a = MW::add_assign(quote! { inner }, quote! { a });
-
     quote! {
         /// Returns the multiplicative inverse of 2 in the base field.
         #[inline(always)]
@@ -903,7 +892,7 @@ pub fn generate_whir_common<MW: MersenneWrapper>(whir_schedule: &WhirSchedule) -
             coset_tree_size: usize,
         ) -> usize {
             let coset_index = query_index & (num_cosets - 1);
-            let internal_index = query_index / num_cosets;
+            let internal_index = query_index >> num_cosets_log2;
             if num_cosets == 1 {
                 internal_index
             } else {
@@ -916,6 +905,7 @@ pub fn generate_whir_common<MW: MersenneWrapper>(whir_schedule: &WhirSchedule) -
         #[derive(Clone, Debug)]
         pub enum WhirVerificationError {
             SumcheckFailed { round: usize },
+            FoldAgreementFailed { query: usize },
         }
 
         #[inline(always)]
@@ -955,30 +945,6 @@ pub fn generate_whir_common<MW: MersenneWrapper>(whir_schedule: &WhirSchedule) -
             #ws_add_nc_c0;
 
             Ok((new_claim, alpha))
-        }
-
-        #[inline(always)]
-        pub fn lagrange_eval_3pt(a: #quartic_struct, b: #quartic_struct, c: #quartic_struct, alpha: #quartic_struct) -> #quartic_struct {
-            // p2 = 2a + 2b - 4c
-            let mut p2 = a;
-            #add_p2_a;
-            #add_p2_b;
-            #add_p2_b;
-            #sub_p2_c;
-            #sub_p2_c;
-            #sub_p2_c;
-            #sub_p2_c;
-
-            let mut p1 = b;
-            #sub_p1_a;
-            #sub_p1_p2;
-
-            let mut inner = p2;
-            #mul_inner_alpha1;
-            #add_inner_p1;
-            #mul_inner_alpha2;
-            #add_inner_a;
-            inner
         }
 
         #[inline(always)]

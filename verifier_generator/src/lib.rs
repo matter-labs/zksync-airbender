@@ -70,7 +70,8 @@ mod test {
                 };
                 use ::verifier_common::non_determinism_source::NonDeterminismSource;
                 use ::verifier_common::transcript::{Blake2sTranscript, Seed};
-                use ::verifier_common::gkr::{GKRVerificationError, LazyVec};
+                use ::verifier_common::gkr::GKRVerificationError;
+                use ::verifier_common::lazy_vec::LazyVec;
                 #field_use_stmts
 
                 pub const EXT_DEGREE: usize =
@@ -127,7 +128,9 @@ mod test {
                     let gkr_output = verify_gkr_sumcheck::<I>()
                         .map_err(VerificationError::Gkr)?;
                     let mut seed = gkr_output.whir_transcript_seed;
+                    let mut hasher = ::verifier_common::blake2s_u32::DelegatedBlake2sState::new();
                     whir::verify_whir::<I>(
+                        &mut hasher,
                         &mut seed,
                         gkr_output.whir_batching_challenge,
                         &gkr_output.setup_cap,
@@ -156,7 +159,37 @@ mod test {
                 &whir_schedule,
                 files.trace_len_log2,
             );
-            let whir_verify = whir::generate_whir_verify::<DefaultBabyBearField>();
+            // Compute max hash buf size across all WHIR rounds (padded to 16-word boundary)
+            let initial_vpf = 1usize << whir_schedule.whir_steps_schedule[0];
+            let initial_hbs = ([
+                files.num_mem_oracle_cols,
+                files.num_wit_oracle_cols,
+                files.num_setup_oracle_cols,
+            ]
+            .iter()
+            .map(|&c| c * initial_vpf)
+            .max()
+            .unwrap()
+                + 15)
+                / 16
+                * 16;
+            let num_whir_rounds = whir_schedule.whir_steps_schedule.len();
+            let internal_hbs = if num_whir_rounds > 2 {
+                let max_fold = *whir_schedule.whir_steps_schedule[1..num_whir_rounds - 1]
+                    .iter()
+                    .max()
+                    .unwrap();
+                ((1usize << max_fold) * 4 + 15) / 16 * 16
+            } else {
+                0
+            };
+            let final_hbs =
+                ((1usize << whir_schedule.whir_steps_schedule[num_whir_rounds - 1]) * 4 + 15) / 16
+                    * 16;
+            let whir_hash_buf_size = initial_hbs.max(internal_hbs).max(final_hbs);
+
+            let whir_verify =
+                whir::generate_whir_verify::<DefaultBabyBearField>(whir_hash_buf_size);
             let whir_code = quote::quote! {
                 #whir_initial
                 #whir_internal
