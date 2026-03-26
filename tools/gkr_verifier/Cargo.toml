@@ -12,7 +12,7 @@ keywords = ["blockchain", "zksync", "zk"]
 categories = ["cryptography"]
 
 [features]
-add_sub = []
+add_sub_lui_auipc_mop = []
 jump_branch_slt = []
 shift_binop = []
 

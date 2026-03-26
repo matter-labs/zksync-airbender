@@ -1,0 +1,131 @@
+#![cfg(feature = "gkr_verify")]
+
+mod common;
+
+use field::baby_bear::base::BabyBearField;
+use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
+use riscv_transpiler::ir::simple_instruction_set::*;
+use riscv_transpiler::ir::ReducedMachineDecoderConfig;
+use riscv_transpiler::vm::*;
+
+fn run_transpiler(name: &str) {
+    let nds = common::load_nds(name);
+    println!("{}: oracle data length: {} u32 words", name, nds.len());
+
+    let (bin_path, text_path, elf_path) = common::binary_paths(name);
+
+    let binary_bytes = std::fs::read(&bin_path).unwrap_or_else(|_| {
+        panic!(
+            "Missing {} — run `cd tools/gkr_verifier && ./dump_bin.sh` first",
+            bin_path
+        )
+    });
+    assert!(binary_bytes.len() % 4 == 0);
+    let binary: Vec<u32> = binary_bytes
+        .chunks_exact(4)
+        .map(|c| u32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+        .collect();
+
+    let text_bytes = std::fs::read(&text_path).unwrap_or_else(|_| {
+        panic!(
+            "Missing {} — run `cd tools/gkr_verifier && ./dump_bin.sh` first",
+            text_path
+        )
+    });
+    assert!(text_bytes.len() % 4 == 0);
+    let text_section: Vec<u32> = text_bytes
+        .chunks_exact(4)
+        .map(|c| u32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+        .collect();
+
+    let instructions: Vec<Instruction> =
+        preprocess_bytecode::<ReducedMachineDecoderConfig>(&text_section);
+    let tape = SimpleTape::new(&instructions);
+    let mut ram =
+        RamWithRomRegion::<{ common_constants::rom::ROM_SECOND_WORD_BITS }>::from_rom_content(
+            &binary,
+            1 << 30,
+        );
+
+    let cycles_bound = 1 << 24;
+    let mut state = State::initial_with_counters(DelegationsAndFamiliesCounters::default());
+    let mut snapshotter = SimpleSnapshotter::<
+        DelegationsAndFamiliesCounters,
+        { common_constants::rom::ROM_SECOND_WORD_BITS },
+    >::new_with_cycle_limit(cycles_bound, state);
+    let mut non_determinism = QuasiUARTSource::new_with_reads(nds);
+
+    let symbols_path = std::path::PathBuf::from(&elf_path);
+    let output_path = std::env::current_dir()
+        .unwrap()
+        .join(format!("gkr_flamegraph_{}.svg", name));
+    let mut fg_config =
+        riscv_transpiler::vm::FlamegraphConfig::new(symbols_path, output_path.clone());
+    fg_config.frequency_recip = 1;
+    let mut profiler = riscv_transpiler::vm::VmFlamegraphProfiler::new(fg_config).unwrap();
+
+    let is_program_finished =
+        VM::<DelegationsAndFamiliesCounters>::run_basic_unrolled_with_flamegraph::<
+            _,
+            _,
+            _,
+            BabyBearField,
+        >(
+            &mut state,
+            &mut ram,
+            &mut snapshotter,
+            &tape,
+            cycles_bound,
+            &mut non_determinism,
+            &mut profiler,
+        )
+        .expect("flamegraph profiler IO error");
+
+    assert!(
+        is_program_finished,
+        "{}: verifier did not finish (PC stuck or cycle bound reached)",
+        name,
+    );
+
+    let exact_cycles =
+        (state.timestamp - common_constants::INITIAL_TIMESTAMP) / common_constants::TIMESTAMP_STEP;
+    println!("{}: finished in {} cycles", name, exact_cycles);
+
+    for (i, reg) in state.registers[10..18].iter().enumerate() {
+        println!("  a{} = 0x{:08x} ({})", i, reg.value, reg.value);
+    }
+
+    let a0 = state.registers[10].value;
+    if a0 == 0xDEAD {
+        let error_code = state.registers[11].value;
+        let layer = state.registers[12].value;
+        let round = state.registers[13].value;
+        match error_code {
+            1 => panic!(
+                "{}: GKR SumcheckRoundFailed layer={} round={}",
+                name, layer, round
+            ),
+            2 => panic!("{}: GKR FinalStepCheckFailed layer={}", name, layer),
+            3 => panic!("{}: WHIR verification failed", name),
+            _ => panic!("{}: unknown error code={}", name, error_code),
+        }
+    }
+    assert_eq!(a0, 1, "{}: a0 = {} (expected 1 for success)", name, a0);
+
+    println!("{}: completed successfully in transpiler", name);
+    println!("Flamegraph written to {}", output_path.display());
+}
+
+macro_rules! transpiler_tests {
+    ($($circuit:ident),* $(,)?) => {
+        $(
+            #[test]
+            #[ignore = "requires RISC-V binaries from tools/gkr_verifier"]
+            fn $circuit() {
+                run_transpiler(stringify!($circuit));
+            }
+        )*
+    };
+}
+
+transpiler_tests!(add_sub_lui_auipc_mop, jump_branch_slt, shift_binop,);

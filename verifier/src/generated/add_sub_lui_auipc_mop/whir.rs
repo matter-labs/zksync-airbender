@@ -1,6 +1,7 @@
 use super::common::{
-    batch_claims, commit_field_els, draw_field_els_into, fold_coset, materialize_gamma_powers,
-    read_field_el, read_field_els, verify_whir_sumcheck_step, WhirVerificationError,
+    batch_claims, commit_field_els, compute_tree_index, draw_field_els_into, fold_coset,
+    materialize_gamma_powers, read_field_el, read_field_els, two_inv, verify_whir_sumcheck_step,
+    WhirVerificationError,
 };
 use super::constants::*;
 use verifier_common::blake2s_u32::{
@@ -186,7 +187,7 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource>(
         let mut claim_correction = ood_value;
         field_ops::mul_assign(&mut claim_correction, &delinearization_challenge);
         let extended_generator = BabyBearField::TWO_ADICITY_GENERATORS[INITIAL_RS_DOMAIN_LOG2];
-        let two_inv = BabyBearField::from_u32_unchecked(2).inverse().unwrap();
+        let two_inv = two_inv();
         let high_powers_offsets = [BabyBearField::ONE; 1 << (WHIR_FOLD_STEPS[0] - 1)];
         let mut fold_buf_a = core::mem::MaybeUninit::<[BabyBearExt4; FOLD_BUF_HALF]>::uninit();
         let mut fold_buf_b = core::mem::MaybeUninit::<[BabyBearExt4; FOLD_BUF_HALF]>::uninit();
@@ -196,15 +197,8 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource>(
             let query_index = *query_indices.get(q);
             let base_root = extended_generator.pow(query_index as u32);
             let base_root_inv = base_root.inverse().unwrap();
-            let coset_index = query_index & (NUM_COSETS - 1);
-            let internal_index = query_index / NUM_COSETS;
-            let tree_index = if NUM_COSETS == 1 {
-                internal_index
-            } else {
-                let coset_dest =
-                    coset_index.reverse_bits() >> (usize::BITS as usize - NUM_COSETS_LOG2);
-                coset_dest * COSET_TREE_SIZE + internal_index
-            };
+            let tree_index =
+                compute_tree_index(query_index, NUM_COSETS, NUM_COSETS_LOG2, COSET_TREE_SIZE);
             let mut batched_evals = [BabyBearExt4::ZERO; INITIAL_VALUES_PER_LEAF];
             process_oracle_query::<I>(
                 &mut hasher,
@@ -329,7 +323,7 @@ pub fn verify_internal_whir_round<I: NonDeterminismSource>(
         field_ops::mul_assign(&mut claim_correction, &delinearization_challenge);
         let rs_domain_log2 = INTERNAL_RS_DOMAIN_LOG2[ir];
         let extended_generator = BabyBearField::TWO_ADICITY_GENERATORS[rs_domain_log2];
-        let two_inv = BabyBearField::from_u32_unchecked(2).inverse().unwrap();
+        let two_inv = two_inv();
         let num_cosets = INTERNAL_NUM_COSETS[ir];
         let num_cosets_log2 = INTERNAL_NUM_COSETS_LOG2[ir];
         let coset_tree_size = INTERNAL_COSET_TREE_SIZE[ir];
@@ -346,15 +340,8 @@ pub fn verify_internal_whir_round<I: NonDeterminismSource>(
             let query_index = *query_indices.get(q);
             let base_root = extended_generator.pow(query_index as u32);
             let base_root_inv = base_root.inverse().unwrap();
-            let coset_index = query_index & (num_cosets - 1);
-            let internal_index = query_index / num_cosets;
-            let tree_index = if num_cosets == 1 {
-                internal_index
-            } else {
-                let coset_dest =
-                    coset_index.reverse_bits() >> (usize::BITS as usize - num_cosets_log2);
-                coset_dest * coset_tree_size + internal_index
-            };
+            let tree_index =
+                compute_tree_index(query_index, num_cosets, num_cosets_log2, coset_tree_size);
             let mut i = 0;
             while i < leaf_ext_words {
                 *hash_buf.get_unchecked_mut(i) = I::read_word();
@@ -440,7 +427,7 @@ pub fn verify_final_whir_round<I: NonDeterminismSource>(
             FINAL_DRAW_WORDS,
         );
         let extended_generator = BabyBearField::TWO_ADICITY_GENERATORS[FINAL_RS_DOMAIN_LOG2];
-        let two_inv = BabyBearField::from_u32_unchecked(2).inverse().unwrap();
+        let two_inv = two_inv();
         let oracle_depth = WHIR_ORACLE_DEPTHS[FINAL_ORACLE_DEPTH_IDX];
         let mut high_powers_offsets = [BabyBearField::ONE; MAX_HIGH_POWERS];
         compute_high_powers_offsets(FINAL_FOLD_STEPS, &mut high_powers_offsets);
@@ -458,15 +445,12 @@ pub fn verify_final_whir_round<I: NonDeterminismSource>(
             let query_index = *query_indices.get(q);
             let base_root = extended_generator.pow(query_index as u32);
             let base_root_inv = base_root.inverse().unwrap();
-            let coset_index = query_index & (FINAL_NUM_COSETS - 1);
-            let internal_index = query_index / FINAL_NUM_COSETS;
-            let tree_index = if FINAL_NUM_COSETS == 1 {
-                internal_index
-            } else {
-                let coset_dest =
-                    coset_index.reverse_bits() >> (usize::BITS as usize - FINAL_NUM_COSETS_LOG2);
-                coset_dest * FINAL_COSET_TREE_SIZE + internal_index
-            };
+            let tree_index = compute_tree_index(
+                query_index,
+                FINAL_NUM_COSETS,
+                FINAL_NUM_COSETS_LOG2,
+                FINAL_COSET_TREE_SIZE,
+            );
             let mut i = 0;
             while i < FINAL_LEAF_EXT_WORDS {
                 *hash_buf.get_unchecked_mut(i) = I::read_word();
@@ -521,4 +505,30 @@ pub fn verify_final_whir_round<I: NonDeterminismSource>(
         }
         Ok((claim, *prev_oracle_cap))
     }
+}
+#[doc = r" Run the full WHIR verification: initial round, all internal rounds, final round."]
+#[allow(unused_braces, unused_mut, unused_variables, unused_unsafe)]
+pub fn verify_whir<I: NonDeterminismSource>(
+    seed: &mut Seed,
+    batching_challenge: BabyBearExt4,
+    setup_cap: &[u32; WHIR_CAP_WORDS],
+    memory_cap: &[u32; WHIR_CAP_WORDS],
+    witness_cap: &[u32; WHIR_CAP_WORDS],
+) -> Result<(), WhirVerificationError> {
+    let (mut claim, mut cap) = verify_initial_whir_round::<I>(
+        seed,
+        batching_challenge,
+        setup_cap,
+        memory_cap,
+        witness_cap,
+    )?;
+    let mut round_idx = 1;
+    while round_idx <= NUM_INTERNAL_ROUNDS {
+        let (new_claim, new_cap) = verify_internal_whir_round::<I>(seed, claim, &cap, round_idx)?;
+        claim = new_claim;
+        cap = new_cap;
+        round_idx += 1;
+    }
+    let _ = verify_final_whir_round::<I>(seed, claim, &cap)?;
+    Ok(())
 }

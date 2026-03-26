@@ -78,7 +78,7 @@ pub fn generate_whir_inlined<MW: MersenneWrapper>(
         use super::common::{
             verify_whir_sumcheck_step, fold_coset, materialize_gamma_powers,
             batch_claims, WhirVerificationError, read_field_el, read_field_els,
-            commit_field_els, draw_field_els_into,
+            commit_field_els, draw_field_els_into, two_inv, compute_tree_index,
         };
         use super::constants::*;
 
@@ -281,7 +281,7 @@ pub fn generate_whir_inlined<MW: MersenneWrapper>(
 
                 // --- 7. Per-query processing ---
                 let extended_generator = #field_struct::TWO_ADICITY_GENERATORS[INITIAL_RS_DOMAIN_LOG2];
-                let two_inv = #field_struct::from_u32_unchecked(2).inverse().unwrap();
+                let two_inv = two_inv();
                 let high_powers_offsets = [#field_one; 1 << (WHIR_FOLD_STEPS[0] - 1)];
 
                 // Scratch buffers — fully written before read each iteration
@@ -300,15 +300,9 @@ pub fn generate_whir_inlined<MW: MersenneWrapper>(
                     // Tree leaves are stored sequentially by coset (with bit-reversed
                     // coset ordering).  Map from the interleaved query_index to the
                     // actual tree leaf position.
-                    let coset_index = query_index & (NUM_COSETS - 1);
-                    let internal_index = query_index / NUM_COSETS;
-                    let tree_index = if NUM_COSETS == 1 {
-                        internal_index
-                    } else {
-                        let coset_dest = coset_index.reverse_bits()
-                            >> (usize::BITS as usize - NUM_COSETS_LOG2);
-                        coset_dest * COSET_TREE_SIZE + internal_index
-                    };
+                    let tree_index = compute_tree_index(
+                        query_index, NUM_COSETS, NUM_COSETS_LOG2, COSET_TREE_SIZE,
+                    );
 
                     // batched_evals accumulates across 3 oracles — zero-init is semantic
                     let mut batched_evals = [#quartic_zero; INITIAL_VALUES_PER_LEAF];
@@ -528,7 +522,7 @@ pub fn generate_whir_internal_rounds<MW: MersenneWrapper>(
                 // --- 7. Per-query processing ---
                 let rs_domain_log2 = INTERNAL_RS_DOMAIN_LOG2[ir];
                 let extended_generator = #field_struct::TWO_ADICITY_GENERATORS[rs_domain_log2];
-                let two_inv = #field_struct::from_u32_unchecked(2).inverse().unwrap();
+                let two_inv = two_inv();
                 let num_cosets = INTERNAL_NUM_COSETS[ir];
                 let num_cosets_log2 = INTERNAL_NUM_COSETS_LOG2[ir];
                 let coset_tree_size = INTERNAL_COSET_TREE_SIZE[ir];
@@ -552,15 +546,9 @@ pub fn generate_whir_internal_rounds<MW: MersenneWrapper>(
                     let base_root_inv = base_root.inverse().unwrap();
 
                     // Tree index mapping
-                    let coset_index = query_index & (num_cosets - 1);
-                    let internal_index = query_index / num_cosets;
-                    let tree_index = if num_cosets == 1 {
-                        internal_index
-                    } else {
-                        let coset_dest = coset_index.reverse_bits()
-                            >> (usize::BITS as usize - num_cosets_log2);
-                        coset_dest * coset_tree_size + internal_index
-                    };
+                    let tree_index = compute_tree_index(
+                        query_index, num_cosets, num_cosets_log2, coset_tree_size,
+                    );
 
                     // Read extension field leaf values from NDS
                     let mut i = 0;
@@ -718,7 +706,7 @@ pub fn generate_whir_final_round<MW: MersenneWrapper>(
 
                 // --- 3. Per-query processing ---
                 let extended_generator = #field_struct::TWO_ADICITY_GENERATORS[FINAL_RS_DOMAIN_LOG2];
-                let two_inv = #field_struct::from_u32_unchecked(2).inverse().unwrap();
+                let two_inv = two_inv();
                 let oracle_depth = WHIR_ORACLE_DEPTHS[FINAL_ORACLE_DEPTH_IDX];
 
                 let mut high_powers_offsets = [#field_one; MAX_HIGH_POWERS];
@@ -745,15 +733,9 @@ pub fn generate_whir_final_round<MW: MersenneWrapper>(
                     let base_root_inv = base_root.inverse().unwrap();
 
                     // Tree index mapping
-                    let coset_index = query_index & (FINAL_NUM_COSETS - 1);
-                    let internal_index = query_index / FINAL_NUM_COSETS;
-                    let tree_index = if FINAL_NUM_COSETS == 1 {
-                        internal_index
-                    } else {
-                        let coset_dest = coset_index.reverse_bits()
-                            >> (usize::BITS as usize - FINAL_NUM_COSETS_LOG2);
-                        coset_dest * FINAL_COSET_TREE_SIZE + internal_index
-                    };
+                    let tree_index = compute_tree_index(
+                        query_index, FINAL_NUM_COSETS, FINAL_NUM_COSETS_LOG2, FINAL_COSET_TREE_SIZE,
+                    );
 
                     // Read extension field leaf values from NDS
                     let mut i = 0;
@@ -830,6 +812,38 @@ pub fn generate_whir_final_round<MW: MersenneWrapper>(
     }
 }
 
+/// Generate a unified `verify_whir` function that chains initial -> internal -> final rounds.
+pub fn generate_whir_verify<MW: MersenneWrapper>() -> TokenStream {
+    let quartic_struct = MW::quartic_struct();
+
+    quote! {
+        /// Run the full WHIR verification: initial round, all internal rounds, final round.
+        #[allow(unused_braces, unused_mut, unused_variables, unused_unsafe)]
+        pub fn verify_whir<I: NonDeterminismSource>(
+            seed: &mut Seed,
+            batching_challenge: #quartic_struct,
+            setup_cap: &[u32; WHIR_CAP_WORDS],
+            memory_cap: &[u32; WHIR_CAP_WORDS],
+            witness_cap: &[u32; WHIR_CAP_WORDS],
+        ) -> Result<(), WhirVerificationError> {
+            let (mut claim, mut cap) = verify_initial_whir_round::<I>(
+                seed, batching_challenge, setup_cap, memory_cap, witness_cap,
+            )?;
+            let mut round_idx = 1;
+            while round_idx <= NUM_INTERNAL_ROUNDS {
+                let (new_claim, new_cap) = verify_internal_whir_round::<I>(
+                    seed, claim, &cap, round_idx,
+                )?;
+                claim = new_claim;
+                cap = new_cap;
+                round_idx += 1;
+            }
+            let _ = verify_final_whir_round::<I>(seed, claim, &cap)?;
+            Ok(())
+        }
+    }
+}
+
 pub fn generate_whir_common<MW: MersenneWrapper>(whir_schedule: &WhirSchedule) -> TokenStream {
     let quartic_struct = MW::quartic_struct();
     let quartic_zero = MW::quartic_zero();
@@ -874,6 +888,31 @@ pub fn generate_whir_common<MW: MersenneWrapper>(whir_schedule: &WhirSchedule) -
     let add_inner_a = MW::add_assign(quote! { inner }, quote! { a });
 
     quote! {
+        /// Returns the multiplicative inverse of 2 in the base field.
+        #[inline(always)]
+        pub fn two_inv() -> #field_struct {
+            #field_struct::from_u32_unchecked(2).inverse().unwrap()
+        }
+
+        /// Compute tree index from query index for Merkle path verification.
+        #[inline(always)]
+        pub fn compute_tree_index(
+            query_index: usize,
+            num_cosets: usize,
+            num_cosets_log2: usize,
+            coset_tree_size: usize,
+        ) -> usize {
+            let coset_index = query_index & (num_cosets - 1);
+            let internal_index = query_index / num_cosets;
+            if num_cosets == 1 {
+                internal_index
+            } else {
+                let coset_dest = coset_index.reverse_bits()
+                    >> (usize::BITS as usize - num_cosets_log2);
+                coset_dest * coset_tree_size + internal_index
+            }
+        }
+
         #[derive(Clone, Debug)]
         pub enum WhirVerificationError {
             SumcheckFailed { round: usize },

@@ -221,6 +221,28 @@ pub fn fold_standard_claims<const NUM_ADDRS: usize, const ADDRS: usize, const BU
         claims.push(diff);
     }
 }
+#[doc = r" Returns the multiplicative inverse of 2 in the base field."]
+#[inline(always)]
+pub fn two_inv() -> BabyBearField {
+    BabyBearField::from_u32_unchecked(2).inverse().unwrap()
+}
+#[doc = r" Compute tree index from query index for Merkle path verification."]
+#[inline(always)]
+pub fn compute_tree_index(
+    query_index: usize,
+    num_cosets: usize,
+    num_cosets_log2: usize,
+    coset_tree_size: usize,
+) -> usize {
+    let coset_index = query_index & (num_cosets - 1);
+    let internal_index = query_index / num_cosets;
+    if num_cosets == 1 {
+        internal_index
+    } else {
+        let coset_dest = coset_index.reverse_bits() >> (usize::BITS as usize - num_cosets_log2);
+        coset_dest * coset_tree_size + internal_index
+    }
+}
 #[derive(Clone, Debug)]
 pub enum WhirVerificationError {
     SumcheckFailed { round: usize },
