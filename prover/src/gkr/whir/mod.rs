@@ -329,6 +329,39 @@ where
     let oracle_refs = [&mem_oracle, &wit_oracle, setup_oracle];
     let evals_refs = [&mem_polys_claims, &wit_polys_claims, &setup_polys_claims];
 
+    let mut eq_polys = make_eq_poly_in_full::<E>(&original_evaluation_point[..], worker);
+    let mut eq_poly_box = eq_polys.pop().unwrap();
+
+    #[cfg(feature = "gkr_self_checks")]
+    {
+        // just blindly compute consistency of RS oracles and evaluation points
+        for (j, (rs, evals)) in oracle_refs.iter().zip(evals_refs.iter()).enumerate() {
+            for (i, eval) in evals.iter().enumerate() {
+                let main_domain_evals =
+                    rs.cosets[0].original_values_normal_order[i].column[..].to_vec();
+                let monomial_form = compute_column_major_monomial_form_from_main_domain_owned(
+                    main_domain_evals,
+                    twiddles,
+                );
+                assert_eq!(monomial_form.len(), 1 << trace_len_log2);
+                let mut sumcheck_evals = monomial_form;
+                multivariate_coeffs_into_hypercube_evals(
+                    &mut sumcheck_evals,
+                    trace_len_log2 as u32,
+                );
+                bitreverse_enumeration_inplace(&mut sumcheck_evals);
+                use crate::gkr::whir::eq_poly::evaluate_with_precomputed_eq;
+                let recomputed_claim =
+                    evaluate_with_precomputed_eq(&sumcheck_evals, &eq_poly_box[..]);
+                assert_eq!(
+                    recomputed_claim, *eval,
+                    "claim recomputation diverged for poly {} in oracle set {}",
+                    i, j
+                );
+            }
+        }
+    }
+
     let mut commitments = Vec::with_capacity(3);
     for i in 0..3 {
         let t = WhirBaseLayerCommitmentAndQueries {
@@ -422,6 +455,7 @@ where
                     &oracle_refs[2].cosets[0].original_values_normal_order,
                 ),
             ] {
+                assert_eq!(challenges_set.len(), values_set.len());
                 for (batch_challenge, base_value) in challenges_set.iter().zip(values_set.iter()) {
                     let src = &base_value.column[..]; // main domain only
                     assert_eq!(src.len(), 1 << trace_len_log2);
@@ -481,8 +515,6 @@ where
     // so we can NOT easily use the same trick with splitting out eq poly highest coordinate in sumcheck.
     // So we make EQ poly explicitly, and then we will update it after every step, and use naively
 
-    let mut eq_polys = make_eq_poly_in_full::<E>(&original_evaluation_point[..], worker);
-    let mut eq_poly_box = eq_polys.pop().unwrap();
     let mut eq_poly = &mut eq_poly_box[..];
     drop(eq_polys);
 

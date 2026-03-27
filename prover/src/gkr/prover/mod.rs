@@ -651,8 +651,11 @@ where
             }
             setup_polys_claims.push(value);
         } else {
-            // dummy for now
-            setup_polys_claims.push(E::ZERO);
+            // we have rare case when setup oly is not used, but we keep setup logic simple,
+            // and so we have to re-evaluate it
+            let poly = gkr_storage.get_base_layer(key);
+            let evaluation = evaluate_with_precomputed_eq::<F, E>(poly, &_eq_at_z[..]);
+            setup_polys_claims.push(evaluation);
         }
     }
 
