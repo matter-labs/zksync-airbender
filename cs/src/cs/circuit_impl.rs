@@ -170,12 +170,11 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
                 .get(&var)
                 .expect("must have layer assigned") as isize;
             if max_input_layer != isize::MIN {
-                if layer < max_input_layer {
-                    println!(
-                        "Variable {:?} will be copied from layer {} to {}",
-                        var, layer, max_input_layer
-                    );
-                }
+                assert_eq!(
+                    layer, max_input_layer,
+                    "variable {:?} comes from layer {}, but we need everything to be at layer {}",
+                    var, layer, max_input_layer
+                );
             }
             max_input_layer = core::cmp::max(max_input_layer, layer);
         }
