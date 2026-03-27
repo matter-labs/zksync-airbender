@@ -13,6 +13,7 @@ use cs::{
 };
 
 pub(crate) mod copy;
+pub(crate) mod linear_and_max_quadratic;
 pub(crate) mod lookup_from_base_inputs;
 pub(crate) mod lookup_from_vector_inputs;
 pub(crate) mod lookup_pair;

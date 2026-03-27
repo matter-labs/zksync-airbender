@@ -290,7 +290,7 @@ impl<C: Counters, E: ExecutionObserver<C>> VM<C, E> {
             let pc = state.pc;
 
             profiler.sample_cycle(state, &*ram, cycle);
-            Self::run_step::<S, R, ND, F, E>(state, ram, snapshotter, instruction_tape, nd);
+            Self::run_step::<S, R, ND, F>(state, ram, snapshotter, instruction_tape, nd);
 
             state.timestamp += TIMESTAMP_STEP;
             if state.pc == pc {
@@ -315,7 +315,6 @@ impl<C: Counters, E: ExecutionObserver<C>> VM<C, E> {
         R: RAM + FlamegraphReadableRam,
         ND: NonDeterminismCSRSource,
         F: PrimeField,
-        E: ExecutionObserver<C>,
     >(
         state: &mut State<C>,
         ram: &mut R,
@@ -333,7 +332,7 @@ impl<C: Counters, E: ExecutionObserver<C>> VM<C, E> {
             profiler.sample_cycle(state, &*ram, cycle);
             cycle += 1;
 
-            Self::run_step::<S, R, ND, F, E>(state, ram, snapshotter, instruction_tape, nd);
+            Self::run_step::<S, R, ND, F>(state, ram, snapshotter, instruction_tape, nd);
 
             state.timestamp += TIMESTAMP_STEP;
             if state.pc == pc {
