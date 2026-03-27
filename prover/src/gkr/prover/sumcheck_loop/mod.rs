@@ -364,7 +364,6 @@ where
                     }
                 }
             }
-
         }
 
         if !extra_evaluations_from_caching_relations.is_empty() {
