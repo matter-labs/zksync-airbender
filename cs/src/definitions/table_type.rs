@@ -56,6 +56,10 @@ pub enum TableType {
     AndN,
     RotL,
     U16GetLowByte,
+    LoadHalfwordSignextend,
+    LoadByteSignextend,
+    LoadHalfwordRomRead,
+    LoadByteRomRead,
     Decoder,
     DynamicPlaceholder, // MUST be the last
 }

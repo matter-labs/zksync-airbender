@@ -12,6 +12,10 @@ pub struct WordOnlyMemoryFamilyCircuitMask {
 }
 
 impl WordOnlyMemoryFamilyCircuitMask {
+    pub fn from_mask(mask: [Boolean; WORD_ONLY_MEMORY_FAMILY_NUM_FLAGS]) -> Self {
+        Self { inner: mask }
+    }
+
     // getters for our opcodes
     pub fn perform_write(&self) -> Boolean {
         self.inner[WRITE_BIT]

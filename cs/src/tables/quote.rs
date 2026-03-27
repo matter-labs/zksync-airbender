@@ -35,6 +35,18 @@ impl quote::ToTokens for TableType {
             TableType::StoreByteExistingContribution => {
                 quote! { TableType::StoreByteExistingContribution }
             }
+            TableType::LoadHalfwordSignextend => {
+                quote! { TableType::LoadHalfwordSignextend }
+            }
+            TableType::LoadByteSignextend => {
+                quote! { TableType::LoadByteSignextend }
+            }
+            TableType::LoadHalfwordRomRead => {
+                quote! { TableType::LoadHalfwordRomRead }
+            }
+            TableType::LoadByteRomRead => {
+                quote! { TableType::LoadByteRomRead }
+            }
             TableType::ExtendLoadedValue => quote! { TableType::ExtendLoadedValue },
             TableType::AlignedRomRead => quote! { TableType::AlignedRomRead },
             TableType::ConditionalJmpBranchSlt => {

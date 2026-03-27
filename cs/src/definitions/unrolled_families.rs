@@ -8,7 +8,7 @@ pub const MUL_DIV_FAMILY_NUM_FLAGS: usize = 5;
 
 pub const WORD_ONLY_MEMORY_FAMILY_NUM_FLAGS: usize = 1;
 
-pub const SUBWORD_ONLY_MEMORY_FAMILY_NUM_FLAGS: usize = 1;
+pub const SUBWORD_ONLY_MEMORY_FAMILY_NUM_FLAGS: usize = 3;
 
 pub const MEMORY_FAMILY_NUM_FLAGS: usize = 1;
 

@@ -274,20 +274,20 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
         }
     }
 
-    // fn add_table_with_content(&mut self, table_type: TableType, table: LookupWrapper<F>) {
-    //     self.table_driver
-    //         .add_table_with_content(table_type, table.clone());
-    //     if let Some(witness_placer) = self.witness_placer.as_mut() {
-    //         if std::any::TypeId::of::<W>() == std::any::TypeId::of::<CSDebugWitnessEvaluator<F>>() {
-    //             unsafe {
-    //                 let t = (witness_placer as *mut W)
-    //                     .cast::<CSDebugWitnessEvaluator<F>>()
-    //                     .as_mut_unchecked();
-    //                 t.table_driver.add_table_with_content(table_type, table);
-    //             }
-    //         }
-    //     }
-    // }
+    fn add_table_with_content(&mut self, table_type: TableType, table: crate::tables::LookupWrapper<F>) {
+        self.table_driver
+            .add_table_with_content(table_type, table.clone());
+        if let Some(witness_placer) = self.witness_placer.as_mut() {
+            if std::any::TypeId::of::<W>() == std::any::TypeId::of::<CSDebugWitnessEvaluator<F>>() {
+                unsafe {
+                    let t = (witness_placer as *mut W)
+                        .cast::<CSDebugWitnessEvaluator<F>>()
+                        .as_mut_unchecked();
+                    t.table_driver.add_table_with_content(table_type, table);
+                }
+            }
+        }
+    }
 
     #[track_caller]
     fn get_value(&self, var: Variable) -> Option<F> {
@@ -360,7 +360,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
             } => {
                 let read_timestamp = {
                     let vars = std::array::from_fn(|i| {
-                        self.add_named_variable(&format!("{}[{}]", name, i))
+                        self.add_named_variable(&format!("{} read_timestamp[{}]", name, i))
                     });
 
                     println!(
@@ -396,7 +396,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
                     let read_value = Register::new_unchecked_from_placeholder_named(
                         self,
                         read_value_placeholder,
-                        name,
+                        &format!("{name} read_value"),
                     );
                     let read_value = read_value.0.map(|el| el.get_variable());
                     println!(
@@ -418,7 +418,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
                     access
                 } else {
                     let read_value: [Variable; 4] = std::array::from_fn(|i| {
-                        self.add_named_variable(&format!("{}[{}]", name, i))
+                        self.add_named_variable(&format!("{} read_value_u8[{}]", name, i))
                     });
                     println!(
                         "Created variables {:?} for mem access {} read value",
@@ -474,7 +474,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
                         let read_value = Register::new_unchecked_from_placeholder_named(
                             self,
                             read_value_placeholder,
-                            name,
+                            &format!("{name} read_value"),
                         );
                         let read_value = read_value.0.map(|el| el.get_variable());
                         let read_value = WordRepresentation::U16Limbs(read_value);
@@ -489,7 +489,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
 
                         let read_timestamp = {
                             let vars = std::array::from_fn(|i| {
-                                self.add_named_variable(&format!("{}[{}]", name, i))
+                                self.add_named_variable(&format!("{} read_timestamp[{}]", name, i))
                             });
 
                             if Self::ASSUME_MEMORY_VALUES_ASSIGNED {
@@ -532,6 +532,168 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
                     }
                 }
             }
+            MemoryAccessRequest::RegisterOrRamRead { is_register, address, read_value_placeholder, split_as_u8 } => {
+                let read_timestamp = {
+                    let vars = std::array::from_fn(|i| {
+                        self.add_named_variable(&format!("ts: {} read_timestamp[{}]", name, i))
+                    });
+
+                    if Self::ASSUME_MEMORY_VALUES_ASSIGNED {
+                        let value_fn = move |placer: &mut Self::WitnessPlacer| {
+                            for el in vars.iter() {
+                                placer.assume_assigned(*el);
+                            }
+                        };
+                        self.set_values(value_fn);
+                    } else {
+                        let value_fn = move |placer: &mut Self::WitnessPlacer| {
+                            let value = placer.get_oracle_u32(
+                                Placeholder::ShuffleRamReadTimestamp(
+                                    local_timestamp_in_cycle as usize,
+                                ),
+                            );
+
+                            placer.assign_u32_from_u16_parts(vars, &value);
+                        };
+                        self.set_values(value_fn);
+                    }
+
+                    vars
+                };
+                let read_value = if split_as_u8 == false {
+                    let reg = Register::new_unchecked_from_placeholder_named(
+                        self,
+                        read_value_placeholder,
+                        &format!("{name} read_value"),
+                    );
+                    WordRepresentation::U16Limbs(reg.0.each_ref().map(Num::get_variable))
+                } else {
+                    let vars: [Variable; 4] = core::array::from_fn(|i| {
+                        self.add_named_variable(&format!("{name} read_value_u8[{i}]"))
+                    });
+                    println!("created variables {vars:?} for mem access {name} read value");
+                    let value_fn = move |placer: &mut Self::WitnessPlacer| {
+                        if Self::ASSUME_MEMORY_VALUES_ASSIGNED {
+                            for el in vars {
+                                placer.assume_assigned(el)
+                            }
+                        } else {
+                            let full = placer.get_oracle_u32(read_value_placeholder);
+                            let low = full.truncate();
+                            let high = full.shr(16).truncate();
+                            placer.assign_u16_from_u8_parts([vars[0], vars[1]], &low);
+                            placer.assign_u16_from_u8_parts([vars[2], vars[3]], &high);
+                        }
+                    };
+                    self.set_values(value_fn);
+                    WordRepresentation::U8Limbs(vars)
+                };
+                let access = MemoryAccess::RegisterOrRam(RegisterOrRamAccess { 
+                    is_register, 
+                    address, 
+                    read_timestamp, 
+                    read_value, 
+                    write_value: read_value, 
+                    local_timestamp_in_cycle 
+                });
+                self.memory_queries.push(access.clone());
+                access
+             }
+            MemoryAccessRequest::RegisterOrRamReadWrite { is_register, address, read_value_placeholder, write_value_placeholder, split_read_as_u8, split_write_as_u8 } => {
+                let read_timestamp = {
+                    let vars = std::array::from_fn(|i| {
+                        self.add_named_variable(&format!("{name} read_timestamp[{i}]"))
+                    });
+
+                    if Self::ASSUME_MEMORY_VALUES_ASSIGNED {
+                        let value_fn = move |placer: &mut Self::WitnessPlacer| {
+                            for el in vars.iter() {
+                                placer.assume_assigned(*el);
+                            }
+                        };
+                        self.set_values(value_fn);
+                    } else {
+                        let value_fn = move |placer: &mut Self::WitnessPlacer| {
+                            let value = placer.get_oracle_u32(
+                                Placeholder::ShuffleRamReadTimestamp(
+                                    local_timestamp_in_cycle as usize,
+                                ),
+                            );
+
+                            placer.assign_u32_from_u16_parts(vars, &value);
+                        };
+                        self.set_values(value_fn);
+                    }
+
+                    vars
+                };
+                let read_value = if split_read_as_u8 == false {
+                    let reg = Register::new_unchecked_from_placeholder_named(
+                        self,
+                        read_value_placeholder,
+                        &format!("{name} read_value"),
+                    );
+                    WordRepresentation::U16Limbs(reg.0.each_ref().map(Num::get_variable))
+                } else {
+                    let vars: [Variable; 4] = core::array::from_fn(|i| {
+                        self.add_named_variable(&format!("{name} read_value_u8[{i}]"))
+                    });
+                    println!("created variables {vars:?} for mem access {name} read value");
+                    let value_fn = move |placer: &mut Self::WitnessPlacer| {
+                        if Self::ASSUME_MEMORY_VALUES_ASSIGNED {
+                            for el in vars {
+                                placer.assume_assigned(el)
+                            }
+                        } else {
+                            let full = placer.get_oracle_u32(read_value_placeholder);
+                            let low = full.truncate();
+                            let high = full.shr(16).truncate();
+                            placer.assign_u16_from_u8_parts([vars[0], vars[1]], &low);
+                            placer.assign_u16_from_u8_parts([vars[2], vars[3]], &high);
+                        }
+                    };
+                    self.set_values(value_fn);
+                    WordRepresentation::U8Limbs(vars)
+                };
+                let write_value = if split_write_as_u8 == false {
+                    let reg = Register::new_unchecked_from_placeholder_named(
+                        self,
+                        write_value_placeholder,
+                        &format!("{name} write_value"),
+                    );
+                    WordRepresentation::U16Limbs(reg.0.each_ref().map(Num::get_variable))
+                } else {
+                    let vars: [Variable; 4] = core::array::from_fn(|i| {
+                        self.add_named_variable(&format!("{name} write_value_u8[{i}]"))
+                    });
+                    println!("created variables {vars:?} for mem access {name} write value");
+                    let value_fn = move |placer: &mut Self::WitnessPlacer| {
+                        if Self::ASSUME_MEMORY_VALUES_ASSIGNED {
+                            for el in vars {
+                                placer.assume_assigned(el)
+                            }
+                        } else {
+                            let full = placer.get_oracle_u32(write_value_placeholder);
+                            let low = full.truncate();
+                            let high = full.shr(16).truncate();
+                            placer.assign_u16_from_u8_parts([vars[0], vars[1]], &low);
+                            placer.assign_u16_from_u8_parts([vars[2], vars[3]], &high);
+                        }
+                    };
+                    self.set_values(value_fn);
+                    WordRepresentation::U8Limbs(vars)
+                };
+                let access = MemoryAccess::RegisterOrRam(RegisterOrRamAccess { 
+                    is_register, 
+                    address, 
+                    read_timestamp, 
+                    read_value, 
+                    write_value, 
+                    local_timestamp_in_cycle 
+                });
+                self.memory_queries.push(access.clone());
+                access
+             }
             _ => {
                 todo!();
             }
@@ -952,16 +1114,14 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
         let table = table_type.clone();
 
         let value_fn = move |placer: &mut Self::WitnessPlacer| {
-            let table_id = match table {
+            let table_id = match &table {
                 LookupQueryTableType::Constant(table_id) => {
                     <Self::WitnessPlacer as WitnessTypeSet<F>>::U16::constant(
-                        table_id as u32 as u16,
+                        *table_id as u32 as u16,
                     )
                 }
-                LookupQueryTableType::Variable(var) => placer.get_u16(var),
-                LookupQueryTableType::Expression(..) => {
-                    todo!()
-                }
+                LookupQueryTableType::Variable(var) => placer.get_u16(*var),
+                LookupQueryTableType::Expression(expr) => expr.evaluate(placer).as_integer().truncate(),
             };
             let input_values: [_; M] = std::array::from_fn(|i| inputs[i].evaluate(placer));
             let output_values = placer.lookup::<M, N>(&input_values, &table_id);

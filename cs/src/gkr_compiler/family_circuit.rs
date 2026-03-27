@@ -6,6 +6,7 @@ use crate::cs::circuit::LookupQuery;
 use crate::cs::circuit_output::CircuitOutput;
 use crate::cs::circuit_trait::MemoryAccess;
 use crate::cs::circuit_trait::RegisterAccess;
+use crate::cs::circuit_trait::RegisterOrRamAccess;
 use crate::cs::circuit_trait::WordRepresentation;
 use crate::definitions::gkr::*;
 use crate::definitions::GKRAddress;
@@ -14,6 +15,12 @@ use crate::definitions::Variable;
 use crate::gkr_compiler::graph::GKRGraph;
 use crate::gkr_compiler::graph::GraphHolder;
 use crate::gkr_compiler::layout::LookupOutput;
+use crate::types::Boolean;
+// use crate::one_row_compiler::delegation::add_compiler_defined_variable;
+// use crate::one_row_compiler::delegation::add_multiple_compiler_defined_variables;
+// use crate::cs::circuit_output::CircuitOutput;
+// use crate::definitions::LookupInput;
+// use crate::types::Boolean;
 
 impl<F: PrimeField> GKRCompiler<F> {
     pub fn compile_family_circuit(
@@ -314,10 +321,7 @@ impl<F: PrimeField> GKRCompiler<F> {
             let address = match memory_query.clone() {
                 MemoryAccess::RegisterOnly(RegisterAccess {
                     reg_idx,
-                    read_value,
-                    read_timestamp,
-                    write_value,
-                    local_timestamp_in_cycle,
+                    ..
                 }) => {
                     let [register_index] = graph.layout_memory_subtree_multiple_variables(
                         [reg_idx],
@@ -330,8 +334,35 @@ impl<F: PrimeField> GKRCompiler<F> {
 
                     RamAddress::RegisterOnly(RegisterOnlyAccessAddress { register_index })
                 }
-                MemoryAccess::RegisterOrRam(..) => {
-                    todo!();
+                MemoryAccess::RegisterOrRam(RegisterOrRamAccess{ 
+                    is_register, 
+                    address, 
+                    ..
+                }) => {
+                    let (Boolean::Is(is_register_var) | Boolean::Not(is_register_var)) = is_register else {todo!()};
+                    let [addr_lo_var, addr_hi_var] = address;
+                    dbg!();
+                    // some optimisations re-use is_register
+                    let GKRAddress::BaseLayerMemory(is_register_col) = graph.get_fixed_layout_pos(&is_register_var).unwrap_or_else(|| {
+                        let [gkraddr] = graph.layout_memory_subtree_multiple_variables(
+                        [is_register_var], 
+                        &mut all_variables_to_place, 
+                        &layers_mapping);
+                        gkraddr
+                    }) else {unreachable!()};
+                    let [GKRAddress::BaseLayerMemory(addr_lo_col), GKRAddress::BaseLayerMemory(addr_hi_col)] = 
+                        graph.layout_memory_subtree_multiple_variables(
+                            [addr_lo_var, addr_hi_var], 
+                            &mut all_variables_to_place, 
+                            &layers_mapping) else {unreachable!()};
+                    let is_register = match is_register {
+                        Boolean::Is(_) => IsRegisterAddress::Is(is_register_col),
+                        Boolean::Not(_) => IsRegisterAddress::Not(is_register_col),
+                        Boolean::Constant(_) => todo!()
+                    };
+                    RamAddress::RegisterOrRam(RegisterOrRamAccessAddress { is_register, address: [addr_lo_col, addr_hi_col] })
+                    // from aleksander:
+                    //
                     // let is_register = match is_register {
                     //     Boolean::Is(var) => {
                     //         let [is_register] = graph.layout_memory_subtree_multiple_variables(

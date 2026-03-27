@@ -2,6 +2,8 @@ use super::*;
 use crate::types::Boolean;
 
 const WRITE_BIT: usize = 0;
+const BYTE_BIT: usize = 1;
+const SIGNEXTEND_BIT: usize = 2;
 
 const LB_FUNCT3: u8 = 0b000;
 const LH_FUNCT3: u8 = 0b001;
@@ -26,6 +28,14 @@ impl SubwordOnlyMemoryFamilyCircuitMask {
     // getters for our opcodes
     pub fn perform_write(&self) -> Boolean {
         self.inner[WRITE_BIT]
+    }
+
+    pub fn perform_byte_operation(&self) -> Boolean {
+        self.inner[BYTE_BIT]
+    }
+
+    pub fn perform_signextension(&self) -> Boolean {
+        self.inner[SIGNEXTEND_BIT]
     }
 }
 
@@ -54,6 +64,8 @@ impl OpcodeFamilyDecoder for SubwordOnlyMemoryFamilyDecoder {
                 rd_index = preprocessed_opcode.rd;
                 funct3 = Some(LB_FUNCT3);
                 imm = preprocessed_opcode.imm;
+                bitmask |= 1 << BYTE_BIT;
+                bitmask |= 1 << SIGNEXTEND_BIT;
             }
             InstructionName::Lbu => {
                 assert_ne!(preprocessed_opcode.rd, 0);
@@ -63,6 +75,7 @@ impl OpcodeFamilyDecoder for SubwordOnlyMemoryFamilyDecoder {
                 rd_index = preprocessed_opcode.rd;
                 funct3 = Some(LBU_FUNCT3);
                 imm = preprocessed_opcode.imm;
+                bitmask |= 1 << BYTE_BIT;
             }
             InstructionName::Lh => {
                 assert_ne!(preprocessed_opcode.rd, 0);
@@ -72,6 +85,7 @@ impl OpcodeFamilyDecoder for SubwordOnlyMemoryFamilyDecoder {
                 rd_index = preprocessed_opcode.rd;
                 funct3 = Some(LH_FUNCT3);
                 imm = preprocessed_opcode.imm;
+                bitmask |= 1 << SIGNEXTEND_BIT;
             }
             InstructionName::Lhu => {
                 assert_ne!(preprocessed_opcode.rd, 0);
@@ -90,6 +104,7 @@ impl OpcodeFamilyDecoder for SubwordOnlyMemoryFamilyDecoder {
                 imm = preprocessed_opcode.imm;
                 funct3 = Some(SB_FUNCT3);
                 bitmask |= 1 << WRITE_BIT;
+                bitmask |= 1 << BYTE_BIT;
             }
             InstructionName::Sh => {
                 assert_eq!(preprocessed_opcode.rd, 0);

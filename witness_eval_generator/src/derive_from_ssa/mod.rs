@@ -468,7 +468,7 @@ mod test {
     use std::io::Write;
 
     fn deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &str) -> T {
-        let src = std::fs::File::open(filename).unwrap();
+        let src = std::fs::File::open(filename).expect(&format!("could not find {filename}"));
         serde_json::from_reader(src).unwrap()
     }
 
@@ -552,8 +552,8 @@ mod test {
             "jump_branch_slt_preprocessed",
             "shift_binop_preprocessed",
             // "load_store_preprocessed",
-            // "word_only_load_store_preprocessed",
-            // "subword_only_load_store_preprocessed",
+            "mem_word_only_preprocessed",
+            "mem_subword_only_preprocessed",
             // "mul_div_preprocessed",
             // "mul_div_unsigned_preprocessed",
             // "inits_and_teardowns_preprocessed",

@@ -1,0 +1,3982 @@
+{
+  "trace_len": 16777216,
+  "table_offsets": [
+    0,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    65537,
+    1114113,
+    1114113,
+    1114113,
+    1114113,
+    1114113,
+    1114113,
+    1114113,
+    1114113,
+    1114113,
+    1114113,
+    1114113,
+    1114113,
+    1114113,
+    1114113,
+    1114113,
+    1114113,
+    1114113,
+    1114113,
+    1114113,
+    1114113,
+    1114113,
+    1114113,
+    1114113,
+    1114113,
+    1114113,
+    1114113,
+    1114113,
+    1114113,
+    1114113,
+    1114113
+  ],
+  "total_tables_size": 2162689,
+  "offset_for_decoder_table": 1114113,
+  "has_decoder_lookup": true,
+  "layers": [
+    {
+      "layer": 1,
+      "gates_with_external_connections": [],
+      "cached_relations": [
+        [
+          {
+            "Cached": {
+              "layer": 0,
+              "offset": 0
+            }
+          },
+          {
+            "MemoryTuple": {
+              "address_space": {
+                "Constant": 0
+              },
+              "address": {
+                "U16Space": 4
+              },
+              "timestamp": {
+                "Normal": [
+                  0,
+                  1
+                ]
+              },
+              "value": {
+                "U16Limbs": [
+                  2,
+                  3
+                ]
+              },
+              "timestamp_offset": 0
+            }
+          }
+        ],
+        [
+          {
+            "Cached": {
+              "layer": 0,
+              "offset": 1
+            }
+          },
+          {
+            "MemoryTuple": {
+              "address_space": {
+                "Not": 9
+              },
+              "address": {
+                "U32Space": [
+                  10,
+                  11
+                ]
+              },
+              "timestamp": {
+                "Normal": [
+                  5,
+                  6
+                ]
+              },
+              "value": {
+                "U16Limbs": [
+                  7,
+                  8
+                ]
+              },
+              "timestamp_offset": 0
+            }
+          }
+        ],
+        [
+          {
+            "Cached": {
+              "layer": 0,
+              "offset": 2
+            }
+          },
+          {
+            "MemoryTuple": {
+              "address_space": {
+                "Constant": 0
+              },
+              "address": {
+                "U16Space": 4
+              },
+              "timestamp": {
+                "Normal": [
+                  23,
+                  24
+                ]
+              },
+              "value": {
+                "U16Limbs": [
+                  2,
+                  3
+                ]
+              },
+              "timestamp_offset": 0
+            }
+          }
+        ],
+        [
+          {
+            "Cached": {
+              "layer": 0,
+              "offset": 3
+            }
+          },
+          {
+            "MemoryTuple": {
+              "address_space": {
+                "Not": 9
+              },
+              "address": {
+                "U32Space": [
+                  10,
+                  11
+                ]
+              },
+              "timestamp": {
+                "Normal": [
+                  23,
+                  24
+                ]
+              },
+              "value": {
+                "U16Limbs": [
+                  7,
+                  8
+                ]
+              },
+              "timestamp_offset": 1
+            }
+          }
+        ],
+        [
+          {
+            "Cached": {
+              "layer": 0,
+              "offset": 4
+            }
+          },
+          {
+            "MemoryTuple": {
+              "address_space": {
+                "Is": 9
+              },
+              "address": {
+                "U32Space": [
+                  16,
+                  17
+                ]
+              },
+              "timestamp": {
+                "Normal": [
+                  12,
+                  13
+                ]
+              },
+              "value": {
+                "U16Limbs": [
+                  14,
+                  15
+                ]
+              },
+              "timestamp_offset": 0
+            }
+          }
+        ],
+        [
+          {
+            "Cached": {
+              "layer": 0,
+              "offset": 5
+            }
+          },
+          {
+            "MemoryTuple": {
+              "address_space": {
+                "Constant": 2
+              },
+              "address": {
+                "Constant": 0
+              },
+              "timestamp": {
+                "Normal": [
+                  23,
+                  24
+                ]
+              },
+              "value": {
+                "U16Limbs": [
+                  21,
+                  22
+                ]
+              },
+              "timestamp_offset": 0
+            }
+          }
+        ],
+        [
+          {
+            "Cached": {
+              "layer": 0,
+              "offset": 6
+            }
+          },
+          {
+            "MemoryTuple": {
+              "address_space": {
+                "Is": 9
+              },
+              "address": {
+                "U32Space": [
+                  16,
+                  17
+                ]
+              },
+              "timestamp": {
+                "Normal": [
+                  23,
+                  24
+                ]
+              },
+              "value": {
+                "U16Limbs": [
+                  18,
+                  19
+                ]
+              },
+              "timestamp_offset": 2
+            }
+          }
+        ],
+        [
+          {
+            "Cached": {
+              "layer": 0,
+              "offset": 7
+            }
+          },
+          {
+            "MemoryTuple": {
+              "address_space": {
+                "Constant": 2
+              },
+              "address": {
+                "Constant": 0
+              },
+              "timestamp": {
+                "Normal": [
+                  27,
+                  28
+                ]
+              },
+              "value": {
+                "U16Limbs": [
+                  25,
+                  26
+                ]
+              },
+              "timestamp_offset": 0
+            }
+          }
+        ],
+        [
+          {
+            "Cached": {
+              "layer": 0,
+              "offset": 8
+            }
+          },
+          {
+            "SingleColumnLookup": {
+              "relation": {
+                "input": {
+                  "linear_terms": [
+                    [
+                      2013265920,
+                      {
+                        "BaseLayerMemory": 23
+                      }
+                    ],
+                    [
+                      1,
+                      {
+                        "BaseLayerMemory": 0
+                      }
+                    ],
+                    [
+                      524288,
+                      {
+                        "BaseLayerWitness": 12
+                      }
+                    ]
+                  ],
+                  "constant": 0
+                },
+                "lookup_set_index": 2
+              },
+              "range_check_width": 19
+            }
+          }
+        ],
+        [
+          {
+            "Cached": {
+              "layer": 0,
+              "offset": 9
+            }
+          },
+          {
+            "SingleColumnLookup": {
+              "relation": {
+                "input": {
+                  "linear_terms": [
+                    [
+                      2013265920,
+                      {
+                        "BaseLayerMemory": 24
+                      }
+                    ],
+                    [
+                      1,
+                      {
+                        "BaseLayerMemory": 1
+                      }
+                    ],
+                    [
+                      2013265920,
+                      {
+                        "BaseLayerWitness": 12
+                      }
+                    ]
+                  ],
+                  "constant": 524288
+                },
+                "lookup_set_index": 3
+              },
+              "range_check_width": 19
+            }
+          }
+        ],
+        [
+          {
+            "Cached": {
+              "layer": 0,
+              "offset": 10
+            }
+          },
+          {
+            "SingleColumnLookup": {
+              "relation": {
+                "input": {
+                  "linear_terms": [
+                    [
+                      2013265920,
+                      {
+                        "BaseLayerMemory": 23
+                      }
+                    ],
+                    [
+                      1,
+                      {
+                        "BaseLayerMemory": 5
+                      }
+                    ],
+                    [
+                      524288,
+                      {
+                        "BaseLayerWitness": 13
+                      }
+                    ]
+                  ],
+                  "constant": 2013265920
+                },
+                "lookup_set_index": 4
+              },
+              "range_check_width": 19
+            }
+          }
+        ],
+        [
+          {
+            "Cached": {
+              "layer": 0,
+              "offset": 11
+            }
+          },
+          {
+            "SingleColumnLookup": {
+              "relation": {
+                "input": {
+                  "linear_terms": [
+                    [
+                      2013265920,
+                      {
+                        "BaseLayerMemory": 24
+                      }
+                    ],
+                    [
+                      1,
+                      {
+                        "BaseLayerMemory": 6
+                      }
+                    ],
+                    [
+                      2013265920,
+                      {
+                        "BaseLayerWitness": 13
+                      }
+                    ]
+                  ],
+                  "constant": 524288
+                },
+                "lookup_set_index": 5
+              },
+              "range_check_width": 19
+            }
+          }
+        ],
+        [
+          {
+            "Cached": {
+              "layer": 0,
+              "offset": 12
+            }
+          },
+          {
+            "SingleColumnLookup": {
+              "relation": {
+                "input": {
+                  "linear_terms": [
+                    [
+                      2013265920,
+                      {
+                        "BaseLayerMemory": 23
+                      }
+                    ],
+                    [
+                      1,
+                      {
+                        "BaseLayerMemory": 12
+                      }
+                    ],
+                    [
+                      524288,
+                      {
+                        "BaseLayerWitness": 14
+                      }
+                    ]
+                  ],
+                  "constant": 2013265919
+                },
+                "lookup_set_index": 6
+              },
+              "range_check_width": 19
+            }
+          }
+        ],
+        [
+          {
+            "Cached": {
+              "layer": 0,
+              "offset": 13
+            }
+          },
+          {
+            "SingleColumnLookup": {
+              "relation": {
+                "input": {
+                  "linear_terms": [
+                    [
+                      2013265920,
+                      {
+                        "BaseLayerMemory": 24
+                      }
+                    ],
+                    [
+                      1,
+                      {
+                        "BaseLayerMemory": 13
+                      }
+                    ],
+                    [
+                      2013265920,
+                      {
+                        "BaseLayerWitness": 14
+                      }
+                    ]
+                  ],
+                  "constant": 524288
+                },
+                "lookup_set_index": 7
+              },
+              "range_check_width": 19
+            }
+          }
+        ],
+        [
+          {
+            "Cached": {
+              "layer": 0,
+              "offset": 14
+            }
+          },
+          {
+            "VectorizedLookup": {
+              "columns": [
+                {
+                  "linear_terms": [
+                    [
+                      1,
+                      {
+                        "BaseLayerMemory": 21
+                      }
+                    ]
+                  ],
+                  "constant": 0
+                },
+                {
+                  "linear_terms": [
+                    [
+                      1,
+                      {
+                        "BaseLayerMemory": 22
+                      }
+                    ]
+                  ],
+                  "constant": 0
+                },
+                {
+                  "linear_terms": [
+                    [
+                      1,
+                      {
+                        "BaseLayerMemory": 4
+                      }
+                    ]
+                  ],
+                  "constant": 0
+                },
+                {
+                  "linear_terms": [
+                    [
+                      1,
+                      {
+                        "BaseLayerWitness": 0
+                      }
+                    ]
+                  ],
+                  "constant": 0
+                },
+                {
+                  "linear_terms": [
+                    [
+                      1,
+                      {
+                        "BaseLayerWitness": 1
+                      }
+                    ]
+                  ],
+                  "constant": 0
+                },
+                {
+                  "linear_terms": [
+                    [
+                      1,
+                      {
+                        "BaseLayerWitness": 2
+                      }
+                    ]
+                  ],
+                  "constant": 0
+                },
+                {
+                  "linear_terms": [
+                    [
+                      1,
+                      {
+                        "BaseLayerWitness": 3
+                      }
+                    ]
+                  ],
+                  "constant": 0
+                },
+                {
+                  "linear_terms": [
+                    [
+                      1,
+                      {
+                        "BaseLayerMemory": 9
+                      }
+                    ]
+                  ],
+                  "constant": 0
+                },
+                {
+                  "linear_terms": [],
+                  "constant": 46
+                }
+              ],
+              "lookup_set_index": 18446744073709551615
+            }
+          }
+        ],
+        [
+          {
+            "Cached": {
+              "layer": 0,
+              "offset": 15
+            }
+          },
+          {
+            "VectorizedLookupSetup": [
+              {
+                "Setup": 2
+              },
+              {
+                "Setup": 3
+              },
+              {
+                "Setup": 4
+              },
+              {
+                "Setup": 5
+              },
+              {
+                "Setup": 6
+              },
+              {
+                "Setup": 7
+              },
+              {
+                "Setup": 8
+              },
+              {
+                "Setup": 9
+              },
+              {
+                "Setup": 10
+              }
+            ]
+          }
+        ],
+        [
+          {
+            "Cached": {
+              "layer": 0,
+              "offset": 16
+            }
+          },
+          {
+            "VectorizedLookup": {
+              "columns": [
+                {
+                  "linear_terms": [
+                    [
+                      1,
+                      {
+                        "BaseLayerWitness": 5
+                      }
+                    ]
+                  ],
+                  "constant": 0
+                },
+                {
+                  "linear_terms": [
+                    [
+                      1,
+                      {
+                        "BaseLayerWitness": 8
+                      }
+                    ]
+                  ],
+                  "constant": 0
+                },
+                {
+                  "linear_terms": [
+                    [
+                      1,
+                      {
+                        "BaseLayerWitness": 9
+                      }
+                    ]
+                  ],
+                  "constant": 0
+                },
+                {
+                  "linear_terms": [],
+                  "constant": 0
+                },
+                {
+                  "linear_terms": [],
+                  "constant": 0
+                },
+                {
+                  "linear_terms": [],
+                  "constant": 0
+                },
+                {
+                  "linear_terms": [],
+                  "constant": 0
+                },
+                {
+                  "linear_terms": [],
+                  "constant": 0
+                },
+                {
+                  "linear_terms": [],
+                  "constant": 15
+                }
+              ],
+              "lookup_set_index": 0
+            }
+          }
+        ],
+        [
+          {
+            "Cached": {
+              "layer": 0,
+              "offset": 17
+            }
+          },
+          {
+            "VectorizedLookup": {
+              "columns": [
+                {
+                  "linear_terms": [
+                    [
+                      1,
+                      {
+                        "BaseLayerWitness": 4
+                      }
+                    ],
+                    [
+                      65536,
+                      {
+                        "BaseLayerWitness": 9
+                      }
+                    ]
+                  ],
+                  "constant": 0
+                },
+                {
+                  "linear_terms": [
+                    [
+                      1,
+                      {
+                        "BaseLayerWitness": 10
+                      }
+                    ]
+                  ],
+                  "constant": 0
+                },
+                {
+                  "linear_terms": [
+                    [
+                      1,
+                      {
+                        "BaseLayerWitness": 11
+                      }
+                    ]
+                  ],
+                  "constant": 0
+                },
+                {
+                  "linear_terms": [],
+                  "constant": 0
+                },
+                {
+                  "linear_terms": [],
+                  "constant": 0
+                },
+                {
+                  "linear_terms": [],
+                  "constant": 0
+                },
+                {
+                  "linear_terms": [],
+                  "constant": 0
+                },
+                {
+                  "linear_terms": [],
+                  "constant": 0
+                },
+                {
+                  "linear_terms": [
+                    [
+                      16,
+                      {
+                        "BaseLayerMemory": 20
+                      }
+                    ]
+                  ],
+                  "constant": 0
+                }
+              ],
+              "lookup_set_index": 1
+            }
+          }
+        ]
+      ],
+      "gates": [
+        {
+          "output_layer": 1,
+          "enforced_relation": {
+            "Copy": {
+              "input": {
+                "BaseLayerMemory": 20
+              },
+              "output": {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 0
+                }
+              }
+            }
+          }
+        },
+        {
+          "output_layer": 1,
+          "enforced_relation": {
+            "InitialGrandProductFromCaches": {
+              "input": [
+                {
+                  "Cached": {
+                    "layer": 0,
+                    "offset": 0
+                  }
+                },
+                {
+                  "Cached": {
+                    "layer": 0,
+                    "offset": 1
+                  }
+                }
+              ],
+              "output": {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 1
+                }
+              }
+            }
+          }
+        },
+        {
+          "output_layer": 1,
+          "enforced_relation": {
+            "InitialGrandProductFromCaches": {
+              "input": [
+                {
+                  "Cached": {
+                    "layer": 0,
+                    "offset": 2
+                  }
+                },
+                {
+                  "Cached": {
+                    "layer": 0,
+                    "offset": 3
+                  }
+                }
+              ],
+              "output": {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 2
+                }
+              }
+            }
+          }
+        },
+        {
+          "output_layer": 1,
+          "enforced_relation": {
+            "InitialGrandProductFromCaches": {
+              "input": [
+                {
+                  "Cached": {
+                    "layer": 0,
+                    "offset": 4
+                  }
+                },
+                {
+                  "Cached": {
+                    "layer": 0,
+                    "offset": 5
+                  }
+                }
+              ],
+              "output": {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 3
+                }
+              }
+            }
+          }
+        },
+        {
+          "output_layer": 1,
+          "enforced_relation": {
+            "InitialGrandProductFromCaches": {
+              "input": [
+                {
+                  "Cached": {
+                    "layer": 0,
+                    "offset": 6
+                  }
+                },
+                {
+                  "Cached": {
+                    "layer": 0,
+                    "offset": 7
+                  }
+                }
+              ],
+              "output": {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 4
+                }
+              }
+            }
+          }
+        },
+        {
+          "output_layer": 1,
+          "enforced_relation": {
+            "LookupFromMaterializedBaseInputWithSetup": {
+              "input": {
+                "BaseLayerMemory": 25
+              },
+              "setup": [
+                {
+                  "BaseLayerWitness": 15
+                },
+                {
+                  "Setup": 0
+                }
+              ],
+              "output": [
+                {
+                  "InnerLayer": {
+                    "layer": 1,
+                    "offset": 5
+                  }
+                },
+                {
+                  "InnerLayer": {
+                    "layer": 1,
+                    "offset": 6
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "output_layer": 1,
+          "enforced_relation": {
+            "Copy": {
+              "input": {
+                "BaseLayerMemory": 26
+              },
+              "output": {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 7
+                }
+              }
+            }
+          }
+        },
+        {
+          "output_layer": 1,
+          "enforced_relation": {
+            "LookupFromMaterializedBaseInputWithSetup": {
+              "input": {
+                "BaseLayerMemory": 27
+              },
+              "setup": [
+                {
+                  "BaseLayerWitness": 16
+                },
+                {
+                  "Setup": 1
+                }
+              ],
+              "output": [
+                {
+                  "InnerLayer": {
+                    "layer": 1,
+                    "offset": 8
+                  }
+                },
+                {
+                  "InnerLayer": {
+                    "layer": 1,
+                    "offset": 9
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "output_layer": 1,
+          "enforced_relation": {
+            "LookupPairFromMaterializedBaseInputs": {
+              "input": [
+                {
+                  "BaseLayerMemory": 28
+                },
+                {
+                  "Cached": {
+                    "layer": 0,
+                    "offset": 8
+                  }
+                }
+              ],
+              "output": [
+                {
+                  "InnerLayer": {
+                    "layer": 1,
+                    "offset": 10
+                  }
+                },
+                {
+                  "InnerLayer": {
+                    "layer": 1,
+                    "offset": 11
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "output_layer": 1,
+          "enforced_relation": {
+            "LookupPairFromMaterializedBaseInputs": {
+              "input": [
+                {
+                  "Cached": {
+                    "layer": 0,
+                    "offset": 9
+                  }
+                },
+                {
+                  "Cached": {
+                    "layer": 0,
+                    "offset": 10
+                  }
+                }
+              ],
+              "output": [
+                {
+                  "InnerLayer": {
+                    "layer": 1,
+                    "offset": 12
+                  }
+                },
+                {
+                  "InnerLayer": {
+                    "layer": 1,
+                    "offset": 13
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "output_layer": 1,
+          "enforced_relation": {
+            "LookupPairFromMaterializedBaseInputs": {
+              "input": [
+                {
+                  "Cached": {
+                    "layer": 0,
+                    "offset": 11
+                  }
+                },
+                {
+                  "Cached": {
+                    "layer": 0,
+                    "offset": 12
+                  }
+                }
+              ],
+              "output": [
+                {
+                  "InnerLayer": {
+                    "layer": 1,
+                    "offset": 14
+                  }
+                },
+                {
+                  "InnerLayer": {
+                    "layer": 1,
+                    "offset": 15
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "output_layer": 1,
+          "enforced_relation": {
+            "Copy": {
+              "input": {
+                "Cached": {
+                  "layer": 0,
+                  "offset": 13
+                }
+              },
+              "output": {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 16
+                }
+              }
+            }
+          }
+        },
+        {
+          "output_layer": 1,
+          "enforced_relation": {
+            "LookupWithCachedDensAndSetup": {
+              "input": [
+                {
+                  "BaseLayerMemory": 20
+                },
+                {
+                  "Cached": {
+                    "layer": 0,
+                    "offset": 14
+                  }
+                }
+              ],
+              "setup": [
+                {
+                  "BaseLayerWitness": 17
+                },
+                {
+                  "Cached": {
+                    "layer": 0,
+                    "offset": 15
+                  }
+                }
+              ],
+              "output": [
+                {
+                  "InnerLayer": {
+                    "layer": 1,
+                    "offset": 17
+                  }
+                },
+                {
+                  "InnerLayer": {
+                    "layer": 1,
+                    "offset": 18
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "output_layer": 1,
+          "enforced_relation": {
+            "LookupPairFromMaterializedVectorInputs": {
+              "input": [
+                {
+                  "Cached": {
+                    "layer": 0,
+                    "offset": 16
+                  }
+                },
+                {
+                  "Cached": {
+                    "layer": 0,
+                    "offset": 17
+                  }
+                }
+              ],
+              "output": [
+                {
+                  "InnerLayer": {
+                    "layer": 1,
+                    "offset": 19
+                  }
+                },
+                {
+                  "InnerLayer": {
+                    "layer": 1,
+                    "offset": 20
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "output_layer": 1,
+          "enforced_relation": {
+            "EnforceConstraintsMaxQuadratic": {
+              "input": {
+                "quadratic_terms": [
+                  [
+                    [
+                      {
+                        "BaseLayerWitness": 0
+                      },
+                      {
+                        "BaseLayerMemory": 9
+                      }
+                    ],
+                    [
+                      [
+                        1,
+                        4
+                      ]
+                    ]
+                  ],
+                  [
+                    [
+                      {
+                        "BaseLayerWitness": 1
+                      },
+                      {
+                        "BaseLayerMemory": 9
+                      }
+                    ],
+                    [
+                      [
+                        2013265920,
+                        6
+                      ]
+                    ]
+                  ],
+                  [
+                    [
+                      {
+                        "BaseLayerWitness": 6
+                      },
+                      {
+                        "BaseLayerWitness": 6
+                      }
+                    ],
+                    [
+                      [
+                        1,
+                        15
+                      ]
+                    ]
+                  ],
+                  [
+                    [
+                      {
+                        "BaseLayerWitness": 7
+                      },
+                      {
+                        "BaseLayerWitness": 7
+                      }
+                    ],
+                    [
+                      [
+                        1,
+                        16
+                      ]
+                    ]
+                  ],
+                  [
+                    [
+                      {
+                        "BaseLayerWitness": 8
+                      },
+                      {
+                        "BaseLayerWitness": 10
+                      }
+                    ],
+                    [
+                      [
+                        1,
+                        8
+                      ]
+                    ]
+                  ],
+                  [
+                    [
+                      {
+                        "BaseLayerWitness": 8
+                      },
+                      {
+                        "BaseLayerWitness": 11
+                      }
+                    ],
+                    [
+                      [
+                        1,
+                        9
+                      ]
+                    ]
+                  ],
+                  [
+                    [
+                      {
+                        "BaseLayerWitness": 8
+                      },
+                      {
+                        "BaseLayerMemory": 7
+                      }
+                    ],
+                    [
+                      [
+                        2013265920,
+                        8
+                      ]
+                    ]
+                  ],
+                  [
+                    [
+                      {
+                        "BaseLayerWitness": 8
+                      },
+                      {
+                        "BaseLayerMemory": 8
+                      }
+                    ],
+                    [
+                      [
+                        2013265920,
+                        9
+                      ]
+                    ]
+                  ],
+                  [
+                    [
+                      {
+                        "BaseLayerWitness": 12
+                      },
+                      {
+                        "BaseLayerWitness": 12
+                      }
+                    ],
+                    [
+                      [
+                        1,
+                        17
+                      ]
+                    ]
+                  ],
+                  [
+                    [
+                      {
+                        "BaseLayerWitness": 13
+                      },
+                      {
+                        "BaseLayerWitness": 13
+                      }
+                    ],
+                    [
+                      [
+                        1,
+                        18
+                      ]
+                    ]
+                  ],
+                  [
+                    [
+                      {
+                        "BaseLayerWitness": 14
+                      },
+                      {
+                        "BaseLayerWitness": 14
+                      }
+                    ],
+                    [
+                      [
+                        1,
+                        19
+                      ]
+                    ]
+                  ],
+                  [
+                    [
+                      {
+                        "BaseLayerMemory": 9
+                      },
+                      {
+                        "BaseLayerWitness": 4
+                      }
+                    ],
+                    [
+                      [
+                        2013265920,
+                        4
+                      ],
+                      [
+                        1,
+                        6
+                      ]
+                    ]
+                  ],
+                  [
+                    [
+                      {
+                        "BaseLayerMemory": 9
+                      },
+                      {
+                        "BaseLayerWitness": 5
+                      }
+                    ],
+                    [
+                      [
+                        2013265920,
+                        5
+                      ],
+                      [
+                        1,
+                        7
+                      ]
+                    ]
+                  ],
+                  [
+                    [
+                      {
+                        "BaseLayerMemory": 9
+                      },
+                      {
+                        "BaseLayerWitness": 8
+                      }
+                    ],
+                    [
+                      [
+                        1,
+                        3
+                      ]
+                    ]
+                  ],
+                  [
+                    [
+                      {
+                        "BaseLayerMemory": 9
+                      },
+                      {
+                        "BaseLayerMemory": 9
+                      }
+                    ],
+                    [
+                      [
+                        1,
+                        14
+                      ]
+                    ]
+                  ],
+                  [
+                    [
+                      {
+                        "BaseLayerMemory": 20
+                      },
+                      {
+                        "BaseLayerMemory": 20
+                      }
+                    ],
+                    [
+                      [
+                        1,
+                        0
+                      ]
+                    ]
+                  ],
+                  [
+                    [
+                      {
+                        "BaseLayerMemory": 21
+                      },
+                      {
+                        "BaseLayerMemory": 21
+                      }
+                    ],
+                    [
+                      [
+                        943718400,
+                        10
+                      ]
+                    ]
+                  ],
+                  [
+                    [
+                      {
+                        "BaseLayerMemory": 21
+                      },
+                      {
+                        "BaseLayerMemory": 25
+                      }
+                    ],
+                    [
+                      [
+                        125829121,
+                        10
+                      ]
+                    ]
+                  ],
+                  [
+                    [
+                      {
+                        "BaseLayerMemory": 23
+                      },
+                      {
+                        "BaseLayerMemory": 23
+                      }
+                    ],
+                    [
+                      [
+                        14745600,
+                        12
+                      ]
+                    ]
+                  ],
+                  [
+                    [
+                      {
+                        "BaseLayerMemory": 23
+                      },
+                      {
+                        "BaseLayerMemory": 27
+                      }
+                    ],
+                    [
+                      [
+                        1983774721,
+                        12
+                      ]
+                    ]
+                  ],
+                  [
+                    [
+                      {
+                        "BaseLayerMemory": 25
+                      },
+                      {
+                        "BaseLayerMemory": 25
+                      }
+                    ],
+                    [
+                      [
+                        943718400,
+                        10
+                      ]
+                    ]
+                  ],
+                  [
+                    [
+                      {
+                        "BaseLayerMemory": 27
+                      },
+                      {
+                        "BaseLayerMemory": 27
+                      }
+                    ],
+                    [
+                      [
+                        14745600,
+                        12
+                      ]
+                    ]
+                  ]
+                ],
+                "linear_terms": [
+                  [
+                    {
+                      "BaseLayerWitness": 1
+                    },
+                    [
+                      [
+                        1,
+                        6
+                      ]
+                    ]
+                  ],
+                  [
+                    {
+                      "BaseLayerWitness": 2
+                    },
+                    [
+                      [
+                        1,
+                        1
+                      ]
+                    ]
+                  ],
+                  [
+                    {
+                      "BaseLayerWitness": 3
+                    },
+                    [
+                      [
+                        1,
+                        2
+                      ]
+                    ]
+                  ],
+                  [
+                    {
+                      "BaseLayerWitness": 4
+                    },
+                    [
+                      [
+                        2013265920,
+                        1
+                      ],
+                      [
+                        1,
+                        4
+                      ]
+                    ]
+                  ],
+                  [
+                    {
+                      "BaseLayerWitness": 5
+                    },
+                    [
+                      [
+                        2013265920,
+                        2
+                      ],
+                      [
+                        1,
+                        5
+                      ]
+                    ]
+                  ],
+                  [
+                    {
+                      "BaseLayerWitness": 6
+                    },
+                    [
+                      [
+                        2013200385,
+                        1
+                      ],
+                      [
+                        1,
+                        2
+                      ],
+                      [
+                        2013265920,
+                        15
+                      ]
+                    ]
+                  ],
+                  [
+                    {
+                      "BaseLayerWitness": 7
+                    },
+                    [
+                      [
+                        2013200385,
+                        2
+                      ],
+                      [
+                        2013265920,
+                        16
+                      ]
+                    ]
+                  ],
+                  [
+                    {
+                      "BaseLayerWitness": 12
+                    },
+                    [
+                      [
+                        2013265920,
+                        17
+                      ]
+                    ]
+                  ],
+                  [
+                    {
+                      "BaseLayerWitness": 13
+                    },
+                    [
+                      [
+                        2013265920,
+                        18
+                      ]
+                    ]
+                  ],
+                  [
+                    {
+                      "BaseLayerWitness": 14
+                    },
+                    [
+                      [
+                        2013265920,
+                        19
+                      ]
+                    ]
+                  ],
+                  [
+                    {
+                      "BaseLayerMemory": 2
+                    },
+                    [
+                      [
+                        1,
+                        1
+                      ]
+                    ]
+                  ],
+                  [
+                    {
+                      "BaseLayerMemory": 3
+                    },
+                    [
+                      [
+                        1,
+                        2
+                      ]
+                    ]
+                  ],
+                  [
+                    {
+                      "BaseLayerMemory": 7
+                    },
+                    [
+                      [
+                        1,
+                        8
+                      ]
+                    ]
+                  ],
+                  [
+                    {
+                      "BaseLayerMemory": 8
+                    },
+                    [
+                      [
+                        1,
+                        9
+                      ]
+                    ]
+                  ],
+                  [
+                    {
+                      "BaseLayerMemory": 9
+                    },
+                    [
+                      [
+                        2013265920,
+                        14
+                      ]
+                    ]
+                  ],
+                  [
+                    {
+                      "BaseLayerMemory": 10
+                    },
+                    [
+                      [
+                        2013265920,
+                        4
+                      ]
+                    ]
+                  ],
+                  [
+                    {
+                      "BaseLayerMemory": 11
+                    },
+                    [
+                      [
+                        2013265920,
+                        5
+                      ]
+                    ]
+                  ],
+                  [
+                    {
+                      "BaseLayerMemory": 16
+                    },
+                    [
+                      [
+                        2013265920,
+                        6
+                      ]
+                    ]
+                  ],
+                  [
+                    {
+                      "BaseLayerMemory": 17
+                    },
+                    [
+                      [
+                        2013265920,
+                        7
+                      ]
+                    ]
+                  ],
+                  [
+                    {
+                      "BaseLayerMemory": 18
+                    },
+                    [
+                      [
+                        2013265920,
+                        8
+                      ]
+                    ]
+                  ],
+                  [
+                    {
+                      "BaseLayerMemory": 19
+                    },
+                    [
+                      [
+                        2013265920,
+                        9
+                      ]
+                    ]
+                  ],
+                  [
+                    {
+                      "BaseLayerMemory": 20
+                    },
+                    [
+                      [
+                        2013265920,
+                        0
+                      ]
+                    ]
+                  ],
+                  [
+                    {
+                      "BaseLayerMemory": 21
+                    },
+                    [
+                      [
+                        1509980157,
+                        10
+                      ],
+                      [
+                        2013235201,
+                        11
+                      ]
+                    ]
+                  ],
+                  [
+                    {
+                      "BaseLayerMemory": 22
+                    },
+                    [
+                      [
+                        1,
+                        11
+                      ]
+                    ]
+                  ],
+                  [
+                    {
+                      "BaseLayerMemory": 23
+                    },
+                    [
+                      [
+                        117968640,
+                        12
+                      ],
+                      [
+                        3840,
+                        13
+                      ]
+                    ]
+                  ],
+                  [
+                    {
+                      "BaseLayerMemory": 24
+                    },
+                    [
+                      [
+                        2013265920,
+                        13
+                      ]
+                    ]
+                  ],
+                  [
+                    {
+                      "BaseLayerMemory": 25
+                    },
+                    [
+                      [
+                        503285764,
+                        10
+                      ],
+                      [
+                        30720,
+                        11
+                      ]
+                    ]
+                  ],
+                  [
+                    {
+                      "BaseLayerMemory": 26
+                    },
+                    [
+                      [
+                        2013265920,
+                        11
+                      ]
+                    ]
+                  ],
+                  [
+                    {
+                      "BaseLayerMemory": 27
+                    },
+                    [
+                      [
+                        1895297281,
+                        12
+                      ],
+                      [
+                        2013262081,
+                        13
+                      ]
+                    ]
+                  ],
+                  [
+                    {
+                      "BaseLayerMemory": 28
+                    },
+                    [
+                      [
+                        1,
+                        13
+                      ]
+                    ]
+                  ]
+                ],
+                "constants": [
+                  [
+                    1006755833,
+                    10
+                  ],
+                  [
+                    2013143041,
+                    11
+                  ],
+                  [
+                    235944960,
+                    12
+                  ],
+                  [
+                    15360,
+                    13
+                  ]
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "additional_base_layer_openings": [
+        {
+          "BaseLayerWitness": 9
+        },
+        {
+          "BaseLayerWitness": 15
+        },
+        {
+          "BaseLayerWitness": 16
+        },
+        {
+          "BaseLayerWitness": 17
+        },
+        {
+          "BaseLayerMemory": 0
+        },
+        {
+          "BaseLayerMemory": 1
+        },
+        {
+          "BaseLayerMemory": 4
+        },
+        {
+          "BaseLayerMemory": 5
+        },
+        {
+          "BaseLayerMemory": 6
+        },
+        {
+          "BaseLayerMemory": 12
+        },
+        {
+          "BaseLayerMemory": 13
+        },
+        {
+          "BaseLayerMemory": 14
+        },
+        {
+          "BaseLayerMemory": 15
+        },
+        {
+          "Setup": 2
+        },
+        {
+          "Setup": 3
+        },
+        {
+          "Setup": 4
+        },
+        {
+          "Setup": 5
+        },
+        {
+          "Setup": 6
+        },
+        {
+          "Setup": 7
+        },
+        {
+          "Setup": 8
+        },
+        {
+          "Setup": 9
+        },
+        {
+          "Setup": 10
+        }
+      ]
+    },
+    {
+      "layer": 2,
+      "gates_with_external_connections": [],
+      "cached_relations": [],
+      "gates": [
+        {
+          "output_layer": 2,
+          "enforced_relation": {
+            "Copy": {
+              "input": {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 0
+                }
+              },
+              "output": {
+                "InnerLayer": {
+                  "layer": 2,
+                  "offset": 0
+                }
+              }
+            }
+          }
+        },
+        {
+          "output_layer": 2,
+          "enforced_relation": {
+            "TrivialProduct": {
+              "input": [
+                {
+                  "InnerLayer": {
+                    "layer": 1,
+                    "offset": 1
+                  }
+                },
+                {
+                  "InnerLayer": {
+                    "layer": 1,
+                    "offset": 3
+                  }
+                }
+              ],
+              "output": {
+                "InnerLayer": {
+                  "layer": 2,
+                  "offset": 1
+                }
+              }
+            }
+          }
+        },
+        {
+          "output_layer": 2,
+          "enforced_relation": {
+            "TrivialProduct": {
+              "input": [
+                {
+                  "InnerLayer": {
+                    "layer": 1,
+                    "offset": 2
+                  }
+                },
+                {
+                  "InnerLayer": {
+                    "layer": 1,
+                    "offset": 4
+                  }
+                }
+              ],
+              "output": {
+                "InnerLayer": {
+                  "layer": 2,
+                  "offset": 2
+                }
+              }
+            }
+          }
+        },
+        {
+          "output_layer": 2,
+          "enforced_relation": {
+            "LookupUnbalancedPairWithMaterializedBaseInputs": {
+              "input": [
+                {
+                  "InnerLayer": {
+                    "layer": 1,
+                    "offset": 5
+                  }
+                },
+                {
+                  "InnerLayer": {
+                    "layer": 1,
+                    "offset": 6
+                  }
+                }
+              ],
+              "remainder": {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 7
+                }
+              },
+              "output": [
+                {
+                  "InnerLayer": {
+                    "layer": 2,
+                    "offset": 3
+                  }
+                },
+                {
+                  "InnerLayer": {
+                    "layer": 2,
+                    "offset": 4
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "output_layer": 2,
+          "enforced_relation": {
+            "LookupUnbalancedPairWithMaterializedBaseInputs": {
+              "input": [
+                {
+                  "InnerLayer": {
+                    "layer": 1,
+                    "offset": 14
+                  }
+                },
+                {
+                  "InnerLayer": {
+                    "layer": 1,
+                    "offset": 15
+                  }
+                }
+              ],
+              "remainder": {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 16
+                }
+              },
+              "output": [
+                {
+                  "InnerLayer": {
+                    "layer": 2,
+                    "offset": 5
+                  }
+                },
+                {
+                  "InnerLayer": {
+                    "layer": 2,
+                    "offset": 6
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "output_layer": 2,
+          "enforced_relation": {
+            "AggregateLookupRationalPair": {
+              "input": [
+                [
+                  {
+                    "InnerLayer": {
+                      "layer": 1,
+                      "offset": 12
+                    }
+                  },
+                  {
+                    "InnerLayer": {
+                      "layer": 1,
+                      "offset": 13
+                    }
+                  }
+                ],
+                [
+                  {
+                    "InnerLayer": {
+                      "layer": 1,
+                      "offset": 10
+                    }
+                  },
+                  {
+                    "InnerLayer": {
+                      "layer": 1,
+                      "offset": 11
+                    }
+                  }
+                ]
+              ],
+              "output": [
+                {
+                  "InnerLayer": {
+                    "layer": 2,
+                    "offset": 7
+                  }
+                },
+                {
+                  "InnerLayer": {
+                    "layer": 2,
+                    "offset": 8
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "output_layer": 2,
+          "enforced_relation": {
+            "Copy": {
+              "input": {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 8
+                }
+              },
+              "output": {
+                "InnerLayer": {
+                  "layer": 2,
+                  "offset": 9
+                }
+              }
+            }
+          }
+        },
+        {
+          "output_layer": 2,
+          "enforced_relation": {
+            "Copy": {
+              "input": {
+                "InnerLayer": {
+                  "layer": 1,
+                  "offset": 9
+                }
+              },
+              "output": {
+                "InnerLayer": {
+                  "layer": 2,
+                  "offset": 10
+                }
+              }
+            }
+          }
+        },
+        {
+          "output_layer": 2,
+          "enforced_relation": {
+            "AggregateLookupRationalPair": {
+              "input": [
+                [
+                  {
+                    "InnerLayer": {
+                      "layer": 1,
+                      "offset": 19
+                    }
+                  },
+                  {
+                    "InnerLayer": {
+                      "layer": 1,
+                      "offset": 20
+                    }
+                  }
+                ],
+                [
+                  {
+                    "InnerLayer": {
+                      "layer": 1,
+                      "offset": 17
+                    }
+                  },
+                  {
+                    "InnerLayer": {
+                      "layer": 1,
+                      "offset": 18
+                    }
+                  }
+                ]
+              ],
+              "output": [
+                {
+                  "InnerLayer": {
+                    "layer": 2,
+                    "offset": 11
+                  }
+                },
+                {
+                  "InnerLayer": {
+                    "layer": 2,
+                    "offset": 12
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "additional_base_layer_openings": []
+    },
+    {
+      "layer": 3,
+      "gates_with_external_connections": [],
+      "cached_relations": [],
+      "gates": [
+        {
+          "output_layer": 3,
+          "enforced_relation": {
+            "MaskIntoIdentityProduct": {
+              "input": {
+                "InnerLayer": {
+                  "layer": 2,
+                  "offset": 1
+                }
+              },
+              "mask": {
+                "InnerLayer": {
+                  "layer": 2,
+                  "offset": 0
+                }
+              },
+              "output": {
+                "InnerLayer": {
+                  "layer": 3,
+                  "offset": 0
+                }
+              }
+            }
+          }
+        },
+        {
+          "output_layer": 3,
+          "enforced_relation": {
+            "MaskIntoIdentityProduct": {
+              "input": {
+                "InnerLayer": {
+                  "layer": 2,
+                  "offset": 2
+                }
+              },
+              "mask": {
+                "InnerLayer": {
+                  "layer": 2,
+                  "offset": 0
+                }
+              },
+              "output": {
+                "InnerLayer": {
+                  "layer": 3,
+                  "offset": 1
+                }
+              }
+            }
+          }
+        },
+        {
+          "output_layer": 3,
+          "enforced_relation": {
+            "AggregateLookupRationalPair": {
+              "input": [
+                [
+                  {
+                    "InnerLayer": {
+                      "layer": 2,
+                      "offset": 9
+                    }
+                  },
+                  {
+                    "InnerLayer": {
+                      "layer": 2,
+                      "offset": 10
+                    }
+                  }
+                ],
+                [
+                  {
+                    "InnerLayer": {
+                      "layer": 2,
+                      "offset": 7
+                    }
+                  },
+                  {
+                    "InnerLayer": {
+                      "layer": 2,
+                      "offset": 8
+                    }
+                  }
+                ]
+              ],
+              "output": [
+                {
+                  "InnerLayer": {
+                    "layer": 3,
+                    "offset": 2
+                  }
+                },
+                {
+                  "InnerLayer": {
+                    "layer": 3,
+                    "offset": 3
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "output_layer": 3,
+          "enforced_relation": {
+            "Copy": {
+              "input": {
+                "InnerLayer": {
+                  "layer": 2,
+                  "offset": 5
+                }
+              },
+              "output": {
+                "InnerLayer": {
+                  "layer": 3,
+                  "offset": 4
+                }
+              }
+            }
+          }
+        },
+        {
+          "output_layer": 3,
+          "enforced_relation": {
+            "Copy": {
+              "input": {
+                "InnerLayer": {
+                  "layer": 2,
+                  "offset": 6
+                }
+              },
+              "output": {
+                "InnerLayer": {
+                  "layer": 3,
+                  "offset": 5
+                }
+              }
+            }
+          }
+        },
+        {
+          "output_layer": 3,
+          "enforced_relation": {
+            "Copy": {
+              "input": {
+                "InnerLayer": {
+                  "layer": 2,
+                  "offset": 3
+                }
+              },
+              "output": {
+                "InnerLayer": {
+                  "layer": 3,
+                  "offset": 6
+                }
+              }
+            }
+          }
+        },
+        {
+          "output_layer": 3,
+          "enforced_relation": {
+            "Copy": {
+              "input": {
+                "InnerLayer": {
+                  "layer": 2,
+                  "offset": 4
+                }
+              },
+              "output": {
+                "InnerLayer": {
+                  "layer": 3,
+                  "offset": 7
+                }
+              }
+            }
+          }
+        },
+        {
+          "output_layer": 3,
+          "enforced_relation": {
+            "Copy": {
+              "input": {
+                "InnerLayer": {
+                  "layer": 2,
+                  "offset": 11
+                }
+              },
+              "output": {
+                "InnerLayer": {
+                  "layer": 3,
+                  "offset": 8
+                }
+              }
+            }
+          }
+        },
+        {
+          "output_layer": 3,
+          "enforced_relation": {
+            "Copy": {
+              "input": {
+                "InnerLayer": {
+                  "layer": 2,
+                  "offset": 12
+                }
+              },
+              "output": {
+                "InnerLayer": {
+                  "layer": 3,
+                  "offset": 9
+                }
+              }
+            }
+          }
+        }
+      ],
+      "additional_base_layer_openings": []
+    },
+    {
+      "layer": 4,
+      "gates_with_external_connections": [
+        {
+          "output_layer": 4,
+          "enforced_relation": {
+            "AggregateLookupRationalPair": {
+              "input": [
+                [
+                  {
+                    "InnerLayer": {
+                      "layer": 3,
+                      "offset": 4
+                    }
+                  },
+                  {
+                    "InnerLayer": {
+                      "layer": 3,
+                      "offset": 5
+                    }
+                  }
+                ],
+                [
+                  {
+                    "InnerLayer": {
+                      "layer": 3,
+                      "offset": 2
+                    }
+                  },
+                  {
+                    "InnerLayer": {
+                      "layer": 3,
+                      "offset": 3
+                    }
+                  }
+                ]
+              ],
+              "output": [
+                {
+                  "InnerLayer": {
+                    "layer": 4,
+                    "offset": 0
+                  }
+                },
+                {
+                  "InnerLayer": {
+                    "layer": 4,
+                    "offset": 1
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "output_layer": 4,
+          "enforced_relation": {
+            "Copy": {
+              "input": {
+                "InnerLayer": {
+                  "layer": 3,
+                  "offset": 0
+                }
+              },
+              "output": {
+                "InnerLayer": {
+                  "layer": 4,
+                  "offset": 2
+                }
+              }
+            }
+          }
+        },
+        {
+          "output_layer": 4,
+          "enforced_relation": {
+            "Copy": {
+              "input": {
+                "InnerLayer": {
+                  "layer": 3,
+                  "offset": 1
+                }
+              },
+              "output": {
+                "InnerLayer": {
+                  "layer": 4,
+                  "offset": 3
+                }
+              }
+            }
+          }
+        },
+        {
+          "output_layer": 4,
+          "enforced_relation": {
+            "Copy": {
+              "input": {
+                "InnerLayer": {
+                  "layer": 3,
+                  "offset": 6
+                }
+              },
+              "output": {
+                "InnerLayer": {
+                  "layer": 4,
+                  "offset": 4
+                }
+              }
+            }
+          }
+        },
+        {
+          "output_layer": 4,
+          "enforced_relation": {
+            "Copy": {
+              "input": {
+                "InnerLayer": {
+                  "layer": 3,
+                  "offset": 7
+                }
+              },
+              "output": {
+                "InnerLayer": {
+                  "layer": 4,
+                  "offset": 5
+                }
+              }
+            }
+          }
+        },
+        {
+          "output_layer": 4,
+          "enforced_relation": {
+            "Copy": {
+              "input": {
+                "InnerLayer": {
+                  "layer": 3,
+                  "offset": 8
+                }
+              },
+              "output": {
+                "InnerLayer": {
+                  "layer": 4,
+                  "offset": 6
+                }
+              }
+            }
+          }
+        },
+        {
+          "output_layer": 4,
+          "enforced_relation": {
+            "Copy": {
+              "input": {
+                "InnerLayer": {
+                  "layer": 3,
+                  "offset": 9
+                }
+              },
+              "output": {
+                "InnerLayer": {
+                  "layer": 4,
+                  "offset": 7
+                }
+              }
+            }
+          }
+        }
+      ],
+      "cached_relations": [],
+      "gates": [],
+      "additional_base_layer_openings": []
+    }
+  ],
+  "global_output_map": {
+    "PermutationProduct": [
+      {
+        "InnerLayer": {
+          "layer": 4,
+          "offset": 2
+        }
+      },
+      {
+        "InnerLayer": {
+          "layer": 4,
+          "offset": 3
+        }
+      }
+    ],
+    "Lookup16Bits": [
+      {
+        "InnerLayer": {
+          "layer": 4,
+          "offset": 4
+        }
+      },
+      {
+        "InnerLayer": {
+          "layer": 4,
+          "offset": 5
+        }
+      }
+    ],
+    "LookupTimestamps": [
+      {
+        "InnerLayer": {
+          "layer": 4,
+          "offset": 0
+        }
+      },
+      {
+        "InnerLayer": {
+          "layer": 4,
+          "offset": 1
+        }
+      }
+    ],
+    "GenericLookup": [
+      {
+        "InnerLayer": {
+          "layer": 4,
+          "offset": 6
+        }
+      },
+      {
+        "InnerLayer": {
+          "layer": 4,
+          "offset": 7
+        }
+      }
+    ]
+  },
+  "memory_layout": {
+    "ram_access_sets": [
+      {
+        "Readonly": {
+          "in_cycle_write_index": 0,
+          "address": {
+            "RegisterOnly": {
+              "register_index": 4
+            }
+          },
+          "read_timestamp": [
+            0,
+            1
+          ],
+          "read_value": {
+            "U16Limbs": [
+              2,
+              3
+            ]
+          }
+        }
+      },
+      {
+        "Readonly": {
+          "in_cycle_write_index": 1,
+          "address": {
+            "RegisterOrRam": {
+              "is_register": {
+                "Is": 9
+              },
+              "address": [
+                10,
+                11
+              ]
+            }
+          },
+          "read_timestamp": [
+            5,
+            6
+          ],
+          "read_value": {
+            "U16Limbs": [
+              7,
+              8
+            ]
+          }
+        }
+      },
+      {
+        "Write": {
+          "in_cycle_write_index": 2,
+          "address": {
+            "RegisterOrRam": {
+              "is_register": {
+                "Not": 9
+              },
+              "address": [
+                16,
+                17
+              ]
+            }
+          },
+          "read_timestamp": [
+            12,
+            13
+          ],
+          "read_value": {
+            "U16Limbs": [
+              14,
+              15
+            ]
+          },
+          "write_value": {
+            "U16Limbs": [
+              18,
+              19
+            ]
+          }
+        }
+      }
+    ],
+    "machine_state": {
+      "execute": 20,
+      "initial_state": {
+        "pc": [
+          21,
+          22
+        ],
+        "timestamp": [
+          23,
+          24
+        ]
+      },
+      "final_state": {
+        "pc": [
+          25,
+          26
+        ],
+        "timestamp": [
+          27,
+          28
+        ]
+      }
+    },
+    "delegation_state": null,
+    "decoder_input": {
+      "rs1_index": 4,
+      "rs2_index": {
+        "BaseLayerWitness": 0
+      },
+      "rd_index": {
+        "BaseLayerWitness": 1
+      },
+      "circuit_family_mask_bits": [
+        {
+          "BaseLayerMemory": 9
+        }
+      ],
+      "decoder_witness_is_in_memory": false,
+      "imm": [
+        2,
+        3
+      ],
+      "funct3": null
+    },
+    "indirect_access_variable_offsets": [],
+    "total_width": 29
+  },
+  "witness_layout": {
+    "multiplicities_columns_for_range_check_16": {
+      "start": 15,
+      "end": 16
+    },
+    "multiplicities_columns_for_timestamp_range_check": 16,
+    "multiplicities_columns_for_generic_lookup": {
+      "start": 17,
+      "end": 18
+    },
+    "total_width": 18
+  },
+  "scratch_space_size": 0,
+  "num_generic_lookups": 3,
+  "placement_data": {
+    "0": {
+      "BaseLayerMemory": 21
+    },
+    "1": {
+      "BaseLayerMemory": 22
+    },
+    "2": {
+      "BaseLayerMemory": 23
+    },
+    "3": {
+      "BaseLayerMemory": 24
+    },
+    "4": {
+      "BaseLayerMemory": 20
+    },
+    "5": {
+      "BaseLayerMemory": 4
+    },
+    "6": {
+      "BaseLayerWitness": 0
+    },
+    "7": {
+      "BaseLayerWitness": 1
+    },
+    "8": {
+      "BaseLayerWitness": 2
+    },
+    "9": {
+      "BaseLayerWitness": 3
+    },
+    "10": {
+      "BaseLayerMemory": 9
+    },
+    "11": {
+      "BaseLayerMemory": 25
+    },
+    "12": {
+      "BaseLayerMemory": 26
+    },
+    "13": {
+      "BaseLayerMemory": 27
+    },
+    "14": {
+      "BaseLayerMemory": 28
+    },
+    "15": {
+      "BaseLayerMemory": 0
+    },
+    "16": {
+      "BaseLayerMemory": 1
+    },
+    "17": {
+      "BaseLayerMemory": 2
+    },
+    "18": {
+      "BaseLayerMemory": 3
+    },
+    "19": {
+      "BaseLayerWitness": 4
+    },
+    "20": {
+      "BaseLayerWitness": 5
+    },
+    "21": {
+      "BaseLayerWitness": 6
+    },
+    "22": {
+      "BaseLayerWitness": 7
+    },
+    "23": {
+      "BaseLayerWitness": 8
+    },
+    "24": {
+      "BaseLayerWitness": 9
+    },
+    "25": {
+      "BaseLayerWitness": 10
+    },
+    "26": {
+      "BaseLayerWitness": 11
+    },
+    "27": {
+      "BaseLayerMemory": 10
+    },
+    "28": {
+      "BaseLayerMemory": 11
+    },
+    "29": {
+      "BaseLayerMemory": 5
+    },
+    "30": {
+      "BaseLayerMemory": 6
+    },
+    "31": {
+      "BaseLayerMemory": 7
+    },
+    "32": {
+      "BaseLayerMemory": 8
+    },
+    "33": {
+      "BaseLayerMemory": 16
+    },
+    "34": {
+      "BaseLayerMemory": 17
+    },
+    "35": {
+      "BaseLayerMemory": 12
+    },
+    "36": {
+      "BaseLayerMemory": 13
+    },
+    "37": {
+      "BaseLayerMemory": 14
+    },
+    "38": {
+      "BaseLayerMemory": 15
+    },
+    "39": {
+      "BaseLayerMemory": 18
+    },
+    "40": {
+      "BaseLayerMemory": 19
+    },
+    "41": {
+      "BaseLayerWitness": 12
+    },
+    "42": {
+      "BaseLayerWitness": 13
+    },
+    "43": {
+      "BaseLayerWitness": 14
+    },
+    "44": {
+      "BaseLayerWitness": 15
+    },
+    "45": {
+      "BaseLayerWitness": 16
+    },
+    "46": {
+      "BaseLayerWitness": 17
+    }
+  },
+  "generic_lookup_tables_width": 9,
+  "decode_table_columns_mask": [
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    false,
+    true
+  ],
+  "tables_ids_in_generic_lookups": true,
+  "degree_2_constraints": [
+    {
+      "quadratic_terms": [
+        [
+          268435454,
+          4,
+          4
+        ]
+      ],
+      "linear_terms": [
+        [
+          1744830467,
+          4
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          268435454,
+          10,
+          23
+        ]
+      ],
+      "linear_terms": [],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          268435454,
+          6,
+          10
+        ],
+        [
+          1744830467,
+          10,
+          19
+        ]
+      ],
+      "linear_terms": [
+        [
+          268435454,
+          19
+        ],
+        [
+          1744830467,
+          27
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1744830467,
+          10,
+          20
+        ]
+      ],
+      "linear_terms": [
+        [
+          268435454,
+          20
+        ],
+        [
+          1744830467,
+          28
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1744830467,
+          7,
+          10
+        ],
+        [
+          268435454,
+          10,
+          19
+        ]
+      ],
+      "linear_terms": [
+        [
+          268435454,
+          7
+        ],
+        [
+          1744830467,
+          33
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          268435454,
+          10,
+          20
+        ]
+      ],
+      "linear_terms": [
+        [
+          1744830467,
+          34
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          268435454,
+          23,
+          25
+        ],
+        [
+          1744830467,
+          23,
+          31
+        ]
+      ],
+      "linear_terms": [
+        [
+          268435454,
+          31
+        ],
+        [
+          1744830467,
+          39
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          268435454,
+          23,
+          26
+        ],
+        [
+          1744830467,
+          23,
+          32
+        ]
+      ],
+      "linear_terms": [
+        [
+          268435454,
+          32
+        ],
+        [
+          1744830467,
+          40
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          1,
+          0,
+          0
+        ],
+        [
+          2013265919,
+          0,
+          11
+        ],
+        [
+          1,
+          11,
+          11
+        ]
+      ],
+      "linear_terms": [
+        [
+          2013200393,
+          0
+        ],
+        [
+          65528,
+          11
+        ]
+      ],
+      "constant_term": 2013003793
+    },
+    {
+      "quadratic_terms": [
+        [
+          1981808641,
+          2,
+          2
+        ],
+        [
+          62914560,
+          2,
+          13
+        ],
+        [
+          1981808641,
+          13,
+          13
+        ]
+      ],
+      "linear_terms": [
+        [
+          1761599489,
+          2
+        ],
+        [
+          251666432,
+          13
+        ]
+      ],
+      "constant_term": 1509916673
+    },
+    {
+      "quadratic_terms": [
+        [
+          268435454,
+          10,
+          10
+        ]
+      ],
+      "linear_terms": [
+        [
+          1744830467,
+          10
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          268435454,
+          21,
+          21
+        ]
+      ],
+      "linear_terms": [
+        [
+          1744830467,
+          21
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          268435454,
+          22,
+          22
+        ]
+      ],
+      "linear_terms": [
+        [
+          1744830467,
+          22
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          268435454,
+          41,
+          41
+        ]
+      ],
+      "linear_terms": [
+        [
+          1744830467,
+          41
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          268435454,
+          42,
+          42
+        ]
+      ],
+      "linear_terms": [
+        [
+          1744830467,
+          42
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "quadratic_terms": [
+        [
+          268435454,
+          43,
+          43
+        ]
+      ],
+      "linear_terms": [
+        [
+          1744830467,
+          43
+        ]
+      ],
+      "constant_term": 0
+    }
+  ],
+  "degree_1_constraints": [
+    {
+      "linear_terms": [
+        [
+          268435454,
+          8
+        ],
+        [
+          268435454,
+          17
+        ],
+        [
+          1744830467,
+          19
+        ],
+        [
+          1744970275,
+          21
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "linear_terms": [
+        [
+          268435454,
+          9
+        ],
+        [
+          268435454,
+          18
+        ],
+        [
+          1744830467,
+          20
+        ],
+        [
+          268435454,
+          21
+        ],
+        [
+          1744970275,
+          22
+        ]
+      ],
+      "constant_term": 0
+    },
+    {
+      "linear_terms": [
+        [
+          65536,
+          0
+        ],
+        [
+          268435454,
+          1
+        ],
+        [
+          2013200385,
+          11
+        ],
+        [
+          1744830467,
+          12
+        ]
+      ],
+      "constant_term": 262144
+    },
+    {
+      "linear_terms": [
+        [
+          2013257729,
+          2
+        ],
+        [
+          1744830467,
+          3
+        ],
+        [
+          8192,
+          13
+        ],
+        [
+          268435454,
+          14
+        ]
+      ],
+      "constant_term": 2013233153
+    }
+  ],
+  "generic_lookups": [
+    {
+      "columns": [
+        {
+          "linear_terms": [
+            [
+              1,
+              {
+                "BaseLayerWitness": 5
+              }
+            ]
+          ],
+          "constant": 0
+        },
+        {
+          "linear_terms": [
+            [
+              1,
+              {
+                "BaseLayerWitness": 8
+              }
+            ]
+          ],
+          "constant": 0
+        },
+        {
+          "linear_terms": [
+            [
+              1,
+              {
+                "BaseLayerWitness": 9
+              }
+            ]
+          ],
+          "constant": 0
+        },
+        {
+          "linear_terms": [],
+          "constant": 0
+        },
+        {
+          "linear_terms": [],
+          "constant": 0
+        },
+        {
+          "linear_terms": [],
+          "constant": 0
+        },
+        {
+          "linear_terms": [],
+          "constant": 0
+        },
+        {
+          "linear_terms": [],
+          "constant": 0
+        },
+        {
+          "linear_terms": [],
+          "constant": 15
+        }
+      ],
+      "lookup_set_index": 0
+    },
+    {
+      "columns": [
+        {
+          "linear_terms": [
+            [
+              1,
+              {
+                "BaseLayerWitness": 4
+              }
+            ],
+            [
+              65536,
+              {
+                "BaseLayerWitness": 9
+              }
+            ]
+          ],
+          "constant": 0
+        },
+        {
+          "linear_terms": [
+            [
+              1,
+              {
+                "BaseLayerWitness": 10
+              }
+            ]
+          ],
+          "constant": 0
+        },
+        {
+          "linear_terms": [
+            [
+              1,
+              {
+                "BaseLayerWitness": 11
+              }
+            ]
+          ],
+          "constant": 0
+        },
+        {
+          "linear_terms": [],
+          "constant": 0
+        },
+        {
+          "linear_terms": [],
+          "constant": 0
+        },
+        {
+          "linear_terms": [],
+          "constant": 0
+        },
+        {
+          "linear_terms": [],
+          "constant": 0
+        },
+        {
+          "linear_terms": [],
+          "constant": 0
+        },
+        {
+          "linear_terms": [
+            [
+              16,
+              {
+                "BaseLayerMemory": 20
+              }
+            ]
+          ],
+          "constant": 0
+        }
+      ],
+      "lookup_set_index": 1
+    }
+  ],
+  "range_check_16_lookup_expressions": [
+    {
+      "input": {
+        "linear_terms": [
+          [
+            1,
+            {
+              "BaseLayerMemory": 25
+            }
+          ]
+        ],
+        "constant": 0
+      },
+      "lookup_set_index": 0
+    },
+    {
+      "input": {
+        "linear_terms": [
+          [
+            1,
+            {
+              "BaseLayerMemory": 26
+            }
+          ]
+        ],
+        "constant": 0
+      },
+      "lookup_set_index": 1
+    }
+  ],
+  "timestamp_range_check_lookup_expressions": [
+    {
+      "input": {
+        "linear_terms": [
+          [
+            1,
+            {
+              "BaseLayerMemory": 27
+            }
+          ]
+        ],
+        "constant": 0
+      },
+      "lookup_set_index": 0
+    },
+    {
+      "input": {
+        "linear_terms": [
+          [
+            1,
+            {
+              "BaseLayerMemory": 28
+            }
+          ]
+        ],
+        "constant": 0
+      },
+      "lookup_set_index": 1
+    },
+    {
+      "input": {
+        "linear_terms": [
+          [
+            2013265920,
+            {
+              "BaseLayerMemory": 23
+            }
+          ],
+          [
+            1,
+            {
+              "BaseLayerMemory": 0
+            }
+          ],
+          [
+            524288,
+            {
+              "BaseLayerWitness": 12
+            }
+          ]
+        ],
+        "constant": 0
+      },
+      "lookup_set_index": 2
+    },
+    {
+      "input": {
+        "linear_terms": [
+          [
+            2013265920,
+            {
+              "BaseLayerMemory": 24
+            }
+          ],
+          [
+            1,
+            {
+              "BaseLayerMemory": 1
+            }
+          ],
+          [
+            2013265920,
+            {
+              "BaseLayerWitness": 12
+            }
+          ]
+        ],
+        "constant": 524288
+      },
+      "lookup_set_index": 3
+    },
+    {
+      "input": {
+        "linear_terms": [
+          [
+            2013265920,
+            {
+              "BaseLayerMemory": 23
+            }
+          ],
+          [
+            1,
+            {
+              "BaseLayerMemory": 5
+            }
+          ],
+          [
+            524288,
+            {
+              "BaseLayerWitness": 13
+            }
+          ]
+        ],
+        "constant": 2013265920
+      },
+      "lookup_set_index": 4
+    },
+    {
+      "input": {
+        "linear_terms": [
+          [
+            2013265920,
+            {
+              "BaseLayerMemory": 24
+            }
+          ],
+          [
+            1,
+            {
+              "BaseLayerMemory": 6
+            }
+          ],
+          [
+            2013265920,
+            {
+              "BaseLayerWitness": 13
+            }
+          ]
+        ],
+        "constant": 524288
+      },
+      "lookup_set_index": 5
+    },
+    {
+      "input": {
+        "linear_terms": [
+          [
+            2013265920,
+            {
+              "BaseLayerMemory": 23
+            }
+          ],
+          [
+            1,
+            {
+              "BaseLayerMemory": 12
+            }
+          ],
+          [
+            524288,
+            {
+              "BaseLayerWitness": 14
+            }
+          ]
+        ],
+        "constant": 2013265919
+      },
+      "lookup_set_index": 6
+    },
+    {
+      "input": {
+        "linear_terms": [
+          [
+            2013265920,
+            {
+              "BaseLayerMemory": 24
+            }
+          ],
+          [
+            1,
+            {
+              "BaseLayerMemory": 13
+            }
+          ],
+          [
+            2013265920,
+            {
+              "BaseLayerWitness": 14
+            }
+          ]
+        ],
+        "constant": 524288
+      },
+      "lookup_set_index": 7
+    }
+  ],
+  "variable_names": {
+    "0": "initial_pc[0]",
+    "1": "initial_pc[1]",
+    "2": "initial_ts[0]",
+    "3": "initial_ts[1]",
+    "4": "Execute flag for cycle",
+    "5": "rs1 index from decoder",
+    "6": "rs2 index from decoder",
+    "7": "rd index from decoder",
+    "8": "imm[0] from decoder",
+    "9": "imm[1] from decoder",
+    "10": "family_bit[0]",
+    "11": "final_pc[0]",
+    "12": "final_pc[1]",
+    "13": "final_ts[0]",
+    "14": "final_ts[1]",
+    "15": "query 0, read_ts[0]",
+    "16": "query 0, read_ts[1]",
+    "17": "rs1 read_value[0]",
+    "18": "rs1 read_value[1]",
+    "19": "addr_low",
+    "20": "addr_high",
+    "21": "low overflow: rs1 +u16 imm",
+    "22": "high overflow: rs1 +u16 imm",
+    "23": "flag: are we in rom addr range?",
+    "24": "address high 16bits truncated/wrapped to rom range (eg 6 bits)",
+    "25": "romread low 16bits",
+    "26": "romread high 16bits",
+    "27": "Variable at cs/src/gkr_circuits/mem_word_only/circuit.rs::159",
+    "28": "Variable at cs/src/gkr_circuits/mem_word_only/circuit.rs::159",
+    "29": "query 1, read_ts[0]",
+    "30": "query 1, read_ts[1]",
+    "31": "mem/rs2 read read_value[0]",
+    "32": "mem/rs2 read read_value[1]",
+    "33": "Variable at cs/src/gkr_circuits/mem_word_only/circuit.rs::172",
+    "34": "Variable at cs/src/gkr_circuits/mem_word_only/circuit.rs::172",
+    "35": "query 2, read_ts[0]",
+    "36": "query 2, read_ts[1]",
+    "37": "mem/rd write read_value[0]",
+    "38": "mem/rd write read_value[1]",
+    "39": "mem/rd write write_value[0]",
+    "40": "mem/rd write write_value[1]",
+    "41": "query 0, interm ts borrow",
+    "42": "query 1, interm ts borrow",
+    "43": "query 2, interm ts borrow",
+    "44": "Multiplicity for range check 16",
+    "45": "Multiplicity for timestamp range check",
+    "46": "Multiplicity for generic lookup"
+  },
+  "scratch_space_mapping": [],
+  "scratch_space_mapping_rev": {},
+  "aux_layout_data": {
+    "shuffle_ram_timestamp_comparison_aux_vars": [
+      {
+        "intermediate_borrow": {
+          "BaseLayerWitness": 12
+        }
+      },
+      {
+        "intermediate_borrow": {
+          "BaseLayerWitness": 13
+        }
+      },
+      {
+        "intermediate_borrow": {
+          "BaseLayerWitness": 14
+        }
+      }
+    ]
+  },
+  "_marker": null
+}

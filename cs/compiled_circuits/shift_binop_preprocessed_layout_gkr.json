@@ -43,6 +43,10 @@
     524545,
     524545,
     524545,
+    524545,
+    524545,
+    524545,
+    524545,
     524545
   ],
   "total_tables_size": 1573121,
@@ -660,7 +664,7 @@
                 },
                 {
                   "linear_terms": [],
-                  "constant": 42
+                  "constant": 46
                 }
               ],
               "lookup_set_index": 18446744073709551615
@@ -6665,18 +6669,18 @@
     "16": "final_ts[1]",
     "17": "query 0, read_ts[0]",
     "18": "query 0, read_ts[1]",
-    "19": "rs1[0]",
-    "20": "rs1[1]",
-    "21": "rs1[2]",
-    "22": "rs1[3]",
+    "19": "rs1 read_value_u8[0]",
+    "20": "rs1 read_value_u8[1]",
+    "21": "rs1 read_value_u8[2]",
+    "22": "rs1 read_value_u8[3]",
     "23": "query 1, read_ts[0]",
     "24": "query 1, read_ts[1]",
-    "25": "rs2[0]",
-    "26": "rs2[1]",
-    "27": "rs2[2]",
-    "28": "rs2[3]",
-    "29": "rd[0]",
-    "30": "rd[1]",
+    "25": "rs2 read_value_u8[0]",
+    "26": "rs2 read_value_u8[1]",
+    "27": "rs2 read_value_u8[2]",
+    "28": "rs2 read_value_u8[3]",
+    "29": "rd read_value[0]",
+    "30": "rd read_value[1]",
     "31": "rd[0]",
     "32": "rd[1]",
     "33": "query 2, read_ts[0]",
