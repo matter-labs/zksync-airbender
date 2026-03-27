@@ -8,15 +8,14 @@ use field::PrimeField;
 use std::collections::{BTreeMap, HashMap};
 
 pub struct CircuitOutput<F: PrimeField> {
-    // pub state_input: Vec<Variable>,
-    // pub state_output: Vec<Variable>,
     pub table_driver: TableDriver<F>,
     pub num_of_variables: usize,
     pub constraints: Vec<(Constraint<F>, bool)>,
     pub lookups: Vec<LookupQuery<F>>,
     pub memory_queries: Vec<MemoryAccess>,
-    // pub register_and_indirect_memory_accesses: Vec<RegisterAndIndirectAccesses>,
+    pub register_and_indirect_memory_accesses: Vec<RegisterAndIndirectAccesses>,
     pub executor_machine_state: Option<OpcodeFamilyCircuitState<F>>,
+    pub delegation_circuit_state: Option<DelegationCircuitState>,
     pub range_check_expressions: Vec<RangeCheckQuery<F>>,
     pub boolean_vars: Vec<Variable>,
     pub substitutions: HashMap<(Placeholder, usize), Variable>,

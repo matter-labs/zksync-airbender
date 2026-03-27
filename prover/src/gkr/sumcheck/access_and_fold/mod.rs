@@ -64,7 +64,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> GKRStorage<F, E> {
     pub(crate) fn try_get_base_poly(&self, address: GKRAddress) -> Option<&[F]> {
         match address {
             GKRAddress::InnerLayer { layer, .. } | GKRAddress::Cached { layer, .. } => {
-                let source = &self.layers[layer];
+                let source = &self.layers.get(layer)?;
                 source
                     .base_field_inputs
                     .get(&address)
@@ -73,7 +73,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> GKRStorage<F, E> {
             GKRAddress::BaseLayerMemory(..)
             | GKRAddress::BaseLayerWitness(..)
             | GKRAddress::Setup(..) => {
-                let source = &self.layers[0];
+                let source = &self.layers.get(0)?;
                 source
                     .base_field_inputs
                     .get(&address)
@@ -85,10 +85,37 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> GKRStorage<F, E> {
         }
     }
 
+    pub(crate) fn try_get_base_poly_arc_cloned(
+        &self,
+        address: GKRAddress,
+    ) -> Option<BaseFieldPoly<F>> {
+        match address {
+            GKRAddress::InnerLayer { layer, .. } | GKRAddress::Cached { layer, .. } => {
+                let source = self.layers.get(layer)?;
+                source
+                    .base_field_inputs
+                    .get(&address)
+                    .map(|el| el.arc_clone())
+            }
+            GKRAddress::BaseLayerMemory(..)
+            | GKRAddress::BaseLayerWitness(..)
+            | GKRAddress::Setup(..) => {
+                let source = self.layers.get(0)?;
+                source
+                    .base_field_inputs
+                    .get(&address)
+                    .map(|el| el.arc_clone())
+            }
+            a @ _ => {
+                unreachable!("trying to get poly for address {:?}", a);
+            }
+        }
+    }
+
     pub(crate) fn try_get_ext_poly(&self, address: GKRAddress) -> Option<&[E]> {
         match address {
             GKRAddress::InnerLayer { layer, .. } | GKRAddress::Cached { layer, .. } => {
-                let source = &self.layers[layer];
+                let source = self.layers.get(layer)?;
                 source
                     .extension_field_inputs
                     .get(&address)
@@ -105,10 +132,34 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> GKRStorage<F, E> {
         }
     }
 
+    pub(crate) fn try_get_ext_poly_arc_cloned(
+        &self,
+        address: GKRAddress,
+    ) -> Option<ExtensionFieldPoly<F, E>> {
+        match address {
+            GKRAddress::InnerLayer { layer, .. } | GKRAddress::Cached { layer, .. } => {
+                let source = self.layers.get(layer)?;
+                source
+                    .extension_field_inputs
+                    .get(&address)
+                    .map(|el| el.arc_clone())
+            }
+            GKRAddress::BaseLayerMemory(..)
+            | GKRAddress::BaseLayerWitness(..)
+            | GKRAddress::Setup(..) => {
+                unreachable!("base layer is only in base field");
+            }
+            a @ _ => {
+                unreachable!("trying to gey poly for address {:?}", a);
+            }
+        }
+    }
+
     pub(crate) fn purge_up_to_layer(&mut self, layer: usize) {
         self.layers.truncate(layer + 1);
     }
 
+    #[track_caller]
     pub(crate) fn get_ext_poly(&self, address: GKRAddress) -> &[E] {
         match address {
             GKRAddress::InnerLayer { layer, .. } => {
@@ -125,13 +176,18 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> GKRStorage<F, E> {
         }
     }
 
+    #[track_caller]
     pub(crate) fn insert_base_field_at_layer(
         &mut self,
         layer: usize,
         address: GKRAddress,
         value: BaseFieldPoly<F>,
     ) {
-        // println!("Adding base field poly at address {:?}", address);
+        // println!(
+        //     "Adding base field poly at address {:?} at {:?}",
+        //     address,
+        //     core::panic::Location::caller()
+        // );
         if layer >= self.layers.len() {
             self.layers
                 .resize_with(layer + 1, || GKRLayerSource::default());
@@ -145,6 +201,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> GKRStorage<F, E> {
         );
     }
 
+    #[track_caller]
     pub(crate) fn insert_extension_at_layer(
         &mut self,
         layer: usize,
@@ -167,6 +224,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> GKRStorage<F, E> {
         );
     }
 
+    #[track_caller]
     pub(crate) fn make_base_source_for_round_1(
         &mut self,
         poly: GKRAddress,
@@ -206,6 +264,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> GKRStorage<F, E> {
         }
     }
 
+    #[track_caller]
     pub(crate) fn make_base_source_for_round_2(
         &mut self,
         poly: GKRAddress,
@@ -292,6 +351,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> GKRStorage<F, E> {
         }
     }
 
+    #[track_caller]
     pub(crate) fn make_base_source_for_rounds_3_and_beyond(
         &mut self,
         poly: GKRAddress,
@@ -347,6 +407,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> GKRStorage<F, E> {
         }
     }
 
+    #[track_caller]
     pub(crate) fn make_ext_source_for_rounds_1_and_beyond(
         &mut self,
         poly: GKRAddress,
@@ -545,6 +606,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> GKRStorage<F, E> {
         storage
     }
 
+    #[track_caller]
     pub fn get_for_sumcheck_round_1(
         &mut self,
         inputs: &GKRInputs,
@@ -582,6 +644,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> GKRStorage<F, E> {
         storage
     }
 
+    #[track_caller]
     pub fn get_for_sumcheck_round_2(
         &mut self,
         inputs: &GKRInputs,
@@ -622,6 +685,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> GKRStorage<F, E> {
         storage
     }
 
+    #[track_caller]
     pub fn get_for_sumcheck_round_3_and_beyond(
         &mut self,
         inputs: &GKRInputs,
@@ -737,7 +801,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> SumcheckRound3AndBeyondSelecte
                         let current_values = self.base_field_inputs[idx].current_values();
                         assert_eq!(current_values.len(), N);
                         // let [f0, f1] = self.extension_field_inputs[idx].get_f0_and_f1(0);
-
+                        // println!("Inserting evaluations for {:?}", input);
                         last_evaluations.insert(*input, current_values.try_into().unwrap());
                     }
                 }
@@ -758,7 +822,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> SumcheckRound3AndBeyondSelecte
                         let current_values = self.extension_field_inputs[idx].current_values();
                         assert_eq!(current_values.len(), N);
                         // let [f0, f1] = self.extension_field_inputs[idx].get_f0_and_f1(0);
-
+                        // println!("Inserting evaluations for {:?}", input);
                         last_evaluations.insert(*input, current_values.try_into().unwrap());
                     }
                 }

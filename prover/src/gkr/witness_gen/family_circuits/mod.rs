@@ -14,7 +14,7 @@ use worker::WorkerGeometry;
 // mod init_and_teardown;
 mod memory;
 // mod unified;
-mod witness;
+pub(crate) mod witness;
 
 // pub use self::init_and_teardown::{
 //     evaluate_init_and_teardown_memory_witness, evaluate_init_and_teardown_witness,

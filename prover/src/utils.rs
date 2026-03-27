@@ -58,7 +58,6 @@ pub(crate) fn encoding_tuple_into_lookup_index(
     offset + (row as usize)
 }
 
-#[cfg(feature = "prover")]
 #[inline(always)]
 pub(crate) fn compute_aggregated_key_value_dyn<F: PrimeField, E: FieldExtension<F> + Field>(
     base_value: F,

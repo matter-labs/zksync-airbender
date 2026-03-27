@@ -126,15 +126,15 @@ impl GKRGate for LookupMaskedWitnessMinusSetupInputNode {
     ) -> (Self::Output, NoFieldGKRRelation) {
         let output = [(); 2].map(|_| graph.add_intermediate_variable_at_layer(output_layer));
         let cached_input = NoFieldGKRCacheRelation::VectorizedLookup(self.input.clone());
-        let cached_output = NoFieldGKRCacheRelation::VectorizedLookupSetup(self.setup.clone());
+        let cached_setup = NoFieldGKRCacheRelation::VectorizedLookupSetup(self.setup.clone());
         assert!(output_layer > 0);
         let layer_for_caches = output_layer - 1;
         let cached_input = graph.add_cached_relation(cached_input, layer_for_caches);
-        let cached_output = graph.add_cached_relation(cached_output, layer_for_caches);
+        let cached_setup = graph.add_cached_relation(cached_setup, layer_for_caches);
 
         let relation = NoFieldGKRRelation::LookupWithCachedDensAndSetup {
             input: [self.mask, cached_input],
-            setup: [self.multiplicity, cached_output],
+            setup: [self.multiplicity, cached_setup],
             output,
         };
         graph.add_enforced_relation(relation.clone(), output_layer);
@@ -401,7 +401,7 @@ impl GKRGate for VectorLookupExplicitPairWithInputAggregationNode {
     type Output = [GKRAddress; 2];
 
     fn short_name(&self) -> String {
-        "a/b + 1/single_input".to_string()
+        "a/b + 1/vector_input".to_string()
     }
 
     fn add_at_layer(
@@ -448,6 +448,79 @@ impl GKRGate for VectorLookupExplicitPairWithMaterializedInputAggregationNode {
         let relation = NoFieldGKRRelation::LookupUnbalancedPairWithMaterializedVectorInputs {
             input: [self.lhs_num, self.lhs_den],
             remainder: self.vector_input,
+            output,
+        };
+
+        graph.add_enforced_relation(relation.clone(), output_layer);
+
+        (output, relation)
+    }
+}
+
+#[derive(Clone, Hash, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct VectorLookupWitnessMinusSetupInputNode {
+    pub input: NoFieldVectorLookupRelation,
+    pub multiplicity: GKRAddress,
+    pub setup: Box<[GKRAddress]>,
+}
+
+impl GKRGate for VectorLookupWitnessMinusSetupInputNode {
+    type Output = [GKRAddress; 2];
+
+    fn short_name(&self) -> String {
+        "1/vector_input - multiplicity/vector_setup".to_string()
+    }
+
+    fn add_at_layer(
+        &self,
+        graph: &mut impl GraphHolder,
+        output_layer: usize,
+    ) -> (Self::Output, NoFieldGKRRelation) {
+        // We will be lazy - will cache the input
+
+        let cached_input = NoFieldGKRCacheRelation::VectorizedLookup(self.input.clone());
+        assert!(output_layer > 0);
+        let layer_for_caches = output_layer - 1;
+        let cached_input = graph.add_cached_relation(cached_input, layer_for_caches);
+
+        let node = VectorLookupMaterializedWitnessMinusSetupInputNode {
+            input: cached_input,
+            multiplicity: self.multiplicity,
+            setup: self.setup.clone(),
+        };
+        node.add_at_layer(graph, output_layer)
+    }
+}
+
+#[derive(Clone, Hash, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct VectorLookupMaterializedWitnessMinusSetupInputNode {
+    pub input: GKRAddress,
+    pub multiplicity: GKRAddress,
+    pub setup: Box<[GKRAddress]>,
+}
+
+impl GKRGate for VectorLookupMaterializedWitnessMinusSetupInputNode {
+    type Output = [GKRAddress; 2];
+
+    fn short_name(&self) -> String {
+        "1/vector_input - multiplicity/vector_setup".to_string()
+    }
+
+    fn add_at_layer(
+        &self,
+        graph: &mut impl GraphHolder,
+        output_layer: usize,
+    ) -> (Self::Output, NoFieldGKRRelation) {
+        let output = [(); 2].map(|_| graph.add_intermediate_variable_at_layer(output_layer));
+
+        let cached_setup = NoFieldGKRCacheRelation::VectorizedLookupSetup(self.setup.clone());
+        assert!(output_layer > 0);
+        let layer_for_caches = output_layer - 1;
+        let cached_setup = graph.add_cached_relation(cached_setup, layer_for_caches);
+
+        let relation = NoFieldGKRRelation::LookupFromMaterializedVectorInputWithSetup {
+            input: self.input,
+            setup: [self.multiplicity, cached_setup],
             output,
         };
 

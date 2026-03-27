@@ -43,7 +43,6 @@
     0,
     0,
     0,
-    0,
     0
   ],
   "total_tables_size": 1048576,
@@ -69,10 +68,12 @@
               "address": {
                 "U16Space": 4
               },
-              "timestamp": [
-                0,
-                1
-              ],
+              "timestamp": {
+                "Normal": [
+                  0,
+                  1
+                ]
+              },
               "value": {
                 "U16Limbs": [
                   2,
@@ -98,10 +99,12 @@
               "address": {
                 "U16Space": 9
               },
-              "timestamp": [
-                5,
-                6
-              ],
+              "timestamp": {
+                "Normal": [
+                  5,
+                  6
+                ]
+              },
               "value": {
                 "U16Limbs": [
                   7,
@@ -127,10 +130,12 @@
               "address": {
                 "U16Space": 4
               },
-              "timestamp": [
-                20,
-                21
-              ],
+              "timestamp": {
+                "Normal": [
+                  20,
+                  21
+                ]
+              },
               "value": {
                 "U16Limbs": [
                   2,
@@ -156,10 +161,12 @@
               "address": {
                 "U16Space": 9
               },
-              "timestamp": [
-                20,
-                21
-              ],
+              "timestamp": {
+                "Normal": [
+                  20,
+                  21
+                ]
+              },
               "value": {
                 "U16Limbs": [
                   7,
@@ -185,10 +192,12 @@
               "address": {
                 "U16Space": 14
               },
-              "timestamp": [
-                10,
-                11
-              ],
+              "timestamp": {
+                "Normal": [
+                  10,
+                  11
+                ]
+              },
               "value": {
                 "U16Limbs": [
                   12,
@@ -214,10 +223,12 @@
               "address": {
                 "Constant": 0
               },
-              "timestamp": [
-                20,
-                21
-              ],
+              "timestamp": {
+                "Normal": [
+                  20,
+                  21
+                ]
+              },
               "value": {
                 "U16Limbs": [
                   18,
@@ -243,10 +254,12 @@
               "address": {
                 "U16Space": 14
               },
-              "timestamp": [
-                20,
-                21
-              ],
+              "timestamp": {
+                "Normal": [
+                  20,
+                  21
+                ]
+              },
               "value": {
                 "U16Limbs": [
                   15,
@@ -272,10 +285,12 @@
               "address": {
                 "Constant": 0
               },
-              "timestamp": [
-                24,
-                25
-              ],
+              "timestamp": {
+                "Normal": [
+                  24,
+                  25
+                ]
+              },
               "value": {
                 "U16Limbs": [
                   22,
@@ -3818,6 +3833,7 @@
         ]
       }
     },
+    "delegation_state": null,
     "decoder_input": {
       "rs1_index": 4,
       "rs2_index": {
@@ -3859,11 +3875,14 @@
       ],
       "funct3": null
     },
-    "register_and_indirect_accesses": [],
+    "indirect_access_variable_offsets": [],
     "total_width": 26
   },
   "witness_layout": {
-    "multiplicities_columns_for_range_check_16": 18,
+    "multiplicities_columns_for_range_check_16": {
+      "start": 18,
+      "end": 19
+    },
     "multiplicities_columns_for_timestamp_range_check": 19,
     "multiplicities_columns_for_generic_lookup": {
       "start": 20,

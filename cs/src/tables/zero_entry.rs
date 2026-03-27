@@ -1,6 +1,7 @@
 use super::*;
 
 pub fn create_zero_entry_table<F: PrimeField, const TOTAL_WIDTH: usize>(id: u32) -> LookupTable<F> {
+    assert!(TOTAL_WIDTH > 0);
     let keys = vec![[]];
     const TABLE_NAME: &'static str = "zero entry table";
     LookupTable::create_table_from_key_and_pure_generation_fn(

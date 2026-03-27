@@ -51,12 +51,11 @@ pub enum TableType {
     AlignedRomRead,
     MemStoreClearOriginalRamValueLimb,
     MemStoreClearWrittenValueLimb,
-    KeccakPermutationIndices12,
-    KeccakPermutationIndices34,
-    KeccakPermutationIndices56,
+    KeccakPermutationIndices,
     XorSpecialIota,
     AndN,
     RotL,
+    U16GetLowByte,
     Decoder,
     DynamicPlaceholder, // MUST be the last
 }

@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use crate::gkr::prover::dimension_reduction::forward::DimensionReducingInputOutput;
-use cs::definitions::gkr::RamWordRepresentation;
+use cs::definitions::gkr::{NoFieldLinearRelation, RamWordRepresentation};
 use cs::definitions::{
     GKRAddress, MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX,
     MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX,
@@ -9,6 +9,7 @@ use cs::definitions::{
     MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX, MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX,
     MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX,
 };
+use cs::gkr_compiler::CompiledMemoryTimestamp;
 use cs::gkr_compiler::{
     CompiledAddressSpaceRelationStrict, CompiledAddressStrict, GKRCircuitArtifact,
     GKRLayerDescription, NoFieldGKRCacheRelation, NoFieldSpecialMemoryContributionRelation,
@@ -162,11 +163,15 @@ pub(crate) fn compute_initial_sumcheck_claims<F: PrimeField, E: FieldExtension<F
         OutputType::LookupTimestamps,
         OutputType::GenericLookup,
     ] {
-        let addresses = &output_layer[&key];
-        for address in addresses.output.iter() {
-            let poly = gkr_storage.get_ext_poly(*address);
-            let evaluation = evaluate_with_precomputed_eq_ext::<E>(poly, &eq[..]);
-            evals.push(evaluation);
+        if let Some(addresses) = &output_layer.get(&key) {
+            for address in addresses.output.iter() {
+                let poly = gkr_storage.get_ext_poly(*address);
+                let evaluation = evaluate_with_precomputed_eq_ext::<E>(poly, &eq[..]);
+                evals.push(evaluation);
+            }
+        } else {
+            evals.push(E::ZERO);
+            evals.push(E::ZERO);
         }
     }
 
@@ -189,6 +194,7 @@ pub(crate) fn verify_cache_relations<F: PrimeField, E: FieldExtension<F> + Field
     layer_desc: &GKRLayerDescription,
     claims: &BTreeMap<GKRAddress, E>,
     external_challenges: &GKRExternalChallenges<F, E>,
+    lookup_multiplicative_constant: E,
 ) -> bool {
     for (cached_addr, relation) in layer_desc.cached_relations.iter() {
         match relation {
@@ -196,21 +202,103 @@ pub(crate) fn verify_cache_relations<F: PrimeField, E: FieldExtension<F> + Field
                 let cached_claim = match claims.get(cached_addr) {
                     Some(v) => *v,
                     None => {
-                        panic!("Missing claim for cached address {:?}", cached_addr);
+                        panic!(
+                            "Missing claim for cached address {:?} for relation {:?}",
+                            cached_addr, rel
+                        );
                     }
                 };
+
                 let expected = evaluate_memory_tuple_from_claims(rel, claims, external_challenges);
+
                 if expected != cached_claim {
+                    println!(
+                        "Memory tuple {:?} claim failure: expected {}, got {}",
+                        rel, expected, cached_claim
+                    );
                     return false;
                 }
             }
-            NoFieldGKRCacheRelation::LongLinear => {}
-            NoFieldGKRCacheRelation::SingleColumnLookup {
-                relation: _,
-                range_check_width: _,
-            } => {}
-            NoFieldGKRCacheRelation::VectorizedLookup(_no_field_vector_lookup_relation) => {}
-            NoFieldGKRCacheRelation::VectorizedLookupSetup(_items) => {}
+            NoFieldGKRCacheRelation::SingleColumnLookup { relation, .. } => {
+                let cached_claim = match claims.get(cached_addr) {
+                    Some(v) => *v,
+                    None => {
+                        panic!(
+                            "Missing claim for cached address {:?} for relation {:?}",
+                            cached_addr, relation
+                        );
+                    }
+                };
+
+                let expected = evaluate_linear_relation(&relation.input, claims);
+
+                if expected != cached_claim {
+                    println!(
+                        "Single column lookup {:?} claim failure: expected {}, got {}",
+                        relation, expected, cached_claim
+                    );
+                    return false;
+                }
+            }
+            NoFieldGKRCacheRelation::VectorizedLookup(no_field_vector_lookup_relation) => {
+                let cached_claim = match claims.get(cached_addr) {
+                    Some(v) => *v,
+                    None => {
+                        panic!(
+                            "Missing claim for cached address {:?} for relation {:?}",
+                            cached_addr, no_field_vector_lookup_relation
+                        );
+                    }
+                };
+
+                let mut expected =
+                    evaluate_linear_relation(&no_field_vector_lookup_relation.columns[0], claims);
+                let mut challenge = lookup_multiplicative_constant;
+                for rel in no_field_vector_lookup_relation.columns[1..].iter() {
+                    let mut t = evaluate_linear_relation(rel, claims);
+                    t.mul_assign(&challenge);
+                    expected.add_assign(&t);
+
+                    challenge.mul_assign(&lookup_multiplicative_constant);
+                }
+
+                if expected != cached_claim {
+                    println!(
+                        "Vector lookup {:?} claim failure: expected {}, got {}",
+                        relation, expected, cached_claim
+                    );
+                    return false;
+                }
+            }
+            NoFieldGKRCacheRelation::VectorizedLookupSetup(items) => {
+                let cached_claim = match claims.get(cached_addr) {
+                    Some(v) => *v,
+                    None => {
+                        panic!(
+                            "Missing claim for cached address {:?} for vectorized lookup setup",
+                            cached_addr
+                        );
+                    }
+                };
+
+                let mut expected = claims[&items[0]];
+                let mut challenge = lookup_multiplicative_constant;
+                for address in items[1..].iter() {
+                    let mut t = claims[address];
+                    t.mul_assign(&challenge);
+                    expected.add_assign(&t);
+
+                    challenge.mul_assign(&lookup_multiplicative_constant);
+                }
+
+                if expected != cached_claim {
+                    println!(
+                        "Vector lookup setup claim failure: expected {}, got {}",
+                        expected, cached_claim
+                    );
+                    return false;
+                }
+            }
         }
     }
     true
@@ -243,6 +331,11 @@ fn evaluate_memory_tuple_from_claims<F: PrimeField, E: FieldExtension<F> + Field
 
     // Address contribution
     match &rel.address {
+        &CompiledAddressStrict::ConstantU16(c) => {
+            let mut t = challenges[MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
+            t.mul_assign_by_base(&F::from_u32_unchecked(c as u32));
+            result.add_assign(&t);
+        }
         &CompiledAddressStrict::Constant(c) => {
             let mut t = challenges[MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
             t.mul_assign_by_base(&F::from_u32_unchecked(c));
@@ -266,25 +359,54 @@ fn evaluate_memory_tuple_from_claims<F: PrimeField, E: FieldExtension<F> + Field
         CompiledAddressStrict::U32SpaceGeneric(..) => {
             todo!();
         }
-        CompiledAddressStrict::U32SpaceSpecialIndirect { .. } => {
-            todo!();
+        CompiledAddressStrict::U32SpaceSpecialIndirect {
+            low_base,
+            low_dynamic_offset,
+            low_offset,
+            high,
+        } => {
+            {
+                let mut t = external_challenges.permutation_argument_linearization_challenges
+                    [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
+                let mut low = claims[&GKRAddress::BaseLayerMemory(*low_base)];
+                low.add_assign_base(&F::from_u32_unchecked(*low_offset));
+                if let Some((c, offset)) = *low_dynamic_offset {
+                    let mut var_offset = claims[&GKRAddress::BaseLayerMemory(offset)];
+                    var_offset.mul_assign_by_base(&F::from_u32_unchecked(c as u32));
+                    low.add_assign(&var_offset);
+                }
+                t.mul_assign(&low);
+                result.add_assign(&t);
+            }
+            {
+                let mut t = external_challenges.permutation_argument_linearization_challenges
+                    [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
+                let high = claims[&GKRAddress::BaseLayerMemory(*high)];
+                t.mul_assign(&high);
+                result.add_assign(&t);
+            }
+        }
+    }
+    match rel.timestamp {
+        CompiledMemoryTimestamp::Zero => {}
+        CompiledMemoryTimestamp::Normal(ts) => {
+            {
+                let mut t = challenges[MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
+                let mut ts_low = claims[&GKRAddress::BaseLayerMemory(ts[0])];
+                ts_low.add_assign_base(&F::from_u32_unchecked(rel.timestamp_offset));
+                t.mul_assign(&ts_low);
+                result.add_assign(&t);
+            }
+            {
+                let mut t = challenges[MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
+                t.mul_assign(&claims[&GKRAddress::BaseLayerMemory(ts[1])]);
+                result.add_assign(&t);
+            }
         }
     }
 
-    {
-        let mut t = challenges[MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
-        let mut ts_low = claims[&GKRAddress::BaseLayerMemory(rel.timestamp[0])];
-        ts_low.add_assign_base(&F::from_u32_unchecked(rel.timestamp_offset));
-        t.mul_assign(&ts_low);
-        result.add_assign(&t);
-    }
-    {
-        let mut t = challenges[MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
-        t.mul_assign(&claims[&GKRAddress::BaseLayerMemory(rel.timestamp[1])]);
-        result.add_assign(&t);
-    }
-
     match rel.value {
+        RamWordRepresentation::Zero => {}
         RamWordRepresentation::U16Limbs(read_value) => {
             for (idx, offset) in [
                 (MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX, read_value[0]),
@@ -317,6 +439,20 @@ fn evaluate_memory_tuple_from_claims<F: PrimeField, E: FieldExtension<F> + Field
                 result.add_assign(&t);
             }
         }
+    }
+
+    result
+}
+
+fn evaluate_linear_relation<F: PrimeField, E: FieldExtension<F> + Field>(
+    rel: &NoFieldLinearRelation,
+    claims: &BTreeMap<GKRAddress, E>,
+) -> E {
+    let mut result = E::from_base(F::from_u32_unchecked(rel.constant));
+    for (c, address) in rel.linear_terms.iter() {
+        let mut t = claims[address];
+        t.mul_assign_by_base(&F::from_u32_unchecked(*c));
+        result.add_assign(&t);
     }
 
     result

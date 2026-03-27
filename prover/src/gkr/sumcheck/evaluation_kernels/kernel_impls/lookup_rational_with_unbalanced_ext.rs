@@ -95,6 +95,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E>
     }
 }
 
+#[derive(Debug)]
 pub struct LookupRationalPairWithUnbalancedExtensionGKRRelationKernel<
     F: PrimeField,
     E: FieldExtension<F> + Field,

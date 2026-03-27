@@ -86,7 +86,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E> for Loo
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct LookupAdditionGKRRelationKernel<F: PrimeField, E: FieldExtension<F> + Field> {
     _marker: core::marker::PhantomData<(F, E)>,
 }

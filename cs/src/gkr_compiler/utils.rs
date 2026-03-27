@@ -5,6 +5,7 @@ use super::*;
 use crate::constraint::Constraint;
 use crate::cs::circuit_trait::WordRepresentation;
 use crate::definitions::DecoderData;
+use crate::definitions::DelegationCircuitState;
 use crate::definitions::GKRAddress;
 use crate::definitions::OpcodeFamilyCircuitState;
 use crate::definitions::Variable;
@@ -49,11 +50,24 @@ pub fn no_field_gkr_max_quadratic_from_constraint<F: PrimeField>(
     mut constraint: Constraint<F>,
     output: GKRAddress,
 ) -> NoFieldGKRRelation {
+    constraint.normalize();
+    let (quadratic_part, linear_part, constant) = constraint.clone().split_max_quadratic();
+
+    if constraint.degree() == 1 && constraint.stable_variable_set().len() == 1 {
+        // maybe copy is enough
+        if quadratic_part.is_empty() && constant.is_zero() {
+            assert_eq!(linear_part.len(), 1);
+            let (c, var) = linear_part[0];
+            if c.is_one() {
+                // just copy
+                let input = graph.get_address_for_variable(var);
+                return NoFieldGKRRelation::Copy { input, output };
+            }
+        }
+    }
+
     let mut quadratic_sorted = BTreeMap::new();
     let mut linear_sorted = BTreeMap::new();
-
-    constraint.normalize();
-    let (quadratic_part, linear_part, constant) = constraint.split_max_quadratic();
 
     for (coeff, a, b) in quadratic_part.iter() {
         let a = graph.get_address_for_variable(*a);
@@ -61,7 +75,7 @@ pub fn no_field_gkr_max_quadratic_from_constraint<F: PrimeField>(
         let existing = quadratic_sorted
             .entry(a)
             .or_insert(BTreeMap::new())
-            .insert(coeff.as_u32_reduced() as u64, b);
+            .insert(b, coeff.as_u32_reduced() as u64);
         assert!(existing.is_none());
     }
     for (coeff, a) in linear_part.into_iter() {
@@ -72,7 +86,15 @@ pub fn no_field_gkr_max_quadratic_from_constraint<F: PrimeField>(
 
     let quadratic_terms = quadratic_sorted
         .into_iter()
-        .map(|(k, v)| (k, v.into_iter().collect::<Vec<_>>().into_boxed_slice()))
+        .map(|(k, v)| {
+            (
+                k,
+                v.into_iter()
+                    .map(|(k, v)| (v, k))
+                    .collect::<Vec<_>>()
+                    .into_boxed_slice(),
+            )
+        })
         .collect::<Vec<_>>()
         .into_boxed_slice();
 
@@ -302,6 +324,45 @@ pub(crate) fn layout_machine_state_for_preprocessed_bytecode<F: PrimeField>(
     }
 }
 
+#[derive(Clone, Hash, Debug, serde::Serialize, serde::Deserialize)]
+pub struct CompiledDelegationCircuitState {
+    pub execute: usize,
+    pub invocation_timestamp: [usize; NUM_TIMESTAMP_COLUMNS_FOR_RAM],
+}
+
+pub(crate) fn layout_delegation_circuit_state(
+    graph: &mut GKRGraph,
+    all_variables_to_place: &mut BTreeSet<Variable>,
+    state: &DelegationCircuitState,
+    layers_mapping: &HashMap<Variable, usize>,
+) -> CompiledDelegationCircuitState {
+    let [execute] = graph.layout_memory_subtree_multiple_variables(
+        [state.execute],
+        all_variables_to_place,
+        layers_mapping,
+    );
+    let GKRAddress::BaseLayerMemory(execute) = execute else {
+        unreachable!()
+    };
+    let invocation_timestamp = graph.layout_memory_subtree_multiple_variables(
+        state.invocation_timestamp,
+        all_variables_to_place,
+        layers_mapping,
+    );
+    let invocation_timestamp = invocation_timestamp.map(|el| {
+        let GKRAddress::BaseLayerMemory(el) = el else {
+            unreachable!()
+        };
+
+        el
+    });
+
+    CompiledDelegationCircuitState {
+        execute,
+        invocation_timestamp,
+    }
+}
+
 pub trait DependentNode {
     fn add_dependencies_into(
         &self,
@@ -362,11 +423,12 @@ pub enum AddressSpace {
 #[derive(Clone, Copy, Hash, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum AddressSpaceAddress {
     Empty,
+    ConstantU16Limb(u16),
     SingleLimb(Variable),
     U32Space([Variable; 2]),
     U32SpaceSpecialIndirect {
         low_base: Variable,
-        low_dynamic_offset: Option<Variable>,
+        low_dynamic_offset: Option<(u16, Variable)>,
         offset: u32,
         high: Variable,
     },
@@ -408,10 +470,16 @@ pub enum AddressSpaceAddress {
 // }
 
 #[derive(Clone, Copy, Hash, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum MemoryPermutationTimestamp {
+    Zero,
+    Normal([Variable; NUM_TIMESTAMP_COLUMNS_FOR_RAM]),
+}
+
+#[derive(Clone, Copy, Hash, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct MemoryPermutationExpression {
     pub address_space: AddressSpace,
     pub address: AddressSpaceAddress,
-    pub timestamp: [Variable; NUM_TIMESTAMP_COLUMNS_FOR_RAM],
+    pub timestamp: MemoryPermutationTimestamp,
     pub value: WordRepresentation,
     pub timestamp_offset: u32,
 }
@@ -498,17 +566,24 @@ pub(crate) fn mem_permutation_expr_into_cached_expr(
 ) -> NoFieldGKRCacheRelation {
     let address_space = match mem.address_space {
         AddressSpace::Constant(c) => CompiledAddressSpaceRelationStrict::Constant(c as u8 as u32),
-        AddressSpace::RegisterOrRam(is_reg) => match is_reg {
-            AddressSpaceIsRegister::Is(v) => CompiledAddressSpaceRelationStrict::Is(
-                graph.get_address_for_variable(v).as_memory(),
-            ),
-            AddressSpaceIsRegister::Not(v) => CompiledAddressSpaceRelationStrict::Not(
-                graph.get_address_for_variable(v).as_memory(),
-            ),
-        },
+        AddressSpace::RegisterOrRam(is_reg) => {
+            assert_eq!(AddressSpaceType::Register as u8, 0);
+            match is_reg {
+                AddressSpaceIsRegister::Is(v) => CompiledAddressSpaceRelationStrict::Not(
+                    // NOTE: if v == 1 we should have 0, and vice versa below
+                    graph.get_address_for_variable(v).as_memory(),
+                ),
+                AddressSpaceIsRegister::Not(v) => CompiledAddressSpaceRelationStrict::Is(
+                    graph.get_address_for_variable(v).as_memory(),
+                ),
+            }
+        }
     };
     let address = match mem.address {
         AddressSpaceAddress::Empty => CompiledAddressStrict::Constant(0),
+        AddressSpaceAddress::ConstantU16Limb(u16_address) => {
+            CompiledAddressStrict::ConstantU16(u16_address)
+        }
         AddressSpaceAddress::SingleLimb(v) => {
             CompiledAddressStrict::U16Space(graph.get_address_for_variable(v).as_memory())
         }
@@ -522,18 +597,19 @@ pub(crate) fn mem_permutation_expr_into_cached_expr(
             high,
         } => {
             let low_base = graph.get_address_for_variable(low_base).as_memory();
-            let low_dynamic_offset =
-                low_dynamic_offset.map(|el| graph.get_address_for_variable(el).as_memory());
+            let low_dynamic_offset = low_dynamic_offset
+                .map(|(coeff, el)| (coeff, graph.get_address_for_variable(el).as_memory()));
             let high = graph.get_address_for_variable(high).as_memory();
             CompiledAddressStrict::U32SpaceSpecialIndirect {
                 low_base,
                 low_dynamic_offset,
-                low_offset: offset as u64,
+                low_offset: offset,
                 high,
             }
         }
     };
     let value = match mem.value {
+        WordRepresentation::Zero => RamWordRepresentation::Zero,
         WordRepresentation::U16Limbs(value) => RamWordRepresentation::U16Limbs(
             value.map(|el| graph.get_address_for_variable(el).as_memory()),
         ),
@@ -541,9 +617,13 @@ pub(crate) fn mem_permutation_expr_into_cached_expr(
             value.map(|el| graph.get_address_for_variable(el).as_memory()),
         ),
     };
-    let timestamp = mem
-        .timestamp
-        .map(|el| graph.get_address_for_variable(el).as_memory());
+
+    let timestamp = match mem.timestamp {
+        MemoryPermutationTimestamp::Zero => CompiledMemoryTimestamp::Zero,
+        MemoryPermutationTimestamp::Normal(ts) => CompiledMemoryTimestamp::Normal(
+            ts.map(|el| graph.get_address_for_variable(el).as_memory()),
+        ),
+    };
 
     let rel = NoFieldSpecialMemoryContributionRelation {
         address_space,

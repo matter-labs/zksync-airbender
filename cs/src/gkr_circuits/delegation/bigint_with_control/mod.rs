@@ -2,19 +2,19 @@ use std::collections::BTreeMap;
 
 use super::*;
 use crate::cs::circuit::*;
+use crate::cs::circuit_trait::Invariant;
 use crate::cs::utils::collapse_max_quadratic_constraint_into;
-use crate::cs::witness_placer::WitnessTypeSet;
-use crate::cs::witness_placer::*;
 use crate::definitions::REGISTER_SIZE;
-use crate::one_row_compiler::LookupInput;
-use crate::one_row_compiler::Variable;
+use crate::gkr_circuits::*;
 use crate::types::Boolean;
 use crate::types::Num;
-use common_constants::delegation_types::bigint_with_control::*;
+use crate::witness_placer::*;
+
+const TOTAL_TABLE_WIDTH: usize = 2;
 
 pub fn all_table_types() -> Vec<TableType> {
     vec![
-        TableType::U16SplitAsBytes,
+        TableType::U16GetLowByte,
         TableType::RangeCheck9x9,
         TableType::RangeCheck10x10,
         TableType::RangeCheck11,
@@ -23,32 +23,38 @@ pub fn all_table_types() -> Vec<TableType> {
     ]
 }
 
-pub fn u256_ops_extended_control_delegation_circuit_create_table_driver<F: PrimeField>(
+pub fn bigint_with_extended_control_delegation_circuit_create_table_driver<F: PrimeField>(
 ) -> TableDriver<F> {
     let mut table_driver = TableDriver::new();
-    for el in all_table_types() {
-        table_driver.materialize_table(el);
-    }
+    bigint_with_extended_control_delegation_circuit_table_driver_fn(&mut table_driver);
 
     table_driver
 }
 
-pub fn materialize_tables_into_cs<F: PrimeField, CS: Circuit<F>>(cs: &mut CS) {
+pub fn bigint_with_extended_control_delegation_circuit_table_driver_fn<F: PrimeField>(
+    table_driver: &mut TableDriver<F>,
+) {
     for el in all_table_types() {
-        cs.materialize_table(el);
+        table_driver.materialize_table::<TOTAL_TABLE_WIDTH>(el);
     }
 }
 
-pub fn define_u256_ops_extended_control_delegation_circuit<F: PrimeField, CS: Circuit<F>>(
+pub fn bigint_with_extended_control_delegation_circuit_table_addition_fn<
+    F: PrimeField,
+    CS: Circuit<F>,
+>(
+    cs: &mut CS,
+) {
+    for el in all_table_types() {
+        cs.materialize_table::<TOTAL_TABLE_WIDTH>(el);
+    }
+}
+
+pub fn define_bigint_with_extended_control_delegation_circuit<F: PrimeField, CS: Circuit<F>>(
     cs: &mut CS,
 ) -> (Vec<[Variable; 2]>, [Variable; REGISTER_SIZE]) {
-    // add tables
-    materialize_tables_into_cs(cs);
-
-    // the only convention we must eventually satisfy is that if we do NOT process delegation request,
-    // then all memory writes in ABI must be 0s
-
-    let execute = cs.process_delegation_request();
+    let (_execute, _invication_ts) =
+        cs.allocate_delegation_state(BIGINT_OPS_WITH_CONTROL_CSR_REGISTER as u16);
 
     let dst_accesses = (0..8)
         .into_iter()
@@ -91,9 +97,18 @@ pub fn define_u256_ops_extended_control_delegation_circuit<F: PrimeField, CS: Ci
         indirect_accesses: vec![],
     };
 
-    let x10_and_indirects = cs.create_register_and_indirect_memory_accesses(x10_request);
-    let x11_and_indirects = cs.create_register_and_indirect_memory_accesses(x11_request);
-    let x12_and_indirects = cs.create_register_and_indirect_memory_accesses(x12_request);
+    let x10_and_indirects = cs.request_register_and_indirect_memory_accesses(
+        x10_request,
+        "state read/write from x10",
+        2,
+    );
+    let x11_and_indirects =
+        cs.request_register_and_indirect_memory_accesses(x11_request, "input read from x11", 2);
+    let x12_and_indirects = cs.request_register_and_indirect_memory_accesses(
+        x12_request,
+        "control read/write from x12",
+        2,
+    );
 
     assert_eq!(x10_and_indirects.indirect_accesses.len(), 8);
     assert_eq!(x11_and_indirects.indirect_accesses.len(), 8);
@@ -135,6 +150,9 @@ pub fn define_u256_ops_extended_control_delegation_circuit<F: PrimeField, CS: Ci
 
     assert_eq!(a_words.len(), 8);
     assert_eq!(b_words.len(), 8);
+
+    let a_words: [_; 8] = a_words.try_into().unwrap();
+    let b_words: [_; 8] = b_words.try_into().unwrap();
 
     {
         for (i, input) in a_words.iter().enumerate() {
@@ -490,21 +508,19 @@ pub fn define_u256_ops_extended_control_delegation_circuit<F: PrimeField, CS: Ci
     // with e.g 24-bit intermediate product results. So we make a decomposition and continue from there
 
     let mut a_bytes = Vec::with_capacity(32);
-    for el in a_limbs.iter() {
-        let [l, h] = cs.get_variables_from_lookup_constrained::<1, 2>(
-            &[LookupInput::from(*el)],
-            TableType::U16SplitAsBytes,
-        );
-        a_bytes.extend([l, h]);
-    }
-
     let mut b_bytes = Vec::with_capacity(32);
-    for el in b_limbs.iter() {
-        let [l, h] = cs.get_variables_from_lookup_constrained::<1, 2>(
-            &[LookupInput::from(*el)],
-            TableType::U16SplitAsBytes,
-        );
-        b_bytes.extend([l, h]);
+
+    for (src, dst) in [(&a_limbs, &mut a_bytes), (&b_limbs, &mut b_bytes)] {
+        for el in src.iter() {
+            let [l] = cs.get_variables_from_lookup_constrained::<1, 1>(
+                &[LookupInput::from(*el)],
+                TableType::U16GetLowByte,
+            );
+            dst.push(Constraint::from(l));
+            let mut high_constraint = Constraint::from(*el) - Term::from(l);
+            high_constraint.scale(F::from_u32_unchecked(1 << 8).inverse().unwrap());
+            dst.push(high_constraint);
+        }
     }
 
     // {
@@ -557,12 +573,12 @@ pub fn define_u256_ops_extended_control_delegation_circuit<F: PrimeField, CS: Ci
             for b_byte_idx in 0..32 {
                 if a_byte_idx + b_byte_idx == 2 * i {
                     product_constraint = product_constraint
-                        + Term::from(a_bytes[a_byte_idx]) * Term::from(b_bytes[b_byte_idx]);
+                        + (a_bytes[a_byte_idx].clone() * b_bytes[b_byte_idx].clone());
                     product_range += 255u64 * 255u64;
                 } else if a_byte_idx + b_byte_idx == 2 * i + 1 {
-                    product_constraint = product_constraint
-                        + Term::from((F::from_u32_unchecked(1 << 8), a_bytes[a_byte_idx]))
-                            * Term::from(b_bytes[b_byte_idx]);
+                    let mut t = a_bytes[a_byte_idx].clone() * b_bytes[b_byte_idx].clone();
+                    t.scale(F::from_u32_unchecked(1 << 8));
+                    product_constraint = product_constraint + t;
                     product_range += (255u64 * 255u64) << 8;
                 }
             }
@@ -632,9 +648,14 @@ pub fn define_u256_ops_extended_control_delegation_circuit<F: PrimeField, CS: Ci
         }
     }
 
-    // merge range checks between additive results and multiplicative result low
+    // merge range checks between additive results and multiplicative result low,
+    // and we can push it into intermediate layer
     {
-        for (a, b) in additive_ops_result.into_iter().zip(product_low.into_iter()) {
+        for (i, (a, b)) in additive_ops_result
+            .into_iter()
+            .zip(product_low.into_iter())
+            .enumerate()
+        {
             let mut constraint = Constraint::empty();
             constraint = constraint + Term::from(perform_add) * Term::from(a);
             constraint = constraint + Term::from(perform_sub) * Term::from(a);
@@ -644,10 +665,11 @@ pub fn define_u256_ops_extended_control_delegation_circuit<F: PrimeField, CS: Ci
             constraint = constraint + Term::from(perform_mul_low) * Term::from(b);
             constraint = constraint + Term::from(perform_mul_high) * Term::from(b);
 
-            let t = cs.add_variable_with_range_check(16).get_variable();
-            collapse_max_quadratic_constraint_into(cs, constraint.clone(), t);
-            constraint -= Term::from(t);
-            cs.add_constraint(constraint);
+            let t = cs.add_intermediate_named_variable_from_constraint(
+                constraint,
+                &format!("range check selection for limb {}", i),
+            );
+            cs.require_invariant(t, Invariant::RangeChecked { width: 16 });
         }
     }
 
@@ -669,17 +691,13 @@ pub fn define_u256_ops_extended_control_delegation_circuit<F: PrimeField, CS: Ci
             for [a, b] in &mut it {
                 let a = LookupInput::from(a.clone());
                 let b = LookupInput::from(b.clone());
-                cs.enforce_lookup_tuple_for_fixed_table(
-                    &[a, b, LookupInput::empty()],
-                    table_type,
-                    false,
-                );
+                cs.enforce_lookup_tuple_for_fixed_table(&[a, b], table_type, false);
             }
             if remainder.len() > 0 {
                 let a = &remainder[0];
                 let a = LookupInput::from(a.clone());
                 cs.enforce_lookup_tuple_for_fixed_table(
-                    &[a, LookupInput::empty(), LookupInput::empty()],
+                    &[a, LookupInput::empty()],
                     table_type,
                     false,
                 );
@@ -693,11 +711,7 @@ pub fn define_u256_ops_extended_control_delegation_circuit<F: PrimeField, CS: Ci
             };
             for a in checks.iter() {
                 let a = LookupInput::from(a.clone());
-                cs.enforce_lookup_tuple_for_fixed_table(
-                    &[a, LookupInput::empty(), LookupInput::empty()],
-                    table_type,
-                    false,
-                );
+                cs.enforce_lookup_tuple_for_fixed_table(&[a], table_type, false);
             }
         }
     }
@@ -741,38 +755,74 @@ pub fn define_u256_ops_extended_control_delegation_circuit<F: PrimeField, CS: Ci
     // Select values over which we will perform zero-check
     // - for equality operation it's taken from additive ops
     // - for mul-low operation those are high words
-    let zero_check_inputs: [Variable; 16] = std::array::from_fn(|_| cs.add_variable());
-    for (idx, (comparison_output, product_high)) in eq_operation_words_for_zero_check
-        .into_iter()
-        .zip(product_high.into_iter())
-        .enumerate()
-    {
-        let output_var = zero_check_inputs[idx];
-        let mut constraint = Constraint::<F>::empty();
-        constraint = constraint + (Term::from(perform_eq) * Term::from(comparison_output));
-        constraint = constraint + (Term::from(perform_mul_low) * Term::from(product_high));
-        collapse_max_quadratic_constraint_into(cs, constraint.clone(), output_var);
-        constraint -= Term::from(output_var);
-        cs.add_constraint(constraint);
-    }
-    let all_zeroes = {
-        let first_half = zero_check_inputs[..8]
-            .iter()
-            .fold(Constraint::from(0), |acc, x| acc + Term::from(*x));
-        let first_flag = cs.is_zero_sum(first_half);
-        let second_half = zero_check_inputs[8..]
-            .iter()
-            .fold(Constraint::from(0), |acc, x| acc + Term::from(*x));
-        let second_flag = cs.is_zero_sum(second_half);
-        Boolean::and(&first_flag, &second_flag, cs)
+
+    // NOTE: we will add all words, that are range checked. It's addition result is less than
+    // 2^16 * 16 words, so we ensure that field is large enough and save variables
+    assert!(F::CHARACTERISTICS >= (1 << 16) * 16);
+
+    // here it's a little involved, because we will need to manually create witness and copy it over
+    // layers.
+
+    let zero_check_input_in_intermediate_layer = {
+        let mut accumulation_constraint = Constraint::<F>::empty();
+        for (comparison_output, product_high) in eq_operation_words_for_zero_check
+            .into_iter()
+            .zip(product_high.into_iter())
+        {
+            accumulation_constraint =
+                accumulation_constraint + (Term::from(perform_eq) * Term::from(comparison_output));
+            accumulation_constraint =
+                accumulation_constraint + (Term::from(perform_mul_low) * Term::from(product_high));
+        }
+
+        cs.add_intermediate_named_variable_from_constraint(
+            accumulation_constraint,
+            "sum for zero-check",
+        )
     };
-    // let zero_flags = zero_check_inputs.map(|el| cs.is_zero(Num::Var(el)));
-    // let all_zeroes = Boolean::multi_and(&zero_flags, cs);
+
+    let all_zeroes = {
+        // var * zero_flag = 0;
+        // var * var_inv = 1 - zero_flag;
+        let var_inv = cs.add_variable();
+        let zero_flag = cs.add_boolean_variable();
+        let zero_flag_var = zero_flag.get_variable().unwrap();
+
+        let value_fn = move |placer: &mut CS::WitnessPlacer| {
+            let a = placer.get_field(zero_check_input_in_intermediate_layer);
+            let is_zero = a.is_zero();
+            let inverse_witness = a.inverse_or_zero();
+            placer.assign_mask(zero_flag_var, &is_zero);
+            placer.assign_field(var_inv, &inverse_witness);
+        };
+        cs.set_values(value_fn);
+
+        // now we need to copy first, and then add constraint
+
+        let var_inv_copied = cs.add_intermediate_named_variable_from_constraint(
+            Constraint::from(var_inv),
+            "inv var for zero check copy",
+        );
+        let zero_flag_var_copied = cs.add_intermediate_named_variable_from_constraint(
+            Constraint::from(zero_flag_var),
+            "is zero var for zero check copy",
+        );
+
+        cs.add_constraint(
+            Term::from(zero_check_input_in_intermediate_layer) * Term::from(zero_flag_var_copied),
+        );
+        cs.add_constraint(
+            Term::from(zero_check_input_in_intermediate_layer) * Term::from(var_inv_copied)
+                + Term::from(zero_flag_var_copied)
+                - Term::from(1),
+        );
+
+        zero_flag
+    };
+
     let values_are_equal_for_perform_eq =
         Boolean::and(&all_zeroes, &result_of_boolean.toggle(), cs);
     let perform_eq_bit = Boolean::and(&perform_eq_boolean, &values_are_equal_for_perform_eq, cs);
-    // NOTE: we need to mask equality check as it'll be 1 in the padding
-    let perform_eq_result = Boolean::and(&perform_eq_bit, &execute, cs);
 
     // now we need to resolve a condition
     // - for all add/sub ops our return register is just an overflow
@@ -791,8 +841,8 @@ pub fn define_u256_ops_extended_control_delegation_circuit<F: PrimeField, CS: Ci
     constraint = constraint + (Term::from(perform_add) * Term::from(result_of_variable));
     constraint = constraint + (Term::from(perform_sub) * Term::from(result_of_variable));
     constraint = constraint + (Term::from(perform_sub_negate) * Term::from(result_of_variable));
-    constraint = constraint
-        + (Term::from(perform_eq) * Term::from(perform_eq_result.get_variable().unwrap()));
+    constraint =
+        constraint + (Term::from(perform_eq) * Term::from(perform_eq_bit.get_variable().unwrap()));
     constraint = constraint
         + (Term::from(perform_mul_low)
             * (Term::from(1u32) - Term::from(all_zeroes.get_variable().unwrap())));
@@ -805,8 +855,6 @@ pub fn define_u256_ops_extended_control_delegation_circuit<F: PrimeField, CS: Ci
     // set value for high bits and constraint it
     let x12_write_vars_high = x12_write_vars[1];
     let value_fn = move |placer: &mut CS::WitnessPlacer| {
-        use crate::cs::witness_placer::WitnessComputationalInteger;
-
         let zero = <CS::WitnessPlacer as WitnessTypeSet<F>>::U16::constant(0);
         placer.assign_u16(x12_write_vars_high, &zero);
     };
@@ -837,30 +885,43 @@ mod test {
     use test_utils::skip_if_ci;
 
     use super::*;
-    use crate::cs::cs_reference::BasicAssembly;
-    use crate::one_row_compiler::OneRowCompiler;
+    use crate::gkr_compiler::compile_delegation_circuit_into_gkr;
+    use crate::gkr_compiler::dump_ssa_witness_eval_form;
     use crate::utils::serialize_to_file;
-    use field::Mersenne31Field;
 
     #[test]
-    fn compile_u256_ops_extended_control() {
+    fn compile_bigint_with_extended_control_into_gkr() {
         skip_if_ci!();
-        let mut cs: BasicAssembly<Mersenne31Field> = BasicAssembly::<Mersenne31Field>::new();
-        define_u256_ops_extended_control_delegation_circuit(&mut cs);
-        let (circuit_output, _) = cs.finalize();
-        let compiler = OneRowCompiler::default();
-        let compiled = compiler.compile_to_evaluate_delegations(circuit_output, 20);
+        use ::field::baby_bear::base::BabyBearField;
 
-        serialize_to_file(&compiled, "bigint_delegation_layout.json");
+        let gkr_compiled = compile_delegation_circuit_into_gkr::<BabyBearField>(
+            &|cs| bigint_with_extended_control_delegation_circuit_table_addition_fn(cs),
+            &|cs| {
+                let _ = define_bigint_with_extended_control_delegation_circuit(cs);
+            },
+            22,
+        );
+
+        serialize_to_file(
+            &gkr_compiled,
+            "compiled_circuits/bigint_with_extended_control_layout_gkr.json",
+        );
     }
 
     #[test]
-    #[serial_test::serial(cs_codegen)]
-    fn bigint_delegation_get_witness_graph() {
+    fn compile_bigint_with_extended_control_witness_graph() {
         skip_if_ci!();
-        let ssa_forms = dump_ssa_witness_eval_form_for_delegation::<Mersenne31Field, _>(
-            define_u256_ops_extended_control_delegation_circuit,
+        use ::field::baby_bear::base::BabyBearField;
+
+        let ssa_forms = dump_ssa_witness_eval_form::<BabyBearField>(
+            &|cs| bigint_with_extended_control_delegation_circuit_table_addition_fn(cs),
+            &|cs| {
+                let _ = define_bigint_with_extended_control_delegation_circuit(cs);
+            },
         );
-        serialize_to_file(&ssa_forms, "bigint_delegation_ssa.json");
+        serialize_to_file(
+            &ssa_forms,
+            "compiled_circuits/bigint_with_extended_control_ssa_gkr.json",
+        );
     }
 }

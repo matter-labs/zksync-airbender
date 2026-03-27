@@ -132,6 +132,53 @@ impl<'a, O: Oracle<F> + 'a, F: PrimeField> ColumnMajorWitnessProxy<'a, O, F> {
     }
 
     #[inline]
+    pub(crate) fn read_u32_value_from_columns<const USE_MEMORY: bool>(
+        &self,
+        placeholder_columns: [usize; 2],
+    ) -> u32 {
+        let [offset_low, offset_high] = placeholder_columns;
+
+        let (low, high) = if USE_MEMORY {
+            debug_assert!(offset_low < self.memory_rows_starts.len());
+            debug_assert!(offset_high < self.memory_rows_starts.len());
+
+            unsafe {
+                (
+                    self.memory_rows_starts
+                        .get_unchecked(offset_low)
+                        .read()
+                        .as_u32_reduced(),
+                    self.memory_rows_starts
+                        .get_unchecked(offset_high)
+                        .read()
+                        .as_u32_reduced(),
+                )
+            }
+        } else {
+            debug_assert!(offset_low < self.witness_rows_starts.len());
+            debug_assert!(offset_high < self.witness_rows_starts.len());
+
+            unsafe {
+                (
+                    self.witness_rows_starts
+                        .get_unchecked(offset_low)
+                        .read()
+                        .as_u32_reduced(),
+                    self.witness_rows_starts
+                        .get_unchecked(offset_high)
+                        .read()
+                        .as_u32_reduced(),
+                )
+            }
+        };
+
+        debug_assert!(low < 1 << 16);
+        debug_assert!(high < 1 << 16);
+
+        (high << 16) | low
+    }
+
+    #[inline]
     pub(crate) fn write_u32_placeholder_as_u8_chunks_into_columns<const USE_MEMORY: bool>(
         &mut self,
         placeholder_columns: [usize; 4],

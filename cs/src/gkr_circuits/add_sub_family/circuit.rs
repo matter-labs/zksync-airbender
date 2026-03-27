@@ -598,7 +598,7 @@ mod test {
 
     use super::*;
     use crate::gkr_compiler::compile_unrolled_circuit_state_transition_into_gkr;
-    use crate::gkr_compiler::dump_ssa_witness_eval_form_for_unrolled_circuit;
+    use crate::gkr_compiler::dump_ssa_witness_eval_form;
     use crate::utils::serialize_to_file;
 
     #[test]
@@ -624,7 +624,7 @@ mod test {
         skip_if_ci!();
         use ::field::baby_bear::base::BabyBearField;
 
-        let ssa_forms = dump_ssa_witness_eval_form_for_unrolled_circuit::<BabyBearField>(
+        let ssa_forms = dump_ssa_witness_eval_form::<BabyBearField>(
             &|cs| add_sub_lui_auipc_mop_table_addition_fn(cs),
             &|cs| add_sub_lui_auipc_mop_circuit_with_preprocessed_bytecode_for_gkr(cs),
         );

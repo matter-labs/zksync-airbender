@@ -229,4 +229,11 @@ impl<
             }
         }
     }
+
+    fn get_executor_family_data(
+        &self,
+        _trace_row: usize,
+    ) -> cs::gkr_circuits::ExecutorFamilyDecoderData {
+        unreachable!()
+    }
 }

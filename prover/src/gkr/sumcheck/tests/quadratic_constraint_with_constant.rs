@@ -85,8 +85,6 @@ fn test_quadratic_constraint_with_constant() {
 
     let kernel = BatchConstraintEvalGKRRelation::new(
         &constraint,
-        2,
-        0,
         E::from_base(F::from_u32_with_reduction(0xff)),
     );
 

@@ -2,19 +2,21 @@ use super::*;
 use crate::cs::circuit::*;
 use crate::cs::utils::collapse_max_quadratic_constraint_into;
 use crate::cs::utils::mask_by_boolean_into_accumulator_constraint;
-use crate::cs::witness_placer::WitnessComputationalInteger;
-use crate::cs::witness_placer::WitnessPlacer;
-use crate::delegation::blake2_single_round::g_function;
-use crate::one_row_compiler::LookupInput;
-use crate::one_row_compiler::Variable;
+use crate::gkr_circuits::LookupInput;
+use crate::gkr_circuits::Variable;
 use crate::types::Boolean;
 use crate::types::Num;
+use crate::witness_placer::*;
 use blake2s_u32::state_with_extended_control_flags::*;
 use blake2s_u32::BLAKE2S_BLOCK_SIZE_U32_WORDS;
 use blake2s_u32::CONFIGURED_IV;
 use blake2s_u32::EXTENDED_CONFIGURED_IV;
 use blake2s_u32::SIGMAS;
 use common_constants::delegation_types::blake2s_with_control::*;
+
+mod g_function;
+
+const TOTAL_TABLE_WIDTH: usize = 3;
 
 // ABI:
 // - registers x10-x12 are used to pass the parameters
@@ -34,29 +36,32 @@ pub fn all_table_types() -> Vec<TableType> {
 pub fn blake2_with_extended_control_delegation_circuit_create_table_driver<F: PrimeField>(
 ) -> TableDriver<F> {
     let mut table_driver = TableDriver::new();
-    for el in all_table_types() {
-        table_driver.materialize_table(el);
-    }
+    blake2_with_extended_control_table_driver_fn(&mut table_driver);
 
     table_driver
 }
 
-pub fn materialize_tables_into_cs<F: PrimeField, CS: Circuit<F>>(cs: &mut CS) {
+pub fn blake2_with_extended_control_table_addition_fn<F: PrimeField, CS: Circuit<F>>(cs: &mut CS) {
     for el in all_table_types() {
-        cs.materialize_table(el);
+        cs.materialize_table::<TOTAL_TABLE_WIDTH>(el);
+    }
+}
+
+pub fn blake2_with_extended_control_table_driver_fn<F: PrimeField>(
+    table_driver: &mut TableDriver<F>,
+) {
+    for el in all_table_types() {
+        table_driver.materialize_table::<TOTAL_TABLE_WIDTH>(el);
     }
 }
 
 pub fn define_blake2_with_extended_control_delegation_circuit<F: PrimeField, CS: Circuit<F>>(
     cs: &mut CS,
-) -> (Vec<[Variable; 2]>, Vec<[Variable; 2]>) {
-    // add tables
-    materialize_tables_into_cs(cs);
+) -> ([[Variable; 2]; 8], [[Variable; 2]; 16]) {
+    let (_execute, _invocation_timestamp) =
+        cs.allocate_delegation_state(BLAKE2S_DELEGATION_CSR_REGISTER as u16);
 
-    // the only convention we must eventually satisfy is that if we do NOT process delegation request,
-    // then all memory writes in ABI must be 0s
-
-    let _execute = cs.process_delegation_request();
+    // we do not expect any variable offsets, so we allocate all register and indirect reads/writes right away
 
     let state_accesses = (0..24)
         .into_iter()
@@ -99,9 +104,18 @@ pub fn define_blake2_with_extended_control_delegation_circuit<F: PrimeField, CS:
         indirect_accesses: vec![],
     };
 
-    let x10_and_indirects = cs.create_register_and_indirect_memory_accesses(x10_request);
-    let x11_and_indirects = cs.create_register_and_indirect_memory_accesses(x11_request);
-    let x12_and_indirects = cs.create_register_and_indirect_memory_accesses(x12_request);
+    let x10_and_indirects = cs.request_register_and_indirect_memory_accesses(
+        x10_request,
+        "state read/write from x10",
+        2,
+    );
+    let x11_and_indirects =
+        cs.request_register_and_indirect_memory_accesses(x11_request, "input read from x11", 2);
+    let x12_and_indirects = cs.request_register_and_indirect_memory_accesses(
+        x12_request,
+        "control read/write from x12",
+        2,
+    );
 
     assert_eq!(x10_and_indirects.indirect_accesses.len(), 24);
     assert_eq!(x11_and_indirects.indirect_accesses.len(), 16);
@@ -122,6 +136,7 @@ pub fn define_blake2_with_extended_control_delegation_circuit<F: PrimeField, CS:
         input_state.push(read_value);
         output_placeholder_state.push(write_value);
     }
+    let output_placeholder_state: [[Variable; 2]; 8] = output_placeholder_state.try_into().unwrap();
 
     let mut input_extended_state = vec![];
     let mut output_placeholder_extended_state = vec![];
@@ -138,6 +153,8 @@ pub fn define_blake2_with_extended_control_delegation_circuit<F: PrimeField, CS:
         input_extended_state.push(read_value);
         output_placeholder_extended_state.push(write_value);
     }
+    let mut output_placeholder_extended_state: [[Variable; 2]; 16] =
+        output_placeholder_extended_state.try_into().unwrap();
 
     let mut input_words = vec![];
     for i in 0..16 {
@@ -205,18 +222,13 @@ pub fn define_blake2_with_extended_control_delegation_circuit<F: PrimeField, CS:
         .try_into()
         .unwrap();
 
+    // TODO: for all cases that we care round bitmask is exclusive, consider adding a constraint for it
     {
         for (i, el) in round_bitmask.iter().enumerate() {
             if let Some(value) = el.get_value(&*cs) {
                 println!("Round bitmask element {} = {}", i, value);
             }
         }
-
-        // for (i, el) in control_bitmask.iter().enumerate() {
-        //     if let Some(value) = el.get_value(&*cs) {
-        //         println!("Control bitmask element {} = {}", i, value);
-        //     }
-        // }
 
         if let Some(value) = control_bitmask[REDUCE_ROUNDS_BIT_IDX].get_value(&*cs) {
             if value {
@@ -242,12 +254,50 @@ pub fn define_blake2_with_extended_control_delegation_circuit<F: PrimeField, CS:
     let input_is_right_node = control_bitmask[INPUT_IS_RIGHT_NODE_BIT_IDX];
     let compression_mode = control_bitmask[COMPRESSION_MODE_BIT_IDX];
 
-    // round is final if it's 10th or if it's 7th and we do reduce rounds
-    let perform_final_xor = Boolean::or(
-        &round_bitmask[9],
-        &Boolean::and(&round_bitmask[6], &reduce_rounds, cs),
-        cs,
+    // round is final if it's 10th or if it's 7th and we do reduce rounds. For all cases
+    // that we care round bitmasks is exclusive, so we can do one constraint via addition
+    let perform_final_xor = cs.add_named_variable("perform final xor flag");
+    {
+        let last_round_if_reduced_var = round_bitmask[6].get_variable().unwrap();
+        let last_round_if_full_var = round_bitmask[9].get_variable().unwrap();
+        let reduced_rounds_var = reduce_rounds.get_variable().unwrap();
+        let value_fn = move |placer: &mut CS::WitnessPlacer| {
+            let last_round_if_reduced = placer.get_boolean(last_round_if_reduced_var);
+            let last_round_if_full = placer.get_boolean(last_round_if_full_var);
+            let reduced_round = placer.get_boolean(reduced_rounds_var);
+            let t = last_round_if_reduced
+                .and(&reduced_round)
+                .or(&last_round_if_full);
+            placer.assign_mask(perform_final_xor, &t);
+        };
+        cs.set_values(value_fn);
+    }
+    cs.add_constraint(
+        (Term::from(round_bitmask[6]) * Term::from(reduce_rounds)) + Term::from(round_bitmask[9])
+            - Term::from(perform_final_xor),
     );
+    // let perform_final_xor = Boolean::or(
+    //     &round_bitmask[9],
+    //     &Boolean::and(&round_bitmask[6], &reduce_rounds, cs),
+    //     cs,
+    // );
+
+    // NOTE: G function structure is
+    // v[a] = v[a].wrapping_add(v[b]).wrapping_add(x);
+    // v[d] = rotate_right::<16>(v[d] ^ v[a]);
+    // v[c] = v[c].wrapping_add(v[d]);
+    // v[b] = rotate_right::<12>(v[b] ^ v[c]);
+    // v[a] = v[a].wrapping_add(v[b]).wrapping_add(y);
+    // v[d] = rotate_right::<8>(v[d] ^ v[a]);
+    // v[c] = v[c].wrapping_add(v[d]);
+    // v[b] = rotate_right::<7>(v[b] ^ v[c]);
+
+    // and we will do 8 invocations of it (row and column mixes),
+    // and eventually may also xor again with the inputs.
+    // We do not want to use too many inter-layer copies, so G functions
+    // will allocate minimal required witness directly at the base layer,
+    // and we will also perform masking of the initial state and extended state at the base layer,
+    // but we will push enforcement of the final XOR into intermediate layer
 
     // if round == 0, then
     // - first 8 elements of extended state are taken from IV for compression mode, or unchanged for normal mode
@@ -489,7 +539,7 @@ pub fn define_blake2_with_extended_control_delegation_circuit<F: PrimeField, CS:
 
     // perform actual mixing
 
-    g_function(
+    g_function::g_function(
         cs,
         &mut a_row[0],
         &mut b_row[0],
@@ -498,7 +548,7 @@ pub fn define_blake2_with_extended_control_delegation_circuit<F: PrimeField, CS:
         [selected_permutation[0], selected_permutation[1]],
     );
 
-    g_function(
+    g_function::g_function(
         cs,
         &mut a_row[1],
         &mut b_row[1],
@@ -507,7 +557,7 @@ pub fn define_blake2_with_extended_control_delegation_circuit<F: PrimeField, CS:
         [selected_permutation[2], selected_permutation[3]],
     );
 
-    g_function(
+    g_function::g_function(
         cs,
         &mut a_row[2],
         &mut b_row[2],
@@ -516,7 +566,7 @@ pub fn define_blake2_with_extended_control_delegation_circuit<F: PrimeField, CS:
         [selected_permutation[4], selected_permutation[5]],
     );
 
-    g_function(
+    g_function::g_function(
         cs,
         &mut a_row[3],
         &mut b_row[3],
@@ -527,7 +577,7 @@ pub fn define_blake2_with_extended_control_delegation_circuit<F: PrimeField, CS:
 
     // shift
 
-    let output_decompositions_0 = g_function(
+    let output_decompositions_0 = g_function::g_function(
         cs,
         &mut a_row[0],
         &mut b_row[1],
@@ -536,7 +586,7 @@ pub fn define_blake2_with_extended_control_delegation_circuit<F: PrimeField, CS:
         [selected_permutation[8], selected_permutation[9]],
     );
 
-    let output_decompositions_1 = g_function(
+    let output_decompositions_1 = g_function::g_function(
         cs,
         &mut a_row[1],
         &mut b_row[2],
@@ -545,7 +595,7 @@ pub fn define_blake2_with_extended_control_delegation_circuit<F: PrimeField, CS:
         [selected_permutation[10], selected_permutation[11]],
     );
 
-    let output_decompositions_2 = g_function(
+    let output_decompositions_2 = g_function::g_function(
         cs,
         &mut a_row[2],
         &mut b_row[3],
@@ -554,7 +604,7 @@ pub fn define_blake2_with_extended_control_delegation_circuit<F: PrimeField, CS:
         [selected_permutation[12], selected_permutation[13]],
     );
 
-    let output_decompositions_3 = g_function(
+    let output_decompositions_3 = g_function::g_function(
         cs,
         &mut a_row[3],
         &mut b_row[0],
@@ -565,15 +615,8 @@ pub fn define_blake2_with_extended_control_delegation_circuit<F: PrimeField, CS:
 
     // now we should re-assemble it into output, and also xor-mix
 
-    // NOTE on final masking: we do NOT need to mask anything here based on the execute/not predicate,
-    // because if we do not execute, circuit guarantees that all read values are 0, so we will get 0 at the end here: there will not be
-    // a compression mode active, so mixing will mix 0 extended state with 0 input words
-
     // set value for low bits and constraint it
     let value_fn = move |placer: &mut CS::WitnessPlacer| {
-        use crate::cs::witness_placer::WitnessComputationalInteger;
-        use crate::cs::witness_placer::WitnessTypeSet;
-
         let zero = <CS::WitnessPlacer as WitnessTypeSet<F>>::U16::constant(0);
         placer.assign_u16(x12_write_vars[0], &zero);
     };
@@ -671,7 +714,7 @@ pub fn define_blake2_with_extended_control_delegation_circuit<F: PrimeField, CS:
         }
     }
 
-    // and now resolve final XORing. Same - it doesn't require final masking as it'll be 0^0^0 in the empty case
+    // and now resolve final XORing
 
     // we have final decomposition of:
     // - `a` as 8 bit low chunk + linear constraint for top 8 bits
@@ -680,7 +723,7 @@ pub fn define_blake2_with_extended_control_delegation_circuit<F: PrimeField, CS:
     // - `d` as 8 and 8 bit chunks
 
     // Final XORs happen as a_initial ^ a_final ^ c_final
-    // and b_initial ^ b_final ^ b_final, and we need to match
+    // and b_initial ^ b_final ^ d_final, and we need to match
     // the chunks. The easiest way is to:
     // - compute a_initial ^ c_final and get 7 + 9 bit chunks
     // - split 9 bit chunk as boolean variable + 8 bits
@@ -765,10 +808,9 @@ pub fn define_blake2_with_extended_control_delegation_circuit<F: PrimeField, CS:
             let mut constraint = Constraint::empty();
             constraint += Term::from(xor_result_low);
             constraint += Term::from((F::from_u32_unchecked(1u32 << 7), xor_result_high));
-            constraint = constraint * Term::from(perform_final_xor.get_variable().unwrap());
+            constraint = constraint * Term::from(perform_final_xor);
             constraint = constraint
-                + (Term::from(1u32) - Term::from(perform_final_xor.get_variable().unwrap()))
-                    * Term::from(read_values[i]);
+                + (Term::from(1u32) - Term::from(perform_final_xor)) * Term::from(read_values[i]);
             // set value
             collapse_max_quadratic_constraint_into(cs, constraint.clone(), dst);
             // add constraint
@@ -848,10 +890,9 @@ pub fn define_blake2_with_extended_control_delegation_circuit<F: PrimeField, CS:
             let mut constraint = Constraint::empty();
             constraint += Term::from(xor_result_low);
             constraint += Term::from((F::from_u32_unchecked(1u32 << 8), xor_result_high));
-            constraint = constraint * Term::from(perform_final_xor.get_variable().unwrap());
+            constraint = constraint * Term::from(perform_final_xor);
             constraint = constraint
-                + (Term::from(1u32) - Term::from(perform_final_xor.get_variable().unwrap()))
-                    * Term::from(read_values[i]);
+                + (Term::from(1u32) - Term::from(perform_final_xor)) * Term::from(read_values[i]);
             // set value
             collapse_max_quadratic_constraint_into(cs, constraint.clone(), dst);
             // add constraint
@@ -937,30 +978,43 @@ mod test {
     use test_utils::skip_if_ci;
 
     use super::*;
-    use crate::cs::cs_reference::BasicAssembly;
-    use crate::one_row_compiler::OneRowCompiler;
+    use crate::gkr_compiler::compile_delegation_circuit_into_gkr;
+    use crate::gkr_compiler::dump_ssa_witness_eval_form;
     use crate::utils::serialize_to_file;
-    use field::Mersenne31Field;
 
     #[test]
-    fn compile_blake2_with_extended_control() {
+    fn compile_blake2_with_extended_control_into_gkr() {
         skip_if_ci!();
-        let mut cs = BasicAssembly::<Mersenne31Field>::new();
-        define_blake2_with_extended_control_delegation_circuit(&mut cs);
-        let (circuit_output, _) = cs.finalize();
-        let compiler = OneRowCompiler::default();
-        let compiled = compiler.compile_to_evaluate_delegations(circuit_output, 20);
+        use ::field::baby_bear::base::BabyBearField;
 
-        serialize_to_file(&compiled, "blake_delegation_layout.json");
+        let gkr_compiled = compile_delegation_circuit_into_gkr::<BabyBearField>(
+            &|cs| blake2_with_extended_control_table_addition_fn(cs),
+            &|cs| {
+                let _ = define_blake2_with_extended_control_delegation_circuit(cs);
+            },
+            20,
+        );
+
+        serialize_to_file(
+            &gkr_compiled,
+            "compiled_circuits/blake2_with_extended_control_layout_gkr.json",
+        );
     }
 
     #[test]
-    #[serial_test::serial(cs_codegen)]
-    fn blake_delegation_get_witness_graph() {
+    fn compile_blake2_with_extended_control_witness_graph() {
         skip_if_ci!();
-        let ssa_forms = dump_ssa_witness_eval_form_for_delegation::<Mersenne31Field, _>(
-            define_blake2_with_extended_control_delegation_circuit,
+        use ::field::baby_bear::base::BabyBearField;
+
+        let ssa_forms = dump_ssa_witness_eval_form::<BabyBearField>(
+            &|cs| blake2_with_extended_control_table_addition_fn(cs),
+            &|cs| {
+                let _ = define_blake2_with_extended_control_delegation_circuit(cs);
+            },
         );
-        serialize_to_file(&ssa_forms, "blake_delegation_ssa.json");
+        serialize_to_file(
+            &ssa_forms,
+            "compiled_circuits/blake2_with_extended_control_ssa_gkr.json",
+        );
     }
 }

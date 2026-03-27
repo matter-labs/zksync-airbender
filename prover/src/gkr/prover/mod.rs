@@ -133,7 +133,67 @@ pub struct WhirSchedule {
 }
 
 impl WhirSchedule {
-    pub fn default_for_tests_80_bits() -> Self {
+    pub fn default_for_tests_80_bits_20() -> Self {
+        let mut new = Self {
+            base_lde_factor: 2,
+            cap_size: 16,
+            whir_steps_schedule: vec![1, 4, 4, 4, 4],
+            whir_pow_schedule: vec![24, 24, 24, 24, 24],
+            whir_steps_lde_factors: vec![8, 64, 128, 128],
+            whir_queries_schedule: vec![],
+        };
+
+        assert_eq!(
+            new.whir_steps_lde_factors.len() + 1,
+            new.whir_steps_schedule.len()
+        );
+        assert_eq!(new.whir_pow_schedule.len(), new.whir_steps_schedule.len());
+
+        for (lde, pow) in Some(new.base_lde_factor)
+            .iter()
+            .chain(new.whir_steps_lde_factors.iter())
+            .zip(new.whir_pow_schedule.iter())
+        {
+            let sec_bits = 80 - *pow;
+            let bits_per_query = lde.trailing_zeros();
+            let num_queries = (sec_bits * 120).div_ceil(bits_per_query * 100); // roughly extra 20% on top of conjecture. Latest paper decrease conjectured value by 5-10% depending on rate
+            new.whir_queries_schedule.push(num_queries as usize);
+        }
+
+        new
+    }
+
+    pub fn default_for_tests_80_bits_22() -> Self {
+        let mut new = Self {
+            base_lde_factor: 2,
+            cap_size: 16,
+            whir_steps_schedule: vec![1, 4, 4, 4, 4, 2],
+            whir_pow_schedule: vec![24, 24, 24, 24, 24, 24],
+            whir_steps_lde_factors: vec![8, 64, 128, 128, 128],
+            whir_queries_schedule: vec![],
+        };
+
+        assert_eq!(
+            new.whir_steps_lde_factors.len() + 1,
+            new.whir_steps_schedule.len()
+        );
+        assert_eq!(new.whir_pow_schedule.len(), new.whir_steps_schedule.len());
+
+        for (lde, pow) in Some(new.base_lde_factor)
+            .iter()
+            .chain(new.whir_steps_lde_factors.iter())
+            .zip(new.whir_pow_schedule.iter())
+        {
+            let sec_bits = 80 - *pow;
+            let bits_per_query = lde.trailing_zeros();
+            let num_queries = (sec_bits * 120).div_ceil(bits_per_query * 100); // roughly extra 20% on top of conjecture. Latest paper decrease conjectured value by 5-10% depending on rate
+            new.whir_queries_schedule.push(num_queries as usize);
+        }
+
+        new
+    }
+
+    pub fn default_for_tests_80_bits_24() -> Self {
         let mut new = Self {
             base_lde_factor: 2,
             cap_size: 16,
@@ -302,13 +362,14 @@ where
     // Now we can use lookup challenges to preprocess tables into values like (column_0 + alpha * column_1 + ...),
     // but without(!) additive term, so we can use the same values for both cached and copied values,
     // and other gates (like non-vectorized lookups)
-    let preprocessed_generic_lookup = setup.preprocess_generic_lookups(
-        compiled_circuit,
-        lookup_alpha,
-        trace_len,
-        &mut gkr_storage,
-        worker,
-    );
+    let (preprocessed_generic_lookup, decoder_lookup_fill_value) = setup
+        .preprocess_generic_lookups(
+            compiled_circuit,
+            lookup_alpha,
+            trace_len,
+            &mut gkr_storage,
+            worker,
+        );
 
     // now we should perform "forward" evaluation, and fill the GKR storage
     let mut witness_eval_data = witness_eval_data;
@@ -323,7 +384,9 @@ where
             &mut witness_eval_data,
             trace_len,
             &preprocessed_generic_lookup,
+            lookup_alpha,
             lookup_additive_part,
+            decoder_lookup_fill_value,
             constraints_batch_challenge,
             worker,
         );
@@ -405,18 +468,6 @@ where
         worker,
     );
 
-    // let (
-    //     claim_readset,
-    //     claim_writeset,
-    //     claim_rangechecknum,
-    //     claim_rangecheckden,
-    //     claim_timechecknum,
-    //     claim_timecheckden,
-    //     claim_lookupnum,
-    //     claim_lookupden,
-    //     evaluation_point,
-    // ) = debug_utils::mock_output_claims(compiled_circuit, &gkr_storage, trace_len);
-
     // let output_map = &compiled_circuit.global_output_map;
     let mut top_layer_claims: BTreeMap<GKRAddress, E> = BTreeMap::new();
     let output_map = &dimension_reducing_inputs[&initial_layer_for_sumcheck];
@@ -428,14 +479,10 @@ where
         output_map[&OutputType::PermutationProduct].output[1],
         claim_writeset,
     );
-    top_layer_claims.insert(
-        output_map[&OutputType::Lookup16Bits].output[0],
-        claim_rangechecknum,
-    );
-    top_layer_claims.insert(
-        output_map[&OutputType::Lookup16Bits].output[1],
-        claim_rangecheckden,
-    );
+    if let Some(k) = output_map.get(&OutputType::Lookup16Bits) {
+        top_layer_claims.insert(k.output[0], claim_rangechecknum);
+        top_layer_claims.insert(k.output[1], claim_rangecheckden);
+    }
     top_layer_claims.insert(
         output_map[&OutputType::LookupTimestamps].output[0],
         claim_timechecknum,
@@ -495,6 +542,7 @@ where
             &mut sumcheck_batching_challenge,
             compiled_circuit,
             trace_len,
+            lookup_alpha,
             lookup_additive_part,
             constraints_batch_challenge,
             external_challenges,
@@ -595,16 +643,21 @@ where
     let mut setup_polys_claims = Vec::with_capacity(setup.hypercube_evals.len());
     for i in 0..setup.hypercube_evals.len() {
         let key = GKRAddress::Setup(i);
-        let Some(value) = claims_for_layers[&0].get(&key).copied() else {
-            panic!("Missing claim for {:?}", key);
-        };
-        #[cfg(feature = "gkr_self_checks")]
-        {
+        if let Some(value) = claims_for_layers[&0].get(&key).copied() {
+            #[cfg(feature = "gkr_self_checks")]
+            {
+                let poly = gkr_storage.get_base_layer(key);
+                let evaluation = evaluate_with_precomputed_eq::<F, E>(poly, &_eq_at_z[..]);
+                assert_eq!(evaluation, value, "diverged for {:?}", key);
+            }
+            setup_polys_claims.push(value);
+        } else {
+            // we have rare case when setup oly is not used, but we keep setup logic simple,
+            // and so we have to re-evaluate it
             let poly = gkr_storage.get_base_layer(key);
             let evaluation = evaluate_with_precomputed_eq::<F, E>(poly, &_eq_at_z[..]);
-            assert_eq!(evaluation, value, "diverged for {:?}", key);
+            setup_polys_claims.push(evaluation);
         }
-        setup_polys_claims.push(value);
     }
 
     drop(gkr_storage);

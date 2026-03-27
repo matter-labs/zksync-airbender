@@ -1,7 +1,9 @@
 use super::*;
+use crate::gkr::prover::forward_loop::utils::evaluate_linear_relation_at_row;
 use crate::gkr::sumcheck::access_and_fold::BaseFieldPoly;
 use crate::{cs::definitions::*, gkr::sumcheck::access_and_fold::ExtensionFieldPoly};
 use cs::definitions::gkr::RamWordRepresentation;
+use cs::gkr_compiler::CompiledMemoryTimestamp;
 use cs::gkr_compiler::{
     CompiledAddressSpaceRelationStrict, CompiledAddressStrict, NoFieldGKRRelation,
 };
@@ -11,12 +13,12 @@ use cs::{
 };
 
 pub(crate) mod copy;
-pub(crate) mod linear_and_max_quadratic;
 pub(crate) mod lookup_from_base_inputs;
 pub(crate) mod lookup_from_vector_inputs;
 pub(crate) mod lookup_pair;
 pub(crate) mod mask_product;
 pub(crate) mod pairwise_product;
+pub(crate) mod utils;
 
 fn evaluate_cache_relation<F: PrimeField, E: FieldExtension<F> + Field>(
     layer_idx: usize,
@@ -26,16 +28,16 @@ fn evaluate_cache_relation<F: PrimeField, E: FieldExtension<F> + Field>(
     external_challenges: &GKRExternalChallenges<F, E>,
     witness_trace: &mut GKRFullWitnessTrace<F, Global, Global>,
     trace_len: usize,
+    lookup_challenges_multiplicative_part: E,
+    decoder_lookup_fill_value: E,
     preprocessed_generic_lookup: &[E],
-    lookup_challenges_additive_part: E,
+    offset_for_decoder_table: u32,
+    decoder_predicate_address: GKRAddress,
     worker: &Worker,
 ) {
     assert!(address.is_cache());
     unsafe {
         match relation {
-            NoFieldGKRCacheRelation::LongLinear => {
-                todo!();
-            }
             NoFieldGKRCacheRelation::SingleColumnLookup {
                 relation,
                 range_check_width,
@@ -58,7 +60,21 @@ fn evaluate_cache_relation<F: PrimeField, E: FieldExtension<F> + Field>(
                             let mut dest = dest;
                             let dest = dest.pop().unwrap();
                             for i in 0..chunk_size {
-                                let mapping_index = source_ref[chunk_start + i];
+                                let row = chunk_start + i;
+                                let mapping_index = source_ref[row];
+
+                                #[cfg(feature = "gkr_self_checks")]
+                                {
+                                    let value = evaluate_linear_relation_at_row(
+                                        &relation.input,
+                                        &*gkr_storage,
+                                        row,
+                                    )
+                                    .as_u32_reduced();
+                                    assert!(value < 1 << 16, "range check 16 bits: value is {} at row {} for relation {:?}", value, row, relation);
+                                    assert_eq!(value as u16, mapping_index);
+                                }
+
                                 let mapped_value = F::from_u32_unchecked(mapping_index as u32);
                                 dest[i].write(mapped_value);
                             }
@@ -82,7 +98,21 @@ fn evaluate_cache_relation<F: PrimeField, E: FieldExtension<F> + Field>(
                             let mut dest = dest;
                             let dest = dest.pop().unwrap();
                             for i in 0..chunk_size {
-                                let mapping_index = source_ref[chunk_start + i];
+                                let row = chunk_start + i;
+                                let mapping_index = source_ref[row];
+
+                                #[cfg(feature = "gkr_self_checks")]
+                                {
+                                    let value = evaluate_linear_relation_at_row(
+                                        &relation.input,
+                                        &*gkr_storage,
+                                        row,
+                                    )
+                                    .as_u32_reduced();
+                                    assert!(value < 1 << TIMESTAMP_COLUMNS_NUM_BITS, "timestamp range check: value is {} at row {} for relation {:?}", value, row, relation);
+                                    assert_eq!(value, mapping_index);
+                                }
+
                                 let mapped_value = F::from_u32_unchecked(mapping_index);
                                 dest[i].write(mapped_value);
                             }
@@ -142,6 +172,13 @@ fn evaluate_cache_relation<F: PrimeField, E: FieldExtension<F> + Field>(
                                 }
                             }
                             match &rel.address {
+                                &CompiledAddressStrict::ConstantU16(c) => {
+                                    let mut t = external_challenges
+                                        .permutation_argument_linearization_challenges
+                                        [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
+                                    t.mul_assign_by_base(&F::from_u32_unchecked(c as u32));
+                                    result.add_assign(&t);
+                                }
                                 &CompiledAddressStrict::Constant(c) => {
                                     assert!(c < (1u32 << 16));
                                     let mut t = external_challenges
@@ -174,7 +211,7 @@ fn evaluate_cache_relation<F: PrimeField, E: FieldExtension<F> + Field>(
                                         result.add_assign(&t);
                                     }
                                 }
-                                CompiledAddressStrict::U32SpaceGeneric([low, high]) => {
+                                CompiledAddressStrict::U32SpaceGeneric(..) => {
                                     todo!();
                                 }
                                 CompiledAddressStrict::U32SpaceSpecialIndirect {
@@ -183,33 +220,72 @@ fn evaluate_cache_relation<F: PrimeField, E: FieldExtension<F> + Field>(
                                     low_offset,
                                     high,
                                 } => {
-                                    todo!();
+                                    let mut low_offset = *low_offset;
+                                    if let Some((c, offset)) = *low_dynamic_offset {
+                                        let t = src_ref
+                                            .get_base_layer_mem(offset)
+                                            .get_unchecked(chunk_start + i)
+                                            .as_u32_reduced();
+                                        low_offset += t.wrapping_mul(c as u32);
+                                    }
+                                    {
+                                        let mut t = external_challenges
+                                            .permutation_argument_linearization_challenges
+                                            [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
+                                        let mut el = *src_ref
+                                            .get_base_layer_mem(*low_base)
+                                            .get_unchecked(chunk_start + i);
+                                        el.add_assign(&F::from_u32_unchecked(low_offset));
+                                        t.mul_assign_by_base(&el);
+                                        result.add_assign(&t);
+                                    }
+                                    {
+                                        let mut t = external_challenges
+                                            .permutation_argument_linearization_challenges
+                                            [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
+                                        let el = src_ref
+                                            .get_base_layer_mem(*high)
+                                            .get_unchecked(chunk_start + i);
+                                        t.mul_assign_by_base(el);
+                                        result.add_assign(&t);
+                                    }
                                 }
                             }
                             // timestamp is a little special as we do add constant offset
-                            {
-                                let mut t = external_challenges
-                                    .permutation_argument_linearization_challenges
-                                    [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
-                                let mut el = *src_ref
-                                    .get_base_layer_mem(rel.timestamp[0])
-                                    .get_unchecked(chunk_start + i);
-                                el.add_assign(&F::from_u32_unchecked(rel.timestamp_offset as u32));
-                                t.mul_assign_by_base(&el);
-                                result.add_assign(&t);
-                            }
-                            {
-                                let mut t = external_challenges
-                                    .permutation_argument_linearization_challenges
-                                    [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
-                                let el = src_ref
-                                    .get_base_layer_mem(rel.timestamp[1])
-                                    .get_unchecked(chunk_start + i);
-                                t.mul_assign_by_base(el);
-                                result.add_assign(&t);
+
+                            match rel.timestamp {
+                                CompiledMemoryTimestamp::Zero => {}
+                                CompiledMemoryTimestamp::Normal(ts) => {
+                                    {
+                                        let mut t = external_challenges
+                                            .permutation_argument_linearization_challenges
+                                            [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
+                                        let mut el = *src_ref
+                                            .get_base_layer_mem(ts[0])
+                                            .get_unchecked(chunk_start + i);
+                                        el.add_assign(&F::from_u32_unchecked(
+                                            rel.timestamp_offset as u32,
+                                        ));
+                                        t.mul_assign_by_base(&el);
+                                        result.add_assign(&t);
+                                    }
+                                    {
+                                        let mut t = external_challenges
+                                            .permutation_argument_linearization_challenges
+                                            [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
+                                        let el = src_ref
+                                            .get_base_layer_mem(ts[1])
+                                            .get_unchecked(chunk_start + i);
+                                        t.mul_assign_by_base(el);
+                                        result.add_assign(&t);
+                                    }
+                                }
                             }
                             // and values are simplified for now
                             match rel.value {
+                                RamWordRepresentation::Zero => {
+                                    // nothing
+                                }
                                 RamWordRepresentation::U16Limbs(read_value) => {
                                     for (idx, offset) in [
                                         (
@@ -273,38 +349,18 @@ fn evaluate_cache_relation<F: PrimeField, E: FieldExtension<F> + Field>(
                 );
             }
             NoFieldGKRCacheRelation::VectorizedLookup(rel) => {
-                // println!("Evaluating vectorized lookup cache relation {:?}", rel);
-
-                // we materialize it, but the good thing is that we have a cache of lookups
-                let lookup_set_index = rel.lookup_set_index;
-                let mut destination = Box::<[E], Global>::new_uninit_slice(trace_len);
-                let ext_destination = vec![&mut destination[..]];
-                let mapping_ref = if lookup_set_index != DECODER_LOOKUP_FORMAL_SET_INDEX {
-                    // println!("Mapping lookup access number {}", lookup_set_index);
-                    assert!(lookup_set_index < witness_trace.generic_lookup_mapping.len() - 1);
-                    &witness_trace.generic_lookup_mapping[lookup_set_index]
-                } else {
-                    // println!("Mapping decoder lookup");
-                    assert!(witness_trace.generic_lookup_mapping.len() > 0);
-                    witness_trace.generic_lookup_mapping.last().unwrap()
-                };
-                apply_row_wise::<F, _>(
-                    vec![],
-                    ext_destination,
+                let destination = utils::materialize_vector_lookup_input(
+                    rel,
+                    &*gkr_storage,
+                    witness_trace,
                     trace_len,
+                    preprocessed_generic_lookup,
+                    lookup_challenges_multiplicative_part,
+                    decoder_lookup_fill_value,
+                    offset_for_decoder_table,
+                    decoder_predicate_address,
                     worker,
-                    |_, ext_dest, chunk_start, chunk_size| {
-                        assert_eq!(ext_dest.len(), 1);
-                        let mut ext_dest = ext_dest;
-                        let dest = ext_dest.pop().unwrap();
-                        for i in 0..chunk_size {
-                            let mapping_index = mapping_ref[chunk_start + i];
-                            let mapped_value = preprocessed_generic_lookup[mapping_index as usize];
-                            dest[i].write(mapped_value);
-                        }
-                    },
                 );
-                let destination = destination.assume_init();
                 address.assert_as_layer(layer_idx);
                 gkr_storage.insert_extension_at_layer(
                     layer_idx,
@@ -338,7 +394,9 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
     witness_trace: &mut GKRFullWitnessTrace<F, Global, Global>,
     trace_len: usize,
     preprocessed_generic_lookup: &[E],
+    lookup_challenges_multiplicative_part: E,
     lookup_challenges_additive_part: E,
+    decoder_lookup_fill_value: E,
     _constraints_batch_challenge: E,
     worker: &Worker,
 ) {
@@ -347,6 +405,12 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
         compiled_circuit.scratch_space_mapping.len(),
         compiled_circuit.scratch_space_mapping_rev.len()
     );
+
+    let decoder_predicate_address = if let Some(t) = compiled_circuit.memory_layout.machine_state {
+        GKRAddress::BaseLayerMemory(t.execute)
+    } else {
+        GKRAddress::BaseLayerMemory(usize::MAX)
+    };
 
     if layer_idx == 0 {
         // move base field polys
@@ -390,40 +454,24 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
                             "trying to fill {:?} from scratch space, but it's source is empty",
                             place
                         );
-                        let poly = core::mem::replace(poly, vec![]);
-                        gkr_storage.insert_base_field_at_layer(
-                            layer_idx,
-                            *place,
-                            BaseFieldPoly::new(poly.into_boxed_slice()),
-                        );
-                        println!("Filled intermediate poly {:?} from scratch space", place);
+                        if gkr_storage.try_get_base_poly(*place).is_none() {
+                            // some Copy relations could already fill it
+                            let poly = core::mem::replace(poly, vec![]);
+                            gkr_storage.insert_base_field_at_layer(
+                                layer_idx,
+                                *place,
+                                BaseFieldPoly::new(poly.into_boxed_slice()),
+                            );
+                            println!("Filled intermediate poly {:?} from scratch space", place);
+                        }
                     }
                 }
             }
         }
     }
 
-    // first we compute caches
-    for (addr, cache_relation) in layer.cached_relations.iter() {
-        // println!(
-        //     "Computing cache relation {:?} for output {:?}",
-        //     cache_relation, addr
-        // );
-
-        addr.assert_as_layer(layer_idx);
-        evaluate_cache_relation(
-            layer_idx,
-            *addr,
-            cache_relation,
-            gkr_storage,
-            external_challenges,
-            witness_trace,
-            trace_len,
-            preprocessed_generic_lookup,
-            lookup_challenges_additive_part,
-            worker,
-        );
-    }
+    // we split forward computation between gates that may be needed for cache relations self-checks,
+    // and all others that can use caches in them
 
     let expected_output_layer = layer_idx + 1;
     assert!(layer.gates.is_empty() ^ layer.gates_with_external_connections.is_empty());
@@ -446,7 +494,7 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
         match &gate.enforced_relation {
             NoFieldGKRRelation::Copy { input, output } => {
                 // println!("Should evaluate {:?}", &gate.enforced_relation);
-                copy::forward_evaluate_copy(
+                copy::forward_evaluate_copy::<F, E, false>(
                     *input,
                     *output,
                     gkr_storage,
@@ -455,6 +503,95 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
                     worker,
                 );
             }
+            NoFieldGKRRelation::MaxQuadratic { input, output } => {
+                if compiled_circuit.scratch_space_mapping.contains_key(output) {
+                    // a value of it will be filled from scratch space in the next round
+                } else {
+                    println!("Need to evaluate {:?} -> {:?}", input, output);
+                    todo!();
+                }
+            }
+            NoFieldGKRRelation::MaterializedVectorLookupInput { input, output } => {
+                let value = utils::materialize_vector_lookup_input(
+                    input,
+                    &*gkr_storage,
+                    witness_trace,
+                    trace_len,
+                    preprocessed_generic_lookup,
+                    lookup_challenges_multiplicative_part,
+                    decoder_lookup_fill_value,
+                    compiled_circuit.offset_for_decoder_table as u32,
+                    decoder_predicate_address,
+                    worker,
+                );
+                output.assert_as_layer(expected_output_layer);
+                gkr_storage.insert_extension_at_layer(
+                    expected_output_layer,
+                    *output,
+                    ExtensionFieldPoly::new(value),
+                );
+            }
+            _ => {
+                // skip
+            }
+        }
+    }
+
+    // first we compute caches
+    for (addr, cache_relation) in layer.cached_relations.iter() {
+        // println!(
+        //     "Computing cache relation {:?} for output {:?}",
+        //     cache_relation, addr
+        // );
+
+        addr.assert_as_layer(layer_idx);
+        evaluate_cache_relation(
+            layer_idx,
+            *addr,
+            cache_relation,
+            gkr_storage,
+            external_challenges,
+            witness_trace,
+            trace_len,
+            lookup_challenges_multiplicative_part,
+            decoder_lookup_fill_value,
+            preprocessed_generic_lookup,
+            compiled_circuit.offset_for_decoder_table as u32,
+            decoder_predicate_address,
+            worker,
+        );
+    }
+
+    for gate in layer
+        .gates
+        .iter()
+        .chain(layer.gates_with_external_connections.iter())
+    {
+        assert_eq!(gate.output_layer, expected_output_layer);
+
+        // println!("Should evaluate {:?}", &gate.enforced_relation);
+
+        // let now = std::time::Instant::now();
+        match &gate.enforced_relation {
+            NoFieldGKRRelation::Copy { input, output } => {
+                // even though it's handled above, we may need to copy cache relation to the
+                // next layer after making it, so we try again, but infailable option
+                copy::forward_evaluate_copy::<F, E, true>(
+                    *input,
+                    *output,
+                    gkr_storage,
+                    expected_output_layer,
+                    trace_len,
+                    worker,
+                );
+            }
+            NoFieldGKRRelation::MaxQuadratic { .. } => {
+                // handled above
+            }
+            NoFieldGKRRelation::MaterializedVectorLookupInput { .. } => {
+                // handled above
+            }
+
             NoFieldGKRRelation::InitialGrandProductFromCaches { input, output } => {
                 // println!("Should evaluate {:?}", &gate.enforced_relation);
                 pairwise_product::forward_evaluate_pairwise_product(
@@ -590,22 +727,25 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
                     worker,
                 );
             }
-            NoFieldGKRRelation::MaxQuadratic { input, output } => {
-                if compiled_circuit.scratch_space_mapping.contains_key(output) {
-                    // a value of it will be filled from scratch space in the next round
-                } else {
-                    println!("Need to evaluate {:?} -> {:?}", input, output);
-                    todo!();
-                }
+            NoFieldGKRRelation::LookupFromMaterializedVectorInputWithSetup {
+                input,
+                setup,
+                output,
+            } => {
+                lookup_from_vector_inputs::forward_evaluate_lookup_from_vector_inputs_with_setup(
+                    *input,
+                    *setup,
+                    *output,
+                    gkr_storage,
+                    expected_output_layer,
+                    trace_len,
+                    lookup_challenges_additive_part,
+                    worker,
+                );
             }
             rel @ _ => {
                 panic!("Should evaluate {:?}", rel);
             }
         }
-        // println!(
-        //     "Evaluating {:?} took {:?}",
-        //     &gate.enforced_relation,
-        //     now.elapsed()
-        // );
     }
 }

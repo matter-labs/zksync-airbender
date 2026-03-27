@@ -3,19 +3,17 @@ use super::*;
 use crate::constraint::Constraint;
 use crate::constraint::Term;
 use crate::cs::circuit::LookupQuery;
+use crate::cs::circuit_output::CircuitOutput;
 use crate::cs::circuit_trait::MemoryAccess;
 use crate::cs::circuit_trait::RegisterAccess;
 use crate::cs::circuit_trait::WordRepresentation;
 use crate::definitions::gkr::*;
 use crate::definitions::GKRAddress;
+use crate::definitions::LookupInput;
 use crate::definitions::Variable;
 use crate::gkr_compiler::graph::GKRGraph;
 use crate::gkr_compiler::graph::GraphHolder;
 use crate::gkr_compiler::layout::LookupOutput;
-// use crate::one_row_compiler::delegation::add_compiler_defined_variable;
-// use crate::one_row_compiler::delegation::add_multiple_compiler_defined_variables;
-use crate::cs::circuit_output::CircuitOutput;
-use crate::definitions::LookupInput;
 
 impl<F: PrimeField> GKRCompiler<F> {
     pub fn compile_family_circuit(
@@ -26,6 +24,7 @@ impl<F: PrimeField> GKRCompiler<F> {
         trace_len_log2: usize,
     ) -> GKRCircuitArtifact<F> {
         assert!(max_bytecode_size_in_words.is_power_of_two());
+        assert_eq!(num_inits_and_teardowns, 0, "TODO");
 
         let CircuitOutput {
             table_driver,
@@ -36,8 +35,9 @@ impl<F: PrimeField> GKRCompiler<F> {
             range_check_expressions,
             boolean_vars,
             substitutions,
-            // register_and_indirect_memory_accesses,
+            register_and_indirect_memory_accesses,
             executor_machine_state,
+            delegation_circuit_state,
             circuit_family_bitmask,
             variable_names,
             variables_from_constraints,
@@ -47,7 +47,8 @@ impl<F: PrimeField> GKRCompiler<F> {
 
         assert!(trace_len_log2 >= TIMESTAMP_COLUMNS_NUM_BITS as usize);
 
-        // assert!(register_and_indirect_memory_accesses.is_empty());
+        assert!(register_and_indirect_memory_accesses.is_empty());
+        assert!(delegation_circuit_state.is_none());
 
         let trace_len = 1usize << trace_len_log2;
 
@@ -275,6 +276,9 @@ impl<F: PrimeField> GKRCompiler<F> {
             });
 
             let read_value = match memory_query.read_value() {
+                WordRepresentation::Zero => {
+                    unreachable!()
+                }
                 WordRepresentation::U16Limbs(read_value) => {
                     let read_value = graph.layout_memory_subtree_multiple_variables(
                         read_value,
@@ -374,6 +378,9 @@ impl<F: PrimeField> GKRCompiler<F> {
                     //     address,
                     // })
                 }
+                _ => {
+                    unreachable!()
+                }
             };
 
             let query_columns = if memory_query.is_readonly() {
@@ -389,6 +396,9 @@ impl<F: PrimeField> GKRCompiler<F> {
                 RamQuery::Readonly(query_columns)
             } else {
                 let write_value = match memory_query.write_value() {
+                    WordRepresentation::Zero => {
+                        unreachable!()
+                    }
                     WordRepresentation::U16Limbs(write_value) => {
                         let write_value = graph.layout_memory_subtree_multiple_variables(
                             write_value,
@@ -495,10 +505,18 @@ impl<F: PrimeField> GKRCompiler<F> {
             &mut graph,
             executor_machine_state.execute,
             &ram_augmented_sets,
+            Some((
+                (
+                    executor_machine_state.cycle_start_state.pc,
+                    executor_machine_state.cycle_start_state.timestamp,
+                ),
+                (
+                    executor_machine_state.cycle_end_state.pc,
+                    executor_machine_state.cycle_end_state.timestamp,
+                ),
+            )),
+            None,
             executor_machine_state.cycle_start_state.timestamp,
-            executor_machine_state.cycle_start_state.pc,
-            executor_machine_state.cycle_end_state.timestamp,
-            executor_machine_state.cycle_end_state.pc,
         );
 
         // now we can follow up with lookup subarguments. We separate "hot" range check 16 and 19 bit
@@ -904,16 +922,24 @@ impl<F: PrimeField> GKRCompiler<F> {
         let memory_layout = GKRMemoryLayout {
             ram_access_sets,
             machine_state: Some(machine_state),
-            register_and_indirect_accesses: vec![],
+            delegation_state: None,
+            indirect_access_variable_offsets: vec![],
             total_width: graph.base_layer_memory.len(),
             decoder_input: Some(decoder_input),
         };
 
-        let GKRAddress::BaseLayerWitness(multiplicities_columns_for_range_check_16) =
-            graph.get_address_for_variable(range_check_16_multiplicity.expect("is some"))
-        else {
-            unreachable!()
-        };
+        let multiplicities_columns_for_range_check_16 =
+            if let Some(range_check_16_multiplicity) = range_check_16_multiplicity {
+                let GKRAddress::BaseLayerWitness(multiplicities_columns_for_range_check_16) =
+                    graph.get_address_for_variable(range_check_16_multiplicity)
+                else {
+                    unreachable!()
+                };
+                multiplicities_columns_for_range_check_16
+                    ..(multiplicities_columns_for_range_check_16 + 1)
+            } else {
+                0..0
+            };
         let GKRAddress::BaseLayerWitness(multiplicities_columns_for_timestamp_range_check) =
             graph.get_address_for_variable(timestamp_multiplicity.expect("is some"))
         else {

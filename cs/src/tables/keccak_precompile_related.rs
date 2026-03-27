@@ -1,9 +1,7 @@
 use super::*;
 
 // WARNING: IF THE CONTROL IS TOTALLY EMPTY THIS WILL OUTPUT JUNK
-pub fn create_keccak_permutation_indices_table<F: PrimeField, const I: usize, const J: usize>(
-    id: u32,
-) -> LookupTable<F, 3> {
+pub fn create_keccak_permutation_indices_table<F: PrimeField>(id: u32) -> LookupTable<F> {
     const PRECOMPILE_IOTA_COLUMNXOR: u32 = 0;
     const PRECOMPILE_COLUMNMIX1: u32 = 1;
     const PRECOMPILE_COLUMNMIX2: u32 = 2;
@@ -50,15 +48,16 @@ pub fn create_keccak_permutation_indices_table<F: PrimeField, const I: usize, co
     };
     let mut keys = Vec::with_capacity(1 << 12);
     for control_with_exe in 0..1 << 12 {
-        let key = [F::from_u32_unchecked(control_with_exe), F::ZERO, F::ZERO];
+        let key = [F::from_u32_unchecked(control_with_exe)];
         keys.push(key);
     }
-    let table_name = format!("Keccak Permutation Indices({I}, {J}) table");
+    let table_name = format!("keccak permutation indices table");
 
     LookupTable::create_table_from_key_and_pure_generation_fn(
         &keys,
         table_name,
         1,
+        6,
         |keys| {
             let control_with_exe = keys[0].as_u32_reduced();
             debug_assert!(control_with_exe < (1 << 12));
@@ -131,20 +130,21 @@ pub fn create_keccak_permutation_indices_table<F: PrimeField, const I: usize, co
                 }
                 _ => [0, 1, 2, 3, 4, 5], // THIS IS JUNK!!!!
             };
-            let result = [
-                F::from_u32_unchecked(indices[I] as u32),
-                F::from_u32_unchecked(indices[J] as u32),
-                F::ZERO,
-            ];
+
+            let mut result = ArrayVec::new();
+            result
+                .try_extend_from_slice(&indices.map(|el| F::from_u32_with_reduction(el as u32)))
+                .unwrap();
+
             (control as usize, result)
         },
-        Some(first_key_index_gen_fn::<F, 3>),
+        Some(first_key_index_gen_fn::<F>),
         id,
     )
 }
 
 // WARN: if you call this with a wrong round it returns junk!
-pub fn create_xor_special_keccak_iota_table<F: PrimeField>(id: u32) -> LookupTable<F, 3> {
+pub fn create_xor_special_keccak_iota_table<F: PrimeField>(id: u32) -> LookupTable<F> {
     const ROUND_CONSTANTS_ADJUSTED: [u64; 25] = [
         0,
         1,
@@ -175,7 +175,7 @@ pub fn create_xor_special_keccak_iota_table<F: PrimeField>(id: u32) -> LookupTab
     let mut keys = Vec::with_capacity(1 << 16);
     for b in 0..1 << 8 {
         for a in 0..1 << 8 {
-            let key = [F::from_u32_unchecked(a), F::from_u32_unchecked(b), F::ZERO];
+            let key = [F::from_u32_unchecked(a), F::from_u32_unchecked(b)];
             keys.push(key);
         }
     }
@@ -185,6 +185,7 @@ pub fn create_xor_special_keccak_iota_table<F: PrimeField>(id: u32) -> LookupTab
         &keys,
         table_name,
         2,
+        1,
         |keys| {
             let a = keys[0].as_u32_reduced();
             let b_control = keys[1].as_u32_reduced();
@@ -200,7 +201,9 @@ pub fn create_xor_special_keccak_iota_table<F: PrimeField>(id: u32) -> LookupTab
             } else {
                 0
             }; // THIS IS JUNK
-            let result = [F::from_u32_unchecked(a ^ (b as u32)), F::ZERO, F::ZERO];
+            let mut result = ArrayVec::new();
+            result.push(F::from_u32_unchecked(a ^ (b as u32)));
+
             ((a | b_control << 8) as usize, result)
         },
         Some(|keys| (keys[0].as_u32_reduced() | keys[1].as_u32_reduced() << 8) as usize),
@@ -208,11 +211,11 @@ pub fn create_xor_special_keccak_iota_table<F: PrimeField>(id: u32) -> LookupTab
     )
 }
 
-pub fn create_andn_table<F: PrimeField>(id: u32) -> LookupTable<F, 3> {
+pub fn create_andn_table<F: PrimeField>(id: u32) -> LookupTable<F> {
     let mut keys = Vec::with_capacity(1 << 16);
     for b in 0..1 << 8 {
         for a in 0..1 << 8 {
-            let key = [F::from_u32_unchecked(a), F::from_u32_unchecked(b), F::ZERO];
+            let key = [F::from_u32_unchecked(a), F::from_u32_unchecked(b)];
             keys.push(key);
         }
     }
@@ -222,28 +225,28 @@ pub fn create_andn_table<F: PrimeField>(id: u32) -> LookupTable<F, 3> {
         &keys,
         table_name,
         2,
+        1,
         |keys| {
             let a = keys[0].as_u32_reduced();
             let b = keys[1].as_u32_reduced();
             debug_assert!(a < (1 << 8) && b < (1 << 8));
 
             let c = !a & b;
-            let result = [F::from_u32_unchecked(c), F::ZERO, F::ZERO];
+
+            let mut result = ArrayVec::new();
+            result.push(F::from_u32_unchecked(c));
+
             ((a | b << 8) as usize, result)
         },
         Some(|keys| (keys[0].as_u32_reduced() | keys[1].as_u32_reduced() << 8) as usize),
         id,
     )
 }
-pub fn create_rotl_table<F: PrimeField>(id: u32) -> LookupTable<F, 3> {
+pub fn create_rotl_table<F: PrimeField>(id: u32) -> LookupTable<F> {
     let mut keys = Vec::with_capacity(1 << 20);
     for rot_const in 0..16 {
         for word_u16 in 0..1 << 16 {
-            let key = [
-                F::from_u32_unchecked(word_u16 | rot_const << 16),
-                F::ZERO,
-                F::ZERO,
-            ];
+            let key = [F::from_u32_unchecked(word_u16 | rot_const << 16)];
             keys.push(key);
         }
     }
@@ -253,6 +256,7 @@ pub fn create_rotl_table<F: PrimeField>(id: u32) -> LookupTable<F, 3> {
         &keys,
         table_name,
         1,
+        2,
         |keys| {
             let input = keys[0].as_u32_reduced();
             debug_assert!(input < (1 << 20));
@@ -264,11 +268,11 @@ pub fn create_rotl_table<F: PrimeField>(id: u32) -> LookupTable<F, 3> {
                 word_u16.unbounded_shr(16 - rot_const),
                 word_u16.unbounded_shl(rot_const),
             );
-            let result = [
-                F::from_u32_unchecked(left as u32),
-                F::from_u32_unchecked(right as u32),
-                F::ZERO,
-            ];
+
+            let mut result = ArrayVec::new();
+            result.push(F::from_u32_unchecked(left as u32));
+            result.push(F::from_u32_unchecked(right as u32));
+
             (input as usize, result)
         },
         Some(|keys| keys[0].as_u32_reduced() as usize),

@@ -10,11 +10,10 @@ pub struct BatchConstraintEvalGKRRelation<F: PrimeField, E: FieldExtension<F> + 
 impl<F: PrimeField, E: FieldExtension<F> + Field> BatchConstraintEvalGKRRelation<F, E> {
     pub fn new(
         input: &NoFieldMaxQuadraticConstraintsGKRRelation,
-        num_memory_polys: usize,
-        num_witness_polys: usize,
         challenge_for_constraints: E,
     ) -> Self {
-        let mut inputs = vec![GKRAddress::placeholder(); num_memory_polys + num_witness_polys];
+        let mut remapper = DenseInputRemapper::default();
+        let mut inputs = vec![];
         let mut kernel = BatchConstraintEvalGKRRelationKernel {
             quadratic_parts: vec![],
             linear_parts: vec![],
@@ -22,46 +21,24 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BatchConstraintEvalGKRRelation
             _marker: core::marker::PhantomData,
         };
 
-        let remap_offset = |a: GKRAddress| {
-            match a {
-                GKRAddress::BaseLayerMemory(offset) => {
-                    assert!(offset < num_memory_polys);
-                    offset
-                }
-                GKRAddress::BaseLayerWitness(offset) => {
-                    assert!(offset < num_witness_polys);
-                    offset + num_memory_polys
-                }
-                GKRAddress::Setup(..) => {
-                    unreachable!()
-                    // offset + self.num_memory_polys + self.num_witness_polys
-                }
-                _ => {
-                    unreachable!()
-                }
-            }
-        };
-
         for ((a, b), set) in input.quadratic_terms.iter() {
-            let a_offset = remap_offset(*a);
-            if inputs[a_offset] == GKRAddress::placeholder() {
-                inputs[a_offset] = *a;
-            } else {
-                assert_eq!(inputs[a_offset], *a);
+            let (is_new, a_offset) = remapper.remap(*a);
+            if is_new {
+                inputs.push(*a);
             }
 
             let b_offset = if *a != *b {
-                let b_offset = remap_offset(*b);
-                if inputs[b_offset] == GKRAddress::placeholder() {
-                    inputs[b_offset] = *b;
-                } else {
-                    assert_eq!(inputs[b_offset], *b);
+                let (is_new, b_offset) = remapper.remap(*b);
+
+                if is_new {
+                    inputs.push(*b);
                 }
 
                 b_offset
             } else {
                 a_offset
             };
+
             let mut total_prefactor = E::ZERO;
             for (c, pow) in set.iter() {
                 let mut t = challenge_for_constraints.pow(*pow as u32);
@@ -75,11 +52,9 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BatchConstraintEvalGKRRelation
         }
 
         for (a, set) in input.linear_terms.iter() {
-            let a_offset = remap_offset(*a);
-            if inputs[a_offset] == GKRAddress::placeholder() {
-                inputs[a_offset] = *a;
-            } else {
-                assert_eq!(inputs[a_offset], *a);
+            let (is_new, a_offset) = remapper.remap(*a);
+            if is_new {
+                inputs.push(*a);
             }
             let mut total_prefactor = E::ZERO;
             for (c, pow) in set.iter() {

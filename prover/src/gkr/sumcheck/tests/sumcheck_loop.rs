@@ -73,6 +73,7 @@ fn test_sumcheck_loop_product() {
     let mut claim_points: BTreeMap<usize, Vec<E>> = BTreeMap::new();
     claim_points.insert(1, prev_challenges.clone());
 
+    let lookup_multiplicative_part = E::from_base(F::from_u64_with_reduction(0xff));
     let lookup_additive_part = E::from_base(F::from_u64_with_reduction(42));
     let constraints_batch_challenge = E::from_base(F::from_u64_with_reduction(127));
 
@@ -88,6 +89,7 @@ fn test_sumcheck_loop_product() {
         &mut batching_challenge,
         unsafe { MaybeUninit::uninit().assume_init_ref() }, // unused
         POLY_SIZE,
+        lookup_multiplicative_part,
         lookup_additive_part,
         constraints_batch_challenge,
         &GKRExternalChallenges::default(),
@@ -227,6 +229,7 @@ fn test_sumcheck_loop_multiple_gates() {
     let mut claim_points: BTreeMap<usize, Vec<E>> = BTreeMap::new();
     claim_points.insert(1, prev_challenges.clone());
 
+    let lookup_multiplicative_part = E::from_base(F::from_u64_with_reduction(0xff));
     let lookup_additive_part = E::from_base(F::from_u64_with_reduction(42));
     let constraints_batch_challenge = E::from_base(F::from_u64_with_reduction(127));
 
@@ -242,6 +245,7 @@ fn test_sumcheck_loop_multiple_gates() {
         &mut batching_challenge,
         unsafe { MaybeUninit::uninit().assume_init_ref() }, // unused
         POLY_SIZE,
+        lookup_multiplicative_part,
         lookup_additive_part,
         constraints_batch_challenge,
         &GKRExternalChallenges::default(),

@@ -49,6 +49,13 @@ pub struct OpcodeFamilyCircuitState<F: PrimeField> {
     pub cycle_end_state: MachineCycleStartOrEndState<F>,
 }
 
+#[derive(Clone, Copy, Hash, Debug)]
+pub struct DelegationCircuitState {
+    pub(crate) delegation_type: u16,
+    pub(crate) execute: Variable, // Boolean
+    pub(crate) invocation_timestamp: [Variable; NUM_TIMESTAMP_COLUMNS_FOR_RAM],
+}
+
 #[derive(Clone, Copy, Hash, Debug, serde::Serialize, serde::Deserialize)]
 pub struct MachineStatePermutationVariables {
     pub pc: ColumnSet<2>,

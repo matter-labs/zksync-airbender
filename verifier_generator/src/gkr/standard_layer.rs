@@ -107,7 +107,8 @@ pub fn generate_layer_compute_claim<MW: MersenneWrapper>(
             | R::LookupPairFromMaterializedVectorInputs { output, .. }
             | R::LookupPairFromCachedVectorInputs { output, .. }
             | R::LookupUnbalancedPairWithMaterializedVectorInputs { output, .. }
-            | R::LookupWithCachedDensAndSetup { output, .. } => {
+            | R::LookupWithCachedDensAndSetup { output, .. }
+            | R::LookupFromMaterializedVectorInputWithSetup { output, .. } => {
                 let o0 = addr_to_idx(&output[0], output_sorted_addrs);
                 let o1 = addr_to_idx(&output[1], output_sorted_addrs);
                 let mul_t0 = MW::mul_assign(quote! { t0 }, quote! { c0 });
@@ -562,6 +563,45 @@ pub fn generate_layer_final_step_accumulator<MW: MersenneWrapper, F: PrimeField>
                             #mul_cb;
                             #sub_cb;
                             ad
+                        }
+                    },
+                    |mw_mul, _| {
+                        let mul_bd = mw_mul(quote! { den }, quote! { d });
+                        quote! {
+                            let mut den = b;
+                            #mul_bd;
+                            den
+                        }
+                    },
+                );
+            }
+            R::LookupFromMaterializedVectorInputWithSetup { input, setup, .. } => {
+                // 1/(b+γ) - c/(d+γ) -> num = (d+γ) - c*(b+γ), den = (b+γ)*(d+γ)
+                let ib = addr_to_idx(input, input_sorted_addrs);
+                let s0 = addr_to_idx(&setup[0], input_sorted_addrs);
+                let s1 = addr_to_idx(&setup[1], input_sorted_addrs);
+                generate_two_output_body::<MW>(
+                    &mut body,
+                    &mul_batch,
+                    quote! {
+                        let mut b = unsafe { evals.get_unchecked(#ib) }[j];
+                        let c = unsafe { evals.get_unchecked(#s0) }[j];
+                        let mut d = unsafe { evals.get_unchecked(#s1) }[j];
+                    },
+                    |mw_mul, mw_add| {
+                        let add_gamma_b =
+                            mw_add(quote! { b }, quote! { lookup_additive_challenge });
+                        let add_gamma_d =
+                            mw_add(quote! { d }, quote! { lookup_additive_challenge });
+                        let mul_cb = mw_mul(quote! { cb }, quote! { b });
+                        let sub_cb = MW::sub_assign(quote! { d }, quote! { cb });
+                        quote! {
+                            #add_gamma_b;
+                            #add_gamma_d;
+                            let mut cb = c;
+                            #mul_cb;
+                            #sub_cb;
+                            d
                         }
                     },
                     |mw_mul, _| {

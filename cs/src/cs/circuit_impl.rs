@@ -40,9 +40,10 @@ pub struct BasicAssembly<
     placeholder_query: HashMap<(Placeholder, usize), Variable>,
     layers_mapping: HashMap<Variable, usize>,
     table_driver: TableDriver<F>,
-    // register_and_indirect_memory_accesses: Vec<RegisterAndIndirectAccesses>,
-    // register_and_indirect_memory_accesses_offset_variables_idxes: HashMap<Variable, usize>,
+    register_and_indirect_memory_accesses: Vec<RegisterAndIndirectAccesses>,
+    register_and_indirect_memory_accesses_offset_variables_idxes: HashMap<Variable, usize>,
     executor_machine_state: Option<OpcodeFamilyCircuitState<F>>,
+    delegation_circuit_state: Option<DelegationCircuitState>,
 
     pub witness_placer: Option<W>,
     witness_graph: WitnessResolutionGraph<F, W>,
@@ -71,11 +72,12 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
             layers_mapping: HashMap::new(),
             table_driver: TableDriver::<F>::new(),
 
-            // register_and_indirect_memory_accesses: vec![],
-            // register_and_indirect_memory_accesses_offset_variables_idxes: HashMap::new(),
+            register_and_indirect_memory_accesses: vec![],
+            register_and_indirect_memory_accesses_offset_variables_idxes: HashMap::new(),
             witness_graph: WitnessResolutionGraph::new(),
 
             executor_machine_state: None,
+            delegation_circuit_state: None,
 
             witness_placer: None,
 
@@ -536,300 +538,289 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
         }
     }
 
-    // fn process_delegation_request(&mut self) -> Boolean {
-    //     assert!(self.degegated_request_to_process.is_none());
-    //     assert!(self.delegated_computation_requests.is_empty());
-    //     // NOTE: delegation requests processing variables are placed by the compiler, so we do not have
-    //     // to manage their boolean properties or range checks
-    //     let execute = self.add_variable();
-    //     self.require_invariant(
-    //         execute,
-    //         Invariant::Substituted((Placeholder::ExecuteDelegation, 0)),
-    //     );
+    fn request_register_and_indirect_memory_accesses(
+        &mut self,
+        request: RegisterAccessRequest,
+        name: &str,
+        local_timestamp_in_cycle: u32,
+    ) -> RegisterAndIndirectAccesses {
+        assert!(request.register_index > 0);
+        assert!(request.register_index < 32);
 
-    //     let memory_offset_high = self.add_variable();
-    //     self.require_invariant(
-    //         memory_offset_high,
-    //         Invariant::Substituted((Placeholder::DelegationABIOffset, 0)),
-    //     );
+        let Some(_delegation_circuit_state) = self.delegation_circuit_state else {
+            panic!("Delegation circuit state is not initialized");
+        };
 
-    //     // set witness
-    //     let value_fn = move |placer: &mut Self::WitnessPlacer| {
-    //         let execute_bool = placer.get_oracle_boolean(Placeholder::ExecuteDelegation);
-    //         let abi_offset_high = placer.get_oracle_u16(Placeholder::DelegationABIOffset);
-    //         placer.assign_mask(execute, &execute_bool);
-    //         placer.assign_u16(memory_offset_high, &abi_offset_high);
-    //     };
-    //     self.set_values(value_fn);
+        // we always maintain sort
+        if let Some(last) = self.register_and_indirect_memory_accesses.last() {
+            assert!(
+                last.register_index < request.register_index,
+                "register accesses must be requested sorted"
+            );
+        } else {
+            // nothing
+        }
 
-    //     let request = DelegatedProcessingData {
-    //         execute,
-    //         memory_offset_high,
-    //     };
+        let register_index = request.register_index as usize;
 
-    //     self.degegated_request_to_process = Some(request);
+        if request.indirects_alignment_log2 < std::mem::align_of::<u32>().trailing_zeros() {
+            assert!(request.indirect_accesses.is_empty());
+        }
 
-    //     Boolean::Is(execute)
-    // }
+        let register_access = if request.register_write {
+            let read_low = self.add_named_variable(&format!("{} read[0]", name));
+            let read_high = self.add_named_variable(&format!("{} read[1]", name));
 
-    // fn create_register_and_indirect_memory_accesses(
-    //     &mut self,
-    //     request: RegisterAccessRequest,
-    // ) -> RegisterAndIndirectAccesses {
-    //     assert!(request.register_index > 0);
-    //     assert!(request.register_index < 32);
-    //     // we always maintain sort
-    //     if let Some(last) = self.register_and_indirect_memory_accesses.last() {
-    //         assert!(
-    //             last.register_index < request.register_index,
-    //             "register accesses must be requested sorted"
-    //         );
-    //     } else {
-    //         // nothing
-    //     }
+            self.require_invariant(
+                read_low,
+                Invariant::Substituted((
+                    Placeholder::DelegationRegisterReadValue(register_index),
+                    0,
+                )),
+            );
+            self.require_invariant(
+                read_high,
+                Invariant::Substituted((
+                    Placeholder::DelegationRegisterReadValue(register_index),
+                    1,
+                )),
+            );
 
-    //     let register_index = request.register_index as usize;
+            let value_fn = move |placer: &mut Self::WitnessPlacer| {
+                let value =
+                    placer.get_oracle_u32(Placeholder::DelegationRegisterReadValue(register_index));
+                placer.assign_u32_from_u16_parts([read_low, read_high], &value);
+            };
+            self.set_values(value_fn);
 
-    //     if request.indirects_alignment_log2 < std::mem::align_of::<u32>().trailing_zeros() {
-    //         assert!(request.indirect_accesses.is_empty());
-    //     }
+            let write_low = self.add_named_variable(&format!("{} write[0]", name));
+            let write_high = self.add_named_variable(&format!("{} write[0]", name));
 
-    //     let register_access = if request.register_write {
-    //         let read_low = self.add_variable();
-    //         let read_high = self.add_variable();
+            RegisterAccessType::Write {
+                read_value: [read_low, read_high],
+                write_value: [write_low, write_high],
+            }
+        } else {
+            let read_low = self.add_named_variable(&format!("{} read[0]", name));
+            let read_high = self.add_named_variable(&format!("{} read[1]", name));
 
-    //         self.require_invariant(
-    //             read_low,
-    //             Invariant::Substituted((
-    //                 Placeholder::DelegationRegisterReadValue(register_index),
-    //                 0,
-    //             )),
-    //         );
-    //         self.require_invariant(
-    //             read_high,
-    //             Invariant::Substituted((
-    //                 Placeholder::DelegationRegisterReadValue(register_index),
-    //                 1,
-    //             )),
-    //         );
+            self.require_invariant(
+                read_low,
+                Invariant::Substituted((
+                    Placeholder::DelegationRegisterReadValue(register_index),
+                    0,
+                )),
+            );
+            self.require_invariant(
+                read_high,
+                Invariant::Substituted((
+                    Placeholder::DelegationRegisterReadValue(register_index),
+                    1,
+                )),
+            );
 
-    //         let value_fn = move |placer: &mut Self::WitnessPlacer| {
-    //             let value =
-    //                 placer.get_oracle_u32(Placeholder::DelegationRegisterReadValue(register_index));
-    //             placer.assign_u32_from_u16_parts([read_low, read_high], &value);
-    //         };
-    //         self.set_values(value_fn);
+            let value_fn = move |placer: &mut Self::WitnessPlacer| {
+                let value =
+                    placer.get_oracle_u32(Placeholder::DelegationRegisterReadValue(register_index));
+                placer.assign_u32_from_u16_parts([read_low, read_high], &value);
+            };
+            self.set_values(value_fn);
 
-    //         let write_low = self.add_variable();
-    //         let write_high = self.add_variable();
+            RegisterAccessType::Read {
+                read_value: [read_low, read_high],
+            }
+        };
 
-    //         RegisterAccessType::Write {
-    //             read_value: [read_low, read_high],
-    //             write_value: [write_low, write_high],
-    //         }
-    //     } else {
-    //         let read_low = self.add_variable();
-    //         let read_high = self.add_variable();
+        let mut indirect_accesses: Vec<IndirectAccessType> = vec![];
 
-    //         self.require_invariant(
-    //             read_low,
-    //             Invariant::Substituted((
-    //                 Placeholder::DelegationRegisterReadValue(register_index),
-    //                 0,
-    //             )),
-    //         );
-    //         self.require_invariant(
-    //             read_high,
-    //             Invariant::Substituted((
-    //                 Placeholder::DelegationRegisterReadValue(register_index),
-    //                 1,
-    //             )),
-    //         );
+        for (indirect_access_idx, access_description) in
+            request.indirect_accesses.into_iter().enumerate()
+        {
+            if let Some((c, _)) = access_description.variable_dependent {
+                assert!(
+                    c < 1 << 16,
+                    "constant multiplier {} is too large and unsupported",
+                    c
+                );
+                assert!(
+                    access_description.assume_no_alignment_overflow,
+                    "overflowing address generation with variable part is not yet supported"
+                );
+            }
+            if access_description.variable_dependent.is_none() {
+                if access_description.assume_no_alignment_overflow {
+                    assert!(
+                        access_description.offset_constant + (core::mem::size_of::<u32>() as u32)
+                            <= (1 << request.indirects_alignment_log2)
+                    );
+                }
+            }
+            // make formal witness assignment to placeholder to drive witness resolution
+            let variable_dependent = if let Some((off, var)) = access_description.variable_dependent
+            {
+                if self
+                    .register_and_indirect_memory_accesses_offset_variables_idxes
+                    .contains_key(&var)
+                    == false
+                {
+                    let idx = self
+                        .register_and_indirect_memory_accesses_offset_variables_idxes
+                        .len();
+                    self.register_and_indirect_memory_accesses_offset_variables_idxes
+                        .insert(var, idx);
+                    self.require_invariant(
+                        var,
+                        Invariant::Substituted((
+                            Placeholder::DelegationIndirectAccessVariableOffset {
+                                variable_index: idx,
+                            },
+                            0,
+                        )),
+                    );
 
-    //         let value_fn = move |placer: &mut Self::WitnessPlacer| {
-    //             let value =
-    //                 placer.get_oracle_u32(Placeholder::DelegationRegisterReadValue(register_index));
-    //             placer.assign_u32_from_u16_parts([read_low, read_high], &value);
-    //         };
-    //         self.set_values(value_fn);
+                    // it was not used in other accesses, so it needs an oracle value
+                    let value_fn = move |placer: &mut Self::WitnessPlacer| {
+                        let value = placer.get_oracle_u16(
+                            Placeholder::DelegationIndirectAccessVariableOffset {
+                                variable_index: idx,
+                            },
+                        );
+                        placer.assign_u16(var, &value);
+                    };
+                    self.set_values(value_fn);
+                }
 
-    //         RegisterAccessType::Read {
-    //             read_value: [read_low, read_high],
-    //         }
-    //     };
+                Some((
+                    off,
+                    var,
+                    self.register_and_indirect_memory_accesses_offset_variables_idxes
+                        .get(&var)
+                        .copied()
+                        .unwrap(),
+                ))
+            } else {
+                None
+            };
 
-    //     let mut indirect_accesses: Vec<IndirectAccessType> = vec![];
+            let access = if access_description.is_write_access {
+                let read_low = self.add_named_variable(&format!(
+                    "{} indirect access {} read[0]",
+                    name, indirect_access_idx
+                ));
+                let read_high = self.add_named_variable(&format!(
+                    "{} indirect access {} read[1]",
+                    name, indirect_access_idx
+                ));
 
-    //     for (indirect_access_idx, access_description) in
-    //         request.indirect_accesses.into_iter().enumerate()
-    //     {
-    //         if let Some((c, _)) = access_description.variable_dependent {
-    //             assert!(
-    //                 c < 1 << 16,
-    //                 "constant multiplier {} is too large and unsupported",
-    //                 c
-    //             );
-    //             assert!(
-    //                 access_description.assume_no_alignment_overflow,
-    //                 "overflowing address generation with variable part is not yet supported"
-    //             );
-    //         }
-    //         if access_description.variable_dependent.is_none() {
-    //             if access_description.assume_no_alignment_overflow {
-    //                 assert!(
-    //                     access_description.offset_constant + (core::mem::size_of::<u32>() as u32)
-    //                         <= (1 << request.indirects_alignment_log2)
-    //                 );
-    //             }
-    //         }
-    //         // make formal witness assignment to placeholder to drive witness resolution
-    //         let variable_dependent = if let Some((off, var)) = access_description.variable_dependent
-    //         {
-    //             if self
-    //                 .register_and_indirect_memory_accesses_offset_variables_idxes
-    //                 .contains_key(&var)
-    //                 == false
-    //             {
-    //                 let idx = self
-    //                     .register_and_indirect_memory_accesses_offset_variables_idxes
-    //                     .len();
-    //                 self.register_and_indirect_memory_accesses_offset_variables_idxes
-    //                     .insert(var, idx);
-    //                 self.require_invariant(
-    //                     var,
-    //                     Invariant::Substituted((
-    //                         Placeholder::DelegationIndirectAccessVariableOffset {
-    //                             variable_index: idx,
-    //                         },
-    //                         0,
-    //                     )),
-    //                 );
+                self.require_invariant(
+                    read_low,
+                    Invariant::Substituted((
+                        Placeholder::DelegationIndirectReadValue {
+                            register_index,
+                            word_index: indirect_access_idx,
+                        },
+                        0,
+                    )),
+                );
+                self.require_invariant(
+                    read_high,
+                    Invariant::Substituted((
+                        Placeholder::DelegationIndirectReadValue {
+                            register_index,
+                            word_index: indirect_access_idx,
+                        },
+                        1,
+                    )),
+                );
 
-    //                 // it was not used in other accesses, so it needs an oracle value
-    //                 let value_fn = move |placer: &mut Self::WitnessPlacer| {
-    //                     let value = placer.get_oracle_u16(
-    //                         Placeholder::DelegationIndirectAccessVariableOffset {
-    //                             variable_index: idx,
-    //                         },
-    //                     );
-    //                     placer.assign_u16(var, &value);
-    //                 };
-    //                 self.set_values(value_fn);
-    //             }
+                let value_fn = move |placer: &mut Self::WitnessPlacer| {
+                    let value = placer.get_oracle_u32(Placeholder::DelegationIndirectReadValue {
+                        register_index,
+                        word_index: indirect_access_idx,
+                    });
+                    placer.assign_u32_from_u16_parts([read_low, read_high], &value);
+                };
+                self.set_values(value_fn);
 
-    //             Some((
-    //                 off,
-    //                 var,
-    //                 self.register_and_indirect_memory_accesses_offset_variables_idxes
-    //                     .get(&var)
-    //                     .copied()
-    //                     .unwrap(),
-    //             ))
-    //         } else {
-    //             None
-    //         };
+                let write_low = self.add_named_variable(&format!(
+                    "{} indirect access {} write[0]",
+                    name, indirect_access_idx
+                ));
+                let write_high = self.add_named_variable(&format!(
+                    "{} indirect access {} write[1]",
+                    name, indirect_access_idx
+                ));
 
-    //         let access = if access_description.is_write_access {
-    //             let read_low = self.add_variable();
-    //             let read_high = self.add_variable();
+                IndirectAccessType::Write {
+                    read_value: [read_low, read_high],
+                    write_value: [write_low, write_high],
+                    variable_dependent: variable_dependent,
+                    offset_constant: access_description.offset_constant,
+                    assume_no_alignment_overflow: access_description.assume_no_alignment_overflow,
+                }
+            } else {
+                let read_low = self.add_named_variable(&format!(
+                    "{} indirect access {} read[0]",
+                    name, indirect_access_idx
+                ));
+                let read_high = self.add_named_variable(&format!(
+                    "{} indirect access {} read[1]",
+                    name, indirect_access_idx
+                ));
 
-    //             self.require_invariant(
-    //                 read_low,
-    //                 Invariant::Substituted((
-    //                     Placeholder::DelegationIndirectReadValue {
-    //                         register_index,
-    //                         word_index: indirect_access_idx,
-    //                     },
-    //                     0,
-    //                 )),
-    //             );
-    //             self.require_invariant(
-    //                 read_high,
-    //                 Invariant::Substituted((
-    //                     Placeholder::DelegationIndirectReadValue {
-    //                         register_index,
-    //                         word_index: indirect_access_idx,
-    //                     },
-    //                     1,
-    //                 )),
-    //             );
+                self.require_invariant(
+                    read_low,
+                    Invariant::Substituted((
+                        Placeholder::DelegationIndirectReadValue {
+                            register_index,
+                            word_index: indirect_access_idx,
+                        },
+                        0,
+                    )),
+                );
+                self.require_invariant(
+                    read_high,
+                    Invariant::Substituted((
+                        Placeholder::DelegationIndirectReadValue {
+                            register_index,
+                            word_index: indirect_access_idx,
+                        },
+                        1,
+                    )),
+                );
 
-    //             let value_fn = move |placer: &mut Self::WitnessPlacer| {
-    //                 let value = placer.get_oracle_u32(Placeholder::DelegationIndirectReadValue {
-    //                     register_index,
-    //                     word_index: indirect_access_idx,
-    //                 });
-    //                 placer.assign_u32_from_u16_parts([read_low, read_high], &value);
-    //             };
-    //             self.set_values(value_fn);
+                let value_fn = move |placer: &mut Self::WitnessPlacer| {
+                    let value = placer.get_oracle_u32(Placeholder::DelegationIndirectReadValue {
+                        register_index,
+                        word_index: indirect_access_idx,
+                    });
+                    placer.assign_u32_from_u16_parts([read_low, read_high], &value);
+                };
+                self.set_values(value_fn);
 
-    //             let write_low = self.add_variable();
-    //             let write_high = self.add_variable();
+                IndirectAccessType::Read {
+                    read_value: [read_low, read_high],
+                    variable_dependent: variable_dependent,
+                    offset_constant: access_description.offset_constant,
+                    assume_no_alignment_overflow: access_description.assume_no_alignment_overflow,
+                }
+            };
 
-    //             IndirectAccessType::Write {
-    //                 read_value: [read_low, read_high],
-    //                 write_value: [write_low, write_high],
-    //                 variable_dependent: variable_dependent,
-    //                 offset_constant: access_description.offset_constant,
-    //                 assume_no_alignment_overflow: access_description.assume_no_alignment_overflow,
-    //             }
-    //         } else {
-    //             let read_low = self.add_variable();
-    //             let read_high = self.add_variable();
+            indirect_accesses.push(access);
+        }
 
-    //             self.require_invariant(
-    //                 read_low,
-    //                 Invariant::Substituted((
-    //                     Placeholder::DelegationIndirectReadValue {
-    //                         register_index,
-    //                         word_index: indirect_access_idx,
-    //                     },
-    //                     0,
-    //                 )),
-    //             );
-    //             self.require_invariant(
-    //                 read_high,
-    //                 Invariant::Substituted((
-    //                     Placeholder::DelegationIndirectReadValue {
-    //                         register_index,
-    //                         word_index: indirect_access_idx,
-    //                     },
-    //                     1,
-    //                 )),
-    //             );
+        let access = RegisterAndIndirectAccesses {
+            register_index: request.register_index,
+            indirects_alignment_log2: request.indirects_alignment_log2,
+            register_access,
+            indirect_accesses,
+        };
 
-    //             let value_fn = move |placer: &mut Self::WitnessPlacer| {
-    //                 let value = placer.get_oracle_u32(Placeholder::DelegationIndirectReadValue {
-    //                     register_index,
-    //                     word_index: indirect_access_idx,
-    //                 });
-    //                 placer.assign_u32_from_u16_parts([read_low, read_high], &value);
-    //             };
-    //             self.set_values(value_fn);
+        self.register_and_indirect_memory_accesses
+            .push(access.clone());
 
-    //             IndirectAccessType::Read {
-    //                 read_value: [read_low, read_high],
-    //                 variable_dependent: variable_dependent,
-    //                 offset_constant: access_description.offset_constant,
-    //                 assume_no_alignment_overflow: access_description.assume_no_alignment_overflow,
-    //             }
-    //         };
-
-    //         indirect_accesses.push(access);
-    //     }
-
-    //     let access = RegisterAndIndirectAccesses {
-    //         register_index: request.register_index,
-    //         indirects_alignment_log2: request.indirects_alignment_log2,
-    //         register_access,
-    //         indirect_accesses,
-    //     };
-
-    //     self.register_and_indirect_memory_accesses
-    //         .push(access.clone());
-
-    //     access
-    // }
+        access
+    }
 
     #[track_caller]
     fn enforce_lookup_tuple_for_fixed_table<const M: usize>(
@@ -838,33 +829,29 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
         table_type: TableType,
         skip_generating_multiplicity_counting_function: bool,
     ) {
-        todo!();
+        assert!(M < MAX_TABLE_WIDTH);
 
-        // assert_eq!(M, COMMON_TABLE_WIDTH);
+        // NOTE: we will add formal witness eval function here to ensure that we can use it for "act of lookup"
+        // if we want, and to count multiplicities
 
-        // let row = std::array::from_fn(|idx| inputs[idx].clone());
-        // // NOTE: we will add formal witness eval function here to ensure that we can use it for "act of lookup"
-        // // if we want, and to count multiplicities
+        let inputs_vars = inputs.clone();
+        let value_fn = move |placer: &mut Self::WitnessPlacer| {
+            let input_values: [_; M] = std::array::from_fn(|i| inputs_vars[i].evaluate(placer));
+            let table_id =
+                <Self::WitnessPlacer as WitnessTypeSet<F>>::U16::constant(table_type as u16);
+            placer.lookup_enforce::<M>(&input_values, &table_id);
+        };
+        if Self::WitnessPlacer::MERGE_LOOKUP_AND_MULTIPLICITY_COUNT
+            && skip_generating_multiplicity_counting_function == false
+        {
+            self.set_values(value_fn);
+        }
 
-        // let inputs_vars = inputs.clone();
-        // let value_fn = move |placer: &mut Self::WitnessPlacer| {
-        //     let input_values: [_; M] = std::array::from_fn(|i| inputs_vars[i].evaluate(placer));
-        //     let table_id = <Self::WitnessPlacer as WitnessTypeSet<F>>::U16::constant(
-        //         table_type.to_table_id() as u16,
-        //     );
-        //     placer.lookup_enforce::<M>(&input_values, &table_id);
-        // };
-        // if Self::WitnessPlacer::MERGE_LOOKUP_AND_MULTIPLICITY_COUNT
-        //     && skip_generating_multiplicity_counting_function == false
-        // {
-        //     self.set_values(value_fn);
-        // }
-
-        // let query = LookupQuery {
-        //     row,
-        //     table: LookupQueryTableType::Constant(table_type),
-        // };
-        // self.lookup_storage.push(query);
+        let query = LookupQuery {
+            row: inputs.to_vec(),
+            table: LookupQueryTableType::Constant(table_type),
+        };
+        self.lookup_storage.push(query);
     }
 
     #[track_caller]
@@ -896,55 +883,59 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
     }
 
     #[track_caller]
+    fn enforce_lookup_tuple<const M: usize>(
+        &mut self,
+        inputs: &[LookupInput<F>; M],
+        table_type: LookupQueryTableType<F>,
+    ) {
+        assert!(M < MAX_TABLE_WIDTH);
+
+        // NOTE: we will add formal witness eval function here to ensure that we can use it for "act of lookup"
+        // if we want, and to count multiplicities
+
+        let inputs_vars = inputs.clone();
+        let table = table_type.clone();
+        let value_fn = move |placer: &mut Self::WitnessPlacer| {
+            let table_id = match &table {
+                LookupQueryTableType::Constant(table_id) => {
+                    <Self::WitnessPlacer as WitnessTypeSet<F>>::U16::constant(
+                        *table_id as u32 as u16,
+                    )
+                }
+                LookupQueryTableType::Variable(var) => placer.get_u16(*var),
+                LookupQueryTableType::Expression(input) => {
+                    input.evaluate(placer).as_integer().truncate()
+                }
+            };
+            let input_values: [_; M] = std::array::from_fn(|i| inputs_vars[i].evaluate(placer));
+            placer.lookup_enforce::<M>(&input_values, &table_id);
+        };
+        if Self::WitnessPlacer::MERGE_LOOKUP_AND_MULTIPLICITY_COUNT {
+            self.set_values(value_fn);
+        }
+
+        let query = LookupQuery {
+            row: inputs.to_vec(),
+            table: table_type,
+        };
+        self.lookup_storage.push(query);
+    }
+
+    #[track_caller]
     fn get_variables_from_lookup_constrained<const M: usize, const N: usize>(
         &mut self,
         inputs: &[LookupInput<F>; M],
         table_type: TableType,
     ) -> [Variable; N] {
-        todo!();
+        assert!(table_type != TableType::ZeroEntry && table_type != TableType::DynamicPlaceholder);
+        let output_variables = std::array::from_fn(|_| self.add_variable());
+        self.set_variables_from_lookup_constrained(
+            inputs,
+            &output_variables,
+            LookupQueryTableType::Constant(table_type),
+        );
 
-        // assert_eq!(M + N, COMMON_TABLE_WIDTH);
-        // assert!(table_type != TableType::ZeroEntry && table_type != TableType::DynamicPlaceholder);
-
-        // if M == COMMON_TABLE_WIDTH {
-        //     assert_eq!(N, 0);
-        //     // just add lookup, no witness evaluation here
-
-        //     panic!("Please use `enforce_lookup_tuple_for_fixed_table` if no outputs are required");
-        // }
-
-        // assert!(M == 1 || M == 2);
-
-        // let output_variables: [Variable; N] = std::array::from_fn(|_| self.add_variable());
-
-        // let inputs_vars = inputs.clone();
-        // let value_fn = move |placer: &mut Self::WitnessPlacer| {
-        //     let input_values: [_; M] = std::array::from_fn(|i| inputs_vars[i].evaluate(placer));
-        //     let table_id = <Self::WitnessPlacer as WitnessTypeSet<F>>::U16::constant(
-        //         table_type.to_table_id() as u16,
-        //     );
-        //     let output_values = placer.lookup::<M, N>(&input_values, &table_id);
-        //     for (var, value) in output_variables.iter().zip(output_values.iter()) {
-        //         placer.assign_field(*var, value);
-        //     }
-        // };
-        // self.set_values(value_fn);
-
-        // let input_len = M;
-        // let row = std::array::from_fn(|idx| {
-        //     if idx < input_len {
-        //         inputs[idx].clone()
-        //     } else {
-        //         LookupInput::Variable(output_variables[idx - input_len])
-        //     }
-        // });
-        // let query = LookupQuery {
-        //     row,
-        //     table: LookupQueryTableType::Constant(table_type),
-        // };
-        // self.lookup_storage.push(query);
-
-        // output_variables
+        output_variables
     }
 
     #[track_caller]
@@ -954,7 +945,6 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
         output_variables: &[Variable; N],
         table_type: LookupQueryTableType<F>,
     ) {
-        // assert!(M + N < self.table_driver.);
         assert!(lookup_inputs.len() > 0);
 
         let output_variables: [Variable; N] = output_variables.clone();
@@ -1186,6 +1176,47 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
         (state, circuit_family_bitmask)
     }
 
+    fn allocate_delegation_state(
+        &mut self,
+        delegation_type: u16,
+    ) -> (Variable, [Variable; NUM_TIMESTAMP_COLUMNS_FOR_RAM]) {
+        assert!(self.delegation_circuit_state.is_none());
+        let execute = self.add_named_variable("Execute flag for cycle");
+        self.require_invariant(
+            execute,
+            Invariant::Substituted((Placeholder::ExecuteDelegation, 0)),
+        );
+        use crate::constraint::Term;
+        self.add_constraint((Term::from(execute) - Term::from(1u32)) * Term::from(execute));
+
+        let invocation_timestamp: [Variable; NUM_TIMESTAMP_COLUMNS_FOR_RAM] =
+            std::array::from_fn(|i| {
+                self.add_named_variable(&format!("delegation_invocation_ts[{}]", i))
+            });
+        invocation_timestamp.iter().enumerate().for_each(|(i, el)| {
+            self.require_invariant(
+                *el,
+                Invariant::Substituted((Placeholder::DelegationWriteTimestamp, i)),
+            )
+        });
+
+        let value_fn = move |placer: &mut Self::WitnessPlacer| {
+            let execute_flag_value = placer.get_oracle_boolean(Placeholder::ExecuteDelegation);
+            placer.assign_mask(execute, &execute_flag_value);
+            placer.assume_assigned(invocation_timestamp[0]);
+            placer.assume_assigned(invocation_timestamp[1]);
+        };
+        self.set_values(value_fn);
+
+        self.delegation_circuit_state = Some(DelegationCircuitState {
+            delegation_type,
+            execute,
+            invocation_timestamp,
+        });
+
+        (execute, invocation_timestamp)
+    }
+
     // fn set_log(&mut self, opt_ctx: &OptimizationContext<F, Self>, name: &'static str) {
     //     if ENABLE_LOGGING {
     //         self.logger
@@ -1293,8 +1324,9 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
             placeholder_query,
             table_driver,
             memory_queries,
-            // register_and_indirect_memory_accesses,
+            register_and_indirect_memory_accesses,
             executor_machine_state,
+            delegation_circuit_state,
             variable_names,
             circuit_family_bitmask,
             variables_from_constraints,
@@ -1303,8 +1335,6 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
         } = self;
 
         let output = CircuitOutput {
-            // state_input: Vec::new(),
-            // state_output: Vec::new(),
             memory_queries,
             table_driver,
             num_of_variables: no_index_assigned as usize,
@@ -1314,8 +1344,9 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
             range_check_expressions: rangechecked_expressions,
             boolean_vars: boolean_variables,
             substitutions: placeholder_query,
-            // register_and_indirect_memory_accesses,
+            register_and_indirect_memory_accesses,
             executor_machine_state,
+            delegation_circuit_state,
             variable_names,
             circuit_family_bitmask,
             variables_from_constraints,

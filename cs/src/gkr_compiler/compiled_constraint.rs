@@ -458,8 +458,6 @@ impl<F: PrimeField> GKRGate for OneStepConstraintsEvaluationNode<F> {
         graph: &mut impl GraphHolder,
         output_layer: usize,
     ) -> (Self::Output, NoFieldGKRRelation) {
-        assert_eq!(output_layer, 1);
-
         assert_eq!(self.quadratic_parts.len(), self.linear_parts.len());
         assert_eq!(self.quadratic_parts.len(), self.constant_parts.len());
 

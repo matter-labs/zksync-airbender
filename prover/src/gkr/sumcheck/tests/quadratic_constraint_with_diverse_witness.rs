@@ -103,8 +103,7 @@ fn test_quadratic_constraint_with_constant() {
         constants: vec![(F::ZERO.to_reduced_u32(), 0)].into_boxed_slice(),
     };
 
-    let kernel =
-        BatchConstraintEvalGKRRelation::new(&constraint, 2, 0, E::random_element(&mut rng));
+    let kernel = BatchConstraintEvalGKRRelation::new(&constraint, E::random_element(&mut rng));
 
     let previous_round_challenges: Vec<E> = (0..FOLDING_STEPS)
         .map(|el| E::random_element(&mut rng))

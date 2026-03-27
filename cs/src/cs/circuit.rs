@@ -135,7 +135,7 @@ impl<F: PrimeField> RangeCheckQuery<F> {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct IndirectAccessOffset {
     pub variable_dependent: Option<(u32, Variable)>,
     pub offset_constant: u32,
@@ -143,7 +143,7 @@ pub struct IndirectAccessOffset {
     pub is_write_access: bool,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct RegisterAccessRequest {
     pub register_index: u32,
     pub register_write: bool,
@@ -212,6 +212,20 @@ impl IndirectAccessType {
             Self::Write {
                 variable_dependent, ..
             } => *variable_dependent,
+        }
+    }
+
+    pub const fn read_value(&self) -> [Variable; 2] {
+        match self {
+            Self::Read { read_value, .. } => *read_value,
+            Self::Write { read_value, .. } => *read_value,
+        }
+    }
+
+    pub const fn write_value(&self) -> Option<[Variable; 2]> {
+        match self {
+            Self::Read { .. } => None,
+            Self::Write { write_value, .. } => Some(*write_value),
         }
     }
 }

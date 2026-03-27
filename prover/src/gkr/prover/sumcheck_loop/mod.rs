@@ -168,6 +168,7 @@ pub fn evaluate_sumcheck_for_layer<F: PrimeField, E: FieldExtension<F> + Field>(
     batching_challenge: &mut E,
     compiled_circuit: &cs::gkr_compiler::GKRCircuitArtifact<F>,
     trace_len: usize,
+    lookup_challenges_multiplicative_part: E,
     lookup_challenges_additive_part: E,
     constraints_batch_challenge: E,
     external_challenges: &GKRExternalChallenges<F, E>,
@@ -201,10 +202,9 @@ where
         layer_idx,
         batch_challenge_base,
         gkr_storage,
+        lookup_challenges_multiplicative_part,
         lookup_challenges_additive_part,
         constraints_batch_challenge,
-        compiled_circuit.memory_layout.total_width,
-        compiled_circuit.witness_layout.total_width,
     );
 
     debug_assert!(!collector.is_empty());
@@ -283,6 +283,46 @@ where
                 cached_addr
             );
 
+            #[cfg(feature = "gkr_self_checks")]
+            {
+                let claim = new_claims[cached_addr];
+                if eq_poly.is_none() {
+                    let mut eq_precomputed = make_eq_poly_in_full(&folding_challenges, worker);
+                    let eq_at_z = eq_precomputed.pop().unwrap();
+                    eq_poly = Some(eq_at_z);
+                }
+                if let Some(poly) = gkr_storage.try_get_base_poly(*cached_addr) {
+                    let eval = evaluate_with_precomputed_eq(poly, &eq_poly.as_ref().unwrap()[..]);
+                    // if claim != eval {
+                    //     println!(
+                    //         "claim diverged for poly {cached_addr:?} from relation {:?}",
+                    //         relation
+                    //     );
+                    // }
+                    assert_eq!(
+                        eval, claim,
+                        "claim diverged for poly {cached_addr:?} from relation {:?}",
+                        relation
+                    );
+                } else if let Some(poly) = gkr_storage.try_get_ext_poly(*cached_addr) {
+                    let eval =
+                        evaluate_with_precomputed_eq_ext(poly, &eq_poly.as_ref().unwrap()[..]);
+                    // if claim != eval {
+                    //     println!(
+                    //         "claim diverged for poly {cached_addr:?} from relation {:?}",
+                    //         relation
+                    //     );
+                    // }
+                    assert_eq!(
+                        eval, claim,
+                        "claim diverged for poly {cached_addr:?} from relation {:?}",
+                        relation
+                    );
+                } else {
+                    unreachable!()
+                }
+            }
+
             for dep in relation.dependencies() {
                 if new_claims.contains_key(&dep) {
                     continue;
@@ -304,15 +344,13 @@ where
                                 values,
                                 &eq_poly.as_ref().unwrap()[..],
                             )
+                        } else if let Some(values) = gkr_storage.try_get_ext_poly(dep) {
+                            evaluate_with_precomputed_eq_ext::<E>(
+                                values,
+                                &eq_poly.as_ref().unwrap()[..],
+                            )
                         } else {
-                            if let Some(values) = gkr_storage.try_get_ext_poly(dep) {
-                                evaluate_with_precomputed_eq_ext::<E>(
-                                    values,
-                                    &eq_poly.as_ref().unwrap()[..],
-                                )
-                            } else {
-                                panic!("Unknown poly at address {:?}", dep);
-                            }
+                            panic!("Unknown poly at address {:?}", dep);
                         };
 
                         new_claims.insert(dep, evaluation);
@@ -341,6 +379,7 @@ where
             layer,
             &new_claims,
             external_challenges,
+            lookup_challenges_multiplicative_part,
         ));
     }
 

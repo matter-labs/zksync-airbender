@@ -26,7 +26,7 @@ impl DecodingOptions for FullMachineDecoderConfig {
 pub struct FullUnsignedMachineDecoderConfig;
 
 impl DecodingOptions for FullUnsignedMachineDecoderConfig {
-    const SUPPORT_MOP: bool = false;
+    const SUPPORT_MOP: bool = true;
     const SUPPORT_MUL_DIV: bool = true;
     const SUPPORT_SIGNED_MUL_DIV: bool = false;
     const SUPPORT_SUBWORD_MEM_ACCESS: bool = true;

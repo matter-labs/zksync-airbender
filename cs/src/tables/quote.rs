@@ -50,9 +50,7 @@ impl quote::ToTokens for TableType {
                 quote! { TableType::MemoryGetOffsetAndMaskWithTrap }
             }
             TableType::MemoryLoadHalfwordOrByte => quote! { TableType::MemoryLoadHalfwordOrByte },
-            TableType::KeccakPermutationIndices12 => quote!(TableType::KeccakPermutationIndices12),
-            TableType::KeccakPermutationIndices34 => quote!(TableType::KeccakPermutationIndices34),
-            TableType::KeccakPermutationIndices56 => quote!(TableType::KeccakPermutationIndices56),
+            TableType::KeccakPermutationIndices => quote!(TableType::KeccakPermutationIndices),
             TableType::XorSpecialIota => quote!(TableType::XorSpecialIota),
             TableType::AndN => quote!(TableType::AndN),
             TableType::RotL => quote!(TableType::RotL),

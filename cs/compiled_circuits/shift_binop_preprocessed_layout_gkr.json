@@ -43,7 +43,6 @@
     524545,
     524545,
     524545,
-    524545,
     524545
   ],
   "total_tables_size": 1573121,
@@ -69,10 +68,12 @@
               "address": {
                 "U16Space": 6
               },
-              "timestamp": [
-                0,
-                1
-              ],
+              "timestamp": {
+                "Normal": [
+                  0,
+                  1
+                ]
+              },
               "value": {
                 "U8Limbs": [
                   2,
@@ -100,10 +101,12 @@
               "address": {
                 "U16Space": 13
               },
-              "timestamp": [
-                7,
-                8
-              ],
+              "timestamp": {
+                "Normal": [
+                  7,
+                  8
+                ]
+              },
               "value": {
                 "U8Limbs": [
                   9,
@@ -131,10 +134,12 @@
               "address": {
                 "U16Space": 6
               },
-              "timestamp": [
-                24,
-                25
-              ],
+              "timestamp": {
+                "Normal": [
+                  24,
+                  25
+                ]
+              },
               "value": {
                 "U8Limbs": [
                   2,
@@ -162,10 +167,12 @@
               "address": {
                 "U16Space": 13
               },
-              "timestamp": [
-                24,
-                25
-              ],
+              "timestamp": {
+                "Normal": [
+                  24,
+                  25
+                ]
+              },
               "value": {
                 "U8Limbs": [
                   9,
@@ -193,10 +200,12 @@
               "address": {
                 "U16Space": 18
               },
-              "timestamp": [
-                14,
-                15
-              ],
+              "timestamp": {
+                "Normal": [
+                  14,
+                  15
+                ]
+              },
               "value": {
                 "U16Limbs": [
                   16,
@@ -222,10 +231,12 @@
               "address": {
                 "Constant": 0
               },
-              "timestamp": [
-                24,
-                25
-              ],
+              "timestamp": {
+                "Normal": [
+                  24,
+                  25
+                ]
+              },
               "value": {
                 "U16Limbs": [
                   22,
@@ -251,10 +262,12 @@
               "address": {
                 "U16Space": 18
               },
-              "timestamp": [
-                24,
-                25
-              ],
+              "timestamp": {
+                "Normal": [
+                  24,
+                  25
+                ]
+              },
               "value": {
                 "U16Limbs": [
                   19,
@@ -280,10 +293,12 @@
               "address": {
                 "Constant": 0
               },
-              "timestamp": [
-                28,
-                29
-              ],
+              "timestamp": {
+                "Normal": [
+                  28,
+                  29
+                ]
+              },
               "value": {
                 "U16Limbs": [
                   26,
@@ -645,7 +660,7 @@
                 },
                 {
                   "linear_terms": [],
-                  "constant": 43
+                  "constant": 42
                 }
               ],
               "lookup_set_index": 18446744073709551615
@@ -1013,6 +1028,19 @@
                 "quadratic_terms": [
                   [
                     {
+                      "BaseLayerWitness": 0
+                    },
+                    [
+                      [
+                        1,
+                        {
+                          "BaseLayerWitness": 4
+                        }
+                      ]
+                    ]
+                  ],
+                  [
+                    {
                       "BaseLayerWitness": 3
                     },
                     [
@@ -1352,6 +1380,19 @@
             "MaxQuadratic": {
               "input": {
                 "quadratic_terms": [
+                  [
+                    {
+                      "BaseLayerWitness": 1
+                    },
+                    [
+                      [
+                        1,
+                        {
+                          "BaseLayerWitness": 4
+                        }
+                      ]
+                    ]
+                  ],
                   [
                     {
                       "BaseLayerWitness": 3
@@ -1714,6 +1755,12 @@
                       [
                         1,
                         {
+                          "BaseLayerWitness": 5
+                        }
+                      ],
+                      [
+                        1,
+                        {
                           "BaseLayerMemory": 11
                         }
                       ]
@@ -2052,6 +2099,12 @@
                       "BaseLayerWitness": 4
                     },
                     [
+                      [
+                        1,
+                        {
+                          "BaseLayerWitness": 5
+                        }
+                      ],
                       [
                         1,
                         {
@@ -5075,6 +5128,7 @@
         ]
       }
     },
+    "delegation_state": null,
     "decoder_input": {
       "rs1_index": 6,
       "rs2_index": {
@@ -5098,11 +5152,14 @@
       ],
       "funct3": 2
     },
-    "register_and_indirect_accesses": [],
+    "indirect_access_variable_offsets": [],
     "total_width": 30
   },
   "witness_layout": {
-    "multiplicities_columns_for_range_check_16": 25,
+    "multiplicities_columns_for_range_check_16": {
+      "start": 25,
+      "end": 26
+    },
     "multiplicities_columns_for_timestamp_range_check": 26,
     "multiplicities_columns_for_generic_lookup": {
       "start": 27,

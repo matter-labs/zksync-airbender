@@ -3,6 +3,8 @@ use super::*;
 use crate::constraint::Constraint;
 use crate::constraint::Term;
 use crate::cs::circuit::LookupQueryTableType;
+use crate::cs::circuit::RegisterAccessRequest;
+use crate::cs::circuit::RegisterAndIndirectAccesses;
 use crate::cs::circuit_output::CircuitOutput;
 use crate::oracle::Placeholder;
 use crate::types::{Boolean, Num};
@@ -41,8 +43,18 @@ pub enum MemoryAccessRequest {
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum WordRepresentation {
+    Zero,
     U16Limbs([Variable; REGISTER_SIZE]),
     U8Limbs([Variable; REGISTER_SIZE * 2]),
+}
+
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ConstantRegisterAccess {
+    pub reg_idx: u16,
+    pub read_timestamp: [Variable; NUM_TIMESTAMP_COLUMNS_FOR_RAM],
+    pub read_value: WordRepresentation,
+    pub write_value: WordRepresentation,
+    pub local_timestamp_in_cycle: u32,
 }
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -65,16 +77,31 @@ pub struct RegisterOrRamAccess {
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct RegisterIndirectRamAccess {
+    pub variable_offset: Option<(u32, Variable, usize)>,
+    pub base_address: [Variable; REGISTER_SIZE],
+    pub constant_offset: u32,
+    pub read_timestamp: [Variable; NUM_TIMESTAMP_COLUMNS_FOR_RAM],
+    pub read_value: WordRepresentation,
+    pub write_value: WordRepresentation,
+    pub local_timestamp_in_cycle: u32,
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum MemoryAccess {
+    ConstantRegister(ConstantRegisterAccess),
     RegisterOnly(RegisterAccess),
     RegisterOrRam(RegisterOrRamAccess),
+    RamIndirect(RegisterIndirectRamAccess),
 }
 
 impl MemoryAccess {
     pub fn local_timestamp_in_cycle(&self) -> u32 {
         match self {
+            Self::ConstantRegister(inner) => inner.local_timestamp_in_cycle,
             Self::RegisterOnly(inner) => inner.local_timestamp_in_cycle,
             Self::RegisterOrRam(inner) => inner.local_timestamp_in_cycle,
+            Self::RamIndirect(inner) => inner.local_timestamp_in_cycle,
         }
     }
 
@@ -84,22 +111,28 @@ impl MemoryAccess {
 
     pub fn read_value(&self) -> WordRepresentation {
         match self {
+            Self::ConstantRegister(inner) => inner.read_value.clone(),
             Self::RegisterOnly(inner) => inner.read_value.clone(),
             Self::RegisterOrRam(inner) => inner.read_value.clone(),
+            Self::RamIndirect(inner) => inner.read_value.clone(),
         }
     }
 
     pub fn write_value(&self) -> WordRepresentation {
         match self {
+            Self::ConstantRegister(inner) => inner.write_value.clone(),
             Self::RegisterOnly(inner) => inner.write_value.clone(),
             Self::RegisterOrRam(inner) => inner.write_value.clone(),
+            Self::RamIndirect(inner) => inner.write_value.clone(),
         }
     }
 
     pub fn read_timestamp(&self) -> [Variable; NUM_TIMESTAMP_COLUMNS_FOR_RAM] {
         match self {
+            Self::ConstantRegister(inner) => inner.read_timestamp,
             Self::RegisterOnly(inner) => inner.read_timestamp,
             Self::RegisterOrRam(inner) => inner.read_timestamp,
+            Self::RamIndirect(inner) => inner.read_timestamp,
         }
     }
 }
@@ -138,6 +171,11 @@ pub trait Circuit<F: PrimeField>: Sized {
         family_bitmask_size: usize,
     ) -> (OpcodeFamilyCircuitState<F>, Vec<Variable>);
 
+    fn allocate_delegation_state(
+        &mut self,
+        delegation_type: u16,
+    ) -> (Variable, [Variable; NUM_TIMESTAMP_COLUMNS_FOR_RAM]);
+
     fn request_mem_access(
         &mut self,
         request: MemoryAccessRequest,
@@ -145,10 +183,12 @@ pub trait Circuit<F: PrimeField>: Sized {
         local_timestamp_in_cycle: u32,
     ) -> MemoryAccess;
 
-    // fn create_register_and_indirect_memory_accesses(
-    //     &mut self,
-    //     request: RegisterAccessRequest,
-    // ) -> RegisterAndIndirectAccesses;
+    fn request_register_and_indirect_memory_accesses(
+        &mut self,
+        request: RegisterAccessRequest,
+        name: &str,
+        local_timestamp_in_cycle: u32,
+    ) -> RegisterAndIndirectAccesses;
 
     fn require_invariant(&mut self, variable: Variable, invariant: Invariant);
     fn finalize(self) -> (CircuitOutput<F>, Option<Self::WitnessPlacer>);
@@ -432,44 +472,6 @@ pub trait Circuit<F: PrimeField>: Sized {
         self.equals_to(var, Num::Constant(F::ZERO))
     }
 
-    // // Special zero-check for register, that consists of range-checked limbs, so we can just
-    // // check that their sum is 0
-    // fn is_zero_reg(&mut self, reg: Register<F>) -> Boolean {
-    //     let is_zero_flag = self.add_variable();
-    //     self.is_zero_reg_explicit(reg, is_zero_flag); // would be much nicer to use not_zero_flag directly
-    //     Boolean::Is(is_zero_flag)
-    // }
-
-    // fn is_zero_reg_explicit(&mut self, reg: Register<F>, is_zero_flag: Variable) {
-    //     match reg.0 {
-    //         [Num::Var(low), Num::Var(high)] => {
-    //             let inv = self.add_variable();
-
-    //             let value_fn = move |placer: &mut Self::WitnessPlacer| {
-    //                 let low = placer.get_field(low);
-    //                 let high = placer.get_field(high);
-    //                 let mut sum = low;
-    //                 sum.add_assign(&high);
-    //                 let inv_value = sum.inverse_or_zero();
-    //                 let zflag_value = sum.is_zero();
-    //                 placer.assign_field(inv, &inv_value);
-    //                 placer.assign_mask(is_zero_flag, &zflag_value);
-    //             };
-    //             self.set_values(value_fn);
-
-    //             let not_zero_flag = Constraint::from(1) - Term::from(is_zero_flag);
-    //             self.add_constraint(
-    //                 Constraint::from(inv) * (Term::from(low) + Term::from(high))
-    //                     - not_zero_flag.clone(),
-    //             );
-    //             self.add_constraint(
-    //                 (Constraint::from(1) - not_zero_flag) * (Term::from(low) + Term::from(high)),
-    //             );
-    //         }
-    //         _ => unreachable!(),
-    //     }
-    // }
-
     // more generic version of is_zero_reg, only works with limbs
     fn is_zero_sum(&mut self, sum: Constraint<F>) -> Boolean {
         assert!(sum.degree() <= 1);
@@ -694,6 +696,12 @@ pub trait Circuit<F: PrimeField>: Sized {
         &mut self,
         inputs: &[LookupInput<F>; M],
         table_type: Variable,
+    );
+
+    fn enforce_lookup_tuple<const M: usize>(
+        &mut self,
+        inputs: &[LookupInput<F>; M],
+        table_type: LookupQueryTableType<F>,
     );
 
     #[track_caller]

@@ -21,9 +21,20 @@ pub struct RegisterOrRamAccessAddress {
 }
 
 #[derive(Clone, Copy, Hash, Debug, serde::Serialize, serde::Deserialize)]
+pub struct IndirectRamAccessAddress {
+    pub base_register_value: [usize; REGISTER_SIZE],
+    pub base_register_index: u16,
+    pub constant_offset: u16,
+    pub indirect_access_idx_for_register: usize,
+    pub variable_offset: Option<(u16, usize)>,
+}
+
+#[derive(Clone, Copy, Hash, Debug, serde::Serialize, serde::Deserialize)]
 pub enum RamAddress {
+    ConstantRegister(u16),
     RegisterOnly(RegisterOnlyAccessAddress),
     RegisterOrRam(RegisterOrRamAccessAddress),
+    IndirectRam(IndirectRamAccessAddress),
 }
 
 #[derive(Clone, Copy, Hash, Debug, serde::Serialize, serde::Deserialize)]
@@ -36,6 +47,7 @@ pub struct RamReadQuery {
 
 #[derive(Clone, Copy, Hash, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum RamWordRepresentation {
+    Zero,
     U16Limbs([usize; REGISTER_SIZE]),
     U8Limbs([usize; REGISTER_SIZE * 2]),
 }
@@ -56,12 +68,12 @@ pub enum RamQuery {
 }
 
 impl RamQuery {
-    // pub const fn max_offset(&self) -> usize {
-    //     match self {
-    //         Self::Readonly(el) => el.read_value[0] + REGISTER_SIZE,
-    //         Self::Write(el) => el.write_value + REGISTER_SIZE,
-    //     }
-    // }
+    pub fn local_timestamp_in_cycle(&self) -> u32 {
+        match self {
+            Self::Readonly(el) => el.in_cycle_write_index,
+            Self::Write(el) => el.in_cycle_write_index,
+        }
+    }
 
     pub const fn get_read_timestamp_columns(&self) -> [usize; NUM_TIMESTAMP_COLUMNS_FOR_RAM] {
         match self {

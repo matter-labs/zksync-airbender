@@ -521,8 +521,29 @@ fn drive_lookup_placement<F: PrimeField, const SINGLE_COLUMN: bool>(
                     ));
                 relations_map.insert([num, den], rel);
             } else {
-                // TODO: fix when we have delegations
-                todo!();
+                let setup = graph.setup_addresses(lookup).to_vec().into_boxed_slice();
+
+                let key = *inputs.keys().next().unwrap();
+                let (_, rel) = inputs.remove(&key).unwrap();
+                all_relations_for_witness_eval.push(rel.clone());
+                assert_eq!(rel.columns.len(), graph.setup_addresses(lookup).len());
+
+                use crate::gkr_compiler::lookup_nodes::VectorLookupWitnessMinusSetupInputNode;
+                let node = VectorLookupWitnessMinusSetupInputNode {
+                    input: rel,
+                    multiplicity,
+                    setup: setup,
+                };
+                let ([num, den], rel) = node.add_at_layer(graph, input_layer + 1);
+                // insert for next layer
+                intermediate_values
+                    .entry(input_layer + 1)
+                    .or_insert(vec![])
+                    .push((
+                        LookupNumerator::ExtensionValueWithAllConstantsMixed(num),
+                        LookupDenominator::ExtensionValueWithAllConstantsMixed(den),
+                    ));
+                relations_map.insert([num, den], rel);
             }
         }
         (None, None) => {
@@ -673,7 +694,19 @@ fn drive_lookup_placement<F: PrimeField, const SINGLE_COLUMN: bool>(
                     ),
                 ));
         } else {
-            todo!();
+            use crate::gkr_compiler::lookup_nodes::MaterializeVectorInputNode;
+            let node = MaterializeVectorInputNode(rel);
+            let (den_without_additive_constant, _) = node.add_at_layer(graph, input_layer + 1);
+            // insert for next layer
+            intermediate_values
+                .entry(input_layer + 1)
+                .or_insert(vec![])
+                .push((
+                    LookupNumerator::Identity,
+                    LookupDenominator::ExtensionFieldValueWithoutAdditiveConstant(
+                        den_without_additive_constant,
+                    ),
+                ));
         }
     }
 
@@ -899,7 +932,22 @@ fn merge_intermediate_lookup_pair<F: PrimeField, const SINGLE_COLUMN: bool>(
                 LookupDenominator::ExtensionFieldValueWithoutAdditiveConstant(ext_den),
             ),
         ) if SINGLE_COLUMN == false => {
-            todo!();
+            use crate::gkr_compiler::lookup_nodes::VectorLookupExplicitPairWithMaterializedInputAggregationNode;
+            let node = VectorLookupExplicitPairWithMaterializedInputAggregationNode {
+                lhs_num: num,
+                lhs_den: den,
+                vector_input: ext_den,
+            };
+            let ([num, den], rel) = node.add_at_layer(graph, input_layer + 1);
+            // insert for next layer
+            intermediate_values
+                .entry(input_layer + 1)
+                .or_insert(vec![])
+                .push((
+                    LookupNumerator::ExtensionValueWithAllConstantsMixed(num),
+                    LookupDenominator::ExtensionValueWithAllConstantsMixed(den),
+                ));
+            relations_map.insert([num, den], rel);
         }
         (
             (

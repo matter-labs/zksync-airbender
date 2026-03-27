@@ -90,6 +90,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E>
 }
 
 // Takes linearized vector inputs without additive constant
+#[derive(Debug)]
 pub struct LookupExtensionPairGKRRelationKernel<F: PrimeField, E: FieldExtension<F> + Field> {
     pub lookup_additive_challenge: E,
     _marker: core::marker::PhantomData<(F, E)>,

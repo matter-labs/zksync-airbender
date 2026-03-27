@@ -140,7 +140,12 @@ impl Instruction {
     }
 }
 
-pub fn preprocess_bytecode<OPT: DecodingOptions>(bytecode: &[u32]) -> Vec<Instruction> {
+pub fn preprocess_bytecode<
+    OPT: DecodingOptions,
+    const PROTECT_AGAINST_MID_DELEGATION_JUMPS: bool,
+>(
+    bytecode: &[u32],
+) -> Vec<Instruction> {
     let mut i = 0;
 
     let illegal_instr = Instruction::from_imm(InstructionName::Illegal, 0, 0, 0, 0);
@@ -723,7 +728,13 @@ pub fn preprocess_bytecode<OPT: DecodingOptions>(bytecode: &[u32]) -> Vec<Instru
                                 DelegationType::Blake as u32,
                             );
 
-                            instructions[i] = instr;
+                            if PROTECT_AGAINST_MID_DELEGATION_JUMPS {
+                                instructions[i] = instr;
+                            } else {
+                                for j in 0..num_calls {
+                                    instructions[i + j] = instr;
+                                }
+                            }
                             i += num_calls;
                             // short-cut
                             continue;
@@ -764,7 +775,13 @@ pub fn preprocess_bytecode<OPT: DecodingOptions>(bytecode: &[u32]) -> Vec<Instru
                                 DelegationType::Keccak as u32,
                             );
 
-                            instructions[i] = instr;
+                            if PROTECT_AGAINST_MID_DELEGATION_JUMPS {
+                                instructions[i] = instr;
+                            } else {
+                                for j in 0..num_calls {
+                                    instructions[i + j] = instr;
+                                }
+                            }
                             i += num_calls;
                             // short-cut
                             continue;

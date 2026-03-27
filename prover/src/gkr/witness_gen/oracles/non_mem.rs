@@ -72,7 +72,7 @@ impl<'a, F: PrimeField> Oracle<F> for NonMemoryCircuitOracle<'a> {
     }
 
     fn get_u16_witness_from_placeholder(&self, placeholder: Placeholder, trace_step: usize) -> u16 {
-        let Some(cycle_data) = self.inner.get(trace_step) else {
+        let Some(..) = self.inner.get(trace_step) else {
             return 0;
         };
 
@@ -87,16 +87,6 @@ impl<'a, F: PrimeField> Oracle<F> for NonMemoryCircuitOracle<'a> {
                     unreachable!()
                 }
             },
-            // Placeholder::DelegationType => {
-            //     if cycle_data.opcode_data.delegation_type != 0
-            //         && cycle_data.opcode_data.delegation_type != NON_DETERMINISM_CSR
-            //     {
-            //         cycle_data.opcode_data.delegation_type
-            //     } else {
-            //         // It's just a convention - if we do not use delegation, then we put 0 into corresponding column
-            //         0
-            //     }
-            // }
             Placeholder::DelegationABIOffset => 0, // we do not use it anymore
 
             a @ _ => {
@@ -110,7 +100,7 @@ impl<'a, F: PrimeField> Oracle<F> for NonMemoryCircuitOracle<'a> {
             return 0;
         };
 
-        let decoded = <Self as cs::oracle::Oracle<F>>::get_executor_family_data(self, trace_step);
+        // let decoded = <Self as cs::oracle::Oracle<F>>::get_executor_family_data(self, trace_step);
 
         match placeholder {
             // Placeholder::ShuffleRamAddress(access_idx) => match access_idx {
@@ -132,7 +122,7 @@ impl<'a, F: PrimeField> Oracle<F> for NonMemoryCircuitOracle<'a> {
         placeholder: Placeholder,
         trace_step: usize,
     ) -> bool {
-        let Some(cycle_data) = self.inner.get(trace_step) else {
+        let Some(..) = self.inner.get(trace_step) else {
             return false;
         };
 
@@ -145,13 +135,6 @@ impl<'a, F: PrimeField> Oracle<F> for NonMemoryCircuitOracle<'a> {
                     unreachable!()
                 }
             },
-
-            // Placeholder::ExecuteDelegation => {
-            //     // NOTE: we use single field here to indicate both non-determinism
-            //     // CSR and delegation csrs, so we compare vs 0 and non-determinism CSR index
-            //     let delegation_type = cycle_data.opcode_data.delegation_type;
-            //     delegation_type != 0 && delegation_type != NON_DETERMINISM_CSR
-            // }
             Placeholder::ExecuteOpcodeFamilyCycle => true,
 
             a @ _ => {

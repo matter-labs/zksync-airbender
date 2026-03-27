@@ -11,7 +11,8 @@ pub trait ExtensionFieldInOutFixedSizesEvaluationKernel<
     E: FieldExtension<F> + Field,
     const IN: usize,
     const OUT: usize,
->: Send + Sync + ExtensionFieldInOutFixedSizesEvaluationKernelCore<F, E, IN, OUT>
+>:
+    Send + Sync + ExtensionFieldInOutFixedSizesEvaluationKernelCore<F, E, IN, OUT> + core::fmt::Debug
 {
     #[inline(always)]
     fn evaluate_forward<S: EvaluationFormStorage<F, E, ExtensionFieldRepresentation<F, E>>>(
@@ -212,6 +213,7 @@ pub fn evaluate_single_input_type_fixed_in_out_kernel_with_extension_inputs<
     last_evaluations: &mut BTreeMap<GKRAddress, [E; N]>,
     worker: &Worker,
 ) {
+    // println!("Evaluating kernel {:?}", kernel);
     let work_size = accumulator.len();
     assert!(work_size.is_power_of_two());
     unsafe {

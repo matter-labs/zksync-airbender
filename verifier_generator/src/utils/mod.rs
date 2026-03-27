@@ -122,6 +122,11 @@ pub fn collect_sorted_unique_addrs(layer: &GKRLayerDescription) -> Vec<GKRAddres
                 addrs.insert(setup[0]);
                 addrs.insert(setup[1]);
             }
+            R::LookupFromMaterializedVectorInputWithSetup { input, setup, .. } => {
+                addrs.insert(*input);
+                addrs.insert(setup[0]);
+                addrs.insert(setup[1]);
+            }
             R::LookupUnbalancedPairWithMaterializedBaseInputs {
                 input, remainder, ..
             } => {
@@ -196,6 +201,7 @@ pub fn collect_output_addrs(layer: &GKRLayerDescription) -> Vec<GKRAddress> {
             | R::LookupPairFromCachedVectorInputs { output, .. }
             | R::LookupUnbalancedPairWithMaterializedVectorInputs { output, .. }
             | R::LookupWithCachedDensAndSetup { output, .. }
+            | R::LookupFromMaterializedVectorInputWithSetup { output, .. }
             | R::AggregateLookupRationalPair { output, .. } => {
                 addrs.insert(output[0]);
                 addrs.insert(output[1]);

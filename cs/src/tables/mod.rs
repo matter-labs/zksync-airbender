@@ -15,7 +15,7 @@ use type_map::concurrent::TypeMap;
 mod binops;
 mod integer_ops;
 mod jump_branch_opcode_related;
-// mod keccak_precompile_related;
+mod keccak_precompile_related;
 // mod memory_opcode_related;
 // mod range_checks_and_decompositions;
 // mod rom_related;
@@ -26,7 +26,7 @@ mod zero_entry;
 pub use self::binops::*;
 pub use self::integer_ops::*;
 pub use self::jump_branch_opcode_related::*;
-// pub use self::keccak_precompile_related::*;
+pub use self::keccak_precompile_related::*;
 // pub use self::memory_opcode_related::*;
 // pub use self::range_checks_and_decompositions::*;
 // pub use self::rom_related::*;
@@ -540,7 +540,13 @@ impl<F: PrimeField> LookupTable<F> {
         total_width_including_id: usize,
     ) {
         assert!(total_width_including_id > 0);
-        assert!(self.width() < total_width_including_id);
+        assert!(
+            self.width() < total_width_including_id,
+            "trying to dump table `{}` of width {} into trace of width {} (with table ID)",
+            self.name,
+            self.width(),
+            total_width_including_id
+        );
         let required_len = self.width() + id.is_some() as usize;
         assert!(required_len <= total_width_including_id);
         assert!(required_len <= MAX_TABLE_WIDTH);
@@ -552,6 +558,7 @@ impl<F: PrimeField> LookupTable<F> {
         for row in self.data.iter() {
             let mut assembled_row = row.clone();
             assert_eq!(row.len(), self.width());
+            assert!(self.width() <= padding_width);
             for _ in self.width()..padding_width {
                 assembled_row.push(F::ZERO);
             }
@@ -744,29 +751,32 @@ impl TableType {
             // TableType::SpecialCSRProperties => {
             //     unimplemented!("must be created in a special manner");
             // }
-            // TableType::Xor3 => LookupWrapper::Dimensional3(create_xor_table::<F, 3>(id)),
-            // TableType::Xor4 => LookupWrapper::Dimensional3(create_xor_table::<F, 4>(id)),
-            // TableType::Xor7 => LookupWrapper::Dimensional3(create_xor_table::<F, 7>(id)),
-            // TableType::Xor9 => LookupWrapper::Dimensional3(create_xor_table::<F, 9>(id)),
+            TableType::Xor3 => LookupWrapper::Initialized(create_xor_table::<F, 3>(id)),
+            TableType::Xor4 => LookupWrapper::Initialized(create_xor_table::<F, 4>(id)),
+            TableType::Xor7 => LookupWrapper::Initialized(create_xor_table::<F, 7>(id)),
+            TableType::Xor9 => LookupWrapper::Initialized(create_xor_table::<F, 9>(id)),
             // TableType::Xor12 => LookupWrapper::Dimensional3(create_xor_table::<F, 12>(id)),
             // TableType::U16SplitAsBytes => {
             //     LookupWrapper::Dimensional3(create_u16_split_into_bytes_table(id))
             // }
-            // TableType::RangeCheck9x9 => LookupWrapper::Dimensional3(
-            //     create_formal_width_3_range_check_table_for_two_tuple::<F, 9>(id),
-            // ),
-            // TableType::RangeCheck10x10 => LookupWrapper::Dimensional3(
-            //     create_formal_width_3_range_check_table_for_two_tuple::<F, 10>(id),
-            // ),
-            // TableType::RangeCheck11 => LookupWrapper::Dimensional3(
-            //     create_formal_width_3_range_check_table_for_single_entry::<F, 11>(id),
-            // ),
-            // TableType::RangeCheck12 => LookupWrapper::Dimensional3(
-            //     create_formal_width_3_range_check_table_for_single_entry::<F, 12>(id),
-            // ),
-            // TableType::RangeCheck13 => LookupWrapper::Dimensional3(
-            //     create_formal_width_3_range_check_table_for_single_entry::<F, 13>(id),
-            // ),
+            TableType::RangeCheck9x9 => {
+                LookupWrapper::Initialized(create_range_check_table_for_two_tuple::<F, 9>(id))
+            }
+            TableType::RangeCheck10x10 => {
+                LookupWrapper::Initialized(create_range_check_table_for_two_tuple::<F, 10>(id))
+            }
+            TableType::RangeCheck11 => {
+                LookupWrapper::Initialized(create_range_check_table_for_single_entry::<F, 11>(id))
+            }
+            TableType::RangeCheck12 => {
+                LookupWrapper::Initialized(create_range_check_table_for_single_entry::<F, 12>(id))
+            }
+            TableType::RangeCheck13 => {
+                LookupWrapper::Initialized(create_range_check_table_for_single_entry::<F, 13>(id))
+            }
+            TableType::U16GetLowByte => {
+                LookupWrapper::Initialized(create_u16_get_low_byte_table::<F>(id))
+            }
             // TableType::ShiftImplementation => {
             //     LookupWrapper::Dimensional3(create_shift_implementation_table::<F>(id))
             // }
@@ -821,20 +831,14 @@ impl TableType {
             // TableType::RangeCheck16WithZeroPads => LookupWrapper::Dimensional3(
             //     create_formal_width_3_range_check_table_for_single_entry::<F, 16>(id),
             // ),
-            // TableType::KeccakPermutationIndices12 => {
-            //     LookupWrapper::Dimensional3(create_keccak_permutation_indices_table::<F, 0, 1>(id))
-            // }
-            // TableType::KeccakPermutationIndices34 => {
-            //     LookupWrapper::Dimensional3(create_keccak_permutation_indices_table::<F, 2, 3>(id))
-            // }
-            // TableType::KeccakPermutationIndices56 => {
-            //     LookupWrapper::Dimensional3(create_keccak_permutation_indices_table::<F, 4, 5>(id))
-            // }
-            // TableType::XorSpecialIota => {
-            //     LookupWrapper::Dimensional3(create_xor_special_keccak_iota_table::<F>(id))
-            // }
-            // TableType::AndN => LookupWrapper::Dimensional3(create_andn_table::<F>(id)),
-            // TableType::RotL => LookupWrapper::Dimensional3(create_rotl_table::<F>(id)),
+            TableType::KeccakPermutationIndices => {
+                LookupWrapper::Initialized(create_keccak_permutation_indices_table::<F>(id))
+            }
+            TableType::XorSpecialIota => {
+                LookupWrapper::Initialized(create_xor_special_keccak_iota_table::<F>(id))
+            }
+            TableType::AndN => LookupWrapper::Initialized(create_andn_table::<F>(id)),
+            TableType::RotL => LookupWrapper::Initialized(create_rotl_table::<F>(id)),
             a @ _ => {
                 todo!("Support {:?}", a);
             }
@@ -1047,14 +1051,18 @@ impl<F: PrimeField> TableDriver<F> {
         self.update_table_offsets();
     }
 
+    pub fn max_table_width(&self) -> usize {
+        self.tables.iter().map(|el| el.width()).max().unwrap_or(0)
+    }
+
     pub fn materialize_table<const TOTAL_WIDTH: usize>(&mut self, table_type: TableType) {
         static CACHE: LazyLock<Mutex<TypeMap>> = LazyLock::new(|| Mutex::new(TypeMap::default()));
         let mut guard = CACHE.lock().unwrap();
         let map = guard
             .entry()
-            .or_insert_with(HashMap::<TableType, LookupWrapper<F>>::new);
+            .or_insert_with(HashMap::<(TableType, usize), LookupWrapper<F>>::new);
         let wrapper = map
-            .entry(table_type)
+            .entry((table_type, TOTAL_WIDTH))
             .or_insert_with(|| table_type.generate_table::<F, TOTAL_WIDTH>());
         let table = wrapper.clone();
         self.add_table_with_content(table_type, table);
@@ -1142,6 +1150,15 @@ impl<F: PrimeField> TableDriver<F> {
         &self,
         total_width_including_id: usize,
     ) -> Vec<ArrayVec<F, MAX_TABLE_WIDTH>> {
+        let max_width_without_id = self.max_table_width();
+        if max_width_without_id >= total_width_including_id {
+            for t in self.tables.iter() {
+                if let LookupWrapper::Initialized(t) = t {
+                    println!("Table `{}` has width {} (without ID)", &t.name, t.width());
+                }
+            }
+            panic!("trying to dump tables with max width {} (without ID) into total of {} columns (with ID)", max_width_without_id, total_width_including_id);
+        }
         let mut result = Vec::with_capacity(self.total_tables_len);
         for table in self.tables.iter() {
             if table.get_size() == 0 {

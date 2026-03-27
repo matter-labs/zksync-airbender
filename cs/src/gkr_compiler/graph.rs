@@ -26,6 +26,7 @@ impl GKRGate for CopyNode {
         }
     }
 
+    #[track_caller]
     fn add_at_layer(
         &self,
         graph: &mut impl GraphHolder,
@@ -36,6 +37,7 @@ impl GKRGate for CopyNode {
             Self::FromBase(input) => *input,
             Self::FromIntermediate(input) => *input,
         };
+        println!("Copying variable {:?} -> {:?}", input, output);
         let rel = NoFieldGKRRelation::Copy { input, output };
         graph.add_enforced_relation(rel.clone(), output_layer);
 
@@ -248,6 +250,10 @@ impl GKRGraph {
 impl GraphHolder for GKRGraph {
     #[track_caller]
     fn get_address_for_variable(&self, variable: Variable) -> GKRAddress {
+        assert!(
+            variable.is_placeholder() == false,
+            "trying to place a placeholder variable"
+        );
         let Some(pos) = self.get_fixed_layout_pos(&variable) else {
             panic!("Variable {:?} is not placed", variable);
         };
@@ -265,6 +271,7 @@ impl GraphHolder for GKRGraph {
         }
     }
 
+    #[track_caller]
     fn add_intermediate_variable_at_layer(&mut self, output_layer: usize) -> GKRAddress {
         let entry = self
             .intermediate_layers_offsets
@@ -273,10 +280,18 @@ impl GraphHolder for GKRGraph {
         let offset = *entry;
         *entry += 1;
 
-        GKRAddress::InnerLayer {
+        let intermediate = GKRAddress::InnerLayer {
             layer: output_layer,
             offset,
-        }
+        };
+
+        // println!(
+        //     "Created intermediate layer variable {:?} for {:?}",
+        //     intermediate,
+        //     core::panic::Location::caller()
+        // );
+
+        intermediate
     }
 
     fn add_enforced_relation(&mut self, relation: NoFieldGKRRelation, output_layer: usize) {
@@ -308,11 +323,11 @@ impl GraphHolder for GKRGraph {
                 offset,
             };
 
-            println!(
-                "Adding cache relation {:?} at {:?}",
-                rel,
-                core::panic::Location::caller()
-            );
+            // println!(
+            //     "Adding cache relation {:?} at {:?}",
+            //     rel,
+            //     core::panic::Location::caller()
+            // );
 
             rel
         }

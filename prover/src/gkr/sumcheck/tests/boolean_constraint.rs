@@ -62,7 +62,7 @@ fn test_boolean_constraints() {
         constants: vec![(F::ZERO.to_reduced_u32(), 0)].into_boxed_slice(),
     };
 
-    let kernel = BatchConstraintEvalGKRRelation::new(&constraint, 1, 0, E::ONE);
+    let kernel = BatchConstraintEvalGKRRelation::new(&constraint, E::ONE);
 
     let previous_round_challenges: Vec<E> = (0..FOLDING_STEPS)
         .map(|el| E::from_base(F::from_u64_with_reduction(1u64 << (el + 1))))

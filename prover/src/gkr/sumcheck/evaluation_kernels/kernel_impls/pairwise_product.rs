@@ -92,7 +92,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E>
 }
 
 // Shared product kernel (compute a * b)
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct ProductGKRRelationKernel<F: PrimeField, E: FieldExtension<F> + Field> {
     _marker: core::marker::PhantomData<(F, E)>,
 }
@@ -105,7 +105,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field>
     fn pointwise_eval(&self, input: &[ExtensionFieldRepresentation<F, E>; 2]) -> [E; 1] {
         let [a, b] = input;
         let mut a = *a;
-        a.repr_mul_assign::<false>(b);
+        a.repr_mul_assign::<true>(b);
         [a.into_value()]
     }
 

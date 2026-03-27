@@ -1,379 +1,4 @@
 use super::*;
-use crate::cs::utils::collapse_max_quadratic_constraint_into;
-use crate::cs::utils::mask_by_boolean_into_accumulator_constraint;
-use crate::cs::witness_placer::*;
-use crate::definitions::LookupInput;
-use crate::one_row_compiler::Variable;
-use crate::types::Boolean;
-use crate::types::Num;
-use blake2s_u32::BLAKE2S_BLOCK_SIZE_U32_WORDS;
-use blake2s_u32::{IV, SIGMAS};
-
-const MAX_ROUNDS: usize = 10;
-
-// ABI:
-// - 16 R/W words for state
-// - 16 RO words for input block
-// - 1 word for bitmask for round index
-
-pub fn all_table_types() -> Vec<TableType> {
-    vec![
-        TableType::Xor,
-        TableType::Xor3,
-        TableType::Xor4,
-        TableType::Xor7,
-        TableType::Xor9,
-    ]
-}
-
-pub fn blake2_single_round_delegation_circuit_create_table_driver<F: PrimeField>() -> TableDriver<F>
-{
-    let mut table_driver = TableDriver::new();
-    for el in all_table_types() {
-        table_driver.materialize_table(el);
-    }
-
-    table_driver
-}
-
-pub fn materialize_tables_into_cs<F: PrimeField, CS: Circuit<F>>(cs: &mut CS) {
-    for el in all_table_types() {
-        cs.materialize_table(el);
-    }
-}
-
-pub fn define_blake2_single_round_delegation_circuit<F: PrimeField, CS: Circuit<F>>(
-    cs: &mut CS,
-) -> Vec<[Variable; 2]> {
-    // add tables
-    materialize_tables_into_cs(cs);
-
-    // the only convention we must eventually satisfy is that if we do NOT process delegation request,
-    // then all memory writes in ABI must be 0s
-
-    let _execute = cs.process_delegation_request();
-
-    let mut rw_markers = vec![];
-    // first 16 elements are overwritten
-    rw_markers.resize(16, true);
-    // then readonly
-    rw_markers.resize(16 + 16 + 1, false);
-
-    let mem_accesses = cs.create_batched_memory_accesses(&rw_markers);
-    let mut it = mem_accesses.into_iter();
-
-    let mut input_state = vec![];
-    let mut output_placeholder_state = vec![];
-    for _ in 0..16 {
-        let BatchedMemoryAccessType::Write {
-            read_value,
-            write_value,
-        } = it.next().unwrap()
-        else {
-            panic!()
-        };
-
-        input_state.push(read_value);
-        output_placeholder_state.push(write_value);
-    }
-
-    let mut data_to_absorb = vec![];
-    for _ in 0..16 {
-        let BatchedMemoryAccessType::Read { read_value } = it.next().unwrap() else {
-            panic!()
-        };
-
-        data_to_absorb.push(read_value);
-    }
-
-    let BatchedMemoryAccessType::Read { read_value } = it.next().unwrap() else {
-        panic!()
-    };
-    let round_bitmask = read_value;
-
-    assert!(it.next().is_none());
-
-    // we can immediately boolean decompose round bitmask's low, and ignore high
-
-    {
-        for (i, input) in input_state.iter().enumerate() {
-            let register = Register::<F>(input.map(|el| Num::Var(el)));
-            if let Some(value) = register.get_value_unsigned(&*cs) {
-                println!("State element {} = 0x{:08x}", i, value);
-            }
-        }
-
-        for (i, input) in data_to_absorb.iter().enumerate() {
-            let register = Register::<F>(input.map(|el| Num::Var(el)));
-            if let Some(value) = register.get_value_unsigned(&*cs) {
-                println!("Input message element {} = 0x{:08x}", i, value);
-            }
-        }
-
-        let register = Register::<F>(round_bitmask.map(|el| Num::Var(el)));
-        if let Some(value) = register.get_value_unsigned(&*cs) {
-            println!("Round bitmask = 0b{:b}", value);
-        }
-    }
-
-    let round_bitmask =
-        Boolean::split_into_bitmask::<F, CS, MAX_ROUNDS>(cs, Num::Var(round_bitmask[0]));
-
-    {
-        for (i, el) in round_bitmask.iter().enumerate() {
-            if let Some(value) = el.get_value(&*cs) {
-                println!("Round bitmask element {} = {}", i, value);
-            }
-        }
-    }
-    // now we perform ABI logic convention
-
-    // - if round == 0 (round_bitmask[0] is set) then we overwrite elements 8..12, 13 and 15 of the state
-
-    let first_round = round_bitmask[0];
-    for i in [8, 9, 10, 11, 13, 15] {
-        let existing = input_state[i];
-        let selected_0 = cs.choose(
-            first_round,
-            Num::Constant(F::from_u32_unchecked(IV[i - 8] as u32 & 0xffff)),
-            Num::Var(existing[0]),
-        );
-        let selected_1 = cs.choose(
-            first_round,
-            Num::Constant(F::from_u32_unchecked((IV[i - 8] as u32) >> 16)),
-            Num::Var(existing[1]),
-        );
-
-        input_state[i] = [selected_0.get_variable(), selected_1.get_variable()];
-    }
-
-    {
-        for (i, input) in input_state.iter().enumerate() {
-            let register = Register::<F>(input.map(|el| Num::Var(el)));
-            if let Some(value) = register.get_value_unsigned(&*cs) {
-                println!("State element after masking {} = 0x{:08x}", i, value);
-            }
-        }
-    }
-
-    // now we should select a fixed permutation of the message words
-
-    let mut selected_permutation = vec![];
-    for message_word in 0..BLAKE2S_BLOCK_SIZE_U32_WORDS {
-        // our permutation is fixed, so we just need to make a constraint
-        let mut constraint_0 = Constraint::empty();
-        let mut constraint_1 = Constraint::empty();
-        for round_index in 0..MAX_ROUNDS {
-            let selector = round_bitmask[round_index];
-            let inputs = data_to_absorb[SIGMAS[round_index][message_word]];
-            constraint_0 = mask_by_boolean_into_accumulator_constraint(
-                &selector,
-                &Num::Var(inputs[0]),
-                constraint_0,
-            );
-            constraint_1 = mask_by_boolean_into_accumulator_constraint(
-                &selector,
-                &Num::Var(inputs[1]),
-                constraint_1,
-            );
-        }
-        let low = cs.add_variable_from_constraint(constraint_0);
-        let high = cs.add_variable_from_constraint(constraint_1);
-
-        selected_permutation.push([low, high]);
-    }
-
-    assert_eq!(selected_permutation.len(), 16);
-
-    {
-        for (i, input) in selected_permutation.iter().enumerate() {
-            let register = Register::<F>(input.map(|el| Num::Var(el)));
-            if let Some(value) = register.get_value_unsigned(&*cs) {
-                println!("Permuted input message element {} = 0x{:08x}", i, value);
-            }
-        }
-    }
-
-    let state: Vec<_> = input_state
-        .into_iter()
-        .map(|el| el.map(|el| vec![(16, el)]))
-        .collect();
-
-    let a_row: [_; 4] = state[0..4].to_vec().try_into().unwrap();
-    let mut a_row = a_row.map(|el| {
-        el.map(|el| {
-            assert_eq!(el.len(), 1);
-            let mut constraint = Constraint::<F>::empty();
-            constraint += Term::from(el[0].1);
-
-            constraint
-        })
-    });
-    let mut b_row: [_; 4] = state[4..8].to_vec().try_into().unwrap();
-    let c_row: [_; 4] = state[8..12].to_vec().try_into().unwrap();
-    let mut c_row = c_row.map(|el| {
-        el.map(|el| {
-            assert_eq!(el.len(), 1);
-            let mut constraint = Constraint::<F>::empty();
-            constraint += Term::from(el[0].1);
-
-            constraint
-        })
-    });
-    let mut d_row: [_; 4] = state[12..16].to_vec().try_into().unwrap();
-
-    g_function(
-        cs,
-        &mut a_row[0],
-        &mut b_row[0],
-        &mut c_row[0],
-        &mut d_row[0],
-        [selected_permutation[0], selected_permutation[1]],
-    );
-
-    g_function(
-        cs,
-        &mut a_row[1],
-        &mut b_row[1],
-        &mut c_row[1],
-        &mut d_row[1],
-        [selected_permutation[2], selected_permutation[3]],
-    );
-
-    g_function(
-        cs,
-        &mut a_row[2],
-        &mut b_row[2],
-        &mut c_row[2],
-        &mut d_row[2],
-        [selected_permutation[4], selected_permutation[5]],
-    );
-
-    g_function(
-        cs,
-        &mut a_row[3],
-        &mut b_row[3],
-        &mut c_row[3],
-        &mut d_row[3],
-        [selected_permutation[6], selected_permutation[7]],
-    );
-
-    // shift
-
-    g_function(
-        cs,
-        &mut a_row[0],
-        &mut b_row[1],
-        &mut c_row[2],
-        &mut d_row[3],
-        [selected_permutation[8], selected_permutation[9]],
-    );
-
-    g_function(
-        cs,
-        &mut a_row[1],
-        &mut b_row[2],
-        &mut c_row[3],
-        &mut d_row[0],
-        [selected_permutation[10], selected_permutation[11]],
-    );
-
-    g_function(
-        cs,
-        &mut a_row[2],
-        &mut b_row[3],
-        &mut c_row[0],
-        &mut d_row[1],
-        [selected_permutation[12], selected_permutation[13]],
-    );
-
-    g_function(
-        cs,
-        &mut a_row[3],
-        &mut b_row[0],
-        &mut c_row[1],
-        &mut d_row[2],
-        [selected_permutation[14], selected_permutation[15]],
-    );
-
-    // now we should re-assemble it into output
-
-    // NOTE on final masking: we do NOT need to mask anything here based on the execute/not predicate,
-    // because if we do not execute, circuit guarantees that all read values are 0, so we will get 0 at the end here
-
-    let mut it = output_placeholder_state.iter_mut();
-
-    for src in a_row.into_iter() {
-        let dst = it.next().unwrap();
-        for (src, dst) in src.into_iter().zip(dst.iter_mut()) {
-            let mut constraint = src;
-            // set value
-            collapse_max_quadratic_constraint_into(cs, constraint.clone(), *dst);
-            // add constraint
-            constraint -= Term::from(*dst);
-            cs.add_constraint_allow_explicit_linear(constraint);
-        }
-    }
-
-    for src in b_row.into_iter() {
-        let dst = it.next().unwrap();
-        for (src, dst) in src.into_iter().zip(dst.iter_mut()) {
-            let mut constraint = Constraint::empty();
-            let mut shift = 0;
-            for (width, var) in src.into_iter() {
-                constraint += Term::from((F::from_u32_unchecked(1u32 << shift), var));
-                shift += width;
-            }
-            // set value
-            collapse_max_quadratic_constraint_into(cs, constraint.clone(), *dst);
-            // add constraint
-            constraint -= Term::from(*dst);
-            cs.add_constraint_allow_explicit_linear(constraint);
-        }
-    }
-
-    for src in c_row.into_iter() {
-        let dst = it.next().unwrap();
-        for (src, dst) in src.into_iter().zip(dst.iter_mut()) {
-            let mut constraint = src;
-            // set value
-            collapse_max_quadratic_constraint_into(cs, constraint.clone(), *dst);
-            // add constraint
-            constraint -= Term::from(*dst);
-            cs.add_constraint_allow_explicit_linear(constraint);
-        }
-    }
-
-    for src in d_row.into_iter() {
-        let dst = it.next().unwrap();
-        for (src, dst) in src.into_iter().zip(dst.iter_mut()) {
-            let mut constraint = Constraint::empty();
-            let mut shift = 0;
-            for (width, var) in src.into_iter() {
-                constraint += Term::from((F::from_u32_unchecked(1u32 << shift), var));
-                shift += width;
-            }
-            // set value
-            collapse_max_quadratic_constraint_into(cs, constraint.clone(), *dst);
-            // add constraint
-            constraint -= Term::from(*dst);
-            cs.add_constraint_allow_explicit_linear(constraint);
-        }
-    }
-
-    assert!(it.next().is_none());
-
-    {
-        for (i, input) in output_placeholder_state.iter().enumerate() {
-            let register = Register::<F>(input.map(|el| Num::Var(el)));
-            if let Some(value) = register.get_value_unsigned(&*cs) {
-                println!("Output state element {} = 0x{:08x}", i, value);
-            }
-        }
-    }
-
-    output_placeholder_state
-}
 
 pub(crate) struct GFunctionIntermediateValues<F: PrimeField> {
     pub(crate) a_var_chunks_and_constraint: [([(i32, Variable); 1], Constraint<F>); 2],
@@ -411,6 +36,7 @@ pub(crate) fn g_function<F: PrimeField, CS: Circuit<F>>(
         for i in 0..2 {
             let addition_result_chunks: [Variable; 1] = std::array::from_fn(|_| cs.add_variable());
             let a_constraint = a[i].clone();
+            assert_eq!(a_constraint.degree(), 1);
 
             // println!("v[a].wrapping_add(v[b]).wrapping_add(x) part {}", i);
 
@@ -485,6 +111,7 @@ pub(crate) fn g_function<F: PrimeField, CS: Circuit<F>>(
                 let (a_chunks, a_remaining_constraint) = a_chunks_and_constraints[i].clone();
                 assert_eq!(a_chunks.len(), 1);
                 assert_eq!(a_chunks[0].0, 8);
+                assert_eq!(a_remaining_constraint.degree(), 1);
 
                 let low_chunk = cs.add_variable();
 
@@ -530,6 +157,7 @@ pub(crate) fn g_function<F: PrimeField, CS: Circuit<F>>(
                 let (a_chunks, a_remaining_constraint) = a_chunks_and_constraints[i].clone();
                 assert_eq!(a_chunks.len(), 1);
                 assert_eq!(a_chunks[0].0, 8);
+                assert_eq!(a_remaining_constraint.degree(), 1);
 
                 let (width, var) = d[i][0];
                 assert_eq!(width, 8);
@@ -585,6 +213,7 @@ pub(crate) fn g_function<F: PrimeField, CS: Circuit<F>>(
 
             let addition_result_chunks: [Variable; 2] = std::array::from_fn(|_| cs.add_variable());
             let c_constraint = c[i].clone();
+            assert_eq!(c_constraint.degree(), 1);
 
             {
                 let inputs: [&[(usize, Variable)]; 1] = [&d[i][..]];
@@ -668,6 +297,7 @@ pub(crate) fn g_function<F: PrimeField, CS: Circuit<F>>(
                 assert_eq!(c_chunks.len(), 2);
                 assert_eq!(c_chunks[0].0, 3);
                 assert_eq!(c_chunks[1].0, 9);
+                assert_eq!(c_remaining_constraint.degree(), 1);
 
                 let chunk_3 = cs.add_variable();
                 let chunk_9 = cs.add_variable();
@@ -734,6 +364,8 @@ pub(crate) fn g_function<F: PrimeField, CS: Circuit<F>>(
                 assert_eq!(c_chunks.len(), 2);
                 assert_eq!(c_chunks[0].0, 3);
                 assert_eq!(c_chunks[1].0, 9);
+                assert_eq!(c_remaining_constraint.degree(), 1);
+
                 let [chunk_3, chunk_9]: [Variable; 2] = std::array::from_fn(|_| cs.add_variable());
                 let inputs: [&[(usize, Variable)]; 1] = [&b[i][..]];
                 let output_chunks = [(3, chunk_3), (9, chunk_9)];
@@ -818,6 +450,7 @@ pub(crate) fn g_function<F: PrimeField, CS: Circuit<F>>(
 
             let addition_result_chunks: [Variable; 1] = std::array::from_fn(|_| cs.add_variable());
             let a_constraint = a[i].clone();
+            assert_eq!(a_constraint.degree(), 1);
 
             {
                 let inputs: [&[(usize, Variable)]; 2] = [&b[i][..], &[(16, y[i])][..]];
@@ -884,6 +517,7 @@ pub(crate) fn g_function<F: PrimeField, CS: Circuit<F>>(
             let (a_chunks, a_remaining_constraint) = a_chunks_and_constraints[i].clone();
             assert_eq!(a_chunks.len(), 1);
             assert_eq!(a_chunks[0].0, 8);
+            assert_eq!(a_remaining_constraint.degree(), 1);
 
             let (width, var) = d[i][0];
             assert_eq!(width, 8);
@@ -936,6 +570,7 @@ pub(crate) fn g_function<F: PrimeField, CS: Circuit<F>>(
 
             let addition_result_chunks: [Variable; 1] = std::array::from_fn(|_| cs.add_variable());
             let c_constraint = c[i].clone();
+            assert_eq!(c_constraint.degree(), 1);
 
             {
                 let inputs: [&[(usize, Variable)]; 1] = [&d[i][..]];
@@ -1010,6 +645,8 @@ pub(crate) fn g_function<F: PrimeField, CS: Circuit<F>>(
             let (c_chunks, c_remaining_constraint) = c_chunks_and_constraints[i].clone();
             assert_eq!(c_chunks.len(), 1);
             assert_eq!(c_chunks[0].0, 7);
+            assert_eq!(c_remaining_constraint.degree(), 1);
+
             // we just use linear expressions and XOR
             let mut xor_7_constraint = Constraint::empty();
             xor_7_constraint += Term::from(width_4_var);
@@ -1120,8 +757,6 @@ fn witness_eval_addition_with_constraint<
     // add witness fn
 
     let value_fn = move |placer: &mut CS::WitnessPlacer| {
-        use crate::cs::witness_placer::*;
-
         let mut input_value = <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::constant(0u32);
         for input_decomposition in inputs.iter() {
             let mut shift = 0u32;
@@ -1175,194 +810,4 @@ fn witness_eval_addition_with_constraint<
     };
 
     cs.set_values(value_fn);
-}
-
-// // We should assign booleans, and parse from constants what are our chunks and their shifts.
-// // We will assign output boolean carries, and chunk variables of the output
-// fn choose_witness_gen_function_for_addition_with_constraint<
-//     F: PrimeField,
-//     const NUM_INPUTS: usize,
-//     const NUM_CARRIES_IN: usize,
-//     const NUM_CARRIES_OUT: usize,
-//     const OUTPUT_CHUNKS_TO_PRODUCE: usize,
-// >(
-//     (inputs_0_chunks, inputs_1_chunks, inputs_2_chunks): (usize, usize, usize),
-//     num_linear_terms_in_constraint: usize,
-// ) -> fn(WitnessGenSource<'_, F>, WitnessGenDest<'_, F>, &[F], &TableDriver<F>, TableType) {
-//     assert!(NUM_INPUTS > 0);
-//     assert!(NUM_INPUTS < 4);
-//     assert!(inputs_0_chunks > 0);
-
-//     match NUM_INPUTS {
-//         1 => {}
-//         2 => {
-//             assert!(inputs_1_chunks > 0);
-//         }
-//         3 => {
-//             assert!(inputs_1_chunks > 0);
-//             assert!(inputs_2_chunks > 0);
-//         }
-//         _ => unreachable!(),
-//     }
-
-//     seq_macro::seq!(N in 1..4 {
-//         if inputs_0_chunks == N {
-//             if inputs_1_chunks == 0 {
-//                 assert!(inputs_2_chunks == 0);
-//                 super_seq_macro::seq!(L in [0, 1, 4, 5, 7, 9, 10, 13] {
-//                     if num_linear_terms_in_constraint == L {
-//                         return witness_gen_function_for_addition_with_constraint_inner::<F, NUM_INPUTS, N, 0, 0, L, NUM_CARRIES_IN, NUM_CARRIES_OUT, OUTPUT_CHUNKS_TO_PRODUCE>;
-//                     }
-//                 });
-
-//                 panic!("unsupported number of linear terms in constraint: {}", num_linear_terms_in_constraint);
-//             } else {
-//                 if inputs_2_chunks == 0 {
-//                     seq_macro::seq!(M in 1..4 {
-//                         if inputs_1_chunks == M {
-//                             super_seq_macro::seq!(L in [0, 1, 5, 7, 11, 15, 16, 22] {
-//                                 if num_linear_terms_in_constraint == L {
-//                                     return witness_gen_function_for_addition_with_constraint_inner::<F, NUM_INPUTS, N, M, 0, L, NUM_CARRIES_IN, NUM_CARRIES_OUT, OUTPUT_CHUNKS_TO_PRODUCE>;
-//                                 }
-//                             });
-
-//                             panic!("unsupported number of linear terms in constraint: {}", num_linear_terms_in_constraint);
-//                         }
-//                     });
-
-//                     panic!("unsupported number of input chunks for arg 1: {}", inputs_1_chunks);
-//                 } else {
-//                     seq_macro::seq!(M in 1..4 {
-//                         if inputs_1_chunks == M {
-//                             seq_macro::seq!(K in 1..4 {
-//                                 if inputs_2_chunks == K {
-//                                     super_seq_macro::seq!(L in [0] {
-//                                         if num_linear_terms_in_constraint == L {
-//                                             return witness_gen_function_for_addition_with_constraint_inner::<F, NUM_INPUTS, N, M, K, L, NUM_CARRIES_IN, NUM_CARRIES_OUT, OUTPUT_CHUNKS_TO_PRODUCE>;
-//                                         }
-//                                     });
-
-//                                     panic!("unsupported number of linear terms in constraint: {}", num_linear_terms_in_constraint);
-//                                 }
-//                             });
-
-//                             panic!("unsupported number of input chunks for arg 2: {}", inputs_2_chunks);
-//                         }
-//                     });
-//                 }
-//             }
-
-//             panic!("unsupported number of input chunks for arg 1: {}", inputs_1_chunks);
-//         }
-//     });
-
-//     panic!(
-//         "unsupported number of input chunks for arg 0: {}",
-//         inputs_0_chunks
-//     );
-// }
-
-// fn witness_gen_function_for_addition_with_constraint_inner<
-//     F: PrimeField,
-//     const NUM_INPUTS: usize,
-//     const INPUT_0_NUM_CHUNKS: usize,
-//     const INPUT_1_NUM_CHUNKS: usize,
-//     const INPUT_2_NUM_CHUNKS: usize,
-//     const NUM_LINEAR_TERMS: usize,
-//     const NUM_CARRIES_IN: usize,
-//     const NUM_CARRIES_OUT: usize,
-//     const OUTPUT_CHUNKS_TO_PRODUCE: usize,
-// >(
-//     inputs: WitnessGenSource<'_, F>,
-//     mut outputs: WitnessGenDest<'_, F>,
-//     constants: &[F],
-//     _table_driver: &TableDriver<F>,
-//     _table_type: TableType,
-// ) {
-//     assert!(NUM_INPUTS > 0);
-//     assert!(NUM_INPUTS < 4);
-//     let mut constants_it = constants.iter();
-//     let mut result = 0u32;
-//     let mut i = 0;
-//     for input_idx in 0..NUM_INPUTS {
-//         let num_chunks = match input_idx {
-//             0 => INPUT_0_NUM_CHUNKS,
-//             1 => INPUT_1_NUM_CHUNKS,
-//             2 => INPUT_2_NUM_CHUNKS,
-//             _ => unreachable!(),
-//         };
-
-//         let mut shift = 0;
-//         for _ in 0..num_chunks {
-//             let chunk_el = inputs[i].as_u32_reduced() as u32;
-//             i += 1;
-//             assert!(chunk_el < 1u32 << 16);
-//             result += chunk_el << shift;
-//             let chunk_width = constants_it.next().unwrap().as_u32_reduced() as usize;
-//             shift += chunk_width
-//         }
-//     }
-
-//     // now we can read number of carries-in and add them
-//     for shift in 0..NUM_CARRIES_IN {
-//         result += (inputs[i].as_boolean() as u32) << shift;
-//         i += 1;
-//     }
-
-//     if NUM_LINEAR_TERMS > 0 {
-//         let mut linear_constraint_contribution = *constants_it.next().unwrap();
-//         for _ in 0..NUM_LINEAR_TERMS {
-//             linear_constraint_contribution
-//                 .add_assign_product(&inputs[i], constants_it.next().unwrap());
-//             i += 1;
-//         }
-
-//         // compute result of the addition
-//         let t = linear_constraint_contribution.as_u32_reduced();
-//         assert!(t < 1 << 16);
-//         result += t as u32;
-//     }
-
-//     let mut result_low = result as u16;
-//     let mut result_high = result >> 16;
-
-//     // assign carries
-//     for i in 0..NUM_CARRIES_OUT {
-//         let carry = result_high & 1 == 1;
-//         result_high >>= 1;
-//         outputs[i] = F::from_boolean(carry);
-//     }
-//     assert!(result_high == 0);
-
-//     // now we should parse how many chunks we assign and what are their width
-//     for i in 0..OUTPUT_CHUNKS_TO_PRODUCE {
-//         let chunk_width = constants_it.next().unwrap().as_u32_reduced() as usize;
-//         let chunk = result_low & ((1 << chunk_width) - 1);
-//         outputs[NUM_CARRIES_OUT + i] = F::from_u32_unchecked(chunk as u64);
-//         result_low >>= chunk_width;
-//     }
-
-//     assert!(constants_it.next().is_none());
-// }
-
-#[cfg(test)]
-mod test {
-    use super::*;
-    use crate::cs::cs_reference::BasicAssembly;
-    use crate::one_row_compiler::OneRowCompiler;
-    use field::Mersenne31Field;
-
-    #[ignore = "Fails with deprecated"]
-    #[test]
-    fn test_compile_blake2_single_round() {
-        let mut cs = BasicAssembly::<Mersenne31Field>::new();
-        define_blake2_single_round_delegation_circuit(&mut cs);
-        let (circuit_output, _) = cs.finalize();
-        dbg!(&circuit_output.lookups.len());
-        let compiler = OneRowCompiler::default();
-        let circuit = compiler.compile_to_evaluate_delegations(circuit_output, 20);
-        dbg!(circuit.memory_layout.total_width);
-        dbg!(circuit.witness_layout.total_width);
-        dbg!(circuit.stage_2_layout.total_width);
-    }
 }

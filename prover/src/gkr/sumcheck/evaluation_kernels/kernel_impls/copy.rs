@@ -26,7 +26,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E>
     }
 
     fn get_inputs(&self) -> GKRInputs {
-        debug_assert!(self.validate());
+        assert!(self.validate());
         GKRInputs {
             inputs_in_base: vec![self.input],
             inputs_in_extension: Vec::new(),
@@ -115,6 +115,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field>
         unreachable!("not used by this kernel")
     }
 
+    #[inline(always)]
     fn pointwise_eval_forward(&self, _input: &[BaseFieldRepresentation<F>; 1]) -> [F; 1] {
         unreachable!("not used by this kernel")
     }
@@ -205,7 +206,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E>
     }
 
     fn get_inputs(&self) -> GKRInputs {
-        debug_assert!(self.validate());
+        assert!(self.validate());
         GKRInputs {
             inputs_in_base: Vec::new(),
             inputs_in_extension: vec![self.input],
@@ -272,7 +273,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E>
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct ExtensionCopyGKRRelationKernel<F: PrimeField, E: FieldExtension<F> + Field> {
     _marker: core::marker::PhantomData<(F, E)>,
 }
@@ -291,7 +292,12 @@ impl<F: PrimeField, E: FieldExtension<F> + Field>
         &self,
         _input: &[ExtensionFieldRepresentation<F, E>; 1],
     ) -> [E; 1] {
-        [E::ZERO]
+        unreachable!("not used by this kernel")
+    }
+
+    #[inline(always)]
+    fn pointwise_eval_forward(&self, input: &[ExtensionFieldRepresentation<F, E>; 1]) -> [E; 1] {
+        unreachable!("not used by this kernel")
     }
 
     fn pointwise_eval_by_ref(&self, _input: [&ExtensionFieldRepresentation<F, E>; 1]) -> [E; 1] {
