@@ -18,7 +18,7 @@ pub fn mem_subword_only_tables() -> Vec<TableType> {
         // TableType::LoadHalfwordRomRead, // ROM*H table (2^22)
         // TableType::LoadByteRomRead, // ROM*B table (2^23)
         TableType::LoadHalfwordSignextend, // RAM*H table (2^17)
-        TableType::LoadByteSignextend, // RAM*B table (2^18)
+        TableType::LoadByteSignextend,     // RAM*B table (2^18)
         TableType::StoreByteSourceContribution, // "keep" or STORE*B table (2^17)
     ]
 }
@@ -41,19 +41,21 @@ pub fn create_mem_subword_only_special_tables<
 >(
     bytecode: &[u32],
 ) -> [(TableType, crate::tables::LookupWrapper<F>); 2] {
-    use crate::tables::{
-        create_load_byte_from_rom_table, create_load_halfword_from_rom_table,
-    };
+    use crate::tables::{create_load_byte_from_rom_table, create_load_halfword_from_rom_table};
 
     let id = TableType::LoadHalfwordRomRead.to_table_id();
-    let rom_halfword_table = crate::tables::LookupWrapper::Initialized(
-        create_load_halfword_from_rom_table::<F, ROM_ADDRESS_SPACE_SECOND_WORD_BITS>(bytecode, id),
-    );
+    let rom_halfword_table =
+        crate::tables::LookupWrapper::Initialized(create_load_halfword_from_rom_table::<
+            F,
+            ROM_ADDRESS_SPACE_SECOND_WORD_BITS,
+        >(bytecode, id));
 
     let id = TableType::LoadByteRomRead.to_table_id();
-    let rom_byte_table = crate::tables::LookupWrapper::Initialized(
-        create_load_byte_from_rom_table::<F, ROM_ADDRESS_SPACE_SECOND_WORD_BITS>(bytecode, id),
-    );
+    let rom_byte_table =
+        crate::tables::LookupWrapper::Initialized(create_load_byte_from_rom_table::<
+            F,
+            ROM_ADDRESS_SPACE_SECOND_WORD_BITS,
+        >(bytecode, id));
 
     [
         (TableType::LoadHalfwordRomRead, rom_halfword_table),
@@ -90,7 +92,10 @@ fn apply_mem_subword_only_inner<F: PrimeField, CS: Circuit<F>>(
     }
 
     // read rs1, to compute address
-    let MemoryAccess::RegisterOnly(RegisterAccess { read_value: WordRepresentation::U16Limbs(rs1), .. }) = cs.request_mem_access(
+    let MemoryAccess::RegisterOnly(RegisterAccess {
+        read_value: WordRepresentation::U16Limbs(rs1),
+        ..
+    }) = cs.request_mem_access(
         MemoryAccessRequest::RegisterRead {
             reg_idx: inputs.decoder_data.rs1_index,
             read_value_placeholder: Placeholder::ShuffleRamReadValue(0),
@@ -98,10 +103,10 @@ fn apply_mem_subword_only_inner<F: PrimeField, CS: Circuit<F>>(
         },
         "rs1",
         0,
-    ) else {unreachable!()};
-
-
-    
+    )
+    else {
+        unreachable!()
+    };
 
     // strategies:
     // - we perform an initial setup: computing the addr + cleanup, and fetching rom data.
@@ -119,15 +124,18 @@ fn apply_mem_subword_only_inner<F: PrimeField, CS: Circuit<F>>(
     // scratch space
     // - just the 1 variable ("clear") for store*byte case
 
-    let isstore = decoder.perform_write();
-    let isload = isstore.toggle();
-    let isbyte = decoder.perform_byte_operation();
-    let ishalfword = isbyte.toggle();
-    let issext = decoder.perform_signextension();
+    let is_store = decoder.perform_write();
+    let is_load = is_store.toggle();
+    let is_byte = decoder.perform_byte_operation();
+    let is_halfword = is_byte.toggle();
+    let is_sext = decoder.perform_sign_extension();
 
+    // we allocate variables that are memory queries addresses, and constraint equality
+    // instead of selecting them for convenience
 
     // read mem/rs2
-    let memread_addr = core::array::from_fn(|i| cs.add_named_variable(&format!("memread_addr[{i}]")));
+    let memread_addr =
+        core::array::from_fn(|i| cs.add_named_variable(&format!("memread_addr[{i}]")));
     {
         let value_fn = move |placer: &mut CS::WitnessPlacer| {
             let value = placer.get_oracle_u32(Placeholder::ShuffleRamAddress(1));
@@ -135,14 +143,26 @@ fn apply_mem_subword_only_inner<F: PrimeField, CS: Circuit<F>>(
         };
         cs.set_values(value_fn);
     }
-    let MemoryAccess::RegisterOrRam(RegisterOrRamAccess { read_value: WordRepresentation::U16Limbs(memread), .. }) = cs.request_mem_access(
-        MemoryAccessRequest::RegisterOrRamRead { is_register: isstore, address: memread_addr, read_value_placeholder: Placeholder::ShuffleRamReadValue(1), split_as_u8: false }, 
-        "mem/rs2 read", 
-        1
-    ) else {unreachable!()};
+    let MemoryAccess::RegisterOrRam(RegisterOrRamAccess {
+        read_value: WordRepresentation::U16Limbs(memread),
+        ..
+    }) = cs.request_mem_access(
+        MemoryAccessRequest::RegisterOrRamRead {
+            is_register: is_store,
+            address: memread_addr,
+            read_value_placeholder: Placeholder::ShuffleRamReadValue(1),
+            split_as_u8: false,
+        },
+        "mem/rs2 read",
+        1,
+    )
+    else {
+        unreachable!()
+    };
 
     // overwrite rd/mem
-    let memwrite_addr = core::array::from_fn(|i| cs.add_named_variable(&format!("memwrite_addr[{i}]")));
+    let memwrite_addr =
+        core::array::from_fn(|i| cs.add_named_variable(&format!("memwrite_addr[{i}]")));
     {
         let value_fn = move |placer: &mut CS::WitnessPlacer| {
             let value = placer.get_oracle_u32(Placeholder::ShuffleRamAddress(2));
@@ -150,17 +170,30 @@ fn apply_mem_subword_only_inner<F: PrimeField, CS: Circuit<F>>(
         };
         cs.set_values(value_fn);
     }
-    let MemoryAccess::RegisterOrRam(RegisterOrRamAccess { read_value: WordRepresentation::U16Limbs(oldread), write_value: WordRepresentation::U16Limbs(memwrite), .. }) = cs.request_mem_access(
-        MemoryAccessRequest::RegisterOrRamReadWrite { is_register: isload, address: memwrite_addr, read_value_placeholder: Placeholder::ShuffleRamReadValue(2), write_value_placeholder: Placeholder::ShuffleRamWriteValue(2), split_read_as_u8: false, split_write_as_u8: false }, 
-        "mem/rd write", 
-        2) else {unreachable!()};
-
-
+    let MemoryAccess::RegisterOrRam(RegisterOrRamAccess {
+        read_value: WordRepresentation::U16Limbs(oldread),
+        write_value: WordRepresentation::U16Limbs(memwrite),
+        ..
+    }) = cs.request_mem_access(
+        MemoryAccessRequest::RegisterOrRamReadWrite {
+            is_register: is_load,
+            address: memwrite_addr,
+            read_value_placeholder: Placeholder::ShuffleRamReadValue(2),
+            write_value_placeholder: Placeholder::ShuffleRamWriteValue(2),
+            split_read_as_u8: false,
+            split_write_as_u8: false,
+        },
+        "mem/rd write",
+        2,
+    )
+    else {
+        unreachable!()
+    };
 
     let (cleanaddr, offset_bits) = {
         // first we gotta enforce the register address
-        let load = Constraint::from(isload);
-        let store = Constraint::from(isstore);
+        let load = Constraint::from(is_load);
+        let store = Constraint::from(is_store);
         let [readaddr_lo, readaddr_hi] = memread_addr.map(Term::from);
         let [writeaddr_lo, writeaddr_hi] = memwrite_addr.map(Term::from);
         cs.add_constraint(
@@ -174,10 +207,10 @@ fn apply_mem_subword_only_inner<F: PrimeField, CS: Circuit<F>>(
         let [imm_lo, imm_hi] = inputs.decoder_data.imm.map(Term::from);
         let cleanaddr_lo = load.clone() * readaddr_lo + store.clone() * writeaddr_lo;
         let cleanaddr_hi = load * readaddr_hi + store * writeaddr_hi;
-        let isbit0 = cs.add_named_boolean_variable("address bit0");
-        let isbit1 = cs.add_named_boolean_variable("address bit1");
-        let b0 = Term::from(isbit0);
-        let b1 = Term::from(isbit1);
+        let is_bit0 = cs.add_named_boolean_variable("address bit0");
+        let is_bit1 = cs.add_named_boolean_variable("address bit1");
+        let b0 = Term::from(is_bit0);
+        let b1 = Term::from(is_bit1);
         {
             // explicit wit.gen
             let value_fn = move |placer: &mut CS::WitnessPlacer| {
@@ -186,51 +219,72 @@ fn apply_mem_subword_only_inner<F: PrimeField, CS: Circuit<F>>(
                 let (addr_lo, _of_lo) = rs1_lo.overflowing_add(&imm_lo);
                 let bit0 = addr_lo.get_bit(0);
                 let bit1 = addr_lo.get_bit(1);
-                placer.assign_mask(isbit0.get_variable().unwrap(), &bit0);
-                placer.assign_mask(isbit1.get_variable().unwrap(), &bit1);
+                placer.assign_mask(is_bit0.get_variable().unwrap(), &bit0);
+                placer.assign_mask(is_bit1.get_variable().unwrap(), &bit1);
             };
             cs.set_values(value_fn);
         }
         let shift16_inv = Term::from_field(F::from_u32(1 << 16).unwrap().inverse().unwrap());
-        let of_lo =
-            shift16_inv.clone() * (rs1_lo + imm_lo - cleanaddr_lo.clone() - b0 - Term::from(2) * b1);
+        let of_lo = shift16_inv.clone()
+            * (rs1_lo + imm_lo - cleanaddr_lo.clone() - b0 - Term::from(2) * b1);
+
+        // check booleanity of carry bits
+
+        // push to the intermedaite and constraint there
+        assert_eq!(of_lo.degree(), 2);
+        let next_layer_copied_of_lo = Term::from(
+            cs.add_intermediate_named_variable_from_constraint(of_lo.clone(), "addr ofL (L2)"),
+        );
+        cs.add_constraint(
+            next_layer_copied_of_lo.clone() * (Term::from(1) - next_layer_copied_of_lo),
+        ); // booleanity of overflow (low)
+
         let of_hi = shift16_inv * (of_lo.clone() + rs1_hi + imm_hi - cleanaddr_hi.clone());
-        let L2_of_lo = Term::from(cs.add_intermediate_named_variable_from_constraint(of_lo, "addr ofL (L2)"));
-        let L2_of_hi = Term::from(cs.add_intermediate_named_variable_from_constraint(of_hi, "addr ofH (L2)"));
-        cs.add_constraint(L2_of_lo.clone() * (Term::from(1) - L2_of_lo)); // booleanity of overflow (low)
-        cs.add_constraint(L2_of_hi.clone() * (Term::from(1) - L2_of_hi)); // booleanity of overflow (high)
+        assert_eq!(of_hi.degree(), 2);
+        let next_layer_copied_of_hi =
+            Term::from(cs.add_intermediate_named_variable_from_constraint(of_hi, "addr ofH (L2)"));
+        cs.add_constraint(
+            next_layer_copied_of_hi.clone() * (Term::from(1) - next_layer_copied_of_hi),
+        ); // booleanity of overflow (high)
+
         // trap halfword*b0
-        cs.add_constraint(Constraint::from(ishalfword) * Constraint::from(isbit0));
-        ([cleanaddr_lo, cleanaddr_hi], [isbit0, isbit1])
+        cs.add_constraint(Constraint::from(is_halfword) * Constraint::from(is_bit0));
+        ([cleanaddr_lo, cleanaddr_hi], [is_bit0, is_bit1])
     };
-    let (isrom, romaddr) = {
-        let isrom = cs.add_named_boolean_variable("flag: are we in rom addr range?");
-        let rom = Term::from(isrom);
-        // cleanaddr_hi - 2^ROM_SECOND_WORD_BITS == residue - 2^16 ROM
+    let (is_rom, rom_addr) = {
+        let is_rom = cs.add_named_boolean_variable("flag: are we in rom addr range?");
+        let rom = Term::from(is_rom);
+        // whether it's a ROM access or not is decided by comparing high part
+        // of the address with 2^ROM_SECOND_WORD_BITS constant via subtraction with carry
+        // effectively
         let [cleanaddr_lo, cleanaddr_hi] = cleanaddr;
         {
             // explicit wit.gen
             let cleanaddr_hi = cleanaddr_hi.clone();
             let value_fn = move |placer: &mut CS::WitnessPlacer| {
                 let cleanaddr_hi = cleanaddr_hi.evaluate_with_placer(placer);
-                let extrabits = cleanaddr_hi.as_integer().shr(common_constants::ROM_SECOND_WORD_BITS as u32);
+                let extrabits = cleanaddr_hi
+                    .as_integer()
+                    .shr(common_constants::ROM_SECOND_WORD_BITS as u32);
                 let rom = extrabits.is_zero();
-                placer.assign_mask(isrom.get_variable().unwrap(), &rom);
+                placer.assign_mask(is_rom.get_variable().unwrap(), &rom);
             };
             cs.set_values(value_fn);
         }
         let shift16 = Term::from(1 << 16);
         let shiftromaddr_hi = Term::from(1 << common_constants::ROM_SECOND_WORD_BITS);
         let residue = cleanaddr_hi.clone() - shiftromaddr_hi + shift16 * rom;
-        let L2_residue = cs.add_intermediate_named_variable_from_constraint(residue, "residue (L2)");
-        cs.require_invariant_from_lookup_input(LookupInput::from(L2_residue), Invariant::RangeChecked { width: 16 });
+        assert_eq!(residue.degree(), 2);
+        let next_layer_copied_residue =
+            cs.add_intermediate_named_variable_from_constraint(residue, "residue (L2)");
+        cs.require_invariant_from_lookup_input(
+            LookupInput::from(next_layer_copied_residue),
+            Invariant::RangeChecked { width: 16 },
+        );
         // trap store*rom
-        cs.add_constraint(Constraint::from(isrom) * Constraint::from(isstore));
-        (isrom, cleanaddr_lo + shift16 * cleanaddr_hi)
+        cs.add_constraint(Constraint::from(is_rom) * Constraint::from(is_store));
+        (is_rom, cleanaddr_lo + shift16 * cleanaddr_hi)
     };
-
-
-
 
     // now we may proceed with our "write" calculations
     // due to SB opcode limitations, we will be creating 1 new witness variable "clear" (plus lookup)
@@ -239,20 +293,36 @@ fn apply_mem_subword_only_inner<F: PrimeField, CS: Circuit<F>>(
         let [oldread_lo, oldread_hi] = oldread.map(Term::from);
         let [b0, b1] = offset_bits.map(Term::from);
         let shift16 = Term::from(1 << 16);
-        let selected_oldread_halfword =
-            b1.clone() * oldread_hi + (Term::from(1) - b1) * oldread_lo;
+        let selected_oldread_halfword = b1.clone() * oldread_hi + (Term::from(1) - b1) * oldread_lo;
         let input = selected_oldread_halfword + shift16 * b0;
         {
             // extra explicit wit.gen due to L1->L2 transition
             let inputs = &[input.clone()];
             let output_variables = &[clear];
             let table_type = Constraint::from(TableType::StoreByteExistingContribution.to_num());
-            cs::lookup_utils::peek_lookup_values_unconstrained_into_variables_from_constraints(cs, inputs, output_variables, table_type);
+            cs::lookup_utils::peek_lookup_values_unconstrained_into_variables_from_constraints(
+                cs,
+                inputs,
+                output_variables,
+                table_type,
+            );
         }
-        let L2_input = cs.add_intermediate_named_variable_from_constraint(input, "STORE*B: clear's table input: SEL(b1, OLDH, OLDL) || b0 (L2)");
-        let L2_clear = cs.add_intermediate_named_variable_from_constraint(Constraint::from(clear), "clear (L2)");
-        let tuple = [LookupInput::from(L2_input), LookupInput::from(L2_clear)];
-        cs.enforce_lookup_tuple_for_fixed_table(&tuple, TableType::StoreByteExistingContribution, false);
+        assert_eq!(input.degree(), 2);
+        let next_layer_copied_input = cs.add_intermediate_named_variable_from_constraint(
+            input,
+            "STORE*B: clear's table input: SEL(b1, OLDH, OLDL) || b0 (L2)",
+        );
+        let next_layer_copied_clear = cs
+            .add_intermediate_named_variable_from_constraint(Constraint::from(clear), "clear (L2)");
+        let tuple = [
+            LookupInput::from(next_layer_copied_input),
+            LookupInput::from(next_layer_copied_clear),
+        ];
+        cs.enforce_lookup_tuple_for_fixed_table(
+            &tuple,
+            TableType::StoreByteExistingContribution,
+            false,
+        );
         clear
     };
     // WRITE == halfwordsignext(romaddr || S || b1      )                   | LOAD*ROM*H  == ROM*H
@@ -263,17 +333,17 @@ fn apply_mem_subword_only_inner<F: PrimeField, CS: Circuit<F>>(
     //          SEL(b1, OLDL, clear + keep) || SEL(b1, clear + keep, OLDH)  | STORE*B
     // NB: for STORE, we directly use constraints on the halfword that needs to change vs stay, not on low vs high
     {
-        let rom = Constraint::from(isrom);
-        let ram = Constraint::from(isload) - rom.clone();
-        let store = Constraint::from(isstore);
-        let s = Term::from(issext);
-        let b = Term::from(isbyte);
+        let rom = Constraint::from(is_rom);
+        let ram = Constraint::from(is_load) - rom.clone();
+        let store = Constraint::from(is_store);
+        let s = Term::from(is_sext);
+        let b = Term::from(is_byte);
         let h = Term::from(1) - b.clone();
-        let romhalfword = rom.clone() * h.clone();
-        let rombyte = rom.clone() * b.clone();
-        let ramhalfword = ram.clone() * h.clone();
-        let rambyte = ram.clone() * b.clone();
-        let storebyte = store.clone() * b.clone();
+        let rom_halfword = rom.clone() * h.clone();
+        let rom_byte = rom.clone() * b.clone();
+        let ram_halfword = ram.clone() * h.clone();
+        let ram_byte = ram.clone() * b.clone();
+        let store_byte = store.clone() * b.clone();
         let [b0, b1] = offset_bits.map(Term::from);
         let [oldread_lo, oldread_hi] = oldread.map(Term::from);
         let [memread_lo, memread_hi] = memread.map(Term::from);
@@ -285,75 +355,101 @@ fn apply_mem_subword_only_inner<F: PrimeField, CS: Circuit<F>>(
         let constrained_memwrite_halfword = b1 * (memwrite_lo.clone() - oldread_lo)
             + (Term::from(1) - b1.clone()) * (memwrite_hi.clone() - oldread_hi);
         let rs2_lo = Constraint::from(memread_lo);
-        let keep = selected_memwrite_halfword - b.clone() * Term::from(clear) - h.clone() * rs2_lo.clone();
+        let keep =
+            selected_memwrite_halfword - b.clone() * Term::from(clear) - h.clone() * rs2_lo.clone();
 
-        let L2_rom = Term::from(cs.add_intermediate_named_variable_from_constraint(rom, "rom (L2)"));
-        let L2_ram = Term::from(cs.add_intermediate_named_variable_from_constraint(ram, "ram (L2)"));
-        let L2_store = Term::from(cs.add_intermediate_named_variable_from_constraint(store, "store (L2)"));
-        let L2_load = L2_rom.clone() + L2_ram.clone();
-        let L3_input = {
+        let layer_2_copied_rom =
+            Term::from(cs.add_intermediate_named_variable_from_constraint(rom, "rom (L2)"));
+        let layer_2_copied_ram =
+            Term::from(cs.add_intermediate_named_variable_from_constraint(ram, "ram (L2)"));
+        let layer_2_copied_store =
+            Term::from(cs.add_intermediate_named_variable_from_constraint(store, "store (L2)"));
+        let layer_2_copied_load = layer_2_copied_rom.clone() + layer_2_copied_ram.clone();
+        let layer_3_selected_input = {
             let shiftrom = Term::from(1 << (16 + common_constants::ROM_SECOND_WORD_BITS));
             let shiftrom1 = Term::from(1 << (16 + common_constants::ROM_SECOND_WORD_BITS + 1));
             let shiftrom2 = Term::from(1 << (16 + common_constants::ROM_SECOND_WORD_BITS + 2));
             let shift16 = Term::from(1 << 16);
             let shift17 = Term::from(1 << 17);
-            let rom_input =
-                romaddr.clone() + shiftrom * s.clone() + shiftrom1 * b1.clone() + shiftrom2 * b0.clone();
-            let ram_input =
-                selected_memread_halfword + shift16 * s + shift17 * b0.clone();
+            let rom_input = rom_addr.clone()
+                + shiftrom * s.clone()
+                + shiftrom1 * b1.clone()
+                + shiftrom2 * b0.clone();
+            let ram_input = selected_memread_halfword + shift16 * s + shift17 * b0.clone();
             let store_bytemask_input = b * (rs2_lo + shift16 * b0);
-            let L2_rom_input = Term::from(cs.add_intermediate_named_variable_from_constraint(rom_input, "rom_input (L2)"));
-            let L2_ram_input = Term::from(cs.add_intermediate_named_variable_from_constraint(ram_input, "ram_input (L2)"));
-            let L2_store_bytemasked_input = Term::from(cs.add_intermediate_named_variable_from_constraint(store_bytemask_input, "store_bytemasked_input (L2)"));
-            let input = L2_rom * L2_rom_input + L2_ram * L2_ram_input + L2_store.clone() * L2_store_bytemasked_input;
+            let next_layer_copied_rom_input = Term::from(
+                cs.add_intermediate_named_variable_from_constraint(rom_input, "rom_input (L2)"),
+            );
+            let next_layer_copied_ram_input = Term::from(
+                cs.add_intermediate_named_variable_from_constraint(ram_input, "ram_input (L2)"),
+            );
+            let next_layer_copied_store_bytemasked_input =
+                Term::from(cs.add_intermediate_named_variable_from_constraint(
+                    store_bytemask_input,
+                    "store_bytemasked_input (L2)",
+                ));
+            let input = layer_2_copied_rom * next_layer_copied_rom_input
+                + layer_2_copied_ram * next_layer_copied_ram_input
+                + layer_2_copied_store.clone() * next_layer_copied_store_bytemasked_input;
             cs.add_intermediate_named_variable_from_constraint(input, "final lookup input (L3)")
         };
-        let L3_output1 = {
-            let L2_memwrite_lo = Term::from(cs.add_intermediate_named_variable_from_constraint(memwrite_lo, "memwrite_lo (L2)"));
-            let L2_keep = Term::from(cs.add_intermediate_named_variable_from_constraint(keep, "keep (L2)"));
-            let output1 = L2_load.clone() * L2_memwrite_lo + L2_store.clone() * L2_keep;
+        let layer_3_selected_output1 = {
+            let layer_2_copied_memwrite_lo = Term::from(
+                cs.add_intermediate_named_variable_from_constraint(memwrite_lo, "memwrite_lo (L2)"),
+            );
+            let layer_2_copied_keep =
+                Term::from(cs.add_intermediate_named_variable_from_constraint(keep, "keep (L2)"));
+            let output1 = layer_2_copied_load.clone() * layer_2_copied_memwrite_lo
+                + layer_2_copied_store.clone() * layer_2_copied_keep;
             cs.add_intermediate_named_variable_from_constraint(output1, "final lookup output1 (L3)")
         };
-        let L3_output2 = {
-            let L2_memwrite_hi = Term::from(cs.add_intermediate_named_variable_from_constraint(memwrite_hi, "memwrite_hi (L2)"));
-            let L2_constrained_memwrite_halfword = Term::from(cs.add_intermediate_named_variable_from_constraint(constrained_memwrite_halfword, "constrained_memwrite_halfword (L2)"));
-            let output2 = L2_load * L2_memwrite_hi + L2_store * L2_constrained_memwrite_halfword;
+        let layer_3_selected_output2 = {
+            let layer_2_copied_memwrite_hi = Term::from(
+                cs.add_intermediate_named_variable_from_constraint(memwrite_hi, "memwrite_hi (L2)"),
+            );
+            let layer_2_copied_constrained_memwrite_halfword =
+                Term::from(cs.add_intermediate_named_variable_from_constraint(
+                    constrained_memwrite_halfword,
+                    "constrained_memwrite_halfword (L2)",
+                ));
+            let output2 = layer_2_copied_load * layer_2_copied_memwrite_hi
+                + layer_2_copied_store * layer_2_copied_constrained_memwrite_halfword;
             cs.add_intermediate_named_variable_from_constraint(output2, "final lookup output2 (L3)")
         };
-        let L3_table_id = {
-            let romhalfword_table = Term::from(TableType::LoadHalfwordRomRead.to_num());
-            let rombyte_table = Term::from(TableType::LoadByteRomRead.to_num());
-            let ramhalfword_table = Term::from(TableType::LoadHalfwordSignextend.to_num());
-            let rambyte_table = Term::from(TableType::LoadByteSignextend.to_num());
-            let storebyte_table = Term::from(TableType::StoreByteSourceContribution.to_num());
+        let layer_3_selected_table_id = {
+            let rom_halfword_table = Term::from(TableType::LoadHalfwordRomRead.to_num());
+            let rom_byte_table = Term::from(TableType::LoadByteRomRead.to_num());
+            let ram_halfword_table = Term::from(TableType::LoadHalfwordSignextend.to_num());
+            let ram_byte_table = Term::from(TableType::LoadByteSignextend.to_num());
+            let store_byte_table = Term::from(TableType::StoreByteSourceContribution.to_num());
             // NB: missing storehalfword masks to ZeroEntry table. a crucial mask!
-            let table_id = romhalfword * romhalfword_table
-                + rombyte * rombyte_table
-                + ramhalfword * ramhalfword_table
-                + rambyte * rambyte_table
-                + storebyte * storebyte_table; 
-            let L2_table_id = Constraint::from(cs.add_intermediate_named_variable_from_constraint(table_id, "table_id (L2)"));
-            let L2_execute = Constraint::from(cs.add_intermediate_named_variable_from_constraint(
-                Constraint::from(inputs.execute),
-                "execute (L2)",
-            ));
-            // NB: to avoid scenarios where romread!=0 but we're in padding so ROM*H==1 and memwrite==0, 
+            let table_id = rom_halfword * rom_halfword_table
+                + rom_byte * rom_byte_table
+                + ram_halfword * ram_halfword_table
+                + ram_byte * ram_byte_table
+                + store_byte * store_byte_table;
+            let layer_2_copied_table_id = Constraint::from(
+                cs.add_intermediate_named_variable_from_constraint(table_id, "table_id (L2)"),
+            );
+            let layer_2_copied_execute =
+                Constraint::from(cs.add_intermediate_named_variable_from_constraint(
+                    Constraint::from(inputs.execute),
+                    "execute (L2)",
+                ));
+            // NB: to avoid scenarios where romread!=0 but we're in padding so ROM*H==1 and memwrite==0,
             // we patch this to zero table
             cs.add_intermediate_named_variable_from_constraint(
-                L2_execute * L2_table_id,
+                layer_2_copied_execute * layer_2_copied_table_id,
                 "final lookup table_id (L3)",
             )
         };
         let tuple = [
-            LookupInput::from(L3_input),
-            LookupInput::from(L3_output1),
-            LookupInput::from(L3_output2),
+            LookupInput::from(layer_3_selected_input),
+            LookupInput::from(layer_3_selected_output1),
+            LookupInput::from(layer_3_selected_output2),
         ];
-        cs.enforce_lookup_tuple_for_variable_table(&tuple, L3_table_id);
+        cs.enforce_lookup_tuple_for_variable_table(&tuple, layer_3_selected_table_id);
     }
-
-
-
 
     // bump PC
     use crate::gkr_circuits::utils::calculate_pc_next_no_overflows_with_range_checks;
@@ -364,10 +460,14 @@ fn apply_mem_subword_only_inner<F: PrimeField, CS: Circuit<F>>(
     );
 }
 
-pub fn mem_subword_only_circuit_with_preprocessed_bytecode_for_gkr<F: PrimeField, CS: Circuit<F>>(
+pub fn mem_subword_only_circuit_with_preprocessed_bytecode_for_gkr<
+    F: PrimeField,
+    CS: Circuit<F>,
+>(
     cs: &mut CS,
 ) {
-    let (input, bitmask) = cs.allocate_machine_state(false, false, SUBWORD_ONLY_MEMORY_FAMILY_NUM_FLAGS);
+    let (input, bitmask) =
+        cs.allocate_machine_state(false, false, SUBWORD_ONLY_MEMORY_FAMILY_NUM_FLAGS);
     let bitmask: [_; SUBWORD_ONLY_MEMORY_FAMILY_NUM_FLAGS] = bitmask.try_into().unwrap();
     let bitmask = bitmask.map(|el| Boolean::Is(el));
     let decoder = SubwordOnlyMemoryFamilyCircuitMask::from_mask(bitmask);
@@ -379,8 +479,9 @@ mod test {
     use test_utils::skip_if_ci;
 
     use super::*;
-    use crate::gkr_compiler::{compile_unrolled_circuit_state_transition_into_gkr, dump_ssa_witness_eval_form};
-    // use crate::gkr_compiler::dump_ssa_witness_eval_form_for_unrolled_circuit;
+    use crate::gkr_compiler::{
+        compile_unrolled_circuit_state_transition_into_gkr, dump_ssa_witness_eval_form,
+    };
     use crate::utils::serialize_to_file;
 
     #[test]
@@ -397,12 +498,13 @@ mod test {
                 for (table_type, table) in create_mem_subword_only_special_tables::<
                     BabyBearField,
                     { common_constants::ROM_SECOND_WORD_BITS },
-                >(&[]) {
+                >(&[])
+                {
                     cs.add_table_with_content(table_type, table);
                 }
             },
             &|cs| mem_subword_only_circuit_with_preprocessed_bytecode_for_gkr(cs),
-            1 << 20,
+            common_constants::ROM_WORD_SIZE,
             24,
         );
 
@@ -426,7 +528,8 @@ mod test {
                 for (table_type, table) in create_mem_subword_only_special_tables::<
                     BabyBearField,
                     { common_constants::ROM_SECOND_WORD_BITS },
-                >(&[]) {
+                >(&[])
+                {
                     cs.add_table_with_content(table_type, table);
                 }
             },

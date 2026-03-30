@@ -18,8 +18,8 @@ mod jump_branch_opcode_related;
 mod keccak_precompile_related;
 mod memory_opcode_related;
 // mod range_checks_and_decompositions;
-mod rom_related;
 mod quote;
+mod rom_related;
 mod shift_opcode_related;
 mod zero_entry;
 

@@ -777,7 +777,8 @@ impl<F: PrimeField> WitnessGraphCreator<F> {
             );
             for var in t {
                 let name = &self.variable_names[&var];
-                let s = format!("{var:?}: {name}"); dbg!(s);
+                let s = format!("{var:?}: {name}");
+                dbg!(s);
             }
             panic!("Total number of resolved variables is not the one expected");
         }

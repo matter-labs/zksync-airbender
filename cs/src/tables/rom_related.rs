@@ -146,7 +146,8 @@ pub fn create_load_halfword_from_rom_table<
             let signextend = (i >> 1) & 1;
             let use_high_half = i & 1;
             key[0] = F::from_u32_unchecked(
-                (word_address | (signextend << (16 + ROM_ADDRESS_SPACE_SECOND_WORD_BITS))
+                (word_address
+                    | (signextend << (16 + ROM_ADDRESS_SPACE_SECOND_WORD_BITS))
                     | (use_high_half << (17 + ROM_ADDRESS_SPACE_SECOND_WORD_BITS)))
                     as u32,
             );
@@ -296,13 +297,11 @@ pub fn create_load_byte_from_rom_table<
             let sign_bit = signextend && ((selected_byte >> 7) != 0);
 
             let mut result = ArrayVec::new();
-            result.push(F::from_u32_unchecked(
-                if sign_bit {
-                    (selected_byte as u32) | 0xff00
-                } else {
-                    selected_byte as u32
-                },
-            ));
+            result.push(F::from_u32_unchecked(if sign_bit {
+                (selected_byte as u32) | 0xff00
+            } else {
+                selected_byte as u32
+            }));
             result.push(F::from_u32_unchecked(if sign_bit { 0xffff } else { 0 }));
 
             (input as usize, result)

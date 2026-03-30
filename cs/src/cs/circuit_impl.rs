@@ -137,6 +137,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
         mut constraint: Constraint<F>,
         name: &str,
     ) -> Variable {
+        assert!(constraint.degree() <= 2);
         assert!(constraint.is_empty() == false);
         assert!(constraint.terms.iter().all(|x| x.is_constant()) == false);
         constraint.normalize();
@@ -158,6 +159,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
         mut constraint: Constraint<F>,
         name: &str,
     ) -> Variable {
+        assert!(constraint.degree() <= 2);
         assert!(constraint.is_empty() == false);
         assert!(constraint.terms.iter().all(|x| x.is_constant()) == false);
         constraint.normalize();
@@ -198,6 +200,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
         &mut self,
         mut constraint: Constraint<F>,
     ) -> Variable {
+        assert!(constraint.degree() <= 2);
         assert!(constraint.is_empty() == false);
         assert!(constraint.terms.iter().all(|x| x.is_constant()) == false);
         constraint.normalize();
@@ -216,6 +219,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
         &mut self,
         mut constraint: Constraint<F>,
     ) -> Variable {
+        assert!(constraint.degree() <= 2);
         assert!(constraint.is_empty() == false);
         assert!(constraint.terms.iter().all(|x| x.is_constant()) == false);
         constraint.normalize();
@@ -237,6 +241,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
         &mut self,
         mut constraint: Constraint<F>,
     ) -> Variable {
+        assert!(constraint.degree() <= 2);
         assert!(constraint.is_empty() == false);
         assert!(constraint.terms.iter().all(|x| x.is_constant()) == false);
         constraint.normalize();
@@ -273,7 +278,11 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
         }
     }
 
-    fn add_table_with_content(&mut self, table_type: TableType, table: crate::tables::LookupWrapper<F>) {
+    fn add_table_with_content(
+        &mut self,
+        table_type: TableType,
+        table: crate::tables::LookupWrapper<F>,
+    ) {
         self.table_driver
             .add_table_with_content(table_type, table.clone());
         if let Some(witness_placer) = self.witness_placer.as_mut() {
@@ -531,7 +540,12 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
                     }
                 }
             }
-            MemoryAccessRequest::RegisterOrRamRead { is_register, address, read_value_placeholder, split_as_u8 } => {
+            MemoryAccessRequest::RegisterOrRamRead {
+                is_register,
+                address,
+                read_value_placeholder,
+                split_as_u8,
+            } => {
                 let read_timestamp = {
                     let vars = std::array::from_fn(|i| {
                         self.add_named_variable(&format!("ts: {} read_timestamp[{}]", name, i))
@@ -546,11 +560,10 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
                         self.set_values(value_fn);
                     } else {
                         let value_fn = move |placer: &mut Self::WitnessPlacer| {
-                            let value = placer.get_oracle_u32(
-                                Placeholder::ShuffleRamReadTimestamp(
+                            let value =
+                                placer.get_oracle_u32(Placeholder::ShuffleRamReadTimestamp(
                                     local_timestamp_in_cycle as usize,
-                                ),
-                            );
+                                ));
 
                             placer.assign_u32_from_u16_parts(vars, &value);
                         };
@@ -587,18 +600,25 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
                     self.set_values(value_fn);
                     WordRepresentation::U8Limbs(vars)
                 };
-                let access = MemoryAccess::RegisterOrRam(RegisterOrRamAccess { 
-                    is_register, 
-                    address, 
-                    read_timestamp, 
-                    read_value, 
-                    write_value: read_value, 
-                    local_timestamp_in_cycle 
+                let access = MemoryAccess::RegisterOrRam(RegisterOrRamAccess {
+                    is_register,
+                    address,
+                    read_timestamp,
+                    read_value,
+                    write_value: read_value,
+                    local_timestamp_in_cycle,
                 });
                 self.memory_queries.push(access.clone());
                 access
-             }
-            MemoryAccessRequest::RegisterOrRamReadWrite { is_register, address, read_value_placeholder, write_value_placeholder, split_read_as_u8, split_write_as_u8 } => {
+            }
+            MemoryAccessRequest::RegisterOrRamReadWrite {
+                is_register,
+                address,
+                read_value_placeholder,
+                write_value_placeholder,
+                split_read_as_u8,
+                split_write_as_u8,
+            } => {
                 let read_timestamp = {
                     let vars = std::array::from_fn(|i| {
                         self.add_named_variable(&format!("{name} read_timestamp[{i}]"))
@@ -613,11 +633,10 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
                         self.set_values(value_fn);
                     } else {
                         let value_fn = move |placer: &mut Self::WitnessPlacer| {
-                            let value = placer.get_oracle_u32(
-                                Placeholder::ShuffleRamReadTimestamp(
+                            let value =
+                                placer.get_oracle_u32(Placeholder::ShuffleRamReadTimestamp(
                                     local_timestamp_in_cycle as usize,
-                                ),
-                            );
+                                ));
 
                             placer.assign_u32_from_u16_parts(vars, &value);
                         };
@@ -682,17 +701,17 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
                     self.set_values(value_fn);
                     WordRepresentation::U8Limbs(vars)
                 };
-                let access = MemoryAccess::RegisterOrRam(RegisterOrRamAccess { 
-                    is_register, 
-                    address, 
-                    read_timestamp, 
-                    read_value, 
-                    write_value, 
-                    local_timestamp_in_cycle 
+                let access = MemoryAccess::RegisterOrRam(RegisterOrRamAccess {
+                    is_register,
+                    address,
+                    read_timestamp,
+                    read_value,
+                    write_value,
+                    local_timestamp_in_cycle,
                 });
                 self.memory_queries.push(access.clone());
                 access
-             }
+            }
             _ => {
                 todo!();
             }
@@ -1120,7 +1139,9 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
                     )
                 }
                 LookupQueryTableType::Variable(var) => placer.get_u16(*var),
-                LookupQueryTableType::Expression(expr) => expr.evaluate(placer).as_integer().truncate(),
+                LookupQueryTableType::Expression(expr) => {
+                    expr.evaluate(placer).as_integer().truncate()
+                }
             };
             let input_values: [_; M] = std::array::from_fn(|i| inputs[i].evaluate(placer));
             let output_values = placer.lookup::<M, N>(&input_values, &table_id);
@@ -1171,7 +1192,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
                 let query = RangeCheckQuery::new_for_input(input, width as usize);
                 self.rangechecked_expressions.push(query)
             }
-            _ => unreachable!("please use cs.require_invariant instead")
+            _ => unreachable!("please use cs.require_invariant instead"),
         }
     }
 

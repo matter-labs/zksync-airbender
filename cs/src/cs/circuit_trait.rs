@@ -205,7 +205,11 @@ pub trait Circuit<F: PrimeField>: Sized {
     fn finalize(self) -> (CircuitOutput<F>, Option<Self::WitnessPlacer>);
 
     fn materialize_table<const TOTAL_WIDTH: usize>(&mut self, table_type: TableType);
-    fn add_table_with_content(&mut self, table_type: TableType, table: crate::tables::LookupWrapper<F>);
+    fn add_table_with_content(
+        &mut self,
+        table_type: TableType,
+        table: crate::tables::LookupWrapper<F>,
+    );
 
     #[track_caller]
     fn add_boolean_variable(&mut self) -> Boolean {

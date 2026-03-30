@@ -165,11 +165,14 @@ impl<F: PrimeField, E: FieldExtension<F> + Field>
                 #[cfg(feature = "gkr_self_checks")]
                 assert!(*a < input.len());
 
+                let a_value = *input.get_unchecked(*a);
+
                 for (b, coeff) in set.iter() {
                     // Each (b, coeff) term is an independent contribution that starts from
                     // input[a]. Reusing the previous contribution would incorrectly compound
                     // quadratic terms.
-                    let mut contribution = *input.get_unchecked(*a);
+
+                    let mut contribution = a_value;
                     if *a != *b {
                         debug_assert!(*b < input.len());
                         #[cfg(feature = "gkr_self_checks")]

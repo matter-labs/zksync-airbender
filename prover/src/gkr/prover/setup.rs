@@ -97,9 +97,6 @@ impl<F: PrimeField + TwoAdicField> GKRSetup<F> {
                 for column in width..padding_len {
                     result[column][row_idx + offset] = F::ZERO;
                 }
-                for column in width..padding_len {
-                    result[2 + column][row_idx + offset] = F::ZERO;
-                }
                 if compiled_circuit.tables_ids_in_generic_lookups {
                     assert!(result.last().unwrap()[row_idx + offset].is_zero());
                     result.last_mut().unwrap()[row_idx + offset] =

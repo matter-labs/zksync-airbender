@@ -238,13 +238,11 @@ pub fn create_load_byte_signextend_table<F: PrimeField>(id: u32) -> LookupTable<
             let sign_bit = signextend && ((selected_byte >> 7) != 0);
 
             let mut result = ArrayVec::new();
-            result.push(F::from_u32_unchecked(
-                if sign_bit {
-                    selected_byte | 0xff00
-                } else {
-                    selected_byte
-                },
-            ));
+            result.push(F::from_u32_unchecked(if sign_bit {
+                selected_byte | 0xff00
+            } else {
+                selected_byte
+            }));
             result.push(F::from_u32_unchecked(if sign_bit { 0xffff } else { 0 }));
 
             (input as usize, result)

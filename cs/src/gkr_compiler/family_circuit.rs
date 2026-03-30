@@ -314,10 +314,7 @@ impl<F: PrimeField> GKRCompiler<F> {
             };
 
             let address = match memory_query.clone() {
-                MemoryAccess::RegisterOnly(RegisterAccess {
-                    reg_idx,
-                    ..
-                }) => {
+                MemoryAccess::RegisterOnly(RegisterAccess { reg_idx, .. }) => {
                     let [register_index] = graph.layout_memory_subtree_multiple_variables(
                         [reg_idx],
                         &mut all_variables_to_place,
@@ -329,33 +326,50 @@ impl<F: PrimeField> GKRCompiler<F> {
 
                     RamAddress::RegisterOnly(RegisterOnlyAccessAddress { register_index })
                 }
-                MemoryAccess::RegisterOrRam(RegisterOrRamAccess{ 
-                    is_register, 
-                    address, 
+                MemoryAccess::RegisterOrRam(RegisterOrRamAccess {
+                    is_register,
+                    address,
                     ..
                 }) => {
-                    let (Boolean::Is(is_register_var) | Boolean::Not(is_register_var)) = is_register else {todo!()};
+                    let (Boolean::Is(is_register_var) | Boolean::Not(is_register_var)) =
+                        is_register
+                    else {
+                        todo!()
+                    };
                     let [addr_lo_var, addr_hi_var] = address;
                     dbg!();
                     // some optimisations re-use is_register
-                    let GKRAddress::BaseLayerMemory(is_register_col) = graph.get_fixed_layout_pos(&is_register_var).unwrap_or_else(|| {
-                        let [gkraddr] = graph.layout_memory_subtree_multiple_variables(
-                        [is_register_var], 
-                        &mut all_variables_to_place, 
-                        &layers_mapping);
-                        gkraddr
-                    }) else {unreachable!()};
-                    let [GKRAddress::BaseLayerMemory(addr_lo_col), GKRAddress::BaseLayerMemory(addr_hi_col)] = 
+                    let GKRAddress::BaseLayerMemory(is_register_col) = graph
+                        .get_fixed_layout_pos(&is_register_var)
+                        .unwrap_or_else(|| {
+                            let [gkraddr] = graph.layout_memory_subtree_multiple_variables(
+                                [is_register_var],
+                                &mut all_variables_to_place,
+                                &layers_mapping,
+                            );
+                            gkraddr
+                        })
+                    else {
+                        unreachable!()
+                    };
+                    let [GKRAddress::BaseLayerMemory(addr_lo_col), GKRAddress::BaseLayerMemory(addr_hi_col)] =
                         graph.layout_memory_subtree_multiple_variables(
-                            [addr_lo_var, addr_hi_var], 
-                            &mut all_variables_to_place, 
-                            &layers_mapping) else {unreachable!()};
+                            [addr_lo_var, addr_hi_var],
+                            &mut all_variables_to_place,
+                            &layers_mapping,
+                        )
+                    else {
+                        unreachable!()
+                    };
                     let is_register = match is_register {
                         Boolean::Is(_) => IsRegisterAddress::Is(is_register_col),
                         Boolean::Not(_) => IsRegisterAddress::Not(is_register_col),
-                        Boolean::Constant(_) => todo!()
+                        Boolean::Constant(_) => todo!(),
                     };
-                    RamAddress::RegisterOrRam(RegisterOrRamAccessAddress { is_register, address: [addr_lo_col, addr_hi_col] })
+                    RamAddress::RegisterOrRam(RegisterOrRamAccessAddress {
+                        is_register,
+                        address: [addr_lo_col, addr_hi_col],
+                    })
                     // from aleksander:
                     //
                     // let is_register = match is_register {

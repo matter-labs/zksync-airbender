@@ -12,12 +12,12 @@ use crate::gkr::witness_gen::oracles::NonMemoryCircuitOracle;
 use crate::gkr::witness_gen::trace_structs::RamShuffleMemStateRecord;
 use crate::merkle_trees::DefaultTreeConstructor;
 use crate::tracers::oracles::transpiler_oracles::delegation::*;
-use cs::gkr_circuits::mem_word_only_table_driver_fn;
 use ::field::baby_bear::base::BabyBearField;
 use ::field::baby_bear::ext4::BabyBearExt4;
 use common_constants::TIMESTAMP_STEP;
 use cs::definitions::INITIAL_TIMESTAMP;
 use cs::definitions::*;
+use cs::gkr_circuits::mem_word_only_table_driver_fn;
 use cs::gkr_circuits::opcodes_for_full_machine_with_unsigned_mul_div_only_with_mem_word_access_specialization;
 use cs::gkr_circuits::process_binary_into_separate_tables_ext;
 use cs::tables::TableDriver;
@@ -60,7 +60,6 @@ const PROVE_KECCAK: bool = true;
 fn gkr_run_basic_unrolled_test() {
     gkr_run_basic_unrolled_test_impl(None, None);
 }
-
 
 pub fn gkr_run_basic_unrolled_test_impl(
     maybe_gpu_unrolled_comparison_hook: Option<Box<dyn Fn()>>,
@@ -1052,9 +1051,8 @@ pub fn gkr_run_basic_unrolled_test_impl(
 
     if PROVE_MEM_WORD {
         println!("Will try to prove word LOAD/STORE circuit");
-            const CIRCUIT_TYPE: u8 = LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX;
+        const CIRCUIT_TYPE: u8 = LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX;
 
-        
         // let word_load_store_circuit = {
         //     compile_unrolled_circuit_state_transition::<BabyBearField>(
         //         &|cs| {
@@ -1082,11 +1080,10 @@ pub fn gkr_run_basic_unrolled_test_impl(
 
         let mut table_driver = TableDriver::<BabyBearField>::new();
         cs::gkr_circuits::mem_word_only::mem_word_only_table_driver_fn(&mut table_driver);
-        let extra_tables =
-            cs::gkr_circuits::mem_word_only::create_mem_word_only_special_tables::<
-                _,
-                { common_constants::ROM_SECOND_WORD_BITS },
-            >(&binary);
+        let extra_tables = cs::gkr_circuits::mem_word_only::create_mem_word_only_special_tables::<
+            _,
+            { common_constants::ROM_SECOND_WORD_BITS },
+        >(&binary);
         for (table_type, table) in extra_tables {
             table_driver.add_table_with_content(table_type, table);
         }
@@ -1476,17 +1473,17 @@ pub fn gkr_run_basic_unrolled_test_impl(
             let now = std::time::Instant::now();
             let proof =
                 prove_configured_with_gkr::<BabyBearField, BabyBearExt4, DefaultTreeConstructor>(
-                &circuit,
-                &external_challenges,
-                full_trace,
-                &setup,
-                &setup_commitment,
-                &twiddles,
-                &whir_schedule,
-                None,
-                trace_len,
-                &worker,
-            );
+                    &circuit,
+                    &external_challenges,
+                    full_trace,
+                    &setup,
+                    &setup_commitment,
+                    &twiddles,
+                    &whir_schedule,
+                    None,
+                    trace_len,
+                    &worker,
+                );
             println!("Proving time is {:?}", now.elapsed());
             println!(
                 "Estimated proof size without compression is {} bytes",

@@ -34,7 +34,7 @@ impl SubwordOnlyMemoryFamilyCircuitMask {
         self.inner[BYTE_BIT]
     }
 
-    pub fn perform_signextension(&self) -> Boolean {
+    pub fn perform_sign_extension(&self) -> Boolean {
         self.inner[SIGNEXTEND_BIT]
     }
 }

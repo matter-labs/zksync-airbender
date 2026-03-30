@@ -2,9 +2,9 @@ use std::collections::{BTreeSet, HashSet};
 
 use crate::cs::circuit_trait::Circuit;
 use crate::cs::utils::PreprocessedConstraintForEval;
-use crate::{cs, definitions::*};
 use crate::types::{Boolean, Num};
 use crate::witness_placer::{WitnessPlacer, WitnessTypeSet};
+use crate::{cs, definitions::*};
 use field::PrimeField;
 
 pub const TERM_INNER_CAPACITY: usize = 4;

@@ -187,7 +187,11 @@ pub(crate) fn layout_initial_grand_product_accumulation(
                         timestamp_offset: 0,
                     }
                 }
-                MemoryAccess::RegisterOrRam(RegisterOrRamAccess { is_register, address, .. }) => {
+                MemoryAccess::RegisterOrRam(RegisterOrRamAccess {
+                    is_register,
+                    address,
+                    ..
+                }) => {
                     use crate::types::Boolean;
                     let address_space_isregister = match *is_register {
                         Boolean::Is(var) => AddressSpaceIsRegister::Is(var),
@@ -243,7 +247,11 @@ pub(crate) fn layout_initial_grand_product_accumulation(
                         timestamp_offset: query.local_timestamp_in_cycle(),
                     }
                 }
-                MemoryAccess::RegisterOrRam(RegisterOrRamAccess { is_register, address, .. }) => {
+                MemoryAccess::RegisterOrRam(RegisterOrRamAccess {
+                    is_register,
+                    address,
+                    ..
+                }) => {
                     use crate::types::Boolean;
                     let address_space_isregister = match *is_register {
                         Boolean::Is(var) => AddressSpaceIsRegister::Is(var),
@@ -329,12 +337,16 @@ pub(crate) fn layout_initial_grand_product_accumulation(
                         timestamp_offset: 0,
                     }
                 }
-                MemoryAccess::RegisterOrRam(RegisterOrRamAccess{ is_register, address, .. }) => {
+                MemoryAccess::RegisterOrRam(RegisterOrRamAccess {
+                    is_register,
+                    address,
+                    ..
+                }) => {
                     use crate::types::Boolean;
                     let address_space_isregister = match is_register {
                         Boolean::Is(var) => AddressSpaceIsRegister::Is(var),
                         Boolean::Not(var) => AddressSpaceIsRegister::Not(var),
-                        Boolean::Constant(_) => todo!()
+                        Boolean::Constant(_) => todo!(),
                     };
                     MemoryPermutationExpression {
                         address: AddressSpaceAddress::U32Space(address),
@@ -385,7 +397,11 @@ pub(crate) fn layout_initial_grand_product_accumulation(
                         timestamp_offset: query.local_timestamp_in_cycle(),
                     }
                 }
-                MemoryAccess::RegisterOrRam(RegisterOrRamAccess { is_register, address, .. }) => {
+                MemoryAccess::RegisterOrRam(RegisterOrRamAccess {
+                    is_register,
+                    address,
+                    ..
+                }) => {
                     use crate::types::Boolean;
                     let address_space_isregister = match is_register {
                         Boolean::Is(var) => AddressSpaceIsRegister::Is(var),

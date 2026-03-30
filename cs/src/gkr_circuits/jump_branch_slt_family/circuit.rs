@@ -767,7 +767,7 @@ mod test {
         let gkr_compiled = compile_unrolled_circuit_state_transition_into_gkr::<BabyBearField>(
             &|cs| jump_branch_slt_table_addition_fn(cs),
             &|cs| jump_branch_slt_circuit_with_preprocessed_bytecode_for_gkr(cs),
-            1 << 20,
+            common_constants::ROM_WORD_SIZE,
             24,
         );
 

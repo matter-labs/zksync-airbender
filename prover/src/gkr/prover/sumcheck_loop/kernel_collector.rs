@@ -510,8 +510,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelVariant<F, E> {
                 }
             }
             KernelVariant::LookupBasePair(rel, challenges, _) => {
-                let k =
-                    LookupBasePairGKRRelationKernel::<F, E>::new(rel.lookup_additive_challenge);
+                let k = LookupBasePairGKRRelationKernel::<F, E>::new(rel.lookup_additive_challenge);
                 for j in 0..2usize {
                     let in0 = efr(get(rel.inputs[0], j));
                     let in1 = efr(get(rel.inputs[1], j));
@@ -608,10 +607,9 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelVariant<F, E> {
             KernelVariant::LookupExtensionMinusMultiplicityByExtension(rel, challenges, _) => {
                 use crate::gkr::sumcheck::evaluation_kernels::LookupExtensionMinusMultiplicityByExtensionGKRRelationKernel;
 
-                let k =
-                    LookupExtensionMinusMultiplicityByExtensionGKRRelationKernel::<F, E>::new(
-                        rel.lookup_additive_challenge,
-                    );
+                let k = LookupExtensionMinusMultiplicityByExtensionGKRRelationKernel::<F, E>::new(
+                    rel.lookup_additive_challenge,
+                );
                 for j in 0..2usize {
                     let b_in0 = efr(get(rel.setup[0], j));
                     let e_in0 = efr(get(rel.input, j));
@@ -634,10 +632,9 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelVariant<F, E> {
                 }
             }
             KernelVariant::LookupUnbalancedWithExtension(rel, challenges, _) => {
-                let k =
-                    LookupRationalPairWithUnbalancedExtensionGKRRelationKernel::<F, E>::new(
-                        rel.lookup_additive_challenge,
-                    );
+                let k = LookupRationalPairWithUnbalancedExtensionGKRRelationKernel::<F, E>::new(
+                    rel.lookup_additive_challenge,
+                );
                 for j in 0..2usize {
                     let in_ext0 = efr(get(rel.inputs[0], j));
                     let in_ext1 = efr(get(rel.inputs[1], j));
@@ -686,8 +683,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelVariant<F, E> {
             }
             KernelVariant::MaterializeVectorLookupInput(rel, challenge, _) => {
                 for j in 0..2usize {
-                    let inputs_vec: Vec<E> =
-                        rel.inputs.iter().map(|addr| get(*addr, j)).collect();
+                    let inputs_vec: Vec<E> = rel.inputs.iter().map(|addr| get(*addr, j)).collect();
                     let [val] = rel.kernel.pointwise_eval(&inputs_vec);
                     let mut contrib = val;
                     contrib.mul_assign(&challenge[0]);
@@ -696,8 +692,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelVariant<F, E> {
             }
             KernelVariant::MaxQuadratic(rel, challenge, _) => {
                 for j in 0..2usize {
-                    let inputs_vec: Vec<E> =
-                        rel.inputs.iter().map(|addr| get(*addr, j)).collect();
+                    let inputs_vec: Vec<E> = rel.inputs.iter().map(|addr| get(*addr, j)).collect();
                     let [val] = rel.kernel.pointwise_eval(&inputs_vec);
                     let mut contrib = val;
                     contrib.mul_assign(&challenge[0]);

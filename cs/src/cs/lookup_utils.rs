@@ -61,8 +61,13 @@ pub(crate) fn peek_lookup_values_unconstrained_into_variables_from_constraints<
     let output_variables = output_variables.clone();
 
     let value_fn = move |placer: &mut CS::WitnessPlacer| {
-        let inputs = inputs.each_ref().map(|con| con.evaluate_with_placer(placer));
-        let table_id = table_type.evaluate_with_placer(placer).as_integer().truncate();
+        let inputs = inputs
+            .each_ref()
+            .map(|con| con.evaluate_with_placer(placer));
+        let table_id = table_type
+            .evaluate_with_placer(placer)
+            .as_integer()
+            .truncate();
         let output_values: [<<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field; N] =
             placer.peek_lookup(&inputs, &table_id);
         for (&variable, value) in output_variables.iter().zip(&output_values) {

@@ -337,7 +337,7 @@ mod shift_binary_ops {
 
 mod mem_word_only {
     use crate::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
-    use crate::gkr::witness_gen::oracles::{MemoryCircuitOracle};
+    use crate::gkr::witness_gen::oracles::MemoryCircuitOracle;
     use crate::gkr::witness_gen::witness_proxy::WitnessProxy;
     use ::cs::oracle::Placeholder;
     use ::cs::witness_placer::WitnessTypeSet;
@@ -364,7 +364,7 @@ mod mem_word_only {
 
 mod mem_subword_only {
     use crate::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
-    use crate::gkr::witness_gen::oracles::{MemoryCircuitOracle};
+    use crate::gkr::witness_gen::oracles::MemoryCircuitOracle;
     use crate::gkr::witness_gen::witness_proxy::WitnessProxy;
     use ::cs::oracle::Placeholder;
     use ::cs::witness_placer::WitnessTypeSet;
