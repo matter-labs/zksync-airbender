@@ -19,9 +19,21 @@ pub use self::structs::*;
 
 #[cfg(all(target_arch = "x86_64", feature = "jit"))]
 mod impls;
+#[cfg(all(
+    target_pointer_width = "64",
+    not(target_arch = "x86_64"),
+    feature = "jit"
+))]
+mod unsupported;
 
 #[cfg(all(target_arch = "x86_64", feature = "jit"))]
 pub use self::impls::*;
+#[cfg(all(
+    target_pointer_width = "64",
+    not(target_arch = "x86_64"),
+    feature = "jit"
+))]
+pub use self::unsupported::*;
 
 #[cfg(all(target_arch = "x86_64", feature = "jit", test))]
 mod tests;
