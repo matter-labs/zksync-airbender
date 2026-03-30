@@ -14,13 +14,15 @@ use crate::gkr::prover::setup::GKRSetup;
 use crate::gkr::prover::stages::stage1;
 use crate::gkr::prover::transcript_utils::{commit_field_els, draw_random_field_els};
 use crate::gkr::prover::utils::flatten_merkle_caps_iter_into;
-use crate::gkr::sumcheck::access_and_fold::GKRStorage;
+use crate::gkr::sumcheck::access_and_fold::{BaseFieldPoly, GKRStorage};
 use crate::gkr::sumcheck::eq_poly::*;
+use crate::gkr::virtual_polys::range_check::materialize_virtual_range_check_setup_poly;
 use crate::gkr::whir::{whir_fold, ColumnMajorBaseOracleForLDE, WhirPolyCommitProof};
 use crate::gkr::witness_gen::family_circuits::GKRFullWitnessTrace;
 use crate::merkle_trees::ColumnMajorMerkleTreeConstructor;
 use crate::worker::Worker;
-use cs::definitions::{GKRAddress, NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES};
+use common_constants::TIMESTAMP_COLUMNS_NUM_BITS;
+use cs::definitions::{GKRAddress, VirtualSetupPoly, NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES};
 
 mod debug_utils;
 pub mod dimension_reduction;
@@ -370,6 +372,29 @@ where
             worker,
         );
 
+    // add virtual polys and make them material
+    {
+        gkr_storage.insert_base_field_at_layer(
+            0,
+            GKRAddress::VirtualSetup(VirtualSetupPoly::RangeCheck16Bits),
+            BaseFieldPoly::new(materialize_virtual_range_check_setup_poly::<F, Global, 16>(
+                trace_len.trailing_zeros(),
+            )),
+        );
+        gkr_storage.insert_base_field_at_layer(
+            0,
+            GKRAddress::VirtualSetup(VirtualSetupPoly::RangeCheckTimestamp),
+            BaseFieldPoly::new(materialize_virtual_range_check_setup_poly::<
+                F,
+                Global,
+                TIMESTAMP_COLUMNS_NUM_BITS,
+            >(trace_len.trailing_zeros())),
+        );
+        if inits_and_teardowns_top_bits.is_some() {
+            todo!();
+        }
+    }
+
     // now we should perform "forward" evaluation, and fill the GKR storage
     let mut witness_eval_data = witness_eval_data;
     // Go from layer 0 to the end, and produce intermediate polynomials. We do not need to commit to them
@@ -656,6 +681,40 @@ where
             let poly = gkr_storage.get_base_layer(key);
             let evaluation = evaluate_with_precomputed_eq::<F, E>(poly, &_eq_at_z[..]);
             setup_polys_claims.push(evaluation);
+        }
+    }
+
+    #[cfg(feature = "gkr_self_checks")]
+    {
+        if let Some(value) = claims_for_layers[&0]
+            .get(&GKRAddress::VirtualSetup(
+                VirtualSetupPoly::RangeCheck16Bits,
+            ))
+            .copied()
+        {
+            use crate::gkr::virtual_polys::range_check::evaluate_virtual_range_check_setup_poly;
+            assert_eq!(
+                value,
+                evaluate_virtual_range_check_setup_poly::<F, E, 16>(
+                    base_layer_z,
+                    trace_len.trailing_zeros()
+                )
+            );
+        }
+        if let Some(value) = claims_for_layers[&0]
+            .get(&GKRAddress::VirtualSetup(
+                VirtualSetupPoly::RangeCheckTimestamp,
+            ))
+            .copied()
+        {
+            use crate::gkr::virtual_polys::range_check::evaluate_virtual_range_check_setup_poly;
+            assert_eq!(
+                value,
+                evaluate_virtual_range_check_setup_poly::<F, E, TIMESTAMP_COLUMNS_NUM_BITS>(
+                    base_layer_z,
+                    trace_len.trailing_zeros()
+                )
+            );
         }
     }
 

@@ -72,7 +72,8 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> GKRStorage<F, E> {
             }
             GKRAddress::BaseLayerMemory(..)
             | GKRAddress::BaseLayerWitness(..)
-            | GKRAddress::Setup(..) => {
+            | GKRAddress::Setup(..)
+            | GKRAddress::VirtualSetup(..) => {
                 let source = &self.layers.get(0)?;
                 source
                     .base_field_inputs
@@ -99,7 +100,8 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> GKRStorage<F, E> {
             }
             GKRAddress::BaseLayerMemory(..)
             | GKRAddress::BaseLayerWitness(..)
-            | GKRAddress::Setup(..) => {
+            | GKRAddress::Setup(..)
+            | GKRAddress::VirtualSetup(..) => {
                 let source = self.layers.get(0)?;
                 source
                     .base_field_inputs
@@ -123,8 +125,9 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> GKRStorage<F, E> {
             }
             GKRAddress::BaseLayerMemory(..)
             | GKRAddress::BaseLayerWitness(..)
-            | GKRAddress::Setup(..) => {
-                unreachable!("base layer is only in base field");
+            | GKRAddress::Setup(..)
+            | GKRAddress::VirtualSetup(..) => {
+                unreachable!("base layer or setup is only in base field");
             }
             a @ _ => {
                 unreachable!("trying to gey poly for address {:?}", a);
@@ -146,8 +149,9 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> GKRStorage<F, E> {
             }
             GKRAddress::BaseLayerMemory(..)
             | GKRAddress::BaseLayerWitness(..)
-            | GKRAddress::Setup(..) => {
-                unreachable!("base layer is only in base field");
+            | GKRAddress::Setup(..)
+            | GKRAddress::VirtualSetup(..) => {
+                unreachable!("base layer or setup is only in base field");
             }
             a @ _ => {
                 unreachable!("trying to gey poly for address {:?}", a);
@@ -236,8 +240,9 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> GKRStorage<F, E> {
             GKRAddress::InnerLayer { layer, .. } | GKRAddress::Cached { layer, .. } => layer,
             GKRAddress::BaseLayerMemory(..)
             | GKRAddress::BaseLayerWitness(..)
-            | GKRAddress::Setup(..) => 0,
-            _ => {
+            | GKRAddress::Setup(..)
+            | GKRAddress::VirtualSetup(..) => 0,
+            GKRAddress::ScratchSpace(..) => {
                 unreachable!()
             }
         };
@@ -276,8 +281,9 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> GKRStorage<F, E> {
             GKRAddress::InnerLayer { layer, .. } | GKRAddress::Cached { layer, .. } => layer,
             GKRAddress::BaseLayerMemory(..)
             | GKRAddress::BaseLayerWitness(..)
-            | GKRAddress::Setup(..) => 0,
-            _ => {
+            | GKRAddress::Setup(..)
+            | GKRAddress::VirtualSetup(..) => 0,
+            GKRAddress::ScratchSpace(..) => {
                 unreachable!()
             }
         };
@@ -363,8 +369,9 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> GKRStorage<F, E> {
             GKRAddress::InnerLayer { layer, .. } | GKRAddress::Cached { layer, .. } => layer,
             GKRAddress::BaseLayerMemory(..)
             | GKRAddress::BaseLayerWitness(..)
-            | GKRAddress::Setup(..) => 0,
-            _ => {
+            | GKRAddress::Setup(..)
+            | GKRAddress::VirtualSetup(..) => 0,
+            GKRAddress::ScratchSpace(..) => {
                 unreachable!()
             }
         };
@@ -417,7 +424,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> GKRStorage<F, E> {
         let layer = match poly {
             GKRAddress::InnerLayer { layer, .. } | GKRAddress::Cached { layer, .. } => layer,
             GKRAddress::BaseLayerMemory(..) | GKRAddress::BaseLayerWitness(..) => 0,
-            _ => {
+            GKRAddress::Setup(..) | GKRAddress::VirtualSetup(..) | GKRAddress::ScratchSpace(..) => {
                 unreachable!()
             }
         };
@@ -518,7 +525,8 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> GKRStorage<F, E> {
                     GKRAddress::InnerLayer { layer, .. } => layer,
                     GKRAddress::BaseLayerMemory(..)
                     | GKRAddress::BaseLayerWitness(..)
-                    | GKRAddress::Setup(..) => 0,
+                    | GKRAddress::Setup(..)
+                    | GKRAddress::VirtualSetup(..) => 0,
                 };
                 let Some(source) = self.layers[layer].base_field_inputs.get(input) else {
                     panic!("Polynomial with address {:?} is missing from input sources for base field polys for evaluating caller {:?}", input, core::panic::Location::caller());
@@ -541,7 +549,8 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> GKRStorage<F, E> {
                     GKRAddress::InnerLayer { layer, .. } => layer,
                     GKRAddress::BaseLayerMemory(..)
                     | GKRAddress::BaseLayerWitness(..)
-                    | GKRAddress::Setup(..) => 0,
+                    | GKRAddress::Setup(..)
+                    | GKRAddress::VirtualSetup(..) => 0,
                 };
                 let Some(source) = self.layers[layer].extension_field_inputs.get(input) else {
                     panic!("Polynomial with address {:?} is missing from input sources for extension field polys for evaluating caller {:?}", input, core::panic::Location::caller());
@@ -560,7 +569,8 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> GKRStorage<F, E> {
                     GKRAddress::ScratchSpace(..)
                     | GKRAddress::BaseLayerMemory(..)
                     | GKRAddress::BaseLayerWitness(..)
-                    | GKRAddress::Setup(..) => {
+                    | GKRAddress::Setup(..)
+                    | GKRAddress::VirtualSetup(..) => {
                         unreachable!()
                     }
                     GKRAddress::Cached { .. } => {
@@ -585,7 +595,8 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> GKRStorage<F, E> {
                     GKRAddress::ScratchSpace(..)
                     | GKRAddress::BaseLayerMemory(..)
                     | GKRAddress::BaseLayerWitness(..)
-                    | GKRAddress::Setup(..) => {
+                    | GKRAddress::Setup(..)
+                    | GKRAddress::VirtualSetup(..) => {
                         unreachable!()
                     }
                     GKRAddress::Cached { .. } => {
