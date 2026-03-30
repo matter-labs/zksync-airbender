@@ -11,8 +11,7 @@ use itertools::Itertools;
 use log::{debug, trace};
 use riscv_transpiler::common_constants::ROM_WORD_SIZE;
 use riscv_transpiler::jit::{
-    Context, ContextImpl, JittedCode, MachineState, MemoryHolder, TraceChunk, MAX_NUM_COUNTERS,
-    RAM_SIZE,
+    ContextImpl, MachineState, MemoryHolder, TraceChunk, MAX_NUM_COUNTERS, RAM_SIZE,
 };
 use riscv_transpiler::vm::NonDeterminismCSRSource;
 use std::mem::replace;
@@ -23,6 +22,51 @@ use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use type_map::concurrent::TypeMap;
+
+#[cfg(not(target_arch = "x86_64"))]
+use self::compat::{Context, JittedCode};
+#[cfg(target_arch = "x86_64")]
+use riscv_transpiler::jit::{Context, JittedCode};
+
+// We're depending on JIT unconditionally, so it can fail compilation on some platforms,
+// since some of the exported paths are platform-dependent. So, we provide panicking
+// replacements to allow compilation on the platforms, e.g. with
+// `ZKSYNC_USE_CUDA_STUBS`.
+#[cfg(not(target_arch = "x86_64"))]
+mod compat {
+    use super::{ContextImpl, MemoryHolder, TraceChunk};
+    use std::marker::PhantomData;
+    use std::ptr::NonNull;
+
+    pub(super) struct Context<I: ContextImpl> {
+        pub(super) implementation: I,
+    }
+
+    pub(super) struct JittedCode<I: ContextImpl> {
+        _marker: PhantomData<I>,
+    }
+
+    unsafe impl<I: ContextImpl> Send for JittedCode<I> {}
+
+    unsafe impl<I: ContextImpl> Sync for JittedCode<I> {}
+
+    impl<I: ContextImpl> JittedCode<I> {
+        pub(super) fn preprocess_bytecode(_program: &[u32], _cycles_bound: Option<u32>) -> Self {
+            Self {
+                _marker: PhantomData,
+            }
+        }
+
+        pub(super) fn run_over_prepared_memory(
+            &self,
+            _context: &mut Context<I>,
+            _memory: &mut MemoryHolder,
+            _initial_trace_chunk: NonNull<TraceChunk>,
+        ) {
+            panic!("gpu_prover simulation requires the x86_64 JIT backend");
+        }
+    }
+}
 
 pub(crate) struct LockedBoxedMemoryHolder {
     pub holder: Box<MemoryHolder>,
