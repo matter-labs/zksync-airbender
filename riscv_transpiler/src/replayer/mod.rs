@@ -541,7 +541,7 @@ mod test {
         let (_, binary) = read_binary(&Path::new("examples/keccak_f1600/app.bin"));
         let (_, text) = read_binary(&Path::new("examples/keccak_f1600/app.text"));
         let instructions: Vec<Instruction> =
-            preprocess_bytecode::<FullUnsignedMachineDecoderConfig>(&text);
+            preprocess_bytecode::<FullUnsignedMachineDecoderConfig, true>(&text);
         let tape = SimpleTape::new(&instructions);
         let mut ram = RamWithRomRegion::<5>::from_rom_content(&binary, 1 << 30);
         let cycles_bound = 1 << 30;

@@ -1,6 +1,7 @@
 use super::*;
 use crate::cs::circuit_trait::{
-    ConstantRegisterAccess, MemoryAccess, RegisterAccess, RegisterIndirectRamAccess, RegisterOrRamAccess, WordRepresentation
+    ConstantRegisterAccess, MemoryAccess, RegisterAccess, RegisterIndirectRamAccess,
+    RegisterOrRamAccess, WordRepresentation,
 };
 use crate::definitions::Variable;
 use crate::gkr_compiler::graph::CopyNode;
@@ -186,12 +187,12 @@ pub(crate) fn layout_initial_grand_product_accumulation(
                         timestamp_offset: 0,
                     }
                 }
-                MemoryAccess::RegisterOrRam(RegisterOrRamAccess{ is_register, address, .. }) => {
+                MemoryAccess::RegisterOrRam(RegisterOrRamAccess { is_register, address, .. }) => {
                     use crate::types::Boolean;
                     let address_space_isregister = match *is_register {
                         Boolean::Is(var) => AddressSpaceIsRegister::Is(var),
                         Boolean::Not(var) => AddressSpaceIsRegister::Not(var),
-                        Boolean::Constant(_) => todo!()
+                        Boolean::Constant(_) => todo!(),
                     };
                     MemoryPermutationExpression {
                         address: AddressSpaceAddress::U32Space(*address),
@@ -200,25 +201,7 @@ pub(crate) fn layout_initial_grand_product_accumulation(
                         timestamp: MemoryPermutationTimestamp::Normal(aux.read_timestamp),
                         timestamp_offset: 0,
                     }
-                } // ShuffleRamQueryType::RegisterOrRam {
-                  //     is_register,
-                  //     address,
-                  // } => {
-                  //     let address_space_inner = match is_register {
-                  //         Boolean::Is(var) => AddressSpaceIsRegister::Is(var),
-                  //         Boolean::Not(var) => AddressSpaceIsRegister::Not(var),
-                  //         Boolean::Constant(..) => {
-                  //             unreachable!()
-                  //         }
-                  //     };
-                  //     MemoryPermutationExpression {
-                  //         address: AddressSpaceAddress::U32Space(address),
-                  //         address_space: AddressSpace::RegisterOrRam(address_space_inner),
-                  //         timestamp: aux.read_timestamp,
-                  //         value: query.read_value,
-                  //         timestamp_offset: 0,
-                  //     }
-                  // }
+                }
                 MemoryAccess::ConstantRegister(ConstantRegisterAccess { reg_idx, .. }) => {
                     MemoryPermutationExpression {
                         address: AddressSpaceAddress::ConstantU16Limb(*reg_idx),
@@ -245,7 +228,6 @@ pub(crate) fn layout_initial_grand_product_accumulation(
                     value: query.read_value(),
                     timestamp_offset: 0,
                 },
-                
             };
             read_set.push(read_set_el);
 
@@ -254,44 +236,30 @@ pub(crate) fn layout_initial_grand_product_accumulation(
                     MemoryPermutationExpression {
                         address: AddressSpaceAddress::SingleLimb(*reg_idx),
                         address_space: AddressSpace::Constant(AddressSpaceType::Register),
-                        timestamp: MemoryPermutationTimestamp::Normal(mem_accesses_base_write_timestamp),
+                        timestamp: MemoryPermutationTimestamp::Normal(
+                            mem_accesses_base_write_timestamp,
+                        ),
                         value: query.write_value(),
                         timestamp_offset: query.local_timestamp_in_cycle(),
                     }
                 }
-                MemoryAccess::RegisterOrRam(RegisterOrRamAccess{ is_register, address, .. }) => {
+                MemoryAccess::RegisterOrRam(RegisterOrRamAccess { is_register, address, .. }) => {
                     use crate::types::Boolean;
                     let address_space_isregister = match *is_register {
                         Boolean::Is(var) => AddressSpaceIsRegister::Is(var),
                         Boolean::Not(var) => AddressSpaceIsRegister::Not(var),
-                        Boolean::Constant(_) => todo!()
+                        Boolean::Constant(_) => todo!(),
                     };
                     MemoryPermutationExpression {
                         address: AddressSpaceAddress::U32Space(*address),
                         address_space: AddressSpace::RegisterOrRam(address_space_isregister),
                         value: query.write_value(),
-                        timestamp: MemoryPermutationTimestamp::Normal(mem_accesses_base_write_timestamp),
+                        timestamp: MemoryPermutationTimestamp::Normal(
+                            mem_accesses_base_write_timestamp,
+                        ),
                         timestamp_offset: query.local_timestamp_in_cycle(),
                     }
-                } // ShuffleRamQueryType::RegisterOrRam {
-                  //     is_register,
-                  //     address,
-                  // } => {
-                  //     let address_space_inner = match is_register {
-                  //         Boolean::Is(var) => AddressSpaceIsRegister::Is(var),
-                  //         Boolean::Not(var) => AddressSpaceIsRegister::Not(var),
-                  //         Boolean::Constant(..) => {
-                  //             unreachable!()
-                  //         }
-                  //     };
-                  //     MemoryPermutationExpression {
-                  //         address: AddressSpaceAddress::U32Space(address),
-                  //         address_space: AddressSpace::RegisterOrRam(address_space_inner),
-                  //         timestamp: cycle_start_timestamp,
-                  //         value: query.write_value,
-                  //         timestamp_offset: query.local_timestamp_in_cycle as u32,
-                  //     }
-                  // }
+                }
                 MemoryAccess::ConstantRegister(ConstantRegisterAccess { reg_idx, .. }) => {
                     MemoryPermutationExpression {
                         address: AddressSpaceAddress::ConstantU16Limb(*reg_idx),
@@ -322,7 +290,6 @@ pub(crate) fn layout_initial_grand_product_accumulation(
                     value: query.write_value(),
                     timestamp_offset: query.local_timestamp_in_cycle(),
                 },
-                
             };
             write_set.push(write_set_el);
         }
@@ -418,18 +385,20 @@ pub(crate) fn layout_initial_grand_product_accumulation(
                         timestamp_offset: query.local_timestamp_in_cycle(),
                     }
                 }
-                MemoryAccess::RegisterOrRam(RegisterOrRamAccess{ is_register, address, .. }) => {
+                MemoryAccess::RegisterOrRam(RegisterOrRamAccess { is_register, address, .. }) => {
                     use crate::types::Boolean;
                     let address_space_isregister = match is_register {
                         Boolean::Is(var) => AddressSpaceIsRegister::Is(var),
                         Boolean::Not(var) => AddressSpaceIsRegister::Not(var),
-                        Boolean::Constant(_) => todo!()
+                        Boolean::Constant(_) => todo!(),
                     };
                     MemoryPermutationExpression {
                         address: AddressSpaceAddress::U32Space(address),
                         address_space: AddressSpace::RegisterOrRam(address_space_isregister),
                         value: query.write_value(),
-                        timestamp: MemoryPermutationTimestamp::Normal(mem_accesses_base_write_timestamp),
+                        timestamp: MemoryPermutationTimestamp::Normal(
+                            mem_accesses_base_write_timestamp,
+                        ),
                         timestamp_offset: query.local_timestamp_in_cycle(),
                     }
                 }

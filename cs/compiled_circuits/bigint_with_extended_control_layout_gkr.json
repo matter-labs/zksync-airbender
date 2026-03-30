@@ -2975,13 +2975,13 @@
           {
             "VectorizedLookupSetup": [
               {
+                "Setup": 0
+              },
+              {
+                "Setup": 1
+              },
+              {
                 "Setup": 2
-              },
-              {
-                "Setup": 3
-              },
-              {
-                "Setup": 4
               }
             ]
           }
@@ -8030,7 +8030,7 @@
                   "BaseLayerWitness": 158
                 },
                 {
-                  "Setup": 0
+                  "VirtualSetup": "RangeCheck16Bits"
                 }
               ],
               "output": [
@@ -8281,7 +8281,7 @@
                   "BaseLayerWitness": 159
                 },
                 {
-                  "Setup": 1
+                  "VirtualSetup": "RangeCheckTimestamp"
                 }
               ],
               "output": [
@@ -37111,13 +37111,13 @@
           "BaseLayerMemory": 96
         },
         {
+          "Setup": 0
+        },
+        {
+          "Setup": 1
+        },
+        {
           "Setup": 2
-        },
-        {
-          "Setup": 3
-        },
-        {
-          "Setup": 4
         }
       ]
     },
@@ -59526,38 +59526,38 @@
     "96": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::299",
     "97": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::299",
     "98": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::299",
-    "99": "Variable at cs/src/cs/circuit_impl.rs::1093",
-    "100": "Variable at cs/src/cs/circuit_impl.rs::1093",
-    "101": "Variable at cs/src/cs/circuit_impl.rs::1093",
-    "102": "Variable at cs/src/cs/circuit_impl.rs::1093",
-    "103": "Variable at cs/src/cs/circuit_impl.rs::1093",
-    "104": "Variable at cs/src/cs/circuit_impl.rs::1093",
-    "105": "Variable at cs/src/cs/circuit_impl.rs::1093",
-    "106": "Variable at cs/src/cs/circuit_impl.rs::1093",
-    "107": "Variable at cs/src/cs/circuit_impl.rs::1093",
-    "108": "Variable at cs/src/cs/circuit_impl.rs::1093",
-    "109": "Variable at cs/src/cs/circuit_impl.rs::1093",
-    "110": "Variable at cs/src/cs/circuit_impl.rs::1093",
-    "111": "Variable at cs/src/cs/circuit_impl.rs::1093",
-    "112": "Variable at cs/src/cs/circuit_impl.rs::1093",
-    "113": "Variable at cs/src/cs/circuit_impl.rs::1093",
-    "114": "Variable at cs/src/cs/circuit_impl.rs::1093",
-    "115": "Variable at cs/src/cs/circuit_impl.rs::1093",
-    "116": "Variable at cs/src/cs/circuit_impl.rs::1093",
-    "117": "Variable at cs/src/cs/circuit_impl.rs::1093",
-    "118": "Variable at cs/src/cs/circuit_impl.rs::1093",
-    "119": "Variable at cs/src/cs/circuit_impl.rs::1093",
-    "120": "Variable at cs/src/cs/circuit_impl.rs::1093",
-    "121": "Variable at cs/src/cs/circuit_impl.rs::1093",
-    "122": "Variable at cs/src/cs/circuit_impl.rs::1093",
-    "123": "Variable at cs/src/cs/circuit_impl.rs::1093",
-    "124": "Variable at cs/src/cs/circuit_impl.rs::1093",
-    "125": "Variable at cs/src/cs/circuit_impl.rs::1093",
-    "126": "Variable at cs/src/cs/circuit_impl.rs::1093",
-    "127": "Variable at cs/src/cs/circuit_impl.rs::1093",
-    "128": "Variable at cs/src/cs/circuit_impl.rs::1093",
-    "129": "Variable at cs/src/cs/circuit_impl.rs::1093",
-    "130": "Variable at cs/src/cs/circuit_impl.rs::1093",
+    "99": "Variable at cs/src/cs/circuit_impl.rs::1092",
+    "100": "Variable at cs/src/cs/circuit_impl.rs::1092",
+    "101": "Variable at cs/src/cs/circuit_impl.rs::1092",
+    "102": "Variable at cs/src/cs/circuit_impl.rs::1092",
+    "103": "Variable at cs/src/cs/circuit_impl.rs::1092",
+    "104": "Variable at cs/src/cs/circuit_impl.rs::1092",
+    "105": "Variable at cs/src/cs/circuit_impl.rs::1092",
+    "106": "Variable at cs/src/cs/circuit_impl.rs::1092",
+    "107": "Variable at cs/src/cs/circuit_impl.rs::1092",
+    "108": "Variable at cs/src/cs/circuit_impl.rs::1092",
+    "109": "Variable at cs/src/cs/circuit_impl.rs::1092",
+    "110": "Variable at cs/src/cs/circuit_impl.rs::1092",
+    "111": "Variable at cs/src/cs/circuit_impl.rs::1092",
+    "112": "Variable at cs/src/cs/circuit_impl.rs::1092",
+    "113": "Variable at cs/src/cs/circuit_impl.rs::1092",
+    "114": "Variable at cs/src/cs/circuit_impl.rs::1092",
+    "115": "Variable at cs/src/cs/circuit_impl.rs::1092",
+    "116": "Variable at cs/src/cs/circuit_impl.rs::1092",
+    "117": "Variable at cs/src/cs/circuit_impl.rs::1092",
+    "118": "Variable at cs/src/cs/circuit_impl.rs::1092",
+    "119": "Variable at cs/src/cs/circuit_impl.rs::1092",
+    "120": "Variable at cs/src/cs/circuit_impl.rs::1092",
+    "121": "Variable at cs/src/cs/circuit_impl.rs::1092",
+    "122": "Variable at cs/src/cs/circuit_impl.rs::1092",
+    "123": "Variable at cs/src/cs/circuit_impl.rs::1092",
+    "124": "Variable at cs/src/cs/circuit_impl.rs::1092",
+    "125": "Variable at cs/src/cs/circuit_impl.rs::1092",
+    "126": "Variable at cs/src/cs/circuit_impl.rs::1092",
+    "127": "Variable at cs/src/cs/circuit_impl.rs::1092",
+    "128": "Variable at cs/src/cs/circuit_impl.rs::1092",
+    "129": "Variable at cs/src/cs/circuit_impl.rs::1092",
+    "130": "Variable at cs/src/cs/circuit_impl.rs::1092",
     "131": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::556",
     "132": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::556",
     "133": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::556",

@@ -16,11 +16,6 @@ use crate::gkr_compiler::graph::GKRGraph;
 use crate::gkr_compiler::graph::GraphHolder;
 use crate::gkr_compiler::layout::LookupOutput;
 use crate::types::Boolean;
-// use crate::one_row_compiler::delegation::add_compiler_defined_variable;
-// use crate::one_row_compiler::delegation::add_multiple_compiler_defined_variables;
-// use crate::cs::circuit_output::CircuitOutput;
-// use crate::definitions::LookupInput;
-// use crate::types::Boolean;
 
 impl<F: PrimeField> GKRCompiler<F> {
     pub fn compile_family_circuit(
