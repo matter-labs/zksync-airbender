@@ -546,6 +546,7 @@ where
             lookup_additive_part,
             constraints_batch_challenge,
             external_challenges,
+            lookup_alpha,
             &mut seed,
             worker,
         );
@@ -559,8 +560,8 @@ where
     // let eq_precomputed = make_eq_poly_in_full(base_layer_z, worker);
     // let eq_at_z = eq_precomputed.last().unwrap();
 
-    // let layer_desc = &compiled_circuit.layers[0];
-    // let base_layer_claims = claims_for_layers.entry(0).or_insert_with(BTreeMap::new);
+    let layer_desc = &compiled_circuit.layers[0];
+    let base_layer_claims = claims_for_layers.entry(0).or_insert_with(BTreeMap::new);
 
     // for (cached_addr, relation) in layer_desc.cached_relations.iter() {
     //     debug_assert!(
@@ -592,12 +593,13 @@ where
     //     }
     // }
 
-    // #[cfg(feature = "gkr_self_checks")]
-    // assert!(debug_utils::verify_cache_relations(
-    //     layer_desc,
-    //     &base_layer_claims,
-    //     external_challenges,
-    // ));
+    #[cfg(feature = "gkr_self_checks")]
+    assert!(debug_utils::verify_cache_relations(
+        layer_desc,
+        &base_layer_claims,
+        external_challenges,
+        lookup_alpha,
+    ));
 
     drop(preprocessed_generic_lookup);
 

@@ -1589,7 +1589,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
 
         let circuit: GKRCircuitArtifact<BabyBearField> = {
             deserialize_from_file(
-                "../cs/compiled_circuits/blake2_with_extended_control_layout_gkr.json",
+                "../cs/compiled_circuits/blake2_with_extended_control_preprocessed_layout_gkr.json",
             )
         };
 
@@ -1744,7 +1744,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
 
         let circuit: GKRCircuitArtifact<BabyBearField> = {
             deserialize_from_file(
-                "../cs/compiled_circuits/bigint_with_extended_control_layout_gkr.json",
+                "../cs/compiled_circuits/bigint_with_extended_control_preprocessed_layout_gkr.json",
             )
         };
 
@@ -1899,7 +1899,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
         println!("Will try to prove Keccak delegation");
 
         let circuit: GKRCircuitArtifact<BabyBearField> =
-            { deserialize_from_file("../cs/compiled_circuits/keccak_special5_layout_gkr.json") };
+            { deserialize_from_file("../cs/compiled_circuits/keccak_special5_preprocessed_layout_gkr.json") };
 
         let mut table_driver = TableDriver::<BabyBearField>::new();
         cs::gkr_circuits::delegation::keccak_special5::keccak_special5_delegation_circuit_table_driver_fn(&mut table_driver);

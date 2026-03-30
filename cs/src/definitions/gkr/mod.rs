@@ -10,8 +10,13 @@ pub use self::utils::*;
 
 use crate::definitions::GKRAddress;
 use crate::definitions::REGISTER_SIZE;
-use crate::gkr_compiler::CompiledDelegationCircuitState;
 use common_constants::NUM_TIMESTAMP_COLUMNS_FOR_RAM;
+
+#[derive(Clone, Hash, Debug, serde::Serialize, serde::Deserialize)]
+pub struct CompiledDelegationCircuitState {
+    pub execute: usize,
+    pub invocation_timestamp: [usize; NUM_TIMESTAMP_COLUMNS_FOR_RAM],
+}
 
 #[derive(Clone, Copy, Hash, Debug, serde::Serialize, serde::Deserialize)]
 pub struct GKRMachineState {

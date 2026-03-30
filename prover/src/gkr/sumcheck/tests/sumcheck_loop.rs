@@ -93,6 +93,7 @@ fn test_sumcheck_loop_product() {
         lookup_additive_part,
         constraints_batch_challenge,
         &GKRExternalChallenges::default(),
+        E::ZERO, // lookup_alpha unused in these tests
         &mut seed,
         &worker,
     );
@@ -249,6 +250,7 @@ fn test_sumcheck_loop_multiple_gates() {
         lookup_additive_part,
         constraints_batch_challenge,
         &GKRExternalChallenges::default(),
+        E::ZERO, // lookup_alpha unused in these tests
         &mut seed,
         &worker,
     );

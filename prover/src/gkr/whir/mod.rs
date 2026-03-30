@@ -1386,12 +1386,10 @@ where
 
     #[cfg(feature = "gkr_self_checks")]
     {
-        // Verify monomials → hypercube evals matches the evaluation form.
-        // The evaluation form lives in sumchecked_poly_evaluation_form_vec but
-        // was folded in-place; the first 2^final_poly_log2 elements are valid.
         let final_len = 1usize << final_poly_log2;
         let mut hypercube_evals = proof.final_monomials.clone();
         multivariate_coeffs_into_hypercube_evals(&mut hypercube_evals, final_poly_log2 as u32);
+        bitreverse_enumeration_inplace(&mut hypercube_evals);
         assert_eq!(
             &hypercube_evals[..],
             &sumchecked_poly_evaluation_form_vec[..final_len],

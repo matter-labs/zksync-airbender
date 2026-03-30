@@ -172,6 +172,7 @@ pub fn evaluate_sumcheck_for_layer<F: PrimeField, E: FieldExtension<F> + Field>(
     lookup_challenges_additive_part: E,
     constraints_batch_challenge: E,
     external_challenges: &GKRExternalChallenges<F, E>,
+    lookup_alpha: E,
     seed: &mut Seed,
     worker: &Worker,
 ) -> SumcheckIntermediateProofValues<F, E>
