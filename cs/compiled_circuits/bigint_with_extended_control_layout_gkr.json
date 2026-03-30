@@ -2971,13 +2971,13 @@
           {
             "VectorizedLookupSetup": [
               {
+                "Setup": 0
+              },
+              {
+                "Setup": 1
+              },
+              {
                 "Setup": 2
-              },
-              {
-                "Setup": 3
-              },
-              {
-                "Setup": 4
               }
             ]
           }
@@ -8026,7 +8026,7 @@
                   "BaseLayerWitness": 158
                 },
                 {
-                  "Setup": 0
+                  "VirtualSetup": "RangeCheck16Bits"
                 }
               ],
               "output": [
@@ -8277,7 +8277,7 @@
                   "BaseLayerWitness": 159
                 },
                 {
-                  "Setup": 1
+                  "VirtualSetup": "RangeCheckTimestamp"
                 }
               ],
               "output": [
@@ -37107,13 +37107,13 @@
           "BaseLayerMemory": 96
         },
         {
+          "Setup": 0
+        },
+        {
+          "Setup": 1
+        },
+        {
           "Setup": 2
-        },
-        {
-          "Setup": 3
-        },
-        {
-          "Setup": 4
         }
       ]
     },

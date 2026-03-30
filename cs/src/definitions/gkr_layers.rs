@@ -1,11 +1,22 @@
 #[derive(
     Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
 )]
+pub enum VirtualSetupPoly {
+    RangeCheck16Bits,
+    RangeCheckTimestamp,
+    InitsAndTeardownsLow,
+    InitsAndTeardownsHigh,
+}
+
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
+)]
 pub enum GKRAddress {
     BaseLayerWitness(usize),
     BaseLayerMemory(usize),
     InnerLayer { layer: usize, offset: usize },
     Setup(usize),
+    VirtualSetup(VirtualSetupPoly),
     ScratchSpace(usize),
     Cached { layer: usize, offset: usize },
 }
@@ -32,6 +43,9 @@ impl GKRAddress {
             Self::InnerLayer { offset, .. } => *offset,
             Self::ScratchSpace(offset) => *offset,
             Self::Cached { offset, .. } => *offset,
+            Self::VirtualSetup(..) => {
+                unreachable!()
+            }
         }
     }
 
@@ -45,7 +59,10 @@ impl GKRAddress {
     #[track_caller]
     pub fn assert_as_dependency_for_layer(&self, output_layer: usize) {
         match self {
-            Self::BaseLayerWitness(..) | Self::BaseLayerMemory(..) | Self::Setup(..) => {
+            Self::BaseLayerWitness(..)
+            | Self::BaseLayerMemory(..)
+            | Self::Setup(..)
+            | Self::VirtualSetup(..) => {
                 assert_eq!(output_layer, 1)
             }
             Self::InnerLayer { layer, .. } => assert_eq!(output_layer, *layer + 1),
@@ -64,7 +81,7 @@ impl GKRAddress {
                     self, output_layer
                 );
             }
-            Self::Setup(..) | Self::ScratchSpace(..) => {
+            Self::Setup(..) | Self::ScratchSpace(..) | Self::VirtualSetup(..) => {
                 unreachable!();
             }
             Self::InnerLayer { layer, .. } => {
