@@ -232,11 +232,8 @@ pub(crate) fn verify_cache_relations<F: PrimeField, E: FieldExtension<F> + Field
             }
             NoFieldGKRCacheRelation::VectorizedLookup(rel) => {
                 // cached[row] = sum_j alpha^j * column_j(row), where column_j is a linear relation
-                let expected = evaluate_vectorized_lookup_from_claims::<F, E>(
-                    rel,
-                    claims,
-                    lookup_alpha,
-                );
+                let expected =
+                    evaluate_vectorized_lookup_from_claims::<F, E>(rel, claims, lookup_alpha);
                 if expected != cached_claim {
                     println!(
                         "VectorizedLookup cache relation mismatch at {:?}: expected {:?}, got {:?}",

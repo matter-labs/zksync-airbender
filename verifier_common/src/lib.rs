@@ -4,6 +4,24 @@
 #![feature(generic_const_exprs)]
 #![feature(maybe_uninit_array_assume_init)]
 
+/// Single source of truth for GKR circuit names and their WHIR test schedules.
+/// Define a callback macro accepting `($($name:ident: $schedule_fn:ident),* $(,)?)`,
+/// then invoke `verifier_common::gkr_circuits!(your_callback)`.
+/// `$schedule_fn` is a method name on `prover::gkr::prover::WhirSchedule`.
+#[macro_export]
+macro_rules! gkr_circuits {
+    ($callback:ident) => {
+        $callback! {
+            add_sub_lui_auipc_mop: default_for_tests_80_bits_24,
+            jump_branch_slt: default_for_tests_80_bits_24,
+            shift_binop: default_for_tests_80_bits_24,
+            bigint_with_extended_control: default_for_tests_80_bits_22,
+            blake2_with_extended_control: default_for_tests_80_bits_20,
+            keccak_special5: default_for_tests_80_bits_22,
+        }
+    };
+}
+
 #[cfg(all(feature = "security_80", feature = "security_100"))]
 compile_error!("multiple security levels selected at the same time");
 
@@ -113,6 +131,8 @@ pub use transcript;
 pub mod fri_folding;
 #[cfg(feature = "gkr_verify")]
 pub mod gkr;
+#[cfg(all(feature = "proof_utils", feature = "gkr_verify"))]
+pub mod test_circuits;
 #[cfg(feature = "gkr_verify")]
 pub mod whir;
 

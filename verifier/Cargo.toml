@@ -41,3 +41,4 @@ quote = { version = "1" }
 verifier_common = { workspace = true, features = ["proof_utils", "replace_csr", "gkr_verify"] }
 riscv_transpiler = { workspace = true, features = ["flamegraph"] }
 common_constants = { workspace = true }
+verifier_generator = { workspace = true }

@@ -11,16 +11,35 @@ license = "MIT OR Apache-2.0"
 keywords = ["blockchain", "zksync", "zk"]
 categories = ["cryptography"]
 
-[features]
-add_sub_lui_auipc_mop = []
-jump_branch_slt = []
-shift_binop = []
-
 [dependencies]
 verifier_common = { path = "../../verifier_common", default-features = false, features = ["gkr_verify", "modular_ops", "blake2_with_compression"] }
 non_determinism_source = { path = "../../non_determinism_source" }
 riscv_common = { path = "../../riscv_common", features = ["boot_sequence", "no_memset_override"] }
 field = { path = "../../field", default-features = false, features = ["modular_ops"] }
+
+[[bin]]
+name = "add_sub_lui_auipc_mop"
+path = "src/bin/add_sub_lui_auipc_mop.rs"
+
+[[bin]]
+name = "jump_branch_slt"
+path = "src/bin/jump_branch_slt.rs"
+
+[[bin]]
+name = "shift_binop"
+path = "src/bin/shift_binop.rs"
+
+[[bin]]
+name = "bigint_with_extended_control"
+path = "src/bin/bigint_with_extended_control.rs"
+
+[[bin]]
+name = "blake2_with_extended_control"
+path = "src/bin/blake2_with_extended_control.rs"
+
+[[bin]]
+name = "keccak_special5"
+path = "src/bin/keccak_special5.rs"
 
 [workspace]
 

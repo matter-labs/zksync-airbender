@@ -39,7 +39,7 @@ fn run_transpiler(name: &str) {
         .collect();
 
     let instructions: Vec<Instruction> =
-        preprocess_bytecode::<ReducedMachineDecoderConfig>(&text_section);
+        preprocess_bytecode::<ReducedMachineDecoderConfig, true>(&text_section);
     let tape = SimpleTape::new(&instructions);
     let mut ram =
         RamWithRomRegion::<{ common_constants::rom::ROM_SECOND_WORD_BITS }>::from_rom_content(
@@ -107,6 +107,7 @@ fn run_transpiler(name: &str) {
             ),
             2 => panic!("{}: GKR FinalStepCheckFailed layer={}", name, layer),
             3 => panic!("{}: WHIR verification failed", name),
+            4 => panic!("{}: GKR CacheRelationFailed layer={}", name, layer),
             _ => panic!("{}: unknown error code={}", name, error_code),
         }
     }
@@ -116,16 +117,15 @@ fn run_transpiler(name: &str) {
     println!("Flamegraph written to {}", output_path.display());
 }
 
-macro_rules! transpiler_tests {
-    ($($circuit:ident),* $(,)?) => {
+macro_rules! generate_transpiler_tests {
+    ($($name:ident: $schedule:ident),* $(,)?) => {
         $(
             #[test]
             #[ignore = "requires RISC-V binaries from tools/gkr_verifier"]
-            fn $circuit() {
-                run_transpiler(stringify!($circuit));
+            fn $name() {
+                run_transpiler(stringify!($name));
             }
         )*
     };
 }
-
-transpiler_tests!(add_sub_lui_auipc_mop, jump_branch_slt, shift_binop,);
+verifier_common::gkr_circuits!(generate_transpiler_tests);

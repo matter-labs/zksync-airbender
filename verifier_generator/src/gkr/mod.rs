@@ -7,7 +7,9 @@ pub use crate::utils::{
     compute_max_pow, transform_gkr_address,
 };
 use prover::cs::definitions::GKRAddress;
-use prover::cs::gkr_compiler::{GKRCircuitArtifact, OutputType};
+use prover::cs::gkr_compiler::{
+    GKRCircuitArtifact, GKRLayerDescription, NoFieldGKRCacheRelation, OutputType,
+};
 use prover::field::{Field, FieldExtension, PrimeField};
 use prover::gkr::prover::{GKRProof, WhirSchedule};
 use prover::merkle_trees::ColumnMajorMerkleTreeConstructor;
@@ -209,6 +211,269 @@ pub fn generate_gkr_common<MW: MersenneWrapper>() -> TokenStream {
             }
         }
     }
+}
+
+/// Generate code to verify cache relations for a layer.
+/// After sumcheck and fold, `state.prev_claims` has claims for all addresses
+/// in `target_addrs` order. This generates checks for lookup-type cache relations.
+///
+/// Uses const descriptor arrays + compact loops instead of unrolling per-relation.
+fn generate_cache_relation_checks<MW: MersenneWrapper, F: PrimeField>(
+    layer: &GKRLayerDescription,
+    target_addrs: &[GKRAddress],
+    layer_idx: usize,
+) -> TokenStream {
+    let quartic_struct = MW::quartic_struct();
+    let field_struct = MW::field_struct();
+    let quartic_zero = MW::quartic_zero();
+    let quartic_one = MW::quartic_one();
+
+    let coeff_to_mont = |c: u32| -> u32 { F::from_u32_with_reduction(c).as_u32_raw_repr_reduced() };
+
+    // Collect SingleColumnLookup descriptors: (cached_idx, constant, term_start, term_count)
+    // and flat terms: (coeff_mont, dep_idx)
+    let mut single_descs: Vec<(usize, u32, usize, usize)> = Vec::new();
+    let mut single_terms: Vec<(u32, usize)> = Vec::new();
+
+    // Collect VectorizedLookup descriptors: (cached_idx, col_start, col_count)
+    // col entries: (constant_mont, term_start, term_count)
+    // flat terms: (coeff_mont, dep_idx)
+    let mut vector_descs: Vec<(usize, usize, usize)> = Vec::new();
+    let mut vector_cols: Vec<(u32, usize, usize)> = Vec::new();
+    let mut vector_terms: Vec<(u32, usize)> = Vec::new();
+
+    // Collect VectorizedLookupSetup descriptors: (cached_idx, dep_start, dep_count)
+    // flat deps: dep_idx
+    let mut vsetup_descs: Vec<(usize, usize, usize)> = Vec::new();
+    let mut vsetup_deps: Vec<usize> = Vec::new();
+
+    let find_idx = |addr: &GKRAddress| -> usize {
+        target_addrs
+            .iter()
+            .position(|a| a == addr)
+            .unwrap_or_else(|| {
+                panic!(
+                    "Layer {}: cache dep {:?} not in target_addrs",
+                    layer_idx, addr
+                )
+            })
+    };
+
+    for (cached_addr, relation) in layer.cached_relations.iter() {
+        let cached_idx = find_idx(cached_addr);
+
+        match relation {
+            NoFieldGKRCacheRelation::SingleColumnLookup {
+                relation: rel,
+                range_check_width: _,
+            } => {
+                let term_start = single_terms.len();
+                for &(coeff, ref addr) in rel.input.linear_terms.iter() {
+                    single_terms.push((coeff_to_mont(coeff), find_idx(addr)));
+                }
+                single_descs.push((
+                    cached_idx,
+                    coeff_to_mont(rel.input.constant),
+                    term_start,
+                    rel.input.linear_terms.len(),
+                ));
+            }
+            NoFieldGKRCacheRelation::VectorizedLookup(rel) => {
+                let col_start = vector_cols.len();
+                for column in rel.columns.iter() {
+                    let t_start = vector_terms.len();
+                    for &(coeff, ref addr) in column.linear_terms.iter() {
+                        vector_terms.push((coeff_to_mont(coeff), find_idx(addr)));
+                    }
+                    vector_cols.push((
+                        coeff_to_mont(column.constant),
+                        t_start,
+                        column.linear_terms.len(),
+                    ));
+                }
+                vector_descs.push((cached_idx, col_start, rel.columns.len()));
+            }
+            NoFieldGKRCacheRelation::VectorizedLookupSetup(setup_addrs) => {
+                let dep_start = vsetup_deps.len();
+                for addr in setup_addrs.iter() {
+                    vsetup_deps.push(find_idx(addr));
+                }
+                vsetup_descs.push((cached_idx, dep_start, setup_addrs.len()));
+            }
+            NoFieldGKRCacheRelation::MemoryTuple(_) => {}
+        }
+    }
+
+    let mut checks = TokenStream::new();
+
+    // SingleColumnLookup checks
+    if !single_descs.is_empty() {
+        let num_descs = single_descs.len();
+        let sd_cached: Vec<usize> = single_descs.iter().map(|d| d.0).collect();
+        let sd_const: Vec<u32> = single_descs.iter().map(|d| d.1).collect();
+        let sd_start: Vec<usize> = single_descs.iter().map(|d| d.2).collect();
+        let sd_count: Vec<usize> = single_descs.iter().map(|d| d.3).collect();
+
+        let num_terms = single_terms.len();
+        let st_coeff: Vec<u32> = single_terms.iter().map(|t| t.0).collect();
+        let st_dep: Vec<usize> = single_terms.iter().map(|t| t.1).collect();
+
+        let mul_base = MW::mul_assign_by_base(
+            quote! { t },
+            quote! { #field_struct::from_reduced_raw_repr(coeff) },
+        );
+        let add_exp = MW::add_assign(quote! { expected }, quote! { t });
+
+        checks.extend(quote! {
+            {
+                const SC_DESCS: [(usize, u32, usize, usize); #num_descs] = [
+                    #( (#sd_cached, #sd_const, #sd_start, #sd_count), )*
+                ];
+                const SC_TERMS: [(u32, usize); #num_terms] = [
+                    #( (#st_coeff, #st_dep), )*
+                ];
+                let mut _sc = 0;
+                while _sc < #num_descs {
+                    let (cached_idx, constant, term_start, term_count) = SC_DESCS[_sc];
+                    let mut expected: #quartic_struct =
+                        <#quartic_struct as FieldExtension<#field_struct>>::from_base(
+                            #field_struct::from_reduced_raw_repr(constant));
+                    let mut _t = 0;
+                    while _t < term_count {
+                        let (coeff, dep_idx) = SC_TERMS[term_start + _t];
+                        let mut t = *state.prev_claims.get_unchecked(dep_idx);
+                        #mul_base;
+                        #add_exp;
+                        _t += 1;
+                    }
+                    let cached = *state.prev_claims.get_unchecked(cached_idx);
+                    if expected != cached {
+                        return Err(GKRVerificationError::CacheRelationFailed { layer: #layer_idx });
+                    }
+                    _sc += 1;
+                }
+            }
+        });
+    }
+
+    // VectorizedLookup checks
+    if !vector_descs.is_empty() {
+        let num_descs = vector_descs.len();
+        let vd_cached: Vec<usize> = vector_descs.iter().map(|d| d.0).collect();
+        let vd_col_start: Vec<usize> = vector_descs.iter().map(|d| d.1).collect();
+        let vd_col_count: Vec<usize> = vector_descs.iter().map(|d| d.2).collect();
+
+        let num_cols = vector_cols.len();
+        let vc_const: Vec<u32> = vector_cols.iter().map(|c| c.0).collect();
+        let vc_term_start: Vec<usize> = vector_cols.iter().map(|c| c.1).collect();
+        let vc_term_count: Vec<usize> = vector_cols.iter().map(|c| c.2).collect();
+
+        let num_terms = vector_terms.len();
+        let vt_coeff: Vec<u32> = vector_terms.iter().map(|t| t.0).collect();
+        let vt_dep: Vec<usize> = vector_terms.iter().map(|t| t.1).collect();
+
+        let mul_base = MW::mul_assign_by_base(
+            quote! { t },
+            quote! { #field_struct::from_reduced_raw_repr(coeff) },
+        );
+        let add_col = MW::add_assign(quote! { col_val }, quote! { t });
+        let mul_ap = MW::mul_assign(quote! { term }, quote! { alpha_power });
+        let add_exp = MW::add_assign(quote! { expected }, quote! { term });
+        let mul_alpha = MW::mul_assign(quote! { alpha_power }, quote! { lookup_alpha });
+
+        checks.extend(quote! {
+            {
+                const VL_DESCS: [(usize, usize, usize); #num_descs] = [
+                    #( (#vd_cached, #vd_col_start, #vd_col_count), )*
+                ];
+                const VL_COLS: [(u32, usize, usize); #num_cols] = [
+                    #( (#vc_const, #vc_term_start, #vc_term_count), )*
+                ];
+                const VL_TERMS: [(u32, usize); #num_terms] = [
+                    #( (#vt_coeff, #vt_dep), )*
+                ];
+                let mut _vl = 0;
+                while _vl < #num_descs {
+                    let (cached_idx, col_start, col_count) = VL_DESCS[_vl];
+                    let mut expected: #quartic_struct = #quartic_zero;
+                    let mut alpha_power: #quartic_struct = #quartic_one;
+                    let mut _c = 0;
+                    while _c < col_count {
+                        let (col_constant, term_start, term_count) = VL_COLS[col_start + _c];
+                        let mut col_val: #quartic_struct =
+                            <#quartic_struct as FieldExtension<#field_struct>>::from_base(
+                                #field_struct::from_reduced_raw_repr(col_constant));
+                        let mut _t = 0;
+                        while _t < term_count {
+                            let (coeff, dep_idx) = VL_TERMS[term_start + _t];
+                            let mut t = *state.prev_claims.get_unchecked(dep_idx);
+                            #mul_base;
+                            #add_col;
+                            _t += 1;
+                        }
+                        let mut term = col_val;
+                        #mul_ap;
+                        #add_exp;
+                        #mul_alpha;
+                        _c += 1;
+                    }
+                    let cached = *state.prev_claims.get_unchecked(cached_idx);
+                    if expected != cached {
+                        return Err(GKRVerificationError::CacheRelationFailed { layer: #layer_idx });
+                    }
+                    _vl += 1;
+                }
+            }
+        });
+    }
+
+    // VectorizedLookupSetup checks
+    if !vsetup_descs.is_empty() {
+        let num_descs = vsetup_descs.len();
+        let vs_cached: Vec<usize> = vsetup_descs.iter().map(|d| d.0).collect();
+        let vs_dep_start: Vec<usize> = vsetup_descs.iter().map(|d| d.1).collect();
+        let vs_dep_count: Vec<usize> = vsetup_descs.iter().map(|d| d.2).collect();
+
+        let num_deps = vsetup_deps.len();
+        let vs_deps: Vec<usize> = vsetup_deps.clone();
+
+        let mul_ap = MW::mul_assign(quote! { term }, quote! { alpha_power });
+        let add_exp = MW::add_assign(quote! { expected }, quote! { term });
+        let mul_alpha = MW::mul_assign(quote! { alpha_power }, quote! { lookup_alpha });
+
+        checks.extend(quote! {
+            {
+                const VS_DESCS: [(usize, usize, usize); #num_descs] = [
+                    #( (#vs_cached, #vs_dep_start, #vs_dep_count), )*
+                ];
+                const VS_DEPS: [usize; #num_deps] = [
+                    #( #vs_deps, )*
+                ];
+                let mut _vs = 0;
+                while _vs < #num_descs {
+                    let (cached_idx, dep_start, dep_count) = VS_DESCS[_vs];
+                    let mut expected: #quartic_struct = #quartic_zero;
+                    let mut alpha_power: #quartic_struct = #quartic_one;
+                    let mut _d = 0;
+                    while _d < dep_count {
+                        let dep_idx = VS_DEPS[dep_start + _d];
+                        let mut term = *state.prev_claims.get_unchecked(dep_idx);
+                        #mul_ap;
+                        #add_exp;
+                        #mul_alpha;
+                        _d += 1;
+                    }
+                    let cached = *state.prev_claims.get_unchecked(cached_idx);
+                    if expected != cached {
+                        return Err(GKRVerificationError::CacheRelationFailed { layer: #layer_idx });
+                    }
+                    _vs += 1;
+                }
+            }
+        });
+    }
+
+    checks
 }
 
 pub fn generate_gkr_inlined<MW: MersenneWrapper, F: PrimeField, E: FieldExtension<F> + Field, T>(
@@ -497,22 +762,22 @@ where
         }
 
         // Extract oracle caps before committing the transcript buffer.
-        let setup_cap: [u32; WHIR_CAP_WORDS] = {
+        let setup_cap: [u32; SETUP_CAP_WORDS] = {
             let src = &transcript_buf.as_slice()
-                [CAPS_OFFSET_IN_TRANSCRIPT..CAPS_OFFSET_IN_TRANSCRIPT + WHIR_CAP_WORDS];
-            *<&[u32; WHIR_CAP_WORDS]>::try_from(src).unwrap_unchecked()
+                [CAPS_OFFSET_IN_TRANSCRIPT..CAPS_OFFSET_IN_TRANSCRIPT + SETUP_CAP_WORDS];
+            *<&[u32; SETUP_CAP_WORDS]>::try_from(src).unwrap_unchecked()
         };
-        let memory_cap: [u32; WHIR_CAP_WORDS] = {
+        let memory_cap: [u32; MEM_CAP_WORDS] = {
             let src = &transcript_buf.as_slice()
-                [CAPS_OFFSET_IN_TRANSCRIPT + WHIR_CAP_WORDS
-                    ..CAPS_OFFSET_IN_TRANSCRIPT + 2 * WHIR_CAP_WORDS];
-            *<&[u32; WHIR_CAP_WORDS]>::try_from(src).unwrap_unchecked()
+                [CAPS_OFFSET_IN_TRANSCRIPT + SETUP_CAP_WORDS
+                    ..CAPS_OFFSET_IN_TRANSCRIPT + SETUP_CAP_WORDS + MEM_CAP_WORDS];
+            *<&[u32; MEM_CAP_WORDS]>::try_from(src).unwrap_unchecked()
         };
-        let witness_cap: [u32; WHIR_CAP_WORDS] = {
+        let witness_cap: [u32; WIT_CAP_WORDS] = {
             let src = &transcript_buf.as_slice()
-                [CAPS_OFFSET_IN_TRANSCRIPT + 2 * WHIR_CAP_WORDS
-                    ..CAPS_OFFSET_IN_TRANSCRIPT + 3 * WHIR_CAP_WORDS];
-            *<&[u32; WHIR_CAP_WORDS]>::try_from(src).unwrap_unchecked()
+                [CAPS_OFFSET_IN_TRANSCRIPT + SETUP_CAP_WORDS + MEM_CAP_WORDS
+                    ..CAPS_OFFSET_IN_TRANSCRIPT + SETUP_CAP_WORDS + MEM_CAP_WORDS + WIT_CAP_WORDS];
+            *<&[u32; WIT_CAP_WORDS]>::try_from(src).unwrap_unchecked()
         };
 
         let mut seed = Blake2sTranscript::commit_initial(transcript_buf.as_slice());
@@ -520,6 +785,7 @@ where
 
         let mut init_challenges = [#quartic_zero; 3];
         draw_field_els_into(&mut hasher, &mut seed, &mut init_challenges);
+        let lookup_alpha = init_challenges[0];
         let lookup_additive_challenge = init_challenges[1];
         let constraints_batch_challenge = init_challenges[2];
     });
@@ -681,56 +947,78 @@ where
         );
         let num_extra = extra_addrs.len();
 
-        let fold_and_extras_code = if num_extra > 0 {
-            let regular_set: std::collections::BTreeSet<GKRAddress> =
-                standard_sorted_addrs[config_idx].iter().copied().collect();
-            let mut target_addrs: std::collections::BTreeSet<GKRAddress> = regular_set.clone();
+        // Compute merged target_addrs (regular + extra, sorted) for cache relation checks.
+        let regular_set: std::collections::BTreeSet<GKRAddress> =
+            standard_sorted_addrs[config_idx].iter().copied().collect();
+        let target_addrs: Vec<GKRAddress> = {
+            let mut addrs = regular_set.clone();
             for a in &extra_addrs {
-                target_addrs.insert(*a);
+                addrs.insert(*a);
             }
-            let target_addrs: Vec<GKRAddress> = target_addrs.into_iter().collect();
+            addrs.into_iter().collect()
+        };
 
+        let fold_and_extras_code = if num_extra > 0 {
             let sub = MW::sub_assign(quote! { diff }, quote! { f0 });
             let mul_r = MW::mul_assign(quote! { diff }, quote! { last_r });
             let add_f0 = MW::add_assign(quote! { diff }, quote! { f0 });
-            let mut build_stmts = TokenStream::new();
-            build_stmts.extend(quote! {
+
+            // Build a const array of extra positions: (merged_idx, extra_idx)
+            let mut extra_positions: Vec<(usize, usize)> = Vec::new();
+            let mut extra_idx = 0usize;
+            for (merged_idx, addr) in target_addrs.iter().enumerate() {
+                if !regular_set.contains(addr) {
+                    extra_positions.push((merged_idx, extra_idx));
+                    extra_idx += 1;
+                }
+            }
+            let num_merged = target_addrs.len();
+            let num_extra_pos = extra_positions.len();
+            let ep_merged: Vec<usize> = extra_positions.iter().map(|p| p.0).collect();
+            let ep_extra: Vec<usize> = extra_positions.iter().map(|p| p.1).collect();
+
+            quote! {
                 let mut extra_evals = [#quartic_zero; #num_extra];
                 read_field_els::<I>(&mut extra_evals);
                 commit_field_els(&mut seed, &extra_evals);
                 let final_step_evals: &[[#quartic_struct; 2]] = eval_buf.transmute_subslice(
                     BLAKE2S_DIGEST_SIZE_U32_WORDS, #num_dedup_addrs);
                 state.prev_claims.clear();
-            });
-
-            let mut regular_idx = 0usize;
-            let mut extra_idx = 0usize;
-            for addr in target_addrs.iter() {
-                if regular_set.contains(addr) {
-                    build_stmts.extend(quote! {
-                        {
-                            let ev = unsafe { final_step_evals.get_unchecked(#regular_idx) };
+                {
+                    const EXTRA_POS: [(usize, usize); #num_extra_pos] = [
+                        #( (#ep_merged, #ep_extra), )*
+                    ];
+                    let mut regular_idx: usize = 0;
+                    let mut ep_idx: usize = 0;
+                    let mut merged_idx: usize = 0;
+                    while merged_idx < #num_merged {
+                        if ep_idx < #num_extra_pos && EXTRA_POS[ep_idx].0 == merged_idx {
+                            state.prev_claims.push(extra_evals[EXTRA_POS[ep_idx].1]);
+                            ep_idx += 1;
+                        } else {
+                            let ev = final_step_evals.get_unchecked(regular_idx);
                             let f0 = ev[0];
                             let mut diff = ev[1];
                             #sub; #mul_r; #add_f0;
                             state.prev_claims.push(diff);
+                            regular_idx += 1;
                         }
-                    });
-                    regular_idx += 1;
-                } else {
-                    build_stmts.extend(quote! {
-                        state.prev_claims.push(extra_evals[#extra_idx]);
-                    });
-                    extra_idx += 1;
+                        merged_idx += 1;
+                    }
                 }
             }
-            build_stmts
         } else {
             quote! {
                 fold_standard_claims::<#num_dedup_addrs, GKR_ADDRS, GKR_EVAL_BUF>(
                     &eval_buf, last_r, &mut state.prev_claims);
             }
         };
+
+        let cache_check_code = generate_cache_relation_checks::<MW, F>(
+            &compiled_circuit.layers[config_idx],
+            &target_addrs,
+            config_idx,
+        );
 
         main_body.extend(quote! {
             {
@@ -745,7 +1033,7 @@ where
                     let evals: &[[#quartic_struct; 2]] = eval_buf.transmute_subslice(
                         BLAKE2S_DIGEST_SIZE_U32_WORDS, #num_dedup_addrs);
                     let f = #final_step_fn(evals, state.batching_challenge,
-                        lookup_additive_challenge, &challenge_powers);
+                        lookup_additive_challenge, lookup_alpha, &challenge_powers);
                     verify_final_step_check(f,
                         *state.prev_point.get_unchecked(state.prev_point_len - 1),
                         final_eq_prefactor, final_claim, #config_idx)?;
@@ -758,6 +1046,7 @@ where
                 *state.prev_point.get_unchecked_mut(fc_len) = last_r;
                 fc_len += 1;
                 #fold_and_extras_code
+                #cache_check_code
                 state.batching_challenge = next_batching;
                 state.prev_point_len = fc_len;
             }
@@ -842,11 +1131,26 @@ where
 
     let base_lde_factor_log2 = whir_base_lde_factor.trailing_zeros() as usize;
     let initial_fold_steps = whir_fold_steps[0];
+
+    // Compute per-oracle cap sizes from the actual proof (setup may differ from WHIR schedule).
+    let setup_cap_size = proof.whir_proof.setup_commitment.commitment.cap.cap.len();
+    let mem_cap_size = proof.whir_proof.memory_commitment.commitment.cap.cap.len();
+    let wit_cap_size = proof.whir_proof.witness_commitment.commitment.cap.cap.len();
+    let setup_cap_words = setup_cap_size * 8; // BLAKE2S_DIGEST_SIZE_U32_WORDS
+    let mem_cap_words = mem_cap_size * 8;
+    let wit_cap_words = wit_cap_size * 8;
+
+    // WHIR_CAP_WORDS is used for intermediate oracles (from the WHIR schedule).
+    let whir_cap_words = whir_cap_size * 8; // BLAKE2S_DIGEST_SIZE_U32_WORDS
+
+    let setup_cap_size_log2 = setup_cap_size.trailing_zeros() as usize;
     let base_oracle_depth =
         trace_len_log2 + base_lde_factor_log2 - initial_fold_steps - whir_cap_size_log2;
+    let setup_oracle_depth =
+        trace_len_log2 + base_lde_factor_log2 - initial_fold_steps - setup_cap_size_log2;
 
-    let whir_cap_words = whir_cap_size * 8; // BLAKE2S_DIGEST_SIZE_U32_WORDS
-    let caps_offset_in_transcript = initial_transcript_num_u32_words - 3 * whir_cap_words;
+    let caps_offset_in_transcript =
+        initial_transcript_num_u32_words - setup_cap_words - mem_cap_words - wit_cap_words;
 
     let num_intermediate_oracles = whir_rounds - 1;
     let mut whir_oracle_depths = Vec::with_capacity(num_intermediate_oracles);
@@ -886,8 +1190,12 @@ where
         pub const NUM_WITNESS_CLAIMS: usize = #num_witness_claims;
         pub const NUM_SETUP_CLAIMS: usize = #num_setup_claims;
         pub const BASE_ORACLE_DEPTH: usize = #base_oracle_depth;
+        pub const SETUP_ORACLE_DEPTH: usize = #setup_oracle_depth;
         pub const WHIR_ORACLE_DEPTHS: [usize; #num_intermediate_oracles] = [#(#whir_oracle_depths),*];
         pub const WHIR_CAP_WORDS: usize = #whir_cap_words;
+        pub const SETUP_CAP_WORDS: usize = #setup_cap_words;
+        pub const MEM_CAP_WORDS: usize = #mem_cap_words;
+        pub const WIT_CAP_WORDS: usize = #wit_cap_words;
         pub const TRACE_LEN_LOG2: usize = #trace_len_log2;
         pub const CAPS_OFFSET_IN_TRANSCRIPT: usize = #caps_offset_in_transcript;
         /// Actual oracle column counts (may differ from NUM_*_CLAIMS which only
@@ -920,7 +1228,7 @@ where
 
         #[allow(unused_braces, unused_mut, unused_variables, unused_unsafe)]
         pub fn verify_gkr_sumcheck<I: NonDeterminismSource,
-        >() -> Result<GKRVerifierOutput<'static, #quartic_struct, GKR_ROUNDS, GKR_ADDRS, WHIR_CAP_WORDS>, GKRVerificationError> {
+        >() -> Result<GKRVerifierOutput<'static, #quartic_struct, GKR_ROUNDS, GKR_ADDRS, SETUP_CAP_WORDS, MEM_CAP_WORDS, WIT_CAP_WORDS>, GKRVerificationError> {
             unsafe { #main_body }
         }
     };

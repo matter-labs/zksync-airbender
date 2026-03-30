@@ -20,3 +20,5 @@ serde_json = "*"
 [dev-dependencies]
 test_utils = { workspace = true }
 serial_test = "3"
+rayon = "1"
+verifier_common = { workspace = true, features = ["proof_utils", "gkr_verify"] }

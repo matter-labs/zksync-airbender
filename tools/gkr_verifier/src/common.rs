@@ -1,24 +1,6 @@
-#![no_std]
-#![allow(incomplete_features)]
-#![feature(allocator_api)]
-#![feature(generic_const_exprs)]
-#![no_main]
-
 use non_determinism_source::CSRBasedSource;
 use riscv_common::zksync_os_finish_success;
 use verifier_common::gkr::GKRVerificationError;
-
-#[cfg(feature = "add_sub_lui_auipc_mop")]
-#[path = "../../../verifier/src/generated/add_sub_lui_auipc_mop/mod.rs"]
-mod generated_gkr;
-
-#[cfg(feature = "jump_branch_slt")]
-#[path = "../../../verifier/src/generated/jump_branch_slt/mod.rs"]
-mod generated_gkr;
-
-#[cfg(feature = "shift_binop")]
-#[path = "../../../verifier/src/generated/shift_binop/mod.rs"]
-mod generated_gkr;
 
 #[no_mangle]
 extern "C" fn eh_personality() {}
@@ -43,6 +25,9 @@ unsafe fn workload() -> ! {
                 }
                 GKRVerificationError::FinalStepCheckFailed { layer } => {
                     zksync_os_finish_success(&[0xDEAD, 2, layer as u32, 0, 0, 0, 0, 0]);
+                }
+                GKRVerificationError::CacheRelationFailed { layer } => {
+                    zksync_os_finish_success(&[0xDEAD, 4, layer as u32, 0, 0, 0, 0, 0]);
                 }
             },
             generated_gkr::VerificationError::Whir(_) => {

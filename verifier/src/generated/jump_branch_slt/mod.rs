@@ -11,7 +11,6 @@ pub enum VerificationError {
     Gkr(GKRVerificationError),
     Whir(common::WhirVerificationError),
 }
-#[doc = r" Run the full GKR + WHIR verification pipeline."]
 #[allow(unused_braces, unused_mut, unused_variables)]
 pub fn verify_all<I: NonDeterminismSource>() -> Result<(), VerificationError> {
     let gkr_output = verify_gkr_sumcheck::<I>().map_err(VerificationError::Gkr)?;

@@ -248,6 +248,7 @@ pub fn compute_tree_index(
 pub enum WhirVerificationError {
     SumcheckFailed { round: usize },
     FoldAgreementFailed { query: usize },
+    MerklePathFailed { query: usize },
 }
 #[inline(always)]
 pub fn verify_whir_sumcheck_step<I: NonDeterminismSource>(

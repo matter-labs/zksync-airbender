@@ -1898,8 +1898,11 @@ pub fn gkr_run_basic_unrolled_test_impl(
     if PROVE_KECCAK {
         println!("Will try to prove Keccak delegation");
 
-        let circuit: GKRCircuitArtifact<BabyBearField> =
-            { deserialize_from_file("../cs/compiled_circuits/keccak_special5_preprocessed_layout_gkr.json") };
+        let circuit: GKRCircuitArtifact<BabyBearField> = {
+            deserialize_from_file(
+                "../cs/compiled_circuits/keccak_special5_preprocessed_layout_gkr.json",
+            )
+        };
 
         let mut table_driver = TableDriver::<BabyBearField>::new();
         cs::gkr_circuits::delegation::keccak_special5::keccak_special5_delegation_circuit_table_driver_fn(&mut table_driver);

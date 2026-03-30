@@ -1,0 +1,867 @@
+use verifier_common::cs::definitions::GKRAddress;
+pub const GKR_ROUNDS: usize = 22usize;
+pub const GKR_ADDRS: usize = 403usize;
+pub const GKR_EVALS: usize = 128usize;
+pub const GKR_TRANSCRIPT_U32: usize = 540usize;
+pub const GKR_MAX_POW: usize = 115usize;
+pub const GKR_EVAL_BUF: usize = 6464usize;
+pub const GKR_COMMIT_BUF: usize = 32usize;
+pub const LAYER_0_SORTED_ADDRS: &[GKRAddress] = &[
+    GKRAddress::BaseLayerWitness(0usize),
+    GKRAddress::BaseLayerWitness(1usize),
+    GKRAddress::BaseLayerWitness(2usize),
+    GKRAddress::BaseLayerWitness(3usize),
+    GKRAddress::BaseLayerWitness(4usize),
+    GKRAddress::BaseLayerWitness(5usize),
+    GKRAddress::BaseLayerWitness(6usize),
+    GKRAddress::BaseLayerWitness(7usize),
+    GKRAddress::BaseLayerWitness(8usize),
+    GKRAddress::BaseLayerWitness(9usize),
+    GKRAddress::BaseLayerWitness(10usize),
+    GKRAddress::BaseLayerWitness(11usize),
+    GKRAddress::BaseLayerWitness(12usize),
+    GKRAddress::BaseLayerWitness(13usize),
+    GKRAddress::BaseLayerWitness(14usize),
+    GKRAddress::BaseLayerWitness(15usize),
+    GKRAddress::BaseLayerWitness(16usize),
+    GKRAddress::BaseLayerWitness(17usize),
+    GKRAddress::BaseLayerWitness(18usize),
+    GKRAddress::BaseLayerWitness(19usize),
+    GKRAddress::BaseLayerWitness(20usize),
+    GKRAddress::BaseLayerWitness(21usize),
+    GKRAddress::BaseLayerWitness(22usize),
+    GKRAddress::BaseLayerWitness(23usize),
+    GKRAddress::BaseLayerWitness(24usize),
+    GKRAddress::BaseLayerWitness(25usize),
+    GKRAddress::BaseLayerWitness(26usize),
+    GKRAddress::BaseLayerWitness(27usize),
+    GKRAddress::BaseLayerWitness(28usize),
+    GKRAddress::BaseLayerWitness(29usize),
+    GKRAddress::BaseLayerWitness(30usize),
+    GKRAddress::BaseLayerWitness(31usize),
+    GKRAddress::BaseLayerWitness(32usize),
+    GKRAddress::BaseLayerWitness(33usize),
+    GKRAddress::BaseLayerWitness(34usize),
+    GKRAddress::BaseLayerWitness(35usize),
+    GKRAddress::BaseLayerWitness(36usize),
+    GKRAddress::BaseLayerWitness(37usize),
+    GKRAddress::BaseLayerWitness(38usize),
+    GKRAddress::BaseLayerWitness(39usize),
+    GKRAddress::BaseLayerWitness(40usize),
+    GKRAddress::BaseLayerWitness(41usize),
+    GKRAddress::BaseLayerWitness(42usize),
+    GKRAddress::BaseLayerWitness(43usize),
+    GKRAddress::BaseLayerWitness(44usize),
+    GKRAddress::BaseLayerWitness(45usize),
+    GKRAddress::BaseLayerWitness(46usize),
+    GKRAddress::BaseLayerWitness(47usize),
+    GKRAddress::BaseLayerWitness(48usize),
+    GKRAddress::BaseLayerWitness(49usize),
+    GKRAddress::BaseLayerWitness(50usize),
+    GKRAddress::BaseLayerWitness(51usize),
+    GKRAddress::BaseLayerWitness(52usize),
+    GKRAddress::BaseLayerWitness(53usize),
+    GKRAddress::BaseLayerWitness(54usize),
+    GKRAddress::BaseLayerWitness(55usize),
+    GKRAddress::BaseLayerWitness(56usize),
+    GKRAddress::BaseLayerWitness(57usize),
+    GKRAddress::BaseLayerWitness(58usize),
+    GKRAddress::BaseLayerWitness(59usize),
+    GKRAddress::BaseLayerWitness(60usize),
+    GKRAddress::BaseLayerWitness(61usize),
+    GKRAddress::BaseLayerWitness(62usize),
+    GKRAddress::BaseLayerWitness(63usize),
+    GKRAddress::BaseLayerWitness(64usize),
+    GKRAddress::BaseLayerWitness(65usize),
+    GKRAddress::BaseLayerWitness(66usize),
+    GKRAddress::BaseLayerWitness(67usize),
+    GKRAddress::BaseLayerWitness(68usize),
+    GKRAddress::BaseLayerWitness(69usize),
+    GKRAddress::BaseLayerWitness(70usize),
+    GKRAddress::BaseLayerWitness(71usize),
+    GKRAddress::BaseLayerWitness(72usize),
+    GKRAddress::BaseLayerWitness(73usize),
+    GKRAddress::BaseLayerWitness(74usize),
+    GKRAddress::BaseLayerWitness(75usize),
+    GKRAddress::BaseLayerWitness(76usize),
+    GKRAddress::BaseLayerWitness(77usize),
+    GKRAddress::BaseLayerWitness(78usize),
+    GKRAddress::BaseLayerWitness(79usize),
+    GKRAddress::BaseLayerWitness(80usize),
+    GKRAddress::BaseLayerWitness(81usize),
+    GKRAddress::BaseLayerWitness(82usize),
+    GKRAddress::BaseLayerWitness(83usize),
+    GKRAddress::BaseLayerWitness(84usize),
+    GKRAddress::BaseLayerWitness(85usize),
+    GKRAddress::BaseLayerWitness(86usize),
+    GKRAddress::BaseLayerWitness(87usize),
+    GKRAddress::BaseLayerWitness(88usize),
+    GKRAddress::BaseLayerWitness(89usize),
+    GKRAddress::BaseLayerWitness(90usize),
+    GKRAddress::BaseLayerWitness(91usize),
+    GKRAddress::BaseLayerWitness(92usize),
+    GKRAddress::BaseLayerWitness(93usize),
+    GKRAddress::BaseLayerWitness(94usize),
+    GKRAddress::BaseLayerWitness(95usize),
+    GKRAddress::BaseLayerWitness(96usize),
+    GKRAddress::BaseLayerWitness(97usize),
+    GKRAddress::BaseLayerWitness(98usize),
+    GKRAddress::BaseLayerWitness(99usize),
+    GKRAddress::BaseLayerWitness(100usize),
+    GKRAddress::BaseLayerWitness(101usize),
+    GKRAddress::BaseLayerWitness(102usize),
+    GKRAddress::BaseLayerWitness(103usize),
+    GKRAddress::BaseLayerWitness(104usize),
+    GKRAddress::BaseLayerWitness(105usize),
+    GKRAddress::BaseLayerWitness(106usize),
+    GKRAddress::BaseLayerWitness(107usize),
+    GKRAddress::BaseLayerWitness(108usize),
+    GKRAddress::BaseLayerWitness(109usize),
+    GKRAddress::BaseLayerWitness(110usize),
+    GKRAddress::BaseLayerWitness(111usize),
+    GKRAddress::BaseLayerWitness(112usize),
+    GKRAddress::BaseLayerWitness(113usize),
+    GKRAddress::BaseLayerWitness(114usize),
+    GKRAddress::BaseLayerWitness(115usize),
+    GKRAddress::BaseLayerWitness(116usize),
+    GKRAddress::BaseLayerWitness(117usize),
+    GKRAddress::BaseLayerWitness(118usize),
+    GKRAddress::BaseLayerWitness(119usize),
+    GKRAddress::BaseLayerWitness(120usize),
+    GKRAddress::BaseLayerWitness(121usize),
+    GKRAddress::BaseLayerWitness(122usize),
+    GKRAddress::BaseLayerWitness(123usize),
+    GKRAddress::BaseLayerWitness(124usize),
+    GKRAddress::BaseLayerWitness(125usize),
+    GKRAddress::BaseLayerWitness(126usize),
+    GKRAddress::BaseLayerWitness(127usize),
+    GKRAddress::BaseLayerWitness(128usize),
+    GKRAddress::BaseLayerWitness(129usize),
+    GKRAddress::BaseLayerWitness(130usize),
+    GKRAddress::BaseLayerWitness(131usize),
+    GKRAddress::BaseLayerWitness(132usize),
+    GKRAddress::BaseLayerWitness(133usize),
+    GKRAddress::BaseLayerWitness(134usize),
+    GKRAddress::BaseLayerWitness(135usize),
+    GKRAddress::BaseLayerWitness(136usize),
+    GKRAddress::BaseLayerWitness(137usize),
+    GKRAddress::BaseLayerWitness(138usize),
+    GKRAddress::BaseLayerWitness(139usize),
+    GKRAddress::BaseLayerWitness(140usize),
+    GKRAddress::BaseLayerWitness(141usize),
+    GKRAddress::BaseLayerWitness(142usize),
+    GKRAddress::BaseLayerWitness(143usize),
+    GKRAddress::BaseLayerWitness(144usize),
+    GKRAddress::BaseLayerWitness(145usize),
+    GKRAddress::BaseLayerWitness(146usize),
+    GKRAddress::BaseLayerWitness(147usize),
+    GKRAddress::BaseLayerWitness(148usize),
+    GKRAddress::BaseLayerWitness(149usize),
+    GKRAddress::BaseLayerWitness(150usize),
+    GKRAddress::BaseLayerWitness(151usize),
+    GKRAddress::BaseLayerWitness(152usize),
+    GKRAddress::BaseLayerWitness(153usize),
+    GKRAddress::BaseLayerWitness(154usize),
+    GKRAddress::BaseLayerWitness(155usize),
+    GKRAddress::BaseLayerWitness(156usize),
+    GKRAddress::BaseLayerWitness(157usize),
+    GKRAddress::BaseLayerWitness(158usize),
+    GKRAddress::BaseLayerWitness(159usize),
+    GKRAddress::BaseLayerWitness(160usize),
+    GKRAddress::BaseLayerMemory(6usize),
+    GKRAddress::BaseLayerMemory(7usize),
+    GKRAddress::BaseLayerMemory(8usize),
+    GKRAddress::BaseLayerMemory(9usize),
+    GKRAddress::BaseLayerMemory(12usize),
+    GKRAddress::BaseLayerMemory(13usize),
+    GKRAddress::BaseLayerMemory(14usize),
+    GKRAddress::BaseLayerMemory(15usize),
+    GKRAddress::BaseLayerMemory(18usize),
+    GKRAddress::BaseLayerMemory(19usize),
+    GKRAddress::BaseLayerMemory(20usize),
+    GKRAddress::BaseLayerMemory(21usize),
+    GKRAddress::BaseLayerMemory(24usize),
+    GKRAddress::BaseLayerMemory(25usize),
+    GKRAddress::BaseLayerMemory(26usize),
+    GKRAddress::BaseLayerMemory(27usize),
+    GKRAddress::BaseLayerMemory(30usize),
+    GKRAddress::BaseLayerMemory(31usize),
+    GKRAddress::BaseLayerMemory(32usize),
+    GKRAddress::BaseLayerMemory(33usize),
+    GKRAddress::BaseLayerMemory(36usize),
+    GKRAddress::BaseLayerMemory(37usize),
+    GKRAddress::BaseLayerMemory(38usize),
+    GKRAddress::BaseLayerMemory(39usize),
+    GKRAddress::BaseLayerMemory(42usize),
+    GKRAddress::BaseLayerMemory(43usize),
+    GKRAddress::BaseLayerMemory(44usize),
+    GKRAddress::BaseLayerMemory(45usize),
+    GKRAddress::BaseLayerMemory(48usize),
+    GKRAddress::BaseLayerMemory(49usize),
+    GKRAddress::BaseLayerMemory(50usize),
+    GKRAddress::BaseLayerMemory(51usize),
+    GKRAddress::BaseLayerMemory(58usize),
+    GKRAddress::BaseLayerMemory(59usize),
+    GKRAddress::BaseLayerMemory(62usize),
+    GKRAddress::BaseLayerMemory(63usize),
+    GKRAddress::BaseLayerMemory(66usize),
+    GKRAddress::BaseLayerMemory(67usize),
+    GKRAddress::BaseLayerMemory(70usize),
+    GKRAddress::BaseLayerMemory(71usize),
+    GKRAddress::BaseLayerMemory(74usize),
+    GKRAddress::BaseLayerMemory(75usize),
+    GKRAddress::BaseLayerMemory(78usize),
+    GKRAddress::BaseLayerMemory(79usize),
+    GKRAddress::BaseLayerMemory(82usize),
+    GKRAddress::BaseLayerMemory(83usize),
+    GKRAddress::BaseLayerMemory(86usize),
+    GKRAddress::BaseLayerMemory(87usize),
+    GKRAddress::BaseLayerMemory(90usize),
+    GKRAddress::BaseLayerMemory(92usize),
+    GKRAddress::BaseLayerMemory(93usize),
+    GKRAddress::BaseLayerMemory(94usize),
+    GKRAddress::BaseLayerMemory(95usize),
+    GKRAddress::BaseLayerMemory(96usize),
+    GKRAddress::Setup(0usize),
+    GKRAddress::Setup(1usize),
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 0usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 1usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 2usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 3usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 4usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 5usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 6usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 7usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 8usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 9usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 10usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 11usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 12usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 13usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 14usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 15usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 16usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 17usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 18usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 19usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 20usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 21usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 22usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 23usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 24usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 25usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 26usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 27usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 28usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 29usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 30usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 31usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 32usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 33usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 34usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 35usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 36usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 37usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 38usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 39usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 40usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 41usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 42usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 43usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 44usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 45usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 46usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 47usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 48usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 49usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 50usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 51usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 52usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 53usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 54usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 55usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 56usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 57usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 58usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 59usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 60usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 61usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 62usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 63usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 64usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 65usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 66usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 67usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 68usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 69usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 70usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 71usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 72usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 73usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 74usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 75usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 76usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 77usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 78usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 79usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 80usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 81usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 82usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 83usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 84usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 85usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 86usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 87usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 88usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 89usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 90usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 91usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 92usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 93usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 94usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 95usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 96usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 97usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 98usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 99usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 100usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 101usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 102usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 103usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 104usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 105usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 106usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 107usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 108usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 109usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 110usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 111usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 112usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 113usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 114usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 115usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 116usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 117usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 118usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 119usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 120usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 121usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 122usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 123usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 124usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 125usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 126usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 127usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 128usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 129usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 130usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 131usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 132usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 133usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 134usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 135usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 136usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 137usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 138usize,
+    },
+    GKRAddress::Cached {
+        layer: 0usize,
+        offset: 139usize,
+    },
+];
+pub const BASE_LAYER_ADDITIONAL_OPENINGS: &[GKRAddress] = &[
+    GKRAddress::BaseLayerWitness(158usize),
+    GKRAddress::BaseLayerWitness(159usize),
+    GKRAddress::BaseLayerMemory(0usize),
+    GKRAddress::BaseLayerMemory(1usize),
+    GKRAddress::BaseLayerMemory(2usize),
+    GKRAddress::BaseLayerMemory(3usize),
+    GKRAddress::BaseLayerMemory(4usize),
+    GKRAddress::BaseLayerMemory(5usize),
+    GKRAddress::BaseLayerMemory(10usize),
+    GKRAddress::BaseLayerMemory(11usize),
+    GKRAddress::BaseLayerMemory(16usize),
+    GKRAddress::BaseLayerMemory(17usize),
+    GKRAddress::BaseLayerMemory(22usize),
+    GKRAddress::BaseLayerMemory(23usize),
+    GKRAddress::BaseLayerMemory(28usize),
+    GKRAddress::BaseLayerMemory(29usize),
+    GKRAddress::BaseLayerMemory(34usize),
+    GKRAddress::BaseLayerMemory(35usize),
+    GKRAddress::BaseLayerMemory(40usize),
+    GKRAddress::BaseLayerMemory(41usize),
+    GKRAddress::BaseLayerMemory(46usize),
+    GKRAddress::BaseLayerMemory(47usize),
+    GKRAddress::BaseLayerMemory(52usize),
+    GKRAddress::BaseLayerMemory(53usize),
+    GKRAddress::BaseLayerMemory(54usize),
+    GKRAddress::BaseLayerMemory(55usize),
+    GKRAddress::BaseLayerMemory(56usize),
+    GKRAddress::BaseLayerMemory(57usize),
+    GKRAddress::BaseLayerMemory(60usize),
+    GKRAddress::BaseLayerMemory(61usize),
+    GKRAddress::BaseLayerMemory(64usize),
+    GKRAddress::BaseLayerMemory(65usize),
+    GKRAddress::BaseLayerMemory(68usize),
+    GKRAddress::BaseLayerMemory(69usize),
+    GKRAddress::BaseLayerMemory(72usize),
+    GKRAddress::BaseLayerMemory(73usize),
+    GKRAddress::BaseLayerMemory(76usize),
+    GKRAddress::BaseLayerMemory(77usize),
+    GKRAddress::BaseLayerMemory(80usize),
+    GKRAddress::BaseLayerMemory(81usize),
+    GKRAddress::BaseLayerMemory(84usize),
+    GKRAddress::BaseLayerMemory(85usize),
+    GKRAddress::BaseLayerMemory(88usize),
+    GKRAddress::BaseLayerMemory(89usize),
+    GKRAddress::BaseLayerMemory(91usize),
+    GKRAddress::BaseLayerMemory(95usize),
+    GKRAddress::BaseLayerMemory(96usize),
+    GKRAddress::Setup(2usize),
+    GKRAddress::Setup(3usize),
+    GKRAddress::Setup(4usize),
+];
+pub const WHIR_ROUNDS: usize = 6usize;
+pub const WHIR_FOLD_STEPS: [usize; 6usize] = [1usize, 4usize, 4usize, 4usize, 4usize, 2usize];
+pub const WHIR_QUERIES: [usize; 6usize] = [68usize, 23usize, 12usize, 10usize, 10usize, 10usize];
+pub const WHIR_POW_BITS: [u32; 6usize] = [24u32, 24u32, 24u32, 24u32, 24u32, 24u32];
+pub const WHIR_BASE_LDE_FACTOR: usize = 2usize;
+pub const WHIR_LDE_FACTORS: [usize; 5usize] = [8usize, 64usize, 128usize, 128usize, 128usize];
+pub const WHIR_CAP_SIZE: usize = 16usize;
+pub const FINAL_M: usize = 3usize;
+pub const FINAL_MONOMIALS_LEN: usize = 8usize;
+pub const NUM_BASE_CLAIMS: usize = 217usize;
+pub const NUM_MEMORY_CLAIMS: usize = 54usize;
+pub const NUM_WITNESS_CLAIMS: usize = 161usize;
+pub const NUM_SETUP_CLAIMS: usize = 2usize;
+pub const BASE_ORACLE_DEPTH: usize = 18usize;
+pub const SETUP_ORACLE_DEPTH: usize = 17usize;
+pub const WHIR_ORACLE_DEPTHS: [usize; 5usize] = [16usize, 15usize, 12usize, 8usize, 6usize];
+pub const WHIR_CAP_WORDS: usize = 128usize;
+pub const SETUP_CAP_WORDS: usize = 256usize;
+pub const MEM_CAP_WORDS: usize = 128usize;
+pub const WIT_CAP_WORDS: usize = 128usize;
+pub const TRACE_LEN_LOG2: usize = 22usize;
+pub const CAPS_OFFSET_IN_TRANSCRIPT: usize = 28usize;
+#[doc = r" Actual oracle column counts (may differ from NUM_*_CLAIMS which only"]
+#[doc = r" count GKR base layer addresses)."]
+pub const NUM_MEM_ORACLE_COLS: usize = 97usize;
+pub const NUM_WIT_ORACLE_COLS: usize = 161usize;
+pub const NUM_SETUP_ORACLE_COLS: usize = 5usize;
+pub const TOTAL_ORACLE_COLS: usize = 263usize;

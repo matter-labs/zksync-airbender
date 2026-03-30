@@ -14,13 +14,14 @@ pub use verifier_common::prover;
 pub use verifier_common::transcript;
 
 #[cfg(feature = "gkr_verify")]
-#[path = "generated/add_sub_lui_auipc_mop/mod.rs"]
-pub mod add_sub_lui_auipc_mop;
-
+#[path = "generated"]
+mod __generated {
+    macro_rules! declare_gkr_modules {
+        ($($name:ident: $schedule:ident),* $(,)?) => {
+            $(pub mod $name;)*
+        };
+    }
+    verifier_common::gkr_circuits!(declare_gkr_modules);
+}
 #[cfg(feature = "gkr_verify")]
-#[path = "generated/jump_branch_slt/mod.rs"]
-pub mod jump_branch_slt;
-
-#[cfg(feature = "gkr_verify")]
-#[path = "generated/shift_binop/mod.rs"]
-pub mod shift_binop;
+pub use __generated::*;

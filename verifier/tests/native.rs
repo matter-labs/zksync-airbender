@@ -1,5 +1,6 @@
 #![cfg(feature = "gkr_verify")]
 
+#[macro_use]
 mod common;
 
 use verifier_common::prover::nd_source_std::{set_iterator, ThreadLocalBasedSource};
@@ -12,7 +13,7 @@ fn run_native(name: &str) {
             .stack_size(1 << 27)
             .spawn_scoped(s, move || {
                 set_iterator(nds.into_iter());
-                common::with_circuit!(name, |m| {
+                with_circuit!(name, |m| {
                     m::verify_all::<ThreadLocalBasedSource>()
                         .unwrap_or_else(|e| panic!("{} failed: {:?}", name, e));
                 });
@@ -26,15 +27,14 @@ fn run_native(name: &str) {
     });
 }
 
-macro_rules! native_tests {
-    ($($circuit:ident),* $(,)?) => {
+macro_rules! generate_native_tests {
+    ($($name:ident: $schedule:ident),* $(,)?) => {
         $(
             #[test]
-            fn $circuit() {
-                run_native(stringify!($circuit));
+            fn $name() {
+                run_native(stringify!($name));
             }
         )*
     };
 }
-
-native_tests!(add_sub_lui_auipc_mop, jump_branch_slt, shift_binop,);
+verifier_common::gkr_circuits!(generate_native_tests);

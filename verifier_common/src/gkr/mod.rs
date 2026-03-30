@@ -57,6 +57,7 @@ pub fn commit_eval_buffer<const BUF: usize>(
 pub enum GKRVerificationError {
     SumcheckRoundFailed { layer: usize, round: usize },
     FinalStepCheckFailed { layer: usize },
+    CacheRelationFailed { layer: usize },
 }
 
 pub struct GKRVerifierOutput<
@@ -64,7 +65,9 @@ pub struct GKRVerifierOutput<
     E: Field,
     const ROUNDS: usize,
     const ADDRS: usize,
-    const CAP_WORDS: usize,
+    const SETUP_CAP: usize,
+    const MEM_CAP: usize,
+    const WIT_CAP: usize,
 > {
     pub base_layer_addrs: &'a [GKRAddress],
     pub evaluation_point: [E; ROUNDS],
@@ -74,7 +77,7 @@ pub struct GKRVerifierOutput<
     pub whir_batching_challenge: E,
     pub whir_transcript_seed: Seed,
     pub base_layer_claims: LazyVec<E, ADDRS>,
-    pub setup_cap: [u32; CAP_WORDS],
-    pub memory_cap: [u32; CAP_WORDS],
-    pub witness_cap: [u32; CAP_WORDS],
+    pub setup_cap: [u32; SETUP_CAP],
+    pub memory_cap: [u32; MEM_CAP],
+    pub witness_cap: [u32; WIT_CAP],
 }
