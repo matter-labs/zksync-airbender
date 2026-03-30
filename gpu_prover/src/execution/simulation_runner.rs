@@ -1,3 +1,5 @@
+#[cfg(not(target_arch = "x86_64"))]
+use self::compat::{Context, JittedCode};
 use crate::execution::messages::WorkerResult;
 use crate::execution::tracing::{DataTraceRanges, TracingDataProducers, TracingType};
 use crate::execution::A;
@@ -16,8 +18,6 @@ use riscv_transpiler::jit::{
     ContextImpl, MachineState, MemoryHolder, TraceChunk, MAX_NUM_COUNTERS, RAM_SIZE,
 };
 use riscv_transpiler::vm::NonDeterminismCSRSource;
-#[cfg(not(target_arch = "x86_64"))]
-use std::marker::PhantomData;
 use std::mem::replace;
 use std::ops::{Deref, DerefMut};
 use std::os::raw::c_void;
@@ -27,39 +27,39 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use type_map::concurrent::TypeMap;
 
-// Keep stubbed builds compilable on non-x86_64 targets; actual prover execution still
-// requires the x86_64 JIT and will panic if it reaches this backend.
 #[cfg(not(target_arch = "x86_64"))]
-struct Context<I: ContextImpl> {
-    implementation: I,
-}
+mod compat {
+    use super::{ContextImpl, MemoryHolder, TraceChunk};
+    use std::marker::PhantomData;
+    use std::ptr::NonNull;
 
-#[cfg(not(target_arch = "x86_64"))]
-struct JittedCode<I: ContextImpl> {
-    _marker: PhantomData<I>,
-}
-
-#[cfg(not(target_arch = "x86_64"))]
-unsafe impl<I: ContextImpl> Send for JittedCode<I> {}
-
-#[cfg(not(target_arch = "x86_64"))]
-unsafe impl<I: ContextImpl> Sync for JittedCode<I> {}
-
-#[cfg(not(target_arch = "x86_64"))]
-impl<I: ContextImpl> JittedCode<I> {
-    fn preprocess_bytecode(_program: &[u32], _cycles_bound: Option<u32>) -> Self {
-        Self {
-            _marker: PhantomData,
-        }
+    pub(super) struct Context<I: ContextImpl> {
+        pub(super) implementation: I,
     }
 
-    fn run_over_prepared_memory(
-        &self,
-        _context: &mut Context<I>,
-        _memory: &mut MemoryHolder,
-        _initial_trace_chunk: NonNull<TraceChunk>,
-    ) {
-        panic!("gpu_prover simulation requires the x86_64 JIT backend");
+    pub(super) struct JittedCode<I: ContextImpl> {
+        _marker: PhantomData<I>,
+    }
+
+    unsafe impl<I: ContextImpl> Send for JittedCode<I> {}
+
+    unsafe impl<I: ContextImpl> Sync for JittedCode<I> {}
+
+    impl<I: ContextImpl> JittedCode<I> {
+        pub(super) fn preprocess_bytecode(_program: &[u32], _cycles_bound: Option<u32>) -> Self {
+            Self {
+                _marker: PhantomData,
+            }
+        }
+
+        pub(super) fn run_over_prepared_memory(
+            &self,
+            _context: &mut Context<I>,
+            _memory: &mut MemoryHolder,
+            _initial_trace_chunk: NonNull<TraceChunk>,
+        ) {
+            panic!("gpu_prover simulation requires the x86_64 JIT backend");
+        }
     }
 }
 
@@ -266,7 +266,7 @@ impl<ND: NonDeterminismCSRSource + Send + 'static, T: TracingType + 'static>
         let snapshot_index = self.snapshot_index;
         self.snapshot_index += 1;
         let mut machine_state = *machine_state;
-        let timestamp = machine_state.timestamp.next_multiple_of(TIMESTAMP_STEP);
+        let timestamp = machine_state.timestamp.next_multiple_of(TIMESTAMP_STEP); // align timestamp, needs to be fixed in the VM
         machine_state.timestamp = timestamp;
         let final_state = machine_state;
         let initial_state = replace(&mut self.state, machine_state);
