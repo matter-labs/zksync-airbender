@@ -1,5 +1,3 @@
-#[cfg(not(target_arch = "x86_64"))]
-use self::compat::{Context, JittedCode};
 use crate::execution::messages::WorkerResult;
 use crate::execution::tracing::{DataTraceRanges, TracingDataProducers, TracingType};
 use crate::execution::A;
@@ -12,8 +10,6 @@ use era_cudart_sys::{cudaHostRegister, cudaHostUnregister};
 use itertools::Itertools;
 use log::{debug, trace};
 use riscv_transpiler::common_constants::ROM_WORD_SIZE;
-#[cfg(target_arch = "x86_64")]
-use riscv_transpiler::jit::{Context, JittedCode};
 use riscv_transpiler::jit::{
     ContextImpl, MachineState, MemoryHolder, TraceChunk, MAX_NUM_COUNTERS, RAM_SIZE,
 };
@@ -27,6 +23,15 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use type_map::concurrent::TypeMap;
 
+#[cfg(not(target_arch = "x86_64"))]
+use self::compat::{Context, JittedCode};
+#[cfg(target_arch = "x86_64")]
+use riscv_transpiler::jit::{Context, JittedCode};
+
+// We're depending on JIT unconditionally, so it can fail compilation on some platforms,
+// since some of the exported paths are platform-dependent. So, we provide panicking
+// replacements to allow compilation on the platforms, e.g. with
+// `ZKSYNC_USE_CUDA_STUBS`.
 #[cfg(not(target_arch = "x86_64"))]
 mod compat {
     use super::{ContextImpl, MemoryHolder, TraceChunk};
