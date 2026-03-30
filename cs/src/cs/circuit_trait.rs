@@ -201,6 +201,7 @@ pub trait Circuit<F: PrimeField>: Sized {
     ) -> RegisterAndIndirectAccesses;
 
     fn require_invariant(&mut self, variable: Variable, invariant: Invariant);
+    fn require_invariant_from_lookup_input(&mut self, input: LookupInput<F>, invariant: Invariant);
     fn finalize(self) -> (CircuitOutput<F>, Option<Self::WitnessPlacer>);
 
     fn materialize_table<const TOTAL_WIDTH: usize>(&mut self, table_type: TableType);

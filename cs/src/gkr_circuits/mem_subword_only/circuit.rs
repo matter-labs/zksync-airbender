@@ -1,12 +1,11 @@
 use super::*;
 use crate::constraint::Constraint;
 use crate::constraint::Term;
-use crate::cs::circuit::LookupQueryTableType;
 use crate::cs::circuit_trait::*;
 use crate::oracle::Placeholder;
 use crate::tables::TableDriver;
 use crate::types::*;
-use crate::witness_placer::{WitnessPlacer, WitnessComputationalInteger};
+use crate::witness_placer::*;
 use field::PrimeField;
 
 const TABLES_TOTAL_WIDTH: usize = 3; // TODO: strict enough?
@@ -15,7 +14,6 @@ pub fn mem_subword_only_tables() -> Vec<TableType> {
     vec![
         // all the ROM tables are initialised with a special method, tests use dummy ROM bytecode
         TableType::ZeroEntry, // we need it, as we use conditional lookup enforcements
-        // TableType::RomAddressSpaceSeparator, (2^16)
         TableType::StoreByteExistingContribution, // "clear" table (2^17)
         // TableType::LoadHalfwordRomRead, // ROM*H table (2^22)
         // TableType::LoadByteRomRead, // ROM*B table (2^23)
@@ -42,16 +40,10 @@ pub fn create_mem_subword_only_special_tables<
     const ROM_ADDRESS_SPACE_SECOND_WORD_BITS: usize,
 >(
     bytecode: &[u32],
-) -> [(TableType, crate::tables::LookupWrapper<F>); 3] {
+) -> [(TableType, crate::tables::LookupWrapper<F>); 2] {
     use crate::tables::{
         create_load_byte_from_rom_table, create_load_halfword_from_rom_table,
-        create_rom_separator_table,
     };
-
-    let id = TableType::RomAddressSpaceSeparator.to_table_id();
-    let rom_separator_table = crate::tables::LookupWrapper::Initialized(
-        create_rom_separator_table::<F, ROM_ADDRESS_SPACE_SECOND_WORD_BITS>(id),
-    );
 
     let id = TableType::LoadHalfwordRomRead.to_table_id();
     let rom_halfword_table = crate::tables::LookupWrapper::Initialized(
@@ -64,12 +56,14 @@ pub fn create_mem_subword_only_special_tables<
     );
 
     [
-        (TableType::RomAddressSpaceSeparator, rom_separator_table),
         (TableType::LoadHalfwordRomRead, rom_halfword_table),
         (TableType::LoadByteRomRead, rom_byte_table),
     ]
 }
 
+// TODO: this circuit would benefit from the separation of mem accesses according to reg/ram:
+// - intermediate layer logic would be reduced (small memory saving)
+// - +1 variable saving for the high address limb of the register-only access
 #[allow(non_snake_case)]
 fn apply_mem_subword_only_inner<F: PrimeField, CS: Circuit<F>>(
     cs: &mut CS,
@@ -209,33 +203,30 @@ fn apply_mem_subword_only_inner<F: PrimeField, CS: Circuit<F>>(
         cs.add_constraint(Constraint::from(ishalfword) * Constraint::from(isbit0));
         ([cleanaddr_lo, cleanaddr_hi], [isbit0, isbit1])
     };
-    let [isrom, romaddr_hi] = {
-        let isrom = cs.add_named_variable("flag: are we in rom addr range?");
-        let romaddr_hi = cs.add_named_variable("address high 16bits truncated/wrapped to rom range (eg 6 bits)");
-        let [_, cleanaddr_hi] = cleanaddr;
+    let (isrom, romaddr) = {
+        let isrom = cs.add_named_boolean_variable("flag: are we in rom addr range?");
+        let rom = Term::from(isrom);
+        // cleanaddr_hi - 2^ROM_SECOND_WORD_BITS == residue - 2^16 ROM
+        let [cleanaddr_lo, cleanaddr_hi] = cleanaddr;
         {
-            // extra explicit wit.gen due to L1->L2 transition
-            let inputs = &[cleanaddr_hi.clone()];
-            let output_variables = &[isrom, romaddr_hi];
-            let table_type = Constraint::from(TableType::RomAddressSpaceSeparator.to_num());
-            cs::lookup_utils::peek_lookup_values_unconstrained_into_variables_from_constraints(cs, inputs, output_variables, table_type);
+            // explicit wit.gen
+            let cleanaddr_hi = cleanaddr_hi.clone();
+            let value_fn = move |placer: &mut CS::WitnessPlacer| {
+                let cleanaddr_hi = cleanaddr_hi.evaluate_with_placer(placer);
+                let extrabits = cleanaddr_hi.as_integer().shr(common_constants::ROM_SECOND_WORD_BITS as u32);
+                let rom = extrabits.is_zero();
+                placer.assign_mask(isrom.get_variable().unwrap(), &rom);
+            };
+            cs.set_values(value_fn);
         }
-        let L2_isrom = cs.add_intermediate_named_variable_from_constraint(Constraint::from(isrom), "isrom (L2)");
-        let L2_romaddr_hi = cs.add_intermediate_named_variable_from_constraint(Constraint::from(romaddr_hi), "romaddr_hi (L2)");
-        let L2_cleanaddr_hi = cs.add_intermediate_named_variable_from_constraint(cleanaddr_hi, "cleanaddr_hi (L2)");
-        let tuple = [
-            LookupInput::from(L2_cleanaddr_hi),
-            LookupInput::from(L2_isrom),
-            LookupInput::from(L2_romaddr_hi),
-        ];
-        cs.enforce_lookup_tuple_for_fixed_table(&tuple, TableType::RomAddressSpaceSeparator, false);
+        let shift16 = Term::from(1 << 16);
+        let shiftromaddr_hi = Term::from(1 << common_constants::ROM_SECOND_WORD_BITS);
+        let residue = cleanaddr_hi.clone() - shiftromaddr_hi + shift16 * rom;
+        let L2_residue = cs.add_intermediate_named_variable_from_constraint(residue, "residue (L2)");
+        cs.require_invariant_from_lookup_input(LookupInput::from(L2_residue), Invariant::RangeChecked { width: 16 });
         // trap store*rom
         cs.add_constraint(Constraint::from(isrom) * Constraint::from(isstore));
-        [isrom, romaddr_hi]
-    };
-    let romaddr = {
-        let [cleanaddr_lo, _] = cleanaddr;
-        cleanaddr_lo + Term::from(1<<16) * Term::from(romaddr_hi)
+        (isrom, cleanaddr_lo + shift16 * cleanaddr_hi)
     };
 
 

@@ -2,38 +2,38 @@ use super::*;
 
 pub const ROM_PADDING_OPCODE: u32 = 0x0;
 
-pub fn create_rom_separator_table<
-    F: PrimeField,
-    const ROM_ADDRESS_SPACE_SECOND_WORD_BITS: usize,
->(
-    id: u32,
-) -> LookupTable<F> {
-    let keys = key_for_continuous_log2_range::<F, 1>(16);
-    const TABLE_NAME: &'static str = "ROM address space separator table";
-    LookupTable::create_table_from_key_and_pure_generation_fn(
-        &keys,
-        TABLE_NAME.to_string(),
-        1,
-        2,
-        |keys| {
-            let a = keys[0].as_u32_reduced();
-            assert!(a < (1u32 << 16));
+// pub fn create_rom_separator_table<
+//     F: PrimeField,
+//     const ROM_ADDRESS_SPACE_SECOND_WORD_BITS: usize,
+// >(
+//     id: u32,
+// ) -> LookupTable<F> {
+//     let keys = key_for_continuous_log2_range::<F, 1>(16);
+//     const TABLE_NAME: &'static str = "ROM address space separator table";
+//     LookupTable::create_table_from_key_and_pure_generation_fn(
+//         &keys,
+//         TABLE_NAME.to_string(),
+//         1,
+//         2,
+//         |keys| {
+//             let a = keys[0].as_u32_reduced();
+//             assert!(a < (1u32 << 16));
 
-            let bound = 1 << ROM_ADDRESS_SPACE_SECOND_WORD_BITS;
-            let input = a;
-            let is_rom = input < bound;
-            let rom_addr_high = input % bound;
+//             let bound = 1 << ROM_ADDRESS_SPACE_SECOND_WORD_BITS;
+//             let input = a;
+//             let is_rom = input < bound;
+//             let rom_addr_high = input % bound;
 
-            let mut result = ArrayVec::new();
-            result.push(F::from_u32_unchecked(is_rom as u32));
-            result.push(F::from_u32_unchecked(rom_addr_high));
+//             let mut result = ArrayVec::new();
+//             result.push(F::from_u32_unchecked(is_rom as u32));
+//             result.push(F::from_u32_unchecked(rom_addr_high));
 
-            (a as usize, result)
-        },
-        Some(first_key_index_gen_fn::<F>),
-        id,
-    )
-}
+//             (a as usize, result)
+//         },
+//         Some(first_key_index_gen_fn::<F>),
+//         id,
+//     )
+// }
 
 /// Creating a table with ROM (program) data.
 /// The table will have a constant size (ROM_ADDRESS_SPACE_BOUND / 4), and look like this:

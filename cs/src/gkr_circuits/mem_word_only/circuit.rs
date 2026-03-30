@@ -1,7 +1,6 @@
 use super::*;
 use crate::constraint::Constraint;
 use crate::constraint::Term;
-use crate::cs::circuit::LookupQueryTableType;
 use crate::cs::circuit_trait::*;
 use crate::oracle::Placeholder;
 use crate::tables::TableDriver;
@@ -15,7 +14,6 @@ pub fn mem_word_only_tables() -> Vec<TableType> {
     vec![
         // all rom tables gotta be added in the prover code when bytecode data is available
         TableType::ZeroEntry, // we need it for romread's conditional lookup enforcement
-        // TableType::RomAddressSpaceSeparator
         // TableType::RomRead
     ]
 }
@@ -37,25 +35,23 @@ pub fn create_mem_word_only_special_tables<
     const ROM_ADDRESS_SPACE_SECOND_WORD_BITS: usize,
 >(
     bytecode: &[u32],
-) -> [(TableType, crate::tables::LookupWrapper<F>); 2] {
-    use crate::tables::{create_table_for_rom_image, create_rom_separator_table};
+) -> [(TableType, crate::tables::LookupWrapper<F>); 1] {
+    use crate::tables::create_table_for_rom_image;
 
     let id = TableType::RomRead.to_table_id();
     let rom_table = crate::tables::LookupWrapper::Initialized(
         create_table_for_rom_image::<F, ROM_ADDRESS_SPACE_SECOND_WORD_BITS>(bytecode, id),
     );
 
-    let id = TableType::RomAddressSpaceSeparator.to_table_id();
-    let rom_separator_table = crate::tables::LookupWrapper::Initialized(
-        create_rom_separator_table::<F, ROM_ADDRESS_SPACE_SECOND_WORD_BITS>(id),
-    );
-
     [
         (TableType::RomRead, rom_table),
-        (TableType::RomAddressSpaceSeparator, rom_separator_table),
     ]
 }
 
+// TODO: this circuit would benefit from the separation of mem accesses according to reg/ram:
+// - intermediate layer logic would be reduced (small memory saving)
+// - +1 variable saving for the high address limb of the register-only access
+#[allow(non_snake_case)]
 fn apply_mem_word_only_inner<F: PrimeField, CS: Circuit<F>>(
     cs: &mut CS,
     inputs: OpcodeFamilyCircuitState<F>,
@@ -90,91 +86,103 @@ fn apply_mem_word_only_inner<F: PrimeField, CS: Circuit<F>>(
 
     // strategies:
     // - we perform an initial setup: computing the addr, and fetching rom data.
+    //   the addr is implicitly computed from the mem accesses, where it should be clean
+    //   
     //   we get rom data from a lookup (that also manages traps),
+    //   finally store*rom is trapped
     // - then we manage 3 orthogonal edge cases: load*!rom, load*rom, store*!rom (and store*rom is trapped)
+    //   the orthogonal edge cases are primarily managed by 1 shared lookup that "writes" to 2 outputs.
+    //   the outputs are implicitly selecting the variables that must be overwritten in the memory accesses.
+    //   in case of load*rom we simply perform the RomRead lookup
+    //   in all other cases the output expressions get masked to ==0 constraints
     // - bump pc
 
     let isstore = decoder.perform_write();
-    let isload = decoder.perform_write().toggle();
-    let addr = {
-        let [rs1_low, rs1_high] = rs1;
-        let [imm_low, imm_high] = inputs.decoder_data.imm;
-        let low: Variable = cs.add_named_variable("addr_low"); // range checked by memory accesses
-        let high = cs.add_named_variable("addr_high"); // range checked by memory accesses
-        // cs.require_invariant(low, Invariant::RangeChecked { width: 16 });
-        // cs.require_invariant(high, Invariant::RangeChecked { width: 16 });
-        let of_low = cs.add_named_boolean_variable("low overflow: rs1 +u16 imm");
-        let of_high = cs.add_named_boolean_variable("high overflow: rs1 +u16 imm");
-        let shift16 = Term::from(1<<16);
-        {
-            // explicit wit.gen
-            let value_fn = move |placer: &mut CS::WitnessPlacer| {
-                let [rs1_lo, rs1_hi] = rs1.map(|var| placer.get_u16(var));
-                let [imm_lo, imm_hi] = inputs.decoder_data.imm.map(|var| placer.get_u16(var));
-                let (addr_lo, of_lo) = rs1_lo.overflowing_add(&imm_lo);
-                let (addr_hi, of_hi) = rs1_hi.overflowing_add_with_carry(&imm_hi, &of_lo);
-                placer.assign_mask(of_low.get_variable().unwrap(), &of_lo);
-                placer.assign_mask(of_high.get_variable().unwrap(), &of_hi);
-                placer.assign_u16(low, &addr_lo);
-                placer.assign_u16(high, &addr_hi);
-            };
-            cs.set_values(value_fn);
-        }
-        cs.add_constraint_allow_explicit_linear(Term::from(rs1_low) + Term::from(imm_low) - Term::from(low) - shift16*Term::from(of_low));
-        cs.add_constraint_allow_explicit_linear(Term::from(of_low) + Term::from(rs1_high) + Term::from(imm_high) - Term::from(high) - shift16*Term::from(of_high));
-        [low, high]
-    };
-    let [isrom, romaddr_hi] = {
-        let isrom = cs.add_named_variable("flag: are we in rom addr range?");
-        let romaddr_hi = cs.add_named_variable("address high 16bits truncated/wrapped to rom range (eg 6 bits)");
-        let [_, addr_hi] = addr;
-        let inputs = &[addr_hi].map(LookupInput::from);
-        let output_variables = &[isrom, romaddr_hi];
-        let table_type = LookupQueryTableType::Constant(TableType::RomAddressSpaceSeparator);
-        cs.set_variables_from_lookup_constrained(inputs, output_variables, table_type);
-        // trap store*rom
-        cs.add_constraint(Constraint::from(isrom) * Constraint::from(isstore));
-        [isrom, romaddr_hi]
-    };
-    let romread = {
-        let lo = cs.add_named_variable("romread low 16bits");
-        let hi = cs.add_named_variable("romread high 16bits");
-        // also traps +1/2/3 word offsets
-        let [addr_lo, _] = addr;
-        // NB: to avoid scenarios where romread!=0 but we're inpadding so memwrite==0, we paatch this to zero table
-        let exe = inputs.execute;
-        let inputs = &[Constraint::from(addr_lo) + Term::from(1 << 16) * Term::from(romaddr_hi)].map(LookupInput::from);
-        let output_variables = &[lo, hi];
-        // let table_type = LookupQueryTableType::Constant(TableType::RomRead);
-        let table_type = LookupQueryTableType::Expression(LookupInput::from(Term::from(exe)*Term::from(TableType::RomRead.to_num())));
-        cs.set_variables_from_lookup_constrained(inputs, output_variables, table_type);
-        [lo, hi]
-    };
+    let isload = isstore.toggle();
 
-    // now we are ready to read mem/rs2
-    let memread_addr = {
-        let rs2_addr = Register([Num::Var(inputs.decoder_data.rs2_index), Num::Constant(F::ZERO)]);
-        let ram_addr = Register(addr.map(Num::Var));
-        // NB: Register::choose might be outdated now..
-        Register::choose(cs, &isstore, &rs2_addr, &ram_addr).0.each_ref().map(Num::get_variable)
-    };
+
+
+    // read mem/rs2
+    let memread_addr = core::array::from_fn(|i| cs.add_named_variable(&format!("memread_addr[{i}]")));
+    {
+        let value_fn = move |placer: &mut CS::WitnessPlacer| {
+            let value = placer.get_oracle_u32(Placeholder::ShuffleRamAddress(1));
+            placer.assign_u32_from_u16_parts(memread_addr, &value);
+        };
+        cs.set_values(value_fn);
+    }
     let MemoryAccess::RegisterOrRam(RegisterOrRamAccess { read_value: WordRepresentation::U16Limbs(memread), .. }) = cs.request_mem_access(
         MemoryAccessRequest::RegisterOrRamRead { is_register: isstore, address: memread_addr, read_value_placeholder: Placeholder::ShuffleRamReadValue(1), split_as_u8: false }, 
         "mem/rs2 read", 
         1
     ) else {unreachable!()};
 
-    // now we may overwrite rd/mem
-    let memwrite_addr = {
-        let rd_addr = Register([Num::Var(inputs.decoder_data.rd_index), Num::Constant(F::ZERO)]);
-        let ram_addr = Register(addr.map(Num::Var));
-        // NB: Register::choose might be outdated now..
-        Register::choose(cs, &isstore, &ram_addr, &rd_addr).0.each_ref().map(Num::get_variable)
-    };
+    // overwrite rd/mem
+    let memwrite_addr = core::array::from_fn(|i| cs.add_named_variable(&format!("memwrite_addr[{i}]")));
+    {
+        let value_fn = move |placer: &mut CS::WitnessPlacer| {
+            let value = placer.get_oracle_u32(Placeholder::ShuffleRamAddress(2));
+            placer.assign_u32_from_u16_parts(memwrite_addr, &value);
+        };
+        cs.set_values(value_fn);
+    }
     let MemoryAccess::RegisterOrRam(RegisterOrRamAccess { read_value: WordRepresentation::U16Limbs(_oldread), write_value: WordRepresentation::U16Limbs(memwrite), .. }) = cs.request_mem_access(
         MemoryAccessRequest::RegisterOrRamReadWrite { is_register: isload, address: memwrite_addr, read_value_placeholder: Placeholder::ShuffleRamReadValue(2), write_value_placeholder: Placeholder::ShuffleRamWriteValue(2), split_read_as_u8: false, split_write_as_u8: false }, 
         "mem/rd write", 
         2) else {unreachable!()};
+
+
+    let cleanaddr = {
+        // first we gotta enforce the register address
+        let load = Constraint::from(isload);
+        let store = Constraint::from(isstore);
+        let [readaddr_lo, readaddr_hi] = memread_addr.map(Term::from);
+        let [writeaddr_lo, writeaddr_hi] = memwrite_addr.map(Term::from);
+        cs.add_constraint(
+            store.clone() * (readaddr_lo - Term::from(inputs.decoder_data.rs2_index))
+                + load.clone() * (writeaddr_lo - Term::from(inputs.decoder_data.rd_index)),
+        );
+        cs.add_constraint(store.clone() * readaddr_hi + load.clone() * writeaddr_hi);
+
+        // now we can enforce the ram address
+        let [rs1_lo, rs1_hi] = rs1.map(Term::from);
+        let [imm_lo, imm_hi] = inputs.decoder_data.imm.map(Term::from);
+        let cleanaddr_lo = load.clone() * readaddr_lo + store.clone() * writeaddr_lo;
+        let cleanaddr_hi = load * readaddr_hi + store * writeaddr_hi;
+        let shift16_inv = Term::from_field(F::from_u32(1 << 16).unwrap().inverse().unwrap());
+        let of_lo = shift16_inv.clone() * (rs1_lo + imm_lo - cleanaddr_lo.clone());
+        let of_hi = shift16_inv * (of_lo.clone() + rs1_hi + imm_hi - cleanaddr_hi.clone());
+        let L2_of_lo = Term::from(cs.add_intermediate_named_variable_from_constraint(of_lo, "addr: ofL (L2)"));
+        let L2_of_hi = Term::from(cs.add_intermediate_named_variable_from_constraint(of_hi, "addr: ofH (L2)"));
+        cs.add_constraint(L2_of_lo.clone() * (Term::from(1) - L2_of_lo)); // booleanity of overflow (low)
+        cs.add_constraint(L2_of_hi.clone() * (Term::from(1) - L2_of_hi)); // booleanity of overflow (high)
+        [cleanaddr_lo, cleanaddr_hi]
+    };
+    let (isrom, romaddr) = {
+        let isrom = cs.add_named_boolean_variable("flag: are we in rom addr range?");
+        let rom = Term::from(isrom);
+        // cleanaddr_hi - 2^ROM_SECOND_WORD_BITS == residue - 2^16 ROM
+        let [cleanaddr_lo, cleanaddr_hi] = cleanaddr;
+        {
+            // explicit wit.gen
+            let cleanaddr_hi = cleanaddr_hi.clone();
+            let value_fn = move |placer: &mut CS::WitnessPlacer| {
+                let cleanaddr_hi = cleanaddr_hi.evaluate_with_placer(placer);
+                let extrabits = cleanaddr_hi.as_integer().shr(common_constants::ROM_SECOND_WORD_BITS as u32);
+                let rom = extrabits.is_zero();
+                placer.assign_mask(isrom.get_variable().unwrap(), &rom);
+            };
+            cs.set_values(value_fn);
+        }
+        let shift16 = Term::from(1 << 16);
+        let shiftromaddr_hi = Term::from(1 << common_constants::ROM_SECOND_WORD_BITS);
+        let residue = cleanaddr_hi.clone() - shiftromaddr_hi + shift16 * rom;
+        let L2_residue = cs.add_intermediate_named_variable_from_constraint(residue, "residue (L2)");
+        cs.require_invariant_from_lookup_input(LookupInput::from(L2_residue), Invariant::RangeChecked { width: 16 });
+        // trap store*rom
+        cs.add_constraint(Constraint::from(isrom) * Constraint::from(isstore));
+        (isrom, cleanaddr_lo + shift16 * cleanaddr_hi)
+    };
 
     // now we may proceed with our "write" calculations
     // WRITE == memread | STORE*!ROM
@@ -185,15 +193,48 @@ fn apply_mem_word_only_inner<F: PrimeField, CS: Circuit<F>>(
     //          memread | else
     //       == romread | ROM
     //          memread | else
+    // NB: we just hide it all in one lookup like we did for the subword circuit
     {
         let [memread_lo, memread_hi] = memread.map(Constraint::from);
-        let [romread_lo, romread_hi] = romread.map(Constraint::from).map(Constraint::from);
-        let [memwrite_lo, memwrite_hi] = memwrite.map(Constraint::from).map(Constraint::from);
-        let notrom = Constraint::from(Boolean::Is(isrom).toggle());
-        let isrom = Term::from(isrom);
-        cs.add_constraint(isrom * romread_lo + notrom.clone() * memread_lo - memwrite_lo);
-        cs.add_constraint(isrom * romread_hi + notrom * memread_hi - memwrite_hi);
+        let [memwrite_lo, memwrite_hi] = memwrite.map(Constraint::from);
+        let rom = Constraint::from(isrom);
+        let notrom = Constraint::from(isrom.toggle());
+
+        let L2_rom = Term::from(cs.add_intermediate_named_variable_from_constraint(rom, "ROM (L2)"));
+        let L3_input = {
+            let L2_romaddr = Term::from(cs.add_intermediate_named_variable_from_constraint(romaddr, "romaddr (L2)"));
+            let input = L2_rom * L2_romaddr;
+            cs.add_intermediate_named_variable_from_constraint(input, "final lookup input (L3)")
+        };
+        let L3_output1 = {
+            let output1 = memwrite_lo - notrom.clone() * memread_lo;
+            let L2_output1 = Constraint::from(cs.add_intermediate_named_variable_from_constraint(output1, "final lookup output1 (L2)"));
+            cs.add_intermediate_named_variable_from_constraint(L2_output1, "final lookup output1 (L3)")
+        };
+        let L3_output2 = {
+            let output2 = memwrite_hi - notrom * memread_hi;
+            let L2_output2 = Constraint::from(cs.add_intermediate_named_variable_from_constraint(output2, "final lookup output2 (L2)"));
+            cs.add_intermediate_named_variable_from_constraint(L2_output2, "final lookup output2 (L3)")
+        };
+        let L3_table_id = {
+            let romread_table = Term::from(TableType::RomRead.to_num());
+            let L2_execute = Constraint::from(cs.add_intermediate_named_variable_from_constraint(
+                Constraint::from(inputs.execute),
+                "execute (L2)",
+            ));
+            // NB: to avoid scenarios where romread!=0 but we're in padding so ROM==1 and memwrite==0, 
+            // we patch this to zero table
+            let table_id = L2_execute * L2_rom * romread_table;
+            cs.add_intermediate_named_variable_from_constraint(table_id, "final lookup table_id (L3)")
+        };
+        let tuple = [
+            LookupInput::from(L3_input),
+            LookupInput::from(L3_output1),
+            LookupInput::from(L3_output2),
+        ];
+        cs.enforce_lookup_tuple_for_variable_table(&tuple, L3_table_id);
     }
+    
 
 
     // bump PC

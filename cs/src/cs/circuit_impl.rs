@@ -1161,6 +1161,20 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
         }
     }
 
+    fn require_invariant_from_lookup_input(&mut self, input: LookupInput<F>, invariant: Invariant) {
+        match invariant {
+            Invariant::RangeChecked { width } => {
+                assert!(
+                    width == 8 || width == 16,
+                    "only width 8 and 16 are supported"
+                );
+                let query = RangeCheckQuery::new_for_input(input, width as usize);
+                self.rangechecked_expressions.push(query)
+            }
+            _ => unreachable!("please use cs.require_invariant instead")
+        }
+    }
+
     fn allocate_machine_state(
         &mut self,
         need_funct3: bool,
