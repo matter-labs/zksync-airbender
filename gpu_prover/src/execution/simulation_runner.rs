@@ -10,11 +10,23 @@ use era_cudart_sys::{cudaHostRegister, cudaHostUnregister};
 use itertools::Itertools;
 use log::{debug, trace};
 use riscv_transpiler::common_constants::ROM_WORD_SIZE;
-use riscv_transpiler::jit::{
-    Context, ContextImpl, JittedCode, MachineState, MemoryHolder, TraceChunk, MAX_NUM_COUNTERS,
-    RAM_SIZE,
+#[cfg(not(target_arch = "x86_64"))]
+use riscv_transpiler::ir::{
+    preprocess_bytecode, FullMachineDecoderConfig, FullUnsignedMachineDecoderConfig,
+    ReducedMachineDecoderConfig,
 };
-use riscv_transpiler::vm::NonDeterminismCSRSource;
+#[cfg(not(target_arch = "x86_64"))]
+use riscv_transpiler::jit::TRACE_CHUNK_LEN;
+#[cfg(target_arch = "x86_64")]
+use riscv_transpiler::jit::{Context, JittedCode};
+use riscv_transpiler::jit::{
+    ContextImpl, MachineState, MemoryHolder, TraceChunk, MAX_NUM_COUNTERS, RAM_SIZE,
+};
+use riscv_transpiler::vm::{
+    DelegationsAndFamiliesCounters, DelegationsAndUnifiedCounters, NonDeterminismCSRSource, State,
+};
+#[cfg(not(target_arch = "x86_64"))]
+use riscv_transpiler::vm::{RamPeek, SimpleTape, Snapshotter, RAM, VM};
 use std::mem::replace;
 use std::ops::{Deref, DerefMut};
 use std::os::raw::c_void;
@@ -108,11 +120,304 @@ pub(crate) struct Snapshot<R: DataTraceRanges> {
 
 unsafe impl<R: DataTraceRanges> Send for Snapshot<R> {}
 
+#[cfg_attr(target_arch = "x86_64", allow(dead_code))]
+pub(crate) trait VmCounters {
+    fn into_machine_counters(self) -> [u64; MAX_NUM_COUNTERS];
+}
+
+impl VmCounters for DelegationsAndFamiliesCounters {
+    fn into_machine_counters(self) -> [u64; MAX_NUM_COUNTERS] {
+        let mut counters = [0; MAX_NUM_COUNTERS];
+        counters[0] = self.add_sub_family as u64;
+        counters[1] = self.slt_branch_family as u64;
+        counters[2] = self.binary_shift_csr_family as u64;
+        counters[3] = self.mul_div_family as u64;
+        counters[4] = self.word_size_mem_family as u64;
+        counters[5] = self.subword_size_mem_family as u64;
+        counters[6] = self.blake_calls as u64;
+        counters[7] = self.bigint_calls as u64;
+        counters[8] = self.keccak_calls as u64;
+        counters
+    }
+}
+
+impl VmCounters for DelegationsAndUnifiedCounters {
+    fn into_machine_counters(self) -> [u64; MAX_NUM_COUNTERS] {
+        let mut counters = [0; MAX_NUM_COUNTERS];
+        counters[0] = self.cycles as u64;
+        counters[6] = self.blake_calls as u64;
+        counters[7] = self.bigint_calls as u64;
+        counters[8] = self.keccak_calls as u64;
+        counters
+    }
+}
+
+#[cfg_attr(target_arch = "x86_64", allow(dead_code))]
+fn machine_state_from_vm_state<C: VmCounters + riscv_transpiler::vm::Counters>(
+    state: &State<C>,
+) -> MachineState {
+    let mut machine_state = MachineState::initial();
+    machine_state.registers = std::array::from_fn(|i| state.registers[i].value);
+    machine_state.register_timestamps = std::array::from_fn(|i| state.registers[i].timestamp);
+    machine_state.counters = state.counters.into_machine_counters();
+    machine_state.pc = state.pc;
+    machine_state.timestamp = state.timestamp;
+    machine_state
+}
+
+fn process_trace_chunk<T: TracingType>(
+    batch_id: u64,
+    snapshot_index: &mut usize,
+    abort: &Arc<AtomicBool>,
+    state: &mut MachineState,
+    trace: &mut Option<LockedBoxedTraceChunk>,
+    tracing_data_producers: &mut Option<T::Producers>,
+    snapshots: &mut Option<Sender<Snapshot<T::Ranges>>>,
+    results: &mut Option<Sender<WorkerResult<A>>>,
+    total_elapsed: Duration,
+    is_aborted: &mut bool,
+    machine_state: &MachineState,
+    elapsed: Duration,
+) {
+    if *is_aborted {
+        return;
+    }
+    let current_snapshot_index = *snapshot_index;
+    *snapshot_index += 1;
+    let mut machine_state = *machine_state;
+    let timestamp = machine_state.timestamp.next_multiple_of(TIMESTAMP_STEP);
+    machine_state.timestamp = timestamp;
+    let final_state = machine_state;
+    let initial_state = replace(state, machine_state);
+    let timestamp_diff = timestamp - initial_state.timestamp;
+    assert!(timestamp_diff.is_multiple_of(TIMESTAMP_STEP));
+    let cycles_count = (timestamp_diff / TIMESTAMP_STEP) as usize;
+    let elapsed_ms = elapsed.as_secs_f64() * 1000.0;
+    let mhz = (cycles_count as f64) / (elapsed_ms * 1000.0);
+    trace!("BATCH[{batch_id}] SIMULATOR produced SNAPSHOT[{current_snapshot_index}] with {cycles_count} cycles in {elapsed_ms:.3} ms @ {mhz:.3} MHz");
+    if abort.load(std::sync::atomic::Ordering::Relaxed) {
+        tracing_data_producers.take().unwrap().finalize();
+        assert!(snapshots.take().is_some());
+        assert!(results.take().is_some());
+        let timestamp_diff = timestamp - INITIAL_TIMESTAMP;
+        assert!(timestamp_diff.is_multiple_of(TIMESTAMP_STEP));
+        let cycles_count = (timestamp_diff / TIMESTAMP_STEP) as usize;
+        let elapsed_ms = total_elapsed.as_secs_f64() * 1000.0;
+        let mhz = (cycles_count as f64) / (elapsed_ms * 1000.0);
+        debug!("BATCH[{batch_id}] SIMULATOR stopping snapshot production due to abort signal after {cycles_count} cycles in {elapsed_ms:.3} ms @ {mhz:.3} MHz");
+        *is_aborted = true;
+        return;
+    }
+    let trace = trace.take().unwrap();
+    let result = WorkerResult::SnapshotProduced;
+    results.as_ref().unwrap().send(result).unwrap();
+    let counters_diff = machine_state
+        .counters
+        .iter()
+        .zip_eq(initial_state.counters.iter())
+        .map(|(a, b)| a - b)
+        .collect_array::<MAX_NUM_COUNTERS>()
+        .unwrap();
+    let expected_cycles = counters_diff.iter().take(6).sum::<u64>() as usize;
+    assert_eq!(expected_cycles, cycles_count);
+    let trace_ranges = tracing_data_producers.as_mut().unwrap().process_snapshot(
+        current_snapshot_index,
+        &initial_state.counters,
+        &machine_state.counters,
+    );
+    let snapshot = Snapshot {
+        index: current_snapshot_index,
+        cycles_count,
+        initial_state,
+        trace,
+        final_state,
+        trace_ranges,
+    };
+    snapshots.as_ref().unwrap().send(snapshot).unwrap();
+}
+
+#[cfg(not(target_arch = "x86_64"))]
+struct PreparedMemory<'a> {
+    holder: &'a mut MemoryHolder,
+}
+
+#[cfg(not(target_arch = "x86_64"))]
+impl<'a> PreparedMemory<'a> {
+    fn new(holder: &'a mut MemoryHolder) -> Self {
+        Self { holder }
+    }
+}
+
+#[cfg(not(target_arch = "x86_64"))]
+impl RamPeek for PreparedMemory<'_> {
+    #[inline(always)]
+    fn peek_word(&self, address: u32) -> u32 {
+        debug_assert_eq!(address % 4, 0);
+        let word_idx = (address / 4) as usize;
+        debug_assert!(word_idx < self.holder.memory.len());
+        unsafe { *self.holder.memory.get_unchecked(word_idx) }
+    }
+}
+
+#[cfg(not(target_arch = "x86_64"))]
+impl RAM for PreparedMemory<'_> {
+    #[inline(always)]
+    fn mask_read_for_witness(&self, address: &mut u32, value: &mut u32) {
+        debug_assert_eq!(*address % 4, 0);
+        if (*address as usize) < riscv_transpiler::common_constants::rom::ROM_BYTE_SIZE {
+            *value = 0;
+        }
+    }
+
+    #[inline(always)]
+    fn read_word(
+        &mut self,
+        address: u32,
+        timestamp: riscv_transpiler::common_constants::TimestampScalar,
+    ) -> (riscv_transpiler::common_constants::TimestampScalar, u32) {
+        debug_assert_eq!(address % 4, 0);
+        let word_idx = (address / 4) as usize;
+        debug_assert!(word_idx < self.holder.memory.len());
+        unsafe {
+            let value = *self.holder.memory.get_unchecked(word_idx);
+            let read_timestamp = *self.holder.timestamps.get_unchecked(word_idx);
+            *self.holder.timestamps.get_unchecked_mut(word_idx) = timestamp | 1;
+            debug_assert!(read_timestamp < (timestamp | 1));
+            (read_timestamp, value)
+        }
+    }
+
+    #[inline(always)]
+    fn write_word(
+        &mut self,
+        address: u32,
+        word: u32,
+        timestamp: riscv_transpiler::common_constants::TimestampScalar,
+    ) -> (riscv_transpiler::common_constants::TimestampScalar, u32) {
+        debug_assert_eq!(address % 4, 0);
+        let word_idx = (address / 4) as usize;
+        debug_assert!(word_idx < self.holder.memory.len());
+        assert!(
+            address as usize >= riscv_transpiler::common_constants::rom::ROM_BYTE_SIZE,
+            "attempt to write into ROM range"
+        );
+        unsafe {
+            let old_value = *self.holder.memory.get_unchecked(word_idx);
+            let read_timestamp = *self.holder.timestamps.get_unchecked(word_idx);
+            debug_assert!(read_timestamp < (timestamp | 2));
+            *self.holder.memory.get_unchecked_mut(word_idx) = word;
+            *self.holder.timestamps.get_unchecked_mut(word_idx) = timestamp | 2;
+            (read_timestamp, old_value)
+        }
+    }
+
+    #[inline(always)]
+    fn skip_if_replaying(&mut self, _num_snapshots: usize) {
+        panic!("must not be used in replay mode");
+    }
+}
+
+#[cfg(not(target_arch = "x86_64"))]
+struct VmTraceRunner<'a, T: TracingType> {
+    batch_id: u64,
+    free_trace_chunks_receiver: &'a Receiver<LockedBoxedTraceChunk>,
+    snapshots: &'a mut Option<Sender<Snapshot<T::Ranges>>>,
+    results: &'a mut Option<Sender<WorkerResult<A>>>,
+    abort: &'a Arc<AtomicBool>,
+    state: &'a mut MachineState,
+    trace: &'a mut Option<LockedBoxedTraceChunk>,
+    snapshot_index: &'a mut usize,
+    tracing_data_producers: &'a mut Option<T::Producers>,
+    instant: &'a mut Option<Instant>,
+    total_elapsed: &'a mut Duration,
+    is_aborted: &'a mut bool,
+}
+
+#[cfg(not(target_arch = "x86_64"))]
+impl<T: TracingType> VmTraceRunner<'_, T> {
+    fn current_trace(&mut self) -> &mut TraceChunk {
+        &mut self.trace.as_mut().unwrap().chunk
+    }
+
+    fn finish_snapshot<C: VmCounters + riscv_transpiler::vm::Counters>(
+        &mut self,
+        state: &State<C>,
+        is_final: bool,
+    ) {
+        let elapsed = self.instant.take().unwrap().elapsed();
+        *self.total_elapsed += elapsed;
+        let machine_state = machine_state_from_vm_state(state);
+        process_trace_chunk::<T>(
+            self.batch_id,
+            self.snapshot_index,
+            self.abort,
+            self.state,
+            self.trace,
+            self.tracing_data_producers,
+            self.snapshots,
+            self.results,
+            *self.total_elapsed,
+            self.is_aborted,
+            &machine_state,
+            elapsed,
+        );
+        if *self.is_aborted {
+            return;
+        }
+        if is_final {
+            self.tracing_data_producers.take().unwrap().finalize();
+        } else {
+            let trace = self.free_trace_chunks_receiver.recv().unwrap();
+            *self.trace = Some(trace);
+            self.current_trace().len = 0;
+            *self.instant = Some(Instant::now());
+        }
+    }
+}
+
+#[cfg(not(target_arch = "x86_64"))]
+impl<T, C> Snapshotter<C> for VmTraceRunner<'_, T>
+where
+    T: TracingType,
+    C: VmCounters + riscv_transpiler::vm::Counters,
+{
+    #[inline(always)]
+    fn take_snapshot_if_needed(&mut self, state: &State<C>) -> bool {
+        if self.current_trace().len as usize >= TRACE_CHUNK_LEN {
+            self.finish_snapshot(state, false);
+        }
+        *self.is_aborted
+    }
+
+    #[inline(always)]
+    fn take_final_snapshot(&mut self, state: &State<C>) {
+        self.finish_snapshot(state, true);
+    }
+
+    #[inline(always)]
+    fn append_arbitrary_value(&mut self, value: u32) {
+        self.current_trace().append_arbitrary_value(value);
+    }
+
+    #[inline(always)]
+    fn append_memory_read(
+        &mut self,
+        _address: u32,
+        read_value: u32,
+        read_timestamp: riscv_transpiler::common_constants::TimestampScalar,
+        _write_timestamp: riscv_transpiler::common_constants::TimestampScalar,
+    ) {
+        self.current_trace().add_element(read_value, read_timestamp);
+    }
+}
+
 pub(crate) struct SimulationRunner<
     ND: NonDeterminismCSRSource + Send + 'static,
     T: TracingType + 'static,
 > {
     pub batch_id: u64,
+    #[cfg_attr(target_arch = "x86_64", allow(dead_code))]
+    pub machine_type: MachineType,
     pub non_determinism_source: ND,
     pub free_trace_chunks_sender: Sender<LockedBoxedTraceChunk>,
     pub free_trace_chunks_receiver: Receiver<LockedBoxedTraceChunk>,
@@ -147,6 +452,7 @@ impl<ND: NonDeterminismCSRSource + Send + 'static, T: TracingType + 'static>
         let tracing_data_producers = Some(tracing_data_producers);
         Self {
             batch_id,
+            machine_type,
             non_determinism_source,
             free_trace_chunks_sender,
             free_trace_chunks_receiver,
@@ -164,6 +470,27 @@ impl<ND: NonDeterminismCSRSource + Send + 'static, T: TracingType + 'static>
     }
 
     pub fn run(
+        self,
+        binary_image: impl Deref<Target = impl Deref<Target = [u32]>>,
+        text_section: impl Deref<Target = impl Deref<Target = [u32]>>,
+        cycles_bound: Option<u32>,
+        jit_cache: Arc<Mutex<TypeMap>>,
+        memory_holder: &mut MemoryHolder,
+    ) -> Self
+    where
+        T::Counters: Default + VmCounters,
+    {
+        self.run_with_selected_backend(
+            binary_image,
+            text_section,
+            cycles_bound,
+            jit_cache,
+            memory_holder,
+        )
+    }
+
+    #[cfg(target_arch = "x86_64")]
+    fn run_with_selected_backend(
         mut self,
         binary_image: impl Deref<Target = impl Deref<Target = [u32]>>,
         text_section: impl Deref<Target = impl Deref<Target = [u32]>>,
@@ -219,67 +546,137 @@ impl<ND: NonDeterminismCSRSource + Send + 'static, T: TracingType + 'static>
         runner
     }
 
-    fn process_trace(&mut self, machine_state: &MachineState, elapsed: Duration) {
-        if self.is_aborted {
-            return;
-        }
+    #[cfg(not(target_arch = "x86_64"))]
+    fn run_with_selected_backend(
+        mut self,
+        binary_image: impl Deref<Target = impl Deref<Target = [u32]>>,
+        text_section: impl Deref<Target = impl Deref<Target = [u32]>>,
+        cycles_bound: Option<u32>,
+        _jit_cache: Arc<Mutex<TypeMap>>,
+        memory_holder: &mut MemoryHolder,
+    ) -> Self
+    where
+        T::Counters: Default + VmCounters,
+    {
         let batch_id = self.batch_id;
-        let snapshot_index = self.snapshot_index;
-        self.snapshot_index += 1;
-        let mut machine_state = *machine_state;
-        let timestamp = machine_state.timestamp.next_multiple_of(TIMESTAMP_STEP); // align timestamp, needs to be fixed in the VM
-        machine_state.timestamp = timestamp;
-        let final_state = machine_state;
-        let initial_state = replace(&mut self.state, machine_state);
-        let timestamp_diff = timestamp - initial_state.timestamp;
-        assert!(timestamp_diff.is_multiple_of(TIMESTAMP_STEP));
-        let cycles_count = (timestamp_diff / TIMESTAMP_STEP) as usize;
-        let elapsed_ms = elapsed.as_secs_f64() * 1000.0;
-        let mhz = (cycles_count as f64) / (elapsed_ms * 1000.0);
-        trace!("BATCH[{batch_id}] SIMULATOR produced SNAPSHOT[{snapshot_index}] with {cycles_count} cycles in {elapsed_ms:.3} ms @ {mhz:.3} MHz");
-        if self.abort.load(std::sync::atomic::Ordering::Relaxed) {
-            self.tracing_data_producers.take().unwrap().finalize();
-            assert!(self.snapshots.take().is_some());
-            assert!(self.results.take().is_some());
-            let timestamp_diff = timestamp - INITIAL_TIMESTAMP;
+        let machine_type = self.machine_type;
+        trace!("BATCH[{batch_id}] SIMULATOR using interpreter fallback on non-x86_64 target");
+        let binary_image_len = binary_image.len();
+        memory_holder.memory[..binary_image_len].copy_from_slice(&binary_image);
+        memory_holder.memory[binary_image_len..ROM_WORD_SIZE].fill(0);
+        let mut trace = self
+            .free_trace_chunks_receiver
+            .recv()
+            .expect("must receive a trace chunk for simulation");
+        trace.chunk.len = 0;
+        self.trace = Some(trace);
+        self.instant = Some(Instant::now());
+
+        let instructions = match machine_type {
+            MachineType::Full => preprocess_bytecode::<FullMachineDecoderConfig>(&text_section),
+            MachineType::FullUnsigned => {
+                preprocess_bytecode::<FullUnsignedMachineDecoderConfig>(&text_section)
+            }
+            MachineType::Reduced => {
+                preprocess_bytecode::<ReducedMachineDecoderConfig>(&text_section)
+            }
+        };
+        let tape = SimpleTape::new(&instructions);
+        let mut prepared_memory = PreparedMemory::new(memory_holder);
+        let mut state = State::initial_with_counters(T::Counters::default());
+        let timestamp_bound =
+            cycles_bound.map(|bound| INITIAL_TIMESTAMP + (bound as u64) * TIMESTAMP_STEP);
+
+        {
+            let SimulationRunner {
+                batch_id,
+                machine_type: _,
+                non_determinism_source,
+                free_trace_chunks_sender: _,
+                free_trace_chunks_receiver,
+                snapshots,
+                results,
+                abort,
+                state: runner_state,
+                trace,
+                snapshot_index,
+                tracing_data_producers,
+                instant,
+                total_elapsed,
+                is_aborted,
+            } = &mut self;
+            let mut trace_runner = VmTraceRunner::<T> {
+                batch_id: *batch_id,
+                free_trace_chunks_receiver,
+                snapshots,
+                results,
+                abort,
+                state: runner_state,
+                trace,
+                snapshot_index,
+                tracing_data_producers,
+                instant,
+                total_elapsed,
+                is_aborted,
+            };
+
+            loop {
+                if timestamp_bound.is_some_and(|bound| state.timestamp >= bound) {
+                    trace_runner.take_final_snapshot(&state);
+                    break;
+                }
+
+                let pc = state.pc;
+                VM::<T::Counters>::run_step(
+                    &mut state,
+                    &mut prepared_memory,
+                    &mut trace_runner,
+                    &tape,
+                    non_determinism_source,
+                );
+                state.timestamp += TIMESTAMP_STEP;
+
+                if state.pc == pc {
+                    trace_runner.take_final_snapshot(&state);
+                    break;
+                }
+
+                if trace_runner.take_snapshot_if_needed(&state) {
+                    break;
+                }
+            }
+        }
+
+        if let Some(trace) = self.trace.take() {
+            self.free_trace_chunks_sender.send(trace).unwrap();
+        }
+        if !self.is_aborted {
+            let final_timestamp = self.state.timestamp;
+            let timestamp_diff = final_timestamp - INITIAL_TIMESTAMP;
             assert!(timestamp_diff.is_multiple_of(TIMESTAMP_STEP));
             let cycles_count = (timestamp_diff / TIMESTAMP_STEP) as usize;
             let elapsed_ms = self.total_elapsed.as_secs_f64() * 1000.0;
             let mhz = (cycles_count as f64) / (elapsed_ms * 1000.0);
-            debug!("BATCH[{batch_id}] SIMULATOR stopping snapshot production due to abort signal after {cycles_count} cycles in {elapsed_ms:.3} ms @ {mhz:.3} MHz");
-            self.is_aborted = true;
-            return;
+            debug!("BATCH[{batch_id}] SIMULATOR finished execution with {cycles_count} cycles in {elapsed_ms:.3} ms @ {mhz:.3} MHz");
         }
-        let trace = self.trace.take().unwrap();
-        let result = WorkerResult::SnapshotProduced;
-        self.results.as_ref().unwrap().send(result).unwrap();
-        let counters_diff = machine_state
-            .counters
-            .iter()
-            .zip_eq(initial_state.counters.iter())
-            .map(|(a, b)| a - b)
-            .collect_array::<MAX_NUM_COUNTERS>()
-            .unwrap();
-        let expected_cycles = counters_diff.iter().take(6).sum::<u64>() as usize;
-        assert_eq!(expected_cycles, cycles_count);
-        let trace_ranges = self
-            .tracing_data_producers
-            .as_mut()
-            .unwrap()
-            .process_snapshot(
-                snapshot_index,
-                &initial_state.counters,
-                &machine_state.counters,
-            );
-        let snapshot = Snapshot {
-            index: snapshot_index,
-            cycles_count,
-            initial_state,
-            trace,
-            final_state,
-            trace_ranges,
-        };
-        self.snapshots.as_ref().unwrap().send(snapshot).unwrap();
+        self
+    }
+
+    fn process_trace(&mut self, machine_state: &MachineState, elapsed: Duration) {
+        process_trace_chunk::<T>(
+            self.batch_id,
+            &mut self.snapshot_index,
+            &self.abort,
+            &mut self.state,
+            &mut self.trace,
+            &mut self.tracing_data_producers,
+            &mut self.snapshots,
+            &mut self.results,
+            self.total_elapsed,
+            &mut self.is_aborted,
+            machine_state,
+            elapsed,
+        );
     }
 }
 

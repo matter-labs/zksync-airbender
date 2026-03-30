@@ -3,7 +3,7 @@ use crate::circuit_type::{CircuitType, UnrolledCircuitType};
 use crate::execution::messages::SimulationResult;
 use crate::execution::messages::{InitsAndTeardownsData, WorkerResult};
 use crate::execution::simulation_runner::{
-    LockedBoxedMemoryHolder, LockedBoxedTraceChunk, SimulationRunner, Snapshot,
+    LockedBoxedMemoryHolder, LockedBoxedTraceChunk, SimulationRunner, Snapshot, VmCounters,
 };
 use crate::execution::tracing::{Tracer, TracingType};
 use crate::machine_type::MachineType;
@@ -47,7 +47,9 @@ pub(crate) fn run_simulator<
     free_allocators: Receiver<A>,
     abort: Arc<AtomicBool>,
     worker: &Worker,
-) {
+) where
+    T::Counters: Default + VmCounters,
+{
     trace!("BATCH[{batch_id}] SIMULATOR started");
     let mut non_determinism_guard = non_determinism.lock().unwrap();
     let non_determinism_source = non_determinism_guard.take().unwrap();
