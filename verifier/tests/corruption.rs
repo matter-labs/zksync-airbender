@@ -53,7 +53,39 @@ fn assert_rejects_zeroed(name: &str, start: usize, count: usize, label: &str) {
     );
 }
 
+use verifier_common::gkr::GKRVerificationError;
+
 const CIRCUIT: &str = "add_sub_lui_auipc_mop";
+
+fn run_corrupted_typed(
+    name: &str,
+    corrupt: impl FnOnce(&mut Vec<u32>),
+) -> Result<(), verifier::add_sub_lui_auipc_mop::VerificationError> {
+    let mut nds = common::load_nds(name);
+    corrupt(&mut nds);
+
+    std::thread::scope(|s| {
+        let handle = std::thread::Builder::new()
+            .name(format!("corruption_typed_{}", name))
+            .stack_size(1 << 27)
+            .spawn_scoped(s, move || {
+                set_iterator(nds.into_iter());
+                verifier::add_sub_lui_auipc_mop::verify_all::<ThreadLocalBasedSource>()
+            })
+            .expect("failed to spawn thread");
+
+        handle.join().unwrap()
+    })
+}
+
+fn is_cache_relation_error(err: &verifier::add_sub_lui_auipc_mop::VerificationError) -> bool {
+    matches!(
+        err,
+        verifier::add_sub_lui_auipc_mop::VerificationError::Gkr(
+            GKRVerificationError::CacheRelationFailed { .. }
+        )
+    )
+}
 
 #[test]
 fn rejects_corrupted_gkr_region() {

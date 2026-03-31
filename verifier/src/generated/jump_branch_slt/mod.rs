@@ -7,6 +7,7 @@ pub use gkr::verify_gkr_sumcheck;
 use verifier_common::gkr::GKRVerificationError;
 use verifier_common::non_determinism_source::NonDeterminismSource;
 #[derive(Clone, Debug)]
+#[allow(dead_code)]
 pub enum VerificationError {
     Gkr(GKRVerificationError),
     Whir(common::WhirVerificationError),

@@ -245,6 +245,7 @@ pub fn compute_tree_index(
     }
 }
 #[derive(Clone, Debug)]
+#[allow(dead_code)]
 pub enum WhirVerificationError {
     SumcheckFailed { round: usize },
     FoldAgreementFailed { query: usize },
@@ -295,24 +296,6 @@ pub fn materialize_gamma_powers<const N: usize>(gamma: BabyBearExt4) -> [BabyBea
     }
     powers.push(gamma_pow);
     unsafe { powers.into_array() }
-}
-#[inline(always)]
-pub fn batch_claims<const NUM_CLAIMS: usize, const CAP: usize>(
-    claims: &LazyVec<BabyBearExt4, CAP>,
-    gamma_powers: &[BabyBearExt4; NUM_CLAIMS],
-) -> BabyBearExt4 {
-    debug_assert!(NUM_CLAIMS > 0);
-    debug_assert!(NUM_CLAIMS <= CAP);
-    let mut batched = *claims.get(0);
-    let mut i = 1;
-    while i < NUM_CLAIMS {
-        let claim_i = *claims.get(i);
-        let mut term = gamma_powers[i];
-        field_ops::mul_assign(&mut term, &claim_i);
-        field_ops::add_assign(&mut batched, &term);
-        i += 1;
-    }
-    batched
 }
 #[inline(always)]
 pub fn fold_coset(

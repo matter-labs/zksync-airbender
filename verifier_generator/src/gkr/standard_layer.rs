@@ -845,6 +845,7 @@ pub fn generate_layer_final_step_accumulator<MW: MersenneWrapper, F: PrimeField>
 
     quote! {
         #[inline(always)]
+        #[allow(unused_variables)]
         unsafe fn #fn_name(
             evals: &[[#quartic_struct; 2]],
             batch_base: #quartic_struct,

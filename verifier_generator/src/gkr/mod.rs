@@ -1176,19 +1176,10 @@ where
         pub const GKR_COMMIT_BUF: usize = #commit_buf_size;
         #static_data
         pub const BASE_LAYER_ADDITIONAL_OPENINGS: &[GKRAddress] = &[#base_openings_stream];
-        pub const WHIR_ROUNDS: usize = #whir_rounds;
         pub const WHIR_FOLD_STEPS: [usize; #whir_rounds] = [#(#whir_fold_steps),*];
         pub const WHIR_QUERIES: [usize; #whir_rounds] = [#(#whir_queries),*];
         pub const WHIR_POW_BITS: [u32; #whir_rounds] = [#(#whir_pow_bits),*];
-        pub const WHIR_BASE_LDE_FACTOR: usize = #whir_base_lde_factor;
-        pub const WHIR_LDE_FACTORS: [usize; #num_intermediate_oracles] = [#(#whir_lde_factors),*];
-        pub const WHIR_CAP_SIZE: usize = #whir_cap_size;
-        pub const FINAL_M: usize = #final_m;
         pub const FINAL_MONOMIALS_LEN: usize = #final_monomials_len;
-        pub const NUM_BASE_CLAIMS: usize = #num_base_claims;
-        pub const NUM_MEMORY_CLAIMS: usize = #num_memory_claims;
-        pub const NUM_WITNESS_CLAIMS: usize = #num_witness_claims;
-        pub const NUM_SETUP_CLAIMS: usize = #num_setup_claims;
         pub const BASE_ORACLE_DEPTH: usize = #base_oracle_depth;
         pub const SETUP_ORACLE_DEPTH: usize = #setup_oracle_depth;
         pub const WHIR_ORACLE_DEPTHS: [usize; #num_intermediate_oracles] = [#(#whir_oracle_depths),*];
@@ -1196,10 +1187,7 @@ where
         pub const SETUP_CAP_WORDS: usize = #setup_cap_words;
         pub const MEM_CAP_WORDS: usize = #mem_cap_words;
         pub const WIT_CAP_WORDS: usize = #wit_cap_words;
-        pub const TRACE_LEN_LOG2: usize = #trace_len_log2;
         pub const CAPS_OFFSET_IN_TRANSCRIPT: usize = #caps_offset_in_transcript;
-        /// Actual oracle column counts (may differ from NUM_*_CLAIMS which only
-        /// count GKR base layer addresses).
         pub const NUM_MEM_ORACLE_COLS: usize = #num_mem_oracle_cols;
         pub const NUM_WIT_ORACLE_COLS: usize = #num_wit_oracle_cols;
         pub const NUM_SETUP_ORACLE_COLS: usize = #num_setup_oracle_cols;
@@ -1208,7 +1196,6 @@ where
 
     let gkr = quote! {
         #field_use_stmts
-        use ::verifier_common::cs::definitions::GKRAddress;
         use ::verifier_common::gkr::{
             GKRVerifierOutput, GKRVerificationError, LayerState, LazyVec,
             read_eval_data_from_nds, commit_eval_buffer,
@@ -1218,7 +1205,7 @@ where
             make_eq_poly, dot_eq, draw_field_els_into, read_field_el, read_field_els, commit_field_els,
         };
         use ::verifier_common::field_ops;
-        use ::verifier_common::transcript::{Blake2sTranscript, Seed};
+        use ::verifier_common::transcript::Blake2sTranscript;
         use ::verifier_common::blake2s_u32::{AlignedArray64, DelegatedBlake2sState, BLAKE2S_DIGEST_SIZE_U32_WORDS};
         use ::verifier_common::field::{Field, FieldExtension, PrimeField};
         use ::verifier_common::non_determinism_source::NonDeterminismSource;

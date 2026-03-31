@@ -156,6 +156,7 @@ fn generate_verifier_for_circuit<MW: MersenneWrapper>(circuit: &CircuitData) {
         use ::verifier_common::gkr::GKRVerificationError;
 
         #[derive(Clone, Debug)]
+        #[allow(dead_code)]
         pub enum VerificationError {
             Gkr(GKRVerificationError),
             Whir(common::WhirVerificationError),

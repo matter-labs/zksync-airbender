@@ -6,7 +6,6 @@ use super::constants::*;
 use verifier_common::blake2s_u32::{
     AlignedArray64, DelegatedBlake2sState, BLAKE2S_DIGEST_SIZE_U32_WORDS,
 };
-use verifier_common::cs::definitions::GKRAddress;
 use verifier_common::field::baby_bear::base::BabyBearField;
 use verifier_common::field::baby_bear::ext4::BabyBearExt4;
 use verifier_common::field::{Field, FieldExtension, PrimeField};
@@ -16,7 +15,7 @@ use verifier_common::gkr::{
     LayerState, LazyVec,
 };
 use verifier_common::non_determinism_source::NonDeterminismSource;
-use verifier_common::transcript::{Blake2sTranscript, Seed};
+use verifier_common::transcript::Blake2sTranscript;
 #[inline(always)]
 unsafe fn layer_0_compute_claim(
     output_claims: &LazyVec<BabyBearExt4, GKR_ADDRS>,
@@ -250,6 +249,7 @@ unsafe fn layer_0_compute_claim(
     combined
 }
 #[inline(always)]
+#[allow(unused_variables)]
 unsafe fn layer_0_final_step_accumulator(
     evals: &[[BabyBearExt4; 2]],
     batch_base: BabyBearExt4,
@@ -3213,6 +3213,7 @@ unsafe fn layer_1_compute_claim(
     combined
 }
 #[inline(always)]
+#[allow(unused_variables)]
 unsafe fn layer_1_final_step_accumulator(
     evals: &[[BabyBearExt4; 2]],
     batch_base: BabyBearExt4,
@@ -3607,6 +3608,7 @@ unsafe fn layer_2_compute_claim(
     combined
 }
 #[inline(always)]
+#[allow(unused_variables)]
 unsafe fn layer_2_final_step_accumulator(
     evals: &[[BabyBearExt4; 2]],
     batch_base: BabyBearExt4,
@@ -3928,6 +3930,7 @@ unsafe fn layer_3_compute_claim(
     combined
 }
 #[inline(always)]
+#[allow(unused_variables)]
 unsafe fn layer_3_final_step_accumulator(
     evals: &[[BabyBearExt4; 2]],
     batch_base: BabyBearExt4,
@@ -4210,6 +4213,7 @@ unsafe fn layer_4_compute_claim(
     combined
 }
 #[inline(always)]
+#[allow(unused_variables)]
 unsafe fn layer_4_final_step_accumulator(
     evals: &[[BabyBearExt4; 2]],
     batch_base: BabyBearExt4,
@@ -4475,6 +4479,7 @@ unsafe fn layer_5_compute_claim(
     combined
 }
 #[inline(always)]
+#[allow(unused_variables)]
 unsafe fn layer_5_final_step_accumulator(
     evals: &[[BabyBearExt4; 2]],
     batch_base: BabyBearExt4,
@@ -4730,6 +4735,7 @@ unsafe fn layer_6_compute_claim(
     combined
 }
 #[inline(always)]
+#[allow(unused_variables)]
 unsafe fn layer_6_final_step_accumulator(
     evals: &[[BabyBearExt4; 2]],
     batch_base: BabyBearExt4,
@@ -4979,6 +4985,7 @@ unsafe fn layer_7_compute_claim(
     combined
 }
 #[inline(always)]
+#[allow(unused_variables)]
 unsafe fn layer_7_final_step_accumulator(
     evals: &[[BabyBearExt4; 2]],
     batch_base: BabyBearExt4,

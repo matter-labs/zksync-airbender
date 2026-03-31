@@ -1,5 +1,5 @@
 use super::common::{
-    batch_claims, commit_field_els, compute_tree_index, draw_field_els_into, fold_coset,
+    commit_field_els, compute_tree_index, draw_field_els_into, fold_coset,
     materialize_gamma_powers, read_field_el, read_field_els, two_inv, verify_whir_sumcheck_step,
     WhirVerificationError,
 };
@@ -7,17 +7,16 @@ use super::constants::*;
 use core::mem::MaybeUninit;
 use verifier_common::blake2s_u32::{
     AlignedArray64, DelegatedBlake2sState, BLAKE2S_BLOCK_SIZE_U32_WORDS,
-    BLAKE2S_DIGEST_SIZE_U32_WORDS,
 };
 use verifier_common::field::baby_bear::base::BabyBearField;
 use verifier_common::field::baby_bear::ext4::BabyBearExt4;
-use verifier_common::field::{Field, FieldExtension, PrimeField};
+use verifier_common::field::{Field, PrimeField};
 use verifier_common::field_ops;
 use verifier_common::lazy_vec::LazyVec;
 use verifier_common::non_determinism_source::NonDeterminismSource;
-use verifier_common::transcript::{Blake2sTranscript, Seed};
+use verifier_common::transcript::Seed;
 use verifier_common::whir::{
-    draw_query_indices, hash_leaf_data_into_state, read_and_commit_merkle_cap, read_and_verify_pow,
+    draw_query_indices, hash_leaf_data_into_state, read_and_verify_pow,
     read_commit_return_merkle_cap, verify_merkle_path,
 };
 const INITIAL_VALUES_PER_LEAF: usize = 2usize;
@@ -31,7 +30,6 @@ const WIT_LEAF_WORDS: usize = 42usize;
 const SETUP_LEAF_WORDS: usize = 20usize;
 const HASH_BUF_SIZE: usize = 64usize;
 const FOLD_BUF_HALF: usize = 1usize;
-const TOTAL_ORACLE_COLS_LOCAL: usize = 57usize;
 const NUM_COSETS: usize = 2usize;
 const NUM_COSETS_LOG2: usize = 1usize;
 const COSET_TREE_SIZE: usize = 8388608usize;
