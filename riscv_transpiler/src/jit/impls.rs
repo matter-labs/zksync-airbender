@@ -801,7 +801,9 @@ impl<I: ContextImpl> JittedCode<I> {
                 continue;
             };
 
-            // Pure instructions
+            // Pure instructions that are fully modeled by the unsigned RV32 JIT.
+            // Signed-M instructions such as `mulh` and `div` are intentionally
+            // excluded here so `rd = x0` can not silently turn them into NOPs.
             if matches!(
                 instruction,
                 Instruction::Addi(_)
@@ -831,12 +833,8 @@ impl<I: ContextImpl> JittedCode<I> {
                     | Instruction::Lhu(_)
                     | Instruction::Lw(_)
                     | Instruction::Mul(_)
-                    | Instruction::Mulh(_)
                     | Instruction::Mulhu(_)
-                    | Instruction::Mulhsu(_)
-                    | Instruction::Div(_)
                     | Instruction::Divu(_)
-                    | Instruction::Rem(_)
                     | Instruction::Remu(_)
             ) {
                 let rd = (raw_instruction >> 7) & 0x1F;
@@ -1197,23 +1195,6 @@ impl<I: ContextImpl> JittedCode<I> {
                         );
                         record_circuit_type(&mut ops, CounterType::MulDiv, 1);
                     }
-                    Instruction::Mulh(parts) => {
-                        emit_runtime_error!(ops);
-                        // unimplemented!("unsupported by default");
-                        // touch_register_and_increment_timestamp!(ops, parts.rs1());
-                        // touch_register_and_increment_timestamp!(ops, parts.rs2());
-                        // load_into(&mut ops, parts.rs1(), x64::Rq::RAX as u8);
-                        // let other = load(&mut ops, parts.rs2());
-                        // dynasm!(ops
-                        //     ; imul Rd(other)
-                        // );
-                        // if out != x64::Rq::RDX as u8 {
-                        //     dynasm!(ops
-                        //         ; mov Rd(out), edx
-                        //     );
-                        // }
-                        // record_circuit_type(&mut ops, CounterType::MulDiv, 1);
-                    }
                     Instruction::Mulhu(parts) => {
                         touch_register_and_increment_timestamp!(ops, parts.rs1());
                         touch_register_and_increment_timestamp!(ops, parts.rs2());
@@ -1228,22 +1209,6 @@ impl<I: ContextImpl> JittedCode<I> {
                             );
                         }
                         record_circuit_type(&mut ops, CounterType::MulDiv, 1);
-                    }
-                    Instruction::Mulhsu(parts) => {
-                        unimplemented!("unsupported by default");
-                        // touch_register_and_increment_timestamp!(ops, parts.rs1());
-                        // touch_register_and_increment_timestamp!(ops, parts.rs2());
-                        // load_into(&mut ops, parts.rs2(), SCRATCH_REGISTER);
-                        // load_into(&mut ops, parts.rs1(), out);
-                        // dynasm!(ops
-                        //     ; movsx Rq(out), Rd(out)
-                        //     ; imul Rq(out), Rq(SCRATCH_REGISTER)
-                        //     ; shr Rq(out), 32
-                        // );
-                        // record_circuit_type(&mut ops, CounterType::MulDiv, 1);
-                    }
-                    Instruction::Div(parts) => {
-                        unimplemented!("unsupported by default");
                     }
                     Instruction::Divu(parts) => {
                         // TODO: handle exception cases
@@ -1263,9 +1228,6 @@ impl<I: ContextImpl> JittedCode<I> {
                         }
                         record_circuit_type(&mut ops, CounterType::MulDiv, 1);
                     }
-                    Instruction::Rem(parts) => {
-                        unimplemented!("unsupported by default");
-                    }
                     Instruction::Remu(parts) => {
                         // TODO: handle exception cases
                         touch_register_and_increment_timestamp!(ops, parts.rs1());
@@ -1284,9 +1246,7 @@ impl<I: ContextImpl> JittedCode<I> {
                         }
                         record_circuit_type(&mut ops, CounterType::MulDiv, 1);
                     }
-                    a @ _ => {
-                        panic!("Opcode {:?} is not supported", a);
-                    }
+                    _ => unreachable!(),
                 }
 
                 touch_register_and_bump_timestamp!(ops, rd, 2);
@@ -1729,10 +1689,15 @@ impl<I: ContextImpl> JittedCode<I> {
                         }
                     }
                 }
-                opcode @ _ => {
-                    panic!("Unknown opcode {:?}", opcode);
-                    // emit_runtime_error!(ops);
-                    // i += 1;
+                _ => {
+                    // We only JIT the opcode subset mirrored by the unsigned RV32
+                    // transpiler VM and proving circuits. Everything else, including
+                    // decoded-but-unsupported instructions such as fence-family ops,
+                    // still gets compiled so dead code does not block proving setup,
+                    // but any reachable unsupported opcode aborts at runtime.
+                    emit_execution_panic!(ops, pc);
+                    i += 1;
+                    continue;
                 }
             }
 
