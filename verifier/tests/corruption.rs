@@ -53,24 +53,36 @@ fn assert_rejects_zeroed(name: &str, start: usize, count: usize, label: &str) {
     );
 }
 
-use verifier_common::gkr::GKRVerificationError;
+use field::baby_bear::base::BabyBearField;
+use field::baby_bear::ext4::BabyBearExt4;
+use field::Field;
+use prover::gkr::prover::GKRProof;
+use prover::merkle_trees::DefaultTreeConstructor;
+use verifier_common::gkr::flatten::flatten_gkr_proof_for_nds;
 
 const CIRCUIT: &str = "add_sub_lui_auipc_mop";
 
-fn run_corrupted_typed(
+fn run_with_proof(
     name: &str,
-    corrupt: impl FnOnce(&mut Vec<u32>),
-) -> Result<(), verifier::add_sub_lui_auipc_mop::VerificationError> {
-    let mut nds = common::load_nds(name);
-    corrupt(&mut nds);
+    proof: &GKRProof<BabyBearField, BabyBearExt4, DefaultTreeConstructor>,
+) -> Result<(), String> {
+    let circuit_data = common::circuit_by_name(name);
+    let compiled = circuit_data.compiled_circuit();
+    let nds = flatten_gkr_proof_for_nds::<BabyBearField, BabyBearExt4, DefaultTreeConstructor>(
+        proof,
+        &compiled,
+        circuit_data.whir_schedule(),
+    );
 
     std::thread::scope(|s| {
         let handle = std::thread::Builder::new()
-            .name(format!("corruption_typed_{}", name))
+            .name(format!("corruption_proof_{}", name))
             .stack_size(1 << 27)
             .spawn_scoped(s, move || {
                 set_iterator(nds.into_iter());
-                verifier::add_sub_lui_auipc_mop::verify_all::<ThreadLocalBasedSource>()
+                with_circuit!(name, |m| {
+                    m::verify_all::<ThreadLocalBasedSource>().map_err(|e| format!("{:?}", e))
+                })
             })
             .expect("failed to spawn thread");
 
@@ -78,13 +90,41 @@ fn run_corrupted_typed(
     })
 }
 
-fn is_cache_relation_error(err: &verifier::add_sub_lui_auipc_mop::VerificationError) -> bool {
-    matches!(
-        err,
-        verifier::add_sub_lui_auipc_mop::VerificationError::Gkr(
-            GKRVerificationError::CacheRelationFailed { .. }
-        )
-    )
+#[test]
+fn rejects_corrupted_cache_relations() {
+    let circuit_data = common::circuit_by_name(CIRCUIT);
+    let mut proof = circuit_data.proof();
+
+    // The base layer (layer 0) has cached relations: certain claims must equal
+    // a linear combination of other claims. The extra_evaluations_from_caching_relations
+    // field carries these values. Corrupting one should trigger CacheRelationFailed.
+    let base_layer = proof
+        .sumcheck_intermediate_values
+        .get_mut(&0)
+        .expect("proof must have layer 0");
+    assert!(
+        !base_layer
+            .extra_evaluations_from_caching_relations
+            .is_empty(),
+        "base layer must have cached relations"
+    );
+
+    // Corrupt the first cached relation evaluation by adding ONE
+    let (_addr, eval) = base_layer
+        .extra_evaluations_from_caching_relations
+        .iter_mut()
+        .next()
+        .unwrap();
+    eval.add_assign(&BabyBearExt4::ONE);
+
+    let result = run_with_proof(CIRCUIT, &proof);
+    assert!(result.is_err(), "should reject corrupted cache relation");
+    let err = result.unwrap_err();
+    assert!(
+        err.contains("CacheRelationFailed"),
+        "expected CacheRelationFailed, got: {}",
+        err
+    );
 }
 
 #[test]
