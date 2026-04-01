@@ -237,7 +237,7 @@ pub(super) fn lower_forward_setup_generic_lookup_batch<E>(
     );
 
     let setup_columns = (0..generic_lookup_width)
-        .map(|column_idx| unsafe { raw.as_ptr().add(host.column_offset(column_idx + 2)) })
+        .map(|column_idx| unsafe { raw.as_ptr().add(host.column_offset(column_idx)) })
         .collect::<Vec<_>>();
     pack_forward_setup_generic_lookup_batch(
         &setup_columns,
