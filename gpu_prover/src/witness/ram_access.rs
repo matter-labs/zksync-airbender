@@ -8,12 +8,42 @@ type CSRamAddress = cs::definitions::gkr::RamAddress;
 type CSRegisterOrRamAccessAddress = cs::definitions::gkr::RegisterOrRamAccessAddress;
 type CSRamWordRepresentation = cs::definitions::gkr::RamWordRepresentation;
 
-fn ram_word_to_u16_limbs(value: CSRamWordRepresentation) -> [u32; REGISTER_SIZE] {
-    match value {
-        CSRamWordRepresentation::Zero => [0; REGISTER_SIZE],
-        CSRamWordRepresentation::U16Limbs(value) => value.map(|x| x as u32),
-        CSRamWordRepresentation::U8Limbs(_) => {
-            unimplemented!("GPU GKR RAM tuples do not yet support byte-limb word representation")
+#[repr(C)]
+#[derive(Clone, Copy, Default, Debug)]
+pub struct RamWordU16Limbs {
+    pub limbs: [u32; REGISTER_SIZE],
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Default, Debug)]
+pub struct RamWordU8Limbs {
+    pub limbs: [u32; REGISTER_SIZE * 2],
+}
+
+#[repr(C, u32)]
+#[derive(Clone, Copy, Debug)]
+pub enum RamWordRepresentation {
+    Zero,
+    U16Limbs(RamWordU16Limbs),
+    U8Limbs(RamWordU8Limbs),
+}
+
+impl Default for RamWordRepresentation {
+    fn default() -> Self {
+        Self::Zero
+    }
+}
+
+impl From<CSRamWordRepresentation> for RamWordRepresentation {
+    fn from(value: CSRamWordRepresentation) -> Self {
+        match value {
+            CSRamWordRepresentation::Zero => Self::Zero,
+            CSRamWordRepresentation::U16Limbs(value) => Self::U16Limbs(RamWordU16Limbs {
+                limbs: value.map(|x| x as u32),
+            }),
+            CSRamWordRepresentation::U8Limbs(value) => Self::U8Limbs(RamWordU8Limbs {
+                limbs: value.map(|x| x as u32),
+            }),
         }
     }
 }
@@ -115,7 +145,7 @@ pub struct RamReadQuery {
     pub in_cycle_write_index: u32,
     pub address: RamAddress,
     pub read_timestamp: [u32; NUM_TIMESTAMP_COLUMNS_FOR_RAM],
-    pub read_value: [u32; REGISTER_SIZE],
+    pub read_value: RamWordRepresentation,
 }
 
 impl From<cs::definitions::gkr::RamReadQuery> for RamReadQuery {
@@ -124,7 +154,7 @@ impl From<cs::definitions::gkr::RamReadQuery> for RamReadQuery {
             in_cycle_write_index: value.in_cycle_write_index as u32,
             address: value.address.into(),
             read_timestamp: value.read_timestamp.map(|x| x as u32),
-            read_value: ram_word_to_u16_limbs(value.read_value),
+            read_value: value.read_value.into(),
         }
     }
 }
@@ -135,8 +165,8 @@ pub struct RamWriteQuery {
     pub in_cycle_write_index: u32,
     pub address: RamAddress,
     pub read_timestamp: [u32; NUM_TIMESTAMP_COLUMNS_FOR_RAM],
-    pub read_value: [u32; REGISTER_SIZE],
-    pub write_value: [u32; REGISTER_SIZE],
+    pub read_value: RamWordRepresentation,
+    pub write_value: RamWordRepresentation,
 }
 
 impl From<cs::definitions::gkr::RamWriteQuery> for RamWriteQuery {
@@ -145,8 +175,8 @@ impl From<cs::definitions::gkr::RamWriteQuery> for RamWriteQuery {
             in_cycle_write_index: value.in_cycle_write_index as u32,
             address: value.address.into(),
             read_timestamp: value.read_timestamp.map(|x| x as u32),
-            read_value: ram_word_to_u16_limbs(value.read_value),
-            write_value: ram_word_to_u16_limbs(value.write_value),
+            read_value: value.read_value.into(),
+            write_value: value.write_value.into(),
         }
     }
 }
