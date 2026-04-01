@@ -171,7 +171,7 @@ template <class R> struct WitnessProxy {
   }
 
   template <typename T> DEVICE_FORCEINLINE T get_scratch_place(const unsigned idx) const {
-    auto value = scratch[idx];
+    auto value = scratch[idx * stride];
 #ifdef PRINT_THREAD_IDX
     if (offset == PRINT_THREAD_IDX)
       printf("S[%u] -> %u\n", idx, value.inner.limb);
@@ -212,7 +212,7 @@ template <class R> struct WitnessProxy {
     if (offset == PRINT_THREAD_IDX)
       printf("S[%u] <- %u\n", idx, f.inner.limb);
 #endif
-    scratch[idx] = f;
+    scratch[idx * stride] = f;
   }
 
   template <unsigned I, unsigned O>
@@ -347,6 +347,7 @@ template <class R> struct WitnessProxy {
 #define KERNEL(NAME, ORACLE)                                                                                                                                   \
   EXTERN __global__ void KERNEL_NAME(NAME)(const __grid_constant__ ORACLE oracle, const wrapped_f *const __restrict__ generic_lookup_tables,                   \
                                            const wrapped_f *const __restrict__ memory, wrapped_f *const __restrict__ witness,                                  \
+                                           wrapped_f *const __restrict__ scratch_storage,                                                                      \
                                            u32 *const __restrict__ lookup_mapping, const unsigned stride, const unsigned count) {                              \
     const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;                                                                                                \
     if (gid >= count)                                                                                                                                          \

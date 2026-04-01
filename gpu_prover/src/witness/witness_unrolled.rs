@@ -80,6 +80,7 @@ cuda_kernel!(GenerateWitnessUnrolledNonMemoryKernel,
     generic_lookup_tables: *const BF,
     memory: *const BF,
     witness: *mut BF,
+    scratch: *mut BF,
     lookup_mapping: *mut u32,
     stride: u32,
     count: u32,
@@ -88,10 +89,10 @@ cuda_kernel!(GenerateWitnessUnrolledNonMemoryKernel,
 generate_witness_unrolled_non_memory_kernel!(
     ab_generate_witness_values_add_sub_lui_auipc_mop_kernel
 );
-// generate_witness_unrolled_non_memory_kernel!(ab_generate_witness_values_jump_branch_slt_kernel);
+generate_witness_unrolled_non_memory_kernel!(ab_generate_witness_values_jump_branch_slt_kernel);
 // generate_witness_unrolled_non_memory_kernel!(ab_generate_witness_values_mul_div_kernel);
 // generate_witness_unrolled_non_memory_kernel!(ab_generate_witness_values_mul_div_unsigned_kernel);
-// generate_witness_unrolled_non_memory_kernel!(ab_generate_witness_values_shift_binary_csr_kernel);
+generate_witness_unrolled_non_memory_kernel!(ab_generate_witness_values_shift_binary_csr_kernel);
 
 pub(crate) fn generate_witness_values_unrolled_non_memory(
     circuit_type: UnrolledNonMemoryCircuitType,
@@ -99,6 +100,7 @@ pub(crate) fn generate_witness_values_unrolled_non_memory(
     generic_lookup_tables: &impl DeviceMatrixImpl<BF>,
     memory: &impl DeviceMatrixImpl<BF>,
     witness: &mut impl DeviceMatrixMutImpl<BF>,
+    scratch: &mut impl DeviceMatrixMutImpl<BF>,
     lookup_mapping: &mut impl DeviceMatrixMutImpl<u32>,
     stream: &CudaStream,
 ) -> CudaResult<()> {
@@ -106,6 +108,7 @@ pub(crate) fn generate_witness_values_unrolled_non_memory(
     let stride = generic_lookup_tables.stride();
     assert_eq!(memory.stride(), stride);
     assert_eq!(witness.stride(), stride);
+    assert_eq!(scratch.stride(), stride);
     assert_eq!(lookup_mapping.stride(), stride);
     assert!(stride < u32::MAX as usize);
     let stride = stride as u32;
@@ -115,6 +118,7 @@ pub(crate) fn generate_witness_values_unrolled_non_memory(
     let generic_lookup_tables = generic_lookup_tables.as_ptr();
     let memory = memory.as_ptr();
     let witness = witness.as_mut_ptr();
+    let scratch = scratch.as_mut_ptr();
     let lookup_mapping = lookup_mapping.as_mut_ptr();
     let (grid_dim, block_dim) = get_grid_block_dims_for_threads_count(WARP_SIZE * 4, count);
     let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
@@ -123,6 +127,7 @@ pub(crate) fn generate_witness_values_unrolled_non_memory(
         generic_lookup_tables,
         memory,
         witness,
+        scratch,
         lookup_mapping,
         stride,
         count,
@@ -131,16 +136,16 @@ pub(crate) fn generate_witness_values_unrolled_non_memory(
         UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop => {
             ab_generate_witness_values_add_sub_lui_auipc_mop_kernel
         }
-        // UnrolledNonMemoryCircuitType::JumpBranchSlt => {
-        //     ab_generate_witness_values_jump_branch_slt_kernel
-        // }
+        UnrolledNonMemoryCircuitType::JumpBranchSlt => {
+            ab_generate_witness_values_jump_branch_slt_kernel
+        }
         // UnrolledNonMemoryCircuitType::MulDiv => ab_generate_witness_values_mul_div_kernel,
         // UnrolledNonMemoryCircuitType::MulDivUnsigned => {
         //     ab_generate_witness_values_mul_div_unsigned_kernel
         // }
-        // UnrolledNonMemoryCircuitType::ShiftBinaryCsr => {
-        //     ab_generate_witness_values_shift_binary_csr_kernel
-        // }
+        UnrolledNonMemoryCircuitType::ShiftBinaryCsr => {
+            ab_generate_witness_values_shift_binary_csr_kernel
+        }
         _ => unimplemented!(),
     };
     GenerateWitnessUnrolledNonMemoryKernelFunction(kernel).launch(&config, &args)

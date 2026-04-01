@@ -236,20 +236,20 @@ DEVICE_FORCEINLINE void process_shuffle_ram_access_sets(const UnrolledMemoryLayo
     const auto [tag, payload] = layout.shuffle_ram_access_sets[i];
     RamAddress address = {};
     u32 read_timestamp_columns[NUM_TIMESTAMP_COLUMNS_FOR_RAM] = {};
-    u32 read_value_columns[REGISTER_SIZE] = {};
+    RamWordRepresentation read_value = {};
     switch (tag) {
     case Readonly: {
       const auto query = payload.ram_read_query;
       address = query.address;
       copy_timestamp(query.read_timestamp, read_timestamp_columns);
-      copy_register(query.read_value, read_value_columns);
+      read_value = query.read_value;
       break;
     }
     case Write: {
       const auto query = payload.ram_write_query;
       address = query.address;
       copy_timestamp(query.read_timestamp, read_timestamp_columns);
-      copy_register(query.read_value, read_value_columns);
+      read_value = query.read_value;
       break;
     }
     }
@@ -286,13 +286,13 @@ DEVICE_FORCEINLINE void process_shuffle_ram_access_sets(const UnrolledMemoryLayo
     write_timestamp_value(read_timestamp_columns, read_timestamp_value, memory);
     PRINT_TS(M, read_timestamp_columns, read_timestamp_value);
     const u32 read_value_value = oracle.get_witness_from_placeholder_u32({ShuffleRamReadValue, i}, index);
-    write_u32_value(read_value_columns, read_value_value, memory);
-    PRINT_U32(M, read_value_columns, read_value_value);
+    write_ram_word_value(read_value, read_value_value, memory);
+    print_ram_word_value(read_value, read_value_value, index);
     if (tag == Write) {
-      const auto write_value_columns = payload.ram_write_query.write_value;
+      const auto write_value = payload.ram_write_query.write_value;
       const u32 write_value_value = oracle.get_witness_from_placeholder_u32({ShuffleRamWriteValue, i}, index);
-      write_u32_value(write_value_columns, write_value_value, memory);
-      PRINT_U32(M, write_value_columns, write_value_value);
+      write_ram_word_value(write_value, write_value_value, memory);
+      print_ram_word_value(write_value, write_value_value, index);
     }
     if (!COMPUTE_WITNESS)
       continue;

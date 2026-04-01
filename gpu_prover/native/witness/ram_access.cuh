@@ -42,19 +42,43 @@ struct RamAddress {
   RamAddressPayload payload;
 };
 
+struct RamWordU16Limbs {
+  u32 limbs[REGISTER_SIZE];
+};
+
+struct RamWordU8Limbs {
+  u32 limbs[REGISTER_SIZE * 2];
+};
+
+enum RamWordRepresentationTag : u32 {
+  Zero,
+  U16Limbs,
+  U8Limbs,
+};
+
+union RamWordRepresentationPayload {
+  RamWordU16Limbs ram_word_u16_limbs;
+  RamWordU8Limbs ram_word_u8_limbs;
+};
+
+struct RamWordRepresentation {
+  RamWordRepresentationTag tag;
+  RamWordRepresentationPayload payload;
+};
+
 struct RamReadQuery {
   u32 in_cycle_write_index;
   RamAddress address;
   u32 read_timestamp[NUM_TIMESTAMP_COLUMNS_FOR_RAM];
-  u32 read_value[REGISTER_SIZE];
+  RamWordRepresentation read_value;
 };
 
 struct RamWriteQuery {
   u32 in_cycle_write_index;
   RamAddress address;
   u32 read_timestamp[NUM_TIMESTAMP_COLUMNS_FOR_RAM];
-  u32 read_value[REGISTER_SIZE];
-  u32 write_value[REGISTER_SIZE];
+  RamWordRepresentation read_value;
+  RamWordRepresentation write_value;
 };
 
 enum RamQueryTag : u32 {

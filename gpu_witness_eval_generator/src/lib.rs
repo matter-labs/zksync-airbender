@@ -1,4 +1,4 @@
-use cs::definitions::{ColumnAddress, GKRAddress, Variable};
+use cs::definitions::{ColumnAddress, GKRAddress, Variable, VirtualSetupPoly};
 use cs::gkr_compiler::GKRCircuitArtifact;
 use cs::oracle::Placeholder;
 use cs::witness_placer::graph_description::{
@@ -312,7 +312,7 @@ impl Generator {
         let scratch = if scratch_size == 0 {
             "constexpr wrapped_f *scratch = nullptr;\n".to_string()
         } else {
-            format!("wrapped_f scratch[{scratch_size}];\n")
+            "wrapped_f *scratch = scratch_storage + gid;\n".to_string()
         };
         self.push(&format!("#define SCRATCH {scratch}\n"));
     }
@@ -338,6 +338,15 @@ impl Generator {
                 | GKRAddress::ScratchSpace(..) => {
                     layout.insert(*var, ColumnAddress::OptimizedOut(next_scratch_slot));
                     next_scratch_slot += 1;
+                }
+                GKRAddress::VirtualSetup(virtual_setup) => {
+                    let setup_index = match virtual_setup {
+                        VirtualSetupPoly::RangeCheck16Bits => 0,
+                        VirtualSetupPoly::RangeCheckTimestamp => 1,
+                        VirtualSetupPoly::InitsAndTeardownsLow => 2,
+                        VirtualSetupPoly::InitsAndTeardownsHigh => 3,
+                    };
+                    layout.insert(*var, ColumnAddress::SetupSubtree(setup_index));
                 }
                 GKRAddress::Setup(..) => {
                     unreachable!("setup placements are not expected in GPU witness generation")
