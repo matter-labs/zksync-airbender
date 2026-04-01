@@ -2,7 +2,7 @@ use std::marker::PhantomData;
 use std::ptr::{null, null_mut};
 use std::sync::Arc;
 
-use cs::definitions::GKRAddress;
+use cs::definitions::{GKRAddress, VirtualSetupPoly, TIMESTAMP_COLUMNS_NUM_BITS};
 use cs::gkr_compiler::GKRCircuitArtifact;
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
 use era_cudart::memory::memory_copy_async;
@@ -11,7 +11,7 @@ use era_cudart::result::CudaResult;
 use era_cudart::slice::CudaSlice;
 use era_cudart::{cuda_kernel_declaration, cuda_kernel_signature_arguments_and_function};
 use fft::materialize_powers_serial_starting_with_one;
-use field::Field;
+use field::{Field, FieldExtension, PrimeField};
 
 use super::stage1::GpuGKRStage1Output;
 use super::{GpuBaseFieldPoly, GpuGKRStorage};
@@ -27,7 +27,9 @@ use crate::primitives::static_host::{
 use crate::primitives::transfer::Transfer;
 use crate::primitives::utils::{get_grid_block_dims_for_threads_count, WARP_SIZE};
 use crate::prover::trace_holder::{allocate_tree_caps, TraceHolder, TreesCacheMode, TreesHolder};
+use cs::tables::TableType;
 use prover::gkr::prover::setup::GKRSetup as CpuGKRSetup;
+use prover::gkr::virtual_polys::range_check::materialize_virtual_range_check_setup_poly;
 
 pub(crate) use super::setup_kernels::*;
 
@@ -47,15 +49,16 @@ impl<'a> GpuGKRSetupTransfer<'a> {
         trace_len: usize,
         generic_lookup_width: usize,
         generic_lookup_len: usize,
+        tables_ids_in_generic_lookups: bool,
         lookup_challenges: &HostAllocation<[E]>,
         context: &ProverContext,
     ) -> CudaResult<GpuGKRForwardSetup<E>>
     where
-        E: Field + GpuGKRForwardSetupGenericLookupKernelSet + 'static,
+        E: Field + FieldExtension<BF> + GpuGKRForwardSetupGenericLookupKernelSet + 'static,
     {
         self.ensure_transferred(context)?;
         assert_eq!(trace_len, self.host.trace_len);
-        assert_eq!(generic_lookup_width + 2, self.host.columns_count);
+        assert_eq!(generic_lookup_width, self.host.columns_count);
 
         assert!(
             generic_lookup_len == 0
@@ -69,9 +72,12 @@ impl<'a> GpuGKRSetupTransfer<'a> {
         let schedule_range = Range::new("gkr.forward_setup.schedule")?;
         schedule_range.start(stream)?;
         let mut host_lookup_additive_part = unsafe { context.alloc_host_uninit_slice(1) };
+        let mut host_decoder_lookup_fill_value = unsafe { context.alloc_host_uninit_slice(1) };
         let mut device_lookup_additive_part = context.alloc(1, AllocationPlacement::BestFit)?;
+        let mut device_decoder_lookup_fill_value =
+            context.alloc(1, AllocationPlacement::BestFit)?;
         let mut host_lookup_alpha_powers = if generic_lookup_len > 0 {
-            Some(unsafe { context.alloc_host_uninit_slice(self.host.columns_count - 2) })
+            Some(unsafe { context.alloc_host_uninit_slice(generic_lookup_width) })
         } else {
             None
         };
@@ -84,6 +90,7 @@ impl<'a> GpuGKRSetupTransfer<'a> {
         let mut callbacks = Callbacks::new();
 
         let lookup_additive_part_accessor = host_lookup_additive_part.get_mut_accessor();
+        let decoder_lookup_fill_value_accessor = host_decoder_lookup_fill_value.get_mut_accessor();
         let alpha_powers_accessor = host_lookup_alpha_powers
             .as_mut()
             .map(HostAllocation::get_mut_accessor);
@@ -101,6 +108,14 @@ impl<'a> GpuGKRSetupTransfer<'a> {
                 let lookup_alpha = lookup_challenges[0];
                 let lookup_additive_part = lookup_challenges[1];
                 lookup_additive_part_accessor.get_mut()[0] = lookup_additive_part;
+                decoder_lookup_fill_value_accessor.get_mut()[0] =
+                    if tables_ids_in_generic_lookups && generic_lookup_width > 0 {
+                    let mut value = lookup_alpha.pow((generic_lookup_width - 1) as u32);
+                    value.mul_assign_by_base(&BF::from_u32_unchecked(TableType::Decoder as u32));
+                    value
+                } else {
+                    E::ZERO
+                };
                 if let Some(alpha_powers_accessor) = alpha_powers_accessor.as_ref() {
                     let powers = materialize_powers_serial_starting_with_one::<
                         E,
@@ -115,6 +130,11 @@ impl<'a> GpuGKRSetupTransfer<'a> {
         memory_copy_async(
             &mut device_lookup_additive_part,
             &host_lookup_additive_part,
+            context.get_exec_stream(),
+        )?;
+        memory_copy_async(
+            &mut device_decoder_lookup_fill_value,
+            &host_decoder_lookup_fill_value,
             context.get_exec_stream(),
         )?;
         let device_lookup_alpha_powers =
@@ -151,8 +171,10 @@ impl<'a> GpuGKRSetupTransfer<'a> {
             _tracing_ranges: tracing_ranges,
             _callbacks: callbacks,
             _host_lookup_additive_part: host_lookup_additive_part,
+            _host_decoder_lookup_fill_value: host_decoder_lookup_fill_value,
             _host_lookup_alpha_powers: host_lookup_alpha_powers,
             device_lookup_additive_part,
+            device_decoder_lookup_fill_value,
             _device_lookup_alpha_powers: device_lookup_alpha_powers,
             generic_lookup,
         })
@@ -231,7 +253,8 @@ impl<'a> GpuGKRSetupTransfer<'a> {
         &self,
         memory_trace_holder: &TraceHolder<BF>,
         witness_trace_holder: &TraceHolder<BF>,
-    ) -> GpuGKRStorage<BF, E> {
+        context: &ProverContext,
+    ) -> CudaResult<GpuGKRStorage<BF, E>> {
         for (label, trace_holder) in [
             ("memory", memory_trace_holder),
             ("witness", witness_trace_holder),
@@ -256,6 +279,7 @@ impl<'a> GpuGKRSetupTransfer<'a> {
 
         let mut storage = GpuGKRStorage::default();
         self.bind_setup_columns_into_storage(&mut storage);
+        insert_virtual_setup_polys(&mut storage, self.trace_holder.log_domain_size, context)?;
         bind_trace_holder_columns_into_storage(
             memory_trace_holder,
             &mut storage,
@@ -267,14 +291,19 @@ impl<'a> GpuGKRSetupTransfer<'a> {
             GKRAddress::BaseLayerWitness,
         );
 
-        storage
+        Ok(storage)
     }
 
     pub(crate) fn bootstrap_storage_from_stage1<E>(
         &self,
         stage1: &GpuGKRStage1Output,
-    ) -> GpuGKRStorage<BF, E> {
-        self.bootstrap_storage(&stage1.memory_trace_holder, &stage1.witness_trace_holder)
+        context: &ProverContext,
+    ) -> CudaResult<GpuGKRStorage<BF, E>> {
+        self.bootstrap_storage(
+            &stage1.memory_trace_holder,
+            &stage1.witness_trace_holder,
+            context,
+        )
     }
 
     pub(crate) fn schedule_forward_setup<E>(
@@ -284,12 +313,13 @@ impl<'a> GpuGKRSetupTransfer<'a> {
         context: &ProverContext,
     ) -> CudaResult<GpuGKRForwardSetup<E>>
     where
-        E: Field + GpuGKRForwardSetupGenericLookupKernelSet + 'static,
+        E: Field + FieldExtension<BF> + GpuGKRForwardSetupGenericLookupKernelSet + 'static,
     {
         self.schedule_forward_setup_for_shape(
             compiled_circuit.trace_len,
             compiled_circuit.generic_lookup_tables_width,
             compiled_circuit.total_tables_size,
+            compiled_circuit.tables_ids_in_generic_lookups,
             lookup_challenges,
             context,
         )
@@ -321,12 +351,50 @@ impl<'a> GpuGKRSetupTransfer<'a> {
     }
 }
 
+fn upload_virtual_setup_poly<E>(
+    storage: &mut GpuGKRStorage<BF, E>,
+    address: GKRAddress,
+    values: Box<[BF]>,
+    context: &ProverContext,
+) -> CudaResult<()> {
+    let mut device = context.alloc(values.len(), AllocationPlacement::BestFit)?;
+    memory_copy_async(&mut device, &values[..], context.get_exec_stream())?;
+    storage.insert_base_field_at_layer(0, address, GpuBaseFieldPoly::new(device));
+    Ok(())
+}
+
+fn insert_virtual_setup_polys<E>(
+    storage: &mut GpuGKRStorage<BF, E>,
+    trace_len_log2: u32,
+    context: &ProverContext,
+) -> CudaResult<()> {
+    upload_virtual_setup_poly(
+        storage,
+        GKRAddress::VirtualSetup(VirtualSetupPoly::RangeCheck16Bits),
+        materialize_virtual_range_check_setup_poly::<BF, std::alloc::Global, 16>(trace_len_log2),
+        context,
+    )?;
+    upload_virtual_setup_poly(
+        storage,
+        GKRAddress::VirtualSetup(VirtualSetupPoly::RangeCheckTimestamp),
+        materialize_virtual_range_check_setup_poly::<
+            BF,
+            std::alloc::Global,
+            TIMESTAMP_COLUMNS_NUM_BITS,
+        >(trace_len_log2),
+        context,
+    )?;
+    Ok(())
+}
+
 pub(crate) struct GpuGKRForwardSetup<E> {
     _tracing_ranges: Vec<Range>,
     _callbacks: Callbacks<'static>,
     _host_lookup_additive_part: HostAllocation<[E]>,
+    _host_decoder_lookup_fill_value: HostAllocation<[E]>,
     _host_lookup_alpha_powers: Option<HostAllocation<[E]>>,
     device_lookup_additive_part: DeviceAllocation<E>,
+    device_decoder_lookup_fill_value: DeviceAllocation<E>,
     _device_lookup_alpha_powers: Option<DeviceAllocation<E>>,
     generic_lookup: Option<DeviceAllocation<E>>,
 }
@@ -335,6 +403,7 @@ pub(crate) struct GpuGKRForwardSetupHostKeepalive<E> {
     _tracing_ranges: Vec<Range>,
     _callbacks: Callbacks<'static>,
     _host_lookup_additive_part: HostAllocation<[E]>,
+    _host_decoder_lookup_fill_value: HostAllocation<[E]>,
     _host_lookup_alpha_powers: Option<HostAllocation<[E]>>,
     _marker: PhantomData<E>,
 }
@@ -346,6 +415,10 @@ impl<E> GpuGKRForwardSetup<E> {
 
     pub(crate) fn lookup_additive_part_device(&self) -> &DeviceAllocation<E> {
         &self.device_lookup_additive_part
+    }
+
+    pub(crate) fn decoder_lookup_fill_value_device(&self) -> &DeviceAllocation<E> {
+        &self.device_decoder_lookup_fill_value
     }
 
     pub(crate) fn generic_lookup(&self) -> &DeviceAllocation<E> {
@@ -370,8 +443,10 @@ impl<E> GpuGKRForwardSetup<E> {
             _tracing_ranges,
             _callbacks,
             _host_lookup_additive_part,
+            _host_decoder_lookup_fill_value,
             _host_lookup_alpha_powers,
             device_lookup_additive_part: _,
+            device_decoder_lookup_fill_value: _,
             _device_lookup_alpha_powers: _,
             generic_lookup: _,
         } = self;
@@ -381,6 +456,7 @@ impl<E> GpuGKRForwardSetup<E> {
             _tracing_ranges,
             _callbacks,
             _host_lookup_additive_part,
+            _host_decoder_lookup_fill_value,
             _host_lookup_alpha_powers,
             _marker: PhantomData,
         }
@@ -490,21 +566,14 @@ mod tests {
         generic_lookup_width: usize,
         total_tables_size: usize,
     ) -> CpuGKRSetup<BF> {
-        let total_width = 2 + generic_lookup_width;
-        let mut columns = Vec::with_capacity(total_width);
-        for _ in 0..total_width {
+        let mut columns = Vec::with_capacity(generic_lookup_width);
+        for _ in 0..generic_lookup_width {
             columns.push(vec![BF::ZERO; trace_len].into_boxed_slice());
         }
 
-        for idx in 0..trace_len.min(1usize << 16) {
-            columns[0][idx] = BF::from_u32_unchecked(idx as u32);
-        }
-        for idx in 0..trace_len.min(1usize << TIMESTAMP_COLUMNS_NUM_BITS) {
-            columns[1][idx] = BF::from_u32_unchecked(idx as u32);
-        }
         for row in 0..total_tables_size {
             for column in 0..generic_lookup_width {
-                columns[2 + column][row] =
+                columns[column][row] =
                     BF::from_u32_unchecked(10 * (column as u32 + 1) + row as u32);
             }
         }
@@ -515,6 +584,9 @@ mod tests {
     }
 
     fn flatten_setup(setup: &CpuGKRSetup<BF>) -> Vec<BF> {
+        if setup.hypercube_evals.is_empty() {
+            return Vec::new();
+        }
         let trace_len = setup.hypercube_evals[0].len();
         let mut result = vec![BF::ZERO; setup.hypercube_evals.len() * trace_len];
         for (column_idx, column) in setup.hypercube_evals.iter().enumerate() {
@@ -618,7 +690,7 @@ mod tests {
             let mut value = E4::ZERO;
             for column in 0..generic_lookup_width {
                 let mut contribution = powers[column];
-                contribution.mul_assign_by_base(&setup.hypercube_evals[2 + column][row]);
+                contribution.mul_assign_by_base(&setup.hypercube_evals[column][row]);
                 value.add_assign(&contribution);
             }
             result.push(value);
@@ -888,7 +960,9 @@ mod tests {
             &context,
         );
 
-        let storage = transfer.bootstrap_storage::<E4>(&memory_trace_holder, &witness_trace_holder);
+        let storage = transfer
+            .bootstrap_storage::<E4>(&memory_trace_holder, &witness_trace_holder, &context)
+            .unwrap();
         assert_eq!(storage.layers.len(), 1);
         assert!(storage.layers[0].extension_field_inputs.is_empty());
 
@@ -900,6 +974,30 @@ mod tests {
                 &setup.hypercube_evals[column][..]
             );
         }
+        let virtual_range_16 = copy_base_poly_from_storage(
+            &storage,
+            GKRAddress::VirtualSetup(VirtualSetupPoly::RangeCheck16Bits),
+            &context,
+        );
+        assert_eq!(
+            virtual_range_16,
+            materialize_virtual_range_check_setup_poly::<BF, Global, 16>(
+                trace_len.trailing_zeros()
+            )
+            .into_vec()
+        );
+        let virtual_timestamp = copy_base_poly_from_storage(
+            &storage,
+            GKRAddress::VirtualSetup(VirtualSetupPoly::RangeCheckTimestamp),
+            &context,
+        );
+        assert_eq!(
+            virtual_timestamp,
+            materialize_virtual_range_check_setup_poly::<BF, Global, TIMESTAMP_COLUMNS_NUM_BITS>(
+                trace_len.trailing_zeros()
+            )
+            .into_vec()
+        );
         for column in 0..memory_columns {
             let expected = &memory_values[column * trace_len..(column + 1) * trace_len];
             assert_eq!(
@@ -1031,6 +1129,7 @@ mod tests {
                 trace_len,
                 generic_lookup_width,
                 generic_lookup_len,
+                false,
                 &lookup_challenges,
                 &context,
             )

@@ -8,6 +8,7 @@ pub(crate) mod forward_kernels;
 pub(crate) mod setup;
 pub(crate) mod setup_kernels;
 pub(crate) mod stage1;
+pub(crate) mod transform;
 
 use std::collections::BTreeMap;
 use std::ptr::null;
@@ -668,7 +669,8 @@ impl<B, E> GpuGKRStorage<B, E> {
             GKRAddress::InnerLayer { layer, .. } | GKRAddress::Cached { layer, .. } => Some(layer),
             GKRAddress::BaseLayerMemory(..)
             | GKRAddress::BaseLayerWitness(..)
-            | GKRAddress::Setup(..) => Some(0),
+            | GKRAddress::Setup(..)
+            | GKRAddress::VirtualSetup(..) => Some(0),
             GKRAddress::ScratchSpace(..) => None,
         }
     }
@@ -679,6 +681,7 @@ impl<B, E> GpuGKRStorage<B, E> {
             GKRAddress::BaseLayerMemory(..)
             | GKRAddress::BaseLayerWitness(..)
             | GKRAddress::Setup(..)
+            | GKRAddress::VirtualSetup(..)
             | GKRAddress::ScratchSpace(..) => None,
         }
     }
@@ -773,7 +776,8 @@ impl<B: 'static, E: Field> GpuGKRStorage<B, E> {
             GKRAddress::InnerLayer { layer, .. } => layer,
             GKRAddress::BaseLayerMemory(..)
             | GKRAddress::BaseLayerWitness(..)
-            | GKRAddress::Setup(..) => 0,
+            | GKRAddress::Setup(..)
+            | GKRAddress::VirtualSetup(..) => 0,
         }
     }
 
@@ -782,7 +786,8 @@ impl<B: 'static, E: Field> GpuGKRStorage<B, E> {
             GKRAddress::ScratchSpace(..)
             | GKRAddress::BaseLayerMemory(..)
             | GKRAddress::BaseLayerWitness(..)
-            | GKRAddress::Setup(..) => unreachable!(),
+            | GKRAddress::Setup(..)
+            | GKRAddress::VirtualSetup(..) => unreachable!(),
             GKRAddress::Cached { .. } => unreachable!(),
             GKRAddress::InnerLayer { layer, .. } => layer,
         }
