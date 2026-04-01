@@ -57,6 +57,29 @@ DEVICE_FORCEINLINE void write_u32_value(const u32 columns[REGISTER_SIZE], const 
   dst.set_at_col(high_index, bf::from_canonical_u32(high_value));
 }
 
+DEVICE_FORCEINLINE void write_u32_value_as_u8_limbs(const u32 columns[REGISTER_SIZE * 2], const u32 value, const matrix_setter<bf, st_modifier::cg> dst) {
+  static_assert(REGISTER_SIZE == 2);
+#pragma unroll
+  for (unsigned byte = 0; byte < REGISTER_SIZE * 2; ++byte) {
+    const u32 column = columns[byte];
+    const u32 byte_value = (value >> (byte * 8)) & 0xff;
+    dst.set_at_col(column, bf::from_canonical_u32(byte_value));
+  }
+}
+
+DEVICE_FORCEINLINE void write_ram_word_value(const RamWordRepresentation &representation, const u32 value, const matrix_setter<bf, st_modifier::cg> dst) {
+  switch (representation.tag) {
+  case Zero:
+    break;
+  case U16Limbs:
+    write_u32_value(representation.payload.ram_word_u16_limbs.limbs, value, dst);
+    break;
+  case U8Limbs:
+    write_u32_value_as_u8_limbs(representation.payload.ram_word_u8_limbs.limbs, value, dst);
+    break;
+  }
+}
+
 DEVICE_FORCEINLINE void write_u32_as_bf_value(const u32 column, const u32 value, const matrix_setter<bf, st_modifier::cg> dst) {
   dst.set_at_col(column, bf::from_canonical_u32(value));
 }
@@ -84,6 +107,10 @@ DEVICE_FORCEINLINE void write_timestamp_value(const u32 columns[NUM_TIMESTAMP_CO
 #define PRINT_U32(p, c, v)                                                                                                                                     \
   if (index == PRINT_THREAD_IDX)                                                                                                                               \
   printf(#p "[%u] <- %u\n" #p "[%u] <- %u\n", c[0], v & 0xffff, c[1], v >> 16)
+#define PRINT_U32_AS_U8_LIMBS(p, c, v)                                                                                                                         \
+  if (index == PRINT_THREAD_IDX)                                                                                                                               \
+  printf(#p "[%u] <- %u\n" #p "[%u] <- %u\n" #p "[%u] <- %u\n" #p "[%u] <- %u\n", c[0], v & 0xff, c[1], (v >> 8) & 0xff, c[2], (v >> 16) & 0xff, c[3],    \
+         (v >> 24) & 0xff)
 #define PRINT_R32(p, c, v)                                                                                                                                     \
   if (index == PRINT_THREAD_IDX)                                                                                                                               \
   printf(#p "[%u] <- %u\n", c, v)
@@ -94,8 +121,22 @@ DEVICE_FORCEINLINE void write_timestamp_value(const u32 columns[NUM_TIMESTAMP_CO
 #define PRINT_U8(p, c, v)
 #define PRINT_U16(p, c, v)
 #define PRINT_U32(p, c, v)
+#define PRINT_U32_AS_U8_LIMBS(p, c, v)
 #define PRINT_R32(p, c, v)
 #define PRINT_TS(p, c, v)
 #endif
+
+DEVICE_FORCEINLINE void print_ram_word_value(const RamWordRepresentation &representation, const u32 value, const unsigned index) {
+  switch (representation.tag) {
+  case Zero:
+    break;
+  case U16Limbs:
+    PRINT_U32(M, representation.payload.ram_word_u16_limbs.limbs, value);
+    break;
+  case U8Limbs:
+    PRINT_U32_AS_U8_LIMBS(M, representation.payload.ram_word_u8_limbs.limbs, value);
+    break;
+  }
+}
 
 } // namespace airbender::witness::memory
