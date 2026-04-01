@@ -161,13 +161,15 @@ pub(super) const GKR_FORWARD_MAX_GATES_PER_LAYER: usize = 64;
 pub(super) const GKR_FORWARD_THREADS_PER_BLOCK: u32 = WARP_SIZE * 4;
 pub(super) const GKR_DIM_REDUCING_FORWARD_MAX_INPUTS: usize = 5;
 pub(super) const MAX_CACHE_RELATIONS_PER_LAYER: usize = 20;
-pub(super) const MEMORY_TUPLE_LINEAR_TERMS: usize = 6;
+pub(super) const MEMORY_TUPLE_LINEAR_TERMS: usize = 8;
 pub(super) const MEMORY_TUPLE_ADDRESS_LOW_TERM: usize = 0;
 pub(super) const MEMORY_TUPLE_ADDRESS_HIGH_TERM: usize = 1;
 pub(super) const MEMORY_TUPLE_TIMESTAMP_LOW_TERM: usize = 2;
 pub(super) const MEMORY_TUPLE_TIMESTAMP_HIGH_TERM: usize = 3;
 pub(super) const MEMORY_TUPLE_VALUE_LOW_TERM: usize = 4;
-pub(super) const MEMORY_TUPLE_VALUE_HIGH_TERM: usize = 5;
+pub(super) const MEMORY_TUPLE_VALUE_LOW_EXTRA_TERM: usize = 5;
+pub(super) const MEMORY_TUPLE_VALUE_HIGH_TERM: usize = 6;
+pub(super) const MEMORY_TUPLE_VALUE_HIGH_EXTRA_TERM: usize = 7;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u32)]
@@ -182,6 +184,7 @@ pub(super) enum GpuGKRForwardGateKind {
     LookupExtMinusMultiplicityByExt = 7,
     LookupUnbalancedBase = 8,
     LookupUnbalancedExtension = 9,
+    LookupExtPair = 10,
 }
 
 impl GpuGKRForwardGateKind {
@@ -285,6 +288,23 @@ impl<E> Clone for GpuGKRForwardLookupBasePairDescriptor<E> {
 
 #[repr(C)]
 #[derive(Debug, Default)]
+pub(super) struct GpuGKRForwardLookupExtPairDescriptor<E> {
+    pub(super) lhs: *const E,
+    pub(super) rhs: *const E,
+    pub(super) num: *mut E,
+    pub(super) den: *mut E,
+}
+
+impl<E> Copy for GpuGKRForwardLookupExtPairDescriptor<E> {}
+
+impl<E> Clone for GpuGKRForwardLookupExtPairDescriptor<E> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+#[repr(C)]
+#[derive(Debug, Default)]
 pub(super) struct GpuGKRForwardLookupBaseMinusMultiplicityByBaseDescriptor<E> {
     pub(super) b: *const BF,
     pub(super) c: *const BF,
@@ -364,6 +384,7 @@ union GpuGKRForwardGatePayload<E> {
     lookup_with_cached_dens_and_setup:
         ManuallyDrop<GpuGKRForwardLookupWithCachedDensAndSetupDescriptor<E>>,
     lookup_base_pair: ManuallyDrop<GpuGKRForwardLookupBasePairDescriptor<E>>,
+    lookup_ext_pair: ManuallyDrop<GpuGKRForwardLookupExtPairDescriptor<E>>,
     lookup_base_minus_multiplicity_by_base:
         ManuallyDrop<GpuGKRForwardLookupBaseMinusMultiplicityByBaseDescriptor<E>>,
     lookup_ext_minus_multiplicity_by_ext:
@@ -498,6 +519,26 @@ impl<E> GpuGKRForwardGateDescriptor<E> {
             _reserved: 0,
             payload: GpuGKRForwardGatePayload {
                 lookup_base_pair: ManuallyDrop::new(GpuGKRForwardLookupBasePairDescriptor {
+                    lhs,
+                    rhs,
+                    num,
+                    den,
+                }),
+            },
+        }
+    }
+
+    pub(super) fn with_lookup_ext_pair(
+        lhs: *const E,
+        rhs: *const E,
+        num: *mut E,
+        den: *mut E,
+    ) -> Self {
+        Self {
+            kind: GpuGKRForwardGateKind::LookupExtPair.as_u32(),
+            _reserved: 0,
+            payload: GpuGKRForwardGatePayload {
+                lookup_ext_pair: ManuallyDrop::new(GpuGKRForwardLookupExtPairDescriptor {
                     lhs,
                     rhs,
                     num,
