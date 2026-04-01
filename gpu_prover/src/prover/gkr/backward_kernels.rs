@@ -91,9 +91,10 @@ pub(crate) enum GpuGKRMainLayerKernelKind {
     LookupPair = 4,
     LookupBasePair = 5,
     LookupBaseMinusMultiplicityByBase = 6,
-    LookupUnbalanced = 7,
-    LookupWithCachedDensAndSetup = 8,
-    EnforceConstraintsMaxQuadratic = 9,
+    LookupExtMinusMultiplicityByExt = 7,
+    LookupUnbalanced = 8,
+    LookupWithCachedDensAndSetup = 9,
+    EnforceConstraintsMaxQuadratic = 10,
 }
 
 impl GpuGKRMainLayerKernelKind {

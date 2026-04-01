@@ -10,6 +10,7 @@ type CSRamWordRepresentation = cs::definitions::gkr::RamWordRepresentation;
 
 fn ram_word_to_u16_limbs(value: CSRamWordRepresentation) -> [u32; REGISTER_SIZE] {
     match value {
+        CSRamWordRepresentation::Zero => [0; REGISTER_SIZE],
         CSRamWordRepresentation::U16Limbs(value) => value.map(|x| x as u32),
         CSRamWordRepresentation::U8Limbs(_) => {
             unimplemented!("GPU GKR RAM tuples do not yet support byte-limb word representation")
@@ -85,8 +86,16 @@ impl Default for RamAddress {
 impl From<CSRamAddress> for RamAddress {
     fn from(value: CSRamAddress) -> Self {
         match value {
+            CSRamAddress::ConstantRegister(register_index) => {
+                Self::RegisterOnly(RegisterOnlyAccessAddress {
+                    register_index: register_index as u32,
+                })
+            }
             CSRamAddress::RegisterOnly(addr) => Self::RegisterOnly(addr.into()),
             CSRamAddress::RegisterOrRam(addr) => Self::RegisterOrRam(addr.into()),
+            CSRamAddress::IndirectRam(_) => {
+                unimplemented!("GPU witness generation does not yet support indirect RAM addresses")
+            }
         }
     }
 }

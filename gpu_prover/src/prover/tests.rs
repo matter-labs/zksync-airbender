@@ -83,16 +83,18 @@ use prover::gkr::prover::transcript_utils::{
 };
 use prover::gkr::prover::utils::flatten_merkle_caps_iter_into;
 use prover::gkr::prover::{GKRExternalChallenges, GKRProof, WhirSchedule};
-use prover::gkr::sumcheck::access_and_fold::GKRStorage;
+use prover::gkr::sumcheck::access_and_fold::{BaseFieldPoly, GKRLayerSource, GKRStorage};
 use prover::gkr::sumcheck::eq_poly::make_eq_poly_in_full;
 use prover::gkr::sumcheck::evaluate_small_univariate_poly;
 use prover::gkr::sumcheck::evaluation_kernels::{
     BaseFieldCopyGKRRelation, BatchConstraintEvalGKRRelation, BatchedGKRKernel,
     ExtensionCopyGKRRelation, GKRInputs, LookupBaseExtMinusBaseExtGKRRelation,
-    LookupBaseMinusMultiplicityByBaseGKRRelation, LookupBasePairGKRRelation, LookupPairGKRRelation,
+    LookupBaseMinusMultiplicityByBaseGKRRelation, LookupBasePairGKRRelation,
+    LookupExtensionMinusMultiplicityByExtensionGKRRelation, LookupPairGKRRelation,
     LookupRationalPairWithUnbalancedBaseGKRRelation, MaskIntoIdentityProductGKRRelation,
     SameSizeProductGKRRelation,
 };
+use prover::gkr::virtual_polys::range_check::materialize_virtual_range_check_setup_poly;
 use prover::gkr::whir::{
     whir_fold, ColumnMajorBaseOracleForLDE, ColumnMajorExtensionOracleForCoset,
     ColumnMajorExtensionOracleForLDE, WhirCommitment, WhirPolyCommitProof,
@@ -130,6 +132,32 @@ fn test_artifact_path(relative_path: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("..")
         .join(relative_path)
+}
+
+fn insert_virtual_setup_polys_for_test<F: PrimeField, E: FieldExtension<F> + Field>(
+    trace_len: usize,
+    gkr_storage: &mut GKRStorage<F, E>,
+) {
+    if gkr_storage.layers.is_empty() {
+        gkr_storage.layers.push(GKRLayerSource::default());
+    }
+    let base_layer = &mut gkr_storage.layers[0].base_field_inputs;
+    let previous = base_layer.insert(
+        GKRAddress::VirtualSetup(VirtualSetupPoly::RangeCheck16Bits),
+        BaseFieldPoly::new(materialize_virtual_range_check_setup_poly::<F, Global, 16>(
+            trace_len.trailing_zeros(),
+        )),
+    );
+    assert!(previous.is_none());
+    let previous = base_layer.insert(
+        GKRAddress::VirtualSetup(VirtualSetupPoly::RangeCheckTimestamp),
+        BaseFieldPoly::new(materialize_virtual_range_check_setup_poly::<
+            F,
+            Global,
+            TIMESTAMP_COLUMNS_NUM_BITS,
+        >(trace_len.trailing_zeros())),
+    );
+    assert!(previous.is_none());
 }
 
 fn ensure_memory_trace_consistency<F: PrimeField>(
@@ -472,7 +500,7 @@ fn prepare_basic_unrolled_fixture(
         .collect();
 
     let instructions: Vec<Instruction> =
-        preprocess_bytecode::<FullUnsignedMachineDecoderConfig>(&text_section);
+        preprocess_bytecode::<FullUnsignedMachineDecoderConfig, true>(&text_section);
     let tape = SimpleTape::new(&instructions);
     let mut ram = RamWithRomRegion::<{ ROM_SECOND_WORD_BITS }>::from_rom_content(&binary, 1 << 30);
     let cycles_bound = 1 << 20;
@@ -578,7 +606,7 @@ fn prepare_basic_unrolled_fixture(
         _marker: std::marker::PhantomData,
     };
 
-    let whir_schedule = WhirSchedule::default_for_tests_80_bits();
+    let whir_schedule = WhirSchedule::default_for_tests_80_bits_24();
     let setup = GKRSetup::construct(
         &TableDriver::new(),
         &decoder_table_data,
@@ -2199,6 +2227,29 @@ pub(crate) fn expected_main_layer_kernel_specs_for_test<E: Field + FieldExtensio
                     constraint_metadata: None,
                 });
             }
+            NoFieldGKRRelation::LookupFromMaterializedVectorInputWithSetup {
+                input,
+                setup,
+                output,
+            } => {
+                let relation = LookupExtensionMinusMultiplicityByExtensionGKRRelation::<BF, E> {
+                    input: *input,
+                    setup: *setup,
+                    outputs: *output,
+                    lookup_additive_challenge,
+                    _marker: core::marker::PhantomData,
+                };
+                specs.push(ExpectedMainLayerKernelSpec {
+                    kind: GpuGKRMainLayerKernelKind::LookupExtMinusMultiplicityByExt,
+                    inputs: <LookupExtensionMinusMultiplicityByExtensionGKRRelation<BF, E> as BatchedGKRKernel<
+                        BF,
+                        E,
+                    >>::get_inputs(&relation),
+                    batch_challenges: vec![get_challenge(), get_challenge()],
+                    auxiliary_challenge: lookup_additive_challenge,
+                    constraint_metadata: None,
+                });
+            }
             NoFieldGKRRelation::LookupUnbalancedPairWithMaterializedBaseInputs {
                 input,
                 remainder,
@@ -2246,12 +2297,8 @@ pub(crate) fn expected_main_layer_kernel_specs_for_test<E: Field + FieldExtensio
                 });
             }
             NoFieldGKRRelation::EnforceConstraintsMaxQuadratic { input } => {
-                let relation = BatchConstraintEvalGKRRelation::<BF, E>::new(
-                    input,
-                    num_base_layer_memory_polys,
-                    num_base_layer_witness_polys,
-                    constraint_batch_challenge,
-                );
+                let relation =
+                    BatchConstraintEvalGKRRelation::<BF, E>::new(input, constraint_batch_challenge);
                 specs.push(
                     ExpectedMainLayerKernelSpec {
                         kind: GpuGKRMainLayerKernelKind::EnforceConstraintsMaxQuadratic,
@@ -4165,7 +4212,7 @@ fn run_basic_unrolled_workflow_input_parity_test() {
         .collect();
 
     let instructions: Vec<Instruction> =
-        preprocess_bytecode::<FullUnsignedMachineDecoderConfig>(&text_section);
+        preprocess_bytecode::<FullUnsignedMachineDecoderConfig, true>(&text_section);
     let tape = SimpleTape::new(&instructions);
     let mut ram = RamWithRomRegion::<{ ROM_SECOND_WORD_BITS }>::from_rom_content(&binary, 1 << 30);
     let cycles_bound = 1 << 20;
@@ -4290,7 +4337,7 @@ fn run_basic_unrolled_workflow_input_parity_test() {
     ensure_memory_trace_consistency(&memory_trace, &full_trace);
 
     let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, &worker);
-    let whir_schedule = WhirSchedule::default_for_tests_80_bits();
+    let whir_schedule = WhirSchedule::default_for_tests_80_bits_24();
     let setup = GKRSetup::construct(
         &TableDriver::new(),
         &decoder_table_data,
@@ -4524,13 +4571,15 @@ fn run_basic_unrolled_workflow_input_parity_test() {
     context.get_exec_stream().synchronize().unwrap();
 
     let mut gkr_storage = GKRStorage::<BF, E4>::default();
-    let preprocessed_generic_lookup = setup.preprocess_generic_lookups(
-        &add_sub_circuit,
-        lookup_alpha,
-        trace_len,
-        &mut gkr_storage,
-        &worker,
-    );
+    insert_virtual_setup_polys_for_test(trace_len, &mut gkr_storage);
+    let (preprocessed_generic_lookup, decoder_lookup_fill_value) = setup
+        .preprocess_generic_lookups(
+            &add_sub_circuit,
+            lookup_alpha,
+            trace_len,
+            &mut gkr_storage,
+            &worker,
+        );
 
     let mut gpu_generic = vec![E4::ZERO; gpu_forward_setup.generic_lookup_len()];
     memory_copy_async(
@@ -4540,8 +4589,7 @@ fn run_basic_unrolled_workflow_input_parity_test() {
     )
     .unwrap();
     context.get_exec_stream().synchronize().unwrap();
-    let first_mismatch =
-        describe_first_vec_mismatch(&gpu_generic, preprocessed_generic_lookup.as_ref());
+    let first_mismatch = describe_first_vec_mismatch(&gpu_generic, &preprocessed_generic_lookup);
     assert!(
         first_mismatch.is_none(),
         "preprocessed generic lookup diverged: {}",
@@ -4559,7 +4607,9 @@ fn run_basic_unrolled_workflow_input_parity_test() {
             &mut witness_eval_data,
             trace_len,
             &preprocessed_generic_lookup,
+            lookup_alpha,
             lookup_additive_part,
+            decoder_lookup_fill_value,
             constraints_batch_challenge,
             &worker,
         );
@@ -4637,7 +4687,6 @@ fn shift_binop_forward_cache_layout_regression_test() {
             NoFieldGKRCacheRelation::VectorizedLookup(_) => "VectorizedLookup",
             NoFieldGKRCacheRelation::VectorizedLookupSetup(..) => "VectorizedLookupSetup",
             NoFieldGKRCacheRelation::MemoryTuple(..) => "MemoryTuple",
-            NoFieldGKRCacheRelation::LongLinear => "LongLinear",
         };
         *layer0_cache_kinds.entry(kind).or_default() += 1;
     }
@@ -4702,7 +4751,7 @@ fn run_shift_binop_forward_cache_parity_test() {
         .collect();
 
     let instructions: Vec<Instruction> =
-        preprocess_bytecode::<FullUnsignedMachineDecoderConfig>(&text_section);
+        preprocess_bytecode::<FullUnsignedMachineDecoderConfig, true>(&text_section);
     let tape = SimpleTape::new(&instructions);
     let mut ram = RamWithRomRegion::<{ ROM_SECOND_WORD_BITS }>::from_rom_content(&binary, 1 << 30);
     let cycles_bound = 1 << 20;
@@ -4749,7 +4798,6 @@ fn run_shift_binop_forward_cache_parity_test() {
             NoFieldGKRCacheRelation::VectorizedLookup(_) => "VectorizedLookup",
             NoFieldGKRCacheRelation::VectorizedLookupSetup(..) => "VectorizedLookupSetup",
             NoFieldGKRCacheRelation::MemoryTuple(..) => "MemoryTuple",
-            NoFieldGKRCacheRelation::LongLinear => "LongLinear",
         };
         *layer0_cache_kinds.entry(kind).or_default() += 1;
     }
@@ -4852,7 +4900,7 @@ fn run_shift_binop_forward_cache_parity_test() {
     );
     ensure_memory_trace_consistency(&memory_trace, &full_trace);
 
-    let whir_schedule = WhirSchedule::default_for_tests_80_bits();
+    let whir_schedule = WhirSchedule::default_for_tests_80_bits_24();
     let setup = GKRSetup::construct(
         &table_driver,
         &decoder_table_data,
@@ -4958,13 +5006,15 @@ fn run_shift_binop_forward_cache_parity_test() {
     );
 
     let mut gkr_storage = GKRStorage::<BF, E4>::default();
-    let preprocessed_generic_lookup = setup.preprocess_generic_lookups(
-        &shift_binop_circuit,
-        lookup_alpha,
-        trace_len,
-        &mut gkr_storage,
-        &worker,
-    );
+    insert_virtual_setup_polys_for_test(trace_len, &mut gkr_storage);
+    let (preprocessed_generic_lookup, decoder_lookup_fill_value) = setup
+        .preprocess_generic_lookups(
+            &shift_binop_circuit,
+            lookup_alpha,
+            trace_len,
+            &mut gkr_storage,
+            &worker,
+        );
 
     let mut gpu_generic = vec![E4::ZERO; gpu_forward_setup.generic_lookup_len()];
     memory_copy_async(
@@ -4974,8 +5024,7 @@ fn run_shift_binop_forward_cache_parity_test() {
     )
     .unwrap();
     context.get_exec_stream().synchronize().unwrap();
-    let first_mismatch =
-        describe_first_vec_mismatch(&gpu_generic, preprocessed_generic_lookup.as_ref());
+    let first_mismatch = describe_first_vec_mismatch(&gpu_generic, &preprocessed_generic_lookup);
     assert!(
         first_mismatch.is_none(),
         "preprocessed generic lookup diverged: {}",
@@ -4993,7 +5042,9 @@ fn run_shift_binop_forward_cache_parity_test() {
             &mut witness_eval_data,
             trace_len,
             &preprocessed_generic_lookup,
+            lookup_alpha,
             lookup_additive_part,
+            decoder_lookup_fill_value,
             constraints_batch_challenge,
             &worker,
         );
@@ -5088,7 +5139,7 @@ fn run_basic_unrolled_stagewise_parity_test() {
 
     // first run to capture minimal information
     let instructions: Vec<Instruction> =
-        preprocess_bytecode::<FullUnsignedMachineDecoderConfig>(&text_section);
+        preprocess_bytecode::<FullUnsignedMachineDecoderConfig, true>(&text_section);
 
     let tape = SimpleTape::new(&instructions);
     let mut ram = RamWithRomRegion::<{ ROM_SECOND_WORD_BITS }>::from_rom_content(&binary, 1 << 30);
@@ -5260,7 +5311,7 @@ fn run_basic_unrolled_stagewise_parity_test() {
     ensure_memory_trace_consistency(&memory_trace, &full_trace);
 
     let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, &worker);
-    let whir_schedule = WhirSchedule::default_for_tests_80_bits();
+    let whir_schedule = WhirSchedule::default_for_tests_80_bits_24();
     let base_lde_factor = whir_schedule.base_lde_factor;
     let tree_cap_size = whir_schedule.cap_size;
     let setup = GKRSetup::construct(
@@ -5440,13 +5491,15 @@ fn run_basic_unrolled_stagewise_parity_test() {
     };
 
     let mut gkr_storage = GKRStorage::<BF, E4>::default();
-    let preprocessed_generic_lookup = setup.preprocess_generic_lookups(
-        &add_sub_circuit,
-        lookup_alpha,
-        trace_len,
-        &mut gkr_storage,
-        &worker,
-    );
+    insert_virtual_setup_polys_for_test(trace_len, &mut gkr_storage);
+    let (preprocessed_generic_lookup, decoder_lookup_fill_value) = setup
+        .preprocess_generic_lookups(
+            &add_sub_circuit,
+            lookup_alpha,
+            trace_len,
+            &mut gkr_storage,
+            &worker,
+        );
 
     let mut witness_eval_data = full_trace;
     for (layer_idx, layer) in add_sub_circuit.layers.iter().enumerate() {
@@ -5459,7 +5512,9 @@ fn run_basic_unrolled_stagewise_parity_test() {
             &mut witness_eval_data,
             trace_len,
             &preprocessed_generic_lookup,
+            lookup_alpha,
             lookup_additive_part,
+            decoder_lookup_fill_value,
             constraints_batch_challenge,
             &worker,
         );
@@ -5670,6 +5725,7 @@ fn run_basic_unrolled_stagewise_parity_test() {
                 &mut sumcheck_batching_challenge,
                 &add_sub_circuit,
                 trace_len,
+                lookup_alpha,
                 lookup_additive_part,
                 constraints_batch_challenge,
                 &external_challenges,
@@ -6016,7 +6072,7 @@ fn test_commit_memory_matches_cpu() {
         .map(|el| u32::from_le_bytes(*el))
         .collect();
     let instructions: Vec<Instruction> =
-        preprocess_bytecode::<FullUnsignedMachineDecoderConfig>(&text_section);
+        preprocess_bytecode::<FullUnsignedMachineDecoderConfig, true>(&text_section);
     let tape = SimpleTape::new(&instructions);
     let mut ram = RamWithRomRegion::<{ ROM_SECOND_WORD_BITS }>::from_rom_content(&binary, 1 << 30);
     let cycles_bound = 1 << 20;

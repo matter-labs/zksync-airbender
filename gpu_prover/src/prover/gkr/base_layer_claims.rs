@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
-use cs::definitions::GKRAddress;
+use cs::definitions::{GKRAddress, VirtualSetupPoly, TIMESTAMP_COLUMNS_NUM_BITS};
 use cs::gkr_compiler::GKRLayerDescription;
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
@@ -12,6 +12,7 @@ use super::backward::{
     launch_build_eq_values, launch_trace_holder_block_partials, GpuDimensionReducingKernelSet,
     GKR_TRACE_HOLDER_PARTIALS_COLUMNS_PER_CHUNK,
 };
+use super::transform::normalize_layer_for_gpu;
 use crate::allocator::tracker::AllocationPlacement;
 use crate::ops::cub::device_reduce::{
     batch_reduce, get_batch_reduce_temp_storage_bytes, ReduceOperation,
@@ -22,6 +23,7 @@ use crate::primitives::device_structures::DeviceMatrix;
 use crate::primitives::device_tracing::Range;
 use crate::primitives::field::BF;
 use crate::prover::trace_holder::TraceHolder;
+use prover::gkr::virtual_polys::range_check::evaluate_virtual_range_check_setup_poly;
 
 #[derive(Clone)]
 pub(crate) struct GpuGKRBaseLayerTailOutput<E> {
@@ -35,12 +37,14 @@ pub(crate) struct GpuGKRBaseLayerTailOutput<E> {
 
 impl<E: Copy> GpuGKRBaseLayerTailOutput<E> {
     pub(crate) fn claim_for_address(&self, address: GKRAddress) -> Option<E> {
-        claim_from_dense_vectors(
-            &self.mem_polys_claims,
-            &self.wit_polys_claims,
-            &self.setup_polys_claims,
-            address,
-        )
+        self.completed_claims.get(&address).copied().or_else(|| {
+            claim_from_dense_vectors(
+                &self.mem_polys_claims,
+                &self.wit_polys_claims,
+                &self.setup_polys_claims,
+                address,
+            )
+        })
     }
 }
 
@@ -278,6 +282,30 @@ fn fill_missing_cached_dependency_claims<E: Copy>(
     )
 }
 
+fn populate_virtual_setup_claims<E>(
+    completed_claims: &mut BTreeMap<GKRAddress, E>,
+    claim_point: &[E],
+    trace_len_log2: u32,
+) where
+    E: FieldExtension<BF> + Field,
+{
+    completed_claims
+        .entry(GKRAddress::VirtualSetup(VirtualSetupPoly::RangeCheck16Bits))
+        .or_insert_with(|| {
+            evaluate_virtual_range_check_setup_poly::<BF, E, 16>(claim_point, trace_len_log2)
+        });
+    completed_claims
+        .entry(GKRAddress::VirtualSetup(
+            VirtualSetupPoly::RangeCheckTimestamp,
+        ))
+        .or_insert_with(|| {
+            evaluate_virtual_range_check_setup_poly::<BF, E, TIMESTAMP_COLUMNS_NUM_BITS>(
+                claim_point,
+                trace_len_log2,
+            )
+        });
+}
+
 fn schedule_reduce_trace_holder_claims<E>(
     label: &str,
     trace_holder: &TraceHolder<BF>,
@@ -355,7 +383,7 @@ where
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn schedule_prepare_base_layer_claims_with_sources<E>(
-    layer_desc: GKRLayerDescription,
+    mut layer_desc: GKRLayerDescription,
     claim_point_len: usize,
     point_fill: impl Fn(&mut [E]) + Send + Sync + 'static,
     initial_claims: impl Fn() -> BTreeMap<GKRAddress, E> + Send + Sync + 'static,
@@ -367,6 +395,7 @@ pub(crate) fn schedule_prepare_base_layer_claims_with_sources<E>(
 where
     E: GpuDimensionReducingKernelSet + FieldExtension<BF> + Field + 'static,
 {
+    normalize_layer_for_gpu(&mut layer_desc);
     for (label, trace_holder) in [
         ("memory", memory_trace_holder),
         ("witness", witness_trace_holder),
@@ -445,10 +474,12 @@ where
     let finalize_range = Range::new("gkr.base_layer_claims.finalize")?;
     finalize_range.start(stream)?;
     let mut finish_callbacks = Callbacks::new();
+    let claim_point_accessor = claim_point_host.get_accessor();
     let mem_polys_claims_accessor = mem_polys_claims.get_accessor();
     let wit_polys_claims_accessor = wit_polys_claims.get_accessor();
     let setup_polys_claims_accessor = setup_polys_claims.get_accessor();
     let shared_state_for_callback = Arc::clone(&shared_state);
+    let trace_len_log2 = setup_trace_holder.log_domain_size;
     finish_callbacks.schedule(
         move || unsafe {
             let collect = |accessor: crate::primitives::context::UnsafeAccessor<[E]>| {
@@ -459,6 +490,11 @@ where
             let wit_polys_claims = collect(wit_polys_claims_accessor);
             let setup_polys_claims = collect(setup_polys_claims_accessor);
             let mut completed_claims = initial_claims();
+            populate_virtual_setup_claims(
+                &mut completed_claims,
+                claim_point_accessor.get(),
+                trace_len_log2,
+            );
             let (extra_evaluations_from_caching_relations, extra_evaluations_transcript_batches) =
                 fill_missing_cached_dependency_claims(
                     &layer_desc,

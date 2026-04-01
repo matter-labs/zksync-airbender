@@ -114,7 +114,6 @@ pub struct UnrolledMemoryLayout {
 
 impl UnrolledMemoryLayout {
     pub fn from_parts(value: &GKRMemoryLayout, decoder_lookup_offset: u32) -> Self {
-        assert!(value.register_and_indirect_accesses.is_empty());
         let (shuffle_ram_access_sets_count, shuffle_ram_access_sets) = {
             let ram_access_sets = &value.ram_access_sets;
             let len = ram_access_sets.len();

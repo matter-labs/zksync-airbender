@@ -5,15 +5,16 @@ use std::ptr::null;
 
 use cs::definitions::{
     gkr::{RamWordRepresentation, DECODER_LOOKUP_FORMAL_SET_INDEX},
-    GKRAddress, MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX,
+    GKRAddress, VirtualSetupPoly, MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX,
     MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX,
     MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX,
     MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX, MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX,
     MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX,
 };
 use cs::gkr_compiler::{
-    CompiledAddressSpaceRelationStrict, CompiledAddressStrict, GKRCircuitArtifact,
-    GKRLayerDescription, NoFieldGKRCacheRelation, NoFieldGKRRelation, OutputType,
+    CompiledAddressSpaceRelationStrict, CompiledAddressStrict, CompiledMemoryTimestamp,
+    GKRCircuitArtifact, GKRLayerDescription, NoFieldGKRCacheRelation, NoFieldGKRRelation,
+    OutputType,
 };
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
 use era_cudart::memory::memory_copy_async;
@@ -27,6 +28,7 @@ use prover::gkr::prover::GKRExternalChallenges;
 use super::backward::GpuGKRDimensionReducingBackwardState;
 use super::setup::{GpuGKRForwardSetup, GpuGKRSetupTransfer};
 use super::stage1::GpuGKRStage1Output;
+use super::transform::normalize_compiled_circuit_for_gpu;
 use super::{GpuBaseFieldPoly, GpuExtensionFieldPoly, GpuGKRStorage};
 use crate::allocator::tracker::AllocationPlacement;
 use crate::ops::batch_inv::BatchInv;
@@ -179,13 +181,19 @@ where
     Sub: BinaryOp<BF, BF, BF>,
 {
     setup.ensure_transferred(context)?;
+    let compiled_circuit = normalize_compiled_circuit_for_gpu(compiled_circuit.clone());
     let trace_len = compiled_circuit.trace_len;
     let stream = context.get_exec_stream();
     let mut tracing_ranges = Vec::new();
     let forward_range = Range::new("gkr.forward.schedule")?;
     forward_range.start(stream)?;
-    let usage = analyze_forward_lookup_usage(compiled_circuit);
-    let mut storage = setup.bootstrap_storage_from_stage1::<E>(stage1);
+    let usage = analyze_forward_lookup_usage(&compiled_circuit);
+    let decoder_predicate_address = compiled_circuit
+        .memory_layout
+        .machine_state
+        .as_ref()
+        .map(|machine_state| GKRAddress::BaseLayerMemory(machine_state.execute));
+    let mut storage = setup.bootstrap_storage_from_stage1::<E>(stage1, context)?;
 
     if usage.last_generic_mapping_layer.is_none() {
         stage1.lookup_mappings.release_generic_family();
@@ -212,6 +220,7 @@ where
             stage1,
             forward_setup,
             external_challenges,
+            decoder_predicate_address,
             trace_len,
             context,
         )?;
@@ -236,7 +245,7 @@ where
     let (initial_layer_for_sumcheck, dimension_reducing_inputs) =
         schedule_dimension_reduction_forward(
             &mut storage,
-            compiled_circuit,
+            &compiled_circuit,
             trace_len.trailing_zeros() as usize,
             final_trace_size_log_2,
             &mut tracing_ranges,
@@ -277,6 +286,7 @@ fn schedule_layer<E>(
     stage1: &GpuGKRStage1Output,
     forward_setup: &GpuGKRForwardSetup<E>,
     external_challenges: &GKRExternalChallenges<BF, E>,
+    decoder_predicate_address: Option<GKRAddress>,
     trace_len: usize,
     context: &ProverContext,
 ) -> CudaResult<()>
@@ -308,6 +318,7 @@ where
         stage1,
         forward_setup,
         external_challenges,
+        decoder_predicate_address,
         trace_len,
         context,
     )?;
@@ -501,6 +512,28 @@ fn lower_forward_layer<E>(
                     den_ptr,
                 )
             }
+            NoFieldGKRRelation::LookupFromMaterializedVectorInputWithSetup {
+                input,
+                setup,
+                output,
+            } => {
+                let b = storage.get_ext_poly(*input);
+                let c = storage.get_base_layer(setup[0]);
+                let d = storage.get_ext_poly(setup[1]);
+                let mut num = alloc_ext(trace_len, context)?;
+                let mut den = alloc_ext(trace_len, context)?;
+                let num_ptr = num.as_mut_ptr();
+                let den_ptr = den.as_mut_ptr();
+                computed_extension_outputs.push((output[0], GpuExtensionFieldPoly::new(num)));
+                computed_extension_outputs.push((output[1], GpuExtensionFieldPoly::new(den)));
+                GpuGKRForwardGateDescriptor::with_lookup_ext_minus_multiplicity_by_ext(
+                    b.as_ptr(),
+                    c.as_ptr(),
+                    d.as_ptr(),
+                    num_ptr,
+                    den_ptr,
+                )
+            }
             NoFieldGKRRelation::LookupUnbalancedPairWithMaterializedBaseInputs {
                 input,
                 remainder,
@@ -615,7 +648,7 @@ fn analyze_forward_lookup_usage(compiled_circuit: &GKRCircuitArtifact<BF>) -> Fo
                 NoFieldGKRCacheRelation::VectorizedLookupSetup(_) => {
                     usage.last_generic_lookup_layer = Some(layer_idx);
                 }
-                NoFieldGKRCacheRelation::MemoryTuple(_) | NoFieldGKRCacheRelation::LongLinear => {}
+                NoFieldGKRCacheRelation::MemoryTuple(_) => {}
             }
         }
     }
@@ -667,6 +700,19 @@ fn add_memory_tuple_linear_term<E: Field>(
     descriptor.linear_challenges[term_idx] = challenge;
 }
 
+fn push_memory_tuple_linear_term<E: Field>(
+    descriptor: &mut GpuGKRForwardCacheDescriptor<E>,
+    input: *const BF,
+    challenge: E,
+) {
+    let term_idx = descriptor
+        .linear_inputs
+        .iter()
+        .position(|ptr| ptr.is_null())
+        .expect("GPU memory tuple linear terms exceeded fixed descriptor capacity");
+    add_memory_tuple_linear_term(descriptor, term_idx, input, challenge);
+}
+
 fn lower_cache_relation<E>(
     layer_idx: usize,
     address: GKRAddress,
@@ -675,6 +721,7 @@ fn lower_cache_relation<E>(
     stage1: &GpuGKRStage1Output,
     forward_setup: &GpuGKRForwardSetup<E>,
     external_challenges: &GKRExternalChallenges<BF, E>,
+    decoder_predicate_address: Option<GKRAddress>,
     trace_len: usize,
     context: &ProverContext,
 ) -> CudaResult<GpuGKRForwardCacheDescriptor<E>>
@@ -711,10 +758,12 @@ where
                     .lookup_mappings
                     .timestamp_mapping(relation.lookup_set_index)
             };
-            let setup_column = if *range_check_width == 16 { 0 } else { 1 };
-            let setup_values = storage
-                .get_base_layer(GKRAddress::Setup(setup_column))
-                .as_ptr();
+            let setup_address = if *range_check_width == 16 {
+                GKRAddress::VirtualSetup(VirtualSetupPoly::RangeCheck16Bits)
+            } else {
+                GKRAddress::VirtualSetup(VirtualSetupPoly::RangeCheckTimestamp)
+            };
+            let setup_values = storage.get_base_layer(setup_address).as_ptr();
             let mut dst = alloc_base(trace_len, context)?;
             let base_output = dst.as_mut_ptr();
             storage.insert_base_field_at_layer(cache_layer, address, GpuBaseFieldPoly::new(dst));
@@ -727,6 +776,7 @@ where
             })
         }
         NoFieldGKRCacheRelation::VectorizedLookup(rel) => {
+            let is_decoder_lookup = rel.lookup_set_index == DECODER_LOOKUP_FORMAL_SET_INDEX;
             let mapping = if rel.lookup_set_index != DECODER_LOOKUP_FORMAL_SET_INDEX {
                 stage1.lookup_mappings.generic_mapping(rel.lookup_set_index)
             } else {
@@ -746,6 +796,21 @@ where
                 kind: GpuGKRForwardCacheKind::VectorizedLookup,
                 mapping: mapping.as_ptr(),
                 generic_lookup,
+                decoder_mask: if is_decoder_lookup {
+                    storage
+                        .get_base_layer(
+                            decoder_predicate_address
+                                .expect("decoder lookup requires a decoder predicate column"),
+                        )
+                        .as_ptr()
+                } else {
+                    null()
+                },
+                decoder_fill_value: if is_decoder_lookup {
+                    forward_setup.decoder_lookup_fill_value_device().as_ptr()
+                } else {
+                    null()
+                },
                 ext_output,
                 ..GpuGKRForwardCacheDescriptor::default()
             })
@@ -794,12 +859,19 @@ where
                 }
             }
 
-            match rel.address {
+            match &rel.address {
+                CompiledAddressStrict::ConstantU16(c) => {
+                    let mut contribution = external_challenges
+                        .permutation_argument_linearization_challenges
+                        [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
+                    contribution.mul_assign_by_base(&BF::from_u32_unchecked(*c as u32));
+                    descriptor.constant_term.add_assign(&contribution);
+                }
                 CompiledAddressStrict::Constant(c) => {
                     let mut contribution = external_challenges
                         .permutation_argument_linearization_challenges
                         [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
-                    contribution.mul_assign_by_base(&BF::from_u32_unchecked(c));
+                    contribution.mul_assign_by_base(&BF::from_u32_unchecked(*c));
                     descriptor.constant_term.add_assign(&contribution);
                 }
                 CompiledAddressStrict::U16Space(offset) => {
@@ -807,7 +879,7 @@ where
                         &mut descriptor,
                         MEMORY_TUPLE_ADDRESS_LOW_TERM,
                         storage
-                            .get_base_layer(GKRAddress::BaseLayerMemory(offset))
+                            .get_base_layer(GKRAddress::BaseLayerMemory(*offset))
                             .as_ptr(),
                         external_challenges.permutation_argument_linearization_challenges
                             [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX],
@@ -818,7 +890,7 @@ where
                         &mut descriptor,
                         MEMORY_TUPLE_ADDRESS_LOW_TERM,
                         storage
-                            .get_base_layer(GKRAddress::BaseLayerMemory(low))
+                            .get_base_layer(GKRAddress::BaseLayerMemory(*low))
                             .as_ptr(),
                         external_challenges.permutation_argument_linearization_challenges
                             [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX],
@@ -827,14 +899,58 @@ where
                         &mut descriptor,
                         MEMORY_TUPLE_ADDRESS_HIGH_TERM,
                         storage
-                            .get_base_layer(GKRAddress::BaseLayerMemory(high))
+                            .get_base_layer(GKRAddress::BaseLayerMemory(*high))
                             .as_ptr(),
                         external_challenges.permutation_argument_linearization_challenges
                             [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX],
                     );
                 }
-                CompiledAddressStrict::U32SpaceGeneric(..)
-                | CompiledAddressStrict::U32SpaceSpecialIndirect { .. } => {
+                CompiledAddressStrict::U32SpaceSpecialIndirect {
+                    low_base,
+                    low_dynamic_offset,
+                    low_offset,
+                    high,
+                } => {
+                    let low_challenge = external_challenges
+                        .permutation_argument_linearization_challenges
+                        [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
+                    let high_challenge = external_challenges
+                        .permutation_argument_linearization_challenges
+                        [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
+                    if *low_offset != 0 {
+                        let mut contribution = low_challenge;
+                        contribution.mul_assign_by_base(&BF::from_u32_unchecked(*low_offset));
+                        descriptor.constant_term.add_assign(&contribution);
+                    }
+                    add_memory_tuple_linear_term(
+                        &mut descriptor,
+                        MEMORY_TUPLE_ADDRESS_LOW_TERM,
+                        storage
+                            .get_base_layer(GKRAddress::BaseLayerMemory(*low_base))
+                            .as_ptr(),
+                        low_challenge,
+                    );
+                    if let Some((multiplier, dynamic_offset)) = *low_dynamic_offset {
+                        let mut challenge = low_challenge;
+                        challenge.mul_assign_by_base(&BF::from_u32_unchecked(multiplier as u32));
+                        push_memory_tuple_linear_term(
+                            &mut descriptor,
+                            storage
+                                .get_base_layer(GKRAddress::BaseLayerMemory(dynamic_offset))
+                                .as_ptr(),
+                            challenge,
+                        );
+                    }
+                    add_memory_tuple_linear_term(
+                        &mut descriptor,
+                        MEMORY_TUPLE_ADDRESS_HIGH_TERM,
+                        storage
+                            .get_base_layer(GKRAddress::BaseLayerMemory(*high))
+                            .as_ptr(),
+                        high_challenge,
+                    );
+                }
+                CompiledAddressStrict::U32SpaceGeneric(..) => {
                     unimplemented!(
                         "unsupported GPU memory tuple address relation: {:?}",
                         rel.address
@@ -842,34 +958,40 @@ where
                 }
             }
 
-            add_memory_tuple_linear_term(
-                &mut descriptor,
-                MEMORY_TUPLE_TIMESTAMP_LOW_TERM,
-                storage
-                    .get_base_layer(GKRAddress::BaseLayerMemory(rel.timestamp[0]))
-                    .as_ptr(),
-                external_challenges.permutation_argument_linearization_challenges
-                    [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX],
-            );
-            if rel.timestamp_offset != 0 {
-                let mut contribution = external_challenges
-                    .permutation_argument_linearization_challenges
-                    [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
-                contribution
-                    .mul_assign_by_base(&BF::from_u32_unchecked(rel.timestamp_offset as u32));
-                descriptor.constant_term.add_assign(&contribution);
+            match &rel.timestamp {
+                CompiledMemoryTimestamp::Zero => {}
+                CompiledMemoryTimestamp::Normal(timestamp) => {
+                    add_memory_tuple_linear_term(
+                        &mut descriptor,
+                        MEMORY_TUPLE_TIMESTAMP_LOW_TERM,
+                        storage
+                            .get_base_layer(GKRAddress::BaseLayerMemory(timestamp[0]))
+                            .as_ptr(),
+                        external_challenges.permutation_argument_linearization_challenges
+                            [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX],
+                    );
+                    if rel.timestamp_offset != 0 {
+                        let mut contribution = external_challenges
+                            .permutation_argument_linearization_challenges
+                            [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
+                        contribution
+                            .mul_assign_by_base(&BF::from_u32_unchecked(rel.timestamp_offset));
+                        descriptor.constant_term.add_assign(&contribution);
+                    }
+                    add_memory_tuple_linear_term(
+                        &mut descriptor,
+                        MEMORY_TUPLE_TIMESTAMP_HIGH_TERM,
+                        storage
+                            .get_base_layer(GKRAddress::BaseLayerMemory(timestamp[1]))
+                            .as_ptr(),
+                        external_challenges.permutation_argument_linearization_challenges
+                            [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX],
+                    );
+                }
             }
-            add_memory_tuple_linear_term(
-                &mut descriptor,
-                MEMORY_TUPLE_TIMESTAMP_HIGH_TERM,
-                storage
-                    .get_base_layer(GKRAddress::BaseLayerMemory(rel.timestamp[1]))
-                    .as_ptr(),
-                external_challenges.permutation_argument_linearization_challenges
-                    [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX],
-            );
 
             match rel.value {
+                RamWordRepresentation::Zero => {}
                 RamWordRepresentation::U16Limbs(read_value) => {
                     add_memory_tuple_linear_term(
                         &mut descriptor,
@@ -902,9 +1024,6 @@ where
             );
             Ok(descriptor)
         }
-        NoFieldGKRCacheRelation::LongLinear => {
-            unimplemented!("unsupported GPU cache relation: {:?}", relation)
-        }
     }
 }
 
@@ -915,6 +1034,7 @@ fn schedule_cache_relations<E>(
     stage1: &GpuGKRStage1Output,
     forward_setup: &GpuGKRForwardSetup<E>,
     external_challenges: &GKRExternalChallenges<BF, E>,
+    decoder_predicate_address: Option<GKRAddress>,
     trace_len: usize,
     context: &ProverContext,
 ) -> CudaResult<()>
@@ -955,6 +1075,7 @@ where
             stage1,
             forward_setup,
             external_challenges,
+            decoder_predicate_address,
             trace_len,
             context,
         )?;

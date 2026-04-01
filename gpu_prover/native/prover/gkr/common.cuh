@@ -61,9 +61,10 @@ enum gkr_main_kernel_kind : u32 {
   GKR_MAIN_LOOKUP_PAIR = 4,
   GKR_MAIN_LOOKUP_BASE_PAIR = 5,
   GKR_MAIN_LOOKUP_BASE_MINUS_MULTIPLICITY = 6,
-  GKR_MAIN_LOOKUP_UNBALANCED = 7,
-  GKR_MAIN_LOOKUP_WITH_CACHED_DENS_AND_SETUP = 8,
-  GKR_MAIN_ENFORCE_CONSTRAINTS = 9,
+  GKR_MAIN_LOOKUP_EXT_MINUS_MULTIPLICITY_BY_EXT = 7,
+  GKR_MAIN_LOOKUP_UNBALANCED = 8,
+  GKR_MAIN_LOOKUP_WITH_CACHED_DENS_AND_SETUP = 9,
+  GKR_MAIN_ENFORCE_CONSTRAINTS = 10,
 };
 
 static constexpr unsigned GKR_FORWARD_MAX_GATES_PER_LAYER = 64;
@@ -356,8 +357,9 @@ enum gkr_forward_gate_kind : u32 {
   GKR_FORWARD_LOOKUP_WITH_CACHED_DENS_AND_SETUP = 4,
   GKR_FORWARD_LOOKUP_BASE_PAIR = 5,
   GKR_FORWARD_LOOKUP_BASE_MINUS_MULTIPLICITY_BY_BASE = 6,
-  GKR_FORWARD_LOOKUP_UNBALANCED_BASE = 7,
-  GKR_FORWARD_LOOKUP_UNBALANCED_EXTENSION = 8,
+  GKR_FORWARD_LOOKUP_EXT_MINUS_MULTIPLICITY_BY_EXT = 7,
+  GKR_FORWARD_LOOKUP_UNBALANCED_BASE = 8,
+  GKR_FORWARD_LOOKUP_UNBALANCED_EXTENSION = 9,
 };
 
 struct gkr_forward_no_op_descriptor {
@@ -409,6 +411,14 @@ template <typename E> struct gkr_forward_lookup_base_minus_multiplicity_by_base_
   E *den;
 };
 
+template <typename E> struct gkr_forward_lookup_ext_minus_multiplicity_by_ext_descriptor {
+  const E *b;
+  const bf *c;
+  const E *d;
+  E *num;
+  E *den;
+};
+
 template <typename E> struct gkr_forward_lookup_unbalanced_base_descriptor {
   const E *a;
   const E *b;
@@ -433,6 +443,7 @@ template <typename E> union gkr_forward_gate_payload {
   gkr_forward_lookup_with_cached_dens_and_setup_descriptor<E> lookup_with_cached_dens_and_setup;
   gkr_forward_lookup_base_pair_descriptor<E> lookup_base_pair;
   gkr_forward_lookup_base_minus_multiplicity_by_base_descriptor<E> lookup_base_minus_multiplicity_by_base;
+  gkr_forward_lookup_ext_minus_multiplicity_by_ext_descriptor<E> lookup_ext_minus_multiplicity_by_ext;
   gkr_forward_lookup_unbalanced_base_descriptor<E> lookup_unbalanced_base;
   gkr_forward_lookup_unbalanced_extension_descriptor<E> lookup_unbalanced_extension;
 };
@@ -526,6 +537,8 @@ template <typename E> struct gkr_forward_cache_descriptor {
   const u32 *mapping;
   const bf *setup_values;
   const E *generic_lookup;
+  const bf *decoder_mask;
+  const E *decoder_fill_value;
   bf *base_output;
   E *ext_output;
   u32 generic_lookup_len;
@@ -590,7 +603,13 @@ template <typename E> DEVICE_FORCEINLINE void gkr_forward_cache(const gkr_forwar
     }
     case GKR_FORWARD_CACHE_VECTORIZED_LOOKUP: {
       const unsigned mapping = descriptor.mapping[gid];
-      const E value = load<E, ld_modifier::cs>(descriptor.generic_lookup, mapping);
+      E value = load<E, ld_modifier::cs>(descriptor.generic_lookup, mapping);
+      if (descriptor.decoder_mask != nullptr) {
+        const bf enabled = load<bf, ld_modifier::cs>(descriptor.decoder_mask, gid);
+        if (enabled.limb == 0) {
+          value = load<E, ld_modifier::cs>(descriptor.decoder_fill_value, 0);
+        }
+      }
       store<E, st_modifier::cs>(descriptor.ext_output, value, gid);
       break;
     }
@@ -1146,6 +1165,19 @@ template <typename E> DEVICE_FORCEINLINE void gkr_forward_layer(const gkr_forwar
       store<E, st_modifier::cs>(params.den, den, gid);
       break;
     }
+    case GKR_FORWARD_LOOKUP_EXT_MINUS_MULTIPLICITY_BY_EXT: {
+      const auto params = descriptor.payload.lookup_ext_minus_multiplicity_by_ext;
+      const E b = load<E, ld_modifier::cs>(params.b, gid);
+      const E c = gkr_lift_base<E>(load<bf, ld_modifier::cs>(params.c, gid));
+      const E d = load<E, ld_modifier::cs>(params.d, gid);
+      const E gamma = load<E, ld_modifier::cs>(batch.lookup_additive_challenge, 0);
+      E num;
+      E den;
+      gkr_eval_lookup_base_minus_multiplicity(b, c, d, gamma, num, den);
+      store<E, st_modifier::cs>(params.num, num, gid);
+      store<E, st_modifier::cs>(params.den, den, gid);
+      break;
+    }
     case GKR_FORWARD_LOOKUP_UNBALANCED_BASE: {
       const auto params = descriptor.payload.lookup_unbalanced_base;
       const E a = load<E, ld_modifier::cs>(params.a, gid);
@@ -1464,6 +1496,19 @@ gkr_main_round0_values(const unsigned kind, const gkr_base_initial_source<bf> *b
     c1 = E::add(E::mul(batch_challenge_0, num), E::mul(batch_challenge_1, den));
     break;
   }
+  case GKR_MAIN_LOOKUP_EXT_MINUS_MULTIPLICITY_BY_EXT: {
+    const E output_num = gkr_get_initial_value(ext_outputs[0], gid);
+    const E output_den = gkr_get_initial_value(ext_outputs[1], gid);
+    const E delta_c = gkr_get_initial_base_delta<E>(base_inputs[0], gid);
+    const E delta_b = gkr_get_initial_delta(ext_inputs[0], gid);
+    const E delta_d = gkr_get_initial_delta(ext_inputs[1], gid);
+    E num;
+    E den;
+    gkr_eval_lookup_base_minus_multiplicity_quadratic(delta_b, delta_c, delta_d, num, den);
+    c0 = E::add(E::mul(batch_challenge_0, output_num), E::mul(batch_challenge_1, output_den));
+    c1 = E::add(E::mul(batch_challenge_0, num), E::mul(batch_challenge_1, den));
+    break;
+  }
   case GKR_MAIN_LOOKUP_UNBALANCED: {
     const E output_num = gkr_get_initial_value(ext_outputs[0], gid);
     const E output_den = gkr_get_initial_value(ext_outputs[1], gid);
@@ -1638,6 +1683,30 @@ DEVICE_FORCEINLINE void gkr_main_round1_values(const unsigned kind, const gkr_ba
     E d0;
     E d1;
     gkr_get_base_after_one_points<E, EXPLICIT_FORM>(base_inputs[2], current_folding_challenge, gid, d0, d1);
+    E num0;
+    E den0;
+    E num1;
+    E den1;
+    gkr_eval_lookup_base_minus_multiplicity(b0, c0_in, d0, current_aux_challenge, num0, den0);
+    if constexpr (EXPLICIT_FORM) {
+      gkr_eval_lookup_base_minus_multiplicity(b1, c1_in, d1, current_aux_challenge, num1, den1);
+    } else {
+      gkr_eval_lookup_base_minus_multiplicity_quadratic(b1, c1_in, d1, num1, den1);
+    }
+    c0 = E::add(E::mul(batch_challenge_0, num0), E::mul(batch_challenge_1, den0));
+    c1 = E::add(E::mul(batch_challenge_0, num1), E::mul(batch_challenge_1, den1));
+    break;
+  }
+  case GKR_MAIN_LOOKUP_EXT_MINUS_MULTIPLICITY_BY_EXT: {
+    E c0_in;
+    E c1_in;
+    gkr_get_base_after_one_points<E, EXPLICIT_FORM>(base_inputs[0], current_folding_challenge, gid, c0_in, c1_in);
+    E b0;
+    E b1;
+    gkr_get_continuing_points<E, EXPLICIT_FORM>(ext_inputs[0], current_folding_challenge, gid, b0, b1);
+    E d0;
+    E d1;
+    gkr_get_continuing_points<E, EXPLICIT_FORM>(ext_inputs[1], current_folding_challenge, gid, d0, d1);
     E num0;
     E den0;
     E num1;
@@ -1870,6 +1939,30 @@ DEVICE_FORCEINLINE void gkr_main_round2_values(const unsigned kind, const gkr_ba
     c1 = E::add(E::mul(batch_challenge_0, num1), E::mul(batch_challenge_1, den1));
     break;
   }
+  case GKR_MAIN_LOOKUP_EXT_MINUS_MULTIPLICITY_BY_EXT: {
+    E c0_in;
+    E c1_in;
+    gkr_get_base_after_two_points<E, EXPLICIT_FORM>(base_inputs[0], first_folding_challenge, second_folding_challenge, gid, c0_in, c1_in);
+    E b0;
+    E b1;
+    gkr_get_continuing_points<E, EXPLICIT_FORM>(ext_inputs[0], second_folding_challenge, gid, b0, b1);
+    E d0;
+    E d1;
+    gkr_get_continuing_points<E, EXPLICIT_FORM>(ext_inputs[1], second_folding_challenge, gid, d0, d1);
+    E num0;
+    E den0;
+    E num1;
+    E den1;
+    gkr_eval_lookup_base_minus_multiplicity(b0, c0_in, d0, current_aux_challenge, num0, den0);
+    if constexpr (EXPLICIT_FORM) {
+      gkr_eval_lookup_base_minus_multiplicity(b1, c1_in, d1, current_aux_challenge, num1, den1);
+    } else {
+      gkr_eval_lookup_base_minus_multiplicity_quadratic(b1, c1_in, d1, num1, den1);
+    }
+    c0 = E::add(E::mul(batch_challenge_0, num0), E::mul(batch_challenge_1, den0));
+    c1 = E::add(E::mul(batch_challenge_0, num1), E::mul(batch_challenge_1, den1));
+    break;
+  }
   case GKR_MAIN_LOOKUP_UNBALANCED: {
     E d0;
     E d1;
@@ -2074,6 +2167,30 @@ DEVICE_FORCEINLINE void gkr_main_round3_values(const unsigned kind, const gkr_ex
     E d0;
     E d1;
     gkr_get_continuing_points<E, EXPLICIT_FORM>(base_inputs[2], current_folding_challenge, gid, d0, d1);
+    E num0;
+    E den0;
+    E num1;
+    E den1;
+    gkr_eval_lookup_base_minus_multiplicity(b0, c0_in, d0, current_aux_challenge, num0, den0);
+    if constexpr (EXPLICIT_FORM) {
+      gkr_eval_lookup_base_minus_multiplicity(b1, c1_in, d1, current_aux_challenge, num1, den1);
+    } else {
+      gkr_eval_lookup_base_minus_multiplicity_quadratic(b1, c1_in, d1, num1, den1);
+    }
+    c0 = E::add(E::mul(batch_challenge_0, num0), E::mul(batch_challenge_1, den0));
+    c1 = E::add(E::mul(batch_challenge_0, num1), E::mul(batch_challenge_1, den1));
+    break;
+  }
+  case GKR_MAIN_LOOKUP_EXT_MINUS_MULTIPLICITY_BY_EXT: {
+    E c0_in;
+    E c1_in;
+    gkr_get_continuing_points<E, EXPLICIT_FORM>(base_inputs[0], current_folding_challenge, gid, c0_in, c1_in);
+    E b0;
+    E b1;
+    gkr_get_continuing_points<E, EXPLICIT_FORM>(ext_inputs[0], current_folding_challenge, gid, b0, b1);
+    E d0;
+    E d1;
+    gkr_get_continuing_points<E, EXPLICIT_FORM>(ext_inputs[1], current_folding_challenge, gid, d0, d1);
     E num0;
     E den0;
     E num1;

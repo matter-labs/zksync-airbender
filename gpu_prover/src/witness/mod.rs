@@ -42,6 +42,11 @@ impl From<GKRAddress> for Address {
                 layer: layer as u32,
             },
             GKRAddress::Setup(x) => Self::Setup(x as u32),
+            GKRAddress::VirtualSetup(_) => {
+                unreachable!(
+                    "GPU witness serialization does not materialize virtual setup addresses"
+                )
+            }
             GKRAddress::ScratchSpace(x) => Self::ScratchSpace(x as u32),
             GKRAddress::Cached { layer, offset } => Self::Cached {
                 offset: offset as u32,
