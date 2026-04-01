@@ -1,4 +1,5 @@
 use std::ops::DerefMut;
+use std::sync::Arc;
 
 use crate::allocator::tracker::AllocationPlacement;
 use crate::ops::simple::set_by_val;
@@ -22,6 +23,7 @@ use crate::witness::witness_unrolled::generate_witness_values_unrolled_non_memor
 use cs::gkr_compiler::GKRCircuitArtifact;
 use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
+use field::Field;
 
 pub(crate) struct GpuGKRLookupMappings {
     generic_family: Option<DeviceAllocation<u32>>,
@@ -111,6 +113,7 @@ pub(crate) struct GpuGKRStage1Output {
     tracing_ranges: Vec<Range>,
     pub(crate) memory_trace_holder: TraceHolder<BF>,
     pub(crate) witness_trace_holder: TraceHolder<BF>,
+    pub(crate) scratch_space_trace: Option<Arc<DeviceAllocation<BF>>>,
     pub(crate) lookup_mappings: GpuGKRLookupMappings,
 }
 
@@ -170,6 +173,21 @@ impl GpuGKRStage1Output {
             setup,
             context,
         )?;
+        let mut scratch_space_trace = if compiled_circuit.scratch_space_size > 0 {
+            Some(context.alloc(
+                compiled_circuit.scratch_space_size * trace_len,
+                AllocationPlacement::Top,
+            )?)
+        } else {
+            None
+        };
+        if let Some(scratch_space_trace) = scratch_space_trace.as_mut() {
+            set_by_val(
+                BF::ZERO,
+                scratch_space_trace.deref_mut(),
+                context.get_exec_stream(),
+            )?;
+        }
 
         let num_generic_sets = compiled_circuit.generic_lookups.len();
         let has_decoder = compiled_circuit.has_decoder_lookup;
@@ -199,6 +217,12 @@ impl GpuGKRStage1Output {
         );
         let mut memory_matrix = DeviceMatrixMut::new(memory_raw, trace_len);
         let mut witness_matrix = DeviceMatrixMut::new(witness_raw, trace_len);
+        let mut empty_scratch = DeviceSlice::empty_mut();
+        let mut scratch_matrix = if let Some(scratch_space_trace) = scratch_space_trace.as_mut() {
+            DeviceMatrixMut::new(scratch_space_trace.deref_mut(), trace_len)
+        } else {
+            DeviceMatrixMut::new(&mut empty_scratch, trace_len)
+        };
 
         {
             let generic_prefix_len = num_generic_sets * trace_len;
@@ -242,6 +266,7 @@ impl GpuGKRStage1Output {
                         &DeviceMatrix::new(generic_lookup_tables, trace_len),
                         &DeviceMatrix::new(memory_matrix.slice(), trace_len),
                         &mut witness_matrix,
+                        &mut scratch_matrix,
                         &mut DeviceMatrixMut::new(generic_mapping_prefix, trace_len),
                         context.get_exec_stream(),
                     )?;
@@ -324,6 +349,7 @@ impl GpuGKRStage1Output {
             tracing_ranges,
             memory_trace_holder,
             witness_trace_holder,
+            scratch_space_trace: scratch_space_trace.map(Arc::new),
             lookup_mappings,
         })
     }

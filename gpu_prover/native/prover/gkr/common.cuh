@@ -360,6 +360,7 @@ enum gkr_forward_gate_kind : u32 {
   GKR_FORWARD_LOOKUP_EXT_MINUS_MULTIPLICITY_BY_EXT = 7,
   GKR_FORWARD_LOOKUP_UNBALANCED_BASE = 8,
   GKR_FORWARD_LOOKUP_UNBALANCED_EXTENSION = 9,
+  GKR_FORWARD_LOOKUP_EXT_PAIR = 10,
 };
 
 struct gkr_forward_no_op_descriptor {
@@ -403,6 +404,13 @@ template <typename E> struct gkr_forward_lookup_base_pair_descriptor {
   E *den;
 };
 
+template <typename E> struct gkr_forward_lookup_ext_pair_descriptor {
+  const E *lhs;
+  const E *rhs;
+  E *num;
+  E *den;
+};
+
 template <typename E> struct gkr_forward_lookup_base_minus_multiplicity_by_base_descriptor {
   const bf *b;
   const bf *c;
@@ -442,6 +450,7 @@ template <typename E> union gkr_forward_gate_payload {
   gkr_forward_lookup_pair_descriptor<E> lookup_pair;
   gkr_forward_lookup_with_cached_dens_and_setup_descriptor<E> lookup_with_cached_dens_and_setup;
   gkr_forward_lookup_base_pair_descriptor<E> lookup_base_pair;
+  gkr_forward_lookup_ext_pair_descriptor<E> lookup_ext_pair;
   gkr_forward_lookup_base_minus_multiplicity_by_base_descriptor<E> lookup_base_minus_multiplicity_by_base;
   gkr_forward_lookup_ext_minus_multiplicity_by_ext_descriptor<E> lookup_ext_minus_multiplicity_by_ext;
   gkr_forward_lookup_unbalanced_base_descriptor<E> lookup_unbalanced_base;
@@ -514,7 +523,7 @@ template <typename E> struct gkr_forward_setup_generic_lookup_batch {
 };
 
 constexpr unsigned GKR_FORWARD_CACHE_MAX_RELATIONS = 20;
-constexpr unsigned GKR_FORWARD_CACHE_MEMORY_LINEAR_TERMS = 6;
+constexpr unsigned GKR_FORWARD_CACHE_MEMORY_LINEAR_TERMS = 8;
 
 enum gkr_forward_cache_kind : u32 {
   GKR_FORWARD_CACHE_EMPTY = 0,
@@ -1044,6 +1053,13 @@ template <typename E> DEVICE_FORCEINLINE void gkr_eval_lookup_base_pair(const E 
   den = E::mul(shifted_b, shifted_d);
 }
 
+template <typename E> DEVICE_FORCEINLINE void gkr_eval_lookup_ext_pair(const E b, const E d, const E gamma, E &num, E &den) {
+  const E shifted_b = E::add(b, gamma);
+  const E shifted_d = E::add(d, gamma);
+  num = E::add(shifted_b, shifted_d);
+  den = E::mul(shifted_b, shifted_d);
+}
+
 template <typename E> DEVICE_FORCEINLINE void gkr_eval_lookup_base_pair_quadratic(const E b, const E d, E &num, E &den) {
   num = E::ZERO();
   den = E::mul(b, d);
@@ -1148,6 +1164,18 @@ template <typename E> DEVICE_FORCEINLINE void gkr_forward_layer(const gkr_forwar
       E num;
       E den;
       gkr_eval_lookup_base_pair(b, d, gamma, num, den);
+      store<E, st_modifier::cs>(params.num, num, gid);
+      store<E, st_modifier::cs>(params.den, den, gid);
+      break;
+    }
+    case GKR_FORWARD_LOOKUP_EXT_PAIR: {
+      const auto params = descriptor.payload.lookup_ext_pair;
+      const E b = load<E, ld_modifier::cs>(params.lhs, gid);
+      const E d = load<E, ld_modifier::cs>(params.rhs, gid);
+      const E gamma = load<E, ld_modifier::cs>(batch.lookup_additive_challenge, 0);
+      E num;
+      E den;
+      gkr_eval_lookup_ext_pair(b, d, gamma, num, den);
       store<E, st_modifier::cs>(params.num, num, gid);
       store<E, st_modifier::cs>(params.den, den, gid);
       break;
