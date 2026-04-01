@@ -187,8 +187,8 @@ impl GpuGKRStage1Output {
         }
 
         let setup_raw = setup.trace_holder.get_hypercube_evals();
-        let generic_lookup_tables: &DeviceSlice<BF> = if setup.host.columns_count > 2 {
-            &setup_raw[2 * trace_len..]
+        let generic_lookup_tables: &DeviceSlice<BF> = if setup.host.columns_count > 0 {
+            &setup_raw[..]
         } else {
             DeviceSlice::empty()
         };
