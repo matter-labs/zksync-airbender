@@ -1192,6 +1192,11 @@ impl<Config: MachineConfig> RiscV32State<Config> {
                                 MARKER_CSR => {
                                   // Do nothing here, we do the work in the write case
                                 }
+                                0xc00 => {
+                                    // RISC-V cycle counter (read-only). Returns 0 since
+                                    // the cycle count has no meaningful value in the zkVM.
+                                    ret_val = 0;
+                                }
                                 csr => {
                                     assert!(Config::ALLOWED_DELEGATION_CSRS.contains(&csr), "Machine {:?} is not configured to support CSR number {} at pc 0x{:08x}", Config::default(), csr, pc);
                                     // println!("Custom CSR = 0x{:04x} READ at cycle {}", csr_number, proc_cycle);
@@ -1246,6 +1251,9 @@ impl<Config: MachineConfig> RiscV32State<Config> {
                                 MARKER_CSR => {
                                   self.add_marker()
                                 }
+                                0xc00 => {
+                                    // cycle counter is read-only — ignore writes
+                                }
                                 csr => {
                                     assert!(Config::ALLOWED_DELEGATION_CSRS.contains(&csr), "Machine {:?} is not configured to support CSR number {}", Config::default(), csr);
                                     Self::add_delegation(csr);
@@ -1276,7 +1284,7 @@ impl<Config: MachineConfig> RiscV32State<Config> {
                                 0x342 => ret_val = self.machine_mode_trap_data.handling.cause, // mcause
                                 0x343 => ret_val = self.machine_mode_trap_data.handling.tval, // mtval
                                 0x344 => ret_val = self.machine_mode_trap_data.state.ip, // mip
-                                //0xc00 => ret_val = self.cycle_counter as u32, // cycle
+                                0xc00 => ret_val = 0, // cycle counter — not meaningful in zkVM
                                 //0xf11 => ret_val = 0, // vendor ID, will come up later on,
                                 NON_DETERMINISM_CSR => {
                                     // to improve oracle usability we can try to avoid read
@@ -1353,6 +1361,7 @@ impl<Config: MachineConfig> RiscV32State<Config> {
                                 0x342 => self.machine_mode_trap_data.handling.cause = write_val, // mcause
                                 0x343 => self.machine_mode_trap_data.handling.tval = write_val, // mtval
                                 0x344 => self.machine_mode_trap_data.state.ip = write_val, // mip
+                                0xc00 => {} // cycle counter is read-only — ignore writes
                                 NON_DETERMINISM_CSR => {
                                     if ND::SHOULD_IGNORE_WRITES_AFTER_READS {
                                         // if we have rs1 == 0 then we should ignore write into CSR,

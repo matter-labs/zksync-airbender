@@ -94,6 +94,9 @@ impl DelegationCSRProcessor for crate::delegations::DelegationsCSRProcessor {
             U256_OPS_WITH_CONTROL_ACCESS_ID => {
                 u256_ops_with_control_impl_over_unrolled_state(state, memory_source, tracer);
             }
+            0xc00 => {
+                // RISC-V cycle counter — no-op in zkVM proving context
+            }
             csr => {
                 panic!("Unsupported CSR = 0x{:04x}", csr);
             }
