@@ -14,7 +14,7 @@ impl quote::ToTokens for TableType {
             TableType::JumpCleanupOffset => quote! { TableType::JumpCleanupOffset },
             TableType::MemoryOffsetGetBits => quote! { TableType::MemoryOffsetGetBits },
             TableType::MemoryLoadGetSigns => quote! { TableType::MemoryLoadGetSigns },
-            TableType::RomAddressSpaceSeparator => quote! { TableType::RomAddressSpaceSeparator },
+            // TableType::RomAddressSpaceSeparator => quote! { TableType::RomAddressSpaceSeparator },
             TableType::RomRead => quote! { TableType::RomRead },
             TableType::Xor3 => quote! { TableType::Xor3 },
             TableType::Xor4 => quote! { TableType::Xor4 },
@@ -34,6 +34,18 @@ impl quote::ToTokens for TableType {
             }
             TableType::StoreByteExistingContribution => {
                 quote! { TableType::StoreByteExistingContribution }
+            }
+            TableType::LoadHalfwordSignextend => {
+                quote! { TableType::LoadHalfwordSignextend }
+            }
+            TableType::LoadByteSignextend => {
+                quote! { TableType::LoadByteSignextend }
+            }
+            TableType::LoadHalfwordRomRead => {
+                quote! { TableType::LoadHalfwordRomRead }
+            }
+            TableType::LoadByteRomRead => {
+                quote! { TableType::LoadByteRomRead }
             }
             TableType::ExtendLoadedValue => quote! { TableType::ExtendLoadedValue },
             TableType::AlignedRomRead => quote! { TableType::AlignedRomRead },

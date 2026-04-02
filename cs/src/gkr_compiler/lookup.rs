@@ -338,12 +338,15 @@ pub(crate) fn layout_lookup_expressions<F: PrimeField, const SINGLE_COLUMN: bool
 
         input_layer += 1;
 
-        if inputs_at_layers
+        let has_inputs_at_current_layer = inputs_at_layers
             .entry(input_layer)
             .or_insert(BTreeMap::new())
             .len()
-            == 0
-        {
+            > 0;
+        let has_inputs_at_future_layers = inputs_at_layers
+            .range((input_layer + 1)..)
+            .any(|(_, v)| !v.is_empty());
+        if !has_inputs_at_current_layer && !has_inputs_at_future_layers {
             let ent = logup_intermediate_output_values_at_layers
                 .entry(input_layer)
                 .or_insert(vec![]);

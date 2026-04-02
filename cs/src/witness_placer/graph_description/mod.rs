@@ -775,6 +775,11 @@ impl<F: PrimeField> WitnessGraphCreator<F> {
                 "Variables {:?} are in resolved, but are not in the initial set",
                 t
             );
+            for var in t {
+                let name = &self.variable_names[&var];
+                let s = format!("{var:?}: {name}");
+                dbg!(s);
+            }
             panic!("Total number of resolved variables is not the one expected");
         }
 
@@ -1507,7 +1512,7 @@ impl<F: PrimeField> WitnessPlacer<F> for WitnessGraphCreator<F> {
         inputs: &[Self::Field; M],
         table_id: &Self::U16,
     ) -> [Self::Field; N] {
-        let inputs = inputs.to_vec().into_boxed_slice();
+        let inputs: Box<[FieldNodeExpression<F>]> = inputs.to_vec().into_boxed_slice();
         let lookup_idx = self.lookups.len();
         // println!(
         //     "Normal lookup with {} outputs and table ID {:?} at index {}",
@@ -1521,6 +1526,32 @@ impl<F: PrimeField> WitnessPlacer<F> for WitnessGraphCreator<F> {
         }
 
         std::array::from_fn(|i| FieldNodeExpression::LookupOutput {
+            lookup_idx,
+            output_idx: i,
+        })
+    }
+
+    #[track_caller]
+    fn peek_lookup<const M: usize, const N: usize>(
+        &mut self,
+        inputs: &[Self::Field; M],
+        table_id: &Self::U16,
+    ) -> [Self::Field; N] {
+        let inputs = inputs.to_vec().into_boxed_slice();
+        let lookup_idx = self.maybe_lookups.len();
+        let lookup = (
+            inputs.clone(),
+            table_id.clone(),
+            BoolNodeExpression::Constant(true),
+            N,
+        );
+        self.maybe_lookups.push(lookup.clone());
+
+        if let Some(stats) = self.current_stats_resolver.as_mut() {
+            stats.maybe_lookup_inputs.insert(lookup_idx, lookup);
+        }
+
+        std::array::from_fn(|i| FieldNodeExpression::MaybeLookupOutput {
             lookup_idx,
             output_idx: i,
         })
@@ -1566,6 +1597,7 @@ impl<F: PrimeField> WitnessPlacer<F> for WitnessGraphCreator<F> {
     #[track_caller]
     fn assume_assigned(&mut self, variable: Variable) {
         assert!(variable.is_placeholder() == false);
+        self.resize_to_assign(variable);
         self.variables_considered_assigned.insert(variable);
     }
 

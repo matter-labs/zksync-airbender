@@ -296,7 +296,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field>
     }
 
     #[inline(always)]
-    fn pointwise_eval_forward(&self, input: &[ExtensionFieldRepresentation<F, E>; 1]) -> [E; 1] {
+    fn pointwise_eval_forward(&self, _input: &[ExtensionFieldRepresentation<F, E>; 1]) -> [E; 1] {
         unreachable!("not used by this kernel")
     }
 

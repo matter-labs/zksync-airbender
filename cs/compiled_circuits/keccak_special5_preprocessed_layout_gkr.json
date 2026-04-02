@@ -43,6 +43,10 @@
     135169,
     200705,
     1249281,
+    1249281,
+    1249281,
+    1249281,
+    1249281,
     1249281
   ],
   "total_tables_size": 1249281,
@@ -2364,6 +2368,12 @@
           {
             "VectorizedLookupSetup": [
               {
+                "Setup": 0
+              },
+              {
+                "Setup": 1
+              },
+              {
                 "Setup": 2
               },
               {
@@ -2380,12 +2390,6 @@
               },
               {
                 "Setup": 7
-              },
-              {
-                "Setup": 8
-              },
-              {
-                "Setup": 9
               }
             ]
           }
@@ -7276,7 +7280,7 @@
                   "BaseLayerWitness": 173
                 },
                 {
-                  "Setup": 1
+                  "VirtualSetup": "RangeCheckTimestamp"
                 }
               ],
               "output": [
@@ -32261,6 +32265,12 @@
           "BaseLayerMemory": 90
         },
         {
+          "Setup": 0
+        },
+        {
+          "Setup": 1
+        },
+        {
           "Setup": 2
         },
         {
@@ -32277,12 +32287,6 @@
         },
         {
           "Setup": 7
-        },
-        {
-          "Setup": 8
-        },
-        {
-          "Setup": 9
         }
       ]
     },
@@ -53245,12 +53249,12 @@
     "77": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::527",
     "78": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::527",
     "79": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::527",
-    "80": "Variable at cs/src/cs/circuit_trait.rs::226",
-    "81": "Variable at cs/src/cs/circuit_trait.rs::226",
-    "82": "Variable at cs/src/cs/circuit_trait.rs::226",
-    "83": "Variable at cs/src/cs/circuit_trait.rs::226",
-    "84": "Variable at cs/src/cs/circuit_trait.rs::226",
-    "85": "Variable at cs/src/cs/circuit_trait.rs::226",
+    "80": "Variable at cs/src/cs/circuit_trait.rs::237",
+    "81": "Variable at cs/src/cs/circuit_trait.rs::237",
+    "82": "Variable at cs/src/cs/circuit_trait.rs::237",
+    "83": "Variable at cs/src/cs/circuit_trait.rs::237",
+    "84": "Variable at cs/src/cs/circuit_trait.rs::237",
+    "85": "Variable at cs/src/cs/circuit_trait.rs::237",
     "86": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::667",
     "87": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::667",
     "88": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::667",

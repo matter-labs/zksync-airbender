@@ -1,7 +1,6 @@
 use super::*;
 use crate::gkr::sumcheck::access_and_fold::BaseFieldPoly;
 use crate::utils::compute_aggregated_key_value_dyn;
-use common_constants::TIMESTAMP_COLUMNS_NUM_BITS;
 use cs::definitions::GKRAddress;
 use cs::gkr_circuits::materialize_flattened_decoder_table_with_bitmask;
 use cs::gkr_circuits::DecoderTableEntry;
@@ -22,7 +21,7 @@ impl<F: PrimeField + TwoAdicField> GKRSetup<F> {
         compiled_circuit: &GKRCircuitArtifact<F>,
     ) -> Self {
         // we always have range-check 16 bits and timestamp limbs
-        let total_width = 2 + compiled_circuit.generic_lookup_tables_width;
+        let total_width = compiled_circuit.generic_lookup_tables_width;
 
         println!(
             "Creating setup with {} columns in total ({} generic lookup tables width)",
@@ -31,7 +30,7 @@ impl<F: PrimeField + TwoAdicField> GKRSetup<F> {
 
         let mut result = Vec::with_capacity(total_width);
 
-        for _ in 0..(2 + compiled_circuit.generic_lookup_tables_width) {
+        for _ in 0..compiled_circuit.generic_lookup_tables_width {
             result.push(vec![F::ZERO; trace_len].into_boxed_slice());
         }
 
@@ -50,24 +49,12 @@ impl<F: PrimeField + TwoAdicField> GKRSetup<F> {
         let all_generic_tables =
             table_driver.dump_tables(compiled_circuit.generic_lookup_tables_width);
 
-        let range_check_16_table_content: Vec<_> = (0..(1 << 16))
-            .map(|el| F::from_u32_unchecked(el as u32))
-            .collect();
-
-        let timestamp_range_check_table: Vec<_> = (0..(1 << TIMESTAMP_COLUMNS_NUM_BITS))
-            .map(|el| F::from_u32_unchecked(el as u32))
-            .collect();
-
         assert_eq!(
             all_generic_tables.len(),
             compiled_circuit.offset_for_decoder_table,
         );
 
         // no parallelism for now
-
-        result[0][..(1 << 16)].copy_from_slice(&range_check_16_table_content);
-        result[1][..(1 << TIMESTAMP_COLUMNS_NUM_BITS)]
-            .copy_from_slice(&timestamp_range_check_table);
 
         if compiled_circuit.tables_ids_in_generic_lookups == false {
             assert!(all_generic_tables.len() == 0 || decoder_table.len() == 0);
@@ -83,7 +70,7 @@ impl<F: PrimeField + TwoAdicField> GKRSetup<F> {
                 compiled_circuit.generic_lookup_tables_width
             );
             for column in 0..compiled_circuit.generic_lookup_tables_width {
-                result[2 + column][row_idx] = all_generic_tables[row_idx][column];
+                result[column][row_idx] = all_generic_tables[row_idx][column];
             }
         }
         let offset = compiled_circuit.offset_for_decoder_table;
@@ -105,10 +92,10 @@ impl<F: PrimeField + TwoAdicField> GKRSetup<F> {
                 assert!(row.len() <= padding_len);
 
                 for column in 0..width {
-                    result[2 + column][row_idx + offset] = table[row_idx][column];
+                    result[column][row_idx + offset] = table[row_idx][column];
                 }
                 for column in width..padding_len {
-                    result[2 + column][row_idx + offset] = F::ZERO;
+                    result[column][row_idx + offset] = F::ZERO;
                 }
                 if compiled_circuit.tables_ids_in_generic_lookups {
                     assert!(result.last().unwrap()[row_idx + offset].is_zero());
@@ -193,7 +180,7 @@ impl<F: PrimeField + TwoAdicField> GKRSetup<F> {
                             let absolute_row_idx = chunk_start + i;
 
                             for column in 0..compiled_circuit.generic_lookup_tables_width {
-                                buffer[column] = self.hypercube_evals[2 + column][absolute_row_idx];
+                                buffer[column] = self.hypercube_evals[column][absolute_row_idx];
                             }
 
                             let denom = compute_aggregated_key_value_dyn(

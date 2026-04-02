@@ -165,8 +165,14 @@ impl<F: PrimeField, E: FieldExtension<F> + Field>
                 #[cfg(feature = "gkr_self_checks")]
                 assert!(*a < input.len());
 
-                let mut contribution = *input.get_unchecked(*a);
+                let a_value = *input.get_unchecked(*a);
+
                 for (b, coeff) in set.iter() {
+                    // Each (b, coeff) term is an independent contribution that starts from
+                    // input[a]. Reusing the previous contribution would incorrectly compound
+                    // quadratic terms.
+
+                    let mut contribution = a_value;
                     if *a != *b {
                         debug_assert!(*b < input.len());
                         #[cfg(feature = "gkr_self_checks")]
@@ -268,7 +274,9 @@ impl<F: PrimeField, E: FieldExtension<F> + Field>
         //     }
         // }
 
-        let mut tmp = R0::from_base_constant(self.constant_offset);
+        // This accumulator tracks only the quadratic coefficient for the first round.
+        // Constant offsets do not contribute to that coefficient, so start from zero.
+        let mut tmp: R0 = R0::from_base_constant(F::ZERO);
 
         for (a, set) in self.quadratic_parts.iter() {
             let a_val = r0_sources[*a].get_f1_minus_f0_only(index);

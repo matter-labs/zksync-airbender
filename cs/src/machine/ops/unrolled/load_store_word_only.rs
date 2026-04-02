@@ -90,7 +90,7 @@ fn apply_word_only_load_store<
         )
     };
 
-    // We tran if it's a store into ROM
+    // We trap if it's a store into ROM
     cs.add_constraint(Term::from(is_store) * (Term::from(1) - Term::from(is_ram_range)));
 
     // Now we will produce two aux bits - one to understand whether it's a load from ROM, and another - from RAM

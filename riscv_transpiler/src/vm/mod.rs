@@ -519,7 +519,7 @@ pub(crate) mod test {
 
         let program = vec![MARKER_OPCODE, ADDI_OPCODE, MARKER_OPCODE];
         let instructions: Vec<Instruction> =
-            preprocess_bytecode::<FullUnsignedMachineDecoderConfig>(&program);
+            preprocess_bytecode::<FullUnsignedMachineDecoderConfig, true>(&program);
         let tape = SimpleTape::new(&instructions);
         let mut ram = RamWithRomRegion::<5>::from_rom_content(&program, 1 << 22);
         let mut state = State::initial_with_counters(DelegationsCounters::default());
@@ -553,7 +553,7 @@ pub(crate) mod test {
         let (_, binary) = read_binary(&Path::new("examples/fibonacci/app.bin"));
         let (_, text) = read_binary(&Path::new("examples/fibonacci/app.text"));
         let instructions: Vec<Instruction> =
-            preprocess_bytecode::<FullUnsignedMachineDecoderConfig>(&text);
+            preprocess_bytecode::<FullUnsignedMachineDecoderConfig, true>(&text);
         let tape = SimpleTape::new(&instructions);
         let mut ram = RamWithRomRegion::<5>::from_rom_content(&binary, 1 << 30);
 
@@ -601,7 +601,7 @@ pub(crate) mod test {
         let (_, binary) = read_binary(&Path::new("examples/keccak_f1600/app.bin"));
         let (_, text) = read_binary(&Path::new("examples/keccak_f1600/app.text"));
         let instructions: Vec<Instruction> =
-            preprocess_bytecode::<FullUnsignedMachineDecoderConfig>(&text);
+            preprocess_bytecode::<FullUnsignedMachineDecoderConfig, true>(&text);
         let tape = SimpleTape::new(&instructions);
         let mut ram = RamWithRomRegion::<5>::from_rom_content(&binary, 1 << 30);
 
@@ -673,7 +673,7 @@ pub(crate) mod test {
         let mut source = QuasiUARTSource::new_with_reads(witness);
 
         let instructions: Vec<Instruction> =
-            preprocess_bytecode::<FullUnsignedMachineDecoderConfig>(&text);
+            preprocess_bytecode::<FullUnsignedMachineDecoderConfig, true>(&text);
         let tape = SimpleTape::new(&instructions);
         let mut ram =
             RamWithRomRegion::<{ common_constants::rom::ROM_SECOND_WORD_BITS }>::from_rom_content(

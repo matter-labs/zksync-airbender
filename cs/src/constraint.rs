@@ -1,8 +1,10 @@
 use std::collections::{BTreeSet, HashSet};
 
 use crate::cs::circuit_trait::Circuit;
-use crate::definitions::*;
+use crate::cs::utils::PreprocessedConstraintForEval;
 use crate::types::{Boolean, Num};
+use crate::witness_placer::{WitnessPlacer, WitnessTypeSet};
+use crate::{cs, definitions::*};
 use field::PrimeField;
 
 pub const TERM_INNER_CAPACITY: usize = 4;
@@ -660,6 +662,13 @@ impl<F: PrimeField> Constraint<F> {
         }
 
         Some(result)
+    }
+
+    pub fn evaluate_with_placer<W: WitnessPlacer<F>>(&self, placer: &mut W) -> W::Field {
+        // cs::utils::collapse_max_quadratic_constraint_into
+        // cs::lookup_utils::peek_lookup_values_unconstrained_into_variables(cs, inputs, outputs, table);
+        let preprocessed_constraint = PreprocessedConstraintForEval::from_constraint(self.clone());
+        preprocessed_constraint.evaluate_with_placer(placer)
     }
 }
 

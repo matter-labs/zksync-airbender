@@ -89,11 +89,37 @@ impl<'a, F: PrimeField> Oracle<F> for MemoryCircuitOracle<'a> {
     }
 
     fn get_u16_witness_from_placeholder(&self, placeholder: Placeholder, trace_step: usize) -> u16 {
-        let Some(_cycle_data) = self.inner.get(trace_step) else {
+        let Some(cycle_data) = self.inner.get(trace_step) else {
             return 0;
         };
 
+        let decoded = <Self as cs::oracle::Oracle<F>>::get_executor_family_data(self, trace_step);
+
         match placeholder {
+            Placeholder::ShuffleRamAddress(access_idx) => match access_idx {
+                0 => decoded.rs1_index as u16,
+                1 => {
+                    if cycle_data.discr == MEM_LOAD_TRACE_DATA_MARKER {
+                        unreachable!("access 1 on load is a RAM address, must be queried as u32")
+                    } else if cycle_data.discr == MEM_STORE_TRACE_DATA_MARKER {
+                        decoded.rs2_index
+                    } else {
+                        unreachable!()
+                    }
+                }
+                2 => {
+                    if cycle_data.discr == MEM_LOAD_TRACE_DATA_MARKER {
+                        decoded.rd_index as u16
+                    } else if cycle_data.discr == MEM_STORE_TRACE_DATA_MARKER {
+                        unreachable!("access 2 on store is a RAM address, must be queried as u32")
+                    } else {
+                        unreachable!()
+                    }
+                }
+                _ => {
+                    unreachable!()
+                }
+            },
             a @ _ => {
                 panic!("placeholder {:?} is not supported as u16 query", a);
             }

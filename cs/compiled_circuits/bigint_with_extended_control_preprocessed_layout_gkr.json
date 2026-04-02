@@ -43,6 +43,10 @@
     1325056,
     1325056,
     1325056,
+    1390592,
+    1390592,
+    1390592,
+    1390592,
     1390592
   ],
   "total_tables_size": 1390592,
@@ -2971,13 +2975,13 @@
           {
             "VectorizedLookupSetup": [
               {
+                "Setup": 0
+              },
+              {
+                "Setup": 1
+              },
+              {
                 "Setup": 2
-              },
-              {
-                "Setup": 3
-              },
-              {
-                "Setup": 4
               }
             ]
           }
@@ -8026,7 +8030,7 @@
                   "BaseLayerWitness": 158
                 },
                 {
-                  "Setup": 0
+                  "VirtualSetup": "RangeCheck16Bits"
                 }
               ],
               "output": [
@@ -8277,7 +8281,7 @@
                   "BaseLayerWitness": 159
                 },
                 {
-                  "Setup": 1
+                  "VirtualSetup": "RangeCheckTimestamp"
                 }
               ],
               "output": [
@@ -37107,13 +37111,13 @@
           "BaseLayerMemory": 96
         },
         {
+          "Setup": 0
+        },
+        {
+          "Setup": 1
+        },
+        {
           "Setup": 2
-        },
-        {
-          "Setup": 3
-        },
-        {
-          "Setup": 4
         }
       ]
     },
@@ -59522,38 +59526,38 @@
     "96": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::299",
     "97": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::299",
     "98": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::299",
-    "99": "Variable at cs/src/cs/circuit_impl.rs::931",
-    "100": "Variable at cs/src/cs/circuit_impl.rs::931",
-    "101": "Variable at cs/src/cs/circuit_impl.rs::931",
-    "102": "Variable at cs/src/cs/circuit_impl.rs::931",
-    "103": "Variable at cs/src/cs/circuit_impl.rs::931",
-    "104": "Variable at cs/src/cs/circuit_impl.rs::931",
-    "105": "Variable at cs/src/cs/circuit_impl.rs::931",
-    "106": "Variable at cs/src/cs/circuit_impl.rs::931",
-    "107": "Variable at cs/src/cs/circuit_impl.rs::931",
-    "108": "Variable at cs/src/cs/circuit_impl.rs::931",
-    "109": "Variable at cs/src/cs/circuit_impl.rs::931",
-    "110": "Variable at cs/src/cs/circuit_impl.rs::931",
-    "111": "Variable at cs/src/cs/circuit_impl.rs::931",
-    "112": "Variable at cs/src/cs/circuit_impl.rs::931",
-    "113": "Variable at cs/src/cs/circuit_impl.rs::931",
-    "114": "Variable at cs/src/cs/circuit_impl.rs::931",
-    "115": "Variable at cs/src/cs/circuit_impl.rs::931",
-    "116": "Variable at cs/src/cs/circuit_impl.rs::931",
-    "117": "Variable at cs/src/cs/circuit_impl.rs::931",
-    "118": "Variable at cs/src/cs/circuit_impl.rs::931",
-    "119": "Variable at cs/src/cs/circuit_impl.rs::931",
-    "120": "Variable at cs/src/cs/circuit_impl.rs::931",
-    "121": "Variable at cs/src/cs/circuit_impl.rs::931",
-    "122": "Variable at cs/src/cs/circuit_impl.rs::931",
-    "123": "Variable at cs/src/cs/circuit_impl.rs::931",
-    "124": "Variable at cs/src/cs/circuit_impl.rs::931",
-    "125": "Variable at cs/src/cs/circuit_impl.rs::931",
-    "126": "Variable at cs/src/cs/circuit_impl.rs::931",
-    "127": "Variable at cs/src/cs/circuit_impl.rs::931",
-    "128": "Variable at cs/src/cs/circuit_impl.rs::931",
-    "129": "Variable at cs/src/cs/circuit_impl.rs::931",
-    "130": "Variable at cs/src/cs/circuit_impl.rs::931",
+    "99": "Variable at cs/src/cs/circuit_impl.rs::1092",
+    "100": "Variable at cs/src/cs/circuit_impl.rs::1092",
+    "101": "Variable at cs/src/cs/circuit_impl.rs::1092",
+    "102": "Variable at cs/src/cs/circuit_impl.rs::1092",
+    "103": "Variable at cs/src/cs/circuit_impl.rs::1092",
+    "104": "Variable at cs/src/cs/circuit_impl.rs::1092",
+    "105": "Variable at cs/src/cs/circuit_impl.rs::1092",
+    "106": "Variable at cs/src/cs/circuit_impl.rs::1092",
+    "107": "Variable at cs/src/cs/circuit_impl.rs::1092",
+    "108": "Variable at cs/src/cs/circuit_impl.rs::1092",
+    "109": "Variable at cs/src/cs/circuit_impl.rs::1092",
+    "110": "Variable at cs/src/cs/circuit_impl.rs::1092",
+    "111": "Variable at cs/src/cs/circuit_impl.rs::1092",
+    "112": "Variable at cs/src/cs/circuit_impl.rs::1092",
+    "113": "Variable at cs/src/cs/circuit_impl.rs::1092",
+    "114": "Variable at cs/src/cs/circuit_impl.rs::1092",
+    "115": "Variable at cs/src/cs/circuit_impl.rs::1092",
+    "116": "Variable at cs/src/cs/circuit_impl.rs::1092",
+    "117": "Variable at cs/src/cs/circuit_impl.rs::1092",
+    "118": "Variable at cs/src/cs/circuit_impl.rs::1092",
+    "119": "Variable at cs/src/cs/circuit_impl.rs::1092",
+    "120": "Variable at cs/src/cs/circuit_impl.rs::1092",
+    "121": "Variable at cs/src/cs/circuit_impl.rs::1092",
+    "122": "Variable at cs/src/cs/circuit_impl.rs::1092",
+    "123": "Variable at cs/src/cs/circuit_impl.rs::1092",
+    "124": "Variable at cs/src/cs/circuit_impl.rs::1092",
+    "125": "Variable at cs/src/cs/circuit_impl.rs::1092",
+    "126": "Variable at cs/src/cs/circuit_impl.rs::1092",
+    "127": "Variable at cs/src/cs/circuit_impl.rs::1092",
+    "128": "Variable at cs/src/cs/circuit_impl.rs::1092",
+    "129": "Variable at cs/src/cs/circuit_impl.rs::1092",
+    "130": "Variable at cs/src/cs/circuit_impl.rs::1092",
     "131": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::556",
     "132": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::556",
     "133": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::556",
@@ -59586,37 +59590,37 @@
     "160": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::558",
     "161": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::558",
     "162": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::558",
-    "163": "Variable at cs/src/cs/circuit_trait.rs::226",
-    "164": "Variable at cs/src/cs/circuit_trait.rs::226",
-    "165": "Variable at cs/src/cs/circuit_trait.rs::226",
-    "166": "Variable at cs/src/cs/circuit_trait.rs::226",
-    "167": "Variable at cs/src/cs/circuit_trait.rs::226",
-    "168": "Variable at cs/src/cs/circuit_trait.rs::226",
-    "169": "Variable at cs/src/cs/circuit_trait.rs::226",
-    "170": "Variable at cs/src/cs/circuit_trait.rs::226",
-    "171": "Variable at cs/src/cs/circuit_trait.rs::226",
-    "172": "Variable at cs/src/cs/circuit_trait.rs::226",
-    "173": "Variable at cs/src/cs/circuit_trait.rs::226",
-    "174": "Variable at cs/src/cs/circuit_trait.rs::226",
-    "175": "Variable at cs/src/cs/circuit_trait.rs::226",
-    "176": "Variable at cs/src/cs/circuit_trait.rs::226",
-    "177": "Variable at cs/src/cs/circuit_trait.rs::226",
-    "178": "Variable at cs/src/cs/circuit_trait.rs::226",
-    "179": "Variable at cs/src/cs/circuit_trait.rs::226",
-    "180": "Variable at cs/src/cs/circuit_trait.rs::226",
-    "181": "Variable at cs/src/cs/circuit_trait.rs::226",
-    "182": "Variable at cs/src/cs/circuit_trait.rs::226",
-    "183": "Variable at cs/src/cs/circuit_trait.rs::226",
-    "184": "Variable at cs/src/cs/circuit_trait.rs::226",
-    "185": "Variable at cs/src/cs/circuit_trait.rs::226",
-    "186": "Variable at cs/src/cs/circuit_trait.rs::226",
-    "187": "Variable at cs/src/cs/circuit_trait.rs::226",
-    "188": "Variable at cs/src/cs/circuit_trait.rs::226",
-    "189": "Variable at cs/src/cs/circuit_trait.rs::226",
-    "190": "Variable at cs/src/cs/circuit_trait.rs::226",
-    "191": "Variable at cs/src/cs/circuit_trait.rs::226",
-    "192": "Variable at cs/src/cs/circuit_trait.rs::226",
-    "193": "Variable at cs/src/cs/circuit_trait.rs::226",
+    "163": "Variable at cs/src/cs/circuit_trait.rs::237",
+    "164": "Variable at cs/src/cs/circuit_trait.rs::237",
+    "165": "Variable at cs/src/cs/circuit_trait.rs::237",
+    "166": "Variable at cs/src/cs/circuit_trait.rs::237",
+    "167": "Variable at cs/src/cs/circuit_trait.rs::237",
+    "168": "Variable at cs/src/cs/circuit_trait.rs::237",
+    "169": "Variable at cs/src/cs/circuit_trait.rs::237",
+    "170": "Variable at cs/src/cs/circuit_trait.rs::237",
+    "171": "Variable at cs/src/cs/circuit_trait.rs::237",
+    "172": "Variable at cs/src/cs/circuit_trait.rs::237",
+    "173": "Variable at cs/src/cs/circuit_trait.rs::237",
+    "174": "Variable at cs/src/cs/circuit_trait.rs::237",
+    "175": "Variable at cs/src/cs/circuit_trait.rs::237",
+    "176": "Variable at cs/src/cs/circuit_trait.rs::237",
+    "177": "Variable at cs/src/cs/circuit_trait.rs::237",
+    "178": "Variable at cs/src/cs/circuit_trait.rs::237",
+    "179": "Variable at cs/src/cs/circuit_trait.rs::237",
+    "180": "Variable at cs/src/cs/circuit_trait.rs::237",
+    "181": "Variable at cs/src/cs/circuit_trait.rs::237",
+    "182": "Variable at cs/src/cs/circuit_trait.rs::237",
+    "183": "Variable at cs/src/cs/circuit_trait.rs::237",
+    "184": "Variable at cs/src/cs/circuit_trait.rs::237",
+    "185": "Variable at cs/src/cs/circuit_trait.rs::237",
+    "186": "Variable at cs/src/cs/circuit_trait.rs::237",
+    "187": "Variable at cs/src/cs/circuit_trait.rs::237",
+    "188": "Variable at cs/src/cs/circuit_trait.rs::237",
+    "189": "Variable at cs/src/cs/circuit_trait.rs::237",
+    "190": "Variable at cs/src/cs/circuit_trait.rs::237",
+    "191": "Variable at cs/src/cs/circuit_trait.rs::237",
+    "192": "Variable at cs/src/cs/circuit_trait.rs::237",
+    "193": "Variable at cs/src/cs/circuit_trait.rs::237",
     "194": "range check selection for limb 0",
     "195": "range check selection for limb 1",
     "196": "range check selection for limb 2",
@@ -59638,8 +59642,8 @@
     "212": "Variable at cs/src/gkr_circuits/delegation/bigint_with_control/mod.rs::788",
     "213": "inv var for zero check copy",
     "214": "is zero var for zero check copy",
-    "215": "Variable at cs/src/cs/circuit_trait.rs::226",
-    "216": "Variable at cs/src/cs/circuit_trait.rs::226",
+    "215": "Variable at cs/src/cs/circuit_trait.rs::237",
+    "216": "Variable at cs/src/cs/circuit_trait.rs::237",
     "217": "ram or indirect query 0, register read_ts[0]",
     "218": "ram or indirect query 0, register read_ts[1]",
     "219": "indirect access query 0, register acccess interm ts borrow",

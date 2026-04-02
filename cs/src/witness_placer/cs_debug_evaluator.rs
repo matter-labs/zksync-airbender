@@ -251,6 +251,15 @@ impl<F: PrimeField> WitnessPlacer<F> for CSDebugWitnessEvaluator<F> {
         inputs: &[Self::Field; M],
         table_id: &Self::U16,
     ) -> [Self::Field; N] {
+        self.peek_lookup(inputs, table_id)
+    }
+
+    #[inline(always)]
+    fn peek_lookup<const M: usize, const N: usize>(
+        &mut self,
+        inputs: &[Self::Field; M],
+        table_id: &Self::U16,
+    ) -> [Self::Field; N] {
         self.table_driver
             .lookup_values::<N>(inputs, *table_id as u32)
     }

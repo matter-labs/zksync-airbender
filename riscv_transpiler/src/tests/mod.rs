@@ -37,7 +37,7 @@ fn test_reg_reg_op(op_name: &str, expected: u32, op1: u32, op2: u32) {
         let text_section = vec![encoding, 0x0000006f];
 
         let instructions: Vec<Instruction> =
-            preprocess_bytecode::<FullUnsignedMachineDecoderConfig>(&text_section);
+            preprocess_bytecode::<FullUnsignedMachineDecoderConfig, true>(&text_section);
         let tape = SimpleTape::new(&instructions);
         let mut ram = RamWithRomRegion::<5>::from_rom_content(&text_section, 1 << 30);
 
@@ -70,7 +70,7 @@ fn test_reg_imm_op(op_name: &str, expected: u32, op1: u32, imm: u16) {
         let text_section = vec![encoding, 0x0000006f];
 
         let instructions: Vec<Instruction> =
-            preprocess_bytecode::<FullUnsignedMachineDecoderConfig>(&text_section);
+            preprocess_bytecode::<FullUnsignedMachineDecoderConfig, true>(&text_section);
         let tape = SimpleTape::new(&instructions);
         let mut ram = RamWithRomRegion::<5>::from_rom_content(&text_section, 1 << 30);
 

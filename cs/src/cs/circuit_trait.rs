@@ -34,10 +34,20 @@ pub enum MemoryAccessRequest {
     },
     // Register or RAM accesses reallocate addresses
     RegisterOrRamRead {
-        negate_address_space_var: bool,
+        // negate_address_space_var: bool,
+        is_register: Boolean,
+        address: [Variable; REGISTER_SIZE],
+        read_value_placeholder: Placeholder,
+        split_as_u8: bool,
     },
     RegisterOrRamReadWrite {
-        negate_address_space_var: bool,
+        // negate_address_space_var: bool,
+        is_register: Boolean,
+        address: [Variable; REGISTER_SIZE],
+        read_value_placeholder: Placeholder,
+        write_value_placeholder: Placeholder,
+        split_read_as_u8: bool,
+        split_write_as_u8: bool,
     },
 }
 
@@ -191,10 +201,15 @@ pub trait Circuit<F: PrimeField>: Sized {
     ) -> RegisterAndIndirectAccesses;
 
     fn require_invariant(&mut self, variable: Variable, invariant: Invariant);
+    fn require_invariant_from_lookup_input(&mut self, input: LookupInput<F>, invariant: Invariant);
     fn finalize(self) -> (CircuitOutput<F>, Option<Self::WitnessPlacer>);
 
     fn materialize_table<const TOTAL_WIDTH: usize>(&mut self, table_type: TableType);
-    // fn add_table_with_content(&mut self, table_type: TableType, table: LookupWrapper<F>);
+    fn add_table_with_content(
+        &mut self,
+        table_type: TableType,
+        table: crate::tables::LookupWrapper<F>,
+    );
 
     #[track_caller]
     fn add_boolean_variable(&mut self) -> Boolean {

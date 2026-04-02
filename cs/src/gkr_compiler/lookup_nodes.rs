@@ -1,6 +1,6 @@
 use super::*;
 use crate::definitions::gkr::NoFieldSingleColumnLookupRelation;
-use crate::definitions::{Degree1Constraint, GKRAddress};
+use crate::definitions::{Degree1Constraint, GKRAddress, VirtualSetupPoly};
 use crate::gkr_compiler::graph::GraphHolder;
 
 #[derive(Clone, Hash, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -163,6 +163,18 @@ impl GKRGate for LookupSingleColumnWitnessMinusSetupInputNode {
         graph: &mut impl GraphHolder,
         output_layer: usize,
     ) -> (Self::Output, NoFieldGKRRelation) {
+        match self.range_check_width {
+            16 => assert_eq!(
+                self.setup,
+                GKRAddress::VirtualSetup(VirtualSetupPoly::RangeCheck16Bits)
+            ),
+            TIMESTAMP_COLUMNS_NUM_BITS => assert_eq!(
+                self.setup,
+                GKRAddress::VirtualSetup(VirtualSetupPoly::RangeCheckTimestamp)
+            ),
+            _ => unreachable!(),
+        }
+
         let output = [(); 2].map(|_| graph.add_intermediate_variable_at_layer(output_layer));
 
         // We will be lazy - will cache the input

@@ -16,10 +16,10 @@ mod binops;
 mod integer_ops;
 mod jump_branch_opcode_related;
 mod keccak_precompile_related;
-// mod memory_opcode_related;
+mod memory_opcode_related;
 // mod range_checks_and_decompositions;
-// mod rom_related;
 mod quote;
+mod rom_related;
 mod shift_opcode_related;
 mod zero_entry;
 
@@ -27,9 +27,9 @@ pub use self::binops::*;
 pub use self::integer_ops::*;
 pub use self::jump_branch_opcode_related::*;
 pub use self::keccak_precompile_related::*;
-// pub use self::memory_opcode_related::*;
+pub use self::memory_opcode_related::*;
 // pub use self::range_checks_and_decompositions::*;
-// pub use self::rom_related::*;
+pub use self::rom_related::*;
 pub use self::shift_opcode_related::*;
 pub use self::zero_entry::*;
 
@@ -358,7 +358,26 @@ impl<F: PrimeField> LookupTable<F> {
     #[track_caller]
     #[inline(always)]
     pub fn lookup_value<const VALUES: usize>(&self, keys: &[F]) -> [F; VALUES] {
-        assert_eq!(keys.len(), self.num_key_columns);
+        // Originally this path required an exact key arity match:
+        // assert_eq!(keys.len(), self.num_key_columns);
+        //
+        // We now allow callers of dynamic-sized lookups to pass trailing zero
+        // slack columns, and truncate them before dispatching into the selected
+        // table shape.
+        assert!(
+            keys.len() >= self.num_key_columns,
+            "lookup for table {} received {} key columns, but requires at least {}",
+            self.name(),
+            keys.len(),
+            self.num_key_columns
+        );
+        assert!(
+            keys[self.num_key_columns..].iter().all(|el| *el == F::ZERO),
+            "lookup for table {} received non-zero extra key columns beyond {}",
+            self.name(),
+            self.num_key_columns
+        );
+        let keys = &keys[..self.num_key_columns];
         assert!(VALUES < MAX_TABLE_WIDTH);
         // NOTE that lookup function return padded values in generation functions
         match &self.quick_value_lookup_fn {
@@ -371,24 +390,53 @@ impl<F: PrimeField> LookupTable<F> {
                         self.name()
                     );
                 };
-                assert_eq!(values.0.len(), VALUES);
+                // Originally this path required an exact value arity match:
+                // assert_eq!(values.0.len(), VALUES);
+                //
+                // Dynamic-sized lookups may target narrower or wider tables. We
+                // allow missing outputs to be padded with zeroes, and only allow
+                // extra returned outputs if they are also zero-valued slack.
+                assert!(
+                    values.0.len() <= VALUES
+                        || values.0[VALUES..].iter().all(|el| *el == F::ZERO),
+                    "lookup for table {} returned {} values, but caller expects {}; extra returned values must be zero",
+                    self.name(),
+                    values.0.len(),
+                    VALUES
+                );
 
-                std::array::from_fn(|i| values.0[i])
+                std::array::from_fn(|i| values.0.get(i).copied().unwrap_or(F::ZERO))
             }
             ValueLookupFn::Pure(..) => {
                 unimplemented!()
             }
             ValueLookupFn::ReuseGenerationFn(gen_fn) => {
                 let (_, values) = (gen_fn)(keys);
-                assert_eq!(values.len(), VALUES);
+                // Originally this path required an exact value arity match:
+                // assert_eq!(values.len(), VALUES);
+                assert!(
+                    values.len() <= VALUES || values[VALUES..].iter().all(|el| *el == F::ZERO),
+                    "lookup for table {} returned {} values, but caller expects {}; extra returned values must be zero",
+                    self.name(),
+                    values.len(),
+                    VALUES
+                );
 
-                std::array::from_fn(|i| values[i])
+                std::array::from_fn(|i| values.get(i).copied().unwrap_or(F::ZERO))
             }
             ValueLookupFn::Closure(gen_closure) => {
                 let (_, values) = (gen_closure)(keys);
-                assert_eq!(values.len(), VALUES);
+                // Originally this path required an exact value arity match:
+                // assert_eq!(values.len(), VALUES);
+                assert!(
+                    values.len() <= VALUES || values[VALUES..].iter().all(|el| *el == F::ZERO),
+                    "lookup for table {} returned {} values, but caller expects {}; extra returned values must be zero",
+                    self.name(),
+                    values.len(),
+                    VALUES
+                );
 
-                std::array::from_fn(|i| values[i])
+                std::array::from_fn(|i| values.get(i).copied().unwrap_or(F::ZERO))
             }
         }
     }
@@ -399,7 +447,26 @@ impl<F: PrimeField> LookupTable<F> {
         &self,
         keys: &[F],
     ) -> (usize, [F; VALUES]) {
-        assert_eq!(keys.len(), self.num_key_columns);
+        // Originally this path required an exact key arity match:
+        // assert_eq!(keys.len(), self.num_key_columns);
+        //
+        // We now allow callers of dynamic-sized lookups to pass trailing zero
+        // slack columns, and truncate them before dispatching into the selected
+        // table shape.
+        assert!(
+            keys.len() >= self.num_key_columns,
+            "lookup for table {} received {} key columns, but requires at least {}",
+            self.name(),
+            keys.len(),
+            self.num_key_columns
+        );
+        assert!(
+            keys[self.num_key_columns..].iter().all(|el| *el == F::ZERO),
+            "lookup for table {} received non-zero extra key columns beyond {}",
+            self.name(),
+            self.num_key_columns
+        );
+        let keys = &keys[..self.num_key_columns];
         assert!(VALUES < MAX_TABLE_WIDTH);
         // NOTE that lookup function return padded values in generation functions
         match &self.quick_value_lookup_fn {
@@ -422,15 +489,37 @@ impl<F: PrimeField> LookupTable<F> {
             }
             ValueLookupFn::ReuseGenerationFn(gen_fn) => {
                 let (index, values) = (gen_fn)(keys);
-                assert_eq!(values.len(), VALUES);
+                // Originally this path required an exact value arity match:
+                // assert_eq!(values.len(), VALUES);
+                assert!(
+                    values.len() <= VALUES || values[VALUES..].iter().all(|el| *el == F::ZERO),
+                    "lookup for table {} returned {} values, but caller expects {}; extra returned values must be zero",
+                    self.name(),
+                    values.len(),
+                    VALUES
+                );
 
-                (index, std::array::from_fn(|i| values[i]))
+                (
+                    index,
+                    std::array::from_fn(|i| values.get(i).copied().unwrap_or(F::ZERO)),
+                )
             }
             ValueLookupFn::Closure(gen_closure) => {
                 let (index, values) = (gen_closure)(keys);
-                assert_eq!(values.len(), VALUES);
+                // Originally this path required an exact value arity match:
+                // assert_eq!(values.len(), VALUES);
+                assert!(
+                    values.len() <= VALUES || values[VALUES..].iter().all(|el| *el == F::ZERO),
+                    "lookup for table {} returned {} values, but caller expects {}; extra returned values must be zero",
+                    self.name(),
+                    values.len(),
+                    VALUES
+                );
 
-                (index, std::array::from_fn(|i| values[i]))
+                (
+                    index,
+                    std::array::from_fn(|i| values.get(i).copied().unwrap_or(F::ZERO)),
+                )
             }
         }
     }
@@ -693,7 +782,9 @@ impl TableType {
         let id = self.to_table_id();
         match self {
             TableType::ZeroEntry => {
-                LookupWrapper::Initialized(create_zero_entry_table::<F, TOTAL_WIDTH>(id))
+                // LookupWrapper::Initialized(create_zero_entry_table::<F, TOTAL_WIDTH>(id))
+                // WE DON'T WANT TO RESTRICT OURSELVES TO SPECIFIC NUMBER OF OUTPUTS
+                LookupWrapper::Initialized(create_zero_entry_table::<F, 0>(id))
             }
             TableType::RegIsZero => LookupWrapper::Initialized(create_reg_is_zero_table::<F>(id)),
             TableType::U16GetSign => LookupWrapper::Initialized(create_u16_get_sign_table::<F>(id)),
@@ -786,12 +877,18 @@ impl TableType {
             // TableType::ExtendLoadedValue => {
             //     LookupWrapper::Dimensional3(create_mem_load_extend_table::<F>(id))
             // }
-            // TableType::StoreByteSourceContribution => {
-            //     LookupWrapper::Dimensional3(create_store_byte_source_contribution_table::<F>(id))
-            // }
-            // TableType::StoreByteExistingContribution => {
-            //     LookupWrapper::Dimensional3(create_store_byte_existing_contribution_table::<F>(id))
-            // }
+            TableType::StoreByteSourceContribution => {
+                LookupWrapper::Initialized(create_store_byte_source_contribution_table::<F>(id))
+            }
+            TableType::StoreByteExistingContribution => {
+                LookupWrapper::Initialized(create_store_byte_existing_contribution_table::<F>(id))
+            }
+            TableType::LoadHalfwordSignextend => {
+                LookupWrapper::Initialized(create_load_halfword_signextend_table::<F>(id))
+            }
+            TableType::LoadByteSignextend => {
+                LookupWrapper::Initialized(create_load_byte_signextend_table::<F>(id))
+            }
             // TableType::TruncateShift => {
             //     LookupWrapper::Dimensional3(create_truncate_shift_amount_table::<F>(id))
             // }

@@ -385,6 +385,12 @@ pub trait WitnessPlacer<F: PrimeField>: WitnessTypeSet<F> {
         table_id: &Self::U16,
     ) -> [Self::Field; N];
 
+    fn peek_lookup<const M: usize, const N: usize>(
+        &mut self,
+        inputs: &[Self::Field; M],
+        table_id: &Self::U16,
+    ) -> [Self::Field; N];
+
     fn maybe_lookup<const M: usize, const N: usize>(
         &mut self,
         inputs: &[Self::Field; M],

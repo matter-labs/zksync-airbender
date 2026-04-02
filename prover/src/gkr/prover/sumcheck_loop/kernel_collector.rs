@@ -386,6 +386,384 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelVariant<F, E> {
             }
         }
     }
+
+    #[cfg(feature = "gkr_self_checks")]
+    #[allow(dead_code)]
+    pub fn debug_compute_final_step_contribution<const N: usize>(
+        &self,
+        last_evaluations: &BTreeMap<GKRAddress, [E; N]>,
+    ) -> [E; 2] {
+        use crate::definitions::sumcheck_kernel::{
+            dynamic_over_single_input_type::SingleInputTypeBatchSumcheckEvaluationKernelCore,
+            evaluation_representation::ExtensionFieldRepresentation,
+            fixed_over_base::BaseFieldInOutFixedSizesEvaluationKernelCore,
+            fixed_over_extension::ExtensionFieldInOutFixedSizesEvaluationKernelCore,
+            fixed_over_mixed_input::MixedFieldsInOutFixedSizesEvaluationKernelCore,
+        };
+        use crate::gkr::prover::dimension_reduction::kernels::{
+            logup::LookupPairDimensionReducingGKRRelationKernel,
+            pairwise_product::PairwiseProductDimensionReducingGKRRelationKernel,
+            DimensionReducingEvaluationKernel,
+        };
+        use crate::gkr::sumcheck::evaluation_kernels::{
+            BaseFieldCopyGKRRelationKernel, ExtensionCopyGKRRelationKernel,
+            LookupAdditionGKRRelationKernel, LookupBaseExtMinusBaseExtGKRRelationKernel,
+            LookupBaseMinusMultiplicityByBaseGKRRelationKernel, LookupBasePairGKRRelationKernel,
+            LookupRationalPairWithUnbalancedBaseGKRRelationKernel,
+            LookupRationalPairWithUnbalancedExtensionGKRRelationKernel,
+            MaskIntoIdentityProductGKRRelationKernel, ProductGKRRelationKernel,
+        };
+
+        let get = |addr: GKRAddress, j: usize| -> E {
+            last_evaluations
+                .get(&addr)
+                .unwrap_or_else(|| panic!("input addr {addr:?} not in last_evaluations"))[j]
+        };
+
+        let efr = |v: E| ExtensionFieldRepresentation::<F, E> {
+            value: v,
+            _marker: core::marker::PhantomData,
+        };
+
+        let mut acc = [E::ZERO; 2];
+        match self {
+            KernelVariant::BaseCopy(rel, challenge, _) => {
+                let k = BaseFieldCopyGKRRelationKernel::<F, E>::default();
+                for j in 0..2usize {
+                    let in0 = efr(get(rel.input, j));
+                    let [out] =
+                        BaseFieldInOutFixedSizesEvaluationKernelCore::<F, E, 1, 1>::pointwise_eval(
+                            &k,
+                            &[in0],
+                        );
+                    let mut val = out.value;
+                    val.mul_assign(&challenge[0]);
+                    acc[j].add_assign(&val);
+                }
+            }
+            KernelVariant::ExtCopy(rel, challenge, _) => {
+                let k = ExtensionCopyGKRRelationKernel::<F, E>::default();
+                for j in 0..2usize {
+                    let in0 = efr(get(rel.input, j));
+                    let [mut val] = ExtensionFieldInOutFixedSizesEvaluationKernelCore::<
+                        F,
+                        E,
+                        1,
+                        1,
+                    >::pointwise_eval(&k, &[in0]);
+                    val.mul_assign(&challenge[0]);
+                    acc[j].add_assign(&val);
+                }
+            }
+            KernelVariant::Product(rel, challenge, _) => {
+                let k = ProductGKRRelationKernel::<F, E>::default();
+                for j in 0..2usize {
+                    let in0 = efr(get(rel.inputs[0], j));
+                    let in1 = efr(get(rel.inputs[1], j));
+                    let [mut val] = ExtensionFieldInOutFixedSizesEvaluationKernelCore::<
+                        F,
+                        E,
+                        2,
+                        1,
+                    >::pointwise_eval(&k, &[in0, in1]);
+                    val.mul_assign(&challenge[0]);
+                    acc[j].add_assign(&val);
+                }
+            }
+            KernelVariant::MaskIdentity(rel, challenge, _) => {
+                let k = MaskIntoIdentityProductGKRRelationKernel::<F, E>::default();
+                for j in 0..2usize {
+                    let in_base = efr(get(rel.mask, j));
+                    let in_ext = efr(get(rel.input, j));
+                    let [mut val] = MixedFieldsInOutFixedSizesEvaluationKernelCore::<
+                        F,
+                        E,
+                        1,
+                        1,
+                        1,
+                    >::pointwise_eval(&k, &[in_base], &[in_ext], &());
+                    val.mul_assign(&challenge[0]);
+                    acc[j].add_assign(&val);
+                }
+            }
+            KernelVariant::AggregateLookupPair(rel, challenges, _) => {
+                let k = LookupAdditionGKRRelationKernel::<F, E>::default();
+                for j in 0..2usize {
+                    let in0 = efr(get(rel.inputs[0][0], j));
+                    let in1 = efr(get(rel.inputs[0][1], j));
+                    let in2 = efr(get(rel.inputs[1][0], j));
+                    let in3 = efr(get(rel.inputs[1][1], j));
+                    let computed = ExtensionFieldInOutFixedSizesEvaluationKernelCore::<
+                        F,
+                        E,
+                        4,
+                        2,
+                    >::pointwise_eval(&k, &[in0, in1, in2, in3]);
+
+                    let mut val0 = computed[0];
+                    val0.mul_assign(&challenges[0]);
+                    acc[j].add_assign(&val0);
+
+                    let mut val1 = computed[1];
+                    val1.mul_assign(&challenges[1]);
+                    acc[j].add_assign(&val1);
+                }
+            }
+            KernelVariant::LookupBasePair(rel, challenges, _) => {
+                let k = LookupBasePairGKRRelationKernel::<F, E>::new(rel.lookup_additive_challenge);
+                for j in 0..2usize {
+                    let in0 = efr(get(rel.inputs[0], j));
+                    let in1 = efr(get(rel.inputs[1], j));
+                    let computed = MixedFieldsInOutFixedSizesEvaluationKernelCore::<
+                        F,
+                        E,
+                        2,
+                        0,
+                        2,
+                    >::pointwise_eval(&k, &[in0, in1], &[], &());
+
+                    let mut val0 = computed[0];
+                    val0.mul_assign(&challenges[0]);
+                    acc[j].add_assign(&val0);
+
+                    let mut val1 = computed[1];
+                    val1.mul_assign(&challenges[1]);
+                    acc[j].add_assign(&val1);
+                }
+            }
+            KernelVariant::LookupVectorPair(rel, challenges, _) => {
+                let k = LookupExtensionPairGKRRelationKernel::<F, E>::new(
+                    rel.lookup_additive_challenge,
+                );
+                for j in 0..2usize {
+                    let in0 = efr(get(rel.inputs[0], j));
+                    let in1 = efr(get(rel.inputs[1], j));
+                    let computed = ExtensionFieldInOutFixedSizesEvaluationKernelCore::<
+                        F,
+                        E,
+                        2,
+                        2,
+                    >::pointwise_eval(&k, &[in0, in1]);
+
+                    let mut val0 = computed[0];
+                    val0.mul_assign(&challenges[0]);
+                    acc[j].add_assign(&val0);
+
+                    let mut val1 = computed[1];
+                    val1.mul_assign(&challenges[1]);
+                    acc[j].add_assign(&val1);
+                }
+            }
+            KernelVariant::LookupBaseMinusMultiplicityByBase(rel, challenges, _) => {
+                let k = LookupBaseMinusMultiplicityByBaseGKRRelationKernel::<F, E>::new(
+                    rel.lookup_additive_challenge,
+                );
+                for j in 0..2usize {
+                    let in0 = efr(get(rel.input, j));
+                    let in1 = efr(get(rel.setup[0], j));
+                    let in2 = efr(get(rel.setup[1], j));
+                    let computed = MixedFieldsInOutFixedSizesEvaluationKernelCore::<
+                        F,
+                        E,
+                        3,
+                        0,
+                        2,
+                    >::pointwise_eval(&k, &[in0, in1, in2], &[], &());
+
+                    let mut val0 = computed[0];
+                    val0.mul_assign(&challenges[0]);
+                    acc[j].add_assign(&val0);
+
+                    let mut val1 = computed[1];
+                    val1.mul_assign(&challenges[1]);
+                    acc[j].add_assign(&val1);
+                }
+            }
+            KernelVariant::LookupUnbalancedWithBase(rel, challenges, _) => {
+                let k = LookupRationalPairWithUnbalancedBaseGKRRelationKernel::<F, E>::new(
+                    rel.lookup_additive_challenge,
+                );
+                for j in 0..2usize {
+                    let in_base = efr(get(rel.remainder, j));
+                    let in_ext0 = efr(get(rel.inputs[0], j));
+                    let in_ext1 = efr(get(rel.inputs[1], j));
+                    let computed = MixedFieldsInOutFixedSizesEvaluationKernelCore::<
+                        F,
+                        E,
+                        1,
+                        2,
+                        2,
+                    >::pointwise_eval(&k, &[in_base], &[in_ext0, in_ext1], &());
+
+                    let mut val0 = computed[0];
+                    val0.mul_assign(&challenges[0]);
+                    acc[j].add_assign(&val0);
+
+                    let mut val1 = computed[1];
+                    val1.mul_assign(&challenges[1]);
+                    acc[j].add_assign(&val1);
+                }
+            }
+            KernelVariant::LookupExtensionMinusMultiplicityByExtension(rel, challenges, _) => {
+                use crate::gkr::sumcheck::evaluation_kernels::LookupExtensionMinusMultiplicityByExtensionGKRRelationKernel;
+
+                let k = LookupExtensionMinusMultiplicityByExtensionGKRRelationKernel::<F, E>::new(
+                    rel.lookup_additive_challenge,
+                );
+                for j in 0..2usize {
+                    let b_in0 = efr(get(rel.setup[0], j));
+                    let e_in0 = efr(get(rel.input, j));
+                    let e_in1 = efr(get(rel.setup[1], j));
+                    let computed = MixedFieldsInOutFixedSizesEvaluationKernelCore::<
+                        F,
+                        E,
+                        1,
+                        2,
+                        2,
+                    >::pointwise_eval(&k, &[b_in0], &[e_in0, e_in1], &());
+
+                    let mut val0 = computed[0];
+                    val0.mul_assign(&challenges[0]);
+                    acc[j].add_assign(&val0);
+
+                    let mut val1 = computed[1];
+                    val1.mul_assign(&challenges[1]);
+                    acc[j].add_assign(&val1);
+                }
+            }
+            KernelVariant::LookupUnbalancedWithExtension(rel, challenges, _) => {
+                let k = LookupRationalPairWithUnbalancedExtensionGKRRelationKernel::<F, E>::new(
+                    rel.lookup_additive_challenge,
+                );
+                for j in 0..2usize {
+                    let in_ext0 = efr(get(rel.inputs[0], j));
+                    let in_ext1 = efr(get(rel.inputs[1], j));
+                    let remainder_in_ext = efr(get(rel.remainder, j));
+                    let computed = ExtensionFieldInOutFixedSizesEvaluationKernelCore::<
+                        F,
+                        E,
+                        3,
+                        2,
+                    >::pointwise_eval(&k, &[in_ext0, in_ext1, remainder_in_ext]);
+
+                    let mut val0 = computed[0];
+                    val0.mul_assign(&challenges[0]);
+                    acc[j].add_assign(&val0);
+
+                    let mut val1 = computed[1];
+                    val1.mul_assign(&challenges[1]);
+                    acc[j].add_assign(&val1);
+                }
+            }
+            KernelVariant::LookupMaskedVectorMinusSetup(rel, challenges, _) => {
+                let k = LookupBaseExtMinusBaseExtGKRRelationKernel::<F, E>::new(
+                    rel.lookup_additive_challenge,
+                );
+                for j in 0..2usize {
+                    let in_base0 = efr(get(rel.nums[0], j));
+                    let in_base1 = efr(get(rel.nums[1], j));
+                    let in_ext0 = efr(get(rel.dens[0], j));
+                    let in_ext1 = efr(get(rel.dens[1], j));
+                    let computed = MixedFieldsInOutFixedSizesEvaluationKernelCore::<
+                        F,
+                        E,
+                        2,
+                        2,
+                        2,
+                    >::pointwise_eval(&k, &[in_base0, in_base1], &[in_ext0, in_ext1], &());
+
+                    let mut val0 = computed[0];
+                    val0.mul_assign(&challenges[0]);
+                    acc[j].add_assign(&val0);
+
+                    let mut val1 = computed[1];
+                    val1.mul_assign(&challenges[1]);
+                    acc[j].add_assign(&val1);
+                }
+            }
+            KernelVariant::MaterializeVectorLookupInput(rel, challenge, _) => {
+                for j in 0..2usize {
+                    let inputs_vec: Vec<E> = rel.inputs.iter().map(|addr| get(*addr, j)).collect();
+                    let [val] = rel.kernel.pointwise_eval(&inputs_vec);
+                    let mut contrib = val;
+                    contrib.mul_assign(&challenge[0]);
+                    acc[j].add_assign(&contrib);
+                }
+            }
+            KernelVariant::MaxQuadratic(rel, challenge, _) => {
+                for j in 0..2usize {
+                    let inputs_vec: Vec<E> = rel.inputs.iter().map(|addr| get(*addr, j)).collect();
+                    let [val] = rel.kernel.pointwise_eval(&inputs_vec);
+                    let mut contrib = val;
+                    contrib.mul_assign(&challenge[0]);
+                    acc[j].add_assign(&contrib);
+                }
+            }
+            KernelVariant::EnforceConstraintsMaxQuadratic(rel, challenge) => {
+                for j in 0..2usize {
+                    let inputs_vec: Vec<E> = rel
+                        .inputs
+                        .iter()
+                        .map(|addr| {
+                            if *addr == GKRAddress::placeholder() {
+                                E::ZERO
+                            } else {
+                                get(*addr, j)
+                            }
+                        })
+                        .collect();
+                    let [val] = rel.kernel.pointwise_eval(&inputs_vec);
+                    let mut contrib = val;
+                    contrib.mul_assign(&challenge[0]);
+                    acc[j].add_assign(&contrib);
+                }
+            }
+            KernelVariant::PairwiseProductDimensionReducing(rel, challenge, _) => {
+                let k = PairwiseProductDimensionReducingGKRRelationKernel::default();
+                let evals = last_evaluations.get(&rel.input).unwrap_or_else(|| {
+                    panic!("input addr {:?} not in last_evaluations", rel.input)
+                });
+                let [val0] = k.pointwise_eval(&[efr(evals[0])], &[efr(evals[1])]);
+                let mut v0 = val0;
+                v0.mul_assign(&challenge[0]);
+                acc[0].add_assign(&v0);
+
+                let [val1] = k.pointwise_eval(&[efr(evals[2])], &[efr(evals[3])]);
+                let mut v1 = val1;
+                v1.mul_assign(&challenge[0]);
+                acc[1].add_assign(&v1);
+            }
+            KernelVariant::LookupPairDimensionReducing(rel, challenges, _) => {
+                let k = LookupPairDimensionReducingGKRRelationKernel::default();
+                let v0 = last_evaluations.get(&rel.inputs[0]).unwrap_or_else(|| {
+                    panic!("input addr {:?} not in last_evaluations", rel.inputs[0])
+                });
+                let v1 = last_evaluations.get(&rel.inputs[1]).unwrap_or_else(|| {
+                    panic!("input addr {:?} not in last_evaluations", rel.inputs[1])
+                });
+
+                let computed0 =
+                    k.pointwise_eval(&[efr(v0[0]), efr(v1[0])], &[efr(v0[1]), efr(v1[1])]);
+                let mut c0 = computed0[0];
+                c0.mul_assign(&challenges[0]);
+                acc[0].add_assign(&c0);
+                let mut c1 = computed0[1];
+                c1.mul_assign(&challenges[1]);
+                acc[0].add_assign(&c1);
+
+                let computed1 =
+                    k.pointwise_eval(&[efr(v0[2]), efr(v1[2])], &[efr(v0[3]), efr(v1[3])]);
+                let mut c2 = computed1[0];
+                c2.mul_assign(&challenges[0]);
+                acc[1].add_assign(&c2);
+                let mut c3 = computed1[1];
+                c3.mul_assign(&challenges[1]);
+                acc[1].add_assign(&c3);
+            }
+        }
+
+        acc
+    }
 }
 
 pub(super) struct KernelCollector<F: PrimeField, E: FieldExtension<F> + Field> {
@@ -523,7 +901,14 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
         last_evaluations: &mut BTreeMap<GKRAddress, [E; N]>,
         worker: &Worker,
     ) {
+        // let is_final_step = step + 1 == folding_steps;
         self.kernels.iter().for_each(|kernel| {
+            // let before = if is_final_step && accumulator.len() == 1 {
+            //     Some(accumulator[0])
+            // } else {
+            //     None
+            // };
+
             kernel.evaluate_over_storage(
                 storage,
                 step,
@@ -533,6 +918,39 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
                 last_evaluations,
                 worker,
             );
+
+            // if let Some(before) = before {
+            //     let after = accumulator[0];
+            //     let mut delta0 = after[0];
+            //     delta0.sub_assign(&before[0]);
+            //     let mut delta1 = after[1];
+            //     delta1.sub_assign(&before[1]);
+            //     #[cfg(feature = "gkr_self_checks")]
+            //     let expected = kernel.debug_compute_final_step_contribution(last_evaluations);
+            //     println!(
+            //         "Final-step kernel contribution {:?}: actual=[{:?}, {:?}]{}",
+            //         kernel,
+            //         delta0,
+            //         delta1,
+            //         {
+            //             #[cfg(feature = "gkr_self_checks")]
+            //             {
+            //                 format!(", expected=[{:?}, {:?}]", expected[0], expected[1])
+            //             }
+            //             #[cfg(not(feature = "gkr_self_checks"))]
+            //             {
+            //                 String::new()
+            //             }
+            //         }
+            //     );
+            //     #[cfg(feature = "gkr_self_checks")]
+            //     if [delta0, delta1] != expected {
+            //         println!(
+            //             "Final-step kernel mismatch for {:?}: actual=[{:?}, {:?}], expected=[{:?}, {:?}]",
+            //             kernel, delta0, delta1, expected[0], expected[1]
+            //         );
+            //     }
+            // }
         });
     }
 }

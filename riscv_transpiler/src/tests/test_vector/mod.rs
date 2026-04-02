@@ -317,7 +317,7 @@ fn execute_case<D: ir::DecodingOptions>(
     initial_registers: [u32; 32],
     expected: &ExpectedOutcome,
 ) {
-    let instructions = crate::ir::simple_instruction_set::preprocess_bytecode::<D>(program);
+    let instructions = crate::ir::simple_instruction_set::preprocess_bytecode::<D, true>(program);
     let tape = SimpleTape::new(&instructions);
     let (state, snapshotter, touched_words) = finalize_state_with_snapshot(
         program,
@@ -354,7 +354,7 @@ fn execute_case<D: ir::DecodingOptions>(
 
 fn run_decode_rejection<D: ir::DecodingOptions>(program: &[u32], instruction: &str) {
     let result = catch_unwind(AssertUnwindSafe(|| {
-        crate::ir::simple_instruction_set::preprocess_bytecode::<D>(program)
+        crate::ir::simple_instruction_set::preprocess_bytecode::<D, true>(program)
     }));
     assert!(
         result.is_err(),
@@ -367,7 +367,7 @@ fn run_rejection<D: ir::DecodingOptions>(
     initial_registers: [u32; 32],
     instruction: &str,
 ) {
-    let instructions = crate::ir::simple_instruction_set::preprocess_bytecode::<D>(program);
+    let instructions = crate::ir::simple_instruction_set::preprocess_bytecode::<D, true>(program);
     let tape = SimpleTape::new(&instructions);
     let mut state = initial_state(initial_registers);
     let mut ram =

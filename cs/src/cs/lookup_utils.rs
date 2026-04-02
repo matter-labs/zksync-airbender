@@ -1,3 +1,4 @@
+use crate::constraint::Constraint;
 use crate::cs::circuit_trait::Circuit;
 use crate::types::Boolean;
 use crate::witness_placer::*;
@@ -39,5 +40,39 @@ pub(crate) fn peek_lookup_values_unconstrained_into_variables<
         witness_early_branch_if_possible(mask.clone(), placer, &inner_evaluator);
     };
 
+    cs.set_values(value_fn);
+}
+
+#[track_caller]
+pub(crate) fn peek_lookup_values_unconstrained_into_variables_from_constraints<
+    F: PrimeField,
+    CS: Circuit<F>,
+    const M: usize,
+    const N: usize,
+>(
+    cs: &mut CS,
+    inputs: &[Constraint<F>; M],
+    output_variables: &[Variable; N],
+    table_type: Constraint<F>,
+) {
+    assert!(inputs.len() > 0);
+
+    let inputs = inputs.clone();
+    let output_variables = output_variables.clone();
+
+    let value_fn = move |placer: &mut CS::WitnessPlacer| {
+        let inputs = inputs
+            .each_ref()
+            .map(|con| con.evaluate_with_placer(placer));
+        let table_id = table_type
+            .evaluate_with_placer(placer)
+            .as_integer()
+            .truncate();
+        let output_values: [<<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field; N] =
+            placer.peek_lookup(&inputs, &table_id);
+        for (&variable, value) in output_variables.iter().zip(&output_values) {
+            placer.assign_field(variable, value);
+        }
+    };
     cs.set_values(value_fn);
 }

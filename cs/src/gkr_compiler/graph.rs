@@ -1,5 +1,5 @@
 use crate::constraint::Constraint;
-use crate::definitions::{GKRAddress, Variable};
+use crate::definitions::{GKRAddress, Variable, VirtualSetupPoly};
 use crate::gkr_compiler::{GKRGate, LookupType, NoFieldGKRCacheRelation, NoFieldGKRRelation};
 use field::PrimeField;
 use std::collections::BTreeSet;
@@ -55,8 +55,6 @@ pub struct GKRGraph {
     pub(crate) setups: Vec<GKRAddress>,
     pub(crate) cached_relations: BTreeMap<usize, Vec<NoFieldGKRCacheRelation>>,
     pub(crate) enforced_relations: BTreeMap<usize, Vec<NoFieldGKRRelation>>,
-    pub(crate) range_check_16_setup_column: GKRAddress,
-    pub(crate) timestamp_check_16_setup_column: GKRAddress,
     pub(crate) generic_lookup_setup_width: usize,
     pub(crate) copies: Vec<BTreeMap<GKRAddress, GKRAddress>>,
     pub(crate) intermediate_layers_offsets: BTreeMap<usize, usize>,
@@ -76,8 +74,6 @@ impl GKRGraph {
             setups: vec![],
             cached_relations: BTreeMap::new(),
             enforced_relations: BTreeMap::new(),
-            range_check_16_setup_column: GKRAddress::Setup(0),
-            timestamp_check_16_setup_column: GKRAddress::Setup(1),
             generic_lookup_setup_width,
             copies: vec![],
             intermediate_layers_offsets: BTreeMap::new(),
@@ -87,7 +83,7 @@ impl GKRGraph {
 
         // add setups as already resolved
         for i in 0..generic_lookup_setup_width {
-            let pos = GKRAddress::Setup(2 + i);
+            let pos = GKRAddress::Setup(i);
             new.setups.push(pos);
         }
 
@@ -261,13 +257,17 @@ impl GraphHolder for GKRGraph {
         pos
     }
 
-    fn setup_addresses(&self, lookup_type: LookupType) -> &[GKRAddress] {
+    fn setup_addresses(&self, lookup_type: LookupType) -> Box<[GKRAddress]> {
         match lookup_type {
-            LookupType::RangeCheck16 => std::slice::from_ref(&self.range_check_16_setup_column),
-            LookupType::TimestampRangeCheck => {
-                std::slice::from_ref(&self.timestamp_check_16_setup_column)
+            LookupType::RangeCheck16 => {
+                vec![GKRAddress::VirtualSetup(VirtualSetupPoly::RangeCheck16Bits)]
+                    .into_boxed_slice()
             }
-            LookupType::Generic => &self.setups[..],
+            LookupType::TimestampRangeCheck => vec![GKRAddress::VirtualSetup(
+                VirtualSetupPoly::RangeCheckTimestamp,
+            )]
+            .into_boxed_slice(),
+            LookupType::Generic => self.setups.clone().into_boxed_slice(),
         }
     }
 
@@ -361,7 +361,7 @@ pub trait GraphHolder {
     // Get placement data for base layer
     fn get_address_for_variable(&self, variable: Variable) -> GKRAddress;
     // Some setup data
-    fn setup_addresses(&self, lookup_type: LookupType) -> &[GKRAddress];
+    fn setup_addresses(&self, lookup_type: LookupType) -> Box<[GKRAddress]>;
 
     // copy variables across layers
     fn copy_base_layer_variable(&mut self, variable: Variable) -> GKRAddress;
