@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use crate::allocator::tracker::AllocationPlacement;
 use crate::ops::simple::set_by_val;
-use crate::primitives::circuit_type::{CircuitType, UnrolledCircuitType};
+use crate::primitives::circuit_type::{CircuitType, DelegationCircuitType, UnrolledCircuitType};
 use crate::primitives::context::{DeviceAllocation, ProverContext};
 use crate::primitives::device_structures::{
     DeviceMatrix, DeviceMatrixImpl, DeviceMatrixMut, DeviceMatrixMutImpl,
@@ -12,7 +12,10 @@ use crate::primitives::device_tracing::Range;
 use crate::primitives::field::BF;
 use crate::prover::gkr::setup::GpuGKRSetupTransfer;
 use crate::prover::trace_holder::{TraceHolder, TreesCacheMode};
-use crate::prover::tracing_data::{TracingDataDevice, UnrolledTracingDataDevice};
+use crate::prover::tracing_data::{
+    DelegationTracingDataDevice, TracingDataDevice, UnrolledTracingDataDevice,
+};
+use crate::witness::memory_delegation::generate_memory_and_witness_values_delegation;
 use crate::witness::memory_unrolled::{
     generate_memory_and_witness_values_unrolled_memory,
     generate_memory_and_witness_values_unrolled_non_memory,
@@ -22,6 +25,7 @@ use crate::witness::multiplicities::{
     generate_range_check_multiplicities_from_mappings,
 };
 use crate::witness::trace_unrolled::ExecutorFamilyDecoderData;
+use crate::witness::witness_delegation::generate_witness_values_delegation;
 use crate::witness::witness_unrolled::{
     generate_witness_values_unrolled_memory, generate_witness_values_unrolled_non_memory,
 };
@@ -241,6 +245,93 @@ impl GpuGKRStage1Output {
             };
 
             match (circuit_type, tracing_data) {
+                (
+                    CircuitType::Delegation(circuit_type),
+                    TracingDataDevice::Delegation(DelegationTracingDataDevice::BigIntWithControl(
+                        trace,
+                    )),
+                ) => {
+                    assert_eq!(circuit_type, DelegationCircuitType::BigIntWithControl);
+                    let witness_values_range =
+                        Range::new("gkr.stage1.generate.memory_and_witness_values")?;
+                    witness_values_range.start(stream)?;
+                    generate_memory_and_witness_values_delegation(
+                        compiled_circuit,
+                        trace,
+                        &mut memory_matrix,
+                        &mut witness_matrix,
+                        context.get_exec_stream(),
+                    )?;
+                    generate_witness_values_delegation(
+                        trace,
+                        &DeviceMatrix::new(generic_lookup_tables, trace_len),
+                        &DeviceMatrix::new(memory_matrix.slice(), trace_len),
+                        &mut witness_matrix,
+                        &mut scratch_matrix,
+                        &mut DeviceMatrixMut::new(generic_mapping_prefix, trace_len),
+                        context.get_exec_stream(),
+                    )?;
+                    witness_values_range.end(stream)?;
+                    tracing_ranges.push(witness_values_range);
+                }
+                (
+                    CircuitType::Delegation(circuit_type),
+                    TracingDataDevice::Delegation(
+                        DelegationTracingDataDevice::Blake2WithCompression(trace),
+                    ),
+                ) => {
+                    assert_eq!(circuit_type, DelegationCircuitType::Blake2WithCompression);
+                    let witness_values_range =
+                        Range::new("gkr.stage1.generate.memory_and_witness_values")?;
+                    witness_values_range.start(stream)?;
+                    generate_memory_and_witness_values_delegation(
+                        compiled_circuit,
+                        trace,
+                        &mut memory_matrix,
+                        &mut witness_matrix,
+                        context.get_exec_stream(),
+                    )?;
+                    generate_witness_values_delegation(
+                        trace,
+                        &DeviceMatrix::new(generic_lookup_tables, trace_len),
+                        &DeviceMatrix::new(memory_matrix.slice(), trace_len),
+                        &mut witness_matrix,
+                        &mut scratch_matrix,
+                        &mut DeviceMatrixMut::new(generic_mapping_prefix, trace_len),
+                        context.get_exec_stream(),
+                    )?;
+                    witness_values_range.end(stream)?;
+                    tracing_ranges.push(witness_values_range);
+                }
+                (
+                    CircuitType::Delegation(circuit_type),
+                    TracingDataDevice::Delegation(DelegationTracingDataDevice::KeccakSpecial5(
+                        trace,
+                    )),
+                ) => {
+                    assert_eq!(circuit_type, DelegationCircuitType::KeccakSpecial5);
+                    let witness_values_range =
+                        Range::new("gkr.stage1.generate.memory_and_witness_values")?;
+                    witness_values_range.start(stream)?;
+                    generate_memory_and_witness_values_delegation(
+                        compiled_circuit,
+                        trace,
+                        &mut memory_matrix,
+                        &mut witness_matrix,
+                        context.get_exec_stream(),
+                    )?;
+                    generate_witness_values_delegation(
+                        trace,
+                        &DeviceMatrix::new(generic_lookup_tables, trace_len),
+                        &DeviceMatrix::new(memory_matrix.slice(), trace_len),
+                        &mut witness_matrix,
+                        &mut scratch_matrix,
+                        &mut DeviceMatrixMut::new(generic_mapping_prefix, trace_len),
+                        context.get_exec_stream(),
+                    )?;
+                    witness_values_range.end(stream)?;
+                    tracing_ranges.push(witness_values_range);
+                }
                 (
                     CircuitType::Unrolled(UnrolledCircuitType::Memory(circuit_type)),
                     TracingDataDevice::Unrolled(UnrolledTracingDataDevice::Memory(trace)),

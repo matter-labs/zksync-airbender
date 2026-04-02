@@ -1,12 +1,12 @@
 use super::layout::DelegationProcessingLayout;
-use super::ram_access::{
-    RegisterAndIndirectAccessDescription, RegisterAndIndirectAccessTimestampComparisonAuxVars,
-};
+use super::ram_access::{RamAuxComparisonSet, RamQuery};
 use super::trace_delegation::{DelegationTraceDevice, DelegationTraceRaw};
 use crate::primitives::circuit_type::DelegationCircuitType;
 use crate::primitives::device_structures::{DeviceMatrixMutImpl, MutPtrAndStride};
 use crate::primitives::field::BF;
 use crate::primitives::utils::{get_grid_block_dims_for_threads_count, WARP_SIZE};
+use cs::definitions::gkr::GKRMemoryLayout;
+use cs::gkr_compiler::{GKRAuxLayoutData, GKRCircuitArtifact};
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
 use era_cudart::paste::paste;
 use era_cudart::result::CudaResult;
@@ -15,79 +15,123 @@ use era_cudart::{cuda_kernel_declaration, cuda_kernel_signature_arguments_and_fu
 use riscv_transpiler::witness::delegation::bigint::BigintDelegationWitness;
 use riscv_transpiler::witness::delegation::blake2_round_function::Blake2sRoundFunctionDelegationWitness;
 use riscv_transpiler::witness::delegation::keccak_special5::KeccakSpecial5DelegationWitness;
-use std::ops::Deref;
 
-type CSMemorySubtree = cs::definitions::MemorySubtree;
-type CSRegisterAndIndirectAccessDescription = cs::definitions::RegisterAndIndirectAccessDescription;
-type CSRegisterAndIndirectAccessTimestampComparisonAuxVars =
-    cs::definitions::RegisterAndIndirectAccessTimestampComparisonAuxVars;
-
-const MAX_REGISTER_AND_INDIRECT_ACCESSES_COUNT: usize = 4;
+const MAX_DELEGATION_RAM_ACCESS_SETS_COUNT: usize = 64;
+const MAX_DELEGATION_VARIABLE_OFFSETS_COUNT: usize = 16;
 
 #[repr(C)]
-#[derive(Clone, Copy, Default, Debug)]
-pub struct RegisterAndIndirectAccessDescriptions {
-    pub count: u32,
-    pub descriptions:
-        [RegisterAndIndirectAccessDescription; MAX_REGISTER_AND_INDIRECT_ACCESSES_COUNT],
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct DelegationMemoryLayout {
+    total_width: u32,
+    delegation_processor_layout: DelegationProcessingLayout,
+    indirect_access_variable_offsets_count: u32,
+    indirect_access_variable_offsets: [u16; MAX_DELEGATION_VARIABLE_OFFSETS_COUNT],
+    ram_access_sets_count: u32,
+    ram_access_sets: [RamQuery; MAX_DELEGATION_RAM_ACCESS_SETS_COUNT],
 }
 
-impl<T: Deref<Target = [CSRegisterAndIndirectAccessDescription]>> From<&T>
-    for RegisterAndIndirectAccessDescriptions
-{
-    fn from(value: &T) -> Self {
-        let len = value.len();
-        assert!(len <= MAX_REGISTER_AND_INDIRECT_ACCESSES_COUNT);
-        let count = len as u32;
-        let mut descriptions = [RegisterAndIndirectAccessDescription::default();
-            MAX_REGISTER_AND_INDIRECT_ACCESSES_COUNT];
-        for (src, dst) in value.iter().zip(descriptions.iter_mut()) {
-            *dst = src.clone().into();
-        }
+impl Default for DelegationMemoryLayout {
+    fn default() -> Self {
         Self {
-            count,
-            descriptions,
+            total_width: 0,
+            delegation_processor_layout: DelegationProcessingLayout::default(),
+            indirect_access_variable_offsets_count: 0,
+            indirect_access_variable_offsets: [0u16; MAX_DELEGATION_VARIABLE_OFFSETS_COUNT],
+            ram_access_sets_count: 0,
+            ram_access_sets: [RamQuery::default(); MAX_DELEGATION_RAM_ACCESS_SETS_COUNT],
+        }
+    }
+}
+
+impl From<&GKRMemoryLayout> for DelegationMemoryLayout {
+    fn from(value: &GKRMemoryLayout) -> Self {
+        assert!(value.total_width <= u32::MAX as usize);
+        let delegation_processor_layout = value.into();
+
+        let variable_offsets_len = value.indirect_access_variable_offsets.len();
+        assert!(
+            variable_offsets_len <= MAX_DELEGATION_VARIABLE_OFFSETS_COUNT,
+            "delegation layout uses {} indirect access variable offsets, but the GPU ABI supports at most {}",
+            variable_offsets_len,
+            MAX_DELEGATION_VARIABLE_OFFSETS_COUNT,
+        );
+        let mut indirect_access_variable_offsets = [0u16; MAX_DELEGATION_VARIABLE_OFFSETS_COUNT];
+        for (&src, dst) in value
+            .indirect_access_variable_offsets
+            .iter()
+            .zip(indirect_access_variable_offsets.iter_mut())
+        {
+            assert!(src <= u16::MAX as usize);
+            *dst = src as u16;
+        }
+
+        let ram_access_sets_len = value.ram_access_sets.len();
+        assert!(
+            ram_access_sets_len <= MAX_DELEGATION_RAM_ACCESS_SETS_COUNT,
+            "delegation layout uses {} RAM accesses, but the GPU ABI supports at most {}",
+            ram_access_sets_len,
+            MAX_DELEGATION_RAM_ACCESS_SETS_COUNT,
+        );
+        let mut ram_access_sets = [RamQuery::default(); MAX_DELEGATION_RAM_ACCESS_SETS_COUNT];
+        for (&src, dst) in value.ram_access_sets.iter().zip(ram_access_sets.iter_mut()) {
+            *dst = src.into();
+        }
+
+        Self {
+            total_width: value.total_width as u32,
+            delegation_processor_layout,
+            indirect_access_variable_offsets_count: variable_offsets_len as u32,
+            indirect_access_variable_offsets,
+            ram_access_sets_count: ram_access_sets_len as u32,
+            ram_access_sets,
         }
     }
 }
 
 #[repr(C)]
-#[derive(Clone, Copy, Default, Debug)]
-pub(crate) struct DelegationMemorySubtree {
-    delegation_processor_layout: DelegationProcessingLayout,
-    register_and_indirect_access_descriptions: RegisterAndIndirectAccessDescriptions,
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct DelegationAuxLayoutData {
+    pub shuffle_ram_timestamp_comparison_aux_vars:
+        [RamAuxComparisonSet; MAX_DELEGATION_RAM_ACCESS_SETS_COUNT],
 }
 
-impl From<&CSMemorySubtree> for DelegationMemorySubtree {
-    fn from(value: &CSMemorySubtree) -> Self {
-        assert!(value.shuffle_ram_inits_and_teardowns.is_empty());
-        assert!(value.shuffle_ram_access_sets.is_empty());
-        assert!(value.delegation_request_layout.is_none());
-        assert!(value.batched_ram_accesses.is_empty());
-        let delegation_processor_layout = value.delegation_processor_layout.unwrap().into();
-        let register_and_indirect_access_descriptions = {
-            let count = value.register_and_indirect_accesses.len() as u32;
-            assert!(count <= MAX_REGISTER_AND_INDIRECT_ACCESSES_COUNT as u32);
-            let mut descriptions = [RegisterAndIndirectAccessDescription::default();
-                MAX_REGISTER_AND_INDIRECT_ACCESSES_COUNT];
-            for (i, value) in value.register_and_indirect_accesses.iter().enumerate() {
-                descriptions[i] = value.clone().into();
-            }
-            RegisterAndIndirectAccessDescriptions {
-                count,
-                descriptions,
-            }
-        };
+impl Default for DelegationAuxLayoutData {
+    fn default() -> Self {
         Self {
-            delegation_processor_layout,
-            register_and_indirect_access_descriptions,
+            shuffle_ram_timestamp_comparison_aux_vars: [RamAuxComparisonSet::default();
+                MAX_DELEGATION_RAM_ACCESS_SETS_COUNT],
+        }
+    }
+}
+
+impl From<&GKRAuxLayoutData> for DelegationAuxLayoutData {
+    fn from(value: &GKRAuxLayoutData) -> Self {
+        let len = value.shuffle_ram_timestamp_comparison_aux_vars.len();
+        assert!(
+            len <= MAX_DELEGATION_RAM_ACCESS_SETS_COUNT,
+            "delegation layout uses {} timestamp comparison aux slots, but the GPU ABI supports at most {}",
+            len,
+            MAX_DELEGATION_RAM_ACCESS_SETS_COUNT,
+        );
+        let mut shuffle_ram_timestamp_comparison_aux_vars =
+            [RamAuxComparisonSet::default(); MAX_DELEGATION_RAM_ACCESS_SETS_COUNT];
+        for (&src, dst) in value
+            .shuffle_ram_timestamp_comparison_aux_vars
+            .iter()
+            .zip(shuffle_ram_timestamp_comparison_aux_vars.iter_mut())
+        {
+            *dst = src.into();
+        }
+
+        Self {
+            shuffle_ram_timestamp_comparison_aux_vars,
         }
     }
 }
 
 cuda_kernel_signature_arguments_and_function!(
     GenerateMemoryValues<T>,
-    subtree: DelegationMemorySubtree,
+    layout: DelegationMemoryLayout,
     trace: DelegationTraceRaw<T>,
     memory: MutPtrAndStride<BF>,
     count: u32,
@@ -95,12 +139,12 @@ cuda_kernel_signature_arguments_and_function!(
 
 cuda_kernel_signature_arguments_and_function!(
     GenerateMemoryAndWitnessValues<T>,
-        subtree: DelegationMemorySubtree,
-        aux_vars: RegisterAndIndirectAccessTimestampComparisonAuxVars,
-        trace: DelegationTraceRaw<T>,
-        memory: MutPtrAndStride<BF>,
-        witness: MutPtrAndStride<BF>,
-        count: u32,
+    layout: DelegationMemoryLayout,
+    aux_layout_data: DelegationAuxLayoutData,
+    trace: DelegationTraceRaw<T>,
+    memory: MutPtrAndStride<BF>,
+    witness: MutPtrAndStride<BF>,
+    count: u32,
 );
 
 macro_rules! generate_delegation_kernels {
@@ -108,7 +152,7 @@ macro_rules! generate_delegation_kernels {
         paste! {
             cuda_kernel_declaration!(
                 [<ab_generate_memory_values_ $name _kernel>](
-                    subtree: DelegationMemorySubtree,
+                    layout: DelegationMemoryLayout,
                     trace: DelegationTraceRaw<$type>,
                     memory: MutPtrAndStride<BF>,
                     count: u32,
@@ -116,8 +160,8 @@ macro_rules! generate_delegation_kernels {
             );
             cuda_kernel_declaration!(
                 [<ab_generate_memory_and_witness_values_ $name _kernel>](
-                    subtree: DelegationMemorySubtree,
-                    aux_vars: RegisterAndIndirectAccessTimestampComparisonAuxVars,
+                    layout: DelegationMemoryLayout,
+                    aux_layout_data: DelegationAuxLayoutData,
                     trace: DelegationTraceRaw<$type>,
                     memory: MutPtrAndStride<BF>,
                     witness: MutPtrAndStride<BF>,
@@ -166,48 +210,52 @@ generate_memory_values_impl!(
 );
 
 pub(crate) fn generate_memory_values_delegation<T: GenerateMemoryDelegation>(
-    subtree: &CSMemorySubtree,
+    compiled_circuit: &GKRCircuitArtifact<BF>,
     trace: &DelegationTraceDevice<T>,
     memory: &mut impl DeviceMatrixMutImpl<BF>,
     stream: &CudaStream,
 ) -> CudaResult<()> {
-    let count = T::CIRCUIT_TYPE.get_num_cycles();
-    assert_eq!(memory.stride(), count + 1);
-    assert_eq!(memory.cols(), subtree.total_width);
+    let count = compiled_circuit.trace_len;
+    assert_eq!(memory.stride(), count);
+    assert_eq!(memory.cols(), compiled_circuit.memory_layout.total_width);
     assert!(count <= u32::MAX as usize);
     let count = count as u32;
-    let subtree = subtree.into();
+    let layout = (&compiled_circuit.memory_layout).into();
     let trace = trace.into();
     let memory = memory.as_mut_ptr_and_stride();
     let (grid_dim, block_dim) = get_grid_block_dims_for_threads_count(WARP_SIZE * 4, count);
     let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
-    let args = GenerateMemoryValuesArguments::new(subtree, trace, memory, count);
+    let args = GenerateMemoryValuesArguments::new(layout, trace, memory, count);
     GenerateMemoryValuesFunction(T::MEMORY_SIGNATURE).launch(&config, &args)
 }
 
 pub(crate) fn generate_memory_and_witness_values_delegation<T: GenerateMemoryDelegation>(
-    subtree: &CSMemorySubtree,
-    aux_vars: &CSRegisterAndIndirectAccessTimestampComparisonAuxVars,
+    compiled_circuit: &GKRCircuitArtifact<BF>,
     trace: &DelegationTraceDevice<T>,
     memory: &mut impl DeviceMatrixMutImpl<BF>,
     witness: &mut impl DeviceMatrixMutImpl<BF>,
     stream: &CudaStream,
 ) -> CudaResult<()> {
-    let count = T::CIRCUIT_TYPE.get_num_cycles();
-    assert_eq!(memory.stride(), count + 1);
-    assert_eq!(memory.cols(), subtree.total_width);
-    assert_eq!(witness.stride(), count + 1);
+    let count = compiled_circuit.trace_len;
+    assert_eq!(memory.stride(), count);
+    assert_eq!(memory.cols(), compiled_circuit.memory_layout.total_width);
+    assert_eq!(witness.stride(), count);
     assert!(count <= u32::MAX as usize);
     let count = count as u32;
-    let subtree = subtree.into();
-    let aux_vars = aux_vars.clone().into();
+    let layout = (&compiled_circuit.memory_layout).into();
+    let aux_layout_data = (&compiled_circuit.aux_layout_data).into();
     let trace = trace.into();
     let memory = memory.as_mut_ptr_and_stride();
     let witness = witness.as_mut_ptr_and_stride();
     let (grid_dim, block_dim) = get_grid_block_dims_for_threads_count(WARP_SIZE * 4, count);
     let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
     let args = GenerateMemoryAndWitnessValuesArguments::new(
-        subtree, aux_vars, trace, memory, witness, count,
+        layout,
+        aux_layout_data,
+        trace,
+        memory,
+        witness,
+        count,
     );
     GenerateMemoryAndWitnessValuesFunction(T::MEMORY_AND_WITNESS_SIGNATURE).launch(&config, &args)
 }
