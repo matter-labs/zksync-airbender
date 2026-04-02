@@ -16,7 +16,9 @@ pub const DRAW_BUF_CAPACITY: usize = 64;
 pub fn read_field_el<I: NonDeterminismSource>() -> BabyBearExt4 {
     let mut words = LazyVec::<BabyBearField, EXT_DEGREE>::new();
     for _ in 0..EXT_DEGREE {
-        words.push(BabyBearField::from_reduced_raw_repr(I::read_word()));
+        words.push(BabyBearField::from_reduced_raw_repr(
+            I::read_reduced_field_element(BabyBearField::ORDER),
+        ));
     }
     unsafe { core::ptr::read(words.as_slice().as_ptr().cast::<BabyBearExt4>()) }
 }

@@ -44,8 +44,10 @@ pub fn generate_whir_inlined<MW: MersenneWrapper>(
     let fold_buf_half = values_per_leaf / 2;
 
     // MW operations
-    let batch_mul = MW::mul_assign_by_base(quote! { term }, quote! { base_val });
-    let batch_add_acc = MW::add_assign(quote! { *acc }, quote! { term });
+    let batch_mul_local_0 = MW::mul_assign_by_base(quote! { term }, quote! { base_val });
+    let batch_add_acc0 = MW::add_assign(quote! { *acc0 }, quote! { term });
+    let batch_mul_local_1 = MW::mul_assign_by_base(quote! { term }, quote! { base_val });
+    let batch_add_acc1 = MW::add_assign(quote! { *acc1 }, quote! { term });
     let mul_delin = MW::mul_assign(quote! { t }, quote! { delinearization_challenge });
     let add_correction = MW::add_assign(quote! { claim_correction }, quote! { t });
     let add_claim = MW::add_assign(quote! { claim }, quote! { claim_correction });
@@ -53,7 +55,8 @@ pub fn generate_whir_inlined<MW: MersenneWrapper>(
         quote! { claim_correction },
         quote! { delinearization_challenge },
     );
-    let from_raw = MW::field_from_reduced_raw_repr(quote! { raw });
+    let from_raw_0 = MW::field_from_reduced_raw_repr(quote! { raw0 });
+    let from_raw_1 = MW::field_from_reduced_raw_repr(quote! { raw1 });
     let batch_mul_eval = MW::mul_assign(quote! { term }, quote! { eval });
     let add_claim_eval = MW::add_assign(quote! { claim }, quote! { term });
 
@@ -95,62 +98,38 @@ pub fn generate_whir_inlined<MW: MersenneWrapper>(
         const NUM_COSETS_LOG2: usize = #num_cosets_log2;
         const COSET_TREE_SIZE: usize = #coset_tree_size;
 
+        /// Read leaf data from NDS into hash_buf and batch into accumulators
+        /// in a single pass. NDS is column-major (matching Merkle hash layout).
         #[inline(always)]
-        unsafe fn read_and_reorder_leaf<I: NonDeterminismSource>(
+        #[allow(clippy::too_many_arguments)]
+        unsafe fn read_and_batch_leaf<I: NonDeterminismSource>(
             hash_buf: &mut [u32],
-            num_columns: usize,
-        ) {
-            // NDS has position-major order; reorder to column-major for hashing.
-            let mut pos = 0;
-            while pos < INITIAL_VALUES_PER_LEAF {
-                let mut col = 0;
-                while col < num_columns {
-                    let w = I::read_word();
-                    *hash_buf.get_unchecked_mut(col * INITIAL_VALUES_PER_LEAF + pos) = w;
-                    col += 1;
-                }
-                pos += 1;
-            }
-        }
-
-        /// Batch leaf values (column-major in hash_buf) into batched_evals.
-        /// Accumulators are hoisted into locals to avoid aliasing-induced
-        /// reloads/stores through the slice pointer on every iteration.
-        #[inline(always)]
-        unsafe fn batch_leaf_values(
-            hash_buf: &[u32],
             num_columns: usize,
             gamma_powers: &[#quartic_struct],
             gamma_offset: usize,
-            batched_evals: &mut [#quartic_struct],
+            acc0: &mut #quartic_struct,
+            acc1: &mut #quartic_struct,
         ) {
-            // Hoist accumulators into locals — avoids reload/store through
-            // batched_evals pointer every iteration (LLVM can't prove no-alias).
-            let mut accs = LazyVec::<#quartic_struct, INITIAL_VALUES_PER_LEAF>::new();
-            let mut pos = 0;
-            while pos < INITIAL_VALUES_PER_LEAF {
-                accs.push(*batched_evals.get_unchecked(pos));
-                pos += 1;
-            }
             let mut col = 0;
             while col < num_columns {
                 let gamma = *gamma_powers.get_unchecked(gamma_offset + col);
-                pos = 0;
-                while pos < INITIAL_VALUES_PER_LEAF {
-                    let raw = *hash_buf.get_unchecked(col * INITIAL_VALUES_PER_LEAF + pos);
-                    let base_val = #from_raw;
-                    let mut term = gamma;
-                    #batch_mul;
-                    let acc = accs.get_unchecked_mut(pos);
-                    #batch_add_acc;
-                    pos += 1;
-                }
+                let idx = col * 2;
+
+                let raw0 = I::read_reduced_field_element(#field_struct::ORDER);
+                *hash_buf.get_unchecked_mut(idx) = raw0;
+                let base_val = #from_raw_0;
+                let mut term = gamma;
+                #batch_mul_local_0;
+                #batch_add_acc0;
+
+                let raw1 = I::read_reduced_field_element(#field_struct::ORDER);
+                *hash_buf.get_unchecked_mut(idx + 1) = raw1;
+                let base_val = #from_raw_1;
+                let mut term = gamma;
+                #batch_mul_local_1;
+                #batch_add_acc1;
+
                 col += 1;
-            }
-            pos = 0;
-            while pos < INITIAL_VALUES_PER_LEAF {
-                *batched_evals.get_unchecked_mut(pos) = *accs.get_unchecked(pos);
-                pos += 1;
             }
         }
 
@@ -166,16 +145,17 @@ pub fn generate_whir_inlined<MW: MersenneWrapper>(
             cap: &[u32],
             gamma_powers: &[#quartic_struct],
             gamma_offset: usize,
-            batched_evals: &mut [#quartic_struct],
+            acc0: &mut #quartic_struct,
+            acc1: &mut #quartic_struct,
             query: usize,
         ) -> Result<(), WhirVerificationError> {
             let buf = hash_buf.assume_init_subarray_mut::<HASH_BUF_SIZE>();
-            read_and_reorder_leaf::<I>(
+            read_and_batch_leaf::<I>(
                 &mut buf[..leaf_words], num_columns,
+                gamma_powers, gamma_offset, acc0, acc1,
             );
 
-            // Only zero the tail of the last Blake2s block.
-            // hash_leaf_data_into_state needs zero-padding within the final 16-word block.
+            // Zero the tail of the last Blake2s block for hash padding.
             let block_end = leaf_words.next_multiple_of(BLAKE2S_BLOCK_SIZE_U32_WORDS);
             if block_end > leaf_words {
                 hash_buf.zero_range(leaf_words, block_end);
@@ -185,10 +165,6 @@ pub fn generate_whir_inlined<MW: MersenneWrapper>(
             if !verify_merkle_path::<I>(hasher, query_index, depth, cap) {
                 return Err(WhirVerificationError::MerklePathFailed { query });
             }
-            batch_leaf_values(
-                &buf[..leaf_words], num_columns,
-                gamma_powers, gamma_offset, batched_evals,
-            );
             Ok(())
         }
 
@@ -307,30 +283,35 @@ pub fn generate_whir_inlined<MW: MersenneWrapper>(
                         query_index, NUM_COSETS, NUM_COSETS_LOG2, COSET_TREE_SIZE,
                     );
 
-                    // batched_evals accumulates across 3 oracles — zero-init is semantic
-                    let mut batched_evals = [#quartic_zero; INITIAL_VALUES_PER_LEAF];
+                    // Accumulators across 3 oracles — zero-init is semantic
+                    let mut acc0 = #quartic_zero;
+                    let mut acc1 = #quartic_zero;
 
                     // Memory oracle
                     process_oracle_query::<I>(
                         hasher, hash_buf,
                         NUM_MEM_ORACLE_COLS, MEM_LEAF_WORDS, tree_index,
-                        BASE_ORACLE_DEPTH, memory_cap, &gamma_powers[..], 0, &mut batched_evals, q,
+                        BASE_ORACLE_DEPTH, memory_cap, &gamma_powers[..], 0,
+                        &mut acc0, &mut acc1, q,
                     )?;
                     // Witness oracle
                     process_oracle_query::<I>(
                         hasher, hash_buf,
                         NUM_WIT_ORACLE_COLS, WIT_LEAF_WORDS, tree_index,
-                        BASE_ORACLE_DEPTH, witness_cap, &gamma_powers[..], NUM_MEM_ORACLE_COLS, &mut batched_evals, q,
+                        BASE_ORACLE_DEPTH, witness_cap, &gamma_powers[..], NUM_MEM_ORACLE_COLS,
+                        &mut acc0, &mut acc1, q,
                     )?;
                     // Setup oracle
                     process_oracle_query::<I>(
                         hasher, hash_buf,
                         NUM_SETUP_ORACLE_COLS, SETUP_LEAF_WORDS, tree_index,
                         SETUP_ORACLE_DEPTH, setup_cap, &gamma_powers[..],
-                        NUM_MEM_ORACLE_COLS + NUM_WIT_ORACLE_COLS, &mut batched_evals, q,
+                        NUM_MEM_ORACLE_COLS + NUM_WIT_ORACLE_COLS,
+                        &mut acc0, &mut acc1, q,
                     )?;
 
                     // Fold
+                    let batched_evals = [acc0, acc1];
                     let folded = fold_coset(
                         &batched_evals, WHIR_FOLD_STEPS[0],
                         folding_challenges.as_slice(),

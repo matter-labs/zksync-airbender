@@ -33,55 +33,35 @@ const FOLD_BUF_HALF: usize = 1usize;
 const NUM_COSETS: usize = 2usize;
 const NUM_COSETS_LOG2: usize = 1usize;
 const COSET_TREE_SIZE: usize = 524288usize;
+#[doc = r" Read leaf data from NDS into hash_buf and batch into accumulators"]
+#[doc = r" in a single pass. NDS is column-major (matching Merkle hash layout)."]
 #[inline(always)]
-unsafe fn read_and_reorder_leaf<I: NonDeterminismSource>(hash_buf: &mut [u32], num_columns: usize) {
-    let mut pos = 0;
-    while pos < INITIAL_VALUES_PER_LEAF {
-        let mut col = 0;
-        while col < num_columns {
-            let w = I::read_word();
-            *hash_buf.get_unchecked_mut(col * INITIAL_VALUES_PER_LEAF + pos) = w;
-            col += 1;
-        }
-        pos += 1;
-    }
-}
-#[doc = r" Batch leaf values (column-major in hash_buf) into batched_evals."]
-#[doc = r" Accumulators are hoisted into locals to avoid aliasing-induced"]
-#[doc = r" reloads/stores through the slice pointer on every iteration."]
-#[inline(always)]
-unsafe fn batch_leaf_values(
-    hash_buf: &[u32],
+#[allow(clippy::too_many_arguments)]
+unsafe fn read_and_batch_leaf<I: NonDeterminismSource>(
+    hash_buf: &mut [u32],
     num_columns: usize,
     gamma_powers: &[BabyBearExt4],
     gamma_offset: usize,
-    batched_evals: &mut [BabyBearExt4],
+    acc0: &mut BabyBearExt4,
+    acc1: &mut BabyBearExt4,
 ) {
-    let mut accs = LazyVec::<BabyBearExt4, INITIAL_VALUES_PER_LEAF>::new();
-    let mut pos = 0;
-    while pos < INITIAL_VALUES_PER_LEAF {
-        accs.push(*batched_evals.get_unchecked(pos));
-        pos += 1;
-    }
     let mut col = 0;
     while col < num_columns {
         let gamma = *gamma_powers.get_unchecked(gamma_offset + col);
-        pos = 0;
-        while pos < INITIAL_VALUES_PER_LEAF {
-            let raw = *hash_buf.get_unchecked(col * INITIAL_VALUES_PER_LEAF + pos);
-            let base_val = BabyBearField::from_reduced_raw_repr(raw);
-            let mut term = gamma;
-            field_ops::mul_assign_by_base(&mut term, &base_val);
-            let acc = accs.get_unchecked_mut(pos);
-            field_ops::add_assign(&mut *acc, &term);
-            pos += 1;
-        }
+        let idx = col * 2;
+        let raw0 = I::read_reduced_field_element(BabyBearField::ORDER);
+        *hash_buf.get_unchecked_mut(idx) = raw0;
+        let base_val = BabyBearField::from_reduced_raw_repr(raw0);
+        let mut term = gamma;
+        field_ops::mul_assign_by_base(&mut term, &base_val);
+        field_ops::add_assign(&mut *acc0, &term);
+        let raw1 = I::read_reduced_field_element(BabyBearField::ORDER);
+        *hash_buf.get_unchecked_mut(idx + 1) = raw1;
+        let base_val = BabyBearField::from_reduced_raw_repr(raw1);
+        let mut term = gamma;
+        field_ops::mul_assign_by_base(&mut term, &base_val);
+        field_ops::add_assign(&mut *acc1, &term);
         col += 1;
-    }
-    pos = 0;
-    while pos < INITIAL_VALUES_PER_LEAF {
-        *batched_evals.get_unchecked_mut(pos) = *accs.get_unchecked(pos);
-        pos += 1;
     }
 }
 #[inline(always)]
@@ -96,11 +76,19 @@ unsafe fn process_oracle_query<I: NonDeterminismSource>(
     cap: &[u32],
     gamma_powers: &[BabyBearExt4],
     gamma_offset: usize,
-    batched_evals: &mut [BabyBearExt4],
+    acc0: &mut BabyBearExt4,
+    acc1: &mut BabyBearExt4,
     query: usize,
 ) -> Result<(), WhirVerificationError> {
     let buf = hash_buf.assume_init_subarray_mut::<HASH_BUF_SIZE>();
-    read_and_reorder_leaf::<I>(&mut buf[..leaf_words], num_columns);
+    read_and_batch_leaf::<I>(
+        &mut buf[..leaf_words],
+        num_columns,
+        gamma_powers,
+        gamma_offset,
+        acc0,
+        acc1,
+    );
     let block_end = leaf_words.next_multiple_of(BLAKE2S_BLOCK_SIZE_U32_WORDS);
     if block_end > leaf_words {
         hash_buf.zero_range(leaf_words, block_end);
@@ -110,13 +98,6 @@ unsafe fn process_oracle_query<I: NonDeterminismSource>(
     if !verify_merkle_path::<I>(hasher, query_index, depth, cap) {
         return Err(WhirVerificationError::MerklePathFailed { query });
     }
-    batch_leaf_values(
-        &buf[..leaf_words],
-        num_columns,
-        gamma_powers,
-        gamma_offset,
-        batched_evals,
-    );
     Ok(())
 }
 #[allow(
@@ -211,7 +192,8 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource>(
             let base_root_inv = extended_generator_inv.pow(query_index as u32);
             let tree_index =
                 compute_tree_index(query_index, NUM_COSETS, NUM_COSETS_LOG2, COSET_TREE_SIZE);
-            let mut batched_evals = [BabyBearExt4::ZERO; INITIAL_VALUES_PER_LEAF];
+            let mut acc0 = BabyBearExt4::ZERO;
+            let mut acc1 = BabyBearExt4::ZERO;
             process_oracle_query::<I>(
                 hasher,
                 hash_buf,
@@ -222,7 +204,8 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource>(
                 memory_cap,
                 &gamma_powers[..],
                 0,
-                &mut batched_evals,
+                &mut acc0,
+                &mut acc1,
                 q,
             )?;
             process_oracle_query::<I>(
@@ -235,7 +218,8 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource>(
                 witness_cap,
                 &gamma_powers[..],
                 NUM_MEM_ORACLE_COLS,
-                &mut batched_evals,
+                &mut acc0,
+                &mut acc1,
                 q,
             )?;
             process_oracle_query::<I>(
@@ -248,9 +232,11 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource>(
                 setup_cap,
                 &gamma_powers[..],
                 NUM_MEM_ORACLE_COLS + NUM_WIT_ORACLE_COLS,
-                &mut batched_evals,
+                &mut acc0,
+                &mut acc1,
                 q,
             )?;
+            let batched_evals = [acc0, acc1];
             let folded = fold_coset(
                 &batched_evals,
                 WHIR_FOLD_STEPS[0],
@@ -358,7 +344,7 @@ pub fn verify_internal_whir_round<I: NonDeterminismSource>(
                 compute_tree_index(query_index, num_cosets, num_cosets_log2, coset_tree_size);
             let mut i = 0;
             while i < leaf_ext_words {
-                hash_buf.write(i, I::read_word());
+                hash_buf.write(i, I::read_reduced_field_element(BabyBearField::ORDER));
                 i += 1;
             }
             let block_end = leaf_ext_words.next_multiple_of(BLAKE2S_BLOCK_SIZE_U32_WORDS);
@@ -472,7 +458,7 @@ pub fn verify_final_whir_round<I: NonDeterminismSource>(
             );
             let mut i = 0;
             while i < FINAL_LEAF_EXT_WORDS {
-                hash_buf.write(i, I::read_word());
+                hash_buf.write(i, I::read_reduced_field_element(BabyBearField::ORDER));
                 i += 1;
             }
             const FINAL_BLOCK_END: usize =

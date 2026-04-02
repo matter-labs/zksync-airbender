@@ -7,7 +7,7 @@ pub fn generate_transcript_helpers<MW: MersenneWrapper>() -> TokenStream {
     let field_struct = MW::field_struct();
     let quartic_struct = MW::quartic_struct();
 
-    let field_from_raw = MW::field_from_reduced_raw_repr(quote! { I::read_word() });
+    let field_from_raw = MW::field_from_reduced_raw_repr(quote! { I::read_reduced_field_element(#field_struct::ORDER) });
     let field_from_u32 = MW::field_from_raw_repr_with_reduction(quote! { w });
 
     quote! {

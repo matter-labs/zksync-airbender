@@ -134,10 +134,10 @@ pub fn generate_whir_final_round<MW: MersenneWrapper>(
                         query_index, FINAL_NUM_COSETS, FINAL_NUM_COSETS_LOG2, FINAL_COSET_TREE_SIZE,
                     );
 
-                    // Read extension field leaf values from NDS
+                    // Read extension field leaf values from NDS (reduced)
                     let mut i = 0;
                     while i < FINAL_LEAF_EXT_WORDS {
-                        hash_buf.write(i, I::read_word());
+                        hash_buf.write(i, I::read_reduced_field_element(#field_struct::ORDER));
                         i += 1;
                     }
                     const FINAL_BLOCK_END: usize =

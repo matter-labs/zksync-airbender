@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use proc_macro2::TokenStream;
 use quote::quote;
 
@@ -11,10 +13,10 @@ use super::coeff_to_internal_repr;
 
 /// Generate a data-driven constraint kernel using const descriptor arrays + loops.
 ///
-/// Three term types:
-/// - Constant: `result += coeff * challenge_powers[pow]`
-/// - Linear:   `result += coeff * challenge_powers[pow] * evals[idx][j]`
-/// - Quadratic: `result += coeff * challenge_powers[pow] * evals[idx_a][j] * evals[idx_b][j]`
+/// Terms are grouped by challenge power index to minimise extension-field
+/// multiplications: within each group the inner sum is accumulated using
+/// cheaper base×ext operations, and the single ext×ext multiply by
+/// `challenge_powers[pow]` is performed once per group.
 pub fn generate_constraint_kernel<MW: MersenneWrapper, F: PrimeField>(
     rel: &NoFieldMaxQuadraticConstraintsGKRRelation,
     input_sorted_addrs: &[GKRAddress],
@@ -23,68 +25,116 @@ pub fn generate_constraint_kernel<MW: MersenneWrapper, F: PrimeField>(
     let quartic_struct = MW::quartic_struct();
     let field_struct = MW::field_struct();
 
-    // Collect constant terms: (coeff_mont, pow)
-    let const_coeffs: Vec<u32> = rel
-        .constants
-        .iter()
-        .map(|&(c, _)| coeff_to_internal_repr::<F>(c))
-        .collect();
-    let const_pows: Vec<usize> = rel.constants.iter().map(|&(_, p)| p).collect();
-    let num_const = const_coeffs.len();
+    // --- Constant terms: group by pow, sum coefficients at gen-time ---
+    let mut const_by_pow: BTreeMap<usize, Vec<u32>> = BTreeMap::new();
+    for &(c, pow) in &rel.constants {
+        const_by_pow
+            .entry(pow)
+            .or_default()
+            .push(coeff_to_internal_repr::<F>(c));
+    }
+    // Sum coefficients per pow at generation time (field addition)
+    let mut const_summed_coeffs: Vec<u32> = Vec::new();
+    let mut const_summed_pows: Vec<usize> = Vec::new();
+    for (pow, coeffs) in &const_by_pow {
+        let mut sum = F::ZERO;
+        for &c in coeffs {
+            sum.add_assign(&F::from_reduced_raw_repr(c));
+        }
+        let s = sum.as_u32_raw_repr_reduced();
+        if s != 0 {
+            const_summed_coeffs.push(s);
+            const_summed_pows.push(*pow);
+        }
+    }
+    let num_const = const_summed_coeffs.len();
 
-    // Collect linear terms flattened: (coeff_mont, pow, eval_idx)
-    // Group by eval address: each group shares the same evals[idx][j] load
-    // But for simplicity with const arrays, flatten completely.
-    let mut lin_coeffs: Vec<u32> = Vec::new();
-    let mut lin_pows: Vec<usize> = Vec::new();
-    let mut lin_evals: Vec<usize> = Vec::new();
+    // --- Linear terms: group by pow ---
+    // Collect all (coeff, pow, eval_idx), then group by pow
+    let mut lin_by_pow: BTreeMap<usize, Vec<(u32, usize)>> = BTreeMap::new();
     for (addr, terms) in &rel.linear_terms {
         let idx = addr_to_idx(addr, input_sorted_addrs);
         for &(coeff, pow) in terms.iter() {
-            lin_coeffs.push(coeff_to_internal_repr::<F>(coeff));
-            lin_pows.push(pow);
-            lin_evals.push(idx);
+            lin_by_pow
+                .entry(pow)
+                .or_default()
+                .push((coeff_to_internal_repr::<F>(coeff), idx));
         }
     }
-    let num_lin = lin_coeffs.len();
+    // Build group descriptors + flattened terms
+    let mut lin_group_pows: Vec<usize> = Vec::new();
+    let mut lin_group_starts: Vec<usize> = Vec::new();
+    let mut lin_group_counts: Vec<usize> = Vec::new();
+    let mut lin_term_coeffs: Vec<u32> = Vec::new();
+    let mut lin_term_evals: Vec<usize> = Vec::new();
+    for (pow, terms) in &lin_by_pow {
+        lin_group_pows.push(*pow);
+        lin_group_starts.push(lin_term_coeffs.len());
+        lin_group_counts.push(terms.len());
+        for &(coeff, idx) in terms {
+            lin_term_coeffs.push(coeff);
+            lin_term_evals.push(idx);
+        }
+    }
+    let num_lin_groups = lin_group_pows.len();
+    let num_lin_terms = lin_term_coeffs.len();
 
-    // Collect quadratic terms flattened: (coeff_mont, pow, idx_a, idx_b)
-    // Group by (addr_a, addr_b) pair: each group shares the same product load.
-    // Use group descriptors to avoid redundant multiplies.
-    // quad_groups: (idx_a, idx_b, term_start, term_count)
-    // quad_terms: (coeff_mont, pow)
-    let mut quad_groups: Vec<(usize, usize, usize, usize)> = Vec::new();
-    let mut quad_coeffs: Vec<u32> = Vec::new();
-    let mut quad_pows: Vec<usize> = Vec::new();
+    // --- Quadratic terms: group by pow (flatten across address pairs) ---
+    let mut quad_by_pow: BTreeMap<usize, Vec<(u32, usize, usize)>> = BTreeMap::new();
     for ((addr_a, addr_b), terms) in &rel.quadratic_terms {
         let idx_a = addr_to_idx(addr_a, input_sorted_addrs);
         let idx_b = addr_to_idx(addr_b, input_sorted_addrs);
-        let start = quad_coeffs.len();
         for &(coeff, pow) in terms.iter() {
-            quad_coeffs.push(coeff_to_internal_repr::<F>(coeff));
-            quad_pows.push(pow);
+            quad_by_pow
+                .entry(pow)
+                .or_default()
+                .push((coeff_to_internal_repr::<F>(coeff), idx_a, idx_b));
         }
-        quad_groups.push((idx_a, idx_b, start, terms.len()));
     }
-    let num_quad_groups = quad_groups.len();
-    let qg_a: Vec<usize> = quad_groups.iter().map(|g| g.0).collect();
-    let qg_b: Vec<usize> = quad_groups.iter().map(|g| g.1).collect();
-    let qg_start: Vec<usize> = quad_groups.iter().map(|g| g.2).collect();
-    let qg_count: Vec<usize> = quad_groups.iter().map(|g| g.3).collect();
-    let num_quad_terms = quad_coeffs.len();
+    let mut quad_group_pows: Vec<usize> = Vec::new();
+    let mut quad_group_starts: Vec<usize> = Vec::new();
+    let mut quad_group_counts: Vec<usize> = Vec::new();
+    let mut quad_term_coeffs: Vec<u32> = Vec::new();
+    let mut quad_term_a: Vec<usize> = Vec::new();
+    let mut quad_term_b: Vec<usize> = Vec::new();
+    for (pow, terms) in &quad_by_pow {
+        quad_group_pows.push(*pow);
+        quad_group_starts.push(quad_term_coeffs.len());
+        quad_group_counts.push(terms.len());
+        for &(coeff, ia, ib) in terms {
+            quad_term_coeffs.push(coeff);
+            quad_term_a.push(ia);
+            quad_term_b.push(ib);
+        }
+    }
+    let num_quad_groups = quad_group_pows.len();
+    let num_quad_terms = quad_term_coeffs.len();
 
+    // --- Token generation helpers ---
     let mul_by_base = MW::mul_assign_by_base(
         quote! { t },
         quote! { #field_struct::from_reduced_raw_repr(coeff) },
     );
     let add_to_result = MW::add_assign(quote! { result }, quote! { t });
 
-    // Linear: multiply t by loaded val
-    let mul_by_val = MW::mul_assign(quote! { t }, quote! { val });
+    // Linear: coeff * eval → inner_sum
+    let mul_val_by_coeff = MW::mul_assign_by_base(
+        quote! { val },
+        quote! { #field_struct::from_reduced_raw_repr(coeff) },
+    );
+    let add_to_inner = MW::add_assign(quote! { inner_sum }, quote! { val });
+    let mul_inner_by_cp =
+        MW::mul_assign(quote! { t }, quote! { inner_sum });
 
-    // Quadratic: multiply prod = va * vb, then t by prod
+    // Quadratic: prod = va * vb, then coeff * prod → inner_sum
     let mul_prod = MW::mul_assign(quote! { prod }, quote! { vb });
-    let mul_by_prod = MW::mul_assign(quote! { t }, quote! { prod });
+    let mul_prod_by_coeff = MW::mul_assign_by_base(
+        quote! { prod },
+        quote! { #field_struct::from_reduced_raw_repr(coeff) },
+    );
+    let add_prod_to_inner = MW::add_assign(quote! { inner_sum }, quote! { prod });
+    let mul_inner_by_cp_q =
+        MW::mul_assign(quote! { t }, quote! { inner_sum });
 
     let mut body = TokenStream::new();
 
@@ -92,12 +142,12 @@ pub fn generate_constraint_kernel<MW: MersenneWrapper, F: PrimeField>(
         let mut result: #quartic_struct = #quartic_zero;
     });
 
-    // Constant terms
+    // --- Constant terms (pre-summed by pow at gen-time) ---
     if num_const > 0 {
         body.extend(quote! {
             {
                 const CK_CONST: [(u32, usize); #num_const] = [
-                    #( (#const_coeffs, #const_pows), )*
+                    #( (#const_summed_coeffs, #const_summed_pows), )*
                 ];
                 let mut _i: usize = 0;
                 while _i < #num_const {
@@ -111,53 +161,65 @@ pub fn generate_constraint_kernel<MW: MersenneWrapper, F: PrimeField>(
         });
     }
 
-    // Linear terms
-    if num_lin > 0 {
+    // --- Linear terms (grouped by challenge power) ---
+    if num_lin_groups > 0 {
         body.extend(quote! {
             {
-                const CK_LIN: [(u32, usize, usize); #num_lin] = [
-                    #( (#lin_coeffs, #lin_pows, #lin_evals), )*
+                const CK_LIN_GROUPS: [(usize, usize, usize); #num_lin_groups] = [
+                    #( (#lin_group_pows, #lin_group_starts, #lin_group_counts), )*
                 ];
-                let mut _i: usize = 0;
-                while _i < #num_lin {
-                    let (coeff, pow, eval_idx) = CK_LIN[_i];
-                    let val = evals.get_unchecked(eval_idx)[j];
+                const CK_LIN_TERMS: [(u32, usize); #num_lin_terms] = [
+                    #( (#lin_term_coeffs, #lin_term_evals), )*
+                ];
+                let mut _g: usize = 0;
+                while _g < #num_lin_groups {
+                    let (pow, term_start, term_count) = CK_LIN_GROUPS[_g];
+                    let mut inner_sum: #quartic_struct = #quartic_zero;
+                    let mut _t: usize = 0;
+                    while _t < term_count {
+                        let (coeff, eval_idx) = CK_LIN_TERMS[term_start + _t];
+                        let mut val = evals.get_unchecked(eval_idx)[j];
+                        #mul_val_by_coeff;
+                        #add_to_inner;
+                        _t += 1;
+                    }
                     let mut t: #quartic_struct = *challenge_powers.get_unchecked(pow);
-                    #mul_by_base;
-                    #mul_by_val;
+                    #mul_inner_by_cp;
                     #add_to_result;
-                    _i += 1;
+                    _g += 1;
                 }
             }
         });
     }
 
-    // Quadratic terms (grouped by address pair to share the product)
+    // --- Quadratic terms (grouped by challenge power) ---
     if num_quad_groups > 0 {
         body.extend(quote! {
             {
-                const CK_QUAD_GROUPS: [(usize, usize, usize, usize); #num_quad_groups] = [
-                    #( (#qg_a, #qg_b, #qg_start, #qg_count), )*
+                const CK_QUAD_GROUPS: [(usize, usize, usize); #num_quad_groups] = [
+                    #( (#quad_group_pows, #quad_group_starts, #quad_group_counts), )*
                 ];
-                const CK_QUAD_TERMS: [(u32, usize); #num_quad_terms] = [
-                    #( (#quad_coeffs, #quad_pows), )*
+                const CK_QUAD_TERMS: [(u32, usize, usize); #num_quad_terms] = [
+                    #( (#quad_term_coeffs, #quad_term_a, #quad_term_b), )*
                 ];
                 let mut _g: usize = 0;
                 while _g < #num_quad_groups {
-                    let (idx_a, idx_b, term_start, term_count) = CK_QUAD_GROUPS[_g];
-                    let va = evals.get_unchecked(idx_a)[j];
-                    let vb = evals.get_unchecked(idx_b)[j];
-                    let mut prod = va;
-                    #mul_prod;
+                    let (pow, term_start, term_count) = CK_QUAD_GROUPS[_g];
+                    let mut inner_sum: #quartic_struct = #quartic_zero;
                     let mut _t: usize = 0;
                     while _t < term_count {
-                        let (coeff, pow) = CK_QUAD_TERMS[term_start + _t];
-                        let mut t: #quartic_struct = *challenge_powers.get_unchecked(pow);
-                        #mul_by_base;
-                        #mul_by_prod;
-                        #add_to_result;
+                        let (coeff, idx_a, idx_b) = CK_QUAD_TERMS[term_start + _t];
+                        let va = evals.get_unchecked(idx_a)[j];
+                        let vb = evals.get_unchecked(idx_b)[j];
+                        let mut prod = va;
+                        #mul_prod;
+                        #mul_prod_by_coeff;
+                        #add_prod_to_inner;
                         _t += 1;
                     }
+                    let mut t: #quartic_struct = *challenge_powers.get_unchecked(pow);
+                    #mul_inner_by_cp_q;
+                    #add_to_result;
                     _g += 1;
                 }
             }

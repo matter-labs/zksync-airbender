@@ -191,10 +191,10 @@ pub fn generate_whir_internal_rounds<MW: MersenneWrapper>(
                         query_index, num_cosets, num_cosets_log2, coset_tree_size,
                     );
 
-                    // Read extension field leaf values from NDS
+                    // Read extension field leaf values from NDS (reduced)
                     let mut i = 0;
                     while i < leaf_ext_words {
-                        hash_buf.write(i, I::read_word());
+                        hash_buf.write(i, I::read_reduced_field_element(#field_struct::ORDER));
                         i += 1;
                     }
                     // Zero only the tail of the last Blake2s block

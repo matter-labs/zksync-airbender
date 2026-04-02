@@ -1671,130 +1671,131 @@ unsafe fn layer_0_final_step_accumulator(
                     }
                 }
                 {
-                    const CK_LIN: [(u32, usize, usize); 20usize] = [
-                        (1744830467u32, 7usize, 3usize),
-                        (1744830467u32, 8usize, 4usize),
-                        (1744830467u32, 9usize, 22usize),
-                        (1744830467u32, 10usize, 23usize),
-                        (1744830467u32, 11usize, 24usize),
-                        (1744830467u32, 1usize, 36usize),
-                        (1744830467u32, 2usize, 37usize),
-                        (1744830467u32, 0usize, 38usize),
-                        (2013200393u32, 3usize, 39usize),
-                        (65536u32, 4usize, 39usize),
-                        (268435454u32, 4usize, 40usize),
-                        (1761599489u32, 5usize, 41usize),
-                        (2013257729u32, 6usize, 41usize),
-                        (1744830467u32, 6usize, 42usize),
-                        (65528u32, 3usize, 43usize),
-                        (2013200385u32, 4usize, 43usize),
-                        (1744830467u32, 4usize, 44usize),
-                        (251666432u32, 5usize, 45usize),
-                        (8192u32, 6usize, 45usize),
-                        (268435454u32, 6usize, 46usize),
+                    const CK_LIN_GROUPS: [(usize, usize, usize); 12usize] = [
+                        (0usize, 0usize, 1usize),
+                        (1usize, 1usize, 1usize),
+                        (2usize, 2usize, 1usize),
+                        (3usize, 3usize, 2usize),
+                        (4usize, 5usize, 4usize),
+                        (5usize, 9usize, 2usize),
+                        (6usize, 11usize, 4usize),
+                        (7usize, 15usize, 1usize),
+                        (8usize, 16usize, 1usize),
+                        (9usize, 17usize, 1usize),
+                        (10usize, 18usize, 1usize),
+                        (11usize, 19usize, 1usize),
                     ];
-                    let mut _i: usize = 0;
-                    while _i < 20usize {
-                        let (coeff, pow, eval_idx) = CK_LIN[_i];
-                        let val = evals.get_unchecked(eval_idx)[j];
+                    const CK_LIN_TERMS: [(u32, usize); 20usize] = [
+                        (1744830467u32, 38usize),
+                        (1744830467u32, 36usize),
+                        (1744830467u32, 37usize),
+                        (2013200393u32, 39usize),
+                        (65528u32, 43usize),
+                        (65536u32, 39usize),
+                        (268435454u32, 40usize),
+                        (2013200385u32, 43usize),
+                        (1744830467u32, 44usize),
+                        (1761599489u32, 41usize),
+                        (251666432u32, 45usize),
+                        (2013257729u32, 41usize),
+                        (1744830467u32, 42usize),
+                        (8192u32, 45usize),
+                        (268435454u32, 46usize),
+                        (1744830467u32, 3usize),
+                        (1744830467u32, 4usize),
+                        (1744830467u32, 22usize),
+                        (1744830467u32, 23usize),
+                        (1744830467u32, 24usize),
+                    ];
+                    let mut _g: usize = 0;
+                    while _g < 12usize {
+                        let (pow, term_start, term_count) = CK_LIN_GROUPS[_g];
+                        let mut inner_sum: BabyBearExt4 = BabyBearExt4::ZERO;
+                        let mut _t: usize = 0;
+                        while _t < term_count {
+                            let (coeff, eval_idx) = CK_LIN_TERMS[term_start + _t];
+                            let mut val = evals.get_unchecked(eval_idx)[j];
+                            field_ops::mul_assign_by_base(
+                                &mut val,
+                                &BabyBearField::from_reduced_raw_repr(coeff),
+                            );
+                            field_ops::add_assign(&mut inner_sum, &val);
+                            _t += 1;
+                        }
                         let mut t: BabyBearExt4 = *challenge_powers.get_unchecked(pow);
-                        field_ops::mul_assign_by_base(
-                            &mut t,
-                            &BabyBearField::from_reduced_raw_repr(coeff),
-                        );
-                        field_ops::mul_assign(&mut t, &val);
+                        field_ops::mul_assign(&mut t, &inner_sum);
                         field_ops::add_assign(&mut result, &t);
-                        _i += 1;
+                        _g += 1;
                     }
                 }
                 {
-                    const CK_QUAD_GROUPS: [(usize, usize, usize, usize); 32usize] = [
-                        (3usize, 3usize, 0usize, 1usize),
-                        (3usize, 6usize, 1usize, 1usize),
-                        (3usize, 7usize, 2usize, 1usize),
-                        (3usize, 8usize, 3usize, 1usize),
-                        (3usize, 9usize, 4usize, 1usize),
-                        (3usize, 10usize, 5usize, 1usize),
-                        (3usize, 11usize, 6usize, 1usize),
-                        (3usize, 12usize, 7usize, 1usize),
-                        (3usize, 13usize, 8usize, 1usize),
-                        (3usize, 14usize, 9usize, 1usize),
-                        (3usize, 15usize, 10usize, 1usize),
-                        (3usize, 16usize, 11usize, 1usize),
-                        (3usize, 17usize, 12usize, 1usize),
-                        (3usize, 18usize, 13usize, 1usize),
-                        (3usize, 19usize, 14usize, 1usize),
-                        (3usize, 20usize, 15usize, 1usize),
-                        (3usize, 21usize, 16usize, 1usize),
-                        (4usize, 4usize, 17usize, 1usize),
-                        (4usize, 6usize, 18usize, 1usize),
-                        (4usize, 7usize, 19usize, 1usize),
-                        (4usize, 8usize, 20usize, 1usize),
-                        (4usize, 9usize, 21usize, 1usize),
-                        (22usize, 22usize, 22usize, 1usize),
-                        (23usize, 23usize, 23usize, 1usize),
-                        (24usize, 24usize, 24usize, 1usize),
-                        (38usize, 38usize, 25usize, 1usize),
-                        (39usize, 39usize, 26usize, 1usize),
-                        (39usize, 43usize, 27usize, 1usize),
-                        (41usize, 41usize, 28usize, 1usize),
-                        (41usize, 45usize, 29usize, 1usize),
-                        (43usize, 43usize, 30usize, 1usize),
-                        (45usize, 45usize, 31usize, 1usize),
+                    const CK_QUAD_GROUPS: [(usize, usize, usize); 10usize] = [
+                        (0usize, 0usize, 1usize),
+                        (1usize, 1usize, 10usize),
+                        (2usize, 11usize, 10usize),
+                        (3usize, 21usize, 3usize),
+                        (5usize, 24usize, 3usize),
+                        (7usize, 27usize, 1usize),
+                        (8usize, 28usize, 1usize),
+                        (9usize, 29usize, 1usize),
+                        (10usize, 30usize, 1usize),
+                        (11usize, 31usize, 1usize),
                     ];
-                    const CK_QUAD_TERMS: [(u32, usize); 32usize] = [
-                        (268435454u32, 7usize),
-                        (268435454u32, 1usize),
-                        (268434910u32, 1usize),
-                        (268435454u32, 2usize),
-                        (268434910u32, 2usize),
-                        (268435454u32, 1usize),
-                        (268434910u32, 1usize),
-                        (268435454u32, 2usize),
-                        (268434910u32, 2usize),
-                        (268435454u32, 1usize),
-                        (268434910u32, 1usize),
-                        (268435454u32, 2usize),
-                        (268434910u32, 2usize),
-                        (268435454u32, 1usize),
-                        (268434910u32, 1usize),
-                        (268435454u32, 2usize),
-                        (268434910u32, 2usize),
-                        (268435454u32, 8usize),
-                        (268435454u32, 1usize),
-                        (268434910u32, 1usize),
-                        (268435454u32, 2usize),
-                        (268434910u32, 2usize),
-                        (268435454u32, 9usize),
-                        (268435454u32, 10usize),
-                        (268435454u32, 11usize),
-                        (268435454u32, 0usize),
-                        (1u32, 3usize),
-                        (2013265919u32, 3usize),
-                        (1981808641u32, 5usize),
-                        (62914560u32, 5usize),
-                        (1u32, 3usize),
-                        (1981808641u32, 5usize),
+                    const CK_QUAD_TERMS: [(u32, usize, usize); 32usize] = [
+                        (268435454u32, 38usize, 38usize),
+                        (268435454u32, 3usize, 6usize),
+                        (268434910u32, 3usize, 7usize),
+                        (268435454u32, 3usize, 10usize),
+                        (268434910u32, 3usize, 11usize),
+                        (268435454u32, 3usize, 14usize),
+                        (268434910u32, 3usize, 15usize),
+                        (268435454u32, 3usize, 18usize),
+                        (268434910u32, 3usize, 19usize),
+                        (268435454u32, 4usize, 6usize),
+                        (268434910u32, 4usize, 7usize),
+                        (268435454u32, 3usize, 8usize),
+                        (268434910u32, 3usize, 9usize),
+                        (268435454u32, 3usize, 12usize),
+                        (268434910u32, 3usize, 13usize),
+                        (268435454u32, 3usize, 16usize),
+                        (268434910u32, 3usize, 17usize),
+                        (268435454u32, 3usize, 20usize),
+                        (268434910u32, 3usize, 21usize),
+                        (268435454u32, 4usize, 8usize),
+                        (268434910u32, 4usize, 9usize),
+                        (1u32, 39usize, 39usize),
+                        (2013265919u32, 39usize, 43usize),
+                        (1u32, 43usize, 43usize),
+                        (1981808641u32, 41usize, 41usize),
+                        (62914560u32, 41usize, 45usize),
+                        (1981808641u32, 45usize, 45usize),
+                        (268435454u32, 3usize, 3usize),
+                        (268435454u32, 4usize, 4usize),
+                        (268435454u32, 22usize, 22usize),
+                        (268435454u32, 23usize, 23usize),
+                        (268435454u32, 24usize, 24usize),
                     ];
                     let mut _g: usize = 0;
-                    while _g < 32usize {
-                        let (idx_a, idx_b, term_start, term_count) = CK_QUAD_GROUPS[_g];
-                        let va = evals.get_unchecked(idx_a)[j];
-                        let vb = evals.get_unchecked(idx_b)[j];
-                        let mut prod = va;
-                        field_ops::mul_assign(&mut prod, &vb);
+                    while _g < 10usize {
+                        let (pow, term_start, term_count) = CK_QUAD_GROUPS[_g];
+                        let mut inner_sum: BabyBearExt4 = BabyBearExt4::ZERO;
                         let mut _t: usize = 0;
                         while _t < term_count {
-                            let (coeff, pow) = CK_QUAD_TERMS[term_start + _t];
-                            let mut t: BabyBearExt4 = *challenge_powers.get_unchecked(pow);
+                            let (coeff, idx_a, idx_b) = CK_QUAD_TERMS[term_start + _t];
+                            let va = evals.get_unchecked(idx_a)[j];
+                            let vb = evals.get_unchecked(idx_b)[j];
+                            let mut prod = va;
+                            field_ops::mul_assign(&mut prod, &vb);
                             field_ops::mul_assign_by_base(
-                                &mut t,
+                                &mut prod,
                                 &BabyBearField::from_reduced_raw_repr(coeff),
                             );
-                            field_ops::mul_assign(&mut t, &prod);
-                            field_ops::add_assign(&mut result, &t);
+                            field_ops::add_assign(&mut inner_sum, &prod);
                             _t += 1;
                         }
+                        let mut t: BabyBearExt4 = *challenge_powers.get_unchecked(pow);
+                        field_ops::mul_assign(&mut t, &inner_sum);
+                        field_ops::add_assign(&mut result, &t);
                         _g += 1;
                     }
                 }

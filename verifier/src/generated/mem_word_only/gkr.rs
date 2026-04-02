@@ -967,105 +967,120 @@ unsafe fn layer_0_final_step_accumulator(
                     }
                 }
                 {
-                    const CK_LIN: [(u32, usize, usize); 21usize] = [
-                        (1744830467u32, 1usize, 1usize),
-                        (1744830467u32, 9usize, 4usize),
-                        (1744830467u32, 10usize, 5usize),
-                        (1744830467u32, 11usize, 6usize),
-                        (1744830467u32, 12usize, 7usize),
-                        (1744830467u32, 8usize, 15usize),
-                        (268435454u32, 1usize, 18usize),
-                        (268435454u32, 2usize, 19usize),
-                        (1744830467u32, 0usize, 22usize),
-                        (2013200393u32, 4usize, 23usize),
-                        (65536u32, 5usize, 23usize),
-                        (268435454u32, 5usize, 24usize),
-                        (1761599489u32, 6usize, 25usize),
-                        (2013257729u32, 7usize, 25usize),
-                        (1744830467u32, 7usize, 26usize),
-                        (65528u32, 4usize, 27usize),
-                        (2013200385u32, 5usize, 27usize),
-                        (1744830467u32, 5usize, 28usize),
-                        (251666432u32, 6usize, 29usize),
-                        (8192u32, 7usize, 29usize),
-                        (268435454u32, 7usize, 30usize),
+                    const CK_LIN_GROUPS: [(usize, usize, usize); 12usize] = [
+                        (0usize, 0usize, 1usize),
+                        (1usize, 1usize, 2usize),
+                        (2usize, 3usize, 1usize),
+                        (4usize, 4usize, 2usize),
+                        (5usize, 6usize, 4usize),
+                        (6usize, 10usize, 2usize),
+                        (7usize, 12usize, 4usize),
+                        (8usize, 16usize, 1usize),
+                        (9usize, 17usize, 1usize),
+                        (10usize, 18usize, 1usize),
+                        (11usize, 19usize, 1usize),
+                        (12usize, 20usize, 1usize),
                     ];
-                    let mut _i: usize = 0;
-                    while _i < 21usize {
-                        let (coeff, pow, eval_idx) = CK_LIN[_i];
-                        let val = evals.get_unchecked(eval_idx)[j];
+                    const CK_LIN_TERMS: [(u32, usize); 21usize] = [
+                        (1744830467u32, 22usize),
+                        (1744830467u32, 1usize),
+                        (268435454u32, 18usize),
+                        (268435454u32, 19usize),
+                        (2013200393u32, 23usize),
+                        (65528u32, 27usize),
+                        (65536u32, 23usize),
+                        (268435454u32, 24usize),
+                        (2013200385u32, 27usize),
+                        (1744830467u32, 28usize),
+                        (1761599489u32, 25usize),
+                        (251666432u32, 29usize),
+                        (2013257729u32, 25usize),
+                        (1744830467u32, 26usize),
+                        (8192u32, 29usize),
+                        (268435454u32, 30usize),
+                        (1744830467u32, 15usize),
+                        (1744830467u32, 4usize),
+                        (1744830467u32, 5usize),
+                        (1744830467u32, 6usize),
+                        (1744830467u32, 7usize),
+                    ];
+                    let mut _g: usize = 0;
+                    while _g < 12usize {
+                        let (pow, term_start, term_count) = CK_LIN_GROUPS[_g];
+                        let mut inner_sum: BabyBearExt4 = BabyBearExt4::ZERO;
+                        let mut _t: usize = 0;
+                        while _t < term_count {
+                            let (coeff, eval_idx) = CK_LIN_TERMS[term_start + _t];
+                            let mut val = evals.get_unchecked(eval_idx)[j];
+                            field_ops::mul_assign_by_base(
+                                &mut val,
+                                &BabyBearField::from_reduced_raw_repr(coeff),
+                            );
+                            field_ops::add_assign(&mut inner_sum, &val);
+                            _t += 1;
+                        }
                         let mut t: BabyBearExt4 = *challenge_powers.get_unchecked(pow);
-                        field_ops::mul_assign_by_base(
-                            &mut t,
-                            &BabyBearField::from_reduced_raw_repr(coeff),
-                        );
-                        field_ops::mul_assign(&mut t, &val);
+                        field_ops::mul_assign(&mut t, &inner_sum);
                         field_ops::add_assign(&mut result, &t);
-                        _i += 1;
+                        _g += 1;
                     }
                 }
                 {
-                    const CK_QUAD_GROUPS: [(usize, usize, usize, usize); 19usize] = [
-                        (0usize, 15usize, 0usize, 1usize),
-                        (1usize, 15usize, 1usize, 1usize),
-                        (4usize, 4usize, 2usize, 1usize),
-                        (5usize, 5usize, 3usize, 1usize),
-                        (6usize, 6usize, 4usize, 1usize),
-                        (7usize, 7usize, 5usize, 1usize),
-                        (15usize, 4usize, 6usize, 1usize),
-                        (15usize, 15usize, 7usize, 1usize),
-                        (15usize, 16usize, 8usize, 1usize),
-                        (15usize, 17usize, 9usize, 1usize),
-                        (15usize, 18usize, 10usize, 1usize),
-                        (15usize, 19usize, 11usize, 1usize),
-                        (22usize, 22usize, 12usize, 1usize),
-                        (23usize, 23usize, 13usize, 1usize),
-                        (23usize, 27usize, 14usize, 1usize),
-                        (25usize, 25usize, 15usize, 1usize),
-                        (25usize, 29usize, 16usize, 1usize),
-                        (27usize, 27usize, 17usize, 1usize),
-                        (29usize, 29usize, 18usize, 1usize),
+                    const CK_QUAD_GROUPS: [(usize, usize, usize); 11usize] = [
+                        (0usize, 0usize, 1usize),
+                        (1usize, 1usize, 4usize),
+                        (2usize, 5usize, 2usize),
+                        (3usize, 7usize, 1usize),
+                        (4usize, 8usize, 3usize),
+                        (6usize, 11usize, 3usize),
+                        (8usize, 14usize, 1usize),
+                        (9usize, 15usize, 1usize),
+                        (10usize, 16usize, 1usize),
+                        (11usize, 17usize, 1usize),
+                        (12usize, 18usize, 1usize),
                     ];
-                    const CK_QUAD_TERMS: [(u32, usize); 19usize] = [
-                        (1744830467u32, 1usize),
-                        (268435454u32, 1usize),
-                        (268435454u32, 9usize),
-                        (268435454u32, 10usize),
-                        (268435454u32, 11usize),
-                        (268435454u32, 12usize),
-                        (268435454u32, 3usize),
-                        (268435454u32, 8usize),
-                        (268435454u32, 1usize),
-                        (268435454u32, 2usize),
-                        (1744830467u32, 1usize),
-                        (1744830467u32, 2usize),
-                        (268435454u32, 0usize),
-                        (1u32, 4usize),
-                        (2013265919u32, 4usize),
-                        (1981808641u32, 6usize),
-                        (62914560u32, 6usize),
-                        (1u32, 4usize),
-                        (1981808641u32, 6usize),
+                    const CK_QUAD_TERMS: [(u32, usize, usize); 19usize] = [
+                        (268435454u32, 22usize, 22usize),
+                        (1744830467u32, 0usize, 15usize),
+                        (268435454u32, 1usize, 15usize),
+                        (268435454u32, 15usize, 16usize),
+                        (1744830467u32, 15usize, 18usize),
+                        (268435454u32, 15usize, 17usize),
+                        (1744830467u32, 15usize, 19usize),
+                        (268435454u32, 15usize, 4usize),
+                        (1u32, 23usize, 23usize),
+                        (2013265919u32, 23usize, 27usize),
+                        (1u32, 27usize, 27usize),
+                        (1981808641u32, 25usize, 25usize),
+                        (62914560u32, 25usize, 29usize),
+                        (1981808641u32, 29usize, 29usize),
+                        (268435454u32, 15usize, 15usize),
+                        (268435454u32, 4usize, 4usize),
+                        (268435454u32, 5usize, 5usize),
+                        (268435454u32, 6usize, 6usize),
+                        (268435454u32, 7usize, 7usize),
                     ];
                     let mut _g: usize = 0;
-                    while _g < 19usize {
-                        let (idx_a, idx_b, term_start, term_count) = CK_QUAD_GROUPS[_g];
-                        let va = evals.get_unchecked(idx_a)[j];
-                        let vb = evals.get_unchecked(idx_b)[j];
-                        let mut prod = va;
-                        field_ops::mul_assign(&mut prod, &vb);
+                    while _g < 11usize {
+                        let (pow, term_start, term_count) = CK_QUAD_GROUPS[_g];
+                        let mut inner_sum: BabyBearExt4 = BabyBearExt4::ZERO;
                         let mut _t: usize = 0;
                         while _t < term_count {
-                            let (coeff, pow) = CK_QUAD_TERMS[term_start + _t];
-                            let mut t: BabyBearExt4 = *challenge_powers.get_unchecked(pow);
+                            let (coeff, idx_a, idx_b) = CK_QUAD_TERMS[term_start + _t];
+                            let va = evals.get_unchecked(idx_a)[j];
+                            let vb = evals.get_unchecked(idx_b)[j];
+                            let mut prod = va;
+                            field_ops::mul_assign(&mut prod, &vb);
                             field_ops::mul_assign_by_base(
-                                &mut t,
+                                &mut prod,
                                 &BabyBearField::from_reduced_raw_repr(coeff),
                             );
-                            field_ops::mul_assign(&mut t, &prod);
-                            field_ops::add_assign(&mut result, &t);
+                            field_ops::add_assign(&mut inner_sum, &prod);
                             _t += 1;
                         }
+                        let mut t: BabyBearExt4 = *challenge_powers.get_unchecked(pow);
+                        field_ops::mul_assign(&mut t, &inner_sum);
+                        field_ops::add_assign(&mut result, &t);
                         _g += 1;
                     }
                 }
@@ -1594,50 +1609,59 @@ unsafe fn layer_1_final_step_accumulator(
             let val = {
                 let mut result: BabyBearExt4 = BabyBearExt4::ZERO;
                 {
-                    const CK_LIN: [(u32, usize, usize); 2usize] = [
-                        (268435454u32, 0usize, 5usize),
-                        (268435454u32, 1usize, 6usize),
-                    ];
-                    let mut _i: usize = 0;
-                    while _i < 2usize {
-                        let (coeff, pow, eval_idx) = CK_LIN[_i];
-                        let val = evals.get_unchecked(eval_idx)[j];
+                    const CK_LIN_GROUPS: [(usize, usize, usize); 2usize] =
+                        [(0usize, 0usize, 1usize), (1usize, 1usize, 1usize)];
+                    const CK_LIN_TERMS: [(u32, usize); 2usize] =
+                        [(268435454u32, 5usize), (268435454u32, 6usize)];
+                    let mut _g: usize = 0;
+                    while _g < 2usize {
+                        let (pow, term_start, term_count) = CK_LIN_GROUPS[_g];
+                        let mut inner_sum: BabyBearExt4 = BabyBearExt4::ZERO;
+                        let mut _t: usize = 0;
+                        while _t < term_count {
+                            let (coeff, eval_idx) = CK_LIN_TERMS[term_start + _t];
+                            let mut val = evals.get_unchecked(eval_idx)[j];
+                            field_ops::mul_assign_by_base(
+                                &mut val,
+                                &BabyBearField::from_reduced_raw_repr(coeff),
+                            );
+                            field_ops::add_assign(&mut inner_sum, &val);
+                            _t += 1;
+                        }
                         let mut t: BabyBearExt4 = *challenge_powers.get_unchecked(pow);
-                        field_ops::mul_assign_by_base(
-                            &mut t,
-                            &BabyBearField::from_reduced_raw_repr(coeff),
-                        );
-                        field_ops::mul_assign(&mut t, &val);
+                        field_ops::mul_assign(&mut t, &inner_sum);
                         field_ops::add_assign(&mut result, &t);
-                        _i += 1;
+                        _g += 1;
                     }
                 }
                 {
-                    const CK_QUAD_GROUPS: [(usize, usize, usize, usize); 2usize] = [
-                        (5usize, 5usize, 0usize, 1usize),
-                        (6usize, 6usize, 1usize, 1usize),
+                    const CK_QUAD_GROUPS: [(usize, usize, usize); 2usize] =
+                        [(0usize, 0usize, 1usize), (1usize, 1usize, 1usize)];
+                    const CK_QUAD_TERMS: [(u32, usize, usize); 2usize] = [
+                        (1744830467u32, 5usize, 5usize),
+                        (1744830467u32, 6usize, 6usize),
                     ];
-                    const CK_QUAD_TERMS: [(u32, usize); 2usize] =
-                        [(1744830467u32, 0usize), (1744830467u32, 1usize)];
                     let mut _g: usize = 0;
                     while _g < 2usize {
-                        let (idx_a, idx_b, term_start, term_count) = CK_QUAD_GROUPS[_g];
-                        let va = evals.get_unchecked(idx_a)[j];
-                        let vb = evals.get_unchecked(idx_b)[j];
-                        let mut prod = va;
-                        field_ops::mul_assign(&mut prod, &vb);
+                        let (pow, term_start, term_count) = CK_QUAD_GROUPS[_g];
+                        let mut inner_sum: BabyBearExt4 = BabyBearExt4::ZERO;
                         let mut _t: usize = 0;
                         while _t < term_count {
-                            let (coeff, pow) = CK_QUAD_TERMS[term_start + _t];
-                            let mut t: BabyBearExt4 = *challenge_powers.get_unchecked(pow);
+                            let (coeff, idx_a, idx_b) = CK_QUAD_TERMS[term_start + _t];
+                            let va = evals.get_unchecked(idx_a)[j];
+                            let vb = evals.get_unchecked(idx_b)[j];
+                            let mut prod = va;
+                            field_ops::mul_assign(&mut prod, &vb);
                             field_ops::mul_assign_by_base(
-                                &mut t,
+                                &mut prod,
                                 &BabyBearField::from_reduced_raw_repr(coeff),
                             );
-                            field_ops::mul_assign(&mut t, &prod);
-                            field_ops::add_assign(&mut result, &t);
+                            field_ops::add_assign(&mut inner_sum, &prod);
                             _t += 1;
                         }
+                        let mut t: BabyBearExt4 = *challenge_powers.get_unchecked(pow);
+                        field_ops::mul_assign(&mut t, &inner_sum);
+                        field_ops::add_assign(&mut result, &t);
                         _g += 1;
                     }
                 }
