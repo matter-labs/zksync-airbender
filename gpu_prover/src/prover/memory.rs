@@ -5,7 +5,10 @@ use crate::primitives::device_structures::DeviceMatrixMut;
 use crate::primitives::device_tracing::Range;
 use crate::primitives::field::BF;
 use crate::prover::trace_holder::{get_tree_caps_for_accessors, TraceHolder, TreesCacheMode};
-use crate::prover::tracing_data::{TracingDataDevice, UnrolledTracingDataDevice};
+use crate::prover::tracing_data::{
+    DelegationTracingDataDevice, TracingDataDevice, UnrolledTracingDataDevice,
+};
+use crate::witness::memory_delegation::generate_memory_values_delegation;
 use crate::witness::memory_unrolled::{
     generate_memory_values_unrolled_memory, generate_memory_values_unrolled_non_memory,
 };
@@ -75,6 +78,38 @@ pub(crate) fn commit_memory<'a>(
     let memory = &mut DeviceMatrixMut::new(&mut evaluations, trace_len);
     match (circuit_type, tracing_data) {
         (
+            CircuitType::Delegation(circuit_type),
+            TracingDataDevice::Delegation(DelegationTracingDataDevice::BigIntWithControl(trace)),
+        ) => {
+            assert_eq!(
+                circuit_type,
+                crate::primitives::circuit_type::DelegationCircuitType::BigIntWithControl
+            );
+            generate_memory_values_delegation(compiled_circuit, trace, memory, stream)?;
+        }
+        (
+            CircuitType::Delegation(circuit_type),
+            TracingDataDevice::Delegation(DelegationTracingDataDevice::Blake2WithCompression(
+                trace,
+            )),
+        ) => {
+            assert_eq!(
+                circuit_type,
+                crate::primitives::circuit_type::DelegationCircuitType::Blake2WithCompression
+            );
+            generate_memory_values_delegation(compiled_circuit, trace, memory, stream)?;
+        }
+        (
+            CircuitType::Delegation(circuit_type),
+            TracingDataDevice::Delegation(DelegationTracingDataDevice::KeccakSpecial5(trace)),
+        ) => {
+            assert_eq!(
+                circuit_type,
+                crate::primitives::circuit_type::DelegationCircuitType::KeccakSpecial5
+            );
+            generate_memory_values_delegation(compiled_circuit, trace, memory, stream)?;
+        }
+        (
             CircuitType::Unrolled(UnrolledCircuitType::NonMemory(circuit_type)),
             TracingDataDevice::Unrolled(UnrolledTracingDataDevice::NonMemory(trace)),
         ) => {
@@ -101,7 +136,7 @@ pub(crate) fn commit_memory<'a>(
             )?;
         }
         _ => unimplemented!(
-            "commit_memory currently supports only unrolled non-memory and memory traces"
+            "commit_memory currently supports only delegation and unrolled non-memory/memory traces"
         ),
     }
     let _ = evaluations;

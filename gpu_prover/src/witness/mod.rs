@@ -2,7 +2,8 @@ use crate::witness::memory_unrolled::MAX_SHUFFLE_RAM_ACCESS_SETS_COUNT;
 use cs::definitions::GKRAddress;
 
 // pub mod arg_utils;
-// pub mod memory_delegation;
+pub(crate) mod layout;
+pub(crate) mod memory_delegation;
 pub mod memory_unrolled;
 pub mod multiplicities;
 mod option;
@@ -11,7 +12,7 @@ mod ram_access;
 pub mod trace;
 pub(crate) mod trace_delegation;
 pub mod trace_unrolled;
-// pub mod witness_delegation;
+pub(crate) mod witness_delegation;
 pub mod witness_unrolled;
 
 #[repr(C, u32)]

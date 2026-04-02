@@ -673,7 +673,7 @@ impl<E, const MAX_GATES: usize> GpuGKRForwardLayerBatch<E, MAX_GATES> {
 }
 
 pub(super) struct LoweredGpuGKRForwardLayer<E> {
-    pub(super) batch: GpuGKRForwardLayerBatch<E>,
+    pub(super) batches: Vec<GpuGKRForwardLayerBatch<E>>,
     pub(super) computed_extension_outputs: Vec<(GKRAddress, GpuExtensionFieldPoly<E>)>,
     pub(super) aliased_base_outputs: Vec<(GKRAddress, GpuBaseFieldPoly<BF>)>,
     pub(super) aliased_extension_outputs: Vec<(GKRAddress, GpuExtensionFieldPoly<E>)>,

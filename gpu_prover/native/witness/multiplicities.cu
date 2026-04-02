@@ -28,7 +28,7 @@ EXTERN __global__ void ab_generate_multiplicities_kernel(const u32 *const __rest
   multiplicities.set(row, col, value);
 }
 
-#define MAX_LOOKUP_EXPRESSIONS_RELATIONS_COUNT 8
+#define MAX_LOOKUP_EXPRESSIONS_RELATIONS_COUNT 128
 
 struct LookupExpressions {
   u32 relations_count;

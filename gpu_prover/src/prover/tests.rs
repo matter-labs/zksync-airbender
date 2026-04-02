@@ -12,7 +12,8 @@ use super::gkr::{
 use crate::allocator::tracker::AllocationPlacement;
 use crate::ops::simple::{set_by_ref, SetByRef};
 use crate::primitives::circuit_type::{
-    CircuitType, UnrolledCircuitType, UnrolledMemoryCircuitType, UnrolledNonMemoryCircuitType,
+    CircuitType, DelegationCircuitType, UnrolledCircuitType, UnrolledMemoryCircuitType,
+    UnrolledNonMemoryCircuitType,
 };
 use crate::primitives::context::ProverContext;
 use crate::primitives::field::{BF, E4};
@@ -28,8 +29,8 @@ use crate::prover::test_utils::{
 };
 use crate::prover::trace_holder::TraceHolder;
 use crate::prover::tracing_data::{
-    TracingDataDevice, TracingDataHost, TracingDataTransfer, UnrolledTracingDataDevice,
-    UnrolledTracingDataHost,
+    DelegationTracingDataDevice, TracingDataDevice, TracingDataHost, TracingDataTransfer,
+    UnrolledTracingDataDevice, UnrolledTracingDataHost,
 };
 use crate::prover::whir::GpuWhirExtensionOracle;
 use crate::prover::whir_fold::{
@@ -85,7 +86,7 @@ use prover::gkr::prover::forward_loop;
 use prover::gkr::prover::prove_configured_with_gkr;
 use prover::gkr::prover::setup::GKRSetup;
 use prover::gkr::prover::stages::stage1;
-use prover::gkr::prover::stages::stage1::ColumnMajorCosetBoundTracePart;
+use prover::gkr::prover::stages::stage1::{commit_trace_part, ColumnMajorCosetBoundTracePart};
 use prover::gkr::prover::sumcheck_loop;
 use prover::gkr::prover::transcript_utils::{
     add_whir_commitment_to_transcript, commit_field_els, draw_query_bits, draw_random_field_els,
@@ -108,6 +109,9 @@ use prover::gkr::whir::{
     whir_fold, ColumnMajorBaseOracleForLDE, ColumnMajorExtensionOracleForCoset,
     ColumnMajorExtensionOracleForLDE, WhirCommitment, WhirPolyCommitProof,
 };
+use prover::gkr::witness_gen::delegation_circuits::{
+    evaluate_gkr_memory_witness_for_delegation_circuit, evaluate_gkr_witness_for_delegation_circuit,
+};
 use prover::gkr::witness_gen::family_circuits::{
     evaluate_gkr_memory_witness_for_executor_family, evaluate_gkr_witness_for_executor_family,
     GKRFullWitnessTrace, GKRMemoryOnlyWitnessTrace,
@@ -117,6 +121,9 @@ use prover::merkle_trees::{
     ColumnMajorMerkleTreeConstructor, DefaultTreeConstructor, MerkleTreeCapVarLength,
 };
 use prover::query_utils::assemble_query_index;
+use prover::tracers::oracles::transpiler_oracles::delegation::{
+    BigintDelegationOracle, Blake2sDelegationOracle, KeccakDelegationOracle,
+};
 use prover::transcript::Seed;
 use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
 use riscv_transpiler::ir::simple_instruction_set::{preprocess_bytecode, Instruction};
@@ -126,9 +133,13 @@ use riscv_transpiler::vm::{
     Counters, DelegationsAndFamiliesCounters, RamWithRomRegion, ReplayBuffer, SimpleSnapshotter,
     SimpleTape, State, VM,
 };
+use riscv_transpiler::witness::delegation::bigint::BigintDelegationWitness;
+use riscv_transpiler::witness::delegation::blake2_round_function::Blake2sRoundFunctionDelegationWitness;
+use riscv_transpiler::witness::delegation::keccak_special5::KeccakSpecial5DelegationWitness;
 use riscv_transpiler::witness::{
-    MemDestinationHolder, MemoryOpcodeTracingDataWithTimestamp, NonMemDestinationHolder,
-    NonMemoryOpcodeTracingDataWithTimestamp,
+    BigintDelegationDestinationHolder, BlakeDelegationDestinationHolder,
+    KeccakDelegationDestinationHolder, MemDestinationHolder, MemoryOpcodeTracingDataWithTimestamp,
+    NonMemDestinationHolder, NonMemoryOpcodeTracingDataWithTimestamp,
 };
 use serial_test::serial;
 use std::alloc::Global;
@@ -5724,6 +5735,41 @@ fn run_load_store_subword_only_workflow_input_parity_test() {
 }
 
 #[test]
+#[serial]
+fn run_bigint_delegation_workflow_input_parity_test() {
+    let compiled_circuit = deserialize_json_for_test(
+        "cs/compiled_circuits/bigint_with_extended_control_layout_gkr.json",
+    );
+    assert_bigint_delegation_workflow_matches_cpu(compiled_circuit, false);
+}
+
+#[test]
+#[serial]
+fn run_blake2_delegation_workflow_input_parity_test() {
+    let compiled_circuit = deserialize_json_for_test(
+        "cs/compiled_circuits/blake2_with_extended_control_layout_gkr.json",
+    );
+    assert_blake2_delegation_workflow_matches_cpu(compiled_circuit, false);
+}
+
+#[test]
+#[serial]
+fn run_keccak_special5_delegation_workflow_input_parity_test() {
+    let compiled_circuit =
+        deserialize_json_for_test("cs/compiled_circuits/keccak_special5_layout_gkr.json");
+    assert_keccak_delegation_workflow_matches_cpu(compiled_circuit);
+}
+
+#[test]
+#[serial]
+fn run_blake2_delegation_zero_call_workflow_input_parity_test() {
+    let compiled_circuit = deserialize_json_for_test(
+        "cs/compiled_circuits/blake2_with_extended_control_layout_gkr.json",
+    );
+    assert_blake2_delegation_workflow_matches_cpu(compiled_circuit, true);
+}
+
+#[test]
 fn shift_binop_forward_cache_layout_regression_test() {
     const TRACE_LEN_LOG2: usize = 24;
 
@@ -7175,6 +7221,41 @@ fn test_load_store_subword_only_commit_memory_matches_cpu() {
     );
 }
 
+#[test]
+#[ignore]
+fn test_bigint_delegation_commit_memory_matches_cpu() {
+    let compiled_circuit = deserialize_json_for_test(
+        "cs/compiled_circuits/bigint_with_extended_control_layout_gkr.json",
+    );
+    assert_bigint_delegation_commit_memory_matches_cpu(compiled_circuit, false);
+}
+
+#[test]
+#[ignore]
+fn test_blake2_delegation_commit_memory_matches_cpu() {
+    let compiled_circuit = deserialize_json_for_test(
+        "cs/compiled_circuits/blake2_with_extended_control_layout_gkr.json",
+    );
+    assert_blake2_delegation_commit_memory_matches_cpu(compiled_circuit, false);
+}
+
+#[test]
+#[ignore]
+fn test_keccak_special5_delegation_commit_memory_matches_cpu() {
+    let compiled_circuit =
+        deserialize_json_for_test("cs/compiled_circuits/keccak_special5_layout_gkr.json");
+    assert_keccak_delegation_commit_memory_matches_cpu(compiled_circuit);
+}
+
+#[test]
+#[ignore]
+fn test_blake2_delegation_zero_call_commit_memory_matches_cpu() {
+    let compiled_circuit = deserialize_json_for_test(
+        "cs/compiled_circuits/blake2_with_extended_control_layout_gkr.json",
+    );
+    assert_blake2_delegation_commit_memory_matches_cpu(compiled_circuit, true);
+}
+
 fn assert_non_memory_commit_memory_matches_cpu_for_test<const FAMILY_IDX: u8>(
     binary_path: &str,
     text_path: &str,
@@ -7586,6 +7667,922 @@ fn assert_memory_commit_memory_matches_cpu_for_test<const FAMILY_IDX: u8>(
     eprintln!("Memory commitment tree caps match!");
 }
 
+type DelegationSnapshotter =
+    SimpleSnapshotter<DelegationsAndFamiliesCounters, { ROM_SECOND_WORD_BITS }>;
+type DelegationState = State<DelegationsAndFamiliesCounters>;
+
+struct DelegationReplayFixture {
+    instructions: Vec<Instruction>,
+    snapshotter: DelegationSnapshotter,
+    cycles_bound: usize,
+    expected_final_state: DelegationState,
+}
+
+fn build_delegation_replay_fixture(non_determinism_reads: &[u32]) -> DelegationReplayFixture {
+    let binary = read_test_words("riscv_transpiler/examples/keccak_f1600/app.bin");
+    let text_section = read_test_words("riscv_transpiler/examples/keccak_f1600/app.text");
+    let instructions: Vec<Instruction> =
+        preprocess_bytecode::<FullUnsignedMachineDecoderConfig, true>(&text_section);
+    let tape = SimpleTape::new(&instructions);
+    let mut ram = RamWithRomRegion::<{ ROM_SECOND_WORD_BITS }>::from_rom_content(&binary, 1 << 30);
+    let cycles_bound = 1 << 20;
+
+    let mut state = State::initial_with_counters(DelegationsAndFamiliesCounters::default());
+    let mut snapshotter = SimpleSnapshotter::<
+        DelegationsAndFamiliesCounters,
+        { ROM_SECOND_WORD_BITS },
+    >::new_with_cycle_limit(cycles_bound, state);
+    let mut non_determinism = QuasiUARTSource::new_with_reads(non_determinism_reads.to_vec());
+    let is_finished = VM::<DelegationsAndFamiliesCounters>::run_basic_unrolled::<_, _, _, BF>(
+        &mut state,
+        &mut ram,
+        &mut snapshotter,
+        &tape,
+        cycles_bound,
+        &mut non_determinism,
+    );
+    assert!(is_finished);
+
+    let mut expected_final_state = state;
+    expected_final_state.counters = Default::default();
+
+    DelegationReplayFixture {
+        instructions,
+        snapshotter,
+        cycles_bound,
+        expected_final_state,
+    }
+}
+
+fn delegation_whir_schedule(circuit_type: DelegationCircuitType) -> WhirSchedule {
+    match circuit_type {
+        DelegationCircuitType::Blake2WithCompression => {
+            WhirSchedule::default_for_tests_80_bits_20()
+        }
+        DelegationCircuitType::BigIntWithControl | DelegationCircuitType::KeccakSpecial5 => {
+            WhirSchedule::default_for_tests_80_bits_22()
+        }
+    }
+}
+
+fn test_external_challenges() -> GKRExternalChallenges<BF, E4> {
+    let memory_argument_alpha =
+        E4::from_array_of_base([BF::new(2), BF::new(5), BF::new(42), BF::new(123)]);
+    let permutation_argument_additive_part =
+        E4::from_array_of_base([BF::new(7), BF::new(11), BF::new(1024), BF::new(8000)]);
+    let permutation_argument_linearization_challenges: [E4; NUM_MEM_ARGUMENT_KEY_PARTS - 1] =
+        materialize_powers_serial_starting_with_elem::<_, Global>(
+            memory_argument_alpha,
+            NUM_MEM_ARGUMENT_KEY_PARTS - 1,
+        )
+        .try_into()
+        .unwrap();
+
+    GKRExternalChallenges {
+        permutation_argument_linearization_challenges,
+        permutation_argument_additive_part,
+        _marker: std::marker::PhantomData,
+    }
+}
+
+fn assert_delegation_commit_memory_matches_cpu_inner<W, O, F>(
+    label: &str,
+    circuit_type: DelegationCircuitType,
+    compiled_circuit: GKRCircuitArtifact<BF>,
+    buffer: &[W],
+    oracle: &O,
+    build_gpu_trace: F,
+) where
+    W: Copy,
+    O: cs::oracle::Oracle<BF>,
+    F: FnOnce(crate::primitives::context::DeviceAllocation<W>) -> TracingDataDevice,
+{
+    const DEVICE_ALLOCATOR_ARENA_BYTES: usize = 64usize << 30;
+    const HOST_POOL_SIZE_MB: usize = 1024;
+    const DEVICE_ALLOCATOR_BLOCK_LOG_SIZE: u32 = 20;
+
+    let worker = Worker::new_with_num_threads(8);
+    let trace_len = compiled_circuit.trace_len;
+    let cpu_memory_trace = evaluate_gkr_memory_witness_for_delegation_circuit(
+        &compiled_circuit,
+        circuit_type.get_domain_size(),
+        oracle,
+        &worker,
+        Global,
+        Global,
+    );
+
+    let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, &worker);
+    let whir_schedule = delegation_whir_schedule(circuit_type);
+    let mem_inputs: Vec<_> = cpu_memory_trace
+        .column_major_trace
+        .iter()
+        .map(|col| &col[..])
+        .collect();
+    let cpu_mem_oracle = commit_trace_part::<BF, DefaultTreeConstructor>(
+        &mem_inputs,
+        &twiddles,
+        whir_schedule.base_lde_factor,
+        whir_schedule.whir_steps_schedule[0],
+        whir_schedule.cap_size,
+        trace_len.trailing_zeros() as usize,
+        &worker,
+    );
+    let mut cpu_transcript = vec![];
+    let cpu_cap: MerkleTreeCapVarLength =
+        ColumnMajorMerkleTreeConstructor::<BF>::get_cap(&cpu_mem_oracle.tree);
+    flatten_merkle_caps_iter_into(Some(cpu_cap).into_iter(), &mut cpu_transcript);
+
+    let device_block_size = 1usize << DEVICE_ALLOCATOR_BLOCK_LOG_SIZE;
+    let max_device_allocation_blocks_count = DEVICE_ALLOCATOR_ARENA_BYTES / device_block_size;
+    let context = make_test_context_with_device_allocator_block_log_size(
+        max_device_allocation_blocks_count,
+        HOST_POOL_SIZE_MB,
+        DEVICE_ALLOCATOR_BLOCK_LOG_SIZE,
+    );
+    let mut trace_data = context
+        .alloc(buffer.len(), AllocationPlacement::BestFit)
+        .unwrap();
+    memory_copy_async(&mut trace_data, buffer, context.get_exec_stream()).unwrap();
+    let gpu_trace = build_gpu_trace(trace_data);
+
+    let job = commit_memory(
+        CircuitType::Delegation(circuit_type),
+        &compiled_circuit,
+        None,
+        &gpu_trace,
+        whir_schedule.base_lde_factor.trailing_zeros(),
+        whir_schedule.whir_steps_schedule[0] as u32,
+        whir_schedule.cap_size.trailing_zeros(),
+        &context,
+    )
+    .unwrap();
+
+    let (gpu_tree_caps, elapsed_ms) = job.finish().unwrap();
+    eprintln!("{label}: GPU memory commitment ready in {elapsed_ms:.1}ms");
+
+    let mut gpu_transcript = vec![];
+    flatten_merkle_caps_iter_into(gpu_tree_caps.into_iter(), &mut gpu_transcript);
+    assert_eq!(
+        cpu_transcript, gpu_transcript,
+        "{label}: GPU memory tree caps must match CPU"
+    );
+}
+
+fn assert_delegation_workflow_matches_cpu_inner<W, O, F>(
+    label: &str,
+    circuit_type: DelegationCircuitType,
+    compiled_circuit: GKRCircuitArtifact<BF>,
+    buffer: &[W],
+    oracle: &O,
+    witness_eval_fn: for<'a> fn(
+        &mut prover::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy<'a, O, BF>,
+    ),
+    table_driver: &TableDriver<BF>,
+    build_gpu_trace: F,
+) where
+    W: Copy,
+    O: cs::oracle::Oracle<BF>,
+    F: FnOnce(crate::primitives::context::DeviceAllocation<W>) -> TracingDataDevice,
+{
+    let worker = Worker::new_with_num_threads(8);
+    let trace_len = compiled_circuit.trace_len;
+    let whir_schedule = delegation_whir_schedule(circuit_type);
+    let external_challenges = test_external_challenges();
+    let num_calls = buffer.len();
+
+    let memory_trace = evaluate_gkr_memory_witness_for_delegation_circuit(
+        &compiled_circuit,
+        circuit_type.get_domain_size(),
+        oracle,
+        &worker,
+        Global,
+        Global,
+    );
+    let full_trace = evaluate_gkr_witness_for_delegation_circuit(
+        &compiled_circuit,
+        witness_eval_fn,
+        circuit_type.get_domain_size(),
+        oracle,
+        table_driver,
+        &worker,
+        Global,
+        Global,
+    );
+    ensure_memory_trace_consistency(&memory_trace, &full_trace);
+
+    let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, &worker);
+    let setup = GKRSetup::construct(table_driver, &[], trace_len, &compiled_circuit);
+    let setup_commitment = setup.commit::<DefaultTreeConstructor>(
+        &twiddles,
+        whir_schedule.base_lde_factor,
+        whir_schedule.whir_steps_schedule[0],
+        whir_schedule.cap_size,
+        trace_len.trailing_zeros() as usize,
+        &worker,
+    );
+    let subcap_size = whir_schedule.cap_size / whir_schedule.base_lde_factor;
+    let context = make_test_context(64 * 1024, 1024);
+    let gpu_setup_host = Arc::new(
+        GpuGKRSetupHost::precompute_from_cpu_setup(
+            &setup,
+            whir_schedule.base_lde_factor.trailing_zeros(),
+            whir_schedule.whir_steps_schedule[0] as u32,
+            whir_schedule.cap_size.trailing_zeros(),
+            &context,
+        )
+        .unwrap(),
+    );
+    let mut gpu_setup_transfer =
+        GpuGKRSetupTransfer::new(Arc::clone(&gpu_setup_host), &context).unwrap();
+    gpu_setup_transfer.schedule_transfer(&context).unwrap();
+    context.get_h2d_stream().synchronize().unwrap();
+
+    let cpu_setup_caps = stage1_caps_from_tree(&setup_commitment.tree, subcap_size);
+    let gpu_setup_caps = gpu_setup_transfer.trace_holder.get_tree_caps();
+    assert_eq!(
+        gpu_setup_caps, cpu_setup_caps,
+        "{label}: setup caps diverged"
+    );
+
+    let mut trace_data = context
+        .alloc(buffer.len(), AllocationPlacement::BestFit)
+        .unwrap();
+    memory_copy_async(&mut trace_data, buffer, context.get_exec_stream()).unwrap();
+    let gpu_trace = build_gpu_trace(trace_data);
+
+    let mut stage1_output = GpuGKRStage1Output::generate(
+        CircuitType::Delegation(circuit_type),
+        &compiled_circuit,
+        &gpu_setup_transfer,
+        None,
+        &gpu_trace,
+        &context,
+    )
+    .unwrap();
+    context.get_exec_stream().synchronize().unwrap();
+
+    let (gpu_memory_caps, _gpu_memory_commitment_ms) = commit_memory(
+        CircuitType::Delegation(circuit_type),
+        &compiled_circuit,
+        None,
+        &gpu_trace,
+        whir_schedule.base_lde_factor.trailing_zeros(),
+        whir_schedule.whir_steps_schedule[0] as u32,
+        whir_schedule.cap_size.trailing_zeros(),
+        &context,
+    )
+    .unwrap()
+    .finish()
+    .unwrap();
+
+    let (mem_oracle, wit_oracle) = stage1::stage1::<BF, DefaultTreeConstructor>(
+        &full_trace,
+        &twiddles,
+        whir_schedule.base_lde_factor,
+        whir_schedule.whir_steps_schedule[0],
+        whir_schedule.cap_size,
+        trace_len.trailing_zeros() as usize,
+        &worker,
+    );
+    let cpu_memory_caps = stage1_caps_from_tree(&mem_oracle.tree, subcap_size);
+    if gpu_memory_caps != cpu_memory_caps {
+        let first_mismatch = describe_first_trace_holder_column_mismatch(
+            &stage1_output.memory_trace_holder,
+            &full_trace.column_major_memory_trace,
+            circuit_type.get_domain_size(),
+            &context,
+        )
+        .unwrap_or_else(|| "no flat-column mismatch found despite cap divergence".to_string());
+        panic!("{label}: memory caps diverged; first flat mismatch: {first_mismatch}");
+    }
+
+    let cpu_witness_caps = stage1_caps_from_tree(&wit_oracle.tree, subcap_size);
+    let gpu_witness_caps = stage1_output.witness_trace_holder.get_tree_caps();
+    if gpu_witness_caps != cpu_witness_caps {
+        let first_mismatch = describe_first_trace_holder_column_mismatch(
+            &stage1_output.witness_trace_holder,
+            &full_trace.column_major_witness_trace,
+            circuit_type.get_domain_size(),
+            &context,
+        )
+        .unwrap_or_else(|| "no flat-column mismatch found despite cap divergence".to_string());
+        panic!("{label}: witness caps diverged; first flat mismatch: {first_mismatch}");
+    }
+
+    assert_generic_family_mapping_contract(
+        &stage1_output.lookup_mappings,
+        &full_trace,
+        num_calls,
+        &context,
+    );
+    let expected_range_check = full_trace
+        .range_check_16_lookup_mapping
+        .iter()
+        .flat_map(|column| column.iter().map(|value| u32::from(*value)))
+        .collect_vec();
+    let gpu_range_check =
+        copy_u32_device_slice_to_host(stage1_output.lookup_mappings.range_check_16(), &context);
+    assert_eq!(
+        gpu_range_check, expected_range_check,
+        "{label}: range-check mappings diverged"
+    );
+    let expected_timestamp = full_trace
+        .timestamp_range_check_lookup_mapping
+        .iter()
+        .flat_map(|column| column.iter().copied())
+        .collect_vec();
+    let gpu_timestamp =
+        copy_u32_device_slice_to_host(stage1_output.lookup_mappings.timestamp(), &context);
+    assert_eq!(
+        gpu_timestamp, expected_timestamp,
+        "{label}: timestamp mappings diverged"
+    );
+
+    let generic_lookup_multiplicities_range = compiled_circuit
+        .witness_layout
+        .multiplicities_columns_for_generic_lookup
+        .clone();
+    if !generic_lookup_multiplicities_range.is_empty() {
+        let first_mismatch = describe_first_trace_holder_subrange_mismatch(
+            &stage1_output.witness_trace_holder,
+            &full_trace.column_major_witness_trace,
+            generic_lookup_multiplicities_range.clone(),
+            circuit_type.get_domain_size(),
+            &context,
+        );
+        assert!(
+            first_mismatch.is_none(),
+            "{label}: generic lookup multiplicity columns diverged: {}",
+            first_mismatch.unwrap()
+        );
+    }
+
+    let mut cpu_transcript_input = Vec::new();
+    external_challenges.flatten_into_buffer(&mut cpu_transcript_input);
+    flatten_merkle_caps_iter_into(
+        Some(
+            <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<BF>>::get_cap(
+                &setup_commitment.tree,
+            ),
+        )
+        .into_iter(),
+        &mut cpu_transcript_input,
+    );
+    flatten_merkle_caps_iter_into(
+        Some(
+            <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<BF>>::get_cap(
+                &mem_oracle.tree,
+            ),
+        )
+        .into_iter(),
+        &mut cpu_transcript_input,
+    );
+    flatten_merkle_caps_iter_into(
+        Some(
+            <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<BF>>::get_cap(
+                &wit_oracle.tree,
+            ),
+        )
+        .into_iter(),
+        &mut cpu_transcript_input,
+    );
+
+    let mut gpu_transcript_input = Vec::new();
+    external_challenges.flatten_into_buffer(&mut gpu_transcript_input);
+    flatten_merkle_caps_iter_into(gpu_setup_caps.into_iter(), &mut gpu_transcript_input);
+    flatten_merkle_caps_iter_into(gpu_memory_caps.into_iter(), &mut gpu_transcript_input);
+    flatten_merkle_caps_iter_into(gpu_witness_caps.into_iter(), &mut gpu_transcript_input);
+
+    assert_eq!(
+        gpu_transcript_input, cpu_transcript_input,
+        "{label}: initial transcript input diverged",
+    );
+
+    let mut cpu_seed = Transcript::commit_initial(&cpu_transcript_input);
+    let mut gpu_seed = Transcript::commit_initial(&gpu_transcript_input);
+    assert_eq!(
+        gpu_seed, cpu_seed,
+        "{label}: initial transcript seed diverged"
+    );
+
+    let cpu_lookup_challenges = draw_random_field_els::<BF, E4>(&mut cpu_seed, 3);
+    let gpu_lookup_challenges = draw_random_field_els::<BF, E4>(&mut gpu_seed, 3);
+    assert_eq!(
+        gpu_lookup_challenges, cpu_lookup_challenges,
+        "{label}: lookup challenges diverged after matching transcript inputs",
+    );
+
+    let [lookup_alpha, lookup_additive_part, constraints_batch_challenge]: [E4; 3] =
+        cpu_lookup_challenges.try_into().unwrap();
+    let mut lookup_challenges_host = unsafe { context.alloc_host_uninit_slice(3) };
+    unsafe {
+        lookup_challenges_host
+            .get_mut_accessor()
+            .get_mut()
+            .copy_from_slice(&[
+                lookup_alpha,
+                lookup_additive_part,
+                constraints_batch_challenge,
+            ]);
+    }
+
+    let mut gpu_forward_setup = gpu_setup_transfer
+        .schedule_forward_setup(&compiled_circuit, &lookup_challenges_host, &context)
+        .unwrap();
+    context.get_exec_stream().synchronize().unwrap();
+
+    let mut gkr_storage = GKRStorage::<BF, E4>::default();
+    insert_virtual_setup_polys_for_test(trace_len, &mut gkr_storage);
+    let (preprocessed_generic_lookup, decoder_lookup_fill_value) = setup
+        .preprocess_generic_lookups(
+            &compiled_circuit,
+            lookup_alpha,
+            trace_len,
+            &mut gkr_storage,
+            &worker,
+        );
+
+    let mut gpu_generic = vec![E4::ZERO; gpu_forward_setup.generic_lookup_len()];
+    memory_copy_async(
+        &mut gpu_generic,
+        gpu_forward_setup.generic_lookup(),
+        context.get_exec_stream(),
+    )
+    .unwrap();
+    context.get_exec_stream().synchronize().unwrap();
+    let first_mismatch = describe_first_vec_mismatch(&gpu_generic, &preprocessed_generic_lookup);
+    assert!(
+        first_mismatch.is_none(),
+        "{label}: preprocessed generic lookup diverged: {}",
+        first_mismatch.unwrap()
+    );
+
+    let mut witness_eval_data = full_trace;
+    for (layer_idx, layer) in compiled_circuit.layers.iter().enumerate() {
+        forward_loop::evaluate_layer(
+            layer_idx,
+            layer,
+            &mut gkr_storage,
+            &compiled_circuit,
+            &external_challenges,
+            &mut witness_eval_data,
+            trace_len,
+            &preprocessed_generic_lookup,
+            lookup_alpha,
+            lookup_additive_part,
+            decoder_lookup_fill_value,
+            constraints_batch_challenge,
+            &worker,
+        );
+    }
+
+    let final_trace_size_log_2 = 4;
+    let (initial_layer_for_sumcheck, dimension_reducing_inputs) =
+        dimension_reduction::forward::evaluate_dimension_reduction_forward(
+            &mut gkr_storage,
+            &compiled_circuit,
+            trace_len.trailing_zeros() as usize,
+            final_trace_size_log_2,
+            &worker,
+        );
+    let output_layer_for_sumcheck = &dimension_reducing_inputs[&initial_layer_for_sumcheck];
+    let (final_explicit_evaluations, evals_flattened) = collect_final_explicit_evaluations_for_test(
+        &gkr_storage,
+        output_layer_for_sumcheck,
+        1 << final_trace_size_log_2,
+    );
+
+    let (gpu_forward_output, gpu_transcript_handoff) = {
+        let gpu_forward_output = schedule_forward_pass(
+            &gpu_setup_transfer,
+            &mut stage1_output,
+            &mut gpu_forward_setup,
+            &compiled_circuit,
+            &external_challenges,
+            final_trace_size_log_2,
+            &context,
+        )
+        .unwrap();
+        let gpu_transcript_handoff = gpu_forward_output
+            .schedule_transcript_handoff(&context)
+            .unwrap();
+        context.get_exec_stream().synchronize().unwrap();
+        (gpu_forward_output, gpu_transcript_handoff)
+    };
+    let gpu_final_explicit_evaluations = gpu_transcript_handoff.final_explicit_evaluations();
+    let gpu_evals_flattened = gpu_transcript_handoff.flattened_transcript_evaluations();
+    drop(gpu_transcript_handoff);
+
+    assert!(!stage1_output.lookup_mappings.has_generic_family());
+    assert!(!stage1_output.lookup_mappings.has_range_check_16());
+    assert!(!stage1_output.lookup_mappings.has_timestamp());
+    assert!(!gpu_forward_setup.has_generic_lookup());
+    assert_eq!(
+        gpu_forward_output.initial_layer_for_sumcheck,
+        initial_layer_for_sumcheck
+    );
+    assert_eq!(
+        gpu_forward_output.dimension_reducing_inputs,
+        dimension_reducing_inputs
+    );
+    assert_gpu_and_cpu_gkr_storage_match(&gpu_forward_output.storage, &gkr_storage, &context);
+    assert_eq!(gpu_final_explicit_evaluations, final_explicit_evaluations);
+    assert_eq!(gpu_evals_flattened, evals_flattened);
+}
+
+fn assert_bigint_delegation_commit_memory_matches_cpu(
+    compiled_circuit: GKRCircuitArtifact<BF>,
+    zero_call: bool,
+) {
+    let buffer = if zero_call {
+        vec![]
+    } else {
+        let fixture = build_delegation_replay_fixture(&[15, 1]);
+        let num_calls = fixture
+            .snapshotter
+            .snapshots
+            .last()
+            .unwrap()
+            .state
+            .counters
+            .bigint_calls;
+        let mut replay_state = fixture.snapshotter.initial_snapshot.state;
+        let mut ram_log_buffers = fixture
+            .snapshotter
+            .reads_buffer
+            .make_range(0..fixture.snapshotter.reads_buffer.len());
+        let mut replay_ram = ReplayerRam::<{ ROM_SECOND_WORD_BITS }> {
+            ram_log: &mut ram_log_buffers,
+        };
+        let tape = SimpleTape::new(&fixture.instructions);
+        let mut buffer = vec![BigintDelegationWitness::empty(); num_calls];
+        let mut buffers = vec![&mut buffer[..]];
+        let mut tracer = BigintDelegationDestinationHolder {
+            buffers: &mut buffers[..],
+        };
+        ReplayerVM::<DelegationsAndFamiliesCounters>::replay_basic_unrolled::<_, _, BF>(
+            &mut replay_state,
+            &mut replay_ram,
+            &tape,
+            &mut (),
+            fixture.cycles_bound,
+            &mut tracer,
+        );
+        assert_eq!(fixture.expected_final_state, replay_state);
+        buffer
+    };
+
+    let oracle = BigintDelegationOracle {
+        cycle_data: &buffer,
+        marker: core::marker::PhantomData,
+    };
+    assert_delegation_commit_memory_matches_cpu_inner(
+        "bigint_with_control",
+        DelegationCircuitType::BigIntWithControl,
+        compiled_circuit,
+        &buffer,
+        &oracle,
+        |tracing_data| {
+            TracingDataDevice::Delegation(DelegationTracingDataDevice::BigIntWithControl(
+                crate::witness::trace_delegation::DelegationTraceDevice { tracing_data },
+            ))
+        },
+    );
+}
+
+fn assert_blake2_delegation_commit_memory_matches_cpu(
+    compiled_circuit: GKRCircuitArtifact<BF>,
+    zero_call: bool,
+) {
+    let buffer = if zero_call {
+        vec![]
+    } else {
+        let fixture = build_delegation_replay_fixture(&[15, 1]);
+        let num_calls = fixture
+            .snapshotter
+            .snapshots
+            .last()
+            .unwrap()
+            .state
+            .counters
+            .blake_calls;
+        let mut replay_state = fixture.snapshotter.initial_snapshot.state;
+        let mut ram_log_buffers = fixture
+            .snapshotter
+            .reads_buffer
+            .make_range(0..fixture.snapshotter.reads_buffer.len());
+        let mut replay_ram = ReplayerRam::<{ ROM_SECOND_WORD_BITS }> {
+            ram_log: &mut ram_log_buffers,
+        };
+        let tape = SimpleTape::new(&fixture.instructions);
+        let mut buffer = vec![Blake2sRoundFunctionDelegationWitness::empty(); num_calls];
+        let mut buffers = vec![&mut buffer[..]];
+        let mut tracer = BlakeDelegationDestinationHolder {
+            buffers: &mut buffers[..],
+        };
+        ReplayerVM::<DelegationsAndFamiliesCounters>::replay_basic_unrolled::<_, _, BF>(
+            &mut replay_state,
+            &mut replay_ram,
+            &tape,
+            &mut (),
+            fixture.cycles_bound,
+            &mut tracer,
+        );
+        assert_eq!(fixture.expected_final_state, replay_state);
+        buffer
+    };
+
+    let oracle = Blake2sDelegationOracle {
+        cycle_data: &buffer,
+        marker: core::marker::PhantomData,
+    };
+    assert_delegation_commit_memory_matches_cpu_inner(
+        "blake2_with_compression",
+        DelegationCircuitType::Blake2WithCompression,
+        compiled_circuit,
+        &buffer,
+        &oracle,
+        |tracing_data| {
+            TracingDataDevice::Delegation(DelegationTracingDataDevice::Blake2WithCompression(
+                crate::witness::trace_delegation::DelegationTraceDevice { tracing_data },
+            ))
+        },
+    );
+}
+
+fn assert_keccak_delegation_commit_memory_matches_cpu(compiled_circuit: GKRCircuitArtifact<BF>) {
+    let fixture = build_delegation_replay_fixture(&[15, 1]);
+    let num_calls = fixture
+        .snapshotter
+        .snapshots
+        .last()
+        .unwrap()
+        .state
+        .counters
+        .keccak_calls;
+    assert!(
+        num_calls > 0,
+        "keccak_f1600 must exercise keccak delegation"
+    );
+    let mut replay_state = fixture.snapshotter.initial_snapshot.state;
+    let mut ram_log_buffers = fixture
+        .snapshotter
+        .reads_buffer
+        .make_range(0..fixture.snapshotter.reads_buffer.len());
+    let mut replay_ram = ReplayerRam::<{ ROM_SECOND_WORD_BITS }> {
+        ram_log: &mut ram_log_buffers,
+    };
+    let tape = SimpleTape::new(&fixture.instructions);
+    let mut buffer = vec![KeccakSpecial5DelegationWitness::empty(); num_calls];
+    let mut buffers = vec![&mut buffer[..]];
+    let mut tracer = KeccakDelegationDestinationHolder {
+        buffers: &mut buffers[..],
+    };
+    ReplayerVM::<DelegationsAndFamiliesCounters>::replay_basic_unrolled::<_, _, BF>(
+        &mut replay_state,
+        &mut replay_ram,
+        &tape,
+        &mut (),
+        fixture.cycles_bound,
+        &mut tracer,
+    );
+    assert_eq!(fixture.expected_final_state, replay_state);
+    assert!(
+        buffer
+            .iter()
+            .any(|cycle| cycle.variables_offsets.iter().any(|&value| value != 0)),
+        "keccak fixture must exercise variable-offset indirect accesses",
+    );
+
+    let oracle = KeccakDelegationOracle {
+        cycle_data: &buffer,
+        marker: core::marker::PhantomData,
+    };
+    assert_delegation_commit_memory_matches_cpu_inner(
+        "keccak_special5",
+        DelegationCircuitType::KeccakSpecial5,
+        compiled_circuit,
+        &buffer,
+        &oracle,
+        |tracing_data| {
+            TracingDataDevice::Delegation(DelegationTracingDataDevice::KeccakSpecial5(
+                crate::witness::trace_delegation::DelegationTraceDevice { tracing_data },
+            ))
+        },
+    );
+}
+
+fn assert_bigint_delegation_workflow_matches_cpu(
+    compiled_circuit: GKRCircuitArtifact<BF>,
+    zero_call: bool,
+) {
+    let mut table_driver = TableDriver::<BF>::new();
+    cs::gkr_circuits::delegation::bigint_with_control::bigint_with_extended_control_delegation_circuit_table_driver_fn(
+        &mut table_driver,
+    );
+
+    let buffer = if zero_call {
+        vec![]
+    } else {
+        let fixture = build_delegation_replay_fixture(&[15, 1]);
+        let num_calls = fixture
+            .snapshotter
+            .snapshots
+            .last()
+            .unwrap()
+            .state
+            .counters
+            .bigint_calls;
+        let mut replay_state = fixture.snapshotter.initial_snapshot.state;
+        let mut ram_log_buffers = fixture
+            .snapshotter
+            .reads_buffer
+            .make_range(0..fixture.snapshotter.reads_buffer.len());
+        let mut replay_ram = ReplayerRam::<{ ROM_SECOND_WORD_BITS }> {
+            ram_log: &mut ram_log_buffers,
+        };
+        let tape = SimpleTape::new(&fixture.instructions);
+        let mut buffer = vec![BigintDelegationWitness::empty(); num_calls];
+        let mut buffers = vec![&mut buffer[..]];
+        let mut tracer = BigintDelegationDestinationHolder {
+            buffers: &mut buffers[..],
+        };
+        ReplayerVM::<DelegationsAndFamiliesCounters>::replay_basic_unrolled::<_, _, BF>(
+            &mut replay_state,
+            &mut replay_ram,
+            &tape,
+            &mut (),
+            fixture.cycles_bound,
+            &mut tracer,
+        );
+        assert_eq!(fixture.expected_final_state, replay_state);
+        buffer
+    };
+
+    let oracle = BigintDelegationOracle {
+        cycle_data: &buffer,
+        marker: core::marker::PhantomData,
+    };
+    assert_delegation_workflow_matches_cpu_inner(
+        "bigint_with_control",
+        DelegationCircuitType::BigIntWithControl,
+        compiled_circuit,
+        &buffer,
+        &oracle,
+        bigint_with_extended_control_mod::witness_eval_fn,
+        &table_driver,
+        |tracing_data| {
+            TracingDataDevice::Delegation(DelegationTracingDataDevice::BigIntWithControl(
+                crate::witness::trace_delegation::DelegationTraceDevice { tracing_data },
+            ))
+        },
+    );
+}
+
+fn assert_blake2_delegation_workflow_matches_cpu(
+    compiled_circuit: GKRCircuitArtifact<BF>,
+    zero_call: bool,
+) {
+    let mut table_driver = TableDriver::<BF>::new();
+    cs::gkr_circuits::delegation::blake2_round_with_extended_control::blake2_with_extended_control_table_driver_fn(
+        &mut table_driver,
+    );
+
+    let buffer = if zero_call {
+        vec![]
+    } else {
+        let fixture = build_delegation_replay_fixture(&[15, 1]);
+        let num_calls = fixture
+            .snapshotter
+            .snapshots
+            .last()
+            .unwrap()
+            .state
+            .counters
+            .blake_calls;
+        let mut replay_state = fixture.snapshotter.initial_snapshot.state;
+        let mut ram_log_buffers = fixture
+            .snapshotter
+            .reads_buffer
+            .make_range(0..fixture.snapshotter.reads_buffer.len());
+        let mut replay_ram = ReplayerRam::<{ ROM_SECOND_WORD_BITS }> {
+            ram_log: &mut ram_log_buffers,
+        };
+        let tape = SimpleTape::new(&fixture.instructions);
+        let mut buffer = vec![Blake2sRoundFunctionDelegationWitness::empty(); num_calls];
+        let mut buffers = vec![&mut buffer[..]];
+        let mut tracer = BlakeDelegationDestinationHolder {
+            buffers: &mut buffers[..],
+        };
+        ReplayerVM::<DelegationsAndFamiliesCounters>::replay_basic_unrolled::<_, _, BF>(
+            &mut replay_state,
+            &mut replay_ram,
+            &tape,
+            &mut (),
+            fixture.cycles_bound,
+            &mut tracer,
+        );
+        assert_eq!(fixture.expected_final_state, replay_state);
+        buffer
+    };
+
+    let oracle = Blake2sDelegationOracle {
+        cycle_data: &buffer,
+        marker: core::marker::PhantomData,
+    };
+    assert_delegation_workflow_matches_cpu_inner(
+        "blake2_with_compression",
+        DelegationCircuitType::Blake2WithCompression,
+        compiled_circuit,
+        &buffer,
+        &oracle,
+        blake2_with_extended_control_mod::witness_eval_fn,
+        &table_driver,
+        |tracing_data| {
+            TracingDataDevice::Delegation(DelegationTracingDataDevice::Blake2WithCompression(
+                crate::witness::trace_delegation::DelegationTraceDevice { tracing_data },
+            ))
+        },
+    );
+}
+
+fn assert_keccak_delegation_workflow_matches_cpu(compiled_circuit: GKRCircuitArtifact<BF>) {
+    let mut table_driver = TableDriver::<BF>::new();
+    cs::gkr_circuits::delegation::keccak_special5::keccak_special5_delegation_circuit_table_driver_fn(
+        &mut table_driver,
+    );
+
+    let fixture = build_delegation_replay_fixture(&[15, 1]);
+    let num_calls = fixture
+        .snapshotter
+        .snapshots
+        .last()
+        .unwrap()
+        .state
+        .counters
+        .keccak_calls;
+    assert!(
+        num_calls > 0,
+        "keccak_f1600 must exercise keccak delegation"
+    );
+    let mut replay_state = fixture.snapshotter.initial_snapshot.state;
+    let mut ram_log_buffers = fixture
+        .snapshotter
+        .reads_buffer
+        .make_range(0..fixture.snapshotter.reads_buffer.len());
+    let mut replay_ram = ReplayerRam::<{ ROM_SECOND_WORD_BITS }> {
+        ram_log: &mut ram_log_buffers,
+    };
+    let tape = SimpleTape::new(&fixture.instructions);
+    let mut buffer = vec![KeccakSpecial5DelegationWitness::empty(); num_calls];
+    let mut buffers = vec![&mut buffer[..]];
+    let mut tracer = KeccakDelegationDestinationHolder {
+        buffers: &mut buffers[..],
+    };
+    ReplayerVM::<DelegationsAndFamiliesCounters>::replay_basic_unrolled::<_, _, BF>(
+        &mut replay_state,
+        &mut replay_ram,
+        &tape,
+        &mut (),
+        fixture.cycles_bound,
+        &mut tracer,
+    );
+    assert_eq!(fixture.expected_final_state, replay_state);
+    assert!(
+        !compiled_circuit
+            .memory_layout
+            .indirect_access_variable_offsets
+            .is_empty(),
+        "keccak layout must expose variable-offset columns",
+    );
+    assert!(
+        buffer
+            .iter()
+            .any(|cycle| cycle.variables_offsets.iter().any(|&value| value != 0)),
+        "keccak fixture must exercise variable-offset indirect accesses",
+    );
+
+    let oracle = KeccakDelegationOracle {
+        cycle_data: &buffer,
+        marker: core::marker::PhantomData,
+    };
+    assert_delegation_workflow_matches_cpu_inner(
+        "keccak_special5",
+        DelegationCircuitType::KeccakSpecial5,
+        compiled_circuit,
+        &buffer,
+        &oracle,
+        keccak_special5_mod::witness_eval_fn,
+        &table_driver,
+        |tracing_data| {
+            TracingDataDevice::Delegation(DelegationTracingDataDevice::KeccakSpecial5(
+                crate::witness::trace_delegation::DelegationTraceDevice { tracing_data },
+            ))
+        },
+    );
+}
+
 #[allow(unused_imports)]
 mod add_sub_lui_auipc_mod {
     use crate::primitives::field::BF;
@@ -7728,6 +8725,93 @@ mod mem_subword_only_mod {
         let fn_ptr = evaluate_witness_fn::<
             ScalarWitnessTypeSet<BF, true>,
             ColumnMajorWitnessProxy<'a, MemoryCircuitOracle<'b>, BF>,
+        >;
+        fn_ptr(proxy);
+    }
+}
+
+#[allow(unused_imports)]
+mod blake2_with_extended_control_mod {
+    use crate::primitives::field::BF;
+    use cs::oracle::Placeholder;
+    use cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
+    use cs::witness_placer::WitnessTypeSet;
+    use cs::witness_placer::{
+        WitnessComputationCore, WitnessComputationalField, WitnessComputationalI32,
+        WitnessComputationalInteger, WitnessComputationalU16, WitnessComputationalU32,
+        WitnessComputationalU8, WitnessMask,
+    };
+    use field::baby_bear::base::BabyBearField;
+    use prover::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
+    use prover::gkr::witness_gen::witness_proxy::WitnessProxy;
+    use prover::tracers::oracles::transpiler_oracles::delegation::Blake2sDelegationOracle;
+
+    include!("../../../prover/compiled_circuits/blake2_with_extended_control_generated_gkr.rs");
+
+    pub fn witness_eval_fn<'a, 'b>(
+        proxy: &'_ mut ColumnMajorWitnessProxy<'a, Blake2sDelegationOracle<'b>, BF>,
+    ) {
+        let fn_ptr = evaluate_witness_fn::<
+            ScalarWitnessTypeSet<BF, true>,
+            ColumnMajorWitnessProxy<'a, Blake2sDelegationOracle<'b>, BF>,
+        >;
+        fn_ptr(proxy);
+    }
+}
+
+#[allow(unused_imports)]
+mod bigint_with_extended_control_mod {
+    use crate::primitives::field::BF;
+    use cs::oracle::Placeholder;
+    use cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
+    use cs::witness_placer::WitnessTypeSet;
+    use cs::witness_placer::{
+        WitnessComputationCore, WitnessComputationalField, WitnessComputationalI32,
+        WitnessComputationalInteger, WitnessComputationalU16, WitnessComputationalU32,
+        WitnessComputationalU8, WitnessMask,
+    };
+    use field::baby_bear::base::BabyBearField;
+    use prover::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
+    use prover::gkr::witness_gen::witness_proxy::WitnessProxy;
+    use prover::tracers::oracles::transpiler_oracles::delegation::BigintDelegationOracle;
+
+    include!("../../../prover/compiled_circuits/bigint_with_extended_control_generated_gkr.rs");
+
+    pub fn witness_eval_fn<'a, 'b>(
+        proxy: &'_ mut ColumnMajorWitnessProxy<'a, BigintDelegationOracle<'b>, BF>,
+    ) {
+        let fn_ptr = evaluate_witness_fn::<
+            ScalarWitnessTypeSet<BF, true>,
+            ColumnMajorWitnessProxy<'a, BigintDelegationOracle<'b>, BF>,
+        >;
+        fn_ptr(proxy);
+    }
+}
+
+#[allow(unused_imports)]
+mod keccak_special5_mod {
+    use crate::primitives::field::BF;
+    use cs::oracle::Placeholder;
+    use cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
+    use cs::witness_placer::WitnessTypeSet;
+    use cs::witness_placer::{
+        WitnessComputationCore, WitnessComputationalField, WitnessComputationalI32,
+        WitnessComputationalInteger, WitnessComputationalU16, WitnessComputationalU32,
+        WitnessComputationalU8, WitnessMask,
+    };
+    use field::baby_bear::base::BabyBearField;
+    use prover::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
+    use prover::gkr::witness_gen::witness_proxy::WitnessProxy;
+    use prover::tracers::oracles::transpiler_oracles::delegation::KeccakDelegationOracle;
+
+    include!("../../../prover/compiled_circuits/keccak_special5_generated_gkr.rs");
+
+    pub fn witness_eval_fn<'a, 'b>(
+        proxy: &'_ mut ColumnMajorWitnessProxy<'a, KeccakDelegationOracle<'b>, BF>,
+    ) {
+        let fn_ptr = evaluate_witness_fn::<
+            ScalarWitnessTypeSet<BF, true>,
+            ColumnMajorWitnessProxy<'a, KeccakDelegationOracle<'b>, BF>,
         >;
         fn_ptr(proxy);
     }
