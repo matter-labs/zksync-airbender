@@ -10026,14 +10026,14 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>() -> Result<
                     (254usize, 33usize),
                     (257usize, 34usize),
                     (258usize, 35usize),
-                    (267usize, 36usize),
-                    (268usize, 37usize),
-                    (269usize, 38usize),
-                    (270usize, 39usize),
-                    (271usize, 40usize),
-                    (272usize, 41usize),
-                    (273usize, 42usize),
-                    (274usize, 43usize),
+                    (266usize, 36usize),
+                    (267usize, 37usize),
+                    (268usize, 38usize),
+                    (269usize, 39usize),
+                    (270usize, 40usize),
+                    (271usize, 41usize),
+                    (272usize, 42usize),
+                    (273usize, 43usize),
                 ];
                 let mut regular_idx: usize = 0;
                 let mut ep_idx: usize = 0;
@@ -11022,7 +11022,7 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>() -> Result<
             {
                 const VS_DESCS: [(usize, usize, usize); 1usize] = [(334usize, 0usize, 8usize)];
                 const VS_DEPS: [usize; 8usize] = [
-                    267usize, 268usize, 269usize, 270usize, 271usize, 272usize, 273usize, 274usize,
+                    266usize, 267usize, 268usize, 269usize, 270usize, 271usize, 272usize, 273usize,
                 ];
                 let mut _vs = 0;
                 while _vs < 1usize {

@@ -1,7 +1,7 @@
 use proc_macro2::TokenStream;
 use quote::quote;
 
-use prover::cs::definitions::GKRAddress;
+use prover::cs::definitions::{GKRAddress, VirtualSetupPoly};
 use prover::cs::gkr_compiler::{GKRLayerDescription, NoFieldGKRRelation};
 use prover::field::PrimeField;
 
@@ -37,6 +37,23 @@ pub fn transform_gkr_address(addr: &GKRAddress) -> TokenStream {
         }
         GKRAddress::Cached { layer, offset } => {
             quote! { GKRAddress::Cached { layer: #layer, offset: #offset } }
+        }
+        GKRAddress::VirtualSetup(poly) => {
+            let variant = match poly {
+                VirtualSetupPoly::RangeCheck16Bits => {
+                    quote! { VirtualSetupPoly::RangeCheck16Bits }
+                }
+                VirtualSetupPoly::RangeCheckTimestamp => {
+                    quote! { VirtualSetupPoly::RangeCheckTimestamp }
+                }
+                VirtualSetupPoly::InitsAndTeardownsLow => {
+                    quote! { VirtualSetupPoly::InitsAndTeardownsLow }
+                }
+                VirtualSetupPoly::InitsAndTeardownsHigh => {
+                    quote! { VirtualSetupPoly::InitsAndTeardownsHigh }
+                }
+            };
+            quote! { GKRAddress::VirtualSetup(#variant) }
         }
     }
 }

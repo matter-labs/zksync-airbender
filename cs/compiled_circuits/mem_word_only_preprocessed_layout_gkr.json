@@ -4136,9 +4136,9 @@
     "43": "final lookup output2 (L3)",
     "44": "execute (L2)",
     "45": "final lookup table_id (L3)",
-    "46": "query 0, interm ts borrow",
-    "47": "query 1, interm ts borrow",
-    "48": "query 2, interm ts borrow",
+    "46": "query 0, interim ts borrow",
+    "47": "query 1, interim ts borrow",
+    "48": "query 2, interim ts borrow",
     "49": "Multiplicity for range check 16",
     "50": "Multiplicity for timestamp range check",
     "51": "Multiplicity for generic lookup"

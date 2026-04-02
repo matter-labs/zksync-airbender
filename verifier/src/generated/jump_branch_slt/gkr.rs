@@ -7775,16 +7775,16 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>() -> Result<
                     (41usize, 12usize),
                     (42usize, 13usize),
                     (50usize, 14usize),
-                    (56usize, 15usize),
-                    (57usize, 16usize),
-                    (58usize, 17usize),
-                    (59usize, 18usize),
-                    (60usize, 19usize),
-                    (61usize, 20usize),
-                    (62usize, 21usize),
-                    (63usize, 22usize),
-                    (64usize, 23usize),
-                    (65usize, 24usize),
+                    (54usize, 15usize),
+                    (55usize, 16usize),
+                    (56usize, 17usize),
+                    (57usize, 18usize),
+                    (58usize, 19usize),
+                    (59usize, 20usize),
+                    (60usize, 21usize),
+                    (61usize, 22usize),
+                    (62usize, 23usize),
+                    (63usize, 24usize),
                 ];
                 let mut regular_idx: usize = 0;
                 let mut ep_idx: usize = 0;
@@ -7880,7 +7880,7 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>() -> Result<
                     (0u32, 6usize, 1usize),
                     (0u32, 7usize, 1usize),
                     (0u32, 8usize, 5usize),
-                    (1207959463u32, 13usize, 0usize),
+                    (268435358u32, 13usize, 0usize),
                     (0u32, 13usize, 2usize),
                     (0u32, 15usize, 1usize),
                     (0u32, 16usize, 0usize),
@@ -7990,8 +7990,8 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>() -> Result<
             {
                 const VS_DESCS: [(usize, usize, usize); 1usize] = [(81usize, 0usize, 10usize)];
                 const VS_DEPS: [usize; 10usize] = [
-                    56usize, 57usize, 58usize, 59usize, 60usize, 61usize, 62usize, 63usize,
-                    64usize, 65usize,
+                    54usize, 55usize, 56usize, 57usize, 58usize, 59usize, 60usize, 61usize,
+                    62usize, 63usize,
                 ];
                 let mut _vs = 0;
                 while _vs < 1usize {

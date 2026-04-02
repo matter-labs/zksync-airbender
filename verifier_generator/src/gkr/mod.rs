@@ -1151,7 +1151,7 @@ where
     }
 
     let constants = quote! {
-        use ::verifier_common::cs::definitions::GKRAddress;
+        use ::verifier_common::cs::definitions::{GKRAddress, VirtualSetupPoly};
         pub const GKR_ROUNDS: usize = #max_sumcheck_rounds;
         pub const GKR_ADDRS: usize = #max_addrs;
         pub const GKR_EVALS: usize = #max_evals;

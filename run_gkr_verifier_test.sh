@@ -2,9 +2,7 @@
 set -euo pipefail
 
 # echo "==> Step 0: Compile GKR circuits"
-# (cd cs && cargo test -p cs --release compile_add_sub_lui_auipc_mop_into_gkr -- --nocapture)
-# (cd cs && cargo test -p cs --release compile_jump_branch_slt_into_gkr -- --nocapture)
-# (cd cs && cargo test -p cs --release compile_shift_binop_into_gkr -- --nocapture)
+# (cd cs && cargo test -p cs --release)
 
 # echo "==> Step 1: Generate proof"
 # (cd prover && RUST_MIN_STACK=100000000 cargo test -p prover --release --features gkr_self_checks \

@@ -1,4 +1,4 @@
-use verifier_common::cs::definitions::GKRAddress;
+use verifier_common::cs::definitions::{GKRAddress, VirtualSetupPoly};
 pub const GKR_ROUNDS: usize = 24usize;
 pub const GKR_ADDRS: usize = 86usize;
 pub const GKR_EVALS: usize = 128usize;
@@ -46,8 +46,8 @@ pub const LAYER_0_SORTED_ADDRS: &[GKRAddress] = &[
     GKRAddress::BaseLayerMemory(23usize),
     GKRAddress::BaseLayerMemory(24usize),
     GKRAddress::BaseLayerMemory(25usize),
-    GKRAddress::Setup(0usize),
-    GKRAddress::Setup(1usize),
+    GKRAddress::VirtualSetup(VirtualSetupPoly::RangeCheck16Bits),
+    GKRAddress::VirtualSetup(VirtualSetupPoly::RangeCheckTimestamp),
     GKRAddress::Cached {
         layer: 0usize,
         offset: 0usize,
@@ -148,6 +148,8 @@ pub const BASE_LAYER_ADDITIONAL_OPENINGS: &[GKRAddress] = &[
     GKRAddress::BaseLayerMemory(13usize),
     GKRAddress::BaseLayerMemory(14usize),
     GKRAddress::BaseLayerMemory(22usize),
+    GKRAddress::Setup(0usize),
+    GKRAddress::Setup(1usize),
     GKRAddress::Setup(2usize),
     GKRAddress::Setup(3usize),
     GKRAddress::Setup(4usize),
@@ -156,8 +158,6 @@ pub const BASE_LAYER_ADDITIONAL_OPENINGS: &[GKRAddress] = &[
     GKRAddress::Setup(7usize),
     GKRAddress::Setup(8usize),
     GKRAddress::Setup(9usize),
-    GKRAddress::Setup(10usize),
-    GKRAddress::Setup(11usize),
 ];
 pub const WHIR_FOLD_STEPS: [usize; 6usize] = [1usize, 4usize, 4usize, 4usize, 4usize, 4usize];
 pub const WHIR_QUERIES: [usize; 6usize] = [68usize, 23usize, 12usize, 10usize, 10usize, 10usize];
@@ -173,5 +173,5 @@ pub const WIT_CAP_WORDS: usize = 128usize;
 pub const CAPS_OFFSET_IN_TRANSCRIPT: usize = 28usize;
 pub const NUM_MEM_ORACLE_COLS: usize = 26usize;
 pub const NUM_WIT_ORACLE_COLS: usize = 28usize;
-pub const NUM_SETUP_ORACLE_COLS: usize = 12usize;
-pub const TOTAL_ORACLE_COLS: usize = 66usize;
+pub const NUM_SETUP_ORACLE_COLS: usize = 10usize;
+pub const TOTAL_ORACLE_COLS: usize = 64usize;

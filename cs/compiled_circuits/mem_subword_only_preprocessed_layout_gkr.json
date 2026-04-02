@@ -5140,9 +5140,9 @@
     "57": "table_id (L2)",
     "58": "execute (L2)",
     "59": "final lookup table_id (L3)",
-    "60": "query 0, interm ts borrow",
-    "61": "query 1, interm ts borrow",
-    "62": "query 2, interm ts borrow",
+    "60": "query 0, interim ts borrow",
+    "61": "query 1, interim ts borrow",
+    "62": "query 2, interim ts borrow",
     "63": "Multiplicity for range check 16",
     "64": "Multiplicity for timestamp range check",
     "65": "Multiplicity for generic lookup"

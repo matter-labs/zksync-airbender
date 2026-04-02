@@ -38,6 +38,14 @@ name = "blake2_with_extended_control"
 path = "src/bin/blake2_with_extended_control.rs"
 
 [[bin]]
+name = "mem_word_only"
+path = "src/bin/mem_word_only.rs"
+
+[[bin]]
+name = "mem_subword_only"
+path = "src/bin/mem_subword_only.rs"
+
+[[bin]]
 name = "keccak_special5"
 path = "src/bin/keccak_special5.rs"
 

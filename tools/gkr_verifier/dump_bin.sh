@@ -1,7 +1,7 @@
 #!/bin/sh
 set -euo pipefail
 
-CIRCUITS="add_sub_lui_auipc_mop jump_branch_slt shift_binop bigint_with_extended_control blake2_with_extended_control keccak_special5"
+CIRCUITS="add_sub_lui_auipc_mop jump_branch_slt shift_binop mem_word_only mem_subword_only bigint_with_extended_control blake2_with_extended_control keccak_special5"
 COMMON_FLAGS="--release -Z panic-immediate-abort -Z build-std=core,alloc"
 
 echo "==> Building all RISC-V binaries"
