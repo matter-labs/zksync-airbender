@@ -35,20 +35,16 @@ pub fn generate_transcript_helpers<MW: MersenneWrapper>() -> TokenStream {
         }
 
         #[inline(always)]
-        pub fn draw_field_els_into(
+        pub fn draw_field_els_into<const BUF_CAP: usize>(
             hasher: &mut DelegatedBlake2sState,
             seed: &mut Seed,
             dst: &mut [#quartic_struct],
         ) {
             let n = dst.len();
             let padded = (n * EXT_DEGREE).next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS);
-            // 64 is sufficient: the max draw is for gamma powers (TOTAL_ORACLE_COLS
-            // extension elements). The largest circuit has ~50 columns → 50*4 = 200 words,
-            // but gamma is drawn as a single element (4 words → padded to 8).
-            // Per-round draws are 1 element each.
-            debug_assert!(padded <= DRAW_BUF_CAPACITY, "draw buffer too small");
+            debug_assert!(padded <= BUF_CAP, "draw buffer too small");
 
-            let mut words = LazyVec::<u32, DRAW_BUF_CAPACITY>::new();
+            let mut words = LazyVec::<u32, BUF_CAP>::new();
             unsafe {
                 words.set_len(padded);
                 Blake2sTranscript::draw_randomness_using_hasher(hasher, seed, words.as_mut_slice());
@@ -77,7 +73,7 @@ pub fn generate_transcript_helpers<MW: MersenneWrapper>() -> TokenStream {
         ) -> #quartic_struct {
             let mut buf = LazyVec::<#quartic_struct, 1>::new();
             unsafe { buf.set_len(1); }
-            draw_field_els_into(hasher, seed, buf.as_mut_slice());
+            draw_field_els_into::<BLAKE2S_DIGEST_SIZE_U32_WORDS>(hasher, seed, buf.as_mut_slice());
             *buf.get(0)
         }
     }

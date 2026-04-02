@@ -465,7 +465,7 @@ fn generate_simple_gate_loop<MW: MersenneWrapper>(descs: &[(usize, [usize; 4])])
                             let mut c1 = bc1; #mul_c1; #add_c1;
                         }
                     }
-                    _ => {}
+                    _ => unreachable!()
                 }
                 _sg += 1;
             }

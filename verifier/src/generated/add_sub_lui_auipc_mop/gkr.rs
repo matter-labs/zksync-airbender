@@ -287,7 +287,7 @@ unsafe fn layer_0_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &c1);
                     }
                 }
-                _ => {}
+                _ => unreachable!(),
             }
             _sg += 1;
         }
@@ -832,7 +832,7 @@ unsafe fn layer_1_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &c1);
                     }
                 }
-                _ => {}
+                _ => unreachable!(),
             }
             _sg += 1;
         }
@@ -1095,7 +1095,7 @@ unsafe fn layer_2_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &c1);
                     }
                 }
-                _ => {}
+                _ => unreachable!(),
             }
             _sg += 1;
         }
@@ -1356,7 +1356,7 @@ unsafe fn layer_3_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &c1);
                     }
                 }
-                _ => {}
+                _ => unreachable!(),
             }
             _sg += 1;
         }
@@ -6372,7 +6372,11 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
         unsafe {
             init_challenges.set_len(3);
         }
-        draw_field_els_into(&mut hasher, &mut seed, init_challenges.as_mut_slice());
+        draw_field_els_into::<DRAW_BUF_CAPACITY>(
+            &mut hasher,
+            &mut seed,
+            init_challenges.as_mut_slice(),
+        );
         let lookup_alpha = *init_challenges.get(0);
         let lookup_additive_challenge = *init_challenges.get(1);
         let constraints_batch_challenge = *init_challenges.get(2);
@@ -6387,7 +6391,11 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
         unsafe {
             all_challenges.set_len(5usize);
         }
-        draw_field_els_into(&mut hasher, &mut seed, all_challenges.as_mut_slice());
+        draw_field_els_into::<DRAW_BUF_CAPACITY>(
+            &mut hasher,
+            &mut seed,
+            all_challenges.as_mut_slice(),
+        );
         let batching_challenge = *all_challenges.get(5usize - 1);
         let mut eq_buf = LazyVec::<BabyBearExt4, 16usize>::new();
         let eq_challenges: &[BabyBearExt4; 4usize] = all_challenges.as_slice()[..4usize]
@@ -6499,7 +6507,11 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             unsafe {
                 draw_buf.set_len(3);
             }
-            draw_field_els_into(&mut hasher, &mut seed, draw_buf.as_mut_slice());
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(
+                &mut hasher,
+                &mut seed,
+                draw_buf.as_mut_slice(),
+            );
             let r_before_last = *draw_buf.get(0);
             let r_last = *draw_buf.get(1);
             let next_batching = *draw_buf.get(2);
@@ -6553,7 +6565,11 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             unsafe {
                 draw_buf.set_len(3);
             }
-            draw_field_els_into(&mut hasher, &mut seed, draw_buf.as_mut_slice());
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(
+                &mut hasher,
+                &mut seed,
+                draw_buf.as_mut_slice(),
+            );
             let r_before_last = *draw_buf.get(0);
             let r_last = *draw_buf.get(1);
             let next_batching = *draw_buf.get(2);
@@ -6607,7 +6623,11 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             unsafe {
                 draw_buf.set_len(3);
             }
-            draw_field_els_into(&mut hasher, &mut seed, draw_buf.as_mut_slice());
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(
+                &mut hasher,
+                &mut seed,
+                draw_buf.as_mut_slice(),
+            );
             let r_before_last = *draw_buf.get(0);
             let r_last = *draw_buf.get(1);
             let next_batching = *draw_buf.get(2);
@@ -6661,7 +6681,11 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             unsafe {
                 draw_buf.set_len(3);
             }
-            draw_field_els_into(&mut hasher, &mut seed, draw_buf.as_mut_slice());
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(
+                &mut hasher,
+                &mut seed,
+                draw_buf.as_mut_slice(),
+            );
             let r_before_last = *draw_buf.get(0);
             let r_last = *draw_buf.get(1);
             let next_batching = *draw_buf.get(2);
@@ -6715,7 +6739,11 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             unsafe {
                 draw_buf.set_len(3);
             }
-            draw_field_els_into(&mut hasher, &mut seed, draw_buf.as_mut_slice());
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(
+                &mut hasher,
+                &mut seed,
+                draw_buf.as_mut_slice(),
+            );
             let r_before_last = *draw_buf.get(0);
             let r_last = *draw_buf.get(1);
             let next_batching = *draw_buf.get(2);
@@ -6769,7 +6797,11 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             unsafe {
                 draw_buf.set_len(3);
             }
-            draw_field_els_into(&mut hasher, &mut seed, draw_buf.as_mut_slice());
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(
+                &mut hasher,
+                &mut seed,
+                draw_buf.as_mut_slice(),
+            );
             let r_before_last = *draw_buf.get(0);
             let r_last = *draw_buf.get(1);
             let next_batching = *draw_buf.get(2);
@@ -6823,7 +6855,11 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             unsafe {
                 draw_buf.set_len(3);
             }
-            draw_field_els_into(&mut hasher, &mut seed, draw_buf.as_mut_slice());
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(
+                &mut hasher,
+                &mut seed,
+                draw_buf.as_mut_slice(),
+            );
             let r_before_last = *draw_buf.get(0);
             let r_last = *draw_buf.get(1);
             let next_batching = *draw_buf.get(2);
@@ -6877,7 +6913,11 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             unsafe {
                 draw_buf.set_len(3);
             }
-            draw_field_els_into(&mut hasher, &mut seed, draw_buf.as_mut_slice());
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(
+                &mut hasher,
+                &mut seed,
+                draw_buf.as_mut_slice(),
+            );
             let r_before_last = *draw_buf.get(0);
             let r_last = *draw_buf.get(1);
             let next_batching = *draw_buf.get(2);
@@ -6931,7 +6971,11 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             unsafe {
                 draw_buf.set_len(3);
             }
-            draw_field_els_into(&mut hasher, &mut seed, draw_buf.as_mut_slice());
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(
+                &mut hasher,
+                &mut seed,
+                draw_buf.as_mut_slice(),
+            );
             let r_before_last = *draw_buf.get(0);
             let r_last = *draw_buf.get(1);
             let next_batching = *draw_buf.get(2);
@@ -6985,7 +7029,11 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             unsafe {
                 draw_buf.set_len(3);
             }
-            draw_field_els_into(&mut hasher, &mut seed, draw_buf.as_mut_slice());
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(
+                &mut hasher,
+                &mut seed,
+                draw_buf.as_mut_slice(),
+            );
             let r_before_last = *draw_buf.get(0);
             let r_last = *draw_buf.get(1);
             let next_batching = *draw_buf.get(2);
@@ -7039,7 +7087,11 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             unsafe {
                 draw_buf.set_len(3);
             }
-            draw_field_els_into(&mut hasher, &mut seed, draw_buf.as_mut_slice());
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(
+                &mut hasher,
+                &mut seed,
+                draw_buf.as_mut_slice(),
+            );
             let r_before_last = *draw_buf.get(0);
             let r_last = *draw_buf.get(1);
             let next_batching = *draw_buf.get(2);
@@ -7093,7 +7145,11 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             unsafe {
                 draw_buf.set_len(3);
             }
-            draw_field_els_into(&mut hasher, &mut seed, draw_buf.as_mut_slice());
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(
+                &mut hasher,
+                &mut seed,
+                draw_buf.as_mut_slice(),
+            );
             let r_before_last = *draw_buf.get(0);
             let r_last = *draw_buf.get(1);
             let next_batching = *draw_buf.get(2);
@@ -7147,7 +7203,11 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             unsafe {
                 draw_buf.set_len(3);
             }
-            draw_field_els_into(&mut hasher, &mut seed, draw_buf.as_mut_slice());
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(
+                &mut hasher,
+                &mut seed,
+                draw_buf.as_mut_slice(),
+            );
             let r_before_last = *draw_buf.get(0);
             let r_last = *draw_buf.get(1);
             let next_batching = *draw_buf.get(2);
@@ -7201,7 +7261,11 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             unsafe {
                 draw_buf.set_len(3);
             }
-            draw_field_els_into(&mut hasher, &mut seed, draw_buf.as_mut_slice());
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(
+                &mut hasher,
+                &mut seed,
+                draw_buf.as_mut_slice(),
+            );
             let r_before_last = *draw_buf.get(0);
             let r_last = *draw_buf.get(1);
             let next_batching = *draw_buf.get(2);
@@ -7255,7 +7319,11 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             unsafe {
                 draw_buf.set_len(3);
             }
-            draw_field_els_into(&mut hasher, &mut seed, draw_buf.as_mut_slice());
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(
+                &mut hasher,
+                &mut seed,
+                draw_buf.as_mut_slice(),
+            );
             let r_before_last = *draw_buf.get(0);
             let r_last = *draw_buf.get(1);
             let next_batching = *draw_buf.get(2);
@@ -7309,7 +7377,11 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             unsafe {
                 draw_buf.set_len(3);
             }
-            draw_field_els_into(&mut hasher, &mut seed, draw_buf.as_mut_slice());
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(
+                &mut hasher,
+                &mut seed,
+                draw_buf.as_mut_slice(),
+            );
             let r_before_last = *draw_buf.get(0);
             let r_last = *draw_buf.get(1);
             let next_batching = *draw_buf.get(2);
@@ -7363,7 +7435,11 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             unsafe {
                 draw_buf.set_len(3);
             }
-            draw_field_els_into(&mut hasher, &mut seed, draw_buf.as_mut_slice());
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(
+                &mut hasher,
+                &mut seed,
+                draw_buf.as_mut_slice(),
+            );
             let r_before_last = *draw_buf.get(0);
             let r_last = *draw_buf.get(1);
             let next_batching = *draw_buf.get(2);
@@ -7417,7 +7493,11 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             unsafe {
                 draw_buf.set_len(3);
             }
-            draw_field_els_into(&mut hasher, &mut seed, draw_buf.as_mut_slice());
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(
+                &mut hasher,
+                &mut seed,
+                draw_buf.as_mut_slice(),
+            );
             let r_before_last = *draw_buf.get(0);
             let r_last = *draw_buf.get(1);
             let next_batching = *draw_buf.get(2);
@@ -7471,7 +7551,11 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             unsafe {
                 draw_buf.set_len(3);
             }
-            draw_field_els_into(&mut hasher, &mut seed, draw_buf.as_mut_slice());
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(
+                &mut hasher,
+                &mut seed,
+                draw_buf.as_mut_slice(),
+            );
             let r_before_last = *draw_buf.get(0);
             let r_last = *draw_buf.get(1);
             let next_batching = *draw_buf.get(2);
@@ -7525,7 +7609,11 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             unsafe {
                 draw_buf.set_len(3);
             }
-            draw_field_els_into(&mut hasher, &mut seed, draw_buf.as_mut_slice());
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(
+                &mut hasher,
+                &mut seed,
+                draw_buf.as_mut_slice(),
+            );
             let r_before_last = *draw_buf.get(0);
             let r_last = *draw_buf.get(1);
             let next_batching = *draw_buf.get(2);
@@ -7593,7 +7681,11 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             unsafe {
                 draw_buf.set_len(2);
             }
-            draw_field_els_into(&mut hasher, &mut seed, draw_buf.as_mut_slice());
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(
+                &mut hasher,
+                &mut seed,
+                draw_buf.as_mut_slice(),
+            );
             let last_r = *draw_buf.get(0);
             let next_batching = *draw_buf.get(1);
             *state.prev_point.get_unchecked_mut(fc_len) = last_r;
@@ -7641,7 +7733,11 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             unsafe {
                 draw_buf.set_len(2);
             }
-            draw_field_els_into(&mut hasher, &mut seed, draw_buf.as_mut_slice());
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(
+                &mut hasher,
+                &mut seed,
+                draw_buf.as_mut_slice(),
+            );
             let last_r = *draw_buf.get(0);
             let next_batching = *draw_buf.get(1);
             *state.prev_point.get_unchecked_mut(fc_len) = last_r;
@@ -7689,7 +7785,11 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             unsafe {
                 draw_buf.set_len(2);
             }
-            draw_field_els_into(&mut hasher, &mut seed, draw_buf.as_mut_slice());
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(
+                &mut hasher,
+                &mut seed,
+                draw_buf.as_mut_slice(),
+            );
             let last_r = *draw_buf.get(0);
             let next_batching = *draw_buf.get(1);
             *state.prev_point.get_unchecked_mut(fc_len) = last_r;
@@ -7737,7 +7837,11 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             unsafe {
                 draw_buf.set_len(2);
             }
-            draw_field_els_into(&mut hasher, &mut seed, draw_buf.as_mut_slice());
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(
+                &mut hasher,
+                &mut seed,
+                draw_buf.as_mut_slice(),
+            );
             let last_r = *draw_buf.get(0);
             let next_batching = *draw_buf.get(1);
             *state.prev_point.get_unchecked_mut(fc_len) = last_r;
@@ -7945,7 +8049,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
         unsafe {
             draw_buf.set_len(1);
         }
-        draw_field_els_into(&mut hasher, &mut seed, draw_buf.as_mut_slice());
+        draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut hasher, &mut seed, draw_buf.as_mut_slice());
         let whir_batching_challenge = *draw_buf.get(0);
         let grand_product_accumulator: BabyBearExt4 = read_field_el::<I>();
         Ok(GKRVerifierOutput {

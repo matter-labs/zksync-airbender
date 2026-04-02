@@ -11,7 +11,6 @@ use verifier_common::lazy_vec::LazyVec;
 use verifier_common::non_determinism_source::NonDeterminismSource;
 use verifier_common::transcript::{Blake2sTranscript, Seed};
 pub const EXT_DEGREE: usize = <BabyBearExt4 as FieldExtension<BabyBearField>>::DEGREE;
-pub const DRAW_BUF_CAPACITY: usize = 64;
 #[inline(always)]
 pub fn read_field_el<I: NonDeterminismSource>() -> BabyBearExt4 {
     let mut words = LazyVec::<BabyBearField, EXT_DEGREE>::new();
@@ -35,15 +34,15 @@ pub fn commit_field_els(seed: &mut Seed, els: &[BabyBearExt4]) {
     Blake2sTranscript::commit_with_seed(seed, as_u32);
 }
 #[inline(always)]
-pub fn draw_field_els_into(
+pub fn draw_field_els_into<const BUF_CAP: usize>(
     hasher: &mut DelegatedBlake2sState,
     seed: &mut Seed,
     dst: &mut [BabyBearExt4],
 ) {
     let n = dst.len();
     let padded = (n * EXT_DEGREE).next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS);
-    debug_assert!(padded <= DRAW_BUF_CAPACITY, "draw buffer too small");
-    let mut words = LazyVec::<u32, DRAW_BUF_CAPACITY>::new();
+    debug_assert!(padded <= BUF_CAP, "draw buffer too small");
+    let mut words = LazyVec::<u32, BUF_CAP>::new();
     unsafe {
         words.set_len(padded);
         Blake2sTranscript::draw_randomness_using_hasher(hasher, seed, words.as_mut_slice());
@@ -72,7 +71,7 @@ pub fn draw_single_field_el(hasher: &mut DelegatedBlake2sState, seed: &mut Seed)
     unsafe {
         buf.set_len(1);
     }
-    draw_field_els_into(hasher, seed, buf.as_mut_slice());
+    draw_field_els_into::<BLAKE2S_DIGEST_SIZE_U32_WORDS>(hasher, seed, buf.as_mut_slice());
     *buf.get(0)
 }
 #[inline(always)]
@@ -293,7 +292,11 @@ pub fn verify_whir_sumcheck_step<I: NonDeterminismSource>(
     unsafe {
         challenge_buf.set_len(1);
     }
-    draw_field_els_into(hasher, seed, challenge_buf.as_mut_slice());
+    draw_field_els_into::<BLAKE2S_DIGEST_SIZE_U32_WORDS>(
+        hasher,
+        seed,
+        challenge_buf.as_mut_slice(),
+    );
     let alpha = unsafe { *challenge_buf.get_unchecked(0) };
     let mut new_claim = c2;
     field_ops::mul_assign(&mut new_claim, &alpha);

@@ -6,6 +6,7 @@ pub const GKR_TRANSCRIPT_U32: usize = 540usize;
 pub const GKR_MAX_POW: usize = 18usize;
 pub const GKR_EVAL_BUF: usize = 1168usize;
 pub const GKR_COMMIT_BUF: usize = 32usize;
+pub const DRAW_BUF_CAPACITY: usize = 24usize;
 pub const LAYER_0_SORTED_ADDRS: &[GKRAddress] = &[
     GKRAddress::BaseLayerWitness(0usize),
     GKRAddress::BaseLayerWitness(1usize),

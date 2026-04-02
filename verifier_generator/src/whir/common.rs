@@ -86,7 +86,7 @@ pub fn generate_whir_common<MW: MersenneWrapper>(max_fold_steps: usize) -> Token
 
             let mut challenge_buf = LazyVec::<#quartic_struct, 1>::new();
             unsafe { challenge_buf.set_len(1); }
-            draw_field_els_into(hasher, seed, challenge_buf.as_mut_slice());
+            draw_field_els_into::<BLAKE2S_DIGEST_SIZE_U32_WORDS>(hasher, seed, challenge_buf.as_mut_slice());
             let alpha = unsafe { *challenge_buf.get_unchecked(0) };
 
             // Horner: c0 + alpha*(c1 + alpha*c2)
