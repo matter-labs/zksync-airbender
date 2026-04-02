@@ -17,6 +17,7 @@ use verifier_common::gkr::{
 use verifier_common::non_determinism_source::NonDeterminismSource;
 use verifier_common::transcript::Blake2sTranscript;
 #[inline(always)]
+#[allow(clippy::needless_borrow)]
 unsafe fn layer_0_compute_claim(
     output_claims: &LazyVec<BabyBearExt4, GKR_ADDRS>,
     batch_base: BabyBearExt4,
@@ -44,7 +45,7 @@ unsafe fn layer_0_compute_claim(
     let mut current_batch = BabyBearExt4::ONE;
     let mut i = 0;
     while i < 17usize {
-        let (n, o0, o1) = DESCS[i];
+        let (n, o0, o1) = unsafe { *DESCS.get_unchecked(i) };
         if n == 0 {
             field_ops::mul_assign(&mut current_batch, &batch_base);
         } else if n == 1 {
@@ -70,7 +71,13 @@ unsafe fn layer_0_compute_claim(
     combined
 }
 #[inline(always)]
-#[allow(unused_variables)]
+#[allow(
+    unused_variables,
+    unused_mut,
+    clippy::needless_borrow,
+    clippy::needless_range_loop,
+    clippy::large_const_arrays
+)]
 unsafe fn layer_0_final_step_accumulator(
     evals: &[[BabyBearExt4; 2]],
     batch_base: BabyBearExt4,
@@ -101,13 +108,13 @@ unsafe fn layer_0_final_step_accumulator(
         ];
         let mut _sg = 0;
         while _sg < 16usize {
-            let (gt, idx) = SIMPLE_GATES[_sg];
+            let (gt, idx) = unsafe { *SIMPLE_GATES.get_unchecked(_sg) };
             match gt {
                 1usize => {
                     let bc = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
-                        let val = evals[idx[0]][j];
+                        let val = evals.get_unchecked(idx[0])[j];
                         let mut contrib = bc;
                         field_ops::mul_assign(&mut contrib, &val);
                         field_ops::add_assign(&mut acc[j], &contrib);
@@ -117,8 +124,8 @@ unsafe fn layer_0_final_step_accumulator(
                     let bc = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
-                        let mut val = evals[idx[0]][j];
-                        let vb = evals[idx[1]][j];
+                        let mut val = evals.get_unchecked(idx[0])[j];
+                        let vb = evals.get_unchecked(idx[1])[j];
                         field_ops::mul_assign(&mut val, &vb);
                         let mut contrib = bc;
                         field_ops::mul_assign(&mut contrib, &val);
@@ -129,8 +136,8 @@ unsafe fn layer_0_final_step_accumulator(
                     let bc = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
-                        let mut val = evals[idx[0]][j];
-                        let mask_val = evals[idx[1]][j];
+                        let mut val = evals.get_unchecked(idx[0])[j];
+                        let mask_val = evals.get_unchecked(idx[1])[j];
                         field_ops::sub_assign_base(&mut val, &BabyBearField::ONE);
                         field_ops::mul_assign(&mut val, &mask_val);
                         field_ops::add_assign_base(&mut val, &BabyBearField::ONE);
@@ -143,8 +150,8 @@ unsafe fn layer_0_final_step_accumulator(
                     let bc = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
-                        let mut val = evals[idx[0]][j];
-                        let vi = evals[idx[1]][j];
+                        let mut val = evals.get_unchecked(idx[0])[j];
+                        let vi = evals.get_unchecked(idx[1])[j];
                         field_ops::mul_assign(&mut val, &vi);
                         let mut contrib = bc;
                         field_ops::mul_assign(&mut contrib, &val);
@@ -157,8 +164,8 @@ unsafe fn layer_0_final_step_accumulator(
                     let bc1 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
-                        let mut bg = evals[idx[0]][j];
-                        let mut dg = evals[idx[1]][j];
+                        let mut bg = evals.get_unchecked(idx[0])[j];
+                        let mut dg = evals.get_unchecked(idx[1])[j];
                         field_ops::add_assign(&mut bg, &lookup_additive_challenge);
                         field_ops::add_assign(&mut dg, &lookup_additive_challenge);
                         let mut num = bg;
@@ -181,9 +188,9 @@ unsafe fn layer_0_final_step_accumulator(
                     let bc1 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
-                        let mut bg = evals[idx[0]][j];
-                        let mut dg = evals[idx[2]][j];
-                        let mut cb = evals[idx[1]][j];
+                        let mut bg = evals.get_unchecked(idx[0])[j];
+                        let mut dg = evals.get_unchecked(idx[2])[j];
+                        let mut cb = evals.get_unchecked(idx[1])[j];
                         field_ops::add_assign(&mut bg, &lookup_additive_challenge);
                         field_ops::add_assign(&mut dg, &lookup_additive_challenge);
                         field_ops::mul_assign(&mut cb, &bg);
@@ -207,9 +214,9 @@ unsafe fn layer_0_final_step_accumulator(
                     let bc1 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
-                        let a_val = evals[idx[0]][j];
-                        let b_val = evals[idx[1]][j];
-                        let mut r_g = evals[idx[2]][j];
+                        let a_val = evals.get_unchecked(idx[0])[j];
+                        let b_val = evals.get_unchecked(idx[1])[j];
+                        let mut r_g = evals.get_unchecked(idx[2])[j];
                         field_ops::add_assign(&mut r_g, &lookup_additive_challenge);
                         let mut num = a_val;
                         field_ops::mul_assign(&mut num, &r_g);
@@ -232,10 +239,10 @@ unsafe fn layer_0_final_step_accumulator(
                     let bc1 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
-                        let a_val = evals[idx[0]][j];
-                        let b_val = evals[idx[1]][j];
-                        let c_val = evals[idx[2]][j];
-                        let d_val = evals[idx[3]][j];
+                        let a_val = evals.get_unchecked(idx[0])[j];
+                        let b_val = evals.get_unchecked(idx[1])[j];
+                        let c_val = evals.get_unchecked(idx[2])[j];
+                        let d_val = evals.get_unchecked(idx[3])[j];
                         let mut num = a_val;
                         field_ops::mul_assign(&mut num, &d_val);
                         let mut cb_tmp = c_val;
@@ -259,10 +266,10 @@ unsafe fn layer_0_final_step_accumulator(
                     let bc1 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
-                        let a_val = evals[idx[0]][j];
-                        let mut b_cd = evals[idx[1]][j];
-                        let c_val = evals[idx[2]][j];
-                        let mut d_cd = evals[idx[3]][j];
+                        let a_val = evals.get_unchecked(idx[0])[j];
+                        let mut b_cd = evals.get_unchecked(idx[1])[j];
+                        let c_val = evals.get_unchecked(idx[2])[j];
+                        let mut d_cd = evals.get_unchecked(idx[3])[j];
                         field_ops::add_assign(&mut b_cd, &lookup_additive_challenge);
                         field_ops::add_assign(&mut d_cd, &lookup_additive_challenge);
                         let mut ad_cd = a_val;
@@ -569,6 +576,7 @@ unsafe fn layer_0_final_step_accumulator(
     acc
 }
 #[inline(always)]
+#[allow(clippy::needless_borrow)]
 unsafe fn layer_1_compute_claim(
     output_claims: &LazyVec<BabyBearExt4, GKR_ADDRS>,
     batch_base: BabyBearExt4,
@@ -592,7 +600,7 @@ unsafe fn layer_1_compute_claim(
     let mut current_batch = BabyBearExt4::ONE;
     let mut i = 0;
     while i < 13usize {
-        let (n, o0, o1) = DESCS[i];
+        let (n, o0, o1) = unsafe { *DESCS.get_unchecked(i) };
         if n == 0 {
             field_ops::mul_assign(&mut current_batch, &batch_base);
         } else if n == 1 {
@@ -618,7 +626,13 @@ unsafe fn layer_1_compute_claim(
     combined
 }
 #[inline(always)]
-#[allow(unused_variables)]
+#[allow(
+    unused_variables,
+    unused_mut,
+    clippy::needless_borrow,
+    clippy::needless_range_loop,
+    clippy::large_const_arrays
+)]
 unsafe fn layer_1_final_step_accumulator(
     evals: &[[BabyBearExt4; 2]],
     batch_base: BabyBearExt4,
@@ -646,13 +660,13 @@ unsafe fn layer_1_final_step_accumulator(
         ];
         let mut _sg = 0;
         while _sg < 13usize {
-            let (gt, idx) = SIMPLE_GATES[_sg];
+            let (gt, idx) = unsafe { *SIMPLE_GATES.get_unchecked(_sg) };
             match gt {
                 1usize => {
                     let bc = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
-                        let val = evals[idx[0]][j];
+                        let val = evals.get_unchecked(idx[0])[j];
                         let mut contrib = bc;
                         field_ops::mul_assign(&mut contrib, &val);
                         field_ops::add_assign(&mut acc[j], &contrib);
@@ -662,8 +676,8 @@ unsafe fn layer_1_final_step_accumulator(
                     let bc = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
-                        let mut val = evals[idx[0]][j];
-                        let vb = evals[idx[1]][j];
+                        let mut val = evals.get_unchecked(idx[0])[j];
+                        let vb = evals.get_unchecked(idx[1])[j];
                         field_ops::mul_assign(&mut val, &vb);
                         let mut contrib = bc;
                         field_ops::mul_assign(&mut contrib, &val);
@@ -674,8 +688,8 @@ unsafe fn layer_1_final_step_accumulator(
                     let bc = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
-                        let mut val = evals[idx[0]][j];
-                        let mask_val = evals[idx[1]][j];
+                        let mut val = evals.get_unchecked(idx[0])[j];
+                        let mask_val = evals.get_unchecked(idx[1])[j];
                         field_ops::sub_assign_base(&mut val, &BabyBearField::ONE);
                         field_ops::mul_assign(&mut val, &mask_val);
                         field_ops::add_assign_base(&mut val, &BabyBearField::ONE);
@@ -688,8 +702,8 @@ unsafe fn layer_1_final_step_accumulator(
                     let bc = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
-                        let mut val = evals[idx[0]][j];
-                        let vi = evals[idx[1]][j];
+                        let mut val = evals.get_unchecked(idx[0])[j];
+                        let vi = evals.get_unchecked(idx[1])[j];
                         field_ops::mul_assign(&mut val, &vi);
                         let mut contrib = bc;
                         field_ops::mul_assign(&mut contrib, &val);
@@ -702,8 +716,8 @@ unsafe fn layer_1_final_step_accumulator(
                     let bc1 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
-                        let mut bg = evals[idx[0]][j];
-                        let mut dg = evals[idx[1]][j];
+                        let mut bg = evals.get_unchecked(idx[0])[j];
+                        let mut dg = evals.get_unchecked(idx[1])[j];
                         field_ops::add_assign(&mut bg, &lookup_additive_challenge);
                         field_ops::add_assign(&mut dg, &lookup_additive_challenge);
                         let mut num = bg;
@@ -726,9 +740,9 @@ unsafe fn layer_1_final_step_accumulator(
                     let bc1 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
-                        let mut bg = evals[idx[0]][j];
-                        let mut dg = evals[idx[2]][j];
-                        let mut cb = evals[idx[1]][j];
+                        let mut bg = evals.get_unchecked(idx[0])[j];
+                        let mut dg = evals.get_unchecked(idx[2])[j];
+                        let mut cb = evals.get_unchecked(idx[1])[j];
                         field_ops::add_assign(&mut bg, &lookup_additive_challenge);
                         field_ops::add_assign(&mut dg, &lookup_additive_challenge);
                         field_ops::mul_assign(&mut cb, &bg);
@@ -752,9 +766,9 @@ unsafe fn layer_1_final_step_accumulator(
                     let bc1 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
-                        let a_val = evals[idx[0]][j];
-                        let b_val = evals[idx[1]][j];
-                        let mut r_g = evals[idx[2]][j];
+                        let a_val = evals.get_unchecked(idx[0])[j];
+                        let b_val = evals.get_unchecked(idx[1])[j];
+                        let mut r_g = evals.get_unchecked(idx[2])[j];
                         field_ops::add_assign(&mut r_g, &lookup_additive_challenge);
                         let mut num = a_val;
                         field_ops::mul_assign(&mut num, &r_g);
@@ -777,10 +791,10 @@ unsafe fn layer_1_final_step_accumulator(
                     let bc1 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
-                        let a_val = evals[idx[0]][j];
-                        let b_val = evals[idx[1]][j];
-                        let c_val = evals[idx[2]][j];
-                        let d_val = evals[idx[3]][j];
+                        let a_val = evals.get_unchecked(idx[0])[j];
+                        let b_val = evals.get_unchecked(idx[1])[j];
+                        let c_val = evals.get_unchecked(idx[2])[j];
+                        let d_val = evals.get_unchecked(idx[3])[j];
                         let mut num = a_val;
                         field_ops::mul_assign(&mut num, &d_val);
                         let mut cb_tmp = c_val;
@@ -804,10 +818,10 @@ unsafe fn layer_1_final_step_accumulator(
                     let bc1 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
-                        let a_val = evals[idx[0]][j];
-                        let mut b_cd = evals[idx[1]][j];
-                        let c_val = evals[idx[2]][j];
-                        let mut d_cd = evals[idx[3]][j];
+                        let a_val = evals.get_unchecked(idx[0])[j];
+                        let mut b_cd = evals.get_unchecked(idx[1])[j];
+                        let c_val = evals.get_unchecked(idx[2])[j];
+                        let mut d_cd = evals.get_unchecked(idx[3])[j];
                         field_ops::add_assign(&mut b_cd, &lookup_additive_challenge);
                         field_ops::add_assign(&mut d_cd, &lookup_additive_challenge);
                         let mut ad_cd = a_val;
@@ -835,6 +849,7 @@ unsafe fn layer_1_final_step_accumulator(
     acc
 }
 #[inline(always)]
+#[allow(clippy::needless_borrow)]
 unsafe fn layer_2_compute_claim(
     output_claims: &LazyVec<BabyBearExt4, GKR_ADDRS>,
     batch_base: BabyBearExt4,
@@ -852,7 +867,7 @@ unsafe fn layer_2_compute_claim(
     let mut current_batch = BabyBearExt4::ONE;
     let mut i = 0;
     while i < 7usize {
-        let (n, o0, o1) = DESCS[i];
+        let (n, o0, o1) = unsafe { *DESCS.get_unchecked(i) };
         if n == 0 {
             field_ops::mul_assign(&mut current_batch, &batch_base);
         } else if n == 1 {
@@ -878,7 +893,13 @@ unsafe fn layer_2_compute_claim(
     combined
 }
 #[inline(always)]
-#[allow(unused_variables)]
+#[allow(
+    unused_variables,
+    unused_mut,
+    clippy::needless_borrow,
+    clippy::needless_range_loop,
+    clippy::large_const_arrays
+)]
 unsafe fn layer_2_final_step_accumulator(
     evals: &[[BabyBearExt4; 2]],
     batch_base: BabyBearExt4,
@@ -900,13 +921,13 @@ unsafe fn layer_2_final_step_accumulator(
         ];
         let mut _sg = 0;
         while _sg < 7usize {
-            let (gt, idx) = SIMPLE_GATES[_sg];
+            let (gt, idx) = unsafe { *SIMPLE_GATES.get_unchecked(_sg) };
             match gt {
                 1usize => {
                     let bc = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
-                        let val = evals[idx[0]][j];
+                        let val = evals.get_unchecked(idx[0])[j];
                         let mut contrib = bc;
                         field_ops::mul_assign(&mut contrib, &val);
                         field_ops::add_assign(&mut acc[j], &contrib);
@@ -916,8 +937,8 @@ unsafe fn layer_2_final_step_accumulator(
                     let bc = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
-                        let mut val = evals[idx[0]][j];
-                        let vb = evals[idx[1]][j];
+                        let mut val = evals.get_unchecked(idx[0])[j];
+                        let vb = evals.get_unchecked(idx[1])[j];
                         field_ops::mul_assign(&mut val, &vb);
                         let mut contrib = bc;
                         field_ops::mul_assign(&mut contrib, &val);
@@ -928,8 +949,8 @@ unsafe fn layer_2_final_step_accumulator(
                     let bc = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
-                        let mut val = evals[idx[0]][j];
-                        let mask_val = evals[idx[1]][j];
+                        let mut val = evals.get_unchecked(idx[0])[j];
+                        let mask_val = evals.get_unchecked(idx[1])[j];
                         field_ops::sub_assign_base(&mut val, &BabyBearField::ONE);
                         field_ops::mul_assign(&mut val, &mask_val);
                         field_ops::add_assign_base(&mut val, &BabyBearField::ONE);
@@ -942,8 +963,8 @@ unsafe fn layer_2_final_step_accumulator(
                     let bc = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
-                        let mut val = evals[idx[0]][j];
-                        let vi = evals[idx[1]][j];
+                        let mut val = evals.get_unchecked(idx[0])[j];
+                        let vi = evals.get_unchecked(idx[1])[j];
                         field_ops::mul_assign(&mut val, &vi);
                         let mut contrib = bc;
                         field_ops::mul_assign(&mut contrib, &val);
@@ -956,8 +977,8 @@ unsafe fn layer_2_final_step_accumulator(
                     let bc1 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
-                        let mut bg = evals[idx[0]][j];
-                        let mut dg = evals[idx[1]][j];
+                        let mut bg = evals.get_unchecked(idx[0])[j];
+                        let mut dg = evals.get_unchecked(idx[1])[j];
                         field_ops::add_assign(&mut bg, &lookup_additive_challenge);
                         field_ops::add_assign(&mut dg, &lookup_additive_challenge);
                         let mut num = bg;
@@ -980,9 +1001,9 @@ unsafe fn layer_2_final_step_accumulator(
                     let bc1 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
-                        let mut bg = evals[idx[0]][j];
-                        let mut dg = evals[idx[2]][j];
-                        let mut cb = evals[idx[1]][j];
+                        let mut bg = evals.get_unchecked(idx[0])[j];
+                        let mut dg = evals.get_unchecked(idx[2])[j];
+                        let mut cb = evals.get_unchecked(idx[1])[j];
                         field_ops::add_assign(&mut bg, &lookup_additive_challenge);
                         field_ops::add_assign(&mut dg, &lookup_additive_challenge);
                         field_ops::mul_assign(&mut cb, &bg);
@@ -1006,9 +1027,9 @@ unsafe fn layer_2_final_step_accumulator(
                     let bc1 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
-                        let a_val = evals[idx[0]][j];
-                        let b_val = evals[idx[1]][j];
-                        let mut r_g = evals[idx[2]][j];
+                        let a_val = evals.get_unchecked(idx[0])[j];
+                        let b_val = evals.get_unchecked(idx[1])[j];
+                        let mut r_g = evals.get_unchecked(idx[2])[j];
                         field_ops::add_assign(&mut r_g, &lookup_additive_challenge);
                         let mut num = a_val;
                         field_ops::mul_assign(&mut num, &r_g);
@@ -1031,10 +1052,10 @@ unsafe fn layer_2_final_step_accumulator(
                     let bc1 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
-                        let a_val = evals[idx[0]][j];
-                        let b_val = evals[idx[1]][j];
-                        let c_val = evals[idx[2]][j];
-                        let d_val = evals[idx[3]][j];
+                        let a_val = evals.get_unchecked(idx[0])[j];
+                        let b_val = evals.get_unchecked(idx[1])[j];
+                        let c_val = evals.get_unchecked(idx[2])[j];
+                        let d_val = evals.get_unchecked(idx[3])[j];
                         let mut num = a_val;
                         field_ops::mul_assign(&mut num, &d_val);
                         let mut cb_tmp = c_val;
@@ -1058,10 +1079,10 @@ unsafe fn layer_2_final_step_accumulator(
                     let bc1 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
-                        let a_val = evals[idx[0]][j];
-                        let mut b_cd = evals[idx[1]][j];
-                        let c_val = evals[idx[2]][j];
-                        let mut d_cd = evals[idx[3]][j];
+                        let a_val = evals.get_unchecked(idx[0])[j];
+                        let mut b_cd = evals.get_unchecked(idx[1])[j];
+                        let c_val = evals.get_unchecked(idx[2])[j];
+                        let mut d_cd = evals.get_unchecked(idx[3])[j];
                         field_ops::add_assign(&mut b_cd, &lookup_additive_challenge);
                         field_ops::add_assign(&mut d_cd, &lookup_additive_challenge);
                         let mut ad_cd = a_val;
@@ -1089,6 +1110,7 @@ unsafe fn layer_2_final_step_accumulator(
     acc
 }
 #[inline(always)]
+#[allow(clippy::needless_borrow)]
 unsafe fn layer_3_compute_claim(
     output_claims: &LazyVec<BabyBearExt4, GKR_ADDRS>,
     batch_base: BabyBearExt4,
@@ -1106,7 +1128,7 @@ unsafe fn layer_3_compute_claim(
     let mut current_batch = BabyBearExt4::ONE;
     let mut i = 0;
     while i < 7usize {
-        let (n, o0, o1) = DESCS[i];
+        let (n, o0, o1) = unsafe { *DESCS.get_unchecked(i) };
         if n == 0 {
             field_ops::mul_assign(&mut current_batch, &batch_base);
         } else if n == 1 {
@@ -1132,7 +1154,13 @@ unsafe fn layer_3_compute_claim(
     combined
 }
 #[inline(always)]
-#[allow(unused_variables)]
+#[allow(
+    unused_variables,
+    unused_mut,
+    clippy::needless_borrow,
+    clippy::needless_range_loop,
+    clippy::large_const_arrays
+)]
 unsafe fn layer_3_final_step_accumulator(
     evals: &[[BabyBearExt4; 2]],
     batch_base: BabyBearExt4,
@@ -1154,13 +1182,13 @@ unsafe fn layer_3_final_step_accumulator(
         ];
         let mut _sg = 0;
         while _sg < 7usize {
-            let (gt, idx) = SIMPLE_GATES[_sg];
+            let (gt, idx) = unsafe { *SIMPLE_GATES.get_unchecked(_sg) };
             match gt {
                 1usize => {
                     let bc = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
-                        let val = evals[idx[0]][j];
+                        let val = evals.get_unchecked(idx[0])[j];
                         let mut contrib = bc;
                         field_ops::mul_assign(&mut contrib, &val);
                         field_ops::add_assign(&mut acc[j], &contrib);
@@ -1170,8 +1198,8 @@ unsafe fn layer_3_final_step_accumulator(
                     let bc = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
-                        let mut val = evals[idx[0]][j];
-                        let vb = evals[idx[1]][j];
+                        let mut val = evals.get_unchecked(idx[0])[j];
+                        let vb = evals.get_unchecked(idx[1])[j];
                         field_ops::mul_assign(&mut val, &vb);
                         let mut contrib = bc;
                         field_ops::mul_assign(&mut contrib, &val);
@@ -1182,8 +1210,8 @@ unsafe fn layer_3_final_step_accumulator(
                     let bc = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
-                        let mut val = evals[idx[0]][j];
-                        let mask_val = evals[idx[1]][j];
+                        let mut val = evals.get_unchecked(idx[0])[j];
+                        let mask_val = evals.get_unchecked(idx[1])[j];
                         field_ops::sub_assign_base(&mut val, &BabyBearField::ONE);
                         field_ops::mul_assign(&mut val, &mask_val);
                         field_ops::add_assign_base(&mut val, &BabyBearField::ONE);
@@ -1196,8 +1224,8 @@ unsafe fn layer_3_final_step_accumulator(
                     let bc = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
-                        let mut val = evals[idx[0]][j];
-                        let vi = evals[idx[1]][j];
+                        let mut val = evals.get_unchecked(idx[0])[j];
+                        let vi = evals.get_unchecked(idx[1])[j];
                         field_ops::mul_assign(&mut val, &vi);
                         let mut contrib = bc;
                         field_ops::mul_assign(&mut contrib, &val);
@@ -1210,8 +1238,8 @@ unsafe fn layer_3_final_step_accumulator(
                     let bc1 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
-                        let mut bg = evals[idx[0]][j];
-                        let mut dg = evals[idx[1]][j];
+                        let mut bg = evals.get_unchecked(idx[0])[j];
+                        let mut dg = evals.get_unchecked(idx[1])[j];
                         field_ops::add_assign(&mut bg, &lookup_additive_challenge);
                         field_ops::add_assign(&mut dg, &lookup_additive_challenge);
                         let mut num = bg;
@@ -1234,9 +1262,9 @@ unsafe fn layer_3_final_step_accumulator(
                     let bc1 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
-                        let mut bg = evals[idx[0]][j];
-                        let mut dg = evals[idx[2]][j];
-                        let mut cb = evals[idx[1]][j];
+                        let mut bg = evals.get_unchecked(idx[0])[j];
+                        let mut dg = evals.get_unchecked(idx[2])[j];
+                        let mut cb = evals.get_unchecked(idx[1])[j];
                         field_ops::add_assign(&mut bg, &lookup_additive_challenge);
                         field_ops::add_assign(&mut dg, &lookup_additive_challenge);
                         field_ops::mul_assign(&mut cb, &bg);
@@ -1260,9 +1288,9 @@ unsafe fn layer_3_final_step_accumulator(
                     let bc1 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
-                        let a_val = evals[idx[0]][j];
-                        let b_val = evals[idx[1]][j];
-                        let mut r_g = evals[idx[2]][j];
+                        let a_val = evals.get_unchecked(idx[0])[j];
+                        let b_val = evals.get_unchecked(idx[1])[j];
+                        let mut r_g = evals.get_unchecked(idx[2])[j];
                         field_ops::add_assign(&mut r_g, &lookup_additive_challenge);
                         let mut num = a_val;
                         field_ops::mul_assign(&mut num, &r_g);
@@ -1285,10 +1313,10 @@ unsafe fn layer_3_final_step_accumulator(
                     let bc1 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
-                        let a_val = evals[idx[0]][j];
-                        let b_val = evals[idx[1]][j];
-                        let c_val = evals[idx[2]][j];
-                        let d_val = evals[idx[3]][j];
+                        let a_val = evals.get_unchecked(idx[0])[j];
+                        let b_val = evals.get_unchecked(idx[1])[j];
+                        let c_val = evals.get_unchecked(idx[2])[j];
+                        let d_val = evals.get_unchecked(idx[3])[j];
                         let mut num = a_val;
                         field_ops::mul_assign(&mut num, &d_val);
                         let mut cb_tmp = c_val;
@@ -1312,10 +1340,10 @@ unsafe fn layer_3_final_step_accumulator(
                     let bc1 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
-                        let a_val = evals[idx[0]][j];
-                        let mut b_cd = evals[idx[1]][j];
-                        let c_val = evals[idx[2]][j];
-                        let mut d_cd = evals[idx[3]][j];
+                        let a_val = evals.get_unchecked(idx[0])[j];
+                        let mut b_cd = evals.get_unchecked(idx[1])[j];
+                        let c_val = evals.get_unchecked(idx[2])[j];
+                        let mut d_cd = evals.get_unchecked(idx[3])[j];
                         field_ops::add_assign(&mut b_cd, &lookup_additive_challenge);
                         field_ops::add_assign(&mut d_cd, &lookup_additive_challenge);
                         let mut ad_cd = a_val;
@@ -1343,6 +1371,7 @@ unsafe fn layer_3_final_step_accumulator(
     acc
 }
 #[inline(always)]
+#[allow(clippy::needless_borrow)]
 unsafe fn dim_reducing_4_compute_claim(
     output_claims: &LazyVec<BabyBearExt4, GKR_ADDRS>,
     batch_base: BabyBearExt4,
@@ -1404,6 +1433,7 @@ unsafe fn dim_reducing_4_compute_claim(
     combined
 }
 #[inline(always)]
+#[allow(clippy::needless_borrow, clippy::large_const_arrays)]
 unsafe fn dim_reducing_4_final_step_accumulator(
     evals: &[[BabyBearExt4; 4]],
     batch_base: BabyBearExt4,
@@ -1589,6 +1619,7 @@ unsafe fn dim_reducing_4_final_step_accumulator(
     acc
 }
 #[inline(always)]
+#[allow(clippy::needless_borrow)]
 unsafe fn dim_reducing_5_compute_claim(
     output_claims: &LazyVec<BabyBearExt4, GKR_ADDRS>,
     batch_base: BabyBearExt4,
@@ -1650,6 +1681,7 @@ unsafe fn dim_reducing_5_compute_claim(
     combined
 }
 #[inline(always)]
+#[allow(clippy::needless_borrow, clippy::large_const_arrays)]
 unsafe fn dim_reducing_5_final_step_accumulator(
     evals: &[[BabyBearExt4; 4]],
     batch_base: BabyBearExt4,
@@ -1835,6 +1867,7 @@ unsafe fn dim_reducing_5_final_step_accumulator(
     acc
 }
 #[inline(always)]
+#[allow(clippy::needless_borrow)]
 unsafe fn dim_reducing_6_compute_claim(
     output_claims: &LazyVec<BabyBearExt4, GKR_ADDRS>,
     batch_base: BabyBearExt4,
@@ -1896,6 +1929,7 @@ unsafe fn dim_reducing_6_compute_claim(
     combined
 }
 #[inline(always)]
+#[allow(clippy::needless_borrow, clippy::large_const_arrays)]
 unsafe fn dim_reducing_6_final_step_accumulator(
     evals: &[[BabyBearExt4; 4]],
     batch_base: BabyBearExt4,
@@ -2081,6 +2115,7 @@ unsafe fn dim_reducing_6_final_step_accumulator(
     acc
 }
 #[inline(always)]
+#[allow(clippy::needless_borrow)]
 unsafe fn dim_reducing_7_compute_claim(
     output_claims: &LazyVec<BabyBearExt4, GKR_ADDRS>,
     batch_base: BabyBearExt4,
@@ -2142,6 +2177,7 @@ unsafe fn dim_reducing_7_compute_claim(
     combined
 }
 #[inline(always)]
+#[allow(clippy::needless_borrow, clippy::large_const_arrays)]
 unsafe fn dim_reducing_7_final_step_accumulator(
     evals: &[[BabyBearExt4; 4]],
     batch_base: BabyBearExt4,
@@ -2327,6 +2363,7 @@ unsafe fn dim_reducing_7_final_step_accumulator(
     acc
 }
 #[inline(always)]
+#[allow(clippy::needless_borrow)]
 unsafe fn dim_reducing_8_compute_claim(
     output_claims: &LazyVec<BabyBearExt4, GKR_ADDRS>,
     batch_base: BabyBearExt4,
@@ -2388,6 +2425,7 @@ unsafe fn dim_reducing_8_compute_claim(
     combined
 }
 #[inline(always)]
+#[allow(clippy::needless_borrow, clippy::large_const_arrays)]
 unsafe fn dim_reducing_8_final_step_accumulator(
     evals: &[[BabyBearExt4; 4]],
     batch_base: BabyBearExt4,
@@ -2573,6 +2611,7 @@ unsafe fn dim_reducing_8_final_step_accumulator(
     acc
 }
 #[inline(always)]
+#[allow(clippy::needless_borrow)]
 unsafe fn dim_reducing_9_compute_claim(
     output_claims: &LazyVec<BabyBearExt4, GKR_ADDRS>,
     batch_base: BabyBearExt4,
@@ -2634,6 +2673,7 @@ unsafe fn dim_reducing_9_compute_claim(
     combined
 }
 #[inline(always)]
+#[allow(clippy::needless_borrow, clippy::large_const_arrays)]
 unsafe fn dim_reducing_9_final_step_accumulator(
     evals: &[[BabyBearExt4; 4]],
     batch_base: BabyBearExt4,
@@ -2819,6 +2859,7 @@ unsafe fn dim_reducing_9_final_step_accumulator(
     acc
 }
 #[inline(always)]
+#[allow(clippy::needless_borrow)]
 unsafe fn dim_reducing_10_compute_claim(
     output_claims: &LazyVec<BabyBearExt4, GKR_ADDRS>,
     batch_base: BabyBearExt4,
@@ -2880,6 +2921,7 @@ unsafe fn dim_reducing_10_compute_claim(
     combined
 }
 #[inline(always)]
+#[allow(clippy::needless_borrow, clippy::large_const_arrays)]
 unsafe fn dim_reducing_10_final_step_accumulator(
     evals: &[[BabyBearExt4; 4]],
     batch_base: BabyBearExt4,
@@ -3065,6 +3107,7 @@ unsafe fn dim_reducing_10_final_step_accumulator(
     acc
 }
 #[inline(always)]
+#[allow(clippy::needless_borrow)]
 unsafe fn dim_reducing_11_compute_claim(
     output_claims: &LazyVec<BabyBearExt4, GKR_ADDRS>,
     batch_base: BabyBearExt4,
@@ -3126,6 +3169,7 @@ unsafe fn dim_reducing_11_compute_claim(
     combined
 }
 #[inline(always)]
+#[allow(clippy::needless_borrow, clippy::large_const_arrays)]
 unsafe fn dim_reducing_11_final_step_accumulator(
     evals: &[[BabyBearExt4; 4]],
     batch_base: BabyBearExt4,
@@ -3311,6 +3355,7 @@ unsafe fn dim_reducing_11_final_step_accumulator(
     acc
 }
 #[inline(always)]
+#[allow(clippy::needless_borrow)]
 unsafe fn dim_reducing_12_compute_claim(
     output_claims: &LazyVec<BabyBearExt4, GKR_ADDRS>,
     batch_base: BabyBearExt4,
@@ -3372,6 +3417,7 @@ unsafe fn dim_reducing_12_compute_claim(
     combined
 }
 #[inline(always)]
+#[allow(clippy::needless_borrow, clippy::large_const_arrays)]
 unsafe fn dim_reducing_12_final_step_accumulator(
     evals: &[[BabyBearExt4; 4]],
     batch_base: BabyBearExt4,
@@ -3557,6 +3603,7 @@ unsafe fn dim_reducing_12_final_step_accumulator(
     acc
 }
 #[inline(always)]
+#[allow(clippy::needless_borrow)]
 unsafe fn dim_reducing_13_compute_claim(
     output_claims: &LazyVec<BabyBearExt4, GKR_ADDRS>,
     batch_base: BabyBearExt4,
@@ -3618,6 +3665,7 @@ unsafe fn dim_reducing_13_compute_claim(
     combined
 }
 #[inline(always)]
+#[allow(clippy::needless_borrow, clippy::large_const_arrays)]
 unsafe fn dim_reducing_13_final_step_accumulator(
     evals: &[[BabyBearExt4; 4]],
     batch_base: BabyBearExt4,
@@ -3803,6 +3851,7 @@ unsafe fn dim_reducing_13_final_step_accumulator(
     acc
 }
 #[inline(always)]
+#[allow(clippy::needless_borrow)]
 unsafe fn dim_reducing_14_compute_claim(
     output_claims: &LazyVec<BabyBearExt4, GKR_ADDRS>,
     batch_base: BabyBearExt4,
@@ -3864,6 +3913,7 @@ unsafe fn dim_reducing_14_compute_claim(
     combined
 }
 #[inline(always)]
+#[allow(clippy::needless_borrow, clippy::large_const_arrays)]
 unsafe fn dim_reducing_14_final_step_accumulator(
     evals: &[[BabyBearExt4; 4]],
     batch_base: BabyBearExt4,
@@ -4049,6 +4099,7 @@ unsafe fn dim_reducing_14_final_step_accumulator(
     acc
 }
 #[inline(always)]
+#[allow(clippy::needless_borrow)]
 unsafe fn dim_reducing_15_compute_claim(
     output_claims: &LazyVec<BabyBearExt4, GKR_ADDRS>,
     batch_base: BabyBearExt4,
@@ -4110,6 +4161,7 @@ unsafe fn dim_reducing_15_compute_claim(
     combined
 }
 #[inline(always)]
+#[allow(clippy::needless_borrow, clippy::large_const_arrays)]
 unsafe fn dim_reducing_15_final_step_accumulator(
     evals: &[[BabyBearExt4; 4]],
     batch_base: BabyBearExt4,
@@ -4295,6 +4347,7 @@ unsafe fn dim_reducing_15_final_step_accumulator(
     acc
 }
 #[inline(always)]
+#[allow(clippy::needless_borrow)]
 unsafe fn dim_reducing_16_compute_claim(
     output_claims: &LazyVec<BabyBearExt4, GKR_ADDRS>,
     batch_base: BabyBearExt4,
@@ -4356,6 +4409,7 @@ unsafe fn dim_reducing_16_compute_claim(
     combined
 }
 #[inline(always)]
+#[allow(clippy::needless_borrow, clippy::large_const_arrays)]
 unsafe fn dim_reducing_16_final_step_accumulator(
     evals: &[[BabyBearExt4; 4]],
     batch_base: BabyBearExt4,
@@ -4541,6 +4595,7 @@ unsafe fn dim_reducing_16_final_step_accumulator(
     acc
 }
 #[inline(always)]
+#[allow(clippy::needless_borrow)]
 unsafe fn dim_reducing_17_compute_claim(
     output_claims: &LazyVec<BabyBearExt4, GKR_ADDRS>,
     batch_base: BabyBearExt4,
@@ -4602,6 +4657,7 @@ unsafe fn dim_reducing_17_compute_claim(
     combined
 }
 #[inline(always)]
+#[allow(clippy::needless_borrow, clippy::large_const_arrays)]
 unsafe fn dim_reducing_17_final_step_accumulator(
     evals: &[[BabyBearExt4; 4]],
     batch_base: BabyBearExt4,
@@ -4787,6 +4843,7 @@ unsafe fn dim_reducing_17_final_step_accumulator(
     acc
 }
 #[inline(always)]
+#[allow(clippy::needless_borrow)]
 unsafe fn dim_reducing_18_compute_claim(
     output_claims: &LazyVec<BabyBearExt4, GKR_ADDRS>,
     batch_base: BabyBearExt4,
@@ -4848,6 +4905,7 @@ unsafe fn dim_reducing_18_compute_claim(
     combined
 }
 #[inline(always)]
+#[allow(clippy::needless_borrow, clippy::large_const_arrays)]
 unsafe fn dim_reducing_18_final_step_accumulator(
     evals: &[[BabyBearExt4; 4]],
     batch_base: BabyBearExt4,
@@ -5033,6 +5091,7 @@ unsafe fn dim_reducing_18_final_step_accumulator(
     acc
 }
 #[inline(always)]
+#[allow(clippy::needless_borrow)]
 unsafe fn dim_reducing_19_compute_claim(
     output_claims: &LazyVec<BabyBearExt4, GKR_ADDRS>,
     batch_base: BabyBearExt4,
@@ -5094,6 +5153,7 @@ unsafe fn dim_reducing_19_compute_claim(
     combined
 }
 #[inline(always)]
+#[allow(clippy::needless_borrow, clippy::large_const_arrays)]
 unsafe fn dim_reducing_19_final_step_accumulator(
     evals: &[[BabyBearExt4; 4]],
     batch_base: BabyBearExt4,
@@ -5279,6 +5339,7 @@ unsafe fn dim_reducing_19_final_step_accumulator(
     acc
 }
 #[inline(always)]
+#[allow(clippy::needless_borrow)]
 unsafe fn dim_reducing_20_compute_claim(
     output_claims: &LazyVec<BabyBearExt4, GKR_ADDRS>,
     batch_base: BabyBearExt4,
@@ -5340,6 +5401,7 @@ unsafe fn dim_reducing_20_compute_claim(
     combined
 }
 #[inline(always)]
+#[allow(clippy::needless_borrow, clippy::large_const_arrays)]
 unsafe fn dim_reducing_20_final_step_accumulator(
     evals: &[[BabyBearExt4; 4]],
     batch_base: BabyBearExt4,
@@ -5525,6 +5587,7 @@ unsafe fn dim_reducing_20_final_step_accumulator(
     acc
 }
 #[inline(always)]
+#[allow(clippy::needless_borrow)]
 unsafe fn dim_reducing_21_compute_claim(
     output_claims: &LazyVec<BabyBearExt4, GKR_ADDRS>,
     batch_base: BabyBearExt4,
@@ -5586,6 +5649,7 @@ unsafe fn dim_reducing_21_compute_claim(
     combined
 }
 #[inline(always)]
+#[allow(clippy::needless_borrow, clippy::large_const_arrays)]
 unsafe fn dim_reducing_21_final_step_accumulator(
     evals: &[[BabyBearExt4; 4]],
     batch_base: BabyBearExt4,
@@ -5771,6 +5835,7 @@ unsafe fn dim_reducing_21_final_step_accumulator(
     acc
 }
 #[inline(always)]
+#[allow(clippy::needless_borrow)]
 unsafe fn dim_reducing_22_compute_claim(
     output_claims: &LazyVec<BabyBearExt4, GKR_ADDRS>,
     batch_base: BabyBearExt4,
@@ -5832,6 +5897,7 @@ unsafe fn dim_reducing_22_compute_claim(
     combined
 }
 #[inline(always)]
+#[allow(clippy::needless_borrow, clippy::large_const_arrays)]
 unsafe fn dim_reducing_22_final_step_accumulator(
     evals: &[[BabyBearExt4; 4]],
     batch_base: BabyBearExt4,
@@ -6017,6 +6083,7 @@ unsafe fn dim_reducing_22_final_step_accumulator(
     acc
 }
 #[inline(always)]
+#[allow(clippy::needless_borrow)]
 unsafe fn dim_reducing_23_compute_claim(
     output_claims: &LazyVec<BabyBearExt4, GKR_ADDRS>,
     batch_base: BabyBearExt4,
@@ -6078,6 +6145,7 @@ unsafe fn dim_reducing_23_compute_claim(
     combined
 }
 #[inline(always)]
+#[allow(clippy::needless_borrow, clippy::large_const_arrays)]
 unsafe fn dim_reducing_23_final_step_accumulator(
     evals: &[[BabyBearExt4; 4]],
     batch_base: BabyBearExt4,
@@ -6262,7 +6330,15 @@ unsafe fn dim_reducing_23_final_step_accumulator(
     }
     acc
 }
-#[allow(unused_braces, unused_mut, unused_variables, unused_unsafe)]
+#[allow(
+    unused_braces,
+    unused_mut,
+    unused_variables,
+    unused_unsafe,
+    clippy::needless_borrow,
+    clippy::needless_range_loop,
+    clippy::large_const_arrays
+)]
 pub fn verify_gkr_sumcheck<I: NonDeterminismSource>() -> Result<
     GKRVerifierOutput<
         'static,
@@ -6299,27 +6375,31 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>() -> Result<
         };
         let mut seed = Blake2sTranscript::commit_initial(transcript_buf.as_slice());
         let mut hasher = DelegatedBlake2sState::new();
-        let mut init_challenges = [BabyBearExt4::ZERO; 3];
-        draw_field_els_into(&mut hasher, &mut seed, &mut init_challenges);
-        let lookup_alpha = init_challenges[0];
-        let lookup_additive_challenge = init_challenges[1];
-        let constraints_batch_challenge = init_challenges[2];
-        let mut evals_flat = [core::mem::MaybeUninit::<BabyBearExt4>::uninit(); GKR_EVALS];
-        let evals_slice = unsafe {
-            let dst = core::slice::from_raw_parts_mut(
-                evals_flat.as_mut_ptr().cast::<BabyBearExt4>(),
-                128usize,
-            );
-            read_field_els::<I>(dst);
-            core::slice::from_raw_parts(evals_flat.as_ptr().cast::<BabyBearExt4>(), 128usize)
-        };
+        let mut init_challenges = LazyVec::<BabyBearExt4, 3>::new();
+        unsafe {
+            init_challenges.set_len(3);
+        }
+        draw_field_els_into(&mut hasher, &mut seed, init_challenges.as_mut_slice());
+        let lookup_alpha = *init_challenges.get(0);
+        let lookup_additive_challenge = *init_challenges.get(1);
+        let constraints_batch_challenge = *init_challenges.get(2);
+        let mut evals_flat = LazyVec::<BabyBearExt4, GKR_EVALS>::new();
+        unsafe {
+            evals_flat.set_len(128usize);
+        }
+        read_field_els::<I>(evals_flat.as_mut_slice());
+        let evals_slice = evals_flat.as_slice();
         commit_field_els(&mut seed, evals_slice);
-        let mut all_challenges = [BabyBearExt4::ZERO; GKR_ROUNDS + 1];
-        draw_field_els_into(&mut hasher, &mut seed, &mut all_challenges[..5usize]);
-        let batching_challenge = all_challenges[5usize - 1];
+        let mut all_challenges = LazyVec::<BabyBearExt4, { GKR_ROUNDS + 1 }>::new();
+        unsafe {
+            all_challenges.set_len(5usize);
+        }
+        draw_field_els_into(&mut hasher, &mut seed, all_challenges.as_mut_slice());
+        let batching_challenge = *all_challenges.get(5usize - 1);
         let mut eq_buf = LazyVec::<BabyBearExt4, 16usize>::new();
-        let eq_challenges: &[BabyBearExt4; 4usize] =
-            all_challenges[..4usize].try_into().unwrap_unchecked();
+        let eq_challenges: &[BabyBearExt4; 4usize] = all_challenges.as_slice()[..4usize]
+            .try_into()
+            .unwrap_unchecked();
         make_eq_poly(eq_challenges, &mut eq_buf);
         let mut prev_claims: LazyVec<BabyBearExt4, GKR_ADDRS> = LazyVec::new();
         {
@@ -6379,8 +6459,16 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>() -> Result<
             let claim = dot_eq(vals, eq_arr);
             prev_claims.push(claim);
         }
-        let mut prev_point = [BabyBearExt4::ZERO; GKR_ROUNDS];
-        prev_point[..4usize].copy_from_slice(&all_challenges[..4usize]);
+        let prev_point = {
+            let mut lv = LazyVec::<BabyBearExt4, GKR_ROUNDS>::new();
+            for i in 0..4usize {
+                lv.push(*all_challenges.get(i));
+            }
+            unsafe {
+                lv.set_len(GKR_ROUNDS);
+            }
+            unsafe { lv.into_array() }
+        };
         let mut state = LayerState {
             prev_point,
             prev_point_len: 4usize,
@@ -6414,11 +6502,14 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>() -> Result<
                 )?;
             }
             commit_eval_buffer(&mut eval_buf, &mut hasher, &mut seed, data_words);
-            let mut draw_buf = [BabyBearExt4::ZERO; 3];
-            draw_field_els_into(&mut hasher, &mut seed, &mut draw_buf);
-            let r_before_last = draw_buf[0];
-            let r_last = draw_buf[1];
-            let next_batching = draw_buf[2];
+            let mut draw_buf = LazyVec::<BabyBearExt4, 3>::new();
+            unsafe {
+                draw_buf.set_len(3);
+            }
+            draw_field_els_into(&mut hasher, &mut seed, draw_buf.as_mut_slice());
+            let r_before_last = *draw_buf.get(0);
+            let r_last = *draw_buf.get(1);
+            let next_batching = *draw_buf.get(2);
             *state.prev_point.get_unchecked_mut(fc_len) = r_before_last;
             fc_len += 1;
             *state.prev_point.get_unchecked_mut(fc_len) = r_last;
@@ -6465,11 +6556,14 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>() -> Result<
                 )?;
             }
             commit_eval_buffer(&mut eval_buf, &mut hasher, &mut seed, data_words);
-            let mut draw_buf = [BabyBearExt4::ZERO; 3];
-            draw_field_els_into(&mut hasher, &mut seed, &mut draw_buf);
-            let r_before_last = draw_buf[0];
-            let r_last = draw_buf[1];
-            let next_batching = draw_buf[2];
+            let mut draw_buf = LazyVec::<BabyBearExt4, 3>::new();
+            unsafe {
+                draw_buf.set_len(3);
+            }
+            draw_field_els_into(&mut hasher, &mut seed, draw_buf.as_mut_slice());
+            let r_before_last = *draw_buf.get(0);
+            let r_last = *draw_buf.get(1);
+            let next_batching = *draw_buf.get(2);
             *state.prev_point.get_unchecked_mut(fc_len) = r_before_last;
             fc_len += 1;
             *state.prev_point.get_unchecked_mut(fc_len) = r_last;
@@ -6516,11 +6610,14 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>() -> Result<
                 )?;
             }
             commit_eval_buffer(&mut eval_buf, &mut hasher, &mut seed, data_words);
-            let mut draw_buf = [BabyBearExt4::ZERO; 3];
-            draw_field_els_into(&mut hasher, &mut seed, &mut draw_buf);
-            let r_before_last = draw_buf[0];
-            let r_last = draw_buf[1];
-            let next_batching = draw_buf[2];
+            let mut draw_buf = LazyVec::<BabyBearExt4, 3>::new();
+            unsafe {
+                draw_buf.set_len(3);
+            }
+            draw_field_els_into(&mut hasher, &mut seed, draw_buf.as_mut_slice());
+            let r_before_last = *draw_buf.get(0);
+            let r_last = *draw_buf.get(1);
+            let next_batching = *draw_buf.get(2);
             *state.prev_point.get_unchecked_mut(fc_len) = r_before_last;
             fc_len += 1;
             *state.prev_point.get_unchecked_mut(fc_len) = r_last;
@@ -6567,11 +6664,14 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>() -> Result<
                 )?;
             }
             commit_eval_buffer(&mut eval_buf, &mut hasher, &mut seed, data_words);
-            let mut draw_buf = [BabyBearExt4::ZERO; 3];
-            draw_field_els_into(&mut hasher, &mut seed, &mut draw_buf);
-            let r_before_last = draw_buf[0];
-            let r_last = draw_buf[1];
-            let next_batching = draw_buf[2];
+            let mut draw_buf = LazyVec::<BabyBearExt4, 3>::new();
+            unsafe {
+                draw_buf.set_len(3);
+            }
+            draw_field_els_into(&mut hasher, &mut seed, draw_buf.as_mut_slice());
+            let r_before_last = *draw_buf.get(0);
+            let r_last = *draw_buf.get(1);
+            let next_batching = *draw_buf.get(2);
             *state.prev_point.get_unchecked_mut(fc_len) = r_before_last;
             fc_len += 1;
             *state.prev_point.get_unchecked_mut(fc_len) = r_last;
@@ -6618,11 +6718,14 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>() -> Result<
                 )?;
             }
             commit_eval_buffer(&mut eval_buf, &mut hasher, &mut seed, data_words);
-            let mut draw_buf = [BabyBearExt4::ZERO; 3];
-            draw_field_els_into(&mut hasher, &mut seed, &mut draw_buf);
-            let r_before_last = draw_buf[0];
-            let r_last = draw_buf[1];
-            let next_batching = draw_buf[2];
+            let mut draw_buf = LazyVec::<BabyBearExt4, 3>::new();
+            unsafe {
+                draw_buf.set_len(3);
+            }
+            draw_field_els_into(&mut hasher, &mut seed, draw_buf.as_mut_slice());
+            let r_before_last = *draw_buf.get(0);
+            let r_last = *draw_buf.get(1);
+            let next_batching = *draw_buf.get(2);
             *state.prev_point.get_unchecked_mut(fc_len) = r_before_last;
             fc_len += 1;
             *state.prev_point.get_unchecked_mut(fc_len) = r_last;
@@ -6669,11 +6772,14 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>() -> Result<
                 )?;
             }
             commit_eval_buffer(&mut eval_buf, &mut hasher, &mut seed, data_words);
-            let mut draw_buf = [BabyBearExt4::ZERO; 3];
-            draw_field_els_into(&mut hasher, &mut seed, &mut draw_buf);
-            let r_before_last = draw_buf[0];
-            let r_last = draw_buf[1];
-            let next_batching = draw_buf[2];
+            let mut draw_buf = LazyVec::<BabyBearExt4, 3>::new();
+            unsafe {
+                draw_buf.set_len(3);
+            }
+            draw_field_els_into(&mut hasher, &mut seed, draw_buf.as_mut_slice());
+            let r_before_last = *draw_buf.get(0);
+            let r_last = *draw_buf.get(1);
+            let next_batching = *draw_buf.get(2);
             *state.prev_point.get_unchecked_mut(fc_len) = r_before_last;
             fc_len += 1;
             *state.prev_point.get_unchecked_mut(fc_len) = r_last;
@@ -6720,11 +6826,14 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>() -> Result<
                 )?;
             }
             commit_eval_buffer(&mut eval_buf, &mut hasher, &mut seed, data_words);
-            let mut draw_buf = [BabyBearExt4::ZERO; 3];
-            draw_field_els_into(&mut hasher, &mut seed, &mut draw_buf);
-            let r_before_last = draw_buf[0];
-            let r_last = draw_buf[1];
-            let next_batching = draw_buf[2];
+            let mut draw_buf = LazyVec::<BabyBearExt4, 3>::new();
+            unsafe {
+                draw_buf.set_len(3);
+            }
+            draw_field_els_into(&mut hasher, &mut seed, draw_buf.as_mut_slice());
+            let r_before_last = *draw_buf.get(0);
+            let r_last = *draw_buf.get(1);
+            let next_batching = *draw_buf.get(2);
             *state.prev_point.get_unchecked_mut(fc_len) = r_before_last;
             fc_len += 1;
             *state.prev_point.get_unchecked_mut(fc_len) = r_last;
@@ -6771,11 +6880,14 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>() -> Result<
                 )?;
             }
             commit_eval_buffer(&mut eval_buf, &mut hasher, &mut seed, data_words);
-            let mut draw_buf = [BabyBearExt4::ZERO; 3];
-            draw_field_els_into(&mut hasher, &mut seed, &mut draw_buf);
-            let r_before_last = draw_buf[0];
-            let r_last = draw_buf[1];
-            let next_batching = draw_buf[2];
+            let mut draw_buf = LazyVec::<BabyBearExt4, 3>::new();
+            unsafe {
+                draw_buf.set_len(3);
+            }
+            draw_field_els_into(&mut hasher, &mut seed, draw_buf.as_mut_slice());
+            let r_before_last = *draw_buf.get(0);
+            let r_last = *draw_buf.get(1);
+            let next_batching = *draw_buf.get(2);
             *state.prev_point.get_unchecked_mut(fc_len) = r_before_last;
             fc_len += 1;
             *state.prev_point.get_unchecked_mut(fc_len) = r_last;
@@ -6822,11 +6934,14 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>() -> Result<
                 )?;
             }
             commit_eval_buffer(&mut eval_buf, &mut hasher, &mut seed, data_words);
-            let mut draw_buf = [BabyBearExt4::ZERO; 3];
-            draw_field_els_into(&mut hasher, &mut seed, &mut draw_buf);
-            let r_before_last = draw_buf[0];
-            let r_last = draw_buf[1];
-            let next_batching = draw_buf[2];
+            let mut draw_buf = LazyVec::<BabyBearExt4, 3>::new();
+            unsafe {
+                draw_buf.set_len(3);
+            }
+            draw_field_els_into(&mut hasher, &mut seed, draw_buf.as_mut_slice());
+            let r_before_last = *draw_buf.get(0);
+            let r_last = *draw_buf.get(1);
+            let next_batching = *draw_buf.get(2);
             *state.prev_point.get_unchecked_mut(fc_len) = r_before_last;
             fc_len += 1;
             *state.prev_point.get_unchecked_mut(fc_len) = r_last;
@@ -6873,11 +6988,14 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>() -> Result<
                 )?;
             }
             commit_eval_buffer(&mut eval_buf, &mut hasher, &mut seed, data_words);
-            let mut draw_buf = [BabyBearExt4::ZERO; 3];
-            draw_field_els_into(&mut hasher, &mut seed, &mut draw_buf);
-            let r_before_last = draw_buf[0];
-            let r_last = draw_buf[1];
-            let next_batching = draw_buf[2];
+            let mut draw_buf = LazyVec::<BabyBearExt4, 3>::new();
+            unsafe {
+                draw_buf.set_len(3);
+            }
+            draw_field_els_into(&mut hasher, &mut seed, draw_buf.as_mut_slice());
+            let r_before_last = *draw_buf.get(0);
+            let r_last = *draw_buf.get(1);
+            let next_batching = *draw_buf.get(2);
             *state.prev_point.get_unchecked_mut(fc_len) = r_before_last;
             fc_len += 1;
             *state.prev_point.get_unchecked_mut(fc_len) = r_last;
@@ -6924,11 +7042,14 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>() -> Result<
                 )?;
             }
             commit_eval_buffer(&mut eval_buf, &mut hasher, &mut seed, data_words);
-            let mut draw_buf = [BabyBearExt4::ZERO; 3];
-            draw_field_els_into(&mut hasher, &mut seed, &mut draw_buf);
-            let r_before_last = draw_buf[0];
-            let r_last = draw_buf[1];
-            let next_batching = draw_buf[2];
+            let mut draw_buf = LazyVec::<BabyBearExt4, 3>::new();
+            unsafe {
+                draw_buf.set_len(3);
+            }
+            draw_field_els_into(&mut hasher, &mut seed, draw_buf.as_mut_slice());
+            let r_before_last = *draw_buf.get(0);
+            let r_last = *draw_buf.get(1);
+            let next_batching = *draw_buf.get(2);
             *state.prev_point.get_unchecked_mut(fc_len) = r_before_last;
             fc_len += 1;
             *state.prev_point.get_unchecked_mut(fc_len) = r_last;
@@ -6975,11 +7096,14 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>() -> Result<
                 )?;
             }
             commit_eval_buffer(&mut eval_buf, &mut hasher, &mut seed, data_words);
-            let mut draw_buf = [BabyBearExt4::ZERO; 3];
-            draw_field_els_into(&mut hasher, &mut seed, &mut draw_buf);
-            let r_before_last = draw_buf[0];
-            let r_last = draw_buf[1];
-            let next_batching = draw_buf[2];
+            let mut draw_buf = LazyVec::<BabyBearExt4, 3>::new();
+            unsafe {
+                draw_buf.set_len(3);
+            }
+            draw_field_els_into(&mut hasher, &mut seed, draw_buf.as_mut_slice());
+            let r_before_last = *draw_buf.get(0);
+            let r_last = *draw_buf.get(1);
+            let next_batching = *draw_buf.get(2);
             *state.prev_point.get_unchecked_mut(fc_len) = r_before_last;
             fc_len += 1;
             *state.prev_point.get_unchecked_mut(fc_len) = r_last;
@@ -7026,11 +7150,14 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>() -> Result<
                 )?;
             }
             commit_eval_buffer(&mut eval_buf, &mut hasher, &mut seed, data_words);
-            let mut draw_buf = [BabyBearExt4::ZERO; 3];
-            draw_field_els_into(&mut hasher, &mut seed, &mut draw_buf);
-            let r_before_last = draw_buf[0];
-            let r_last = draw_buf[1];
-            let next_batching = draw_buf[2];
+            let mut draw_buf = LazyVec::<BabyBearExt4, 3>::new();
+            unsafe {
+                draw_buf.set_len(3);
+            }
+            draw_field_els_into(&mut hasher, &mut seed, draw_buf.as_mut_slice());
+            let r_before_last = *draw_buf.get(0);
+            let r_last = *draw_buf.get(1);
+            let next_batching = *draw_buf.get(2);
             *state.prev_point.get_unchecked_mut(fc_len) = r_before_last;
             fc_len += 1;
             *state.prev_point.get_unchecked_mut(fc_len) = r_last;
@@ -7077,11 +7204,14 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>() -> Result<
                 )?;
             }
             commit_eval_buffer(&mut eval_buf, &mut hasher, &mut seed, data_words);
-            let mut draw_buf = [BabyBearExt4::ZERO; 3];
-            draw_field_els_into(&mut hasher, &mut seed, &mut draw_buf);
-            let r_before_last = draw_buf[0];
-            let r_last = draw_buf[1];
-            let next_batching = draw_buf[2];
+            let mut draw_buf = LazyVec::<BabyBearExt4, 3>::new();
+            unsafe {
+                draw_buf.set_len(3);
+            }
+            draw_field_els_into(&mut hasher, &mut seed, draw_buf.as_mut_slice());
+            let r_before_last = *draw_buf.get(0);
+            let r_last = *draw_buf.get(1);
+            let next_batching = *draw_buf.get(2);
             *state.prev_point.get_unchecked_mut(fc_len) = r_before_last;
             fc_len += 1;
             *state.prev_point.get_unchecked_mut(fc_len) = r_last;
@@ -7128,11 +7258,14 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>() -> Result<
                 )?;
             }
             commit_eval_buffer(&mut eval_buf, &mut hasher, &mut seed, data_words);
-            let mut draw_buf = [BabyBearExt4::ZERO; 3];
-            draw_field_els_into(&mut hasher, &mut seed, &mut draw_buf);
-            let r_before_last = draw_buf[0];
-            let r_last = draw_buf[1];
-            let next_batching = draw_buf[2];
+            let mut draw_buf = LazyVec::<BabyBearExt4, 3>::new();
+            unsafe {
+                draw_buf.set_len(3);
+            }
+            draw_field_els_into(&mut hasher, &mut seed, draw_buf.as_mut_slice());
+            let r_before_last = *draw_buf.get(0);
+            let r_last = *draw_buf.get(1);
+            let next_batching = *draw_buf.get(2);
             *state.prev_point.get_unchecked_mut(fc_len) = r_before_last;
             fc_len += 1;
             *state.prev_point.get_unchecked_mut(fc_len) = r_last;
@@ -7179,11 +7312,14 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>() -> Result<
                 )?;
             }
             commit_eval_buffer(&mut eval_buf, &mut hasher, &mut seed, data_words);
-            let mut draw_buf = [BabyBearExt4::ZERO; 3];
-            draw_field_els_into(&mut hasher, &mut seed, &mut draw_buf);
-            let r_before_last = draw_buf[0];
-            let r_last = draw_buf[1];
-            let next_batching = draw_buf[2];
+            let mut draw_buf = LazyVec::<BabyBearExt4, 3>::new();
+            unsafe {
+                draw_buf.set_len(3);
+            }
+            draw_field_els_into(&mut hasher, &mut seed, draw_buf.as_mut_slice());
+            let r_before_last = *draw_buf.get(0);
+            let r_last = *draw_buf.get(1);
+            let next_batching = *draw_buf.get(2);
             *state.prev_point.get_unchecked_mut(fc_len) = r_before_last;
             fc_len += 1;
             *state.prev_point.get_unchecked_mut(fc_len) = r_last;
@@ -7230,11 +7366,14 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>() -> Result<
                 )?;
             }
             commit_eval_buffer(&mut eval_buf, &mut hasher, &mut seed, data_words);
-            let mut draw_buf = [BabyBearExt4::ZERO; 3];
-            draw_field_els_into(&mut hasher, &mut seed, &mut draw_buf);
-            let r_before_last = draw_buf[0];
-            let r_last = draw_buf[1];
-            let next_batching = draw_buf[2];
+            let mut draw_buf = LazyVec::<BabyBearExt4, 3>::new();
+            unsafe {
+                draw_buf.set_len(3);
+            }
+            draw_field_els_into(&mut hasher, &mut seed, draw_buf.as_mut_slice());
+            let r_before_last = *draw_buf.get(0);
+            let r_last = *draw_buf.get(1);
+            let next_batching = *draw_buf.get(2);
             *state.prev_point.get_unchecked_mut(fc_len) = r_before_last;
             fc_len += 1;
             *state.prev_point.get_unchecked_mut(fc_len) = r_last;
@@ -7281,11 +7420,14 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>() -> Result<
                 )?;
             }
             commit_eval_buffer(&mut eval_buf, &mut hasher, &mut seed, data_words);
-            let mut draw_buf = [BabyBearExt4::ZERO; 3];
-            draw_field_els_into(&mut hasher, &mut seed, &mut draw_buf);
-            let r_before_last = draw_buf[0];
-            let r_last = draw_buf[1];
-            let next_batching = draw_buf[2];
+            let mut draw_buf = LazyVec::<BabyBearExt4, 3>::new();
+            unsafe {
+                draw_buf.set_len(3);
+            }
+            draw_field_els_into(&mut hasher, &mut seed, draw_buf.as_mut_slice());
+            let r_before_last = *draw_buf.get(0);
+            let r_last = *draw_buf.get(1);
+            let next_batching = *draw_buf.get(2);
             *state.prev_point.get_unchecked_mut(fc_len) = r_before_last;
             fc_len += 1;
             *state.prev_point.get_unchecked_mut(fc_len) = r_last;
@@ -7332,11 +7474,14 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>() -> Result<
                 )?;
             }
             commit_eval_buffer(&mut eval_buf, &mut hasher, &mut seed, data_words);
-            let mut draw_buf = [BabyBearExt4::ZERO; 3];
-            draw_field_els_into(&mut hasher, &mut seed, &mut draw_buf);
-            let r_before_last = draw_buf[0];
-            let r_last = draw_buf[1];
-            let next_batching = draw_buf[2];
+            let mut draw_buf = LazyVec::<BabyBearExt4, 3>::new();
+            unsafe {
+                draw_buf.set_len(3);
+            }
+            draw_field_els_into(&mut hasher, &mut seed, draw_buf.as_mut_slice());
+            let r_before_last = *draw_buf.get(0);
+            let r_last = *draw_buf.get(1);
+            let next_batching = *draw_buf.get(2);
             *state.prev_point.get_unchecked_mut(fc_len) = r_before_last;
             fc_len += 1;
             *state.prev_point.get_unchecked_mut(fc_len) = r_last;
@@ -7383,11 +7528,14 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>() -> Result<
                 )?;
             }
             commit_eval_buffer(&mut eval_buf, &mut hasher, &mut seed, data_words);
-            let mut draw_buf = [BabyBearExt4::ZERO; 3];
-            draw_field_els_into(&mut hasher, &mut seed, &mut draw_buf);
-            let r_before_last = draw_buf[0];
-            let r_last = draw_buf[1];
-            let next_batching = draw_buf[2];
+            let mut draw_buf = LazyVec::<BabyBearExt4, 3>::new();
+            unsafe {
+                draw_buf.set_len(3);
+            }
+            draw_field_els_into(&mut hasher, &mut seed, draw_buf.as_mut_slice());
+            let r_before_last = *draw_buf.get(0);
+            let r_last = *draw_buf.get(1);
+            let next_batching = *draw_buf.get(2);
             *state.prev_point.get_unchecked_mut(fc_len) = r_before_last;
             fc_len += 1;
             *state.prev_point.get_unchecked_mut(fc_len) = r_last;
@@ -7448,10 +7596,13 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>() -> Result<
                 )?;
             }
             commit_eval_buffer(&mut eval_buf, &mut hasher, &mut seed, data_words);
-            let mut draw_buf = [BabyBearExt4::ZERO; 2];
-            draw_field_els_into(&mut hasher, &mut seed, &mut draw_buf);
-            let last_r = draw_buf[0];
-            let next_batching = draw_buf[1];
+            let mut draw_buf = LazyVec::<BabyBearExt4, 2>::new();
+            unsafe {
+                draw_buf.set_len(2);
+            }
+            draw_field_els_into(&mut hasher, &mut seed, draw_buf.as_mut_slice());
+            let last_r = *draw_buf.get(0);
+            let next_batching = *draw_buf.get(1);
             *state.prev_point.get_unchecked_mut(fc_len) = last_r;
             fc_len += 1;
             fold_standard_claims::<10usize, GKR_ADDRS, GKR_EVAL_BUF>(
@@ -7493,10 +7644,13 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>() -> Result<
                 )?;
             }
             commit_eval_buffer(&mut eval_buf, &mut hasher, &mut seed, data_words);
-            let mut draw_buf = [BabyBearExt4::ZERO; 2];
-            draw_field_els_into(&mut hasher, &mut seed, &mut draw_buf);
-            let last_r = draw_buf[0];
-            let next_batching = draw_buf[1];
+            let mut draw_buf = LazyVec::<BabyBearExt4, 2>::new();
+            unsafe {
+                draw_buf.set_len(2);
+            }
+            draw_field_els_into(&mut hasher, &mut seed, draw_buf.as_mut_slice());
+            let last_r = *draw_buf.get(0);
+            let next_batching = *draw_buf.get(1);
             *state.prev_point.get_unchecked_mut(fc_len) = last_r;
             fc_len += 1;
             fold_standard_claims::<17usize, GKR_ADDRS, GKR_EVAL_BUF>(
@@ -7538,10 +7692,13 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>() -> Result<
                 )?;
             }
             commit_eval_buffer(&mut eval_buf, &mut hasher, &mut seed, data_words);
-            let mut draw_buf = [BabyBearExt4::ZERO; 2];
-            draw_field_els_into(&mut hasher, &mut seed, &mut draw_buf);
-            let last_r = draw_buf[0];
-            let next_batching = draw_buf[1];
+            let mut draw_buf = LazyVec::<BabyBearExt4, 2>::new();
+            unsafe {
+                draw_buf.set_len(2);
+            }
+            draw_field_els_into(&mut hasher, &mut seed, draw_buf.as_mut_slice());
+            let last_r = *draw_buf.get(0);
+            let next_batching = *draw_buf.get(1);
             *state.prev_point.get_unchecked_mut(fc_len) = last_r;
             fc_len += 1;
             fold_standard_claims::<25usize, GKR_ADDRS, GKR_EVAL_BUF>(
@@ -7583,15 +7740,21 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>() -> Result<
                 )?;
             }
             commit_eval_buffer(&mut eval_buf, &mut hasher, &mut seed, data_words);
-            let mut draw_buf = [BabyBearExt4::ZERO; 2];
-            draw_field_els_into(&mut hasher, &mut seed, &mut draw_buf);
-            let last_r = draw_buf[0];
-            let next_batching = draw_buf[1];
+            let mut draw_buf = LazyVec::<BabyBearExt4, 2>::new();
+            unsafe {
+                draw_buf.set_len(2);
+            }
+            draw_field_els_into(&mut hasher, &mut seed, draw_buf.as_mut_slice());
+            let last_r = *draw_buf.get(0);
+            let next_batching = *draw_buf.get(1);
             *state.prev_point.get_unchecked_mut(fc_len) = last_r;
             fc_len += 1;
-            let mut extra_evals = [BabyBearExt4::ZERO; 25usize];
-            read_field_els::<I>(&mut extra_evals);
-            commit_field_els(&mut seed, &extra_evals);
+            let mut extra_evals = LazyVec::<BabyBearExt4, 25usize>::new();
+            unsafe {
+                extra_evals.set_len(25usize);
+            }
+            read_field_els::<I>(extra_evals.as_mut_slice());
+            commit_field_els(&mut seed, extra_evals.as_slice());
             let final_step_evals: &[[BabyBearExt4; 2]] =
                 eval_buf.transmute_subslice(BLAKE2S_DIGEST_SIZE_U32_WORDS, 61usize);
             state.prev_claims.clear();
@@ -7628,7 +7791,9 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>() -> Result<
                 let mut merged_idx: usize = 0;
                 while merged_idx < 86usize {
                     if ep_idx < 25usize && EXTRA_POS[ep_idx].0 == merged_idx {
-                        state.prev_claims.push(extra_evals[EXTRA_POS[ep_idx].1]);
+                        state
+                            .prev_claims
+                            .push(*extra_evals.get(EXTRA_POS[ep_idx].1));
                         ep_idx += 1;
                     } else {
                         let ev = final_step_evals.get_unchecked(regular_idx);
@@ -7852,9 +8017,12 @@ pub fn verify_gkr_sumcheck<I: NonDeterminismSource>() -> Result<
             state.batching_challenge = next_batching;
             state.prev_point_len = fc_len;
         }
-        let mut draw_buf = [BabyBearExt4::ZERO; 1];
-        draw_field_els_into(&mut hasher, &mut seed, &mut draw_buf);
-        let whir_batching_challenge = draw_buf[0];
+        let mut draw_buf = LazyVec::<BabyBearExt4, 1>::new();
+        unsafe {
+            draw_buf.set_len(1);
+        }
+        draw_field_els_into(&mut hasher, &mut seed, draw_buf.as_mut_slice());
+        let whir_batching_challenge = *draw_buf.get(0);
         let grand_product_accumulator: BabyBearExt4 = read_field_el::<I>();
         Ok(GKRVerifierOutput {
             base_layer_claims: state.prev_claims,

@@ -5,7 +5,6 @@ use crate::mersenne_wrapper::MersenneWrapper;
 
 pub fn generate_whir_common<MW: MersenneWrapper>(max_fold_steps: usize) -> TokenStream {
     let quartic_struct = MW::quartic_struct();
-    let quartic_zero = MW::quartic_zero();
     let quartic_one = MW::quartic_one();
     let max_high_powers = if max_fold_steps > 0 {
         1usize << (max_fold_steps - 1)
@@ -13,7 +12,8 @@ pub fn generate_whir_common<MW: MersenneWrapper>(max_fold_steps: usize) -> Token
         1
     };
     let mul_pow_gen = MW::mul_assign(quote! { pow }, quote! { set_gen_inv });
-    let from_raw_words_i = MW::field_from_reduced_raw_repr(quote! { words[i] });
+    let from_raw_words_i =
+        MW::field_from_reduced_raw_repr(quote! { unsafe { *words.get_unchecked(i) } });
 
     let ws_add_p1_c1 = MW::add_assign(quote! { p1 }, quote! { c1 });
     let ws_add_p1_c2 = MW::add_assign(quote! { p1 }, quote! { c2 });
@@ -30,15 +30,9 @@ pub fn generate_whir_common<MW: MersenneWrapper>(max_fold_steps: usize) -> Token
     let fc_mul_t_root = MW::mul_assign_by_base(quote! { t }, quote! { root });
     let fc_add_t_a = MW::add_assign(quote! { t }, quote! { a });
     let fc_add_t_b = MW::add_assign(quote! { t }, quote! { b });
-    let fc_mul_t_two_inv = MW::mul_assign_by_base(quote! { t }, quote! { two_inv });
+    let fc_mul_t_half = MW::mul_assign_by_base(quote! { t }, quote! { #field_struct::HALF });
 
     quote! {
-        /// Returns the multiplicative inverse of 2 in the base field.
-        #[inline(always)]
-        pub fn two_inv() -> #field_struct {
-            #field_struct::from_u32_unchecked(2).inverse().unwrap()
-        }
-
         /// Compute tree index from query index for Merkle path verification.
         #[inline(always)]
         pub fn compute_tree_index(
@@ -59,7 +53,6 @@ pub fn generate_whir_common<MW: MersenneWrapper>(max_fold_steps: usize) -> Token
         }
 
         #[derive(Clone, Debug)]
-        #[allow(dead_code)]
         pub enum WhirVerificationError {
             SumcheckFailed { round: usize },
             FoldAgreementFailed { query: usize },
@@ -91,9 +84,10 @@ pub fn generate_whir_common<MW: MersenneWrapper>(max_fold_steps: usize) -> Token
                 return Err(WhirVerificationError::SumcheckFailed { round });
             }
 
-            let mut challenge_buf = [#quartic_zero; 1];
-            draw_field_els_into(hasher, seed, &mut challenge_buf);
-            let alpha = challenge_buf[0];
+            let mut challenge_buf = LazyVec::<#quartic_struct, 1>::new();
+            unsafe { challenge_buf.set_len(1); }
+            draw_field_els_into(hasher, seed, challenge_buf.as_mut_slice());
+            let alpha = unsafe { *challenge_buf.get_unchecked(0) };
 
             // Horner: c0 + alpha*(c1 + alpha*c2)
             let mut new_claim = c2;
@@ -126,13 +120,13 @@ pub fn generate_whir_common<MW: MersenneWrapper>(max_fold_steps: usize) -> Token
         }
 
         #[inline(always)]
+        #[allow(clippy::too_many_arguments)]
         pub fn fold_coset(
             evals: &[#quartic_struct],
             num_rounds: usize,
             folding_challenges: &[#quartic_struct],
             mut root_inv: #field_struct,
             high_powers_offsets: &[#field_struct],
-            two_inv: #field_struct,
             buf_a: &mut [#quartic_struct],
             buf_b: &mut [#quartic_struct],
         ) -> #quartic_struct {
@@ -140,34 +134,40 @@ pub fn generate_whir_common<MW: MersenneWrapper>(max_fold_steps: usize) -> Token
             let mut round = 0;
             while round < num_rounds {
                 let half = 1 << (num_rounds - round - 1);
-                let challenge = folding_challenges[round];
+                let challenge = unsafe { *folding_challenges.get_unchecked(round) };
 
-                let (src, dst) = if round == 0 {
-                    (evals, &mut buf_a[..half])
+                let src: &[#quartic_struct] = if round == 0 {
+                    evals
                 } else if round % 2 == 1 {
-                    (&buf_a[..half * 2], &mut buf_b[..half])
+                    unsafe { core::slice::from_raw_parts(buf_a.as_ptr(), half * 2) }
                 } else {
-                    (&buf_b[..half * 2], &mut buf_a[..half])
+                    unsafe { core::slice::from_raw_parts(buf_b.as_ptr(), half * 2) }
+                };
+                let dst: &mut [#quartic_struct] = if round % 2 == 0 {
+                    unsafe { core::slice::from_raw_parts_mut(buf_a.as_mut_ptr(), half) }
+                } else {
+                    unsafe { core::slice::from_raw_parts_mut(buf_b.as_mut_ptr(), half) }
                 };
 
                 let mut pair_idx = 0;
                 while pair_idx < half {
-                    let a = src[pair_idx * 2];
-                    let b = src[pair_idx * 2 + 1];
+                    let src_idx = pair_idx * 2;
+                    let a = unsafe { *src.get_unchecked(src_idx) };
+                    let b = unsafe { *src.get_unchecked(src_idx + 1) };
 
                     let mut t = a;
                     #fc_sub_t_b;
                     #fc_mul_t_challenge;
 
                     let mut root = root_inv;
-                    field_ops::mul_assign(&mut root, &high_powers_offsets[pair_idx]);
+                    field_ops::mul_assign(&mut root, unsafe { high_powers_offsets.get_unchecked(pair_idx) });
                     #fc_mul_t_root;
 
                     #fc_add_t_a;
                     #fc_add_t_b;
-                    #fc_mul_t_two_inv;
+                    #fc_mul_t_half;
 
-                    dst[pair_idx] = t;
+                    unsafe { *dst.get_unchecked_mut(pair_idx) = t; }
                     pair_idx += 1;
                 }
 
@@ -176,11 +176,11 @@ pub fn generate_whir_common<MW: MersenneWrapper>(max_fold_steps: usize) -> Token
             }
 
             if num_rounds == 0 {
-                evals[0]
+                unsafe { *evals.get_unchecked(0) }
             } else if num_rounds % 2 == 1 {
-                buf_a[0]
+                unsafe { *buf_a.get_unchecked(0) }
             } else {
-                buf_b[0]
+                unsafe { *buf_b.get_unchecked(0) }
             }
         }
 
@@ -197,33 +197,33 @@ pub fn generate_whir_common<MW: MersenneWrapper>(max_fold_steps: usize) -> Token
             while i < n {
                 let j = (i as u32).reverse_bits().wrapping_shr(32 - log_n) as usize;
                 if i < j {
-                    let tmp = arr[i];
-                    arr[i] = arr[j];
-                    arr[j] = tmp;
+                    unsafe {
+                        let tmp = *arr.get_unchecked(i);
+                        *arr.get_unchecked_mut(i) = *arr.get_unchecked(j);
+                        *arr.get_unchecked_mut(j) = tmp;
+                    }
                 }
                 i += 1;
             }
         }
 
         /// Compute bit-reversed high powers of the set-generator inverse for fold_coset.
-        /// Returns the number of valid entries written (== 1 << (fold_steps - 1)).
         #[inline(always)]
         pub fn compute_high_powers_offsets(
             fold_steps: usize,
-            dst: &mut [#field_struct; MAX_HIGH_POWERS],
-        ) -> usize {
+            dst: &mut LazyVec<#field_struct, MAX_HIGH_POWERS>,
+        ) {
             let count = 1usize << (fold_steps - 1);
-            let set_gen_inv = #field_struct::TWO_ADICITY_GENERATORS[fold_steps].inverse().unwrap();
-            dst[0] = #field_struct::ONE;
+            dst.push(#field_struct::ONE);
+            let set_gen_inv = #field_struct::TWO_ADICITY_GENERATORS_INVERSED[fold_steps];
             let mut pow = set_gen_inv;
             let mut i = 1;
             while i < count {
-                dst[i] = pow;
+                dst.push(pow);
                 #mul_pow_gen;
                 i += 1;
             }
-            bitreverse_inplace(&mut dst[..count]);
-            count
+            bitreverse_inplace(&mut dst.as_mut_slice()[..count]);
         }
 
         /// Reconstruct an extension field element from raw u32 words in a buffer.

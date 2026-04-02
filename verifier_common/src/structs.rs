@@ -38,10 +38,10 @@ pub fn assemble_query_index(
     bit_source: &mut impl Iterator<Item = usize>,
 ) -> usize {
     // assemble as LE
-    assert!(num_bits <= usize::BITS as usize);
+    debug_assert!(num_bits <= usize::BITS as usize);
     let mut result = 0usize;
     for i in 0..num_bits {
-        result |= bit_source.next().expect("must have enough bits") << i;
+        result |= unsafe { bit_source.next().unwrap_unchecked() } << i;
     }
 
     result

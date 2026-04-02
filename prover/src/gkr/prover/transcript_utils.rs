@@ -47,7 +47,7 @@ where
         .0
         .into_iter()
         .map(|el| {
-            let array = el.map(|el| F::from_u32_with_reduction(el));
+            let array = el.map(|el| F::from_raw_repr_with_reduction(el));
             let coeffs = E::Coeffs::from_array(array);
             E::from_coeffs(coeffs)
         })

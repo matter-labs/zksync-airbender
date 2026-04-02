@@ -52,9 +52,24 @@ impl<V: Copy, const N: usize> LazyVec<V, N> {
     }
 
     #[inline(always)]
+    pub const fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+
+    /// Access element at `idx` without bounds-checking against `self.len`.
+    /// Only asserts `idx < N` (capacity), not `idx < self.len`, because this
+    /// is used for positions written via `set_len` + direct writes that may
+    /// not yet have been logically "pushed".
+    #[inline(always)]
     pub unsafe fn get_unchecked(&self, idx: usize) -> &V {
         debug_assert!(idx < N);
         self.data.get_unchecked(idx).assume_init_ref()
+    }
+
+    #[inline(always)]
+    pub unsafe fn get_unchecked_mut(&mut self, idx: usize) -> &mut V {
+        debug_assert!(idx < N);
+        self.data.get_unchecked_mut(idx).assume_init_mut()
     }
 
     #[inline(always)]
@@ -73,5 +88,23 @@ impl<V: Copy, const N: usize> LazyVec<V, N> {
     pub unsafe fn into_array(self) -> [V; N] {
         debug_assert!(self.len == N);
         MaybeUninit::array_assume_init(self.data)
+    }
+
+    /// Returns a reference to the first M elements as a fixed-size array.
+    /// The caller must ensure at least M elements have been written.
+    #[inline(always)]
+    pub unsafe fn as_array<const M: usize>(&self) -> &[V; M] {
+        debug_assert!(M <= N);
+        debug_assert!(self.len >= M);
+        &*self.data.as_ptr().cast::<[V; M]>()
+    }
+
+    /// Returns a mutable reference to the first M elements as a fixed-size array.
+    /// The caller must ensure at least M elements have been written.
+    #[inline(always)]
+    pub unsafe fn as_array_mut<const M: usize>(&mut self) -> &mut [V; M] {
+        debug_assert!(M <= N);
+        debug_assert!(self.len >= M);
+        &mut *self.data.as_mut_ptr().cast::<[V; M]>()
     }
 }

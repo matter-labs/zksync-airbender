@@ -11,7 +11,7 @@ where
     [(); E::DEGREE]: Sized,
 {
     use field::FixedArrayConvertible;
-    for el in src.iter() {
+    for el in src {
         let coeffs = E::into_coeffs(*el)
             .into_array::<{ E::DEGREE }>()
             .map(|e: F| e.as_u32_raw_repr_reduced());
@@ -65,7 +65,7 @@ where
         .cap
         .add_into_buffer(&mut result);
 
-    for (_output_type, pair) in proof.final_explicit_evaluations.iter() {
+    for (_output_type, pair) in &proof.final_explicit_evaluations {
         flatten_field_els::<F, E>(&pair[0], &mut result);
         flatten_field_els::<F, E>(&pair[1], &mut result);
     }
@@ -89,15 +89,15 @@ where
             .get(&layer_idx)
             .expect("missing sumcheck values for layer");
 
-        for coeffs in proof_values.internal_round_coefficients.iter() {
+        for coeffs in &proof_values.internal_round_coefficients {
             flatten_field_els::<F, E>(coeffs, &mut result);
         }
 
-        for (_addr, evals) in proof_values.final_step_evaluations.iter() {
+        for (_addr, evals) in &proof_values.final_step_evaluations {
             flatten_field_els::<F, E>(evals, &mut result);
         }
 
-        for (_addr, eval) in proof_values.extra_evaluations_from_caching_relations.iter() {
+        for (_addr, eval) in &proof_values.extra_evaluations_from_caching_relations {
             flatten_field_els::<F, E>(&[*eval], &mut result);
         }
     }
@@ -152,33 +152,24 @@ where
             let num_queries = whir.memory_commitment.queries.len();
             for q in 0..num_queries {
                 // Memory leaf values + Merkle path
-                for &val in whir.memory_commitment.queries[q]
-                    .leaf_values_concatenated
-                    .iter()
-                {
+                for &val in &whir.memory_commitment.queries[q].leaf_values_concatenated {
                     result.push(val.as_u32_raw_repr_reduced());
                 }
-                for sibling in whir.memory_commitment.queries[q].path.iter() {
+                for sibling in &whir.memory_commitment.queries[q].path {
                     result.extend_from_slice(sibling);
                 }
                 // Witness leaf values + Merkle path
-                for &val in whir.witness_commitment.queries[q]
-                    .leaf_values_concatenated
-                    .iter()
-                {
+                for &val in &whir.witness_commitment.queries[q].leaf_values_concatenated {
                     result.push(val.as_u32_raw_repr_reduced());
                 }
-                for sibling in whir.witness_commitment.queries[q].path.iter() {
+                for sibling in &whir.witness_commitment.queries[q].path {
                     result.extend_from_slice(sibling);
                 }
                 // Setup leaf values + Merkle path
-                for &val in whir.setup_commitment.queries[q]
-                    .leaf_values_concatenated
-                    .iter()
-                {
+                for &val in &whir.setup_commitment.queries[q].leaf_values_concatenated {
                     result.push(val.as_u32_raw_repr_reduced());
                 }
-                for sibling in whir.setup_commitment.queries[q].path.iter() {
+                for sibling in &whir.setup_commitment.queries[q].path {
                     result.extend_from_slice(sibling);
                 }
             }

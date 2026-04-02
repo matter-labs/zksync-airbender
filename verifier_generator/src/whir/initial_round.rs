@@ -16,12 +16,9 @@ pub fn generate_whir_inlined<MW: MersenneWrapper>(
     let field_struct = MW::field_struct();
     let quartic_struct = MW::quartic_struct();
     let quartic_zero = MW::quartic_zero();
-    let field_one = MW::field_one();
 
     let initial_fold_steps = whir_schedule.whir_steps_schedule[0];
     let values_per_leaf = 1usize << initial_fold_steps;
-    let total_oracle_cols = num_mem_oracle_cols + num_wit_oracle_cols + num_setup_oracle_cols;
-
     let base_lde_factor = whir_schedule.base_lde_factor;
     let base_lde_factor_log2 = base_lde_factor.trailing_zeros() as usize;
     let rs_domain_log2 = trace_len_log2 + base_lde_factor_log2;
@@ -35,7 +32,7 @@ pub fn generate_whir_inlined<MW: MersenneWrapper>(
 
     // draw_words for query bit generation
     let total_bits_needed = initial_num_queries * query_index_bits + 32;
-    let draw_words = ((total_bits_needed + 255) / 256) * 8;
+    let draw_words = total_bits_needed.div_ceil(256) * 8;
 
     // Leaf sizes per oracle (in u32 words) — uses actual oracle column counts
     let mem_leaf_words = num_mem_oracle_cols * values_per_leaf;
@@ -43,14 +40,12 @@ pub fn generate_whir_inlined<MW: MersenneWrapper>(
     let setup_leaf_words = num_setup_oracle_cols * values_per_leaf;
     let max_leaf_words = mem_leaf_words.max(wit_leaf_words).max(setup_leaf_words);
     // Padded to BLAKE2S_BLOCK_SIZE_U32_WORDS (16) boundary for aligned hashing
-    let hash_buf_padded = (max_leaf_words + 15) / 16 * 16;
+    let hash_buf_padded = max_leaf_words.div_ceil(16) * 16;
     let fold_buf_half = values_per_leaf / 2;
 
     // MW operations
     let batch_mul = MW::mul_assign_by_base(quote! { term }, quote! { base_val });
-    let batch_add = MW::add_assign(quote! { dst_val }, quote! { term });
-    let add_acc0 = MW::add_assign(quote! { acc0 }, quote! { term });
-    let add_acc1 = MW::add_assign(quote! { acc1 }, quote! { term });
+    let batch_add_acc = MW::add_assign(quote! { *acc }, quote! { term });
     let mul_delin = MW::mul_assign(quote! { t }, quote! { delinearization_challenge });
     let add_correction = MW::add_assign(quote! { claim_correction }, quote! { t });
     let add_claim = MW::add_assign(quote! { claim }, quote! { claim_correction });
@@ -81,7 +76,7 @@ pub fn generate_whir_inlined<MW: MersenneWrapper>(
         use super::common::{
             verify_whir_sumcheck_step, fold_coset, materialize_gamma_powers,
             WhirVerificationError, read_field_el, read_field_els,
-            commit_field_els, draw_field_els_into, two_inv, compute_tree_index,
+            commit_field_els, draw_single_field_el, compute_tree_index,
         };
         use super::constants::*;
 
@@ -106,18 +101,15 @@ pub fn generate_whir_inlined<MW: MersenneWrapper>(
             num_columns: usize,
         ) {
             // NDS has position-major order; reorder to column-major for hashing.
-            // Unrolled over INITIAL_VALUES_PER_LEAF (== 2) positions.
-            let mut col = 0;
-            while col < num_columns {
-                let w0 = I::read_word();
-                *hash_buf.get_unchecked_mut(col * INITIAL_VALUES_PER_LEAF) = w0;
-                col += 1;
-            }
-            col = 0;
-            while col < num_columns {
-                let w1 = I::read_word();
-                *hash_buf.get_unchecked_mut(col * INITIAL_VALUES_PER_LEAF + 1) = w1;
-                col += 1;
+            let mut pos = 0;
+            while pos < INITIAL_VALUES_PER_LEAF {
+                let mut col = 0;
+                while col < num_columns {
+                    let w = I::read_word();
+                    *hash_buf.get_unchecked_mut(col * INITIAL_VALUES_PER_LEAF + pos) = w;
+                    col += 1;
+                }
+                pos += 1;
             }
         }
 
@@ -134,31 +126,36 @@ pub fn generate_whir_inlined<MW: MersenneWrapper>(
         ) {
             // Hoist accumulators into locals — avoids reload/store through
             // batched_evals pointer every iteration (LLVM can't prove no-alias).
-            let mut acc0 = *batched_evals.get_unchecked(0);
-            let mut acc1 = *batched_evals.get_unchecked(1);
+            let mut accs = LazyVec::<#quartic_struct, INITIAL_VALUES_PER_LEAF>::new();
+            let mut pos = 0;
+            while pos < INITIAL_VALUES_PER_LEAF {
+                accs.push(*batched_evals.get_unchecked(pos));
+                pos += 1;
+            }
             let mut col = 0;
             while col < num_columns {
                 let gamma = *gamma_powers.get_unchecked(gamma_offset + col);
-                // pos 0
-                let raw = *hash_buf.get_unchecked(col * INITIAL_VALUES_PER_LEAF);
-                let base_val = #from_raw;
-                let mut term = gamma;
-                #batch_mul;
-                #add_acc0;
-                // pos 1
-                let raw = *hash_buf.get_unchecked(col * INITIAL_VALUES_PER_LEAF + 1);
-                let base_val = #from_raw;
-                let mut term = gamma;
-                #batch_mul;
-                #add_acc1;
-
+                pos = 0;
+                while pos < INITIAL_VALUES_PER_LEAF {
+                    let raw = *hash_buf.get_unchecked(col * INITIAL_VALUES_PER_LEAF + pos);
+                    let base_val = #from_raw;
+                    let mut term = gamma;
+                    #batch_mul;
+                    let acc = accs.get_unchecked_mut(pos);
+                    #batch_add_acc;
+                    pos += 1;
+                }
                 col += 1;
             }
-            *batched_evals.get_unchecked_mut(0) = acc0;
-            *batched_evals.get_unchecked_mut(1) = acc1;
+            pos = 0;
+            while pos < INITIAL_VALUES_PER_LEAF {
+                *batched_evals.get_unchecked_mut(pos) = *accs.get_unchecked(pos);
+                pos += 1;
+            }
         }
 
         #[inline(always)]
+        #[allow(clippy::too_many_arguments)]
         unsafe fn process_oracle_query<I: NonDeterminismSource>(
             hasher: &mut DelegatedBlake2sState,
             hash_buf: &mut AlignedArray64<MaybeUninit<u32>, WHIR_HASH_BUF_SIZE>,
@@ -195,7 +192,7 @@ pub fn generate_whir_inlined<MW: MersenneWrapper>(
             Ok(())
         }
 
-        #[allow(unused_braces, unused_mut, unused_variables, unused_unsafe)]
+        #[allow(unused_braces, unused_mut, unused_variables, unused_unsafe, clippy::needless_borrow)]
         pub fn verify_initial_whir_round<I: NonDeterminismSource>(
             hasher: &mut DelegatedBlake2sState,
             hash_buf: &mut AlignedArray64<MaybeUninit<u32>, WHIR_HASH_BUF_SIZE>,
@@ -219,7 +216,7 @@ pub fn generate_whir_inlined<MW: MersenneWrapper>(
                     let mut i = 0;
                     while i < NUM_MEM_ORACLE_COLS {
                         let eval: #quartic_struct = read_field_el::<I>();
-                        let mut term = gamma_powers[col_idx];
+                        let mut term = unsafe { *gamma_powers.get_unchecked(col_idx) };
                         #batch_mul_eval;
                         #add_claim_eval;
                         col_idx += 1;
@@ -229,7 +226,7 @@ pub fn generate_whir_inlined<MW: MersenneWrapper>(
                     i = 0;
                     while i < NUM_WIT_ORACLE_COLS {
                         let eval: #quartic_struct = read_field_el::<I>();
-                        let mut term = gamma_powers[col_idx];
+                        let mut term = unsafe { *gamma_powers.get_unchecked(col_idx) };
                         #batch_mul_eval;
                         #add_claim_eval;
                         col_idx += 1;
@@ -239,7 +236,7 @@ pub fn generate_whir_inlined<MW: MersenneWrapper>(
                     i = 0;
                     while i < NUM_SETUP_ORACLE_COLS {
                         let eval: #quartic_struct = read_field_el::<I>();
-                        let mut term = gamma_powers[col_idx];
+                        let mut term = unsafe { *gamma_powers.get_unchecked(col_idx) };
                         #batch_mul_eval;
                         #add_claim_eval;
                         col_idx += 1;
@@ -265,11 +262,10 @@ pub fn generate_whir_inlined<MW: MersenneWrapper>(
                     read_commit_return_merkle_cap::<I, WHIR_CAP_WORDS>(seed);
 
                 // --- 3. OOD: draw point, read value, commit ---
-                let ood_point = {
-                    let mut buf = MaybeUninit::<[#quartic_struct; 1]>::uninit();
-                    draw_field_els_into(hasher, seed, &mut *buf.as_mut_ptr());
-                    (*buf.as_ptr())[0]
-                };
+                // ood_point advances the Fiat-Shamir transcript; the verifier does not
+                // use its value directly — the OOD evaluation is checked implicitly
+                // through the next round's sumcheck claim.
+                let _ood_point = draw_single_field_el(hasher, seed);
 
                 let ood_value: #quartic_struct = read_field_el::<I>();
                 commit_field_els(seed, &[ood_value]);
@@ -282,30 +278,27 @@ pub fn generate_whir_inlined<MW: MersenneWrapper>(
                 );
 
                 // --- 5. Delinearization challenge ---
-                let delinearization_challenge = {
-                    let mut buf = MaybeUninit::<[#quartic_struct; 1]>::uninit();
-                    draw_field_els_into(hasher, seed, &mut *buf.as_mut_ptr());
-                    (*buf.as_ptr())[0]
-                };
+                let delinearization_challenge = draw_single_field_el(hasher, seed);
 
                 // --- 6. Claim correction: starts with OOD contribution ---
                 let mut claim_correction = ood_value;
                 #mul_ood_delin;
 
                 // --- 7. Per-query processing ---
-                let extended_generator = #field_struct::TWO_ADICITY_GENERATORS[INITIAL_RS_DOMAIN_LOG2];
-                let two_inv = two_inv();
-                let high_powers_offsets = [#field_one; 1 << (WHIR_FOLD_STEPS[0] - 1)];
+                let extended_generator_inv = #field_struct::TWO_ADICITY_GENERATORS_INVERSED[INITIAL_RS_DOMAIN_LOG2];
+                let mut high_powers_offsets = LazyVec::<#field_struct, MAX_HIGH_POWERS>::new();
+                compute_high_powers_offsets(WHIR_FOLD_STEPS[0], &mut high_powers_offsets);
                 // Scratch buffers — fully written before read each iteration
-                let mut fold_buf_a = MaybeUninit::<[#quartic_struct; FOLD_BUF_HALF]>::uninit();
-                let mut fold_buf_b = MaybeUninit::<[#quartic_struct; FOLD_BUF_HALF]>::uninit();
+                let mut fold_buf_a = LazyVec::<#quartic_struct, FOLD_BUF_HALF>::new();
+                unsafe { fold_buf_a.set_len(FOLD_BUF_HALF); }
+                let mut fold_buf_b = LazyVec::<#quartic_struct, FOLD_BUF_HALF>::new();
+                unsafe { fold_buf_b.set_len(FOLD_BUF_HALF); }
                 let mut q = 0;
                 while q < INITIAL_NUM_QUERIES {
                     let query_index = *query_indices.get(q);
 
                     // query_index determines omega^k for the algebraic fold
-                    let base_root = extended_generator.pow(query_index as u32);
-                    let base_root_inv = base_root.inverse().unwrap();
+                    let base_root_inv = extended_generator_inv.pow(query_index as u32);
 
                     // Tree leaves are stored sequentially by coset (with bit-reversed
                     // coset ordering).  Map from the interleaved query_index to the
@@ -341,8 +334,8 @@ pub fn generate_whir_inlined<MW: MersenneWrapper>(
                     let folded = fold_coset(
                         &batched_evals, WHIR_FOLD_STEPS[0],
                         folding_challenges.as_slice(),
-                        base_root_inv, &high_powers_offsets, two_inv,
-                        &mut *fold_buf_a.as_mut_ptr(), &mut *fold_buf_b.as_mut_ptr(),
+                        base_root_inv, unsafe { high_powers_offsets.as_array::<{1 << (WHIR_FOLD_STEPS[0] - 1)}>() },
+                        fold_buf_a.as_mut_slice(), fold_buf_b.as_mut_slice(),
                     );
 
                     // Accumulate claim correction

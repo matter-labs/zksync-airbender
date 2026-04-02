@@ -7,10 +7,7 @@ use prover::cs::gkr_compiler::NoFieldMaxQuadraticConstraintsGKRRelation;
 use prover::field::PrimeField;
 
 use super::addr_to_idx;
-
-fn coeff_to_internal_repr<F: PrimeField>(coeff: u32) -> u32 {
-    F::from_u32_with_reduction(coeff).as_u32_raw_repr_reduced()
-}
+use super::coeff_to_internal_repr;
 
 /// Generate a data-driven constraint kernel using const descriptor arrays + loops.
 ///

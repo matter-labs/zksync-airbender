@@ -48,6 +48,8 @@ fn generate_common<MW: MersenneWrapper>() {
 
         pub const EXT_DEGREE: usize =
             <#quartic_struct as FieldExtension<#field_struct>>::DEGREE;
+        // 64 u32 words = 8 Blake2s digests. Sufficient for all current draws:
+        // single field element = 4 words → padded to 8, gamma = same.
         pub const DRAW_BUF_CAPACITY: usize = 64;
 
         #transcript_fns

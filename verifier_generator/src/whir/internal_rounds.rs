@@ -9,11 +9,8 @@ pub fn generate_whir_internal_rounds<MW: MersenneWrapper>(
     whir_schedule: &WhirSchedule,
     trace_len_log2: usize,
 ) -> TokenStream {
-    let field_use_stmts = MW::field_use_statements();
     let field_struct = MW::field_struct();
     let quartic_struct = MW::quartic_struct();
-    let quartic_zero = MW::quartic_zero();
-    let field_one = MW::field_one();
 
     let num_rounds = whir_schedule.whir_steps_schedule.len();
     let num_internal_rounds = num_rounds - 2; // exclude initial (0) and final (last)
@@ -54,7 +51,7 @@ pub fn generate_whir_internal_rounds<MW: MersenneWrapper>(
     let max_internal_fold_steps = *internal_fold_steps_range.iter().max().unwrap_or(&1);
     let max_internal_values_per_leaf = 1usize << max_internal_fold_steps;
     let max_internal_leaf_ext_words = max_internal_values_per_leaf * 4; // EXT_DEGREE=4
-    let internal_hash_buf_size = (max_internal_leaf_ext_words + 15) / 16 * 16;
+    let internal_hash_buf_size = max_internal_leaf_ext_words.div_ceil(16) * 16;
     let max_internal_fold_buf_half = max_internal_values_per_leaf / 2;
     let max_internal_num_queries = *internal_queries_range.iter().max().unwrap_or(&1);
     let internal_draw_words_vec: Vec<usize> = internal_query_index_bits_vec
@@ -63,7 +60,7 @@ pub fn generate_whir_internal_rounds<MW: MersenneWrapper>(
         .map(|(i, &bits)| {
             let nq = whir_schedule.whir_queries_schedule[i + 1];
             let total_bits = nq * bits + 32;
-            ((total_bits + 255) / 256) * 8
+            total_bits.div_ceil(256) * 8
         })
         .collect();
     let max_internal_draw_words = *internal_draw_words_vec.iter().max().unwrap_or(&8);
@@ -82,7 +79,8 @@ pub fn generate_whir_internal_rounds<MW: MersenneWrapper>(
     quote! {
         // Additional imports for internal rounds (extending whir.rs)
         use super::common::{
-            compute_high_powers_offsets, ext_from_raw_words, MAX_HIGH_POWERS, EXT_DEGREE,
+            compute_high_powers_offsets, ext_from_raw_words,
+            MAX_HIGH_POWERS, EXT_DEGREE,
         };
         use ::verifier_common::whir::read_return_merkle_cap;
 
@@ -110,7 +108,7 @@ pub fn generate_whir_internal_rounds<MW: MersenneWrapper>(
         /// `round_idx` is 1-based (1 = first internal round).
         /// `prev_oracle_cap` is the cap committed in the previous round.
         /// Returns (new_claim, next_intermediate_cap).
-        #[allow(unused_braces, unused_mut, unused_variables, unused_unsafe)]
+        #[allow(unused_braces, unused_mut, unused_variables, unused_unsafe, clippy::needless_borrow)]
         pub fn verify_internal_whir_round<I: NonDeterminismSource>(
             hasher: &mut DelegatedBlake2sState,
             hash_buf: &mut AlignedArray64<MaybeUninit<u32>, WHIR_HASH_BUF_SIZE>,
@@ -145,11 +143,10 @@ pub fn generate_whir_internal_rounds<MW: MersenneWrapper>(
                     read_return_merkle_cap::<I, WHIR_CAP_WORDS>();
 
                 // --- 3. OOD: draw point, read value (NOT committed to transcript) ---
-                let ood_point = {
-                    let mut buf = MaybeUninit::<[#quartic_struct; 1]>::uninit();
-                    draw_field_els_into(hasher, seed, &mut *buf.as_mut_ptr());
-                    (*buf.as_ptr())[0]
-                };
+                // ood_point advances the Fiat-Shamir transcript; the verifier does not
+                // use its value directly — the OOD evaluation is checked implicitly
+                // through the next round's sumcheck claim.
+                let _ood_point = draw_single_field_el(hasher, seed);
                 let ood_value: #quartic_struct = read_field_el::<I>();
 
                 // --- 4. PoW + query indices ---
@@ -162,11 +159,7 @@ pub fn generate_whir_internal_rounds<MW: MersenneWrapper>(
                     );
 
                 // --- 5. Delinearization challenge ---
-                let delinearization_challenge = {
-                    let mut buf = MaybeUninit::<[#quartic_struct; 1]>::uninit();
-                    draw_field_els_into(hasher, seed, &mut *buf.as_mut_ptr());
-                    (*buf.as_ptr())[0]
-                };
+                let delinearization_challenge = draw_single_field_el(hasher, seed);
 
                 // --- 6. Claim correction: starts with OOD contribution ---
                 let mut claim_correction = ood_value;
@@ -174,26 +167,24 @@ pub fn generate_whir_internal_rounds<MW: MersenneWrapper>(
 
                 // --- 7. Per-query processing ---
                 let rs_domain_log2 = INTERNAL_RS_DOMAIN_LOG2[ir];
-                let extended_generator = #field_struct::TWO_ADICITY_GENERATORS[rs_domain_log2];
-                let two_inv = two_inv();
+                let extended_generator_inv = #field_struct::TWO_ADICITY_GENERATORS_INVERSED[rs_domain_log2];
                 let num_cosets = INTERNAL_NUM_COSETS[ir];
                 let num_cosets_log2 = INTERNAL_NUM_COSETS_LOG2[ir];
                 let coset_tree_size = INTERNAL_COSET_TREE_SIZE[ir];
                 let oracle_depth = WHIR_ORACLE_DEPTHS[round_idx - 1];
 
-                let mut high_powers_offsets = [#field_one; MAX_HIGH_POWERS];
+                let mut high_powers_offsets = LazyVec::<#field_struct, MAX_HIGH_POWERS>::new();
                 compute_high_powers_offsets(fold_steps, &mut high_powers_offsets);
 
                 // Scratch buffers
-                let mut fold_buf_a =
-                    MaybeUninit::<[#quartic_struct; MAX_INTERNAL_FOLD_BUF_HALF]>::uninit();
-                let mut fold_buf_b =
-                    MaybeUninit::<[#quartic_struct; MAX_INTERNAL_FOLD_BUF_HALF]>::uninit();
+                let mut fold_buf_a = LazyVec::<#quartic_struct, MAX_INTERNAL_FOLD_BUF_HALF>::new();
+                unsafe { fold_buf_a.set_len(MAX_INTERNAL_FOLD_BUF_HALF); }
+                let mut fold_buf_b = LazyVec::<#quartic_struct, MAX_INTERNAL_FOLD_BUF_HALF>::new();
+                unsafe { fold_buf_b.set_len(MAX_INTERNAL_FOLD_BUF_HALF); }
                 let mut q = 0;
                 while q < num_queries {
                     let query_index = *query_indices.get(q);
-                    let base_root = extended_generator.pow(query_index as u32);
-                    let base_root_inv = base_root.inverse().unwrap();
+                    let base_root_inv = extended_generator_inv.pow(query_index as u32);
 
                     // Tree index mapping
                     let tree_index = compute_tree_index(
@@ -230,12 +221,14 @@ pub fn generate_whir_internal_rounds<MW: MersenneWrapper>(
                         j += 1;
                     }
 
-                    // Fold
+                    // Fold — pass as_slice(); fold_coset only accesses the first
+                    // 1 << (fold_steps - 1) elements, which is what
+                    // compute_high_powers_offsets filled.
                     let folded = fold_coset(
                         evals.as_slice(), fold_steps,
                         folding_challenges.as_slice(),
-                        base_root_inv, &high_powers_offsets[..], two_inv,
-                        &mut *fold_buf_a.as_mut_ptr(), &mut *fold_buf_b.as_mut_ptr(),
+                        base_root_inv, high_powers_offsets.as_slice(),
+                        fold_buf_a.as_mut_slice(), fold_buf_b.as_mut_slice(),
                     );
 
                     // Accumulate claim correction

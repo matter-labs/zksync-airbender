@@ -2,10 +2,15 @@ use proc_macro2::TokenStream;
 use quote::quote;
 
 use prover::cs::definitions::GKRAddress;
-use prover::cs::gkr_compiler::{GKRLayerDescription, NoFieldGKRRelation, OutputType};
+use prover::cs::gkr_compiler::{GKRLayerDescription, NoFieldGKRRelation};
+use prover::field::PrimeField;
 
 pub mod sumcheck;
 pub mod transcript;
+
+pub fn coeff_to_internal_repr<F: PrimeField>(coeff: u32) -> u32 {
+    F::from_u32_with_reduction(coeff).as_u32_raw_repr_reduced()
+}
 
 pub fn addr_to_idx(addr: &GKRAddress, sorted: &[GKRAddress]) -> usize {
     sorted
@@ -163,48 +168,6 @@ pub fn collect_sorted_unique_addrs(layer: &GKRLayerDescription) -> Vec<GKRAddres
                 addrs.insert(input[0][1]);
                 addrs.insert(input[1][0]);
                 addrs.insert(input[1][1]);
-            }
-        }
-    }
-    addrs.into_iter().collect()
-}
-
-pub fn collect_output_addrs(layer: &GKRLayerDescription) -> Vec<GKRAddress> {
-    use std::collections::BTreeSet;
-    let mut addrs = BTreeSet::new();
-
-    for gate in layer
-        .gates
-        .iter()
-        .chain(layer.gates_with_external_connections.iter())
-    {
-        use NoFieldGKRRelation as R;
-        match &gate.enforced_relation {
-            R::EnforceConstraintsMaxQuadratic { .. } => {}
-            R::LinearBaseFieldRelation { output, .. }
-            | R::MaxQuadratic { output, .. }
-            | R::Copy { output, .. }
-            | R::InitialGrandProductFromCaches { output, .. }
-            | R::UnbalancedGrandProductWithCache { output, .. }
-            | R::TrivialProduct { output, .. }
-            | R::MaskIntoIdentityProduct { output, .. }
-            | R::MaterializeSingleLookupInput { output, .. }
-            | R::MaterializedVectorLookupInput { output, .. } => {
-                addrs.insert(*output);
-            }
-            R::LookupPairFromBaseInputs { output, .. }
-            | R::LookupPairFromMaterializedBaseInputs { output, .. }
-            | R::LookupUnbalancedPairWithMaterializedBaseInputs { output, .. }
-            | R::LookupFromMaterializedBaseInputWithSetup { output, .. }
-            | R::LookupPairFromVectorInputs { output, .. }
-            | R::LookupPairFromMaterializedVectorInputs { output, .. }
-            | R::LookupPairFromCachedVectorInputs { output, .. }
-            | R::LookupUnbalancedPairWithMaterializedVectorInputs { output, .. }
-            | R::LookupWithCachedDensAndSetup { output, .. }
-            | R::LookupFromMaterializedVectorInputWithSetup { output, .. }
-            | R::AggregateLookupRationalPair { output, .. } => {
-                addrs.insert(output[0]);
-                addrs.insert(output[1]);
             }
         }
     }

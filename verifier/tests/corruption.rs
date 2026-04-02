@@ -175,6 +175,93 @@ fn rejects_zeroed_regions() {
     }
 }
 
+const DELEGATION_CIRCUIT: &str = "keccak_special5";
+
+#[test]
+fn delegation_rejects_corrupted_cache_relations() {
+    let circuit_data = common::circuit_by_name(DELEGATION_CIRCUIT);
+    let mut proof = circuit_data.proof();
+
+    let base_layer = proof
+        .sumcheck_intermediate_values
+        .get_mut(&0)
+        .expect("proof must have layer 0");
+    assert!(
+        !base_layer
+            .extra_evaluations_from_caching_relations
+            .is_empty(),
+        "base layer must have cached relations"
+    );
+
+    let (_addr, eval) = base_layer
+        .extra_evaluations_from_caching_relations
+        .iter_mut()
+        .next()
+        .unwrap();
+    eval.add_assign(&BabyBearExt4::ONE);
+
+    let result = run_with_proof(DELEGATION_CIRCUIT, &proof);
+    assert!(result.is_err(), "should reject corrupted cache relation");
+    let err = result.unwrap_err();
+    assert!(
+        err.contains("CacheRelationFailed"),
+        "expected CacheRelationFailed, got: {}",
+        err
+    );
+}
+
+#[test]
+fn delegation_rejects_corrupted_gkr_region() {
+    let gkr_off = verifier::keccak_special5::constants::GKR_TRANSCRIPT_U32;
+    let gkr_evals = verifier::keccak_special5::constants::GKR_EVALS;
+
+    let cases: &[(usize, u32, &str)] = &[
+        (10, 1, "transcript_start"),
+        (gkr_off - 1, 0xFF, "transcript_end"),
+        (gkr_off, 1, "first_eval"),
+        (gkr_off + 50, 1, "mid_eval"),
+        (gkr_off + gkr_evals * 4 + 10, 1, "sumcheck_coeffs"),
+    ];
+
+    for &(idx, mask, label) in cases {
+        assert_rejects_xor(DELEGATION_CIRCUIT, idx, mask, label);
+    }
+}
+
+#[test]
+fn delegation_rejects_corrupted_whir_region() {
+    let nds_len = common::load_nds(DELEGATION_CIRCUIT).len();
+
+    let cases: &[(usize, &str)] = &[
+        (nds_len / 2, "whir_early"),
+        (nds_len - 100, "whir_late"),
+        (nds_len - 1, "last_word"),
+    ];
+
+    for &(idx, label) in cases {
+        assert_rejects_xor(DELEGATION_CIRCUIT, idx, 1, label);
+    }
+}
+
+#[test]
+fn rejects_garbage_proof() {
+    // A completely random NDS should be rejected by every circuit.
+    for circuit in common::CIRCUITS.iter() {
+        let nds_len = circuit.load_nds().len();
+        let result = run_corrupted(circuit.name, |nds| {
+            // Deterministic "random" fill: use index as seed
+            for i in 0..nds_len {
+                nds[i] = (i as u32).wrapping_mul(2654435761); // Knuth multiplicative hash
+            }
+        });
+        assert!(
+            result.is_err(),
+            "{}: should reject garbage proof",
+            circuit.name
+        );
+    }
+}
+
 #[test]
 fn all_circuits_reject_corruption() {
     for circuit in common::CIRCUITS.iter() {

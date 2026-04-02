@@ -22,7 +22,7 @@ pub fn generate_whir_verify<MW: MersenneWrapper>(whir_hash_buf_size: usize) -> T
         pub const WHIR_HASH_BUF_SIZE: usize = #whir_hash_buf_size;
 
         /// Run the full WHIR verification: initial round, all internal rounds, final round.
-        #[allow(unused_braces, unused_mut, unused_variables, unused_unsafe)]
+        #[allow(unused_braces, unused_mut, unused_variables, unused_unsafe, clippy::needless_borrow)]
         pub fn verify_whir<I: NonDeterminismSource>(
             hasher: &mut DelegatedBlake2sState,
             seed: &mut Seed,
@@ -44,7 +44,7 @@ pub fn generate_whir_verify<MW: MersenneWrapper>(whir_hash_buf_size: usize) -> T
                 cap = new_cap;
                 round_idx += 1;
             }
-            let _ = verify_final_whir_round::<I>(hasher, &mut hash_buf, seed, claim, &cap)?;
+            verify_final_whir_round::<I>(hasher, &mut hash_buf, seed, claim, &cap)?;
             Ok(())
         }
     }

@@ -6,15 +6,12 @@ use prover::cs::definitions::gkr::{
     NoFieldSingleColumnLookupRelation, NoFieldVectorLookupRelation,
 };
 use prover::cs::definitions::GKRAddress;
-use prover::cs::gkr_compiler::{GKRLayerDescription, GateArtifacts, NoFieldGKRRelation};
+use prover::cs::gkr_compiler::{GKRLayerDescription, NoFieldGKRRelation};
 use prover::field::PrimeField;
 
 use super::addr_to_idx;
+use super::coeff_to_internal_repr;
 use super::constraint_kernel::generate_constraint_kernel;
-
-fn coeff_to_internal_repr<F: PrimeField>(coeff: u32) -> u32 {
-    F::from_u32_with_reduction(coeff).as_u32_raw_repr_reduced()
-}
 
 fn coeff64_to_internal_repr<F: PrimeField>(coeff: u64) -> u32 {
     let reduced = (coeff % (F::CHARACTERISTICS as u64)) as u32;
@@ -89,6 +86,7 @@ pub fn generate_layer_compute_claim<MW: MersenneWrapper>(
 
     quote! {
         #[inline(always)]
+        #[allow(clippy::needless_borrow)]
         unsafe fn #fn_name(
             output_claims: &LazyVec<#quartic_struct, GKR_ADDRS>,
             batch_base: #quartic_struct,
@@ -100,7 +98,7 @@ pub fn generate_layer_compute_claim<MW: MersenneWrapper>(
             let mut current_batch = #quartic_one;
             let mut i = 0;
             while i < #num_descs {
-                let (n, o0, o1) = DESCS[i];
+                let (n, o0, o1) = unsafe { *DESCS.get_unchecked(i) };
                 if n == 0 {
                     #mul_batch;
                 } else if n == 1 {
@@ -242,8 +240,6 @@ fn classify_gate(
 
 /// Generate the dispatch loop body for simple gates.
 fn generate_simple_gate_loop<MW: MersenneWrapper>(descs: &[(usize, [usize; 4])]) -> TokenStream {
-    let quartic_struct = MW::quartic_struct();
-    let quartic_zero = MW::quartic_zero();
     let field_one = MW::field_one();
     let mul_batch = MW::mul_assign(quote! { current_batch }, quote! { batch_base });
 
@@ -308,13 +304,13 @@ fn generate_simple_gate_loop<MW: MersenneWrapper>(descs: &[(usize, [usize; 4])])
             ];
             let mut _sg = 0;
             while _sg < #num_descs {
-                let (gt, idx) = SIMPLE_GATES[_sg];
+                let (gt, idx) = unsafe { *SIMPLE_GATES.get_unchecked(_sg) };
                 match gt {
                     #GT_COPY => {
                         let bc = current_batch;
                         #mul_batch;
                         for j in 0..2 {
-                            let val = evals[idx[0]][j];
+                            let val = evals.get_unchecked(idx[0])[j];
                             let mut contrib = bc;
                             #mul_contrib;
                             #add_acc;
@@ -324,8 +320,8 @@ fn generate_simple_gate_loop<MW: MersenneWrapper>(descs: &[(usize, [usize; 4])])
                         let bc = current_batch;
                         #mul_batch;
                         for j in 0..2 {
-                            let mut val = evals[idx[0]][j];
-                            let vb = evals[idx[1]][j];
+                            let mut val = evals.get_unchecked(idx[0])[j];
+                            let vb = evals.get_unchecked(idx[1])[j];
                             #mul_ab;
                             let mut contrib = bc;
                             #mul_contrib;
@@ -336,8 +332,8 @@ fn generate_simple_gate_loop<MW: MersenneWrapper>(descs: &[(usize, [usize; 4])])
                         let bc = current_batch;
                         #mul_batch;
                         for j in 0..2 {
-                            let mut val = evals[idx[0]][j];
-                            let mask_val = evals[idx[1]][j];
+                            let mut val = evals.get_unchecked(idx[0])[j];
+                            let mask_val = evals.get_unchecked(idx[1])[j];
                             #sub_one;
                             #mul_mask;
                             #add_one;
@@ -350,8 +346,8 @@ fn generate_simple_gate_loop<MW: MersenneWrapper>(descs: &[(usize, [usize; 4])])
                         let bc = current_batch;
                         #mul_batch;
                         for j in 0..2 {
-                            let mut val = evals[idx[0]][j];
-                            let vi = evals[idx[1]][j];
+                            let mut val = evals.get_unchecked(idx[0])[j];
+                            let vi = evals.get_unchecked(idx[1])[j];
                             #mul_si;
                             let mut contrib = bc;
                             #mul_contrib;
@@ -364,8 +360,8 @@ fn generate_simple_gate_loop<MW: MersenneWrapper>(descs: &[(usize, [usize; 4])])
                         let bc1 = current_batch;
                         #mul_batch;
                         for j in 0..2 {
-                            let mut bg = evals[idx[0]][j];
-                            let mut dg = evals[idx[1]][j];
+                            let mut bg = evals.get_unchecked(idx[0])[j];
+                            let mut dg = evals.get_unchecked(idx[1])[j];
                             #add_gamma_bg;
                             #add_gamma_dg;
                             let mut num = bg;
@@ -384,9 +380,9 @@ fn generate_simple_gate_loop<MW: MersenneWrapper>(descs: &[(usize, [usize; 4])])
                         let bc1 = current_batch;
                         #mul_batch;
                         for j in 0..2 {
-                            let mut bg = evals[idx[0]][j];
-                            let mut dg = evals[idx[2]][j];
-                            let mut cb = evals[idx[1]][j];
+                            let mut bg = evals.get_unchecked(idx[0])[j];
+                            let mut dg = evals.get_unchecked(idx[2])[j];
+                            let mut cb = evals.get_unchecked(idx[1])[j];
                             #add_gamma_bg;
                             #add_gamma_dg;
                             #mul_cb;
@@ -406,9 +402,9 @@ fn generate_simple_gate_loop<MW: MersenneWrapper>(descs: &[(usize, [usize; 4])])
                         let bc1 = current_batch;
                         #mul_batch;
                         for j in 0..2 {
-                            let a_val = evals[idx[0]][j];
-                            let b_val = evals[idx[1]][j];
-                            let mut r_g = evals[idx[2]][j];
+                            let a_val = evals.get_unchecked(idx[0])[j];
+                            let b_val = evals.get_unchecked(idx[1])[j];
+                            let mut r_g = evals.get_unchecked(idx[2])[j];
                             #add_gamma_r;
                             let mut num = a_val;
                             #mul_ar;
@@ -427,10 +423,10 @@ fn generate_simple_gate_loop<MW: MersenneWrapper>(descs: &[(usize, [usize; 4])])
                         let bc1 = current_batch;
                         #mul_batch;
                         for j in 0..2 {
-                            let a_val = evals[idx[0]][j];
-                            let b_val = evals[idx[1]][j];
-                            let c_val = evals[idx[2]][j];
-                            let d_val = evals[idx[3]][j];
+                            let a_val = evals.get_unchecked(idx[0])[j];
+                            let b_val = evals.get_unchecked(idx[1])[j];
+                            let c_val = evals.get_unchecked(idx[2])[j];
+                            let d_val = evals.get_unchecked(idx[3])[j];
                             let mut num = a_val;
                             #mul_ad;
                             let mut cb_tmp = c_val;
@@ -450,10 +446,10 @@ fn generate_simple_gate_loop<MW: MersenneWrapper>(descs: &[(usize, [usize; 4])])
                         let bc1 = current_batch;
                         #mul_batch;
                         for j in 0..2 {
-                            let a_val = evals[idx[0]][j];
-                            let mut b_cd = evals[idx[1]][j];
-                            let c_val = evals[idx[2]][j];
-                            let mut d_cd = evals[idx[3]][j];
+                            let a_val = evals.get_unchecked(idx[0])[j];
+                            let mut b_cd = evals.get_unchecked(idx[1])[j];
+                            let c_val = evals.get_unchecked(idx[2])[j];
+                            let mut d_cd = evals.get_unchecked(idx[3])[j];
                             #add_gamma_b_cd;
                             #add_gamma_d_cd;
                             let mut ad_cd = a_val;
@@ -481,14 +477,11 @@ pub fn generate_layer_final_step_accumulator<MW: MersenneWrapper, F: PrimeField>
     layer: &GKRLayerDescription,
     layer_idx: usize,
     input_sorted_addrs: &[GKRAddress],
-    max_pow: usize,
 ) -> TokenStream {
     let fn_name = quote::format_ident!("layer_{}_final_step_accumulator", layer_idx);
     let quartic_zero = MW::quartic_zero();
     let quartic_one = MW::quartic_one();
-    let field_one = MW::field_one();
     let quartic_struct = MW::quartic_struct();
-    let field_struct = MW::field_struct();
     let mul_batch = MW::mul_assign(quote! { current_batch }, quote! { batch_base });
 
     let mut body = quote! {
@@ -661,8 +654,13 @@ pub fn generate_layer_final_step_accumulator<MW: MersenneWrapper, F: PrimeField>
                     });
                 }
                 R::MaterializedVectorLookupInput { input, .. } => {
+                    // Evaluate val = sum_col (alpha^col * column_value)
+                    // using Horner's method: val = col[n-1] + alpha*(col[n-2] + alpha*(...))
+                    // We iterate in reverse to accumulate val = val*alpha + col_val.
+                    let mul_val_alpha = MW::mul_assign(quote! { val }, quote! { lookup_alpha });
+                    let add_val_col = MW::add_assign(quote! { val }, quote! { col_val });
                     let mut val_computation = quote! { let mut val = #quartic_zero; };
-                    for (col_idx, col) in input.columns.iter().enumerate() {
+                    for col in input.columns.iter().rev() {
                         let const_mont = coeff_to_internal_repr::<F>(col.constant);
                         let const_field = MW::field_new(quote! { #const_mont });
                         let mut col_computation = quote! {
@@ -680,21 +678,13 @@ pub fn generate_layer_final_step_accumulator<MW: MersenneWrapper, F: PrimeField>
                                 #add_ct;
                             });
                         }
-                        if col_idx == 0 {
-                            let add_col = MW::add_assign(quote! { val }, quote! { col_val });
-                            val_computation.extend(quote! { { #col_computation #add_col; } });
-                        } else {
-                            let mul_challenge =
-                                MW::mul_assign(quote! { col_val }, quote! { lookup_alpha });
-                            let add_col = MW::add_assign(quote! { val }, quote! { col_val });
-                            val_computation.extend(quote! {
-                                {
-                                    #col_computation
-                                    for _ in 0..#col_idx { #mul_challenge; }
-                                    #add_col;
-                                }
-                            });
-                        }
+                        val_computation.extend(quote! {
+                            {
+                                #mul_val_alpha;
+                                #col_computation
+                                #add_val_col;
+                            }
+                        });
                     }
                     let mul_contrib = MW::mul_assign(quote! { contrib }, quote! { val });
                     let add_acc = MW::add_assign(quote! { acc[j] }, quote! { contrib });
@@ -762,12 +752,15 @@ pub fn generate_layer_final_step_accumulator<MW: MersenneWrapper, F: PrimeField>
                     let gen_vector_relation =
                         |rel: &NoFieldVectorLookupRelation, var_name: &str| {
                             let var = syn::Ident::new(var_name, proc_macro2::Span::call_site());
+                            let mul_var_alpha =
+                                MW::mul_assign(quote! { #var }, quote! { lookup_alpha });
                             let mut comp = quote! { let mut #var = #quartic_zero; };
-                            for (col_idx, col) in rel.columns.iter().enumerate() {
+                            // Horner's method: iterate columns in reverse
+                            for col in rel.columns.iter().rev() {
                                 let const_mont = coeff_to_internal_repr::<F>(col.constant);
                                 let const_field = MW::field_new(quote! { #const_mont });
                                 let col_var = syn::Ident::new(
-                                    &format!("{}_c{}", var_name, col_idx),
+                                    &format!("{}_cv", var_name),
                                     proc_macro2::Span::call_site(),
                                 );
                                 let mut col_comp = quote! {
@@ -778,7 +771,7 @@ pub fn generate_layer_final_step_accumulator<MW: MersenneWrapper, F: PrimeField>
                                     let mont = coeff_to_internal_repr::<F>(coeff);
                                     let field_coeff = MW::field_new(quote! { #mont });
                                     let tmp = syn::Ident::new(
-                                        &format!("{}_c{}_t", var_name, col_idx),
+                                        &format!("{}_t", var_name),
                                         proc_macro2::Span::call_site(),
                                     );
                                     let mul_coeff =
@@ -792,17 +785,9 @@ pub fn generate_layer_final_step_accumulator<MW: MersenneWrapper, F: PrimeField>
                                     });
                                 }
                                 let add_col = MW::add_assign(quote! { #var }, quote! { #col_var });
-                                if col_idx == 0 {
-                                    comp.extend(quote! { { #col_comp #add_col; } });
-                                } else {
-                                    let mul_ch = MW::mul_assign(
-                                        quote! { #col_var },
-                                        quote! { lookup_alpha },
-                                    );
-                                    comp.extend(quote! {
-                                        { #col_comp for _ in 0..#col_idx { #mul_ch; } #add_col; }
-                                    });
-                                }
+                                comp.extend(quote! {
+                                    { #mul_var_alpha; #col_comp #add_col; }
+                                });
                             }
                             comp
                         };
@@ -845,7 +830,7 @@ pub fn generate_layer_final_step_accumulator<MW: MersenneWrapper, F: PrimeField>
 
     quote! {
         #[inline(always)]
-        #[allow(unused_variables)]
+        #[allow(unused_variables, unused_mut, clippy::needless_borrow, clippy::needless_range_loop, clippy::large_const_arrays)]
         unsafe fn #fn_name(
             evals: &[[#quartic_struct; 2]],
             batch_base: #quartic_struct,

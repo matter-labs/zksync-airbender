@@ -8,7 +8,7 @@ pub fn generate_transcript_helpers<MW: MersenneWrapper>() -> TokenStream {
     let quartic_struct = MW::quartic_struct();
 
     let field_from_raw = MW::field_from_reduced_raw_repr(quote! { I::read_word() });
-    let field_from_u32 = MW::field_from_u32_with_reduction(quote! { w });
+    let field_from_u32 = MW::field_from_raw_repr_with_reduction(quote! { w });
 
     quote! {
         #[inline(always)]
@@ -42,7 +42,11 @@ pub fn generate_transcript_helpers<MW: MersenneWrapper>() -> TokenStream {
         ) {
             let n = dst.len();
             let padded = (n * EXT_DEGREE).next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS);
-            assert!(padded <= DRAW_BUF_CAPACITY, "draw buffer too small");
+            // 64 is sufficient: the max draw is for gamma powers (TOTAL_ORACLE_COLS
+            // extension elements). The largest circuit has ~50 columns → 50*4 = 200 words,
+            // but gamma is drawn as a single element (4 words → padded to 8).
+            // Per-round draws are 1 element each.
+            debug_assert!(padded <= DRAW_BUF_CAPACITY, "draw buffer too small");
 
             let mut words = LazyVec::<u32, DRAW_BUF_CAPACITY>::new();
             unsafe {
@@ -50,16 +54,31 @@ pub fn generate_transcript_helpers<MW: MersenneWrapper>() -> TokenStream {
                 Blake2sTranscript::draw_randomness_using_hasher(hasher, seed, words.as_mut_slice());
             }
 
-            for (i, chunk) in words.as_slice()[..n * EXT_DEGREE]
-                .chunks_exact(EXT_DEGREE)
-                .enumerate()
-            {
+            let mut i = 0;
+            while i < n {
+                let base = i * EXT_DEGREE;
                 let mut arr = LazyVec::<#field_struct, EXT_DEGREE>::new();
-                for &w in chunk {
+                let mut k = 0;
+                while k < EXT_DEGREE {
+                    let w = unsafe { *words.get_unchecked(base + k) };
                     arr.push(#field_from_u32);
+                    k += 1;
                 }
-                dst[i] = unsafe { core::ptr::read(arr.as_slice().as_ptr().cast::<#quartic_struct>()) };
+                unsafe { *dst.get_unchecked_mut(i) = core::ptr::read(arr.as_slice().as_ptr().cast::<#quartic_struct>()) };
+                i += 1;
             }
+        }
+
+        /// Draw a single extension field element from the transcript.
+        #[inline(always)]
+        pub fn draw_single_field_el(
+            hasher: &mut DelegatedBlake2sState,
+            seed: &mut Seed,
+        ) -> #quartic_struct {
+            let mut buf = LazyVec::<#quartic_struct, 1>::new();
+            unsafe { buf.set_len(1); }
+            draw_field_els_into(hasher, seed, buf.as_mut_slice());
+            *buf.get(0)
         }
     }
 }

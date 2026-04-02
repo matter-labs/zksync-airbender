@@ -5,15 +5,14 @@ use transcript::{Blake2sTranscript, Seed};
 use crate::gkr::LazyVec;
 use crate::structs::{assemble_query_index, BitSource};
 
+/// Read a Merkle cap from NDS into a fixed-size array.
 #[inline(always)]
-pub fn read_and_commit_merkle_cap<I: NonDeterminismSource, const CAP_WORDS: usize>(
-    seed: &mut Seed,
-) {
+fn read_merkle_cap_inner<I: NonDeterminismSource, const CAP_WORDS: usize>() -> [u32; CAP_WORDS] {
     let mut buf = LazyVec::<u32, CAP_WORDS>::new();
     for _ in 0..CAP_WORDS {
         buf.push(I::read_word());
     }
-    Blake2sTranscript::commit_with_seed(seed, buf.as_slice());
+    unsafe { buf.into_array() }
 }
 
 /// Read a Merkle cap from NDS, commit it to the transcript, and return it.
@@ -21,23 +20,16 @@ pub fn read_and_commit_merkle_cap<I: NonDeterminismSource, const CAP_WORDS: usiz
 pub fn read_commit_return_merkle_cap<I: NonDeterminismSource, const CAP_WORDS: usize>(
     seed: &mut Seed,
 ) -> [u32; CAP_WORDS] {
-    let mut buf = LazyVec::<u32, CAP_WORDS>::new();
-    for _ in 0..CAP_WORDS {
-        buf.push(I::read_word());
-    }
-    Blake2sTranscript::commit_with_seed(seed, buf.as_slice());
-    unsafe { core::ptr::read(buf.as_slice().as_ptr().cast::<[u32; CAP_WORDS]>()) }
+    let cap = read_merkle_cap_inner::<I, CAP_WORDS>();
+    Blake2sTranscript::commit_with_seed(seed, &cap);
+    cap
 }
 
 /// Read a Merkle cap from NDS and return it (no transcript commit).
 #[inline(always)]
 pub fn read_return_merkle_cap<I: NonDeterminismSource, const CAP_WORDS: usize>() -> [u32; CAP_WORDS]
 {
-    let mut buf = LazyVec::<u32, CAP_WORDS>::new();
-    for _ in 0..CAP_WORDS {
-        buf.push(I::read_word());
-    }
-    unsafe { core::ptr::read(buf.as_slice().as_ptr().cast::<[u32; CAP_WORDS]>()) }
+    read_merkle_cap_inner::<I, CAP_WORDS>()
 }
 
 #[inline(always)]
@@ -191,26 +183,4 @@ pub fn hash_leaf_data_into_state<const N: usize>(
         hasher.absorb_final_block::<true>(&last_block, last_block_words, &mut dst);
         hasher.state = dst;
     }
-}
-
-#[cfg(any(test, feature = "proof_utils"))]
-pub fn draw_query_indices_vec(
-    hasher: &mut DelegatedBlake2sState,
-    seed: &mut Seed,
-    num_queries: usize,
-    query_index_bits: usize,
-    draw_words: usize,
-) -> Vec<usize> {
-    debug_assert_eq!(draw_words % BLAKE2S_DIGEST_SIZE_U32_WORDS, 0);
-    let mut source_words = vec![0u32; draw_words];
-    Blake2sTranscript::draw_randomness_using_hasher(hasher, seed, &mut source_words);
-
-    let bit_words = &source_words[1..];
-    let mut bit_source = BitSource::new(bit_words);
-
-    let mut indices = Vec::with_capacity(num_queries);
-    for _ in 0..num_queries {
-        indices.push(assemble_query_index(query_index_bits, &mut bit_source));
-    }
-    indices
 }

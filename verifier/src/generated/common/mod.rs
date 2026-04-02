@@ -40,24 +40,41 @@ pub fn draw_field_els_into(
 ) {
     let n = dst.len();
     let padded = (n * EXT_DEGREE).next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS);
-    assert!(padded <= DRAW_BUF_CAPACITY, "draw buffer too small");
+    debug_assert!(padded <= DRAW_BUF_CAPACITY, "draw buffer too small");
     let mut words = LazyVec::<u32, DRAW_BUF_CAPACITY>::new();
     unsafe {
         words.set_len(padded);
         Blake2sTranscript::draw_randomness_using_hasher(hasher, seed, words.as_mut_slice());
     }
-    for (i, chunk) in words.as_slice()[..n * EXT_DEGREE]
-        .chunks_exact(EXT_DEGREE)
-        .enumerate()
-    {
+    let mut i = 0;
+    while i < n {
+        let base = i * EXT_DEGREE;
         let mut arr = LazyVec::<BabyBearField, EXT_DEGREE>::new();
-        for &w in chunk {
-            arr.push(BabyBearField::from_u32_with_reduction(w));
+        let mut k = 0;
+        while k < EXT_DEGREE {
+            let w = unsafe { *words.get_unchecked(base + k) };
+            arr.push(BabyBearField::from_raw_repr_with_reduction(w));
+            k += 1;
         }
-        dst[i] = unsafe { core::ptr::read(arr.as_slice().as_ptr().cast::<BabyBearExt4>()) };
+        unsafe {
+            *dst.get_unchecked_mut(i) =
+                core::ptr::read(arr.as_slice().as_ptr().cast::<BabyBearExt4>())
+        };
+        i += 1;
     }
 }
+#[doc = r" Draw a single extension field element from the transcript."]
 #[inline(always)]
+pub fn draw_single_field_el(hasher: &mut DelegatedBlake2sState, seed: &mut Seed) -> BabyBearExt4 {
+    let mut buf = LazyVec::<BabyBearExt4, 1>::new();
+    unsafe {
+        buf.set_len(1);
+    }
+    draw_field_els_into(hasher, seed, buf.as_mut_slice());
+    *buf.get(0)
+}
+#[inline(always)]
+#[allow(clippy::needless_borrow, clippy::borrow_deref_ref)]
 pub fn dot_eq<const N: usize>(values: &[BabyBearExt4; N], eq: &[BabyBearExt4; N]) -> BabyBearExt4 {
     let mut result = BabyBearExt4::ZERO;
     for i in 0..N {
@@ -112,13 +129,17 @@ pub fn verify_sumcheck_rounds<
     let mut eq_prefactor = BabyBearExt4::ONE;
     let coeff_data_words = 4 * EXT_DEGREE;
     let total_commit_words = BLAKE2S_DIGEST_SIZE_U32_WORDS + coeff_data_words;
-    let mut commit_buf: AlignedArray64<u32, COMMIT_BUF> = AlignedArray64::from_value(0u32);
+    let mut commit_buf = AlignedArray64::<u32, COMMIT_BUF>::new_uninit();
+    unsafe { commit_buf.zero_range(total_commit_words, COMMIT_BUF) };
     let mut hasher = DelegatedBlake2sState::new();
-    let mut draw_buf = [0u32; BLAKE2S_DIGEST_SIZE_U32_WORDS];
+    let mut draw_buf = LazyVec::<u32, BLAKE2S_DIGEST_SIZE_U32_WORDS>::new();
+    unsafe {
+        draw_buf.set_len(BLAKE2S_DIGEST_SIZE_U32_WORDS);
+    }
     for round in 0..NUM_ROUNDS {
-        commit_buf[0..BLAKE2S_DIGEST_SIZE_U32_WORDS].copy_from_slice(&seed.0);
+        commit_buf.copy_from_slice(0, &seed.0);
         for i in 0..coeff_data_words {
-            commit_buf[BLAKE2S_DIGEST_SIZE_U32_WORDS + i] = I::read_word();
+            commit_buf.write(BLAKE2S_DIGEST_SIZE_U32_WORDS + i, I::read_word());
         }
         let coeffs = unsafe {
             &*commit_buf
@@ -143,15 +164,15 @@ pub fn verify_sumcheck_rounds<
         Blake2sTranscript::commit_with_seed_using_hasher_and_aligned_buffer(
             &mut hasher,
             seed,
-            &commit_buf,
+            unsafe { commit_buf.assume_init_ref() },
             total_commit_words,
         );
-        Blake2sTranscript::draw_randomness_using_hasher(&mut hasher, seed, &mut draw_buf);
+        Blake2sTranscript::draw_randomness_using_hasher(&mut hasher, seed, draw_buf.as_mut_slice());
         let r_k = {
             let mut arr = LazyVec::<BabyBearField, EXT_DEGREE>::new();
             for i in 0..EXT_DEGREE {
-                let w = draw_buf[i];
-                arr.push(BabyBearField::from_u32_with_reduction(w));
+                let w = *draw_buf.get(i);
+                arr.push(BabyBearField::from_raw_repr_with_reduction(w));
             }
             unsafe { core::ptr::read(arr.as_slice().as_ptr().cast::<BabyBearExt4>()) }
         };
@@ -222,11 +243,6 @@ pub fn fold_standard_claims<const NUM_ADDRS: usize, const ADDRS: usize, const BU
         claims.push(diff);
     }
 }
-#[doc = r" Returns the multiplicative inverse of 2 in the base field."]
-#[inline(always)]
-pub fn two_inv() -> BabyBearField {
-    BabyBearField::from_u32_unchecked(2).inverse().unwrap()
-}
 #[doc = r" Compute tree index from query index for Merkle path verification."]
 #[inline(always)]
 pub fn compute_tree_index(
@@ -245,7 +261,6 @@ pub fn compute_tree_index(
     }
 }
 #[derive(Clone, Debug)]
-#[allow(dead_code)]
 pub enum WhirVerificationError {
     SumcheckFailed { round: usize },
     FoldAgreementFailed { query: usize },
@@ -272,9 +287,12 @@ pub fn verify_whir_sumcheck_step<I: NonDeterminismSource>(
     if sum != claim {
         return Err(WhirVerificationError::SumcheckFailed { round });
     }
-    let mut challenge_buf = [BabyBearExt4::ZERO; 1];
-    draw_field_els_into(hasher, seed, &mut challenge_buf);
-    let alpha = challenge_buf[0];
+    let mut challenge_buf = LazyVec::<BabyBearExt4, 1>::new();
+    unsafe {
+        challenge_buf.set_len(1);
+    }
+    draw_field_els_into(hasher, seed, challenge_buf.as_mut_slice());
+    let alpha = unsafe { *challenge_buf.get_unchecked(0) };
     let mut new_claim = c2;
     field_ops::mul_assign(&mut new_claim, &alpha);
     field_ops::add_assign(&mut new_claim, &c1);
@@ -298,13 +316,13 @@ pub fn materialize_gamma_powers<const N: usize>(gamma: BabyBearExt4) -> [BabyBea
     unsafe { powers.into_array() }
 }
 #[inline(always)]
+#[allow(clippy::too_many_arguments)]
 pub fn fold_coset(
     evals: &[BabyBearExt4],
     num_rounds: usize,
     folding_challenges: &[BabyBearExt4],
     mut root_inv: BabyBearField,
     high_powers_offsets: &[BabyBearField],
-    two_inv: BabyBearField,
     buf_a: &mut [BabyBearExt4],
     buf_b: &mut [BabyBearExt4],
 ) -> BabyBearExt4 {
@@ -312,39 +330,49 @@ pub fn fold_coset(
     let mut round = 0;
     while round < num_rounds {
         let half = 1 << (num_rounds - round - 1);
-        let challenge = folding_challenges[round];
-        let (src, dst) = if round == 0 {
-            (evals, &mut buf_a[..half])
+        let challenge = unsafe { *folding_challenges.get_unchecked(round) };
+        let src: &[BabyBearExt4] = if round == 0 {
+            evals
         } else if round % 2 == 1 {
-            (&buf_a[..half * 2], &mut buf_b[..half])
+            unsafe { core::slice::from_raw_parts(buf_a.as_ptr(), half * 2) }
         } else {
-            (&buf_b[..half * 2], &mut buf_a[..half])
+            unsafe { core::slice::from_raw_parts(buf_b.as_ptr(), half * 2) }
+        };
+        let dst: &mut [BabyBearExt4] = if round % 2 == 0 {
+            unsafe { core::slice::from_raw_parts_mut(buf_a.as_mut_ptr(), half) }
+        } else {
+            unsafe { core::slice::from_raw_parts_mut(buf_b.as_mut_ptr(), half) }
         };
         let mut pair_idx = 0;
         while pair_idx < half {
-            let a = src[pair_idx * 2];
-            let b = src[pair_idx * 2 + 1];
+            let src_idx = pair_idx * 2;
+            let a = unsafe { *src.get_unchecked(src_idx) };
+            let b = unsafe { *src.get_unchecked(src_idx + 1) };
             let mut t = a;
             field_ops::sub_assign(&mut t, &b);
             field_ops::mul_assign(&mut t, &challenge);
             let mut root = root_inv;
-            field_ops::mul_assign(&mut root, &high_powers_offsets[pair_idx]);
+            field_ops::mul_assign(&mut root, unsafe {
+                high_powers_offsets.get_unchecked(pair_idx)
+            });
             field_ops::mul_assign_by_base(&mut t, &root);
             field_ops::add_assign(&mut t, &a);
             field_ops::add_assign(&mut t, &b);
-            field_ops::mul_assign_by_base(&mut t, &two_inv);
-            dst[pair_idx] = t;
+            field_ops::mul_assign_by_base(&mut t, &BabyBearField::HALF);
+            unsafe {
+                *dst.get_unchecked_mut(pair_idx) = t;
+            }
             pair_idx += 1;
         }
         field_ops::square(&mut root_inv);
         round += 1;
     }
     if num_rounds == 0 {
-        evals[0]
+        unsafe { *evals.get_unchecked(0) }
     } else if num_rounds % 2 == 1 {
-        buf_a[0]
+        unsafe { *buf_a.get_unchecked(0) }
     } else {
-        buf_b[0]
+        unsafe { *buf_b.get_unchecked(0) }
     }
 }
 pub const MAX_HIGH_POWERS: usize = 8usize;
@@ -359,34 +387,32 @@ pub fn bitreverse_inplace<T: Copy>(arr: &mut [T]) {
     while i < n {
         let j = (i as u32).reverse_bits().wrapping_shr(32 - log_n) as usize;
         if i < j {
-            let tmp = arr[i];
-            arr[i] = arr[j];
-            arr[j] = tmp;
+            unsafe {
+                let tmp = *arr.get_unchecked(i);
+                *arr.get_unchecked_mut(i) = *arr.get_unchecked(j);
+                *arr.get_unchecked_mut(j) = tmp;
+            }
         }
         i += 1;
     }
 }
 #[doc = r" Compute bit-reversed high powers of the set-generator inverse for fold_coset."]
-#[doc = r" Returns the number of valid entries written (== 1 << (fold_steps - 1))."]
 #[inline(always)]
 pub fn compute_high_powers_offsets(
     fold_steps: usize,
-    dst: &mut [BabyBearField; MAX_HIGH_POWERS],
-) -> usize {
+    dst: &mut LazyVec<BabyBearField, MAX_HIGH_POWERS>,
+) {
     let count = 1usize << (fold_steps - 1);
-    let set_gen_inv = BabyBearField::TWO_ADICITY_GENERATORS[fold_steps]
-        .inverse()
-        .unwrap();
-    dst[0] = BabyBearField::ONE;
+    dst.push(BabyBearField::ONE);
+    let set_gen_inv = BabyBearField::TWO_ADICITY_GENERATORS_INVERSED[fold_steps];
     let mut pow = set_gen_inv;
     let mut i = 1;
     while i < count {
-        dst[i] = pow;
+        dst.push(pow);
         field_ops::mul_assign(&mut pow, &set_gen_inv);
         i += 1;
     }
-    bitreverse_inplace(&mut dst[..count]);
-    count
+    bitreverse_inplace(&mut dst.as_mut_slice()[..count]);
 }
 #[doc = r" Reconstruct an extension field element from raw u32 words in a buffer."]
 #[inline(always)]
@@ -395,7 +421,9 @@ pub fn ext_from_raw_words(words: &[u32]) -> BabyBearExt4 {
     let mut coeffs = LazyVec::<BabyBearField, EXT_DEGREE>::new();
     let mut i = 0;
     while i < EXT_DEGREE {
-        coeffs.push(BabyBearField::from_reduced_raw_repr(words[i]));
+        coeffs.push(BabyBearField::from_reduced_raw_repr(unsafe {
+            *words.get_unchecked(i)
+        }));
         i += 1;
     }
     unsafe { core::ptr::read(coeffs.as_slice().as_ptr().cast::<BabyBearExt4>()) }

@@ -2,7 +2,6 @@ use proc_macro2::TokenStream;
 use quote::quote;
 
 use crate::mersenne_wrapper::MersenneWrapper;
-use prover::cs::definitions::GKRAddress;
 use prover::cs::gkr_compiler::OutputType;
 
 use super::GKROutputGroupInfo;
@@ -12,7 +11,6 @@ pub fn generate_dim_reducing_compute_claim<MW: MersenneWrapper>(
     layer_idx: usize,
 ) -> TokenStream {
     let fn_name = quote::format_ident!("dim_reducing_{}_compute_claim", layer_idx);
-    let quartic_zero = MW::quartic_zero();
     let quartic_one = MW::quartic_one();
 
     let mut body = quote! {
@@ -93,6 +91,7 @@ pub fn generate_dim_reducing_compute_claim<MW: MersenneWrapper>(
     let quartic_struct = MW::quartic_struct();
     quote! {
         #[inline(always)]
+        #[allow(clippy::needless_borrow)]
         unsafe fn #fn_name(
             output_claims: &LazyVec<#quartic_struct, GKR_ADDRS>,
             batch_base: #quartic_struct,
@@ -162,12 +161,11 @@ pub fn generate_dim_reducing_final_step_accumulator<MW: MersenneWrapper>(
                 let add_assign_fn = MW::add_assign;
 
                 let mut lookup_body = TokenStream::new();
-                for (j, (a0, a1, b0, b1, acc_idx)) in [
+                for (a0, a1, b0, b1, acc_idx) in [
                     (0usize, 1usize, 0usize, 1usize, 0usize),
                     (2usize, 3usize, 2usize, 3usize, 1usize),
                 ]
                 .iter()
-                .enumerate()
                 {
                     let mul_num = mul_assign_fn(quote! { num }, quote! { v1b });
                     let mul_cb = mul_assign_fn(quote! { cb_tmp }, quote! { v1a });
@@ -222,6 +220,7 @@ pub fn generate_dim_reducing_final_step_accumulator<MW: MersenneWrapper>(
     let quartic_struct = MW::quartic_struct();
     quote! {
         #[inline(always)]
+        #[allow(clippy::needless_borrow, clippy::large_const_arrays)]
         unsafe fn #fn_name(
             evals: &[[#quartic_struct; 4]],
             batch_base: #quartic_struct,
