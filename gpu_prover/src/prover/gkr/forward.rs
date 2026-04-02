@@ -333,6 +333,16 @@ where
     gates_range.start(stream)?;
     assert_forward_layer_invariants(layer_idx, total_layers, layer);
     let expected_output_layer = layer_idx + 1;
+    schedule_materialized_vector_lookup_inputs(
+        expected_output_layer,
+        layer,
+        storage,
+        stage1,
+        forward_setup,
+        decoder_predicate_address,
+        trace_len,
+        context,
+    )?;
     let lowered = lower_forward_layer(
         layer_idx,
         layer,
@@ -342,10 +352,97 @@ where
         trace_len,
         context,
     )?;
-    launch_forward_layer(&lowered.batch, trace_len, context)?;
+    for batch in &lowered.batches {
+        launch_forward_layer(batch, trace_len, context)?;
+    }
     commit_lowered_forward_layer(expected_output_layer, storage, lowered);
     gates_range.end(stream)?;
     tracing_ranges.push(gates_range);
+
+    Ok(())
+}
+
+fn schedule_materialized_vector_lookup_inputs<E>(
+    expected_output_layer: usize,
+    layer: &GKRLayerDescription,
+    storage: &mut GpuGKRStorage<BF, E>,
+    stage1: &GpuGKRStage1Output,
+    forward_setup: &GpuGKRForwardSetup<E>,
+    decoder_predicate_address: Option<GKRAddress>,
+    trace_len: usize,
+    context: &ProverContext,
+) -> CudaResult<()>
+where
+    E: FieldExtension<BF> + Field + SetByRef + SetByVal + BatchInv + GpuGKRForwardCacheKernelSet,
+{
+    let generic_lookup = if forward_setup.generic_lookup_len() > 0 {
+        forward_setup.generic_lookup().as_ptr()
+    } else {
+        null()
+    };
+    let mut pending = layer
+        .gates
+        .iter()
+        .chain(layer.gates_with_external_connections.iter())
+        .filter_map(|gate| match &gate.enforced_relation {
+            NoFieldGKRRelation::MaterializedVectorLookupInput { input, output } => {
+                assert_eq!(gate.output_layer, expected_output_layer);
+                Some((input, output))
+            }
+            _ => None,
+        })
+        .peekable();
+
+    while pending.peek().is_some() {
+        let mut batch = GpuGKRForwardCacheBatch::default();
+        let mut outputs = Vec::with_capacity(MAX_CACHE_RELATIONS_PER_LAYER);
+        for descriptor in batch.descriptors.iter_mut() {
+            let Some((input, output)) = pending.next() else {
+                break;
+            };
+            let is_decoder_lookup = input.lookup_set_index == DECODER_LOOKUP_FORMAL_SET_INDEX;
+            let mapping = if input.lookup_set_index != DECODER_LOOKUP_FORMAL_SET_INDEX {
+                stage1
+                    .lookup_mappings
+                    .generic_mapping(input.lookup_set_index)
+            } else {
+                stage1
+                    .lookup_mappings
+                    .decoder_mapping()
+                    .expect("decoder mapping must be present for decoder lookup relation")
+            };
+            let mut dst = alloc_ext(trace_len, context)?;
+            let ext_output = dst.as_mut_ptr();
+            outputs.push((*output, GpuExtensionFieldPoly::new(dst)));
+            *descriptor = GpuGKRForwardCacheDescriptor {
+                kind: GpuGKRForwardCacheKind::VectorizedLookup,
+                mapping: mapping.as_ptr(),
+                generic_lookup,
+                decoder_mask: if is_decoder_lookup {
+                    storage
+                        .get_base_layer(
+                            decoder_predicate_address
+                                .expect("decoder lookup requires a decoder predicate column"),
+                        )
+                        .as_ptr()
+                } else {
+                    null()
+                },
+                decoder_fill_value: if is_decoder_lookup {
+                    forward_setup.decoder_lookup_fill_value_device().as_ptr()
+                } else {
+                    null()
+                },
+                ext_output,
+                ..GpuGKRForwardCacheDescriptor::default()
+            };
+            batch.count += 1;
+        }
+        for (address, poly) in outputs {
+            storage.insert_extension_at_layer(expected_output_layer, address, poly);
+        }
+        launch_forward_cache(batch, trace_len, context)?;
+    }
 
     Ok(())
 }
@@ -409,27 +506,27 @@ fn lower_forward_layer<E>(
 ) -> CudaResult<LoweredGpuGKRForwardLayer<E>> {
     let expected_output_layer = layer_idx + 1;
     let total_gates = layer.gates.len() + layer.gates_with_external_connections.len();
-    assert!(
-        total_gates <= GKR_FORWARD_MAX_GATES_PER_LAYER,
-        "layer {layer_idx} has {total_gates} gates, exceeding the fused forward cap of {}",
-        GKR_FORWARD_MAX_GATES_PER_LAYER
-    );
-
+    let mut batches = Vec::with_capacity(total_gates.div_ceil(GKR_FORWARD_MAX_GATES_PER_LAYER));
     let mut batch = GpuGKRForwardLayerBatch::new(lookup_additive_challenge);
-    batch.gate_count = total_gates as u32;
+    let mut batch_gate_idx = 0usize;
 
     let mut computed_extension_outputs = Vec::new();
     let mut aliased_base_outputs = Vec::new();
     let mut aliased_extension_outputs = Vec::new();
 
-    for (gate_idx, gate) in layer
+    for gate in layer
         .gates
         .iter()
         .chain(layer.gates_with_external_connections.iter())
-        .enumerate()
     {
+        if batch_gate_idx == GKR_FORWARD_MAX_GATES_PER_LAYER {
+            batch.gate_count = batch_gate_idx as u32;
+            batches.push(batch);
+            batch = GpuGKRForwardLayerBatch::new(lookup_additive_challenge);
+            batch_gate_idx = 0;
+        }
         assert_eq!(gate.output_layer, expected_output_layer);
-        batch.descriptors[gate_idx] = match &gate.enforced_relation {
+        batch.descriptors[batch_gate_idx] = match &gate.enforced_relation {
             NoFieldGKRRelation::Copy { input, output } => {
                 if let Some(source) = storage.try_get_base_poly(*input) {
                     aliased_base_outputs.push((*output, source.clone_shared()));
@@ -628,6 +725,14 @@ fn lower_forward_layer<E>(
             NoFieldGKRRelation::EnforceConstraintsMaxQuadratic { .. } => {
                 GpuGKRForwardGateDescriptor::no_op()
             }
+            NoFieldGKRRelation::MaterializedVectorLookupInput { output, .. } => {
+                assert!(
+                    storage.try_get_ext_poly(*output).is_some(),
+                    "materialized vector lookup output {:?} must be precomputed before gate lowering",
+                    output
+                );
+                GpuGKRForwardGateDescriptor::no_op()
+            }
             NoFieldGKRRelation::MaxQuadratic { output, .. }
                 if scratch_space_mapping.contains_key(output)
                     || storage.try_get_base_poly(*output).is_some() =>
@@ -639,7 +744,6 @@ fn lower_forward_layer<E>(
             | NoFieldGKRRelation::LookupPairFromVectorInputs { .. }
             | NoFieldGKRRelation::LookupPairFromBaseInputs { .. }
             | NoFieldGKRRelation::MaterializeSingleLookupInput { .. }
-            | NoFieldGKRRelation::MaterializedVectorLookupInput { .. }
             | NoFieldGKRRelation::UnbalancedGrandProductWithCache { .. } => {
                 unimplemented!(
                     "unsupported GPU forward relation: {:?}",
@@ -647,10 +751,16 @@ fn lower_forward_layer<E>(
                 )
             }
         };
+        batch_gate_idx += 1;
+    }
+
+    if batch_gate_idx > 0 {
+        batch.gate_count = batch_gate_idx as u32;
+        batches.push(batch);
     }
 
     Ok(LoweredGpuGKRForwardLayer {
-        batch,
+        batches,
         computed_extension_outputs,
         aliased_base_outputs,
         aliased_extension_outputs,
@@ -663,7 +773,7 @@ fn commit_lowered_forward_layer<E>(
     lowered: LoweredGpuGKRForwardLayer<E>,
 ) {
     let LoweredGpuGKRForwardLayer {
-        batch: _,
+        batches: _,
         computed_extension_outputs,
         aliased_base_outputs,
         aliased_extension_outputs,
@@ -766,6 +876,11 @@ fn push_memory_tuple_linear_term<E: Field>(
     add_memory_tuple_linear_term(descriptor, term_idx, input, challenge);
 }
 
+enum LoweredCacheRelationOutput<E> {
+    Base(GpuBaseFieldPoly<BF>),
+    Ext(GpuExtensionFieldPoly<E>),
+}
+
 fn lower_cache_relation<E>(
     layer_idx: usize,
     address: GKRAddress,
@@ -777,7 +892,10 @@ fn lower_cache_relation<E>(
     decoder_predicate_address: Option<GKRAddress>,
     trace_len: usize,
     context: &ProverContext,
-) -> CudaResult<GpuGKRForwardCacheDescriptor<E>>
+) -> CudaResult<(
+    GpuGKRForwardCacheDescriptor<E>,
+    LoweredCacheRelationOutput<E>,
+)>
 where
     E: FieldExtension<BF> + Field + SetByRef + SetByVal + BatchInv,
     Add: BinaryOp<E, E, E>,
@@ -790,7 +908,7 @@ where
     Sub: BinaryOp<E, BF, E>,
     Sub: BinaryOp<BF, BF, BF>,
 {
-    let cache_layer = cache_relation_layer(layer_idx, address);
+    cache_relation_layer(layer_idx, address);
     let generic_lookup = if forward_setup.generic_lookup_len() > 0 {
         forward_setup.generic_lookup().as_ptr()
     } else {
@@ -819,14 +937,16 @@ where
             let setup_values = storage.get_base_layer(setup_address).as_ptr();
             let mut dst = alloc_base(trace_len, context)?;
             let base_output = dst.as_mut_ptr();
-            storage.insert_base_field_at_layer(cache_layer, address, GpuBaseFieldPoly::new(dst));
-            Ok(GpuGKRForwardCacheDescriptor {
-                kind: GpuGKRForwardCacheKind::SingleColumnLookup,
-                mapping: mapping.as_ptr(),
-                setup_values,
-                base_output,
-                ..GpuGKRForwardCacheDescriptor::default()
-            })
+            Ok((
+                GpuGKRForwardCacheDescriptor {
+                    kind: GpuGKRForwardCacheKind::SingleColumnLookup,
+                    mapping: mapping.as_ptr(),
+                    setup_values,
+                    base_output,
+                    ..GpuGKRForwardCacheDescriptor::default()
+                },
+                LoweredCacheRelationOutput::Base(GpuBaseFieldPoly::new(dst)),
+            ))
         }
         NoFieldGKRCacheRelation::VectorizedLookup(rel) => {
             let is_decoder_lookup = rel.lookup_set_index == DECODER_LOOKUP_FORMAL_SET_INDEX;
@@ -840,49 +960,45 @@ where
             };
             let mut dst = alloc_ext(trace_len, context)?;
             let ext_output = dst.as_mut_ptr();
-            storage.insert_extension_at_layer(
-                cache_layer,
-                address,
-                GpuExtensionFieldPoly::new(dst),
-            );
-            Ok(GpuGKRForwardCacheDescriptor {
-                kind: GpuGKRForwardCacheKind::VectorizedLookup,
-                mapping: mapping.as_ptr(),
-                generic_lookup,
-                decoder_mask: if is_decoder_lookup {
-                    storage
-                        .get_base_layer(
-                            decoder_predicate_address
-                                .expect("decoder lookup requires a decoder predicate column"),
-                        )
-                        .as_ptr()
-                } else {
-                    null()
+            Ok((
+                GpuGKRForwardCacheDescriptor {
+                    kind: GpuGKRForwardCacheKind::VectorizedLookup,
+                    mapping: mapping.as_ptr(),
+                    generic_lookup,
+                    decoder_mask: if is_decoder_lookup {
+                        storage
+                            .get_base_layer(
+                                decoder_predicate_address
+                                    .expect("decoder lookup requires a decoder predicate column"),
+                            )
+                            .as_ptr()
+                    } else {
+                        null()
+                    },
+                    decoder_fill_value: if is_decoder_lookup {
+                        forward_setup.decoder_lookup_fill_value_device().as_ptr()
+                    } else {
+                        null()
+                    },
+                    ext_output,
+                    ..GpuGKRForwardCacheDescriptor::default()
                 },
-                decoder_fill_value: if is_decoder_lookup {
-                    forward_setup.decoder_lookup_fill_value_device().as_ptr()
-                } else {
-                    null()
-                },
-                ext_output,
-                ..GpuGKRForwardCacheDescriptor::default()
-            })
+                LoweredCacheRelationOutput::Ext(GpuExtensionFieldPoly::new(dst)),
+            ))
         }
         NoFieldGKRCacheRelation::VectorizedLookupSetup(_) => {
             let mut dst = alloc_ext(trace_len, context)?;
             let ext_output = dst.as_mut_ptr();
-            storage.insert_extension_at_layer(
-                cache_layer,
-                address,
-                GpuExtensionFieldPoly::new(dst),
-            );
-            Ok(GpuGKRForwardCacheDescriptor {
-                kind: GpuGKRForwardCacheKind::VectorizedLookupSetup,
-                generic_lookup,
-                ext_output,
-                generic_lookup_len: forward_setup.generic_lookup_len() as u32,
-                ..GpuGKRForwardCacheDescriptor::default()
-            })
+            Ok((
+                GpuGKRForwardCacheDescriptor {
+                    kind: GpuGKRForwardCacheKind::VectorizedLookupSetup,
+                    generic_lookup,
+                    ext_output,
+                    generic_lookup_len: forward_setup.generic_lookup_len() as u32,
+                    ..GpuGKRForwardCacheDescriptor::default()
+                },
+                LoweredCacheRelationOutput::Ext(GpuExtensionFieldPoly::new(dst)),
+            ))
         }
         NoFieldGKRCacheRelation::MemoryTuple(rel) => {
             let mut dst = alloc_ext(trace_len, context)?;
@@ -893,6 +1009,7 @@ where
                 constant_term: external_challenges.permutation_argument_additive_part,
                 ..GpuGKRForwardCacheDescriptor::default()
             };
+            let mut deferred_low_dynamic_term: Option<(*const BF, E)> = None;
             match rel.address_space {
                 CompiledAddressSpaceRelationStrict::Constant(c) => {
                     descriptor.address_space_kind = GpuGKRForwardCacheAddressSpaceKind::Constant;
@@ -986,13 +1103,12 @@ where
                     if let Some((multiplier, dynamic_offset)) = *low_dynamic_offset {
                         let mut challenge = low_challenge;
                         challenge.mul_assign_by_base(&BF::from_u32_unchecked(multiplier as u32));
-                        push_memory_tuple_linear_term(
-                            &mut descriptor,
+                        deferred_low_dynamic_term = Some((
                             storage
                                 .get_base_layer(GKRAddress::BaseLayerMemory(dynamic_offset))
                                 .as_ptr(),
                             challenge,
-                        );
+                        ));
                     }
                     add_memory_tuple_linear_term(
                         &mut descriptor,
@@ -1107,12 +1223,14 @@ where
                 }
             }
 
-            storage.insert_extension_at_layer(
-                cache_layer,
-                address,
-                GpuExtensionFieldPoly::new(dst),
-            );
-            Ok(descriptor)
+            if let Some((input, challenge)) = deferred_low_dynamic_term {
+                push_memory_tuple_linear_term(&mut descriptor, input, challenge);
+            }
+
+            Ok((
+                descriptor,
+                LoweredCacheRelationOutput::Ext(GpuExtensionFieldPoly::new(dst)),
+            ))
         }
     }
 }
@@ -1144,35 +1262,47 @@ where
         return Ok(());
     }
     assert!(
-        relations.len() <= MAX_CACHE_RELATIONS_PER_LAYER,
-        "layer {} has {} cache relations, exceeds hard limit {}",
-        layer_idx,
-        relations.len(),
-        MAX_CACHE_RELATIONS_PER_LAYER
-    );
-    assert!(
         forward_setup.generic_lookup_len() <= u32::MAX as usize,
         "generic lookup runtime too large for fused forward cache kernel"
     );
 
-    let mut batch = GpuGKRForwardCacheBatch::default();
-    for ((address, relation), descriptor) in relations.iter().zip(batch.descriptors.iter_mut()) {
-        *descriptor = lower_cache_relation(
-            layer_idx,
-            *address,
-            relation,
-            storage,
-            stage1,
-            forward_setup,
-            external_challenges,
-            decoder_predicate_address,
-            trace_len,
-            context,
-        )?;
-        batch.count += 1;
+    let mut pending_relations = relations.iter();
+    loop {
+        let mut batch = GpuGKRForwardCacheBatch::default();
+        for descriptor in batch.descriptors.iter_mut() {
+            let Some((address, relation)) = pending_relations.next() else {
+                break;
+            };
+            let (lowered, output) = lower_cache_relation(
+                layer_idx,
+                *address,
+                relation,
+                storage,
+                stage1,
+                forward_setup,
+                external_challenges,
+                decoder_predicate_address,
+                trace_len,
+                context,
+            )?;
+            *descriptor = lowered;
+            let output_layer = cache_relation_layer(layer_idx, *address);
+            match output {
+                LoweredCacheRelationOutput::Base(poly) => {
+                    storage.insert_base_field_at_layer(output_layer, *address, poly);
+                }
+                LoweredCacheRelationOutput::Ext(poly) => {
+                    storage.insert_extension_at_layer(output_layer, *address, poly);
+                }
+            }
+            batch.count += 1;
+        }
+        if batch.count == 0 {
+            break;
+        }
+        launch_forward_cache(batch, trace_len, context)?;
     }
-
-    launch_forward_cache(batch, trace_len, context)
+    Ok(())
 }
 
 fn schedule_dimension_reduction_forward<E>(
@@ -1732,9 +1862,10 @@ mod tests {
             &context,
         )
         .unwrap();
-        assert_eq!(lowered.batch.gate_count, layer.gates.len() as u32);
+        assert_eq!(lowered.batches.len(), 1);
+        assert_eq!(lowered.batches[0].gate_count, layer.gates.len() as u32);
 
-        launch_forward_layer::<E4>(&lowered.batch, trace_len, &context).unwrap();
+        launch_forward_layer::<E4>(&lowered.batches[0], trace_len, &context).unwrap();
         commit_lowered_forward_layer(1, &mut storage, lowered);
         context.get_exec_stream().synchronize().unwrap();
 
