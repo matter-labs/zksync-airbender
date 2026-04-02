@@ -1,12 +1,20 @@
 use super::option::u32::*;
 use crate::witness::Address;
-use cs::definitions::{GKRAddress, NUM_TIMESTAMP_COLUMNS_FOR_RAM, REGISTER_SIZE};
+use cs::definitions::{NUM_TIMESTAMP_COLUMNS_FOR_RAM, REGISTER_SIZE};
 
 type CSRegisterOnlyAccessAddress = cs::definitions::gkr::RegisterOnlyAccessAddress;
+type CSIndirectRamAccessAddress = cs::definitions::gkr::IndirectRamAccessAddress;
 type CSIsRegisterAddress = cs::definitions::gkr::IsRegisterAddress;
 type CSRamAddress = cs::definitions::gkr::RamAddress;
+type CSRegisterAccessColumns = cs::definitions::gkr::RegisterAccessColumns;
+type CSIndirectAccess = cs::definitions::gkr::IndirectAccess;
+type CSRegisterAndIndirectAccessDescription =
+    cs::definitions::gkr::RegisterAndIndirectAccessDescription;
+type CSRegisterAndIndirectAccessTimestampComparisonAuxVars =
+    cs::definitions::gkr::RegisterAndIndirectAccessTimestampComparisonAuxVars;
 type CSRegisterOrRamAccessAddress = cs::definitions::gkr::RegisterOrRamAccessAddress;
 type CSRamWordRepresentation = cs::definitions::gkr::RamWordRepresentation;
+type CSRamAuxComparisonSet = cs::definitions::gkr::RamAuxComparisonSet;
 
 #[repr(C)]
 #[derive(Clone, Copy, Default, Debug)]
@@ -62,6 +70,44 @@ impl From<CSRegisterOnlyAccessAddress> for RegisterOnlyAccessAddress {
     }
 }
 
+#[repr(C)]
+#[derive(Clone, Copy, Default, Debug)]
+pub struct IndirectRamVariableOffset {
+    pub offset: u32,
+    pub variable: u32,
+}
+
+impl From<(u16, usize)> for IndirectRamVariableOffset {
+    fn from(value: (u16, usize)) -> Self {
+        Self {
+            offset: value.0 as u32,
+            variable: value.1 as u32,
+        }
+    }
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Default, Debug)]
+pub struct IndirectRamAccessAddress {
+    pub base_register_value: [u32; REGISTER_SIZE],
+    pub base_register_index: u32,
+    pub constant_offset: u32,
+    pub indirect_access_idx_for_register: u32,
+    pub variable_offset: Option<IndirectRamVariableOffset>,
+}
+
+impl From<CSIndirectRamAccessAddress> for IndirectRamAccessAddress {
+    fn from(value: CSIndirectRamAccessAddress) -> Self {
+        Self {
+            base_register_value: value.base_register_value.map(|x| x as u32),
+            base_register_index: value.base_register_index as u32,
+            constant_offset: value.constant_offset as u32,
+            indirect_access_idx_for_register: value.indirect_access_idx_for_register as u32,
+            variable_offset: value.variable_offset.into(),
+        }
+    }
+}
+
 #[repr(C, u32)]
 #[derive(Clone, Copy, Debug)]
 pub enum IsRegisterAddress {
@@ -103,8 +149,10 @@ impl From<CSRegisterOrRamAccessAddress> for RegisterOrRamAccessAddress {
 #[repr(C, u32)]
 #[derive(Clone, Copy, Debug)]
 pub enum RamAddress {
+    ConstantRegister(u32),
     RegisterOnly(RegisterOnlyAccessAddress),
     RegisterOrRam(RegisterOrRamAccessAddress),
+    IndirectRam(IndirectRamAccessAddress),
 }
 
 impl Default for RamAddress {
@@ -117,15 +165,11 @@ impl From<CSRamAddress> for RamAddress {
     fn from(value: CSRamAddress) -> Self {
         match value {
             CSRamAddress::ConstantRegister(register_index) => {
-                Self::RegisterOnly(RegisterOnlyAccessAddress {
-                    register_index: register_index as u32,
-                })
+                Self::ConstantRegister(register_index as u32)
             }
             CSRamAddress::RegisterOnly(addr) => Self::RegisterOnly(addr.into()),
             CSRamAddress::RegisterOrRam(addr) => Self::RegisterOrRam(addr.into()),
-            CSRamAddress::IndirectRam(_) => {
-                unimplemented!("GPU witness generation does not yet support indirect RAM addresses")
-            }
+            CSRamAddress::IndirectRam(addr) => Self::IndirectRam(addr.into()),
         }
     }
 }
@@ -213,6 +257,134 @@ impl From<cs::definitions::gkr::RamAuxComparisonSet> for RamAuxComparisonSet {
     fn from(value: cs::definitions::gkr::RamAuxComparisonSet) -> Self {
         Self {
             intermediate_borrow: value.intermediate_borrow.into(),
+        }
+    }
+}
+
+impl From<CSRegisterAccessColumns> for RegisterAccessColumns {
+    fn from(value: CSRegisterAccessColumns) -> Self {
+        match value {
+            CSRegisterAccessColumns::ReadAccess {
+                register_index,
+                read_timestamp,
+                read_value,
+            } => Self::ReadAccess {
+                register_index: register_index as u32,
+                read_timestamp: read_timestamp.map(|x| x as u32),
+                read_value: read_value.map(|x| x as u32),
+            },
+            CSRegisterAccessColumns::WriteAccess {
+                register_index,
+                read_timestamp,
+                read_value,
+                write_value,
+            } => Self::WriteAccess {
+                register_index: register_index as u32,
+                read_timestamp: read_timestamp.map(|x| x as u32),
+                read_value: read_value.map(|x| x as u32),
+                write_value: write_value.map(|x| x as u32),
+            },
+        }
+    }
+}
+
+impl From<CSIndirectAccess> for IndirectAccess {
+    fn from(value: CSIndirectAccess) -> Self {
+        match value {
+            CSIndirectAccess::ReadAccess {
+                read_timestamp,
+                read_value,
+                address_derivation_carry_bit,
+                variable_dependent,
+                offset_constant,
+            } => Self::ReadAccess {
+                read_timestamp: read_timestamp.map(|x| x as u32),
+                read_value: read_value.map(|x| x as u32),
+                address_derivation_carry_bit: address_derivation_carry_bit.map(|x| x as u32).into(),
+                variable_dependent: variable_dependent
+                    .map(
+                        |(offset, variable, index)| IndirectAccessVariableDependency {
+                            offset,
+                            variable: variable as u32,
+                            index: index as u32,
+                        },
+                    )
+                    .into(),
+                offset_constant,
+            },
+            CSIndirectAccess::WriteAccess {
+                read_timestamp,
+                read_value,
+                write_value,
+                address_derivation_carry_bit,
+                variable_dependent,
+                offset_constant,
+            } => Self::WriteAccess {
+                read_timestamp: read_timestamp.map(|x| x as u32),
+                read_value: read_value.map(|x| x as u32),
+                write_value: write_value.map(|x| x as u32),
+                address_derivation_carry_bit: address_derivation_carry_bit.map(|x| x as u32).into(),
+                variable_dependent: variable_dependent
+                    .map(
+                        |(offset, variable, index)| IndirectAccessVariableDependency {
+                            offset,
+                            variable: variable as u32,
+                            index: index as u32,
+                        },
+                    )
+                    .into(),
+                offset_constant,
+            },
+        }
+    }
+}
+
+impl From<CSRegisterAndIndirectAccessDescription> for RegisterAndIndirectAccessDescription {
+    fn from(value: CSRegisterAndIndirectAccessDescription) -> Self {
+        let indirect_accesses_count = value.indirect_accesses.len();
+        assert!(indirect_accesses_count <= MAX_INDIRECT_ACCESSES_COUNT);
+        let mut indirect_accesses = [IndirectAccess::default(); MAX_INDIRECT_ACCESSES_COUNT];
+        for (src, dst) in value
+            .indirect_accesses
+            .into_iter()
+            .zip(indirect_accesses.iter_mut())
+        {
+            *dst = src.into();
+        }
+        Self {
+            register_access: value.register_access.into(),
+            indirect_accesses_count: indirect_accesses_count as u32,
+            indirect_accesses,
+        }
+    }
+}
+
+impl From<CSRegisterAndIndirectAccessTimestampComparisonAuxVars>
+    for RegisterAndIndirectAccessTimestampComparisonAuxVars
+{
+    fn from(value: CSRegisterAndIndirectAccessTimestampComparisonAuxVars) -> Self {
+        let aux_borrow_sets = value.aux_borrow_sets;
+        let len = aux_borrow_sets.len();
+        assert!(len <= MAX_AUX_BORROW_SETS_COUNT);
+        let mut dst = [AuxBorrowSet::default(); MAX_AUX_BORROW_SETS_COUNT];
+        for ((borrow, indirects), slot) in aux_borrow_sets.into_iter().zip(dst.iter_mut()) {
+            let indirects_len = indirects.len();
+            assert!(indirects_len <= MAX_AUX_BORROW_SET_INDIRECTS_COUNT);
+            let mut indirects_dst = [Address::default(); MAX_AUX_BORROW_SET_INDIRECTS_COUNT];
+            for (src, dst) in indirects.into_iter().zip(indirects_dst.iter_mut()) {
+                *dst = src.into();
+            }
+            *slot = AuxBorrowSet {
+                borrow: borrow.into(),
+                indirects_count: indirects_len as u32,
+                indirects: indirects_dst,
+            };
+        }
+        Self {
+            predicate: value.predicate.into(),
+            write_timestamp_columns: value.write_timestamp_columns.map(Into::into),
+            write_timestamp: value.write_timestamp.map(Into::into),
+            aux_borrow_sets: dst,
         }
     }
 }
