@@ -44,12 +44,15 @@ enum TableType : u16 {
   AlignedRomRead,
   MemStoreClearOriginalRamValueLimb,
   MemStoreClearWrittenValueLimb,
-  KeccakPermutationIndices12,
-  KeccakPermutationIndices34,
-  KeccakPermutationIndices56,
+  KeccakPermutationIndices,
   XorSpecialIota,
   AndN,
   RotL,
+  U16GetLowByte,
+  LoadHalfwordSignextend,
+  LoadByteSignextend,
+  LoadHalfwordRomRead,
+  LoadByteRomRead,
   Decoder,
   DynamicPlaceholder,
 };
@@ -120,10 +123,13 @@ template <unsigned K, unsigned V> struct TableDriver {
     case AlignedRomRead:
     case MemStoreClearOriginalRamValueLimb:
     case MemStoreClearWrittenValueLimb:
-    case KeccakPermutationIndices12:
-    case KeccakPermutationIndices34:
-    case KeccakPermutationIndices56:
+    case KeccakPermutationIndices:
     case RotL:
+    case U16GetLowByte:
+    case LoadHalfwordSignextend:
+    case LoadByteSignextend:
+    case LoadHalfwordRomRead:
+    case LoadByteRomRead:
     case Decoder:
       return index_for_keys<0>(keys);
     case XorSpecialIota:
@@ -131,7 +137,7 @@ template <unsigned K, unsigned V> struct TableDriver {
       return index_for_keys<0, 8>(keys);
     case StoreByteSourceContribution:
     case StoreByteExistingContribution:
-      return index_for_keys<1, 0>(keys);
+      return index_for_keys<0>(keys);
     case Xor3:
       return index_for_keys<3, 0>(keys);
     case Xor4:
