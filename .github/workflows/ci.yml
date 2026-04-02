@@ -9,6 +9,9 @@ on:
 
 permissions: read-all
 
+env:
+  RUST_TOOLCHAIN: nightly-2026-02-10
+
 jobs:
   tests:
     name: tests
@@ -17,6 +20,7 @@ jobs:
       - uses: actions/checkout@v3
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
           rustflags: ""
       - name: Setup
         run: |
@@ -35,6 +39,7 @@ jobs:
       - uses: actions/checkout@v3
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
           components: rustfmt
           rustflags: ""
       - name: Setup
@@ -50,6 +55,8 @@ jobs:
       - uses: actions/checkout@v3
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          components: rustfmt
           rustflags: ""
       - name: Setup
         run: |
@@ -104,6 +111,7 @@ jobs:
       - uses: actions/checkout@v3
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
           rustflags: ""
       - name: Setup
         run: rustup set profile minimal
@@ -146,6 +154,18 @@ jobs:
       - name: Verify recursion unified
         run: ./target/release/cli verify --proof output/recursion_unified.json --bin examples/basic_fibonacci/app.bin
 
+  miri:
+    name: miri
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          components: miri
+      - name: Run Miri tests
+        run: cargo miri test -p riscv_transpiler -- miri_
+
   # Keep branch protection tied to one stable check name even as the
   # underlying CI fan-out changes over time.
   pr-checks:
@@ -159,6 +179,7 @@ jobs:
       - check_verifiers
       - build_cli
       - cli_smoke_verify
+      - miri
     steps:
       - name: Decide on PR checks
         uses: re-actors/alls-green@05ac9388f0aebcb5727afa17fcccfecd6f8ec5fe # v1.2.2
