@@ -15,7 +15,7 @@ use prover::definitions::OPTIMAL_FOLDING_PROPERTIES;
 const DEFAULT_LDE_FACTOR: usize = 2;
 const DEFAULT_LDE_SOURCE_COSETS: &[usize] = &[0, 1];
 
-const BIGINT_DOMAIN_SIZE: usize = 1 << 21;
+const BIGINT_DOMAIN_SIZE: usize = 1 << 22;
 const BLAKE_DOMAIN_SIZE: usize = 1 << 20;
 const KECCAK_DOMAIN_SIZE: usize = 1 << 22;
 
@@ -142,14 +142,10 @@ impl DelegationCircuitType {
         *self as u16
     }
 
-    // #[inline(always)]
-    // pub const fn get_num_cycles(&self) -> usize {
-    //     match self {
-    //         Self::BigIntWithControl => bigint_with_control::NUM_DELEGATION_CYCLES,
-    //         Self::Blake2WithCompression => blake2_with_compression::NUM_DELEGATION_CYCLES,
-    //         Self::KeccakSpecial5 => keccak_special5::NUM_DELEGATION_CYCLES,
-    //     }
-    // }
+    #[inline(always)]
+    pub const fn get_num_cycles(&self) -> usize {
+        self.get_domain_size() - 1
+    }
 
     #[inline(always)]
     pub const fn get_domain_size(&self) -> usize {

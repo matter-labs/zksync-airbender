@@ -44,6 +44,10 @@ pub fn generate_generic_lookup_multiplicities(
     set_to_zero(multiplicities.slice_mut(), stream)?;
     let lookup_mapping_slice = lookup_mapping.slice();
     let lookup_mapping_len = lookup_mapping_slice.len();
+    let multiplicities_size = multiplicities.slice().len();
+    if lookup_mapping_len == 0 || multiplicities_size == 0 {
+        return Ok(());
+    }
     let mut sorted_lookup_mapping =
         context.alloc(lookup_mapping_len, AllocationPlacement::BestFit)?;
     assert!(lookup_mapping_len <= u32::MAX as usize);
@@ -71,7 +75,6 @@ pub fn generate_generic_lookup_multiplicities(
         stream,
     )?;
     drop(mapping_sort_temp_storage);
-    let multiplicities_size = multiplicities.slice().len();
     let mut unique_lookup_mapping =
         context.alloc(multiplicities_size, AllocationPlacement::BestFit)?;
     let mut counts = context.alloc(multiplicities_size, AllocationPlacement::BestFit)?;
@@ -111,13 +114,24 @@ pub fn generate_generic_lookup_multiplicities(
     GenerateMultiplicitiesFunction::default().launch(&config, &args)
 }
 
-pub const MAX_LOOKUP_EXPRESSIONS_RELATIONS_COUNT: usize = 8;
+// The checked-in delegation layouts exceed the legacy unrolled-family limit of 8.
+// Blake currently needs 88 timestamp lookup expressions, so keep modest headroom.
+pub const MAX_LOOKUP_EXPRESSIONS_RELATIONS_COUNT: usize = 128;
 
 #[repr(C)]
-#[derive(Clone, Copy, Default, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct LookupExpressions {
     relations_count: u32,
     relations: [NoFieldLinearRelation; MAX_LOOKUP_EXPRESSIONS_RELATIONS_COUNT],
+}
+
+impl Default for LookupExpressions {
+    fn default() -> Self {
+        Self {
+            relations_count: 0,
+            relations: [NoFieldLinearRelation::default(); MAX_LOOKUP_EXPRESSIONS_RELATIONS_COUNT],
+        }
+    }
 }
 
 impl From<&Vec<NoFieldSingleColumnLookupRelation>> for LookupExpressions {
