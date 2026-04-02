@@ -14,7 +14,7 @@ fn run_native(name: &str) {
             .spawn_scoped(s, move || {
                 set_iterator(nds.into_iter());
                 with_circuit!(name, |m| {
-                    m::verify_all::<ThreadLocalBasedSource>()
+                    m::verify::<ThreadLocalBasedSource>()
                         .unwrap_or_else(|e| panic!("{} failed: {:?}", name, e));
                 });
             })

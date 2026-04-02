@@ -12,7 +12,7 @@ unsafe extern "C" fn start_rust() -> ! {
 }
 
 unsafe fn workload() -> ! {
-    match generated_gkr::verify_all::<CSRBasedSource>() {
+    match generated_gkr::verify::<CSRBasedSource>() {
         Ok(()) => {
             zksync_os_finish_success(&[1, 0, 0, 0, 0, 0, 0, 0]);
         }

@@ -1199,7 +1199,7 @@ where
         #layer_functions
 
         #[allow(unused_braces, unused_mut, unused_variables, unused_unsafe, clippy::needless_borrow, clippy::needless_range_loop, clippy::large_const_arrays)]
-        pub fn verify_gkr_sumcheck<I: NonDeterminismSource,
+        pub fn verify_gkr<I: NonDeterminismSource,
         >() -> Result<GKRVerifierOutput<'static, #quartic_struct, GKR_ROUNDS, GKR_ADDRS, SETUP_CAP_WORDS, MEM_CAP_WORDS, WIT_CAP_WORDS>, GKRVerificationError> {
             unsafe { #main_body }
         }

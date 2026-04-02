@@ -8253,7 +8253,7 @@ unsafe fn dim_reducing_23_final_step_accumulator(
     clippy::needless_range_loop,
     clippy::large_const_arrays
 )]
-pub fn verify_gkr_sumcheck<I: NonDeterminismSource>() -> Result<
+pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
     GKRVerifierOutput<
         'static,
         BabyBearExt4,
