@@ -8,6 +8,12 @@ use cs::definitions::GKRAddress;
 pub(crate) fn normalize_compiled_circuit_for_gpu<F: PrimeField>(
     mut compiled_circuit: GKRCircuitArtifact<F>,
 ) -> GKRCircuitArtifact<F> {
+    // Delegation GKR artifacts are already the CPU source of truth. Rewriting
+    // materialized lookup inputs into synthetic cached relations adds GPU-only
+    // cache columns and breaks delegation parity.
+    if compiled_circuit.memory_layout.delegation_state.is_some() {
+        return compiled_circuit;
+    }
     for layer in compiled_circuit.layers.iter_mut() {
         normalize_layer_for_gpu(layer);
     }
