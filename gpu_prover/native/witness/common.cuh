@@ -38,7 +38,7 @@ struct NoFieldLinearRelation {
 };
 
 DEVICE_FORCEINLINE bf evaluate_linear_relation(const matrix_getter<bf, ld_modifier::cg> memory, const matrix_getter<bf, ld_modifier::cg> witness,
-                                               const NoFieldLinearRelation relation) {
+                                               const matrix_getter<bf, ld_modifier::cg> scratch, const NoFieldLinearRelation relation) {
   bf result = relation.constant == 0 ? bf::ZERO() : bf::from_canonical_u32(relation.constant);
 #pragma unroll
   for (int i = 0; i < MAX_LINEAR_TERMS_COUNT; ++i) {
@@ -52,6 +52,9 @@ DEVICE_FORCEINLINE bf evaluate_linear_relation(const matrix_getter<bf, ld_modifi
       break;
     case BaseLayerWitness:
       value = witness.get_at_col(address.offset);
+      break;
+    case ScratchSpace:
+      value = scratch.get_at_col(address.offset);
       break;
     default:
       __trap();

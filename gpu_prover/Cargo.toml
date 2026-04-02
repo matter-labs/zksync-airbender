@@ -53,6 +53,8 @@ itertools = "0.14"
 rand = "0.9"
 serial_test = "3"
 blake2s_u32 = { workspace = true }
+serde = { workspace = true }
+serde_json = "*"
 
 [[bench]]
 name = "field"

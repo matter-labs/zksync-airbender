@@ -36,13 +36,14 @@ struct LookupExpressions {
 };
 
 DEVICE_FORCEINLINE void process_expressions(const matrix_getter<bf, ld_modifier::cg> memory, const matrix_getter<bf, ld_modifier::cg> witness,
-                                            const LookupExpressions expressions, matrix_setter<unsigned, st_modifier::cs> mapping) {
+                                            const matrix_getter<bf, ld_modifier::cg> scratch, const LookupExpressions expressions,
+                                            matrix_setter<unsigned, st_modifier::cs> mapping) {
 #pragma unroll
   for (int i = 0; i < MAX_LOOKUP_EXPRESSIONS_RELATIONS_COUNT; i++) {
     if (i == expressions.relations_count)
       break;
     const auto relation = expressions.relations[i];
-    const bf field_value = evaluate_linear_relation(memory, witness, relation);
+    const bf field_value = evaluate_linear_relation(memory, witness, scratch, relation);
     const u32 value = bf::into_canonical_u32(field_value);
     mapping.set(value);
     mapping.add_col(1);
@@ -51,6 +52,7 @@ DEVICE_FORCEINLINE void process_expressions(const matrix_getter<bf, ld_modifier:
 
 EXTERN __launch_bounds__(128, 8) __global__
     void ab_generate_range_check_lookup_mapping_kernel(matrix_getter<bf, ld_modifier::cg> memory, matrix_getter<bf, ld_modifier::cg> witness,
+                                                       matrix_getter<bf, ld_modifier::cg> scratch,
                                                        __grid_constant__ const LookupExpressions range_check_16_lookup_expressions,
                                                        matrix_setter<unsigned, st_modifier::cs> range_check_16_lookup_mapping,
                                                        __grid_constant__ const LookupExpressions range_check_timestamp_lookup_expressions,
@@ -61,10 +63,11 @@ EXTERN __launch_bounds__(128, 8) __global__
 
   witness.add_row(gid);
   memory.add_row(gid);
+  scratch.add_row(gid);
   range_check_16_lookup_mapping.add_row(gid);
   range_check_timestamp_lookup_mapping.add_row(gid);
-  process_expressions(memory, witness, range_check_16_lookup_expressions, range_check_16_lookup_mapping);
-  process_expressions(memory, witness, range_check_timestamp_lookup_expressions, range_check_timestamp_lookup_mapping);
+  process_expressions(memory, witness, scratch, range_check_16_lookup_expressions, range_check_16_lookup_mapping);
+  process_expressions(memory, witness, scratch, range_check_timestamp_lookup_expressions, range_check_timestamp_lookup_mapping);
 }
 
 } // namespace airbender::witness::multiplicities

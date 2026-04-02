@@ -13,13 +13,18 @@ use crate::primitives::field::BF;
 use crate::prover::gkr::setup::GpuGKRSetupTransfer;
 use crate::prover::trace_holder::{TraceHolder, TreesCacheMode};
 use crate::prover::tracing_data::{TracingDataDevice, UnrolledTracingDataDevice};
-use crate::witness::memory_unrolled::generate_memory_and_witness_values_unrolled_non_memory;
+use crate::witness::memory_unrolled::{
+    generate_memory_and_witness_values_unrolled_memory,
+    generate_memory_and_witness_values_unrolled_non_memory,
+};
 use crate::witness::multiplicities::{
     generate_generic_lookup_multiplicities, generate_range_check_lookup_mappings,
     generate_range_check_multiplicities_from_mappings,
 };
 use crate::witness::trace_unrolled::ExecutorFamilyDecoderData;
-use crate::witness::witness_unrolled::generate_witness_values_unrolled_non_memory;
+use crate::witness::witness_unrolled::{
+    generate_witness_values_unrolled_memory, generate_witness_values_unrolled_non_memory,
+};
 use cs::gkr_compiler::GKRCircuitArtifact;
 use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
@@ -237,6 +242,43 @@ impl GpuGKRStage1Output {
 
             match (circuit_type, tracing_data) {
                 (
+                    CircuitType::Unrolled(UnrolledCircuitType::Memory(circuit_type)),
+                    TracingDataDevice::Unrolled(UnrolledTracingDataDevice::Memory(trace)),
+                ) => {
+                    let witness_values_range =
+                        Range::new("gkr.stage1.generate.memory_and_witness_values")?;
+                    witness_values_range.start(stream)?;
+                    let decoder_table = if compiled_circuit.has_decoder_lookup {
+                        decoder_table.expect("decoder lookup requires transferred decoder table")
+                    } else {
+                        DeviceSlice::empty()
+                    };
+                    generate_memory_and_witness_values_unrolled_memory(
+                        circuit_type,
+                        &compiled_circuit.memory_layout,
+                        &compiled_circuit.aux_layout_data,
+                        decoder_table,
+                        compiled_circuit.offset_for_decoder_table as u32,
+                        trace,
+                        &mut memory_matrix,
+                        &mut witness_matrix,
+                        decoder_lookup_mapping,
+                        context.get_exec_stream(),
+                    )?;
+                    generate_witness_values_unrolled_memory(
+                        circuit_type,
+                        trace,
+                        &DeviceMatrix::new(generic_lookup_tables, trace_len),
+                        &DeviceMatrix::new(memory_matrix.slice(), trace_len),
+                        &mut witness_matrix,
+                        &mut scratch_matrix,
+                        &mut DeviceMatrixMut::new(generic_mapping_prefix, trace_len),
+                        context.get_exec_stream(),
+                    )?;
+                    witness_values_range.end(stream)?;
+                    tracing_ranges.push(witness_values_range);
+                }
+                (
                     CircuitType::Unrolled(UnrolledCircuitType::NonMemory(circuit_type)),
                     TracingDataDevice::Unrolled(UnrolledTracingDataDevice::NonMemory(trace)),
                 ) => {
@@ -274,7 +316,7 @@ impl GpuGKRStage1Output {
                     tracing_ranges.push(witness_values_range);
                 }
                 _ => unimplemented!(
-                    "GPU GKR stage1 currently supports only unrolled non-memory traces",
+                    "GPU GKR stage1 currently supports only unrolled non-memory and memory traces",
                 ),
             }
         }
@@ -303,6 +345,7 @@ impl GpuGKRStage1Output {
         let (mut range_check_16, mut timestamp) = generate_range_check_lookup_mappings(
             compiled_circuit,
             &DeviceMatrix::new(memory_matrix.slice(), trace_len),
+            &DeviceMatrix::new(scratch_matrix.slice(), trace_len),
             &DeviceMatrix::new(witness_matrix.slice(), trace_len),
             context,
         )?;

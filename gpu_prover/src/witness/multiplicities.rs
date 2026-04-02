@@ -140,6 +140,7 @@ cuda_kernel!(GenerateRangeCheckLookupMappings,
     ab_generate_range_check_lookup_mapping_kernel(
         memory: PtrAndStride<BF>,
         witness: PtrAndStride<BF>,
+        scratch: PtrAndStride<BF>,
         range_check_16_lookup_expressions: LookupExpressions,
         range_check_16_lookup_mapping: MutPtrAndStride<u32>,
         range_check_timestamp_lookup_expressions: LookupExpressions,
@@ -151,6 +152,7 @@ cuda_kernel!(GenerateRangeCheckLookupMappings,
 pub fn generate_range_check_multiplicities(
     circuit: &GKRCircuitArtifact<BF>,
     memory: &impl DeviceMatrixImpl<BF>,
+    scratch: &impl DeviceMatrixImpl<BF>,
     witness: &mut impl DeviceMatrixMutImpl<BF>,
     context: &ProverContext,
 ) -> CudaResult<()> {
@@ -161,12 +163,13 @@ pub fn generate_range_check_multiplicities(
     let num_witness_cols = witness_layout.total_width;
     assert_eq!(memory.stride(), trace_len);
     assert_eq!(memory.cols(), num_memory_cols,);
+    assert_eq!(scratch.stride(), trace_len);
     assert_eq!(witness.stride(), trace_len);
     assert_eq!(witness.cols(), num_witness_cols,);
     let (
         mut range_check_16_lookup_mapping_allocation,
         mut range_check_timestamp_lookup_mapping_allocation,
-    ) = generate_range_check_lookup_mappings(circuit, memory, witness, context)?;
+    ) = generate_range_check_lookup_mappings(circuit, memory, scratch, witness, context)?;
     generate_range_check_multiplicities_from_mappings(
         circuit,
         &mut DeviceMatrixMut::new(&mut range_check_16_lookup_mapping_allocation, trace_len),
@@ -182,6 +185,7 @@ pub fn generate_range_check_multiplicities(
 pub fn generate_range_check_lookup_mappings(
     circuit: &GKRCircuitArtifact<BF>,
     memory: &impl DeviceMatrixImpl<BF>,
+    scratch: &impl DeviceMatrixImpl<BF>,
     witness: &impl DeviceMatrixImpl<BF>,
     context: &ProverContext,
 ) -> CudaResult<(DeviceAllocation<u32>, DeviceAllocation<u32>)> {
@@ -192,6 +196,7 @@ pub fn generate_range_check_lookup_mappings(
     let num_witness_cols = witness_layout.total_width;
     assert_eq!(memory.stride(), trace_len);
     assert_eq!(memory.cols(), num_memory_cols);
+    assert_eq!(scratch.stride(), trace_len);
     assert_eq!(witness.stride(), trace_len);
     assert_eq!(witness.cols(), num_witness_cols);
     let mut range_check_16_lookup_mapping_allocation = context.alloc(
@@ -223,12 +228,14 @@ pub fn generate_range_check_lookup_mappings(
         let stream = context.get_exec_stream();
         let witness = witness.as_ptr_and_stride();
         let memory = memory.as_ptr_and_stride();
+        let scratch = scratch.as_ptr_and_stride();
         let (grid_dim, block_dim) =
             get_grid_block_dims_for_threads_count(WARP_SIZE * 4, trace_len as u32);
         let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
         let args = GenerateRangeCheckLookupMappingsArguments::new(
             memory,
             witness,
+            scratch,
             range_check_16_lookup_expressions,
             range_check_16_lookup_mapping.as_mut_ptr_and_stride(),
             range_check_timestamp_lookup_expressions,
