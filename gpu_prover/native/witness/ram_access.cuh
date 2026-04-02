@@ -12,6 +12,10 @@ struct RegisterOnlyAccessAddress {
   u32 register_index;
 };
 
+struct ConstantRegisterAccessAddress {
+  u32 register_index;
+};
+
 enum IsRegisterAddressTag : u32 {
   Is,
   Not,
@@ -27,14 +31,31 @@ struct RegisterOrRamAccessAddress {
   u32 address[REGISTER_SIZE];
 };
 
+struct IndirectRamVariableOffset {
+  u32 offset;
+  u32 variable;
+};
+
+struct IndirectRamAccessAddress {
+  u32 base_register_value[REGISTER_SIZE];
+  u32 base_register_index;
+  u32 constant_offset;
+  u32 indirect_access_idx_for_register;
+  OptionU32::Option<IndirectRamVariableOffset> variable_offset;
+};
+
 enum RamAddressTag : u32 {
+  ConstantRegister,
   RegisterOnly,
   RegisterOrRam,
+  IndirectRam,
 };
 
 union RamAddressPayload {
+  ConstantRegisterAccessAddress constant_register_access_address;
   RegisterOnlyAccessAddress register_only_access_address;
   RegisterOrRamAccessAddress register_or_ram_access_address;
+  IndirectRamAccessAddress indirect_ram_access_address;
 };
 
 struct RamAddress {
