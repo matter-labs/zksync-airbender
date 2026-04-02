@@ -38,6 +38,8 @@ bincode = { version = "1.3" }
 criterion = "0.5"
 hex = "*"
 serial_test = "3"
+lib-rv32-asm = { git = "https://github.com/shamatar/lib-rv32.git" }
+execution_utils = { path = "../execution_utils" }
 
 [[bench]]
 name = "pow_bench"

@@ -31,6 +31,52 @@ pub(crate) fn mulhu<C: Counters, S: Snapshotter<C>, R: RAM>(
 }
 
 #[inline(always)]
+pub(crate) fn div_signed<C: Counters, S: Snapshotter<C>, R: RAM>(
+    state: &mut State<C>,
+    ram: &mut R,
+    snapshotter: &mut S,
+    instr: Instruction,
+) {
+    let rs1_value = read_register::<C, 0>(state, instr.rs1);
+    let rs2_value = read_register::<C, 1>(state, instr.rs2);
+    let rs1_signed = rs1_value as i32;
+    let rs2_signed = rs2_value as i32;
+    let mut rd = if rs2_value == 0 {
+        0xffffffff
+    } else if rs1_signed == i32::MIN && rs2_signed == -1 {
+        i32::MIN as u32
+    } else {
+        rs1_signed.wrapping_div(rs2_signed) as u32
+    };
+    write_register::<C, 2>(state, instr.rd, &mut rd);
+    default_increase_pc::<C>(state);
+    increment_family_counter::<C, MUL_DIV_CIRCUIT_FAMILY_IDX>(state);
+}
+
+#[inline(always)]
+pub(crate) fn rem_signed<C: Counters, S: Snapshotter<C>, R: RAM>(
+    state: &mut State<C>,
+    ram: &mut R,
+    snapshotter: &mut S,
+    instr: Instruction,
+) {
+    let rs1_value = read_register::<C, 0>(state, instr.rs1);
+    let rs2_value = read_register::<C, 1>(state, instr.rs2);
+    let rs1_signed = rs1_value as i32;
+    let rs2_signed = rs2_value as i32;
+    let mut rd = if rs2_value == 0 {
+        rs1_value
+    } else if rs1_signed == i32::MIN && rs2_signed == -1 {
+        0
+    } else {
+        rs1_signed.wrapping_rem(rs2_signed) as u32
+    };
+    write_register::<C, 2>(state, instr.rd, &mut rd);
+    default_increase_pc::<C>(state);
+    increment_family_counter::<C, MUL_DIV_CIRCUIT_FAMILY_IDX>(state);
+}
+
+#[inline(always)]
 pub(crate) fn divu<C: Counters, S: Snapshotter<C>, R: RAM>(
     state: &mut State<C>,
     ram: &mut R,

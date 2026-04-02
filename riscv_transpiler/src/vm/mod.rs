@@ -429,6 +429,8 @@ impl<C: Counters> VM<C> {
                 }
                 InstructionName::Mul => mul_div::mul::<C, S, R>(state, ram, snapshotter, instr),
                 InstructionName::Mulhu => mul_div::mulhu::<C, S, R>(state, ram, snapshotter, instr),
+                InstructionName::Div => mul_div::div_signed::<C, S, R>(state, ram, snapshotter, instr),
+                InstructionName::Rem => mul_div::rem_signed::<C, S, R>(state, ram, snapshotter, instr),
                 InstructionName::Divu => mul_div::divu::<C, S, R>(state, ram, snapshotter, instr),
                 InstructionName::Remu => mul_div::remu::<C, S, R>(state, ram, snapshotter, instr),
 

@@ -11,6 +11,7 @@ mod mul;
 // mod mulh;
 mod mulhu;
 // mod rem;
+mod signed_div;
 mod slt;
 mod sltu;
 mod sra;
@@ -35,6 +36,40 @@ fn test_reg_reg_op(op_name: &str, expected: u32, op1: u32, op2: u32) {
 
         let instructions: Vec<Instruction> =
             preprocess_bytecode::<FullUnsignedMachineDecoderConfig>(&text_section);
+        let tape = SimpleTape::new(&instructions);
+        let mut ram = RamWithRomRegion::<5>::from_rom_content(&text_section, 1 << 30);
+
+        VM::<CountersT>::run_basic_unrolled::<_, _, _>(
+            &mut state,
+            &mut ram,
+            &mut (),
+            &tape,
+            16,
+            &mut (),
+        );
+
+        assert!(state.registers[3].value == expected, "Unexpected output: expected 0x{:08x} for operation `{}` 0x{:08x}, 0x{:08x}, obtained 0x{:08x}", expected, op_name, op1, op2, state.registers[3].value);
+    }
+}
+
+fn test_reg_reg_op_signed(op_name: &str, expected: u32, op1: u32, op2: u32) {
+    type CountersT = DelegationsAndFamiliesCounters;
+    {
+        let mut state = State::initial_with_counters(CountersT::default());
+        state.registers[1].value = op1;
+        state.registers[2].value = op2;
+
+        let instr = format!("{} x3, x1, x2", op_name);
+        let mut empty_hash: HashMap<String, u32> = HashMap::new();
+        let encoding = lib_rv32_asm::assemble_ir(&instr, &mut empty_hash, INITIAL_PC)
+            .unwrap()
+            .unwrap();
+        // Add a self-loop after the tested instruction so bounded execution
+        // never walks off the instruction tape.
+        let text_section = vec![encoding, 0x0000006f];
+
+        let instructions: Vec<Instruction> =
+            preprocess_bytecode::<FullMachineDecoderConfig>(&text_section);
         let tape = SimpleTape::new(&instructions);
         let mut ram = RamWithRomRegion::<5>::from_rom_content(&text_section, 1 << 30);
 

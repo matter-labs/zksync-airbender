@@ -301,10 +301,11 @@ impl<
 
                 let divisor_is_non_zero = divisor_unsigned.is_zero().negate();
 
-                // default value is as-is it was divisor == 0
+                // default value is as-if divisor == 0
+                // RISC-V spec: DIVU/REMU with divisor=0 => quotient=0xFFFFFFFF, remainder=dividend
 
                 let quotient = <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::constant(u32::MAX);
-                let remainder = <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::constant(0);
+                let remainder = divident_unsigned.clone();
 
                 let masked_divisor = <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::select(
                     &divisor_is_non_zero,

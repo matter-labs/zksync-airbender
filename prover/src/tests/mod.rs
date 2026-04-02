@@ -69,6 +69,9 @@ use super::*;
 mod unrolled;
 
 #[cfg(test)]
+mod circuit_e2e;
+
+#[cfg(test)]
 mod lde_tests;
 
 pub use unrolled::with_transpiler::{

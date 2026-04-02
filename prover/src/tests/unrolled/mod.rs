@@ -586,6 +586,113 @@ pub(crate) fn ensure_memory_trace_consistency<const N: usize, const M: usize>(
     }
 }
 
+/// Test that the signed mul_div circuit's constraint system is satisfied
+/// for the INT_MIN / -1 overflow edge case.
+///
+/// RISC-V spec: DIV(i32::MIN, -1) = i32::MIN, REM(i32::MIN, -1) = 0
+#[cfg(test)]
+#[test]
+fn test_signed_div_overflow_constraint_satisfaction() {
+    skip_if_ci!();
+    use crate::cs::cs::cs_reference::BasicAssembly;
+    use cs::cs::circuit::Circuit;
+    use cs::definitions::TimestampData;
+    use cs::machine::ops::unrolled::decoder::{DivMulDecoder, process_binary_into_separate_tables_ext};
+    use cs::machine::ops::unrolled::mul_div::*;
+    use riscv_transpiler::machine_mode_only_unrolled::*;
+    const INITIAL_PC: u32 = 0;
+
+
+    let mut empty_hash = std::collections::HashMap::new();
+    let div_encoding = lib_rv32_asm::assemble_ir("div x3, x1, x2", &mut empty_hash, INITIAL_PC)
+        .expect("failed to assemble")
+        .expect("no instruction produced");
+    let text_section = vec![div_encoding];
+    let bytecode_size = 1 << 10; 
+
+    let family_idx = common_constants::circuit_families::MUL_DIV_CIRCUIT_FAMILY_IDX;
+    let mut t = process_binary_into_separate_tables_ext::<Mersenne31Field, true, Global>(
+        &text_section,
+        &[Box::new(DivMulDecoder::<true>)],
+        bytecode_size,
+        &[],
+    );
+    let (_, decoder_data) = t.remove(&family_idx).expect("decoder data for mul_div");
+
+    let run_div_test = |rs1: u32, rs2: u32, rd: u32, label: &str| {
+        let trace_data = vec![NonMemoryOpcodeTracingDataWithTimestamp {
+            opcode_data: NonMemoryOpcodeTracingData {
+                initial_pc: 0,
+                rs1_value: rs1,
+                rs2_value: rs2,
+                rd_old_value: 0,
+                rd_value: rd,
+                new_pc: 4,
+                delegation_type: 0,
+            },
+            rs1_read_timestamp: TimestampData::from_scalar(0),
+            rs2_read_timestamp: TimestampData::from_scalar(0),
+            rd_read_timestamp: TimestampData::from_scalar(0),
+            cycle_timestamp: TimestampData::from_scalar(4), // INITIAL_TIMESTAMP
+        }];
+
+        let oracle = NonMemoryCircuitOracle {
+            inner: &trace_data,
+            decoder_table: &decoder_data,
+            default_pc_value_in_padding: 4,
+        };
+
+        let oracle: NonMemoryCircuitOracle<'static> = unsafe { core::mem::transmute(oracle) };
+        let mut cs =
+            BasicAssembly::<Mersenne31Field>::new_with_oracle_and_preprocessed_decoder(
+                oracle,
+                decoder_data.clone(),
+            );
+
+        mul_div_table_addition_fn(&mut cs);
+        mul_div_circuit_with_preprocessed_bytecode::<_, _, true>(&mut cs);
+
+        assert!(
+            cs.is_satisfied(),
+            "Constraint system NOT satisfied for {}",
+            label
+        );
+        println!("PASS: {} - constraints satisfied", label);
+    };
+
+    // INT_MIN / -1 overflow: quotient = INT_MIN, remainder = 0 (but we test DIV which returns quotient)
+    run_div_test(
+        i32::MIN as u32,
+        -1i32 as u32,
+        i32::MIN as u32,
+        "div x3, x1, x2: i32::MIN / -1 = i32::MIN (overflow)",
+    );
+
+    // Normal signed division
+    run_div_test(
+        (-20i32) as u32,
+        6,
+        (-3i32) as u32,
+        "div x3, x1, x2: -20 / 6 = -3",
+    );
+
+    // Division by zero: quotient = -1 (0xFFFFFFFF)
+    run_div_test(
+        42,
+        0,
+        0xFFFF_FFFF,
+        "div x3, x1, x2: 42 / 0 = 0xFFFFFFFF",
+    );
+
+    // INT_MIN / 1 = INT_MIN (no overflow)
+    run_div_test(
+        i32::MIN as u32,
+        1,
+        i32::MIN as u32,
+        "div x3, x1, x2: i32::MIN / 1 = i32::MIN",
+    );
+}
+
 #[cfg(test)]
 #[ignore = "requires local witness fixture (tmp_wit.bin)"]
 #[test]

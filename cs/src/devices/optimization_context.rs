@@ -459,8 +459,6 @@ impl<F: PrimeField, CS: Circuit<F>> OptimizationContext<F, CS> {
 
         cs.set_values(value_fn);
 
-        cs.set_values(value_fn);
-
         let relation = MulDivRelation {
             exec_flag,
             op_1: op_1,
