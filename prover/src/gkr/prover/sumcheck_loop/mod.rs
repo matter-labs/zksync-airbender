@@ -84,7 +84,10 @@ where
 
     #[cfg(feature = "gkr_self_checks")]
     {
-        let recomputed = collector.compute_last_step_accumulator_from_evals(&last_evaluations);
+        let recomputed = collector.compute_last_step_accumulator_from_evals(
+            &BatchedGKRTermDescriptionConstants::<F, E>::default(),
+            &last_evaluations,
+        );
         assert_eq!(
             recomputed, final_accumulator,
             "last_evaluations inconsistent with final accumulator"
@@ -237,7 +240,8 @@ where
 
     #[cfg(feature = "gkr_self_checks")]
     {
-        let recomputed = collector.compute_last_step_accumulator_from_evals(&last_evaluations);
+        let recomputed = collector
+            .compute_last_step_accumulator_from_evals(&challenge_constants, &last_evaluations);
         assert_eq!(
             recomputed, final_accumulator,
             "last_evaluations inconsistent with final accumulator"

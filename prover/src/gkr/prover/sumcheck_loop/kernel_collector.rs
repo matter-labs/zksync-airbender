@@ -644,8 +644,61 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
 
 #[cfg(feature = "gkr_self_checks")]
 impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
+    fn evaluate_kernel_terms<const N: usize>(
+        last_evaluations: &BTreeMap<GKRAddress, [E; N]>,
+        challenge_constants: &BatchedGKRTermDescriptionConstants<F, E>,
+        kernel: &impl BatchedGKRKernel<F, E>,
+        challenges: &[E],
+        accumulator: &mut [E; 2],
+    ) {
+        let terms = kernel.terms(challenge_constants);
+        assert_eq!(terms.len(), challenges.len());
+        for j in 0..2usize {
+            for (term_idx, term) in terms.iter().enumerate() {
+                let mut contribution = term.constant_term;
+                for (a, other) in term
+                    .quadratic_part_base_by_base
+                    .iter()
+                    .chain(term.quadratic_part_base_by_ext.iter())
+                    .chain(term.quadratic_part_ext_by_ext.iter())
+                {
+                    for (b, c) in other.iter() {
+                        let a = last_evaluations
+                            .get(&a)
+                            .unwrap_or_else(|| panic!("input addr {a:?} not in last_evaluations"))
+                            [j];
+                        let b = last_evaluations
+                            .get(&b)
+                            .unwrap_or_else(|| panic!("input addr {b:?} not in last_evaluations"))
+                            [j];
+                        let mut t = *c;
+                        t.mul_assign(&a);
+                        t.mul_assign(&b);
+                        contribution.add_assign(&t);
+                    }
+                }
+                for (a, c) in term
+                    .linear_part_base
+                    .iter()
+                    .chain(term.linear_part_ext.iter())
+                {
+                    let a = last_evaluations
+                        .get(&a)
+                        .unwrap_or_else(|| panic!("input addr {a:?} not in last_evaluations"))[j];
+                    let mut t = *c;
+                    t.mul_assign(&a);
+                    contribution.add_assign(&t);
+                }
+
+                contribution.mul_assign(&challenges[term_idx]);
+                accumulator[j].add_assign(&contribution);
+            }
+        }
+    }
+
     pub(super) fn compute_last_step_accumulator_from_evals<const N: usize>(
         &self,
+        challenge_constants: &BatchedGKRTermDescriptionConstants<F, E>,
         last_evaluations: &BTreeMap<GKRAddress, [E; N]>,
     ) -> [E; 2] {
         use crate::definitions::sumcheck_kernel::{
@@ -994,17 +1047,41 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
                         acc[j].add_assign(&contrib);
                     }
                 }
-                KernelVariant::ProductWithoutCaches(..) => {
-                    todo!();
+                KernelVariant::ProductWithoutCaches(rel, challenge, ..) => {
+                    Self::evaluate_kernel_terms(
+                        last_evaluations,
+                        challenge_constants,
+                        rel,
+                        &challenge[..],
+                        &mut acc,
+                    );
                 }
-                KernelVariant::LookupBasePairWithoutCaches(..) => {
-                    todo!();
+                KernelVariant::LookupBasePairWithoutCaches(rel, challenge, ..) => {
+                    Self::evaluate_kernel_terms(
+                        last_evaluations,
+                        challenge_constants,
+                        rel,
+                        &challenge[..],
+                        &mut acc,
+                    );
                 }
-                KernelVariant::MaterializeSingleLookupInput(..) => {
-                    todo!();
+                KernelVariant::MaterializeSingleLookupInput(rel, challenge, ..) => {
+                    Self::evaluate_kernel_terms(
+                        last_evaluations,
+                        challenge_constants,
+                        rel,
+                        &challenge[..],
+                        &mut acc,
+                    );
                 }
-                KernelVariant::LookupBaseExtMinusBaseExtWithoutCaches(..) => {
-                    todo!();
+                KernelVariant::LookupBaseExtMinusBaseExtWithoutCaches(rel, challenge, ..) => {
+                    Self::evaluate_kernel_terms(
+                        last_evaluations,
+                        challenge_constants,
+                        rel,
+                        &challenge[..],
+                        &mut acc,
+                    );
                 }
 
                 // --- Dimension Reducing Evaluators ---
