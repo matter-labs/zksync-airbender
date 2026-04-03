@@ -75,7 +75,7 @@ pub fn no_field_gkr_max_quadratic_from_constraint<F: PrimeField>(
         let existing = quadratic_sorted
             .entry(a)
             .or_insert(BTreeMap::new())
-            .insert(b, coeff.as_u32_reduced() as u64);
+            .insert(b, coeff.as_u32_reduced());
         assert!(existing.is_none());
     }
     for (coeff, a) in linear_part.into_iter() {
@@ -100,14 +100,14 @@ pub fn no_field_gkr_max_quadratic_from_constraint<F: PrimeField>(
 
     let linear_terms = linear_sorted
         .into_iter()
-        .map(|(k, v)| (v as u64, k))
+        .map(|(k, v)| (v, k))
         .collect::<Vec<_>>()
         .into_boxed_slice();
 
     let input = NoFieldMaxQuadraticGKRRelation {
         quadratic_terms,
         linear_terms,
-        constant: constant.as_u32_reduced() as u64,
+        constant: constant.as_u32_reduced(),
     };
     NoFieldGKRRelation::MaxQuadratic { input, output }
 }

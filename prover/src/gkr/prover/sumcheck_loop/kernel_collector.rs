@@ -10,12 +10,15 @@ use crate::gkr::sumcheck::evaluation_kernels::{
     LookupBaseExtMinusBaseExtGKRRelation, LookupBaseExtMinusBaseExtWithoutCachesGKRRelation,
     LookupBaseMinusMultiplicityByBaseGKRRelation, LookupBasePairGKRRelation,
     LookupBasePairWithoutCachesGKRRelation, LookupExtensionMinusMultiplicityByExtensionGKRRelation,
-    LookupExtensionPairGKRRelation, LookupExtensionPairGKRRelationKernel, LookupPairGKRRelation,
+    LookupExtensionPairGKRRelation, LookupExtensionPairGKRRelationKernel,
+    LookupExtensionPairWithoutCachesGKRRelation, LookupPairGKRRelation,
     LookupRationalPairWithUnbalancedBaseGKRRelation,
     LookupRationalPairWithUnbalancedExtensionGKRRelation,
-    LookupRationalPairWithUnbalancedExtensionGKRRelationKernel, MaskIntoIdentityProductGKRRelation,
-    MaterializeSingleLookupInputGKRRelation, MaterializeVectoLookupInputGKRRelation,
-    MaxQuadraticGKRRelation, SameSizeProductGKRRelation, SameSizeProductGKRRelationWithoutCaches,
+    LookupRationalPairWithUnbalancedExtensionGKRRelationKernel,
+    LookupRationalPairWithUnbalancedExtensionWithoutCachesGKRRelation,
+    MaskIntoIdentityProductGKRRelation, MaterializeSingleLookupInputGKRRelation,
+    MaterializeVectoLookupInputGKRRelation, MaxQuadraticGKRRelation, SameSizeProductGKRRelation,
+    SameSizeProductGKRRelationWithoutCaches,
 };
 use crate::worker::Worker;
 use field::{Field, FieldExtension, PrimeField};
@@ -90,6 +93,7 @@ macro_rules! define_kernel_variants {
                 }
             }
 
+            #[track_caller]
             pub fn compute_output_claim(&self, output_claims: &BTreeMap<GKRAddress, E>) -> E {
                 match self {
                     $(KernelVariant::$s_name(_, challenge, output_addr) => {
@@ -140,10 +144,12 @@ define_kernel_variants! {
         LookupBasePair(LookupBasePairGKRRelation<F, E>),
         LookupBasePairWithoutCaches(LookupBasePairWithoutCachesGKRRelation<F, E>),
         LookupVectorPair(LookupExtensionPairGKRRelation<F, E>),
+        LookupVectorPairWithoutCaches(LookupExtensionPairWithoutCachesGKRRelation),
         LookupBaseMinusMultiplicityByBase(LookupBaseMinusMultiplicityByBaseGKRRelation<F, E>),
         LookupExtensionMinusMultiplicityByExtension(LookupExtensionMinusMultiplicityByExtensionGKRRelation<F, E>),
         LookupUnbalancedWithBase(LookupRationalPairWithUnbalancedBaseGKRRelation<F, E>),
         LookupUnbalancedWithExtension(LookupRationalPairWithUnbalancedExtensionGKRRelation<F, E>),
+        LookupUnbalancedWithExtensionWithoutCaches(LookupRationalPairWithUnbalancedExtensionWithoutCachesGKRRelation),
         LookupMaskedVectorMinusSetup(LookupBaseExtMinusBaseExtGKRRelation<F, E>),
         LookupPairDimensionReducing(LookupPairDimensionReducingGKRRelation),
         LookupBaseExtMinusBaseExtWithoutCaches(LookupBaseExtMinusBaseExtWithoutCachesGKRRelation),
@@ -442,6 +448,33 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelVariant<F, E> {
                     *output,
                 )
             }
+            NoFieldGKRRelation::LookupPairFromVectorInputs { input, output } => {
+                let challenges = [get_challenge(), get_challenge()];
+                Self::LookupVectorPairWithoutCaches(
+                    LookupExtensionPairWithoutCachesGKRRelation {
+                        inputs: input.clone(),
+                        outputs: *output,
+                    },
+                    challenges,
+                    *output,
+                )
+            }
+            NoFieldGKRRelation::LookupUnbalancedPairWithVectorInputs {
+                input,
+                remainder,
+                output,
+            } => {
+                let challenges = [get_challenge(), get_challenge()];
+                Self::LookupUnbalancedWithExtensionWithoutCaches(
+                    LookupRationalPairWithUnbalancedExtensionWithoutCachesGKRRelation {
+                        inputs: *input,
+                        remainder: remainder.clone(),
+                        outputs: *output,
+                    },
+                    challenges,
+                    *output,
+                )
+            }
 
             // NoFieldGKRRelation::MaterializedVectorLookupInput { .. } => todo!(),
             // NoFieldGKRRelation::LookupPairFromBaseInputs { .. } => todo!(),
@@ -457,14 +490,16 @@ pub(super) struct KernelCollector<F: PrimeField, E: FieldExtension<F> + Field> {
     pub(crate) kernels: Vec<KernelVariant<F, E>>,
     current_batch_challenge: E,
     batch_challenge_base: E,
+    pub(crate) layer: usize,
 }
 
 impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
-    pub(super) const fn new(batch_challenge_base: E) -> Self {
+    pub(super) const fn new(batch_challenge_base: E, layer: usize) -> Self {
         Self {
             kernels: Vec::new(),
             current_batch_challenge: E::ONE,
             batch_challenge_base,
+            layer,
         }
     }
 
@@ -475,16 +510,34 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
     pub(super) fn register(&mut self, kernel: KernelVariant<F, E>) {
         // Kernels can have a bug in them, place to debug
         match kernel {
-            // KernelVariant::LookupBaseMinusMultiplicityByBase(..) => {}
-            // KernelVariant::EnforceConstraintsMaxQuadratic(..) => {},
-            // KernelVariant::LookupBaseExtMinusBaseExtWithoutCaches(..) => {},
+            // KernelVariant::LookupVectorPairWithoutCaches(..) if self.layer == 0 => {}
+            // KernelVariant::MaxQuadratic(..) if self.layer == 0 => {}
+            // KernelVariant::LookupUnbalancedWithExtensionWithoutCaches(..) => {}
             _ => self.kernels.push(kernel),
         }
     }
 
     pub(super) fn compute_combined_claim(&self, output_claims: &BTreeMap<GKRAddress, E>) -> E {
         self.kernels.iter().fold(E::ZERO, |mut acc, kernel| {
+            // if let KernelVariant::LookupVectorPairWithoutCaches(.., challenges, addrs) = kernel {
+            //     if self.layer == 0 {
+            //         let mut res = E::ZERO;
+            //         for (challenge, addr) in challenges.iter().zip(addrs.iter()).take(1) {
+            //             if let Some(claim) = output_claims.get(addr) {
+            //                 let mut weighted = *claim;
+            //                 weighted.mul_assign(challenge);
+            //                 res.add_assign(&weighted);
+            //             } else {
+            //                 panic!("Claim missing for {:?} in kernel {:?}", addr, kernel);
+            //             }
+            //         }
+            //         acc.add_assign(&res);
+            //     } else {
+            //         acc.add_assign(&kernel.compute_output_claim(output_claims));
+            //     }
+            // } else {
             acc.add_assign(&kernel.compute_output_claim(output_claims));
+            // }
             acc
         })
     }
@@ -498,7 +551,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
         lookup_challenges_additive_part: E,
         challenge_for_constraints: E,
     ) -> Self {
-        let mut collector = Self::new(batch_challenge_base);
+        let mut collector = Self::new(batch_challenge_base, layer_idx);
 
         debug_assert!(layer.gates.is_empty() ^ layer.gates_with_external_connections.is_empty());
 
@@ -528,10 +581,10 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
 
     pub(super) fn from_dimension_reducing_relations(
         layer: &BTreeMap<OutputType, DimensionReducingInputOutput>,
-        _layer_idx: usize,
+        layer_idx: usize,
         batch_challenge_base: E,
     ) -> Self {
-        let mut collector = Self::new(batch_challenge_base);
+        let mut collector = Self::new(batch_challenge_base, layer_idx);
         let batch_base = collector.batch_challenge_base;
 
         let get_challenge = |cbc: &mut E| {
@@ -1075,6 +1128,24 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
                     );
                 }
                 KernelVariant::LookupBaseExtMinusBaseExtWithoutCaches(rel, challenge, ..) => {
+                    Self::evaluate_kernel_terms(
+                        last_evaluations,
+                        challenge_constants,
+                        rel,
+                        &challenge[..],
+                        &mut acc,
+                    );
+                }
+                KernelVariant::LookupVectorPairWithoutCaches(rel, challenge, ..) => {
+                    Self::evaluate_kernel_terms(
+                        last_evaluations,
+                        challenge_constants,
+                        rel,
+                        &challenge[..],
+                        &mut acc,
+                    );
+                }
+                KernelVariant::LookupUnbalancedWithExtensionWithoutCaches(rel, challenge, ..) => {
                     Self::evaluate_kernel_terms(
                         last_evaluations,
                         challenge_constants,

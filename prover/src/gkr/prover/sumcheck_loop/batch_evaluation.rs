@@ -1,6 +1,5 @@
 use super::*;
 use crate::definitions::sumcheck_kernel::*;
-use crate::gkr::prover::sumcheck_loop::kernel_collector::KernelVariant;
 use crate::gkr::sumcheck::access_and_fold::ExtensionFieldPolyContinuingSource;
 use crate::gkr::sumcheck::evaluation_kernels::BatchedGKRTermDescriptionConstants;
 
@@ -65,6 +64,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
     pub(crate) fn make_batched_description(
         &self,
         challenge_constants: &BatchedGKRTermDescriptionConstants<F, E>,
+        _layer: usize,
     ) -> BatchedGKRDescription<F, E> {
         let mut draft = BatchedGKRDescriptionDraft::<F, E>::default();
         for kernel in self.kernels.iter() {
@@ -76,6 +76,11 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
                 "number of challenges diverged for kernel {:?}",
                 kernel
             );
+
+            // use crate::gkr::prover::sumcheck_loop::kernel_collector::KernelVariant;
+            // if let KernelVariant::MaxQuadratic(..) = kernel {
+            //     dbg!(&terms);
+            // }
 
             for (batch_challege, term) in challenges.iter().zip(terms.iter()) {
                 for (a, other_terms) in term.quadratic_part_base_by_base.iter() {
@@ -114,7 +119,12 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
 
                 for (a, other_terms) in term.quadratic_part_ext_by_ext.iter() {
                     for (b, c) in other_terms.iter() {
-                        assert!(b >= a);
+                        assert!(
+                            b >= a,
+                            "multiplication loop must be ordered, but `a` = {:?}, `b` = {:?}",
+                            a,
+                            b
+                        );
                         let mut c = *c;
                         c.mul_assign(batch_challege);
                         let existing_coeff = draft

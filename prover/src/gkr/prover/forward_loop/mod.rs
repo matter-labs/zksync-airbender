@@ -580,6 +580,41 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
                     worker,
                 );
             }
+            NoFieldGKRRelation::LookupPairFromVectorInputs { input, output } => {
+                vector_lookup::materialize_lookup_expressions_pair(
+                    input,
+                    *output,
+                    gkr_storage,
+                    witness_trace,
+                    expected_output_layer,
+                    trace_len,
+                    preprocessed_generic_lookup,
+                    lookup_challenges_multiplicative_part,
+                    lookup_challenges_additive_part,
+                    compiled_circuit.offset_for_decoder_table as u32,
+                    worker,
+                );
+            }
+            NoFieldGKRRelation::LookupUnbalancedPairWithVectorInputs {
+                input,
+                remainder,
+                output,
+            } => {
+                vector_lookup::materialize_lookup_expressions_pair_with_remainder(
+                    *input,
+                    remainder,
+                    *output,
+                    gkr_storage,
+                    witness_trace,
+                    expected_output_layer,
+                    trace_len,
+                    preprocessed_generic_lookup,
+                    lookup_challenges_multiplicative_part,
+                    lookup_challenges_additive_part,
+                    compiled_circuit.offset_for_decoder_table as u32,
+                    worker,
+                );
+            }
             rel @ _ => {
                 panic!("Should evaluate {:?}", rel);
             }

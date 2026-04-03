@@ -141,9 +141,9 @@ pub struct NoFieldPureQuadraticGKRRelation {
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct NoFieldMaxQuadraticGKRRelation {
-    pub quadratic_terms: Box<[(GKRAddress, Box<[(u64, GKRAddress)]>)]>,
-    pub linear_terms: Box<[(u64, GKRAddress)]>,
-    pub constant: u64,
+    pub quadratic_terms: Box<[(GKRAddress, Box<[(u32, GKRAddress)]>)]>,
+    pub linear_terms: Box<[(u32, GKRAddress)]>,
+    pub constant: u32,
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -654,7 +654,7 @@ impl NoFieldGKRRelation {
             Self::AggregateLookupRationalPair { input, output } => {
                 vec![]
             }
-            Self::LookupUnbalancedPairWithVectorInputs {..} => {
+            Self::LookupUnbalancedPairWithVectorInputs { .. } => {
                 vec![]
             }
             a @ _ => {

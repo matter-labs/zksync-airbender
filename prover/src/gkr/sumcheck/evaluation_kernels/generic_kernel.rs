@@ -34,6 +34,9 @@ pub struct BatchedGKRTermDescription<F: PrimeField, E: FieldExtension<F> + Field
 
 impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRTermDescription<F, E> {
     pub fn add_base_by_base(&mut self, a: GKRAddress, b: GKRAddress, coeff: E) {
+        if coeff.is_zero() {
+            return;
+        }
         if a < b {
             self.quadratic_part_base_by_base
                 .entry(a)
@@ -52,6 +55,9 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRTermDescription<F, E
     }
 
     pub fn add_base_by_ext(&mut self, a: GKRAddress, b: GKRAddress, coeff: E) {
+        if coeff.is_zero() {
+            return;
+        }
         self.quadratic_part_base_by_ext
             .entry(a)
             .or_default()
@@ -61,6 +67,9 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRTermDescription<F, E
     }
 
     pub fn add_ext_by_ext(&mut self, a: GKRAddress, b: GKRAddress, coeff: E) {
+        if coeff.is_zero() {
+            return;
+        }
         if a < b {
             self.quadratic_part_ext_by_ext
                 .entry(a)
@@ -79,6 +88,9 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRTermDescription<F, E
     }
 
     pub fn add_linear_with_base(&mut self, a: GKRAddress, coeff: E) {
+        if coeff.is_zero() {
+            return;
+        }
         self.linear_part_base
             .entry(a)
             .or_default()
@@ -86,6 +98,9 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRTermDescription<F, E
     }
 
     pub fn add_linear_with_ext(&mut self, a: GKRAddress, coeff: E) {
+        if coeff.is_zero() {
+            return;
+        }
         self.linear_part_ext
             .entry(a)
             .or_default()
@@ -139,6 +154,20 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRTermDescription<F, E
         let mut coeff = a_constant;
         coeff.mul_assign(&b_constant);
         self.add_constant(coeff);
+    }
+
+    pub fn add_product_ext_by_linear_base(
+        &mut self,
+        a: GKRAddress,
+        b: (BTreeMap<GKRAddress, E>, E),
+    ) {
+        let (b_terms, b_constant) = b;
+
+        for (b, c_b) in b_terms.into_iter() {
+            self.add_base_by_ext(b, a, c_b);
+        }
+
+        self.add_linear_with_ext(a, b_constant);
     }
 
     pub fn add_linear_base_terms(&mut self, a: (BTreeMap<GKRAddress, E>, E)) {

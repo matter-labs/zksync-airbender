@@ -172,7 +172,7 @@ pub fn evaluate_sumcheck_for_layer<F: PrimeField, E: FieldExtension<F> + Field>(
     claims_storage: &mut BTreeMap<usize, BTreeMap<GKRAddress, E>>,
     gkr_storage: &mut GKRStorage<F, E>,
     batching_challenge: &mut E,
-    compiled_circuit: &cs::gkr_compiler::GKRCircuitArtifact<F>,
+    _compiled_circuit: &cs::gkr_compiler::GKRCircuitArtifact<F>,
     trace_len: usize,
     lookup_challenges_multiplicative_part: E,
     lookup_challenges_additive_part: E,
@@ -455,7 +455,7 @@ where
     let mut intermediate_coeffs = Vec::with_capacity(folding_steps);
 
     let batched_description = if USE_BATCHING {
-        collector.make_batched_description(challenge_constants)
+        collector.make_batched_description(challenge_constants, collector.layer)
     } else {
         Default::default()
     };

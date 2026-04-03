@@ -431,13 +431,17 @@ impl GKRGate for VectorLookupWitnessPairAggregationFromCachesNode {
                 cached_input
             });
 
-            let relation = NoFieldGKRRelation::LookupPairFromMaterializedVectorInputs { input, output };
+            let relation =
+                NoFieldGKRRelation::LookupPairFromMaterializedVectorInputs { input, output };
 
             graph.add_enforced_relation(relation.clone(), output_layer);
 
             (output, relation)
         } else {
-            let relation = NoFieldGKRRelation::LookupPairFromVectorInputs { input: [self.lhs.clone(), self.rhs.clone()], output };
+            let relation = NoFieldGKRRelation::LookupPairFromVectorInputs {
+                input: [self.lhs.clone(), self.rhs.clone()],
+                output,
+            };
 
             graph.add_enforced_relation(relation.clone(), output_layer);
 
