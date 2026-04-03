@@ -83,9 +83,6 @@ macro_rules! batch_inv_impl {
 }
 
 batch_inv_impl!(BF, 20);
-batch_inv_impl!(E2, 5);
-batch_inv_impl!(E4, 3);
-batch_inv_impl!(E6, 2);
 
 #[cfg(test)]
 mod tests {
@@ -133,15 +130,5 @@ mod tests {
     #[test]
     fn batch_inv_bf_in_place() {
         test_batch_inv::<BF>(true);
-    }
-
-    #[test]
-    fn batch_inv_e2() {
-        test_batch_inv::<E2>(false);
-    }
-
-    #[test]
-    fn batch_inv_e2_in_place() {
-        test_batch_inv::<E2>(true);
     }
 }

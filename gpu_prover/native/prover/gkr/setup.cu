@@ -8,8 +8,6 @@ namespace airbender::prover::gkr {
     gkr_forward_setup_generic_lookup(batch, row_count);                                                                                                        \
   }
 
-GKR_FORWARD_SETUP_KERNELS(e2);
 GKR_FORWARD_SETUP_KERNELS(e4);
-GKR_FORWARD_SETUP_KERNELS(e6);
 
 } // namespace airbender::prover::gkr

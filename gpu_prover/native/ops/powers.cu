@@ -30,12 +30,8 @@ DEVICE_FORCEINLINE void get_powers(const F &base, const unsigned offset, const b
   }
 
 GET_POWERS_BY_VAL_KERNEL(bf);
-GET_POWERS_BY_VAL_KERNEL(e2);
 GET_POWERS_BY_VAL_KERNEL(e4);
-GET_POWERS_BY_VAL_KERNEL(e6);
 GET_POWERS_BY_REF_KERNEL(bf);
-GET_POWERS_BY_REF_KERNEL(e2);
 GET_POWERS_BY_REF_KERNEL(e4);
-GET_POWERS_BY_REF_KERNEL(e6);
 
 } // namespace airbender::ops

@@ -32,7 +32,6 @@ use super::stage1::GpuGKRStage1Output;
 use super::transform::normalize_compiled_circuit_for_gpu;
 use super::{GpuBaseFieldPoly, GpuExtensionFieldPoly, GpuGKRStorage};
 use crate::allocator::tracker::AllocationPlacement;
-use crate::ops::batch_inv::BatchInv;
 use crate::ops::simple::{
     add_into_y, mul_into_y, set_by_ref, set_by_val, sub_into_x, Add, BinaryOp, Mul, SetByRef,
     SetByVal, Sub,
@@ -40,7 +39,7 @@ use crate::ops::simple::{
 use crate::primitives::context::{DeviceAllocation, HostAllocation, ProverContext, UnsafeAccessor};
 use crate::primitives::device_structures::DeviceVectorChunk;
 use crate::primitives::device_tracing::Range;
-use crate::primitives::field::{BF, E2, E4, E6};
+use crate::primitives::field::{BF, E4};
 use crate::primitives::utils::{get_grid_block_dims_for_threads_count, WARP_SIZE};
 
 pub(crate) struct GpuGKRForwardOutput<B, E> {
@@ -167,7 +166,6 @@ where
         + Field
         + SetByRef
         + SetByVal
-        + BatchInv
         + GpuGKRForwardKernelSet
         + GpuGKRForwardCacheKernelSet
         + GpuGKRDimensionReducingForwardKernelSet,
@@ -298,7 +296,6 @@ where
         + Field
         + SetByRef
         + SetByVal
-        + BatchInv
         + GpuGKRForwardKernelSet
         + GpuGKRForwardCacheKernelSet,
     Add: BinaryOp<E, E, E>,
@@ -373,7 +370,7 @@ fn schedule_materialized_vector_lookup_inputs<E>(
     context: &ProverContext,
 ) -> CudaResult<()>
 where
-    E: FieldExtension<BF> + Field + SetByRef + SetByVal + BatchInv + GpuGKRForwardCacheKernelSet,
+    E: FieldExtension<BF> + Field + SetByRef + SetByVal + GpuGKRForwardCacheKernelSet,
 {
     let generic_lookup = if forward_setup.generic_lookup_len() > 0 {
         forward_setup.generic_lookup().as_ptr()
@@ -897,7 +894,7 @@ fn lower_cache_relation<E>(
     LoweredCacheRelationOutput<E>,
 )>
 where
-    E: FieldExtension<BF> + Field + SetByRef + SetByVal + BatchInv,
+    E: FieldExtension<BF> + Field + SetByRef + SetByVal,
     Add: BinaryOp<E, E, E>,
     Add: BinaryOp<BF, E, E>,
     Add: BinaryOp<E, BF, E>,
@@ -1247,7 +1244,7 @@ fn schedule_cache_relations<E>(
     context: &ProverContext,
 ) -> CudaResult<()>
 where
-    E: FieldExtension<BF> + Field + SetByRef + SetByVal + BatchInv + GpuGKRForwardCacheKernelSet,
+    E: FieldExtension<BF> + Field + SetByRef + SetByVal + GpuGKRForwardCacheKernelSet,
     Add: BinaryOp<E, E, E>,
     Add: BinaryOp<BF, E, E>,
     Add: BinaryOp<E, BF, E>,
@@ -1317,7 +1314,7 @@ fn schedule_dimension_reduction_forward<E>(
     BTreeMap<usize, BTreeMap<OutputType, DimensionReducingInputOutput>>,
 )>
 where
-    E: FieldExtension<BF> + Field + SetByRef + SetByVal + BatchInv,
+    E: FieldExtension<BF> + Field + SetByRef + SetByVal,
     E: GpuGKRDimensionReducingForwardKernelSet,
     Add: BinaryOp<E, E, E>,
     Add: BinaryOp<BF, E, E>,

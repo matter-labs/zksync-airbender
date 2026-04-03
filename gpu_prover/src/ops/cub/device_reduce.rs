@@ -10,7 +10,7 @@ use crate::primitives::context::DeviceProperties;
 use crate::primitives::device_structures::{
     DeviceMatrix, DeviceMatrixChunkImpl, DeviceVectorChunkImpl, PtrAndStride,
 };
-use crate::primitives::field::{BF, E2, E4, E6};
+use crate::primitives::field::{BF, E4};
 
 #[derive(Copy, Clone)]
 pub enum ReduceOperation {
@@ -388,9 +388,7 @@ macro_rules! reduce_impl {
 }
 
 reduce_impl!(BF);
-reduce_impl!(E2);
 reduce_impl!(E4);
-reduce_impl!(E6);
 
 #[cfg(test)]
 mod tests {
@@ -523,26 +521,6 @@ mod tests {
     }
 
     #[test]
-    fn sum_e2() {
-        test_sum(reduce::<super::E2>)
-    }
-
-    #[test]
-    fn batch_sum_e2() {
-        test_sum(batch_reduce::<super::E2>)
-    }
-
-    #[test]
-    fn product_e2() {
-        test_product(reduce::<super::E2>)
-    }
-
-    #[test]
-    fn batch_product_e2() {
-        test_product(batch_reduce::<super::E2>)
-    }
-
-    #[test]
     fn sum_e4() {
         test_sum(reduce::<super::E4>)
     }
@@ -559,26 +537,6 @@ mod tests {
 
     #[test]
     fn batch_product_e4() {
-        test_product(batch_reduce::<super::E4>)
-    }
-
-    #[test]
-    fn sum_e6() {
-        test_sum(reduce::<super::E4>)
-    }
-
-    #[test]
-    fn batch_sum_e6() {
-        test_sum(batch_reduce::<super::E4>)
-    }
-
-    #[test]
-    fn product_e6() {
-        test_product(reduce::<super::E4>)
-    }
-
-    #[test]
-    fn batch_product_e6() {
         test_product(batch_reduce::<super::E4>)
     }
 }

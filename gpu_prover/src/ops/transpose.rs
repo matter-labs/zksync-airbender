@@ -86,9 +86,6 @@ macro_rules! transpose_impl {
 }
 
 transpose_impl!(BF, 5);
-transpose_impl!(E2, 4);
-transpose_impl!(E4, 3);
-transpose_impl!(E6, 3);
 
 #[cfg(test)]
 mod tests {
@@ -134,20 +131,5 @@ mod tests {
     #[test]
     fn transpose_bf() {
         test_transpose::<BF>().unwrap();
-    }
-
-    #[test]
-    fn transpose_e2() {
-        test_transpose::<E2>().unwrap();
-    }
-
-    #[test]
-    fn transpose_e4() {
-        test_transpose::<E4>().unwrap();
-    }
-
-    #[test]
-    fn transpose_e6() {
-        test_transpose::<E6>().unwrap();
     }
 }

@@ -58,7 +58,7 @@ use crate::primitives::callbacks::Callbacks;
 use crate::primitives::context::{DeviceAllocation, HostAllocation, ProverContext, UnsafeAccessor};
 use crate::primitives::device_structures::{DeviceVectorChunk, DeviceVectorChunkMut};
 use crate::primitives::device_tracing::Range;
-use crate::primitives::field::{BF, E2, E4, E6};
+use crate::primitives::field::{BF, E4};
 use crate::primitives::utils::{get_grid_block_dims_for_threads_count, WARP_SIZE};
 
 fn build_dimension_reducing_kernel_blueprints<E: Field>(

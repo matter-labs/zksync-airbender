@@ -2,9 +2,7 @@
 
 #include "../../primitives/field.cuh"
 #include "../../primitives/memory.cuh"
-#include <cub/cub.cuh>
 
-using namespace ::cub;
 using namespace ::airbender::primitives::field;
 using namespace ::airbender::primitives::memory;
 

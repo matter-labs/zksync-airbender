@@ -1,4 +1,7 @@
 #include "common.cuh"
+#include <cub/device/device_run_length_encode.cuh>
+
+using namespace ::cub;
 
 namespace airbender::ops::cub::device_run_length_encode {
 

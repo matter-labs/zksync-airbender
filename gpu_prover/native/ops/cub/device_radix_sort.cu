@@ -1,4 +1,7 @@
 #include "common.cuh"
+#include <cub/device/device_radix_sort.cuh>
+
+using namespace ::cub;
 
 namespace airbender::ops::cub::device_radix_sort {
 

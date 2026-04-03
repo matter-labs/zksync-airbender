@@ -7,8 +7,6 @@ namespace airbender::prover::gkr {
     gkr_forward_layer(batch, count);                                                                                                                           \
   }
 
-GKR_FORWARD_LAYER_KERNELS(e2);
 GKR_FORWARD_LAYER_KERNELS(e4);
-GKR_FORWARD_LAYER_KERNELS(e6);
 
 } // namespace airbender::prover::gkr

@@ -30,7 +30,6 @@ use super::setup::{GpuGKRForwardSetup, GpuGKRSetupTransfer};
 use super::stage1::GpuGKRStage1Output;
 use super::{GpuBaseFieldPoly, GpuExtensionFieldPoly, GpuGKRStorage};
 use crate::allocator::tracker::AllocationPlacement;
-use crate::ops::batch_inv::BatchInv;
 use crate::ops::simple::{
     add_into_y, mul_into_y, set_by_ref, set_by_val, sub_into_x, Add, BinaryOp, Mul, SetByRef,
     SetByVal, Sub,
@@ -38,7 +37,7 @@ use crate::ops::simple::{
 use crate::primitives::context::{DeviceAllocation, HostAllocation, ProverContext, UnsafeAccessor};
 use crate::primitives::device_structures::DeviceVectorChunk;
 use crate::primitives::device_tracing::Range;
-use crate::primitives::field::{BF, E2, E4, E6};
+use crate::primitives::field::{BF, E4};
 use crate::primitives::utils::{get_grid_block_dims_for_threads_count, WARP_SIZE};
 
 pub(crate) struct GpuGKRForwardOutput<B, E> {
@@ -707,9 +706,7 @@ macro_rules! gkr_forward_layer_kernels {
     };
 }
 
-gkr_forward_layer_kernels!(E2);
 gkr_forward_layer_kernels!(E4);
-gkr_forward_layer_kernels!(E6);
 
 #[repr(u32)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -818,9 +815,7 @@ macro_rules! gkr_forward_cache_kernels {
     };
 }
 
-gkr_forward_cache_kernels!(E2);
 gkr_forward_cache_kernels!(E4);
-gkr_forward_cache_kernels!(E6);
 
 #[repr(u32)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -1034,9 +1029,7 @@ macro_rules! gkr_dim_reducing_forward_kernels {
     };
 }
 
-gkr_dim_reducing_forward_kernels!(E2);
 gkr_dim_reducing_forward_kernels!(E4);
-gkr_dim_reducing_forward_kernels!(E6);
 
 pub(super) fn gkr_forward_cache_launch_config(
     count: u32,

@@ -528,20 +528,10 @@ macro_rules! binary_ops_impl {
 }
 
 binary_ops_impl!(BF, BF, BF);
-binary_ops_impl!(BF, E2, E2);
 binary_ops_impl!(BF, E4, E4);
-binary_ops_impl!(BF, E6, E6);
-binary_ops_impl!(E2, BF, E2);
 binary_ops_impl!(E2, E2, E2);
-binary_ops_impl!(E2, E4, E4);
-binary_ops_impl!(E2, E6, E6);
 binary_ops_impl!(E4, BF, E4);
-binary_ops_impl!(E4, E2, E4);
 binary_ops_impl!(E4, E4, E4);
-binary_ops_impl!(E4, E6, E6);
-binary_ops_impl!(E6, BF, E6);
-binary_ops_impl!(E6, E2, E6);
-binary_ops_impl!(E6, E4, E6);
 binary_ops_impl!(E6, E6, E6);
 
 // // TERNARY_KERNEL
@@ -764,7 +754,7 @@ mod tests {
     use era_cudart::result::CudaResult;
     use era_cudart::slice::DeviceSlice;
     use era_cudart::stream::CudaStream;
-    use field::{Field, Rand};
+    use field::{Field, FieldExtension, Rand};
     use itertools::Itertools;
 
     fn set_by_val<T: Field + SetByVal, const LOG_N: u32>() {
@@ -887,6 +877,17 @@ mod tests {
         fn(&mut DeviceSlice<T>, &DeviceSlice<T>, &CudaStream) -> CudaResult<()>;
 
     type BinaryHostFn<T> = fn(&T, &T) -> T;
+
+    type MixedBinaryDeviceFn<T0, T1, TR> =
+        fn(&DeviceSlice<T0>, &DeviceSlice<T1>, &mut DeviceSlice<TR>, &CudaStream) -> CudaResult<()>;
+
+    type MixedBinaryIntoXDeviceFn<T0, T1> =
+        fn(&mut DeviceSlice<T0>, &DeviceSlice<T1>, &CudaStream) -> CudaResult<()>;
+
+    type MixedBinaryIntoYDeviceFn<T0, T1> =
+        fn(&DeviceSlice<T0>, &mut DeviceSlice<T1>, &CudaStream) -> CudaResult<()>;
+
+    type MixedBinaryHostFn<T0, T1, TR> = fn(&T0, &T1) -> TR;
 
     // type TernaryDeviceFn = fn(
     //     &DeviceSlice<BF>,
@@ -1048,6 +1049,103 @@ mod tests {
         memory_copy_async(&mut y_device, &y_host, &stream).unwrap();
         device_fn(&mut x_device, &y_device, &stream).unwrap();
         memory_copy_async(&mut result_host, &x_device, &stream).unwrap();
+        stream.synchronize().unwrap();
+        for i in 0..length {
+            let left = host_fn(&x_host[i], &y_host[i]);
+            let right = result_host[i];
+            assert_eq!(left, right, "i = {}", i);
+        }
+    }
+
+    fn mixed_binary_op_test<T0: Field, T1: Field, TR: Field>(
+        x_values: &[T0],
+        y_values: &[T1],
+        device_fn: MixedBinaryDeviceFn<T0, T1, TR>,
+        host_fn: MixedBinaryHostFn<T0, T1, TR>,
+    ) {
+        let mut x_host = Vec::new();
+        let mut y_host = Vec::new();
+        x_values
+            .iter()
+            .cartesian_product(y_values.iter())
+            .for_each(|(&x, &y)| {
+                x_host.push(x);
+                y_host.push(y);
+            });
+        let stream = CudaStream::default();
+        let length = x_host.len();
+        let mut result_host = vec![TR::ZERO; length];
+        let mut x_device = DeviceAllocation::alloc(length).unwrap();
+        let mut y_device = DeviceAllocation::alloc(length).unwrap();
+        let mut result_device = DeviceAllocation::alloc(length).unwrap();
+        memory_copy_async(&mut x_device, &x_host, &stream).unwrap();
+        memory_copy_async(&mut y_device, &y_host, &stream).unwrap();
+        device_fn(&x_device, &y_device, &mut result_device, &stream).unwrap();
+        memory_copy_async(&mut result_host, &result_device, &stream).unwrap();
+        stream.synchronize().unwrap();
+        for i in 0..length {
+            let left = host_fn(&x_host[i], &y_host[i]);
+            let right = result_host[i];
+            assert_eq!(left, right, "i = {}", i);
+        }
+    }
+
+    fn mixed_binary_into_x_test<T0: Field, T1: Field>(
+        x_values: &[T0],
+        y_values: &[T1],
+        device_fn: MixedBinaryIntoXDeviceFn<T0, T1>,
+        host_fn: MixedBinaryHostFn<T0, T1, T0>,
+    ) {
+        let mut x_host = Vec::new();
+        let mut y_host = Vec::new();
+        x_values
+            .iter()
+            .cartesian_product(y_values.iter())
+            .for_each(|(&x, &y)| {
+                x_host.push(x);
+                y_host.push(y);
+            });
+        let stream = CudaStream::default();
+        let length = x_host.len();
+        let mut result_host = vec![T0::ZERO; length];
+        let mut x_device = DeviceAllocation::alloc(length).unwrap();
+        let mut y_device = DeviceAllocation::alloc(length).unwrap();
+        memory_copy_async(&mut x_device, &x_host, &stream).unwrap();
+        memory_copy_async(&mut y_device, &y_host, &stream).unwrap();
+        device_fn(&mut x_device, &y_device, &stream).unwrap();
+        memory_copy_async(&mut result_host, &x_device, &stream).unwrap();
+        stream.synchronize().unwrap();
+        for i in 0..length {
+            let left = host_fn(&x_host[i], &y_host[i]);
+            let right = result_host[i];
+            assert_eq!(left, right, "i = {}", i);
+        }
+    }
+
+    fn mixed_binary_into_y_test<T0: Field, T1: Field>(
+        x_values: &[T0],
+        y_values: &[T1],
+        device_fn: MixedBinaryIntoYDeviceFn<T0, T1>,
+        host_fn: MixedBinaryHostFn<T0, T1, T1>,
+    ) {
+        let mut x_host = Vec::new();
+        let mut y_host = Vec::new();
+        x_values
+            .iter()
+            .cartesian_product(y_values.iter())
+            .for_each(|(&x, &y)| {
+                x_host.push(x);
+                y_host.push(y);
+            });
+        let stream = CudaStream::default();
+        let length = x_host.len();
+        let mut result_host = vec![T1::ZERO; length];
+        let mut x_device = DeviceAllocation::alloc(length).unwrap();
+        let mut y_device = DeviceAllocation::alloc(length).unwrap();
+        memory_copy_async(&mut x_device, &x_host, &stream).unwrap();
+        memory_copy_async(&mut y_device, &y_host, &stream).unwrap();
+        device_fn(&x_device, &mut y_device, &stream).unwrap();
+        memory_copy_async(&mut result_host, &y_device, &stream).unwrap();
         stream.synchronize().unwrap();
         for i in 0..length {
             let left = host_fn(&x_host[i], &y_host[i]);
@@ -1668,6 +1766,146 @@ mod tests {
     #[test]
     fn sub_into_y_e6() {
         sub_into_y::<E6, 8>(&E6_VALUES);
+    }
+
+    #[test]
+    fn add_mixed_bf_e4() {
+        mixed_binary_op_test(&BF_VALUES, &E4_VALUES, super::add::<BF, E4, E4>, |x, y| {
+            let mut result = *y;
+            result.add_assign_base(x);
+            result
+        });
+    }
+
+    #[test]
+    fn add_into_y_mixed_bf_e4() {
+        mixed_binary_into_y_test(
+            &BF_VALUES,
+            &E4_VALUES,
+            super::add_into_y::<BF, E4>,
+            |x, y| {
+                let mut result = *y;
+                result.add_assign_base(x);
+                result
+            },
+        );
+    }
+
+    #[test]
+    fn add_mixed_e4_bf() {
+        mixed_binary_op_test(&E4_VALUES, &BF_VALUES, super::add::<E4, BF, E4>, |x, y| {
+            let mut result = *x;
+            result.add_assign_base(y);
+            result
+        });
+    }
+
+    #[test]
+    fn add_into_x_mixed_e4_bf() {
+        mixed_binary_into_x_test(
+            &E4_VALUES,
+            &BF_VALUES,
+            super::add_into_x::<E4, BF>,
+            |x, y| {
+                let mut result = *x;
+                result.add_assign_base(y);
+                result
+            },
+        );
+    }
+
+    #[test]
+    fn mul_mixed_bf_e4() {
+        mixed_binary_op_test(&BF_VALUES, &E4_VALUES, super::mul::<BF, E4, E4>, |x, y| {
+            let mut result = *y;
+            result.mul_assign_by_base(x);
+            result
+        });
+    }
+
+    #[test]
+    fn mul_into_y_mixed_bf_e4() {
+        mixed_binary_into_y_test(
+            &BF_VALUES,
+            &E4_VALUES,
+            super::mul_into_y::<BF, E4>,
+            |x, y| {
+                let mut result = *y;
+                result.mul_assign_by_base(x);
+                result
+            },
+        );
+    }
+
+    #[test]
+    fn mul_mixed_e4_bf() {
+        mixed_binary_op_test(&E4_VALUES, &BF_VALUES, super::mul::<E4, BF, E4>, |x, y| {
+            let mut result = *x;
+            result.mul_assign_by_base(y);
+            result
+        });
+    }
+
+    #[test]
+    fn mul_into_x_mixed_e4_bf() {
+        mixed_binary_into_x_test(
+            &E4_VALUES,
+            &BF_VALUES,
+            super::mul_into_x::<E4, BF>,
+            |x, y| {
+                let mut result = *x;
+                result.mul_assign_by_base(y);
+                result
+            },
+        );
+    }
+
+    #[test]
+    fn sub_mixed_bf_e4() {
+        mixed_binary_op_test(&BF_VALUES, &E4_VALUES, super::sub::<BF, E4, E4>, |x, y| {
+            let mut result = *y;
+            result.negate();
+            result.add_assign_base(x);
+            result
+        });
+    }
+
+    #[test]
+    fn sub_into_y_mixed_bf_e4() {
+        mixed_binary_into_y_test(
+            &BF_VALUES,
+            &E4_VALUES,
+            super::sub_into_y::<BF, E4>,
+            |x, y| {
+                let mut result = *y;
+                result.negate();
+                result.add_assign_base(x);
+                result
+            },
+        );
+    }
+
+    #[test]
+    fn sub_mixed_e4_bf() {
+        mixed_binary_op_test(&E4_VALUES, &BF_VALUES, super::sub::<E4, BF, E4>, |x, y| {
+            let mut result = *x;
+            result.sub_assign_base(y);
+            result
+        });
+    }
+
+    #[test]
+    fn sub_into_x_mixed_e4_bf() {
+        mixed_binary_into_x_test(
+            &E4_VALUES,
+            &BF_VALUES,
+            super::sub_into_x::<E4, BF>,
+            |x, y| {
+                let mut result = *x;
+                result.sub_assign_base(y);
+                result
+            },
+        );
     }
     // #[test]
     // fn sub() {
