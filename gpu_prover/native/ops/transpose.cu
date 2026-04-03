@@ -53,8 +53,5 @@ DEVICE_FORCEINLINE void transpose(const matrix_getter<T, ld_modifier::cs> src, c
   }
 
 TRANSPOSE_KERNEL(bf, 5);
-TRANSPOSE_KERNEL(e2, 4);
-TRANSPOSE_KERNEL(e4, 3);
-TRANSPOSE_KERNEL(e6, 3);
 
 } // namespace airbender::ops

@@ -20,7 +20,7 @@ use crate::ops::blake2s::Digest;
 use crate::primitives::callbacks::Callbacks;
 use crate::primitives::context::{DeviceAllocation, HostAllocation, ProverContext};
 use crate::primitives::device_tracing::Range;
-use crate::primitives::field::{BF, E2, E4, E6};
+use crate::primitives::field::{BF, E4};
 use crate::primitives::static_host::{
     alloc_static_pinned_box_from_slice, alloc_static_pinned_box_uninit, StaticPinnedBox,
 };
