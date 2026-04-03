@@ -69,9 +69,7 @@ macro_rules! get_powers_by_val_impl {
 }
 
 get_powers_by_val_impl!(BF);
-get_powers_by_val_impl!(E2);
 get_powers_by_val_impl!(E4);
-get_powers_by_val_impl!(E6);
 
 cuda_kernel_signature_arguments_and_function!(
     GetPowersByRef<T>,
@@ -131,9 +129,7 @@ macro_rules! get_powers_by_ref_impl {
 }
 
 get_powers_by_ref_impl!(BF);
-get_powers_by_ref_impl!(E2);
 get_powers_by_ref_impl!(E4);
-get_powers_by_ref_impl!(E6);
 
 #[cfg(test)]
 mod tests {
@@ -183,16 +179,6 @@ mod tests {
     }
 
     #[test]
-    fn get_powers_by_val_e2() {
-        test_get_powers::<E2>(true);
-    }
-
-    #[test]
-    fn get_powers_by_ref_e2() {
-        test_get_powers::<E2>(false);
-    }
-
-    #[test]
     fn get_powers_by_val_e4() {
         test_get_powers::<E4>(true);
     }
@@ -200,15 +186,5 @@ mod tests {
     #[test]
     fn get_powers_by_ref_e4() {
         test_get_powers::<E4>(false);
-    }
-
-    #[test]
-    fn get_powers_by_val_e6() {
-        test_get_powers::<E6>(true);
-    }
-
-    #[test]
-    fn get_powers_by_ref_e6() {
-        test_get_powers::<E6>(false);
     }
 }
