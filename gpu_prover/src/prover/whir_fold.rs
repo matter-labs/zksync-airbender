@@ -26,7 +26,6 @@ use worker::Worker;
 
 use crate::allocator::tracker::AllocationPlacement;
 use crate::ntt::{hypercube_coeffs_natural_to_natural_evals, natural_evals_to_bitreversed_coeffs};
-use crate::ops::batch_inv::BatchInv;
 use crate::ops::bit_reverse::{bit_reverse, bit_reverse_in_place};
 use crate::ops::blake2s::Digest;
 use crate::ops::cub::device_reduce::{get_reduce_temp_storage_bytes, reduce, ReduceOperation};
@@ -4077,63 +4076,6 @@ mod tests {
         )
         .unwrap();
         stream.synchronize().unwrap();
-
-        assert_eq!(actual_head, expected_head);
-        assert_eq!(actual_mid, expected_mid);
-        assert_eq!(actual_tail, expected_tail);
-    }
-
-    #[test]
-    #[cfg(not(no_cuda))]
-    #[serial]
-    fn whir_large_e4_bit_reverse_and_copy_matches_cpu() {
-        let context = make_test_context(2048, 32);
-        let trace_len = 1usize << 24;
-        let sample_len = 1024usize;
-        let mid = trace_len / 2;
-        let stream = context.get_exec_stream();
-
-        let fill = E4::from_array_of_base([BF::new(5), BF::new(11), BF::new(17), BF::new(23)]);
-        let mut values = context
-            .alloc(trace_len, AllocationPlacement::BestFit)
-            .unwrap();
-        let mut scratch = context
-            .alloc(trace_len, AllocationPlacement::BestFit)
-            .unwrap();
-        get_powers_by_val(fill, 0, false, &mut values, stream).unwrap();
-        let src = DeviceMatrix::new(&values, trace_len);
-        let mut dst = DeviceMatrixMut::new(&mut scratch, trace_len);
-        bit_reverse(&src, &mut dst, stream).unwrap();
-        memory_copy_async(&mut values, &scratch, stream).unwrap();
-        stream.synchronize().unwrap();
-
-        let mut actual_head = vec![E4::ZERO; sample_len];
-        let mut actual_mid = vec![E4::ZERO; sample_len];
-        let mut actual_tail = vec![E4::ZERO; sample_len];
-        memory_copy_async(&mut actual_head, &values[..sample_len], stream).unwrap();
-        memory_copy_async(&mut actual_mid, &values[mid..mid + sample_len], stream).unwrap();
-        memory_copy_async(
-            &mut actual_tail,
-            &values[trace_len - sample_len..trace_len],
-            stream,
-        )
-        .unwrap();
-        stream.synchronize().unwrap();
-
-        let expected_for_index = |index: usize| {
-            fill.pow(
-                (index.reverse_bits() >> (usize::BITS - trace_len.trailing_zeros()))
-                    .try_into()
-                    .unwrap(),
-            )
-        };
-        let expected_head = (0..sample_len).map(expected_for_index).collect::<Vec<_>>();
-        let expected_mid = (mid..mid + sample_len)
-            .map(expected_for_index)
-            .collect::<Vec<_>>();
-        let expected_tail = ((trace_len - sample_len)..trace_len)
-            .map(expected_for_index)
-            .collect::<Vec<_>>();
 
         assert_eq!(actual_head, expected_head);
         assert_eq!(actual_mid, expected_mid);

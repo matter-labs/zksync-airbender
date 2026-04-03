@@ -64,8 +64,6 @@ namespace airbender::prover::gkr {
       gkr_dim_reducing_continuation_batched<arg_t, false>(batch, acc_size);                                                                                    \
   }
 
-GKR_DIM_REDUCING_KERNELS(e2);
 GKR_DIM_REDUCING_KERNELS(e4);
-GKR_DIM_REDUCING_KERNELS(e6);
 
 } // namespace airbender::prover::gkr
