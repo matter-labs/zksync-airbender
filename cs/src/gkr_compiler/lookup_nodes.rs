@@ -550,19 +550,32 @@ impl GKRGate for VectorLookupWitnessMinusSetupInputNode {
         graph: &mut impl GraphHolder,
         output_layer: usize,
     ) -> (Self::Output, NoFieldGKRRelation) {
-        // We will be lazy - will cache the input
+        if graph.can_use_caching() {
+            // We will be lazy - will cache the input
+            let cached_input = NoFieldGKRCacheRelation::VectorizedLookup(self.input.clone());
+            assert!(output_layer > 0);
+            let layer_for_caches = output_layer - 1;
+            let cached_input = graph.add_cached_relation(cached_input, layer_for_caches);
 
-        let cached_input = NoFieldGKRCacheRelation::VectorizedLookup(self.input.clone());
-        assert!(output_layer > 0);
-        let layer_for_caches = output_layer - 1;
-        let cached_input = graph.add_cached_relation(cached_input, layer_for_caches);
+            let node = VectorLookupMaterializedWitnessMinusSetupInputNode {
+                input: cached_input,
+                multiplicity: self.multiplicity,
+                setup: self.setup.clone(),
+            };
+            node.add_at_layer(graph, output_layer)
+        } else {
+            let output = [(); 2].map(|_| graph.add_intermediate_variable_at_layer(output_layer));
 
-        let node = VectorLookupMaterializedWitnessMinusSetupInputNode {
-            input: cached_input,
-            multiplicity: self.multiplicity,
-            setup: self.setup.clone(),
-        };
-        node.add_at_layer(graph, output_layer)
+            let relation = NoFieldGKRRelation::LookupFromVectorInputWithSetup {
+                input: self.input.clone(),
+                setup: (self.multiplicity, self.setup.clone()),
+                output,
+            };
+
+            graph.add_enforced_relation(relation.clone(), output_layer);
+
+            (output, relation)
+        }
     }
 }
 

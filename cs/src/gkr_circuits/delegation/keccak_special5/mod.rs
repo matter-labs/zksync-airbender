@@ -1710,6 +1710,7 @@ mod test {
 
     use super::*;
     use crate::gkr_compiler::compile_delegation_circuit_into_gkr;
+    use crate::gkr_compiler::compile_delegation_circuit_into_gkr_without_caches;
     use crate::gkr_compiler::dump_ssa_witness_eval_form;
     use crate::utils::serialize_to_file;
 
@@ -1744,6 +1745,25 @@ mod test {
             },
         );
         serialize_to_file(&ssa_forms, "compiled_circuits/keccak_special5_ssa_gkr.json");
+    }
+
+    #[test]
+    fn compile_keccak_special5_into_no_caches_gkr() {
+        skip_if_ci!();
+        use ::field::baby_bear::base::BabyBearField;
+
+        let gkr_compiled = compile_delegation_circuit_into_gkr_without_caches::<BabyBearField>(
+            &|cs| keccak_special5_delegation_circuit_table_addition_fn(cs),
+            &|cs| {
+                let _ = define_keccak_special5_delegation_circuit::<_, _, false>(cs);
+            },
+            22,
+        );
+
+        serialize_to_file(
+            &gkr_compiled,
+            "compiled_circuits/keccak_special5_layout_no_caches_gkr.json",
+        );
     }
 
     // #[test]

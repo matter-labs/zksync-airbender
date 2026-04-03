@@ -110,14 +110,25 @@ impl GKRGate for GrandProductAccumulationStep {
                 (output, relation)
             }
             Self::MaterializeBase { access, .. } => {
-                let expr = mem_permutation_expr_into_cached_expr(access, graph);
-                assert!(output_layer > 0);
-                let cache_layer = output_layer - 1;
-                let cached = graph.add_cached_relation(expr, cache_layer);
+                if graph.can_use_caching() {
+                    let expr = mem_permutation_expr_into_cached_expr(access, graph);
+                    assert!(output_layer > 0);
+                    let cache_layer = output_layer - 1;
+                    let cached = graph.add_cached_relation(expr, cache_layer);
 
-                // and copy it
-                let copy_node = CopyNode::FromBase(cached);
-                copy_node.add_at_layer(graph, output_layer)
+                    // and copy it
+                    let copy_node = CopyNode::FromBase(cached);
+                    copy_node.add_at_layer(graph, output_layer)
+                } else {
+                    let input = mem_permutation_expr_into_gkr_relation(access, graph);
+                    let output = graph.add_intermediate_variable_at_layer(output_layer);
+                    let relation =
+                        NoFieldGKRRelation::MaterializeGrandProductTermExpression { input, output };
+
+                    graph.add_enforced_relation(relation.clone(), output_layer);
+
+                    (output, relation)
+                }
             }
         }
     }

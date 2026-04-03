@@ -351,6 +351,11 @@ pub enum NoFieldGKRRelation {
         input: GKRAddress,
         output: GKRAddress,
     },
+    // Materialize memory expression
+    MaterializeGrandProductTermExpression {
+        input: NoFieldSpecialMemoryContributionRelation,
+        output: GKRAddress,
+    },
     // Computes (single scalar in extension) * (single scalar in extension)
     TrivialProduct {
         input: [GKRAddress; 2],
@@ -445,6 +450,13 @@ pub enum NoFieldGKRRelation {
     // 1/(a+gamma) + 1/(b + gamma) where a, b are in in extension already due to vector nature (no caching)
     LookupPairFromMaterializedVectorInputs {
         input: [GKRAddress; 2],
+        output: [GKRAddress; 2],
+    },
+
+    // 1/(a+gamma) + multiplicity/(setup + gamma) where a is in extension field
+    LookupFromVectorInputWithSetup {
+        input: NoFieldVectorLookupRelation,
+        setup: (GKRAddress, Box<[GKRAddress]>),
         output: [GKRAddress; 2],
     },
 
@@ -655,6 +667,12 @@ impl NoFieldGKRRelation {
                 vec![]
             }
             Self::LookupUnbalancedPairWithVectorInputs { .. } => {
+                vec![]
+            }
+            Self::LookupFromVectorInputWithSetup { .. } => {
+                vec![]
+            }
+            Self::MaterializeGrandProductTermExpression { .. } => {
                 vec![]
             }
             a @ _ => {
@@ -949,6 +967,27 @@ pub fn compile_delegation_circuit_into_gkr<F: PrimeField>(
 
     let compiler = GKRCompiler::default();
     let compiled = compiler.compile_delegation_circuit(cs_output, trace_len_log2, true);
+
+    compiled
+}
+
+pub fn compile_delegation_circuit_into_gkr_without_caches<F: PrimeField>(
+    table_addition_fn: &dyn Fn(&mut crate::cs::circuit_impl::BasicAssembly<F>) -> (),
+    circuit_fn: &dyn Fn(&mut crate::cs::circuit_impl::BasicAssembly<F>) -> (),
+    trace_len_log2: usize,
+) -> GKRCircuitArtifact<F> {
+    use crate::cs::circuit_impl::BasicAssembly;
+    use crate::cs::circuit_trait::Circuit;
+    use crate::gkr_compiler::GKRCompiler;
+
+    let mut cs = BasicAssembly::<F>::new();
+    (table_addition_fn)(&mut cs);
+    (circuit_fn)(&mut cs);
+
+    let (cs_output, _) = cs.finalize();
+
+    let compiler = GKRCompiler::default();
+    let compiled = compiler.compile_delegation_circuit(cs_output, trace_len_log2, false);
 
     compiled
 }
