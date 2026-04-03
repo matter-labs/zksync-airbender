@@ -1,21 +1,10 @@
 #include "common.cuh"
+#include <cub/device/device_reduce.cuh>
+#include <cub/device/device_segmented_reduce.cuh>
+
+using namespace ::cub;
 
 namespace airbender::ops::cub::device_reduce {
-
-#define REDUCE(op, arg_t)                                                                                                                                      \
-  EXTERN cudaError_t ab_reduce_##op##_##arg_t(void *d_temp_storage, size_t &temp_storage_bytes, const arg_t *d_in, arg_t *d_out, const int num_items,          \
-                                              const cudaStream_t stream) {                                                                                     \
-    return DeviceReduce::Reduce(d_temp_storage, temp_storage_bytes, d_in, d_out, num_items, op<arg_t>(), op<arg_t>::init(), stream);                           \
-  }
-
-REDUCE(add, bf);
-REDUCE(add, e2);
-REDUCE(add, e4);
-REDUCE(add, e6);
-REDUCE(mul, bf);
-REDUCE(mul, e2);
-REDUCE(mul, e4);
-REDUCE(mul, e6);
 
 struct offset_iterator {
 #if CUB_VERSION >= 200300
@@ -44,12 +33,8 @@ struct offset_iterator {
   }
 
 SEGMENTED_REDUCE(add, bf);
-SEGMENTED_REDUCE(add, e2);
 SEGMENTED_REDUCE(add, e4);
-SEGMENTED_REDUCE(add, e6);
 SEGMENTED_REDUCE(mul, bf);
-SEGMENTED_REDUCE(mul, e2);
 SEGMENTED_REDUCE(mul, e4);
-SEGMENTED_REDUCE(mul, e6);
 
 } // namespace airbender::ops::cub::device_reduce

@@ -8,8 +8,6 @@ namespace airbender::prover::gkr {
     gkr_dim_reducing_forward(batch, row_count);                                                                                                                \
   }
 
-GKR_DIM_REDUCING_FORWARD_KERNELS(e2);
 GKR_DIM_REDUCING_FORWARD_KERNELS(e4);
-GKR_DIM_REDUCING_FORWARD_KERNELS(e6);
 
 } // namespace airbender::prover::gkr
