@@ -1,6 +1,9 @@
 #pragma once
 
 #include "../common.cuh"
+#include <cub/device/device_scan.cuh>
+
+using namespace ::cub;
 
 #define SCAN_E(op, arg_t)                                                                                                                                      \
   EXTERN cudaError_t ab_scan_e_##op##_##arg_t(void *d_temp_storage, size_t &temp_storage_bytes, const arg_t *d_in, arg_t *d_out, const int num_items,          \

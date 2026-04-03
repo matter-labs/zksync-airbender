@@ -7,7 +7,7 @@ use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::{CudaStream, CudaStreamCreateFlags, CudaStreamWaitEventFlags};
 use era_cudart_sys::{cudaError_t, cudaStream_t};
 
-use crate::primitives::field::{BF, E2, E4, E6};
+use crate::primitives::field::BF;
 
 macro_rules! scan_fn {
     ($i_or_e:ident, $function:ident, $type:ty) => {
@@ -305,9 +305,6 @@ macro_rules! scan_impl {
 }
 
 scan_impl!(BF);
-scan_impl!(E2);
-scan_impl!(E4);
-scan_impl!(E6);
 
 pub fn get_scan_temp_storage_bytes<T: Scan>(
     operation: ScanOperation,

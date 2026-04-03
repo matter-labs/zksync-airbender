@@ -137,8 +137,6 @@ macro_rules! bit_reverse_impl {
 }
 
 bit_reverse_impl!(BF, BF);
-bit_reverse_impl!(E2, E2);
-bit_reverse_impl!(E4, E4);
 bit_reverse_impl!(DG, E4);
 
 #[cfg(test)]
@@ -160,18 +158,6 @@ mod tests {
     }
 
     impl BitReverseTest for BF {
-        fn rand(rng: &mut impl rand::Rng) -> Self {
-            Self::random_element(rng)
-        }
-    }
-
-    impl BitReverseTest for E2 {
-        fn rand(rng: &mut impl rand::Rng) -> Self {
-            Self::random_element(rng)
-        }
-    }
-
-    impl BitReverseTest for E4 {
         fn rand(rng: &mut impl rand::Rng) -> Self {
             Self::random_element(rng)
         }
@@ -229,26 +215,6 @@ mod tests {
     #[test]
     fn bit_reverse_in_place_bf() {
         test_bit_reverse::<BF>(true);
-    }
-
-    #[test]
-    fn bit_reverse_e2() {
-        test_bit_reverse::<E2>(false);
-    }
-
-    #[test]
-    fn bit_reverse_in_place_e2() {
-        test_bit_reverse::<E2>(true);
-    }
-
-    #[test]
-    fn bit_reverse_e4() {
-        test_bit_reverse::<E4>(false);
-    }
-
-    #[test]
-    fn bit_reverse_in_place_e4() {
-        test_bit_reverse::<E4>(true);
     }
 
     #[test]
