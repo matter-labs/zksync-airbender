@@ -48,14 +48,4 @@ EXTERN __launch_bounds__(128, 8) __global__
   batch_inv_impl<bf>(src, dst, count);
 }
 
-EXTERN __launch_bounds__(128, 8) __global__
-    void ab_batch_inv_e2_kernel(const e2_vector_getter<ld_modifier::cs> src, const e2_vector_setter<st_modifier::cs> dst, const unsigned count) {
-  batch_inv_impl<e2>(src, dst, count);
-}
-
-EXTERN __launch_bounds__(128, 8) __global__
-    void ab_batch_inv_e4_kernel(const e4_vector_getter<ld_modifier::cs> src, const e4_vector_setter<st_modifier::cs> dst, const unsigned count) {
-  batch_inv_impl<e4>(src, dst, count);
-}
-
 } // namespace airbender::ops

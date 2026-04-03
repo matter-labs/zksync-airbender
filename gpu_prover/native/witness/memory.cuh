@@ -109,7 +109,7 @@ DEVICE_FORCEINLINE void write_timestamp_value(const u32 columns[NUM_TIMESTAMP_CO
   printf(#p "[%u] <- %u\n" #p "[%u] <- %u\n", c[0], v & 0xffff, c[1], v >> 16)
 #define PRINT_U32_AS_U8_LIMBS(p, c, v)                                                                                                                         \
   if (index == PRINT_THREAD_IDX)                                                                                                                               \
-  printf(#p "[%u] <- %u\n" #p "[%u] <- %u\n" #p "[%u] <- %u\n" #p "[%u] <- %u\n", c[0], v & 0xff, c[1], (v >> 8) & 0xff, c[2], (v >> 16) & 0xff, c[3],    \
+  printf(#p "[%u] <- %u\n" #p "[%u] <- %u\n" #p "[%u] <- %u\n" #p "[%u] <- %u\n", c[0], v & 0xff, c[1], (v >> 8) & 0xff, c[2], (v >> 16) & 0xff, c[3],         \
          (v >> 24) & 0xff)
 #define PRINT_R32(p, c, v)                                                                                                                                     \
   if (index == PRINT_THREAD_IDX)                                                                                                                               \

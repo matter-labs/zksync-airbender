@@ -54,7 +54,6 @@ DEVICE_FORCEINLINE void process_indirect_memory_accesses(const DelegationMemoryL
     PRINT_U16(M, layout.indirect_access_variable_offsets[variable_offset_idx], value);
   }
 
-#pragma unroll
   for (u32 access_idx = 0; access_idx < MAX_RAM_ACCESS_SETS_COUNT; ++access_idx) {
     if (access_idx == layout.ram_access_sets_count)
       break;
