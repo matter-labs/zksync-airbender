@@ -461,6 +461,13 @@ pub enum NoFieldGKRRelation {
         output: [GKRAddress; 2],
     },
 
+    // a/b + 1/(c + gamma) where `c`` is in the extension field
+    LookupUnbalancedPairWithVectorInputs {
+        input: [GKRAddress; 2],
+        remainder: NoFieldVectorLookupRelation,
+        output: [GKRAddress; 2],
+    },
+
     // a/b + 1/(c + gamma) where `c`` is in the extension field and is materialized or cached
     LookupUnbalancedPairWithMaterializedVectorInputs {
         input: [GKRAddress; 2],
@@ -646,6 +653,12 @@ impl NoFieldGKRRelation {
             }
             Self::AggregateLookupRationalPair { input, output } => {
                 vec![]
+            }
+            Self::LookupUnbalancedPairWithVectorInputs {..} => {
+                vec![]
+            }
+            a @ _ => {
+                panic!("{:?} is not yet supported", a);
             }
         }
     }

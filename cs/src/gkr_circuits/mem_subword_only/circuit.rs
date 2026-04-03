@@ -482,6 +482,7 @@ mod test {
     use crate::gkr_compiler::{
         compile_unrolled_circuit_state_transition_into_gkr, dump_ssa_witness_eval_form,
     };
+    use crate::gkr_compiler::compile_unrolled_circuit_state_transition_into_unrolled_gkr_without_caches;
     use crate::utils::serialize_to_file;
 
     #[test]
@@ -538,6 +539,36 @@ mod test {
         serialize_to_file(
             &ssa_forms,
             "compiled_circuits/mem_subword_only_preprocessed_ssa_gkr.json",
+        );
+    }
+
+    #[test]
+    fn compile_mem_subword_only_circuit_into_no_caches_gkr() {
+        skip_if_ci!();
+        use ::field::baby_bear::base::BabyBearField;
+
+        let gkr_compiled = compile_unrolled_circuit_state_transition_into_unrolled_gkr_without_caches::<BabyBearField>(
+            &|cs| {
+                mem_subword_only_table_addition_fn(cs);
+                // ROM tables must be added here (with dummy bytecode) so that
+                // offset_for_decoder_table in the compiled JSON reflects the correct
+                // total_tables_len at prove time, when real ROM tables are present.
+                for (table_type, table) in create_mem_subword_only_special_tables::<
+                    BabyBearField,
+                    { common_constants::ROM_SECOND_WORD_BITS },
+                >(&[])
+                {
+                    cs.add_table_with_content(table_type, table);
+                }
+            },
+            &|cs| mem_subword_only_circuit_with_preprocessed_bytecode_for_gkr(cs),
+            common_constants::ROM_WORD_SIZE,
+            24,
+        );
+
+        serialize_to_file(
+            &gkr_compiled,
+            "compiled_circuits/mem_subword_only_preprocessed_layout_no_caches_gkr.json",
         );
     }
 }
