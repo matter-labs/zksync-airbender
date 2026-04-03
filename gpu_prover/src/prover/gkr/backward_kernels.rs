@@ -56,7 +56,7 @@ use crate::primitives::callbacks::Callbacks;
 use crate::primitives::context::{DeviceAllocation, HostAllocation, ProverContext, UnsafeAccessor};
 use crate::primitives::device_structures::{DeviceVectorChunk, DeviceVectorChunkMut};
 use crate::primitives::device_tracing::Range;
-use crate::primitives::field::{BF, E2, E4, E6};
+use crate::primitives::field::{BF, E4};
 use crate::primitives::utils::{get_grid_block_dims_for_threads_count, WARP_SIZE};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1972,9 +1972,7 @@ macro_rules! gkr_dim_reducing_kernels {
     };
 }
 
-gkr_dim_reducing_kernels!(E2);
 gkr_dim_reducing_kernels!(E4);
-gkr_dim_reducing_kernels!(E6);
 
 cuda_kernel_signature_arguments_and_function!(
     GpuGKRMainRound0<T>,
@@ -2007,7 +2005,6 @@ cuda_kernel_signature_arguments_and_function!(
     constraint_linear_terms: *const GpuGKRMainLayerConstraintLinearTerm<T>,
     constraint_linear_terms_count: u32,
     constraint_constant_offset: *const T,
-    explicit_form: bool,
     contributions: *mut T,
     acc_size: u32,
 );
@@ -2025,7 +2022,6 @@ cuda_kernel_signature_arguments_and_function!(
     constraint_linear_terms: *const GpuGKRMainLayerConstraintLinearTerm<T>,
     constraint_linear_terms_count: u32,
     constraint_constant_offset: *const T,
-    explicit_form: bool,
     contributions: *mut T,
     acc_size: u32,
 );
@@ -2043,7 +2039,6 @@ cuda_kernel_signature_arguments_and_function!(
     constraint_linear_terms: *const GpuGKRMainLayerConstraintLinearTerm<T>,
     constraint_linear_terms_count: u32,
     constraint_constant_offset: *const T,
-    explicit_form: bool,
     contributions: *mut T,
     acc_size: u32,
 );
@@ -2058,13 +2053,19 @@ cuda_kernel_signature_arguments_and_function!(GpuGKRMainRound3Batched<T>, batch:
 
 pub(super) trait GpuMainLayerKernelSet: GpuDimensionReducingKernelSet {
     const MAIN_ROUND0: GpuGKRMainRound0Signature<Self>;
-    const MAIN_ROUND1: GpuGKRMainRound1Signature<Self>;
-    const MAIN_ROUND2: GpuGKRMainRound2Signature<Self>;
-    const MAIN_ROUND3: GpuGKRMainRound3Signature<Self>;
+    const MAIN_ROUND1_EXPLICIT: GpuGKRMainRound1Signature<Self>;
+    const MAIN_ROUND1_COMPACT: GpuGKRMainRound1Signature<Self>;
+    const MAIN_ROUND2_EXPLICIT: GpuGKRMainRound2Signature<Self>;
+    const MAIN_ROUND2_COMPACT: GpuGKRMainRound2Signature<Self>;
+    const MAIN_ROUND3_EXPLICIT: GpuGKRMainRound3Signature<Self>;
+    const MAIN_ROUND3_COMPACT: GpuGKRMainRound3Signature<Self>;
     const MAIN_ROUND0_BATCHED: GpuGKRMainRound0BatchedSignature<Self>;
-    const MAIN_ROUND1_BATCHED: GpuGKRMainRound1BatchedSignature<Self>;
-    const MAIN_ROUND2_BATCHED: GpuGKRMainRound2BatchedSignature<Self>;
-    const MAIN_ROUND3_BATCHED: GpuGKRMainRound3BatchedSignature<Self>;
+    const MAIN_ROUND1_BATCHED_EXPLICIT: GpuGKRMainRound1BatchedSignature<Self>;
+    const MAIN_ROUND1_BATCHED_COMPACT: GpuGKRMainRound1BatchedSignature<Self>;
+    const MAIN_ROUND2_BATCHED_EXPLICIT: GpuGKRMainRound2BatchedSignature<Self>;
+    const MAIN_ROUND2_BATCHED_COMPACT: GpuGKRMainRound2BatchedSignature<Self>;
+    const MAIN_ROUND3_BATCHED_EXPLICIT: GpuGKRMainRound3BatchedSignature<Self>;
+    const MAIN_ROUND3_BATCHED_COMPACT: GpuGKRMainRound3BatchedSignature<Self>;
 }
 
 macro_rules! gkr_main_layer_kernels {
@@ -2089,7 +2090,7 @@ macro_rules! gkr_main_layer_kernels {
                 )
             );
             cuda_kernel_declaration!(
-                [<ab_gkr_main_round1_ $type:lower _kernel>](
+                [<ab_gkr_main_round1_explicit_ $type:lower _kernel>](
                     kind: u32,
                     base_inputs: *const GpuBaseFieldPolySourceAfterOneFoldingLaunchDescriptor<BF, $type>,
                     extension_inputs: *const GpuExtensionFieldPolyContinuingLaunchDescriptor<$type>,
@@ -2101,13 +2102,29 @@ macro_rules! gkr_main_layer_kernels {
                     constraint_linear_terms: *const GpuGKRMainLayerConstraintLinearTerm<$type>,
                     constraint_linear_terms_count: u32,
                     constraint_constant_offset: *const $type,
-                    explicit_form: bool,
                     contributions: *mut $type,
                     acc_size: u32,
                 )
             );
             cuda_kernel_declaration!(
-                [<ab_gkr_main_round2_ $type:lower _kernel>](
+                [<ab_gkr_main_round1_compact_ $type:lower _kernel>](
+                    kind: u32,
+                    base_inputs: *const GpuBaseFieldPolySourceAfterOneFoldingLaunchDescriptor<BF, $type>,
+                    extension_inputs: *const GpuExtensionFieldPolyContinuingLaunchDescriptor<$type>,
+                    batch_challenges: *const $type,
+                    folding_challenge: *const $type,
+                    auxiliary_challenge: *const $type,
+                    constraint_quadratic_terms: *const GpuGKRMainLayerConstraintQuadraticTerm<$type>,
+                    constraint_quadratic_terms_count: u32,
+                    constraint_linear_terms: *const GpuGKRMainLayerConstraintLinearTerm<$type>,
+                    constraint_linear_terms_count: u32,
+                    constraint_constant_offset: *const $type,
+                    contributions: *mut $type,
+                    acc_size: u32,
+                )
+            );
+            cuda_kernel_declaration!(
+                [<ab_gkr_main_round2_explicit_ $type:lower _kernel>](
                     kind: u32,
                     base_inputs: *const GpuBaseFieldPolySourceAfterTwoFoldingsLaunchDescriptor<BF, $type>,
                     extension_inputs: *const GpuExtensionFieldPolyContinuingLaunchDescriptor<$type>,
@@ -2119,13 +2136,29 @@ macro_rules! gkr_main_layer_kernels {
                     constraint_linear_terms: *const GpuGKRMainLayerConstraintLinearTerm<$type>,
                     constraint_linear_terms_count: u32,
                     constraint_constant_offset: *const $type,
-                    explicit_form: bool,
                     contributions: *mut $type,
                     acc_size: u32,
                 )
             );
             cuda_kernel_declaration!(
-                [<ab_gkr_main_round3_ $type:lower _kernel>](
+                [<ab_gkr_main_round2_compact_ $type:lower _kernel>](
+                    kind: u32,
+                    base_inputs: *const GpuBaseFieldPolySourceAfterTwoFoldingsLaunchDescriptor<BF, $type>,
+                    extension_inputs: *const GpuExtensionFieldPolyContinuingLaunchDescriptor<$type>,
+                    batch_challenges: *const $type,
+                    folding_challenges: *const $type,
+                    auxiliary_challenge: *const $type,
+                    constraint_quadratic_terms: *const GpuGKRMainLayerConstraintQuadraticTerm<$type>,
+                    constraint_quadratic_terms_count: u32,
+                    constraint_linear_terms: *const GpuGKRMainLayerConstraintLinearTerm<$type>,
+                    constraint_linear_terms_count: u32,
+                    constraint_constant_offset: *const $type,
+                    contributions: *mut $type,
+                    acc_size: u32,
+                )
+            );
+            cuda_kernel_declaration!(
+                [<ab_gkr_main_round3_explicit_ $type:lower _kernel>](
                     kind: u32,
                     base_inputs: *const GpuExtensionFieldPolyContinuingLaunchDescriptor<$type>,
                     extension_inputs: *const GpuExtensionFieldPolyContinuingLaunchDescriptor<$type>,
@@ -2137,7 +2170,23 @@ macro_rules! gkr_main_layer_kernels {
                     constraint_linear_terms: *const GpuGKRMainLayerConstraintLinearTerm<$type>,
                     constraint_linear_terms_count: u32,
                     constraint_constant_offset: *const $type,
-                    explicit_form: bool,
+                    contributions: *mut $type,
+                    acc_size: u32,
+                )
+            );
+            cuda_kernel_declaration!(
+                [<ab_gkr_main_round3_compact_ $type:lower _kernel>](
+                    kind: u32,
+                    base_inputs: *const GpuExtensionFieldPolyContinuingLaunchDescriptor<$type>,
+                    extension_inputs: *const GpuExtensionFieldPolyContinuingLaunchDescriptor<$type>,
+                    batch_challenges: *const $type,
+                    folding_challenge: *const $type,
+                    auxiliary_challenge: *const $type,
+                    constraint_quadratic_terms: *const GpuGKRMainLayerConstraintQuadraticTerm<$type>,
+                    constraint_quadratic_terms_count: u32,
+                    constraint_linear_terms: *const GpuGKRMainLayerConstraintLinearTerm<$type>,
+                    constraint_linear_terms_count: u32,
+                    constraint_constant_offset: *const $type,
                     contributions: *mut $type,
                     acc_size: u32,
                 )
@@ -2149,19 +2198,37 @@ macro_rules! gkr_main_layer_kernels {
                 )
             );
             cuda_kernel_declaration!(
-                [<ab_gkr_main_round1_batched_ $type:lower _kernel>](
+                [<ab_gkr_main_round1_batched_explicit_ $type:lower _kernel>](
                     batch: GpuGKRMainRound1Batch<$type>,
                     acc_size: u32,
                 )
             );
             cuda_kernel_declaration!(
-                [<ab_gkr_main_round2_batched_ $type:lower _kernel>](
+                [<ab_gkr_main_round1_batched_compact_ $type:lower _kernel>](
+                    batch: GpuGKRMainRound1Batch<$type>,
+                    acc_size: u32,
+                )
+            );
+            cuda_kernel_declaration!(
+                [<ab_gkr_main_round2_batched_explicit_ $type:lower _kernel>](
                     batch: GpuGKRMainRound2Batch<$type>,
                     acc_size: u32,
                 )
             );
             cuda_kernel_declaration!(
-                [<ab_gkr_main_round3_batched_ $type:lower _kernel>](
+                [<ab_gkr_main_round2_batched_compact_ $type:lower _kernel>](
+                    batch: GpuGKRMainRound2Batch<$type>,
+                    acc_size: u32,
+                )
+            );
+            cuda_kernel_declaration!(
+                [<ab_gkr_main_round3_batched_explicit_ $type:lower _kernel>](
+                    batch: GpuGKRMainRound3Batch<$type>,
+                    acc_size: u32,
+                )
+            );
+            cuda_kernel_declaration!(
+                [<ab_gkr_main_round3_batched_compact_ $type:lower _kernel>](
                     batch: GpuGKRMainRound3Batch<$type>,
                     acc_size: u32,
                 )
@@ -2170,28 +2237,38 @@ macro_rules! gkr_main_layer_kernels {
             impl GpuMainLayerKernelSet for $type {
                 const MAIN_ROUND0: GpuGKRMainRound0Signature<Self> =
                     [<ab_gkr_main_round0_ $type:lower _kernel>];
-                const MAIN_ROUND1: GpuGKRMainRound1Signature<Self> =
-                    [<ab_gkr_main_round1_ $type:lower _kernel>];
-                const MAIN_ROUND2: GpuGKRMainRound2Signature<Self> =
-                    [<ab_gkr_main_round2_ $type:lower _kernel>];
-                const MAIN_ROUND3: GpuGKRMainRound3Signature<Self> =
-                    [<ab_gkr_main_round3_ $type:lower _kernel>];
+                const MAIN_ROUND1_EXPLICIT: GpuGKRMainRound1Signature<Self> =
+                    [<ab_gkr_main_round1_explicit_ $type:lower _kernel>];
+                const MAIN_ROUND1_COMPACT: GpuGKRMainRound1Signature<Self> =
+                    [<ab_gkr_main_round1_compact_ $type:lower _kernel>];
+                const MAIN_ROUND2_EXPLICIT: GpuGKRMainRound2Signature<Self> =
+                    [<ab_gkr_main_round2_explicit_ $type:lower _kernel>];
+                const MAIN_ROUND2_COMPACT: GpuGKRMainRound2Signature<Self> =
+                    [<ab_gkr_main_round2_compact_ $type:lower _kernel>];
+                const MAIN_ROUND3_EXPLICIT: GpuGKRMainRound3Signature<Self> =
+                    [<ab_gkr_main_round3_explicit_ $type:lower _kernel>];
+                const MAIN_ROUND3_COMPACT: GpuGKRMainRound3Signature<Self> =
+                    [<ab_gkr_main_round3_compact_ $type:lower _kernel>];
                 const MAIN_ROUND0_BATCHED: GpuGKRMainRound0BatchedSignature<Self> =
                     [<ab_gkr_main_round0_batched_ $type:lower _kernel>];
-                const MAIN_ROUND1_BATCHED: GpuGKRMainRound1BatchedSignature<Self> =
-                    [<ab_gkr_main_round1_batched_ $type:lower _kernel>];
-                const MAIN_ROUND2_BATCHED: GpuGKRMainRound2BatchedSignature<Self> =
-                    [<ab_gkr_main_round2_batched_ $type:lower _kernel>];
-                const MAIN_ROUND3_BATCHED: GpuGKRMainRound3BatchedSignature<Self> =
-                    [<ab_gkr_main_round3_batched_ $type:lower _kernel>];
+                const MAIN_ROUND1_BATCHED_EXPLICIT: GpuGKRMainRound1BatchedSignature<Self> =
+                    [<ab_gkr_main_round1_batched_explicit_ $type:lower _kernel>];
+                const MAIN_ROUND1_BATCHED_COMPACT: GpuGKRMainRound1BatchedSignature<Self> =
+                    [<ab_gkr_main_round1_batched_compact_ $type:lower _kernel>];
+                const MAIN_ROUND2_BATCHED_EXPLICIT: GpuGKRMainRound2BatchedSignature<Self> =
+                    [<ab_gkr_main_round2_batched_explicit_ $type:lower _kernel>];
+                const MAIN_ROUND2_BATCHED_COMPACT: GpuGKRMainRound2BatchedSignature<Self> =
+                    [<ab_gkr_main_round2_batched_compact_ $type:lower _kernel>];
+                const MAIN_ROUND3_BATCHED_EXPLICIT: GpuGKRMainRound3BatchedSignature<Self> =
+                    [<ab_gkr_main_round3_batched_explicit_ $type:lower _kernel>];
+                const MAIN_ROUND3_BATCHED_COMPACT: GpuGKRMainRound3BatchedSignature<Self> =
+                    [<ab_gkr_main_round3_batched_compact_ $type:lower _kernel>];
             }
         }
     };
 }
 
-gkr_main_layer_kernels!(E2);
 gkr_main_layer_kernels!(E4);
-gkr_main_layer_kernels!(E6);
 
 pub(super) fn gkr_dim_reducing_launch_config(
     count: u32,
@@ -2548,12 +2625,16 @@ pub(super) fn launch_main_round1<E: GpuMainLayerKernelSet + Field>(
         constraint_linear_terms,
         constraint_linear_terms_count as u32,
         constraint_constant_offset,
-        explicit_form,
         contributions,
         acc_size as u32,
     );
+    let function = if explicit_form {
+        E::MAIN_ROUND1_EXPLICIT
+    } else {
+        E::MAIN_ROUND1_COMPACT
+    };
 
-    GpuGKRMainRound1Function(E::MAIN_ROUND1).launch(&config, &args)
+    GpuGKRMainRound1Function(function).launch(&config, &args)
 }
 
 pub(super) fn launch_main_round2<E: GpuMainLayerKernelSet + Field>(
@@ -2588,12 +2669,16 @@ pub(super) fn launch_main_round2<E: GpuMainLayerKernelSet + Field>(
         constraint_linear_terms,
         constraint_linear_terms_count as u32,
         constraint_constant_offset,
-        explicit_form,
         contributions,
         acc_size as u32,
     );
+    let function = if explicit_form {
+        E::MAIN_ROUND2_EXPLICIT
+    } else {
+        E::MAIN_ROUND2_COMPACT
+    };
 
-    GpuGKRMainRound2Function(E::MAIN_ROUND2).launch(&config, &args)
+    GpuGKRMainRound2Function(function).launch(&config, &args)
 }
 
 pub(super) fn launch_main_round3<E: GpuMainLayerKernelSet + Field>(
@@ -2628,12 +2713,16 @@ pub(super) fn launch_main_round3<E: GpuMainLayerKernelSet + Field>(
         constraint_linear_terms,
         constraint_linear_terms_count as u32,
         constraint_constant_offset,
-        explicit_form,
         contributions,
         acc_size as u32,
     );
+    let function = if explicit_form {
+        E::MAIN_ROUND3_EXPLICIT
+    } else {
+        E::MAIN_ROUND3_COMPACT
+    };
 
-    GpuGKRMainRound3Function(E::MAIN_ROUND3).launch(&config, &args)
+    GpuGKRMainRound3Function(function).launch(&config, &args)
 }
 
 pub(super) fn launch_main_round0_batched<E: GpuMainLayerKernelSet + Field>(
@@ -2653,7 +2742,12 @@ pub(super) fn launch_main_round1_batched<E: GpuMainLayerKernelSet + Field>(
 ) -> CudaResult<()> {
     let config = gkr_dim_reducing_launch_config(acc_size as u32, context);
     let args = GpuGKRMainRound1BatchedArguments::new(*batch, acc_size as u32);
-    GpuGKRMainRound1BatchedFunction(E::MAIN_ROUND1_BATCHED).launch(&config, &args)
+    let function = if batch.explicit_form {
+        E::MAIN_ROUND1_BATCHED_EXPLICIT
+    } else {
+        E::MAIN_ROUND1_BATCHED_COMPACT
+    };
+    GpuGKRMainRound1BatchedFunction(function).launch(&config, &args)
 }
 
 pub(super) fn launch_main_round2_batched<E: GpuMainLayerKernelSet + Field>(
@@ -2663,7 +2757,12 @@ pub(super) fn launch_main_round2_batched<E: GpuMainLayerKernelSet + Field>(
 ) -> CudaResult<()> {
     let config = gkr_dim_reducing_launch_config(acc_size as u32, context);
     let args = GpuGKRMainRound2BatchedArguments::new(*batch, acc_size as u32);
-    GpuGKRMainRound2BatchedFunction(E::MAIN_ROUND2_BATCHED).launch(&config, &args)
+    let function = if batch.explicit_form {
+        E::MAIN_ROUND2_BATCHED_EXPLICIT
+    } else {
+        E::MAIN_ROUND2_BATCHED_COMPACT
+    };
+    GpuGKRMainRound2BatchedFunction(function).launch(&config, &args)
 }
 
 pub(super) fn launch_main_round3_batched<E: GpuMainLayerKernelSet + Field>(
@@ -2673,5 +2772,10 @@ pub(super) fn launch_main_round3_batched<E: GpuMainLayerKernelSet + Field>(
 ) -> CudaResult<()> {
     let config = gkr_dim_reducing_launch_config(acc_size as u32, context);
     let args = GpuGKRMainRound3BatchedArguments::new(*batch, acc_size as u32);
-    GpuGKRMainRound3BatchedFunction(E::MAIN_ROUND3_BATCHED).launch(&config, &args)
+    let function = if batch.explicit_form {
+        E::MAIN_ROUND3_BATCHED_EXPLICIT
+    } else {
+        E::MAIN_ROUND3_BATCHED_COMPACT
+    };
+    GpuGKRMainRound3BatchedFunction(function).launch(&config, &args)
 }
