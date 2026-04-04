@@ -45,11 +45,11 @@ const BLAKE_NUM_DELEGATION_CYCLES: usize = 1 << 20;
 const BIGINT_NUM_DELEGATION_CYCLES: usize = 1 << 22;
 const KECCAK_NUM_DELEGATION_CYCLES: usize = 1 << 22;
 
-const PROVE_ADD_SUB: bool = false;
-const PROVE_JUMP_BRANCH: bool = false;
-const PROVE_SHIFTS_BINOPS: bool = false;
-const PROVE_MEM_WORD: bool = false;
-const PROVE_MEM_SUBWORD: bool = false;
+const PROVE_ADD_SUB: bool = true;
+const PROVE_JUMP_BRANCH: bool = true;
+const PROVE_SHIFTS_BINOPS: bool = true;
+const PROVE_MEM_WORD: bool = true;
+const PROVE_MEM_SUBWORD: bool = true;
 const PROVE_BLAKE: bool = true;
 const PROVE_BIGINT: bool = true;
 const PROVE_KECCAK: bool = true;

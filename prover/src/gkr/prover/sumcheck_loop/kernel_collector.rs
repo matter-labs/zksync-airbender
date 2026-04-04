@@ -17,9 +17,9 @@ use crate::gkr::sumcheck::evaluation_kernels::{
     LookupRationalPairWithUnbalancedExtensionGKRRelation,
     LookupRationalPairWithUnbalancedExtensionGKRRelationKernel,
     LookupRationalPairWithUnbalancedExtensionWithoutCachesGKRRelation,
-    MaskIntoIdentityProductGKRRelation, MaterializeSingleLookupInputGKRRelation,
-    MaterializeVectoLookupInputGKRRelation, MaxQuadraticGKRRelation, SameSizeProductGKRRelation,
-    SameSizeProductGKRRelationWithoutCaches,
+    MaskIntoIdentityProductGKRRelation, MaterializeMemoryTermGKRRelation,
+    MaterializeSingleLookupInputGKRRelation, MaterializeVectoLookupInputGKRRelation,
+    MaxQuadraticGKRRelation, SameSizeProductGKRRelation, SameSizeProductGKRRelationWithoutCaches,
 };
 use crate::worker::Worker;
 use field::{Field, FieldExtension, PrimeField};
@@ -138,6 +138,7 @@ define_kernel_variants! {
         MaxQuadratic(MaxQuadraticGKRRelation::<F, E>),
         MaterializeSingleLookupInput(MaterializeSingleLookupInputGKRRelation),
         MaterializeVectorLookupInput(MaterializeVectoLookupInputGKRRelation<F, E>),
+        MaterializeMemoryAccess(MaterializeMemoryTermGKRRelation),
     }
     // 2 challenges, two outputs
     pair {
@@ -488,6 +489,17 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelVariant<F, E> {
                         input: input.clone(),
                         setup: setup.clone(),
                         outputs: *output,
+                    },
+                    challenges,
+                    *output,
+                )
+            }
+            NoFieldGKRRelation::MaterializeGrandProductTermExpression { input, output } => {
+                let challenges = [get_challenge()];
+                Self::MaterializeMemoryAccess(
+                    MaterializeMemoryTermGKRRelation {
+                        relation: input.clone(),
+                        output: *output,
                     },
                     challenges,
                     *output,
@@ -1177,6 +1189,15 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
                     challenge,
                     ..,
                 ) => {
+                    Self::evaluate_kernel_terms(
+                        last_evaluations,
+                        challenge_constants,
+                        rel,
+                        &challenge[..],
+                        &mut acc,
+                    );
+                }
+                KernelVariant::MaterializeMemoryAccess(rel, challenge, ..) => {
                     Self::evaluate_kernel_terms(
                         last_evaluations,
                         challenge_constants,

@@ -59,38 +59,14 @@ fn evaluate_cache_relation<F: PrimeField, E: FieldExtension<F> + Field>(
                 );
             }
             NoFieldGKRCacheRelation::MemoryTuple(rel) => {
-                let mut destination = Box::<[E], Global>::new_uninit_slice(trace_len);
-                let ext_destination = vec![&mut destination[..]];
-                let mut sources = Vec::with_capacity(compiled_circuit.memory_layout.total_width);
-                for i in 0..compiled_circuit.memory_layout.total_width {
-                    let src = gkr_storage.get_base_layer_mem(i);
-                    sources.push(src);
-                }
-                let sources_ref = &sources[..];
-
-                apply_row_wise::<F, _>(
-                    vec![],
-                    ext_destination,
+                let destination = utils::materialize_memory_tuple(
+                    rel,
+                    &*gkr_storage,
                     trace_len,
+                    external_challenges,
+                    compiled_circuit,
                     worker,
-                    |_, ext_dest, chunk_start, chunk_size| {
-                        assert_eq!(ext_dest.len(), 1);
-                        let mut ext_dest = ext_dest;
-                        let dest = ext_dest.pop().unwrap();
-                        for i in 0..chunk_size {
-                            let absolute_row_idx = chunk_start + i;
-                            let result = evaluate_memory_query(
-                                rel,
-                                absolute_row_idx,
-                                sources_ref,
-                                external_challenges,
-                            );
-
-                            dest.get_unchecked_mut(i).write(result);
-                        }
-                    },
                 );
-                let destination = destination.assume_init();
                 assert_eq!(layer_idx, 0);
                 address.assert_as_layer(layer_idx);
                 gkr_storage.insert_extension_at_layer(
@@ -632,6 +608,23 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
                     lookup_challenges_additive_part,
                     compiled_circuit.offset_for_decoder_table as u32,
                     worker,
+                );
+            }
+            NoFieldGKRRelation::MaterializeGrandProductTermExpression { input, output } => {
+                let destination = utils::materialize_memory_tuple(
+                    input,
+                    &*gkr_storage,
+                    trace_len,
+                    external_challenges,
+                    compiled_circuit,
+                    worker,
+                );
+                assert_eq!(expected_output_layer, 1);
+                output.assert_as_layer(expected_output_layer);
+                gkr_storage.insert_extension_at_layer(
+                    expected_output_layer,
+                    *output,
+                    ExtensionFieldPoly::new(destination),
                 );
             }
             rel @ _ => {

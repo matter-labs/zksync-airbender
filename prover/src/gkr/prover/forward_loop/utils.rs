@@ -156,6 +156,51 @@ pub(crate) fn materialize_vector_lookup_input<F: PrimeField, E: FieldExtension<F
     destination
 }
 
+pub(crate) fn materialize_memory_tuple<F: PrimeField, E: FieldExtension<F> + Field>(
+    rel: &NoFieldSpecialMemoryContributionRelation,
+    gkr_storage: &GKRStorage<F, E>,
+    trace_len: usize,
+    external_challenges: &GKRExternalChallenges<F, E>,
+    compiled_circuit: &GKRCircuitArtifact<F>,
+    worker: &Worker,
+) -> Box<[E]> {
+    unsafe {
+        let mut destination = Box::<[E], Global>::new_uninit_slice(trace_len);
+        let ext_destination = vec![&mut destination[..]];
+        let mut sources = Vec::with_capacity(compiled_circuit.memory_layout.total_width);
+        for i in 0..compiled_circuit.memory_layout.total_width {
+            let src = gkr_storage.get_base_layer_mem(i);
+            sources.push(src);
+        }
+        let sources_ref = &sources[..];
+
+        apply_row_wise::<F, _>(
+            vec![],
+            ext_destination,
+            trace_len,
+            worker,
+            |_, ext_dest, chunk_start, chunk_size| {
+                assert_eq!(ext_dest.len(), 1);
+                let mut ext_dest = ext_dest;
+                let dest = ext_dest.pop().unwrap();
+                for i in 0..chunk_size {
+                    let absolute_row_idx = chunk_start + i;
+                    let result = evaluate_memory_query(
+                        rel,
+                        absolute_row_idx,
+                        sources_ref,
+                        external_challenges,
+                    );
+
+                    dest.get_unchecked_mut(i).write(result);
+                }
+            },
+        );
+
+        destination.assume_init()
+    }
+}
+
 pub(crate) fn evaluate_linear_relation_at_row<F: PrimeField, E: FieldExtension<F> + Field>(
     rel: &NoFieldLinearRelation,
     gkr_storage: &GKRStorage<F, E>,
