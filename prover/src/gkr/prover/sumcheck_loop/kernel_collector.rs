@@ -10,6 +10,7 @@ use crate::gkr::sumcheck::evaluation_kernels::{
     LookupBaseExtMinusBaseExtGKRRelation, LookupBaseExtMinusBaseExtWithoutCachesGKRRelation,
     LookupBaseMinusMultiplicityByBaseGKRRelation, LookupBasePairGKRRelation,
     LookupBasePairWithoutCachesGKRRelation, LookupExtensionMinusMultiplicityByExtensionGKRRelation,
+    LookupExtensionMinusMultiplicityByExtensionWithoutCachesGKRRelation,
     LookupExtensionPairGKRRelation, LookupExtensionPairGKRRelationKernel,
     LookupExtensionPairWithoutCachesGKRRelation, LookupPairGKRRelation,
     LookupRationalPairWithUnbalancedBaseGKRRelation,
@@ -147,6 +148,7 @@ define_kernel_variants! {
         LookupVectorPairWithoutCaches(LookupExtensionPairWithoutCachesGKRRelation),
         LookupBaseMinusMultiplicityByBase(LookupBaseMinusMultiplicityByBaseGKRRelation<F, E>),
         LookupExtensionMinusMultiplicityByExtension(LookupExtensionMinusMultiplicityByExtensionGKRRelation<F, E>),
+        LookupExtensionMinusMultiplicityByExtensionWithoutCaches(LookupExtensionMinusMultiplicityByExtensionWithoutCachesGKRRelation),
         LookupUnbalancedWithBase(LookupRationalPairWithUnbalancedBaseGKRRelation<F, E>),
         LookupUnbalancedWithExtension(LookupRationalPairWithUnbalancedExtensionGKRRelation<F, E>),
         LookupUnbalancedWithExtensionWithoutCaches(LookupRationalPairWithUnbalancedExtensionWithoutCachesGKRRelation),
@@ -475,6 +477,22 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelVariant<F, E> {
                     *output,
                 )
             }
+            NoFieldGKRRelation::LookupFromVectorInputWithSetup {
+                input,
+                setup,
+                output,
+            } => {
+                let challenges = [get_challenge(), get_challenge()];
+                Self::LookupExtensionMinusMultiplicityByExtensionWithoutCaches(
+                    LookupExtensionMinusMultiplicityByExtensionWithoutCachesGKRRelation {
+                        input: input.clone(),
+                        setup: setup.clone(),
+                        outputs: *output,
+                    },
+                    challenges,
+                    *output,
+                )
+            }
 
             // NoFieldGKRRelation::MaterializedVectorLookupInput { .. } => todo!(),
             // NoFieldGKRRelation::LookupPairFromBaseInputs { .. } => todo!(),
@@ -510,8 +528,8 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
     pub(super) fn register(&mut self, kernel: KernelVariant<F, E>) {
         // Kernels can have a bug in them, place to debug
         match kernel {
-            // KernelVariant::LookupVectorPairWithoutCaches(..) if self.layer == 0 => {}
-            // KernelVariant::MaxQuadratic(..) if self.layer == 0 => {}
+            // KernelVariant::LookupExtensionMinusMultiplicityByExtensionWithoutCaches(..) if self.layer == 0 => {}
+            // KernelVariant::MaterializeVectorLookupInput(..) if self.layer == 0 => {}
             // KernelVariant::LookupUnbalancedWithExtensionWithoutCaches(..) => {}
             _ => self.kernels.push(kernel),
         }
@@ -1146,6 +1164,19 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
                     );
                 }
                 KernelVariant::LookupUnbalancedWithExtensionWithoutCaches(rel, challenge, ..) => {
+                    Self::evaluate_kernel_terms(
+                        last_evaluations,
+                        challenge_constants,
+                        rel,
+                        &challenge[..],
+                        &mut acc,
+                    );
+                }
+                KernelVariant::LookupExtensionMinusMultiplicityByExtensionWithoutCaches(
+                    rel,
+                    challenge,
+                    ..,
+                ) => {
                     Self::evaluate_kernel_terms(
                         last_evaluations,
                         challenge_constants,

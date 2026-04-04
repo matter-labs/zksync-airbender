@@ -220,7 +220,7 @@ pub(crate) fn materialize_lookup_expressions_pair<F: PrimeField, E: FieldExtensi
                         (lhs_mapping_index, lhs_mapped_value, &inputs[0]),
                         (rhs_mapping_index, rhs_mapped_value, &inputs[1]),
                     ] {
-                        assert!(mapping_index < offset_for_decoder_table, "decoder lookup should have mapping index {} >= decoder table offset {}, and is not zero in padding", mapping_index, offset_for_decoder_table);
+                        assert!(mapping_index < offset_for_decoder_table, "generic lookup should have mapping index {} >= decoder table offset {}, and is not zero in padding", mapping_index, offset_for_decoder_table);
 
                         let naive_eval = {
                             let mut result = E::from_base(evaluate_linear_relation_at_row(
@@ -337,7 +337,7 @@ pub(crate) fn materialize_lookup_expressions_pair_with_remainder<
 
                 #[cfg(feature = "gkr_self_checks")]
                 {
-                    assert!(mapping_index < offset_for_decoder_table, "decoder lookup should have mapping index {} >= decoder table offset {}, and is not zero in padding", mapping_index, offset_for_decoder_table);
+                    assert!(mapping_index < offset_for_decoder_table, "generic lookup should have mapping index {} >= decoder table offset {}, and is not zero in padding", mapping_index, offset_for_decoder_table);
 
                     let naive_eval = {
                         let mut result = E::from_base(evaluate_linear_relation_at_row(
@@ -388,5 +388,124 @@ pub(crate) fn materialize_lookup_expressions_pair_with_remainder<
             output,
             ExtensionFieldPoly::new(destination),
         );
+    }
+}
+
+pub(crate) fn materialize_lookup_expression_minus_setup<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+>(
+    input: &NoFieldVectorLookupRelation,
+    multiplicity_address: GKRAddress,
+    outputs: [GKRAddress; 2],
+    gkr_storage: &mut GKRStorage<F, E>,
+    witness_trace: &mut GKRFullWitnessTrace<F, Global, Global>,
+    trace_len: usize,
+    preprocessed_generic_lookup: &[E],
+    lookup_challenges_multiplicative_part: E,
+    lookup_challenges_additive_part: E,
+    offset_for_decoder_table: u32,
+    worker: &Worker,
+) {
+    assert_ne!(input.lookup_set_index, DECODER_LOOKUP_FORMAL_SET_INDEX);
+    let mut num_destination = Box::<[E], Global>::new_uninit_slice(trace_len);
+    let mut den_destination = Box::<[E], Global>::new_uninit_slice(trace_len);
+    let mapping = core::mem::replace(
+        &mut witness_trace.generic_lookup_mapping[input.lookup_set_index],
+        Vec::new(),
+    );
+    assert!(mapping.len() > 0);
+    let mapping_ref = &mapping;
+    let multiplicity = gkr_storage.get_base_layer(multiplicity_address);
+
+    apply_row_wise::<F, _>(
+        vec![],
+        vec![&mut num_destination, &mut den_destination],
+        trace_len,
+        worker,
+        |_, ext_dest, chunk_start, chunk_size| {
+            assert_eq!(ext_dest.len(), 2);
+            let [num_dest, den_dest] = ext_dest.try_into().unwrap();
+            for i in 0..chunk_size {
+                let row = chunk_start + i;
+                let mapping_index = mapping_ref[row];
+                let mapped_value = preprocessed_generic_lookup[mapping_index as usize];
+
+                let multiplicity_value = multiplicity[row];
+                let setup_value = preprocessed_generic_lookup
+                    .get(row)
+                    .copied()
+                    .unwrap_or(E::ZERO);
+
+                // 1/(b + gamma) - c/(d + gamma) -> ((d+gamma) - c*(b+gamma)), (b+gamma) * (d+gamma)
+
+                let mut b = mapped_value;
+                b.add_assign(&lookup_challenges_additive_part);
+
+                let mut d = setup_value;
+                d.add_assign(&lookup_challenges_additive_part);
+
+                let mut num = d;
+
+                let mut t = b;
+                t.mul_assign_by_base(&multiplicity_value);
+
+                num.sub_assign(&t);
+
+                let mut den = b;
+                den.mul_assign(&d);
+
+                num_dest[i].write(num);
+                den_dest[i].write(den);
+
+                #[cfg(feature = "gkr_self_checks")]
+                {
+                    assert!(mapping_index < offset_for_decoder_table, "generic lookup should have mapping index {} >= decoder table offset {}, and is not zero in padding", mapping_index, offset_for_decoder_table);
+
+                    let naive_eval = {
+                        let mut result = E::from_base(evaluate_linear_relation_at_row(
+                            &input.columns[0],
+                            gkr_storage,
+                            row,
+                        ));
+                        let mut challenge = lookup_challenges_multiplicative_part;
+                        for rel in input.columns[1..].iter() {
+                            let mut t = challenge;
+                            t.mul_assign_by_base(&evaluate_linear_relation_at_row(
+                                rel,
+                                gkr_storage,
+                                row,
+                            ));
+                            result.add_assign(&t);
+
+                            challenge.mul_assign(&lookup_challenges_multiplicative_part);
+                        }
+
+                        result
+                    };
+
+                    if naive_eval != mapped_value {
+                        for (idx, rel) in input.columns.iter().enumerate() {
+                            let v = evaluate_linear_relation_at_row(rel, gkr_storage, row);
+                            println!("Column {} = {}", idx, v);
+                        }
+                    }
+                    assert_eq!(
+                        naive_eval, mapped_value,
+                        "generic lookup diverged at row {} for relation {:?}",
+                        row, input
+                    );
+                }
+            }
+        },
+    );
+
+    for (output, destination) in outputs
+        .into_iter()
+        .zip([num_destination, den_destination].into_iter())
+    {
+        let destination = unsafe { destination.assume_init() };
+        output.assert_as_layer(1);
+        gkr_storage.insert_extension_at_layer(1, output, ExtensionFieldPoly::new(destination));
     }
 }
