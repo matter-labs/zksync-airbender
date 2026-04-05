@@ -318,6 +318,10 @@ pub enum NoFieldGKRRelation {
         output: GKRAddress,
     },
 
+    EnforceSingleMaxQuadraticConstraint {
+        input: NoFieldMaxQuadraticGKRRelation,
+    },
+
     // Enforces a randomized set of constraints in a form of c1 + alpha * c2 + ...
     // Sorted as: each quadratic term is recorded once (they are in base field), and powers of alpha are recorded
     EnforceConstraintsMaxQuadratic {
@@ -673,6 +677,9 @@ impl NoFieldGKRRelation {
                 vec![]
             }
             Self::MaterializeGrandProductTermExpression { .. } => {
+                vec![]
+            }
+            Self::EnforceSingleMaxQuadraticConstraint { .. } => {
                 vec![]
             }
             a @ _ => {

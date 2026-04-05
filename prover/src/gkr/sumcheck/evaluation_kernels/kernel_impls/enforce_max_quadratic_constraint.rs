@@ -1,16 +1,13 @@
 use super::*;
-use crate::gkr::prover::forward_loop::utils::memory_query_as_flattened_relation;
-use cs::definitions::GKRAddress;
-use cs::gkr_compiler::NoFieldSpecialMemoryContributionRelation;
+use cs::{definitions::GKRAddress, gkr_compiler::NoFieldMaxQuadraticGKRRelation};
 
 #[derive(Debug)]
-pub struct MaterializeMemoryTermGKRRelation {
-    pub relation: NoFieldSpecialMemoryContributionRelation,
-    pub output: GKRAddress,
+pub struct EnforceSingleMaxQuadraticConstraintGKRRelation {
+    pub relation: NoFieldMaxQuadraticGKRRelation,
 }
 
 impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E>
-    for MaterializeMemoryTermGKRRelation
+    for EnforceSingleMaxQuadraticConstraintGKRRelation
 {
     fn num_challenges(&self) -> usize {
         1
@@ -22,15 +19,22 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E>
 
     fn terms(
         &self,
-        challenge_constants: &BatchedGKRTermDescriptionConstants<F, E>,
+        _challenge_constants: &BatchedGKRTermDescriptionConstants<F, E>,
     ) -> Vec<BatchedGKRTermDescription<F, E>> {
-        let a = memory_query_as_flattened_relation::<F, E>(
-            &self.relation,
-            &challenge_constants.external_challenges,
-        );
         let mut term = BatchedGKRTermDescription::default();
-        term.add_linear_base_terms(a);
-        term.set_extension_output(self.output);
+
+        for (a, other_terms) in self.relation.quadratic_terms.iter() {
+            for (c, b) in other_terms.iter() {
+                term.add_base_by_base(*a, *b, E::from_base(F::from_u32_unchecked(*c)));
+            }
+        }
+
+        for (c, b) in self.relation.linear_terms.iter() {
+            term.add_linear_with_base(*b, E::from_base(F::from_u32_unchecked(*c)));
+        }
+        term.add_constant(E::from_base(F::from_u32_unchecked(self.relation.constant)));
+
+        // just no output
 
         vec![term]
     }

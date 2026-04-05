@@ -2,6 +2,7 @@ use super::*;
 
 pub mod batch_constraint_eval;
 pub mod copy;
+pub mod enforce_max_quadratic_constraint;
 pub mod lookup_base_minus_multiplicity_base;
 pub mod lookup_base_minus_multiplicity_base_no_caches;
 pub mod lookup_base_pair;
@@ -26,6 +27,7 @@ pub mod product_without_caches;
 
 pub use self::batch_constraint_eval::*;
 pub use self::copy::*;
+pub use self::enforce_max_quadratic_constraint::*;
 pub use self::lookup_base_minus_multiplicity_base::*;
 pub use self::lookup_base_minus_multiplicity_base_no_caches::*;
 pub use self::lookup_base_pair::*;

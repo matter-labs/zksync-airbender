@@ -78,4 +78,3 @@ pub fn forward_evaluate_base_layer_pairwise_product_without_caches<
         );
     }
 }
-

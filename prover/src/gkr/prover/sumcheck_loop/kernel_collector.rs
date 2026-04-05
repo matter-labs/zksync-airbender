@@ -6,7 +6,8 @@ use crate::gkr::prover::dimension_reduction::kernels::pairwise_product::Pairwise
 use crate::gkr::sumcheck::access_and_fold::GKRStorage;
 use crate::gkr::sumcheck::evaluation_kernels::{
     BaseFieldCopyGKRRelation, BatchConstraintEvalGKRRelation, BatchedGKRKernel,
-    BatchedGKRTermDescription, BatchedGKRTermDescriptionConstants, ExtensionCopyGKRRelation,
+    BatchedGKRTermDescription, BatchedGKRTermDescriptionConstants,
+    EnforceSingleMaxQuadraticConstraintGKRRelation, ExtensionCopyGKRRelation,
     LookupBaseExtMinusBaseExtGKRRelation, LookupBaseExtMinusBaseExtWithoutCachesGKRRelation,
     LookupBaseMinusMultiplicityByBaseGKRRelation, LookupBasePairGKRRelation,
     LookupBasePairWithoutCachesGKRRelation, LookupExtensionMinusMultiplicityByExtensionGKRRelation,
@@ -18,7 +19,7 @@ use crate::gkr::sumcheck::evaluation_kernels::{
     LookupRationalPairWithUnbalancedExtensionGKRRelationKernel,
     LookupRationalPairWithUnbalancedExtensionWithoutCachesGKRRelation,
     MaskIntoIdentityProductGKRRelation, MaterializeMemoryTermGKRRelation,
-    MaterializeSingleLookupInputGKRRelation, MaterializeVectoLookupInputGKRRelation,
+    MaterializeSingleLookupInputGKRRelation, MaterializeVectorLookupInputGKRRelation,
     MaxQuadraticGKRRelation, SameSizeProductGKRRelation, SameSizeProductGKRRelationWithoutCaches,
 };
 use crate::worker::Worker;
@@ -137,7 +138,7 @@ define_kernel_variants! {
         PairwiseProductDimensionReducing(PairwiseProductDimensionReducingGKRRelation),
         MaxQuadratic(MaxQuadraticGKRRelation::<F, E>),
         MaterializeSingleLookupInput(MaterializeSingleLookupInputGKRRelation),
-        MaterializeVectorLookupInput(MaterializeVectoLookupInputGKRRelation<F, E>),
+        MaterializeVectorLookupInput(MaterializeVectorLookupInputGKRRelation<F, E>),
         MaterializeMemoryAccess(MaterializeMemoryTermGKRRelation),
     }
     // 2 challenges, two outputs
@@ -159,6 +160,7 @@ define_kernel_variants! {
     }
     // single challenge, no output
     no_output {
+        EnforceSingleMaxQuadraticConstraint(EnforceSingleMaxQuadraticConstraintGKRRelation),
         EnforceConstraintsMaxQuadratic(BatchConstraintEvalGKRRelation<F, E>),
     }
 }
@@ -391,7 +393,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelVariant<F, E> {
             NoFieldGKRRelation::MaterializedVectorLookupInput { input, output } => {
                 let challenges = [get_challenge()];
                 Self::MaterializeVectorLookupInput(
-                    MaterializeVectoLookupInputGKRRelation::new(
+                    MaterializeVectorLookupInputGKRRelation::new(
                         input,
                         *output,
                         lookup_challenges_multiplicative_part,
@@ -503,6 +505,15 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelVariant<F, E> {
                     },
                     challenges,
                     *output,
+                )
+            }
+            NoFieldGKRRelation::EnforceSingleMaxQuadraticConstraint { input } => {
+                let challenges = [get_challenge()];
+                Self::EnforceSingleMaxQuadraticConstraint(
+                    EnforceSingleMaxQuadraticConstraintGKRRelation {
+                        relation: input.clone(),
+                    },
+                    challenges,
                 )
             }
 
@@ -1198,6 +1209,15 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
                     );
                 }
                 KernelVariant::MaterializeMemoryAccess(rel, challenge, ..) => {
+                    Self::evaluate_kernel_terms(
+                        last_evaluations,
+                        challenge_constants,
+                        rel,
+                        &challenge[..],
+                        &mut acc,
+                    );
+                }
+                KernelVariant::EnforceSingleMaxQuadraticConstraint(rel, challenge, ..) => {
                     Self::evaluate_kernel_terms(
                         last_evaluations,
                         challenge_constants,

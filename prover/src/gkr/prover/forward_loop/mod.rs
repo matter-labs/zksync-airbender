@@ -390,6 +390,9 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
             NoFieldGKRRelation::EnforceConstraintsMaxQuadratic { .. } => {
                 // we do nothing as it should result in all zeroes in case if constraints are satisfied
             }
+            NoFieldGKRRelation::EnforceSingleMaxQuadraticConstraint { .. } => {
+                // we do nothing as it should result in all zeroes in case if constraints are satisfied
+            }
             NoFieldGKRRelation::LookupFromMaterializedBaseInputWithSetup {
                 input,
                 setup,

@@ -545,13 +545,13 @@ mod test {
 
     #[test]
     fn gen_for_unrolled_gkr_tests() {
+        skip_if_ci!();
         use ::field::baby_bear::base::BabyBearField;
 
         for prefix in [
             "add_sub_lui_auipc_mop_preprocessed",
             "jump_branch_slt_preprocessed",
             "shift_binop_preprocessed",
-            // "load_store_preprocessed",
             "mem_word_only_preprocessed",
             "mem_subword_only_preprocessed",
             // "mul_div_preprocessed",

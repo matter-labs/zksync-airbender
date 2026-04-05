@@ -466,7 +466,7 @@ impl<F: PrimeField> GKRCompiler<F> {
 
         // Place a gate for constraints batch eval
         let (degree_2_constraints, degree_1_constraints) =
-            layout_constraints_at_layers(&mut graph, constraints, &layers_mapping);
+            layout_constraints_at_layers::<F, false>(&mut graph, constraints, &layers_mapping);
 
         // work out the outputs
         let lookup_outputs = BTreeMap::from_iter(
