@@ -8,7 +8,8 @@ use crate::gkr::sumcheck::evaluation_kernels::{
     BaseFieldCopyGKRRelation, BatchConstraintEvalGKRRelation, BatchedGKRKernel,
     BatchedGKRTermDescription, BatchedGKRTermDescriptionConstants,
     EnforceSingleMaxQuadraticConstraintGKRRelation, ExtensionCopyGKRRelation,
-    LookupBaseExtMinusBaseExtGKRRelation, LookupBaseExtMinusBaseExtWithoutCachesGKRRelation,
+    InitsAndTeardownsInitialProductWithoutCachesGKRRelation, LookupBaseExtMinusBaseExtGKRRelation,
+    LookupBaseExtMinusBaseExtWithoutCachesGKRRelation,
     LookupBaseMinusMultiplicityByBaseGKRRelation, LookupBasePairGKRRelation,
     LookupBasePairWithoutCachesGKRRelation, LookupExtensionMinusMultiplicityByExtensionGKRRelation,
     LookupExtensionMinusMultiplicityByExtensionWithoutCachesGKRRelation,
@@ -140,6 +141,7 @@ define_kernel_variants! {
         MaterializeSingleLookupInput(MaterializeSingleLookupInputGKRRelation),
         MaterializeVectorLookupInput(MaterializeVectorLookupInputGKRRelation<F, E>),
         MaterializeMemoryAccess(MaterializeMemoryTermGKRRelation),
+        InitsAndTeardownsInitialProduct(InitsAndTeardownsInitialProductWithoutCachesGKRRelation),
     }
     // 2 challenges, two outputs
     pair {
@@ -173,6 +175,8 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelVariant<F, E> {
         lookup_challenges_multiplicative_part: E,
         lookup_challenges_additive_part: E,
         challenge_for_constraints: E,
+        inits_and_teardowns_top_bits: &[u32],
+        address_high_bits_shift: u32,
         current_batch_challenge: &mut E,
         batch_challenge_base: &E,
     ) -> Self {
@@ -516,6 +520,25 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelVariant<F, E> {
                     challenges,
                 )
             }
+            NoFieldGKRRelation::InitsOrTeardownsInitialPair {
+                timestamp_and_value,
+                setup,
+                output,
+                set_idxes,
+            } => {
+                let challenges = [get_challenge()];
+                Self::InitsAndTeardownsInitialProduct(
+                    InitsAndTeardownsInitialProductWithoutCachesGKRRelation {
+                        inputs: timestamp_and_value.clone(),
+                        setup: *setup,
+                        address_high_bits: set_idxes.map(|el| inits_and_teardowns_top_bits[el]),
+                        address_high_bits_shift,
+                        output: *output,
+                    },
+                    challenges,
+                    *output,
+                )
+            }
 
             // NoFieldGKRRelation::MaterializedVectorLookupInput { .. } => todo!(),
             // NoFieldGKRRelation::LookupPairFromBaseInputs { .. } => todo!(),
@@ -591,6 +614,8 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
         lookup_challenges_multiplicative_part: E,
         lookup_challenges_additive_part: E,
         challenge_for_constraints: E,
+        inits_and_teardowns_top_bits: &[u32],
+        address_high_bits_shift: u32,
     ) -> Self {
         let mut collector = Self::new(batch_challenge_base, layer_idx);
 
@@ -610,6 +635,8 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
                 lookup_challenges_multiplicative_part,
                 lookup_challenges_additive_part,
                 challenge_for_constraints,
+                inits_and_teardowns_top_bits,
+                address_high_bits_shift,
                 &mut collector.current_batch_challenge,
                 &batch_base,
             );
@@ -1218,6 +1245,15 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
                     );
                 }
                 KernelVariant::EnforceSingleMaxQuadraticConstraint(rel, challenge, ..) => {
+                    Self::evaluate_kernel_terms(
+                        last_evaluations,
+                        challenge_constants,
+                        rel,
+                        &challenge[..],
+                        &mut acc,
+                    );
+                }
+                KernelVariant::InitsAndTeardownsInitialProduct(rel, challenge, ..) => {
                     Self::evaluate_kernel_terms(
                         last_evaluations,
                         challenge_constants,

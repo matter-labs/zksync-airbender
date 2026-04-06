@@ -4,6 +4,7 @@ use super::*;
 
 use crate::constraint::Constraint;
 use crate::cs::circuit_trait::WordRepresentation;
+use crate::definitions::gkr::AddressSpaceType;
 use crate::definitions::DecoderData;
 use crate::definitions::DelegationCircuitState;
 use crate::definitions::GKRAddress;
@@ -12,7 +13,6 @@ use crate::definitions::Variable;
 use crate::definitions::REGISTER_SIZE;
 use crate::gkr_compiler::graph::GKRGraph;
 use crate::gkr_compiler::graph::GraphHolder;
-use crate::gkr_compiler::lookup_nodes::LookupDenominator;
 use crate::gkr_compiler::lookup_nodes::LookupInputRelation;
 
 pub fn add_compiler_defined_base_layer_variable(
@@ -389,14 +389,6 @@ pub enum AddressSpaceIsRegister {
 
 #[derive(Clone, Copy, Hash, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[repr(u8)]
-pub enum AddressSpaceType {
-    Register = 0,
-    RAM = 1,
-    PC = 2,
-}
-
-#[derive(Clone, Copy, Hash, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[repr(u8)]
 pub enum AddressSpace {
     Constant(AddressSpaceType),
     RegisterOrRam(AddressSpaceIsRegister),
@@ -569,11 +561,12 @@ pub(crate) fn mem_permutation_expr_into_gkr_relation(
         AddressSpace::RegisterOrRam(is_reg) => {
             assert_eq!(AddressSpaceType::Register as u8, 0);
             match is_reg {
-                AddressSpaceIsRegister::Is(v) => CompiledAddressSpaceRelationStrict::Not(
-                    // NOTE: if v == 1 we should have 0, and vice versa below
+                AddressSpaceIsRegister::Is(v) => CompiledAddressSpaceRelationStrict::IsRam(
+                    // NOTE: if v == 1 we should have 0 (register address space), and vice versa below
                     graph.get_address_for_variable(v).as_memory(),
                 ),
-                AddressSpaceIsRegister::Not(v) => CompiledAddressSpaceRelationStrict::Is(
+                AddressSpaceIsRegister::Not(v) => CompiledAddressSpaceRelationStrict::IsRegister(
+                    // NOTE: if v == 1 we should have 1 (RAM address space)
                     graph.get_address_for_variable(v).as_memory(),
                 ),
             }

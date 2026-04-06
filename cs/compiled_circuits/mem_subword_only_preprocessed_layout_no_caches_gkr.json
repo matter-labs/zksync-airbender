@@ -102,7 +102,7 @@
                 },
                 {
                   "address_space": {
-                    "Not": 9
+                    "IsRam": 9
                   },
                   "address": {
                     "U32Space": [
@@ -162,7 +162,7 @@
                 },
                 {
                   "address_space": {
-                    "Not": 9
+                    "IsRam": 9
                   },
                   "address": {
                     "U32Space": [
@@ -201,7 +201,7 @@
               "input": [
                 {
                   "address_space": {
-                    "Is": 9
+                    "IsRegister": 9
                   },
                   "address": {
                     "U32Space": [
@@ -261,7 +261,7 @@
               "input": [
                 {
                   "address_space": {
-                    "Is": 9
+                    "IsRegister": 9
                   },
                   "address": {
                     "U32Space": [

@@ -3,6 +3,7 @@ use crate::cs::circuit_trait::{
     ConstantRegisterAccess, MemoryAccess, RegisterAccess, RegisterIndirectRamAccess,
     RegisterOrRamAccess, WordRepresentation,
 };
+use crate::definitions::gkr::AddressSpaceType;
 use crate::definitions::Variable;
 use crate::gkr_compiler::graph::CopyNode;
 

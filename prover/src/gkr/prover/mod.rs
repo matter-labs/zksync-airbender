@@ -297,7 +297,7 @@ pub fn prove_configured_with_gkr<
     setup_commitment: &ColumnMajorBaseOracleForLDE<F, T>,
     twiddles: &Twiddles<F, Global>,
     whir_schedule: &WhirSchedule,
-    inits_and_teardowns_top_bits: Option<u32>,
+    inits_and_teardowns_top_bits: Vec<u32>,
     trace_len: usize,
     worker: &Worker,
 ) -> GKRProof<F, E, T>
@@ -309,6 +309,10 @@ where
     assert_eq!(
         witness_eval_data.column_major_memory_trace[0].len(),
         trace_len
+    );
+    assert_eq!(
+        inits_and_teardowns_top_bits.len(),
+        compiled_circuit.memory_layout.teardown_sets.len()
     );
 
     // first we would commit to the witness - WHIR commitment itself is just the same as FRI commitment
@@ -327,29 +331,33 @@ where
     // that are still part of the circuit, even though they are not formally the public input
 
     // circuit sequence and delegation type
-    if let Some(inits_and_teardowns_top_bits) = inits_and_teardowns_top_bits {
-        transcript_input.push(inits_and_teardowns_top_bits);
-    }
+    transcript_input.extend_from_slice(&inits_and_teardowns_top_bits[..]);
 
     external_challenges.flatten_into_buffer(&mut transcript_input);
 
     // commit our setup
-    flatten_merkle_caps_iter_into(
-        Some(setup_commitment.tree.get_cap()).into_iter(),
-        &mut transcript_input,
-    );
+    if setup.hypercube_evals.len() > 0 {
+        flatten_merkle_caps_iter_into(
+            Some(setup_commitment.tree.get_cap()).into_iter(),
+            &mut transcript_input,
+        );
+    }
 
     // memory
-    flatten_merkle_caps_iter_into(
-        Some(mem_oracle.tree.get_cap()).into_iter(),
-        &mut transcript_input,
-    );
+    if compiled_circuit.memory_layout.total_width > 0 {
+        flatten_merkle_caps_iter_into(
+            Some(mem_oracle.tree.get_cap()).into_iter(),
+            &mut transcript_input,
+        );
+    }
 
     // and witness
-    flatten_merkle_caps_iter_into(
-        Some(wit_oracle.tree.get_cap()).into_iter(),
-        &mut transcript_input,
-    );
+    if compiled_circuit.witness_layout.total_width > 0 {
+        flatten_merkle_caps_iter_into(
+            Some(wit_oracle.tree.get_cap()).into_iter(),
+            &mut transcript_input,
+        );
+    }
 
     let mut seed = Transcript::commit_initial(&transcript_input);
 
@@ -389,8 +397,23 @@ where
                 TIMESTAMP_COLUMNS_NUM_BITS,
             >(trace_len.trailing_zeros())),
         );
-        if inits_and_teardowns_top_bits.is_some() {
-            todo!();
+        if inits_and_teardowns_top_bits.is_empty() == false {
+            use crate::gkr::virtual_polys::init_and_teardown_base::materialize_virtual_inits_and_teardowns_base_address_setup_poly;
+            let (low, high) = materialize_virtual_inits_and_teardowns_base_address_setup_poly::<
+                F,
+                Global,
+                2,
+            >(trace_len.trailing_zeros(), worker);
+            gkr_storage.insert_base_field_at_layer(
+                0,
+                GKRAddress::VirtualSetup(VirtualSetupPoly::InitsAndTeardownsLow),
+                BaseFieldPoly::new(low),
+            );
+            gkr_storage.insert_base_field_at_layer(
+                0,
+                GKRAddress::VirtualSetup(VirtualSetupPoly::InitsAndTeardownsHigh),
+                BaseFieldPoly::new(high),
+            );
         }
     }
 
@@ -405,6 +428,7 @@ where
             compiled_circuit,
             external_challenges,
             &mut witness_eval_data,
+            &inits_and_teardowns_top_bits,
             trace_len,
             &preprocessed_generic_lookup,
             lookup_alpha,
@@ -506,22 +530,16 @@ where
         top_layer_claims.insert(k.output[0], claim_rangechecknum);
         top_layer_claims.insert(k.output[1], claim_rangecheckden);
     }
-    top_layer_claims.insert(
-        output_map[&OutputType::LookupTimestamps].output[0],
-        claim_timechecknum,
-    );
-    top_layer_claims.insert(
-        output_map[&OutputType::LookupTimestamps].output[1],
-        claim_timecheckden,
-    );
-    top_layer_claims.insert(
-        output_map[&OutputType::GenericLookup].output[0],
-        claim_lookupnum,
-    );
-    top_layer_claims.insert(
-        output_map[&OutputType::GenericLookup].output[1],
-        claim_lookupden,
-    );
+
+    if let Some(k) = output_map.get(&OutputType::LookupTimestamps) {
+        top_layer_claims.insert(k.output[0], claim_timechecknum);
+        top_layer_claims.insert(k.output[1], claim_timecheckden);
+    }
+
+    if let Some(k) = output_map.get(&OutputType::GenericLookup) {
+        top_layer_claims.insert(k.output[0], claim_lookupnum);
+        top_layer_claims.insert(k.output[1], claim_lookupden);
+    }
 
     println!("Sumcheck loop is starting");
 
@@ -554,6 +572,13 @@ where
 
     assert_eq!(1 << reduced_trace_size_log_2, trace_len);
 
+    let address_high_bits_shift = if inits_and_teardowns_top_bits.len() > 0 {
+        high_bits_offset_for_inits_and_teardowns::<2>(trace_len)
+    } else {
+        // not important
+        0u32
+    };
+
     // Backward loop: standard layer-by-layer sumcheck
     for (layer_idx, layer) in compiled_circuit.layers.iter().enumerate().rev() {
         let proof = sumcheck_loop::evaluate_sumcheck_for_layer(
@@ -568,6 +593,8 @@ where
             lookup_alpha,
             lookup_additive_part,
             constraints_batch_challenge,
+            &inits_and_teardowns_top_bits[..],
+            address_high_bits_shift,
             external_challenges,
             &mut seed,
             worker,
@@ -766,9 +793,9 @@ where
             result
         });
 
-    let mut grand_product_accumulator_computed = read_set_computed;
+    let mut grand_product_accumulator_computed = write_set_computed;
     grand_product_accumulator_computed
-        .mul_assign(&write_set_computed.inverse().expect("must not be zero"));
+        .mul_assign(&read_set_computed.inverse().expect("must not be zero"));
 
     GKRProof {
         external_challenges: *external_challenges,

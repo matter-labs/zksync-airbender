@@ -363,53 +363,24 @@ impl<F: PrimeField> GKRCompiler<F> {
                         unreachable!()
                     };
                     let is_register = match is_register {
-                        Boolean::Is(_) => IsRegisterAddress::Is(is_register_col),
-                        Boolean::Not(_) => IsRegisterAddress::Not(is_register_col),
-                        Boolean::Constant(_) => todo!(),
+                        Boolean::Is(_) => {
+                            // if inner(!) "true" then it should be 0 (address space - register)
+                            assert_eq!(AddressSpaceType::Register as u8, 0);
+                            RegisterOrRamAddressSpace::IsRam(is_register_col)
+                        }
+                        Boolean::Not(_) => {
+                            // if inner(!) variable is "true" then it should be 1 (address space - RAM)
+                            assert_eq!(AddressSpaceType::RAM as u8, 1);
+                            RegisterOrRamAddressSpace::IsRegister(is_register_col)
+                        }
+                        Boolean::Constant(_) => {
+                            unreachable!()
+                        }
                     };
                     RamAddress::RegisterOrRam(RegisterOrRamAccessAddress {
                         is_register,
                         address: [addr_lo_col, addr_hi_col],
                     })
-                    // from aleksander:
-                    //
-                    // let is_register = match is_register {
-                    //     Boolean::Is(var) => {
-                    //         let [is_register] = graph.layout_memory_subtree_multiple_variables(
-                    //             [var],
-                    //             &mut all_variables_to_place,
-                    //         );
-                    //         let GKRAddress::BaseLayerMemory(is_register) = is_register else {
-                    //             unreachable!()
-                    //         };
-                    //         IsRegisterAddress::Is(is_register)
-                    //     }
-                    //     Boolean::Not(not_var) => {
-                    //         let [is_not_register] = graph.layout_memory_subtree_multiple_variables(
-                    //             [not_var],
-                    //             &mut all_variables_to_place,
-                    //         );
-                    //         let GKRAddress::BaseLayerMemory(is_not_register) = is_not_register
-                    //         else {
-                    //             unreachable!()
-                    //         };
-                    //         IsRegisterAddress::Not(is_not_register)
-                    //     }
-                    //     Boolean::Constant(..) => {
-                    //         unreachable!()
-                    //     }
-                    // };
-                    // let address = graph.layout_memory_subtree_multiple_variables(
-                    //     address,
-                    //     &mut all_variables_to_place,
-                    // );
-                    // let address = address.map(|el| {
-                    //     let GKRAddress::BaseLayerMemory(el) = el else {
-                    //         unreachable!()
-                    //     };
-
-                    //     el
-                    // });
 
                     // RamAddress::RegisterOrRam(RegisterOrRamAccessAddress {
                     //     is_register,

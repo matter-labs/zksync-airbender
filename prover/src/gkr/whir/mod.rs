@@ -758,28 +758,30 @@ where
                     oracle.cosets[0].original_values_normal_order.len(),
                     batching_challenges.len()
                 );
-                let (_idx, leaf, query) = oracle.query_for_folded_index(query_index);
-                match set_idx {
-                    0 => {
-                        proof.memory_commitment.queries.push(query);
+                if oracle.cosets[0].original_values_normal_order.len() > 0 {
+                    let (_idx, leaf, query) = oracle.query_for_folded_index(query_index);
+                    match set_idx {
+                        0 => {
+                            proof.memory_commitment.queries.push(query);
+                        }
+                        1 => {
+                            proof.witness_commitment.queries.push(query);
+                        }
+                        2 => {
+                            proof.setup_commitment.queries.push(query);
+                        }
+                        _ => {
+                            unreachable!()
+                        }
                     }
-                    1 => {
-                        proof.witness_commitment.queries.push(query);
-                    }
-                    2 => {
-                        proof.setup_commitment.queries.push(query);
-                    }
-                    _ => {
-                        unreachable!()
-                    }
-                }
-                assert_eq!(batched_evals.len(), leaf.len());
-                for (dst, src) in batched_evals.iter_mut().zip(leaf.iter()) {
-                    assert_eq!(src.len(), batching_challenges.len());
-                    for (a, b) in src.iter().zip(batching_challenges.iter()) {
-                        let mut t = *b;
-                        t.mul_assign_by_base(a);
-                        dst.add_assign(&t);
+                    assert_eq!(batched_evals.len(), leaf.len());
+                    for (dst, src) in batched_evals.iter_mut().zip(leaf.iter()) {
+                        assert_eq!(src.len(), batching_challenges.len());
+                        for (a, b) in src.iter().zip(batching_challenges.iter()) {
+                            let mut t = *b;
+                            t.mul_assign_by_base(a);
+                            dst.add_assign(&t);
+                        }
                     }
                 }
             }

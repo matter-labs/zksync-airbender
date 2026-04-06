@@ -1,5 +1,6 @@
 use super::*;
 use crate::gkr::prover::apply_row_wise;
+use cs::definitions::gkr::AddressSpaceType;
 use cs::definitions::gkr::NoFieldLinearRelation;
 use cs::definitions::gkr::NoFieldSingleColumnLookupRelation;
 use cs::definitions::gkr::NoFieldVectorLookupRelation;
@@ -219,7 +220,7 @@ pub(crate) fn evaluate_linear_relation_at_row<F: PrimeField, E: FieldExtension<F
 }
 
 #[inline(always)]
-fn mem_access_fn<F: PrimeField>(
+pub(crate) fn mem_access_fn<F: PrimeField>(
     base_layer_memory_sources: &[&[F]],
     column: usize,
     row: usize,
@@ -244,12 +245,16 @@ pub(crate) fn evaluate_memory_query<F: PrimeField, E: FieldExtension<F> + Field>
             assert!(c < (1u32 << 16));
             result.add_assign_base(&F::from_u32_unchecked(c));
         }
-        CompiledAddressSpaceRelationStrict::Is(offset) => {
+        CompiledAddressSpaceRelationStrict::IsRam(offset) => {
+            // if "true", then we should have address space == RAM (1)
+            assert_eq!(AddressSpaceType::RAM as u8, 1);
             let el = mem_access_fn(base_layer_memory_sources, offset, row);
             debug_assert!(el.is_zero() || el.is_one());
             result.add_assign_base(&el);
         }
-        CompiledAddressSpaceRelationStrict::Not(offset) => {
+        CompiledAddressSpaceRelationStrict::IsRegister(offset) => {
+            // if "true", then we should have address space == register (0)
+            assert_eq!(AddressSpaceType::Register as u8, 0);
             let mut t = F::ONE;
             let el = mem_access_fn(base_layer_memory_sources, offset, row);
             debug_assert!(el.is_zero() || el.is_one());
@@ -398,12 +403,16 @@ pub(crate) fn memory_query_as_flattened_relation<F: PrimeField, E: FieldExtensio
             assert!(c < (1u32 << 16));
             constant_term.add_assign_base(&F::from_u32_unchecked(c));
         }
-        CompiledAddressSpaceRelationStrict::Is(offset) => {
+        CompiledAddressSpaceRelationStrict::IsRam(offset) => {
+            // if "true", then we should have address space == RAM (1)
+            assert_eq!(AddressSpaceType::RAM as u8, 1);
             assert!(result
                 .insert(GKRAddress::BaseLayerMemory(offset), E::ONE)
                 .is_none());
         }
-        CompiledAddressSpaceRelationStrict::Not(offset) => {
+        CompiledAddressSpaceRelationStrict::IsRegister(offset) => {
+            // if "true", then we should have address space == register (0)
+            assert_eq!(AddressSpaceType::Register as u8, 0);
             assert!(result
                 .insert(GKRAddress::BaseLayerMemory(offset), E::MINUS_ONE)
                 .is_none());
@@ -597,6 +606,66 @@ pub(crate) fn vector_lookup_as_flattened_relation<
         constant_term.add_assign(&t);
 
         challenge.mul_assign(&lookup_challenges_multiplicative_part);
+    }
+
+    (result, constant_term)
+}
+
+pub(crate) fn inits_or_teardowns_as_flattened_relation<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+>(
+    timestamps_and_values: Option<([GKRAddress; 2], [GKRAddress; 2])>,
+    setup: [GKRAddress; 2],
+    address_high_bits: u32,
+    address_high_bits_shift: u32,
+    external_challenges: &GKRExternalChallenges<F, E>,
+) -> (BTreeMap<GKRAddress, E>, E) {
+    use cs::definitions::gkr::AddressSpaceType;
+
+    let mut result = BTreeMap::new();
+    let mut constant_term = external_challenges.permutation_argument_additive_part;
+    constant_term.add_assign_base(&F::from_u32_unchecked(AddressSpaceType::RAM as u32));
+
+    {
+        let t = external_challenges.permutation_argument_linearization_challenges
+            [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
+        let el = setup[0];
+        assert!(result.insert(el, t).is_none());
+    }
+    {
+        let mut t = external_challenges.permutation_argument_linearization_challenges
+            [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
+        let el = setup[1];
+        assert!(result.insert(el, t).is_none());
+        t.mul_assign_by_base(&F::from_u32_unchecked(
+            address_high_bits << address_high_bits_shift,
+        ));
+        constant_term.add_assign(&t);
+    }
+
+    if let Some((timestamps, values)) = timestamps_and_values {
+        for (idx, offset) in [
+            (
+                MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX,
+                timestamps[0],
+            ),
+            (
+                MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX,
+                timestamps[1],
+            ),
+        ] {
+            let t = external_challenges.permutation_argument_linearization_challenges[idx];
+            assert!(result.insert(offset, t).is_none());
+        }
+
+        for (idx, offset) in [
+            (MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX, values[0]),
+            (MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX, values[1]),
+        ] {
+            let t = external_challenges.permutation_argument_linearization_challenges[idx];
+            assert!(result.insert(offset, t).is_none());
+        }
     }
 
     (result, constant_term)

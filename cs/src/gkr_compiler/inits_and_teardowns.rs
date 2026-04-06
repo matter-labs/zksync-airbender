@@ -23,9 +23,6 @@ pub fn compile_inits_and_teardowns_circuit<F: PrimeField, const WORD_BITS: u32>(
     let mut all_variables_to_place = BTreeSet::new();
     let mut layers_mapping = HashMap::new();
 
-    let mut read_set = vec![];
-    let mut write_set = vec![];
-
     let mut graph = GKRGraph::new(0, false);
     for set_idx in 0..num_sets {
         let values: [Variable; 2] = std::array::from_fn(|i| {
@@ -65,13 +62,21 @@ pub fn compile_inits_and_teardowns_circuit<F: PrimeField, const WORD_BITS: u32>(
             &mut all_variables_to_place,
             &mut layers_mapping,
         );
+        teardown_sets.push((timestamps, values));
+    }
 
+    let mut read_set = vec![];
+    let mut write_set = vec![];
+
+    let mut set_idx = 0;
+    for [lhs, rhs] in teardown_sets.as_chunks::<2>().0.iter() {
         let (read_set_el, write_set_el) =
-            create_inits_and_teardowns_set(&mut graph, set_idx, (timestamps, values));
+            create_inits_and_teardowns_set(&mut graph, [set_idx, set_idx + 1], [*lhs, *rhs]);
+
+        set_idx += 2;
 
         read_set.push(read_set_el);
         write_set.push(write_set_el);
-        teardown_sets.push((timestamps, values));
     }
 
     // manually place grand_products
@@ -164,37 +169,66 @@ pub fn compile_inits_and_teardowns_circuit<F: PrimeField, const WORD_BITS: u32>(
 
 fn create_inits_and_teardowns_set(
     graph: &mut impl GraphHolder,
-    set_idx: usize,
-    allocated_teardown_ts_and_values: ([GKRAddress; 2], [GKRAddress; 2]),
+    set_idxes: [usize; 2],
+    allocated_teardown_ts_and_values: [([GKRAddress; 2], [GKRAddress; 2]); 2],
 ) -> (
     (GKRAddress, NoFieldGKRRelation),
     (GKRAddress, NoFieldGKRRelation),
 ) {
-    let output = [(); 2].map(|_| graph.add_intermediate_variable_at_layer(0));
+    let output = [(); 2].map(|_| graph.add_intermediate_variable_at_layer(1));
     // inits and teardowns are almost the same, so we just use enum to indicate
     // what is an timestamp + value
 
-    let inits = NoFieldGKRRelation::InitsOrTeardowns {
+    let inits = NoFieldGKRRelation::InitsOrTeardownsInitialPair {
         timestamp_and_value: InitsOrTeardownsTimestampAndValue::Init,
         setup: [
             GKRAddress::VirtualSetup(VirtualSetupPoly::InitsAndTeardownsLow),
             GKRAddress::VirtualSetup(VirtualSetupPoly::InitsAndTeardownsHigh),
         ],
         output: output[0],
-        set_idx,
+        set_idxes,
     };
     graph.add_enforced_relation(inits.clone(), 1);
 
-    let (timestamp, value) = allocated_teardown_ts_and_values;
+    let [(lhs_timestamp, lhs_value), (rhs_timestamp, rhs_value)] = allocated_teardown_ts_and_values;
 
-    let teardowns = NoFieldGKRRelation::InitsOrTeardowns {
-        timestamp_and_value: InitsOrTeardownsTimestampAndValue::Teardown { timestamp, value },
+    let teardowns = NoFieldGKRRelation::InitsOrTeardownsInitialPair {
+        timestamp_and_value: InitsOrTeardownsTimestampAndValue::Teardown {
+            lhs_timestamp: lhs_timestamp.map(|el| {
+                let GKRAddress::BaseLayerMemory(el) = el else {
+                    unreachable!()
+                };
+
+                el
+            }),
+            lhs_value: lhs_value.map(|el| {
+                let GKRAddress::BaseLayerMemory(el) = el else {
+                    unreachable!()
+                };
+
+                el
+            }),
+            rhs_timestamp: rhs_timestamp.map(|el| {
+                let GKRAddress::BaseLayerMemory(el) = el else {
+                    unreachable!()
+                };
+
+                el
+            }),
+            rhs_value: rhs_value.map(|el| {
+                let GKRAddress::BaseLayerMemory(el) = el else {
+                    unreachable!()
+                };
+
+                el
+            }),
+        },
         setup: [
             GKRAddress::VirtualSetup(VirtualSetupPoly::InitsAndTeardownsLow),
             GKRAddress::VirtualSetup(VirtualSetupPoly::InitsAndTeardownsHigh),
         ],
         output: output[1],
-        set_idx,
+        set_idxes,
     };
     graph.add_enforced_relation(teardowns.clone(), 1);
 

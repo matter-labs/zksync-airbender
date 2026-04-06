@@ -40,7 +40,7 @@ impl Counters for DelegationsCounters {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct DelegationsAndFamiliesCounters {
     pub add_sub_family: usize,
-    pub binary_shift_csr_family: usize,
+    pub binary_shift_family: usize,
     pub slt_branch_family: usize,
     pub mul_div_family: usize,
     pub word_size_mem_family: usize,
@@ -70,7 +70,7 @@ impl Counters for DelegationsAndFamiliesCounters {
         } else if const { FAMILY == JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX } {
             self.slt_branch_family += 1;
         } else if const { FAMILY == SHIFT_BINARY_CIRCUIT_FAMILY_IDX } {
-            self.binary_shift_csr_family += 1;
+            self.binary_shift_family += 1;
         } else if const { FAMILY == MUL_DIV_CIRCUIT_FAMILY_IDX } {
             self.mul_div_family += 1;
         } else if const { FAMILY == LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX } {
@@ -88,7 +88,7 @@ impl Counters for DelegationsAndFamiliesCounters {
         } else if const { FAMILY == JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX } {
             self.slt_branch_family += num_calls;
         } else if const { FAMILY == SHIFT_BINARY_CIRCUIT_FAMILY_IDX } {
-            self.binary_shift_csr_family += num_calls;
+            self.binary_shift_family += num_calls;
         } else if const { FAMILY == MUL_DIV_CIRCUIT_FAMILY_IDX } {
             self.mul_div_family += num_calls;
         } else if const { FAMILY == LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX } {
@@ -106,7 +106,7 @@ impl Counters for DelegationsAndFamiliesCounters {
         } else if const { FAMILY == JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX } {
             self.slt_branch_family
         } else if const { FAMILY == SHIFT_BINARY_CIRCUIT_FAMILY_IDX } {
-            self.binary_shift_csr_family
+            self.binary_shift_family
         } else if const { FAMILY == MUL_DIV_CIRCUIT_FAMILY_IDX } {
             self.mul_div_family
         } else if const { FAMILY == LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX } {
@@ -124,7 +124,7 @@ impl From<[u64; MAX_NUM_COUNTERS]> for DelegationsAndFamiliesCounters {
         Self {
             add_sub_family: counters[CounterType::AddSubLui as u8 as usize] as usize,
             slt_branch_family: counters[CounterType::BranchSlt as u8 as usize] as usize,
-            binary_shift_csr_family: counters[CounterType::ShiftBinaryCsr as u8 as usize] as usize,
+            binary_shift_family: counters[CounterType::ShiftBinaryCsr as u8 as usize] as usize,
             mul_div_family: counters[CounterType::MulDiv as u8 as usize] as usize,
             word_size_mem_family: counters[CounterType::MemWord as u8 as usize] as usize,
             subword_size_mem_family: counters[CounterType::MemSubword as u8 as usize] as usize,
@@ -208,13 +208,13 @@ impl From<[u64; MAX_NUM_COUNTERS]> for DelegationsAndUnifiedCounters {
     fn from(counters: [u64; MAX_NUM_COUNTERS]) -> Self {
         let add_sub_family = counters[CounterType::AddSubLui as u8 as usize] as usize;
         let slt_branch_family = counters[CounterType::BranchSlt as u8 as usize] as usize;
-        let binary_shift_csr_family = counters[CounterType::ShiftBinaryCsr as u8 as usize] as usize;
+        let binary_shift_family = counters[CounterType::ShiftBinaryCsr as u8 as usize] as usize;
         let mul_div_family = counters[CounterType::MulDiv as u8 as usize] as usize;
         let word_size_mem_family = counters[CounterType::MemWord as u8 as usize] as usize;
         let subword_size_mem_family = counters[CounterType::MemSubword as u8 as usize] as usize;
         let cycles = add_sub_family
             + slt_branch_family
-            + binary_shift_csr_family
+            + binary_shift_family
             + mul_div_family
             + word_size_mem_family
             + subword_size_mem_family;

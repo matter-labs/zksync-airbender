@@ -15,6 +15,7 @@ use cs::{
 };
 
 pub(crate) mod copy;
+pub(crate) mod inits_and_teardowns;
 pub(crate) mod lookup_from_base_inputs;
 pub(crate) mod lookup_from_vector_inputs;
 pub(crate) mod lookup_pair;
@@ -119,6 +120,7 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
     compiled_circuit: &GKRCircuitArtifact<F>,
     external_challenges: &GKRExternalChallenges<F, E>,
     witness_trace: &mut GKRFullWitnessTrace<F, Global, Global>,
+    inits_and_teardowns_top_bits: &[u32],
     trace_len: usize,
     preprocessed_generic_lookup: &[E],
     lookup_challenges_multiplicative_part: E,
@@ -622,6 +624,30 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
                     compiled_circuit,
                     worker,
                 );
+                assert_eq!(expected_output_layer, 1);
+                output.assert_as_layer(expected_output_layer);
+                gkr_storage.insert_extension_at_layer(
+                    expected_output_layer,
+                    *output,
+                    ExtensionFieldPoly::new(destination),
+                );
+            }
+            NoFieldGKRRelation::InitsOrTeardownsInitialPair {
+                timestamp_and_value,
+                setup,
+                output,
+                set_idxes,
+            } => {
+                let destination =
+                    inits_and_teardowns::materialize_inits_and_teardowns_tuple_pair::<F, E, 2>(
+                        timestamp_and_value,
+                        set_idxes.map(|el| inits_and_teardowns_top_bits[el]),
+                        &*gkr_storage,
+                        trace_len,
+                        external_challenges,
+                        compiled_circuit,
+                        worker,
+                    );
                 assert_eq!(expected_output_layer, 1);
                 output.assert_as_layer(expected_output_layer);
                 gkr_storage.insert_extension_at_layer(

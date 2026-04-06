@@ -181,15 +181,17 @@ pub enum CompiledAddress {
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum CompiledAddressSpaceRelationStrict {
     Constant(u32),
-    Is(usize),
-    Not(usize),
+    IsRegister(usize), // must contribute 0 (register) if "true", 1 (RAM) otherwise
+    IsRam(usize),      // must contribute 0 (register) if "false", 1 (RAM) otherwise
 }
 
 impl CompiledAddressSpaceRelationStrict {
     pub(crate) fn dependency(&self) -> Option<GKRAddress> {
         match self {
             Self::Constant(..) => None,
-            Self::Is(offset) | Self::Not(offset) => Some(GKRAddress::BaseLayerMemory(*offset)),
+            Self::IsRegister(offset) | Self::IsRam(offset) => {
+                Some(GKRAddress::BaseLayerMemory(*offset))
+            }
         }
     }
 }
@@ -308,8 +310,10 @@ pub struct NoFieldMaxQuadraticConstraintsGKRRelation {
 pub enum InitsOrTeardownsTimestampAndValue {
     Init, // zeroes
     Teardown {
-        timestamp: [GKRAddress; 2],
-        value: [GKRAddress; 2],
+        lhs_timestamp: [usize; NUM_TIMESTAMP_COLUMNS_FOR_RAM],
+        lhs_value: [usize; 2],
+        rhs_timestamp: [usize; NUM_TIMESTAMP_COLUMNS_FOR_RAM],
+        rhs_value: [usize; 2],
     },
 }
 
@@ -503,11 +507,11 @@ pub enum NoFieldGKRRelation {
         output: [GKRAddress; 2],
     },
 
-    InitsOrTeardowns {
+    InitsOrTeardownsInitialPair {
         timestamp_and_value: InitsOrTeardownsTimestampAndValue,
         setup: [GKRAddress; 2], // virtual
         output: GKRAddress,
-        set_idx: usize, // defines upper bits of address
+        set_idxes: [usize; 2], // defines upper bits of address
     },
 }
 
@@ -695,7 +699,7 @@ impl NoFieldGKRRelation {
             Self::EnforceSingleMaxQuadraticConstraint { .. } => {
                 vec![]
             }
-            Self::InitsOrTeardowns { .. } => {
+            Self::InitsOrTeardownsInitialPair { .. } => {
                 vec![]
             }
             a @ _ => {

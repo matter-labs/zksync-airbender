@@ -335,11 +335,6 @@ pub(crate) unsafe fn gkr_process_shuffle_ram_accesses_in_executor_family<
                     register_index,
                     Placeholder::ShuffleRamAddress(access_idx),
                 );
-
-                // proxy.write_u8_placeholder_into_columns::<true>(
-                //     register_index,
-                //     Placeholder::ShuffleRamAddress(access_idx),
-                // );
             }
             RamAddress::RegisterOrRam(RegisterOrRamAccessAddress {
                 is_register,

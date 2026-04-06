@@ -1,6 +1,7 @@
-use std::alloc::Allocator;
+use std::{alloc::Allocator, mem::MaybeUninit};
 
 use common_constants::TimestampScalar;
+use field::PrimeField;
 
 use crate::vm::{RamPeek, Register, RAM};
 
@@ -10,7 +11,11 @@ pub struct RamWithRomRegion<const ROM_BOUND_SECOND_WORD_BITS: usize> {
 
 impl<const ROM_BOUND_SECOND_WORD_BITS: usize> RamWithRomRegion<ROM_BOUND_SECOND_WORD_BITS> {
     pub fn from_rom_content(content: &[u32], total_size_bytes: usize) -> Self {
-        assert!(total_size_bytes.is_power_of_two());
+        assert!(
+            total_size_bytes.is_power_of_two(),
+            "total size {} is not power of two",
+            total_size_bytes
+        );
         let rom_bytes = 1 << (16 + ROM_BOUND_SECOND_WORD_BITS);
         assert!(total_size_bytes > rom_bytes);
         let num_rom_words = rom_bytes / core::mem::size_of::<u32>();
@@ -174,16 +179,6 @@ impl<const ROM_BOUND_SECOND_WORD_BITS: usize> RamWithRomRegion<ROM_BOUND_SECOND_
                     let el = &mut el[0];
                     let mut address = chunk_start * core::mem::size_of::<u32>();
                     for word in src.iter() {
-                        // if address < (1 << (16 + ROM_BOUND_SECOND_WORD_BITS)) {
-                        //     if address != 0 {
-                        //         assert_eq!(
-                        //             word.timestamp, 0,
-                        //             "non-zero access timestamp in ROM region at address 0x{:08x}",
-                        //             address
-                        //         );
-                        //     }
-                        // }
-
                         if word.timestamp != 0 {
                             let mut word_value = word.value;
                             // we mask ROM region to be zero-valued
@@ -201,5 +196,125 @@ impl<const ROM_BOUND_SECOND_WORD_BITS: usize> RamWithRomRegion<ROM_BOUND_SECOND_
         });
 
         chunks
+    }
+
+    pub fn collect_inits_and_teardowns_into_columns<
+        F: PrimeField,
+        A: Allocator + Clone + Send + Sync,
+    >(
+        &self,
+        worker: &worker::Worker,
+        words_per_chunk_log2: usize,
+        offset_in_words: usize,
+        column_chunks: &mut [([Vec<F, A>; 2], [Vec<F, A>; 2])], // ts, value
+    ) {
+        use common_constants::*;
+
+        pub const fn timestamp_scalar_into_column_values(
+            timestamp: TimestampScalar,
+        ) -> [u32; NUM_TIMESTAMP_COLUMNS_FOR_RAM] {
+            let low = timestamp & ((1 << TIMESTAMP_COLUMNS_NUM_BITS) - 1);
+            let high = timestamp >> TIMESTAMP_COLUMNS_NUM_BITS;
+
+            [low as u32, high as u32]
+        }
+
+        pub fn split_u32_into_pair_u16(num: u32) -> (u16, u16) {
+            let high_word = (num >> 16) as u16;
+            let low_word = (num & 0xffff) as u16;
+            (low_word, high_word)
+        }
+
+        pub fn split_timestamp(timestamp: TimestampScalar) -> (u32, u32) {
+            let [low, high] = timestamp_scalar_into_column_values(timestamp);
+
+            (low, high)
+        }
+
+        // parallel collect, and we access mutually exclusive places, so we first degrate everything to pointers
+        // first we will walk over access_bitmask and collect subparts
+
+        let words_per_chunk = 1 << words_per_chunk_log2;
+        assert_eq!(offset_in_words % words_per_chunk, 0);
+        let dst_size_words = words_per_chunk * column_chunks.len();
+        for el in column_chunks.iter() {
+            let ([a, b], [c, d]) = el;
+            assert_eq!(a.len(), 0);
+            assert_eq!(b.len(), 0);
+            assert_eq!(c.len(), 0);
+            assert_eq!(d.len(), 0);
+        }
+
+        // we do not support overfills yet
+        assert!(offset_in_words + dst_size_words <= self.backing.len());
+
+        worker.scope(dst_size_words, |scope, geometry| {
+            for thread_idx in 0..geometry.len() {
+                let t = unsafe {
+                    let ptr = column_chunks.as_mut_ptr();
+                    let len = column_chunks.len();
+
+                    core::slice::from_raw_parts_mut(ptr, len)
+                };
+                let mut mapped = Vec::with_capacity(t.len());
+                for ([a, b], [c, d]) in t.iter_mut() {
+                    mapped.push((
+                        [
+                            &mut a.spare_capacity_mut()[..words_per_chunk],
+                            &mut b.spare_capacity_mut()[..words_per_chunk],
+                        ],
+                        [
+                            &mut c.spare_capacity_mut()[..words_per_chunk],
+                            &mut d.spare_capacity_mut()[..words_per_chunk],
+                        ],
+                    ));
+                }
+                let chunk_size = geometry.get_chunk_size(thread_idx);
+                let chunk_start = geometry.get_chunk_start_pos(thread_idx);
+                let start = offset_in_words + chunk_start;
+                let end = start + chunk_size;
+                let src = &self.backing[start..end];
+
+                worker::Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
+                    let mut word_idx = start;
+                    for word in src.iter() {
+                        let in_chunk_idx = word_idx % (1 << words_per_chunk_log2);
+                        let chunk_idx = (word_idx - offset_in_words) >> words_per_chunk_log2;
+                        let address = start * core::mem::size_of::<u32>();
+                        if word.timestamp != 0 {
+                            let mut word_value = word.value;
+                            // we mask ROM region to be zero-valued
+                            if address < (1 << (16 + ROM_BOUND_SECOND_WORD_BITS)) {
+                                word_value = 0;
+                            }
+                            let last_timestamp: TimestampScalar = word.timestamp;
+                            let (val_low, val_high) = split_u32_into_pair_u16(word_value);
+                            let (ts_low, ts_high) = split_timestamp(last_timestamp);
+
+                            mapped[chunk_idx].0[0][in_chunk_idx]
+                                .write(F::from_u32_unchecked(ts_low as u32));
+                            mapped[chunk_idx].0[1][in_chunk_idx]
+                                .write(F::from_u32_unchecked(ts_high as u32));
+
+                            mapped[chunk_idx].1[0][in_chunk_idx]
+                                .write(F::from_u32_unchecked(val_low as u32));
+                            mapped[chunk_idx].1[1][in_chunk_idx]
+                                .write(F::from_u32_unchecked(val_high as u32));
+                        }
+
+                        word_idx += 1;
+                    }
+                });
+            }
+        });
+
+        unsafe {
+            for ([a, b], [c, d]) in column_chunks.iter_mut() {
+                a.set_len(words_per_chunk);
+                b.set_len(words_per_chunk);
+                c.set_len(words_per_chunk);
+                d.set_len(words_per_chunk);
+            }
+        }
     }
 }

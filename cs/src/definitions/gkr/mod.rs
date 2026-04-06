@@ -13,6 +13,14 @@ use crate::definitions::REGISTER_SIZE;
 use crate::gkr_compiler::CompiledDelegationCircuitState;
 use common_constants::NUM_TIMESTAMP_COLUMNS_FOR_RAM;
 
+#[derive(Clone, Copy, Hash, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[repr(u8)]
+pub enum AddressSpaceType {
+    Register = 0,
+    RAM = 1,
+    PC = 2,
+}
+
 #[derive(Clone, Copy, Hash, Debug, serde::Serialize, serde::Deserialize)]
 pub struct GKRMachineState {
     pub pc: [usize; REGISTER_SIZE],

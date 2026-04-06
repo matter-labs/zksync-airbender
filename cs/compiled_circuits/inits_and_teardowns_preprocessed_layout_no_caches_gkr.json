@@ -61,7 +61,7 @@
         {
           "output_layer": 1,
           "enforced_relation": {
-            "InitsOrTeardowns": {
+            "InitsOrTeardownsInitialPair": {
               "timestamp_and_value": "Init",
               "setup": [
                 {
@@ -73,35 +73,38 @@
               ],
               "output": {
                 "InnerLayer": {
-                  "layer": 0,
+                  "layer": 1,
                   "offset": 0
                 }
               },
-              "set_idx": 0
+              "set_idxes": [
+                0,
+                1
+              ]
             }
           }
         },
         {
           "output_layer": 1,
           "enforced_relation": {
-            "InitsOrTeardowns": {
+            "InitsOrTeardownsInitialPair": {
               "timestamp_and_value": {
                 "Teardown": {
-                  "timestamp": [
-                    {
-                      "BaseLayerMemory": 2
-                    },
-                    {
-                      "BaseLayerMemory": 3
-                    }
+                  "lhs_timestamp": [
+                    2,
+                    3
                   ],
-                  "value": [
-                    {
-                      "BaseLayerMemory": 0
-                    },
-                    {
-                      "BaseLayerMemory": 1
-                    }
+                  "lhs_value": [
+                    0,
+                    1
+                  ],
+                  "rhs_timestamp": [
+                    6,
+                    7
+                  ],
+                  "rhs_value": [
+                    4,
+                    5
                   ]
                 }
               },
@@ -115,18 +118,21 @@
               ],
               "output": {
                 "InnerLayer": {
-                  "layer": 0,
+                  "layer": 1,
                   "offset": 1
                 }
               },
-              "set_idx": 0
+              "set_idxes": [
+                0,
+                1
+              ]
             }
           }
         },
         {
           "output_layer": 1,
           "enforced_relation": {
-            "InitsOrTeardowns": {
+            "InitsOrTeardownsInitialPair": {
               "timestamp_and_value": "Init",
               "setup": [
                 {
@@ -138,35 +144,38 @@
               ],
               "output": {
                 "InnerLayer": {
-                  "layer": 0,
+                  "layer": 1,
                   "offset": 2
                 }
               },
-              "set_idx": 1
+              "set_idxes": [
+                2,
+                3
+              ]
             }
           }
         },
         {
           "output_layer": 1,
           "enforced_relation": {
-            "InitsOrTeardowns": {
+            "InitsOrTeardownsInitialPair": {
               "timestamp_and_value": {
                 "Teardown": {
-                  "timestamp": [
-                    {
-                      "BaseLayerMemory": 6
-                    },
-                    {
-                      "BaseLayerMemory": 7
-                    }
+                  "lhs_timestamp": [
+                    10,
+                    11
                   ],
-                  "value": [
-                    {
-                      "BaseLayerMemory": 4
-                    },
-                    {
-                      "BaseLayerMemory": 5
-                    }
+                  "lhs_value": [
+                    8,
+                    9
+                  ],
+                  "rhs_timestamp": [
+                    14,
+                    15
+                  ],
+                  "rhs_value": [
+                    12,
+                    13
                   ]
                 }
               },
@@ -180,18 +189,21 @@
               ],
               "output": {
                 "InnerLayer": {
-                  "layer": 0,
+                  "layer": 1,
                   "offset": 3
                 }
               },
-              "set_idx": 1
+              "set_idxes": [
+                2,
+                3
+              ]
             }
           }
         },
         {
           "output_layer": 1,
           "enforced_relation": {
-            "InitsOrTeardowns": {
+            "InitsOrTeardownsInitialPair": {
               "timestamp_and_value": "Init",
               "setup": [
                 {
@@ -203,35 +215,38 @@
               ],
               "output": {
                 "InnerLayer": {
-                  "layer": 0,
+                  "layer": 1,
                   "offset": 4
                 }
               },
-              "set_idx": 2
+              "set_idxes": [
+                4,
+                5
+              ]
             }
           }
         },
         {
           "output_layer": 1,
           "enforced_relation": {
-            "InitsOrTeardowns": {
+            "InitsOrTeardownsInitialPair": {
               "timestamp_and_value": {
                 "Teardown": {
-                  "timestamp": [
-                    {
-                      "BaseLayerMemory": 10
-                    },
-                    {
-                      "BaseLayerMemory": 11
-                    }
+                  "lhs_timestamp": [
+                    18,
+                    19
                   ],
-                  "value": [
-                    {
-                      "BaseLayerMemory": 8
-                    },
-                    {
-                      "BaseLayerMemory": 9
-                    }
+                  "lhs_value": [
+                    16,
+                    17
+                  ],
+                  "rhs_timestamp": [
+                    22,
+                    23
+                  ],
+                  "rhs_value": [
+                    20,
+                    21
                   ]
                 }
               },
@@ -245,18 +260,21 @@
               ],
               "output": {
                 "InnerLayer": {
-                  "layer": 0,
+                  "layer": 1,
                   "offset": 5
                 }
               },
-              "set_idx": 2
+              "set_idxes": [
+                4,
+                5
+              ]
             }
           }
         },
         {
           "output_layer": 1,
           "enforced_relation": {
-            "InitsOrTeardowns": {
+            "InitsOrTeardownsInitialPair": {
               "timestamp_and_value": "Init",
               "setup": [
                 {
@@ -268,35 +286,38 @@
               ],
               "output": {
                 "InnerLayer": {
-                  "layer": 0,
+                  "layer": 1,
                   "offset": 6
                 }
               },
-              "set_idx": 3
+              "set_idxes": [
+                6,
+                7
+              ]
             }
           }
         },
         {
           "output_layer": 1,
           "enforced_relation": {
-            "InitsOrTeardowns": {
+            "InitsOrTeardownsInitialPair": {
               "timestamp_and_value": {
                 "Teardown": {
-                  "timestamp": [
-                    {
-                      "BaseLayerMemory": 14
-                    },
-                    {
-                      "BaseLayerMemory": 15
-                    }
+                  "lhs_timestamp": [
+                    26,
+                    27
                   ],
-                  "value": [
-                    {
-                      "BaseLayerMemory": 12
-                    },
-                    {
-                      "BaseLayerMemory": 13
-                    }
+                  "lhs_value": [
+                    24,
+                    25
+                  ],
+                  "rhs_timestamp": [
+                    30,
+                    31
+                  ],
+                  "rhs_value": [
+                    28,
+                    29
                   ]
                 }
               },
@@ -310,18 +331,21 @@
               ],
               "output": {
                 "InnerLayer": {
-                  "layer": 0,
+                  "layer": 1,
                   "offset": 7
                 }
               },
-              "set_idx": 3
+              "set_idxes": [
+                6,
+                7
+              ]
             }
           }
         },
         {
           "output_layer": 1,
           "enforced_relation": {
-            "InitsOrTeardowns": {
+            "InitsOrTeardownsInitialPair": {
               "timestamp_and_value": "Init",
               "setup": [
                 {
@@ -333,35 +357,38 @@
               ],
               "output": {
                 "InnerLayer": {
-                  "layer": 0,
+                  "layer": 1,
                   "offset": 8
                 }
               },
-              "set_idx": 4
+              "set_idxes": [
+                8,
+                9
+              ]
             }
           }
         },
         {
           "output_layer": 1,
           "enforced_relation": {
-            "InitsOrTeardowns": {
+            "InitsOrTeardownsInitialPair": {
               "timestamp_and_value": {
                 "Teardown": {
-                  "timestamp": [
-                    {
-                      "BaseLayerMemory": 18
-                    },
-                    {
-                      "BaseLayerMemory": 19
-                    }
+                  "lhs_timestamp": [
+                    34,
+                    35
                   ],
-                  "value": [
-                    {
-                      "BaseLayerMemory": 16
-                    },
-                    {
-                      "BaseLayerMemory": 17
-                    }
+                  "lhs_value": [
+                    32,
+                    33
+                  ],
+                  "rhs_timestamp": [
+                    38,
+                    39
+                  ],
+                  "rhs_value": [
+                    36,
+                    37
                   ]
                 }
               },
@@ -375,18 +402,21 @@
               ],
               "output": {
                 "InnerLayer": {
-                  "layer": 0,
+                  "layer": 1,
                   "offset": 9
                 }
               },
-              "set_idx": 4
+              "set_idxes": [
+                8,
+                9
+              ]
             }
           }
         },
         {
           "output_layer": 1,
           "enforced_relation": {
-            "InitsOrTeardowns": {
+            "InitsOrTeardownsInitialPair": {
               "timestamp_and_value": "Init",
               "setup": [
                 {
@@ -398,35 +428,38 @@
               ],
               "output": {
                 "InnerLayer": {
-                  "layer": 0,
+                  "layer": 1,
                   "offset": 10
                 }
               },
-              "set_idx": 5
+              "set_idxes": [
+                10,
+                11
+              ]
             }
           }
         },
         {
           "output_layer": 1,
           "enforced_relation": {
-            "InitsOrTeardowns": {
+            "InitsOrTeardownsInitialPair": {
               "timestamp_and_value": {
                 "Teardown": {
-                  "timestamp": [
-                    {
-                      "BaseLayerMemory": 22
-                    },
-                    {
-                      "BaseLayerMemory": 23
-                    }
+                  "lhs_timestamp": [
+                    42,
+                    43
                   ],
-                  "value": [
-                    {
-                      "BaseLayerMemory": 20
-                    },
-                    {
-                      "BaseLayerMemory": 21
-                    }
+                  "lhs_value": [
+                    40,
+                    41
+                  ],
+                  "rhs_timestamp": [
+                    46,
+                    47
+                  ],
+                  "rhs_value": [
+                    44,
+                    45
                   ]
                 }
               },
@@ -440,18 +473,21 @@
               ],
               "output": {
                 "InnerLayer": {
-                  "layer": 0,
+                  "layer": 1,
                   "offset": 11
                 }
               },
-              "set_idx": 5
+              "set_idxes": [
+                10,
+                11
+              ]
             }
           }
         },
         {
           "output_layer": 1,
           "enforced_relation": {
-            "InitsOrTeardowns": {
+            "InitsOrTeardownsInitialPair": {
               "timestamp_and_value": "Init",
               "setup": [
                 {
@@ -463,35 +499,38 @@
               ],
               "output": {
                 "InnerLayer": {
-                  "layer": 0,
+                  "layer": 1,
                   "offset": 12
                 }
               },
-              "set_idx": 6
+              "set_idxes": [
+                12,
+                13
+              ]
             }
           }
         },
         {
           "output_layer": 1,
           "enforced_relation": {
-            "InitsOrTeardowns": {
+            "InitsOrTeardownsInitialPair": {
               "timestamp_and_value": {
                 "Teardown": {
-                  "timestamp": [
-                    {
-                      "BaseLayerMemory": 26
-                    },
-                    {
-                      "BaseLayerMemory": 27
-                    }
+                  "lhs_timestamp": [
+                    50,
+                    51
                   ],
-                  "value": [
-                    {
-                      "BaseLayerMemory": 24
-                    },
-                    {
-                      "BaseLayerMemory": 25
-                    }
+                  "lhs_value": [
+                    48,
+                    49
+                  ],
+                  "rhs_timestamp": [
+                    54,
+                    55
+                  ],
+                  "rhs_value": [
+                    52,
+                    53
                   ]
                 }
               },
@@ -505,18 +544,21 @@
               ],
               "output": {
                 "InnerLayer": {
-                  "layer": 0,
+                  "layer": 1,
                   "offset": 13
                 }
               },
-              "set_idx": 6
+              "set_idxes": [
+                12,
+                13
+              ]
             }
           }
         },
         {
           "output_layer": 1,
           "enforced_relation": {
-            "InitsOrTeardowns": {
+            "InitsOrTeardownsInitialPair": {
               "timestamp_and_value": "Init",
               "setup": [
                 {
@@ -528,35 +570,38 @@
               ],
               "output": {
                 "InnerLayer": {
-                  "layer": 0,
+                  "layer": 1,
                   "offset": 14
                 }
               },
-              "set_idx": 7
+              "set_idxes": [
+                14,
+                15
+              ]
             }
           }
         },
         {
           "output_layer": 1,
           "enforced_relation": {
-            "InitsOrTeardowns": {
+            "InitsOrTeardownsInitialPair": {
               "timestamp_and_value": {
                 "Teardown": {
-                  "timestamp": [
-                    {
-                      "BaseLayerMemory": 30
-                    },
-                    {
-                      "BaseLayerMemory": 31
-                    }
+                  "lhs_timestamp": [
+                    58,
+                    59
                   ],
-                  "value": [
-                    {
-                      "BaseLayerMemory": 28
-                    },
-                    {
-                      "BaseLayerMemory": 29
-                    }
+                  "lhs_value": [
+                    56,
+                    57
+                  ],
+                  "rhs_timestamp": [
+                    62,
+                    63
+                  ],
+                  "rhs_value": [
+                    60,
+                    61
                   ]
                 }
               },
@@ -570,531 +615,14 @@
               ],
               "output": {
                 "InnerLayer": {
-                  "layer": 0,
+                  "layer": 1,
                   "offset": 15
                 }
               },
-              "set_idx": 7
-            }
-          }
-        },
-        {
-          "output_layer": 1,
-          "enforced_relation": {
-            "InitsOrTeardowns": {
-              "timestamp_and_value": "Init",
-              "setup": [
-                {
-                  "VirtualSetup": "InitsAndTeardownsLow"
-                },
-                {
-                  "VirtualSetup": "InitsAndTeardownsHigh"
-                }
-              ],
-              "output": {
-                "InnerLayer": {
-                  "layer": 0,
-                  "offset": 16
-                }
-              },
-              "set_idx": 8
-            }
-          }
-        },
-        {
-          "output_layer": 1,
-          "enforced_relation": {
-            "InitsOrTeardowns": {
-              "timestamp_and_value": {
-                "Teardown": {
-                  "timestamp": [
-                    {
-                      "BaseLayerMemory": 34
-                    },
-                    {
-                      "BaseLayerMemory": 35
-                    }
-                  ],
-                  "value": [
-                    {
-                      "BaseLayerMemory": 32
-                    },
-                    {
-                      "BaseLayerMemory": 33
-                    }
-                  ]
-                }
-              },
-              "setup": [
-                {
-                  "VirtualSetup": "InitsAndTeardownsLow"
-                },
-                {
-                  "VirtualSetup": "InitsAndTeardownsHigh"
-                }
-              ],
-              "output": {
-                "InnerLayer": {
-                  "layer": 0,
-                  "offset": 17
-                }
-              },
-              "set_idx": 8
-            }
-          }
-        },
-        {
-          "output_layer": 1,
-          "enforced_relation": {
-            "InitsOrTeardowns": {
-              "timestamp_and_value": "Init",
-              "setup": [
-                {
-                  "VirtualSetup": "InitsAndTeardownsLow"
-                },
-                {
-                  "VirtualSetup": "InitsAndTeardownsHigh"
-                }
-              ],
-              "output": {
-                "InnerLayer": {
-                  "layer": 0,
-                  "offset": 18
-                }
-              },
-              "set_idx": 9
-            }
-          }
-        },
-        {
-          "output_layer": 1,
-          "enforced_relation": {
-            "InitsOrTeardowns": {
-              "timestamp_and_value": {
-                "Teardown": {
-                  "timestamp": [
-                    {
-                      "BaseLayerMemory": 38
-                    },
-                    {
-                      "BaseLayerMemory": 39
-                    }
-                  ],
-                  "value": [
-                    {
-                      "BaseLayerMemory": 36
-                    },
-                    {
-                      "BaseLayerMemory": 37
-                    }
-                  ]
-                }
-              },
-              "setup": [
-                {
-                  "VirtualSetup": "InitsAndTeardownsLow"
-                },
-                {
-                  "VirtualSetup": "InitsAndTeardownsHigh"
-                }
-              ],
-              "output": {
-                "InnerLayer": {
-                  "layer": 0,
-                  "offset": 19
-                }
-              },
-              "set_idx": 9
-            }
-          }
-        },
-        {
-          "output_layer": 1,
-          "enforced_relation": {
-            "InitsOrTeardowns": {
-              "timestamp_and_value": "Init",
-              "setup": [
-                {
-                  "VirtualSetup": "InitsAndTeardownsLow"
-                },
-                {
-                  "VirtualSetup": "InitsAndTeardownsHigh"
-                }
-              ],
-              "output": {
-                "InnerLayer": {
-                  "layer": 0,
-                  "offset": 20
-                }
-              },
-              "set_idx": 10
-            }
-          }
-        },
-        {
-          "output_layer": 1,
-          "enforced_relation": {
-            "InitsOrTeardowns": {
-              "timestamp_and_value": {
-                "Teardown": {
-                  "timestamp": [
-                    {
-                      "BaseLayerMemory": 42
-                    },
-                    {
-                      "BaseLayerMemory": 43
-                    }
-                  ],
-                  "value": [
-                    {
-                      "BaseLayerMemory": 40
-                    },
-                    {
-                      "BaseLayerMemory": 41
-                    }
-                  ]
-                }
-              },
-              "setup": [
-                {
-                  "VirtualSetup": "InitsAndTeardownsLow"
-                },
-                {
-                  "VirtualSetup": "InitsAndTeardownsHigh"
-                }
-              ],
-              "output": {
-                "InnerLayer": {
-                  "layer": 0,
-                  "offset": 21
-                }
-              },
-              "set_idx": 10
-            }
-          }
-        },
-        {
-          "output_layer": 1,
-          "enforced_relation": {
-            "InitsOrTeardowns": {
-              "timestamp_and_value": "Init",
-              "setup": [
-                {
-                  "VirtualSetup": "InitsAndTeardownsLow"
-                },
-                {
-                  "VirtualSetup": "InitsAndTeardownsHigh"
-                }
-              ],
-              "output": {
-                "InnerLayer": {
-                  "layer": 0,
-                  "offset": 22
-                }
-              },
-              "set_idx": 11
-            }
-          }
-        },
-        {
-          "output_layer": 1,
-          "enforced_relation": {
-            "InitsOrTeardowns": {
-              "timestamp_and_value": {
-                "Teardown": {
-                  "timestamp": [
-                    {
-                      "BaseLayerMemory": 46
-                    },
-                    {
-                      "BaseLayerMemory": 47
-                    }
-                  ],
-                  "value": [
-                    {
-                      "BaseLayerMemory": 44
-                    },
-                    {
-                      "BaseLayerMemory": 45
-                    }
-                  ]
-                }
-              },
-              "setup": [
-                {
-                  "VirtualSetup": "InitsAndTeardownsLow"
-                },
-                {
-                  "VirtualSetup": "InitsAndTeardownsHigh"
-                }
-              ],
-              "output": {
-                "InnerLayer": {
-                  "layer": 0,
-                  "offset": 23
-                }
-              },
-              "set_idx": 11
-            }
-          }
-        },
-        {
-          "output_layer": 1,
-          "enforced_relation": {
-            "InitsOrTeardowns": {
-              "timestamp_and_value": "Init",
-              "setup": [
-                {
-                  "VirtualSetup": "InitsAndTeardownsLow"
-                },
-                {
-                  "VirtualSetup": "InitsAndTeardownsHigh"
-                }
-              ],
-              "output": {
-                "InnerLayer": {
-                  "layer": 0,
-                  "offset": 24
-                }
-              },
-              "set_idx": 12
-            }
-          }
-        },
-        {
-          "output_layer": 1,
-          "enforced_relation": {
-            "InitsOrTeardowns": {
-              "timestamp_and_value": {
-                "Teardown": {
-                  "timestamp": [
-                    {
-                      "BaseLayerMemory": 50
-                    },
-                    {
-                      "BaseLayerMemory": 51
-                    }
-                  ],
-                  "value": [
-                    {
-                      "BaseLayerMemory": 48
-                    },
-                    {
-                      "BaseLayerMemory": 49
-                    }
-                  ]
-                }
-              },
-              "setup": [
-                {
-                  "VirtualSetup": "InitsAndTeardownsLow"
-                },
-                {
-                  "VirtualSetup": "InitsAndTeardownsHigh"
-                }
-              ],
-              "output": {
-                "InnerLayer": {
-                  "layer": 0,
-                  "offset": 25
-                }
-              },
-              "set_idx": 12
-            }
-          }
-        },
-        {
-          "output_layer": 1,
-          "enforced_relation": {
-            "InitsOrTeardowns": {
-              "timestamp_and_value": "Init",
-              "setup": [
-                {
-                  "VirtualSetup": "InitsAndTeardownsLow"
-                },
-                {
-                  "VirtualSetup": "InitsAndTeardownsHigh"
-                }
-              ],
-              "output": {
-                "InnerLayer": {
-                  "layer": 0,
-                  "offset": 26
-                }
-              },
-              "set_idx": 13
-            }
-          }
-        },
-        {
-          "output_layer": 1,
-          "enforced_relation": {
-            "InitsOrTeardowns": {
-              "timestamp_and_value": {
-                "Teardown": {
-                  "timestamp": [
-                    {
-                      "BaseLayerMemory": 54
-                    },
-                    {
-                      "BaseLayerMemory": 55
-                    }
-                  ],
-                  "value": [
-                    {
-                      "BaseLayerMemory": 52
-                    },
-                    {
-                      "BaseLayerMemory": 53
-                    }
-                  ]
-                }
-              },
-              "setup": [
-                {
-                  "VirtualSetup": "InitsAndTeardownsLow"
-                },
-                {
-                  "VirtualSetup": "InitsAndTeardownsHigh"
-                }
-              ],
-              "output": {
-                "InnerLayer": {
-                  "layer": 0,
-                  "offset": 27
-                }
-              },
-              "set_idx": 13
-            }
-          }
-        },
-        {
-          "output_layer": 1,
-          "enforced_relation": {
-            "InitsOrTeardowns": {
-              "timestamp_and_value": "Init",
-              "setup": [
-                {
-                  "VirtualSetup": "InitsAndTeardownsLow"
-                },
-                {
-                  "VirtualSetup": "InitsAndTeardownsHigh"
-                }
-              ],
-              "output": {
-                "InnerLayer": {
-                  "layer": 0,
-                  "offset": 28
-                }
-              },
-              "set_idx": 14
-            }
-          }
-        },
-        {
-          "output_layer": 1,
-          "enforced_relation": {
-            "InitsOrTeardowns": {
-              "timestamp_and_value": {
-                "Teardown": {
-                  "timestamp": [
-                    {
-                      "BaseLayerMemory": 58
-                    },
-                    {
-                      "BaseLayerMemory": 59
-                    }
-                  ],
-                  "value": [
-                    {
-                      "BaseLayerMemory": 56
-                    },
-                    {
-                      "BaseLayerMemory": 57
-                    }
-                  ]
-                }
-              },
-              "setup": [
-                {
-                  "VirtualSetup": "InitsAndTeardownsLow"
-                },
-                {
-                  "VirtualSetup": "InitsAndTeardownsHigh"
-                }
-              ],
-              "output": {
-                "InnerLayer": {
-                  "layer": 0,
-                  "offset": 29
-                }
-              },
-              "set_idx": 14
-            }
-          }
-        },
-        {
-          "output_layer": 1,
-          "enforced_relation": {
-            "InitsOrTeardowns": {
-              "timestamp_and_value": "Init",
-              "setup": [
-                {
-                  "VirtualSetup": "InitsAndTeardownsLow"
-                },
-                {
-                  "VirtualSetup": "InitsAndTeardownsHigh"
-                }
-              ],
-              "output": {
-                "InnerLayer": {
-                  "layer": 0,
-                  "offset": 30
-                }
-              },
-              "set_idx": 15
-            }
-          }
-        },
-        {
-          "output_layer": 1,
-          "enforced_relation": {
-            "InitsOrTeardowns": {
-              "timestamp_and_value": {
-                "Teardown": {
-                  "timestamp": [
-                    {
-                      "BaseLayerMemory": 62
-                    },
-                    {
-                      "BaseLayerMemory": 63
-                    }
-                  ],
-                  "value": [
-                    {
-                      "BaseLayerMemory": 60
-                    },
-                    {
-                      "BaseLayerMemory": 61
-                    }
-                  ]
-                }
-              },
-              "setup": [
-                {
-                  "VirtualSetup": "InitsAndTeardownsLow"
-                },
-                {
-                  "VirtualSetup": "InitsAndTeardownsHigh"
-                }
-              ],
-              "output": {
-                "InnerLayer": {
-                  "layer": 0,
-                  "offset": 31
-                }
-              },
-              "set_idx": 15
+              "set_idxes": [
+                14,
+                15
+              ]
             }
           }
         }
@@ -1112,13 +640,13 @@
               "input": [
                 {
                   "InnerLayer": {
-                    "layer": 0,
+                    "layer": 1,
                     "offset": 1
                   }
                 },
                 {
                   "InnerLayer": {
-                    "layer": 0,
+                    "layer": 1,
                     "offset": 3
                   }
                 }
@@ -1139,13 +667,13 @@
               "input": [
                 {
                   "InnerLayer": {
-                    "layer": 0,
+                    "layer": 1,
                     "offset": 5
                   }
                 },
                 {
                   "InnerLayer": {
-                    "layer": 0,
+                    "layer": 1,
                     "offset": 7
                   }
                 }
@@ -1166,13 +694,13 @@
               "input": [
                 {
                   "InnerLayer": {
-                    "layer": 0,
+                    "layer": 1,
                     "offset": 9
                   }
                 },
                 {
                   "InnerLayer": {
-                    "layer": 0,
+                    "layer": 1,
                     "offset": 11
                   }
                 }
@@ -1193,13 +721,13 @@
               "input": [
                 {
                   "InnerLayer": {
-                    "layer": 0,
+                    "layer": 1,
                     "offset": 13
                   }
                 },
                 {
                   "InnerLayer": {
-                    "layer": 0,
+                    "layer": 1,
                     "offset": 15
                   }
                 }
@@ -1220,14 +748,14 @@
               "input": [
                 {
                   "InnerLayer": {
-                    "layer": 0,
-                    "offset": 17
+                    "layer": 1,
+                    "offset": 0
                   }
                 },
                 {
                   "InnerLayer": {
-                    "layer": 0,
-                    "offset": 19
+                    "layer": 1,
+                    "offset": 2
                   }
                 }
               ],
@@ -1247,14 +775,14 @@
               "input": [
                 {
                   "InnerLayer": {
-                    "layer": 0,
-                    "offset": 21
+                    "layer": 1,
+                    "offset": 4
                   }
                 },
                 {
                   "InnerLayer": {
-                    "layer": 0,
-                    "offset": 23
+                    "layer": 1,
+                    "offset": 6
                   }
                 }
               ],
@@ -1274,14 +802,14 @@
               "input": [
                 {
                   "InnerLayer": {
-                    "layer": 0,
-                    "offset": 25
+                    "layer": 1,
+                    "offset": 8
                   }
                 },
                 {
                   "InnerLayer": {
-                    "layer": 0,
-                    "offset": 27
+                    "layer": 1,
+                    "offset": 10
                   }
                 }
               ],
@@ -1301,121 +829,13 @@
               "input": [
                 {
                   "InnerLayer": {
-                    "layer": 0,
-                    "offset": 29
-                  }
-                },
-                {
-                  "InnerLayer": {
-                    "layer": 0,
-                    "offset": 31
-                  }
-                }
-              ],
-              "output": {
-                "InnerLayer": {
-                  "layer": 2,
-                  "offset": 7
-                }
-              }
-            }
-          }
-        },
-        {
-          "output_layer": 2,
-          "enforced_relation": {
-            "TrivialProduct": {
-              "input": [
-                {
-                  "InnerLayer": {
-                    "layer": 0,
-                    "offset": 0
-                  }
-                },
-                {
-                  "InnerLayer": {
-                    "layer": 0,
-                    "offset": 2
-                  }
-                }
-              ],
-              "output": {
-                "InnerLayer": {
-                  "layer": 2,
-                  "offset": 8
-                }
-              }
-            }
-          }
-        },
-        {
-          "output_layer": 2,
-          "enforced_relation": {
-            "TrivialProduct": {
-              "input": [
-                {
-                  "InnerLayer": {
-                    "layer": 0,
-                    "offset": 4
-                  }
-                },
-                {
-                  "InnerLayer": {
-                    "layer": 0,
-                    "offset": 6
-                  }
-                }
-              ],
-              "output": {
-                "InnerLayer": {
-                  "layer": 2,
-                  "offset": 9
-                }
-              }
-            }
-          }
-        },
-        {
-          "output_layer": 2,
-          "enforced_relation": {
-            "TrivialProduct": {
-              "input": [
-                {
-                  "InnerLayer": {
-                    "layer": 0,
-                    "offset": 8
-                  }
-                },
-                {
-                  "InnerLayer": {
-                    "layer": 0,
-                    "offset": 10
-                  }
-                }
-              ],
-              "output": {
-                "InnerLayer": {
-                  "layer": 2,
-                  "offset": 10
-                }
-              }
-            }
-          }
-        },
-        {
-          "output_layer": 2,
-          "enforced_relation": {
-            "TrivialProduct": {
-              "input": [
-                {
-                  "InnerLayer": {
-                    "layer": 0,
+                    "layer": 1,
                     "offset": 12
                   }
                 },
                 {
                   "InnerLayer": {
-                    "layer": 0,
+                    "layer": 1,
                     "offset": 14
                   }
                 }
@@ -1423,115 +843,7 @@
               "output": {
                 "InnerLayer": {
                   "layer": 2,
-                  "offset": 11
-                }
-              }
-            }
-          }
-        },
-        {
-          "output_layer": 2,
-          "enforced_relation": {
-            "TrivialProduct": {
-              "input": [
-                {
-                  "InnerLayer": {
-                    "layer": 0,
-                    "offset": 16
-                  }
-                },
-                {
-                  "InnerLayer": {
-                    "layer": 0,
-                    "offset": 18
-                  }
-                }
-              ],
-              "output": {
-                "InnerLayer": {
-                  "layer": 2,
-                  "offset": 12
-                }
-              }
-            }
-          }
-        },
-        {
-          "output_layer": 2,
-          "enforced_relation": {
-            "TrivialProduct": {
-              "input": [
-                {
-                  "InnerLayer": {
-                    "layer": 0,
-                    "offset": 20
-                  }
-                },
-                {
-                  "InnerLayer": {
-                    "layer": 0,
-                    "offset": 22
-                  }
-                }
-              ],
-              "output": {
-                "InnerLayer": {
-                  "layer": 2,
-                  "offset": 13
-                }
-              }
-            }
-          }
-        },
-        {
-          "output_layer": 2,
-          "enforced_relation": {
-            "TrivialProduct": {
-              "input": [
-                {
-                  "InnerLayer": {
-                    "layer": 0,
-                    "offset": 24
-                  }
-                },
-                {
-                  "InnerLayer": {
-                    "layer": 0,
-                    "offset": 26
-                  }
-                }
-              ],
-              "output": {
-                "InnerLayer": {
-                  "layer": 2,
-                  "offset": 14
-                }
-              }
-            }
-          }
-        },
-        {
-          "output_layer": 2,
-          "enforced_relation": {
-            "TrivialProduct": {
-              "input": [
-                {
-                  "InnerLayer": {
-                    "layer": 0,
-                    "offset": 28
-                  }
-                },
-                {
-                  "InnerLayer": {
-                    "layer": 0,
-                    "offset": 30
-                  }
-                }
-              ],
-              "output": {
-                "InnerLayer": {
-                  "layer": 2,
-                  "offset": 15
+                  "offset": 7
                 }
               }
             }
@@ -1651,256 +963,33 @@
               }
             }
           }
-        },
-        {
-          "output_layer": 3,
-          "enforced_relation": {
-            "TrivialProduct": {
-              "input": [
-                {
-                  "InnerLayer": {
-                    "layer": 2,
-                    "offset": 8
-                  }
-                },
-                {
-                  "InnerLayer": {
-                    "layer": 2,
-                    "offset": 9
-                  }
-                }
-              ],
-              "output": {
-                "InnerLayer": {
-                  "layer": 3,
-                  "offset": 4
-                }
-              }
-            }
-          }
-        },
-        {
-          "output_layer": 3,
-          "enforced_relation": {
-            "TrivialProduct": {
-              "input": [
-                {
-                  "InnerLayer": {
-                    "layer": 2,
-                    "offset": 10
-                  }
-                },
-                {
-                  "InnerLayer": {
-                    "layer": 2,
-                    "offset": 11
-                  }
-                }
-              ],
-              "output": {
-                "InnerLayer": {
-                  "layer": 3,
-                  "offset": 5
-                }
-              }
-            }
-          }
-        },
-        {
-          "output_layer": 3,
-          "enforced_relation": {
-            "TrivialProduct": {
-              "input": [
-                {
-                  "InnerLayer": {
-                    "layer": 2,
-                    "offset": 12
-                  }
-                },
-                {
-                  "InnerLayer": {
-                    "layer": 2,
-                    "offset": 13
-                  }
-                }
-              ],
-              "output": {
-                "InnerLayer": {
-                  "layer": 3,
-                  "offset": 6
-                }
-              }
-            }
-          }
-        },
-        {
-          "output_layer": 3,
-          "enforced_relation": {
-            "TrivialProduct": {
-              "input": [
-                {
-                  "InnerLayer": {
-                    "layer": 2,
-                    "offset": 14
-                  }
-                },
-                {
-                  "InnerLayer": {
-                    "layer": 2,
-                    "offset": 15
-                  }
-                }
-              ],
-              "output": {
-                "InnerLayer": {
-                  "layer": 3,
-                  "offset": 7
-                }
-              }
-            }
-          }
         }
       ]
     },
     {
       "layer": 4,
-      "gates_with_external_connections": [],
-      "cached_relations": [],
-      "gates": [
-        {
-          "output_layer": 4,
-          "enforced_relation": {
-            "TrivialProduct": {
-              "input": [
-                {
-                  "InnerLayer": {
-                    "layer": 3,
-                    "offset": 0
-                  }
-                },
-                {
-                  "InnerLayer": {
-                    "layer": 3,
-                    "offset": 1
-                  }
-                }
-              ],
-              "output": {
-                "InnerLayer": {
-                  "layer": 4,
-                  "offset": 0
-                }
-              }
-            }
-          }
-        },
-        {
-          "output_layer": 4,
-          "enforced_relation": {
-            "TrivialProduct": {
-              "input": [
-                {
-                  "InnerLayer": {
-                    "layer": 3,
-                    "offset": 2
-                  }
-                },
-                {
-                  "InnerLayer": {
-                    "layer": 3,
-                    "offset": 3
-                  }
-                }
-              ],
-              "output": {
-                "InnerLayer": {
-                  "layer": 4,
-                  "offset": 1
-                }
-              }
-            }
-          }
-        },
-        {
-          "output_layer": 4,
-          "enforced_relation": {
-            "TrivialProduct": {
-              "input": [
-                {
-                  "InnerLayer": {
-                    "layer": 3,
-                    "offset": 4
-                  }
-                },
-                {
-                  "InnerLayer": {
-                    "layer": 3,
-                    "offset": 5
-                  }
-                }
-              ],
-              "output": {
-                "InnerLayer": {
-                  "layer": 4,
-                  "offset": 2
-                }
-              }
-            }
-          }
-        },
-        {
-          "output_layer": 4,
-          "enforced_relation": {
-            "TrivialProduct": {
-              "input": [
-                {
-                  "InnerLayer": {
-                    "layer": 3,
-                    "offset": 6
-                  }
-                },
-                {
-                  "InnerLayer": {
-                    "layer": 3,
-                    "offset": 7
-                  }
-                }
-              ],
-              "output": {
-                "InnerLayer": {
-                  "layer": 4,
-                  "offset": 3
-                }
-              }
-            }
-          }
-        }
-      ]
-    },
-    {
-      "layer": 5,
       "gates_with_external_connections": [
         {
-          "output_layer": 5,
+          "output_layer": 4,
           "enforced_relation": {
             "TrivialProduct": {
               "input": [
                 {
                   "InnerLayer": {
-                    "layer": 4,
+                    "layer": 3,
                     "offset": 0
                   }
                 },
                 {
                   "InnerLayer": {
-                    "layer": 4,
+                    "layer": 3,
                     "offset": 1
                   }
                 }
               ],
               "output": {
                 "InnerLayer": {
-                  "layer": 5,
+                  "layer": 4,
                   "offset": 0
                 }
               }
@@ -1908,26 +997,26 @@
           }
         },
         {
-          "output_layer": 5,
+          "output_layer": 4,
           "enforced_relation": {
             "TrivialProduct": {
               "input": [
                 {
                   "InnerLayer": {
-                    "layer": 4,
+                    "layer": 3,
                     "offset": 2
                   }
                 },
                 {
                   "InnerLayer": {
-                    "layer": 4,
+                    "layer": 3,
                     "offset": 3
                   }
                 }
               ],
               "output": {
                 "InnerLayer": {
-                  "layer": 5,
+                  "layer": 4,
                   "offset": 1
                 }
               }
@@ -1943,13 +1032,13 @@
     "PermutationProduct": [
       {
         "InnerLayer": {
-          "layer": 5,
+          "layer": 4,
           "offset": 0
         }
       },
       {
         "InnerLayer": {
-          "layer": 5,
+          "layer": 4,
           "offset": 1
         }
       }
