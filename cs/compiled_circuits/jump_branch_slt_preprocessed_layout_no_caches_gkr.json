@@ -3613,6 +3613,7 @@
       "funct3": 2
     },
     "indirect_access_variable_offsets": [],
+    "teardown_sets": [],
     "total_width": 26
   },
   "witness_layout": {
@@ -3620,7 +3621,10 @@
       "start": 25,
       "end": 26
     },
-    "multiplicities_columns_for_timestamp_range_check": 26,
+    "multiplicities_columns_for_timestamp_range_check": {
+      "start": 26,
+      "end": 27
+    },
     "multiplicities_columns_for_generic_lookup": {
       "start": 27,
       "end": 28

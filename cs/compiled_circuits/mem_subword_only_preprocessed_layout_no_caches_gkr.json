@@ -3691,6 +3691,7 @@
       "funct3": null
     },
     "indirect_access_variable_offsets": [],
+    "teardown_sets": [],
     "total_width": 29
   },
   "witness_layout": {
@@ -3698,7 +3699,10 @@
       "start": 13,
       "end": 14
     },
-    "multiplicities_columns_for_timestamp_range_check": 14,
+    "multiplicities_columns_for_timestamp_range_check": {
+      "start": 14,
+      "end": 15
+    },
     "multiplicities_columns_for_generic_lookup": {
       "start": 15,
       "end": 16

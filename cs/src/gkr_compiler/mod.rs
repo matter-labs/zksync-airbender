@@ -32,6 +32,7 @@ mod delegation_circuit;
 pub(crate) mod delegation_mem_accesses;
 mod family_circuit;
 mod graph;
+mod inits_and_teardowns;
 mod layout;
 mod layout_utils;
 mod lookup;
@@ -41,6 +42,7 @@ mod range_check_exprs;
 mod utils;
 
 pub use self::compiled_constraint::*;
+pub use self::inits_and_teardowns::*;
 pub(crate) use self::layout_utils::*;
 pub(crate) use self::lookup::*;
 pub(crate) use self::utils::*;
@@ -303,12 +305,16 @@ pub struct NoFieldMaxQuadraticConstraintsGKRRelation {
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum InitsOrTeardownsTimestampAndValue {
+    Init, // zeroes
+    Teardown {
+        timestamp: [GKRAddress; 2],
+        value: [GKRAddress; 2],
+    },
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum NoFieldGKRRelation {
-    // FormalBaseLayerInput(GKRAddress),
-    // PureQuadratic {
-    //     input: NoFieldPureQuadraticGKRRelation,
-    //     output: GKRAddress,
-    // },
     LinearBaseFieldRelation {
         input: NoFieldLinearRelation,
         output: GKRAddress,
@@ -496,6 +502,13 @@ pub enum NoFieldGKRRelation {
         input: [[GKRAddress; 2]; 2],
         output: [GKRAddress; 2],
     },
+
+    InitsOrTeardowns {
+        timestamp_and_value: InitsOrTeardownsTimestampAndValue,
+        setup: [GKRAddress; 2], // virtual
+        output: GKRAddress,
+        set_idx: usize, // defines upper bits of address
+    },
 }
 
 impl NoFieldGKRRelation {
@@ -680,6 +693,9 @@ impl NoFieldGKRRelation {
                 vec![]
             }
             Self::EnforceSingleMaxQuadraticConstraint { .. } => {
+                vec![]
+            }
+            Self::InitsOrTeardowns { .. } => {
                 vec![]
             }
             a @ _ => {

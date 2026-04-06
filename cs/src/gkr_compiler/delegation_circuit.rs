@@ -504,6 +504,7 @@ impl<F: PrimeField> GKRCompiler<F> {
             delegation_state: Some(delegation_state),
             indirect_access_variable_offsets,
             total_width: graph.base_layer_memory.len(),
+            teardown_sets: Vec::new(),
             decoder_input: None,
         };
 
@@ -537,7 +538,9 @@ impl<F: PrimeField> GKRCompiler<F> {
 
         let witness_layout = GKRWitnessLayout {
             multiplicities_columns_for_range_check_16,
-            multiplicities_columns_for_timestamp_range_check,
+            multiplicities_columns_for_timestamp_range_check:
+                multiplicities_columns_for_timestamp_range_check
+                    ..multiplicities_columns_for_timestamp_range_check + 1,
             multiplicities_columns_for_generic_lookup: multiplicities_columns_for_generic_lookup
                 ..multiplicities_columns_for_generic_lookup + 1,
             total_width: graph.base_layer_witness.len(),

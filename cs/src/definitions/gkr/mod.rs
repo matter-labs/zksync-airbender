@@ -48,6 +48,7 @@ pub struct GKRMemoryLayout {
     pub delegation_state: Option<CompiledDelegationCircuitState>,
     pub decoder_input: Option<DecoderPlacementDescription>,
     pub indirect_access_variable_offsets: Vec<usize>,
+    pub teardown_sets: Vec<([GKRAddress; 2], [GKRAddress; 2])>,
     pub total_width: usize,
 }
 
@@ -56,7 +57,7 @@ pub struct GKRWitnessLayout {
     // we use separate multiplicities columns for tables of width 1 for an optimization
     // in the prover
     pub multiplicities_columns_for_range_check_16: core::ops::Range<usize>,
-    pub multiplicities_columns_for_timestamp_range_check: usize,
+    pub multiplicities_columns_for_timestamp_range_check: core::ops::Range<usize>,
     pub multiplicities_columns_for_generic_lookup: core::ops::Range<usize>,
     pub total_width: usize,
 }

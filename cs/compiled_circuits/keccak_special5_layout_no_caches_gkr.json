@@ -31709,6 +31709,7 @@
       66,
       79
     ],
+    "teardown_sets": [],
     "total_width": 91
   },
   "witness_layout": {
@@ -31716,7 +31717,10 @@
       "start": 0,
       "end": 0
     },
-    "multiplicities_columns_for_timestamp_range_check": 173,
+    "multiplicities_columns_for_timestamp_range_check": {
+      "start": 173,
+      "end": 174
+    },
     "multiplicities_columns_for_generic_lookup": {
       "start": 174,
       "end": 175

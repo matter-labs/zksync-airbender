@@ -54789,6 +54789,7 @@
     },
     "decoder_input": null,
     "indirect_access_variable_offsets": [],
+    "teardown_sets": [],
     "total_width": 225
   },
   "witness_layout": {
@@ -54796,7 +54797,10 @@
       "start": 0,
       "end": 0
     },
-    "multiplicities_columns_for_timestamp_range_check": 644,
+    "multiplicities_columns_for_timestamp_range_check": {
+      "start": 644,
+      "end": 645
+    },
     "multiplicities_columns_for_generic_lookup": {
       "start": 645,
       "end": 646
