@@ -16,18 +16,18 @@ struct ConstantRegisterAccessAddress {
   u32 register_index;
 };
 
-enum IsRegisterAddressTag : u32 {
-  Is,
-  Not,
+enum RegisterOrRamAddressSpaceTag : u32 {
+  RegisterAddressSpace,
+  RamAddressSpace,
 };
 
-struct IsRegisterAddress {
-  IsRegisterAddressTag tag;
+struct RegisterOrRamAddressSpace {
+  RegisterOrRamAddressSpaceTag tag;
   u32 value;
 };
 
 struct RegisterOrRamAccessAddress {
-  IsRegisterAddress is_register;
+  RegisterOrRamAddressSpace address_space;
   u32 address[REGISTER_SIZE];
 };
 

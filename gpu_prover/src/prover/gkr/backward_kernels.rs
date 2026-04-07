@@ -1,5 +1,5 @@
 use std::cell::UnsafeCell;
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::mem::align_of;
 use std::ptr::{null, null_mut};
 use std::slice;
@@ -95,6 +95,7 @@ pub(crate) enum GpuGKRMainLayerKernelKind {
     LookupUnbalanced = 8,
     LookupWithCachedDensAndSetup = 9,
     EnforceConstraintsMaxQuadratic = 10,
+    LinearBaseOutput = 11,
 }
 
 impl GpuGKRMainLayerKernelKind {
@@ -1074,6 +1075,7 @@ pub(crate) struct GpuGKRMainLayerSumcheckLayerPlan<E> {
     pub(crate) trace_len: usize,
     pub(crate) folding_steps: usize,
     pub(super) batch_challenge_base: Option<E>,
+    pub(crate) internal_helper_addresses: BTreeSet<GKRAddress>,
     pub(super) kernel_plans: Vec<GpuGKRMainLayerKernelPlan<E>>,
     pub(super) round0_descriptors: Vec<GpuSumcheckRound0LaunchDescriptors<BF, E>>,
     pub(super) round0_batch_template: GpuGKRMainRound0Batch<E>,
