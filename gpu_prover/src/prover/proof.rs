@@ -235,11 +235,11 @@ pub(crate) fn grand_product_accumulator_from_explicit_evaluations(
             }
             result
         });
-    let mut grand_product_accumulator_computed = read_set_computed;
+    let mut grand_product_accumulator_computed = write_set_computed;
     grand_product_accumulator_computed.mul_assign(
-        &write_set_computed
+        &read_set_computed
             .inverse()
-            .expect("write-set accumulator must not be zero"),
+            .expect("read-set accumulator must not be zero"),
     );
 
     grand_product_accumulator_computed
