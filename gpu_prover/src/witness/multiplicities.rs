@@ -291,10 +291,13 @@ pub fn generate_range_check_multiplicities_from_mappings(
         &mut DeviceMatrixMut::new(range_check_16_lookup_multiplicities, trace_len),
         context,
     )?;
-    let range_check_timestamp_lookup_multiplicities = &mut witness.slice_mut()[circuit
+    let range_check_timestamp_lookup_multiplicities_range = circuit
         .witness_layout
         .multiplicities_columns_for_timestamp_range_check
-        * trace_len..][..trace_len];
+        .clone();
+    let range_check_timestamp_lookup_multiplicities = &mut witness.slice_mut()
+        [range_check_timestamp_lookup_multiplicities_range.start * trace_len
+            ..range_check_timestamp_lookup_multiplicities_range.end * trace_len];
     generate_generic_lookup_multiplicities(
         range_check_timestamp_lookup_mapping,
         &mut DeviceMatrixMut::new(range_check_timestamp_lookup_multiplicities, trace_len),
