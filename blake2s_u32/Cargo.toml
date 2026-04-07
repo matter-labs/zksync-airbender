@@ -23,5 +23,5 @@ harness = false
 
 [features]
 blake2_with_compression = ["common_constants"]
-
+mop_extension = []
 default = []

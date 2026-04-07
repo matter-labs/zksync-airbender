@@ -1,3 +1,9 @@
 #!/bin/sh
-cargo build --release
-~/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/aarch64-apple-darwin/bin/llvm-objdump -d ./target/riscv32i-unknown-none-elf/release/experiments
+
+cargo objdump --release -Z build-std=core,alloc -v -- -d
+# cargo objdump --release -Z build-std=core,panic_abort,alloc -Z build-std-features=panic_immediate_abort  --features recursion_step --no-default-features -v -- -d
+# cargo objdump --profile cli -Z build-std=core,panic_abort,alloc -Z build-std-features=panic_immediate_abort  --features recursion_step --no-default-features -v -- -d
+# cargo objdump --profile cli  -Z build-std=core,panic_abort,alloc -Z build-std-features=panic_immediate_abort -v -- -d
+
+# cargo objcopy --profile cli  -Z build-std=core,panic_abort,alloc -Z build-std-features=panic_immediate_abort  -- -O binary app.bin
+# cargo objdump --features proving --release --target riscv32i-unknown-none-elf -v -- -d
