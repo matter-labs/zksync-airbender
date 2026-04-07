@@ -5,7 +5,7 @@ use std::ptr::null;
 use std::sync::Arc;
 
 use cs::definitions::{
-    gkr::{RamWordRepresentation, DECODER_LOOKUP_FORMAL_SET_INDEX},
+    gkr::{AddressSpaceType, RamWordRepresentation, DECODER_LOOKUP_FORMAL_SET_INDEX},
     GKRAddress, VirtualSetupPoly, MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX,
     MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX,
     MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX,
@@ -14,8 +14,8 @@ use cs::definitions::{
 };
 use cs::gkr_compiler::{
     CompiledAddressSpaceRelationStrict, CompiledAddressStrict, CompiledMemoryTimestamp,
-    GKRCircuitArtifact, GKRLayerDescription, NoFieldGKRCacheRelation, NoFieldGKRRelation,
-    OutputType,
+    GKRCircuitArtifact, GKRLayerDescription, InitsOrTeardownsTimestampAndValue,
+    NoFieldGKRCacheRelation, NoFieldGKRRelation, OutputType,
 };
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
 use era_cudart::memory::memory_copy_async;
@@ -23,12 +23,13 @@ use era_cudart::paste::paste;
 use era_cudart::result::CudaResult;
 use era_cudart::{cuda_kernel_declaration, cuda_kernel_signature_arguments_and_function};
 use field::{Field, FieldExtension, PrimeField};
+use prover::gkr::high_bits_offset_for_inits_and_teardowns;
 use prover::gkr::prover::dimension_reduction::forward::DimensionReducingInputOutput;
 use prover::gkr::prover::GKRExternalChallenges;
 
 use super::backward::GpuGKRDimensionReducingBackwardState;
 use super::lowering::LayerNoCacheLoweringPlan;
-use super::setup::{GpuGKRForwardSetup, GpuGKRSetupTransfer};
+use super::setup::{bootstrap_storage_with_virtual_setup, GpuGKRForwardSetup};
 use super::stage1::GpuGKRStage1Output;
 use super::transform::normalize_compiled_circuit_for_gpu;
 use super::{GpuBaseFieldPoly, GpuExtensionFieldPoly, GpuGKRStorage};
@@ -154,7 +155,8 @@ impl<B, E> GpuGKRForwardOutput<B, E> {
 pub(super) use super::forward_kernels::*;
 
 pub(crate) fn schedule_forward_pass<E>(
-    setup: &GpuGKRSetupTransfer<'_>,
+    setup_trace_holder: Option<&crate::prover::trace_holder::TraceHolder<BF>>,
+    synthetic_setup_trace_holder: Option<&crate::prover::trace_holder::TraceHolder<BF>>,
     stage1: &mut GpuGKRStage1Output,
     forward_setup: &mut GpuGKRForwardSetup<E>,
     compiled_circuit: &GKRCircuitArtifact<BF>,
@@ -182,7 +184,6 @@ where
     Sub: BinaryOp<E, BF, E>,
     Sub: BinaryOp<BF, BF, BF>,
 {
-    setup.ensure_transferred(context)?;
     let compiled_circuit = normalize_compiled_circuit_for_gpu(compiled_circuit.clone());
     let trace_len = compiled_circuit.trace_len;
     let stream = context.get_exec_stream();
@@ -195,7 +196,20 @@ where
         .machine_state
         .as_ref()
         .map(|machine_state| GKRAddress::BaseLayerMemory(machine_state.execute));
-    let mut storage = setup.bootstrap_storage_from_stage1::<E>(stage1, context)?;
+    let setup_trace_holder = setup_trace_holder
+        .or(synthetic_setup_trace_holder)
+        .expect("forward pass requires either uploaded or synthetic setup trace holder");
+    let mut storage = bootstrap_storage_with_virtual_setup::<E>(
+        Some(setup_trace_holder),
+        setup_trace_holder.columns_count,
+        setup_trace_holder.log_domain_size,
+        setup_trace_holder.log_lde_factor,
+        setup_trace_holder.log_rows_per_leaf,
+        setup_trace_holder.log_tree_cap_size,
+        &stage1.memory_trace_holder,
+        &stage1.witness_trace_holder,
+        context,
+    )?;
 
     if usage.last_generic_mapping_layer.is_none() {
         stage1.lookup_mappings.release_generic_family();
@@ -369,6 +383,7 @@ where
         &lowering_plan.lowered_gates_with_external_connections,
         &compiled_circuit.scratch_space_mapping,
         storage,
+        external_challenges,
         forward_setup.lookup_additive_part_device().as_ptr(),
         trace_len,
         context,
@@ -591,10 +606,17 @@ fn lower_forward_layer<E>(
     lowered_gates_with_external_connections: &[cs::gkr_compiler::GateArtifacts],
     scratch_space_mapping: &BTreeMap<GKRAddress, usize>,
     storage: &GpuGKRStorage<BF, E>,
+    external_challenges: &GKRExternalChallenges<BF, E>,
     lookup_additive_challenge: *const E,
     trace_len: usize,
     context: &ProverContext,
-) -> CudaResult<LoweredGpuGKRForwardLayer<E>> {
+) -> CudaResult<LoweredGpuGKRForwardLayer<E>>
+where
+    E: Field + FieldExtension<BF> + SetByVal,
+    Add: BinaryOp<E, E, E>,
+    Mul: BinaryOp<BF, E, E>,
+    Mul: BinaryOp<E, E, E>,
+{
     let expected_output_layer = layer_idx + 1;
     let total_gates = lowered_gates.len() + lowered_gates_with_external_connections.len();
     let mut batches = Vec::with_capacity(total_gates.div_ceil(GKR_FORWARD_MAX_GATES_PER_LAYER));
@@ -855,11 +877,24 @@ fn lower_forward_layer<E>(
             | NoFieldGKRRelation::LookupUnbalancedPairWithVectorInputs { .. } => {
                 unreachable!("GPU forward no-cache relations must be lowered before batching")
             }
-            NoFieldGKRRelation::InitsOrTeardownsInitialPair { .. } => {
-                unimplemented!(
-                    "unsupported GPU forward relation after av_gkr_no_caches rebase: {:?}",
-                    gate.enforced_relation
-                )
+            NoFieldGKRRelation::InitsOrTeardownsInitialPair {
+                timestamp_and_value,
+                setup,
+                output,
+                set_idxes,
+            } => {
+                let dst = materialize_inits_and_teardowns_initial_pair(
+                    storage,
+                    timestamp_and_value,
+                    *setup,
+                    set_idxes.map(|idx| idx as u32),
+                    high_bits_offset_for_inits_and_teardowns::<2>(trace_len),
+                    external_challenges,
+                    trace_len,
+                    context,
+                )?;
+                computed_extension_outputs.push((*output, GpuExtensionFieldPoly::new(dst)));
+                GpuGKRForwardGateDescriptor::no_op()
             }
             NoFieldGKRRelation::MaxQuadratic { .. }
             | NoFieldGKRRelation::LookupPairFromVectorInputs { .. }
@@ -1701,6 +1736,149 @@ where
     )
 }
 
+fn flatten_inits_or_teardowns_linear_combination<E: Field + FieldExtension<BF>>(
+    timestamps_and_values: Option<([usize; 2], [usize; 2])>,
+    setup: [GKRAddress; 2],
+    address_high_bits: u32,
+    address_high_bits_shift: u32,
+    external_challenges: &GKRExternalChallenges<BF, E>,
+) -> (BTreeMap<GKRAddress, E>, E) {
+    let mut result = BTreeMap::new();
+    let mut constant_term = external_challenges.permutation_argument_additive_part;
+    constant_term.add_assign_base(&BF::from_u32_unchecked(AddressSpaceType::RAM as u32));
+
+    {
+        let challenge = external_challenges.permutation_argument_linearization_challenges
+            [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
+        assert!(result.insert(setup[0], challenge).is_none());
+    }
+    {
+        let mut challenge = external_challenges.permutation_argument_linearization_challenges
+            [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
+        assert!(result.insert(setup[1], challenge).is_none());
+        challenge.mul_assign_by_base(&BF::from_u32_unchecked(
+            address_high_bits << address_high_bits_shift,
+        ));
+        constant_term.add_assign(&challenge);
+    }
+
+    if let Some((timestamps, values)) = timestamps_and_values {
+        for (idx, address) in [
+            (
+                MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX,
+                GKRAddress::BaseLayerMemory(timestamps[0]),
+            ),
+            (
+                MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX,
+                GKRAddress::BaseLayerMemory(timestamps[1]),
+            ),
+            (
+                MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX,
+                GKRAddress::BaseLayerMemory(values[0]),
+            ),
+            (
+                MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX,
+                GKRAddress::BaseLayerMemory(values[1]),
+            ),
+        ] {
+            let challenge =
+                external_challenges.permutation_argument_linearization_challenges[idx];
+            assert!(result.insert(address, challenge).is_none());
+        }
+    }
+
+    (result, constant_term)
+}
+
+fn materialize_linear_base_combination<E>(
+    storage: &GpuGKRStorage<BF, E>,
+    terms: &BTreeMap<GKRAddress, E>,
+    constant_term: E,
+    trace_len: usize,
+    context: &ProverContext,
+) -> CudaResult<DeviceAllocation<E>>
+where
+    E: Field + FieldExtension<BF> + SetByVal,
+    Add: BinaryOp<E, E, E>,
+    Mul: BinaryOp<BF, E, E>,
+{
+    let mut dst = context.alloc(trace_len, AllocationPlacement::BestFit)?;
+    set_by_val(constant_term, dst.deref_mut(), context.get_exec_stream())?;
+    for (&address, &challenge) in terms.iter() {
+        scale_and_add_base_column(&mut dst, storage.get_base_layer(address), challenge, context)?;
+    }
+    Ok(dst)
+}
+
+fn materialize_inits_and_teardowns_initial_pair<E>(
+    storage: &GpuGKRStorage<BF, E>,
+    timestamp_and_value: &InitsOrTeardownsTimestampAndValue,
+    setup: [GKRAddress; 2],
+    address_high_bits: [u32; 2],
+    address_high_bits_shift: u32,
+    external_challenges: &GKRExternalChallenges<BF, E>,
+    trace_len: usize,
+    context: &ProverContext,
+) -> CudaResult<DeviceAllocation<E>>
+where
+    E: Field + FieldExtension<BF> + SetByVal,
+    Add: BinaryOp<E, E, E>,
+    Mul: BinaryOp<BF, E, E>,
+    Mul: BinaryOp<E, E, E>,
+{
+    let lhs_timestamps_and_values = match timestamp_and_value {
+        InitsOrTeardownsTimestampAndValue::Init => None,
+        InitsOrTeardownsTimestampAndValue::Teardown {
+            lhs_timestamp,
+            lhs_value,
+            ..
+        } => Some((*lhs_timestamp, *lhs_value)),
+    };
+    let rhs_timestamps_and_values = match timestamp_and_value {
+        InitsOrTeardownsTimestampAndValue::Init => None,
+        InitsOrTeardownsTimestampAndValue::Teardown {
+            rhs_timestamp,
+            rhs_value,
+            ..
+        } => Some((*rhs_timestamp, *rhs_value)),
+    };
+
+    let (lhs_terms, lhs_constant) = flatten_inits_or_teardowns_linear_combination(
+        lhs_timestamps_and_values,
+        setup,
+        address_high_bits[0],
+        address_high_bits_shift,
+        external_challenges,
+    );
+    let (rhs_terms, rhs_constant) = flatten_inits_or_teardowns_linear_combination(
+        rhs_timestamps_and_values,
+        setup,
+        address_high_bits[1],
+        address_high_bits_shift,
+        external_challenges,
+    );
+    let lhs = materialize_linear_base_combination(
+        storage,
+        &lhs_terms,
+        lhs_constant,
+        trace_len,
+        context,
+    )?;
+    let mut rhs = materialize_linear_base_combination(
+        storage,
+        &rhs_terms,
+        rhs_constant,
+        trace_len,
+        context,
+    )?;
+    mul_into_y(
+        &DeviceVectorChunk::new(&lhs, 0, trace_len),
+        rhs.deref_mut(),
+        context.get_exec_stream(),
+    )?;
+    Ok(rhs)
+}
+
 fn scale_and_add_base_column<E>(
     dst: &mut DeviceAllocation<E>,
     source: &GpuBaseFieldPoly<BF>,
@@ -1792,7 +1970,10 @@ mod tests {
     use crate::prover::test_utils::make_test_context;
     use cs::gkr_compiler::{GateArtifacts, NoFieldMaxQuadraticConstraintsGKRRelation};
     use era_cudart::memory::memory_copy_async;
+    use prover::gkr::virtual_polys::init_and_teardown_base::materialize_virtual_inits_and_teardowns_base_address_setup_poly;
     use serial_test::serial;
+    use std::alloc::Global;
+    use worker::Worker;
 
     fn sample_ext(seed: u32) -> E4 {
         E4::from_array_of_base([
@@ -1801,6 +1982,16 @@ mod tests {
             BF::new(seed + 2),
             BF::new(seed + 3),
         ])
+    }
+
+    fn sample_external_challenges(seed: u32) -> GKRExternalChallenges<BF, E4> {
+        GKRExternalChallenges {
+            permutation_argument_linearization_challenges: std::array::from_fn(|idx| {
+                sample_ext(seed + 10 + idx as u32)
+            }),
+            permutation_argument_additive_part: sample_ext(seed),
+            _marker: std::marker::PhantomData,
+        }
     }
 
     fn upload_base_poly(values: &[BF], context: &ProverContext) -> GpuBaseFieldPoly<BF> {
@@ -1867,6 +2058,232 @@ mod tests {
         (reduced_num, reduced_den)
     }
 
+    fn expected_init_value(
+        row: usize,
+        address_high_bits: u32,
+        high_bits_shift: u32,
+        address_low: &[BF],
+        address_high: &[BF],
+        external_challenges: &GKRExternalChallenges<BF, E4>,
+    ) -> E4 {
+        let mut result = external_challenges.permutation_argument_additive_part;
+        result.add_assign_base(&BF::from_u32_unchecked(AddressSpaceType::RAM as u32));
+
+        let mut address_low_term = external_challenges.permutation_argument_linearization_challenges
+            [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
+        address_low_term.mul_assign_by_base(&address_low[row]);
+        result.add_assign(&address_low_term);
+
+        let mut address_high_value = address_high[row];
+        address_high_value.add_assign(&BF::from_u32_unchecked(
+            address_high_bits << high_bits_shift,
+        ));
+        let mut address_high_term = external_challenges.permutation_argument_linearization_challenges
+            [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
+        address_high_term.mul_assign_by_base(&address_high_value);
+        result.add_assign(&address_high_term);
+
+        result
+    }
+
+    fn expected_teardown_value(
+        row: usize,
+        address_high_bits: u32,
+        high_bits_shift: u32,
+        timestamp_offsets: [usize; 2],
+        value_offsets: [usize; 2],
+        base_layer_memory_sources: [&[BF]; 4],
+        address_low: &[BF],
+        address_high: &[BF],
+        external_challenges: &GKRExternalChallenges<BF, E4>,
+    ) -> E4 {
+        let mut result = expected_init_value(
+            row,
+            address_high_bits,
+            high_bits_shift,
+            address_low,
+            address_high,
+            external_challenges,
+        );
+
+        for (idx, offset) in [
+            (
+                MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX,
+                timestamp_offsets[0],
+            ),
+            (
+                MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX,
+                timestamp_offsets[1],
+            ),
+            (MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX, value_offsets[0]),
+            (MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX, value_offsets[1]),
+        ] {
+            let mut term = external_challenges.permutation_argument_linearization_challenges[idx];
+            term.mul_assign_by_base(&base_layer_memory_sources[offset][row]);
+            result.add_assign(&term);
+        }
+
+        result
+    }
+
+    #[test]
+    #[cfg(not(no_cuda))]
+    #[serial]
+    fn materialize_inits_and_teardowns_initial_pair_matches_cpu_for_init_and_teardown() {
+        let context = make_test_context(256, 32);
+        let trace_len = 1usize << 14;
+        let worker = Worker::new();
+        let address_high_bits = [1u32, 5u32];
+        let high_bits_shift = high_bits_offset_for_inits_and_teardowns::<2>(trace_len);
+        let external_challenges = sample_external_challenges(300);
+        let setup = [
+            GKRAddress::VirtualSetup(VirtualSetupPoly::InitsAndTeardownsLow),
+            GKRAddress::VirtualSetup(VirtualSetupPoly::InitsAndTeardownsHigh),
+        ];
+
+        let (address_low, address_high) =
+            materialize_virtual_inits_and_teardowns_base_address_setup_poly::<BF, Global, 2>(
+                trace_len.trailing_zeros(),
+                &worker,
+            );
+        let timestamp_low = (0..trace_len)
+            .map(|idx| BF::new((100 + idx) as u32))
+            .collect::<Vec<_>>();
+        let timestamp_high = (0..trace_len)
+            .map(|idx| BF::new((200 + idx) as u32))
+            .collect::<Vec<_>>();
+        let value_low = (0..trace_len)
+            .map(|idx| BF::new((300 + idx) as u32))
+            .collect::<Vec<_>>();
+        let value_high = (0..trace_len)
+            .map(|idx| BF::new((400 + idx) as u32))
+            .collect::<Vec<_>>();
+
+        let mut storage = GpuGKRStorage::<BF, E4>::default();
+        storage.insert_base_field_at_layer(
+            0,
+            setup[0],
+            upload_base_poly(address_low.as_ref(), &context),
+        );
+        storage.insert_base_field_at_layer(
+            0,
+            setup[1],
+            upload_base_poly(address_high.as_ref(), &context),
+        );
+        storage.insert_base_field_at_layer(
+            0,
+            GKRAddress::BaseLayerMemory(0),
+            upload_base_poly(&timestamp_low, &context),
+        );
+        storage.insert_base_field_at_layer(
+            0,
+            GKRAddress::BaseLayerMemory(1),
+            upload_base_poly(&timestamp_high, &context),
+        );
+        storage.insert_base_field_at_layer(
+            0,
+            GKRAddress::BaseLayerMemory(2),
+            upload_base_poly(&value_low, &context),
+        );
+        storage.insert_base_field_at_layer(
+            0,
+            GKRAddress::BaseLayerMemory(3),
+            upload_base_poly(&value_high, &context),
+        );
+
+        let init_output = materialize_inits_and_teardowns_initial_pair(
+            &storage,
+            &InitsOrTeardownsTimestampAndValue::Init,
+            setup,
+            address_high_bits,
+            high_bits_shift,
+            &external_challenges,
+            trace_len,
+            &context,
+        )
+        .unwrap();
+        let teardown_output = materialize_inits_and_teardowns_initial_pair(
+            &storage,
+            &InitsOrTeardownsTimestampAndValue::Teardown {
+                lhs_timestamp: [0, 1],
+                lhs_value: [2, 3],
+                rhs_timestamp: [1, 0],
+                rhs_value: [3, 2],
+            },
+            setup,
+            address_high_bits,
+            high_bits_shift,
+            &external_challenges,
+            trace_len,
+            &context,
+        )
+        .unwrap();
+
+        let expected_init = (0..trace_len)
+            .map(|row| {
+                let lhs = expected_init_value(
+                    row,
+                    address_high_bits[0],
+                    high_bits_shift,
+                    address_low.as_ref(),
+                    address_high.as_ref(),
+                    &external_challenges,
+                );
+                let rhs = expected_init_value(
+                    row,
+                    address_high_bits[1],
+                    high_bits_shift,
+                    address_low.as_ref(),
+                    address_high.as_ref(),
+                    &external_challenges,
+                );
+                let mut value = lhs;
+                value.mul_assign(&rhs);
+                value
+            })
+            .collect::<Vec<_>>();
+        let base_layer_memory_sources = [
+            timestamp_low.as_slice(),
+            timestamp_high.as_slice(),
+            value_low.as_slice(),
+            value_high.as_slice(),
+        ];
+        let expected_teardown = (0..trace_len)
+            .map(|row| {
+                let lhs = expected_teardown_value(
+                    row,
+                    address_high_bits[0],
+                    high_bits_shift,
+                    [0, 1],
+                    [2, 3],
+                    base_layer_memory_sources,
+                    address_low.as_ref(),
+                    address_high.as_ref(),
+                    &external_challenges,
+                );
+                let rhs = expected_teardown_value(
+                    row,
+                    address_high_bits[1],
+                    high_bits_shift,
+                    [1, 0],
+                    [3, 2],
+                    base_layer_memory_sources,
+                    address_low.as_ref(),
+                    address_high.as_ref(),
+                    &external_challenges,
+                );
+                let mut value = lhs;
+                value.mul_assign(&rhs);
+                value
+            })
+            .collect::<Vec<_>>();
+
+        let init_output = GpuExtensionFieldPoly::new(init_output);
+        let teardown_output = GpuExtensionFieldPoly::new(teardown_output);
+        assert_eq!(read_ext_poly(&init_output, &context), expected_init);
+        assert_eq!(read_ext_poly(&teardown_output, &context), expected_teardown);
+    }
+
     #[test]
     #[should_panic(expected = "exceeding the fused forward cap")]
     fn forward_layer_panics_when_gate_count_exceeds_cap() {
@@ -1894,6 +2311,7 @@ mod tests {
                 })
                 .collect(),
         };
+        let external_challenges = sample_external_challenges(100);
 
         let _ = lower_forward_layer(
             0,
@@ -1901,6 +2319,7 @@ mod tests {
             &layer.gates_with_external_connections,
             &BTreeMap::new(),
             &storage,
+            &external_challenges,
             null(),
             trace_len,
             &context,
@@ -2019,6 +2438,7 @@ mod tests {
                 },
             ],
         };
+        let external_challenges = sample_external_challenges(200);
 
         assert_forward_layer_invariants(0, 2, &layer);
         let lowered = lower_forward_layer(
@@ -2027,6 +2447,7 @@ mod tests {
             &layer.gates_with_external_connections,
             &BTreeMap::new(),
             &storage,
+            &external_challenges,
             lookup_additive_device.as_ptr(),
             trace_len,
             &context,

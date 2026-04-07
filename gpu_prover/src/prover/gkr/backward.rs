@@ -5,10 +5,17 @@ use std::ptr::{null, null_mut};
 use std::slice;
 use std::sync::{Arc, Mutex};
 
-use cs::definitions::GKRAddress;
+use cs::definitions::{
+    gkr::AddressSpaceType, GKRAddress, MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX,
+    MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX,
+    MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX,
+    MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX, MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX,
+    MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX,
+};
 use cs::gkr_compiler::{
-    GKRCircuitArtifact, GKRLayerDescription, NoFieldGKRRelation,
-    NoFieldMaxQuadraticConstraintsGKRRelation, NoFieldMaxQuadraticGKRRelation, OutputType,
+    GKRCircuitArtifact, GKRLayerDescription, InitsOrTeardownsTimestampAndValue,
+    NoFieldGKRRelation, NoFieldMaxQuadraticConstraintsGKRRelation,
+    NoFieldMaxQuadraticGKRRelation, OutputType,
 };
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
 use era_cudart::memory::memory_copy_async;
@@ -17,9 +24,10 @@ use era_cudart::result::CudaResult;
 use era_cudart::slice::{CudaSliceMut, DeviceSlice};
 use era_cudart::{cuda_kernel_declaration, cuda_kernel_signature_arguments_and_function};
 use field::{Field, FieldExtension, PrimeField};
+use prover::gkr::high_bits_offset_for_inits_and_teardowns;
 use prover::gkr::prover::dimension_reduction::forward::DimensionReducingInputOutput;
 use prover::gkr::prover::transcript_utils::{commit_field_els, draw_random_field_els};
-use prover::gkr::prover::SumcheckIntermediateProofValues;
+use prover::gkr::prover::{GKRExternalChallenges, SumcheckIntermediateProofValues};
 use prover::gkr::sumcheck::evaluation_kernels::{
     BaseFieldCopyGKRRelation, BatchConstraintEvalGKRRelation, BatchedGKRKernel,
     ExtensionCopyGKRRelation, GKRInputs, LookupBaseExtMinusBaseExtGKRRelation,
@@ -78,6 +86,171 @@ fn remap_constraint_input(
         inputs.push(address);
         idx
     }
+}
+
+pub(crate) fn canonical_inits_and_teardowns_top_bits(sets_count: usize) -> Vec<u32> {
+    (0..sets_count as u32).collect()
+}
+
+fn flatten_inits_or_teardowns_relation<E: Field + FieldExtension<BF>>(
+    timestamps_and_values: Option<([GKRAddress; 2], [GKRAddress; 2])>,
+    setup: [GKRAddress; 2],
+    address_high_bits: u32,
+    address_high_bits_shift: u32,
+    external_challenges: &GKRExternalChallenges<BF, E>,
+) -> (BTreeMap<GKRAddress, E>, E) {
+    let mut result = BTreeMap::new();
+    let mut constant_term = external_challenges.permutation_argument_additive_part;
+    constant_term.add_assign_base(&BF::from_u32_unchecked(AddressSpaceType::RAM as u32));
+
+    {
+        let challenge = external_challenges.permutation_argument_linearization_challenges
+            [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
+        assert!(result.insert(setup[0], challenge).is_none());
+    }
+    {
+        let mut challenge = external_challenges.permutation_argument_linearization_challenges
+            [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
+        assert!(result.insert(setup[1], challenge).is_none());
+        challenge.mul_assign_by_base(&BF::from_u32_unchecked(
+            address_high_bits << address_high_bits_shift,
+        ));
+        constant_term.add_assign(&challenge);
+    }
+
+    if let Some((timestamps, values)) = timestamps_and_values {
+        for (idx, address) in [
+            (
+                MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX,
+                timestamps[0],
+            ),
+            (
+                MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX,
+                timestamps[1],
+            ),
+            (MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX, values[0]),
+            (MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX, values[1]),
+        ] {
+            let challenge =
+                external_challenges.permutation_argument_linearization_challenges[idx];
+            assert!(result.insert(address, challenge).is_none());
+        }
+    }
+
+    (result, constant_term)
+}
+
+pub(crate) fn build_inits_and_teardowns_initial_pair_inputs_and_metadata<
+    E: Field + FieldExtension<BF>,
+>(
+    timestamp_and_value: &InitsOrTeardownsTimestampAndValue,
+    setup: [GKRAddress; 2],
+    output: GKRAddress,
+    address_high_bits: [u32; 2],
+    address_high_bits_shift: u32,
+    external_challenges: &GKRExternalChallenges<BF, E>,
+) -> (GKRInputs, GpuGKRMainLayerConstraintHostMetadata<E>) {
+    let lhs_timestamps_and_values = match timestamp_and_value {
+        InitsOrTeardownsTimestampAndValue::Init => None,
+        InitsOrTeardownsTimestampAndValue::Teardown {
+            lhs_timestamp,
+            lhs_value,
+            ..
+        } => Some((
+            lhs_timestamp.map(GKRAddress::BaseLayerMemory),
+            lhs_value.map(GKRAddress::BaseLayerMemory),
+        )),
+    };
+    let rhs_timestamps_and_values = match timestamp_and_value {
+        InitsOrTeardownsTimestampAndValue::Init => None,
+        InitsOrTeardownsTimestampAndValue::Teardown {
+            rhs_timestamp,
+            rhs_value,
+            ..
+        } => Some((
+            rhs_timestamp.map(GKRAddress::BaseLayerMemory),
+            rhs_value.map(GKRAddress::BaseLayerMemory),
+        )),
+    };
+    let (lhs_terms, lhs_constant) = flatten_inits_or_teardowns_relation(
+        lhs_timestamps_and_values,
+        setup,
+        address_high_bits[0],
+        address_high_bits_shift,
+        external_challenges,
+    );
+    let (rhs_terms, rhs_constant) = flatten_inits_or_teardowns_relation(
+        rhs_timestamps_and_values,
+        setup,
+        address_high_bits[1],
+        address_high_bits_shift,
+        external_challenges,
+    );
+
+    let mut mapping = BTreeMap::new();
+    let mut inputs = Vec::new();
+    let mut quadratic_terms = Vec::new();
+    for (&lhs_address, &lhs_challenge) in lhs_terms.iter() {
+        let lhs_idx = remap_constraint_input(&mut mapping, &mut inputs, lhs_address);
+        for (&rhs_address, &rhs_challenge) in rhs_terms.iter() {
+            let rhs_idx = remap_constraint_input(&mut mapping, &mut inputs, rhs_address);
+            let mut challenge = lhs_challenge;
+            challenge.mul_assign(&rhs_challenge);
+            quadratic_terms.push(GpuGKRMainLayerConstraintQuadraticTerm {
+                lhs: lhs_idx as u32,
+                rhs: rhs_idx as u32,
+                challenge,
+            });
+        }
+    }
+
+    let mut linear_acc = BTreeMap::new();
+    for (&address, &challenge) in lhs_terms.iter() {
+        let idx = remap_constraint_input(&mut mapping, &mut inputs, address);
+        let mut linear = challenge;
+        linear.mul_assign(&rhs_constant);
+        linear_acc
+            .entry(idx)
+            .and_modify(|acc: &mut E| {
+                acc.add_assign(&linear);
+            })
+            .or_insert(linear);
+    }
+    for (&address, &challenge) in rhs_terms.iter() {
+        let idx = remap_constraint_input(&mut mapping, &mut inputs, address);
+        let mut linear = challenge;
+        linear.mul_assign(&lhs_constant);
+        linear_acc
+            .entry(idx)
+            .and_modify(|acc: &mut E| {
+                acc.add_assign(&linear);
+            })
+            .or_insert(linear);
+    }
+
+    let linear_terms = linear_acc
+        .into_iter()
+        .map(|(input, challenge)| GpuGKRMainLayerConstraintLinearTerm {
+            input: input as u32,
+            challenge,
+        })
+        .collect();
+    let mut constant_offset = lhs_constant;
+    constant_offset.mul_assign(&rhs_constant);
+
+    (
+        GKRInputs {
+            inputs_in_base: inputs,
+            inputs_in_extension: Vec::new(),
+            outputs_in_base: Vec::new(),
+            outputs_in_extension: vec![output],
+        },
+        GpuGKRMainLayerConstraintHostMetadata {
+            quadratic_terms,
+            linear_terms,
+            constant_offset,
+        },
+    )
 }
 
 pub(crate) fn build_single_max_quadratic_constraint_inputs_and_metadata<
@@ -1025,6 +1198,9 @@ fn build_main_layer_kernel_blueprints<E: Field + FieldExtension<BF>>(
     layer: &GKRLayerDescription,
     layer_idx: usize,
     storage: &GpuGKRStorage<BF, E>,
+    external_challenges: &GKRExternalChallenges<BF, E>,
+    inits_and_teardowns_top_bits: &[u32],
+    inits_and_teardowns_address_high_bits_shift: u32,
     batch_challenge_base: E,
     lookup_additive_challenge: E,
     constraint_batch_challenge: E,
@@ -1461,11 +1637,37 @@ fn build_main_layer_kernel_blueprints<E: Field + FieldExtension<BF>>(
             | NoFieldGKRRelation::LookupUnbalancedPairWithVectorInputs { .. } => {
                 unreachable!("GPU no-cache relations must be lowered before blueprint building")
             }
-            NoFieldGKRRelation::InitsOrTeardownsInitialPair { .. } => {
-                unimplemented!(
-                    "unsupported GPU main-layer relation after av_gkr_no_caches rebase: {:?}",
-                    gate.enforced_relation
-                )
+            NoFieldGKRRelation::InitsOrTeardownsInitialPair {
+                timestamp_and_value,
+                setup,
+                output,
+                set_idxes,
+            } => {
+                let (inputs, constraint_metadata) =
+                    build_inits_and_teardowns_initial_pair_inputs_and_metadata(
+                        timestamp_and_value,
+                        *setup,
+                        *output,
+                        set_idxes.map(|idx| inits_and_teardowns_top_bits[idx]),
+                        inits_and_teardowns_address_high_bits_shift,
+                        external_challenges,
+                    );
+                blueprints.push(GpuGKRMainLayerKernelBlueprint {
+                    kind: GpuGKRMainLayerKernelKind::InitsAndTeardownsInitialPair,
+                    inputs,
+                    batch_challenge_offset: next_batch_challenge_offset,
+                    batch_challenge_count: 1,
+                    batch_challenges: {
+                        next_batch_challenge_offset += 1;
+                        vec![get_challenge()]
+                    },
+                    auxiliary_challenge_source: GpuGKRMainLayerAuxiliaryChallengeSource::Immediate(
+                        E::ZERO,
+                    ),
+                    constraint_metadata_source: Some(
+                        GpuGKRMainLayerConstraintMetadataSource::Immediate(constraint_metadata),
+                    ),
+                });
             }
             NoFieldGKRRelation::MaxQuadratic { .. }
             | NoFieldGKRRelation::UnbalancedGrandProductWithCache { .. }
@@ -1489,6 +1691,9 @@ fn build_main_layer_kernel_blueprints_static<E: Field + FieldExtension<BF>>(
     layer: &GKRLayerDescription,
     layer_idx: usize,
     storage: &GpuGKRStorage<BF, E>,
+    external_challenges: &GKRExternalChallenges<BF, E>,
+    inits_and_teardowns_top_bits: &[u32],
+    inits_and_teardowns_address_high_bits_shift: u32,
     lookup_additive_challenge: E,
     constraint_batch_challenge: E,
     _num_base_layer_memory_polys: usize,
@@ -1899,11 +2104,36 @@ fn build_main_layer_kernel_blueprints_static<E: Field + FieldExtension<BF>>(
             | NoFieldGKRRelation::LookupUnbalancedPairWithVectorInputs { .. } => {
                 unreachable!("GPU no-cache relations must be lowered before blueprint building")
             }
-            NoFieldGKRRelation::InitsOrTeardownsInitialPair { .. } => {
-                unimplemented!(
-                    "unsupported GPU main-layer relation after av_gkr_no_caches rebase: {:?}",
-                    gate.enforced_relation
-                )
+            NoFieldGKRRelation::InitsOrTeardownsInitialPair {
+                timestamp_and_value,
+                setup,
+                output,
+                set_idxes,
+            } => {
+                let (inputs, constraint_metadata) =
+                    build_inits_and_teardowns_initial_pair_inputs_and_metadata(
+                        timestamp_and_value,
+                        *setup,
+                        *output,
+                        set_idxes.map(|idx| inits_and_teardowns_top_bits[idx]),
+                        inits_and_teardowns_address_high_bits_shift,
+                        external_challenges,
+                    );
+                let (batch_challenge_offset, batch_challenge_count) =
+                    push_empty(1, &mut next_batch_challenge_offset);
+                blueprints.push(GpuGKRMainLayerKernelBlueprint {
+                    kind: GpuGKRMainLayerKernelKind::InitsAndTeardownsInitialPair,
+                    inputs,
+                    batch_challenge_offset,
+                    batch_challenge_count,
+                    batch_challenges: Vec::new(),
+                    auxiliary_challenge_source: GpuGKRMainLayerAuxiliaryChallengeSource::Immediate(
+                        E::ZERO,
+                    ),
+                    constraint_metadata_source: Some(
+                        GpuGKRMainLayerConstraintMetadataSource::Immediate(constraint_metadata),
+                    ),
+                });
             }
             NoFieldGKRRelation::MaxQuadratic { .. }
             | NoFieldGKRRelation::UnbalancedGrandProductWithCache { .. }
@@ -1959,10 +2189,11 @@ impl<B, E> GpuGKRDimensionReducingBackwardState<B, E> {
     }
 }
 
-impl<E: Field> GpuGKRDimensionReducingBackwardState<BF, E> {
+impl<E: Field + FieldExtension<BF>> GpuGKRDimensionReducingBackwardState<BF, E> {
     pub(crate) fn into_main_layer_backward_state(
         self,
         compiled_circuit: GKRCircuitArtifact<BF>,
+        external_challenges: GKRExternalChallenges<BF, E>,
         lookup_additive_challenge: E,
         constraint_batch_challenge: E,
     ) -> GpuGKRMainLayerBackwardState<E> {
@@ -1981,6 +2212,19 @@ impl<E: Field> GpuGKRDimensionReducingBackwardState<BF, E> {
                 .rev()
                 .collect(),
             trace_len: compiled_circuit.trace_len,
+            external_challenges,
+            inits_and_teardowns_top_bits: canonical_inits_and_teardowns_top_bits(
+                compiled_circuit.memory_layout.teardown_sets.len(),
+            ),
+            inits_and_teardowns_address_high_bits_shift: if compiled_circuit
+                .memory_layout
+                .teardown_sets
+                .is_empty()
+            {
+                0
+            } else {
+                high_bits_offset_for_inits_and_teardowns::<2>(compiled_circuit.trace_len)
+            },
             lookup_additive_challenge,
             constraint_batch_challenge,
             num_base_layer_memory_polys: compiled_circuit.memory_layout.total_width,
@@ -2171,7 +2415,7 @@ impl<B: 'static, E: Field + Reduce> GpuGKRDimensionReducingBackwardState<B, E> {
     }
 }
 
-impl<E: Field> GpuGKRMainLayerBackwardState<E> {
+impl<E: Field + FieldExtension<BF>> GpuGKRMainLayerBackwardState<E> {
     pub(crate) fn storage(&self) -> &GpuGKRStorage<BF, E> {
         &self.storage
     }
@@ -2353,6 +2597,9 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
             &layer,
             layer_idx,
             &self.storage,
+            &self.external_challenges,
+            &self.inits_and_teardowns_top_bits,
+            self.inits_and_teardowns_address_high_bits_shift,
             batch_challenge_base,
             self.lookup_additive_challenge,
             self.constraint_batch_challenge,
@@ -2403,6 +2650,9 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
             &layer,
             layer_idx,
             &self.storage,
+            &self.external_challenges,
+            &self.inits_and_teardowns_top_bits,
+            self.inits_and_teardowns_address_high_bits_shift,
             self.lookup_additive_challenge,
             self.constraint_batch_challenge,
             self.num_base_layer_memory_polys,
@@ -4289,6 +4539,7 @@ where
     pub(crate) fn schedule_execute_backward_workflow_from_shared_state(
         mut self,
         compiled_circuit: GKRCircuitArtifact<BF>,
+        external_challenges: GKRExternalChallenges<BF, E>,
         shared_state: Arc<Mutex<ScheduledBackwardWorkflowState<E>>>,
         context: &ProverContext,
     ) -> CudaResult<GpuGKRBackwardScheduledExecution<BF, E>> {
@@ -4323,6 +4574,7 @@ where
         };
         let mut main_backward_state = self.into_main_layer_backward_state(
             compiled_circuit,
+            external_challenges,
             lookup_additive_challenge,
             constraint_batch_challenge,
         );
@@ -4361,6 +4613,7 @@ where
     pub(crate) fn schedule_execute_backward_workflow(
         self,
         compiled_circuit: GKRCircuitArtifact<BF>,
+        external_challenges: GKRExternalChallenges<BF, E>,
         initial_output_layer_idx: usize,
         top_layer_claims: BTreeMap<GKRAddress, E>,
         evaluation_point: Vec<E>,
@@ -4389,6 +4642,7 @@ where
         }));
         self.schedule_execute_backward_workflow_from_shared_state(
             compiled_circuit,
+            external_challenges,
             shared_state,
             context,
         )
@@ -4398,12 +4652,14 @@ where
 #[cfg(test)]
 mod tests {
     use super::{
-        build_dimension_reducing_kernel_blueprints, build_main_layer_kernel_blueprints,
-        build_main_layer_kernel_blueprints_static,
+        build_dimension_reducing_kernel_blueprints,
+        build_inits_and_teardowns_initial_pair_inputs_and_metadata,
+        build_main_layer_kernel_blueprints, build_main_layer_kernel_blueprints_static,
         build_single_max_quadratic_constraint_inputs_and_metadata, launch_build_eq_values,
         launch_lookup_continuation, launch_lookup_round0, launch_main_round0,
         launch_pairwise_continuation, launch_pairwise_round0,
-        make_deferred_backward_workflow_state, populate_backward_workflow_state,
+        canonical_inits_and_teardowns_top_bits, make_deferred_backward_workflow_state,
+        populate_backward_workflow_state,
         GKRCircuitArtifact, GpuGKRDimensionReducingBackwardState,
         GpuGKRMainLayerConstraintLinearTerm, GpuGKRMainLayerConstraintQuadraticTerm,
         GpuGKRMainLayerKernelKind,
@@ -4419,15 +4675,18 @@ mod tests {
         GpuSumcheckRound0HostLaunchDescriptors, GpuSumcheckRound0ScheduledLaunchDescriptors,
     };
     use crate::prover::test_utils::make_test_context;
-    use cs::definitions::GKRAddress;
+    use cs::definitions::{GKRAddress, VirtualSetupPoly, NUM_MEM_ARGUMENT_KEY_PARTS};
     use cs::gkr_compiler::{
-        GKRLayerDescription, GateArtifacts, NoFieldGKRRelation,
+        GKRLayerDescription, GateArtifacts, InitsOrTeardownsTimestampAndValue,
+        NoFieldGKRRelation,
         NoFieldMaxQuadraticConstraintsGKRRelation, NoFieldMaxQuadraticGKRRelation, OutputType,
     };
     use era_cudart::memory::memory_copy_async;
     use era_cudart::slice::{CudaSlice, CudaSliceMut, DeviceSlice};
     use field::{Field, FieldExtension};
+    use prover::gkr::high_bits_offset_for_inits_and_teardowns;
     use prover::gkr::prover::dimension_reduction::forward::DimensionReducingInputOutput;
+    use prover::gkr::prover::GKRExternalChallenges;
     use prover::gkr::prover::transcript_utils::{commit_field_els, draw_random_field_els};
     use prover::gkr::sumcheck::evaluation_kernels::{
         BatchConstraintEvalGKRRelation, BatchedGKRKernel,
@@ -4444,6 +4703,16 @@ mod tests {
             BF::new(seed + 2),
             BF::new(seed + 3),
         ])
+    }
+
+    fn sample_external_challenges(seed: u32) -> GKRExternalChallenges<BF, E4> {
+        GKRExternalChallenges {
+            permutation_argument_linearization_challenges: std::array::from_fn(|idx| {
+                sample_ext(seed + 10 + idx as u32)
+            }),
+            permutation_argument_additive_part: sample_ext(seed),
+            _marker: std::marker::PhantomData,
+        }
     }
 
     fn successive_powers<E: Field>(base: E, count: usize) -> Vec<E> {
@@ -4644,6 +4913,7 @@ mod tests {
 
         let mut main_state = backward_state.into_main_layer_backward_state(
             fixture.compiled_circuit,
+            fixture.external_challenges,
             E4::ZERO,
             E4::ZERO,
         );
@@ -4851,6 +5121,7 @@ mod tests {
         fn advance_dimension_reduction(
             mut state: GpuGKRDimensionReducingBackwardState<BF, E4>,
             compiled_circuit: &GKRCircuitArtifact<BF>,
+            external_challenges: &GKRExternalChallenges<BF, E4>,
             mut current_claims: BTreeMap<GKRAddress, E4>,
             mut current_point: Vec<E4>,
             mut seed: Seed,
@@ -4889,6 +5160,7 @@ mod tests {
             (
                 state.into_main_layer_backward_state(
                     compiled_circuit.clone(),
+                    external_challenges.clone(),
                     lookup_additive_part,
                     constraints_batch_challenge,
                 ),
@@ -4905,6 +5177,7 @@ mod tests {
             advance_dimension_reduction(
                 fixture.gpu_backward_state,
                 &fixture.compiled_circuit,
+                &fixture.external_challenges,
                 fixture.top_layer_claims,
                 fixture.evaluation_point,
                 fixture.seed,
@@ -4922,6 +5195,7 @@ mod tests {
             &fixture.compiled_circuit.layers[static_plan.layer_idx],
             static_plan.layer_idx,
             main_state.storage(),
+            &fixture.external_challenges,
             batching_challenge,
             fixture.lookup_additive_part,
             fixture.constraints_batch_challenge,
@@ -5113,6 +5387,7 @@ mod tests {
 
         let mut main_state = backward_state.into_main_layer_backward_state(
             fixture.compiled_circuit,
+            fixture.external_challenges,
             fixture.lookup_additive_part,
             fixture.constraints_batch_challenge,
         );
@@ -8074,10 +8349,14 @@ mod tests {
             }],
         };
         let constraint_batch_challenge = sample_ext(20);
+        let external_challenges = sample_external_challenges(30);
         let blueprints = build_main_layer_kernel_blueprints(
             &layer,
             0,
             &storage,
+            &external_challenges,
+            &[],
+            0,
             sample_ext(10),
             sample_ext(30),
             constraint_batch_challenge,
@@ -8192,10 +8471,14 @@ mod tests {
             }],
         };
 
+        let external_challenges = sample_external_challenges(40);
         let blueprints = build_main_layer_kernel_blueprints(
             &layer,
             0,
             &storage,
+            &external_challenges,
+            &[],
+            0,
             sample_ext(10),
             sample_ext(20),
             sample_ext(30),
@@ -8271,10 +8554,14 @@ mod tests {
             }],
         };
         let constraint_batch_challenge = sample_ext(20);
+        let external_challenges = sample_external_challenges(50);
         let blueprints = build_main_layer_kernel_blueprints_static(
             &layer,
             0,
             &storage,
+            &external_challenges,
+            &[],
+            0,
             sample_ext(10),
             constraint_batch_challenge,
             16,
@@ -8338,5 +8625,152 @@ mod tests {
                 })
                 .collect::<Vec<_>>()
         );
+    }
+
+    #[test]
+    fn main_layer_blueprints_for_inits_and_teardowns_initial_pair_use_canonical_top_bits() {
+        let storage = crate::prover::gkr::GpuGKRStorage::<BF, E4> {
+            layers: vec![Default::default()],
+        };
+        let init_output = GKRAddress::InnerLayer {
+            layer: 1,
+            offset: 0,
+        };
+        let teardown_output = GKRAddress::InnerLayer {
+            layer: 1,
+            offset: 1,
+        };
+        let layer = GKRLayerDescription {
+            layer: 0,
+            gates_with_external_connections: Vec::new(),
+            cached_relations: BTreeMap::new(),
+            gates: vec![
+                GateArtifacts {
+                    output_layer: 1,
+                    enforced_relation: NoFieldGKRRelation::InitsOrTeardownsInitialPair {
+                        timestamp_and_value: InitsOrTeardownsTimestampAndValue::Init,
+                        setup: [
+                            GKRAddress::VirtualSetup(VirtualSetupPoly::InitsAndTeardownsLow),
+                            GKRAddress::VirtualSetup(VirtualSetupPoly::InitsAndTeardownsHigh),
+                        ],
+                        output: init_output,
+                        set_idxes: [1, 4],
+                    },
+                },
+                GateArtifacts {
+                    output_layer: 1,
+                    enforced_relation: NoFieldGKRRelation::InitsOrTeardownsInitialPair {
+                        timestamp_and_value: InitsOrTeardownsTimestampAndValue::Teardown {
+                            lhs_timestamp: [0, 1],
+                            lhs_value: [2, 3],
+                            rhs_timestamp: [1, 0],
+                            rhs_value: [3, 2],
+                        },
+                        setup: [
+                            GKRAddress::VirtualSetup(VirtualSetupPoly::InitsAndTeardownsLow),
+                            GKRAddress::VirtualSetup(VirtualSetupPoly::InitsAndTeardownsHigh),
+                        ],
+                        output: teardown_output,
+                        set_idxes: [0, 5],
+                    },
+                },
+            ],
+        };
+        let external_challenges = sample_external_challenges(60);
+        let canonical_top_bits = canonical_inits_and_teardowns_top_bits(6);
+        let high_bits_shift = high_bits_offset_for_inits_and_teardowns::<2>(1 << 16);
+
+        let dynamic_blueprints = build_main_layer_kernel_blueprints(
+            &layer,
+            0,
+            &storage,
+            &external_challenges,
+            &canonical_top_bits,
+            high_bits_shift,
+            sample_ext(10),
+            sample_ext(20),
+            sample_ext(30),
+            4,
+            0,
+        );
+        let static_blueprints = build_main_layer_kernel_blueprints_static(
+            &layer,
+            0,
+            &storage,
+            &external_challenges,
+            &canonical_top_bits,
+            high_bits_shift,
+            sample_ext(20),
+            sample_ext(30),
+            4,
+            0,
+        );
+
+        assert_eq!(dynamic_blueprints.len(), 2);
+        assert_eq!(static_blueprints.len(), 2);
+
+        let expected_specs = [
+            (
+                InitsOrTeardownsTimestampAndValue::Init,
+                init_output,
+                [canonical_top_bits[1], canonical_top_bits[4]],
+            ),
+            (
+                InitsOrTeardownsTimestampAndValue::Teardown {
+                    lhs_timestamp: [0, 1],
+                    lhs_value: [2, 3],
+                    rhs_timestamp: [1, 0],
+                    rhs_value: [3, 2],
+                },
+                teardown_output,
+                [canonical_top_bits[0], canonical_top_bits[5]],
+            ),
+        ];
+
+        for ((dynamic_blueprint, static_blueprint), (timestamp_and_value, output, top_bits)) in
+            dynamic_blueprints
+                .iter()
+                .zip(static_blueprints.iter())
+                .zip(expected_specs.iter())
+        {
+            let (expected_inputs, expected_metadata) =
+                build_inits_and_teardowns_initial_pair_inputs_and_metadata(
+                    timestamp_and_value,
+                    [
+                        GKRAddress::VirtualSetup(VirtualSetupPoly::InitsAndTeardownsLow),
+                        GKRAddress::VirtualSetup(VirtualSetupPoly::InitsAndTeardownsHigh),
+                    ],
+                    *output,
+                    *top_bits,
+                    high_bits_shift,
+                    &external_challenges,
+                );
+
+            for blueprint in [dynamic_blueprint, static_blueprint] {
+                assert_eq!(
+                    blueprint.kind,
+                    GpuGKRMainLayerKernelKind::InitsAndTeardownsInitialPair
+                );
+                assert_eq!(blueprint.inputs, expected_inputs);
+                let metadata = blueprint
+                    .constraint_metadata_source
+                    .as_ref()
+                    .expect("init/teardown metadata must be present");
+                let metadata = match metadata {
+                    super::GpuGKRMainLayerConstraintMetadataSource::Immediate(metadata) => {
+                        metadata
+                    }
+                    super::GpuGKRMainLayerConstraintMetadataSource::Deferred(..) => {
+                        panic!("init/teardown metadata must be materialized immediately")
+                    }
+                };
+                assert_eq!(metadata, &expected_metadata);
+            }
+        }
+
+        assert_eq!(dynamic_blueprints[0].batch_challenges, vec![E4::ONE]);
+        assert_eq!(dynamic_blueprints[1].batch_challenges, vec![sample_ext(10)]);
+        assert!(static_blueprints[0].batch_challenges.is_empty());
+        assert!(static_blueprints[1].batch_challenges.is_empty());
     }
 }

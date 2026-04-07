@@ -37,11 +37,12 @@ use crate::prover::gkr::base_layer_claims::{
 };
 use crate::prover::gkr::forward::{schedule_forward_pass, GpuGKRTranscriptHandoff};
 use crate::prover::gkr::setup::{
+    bootstrap_storage_with_virtual_setup, schedule_forward_setup_for_shape,
     GpuGKRForwardSetupHostKeepalive, GpuGKRSetupTransfer, GpuGKRSetupTransferHostKeepalive,
 };
-use crate::prover::gkr::stage1::{GpuGKRStage1Keepalive, GpuGKRStage1Output};
+use crate::prover::gkr::stage1::{GpuGKRStage1Keepalive, GpuGKRStage1Output, GpuGKRTraceGeometry};
 use crate::prover::trace_holder::{
-    allocate_tree_caps, allocate_trees, flatten_tree_caps, TreesHolder,
+    allocate_tree_caps, allocate_trees, flatten_tree_caps, TraceHolder, TreesCacheMode, TreesHolder,
     PARTIAL_TREE_REDUCTION_LAYERS,
 };
 use crate::prover::tracing_data::{InitsAndTeardownsTransfer, TracingDataTransfer};
@@ -57,7 +58,7 @@ pub(crate) struct GkrExternalPowChallenges {
 
 struct GpuGKRProofJobKeepalive<'a> {
     _stage1: GpuGKRStage1Keepalive,
-    _setup: GpuGKRSetupTransferHostKeepalive<'a>,
+    _setup: Option<GpuGKRSetupTransferHostKeepalive<'a>>,
     _forward_setup: GpuGKRForwardSetupHostKeepalive<E4>,
     _transcript_handoff: GpuGKRTranscriptHandoff<E4>,
     _backward: GpuGKRBackwardHostKeepalive<BF, E4>,
@@ -115,9 +116,13 @@ pub(crate) fn compute_initial_sumcheck_claims_from_explicit_evaluations<E: Field
         OutputType::LookupTimestamps,
         OutputType::GenericLookup,
     ] {
-        let explicit_evals = &final_explicit_evaluations[&key];
-        for poly in explicit_evals.iter() {
-            evals.push(evaluate_ext_poly_with_eq(poly, &eq));
+        if let Some(explicit_evals) = final_explicit_evaluations.get(&key) {
+            for poly in explicit_evals.iter() {
+                evals.push(evaluate_ext_poly_with_eq(poly, &eq));
+            }
+        } else {
+            evals.push(E::ZERO);
+            evals.push(E::ZERO);
         }
     }
 
@@ -134,38 +139,21 @@ pub(crate) fn build_top_layer_claims(
     let [claim_readset, claim_writeset, claim_rangechecknum, claim_rangecheckden, claim_timechecknum, claim_timecheckden, claim_lookupnum, claim_lookupden] =
         claims;
     let mut top_layer_claims = BTreeMap::new();
-    top_layer_claims.insert(
-        output_layer_for_sumcheck[&OutputType::PermutationProduct].output[0],
-        claim_readset,
-    );
-    top_layer_claims.insert(
-        output_layer_for_sumcheck[&OutputType::PermutationProduct].output[1],
-        claim_writeset,
-    );
-    top_layer_claims.insert(
-        output_layer_for_sumcheck[&OutputType::Lookup16Bits].output[0],
-        claim_rangechecknum,
-    );
-    top_layer_claims.insert(
-        output_layer_for_sumcheck[&OutputType::Lookup16Bits].output[1],
-        claim_rangecheckden,
-    );
-    top_layer_claims.insert(
-        output_layer_for_sumcheck[&OutputType::LookupTimestamps].output[0],
-        claim_timechecknum,
-    );
-    top_layer_claims.insert(
-        output_layer_for_sumcheck[&OutputType::LookupTimestamps].output[1],
-        claim_timecheckden,
-    );
-    top_layer_claims.insert(
-        output_layer_for_sumcheck[&OutputType::GenericLookup].output[0],
-        claim_lookupnum,
-    );
-    top_layer_claims.insert(
-        output_layer_for_sumcheck[&OutputType::GenericLookup].output[1],
-        claim_lookupden,
-    );
+    let permutation_output = &output_layer_for_sumcheck[&OutputType::PermutationProduct];
+    top_layer_claims.insert(permutation_output.output[0], claim_readset);
+    top_layer_claims.insert(permutation_output.output[1], claim_writeset);
+    if let Some(output) = output_layer_for_sumcheck.get(&OutputType::Lookup16Bits) {
+        top_layer_claims.insert(output.output[0], claim_rangechecknum);
+        top_layer_claims.insert(output.output[1], claim_rangecheckden);
+    }
+    if let Some(output) = output_layer_for_sumcheck.get(&OutputType::LookupTimestamps) {
+        top_layer_claims.insert(output.output[0], claim_timechecknum);
+        top_layer_claims.insert(output.output[1], claim_timecheckden);
+    }
+    if let Some(output) = output_layer_for_sumcheck.get(&OutputType::GenericLookup) {
+        top_layer_claims.insert(output.output[0], claim_lookupnum);
+        top_layer_claims.insert(output.output[1], claim_lookupden);
+    }
 
     top_layer_claims
 }
@@ -298,6 +286,33 @@ fn flatten_tree_caps_from_slices<S: AsRef<[[u32; BLAKE2S_DIGEST_SIZE_U32_WORDS]]
     flattened
 }
 
+fn canonical_inits_and_teardowns_top_bits(compiled_circuit: &GKRCircuitArtifact<BF>) -> Vec<u32> {
+    (0..compiled_circuit.memory_layout.teardown_sets.len() as u32).collect()
+}
+
+fn build_initial_transcript_input(
+    canonical_top_bits: &[u32],
+    external_challenges: &GKRExternalChallenges<BF, E4>,
+    flattened_setup_tree_caps: &[u32],
+    flattened_memory_tree_caps: &[u32],
+    flattened_witness_tree_caps: &[u32],
+) -> Vec<u32> {
+    let mut transcript_input = Vec::new();
+    transcript_input.extend_from_slice(canonical_top_bits);
+    external_challenges.flatten_into_buffer(&mut transcript_input);
+    if !flattened_setup_tree_caps.is_empty() {
+        transcript_input.extend_from_slice(flattened_setup_tree_caps);
+    }
+    if !flattened_memory_tree_caps.is_empty() {
+        transcript_input.extend_from_slice(flattened_memory_tree_caps);
+    }
+    if !flattened_witness_tree_caps.is_empty() {
+        transcript_input.extend_from_slice(flattened_witness_tree_caps);
+    }
+
+    transcript_input
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
     circuit_type: CircuitType,
@@ -305,7 +320,7 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
     external_challenges: GKRExternalChallenges<BF, E4>,
     whir_schedule: WhirSchedule,
     final_trace_size_log_2: usize,
-    mut setup_transfer: GpuGKRSetupTransfer<'a>,
+    mut setup_transfer: Option<GpuGKRSetupTransfer<'a>>,
     mut decoder_transfer: Option<DecoderTableTransfer<'a>>,
     inits_and_teardowns_transfer: Option<InitsAndTeardownsTransfer<'a, A>>,
     mut tracing_data_transfer: TracingDataTransfer<'a, A>,
@@ -313,7 +328,9 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
     external_pow_challenges: Option<GkrExternalPowChallenges>,
     context: &ProverContext,
 ) -> CudaResult<GpuGKRProofJob<'a>> {
-    setup_transfer.ensure_transferred(context)?;
+    if let Some(setup_transfer) = setup_transfer.as_ref() {
+        setup_transfer.ensure_transferred(context)?;
+    }
     if let Some(decoder_transfer) = decoder_transfer.as_ref() {
         decoder_transfer.transfer.ensure_transferred(context)?;
     }
@@ -331,25 +348,59 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
     let proof_range = Range::new("gkr.proof")?;
     proof_range.start(stream)?;
 
-    if let Some(inits_and_teardowns_transfer) = inits_and_teardowns_transfer {
-        callbacks.extend(inits_and_teardowns_transfer.into_host_keepalive());
-    }
-
     context.reset_used_mem_peak();
+    let setup_geometry = setup_transfer
+        .as_ref()
+        .map(|setup| GpuGKRTraceGeometry {
+            log_domain_size: setup.trace_holder.log_domain_size,
+            log_lde_factor: setup.trace_holder.log_lde_factor,
+            log_rows_per_leaf: setup.trace_holder.log_rows_per_leaf,
+            log_tree_cap_size: setup.trace_holder.log_tree_cap_size,
+        })
+        .unwrap_or(GpuGKRTraceGeometry {
+            log_domain_size: compiled_circuit.trace_len.trailing_zeros(),
+            log_lde_factor: whir_schedule.base_lde_factor.trailing_zeros(),
+            log_rows_per_leaf: whir_schedule.whir_steps_schedule[0] as u32,
+            log_tree_cap_size: whir_schedule.cap_size.trailing_zeros(),
+        });
     let mut stage1_output = GpuGKRStage1Output::generate(
         circuit_type,
         &compiled_circuit,
-        &setup_transfer,
+        setup_geometry,
+        setup_transfer
+            .as_ref()
+            .filter(|transfer| transfer.host.columns_count > 0)
+            .map(|transfer| transfer.trace_holder.get_hypercube_evals()),
         decoder_transfer
             .as_ref()
             .map(|transfer| &transfer.data_device[..]),
+        inits_and_teardowns_transfer
+            .as_ref()
+            .map(|transfer| &transfer.data_device),
         &tracing_data_transfer.data_device,
         context,
     )?;
     if let Some(decoder_transfer) = decoder_transfer {
         callbacks.extend(decoder_transfer.into_host_keepalive());
     }
+    if let Some(inits_and_teardowns_transfer) = inits_and_teardowns_transfer {
+        callbacks.extend(inits_and_teardowns_transfer.into_host_keepalive());
+    }
     callbacks.extend(tracing_data_transfer.into_host_keepalive());
+    let canonical_top_bits = canonical_inits_and_teardowns_top_bits(&compiled_circuit);
+    let mut synthetic_setup_trace_holder = if setup_transfer.is_none() {
+        Some(TraceHolder::new_without_cosets(
+            setup_geometry.log_domain_size,
+            setup_geometry.log_lde_factor,
+            setup_geometry.log_rows_per_leaf,
+            setup_geometry.log_tree_cap_size,
+            0,
+            TreesCacheMode::CachePartial,
+            context,
+        )?)
+    } else {
+        None
+    };
 
     // Memory tree caps are provided externally — flatten eagerly for the transcript.
     let memory_log_lde_factor = stage1_output.memory_trace_holder.log_lde_factor;
@@ -392,16 +443,20 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
         .map(HostAllocation::get_accessor)
         .collect::<Vec<_>>();
     let witness_log_lde_factor = stage1_output.witness_trace_holder.log_lde_factor;
-    let setup_log_lde_factor = setup_transfer.host.log_lde_factor;
-    let flattened_setup_tree_caps = flatten_tree_caps_from_slices(
-        &setup_transfer
-            .host
-            .tree_caps
-            .iter()
-            .map(|cap| &cap[..])
-            .collect::<Vec<_>>(),
-        setup_log_lde_factor,
-    );
+    let flattened_setup_tree_caps = setup_transfer
+        .as_ref()
+        .map(|setup_transfer| {
+            flatten_tree_caps_from_slices(
+                &setup_transfer
+                    .host
+                    .tree_caps
+                    .iter()
+                    .map(|cap| &cap[..])
+                    .collect::<Vec<_>>(),
+                setup_transfer.host.log_lde_factor,
+            )
+        })
+        .unwrap_or_default();
 
     let mut seed_host = unsafe { context.alloc_host_uninit::<Seed>() };
     let seed_accessor = seed_host.get_mut_accessor();
@@ -412,14 +467,17 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
     transcript_init_range.start(stream)?;
     callbacks.schedule(
         move || unsafe {
-            let mut transcript_input = Vec::new();
-            external_challenges_for_seed.flatten_into_buffer(&mut transcript_input);
-            transcript_input.extend_from_slice(&flattened_setup_tree_caps);
-            transcript_input.extend_from_slice(&flattened_memory_tree_caps);
-            transcript_input.extend(flatten_tree_caps(
+            let flattened_witness_tree_caps = flatten_tree_caps(
                 &witness_base_caps_accessors,
                 witness_log_lde_factor,
-            ));
+            );
+            let transcript_input = build_initial_transcript_input(
+                &canonical_top_bits,
+                &external_challenges_for_seed,
+                &flattened_setup_tree_caps,
+                &flattened_memory_tree_caps,
+                &flattened_witness_tree_caps,
+            );
             seed_accessor.set(Transcript::commit_initial(&transcript_input));
             let challenges = draw_random_field_els::<BF, E4>(seed_accessor.get_mut(), 3);
             lookup_challenges_write_accessor
@@ -431,13 +489,22 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
     transcript_init_range.end(stream)?;
     ranges.push(transcript_init_range);
 
-    let mut forward_setup = setup_transfer.schedule_forward_setup(
-        &compiled_circuit,
-        &lookup_challenges_host,
-        context,
-    )?;
+    let mut forward_setup = if let Some(setup_transfer) = setup_transfer.as_ref() {
+        setup_transfer.schedule_forward_setup(&compiled_circuit, &lookup_challenges_host, context)?
+    } else {
+        schedule_forward_setup_for_shape::<E4>(
+            None,
+            compiled_circuit.trace_len,
+            compiled_circuit.generic_lookup_tables_width,
+            compiled_circuit.total_tables_size,
+            compiled_circuit.tables_ids_in_generic_lookups,
+            &lookup_challenges_host,
+            context,
+        )?
+    };
     let forward_output = schedule_forward_pass(
-        &setup_transfer,
+        setup_transfer.as_ref().map(|setup| &setup.trace_holder),
+        synthetic_setup_trace_holder.as_ref(),
         &mut stage1_output,
         &mut forward_setup,
         &compiled_circuit,
@@ -500,9 +567,18 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
 
     let backward_scheduled = backward_state.schedule_execute_backward_workflow_from_shared_state(
         compiled_circuit.clone(),
+        external_challenges.clone(),
         Arc::clone(&backward_shared_state),
         context,
     )?;
+    let setup_trace_holder = setup_transfer
+        .as_ref()
+        .map(|setup| &setup.trace_holder)
+        .unwrap_or_else(|| {
+            synthetic_setup_trace_holder
+                .as_ref()
+                .expect("setup-less proof path must materialize a synthetic setup holder")
+        });
     let base_layer_claims_scheduled = schedule_prepare_base_layer_claims_with_sources(
         compiled_circuit.layers[0].clone(),
         compiled_circuit.trace_len.trailing_zeros() as usize,
@@ -516,7 +592,7 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
             let backward_shared_state = Arc::clone(&backward_shared_state);
             move || clone_backward_claims_for_layer(&backward_shared_state, 0)
         },
-        &setup_transfer.trace_holder,
+        setup_trace_holder,
         &stage1_output.memory_trace_holder,
         &stage1_output.witness_trace_holder,
         context,
@@ -548,9 +624,16 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
     // Setup: cosets allocated on demand; partial trees already transferred from host.
     let pre_whir_setup_cosets_range = Range::new("gkr.proof.pre_whir.setup_cosets")?;
     pre_whir_setup_cosets_range.start(stream)?;
-    setup_transfer
-        .trace_holder
-        .ensure_cosets_materialized(context)?;
+    if let Some(setup_transfer) = setup_transfer.as_mut() {
+        setup_transfer.trace_holder.ensure_cosets_materialized(context)?;
+    } else {
+        let setup_trace_holder = synthetic_setup_trace_holder
+            .as_mut()
+            .expect("setup-less proof path must materialize a synthetic setup holder");
+        if setup_trace_holder.columns_count > 0 {
+            setup_trace_holder.commit_all(context)?;
+        }
+    }
     pre_whir_setup_cosets_range.end(stream)?;
     ranges.push(pre_whir_setup_cosets_range);
     // Memory: cosets allocated on demand, then build and cache partial trees from cosets.
@@ -574,64 +657,124 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
     pre_whir_memory_commit_range.end(stream)?;
     ranges.push(pre_whir_memory_commit_range);
 
-    let setup_base_caps_keepalive = setup_transfer.trace_holder.take_tree_caps_host();
-    let whir_scheduled = schedule_gpu_whir_fold_with_sources(
-        &mut stage1_output.memory_trace_holder,
-        memory_base_caps_keepalive,
-        {
-            let base_layer_claims_shared_state = Arc::clone(&base_layer_claims_shared_state);
-            move |dst| fill_mem_polys_claims(&base_layer_claims_shared_state, dst)
-        },
-        &mut stage1_output.witness_trace_holder,
-        witness_base_caps_keepalive,
-        {
-            let base_layer_claims_shared_state = Arc::clone(&base_layer_claims_shared_state);
-            move |dst| fill_wit_polys_claims(&base_layer_claims_shared_state, dst)
-        },
-        &mut setup_transfer.trace_holder,
-        setup_base_caps_keepalive,
-        {
-            let base_layer_claims_shared_state = Arc::clone(&base_layer_claims_shared_state);
-            move |dst| fill_setup_polys_claims(&base_layer_claims_shared_state, dst)
-        },
-        compiled_circuit.trace_len.trailing_zeros() as usize,
-        {
-            let backward_shared_state = Arc::clone(&backward_shared_state);
-            move |dst| {
-                fill_backward_claim_point_for_layer(&backward_shared_state, 0, dst);
-            }
-        },
-        whir_schedule.base_lde_factor,
-        {
-            let backward_shared_state = Arc::clone(&backward_shared_state);
-            move || {
-                let mut seed = current_backward_seed(&backward_shared_state);
-                draw_random_field_els::<BF, E4>(&mut seed, 1)[0]
-            }
-        },
-        whir_schedule.whir_steps_schedule.clone(),
-        whir_schedule.whir_queries_schedule.clone(),
-        whir_schedule.whir_steps_lde_factors.clone(),
-        whir_schedule.whir_pow_schedule.clone(),
-        {
-            let backward_shared_state = Arc::clone(&backward_shared_state);
-            move || {
-                let mut seed = current_backward_seed(&backward_shared_state);
-                // The CPU prover draws the WHIR batching challenge from the seed
-                // before entering whir_fold. We must advance the seed here to match.
-                let _whir_batching_challenge = draw_random_field_els::<BF, E4>(&mut seed, 1);
-                seed
-            }
-        },
-        whir_schedule.cap_size,
-        compiled_circuit.trace_len.trailing_zeros() as usize,
-        external_pow_challenges.map(|pow| pow.whir_pow_nonces),
-        context,
-    )?;
+    let whir_scheduled = if let Some(setup_transfer) = setup_transfer.as_mut() {
+        let setup_base_caps_keepalive = setup_transfer.trace_holder.take_tree_caps_host();
+        schedule_gpu_whir_fold_with_sources(
+            &mut stage1_output.memory_trace_holder,
+            memory_base_caps_keepalive,
+            {
+                let base_layer_claims_shared_state = Arc::clone(&base_layer_claims_shared_state);
+                move |dst| fill_mem_polys_claims(&base_layer_claims_shared_state, dst)
+            },
+            &mut stage1_output.witness_trace_holder,
+            witness_base_caps_keepalive,
+            {
+                let base_layer_claims_shared_state = Arc::clone(&base_layer_claims_shared_state);
+                move |dst| fill_wit_polys_claims(&base_layer_claims_shared_state, dst)
+            },
+            &mut setup_transfer.trace_holder,
+            setup_base_caps_keepalive,
+            {
+                let base_layer_claims_shared_state = Arc::clone(&base_layer_claims_shared_state);
+                move |dst| fill_setup_polys_claims(&base_layer_claims_shared_state, dst)
+            },
+            compiled_circuit.trace_len.trailing_zeros() as usize,
+            {
+                let backward_shared_state = Arc::clone(&backward_shared_state);
+                move |dst| {
+                    fill_backward_claim_point_for_layer(&backward_shared_state, 0, dst);
+                }
+            },
+            whir_schedule.base_lde_factor,
+            {
+                let backward_shared_state = Arc::clone(&backward_shared_state);
+                move || {
+                    let mut seed = current_backward_seed(&backward_shared_state);
+                    draw_random_field_els::<BF, E4>(&mut seed, 1)[0]
+                }
+            },
+            whir_schedule.whir_steps_schedule.clone(),
+            whir_schedule.whir_queries_schedule.clone(),
+            whir_schedule.whir_steps_lde_factors.clone(),
+            whir_schedule.whir_pow_schedule.clone(),
+            {
+                let backward_shared_state = Arc::clone(&backward_shared_state);
+                move || {
+                    let mut seed = current_backward_seed(&backward_shared_state);
+                    let _whir_batching_challenge = draw_random_field_els::<BF, E4>(&mut seed, 1);
+                    seed
+                }
+            },
+            whir_schedule.cap_size,
+            compiled_circuit.trace_len.trailing_zeros() as usize,
+            external_pow_challenges.clone().map(|pow| pow.whir_pow_nonces),
+            context,
+        )?
+    } else {
+        let setup_trace_holder = synthetic_setup_trace_holder
+            .as_mut()
+            .expect("setup-less proof path must materialize a synthetic setup holder");
+        let setup_base_caps_keepalive = if setup_trace_holder.columns_count > 0 {
+            setup_trace_holder.take_tree_caps_host()
+        } else {
+            Vec::new()
+        };
+        schedule_gpu_whir_fold_with_sources(
+            &mut stage1_output.memory_trace_holder,
+            memory_base_caps_keepalive,
+            {
+                let base_layer_claims_shared_state = Arc::clone(&base_layer_claims_shared_state);
+                move |dst| fill_mem_polys_claims(&base_layer_claims_shared_state, dst)
+            },
+            &mut stage1_output.witness_trace_holder,
+            witness_base_caps_keepalive,
+            {
+                let base_layer_claims_shared_state = Arc::clone(&base_layer_claims_shared_state);
+                move |dst| fill_wit_polys_claims(&base_layer_claims_shared_state, dst)
+            },
+            setup_trace_holder,
+            setup_base_caps_keepalive,
+            {
+                let base_layer_claims_shared_state = Arc::clone(&base_layer_claims_shared_state);
+                move |dst| fill_setup_polys_claims(&base_layer_claims_shared_state, dst)
+            },
+            compiled_circuit.trace_len.trailing_zeros() as usize,
+            {
+                let backward_shared_state = Arc::clone(&backward_shared_state);
+                move |dst| {
+                    fill_backward_claim_point_for_layer(&backward_shared_state, 0, dst);
+                }
+            },
+            whir_schedule.base_lde_factor,
+            {
+                let backward_shared_state = Arc::clone(&backward_shared_state);
+                move || {
+                    let mut seed = current_backward_seed(&backward_shared_state);
+                    draw_random_field_els::<BF, E4>(&mut seed, 1)[0]
+                }
+            },
+            whir_schedule.whir_steps_schedule.clone(),
+            whir_schedule.whir_queries_schedule.clone(),
+            whir_schedule.whir_steps_lde_factors.clone(),
+            whir_schedule.whir_pow_schedule.clone(),
+            {
+                let backward_shared_state = Arc::clone(&backward_shared_state);
+                move || {
+                    let mut seed = current_backward_seed(&backward_shared_state);
+                    let _whir_batching_challenge = draw_random_field_els::<BF, E4>(&mut seed, 1);
+                    seed
+                }
+            },
+            whir_schedule.cap_size,
+            compiled_circuit.trace_len.trailing_zeros() as usize,
+            external_pow_challenges.clone().map(|pow| pow.whir_pow_nonces),
+            context,
+        )?
+    };
     let whir_shared_state = whir_scheduled.shared_state_handle();
 
     let backward_keepalive = backward_scheduled.into_host_keepalive();
-    let setup_keepalive = setup_transfer.into_host_keepalive();
+    let setup_keepalive = setup_transfer.map(GpuGKRSetupTransfer::into_host_keepalive);
 
     let finalize_range = Range::new("gkr.proof.finalize")?;
     finalize_range.start(stream)?;
@@ -703,7 +846,7 @@ pub(crate) fn prove_with_transfer_scheduling<'a, A: GoodAllocator + 'a>(
     external_challenges: GKRExternalChallenges<BF, E4>,
     whir_schedule: WhirSchedule,
     final_trace_size_log_2: usize,
-    mut setup_transfer: GpuGKRSetupTransfer<'a>,
+    mut setup_transfer: Option<GpuGKRSetupTransfer<'a>>,
     mut decoder_transfer: Option<DecoderTableTransfer<'a>>,
     mut inits_and_teardowns_transfer: Option<InitsAndTeardownsTransfer<'a, A>>,
     mut tracing_data_transfer: TracingDataTransfer<'a, A>,
@@ -714,7 +857,9 @@ pub(crate) fn prove_with_transfer_scheduling<'a, A: GoodAllocator + 'a>(
     let h2d_stream = context.get_h2d_stream();
     let transfer_range = Range::new("gkr.proof.h2d_transfers")?;
     transfer_range.start(h2d_stream)?;
-    setup_transfer.schedule_transfer(context)?;
+    if let Some(setup_transfer) = setup_transfer.as_mut() {
+        setup_transfer.schedule_transfer(context)?;
+    }
     if let Some(decoder_transfer) = decoder_transfer.as_mut() {
         decoder_transfer.schedule_transfer(context)?;
     }
@@ -777,7 +922,10 @@ fn make_eq_poly_in_full_serial<E: Field>(challenges: &[E]) -> Vec<E> {
 
 #[cfg(test)]
 mod tests {
-    use super::draw_query_bits_with_external_nonce;
+    use super::{build_initial_transcript_input, draw_query_bits_with_external_nonce};
+    use crate::primitives::field::{BF, E4};
+    use prover::definitions::Transcript;
+    use prover::gkr::prover::GKRExternalChallenges;
     use prover::gkr::prover::transcript_utils::draw_query_bits;
     use prover::query_utils::assemble_query_index;
     use prover::transcript::Seed;
@@ -835,5 +983,79 @@ mod tests {
                 "query indexes diverged for pow_bits={pow_bits}"
             );
         }
+    }
+
+    #[test]
+    fn initial_transcript_input_matches_cpu_order_with_and_without_setup_caps() {
+        let external_challenges = GKRExternalChallenges {
+            permutation_argument_linearization_challenges: std::array::from_fn(|idx| {
+                E4::from_array_of_base([
+                    BF::new(10 + idx as u32),
+                    BF::new(20 + idx as u32),
+                    BF::new(30 + idx as u32),
+                    BF::new(40 + idx as u32),
+                ])
+            }),
+            permutation_argument_additive_part: E4::from_array_of_base([
+                BF::new(1),
+                BF::new(2),
+                BF::new(3),
+                BF::new(4),
+            ]),
+            _marker: std::marker::PhantomData,
+        };
+        let canonical_top_bits = vec![0u32, 1, 2, 3];
+        let setup_caps = vec![11u32, 12, 13, 14];
+        let memory_caps = vec![21u32, 22, 23, 24];
+        let witness_caps = vec![31u32, 32, 33, 34];
+
+        let with_setup = build_initial_transcript_input(
+            &canonical_top_bits,
+            &external_challenges,
+            &setup_caps,
+            &memory_caps,
+            &witness_caps,
+        );
+        let without_setup = build_initial_transcript_input(
+            &canonical_top_bits,
+            &external_challenges,
+            &[],
+            &memory_caps,
+            &witness_caps,
+        );
+
+        let mut expected_with_setup = canonical_top_bits.clone();
+        external_challenges.flatten_into_buffer(&mut expected_with_setup);
+        expected_with_setup.extend_from_slice(&setup_caps);
+        expected_with_setup.extend_from_slice(&memory_caps);
+        expected_with_setup.extend_from_slice(&witness_caps);
+        assert_eq!(with_setup, expected_with_setup);
+
+        let mut expected_without_setup = canonical_top_bits.clone();
+        external_challenges.flatten_into_buffer(&mut expected_without_setup);
+        expected_without_setup.extend_from_slice(&memory_caps);
+        expected_without_setup.extend_from_slice(&witness_caps);
+        assert_eq!(without_setup, expected_without_setup);
+
+        let with_setup_seed = Transcript::commit_initial(&with_setup);
+        let mut expected_with_setup_seed = canonical_top_bits.clone();
+        external_challenges.flatten_into_buffer(&mut expected_with_setup_seed);
+        expected_with_setup_seed.extend_from_slice(&setup_caps);
+        expected_with_setup_seed.extend_from_slice(&memory_caps);
+        expected_with_setup_seed.extend_from_slice(&witness_caps);
+        assert_eq!(
+            with_setup_seed,
+            Transcript::commit_initial(&expected_with_setup_seed)
+        );
+
+        let without_setup_seed = Transcript::commit_initial(&without_setup);
+        let mut expected_without_setup_seed = canonical_top_bits;
+        external_challenges.flatten_into_buffer(&mut expected_without_setup_seed);
+        expected_without_setup_seed.extend_from_slice(&memory_caps);
+        expected_without_setup_seed.extend_from_slice(&witness_caps);
+        assert_eq!(
+            without_setup_seed,
+            Transcript::commit_initial(&expected_without_setup_seed)
+        );
     }
 }

@@ -19,7 +19,7 @@ use era_cudart::{cuda_kernel_declaration, cuda_kernel_signature_arguments_and_fu
 use field::{Field, FieldExtension, PrimeField};
 use prover::gkr::prover::dimension_reduction::forward::DimensionReducingInputOutput;
 use prover::gkr::prover::transcript_utils::{commit_field_els, draw_random_field_els};
-use prover::gkr::prover::SumcheckIntermediateProofValues;
+use prover::gkr::prover::{GKRExternalChallenges, SumcheckIntermediateProofValues};
 use prover::gkr::sumcheck::evaluation_kernels::{
     BaseFieldCopyGKRRelation, BatchConstraintEvalGKRRelation, BatchedGKRKernel,
     ExtensionCopyGKRRelation, GKRInputs, LookupBaseExtMinusBaseExtGKRRelation,
@@ -96,6 +96,7 @@ pub(crate) enum GpuGKRMainLayerKernelKind {
     LookupWithCachedDensAndSetup = 9,
     EnforceConstraintsMaxQuadratic = 10,
     LinearBaseOutput = 11,
+    InitsAndTeardownsInitialPair = 12,
 }
 
 impl GpuGKRMainLayerKernelKind {
@@ -150,10 +151,10 @@ pub(crate) struct GpuGKRMainLayerConstraintLinearTerm<E> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct GpuGKRMainLayerConstraintHostMetadata<E> {
-    pub(super) quadratic_terms: Vec<GpuGKRMainLayerConstraintQuadraticTerm<E>>,
-    pub(super) linear_terms: Vec<GpuGKRMainLayerConstraintLinearTerm<E>>,
-    pub(super) constant_offset: E,
+pub(crate) struct GpuGKRMainLayerConstraintHostMetadata<E> {
+    pub(crate) quadratic_terms: Vec<GpuGKRMainLayerConstraintQuadraticTerm<E>>,
+    pub(crate) linear_terms: Vec<GpuGKRMainLayerConstraintLinearTerm<E>>,
+    pub(crate) constant_offset: E,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1096,12 +1097,15 @@ impl<E: Copy + Field> GpuGKRMainLayerKernelPlan<E> {
     }
 }
 
-pub(crate) struct GpuGKRMainLayerBackwardState<E> {
+pub(crate) struct GpuGKRMainLayerBackwardState<E: FieldExtension<BF> + Field> {
     #[allow(dead_code)]
     pub(super) forward_tracing_ranges: Vec<Range>,
     pub(super) storage: GpuGKRStorage<BF, E>,
     pub(super) pending_layers: VecDeque<(usize, GKRLayerDescription)>,
     pub(super) trace_len: usize,
+    pub(super) external_challenges: GKRExternalChallenges<BF, E>,
+    pub(super) inits_and_teardowns_top_bits: Vec<u32>,
+    pub(super) inits_and_teardowns_address_high_bits_shift: u32,
     pub(super) lookup_additive_challenge: E,
     pub(super) constraint_batch_challenge: E,
     pub(super) num_base_layer_memory_polys: usize,

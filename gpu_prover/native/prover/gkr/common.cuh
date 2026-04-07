@@ -66,6 +66,7 @@ enum gkr_main_kernel_kind : u32 {
   GKR_MAIN_LOOKUP_WITH_CACHED_DENS_AND_SETUP = 9,
   GKR_MAIN_ENFORCE_CONSTRAINTS = 10,
   GKR_MAIN_LINEAR_BASE_OUTPUT = 11,
+  GKR_MAIN_INITS_AND_TEARDOWNS_INITIAL_PAIR = 12,
 };
 
 static constexpr unsigned GKR_FORWARD_MAX_GATES_PER_LAYER = 64;
@@ -1470,6 +1471,12 @@ gkr_main_round0_values(const unsigned kind, const gkr_base_initial_source<bf> *b
     c0 = E::mul(batch_challenge_0, output_value);
     break;
   }
+  case GKR_MAIN_INITS_AND_TEARDOWNS_INITIAL_PAIR: {
+    const E output_value = gkr_get_initial_value(ext_outputs[0], gid);
+    c0 = E::mul(batch_challenge_0, output_value);
+    c1 = E::mul(batch_challenge_0, gkr_eval_constraints_round0(base_inputs, gid, constraint_quadratic_terms, constraint_quadratic_terms_count));
+    break;
+  }
   case GKR_MAIN_EXT_COPY: {
     const E output_value = gkr_get_initial_value(ext_outputs[0], gid);
     c0 = E::mul(batch_challenge_0, output_value);
@@ -1626,6 +1633,16 @@ DEVICE_FORCEINLINE void gkr_main_round1_values(const unsigned kind, const gkr_ba
     E eval1;
     gkr_eval_constraints_round1<E, EXPLICIT_FORM>(base_inputs, current_folding_challenge, gid, nullptr, 0, constraint_linear_terms,
                                                   constraint_linear_terms_count, constraint_constant_offset, eval0, eval1);
+    c0 = E::mul(batch_challenge_0, eval0);
+    c1 = E::mul(batch_challenge_0, eval1);
+    break;
+  }
+  case GKR_MAIN_INITS_AND_TEARDOWNS_INITIAL_PAIR: {
+    E eval0;
+    E eval1;
+    gkr_eval_constraints_round1<E, EXPLICIT_FORM>(base_inputs, current_folding_challenge, gid, constraint_quadratic_terms,
+                                                  constraint_quadratic_terms_count, constraint_linear_terms, constraint_linear_terms_count,
+                                                  constraint_constant_offset, eval0, eval1);
     c0 = E::mul(batch_challenge_0, eval0);
     c1 = E::mul(batch_challenge_0, eval1);
     break;
@@ -1881,6 +1898,16 @@ DEVICE_FORCEINLINE void gkr_main_round2_values(const unsigned kind, const gkr_ba
     c1 = E::mul(batch_challenge_0, eval1);
     break;
   }
+  case GKR_MAIN_INITS_AND_TEARDOWNS_INITIAL_PAIR: {
+    E eval0;
+    E eval1;
+    gkr_eval_constraints_round2<E, EXPLICIT_FORM>(base_inputs, first_folding_challenge, second_folding_challenge, gid, constraint_quadratic_terms,
+                                                  constraint_quadratic_terms_count, constraint_linear_terms, constraint_linear_terms_count,
+                                                  constraint_constant_offset, eval0, eval1);
+    c0 = E::mul(batch_challenge_0, eval0);
+    c1 = E::mul(batch_challenge_0, eval1);
+    break;
+  }
   case GKR_MAIN_EXT_COPY: {
     E f0;
     E f1_or_delta;
@@ -2128,6 +2155,16 @@ DEVICE_FORCEINLINE void gkr_main_round3_values(const unsigned kind, const gkr_ex
     E eval1;
     gkr_eval_constraints_round3<E, EXPLICIT_FORM>(base_inputs, current_folding_challenge, gid, nullptr, 0, constraint_linear_terms,
                                                   constraint_linear_terms_count, constraint_constant_offset, eval0, eval1);
+    c0 = E::mul(batch_challenge_0, eval0);
+    c1 = E::mul(batch_challenge_0, eval1);
+    break;
+  }
+  case GKR_MAIN_INITS_AND_TEARDOWNS_INITIAL_PAIR: {
+    E eval0;
+    E eval1;
+    gkr_eval_constraints_round3<E, EXPLICIT_FORM>(base_inputs, current_folding_challenge, gid, constraint_quadratic_terms,
+                                                  constraint_quadratic_terms_count, constraint_linear_terms, constraint_linear_terms_count,
+                                                  constraint_constant_offset, eval0, eval1);
     c0 = E::mul(batch_challenge_0, eval0);
     c1 = E::mul(batch_challenge_0, eval1);
     break;

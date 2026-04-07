@@ -139,6 +139,18 @@ fn schedule_unknown_coset_base_field_query(
     let lde_factor = 1usize << trace_holder.log_lde_factor;
     let values_per_leaf = 1usize << trace_holder.log_rows_per_leaf;
     let coset_tree_size = (1usize << trace_holder.log_domain_size) / values_per_leaf;
+    if trace_holder.columns_count == 0 {
+        return Ok(ScheduledUnknownCosetBaseFieldQuery {
+            callbacks: Callbacks::new(),
+            query_index,
+            value_leafs: Vec::new(),
+            path_merkle_paths: Vec::new(),
+            values_per_leaf,
+            columns_count: 0,
+            coset_tree_size,
+            log_lde_factor: trace_holder.log_lde_factor,
+        });
+    }
     let mut callbacks = Callbacks::new();
     let mut value_internal_index = unsafe { context.alloc_host_uninit_slice(1) };
     let value_internal_accessor = value_internal_index.get_mut_accessor();
@@ -459,6 +471,10 @@ fn fill_full_cap_from_accessors(
     accessors: &[crate::primitives::context::UnsafeAccessor<[Digest]>],
     log_lde_factor: u32,
 ) {
+    if accessors.is_empty() {
+        assert!(dst.is_empty());
+        return;
+    }
     let lde_factor = 1usize << log_lde_factor;
     assert_eq!(accessors.len(), lde_factor);
     let expected_len = accessors
@@ -700,6 +716,18 @@ fn decode_unknown_coset_base_field_query_from_accessors(
     Vec<Vec<BF>>,
     BaseFieldQuery<BF, DefaultTreeConstructor>,
 ) {
+    if columns_count == 0 {
+        return (
+            0,
+            Vec::new(),
+            BaseFieldQuery {
+                index,
+                leaf_values_concatenated: Vec::new(),
+                path: Vec::new(),
+                _marker: PhantomData,
+            },
+        );
+    }
     let lde_factor = 1usize << log_lde_factor;
     let value_coset_index = index & (lde_factor - 1);
     let stage1_coset_index = index / coset_tree_size;
@@ -727,6 +755,12 @@ fn fill_unknown_coset_base_field_query_from_accessors(
     value_leafs: &[crate::primitives::context::UnsafeAccessor<[BF]>],
     path_merkle_paths: &[crate::primitives::context::UnsafeAccessor<[Digest]>],
 ) {
+    if columns_count == 0 {
+        dst.leaf_values_concatenated.clear();
+        dst.path.clear();
+        dst.index = index;
+        return;
+    }
     let lde_factor = 1usize << log_lde_factor;
     let value_coset_index = index & (lde_factor - 1);
     let stage1_coset_index = index / coset_tree_size;
@@ -1733,7 +1767,11 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
             queries: make_preallocated_base_queries(
                 initial_query_count,
                 setup_columns_count * initial_values_per_leaf,
-                setup_base_query_path_len,
+                if setup_columns_count == 0 {
+                    0
+                } else {
+                    setup_base_query_path_len
+                },
             ),
         },
         sumcheck_polys: vec![[E4::ZERO; 3]; total_sumcheck_polys],

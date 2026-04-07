@@ -23,6 +23,7 @@ use crate::primitives::device_structures::DeviceMatrix;
 use crate::primitives::device_tracing::Range;
 use crate::primitives::field::BF;
 use crate::prover::trace_holder::TraceHolder;
+use prover::gkr::virtual_polys::init_and_teardown_base::evaluate_virtual_inits_and_teardowns_base_address_setup_polys;
 use prover::gkr::virtual_polys::range_check::evaluate_virtual_range_check_setup_poly;
 
 #[derive(Clone)]
@@ -304,6 +305,21 @@ fn populate_virtual_setup_claims<E>(
                 trace_len_log2,
             )
         });
+    let (inits_low, inits_high) =
+        evaluate_virtual_inits_and_teardowns_base_address_setup_polys::<BF, E, 2>(
+            claim_point,
+            trace_len_log2,
+        );
+    completed_claims
+        .entry(GKRAddress::VirtualSetup(
+            VirtualSetupPoly::InitsAndTeardownsLow,
+        ))
+        .or_insert(inits_low);
+    completed_claims
+        .entry(GKRAddress::VirtualSetup(
+            VirtualSetupPoly::InitsAndTeardownsHigh,
+        ))
+        .or_insert(inits_high);
 }
 
 fn schedule_reduce_trace_holder_claims<E>(
@@ -582,11 +598,13 @@ where
 mod tests {
     use std::collections::BTreeMap;
 
-    use cs::definitions::GKRAddress;
+    use cs::definitions::{GKRAddress, VirtualSetupPoly, TIMESTAMP_COLUMNS_NUM_BITS};
     use cs::gkr_compiler::GKRLayerDescription;
     use era_cudart::memory::memory_copy_async;
     use field::{Field, FieldExtension, PrimeField};
     use prover::gkr::sumcheck::eq_poly::make_eq_poly_in_full;
+    use prover::gkr::virtual_polys::init_and_teardown_base::evaluate_virtual_inits_and_teardowns_base_address_setup_polys;
+    use prover::gkr::virtual_polys::range_check::evaluate_virtual_range_check_setup_poly;
     use serial_test::serial;
     use worker::Worker;
 
@@ -638,7 +656,8 @@ mod tests {
     #[cfg(not(no_cuda))]
     #[serial]
     fn base_layer_claims_match_cpu() {
-        let trace_len = 1usize << 4;
+        let trace_len = 1usize << 19;
+        let trace_len_log2 = trace_len.trailing_zeros();
         let memory_columns = 3usize;
         let witness_columns = 2usize;
         let setup_columns = 4usize;
@@ -661,14 +680,11 @@ mod tests {
         let setup_trace_holder =
             make_trace_holder(&setup_values, setup_columns, trace_len, &context);
 
-        let base_layer_point = vec![
-            E4::from_base(BF::from_u32_unchecked(3)),
-            E4::from_base(BF::from_u32_unchecked(5)),
-            E4::from_base(BF::from_u32_unchecked(7)),
-            E4::from_base(BF::from_u32_unchecked(11)),
-        ];
+        let base_layer_point: Vec<_> = (0..trace_len_log2)
+            .map(|i| E4::from_base(BF::from_u32_unchecked(2 * i + 3)))
+            .collect();
         let layer_desc = GKRLayerDescription {
-            layer: 0,
+            layer: 1,
             gates_with_external_connections: Vec::new(),
             cached_relations: BTreeMap::new(),
             gates: Vec::new(),
@@ -713,8 +729,45 @@ mod tests {
                 )
             })
             .collect();
+        let expected_range_16 = evaluate_virtual_range_check_setup_poly::<BF, E4, 16>(
+            &base_layer_point,
+            trace_len_log2,
+        );
+        let expected_timestamp = evaluate_virtual_range_check_setup_poly::<
+            BF,
+            E4,
+            TIMESTAMP_COLUMNS_NUM_BITS,
+        >(&base_layer_point, trace_len_log2);
+        let (expected_inits_low, expected_inits_high) =
+            evaluate_virtual_inits_and_teardowns_base_address_setup_polys::<BF, E4, 2>(
+                &base_layer_point,
+                trace_len_log2,
+            );
 
-        assert!(output.completed_claims.is_empty());
+        assert_eq!(
+            output.completed_claims[&GKRAddress::VirtualSetup(
+                VirtualSetupPoly::RangeCheck16Bits,
+            )],
+            expected_range_16,
+        );
+        assert_eq!(
+            output.completed_claims[&GKRAddress::VirtualSetup(
+                VirtualSetupPoly::RangeCheckTimestamp,
+            )],
+            expected_timestamp,
+        );
+        assert_eq!(
+            output.completed_claims[&GKRAddress::VirtualSetup(
+                VirtualSetupPoly::InitsAndTeardownsLow,
+            )],
+            expected_inits_low,
+        );
+        assert_eq!(
+            output.completed_claims[&GKRAddress::VirtualSetup(
+                VirtualSetupPoly::InitsAndTeardownsHigh,
+            )],
+            expected_inits_high,
+        );
         assert_eq!(output.mem_polys_claims, expected_memory);
         assert_eq!(output.wit_polys_claims, expected_witness);
         assert_eq!(output.setup_polys_claims, expected_setup);

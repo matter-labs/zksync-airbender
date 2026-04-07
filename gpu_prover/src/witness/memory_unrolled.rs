@@ -5,7 +5,8 @@ use crate::primitives::utils::{get_grid_block_dims_for_threads_count, WARP_SIZE}
 use crate::witness::option::u32::Option;
 use crate::witness::ram_access::{RamAuxComparisonSet, RamQuery};
 use crate::witness::trace_unrolled::{
-    ExecutorFamilyDecoderData, UnrolledMemoryOracle, UnrolledMemoryTraceDevice,
+    ExecutorFamilyDecoderData, ShuffleRamInitsAndTeardownsDevice, ShuffleRamInitsAndTeardownsRaw,
+    UnrolledMemoryOracle, UnrolledMemoryTraceDevice,
     UnrolledNonMemoryOracle, UnrolledNonMemoryTraceDevice,
 };
 use crate::witness::Address;
@@ -17,6 +18,8 @@ use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
 use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::CudaStream;
+use std::ops::Deref;
+use crate::ops::simple::set_by_val;
 #[repr(C)]
 #[derive(Clone, Copy, Default, Debug)]
 pub struct MachineState {
@@ -101,6 +104,7 @@ impl From<cs::definitions::gkr::DecoderPlacementDescription> for DecoderPlacemen
 }
 
 pub const MAX_SHUFFLE_RAM_ACCESS_SETS_COUNT: usize = 4;
+pub const MAX_INITS_AND_TEARDOWNS_SETS_COUNT: usize = 16;
 
 #[repr(C)]
 #[derive(Clone, Copy, Default, Debug)]
@@ -166,6 +170,42 @@ impl From<&GKRAuxLayoutData> for AuxLayoutData {
         Self {
             shuffle_ram_timestamp_comparison_aux_vars,
         }
+    }
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Default, Debug)]
+pub struct InitsAndTeardownsLayout {
+    pub teardown_timestamps_columns: [u32; NUM_TIMESTAMP_COLUMNS_FOR_RAM],
+    pub teardown_values_columns: [u32; 2],
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Default, Debug)]
+pub struct InitsAndTeardownsLayouts {
+    pub count: u32,
+    pub layouts: [InitsAndTeardownsLayout; MAX_INITS_AND_TEARDOWNS_SETS_COUNT],
+}
+
+impl<T: Deref<Target = [([cs::definitions::GKRAddress; 2], [cs::definitions::GKRAddress; 2])]>>
+    From<&T> for InitsAndTeardownsLayouts
+{
+    fn from(value: &T) -> Self {
+        let len = value.len();
+        assert!(len <= MAX_INITS_AND_TEARDOWNS_SETS_COUNT);
+        let count = len as u32;
+        let mut layouts = [InitsAndTeardownsLayout::default(); MAX_INITS_AND_TEARDOWNS_SETS_COUNT];
+        for (&(timestamps, values), dst) in value.iter().zip(layouts.iter_mut()) {
+            dst.teardown_timestamps_columns = timestamps.map(|address| match address {
+                cs::definitions::GKRAddress::BaseLayerMemory(offset) => offset as u32,
+                _ => panic!("init/teardown memory layout expects base-layer memory timestamp columns"),
+            });
+            dst.teardown_values_columns = values.map(|address| match address {
+                cs::definitions::GKRAddress::BaseLayerMemory(offset) => offset as u32,
+                _ => panic!("init/teardown memory layout expects base-layer memory value columns"),
+            });
+        }
+        Self { count, layouts }
     }
 }
 
@@ -267,15 +307,15 @@ cuda_kernel!(GenerateMemoryAndWitnessValuesUnrolledNonMemory,
 );
 
 // cuda_kernel!(GenerateMemoryAndWitnessValuesUnrolledInitsAndTeardowns,
-//     ab_generate_memory_and_witness_values_unrolled_inits_and_teardowns_kernel(
-//         init_and_teardown_layouts: ShuffleRamInitAndTeardownLayouts,
-//         aux_comparison_sets: ShuffleRamAuxComparisonSets,
-//         inits_and_teardowns: ShuffleRamInitsAndTeardownsRaw,
-//         memory: MutPtrAndStride<BF>,
-//         witness: MutPtrAndStride<BF>,
-//         count: u32,
-//     )
-// );
+cuda_kernel!(GenerateMemoryAndWitnessValuesUnrolledInitsAndTeardowns,
+    ab_generate_memory_and_witness_values_unrolled_inits_and_teardowns_kernel(
+        init_and_teardown_layouts: InitsAndTeardownsLayouts,
+        inits_and_teardowns: ShuffleRamInitsAndTeardownsRaw,
+        memory: MutPtrAndStride<BF>,
+        witness: MutPtrAndStride<BF>,
+        count: u32,
+    )
+);
 //
 // cuda_kernel!(GenerateMemoryAndWitnessValuesUnrolledUnified,
 //     ab_generate_memory_and_witness_values_unrolled_unified_kernel(
@@ -485,38 +525,44 @@ pub(crate) fn generate_memory_and_witness_values_unrolled_non_memory(
     GenerateMemoryAndWitnessValuesUnrolledNonMemoryFunction::default().launch(&config, &args)
 }
 
-// pub(crate) fn generate_memory_and_witness_values_unrolled_inits_and_teardowns(
-//     subtree: &MemorySubtree,
-//     aux_comparison_sets: &[cs::definitions::ShuffleRamAuxComparisonSet],
-//     inits_and_teardowns: &ShuffleRamInitsAndTeardownsDevice,
-//     memory: &mut impl DeviceMatrixMutImpl<BF>,
-//     witness: &mut impl DeviceMatrixMutImpl<BF>,
-//     stream: &CudaStream,
-// ) -> CudaResult<()> {
-//     let count = memory.stride() - 1;
-//     let cols = memory.cols();
-//     assert_eq!(cols, subtree.total_width);
-//     assert!(cols.is_multiple_of(SHUFFLE_RAM_INIT_AND_TEARDOWN_LAYOUT_WIDTH));
-//     assert!(count <= u32::MAX as usize);
-//     let count = count as u32;
-//     let layouts = (&subtree.shuffle_ram_inits_and_teardowns).into();
-//     let inits_and_teardowns = inits_and_teardowns.into();
-//     let aux_comparison_sets = (&aux_comparison_sets).into();
-//     let memory = memory.as_mut_ptr_and_stride();
-//     let witness = witness.as_mut_ptr_and_stride();
-//     let (grid_dim, block_dim) = get_grid_block_dims_for_threads_count(WARP_SIZE * 4, count);
-//     let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
-//     let args = GenerateMemoryAndWitnessValuesUnrolledInitsAndTeardownsArguments::new(
-//         layouts,
-//         aux_comparison_sets,
-//         inits_and_teardowns,
-//         memory,
-//         witness,
-//         count,
-//     );
-//     GenerateMemoryAndWitnessValuesUnrolledInitsAndTeardownsFunction::default()
-//         .launch(&config, &args)
-// }
+pub(crate) fn generate_memory_and_witness_values_unrolled_inits_and_teardowns(
+    layout: &GKRMemoryLayout,
+    inits_and_teardowns: &ShuffleRamInitsAndTeardownsDevice,
+    memory: &mut impl DeviceMatrixMutImpl<BF>,
+    witness: &mut impl DeviceMatrixMutImpl<BF>,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    let count = memory.stride();
+    assert_eq!(memory.cols(), layout.total_width);
+    assert_eq!(witness.cols(), 0, "standalone init/teardown witness width is expected to be zero");
+    set_by_val(BF::new(0), memory.slice_mut(), stream)?;
+    assert!(
+        inits_and_teardowns.inits_and_teardowns.len() <= count * layout.teardown_sets.len(),
+        "standalone init/teardown transfer exceeds per-set capacity",
+    );
+    let sparse_items_count = inits_and_teardowns.inits_and_teardowns.len();
+    if sparse_items_count == 0 {
+        return Ok(());
+    }
+    assert!(count <= u32::MAX as usize);
+    let count = count as u32;
+    let layouts = (&layout.teardown_sets).into();
+    let inits_and_teardowns = inits_and_teardowns.into();
+    let memory = memory.as_mut_ptr_and_stride();
+    let witness = witness.as_mut_ptr_and_stride();
+    let (grid_dim, block_dim) =
+        get_grid_block_dims_for_threads_count(WARP_SIZE * 4, sparse_items_count as u32);
+    let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
+    let args = GenerateMemoryAndWitnessValuesUnrolledInitsAndTeardownsArguments::new(
+        layouts,
+        inits_and_teardowns,
+        memory,
+        witness,
+        count,
+    );
+    GenerateMemoryAndWitnessValuesUnrolledInitsAndTeardownsFunction::default()
+        .launch(&config, &args)
+}
 //
 // pub(crate) fn generate_memory_and_witness_values_unrolled_unified(
 //     subtree: &MemorySubtree,
