@@ -1,6 +1,41 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+CIRCUITS=(
+  add_sub_lui_auipc_mop
+  bigint_with_extended_control
+  blake2_with_extended_control
+  jump_branch_slt
+  keccak_special5
+  mem_subword_only
+  mem_word_only
+  shift_binop
+)
+
+read_cycles() {
+  for circuit in "${CIRCUITS[@]}"; do
+    local svg="verifier/gkr_flamegraph_${circuit}.svg"
+    if [[ -f "$svg" ]]; then
+      grep -o 'total_samples="[0-9]*"' "$svg" | grep -o '[0-9]*'
+    else
+      echo "0"
+    fi
+  done
+}
+
+# --- Record BEFORE cycles ---
+echo "==> Reading cycle counts before tests..."
+before=()
+while IFS= read -r n; do
+  before+=("$n")
+done < <(read_cycles)
+
+for i in "${!CIRCUITS[@]}"; do
+  echo "  ${CIRCUITS[$i]}: ${before[$i]}"
+done
+
+# --- Run pipeline ---
+
 # echo "==> Step 0: Compile GKR circuits"
 # (cd cs && cargo test -p cs --release)
 
@@ -9,13 +44,52 @@ set -euo pipefail
 #   -- --nocapture gkr_run_basic_unrolled_test)
 
 echo "==> Step 2: Regenerate inlined GKR verifier"
-cargo test -p verifier_generator --test generate_verifiers
+RUSTFLAGS="-Awarnings" cargo test -p verifier_generator --test generate_verifiers
 
 echo "==> Step 3: Build RISC-V binary"
 (cd tools/gkr_verifier && ./dump_bin.sh)
 
 echo "==> Step 4: Verifier tests"
-cargo test -p verifier --features gkr_verify \
-  -- --include-ignored
+RUSTFLAGS="-Awarnings" cargo test -p verifier --tests --features gkr_verify -- --include-ignored
 
+# --- Record AFTER cycles ---
+echo ""
+echo "==> Reading cycle counts after tests..."
+after=()
+while IFS= read -r n; do
+  after+=("$n")
+done < <(read_cycles)
+
+# --- Summary ---
+echo ""
+echo "=== Cycle Count Summary ==="
+printf "%-40s %10s %10s %10s\n" "Circuit" "Before" "After" "Delta"
+printf "%-40s %10s %10s %10s\n" "-------" "------" "-----" "-----"
+total_before=0
+total_after=0
+for i in "${!CIRCUITS[@]}"; do
+  b=${before[$i]}
+  a=${after[$i]}
+  d=$((a - b))
+  total_before=$((total_before + b))
+  total_after=$((total_after + a))
+  if [[ $d -gt 0 ]]; then
+    sign="+"
+  elif [[ $d -lt 0 ]]; then
+    sign=""
+  else
+    sign=""
+  fi
+  printf "%-40s %10d %10d %10s\n" "${CIRCUITS[$i]}" "$b" "$a" "${sign}${d}"
+done
+total_d=$((total_after - total_before))
+if [[ $total_d -gt 0 ]]; then
+  sign="+"
+elif [[ $total_d -lt 0 ]]; then
+  sign=""
+else
+  sign=""
+fi
+printf "%-40s %10d %10d %10s\n" "TOTAL" "$total_before" "$total_after" "${sign}${total_d}"
+echo ""
 echo "==> All tests passed!"

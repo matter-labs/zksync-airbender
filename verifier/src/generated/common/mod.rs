@@ -1,7 +1,4 @@
-use core::mem::MaybeUninit;
-use verifier_common::blake2s_u32::{
-    AlignedArray64, DelegatedBlake2sState, BLAKE2S_DIGEST_SIZE_U32_WORDS,
-};
+use verifier_common::blake2s_u32::{DelegatedBlake2sState, BLAKE2S_DIGEST_SIZE_U32_WORDS};
 use verifier_common::field::baby_bear::base::BabyBearField;
 use verifier_common::field::baby_bear::ext4::BabyBearExt4;
 use verifier_common::field::{Field, FieldExtension, PrimeField};
@@ -9,29 +6,34 @@ use verifier_common::field_ops;
 use verifier_common::gkr::GKRVerificationError;
 use verifier_common::lazy_vec::LazyVec;
 use verifier_common::non_determinism_source::NonDeterminismSource;
+use verifier_common::structs::CommitBuf;
 use verifier_common::transcript::{Blake2sTranscript, Seed};
 pub const EXT_DEGREE: usize = <BabyBearExt4 as FieldExtension<BabyBearField>>::DEGREE;
+#[doc = r" Read a single reduced field element from NDS. This is the single"]
+#[doc = r" entry point for all field-element NDS reads — ensures the correct"]
+#[doc = r" modulus is always used."]
+#[inline(always)]
+pub fn read_reduced_field_el<I: NonDeterminismSource>() -> u32 {
+    I::read_reduced_field_element(BabyBearField::ORDER)
+}
 #[inline(always)]
 pub fn read_field_el<I: NonDeterminismSource>() -> BabyBearExt4 {
     let mut words = LazyVec::<BabyBearField, EXT_DEGREE>::new();
-    for _ in 0..EXT_DEGREE {
-        words.push(BabyBearField::from_reduced_raw_repr(
-            I::read_reduced_field_element(BabyBearField::ORDER),
-        ));
+    let mut k = 0;
+    while k < EXT_DEGREE {
+        let raw = read_reduced_field_el::<I>();
+        words.push(BabyBearField::from_reduced_raw_repr(raw));
+        k += 1;
     }
-    unsafe { core::ptr::read(words.as_slice().as_ptr().cast::<BabyBearExt4>()) }
+    unsafe { core::mem::transmute::<[BabyBearField; EXT_DEGREE], BabyBearExt4>(words.into_array()) }
 }
 #[inline(always)]
 pub fn read_field_els<I: NonDeterminismSource>(dst: &mut [BabyBearExt4]) {
-    for el in dst.iter_mut() {
-        *el = read_field_el::<I>();
+    let mut i = 0;
+    while i < dst.len() {
+        dst[i] = read_field_el::<I>();
+        i += 1;
     }
-}
-#[inline(always)]
-pub fn commit_field_els(seed: &mut Seed, els: &[BabyBearExt4]) {
-    let total = els.len() * EXT_DEGREE;
-    let as_u32 = unsafe { core::slice::from_raw_parts(els.as_ptr().cast::<u32>(), total) };
-    Blake2sTranscript::commit_with_seed(seed, as_u32);
 }
 #[inline(always)]
 pub fn draw_field_els_into<const BUF_CAP: usize>(
@@ -59,8 +61,8 @@ pub fn draw_field_els_into<const BUF_CAP: usize>(
         }
         unsafe {
             *dst.get_unchecked_mut(i) =
-                core::ptr::read(arr.as_slice().as_ptr().cast::<BabyBearExt4>())
-        };
+                core::mem::transmute::<[BabyBearField; EXT_DEGREE], BabyBearExt4>(arr.into_array());
+        }
         i += 1;
     }
 }
@@ -129,25 +131,22 @@ pub fn verify_sumcheck_rounds<
     let mut claim = initial_claim;
     let mut eq_prefactor = BabyBearExt4::ONE;
     let coeff_data_words = 4 * EXT_DEGREE;
-    let total_commit_words = BLAKE2S_DIGEST_SIZE_U32_WORDS + coeff_data_words;
-    let mut commit_buf = AlignedArray64::<u32, COMMIT_BUF>::new_uninit();
-    unsafe { commit_buf.zero_range(total_commit_words, COMMIT_BUF) };
+    let mut commit_buf = CommitBuf::<COMMIT_BUF>::new();
     let mut hasher = DelegatedBlake2sState::new();
     let mut draw_buf = LazyVec::<u32, BLAKE2S_DIGEST_SIZE_U32_WORDS>::new();
     unsafe {
         draw_buf.set_len(BLAKE2S_DIGEST_SIZE_U32_WORDS);
     }
     for round in 0..NUM_ROUNDS {
-        commit_buf.copy_from_slice(0, &seed.0);
-        for i in 0..coeff_data_words {
-            commit_buf.write(BLAKE2S_DIGEST_SIZE_U32_WORDS + i, I::read_word());
+        {
+            let mut i = 0;
+            while i < coeff_data_words {
+                commit_buf.data_write(i, I::read_word());
+                i += 1;
+            }
         }
-        let coeffs = unsafe {
-            &*commit_buf
-                .as_ptr()
-                .add(BLAKE2S_DIGEST_SIZE_U32_WORDS)
-                .cast::<[BabyBearExt4; 4]>()
-        };
+        let coeffs: [BabyBearExt4; 4] =
+            unsafe { *commit_buf.data_as::<[BabyBearExt4; 4]>(1).as_ptr() };
         let p0 = coeffs[0];
         let mut p1 = coeffs[0];
         field_ops::add_assign(&mut p1, &coeffs[1]);
@@ -162,12 +161,7 @@ pub fn verify_sumcheck_rounds<
                 round,
             });
         }
-        Blake2sTranscript::commit_with_seed_using_hasher_and_aligned_buffer(
-            &mut hasher,
-            seed,
-            unsafe { commit_buf.assume_init_ref() },
-            total_commit_words,
-        );
+        commit_buf.commit(&mut hasher, seed, coeff_data_words);
         Blake2sTranscript::draw_randomness_using_hasher(&mut hasher, seed, draw_buf.as_mut_slice());
         let r_k = {
             let mut arr = LazyVec::<BabyBearField, EXT_DEGREE>::new();
@@ -175,7 +169,9 @@ pub fn verify_sumcheck_rounds<
                 let w = *draw_buf.get(i);
                 arr.push(BabyBearField::from_raw_repr_with_reduction(w));
             }
-            unsafe { core::ptr::read(arr.as_slice().as_ptr().cast::<BabyBearExt4>()) }
+            unsafe {
+                core::mem::transmute::<[BabyBearField; EXT_DEGREE], BabyBearExt4>(arr.into_array())
+            }
         };
         {
             let mut result = coeffs[3];
@@ -227,12 +223,11 @@ pub fn verify_final_step_check(
 }
 #[inline(always)]
 pub fn fold_standard_claims<const NUM_ADDRS: usize, const ADDRS: usize, const BUF: usize>(
-    eval_buf: &AlignedArray64<MaybeUninit<u32>, BUF>,
+    eval_buf: &CommitBuf<BUF>,
     last_r: BabyBearExt4,
     claims: &mut LazyVec<BabyBearExt4, ADDRS>,
 ) {
-    let final_step_evals: &[[BabyBearExt4; 2]] =
-        unsafe { eval_buf.transmute_subslice(BLAKE2S_DIGEST_SIZE_U32_WORDS, NUM_ADDRS) };
+    let final_step_evals: &[[BabyBearExt4; 2]] = unsafe { eval_buf.data_as(NUM_ADDRS) };
     claims.clear();
     for i in 0..NUM_ADDRS {
         let evals = unsafe { final_step_evals.get_unchecked(i) };
@@ -274,11 +269,23 @@ pub fn verify_whir_sumcheck_step<I: NonDeterminismSource>(
     claim: BabyBearExt4,
     round: usize,
 ) -> Result<(BabyBearExt4, BabyBearExt4), WhirVerificationError> {
-    let c0 = read_field_el::<I>();
-    let c1 = read_field_el::<I>();
-    let c2 = read_field_el::<I>();
-    let coeffs = [c0, c1, c2];
-    commit_field_els(seed, &coeffs);
+    const WHIR_SC_DATA_WORDS: usize = 3 * EXT_DEGREE;
+    const WHIR_SC_COMMIT_BUF: usize = {
+        let total = BLAKE2S_DIGEST_SIZE_U32_WORDS + WHIR_SC_DATA_WORDS;
+        (total + ::verifier_common::blake2s_u32::BLAKE2S_BLOCK_SIZE_U32_WORDS - 1)
+            / ::verifier_common::blake2s_u32::BLAKE2S_BLOCK_SIZE_U32_WORDS
+            * ::verifier_common::blake2s_u32::BLAKE2S_BLOCK_SIZE_U32_WORDS
+    };
+    let mut buf = CommitBuf::<WHIR_SC_COMMIT_BUF>::new();
+    {
+        let mut i = 0;
+        while i < WHIR_SC_DATA_WORDS {
+            buf.data_write(i, read_reduced_field_el::<I>());
+            i += 1;
+        }
+    }
+    let coeffs: [BabyBearExt4; 3] = unsafe { *buf.data_as::<[BabyBearExt4; 3]>(1).as_ptr() };
+    let (c0, c1, c2) = (coeffs[0], coeffs[1], coeffs[2]);
     let p0 = c0;
     let mut p1 = c0;
     field_ops::add_assign(&mut p1, &c1);
@@ -288,6 +295,7 @@ pub fn verify_whir_sumcheck_step<I: NonDeterminismSource>(
     if sum != claim {
         return Err(WhirVerificationError::SumcheckFailed { round });
     }
+    buf.commit(hasher, seed, WHIR_SC_DATA_WORDS);
     let mut challenge_buf = LazyVec::<BabyBearExt4, 1>::new();
     unsafe {
         challenge_buf.set_len(1);

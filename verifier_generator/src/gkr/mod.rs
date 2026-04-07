@@ -81,27 +81,24 @@ pub fn generate_gkr_common<MW: MersenneWrapper>() -> TokenStream {
             let mut eq_prefactor = #quartic_one;
 
             let coeff_data_words = 4 * EXT_DEGREE;
-            let total_commit_words = BLAKE2S_DIGEST_SIZE_U32_WORDS + coeff_data_words;
 
-            let mut commit_buf = AlignedArray64::<u32, COMMIT_BUF>::new_uninit();
-            // Zero only the padding tail once; the active region is overwritten every iteration.
-            unsafe { commit_buf.zero_range(total_commit_words, COMMIT_BUF) };
+            let mut commit_buf = CommitBuf::<COMMIT_BUF>::new();
             let mut hasher = DelegatedBlake2sState::new();
             let mut draw_buf = LazyVec::<u32, BLAKE2S_DIGEST_SIZE_U32_WORDS>::new();
             unsafe { draw_buf.set_len(BLAKE2S_DIGEST_SIZE_U32_WORDS); }
 
             for round in 0..NUM_ROUNDS {
-                commit_buf.copy_from_slice(0, &seed.0);
-
-                for i in 0..coeff_data_words {
-                    commit_buf.write(BLAKE2S_DIGEST_SIZE_U32_WORDS + i, I::read_word());
+                {
+                    let mut i = 0;
+                    while i < coeff_data_words {
+                        commit_buf.data_write(i, I::read_word());
+                        i += 1;
+                    }
                 }
 
-                let coeffs = unsafe {
-                    &*commit_buf
-                        .as_ptr()
-                        .add(BLAKE2S_DIGEST_SIZE_U32_WORDS)
-                        .cast::<[#quartic_struct; 4]>()
+                // Copy coefficients out before committing (commit borrows &mut self).
+                let coeffs: [#quartic_struct; 4] = unsafe {
+                    *commit_buf.data_as::<[#quartic_struct; 4]>(1).as_ptr()
                 };
 
                 let p0 = coeffs[0];
@@ -121,12 +118,7 @@ pub fn generate_gkr_common<MW: MersenneWrapper>() -> TokenStream {
                     });
                 }
 
-                Blake2sTranscript::commit_with_seed_using_hasher_and_aligned_buffer(
-                    &mut hasher,
-                    seed,
-                    unsafe { commit_buf.assume_init_ref() },
-                    total_commit_words,
-                );
+                commit_buf.commit(&mut hasher, seed, coeff_data_words);
 
                 Blake2sTranscript::draw_randomness_using_hasher(&mut hasher, seed, draw_buf.as_mut_slice());
                 let r_k = {
@@ -135,7 +127,7 @@ pub fn generate_gkr_common<MW: MersenneWrapper>() -> TokenStream {
                         let w = *draw_buf.get(i);
                         arr.push(#field_from_u32);
                     }
-                    unsafe { core::ptr::read(arr.as_slice().as_ptr().cast::<#quartic_struct>()) }
+                    unsafe { core::mem::transmute::<[#field_struct; EXT_DEGREE], #quartic_struct>(arr.into_array()) }
                 };
 
                 {
@@ -196,12 +188,12 @@ pub fn generate_gkr_common<MW: MersenneWrapper>() -> TokenStream {
             const ADDRS: usize,
             const BUF: usize,
         >(
-            eval_buf: &AlignedArray64<MaybeUninit<u32>, BUF>,
+            eval_buf: &CommitBuf<BUF>,
             last_r: #quartic_struct,
             claims: &mut LazyVec<#quartic_struct, ADDRS>,
         ) {
             let final_step_evals: &[[#quartic_struct; 2]] =
-                unsafe { eval_buf.transmute_subslice(BLAKE2S_DIGEST_SIZE_U32_WORDS, NUM_ADDRS) };
+                unsafe { eval_buf.data_as(NUM_ADDRS) };
             claims.clear();
             for i in 0..NUM_ADDRS {
                 let evals = unsafe { final_step_evals.get_unchecked(i) };
@@ -657,6 +649,9 @@ where
     let commit_buf_total = digest_words + 4 * degree;
     let commit_buf_size = commit_buf_total.div_ceil(block_words) * block_words;
 
+    let evals_commit_total = digest_words + max_evals * degree;
+    let evals_commit_buf_size = evals_commit_total.div_ceil(block_words) * block_words;
+
     let initial_transcript_num_u32_words = {
         let mut tmp = Vec::<u32>::new();
         if let Some(top_bits) = proof.inits_and_teardowns_top_bits {
@@ -754,8 +749,12 @@ where
 
     main_body.extend(quote! {
         let mut transcript_buf = LazyVec::<u32, GKR_TRANSCRIPT_U32>::new();
-        for _ in 0..GKR_TRANSCRIPT_U32 {
-            transcript_buf.push(I::read_word());
+        {
+            let mut i = 0;
+            while i < GKR_TRANSCRIPT_U32 {
+                transcript_buf.push(I::read_word());
+                i += 1;
+            }
         }
 
         // Extract oracle caps before committing the transcript buffer.
@@ -819,11 +818,17 @@ where
     }
 
     main_body.extend(quote! {
-        let mut evals_flat = LazyVec::<#quartic_struct, GKR_EVALS>::new();
-        unsafe { evals_flat.set_len(#total_evals_needed); }
-        read_field_els::<I>(evals_flat.as_mut_slice());
-        let evals_slice = evals_flat.as_slice();
-        commit_field_els(&mut seed, evals_slice);
+        let mut evals_commit_buf = CommitBuf::<GKR_EVALS_COMMIT_BUF>::new();
+        let evals_data_words = #total_evals_needed * EXT_DEGREE;
+        {
+            let mut i = 0;
+            while i < evals_data_words {
+                evals_commit_buf.data_write(i, read_reduced_field_el::<I>());
+                i += 1;
+            }
+        }
+        evals_commit_buf.commit(&mut hasher, &mut seed, evals_data_words);
+        let evals_slice: &[#quartic_struct] = unsafe { evals_commit_buf.data_as(#total_evals_needed) };
 
         let mut all_challenges = LazyVec::<#quartic_struct, { GKR_ROUNDS + 1 }>::new();
         unsafe { all_challenges.set_len(#num_challenges); }
@@ -856,7 +861,7 @@ where
             batching_challenge,
         };
 
-        let mut eval_buf = AlignedArray64::<u32, GKR_EVAL_BUF>::new_uninit();
+        let mut eval_buf = CommitBuf::<GKR_EVAL_BUF>::new();
     });
 
     for config_idx in (num_standard_layers..=initial_layer_for_sumcheck).rev() {
@@ -880,16 +885,21 @@ where
                         &mut seed, initial_claim, &mut state.prev_point, #config_idx)?;
                 let mut fc_len = #num_regular_rounds;
                 let data_words = #num_input_addrs * 4 * <#quartic_struct as FieldExtension<#field_struct>>::DEGREE;
-                read_eval_data_from_nds::<I, GKR_EVAL_BUF>(&mut eval_buf, data_words);
                 {
-                    let evals: &[[#quartic_struct; 4]] = eval_buf.transmute_subslice(
-                        BLAKE2S_DIGEST_SIZE_U32_WORDS, #num_input_addrs);
+                    let mut i = 0;
+                    while i < data_words {
+                        eval_buf.data_write(i, I::read_word());
+                        i += 1;
+                    }
+                }
+                {
+                    let evals: &[[#quartic_struct; 4]] = eval_buf.data_as(#num_input_addrs);
                     let f = #final_step_fn(evals, state.batching_challenge);
                     verify_final_step_check(f,
                         *state.prev_point.get_unchecked(state.prev_point_len - 1),
                         final_eq_prefactor, final_claim, #config_idx)?;
                 }
-                commit_eval_buffer(&mut eval_buf, &mut hasher, &mut seed, data_words);
+                eval_buf.commit(&mut hasher, &mut seed, data_words);
                 let mut draw_buf = LazyVec::<#quartic_struct, 3>::new();
                 unsafe { draw_buf.set_len(3); }
                 draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut hasher, &mut seed, draw_buf.as_mut_slice());
@@ -904,8 +914,7 @@ where
                 const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;
                 let mut eq4 = LazyVec::<#quartic_struct, DIM_REDUCING_EQ_SIZE>::new();
                 make_eq_poly(&[r_before_last, r_last], &mut eq4);
-                let evals: &[[#quartic_struct; DIM_REDUCING_EQ_SIZE]] = eval_buf.transmute_subslice(
-                    BLAKE2S_DIGEST_SIZE_U32_WORDS, #num_input_addrs);
+                let evals: &[[#quartic_struct; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(#num_input_addrs);
                 let eq4_arr: &[#quartic_struct; DIM_REDUCING_EQ_SIZE] =
                     eq4.as_slice().try_into().unwrap_unchecked();
                 state.prev_claims.clear();
@@ -981,13 +990,29 @@ where
             let ep_merged: Vec<usize> = extra_positions.iter().map(|p| p.0).collect();
             let ep_extra: Vec<usize> = extra_positions.iter().map(|p| p.1).collect();
 
+            let extra_data_words = num_extra * E::DEGREE;
+            let extra_commit_total = digest_words + extra_data_words;
+            let extra_commit_buf_size = extra_commit_total.div_ceil(block_words) * block_words;
             quote! {
+                const EXTRA_COMMIT_BUF: usize = #extra_commit_buf_size;
+                let mut extra_buf = CommitBuf::<EXTRA_COMMIT_BUF>::new();
+                let extra_data_words = #num_extra * EXT_DEGREE;
+                {
+                    let mut i = 0;
+                    while i < extra_data_words {
+                        extra_buf.data_write(i, read_reduced_field_el::<I>());
+                        i += 1;
+                    }
+                }
                 let mut extra_evals = LazyVec::<#quartic_struct, #num_extra>::new();
-                unsafe { extra_evals.set_len(#num_extra); }
-                read_field_els::<I>(extra_evals.as_mut_slice());
-                commit_field_els(&mut seed, extra_evals.as_slice());
-                let final_step_evals: &[[#quartic_struct; 2]] = eval_buf.transmute_subslice(
-                    BLAKE2S_DIGEST_SIZE_U32_WORDS, #num_dedup_addrs);
+                {
+                    let slice: &[#quartic_struct] = unsafe { extra_buf.data_as(#num_extra) };
+                    for el in slice {
+                        extra_evals.push(*el);
+                    }
+                }
+                extra_buf.commit(&mut hasher, &mut seed, extra_data_words);
+                let final_step_evals: &[[#quartic_struct; 2]] = unsafe { eval_buf.data_as(#num_dedup_addrs) };
                 state.prev_claims.clear();
                 {
                     const EXTRA_POS: [(usize, usize); #num_extra_pos] = [
@@ -1033,17 +1058,22 @@ where
                         &mut seed, initial_claim, &mut state.prev_point, #config_idx)?;
                 let mut fc_len = #num_regular_rounds;
                 let data_words = #num_dedup_addrs * 2 * <#quartic_struct as FieldExtension<#field_struct>>::DEGREE;
-                read_eval_data_from_nds::<I, GKR_EVAL_BUF>(&mut eval_buf, data_words);
                 {
-                    let evals: &[[#quartic_struct; 2]] = eval_buf.transmute_subslice(
-                        BLAKE2S_DIGEST_SIZE_U32_WORDS, #num_dedup_addrs);
+                    let mut i = 0;
+                    while i < data_words {
+                        eval_buf.data_write(i, I::read_word());
+                        i += 1;
+                    }
+                }
+                {
+                    let evals: &[[#quartic_struct; 2]] = eval_buf.data_as(#num_dedup_addrs);
                     let f = #final_step_fn(evals, state.batching_challenge,
                         lookup_additive_challenge, lookup_alpha, &challenge_powers);
                     verify_final_step_check(f,
                         *state.prev_point.get_unchecked(state.prev_point_len - 1),
                         final_eq_prefactor, final_claim, #config_idx)?;
                 }
-                commit_eval_buffer(&mut eval_buf, &mut hasher, &mut seed, data_words);
+                eval_buf.commit(&mut hasher, &mut seed, data_words);
                 let mut draw_buf = LazyVec::<#quartic_struct, 2>::new();
                 unsafe { draw_buf.set_len(2); }
                 draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut hasher, &mut seed, draw_buf.as_mut_slice());
@@ -1162,6 +1192,7 @@ where
         pub const GKR_MAX_POW: usize = #max_pow;
         pub const GKR_EVAL_BUF: usize = #eval_buf_size;
         pub const GKR_COMMIT_BUF: usize = #commit_buf_size;
+        pub const GKR_EVALS_COMMIT_BUF: usize = #evals_commit_buf_size;
         pub const DRAW_BUF_CAPACITY: usize = #draw_buf_capacity;
         #static_data
         pub const BASE_LAYER_ADDITIONAL_OPENINGS: &[GKRAddress] = &[#base_openings_stream];
@@ -1187,15 +1218,17 @@ where
         #field_use_stmts
         use ::verifier_common::gkr::{
             GKRVerifierOutput, GKRVerificationError, LayerState, LazyVec,
-            read_eval_data_from_nds, commit_eval_buffer,
         };
+        use ::verifier_common::structs::CommitBuf;
         use super::common::{
             verify_sumcheck_rounds, verify_final_step_check, fold_standard_claims,
-            make_eq_poly, dot_eq, draw_field_els_into, read_field_el, read_field_els, commit_field_els,
+            make_eq_poly, dot_eq, draw_field_els_into,
+            read_field_el, read_reduced_field_el,
+            EXT_DEGREE,
         };
         use ::verifier_common::field_ops;
         use ::verifier_common::transcript::Blake2sTranscript;
-        use ::verifier_common::blake2s_u32::{AlignedArray64, DelegatedBlake2sState, BLAKE2S_DIGEST_SIZE_U32_WORDS};
+        use ::verifier_common::blake2s_u32::DelegatedBlake2sState;
         use ::verifier_common::field::{Field, FieldExtension, PrimeField};
         use ::verifier_common::non_determinism_source::NonDeterminismSource;
         use super::constants::*;

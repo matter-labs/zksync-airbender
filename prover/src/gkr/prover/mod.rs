@@ -570,7 +570,6 @@ where
             lookup_additive_part,
             constraints_batch_challenge,
             external_challenges,
-            lookup_alpha,
             &mut seed,
             worker,
         );

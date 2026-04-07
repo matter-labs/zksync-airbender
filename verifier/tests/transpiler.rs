@@ -91,6 +91,18 @@ fn run_transpiler(name: &str) {
         (state.timestamp - common_constants::INITIAL_TIMESTAMP) / common_constants::TIMESTAMP_STEP;
     println!("{}: finished in {} cycles", name, exact_cycles);
 
+    let c = &state.counters;
+    println!("{}: circuit call counters:", name);
+    println!("  add_sub_lui_auipc_mop: {}", c.add_sub_family);
+    println!("  jump_branch_slt:       {}", c.slt_branch_family);
+    println!("  shift_binop_csr:       {}", c.binary_shift_csr_family);
+    println!("  mul_div:               {}", c.mul_div_family);
+    println!("  mem_word:              {}", c.word_size_mem_family);
+    println!("  mem_subword:           {}", c.subword_size_mem_family);
+    println!("  blake2:                {}", c.blake_calls);
+    println!("  bigint:                {}", c.bigint_calls);
+    println!("  keccak:                {}", c.keccak_calls);
+
     for (i, reg) in state.registers[10..18].iter().enumerate() {
         println!("  a{} = 0x{:08x} ({})", i, reg.value, reg.value);
     }

@@ -1,20 +1,16 @@
 use super::common::{
-    commit_field_els, dot_eq, draw_field_els_into, fold_standard_claims, make_eq_poly,
-    read_field_el, read_field_els, verify_final_step_check, verify_sumcheck_rounds,
+    dot_eq, draw_field_els_into, fold_standard_claims, make_eq_poly, read_field_el,
+    read_reduced_field_el, verify_final_step_check, verify_sumcheck_rounds, EXT_DEGREE,
 };
 use super::constants::*;
-use verifier_common::blake2s_u32::{
-    AlignedArray64, DelegatedBlake2sState, BLAKE2S_DIGEST_SIZE_U32_WORDS,
-};
+use verifier_common::blake2s_u32::DelegatedBlake2sState;
 use verifier_common::field::baby_bear::base::BabyBearField;
 use verifier_common::field::baby_bear::ext4::BabyBearExt4;
 use verifier_common::field::{Field, FieldExtension, PrimeField};
 use verifier_common::field_ops;
-use verifier_common::gkr::{
-    commit_eval_buffer, read_eval_data_from_nds, GKRVerificationError, GKRVerifierOutput,
-    LayerState, LazyVec,
-};
+use verifier_common::gkr::{GKRVerificationError, GKRVerifierOutput, LayerState, LazyVec};
 use verifier_common::non_determinism_source::NonDeterminismSource;
+use verifier_common::structs::CommitBuf;
 use verifier_common::transcript::Blake2sTranscript;
 #[inline(always)]
 #[allow(clippy::needless_borrow)]
@@ -7179,8 +7175,12 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
 > {
     unsafe {
         let mut transcript_buf = LazyVec::<u32, GKR_TRANSCRIPT_U32>::new();
-        for _ in 0..GKR_TRANSCRIPT_U32 {
-            transcript_buf.push(I::read_word());
+        {
+            let mut i = 0;
+            while i < GKR_TRANSCRIPT_U32 {
+                transcript_buf.push(I::read_word());
+                i += 1;
+            }
         }
         let setup_cap: [u32; SETUP_CAP_WORDS] = {
             let src = &transcript_buf.as_slice()
@@ -7213,13 +7213,17 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
         let lookup_alpha = *init_challenges.get(0);
         let lookup_additive_challenge = *init_challenges.get(1);
         let constraints_batch_challenge = *init_challenges.get(2);
-        let mut evals_flat = LazyVec::<BabyBearExt4, GKR_EVALS>::new();
-        unsafe {
-            evals_flat.set_len(128usize);
+        let mut evals_commit_buf = CommitBuf::<GKR_EVALS_COMMIT_BUF>::new();
+        let evals_data_words = 128usize * EXT_DEGREE;
+        {
+            let mut i = 0;
+            while i < evals_data_words {
+                evals_commit_buf.data_write(i, read_reduced_field_el::<I>());
+                i += 1;
+            }
         }
-        read_field_els::<I>(evals_flat.as_mut_slice());
-        let evals_slice = evals_flat.as_slice();
-        commit_field_els(&mut seed, evals_slice);
+        evals_commit_buf.commit(&mut hasher, &mut seed, evals_data_words);
+        let evals_slice: &[BabyBearExt4] = unsafe { evals_commit_buf.data_as(128usize) };
         let mut all_challenges = LazyVec::<BabyBearExt4, { GKR_ROUNDS + 1 }>::new();
         unsafe {
             all_challenges.set_len(5usize);
@@ -7309,7 +7313,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             prev_claims,
             batching_challenge,
         };
-        let mut eval_buf = AlignedArray64::<u32, GKR_EVAL_BUF>::new_uninit();
+        let mut eval_buf = CommitBuf::<GKR_EVAL_BUF>::new();
         {
             let initial_claim =
                 dim_reducing_23_compute_claim(&state.prev_claims, state.batching_challenge);
@@ -7322,10 +7326,15 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                 )?;
             let mut fc_len = 3usize;
             let data_words = 8usize * 4 * <BabyBearExt4 as FieldExtension<BabyBearField>>::DEGREE;
-            read_eval_data_from_nds::<I, GKR_EVAL_BUF>(&mut eval_buf, data_words);
             {
-                let evals: &[[BabyBearExt4; 4]] =
-                    eval_buf.transmute_subslice(BLAKE2S_DIGEST_SIZE_U32_WORDS, 8usize);
+                let mut i = 0;
+                while i < data_words {
+                    eval_buf.data_write(i, I::read_word());
+                    i += 1;
+                }
+            }
+            {
+                let evals: &[[BabyBearExt4; 4]] = eval_buf.data_as(8usize);
                 let f = dim_reducing_23_final_step_accumulator(evals, state.batching_challenge);
                 verify_final_step_check(
                     f,
@@ -7335,7 +7344,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                     23usize,
                 )?;
             }
-            commit_eval_buffer(&mut eval_buf, &mut hasher, &mut seed, data_words);
+            eval_buf.commit(&mut hasher, &mut seed, data_words);
             let mut draw_buf = LazyVec::<BabyBearExt4, 3>::new();
             unsafe {
                 draw_buf.set_len(3);
@@ -7356,8 +7365,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;
             let mut eq4 = LazyVec::<BabyBearExt4, DIM_REDUCING_EQ_SIZE>::new();
             make_eq_poly(&[r_before_last, r_last], &mut eq4);
-            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] =
-                eval_buf.transmute_subslice(BLAKE2S_DIGEST_SIZE_U32_WORDS, 8usize);
+            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(8usize);
             let eq4_arr: &[BabyBearExt4; DIM_REDUCING_EQ_SIZE] =
                 eq4.as_slice().try_into().unwrap_unchecked();
             state.prev_claims.clear();
@@ -7380,10 +7388,15 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                 )?;
             let mut fc_len = 4usize;
             let data_words = 8usize * 4 * <BabyBearExt4 as FieldExtension<BabyBearField>>::DEGREE;
-            read_eval_data_from_nds::<I, GKR_EVAL_BUF>(&mut eval_buf, data_words);
             {
-                let evals: &[[BabyBearExt4; 4]] =
-                    eval_buf.transmute_subslice(BLAKE2S_DIGEST_SIZE_U32_WORDS, 8usize);
+                let mut i = 0;
+                while i < data_words {
+                    eval_buf.data_write(i, I::read_word());
+                    i += 1;
+                }
+            }
+            {
+                let evals: &[[BabyBearExt4; 4]] = eval_buf.data_as(8usize);
                 let f = dim_reducing_22_final_step_accumulator(evals, state.batching_challenge);
                 verify_final_step_check(
                     f,
@@ -7393,7 +7406,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                     22usize,
                 )?;
             }
-            commit_eval_buffer(&mut eval_buf, &mut hasher, &mut seed, data_words);
+            eval_buf.commit(&mut hasher, &mut seed, data_words);
             let mut draw_buf = LazyVec::<BabyBearExt4, 3>::new();
             unsafe {
                 draw_buf.set_len(3);
@@ -7414,8 +7427,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;
             let mut eq4 = LazyVec::<BabyBearExt4, DIM_REDUCING_EQ_SIZE>::new();
             make_eq_poly(&[r_before_last, r_last], &mut eq4);
-            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] =
-                eval_buf.transmute_subslice(BLAKE2S_DIGEST_SIZE_U32_WORDS, 8usize);
+            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(8usize);
             let eq4_arr: &[BabyBearExt4; DIM_REDUCING_EQ_SIZE] =
                 eq4.as_slice().try_into().unwrap_unchecked();
             state.prev_claims.clear();
@@ -7438,10 +7450,15 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                 )?;
             let mut fc_len = 5usize;
             let data_words = 8usize * 4 * <BabyBearExt4 as FieldExtension<BabyBearField>>::DEGREE;
-            read_eval_data_from_nds::<I, GKR_EVAL_BUF>(&mut eval_buf, data_words);
             {
-                let evals: &[[BabyBearExt4; 4]] =
-                    eval_buf.transmute_subslice(BLAKE2S_DIGEST_SIZE_U32_WORDS, 8usize);
+                let mut i = 0;
+                while i < data_words {
+                    eval_buf.data_write(i, I::read_word());
+                    i += 1;
+                }
+            }
+            {
+                let evals: &[[BabyBearExt4; 4]] = eval_buf.data_as(8usize);
                 let f = dim_reducing_21_final_step_accumulator(evals, state.batching_challenge);
                 verify_final_step_check(
                     f,
@@ -7451,7 +7468,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                     21usize,
                 )?;
             }
-            commit_eval_buffer(&mut eval_buf, &mut hasher, &mut seed, data_words);
+            eval_buf.commit(&mut hasher, &mut seed, data_words);
             let mut draw_buf = LazyVec::<BabyBearExt4, 3>::new();
             unsafe {
                 draw_buf.set_len(3);
@@ -7472,8 +7489,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;
             let mut eq4 = LazyVec::<BabyBearExt4, DIM_REDUCING_EQ_SIZE>::new();
             make_eq_poly(&[r_before_last, r_last], &mut eq4);
-            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] =
-                eval_buf.transmute_subslice(BLAKE2S_DIGEST_SIZE_U32_WORDS, 8usize);
+            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(8usize);
             let eq4_arr: &[BabyBearExt4; DIM_REDUCING_EQ_SIZE] =
                 eq4.as_slice().try_into().unwrap_unchecked();
             state.prev_claims.clear();
@@ -7496,10 +7512,15 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                 )?;
             let mut fc_len = 6usize;
             let data_words = 8usize * 4 * <BabyBearExt4 as FieldExtension<BabyBearField>>::DEGREE;
-            read_eval_data_from_nds::<I, GKR_EVAL_BUF>(&mut eval_buf, data_words);
             {
-                let evals: &[[BabyBearExt4; 4]] =
-                    eval_buf.transmute_subslice(BLAKE2S_DIGEST_SIZE_U32_WORDS, 8usize);
+                let mut i = 0;
+                while i < data_words {
+                    eval_buf.data_write(i, I::read_word());
+                    i += 1;
+                }
+            }
+            {
+                let evals: &[[BabyBearExt4; 4]] = eval_buf.data_as(8usize);
                 let f = dim_reducing_20_final_step_accumulator(evals, state.batching_challenge);
                 verify_final_step_check(
                     f,
@@ -7509,7 +7530,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                     20usize,
                 )?;
             }
-            commit_eval_buffer(&mut eval_buf, &mut hasher, &mut seed, data_words);
+            eval_buf.commit(&mut hasher, &mut seed, data_words);
             let mut draw_buf = LazyVec::<BabyBearExt4, 3>::new();
             unsafe {
                 draw_buf.set_len(3);
@@ -7530,8 +7551,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;
             let mut eq4 = LazyVec::<BabyBearExt4, DIM_REDUCING_EQ_SIZE>::new();
             make_eq_poly(&[r_before_last, r_last], &mut eq4);
-            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] =
-                eval_buf.transmute_subslice(BLAKE2S_DIGEST_SIZE_U32_WORDS, 8usize);
+            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(8usize);
             let eq4_arr: &[BabyBearExt4; DIM_REDUCING_EQ_SIZE] =
                 eq4.as_slice().try_into().unwrap_unchecked();
             state.prev_claims.clear();
@@ -7554,10 +7574,15 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                 )?;
             let mut fc_len = 7usize;
             let data_words = 8usize * 4 * <BabyBearExt4 as FieldExtension<BabyBearField>>::DEGREE;
-            read_eval_data_from_nds::<I, GKR_EVAL_BUF>(&mut eval_buf, data_words);
             {
-                let evals: &[[BabyBearExt4; 4]] =
-                    eval_buf.transmute_subslice(BLAKE2S_DIGEST_SIZE_U32_WORDS, 8usize);
+                let mut i = 0;
+                while i < data_words {
+                    eval_buf.data_write(i, I::read_word());
+                    i += 1;
+                }
+            }
+            {
+                let evals: &[[BabyBearExt4; 4]] = eval_buf.data_as(8usize);
                 let f = dim_reducing_19_final_step_accumulator(evals, state.batching_challenge);
                 verify_final_step_check(
                     f,
@@ -7567,7 +7592,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                     19usize,
                 )?;
             }
-            commit_eval_buffer(&mut eval_buf, &mut hasher, &mut seed, data_words);
+            eval_buf.commit(&mut hasher, &mut seed, data_words);
             let mut draw_buf = LazyVec::<BabyBearExt4, 3>::new();
             unsafe {
                 draw_buf.set_len(3);
@@ -7588,8 +7613,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;
             let mut eq4 = LazyVec::<BabyBearExt4, DIM_REDUCING_EQ_SIZE>::new();
             make_eq_poly(&[r_before_last, r_last], &mut eq4);
-            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] =
-                eval_buf.transmute_subslice(BLAKE2S_DIGEST_SIZE_U32_WORDS, 8usize);
+            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(8usize);
             let eq4_arr: &[BabyBearExt4; DIM_REDUCING_EQ_SIZE] =
                 eq4.as_slice().try_into().unwrap_unchecked();
             state.prev_claims.clear();
@@ -7612,10 +7636,15 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                 )?;
             let mut fc_len = 8usize;
             let data_words = 8usize * 4 * <BabyBearExt4 as FieldExtension<BabyBearField>>::DEGREE;
-            read_eval_data_from_nds::<I, GKR_EVAL_BUF>(&mut eval_buf, data_words);
             {
-                let evals: &[[BabyBearExt4; 4]] =
-                    eval_buf.transmute_subslice(BLAKE2S_DIGEST_SIZE_U32_WORDS, 8usize);
+                let mut i = 0;
+                while i < data_words {
+                    eval_buf.data_write(i, I::read_word());
+                    i += 1;
+                }
+            }
+            {
+                let evals: &[[BabyBearExt4; 4]] = eval_buf.data_as(8usize);
                 let f = dim_reducing_18_final_step_accumulator(evals, state.batching_challenge);
                 verify_final_step_check(
                     f,
@@ -7625,7 +7654,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                     18usize,
                 )?;
             }
-            commit_eval_buffer(&mut eval_buf, &mut hasher, &mut seed, data_words);
+            eval_buf.commit(&mut hasher, &mut seed, data_words);
             let mut draw_buf = LazyVec::<BabyBearExt4, 3>::new();
             unsafe {
                 draw_buf.set_len(3);
@@ -7646,8 +7675,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;
             let mut eq4 = LazyVec::<BabyBearExt4, DIM_REDUCING_EQ_SIZE>::new();
             make_eq_poly(&[r_before_last, r_last], &mut eq4);
-            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] =
-                eval_buf.transmute_subslice(BLAKE2S_DIGEST_SIZE_U32_WORDS, 8usize);
+            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(8usize);
             let eq4_arr: &[BabyBearExt4; DIM_REDUCING_EQ_SIZE] =
                 eq4.as_slice().try_into().unwrap_unchecked();
             state.prev_claims.clear();
@@ -7670,10 +7698,15 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                 )?;
             let mut fc_len = 9usize;
             let data_words = 8usize * 4 * <BabyBearExt4 as FieldExtension<BabyBearField>>::DEGREE;
-            read_eval_data_from_nds::<I, GKR_EVAL_BUF>(&mut eval_buf, data_words);
             {
-                let evals: &[[BabyBearExt4; 4]] =
-                    eval_buf.transmute_subslice(BLAKE2S_DIGEST_SIZE_U32_WORDS, 8usize);
+                let mut i = 0;
+                while i < data_words {
+                    eval_buf.data_write(i, I::read_word());
+                    i += 1;
+                }
+            }
+            {
+                let evals: &[[BabyBearExt4; 4]] = eval_buf.data_as(8usize);
                 let f = dim_reducing_17_final_step_accumulator(evals, state.batching_challenge);
                 verify_final_step_check(
                     f,
@@ -7683,7 +7716,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                     17usize,
                 )?;
             }
-            commit_eval_buffer(&mut eval_buf, &mut hasher, &mut seed, data_words);
+            eval_buf.commit(&mut hasher, &mut seed, data_words);
             let mut draw_buf = LazyVec::<BabyBearExt4, 3>::new();
             unsafe {
                 draw_buf.set_len(3);
@@ -7704,8 +7737,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;
             let mut eq4 = LazyVec::<BabyBearExt4, DIM_REDUCING_EQ_SIZE>::new();
             make_eq_poly(&[r_before_last, r_last], &mut eq4);
-            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] =
-                eval_buf.transmute_subslice(BLAKE2S_DIGEST_SIZE_U32_WORDS, 8usize);
+            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(8usize);
             let eq4_arr: &[BabyBearExt4; DIM_REDUCING_EQ_SIZE] =
                 eq4.as_slice().try_into().unwrap_unchecked();
             state.prev_claims.clear();
@@ -7728,10 +7760,15 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                 )?;
             let mut fc_len = 10usize;
             let data_words = 8usize * 4 * <BabyBearExt4 as FieldExtension<BabyBearField>>::DEGREE;
-            read_eval_data_from_nds::<I, GKR_EVAL_BUF>(&mut eval_buf, data_words);
             {
-                let evals: &[[BabyBearExt4; 4]] =
-                    eval_buf.transmute_subslice(BLAKE2S_DIGEST_SIZE_U32_WORDS, 8usize);
+                let mut i = 0;
+                while i < data_words {
+                    eval_buf.data_write(i, I::read_word());
+                    i += 1;
+                }
+            }
+            {
+                let evals: &[[BabyBearExt4; 4]] = eval_buf.data_as(8usize);
                 let f = dim_reducing_16_final_step_accumulator(evals, state.batching_challenge);
                 verify_final_step_check(
                     f,
@@ -7741,7 +7778,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                     16usize,
                 )?;
             }
-            commit_eval_buffer(&mut eval_buf, &mut hasher, &mut seed, data_words);
+            eval_buf.commit(&mut hasher, &mut seed, data_words);
             let mut draw_buf = LazyVec::<BabyBearExt4, 3>::new();
             unsafe {
                 draw_buf.set_len(3);
@@ -7762,8 +7799,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;
             let mut eq4 = LazyVec::<BabyBearExt4, DIM_REDUCING_EQ_SIZE>::new();
             make_eq_poly(&[r_before_last, r_last], &mut eq4);
-            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] =
-                eval_buf.transmute_subslice(BLAKE2S_DIGEST_SIZE_U32_WORDS, 8usize);
+            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(8usize);
             let eq4_arr: &[BabyBearExt4; DIM_REDUCING_EQ_SIZE] =
                 eq4.as_slice().try_into().unwrap_unchecked();
             state.prev_claims.clear();
@@ -7786,10 +7822,15 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                 )?;
             let mut fc_len = 11usize;
             let data_words = 8usize * 4 * <BabyBearExt4 as FieldExtension<BabyBearField>>::DEGREE;
-            read_eval_data_from_nds::<I, GKR_EVAL_BUF>(&mut eval_buf, data_words);
             {
-                let evals: &[[BabyBearExt4; 4]] =
-                    eval_buf.transmute_subslice(BLAKE2S_DIGEST_SIZE_U32_WORDS, 8usize);
+                let mut i = 0;
+                while i < data_words {
+                    eval_buf.data_write(i, I::read_word());
+                    i += 1;
+                }
+            }
+            {
+                let evals: &[[BabyBearExt4; 4]] = eval_buf.data_as(8usize);
                 let f = dim_reducing_15_final_step_accumulator(evals, state.batching_challenge);
                 verify_final_step_check(
                     f,
@@ -7799,7 +7840,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                     15usize,
                 )?;
             }
-            commit_eval_buffer(&mut eval_buf, &mut hasher, &mut seed, data_words);
+            eval_buf.commit(&mut hasher, &mut seed, data_words);
             let mut draw_buf = LazyVec::<BabyBearExt4, 3>::new();
             unsafe {
                 draw_buf.set_len(3);
@@ -7820,8 +7861,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;
             let mut eq4 = LazyVec::<BabyBearExt4, DIM_REDUCING_EQ_SIZE>::new();
             make_eq_poly(&[r_before_last, r_last], &mut eq4);
-            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] =
-                eval_buf.transmute_subslice(BLAKE2S_DIGEST_SIZE_U32_WORDS, 8usize);
+            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(8usize);
             let eq4_arr: &[BabyBearExt4; DIM_REDUCING_EQ_SIZE] =
                 eq4.as_slice().try_into().unwrap_unchecked();
             state.prev_claims.clear();
@@ -7844,10 +7884,15 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                 )?;
             let mut fc_len = 12usize;
             let data_words = 8usize * 4 * <BabyBearExt4 as FieldExtension<BabyBearField>>::DEGREE;
-            read_eval_data_from_nds::<I, GKR_EVAL_BUF>(&mut eval_buf, data_words);
             {
-                let evals: &[[BabyBearExt4; 4]] =
-                    eval_buf.transmute_subslice(BLAKE2S_DIGEST_SIZE_U32_WORDS, 8usize);
+                let mut i = 0;
+                while i < data_words {
+                    eval_buf.data_write(i, I::read_word());
+                    i += 1;
+                }
+            }
+            {
+                let evals: &[[BabyBearExt4; 4]] = eval_buf.data_as(8usize);
                 let f = dim_reducing_14_final_step_accumulator(evals, state.batching_challenge);
                 verify_final_step_check(
                     f,
@@ -7857,7 +7902,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                     14usize,
                 )?;
             }
-            commit_eval_buffer(&mut eval_buf, &mut hasher, &mut seed, data_words);
+            eval_buf.commit(&mut hasher, &mut seed, data_words);
             let mut draw_buf = LazyVec::<BabyBearExt4, 3>::new();
             unsafe {
                 draw_buf.set_len(3);
@@ -7878,8 +7923,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;
             let mut eq4 = LazyVec::<BabyBearExt4, DIM_REDUCING_EQ_SIZE>::new();
             make_eq_poly(&[r_before_last, r_last], &mut eq4);
-            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] =
-                eval_buf.transmute_subslice(BLAKE2S_DIGEST_SIZE_U32_WORDS, 8usize);
+            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(8usize);
             let eq4_arr: &[BabyBearExt4; DIM_REDUCING_EQ_SIZE] =
                 eq4.as_slice().try_into().unwrap_unchecked();
             state.prev_claims.clear();
@@ -7902,10 +7946,15 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                 )?;
             let mut fc_len = 13usize;
             let data_words = 8usize * 4 * <BabyBearExt4 as FieldExtension<BabyBearField>>::DEGREE;
-            read_eval_data_from_nds::<I, GKR_EVAL_BUF>(&mut eval_buf, data_words);
             {
-                let evals: &[[BabyBearExt4; 4]] =
-                    eval_buf.transmute_subslice(BLAKE2S_DIGEST_SIZE_U32_WORDS, 8usize);
+                let mut i = 0;
+                while i < data_words {
+                    eval_buf.data_write(i, I::read_word());
+                    i += 1;
+                }
+            }
+            {
+                let evals: &[[BabyBearExt4; 4]] = eval_buf.data_as(8usize);
                 let f = dim_reducing_13_final_step_accumulator(evals, state.batching_challenge);
                 verify_final_step_check(
                     f,
@@ -7915,7 +7964,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                     13usize,
                 )?;
             }
-            commit_eval_buffer(&mut eval_buf, &mut hasher, &mut seed, data_words);
+            eval_buf.commit(&mut hasher, &mut seed, data_words);
             let mut draw_buf = LazyVec::<BabyBearExt4, 3>::new();
             unsafe {
                 draw_buf.set_len(3);
@@ -7936,8 +7985,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;
             let mut eq4 = LazyVec::<BabyBearExt4, DIM_REDUCING_EQ_SIZE>::new();
             make_eq_poly(&[r_before_last, r_last], &mut eq4);
-            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] =
-                eval_buf.transmute_subslice(BLAKE2S_DIGEST_SIZE_U32_WORDS, 8usize);
+            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(8usize);
             let eq4_arr: &[BabyBearExt4; DIM_REDUCING_EQ_SIZE] =
                 eq4.as_slice().try_into().unwrap_unchecked();
             state.prev_claims.clear();
@@ -7960,10 +8008,15 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                 )?;
             let mut fc_len = 14usize;
             let data_words = 8usize * 4 * <BabyBearExt4 as FieldExtension<BabyBearField>>::DEGREE;
-            read_eval_data_from_nds::<I, GKR_EVAL_BUF>(&mut eval_buf, data_words);
             {
-                let evals: &[[BabyBearExt4; 4]] =
-                    eval_buf.transmute_subslice(BLAKE2S_DIGEST_SIZE_U32_WORDS, 8usize);
+                let mut i = 0;
+                while i < data_words {
+                    eval_buf.data_write(i, I::read_word());
+                    i += 1;
+                }
+            }
+            {
+                let evals: &[[BabyBearExt4; 4]] = eval_buf.data_as(8usize);
                 let f = dim_reducing_12_final_step_accumulator(evals, state.batching_challenge);
                 verify_final_step_check(
                     f,
@@ -7973,7 +8026,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                     12usize,
                 )?;
             }
-            commit_eval_buffer(&mut eval_buf, &mut hasher, &mut seed, data_words);
+            eval_buf.commit(&mut hasher, &mut seed, data_words);
             let mut draw_buf = LazyVec::<BabyBearExt4, 3>::new();
             unsafe {
                 draw_buf.set_len(3);
@@ -7994,8 +8047,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;
             let mut eq4 = LazyVec::<BabyBearExt4, DIM_REDUCING_EQ_SIZE>::new();
             make_eq_poly(&[r_before_last, r_last], &mut eq4);
-            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] =
-                eval_buf.transmute_subslice(BLAKE2S_DIGEST_SIZE_U32_WORDS, 8usize);
+            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(8usize);
             let eq4_arr: &[BabyBearExt4; DIM_REDUCING_EQ_SIZE] =
                 eq4.as_slice().try_into().unwrap_unchecked();
             state.prev_claims.clear();
@@ -8018,10 +8070,15 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                 )?;
             let mut fc_len = 15usize;
             let data_words = 8usize * 4 * <BabyBearExt4 as FieldExtension<BabyBearField>>::DEGREE;
-            read_eval_data_from_nds::<I, GKR_EVAL_BUF>(&mut eval_buf, data_words);
             {
-                let evals: &[[BabyBearExt4; 4]] =
-                    eval_buf.transmute_subslice(BLAKE2S_DIGEST_SIZE_U32_WORDS, 8usize);
+                let mut i = 0;
+                while i < data_words {
+                    eval_buf.data_write(i, I::read_word());
+                    i += 1;
+                }
+            }
+            {
+                let evals: &[[BabyBearExt4; 4]] = eval_buf.data_as(8usize);
                 let f = dim_reducing_11_final_step_accumulator(evals, state.batching_challenge);
                 verify_final_step_check(
                     f,
@@ -8031,7 +8088,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                     11usize,
                 )?;
             }
-            commit_eval_buffer(&mut eval_buf, &mut hasher, &mut seed, data_words);
+            eval_buf.commit(&mut hasher, &mut seed, data_words);
             let mut draw_buf = LazyVec::<BabyBearExt4, 3>::new();
             unsafe {
                 draw_buf.set_len(3);
@@ -8052,8 +8109,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;
             let mut eq4 = LazyVec::<BabyBearExt4, DIM_REDUCING_EQ_SIZE>::new();
             make_eq_poly(&[r_before_last, r_last], &mut eq4);
-            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] =
-                eval_buf.transmute_subslice(BLAKE2S_DIGEST_SIZE_U32_WORDS, 8usize);
+            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(8usize);
             let eq4_arr: &[BabyBearExt4; DIM_REDUCING_EQ_SIZE] =
                 eq4.as_slice().try_into().unwrap_unchecked();
             state.prev_claims.clear();
@@ -8076,10 +8132,15 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                 )?;
             let mut fc_len = 16usize;
             let data_words = 8usize * 4 * <BabyBearExt4 as FieldExtension<BabyBearField>>::DEGREE;
-            read_eval_data_from_nds::<I, GKR_EVAL_BUF>(&mut eval_buf, data_words);
             {
-                let evals: &[[BabyBearExt4; 4]] =
-                    eval_buf.transmute_subslice(BLAKE2S_DIGEST_SIZE_U32_WORDS, 8usize);
+                let mut i = 0;
+                while i < data_words {
+                    eval_buf.data_write(i, I::read_word());
+                    i += 1;
+                }
+            }
+            {
+                let evals: &[[BabyBearExt4; 4]] = eval_buf.data_as(8usize);
                 let f = dim_reducing_10_final_step_accumulator(evals, state.batching_challenge);
                 verify_final_step_check(
                     f,
@@ -8089,7 +8150,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                     10usize,
                 )?;
             }
-            commit_eval_buffer(&mut eval_buf, &mut hasher, &mut seed, data_words);
+            eval_buf.commit(&mut hasher, &mut seed, data_words);
             let mut draw_buf = LazyVec::<BabyBearExt4, 3>::new();
             unsafe {
                 draw_buf.set_len(3);
@@ -8110,8 +8171,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;
             let mut eq4 = LazyVec::<BabyBearExt4, DIM_REDUCING_EQ_SIZE>::new();
             make_eq_poly(&[r_before_last, r_last], &mut eq4);
-            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] =
-                eval_buf.transmute_subslice(BLAKE2S_DIGEST_SIZE_U32_WORDS, 8usize);
+            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(8usize);
             let eq4_arr: &[BabyBearExt4; DIM_REDUCING_EQ_SIZE] =
                 eq4.as_slice().try_into().unwrap_unchecked();
             state.prev_claims.clear();
@@ -8134,10 +8194,15 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                 )?;
             let mut fc_len = 17usize;
             let data_words = 8usize * 4 * <BabyBearExt4 as FieldExtension<BabyBearField>>::DEGREE;
-            read_eval_data_from_nds::<I, GKR_EVAL_BUF>(&mut eval_buf, data_words);
             {
-                let evals: &[[BabyBearExt4; 4]] =
-                    eval_buf.transmute_subslice(BLAKE2S_DIGEST_SIZE_U32_WORDS, 8usize);
+                let mut i = 0;
+                while i < data_words {
+                    eval_buf.data_write(i, I::read_word());
+                    i += 1;
+                }
+            }
+            {
+                let evals: &[[BabyBearExt4; 4]] = eval_buf.data_as(8usize);
                 let f = dim_reducing_9_final_step_accumulator(evals, state.batching_challenge);
                 verify_final_step_check(
                     f,
@@ -8147,7 +8212,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                     9usize,
                 )?;
             }
-            commit_eval_buffer(&mut eval_buf, &mut hasher, &mut seed, data_words);
+            eval_buf.commit(&mut hasher, &mut seed, data_words);
             let mut draw_buf = LazyVec::<BabyBearExt4, 3>::new();
             unsafe {
                 draw_buf.set_len(3);
@@ -8168,8 +8233,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;
             let mut eq4 = LazyVec::<BabyBearExt4, DIM_REDUCING_EQ_SIZE>::new();
             make_eq_poly(&[r_before_last, r_last], &mut eq4);
-            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] =
-                eval_buf.transmute_subslice(BLAKE2S_DIGEST_SIZE_U32_WORDS, 8usize);
+            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(8usize);
             let eq4_arr: &[BabyBearExt4; DIM_REDUCING_EQ_SIZE] =
                 eq4.as_slice().try_into().unwrap_unchecked();
             state.prev_claims.clear();
@@ -8192,10 +8256,15 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                 )?;
             let mut fc_len = 18usize;
             let data_words = 8usize * 4 * <BabyBearExt4 as FieldExtension<BabyBearField>>::DEGREE;
-            read_eval_data_from_nds::<I, GKR_EVAL_BUF>(&mut eval_buf, data_words);
             {
-                let evals: &[[BabyBearExt4; 4]] =
-                    eval_buf.transmute_subslice(BLAKE2S_DIGEST_SIZE_U32_WORDS, 8usize);
+                let mut i = 0;
+                while i < data_words {
+                    eval_buf.data_write(i, I::read_word());
+                    i += 1;
+                }
+            }
+            {
+                let evals: &[[BabyBearExt4; 4]] = eval_buf.data_as(8usize);
                 let f = dim_reducing_8_final_step_accumulator(evals, state.batching_challenge);
                 verify_final_step_check(
                     f,
@@ -8205,7 +8274,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                     8usize,
                 )?;
             }
-            commit_eval_buffer(&mut eval_buf, &mut hasher, &mut seed, data_words);
+            eval_buf.commit(&mut hasher, &mut seed, data_words);
             let mut draw_buf = LazyVec::<BabyBearExt4, 3>::new();
             unsafe {
                 draw_buf.set_len(3);
@@ -8226,8 +8295,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;
             let mut eq4 = LazyVec::<BabyBearExt4, DIM_REDUCING_EQ_SIZE>::new();
             make_eq_poly(&[r_before_last, r_last], &mut eq4);
-            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] =
-                eval_buf.transmute_subslice(BLAKE2S_DIGEST_SIZE_U32_WORDS, 8usize);
+            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(8usize);
             let eq4_arr: &[BabyBearExt4; DIM_REDUCING_EQ_SIZE] =
                 eq4.as_slice().try_into().unwrap_unchecked();
             state.prev_claims.clear();
@@ -8250,10 +8318,15 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                 )?;
             let mut fc_len = 19usize;
             let data_words = 8usize * 4 * <BabyBearExt4 as FieldExtension<BabyBearField>>::DEGREE;
-            read_eval_data_from_nds::<I, GKR_EVAL_BUF>(&mut eval_buf, data_words);
             {
-                let evals: &[[BabyBearExt4; 4]] =
-                    eval_buf.transmute_subslice(BLAKE2S_DIGEST_SIZE_U32_WORDS, 8usize);
+                let mut i = 0;
+                while i < data_words {
+                    eval_buf.data_write(i, I::read_word());
+                    i += 1;
+                }
+            }
+            {
+                let evals: &[[BabyBearExt4; 4]] = eval_buf.data_as(8usize);
                 let f = dim_reducing_7_final_step_accumulator(evals, state.batching_challenge);
                 verify_final_step_check(
                     f,
@@ -8263,7 +8336,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                     7usize,
                 )?;
             }
-            commit_eval_buffer(&mut eval_buf, &mut hasher, &mut seed, data_words);
+            eval_buf.commit(&mut hasher, &mut seed, data_words);
             let mut draw_buf = LazyVec::<BabyBearExt4, 3>::new();
             unsafe {
                 draw_buf.set_len(3);
@@ -8284,8 +8357,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;
             let mut eq4 = LazyVec::<BabyBearExt4, DIM_REDUCING_EQ_SIZE>::new();
             make_eq_poly(&[r_before_last, r_last], &mut eq4);
-            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] =
-                eval_buf.transmute_subslice(BLAKE2S_DIGEST_SIZE_U32_WORDS, 8usize);
+            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(8usize);
             let eq4_arr: &[BabyBearExt4; DIM_REDUCING_EQ_SIZE] =
                 eq4.as_slice().try_into().unwrap_unchecked();
             state.prev_claims.clear();
@@ -8308,10 +8380,15 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                 )?;
             let mut fc_len = 20usize;
             let data_words = 8usize * 4 * <BabyBearExt4 as FieldExtension<BabyBearField>>::DEGREE;
-            read_eval_data_from_nds::<I, GKR_EVAL_BUF>(&mut eval_buf, data_words);
             {
-                let evals: &[[BabyBearExt4; 4]] =
-                    eval_buf.transmute_subslice(BLAKE2S_DIGEST_SIZE_U32_WORDS, 8usize);
+                let mut i = 0;
+                while i < data_words {
+                    eval_buf.data_write(i, I::read_word());
+                    i += 1;
+                }
+            }
+            {
+                let evals: &[[BabyBearExt4; 4]] = eval_buf.data_as(8usize);
                 let f = dim_reducing_6_final_step_accumulator(evals, state.batching_challenge);
                 verify_final_step_check(
                     f,
@@ -8321,7 +8398,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                     6usize,
                 )?;
             }
-            commit_eval_buffer(&mut eval_buf, &mut hasher, &mut seed, data_words);
+            eval_buf.commit(&mut hasher, &mut seed, data_words);
             let mut draw_buf = LazyVec::<BabyBearExt4, 3>::new();
             unsafe {
                 draw_buf.set_len(3);
@@ -8342,8 +8419,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;
             let mut eq4 = LazyVec::<BabyBearExt4, DIM_REDUCING_EQ_SIZE>::new();
             make_eq_poly(&[r_before_last, r_last], &mut eq4);
-            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] =
-                eval_buf.transmute_subslice(BLAKE2S_DIGEST_SIZE_U32_WORDS, 8usize);
+            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(8usize);
             let eq4_arr: &[BabyBearExt4; DIM_REDUCING_EQ_SIZE] =
                 eq4.as_slice().try_into().unwrap_unchecked();
             state.prev_claims.clear();
@@ -8366,10 +8442,15 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                 )?;
             let mut fc_len = 21usize;
             let data_words = 8usize * 4 * <BabyBearExt4 as FieldExtension<BabyBearField>>::DEGREE;
-            read_eval_data_from_nds::<I, GKR_EVAL_BUF>(&mut eval_buf, data_words);
             {
-                let evals: &[[BabyBearExt4; 4]] =
-                    eval_buf.transmute_subslice(BLAKE2S_DIGEST_SIZE_U32_WORDS, 8usize);
+                let mut i = 0;
+                while i < data_words {
+                    eval_buf.data_write(i, I::read_word());
+                    i += 1;
+                }
+            }
+            {
+                let evals: &[[BabyBearExt4; 4]] = eval_buf.data_as(8usize);
                 let f = dim_reducing_5_final_step_accumulator(evals, state.batching_challenge);
                 verify_final_step_check(
                     f,
@@ -8379,7 +8460,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                     5usize,
                 )?;
             }
-            commit_eval_buffer(&mut eval_buf, &mut hasher, &mut seed, data_words);
+            eval_buf.commit(&mut hasher, &mut seed, data_words);
             let mut draw_buf = LazyVec::<BabyBearExt4, 3>::new();
             unsafe {
                 draw_buf.set_len(3);
@@ -8400,8 +8481,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;
             let mut eq4 = LazyVec::<BabyBearExt4, DIM_REDUCING_EQ_SIZE>::new();
             make_eq_poly(&[r_before_last, r_last], &mut eq4);
-            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] =
-                eval_buf.transmute_subslice(BLAKE2S_DIGEST_SIZE_U32_WORDS, 8usize);
+            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(8usize);
             let eq4_arr: &[BabyBearExt4; DIM_REDUCING_EQ_SIZE] =
                 eq4.as_slice().try_into().unwrap_unchecked();
             state.prev_claims.clear();
@@ -8424,10 +8504,15 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                 )?;
             let mut fc_len = 22usize;
             let data_words = 8usize * 4 * <BabyBearExt4 as FieldExtension<BabyBearField>>::DEGREE;
-            read_eval_data_from_nds::<I, GKR_EVAL_BUF>(&mut eval_buf, data_words);
             {
-                let evals: &[[BabyBearExt4; 4]] =
-                    eval_buf.transmute_subslice(BLAKE2S_DIGEST_SIZE_U32_WORDS, 8usize);
+                let mut i = 0;
+                while i < data_words {
+                    eval_buf.data_write(i, I::read_word());
+                    i += 1;
+                }
+            }
+            {
+                let evals: &[[BabyBearExt4; 4]] = eval_buf.data_as(8usize);
                 let f = dim_reducing_4_final_step_accumulator(evals, state.batching_challenge);
                 verify_final_step_check(
                     f,
@@ -8437,7 +8522,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                     4usize,
                 )?;
             }
-            commit_eval_buffer(&mut eval_buf, &mut hasher, &mut seed, data_words);
+            eval_buf.commit(&mut hasher, &mut seed, data_words);
             let mut draw_buf = LazyVec::<BabyBearExt4, 3>::new();
             unsafe {
                 draw_buf.set_len(3);
@@ -8458,8 +8543,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;
             let mut eq4 = LazyVec::<BabyBearExt4, DIM_REDUCING_EQ_SIZE>::new();
             make_eq_poly(&[r_before_last, r_last], &mut eq4);
-            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] =
-                eval_buf.transmute_subslice(BLAKE2S_DIGEST_SIZE_U32_WORDS, 8usize);
+            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(8usize);
             let eq4_arr: &[BabyBearExt4; DIM_REDUCING_EQ_SIZE] =
                 eq4.as_slice().try_into().unwrap_unchecked();
             state.prev_claims.clear();
@@ -8490,10 +8574,15 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                 )?;
             let mut fc_len = 23usize;
             let data_words = 10usize * 2 * <BabyBearExt4 as FieldExtension<BabyBearField>>::DEGREE;
-            read_eval_data_from_nds::<I, GKR_EVAL_BUF>(&mut eval_buf, data_words);
             {
-                let evals: &[[BabyBearExt4; 2]] =
-                    eval_buf.transmute_subslice(BLAKE2S_DIGEST_SIZE_U32_WORDS, 10usize);
+                let mut i = 0;
+                while i < data_words {
+                    eval_buf.data_write(i, I::read_word());
+                    i += 1;
+                }
+            }
+            {
+                let evals: &[[BabyBearExt4; 2]] = eval_buf.data_as(10usize);
                 let f = layer_3_final_step_accumulator(
                     evals,
                     state.batching_challenge,
@@ -8509,7 +8598,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                     3usize,
                 )?;
             }
-            commit_eval_buffer(&mut eval_buf, &mut hasher, &mut seed, data_words);
+            eval_buf.commit(&mut hasher, &mut seed, data_words);
             let mut draw_buf = LazyVec::<BabyBearExt4, 2>::new();
             unsafe {
                 draw_buf.set_len(2);
@@ -8542,10 +8631,15 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                 )?;
             let mut fc_len = 23usize;
             let data_words = 15usize * 2 * <BabyBearExt4 as FieldExtension<BabyBearField>>::DEGREE;
-            read_eval_data_from_nds::<I, GKR_EVAL_BUF>(&mut eval_buf, data_words);
             {
-                let evals: &[[BabyBearExt4; 2]] =
-                    eval_buf.transmute_subslice(BLAKE2S_DIGEST_SIZE_U32_WORDS, 15usize);
+                let mut i = 0;
+                while i < data_words {
+                    eval_buf.data_write(i, I::read_word());
+                    i += 1;
+                }
+            }
+            {
+                let evals: &[[BabyBearExt4; 2]] = eval_buf.data_as(15usize);
                 let f = layer_2_final_step_accumulator(
                     evals,
                     state.batching_challenge,
@@ -8561,7 +8655,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                     2usize,
                 )?;
             }
-            commit_eval_buffer(&mut eval_buf, &mut hasher, &mut seed, data_words);
+            eval_buf.commit(&mut hasher, &mut seed, data_words);
             let mut draw_buf = LazyVec::<BabyBearExt4, 2>::new();
             unsafe {
                 draw_buf.set_len(2);
@@ -8575,14 +8669,25 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             let next_batching = *draw_buf.get(1);
             *state.prev_point.get_unchecked_mut(fc_len) = last_r;
             fc_len += 1;
-            let mut extra_evals = LazyVec::<BabyBearExt4, 4usize>::new();
-            unsafe {
-                extra_evals.set_len(4usize);
+            const EXTRA_COMMIT_BUF: usize = 32usize;
+            let mut extra_buf = CommitBuf::<EXTRA_COMMIT_BUF>::new();
+            let extra_data_words = 4usize * EXT_DEGREE;
+            {
+                let mut i = 0;
+                while i < extra_data_words {
+                    extra_buf.data_write(i, read_reduced_field_el::<I>());
+                    i += 1;
+                }
             }
-            read_field_els::<I>(extra_evals.as_mut_slice());
-            commit_field_els(&mut seed, extra_evals.as_slice());
-            let final_step_evals: &[[BabyBearExt4; 2]] =
-                eval_buf.transmute_subslice(BLAKE2S_DIGEST_SIZE_U32_WORDS, 15usize);
+            let mut extra_evals = LazyVec::<BabyBearExt4, 4usize>::new();
+            {
+                let slice: &[BabyBearExt4] = unsafe { extra_buf.data_as(4usize) };
+                for el in slice {
+                    extra_evals.push(*el);
+                }
+            }
+            extra_buf.commit(&mut hasher, &mut seed, extra_data_words);
+            let final_step_evals: &[[BabyBearExt4; 2]] = unsafe { eval_buf.data_as(15usize) };
             state.prev_claims.clear();
             {
                 const EXTRA_POS: [(usize, usize); 4usize] = [
@@ -8682,10 +8787,15 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                 )?;
             let mut fc_len = 23usize;
             let data_words = 27usize * 2 * <BabyBearExt4 as FieldExtension<BabyBearField>>::DEGREE;
-            read_eval_data_from_nds::<I, GKR_EVAL_BUF>(&mut eval_buf, data_words);
             {
-                let evals: &[[BabyBearExt4; 2]] =
-                    eval_buf.transmute_subslice(BLAKE2S_DIGEST_SIZE_U32_WORDS, 27usize);
+                let mut i = 0;
+                while i < data_words {
+                    eval_buf.data_write(i, I::read_word());
+                    i += 1;
+                }
+            }
+            {
+                let evals: &[[BabyBearExt4; 2]] = eval_buf.data_as(27usize);
                 let f = layer_1_final_step_accumulator(
                     evals,
                     state.batching_challenge,
@@ -8701,7 +8811,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                     1usize,
                 )?;
             }
-            commit_eval_buffer(&mut eval_buf, &mut hasher, &mut seed, data_words);
+            eval_buf.commit(&mut hasher, &mut seed, data_words);
             let mut draw_buf = LazyVec::<BabyBearExt4, 2>::new();
             unsafe {
                 draw_buf.set_len(2);
@@ -8734,10 +8844,15 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                 )?;
             let mut fc_len = 23usize;
             let data_words = 49usize * 2 * <BabyBearExt4 as FieldExtension<BabyBearField>>::DEGREE;
-            read_eval_data_from_nds::<I, GKR_EVAL_BUF>(&mut eval_buf, data_words);
             {
-                let evals: &[[BabyBearExt4; 2]] =
-                    eval_buf.transmute_subslice(BLAKE2S_DIGEST_SIZE_U32_WORDS, 49usize);
+                let mut i = 0;
+                while i < data_words {
+                    eval_buf.data_write(i, I::read_word());
+                    i += 1;
+                }
+            }
+            {
+                let evals: &[[BabyBearExt4; 2]] = eval_buf.data_as(49usize);
                 let f = layer_0_final_step_accumulator(
                     evals,
                     state.batching_challenge,
@@ -8753,7 +8868,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                     0usize,
                 )?;
             }
-            commit_eval_buffer(&mut eval_buf, &mut hasher, &mut seed, data_words);
+            eval_buf.commit(&mut hasher, &mut seed, data_words);
             let mut draw_buf = LazyVec::<BabyBearExt4, 2>::new();
             unsafe {
                 draw_buf.set_len(2);
@@ -8767,14 +8882,25 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             let next_batching = *draw_buf.get(1);
             *state.prev_point.get_unchecked_mut(fc_len) = last_r;
             fc_len += 1;
-            let mut extra_evals = LazyVec::<BabyBearExt4, 18usize>::new();
-            unsafe {
-                extra_evals.set_len(18usize);
+            const EXTRA_COMMIT_BUF: usize = 80usize;
+            let mut extra_buf = CommitBuf::<EXTRA_COMMIT_BUF>::new();
+            let extra_data_words = 18usize * EXT_DEGREE;
+            {
+                let mut i = 0;
+                while i < extra_data_words {
+                    extra_buf.data_write(i, read_reduced_field_el::<I>());
+                    i += 1;
+                }
             }
-            read_field_els::<I>(extra_evals.as_mut_slice());
-            commit_field_els(&mut seed, extra_evals.as_slice());
-            let final_step_evals: &[[BabyBearExt4; 2]] =
-                eval_buf.transmute_subslice(BLAKE2S_DIGEST_SIZE_U32_WORDS, 49usize);
+            let mut extra_evals = LazyVec::<BabyBearExt4, 18usize>::new();
+            {
+                let slice: &[BabyBearExt4] = unsafe { extra_buf.data_as(18usize) };
+                for el in slice {
+                    extra_evals.push(*el);
+                }
+            }
+            extra_buf.commit(&mut hasher, &mut seed, extra_data_words);
+            let final_step_evals: &[[BabyBearExt4; 2]] = unsafe { eval_buf.data_as(49usize) };
             state.prev_claims.clear();
             {
                 const EXTRA_POS: [(usize, usize); 18usize] = [

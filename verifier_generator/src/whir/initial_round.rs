@@ -55,6 +55,12 @@ pub fn generate_whir_inlined<MW: MersenneWrapper>(
         quote! { claim_correction },
         quote! { delinearization_challenge },
     );
+    let degree = 4usize; // EXT_DEGREE for BabyBear/Mersenne31 quartic
+    let digest_words = 8usize; // BLAKE2S_DIGEST_SIZE_U32_WORDS
+    let block_words = 16usize; // BLAKE2S_BLOCK_SIZE_U32_WORDS
+    let ood_data_words = degree;
+    let ood_commit_buf_size = (digest_words + ood_data_words).div_ceil(block_words) * block_words;
+
     let from_raw_0 = MW::field_from_reduced_raw_repr(quote! { raw0 });
     let from_raw_1 = MW::field_from_reduced_raw_repr(quote! { raw1 });
     let batch_mul_eval = MW::mul_assign(quote! { term }, quote! { eval });
@@ -79,8 +85,9 @@ pub fn generate_whir_inlined<MW: MersenneWrapper>(
         use super::common::{
             verify_whir_sumcheck_step, fold_coset, materialize_gamma_powers,
             WhirVerificationError, read_field_el, read_field_els,
-            commit_field_els, draw_single_field_el, compute_tree_index,
+            read_reduced_field_el, draw_single_field_el, compute_tree_index,
         };
+        use ::verifier_common::structs::CommitBuf;
         use super::constants::*;
 
         const INITIAL_VALUES_PER_LEAF: usize = #values_per_leaf;
@@ -115,14 +122,14 @@ pub fn generate_whir_inlined<MW: MersenneWrapper>(
                 let gamma = *gamma_powers.get_unchecked(gamma_offset + col);
                 let idx = col * 2;
 
-                let raw0 = I::read_reduced_field_element(#field_struct::ORDER);
+                let raw0 = read_reduced_field_el::<I>();
                 *hash_buf.get_unchecked_mut(idx) = raw0;
                 let base_val = #from_raw_0;
                 let mut term = gamma;
                 #batch_mul_local_0;
                 #batch_add_acc0;
 
-                let raw1 = I::read_reduced_field_element(#field_struct::ORDER);
+                let raw1 = read_reduced_field_el::<I>();
                 *hash_buf.get_unchecked_mut(idx + 1) = raw1;
                 let base_val = #from_raw_1;
                 let mut term = gamma;
@@ -234,8 +241,16 @@ pub fn generate_whir_inlined<MW: MersenneWrapper>(
                 }
 
                 // --- 2. Read and commit intermediate oracle cap ---
+                const CAP_COMMIT_BUF: usize = {
+                    let total = ::verifier_common::blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS + WHIR_CAP_WORDS;
+                    (total + ::verifier_common::blake2s_u32::BLAKE2S_BLOCK_SIZE_U32_WORDS - 1)
+                        / ::verifier_common::blake2s_u32::BLAKE2S_BLOCK_SIZE_U32_WORDS
+                        * ::verifier_common::blake2s_u32::BLAKE2S_BLOCK_SIZE_U32_WORDS
+                };
                 let intermediate_cap =
-                    read_commit_return_merkle_cap::<I, WHIR_CAP_WORDS>(seed);
+                    read_commit_return_merkle_cap::<I, WHIR_CAP_WORDS, CAP_COMMIT_BUF>(
+                        hasher, seed,
+                    );
 
                 // --- 3. OOD: draw point, read value, commit ---
                 // ood_point advances the Fiat-Shamir transcript; the verifier does not
@@ -243,8 +258,18 @@ pub fn generate_whir_inlined<MW: MersenneWrapper>(
                 // through the next round's sumcheck claim.
                 let _ood_point = draw_single_field_el(hasher, seed);
 
-                let ood_value: #quartic_struct = read_field_el::<I>();
-                commit_field_els(seed, &[ood_value]);
+                let mut ood_buf = CommitBuf::<#ood_commit_buf_size>::new();
+                {
+                    let mut i = 0;
+                    while i < #ood_data_words {
+                        ood_buf.data_write(i, read_reduced_field_el::<I>());
+                        i += 1;
+                    }
+                }
+                let ood_value: #quartic_struct = unsafe {
+                    *ood_buf.data_as::<#quartic_struct>(1).as_ptr()
+                };
+                ood_buf.commit(hasher, seed, #ood_data_words);
 
                 // --- 4. PoW + query indices ---
                 read_and_verify_pow::<I>(seed, INITIAL_POW_BITS);

@@ -3,25 +3,28 @@ use non_determinism_source::NonDeterminismSource;
 use transcript::{Blake2sTranscript, Seed};
 
 use crate::gkr::LazyVec;
-use crate::structs::{assemble_query_index, BitSource};
+use crate::structs::{assemble_query_index, BitSource, CommitBuf};
 
-/// Read a Merkle cap from NDS into a fixed-size array.
+/// Read a Merkle cap from NDS, commit via aligned buffer, and return it.
+///
+/// `BUF` must be `(DIGEST_SIZE + CAP_WORDS)` rounded up to block size.
 #[inline(always)]
-fn read_merkle_cap_inner<I: NonDeterminismSource, const CAP_WORDS: usize>() -> [u32; CAP_WORDS] {
-    let mut buf = LazyVec::<u32, CAP_WORDS>::new();
-    for _ in 0..CAP_WORDS {
-        buf.push(I::read_word());
-    }
-    unsafe { buf.into_array() }
-}
-
-/// Read a Merkle cap from NDS, commit it to the transcript, and return it.
-#[inline(always)]
-pub fn read_commit_return_merkle_cap<I: NonDeterminismSource, const CAP_WORDS: usize>(
+pub fn read_commit_return_merkle_cap<
+    I: NonDeterminismSource,
+    const CAP_WORDS: usize,
+    const BUF: usize,
+>(
+    hasher: &mut DelegatedBlake2sState,
     seed: &mut Seed,
 ) -> [u32; CAP_WORDS] {
-    let cap = read_merkle_cap_inner::<I, CAP_WORDS>();
-    Blake2sTranscript::commit_with_seed(seed, &cap);
+    let mut buf = CommitBuf::<BUF>::new();
+    let mut i = 0;
+    while i < CAP_WORDS {
+        buf.data_write(i, I::read_word());
+        i += 1;
+    }
+    let cap: [u32; CAP_WORDS] = unsafe { *buf.data_as::<[u32; CAP_WORDS]>(1).as_ptr() };
+    buf.commit(hasher, seed, CAP_WORDS);
     cap
 }
 
@@ -29,7 +32,13 @@ pub fn read_commit_return_merkle_cap<I: NonDeterminismSource, const CAP_WORDS: u
 #[inline(always)]
 pub fn read_return_merkle_cap<I: NonDeterminismSource, const CAP_WORDS: usize>() -> [u32; CAP_WORDS]
 {
-    read_merkle_cap_inner::<I, CAP_WORDS>()
+    let mut buf = LazyVec::<u32, CAP_WORDS>::new();
+    let mut i = 0;
+    while i < CAP_WORDS {
+        buf.push(I::read_word());
+        i += 1;
+    }
+    unsafe { buf.into_array() }
 }
 
 #[inline(always)]
@@ -60,8 +69,10 @@ pub fn draw_query_indices<const MAX_QUERIES: usize, const MAX_DRAW_WORDS: usize>
     let mut bit_source = BitSource::new(bit_words);
 
     let mut indices = LazyVec::<usize, MAX_QUERIES>::new();
-    for _ in 0..num_queries {
+    let mut q = 0;
+    while q < num_queries {
         indices.push(assemble_query_index(query_index_bits, &mut bit_source));
+        q += 1;
     }
     indices
 }
@@ -77,14 +88,11 @@ pub fn verify_merkle_path<I: NonDeterminismSource>(
     while level < depth {
         let is_right = leaf_index & 1 == 1;
         let witness_buf = hasher.get_witness_buffer();
-        witness_buf[0] = I::read_word();
-        witness_buf[1] = I::read_word();
-        witness_buf[2] = I::read_word();
-        witness_buf[3] = I::read_word();
-        witness_buf[4] = I::read_word();
-        witness_buf[5] = I::read_word();
-        witness_buf[6] = I::read_word();
-        witness_buf[7] = I::read_word();
+        let mut i = 0;
+        while i < BLAKE2S_DIGEST_SIZE_U32_WORDS {
+            witness_buf[i] = I::read_word();
+            i += 1;
+        }
         hasher.compress_node::<true>(is_right);
         leaf_index >>= 1;
         level += 1;

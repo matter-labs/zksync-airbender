@@ -1,7 +1,6 @@
 use super::common::{
-    commit_field_els, compute_tree_index, draw_single_field_el, fold_coset,
-    materialize_gamma_powers, read_field_el, read_field_els, verify_whir_sumcheck_step,
-    WhirVerificationError,
+    compute_tree_index, draw_single_field_el, fold_coset, materialize_gamma_powers, read_field_el,
+    read_field_els, read_reduced_field_el, verify_whir_sumcheck_step, WhirVerificationError,
 };
 use super::constants::*;
 use core::mem::MaybeUninit;
@@ -14,6 +13,7 @@ use verifier_common::field::{Field, PrimeField};
 use verifier_common::field_ops;
 use verifier_common::lazy_vec::LazyVec;
 use verifier_common::non_determinism_source::NonDeterminismSource;
+use verifier_common::structs::CommitBuf;
 use verifier_common::transcript::Seed;
 use verifier_common::whir::{
     draw_query_indices, hash_leaf_data_into_state, read_and_verify_pow,
@@ -49,13 +49,13 @@ unsafe fn read_and_batch_leaf<I: NonDeterminismSource>(
     while col < num_columns {
         let gamma = *gamma_powers.get_unchecked(gamma_offset + col);
         let idx = col * 2;
-        let raw0 = I::read_reduced_field_element(BabyBearField::ORDER);
+        let raw0 = read_reduced_field_el::<I>();
         *hash_buf.get_unchecked_mut(idx) = raw0;
         let base_val = BabyBearField::from_reduced_raw_repr(raw0);
         let mut term = gamma;
         field_ops::mul_assign_by_base(&mut term, &base_val);
         field_ops::add_assign(&mut *acc0, &term);
-        let raw1 = I::read_reduced_field_element(BabyBearField::ORDER);
+        let raw1 = read_reduced_field_el::<I>();
         *hash_buf.get_unchecked_mut(idx + 1) = raw1;
         let base_val = BabyBearField::from_reduced_raw_repr(raw1);
         let mut term = gamma;
@@ -159,10 +159,26 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource>(
             folding_challenges.push(alpha);
             round_idx += 1;
         }
-        let intermediate_cap = read_commit_return_merkle_cap::<I, WHIR_CAP_WORDS>(seed);
+        const CAP_COMMIT_BUF: usize = {
+            let total =
+                ::verifier_common::blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS + WHIR_CAP_WORDS;
+            (total + ::verifier_common::blake2s_u32::BLAKE2S_BLOCK_SIZE_U32_WORDS - 1)
+                / ::verifier_common::blake2s_u32::BLAKE2S_BLOCK_SIZE_U32_WORDS
+                * ::verifier_common::blake2s_u32::BLAKE2S_BLOCK_SIZE_U32_WORDS
+        };
+        let intermediate_cap =
+            read_commit_return_merkle_cap::<I, WHIR_CAP_WORDS, CAP_COMMIT_BUF>(hasher, seed);
         let _ood_point = draw_single_field_el(hasher, seed);
-        let ood_value: BabyBearExt4 = read_field_el::<I>();
-        commit_field_els(seed, &[ood_value]);
+        let mut ood_buf = CommitBuf::<16usize>::new();
+        {
+            let mut i = 0;
+            while i < 4usize {
+                ood_buf.data_write(i, read_reduced_field_el::<I>());
+                i += 1;
+            }
+        }
+        let ood_value: BabyBearExt4 = unsafe { *ood_buf.data_as::<BabyBearExt4>(1).as_ptr() };
+        ood_buf.commit(hasher, seed, 4usize);
         read_and_verify_pow::<I>(seed, INITIAL_POW_BITS);
         let query_indices = draw_query_indices::<INITIAL_NUM_QUERIES, INITIAL_DRAW_WORDS>(
             hasher,
@@ -342,10 +358,12 @@ pub fn verify_internal_whir_round<I: NonDeterminismSource>(
             let base_root_inv = extended_generator_inv.pow(query_index as u32);
             let tree_index =
                 compute_tree_index(query_index, num_cosets, num_cosets_log2, coset_tree_size);
-            let mut i = 0;
-            while i < leaf_ext_words {
-                hash_buf.write(i, I::read_reduced_field_element(BabyBearField::ORDER));
-                i += 1;
+            {
+                let mut i = 0;
+                while i < leaf_ext_words {
+                    hash_buf.write(i, read_reduced_field_el::<I>());
+                    i += 1;
+                }
             }
             let block_end = leaf_ext_words.next_multiple_of(BLAKE2S_BLOCK_SIZE_U32_WORDS);
             hash_buf.zero_range(leaf_ext_words, block_end);
@@ -456,10 +474,12 @@ pub fn verify_final_whir_round<I: NonDeterminismSource>(
                 FINAL_NUM_COSETS_LOG2,
                 FINAL_COSET_TREE_SIZE,
             );
-            let mut i = 0;
-            while i < FINAL_LEAF_EXT_WORDS {
-                hash_buf.write(i, I::read_reduced_field_element(BabyBearField::ORDER));
-                i += 1;
+            {
+                let mut i = 0;
+                while i < FINAL_LEAF_EXT_WORDS {
+                    hash_buf.write(i, read_reduced_field_el::<I>());
+                    i += 1;
+                }
             }
             const FINAL_BLOCK_END: usize =
                 FINAL_LEAF_EXT_WORDS.next_multiple_of(BLAKE2S_BLOCK_SIZE_U32_WORDS);

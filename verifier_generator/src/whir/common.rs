@@ -66,12 +66,29 @@ pub fn generate_whir_common<MW: MersenneWrapper>(max_fold_steps: usize) -> Token
             claim: #quartic_struct,
             round: usize,
         ) -> Result<(#quartic_struct, #quartic_struct), WhirVerificationError> {
-            let c0 = read_field_el::<I>();
-            let c1 = read_field_el::<I>();
-            let c2 = read_field_el::<I>();
-            let coeffs = [c0, c1, c2];
+            const WHIR_SC_DATA_WORDS: usize = 3 * EXT_DEGREE;
+            const WHIR_SC_COMMIT_BUF: usize = {
+                let total = BLAKE2S_DIGEST_SIZE_U32_WORDS + WHIR_SC_DATA_WORDS;
+                // next_multiple_of is not const, so use manual rounding
+                (total + ::verifier_common::blake2s_u32::BLAKE2S_BLOCK_SIZE_U32_WORDS - 1)
+                    / ::verifier_common::blake2s_u32::BLAKE2S_BLOCK_SIZE_U32_WORDS
+                    * ::verifier_common::blake2s_u32::BLAKE2S_BLOCK_SIZE_U32_WORDS
+            };
 
-            commit_field_els(seed, &coeffs);
+            let mut buf = CommitBuf::<WHIR_SC_COMMIT_BUF>::new();
+            {
+                let mut i = 0;
+                while i < WHIR_SC_DATA_WORDS {
+                    buf.data_write(i, read_reduced_field_el::<I>());
+                    i += 1;
+                }
+            }
+
+            // Copy coefficients out before committing.
+            let coeffs: [#quartic_struct; 3] = unsafe {
+                *buf.data_as::<[#quartic_struct; 3]>(1).as_ptr()
+            };
+            let (c0, c1, c2) = (coeffs[0], coeffs[1], coeffs[2]);
 
             // Check: p(0) + p(1) = c0 + (c0 + c1 + c2) == claim
             let p0 = c0;
@@ -83,6 +100,8 @@ pub fn generate_whir_common<MW: MersenneWrapper>(max_fold_steps: usize) -> Token
             if sum != claim {
                 return Err(WhirVerificationError::SumcheckFailed { round });
             }
+
+            buf.commit(hasher, seed, WHIR_SC_DATA_WORDS);
 
             let mut challenge_buf = LazyVec::<#quartic_struct, 1>::new();
             unsafe { challenge_buf.set_len(1); }

@@ -33,16 +33,16 @@ fn generate_common<MW: MersenneWrapper>() {
     let whir_fns = whir::generate_whir_common::<MW>(max_fold_steps);
 
     let common = quote::quote! {
-        use core::mem::MaybeUninit;
         use ::verifier_common::field_ops;
         use ::verifier_common::field::{Field, FieldExtension, PrimeField};
         use ::verifier_common::blake2s_u32::{
-            AlignedArray64, DelegatedBlake2sState,
+            DelegatedBlake2sState,
             BLAKE2S_DIGEST_SIZE_U32_WORDS,
         };
         use ::verifier_common::non_determinism_source::NonDeterminismSource;
         use ::verifier_common::transcript::{Blake2sTranscript, Seed};
         use ::verifier_common::gkr::GKRVerificationError;
+        use ::verifier_common::structs::CommitBuf;
         use ::verifier_common::lazy_vec::LazyVec;
         #field_use_stmts
 

@@ -135,10 +135,12 @@ pub fn generate_whir_final_round<MW: MersenneWrapper>(
                     );
 
                     // Read extension field leaf values from NDS (reduced)
-                    let mut i = 0;
-                    while i < FINAL_LEAF_EXT_WORDS {
-                        hash_buf.write(i, I::read_reduced_field_element(#field_struct::ORDER));
-                        i += 1;
+                    {
+                        let mut i = 0;
+                        while i < FINAL_LEAF_EXT_WORDS {
+                            hash_buf.write(i, read_reduced_field_el::<I>());
+                            i += 1;
+                        }
                     }
                     const FINAL_BLOCK_END: usize =
                         FINAL_LEAF_EXT_WORDS.next_multiple_of(BLAKE2S_BLOCK_SIZE_U32_WORDS);
