@@ -27,16 +27,33 @@ namespace airbender::witness::memory::unrolled {
 //   const ShuffleRamQueryColumns sets[MAX_SHUFFLE_RAM_ACCESS_SETS_COUNT];
 // };
 //
-// struct __align__(16) InitAndTeardown {
-//   u32 address;
-//   u32 teardown_value;
-//   TimestampData teardown_timestamp;
-// };
+struct __align__(16) LazyInitAndTeardown {
+  u32 address;
+  u32 teardown_value;
+  TimestampData teardown_timestamp;
+};
+
+struct ShuffleRamInitsAndTeardownsRaw {
+  const u32 count;
+  const LazyInitAndTeardown *const __restrict__ inits_and_teardowns;
+};
 //
 // struct ShuffleRamInitsAndTeardowns {
 //   const u32 count;
 //   const InitAndTeardown *const __restrict__ inits_and_teardowns;
 // };
+
+#define MAX_INITS_AND_TEARDOWNS_SETS_COUNT 16
+
+struct InitsAndTeardownsLayout {
+  const u32 teardown_timestamps_columns[NUM_TIMESTAMP_COLUMNS_FOR_RAM];
+  const u32 teardown_values_columns[2];
+};
+
+struct InitsAndTeardownsLayouts {
+  const u32 count;
+  const InitsAndTeardownsLayout layouts[MAX_INITS_AND_TEARDOWNS_SETS_COUNT];
+};
 
 struct MachineState {
   const u32 pc[REGISTER_SIZE];
@@ -85,6 +102,29 @@ DEVICE_FORCEINLINE void copy_timestamp(const u32 src[NUM_TIMESTAMP_COLUMNS_FOR_R
 }
 
 DEVICE_FORCEINLINE void copy_register(const u32 src[REGISTER_SIZE], u32 dst[REGISTER_SIZE]) { copy_array<REGISTER_SIZE>(src, dst); }
+
+template <bool COMPUTE_WITNESS>
+DEVICE_FORCEINLINE void process_inits_and_teardowns(const InitsAndTeardownsLayouts &init_and_teardown_layouts,
+                                                    const ShuffleRamInitsAndTeardownsRaw &inits_and_teardowns,
+                                                    const matrix_setter<bf, st_modifier::cg> memory,
+                                                    const matrix_setter<bf, st_modifier::cg> witness, const unsigned count, const unsigned index) {
+  (void)witness;
+  static_assert(!COMPUTE_WITNESS, "standalone init/teardown witness columns are expected to stay empty");
+  if (index >= inits_and_teardowns.count)
+    return;
+  const auto data = inits_and_teardowns.inits_and_teardowns[index];
+  const unsigned word_index = data.address >> 2;
+  const unsigned set_idx = word_index / count;
+  const unsigned row_idx = word_index % count;
+  if (set_idx >= init_and_teardown_layouts.count)
+    return;
+  const auto layout = init_and_teardown_layouts.layouts[set_idx];
+  const auto row_memory = memory.copy().add_row(row_idx);
+  write_timestamp_value(layout.teardown_timestamps_columns, data.teardown_timestamp, row_memory);
+  PRINT_TS(M, layout.teardown_timestamps_columns, data.teardown_timestamp);
+  write_u32_value(layout.teardown_values_columns, data.teardown_value, row_memory);
+  PRINT_U32(M, layout.teardown_values_columns, data.teardown_value);
+}
 
 // template <bool COMPUTE_WITNESS>
 // DEVICE_FORCEINLINE void process_inits_and_teardowns(const ShuffleRamInitAndTeardownLayouts &init_and_teardown_layouts,
@@ -406,17 +446,13 @@ EXTERN __global__ void ab_generate_memory_and_witness_values_unrolled_non_memory
   //   process_delegation_requests(subtree.delegation_request_layout.value, oracle, memory, index);
 }
 
-// EXTERN __global__ void ab_generate_memory_and_witness_values_unrolled_inits_and_teardowns_kernel(
-//     const __grid_constant__ ShuffleRamInitAndTeardownLayouts init_and_teardown_layouts, const __grid_constant__ ShuffleRamAuxComparisonSets
-//     aux_comparison_sets, const __grid_constant__ ShuffleRamInitsAndTeardowns inits_and_teardowns, matrix_setter<bf, st_modifier::cg> memory,
-//     matrix_setter<bf, st_modifier::cg> witness, const unsigned count) {
-//   const unsigned index = blockIdx.x * blockDim.x + threadIdx.x;
-//   if (index >= count)
-//     return;
-//   memory.add_row(index);
-//   witness.add_row(index);
-//   process_inits_and_teardowns<true>(init_and_teardown_layouts, aux_comparison_sets, inits_and_teardowns, memory, witness, count, index);
-// }
+EXTERN __global__ void ab_generate_memory_and_witness_values_unrolled_inits_and_teardowns_kernel(
+    const __grid_constant__ InitsAndTeardownsLayouts init_and_teardown_layouts,
+    const __grid_constant__ ShuffleRamInitsAndTeardownsRaw inits_and_teardowns, matrix_setter<bf, st_modifier::cg> memory,
+    matrix_setter<bf, st_modifier::cg> witness, const unsigned count) {
+  const unsigned index = blockIdx.x * blockDim.x + threadIdx.x;
+  process_inits_and_teardowns<false>(init_and_teardown_layouts, inits_and_teardowns, memory, witness, count, index);
+}
 //
 // EXTERN __global__ void ab_generate_memory_and_witness_values_unrolled_unified_kernel(
 //     const __grid_constant__ UnrolledFamilyMemorySubtree subtree, const __grid_constant__ ShuffleRamAuxComparisonSets aux_comparison_sets,
