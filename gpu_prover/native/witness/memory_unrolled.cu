@@ -262,17 +262,17 @@ DEVICE_FORCEINLINE void process_shuffle_ram_access_sets(const UnrolledMemoryLayo
       break;
     }
     case RegisterOrRam: {
-      const auto [is_register_address, address_columns] = address.payload.register_or_ram_access_address;
+      const auto [address_space, address_columns] = address.payload.register_or_ram_access_address;
       const bool is_register_value = oracle.get_witness_from_placeholder_bool({ShuffleRamIsRegisterAccess, i}, index);
-      switch (is_register_address.tag) {
-      case Is: {
-        write_bool_value(is_register_address.value, is_register_value, memory);
-        PRINT_U16(M, is_register_address.value, is_register_value);
+      switch (address_space.tag) {
+      case RegisterAddressSpace: {
+        write_bool_value(address_space.value, is_register_value, memory);
+        PRINT_U16(M, address_space.value, is_register_value);
         break;
       }
-      case Not: {
-        write_bool_value(is_register_address.value, !is_register_value, memory);
-        PRINT_U16(M, is_register_address.value, !is_register_value);
+      case RamAddressSpace: {
+        write_bool_value(address_space.value, !is_register_value, memory);
+        PRINT_U16(M, address_space.value, !is_register_value);
         break;
       }
       }
