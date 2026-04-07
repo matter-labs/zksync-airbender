@@ -29,6 +29,7 @@ use crate::primitives::utils::{get_grid_block_dims_for_threads_count, WARP_SIZE}
 use crate::prover::trace_holder::{allocate_tree_caps, TraceHolder, TreesCacheMode, TreesHolder};
 use cs::tables::TableType;
 use prover::gkr::prover::setup::GKRSetup as CpuGKRSetup;
+use prover::gkr::virtual_polys::init_and_teardown_base::materialize_virtual_inits_and_teardowns_base_address_setup_poly;
 use prover::gkr::virtual_polys::range_check::materialize_virtual_range_check_setup_poly;
 
 pub(crate) use super::setup_kernels::*;
@@ -57,6 +58,15 @@ impl<'a> GpuGKRSetupTransfer<'a> {
         E: Field + FieldExtension<BF> + GpuGKRForwardSetupGenericLookupKernelSet + 'static,
     {
         self.ensure_transferred(context)?;
+        return schedule_forward_setup_for_shape(
+            Some((&self.trace_holder, self.host.columns_count)),
+            trace_len,
+            generic_lookup_width,
+            generic_lookup_len,
+            tables_ids_in_generic_lookups,
+            lookup_challenges,
+            context,
+        );
         assert_eq!(trace_len, self.host.trace_len);
         assert_eq!(generic_lookup_width, self.host.columns_count);
 
@@ -351,6 +361,157 @@ impl<'a> GpuGKRSetupTransfer<'a> {
     }
 }
 
+pub(crate) fn schedule_forward_setup_for_shape<E>(
+    setup_trace_holder: Option<(&TraceHolder<BF>, usize)>,
+    trace_len: usize,
+    generic_lookup_width: usize,
+    generic_lookup_len: usize,
+    tables_ids_in_generic_lookups: bool,
+    lookup_challenges: &HostAllocation<[E]>,
+    context: &ProverContext,
+) -> CudaResult<GpuGKRForwardSetup<E>>
+where
+    E: Field + FieldExtension<BF> + GpuGKRForwardSetupGenericLookupKernelSet + 'static,
+{
+    if let Some((setup_trace_holder, setup_columns_count)) = setup_trace_holder {
+        assert_eq!(
+            trace_len,
+            1usize << setup_trace_holder.log_domain_size,
+            "forward setup trace length mismatch",
+        );
+        assert_eq!(
+            generic_lookup_width, setup_columns_count,
+            "generic lookup setup width does not match uploaded setup columns",
+        );
+    } else {
+        assert_eq!(
+            generic_lookup_width, 0,
+            "setup-less forward scheduling does not support uploaded setup columns",
+        );
+        assert_eq!(
+            generic_lookup_len, 0,
+            "setup-less forward scheduling does not support generic lookup preprocessing",
+        );
+    }
+
+    assert!(
+        generic_lookup_len == 0
+            || generic_lookup_width <= GKR_FORWARD_SETUP_GENERIC_LOOKUP_MAX_COLUMNS,
+        "generic lookup setup width {} exceeds the fused setup cap of {}",
+        generic_lookup_width,
+        GKR_FORWARD_SETUP_GENERIC_LOOKUP_MAX_COLUMNS
+    );
+    let stream = context.get_exec_stream();
+    let mut tracing_ranges = Vec::new();
+    let schedule_range = Range::new("gkr.forward_setup.schedule")?;
+    schedule_range.start(stream)?;
+    let mut host_lookup_additive_part = unsafe { context.alloc_host_uninit_slice(1) };
+    let mut host_decoder_lookup_fill_value = unsafe { context.alloc_host_uninit_slice(1) };
+    let mut device_lookup_additive_part = context.alloc(1, AllocationPlacement::BestFit)?;
+    let mut device_decoder_lookup_fill_value = context.alloc(1, AllocationPlacement::BestFit)?;
+    let mut host_lookup_alpha_powers = if generic_lookup_len > 0 {
+        Some(unsafe { context.alloc_host_uninit_slice(generic_lookup_width) })
+    } else {
+        None
+    };
+    let mut generic_lookup = if generic_lookup_len > 0 {
+        Some(context.alloc::<E>(generic_lookup_len, AllocationPlacement::BestFit)?)
+    } else {
+        None
+    };
+    let lookup_challenges_accessor = lookup_challenges.get_accessor();
+    let mut callbacks = Callbacks::new();
+
+    let lookup_additive_part_accessor = host_lookup_additive_part.get_mut_accessor();
+    let decoder_lookup_fill_value_accessor = host_decoder_lookup_fill_value.get_mut_accessor();
+    let alpha_powers_accessor = host_lookup_alpha_powers
+        .as_mut()
+        .map(HostAllocation::get_mut_accessor);
+    let alpha_powers_len = host_lookup_alpha_powers
+        .as_ref()
+        .map(HostAllocation::len)
+        .unwrap_or(0);
+    callbacks.schedule(
+        move || unsafe {
+            let lookup_challenges = lookup_challenges_accessor.get();
+            assert!(
+                lookup_challenges.len() >= 2,
+                "lookup scheduling expects [lookup_alpha, lookup_additive_part, ...]",
+            );
+            let lookup_alpha = lookup_challenges[0];
+            let lookup_additive_part = lookup_challenges[1];
+            lookup_additive_part_accessor.get_mut()[0] = lookup_additive_part;
+            decoder_lookup_fill_value_accessor.get_mut()[0] =
+                if tables_ids_in_generic_lookups && generic_lookup_width > 0 {
+                    let mut value = lookup_alpha.pow((generic_lookup_width - 1) as u32);
+                    value.mul_assign_by_base(&BF::from_u32_unchecked(TableType::Decoder as u32));
+                    value
+                } else {
+                    E::ZERO
+                };
+            if let Some(alpha_powers_accessor) = alpha_powers_accessor.as_ref() {
+                let powers = materialize_powers_serial_starting_with_one::<E, std::alloc::Global>(
+                    lookup_alpha,
+                    alpha_powers_len,
+                );
+                alpha_powers_accessor.get_mut().copy_from_slice(&powers);
+            }
+        },
+        context.get_exec_stream(),
+    )?;
+
+    memory_copy_async(
+        &mut device_lookup_additive_part,
+        &host_lookup_additive_part,
+        context.get_exec_stream(),
+    )?;
+    memory_copy_async(
+        &mut device_decoder_lookup_fill_value,
+        &host_decoder_lookup_fill_value,
+        context.get_exec_stream(),
+    )?;
+    let device_lookup_alpha_powers = if let Some(host_alpha_powers) = host_lookup_alpha_powers.as_ref() {
+        let mut device = context.alloc(host_alpha_powers.len(), AllocationPlacement::BestFit)?;
+        memory_copy_async(&mut device, host_alpha_powers, context.get_exec_stream())?;
+        Some(device)
+    } else {
+        None
+    };
+
+    if let (Some(generic_lookup), Some(device_lookup_alpha_powers), Some((setup_trace_holder, _))) =
+        (generic_lookup.as_mut(), device_lookup_alpha_powers.as_ref(), setup_trace_holder)
+    {
+        let generic_lookup_range = Range::new("gkr.forward_setup.build_generic_lookup")?;
+        generic_lookup_range.start(stream)?;
+        let raw = setup_trace_holder.get_hypercube_evals();
+        let setup_columns = (0..generic_lookup_width)
+            .map(|column_idx| unsafe { raw.as_ptr().add(column_idx * trace_len) })
+            .collect::<Vec<_>>();
+        let batch = pack_forward_setup_generic_lookup_batch(
+            &setup_columns,
+            device_lookup_alpha_powers.as_ptr(),
+            generic_lookup.as_mut_ptr(),
+        );
+        launch_forward_setup_generic_lookup(&batch, generic_lookup.len(), context)?;
+        generic_lookup_range.end(stream)?;
+        tracing_ranges.push(generic_lookup_range);
+    }
+    schedule_range.end(stream)?;
+    tracing_ranges.push(schedule_range);
+
+    Ok(GpuGKRForwardSetup {
+        _tracing_ranges: tracing_ranges,
+        _callbacks: callbacks,
+        _host_lookup_additive_part: host_lookup_additive_part,
+        _host_decoder_lookup_fill_value: host_decoder_lookup_fill_value,
+        _host_lookup_alpha_powers: host_lookup_alpha_powers,
+        device_lookup_additive_part,
+        device_decoder_lookup_fill_value,
+        _device_lookup_alpha_powers: device_lookup_alpha_powers,
+        generic_lookup,
+    })
+}
+
 fn upload_virtual_setup_poly<E>(
     storage: &mut GpuGKRStorage<BF, E>,
     address: GKRAddress,
@@ -384,7 +545,104 @@ fn insert_virtual_setup_polys<E>(
         >(trace_len_log2),
         context,
     )?;
+    let worker = worker::Worker::new();
+    let (low, high) =
+        materialize_virtual_inits_and_teardowns_base_address_setup_poly::<BF, std::alloc::Global, 2>(
+            trace_len_log2,
+            &worker,
+        );
+    upload_virtual_setup_poly(
+        storage,
+        GKRAddress::VirtualSetup(VirtualSetupPoly::InitsAndTeardownsLow),
+        low,
+        context,
+    )?;
+    upload_virtual_setup_poly(
+        storage,
+        GKRAddress::VirtualSetup(VirtualSetupPoly::InitsAndTeardownsHigh),
+        high,
+        context,
+    )?;
     Ok(())
+}
+
+pub(crate) fn bootstrap_storage_with_virtual_setup<E>(
+    setup_trace_holder: Option<&TraceHolder<BF>>,
+    setup_columns_count: usize,
+    trace_len_log2: u32,
+    log_lde_factor: u32,
+    log_rows_per_leaf: u32,
+    log_tree_cap_size: u32,
+    memory_trace_holder: &TraceHolder<BF>,
+    witness_trace_holder: &TraceHolder<BF>,
+    context: &ProverContext,
+) -> CudaResult<GpuGKRStorage<BF, E>> {
+    for (label, trace_holder) in [
+        ("memory", memory_trace_holder),
+        ("witness", witness_trace_holder),
+    ] {
+        assert_eq!(
+            trace_holder.log_domain_size, trace_len_log2,
+            "{label} trace holder must match setup trace length",
+        );
+        assert_eq!(
+            trace_holder.log_lde_factor, log_lde_factor,
+            "{label} trace holder must match setup LDE factor",
+        );
+        assert_eq!(
+            trace_holder.log_rows_per_leaf, log_rows_per_leaf,
+            "{label} trace holder must match setup rows per leaf",
+        );
+        assert_eq!(
+            trace_holder.log_tree_cap_size, log_tree_cap_size,
+            "{label} trace holder must match setup tree cap size",
+        );
+    }
+    if let Some(setup_trace_holder) = setup_trace_holder {
+        assert_eq!(
+            setup_trace_holder.log_domain_size, trace_len_log2,
+            "setup trace holder must match trace length",
+        );
+        assert_eq!(
+            setup_trace_holder.log_lde_factor, log_lde_factor,
+            "setup trace holder must match LDE factor",
+        );
+        assert_eq!(
+            setup_trace_holder.log_rows_per_leaf, log_rows_per_leaf,
+            "setup trace holder must match rows per leaf",
+        );
+        assert_eq!(
+            setup_trace_holder.log_tree_cap_size, log_tree_cap_size,
+            "setup trace holder must match tree cap size",
+        );
+        assert_eq!(
+            setup_trace_holder.columns_count, setup_columns_count,
+            "setup trace holder columns count mismatch",
+        );
+    } else {
+        assert_eq!(
+            setup_columns_count, 0,
+            "setup-less storage bootstrap expects zero uploaded setup columns",
+        );
+    }
+
+    let mut storage = GpuGKRStorage::default();
+    if let Some(setup_trace_holder) = setup_trace_holder {
+        bind_trace_holder_columns_into_storage(setup_trace_holder, &mut storage, GKRAddress::Setup);
+    }
+    insert_virtual_setup_polys(&mut storage, trace_len_log2, context)?;
+    bind_trace_holder_columns_into_storage(
+        memory_trace_holder,
+        &mut storage,
+        GKRAddress::BaseLayerMemory,
+    );
+    bind_trace_holder_columns_into_storage(
+        witness_trace_holder,
+        &mut storage,
+        GKRAddress::BaseLayerWitness,
+    );
+
+    Ok(storage)
 }
 
 pub(crate) struct GpuGKRForwardSetup<E> {
@@ -553,6 +811,7 @@ mod tests {
     use prover::merkle_trees::{
         ColumnMajorMerkleTreeConstructor, DefaultTreeConstructor, MerkleTreeCapVarLength,
     };
+    use prover::gkr::virtual_polys::init_and_teardown_base::materialize_virtual_inits_and_teardowns_base_address_setup_poly;
     use serial_test::serial;
     use worker::Worker;
 
@@ -998,6 +1257,23 @@ mod tests {
             )
             .into_vec()
         );
+        let (expected_inits_low, expected_inits_high) =
+            materialize_virtual_inits_and_teardowns_base_address_setup_poly::<BF, Global, 2>(
+                trace_len.trailing_zeros(),
+                &Worker::new(),
+            );
+        let virtual_inits_low = copy_base_poly_from_storage(
+            &storage,
+            GKRAddress::VirtualSetup(VirtualSetupPoly::InitsAndTeardownsLow),
+            &context,
+        );
+        assert_eq!(virtual_inits_low, expected_inits_low.into_vec());
+        let virtual_inits_high = copy_base_poly_from_storage(
+            &storage,
+            GKRAddress::VirtualSetup(VirtualSetupPoly::InitsAndTeardownsHigh),
+            &context,
+        );
+        assert_eq!(virtual_inits_high, expected_inits_high.into_vec());
         for column in 0..memory_columns {
             let expected = &memory_values[column * trace_len..(column + 1) * trace_len];
             assert_eq!(
@@ -1020,6 +1296,75 @@ mod tests {
                 expected,
             );
         }
+    }
+
+    #[test]
+    #[cfg(not(no_cuda))]
+    #[serial]
+    fn bootstrap_storage_without_uploaded_setup_materializes_init_teardown_virtual_setup_polys() {
+        let trace_len = 1usize << 19;
+        let log_lde_factor = 1u32;
+        let log_rows_per_leaf = 1u32;
+        let log_tree_cap_size = 1u32;
+        let context = make_test_context(256, 64);
+        let worker = Worker::new();
+
+        let memory_values = (0..trace_len)
+            .map(|i| BF::from_u32_unchecked(i as u32 + 1))
+            .collect_vec();
+        let memory_trace_holder = materialize_trace_holder_from_values(
+            &memory_values,
+            1,
+            trace_len,
+            log_lde_factor,
+            log_rows_per_leaf,
+            log_tree_cap_size,
+            &context,
+        );
+        let witness_trace_holder = materialize_trace_holder_from_values(
+            &[],
+            0,
+            trace_len,
+            log_lde_factor,
+            log_rows_per_leaf,
+            log_tree_cap_size,
+            &context,
+        );
+
+        let storage = bootstrap_storage_with_virtual_setup::<E4>(
+            None,
+            0,
+            trace_len.trailing_zeros(),
+            log_lde_factor,
+            log_rows_per_leaf,
+            log_tree_cap_size,
+            &memory_trace_holder,
+            &witness_trace_holder,
+            &context,
+        )
+        .unwrap();
+
+        let (expected_low, expected_high) =
+            materialize_virtual_inits_and_teardowns_base_address_setup_poly::<BF, Global, 2>(
+                trace_len.trailing_zeros(),
+                &worker,
+            );
+        assert_eq!(
+            copy_base_poly_from_storage(
+                &storage,
+                GKRAddress::VirtualSetup(VirtualSetupPoly::InitsAndTeardownsLow),
+                &context,
+            ),
+            expected_low.into_vec()
+        );
+        assert_eq!(
+            copy_base_poly_from_storage(
+                &storage,
+                GKRAddress::VirtualSetup(VirtualSetupPoly::InitsAndTeardownsHigh),
+                &context,
+            ),
+            expected_high.into_vec()
+        );
     }
 
     #[test]
