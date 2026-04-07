@@ -5,6 +5,7 @@ pub(crate) mod backward_kernels;
 pub(crate) mod base_layer_claims;
 pub(crate) mod forward;
 pub(crate) mod forward_kernels;
+pub(crate) mod lowering;
 pub(crate) mod setup;
 pub(crate) mod setup_kernels;
 pub(crate) mod stage1;
@@ -835,10 +836,16 @@ impl<B: 'static, E: Field> GpuGKRStorage<B, E> {
             .intermediate_storage_for_folder_base_field_inputs
             .get_mut(&poly)
             .expect("must be present");
-        assert!(*last_used_for_layer == sumcheck_step || *last_used_for_layer == sumcheck_step - 1);
+        assert!(
+            *last_used_for_layer >= sumcheck_step - 1,
+            "base folding storage for {:?} advanced only through step {}, but step {} was requested",
+            poly,
+            *last_used_for_layer,
+            sumcheck_step
+        );
         let this_layer_start = buffer.initial_pointer();
 
-        let first_access = if *last_used_for_layer == sumcheck_step {
+        let first_access = if *last_used_for_layer >= sumcheck_step {
             false
         } else {
             *last_used_for_layer = sumcheck_step;
@@ -867,13 +874,19 @@ impl<B: 'static, E: Field> GpuGKRStorage<B, E> {
             .intermediate_storage_for_folder_base_field_inputs
             .get_mut(&poly)
             .expect("must be present");
-        assert!(*last_used_for_layer == sumcheck_step || *last_used_for_layer == sumcheck_step - 1);
+        assert!(
+            *last_used_for_layer >= sumcheck_step - 1,
+            "base folding storage for {:?} advanced only through step {}, but step {} was requested",
+            poly,
+            *last_used_for_layer,
+            sumcheck_step
+        );
         let (previous_layer_start, this_layer_start) =
             buffer.pointers_for_sumcheck_accessor_step(sumcheck_step);
         let this_layer_size = buffer.size_after_two_folds >> (sumcheck_step - 2);
         let next_layer_size = this_layer_size / 2;
 
-        let first_access = if *last_used_for_layer == sumcheck_step {
+        let first_access = if *last_used_for_layer >= sumcheck_step {
             false
         } else {
             *last_used_for_layer = sumcheck_step;
@@ -933,14 +946,18 @@ impl<B: 'static, E: Field> GpuGKRStorage<B, E> {
                 .get_mut(&poly)
                 .expect("must be present");
             assert!(
-                *last_used_for_layer == sumcheck_step || *last_used_for_layer == sumcheck_step - 1
+                *last_used_for_layer >= sumcheck_step - 1,
+                "extension folding storage for {:?} advanced only through step {}, but step {} was requested",
+                poly,
+                *last_used_for_layer,
+                sumcheck_step
             );
             let (previous_layer_start, this_layer_start) =
                 buffer.pointer_for_sumcheck_continuation(sumcheck_step);
             let this_layer_size = buffer.size_after_one_fold >> (sumcheck_step - 2);
             let next_layer_size = this_layer_size / 2;
 
-            let first_access = if *last_used_for_layer == sumcheck_step {
+            let first_access = if *last_used_for_layer >= sumcheck_step {
                 false
             } else {
                 *last_used_for_layer = sumcheck_step;
@@ -1778,6 +1795,34 @@ mod tests {
             assert_eq!(
                 round3_second_ext_inputs_device[0].this_layer_start,
                 round3_ext_cache_ptr
+            );
+        }
+
+        {
+            let mut callbacks = Callbacks::new();
+            let round2_reuse_after_round3 = storage
+                .prepare_for_sumcheck_round_2(&inputs, &context)
+                .unwrap()
+                .schedule_upload_launch_descriptors(&context, &mut callbacks)
+                .unwrap();
+            context.get_exec_stream().synchronize().unwrap();
+            let round2_reuse_base_inputs_device = copy_device_values(
+                &context,
+                &round2_reuse_after_round3.device.base_field_inputs,
+            );
+            let round2_reuse_ext_inputs_device = copy_device_values(
+                &context,
+                &round2_reuse_after_round3.device.extension_field_inputs,
+            );
+            assert!(!round2_reuse_base_inputs_device[0].first_access);
+            assert!(!round2_reuse_ext_inputs_device[0].first_access);
+            assert_eq!(
+                round2_reuse_base_inputs_device[0].this_layer_cache_start,
+                base_round2_cache_ptr
+            );
+            assert_eq!(
+                round2_reuse_ext_inputs_device[0].this_layer_start,
+                ext_round2_cache_ptr
             );
         }
 
