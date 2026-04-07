@@ -3,6 +3,7 @@ use cs::{definitions::GKRAddress, gkr_compiler::NoFieldMaxQuadraticConstraintsGK
 
 #[derive(Debug)]
 pub struct BatchConstraintEvalGKRRelation<F: PrimeField, E: FieldExtension<F> + Field> {
+    pub relation: NoFieldMaxQuadraticConstraintsGKRRelation,
     pub kernel: BatchConstraintEvalGKRRelationKernel<F, E>,
     pub inputs: Vec<GKRAddress>,
 }
@@ -73,7 +74,11 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BatchConstraintEvalGKRRelation
             kernel.constant_offset.add_assign(&t);
         }
 
-        Self { inputs, kernel }
+        Self {
+            relation: input.clone(),
+            inputs,
+            kernel,
+        }
     }
 }
 
@@ -91,6 +96,50 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E>
             outputs_in_base: Vec::new(),
             outputs_in_extension: Vec::new(),
         }
+    }
+
+    fn terms(
+        &self,
+        challenge_constants: &BatchedGKRTermDescriptionConstants<F, E>,
+    ) -> Vec<BatchedGKRTermDescription<F, E>> {
+        let mut term = BatchedGKRTermDescription::default();
+
+        for ((a, b), set) in self.relation.quadratic_terms.iter() {
+            let mut total_prefactor = E::ZERO;
+            for (c, pow) in set.iter() {
+                let mut t = challenge_constants
+                    .constraints_batch_challenge
+                    .pow(*pow as u32);
+                let c = F::from_u32_with_reduction(*c);
+                t.mul_assign_by_base(&c);
+                total_prefactor.add_assign(&t);
+            }
+            term.add_base_by_base(*a, *b, total_prefactor);
+        }
+
+        for (a, set) in self.relation.linear_terms.iter() {
+            let mut total_prefactor = E::ZERO;
+            for (c, pow) in set.iter() {
+                let mut t = challenge_constants
+                    .constraints_batch_challenge
+                    .pow(*pow as u32);
+                let c = F::from_u32_with_reduction(*c);
+                t.mul_assign_by_base(&c);
+                total_prefactor.add_assign(&t);
+            }
+            term.add_linear_with_base(*a, total_prefactor);
+        }
+
+        for (c, pow) in self.relation.constants.iter() {
+            let mut t = challenge_constants
+                .constraints_batch_challenge
+                .pow(*pow as u32);
+            let c = F::from_u32_with_reduction(*c);
+            t.mul_assign_by_base(&c);
+            term.add_constant(t);
+        }
+
+        vec![term]
     }
 
     fn evaluate_forward_over_storage(

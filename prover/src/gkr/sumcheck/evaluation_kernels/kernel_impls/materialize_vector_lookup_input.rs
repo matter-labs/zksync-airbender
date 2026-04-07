@@ -1,14 +1,16 @@
 use super::*;
+use crate::gkr::prover::forward_loop::utils::vector_lookup_as_flattened_relation;
 use cs::definitions::{gkr::NoFieldVectorLookupRelation, GKRAddress};
 
 #[derive(Debug)]
-pub struct MaterializeVectoLookupInputGKRRelation<F: PrimeField, E: FieldExtension<F> + Field> {
-    pub kernel: MaterializeVectoLookupInputGKRRelationKernel<F, E>,
+pub struct MaterializeVectorLookupInputGKRRelation<F: PrimeField, E: FieldExtension<F> + Field> {
+    pub kernel: MaterializeVectorLookupInputGKRRelationKernel<F, E>,
     pub inputs: Vec<GKRAddress>,
+    pub relation: NoFieldVectorLookupRelation,
     pub output: GKRAddress,
 }
 
-impl<F: PrimeField, E: FieldExtension<F> + Field> MaterializeVectoLookupInputGKRRelation<F, E> {
+impl<F: PrimeField, E: FieldExtension<F> + Field> MaterializeVectorLookupInputGKRRelation<F, E> {
     pub fn new(
         input: &NoFieldVectorLookupRelation,
         output: GKRAddress,
@@ -16,7 +18,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> MaterializeVectoLookupInputGKR
     ) -> Self {
         let mut remapper = DenseInputRemapper::default();
         let mut inputs = vec![];
-        let mut kernel = MaterializeVectoLookupInputGKRRelationKernel::<F, E> {
+        let mut kernel = MaterializeVectorLookupInputGKRRelationKernel::<F, E> {
             linear_parts: vec![],
             constant_offset: E::ZERO,
             _marker: core::marker::PhantomData,
@@ -48,6 +50,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> MaterializeVectoLookupInputGKR
         }
 
         Self {
+            relation: input.clone(),
             inputs,
             kernel,
             output,
@@ -56,7 +59,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> MaterializeVectoLookupInputGKR
 }
 
 impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E>
-    for MaterializeVectoLookupInputGKRRelation<F, E>
+    for MaterializeVectorLookupInputGKRRelation<F, E>
 {
     fn num_challenges(&self) -> usize {
         1
@@ -69,6 +72,23 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E>
             outputs_in_base: Vec::new(),
             outputs_in_extension: vec![self.output],
         }
+    }
+
+    fn terms(
+        &self,
+        challenge_constants: &BatchedGKRTermDescriptionConstants<F, E>,
+    ) -> Vec<BatchedGKRTermDescription<F, E>> {
+        // NOTE: we do not mix-in additive parts in such cases
+        let a = vector_lookup_as_flattened_relation::<F, E, false>(
+            &self.relation,
+            challenge_constants.lookup_challenges_multiplicative_part,
+            challenge_constants.lookup_challenges_additive_part,
+        );
+        let mut term = BatchedGKRTermDescription::default();
+        term.add_linear_base_terms(a);
+        term.set_extension_output(self.output);
+
+        vec![term]
     }
 
     fn evaluate_forward_over_storage(
@@ -118,8 +138,10 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E>
 
 #[derive(Debug)]
 // Assumes reordering of access implementors, to have lhs at 0 and rhs at 1
-pub struct MaterializeVectoLookupInputGKRRelationKernel<F: PrimeField, E: FieldExtension<F> + Field>
-{
+pub struct MaterializeVectorLookupInputGKRRelationKernel<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+> {
     pub linear_parts: Vec<E>,
     pub constant_offset: E,
     _marker: core::marker::PhantomData<F>,
@@ -127,7 +149,7 @@ pub struct MaterializeVectoLookupInputGKRRelationKernel<F: PrimeField, E: FieldE
 
 impl<F: PrimeField, E: FieldExtension<F> + Field>
     SingleInputTypeBatchSumcheckEvaluationKernelCore<F, E, 1>
-    for MaterializeVectoLookupInputGKRRelationKernel<F, E>
+    for MaterializeVectorLookupInputGKRRelationKernel<F, E>
 {
     #[inline]
     fn pointwise_eval(&self, input: &[E]) -> [E; 1] {
@@ -152,7 +174,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field>
 
 impl<F: PrimeField, E: FieldExtension<F> + Field>
     SingleInputTypeBatchSumcheckEvaluationKernel<F, E, 1>
-    for MaterializeVectoLookupInputGKRRelationKernel<F, E>
+    for MaterializeVectorLookupInputGKRRelationKernel<F, E>
 {
     #[inline(always)]
     fn evaluate_first_round<

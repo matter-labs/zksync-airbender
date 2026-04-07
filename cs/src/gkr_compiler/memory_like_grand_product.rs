@@ -3,8 +3,10 @@ use crate::cs::circuit_trait::{
     ConstantRegisterAccess, MemoryAccess, RegisterAccess, RegisterIndirectRamAccess,
     RegisterOrRamAccess, WordRepresentation,
 };
+use crate::definitions::gkr::AddressSpaceType;
 use crate::definitions::Variable;
 use crate::gkr_compiler::graph::CopyNode;
+use crate::types::Boolean;
 
 #[derive(Clone, Hash, Debug, PartialEq, Eq)]
 pub enum GrandProductAccumulationStep {
@@ -75,16 +77,27 @@ impl GKRGate for GrandProductAccumulationStep {
         match self {
             Self::BasePair { lhs, rhs, .. } => {
                 assert_ne!(lhs, rhs);
-                let input = [lhs, rhs].map(|el| {
-                    let expr = mem_permutation_expr_into_cached_expr(el, graph);
-                    assert!(output_layer > 0);
-                    let cache_layer = output_layer - 1;
-                    graph.add_cached_relation(expr, cache_layer)
-                });
-                let relation = NoFieldGKRRelation::InitialGrandProductFromCaches { input, output };
-                graph.add_enforced_relation(relation.clone(), output_layer);
+                if graph.can_use_caching() {
+                    let input = [lhs, rhs].map(|el| {
+                        let expr = mem_permutation_expr_into_cached_expr(el, graph);
+                        assert!(output_layer > 0);
+                        let cache_layer = output_layer - 1;
+                        graph.add_cached_relation(expr, cache_layer)
+                    });
+                    let relation =
+                        NoFieldGKRRelation::InitialGrandProductFromCaches { input, output };
+                    graph.add_enforced_relation(relation.clone(), output_layer);
 
-                (output, relation)
+                    (output, relation)
+                } else {
+                    let input =
+                        [lhs, rhs].map(|el| mem_permutation_expr_into_gkr_relation(el, graph));
+                    let relation =
+                        NoFieldGKRRelation::InitialGrandProductWithoutCaches { input, output };
+                    graph.add_enforced_relation(relation.clone(), output_layer);
+
+                    (output, relation)
+                }
             }
             Self::AggregationPair { lhs, rhs, .. } => {
                 assert_ne!(lhs, rhs);
@@ -99,14 +112,25 @@ impl GKRGate for GrandProductAccumulationStep {
                 (output, relation)
             }
             Self::MaterializeBase { access, .. } => {
-                let expr = mem_permutation_expr_into_cached_expr(access, graph);
-                assert!(output_layer > 0);
-                let cache_layer = output_layer - 1;
-                let cached = graph.add_cached_relation(expr, cache_layer);
+                if graph.can_use_caching() {
+                    let expr = mem_permutation_expr_into_cached_expr(access, graph);
+                    assert!(output_layer > 0);
+                    let cache_layer = output_layer - 1;
+                    let cached = graph.add_cached_relation(expr, cache_layer);
 
-                // and copy it
-                let copy_node = CopyNode::FromBase(cached);
-                copy_node.add_at_layer(graph, output_layer)
+                    // and copy it
+                    let copy_node = CopyNode::FromBase(cached);
+                    copy_node.add_at_layer(graph, output_layer)
+                } else {
+                    let input = mem_permutation_expr_into_gkr_relation(access, graph);
+                    let output = graph.add_intermediate_variable_at_layer(output_layer);
+                    let relation =
+                        NoFieldGKRRelation::MaterializeGrandProductTermExpression { input, output };
+
+                    graph.add_enforced_relation(relation.clone(), output_layer);
+
+                    (output, relation)
+                }
             }
         }
     }
@@ -144,6 +168,26 @@ impl GKRGate for GrandProductAccumulationMaskingNode {
         graph.add_enforced_relation(relation.clone(), output_layer);
 
         (output, relation)
+    }
+}
+
+fn reg_boolean_into_address_space_raw(is_register: Boolean) -> AddressSpaceIsRegisterOrRamRaw {
+    match is_register {
+        Boolean::Is(var) => {
+            // if boolean is "true" then the address space must be "register" = 0
+            assert_eq!(AddressSpaceType::Register as u8, 0);
+            // we propagate internal value further, and deal with concrete value later on
+            AddressSpaceIsRegisterOrRamRaw::IsRegister(var)
+        }
+        Boolean::Not(var) => {
+            // if boolean is "true" then the address space must be "RAM" = 1
+            assert_eq!(AddressSpaceType::RAM as u8, 1);
+            // we propagate internal value further, and deal with concrete value later on
+            AddressSpaceIsRegisterOrRamRaw::IsRam(var)
+        }
+        Boolean::Constant(_) => {
+            unreachable!()
+        }
     }
 }
 
@@ -192,15 +236,10 @@ pub(crate) fn layout_initial_grand_product_accumulation(
                     address,
                     ..
                 }) => {
-                    use crate::types::Boolean;
-                    let address_space_isregister = match *is_register {
-                        Boolean::Is(var) => AddressSpaceIsRegister::Is(var),
-                        Boolean::Not(var) => AddressSpaceIsRegister::Not(var),
-                        Boolean::Constant(_) => todo!(),
-                    };
+                    let address_space = reg_boolean_into_address_space_raw(*is_register);
                     MemoryPermutationExpression {
                         address: AddressSpaceAddress::U32Space(*address),
-                        address_space: AddressSpace::RegisterOrRam(address_space_isregister),
+                        address_space: AddressSpace::RegisterOrRam(address_space),
                         value: query.read_value(),
                         timestamp: MemoryPermutationTimestamp::Normal(aux.read_timestamp),
                         timestamp_offset: 0,
@@ -252,15 +291,10 @@ pub(crate) fn layout_initial_grand_product_accumulation(
                     address,
                     ..
                 }) => {
-                    use crate::types::Boolean;
-                    let address_space_isregister = match *is_register {
-                        Boolean::Is(var) => AddressSpaceIsRegister::Is(var),
-                        Boolean::Not(var) => AddressSpaceIsRegister::Not(var),
-                        Boolean::Constant(_) => todo!(),
-                    };
+                    let address_space = reg_boolean_into_address_space_raw(*is_register);
                     MemoryPermutationExpression {
                         address: AddressSpaceAddress::U32Space(*address),
-                        address_space: AddressSpace::RegisterOrRam(address_space_isregister),
+                        address_space: AddressSpace::RegisterOrRam(address_space),
                         value: query.write_value(),
                         timestamp: MemoryPermutationTimestamp::Normal(
                             mem_accesses_base_write_timestamp,
@@ -342,15 +376,10 @@ pub(crate) fn layout_initial_grand_product_accumulation(
                     address,
                     ..
                 }) => {
-                    use crate::types::Boolean;
-                    let address_space_isregister = match is_register {
-                        Boolean::Is(var) => AddressSpaceIsRegister::Is(var),
-                        Boolean::Not(var) => AddressSpaceIsRegister::Not(var),
-                        Boolean::Constant(_) => todo!(),
-                    };
+                    let address_space = reg_boolean_into_address_space_raw(is_register);
                     MemoryPermutationExpression {
                         address: AddressSpaceAddress::U32Space(address),
-                        address_space: AddressSpace::RegisterOrRam(address_space_isregister),
+                        address_space: AddressSpace::RegisterOrRam(address_space),
                         value: query.read_value(),
                         timestamp: MemoryPermutationTimestamp::Normal(aux.read_timestamp),
                         timestamp_offset: 0,
@@ -402,15 +431,10 @@ pub(crate) fn layout_initial_grand_product_accumulation(
                     address,
                     ..
                 }) => {
-                    use crate::types::Boolean;
-                    let address_space_isregister = match is_register {
-                        Boolean::Is(var) => AddressSpaceIsRegister::Is(var),
-                        Boolean::Not(var) => AddressSpaceIsRegister::Not(var),
-                        Boolean::Constant(_) => todo!(),
-                    };
+                    let address_space = reg_boolean_into_address_space_raw(is_register);
                     MemoryPermutationExpression {
                         address: AddressSpaceAddress::U32Space(address),
-                        address_space: AddressSpace::RegisterOrRam(address_space_isregister),
+                        address_space: AddressSpace::RegisterOrRam(address_space),
                         value: query.write_value(),
                         timestamp: MemoryPermutationTimestamp::Normal(
                             mem_accesses_base_write_timestamp,

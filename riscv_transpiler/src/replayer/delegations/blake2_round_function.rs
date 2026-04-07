@@ -259,7 +259,7 @@ pub(crate) fn blake2_round_function_call<C: Counters, R: RAM>(
                 };
 
                 let mut witness = Blake2sRoundFunctionDelegationWitness::empty();
-                witness.write_timestamp = current_timestamp | 3;
+                witness.write_timestamp = current_timestamp | DELEGATION_INVOCATION_OFFET;
 
                 witness.reg_accesses[0] = RegisterOrIndirectReadWriteData {
                     read_value: x10,

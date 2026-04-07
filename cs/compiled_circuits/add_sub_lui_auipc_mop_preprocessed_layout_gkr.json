@@ -2872,68 +2872,6 @@
             }
           }
         }
-      ],
-      "additional_base_layer_openings": [
-        {
-          "BaseLayerWitness": 18
-        },
-        {
-          "BaseLayerWitness": 19
-        },
-        {
-          "BaseLayerWitness": 20
-        },
-        {
-          "BaseLayerMemory": 0
-        },
-        {
-          "BaseLayerMemory": 1
-        },
-        {
-          "BaseLayerMemory": 4
-        },
-        {
-          "BaseLayerMemory": 9
-        },
-        {
-          "BaseLayerMemory": 10
-        },
-        {
-          "BaseLayerMemory": 11
-        },
-        {
-          "BaseLayerMemory": 12
-        },
-        {
-          "BaseLayerMemory": 13
-        },
-        {
-          "BaseLayerMemory": 14
-        },
-        {
-          "Setup": 0
-        },
-        {
-          "Setup": 1
-        },
-        {
-          "Setup": 2
-        },
-        {
-          "Setup": 3
-        },
-        {
-          "Setup": 4
-        },
-        {
-          "Setup": 5
-        },
-        {
-          "Setup": 6
-        },
-        {
-          "Setup": 7
-        }
       ]
     },
     {
@@ -3274,8 +3212,7 @@
             }
           }
         }
-      ],
-      "additional_base_layer_openings": []
+      ]
     },
     {
       "layer": 3,
@@ -3510,8 +3447,7 @@
             }
           }
         }
-      ],
-      "additional_base_layer_openings": []
+      ]
     },
     {
       "layer": 4,
@@ -3683,8 +3619,7 @@
         }
       ],
       "cached_relations": [],
-      "gates": [],
-      "additional_base_layer_openings": []
+      "gates": []
     }
   ],
   "global_output_map": {

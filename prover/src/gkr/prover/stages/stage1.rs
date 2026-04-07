@@ -24,7 +24,6 @@ pub fn compute_column_major_lde_from_main_domain<
 >(
     source_domain: Arc<Box<[E]>>,
     twiddles: &Twiddles<F, A>,
-    // lde_precomputations: &LdePrecomputations<A>,
     lde_factor: usize,
 ) -> Vec<ColumnMajorCosetBoundTracePart<F, E>> {
     let mut result = Vec::with_capacity(lde_factor);
@@ -51,7 +50,6 @@ pub(crate) fn compute_column_major_lde_from_main_domain_inner<
 >(
     source_domain: &[E],
     twiddles: &Twiddles<F, A>,
-    // lde_precomputations: &LdePrecomputations<A>,
     lde_factor: usize,
 ) -> Vec<(Box<[E]>, F)> {
     assert!(lde_factor.is_power_of_two());
@@ -118,7 +116,6 @@ pub(crate) fn compute_column_major_lde_from_main_domain_and_output_monomial_form
 >(
     source_domain: &[E],
     twiddles: &Twiddles<F, A>,
-    // lde_precomputations: &LdePrecomputations<A>,
     lde_factor: usize,
 ) -> (Vec<(Box<[E]>, F)>, Vec<E>) {
     assert!(lde_factor.is_power_of_two());
@@ -330,6 +327,10 @@ fn lde_multiple_polys_parallel_from_hypercubes<F: PrimeField + TwoAdicField>(
         cosets.push(Vec::with_capacity(evals.len()));
     }
 
+    if evals.len() == 0 {
+        return cosets;
+    }
+
     unsafe {
         worker.scope(evals.len(), |scope, geometry| {
             for thread_idx in 0..geometry.len() {
@@ -387,6 +388,29 @@ pub fn commit_trace_part<F: PrimeField + TwoAdicField, T: ColumnMajorMerkleTreeC
 where
     [(); F::DEGREE]: Sized,
 {
+    if input_on_hypercube.is_empty() {
+        let mut cosets = Vec::with_capacity(lde_factor);
+        let next_root = domain_generator_for_size::<F>(((1 << trace_len_log2) * lde_factor) as u64);
+        let root_powers =
+            materialize_powers_serial_starting_with_one::<F, Global>(next_root, lde_factor);
+        assert_eq!(root_powers[0], F::ONE);
+        for i in 0..lde_factor {
+            let offset = root_powers[i];
+            let trace_part = ColumnMajorBaseOracleForCoset {
+                original_values_normal_order: Vec::new(),
+                offset,
+                trace_len_log2,
+            };
+            cosets.push(trace_part);
+        }
+        return ColumnMajorBaseOracleForLDE {
+            cosets,
+            tree: T::dummy(),
+            values_per_leaf: 1 << whir_first_fold_step_log2,
+            trace_len_log2,
+        };
+    }
+
     let values_per_leaf = 1 << whir_first_fold_step_log2;
     use crate::gkr::whir::ColumnMajorBaseOracleForCoset;
     let evals = lde_multiple_polys_parallel_from_hypercubes(

@@ -335,6 +335,8 @@ impl Mersenne31Field {
 impl Field for Mersenne31Field {
     const ZERO: Self = Self(0);
     const ONE: Self = Self(1);
+    const MINUS_ONE: Self = Self(Self::ORDER - 1);
+    const TWO: Self = Self(2);
 
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn is_zero(&self) -> bool {
@@ -435,8 +437,6 @@ impl Sub for Mersenne31Field {
 }
 
 impl PrimeField for Mersenne31Field {
-    const TWO: Self = Self(2);
-    const MINUS_ONE: Self = Self(Self::ORDER - 1);
     const NUM_BYTES_IN_REPR: usize = 4;
     const CHAR_BITS: usize = 31;
     const CHARACTERISTICS: u32 = Self::ORDER;

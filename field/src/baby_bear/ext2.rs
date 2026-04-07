@@ -231,6 +231,16 @@ impl Field for BabyBearExt2 {
         c1: BabyBearField::ZERO,
     };
 
+    const MINUS_ONE: Self = Self {
+        c0: BabyBearField::MINUS_ONE,
+        c1: BabyBearField::ZERO,
+    };
+
+    const TWO: Self = Self {
+        c0: BabyBearField::TWO,
+        c1: BabyBearField::ZERO,
+    };
+
     type CharField = BabyBearField;
 
     #[cfg_attr(not(feature = "no_inline"), inline(always))]

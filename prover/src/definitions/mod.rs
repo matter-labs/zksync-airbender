@@ -8,8 +8,10 @@ mod leaf_inclusion_verifier;
 mod optimal_folding;
 pub mod sumcheck_kernel;
 
+use crate::gkr::prover::GKRExternalChallenges;
 use crate::utils::mersenne_quartic_from_base_coeffs;
 use crate::utils::mersenne_quartic_into_base_coeffs;
+use cs::definitions::gkr::AddressSpaceType;
 
 pub use self::hash_like_holder::*;
 pub use self::leaf_inclusion_verifier::*;
@@ -711,40 +713,42 @@ pub fn produce_pc_into_permutation_accumulator_raw(
         NUM_MACHINE_STATE_LINEARIZATION_CHALLENGES],
     state_permutation_argument_gamma: &Mersenne31Quartic,
 ) -> Mersenne31Quartic {
-    let mut write_set_contribution = Mersenne31Quartic::ONE;
-    let mut read_set_contribution = Mersenne31Quartic::ONE;
+    todo!();
 
-    for (dst, (pc, (ts_low, ts_high))) in [&mut write_set_contribution, &mut read_set_contribution]
-        .into_iter()
-        .zip([(initial_pc, initial_timestamp), (final_pc, final_timestamp)].into_iter())
-    {
-        let (pc_low, pc_high) = split_u32_into_pair_u16(pc);
-        // PC low without challenge
-        let mut contribution = Mersenne31Quartic::from_base(Mersenne31Field(pc_low));
-        // PC high
-        let mut t = state_permutation_argument_linearization_challenges
-            [MACHINE_STATE_CHALLENGE_POWERS_PC_HIGH_IDX];
-        t.mul_assign_by_base(&Mersenne31Field(pc_high));
-        contribution.add_assign(&t);
-        // timestamp low
-        let mut t = state_permutation_argument_linearization_challenges
-            [MACHINE_STATE_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
-        t.mul_assign_by_base(&Mersenne31Field(ts_low));
-        contribution.add_assign(&t);
-        // timestamp high
-        let mut t = state_permutation_argument_linearization_challenges
-            [MACHINE_STATE_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
-        t.mul_assign_by_base(&Mersenne31Field(ts_high));
-        contribution.add_assign(&t);
-        // additive term
-        contribution.add_assign(state_permutation_argument_gamma);
-        dst.mul_assign(&contribution);
-    }
+    // let mut write_set_contribution = Mersenne31Quartic::ONE;
+    // let mut read_set_contribution = Mersenne31Quartic::ONE;
 
-    let mut result = write_set_contribution;
-    result.mul_assign(&read_set_contribution.inverse().unwrap());
+    // for (dst, (pc, (ts_low, ts_high))) in [&mut write_set_contribution, &mut read_set_contribution]
+    //     .into_iter()
+    //     .zip([(initial_pc, initial_timestamp), (final_pc, final_timestamp)].into_iter())
+    // {
+    //     let (pc_low, pc_high) = split_u32_into_pair_u16(pc);
+    //     // PC low without challenge
+    //     let mut contribution = Mersenne31Quartic::from_base(Mersenne31Field(pc_low));
+    //     // PC high
+    //     let mut t = state_permutation_argument_linearization_challenges
+    //         [MACHINE_STATE_CHALLENGE_POWERS_PC_HIGH_IDX];
+    //     t.mul_assign_by_base(&Mersenne31Field(pc_high));
+    //     contribution.add_assign(&t);
+    //     // timestamp low
+    //     let mut t = state_permutation_argument_linearization_challenges
+    //         [MACHINE_STATE_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
+    //     t.mul_assign_by_base(&Mersenne31Field(ts_low));
+    //     contribution.add_assign(&t);
+    //     // timestamp high
+    //     let mut t = state_permutation_argument_linearization_challenges
+    //         [MACHINE_STATE_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
+    //     t.mul_assign_by_base(&Mersenne31Field(ts_high));
+    //     contribution.add_assign(&t);
+    //     // additive term
+    //     contribution.add_assign(state_permutation_argument_gamma);
+    //     dst.mul_assign(&contribution);
+    // }
 
-    result
+    // let mut result = write_set_contribution;
+    // result.mul_assign(&read_set_contribution.inverse().unwrap());
+
+    // result
 }
 
 // Joint structure for RAM init/teardown
@@ -764,4 +768,106 @@ impl LazyInitAndTeardown {
         teardown_value: 0,
         teardown_timestamp: TimestampData::EMPTY,
     };
+}
+
+/// (value, timestamp) for registers
+pub fn produce_initial_permutation_product_contribution<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+>(
+    register_final_data: &[(u32, (u32, u32)); NUM_REGISTERS],
+    initial_pc: u32,
+    initial_timestamp: (u32, u32),
+    final_pc: u32,
+    final_timestamp: (u32, u32),
+    external_challenges: &GKRExternalChallenges<F, E>,
+) -> E {
+    let mut write_set_contribution = E::ONE;
+    // all registers are write 0 at timestamp 0
+    for reg_idx in 0..NUM_REGISTERS {
+        let mut contribution =
+            E::from_base(F::from_u32_unchecked(AddressSpaceType::Register as u32)); // without challenge
+        let mut t = external_challenges.permutation_argument_linearization_challenges
+            [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
+        t.mul_assign_by_base(&F::from_u32_unchecked(reg_idx as u32));
+        contribution.add_assign(&t);
+        contribution.add_assign(&external_challenges.permutation_argument_additive_part);
+        write_set_contribution.mul_assign(&contribution);
+    }
+
+    let mut read_set_contribution = E::ONE;
+    // all registers are write 0 at timestamp 0
+    for (reg_idx, (value, timestamp)) in register_final_data.iter().enumerate() {
+        let (value_low, value_high) = split_u32_into_pair_u16(*value);
+        let (timestamp_low, timestamp_high) = *timestamp;
+
+        let mut contribution =
+            E::from_base(F::from_u32_unchecked(AddressSpaceType::Register as u32)); // without challenge
+        let mut t = external_challenges.permutation_argument_linearization_challenges
+            [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
+        t.mul_assign_by_base(&F::from_u32_unchecked(reg_idx as u32));
+        contribution.add_assign(&t);
+
+        let mut t = external_challenges.permutation_argument_linearization_challenges
+            [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
+        t.mul_assign_by_base(&F::from_u32_unchecked(timestamp_low));
+        contribution.add_assign(&t);
+
+        let mut t = external_challenges.permutation_argument_linearization_challenges
+            [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
+        t.mul_assign_by_base(&F::from_u32_unchecked(timestamp_high));
+        contribution.add_assign(&t);
+
+        let mut t = external_challenges.permutation_argument_linearization_challenges
+            [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
+        t.mul_assign_by_base(&F::from_u32_unchecked(value_low as u32));
+        contribution.add_assign(&t);
+
+        let mut t = external_challenges.permutation_argument_linearization_challenges
+            [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
+        t.mul_assign_by_base(&F::from_u32_unchecked(value_high as u32));
+        contribution.add_assign(&t);
+
+        contribution.add_assign(&external_challenges.permutation_argument_additive_part);
+        read_set_contribution.mul_assign(&contribution);
+    }
+
+    for (dst, (pc, (ts_low, ts_high))) in [&mut write_set_contribution, &mut read_set_contribution]
+        .into_iter()
+        .zip([(initial_pc, initial_timestamp), (final_pc, final_timestamp)].into_iter())
+    {
+        let (pc_low, pc_high) = split_u32_into_pair_u16(pc);
+
+        // address space - PC
+        let mut contribution = E::from_base(F::from_u32_unchecked(AddressSpaceType::PC as u32)); // without challenge
+
+        // PC low
+        let mut t = external_challenges.permutation_argument_linearization_challenges
+            [MACHINE_STATE_CHALLENGE_POWERS_PC_LOW_IDX];
+        t.mul_assign_by_base(&F::from_u32_unchecked(pc_low));
+        contribution.add_assign(&t);
+        // PC high
+        let mut t = external_challenges.permutation_argument_linearization_challenges
+            [MACHINE_STATE_CHALLENGE_POWERS_PC_HIGH_IDX];
+        t.mul_assign_by_base(&F::from_u32_unchecked(pc_high));
+        contribution.add_assign(&t);
+        // timestamp low
+        let mut t = external_challenges.permutation_argument_linearization_challenges
+            [MACHINE_STATE_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
+        t.mul_assign_by_base(&F::from_u32_unchecked(ts_low));
+        contribution.add_assign(&t);
+        // timestamp high
+        let mut t = external_challenges.permutation_argument_linearization_challenges
+            [MACHINE_STATE_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
+        t.mul_assign_by_base(&F::from_u32_unchecked(ts_high));
+        contribution.add_assign(&t);
+        // additive term
+        contribution.add_assign(&external_challenges.permutation_argument_additive_part);
+        dst.mul_assign(&contribution);
+    }
+
+    let mut result = write_set_contribution;
+    result.mul_assign(&read_set_contribution.inverse().unwrap());
+
+    result
 }

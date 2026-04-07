@@ -14,7 +14,8 @@ pub fn mem_word_only_tables() -> Vec<TableType> {
     vec![
         // all rom tables gotta be added in the prover code when bytecode data is available
         TableType::ZeroEntry, // we need it for romread's conditional lookup enforcement
-                              // TableType::RomRead
+
+                              // TableType::AlignedRomRead
     ]
 }
 
@@ -36,15 +37,16 @@ pub fn create_mem_word_only_special_tables<
 >(
     bytecode: &[u32],
 ) -> [(TableType, crate::tables::LookupWrapper<F>); 1] {
-    use crate::tables::create_table_for_rom_image;
+    use crate::tables::create_table_for_word_aligned_rom_image;
 
-    let id = TableType::RomRead.to_table_id();
-    let rom_table = crate::tables::LookupWrapper::Initialized(create_table_for_rom_image::<
-        F,
-        ROM_ADDRESS_SPACE_SECOND_WORD_BITS,
-    >(bytecode, id));
+    let id = TableType::AlignedRomRead.to_table_id();
+    let rom_table =
+        crate::tables::LookupWrapper::Initialized(create_table_for_word_aligned_rom_image::<
+            F,
+            ROM_ADDRESS_SPACE_SECOND_WORD_BITS,
+        >(bytecode, id));
 
-    [(TableType::RomRead, rom_table)]
+    [(TableType::AlignedRomRead, rom_table)]
 }
 
 // TODO: this circuit would benefit from the separation of mem accesses according to reg/ram:
@@ -103,6 +105,13 @@ fn apply_mem_word_only_inner<F: PrimeField, CS: Circuit<F>>(
     let is_store = decoder.perform_write();
     let is_load = is_store.toggle();
 
+    // NOTE on both addresses below: we allocate them from witness and assume range-checked limbs.
+    // We can do so by induction: if memory argument passes, then:
+    // - if timestamp inequiaities are enforced
+    // - and initial set of addresses (inits) is range checked by construction, and so are teardowns
+    // - then for memory argument to pass we can not have intermediate non-range checked read + write pairs
+    // as there is no init and teardown for them
+
     // read mem/rs2
     let memread_addr =
         core::array::from_fn(|i| cs.add_named_variable(&format!("memread_addr[{i}]")));
@@ -118,7 +127,7 @@ fn apply_mem_word_only_inner<F: PrimeField, CS: Circuit<F>>(
         ..
     }) = cs.request_mem_access(
         MemoryAccessRequest::RegisterOrRamRead {
-            is_register: is_store,
+            is_register: is_store, // if the boolean value is 1, then address space is "register" == 0
             address: memread_addr,
             read_value_placeholder: Placeholder::ShuffleRamReadValue(1),
             split_as_u8: false,
@@ -146,7 +155,7 @@ fn apply_mem_word_only_inner<F: PrimeField, CS: Circuit<F>>(
         ..
     }) = cs.request_mem_access(
         MemoryAccessRequest::RegisterOrRamReadWrite {
-            is_register: is_load,
+            is_register: is_load, // if the boolean value is 1, then address space is "register" == 0
             address: memwrite_addr,
             read_value_placeholder: Placeholder::ShuffleRamReadValue(2),
             write_value_placeholder: Placeholder::ShuffleRamWriteValue(2),
@@ -192,7 +201,7 @@ fn apply_mem_word_only_inner<F: PrimeField, CS: Circuit<F>>(
         cs.add_constraint(layer_2_copied_of_hi.clone() * (Term::from(1) - layer_2_copied_of_hi)); // booleanity of overflow (high)
         [cleanaddr_lo, cleanaddr_hi]
     };
-    let (is_rom, romaddr) = {
+    let (is_rom_base_layer, rom_addr_constraint) = {
         let is_rom = cs.add_named_boolean_variable("flag: are we in rom addr range?");
         let rom = Term::from(is_rom);
         // whether it's a ROM access or not is decided by comparing high part
@@ -213,11 +222,13 @@ fn apply_mem_word_only_inner<F: PrimeField, CS: Circuit<F>>(
             cs.set_values(value_fn);
         }
         let shift16 = Term::from(1 << 16);
-        let shiftromaddr_hi = Term::from(1 << common_constants::ROM_SECOND_WORD_BITS);
-        let residue = cleanaddr_hi.clone() - shiftromaddr_hi + shift16 * rom;
+        let rom_bound_high = Term::from(1 << common_constants::ROM_SECOND_WORD_BITS);
+        // addr_hi < `1 << common_constants::ROM_SECOND_WORD_BITS` via subtraction, and `rom` is carry
+        let residue = shift16 * rom + cleanaddr_hi.clone() - rom_bound_high;
         assert_eq!(residue.degree(), 2);
         let layer_2_copied_residue =
             cs.add_intermediate_named_variable_from_constraint(residue, "residue (L2)");
+        // it's enough to check that subtraction result is range checked
         cs.require_invariant_from_lookup_input(
             LookupInput::from(layer_2_copied_residue),
             Invariant::RangeChecked { width: 16 },
@@ -240,16 +251,19 @@ fn apply_mem_word_only_inner<F: PrimeField, CS: Circuit<F>>(
     {
         let [memread_lo, memread_hi] = memread.map(Constraint::from);
         let [memwrite_lo, memwrite_hi] = memwrite.map(Constraint::from);
-        let rom = Constraint::from(is_rom);
-        let not_rom = Constraint::from(is_rom.toggle());
+        let rom = Constraint::from(is_rom_base_layer);
+        let not_rom = Constraint::from(is_rom_base_layer.toggle());
 
         let layer_2_copied_is_rom =
             Term::from(cs.add_intermediate_named_variable_from_constraint(rom, "ROM (L2)"));
         let layer_3_selected_input = {
-            let layer_2_copied_romaddr = Term::from(
-                cs.add_intermediate_named_variable_from_constraint(romaddr, "romaddr (L2)"),
-            );
-            let input = layer_2_copied_is_rom * layer_2_copied_romaddr;
+            assert_eq!(rom_addr_constraint.degree(), 2);
+            let layer_2_copied_rom_addr =
+                Term::from(cs.add_intermediate_named_variable_from_constraint(
+                    rom_addr_constraint,
+                    "romaddr (L2)",
+                ));
+            let input = layer_2_copied_is_rom * layer_2_copied_rom_addr;
             cs.add_intermediate_named_variable_from_constraint(input, "final lookup input (L3)")
         };
         let layer_3_selected_output1 = {
@@ -276,7 +290,7 @@ fn apply_mem_word_only_inner<F: PrimeField, CS: Circuit<F>>(
             )
         };
         let layer_3_selected_table_id = {
-            let romread_table = Term::from(TableType::RomRead.to_num());
+            let romread_table = Term::from(TableType::AlignedRomRead.to_num());
             let layer_2_copied_execute =
                 Constraint::from(cs.add_intermediate_named_variable_from_constraint(
                     Constraint::from(inputs.execute),
@@ -323,10 +337,10 @@ mod test {
     use test_utils::skip_if_ci;
 
     use super::*;
+    use crate::gkr_compiler::compile_unrolled_circuit_state_transition_into_unrolled_gkr_without_caches;
     use crate::gkr_compiler::{
         compile_unrolled_circuit_state_transition_into_gkr, dump_ssa_witness_eval_form,
     };
-    // use crate::gkr_compiler::dump_ssa_witness_eval_form_for_unrolled_circuit;
     use crate::utils::serialize_to_file;
 
     #[test]
@@ -383,6 +397,39 @@ mod test {
         serialize_to_file(
             &ssa_forms,
             "compiled_circuits/mem_word_only_preprocessed_ssa_gkr.json",
+        );
+    }
+
+    #[test]
+    fn compile_mem_word_only_circuit_into_no_caches_gkr() {
+        skip_if_ci!();
+        use ::field::baby_bear::base::BabyBearField;
+
+        let gkr_compiled =
+            compile_unrolled_circuit_state_transition_into_unrolled_gkr_without_caches::<
+                BabyBearField,
+            >(
+                &|cs| {
+                    mem_word_only_table_addition_fn(cs);
+                    // ROM tables must be added here (with dummy bytecode) so that
+                    // offset_for_decoder_table in the compiled JSON reflects the correct
+                    // total_tables_len at prove time, when real ROM tables are present.
+                    for (table_type, table) in create_mem_word_only_special_tables::<
+                        BabyBearField,
+                        { common_constants::ROM_SECOND_WORD_BITS },
+                    >(&[])
+                    {
+                        cs.add_table_with_content(table_type, table);
+                    }
+                },
+                &|cs| mem_word_only_circuit_with_preprocessed_bytecode_for_gkr(cs),
+                common_constants::ROM_WORD_SIZE,
+                24,
+            );
+
+        serialize_to_file(
+            &gkr_compiled,
+            "compiled_circuits/mem_word_only_preprocessed_layout_no_caches_gkr.json",
         );
     }
 }

@@ -32145,149 +32145,6 @@
             }
           }
         }
-      ],
-      "additional_base_layer_openings": [
-        {
-          "BaseLayerWitness": 173
-        },
-        {
-          "BaseLayerMemory": 0
-        },
-        {
-          "BaseLayerMemory": 1
-        },
-        {
-          "BaseLayerMemory": 6
-        },
-        {
-          "BaseLayerMemory": 7
-        },
-        {
-          "BaseLayerMemory": 8
-        },
-        {
-          "BaseLayerMemory": 9
-        },
-        {
-          "BaseLayerMemory": 10
-        },
-        {
-          "BaseLayerMemory": 11
-        },
-        {
-          "BaseLayerMemory": 14
-        },
-        {
-          "BaseLayerMemory": 17
-        },
-        {
-          "BaseLayerMemory": 18
-        },
-        {
-          "BaseLayerMemory": 23
-        },
-        {
-          "BaseLayerMemory": 24
-        },
-        {
-          "BaseLayerMemory": 27
-        },
-        {
-          "BaseLayerMemory": 30
-        },
-        {
-          "BaseLayerMemory": 31
-        },
-        {
-          "BaseLayerMemory": 36
-        },
-        {
-          "BaseLayerMemory": 37
-        },
-        {
-          "BaseLayerMemory": 40
-        },
-        {
-          "BaseLayerMemory": 43
-        },
-        {
-          "BaseLayerMemory": 44
-        },
-        {
-          "BaseLayerMemory": 49
-        },
-        {
-          "BaseLayerMemory": 50
-        },
-        {
-          "BaseLayerMemory": 53
-        },
-        {
-          "BaseLayerMemory": 56
-        },
-        {
-          "BaseLayerMemory": 57
-        },
-        {
-          "BaseLayerMemory": 62
-        },
-        {
-          "BaseLayerMemory": 63
-        },
-        {
-          "BaseLayerMemory": 66
-        },
-        {
-          "BaseLayerMemory": 69
-        },
-        {
-          "BaseLayerMemory": 70
-        },
-        {
-          "BaseLayerMemory": 75
-        },
-        {
-          "BaseLayerMemory": 76
-        },
-        {
-          "BaseLayerMemory": 79
-        },
-        {
-          "BaseLayerMemory": 82
-        },
-        {
-          "BaseLayerMemory": 83
-        },
-        {
-          "BaseLayerMemory": 89
-        },
-        {
-          "BaseLayerMemory": 90
-        },
-        {
-          "Setup": 0
-        },
-        {
-          "Setup": 1
-        },
-        {
-          "Setup": 2
-        },
-        {
-          "Setup": 3
-        },
-        {
-          "Setup": 4
-        },
-        {
-          "Setup": 5
-        },
-        {
-          "Setup": 6
-        },
-        {
-          "Setup": 7
-        }
       ]
     },
     {
@@ -33476,8 +33333,7 @@
             }
           }
         }
-      ],
-      "additional_base_layer_openings": []
+      ]
     },
     {
       "layer": 3,
@@ -34108,8 +33964,7 @@
             }
           }
         }
-      ],
-      "additional_base_layer_openings": []
+      ]
     },
     {
       "layer": 4,
@@ -34444,8 +34299,7 @@
             }
           }
         }
-      ],
-      "additional_base_layer_openings": []
+      ]
     },
     {
       "layer": 5,
@@ -34642,8 +34496,7 @@
             }
           }
         }
-      ],
-      "additional_base_layer_openings": []
+      ]
     },
     {
       "layer": 6,
@@ -34777,8 +34630,7 @@
         }
       ],
       "cached_relations": [],
-      "gates": [],
-      "additional_base_layer_openings": []
+      "gates": []
     }
   ],
   "global_output_map": {
@@ -53249,12 +53101,12 @@
     "77": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::527",
     "78": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::527",
     "79": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::527",
-    "80": "Variable at cs/src/cs/circuit_trait.rs::237",
-    "81": "Variable at cs/src/cs/circuit_trait.rs::237",
-    "82": "Variable at cs/src/cs/circuit_trait.rs::237",
-    "83": "Variable at cs/src/cs/circuit_trait.rs::237",
-    "84": "Variable at cs/src/cs/circuit_trait.rs::237",
-    "85": "Variable at cs/src/cs/circuit_trait.rs::237",
+    "80": "Variable at cs/src/cs/circuit_trait.rs::241",
+    "81": "Variable at cs/src/cs/circuit_trait.rs::241",
+    "82": "Variable at cs/src/cs/circuit_trait.rs::241",
+    "83": "Variable at cs/src/cs/circuit_trait.rs::241",
+    "84": "Variable at cs/src/cs/circuit_trait.rs::241",
+    "85": "Variable at cs/src/cs/circuit_trait.rs::241",
     "86": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::667",
     "87": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::667",
     "88": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::667",

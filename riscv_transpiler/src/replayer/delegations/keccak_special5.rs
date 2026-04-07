@@ -147,7 +147,7 @@ pub(crate) fn keccak_special5_call<C: Counters, R: RAM>(
                 let last_round = call_round == NUM_DELEGATION_CALLS_FOR_KECCAK_F1600 - 1;
 
                 let mut witness = KeccakSpecial5DelegationWitness::empty();
-                witness.write_timestamp = current_timestamp | 3;
+                witness.write_timestamp = current_timestamp | DELEGATION_INVOCATION_OFFET;
 
                 let (precompile, iteration, round) =
                     keccak_special5_impl_decode_control(control_flow_reg);

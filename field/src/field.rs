@@ -21,6 +21,8 @@ pub trait Field:
 {
     const ZERO: Self;
     const ONE: Self;
+    const TWO: Self;
+    const MINUS_ONE: Self;
 
     type CharField = Self;
 
@@ -89,8 +91,6 @@ pub trait Field:
 }
 
 pub trait PrimeField: Field {
-    const TWO: Self;
-    const MINUS_ONE: Self;
     const NUM_BYTES_IN_REPR: usize;
 
     const IS_MONT_REPR: bool;

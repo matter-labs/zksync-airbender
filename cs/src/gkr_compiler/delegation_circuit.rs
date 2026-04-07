@@ -17,6 +17,7 @@ impl<F: PrimeField> GKRCompiler<F> {
         &self,
         circuit_output: CircuitOutput<F>,
         trace_len_log2: usize,
+        caching_is_allowed: bool,
     ) -> GKRCircuitArtifact<F> {
         let CircuitOutput {
             table_driver,
@@ -134,7 +135,7 @@ impl<F: PrimeField> GKRCompiler<F> {
             (generic_lookup_width, decoder_lookup_pair)
         };
 
-        let mut graph = GKRGraph::new(generic_lookup_width);
+        let mut graph = GKRGraph::new(generic_lookup_width, caching_is_allowed);
 
         let mut all_variables_to_place = BTreeSet::new();
         for variable_idx in 0..num_variables {
@@ -465,7 +466,7 @@ impl<F: PrimeField> GKRCompiler<F> {
 
         // Place a gate for constraints batch eval
         let (degree_2_constraints, degree_1_constraints) =
-            layout_constraints_at_layers(&mut graph, constraints, &layers_mapping);
+            layout_constraints_at_layers::<F, false>(&mut graph, constraints, &layers_mapping);
 
         // work out the outputs
         let lookup_outputs = BTreeMap::from_iter(
@@ -503,6 +504,7 @@ impl<F: PrimeField> GKRCompiler<F> {
             delegation_state: Some(delegation_state),
             indirect_access_variable_offsets,
             total_width: graph.base_layer_memory.len(),
+            teardown_sets: Vec::new(),
             decoder_input: None,
         };
 
@@ -536,7 +538,9 @@ impl<F: PrimeField> GKRCompiler<F> {
 
         let witness_layout = GKRWitnessLayout {
             multiplicities_columns_for_range_check_16,
-            multiplicities_columns_for_timestamp_range_check,
+            multiplicities_columns_for_timestamp_range_check:
+                multiplicities_columns_for_timestamp_range_check
+                    ..multiplicities_columns_for_timestamp_range_check + 1,
             multiplicities_columns_for_generic_lookup: multiplicities_columns_for_generic_lookup
                 ..multiplicities_columns_for_generic_lookup + 1,
             total_width: graph.base_layer_witness.len(),

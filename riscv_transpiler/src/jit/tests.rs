@@ -373,7 +373,7 @@ fn run_and_compare() {
             jit_state.counters[CounterType::BranchSlt as u8 as usize]
         );
         assert_eq!(
-            reference_state.counters.binary_shift_csr_family as u64,
+            reference_state.counters.binary_shift_family as u64,
             jit_state.counters[CounterType::ShiftBinaryCsr as u8 as usize]
         );
         assert_eq!(
@@ -588,7 +588,7 @@ fn run_recursion_and_compare() {
             jit_state.counters[CounterType::BranchSlt as u8 as usize]
         );
         assert_eq!(
-            reference_state.counters.binary_shift_csr_family as u64,
+            reference_state.counters.binary_shift_family as u64,
             jit_state.counters[CounterType::ShiftBinaryCsr as u8 as usize]
         );
         assert_eq!(

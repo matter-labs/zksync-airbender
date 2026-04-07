@@ -1,6 +1,6 @@
 use criterion::{criterion_group, criterion_main, Criterion};
 
-use prover::prover_stages::Transcript;
+use prover::definitions::Transcript;
 use transcript::Seed;
 use worker::Worker;
 

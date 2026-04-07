@@ -98,7 +98,7 @@ impl<C: Counters> Snapshotter<C> for () {
         false
     }
     #[inline(always)]
-    fn take_final_snapshot(&mut self, state: &State<C>) {}
+    fn take_final_snapshot(&mut self, _state: &State<C>) {}
     #[inline(always)]
     fn append_arbitrary_value(&mut self, _value: u32) {}
     #[inline(always)]
@@ -236,6 +236,8 @@ impl<C: Counters, E: ExecutionObserver<C>> VM<C, E> {
                 return false;
             }
         }
+
+        snapshotter.take_final_snapshot(&*state);
 
         false
     }

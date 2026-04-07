@@ -31,6 +31,36 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E>
         }
     }
 
+    fn terms(
+        &self,
+        challenge_constants: &BatchedGKRTermDescriptionConstants<F, E>,
+    ) -> Vec<BatchedGKRTermDescription<F, E>> {
+        // 1/(b + gamma) - c/(d + gamma) -> ((d + gamma) - c*(b + gamma)), (b+gamma)*(d+gamma)
+        let [c, d] = self.setup;
+        let b = self.input;
+
+        let b = (
+            BTreeMap::from_iter([(b, E::ONE)]),
+            challenge_constants.lookup_challenges_additive_part,
+        );
+        let d = (
+            BTreeMap::from_iter([(d, E::ONE)]),
+            challenge_constants.lookup_challenges_additive_part,
+        );
+        let c = (BTreeMap::from_iter([(c, E::MINUS_ONE)]), E::ZERO);
+
+        let mut num_term = BatchedGKRTermDescription::default();
+        num_term.add_linear_base_terms(d.clone());
+        num_term.add_product_of_linear_base_terms(c, b.clone());
+        num_term.set_extension_output(self.outputs[0]);
+
+        let mut den_term = BatchedGKRTermDescription::default();
+        den_term.add_product_of_linear_base_terms(b, d);
+        den_term.set_extension_output(self.outputs[1]);
+
+        vec![num_term, den_term]
+    }
+
     fn evaluate_forward_over_storage(
         &self,
         storage: &mut GKRStorage<F, E>,

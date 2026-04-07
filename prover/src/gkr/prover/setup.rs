@@ -43,11 +43,14 @@ impl<F: PrimeField + TwoAdicField> GKRSetup<F> {
         if total_tables_size % table_encoding_capacity_per_tuple != 0 {
             num_table_subsets += 1;
         }
-        assert_eq!(num_table_subsets, 1);
+        assert!(num_table_subsets <= 1);
 
         // dump tables
-        let all_generic_tables =
-            table_driver.dump_tables(compiled_circuit.generic_lookup_tables_width);
+        let all_generic_tables = if compiled_circuit.total_tables_size == 0 {
+            Vec::new()
+        } else {
+            table_driver.dump_tables(compiled_circuit.generic_lookup_tables_width)
+        };
 
         assert_eq!(
             all_generic_tables.len(),

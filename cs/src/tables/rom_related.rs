@@ -41,7 +41,7 @@ pub const ROM_PADDING_OPCODE: u32 = 0x0;
 /// (4, image bytes 4..6, image bytes 6..8)
 // We have to do this his way, as our prime field is a little bit smaller than 32 bits.
 // All the entries larger than the image will be filled with UNIMP_OPCODE.
-pub fn create_table_for_rom_image<
+pub fn create_table_for_word_aligned_rom_image<
     F: PrimeField,
     const ROM_ADDRESS_SPACE_SECOND_WORD_BITS: usize,
 >(
@@ -71,7 +71,7 @@ pub fn create_table_for_rom_image<
         .collect_into_vec(&mut keys);
 
     assert_eq!(keys.len(), keys_len);
-    const TABLE_NAME: &'static str = "ROM table";
+    const TABLE_NAME: &'static str = "Aligned ROM table";
     let image = image.to_vec();
     LookupTable::<F>::create_table_from_key_and_key_generation_closure(
         &keys,
@@ -86,7 +86,7 @@ pub fn create_table_for_rom_image<
                 pc,
                 1u32 << (16 + ROM_ADDRESS_SPACE_SECOND_WORD_BITS)
             );
-            assert!(pc % 4 == 0, "PC = {} is not aligned", pc);
+            assert!(pc % 4 == 0, "PC = {} is not aligned in table creation", pc);
             let index = (pc as usize) / 4;
             let opcode = if index < image.len() {
                 image[index]
@@ -110,7 +110,7 @@ pub fn create_table_for_rom_image<
                 pc,
                 1u32 << (16 + ROM_ADDRESS_SPACE_SECOND_WORD_BITS)
             );
-            assert!(pc % 4 == 0, "PC = {} is not aligned", pc);
+            assert!(pc % 4 == 0, "PC = {} is not aligned in key lookup", pc);
             let index = (pc / 4) as usize;
 
             index

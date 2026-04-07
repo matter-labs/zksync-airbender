@@ -9,7 +9,7 @@ pub const EQ_OP_BIT_IDX: usize = 5;
 pub const CARRY_BIT_IDX: usize = 6;
 pub const MEMCOPY_BIT_IDX: usize = 7;
 
-pub const BIGINT_OPS_WITH_CONTROL_CSR_REGISTER: u32 = super::NON_DETERMINISM_CSR + 10;
+pub const BIGINT_OPS_WITH_CONTROL_CSR_REGISTER: u32 = super::super::NON_DETERMINISM_CSR + 10;
 // pub const BIGINT_OPS_CSR_INVOCATION_STR: &str =
 //     const_format::concatcp!("csrrw x0, ", BIGINT_OPS_WITH_CONTROL_CSR_REGISTER, ", x0");
 

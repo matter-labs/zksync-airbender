@@ -35,6 +35,16 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E>
         }
     }
 
+    fn terms(
+        &self,
+        _challenge_constants: &BatchedGKRTermDescriptionConstants<F, E>,
+    ) -> Vec<BatchedGKRTermDescription<F, E>> {
+        let mut term = BatchedGKRTermDescription::default();
+        term.add_linear_with_base(self.input, E::ONE);
+        term.set_base_output(self.output);
+        vec![term]
+    }
+
     fn evaluate_forward_over_storage(
         &self,
         storage: &mut GKRStorage<F, E>,
@@ -213,6 +223,16 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E>
             outputs_in_base: Vec::new(),
             outputs_in_extension: vec![self.output],
         }
+    }
+
+    fn terms(
+        &self,
+        _challenge_constants: &BatchedGKRTermDescriptionConstants<F, E>,
+    ) -> Vec<BatchedGKRTermDescription<F, E>> {
+        let mut term = BatchedGKRTermDescription::default();
+        term.add_linear_with_ext(self.input, E::ONE);
+        term.set_extension_output(self.output);
+        vec![term]
     }
 
     fn evaluate_forward_over_storage(

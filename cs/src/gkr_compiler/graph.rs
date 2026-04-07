@@ -46,6 +46,7 @@ impl GKRGate for CopyNode {
 }
 
 pub struct GKRGraph {
+    pub(crate) caching_is_allowed: bool,
     pub(crate) mapping: BTreeMap<GKRAddress, usize>,
     pub(crate) rev_mapping: BTreeMap<usize, GKRAddress>,
     pub(crate) base_layer_memory: BTreeMap<Variable, GKRAddress>,
@@ -63,8 +64,9 @@ pub struct GKRGraph {
 }
 
 impl GKRGraph {
-    pub fn new(generic_lookup_setup_width: usize) -> Self {
+    pub fn new(generic_lookup_setup_width: usize, caching_is_allowed: bool) -> Self {
         let mut new = Self {
+            caching_is_allowed,
             mapping: BTreeMap::new(),
             rev_mapping: BTreeMap::new(),
             base_layer_memory: BTreeMap::new(),
@@ -244,6 +246,10 @@ impl GKRGraph {
 }
 
 impl GraphHolder for GKRGraph {
+    fn can_use_caching(&self) -> bool {
+        self.caching_is_allowed
+    }
+
     #[track_caller]
     fn get_address_for_variable(&self, variable: Variable) -> GKRAddress {
         assert!(
@@ -308,6 +314,10 @@ impl GraphHolder for GKRGraph {
         relation: NoFieldGKRCacheRelation,
         output_layer: usize,
     ) -> GKRAddress {
+        if self.caching_is_allowed == false {
+            panic!("Current graph doesn't allow cache relations");
+        }
+
         if let Some(idx) = self.search_cached_relation(&relation, output_layer) {
             GKRAddress::Cached {
                 layer: output_layer,
@@ -358,6 +368,9 @@ impl GraphHolder for GKRGraph {
 pub struct NodeIndex(usize);
 
 pub trait GraphHolder {
+    // Whether caching relations are allowed
+    fn can_use_caching(&self) -> bool;
+
     // Get placement data for base layer
     fn get_address_for_variable(&self, variable: Variable) -> GKRAddress;
     // Some setup data

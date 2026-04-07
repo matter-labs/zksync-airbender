@@ -12,6 +12,7 @@ use field::{Field, FieldExtension, PrimeField};
 
 pub mod input_in_base;
 pub mod input_in_extension;
+mod layer_sources;
 
 pub use self::input_in_base::*;
 pub use self::input_in_extension::*;
@@ -429,39 +430,68 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> GKRStorage<F, E> {
             }
         };
         let sumcheck_step = folding_challenges.len();
-        if sumcheck_step == 1
-            && self.layers[layer]
+        if sumcheck_step == 1 {
+            if self.layers[layer]
                 .intermediate_storage_for_folder_extension_field_inputs
                 .contains_key(&poly)
                 == false
-        {
-            // create intermediate storage
-            let p = self.layers[layer]
-                .extension_field_inputs
-                .get_mut(&poly)
-                .expect("must be present");
-            let size = p.values.len();
-            let mut buffer =
-                ExtensionFieldPolyIntermediateFoldingStorage::<F, E>::new_for_extension_poly_size(
-                    size,
-                );
-            let buffer_pointer = buffer.pointer_for_sumcheck_after_one_fold();
-            let input_pointer = p.values.as_ptr();
-            #[allow(dropping_references)]
-            drop(p);
-            self.layers[layer]
-                .intermediate_storage_for_folder_extension_field_inputs
-                .insert(poly, (1, buffer));
-            let folding_challenge = *folding_challenges.last().expect("must be present");
+            {
+                // create intermediate storage
+                let p = self.layers[layer]
+                    .extension_field_inputs
+                    .get_mut(&poly)
+                    .expect("must be present");
+                let size = p.values.len();
+                let mut buffer =
+                        ExtensionFieldPolyIntermediateFoldingStorage::<F, E>::new_for_extension_poly_size(
+                            size,
+                        );
+                let buffer_pointer = buffer.pointer_for_sumcheck_after_one_fold();
+                let input_pointer = p.values.as_ptr();
+                #[allow(dropping_references)]
+                drop(p);
+                self.layers[layer]
+                    .intermediate_storage_for_folder_extension_field_inputs
+                    .insert(poly, (1, buffer));
+                let folding_challenge = *folding_challenges.last().expect("must be present");
 
-            ExtensionFieldPolyContinuingSource {
-                previous_layer_start: input_pointer,
-                this_layer_start: buffer_pointer,
-                this_layer_size: size / 2,
-                next_layer_size: size / 4,
-                folding_challenge,
-                first_access: true,
-                _marker: core::marker::PhantomData,
+                ExtensionFieldPolyContinuingSource {
+                    previous_layer_start: input_pointer,
+                    this_layer_start: buffer_pointer,
+                    this_layer_size: size / 2,
+                    next_layer_size: size / 4,
+                    folding_challenge,
+                    first_access: true,
+                    _marker: core::marker::PhantomData,
+                }
+            } else {
+                // maybe it was created before, just reuse it
+                let p = self.layers[layer]
+                    .extension_field_inputs
+                    .get(&poly)
+                    .expect("must be present");
+                let size = p.values.len();
+                let input_pointer = p.values.as_ptr();
+
+                let (last_used_at_layer, buffer) = self.layers[layer]
+                    .intermediate_storage_for_folder_extension_field_inputs
+                    .get_mut(&poly)
+                    .expect("must be present");
+                assert_eq!(*last_used_at_layer, 1);
+
+                let buffer_pointer = buffer.pointer_for_sumcheck_after_one_fold();
+
+                let folding_challenge = *folding_challenges.last().expect("must be present");
+
+                ExtensionFieldPolyContinuingSource {
+                    previous_layer_start: input_pointer,
+                    this_layer_start: buffer_pointer,
+                    this_layer_size: size / 2,
+                    next_layer_size: size / 4,
+                    folding_challenge,
+                    first_access: false,
+                    _marker: core::marker::PhantomData,
+                }
             }
         } else {
             let (last_used_for_layer, buffer) = self.layers[layer]
