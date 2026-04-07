@@ -159,7 +159,7 @@ impl UnifiedOpcodeTracingDataWithTimestamp {
     #[inline(always)]
     pub fn rs2_is_reg(&self) -> bool {
         match self {
-            Self::NonMem(inner) => true,
+            Self::NonMem(..) => true,
             Self::Mem(inner) => {
                 if inner.discr == MEM_LOAD_TRACE_DATA_MARKER {
                     false
@@ -174,7 +174,7 @@ impl UnifiedOpcodeTracingDataWithTimestamp {
     #[inline(always)]
     pub fn rd_is_reg(&self) -> bool {
         match self {
-            Self::NonMem(inner) => true,
+            Self::NonMem(..) => true,
             Self::Mem(inner) => {
                 if inner.discr == MEM_LOAD_TRACE_DATA_MARKER {
                     true
@@ -190,7 +190,7 @@ impl UnifiedOpcodeTracingDataWithTimestamp {
     pub fn delegation_type(&self) -> u16 {
         match self {
             Self::NonMem(inner) => inner.opcode_data.delegation_type,
-            Self::Mem(inner) => 0,
+            Self::Mem(..) => 0,
         }
     }
 

@@ -618,9 +618,10 @@ pub fn preprocess_bytecode<
 
                 // if funct3 & ZIMOP_MASK == ZIMOP_MASK {
                 let instr = if funct3 == ZIMOP_FUNCT3 {
-                    const MOP_FUNCT7_TEST: u8 = 0b1000001u8;
+                    const MOP_FUNCT7_MASK: u8 = 0b10_11_00_1;
+                    const MOP_FUNCT7_TEST: u8 = 0b10_00_00_1;
 
-                    if funct7 & MOP_FUNCT7_TEST == MOP_FUNCT7_TEST {
+                    if funct7 & MOP_FUNCT7_MASK == MOP_FUNCT7_TEST {
                         let mop_number = ((funct7 & 0b110) >> 1) | ((funct7 & 0b100000) >> 5);
                         match mop_number {
                             0 => {
@@ -667,7 +668,28 @@ pub fn preprocess_bytecode<
                             }
                         }
                     } else {
-                        panic!();
+                        let funct12 = opcode >> 20;
+                        const MOP_I_FUNCT12_MASK: u32 = 0b1_0_11_00_1111_00;
+                        const MOP_I_FUNCT12_TEST: u32 = 0b1_0_00_00_0111_00;
+                        if funct12 & MOP_I_FUNCT12_MASK == MOP_I_FUNCT12_TEST {
+                            let mopi_number = (funct12 & 0b11)
+                                | ((funct12 & 0b11000000) >> 4)
+                                | ((funct12 & 0b10000000000) >> 6);
+                            assert!(mopi_number < 1 << 5);
+                            if OPT::SUPPORT_SPECIAL_ROTATION {
+                                Instruction::pure_from_imm(
+                                    InstructionName::Ror,
+                                    formal_rs1,
+                                    0,
+                                    rd,
+                                    mopi_number,
+                                )
+                            } else {
+                                illegal_instr
+                            }
+                        } else {
+                            panic!("Unknown system space opcode 0x{:08x}", opcode);
+                        }
                     }
                 } else if funct3 & ZICSR_MASK != 0 {
                     let csr_number = ITypeOpcode::imm(opcode);

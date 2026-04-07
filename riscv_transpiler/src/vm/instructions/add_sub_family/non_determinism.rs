@@ -3,7 +3,7 @@ use super::*;
 #[inline(always)]
 pub(crate) fn nd_read<C: Counters, S: Snapshotter<C>, R: RAM, ND: NonDeterminismCSRSource>(
     state: &mut State<C>,
-    ram: &mut R,
+    _ram: &mut R,
     snapshotter: &mut S,
     instr: Instruction,
     nd: &mut ND,
@@ -12,7 +12,7 @@ pub(crate) fn nd_read<C: Counters, S: Snapshotter<C>, R: RAM, ND: NonDeterminism
     debug_assert_eq!(instr.rs2, 0);
 
     touch_x0::<C, 1>(state);
-    let mut rd = nd.read();
+    let rd = nd.read();
     snapshotter.append_arbitrary_value(rd);
     write_register_for_pure_opcode::<C, 2>(state, instr.rd, rd);
     default_increase_pc::<C>(state);
@@ -23,7 +23,7 @@ pub(crate) fn nd_read<C: Counters, S: Snapshotter<C>, R: RAM, ND: NonDeterminism
 pub(crate) fn nd_write<C: Counters, S: Snapshotter<C>, R: RAM, ND: NonDeterminismCSRSource>(
     state: &mut State<C>,
     ram: &mut R,
-    snapshotter: &mut S,
+    _snapshotter: &mut S,
     instr: Instruction,
     nd: &mut ND,
 ) {
