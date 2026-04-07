@@ -120,7 +120,6 @@ template <unsigned K, unsigned V> struct TableDriver {
     case ConditionalJmpBranchSlt:
     case MemoryGetOffsetAndMaskWithTrap:
     case MemoryLoadHalfwordOrByte:
-    case AlignedRomRead:
     case MemStoreClearOriginalRamValueLimb:
     case MemStoreClearWrittenValueLimb:
     case KeccakPermutationIndices:
@@ -132,6 +131,11 @@ template <unsigned K, unsigned V> struct TableDriver {
     case LoadByteRomRead:
     case Decoder:
       return index_for_keys<0>(keys);
+    case AlignedRomRead:
+    case RomRead:
+      // Word-only ROM tables are keyed by byte address but stored densely per word.
+      // CPU lookup tables use `pc / 4` for the row index for both ids.
+      return bf::into_canonical_u32(keys[0]) >> 2;
     case XorSpecialIota:
     case AndN:
       return index_for_keys<0, 8>(keys);
@@ -160,8 +164,6 @@ template <unsigned K, unsigned V> struct TableDriver {
       return index_for_keys<12, 0>(keys);
     case ShiftImplementationOverBytes:
       return index_for_keys<16, 8, 3, 0>(keys);
-    case RomRead:
-      return bf::into_canonical_u32(keys[0]) >> 2;
     default:
       __trap();
     }

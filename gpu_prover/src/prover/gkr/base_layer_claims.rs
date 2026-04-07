@@ -672,7 +672,6 @@ mod tests {
             gates_with_external_connections: Vec::new(),
             cached_relations: BTreeMap::new(),
             gates: Vec::new(),
-            additional_base_layer_openings: Vec::new(),
         };
 
         let output = prepare_base_layer_claims(

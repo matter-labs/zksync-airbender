@@ -27,6 +27,7 @@ use prover::gkr::prover::dimension_reduction::forward::DimensionReducingInputOut
 use prover::gkr::prover::GKRExternalChallenges;
 
 use super::backward::GpuGKRDimensionReducingBackwardState;
+use super::lowering::LayerNoCacheLoweringPlan;
 use super::setup::{GpuGKRForwardSetup, GpuGKRSetupTransfer};
 use super::stage1::GpuGKRStage1Output;
 use super::transform::normalize_compiled_circuit_for_gpu;
@@ -172,9 +173,11 @@ where
     Add: BinaryOp<E, E, E>,
     Add: BinaryOp<BF, E, E>,
     Add: BinaryOp<E, BF, E>,
+    Add: BinaryOp<BF, BF, BF>,
     Mul: BinaryOp<E, E, E>,
     Mul: BinaryOp<BF, E, E>,
     Mul: BinaryOp<E, BF, E>,
+    Mul: BinaryOp<BF, BF, BF>,
     Sub: BinaryOp<E, E, E>,
     Sub: BinaryOp<E, BF, E>,
     Sub: BinaryOp<BF, BF, BF>,
@@ -309,6 +312,7 @@ where
     Sub: BinaryOp<BF, BF, BF>,
 {
     let stream = context.get_exec_stream();
+    let lowering_plan = LayerNoCacheLoweringPlan::new(layer_idx, layer);
     hydrate_scratch_space_layer(layer_idx, compiled_circuit, stage1, storage);
     let cache_range = Range::new(format!("gkr.forward.layer.{layer_idx}.cache"))?;
     cache_range.start(stream)?;
@@ -323,12 +327,24 @@ where
         trace_len,
         context,
     )?;
+    schedule_cache_relations(
+        layer_idx,
+        &lowering_plan.internal_helper_relations,
+        storage,
+        stage1,
+        forward_setup,
+        external_challenges,
+        decoder_predicate_address,
+        trace_len,
+        context,
+    )?;
     cache_range.end(stream)?;
     tracing_ranges.push(cache_range);
 
     let gates_range = Range::new(format!("gkr.forward.layer.{layer_idx}.gates"))?;
     gates_range.start(stream)?;
     assert_forward_layer_invariants(layer_idx, total_layers, layer);
+    assert_forward_no_cache_layer_invariants(layer, decoder_predicate_address);
     let expected_output_layer = layer_idx + 1;
     schedule_materialized_vector_lookup_inputs(
         expected_output_layer,
@@ -340,9 +356,17 @@ where
         trace_len,
         context,
     )?;
+    schedule_materialized_single_lookup_inputs(
+        expected_output_layer,
+        layer,
+        storage,
+        trace_len,
+        context,
+    )?;
     let lowered = lower_forward_layer(
         layer_idx,
-        layer,
+        &lowering_plan.lowered_gates,
+        &lowering_plan.lowered_gates_with_external_connections,
         &compiled_circuit.scratch_space_mapping,
         storage,
         forward_setup.lookup_additive_part_device().as_ptr(),
@@ -357,6 +381,27 @@ where
     tracing_ranges.push(gates_range);
 
     Ok(())
+}
+
+fn assert_forward_no_cache_layer_invariants(
+    layer: &GKRLayerDescription,
+    decoder_predicate_address: Option<GKRAddress>,
+) {
+    for gate in layer
+        .gates
+        .iter()
+        .chain(layer.gates_with_external_connections.iter())
+    {
+        if let NoFieldGKRRelation::LookupWithDensAndSetupExpressions { input, .. } =
+            &gate.enforced_relation
+        {
+            assert_eq!(
+                Some(input.0),
+                decoder_predicate_address,
+                "GPU no-cache decoder lowering expects the decoder predicate input"
+            );
+        }
+    }
 }
 
 fn schedule_materialized_vector_lookup_inputs<E>(
@@ -444,6 +489,54 @@ where
     Ok(())
 }
 
+fn schedule_materialized_single_lookup_inputs<E>(
+    expected_output_layer: usize,
+    layer: &GKRLayerDescription,
+    storage: &mut GpuGKRStorage<BF, E>,
+    trace_len: usize,
+    context: &ProverContext,
+) -> CudaResult<()>
+where
+    Add: BinaryOp<BF, BF, BF>,
+    Mul: BinaryOp<BF, BF, BF>,
+{
+    for gate in layer
+        .gates
+        .iter()
+        .chain(layer.gates_with_external_connections.iter())
+    {
+        let (input, output) = match &gate.enforced_relation {
+            NoFieldGKRRelation::MaterializeSingleLookupInput { input, output, .. } => {
+                (&input.input, output)
+            }
+            NoFieldGKRRelation::LinearBaseFieldRelation { input, output } => (input, output),
+            _ => continue,
+        };
+        assert_eq!(gate.output_layer, expected_output_layer);
+        let mut dst = alloc_base(trace_len, context)?;
+        set_by_val(
+            BF::from_u32_unchecked(input.constant),
+            dst.deref_mut(),
+            context.get_exec_stream(),
+        )?;
+        for (coeff, address) in input.linear_terms.iter() {
+            scale_and_add_base_column_in_place(
+                &mut dst,
+                storage.get_base_layer(*address),
+                BF::from_u32_unchecked(*coeff),
+                context,
+            )?;
+        }
+        storage.insert_base_field_at_layer(
+            expected_output_layer,
+            *output,
+            GpuBaseFieldPoly::new(dst),
+        );
+    }
+
+    Ok(())
+}
+
 fn hydrate_scratch_space_layer<E>(
     layer_idx: usize,
     compiled_circuit: &GKRCircuitArtifact<BF>,
@@ -494,7 +587,8 @@ fn assert_forward_layer_invariants(
 
 fn lower_forward_layer<E>(
     layer_idx: usize,
-    layer: &GKRLayerDescription,
+    lowered_gates: &[cs::gkr_compiler::GateArtifacts],
+    lowered_gates_with_external_connections: &[cs::gkr_compiler::GateArtifacts],
     scratch_space_mapping: &BTreeMap<GKRAddress, usize>,
     storage: &GpuGKRStorage<BF, E>,
     lookup_additive_challenge: *const E,
@@ -502,7 +596,7 @@ fn lower_forward_layer<E>(
     context: &ProverContext,
 ) -> CudaResult<LoweredGpuGKRForwardLayer<E>> {
     let expected_output_layer = layer_idx + 1;
-    let total_gates = layer.gates.len() + layer.gates_with_external_connections.len();
+    let total_gates = lowered_gates.len() + lowered_gates_with_external_connections.len();
     let mut batches = Vec::with_capacity(total_gates.div_ceil(GKR_FORWARD_MAX_GATES_PER_LAYER));
     let mut batch = GpuGKRForwardLayerBatch::new(lookup_additive_challenge);
     let mut batch_gate_idx = 0usize;
@@ -511,10 +605,9 @@ fn lower_forward_layer<E>(
     let mut aliased_base_outputs = Vec::new();
     let mut aliased_extension_outputs = Vec::new();
 
-    for gate in layer
-        .gates
+    for gate in lowered_gates
         .iter()
-        .chain(layer.gates_with_external_connections.iter())
+        .chain(lowered_gates_with_external_connections.iter())
     {
         if batch_gate_idx == GKR_FORWARD_MAX_GATES_PER_LAYER {
             batch.gate_count = batch_gate_idx as u32;
@@ -730,17 +823,47 @@ fn lower_forward_layer<E>(
                 );
                 GpuGKRForwardGateDescriptor::no_op()
             }
+            NoFieldGKRRelation::MaterializeSingleLookupInput { output, .. } => {
+                assert!(
+                    storage.try_get_base_poly(*output).is_some(),
+                    "materialized single lookup output {:?} must be precomputed before gate lowering",
+                    output
+                );
+                GpuGKRForwardGateDescriptor::no_op()
+            }
+            NoFieldGKRRelation::LinearBaseFieldRelation { output, .. } => {
+                assert!(
+                    storage.try_get_base_poly(*output).is_some(),
+                    "materialized linear base output {:?} must be precomputed before gate lowering",
+                    output
+                );
+                GpuGKRForwardGateDescriptor::no_op()
+            }
             NoFieldGKRRelation::MaxQuadratic { output, .. }
                 if scratch_space_mapping.contains_key(output)
                     || storage.try_get_base_poly(*output).is_some() =>
             {
                 GpuGKRForwardGateDescriptor::no_op()
             }
-            NoFieldGKRRelation::LinearBaseFieldRelation { .. }
-            | NoFieldGKRRelation::MaxQuadratic { .. }
+            NoFieldGKRRelation::EnforceSingleMaxQuadraticConstraint { .. } => {
+                GpuGKRForwardGateDescriptor::no_op()
+            }
+            NoFieldGKRRelation::InitialGrandProductWithoutCaches { .. }
+            | NoFieldGKRRelation::MaterializeGrandProductTermExpression { .. }
+            | NoFieldGKRRelation::LookupWithDensAndSetupExpressions { .. }
+            | NoFieldGKRRelation::LookupFromVectorInputWithSetup { .. }
+            | NoFieldGKRRelation::LookupUnbalancedPairWithVectorInputs { .. } => {
+                unreachable!("GPU forward no-cache relations must be lowered before batching")
+            }
+            NoFieldGKRRelation::InitsOrTeardownsInitialPair { .. } => {
+                unimplemented!(
+                    "unsupported GPU forward relation after av_gkr_no_caches rebase: {:?}",
+                    gate.enforced_relation
+                )
+            }
+            NoFieldGKRRelation::MaxQuadratic { .. }
             | NoFieldGKRRelation::LookupPairFromVectorInputs { .. }
             | NoFieldGKRRelation::LookupPairFromBaseInputs { .. }
-            | NoFieldGKRRelation::MaterializeSingleLookupInput { .. }
             | NoFieldGKRRelation::UnbalancedGrandProductWithCache { .. } => {
                 unimplemented!(
                     "unsupported GPU forward relation: {:?}",
@@ -809,6 +932,32 @@ fn analyze_forward_lookup_usage(compiled_circuit: &GKRCircuitArtifact<BF>) -> Fo
                     usage.last_generic_lookup_layer = Some(layer_idx);
                 }
                 NoFieldGKRCacheRelation::MemoryTuple(_) => {}
+            }
+        }
+        for gate in layer
+            .gates
+            .iter()
+            .chain(layer.gates_with_external_connections.iter())
+        {
+            match &gate.enforced_relation {
+                NoFieldGKRRelation::MaterializedVectorLookupInput { .. }
+                | NoFieldGKRRelation::LookupWithDensAndSetupExpressions { .. }
+                | NoFieldGKRRelation::LookupPairFromVectorInputs { .. }
+                | NoFieldGKRRelation::LookupFromVectorInputWithSetup { .. }
+                | NoFieldGKRRelation::LookupUnbalancedPairWithVectorInputs { .. } => {
+                    usage.last_generic_mapping_layer = Some(layer_idx);
+                    usage.last_generic_lookup_layer = Some(layer_idx);
+                }
+                NoFieldGKRRelation::LookupPairFromBaseInputs {
+                    range_check_width, ..
+                } => {
+                    if *range_check_width == 16 {
+                        usage.last_range_mapping_layer = Some(layer_idx);
+                    } else {
+                        usage.last_timestamp_mapping_layer = Some(layer_idx);
+                    }
+                }
+                _ => {}
             }
         }
     }
@@ -1012,14 +1161,14 @@ where
                     descriptor.address_space_kind = GpuGKRForwardCacheAddressSpaceKind::Constant;
                     descriptor.address_space_constant = BF::from_u32_unchecked(c);
                 }
-                CompiledAddressSpaceRelationStrict::Is(offset) => {
-                    descriptor.address_space_kind = GpuGKRForwardCacheAddressSpaceKind::Is;
+                CompiledAddressSpaceRelationStrict::IsRegister(offset) => {
+                    descriptor.address_space_kind = GpuGKRForwardCacheAddressSpaceKind::Not;
                     descriptor.address_space_ptr = storage
                         .get_base_layer(GKRAddress::BaseLayerMemory(offset))
                         .as_ptr();
                 }
-                CompiledAddressSpaceRelationStrict::Not(offset) => {
-                    descriptor.address_space_kind = GpuGKRForwardCacheAddressSpaceKind::Not;
+                CompiledAddressSpaceRelationStrict::IsRam(offset) => {
+                    descriptor.address_space_kind = GpuGKRForwardCacheAddressSpaceKind::Is;
                     descriptor.address_space_ptr = storage
                         .get_base_layer(GKRAddress::BaseLayerMemory(offset))
                         .as_ptr();
@@ -1577,6 +1726,30 @@ where
     )
 }
 
+fn scale_and_add_base_column_in_place(
+    dst: &mut DeviceAllocation<BF>,
+    source: &GpuBaseFieldPoly<BF>,
+    scalar: BF,
+    context: &ProverContext,
+) -> CudaResult<()>
+where
+    Add: BinaryOp<BF, BF, BF>,
+    Mul: BinaryOp<BF, BF, BF>,
+{
+    let mut weighted = context.alloc(source.len(), AllocationPlacement::BestFit)?;
+    set_by_val(scalar, weighted.deref_mut(), context.get_exec_stream())?;
+    mul_into_y(
+        &source.as_device_chunk(),
+        weighted.deref_mut(),
+        context.get_exec_stream(),
+    )?;
+    add_into_y(
+        &DeviceVectorChunk::new(&weighted, 0, source.len()),
+        dst.deref_mut(),
+        context.get_exec_stream(),
+    )
+}
+
 fn shifted_base_to_ext<E>(
     source: &GpuBaseFieldPoly<BF>,
     additive_part: &DeviceAllocation<E>,
@@ -1720,12 +1893,12 @@ mod tests {
                     },
                 })
                 .collect(),
-            additional_base_layer_openings: Vec::new(),
         };
 
         let _ = lower_forward_layer(
             0,
-            &layer,
+            &layer.gates,
+            &layer.gates_with_external_connections,
             &BTreeMap::new(),
             &storage,
             null(),
@@ -1845,13 +2018,13 @@ mod tests {
                     },
                 },
             ],
-            additional_base_layer_openings: Vec::new(),
         };
 
         assert_forward_layer_invariants(0, 2, &layer);
         let lowered = lower_forward_layer(
             0,
-            &layer,
+            &layer.gates,
+            &layer.gates_with_external_connections,
             &BTreeMap::new(),
             &storage,
             lookup_additive_device.as_ptr(),
