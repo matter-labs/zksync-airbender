@@ -2,7 +2,7 @@ use crate::witness::delegation::bigint::BigintDelegationWitness;
 
 use super::*;
 use crate::vm::delegations::bigint::bigint_impl;
-use common_constants::BIGINT_OPS_WITH_CONTROL_CSR_REGISTER;
+use common_constants::*;
 use ruint::aliases::U256;
 
 // NOTE: in forward execution we read through x11 and dump witness, and then dump writes via x10,
@@ -135,7 +135,7 @@ pub(crate) fn bigint_call<C: Counters, R: RAM>(
     // and bigint is only called one by one, so it is simple
     if needs_delegation_data {
         let mut witness = BigintDelegationWitness::empty();
-        let write_ts = state.timestamp | 3;
+        let write_ts = state.timestamp | DELEGATION_INVOCATION_OFFET;
         witness.write_timestamp = write_ts;
 
         let (x10, x10_ts) = read_register_with_ts::<C, 3>(state, 10);

@@ -88,11 +88,11 @@ pub fn gkr_run_basic_unrolled_test_impl(
     // let binary = std::fs::read("../examples/basic_fibonacci/app.bin").unwrap();
     // let text_section = std::fs::read("../examples/basic_fibonacci/app.text").unwrap();
 
-    let binary = std::fs::read("../examples/hashed_fibonacci/app.bin").unwrap();
-    let text_section = std::fs::read("../examples/hashed_fibonacci/app.text").unwrap();
+    // let binary = std::fs::read("../examples/hashed_fibonacci/app.bin").unwrap();
+    // let text_section = std::fs::read("../examples/hashed_fibonacci/app.text").unwrap();
 
-    // let binary = std::fs::read("../riscv_transpiler/examples/keccak_f1600/app.bin").unwrap();
-    // let text_section = std::fs::read("../riscv_transpiler/examples/keccak_f1600/app.text").unwrap();
+    let binary = std::fs::read("../riscv_transpiler/examples/keccak_f1600/app.bin").unwrap();
+    let text_section = std::fs::read("../riscv_transpiler/examples/keccak_f1600/app.text").unwrap();
 
     assert!(binary.len() % 4 == 0);
     let binary: Vec<_> = binary
@@ -257,8 +257,6 @@ pub fn gkr_run_basic_unrolled_test_impl(
             &external_challenges,
         );
 
-    dbg!(permutation_argument_accumulator);
-
     let mut write_set = BTreeSet::<(u32, TimestampScalar)>::new();
     let mut read_set = BTreeSet::<(u32, TimestampScalar)>::new();
 
@@ -410,7 +408,6 @@ pub fn gkr_run_basic_unrolled_test_impl(
             &mut memory_write_set,
             &mut memory_read_set,
             &mut delegation_write_set,
-            &mut delegation_read_set,
         );
 
         if CHECK_MEMORY_PERMUTATION_ONLY == false && (PROVE_EMPTY == true || is_empty == false) {
@@ -605,7 +602,6 @@ pub fn gkr_run_basic_unrolled_test_impl(
             &mut memory_write_set,
             &mut memory_read_set,
             &mut delegation_write_set,
-            &mut delegation_read_set,
         );
 
         if CHECK_MEMORY_PERMUTATION_ONLY == false && (PROVE_EMPTY == true || is_empty == false) {
@@ -802,7 +798,6 @@ pub fn gkr_run_basic_unrolled_test_impl(
             &mut memory_write_set,
             &mut memory_read_set,
             &mut delegation_write_set,
-            &mut delegation_read_set,
         );
 
         if CHECK_MEMORY_PERMUTATION_ONLY == false && (PROVE_EMPTY == true || is_empty == false) {
@@ -1201,7 +1196,6 @@ pub fn gkr_run_basic_unrolled_test_impl(
             &mut memory_write_set,
             &mut memory_read_set,
             &mut delegation_write_set,
-            &mut delegation_read_set,
         );
 
         if CHECK_MEMORY_PERMUTATION_ONLY == false && (PROVE_EMPTY == true || is_empty == false) {
@@ -1402,7 +1396,6 @@ pub fn gkr_run_basic_unrolled_test_impl(
             &mut memory_write_set,
             &mut memory_read_set,
             &mut delegation_write_set,
-            &mut delegation_read_set,
         );
 
         if CHECK_MEMORY_PERMUTATION_ONLY == false && (PROVE_EMPTY == true || is_empty == false) {
@@ -1719,12 +1712,14 @@ pub fn gkr_run_basic_unrolled_test_impl(
 
         ensure_memory_trace_consistency(&memory_trace, &full_trace);
 
-        // // parse_delegation_ram_accesses_from_full_trace(
-        // //     &circuit,
-        // //     &full_witness,
-        // //     &mut memory_write_set,
-        // //     &mut memory_read_set,
-        // // );
+        parse_delegation_ram_accesses_from_full_trace(
+            &circuit,
+            &memory_trace,
+            &mut memory_write_set,
+            &mut memory_read_set,
+            &mut delegation_read_set,
+            delegation_type,
+        );
 
         if CHECK_MEMORY_PERMUTATION_ONLY == false && (PROVE_EMPTY == true || is_empty == false) {
             // println!("Will check constraints satisfiability");
@@ -1882,12 +1877,14 @@ pub fn gkr_run_basic_unrolled_test_impl(
 
         ensure_memory_trace_consistency(&memory_trace, &full_trace);
 
-        // // parse_delegation_ram_accesses_from_full_trace(
-        // //     &circuit,
-        // //     &full_witness,
-        // //     &mut memory_write_set,
-        // //     &mut memory_read_set,
-        // // );
+        parse_delegation_ram_accesses_from_full_trace(
+            &circuit,
+            &memory_trace,
+            &mut memory_write_set,
+            &mut memory_read_set,
+            &mut delegation_read_set,
+            delegation_type,
+        );
 
         if CHECK_MEMORY_PERMUTATION_ONLY == false && (PROVE_EMPTY == true || is_empty == false) {
             // println!("Will check constraints satisfiability");
@@ -2044,12 +2041,14 @@ pub fn gkr_run_basic_unrolled_test_impl(
 
         ensure_memory_trace_consistency(&memory_trace, &full_trace);
 
-        // // parse_delegation_ram_accesses_from_full_trace(
-        // //     &circuit,
-        // //     &full_witness,
-        // //     &mut memory_write_set,
-        // //     &mut memory_read_set,
-        // // );
+        parse_delegation_ram_accesses_from_full_trace(
+            &circuit,
+            &memory_trace,
+            &mut memory_write_set,
+            &mut memory_read_set,
+            &mut delegation_read_set,
+            delegation_type,
+        );
 
         if CHECK_MEMORY_PERMUTATION_ONLY == false && (PROVE_EMPTY == true || is_empty == false) {
             // println!("Will check constraints satisfiability");
@@ -2113,110 +2112,131 @@ pub fn gkr_run_basic_unrolled_test_impl(
         }
     }
 
-    // // inits and teardowns
-    // {
-    //     let expected_init_set: Vec<_> = memory_read_set.difference(&memory_write_set).collect();
-    //     let expected_teardown_set: Vec<_> = memory_write_set.difference(&memory_read_set).collect();
-    //     assert_eq!(expected_init_set.len(), expected_teardown_set.len());
-    //     // assert_eq!(expected_init_set.len(), flattened_inits_and_teardowns.len());
+    // delegation registers invocations
+    {
+        if delegation_read_set != delegation_write_set {
+            let delegations_without_invocations: Vec<_> = delegation_read_set
+                .difference(&delegation_write_set)
+                .collect();
+            let delegations_without_processing: Vec<_> = delegation_write_set
+                .difference(&delegation_read_set)
+                .collect();
+            dbg!(delegation_read_set.len());
+            dbg!(&delegation_read_set);
+            dbg!(delegation_write_set.len());
+            dbg!(&delegation_write_set);
+            dbg!(&delegations_without_invocations);
+            dbg!(&delegations_without_processing);
+            panic!("Unprocessed delegations");
+        }
+    }
 
-    //     if flattened_inits_and_teardowns.len() != expected_init_set.len() {
-    //         for (idx, (address, (teardown_ts, teardown_value))) in
-    //             flattened_inits_and_teardowns.iter().enumerate()
-    //         {
-    //             let mut init_set_el = None;
-    //             for (i, (is_reg, addr, ts, init_value)) in expected_init_set.iter().enumerate() {
-    //                 if *addr == *address {
-    //                     init_set_el = Some((*is_reg, *addr, *ts, *init_value));
-    //                 }
-    //             }
-    //             let Some(init_set_el) = init_set_el else {
-    //                 panic!("No expected init set element for address {} of flattened inits or teardowns", *address);
-    //             };
+    // inits and teardowns
+    {
+        let expected_init_set: Vec<_> = memory_read_set.difference(&memory_write_set).collect();
+        let expected_teardown_set: Vec<_> = memory_write_set.difference(&memory_read_set).collect();
+        assert_eq!(expected_init_set.len(), expected_teardown_set.len());
+        // assert_eq!(expected_init_set.len(), flattened_inits_and_teardowns.len());
 
-    //             let mut teardown_set_el = None;
-    //             for (i, (is_reg, addr, ts, teardown_value)) in
-    //                 expected_teardown_set.iter().enumerate()
-    //             {
-    //                 if *addr == *address {
-    //                     teardown_set_el = Some((*is_reg, *addr, *ts, *teardown_value));
-    //                 }
-    //             }
-    //             let Some(teardown_set_el) = teardown_set_el else {
-    //                 panic!("No expected teardown set element for address {} of flattened inits or teardowns", *address);
-    //             };
-    //             let (_, _, expected_teardown_ts, expected_teardown_value) = teardown_set_el;
-    //             assert_eq!(
-    //                 *teardown_ts, expected_teardown_ts,
-    //                 "failed for address {}",
-    //                 address
-    //             );
-    //             assert_eq!(
-    //                 *teardown_value, expected_teardown_value,
-    //                 "failed for address {}",
-    //                 address
-    //             );
-    //         }
-    //     }
+        if flattened_inits_and_teardowns.len() != expected_init_set.len() {
+            for (idx, (address, (teardown_ts, teardown_value))) in
+                flattened_inits_and_teardowns.iter().enumerate()
+            {
+                let mut init_set_el = None;
+                for (i, (is_reg, addr, ts, init_value)) in expected_init_set.iter().enumerate() {
+                    if *addr == *address {
+                        init_set_el = Some((*is_reg, *addr, *ts, *init_value));
+                    }
+                }
+                let Some(init_set_el) = init_set_el else {
+                    panic!("No expected init set element for address {} of flattened inits or teardowns", *address);
+                };
 
-    //     for (idx, (is_register, addr, ts, init_value)) in expected_init_set.iter().enumerate() {
-    //         assert!(
-    //             *is_register == false,
-    //             "found an unexpected init for register {} with value {} at timestamp {}",
-    //             *addr,
-    //             *init_value,
-    //             *ts
-    //         );
-    //         assert_eq!(
-    //             *ts, 0,
-    //             "init timestamp is invalid for memory address {}",
-    //             addr
-    //         );
-    //         assert_eq!(
-    //             *init_value, 0,
-    //             "init value is invalid for memory address {}",
-    //             addr
-    //         );
-    //         assert_eq!(
-    //             flattened_inits_and_teardowns[idx].0, *addr,
-    //             "diverged at expected lazy init {}",
-    //             idx
-    //         );
-    //     }
-    //     for (idx, (is_register, addr, ts, value)) in expected_teardown_set.iter().enumerate() {
-    //         assert!(
-    //             *is_register == false,
-    //             "found an unexpected teardown for register {} with value {} at timestamp {}",
-    //             *addr,
-    //             *value,
-    //             *ts
-    //         );
-    //         assert!(
-    //             *ts > INITIAL_TIMESTAMP,
-    //             "teardown timestamp is invalid for memory address {}",
-    //             addr
-    //         );
-    //         assert_eq!(
-    //             flattened_inits_and_teardowns[idx].1 .0, *ts,
-    //             "diverged at expected lazy init {}",
-    //             idx
-    //         );
-    //         assert_eq!(
-    //             flattened_inits_and_teardowns[idx].1 .1, *value,
-    //             "diverged at expected lazy init {}",
-    //             idx
-    //         );
-    //     }
+                let mut teardown_set_el = None;
+                for (i, (is_reg, addr, ts, teardown_value)) in
+                    expected_teardown_set.iter().enumerate()
+                {
+                    if *addr == *address {
+                        teardown_set_el = Some((*is_reg, *addr, *ts, *teardown_value));
+                    }
+                }
+                let Some(teardown_set_el) = teardown_set_el else {
+                    panic!("No expected teardown set element for address {} of flattened inits or teardowns", *address);
+                };
+                let (_, _, expected_teardown_ts, expected_teardown_value) = teardown_set_el;
+                assert_eq!(
+                    *teardown_ts, expected_teardown_ts,
+                    "failed for address {}",
+                    address
+                );
+                assert_eq!(
+                    *teardown_value, expected_teardown_value,
+                    "failed for address {}",
+                    address
+                );
+            }
+        }
 
-    //     for ((_, addr0, _, _), (_, addr1, _, _)) in
-    //         expected_init_set.iter().zip(expected_teardown_set.iter())
-    //     {
-    //         assert_eq!(*addr0, *addr1);
-    //     }
+        for (idx, (is_register, addr, ts, init_value)) in expected_init_set.iter().enumerate() {
+            assert!(
+                *is_register == false,
+                "found an unexpected init for register {} with value {} at timestamp {}",
+                *addr,
+                *init_value,
+                *ts
+            );
+            assert_eq!(
+                *ts, 0,
+                "init timestamp is invalid for memory address {}",
+                addr
+            );
+            assert_eq!(
+                *init_value, 0,
+                "init value is invalid for memory address {}",
+                addr
+            );
+            assert_eq!(
+                flattened_inits_and_teardowns[idx].0, *addr,
+                "diverged at expected lazy init {}",
+                idx
+            );
+        }
+        for (idx, (is_register, addr, ts, value)) in expected_teardown_set.iter().enumerate() {
+            assert!(
+                *is_register == false,
+                "found an unexpected teardown for register {} with value {} at timestamp {}",
+                *addr,
+                *value,
+                *ts
+            );
+            assert!(
+                *ts > INITIAL_TIMESTAMP,
+                "teardown timestamp is invalid for memory address {}",
+                addr
+            );
+            assert_eq!(
+                flattened_inits_and_teardowns[idx].1 .0, *ts,
+                "diverged at expected lazy init {}",
+                idx
+            );
+            assert_eq!(
+                flattened_inits_and_teardowns[idx].1 .1, *value,
+                "diverged at expected lazy init {}",
+                idx
+            );
+        }
 
-    //     assert_eq!(total_unique_teardowns, expected_teardown_set.len());
-    // }
+        for ((_, addr0, _, _), (_, addr1, _, _)) in
+            expected_init_set.iter().zip(expected_teardown_set.iter())
+        {
+            assert_eq!(*addr0, *addr1);
+        }
 
-    dbg!(permutation_argument_accumulator);
-    assert_eq!(permutation_argument_accumulator, BabyBearExt4::ONE);
+        assert_eq!(total_unique_teardowns, expected_teardown_set.len());
+    }
+
+    if CHECK_MEMORY_PERMUTATION_ONLY == false {
+        dbg!(permutation_argument_accumulator);
+        assert_eq!(permutation_argument_accumulator, BabyBearExt4::ONE);
+    }
 }
