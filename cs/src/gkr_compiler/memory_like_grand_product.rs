@@ -6,6 +6,7 @@ use crate::cs::circuit_trait::{
 use crate::definitions::gkr::AddressSpaceType;
 use crate::definitions::Variable;
 use crate::gkr_compiler::graph::CopyNode;
+use crate::types::Boolean;
 
 #[derive(Clone, Hash, Debug, PartialEq, Eq)]
 pub enum GrandProductAccumulationStep {
@@ -170,6 +171,26 @@ impl GKRGate for GrandProductAccumulationMaskingNode {
     }
 }
 
+fn reg_boolean_into_address_space_raw(is_register: Boolean) -> AddressSpaceIsRegisterOrRamRaw {
+    match is_register {
+        Boolean::Is(var) => {
+            // if boolean is "true" then the address space must be "register" = 0
+            assert_eq!(AddressSpaceType::Register as u8, 0);
+            // we propagate internal value further, and deal with concrete value later on
+            AddressSpaceIsRegisterOrRamRaw::IsRegister(var)
+        }
+        Boolean::Not(var) => {
+            // if boolean is "true" then the address space must be "RAM" = 1
+            assert_eq!(AddressSpaceType::RAM as u8, 1);
+            // we propagate internal value further, and deal with concrete value later on
+            AddressSpaceIsRegisterOrRamRaw::IsRam(var)
+        }
+        Boolean::Constant(_) => {
+            unreachable!()
+        }
+    }
+}
+
 pub(crate) fn layout_initial_grand_product_accumulation(
     graph: &mut impl GraphHolder,
     predicate: Variable,
@@ -215,15 +236,10 @@ pub(crate) fn layout_initial_grand_product_accumulation(
                     address,
                     ..
                 }) => {
-                    use crate::types::Boolean;
-                    let address_space_isregister = match *is_register {
-                        Boolean::Is(var) => AddressSpaceIsRegister::Is(var),
-                        Boolean::Not(var) => AddressSpaceIsRegister::Not(var),
-                        Boolean::Constant(_) => todo!(),
-                    };
+                    let address_space = reg_boolean_into_address_space_raw(*is_register);
                     MemoryPermutationExpression {
                         address: AddressSpaceAddress::U32Space(*address),
-                        address_space: AddressSpace::RegisterOrRam(address_space_isregister),
+                        address_space: AddressSpace::RegisterOrRam(address_space),
                         value: query.read_value(),
                         timestamp: MemoryPermutationTimestamp::Normal(aux.read_timestamp),
                         timestamp_offset: 0,
@@ -275,15 +291,10 @@ pub(crate) fn layout_initial_grand_product_accumulation(
                     address,
                     ..
                 }) => {
-                    use crate::types::Boolean;
-                    let address_space_isregister = match *is_register {
-                        Boolean::Is(var) => AddressSpaceIsRegister::Is(var),
-                        Boolean::Not(var) => AddressSpaceIsRegister::Not(var),
-                        Boolean::Constant(_) => todo!(),
-                    };
+                    let address_space = reg_boolean_into_address_space_raw(*is_register);
                     MemoryPermutationExpression {
                         address: AddressSpaceAddress::U32Space(*address),
-                        address_space: AddressSpace::RegisterOrRam(address_space_isregister),
+                        address_space: AddressSpace::RegisterOrRam(address_space),
                         value: query.write_value(),
                         timestamp: MemoryPermutationTimestamp::Normal(
                             mem_accesses_base_write_timestamp,
@@ -365,15 +376,10 @@ pub(crate) fn layout_initial_grand_product_accumulation(
                     address,
                     ..
                 }) => {
-                    use crate::types::Boolean;
-                    let address_space_isregister = match is_register {
-                        Boolean::Is(var) => AddressSpaceIsRegister::Is(var),
-                        Boolean::Not(var) => AddressSpaceIsRegister::Not(var),
-                        Boolean::Constant(_) => todo!(),
-                    };
+                    let address_space = reg_boolean_into_address_space_raw(is_register);
                     MemoryPermutationExpression {
                         address: AddressSpaceAddress::U32Space(address),
-                        address_space: AddressSpace::RegisterOrRam(address_space_isregister),
+                        address_space: AddressSpace::RegisterOrRam(address_space),
                         value: query.read_value(),
                         timestamp: MemoryPermutationTimestamp::Normal(aux.read_timestamp),
                         timestamp_offset: 0,
@@ -425,15 +431,10 @@ pub(crate) fn layout_initial_grand_product_accumulation(
                     address,
                     ..
                 }) => {
-                    use crate::types::Boolean;
-                    let address_space_isregister = match is_register {
-                        Boolean::Is(var) => AddressSpaceIsRegister::Is(var),
-                        Boolean::Not(var) => AddressSpaceIsRegister::Not(var),
-                        Boolean::Constant(_) => todo!(),
-                    };
+                    let address_space = reg_boolean_into_address_space_raw(is_register);
                     MemoryPermutationExpression {
                         address: AddressSpaceAddress::U32Space(address),
-                        address_space: AddressSpace::RegisterOrRam(address_space_isregister),
+                        address_space: AddressSpace::RegisterOrRam(address_space),
                         value: query.write_value(),
                         timestamp: MemoryPermutationTimestamp::Normal(
                             mem_accesses_base_write_timestamp,

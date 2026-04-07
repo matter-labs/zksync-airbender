@@ -102,7 +102,7 @@
                 },
                 {
                   "address_space": {
-                    "IsRam": 9
+                    "IsRegister": 9
                   },
                   "address": {
                     "U32Space": [
@@ -162,7 +162,7 @@
                 },
                 {
                   "address_space": {
-                    "IsRam": 9
+                    "IsRegister": 9
                   },
                   "address": {
                     "U32Space": [
@@ -201,7 +201,7 @@
               "input": [
                 {
                   "address_space": {
-                    "IsRegister": 9
+                    "IsRam": 9
                   },
                   "address": {
                     "U32Space": [
@@ -261,7 +261,7 @@
               "input": [
                 {
                   "address_space": {
-                    "IsRegister": 9
+                    "IsRam": 9
                   },
                   "address": {
                     "U32Space": [
@@ -3586,8 +3586,8 @@
           "in_cycle_write_index": 1,
           "address": {
             "RegisterOrRam": {
-              "is_register": {
-                "Is": 9
+              "address_space": {
+                "RegisterAddressSpace": 9
               },
               "address": [
                 10,
@@ -3612,8 +3612,8 @@
           "in_cycle_write_index": 2,
           "address": {
             "RegisterOrRam": {
-              "is_register": {
-                "Not": 9
+              "address_space": {
+                "RamAddressSpace": 9
               },
               "address": [
                 16,

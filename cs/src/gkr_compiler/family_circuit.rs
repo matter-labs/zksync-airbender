@@ -332,19 +332,19 @@ impl<F: PrimeField> GKRCompiler<F> {
                     address,
                     ..
                 }) => {
-                    let (Boolean::Is(is_register_var) | Boolean::Not(is_register_var)) =
-                        is_register
-                    else {
-                        todo!()
+                    // if `is_register` boolean value is "true", then address space is "register" = 0
+                    assert_eq!(AddressSpaceType::Register as u8, 0);
+
+                    let (Boolean::Is(raw_var) | Boolean::Not(raw_var)) = is_register else {
+                        unreachable!()
                     };
                     let [addr_lo_var, addr_hi_var] = address;
                     dbg!();
                     // some optimisations re-use is_register
-                    let GKRAddress::BaseLayerMemory(is_register_col) = graph
-                        .get_fixed_layout_pos(&is_register_var)
-                        .unwrap_or_else(|| {
+                    let GKRAddress::BaseLayerMemory(raw_column) =
+                        graph.get_fixed_layout_pos(&raw_var).unwrap_or_else(|| {
                             let [gkraddr] = graph.layout_memory_subtree_multiple_variables(
-                                [is_register_var],
+                                [raw_var],
                                 &mut all_variables_to_place,
                                 &layers_mapping,
                             );
@@ -362,30 +362,11 @@ impl<F: PrimeField> GKRCompiler<F> {
                     else {
                         unreachable!()
                     };
-                    let is_register = match is_register {
-                        Boolean::Is(_) => {
-                            // if inner(!) "true" then it should be 0 (address space - register)
-                            assert_eq!(AddressSpaceType::Register as u8, 0);
-                            RegisterOrRamAddressSpace::IsRam(is_register_col)
-                        }
-                        Boolean::Not(_) => {
-                            // if inner(!) variable is "true" then it should be 1 (address space - RAM)
-                            assert_eq!(AddressSpaceType::RAM as u8, 1);
-                            RegisterOrRamAddressSpace::IsRegister(is_register_col)
-                        }
-                        Boolean::Constant(_) => {
-                            unreachable!()
-                        }
-                    };
+                    let address_space = reg_boolean_into_address_space(is_register, raw_column);
                     RamAddress::RegisterOrRam(RegisterOrRamAccessAddress {
-                        is_register,
+                        address_space,
                         address: [addr_lo_col, addr_hi_col],
                     })
-
-                    // RamAddress::RegisterOrRam(RegisterOrRamAccessAddress {
-                    //     is_register,
-                    //     address,
-                    // })
                 }
                 _ => {
                     unreachable!()

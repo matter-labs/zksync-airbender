@@ -61,22 +61,28 @@ impl<'a, F: PrimeField> Oracle<F> for MemoryCircuitOracle<'a> {
             },
             Placeholder::ShuffleRamAddress(access_idx) => match access_idx {
                 1 => {
-                    if cycle_data.discr == MEM_LOAD_TRACE_DATA_MARKER {
+                    let rs2_or_ram_read_address = if cycle_data.discr == MEM_LOAD_TRACE_DATA_MARKER
+                    {
                         cycle_data.ram_address()
                     } else if cycle_data.discr == MEM_STORE_TRACE_DATA_MARKER {
                         decoded.rs2_index as u32
                     } else {
                         unreachable!()
-                    }
+                    };
+
+                    rs2_or_ram_read_address
                 }
                 2 => {
-                    if cycle_data.discr == MEM_LOAD_TRACE_DATA_MARKER {
+                    let rd_or_ram_write_address = if cycle_data.discr == MEM_LOAD_TRACE_DATA_MARKER
+                    {
                         decoded.rd_index as u32
                     } else if cycle_data.discr == MEM_STORE_TRACE_DATA_MARKER {
                         cycle_data.ram_address()
                     } else {
                         unreachable!()
-                    }
+                    };
+
+                    rd_or_ram_write_address
                 }
                 _ => {
                     unreachable!()

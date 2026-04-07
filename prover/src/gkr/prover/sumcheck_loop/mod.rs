@@ -129,6 +129,7 @@ where
 
     #[cfg(feature = "gkr_self_checks")]
     {
+        println!("Self-checking explicit at-point evaluations");
         let eq_polys = make_eq_poly_in_full::<E>(&folding_challenges, worker);
         for (k, v) in new_claims.iter() {
             if let Some(poly) = gkr_storage.try_get_base_poly(*k) {
@@ -277,6 +278,7 @@ where
     // self-check
     #[cfg(feature = "gkr_self_checks")]
     {
+        println!("Self-checking explicit at-point evaluations");
         let eq_polys = make_eq_poly_in_full::<E>(&folding_challenges, worker);
         for (k, v) in new_claims.iter() {
             if let Some(poly) = gkr_storage.try_get_base_poly(*k) {
@@ -305,6 +307,7 @@ where
 
             #[cfg(feature = "gkr_self_checks")]
             {
+                println!("Self-checking explicit at-point evaluations for cache relations");
                 let claim = new_claims[cached_addr];
                 if eq_poly.is_none() {
                     let mut eq_precomputed = make_eq_poly_in_full(&folding_challenges, worker);

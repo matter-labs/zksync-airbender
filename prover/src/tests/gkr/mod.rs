@@ -1,7 +1,7 @@
 use super::*;
 use crate::gkr::witness_gen::family_circuits::{GKRFullWitnessTrace, GKRMemoryOnlyWitnessTrace};
 use common_constants::*;
-use cs::definitions::gkr::{IsRegisterAddress, RamAddress, RamQuery, RamWordRepresentation};
+use cs::definitions::gkr::*;
 use cs::definitions::GKRAddress;
 use cs::gkr_compiler::GKRCircuitArtifact;
 use fft::GoodAllocator;
@@ -537,6 +537,8 @@ pub(crate) fn parse_shuffle_ram_accesses<F: PrimeField>(
     trace_row: &[F],
     write_set: &mut BTreeSet<(bool, u32, TimestampScalar, u32)>,
     read_set: &mut BTreeSet<(bool, u32, TimestampScalar, u32)>,
+    delegation_write_set: &mut BTreeSet<(bool, u32, TimestampScalar)>,
+    delegation_read_set: &mut BTreeSet<(bool, u32, TimestampScalar)>,
     _row: usize,
 ) {
     let machine_state_layout = compiled_circuit.memory_layout.machine_state.unwrap();
@@ -577,12 +579,18 @@ pub(crate) fn parse_shuffle_ram_accesses<F: PrimeField>(
                     address = reg_idx as u32;
                 }
                 RamAddress::RegisterOrRam(addr) => {
-                    match addr.is_register {
-                        IsRegisterAddress::Is(is_reg) => {
-                            is_register = read_u16(trace_row, is_reg) != 0;
+                    match addr.address_space {
+                        RegisterOrRamAddressSpace::RamAddressSpace(column) => {
+                            let flag = read_u16(trace_row, column) == 1;
+                            if flag {
+                                is_register = false;
+                            }
                         }
-                        IsRegisterAddress::Not(not_reg) => {
-                            is_register = read_u16(trace_row, not_reg) == 0;
+                        RegisterOrRamAddressSpace::RegisterAddressSpace(column) => {
+                            let flag = read_u16(trace_row, column) == 1;
+                            if flag == false {
+                                is_register = false;
+                            }
                         }
                     }
                     address = read_u32(trace_row, addr.address);
@@ -608,19 +616,46 @@ pub(crate) fn parse_shuffle_ram_accesses<F: PrimeField>(
             // }
 
             let to_write = (is_register, address, write_ts, write_value);
-            let is_unique = write_set.insert(to_write);
-            if is_unique == false {
-                dbg!(trace_row);
-                dbg!(access_idx);
-                panic!("Duplicate entry {:?} in write set", to_write);
-            }
+            if is_register && address >= 32 {
+                assert_eq!(write_value, 0);
+                assert_eq!(read_value, 0);
+                assert!((read_ts == 0 && write_ts != 0) | (read_ts != 0 && write_ts == 0));
+                if read_ts == 0 {
+                    let is_unique = delegation_write_set.insert((is_register, address, write_ts));
+                    if is_unique == false {
+                        dbg!(trace_row);
+                        dbg!(access_idx);
+                        panic!(
+                            "Duplicate delegation entry {:?} in write set",
+                            (is_register, address, write_ts)
+                        );
+                    }
+                } else {
+                    let is_unique = delegation_read_set.insert((is_register, address, read_ts));
+                    if is_unique == false {
+                        dbg!(trace_row);
+                        dbg!(access_idx);
+                        panic!(
+                            "Duplicate delegation entry {:?} in read set",
+                            (is_register, address, read_ts)
+                        );
+                    }
+                }
+            } else {
+                let is_unique = write_set.insert(to_write);
+                if is_unique == false {
+                    dbg!(trace_row);
+                    dbg!(access_idx);
+                    panic!("Duplicate entry {:?} in write set", to_write);
+                }
 
-            let to_read = (is_register, address, read_ts, read_value);
-            let is_unique = read_set.insert(to_read);
-            if is_unique == false {
-                dbg!(trace_row);
-                dbg!(access_idx);
-                panic!("Duplicate entry {:?} in read set", to_read);
+                let to_read = (is_register, address, read_ts, read_value);
+                let is_unique = read_set.insert(to_read);
+                if is_unique == false {
+                    dbg!(trace_row);
+                    dbg!(access_idx);
+                    panic!("Duplicate entry {:?} in read set", to_read);
+                }
             }
         }
     }
@@ -784,7 +819,7 @@ pub(crate) fn parse_shuffle_ram_accesses<F: PrimeField>(
 //     }
 // }
 
-pub fn read_memory_trace_row<F: PrimeField>(
+pub(crate) fn read_memory_trace_row<F: PrimeField>(
     witness: &GKRMemoryOnlyWitnessTrace<F, impl Allocator + Clone, impl Allocator + Clone>,
     row: usize,
     buffer: &mut Vec<F>,
@@ -815,11 +850,21 @@ pub(crate) fn parse_shuffle_ram_accesses_from_full_trace<F: PrimeField>(
     witness: &GKRMemoryOnlyWitnessTrace<F, impl Allocator + Clone, impl Allocator + Clone>,
     write_set: &mut BTreeSet<(bool, u32, TimestampScalar, u32)>,
     read_set: &mut BTreeSet<(bool, u32, TimestampScalar, u32)>,
+    delegation_write_set: &mut BTreeSet<(bool, u32, TimestampScalar)>,
+    delegation_read_set: &mut BTreeSet<(bool, u32, TimestampScalar)>,
 ) {
     let mut buffer = Vec::new();
     for row in 0..compiled_circuit.trace_len {
         read_memory_trace_row(witness, row, &mut buffer);
-        parse_shuffle_ram_accesses(compiled_circuit, &buffer, write_set, read_set, row);
+        parse_shuffle_ram_accesses(
+            compiled_circuit,
+            &buffer,
+            write_set,
+            read_set,
+            delegation_write_set,
+            delegation_read_set,
+            row,
+        );
     }
 }
 

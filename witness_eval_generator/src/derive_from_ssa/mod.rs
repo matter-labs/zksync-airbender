@@ -556,15 +556,16 @@ mod test {
             "mem_subword_only_preprocessed",
             // "mul_div_preprocessed",
             // "mul_div_unsigned_preprocessed",
-            // "inits_and_teardowns_preprocessed",
             // "reduced_machine_preprocessed",
             "blake2_with_extended_control",
             "bigint_with_extended_control",
             "keccak_special5",
         ] {
-            let compiled_circuit: GKRCircuitArtifact<BabyBearField> = deserialize_from_file(
-                &format!("../cs/compiled_circuits/{}_layout_gkr.json", prefix),
-            );
+            let compiled_circuit: GKRCircuitArtifact<BabyBearField> =
+                deserialize_from_file(&format!(
+                    "../cs/compiled_circuits/{}_layout_no_caches_gkr.json",
+                    prefix
+                ));
             let compiled_graph: Vec<Vec<RawExpression<BabyBearField>>> =
                 deserialize_from_file(&format!("../cs/compiled_circuits/{}_ssa_gkr.json", prefix));
             let full_stream =

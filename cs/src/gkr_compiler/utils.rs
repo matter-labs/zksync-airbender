@@ -5,6 +5,7 @@ use super::*;
 use crate::constraint::Constraint;
 use crate::cs::circuit_trait::WordRepresentation;
 use crate::definitions::gkr::AddressSpaceType;
+use crate::definitions::gkr::*;
 use crate::definitions::DecoderData;
 use crate::definitions::DelegationCircuitState;
 use crate::definitions::GKRAddress;
@@ -14,6 +15,7 @@ use crate::definitions::REGISTER_SIZE;
 use crate::gkr_compiler::graph::GKRGraph;
 use crate::gkr_compiler::graph::GraphHolder;
 use crate::gkr_compiler::lookup_nodes::LookupInputRelation;
+use crate::types::Boolean;
 
 pub fn add_compiler_defined_base_layer_variable(
     num_variables: &mut u64,
@@ -371,46 +373,18 @@ pub trait DependentNode {
     );
 }
 
-// impl<T: DependentNode> DependentNode for Box<T> {
-//     fn add_dependencies_into(
-//         &self,
-//         graph: &mut dyn graph::GraphHolder,
-//         dst: &mut Vec<graph::NodeIndex>,
-//     ) {
-//         <T as DependentNode>::add_dependencies_into(&*self, graph, dst);
-//     }
-// }
-
 #[derive(Clone, Copy, Hash, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub enum AddressSpaceIsRegister {
-    Is(Variable),
-    Not(Variable),
+pub enum AddressSpaceIsRegisterOrRamRaw {
+    IsRegister(Variable),
+    IsRam(Variable),
 }
 
 #[derive(Clone, Copy, Hash, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[repr(u8)]
 pub enum AddressSpace {
     Constant(AddressSpaceType),
-    RegisterOrRam(AddressSpaceIsRegister),
+    RegisterOrRam(AddressSpaceIsRegisterOrRamRaw),
 }
-
-// impl DependentNode for AddressSpace {
-//     fn add_dependencies_into(
-//         &self,
-//         graph: &mut dyn graph::GraphHolder,
-//         dst: &mut Vec<graph::NodeIndex>,
-//     ) {
-//         match self {
-//             Self::Constant(..) => {}
-//             Self::RegisterOrRam(t) => match t {
-//                 AddressSpaceIsRegister::Is(var) | AddressSpaceIsRegister::Not(var) => {
-//                     let index = graph.get_node_index_for_variable(*var);
-//                     dst.push(index);
-//                 }
-//             },
-//         }
-//     }
-// }
 
 #[derive(Clone, Copy, Hash, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum AddressSpaceAddress {
@@ -425,41 +399,6 @@ pub enum AddressSpaceAddress {
         high: Variable,
     },
 }
-
-// impl DependentNode for AddressSpaceAddress {
-//     fn add_dependencies_into(
-//         &self,
-//         graph: &mut dyn graph::GraphHolder,
-//         dst: &mut Vec<graph::NodeIndex>,
-//     ) {
-//         // By our construction we ALWAYS have dependencies here on the base layer
-//         match self {
-//             Self::Empty => {}
-//             Self::SingleLimb(var) => {
-//                 let index = graph.get_node_index_for_variable(*var);
-//                 dst.push(index);
-//             }
-//             Self::U32Space(vars) => {
-//                 for var in vars.iter() {
-//                     let index = graph.get_node_index_for_variable(*var);
-//                     dst.push(index);
-//                 }
-//             }
-//             Self::U32SpaceSpecialIndirect {
-//                 low_base,
-//                 low_dynamic_offset,
-//                 high,
-//                 ..
-//             } => {
-//                 dst.push(graph.get_node_index_for_variable(*low_base));
-//                 if let Some(low_dynamic_offset) = low_dynamic_offset {
-//                     dst.push(graph.get_node_index_for_variable(*low_dynamic_offset));
-//                 }
-//                 dst.push(graph.get_node_index_for_variable(*high));
-//             }
-//         }
-//     }
-// }
 
 #[derive(Clone, Copy, Hash, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum MemoryPermutationTimestamp {
@@ -476,68 +415,6 @@ pub struct MemoryPermutationExpression {
     pub timestamp_offset: u32,
 }
 
-// impl DependentNode for MemoryPermutationExpression {
-//     fn add_dependencies_into(
-//         &self,
-//         graph: &mut dyn graph::GraphHolder,
-//         dst: &mut Vec<graph::NodeIndex>,
-//     ) {
-//         self.address_space.add_dependencies_into(graph, dst);
-//         self.address.add_dependencies_into(graph, dst);
-//         for ts in self.timestamp.iter() {
-//             let index = graph.get_node_index_for_variable(*ts);
-//             dst.push(index);
-//         }
-//         for value in self.value.iter() {
-//             let index = graph.get_node_index_for_variable(*value);
-//             dst.push(index);
-//         }
-//     }
-// }
-
-// #[derive(Clone, Copy, Hash, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-// pub struct MemoryPermutationAccumulationNode {
-//     pub inputs: [MemoryPermutationExpression; 2],
-//     pub is_write: bool,
-// }
-
-// impl DependentNode for MemoryPermutationAccumulationNode {
-//     fn add_dependencies_into(
-//         &self,
-//         graph: &mut dyn graph::GraphHolder,
-//         dst: &mut Vec<graph::NodeIndex>,
-//     ) {
-//         for input in self.inputs.iter() {
-//             input.add_dependencies_into(graph, dst);
-//         }
-//     }
-// }
-
-// impl GraphElement for MemoryPermutationAccumulationNode {
-//     fn as_dyn(&'_ self) -> &'_ (dyn GraphElement + 'static) {
-//         self
-//     }
-//     fn equals(&self, other: &dyn GraphElement) -> bool {
-//         graph_element_equals_if_eq(self, other)
-//     }
-//     fn dependencies(&self, graph: &mut dyn graph::GraphHolder) -> Vec<graph::NodeIndex> {
-//         let mut deps = vec![];
-//         self.add_dependencies_into(graph, &mut deps);
-
-//         deps
-//     }
-//     fn short_name(&self) -> String {
-//         if self.is_write {
-//             "Memory grand product write accumulation node".to_string()
-//         } else {
-//             "Memory grand product read accumulation node".to_string()
-//         }
-//     }
-//     fn evaluation_description(&self, graph: &mut dyn graph::GraphHolder) -> NoFieldGKRRelation {
-
-//     }
-// }
-
 pub fn add_compiler_defined_variable_from_constraint<F: PrimeField>(
     num_variables: &mut u64,
     all_variables_to_place: &mut BTreeSet<Variable>,
@@ -552,6 +429,29 @@ pub fn add_compiler_defined_variable_from_constraint<F: PrimeField>(
     var
 }
 
+pub(crate) fn reg_boolean_into_address_space(
+    is_register: Boolean,
+    raw_column: usize,
+) -> RegisterOrRamAddressSpace {
+    match is_register {
+        Boolean::Is(..) => {
+            // if boolean is "true" then the address space must be "register" = 0
+            assert_eq!(AddressSpaceType::Register as u8, 0);
+            // and if raw column is `1` then it's interpreted directly
+            RegisterOrRamAddressSpace::RegisterAddressSpace(raw_column)
+        }
+        Boolean::Not(..) => {
+            // if boolean is "true" then the address space must be "register" = 0
+            assert_eq!(AddressSpaceType::RAM as u8, 1);
+            // and if raw column is `1` then it's interpreted directly later on into `0` value for contribution purposes
+            RegisterOrRamAddressSpace::RamAddressSpace(raw_column)
+        }
+        Boolean::Constant(_) => {
+            unreachable!()
+        }
+    }
+}
+
 pub(crate) fn mem_permutation_expr_into_gkr_relation(
     mem: &MemoryPermutationExpression,
     graph: &dyn GraphHolder,
@@ -561,14 +461,18 @@ pub(crate) fn mem_permutation_expr_into_gkr_relation(
         AddressSpace::RegisterOrRam(is_reg) => {
             assert_eq!(AddressSpaceType::Register as u8, 0);
             match is_reg {
-                AddressSpaceIsRegister::Is(v) => CompiledAddressSpaceRelationStrict::IsRam(
-                    // NOTE: if v == 1 we should have 0 (register address space), and vice versa below
-                    graph.get_address_for_variable(v).as_memory(),
-                ),
-                AddressSpaceIsRegister::Not(v) => CompiledAddressSpaceRelationStrict::IsRegister(
-                    // NOTE: if v == 1 we should have 1 (RAM address space)
-                    graph.get_address_for_variable(v).as_memory(),
-                ),
+                AddressSpaceIsRegisterOrRamRaw::IsRegister(v) => {
+                    CompiledAddressSpaceRelationStrict::IsRegister(
+                        // NOTE: if v == 1 we should have 0 (register address space),
+                        graph.get_address_for_variable(v).as_memory(),
+                    )
+                }
+                AddressSpaceIsRegisterOrRamRaw::IsRam(v) => {
+                    CompiledAddressSpaceRelationStrict::IsRam(
+                        // NOTE: if v == 1 we should have 1 (RAM address space),
+                        graph.get_address_for_variable(v).as_memory(),
+                    )
+                }
             }
         }
     };

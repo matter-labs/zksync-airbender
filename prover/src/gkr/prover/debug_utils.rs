@@ -196,6 +196,7 @@ pub(crate) fn verify_cache_relations<F: PrimeField, E: FieldExtension<F> + Field
     external_challenges: &GKRExternalChallenges<F, E>,
     lookup_multiplicative_constant: E,
 ) -> bool {
+    println!("Self-checking cache relations");
     for (cached_addr, relation) in layer_desc.cached_relations.iter() {
         match relation {
             NoFieldGKRCacheRelation::MemoryTuple(rel) => {

@@ -404,14 +404,14 @@ pub(crate) fn memory_query_as_flattened_relation<F: PrimeField, E: FieldExtensio
             constant_term.add_assign_base(&F::from_u32_unchecked(c));
         }
         CompiledAddressSpaceRelationStrict::IsRam(offset) => {
-            // if "true", then we should have address space == RAM (1)
+            // if "1", then we should have address space == RAM (1)
             assert_eq!(AddressSpaceType::RAM as u8, 1);
             assert!(result
                 .insert(GKRAddress::BaseLayerMemory(offset), E::ONE)
                 .is_none());
         }
         CompiledAddressSpaceRelationStrict::IsRegister(offset) => {
-            // if "true", then we should have address space == register (0)
+            // if "1", then we should have address space == register (0)
             assert_eq!(AddressSpaceType::Register as u8, 0);
             assert!(result
                 .insert(GKRAddress::BaseLayerMemory(offset), E::MINUS_ONE)

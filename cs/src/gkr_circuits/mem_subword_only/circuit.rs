@@ -133,6 +133,13 @@ fn apply_mem_subword_only_inner<F: PrimeField, CS: Circuit<F>>(
     // we allocate variables that are memory queries addresses, and constraint equality
     // instead of selecting them for convenience
 
+    // NOTE on both addresses below: we allocate them from witness and assume range-checked limbs.
+    // We can do so by induction: if memory argument passes, then:
+    // - if timestamp inequiaities are enforced
+    // - and initial set of addresses (inits) is range checked by construction, and so are teardowns
+    // - then for memory argument to pass we can not have intermediate non-range checked read + write pairs
+    // as there is no init and teardown for them
+
     // read mem/rs2
     let memread_addr =
         core::array::from_fn(|i| cs.add_named_variable(&format!("memread_addr[{i}]")));
@@ -196,10 +203,12 @@ fn apply_mem_subword_only_inner<F: PrimeField, CS: Circuit<F>>(
         let store = Constraint::from(is_store);
         let [readaddr_lo, readaddr_hi] = memread_addr.map(Term::from);
         let [writeaddr_lo, writeaddr_hi] = memwrite_addr.map(Term::from);
+        // lower part of the address in case it should be register
         cs.add_constraint(
             store.clone() * (readaddr_lo - Term::from(inputs.decoder_data.rs2_index))
                 + load.clone() * (writeaddr_lo - Term::from(inputs.decoder_data.rd_index)),
         );
+        // higher part of the address in case it should be register - it should be 0
         cs.add_constraint(store.clone() * readaddr_hi + load.clone() * writeaddr_hi);
 
         // now we can enforce the ram address

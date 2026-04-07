@@ -280,27 +280,26 @@ impl<const ROM_BOUND_SECOND_WORD_BITS: usize> RamWithRomRegion<ROM_BOUND_SECOND_
                     for word in src.iter() {
                         let in_chunk_idx = word_idx % (1 << words_per_chunk_log2);
                         let chunk_idx = (word_idx - offset_in_words) >> words_per_chunk_log2;
-                        let address = start * core::mem::size_of::<u32>();
-                        if word.timestamp != 0 {
-                            let mut word_value = word.value;
-                            // we mask ROM region to be zero-valued
-                            if address < (1 << (16 + ROM_BOUND_SECOND_WORD_BITS)) {
-                                word_value = 0;
-                            }
-                            let last_timestamp: TimestampScalar = word.timestamp;
-                            let (val_low, val_high) = split_u32_into_pair_u16(word_value);
-                            let (ts_low, ts_high) = split_timestamp(last_timestamp);
+                        let address = word_idx * core::mem::size_of::<u32>();
 
-                            mapped[chunk_idx].0[0][in_chunk_idx]
-                                .write(F::from_u32_unchecked(ts_low as u32));
-                            mapped[chunk_idx].0[1][in_chunk_idx]
-                                .write(F::from_u32_unchecked(ts_high as u32));
-
-                            mapped[chunk_idx].1[0][in_chunk_idx]
-                                .write(F::from_u32_unchecked(val_low as u32));
-                            mapped[chunk_idx].1[1][in_chunk_idx]
-                                .write(F::from_u32_unchecked(val_high as u32));
+                        let mut word_value = word.value;
+                        // we mask ROM region to be zero-valued
+                        if address < (1 << (16 + ROM_BOUND_SECOND_WORD_BITS)) {
+                            word_value = 0;
                         }
+                        let last_timestamp: TimestampScalar = word.timestamp;
+                        let (val_low, val_high) = split_u32_into_pair_u16(word_value);
+                        let (ts_low, ts_high) = split_timestamp(last_timestamp);
+
+                        mapped[chunk_idx].0[0][in_chunk_idx]
+                            .write(F::from_u32_unchecked(ts_low as u32));
+                        mapped[chunk_idx].0[1][in_chunk_idx]
+                            .write(F::from_u32_unchecked(ts_high as u32));
+
+                        mapped[chunk_idx].1[0][in_chunk_idx]
+                            .write(F::from_u32_unchecked(val_low as u32));
+                        mapped[chunk_idx].1[1][in_chunk_idx]
+                            .write(F::from_u32_unchecked(val_high as u32));
 
                         word_idx += 1;
                     }

@@ -10,13 +10,13 @@ pub struct RegisterOnlyAccessAddress {
 
 #[derive(Clone, Copy, Hash, Debug, serde::Serialize, serde::Deserialize)]
 pub enum RegisterOrRamAddressSpace {
-    IsRegister(usize), // if true - address space should be 0 (register)
-    IsRam(usize),      // if true - address space should be 1 (RAM)
+    RegisterAddressSpace(usize), // if true - address space should be 0 (register)
+    RamAddressSpace(usize),      // if true - address space should be 1 (RAM)
 }
 
 #[derive(Clone, Copy, Hash, Debug, serde::Serialize, serde::Deserialize)]
 pub struct RegisterOrRamAccessAddress {
-    pub is_register: RegisterOrRamAddressSpace,
+    pub address_space: RegisterOrRamAddressSpace,
     pub address: [usize; REGISTER_SIZE],
 }
 
