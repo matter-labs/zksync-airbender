@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use crate::gkr::prover::dimension_reduction::forward::DimensionReducingInputOutput;
-use cs::definitions::gkr::{NoFieldLinearRelation, RamWordRepresentation};
+use cs::definitions::gkr::{AddressSpaceType, NoFieldLinearRelation, RamWordRepresentation};
 use cs::definitions::{
     GKRAddress, MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX,
     MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX,
@@ -196,6 +196,7 @@ pub(crate) fn verify_cache_relations<F: PrimeField, E: FieldExtension<F> + Field
     external_challenges: &GKRExternalChallenges<F, E>,
     lookup_alpha: E,
 ) -> bool {
+    println!("Self-checking cache relations");
     for (cached_addr, relation) in layer_desc.cached_relations.iter() {
         let cached_claim = match claims.get(cached_addr) {
             Some(v) => *v,
@@ -309,11 +310,15 @@ fn evaluate_memory_tuple_from_claims<F: PrimeField, E: FieldExtension<F> + Field
         CompiledAddressSpaceRelationStrict::Constant(c) => {
             result.add_assign_base(&F::from_u32_unchecked(c));
         }
-        CompiledAddressSpaceRelationStrict::Is(offset) => {
+        CompiledAddressSpaceRelationStrict::IsRam(offset) => {
+            // if "true", then we should have address space == RAM (1)
+            assert_eq!(AddressSpaceType::RAM as u8, 1);
             let claim = claims[&GKRAddress::BaseLayerMemory(offset)];
             result.add_assign(&claim);
         }
-        CompiledAddressSpaceRelationStrict::Not(offset) => {
+        CompiledAddressSpaceRelationStrict::IsRegister(offset) => {
+            // if "true", then we should have address space == register (0)
+            assert_eq!(AddressSpaceType::Register as u8, 0);
             let claim = claims[&GKRAddress::BaseLayerMemory(offset)];
             let mut t = E::from_base(F::ONE);
             t.sub_assign(&claim);

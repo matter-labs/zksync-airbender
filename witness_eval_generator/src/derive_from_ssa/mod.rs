@@ -545,26 +545,27 @@ mod test {
 
     #[test]
     fn gen_for_unrolled_gkr_tests() {
+        skip_if_ci!();
         use ::field::baby_bear::base::BabyBearField;
 
         for prefix in [
             "add_sub_lui_auipc_mop_preprocessed",
             "jump_branch_slt_preprocessed",
             "shift_binop_preprocessed",
-            // "load_store_preprocessed",
             "mem_word_only_preprocessed",
             "mem_subword_only_preprocessed",
             // "mul_div_preprocessed",
             // "mul_div_unsigned_preprocessed",
-            // "inits_and_teardowns_preprocessed",
             // "reduced_machine_preprocessed",
             "blake2_with_extended_control",
             "bigint_with_extended_control",
             "keccak_special5",
         ] {
-            let compiled_circuit: GKRCircuitArtifact<BabyBearField> = deserialize_from_file(
-                &format!("../cs/compiled_circuits/{}_layout_gkr.json", prefix),
-            );
+            let compiled_circuit: GKRCircuitArtifact<BabyBearField> =
+                deserialize_from_file(&format!(
+                    "../cs/compiled_circuits/{}_layout_no_caches_gkr.json",
+                    prefix
+                ));
             let compiled_graph: Vec<Vec<RawExpression<BabyBearField>>> =
                 deserialize_from_file(&format!("../cs/compiled_circuits/{}_ssa_gkr.json", prefix));
             let full_stream =

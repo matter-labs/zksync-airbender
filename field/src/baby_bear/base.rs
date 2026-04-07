@@ -289,6 +289,8 @@ impl BabyBearField {
 impl Field for BabyBearField {
     const ZERO: Self = Self(0);
     const ONE: Self = Self(Self::MONT_R);
+    const TWO: Self = Self::new(2);
+    const MINUS_ONE: Self = Self::new(Self::ORDER - 1);
 
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn is_zero(&self) -> bool {
@@ -387,8 +389,6 @@ impl Sub for BabyBearField {
 }
 
 impl PrimeField for BabyBearField {
-    const TWO: Self = Self::new(2);
-    const MINUS_ONE: Self = Self::new(Self::ORDER - 1);
     const NUM_BYTES_IN_REPR: usize = 4;
     const CHAR_BITS: usize = 31;
     const CHARACTERISTICS: u32 = Self::ORDER;

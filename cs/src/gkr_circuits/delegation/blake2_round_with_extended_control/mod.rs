@@ -979,6 +979,7 @@ mod test {
 
     use super::*;
     use crate::gkr_compiler::compile_delegation_circuit_into_gkr;
+    use crate::gkr_compiler::compile_delegation_circuit_into_gkr_without_caches;
     use crate::gkr_compiler::dump_ssa_witness_eval_form;
     use crate::utils::serialize_to_file;
 
@@ -1015,6 +1016,25 @@ mod test {
         serialize_to_file(
             &ssa_forms,
             "compiled_circuits/blake2_with_extended_control_preprocessed_ssa_gkr.json",
+        );
+    }
+
+    #[test]
+    fn compile_blake2_with_extended_control_into_no_caches_gkr() {
+        skip_if_ci!();
+        use ::field::baby_bear::base::BabyBearField;
+
+        let gkr_compiled = compile_delegation_circuit_into_gkr_without_caches::<BabyBearField>(
+            &|cs| blake2_with_extended_control_table_addition_fn(cs),
+            &|cs| {
+                let _ = define_blake2_with_extended_control_delegation_circuit(cs);
+            },
+            20,
+        );
+
+        serialize_to_file(
+            &gkr_compiled,
+            "compiled_circuits/blake2_with_extended_control_layout_no_caches_gkr.json",
         );
     }
 }

@@ -28,6 +28,25 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E> for Loo
         }
     }
 
+    fn terms(
+        &self,
+        _challenge_constants: &BatchedGKRTermDescriptionConstants<F, E>,
+    ) -> Vec<BatchedGKRTermDescription<F, E>> {
+        // a/b + c/d = (a*d + c*b) / (b*d)
+        let [[a, b], [c, d]] = self.inputs;
+
+        let mut num_term = BatchedGKRTermDescription::default();
+        num_term.add_ext_by_ext(a, d, E::ONE);
+        num_term.add_ext_by_ext(b, c, E::ONE);
+        num_term.set_extension_output(self.outputs[0]);
+
+        let mut den_term = BatchedGKRTermDescription::default();
+        den_term.add_ext_by_ext(b, d, E::ONE);
+        den_term.set_extension_output(self.outputs[1]);
+
+        vec![num_term, den_term]
+    }
+
     fn evaluate_forward_over_storage(
         &self,
         storage: &mut GKRStorage<F, E>,

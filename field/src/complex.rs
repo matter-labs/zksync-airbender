@@ -297,6 +297,16 @@ impl Field for Mersenne31Complex {
         c1: Mersenne31Field::ZERO,
     };
 
+    const MINUS_ONE: Self = Self {
+        c0: Mersenne31Field::MINUS_ONE,
+        c1: Mersenne31Field::ZERO,
+    };
+
+    const TWO: Self = Self {
+        c0: Mersenne31Field::TWO,
+        c1: Mersenne31Field::ZERO,
+    };
+
     type CharField = Mersenne31Field;
 
     #[cfg_attr(not(feature = "no_inline"), inline(always))]

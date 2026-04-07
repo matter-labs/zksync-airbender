@@ -1,5 +1,7 @@
 use super::*;
-use crate::gkr::prover::forward_loop::utils::evaluate_linear_relation_at_row;
+use crate::gkr::prover::forward_loop::utils::{
+    evaluate_linear_relation_at_row, evaluate_memory_query,
+};
 use crate::gkr::sumcheck::access_and_fold::BaseFieldPoly;
 use crate::{cs::definitions::*, gkr::sumcheck::access_and_fold::ExtensionFieldPoly};
 use cs::definitions::gkr::RamWordRepresentation;
@@ -13,12 +15,15 @@ use cs::{
 };
 
 pub(crate) mod copy;
+pub(crate) mod inits_and_teardowns;
 pub(crate) mod lookup_from_base_inputs;
 pub(crate) mod lookup_from_vector_inputs;
 pub(crate) mod lookup_pair;
 pub(crate) mod mask_product;
 pub(crate) mod pairwise_product;
+pub(crate) mod single_column_lookup;
 pub(crate) mod utils;
+pub(crate) mod vector_lookup;
 
 fn evaluate_cache_relation<F: PrimeField, E: FieldExtension<F> + Field>(
     layer_idx: usize,
@@ -27,6 +32,7 @@ fn evaluate_cache_relation<F: PrimeField, E: FieldExtension<F> + Field>(
     gkr_storage: &mut GKRStorage<F, E>,
     external_challenges: &GKRExternalChallenges<F, E>,
     witness_trace: &mut GKRFullWitnessTrace<F, Global, Global>,
+    compiled_circuit: &GKRCircuitArtifact<F>,
     trace_len: usize,
     lookup_challenges_multiplicative_part: E,
     decoder_lookup_fill_value: E,
@@ -42,304 +48,26 @@ fn evaluate_cache_relation<F: PrimeField, E: FieldExtension<F> + Field>(
                 relation,
                 range_check_width,
             } => {
-                let mut destination = Box::<[F], Global>::new_uninit_slice(trace_len);
-                if *range_check_width == 16 {
-                    let source = std::mem::replace(
-                        &mut witness_trace.range_check_16_lookup_mapping[relation.lookup_set_index],
-                        vec![],
-                    );
-                    let source_ref = &source;
-                    assert_eq!(source.len(), trace_len);
-                    apply_row_wise::<_, E>(
-                        vec![&mut destination],
-                        vec![],
-                        trace_len,
-                        worker,
-                        |dest, _, chunk_start, chunk_size| {
-                            assert_eq!(dest.len(), 1);
-                            let mut dest = dest;
-                            let dest = dest.pop().unwrap();
-                            for i in 0..chunk_size {
-                                let row = chunk_start + i;
-                                let mapping_index = source_ref[row];
-
-                                #[cfg(feature = "gkr_self_checks")]
-                                {
-                                    let value = evaluate_linear_relation_at_row(
-                                        &relation.input,
-                                        &*gkr_storage,
-                                        row,
-                                    )
-                                    .as_u32_reduced();
-                                    assert!(value < 1 << 16, "range check 16 bits: value is {} at row {} for relation {:?}", value, row, relation);
-                                    assert_eq!(value as u16, mapping_index);
-                                }
-
-                                let mapped_value = F::from_u32_unchecked(mapping_index as u32);
-                                dest[i].write(mapped_value);
-                            }
-                        },
-                    );
-                } else if *range_check_width == TIMESTAMP_COLUMNS_NUM_BITS as usize {
-                    let source = std::mem::replace(
-                        &mut witness_trace.timestamp_range_check_lookup_mapping
-                            [relation.lookup_set_index],
-                        vec![],
-                    );
-                    let source_ref = &source;
-                    assert_eq!(source.len(), trace_len);
-                    apply_row_wise::<_, E>(
-                        vec![&mut destination],
-                        vec![],
-                        trace_len,
-                        worker,
-                        |dest, _, chunk_start, chunk_size| {
-                            assert_eq!(dest.len(), 1);
-                            let mut dest = dest;
-                            let dest = dest.pop().unwrap();
-                            for i in 0..chunk_size {
-                                let row = chunk_start + i;
-                                let mapping_index = source_ref[row];
-
-                                #[cfg(feature = "gkr_self_checks")]
-                                {
-                                    let value = evaluate_linear_relation_at_row(
-                                        &relation.input,
-                                        &*gkr_storage,
-                                        row,
-                                    )
-                                    .as_u32_reduced();
-                                    assert!(value < 1 << TIMESTAMP_COLUMNS_NUM_BITS, "timestamp range check: value is {} at row {} for relation {:?}", value, row, relation);
-                                    assert_eq!(value, mapping_index);
-                                }
-
-                                let mapped_value = F::from_u32_unchecked(mapping_index);
-                                dest[i].write(mapped_value);
-                            }
-                        },
-                    );
-                } else {
-                    unreachable!(
-                        "unknown single column lookup range check of width {}",
-                        range_check_width
-                    );
-                };
-
-                let destination = destination.assume_init();
-                address.assert_as_layer(layer_idx);
-                gkr_storage.insert_base_field_at_layer(
+                single_column_lookup::evaluate_single_column_lookup_relation(
                     layer_idx,
                     address,
-                    BaseFieldPoly::new(destination),
+                    relation,
+                    *range_check_width as u32,
+                    gkr_storage,
+                    witness_trace,
+                    trace_len,
+                    worker,
                 );
             }
             NoFieldGKRCacheRelation::MemoryTuple(rel) => {
-                let mut destination = Box::<[E], Global>::new_uninit_slice(trace_len);
-                let ext_destination = vec![&mut destination[..]];
-                let src_ref = &*gkr_storage;
-                let byte_shift = F::from_u32_unchecked(1u32 << 8);
-                apply_row_wise::<F, _>(
-                    vec![],
-                    ext_destination,
+                let destination = utils::materialize_memory_tuple(
+                    rel,
+                    &*gkr_storage,
                     trace_len,
+                    external_challenges,
+                    compiled_circuit,
                     worker,
-                    |_, ext_dest, chunk_start, chunk_size| {
-                        assert_eq!(ext_dest.len(), 1);
-                        let mut ext_dest = ext_dest;
-                        let dest = ext_dest.pop().unwrap();
-                        for i in 0..chunk_size {
-                            let mut result = external_challenges.permutation_argument_additive_part;
-                            match rel.address_space {
-                                CompiledAddressSpaceRelationStrict::Constant(c) => {
-                                    assert!(c < (1u32 << 16));
-                                    result.add_assign_base(&F::from_u32_unchecked(c));
-                                }
-                                CompiledAddressSpaceRelationStrict::Is(offset) => {
-                                    let el = src_ref
-                                        .get_base_layer_mem(offset)
-                                        .get_unchecked(chunk_start + i);
-                                    debug_assert!(el.is_zero() || el.is_one());
-                                    result.add_assign_base(el);
-                                }
-                                CompiledAddressSpaceRelationStrict::Not(offset) => {
-                                    let mut t = F::ONE;
-                                    let el = src_ref
-                                        .get_base_layer_mem(offset)
-                                        .get_unchecked(chunk_start + i);
-                                    debug_assert!(el.is_zero() || el.is_one());
-                                    t.sub_assign(el);
-                                    result.add_assign_base(&t);
-                                }
-                            }
-                            match &rel.address {
-                                &CompiledAddressStrict::ConstantU16(c) => {
-                                    let mut t = external_challenges
-                                        .permutation_argument_linearization_challenges
-                                        [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
-                                    t.mul_assign_by_base(&F::from_u32_unchecked(c as u32));
-                                    result.add_assign(&t);
-                                }
-                                &CompiledAddressStrict::Constant(c) => {
-                                    assert!(c < (1u32 << 16));
-                                    let mut t = external_challenges
-                                        .permutation_argument_linearization_challenges
-                                        [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
-                                    t.mul_assign_by_base(&F::from_u32_unchecked(c));
-                                    result.add_assign(&t);
-                                }
-                                &CompiledAddressStrict::U16Space(offset) => {
-                                    let mut t = external_challenges
-                                        .permutation_argument_linearization_challenges
-                                        [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
-                                    let el = src_ref
-                                        .get_base_layer_mem(offset)
-                                        .get_unchecked(chunk_start + i);
-                                    t.mul_assign_by_base(el);
-                                    result.add_assign(&t);
-                                }
-                                &CompiledAddressStrict::U32Space([low, high]) => {
-                                    for (idx, offset) in [
-                                        (MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX, low),
-                                        (MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX, high),
-                                    ] {
-                                        let mut t = external_challenges
-                                            .permutation_argument_linearization_challenges[idx];
-                                        let el = src_ref
-                                            .get_base_layer_mem(offset)
-                                            .get_unchecked(chunk_start + i);
-                                        t.mul_assign_by_base(el);
-                                        result.add_assign(&t);
-                                    }
-                                }
-                                CompiledAddressStrict::U32SpaceGeneric(..) => {
-                                    todo!();
-                                }
-                                CompiledAddressStrict::U32SpaceSpecialIndirect {
-                                    low_base,
-                                    low_dynamic_offset,
-                                    low_offset,
-                                    high,
-                                } => {
-                                    let mut low_offset = *low_offset;
-                                    if let Some((c, offset)) = *low_dynamic_offset {
-                                        let t = src_ref
-                                            .get_base_layer_mem(offset)
-                                            .get_unchecked(chunk_start + i)
-                                            .as_u32_reduced();
-                                        low_offset += t.wrapping_mul(c as u32);
-                                    }
-                                    {
-                                        let mut t = external_challenges
-                                            .permutation_argument_linearization_challenges
-                                            [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
-                                        let mut el = *src_ref
-                                            .get_base_layer_mem(*low_base)
-                                            .get_unchecked(chunk_start + i);
-                                        el.add_assign(&F::from_u32_unchecked(low_offset));
-                                        t.mul_assign_by_base(&el);
-                                        result.add_assign(&t);
-                                    }
-                                    {
-                                        let mut t = external_challenges
-                                            .permutation_argument_linearization_challenges
-                                            [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
-                                        let el = src_ref
-                                            .get_base_layer_mem(*high)
-                                            .get_unchecked(chunk_start + i);
-                                        t.mul_assign_by_base(el);
-                                        result.add_assign(&t);
-                                    }
-                                }
-                            }
-                            // timestamp is a little special as we do add constant offset
-
-                            match rel.timestamp {
-                                CompiledMemoryTimestamp::Zero => {}
-                                CompiledMemoryTimestamp::Normal(ts) => {
-                                    {
-                                        let mut t = external_challenges
-                                            .permutation_argument_linearization_challenges
-                                            [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
-                                        let mut el = *src_ref
-                                            .get_base_layer_mem(ts[0])
-                                            .get_unchecked(chunk_start + i);
-                                        el.add_assign(&F::from_u32_unchecked(
-                                            rel.timestamp_offset as u32,
-                                        ));
-                                        t.mul_assign_by_base(&el);
-                                        result.add_assign(&t);
-                                    }
-                                    {
-                                        let mut t = external_challenges
-                                            .permutation_argument_linearization_challenges
-                                            [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
-                                        let el = src_ref
-                                            .get_base_layer_mem(ts[1])
-                                            .get_unchecked(chunk_start + i);
-                                        t.mul_assign_by_base(el);
-                                        result.add_assign(&t);
-                                    }
-                                }
-                            }
-                            // and values are simplified for now
-                            match rel.value {
-                                RamWordRepresentation::Zero => {
-                                    // nothing
-                                }
-                                RamWordRepresentation::U16Limbs(read_value) => {
-                                    for (idx, offset) in [
-                                        (
-                                            MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX,
-                                            read_value[0],
-                                        ),
-                                        (
-                                            MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX,
-                                            read_value[1],
-                                        ),
-                                    ] {
-                                        let mut t = external_challenges
-                                            .permutation_argument_linearization_challenges[idx];
-                                        let el = src_ref
-                                            .get_base_layer_mem(offset)
-                                            .get_unchecked(chunk_start + i);
-                                        t.mul_assign_by_base(el);
-                                        result.add_assign(&t);
-                                    }
-                                }
-                                RamWordRepresentation::U8Limbs(read_value_bytes) => {
-                                    for (idx, offset_low, offset_high) in [
-                                        (
-                                            MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX,
-                                            read_value_bytes[0],
-                                            read_value_bytes[1],
-                                        ),
-                                        (
-                                            MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX,
-                                            read_value_bytes[2],
-                                            read_value_bytes[3],
-                                        ),
-                                    ] {
-                                        let mut t = external_challenges
-                                            .permutation_argument_linearization_challenges[idx];
-                                        let el = src_ref
-                                            .get_base_layer_mem(offset_low)
-                                            .get_unchecked(chunk_start + i);
-                                        let mut recomposed = *src_ref
-                                            .get_base_layer_mem(offset_high)
-                                            .get_unchecked(chunk_start + i);
-                                        recomposed.mul_assign(&byte_shift);
-                                        recomposed.add_assign(el);
-                                        t.mul_assign_by_base(&recomposed);
-                                        result.add_assign(&t);
-                                    }
-                                }
-                            }
-
-                            dest.get_unchecked_mut(i).write(result);
-                        }
-                    },
                 );
-                let destination = destination.assume_init();
                 assert_eq!(layer_idx, 0);
                 address.assert_as_layer(layer_idx);
                 gkr_storage.insert_extension_at_layer(
@@ -392,6 +120,7 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
     compiled_circuit: &GKRCircuitArtifact<F>,
     external_challenges: &GKRExternalChallenges<F, E>,
     witness_trace: &mut GKRFullWitnessTrace<F, Global, Global>,
+    inits_and_teardowns_top_bits: &[u32],
     trace_len: usize,
     preprocessed_generic_lookup: &[E],
     lookup_challenges_multiplicative_part: E,
@@ -552,6 +281,7 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
             gkr_storage,
             external_challenges,
             witness_trace,
+            compiled_circuit,
             trace_len,
             lookup_challenges_multiplicative_part,
             decoder_lookup_fill_value,
@@ -592,6 +322,22 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
                 // handled above
             }
 
+            NoFieldGKRRelation::MaterializeSingleLookupInput {
+                input,
+                output,
+                range_check_width,
+            } => {
+                single_column_lookup::evaluate_single_column_lookup_relation(
+                    expected_output_layer,
+                    *output,
+                    input,
+                    *range_check_width as u32,
+                    gkr_storage,
+                    witness_trace,
+                    trace_len,
+                    worker,
+                );
+            }
             NoFieldGKRRelation::InitialGrandProductFromCaches { input, output } => {
                 // println!("Should evaluate {:?}", &gate.enforced_relation);
                 pairwise_product::forward_evaluate_pairwise_product(
@@ -599,6 +345,19 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
                     *output,
                     gkr_storage,
                     expected_output_layer,
+                    trace_len,
+                    worker,
+                );
+            }
+            NoFieldGKRRelation::InitialGrandProductWithoutCaches { input, output } => {
+                // println!("Should evaluate {:?}", &gate.enforced_relation);
+                pairwise_product::forward_evaluate_base_layer_pairwise_product_without_caches(
+                    input,
+                    *output,
+                    gkr_storage,
+                    external_challenges,
+                    expected_output_layer,
+                    compiled_circuit,
                     trace_len,
                     worker,
                 );
@@ -633,6 +392,9 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
             NoFieldGKRRelation::EnforceConstraintsMaxQuadratic { .. } => {
                 // we do nothing as it should result in all zeroes in case if constraints are satisfied
             }
+            NoFieldGKRRelation::EnforceSingleMaxQuadraticConstraint { .. } => {
+                // we do nothing as it should result in all zeroes in case if constraints are satisfied
+            }
             NoFieldGKRRelation::LookupFromMaterializedBaseInputWithSetup {
                 input,
                 setup,
@@ -658,6 +420,28 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
                 // println!("Should evaluate {:?}", &gate.enforced_relation);
                 lookup_from_vector_inputs::forward_evaluate_masked_lookup_from_vector_inputs_with_setup(*input, *setup, *output, gkr_storage, expected_output_layer, trace_len, lookup_challenges_additive_part, worker);
             }
+            NoFieldGKRRelation::LookupWithDensAndSetupExpressions {
+                input,
+                setup,
+                output,
+            } => {
+                assert_eq!(input.0, decoder_predicate_address);
+                vector_lookup::materialize_decoder_lookup_minus_setup(
+                    input.0,
+                    &input.1,
+                    setup.0,
+                    *output,
+                    gkr_storage,
+                    witness_trace,
+                    trace_len,
+                    preprocessed_generic_lookup,
+                    lookup_challenges_multiplicative_part,
+                    lookup_challenges_additive_part,
+                    decoder_lookup_fill_value,
+                    compiled_circuit.offset_for_decoder_table as u32,
+                    worker,
+                );
+            }
             NoFieldGKRRelation::AggregateLookupRationalPair { input, output } => {
                 // println!("Should evaluate {:?}", &gate.enforced_relation);
                 lookup_pair::forward_evaluate_lookup_pair(
@@ -680,6 +464,40 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
                     lookup_challenges_additive_part,
                     worker,
                 );
+            }
+            NoFieldGKRRelation::LookupPairFromBaseInputs {
+                input,
+                output,
+                range_check_width,
+            } => {
+                if *range_check_width == 16 {
+                    lookup_from_base_inputs::forward_evaluate_lookup_base_inputs_pair_range_check_16(
+                        input,
+                        *output,
+                        gkr_storage,
+                        expected_output_layer,
+                        trace_len,
+                        lookup_challenges_additive_part,
+                        witness_trace,
+                        worker
+                    );
+                } else if *range_check_width == TIMESTAMP_COLUMNS_NUM_BITS {
+                    lookup_from_base_inputs::forward_evaluate_lookup_base_inputs_pair_timestamp_range_check(
+                        input,
+                        *output,
+                        gkr_storage,
+                        expected_output_layer,
+                        trace_len,
+                        lookup_challenges_additive_part,
+                        witness_trace,
+                        worker
+                    );
+                } else {
+                    unreachable!(
+                        "unknown single column lookup range check of width {}",
+                        range_check_width
+                    );
+                }
             }
             NoFieldGKRRelation::LookupUnbalancedPairWithMaterializedBaseInputs {
                 input,
@@ -741,6 +559,101 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
                     trace_len,
                     lookup_challenges_additive_part,
                     worker,
+                );
+            }
+            NoFieldGKRRelation::LookupPairFromVectorInputs { input, output } => {
+                vector_lookup::materialize_lookup_expressions_pair(
+                    input,
+                    *output,
+                    gkr_storage,
+                    witness_trace,
+                    expected_output_layer,
+                    trace_len,
+                    preprocessed_generic_lookup,
+                    lookup_challenges_multiplicative_part,
+                    lookup_challenges_additive_part,
+                    compiled_circuit.offset_for_decoder_table as u32,
+                    worker,
+                );
+            }
+            NoFieldGKRRelation::LookupUnbalancedPairWithVectorInputs {
+                input,
+                remainder,
+                output,
+            } => {
+                vector_lookup::materialize_lookup_expressions_pair_with_remainder(
+                    *input,
+                    remainder,
+                    *output,
+                    gkr_storage,
+                    witness_trace,
+                    expected_output_layer,
+                    trace_len,
+                    preprocessed_generic_lookup,
+                    lookup_challenges_multiplicative_part,
+                    lookup_challenges_additive_part,
+                    compiled_circuit.offset_for_decoder_table as u32,
+                    worker,
+                );
+            }
+            NoFieldGKRRelation::LookupFromVectorInputWithSetup {
+                input,
+                setup,
+                output,
+            } => {
+                vector_lookup::materialize_lookup_expression_minus_setup(
+                    input,
+                    setup.0,
+                    *output,
+                    gkr_storage,
+                    witness_trace,
+                    trace_len,
+                    preprocessed_generic_lookup,
+                    lookup_challenges_multiplicative_part,
+                    lookup_challenges_additive_part,
+                    compiled_circuit.offset_for_decoder_table as u32,
+                    worker,
+                );
+            }
+            NoFieldGKRRelation::MaterializeGrandProductTermExpression { input, output } => {
+                let destination = utils::materialize_memory_tuple(
+                    input,
+                    &*gkr_storage,
+                    trace_len,
+                    external_challenges,
+                    compiled_circuit,
+                    worker,
+                );
+                assert_eq!(expected_output_layer, 1);
+                output.assert_as_layer(expected_output_layer);
+                gkr_storage.insert_extension_at_layer(
+                    expected_output_layer,
+                    *output,
+                    ExtensionFieldPoly::new(destination),
+                );
+            }
+            NoFieldGKRRelation::InitsOrTeardownsInitialPair {
+                timestamp_and_value,
+                setup,
+                output,
+                set_idxes,
+            } => {
+                let destination =
+                    inits_and_teardowns::materialize_inits_and_teardowns_tuple_pair::<F, E, 2>(
+                        timestamp_and_value,
+                        set_idxes.map(|el| inits_and_teardowns_top_bits[el]),
+                        &*gkr_storage,
+                        trace_len,
+                        external_challenges,
+                        compiled_circuit,
+                        worker,
+                    );
+                assert_eq!(expected_output_layer, 1);
+                output.assert_as_layer(expected_output_layer);
+                gkr_storage.insert_extension_at_layer(
+                    expected_output_layer,
+                    *output,
+                    ExtensionFieldPoly::new(destination),
                 );
             }
             rel @ _ => {

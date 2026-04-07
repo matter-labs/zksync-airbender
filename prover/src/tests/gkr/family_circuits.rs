@@ -1,4 +1,5 @@
 use super::*;
+use crate::definitions::produce_initial_permutation_product_contribution;
 use crate::gkr::prover::prove_configured_with_gkr;
 use crate::gkr::prover::setup::GKRSetup;
 use crate::gkr::prover::GKRExternalChallenges;
@@ -7,6 +8,7 @@ use crate::gkr::witness_gen::delegation_circuits::evaluate_gkr_memory_witness_fo
 use crate::gkr::witness_gen::delegation_circuits::evaluate_gkr_witness_for_delegation_circuit;
 use crate::gkr::witness_gen::family_circuits::evaluate_gkr_memory_witness_for_executor_family;
 use crate::gkr::witness_gen::family_circuits::evaluate_gkr_witness_for_executor_family;
+use crate::gkr::witness_gen::family_circuits::evaluate_init_and_teardown_memory_witness;
 use crate::gkr::witness_gen::oracles::MemoryCircuitOracle;
 use crate::gkr::witness_gen::oracles::NonMemoryCircuitOracle;
 use crate::gkr::witness_gen::trace_structs::RamShuffleMemStateRecord;
@@ -17,7 +19,6 @@ use ::field::baby_bear::ext4::BabyBearExt4;
 use common_constants::TIMESTAMP_STEP;
 use cs::definitions::INITIAL_TIMESTAMP;
 use cs::definitions::*;
-use cs::gkr_circuits::mem_word_only_table_driver_fn;
 use cs::gkr_circuits::opcodes_for_full_machine_with_unsigned_mul_div_only_with_mem_word_access_specialization;
 use cs::gkr_circuits::process_binary_into_separate_tables_ext;
 use cs::tables::TableDriver;
@@ -35,7 +36,8 @@ use std::collections::BTreeSet;
 use worker::Worker;
 
 const INITIAL_PC: u32 = 0;
-const NUM_INIT_AND_TEARDOWN_SETS: usize = 8;
+const NUM_INIT_AND_TEARDOWN_SETS: usize = 16;
+const WORD_BITS: u32 = core::mem::size_of::<u32>().trailing_zeros();
 
 // NOTE: these constants must match with ones used in CS crate to produce
 // layout and SSA forms, otherwise derived witness-gen functions may write into
@@ -45,6 +47,11 @@ const NUM_CYCLES_PER_CHUNK: usize = 1 << TRACE_LEN_LOG2;
 const BLAKE_NUM_DELEGATION_CYCLES: usize = 1 << 20;
 const BIGINT_NUM_DELEGATION_CYCLES: usize = 1 << 22;
 const KECCAK_NUM_DELEGATION_CYCLES: usize = 1 << 22;
+const RAM_BOUND_BYTES: usize = 1 << 30;
+const RAM_BOUND_WORDS: usize = RAM_BOUND_BYTES / core::mem::size_of::<u32>();
+
+const CHECK_MEMORY_PERMUTATION_ONLY: bool = false;
+const PROVE_EMPTY: bool = false;
 
 const PROVE_ADD_SUB: bool = true;
 const PROVE_JUMP_BRANCH: bool = true;
@@ -54,8 +61,8 @@ const PROVE_MEM_SUBWORD: bool = true;
 const PROVE_BLAKE: bool = true;
 const PROVE_BIGINT: bool = true;
 const PROVE_KECCAK: bool = true;
+const PROVE_INITS_AND_TEARDOWNS: bool = true;
 
-// #[ignore = "test has explicit panic inside"]
 #[test]
 fn gkr_run_basic_unrolled_test() {
     gkr_run_basic_unrolled_test_impl(None, None);
@@ -69,8 +76,6 @@ pub fn gkr_run_basic_unrolled_test_impl(
     use riscv_transpiler::vm::*;
 
     type CountersT = DelegationsAndFamiliesCounters;
-
-    const CHECK_MEMORY_PERMUTATION_ONLY: bool = false;
 
     let trace_len: usize = 1 << TRACE_LEN_LOG2;
     let lde_factor = 2;
@@ -111,9 +116,10 @@ pub fn gkr_run_basic_unrolled_test_impl(
     let tape = SimpleTape::new(&instructions);
     let mut ram = RamWithRomRegion::<{ common_constants::ROM_SECOND_WORD_BITS }>::from_rom_content(
         &binary,
-        1 << 30,
+        RAM_BOUND_BYTES,
     );
     let cycles_bound = 1 << 20;
+    // let cycles_bound = 16;
 
     let mut state = State::initial_with_counters(CountersT::default());
     let mut snapshotter = SimpleSnapshotter::<CountersT, {common_constants::ROM_SECOND_WORD_BITS}>::new_with_cycle_limit(cycles_bound, state);
@@ -148,18 +154,32 @@ pub fn gkr_run_basic_unrolled_test_impl(
 
     println!("Touched {} unique addresses", total_unique_teardowns);
 
-    // let (num_trivial, inits_and_teardowns) = chunk_lazy_init_and_teardown::<Global, _>(
-    //     1,
-    //     NUM_CYCLES_PER_CHUNK * NUM_INIT_AND_TEARDOWN_SETS,
-    //     &shuffle_ram_touched_addresses,
-    //     &worker,
-    // );
-    // assert_eq!(num_trivial, 0, "trivial padding is not expected in tests");
-
     let flattened_inits_and_teardowns: Vec<_> = shuffle_ram_touched_addresses
         .into_iter()
         .flatten()
         .collect();
+
+    assert_eq!(
+        (NUM_INIT_AND_TEARDOWN_SETS << TRACE_LEN_LOG2) << WORD_BITS,
+        RAM_BOUND_BYTES
+    );
+
+    let mut inits_and_teardowns = Vec::with_capacity(NUM_INIT_AND_TEARDOWN_SETS);
+    for _ in 0..NUM_INIT_AND_TEARDOWN_SETS {
+        let a = Vec::with_capacity(1 << TRACE_LEN_LOG2);
+        let b = Vec::with_capacity(1 << TRACE_LEN_LOG2);
+        let c = Vec::with_capacity(1 << TRACE_LEN_LOG2);
+        let d = Vec::with_capacity(1 << TRACE_LEN_LOG2);
+
+        inits_and_teardowns.push(([a, b], [c, d]));
+    }
+
+    ram.collect_inits_and_teardowns_into_columns::<BabyBearField, _>(
+        &worker,
+        TRACE_LEN_LOG2,
+        0,
+        &mut inits_and_teardowns,
+    );
 
     println!("Finished at PC = 0x{:08x}", state.pc);
     for (reg_idx, reg) in state.registers.iter().enumerate() {
@@ -224,30 +244,18 @@ pub fn gkr_run_basic_unrolled_test_impl(
         ],
     );
 
-    // let mut permutation_argument_accumulator = produce_pc_into_permutation_accumulator_raw(
-    //     INITIAL_PC,
-    //     split_timestamp(INITIAL_TIMESTAMP),
-    //     final_pc,
-    //     split_timestamp(final_timestamp),
-    //     &external_challenges
-    //         .machine_state_permutation_argument
-    //         .as_ref()
-    //         .unwrap()
-    //         .linearization_challenges,
-    //     &external_challenges
-    //         .machine_state_permutation_argument
-    //         .as_ref()
-    //         .unwrap()
-    //         .additive_term,
-    // );
-    // let t = produce_register_contribution_into_memory_accumulator(
-    //     &register_final_state,
-    //     external_challenges
-    //         .memory_argument
-    //         .memory_argument_linearization_challenges,
-    //     external_challenges.memory_argument.memory_argument_gamma,
-    // );
-    // permutation_argument_accumulator.mul_assign(&t);
+    let register_final_state_raw = register_final_state
+        .map(|el| (el.current_value, split_timestamp(el.last_access_timestamp)));
+
+    let mut permutation_argument_accumulator =
+        produce_initial_permutation_product_contribution::<BabyBearField, BabyBearExt4>(
+            &register_final_state_raw,
+            INITIAL_PC,
+            split_timestamp(INITIAL_TIMESTAMP),
+            final_pc,
+            split_timestamp(final_timestamp),
+            &external_challenges,
+        );
 
     let mut write_set = BTreeSet::<(u32, TimestampScalar)>::new();
     let mut read_set = BTreeSet::<(u32, TimestampScalar)>::new();
@@ -257,6 +265,9 @@ pub fn gkr_run_basic_unrolled_test_impl(
 
     let mut memory_read_set = BTreeSet::new();
     let mut memory_write_set = BTreeSet::new();
+
+    let mut delegation_read_set = BTreeSet::new();
+    let mut delegation_write_set = BTreeSet::new();
 
     for i in 0..32 {
         memory_write_set.insert((true, i as u32, 0, 0));
@@ -296,9 +307,15 @@ pub fn gkr_run_basic_unrolled_test_impl(
         println!("Will try to prove ADD/SUB/LUI/AUIPC/MOP circuit");
         const CIRCUIT_TYPE: u8 = ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX;
 
+        // let circuit: GKRCircuitArtifact<BabyBearField> = {
+        //     deserialize_from_file(
+        //         "../cs/compiled_circuits/add_sub_lui_auipc_mop_preprocessed_layout_gkr.json",
+        //     )
+        // };
+
         let circuit: GKRCircuitArtifact<BabyBearField> = {
             deserialize_from_file(
-                "../cs/compiled_circuits/add_sub_lui_auipc_mop_preprocessed_layout_gkr.json",
+                "../cs/compiled_circuits/add_sub_lui_auipc_mop_preprocessed_layout_no_caches_gkr.json",
             )
         };
 
@@ -379,20 +396,21 @@ pub fn gkr_run_basic_unrolled_test_impl(
 
         ensure_memory_trace_consistency(&memory_trace, &full_trace);
 
-        // parse_state_permutation_elements_from_full_trace(
-        //     &add_sub_circuit,
-        //     &full_trace,
-        //     &mut write_set,
-        //     &mut read_set,
-        // );
-        // parse_shuffle_ram_accesses_from_full_trace(
-        //     &add_sub_circuit,
-        //     &full_trace,
-        //     &mut memory_write_set,
-        //     &mut memory_read_set,
-        // );
+        parse_state_permutation_elements_from_full_trace(
+            &circuit,
+            &memory_trace,
+            &mut write_set,
+            &mut read_set,
+        );
+        parse_shuffle_ram_accesses_from_full_trace(
+            &circuit,
+            &memory_trace,
+            &mut memory_write_set,
+            &mut memory_read_set,
+            &mut delegation_write_set,
+        );
 
-        if CHECK_MEMORY_PERMUTATION_ONLY == false {
+        if CHECK_MEMORY_PERMUTATION_ONLY == false && (PROVE_EMPTY == true || is_empty == false) {
             // println!("Will check constraints satisfiability");
             // let is_satisfied = check_satisfied(&add_sub_circuit, &full_trace);
             // assert!(is_satisfied);
@@ -432,7 +450,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
                     &setup_commitment,
                     &twiddles,
                     &whir_schedule,
-                    None,
+                    Vec::new(),
                     trace_len,
                     &worker,
                 );
@@ -473,8 +491,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
             //     gpu_comparison_hook(&gpu_comparison_args);
             // }
 
-            // permutation_argument_accumulator
-            //     .mul_assign(&proof.permutation_grand_product_accumulator);
+            permutation_argument_accumulator.mul_assign(&proof.grand_product_accumulator_computed);
         }
     }
 
@@ -482,9 +499,15 @@ pub fn gkr_run_basic_unrolled_test_impl(
         println!("Will try to prove JUMP/BRANCH/SLT circuit");
         const CIRCUIT_TYPE: u8 = JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX;
 
+        // let circuit: GKRCircuitArtifact<BabyBearField> = {
+        //     deserialize_from_file(
+        //         "../cs/compiled_circuits/jump_branch_slt_preprocessed_layout_gkr.json",
+        //     )
+        // };
+
         let circuit: GKRCircuitArtifact<BabyBearField> = {
             deserialize_from_file(
-                "../cs/compiled_circuits/jump_branch_slt_preprocessed_layout_gkr.json",
+                "../cs/compiled_circuits/jump_branch_slt_preprocessed_layout_no_caches_gkr.json",
             )
         };
 
@@ -567,20 +590,21 @@ pub fn gkr_run_basic_unrolled_test_impl(
 
         ensure_memory_trace_consistency(&memory_trace, &full_trace);
 
-        // parse_state_permutation_elements_from_full_trace(
-        //     &add_sub_circuit,
-        //     &full_trace,
-        //     &mut write_set,
-        //     &mut read_set,
-        // );
-        // parse_shuffle_ram_accesses_from_full_trace(
-        //     &add_sub_circuit,
-        //     &full_trace,
-        //     &mut memory_write_set,
-        //     &mut memory_read_set,
-        // );
+        parse_state_permutation_elements_from_full_trace(
+            &circuit,
+            &memory_trace,
+            &mut write_set,
+            &mut read_set,
+        );
+        parse_shuffle_ram_accesses_from_full_trace(
+            &circuit,
+            &memory_trace,
+            &mut memory_write_set,
+            &mut memory_read_set,
+            &mut delegation_write_set,
+        );
 
-        if CHECK_MEMORY_PERMUTATION_ONLY == false {
+        if CHECK_MEMORY_PERMUTATION_ONLY == false && (PROVE_EMPTY == true || is_empty == false) {
             // println!("Will check constraints satisfiability");
             // let is_satisfied = check_satisfied(&circuit, &full_trace);
             // assert!(is_satisfied);
@@ -620,7 +644,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
                     &setup_commitment,
                     &twiddles,
                     &whir_schedule,
-                    None,
+                    Vec::new(),
                     trace_len,
                     &worker,
                 );
@@ -661,8 +685,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
             //     gpu_comparison_hook(&gpu_comparison_args);
             // }
 
-            // permutation_argument_accumulator
-            //     .mul_assign(&proof.permutation_grand_product_accumulator);
+            permutation_argument_accumulator.mul_assign(&proof.grand_product_accumulator_computed);
         }
     }
 
@@ -670,9 +693,15 @@ pub fn gkr_run_basic_unrolled_test_impl(
         println!("Will try to prove SHIFT/BINARY circuit");
         const CIRCUIT_TYPE: u8 = SHIFT_BINARY_CIRCUIT_FAMILY_IDX;
 
+        // let circuit: GKRCircuitArtifact<BabyBearField> = {
+        //     deserialize_from_file(
+        //         "../cs/compiled_circuits/shift_binop_preprocessed_layout_gkr.json",
+        //     )
+        // };
+
         let circuit: GKRCircuitArtifact<BabyBearField> = {
             deserialize_from_file(
-                "../cs/compiled_circuits/shift_binop_preprocessed_layout_gkr.json",
+                "../cs/compiled_circuits/shift_binop_preprocessed_layout_no_caches_gkr.json",
             )
         };
 
@@ -757,20 +786,21 @@ pub fn gkr_run_basic_unrolled_test_impl(
 
         ensure_memory_trace_consistency(&memory_trace, &full_trace);
 
-        // parse_state_permutation_elements_from_full_trace(
-        //     &add_sub_circuit,
-        //     &full_trace,
-        //     &mut write_set,
-        //     &mut read_set,
-        // );
-        // parse_shuffle_ram_accesses_from_full_trace(
-        //     &add_sub_circuit,
-        //     &full_trace,
-        //     &mut memory_write_set,
-        //     &mut memory_read_set,
-        // );
+        parse_state_permutation_elements_from_full_trace(
+            &circuit,
+            &memory_trace,
+            &mut write_set,
+            &mut read_set,
+        );
+        parse_shuffle_ram_accesses_from_full_trace(
+            &circuit,
+            &memory_trace,
+            &mut memory_write_set,
+            &mut memory_read_set,
+            &mut delegation_write_set,
+        );
 
-        if CHECK_MEMORY_PERMUTATION_ONLY == false {
+        if CHECK_MEMORY_PERMUTATION_ONLY == false && (PROVE_EMPTY == true || is_empty == false) {
             // println!("Will check constraints satisfiability");
             // let is_satisfied = check_satisfied(&circuit, &full_trace);
             // assert!(is_satisfied);
@@ -810,7 +840,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
                     &setup_commitment,
                     &twiddles,
                     &whir_schedule,
-                    None,
+                    Vec::new(),
                     trace_len,
                     &worker,
                 );
@@ -851,8 +881,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
             //     gpu_comparison_hook(&gpu_comparison_args);
             // }
 
-            // permutation_argument_accumulator
-            //     .mul_assign(&proof.permutation_grand_product_accumulator);
+            permutation_argument_accumulator.mul_assign(&proof.grand_product_accumulator_computed);
         }
     }
 
@@ -1053,28 +1082,15 @@ pub fn gkr_run_basic_unrolled_test_impl(
         println!("Will try to prove word LOAD/STORE circuit");
         const CIRCUIT_TYPE: u8 = LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX;
 
-        // let word_load_store_circuit = {
-        //     compile_unrolled_circuit_state_transition::<BabyBearField>(
-        //         &|cs| {
-        //             word_only_load_store_table_addition_fn(cs);
-        //             for (table_type, table) in extra_tables.clone() {
-        //                 cs.add_table_with_content(table_type, table);
-        //             }
-        //         },
-        //         &|cs| {
-        //             word_only_load_store_circuit_with_preprocessed_bytecode::<
-        //                 _,
-        //                 _,
-        //                 { common_constants::ROM_SECOND_WORD_BITS },
-        //             >(cs)
-        //         },
-        //         1 << 20,
-        //         TRACE_LEN_LOG2,
+        // let circuit: GKRCircuitArtifact<BabyBearField> = {
+        //     deserialize_from_file(
+        //         "../cs/compiled_circuits/mem_word_only_preprocessed_layout_gkr.json",
         //     )
         // };
+
         let circuit: GKRCircuitArtifact<BabyBearField> = {
             deserialize_from_file(
-                "../cs/compiled_circuits/mem_word_only_preprocessed_layout_gkr.json",
+                "../cs/compiled_circuits/mem_word_only_preprocessed_layout_no_caches_gkr.json",
             )
         };
 
@@ -1117,9 +1133,6 @@ pub fn gkr_run_basic_unrolled_test_impl(
         );
         assert_eq!(expected_final_state, state);
 
-        // let (decoder_table_data, witness_gen_data) =
-        //     &preprocessing_data[&LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX];
-        // let decoder_table_data = materialize_flattened_decoder_table(decoder_table_data);
         let decoder_table_data = &preprocessing_data[&CIRCUIT_TYPE];
         let witness_gen_data = decoder_table_data
             .iter()
@@ -1131,15 +1144,17 @@ pub fn gkr_run_basic_unrolled_test_impl(
             decoder_table: &witness_gen_data,
         };
 
+        // let row = 0;
+        // dbg!(buffer[row]);
+        // println!(
+        //     "Opcode = 0x{:08x}",
+        //     text_section[(buffer[row].opcode_data.initial_pc / 4) as usize]
+        // );
+        // dbg!(decoder_table_data[(buffer[row].opcode_data.initial_pc / 4) as usize]);
+        // dbg!(witness_gen_data[(buffer[row].opcode_data.initial_pc / 4) as usize]);
+
         let is_empty = oracle.inner.is_empty();
 
-        // let memory_trace = evaluate_memory_witness_for_executor_family::<_, Global>(
-        //     &word_load_store_circuit,
-        //     NUM_CYCLES_PER_CHUNK,
-        //     &oracle,
-        //     &worker,
-        //     Global,
-        // );
         let memory_trace = evaluate_gkr_memory_witness_for_executor_family::<BabyBearField, _, _, _>(
             &circuit,
             NUM_CYCLES_PER_CHUNK,
@@ -1149,16 +1164,13 @@ pub fn gkr_run_basic_unrolled_test_impl(
             Global,
         );
 
+        // {
+        //     let mut t = Vec::new();
+        //     read_memory_trace_row(&memory_trace, 0, &mut t);
+        //     dbg!(t);
+        // }
+
         println!("Computing full trace");
-        // let full_trace = evaluate_witness_for_executor_family::<_, Global>(
-        //     &word_load_store_circuit,
-        //     word_load_store::witness_eval_fn,
-        //     NUM_CYCLES_PER_CHUNK,
-        //     &oracle,
-        //     &table_driver,
-        //     &worker,
-        //     Global,
-        // );
         let full_trace = evaluate_gkr_witness_for_executor_family::<BabyBearField, _, _, _>(
             &circuit,
             mem_word_only::witness_eval_fn,
@@ -1172,26 +1184,21 @@ pub fn gkr_run_basic_unrolled_test_impl(
 
         ensure_memory_trace_consistency(&memory_trace, &full_trace);
 
-        // parse_state_permutation_elements_from_full_trace(
-        //     &word_load_store_circuit,
-        //     &full_trace,
-        //     &mut write_set,
-        //     &mut read_set,
-        // );
-        // parse_shuffle_ram_accesses_from_full_trace(
-        //     &word_load_store_circuit,
-        //     &full_trace,
-        //     &mut memory_write_set,
-        //     &mut memory_read_set,
-        // );
+        parse_state_permutation_elements_from_full_trace(
+            &circuit,
+            &memory_trace,
+            &mut write_set,
+            &mut read_set,
+        );
+        parse_shuffle_ram_accesses_from_full_trace(
+            &circuit,
+            &memory_trace,
+            &mut memory_write_set,
+            &mut memory_read_set,
+            &mut delegation_write_set,
+        );
 
-        if CHECK_MEMORY_PERMUTATION_ONLY == false {
-            // let is_satisfied = check_satisfied(
-            //     &word_load_store_circuit,
-            //     &full_trace.exec_trace,
-            //     full_trace.num_witness_columns,
-            // );
-            // assert!(is_satisfied);
+        if CHECK_MEMORY_PERMUTATION_ONLY == false && (PROVE_EMPTY == true || is_empty == false) {
             // println!("Will check constraints satisfiability");
             // let is_satisfied = check_satisfied(&circuit, &full_trace);
             // assert!(is_satisfied);
@@ -1199,19 +1206,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
             println!("Preparing twiddles");
             let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, &worker);
             println!("Preparing setup");
-            // let lde_precomputations =
-            //     LdePrecomputations::new(trace_len, lde_factor, &[0, 1], &worker);
-            // let setup = SetupPrecomputations::from_tables_and_trace_len_with_decoder_table(
-            //     &table_driver,
-            //     &decoder_table_data,
-            //     trace_len,
-            //     &word_load_store_circuit.setup_layout,
-            //     &twiddles,
-            //     &lde_precomputations,
-            //     lde_factor,
-            //     tree_cap_size,
-            //     &worker,
-            // );
+
             let setup =
                 GKRSetup::construct(&table_driver, &decoder_table_data, trace_len, &circuit);
 
@@ -1244,7 +1239,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
                     &setup_commitment,
                     &twiddles,
                     &whir_schedule,
-                    None,
+                    Vec::new(),
                     trace_len,
                     &worker,
                 );
@@ -1286,8 +1281,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
             //     "word_only_load_store_unrolled_proof.json",
             // );
 
-            // permutation_argument_accumulator
-            //     .mul_assign(&proof.permutation_grand_product_accumulator);
+            permutation_argument_accumulator.mul_assign(&proof.grand_product_accumulator_computed);
         }
     }
 
@@ -1295,34 +1289,15 @@ pub fn gkr_run_basic_unrolled_test_impl(
         println!("Will try to prove subword LOAD/STORE circuit");
         const CIRCUIT_TYPE: u8 = LOAD_STORE_SUBWORD_ONLY_CIRCUIT_FAMILY_IDX;
 
-        // use cs::machine::ops::unrolled::load_store::*;
-
-        // let extra_tables = create_load_store_special_tables::<
-        //     _,
-        //     { common_constants::ROM_SECOND_WORD_BITS },
-        // >(&binary);
-        // let subword_load_store_circuit = {
-        //     compile_unrolled_circuit_state_transition::<BabyBearField>(
-        //         &|cs| {
-        //             subword_only_load_store_table_addition_fn(cs);
-        //             for (table_type, table) in extra_tables.clone() {
-        //                 cs.add_table_with_content(table_type, table);
-        //             }
-        //         },
-        //         &|cs| {
-        //             subword_only_load_store_circuit_with_preprocessed_bytecode::<
-        //                 _,
-        //                 _,
-        //                 { common_constants::ROM_SECOND_WORD_BITS },
-        //             >(cs)
-        //         },
-        //         1 << 20,
-        //         TRACE_LEN_LOG2,
+        // let circuit: GKRCircuitArtifact<BabyBearField> = {
+        //     deserialize_from_file(
+        //         "../cs/compiled_circuits/mem_subword_only_preprocessed_layout_gkr.json",
         //     )
         // };
+
         let circuit: GKRCircuitArtifact<BabyBearField> = {
             deserialize_from_file(
-                "../cs/compiled_circuits/mem_subword_only_preprocessed_layout_gkr.json",
+                "../cs/compiled_circuits/mem_subword_only_preprocessed_layout_no_caches_gkr.json",
             )
         };
 
@@ -1409,45 +1384,28 @@ pub fn gkr_run_basic_unrolled_test_impl(
 
         ensure_memory_trace_consistency(&memory_trace, &full_trace);
 
-        // parse_state_permutation_elements_from_full_trace(
-        //     &subword_load_store_circuit,
-        //     &full_trace,
-        //     &mut write_set,
-        //     &mut read_set,
-        // );
-        // parse_shuffle_ram_accesses_from_full_trace(
-        //     &subword_load_store_circuit,
-        //     &full_trace,
-        //     &mut memory_write_set,
-        //     &mut memory_read_set,
-        // );
+        parse_state_permutation_elements_from_full_trace(
+            &circuit,
+            &memory_trace,
+            &mut write_set,
+            &mut read_set,
+        );
+        parse_shuffle_ram_accesses_from_full_trace(
+            &circuit,
+            &memory_trace,
+            &mut memory_write_set,
+            &mut memory_read_set,
+            &mut delegation_write_set,
+        );
 
-        if CHECK_MEMORY_PERMUTATION_ONLY == false {
-            // let is_satisfied = check_satisfied(
-            //     &subword_load_store_circuit,
-            //     &full_trace.exec_trace,
-            //     full_trace.num_witness_columns,
-            // );
-            // assert!(is_satisfied);
+        if CHECK_MEMORY_PERMUTATION_ONLY == false && (PROVE_EMPTY == true || is_empty == false) {
             // println!("Will check constraints satisfiability");
             // let is_satisfied = check_satisfied(&circuit, &full_trace);
             // assert!(is_satisfied);
 
             println!("Preparing twiddles");
             let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, &worker);
-            // let lde_precomputations =
-            //     LdePrecomputations::new(trace_len, lde_factor, &[0, 1], &worker);
-            // let setup = SetupPrecomputations::from_tables_and_trace_len_with_decoder_table(
-            //     &table_driver,
-            //     &decoder_table_data,
-            //     trace_len,
-            //     &subword_load_store_circuit.setup_layout,
-            //     &twiddles,
-            //     &lde_precomputations,
-            //     lde_factor,
-            //     tree_cap_size,
-            //     &worker,
-            // );
+
             let setup =
                 GKRSetup::construct(&table_driver, &decoder_table_data, trace_len, &circuit);
 
@@ -1480,7 +1438,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
                     &setup_commitment,
                     &twiddles,
                     &whir_schedule,
-                    None,
+                    Vec::new(),
                     trace_len,
                     &worker,
                 );
@@ -1522,156 +1480,158 @@ pub fn gkr_run_basic_unrolled_test_impl(
             //     "subword_only_load_store_unrolled_proof.json",
             // );
 
-            // permutation_argument_accumulator
-            //     .mul_assign(&proof.permutation_grand_product_accumulator);
+            permutation_argument_accumulator.mul_assign(&proof.grand_product_accumulator_computed);
         }
     }
 
-    // // Machine state permutation ended
-    // {
-    //     for (pc, ts) in write_set.iter().copied() {
-    //         if read_set.contains(&(pc, ts)) == false {
-    //             panic!("read set doesn't contain a pair {:?}", (pc, ts));
-    //         }
-    //     }
+    // Machine state permutation ended
+    {
+        for (pc, ts) in write_set.iter().copied() {
+            if read_set.contains(&(pc, ts)) == false {
+                panic!("read set doesn't contain a pair {:?}", (pc, ts));
+            }
+        }
 
-    //     for (pc, ts) in read_set.iter().copied() {
-    //         if write_set.contains(&(pc, ts)) == false {
-    //             panic!("write set doesn't contain a pair {:?}", (pc, ts));
-    //         }
-    //     }
-    // }
+        for (pc, ts) in read_set.iter().copied() {
+            if write_set.contains(&(pc, ts)) == false {
+                panic!("write set doesn't contain a pair {:?}", (pc, ts));
+            }
+        }
+    }
 
-    // if true {
-    //     println!("Will try to prove memory inits and teardowns circuit");
+    if PROVE_INITS_AND_TEARDOWNS {
+        println!("Will try to prove memory inits and teardowns circuit");
 
-    //     let compiler = OneRowCompiler::<BabyBearField>::default();
-    //     let inits_and_teardowns_circuit =
-    //         compiler.compile_init_and_teardown_circuit(NUM_INIT_AND_TEARDOWN_SETS, TRACE_LEN_LOG2);
+        let circuit: GKRCircuitArtifact<BabyBearField> = {
+            deserialize_from_file(
+                "../cs/compiled_circuits/inits_and_teardowns_preprocessed_layout_no_caches_gkr.json",
+            )
+        };
 
-    //     let table_driver = TableDriver::<BabyBearField>::new();
+        let table_driver = TableDriver::<BabyBearField>::new();
 
-    //     let inits_data = &inits_and_teardowns[0];
+        let witness_inner = evaluate_init_and_teardown_memory_witness(
+            inits_and_teardowns,
+            &circuit,
+            Global,
+            Global,
+        );
 
-    //     let memory_trace = evaluate_init_and_teardown_memory_witness::<Global>(
-    //         &inits_and_teardowns_circuit,
-    //         NUM_CYCLES_PER_CHUNK,
-    //         &inits_data.lazy_init_data,
-    //         &worker,
-    //         Global,
-    //     );
+        let memory_trace = GKRMemoryOnlyWitnessTrace {
+            column_major_trace: witness_inner.clone(),
+        };
 
-    //     let full_trace = evaluate_init_and_teardown_witness::<Global>(
-    //         &inits_and_teardowns_circuit,
-    //         NUM_CYCLES_PER_CHUNK,
-    //         &inits_data.lazy_init_data,
-    //         &worker,
-    //         Global,
-    //     );
+        let full_trace = GKRFullWitnessTrace {
+            column_major_memory_trace: witness_inner,
+            column_major_witness_trace: Vec::new(),
+            column_major_scratch_space_trace: Vec::new(),
+            generic_lookup_mapping: Vec::new(),
+            range_check_16_lookup_mapping: Vec::new(),
+            timestamp_range_check_lookup_mapping: Vec::new(),
+        };
 
-    //     let WitnessEvaluationData {
-    //         aux_data,
-    //         exec_trace,
-    //         num_witness_columns,
-    //         lookup_mapping,
-    //     } = full_trace;
-    //     let full_trace = WitnessEvaluationDataForExecutionFamily {
-    //         aux_data: ExecutorFamilyWitnessEvaluationAuxData {},
-    //         exec_trace,
-    //         num_witness_columns,
-    //         lookup_mapping,
-    //     };
+        if CHECK_MEMORY_PERMUTATION_ONLY == false {
+            // println!("Will check constraints satisfiability");
+            // let is_satisfied = check_satisfied(&circuit, &full_trace);
+            // assert!(is_satisfied);
 
-    //     if CHECK_MEMORY_PERMUTATION_ONLY == false {
-    //         let is_satisfied = check_satisfied(
-    //             &inits_and_teardowns_circuit,
-    //             &full_trace.exec_trace,
-    //             full_trace.num_witness_columns,
-    //         );
-    //         assert!(is_satisfied);
+            println!("Preparing twiddles");
+            let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, &worker);
+            println!("Preparing setup");
+            let setup = GKRSetup::construct(&table_driver, &[], trace_len, &circuit);
 
-    //         let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, &worker);
-    //         let lde_precomputations =
-    //             LdePrecomputations::new(trace_len, lde_factor, &[0, 1], &worker);
-    //         let setup = SetupPrecomputations::from_tables_and_trace_len_with_decoder_table(
-    //             &table_driver,
-    //             &[],
-    //             trace_len,
-    //             &inits_and_teardowns_circuit.setup_layout,
-    //             &twiddles,
-    //             &lde_precomputations,
-    //             lde_factor,
-    //             tree_cap_size,
-    //             &worker,
-    //         );
+            let setup_commitment = setup.commit(
+                &twiddles,
+                2,
+                1,
+                tree_cap_size,
+                trace_len.trailing_zeros() as usize,
+                &worker,
+            );
 
-    //         let lookup_mapping_for_gpu = if maybe_gpu_unrolled_comparison_hook.is_some() {
-    //             Some(full_trace.lookup_mapping.clone())
-    //         } else {
-    //             None
-    //         };
+            // let lookup_mapping_for_gpu = if maybe_gpu_unrolled_comparison_hook.is_some() {
+            //     Some(full_trace.lookup_mapping.clone())
+            // } else {
+            //     None
+            // };
 
-    //         println!("Trying to prove");
+            let whir_schedule = WhirSchedule::default_for_tests_80_bits_24();
 
-    //         let now = std::time::Instant::now();
-    //         let (prover_data, proof) = prove_configured_for_unrolled_circuits::<
-    //             DEFAULT_TRACE_PADDING_MULTIPLE,
-    //             _,
-    //             DefaultTreeConstructor,
-    //         >(
-    //             &inits_and_teardowns_circuit,
-    //             &vec![],
-    //             &external_challenges,
-    //             full_trace,
-    //             &aux_data.aux_boundary_data,
-    //             &setup,
-    //             &twiddles,
-    //             &lde_precomputations,
-    //             None,
-    //             lde_factor,
-    //             tree_cap_size,
-    //             53,
-    //             28,
-    //             &worker,
-    //         );
-    //         println!("Proving time is {:?}", now.elapsed());
+            println!("Trying to prove");
 
-    //         serialize_to_file_if_not_gpu_comparison(
-    //             &proof,
-    //             "inits_and_teardowns_unrolled_proof.json",
-    //         );
+            let inits_and_teardowns_top_bits: Vec<_> =
+                (0..circuit.memory_layout.teardown_sets.len())
+                    .map(|el| el as u32)
+                    .collect();
 
-    //         if let Some(ref gpu_comparison_hook) = maybe_gpu_unrolled_comparison_hook {
-    //             let gpu_comparison_args = GpuComparisonArgs {
-    //                 circuit: &inits_and_teardowns_circuit,
-    //                 setup: &setup,
-    //                 external_challenges: &external_challenges,
-    //                 aux_boundary_values: &aux_data.aux_boundary_data,
-    //                 public_inputs: &vec![],
-    //                 twiddles: &twiddles,
-    //                 lde_precomputations: &lde_precomputations,
-    //                 lookup_mapping: lookup_mapping_for_gpu.unwrap(),
-    //                 log_n: TRACE_LEN_LOG2,
-    //                 circuit_sequence: None,
-    //                 delegation_processing_type: None,
-    //                 is_unrolled: true,
-    //                 prover_data: &prover_data,
-    //             };
-    //             gpu_comparison_hook(&gpu_comparison_args);
-    //         }
+            let now = std::time::Instant::now();
+            let proof =
+                prove_configured_with_gkr::<BabyBearField, BabyBearExt4, DefaultTreeConstructor>(
+                    &circuit,
+                    &external_challenges,
+                    full_trace,
+                    &setup,
+                    &setup_commitment,
+                    &twiddles,
+                    &whir_schedule,
+                    inits_and_teardowns_top_bits,
+                    trace_len,
+                    &worker,
+                );
+            println!("Proving time is {:?}", now.elapsed());
 
-    //         permutation_argument_accumulator
-    //             .mul_assign(&proof.permutation_grand_product_accumulator);
-    //     }
-    // }
+            println!(
+                "Estimated proof size without compression is {} bytes",
+                proof.estimate_size()
+            );
+
+            if total_unique_teardowns == 0 {
+                assert_eq!(proof.grand_product_accumulator_computed, BabyBearExt4::ONE);
+            }
+
+            serialize_to_file(&proof, "test_proofs/inits_and_teardowns_gkr_proof.json");
+
+            // serialize_to_file_if_not_gpu_comparison(
+            //     &proof,
+            //     "add_sub_lui_auipc_mop_unrolled_proof.json",
+            // );
+
+            // if let Some(ref gpu_comparison_hook) = maybe_gpu_unrolled_comparison_hook {
+            //     let gpu_comparison_args = GpuComparisonArgs {
+            //         circuit: &add_sub_circuit,
+            //         setup: &setup,
+            //         external_challenges: &external_challenges,
+            //         aux_boundary_values: &[],
+            //         public_inputs: &vec![],
+            //         twiddles: &twiddles,
+            //         lde_precomputations: &lde_precomputations,
+            //         lookup_mapping: lookup_mapping_for_gpu.unwrap(),
+            //         log_n: TRACE_LEN_LOG2,
+            //         circuit_sequence: None,
+            //         delegation_processing_type: None,
+            //         is_unrolled: true,
+            //         prover_data: &prover_data,
+            //     };
+            //     gpu_comparison_hook(&gpu_comparison_args);
+            // }
+
+            permutation_argument_accumulator.mul_assign(&proof.grand_product_accumulator_computed);
+        }
+    }
 
     // now prove delegation circuits
     if PROVE_BLAKE {
         println!("Will try to prove Blake delegation");
 
+        // let circuit: GKRCircuitArtifact<BabyBearField> = {
+        //     deserialize_from_file(
+        //         "../cs/compiled_circuits/blake2_with_extended_control_layout_gkr.json",
+        //     )
+        // };
+
         let circuit: GKRCircuitArtifact<BabyBearField> = {
             deserialize_from_file(
-                "../cs/compiled_circuits/blake2_with_extended_control_preprocessed_layout_gkr.json",
+                "../cs/compiled_circuits/blake2_with_extended_control_layout_no_caches_gkr.json",
             )
         };
 
@@ -1752,14 +1712,16 @@ pub fn gkr_run_basic_unrolled_test_impl(
 
         ensure_memory_trace_consistency(&memory_trace, &full_trace);
 
-        // // parse_delegation_ram_accesses_from_full_trace(
-        // //     &circuit,
-        // //     &full_witness,
-        // //     &mut memory_write_set,
-        // //     &mut memory_read_set,
-        // // );
+        parse_delegation_ram_accesses_from_full_trace(
+            &circuit,
+            &memory_trace,
+            &mut memory_write_set,
+            &mut memory_read_set,
+            &mut delegation_read_set,
+            delegation_type,
+        );
 
-        if CHECK_MEMORY_PERMUTATION_ONLY == false {
+        if CHECK_MEMORY_PERMUTATION_ONLY == false && (PROVE_EMPTY == true || is_empty == false) {
             // println!("Will check constraints satisfiability");
             // let is_satisfied = check_satisfied(&circuit, &full_trace);
             // assert!(is_satisfied);
@@ -1799,7 +1761,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
                     &setup_commitment,
                     &twiddles,
                     &whir_schedule,
-                    None,
+                    Vec::new(),
                     BLAKE_NUM_DELEGATION_CYCLES,
                     &worker,
                 );
@@ -1818,15 +1780,23 @@ pub fn gkr_run_basic_unrolled_test_impl(
                 &proof,
                 "test_proofs/blake2_with_extended_control_gkr_proof.json",
             );
+
+            permutation_argument_accumulator.mul_assign(&proof.grand_product_accumulator_computed);
         }
     }
 
     if PROVE_BIGINT {
         println!("Will try to prove Bigint delegation");
 
+        // let circuit: GKRCircuitArtifact<BabyBearField> = {
+        //     deserialize_from_file(
+        //         "../cs/compiled_circuits/bigint_with_extended_control_layout_gkr.json",
+        //     )
+        // };
+
         let circuit: GKRCircuitArtifact<BabyBearField> = {
             deserialize_from_file(
-                "../cs/compiled_circuits/bigint_with_extended_control_preprocessed_layout_gkr.json",
+                "../cs/compiled_circuits/bigint_with_extended_control_layout_no_caches_gkr.json",
             )
         };
 
@@ -1907,14 +1877,16 @@ pub fn gkr_run_basic_unrolled_test_impl(
 
         ensure_memory_trace_consistency(&memory_trace, &full_trace);
 
-        // // parse_delegation_ram_accesses_from_full_trace(
-        // //     &circuit,
-        // //     &full_witness,
-        // //     &mut memory_write_set,
-        // //     &mut memory_read_set,
-        // // );
+        parse_delegation_ram_accesses_from_full_trace(
+            &circuit,
+            &memory_trace,
+            &mut memory_write_set,
+            &mut memory_read_set,
+            &mut delegation_read_set,
+            delegation_type,
+        );
 
-        if CHECK_MEMORY_PERMUTATION_ONLY == false {
+        if CHECK_MEMORY_PERMUTATION_ONLY == false && (PROVE_EMPTY == true || is_empty == false) {
             // println!("Will check constraints satisfiability");
             // let is_satisfied = check_satisfied(&circuit, &full_trace);
             // assert!(is_satisfied);
@@ -1955,7 +1927,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
                     &setup_commitment,
                     &twiddles,
                     &whir_schedule,
-                    None,
+                    Vec::new(),
                     BIGINT_NUM_DELEGATION_CYCLES,
                     &worker,
                 );
@@ -1974,15 +1946,20 @@ pub fn gkr_run_basic_unrolled_test_impl(
                 &proof,
                 "test_proofs/bigint_with_extended_control_gkr_proof.json",
             );
+
+            permutation_argument_accumulator.mul_assign(&proof.grand_product_accumulator_computed);
         }
     }
 
     if PROVE_KECCAK {
         println!("Will try to prove Keccak delegation");
 
+        // let circuit: GKRCircuitArtifact<BabyBearField> =
+        //     { deserialize_from_file("../cs/compiled_circuits/keccak_special5_layout_gkr.json") };
+
         let circuit: GKRCircuitArtifact<BabyBearField> = {
             deserialize_from_file(
-                "../cs/compiled_circuits/keccak_special5_preprocessed_layout_gkr.json",
+                "../cs/compiled_circuits/keccak_special5_layout_no_caches_gkr.json",
             )
         };
 
@@ -2064,14 +2041,16 @@ pub fn gkr_run_basic_unrolled_test_impl(
 
         ensure_memory_trace_consistency(&memory_trace, &full_trace);
 
-        // // parse_delegation_ram_accesses_from_full_trace(
-        // //     &circuit,
-        // //     &full_witness,
-        // //     &mut memory_write_set,
-        // //     &mut memory_read_set,
-        // // );
+        parse_delegation_ram_accesses_from_full_trace(
+            &circuit,
+            &memory_trace,
+            &mut memory_write_set,
+            &mut memory_read_set,
+            &mut delegation_read_set,
+            delegation_type,
+        );
 
-        if CHECK_MEMORY_PERMUTATION_ONLY == false {
+        if CHECK_MEMORY_PERMUTATION_ONLY == false && (PROVE_EMPTY == true || is_empty == false) {
             // println!("Will check constraints satisfiability");
             // let is_satisfied = check_satisfied(&circuit, &full_trace);
             // assert!(is_satisfied);
@@ -2112,7 +2091,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
                     &setup_commitment,
                     &twiddles,
                     &whir_schedule,
-                    None,
+                    Vec::new(),
                     KECCAK_NUM_DELEGATION_CYCLES,
                     &worker,
                 );
@@ -2128,116 +2107,136 @@ pub fn gkr_run_basic_unrolled_test_impl(
             }
 
             serialize_to_file(&proof, "test_proofs/keccak_special5_gkr_proof.json");
+
+            permutation_argument_accumulator.mul_assign(&proof.grand_product_accumulator_computed);
         }
     }
 
-    // dbg!(permutation_argument_accumulator);
-    // dbg!(delegation_argument_accumulator);
+    // delegation registers invocations
+    {
+        if delegation_read_set != delegation_write_set {
+            let delegations_without_invocations: Vec<_> = delegation_read_set
+                .difference(&delegation_write_set)
+                .collect();
+            let delegations_without_processing: Vec<_> = delegation_write_set
+                .difference(&delegation_read_set)
+                .collect();
+            dbg!(delegation_read_set.len());
+            dbg!(&delegation_read_set);
+            dbg!(delegation_write_set.len());
+            dbg!(&delegation_write_set);
+            dbg!(&delegations_without_invocations);
+            dbg!(&delegations_without_processing);
+            panic!("Unprocessed delegations");
+        }
+    }
 
-    // // inits and teardowns
-    // {
-    //     let expected_init_set: Vec<_> = memory_read_set.difference(&memory_write_set).collect();
-    //     let expected_teardown_set: Vec<_> = memory_write_set.difference(&memory_read_set).collect();
-    //     assert_eq!(expected_init_set.len(), expected_teardown_set.len());
-    //     // assert_eq!(expected_init_set.len(), flattened_inits_and_teardowns.len());
+    // inits and teardowns
+    {
+        let expected_init_set: Vec<_> = memory_read_set.difference(&memory_write_set).collect();
+        let expected_teardown_set: Vec<_> = memory_write_set.difference(&memory_read_set).collect();
+        assert_eq!(expected_init_set.len(), expected_teardown_set.len());
+        // assert_eq!(expected_init_set.len(), flattened_inits_and_teardowns.len());
 
-    //     if flattened_inits_and_teardowns.len() != expected_init_set.len() {
-    //         for (idx, (address, (teardown_ts, teardown_value))) in
-    //             flattened_inits_and_teardowns.iter().enumerate()
-    //         {
-    //             let mut init_set_el = None;
-    //             for (i, (is_reg, addr, ts, init_value)) in expected_init_set.iter().enumerate() {
-    //                 if *addr == *address {
-    //                     init_set_el = Some((*is_reg, *addr, *ts, *init_value));
-    //                 }
-    //             }
-    //             let Some(init_set_el) = init_set_el else {
-    //                 panic!("No expected init set element for address {} of flattened inits or teardowns", *address);
-    //             };
+        if flattened_inits_and_teardowns.len() != expected_init_set.len() {
+            for (idx, (address, (teardown_ts, teardown_value))) in
+                flattened_inits_and_teardowns.iter().enumerate()
+            {
+                let mut init_set_el = None;
+                for (i, (is_reg, addr, ts, init_value)) in expected_init_set.iter().enumerate() {
+                    if *addr == *address {
+                        init_set_el = Some((*is_reg, *addr, *ts, *init_value));
+                    }
+                }
+                let Some(init_set_el) = init_set_el else {
+                    panic!("No expected init set element for address {} of flattened inits or teardowns", *address);
+                };
 
-    //             let mut teardown_set_el = None;
-    //             for (i, (is_reg, addr, ts, teardown_value)) in
-    //                 expected_teardown_set.iter().enumerate()
-    //             {
-    //                 if *addr == *address {
-    //                     teardown_set_el = Some((*is_reg, *addr, *ts, *teardown_value));
-    //                 }
-    //             }
-    //             let Some(teardown_set_el) = teardown_set_el else {
-    //                 panic!("No expected teardown set element for address {} of flattened inits or teardowns", *address);
-    //             };
-    //             let (_, _, expected_teardown_ts, expected_teardown_value) = teardown_set_el;
-    //             assert_eq!(
-    //                 *teardown_ts, expected_teardown_ts,
-    //                 "failed for address {}",
-    //                 address
-    //             );
-    //             assert_eq!(
-    //                 *teardown_value, expected_teardown_value,
-    //                 "failed for address {}",
-    //                 address
-    //             );
-    //         }
-    //     }
+                let mut teardown_set_el = None;
+                for (i, (is_reg, addr, ts, teardown_value)) in
+                    expected_teardown_set.iter().enumerate()
+                {
+                    if *addr == *address {
+                        teardown_set_el = Some((*is_reg, *addr, *ts, *teardown_value));
+                    }
+                }
+                let Some(teardown_set_el) = teardown_set_el else {
+                    panic!("No expected teardown set element for address {} of flattened inits or teardowns", *address);
+                };
+                let (_, _, expected_teardown_ts, expected_teardown_value) = teardown_set_el;
+                assert_eq!(
+                    *teardown_ts, expected_teardown_ts,
+                    "failed for address {}",
+                    address
+                );
+                assert_eq!(
+                    *teardown_value, expected_teardown_value,
+                    "failed for address {}",
+                    address
+                );
+            }
+        }
 
-    //     for (idx, (is_register, addr, ts, init_value)) in expected_init_set.iter().enumerate() {
-    //         assert!(
-    //             *is_register == false,
-    //             "found an unexpected init for register {} with value {} at timestamp {}",
-    //             *addr,
-    //             *init_value,
-    //             *ts
-    //         );
-    //         assert_eq!(
-    //             *ts, 0,
-    //             "init timestamp is invalid for memory address {}",
-    //             addr
-    //         );
-    //         assert_eq!(
-    //             *init_value, 0,
-    //             "init value is invalid for memory address {}",
-    //             addr
-    //         );
-    //         assert_eq!(
-    //             flattened_inits_and_teardowns[idx].0, *addr,
-    //             "diverged at expected lazy init {}",
-    //             idx
-    //         );
-    //     }
-    //     for (idx, (is_register, addr, ts, value)) in expected_teardown_set.iter().enumerate() {
-    //         assert!(
-    //             *is_register == false,
-    //             "found an unexpected teardown for register {} with value {} at timestamp {}",
-    //             *addr,
-    //             *value,
-    //             *ts
-    //         );
-    //         assert!(
-    //             *ts > INITIAL_TIMESTAMP,
-    //             "teardown timestamp is invalid for memory address {}",
-    //             addr
-    //         );
-    //         assert_eq!(
-    //             flattened_inits_and_teardowns[idx].1 .0, *ts,
-    //             "diverged at expected lazy init {}",
-    //             idx
-    //         );
-    //         assert_eq!(
-    //             flattened_inits_and_teardowns[idx].1 .1, *value,
-    //             "diverged at expected lazy init {}",
-    //             idx
-    //         );
-    //     }
+        for (idx, (is_register, addr, ts, init_value)) in expected_init_set.iter().enumerate() {
+            assert!(
+                *is_register == false,
+                "found an unexpected init for register {} with value {} at timestamp {}",
+                *addr,
+                *init_value,
+                *ts
+            );
+            assert_eq!(
+                *ts, 0,
+                "init timestamp is invalid for memory address {}",
+                addr
+            );
+            assert_eq!(
+                *init_value, 0,
+                "init value is invalid for memory address {}",
+                addr
+            );
+            assert_eq!(
+                flattened_inits_and_teardowns[idx].0, *addr,
+                "diverged at expected lazy init {}",
+                idx
+            );
+        }
+        for (idx, (is_register, addr, ts, value)) in expected_teardown_set.iter().enumerate() {
+            assert!(
+                *is_register == false,
+                "found an unexpected teardown for register {} with value {} at timestamp {}",
+                *addr,
+                *value,
+                *ts
+            );
+            assert!(
+                *ts > INITIAL_TIMESTAMP,
+                "teardown timestamp is invalid for memory address {}",
+                addr
+            );
+            assert_eq!(
+                flattened_inits_and_teardowns[idx].1 .0, *ts,
+                "diverged at expected lazy init {}",
+                idx
+            );
+            assert_eq!(
+                flattened_inits_and_teardowns[idx].1 .1, *value,
+                "diverged at expected lazy init {}",
+                idx
+            );
+        }
 
-    //     for ((_, addr0, _, _), (_, addr1, _, _)) in
-    //         expected_init_set.iter().zip(expected_teardown_set.iter())
-    //     {
-    //         assert_eq!(*addr0, *addr1);
-    //     }
+        for ((_, addr0, _, _), (_, addr1, _, _)) in
+            expected_init_set.iter().zip(expected_teardown_set.iter())
+        {
+            assert_eq!(*addr0, *addr1);
+        }
 
-    //     assert_eq!(total_unique_teardowns, expected_teardown_set.len());
-    // }
+        assert_eq!(total_unique_teardowns, expected_teardown_set.len());
+    }
 
-    // assert_eq!(permutation_argument_accumulator, BabyBearExt4::ONE);
-    // assert_eq!(delegation_argument_accumulator, BabyBearExt4::ZERO);
+    if CHECK_MEMORY_PERMUTATION_ONLY == false {
+        dbg!(permutation_argument_accumulator);
+        assert_eq!(permutation_argument_accumulator, BabyBearExt4::ONE);
+    }
 }

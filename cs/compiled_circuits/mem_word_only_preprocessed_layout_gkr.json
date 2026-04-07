@@ -1985,95 +1985,6 @@
             }
           }
         }
-      ],
-      "additional_base_layer_openings": [
-        {
-          "BaseLayerWitness": 2
-        },
-        {
-          "BaseLayerWitness": 3
-        },
-        {
-          "BaseLayerWitness": 8
-        },
-        {
-          "BaseLayerWitness": 9
-        },
-        {
-          "BaseLayerWitness": 10
-        },
-        {
-          "BaseLayerMemory": 0
-        },
-        {
-          "BaseLayerMemory": 1
-        },
-        {
-          "BaseLayerMemory": 2
-        },
-        {
-          "BaseLayerMemory": 3
-        },
-        {
-          "BaseLayerMemory": 4
-        },
-        {
-          "BaseLayerMemory": 5
-        },
-        {
-          "BaseLayerMemory": 6
-        },
-        {
-          "BaseLayerMemory": 7
-        },
-        {
-          "BaseLayerMemory": 8
-        },
-        {
-          "BaseLayerMemory": 12
-        },
-        {
-          "BaseLayerMemory": 13
-        },
-        {
-          "BaseLayerMemory": 14
-        },
-        {
-          "BaseLayerMemory": 15
-        },
-        {
-          "BaseLayerMemory": 18
-        },
-        {
-          "BaseLayerMemory": 19
-        },
-        {
-          "Setup": 0
-        },
-        {
-          "Setup": 1
-        },
-        {
-          "Setup": 2
-        },
-        {
-          "Setup": 3
-        },
-        {
-          "Setup": 4
-        },
-        {
-          "Setup": 5
-        },
-        {
-          "Setup": 6
-        },
-        {
-          "Setup": 7
-        },
-        {
-          "Setup": 8
-        }
       ]
     },
     {
@@ -2582,8 +2493,7 @@
             }
           }
         }
-      ],
-      "additional_base_layer_openings": []
+      ]
     },
     {
       "layer": 3,
@@ -2903,8 +2813,7 @@
             }
           }
         }
-      ],
-      "additional_base_layer_openings": []
+      ]
     },
     {
       "layer": 4,
@@ -3076,8 +2985,7 @@
         }
       ],
       "cached_relations": [],
-      "gates": [],
-      "additional_base_layer_openings": []
+      "gates": []
     }
   ],
   "global_output_map": {

@@ -290,10 +290,16 @@ impl<F: PrimeField, A: Allocator + Clone, B: Allocator + Clone> GKRFullWitnessTr
                             .witness_layout
                             .multiplicities_columns_for_range_check_16
                             .start;
-                let is_timestamp_range_check_multiplicity = idx
-                    == compiled_circuit
-                        .witness_layout
-                        .multiplicities_columns_for_timestamp_range_check;
+                let is_timestamp_range_check_multiplicity = compiled_circuit
+                    .witness_layout
+                    .multiplicities_columns_for_timestamp_range_check
+                    .is_empty()
+                    == false
+                    && idx
+                        == compiled_circuit
+                            .witness_layout
+                            .multiplicities_columns_for_timestamp_range_check
+                            .start;
                 let is_generic_lookup_multiplicity = compiled_circuit
                     .witness_layout
                     .multiplicities_columns_for_generic_lookup
@@ -633,28 +639,6 @@ pub(crate) unsafe fn gkr_count_special_multiplicities<'a, F: PrimeField, O: Orac
         *range_check_16_multiplicieties.get_unchecked_mut(index) += 1;
     }
 
-    // // special case for lazy init values
-    // for shuffle_ram_inits_and_teardowns in compiled_circuit
-    //     .memory_layout
-    //     .shuffle_ram_inits_and_teardowns
-    //     .iter()
-    // {
-    //     let start = shuffle_ram_inits_and_teardowns
-    //         .lazy_init_addresses_columns
-    //         .start();
-    //     for offset in start..(start + 2) {
-    //         let value = *memory_trace_view_row.get_unchecked(offset);
-    //         assert!(
-    //             value.to_reduced_u32() <= u16::MAX as u32,
-    //             "invalid value {:?} in range check 16 in lazy init addresses at row {}",
-    //             absolute_row_idx,
-    //             value
-    //         );
-    //         let index = value.to_reduced_u32() as usize;
-    //         *range_check_16_multiplicieties.get_unchecked_mut(index) += 1;
-    //     }
-    // }
-
     // now timestamp related relations - all are non-trivial
 
     let timestamp_range_check_relations =
@@ -761,7 +745,8 @@ pub(crate) unsafe fn gkr_postprocess_multiplicities<
         unsafe {
             let offset = compiled_circuit
                 .witness_layout
-                .multiplicities_columns_for_timestamp_range_check;
+                .multiplicities_columns_for_timestamp_range_check
+                .start;
             let dst = &mut exec_trace.column_major_witness_trace[offset];
             assert_eq!(dst.len(), trace_len);
             assert!(trace_len >= 1 << TIMESTAMP_COLUMNS_NUM_BITS);

@@ -133,6 +133,13 @@ fn apply_mem_subword_only_inner<F: PrimeField, CS: Circuit<F>>(
     // we allocate variables that are memory queries addresses, and constraint equality
     // instead of selecting them for convenience
 
+    // NOTE on both addresses below: we allocate them from witness and assume range-checked limbs.
+    // We can do so by induction: if memory argument passes, then:
+    // - if timestamp inequiaities are enforced
+    // - and initial set of addresses (inits) is range checked by construction, and so are teardowns
+    // - then for memory argument to pass we can not have intermediate non-range checked read + write pairs
+    // as there is no init and teardown for them
+
     // read mem/rs2
     let memread_addr =
         core::array::from_fn(|i| cs.add_named_variable(&format!("memread_addr[{i}]")));
@@ -196,10 +203,12 @@ fn apply_mem_subword_only_inner<F: PrimeField, CS: Circuit<F>>(
         let store = Constraint::from(is_store);
         let [readaddr_lo, readaddr_hi] = memread_addr.map(Term::from);
         let [writeaddr_lo, writeaddr_hi] = memwrite_addr.map(Term::from);
+        // lower part of the address in case it should be register
         cs.add_constraint(
             store.clone() * (readaddr_lo - Term::from(inputs.decoder_data.rs2_index))
                 + load.clone() * (writeaddr_lo - Term::from(inputs.decoder_data.rd_index)),
         );
+        // higher part of the address in case it should be register - it should be 0
         cs.add_constraint(store.clone() * readaddr_hi + load.clone() * writeaddr_hi);
 
         // now we can enforce the ram address
@@ -479,6 +488,7 @@ mod test {
     use test_utils::skip_if_ci;
 
     use super::*;
+    use crate::gkr_compiler::compile_unrolled_circuit_state_transition_into_unrolled_gkr_without_caches;
     use crate::gkr_compiler::{
         compile_unrolled_circuit_state_transition_into_gkr, dump_ssa_witness_eval_form,
     };
@@ -538,6 +548,39 @@ mod test {
         serialize_to_file(
             &ssa_forms,
             "compiled_circuits/mem_subword_only_preprocessed_ssa_gkr.json",
+        );
+    }
+
+    #[test]
+    fn compile_mem_subword_only_circuit_into_no_caches_gkr() {
+        skip_if_ci!();
+        use ::field::baby_bear::base::BabyBearField;
+
+        let gkr_compiled =
+            compile_unrolled_circuit_state_transition_into_unrolled_gkr_without_caches::<
+                BabyBearField,
+            >(
+                &|cs| {
+                    mem_subword_only_table_addition_fn(cs);
+                    // ROM tables must be added here (with dummy bytecode) so that
+                    // offset_for_decoder_table in the compiled JSON reflects the correct
+                    // total_tables_len at prove time, when real ROM tables are present.
+                    for (table_type, table) in create_mem_subword_only_special_tables::<
+                        BabyBearField,
+                        { common_constants::ROM_SECOND_WORD_BITS },
+                    >(&[])
+                    {
+                        cs.add_table_with_content(table_type, table);
+                    }
+                },
+                &|cs| mem_subword_only_circuit_with_preprocessed_bytecode_for_gkr(cs),
+                common_constants::ROM_WORD_SIZE,
+                24,
+            );
+
+        serialize_to_file(
+            &gkr_compiled,
+            "compiled_circuits/mem_subword_only_preprocessed_layout_no_caches_gkr.json",
         );
     }
 }

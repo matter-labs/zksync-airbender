@@ -118,6 +118,16 @@ impl Field for Mersenne31Quartic {
         c1: Mersenne31Complex::ZERO,
     };
 
+    const MINUS_ONE: Self = Self {
+        c0: Mersenne31Complex::MINUS_ONE,
+        c1: Mersenne31Complex::ZERO,
+    };
+
+    const TWO: Self = Self {
+        c0: Mersenne31Complex::TWO,
+        c1: Mersenne31Complex::ZERO,
+    };
+
     type CharField = Mersenne31Complex;
 
     #[cfg_attr(not(feature = "no_inline"), inline(always))]

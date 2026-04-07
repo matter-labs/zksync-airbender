@@ -24,6 +24,7 @@ impl<F: PrimeField> GKRCompiler<F> {
         max_bytecode_size_in_words: usize,
         num_inits_and_teardowns: usize,
         trace_len_log2: usize,
+        caching_is_allowed: bool,
     ) -> GKRCircuitArtifact<F> {
         assert!(max_bytecode_size_in_words.is_power_of_two());
         assert_eq!(num_inits_and_teardowns, 0, "TODO");
@@ -198,7 +199,7 @@ impl<F: PrimeField> GKRCompiler<F> {
             (generic_lookup_width, decoder_lookup_pair)
         };
 
-        let mut graph = GKRGraph::new(generic_lookup_width);
+        let mut graph = GKRGraph::new(generic_lookup_width, caching_is_allowed);
 
         let mut all_variables_to_place = BTreeSet::new();
         for variable_idx in 0..num_variables {
@@ -334,19 +335,19 @@ impl<F: PrimeField> GKRCompiler<F> {
                     address,
                     ..
                 }) => {
-                    let (Boolean::Is(is_register_var) | Boolean::Not(is_register_var)) =
-                        is_register
-                    else {
-                        todo!()
+                    // if `is_register` boolean value is "true", then address space is "register" = 0
+                    assert_eq!(AddressSpaceType::Register as u8, 0);
+
+                    let (Boolean::Is(raw_var) | Boolean::Not(raw_var)) = is_register else {
+                        unreachable!()
                     };
                     let [addr_lo_var, addr_hi_var] = address;
                     dbg!();
                     // some optimisations re-use is_register
-                    let GKRAddress::BaseLayerMemory(is_register_col) = graph
-                        .get_fixed_layout_pos(&is_register_var)
-                        .unwrap_or_else(|| {
+                    let GKRAddress::BaseLayerMemory(raw_column) =
+                        graph.get_fixed_layout_pos(&raw_var).unwrap_or_else(|| {
                             let [gkraddr] = graph.layout_memory_subtree_multiple_variables(
-                                [is_register_var],
+                                [raw_var],
                                 &mut all_variables_to_place,
                                 &layers_mapping,
                             );
@@ -364,59 +365,11 @@ impl<F: PrimeField> GKRCompiler<F> {
                     else {
                         unreachable!()
                     };
-                    let is_register = match is_register {
-                        Boolean::Is(_) => IsRegisterAddress::Is(is_register_col),
-                        Boolean::Not(_) => IsRegisterAddress::Not(is_register_col),
-                        Boolean::Constant(_) => todo!(),
-                    };
+                    let address_space = reg_boolean_into_address_space(is_register, raw_column);
                     RamAddress::RegisterOrRam(RegisterOrRamAccessAddress {
-                        is_register,
+                        address_space,
                         address: [addr_lo_col, addr_hi_col],
                     })
-                    // from aleksander:
-                    //
-                    // let is_register = match is_register {
-                    //     Boolean::Is(var) => {
-                    //         let [is_register] = graph.layout_memory_subtree_multiple_variables(
-                    //             [var],
-                    //             &mut all_variables_to_place,
-                    //         );
-                    //         let GKRAddress::BaseLayerMemory(is_register) = is_register else {
-                    //             unreachable!()
-                    //         };
-                    //         IsRegisterAddress::Is(is_register)
-                    //     }
-                    //     Boolean::Not(not_var) => {
-                    //         let [is_not_register] = graph.layout_memory_subtree_multiple_variables(
-                    //             [not_var],
-                    //             &mut all_variables_to_place,
-                    //         );
-                    //         let GKRAddress::BaseLayerMemory(is_not_register) = is_not_register
-                    //         else {
-                    //             unreachable!()
-                    //         };
-                    //         IsRegisterAddress::Not(is_not_register)
-                    //     }
-                    //     Boolean::Constant(..) => {
-                    //         unreachable!()
-                    //     }
-                    // };
-                    // let address = graph.layout_memory_subtree_multiple_variables(
-                    //     address,
-                    //     &mut all_variables_to_place,
-                    // );
-                    // let address = address.map(|el| {
-                    //     let GKRAddress::BaseLayerMemory(el) = el else {
-                    //         unreachable!()
-                    //     };
-
-                    //     el
-                    // });
-
-                    // RamAddress::RegisterOrRam(RegisterOrRamAccessAddress {
-                    //     is_register,
-                    //     address,
-                    // })
                 }
                 _ => {
                     unreachable!()
@@ -826,7 +779,7 @@ impl<F: PrimeField> GKRCompiler<F> {
 
         // Place a gate for constraints batch eval
         let (degree_2_constraints, degree_1_constraints) =
-            layout_constraints_at_layers(&mut graph, constraints, &layers_mapping);
+            layout_constraints_at_layers::<F, false>(&mut graph, constraints, &layers_mapping);
 
         // work out the outputs
         let lookup_outputs = BTreeMap::from_iter(
@@ -965,6 +918,7 @@ impl<F: PrimeField> GKRCompiler<F> {
             delegation_state: None,
             indirect_access_variable_offsets: vec![],
             total_width: graph.base_layer_memory.len(),
+            teardown_sets: Vec::new(),
             decoder_input: Some(decoder_input),
         };
 
@@ -998,7 +952,9 @@ impl<F: PrimeField> GKRCompiler<F> {
 
         let witness_layout = GKRWitnessLayout {
             multiplicities_columns_for_range_check_16,
-            multiplicities_columns_for_timestamp_range_check,
+            multiplicities_columns_for_timestamp_range_check:
+                multiplicities_columns_for_timestamp_range_check
+                    ..multiplicities_columns_for_timestamp_range_check + 1,
             multiplicities_columns_for_generic_lookup: multiplicities_columns_for_generic_lookup
                 ..multiplicities_columns_for_generic_lookup + 1,
             total_width: graph.base_layer_witness.len(),

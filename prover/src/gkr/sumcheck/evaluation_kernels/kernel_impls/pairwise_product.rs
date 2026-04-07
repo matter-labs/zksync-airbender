@@ -8,14 +8,6 @@ pub struct SameSizeProductGKRRelation {
     pub output: GKRAddress,
 }
 
-// impl SameSizeProductGKRRelation {
-//     /// Validates that neither input is from a cache, output is not cached
-//     #[inline]
-//     fn validate(&self) -> bool {
-//         !self.inputs[0].is_cache() && !self.inputs[1].is_cache() && !self.output.is_cache()
-//     }
-// }
-
 impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E>
     for SameSizeProductGKRRelation
 {
@@ -24,13 +16,25 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E>
     }
 
     fn get_inputs(&self) -> GKRInputs {
-        // debug_assert!(self.validate());
         GKRInputs {
             inputs_in_base: Vec::new(),
             inputs_in_extension: self.inputs.to_vec(),
             outputs_in_base: Vec::new(),
             outputs_in_extension: vec![self.output],
         }
+    }
+
+    fn terms(
+        &self,
+        _challenge_constants: &BatchedGKRTermDescriptionConstants<F, E>,
+    ) -> Vec<BatchedGKRTermDescription<F, E>> {
+        let [a, b] = self.inputs;
+
+        let mut term = BatchedGKRTermDescription::default();
+        term.add_ext_by_ext(a, b, E::ONE);
+        term.set_extension_output(self.output);
+
+        vec![term]
     }
 
     fn evaluate_forward_over_storage(

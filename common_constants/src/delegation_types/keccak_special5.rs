@@ -8,7 +8,7 @@ pub const KECCAK5_TOTAL_NUM_CONTROL_BITS: usize =
 pub const NUM_X10_INDIRECT_U64_WORDS: usize = 6;
 pub const KECCAK_SPECIAL5_NUM_VARIABLE_OFFSETS: usize = NUM_X10_INDIRECT_U64_WORDS;
 
-pub const KECCAK_SPECIAL5_CSR_REGISTER: u32 = super::NON_DETERMINISM_CSR + 11;
+pub const KECCAK_SPECIAL5_CSR_REGISTER: u32 = super::super::NON_DETERMINISM_CSR + 11;
 // pub const KECCAK_SPECIAL5_CSR_INVOCATION_STR: &str =
 //     const_format::concatcp!("csrrw x0, ", KECCAK_SPECIAL5_CSR_REGISTER, ", x0");
 

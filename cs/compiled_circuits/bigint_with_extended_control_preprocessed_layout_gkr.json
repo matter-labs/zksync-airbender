@@ -36967,158 +36967,6 @@
             }
           }
         }
-      ],
-      "additional_base_layer_openings": [
-        {
-          "BaseLayerWitness": 158
-        },
-        {
-          "BaseLayerWitness": 159
-        },
-        {
-          "BaseLayerMemory": 0
-        },
-        {
-          "BaseLayerMemory": 1
-        },
-        {
-          "BaseLayerMemory": 2
-        },
-        {
-          "BaseLayerMemory": 3
-        },
-        {
-          "BaseLayerMemory": 4
-        },
-        {
-          "BaseLayerMemory": 5
-        },
-        {
-          "BaseLayerMemory": 10
-        },
-        {
-          "BaseLayerMemory": 11
-        },
-        {
-          "BaseLayerMemory": 16
-        },
-        {
-          "BaseLayerMemory": 17
-        },
-        {
-          "BaseLayerMemory": 22
-        },
-        {
-          "BaseLayerMemory": 23
-        },
-        {
-          "BaseLayerMemory": 28
-        },
-        {
-          "BaseLayerMemory": 29
-        },
-        {
-          "BaseLayerMemory": 34
-        },
-        {
-          "BaseLayerMemory": 35
-        },
-        {
-          "BaseLayerMemory": 40
-        },
-        {
-          "BaseLayerMemory": 41
-        },
-        {
-          "BaseLayerMemory": 46
-        },
-        {
-          "BaseLayerMemory": 47
-        },
-        {
-          "BaseLayerMemory": 52
-        },
-        {
-          "BaseLayerMemory": 53
-        },
-        {
-          "BaseLayerMemory": 54
-        },
-        {
-          "BaseLayerMemory": 55
-        },
-        {
-          "BaseLayerMemory": 56
-        },
-        {
-          "BaseLayerMemory": 57
-        },
-        {
-          "BaseLayerMemory": 60
-        },
-        {
-          "BaseLayerMemory": 61
-        },
-        {
-          "BaseLayerMemory": 64
-        },
-        {
-          "BaseLayerMemory": 65
-        },
-        {
-          "BaseLayerMemory": 68
-        },
-        {
-          "BaseLayerMemory": 69
-        },
-        {
-          "BaseLayerMemory": 72
-        },
-        {
-          "BaseLayerMemory": 73
-        },
-        {
-          "BaseLayerMemory": 76
-        },
-        {
-          "BaseLayerMemory": 77
-        },
-        {
-          "BaseLayerMemory": 80
-        },
-        {
-          "BaseLayerMemory": 81
-        },
-        {
-          "BaseLayerMemory": 84
-        },
-        {
-          "BaseLayerMemory": 85
-        },
-        {
-          "BaseLayerMemory": 88
-        },
-        {
-          "BaseLayerMemory": 89
-        },
-        {
-          "BaseLayerMemory": 91
-        },
-        {
-          "BaseLayerMemory": 95
-        },
-        {
-          "BaseLayerMemory": 96
-        },
-        {
-          "Setup": 0
-        },
-        {
-          "Setup": 1
-        },
-        {
-          "Setup": 2
-        }
       ]
     },
     {
@@ -39345,8 +39193,7 @@
             }
           }
         }
-      ],
-      "additional_base_layer_openings": []
+      ]
     },
     {
       "layer": 3,
@@ -40563,8 +40410,7 @@
             }
           }
         }
-      ],
-      "additional_base_layer_openings": []
+      ]
     },
     {
       "layer": 4,
@@ -41230,8 +41076,7 @@
             }
           }
         }
-      ],
-      "additional_base_layer_openings": []
+      ]
     },
     {
       "layer": 5,
@@ -41604,8 +41449,7 @@
             }
           }
         }
-      ],
-      "additional_base_layer_openings": []
+      ]
     },
     {
       "layer": 6,
@@ -41815,8 +41659,7 @@
         }
       ],
       "cached_relations": [],
-      "gates": [],
-      "additional_base_layer_openings": []
+      "gates": []
     }
   ],
   "global_output_map": {

@@ -4,6 +4,7 @@ use cs::{definitions::GKRAddress, gkr_compiler::NoFieldMaxQuadraticGKRRelation};
 #[derive(Debug)]
 pub struct MaxQuadraticGKRRelation<F: PrimeField, E: FieldExtension<F> + Field> {
     pub kernel: MaxQuadraticGKRRelationKernel<F, E>,
+    pub relation: NoFieldMaxQuadraticGKRRelation,
     pub inputs: Vec<GKRAddress>,
     pub output: GKRAddress,
 }
@@ -75,6 +76,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> MaxQuadraticGKRRelation<F, E> 
 
         Self {
             inputs,
+            relation: input.clone(),
             kernel,
             output,
         }
@@ -95,6 +97,28 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E>
             outputs_in_base: vec![self.output],
             outputs_in_extension: Vec::new(),
         }
+    }
+
+    fn terms(
+        &self,
+        _challenge_constants: &BatchedGKRTermDescriptionConstants<F, E>,
+    ) -> Vec<BatchedGKRTermDescription<F, E>> {
+        let mut term = BatchedGKRTermDescription::default();
+
+        for (a, other_terms) in self.relation.quadratic_terms.iter() {
+            for (c, b) in other_terms.iter() {
+                term.add_base_by_base(*a, *b, E::from_base(F::from_u32_unchecked(*c)));
+            }
+        }
+
+        for (c, b) in self.relation.linear_terms.iter() {
+            term.add_linear_with_base(*b, E::from_base(F::from_u32_unchecked(*c)));
+        }
+        term.add_constant(E::from_base(F::from_u32_unchecked(self.relation.constant)));
+
+        term.set_base_output(self.output);
+
+        vec![term]
     }
 
     fn evaluate_forward_over_storage(

@@ -10,12 +10,15 @@ pub use self::utils::*;
 
 use crate::definitions::GKRAddress;
 use crate::definitions::REGISTER_SIZE;
+use crate::gkr_compiler::CompiledDelegationCircuitState;
 use common_constants::NUM_TIMESTAMP_COLUMNS_FOR_RAM;
 
-#[derive(Clone, Hash, Debug, serde::Serialize, serde::Deserialize)]
-pub struct CompiledDelegationCircuitState {
-    pub execute: usize,
-    pub invocation_timestamp: [usize; NUM_TIMESTAMP_COLUMNS_FOR_RAM],
+#[derive(Clone, Copy, Hash, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[repr(u8)]
+pub enum AddressSpaceType {
+    Register = 0,
+    RAM = 1,
+    PC = 2,
 }
 
 #[derive(Clone, Copy, Hash, Debug, serde::Serialize, serde::Deserialize)]
@@ -53,6 +56,7 @@ pub struct GKRMemoryLayout {
     pub delegation_state: Option<CompiledDelegationCircuitState>,
     pub decoder_input: Option<DecoderPlacementDescription>,
     pub indirect_access_variable_offsets: Vec<usize>,
+    pub teardown_sets: Vec<([GKRAddress; 2], [GKRAddress; 2])>,
     pub total_width: usize,
 }
 
@@ -61,7 +65,7 @@ pub struct GKRWitnessLayout {
     // we use separate multiplicities columns for tables of width 1 for an optimization
     // in the prover
     pub multiplicities_columns_for_range_check_16: core::ops::Range<usize>,
-    pub multiplicities_columns_for_timestamp_range_check: usize,
+    pub multiplicities_columns_for_timestamp_range_check: core::ops::Range<usize>,
     pub multiplicities_columns_for_generic_lookup: core::ops::Range<usize>,
     pub total_width: usize,
 }

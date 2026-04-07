@@ -128,6 +128,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field>
         self.continuous_buffer.as_mut_ptr().cast()
     }
 
+    #[track_caller]
     pub fn pointer_for_sumcheck_continuation(&mut self, step: usize) -> (*mut E, *mut E) {
         unsafe {
             assert!(step >= 2);

@@ -11,14 +11,12 @@ use cs::utils::split_timestamp;
 use field::PrimeField;
 use worker::WorkerGeometry;
 
-// mod init_and_teardown;
+mod init_and_teardown;
 mod memory;
 // mod unified;
 pub(crate) mod witness;
 
-// pub use self::init_and_teardown::{
-//     evaluate_init_and_teardown_memory_witness, evaluate_init_and_teardown_witness,
-// };
+pub use self::init_and_teardown::evaluate_init_and_teardown_memory_witness;
 pub use self::memory::evaluate_gkr_memory_witness_for_executor_family;
 // pub use self::unified::{
 //     evaluate_memory_witness_for_unified_executor, evaluate_witness_for_unified_executor,

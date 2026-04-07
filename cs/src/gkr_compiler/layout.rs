@@ -19,7 +19,7 @@ pub struct GKRLayerDescription {
     #[serde_as(as = "Vec<(_, _)>")]
     pub cached_relations: BTreeMap<GKRAddress, NoFieldGKRCacheRelation>,
     pub gates: Vec<GateArtifacts>,
-    pub additional_base_layer_openings: Vec<GKRAddress>,
+    // pub additional_base_layer_openings: Vec<GKRAddress>,
 }
 
 #[derive(Clone, Debug)]
@@ -173,7 +173,7 @@ impl GKRGraph {
                 gates_with_external_connections: vec![],
                 gates: vec![],
                 cached_relations: BTreeMap::new(),
-                additional_base_layer_openings: vec![],
+                // additional_base_layer_openings: vec![],
             };
 
             let layer_for_caches = layer - 1;
@@ -227,9 +227,9 @@ impl GKRGraph {
                                             cache_relations_for_this_layer[offset].clone();
                                         descr.cached_relations.insert(cached, relation);
                                     }
-                                    for claim in rel.created_claims().into_iter() {
-                                        base_layer_polys_to_open_for_caches.remove(&claim);
-                                    }
+                                    // for claim in rel.created_claims().into_iter() {
+                                    //     base_layer_polys_to_open_for_caches.remove(&claim);
+                                    // }
                                 }
 
                                 let artifact = GateArtifacts {
@@ -264,9 +264,9 @@ impl GKRGraph {
                                                 cache_relations_for_this_layer[offset].clone();
                                             descr.cached_relations.insert(cached, relation);
                                         }
-                                        for claim in rel.created_claims().into_iter() {
-                                            base_layer_polys_to_open_for_caches.remove(&claim);
-                                        }
+                                        // for claim in rel.created_claims().into_iter() {
+                                        //     base_layer_polys_to_open_for_caches.remove(&claim);
+                                        // }
                                     }
 
                                     let artifact = GateArtifacts {
@@ -297,18 +297,13 @@ impl GKRGraph {
                         cached
                     );
                     let relation = cache_relations_for_this_layer[offset].clone();
-                    // if layer == 1 {
-                    //     for el in relation.dependencies().into_iter() {
-                    //         base_layer_polys_to_open_for_caches.remove(&el);
-                    //     }
-                    // }
                     descr.cached_relations.insert(cached, relation);
                 }
-                if layer == 1 {
-                    for claim in rel.created_claims().into_iter() {
-                        base_layer_polys_to_open_for_caches.remove(&claim);
-                    }
-                }
+                // if layer == 1 {
+                //     for claim in rel.created_claims().into_iter() {
+                //         base_layer_polys_to_open_for_caches.remove(&claim);
+                //     }
+                // }
                 let artifact = GateArtifacts {
                     output_layer: layer,
                     enforced_relation: rel.clone(),
@@ -320,11 +315,11 @@ impl GKRGraph {
                 lookup_outputs.remove(&k);
             }
 
-            if layer == 1 {
-                descr
-                    .additional_base_layer_openings
-                    .extend(base_layer_polys_to_open_for_caches.into_iter());
-            }
+            // if layer == 1 {
+            //     descr
+            //         .additional_base_layer_openings
+            //         .extend(base_layer_polys_to_open_for_caches.into_iter());
+            // }
 
             result.push(descr);
         }

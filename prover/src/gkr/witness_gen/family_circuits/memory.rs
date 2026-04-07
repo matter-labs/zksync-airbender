@@ -335,32 +335,32 @@ pub(crate) unsafe fn gkr_process_shuffle_ram_accesses_in_executor_family<
                     register_index,
                     Placeholder::ShuffleRamAddress(access_idx),
                 );
-
-                // proxy.write_u8_placeholder_into_columns::<true>(
-                //     register_index,
-                //     Placeholder::ShuffleRamAddress(access_idx),
-                // );
             }
             RamAddress::RegisterOrRam(RegisterOrRamAccessAddress {
-                is_register,
+                address_space,
                 address,
             }) => {
-                match is_register {
-                    IsRegisterAddress::Is(is_register) => {
-                        proxy.write_boolean_placeholder_into_columns::<true>(
-                            is_register,
-                            Placeholder::ShuffleRamIsRegisterAccess(access_idx),
-                        );
-                    }
-                    IsRegisterAddress::Not(is_register) => {
+                match address_space {
+                    RegisterOrRamAddressSpace::RegisterAddressSpace(column) => {
+                        // if value in this column is `1`, it means "register address space"
+                        assert_eq!(AddressSpaceType::Register as u8, 0);
                         let is_register_flag = Oracle::<F>::get_boolean_witness_from_placeholder(
                             proxy.oracle,
                             Placeholder::ShuffleRamIsRegisterAccess(access_idx),
                             proxy.absolute_row_idx,
                         );
-                        let not_register = !is_register_flag;
-
-                        proxy.write_boolean_value_into_columns::<true>(is_register, not_register);
+                        proxy.write_boolean_value_into_columns::<true>(column, is_register_flag);
+                    }
+                    RegisterOrRamAddressSpace::RamAddressSpace(column) => {
+                        // if value in this column is `1`, it means "RAM address space"
+                        assert_eq!(AddressSpaceType::RAM as u8, 1);
+                        let is_register_flag = Oracle::<F>::get_boolean_witness_from_placeholder(
+                            proxy.oracle,
+                            Placeholder::ShuffleRamIsRegisterAccess(access_idx),
+                            proxy.absolute_row_idx,
+                        );
+                        let write_value = !is_register_flag;
+                        proxy.write_boolean_value_into_columns::<true>(column, write_value);
                     }
                 }
                 proxy.write_u32_placeholder_into_columns::<true>(
