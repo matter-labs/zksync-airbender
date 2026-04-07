@@ -1,9 +1,9 @@
 use blake2s_u32::{DelegatedBlake2sState, BLAKE2S_DIGEST_SIZE_U32_WORDS};
 use non_determinism_source::NonDeterminismSource;
-use transcript::{Blake2sTranscript, Seed};
+use transcript::Blake2sTranscript;
 
 use crate::gkr::LazyVec;
-use crate::structs::{assemble_query_index, BitSource, CommitBuf};
+use crate::structs::{assemble_query_index, BitSource, CommitBuf, TranscriptState};
 
 /// Read a Merkle cap from NDS, commit via aligned buffer, and return it.
 ///
@@ -14,8 +14,7 @@ pub fn read_commit_return_merkle_cap<
     const CAP_WORDS: usize,
     const BUF: usize,
 >(
-    hasher: &mut DelegatedBlake2sState,
-    seed: &mut Seed,
+    ts: &mut TranscriptState,
 ) -> [u32; CAP_WORDS] {
     let mut buf = CommitBuf::<BUF>::new();
     let mut i = 0;
@@ -23,8 +22,8 @@ pub fn read_commit_return_merkle_cap<
         buf.data_write(i, I::read_word());
         i += 1;
     }
-    let cap: [u32; CAP_WORDS] = unsafe { *buf.data_as::<[u32; CAP_WORDS]>(1).as_ptr() };
-    buf.commit(hasher, seed, CAP_WORDS);
+    let cap: [u32; CAP_WORDS] = unsafe { buf.read_one() };
+    ts.commit(&mut buf, CAP_WORDS);
     cap
 }
 
@@ -42,26 +41,24 @@ pub fn read_return_merkle_cap<I: NonDeterminismSource, const CAP_WORDS: usize>()
 }
 
 #[inline(always)]
-pub fn read_and_verify_pow<I: NonDeterminismSource>(seed: &mut Seed, pow_bits: u32) {
+pub fn read_and_verify_pow<I: NonDeterminismSource>(ts: &mut TranscriptState, pow_bits: u32) {
     let lo = I::read_word();
     let hi = I::read_word();
     let nonce = (lo as u64) | ((hi as u64) << 32);
-    Blake2sTranscript::verify_pow(seed, nonce, pow_bits);
+    Blake2sTranscript::verify_pow(&mut ts.seed, nonce, pow_bits);
 }
 
 #[inline(always)]
 pub fn draw_query_indices<const MAX_QUERIES: usize, const MAX_DRAW_WORDS: usize>(
-    hasher: &mut DelegatedBlake2sState,
-    seed: &mut Seed,
+    ts: &mut TranscriptState,
     num_queries: usize,
     query_index_bits: usize,
     draw_words: usize,
 ) -> LazyVec<usize, MAX_QUERIES> {
     let mut source_words = LazyVec::<u32, MAX_DRAW_WORDS>::new();
-    // SAFETY: draw_randomness_using_hasher writes exactly draw_words u32s before any are read.
     unsafe {
         source_words.set_len(draw_words);
-        Blake2sTranscript::draw_randomness_using_hasher(hasher, seed, source_words.as_mut_slice());
+        ts.draw_raw(source_words.as_mut_slice());
     }
 
     // Skip first word (matches prover's draw_query_bits convention)

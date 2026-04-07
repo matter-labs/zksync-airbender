@@ -42,7 +42,7 @@ fn generate_common<MW: MersenneWrapper>() {
         use ::verifier_common::non_determinism_source::NonDeterminismSource;
         use ::verifier_common::transcript::{Blake2sTranscript, Seed};
         use ::verifier_common::gkr::GKRVerificationError;
-        use ::verifier_common::structs::CommitBuf;
+        use ::verifier_common::structs::{CommitBuf, TranscriptState};
         use ::verifier_common::lazy_vec::LazyVec;
         #field_use_stmts
 
@@ -165,11 +165,11 @@ fn generate_verifier_for_circuit<MW: MersenneWrapper>(circuit: &CircuitData) {
         pub fn verify<I: NonDeterminismSource>() -> Result<(), VerificationError> {
             let gkr_output = verify_gkr::<I>()
                 .map_err(VerificationError::Gkr)?;
-            let mut seed = gkr_output.whir_transcript_seed;
-            let mut hasher = ::verifier_common::blake2s_u32::DelegatedBlake2sState::new();
+            let mut ts = ::verifier_common::structs::TranscriptState::new(
+                gkr_output.whir_transcript_seed,
+            );
             whir::verify_whir::<I>(
-                &mut hasher,
-                &mut seed,
+                &mut ts,
                 gkr_output.whir_batching_challenge,
                 &gkr_output.setup_cap,
                 &gkr_output.memory_cap,

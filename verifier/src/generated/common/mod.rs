@@ -6,7 +6,7 @@ use verifier_common::field_ops;
 use verifier_common::gkr::GKRVerificationError;
 use verifier_common::lazy_vec::LazyVec;
 use verifier_common::non_determinism_source::NonDeterminismSource;
-use verifier_common::structs::CommitBuf;
+use verifier_common::structs::{CommitBuf, TranscriptState};
 use verifier_common::transcript::{Blake2sTranscript, Seed};
 pub const EXT_DEGREE: usize = <BabyBearExt4 as FieldExtension<BabyBearField>>::DEGREE;
 #[doc = r" Read a single reduced field element from NDS. This is the single"]
@@ -37,8 +37,7 @@ pub fn read_field_els<I: NonDeterminismSource>(dst: &mut [BabyBearExt4]) {
 }
 #[inline(always)]
 pub fn draw_field_els_into<const BUF_CAP: usize>(
-    hasher: &mut DelegatedBlake2sState,
-    seed: &mut Seed,
+    ts: &mut TranscriptState,
     dst: &mut [BabyBearExt4],
 ) {
     let n = dst.len();
@@ -47,7 +46,7 @@ pub fn draw_field_els_into<const BUF_CAP: usize>(
     let mut words = LazyVec::<u32, BUF_CAP>::new();
     unsafe {
         words.set_len(padded);
-        Blake2sTranscript::draw_randomness_using_hasher(hasher, seed, words.as_mut_slice());
+        ts.draw_raw(words.as_mut_slice());
     }
     let mut i = 0;
     while i < n {
@@ -68,12 +67,12 @@ pub fn draw_field_els_into<const BUF_CAP: usize>(
 }
 #[doc = r" Draw a single extension field element from the transcript."]
 #[inline(always)]
-pub fn draw_single_field_el(hasher: &mut DelegatedBlake2sState, seed: &mut Seed) -> BabyBearExt4 {
+pub fn draw_single_field_el(ts: &mut TranscriptState) -> BabyBearExt4 {
     let mut buf = LazyVec::<BabyBearExt4, 1>::new();
     unsafe {
         buf.set_len(1);
     }
-    draw_field_els_into::<BLAKE2S_DIGEST_SIZE_U32_WORDS>(hasher, seed, buf.as_mut_slice());
+    draw_field_els_into::<BLAKE2S_DIGEST_SIZE_U32_WORDS>(ts, buf.as_mut_slice());
     *buf.get(0)
 }
 #[inline(always)]
@@ -123,7 +122,7 @@ pub fn verify_sumcheck_rounds<
     const NUM_ROUNDS: usize,
     const COMMIT_BUF: usize,
 >(
-    seed: &mut Seed,
+    ts: &mut TranscriptState,
     initial_claim: BabyBearExt4,
     challenges: &mut [BabyBearExt4],
     layer_idx: usize,
@@ -132,7 +131,6 @@ pub fn verify_sumcheck_rounds<
     let mut eq_prefactor = BabyBearExt4::ONE;
     let coeff_data_words = 4 * EXT_DEGREE;
     let mut commit_buf = CommitBuf::<COMMIT_BUF>::new();
-    let mut hasher = DelegatedBlake2sState::new();
     let mut draw_buf = LazyVec::<u32, BLAKE2S_DIGEST_SIZE_U32_WORDS>::new();
     unsafe {
         draw_buf.set_len(BLAKE2S_DIGEST_SIZE_U32_WORDS);
@@ -161,8 +159,8 @@ pub fn verify_sumcheck_rounds<
                 round,
             });
         }
-        commit_buf.commit(&mut hasher, seed, coeff_data_words);
-        Blake2sTranscript::draw_randomness_using_hasher(&mut hasher, seed, draw_buf.as_mut_slice());
+        ts.commit(&mut commit_buf, coeff_data_words);
+        ts.draw_raw(draw_buf.as_mut_slice());
         let r_k = {
             let mut arr = LazyVec::<BabyBearField, EXT_DEGREE>::new();
             for i in 0..EXT_DEGREE {
@@ -264,8 +262,7 @@ pub enum WhirVerificationError {
 }
 #[inline(always)]
 pub fn verify_whir_sumcheck_step<I: NonDeterminismSource>(
-    hasher: &mut DelegatedBlake2sState,
-    seed: &mut Seed,
+    ts: &mut TranscriptState,
     claim: BabyBearExt4,
     round: usize,
 ) -> Result<(BabyBearExt4, BabyBearExt4), WhirVerificationError> {
@@ -295,16 +292,12 @@ pub fn verify_whir_sumcheck_step<I: NonDeterminismSource>(
     if sum != claim {
         return Err(WhirVerificationError::SumcheckFailed { round });
     }
-    buf.commit(hasher, seed, WHIR_SC_DATA_WORDS);
+    ts.commit(&mut buf, WHIR_SC_DATA_WORDS);
     let mut challenge_buf = LazyVec::<BabyBearExt4, 1>::new();
     unsafe {
         challenge_buf.set_len(1);
     }
-    draw_field_els_into::<BLAKE2S_DIGEST_SIZE_U32_WORDS>(
-        hasher,
-        seed,
-        challenge_buf.as_mut_slice(),
-    );
+    draw_field_els_into::<BLAKE2S_DIGEST_SIZE_U32_WORDS>(ts, challenge_buf.as_mut_slice());
     let alpha = unsafe { *challenge_buf.get_unchecked(0) };
     let mut new_claim = c2;
     field_ops::mul_assign(&mut new_claim, &alpha);

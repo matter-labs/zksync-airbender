@@ -24,8 +24,7 @@ pub fn generate_whir_verify<MW: MersenneWrapper>(whir_hash_buf_size: usize) -> T
         /// Run the full WHIR verification: initial round, all internal rounds, final round.
         #[allow(unused_braces, unused_mut, unused_variables, unused_unsafe, clippy::needless_borrow)]
         pub fn verify_whir<I: NonDeterminismSource>(
-            hasher: &mut DelegatedBlake2sState,
-            seed: &mut Seed,
+            ts: &mut TranscriptState,
             batching_challenge: #quartic_struct,
             setup_cap: &[u32; SETUP_CAP_WORDS],
             memory_cap: &[u32; MEM_CAP_WORDS],
@@ -33,18 +32,18 @@ pub fn generate_whir_verify<MW: MersenneWrapper>(whir_hash_buf_size: usize) -> T
         ) -> Result<(), WhirVerificationError> {
             let mut hash_buf = AlignedArray64::<u32, WHIR_HASH_BUF_SIZE>::new_uninit();
             let (mut claim, mut cap) = verify_initial_whir_round::<I>(
-                hasher, &mut hash_buf, seed, batching_challenge, setup_cap, memory_cap, witness_cap,
+                ts, &mut hash_buf, batching_challenge, setup_cap, memory_cap, witness_cap,
             )?;
             let mut round_idx = 1;
             while round_idx <= NUM_INTERNAL_ROUNDS {
                 let (new_claim, new_cap) = verify_internal_whir_round::<I>(
-                    hasher, &mut hash_buf, seed, claim, &cap, round_idx,
+                    ts, &mut hash_buf, claim, &cap, round_idx,
                 )?;
                 claim = new_claim;
                 cap = new_cap;
                 round_idx += 1;
             }
-            verify_final_whir_round::<I>(hasher, &mut hash_buf, seed, claim, &cap)?;
+            verify_final_whir_round::<I>(ts, &mut hash_buf, claim, &cap)?;
             Ok(())
         }
     }

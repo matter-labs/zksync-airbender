@@ -10,7 +10,7 @@ use verifier_common::field::{Field, FieldExtension, PrimeField};
 use verifier_common::field_ops;
 use verifier_common::gkr::{GKRVerificationError, GKRVerifierOutput, LayerState, LazyVec};
 use verifier_common::non_determinism_source::NonDeterminismSource;
-use verifier_common::structs::CommitBuf;
+use verifier_common::structs::{CommitBuf, TranscriptState};
 use verifier_common::transcript::Blake2sTranscript;
 #[inline(always)]
 #[allow(clippy::needless_borrow)]
@@ -1344,7 +1344,7 @@ unsafe fn layer_3_final_step_accumulator(
 }
 #[inline(always)]
 #[allow(clippy::needless_borrow)]
-unsafe fn dim_reducing_4_compute_claim(
+unsafe fn dim_reducing_compute_claim(
     output_claims: &LazyVec<BabyBearExt4, GKR_ADDRS>,
     batch_base: BabyBearExt4,
 ) -> BabyBearExt4 {
@@ -1406,16 +1406,20 @@ unsafe fn dim_reducing_4_compute_claim(
 }
 #[inline(always)]
 #[allow(clippy::needless_borrow, clippy::large_const_arrays)]
-unsafe fn dim_reducing_4_final_step_accumulator(
+unsafe fn dim_reducing_final_step_accumulator(
     evals: &[[BabyBearExt4; 4]],
     batch_base: BabyBearExt4,
+    indices: &[usize],
 ) -> [BabyBearExt4; 2] {
     let mut acc = [BabyBearExt4::ZERO; 2];
     let mut current_batch = BabyBearExt4::ONE;
+    let mut _idx = 0usize;
     {
+        let si = unsafe { *indices.get_unchecked(_idx) };
+        _idx += 1;
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
-        let es = unsafe { evals.get_unchecked(2usize) };
+        let es = unsafe { evals.get_unchecked(si) };
         let e0 = unsafe { *es.get_unchecked(0) };
         let e1 = unsafe { *es.get_unchecked(1) };
         let e2 = unsafe { *es.get_unchecked(2) };
@@ -1432,9 +1436,11 @@ unsafe fn dim_reducing_4_final_step_accumulator(
         field_ops::add_assign(&mut acc[1], &c1);
     }
     {
+        let si = unsafe { *indices.get_unchecked(_idx) };
+        _idx += 1;
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
-        let es = unsafe { evals.get_unchecked(3usize) };
+        let es = unsafe { evals.get_unchecked(si) };
         let e0 = unsafe { *es.get_unchecked(0) };
         let e1 = unsafe { *es.get_unchecked(1) };
         let e2 = unsafe { *es.get_unchecked(2) };
@@ -1451,12 +1457,15 @@ unsafe fn dim_reducing_4_final_step_accumulator(
         field_ops::add_assign(&mut acc[1], &c1);
     }
     {
+        let si0 = unsafe { *indices.get_unchecked(_idx) };
+        let si1 = unsafe { *indices.get_unchecked(_idx + 1) };
+        _idx += 2;
         let bc0 = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
         let bc1 = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
-        let v0 = unsafe { evals.get_unchecked(4usize) };
-        let v1 = unsafe { evals.get_unchecked(5usize) };
+        let v0 = unsafe { evals.get_unchecked(si0) };
+        let v1 = unsafe { evals.get_unchecked(si1) };
         {
             let v0a = unsafe { *v0.get_unchecked(0usize) };
             let v0b = unsafe { *v0.get_unchecked(1usize) };
@@ -1497,12 +1506,15 @@ unsafe fn dim_reducing_4_final_step_accumulator(
         }
     }
     {
+        let si0 = unsafe { *indices.get_unchecked(_idx) };
+        let si1 = unsafe { *indices.get_unchecked(_idx + 1) };
+        _idx += 2;
         let bc0 = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
         let bc1 = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
-        let v0 = unsafe { evals.get_unchecked(0usize) };
-        let v1 = unsafe { evals.get_unchecked(1usize) };
+        let v0 = unsafe { evals.get_unchecked(si0) };
+        let v1 = unsafe { evals.get_unchecked(si1) };
         {
             let v0a = unsafe { *v0.get_unchecked(0usize) };
             let v0b = unsafe { *v0.get_unchecked(1usize) };
@@ -1543,4724 +1555,15 @@ unsafe fn dim_reducing_4_final_step_accumulator(
         }
     }
     {
+        let si0 = unsafe { *indices.get_unchecked(_idx) };
+        let si1 = unsafe { *indices.get_unchecked(_idx + 1) };
+        _idx += 2;
         let bc0 = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
         let bc1 = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
-        let v0 = unsafe { evals.get_unchecked(6usize) };
-        let v1 = unsafe { evals.get_unchecked(7usize) };
-        {
-            let v0a = unsafe { *v0.get_unchecked(0usize) };
-            let v0b = unsafe { *v0.get_unchecked(1usize) };
-            let v1a = unsafe { *v1.get_unchecked(0usize) };
-            let v1b = unsafe { *v1.get_unchecked(1usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[0usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[0usize], &c1_tmp);
-        }
-        {
-            let v0a = unsafe { *v0.get_unchecked(2usize) };
-            let v0b = unsafe { *v0.get_unchecked(3usize) };
-            let v1a = unsafe { *v1.get_unchecked(2usize) };
-            let v1b = unsafe { *v1.get_unchecked(3usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[1usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[1usize], &c1_tmp);
-        }
-    }
-    acc
-}
-#[inline(always)]
-#[allow(clippy::needless_borrow)]
-unsafe fn dim_reducing_5_compute_claim(
-    output_claims: &LazyVec<BabyBearExt4, GKR_ADDRS>,
-    batch_base: BabyBearExt4,
-) -> BabyBearExt4 {
-    let mut current_batch = BabyBearExt4::ONE;
-    let combined = {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let claim = output_claims.get(0usize);
-        let mut t = bc;
-        field_ops::mul_assign(&mut t, &claim);
-        t
-    };
-    let mut combined = combined;
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let claim = output_claims.get(1usize);
-        let mut t = bc;
-        field_ops::mul_assign(&mut t, &claim);
-        field_ops::add_assign(&mut combined, &t);
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for (bc, idx) in [(bc0, 2usize), (bc1, 3usize)] {
-            let claim = output_claims.get(idx);
-            let mut t = bc;
-            field_ops::mul_assign(&mut t, &claim);
-            field_ops::add_assign(&mut combined, &t);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for (bc, idx) in [(bc0, 4usize), (bc1, 5usize)] {
-            let claim = output_claims.get(idx);
-            let mut t = bc;
-            field_ops::mul_assign(&mut t, &claim);
-            field_ops::add_assign(&mut combined, &t);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for (bc, idx) in [(bc0, 6usize), (bc1, 7usize)] {
-            let claim = output_claims.get(idx);
-            let mut t = bc;
-            field_ops::mul_assign(&mut t, &claim);
-            field_ops::add_assign(&mut combined, &t);
-        }
-    }
-    combined
-}
-#[inline(always)]
-#[allow(clippy::needless_borrow, clippy::large_const_arrays)]
-unsafe fn dim_reducing_5_final_step_accumulator(
-    evals: &[[BabyBearExt4; 4]],
-    batch_base: BabyBearExt4,
-) -> [BabyBearExt4; 2] {
-    let mut acc = [BabyBearExt4::ZERO; 2];
-    let mut current_batch = BabyBearExt4::ONE;
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let es = unsafe { evals.get_unchecked(0usize) };
-        let e0 = unsafe { *es.get_unchecked(0) };
-        let e1 = unsafe { *es.get_unchecked(1) };
-        let e2 = unsafe { *es.get_unchecked(2) };
-        let e3 = unsafe { *es.get_unchecked(3) };
-        let mut v01 = e0;
-        field_ops::mul_assign(&mut v01, &e1);
-        let mut c0 = bc;
-        field_ops::mul_assign(&mut c0, &v01);
-        field_ops::add_assign(&mut acc[0], &c0);
-        let mut v23 = e2;
-        field_ops::mul_assign(&mut v23, &e3);
-        let mut c1 = bc;
-        field_ops::mul_assign(&mut c1, &v23);
-        field_ops::add_assign(&mut acc[1], &c1);
-    }
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let es = unsafe { evals.get_unchecked(1usize) };
-        let e0 = unsafe { *es.get_unchecked(0) };
-        let e1 = unsafe { *es.get_unchecked(1) };
-        let e2 = unsafe { *es.get_unchecked(2) };
-        let e3 = unsafe { *es.get_unchecked(3) };
-        let mut v01 = e0;
-        field_ops::mul_assign(&mut v01, &e1);
-        let mut c0 = bc;
-        field_ops::mul_assign(&mut c0, &v01);
-        field_ops::add_assign(&mut acc[0], &c0);
-        let mut v23 = e2;
-        field_ops::mul_assign(&mut v23, &e3);
-        let mut c1 = bc;
-        field_ops::mul_assign(&mut c1, &v23);
-        field_ops::add_assign(&mut acc[1], &c1);
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let v0 = unsafe { evals.get_unchecked(2usize) };
-        let v1 = unsafe { evals.get_unchecked(3usize) };
-        {
-            let v0a = unsafe { *v0.get_unchecked(0usize) };
-            let v0b = unsafe { *v0.get_unchecked(1usize) };
-            let v1a = unsafe { *v1.get_unchecked(0usize) };
-            let v1b = unsafe { *v1.get_unchecked(1usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[0usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[0usize], &c1_tmp);
-        }
-        {
-            let v0a = unsafe { *v0.get_unchecked(2usize) };
-            let v0b = unsafe { *v0.get_unchecked(3usize) };
-            let v1a = unsafe { *v1.get_unchecked(2usize) };
-            let v1b = unsafe { *v1.get_unchecked(3usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[1usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[1usize], &c1_tmp);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let v0 = unsafe { evals.get_unchecked(4usize) };
-        let v1 = unsafe { evals.get_unchecked(5usize) };
-        {
-            let v0a = unsafe { *v0.get_unchecked(0usize) };
-            let v0b = unsafe { *v0.get_unchecked(1usize) };
-            let v1a = unsafe { *v1.get_unchecked(0usize) };
-            let v1b = unsafe { *v1.get_unchecked(1usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[0usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[0usize], &c1_tmp);
-        }
-        {
-            let v0a = unsafe { *v0.get_unchecked(2usize) };
-            let v0b = unsafe { *v0.get_unchecked(3usize) };
-            let v1a = unsafe { *v1.get_unchecked(2usize) };
-            let v1b = unsafe { *v1.get_unchecked(3usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[1usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[1usize], &c1_tmp);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let v0 = unsafe { evals.get_unchecked(6usize) };
-        let v1 = unsafe { evals.get_unchecked(7usize) };
-        {
-            let v0a = unsafe { *v0.get_unchecked(0usize) };
-            let v0b = unsafe { *v0.get_unchecked(1usize) };
-            let v1a = unsafe { *v1.get_unchecked(0usize) };
-            let v1b = unsafe { *v1.get_unchecked(1usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[0usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[0usize], &c1_tmp);
-        }
-        {
-            let v0a = unsafe { *v0.get_unchecked(2usize) };
-            let v0b = unsafe { *v0.get_unchecked(3usize) };
-            let v1a = unsafe { *v1.get_unchecked(2usize) };
-            let v1b = unsafe { *v1.get_unchecked(3usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[1usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[1usize], &c1_tmp);
-        }
-    }
-    acc
-}
-#[inline(always)]
-#[allow(clippy::needless_borrow)]
-unsafe fn dim_reducing_6_compute_claim(
-    output_claims: &LazyVec<BabyBearExt4, GKR_ADDRS>,
-    batch_base: BabyBearExt4,
-) -> BabyBearExt4 {
-    let mut current_batch = BabyBearExt4::ONE;
-    let combined = {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let claim = output_claims.get(0usize);
-        let mut t = bc;
-        field_ops::mul_assign(&mut t, &claim);
-        t
-    };
-    let mut combined = combined;
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let claim = output_claims.get(1usize);
-        let mut t = bc;
-        field_ops::mul_assign(&mut t, &claim);
-        field_ops::add_assign(&mut combined, &t);
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for (bc, idx) in [(bc0, 2usize), (bc1, 3usize)] {
-            let claim = output_claims.get(idx);
-            let mut t = bc;
-            field_ops::mul_assign(&mut t, &claim);
-            field_ops::add_assign(&mut combined, &t);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for (bc, idx) in [(bc0, 4usize), (bc1, 5usize)] {
-            let claim = output_claims.get(idx);
-            let mut t = bc;
-            field_ops::mul_assign(&mut t, &claim);
-            field_ops::add_assign(&mut combined, &t);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for (bc, idx) in [(bc0, 6usize), (bc1, 7usize)] {
-            let claim = output_claims.get(idx);
-            let mut t = bc;
-            field_ops::mul_assign(&mut t, &claim);
-            field_ops::add_assign(&mut combined, &t);
-        }
-    }
-    combined
-}
-#[inline(always)]
-#[allow(clippy::needless_borrow, clippy::large_const_arrays)]
-unsafe fn dim_reducing_6_final_step_accumulator(
-    evals: &[[BabyBearExt4; 4]],
-    batch_base: BabyBearExt4,
-) -> [BabyBearExt4; 2] {
-    let mut acc = [BabyBearExt4::ZERO; 2];
-    let mut current_batch = BabyBearExt4::ONE;
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let es = unsafe { evals.get_unchecked(0usize) };
-        let e0 = unsafe { *es.get_unchecked(0) };
-        let e1 = unsafe { *es.get_unchecked(1) };
-        let e2 = unsafe { *es.get_unchecked(2) };
-        let e3 = unsafe { *es.get_unchecked(3) };
-        let mut v01 = e0;
-        field_ops::mul_assign(&mut v01, &e1);
-        let mut c0 = bc;
-        field_ops::mul_assign(&mut c0, &v01);
-        field_ops::add_assign(&mut acc[0], &c0);
-        let mut v23 = e2;
-        field_ops::mul_assign(&mut v23, &e3);
-        let mut c1 = bc;
-        field_ops::mul_assign(&mut c1, &v23);
-        field_ops::add_assign(&mut acc[1], &c1);
-    }
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let es = unsafe { evals.get_unchecked(1usize) };
-        let e0 = unsafe { *es.get_unchecked(0) };
-        let e1 = unsafe { *es.get_unchecked(1) };
-        let e2 = unsafe { *es.get_unchecked(2) };
-        let e3 = unsafe { *es.get_unchecked(3) };
-        let mut v01 = e0;
-        field_ops::mul_assign(&mut v01, &e1);
-        let mut c0 = bc;
-        field_ops::mul_assign(&mut c0, &v01);
-        field_ops::add_assign(&mut acc[0], &c0);
-        let mut v23 = e2;
-        field_ops::mul_assign(&mut v23, &e3);
-        let mut c1 = bc;
-        field_ops::mul_assign(&mut c1, &v23);
-        field_ops::add_assign(&mut acc[1], &c1);
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let v0 = unsafe { evals.get_unchecked(2usize) };
-        let v1 = unsafe { evals.get_unchecked(3usize) };
-        {
-            let v0a = unsafe { *v0.get_unchecked(0usize) };
-            let v0b = unsafe { *v0.get_unchecked(1usize) };
-            let v1a = unsafe { *v1.get_unchecked(0usize) };
-            let v1b = unsafe { *v1.get_unchecked(1usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[0usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[0usize], &c1_tmp);
-        }
-        {
-            let v0a = unsafe { *v0.get_unchecked(2usize) };
-            let v0b = unsafe { *v0.get_unchecked(3usize) };
-            let v1a = unsafe { *v1.get_unchecked(2usize) };
-            let v1b = unsafe { *v1.get_unchecked(3usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[1usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[1usize], &c1_tmp);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let v0 = unsafe { evals.get_unchecked(4usize) };
-        let v1 = unsafe { evals.get_unchecked(5usize) };
-        {
-            let v0a = unsafe { *v0.get_unchecked(0usize) };
-            let v0b = unsafe { *v0.get_unchecked(1usize) };
-            let v1a = unsafe { *v1.get_unchecked(0usize) };
-            let v1b = unsafe { *v1.get_unchecked(1usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[0usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[0usize], &c1_tmp);
-        }
-        {
-            let v0a = unsafe { *v0.get_unchecked(2usize) };
-            let v0b = unsafe { *v0.get_unchecked(3usize) };
-            let v1a = unsafe { *v1.get_unchecked(2usize) };
-            let v1b = unsafe { *v1.get_unchecked(3usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[1usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[1usize], &c1_tmp);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let v0 = unsafe { evals.get_unchecked(6usize) };
-        let v1 = unsafe { evals.get_unchecked(7usize) };
-        {
-            let v0a = unsafe { *v0.get_unchecked(0usize) };
-            let v0b = unsafe { *v0.get_unchecked(1usize) };
-            let v1a = unsafe { *v1.get_unchecked(0usize) };
-            let v1b = unsafe { *v1.get_unchecked(1usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[0usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[0usize], &c1_tmp);
-        }
-        {
-            let v0a = unsafe { *v0.get_unchecked(2usize) };
-            let v0b = unsafe { *v0.get_unchecked(3usize) };
-            let v1a = unsafe { *v1.get_unchecked(2usize) };
-            let v1b = unsafe { *v1.get_unchecked(3usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[1usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[1usize], &c1_tmp);
-        }
-    }
-    acc
-}
-#[inline(always)]
-#[allow(clippy::needless_borrow)]
-unsafe fn dim_reducing_7_compute_claim(
-    output_claims: &LazyVec<BabyBearExt4, GKR_ADDRS>,
-    batch_base: BabyBearExt4,
-) -> BabyBearExt4 {
-    let mut current_batch = BabyBearExt4::ONE;
-    let combined = {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let claim = output_claims.get(0usize);
-        let mut t = bc;
-        field_ops::mul_assign(&mut t, &claim);
-        t
-    };
-    let mut combined = combined;
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let claim = output_claims.get(1usize);
-        let mut t = bc;
-        field_ops::mul_assign(&mut t, &claim);
-        field_ops::add_assign(&mut combined, &t);
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for (bc, idx) in [(bc0, 2usize), (bc1, 3usize)] {
-            let claim = output_claims.get(idx);
-            let mut t = bc;
-            field_ops::mul_assign(&mut t, &claim);
-            field_ops::add_assign(&mut combined, &t);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for (bc, idx) in [(bc0, 4usize), (bc1, 5usize)] {
-            let claim = output_claims.get(idx);
-            let mut t = bc;
-            field_ops::mul_assign(&mut t, &claim);
-            field_ops::add_assign(&mut combined, &t);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for (bc, idx) in [(bc0, 6usize), (bc1, 7usize)] {
-            let claim = output_claims.get(idx);
-            let mut t = bc;
-            field_ops::mul_assign(&mut t, &claim);
-            field_ops::add_assign(&mut combined, &t);
-        }
-    }
-    combined
-}
-#[inline(always)]
-#[allow(clippy::needless_borrow, clippy::large_const_arrays)]
-unsafe fn dim_reducing_7_final_step_accumulator(
-    evals: &[[BabyBearExt4; 4]],
-    batch_base: BabyBearExt4,
-) -> [BabyBearExt4; 2] {
-    let mut acc = [BabyBearExt4::ZERO; 2];
-    let mut current_batch = BabyBearExt4::ONE;
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let es = unsafe { evals.get_unchecked(0usize) };
-        let e0 = unsafe { *es.get_unchecked(0) };
-        let e1 = unsafe { *es.get_unchecked(1) };
-        let e2 = unsafe { *es.get_unchecked(2) };
-        let e3 = unsafe { *es.get_unchecked(3) };
-        let mut v01 = e0;
-        field_ops::mul_assign(&mut v01, &e1);
-        let mut c0 = bc;
-        field_ops::mul_assign(&mut c0, &v01);
-        field_ops::add_assign(&mut acc[0], &c0);
-        let mut v23 = e2;
-        field_ops::mul_assign(&mut v23, &e3);
-        let mut c1 = bc;
-        field_ops::mul_assign(&mut c1, &v23);
-        field_ops::add_assign(&mut acc[1], &c1);
-    }
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let es = unsafe { evals.get_unchecked(1usize) };
-        let e0 = unsafe { *es.get_unchecked(0) };
-        let e1 = unsafe { *es.get_unchecked(1) };
-        let e2 = unsafe { *es.get_unchecked(2) };
-        let e3 = unsafe { *es.get_unchecked(3) };
-        let mut v01 = e0;
-        field_ops::mul_assign(&mut v01, &e1);
-        let mut c0 = bc;
-        field_ops::mul_assign(&mut c0, &v01);
-        field_ops::add_assign(&mut acc[0], &c0);
-        let mut v23 = e2;
-        field_ops::mul_assign(&mut v23, &e3);
-        let mut c1 = bc;
-        field_ops::mul_assign(&mut c1, &v23);
-        field_ops::add_assign(&mut acc[1], &c1);
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let v0 = unsafe { evals.get_unchecked(2usize) };
-        let v1 = unsafe { evals.get_unchecked(3usize) };
-        {
-            let v0a = unsafe { *v0.get_unchecked(0usize) };
-            let v0b = unsafe { *v0.get_unchecked(1usize) };
-            let v1a = unsafe { *v1.get_unchecked(0usize) };
-            let v1b = unsafe { *v1.get_unchecked(1usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[0usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[0usize], &c1_tmp);
-        }
-        {
-            let v0a = unsafe { *v0.get_unchecked(2usize) };
-            let v0b = unsafe { *v0.get_unchecked(3usize) };
-            let v1a = unsafe { *v1.get_unchecked(2usize) };
-            let v1b = unsafe { *v1.get_unchecked(3usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[1usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[1usize], &c1_tmp);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let v0 = unsafe { evals.get_unchecked(4usize) };
-        let v1 = unsafe { evals.get_unchecked(5usize) };
-        {
-            let v0a = unsafe { *v0.get_unchecked(0usize) };
-            let v0b = unsafe { *v0.get_unchecked(1usize) };
-            let v1a = unsafe { *v1.get_unchecked(0usize) };
-            let v1b = unsafe { *v1.get_unchecked(1usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[0usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[0usize], &c1_tmp);
-        }
-        {
-            let v0a = unsafe { *v0.get_unchecked(2usize) };
-            let v0b = unsafe { *v0.get_unchecked(3usize) };
-            let v1a = unsafe { *v1.get_unchecked(2usize) };
-            let v1b = unsafe { *v1.get_unchecked(3usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[1usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[1usize], &c1_tmp);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let v0 = unsafe { evals.get_unchecked(6usize) };
-        let v1 = unsafe { evals.get_unchecked(7usize) };
-        {
-            let v0a = unsafe { *v0.get_unchecked(0usize) };
-            let v0b = unsafe { *v0.get_unchecked(1usize) };
-            let v1a = unsafe { *v1.get_unchecked(0usize) };
-            let v1b = unsafe { *v1.get_unchecked(1usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[0usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[0usize], &c1_tmp);
-        }
-        {
-            let v0a = unsafe { *v0.get_unchecked(2usize) };
-            let v0b = unsafe { *v0.get_unchecked(3usize) };
-            let v1a = unsafe { *v1.get_unchecked(2usize) };
-            let v1b = unsafe { *v1.get_unchecked(3usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[1usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[1usize], &c1_tmp);
-        }
-    }
-    acc
-}
-#[inline(always)]
-#[allow(clippy::needless_borrow)]
-unsafe fn dim_reducing_8_compute_claim(
-    output_claims: &LazyVec<BabyBearExt4, GKR_ADDRS>,
-    batch_base: BabyBearExt4,
-) -> BabyBearExt4 {
-    let mut current_batch = BabyBearExt4::ONE;
-    let combined = {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let claim = output_claims.get(0usize);
-        let mut t = bc;
-        field_ops::mul_assign(&mut t, &claim);
-        t
-    };
-    let mut combined = combined;
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let claim = output_claims.get(1usize);
-        let mut t = bc;
-        field_ops::mul_assign(&mut t, &claim);
-        field_ops::add_assign(&mut combined, &t);
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for (bc, idx) in [(bc0, 2usize), (bc1, 3usize)] {
-            let claim = output_claims.get(idx);
-            let mut t = bc;
-            field_ops::mul_assign(&mut t, &claim);
-            field_ops::add_assign(&mut combined, &t);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for (bc, idx) in [(bc0, 4usize), (bc1, 5usize)] {
-            let claim = output_claims.get(idx);
-            let mut t = bc;
-            field_ops::mul_assign(&mut t, &claim);
-            field_ops::add_assign(&mut combined, &t);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for (bc, idx) in [(bc0, 6usize), (bc1, 7usize)] {
-            let claim = output_claims.get(idx);
-            let mut t = bc;
-            field_ops::mul_assign(&mut t, &claim);
-            field_ops::add_assign(&mut combined, &t);
-        }
-    }
-    combined
-}
-#[inline(always)]
-#[allow(clippy::needless_borrow, clippy::large_const_arrays)]
-unsafe fn dim_reducing_8_final_step_accumulator(
-    evals: &[[BabyBearExt4; 4]],
-    batch_base: BabyBearExt4,
-) -> [BabyBearExt4; 2] {
-    let mut acc = [BabyBearExt4::ZERO; 2];
-    let mut current_batch = BabyBearExt4::ONE;
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let es = unsafe { evals.get_unchecked(0usize) };
-        let e0 = unsafe { *es.get_unchecked(0) };
-        let e1 = unsafe { *es.get_unchecked(1) };
-        let e2 = unsafe { *es.get_unchecked(2) };
-        let e3 = unsafe { *es.get_unchecked(3) };
-        let mut v01 = e0;
-        field_ops::mul_assign(&mut v01, &e1);
-        let mut c0 = bc;
-        field_ops::mul_assign(&mut c0, &v01);
-        field_ops::add_assign(&mut acc[0], &c0);
-        let mut v23 = e2;
-        field_ops::mul_assign(&mut v23, &e3);
-        let mut c1 = bc;
-        field_ops::mul_assign(&mut c1, &v23);
-        field_ops::add_assign(&mut acc[1], &c1);
-    }
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let es = unsafe { evals.get_unchecked(1usize) };
-        let e0 = unsafe { *es.get_unchecked(0) };
-        let e1 = unsafe { *es.get_unchecked(1) };
-        let e2 = unsafe { *es.get_unchecked(2) };
-        let e3 = unsafe { *es.get_unchecked(3) };
-        let mut v01 = e0;
-        field_ops::mul_assign(&mut v01, &e1);
-        let mut c0 = bc;
-        field_ops::mul_assign(&mut c0, &v01);
-        field_ops::add_assign(&mut acc[0], &c0);
-        let mut v23 = e2;
-        field_ops::mul_assign(&mut v23, &e3);
-        let mut c1 = bc;
-        field_ops::mul_assign(&mut c1, &v23);
-        field_ops::add_assign(&mut acc[1], &c1);
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let v0 = unsafe { evals.get_unchecked(2usize) };
-        let v1 = unsafe { evals.get_unchecked(3usize) };
-        {
-            let v0a = unsafe { *v0.get_unchecked(0usize) };
-            let v0b = unsafe { *v0.get_unchecked(1usize) };
-            let v1a = unsafe { *v1.get_unchecked(0usize) };
-            let v1b = unsafe { *v1.get_unchecked(1usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[0usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[0usize], &c1_tmp);
-        }
-        {
-            let v0a = unsafe { *v0.get_unchecked(2usize) };
-            let v0b = unsafe { *v0.get_unchecked(3usize) };
-            let v1a = unsafe { *v1.get_unchecked(2usize) };
-            let v1b = unsafe { *v1.get_unchecked(3usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[1usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[1usize], &c1_tmp);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let v0 = unsafe { evals.get_unchecked(4usize) };
-        let v1 = unsafe { evals.get_unchecked(5usize) };
-        {
-            let v0a = unsafe { *v0.get_unchecked(0usize) };
-            let v0b = unsafe { *v0.get_unchecked(1usize) };
-            let v1a = unsafe { *v1.get_unchecked(0usize) };
-            let v1b = unsafe { *v1.get_unchecked(1usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[0usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[0usize], &c1_tmp);
-        }
-        {
-            let v0a = unsafe { *v0.get_unchecked(2usize) };
-            let v0b = unsafe { *v0.get_unchecked(3usize) };
-            let v1a = unsafe { *v1.get_unchecked(2usize) };
-            let v1b = unsafe { *v1.get_unchecked(3usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[1usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[1usize], &c1_tmp);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let v0 = unsafe { evals.get_unchecked(6usize) };
-        let v1 = unsafe { evals.get_unchecked(7usize) };
-        {
-            let v0a = unsafe { *v0.get_unchecked(0usize) };
-            let v0b = unsafe { *v0.get_unchecked(1usize) };
-            let v1a = unsafe { *v1.get_unchecked(0usize) };
-            let v1b = unsafe { *v1.get_unchecked(1usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[0usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[0usize], &c1_tmp);
-        }
-        {
-            let v0a = unsafe { *v0.get_unchecked(2usize) };
-            let v0b = unsafe { *v0.get_unchecked(3usize) };
-            let v1a = unsafe { *v1.get_unchecked(2usize) };
-            let v1b = unsafe { *v1.get_unchecked(3usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[1usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[1usize], &c1_tmp);
-        }
-    }
-    acc
-}
-#[inline(always)]
-#[allow(clippy::needless_borrow)]
-unsafe fn dim_reducing_9_compute_claim(
-    output_claims: &LazyVec<BabyBearExt4, GKR_ADDRS>,
-    batch_base: BabyBearExt4,
-) -> BabyBearExt4 {
-    let mut current_batch = BabyBearExt4::ONE;
-    let combined = {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let claim = output_claims.get(0usize);
-        let mut t = bc;
-        field_ops::mul_assign(&mut t, &claim);
-        t
-    };
-    let mut combined = combined;
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let claim = output_claims.get(1usize);
-        let mut t = bc;
-        field_ops::mul_assign(&mut t, &claim);
-        field_ops::add_assign(&mut combined, &t);
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for (bc, idx) in [(bc0, 2usize), (bc1, 3usize)] {
-            let claim = output_claims.get(idx);
-            let mut t = bc;
-            field_ops::mul_assign(&mut t, &claim);
-            field_ops::add_assign(&mut combined, &t);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for (bc, idx) in [(bc0, 4usize), (bc1, 5usize)] {
-            let claim = output_claims.get(idx);
-            let mut t = bc;
-            field_ops::mul_assign(&mut t, &claim);
-            field_ops::add_assign(&mut combined, &t);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for (bc, idx) in [(bc0, 6usize), (bc1, 7usize)] {
-            let claim = output_claims.get(idx);
-            let mut t = bc;
-            field_ops::mul_assign(&mut t, &claim);
-            field_ops::add_assign(&mut combined, &t);
-        }
-    }
-    combined
-}
-#[inline(always)]
-#[allow(clippy::needless_borrow, clippy::large_const_arrays)]
-unsafe fn dim_reducing_9_final_step_accumulator(
-    evals: &[[BabyBearExt4; 4]],
-    batch_base: BabyBearExt4,
-) -> [BabyBearExt4; 2] {
-    let mut acc = [BabyBearExt4::ZERO; 2];
-    let mut current_batch = BabyBearExt4::ONE;
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let es = unsafe { evals.get_unchecked(0usize) };
-        let e0 = unsafe { *es.get_unchecked(0) };
-        let e1 = unsafe { *es.get_unchecked(1) };
-        let e2 = unsafe { *es.get_unchecked(2) };
-        let e3 = unsafe { *es.get_unchecked(3) };
-        let mut v01 = e0;
-        field_ops::mul_assign(&mut v01, &e1);
-        let mut c0 = bc;
-        field_ops::mul_assign(&mut c0, &v01);
-        field_ops::add_assign(&mut acc[0], &c0);
-        let mut v23 = e2;
-        field_ops::mul_assign(&mut v23, &e3);
-        let mut c1 = bc;
-        field_ops::mul_assign(&mut c1, &v23);
-        field_ops::add_assign(&mut acc[1], &c1);
-    }
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let es = unsafe { evals.get_unchecked(1usize) };
-        let e0 = unsafe { *es.get_unchecked(0) };
-        let e1 = unsafe { *es.get_unchecked(1) };
-        let e2 = unsafe { *es.get_unchecked(2) };
-        let e3 = unsafe { *es.get_unchecked(3) };
-        let mut v01 = e0;
-        field_ops::mul_assign(&mut v01, &e1);
-        let mut c0 = bc;
-        field_ops::mul_assign(&mut c0, &v01);
-        field_ops::add_assign(&mut acc[0], &c0);
-        let mut v23 = e2;
-        field_ops::mul_assign(&mut v23, &e3);
-        let mut c1 = bc;
-        field_ops::mul_assign(&mut c1, &v23);
-        field_ops::add_assign(&mut acc[1], &c1);
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let v0 = unsafe { evals.get_unchecked(2usize) };
-        let v1 = unsafe { evals.get_unchecked(3usize) };
-        {
-            let v0a = unsafe { *v0.get_unchecked(0usize) };
-            let v0b = unsafe { *v0.get_unchecked(1usize) };
-            let v1a = unsafe { *v1.get_unchecked(0usize) };
-            let v1b = unsafe { *v1.get_unchecked(1usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[0usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[0usize], &c1_tmp);
-        }
-        {
-            let v0a = unsafe { *v0.get_unchecked(2usize) };
-            let v0b = unsafe { *v0.get_unchecked(3usize) };
-            let v1a = unsafe { *v1.get_unchecked(2usize) };
-            let v1b = unsafe { *v1.get_unchecked(3usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[1usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[1usize], &c1_tmp);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let v0 = unsafe { evals.get_unchecked(4usize) };
-        let v1 = unsafe { evals.get_unchecked(5usize) };
-        {
-            let v0a = unsafe { *v0.get_unchecked(0usize) };
-            let v0b = unsafe { *v0.get_unchecked(1usize) };
-            let v1a = unsafe { *v1.get_unchecked(0usize) };
-            let v1b = unsafe { *v1.get_unchecked(1usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[0usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[0usize], &c1_tmp);
-        }
-        {
-            let v0a = unsafe { *v0.get_unchecked(2usize) };
-            let v0b = unsafe { *v0.get_unchecked(3usize) };
-            let v1a = unsafe { *v1.get_unchecked(2usize) };
-            let v1b = unsafe { *v1.get_unchecked(3usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[1usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[1usize], &c1_tmp);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let v0 = unsafe { evals.get_unchecked(6usize) };
-        let v1 = unsafe { evals.get_unchecked(7usize) };
-        {
-            let v0a = unsafe { *v0.get_unchecked(0usize) };
-            let v0b = unsafe { *v0.get_unchecked(1usize) };
-            let v1a = unsafe { *v1.get_unchecked(0usize) };
-            let v1b = unsafe { *v1.get_unchecked(1usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[0usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[0usize], &c1_tmp);
-        }
-        {
-            let v0a = unsafe { *v0.get_unchecked(2usize) };
-            let v0b = unsafe { *v0.get_unchecked(3usize) };
-            let v1a = unsafe { *v1.get_unchecked(2usize) };
-            let v1b = unsafe { *v1.get_unchecked(3usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[1usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[1usize], &c1_tmp);
-        }
-    }
-    acc
-}
-#[inline(always)]
-#[allow(clippy::needless_borrow)]
-unsafe fn dim_reducing_10_compute_claim(
-    output_claims: &LazyVec<BabyBearExt4, GKR_ADDRS>,
-    batch_base: BabyBearExt4,
-) -> BabyBearExt4 {
-    let mut current_batch = BabyBearExt4::ONE;
-    let combined = {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let claim = output_claims.get(0usize);
-        let mut t = bc;
-        field_ops::mul_assign(&mut t, &claim);
-        t
-    };
-    let mut combined = combined;
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let claim = output_claims.get(1usize);
-        let mut t = bc;
-        field_ops::mul_assign(&mut t, &claim);
-        field_ops::add_assign(&mut combined, &t);
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for (bc, idx) in [(bc0, 2usize), (bc1, 3usize)] {
-            let claim = output_claims.get(idx);
-            let mut t = bc;
-            field_ops::mul_assign(&mut t, &claim);
-            field_ops::add_assign(&mut combined, &t);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for (bc, idx) in [(bc0, 4usize), (bc1, 5usize)] {
-            let claim = output_claims.get(idx);
-            let mut t = bc;
-            field_ops::mul_assign(&mut t, &claim);
-            field_ops::add_assign(&mut combined, &t);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for (bc, idx) in [(bc0, 6usize), (bc1, 7usize)] {
-            let claim = output_claims.get(idx);
-            let mut t = bc;
-            field_ops::mul_assign(&mut t, &claim);
-            field_ops::add_assign(&mut combined, &t);
-        }
-    }
-    combined
-}
-#[inline(always)]
-#[allow(clippy::needless_borrow, clippy::large_const_arrays)]
-unsafe fn dim_reducing_10_final_step_accumulator(
-    evals: &[[BabyBearExt4; 4]],
-    batch_base: BabyBearExt4,
-) -> [BabyBearExt4; 2] {
-    let mut acc = [BabyBearExt4::ZERO; 2];
-    let mut current_batch = BabyBearExt4::ONE;
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let es = unsafe { evals.get_unchecked(0usize) };
-        let e0 = unsafe { *es.get_unchecked(0) };
-        let e1 = unsafe { *es.get_unchecked(1) };
-        let e2 = unsafe { *es.get_unchecked(2) };
-        let e3 = unsafe { *es.get_unchecked(3) };
-        let mut v01 = e0;
-        field_ops::mul_assign(&mut v01, &e1);
-        let mut c0 = bc;
-        field_ops::mul_assign(&mut c0, &v01);
-        field_ops::add_assign(&mut acc[0], &c0);
-        let mut v23 = e2;
-        field_ops::mul_assign(&mut v23, &e3);
-        let mut c1 = bc;
-        field_ops::mul_assign(&mut c1, &v23);
-        field_ops::add_assign(&mut acc[1], &c1);
-    }
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let es = unsafe { evals.get_unchecked(1usize) };
-        let e0 = unsafe { *es.get_unchecked(0) };
-        let e1 = unsafe { *es.get_unchecked(1) };
-        let e2 = unsafe { *es.get_unchecked(2) };
-        let e3 = unsafe { *es.get_unchecked(3) };
-        let mut v01 = e0;
-        field_ops::mul_assign(&mut v01, &e1);
-        let mut c0 = bc;
-        field_ops::mul_assign(&mut c0, &v01);
-        field_ops::add_assign(&mut acc[0], &c0);
-        let mut v23 = e2;
-        field_ops::mul_assign(&mut v23, &e3);
-        let mut c1 = bc;
-        field_ops::mul_assign(&mut c1, &v23);
-        field_ops::add_assign(&mut acc[1], &c1);
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let v0 = unsafe { evals.get_unchecked(2usize) };
-        let v1 = unsafe { evals.get_unchecked(3usize) };
-        {
-            let v0a = unsafe { *v0.get_unchecked(0usize) };
-            let v0b = unsafe { *v0.get_unchecked(1usize) };
-            let v1a = unsafe { *v1.get_unchecked(0usize) };
-            let v1b = unsafe { *v1.get_unchecked(1usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[0usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[0usize], &c1_tmp);
-        }
-        {
-            let v0a = unsafe { *v0.get_unchecked(2usize) };
-            let v0b = unsafe { *v0.get_unchecked(3usize) };
-            let v1a = unsafe { *v1.get_unchecked(2usize) };
-            let v1b = unsafe { *v1.get_unchecked(3usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[1usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[1usize], &c1_tmp);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let v0 = unsafe { evals.get_unchecked(4usize) };
-        let v1 = unsafe { evals.get_unchecked(5usize) };
-        {
-            let v0a = unsafe { *v0.get_unchecked(0usize) };
-            let v0b = unsafe { *v0.get_unchecked(1usize) };
-            let v1a = unsafe { *v1.get_unchecked(0usize) };
-            let v1b = unsafe { *v1.get_unchecked(1usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[0usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[0usize], &c1_tmp);
-        }
-        {
-            let v0a = unsafe { *v0.get_unchecked(2usize) };
-            let v0b = unsafe { *v0.get_unchecked(3usize) };
-            let v1a = unsafe { *v1.get_unchecked(2usize) };
-            let v1b = unsafe { *v1.get_unchecked(3usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[1usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[1usize], &c1_tmp);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let v0 = unsafe { evals.get_unchecked(6usize) };
-        let v1 = unsafe { evals.get_unchecked(7usize) };
-        {
-            let v0a = unsafe { *v0.get_unchecked(0usize) };
-            let v0b = unsafe { *v0.get_unchecked(1usize) };
-            let v1a = unsafe { *v1.get_unchecked(0usize) };
-            let v1b = unsafe { *v1.get_unchecked(1usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[0usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[0usize], &c1_tmp);
-        }
-        {
-            let v0a = unsafe { *v0.get_unchecked(2usize) };
-            let v0b = unsafe { *v0.get_unchecked(3usize) };
-            let v1a = unsafe { *v1.get_unchecked(2usize) };
-            let v1b = unsafe { *v1.get_unchecked(3usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[1usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[1usize], &c1_tmp);
-        }
-    }
-    acc
-}
-#[inline(always)]
-#[allow(clippy::needless_borrow)]
-unsafe fn dim_reducing_11_compute_claim(
-    output_claims: &LazyVec<BabyBearExt4, GKR_ADDRS>,
-    batch_base: BabyBearExt4,
-) -> BabyBearExt4 {
-    let mut current_batch = BabyBearExt4::ONE;
-    let combined = {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let claim = output_claims.get(0usize);
-        let mut t = bc;
-        field_ops::mul_assign(&mut t, &claim);
-        t
-    };
-    let mut combined = combined;
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let claim = output_claims.get(1usize);
-        let mut t = bc;
-        field_ops::mul_assign(&mut t, &claim);
-        field_ops::add_assign(&mut combined, &t);
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for (bc, idx) in [(bc0, 2usize), (bc1, 3usize)] {
-            let claim = output_claims.get(idx);
-            let mut t = bc;
-            field_ops::mul_assign(&mut t, &claim);
-            field_ops::add_assign(&mut combined, &t);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for (bc, idx) in [(bc0, 4usize), (bc1, 5usize)] {
-            let claim = output_claims.get(idx);
-            let mut t = bc;
-            field_ops::mul_assign(&mut t, &claim);
-            field_ops::add_assign(&mut combined, &t);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for (bc, idx) in [(bc0, 6usize), (bc1, 7usize)] {
-            let claim = output_claims.get(idx);
-            let mut t = bc;
-            field_ops::mul_assign(&mut t, &claim);
-            field_ops::add_assign(&mut combined, &t);
-        }
-    }
-    combined
-}
-#[inline(always)]
-#[allow(clippy::needless_borrow, clippy::large_const_arrays)]
-unsafe fn dim_reducing_11_final_step_accumulator(
-    evals: &[[BabyBearExt4; 4]],
-    batch_base: BabyBearExt4,
-) -> [BabyBearExt4; 2] {
-    let mut acc = [BabyBearExt4::ZERO; 2];
-    let mut current_batch = BabyBearExt4::ONE;
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let es = unsafe { evals.get_unchecked(0usize) };
-        let e0 = unsafe { *es.get_unchecked(0) };
-        let e1 = unsafe { *es.get_unchecked(1) };
-        let e2 = unsafe { *es.get_unchecked(2) };
-        let e3 = unsafe { *es.get_unchecked(3) };
-        let mut v01 = e0;
-        field_ops::mul_assign(&mut v01, &e1);
-        let mut c0 = bc;
-        field_ops::mul_assign(&mut c0, &v01);
-        field_ops::add_assign(&mut acc[0], &c0);
-        let mut v23 = e2;
-        field_ops::mul_assign(&mut v23, &e3);
-        let mut c1 = bc;
-        field_ops::mul_assign(&mut c1, &v23);
-        field_ops::add_assign(&mut acc[1], &c1);
-    }
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let es = unsafe { evals.get_unchecked(1usize) };
-        let e0 = unsafe { *es.get_unchecked(0) };
-        let e1 = unsafe { *es.get_unchecked(1) };
-        let e2 = unsafe { *es.get_unchecked(2) };
-        let e3 = unsafe { *es.get_unchecked(3) };
-        let mut v01 = e0;
-        field_ops::mul_assign(&mut v01, &e1);
-        let mut c0 = bc;
-        field_ops::mul_assign(&mut c0, &v01);
-        field_ops::add_assign(&mut acc[0], &c0);
-        let mut v23 = e2;
-        field_ops::mul_assign(&mut v23, &e3);
-        let mut c1 = bc;
-        field_ops::mul_assign(&mut c1, &v23);
-        field_ops::add_assign(&mut acc[1], &c1);
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let v0 = unsafe { evals.get_unchecked(2usize) };
-        let v1 = unsafe { evals.get_unchecked(3usize) };
-        {
-            let v0a = unsafe { *v0.get_unchecked(0usize) };
-            let v0b = unsafe { *v0.get_unchecked(1usize) };
-            let v1a = unsafe { *v1.get_unchecked(0usize) };
-            let v1b = unsafe { *v1.get_unchecked(1usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[0usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[0usize], &c1_tmp);
-        }
-        {
-            let v0a = unsafe { *v0.get_unchecked(2usize) };
-            let v0b = unsafe { *v0.get_unchecked(3usize) };
-            let v1a = unsafe { *v1.get_unchecked(2usize) };
-            let v1b = unsafe { *v1.get_unchecked(3usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[1usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[1usize], &c1_tmp);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let v0 = unsafe { evals.get_unchecked(4usize) };
-        let v1 = unsafe { evals.get_unchecked(5usize) };
-        {
-            let v0a = unsafe { *v0.get_unchecked(0usize) };
-            let v0b = unsafe { *v0.get_unchecked(1usize) };
-            let v1a = unsafe { *v1.get_unchecked(0usize) };
-            let v1b = unsafe { *v1.get_unchecked(1usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[0usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[0usize], &c1_tmp);
-        }
-        {
-            let v0a = unsafe { *v0.get_unchecked(2usize) };
-            let v0b = unsafe { *v0.get_unchecked(3usize) };
-            let v1a = unsafe { *v1.get_unchecked(2usize) };
-            let v1b = unsafe { *v1.get_unchecked(3usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[1usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[1usize], &c1_tmp);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let v0 = unsafe { evals.get_unchecked(6usize) };
-        let v1 = unsafe { evals.get_unchecked(7usize) };
-        {
-            let v0a = unsafe { *v0.get_unchecked(0usize) };
-            let v0b = unsafe { *v0.get_unchecked(1usize) };
-            let v1a = unsafe { *v1.get_unchecked(0usize) };
-            let v1b = unsafe { *v1.get_unchecked(1usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[0usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[0usize], &c1_tmp);
-        }
-        {
-            let v0a = unsafe { *v0.get_unchecked(2usize) };
-            let v0b = unsafe { *v0.get_unchecked(3usize) };
-            let v1a = unsafe { *v1.get_unchecked(2usize) };
-            let v1b = unsafe { *v1.get_unchecked(3usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[1usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[1usize], &c1_tmp);
-        }
-    }
-    acc
-}
-#[inline(always)]
-#[allow(clippy::needless_borrow)]
-unsafe fn dim_reducing_12_compute_claim(
-    output_claims: &LazyVec<BabyBearExt4, GKR_ADDRS>,
-    batch_base: BabyBearExt4,
-) -> BabyBearExt4 {
-    let mut current_batch = BabyBearExt4::ONE;
-    let combined = {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let claim = output_claims.get(0usize);
-        let mut t = bc;
-        field_ops::mul_assign(&mut t, &claim);
-        t
-    };
-    let mut combined = combined;
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let claim = output_claims.get(1usize);
-        let mut t = bc;
-        field_ops::mul_assign(&mut t, &claim);
-        field_ops::add_assign(&mut combined, &t);
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for (bc, idx) in [(bc0, 2usize), (bc1, 3usize)] {
-            let claim = output_claims.get(idx);
-            let mut t = bc;
-            field_ops::mul_assign(&mut t, &claim);
-            field_ops::add_assign(&mut combined, &t);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for (bc, idx) in [(bc0, 4usize), (bc1, 5usize)] {
-            let claim = output_claims.get(idx);
-            let mut t = bc;
-            field_ops::mul_assign(&mut t, &claim);
-            field_ops::add_assign(&mut combined, &t);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for (bc, idx) in [(bc0, 6usize), (bc1, 7usize)] {
-            let claim = output_claims.get(idx);
-            let mut t = bc;
-            field_ops::mul_assign(&mut t, &claim);
-            field_ops::add_assign(&mut combined, &t);
-        }
-    }
-    combined
-}
-#[inline(always)]
-#[allow(clippy::needless_borrow, clippy::large_const_arrays)]
-unsafe fn dim_reducing_12_final_step_accumulator(
-    evals: &[[BabyBearExt4; 4]],
-    batch_base: BabyBearExt4,
-) -> [BabyBearExt4; 2] {
-    let mut acc = [BabyBearExt4::ZERO; 2];
-    let mut current_batch = BabyBearExt4::ONE;
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let es = unsafe { evals.get_unchecked(0usize) };
-        let e0 = unsafe { *es.get_unchecked(0) };
-        let e1 = unsafe { *es.get_unchecked(1) };
-        let e2 = unsafe { *es.get_unchecked(2) };
-        let e3 = unsafe { *es.get_unchecked(3) };
-        let mut v01 = e0;
-        field_ops::mul_assign(&mut v01, &e1);
-        let mut c0 = bc;
-        field_ops::mul_assign(&mut c0, &v01);
-        field_ops::add_assign(&mut acc[0], &c0);
-        let mut v23 = e2;
-        field_ops::mul_assign(&mut v23, &e3);
-        let mut c1 = bc;
-        field_ops::mul_assign(&mut c1, &v23);
-        field_ops::add_assign(&mut acc[1], &c1);
-    }
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let es = unsafe { evals.get_unchecked(1usize) };
-        let e0 = unsafe { *es.get_unchecked(0) };
-        let e1 = unsafe { *es.get_unchecked(1) };
-        let e2 = unsafe { *es.get_unchecked(2) };
-        let e3 = unsafe { *es.get_unchecked(3) };
-        let mut v01 = e0;
-        field_ops::mul_assign(&mut v01, &e1);
-        let mut c0 = bc;
-        field_ops::mul_assign(&mut c0, &v01);
-        field_ops::add_assign(&mut acc[0], &c0);
-        let mut v23 = e2;
-        field_ops::mul_assign(&mut v23, &e3);
-        let mut c1 = bc;
-        field_ops::mul_assign(&mut c1, &v23);
-        field_ops::add_assign(&mut acc[1], &c1);
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let v0 = unsafe { evals.get_unchecked(2usize) };
-        let v1 = unsafe { evals.get_unchecked(3usize) };
-        {
-            let v0a = unsafe { *v0.get_unchecked(0usize) };
-            let v0b = unsafe { *v0.get_unchecked(1usize) };
-            let v1a = unsafe { *v1.get_unchecked(0usize) };
-            let v1b = unsafe { *v1.get_unchecked(1usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[0usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[0usize], &c1_tmp);
-        }
-        {
-            let v0a = unsafe { *v0.get_unchecked(2usize) };
-            let v0b = unsafe { *v0.get_unchecked(3usize) };
-            let v1a = unsafe { *v1.get_unchecked(2usize) };
-            let v1b = unsafe { *v1.get_unchecked(3usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[1usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[1usize], &c1_tmp);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let v0 = unsafe { evals.get_unchecked(4usize) };
-        let v1 = unsafe { evals.get_unchecked(5usize) };
-        {
-            let v0a = unsafe { *v0.get_unchecked(0usize) };
-            let v0b = unsafe { *v0.get_unchecked(1usize) };
-            let v1a = unsafe { *v1.get_unchecked(0usize) };
-            let v1b = unsafe { *v1.get_unchecked(1usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[0usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[0usize], &c1_tmp);
-        }
-        {
-            let v0a = unsafe { *v0.get_unchecked(2usize) };
-            let v0b = unsafe { *v0.get_unchecked(3usize) };
-            let v1a = unsafe { *v1.get_unchecked(2usize) };
-            let v1b = unsafe { *v1.get_unchecked(3usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[1usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[1usize], &c1_tmp);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let v0 = unsafe { evals.get_unchecked(6usize) };
-        let v1 = unsafe { evals.get_unchecked(7usize) };
-        {
-            let v0a = unsafe { *v0.get_unchecked(0usize) };
-            let v0b = unsafe { *v0.get_unchecked(1usize) };
-            let v1a = unsafe { *v1.get_unchecked(0usize) };
-            let v1b = unsafe { *v1.get_unchecked(1usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[0usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[0usize], &c1_tmp);
-        }
-        {
-            let v0a = unsafe { *v0.get_unchecked(2usize) };
-            let v0b = unsafe { *v0.get_unchecked(3usize) };
-            let v1a = unsafe { *v1.get_unchecked(2usize) };
-            let v1b = unsafe { *v1.get_unchecked(3usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[1usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[1usize], &c1_tmp);
-        }
-    }
-    acc
-}
-#[inline(always)]
-#[allow(clippy::needless_borrow)]
-unsafe fn dim_reducing_13_compute_claim(
-    output_claims: &LazyVec<BabyBearExt4, GKR_ADDRS>,
-    batch_base: BabyBearExt4,
-) -> BabyBearExt4 {
-    let mut current_batch = BabyBearExt4::ONE;
-    let combined = {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let claim = output_claims.get(0usize);
-        let mut t = bc;
-        field_ops::mul_assign(&mut t, &claim);
-        t
-    };
-    let mut combined = combined;
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let claim = output_claims.get(1usize);
-        let mut t = bc;
-        field_ops::mul_assign(&mut t, &claim);
-        field_ops::add_assign(&mut combined, &t);
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for (bc, idx) in [(bc0, 2usize), (bc1, 3usize)] {
-            let claim = output_claims.get(idx);
-            let mut t = bc;
-            field_ops::mul_assign(&mut t, &claim);
-            field_ops::add_assign(&mut combined, &t);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for (bc, idx) in [(bc0, 4usize), (bc1, 5usize)] {
-            let claim = output_claims.get(idx);
-            let mut t = bc;
-            field_ops::mul_assign(&mut t, &claim);
-            field_ops::add_assign(&mut combined, &t);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for (bc, idx) in [(bc0, 6usize), (bc1, 7usize)] {
-            let claim = output_claims.get(idx);
-            let mut t = bc;
-            field_ops::mul_assign(&mut t, &claim);
-            field_ops::add_assign(&mut combined, &t);
-        }
-    }
-    combined
-}
-#[inline(always)]
-#[allow(clippy::needless_borrow, clippy::large_const_arrays)]
-unsafe fn dim_reducing_13_final_step_accumulator(
-    evals: &[[BabyBearExt4; 4]],
-    batch_base: BabyBearExt4,
-) -> [BabyBearExt4; 2] {
-    let mut acc = [BabyBearExt4::ZERO; 2];
-    let mut current_batch = BabyBearExt4::ONE;
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let es = unsafe { evals.get_unchecked(0usize) };
-        let e0 = unsafe { *es.get_unchecked(0) };
-        let e1 = unsafe { *es.get_unchecked(1) };
-        let e2 = unsafe { *es.get_unchecked(2) };
-        let e3 = unsafe { *es.get_unchecked(3) };
-        let mut v01 = e0;
-        field_ops::mul_assign(&mut v01, &e1);
-        let mut c0 = bc;
-        field_ops::mul_assign(&mut c0, &v01);
-        field_ops::add_assign(&mut acc[0], &c0);
-        let mut v23 = e2;
-        field_ops::mul_assign(&mut v23, &e3);
-        let mut c1 = bc;
-        field_ops::mul_assign(&mut c1, &v23);
-        field_ops::add_assign(&mut acc[1], &c1);
-    }
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let es = unsafe { evals.get_unchecked(1usize) };
-        let e0 = unsafe { *es.get_unchecked(0) };
-        let e1 = unsafe { *es.get_unchecked(1) };
-        let e2 = unsafe { *es.get_unchecked(2) };
-        let e3 = unsafe { *es.get_unchecked(3) };
-        let mut v01 = e0;
-        field_ops::mul_assign(&mut v01, &e1);
-        let mut c0 = bc;
-        field_ops::mul_assign(&mut c0, &v01);
-        field_ops::add_assign(&mut acc[0], &c0);
-        let mut v23 = e2;
-        field_ops::mul_assign(&mut v23, &e3);
-        let mut c1 = bc;
-        field_ops::mul_assign(&mut c1, &v23);
-        field_ops::add_assign(&mut acc[1], &c1);
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let v0 = unsafe { evals.get_unchecked(2usize) };
-        let v1 = unsafe { evals.get_unchecked(3usize) };
-        {
-            let v0a = unsafe { *v0.get_unchecked(0usize) };
-            let v0b = unsafe { *v0.get_unchecked(1usize) };
-            let v1a = unsafe { *v1.get_unchecked(0usize) };
-            let v1b = unsafe { *v1.get_unchecked(1usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[0usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[0usize], &c1_tmp);
-        }
-        {
-            let v0a = unsafe { *v0.get_unchecked(2usize) };
-            let v0b = unsafe { *v0.get_unchecked(3usize) };
-            let v1a = unsafe { *v1.get_unchecked(2usize) };
-            let v1b = unsafe { *v1.get_unchecked(3usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[1usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[1usize], &c1_tmp);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let v0 = unsafe { evals.get_unchecked(4usize) };
-        let v1 = unsafe { evals.get_unchecked(5usize) };
-        {
-            let v0a = unsafe { *v0.get_unchecked(0usize) };
-            let v0b = unsafe { *v0.get_unchecked(1usize) };
-            let v1a = unsafe { *v1.get_unchecked(0usize) };
-            let v1b = unsafe { *v1.get_unchecked(1usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[0usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[0usize], &c1_tmp);
-        }
-        {
-            let v0a = unsafe { *v0.get_unchecked(2usize) };
-            let v0b = unsafe { *v0.get_unchecked(3usize) };
-            let v1a = unsafe { *v1.get_unchecked(2usize) };
-            let v1b = unsafe { *v1.get_unchecked(3usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[1usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[1usize], &c1_tmp);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let v0 = unsafe { evals.get_unchecked(6usize) };
-        let v1 = unsafe { evals.get_unchecked(7usize) };
-        {
-            let v0a = unsafe { *v0.get_unchecked(0usize) };
-            let v0b = unsafe { *v0.get_unchecked(1usize) };
-            let v1a = unsafe { *v1.get_unchecked(0usize) };
-            let v1b = unsafe { *v1.get_unchecked(1usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[0usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[0usize], &c1_tmp);
-        }
-        {
-            let v0a = unsafe { *v0.get_unchecked(2usize) };
-            let v0b = unsafe { *v0.get_unchecked(3usize) };
-            let v1a = unsafe { *v1.get_unchecked(2usize) };
-            let v1b = unsafe { *v1.get_unchecked(3usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[1usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[1usize], &c1_tmp);
-        }
-    }
-    acc
-}
-#[inline(always)]
-#[allow(clippy::needless_borrow)]
-unsafe fn dim_reducing_14_compute_claim(
-    output_claims: &LazyVec<BabyBearExt4, GKR_ADDRS>,
-    batch_base: BabyBearExt4,
-) -> BabyBearExt4 {
-    let mut current_batch = BabyBearExt4::ONE;
-    let combined = {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let claim = output_claims.get(0usize);
-        let mut t = bc;
-        field_ops::mul_assign(&mut t, &claim);
-        t
-    };
-    let mut combined = combined;
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let claim = output_claims.get(1usize);
-        let mut t = bc;
-        field_ops::mul_assign(&mut t, &claim);
-        field_ops::add_assign(&mut combined, &t);
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for (bc, idx) in [(bc0, 2usize), (bc1, 3usize)] {
-            let claim = output_claims.get(idx);
-            let mut t = bc;
-            field_ops::mul_assign(&mut t, &claim);
-            field_ops::add_assign(&mut combined, &t);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for (bc, idx) in [(bc0, 4usize), (bc1, 5usize)] {
-            let claim = output_claims.get(idx);
-            let mut t = bc;
-            field_ops::mul_assign(&mut t, &claim);
-            field_ops::add_assign(&mut combined, &t);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for (bc, idx) in [(bc0, 6usize), (bc1, 7usize)] {
-            let claim = output_claims.get(idx);
-            let mut t = bc;
-            field_ops::mul_assign(&mut t, &claim);
-            field_ops::add_assign(&mut combined, &t);
-        }
-    }
-    combined
-}
-#[inline(always)]
-#[allow(clippy::needless_borrow, clippy::large_const_arrays)]
-unsafe fn dim_reducing_14_final_step_accumulator(
-    evals: &[[BabyBearExt4; 4]],
-    batch_base: BabyBearExt4,
-) -> [BabyBearExt4; 2] {
-    let mut acc = [BabyBearExt4::ZERO; 2];
-    let mut current_batch = BabyBearExt4::ONE;
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let es = unsafe { evals.get_unchecked(0usize) };
-        let e0 = unsafe { *es.get_unchecked(0) };
-        let e1 = unsafe { *es.get_unchecked(1) };
-        let e2 = unsafe { *es.get_unchecked(2) };
-        let e3 = unsafe { *es.get_unchecked(3) };
-        let mut v01 = e0;
-        field_ops::mul_assign(&mut v01, &e1);
-        let mut c0 = bc;
-        field_ops::mul_assign(&mut c0, &v01);
-        field_ops::add_assign(&mut acc[0], &c0);
-        let mut v23 = e2;
-        field_ops::mul_assign(&mut v23, &e3);
-        let mut c1 = bc;
-        field_ops::mul_assign(&mut c1, &v23);
-        field_ops::add_assign(&mut acc[1], &c1);
-    }
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let es = unsafe { evals.get_unchecked(1usize) };
-        let e0 = unsafe { *es.get_unchecked(0) };
-        let e1 = unsafe { *es.get_unchecked(1) };
-        let e2 = unsafe { *es.get_unchecked(2) };
-        let e3 = unsafe { *es.get_unchecked(3) };
-        let mut v01 = e0;
-        field_ops::mul_assign(&mut v01, &e1);
-        let mut c0 = bc;
-        field_ops::mul_assign(&mut c0, &v01);
-        field_ops::add_assign(&mut acc[0], &c0);
-        let mut v23 = e2;
-        field_ops::mul_assign(&mut v23, &e3);
-        let mut c1 = bc;
-        field_ops::mul_assign(&mut c1, &v23);
-        field_ops::add_assign(&mut acc[1], &c1);
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let v0 = unsafe { evals.get_unchecked(2usize) };
-        let v1 = unsafe { evals.get_unchecked(3usize) };
-        {
-            let v0a = unsafe { *v0.get_unchecked(0usize) };
-            let v0b = unsafe { *v0.get_unchecked(1usize) };
-            let v1a = unsafe { *v1.get_unchecked(0usize) };
-            let v1b = unsafe { *v1.get_unchecked(1usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[0usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[0usize], &c1_tmp);
-        }
-        {
-            let v0a = unsafe { *v0.get_unchecked(2usize) };
-            let v0b = unsafe { *v0.get_unchecked(3usize) };
-            let v1a = unsafe { *v1.get_unchecked(2usize) };
-            let v1b = unsafe { *v1.get_unchecked(3usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[1usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[1usize], &c1_tmp);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let v0 = unsafe { evals.get_unchecked(4usize) };
-        let v1 = unsafe { evals.get_unchecked(5usize) };
-        {
-            let v0a = unsafe { *v0.get_unchecked(0usize) };
-            let v0b = unsafe { *v0.get_unchecked(1usize) };
-            let v1a = unsafe { *v1.get_unchecked(0usize) };
-            let v1b = unsafe { *v1.get_unchecked(1usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[0usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[0usize], &c1_tmp);
-        }
-        {
-            let v0a = unsafe { *v0.get_unchecked(2usize) };
-            let v0b = unsafe { *v0.get_unchecked(3usize) };
-            let v1a = unsafe { *v1.get_unchecked(2usize) };
-            let v1b = unsafe { *v1.get_unchecked(3usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[1usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[1usize], &c1_tmp);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let v0 = unsafe { evals.get_unchecked(6usize) };
-        let v1 = unsafe { evals.get_unchecked(7usize) };
-        {
-            let v0a = unsafe { *v0.get_unchecked(0usize) };
-            let v0b = unsafe { *v0.get_unchecked(1usize) };
-            let v1a = unsafe { *v1.get_unchecked(0usize) };
-            let v1b = unsafe { *v1.get_unchecked(1usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[0usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[0usize], &c1_tmp);
-        }
-        {
-            let v0a = unsafe { *v0.get_unchecked(2usize) };
-            let v0b = unsafe { *v0.get_unchecked(3usize) };
-            let v1a = unsafe { *v1.get_unchecked(2usize) };
-            let v1b = unsafe { *v1.get_unchecked(3usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[1usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[1usize], &c1_tmp);
-        }
-    }
-    acc
-}
-#[inline(always)]
-#[allow(clippy::needless_borrow)]
-unsafe fn dim_reducing_15_compute_claim(
-    output_claims: &LazyVec<BabyBearExt4, GKR_ADDRS>,
-    batch_base: BabyBearExt4,
-) -> BabyBearExt4 {
-    let mut current_batch = BabyBearExt4::ONE;
-    let combined = {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let claim = output_claims.get(0usize);
-        let mut t = bc;
-        field_ops::mul_assign(&mut t, &claim);
-        t
-    };
-    let mut combined = combined;
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let claim = output_claims.get(1usize);
-        let mut t = bc;
-        field_ops::mul_assign(&mut t, &claim);
-        field_ops::add_assign(&mut combined, &t);
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for (bc, idx) in [(bc0, 2usize), (bc1, 3usize)] {
-            let claim = output_claims.get(idx);
-            let mut t = bc;
-            field_ops::mul_assign(&mut t, &claim);
-            field_ops::add_assign(&mut combined, &t);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for (bc, idx) in [(bc0, 4usize), (bc1, 5usize)] {
-            let claim = output_claims.get(idx);
-            let mut t = bc;
-            field_ops::mul_assign(&mut t, &claim);
-            field_ops::add_assign(&mut combined, &t);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for (bc, idx) in [(bc0, 6usize), (bc1, 7usize)] {
-            let claim = output_claims.get(idx);
-            let mut t = bc;
-            field_ops::mul_assign(&mut t, &claim);
-            field_ops::add_assign(&mut combined, &t);
-        }
-    }
-    combined
-}
-#[inline(always)]
-#[allow(clippy::needless_borrow, clippy::large_const_arrays)]
-unsafe fn dim_reducing_15_final_step_accumulator(
-    evals: &[[BabyBearExt4; 4]],
-    batch_base: BabyBearExt4,
-) -> [BabyBearExt4; 2] {
-    let mut acc = [BabyBearExt4::ZERO; 2];
-    let mut current_batch = BabyBearExt4::ONE;
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let es = unsafe { evals.get_unchecked(0usize) };
-        let e0 = unsafe { *es.get_unchecked(0) };
-        let e1 = unsafe { *es.get_unchecked(1) };
-        let e2 = unsafe { *es.get_unchecked(2) };
-        let e3 = unsafe { *es.get_unchecked(3) };
-        let mut v01 = e0;
-        field_ops::mul_assign(&mut v01, &e1);
-        let mut c0 = bc;
-        field_ops::mul_assign(&mut c0, &v01);
-        field_ops::add_assign(&mut acc[0], &c0);
-        let mut v23 = e2;
-        field_ops::mul_assign(&mut v23, &e3);
-        let mut c1 = bc;
-        field_ops::mul_assign(&mut c1, &v23);
-        field_ops::add_assign(&mut acc[1], &c1);
-    }
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let es = unsafe { evals.get_unchecked(1usize) };
-        let e0 = unsafe { *es.get_unchecked(0) };
-        let e1 = unsafe { *es.get_unchecked(1) };
-        let e2 = unsafe { *es.get_unchecked(2) };
-        let e3 = unsafe { *es.get_unchecked(3) };
-        let mut v01 = e0;
-        field_ops::mul_assign(&mut v01, &e1);
-        let mut c0 = bc;
-        field_ops::mul_assign(&mut c0, &v01);
-        field_ops::add_assign(&mut acc[0], &c0);
-        let mut v23 = e2;
-        field_ops::mul_assign(&mut v23, &e3);
-        let mut c1 = bc;
-        field_ops::mul_assign(&mut c1, &v23);
-        field_ops::add_assign(&mut acc[1], &c1);
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let v0 = unsafe { evals.get_unchecked(2usize) };
-        let v1 = unsafe { evals.get_unchecked(3usize) };
-        {
-            let v0a = unsafe { *v0.get_unchecked(0usize) };
-            let v0b = unsafe { *v0.get_unchecked(1usize) };
-            let v1a = unsafe { *v1.get_unchecked(0usize) };
-            let v1b = unsafe { *v1.get_unchecked(1usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[0usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[0usize], &c1_tmp);
-        }
-        {
-            let v0a = unsafe { *v0.get_unchecked(2usize) };
-            let v0b = unsafe { *v0.get_unchecked(3usize) };
-            let v1a = unsafe { *v1.get_unchecked(2usize) };
-            let v1b = unsafe { *v1.get_unchecked(3usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[1usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[1usize], &c1_tmp);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let v0 = unsafe { evals.get_unchecked(4usize) };
-        let v1 = unsafe { evals.get_unchecked(5usize) };
-        {
-            let v0a = unsafe { *v0.get_unchecked(0usize) };
-            let v0b = unsafe { *v0.get_unchecked(1usize) };
-            let v1a = unsafe { *v1.get_unchecked(0usize) };
-            let v1b = unsafe { *v1.get_unchecked(1usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[0usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[0usize], &c1_tmp);
-        }
-        {
-            let v0a = unsafe { *v0.get_unchecked(2usize) };
-            let v0b = unsafe { *v0.get_unchecked(3usize) };
-            let v1a = unsafe { *v1.get_unchecked(2usize) };
-            let v1b = unsafe { *v1.get_unchecked(3usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[1usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[1usize], &c1_tmp);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let v0 = unsafe { evals.get_unchecked(6usize) };
-        let v1 = unsafe { evals.get_unchecked(7usize) };
-        {
-            let v0a = unsafe { *v0.get_unchecked(0usize) };
-            let v0b = unsafe { *v0.get_unchecked(1usize) };
-            let v1a = unsafe { *v1.get_unchecked(0usize) };
-            let v1b = unsafe { *v1.get_unchecked(1usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[0usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[0usize], &c1_tmp);
-        }
-        {
-            let v0a = unsafe { *v0.get_unchecked(2usize) };
-            let v0b = unsafe { *v0.get_unchecked(3usize) };
-            let v1a = unsafe { *v1.get_unchecked(2usize) };
-            let v1b = unsafe { *v1.get_unchecked(3usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[1usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[1usize], &c1_tmp);
-        }
-    }
-    acc
-}
-#[inline(always)]
-#[allow(clippy::needless_borrow)]
-unsafe fn dim_reducing_16_compute_claim(
-    output_claims: &LazyVec<BabyBearExt4, GKR_ADDRS>,
-    batch_base: BabyBearExt4,
-) -> BabyBearExt4 {
-    let mut current_batch = BabyBearExt4::ONE;
-    let combined = {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let claim = output_claims.get(0usize);
-        let mut t = bc;
-        field_ops::mul_assign(&mut t, &claim);
-        t
-    };
-    let mut combined = combined;
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let claim = output_claims.get(1usize);
-        let mut t = bc;
-        field_ops::mul_assign(&mut t, &claim);
-        field_ops::add_assign(&mut combined, &t);
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for (bc, idx) in [(bc0, 2usize), (bc1, 3usize)] {
-            let claim = output_claims.get(idx);
-            let mut t = bc;
-            field_ops::mul_assign(&mut t, &claim);
-            field_ops::add_assign(&mut combined, &t);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for (bc, idx) in [(bc0, 4usize), (bc1, 5usize)] {
-            let claim = output_claims.get(idx);
-            let mut t = bc;
-            field_ops::mul_assign(&mut t, &claim);
-            field_ops::add_assign(&mut combined, &t);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for (bc, idx) in [(bc0, 6usize), (bc1, 7usize)] {
-            let claim = output_claims.get(idx);
-            let mut t = bc;
-            field_ops::mul_assign(&mut t, &claim);
-            field_ops::add_assign(&mut combined, &t);
-        }
-    }
-    combined
-}
-#[inline(always)]
-#[allow(clippy::needless_borrow, clippy::large_const_arrays)]
-unsafe fn dim_reducing_16_final_step_accumulator(
-    evals: &[[BabyBearExt4; 4]],
-    batch_base: BabyBearExt4,
-) -> [BabyBearExt4; 2] {
-    let mut acc = [BabyBearExt4::ZERO; 2];
-    let mut current_batch = BabyBearExt4::ONE;
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let es = unsafe { evals.get_unchecked(0usize) };
-        let e0 = unsafe { *es.get_unchecked(0) };
-        let e1 = unsafe { *es.get_unchecked(1) };
-        let e2 = unsafe { *es.get_unchecked(2) };
-        let e3 = unsafe { *es.get_unchecked(3) };
-        let mut v01 = e0;
-        field_ops::mul_assign(&mut v01, &e1);
-        let mut c0 = bc;
-        field_ops::mul_assign(&mut c0, &v01);
-        field_ops::add_assign(&mut acc[0], &c0);
-        let mut v23 = e2;
-        field_ops::mul_assign(&mut v23, &e3);
-        let mut c1 = bc;
-        field_ops::mul_assign(&mut c1, &v23);
-        field_ops::add_assign(&mut acc[1], &c1);
-    }
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let es = unsafe { evals.get_unchecked(1usize) };
-        let e0 = unsafe { *es.get_unchecked(0) };
-        let e1 = unsafe { *es.get_unchecked(1) };
-        let e2 = unsafe { *es.get_unchecked(2) };
-        let e3 = unsafe { *es.get_unchecked(3) };
-        let mut v01 = e0;
-        field_ops::mul_assign(&mut v01, &e1);
-        let mut c0 = bc;
-        field_ops::mul_assign(&mut c0, &v01);
-        field_ops::add_assign(&mut acc[0], &c0);
-        let mut v23 = e2;
-        field_ops::mul_assign(&mut v23, &e3);
-        let mut c1 = bc;
-        field_ops::mul_assign(&mut c1, &v23);
-        field_ops::add_assign(&mut acc[1], &c1);
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let v0 = unsafe { evals.get_unchecked(2usize) };
-        let v1 = unsafe { evals.get_unchecked(3usize) };
-        {
-            let v0a = unsafe { *v0.get_unchecked(0usize) };
-            let v0b = unsafe { *v0.get_unchecked(1usize) };
-            let v1a = unsafe { *v1.get_unchecked(0usize) };
-            let v1b = unsafe { *v1.get_unchecked(1usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[0usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[0usize], &c1_tmp);
-        }
-        {
-            let v0a = unsafe { *v0.get_unchecked(2usize) };
-            let v0b = unsafe { *v0.get_unchecked(3usize) };
-            let v1a = unsafe { *v1.get_unchecked(2usize) };
-            let v1b = unsafe { *v1.get_unchecked(3usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[1usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[1usize], &c1_tmp);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let v0 = unsafe { evals.get_unchecked(4usize) };
-        let v1 = unsafe { evals.get_unchecked(5usize) };
-        {
-            let v0a = unsafe { *v0.get_unchecked(0usize) };
-            let v0b = unsafe { *v0.get_unchecked(1usize) };
-            let v1a = unsafe { *v1.get_unchecked(0usize) };
-            let v1b = unsafe { *v1.get_unchecked(1usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[0usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[0usize], &c1_tmp);
-        }
-        {
-            let v0a = unsafe { *v0.get_unchecked(2usize) };
-            let v0b = unsafe { *v0.get_unchecked(3usize) };
-            let v1a = unsafe { *v1.get_unchecked(2usize) };
-            let v1b = unsafe { *v1.get_unchecked(3usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[1usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[1usize], &c1_tmp);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let v0 = unsafe { evals.get_unchecked(6usize) };
-        let v1 = unsafe { evals.get_unchecked(7usize) };
-        {
-            let v0a = unsafe { *v0.get_unchecked(0usize) };
-            let v0b = unsafe { *v0.get_unchecked(1usize) };
-            let v1a = unsafe { *v1.get_unchecked(0usize) };
-            let v1b = unsafe { *v1.get_unchecked(1usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[0usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[0usize], &c1_tmp);
-        }
-        {
-            let v0a = unsafe { *v0.get_unchecked(2usize) };
-            let v0b = unsafe { *v0.get_unchecked(3usize) };
-            let v1a = unsafe { *v1.get_unchecked(2usize) };
-            let v1b = unsafe { *v1.get_unchecked(3usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[1usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[1usize], &c1_tmp);
-        }
-    }
-    acc
-}
-#[inline(always)]
-#[allow(clippy::needless_borrow)]
-unsafe fn dim_reducing_17_compute_claim(
-    output_claims: &LazyVec<BabyBearExt4, GKR_ADDRS>,
-    batch_base: BabyBearExt4,
-) -> BabyBearExt4 {
-    let mut current_batch = BabyBearExt4::ONE;
-    let combined = {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let claim = output_claims.get(0usize);
-        let mut t = bc;
-        field_ops::mul_assign(&mut t, &claim);
-        t
-    };
-    let mut combined = combined;
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let claim = output_claims.get(1usize);
-        let mut t = bc;
-        field_ops::mul_assign(&mut t, &claim);
-        field_ops::add_assign(&mut combined, &t);
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for (bc, idx) in [(bc0, 2usize), (bc1, 3usize)] {
-            let claim = output_claims.get(idx);
-            let mut t = bc;
-            field_ops::mul_assign(&mut t, &claim);
-            field_ops::add_assign(&mut combined, &t);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for (bc, idx) in [(bc0, 4usize), (bc1, 5usize)] {
-            let claim = output_claims.get(idx);
-            let mut t = bc;
-            field_ops::mul_assign(&mut t, &claim);
-            field_ops::add_assign(&mut combined, &t);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for (bc, idx) in [(bc0, 6usize), (bc1, 7usize)] {
-            let claim = output_claims.get(idx);
-            let mut t = bc;
-            field_ops::mul_assign(&mut t, &claim);
-            field_ops::add_assign(&mut combined, &t);
-        }
-    }
-    combined
-}
-#[inline(always)]
-#[allow(clippy::needless_borrow, clippy::large_const_arrays)]
-unsafe fn dim_reducing_17_final_step_accumulator(
-    evals: &[[BabyBearExt4; 4]],
-    batch_base: BabyBearExt4,
-) -> [BabyBearExt4; 2] {
-    let mut acc = [BabyBearExt4::ZERO; 2];
-    let mut current_batch = BabyBearExt4::ONE;
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let es = unsafe { evals.get_unchecked(0usize) };
-        let e0 = unsafe { *es.get_unchecked(0) };
-        let e1 = unsafe { *es.get_unchecked(1) };
-        let e2 = unsafe { *es.get_unchecked(2) };
-        let e3 = unsafe { *es.get_unchecked(3) };
-        let mut v01 = e0;
-        field_ops::mul_assign(&mut v01, &e1);
-        let mut c0 = bc;
-        field_ops::mul_assign(&mut c0, &v01);
-        field_ops::add_assign(&mut acc[0], &c0);
-        let mut v23 = e2;
-        field_ops::mul_assign(&mut v23, &e3);
-        let mut c1 = bc;
-        field_ops::mul_assign(&mut c1, &v23);
-        field_ops::add_assign(&mut acc[1], &c1);
-    }
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let es = unsafe { evals.get_unchecked(1usize) };
-        let e0 = unsafe { *es.get_unchecked(0) };
-        let e1 = unsafe { *es.get_unchecked(1) };
-        let e2 = unsafe { *es.get_unchecked(2) };
-        let e3 = unsafe { *es.get_unchecked(3) };
-        let mut v01 = e0;
-        field_ops::mul_assign(&mut v01, &e1);
-        let mut c0 = bc;
-        field_ops::mul_assign(&mut c0, &v01);
-        field_ops::add_assign(&mut acc[0], &c0);
-        let mut v23 = e2;
-        field_ops::mul_assign(&mut v23, &e3);
-        let mut c1 = bc;
-        field_ops::mul_assign(&mut c1, &v23);
-        field_ops::add_assign(&mut acc[1], &c1);
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let v0 = unsafe { evals.get_unchecked(2usize) };
-        let v1 = unsafe { evals.get_unchecked(3usize) };
-        {
-            let v0a = unsafe { *v0.get_unchecked(0usize) };
-            let v0b = unsafe { *v0.get_unchecked(1usize) };
-            let v1a = unsafe { *v1.get_unchecked(0usize) };
-            let v1b = unsafe { *v1.get_unchecked(1usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[0usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[0usize], &c1_tmp);
-        }
-        {
-            let v0a = unsafe { *v0.get_unchecked(2usize) };
-            let v0b = unsafe { *v0.get_unchecked(3usize) };
-            let v1a = unsafe { *v1.get_unchecked(2usize) };
-            let v1b = unsafe { *v1.get_unchecked(3usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[1usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[1usize], &c1_tmp);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let v0 = unsafe { evals.get_unchecked(4usize) };
-        let v1 = unsafe { evals.get_unchecked(5usize) };
-        {
-            let v0a = unsafe { *v0.get_unchecked(0usize) };
-            let v0b = unsafe { *v0.get_unchecked(1usize) };
-            let v1a = unsafe { *v1.get_unchecked(0usize) };
-            let v1b = unsafe { *v1.get_unchecked(1usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[0usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[0usize], &c1_tmp);
-        }
-        {
-            let v0a = unsafe { *v0.get_unchecked(2usize) };
-            let v0b = unsafe { *v0.get_unchecked(3usize) };
-            let v1a = unsafe { *v1.get_unchecked(2usize) };
-            let v1b = unsafe { *v1.get_unchecked(3usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[1usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[1usize], &c1_tmp);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let v0 = unsafe { evals.get_unchecked(6usize) };
-        let v1 = unsafe { evals.get_unchecked(7usize) };
-        {
-            let v0a = unsafe { *v0.get_unchecked(0usize) };
-            let v0b = unsafe { *v0.get_unchecked(1usize) };
-            let v1a = unsafe { *v1.get_unchecked(0usize) };
-            let v1b = unsafe { *v1.get_unchecked(1usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[0usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[0usize], &c1_tmp);
-        }
-        {
-            let v0a = unsafe { *v0.get_unchecked(2usize) };
-            let v0b = unsafe { *v0.get_unchecked(3usize) };
-            let v1a = unsafe { *v1.get_unchecked(2usize) };
-            let v1b = unsafe { *v1.get_unchecked(3usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[1usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[1usize], &c1_tmp);
-        }
-    }
-    acc
-}
-#[inline(always)]
-#[allow(clippy::needless_borrow)]
-unsafe fn dim_reducing_18_compute_claim(
-    output_claims: &LazyVec<BabyBearExt4, GKR_ADDRS>,
-    batch_base: BabyBearExt4,
-) -> BabyBearExt4 {
-    let mut current_batch = BabyBearExt4::ONE;
-    let combined = {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let claim = output_claims.get(0usize);
-        let mut t = bc;
-        field_ops::mul_assign(&mut t, &claim);
-        t
-    };
-    let mut combined = combined;
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let claim = output_claims.get(1usize);
-        let mut t = bc;
-        field_ops::mul_assign(&mut t, &claim);
-        field_ops::add_assign(&mut combined, &t);
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for (bc, idx) in [(bc0, 2usize), (bc1, 3usize)] {
-            let claim = output_claims.get(idx);
-            let mut t = bc;
-            field_ops::mul_assign(&mut t, &claim);
-            field_ops::add_assign(&mut combined, &t);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for (bc, idx) in [(bc0, 4usize), (bc1, 5usize)] {
-            let claim = output_claims.get(idx);
-            let mut t = bc;
-            field_ops::mul_assign(&mut t, &claim);
-            field_ops::add_assign(&mut combined, &t);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for (bc, idx) in [(bc0, 6usize), (bc1, 7usize)] {
-            let claim = output_claims.get(idx);
-            let mut t = bc;
-            field_ops::mul_assign(&mut t, &claim);
-            field_ops::add_assign(&mut combined, &t);
-        }
-    }
-    combined
-}
-#[inline(always)]
-#[allow(clippy::needless_borrow, clippy::large_const_arrays)]
-unsafe fn dim_reducing_18_final_step_accumulator(
-    evals: &[[BabyBearExt4; 4]],
-    batch_base: BabyBearExt4,
-) -> [BabyBearExt4; 2] {
-    let mut acc = [BabyBearExt4::ZERO; 2];
-    let mut current_batch = BabyBearExt4::ONE;
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let es = unsafe { evals.get_unchecked(0usize) };
-        let e0 = unsafe { *es.get_unchecked(0) };
-        let e1 = unsafe { *es.get_unchecked(1) };
-        let e2 = unsafe { *es.get_unchecked(2) };
-        let e3 = unsafe { *es.get_unchecked(3) };
-        let mut v01 = e0;
-        field_ops::mul_assign(&mut v01, &e1);
-        let mut c0 = bc;
-        field_ops::mul_assign(&mut c0, &v01);
-        field_ops::add_assign(&mut acc[0], &c0);
-        let mut v23 = e2;
-        field_ops::mul_assign(&mut v23, &e3);
-        let mut c1 = bc;
-        field_ops::mul_assign(&mut c1, &v23);
-        field_ops::add_assign(&mut acc[1], &c1);
-    }
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let es = unsafe { evals.get_unchecked(1usize) };
-        let e0 = unsafe { *es.get_unchecked(0) };
-        let e1 = unsafe { *es.get_unchecked(1) };
-        let e2 = unsafe { *es.get_unchecked(2) };
-        let e3 = unsafe { *es.get_unchecked(3) };
-        let mut v01 = e0;
-        field_ops::mul_assign(&mut v01, &e1);
-        let mut c0 = bc;
-        field_ops::mul_assign(&mut c0, &v01);
-        field_ops::add_assign(&mut acc[0], &c0);
-        let mut v23 = e2;
-        field_ops::mul_assign(&mut v23, &e3);
-        let mut c1 = bc;
-        field_ops::mul_assign(&mut c1, &v23);
-        field_ops::add_assign(&mut acc[1], &c1);
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let v0 = unsafe { evals.get_unchecked(2usize) };
-        let v1 = unsafe { evals.get_unchecked(3usize) };
-        {
-            let v0a = unsafe { *v0.get_unchecked(0usize) };
-            let v0b = unsafe { *v0.get_unchecked(1usize) };
-            let v1a = unsafe { *v1.get_unchecked(0usize) };
-            let v1b = unsafe { *v1.get_unchecked(1usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[0usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[0usize], &c1_tmp);
-        }
-        {
-            let v0a = unsafe { *v0.get_unchecked(2usize) };
-            let v0b = unsafe { *v0.get_unchecked(3usize) };
-            let v1a = unsafe { *v1.get_unchecked(2usize) };
-            let v1b = unsafe { *v1.get_unchecked(3usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[1usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[1usize], &c1_tmp);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let v0 = unsafe { evals.get_unchecked(4usize) };
-        let v1 = unsafe { evals.get_unchecked(5usize) };
-        {
-            let v0a = unsafe { *v0.get_unchecked(0usize) };
-            let v0b = unsafe { *v0.get_unchecked(1usize) };
-            let v1a = unsafe { *v1.get_unchecked(0usize) };
-            let v1b = unsafe { *v1.get_unchecked(1usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[0usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[0usize], &c1_tmp);
-        }
-        {
-            let v0a = unsafe { *v0.get_unchecked(2usize) };
-            let v0b = unsafe { *v0.get_unchecked(3usize) };
-            let v1a = unsafe { *v1.get_unchecked(2usize) };
-            let v1b = unsafe { *v1.get_unchecked(3usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[1usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[1usize], &c1_tmp);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let v0 = unsafe { evals.get_unchecked(6usize) };
-        let v1 = unsafe { evals.get_unchecked(7usize) };
-        {
-            let v0a = unsafe { *v0.get_unchecked(0usize) };
-            let v0b = unsafe { *v0.get_unchecked(1usize) };
-            let v1a = unsafe { *v1.get_unchecked(0usize) };
-            let v1b = unsafe { *v1.get_unchecked(1usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[0usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[0usize], &c1_tmp);
-        }
-        {
-            let v0a = unsafe { *v0.get_unchecked(2usize) };
-            let v0b = unsafe { *v0.get_unchecked(3usize) };
-            let v1a = unsafe { *v1.get_unchecked(2usize) };
-            let v1b = unsafe { *v1.get_unchecked(3usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[1usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[1usize], &c1_tmp);
-        }
-    }
-    acc
-}
-#[inline(always)]
-#[allow(clippy::needless_borrow)]
-unsafe fn dim_reducing_19_compute_claim(
-    output_claims: &LazyVec<BabyBearExt4, GKR_ADDRS>,
-    batch_base: BabyBearExt4,
-) -> BabyBearExt4 {
-    let mut current_batch = BabyBearExt4::ONE;
-    let combined = {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let claim = output_claims.get(0usize);
-        let mut t = bc;
-        field_ops::mul_assign(&mut t, &claim);
-        t
-    };
-    let mut combined = combined;
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let claim = output_claims.get(1usize);
-        let mut t = bc;
-        field_ops::mul_assign(&mut t, &claim);
-        field_ops::add_assign(&mut combined, &t);
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for (bc, idx) in [(bc0, 2usize), (bc1, 3usize)] {
-            let claim = output_claims.get(idx);
-            let mut t = bc;
-            field_ops::mul_assign(&mut t, &claim);
-            field_ops::add_assign(&mut combined, &t);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for (bc, idx) in [(bc0, 4usize), (bc1, 5usize)] {
-            let claim = output_claims.get(idx);
-            let mut t = bc;
-            field_ops::mul_assign(&mut t, &claim);
-            field_ops::add_assign(&mut combined, &t);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for (bc, idx) in [(bc0, 6usize), (bc1, 7usize)] {
-            let claim = output_claims.get(idx);
-            let mut t = bc;
-            field_ops::mul_assign(&mut t, &claim);
-            field_ops::add_assign(&mut combined, &t);
-        }
-    }
-    combined
-}
-#[inline(always)]
-#[allow(clippy::needless_borrow, clippy::large_const_arrays)]
-unsafe fn dim_reducing_19_final_step_accumulator(
-    evals: &[[BabyBearExt4; 4]],
-    batch_base: BabyBearExt4,
-) -> [BabyBearExt4; 2] {
-    let mut acc = [BabyBearExt4::ZERO; 2];
-    let mut current_batch = BabyBearExt4::ONE;
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let es = unsafe { evals.get_unchecked(0usize) };
-        let e0 = unsafe { *es.get_unchecked(0) };
-        let e1 = unsafe { *es.get_unchecked(1) };
-        let e2 = unsafe { *es.get_unchecked(2) };
-        let e3 = unsafe { *es.get_unchecked(3) };
-        let mut v01 = e0;
-        field_ops::mul_assign(&mut v01, &e1);
-        let mut c0 = bc;
-        field_ops::mul_assign(&mut c0, &v01);
-        field_ops::add_assign(&mut acc[0], &c0);
-        let mut v23 = e2;
-        field_ops::mul_assign(&mut v23, &e3);
-        let mut c1 = bc;
-        field_ops::mul_assign(&mut c1, &v23);
-        field_ops::add_assign(&mut acc[1], &c1);
-    }
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let es = unsafe { evals.get_unchecked(1usize) };
-        let e0 = unsafe { *es.get_unchecked(0) };
-        let e1 = unsafe { *es.get_unchecked(1) };
-        let e2 = unsafe { *es.get_unchecked(2) };
-        let e3 = unsafe { *es.get_unchecked(3) };
-        let mut v01 = e0;
-        field_ops::mul_assign(&mut v01, &e1);
-        let mut c0 = bc;
-        field_ops::mul_assign(&mut c0, &v01);
-        field_ops::add_assign(&mut acc[0], &c0);
-        let mut v23 = e2;
-        field_ops::mul_assign(&mut v23, &e3);
-        let mut c1 = bc;
-        field_ops::mul_assign(&mut c1, &v23);
-        field_ops::add_assign(&mut acc[1], &c1);
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let v0 = unsafe { evals.get_unchecked(2usize) };
-        let v1 = unsafe { evals.get_unchecked(3usize) };
-        {
-            let v0a = unsafe { *v0.get_unchecked(0usize) };
-            let v0b = unsafe { *v0.get_unchecked(1usize) };
-            let v1a = unsafe { *v1.get_unchecked(0usize) };
-            let v1b = unsafe { *v1.get_unchecked(1usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[0usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[0usize], &c1_tmp);
-        }
-        {
-            let v0a = unsafe { *v0.get_unchecked(2usize) };
-            let v0b = unsafe { *v0.get_unchecked(3usize) };
-            let v1a = unsafe { *v1.get_unchecked(2usize) };
-            let v1b = unsafe { *v1.get_unchecked(3usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[1usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[1usize], &c1_tmp);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let v0 = unsafe { evals.get_unchecked(4usize) };
-        let v1 = unsafe { evals.get_unchecked(5usize) };
-        {
-            let v0a = unsafe { *v0.get_unchecked(0usize) };
-            let v0b = unsafe { *v0.get_unchecked(1usize) };
-            let v1a = unsafe { *v1.get_unchecked(0usize) };
-            let v1b = unsafe { *v1.get_unchecked(1usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[0usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[0usize], &c1_tmp);
-        }
-        {
-            let v0a = unsafe { *v0.get_unchecked(2usize) };
-            let v0b = unsafe { *v0.get_unchecked(3usize) };
-            let v1a = unsafe { *v1.get_unchecked(2usize) };
-            let v1b = unsafe { *v1.get_unchecked(3usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[1usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[1usize], &c1_tmp);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let v0 = unsafe { evals.get_unchecked(6usize) };
-        let v1 = unsafe { evals.get_unchecked(7usize) };
-        {
-            let v0a = unsafe { *v0.get_unchecked(0usize) };
-            let v0b = unsafe { *v0.get_unchecked(1usize) };
-            let v1a = unsafe { *v1.get_unchecked(0usize) };
-            let v1b = unsafe { *v1.get_unchecked(1usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[0usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[0usize], &c1_tmp);
-        }
-        {
-            let v0a = unsafe { *v0.get_unchecked(2usize) };
-            let v0b = unsafe { *v0.get_unchecked(3usize) };
-            let v1a = unsafe { *v1.get_unchecked(2usize) };
-            let v1b = unsafe { *v1.get_unchecked(3usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[1usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[1usize], &c1_tmp);
-        }
-    }
-    acc
-}
-#[inline(always)]
-#[allow(clippy::needless_borrow)]
-unsafe fn dim_reducing_20_compute_claim(
-    output_claims: &LazyVec<BabyBearExt4, GKR_ADDRS>,
-    batch_base: BabyBearExt4,
-) -> BabyBearExt4 {
-    let mut current_batch = BabyBearExt4::ONE;
-    let combined = {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let claim = output_claims.get(0usize);
-        let mut t = bc;
-        field_ops::mul_assign(&mut t, &claim);
-        t
-    };
-    let mut combined = combined;
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let claim = output_claims.get(1usize);
-        let mut t = bc;
-        field_ops::mul_assign(&mut t, &claim);
-        field_ops::add_assign(&mut combined, &t);
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for (bc, idx) in [(bc0, 2usize), (bc1, 3usize)] {
-            let claim = output_claims.get(idx);
-            let mut t = bc;
-            field_ops::mul_assign(&mut t, &claim);
-            field_ops::add_assign(&mut combined, &t);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for (bc, idx) in [(bc0, 4usize), (bc1, 5usize)] {
-            let claim = output_claims.get(idx);
-            let mut t = bc;
-            field_ops::mul_assign(&mut t, &claim);
-            field_ops::add_assign(&mut combined, &t);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for (bc, idx) in [(bc0, 6usize), (bc1, 7usize)] {
-            let claim = output_claims.get(idx);
-            let mut t = bc;
-            field_ops::mul_assign(&mut t, &claim);
-            field_ops::add_assign(&mut combined, &t);
-        }
-    }
-    combined
-}
-#[inline(always)]
-#[allow(clippy::needless_borrow, clippy::large_const_arrays)]
-unsafe fn dim_reducing_20_final_step_accumulator(
-    evals: &[[BabyBearExt4; 4]],
-    batch_base: BabyBearExt4,
-) -> [BabyBearExt4; 2] {
-    let mut acc = [BabyBearExt4::ZERO; 2];
-    let mut current_batch = BabyBearExt4::ONE;
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let es = unsafe { evals.get_unchecked(0usize) };
-        let e0 = unsafe { *es.get_unchecked(0) };
-        let e1 = unsafe { *es.get_unchecked(1) };
-        let e2 = unsafe { *es.get_unchecked(2) };
-        let e3 = unsafe { *es.get_unchecked(3) };
-        let mut v01 = e0;
-        field_ops::mul_assign(&mut v01, &e1);
-        let mut c0 = bc;
-        field_ops::mul_assign(&mut c0, &v01);
-        field_ops::add_assign(&mut acc[0], &c0);
-        let mut v23 = e2;
-        field_ops::mul_assign(&mut v23, &e3);
-        let mut c1 = bc;
-        field_ops::mul_assign(&mut c1, &v23);
-        field_ops::add_assign(&mut acc[1], &c1);
-    }
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let es = unsafe { evals.get_unchecked(1usize) };
-        let e0 = unsafe { *es.get_unchecked(0) };
-        let e1 = unsafe { *es.get_unchecked(1) };
-        let e2 = unsafe { *es.get_unchecked(2) };
-        let e3 = unsafe { *es.get_unchecked(3) };
-        let mut v01 = e0;
-        field_ops::mul_assign(&mut v01, &e1);
-        let mut c0 = bc;
-        field_ops::mul_assign(&mut c0, &v01);
-        field_ops::add_assign(&mut acc[0], &c0);
-        let mut v23 = e2;
-        field_ops::mul_assign(&mut v23, &e3);
-        let mut c1 = bc;
-        field_ops::mul_assign(&mut c1, &v23);
-        field_ops::add_assign(&mut acc[1], &c1);
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let v0 = unsafe { evals.get_unchecked(2usize) };
-        let v1 = unsafe { evals.get_unchecked(3usize) };
-        {
-            let v0a = unsafe { *v0.get_unchecked(0usize) };
-            let v0b = unsafe { *v0.get_unchecked(1usize) };
-            let v1a = unsafe { *v1.get_unchecked(0usize) };
-            let v1b = unsafe { *v1.get_unchecked(1usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[0usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[0usize], &c1_tmp);
-        }
-        {
-            let v0a = unsafe { *v0.get_unchecked(2usize) };
-            let v0b = unsafe { *v0.get_unchecked(3usize) };
-            let v1a = unsafe { *v1.get_unchecked(2usize) };
-            let v1b = unsafe { *v1.get_unchecked(3usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[1usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[1usize], &c1_tmp);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let v0 = unsafe { evals.get_unchecked(4usize) };
-        let v1 = unsafe { evals.get_unchecked(5usize) };
-        {
-            let v0a = unsafe { *v0.get_unchecked(0usize) };
-            let v0b = unsafe { *v0.get_unchecked(1usize) };
-            let v1a = unsafe { *v1.get_unchecked(0usize) };
-            let v1b = unsafe { *v1.get_unchecked(1usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[0usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[0usize], &c1_tmp);
-        }
-        {
-            let v0a = unsafe { *v0.get_unchecked(2usize) };
-            let v0b = unsafe { *v0.get_unchecked(3usize) };
-            let v1a = unsafe { *v1.get_unchecked(2usize) };
-            let v1b = unsafe { *v1.get_unchecked(3usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[1usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[1usize], &c1_tmp);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let v0 = unsafe { evals.get_unchecked(6usize) };
-        let v1 = unsafe { evals.get_unchecked(7usize) };
-        {
-            let v0a = unsafe { *v0.get_unchecked(0usize) };
-            let v0b = unsafe { *v0.get_unchecked(1usize) };
-            let v1a = unsafe { *v1.get_unchecked(0usize) };
-            let v1b = unsafe { *v1.get_unchecked(1usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[0usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[0usize], &c1_tmp);
-        }
-        {
-            let v0a = unsafe { *v0.get_unchecked(2usize) };
-            let v0b = unsafe { *v0.get_unchecked(3usize) };
-            let v1a = unsafe { *v1.get_unchecked(2usize) };
-            let v1b = unsafe { *v1.get_unchecked(3usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[1usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[1usize], &c1_tmp);
-        }
-    }
-    acc
-}
-#[inline(always)]
-#[allow(clippy::needless_borrow)]
-unsafe fn dim_reducing_21_compute_claim(
-    output_claims: &LazyVec<BabyBearExt4, GKR_ADDRS>,
-    batch_base: BabyBearExt4,
-) -> BabyBearExt4 {
-    let mut current_batch = BabyBearExt4::ONE;
-    let combined = {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let claim = output_claims.get(0usize);
-        let mut t = bc;
-        field_ops::mul_assign(&mut t, &claim);
-        t
-    };
-    let mut combined = combined;
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let claim = output_claims.get(1usize);
-        let mut t = bc;
-        field_ops::mul_assign(&mut t, &claim);
-        field_ops::add_assign(&mut combined, &t);
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for (bc, idx) in [(bc0, 2usize), (bc1, 3usize)] {
-            let claim = output_claims.get(idx);
-            let mut t = bc;
-            field_ops::mul_assign(&mut t, &claim);
-            field_ops::add_assign(&mut combined, &t);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for (bc, idx) in [(bc0, 4usize), (bc1, 5usize)] {
-            let claim = output_claims.get(idx);
-            let mut t = bc;
-            field_ops::mul_assign(&mut t, &claim);
-            field_ops::add_assign(&mut combined, &t);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for (bc, idx) in [(bc0, 6usize), (bc1, 7usize)] {
-            let claim = output_claims.get(idx);
-            let mut t = bc;
-            field_ops::mul_assign(&mut t, &claim);
-            field_ops::add_assign(&mut combined, &t);
-        }
-    }
-    combined
-}
-#[inline(always)]
-#[allow(clippy::needless_borrow, clippy::large_const_arrays)]
-unsafe fn dim_reducing_21_final_step_accumulator(
-    evals: &[[BabyBearExt4; 4]],
-    batch_base: BabyBearExt4,
-) -> [BabyBearExt4; 2] {
-    let mut acc = [BabyBearExt4::ZERO; 2];
-    let mut current_batch = BabyBearExt4::ONE;
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let es = unsafe { evals.get_unchecked(0usize) };
-        let e0 = unsafe { *es.get_unchecked(0) };
-        let e1 = unsafe { *es.get_unchecked(1) };
-        let e2 = unsafe { *es.get_unchecked(2) };
-        let e3 = unsafe { *es.get_unchecked(3) };
-        let mut v01 = e0;
-        field_ops::mul_assign(&mut v01, &e1);
-        let mut c0 = bc;
-        field_ops::mul_assign(&mut c0, &v01);
-        field_ops::add_assign(&mut acc[0], &c0);
-        let mut v23 = e2;
-        field_ops::mul_assign(&mut v23, &e3);
-        let mut c1 = bc;
-        field_ops::mul_assign(&mut c1, &v23);
-        field_ops::add_assign(&mut acc[1], &c1);
-    }
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let es = unsafe { evals.get_unchecked(1usize) };
-        let e0 = unsafe { *es.get_unchecked(0) };
-        let e1 = unsafe { *es.get_unchecked(1) };
-        let e2 = unsafe { *es.get_unchecked(2) };
-        let e3 = unsafe { *es.get_unchecked(3) };
-        let mut v01 = e0;
-        field_ops::mul_assign(&mut v01, &e1);
-        let mut c0 = bc;
-        field_ops::mul_assign(&mut c0, &v01);
-        field_ops::add_assign(&mut acc[0], &c0);
-        let mut v23 = e2;
-        field_ops::mul_assign(&mut v23, &e3);
-        let mut c1 = bc;
-        field_ops::mul_assign(&mut c1, &v23);
-        field_ops::add_assign(&mut acc[1], &c1);
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let v0 = unsafe { evals.get_unchecked(2usize) };
-        let v1 = unsafe { evals.get_unchecked(3usize) };
-        {
-            let v0a = unsafe { *v0.get_unchecked(0usize) };
-            let v0b = unsafe { *v0.get_unchecked(1usize) };
-            let v1a = unsafe { *v1.get_unchecked(0usize) };
-            let v1b = unsafe { *v1.get_unchecked(1usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[0usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[0usize], &c1_tmp);
-        }
-        {
-            let v0a = unsafe { *v0.get_unchecked(2usize) };
-            let v0b = unsafe { *v0.get_unchecked(3usize) };
-            let v1a = unsafe { *v1.get_unchecked(2usize) };
-            let v1b = unsafe { *v1.get_unchecked(3usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[1usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[1usize], &c1_tmp);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let v0 = unsafe { evals.get_unchecked(4usize) };
-        let v1 = unsafe { evals.get_unchecked(5usize) };
-        {
-            let v0a = unsafe { *v0.get_unchecked(0usize) };
-            let v0b = unsafe { *v0.get_unchecked(1usize) };
-            let v1a = unsafe { *v1.get_unchecked(0usize) };
-            let v1b = unsafe { *v1.get_unchecked(1usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[0usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[0usize], &c1_tmp);
-        }
-        {
-            let v0a = unsafe { *v0.get_unchecked(2usize) };
-            let v0b = unsafe { *v0.get_unchecked(3usize) };
-            let v1a = unsafe { *v1.get_unchecked(2usize) };
-            let v1b = unsafe { *v1.get_unchecked(3usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[1usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[1usize], &c1_tmp);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let v0 = unsafe { evals.get_unchecked(6usize) };
-        let v1 = unsafe { evals.get_unchecked(7usize) };
-        {
-            let v0a = unsafe { *v0.get_unchecked(0usize) };
-            let v0b = unsafe { *v0.get_unchecked(1usize) };
-            let v1a = unsafe { *v1.get_unchecked(0usize) };
-            let v1b = unsafe { *v1.get_unchecked(1usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[0usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[0usize], &c1_tmp);
-        }
-        {
-            let v0a = unsafe { *v0.get_unchecked(2usize) };
-            let v0b = unsafe { *v0.get_unchecked(3usize) };
-            let v1a = unsafe { *v1.get_unchecked(2usize) };
-            let v1b = unsafe { *v1.get_unchecked(3usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[1usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[1usize], &c1_tmp);
-        }
-    }
-    acc
-}
-#[inline(always)]
-#[allow(clippy::needless_borrow)]
-unsafe fn dim_reducing_22_compute_claim(
-    output_claims: &LazyVec<BabyBearExt4, GKR_ADDRS>,
-    batch_base: BabyBearExt4,
-) -> BabyBearExt4 {
-    let mut current_batch = BabyBearExt4::ONE;
-    let combined = {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let claim = output_claims.get(0usize);
-        let mut t = bc;
-        field_ops::mul_assign(&mut t, &claim);
-        t
-    };
-    let mut combined = combined;
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let claim = output_claims.get(1usize);
-        let mut t = bc;
-        field_ops::mul_assign(&mut t, &claim);
-        field_ops::add_assign(&mut combined, &t);
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for (bc, idx) in [(bc0, 2usize), (bc1, 3usize)] {
-            let claim = output_claims.get(idx);
-            let mut t = bc;
-            field_ops::mul_assign(&mut t, &claim);
-            field_ops::add_assign(&mut combined, &t);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for (bc, idx) in [(bc0, 4usize), (bc1, 5usize)] {
-            let claim = output_claims.get(idx);
-            let mut t = bc;
-            field_ops::mul_assign(&mut t, &claim);
-            field_ops::add_assign(&mut combined, &t);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for (bc, idx) in [(bc0, 6usize), (bc1, 7usize)] {
-            let claim = output_claims.get(idx);
-            let mut t = bc;
-            field_ops::mul_assign(&mut t, &claim);
-            field_ops::add_assign(&mut combined, &t);
-        }
-    }
-    combined
-}
-#[inline(always)]
-#[allow(clippy::needless_borrow, clippy::large_const_arrays)]
-unsafe fn dim_reducing_22_final_step_accumulator(
-    evals: &[[BabyBearExt4; 4]],
-    batch_base: BabyBearExt4,
-) -> [BabyBearExt4; 2] {
-    let mut acc = [BabyBearExt4::ZERO; 2];
-    let mut current_batch = BabyBearExt4::ONE;
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let es = unsafe { evals.get_unchecked(0usize) };
-        let e0 = unsafe { *es.get_unchecked(0) };
-        let e1 = unsafe { *es.get_unchecked(1) };
-        let e2 = unsafe { *es.get_unchecked(2) };
-        let e3 = unsafe { *es.get_unchecked(3) };
-        let mut v01 = e0;
-        field_ops::mul_assign(&mut v01, &e1);
-        let mut c0 = bc;
-        field_ops::mul_assign(&mut c0, &v01);
-        field_ops::add_assign(&mut acc[0], &c0);
-        let mut v23 = e2;
-        field_ops::mul_assign(&mut v23, &e3);
-        let mut c1 = bc;
-        field_ops::mul_assign(&mut c1, &v23);
-        field_ops::add_assign(&mut acc[1], &c1);
-    }
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let es = unsafe { evals.get_unchecked(1usize) };
-        let e0 = unsafe { *es.get_unchecked(0) };
-        let e1 = unsafe { *es.get_unchecked(1) };
-        let e2 = unsafe { *es.get_unchecked(2) };
-        let e3 = unsafe { *es.get_unchecked(3) };
-        let mut v01 = e0;
-        field_ops::mul_assign(&mut v01, &e1);
-        let mut c0 = bc;
-        field_ops::mul_assign(&mut c0, &v01);
-        field_ops::add_assign(&mut acc[0], &c0);
-        let mut v23 = e2;
-        field_ops::mul_assign(&mut v23, &e3);
-        let mut c1 = bc;
-        field_ops::mul_assign(&mut c1, &v23);
-        field_ops::add_assign(&mut acc[1], &c1);
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let v0 = unsafe { evals.get_unchecked(2usize) };
-        let v1 = unsafe { evals.get_unchecked(3usize) };
-        {
-            let v0a = unsafe { *v0.get_unchecked(0usize) };
-            let v0b = unsafe { *v0.get_unchecked(1usize) };
-            let v1a = unsafe { *v1.get_unchecked(0usize) };
-            let v1b = unsafe { *v1.get_unchecked(1usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[0usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[0usize], &c1_tmp);
-        }
-        {
-            let v0a = unsafe { *v0.get_unchecked(2usize) };
-            let v0b = unsafe { *v0.get_unchecked(3usize) };
-            let v1a = unsafe { *v1.get_unchecked(2usize) };
-            let v1b = unsafe { *v1.get_unchecked(3usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[1usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[1usize], &c1_tmp);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let v0 = unsafe { evals.get_unchecked(4usize) };
-        let v1 = unsafe { evals.get_unchecked(5usize) };
-        {
-            let v0a = unsafe { *v0.get_unchecked(0usize) };
-            let v0b = unsafe { *v0.get_unchecked(1usize) };
-            let v1a = unsafe { *v1.get_unchecked(0usize) };
-            let v1b = unsafe { *v1.get_unchecked(1usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[0usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[0usize], &c1_tmp);
-        }
-        {
-            let v0a = unsafe { *v0.get_unchecked(2usize) };
-            let v0b = unsafe { *v0.get_unchecked(3usize) };
-            let v1a = unsafe { *v1.get_unchecked(2usize) };
-            let v1b = unsafe { *v1.get_unchecked(3usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[1usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[1usize], &c1_tmp);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let v0 = unsafe { evals.get_unchecked(6usize) };
-        let v1 = unsafe { evals.get_unchecked(7usize) };
-        {
-            let v0a = unsafe { *v0.get_unchecked(0usize) };
-            let v0b = unsafe { *v0.get_unchecked(1usize) };
-            let v1a = unsafe { *v1.get_unchecked(0usize) };
-            let v1b = unsafe { *v1.get_unchecked(1usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[0usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[0usize], &c1_tmp);
-        }
-        {
-            let v0a = unsafe { *v0.get_unchecked(2usize) };
-            let v0b = unsafe { *v0.get_unchecked(3usize) };
-            let v1a = unsafe { *v1.get_unchecked(2usize) };
-            let v1b = unsafe { *v1.get_unchecked(3usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[1usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[1usize], &c1_tmp);
-        }
-    }
-    acc
-}
-#[inline(always)]
-#[allow(clippy::needless_borrow)]
-unsafe fn dim_reducing_23_compute_claim(
-    output_claims: &LazyVec<BabyBearExt4, GKR_ADDRS>,
-    batch_base: BabyBearExt4,
-) -> BabyBearExt4 {
-    let mut current_batch = BabyBearExt4::ONE;
-    let combined = {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let claim = output_claims.get(0usize);
-        let mut t = bc;
-        field_ops::mul_assign(&mut t, &claim);
-        t
-    };
-    let mut combined = combined;
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let claim = output_claims.get(1usize);
-        let mut t = bc;
-        field_ops::mul_assign(&mut t, &claim);
-        field_ops::add_assign(&mut combined, &t);
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for (bc, idx) in [(bc0, 2usize), (bc1, 3usize)] {
-            let claim = output_claims.get(idx);
-            let mut t = bc;
-            field_ops::mul_assign(&mut t, &claim);
-            field_ops::add_assign(&mut combined, &t);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for (bc, idx) in [(bc0, 4usize), (bc1, 5usize)] {
-            let claim = output_claims.get(idx);
-            let mut t = bc;
-            field_ops::mul_assign(&mut t, &claim);
-            field_ops::add_assign(&mut combined, &t);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for (bc, idx) in [(bc0, 6usize), (bc1, 7usize)] {
-            let claim = output_claims.get(idx);
-            let mut t = bc;
-            field_ops::mul_assign(&mut t, &claim);
-            field_ops::add_assign(&mut combined, &t);
-        }
-    }
-    combined
-}
-#[inline(always)]
-#[allow(clippy::needless_borrow, clippy::large_const_arrays)]
-unsafe fn dim_reducing_23_final_step_accumulator(
-    evals: &[[BabyBearExt4; 4]],
-    batch_base: BabyBearExt4,
-) -> [BabyBearExt4; 2] {
-    let mut acc = [BabyBearExt4::ZERO; 2];
-    let mut current_batch = BabyBearExt4::ONE;
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let es = unsafe { evals.get_unchecked(0usize) };
-        let e0 = unsafe { *es.get_unchecked(0) };
-        let e1 = unsafe { *es.get_unchecked(1) };
-        let e2 = unsafe { *es.get_unchecked(2) };
-        let e3 = unsafe { *es.get_unchecked(3) };
-        let mut v01 = e0;
-        field_ops::mul_assign(&mut v01, &e1);
-        let mut c0 = bc;
-        field_ops::mul_assign(&mut c0, &v01);
-        field_ops::add_assign(&mut acc[0], &c0);
-        let mut v23 = e2;
-        field_ops::mul_assign(&mut v23, &e3);
-        let mut c1 = bc;
-        field_ops::mul_assign(&mut c1, &v23);
-        field_ops::add_assign(&mut acc[1], &c1);
-    }
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let es = unsafe { evals.get_unchecked(1usize) };
-        let e0 = unsafe { *es.get_unchecked(0) };
-        let e1 = unsafe { *es.get_unchecked(1) };
-        let e2 = unsafe { *es.get_unchecked(2) };
-        let e3 = unsafe { *es.get_unchecked(3) };
-        let mut v01 = e0;
-        field_ops::mul_assign(&mut v01, &e1);
-        let mut c0 = bc;
-        field_ops::mul_assign(&mut c0, &v01);
-        field_ops::add_assign(&mut acc[0], &c0);
-        let mut v23 = e2;
-        field_ops::mul_assign(&mut v23, &e3);
-        let mut c1 = bc;
-        field_ops::mul_assign(&mut c1, &v23);
-        field_ops::add_assign(&mut acc[1], &c1);
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let v0 = unsafe { evals.get_unchecked(2usize) };
-        let v1 = unsafe { evals.get_unchecked(3usize) };
-        {
-            let v0a = unsafe { *v0.get_unchecked(0usize) };
-            let v0b = unsafe { *v0.get_unchecked(1usize) };
-            let v1a = unsafe { *v1.get_unchecked(0usize) };
-            let v1b = unsafe { *v1.get_unchecked(1usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[0usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[0usize], &c1_tmp);
-        }
-        {
-            let v0a = unsafe { *v0.get_unchecked(2usize) };
-            let v0b = unsafe { *v0.get_unchecked(3usize) };
-            let v1a = unsafe { *v1.get_unchecked(2usize) };
-            let v1b = unsafe { *v1.get_unchecked(3usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[1usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[1usize], &c1_tmp);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let v0 = unsafe { evals.get_unchecked(4usize) };
-        let v1 = unsafe { evals.get_unchecked(5usize) };
-        {
-            let v0a = unsafe { *v0.get_unchecked(0usize) };
-            let v0b = unsafe { *v0.get_unchecked(1usize) };
-            let v1a = unsafe { *v1.get_unchecked(0usize) };
-            let v1b = unsafe { *v1.get_unchecked(1usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[0usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[0usize], &c1_tmp);
-        }
-        {
-            let v0a = unsafe { *v0.get_unchecked(2usize) };
-            let v0b = unsafe { *v0.get_unchecked(3usize) };
-            let v1a = unsafe { *v1.get_unchecked(2usize) };
-            let v1b = unsafe { *v1.get_unchecked(3usize) };
-            let mut num = v0a;
-            field_ops::mul_assign(&mut num, &v1b);
-            let mut cb_tmp = v0b;
-            field_ops::mul_assign(&mut cb_tmp, &v1a);
-            field_ops::add_assign(&mut num, &cb_tmp);
-            let mut den = v1a;
-            field_ops::mul_assign(&mut den, &v1b);
-            let mut c0_tmp = bc0;
-            field_ops::mul_assign(&mut c0_tmp, &num);
-            let mut c1_tmp = bc1;
-            field_ops::mul_assign(&mut c1_tmp, &den);
-            field_ops::add_assign(&mut acc[1usize], &c0_tmp);
-            field_ops::add_assign(&mut acc[1usize], &c1_tmp);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let v0 = unsafe { evals.get_unchecked(6usize) };
-        let v1 = unsafe { evals.get_unchecked(7usize) };
+        let v0 = unsafe { evals.get_unchecked(si0) };
+        let v1 = unsafe { evals.get_unchecked(si1) };
         {
             let v0a = unsafe { *v0.get_unchecked(0usize) };
             let v0b = unsafe { *v0.get_unchecked(1usize) };
@@ -6349,17 +1652,13 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                 ..CAPS_OFFSET_IN_TRANSCRIPT + SETUP_CAP_WORDS + MEM_CAP_WORDS + WIT_CAP_WORDS];
             *<&[u32; WIT_CAP_WORDS]>::try_from(src).unwrap_unchecked()
         };
-        let mut seed = Blake2sTranscript::commit_initial(transcript_buf.as_slice());
-        let mut hasher = DelegatedBlake2sState::new();
+        let mut ts =
+            TranscriptState::new(Blake2sTranscript::commit_initial(transcript_buf.as_slice()));
         let mut init_challenges = LazyVec::<BabyBearExt4, 3>::new();
         unsafe {
             init_challenges.set_len(3);
         }
-        draw_field_els_into::<DRAW_BUF_CAPACITY>(
-            &mut hasher,
-            &mut seed,
-            init_challenges.as_mut_slice(),
-        );
+        draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, init_challenges.as_mut_slice());
         let lookup_alpha = *init_challenges.get(0);
         let lookup_additive_challenge = *init_challenges.get(1);
         let constraints_batch_challenge = *init_challenges.get(2);
@@ -6372,17 +1671,13 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                 i += 1;
             }
         }
-        evals_commit_buf.commit(&mut hasher, &mut seed, evals_data_words);
+        ts.commit(&mut evals_commit_buf, evals_data_words);
         let evals_slice: &[BabyBearExt4] = unsafe { evals_commit_buf.data_as(128usize) };
         let mut all_challenges = LazyVec::<BabyBearExt4, { GKR_ROUNDS + 1 }>::new();
         unsafe {
             all_challenges.set_len(5usize);
         }
-        draw_field_els_into::<DRAW_BUF_CAPACITY>(
-            &mut hasher,
-            &mut seed,
-            all_challenges.as_mut_slice(),
-        );
+        draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, all_challenges.as_mut_slice());
         let batching_challenge = *all_challenges.get(5usize - 1);
         let mut eq_buf = LazyVec::<BabyBearExt4, 16usize>::new();
         let eq_challenges: &[BabyBearExt4; 4usize] = all_challenges.as_slice()[..4usize]
@@ -6464,12 +1759,72 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             batching_challenge,
         };
         let mut eval_buf = CommitBuf::<GKR_EVAL_BUF>::new();
+        const DIM_REDUCE_INDICES_4: [usize; 8usize] = [
+            2usize, 3usize, 4usize, 5usize, 0usize, 1usize, 6usize, 7usize,
+        ];
+        const DIM_REDUCE_INDICES_5: [usize; 8usize] = [
+            0usize, 1usize, 2usize, 3usize, 4usize, 5usize, 6usize, 7usize,
+        ];
+        const DIM_REDUCE_INDICES_6: [usize; 8usize] = [
+            0usize, 1usize, 2usize, 3usize, 4usize, 5usize, 6usize, 7usize,
+        ];
+        const DIM_REDUCE_INDICES_7: [usize; 8usize] = [
+            0usize, 1usize, 2usize, 3usize, 4usize, 5usize, 6usize, 7usize,
+        ];
+        const DIM_REDUCE_INDICES_8: [usize; 8usize] = [
+            0usize, 1usize, 2usize, 3usize, 4usize, 5usize, 6usize, 7usize,
+        ];
+        const DIM_REDUCE_INDICES_9: [usize; 8usize] = [
+            0usize, 1usize, 2usize, 3usize, 4usize, 5usize, 6usize, 7usize,
+        ];
+        const DIM_REDUCE_INDICES_10: [usize; 8usize] = [
+            0usize, 1usize, 2usize, 3usize, 4usize, 5usize, 6usize, 7usize,
+        ];
+        const DIM_REDUCE_INDICES_11: [usize; 8usize] = [
+            0usize, 1usize, 2usize, 3usize, 4usize, 5usize, 6usize, 7usize,
+        ];
+        const DIM_REDUCE_INDICES_12: [usize; 8usize] = [
+            0usize, 1usize, 2usize, 3usize, 4usize, 5usize, 6usize, 7usize,
+        ];
+        const DIM_REDUCE_INDICES_13: [usize; 8usize] = [
+            0usize, 1usize, 2usize, 3usize, 4usize, 5usize, 6usize, 7usize,
+        ];
+        const DIM_REDUCE_INDICES_14: [usize; 8usize] = [
+            0usize, 1usize, 2usize, 3usize, 4usize, 5usize, 6usize, 7usize,
+        ];
+        const DIM_REDUCE_INDICES_15: [usize; 8usize] = [
+            0usize, 1usize, 2usize, 3usize, 4usize, 5usize, 6usize, 7usize,
+        ];
+        const DIM_REDUCE_INDICES_16: [usize; 8usize] = [
+            0usize, 1usize, 2usize, 3usize, 4usize, 5usize, 6usize, 7usize,
+        ];
+        const DIM_REDUCE_INDICES_17: [usize; 8usize] = [
+            0usize, 1usize, 2usize, 3usize, 4usize, 5usize, 6usize, 7usize,
+        ];
+        const DIM_REDUCE_INDICES_18: [usize; 8usize] = [
+            0usize, 1usize, 2usize, 3usize, 4usize, 5usize, 6usize, 7usize,
+        ];
+        const DIM_REDUCE_INDICES_19: [usize; 8usize] = [
+            0usize, 1usize, 2usize, 3usize, 4usize, 5usize, 6usize, 7usize,
+        ];
+        const DIM_REDUCE_INDICES_20: [usize; 8usize] = [
+            0usize, 1usize, 2usize, 3usize, 4usize, 5usize, 6usize, 7usize,
+        ];
+        const DIM_REDUCE_INDICES_21: [usize; 8usize] = [
+            0usize, 1usize, 2usize, 3usize, 4usize, 5usize, 6usize, 7usize,
+        ];
+        const DIM_REDUCE_INDICES_22: [usize; 8usize] = [
+            0usize, 1usize, 2usize, 3usize, 4usize, 5usize, 6usize, 7usize,
+        ];
+        const DIM_REDUCE_INDICES_23: [usize; 8usize] = [
+            0usize, 1usize, 2usize, 3usize, 4usize, 5usize, 6usize, 7usize,
+        ];
         {
             let initial_claim =
-                dim_reducing_23_compute_claim(&state.prev_claims, state.batching_challenge);
+                dim_reducing_compute_claim(&state.prev_claims, state.batching_challenge);
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, 3usize, GKR_COMMIT_BUF>(
-                    &mut seed,
+                    &mut ts,
                     initial_claim,
                     &mut state.prev_point,
                     23usize,
@@ -6485,7 +1840,11 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             }
             {
                 let evals: &[[BabyBearExt4; 4]] = eval_buf.data_as(8usize);
-                let f = dim_reducing_23_final_step_accumulator(evals, state.batching_challenge);
+                let f = dim_reducing_final_step_accumulator(
+                    evals,
+                    state.batching_challenge,
+                    &DIM_REDUCE_INDICES_23,
+                );
                 verify_final_step_check(
                     f,
                     *state.prev_point.get_unchecked(state.prev_point_len - 1),
@@ -6494,16 +1853,12 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                     23usize,
                 )?;
             }
-            eval_buf.commit(&mut hasher, &mut seed, data_words);
+            ts.commit(&mut eval_buf, data_words);
             let mut draw_buf = LazyVec::<BabyBearExt4, 3>::new();
             unsafe {
                 draw_buf.set_len(3);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(
-                &mut hasher,
-                &mut seed,
-                draw_buf.as_mut_slice(),
-            );
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, draw_buf.as_mut_slice());
             let r_before_last = *draw_buf.get(0);
             let r_last = *draw_buf.get(1);
             let next_batching = *draw_buf.get(2);
@@ -6528,10 +1883,10 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
         }
         {
             let initial_claim =
-                dim_reducing_22_compute_claim(&state.prev_claims, state.batching_challenge);
+                dim_reducing_compute_claim(&state.prev_claims, state.batching_challenge);
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, 4usize, GKR_COMMIT_BUF>(
-                    &mut seed,
+                    &mut ts,
                     initial_claim,
                     &mut state.prev_point,
                     22usize,
@@ -6547,7 +1902,11 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             }
             {
                 let evals: &[[BabyBearExt4; 4]] = eval_buf.data_as(8usize);
-                let f = dim_reducing_22_final_step_accumulator(evals, state.batching_challenge);
+                let f = dim_reducing_final_step_accumulator(
+                    evals,
+                    state.batching_challenge,
+                    &DIM_REDUCE_INDICES_22,
+                );
                 verify_final_step_check(
                     f,
                     *state.prev_point.get_unchecked(state.prev_point_len - 1),
@@ -6556,16 +1915,12 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                     22usize,
                 )?;
             }
-            eval_buf.commit(&mut hasher, &mut seed, data_words);
+            ts.commit(&mut eval_buf, data_words);
             let mut draw_buf = LazyVec::<BabyBearExt4, 3>::new();
             unsafe {
                 draw_buf.set_len(3);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(
-                &mut hasher,
-                &mut seed,
-                draw_buf.as_mut_slice(),
-            );
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, draw_buf.as_mut_slice());
             let r_before_last = *draw_buf.get(0);
             let r_last = *draw_buf.get(1);
             let next_batching = *draw_buf.get(2);
@@ -6590,10 +1945,10 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
         }
         {
             let initial_claim =
-                dim_reducing_21_compute_claim(&state.prev_claims, state.batching_challenge);
+                dim_reducing_compute_claim(&state.prev_claims, state.batching_challenge);
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, 5usize, GKR_COMMIT_BUF>(
-                    &mut seed,
+                    &mut ts,
                     initial_claim,
                     &mut state.prev_point,
                     21usize,
@@ -6609,7 +1964,11 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             }
             {
                 let evals: &[[BabyBearExt4; 4]] = eval_buf.data_as(8usize);
-                let f = dim_reducing_21_final_step_accumulator(evals, state.batching_challenge);
+                let f = dim_reducing_final_step_accumulator(
+                    evals,
+                    state.batching_challenge,
+                    &DIM_REDUCE_INDICES_21,
+                );
                 verify_final_step_check(
                     f,
                     *state.prev_point.get_unchecked(state.prev_point_len - 1),
@@ -6618,16 +1977,12 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                     21usize,
                 )?;
             }
-            eval_buf.commit(&mut hasher, &mut seed, data_words);
+            ts.commit(&mut eval_buf, data_words);
             let mut draw_buf = LazyVec::<BabyBearExt4, 3>::new();
             unsafe {
                 draw_buf.set_len(3);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(
-                &mut hasher,
-                &mut seed,
-                draw_buf.as_mut_slice(),
-            );
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, draw_buf.as_mut_slice());
             let r_before_last = *draw_buf.get(0);
             let r_last = *draw_buf.get(1);
             let next_batching = *draw_buf.get(2);
@@ -6652,10 +2007,10 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
         }
         {
             let initial_claim =
-                dim_reducing_20_compute_claim(&state.prev_claims, state.batching_challenge);
+                dim_reducing_compute_claim(&state.prev_claims, state.batching_challenge);
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, 6usize, GKR_COMMIT_BUF>(
-                    &mut seed,
+                    &mut ts,
                     initial_claim,
                     &mut state.prev_point,
                     20usize,
@@ -6671,7 +2026,11 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             }
             {
                 let evals: &[[BabyBearExt4; 4]] = eval_buf.data_as(8usize);
-                let f = dim_reducing_20_final_step_accumulator(evals, state.batching_challenge);
+                let f = dim_reducing_final_step_accumulator(
+                    evals,
+                    state.batching_challenge,
+                    &DIM_REDUCE_INDICES_20,
+                );
                 verify_final_step_check(
                     f,
                     *state.prev_point.get_unchecked(state.prev_point_len - 1),
@@ -6680,16 +2039,12 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                     20usize,
                 )?;
             }
-            eval_buf.commit(&mut hasher, &mut seed, data_words);
+            ts.commit(&mut eval_buf, data_words);
             let mut draw_buf = LazyVec::<BabyBearExt4, 3>::new();
             unsafe {
                 draw_buf.set_len(3);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(
-                &mut hasher,
-                &mut seed,
-                draw_buf.as_mut_slice(),
-            );
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, draw_buf.as_mut_slice());
             let r_before_last = *draw_buf.get(0);
             let r_last = *draw_buf.get(1);
             let next_batching = *draw_buf.get(2);
@@ -6714,10 +2069,10 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
         }
         {
             let initial_claim =
-                dim_reducing_19_compute_claim(&state.prev_claims, state.batching_challenge);
+                dim_reducing_compute_claim(&state.prev_claims, state.batching_challenge);
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, 7usize, GKR_COMMIT_BUF>(
-                    &mut seed,
+                    &mut ts,
                     initial_claim,
                     &mut state.prev_point,
                     19usize,
@@ -6733,7 +2088,11 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             }
             {
                 let evals: &[[BabyBearExt4; 4]] = eval_buf.data_as(8usize);
-                let f = dim_reducing_19_final_step_accumulator(evals, state.batching_challenge);
+                let f = dim_reducing_final_step_accumulator(
+                    evals,
+                    state.batching_challenge,
+                    &DIM_REDUCE_INDICES_19,
+                );
                 verify_final_step_check(
                     f,
                     *state.prev_point.get_unchecked(state.prev_point_len - 1),
@@ -6742,16 +2101,12 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                     19usize,
                 )?;
             }
-            eval_buf.commit(&mut hasher, &mut seed, data_words);
+            ts.commit(&mut eval_buf, data_words);
             let mut draw_buf = LazyVec::<BabyBearExt4, 3>::new();
             unsafe {
                 draw_buf.set_len(3);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(
-                &mut hasher,
-                &mut seed,
-                draw_buf.as_mut_slice(),
-            );
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, draw_buf.as_mut_slice());
             let r_before_last = *draw_buf.get(0);
             let r_last = *draw_buf.get(1);
             let next_batching = *draw_buf.get(2);
@@ -6776,10 +2131,10 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
         }
         {
             let initial_claim =
-                dim_reducing_18_compute_claim(&state.prev_claims, state.batching_challenge);
+                dim_reducing_compute_claim(&state.prev_claims, state.batching_challenge);
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, 8usize, GKR_COMMIT_BUF>(
-                    &mut seed,
+                    &mut ts,
                     initial_claim,
                     &mut state.prev_point,
                     18usize,
@@ -6795,7 +2150,11 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             }
             {
                 let evals: &[[BabyBearExt4; 4]] = eval_buf.data_as(8usize);
-                let f = dim_reducing_18_final_step_accumulator(evals, state.batching_challenge);
+                let f = dim_reducing_final_step_accumulator(
+                    evals,
+                    state.batching_challenge,
+                    &DIM_REDUCE_INDICES_18,
+                );
                 verify_final_step_check(
                     f,
                     *state.prev_point.get_unchecked(state.prev_point_len - 1),
@@ -6804,16 +2163,12 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                     18usize,
                 )?;
             }
-            eval_buf.commit(&mut hasher, &mut seed, data_words);
+            ts.commit(&mut eval_buf, data_words);
             let mut draw_buf = LazyVec::<BabyBearExt4, 3>::new();
             unsafe {
                 draw_buf.set_len(3);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(
-                &mut hasher,
-                &mut seed,
-                draw_buf.as_mut_slice(),
-            );
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, draw_buf.as_mut_slice());
             let r_before_last = *draw_buf.get(0);
             let r_last = *draw_buf.get(1);
             let next_batching = *draw_buf.get(2);
@@ -6838,10 +2193,10 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
         }
         {
             let initial_claim =
-                dim_reducing_17_compute_claim(&state.prev_claims, state.batching_challenge);
+                dim_reducing_compute_claim(&state.prev_claims, state.batching_challenge);
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, 9usize, GKR_COMMIT_BUF>(
-                    &mut seed,
+                    &mut ts,
                     initial_claim,
                     &mut state.prev_point,
                     17usize,
@@ -6857,7 +2212,11 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             }
             {
                 let evals: &[[BabyBearExt4; 4]] = eval_buf.data_as(8usize);
-                let f = dim_reducing_17_final_step_accumulator(evals, state.batching_challenge);
+                let f = dim_reducing_final_step_accumulator(
+                    evals,
+                    state.batching_challenge,
+                    &DIM_REDUCE_INDICES_17,
+                );
                 verify_final_step_check(
                     f,
                     *state.prev_point.get_unchecked(state.prev_point_len - 1),
@@ -6866,16 +2225,12 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                     17usize,
                 )?;
             }
-            eval_buf.commit(&mut hasher, &mut seed, data_words);
+            ts.commit(&mut eval_buf, data_words);
             let mut draw_buf = LazyVec::<BabyBearExt4, 3>::new();
             unsafe {
                 draw_buf.set_len(3);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(
-                &mut hasher,
-                &mut seed,
-                draw_buf.as_mut_slice(),
-            );
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, draw_buf.as_mut_slice());
             let r_before_last = *draw_buf.get(0);
             let r_last = *draw_buf.get(1);
             let next_batching = *draw_buf.get(2);
@@ -6900,10 +2255,10 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
         }
         {
             let initial_claim =
-                dim_reducing_16_compute_claim(&state.prev_claims, state.batching_challenge);
+                dim_reducing_compute_claim(&state.prev_claims, state.batching_challenge);
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, 10usize, GKR_COMMIT_BUF>(
-                    &mut seed,
+                    &mut ts,
                     initial_claim,
                     &mut state.prev_point,
                     16usize,
@@ -6919,7 +2274,11 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             }
             {
                 let evals: &[[BabyBearExt4; 4]] = eval_buf.data_as(8usize);
-                let f = dim_reducing_16_final_step_accumulator(evals, state.batching_challenge);
+                let f = dim_reducing_final_step_accumulator(
+                    evals,
+                    state.batching_challenge,
+                    &DIM_REDUCE_INDICES_16,
+                );
                 verify_final_step_check(
                     f,
                     *state.prev_point.get_unchecked(state.prev_point_len - 1),
@@ -6928,16 +2287,12 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                     16usize,
                 )?;
             }
-            eval_buf.commit(&mut hasher, &mut seed, data_words);
+            ts.commit(&mut eval_buf, data_words);
             let mut draw_buf = LazyVec::<BabyBearExt4, 3>::new();
             unsafe {
                 draw_buf.set_len(3);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(
-                &mut hasher,
-                &mut seed,
-                draw_buf.as_mut_slice(),
-            );
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, draw_buf.as_mut_slice());
             let r_before_last = *draw_buf.get(0);
             let r_last = *draw_buf.get(1);
             let next_batching = *draw_buf.get(2);
@@ -6962,10 +2317,10 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
         }
         {
             let initial_claim =
-                dim_reducing_15_compute_claim(&state.prev_claims, state.batching_challenge);
+                dim_reducing_compute_claim(&state.prev_claims, state.batching_challenge);
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, 11usize, GKR_COMMIT_BUF>(
-                    &mut seed,
+                    &mut ts,
                     initial_claim,
                     &mut state.prev_point,
                     15usize,
@@ -6981,7 +2336,11 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             }
             {
                 let evals: &[[BabyBearExt4; 4]] = eval_buf.data_as(8usize);
-                let f = dim_reducing_15_final_step_accumulator(evals, state.batching_challenge);
+                let f = dim_reducing_final_step_accumulator(
+                    evals,
+                    state.batching_challenge,
+                    &DIM_REDUCE_INDICES_15,
+                );
                 verify_final_step_check(
                     f,
                     *state.prev_point.get_unchecked(state.prev_point_len - 1),
@@ -6990,16 +2349,12 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                     15usize,
                 )?;
             }
-            eval_buf.commit(&mut hasher, &mut seed, data_words);
+            ts.commit(&mut eval_buf, data_words);
             let mut draw_buf = LazyVec::<BabyBearExt4, 3>::new();
             unsafe {
                 draw_buf.set_len(3);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(
-                &mut hasher,
-                &mut seed,
-                draw_buf.as_mut_slice(),
-            );
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, draw_buf.as_mut_slice());
             let r_before_last = *draw_buf.get(0);
             let r_last = *draw_buf.get(1);
             let next_batching = *draw_buf.get(2);
@@ -7024,10 +2379,10 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
         }
         {
             let initial_claim =
-                dim_reducing_14_compute_claim(&state.prev_claims, state.batching_challenge);
+                dim_reducing_compute_claim(&state.prev_claims, state.batching_challenge);
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, 12usize, GKR_COMMIT_BUF>(
-                    &mut seed,
+                    &mut ts,
                     initial_claim,
                     &mut state.prev_point,
                     14usize,
@@ -7043,7 +2398,11 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             }
             {
                 let evals: &[[BabyBearExt4; 4]] = eval_buf.data_as(8usize);
-                let f = dim_reducing_14_final_step_accumulator(evals, state.batching_challenge);
+                let f = dim_reducing_final_step_accumulator(
+                    evals,
+                    state.batching_challenge,
+                    &DIM_REDUCE_INDICES_14,
+                );
                 verify_final_step_check(
                     f,
                     *state.prev_point.get_unchecked(state.prev_point_len - 1),
@@ -7052,16 +2411,12 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                     14usize,
                 )?;
             }
-            eval_buf.commit(&mut hasher, &mut seed, data_words);
+            ts.commit(&mut eval_buf, data_words);
             let mut draw_buf = LazyVec::<BabyBearExt4, 3>::new();
             unsafe {
                 draw_buf.set_len(3);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(
-                &mut hasher,
-                &mut seed,
-                draw_buf.as_mut_slice(),
-            );
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, draw_buf.as_mut_slice());
             let r_before_last = *draw_buf.get(0);
             let r_last = *draw_buf.get(1);
             let next_batching = *draw_buf.get(2);
@@ -7086,10 +2441,10 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
         }
         {
             let initial_claim =
-                dim_reducing_13_compute_claim(&state.prev_claims, state.batching_challenge);
+                dim_reducing_compute_claim(&state.prev_claims, state.batching_challenge);
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, 13usize, GKR_COMMIT_BUF>(
-                    &mut seed,
+                    &mut ts,
                     initial_claim,
                     &mut state.prev_point,
                     13usize,
@@ -7105,7 +2460,11 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             }
             {
                 let evals: &[[BabyBearExt4; 4]] = eval_buf.data_as(8usize);
-                let f = dim_reducing_13_final_step_accumulator(evals, state.batching_challenge);
+                let f = dim_reducing_final_step_accumulator(
+                    evals,
+                    state.batching_challenge,
+                    &DIM_REDUCE_INDICES_13,
+                );
                 verify_final_step_check(
                     f,
                     *state.prev_point.get_unchecked(state.prev_point_len - 1),
@@ -7114,16 +2473,12 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                     13usize,
                 )?;
             }
-            eval_buf.commit(&mut hasher, &mut seed, data_words);
+            ts.commit(&mut eval_buf, data_words);
             let mut draw_buf = LazyVec::<BabyBearExt4, 3>::new();
             unsafe {
                 draw_buf.set_len(3);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(
-                &mut hasher,
-                &mut seed,
-                draw_buf.as_mut_slice(),
-            );
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, draw_buf.as_mut_slice());
             let r_before_last = *draw_buf.get(0);
             let r_last = *draw_buf.get(1);
             let next_batching = *draw_buf.get(2);
@@ -7148,10 +2503,10 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
         }
         {
             let initial_claim =
-                dim_reducing_12_compute_claim(&state.prev_claims, state.batching_challenge);
+                dim_reducing_compute_claim(&state.prev_claims, state.batching_challenge);
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, 14usize, GKR_COMMIT_BUF>(
-                    &mut seed,
+                    &mut ts,
                     initial_claim,
                     &mut state.prev_point,
                     12usize,
@@ -7167,7 +2522,11 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             }
             {
                 let evals: &[[BabyBearExt4; 4]] = eval_buf.data_as(8usize);
-                let f = dim_reducing_12_final_step_accumulator(evals, state.batching_challenge);
+                let f = dim_reducing_final_step_accumulator(
+                    evals,
+                    state.batching_challenge,
+                    &DIM_REDUCE_INDICES_12,
+                );
                 verify_final_step_check(
                     f,
                     *state.prev_point.get_unchecked(state.prev_point_len - 1),
@@ -7176,16 +2535,12 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                     12usize,
                 )?;
             }
-            eval_buf.commit(&mut hasher, &mut seed, data_words);
+            ts.commit(&mut eval_buf, data_words);
             let mut draw_buf = LazyVec::<BabyBearExt4, 3>::new();
             unsafe {
                 draw_buf.set_len(3);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(
-                &mut hasher,
-                &mut seed,
-                draw_buf.as_mut_slice(),
-            );
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, draw_buf.as_mut_slice());
             let r_before_last = *draw_buf.get(0);
             let r_last = *draw_buf.get(1);
             let next_batching = *draw_buf.get(2);
@@ -7210,10 +2565,10 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
         }
         {
             let initial_claim =
-                dim_reducing_11_compute_claim(&state.prev_claims, state.batching_challenge);
+                dim_reducing_compute_claim(&state.prev_claims, state.batching_challenge);
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, 15usize, GKR_COMMIT_BUF>(
-                    &mut seed,
+                    &mut ts,
                     initial_claim,
                     &mut state.prev_point,
                     11usize,
@@ -7229,7 +2584,11 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             }
             {
                 let evals: &[[BabyBearExt4; 4]] = eval_buf.data_as(8usize);
-                let f = dim_reducing_11_final_step_accumulator(evals, state.batching_challenge);
+                let f = dim_reducing_final_step_accumulator(
+                    evals,
+                    state.batching_challenge,
+                    &DIM_REDUCE_INDICES_11,
+                );
                 verify_final_step_check(
                     f,
                     *state.prev_point.get_unchecked(state.prev_point_len - 1),
@@ -7238,16 +2597,12 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                     11usize,
                 )?;
             }
-            eval_buf.commit(&mut hasher, &mut seed, data_words);
+            ts.commit(&mut eval_buf, data_words);
             let mut draw_buf = LazyVec::<BabyBearExt4, 3>::new();
             unsafe {
                 draw_buf.set_len(3);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(
-                &mut hasher,
-                &mut seed,
-                draw_buf.as_mut_slice(),
-            );
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, draw_buf.as_mut_slice());
             let r_before_last = *draw_buf.get(0);
             let r_last = *draw_buf.get(1);
             let next_batching = *draw_buf.get(2);
@@ -7272,10 +2627,10 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
         }
         {
             let initial_claim =
-                dim_reducing_10_compute_claim(&state.prev_claims, state.batching_challenge);
+                dim_reducing_compute_claim(&state.prev_claims, state.batching_challenge);
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, 16usize, GKR_COMMIT_BUF>(
-                    &mut seed,
+                    &mut ts,
                     initial_claim,
                     &mut state.prev_point,
                     10usize,
@@ -7291,7 +2646,11 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             }
             {
                 let evals: &[[BabyBearExt4; 4]] = eval_buf.data_as(8usize);
-                let f = dim_reducing_10_final_step_accumulator(evals, state.batching_challenge);
+                let f = dim_reducing_final_step_accumulator(
+                    evals,
+                    state.batching_challenge,
+                    &DIM_REDUCE_INDICES_10,
+                );
                 verify_final_step_check(
                     f,
                     *state.prev_point.get_unchecked(state.prev_point_len - 1),
@@ -7300,16 +2659,12 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                     10usize,
                 )?;
             }
-            eval_buf.commit(&mut hasher, &mut seed, data_words);
+            ts.commit(&mut eval_buf, data_words);
             let mut draw_buf = LazyVec::<BabyBearExt4, 3>::new();
             unsafe {
                 draw_buf.set_len(3);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(
-                &mut hasher,
-                &mut seed,
-                draw_buf.as_mut_slice(),
-            );
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, draw_buf.as_mut_slice());
             let r_before_last = *draw_buf.get(0);
             let r_last = *draw_buf.get(1);
             let next_batching = *draw_buf.get(2);
@@ -7334,10 +2689,10 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
         }
         {
             let initial_claim =
-                dim_reducing_9_compute_claim(&state.prev_claims, state.batching_challenge);
+                dim_reducing_compute_claim(&state.prev_claims, state.batching_challenge);
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, 17usize, GKR_COMMIT_BUF>(
-                    &mut seed,
+                    &mut ts,
                     initial_claim,
                     &mut state.prev_point,
                     9usize,
@@ -7353,7 +2708,11 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             }
             {
                 let evals: &[[BabyBearExt4; 4]] = eval_buf.data_as(8usize);
-                let f = dim_reducing_9_final_step_accumulator(evals, state.batching_challenge);
+                let f = dim_reducing_final_step_accumulator(
+                    evals,
+                    state.batching_challenge,
+                    &DIM_REDUCE_INDICES_9,
+                );
                 verify_final_step_check(
                     f,
                     *state.prev_point.get_unchecked(state.prev_point_len - 1),
@@ -7362,16 +2721,12 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                     9usize,
                 )?;
             }
-            eval_buf.commit(&mut hasher, &mut seed, data_words);
+            ts.commit(&mut eval_buf, data_words);
             let mut draw_buf = LazyVec::<BabyBearExt4, 3>::new();
             unsafe {
                 draw_buf.set_len(3);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(
-                &mut hasher,
-                &mut seed,
-                draw_buf.as_mut_slice(),
-            );
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, draw_buf.as_mut_slice());
             let r_before_last = *draw_buf.get(0);
             let r_last = *draw_buf.get(1);
             let next_batching = *draw_buf.get(2);
@@ -7396,10 +2751,10 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
         }
         {
             let initial_claim =
-                dim_reducing_8_compute_claim(&state.prev_claims, state.batching_challenge);
+                dim_reducing_compute_claim(&state.prev_claims, state.batching_challenge);
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, 18usize, GKR_COMMIT_BUF>(
-                    &mut seed,
+                    &mut ts,
                     initial_claim,
                     &mut state.prev_point,
                     8usize,
@@ -7415,7 +2770,11 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             }
             {
                 let evals: &[[BabyBearExt4; 4]] = eval_buf.data_as(8usize);
-                let f = dim_reducing_8_final_step_accumulator(evals, state.batching_challenge);
+                let f = dim_reducing_final_step_accumulator(
+                    evals,
+                    state.batching_challenge,
+                    &DIM_REDUCE_INDICES_8,
+                );
                 verify_final_step_check(
                     f,
                     *state.prev_point.get_unchecked(state.prev_point_len - 1),
@@ -7424,16 +2783,12 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                     8usize,
                 )?;
             }
-            eval_buf.commit(&mut hasher, &mut seed, data_words);
+            ts.commit(&mut eval_buf, data_words);
             let mut draw_buf = LazyVec::<BabyBearExt4, 3>::new();
             unsafe {
                 draw_buf.set_len(3);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(
-                &mut hasher,
-                &mut seed,
-                draw_buf.as_mut_slice(),
-            );
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, draw_buf.as_mut_slice());
             let r_before_last = *draw_buf.get(0);
             let r_last = *draw_buf.get(1);
             let next_batching = *draw_buf.get(2);
@@ -7458,10 +2813,10 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
         }
         {
             let initial_claim =
-                dim_reducing_7_compute_claim(&state.prev_claims, state.batching_challenge);
+                dim_reducing_compute_claim(&state.prev_claims, state.batching_challenge);
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, 19usize, GKR_COMMIT_BUF>(
-                    &mut seed,
+                    &mut ts,
                     initial_claim,
                     &mut state.prev_point,
                     7usize,
@@ -7477,7 +2832,11 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             }
             {
                 let evals: &[[BabyBearExt4; 4]] = eval_buf.data_as(8usize);
-                let f = dim_reducing_7_final_step_accumulator(evals, state.batching_challenge);
+                let f = dim_reducing_final_step_accumulator(
+                    evals,
+                    state.batching_challenge,
+                    &DIM_REDUCE_INDICES_7,
+                );
                 verify_final_step_check(
                     f,
                     *state.prev_point.get_unchecked(state.prev_point_len - 1),
@@ -7486,16 +2845,12 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                     7usize,
                 )?;
             }
-            eval_buf.commit(&mut hasher, &mut seed, data_words);
+            ts.commit(&mut eval_buf, data_words);
             let mut draw_buf = LazyVec::<BabyBearExt4, 3>::new();
             unsafe {
                 draw_buf.set_len(3);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(
-                &mut hasher,
-                &mut seed,
-                draw_buf.as_mut_slice(),
-            );
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, draw_buf.as_mut_slice());
             let r_before_last = *draw_buf.get(0);
             let r_last = *draw_buf.get(1);
             let next_batching = *draw_buf.get(2);
@@ -7520,10 +2875,10 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
         }
         {
             let initial_claim =
-                dim_reducing_6_compute_claim(&state.prev_claims, state.batching_challenge);
+                dim_reducing_compute_claim(&state.prev_claims, state.batching_challenge);
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, 20usize, GKR_COMMIT_BUF>(
-                    &mut seed,
+                    &mut ts,
                     initial_claim,
                     &mut state.prev_point,
                     6usize,
@@ -7539,7 +2894,11 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             }
             {
                 let evals: &[[BabyBearExt4; 4]] = eval_buf.data_as(8usize);
-                let f = dim_reducing_6_final_step_accumulator(evals, state.batching_challenge);
+                let f = dim_reducing_final_step_accumulator(
+                    evals,
+                    state.batching_challenge,
+                    &DIM_REDUCE_INDICES_6,
+                );
                 verify_final_step_check(
                     f,
                     *state.prev_point.get_unchecked(state.prev_point_len - 1),
@@ -7548,16 +2907,12 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                     6usize,
                 )?;
             }
-            eval_buf.commit(&mut hasher, &mut seed, data_words);
+            ts.commit(&mut eval_buf, data_words);
             let mut draw_buf = LazyVec::<BabyBearExt4, 3>::new();
             unsafe {
                 draw_buf.set_len(3);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(
-                &mut hasher,
-                &mut seed,
-                draw_buf.as_mut_slice(),
-            );
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, draw_buf.as_mut_slice());
             let r_before_last = *draw_buf.get(0);
             let r_last = *draw_buf.get(1);
             let next_batching = *draw_buf.get(2);
@@ -7582,10 +2937,10 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
         }
         {
             let initial_claim =
-                dim_reducing_5_compute_claim(&state.prev_claims, state.batching_challenge);
+                dim_reducing_compute_claim(&state.prev_claims, state.batching_challenge);
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, 21usize, GKR_COMMIT_BUF>(
-                    &mut seed,
+                    &mut ts,
                     initial_claim,
                     &mut state.prev_point,
                     5usize,
@@ -7601,7 +2956,11 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             }
             {
                 let evals: &[[BabyBearExt4; 4]] = eval_buf.data_as(8usize);
-                let f = dim_reducing_5_final_step_accumulator(evals, state.batching_challenge);
+                let f = dim_reducing_final_step_accumulator(
+                    evals,
+                    state.batching_challenge,
+                    &DIM_REDUCE_INDICES_5,
+                );
                 verify_final_step_check(
                     f,
                     *state.prev_point.get_unchecked(state.prev_point_len - 1),
@@ -7610,16 +2969,12 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                     5usize,
                 )?;
             }
-            eval_buf.commit(&mut hasher, &mut seed, data_words);
+            ts.commit(&mut eval_buf, data_words);
             let mut draw_buf = LazyVec::<BabyBearExt4, 3>::new();
             unsafe {
                 draw_buf.set_len(3);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(
-                &mut hasher,
-                &mut seed,
-                draw_buf.as_mut_slice(),
-            );
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, draw_buf.as_mut_slice());
             let r_before_last = *draw_buf.get(0);
             let r_last = *draw_buf.get(1);
             let next_batching = *draw_buf.get(2);
@@ -7644,10 +2999,10 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
         }
         {
             let initial_claim =
-                dim_reducing_4_compute_claim(&state.prev_claims, state.batching_challenge);
+                dim_reducing_compute_claim(&state.prev_claims, state.batching_challenge);
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, 22usize, GKR_COMMIT_BUF>(
-                    &mut seed,
+                    &mut ts,
                     initial_claim,
                     &mut state.prev_point,
                     4usize,
@@ -7663,7 +3018,11 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             }
             {
                 let evals: &[[BabyBearExt4; 4]] = eval_buf.data_as(8usize);
-                let f = dim_reducing_4_final_step_accumulator(evals, state.batching_challenge);
+                let f = dim_reducing_final_step_accumulator(
+                    evals,
+                    state.batching_challenge,
+                    &DIM_REDUCE_INDICES_4,
+                );
                 verify_final_step_check(
                     f,
                     *state.prev_point.get_unchecked(state.prev_point_len - 1),
@@ -7672,16 +3031,12 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                     4usize,
                 )?;
             }
-            eval_buf.commit(&mut hasher, &mut seed, data_words);
+            ts.commit(&mut eval_buf, data_words);
             let mut draw_buf = LazyVec::<BabyBearExt4, 3>::new();
             unsafe {
                 draw_buf.set_len(3);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(
-                &mut hasher,
-                &mut seed,
-                draw_buf.as_mut_slice(),
-            );
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, draw_buf.as_mut_slice());
             let r_before_last = *draw_buf.get(0);
             let r_last = *draw_buf.get(1);
             let next_batching = *draw_buf.get(2);
@@ -7717,7 +3072,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             let initial_claim = layer_3_compute_claim(&state.prev_claims, state.batching_challenge);
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, 23usize, GKR_COMMIT_BUF>(
-                    &mut seed,
+                    &mut ts,
                     initial_claim,
                     &mut state.prev_point,
                     3usize,
@@ -7748,16 +3103,12 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                     3usize,
                 )?;
             }
-            eval_buf.commit(&mut hasher, &mut seed, data_words);
+            ts.commit(&mut eval_buf, data_words);
             let mut draw_buf = LazyVec::<BabyBearExt4, 2>::new();
             unsafe {
                 draw_buf.set_len(2);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(
-                &mut hasher,
-                &mut seed,
-                draw_buf.as_mut_slice(),
-            );
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, draw_buf.as_mut_slice());
             let last_r = *draw_buf.get(0);
             let next_batching = *draw_buf.get(1);
             *state.prev_point.get_unchecked_mut(fc_len) = last_r;
@@ -7774,7 +3125,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             let initial_claim = layer_2_compute_claim(&state.prev_claims, state.batching_challenge);
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, 23usize, GKR_COMMIT_BUF>(
-                    &mut seed,
+                    &mut ts,
                     initial_claim,
                     &mut state.prev_point,
                     2usize,
@@ -7805,16 +3156,12 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                     2usize,
                 )?;
             }
-            eval_buf.commit(&mut hasher, &mut seed, data_words);
+            ts.commit(&mut eval_buf, data_words);
             let mut draw_buf = LazyVec::<BabyBearExt4, 2>::new();
             unsafe {
                 draw_buf.set_len(2);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(
-                &mut hasher,
-                &mut seed,
-                draw_buf.as_mut_slice(),
-            );
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, draw_buf.as_mut_slice());
             let last_r = *draw_buf.get(0);
             let next_batching = *draw_buf.get(1);
             *state.prev_point.get_unchecked_mut(fc_len) = last_r;
@@ -7831,7 +3178,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             let initial_claim = layer_1_compute_claim(&state.prev_claims, state.batching_challenge);
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, 23usize, GKR_COMMIT_BUF>(
-                    &mut seed,
+                    &mut ts,
                     initial_claim,
                     &mut state.prev_point,
                     1usize,
@@ -7862,16 +3209,12 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                     1usize,
                 )?;
             }
-            eval_buf.commit(&mut hasher, &mut seed, data_words);
+            ts.commit(&mut eval_buf, data_words);
             let mut draw_buf = LazyVec::<BabyBearExt4, 2>::new();
             unsafe {
                 draw_buf.set_len(2);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(
-                &mut hasher,
-                &mut seed,
-                draw_buf.as_mut_slice(),
-            );
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, draw_buf.as_mut_slice());
             let last_r = *draw_buf.get(0);
             let next_batching = *draw_buf.get(1);
             *state.prev_point.get_unchecked_mut(fc_len) = last_r;
@@ -7888,7 +3231,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             let initial_claim = layer_0_compute_claim(&state.prev_claims, state.batching_challenge);
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, 23usize, GKR_COMMIT_BUF>(
-                    &mut seed,
+                    &mut ts,
                     initial_claim,
                     &mut state.prev_point,
                     0usize,
@@ -7919,16 +3262,12 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                     0usize,
                 )?;
             }
-            eval_buf.commit(&mut hasher, &mut seed, data_words);
+            ts.commit(&mut eval_buf, data_words);
             let mut draw_buf = LazyVec::<BabyBearExt4, 2>::new();
             unsafe {
                 draw_buf.set_len(2);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(
-                &mut hasher,
-                &mut seed,
-                draw_buf.as_mut_slice(),
-            );
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, draw_buf.as_mut_slice());
             let last_r = *draw_buf.get(0);
             let next_batching = *draw_buf.get(1);
             *state.prev_point.get_unchecked_mut(fc_len) = last_r;
@@ -7950,7 +3289,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                     extra_evals.push(*el);
                 }
             }
-            extra_buf.commit(&mut hasher, &mut seed, extra_data_words);
+            ts.commit(&mut extra_buf, extra_data_words);
             let final_step_evals: &[[BabyBearExt4; 2]] = unsafe { eval_buf.data_as(61usize) };
             state.prev_claims.clear();
             {
@@ -8216,7 +3555,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
         unsafe {
             draw_buf.set_len(1);
         }
-        draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut hasher, &mut seed, draw_buf.as_mut_slice());
+        draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, draw_buf.as_mut_slice());
         let whir_batching_challenge = *draw_buf.get(0);
         let grand_product_accumulator: BabyBearExt4 = read_field_el::<I>();
         Ok(GKRVerifierOutput {
@@ -8227,7 +3566,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             grand_product_accumulator,
             additional_base_layer_openings: BASE_LAYER_ADDITIONAL_OPENINGS,
             whir_batching_challenge,
-            whir_transcript_seed: seed,
+            whir_transcript_seed: ts.seed,
             setup_cap,
             memory_cap,
             witness_cap,

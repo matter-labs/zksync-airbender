@@ -87,7 +87,7 @@ pub fn generate_whir_inlined<MW: MersenneWrapper>(
             WhirVerificationError, read_field_el, read_field_els,
             read_reduced_field_el, draw_single_field_el, compute_tree_index,
         };
-        use ::verifier_common::structs::CommitBuf;
+        use ::verifier_common::structs::{CommitBuf, TranscriptState};
         use super::constants::*;
 
         const INITIAL_VALUES_PER_LEAF: usize = #values_per_leaf;
@@ -177,9 +177,8 @@ pub fn generate_whir_inlined<MW: MersenneWrapper>(
 
         #[allow(unused_braces, unused_mut, unused_variables, unused_unsafe, clippy::needless_borrow)]
         pub fn verify_initial_whir_round<I: NonDeterminismSource>(
-            hasher: &mut DelegatedBlake2sState,
+            ts: &mut TranscriptState,
             hash_buf: &mut AlignedArray64<MaybeUninit<u32>, WHIR_HASH_BUF_SIZE>,
-            seed: &mut Seed,
             batching_challenge: #quartic_struct,
             setup_cap: &[u32; SETUP_CAP_WORDS],
             memory_cap: &[u32; MEM_CAP_WORDS],
@@ -233,7 +232,7 @@ pub fn generate_whir_inlined<MW: MersenneWrapper>(
                 let mut round_idx = 0;
                 while round_idx < WHIR_FOLD_STEPS[0] {
                     let (new_claim, alpha) = verify_whir_sumcheck_step::<I>(
-                        hasher, seed, claim, round_idx,
+                        ts, claim, round_idx,
                     )?;
                     claim = new_claim;
                     folding_challenges.push(alpha);
@@ -249,14 +248,11 @@ pub fn generate_whir_inlined<MW: MersenneWrapper>(
                 };
                 let intermediate_cap =
                     read_commit_return_merkle_cap::<I, WHIR_CAP_WORDS, CAP_COMMIT_BUF>(
-                        hasher, seed,
+                        ts,
                     );
 
                 // --- 3. OOD: draw point, read value, commit ---
-                // ood_point advances the Fiat-Shamir transcript; the verifier does not
-                // use its value directly — the OOD evaluation is checked implicitly
-                // through the next round's sumcheck claim.
-                let _ood_point = draw_single_field_el(hasher, seed);
+                let _ood_point = draw_single_field_el(ts);
 
                 let mut ood_buf = CommitBuf::<#ood_commit_buf_size>::new();
                 {
@@ -269,17 +265,17 @@ pub fn generate_whir_inlined<MW: MersenneWrapper>(
                 let ood_value: #quartic_struct = unsafe {
                     *ood_buf.data_as::<#quartic_struct>(1).as_ptr()
                 };
-                ood_buf.commit(hasher, seed, #ood_data_words);
+                ts.commit(&mut ood_buf, #ood_data_words);
 
                 // --- 4. PoW + query indices ---
-                read_and_verify_pow::<I>(seed, INITIAL_POW_BITS);
+                read_and_verify_pow::<I>(ts, INITIAL_POW_BITS);
                 let query_indices = draw_query_indices::<INITIAL_NUM_QUERIES, INITIAL_DRAW_WORDS>(
-                    hasher, seed, INITIAL_NUM_QUERIES, INITIAL_QUERY_INDEX_BITS,
+                    ts, INITIAL_NUM_QUERIES, INITIAL_QUERY_INDEX_BITS,
                     INITIAL_DRAW_WORDS,
                 );
 
                 // --- 5. Delinearization challenge ---
-                let delinearization_challenge = draw_single_field_el(hasher, seed);
+                let delinearization_challenge = draw_single_field_el(ts);
 
                 // --- 6. Claim correction: starts with OOD contribution ---
                 let mut claim_correction = ood_value;
@@ -314,21 +310,21 @@ pub fn generate_whir_inlined<MW: MersenneWrapper>(
 
                     // Memory oracle
                     process_oracle_query::<I>(
-                        hasher, hash_buf,
+                        &mut ts.hasher, hash_buf,
                         NUM_MEM_ORACLE_COLS, MEM_LEAF_WORDS, tree_index,
                         BASE_ORACLE_DEPTH, memory_cap, &gamma_powers[..], 0,
                         &mut acc0, &mut acc1, q,
                     )?;
                     // Witness oracle
                     process_oracle_query::<I>(
-                        hasher, hash_buf,
+                        &mut ts.hasher, hash_buf,
                         NUM_WIT_ORACLE_COLS, WIT_LEAF_WORDS, tree_index,
                         BASE_ORACLE_DEPTH, witness_cap, &gamma_powers[..], NUM_MEM_ORACLE_COLS,
                         &mut acc0, &mut acc1, q,
                     )?;
                     // Setup oracle
                     process_oracle_query::<I>(
-                        hasher, hash_buf,
+                        &mut ts.hasher, hash_buf,
                         NUM_SETUP_ORACLE_COLS, SETUP_LEAF_WORDS, tree_index,
                         SETUP_ORACLE_DEPTH, setup_cap, &gamma_powers[..],
                         NUM_MEM_ORACLE_COLS + NUM_WIT_ORACLE_COLS,

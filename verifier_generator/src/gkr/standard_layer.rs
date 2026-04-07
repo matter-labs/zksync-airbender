@@ -18,6 +18,103 @@ fn coeff64_to_internal_repr<F: PrimeField>(coeff: u64) -> u32 {
     F::from_u32_with_reduction(reduced).as_u32_raw_repr_reduced()
 }
 
+// ---------------------------------------------------------------------------
+// Shared code-generation helpers for complex gate types
+// ---------------------------------------------------------------------------
+
+/// Generate code that evaluates a `NoFieldLinearRelation` into variable `var_name`.
+/// Produces: `let mut {var} = Ext::from_base(const); { term additions... }`
+fn emit_linear_relation_eval<MW: MersenneWrapper, F: PrimeField>(
+    rel: &prover::cs::definitions::gkr::NoFieldLinearRelation,
+    var_name: &str,
+    input_sorted_addrs: &[GKRAddress],
+) -> TokenStream {
+    let quartic_struct = MW::quartic_struct();
+    let var = syn::Ident::new(var_name, proc_macro2::Span::call_site());
+    let tmp = syn::Ident::new(&format!("{}_t", var_name), proc_macro2::Span::call_site());
+
+    let const_mont = coeff_to_internal_repr::<F>(rel.constant);
+    let const_field = MW::field_new(quote! { #const_mont });
+    let mut comp = quote! { let mut #var = #quartic_struct::from_base(#const_field); };
+
+    for &(coeff, ref addr) in rel.linear_terms.iter() {
+        let idx = addr_to_idx(addr, input_sorted_addrs);
+        let mont = coeff_to_internal_repr::<F>(coeff);
+        let field_coeff = MW::field_new(quote! { #mont });
+        let mul_coeff = MW::mul_assign_by_base(quote! { #tmp }, field_coeff);
+        let add_tmp = MW::add_assign(quote! { #var }, quote! { #tmp });
+        comp.extend(quote! {
+            let mut #tmp = unsafe { evals.get_unchecked(#idx) }[j];
+            #mul_coeff;
+            #add_tmp;
+        });
+    }
+    comp
+}
+
+/// Generate code that evaluates a `NoFieldVectorLookupRelation` via Horner's method
+/// into variable `var_name`. Uses `lookup_alpha` as the multiplicative challenge.
+fn emit_vector_lookup_eval<MW: MersenneWrapper, F: PrimeField>(
+    rel: &NoFieldVectorLookupRelation,
+    var_name: &str,
+    input_sorted_addrs: &[GKRAddress],
+) -> TokenStream {
+    let quartic_struct = MW::quartic_struct();
+    let quartic_zero = MW::quartic_zero();
+    let var = syn::Ident::new(var_name, proc_macro2::Span::call_site());
+    let col_var = syn::Ident::new(&format!("{}_cv", var_name), proc_macro2::Span::call_site());
+    let tmp = syn::Ident::new(&format!("{}_t", var_name), proc_macro2::Span::call_site());
+
+    let mul_alpha = MW::mul_assign(quote! { #var }, quote! { lookup_alpha });
+    let add_col = MW::add_assign(quote! { #var }, quote! { #col_var });
+
+    let mut comp = quote! { let mut #var = #quartic_zero; };
+
+    for col in rel.columns.iter().rev() {
+        let const_mont = coeff_to_internal_repr::<F>(col.constant);
+        let const_field = MW::field_new(quote! { #const_mont });
+        let mut col_comp = quote! { let mut #col_var = #quartic_struct::from_base(#const_field); };
+
+        for &(coeff, ref addr) in col.linear_terms.iter() {
+            let idx = addr_to_idx(addr, input_sorted_addrs);
+            let mont = coeff_to_internal_repr::<F>(coeff);
+            let field_coeff = MW::field_new(quote! { #mont });
+            let mul_coeff = MW::mul_assign_by_base(quote! { #tmp }, field_coeff);
+            let add_tmp = MW::add_assign(quote! { #col_var }, quote! { #tmp });
+            col_comp.extend(quote! {
+                let mut #tmp = unsafe { evals.get_unchecked(#idx) }[j];
+                #mul_coeff;
+                #add_tmp;
+            });
+        }
+        comp.extend(quote! { { #mul_alpha; #col_comp #add_col; } });
+    }
+    comp
+}
+
+/// Emit the standard single-output gate wrapper:
+/// `{ let bc = current_batch; advance; for j in 0..2 { val = ...; contrib = bc * val; acc += contrib; } }`
+fn emit_single_output_gate<MW: MersenneWrapper>(
+    body: &mut TokenStream,
+    mul_batch: &TokenStream,
+    val_computation: TokenStream,
+) {
+    let mul_contrib = MW::mul_assign(quote! { contrib }, quote! { val });
+    let add_acc = MW::add_assign(quote! { acc[j] }, quote! { contrib });
+    body.extend(quote! {
+        {
+            let bc = current_batch;
+            #mul_batch;
+            for j in 0..2 {
+                #val_computation
+                let mut contrib = bc;
+                #mul_contrib;
+                #add_acc;
+            }
+        }
+    });
+}
+
 pub fn generate_layer_compute_claim<MW: MersenneWrapper>(
     layer: &GKRLayerDescription,
     layer_idx: usize,
@@ -513,53 +610,13 @@ pub fn generate_layer_final_step_accumulator<MW: MersenneWrapper, F: PrimeField>
                 R::EnforceConstraintsMaxQuadratic { input } => {
                     let kernel_body =
                         generate_constraint_kernel::<MW, F>(input, input_sorted_addrs);
-                    let mul_contrib = MW::mul_assign(quote! { contrib }, quote! { val });
-                    let add_acc = MW::add_assign(quote! { acc[j] }, quote! { contrib });
-                    body.extend(quote! {
-                        {
-                            let bc = current_batch;
-                            #mul_batch;
-                            for j in 0..2 {
-                                let val = { #kernel_body };
-                                let mut contrib = bc;
-                                #mul_contrib;
-                                #add_acc;
-                            }
-                        }
-                    });
+                    let val_comp = quote! { let val = { #kernel_body }; };
+                    emit_single_output_gate::<MW>(&mut body, &mul_batch, val_comp);
                 }
                 R::LinearBaseFieldRelation { input, .. } => {
-                    let const_mont = coeff_to_internal_repr::<F>(input.constant);
-                    let const_field = MW::field_new(quote! { #const_mont });
-                    let mut val_computation = quote! {
-                        let mut val = #quartic_struct::from_base(#const_field);
-                    };
-                    for &(coeff, ref addr) in input.linear_terms.iter() {
-                        let idx = addr_to_idx(addr, input_sorted_addrs);
-                        let mont = coeff_to_internal_repr::<F>(coeff);
-                        let field_coeff = MW::field_new(quote! { #mont });
-                        let mul_coeff = MW::mul_assign_by_base(quote! { term }, field_coeff);
-                        let add_term = MW::add_assign(quote! { val }, quote! { term });
-                        val_computation.extend(quote! {
-                            let mut term = unsafe { evals.get_unchecked(#idx) }[j];
-                            #mul_coeff;
-                            #add_term;
-                        });
-                    }
-                    let mul_contrib = MW::mul_assign(quote! { contrib }, quote! { val });
-                    let add_acc = MW::add_assign(quote! { acc[j] }, quote! { contrib });
-                    body.extend(quote! {
-                        {
-                            let bc = current_batch;
-                            #mul_batch;
-                            for j in 0..2 {
-                                #val_computation
-                                let mut contrib = bc;
-                                #mul_contrib;
-                                #add_acc;
-                            }
-                        }
-                    });
+                    let val_comp =
+                        emit_linear_relation_eval::<MW, F>(input, "val", input_sorted_addrs);
+                    emit_single_output_gate::<MW>(&mut body, &mul_batch, val_comp);
                 }
                 R::MaxQuadratic { input, .. } => {
                     let const_mont = coeff64_to_internal_repr::<F>(input.constant);
@@ -605,131 +662,29 @@ pub fn generate_layer_final_step_accumulator<MW: MersenneWrapper, F: PrimeField>
                             #add_lt;
                         });
                     }
-                    let mul_contrib = MW::mul_assign(quote! { contrib }, quote! { val });
-                    let add_acc = MW::add_assign(quote! { acc[j] }, quote! { contrib });
-                    body.extend(quote! {
-                        {
-                            let bc = current_batch;
-                            #mul_batch;
-                            for j in 0..2 {
-                                #val_computation
-                                let mut contrib = bc;
-                                #mul_contrib;
-                                #add_acc;
-                            }
-                        }
-                    });
+                    emit_single_output_gate::<MW>(&mut body, &mul_batch, val_computation);
                 }
                 R::MaterializeSingleLookupInput { input, .. } => {
-                    let const_mont = coeff_to_internal_repr::<F>(input.input.constant);
-                    let const_field = MW::field_new(quote! { #const_mont });
-                    let mut val_computation = quote! {
-                        let mut val = #quartic_struct::from_base(#const_field);
-                    };
-                    for &(coeff, ref addr) in input.input.linear_terms.iter() {
-                        let idx = addr_to_idx(addr, input_sorted_addrs);
-                        let mont = coeff_to_internal_repr::<F>(coeff);
-                        let field_coeff = MW::field_new(quote! { #mont });
-                        let mul_coeff = MW::mul_assign_by_base(quote! { term }, field_coeff);
-                        let add_term = MW::add_assign(quote! { val }, quote! { term });
-                        val_computation.extend(quote! {
-                            let mut term = unsafe { evals.get_unchecked(#idx) }[j];
-                            #mul_coeff;
-                            #add_term;
-                        });
-                    }
-                    let mul_contrib = MW::mul_assign(quote! { contrib }, quote! { val });
-                    let add_acc = MW::add_assign(quote! { acc[j] }, quote! { contrib });
-                    body.extend(quote! {
-                        {
-                            let bc = current_batch;
-                            #mul_batch;
-                            for j in 0..2 {
-                                #val_computation
-                                let mut contrib = bc;
-                                #mul_contrib;
-                                #add_acc;
-                            }
-                        }
-                    });
+                    let val_comp =
+                        emit_linear_relation_eval::<MW, F>(&input.input, "val", input_sorted_addrs);
+                    emit_single_output_gate::<MW>(&mut body, &mul_batch, val_comp);
                 }
                 R::MaterializedVectorLookupInput { input, .. } => {
-                    // Evaluate val = sum_col (alpha^col * column_value)
-                    // using Horner's method: val = col[n-1] + alpha*(col[n-2] + alpha*(...))
-                    // We iterate in reverse to accumulate val = val*alpha + col_val.
-                    let mul_val_alpha = MW::mul_assign(quote! { val }, quote! { lookup_alpha });
-                    let add_val_col = MW::add_assign(quote! { val }, quote! { col_val });
-                    let mut val_computation = quote! { let mut val = #quartic_zero; };
-                    for col in input.columns.iter().rev() {
-                        let const_mont = coeff_to_internal_repr::<F>(col.constant);
-                        let const_field = MW::field_new(quote! { #const_mont });
-                        let mut col_computation = quote! {
-                            let mut col_val = #quartic_struct::from_base(#const_field);
-                        };
-                        for &(coeff, ref addr) in col.linear_terms.iter() {
-                            let idx = addr_to_idx(addr, input_sorted_addrs);
-                            let mont = coeff_to_internal_repr::<F>(coeff);
-                            let field_coeff = MW::field_new(quote! { #mont });
-                            let mul_coeff = MW::mul_assign_by_base(quote! { ct }, field_coeff);
-                            let add_ct = MW::add_assign(quote! { col_val }, quote! { ct });
-                            col_computation.extend(quote! {
-                                let mut ct = unsafe { evals.get_unchecked(#idx) }[j];
-                                #mul_coeff;
-                                #add_ct;
-                            });
-                        }
-                        val_computation.extend(quote! {
-                            {
-                                #mul_val_alpha;
-                                #col_computation
-                                #add_val_col;
-                            }
-                        });
-                    }
-                    let mul_contrib = MW::mul_assign(quote! { contrib }, quote! { val });
-                    let add_acc = MW::add_assign(quote! { acc[j] }, quote! { contrib });
-                    body.extend(quote! {
-                        {
-                            let bc = current_batch;
-                            #mul_batch;
-                            for j in 0..2 {
-                                #val_computation
-                                let mut contrib = bc;
-                                #mul_contrib;
-                                #add_acc;
-                            }
-                        }
-                    });
+                    let val_comp =
+                        emit_vector_lookup_eval::<MW, F>(input, "val", input_sorted_addrs);
+                    emit_single_output_gate::<MW>(&mut body, &mul_batch, val_comp);
                 }
                 R::LookupPairFromBaseInputs { input, .. } => {
-                    let gen_linear_relation =
-                        |rel: &NoFieldSingleColumnLookupRelation, var_name: &str| {
-                            let const_mont = coeff_to_internal_repr::<F>(rel.input.constant);
-                            let const_field = MW::field_new(quote! { #const_mont });
-                            let var = syn::Ident::new(var_name, proc_macro2::Span::call_site());
-                            let mut comp =
-                                quote! { let mut #var = #quartic_struct::from_base(#const_field); };
-                            for &(coeff, ref addr) in rel.input.linear_terms.iter() {
-                                let idx = addr_to_idx(addr, input_sorted_addrs);
-                                let mont = coeff_to_internal_repr::<F>(coeff);
-                                let field_coeff = MW::field_new(quote! { #mont });
-                                let tmp = syn::Ident::new(
-                                    &format!("{}_t", var_name),
-                                    proc_macro2::Span::call_site(),
-                                );
-                                let mul_coeff =
-                                    MW::mul_assign_by_base(quote! { #tmp }, field_coeff);
-                                let add_tmp = MW::add_assign(quote! { #var }, quote! { #tmp });
-                                comp.extend(quote! {
-                                    let mut #tmp = unsafe { evals.get_unchecked(#idx) }[j];
-                                    #mul_coeff;
-                                    #add_tmp;
-                                });
-                            }
-                            comp
-                        };
-                    let comp_a = gen_linear_relation(&input[0], "a_val");
-                    let comp_b = gen_linear_relation(&input[1], "b_val");
+                    let comp_a = emit_linear_relation_eval::<MW, F>(
+                        &input[0].input,
+                        "a_val",
+                        input_sorted_addrs,
+                    );
+                    let comp_b = emit_linear_relation_eval::<MW, F>(
+                        &input[1].input,
+                        "b_val",
+                        input_sorted_addrs,
+                    );
                     generate_two_output_body::<MW>(
                         &mut body,
                         &mul_batch,
@@ -749,50 +704,10 @@ pub fn generate_layer_final_step_accumulator<MW: MersenneWrapper, F: PrimeField>
                     );
                 }
                 R::LookupPairFromVectorInputs { input, .. } => {
-                    let gen_vector_relation =
-                        |rel: &NoFieldVectorLookupRelation, var_name: &str| {
-                            let var = syn::Ident::new(var_name, proc_macro2::Span::call_site());
-                            let mul_var_alpha =
-                                MW::mul_assign(quote! { #var }, quote! { lookup_alpha });
-                            let mut comp = quote! { let mut #var = #quartic_zero; };
-                            // Horner's method: iterate columns in reverse
-                            for col in rel.columns.iter().rev() {
-                                let const_mont = coeff_to_internal_repr::<F>(col.constant);
-                                let const_field = MW::field_new(quote! { #const_mont });
-                                let col_var = syn::Ident::new(
-                                    &format!("{}_cv", var_name),
-                                    proc_macro2::Span::call_site(),
-                                );
-                                let mut col_comp = quote! {
-                                    let mut #col_var = #quartic_struct::from_base(#const_field);
-                                };
-                                for &(coeff, ref addr) in col.linear_terms.iter() {
-                                    let idx = addr_to_idx(addr, input_sorted_addrs);
-                                    let mont = coeff_to_internal_repr::<F>(coeff);
-                                    let field_coeff = MW::field_new(quote! { #mont });
-                                    let tmp = syn::Ident::new(
-                                        &format!("{}_t", var_name),
-                                        proc_macro2::Span::call_site(),
-                                    );
-                                    let mul_coeff =
-                                        MW::mul_assign_by_base(quote! { #tmp }, field_coeff);
-                                    let add_tmp =
-                                        MW::add_assign(quote! { #col_var }, quote! { #tmp });
-                                    col_comp.extend(quote! {
-                                        let mut #tmp = unsafe { evals.get_unchecked(#idx) }[j];
-                                        #mul_coeff;
-                                        #add_tmp;
-                                    });
-                                }
-                                let add_col = MW::add_assign(quote! { #var }, quote! { #col_var });
-                                comp.extend(quote! {
-                                    { #mul_var_alpha; #col_comp #add_col; }
-                                });
-                            }
-                            comp
-                        };
-                    let comp_a = gen_vector_relation(&input[0], "a_val");
-                    let comp_b = gen_vector_relation(&input[1], "b_val");
+                    let comp_a =
+                        emit_vector_lookup_eval::<MW, F>(&input[0], "a_val", input_sorted_addrs);
+                    let comp_b =
+                        emit_vector_lookup_eval::<MW, F>(&input[1], "b_val", input_sorted_addrs);
                     generate_two_output_body::<MW>(
                         &mut body,
                         &mul_batch,

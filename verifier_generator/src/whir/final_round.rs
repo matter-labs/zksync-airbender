@@ -72,9 +72,8 @@ pub fn generate_whir_final_round<MW: MersenneWrapper>(
         /// Queries verify against `prev_oracle_cap` (the last intermediate oracle's cap).
         #[allow(unused_braces, unused_mut, unused_variables, unused_unsafe, clippy::needless_borrow)]
         pub fn verify_final_whir_round<I: NonDeterminismSource>(
-            hasher: &mut DelegatedBlake2sState,
+            ts: &mut TranscriptState,
             hash_buf: &mut AlignedArray64<MaybeUninit<u32>, WHIR_HASH_BUF_SIZE>,
-            seed: &mut Seed,
             claim: #quartic_struct,
             prev_oracle_cap: &[u32; WHIR_CAP_WORDS],
         ) -> Result<(), WhirVerificationError> {
@@ -87,7 +86,7 @@ pub fn generate_whir_final_round<MW: MersenneWrapper>(
                 let mut round = 0;
                 while round < FINAL_FOLD_STEPS {
                     let (new_claim, alpha) = verify_whir_sumcheck_step::<I>(
-                        hasher, seed, claim, round,
+                        ts, claim, round,
                     )?;
                     claim = new_claim;
                     folding_challenges.push(alpha);
@@ -95,13 +94,10 @@ pub fn generate_whir_final_round<MW: MersenneWrapper>(
                 }
 
                 // --- 2. PoW + query indices ---
-                // Reuse internal round const generics to share the same monomorphization
-                // and avoid the compiler generating subword memory instructions (lhu/lbu)
-                // that the reduced RISC-V decoder does not support.
-                read_and_verify_pow::<I>(seed, FINAL_POW_BITS);
+                read_and_verify_pow::<I>(ts, FINAL_POW_BITS);
                 let query_indices =
                     draw_query_indices::<MAX_INTERNAL_NUM_QUERIES, MAX_INTERNAL_DRAW_WORDS>(
-                        hasher, seed, FINAL_NUM_QUERIES, FINAL_QUERY_INDEX_BITS, FINAL_DRAW_WORDS,
+                        ts, FINAL_NUM_QUERIES, FINAL_QUERY_INDEX_BITS, FINAL_DRAW_WORDS,
                     );
 
                 // --- 3. Per-query processing ---
@@ -148,9 +144,9 @@ pub fn generate_whir_final_round<MW: MersenneWrapper>(
 
                     // Hash and verify Merkle path
                     let init_buf = hash_buf.assume_init_subarray::<FINAL_HASH_BUF_SIZE>();
-                    hash_leaf_data_into_state(hasher, init_buf, FINAL_LEAF_EXT_WORDS);
+                    hash_leaf_data_into_state(&mut ts.hasher, init_buf, FINAL_LEAF_EXT_WORDS);
                     if !verify_merkle_path::<I>(
-                        hasher, tree_index, oracle_depth, prev_oracle_cap,
+                        &mut ts.hasher, tree_index, oracle_depth, prev_oracle_cap,
                     ) {
                         return Err(WhirVerificationError::MerklePathFailed { query: q });
                     }

@@ -42,8 +42,7 @@ pub fn generate_transcript_helpers<MW: MersenneWrapper>() -> TokenStream {
 
         #[inline(always)]
         pub fn draw_field_els_into<const BUF_CAP: usize>(
-            hasher: &mut DelegatedBlake2sState,
-            seed: &mut Seed,
+            ts: &mut TranscriptState,
             dst: &mut [#quartic_struct],
         ) {
             let n = dst.len();
@@ -53,7 +52,7 @@ pub fn generate_transcript_helpers<MW: MersenneWrapper>() -> TokenStream {
             let mut words = LazyVec::<u32, BUF_CAP>::new();
             unsafe {
                 words.set_len(padded);
-                Blake2sTranscript::draw_randomness_using_hasher(hasher, seed, words.as_mut_slice());
+                ts.draw_raw(words.as_mut_slice());
             }
 
             let mut i = 0;
@@ -76,12 +75,11 @@ pub fn generate_transcript_helpers<MW: MersenneWrapper>() -> TokenStream {
         /// Draw a single extension field element from the transcript.
         #[inline(always)]
         pub fn draw_single_field_el(
-            hasher: &mut DelegatedBlake2sState,
-            seed: &mut Seed,
+            ts: &mut TranscriptState,
         ) -> #quartic_struct {
             let mut buf = LazyVec::<#quartic_struct, 1>::new();
             unsafe { buf.set_len(1); }
-            draw_field_els_into::<BLAKE2S_DIGEST_SIZE_U32_WORDS>(hasher, seed, buf.as_mut_slice());
+            draw_field_els_into::<BLAKE2S_DIGEST_SIZE_U32_WORDS>(ts, buf.as_mut_slice());
             *buf.get(0)
         }
     }

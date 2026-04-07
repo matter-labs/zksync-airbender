@@ -72,7 +72,7 @@ pub fn generate_gkr_common<MW: MersenneWrapper>() -> TokenStream {
             const NUM_ROUNDS: usize,
             const COMMIT_BUF: usize,
         >(
-            seed: &mut Seed,
+            ts: &mut TranscriptState,
             initial_claim: #quartic_struct,
             challenges: &mut [#quartic_struct],
             layer_idx: usize,
@@ -83,7 +83,6 @@ pub fn generate_gkr_common<MW: MersenneWrapper>() -> TokenStream {
             let coeff_data_words = 4 * EXT_DEGREE;
 
             let mut commit_buf = CommitBuf::<COMMIT_BUF>::new();
-            let mut hasher = DelegatedBlake2sState::new();
             let mut draw_buf = LazyVec::<u32, BLAKE2S_DIGEST_SIZE_U32_WORDS>::new();
             unsafe { draw_buf.set_len(BLAKE2S_DIGEST_SIZE_U32_WORDS); }
 
@@ -118,9 +117,9 @@ pub fn generate_gkr_common<MW: MersenneWrapper>() -> TokenStream {
                     });
                 }
 
-                commit_buf.commit(&mut hasher, seed, coeff_data_words);
+                ts.commit(&mut commit_buf, coeff_data_words);
 
-                Blake2sTranscript::draw_randomness_using_hasher(&mut hasher, seed, draw_buf.as_mut_slice());
+                ts.draw_raw(draw_buf.as_mut_slice());
                 let r_k = {
                     let mut arr = LazyVec::<#field_struct, EXT_DEGREE>::new();
                     for i in 0..EXT_DEGREE {
@@ -635,8 +634,7 @@ where
     let degree = E::DEGREE;
     let digest_words = prover::transcript::blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS;
     // Largest draw is all_challenges: (final_trace_size_log_2 + 1) extension elements.
-    let draw_buf_capacity =
-        ((final_trace_size_log_2 + 1) * degree).next_multiple_of(digest_words);
+    let draw_buf_capacity = ((final_trace_size_log_2 + 1) * degree).next_multiple_of(digest_words);
     let block_words = prover::transcript::blake2s_u32::BLAKE2S_BLOCK_SIZE_U32_WORDS;
     let dim_reducing_words_per_addr = 4 * degree;
     let standard_words_per_addr = 2 * degree;
@@ -696,26 +694,29 @@ where
         );
     }
 
-    for (dim_idx, layer_idx) in (num_standard_layers..=initial_layer_for_sumcheck).enumerate() {
+    // Generate shared dim-reducing functions ONCE (not per layer).
+    if num_standard_layers <= initial_layer_for_sumcheck {
+        layer_functions
+            .extend(dim_reducing_layer::generate_dim_reducing_compute_claim::<MW>(&output_groups));
         layer_functions.extend(
-            dim_reducing_layer::generate_dim_reducing_compute_claim::<MW>(
-                &output_groups,
-                layer_idx,
-            ),
+            dim_reducing_layer::generate_dim_reducing_final_step_accumulator::<MW>(&output_groups),
         );
+    }
+
+    // Generate per-layer const index arrays for dim-reducing layers.
+    let mut dim_reduce_index_arrays = TokenStream::new();
+    for (dim_idx, layer_idx) in (num_standard_layers..=initial_layer_for_sumcheck).enumerate() {
         let iteration_order_addrs = build_dim_reducing_addrs(layer_idx);
         let sorted = &dim_reducing_sorted_addrs[dim_idx];
         let input_sorted_indices: Vec<usize> = iteration_order_addrs
             .iter()
             .map(|addr| addr_to_idx(addr, sorted))
             .collect();
-        layer_functions.extend(
-            dim_reducing_layer::generate_dim_reducing_final_step_accumulator::<MW>(
-                &output_groups,
-                &input_sorted_indices,
-                layer_idx,
-            ),
-        );
+        let num_indices = input_sorted_indices.len();
+        let array_name = quote::format_ident!("DIM_REDUCE_INDICES_{}", layer_idx);
+        dim_reduce_index_arrays.extend(quote! {
+            const #array_name: [usize; #num_indices] = [#( #input_sorted_indices ),*];
+        });
     }
 
     let mut static_data = TokenStream::new();
@@ -776,12 +777,13 @@ where
             *<&[u32; WIT_CAP_WORDS]>::try_from(src).unwrap_unchecked()
         };
 
-        let mut seed = Blake2sTranscript::commit_initial(transcript_buf.as_slice());
-        let mut hasher = DelegatedBlake2sState::new();
+        let mut ts = TranscriptState::new(
+            Blake2sTranscript::commit_initial(transcript_buf.as_slice())
+        );
 
         let mut init_challenges = LazyVec::<#quartic_struct, 3>::new();
         unsafe { init_challenges.set_len(3); }
-        draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut hasher, &mut seed, init_challenges.as_mut_slice());
+        draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, init_challenges.as_mut_slice());
         let lookup_alpha = *init_challenges.get(0);
         let lookup_additive_challenge = *init_challenges.get(1);
         let constraints_batch_challenge = *init_challenges.get(2);
@@ -827,13 +829,13 @@ where
                 i += 1;
             }
         }
-        evals_commit_buf.commit(&mut hasher, &mut seed, evals_data_words);
+        ts.commit(&mut evals_commit_buf, evals_data_words);
         let evals_slice: &[#quartic_struct] = unsafe { evals_commit_buf.data_as(#total_evals_needed) };
 
         let mut all_challenges = LazyVec::<#quartic_struct, { GKR_ROUNDS + 1 }>::new();
         unsafe { all_challenges.set_len(#num_challenges); }
         draw_field_els_into::<DRAW_BUF_CAPACITY>(
-            &mut hasher, &mut seed, all_challenges.as_mut_slice());
+            &mut ts, all_challenges.as_mut_slice());
         let batching_challenge = *all_challenges.get(#num_challenges - 1);
 
         let mut eq_buf = LazyVec::<#quartic_struct, #evals_per_poly>::new();
@@ -862,6 +864,8 @@ where
         };
 
         let mut eval_buf = CommitBuf::<GKR_EVAL_BUF>::new();
+
+        #dim_reduce_index_arrays
     });
 
     for config_idx in (num_standard_layers..=initial_layer_for_sumcheck).rev() {
@@ -872,17 +876,15 @@ where
         let num_sumcheck_rounds = proof_values.sumcheck_num_rounds;
         let dim_idx = config_idx - num_standard_layers;
         let num_input_addrs = dim_reducing_sorted_addrs[dim_idx].len();
-        let compute_claim_fn = quote::format_ident!("dim_reducing_{}_compute_claim", config_idx);
-        let final_step_fn =
-            quote::format_ident!("dim_reducing_{}_final_step_accumulator", config_idx);
+        let indices_name = quote::format_ident!("DIM_REDUCE_INDICES_{}", config_idx);
         let num_regular_rounds = num_sumcheck_rounds - 1;
 
         main_body.extend(quote! {
             {
-                let initial_claim = #compute_claim_fn(&state.prev_claims, state.batching_challenge);
+                let initial_claim = dim_reducing_compute_claim(&state.prev_claims, state.batching_challenge);
                 let (final_claim, final_eq_prefactor) =
                     verify_sumcheck_rounds::<I, #num_regular_rounds, GKR_COMMIT_BUF>(
-                        &mut seed, initial_claim, &mut state.prev_point, #config_idx)?;
+                        &mut ts, initial_claim, &mut state.prev_point, #config_idx)?;
                 let mut fc_len = #num_regular_rounds;
                 let data_words = #num_input_addrs * 4 * <#quartic_struct as FieldExtension<#field_struct>>::DEGREE;
                 {
@@ -894,15 +896,15 @@ where
                 }
                 {
                     let evals: &[[#quartic_struct; 4]] = eval_buf.data_as(#num_input_addrs);
-                    let f = #final_step_fn(evals, state.batching_challenge);
+                    let f = dim_reducing_final_step_accumulator(evals, state.batching_challenge, &#indices_name);
                     verify_final_step_check(f,
                         *state.prev_point.get_unchecked(state.prev_point_len - 1),
                         final_eq_prefactor, final_claim, #config_idx)?;
                 }
-                eval_buf.commit(&mut hasher, &mut seed, data_words);
+                ts.commit(&mut eval_buf, data_words);
                 let mut draw_buf = LazyVec::<#quartic_struct, 3>::new();
                 unsafe { draw_buf.set_len(3); }
-                draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut hasher, &mut seed, draw_buf.as_mut_slice());
+                draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, draw_buf.as_mut_slice());
                 let r_before_last = *draw_buf.get(0);
                 let r_last = *draw_buf.get(1);
                 let next_batching = *draw_buf.get(2);
@@ -1011,7 +1013,7 @@ where
                         extra_evals.push(*el);
                     }
                 }
-                extra_buf.commit(&mut hasher, &mut seed, extra_data_words);
+                ts.commit(&mut extra_buf, extra_data_words);
                 let final_step_evals: &[[#quartic_struct; 2]] = unsafe { eval_buf.data_as(#num_dedup_addrs) };
                 state.prev_claims.clear();
                 {
@@ -1055,7 +1057,7 @@ where
                 let initial_claim = #compute_claim_fn(&state.prev_claims, state.batching_challenge);
                 let (final_claim, final_eq_prefactor) =
                     verify_sumcheck_rounds::<I, #num_regular_rounds, GKR_COMMIT_BUF>(
-                        &mut seed, initial_claim, &mut state.prev_point, #config_idx)?;
+                        &mut ts, initial_claim, &mut state.prev_point, #config_idx)?;
                 let mut fc_len = #num_regular_rounds;
                 let data_words = #num_dedup_addrs * 2 * <#quartic_struct as FieldExtension<#field_struct>>::DEGREE;
                 {
@@ -1073,10 +1075,10 @@ where
                         *state.prev_point.get_unchecked(state.prev_point_len - 1),
                         final_eq_prefactor, final_claim, #config_idx)?;
                 }
-                eval_buf.commit(&mut hasher, &mut seed, data_words);
+                ts.commit(&mut eval_buf, data_words);
                 let mut draw_buf = LazyVec::<#quartic_struct, 2>::new();
                 unsafe { draw_buf.set_len(2); }
-                draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut hasher, &mut seed, draw_buf.as_mut_slice());
+                draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, draw_buf.as_mut_slice());
                 let last_r = *draw_buf.get(0);
                 let next_batching = *draw_buf.get(1);
                 *state.prev_point.get_unchecked_mut(fc_len) = last_r;
@@ -1095,7 +1097,7 @@ where
         // the grand product first (grand product is computed later).
         let mut draw_buf = LazyVec::<#quartic_struct, 1>::new();
         unsafe { draw_buf.set_len(1); }
-        draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut hasher, &mut seed, draw_buf.as_mut_slice());
+        draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, draw_buf.as_mut_slice());
         let whir_batching_challenge = *draw_buf.get(0);
 
         let grand_product_accumulator: #quartic_struct = read_field_el::<I>();
@@ -1107,7 +1109,7 @@ where
             grand_product_accumulator,
             additional_base_layer_openings: BASE_LAYER_ADDITIONAL_OPENINGS,
             whir_batching_challenge,
-            whir_transcript_seed: seed,
+            whir_transcript_seed: ts.seed,
             setup_cap,
             memory_cap,
             witness_cap,
@@ -1219,7 +1221,7 @@ where
         use ::verifier_common::gkr::{
             GKRVerifierOutput, GKRVerificationError, LayerState, LazyVec,
         };
-        use ::verifier_common::structs::CommitBuf;
+        use ::verifier_common::structs::{CommitBuf, TranscriptState};
         use super::common::{
             verify_sumcheck_rounds, verify_final_step_check, fold_standard_claims,
             make_eq_poly, dot_eq, draw_field_els_into,

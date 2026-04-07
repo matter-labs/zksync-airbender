@@ -15,11 +15,9 @@ pub enum VerificationError {
 #[allow(unused_braces, unused_mut, unused_variables)]
 pub fn verify<I: NonDeterminismSource>() -> Result<(), VerificationError> {
     let gkr_output = verify_gkr::<I>().map_err(VerificationError::Gkr)?;
-    let mut seed = gkr_output.whir_transcript_seed;
-    let mut hasher = ::verifier_common::blake2s_u32::DelegatedBlake2sState::new();
+    let mut ts = ::verifier_common::structs::TranscriptState::new(gkr_output.whir_transcript_seed);
     whir::verify_whir::<I>(
-        &mut hasher,
-        &mut seed,
+        &mut ts,
         gkr_output.whir_batching_challenge,
         &gkr_output.setup_cap,
         &gkr_output.memory_cap,

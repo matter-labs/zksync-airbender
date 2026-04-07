@@ -6,11 +6,12 @@ use prover::cs::gkr_compiler::OutputType;
 
 use super::GKROutputGroupInfo;
 
+/// Generate a single shared `dim_reducing_compute_claim` function.
+/// All dim-reducing layers share the same output group structure, so one
+/// function suffices — no per-layer variants needed.
 pub fn generate_dim_reducing_compute_claim<MW: MersenneWrapper>(
     output_groups: &[GKROutputGroupInfo],
-    layer_idx: usize,
 ) -> TokenStream {
-    let fn_name = quote::format_ident!("dim_reducing_{}_compute_claim", layer_idx);
     let quartic_one = MW::quartic_one();
 
     let mut body = quote! {
@@ -57,8 +58,6 @@ pub fn generate_dim_reducing_compute_claim<MW: MersenneWrapper>(
                 }
             }
             OutputType::Lookup16Bits | OutputType::LookupTimestamps | OutputType::GenericLookup => {
-                // Lookup groups always come after PP in BTreeMap order,
-                // so first_contributing is always false here.
                 assert!(
                     !first_contributing,
                     "lookup group cannot be first contributing gate"
@@ -92,7 +91,7 @@ pub fn generate_dim_reducing_compute_claim<MW: MersenneWrapper>(
     quote! {
         #[inline(always)]
         #[allow(clippy::needless_borrow)]
-        unsafe fn #fn_name(
+        unsafe fn dim_reducing_compute_claim(
             output_claims: &LazyVec<#quartic_struct, GKR_ADDRS>,
             batch_base: #quartic_struct,
         ) -> #quartic_struct {
@@ -101,29 +100,27 @@ pub fn generate_dim_reducing_compute_claim<MW: MersenneWrapper>(
     }
 }
 
+/// Generate a single shared `dim_reducing_final_step_accumulator` function.
+/// Takes an `indices` slice so the same function works for all dim-reducing
+/// layers — only the index mapping changes per layer.
 pub fn generate_dim_reducing_final_step_accumulator<MW: MersenneWrapper>(
     output_groups: &[GKROutputGroupInfo],
-    input_sorted_indices: &[usize],
-    layer_idx: usize,
 ) -> TokenStream {
-    let fn_name = quote::format_ident!("dim_reducing_{}_final_step_accumulator", layer_idx);
     let quartic_zero = MW::quartic_zero();
     let quartic_one = MW::quartic_one();
+    let quartic_struct = MW::quartic_struct();
+    let mul_batch = MW::mul_assign(quote! { current_batch }, quote! { batch_base });
 
     let mut body = quote! {
         let mut acc = [#quartic_zero; 2];
         let mut current_batch = #quartic_one;
+        let mut _idx = 0usize;
     };
-
-    let mul_batch = MW::mul_assign(quote! { current_batch }, quote! { batch_base });
-    let mut iter_idx = 0usize;
 
     for group in output_groups {
         match group.output_type {
             OutputType::PermutationProduct => {
                 for _ in 0..group.num_addresses {
-                    let si = input_sorted_indices[iter_idx];
-                    iter_idx += 1;
                     let mul_v01 = MW::mul_assign(quote! { v01 }, quote! { e1 });
                     let mul_c0 = MW::mul_assign(quote! { c0 }, quote! { v01 });
                     let add_a0 = MW::add_assign(quote! { acc[0] }, quote! { c0 });
@@ -132,9 +129,11 @@ pub fn generate_dim_reducing_final_step_accumulator<MW: MersenneWrapper>(
                     let add_a1 = MW::add_assign(quote! { acc[1] }, quote! { c1 });
                     body.extend(quote! {
                         {
+                            let si = unsafe { *indices.get_unchecked(_idx) };
+                            _idx += 1;
                             let bc = current_batch;
                             #mul_batch;
-                            let es = unsafe { evals.get_unchecked(#si) };
+                            let es = unsafe { evals.get_unchecked(si) };
                             let e0 = unsafe { *es.get_unchecked(0) };
                             let e1 = unsafe { *es.get_unchecked(1) };
                             let e2 = unsafe { *es.get_unchecked(2) };
@@ -154,9 +153,6 @@ pub fn generate_dim_reducing_final_step_accumulator<MW: MersenneWrapper>(
                 }
             }
             OutputType::Lookup16Bits | OutputType::LookupTimestamps | OutputType::GenericLookup => {
-                let si0 = input_sorted_indices[iter_idx];
-                let si1 = input_sorted_indices[iter_idx + 1];
-                iter_idx += 2;
                 let mul_assign_fn = MW::mul_assign;
                 let add_assign_fn = MW::add_assign;
 
@@ -202,12 +198,15 @@ pub fn generate_dim_reducing_final_step_accumulator<MW: MersenneWrapper>(
 
                 body.extend(quote! {
                     {
+                        let si0 = unsafe { *indices.get_unchecked(_idx) };
+                        let si1 = unsafe { *indices.get_unchecked(_idx + 1) };
+                        _idx += 2;
                         let bc0 = current_batch;
                         #mul_batch;
                         let bc1 = current_batch;
                         #mul_batch;
-                        let v0 = unsafe { evals.get_unchecked(#si0) };
-                        let v1 = unsafe { evals.get_unchecked(#si1) };
+                        let v0 = unsafe { evals.get_unchecked(si0) };
+                        let v1 = unsafe { evals.get_unchecked(si1) };
                         #lookup_body
                     }
                 });
@@ -217,13 +216,13 @@ pub fn generate_dim_reducing_final_step_accumulator<MW: MersenneWrapper>(
 
     body.extend(quote! { acc });
 
-    let quartic_struct = MW::quartic_struct();
     quote! {
         #[inline(always)]
         #[allow(clippy::needless_borrow, clippy::large_const_arrays)]
-        unsafe fn #fn_name(
+        unsafe fn dim_reducing_final_step_accumulator(
             evals: &[[#quartic_struct; 4]],
             batch_base: #quartic_struct,
+            indices: &[usize],
         ) -> [#quartic_struct; 2] {
             #body
         }

@@ -68,6 +68,126 @@ impl<const N: usize> CommitBuf<N> {
         self.inner
             .transmute_subslice(BLAKE2S_DIGEST_SIZE_U32_WORDS, count)
     }
+
+    /// Read a single item of type `T` from the data region.
+    ///
+    /// # Safety
+    /// The caller must ensure that `size_of::<T>() / size_of::<u32>()` words
+    /// have been written via `data_write`.
+    #[inline(always)]
+    pub unsafe fn read_one<T: Copy>(&self) -> T {
+        *self.data_as::<T>(1).get_unchecked(0)
+    }
+}
+
+/// Bundles the Blake2s hasher and transcript seed used throughout verification.
+///
+/// Replaces the repeated `(&mut hasher, &mut seed)` parameter pair. The struct
+/// is stack-allocated and zero-cost.
+#[cfg(feature = "gkr_verify")]
+pub struct TranscriptState {
+    pub hasher: DelegatedBlake2sState,
+    pub seed: Seed,
+}
+
+#[cfg(feature = "gkr_verify")]
+impl TranscriptState {
+    #[inline(always)]
+    pub fn new(seed: Seed) -> Self {
+        Self {
+            hasher: DelegatedBlake2sState::new(),
+            seed,
+        }
+    }
+
+    /// Commit the contents of a `CommitBuf` to the transcript.
+    #[inline(always)]
+    pub fn commit<const N: usize>(&mut self, buf: &mut CommitBuf<N>, data_words: usize) {
+        buf.commit(&mut self.hasher, &mut self.seed, data_words);
+    }
+
+    /// Draw raw u32 words from the transcript into `dst`.
+    /// This is the low-level draw — field-specific wrappers are generated.
+    #[inline(always)]
+    pub fn draw_raw(&mut self, dst: &mut [u32]) {
+        Blake2sTranscript::draw_randomness_using_hasher(&mut self.hasher, &mut self.seed, dst);
+    }
+}
+
+/// Double-buffered workspace for `fold_coset`.
+///
+/// Encapsulates the A/B buffer swap pattern, hiding raw pointer arithmetic
+/// behind a named interface. Both buffers use `MaybeUninit` (no zero-init).
+#[cfg(feature = "gkr_verify")]
+pub struct FoldBuffers<E: Copy, const N: usize> {
+    buf_a: [MaybeUninit<E>; N],
+    buf_b: [MaybeUninit<E>; N],
+}
+
+#[cfg(feature = "gkr_verify")]
+impl<E: Copy, const N: usize> FoldBuffers<E, N> {
+    #[inline(always)]
+    pub fn new() -> Self {
+        Self {
+            buf_a: unsafe { MaybeUninit::uninit().assume_init() },
+            buf_b: unsafe { MaybeUninit::uninit().assume_init() },
+        }
+    }
+
+    /// Get `(source, destination)` slices for the given fold round.
+    ///
+    /// Round 0 is special — the caller must provide the initial `evals` slice
+    /// as the source. For round > 0 this method returns the correct buffer pair.
+    ///
+    /// The buffer swap pattern matches `fold_coset`:
+    ///   - round 0 → dst = buf_a (src = external evals)
+    ///   - round 1 → src = buf_a, dst = buf_b
+    ///   - round 2 → src = buf_b, dst = buf_a
+    ///   - ...
+    ///
+    /// # Safety
+    /// `src_len` and `dst_len` must not exceed `N`.
+    /// Source buffer must have been written to in a prior round.
+    #[inline(always)]
+    pub unsafe fn src_dst(
+        &mut self,
+        round: usize,
+        src_len: usize,
+        dst_len: usize,
+    ) -> (&[E], &mut [E]) {
+        if round % 2 == 0 {
+            let src = core::slice::from_raw_parts(self.buf_b.as_ptr().cast::<E>(), src_len);
+            let dst = core::slice::from_raw_parts_mut(self.buf_a.as_mut_ptr().cast::<E>(), dst_len);
+            (src, dst)
+        } else {
+            let src = core::slice::from_raw_parts(self.buf_a.as_ptr().cast::<E>(), src_len);
+            let dst = core::slice::from_raw_parts_mut(self.buf_b.as_mut_ptr().cast::<E>(), dst_len);
+            (src, dst)
+        }
+    }
+
+    /// Mutable access to buf_a for writing initial fold output (round 0).
+    ///
+    /// # Safety
+    /// `len` must not exceed `N`.
+    #[inline(always)]
+    pub unsafe fn dst_a(&mut self, len: usize) -> &mut [E] {
+        core::slice::from_raw_parts_mut(self.buf_a.as_mut_ptr().cast::<E>(), len)
+    }
+
+    /// Get the final folded value after all rounds.
+    ///
+    /// # Safety
+    /// At least one round must have been executed, and the result must be
+    /// in the first element of the appropriate buffer.
+    #[inline(always)]
+    pub unsafe fn result(&self, num_rounds: usize) -> E {
+        if num_rounds % 2 == 1 {
+            *self.buf_a.get_unchecked(0).assume_init_ref()
+        } else {
+            *self.buf_b.get_unchecked(0).assume_init_ref()
+        }
+    }
 }
 
 pub struct BitSource<'a> {

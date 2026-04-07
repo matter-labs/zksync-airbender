@@ -61,8 +61,7 @@ pub fn generate_whir_common<MW: MersenneWrapper>(max_fold_steps: usize) -> Token
 
         #[inline(always)]
         pub fn verify_whir_sumcheck_step<I: NonDeterminismSource>(
-            hasher: &mut DelegatedBlake2sState,
-            seed: &mut Seed,
+            ts: &mut TranscriptState,
             claim: #quartic_struct,
             round: usize,
         ) -> Result<(#quartic_struct, #quartic_struct), WhirVerificationError> {
@@ -101,11 +100,11 @@ pub fn generate_whir_common<MW: MersenneWrapper>(max_fold_steps: usize) -> Token
                 return Err(WhirVerificationError::SumcheckFailed { round });
             }
 
-            buf.commit(hasher, seed, WHIR_SC_DATA_WORDS);
+            ts.commit(&mut buf, WHIR_SC_DATA_WORDS);
 
             let mut challenge_buf = LazyVec::<#quartic_struct, 1>::new();
             unsafe { challenge_buf.set_len(1); }
-            draw_field_els_into::<BLAKE2S_DIGEST_SIZE_U32_WORDS>(hasher, seed, challenge_buf.as_mut_slice());
+            draw_field_els_into::<BLAKE2S_DIGEST_SIZE_U32_WORDS>(ts, challenge_buf.as_mut_slice());
             let alpha = unsafe { *challenge_buf.get_unchecked(0) };
 
             // Horner: c0 + alpha*(c1 + alpha*c2)

@@ -85,10 +85,11 @@ pub fn generate_constraint_kernel<MW: MersenneWrapper, F: PrimeField>(
         let idx_a = addr_to_idx(addr_a, input_sorted_addrs);
         let idx_b = addr_to_idx(addr_b, input_sorted_addrs);
         for &(coeff, pow) in terms.iter() {
-            quad_by_pow
-                .entry(pow)
-                .or_default()
-                .push((coeff_to_internal_repr::<F>(coeff), idx_a, idx_b));
+            quad_by_pow.entry(pow).or_default().push((
+                coeff_to_internal_repr::<F>(coeff),
+                idx_a,
+                idx_b,
+            ));
         }
     }
     let mut quad_group_pows: Vec<usize> = Vec::new();
@@ -123,8 +124,7 @@ pub fn generate_constraint_kernel<MW: MersenneWrapper, F: PrimeField>(
         quote! { #field_struct::from_reduced_raw_repr(coeff) },
     );
     let add_to_inner = MW::add_assign(quote! { inner_sum }, quote! { val });
-    let mul_inner_by_cp =
-        MW::mul_assign(quote! { t }, quote! { inner_sum });
+    let mul_inner_by_cp = MW::mul_assign(quote! { t }, quote! { inner_sum });
 
     // Quadratic: prod = va * vb, then coeff * prod → inner_sum
     let mul_prod = MW::mul_assign(quote! { prod }, quote! { vb });
@@ -133,8 +133,7 @@ pub fn generate_constraint_kernel<MW: MersenneWrapper, F: PrimeField>(
         quote! { #field_struct::from_reduced_raw_repr(coeff) },
     );
     let add_prod_to_inner = MW::add_assign(quote! { inner_sum }, quote! { prod });
-    let mul_inner_by_cp_q =
-        MW::mul_assign(quote! { t }, quote! { inner_sum });
+    let mul_inner_by_cp_q = MW::mul_assign(quote! { t }, quote! { inner_sum });
 
     let mut body = TokenStream::new();
 
