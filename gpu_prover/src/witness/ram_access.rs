@@ -4,7 +4,7 @@ use cs::definitions::{NUM_TIMESTAMP_COLUMNS_FOR_RAM, REGISTER_SIZE};
 
 type CSRegisterOnlyAccessAddress = cs::definitions::gkr::RegisterOnlyAccessAddress;
 type CSIndirectRamAccessAddress = cs::definitions::gkr::IndirectRamAccessAddress;
-type CSIsRegisterAddress = cs::definitions::gkr::IsRegisterAddress;
+type CSRegisterOrRamAddressSpace = cs::definitions::gkr::RegisterOrRamAddressSpace;
 type CSRamAddress = cs::definitions::gkr::RamAddress;
 type CSRegisterAccessColumns = cs::definitions::gkr::RegisterAccessColumns;
 type CSIndirectAccess = cs::definitions::gkr::IndirectAccess;
@@ -110,22 +110,24 @@ impl From<CSIndirectRamAccessAddress> for IndirectRamAccessAddress {
 
 #[repr(C, u32)]
 #[derive(Clone, Copy, Debug)]
-pub enum IsRegisterAddress {
-    Is(u32),
-    Not(u32),
+pub enum RegisterOrRamAddressSpace {
+    RegisterAddressSpace(u32),
+    RamAddressSpace(u32),
 }
 
-impl Default for IsRegisterAddress {
+impl Default for RegisterOrRamAddressSpace {
     fn default() -> Self {
-        Self::Is(0)
+        Self::RegisterAddressSpace(0)
     }
 }
 
-impl From<CSIsRegisterAddress> for IsRegisterAddress {
-    fn from(value: CSIsRegisterAddress) -> Self {
+impl From<CSRegisterOrRamAddressSpace> for RegisterOrRamAddressSpace {
+    fn from(value: CSRegisterOrRamAddressSpace) -> Self {
         match value {
-            CSIsRegisterAddress::Is(x) => Self::Is(x as u32),
-            CSIsRegisterAddress::Not(x) => Self::Not(x as u32),
+            CSRegisterOrRamAddressSpace::RegisterAddressSpace(x) => {
+                Self::RegisterAddressSpace(x as u32)
+            }
+            CSRegisterOrRamAddressSpace::RamAddressSpace(x) => Self::RamAddressSpace(x as u32),
         }
     }
 }
@@ -133,14 +135,14 @@ impl From<CSIsRegisterAddress> for IsRegisterAddress {
 #[repr(C)]
 #[derive(Clone, Copy, Default, Debug)]
 pub struct RegisterOrRamAccessAddress {
-    pub is_register: IsRegisterAddress,
+    pub address_space: RegisterOrRamAddressSpace,
     pub address: [u32; REGISTER_SIZE],
 }
 
 impl From<CSRegisterOrRamAccessAddress> for RegisterOrRamAccessAddress {
     fn from(value: CSRegisterOrRamAccessAddress) -> Self {
         Self {
-            is_register: value.is_register.into(),
+            address_space: value.address_space.into(),
             address: value.address.map(|x| x as u32),
         }
     }
@@ -177,7 +179,7 @@ impl From<CSRamAddress> for RamAddress {
 impl From<CSRegisterOrRamAccessAddress> for RamAddress {
     fn from(value: CSRegisterOrRamAccessAddress) -> Self {
         Self::RegisterOrRam(RegisterOrRamAccessAddress {
-            is_register: value.is_register.into(),
+            address_space: value.address_space.into(),
             address: value.address.map(|x| x as u32),
         })
     }
