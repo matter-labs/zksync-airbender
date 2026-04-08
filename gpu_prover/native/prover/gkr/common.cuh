@@ -9,6 +9,15 @@ using namespace ::airbender::primitives::memory;
 
 namespace airbender::prover::gkr {
 
+enum gkr_base_source_kind : u32 {
+  GKR_BASE_SOURCE_EMPTY = 0,
+  GKR_BASE_SOURCE_REAL = 1,
+  GKR_BASE_SOURCE_VIRTUAL_RANGE_CHECK_16_BITS = 2,
+  GKR_BASE_SOURCE_VIRTUAL_RANGE_CHECK_TIMESTAMP = 3,
+  GKR_BASE_SOURCE_VIRTUAL_INITS_AND_TEARDOWNS_LOW = 4,
+  GKR_BASE_SOURCE_VIRTUAL_INITS_AND_TEARDOWNS_HIGH = 5,
+};
+
 template <typename E> struct gkr_ext_initial_source {
   const E *start;
   size_t next_layer_size;
@@ -17,12 +26,14 @@ template <typename E> struct gkr_ext_initial_source {
 template <typename B> struct gkr_base_initial_source {
   const B *start;
   size_t next_layer_size;
+  gkr_base_source_kind source_kind;
 };
 
 template <typename B, typename E> struct gkr_base_after_one_source {
   size_t base_layer_half_size;
   size_t next_layer_size;
   const B *base_input_start;
+  gkr_base_source_kind source_kind;
 };
 
 template <typename B, typename E> struct gkr_base_after_two_source {
@@ -32,6 +43,7 @@ template <typename B, typename E> struct gkr_base_after_two_source {
   size_t base_quarter_size;
   size_t next_layer_size;
   bool first_access;
+  gkr_base_source_kind source_kind;
 };
 
 template <typename E> struct gkr_ext_continuing_source {
@@ -440,6 +452,7 @@ template <typename E> struct gkr_forward_lookup_base_minus_multiplicity_by_base_
   const bf *b;
   const bf *c;
   const bf *d;
+  gkr_base_source_kind d_source_kind;
   E *num;
   E *den;
 };
@@ -633,6 +646,7 @@ template <typename E> struct gkr_forward_cache_descriptor {
   gkr_forward_cache_address_space_kind address_space_kind;
   const u32 *mapping;
   const bf *setup_values;
+  gkr_base_source_kind setup_source_kind;
   const E *generic_lookup;
   const bf *decoder_mask;
   const E *decoder_fill_value;
@@ -652,6 +666,25 @@ template <typename E> struct gkr_forward_cache_batch {
 };
 
 template <typename E> DEVICE_FORCEINLINE E gkr_lift_base(const bf value) { return E::mul(E::ONE(), value); }
+
+static constexpr unsigned GKR_TIMESTAMP_COLUMNS_NUM_BITS = 19;
+
+DEVICE_FORCEINLINE bf gkr_virtual_base_value(const gkr_base_source_kind kind, const unsigned row) {
+  switch (kind) {
+  case GKR_BASE_SOURCE_VIRTUAL_RANGE_CHECK_16_BITS:
+    return row < (1u << 16) ? bf::from_canonical_u32(row) : bf::ZERO();
+  case GKR_BASE_SOURCE_VIRTUAL_RANGE_CHECK_TIMESTAMP:
+    return row < (1u << GKR_TIMESTAMP_COLUMNS_NUM_BITS) ? bf::from_canonical_u32(row) : bf::ZERO();
+  case GKR_BASE_SOURCE_VIRTUAL_INITS_AND_TEARDOWNS_LOW:
+    return bf::from_canonical_u32((row << 2) & 0xffffu);
+  case GKR_BASE_SOURCE_VIRTUAL_INITS_AND_TEARDOWNS_HIGH:
+    return bf::from_canonical_u32(row >> 14);
+  case GKR_BASE_SOURCE_EMPTY:
+  case GKR_BASE_SOURCE_REAL:
+  default:
+    return bf::ZERO();
+  }
+}
 
 template <typename E> DEVICE_FORCEINLINE void gkr_forward_cache_memory_tuple(const gkr_forward_cache_descriptor<E> &descriptor, const unsigned gid) {
   E value = descriptor.constant_term;
@@ -726,7 +759,8 @@ template <typename E> DEVICE_FORCEINLINE void gkr_forward_cache(const gkr_forwar
     switch (descriptor.kind) {
     case GKR_FORWARD_CACHE_SINGLE_COLUMN_LOOKUP: {
       const unsigned mapping = descriptor.mapping[gid];
-      const bf value = load<bf, ld_modifier::cs>(descriptor.setup_values, mapping);
+      const bf value = descriptor.setup_source_kind == GKR_BASE_SOURCE_REAL ? load<bf, ld_modifier::cs>(descriptor.setup_values, mapping)
+                                                                            : gkr_virtual_base_value(descriptor.setup_source_kind, mapping);
       store<bf, st_modifier::cs>(descriptor.base_output, value, gid);
       break;
     }
@@ -756,13 +790,38 @@ template <typename E> DEVICE_FORCEINLINE void gkr_forward_cache(const gkr_forwar
   }
 }
 
+template <typename E>
+DEVICE_FORCEINLINE E gkr_get_forward_lookup_base_setup_value(const gkr_forward_lookup_base_minus_multiplicity_by_base_descriptor<E> &params,
+                                                             const unsigned gid) {
+  const bf value = params.d_source_kind == GKR_BASE_SOURCE_REAL ? load<bf, ld_modifier::cs>(params.d, gid) : gkr_virtual_base_value(params.d_source_kind, gid);
+  return gkr_lift_base<E>(value);
+}
+
+DEVICE_FORCEINLINE bf gkr_get_initial_base_bf_value(const gkr_base_initial_source<bf> &source, const unsigned index) {
+  if (source.source_kind == GKR_BASE_SOURCE_REAL)
+    return load<bf, ld_modifier::cs>(source.start, index);
+  return gkr_virtual_base_value(source.source_kind, index);
+}
+
+template <typename E> DEVICE_FORCEINLINE bf gkr_get_base_after_one_bf_value(const gkr_base_after_one_source<bf, E> &source, const unsigned index) {
+  if (source.source_kind == GKR_BASE_SOURCE_REAL)
+    return load<bf, ld_modifier::cs>(source.base_input_start, index);
+  return gkr_virtual_base_value(source.source_kind, index);
+}
+
+template <typename E> DEVICE_FORCEINLINE bf gkr_get_base_after_two_bf_value(const gkr_base_after_two_source<bf, E> &source, const unsigned index) {
+  if (source.source_kind == GKR_BASE_SOURCE_REAL)
+    return load<bf, ld_modifier::cs>(source.base_input_start, index);
+  return gkr_virtual_base_value(source.source_kind, index);
+}
+
 template <typename E> DEVICE_FORCEINLINE E gkr_get_initial_base_value(const gkr_base_initial_source<bf> &source, const unsigned index) {
-  return gkr_lift_base<E>(load<bf, ld_modifier::cs>(source.start, index));
+  return gkr_lift_base<E>(gkr_get_initial_base_bf_value(source, index));
 }
 
 template <typename E> DEVICE_FORCEINLINE E gkr_get_initial_base_delta(const gkr_base_initial_source<bf> &source, const unsigned index) {
-  const bf f0 = load<bf, ld_modifier::cs>(source.start, index);
-  const bf f1 = load<bf, ld_modifier::cs>(source.start, source.next_layer_size + index);
+  const bf f0 = gkr_get_initial_base_bf_value(source, index);
+  const bf f1 = gkr_get_initial_base_bf_value(source, source.next_layer_size + index);
   return gkr_lift_base<E>(bf::sub(f1, f0));
 }
 
@@ -791,8 +850,8 @@ template <typename E> DEVICE_FORCEINLINE E gkr_get_initial_delta(const gkr_ext_i
 
 template <typename E>
 DEVICE_FORCEINLINE E gkr_get_base_after_one_value(const gkr_base_after_one_source<bf, E> &source, const E first_folding_challenge, const unsigned index) {
-  const bf f0 = load<bf, ld_modifier::cs>(source.base_input_start, index);
-  const bf f1 = load<bf, ld_modifier::cs>(source.base_input_start, source.base_layer_half_size + index);
+  const bf f0 = gkr_get_base_after_one_bf_value(source, index);
+  const bf f1 = gkr_get_base_after_one_bf_value(source, source.base_layer_half_size + index);
   const bf diff = bf::sub(f1, f0);
   return E::add(E::mul(first_folding_challenge, diff), f0);
 }
@@ -815,10 +874,10 @@ DEVICE_FORCEINLINE E gkr_get_base_after_two_value(const gkr_base_after_two_sourc
   if (!source.first_access)
     return load<E, ld_modifier::cs>(source.this_layer_cache_start, index);
 
-  const bf f00 = load<bf, ld_modifier::cs>(source.base_input_start, index);
-  const bf f01 = load<bf, ld_modifier::cs>(source.base_input_start, source.base_layer_half_size + index);
-  const bf f10 = load<bf, ld_modifier::cs>(source.base_input_start, source.base_quarter_size + index);
-  const bf f11 = load<bf, ld_modifier::cs>(source.base_input_start, source.base_layer_half_size + source.base_quarter_size + index);
+  const bf f00 = gkr_get_base_after_two_bf_value(source, index);
+  const bf f01 = gkr_get_base_after_two_bf_value(source, source.base_layer_half_size + index);
+  const bf f10 = gkr_get_base_after_two_bf_value(source, source.base_quarter_size + index);
+  const bf f11 = gkr_get_base_after_two_bf_value(source, source.base_layer_half_size + source.base_quarter_size + index);
 
   const bf c01 = bf::sub(f01, f00);
   const bf c10 = bf::sub(f10, f00);
@@ -1304,7 +1363,7 @@ template <typename E> DEVICE_FORCEINLINE void gkr_forward_layer(const gkr_forwar
       const auto params = descriptor.payload.lookup_base_minus_multiplicity_by_base;
       const E b = gkr_lift_base<E>(load<bf, ld_modifier::cs>(params.b, gid));
       const E c = gkr_lift_base<E>(load<bf, ld_modifier::cs>(params.c, gid));
-      const E d = gkr_lift_base<E>(load<bf, ld_modifier::cs>(params.d, gid));
+      const E d = gkr_get_forward_lookup_base_setup_value(params, gid);
       const E gamma = load<E, ld_modifier::cs>(batch.lookup_additive_challenge, 0);
       E num;
       E den;
@@ -1647,8 +1706,7 @@ DEVICE_FORCEINLINE void gkr_eval_constraints_round3(const gkr_ext_continuing_sou
 static constexpr u32 GKR_NO_CACHE_LINEAR_FORM_CONSTANT_SENTINEL = UINT32_MAX;
 
 template <typename E>
-DEVICE_FORCEINLINE E gkr_no_cache_linear_form_initial_value(const gkr_base_initial_source<bf> *base_inputs,
-                                                            const gkr_main_constraint_quadratic_term<E> *terms,
+DEVICE_FORCEINLINE E gkr_no_cache_linear_form_initial_value(const gkr_base_initial_source<bf> *base_inputs, const gkr_main_constraint_quadratic_term<E> *terms,
                                                             const unsigned terms_count, const unsigned gid) {
   E result = E::ZERO();
   for (unsigned i = 0; i < terms_count; ++i) {
@@ -1660,8 +1718,7 @@ DEVICE_FORCEINLINE E gkr_no_cache_linear_form_initial_value(const gkr_base_initi
 }
 
 template <typename E>
-DEVICE_FORCEINLINE E gkr_no_cache_linear_form_initial_value(const gkr_base_initial_source<bf> *base_inputs,
-                                                            const gkr_main_constraint_linear_term<E> *terms,
+DEVICE_FORCEINLINE E gkr_no_cache_linear_form_initial_value(const gkr_base_initial_source<bf> *base_inputs, const gkr_main_constraint_linear_term<E> *terms,
                                                             const unsigned terms_count, const unsigned gid) {
   E result = E::ZERO();
   for (unsigned i = 0; i < terms_count; ++i) {
@@ -1673,8 +1730,7 @@ DEVICE_FORCEINLINE E gkr_no_cache_linear_form_initial_value(const gkr_base_initi
 }
 
 template <typename E>
-DEVICE_FORCEINLINE E gkr_no_cache_linear_form_initial_delta(const gkr_base_initial_source<bf> *base_inputs,
-                                                            const gkr_main_constraint_quadratic_term<E> *terms,
+DEVICE_FORCEINLINE E gkr_no_cache_linear_form_initial_delta(const gkr_base_initial_source<bf> *base_inputs, const gkr_main_constraint_quadratic_term<E> *terms,
                                                             const unsigned terms_count, const unsigned gid) {
   E result = E::ZERO();
   for (unsigned i = 0; i < terms_count; ++i) {
@@ -1687,8 +1743,7 @@ DEVICE_FORCEINLINE E gkr_no_cache_linear_form_initial_delta(const gkr_base_initi
 }
 
 template <typename E>
-DEVICE_FORCEINLINE E gkr_no_cache_linear_form_initial_delta(const gkr_base_initial_source<bf> *base_inputs,
-                                                            const gkr_main_constraint_linear_term<E> *terms,
+DEVICE_FORCEINLINE E gkr_no_cache_linear_form_initial_delta(const gkr_base_initial_source<bf> *base_inputs, const gkr_main_constraint_linear_term<E> *terms,
                                                             const unsigned terms_count, const unsigned gid) {
   E result = E::ZERO();
   for (unsigned i = 0; i < terms_count; ++i) {
@@ -1724,8 +1779,8 @@ DEVICE_FORCEINLINE void gkr_no_cache_linear_form_round1_points(const gkr_base_af
 
 template <typename E, bool EXPLICIT_FORM>
 DEVICE_FORCEINLINE void gkr_no_cache_linear_form_round1_points(const gkr_base_after_one_source<bf, E> *base_inputs, const E folding_challenge,
-                                                               const gkr_main_constraint_linear_term<E> *terms, const unsigned terms_count,
-                                                               const unsigned gid, E &eval0, E &eval1) {
+                                                               const gkr_main_constraint_linear_term<E> *terms, const unsigned terms_count, const unsigned gid,
+                                                               E &eval0, E &eval1) {
   eval0 = E::ZERO();
   eval1 = E::ZERO();
   for (unsigned i = 0; i < terms_count; ++i) {
@@ -1812,8 +1867,8 @@ DEVICE_FORCEINLINE void gkr_no_cache_linear_form_round3_points(const gkr_ext_con
 
 template <typename E, bool EXPLICIT_FORM>
 DEVICE_FORCEINLINE void gkr_no_cache_linear_form_round3_points(const gkr_ext_continuing_source<E> *base_inputs, const E folding_challenge,
-                                                               const gkr_main_constraint_linear_term<E> *terms, const unsigned terms_count,
-                                                               const unsigned gid, E &eval0, E &eval1) {
+                                                               const gkr_main_constraint_linear_term<E> *terms, const unsigned terms_count, const unsigned gid,
+                                                               E &eval0, E &eval1) {
   eval0 = E::ZERO();
   eval1 = E::ZERO();
   for (unsigned i = 0; i < terms_count; ++i) {
@@ -2096,9 +2151,8 @@ DEVICE_FORCEINLINE void gkr_main_round1_values(const unsigned kind, const gkr_ba
   case GKR_MAIN_INITS_AND_TEARDOWNS_INITIAL_PAIR: {
     E eval0;
     E eval1;
-    gkr_eval_constraints_round1<E, EXPLICIT_FORM>(base_inputs, current_folding_challenge, gid, constraint_quadratic_terms,
-                                                  constraint_quadratic_terms_count, constraint_linear_terms, constraint_linear_terms_count,
-                                                  constraint_constant_offset, eval0, eval1);
+    gkr_eval_constraints_round1<E, EXPLICIT_FORM>(base_inputs, current_folding_challenge, gid, constraint_quadratic_terms, constraint_quadratic_terms_count,
+                                                  constraint_linear_terms, constraint_linear_terms_count, constraint_constant_offset, eval0, eval1);
     c0 = E::mul(batch_challenge_0, eval0);
     c1 = E::mul(batch_challenge_0, eval1);
     break;
@@ -2110,8 +2164,8 @@ DEVICE_FORCEINLINE void gkr_main_round1_values(const unsigned kind, const gkr_ba
                                                              constraint_quadratic_terms_count, gid, lhs0, lhs1);
     E rhs0;
     E rhs1;
-    gkr_no_cache_linear_form_round1_points<E, EXPLICIT_FORM>(base_inputs, current_folding_challenge, constraint_linear_terms,
-                                                             constraint_linear_terms_count, gid, rhs0, rhs1);
+    gkr_no_cache_linear_form_round1_points<E, EXPLICIT_FORM>(base_inputs, current_folding_challenge, constraint_linear_terms, constraint_linear_terms_count,
+                                                             gid, rhs0, rhs1);
     E eval0;
     E eval1;
     gkr_eval_product(lhs0, rhs0, eval0);
@@ -2123,8 +2177,8 @@ DEVICE_FORCEINLINE void gkr_main_round1_values(const unsigned kind, const gkr_ba
   case GKR_MAIN_MATERIALIZE_GRAND_PRODUCT_TERM_EXPRESSION: {
     E eval0;
     E eval1;
-    gkr_no_cache_linear_form_round1_points<E, EXPLICIT_FORM>(base_inputs, current_folding_challenge, constraint_linear_terms,
-                                                             constraint_linear_terms_count, gid, eval0, eval1);
+    gkr_no_cache_linear_form_round1_points<E, EXPLICIT_FORM>(base_inputs, current_folding_challenge, constraint_linear_terms, constraint_linear_terms_count,
+                                                             gid, eval0, eval1);
     c0 = E::mul(batch_challenge_0, eval0);
     c1 = E::mul(batch_challenge_0, eval1);
     break;
@@ -2223,8 +2277,8 @@ DEVICE_FORCEINLINE void gkr_main_round1_values(const unsigned kind, const gkr_ba
                                                              constraint_quadratic_terms_count, gid, b0, b1);
     E d0;
     E d1;
-    gkr_no_cache_linear_form_round1_points<E, EXPLICIT_FORM>(base_inputs, current_folding_challenge, constraint_linear_terms,
-                                                             constraint_linear_terms_count, gid, d0, d1);
+    gkr_no_cache_linear_form_round1_points<E, EXPLICIT_FORM>(base_inputs, current_folding_challenge, constraint_linear_terms, constraint_linear_terms_count,
+                                                             gid, d0, d1);
     E num0;
     E den0;
     E num1;
@@ -2276,8 +2330,8 @@ DEVICE_FORCEINLINE void gkr_main_round1_values(const unsigned kind, const gkr_ba
                                                              constraint_quadratic_terms_count, gid, b0, b1);
     E d0;
     E d1;
-    gkr_no_cache_linear_form_round1_points<E, EXPLICIT_FORM>(base_inputs + 2, current_folding_challenge, constraint_linear_terms,
-                                                             constraint_linear_terms_count, gid, d0, d1);
+    gkr_no_cache_linear_form_round1_points<E, EXPLICIT_FORM>(base_inputs + 2, current_folding_challenge, constraint_linear_terms, constraint_linear_terms_count,
+                                                             gid, d0, d1);
     E num0;
     E den0;
     E num1;
@@ -2326,8 +2380,8 @@ DEVICE_FORCEINLINE void gkr_main_round1_values(const unsigned kind, const gkr_ba
                                                              constraint_quadratic_terms_count, gid, b0, b1);
     E d0;
     E d1;
-    gkr_no_cache_linear_form_round1_points<E, EXPLICIT_FORM>(base_inputs + 1, current_folding_challenge, constraint_linear_terms,
-                                                             constraint_linear_terms_count, gid, d0, d1);
+    gkr_no_cache_linear_form_round1_points<E, EXPLICIT_FORM>(base_inputs + 1, current_folding_challenge, constraint_linear_terms, constraint_linear_terms_count,
+                                                             gid, d0, d1);
     E num0;
     E den0;
     E num1;
@@ -2369,8 +2423,8 @@ DEVICE_FORCEINLINE void gkr_main_round1_values(const unsigned kind, const gkr_ba
   case GKR_MAIN_LOOKUP_UNBALANCED_PAIR_WITH_VECTOR_INPUTS: {
     E d0;
     E d1;
-    gkr_no_cache_linear_form_round1_points<E, EXPLICIT_FORM>(base_inputs, current_folding_challenge, constraint_linear_terms,
-                                                             constraint_linear_terms_count, gid, d0, d1);
+    gkr_no_cache_linear_form_round1_points<E, EXPLICIT_FORM>(base_inputs, current_folding_challenge, constraint_linear_terms, constraint_linear_terms_count,
+                                                             gid, d0, d1);
     E a0;
     E a1;
     gkr_get_continuing_points<E, EXPLICIT_FORM>(ext_inputs[0], current_folding_challenge, gid, a0, a1);
@@ -2478,8 +2532,8 @@ DEVICE_FORCEINLINE void gkr_main_round2_values(const unsigned kind, const gkr_ba
   case GKR_MAIN_LINEAR_BASE_OUTPUT: {
     E eval0;
     E eval1;
-    gkr_eval_constraints_round2<E, EXPLICIT_FORM>(base_inputs, first_folding_challenge, second_folding_challenge, gid, nullptr, 0,
-                                                  constraint_linear_terms, constraint_linear_terms_count, constraint_constant_offset, eval0, eval1);
+    gkr_eval_constraints_round2<E, EXPLICIT_FORM>(base_inputs, first_folding_challenge, second_folding_challenge, gid, nullptr, 0, constraint_linear_terms,
+                                                  constraint_linear_terms_count, constraint_constant_offset, eval0, eval1);
     c0 = E::mul(batch_challenge_0, eval0);
     c1 = E::mul(batch_challenge_0, eval1);
     break;
@@ -2497,12 +2551,12 @@ DEVICE_FORCEINLINE void gkr_main_round2_values(const unsigned kind, const gkr_ba
   case GKR_MAIN_INITIAL_GRAND_PRODUCT_WITHOUT_CACHES: {
     E lhs0;
     E lhs1;
-    gkr_no_cache_linear_form_round2_points<E, EXPLICIT_FORM>(base_inputs, first_folding_challenge, second_folding_challenge,
-                                                             constraint_quadratic_terms, constraint_quadratic_terms_count, gid, lhs0, lhs1);
+    gkr_no_cache_linear_form_round2_points<E, EXPLICIT_FORM>(base_inputs, first_folding_challenge, second_folding_challenge, constraint_quadratic_terms,
+                                                             constraint_quadratic_terms_count, gid, lhs0, lhs1);
     E rhs0;
     E rhs1;
-    gkr_no_cache_linear_form_round2_points<E, EXPLICIT_FORM>(base_inputs, first_folding_challenge, second_folding_challenge,
-                                                             constraint_linear_terms, constraint_linear_terms_count, gid, rhs0, rhs1);
+    gkr_no_cache_linear_form_round2_points<E, EXPLICIT_FORM>(base_inputs, first_folding_challenge, second_folding_challenge, constraint_linear_terms,
+                                                             constraint_linear_terms_count, gid, rhs0, rhs1);
     E eval0;
     E eval1;
     gkr_eval_product(lhs0, rhs0, eval0);
@@ -2514,8 +2568,8 @@ DEVICE_FORCEINLINE void gkr_main_round2_values(const unsigned kind, const gkr_ba
   case GKR_MAIN_MATERIALIZE_GRAND_PRODUCT_TERM_EXPRESSION: {
     E eval0;
     E eval1;
-    gkr_no_cache_linear_form_round2_points<E, EXPLICIT_FORM>(base_inputs, first_folding_challenge, second_folding_challenge,
-                                                             constraint_linear_terms, constraint_linear_terms_count, gid, eval0, eval1);
+    gkr_no_cache_linear_form_round2_points<E, EXPLICIT_FORM>(base_inputs, first_folding_challenge, second_folding_challenge, constraint_linear_terms,
+                                                             constraint_linear_terms_count, gid, eval0, eval1);
     c0 = E::mul(batch_challenge_0, eval0);
     c1 = E::mul(batch_challenge_0, eval1);
     break;
@@ -2610,12 +2664,12 @@ DEVICE_FORCEINLINE void gkr_main_round2_values(const unsigned kind, const gkr_ba
   case GKR_MAIN_LOOKUP_PAIR_FROM_VECTOR_INPUTS: {
     E b0;
     E b1;
-    gkr_no_cache_linear_form_round2_points<E, EXPLICIT_FORM>(base_inputs, first_folding_challenge, second_folding_challenge,
-                                                             constraint_quadratic_terms, constraint_quadratic_terms_count, gid, b0, b1);
+    gkr_no_cache_linear_form_round2_points<E, EXPLICIT_FORM>(base_inputs, first_folding_challenge, second_folding_challenge, constraint_quadratic_terms,
+                                                             constraint_quadratic_terms_count, gid, b0, b1);
     E d0;
     E d1;
-    gkr_no_cache_linear_form_round2_points<E, EXPLICIT_FORM>(base_inputs, first_folding_challenge, second_folding_challenge,
-                                                             constraint_linear_terms, constraint_linear_terms_count, gid, d0, d1);
+    gkr_no_cache_linear_form_round2_points<E, EXPLICIT_FORM>(base_inputs, first_folding_challenge, second_folding_challenge, constraint_linear_terms,
+                                                             constraint_linear_terms_count, gid, d0, d1);
     E num0;
     E den0;
     E num1;
@@ -2663,12 +2717,12 @@ DEVICE_FORCEINLINE void gkr_main_round2_values(const unsigned kind, const gkr_ba
     gkr_get_base_after_two_points<E, EXPLICIT_FORM>(base_inputs[1], first_folding_challenge, second_folding_challenge, gid, c0_in, c1_in);
     E b0;
     E b1;
-    gkr_no_cache_linear_form_round2_points<E, EXPLICIT_FORM>(base_inputs + 2, first_folding_challenge, second_folding_challenge,
-                                                             constraint_quadratic_terms, constraint_quadratic_terms_count, gid, b0, b1);
+    gkr_no_cache_linear_form_round2_points<E, EXPLICIT_FORM>(base_inputs + 2, first_folding_challenge, second_folding_challenge, constraint_quadratic_terms,
+                                                             constraint_quadratic_terms_count, gid, b0, b1);
     E d0;
     E d1;
-    gkr_no_cache_linear_form_round2_points<E, EXPLICIT_FORM>(base_inputs + 2, first_folding_challenge, second_folding_challenge,
-                                                             constraint_linear_terms, constraint_linear_terms_count, gid, d0, d1);
+    gkr_no_cache_linear_form_round2_points<E, EXPLICIT_FORM>(base_inputs + 2, first_folding_challenge, second_folding_challenge, constraint_linear_terms,
+                                                             constraint_linear_terms_count, gid, d0, d1);
     E num0;
     E den0;
     E num1;
@@ -2713,12 +2767,12 @@ DEVICE_FORCEINLINE void gkr_main_round2_values(const unsigned kind, const gkr_ba
     gkr_get_base_after_two_points<E, EXPLICIT_FORM>(base_inputs[0], first_folding_challenge, second_folding_challenge, gid, c0_in, c1_in);
     E b0;
     E b1;
-    gkr_no_cache_linear_form_round2_points<E, EXPLICIT_FORM>(base_inputs + 1, first_folding_challenge, second_folding_challenge,
-                                                             constraint_quadratic_terms, constraint_quadratic_terms_count, gid, b0, b1);
+    gkr_no_cache_linear_form_round2_points<E, EXPLICIT_FORM>(base_inputs + 1, first_folding_challenge, second_folding_challenge, constraint_quadratic_terms,
+                                                             constraint_quadratic_terms_count, gid, b0, b1);
     E d0;
     E d1;
-    gkr_no_cache_linear_form_round2_points<E, EXPLICIT_FORM>(base_inputs + 1, first_folding_challenge, second_folding_challenge,
-                                                             constraint_linear_terms, constraint_linear_terms_count, gid, d0, d1);
+    gkr_no_cache_linear_form_round2_points<E, EXPLICIT_FORM>(base_inputs + 1, first_folding_challenge, second_folding_challenge, constraint_linear_terms,
+                                                             constraint_linear_terms_count, gid, d0, d1);
     E num0;
     E den0;
     E num1;
@@ -2760,8 +2814,8 @@ DEVICE_FORCEINLINE void gkr_main_round2_values(const unsigned kind, const gkr_ba
   case GKR_MAIN_LOOKUP_UNBALANCED_PAIR_WITH_VECTOR_INPUTS: {
     E d0;
     E d1;
-    gkr_no_cache_linear_form_round2_points<E, EXPLICIT_FORM>(base_inputs, first_folding_challenge, second_folding_challenge,
-                                                             constraint_linear_terms, constraint_linear_terms_count, gid, d0, d1);
+    gkr_no_cache_linear_form_round2_points<E, EXPLICIT_FORM>(base_inputs, first_folding_challenge, second_folding_challenge, constraint_linear_terms,
+                                                             constraint_linear_terms_count, gid, d0, d1);
     E a0;
     E a1;
     gkr_get_continuing_points<E, EXPLICIT_FORM>(ext_inputs[0], second_folding_challenge, gid, a0, a1);
@@ -2878,9 +2932,8 @@ DEVICE_FORCEINLINE void gkr_main_round3_values(const unsigned kind, const gkr_ex
   case GKR_MAIN_INITS_AND_TEARDOWNS_INITIAL_PAIR: {
     E eval0;
     E eval1;
-    gkr_eval_constraints_round3<E, EXPLICIT_FORM>(base_inputs, current_folding_challenge, gid, constraint_quadratic_terms,
-                                                  constraint_quadratic_terms_count, constraint_linear_terms, constraint_linear_terms_count,
-                                                  constraint_constant_offset, eval0, eval1);
+    gkr_eval_constraints_round3<E, EXPLICIT_FORM>(base_inputs, current_folding_challenge, gid, constraint_quadratic_terms, constraint_quadratic_terms_count,
+                                                  constraint_linear_terms, constraint_linear_terms_count, constraint_constant_offset, eval0, eval1);
     c0 = E::mul(batch_challenge_0, eval0);
     c1 = E::mul(batch_challenge_0, eval1);
     break;
@@ -2892,8 +2945,8 @@ DEVICE_FORCEINLINE void gkr_main_round3_values(const unsigned kind, const gkr_ex
                                                              constraint_quadratic_terms_count, gid, lhs0, lhs1);
     E rhs0;
     E rhs1;
-    gkr_no_cache_linear_form_round3_points<E, EXPLICIT_FORM>(base_inputs, current_folding_challenge, constraint_linear_terms,
-                                                             constraint_linear_terms_count, gid, rhs0, rhs1);
+    gkr_no_cache_linear_form_round3_points<E, EXPLICIT_FORM>(base_inputs, current_folding_challenge, constraint_linear_terms, constraint_linear_terms_count,
+                                                             gid, rhs0, rhs1);
     E eval0;
     E eval1;
     gkr_eval_product(lhs0, rhs0, eval0);
@@ -2905,8 +2958,8 @@ DEVICE_FORCEINLINE void gkr_main_round3_values(const unsigned kind, const gkr_ex
   case GKR_MAIN_MATERIALIZE_GRAND_PRODUCT_TERM_EXPRESSION: {
     E eval0;
     E eval1;
-    gkr_no_cache_linear_form_round3_points<E, EXPLICIT_FORM>(base_inputs, current_folding_challenge, constraint_linear_terms,
-                                                             constraint_linear_terms_count, gid, eval0, eval1);
+    gkr_no_cache_linear_form_round3_points<E, EXPLICIT_FORM>(base_inputs, current_folding_challenge, constraint_linear_terms, constraint_linear_terms_count,
+                                                             gid, eval0, eval1);
     c0 = E::mul(batch_challenge_0, eval0);
     c1 = E::mul(batch_challenge_0, eval1);
     break;
@@ -3005,8 +3058,8 @@ DEVICE_FORCEINLINE void gkr_main_round3_values(const unsigned kind, const gkr_ex
                                                              constraint_quadratic_terms_count, gid, b0, b1);
     E d0;
     E d1;
-    gkr_no_cache_linear_form_round3_points<E, EXPLICIT_FORM>(base_inputs, current_folding_challenge, constraint_linear_terms,
-                                                             constraint_linear_terms_count, gid, d0, d1);
+    gkr_no_cache_linear_form_round3_points<E, EXPLICIT_FORM>(base_inputs, current_folding_challenge, constraint_linear_terms, constraint_linear_terms_count,
+                                                             gid, d0, d1);
     E num0;
     E den0;
     E num1;
@@ -3058,8 +3111,8 @@ DEVICE_FORCEINLINE void gkr_main_round3_values(const unsigned kind, const gkr_ex
                                                              constraint_quadratic_terms_count, gid, b0, b1);
     E d0;
     E d1;
-    gkr_no_cache_linear_form_round3_points<E, EXPLICIT_FORM>(base_inputs + 2, current_folding_challenge, constraint_linear_terms,
-                                                             constraint_linear_terms_count, gid, d0, d1);
+    gkr_no_cache_linear_form_round3_points<E, EXPLICIT_FORM>(base_inputs + 2, current_folding_challenge, constraint_linear_terms, constraint_linear_terms_count,
+                                                             gid, d0, d1);
     E num0;
     E den0;
     E num1;
@@ -3108,8 +3161,8 @@ DEVICE_FORCEINLINE void gkr_main_round3_values(const unsigned kind, const gkr_ex
                                                              constraint_quadratic_terms_count, gid, b0, b1);
     E d0;
     E d1;
-    gkr_no_cache_linear_form_round3_points<E, EXPLICIT_FORM>(base_inputs + 1, current_folding_challenge, constraint_linear_terms,
-                                                             constraint_linear_terms_count, gid, d0, d1);
+    gkr_no_cache_linear_form_round3_points<E, EXPLICIT_FORM>(base_inputs + 1, current_folding_challenge, constraint_linear_terms, constraint_linear_terms_count,
+                                                             gid, d0, d1);
     E num0;
     E den0;
     E num1;
@@ -3151,8 +3204,8 @@ DEVICE_FORCEINLINE void gkr_main_round3_values(const unsigned kind, const gkr_ex
   case GKR_MAIN_LOOKUP_UNBALANCED_PAIR_WITH_VECTOR_INPUTS: {
     E d0;
     E d1;
-    gkr_no_cache_linear_form_round3_points<E, EXPLICIT_FORM>(base_inputs, current_folding_challenge, constraint_linear_terms,
-                                                             constraint_linear_terms_count, gid, d0, d1);
+    gkr_no_cache_linear_form_round3_points<E, EXPLICIT_FORM>(base_inputs, current_folding_challenge, constraint_linear_terms, constraint_linear_terms_count,
+                                                             gid, d0, d1);
     E a0;
     E a1;
     gkr_get_continuing_points<E, EXPLICIT_FORM>(ext_inputs[0], current_folding_challenge, gid, a0, a1);
