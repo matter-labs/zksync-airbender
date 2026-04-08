@@ -221,7 +221,35 @@ impl ProverContext {
         } else {
             placement
         };
-        let result = self.device_allocator.alloc(size, placement);
+        let result = self.device_allocator.alloc::<T>(size, placement);
+        if result.is_err() {
+            error!(
+                "failed to allocate {} bytes from GPU memory allocator of device ID {}, currently allocated {} bytes",
+                size * size_of::<T>(),
+                self.device_id,
+                self.get_used_mem_current()
+            );
+        }
+        result
+    }
+
+    pub fn alloc_with_extra_alignment<T, const EXTRA_ALIGNMENT_LOG2: u32>(
+        &self,
+        size: usize,
+        placement: AllocationPlacement,
+    ) -> CudaResult<DeviceAllocation<T>> {
+        let placement = if self.reversed_allocation_placement {
+            match placement {
+                AllocationPlacement::BestFit => AllocationPlacement::BestFit,
+                AllocationPlacement::Bottom => AllocationPlacement::Top,
+                AllocationPlacement::Top => AllocationPlacement::Bottom,
+            }
+        } else {
+            placement
+        };
+        let result = self
+            .device_allocator
+            .alloc_with_extra_alignment::<T, EXTRA_ALIGNMENT_LOG2>(size, placement);
         if result.is_err() {
             error!(
                 "failed to allocate {} bytes from GPU memory allocator of device ID {}, currently allocated {} bytes",
