@@ -434,3 +434,77 @@ pub fn ext_from_raw_words(words: &[u32]) -> BabyBearExt4 {
     }
     unsafe { core::ptr::read(coeffs.as_slice().as_ptr().cast::<BabyBearExt4>()) }
 }
+#[doc = r" Read leaf data from NDS into hash_buf and batch into accumulators"]
+#[doc = r" in a single pass. NDS is column-major (matching Merkle hash layout)."]
+#[inline(always)]
+#[allow(clippy::too_many_arguments)]
+pub unsafe fn read_and_batch_leaf<I: NonDeterminismSource>(
+    hash_buf: &mut [u32],
+    num_columns: usize,
+    gamma_powers: &[BabyBearExt4],
+    gamma_offset: usize,
+    acc0: &mut BabyBearExt4,
+    acc1: &mut BabyBearExt4,
+) {
+    let mut col = 0;
+    while col < num_columns {
+        let gamma = *gamma_powers.get_unchecked(gamma_offset + col);
+        let idx = col * 2;
+        let raw0 = read_reduced_field_el::<I>();
+        *hash_buf.get_unchecked_mut(idx) = raw0;
+        let base_val = BabyBearField::from_reduced_raw_repr(raw0);
+        let mut term = gamma;
+        field_ops::mul_assign_by_base(&mut term, &base_val);
+        field_ops::add_assign(&mut *acc0, &term);
+        let raw1 = read_reduced_field_el::<I>();
+        *hash_buf.get_unchecked_mut(idx + 1) = raw1;
+        let base_val = BabyBearField::from_reduced_raw_repr(raw1);
+        let mut term = gamma;
+        field_ops::mul_assign_by_base(&mut term, &base_val);
+        field_ops::add_assign(&mut *acc1, &term);
+        col += 1;
+    }
+}
+#[doc = r" Read oracle leaf, hash it, and verify the Merkle path."]
+#[doc = r" Skips entirely for zero-column oracles (num_columns == 0)."]
+#[inline(always)]
+#[allow(clippy::too_many_arguments)]
+pub unsafe fn process_oracle_query<I: NonDeterminismSource, const BUF_SIZE: usize>(
+    hasher: &mut DelegatedBlake2sState,
+    hash_buf: &mut ::verifier_common::blake2s_u32::AlignedArray64<
+        core::mem::MaybeUninit<u32>,
+        BUF_SIZE,
+    >,
+    num_columns: usize,
+    leaf_words: usize,
+    query_index: usize,
+    depth: usize,
+    cap: &[u32],
+    gamma_powers: &[BabyBearExt4],
+    gamma_offset: usize,
+    acc0: &mut BabyBearExt4,
+    acc1: &mut BabyBearExt4,
+    query: usize,
+) -> Result<(), WhirVerificationError> {
+    use verifier_common::whir::{hash_leaf_data_into_state, verify_merkle_path};
+    let buf = hash_buf.assume_init_subarray_mut::<BUF_SIZE>();
+    read_and_batch_leaf::<I>(
+        &mut buf[..leaf_words],
+        num_columns,
+        gamma_powers,
+        gamma_offset,
+        acc0,
+        acc1,
+    );
+    let block_end =
+        leaf_words.next_multiple_of(::verifier_common::blake2s_u32::BLAKE2S_BLOCK_SIZE_U32_WORDS);
+    if block_end > leaf_words {
+        hash_buf.zero_range(leaf_words, block_end);
+    }
+    let buf = hash_buf.assume_init_subarray::<BUF_SIZE>();
+    hash_leaf_data_into_state(hasher, buf, leaf_words);
+    if !verify_merkle_path::<I>(hasher, query_index, depth, cap) {
+        return Err(WhirVerificationError::MerklePathFailed { query });
+    }
+    Ok(())
+}

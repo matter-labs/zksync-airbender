@@ -1365,9 +1365,13 @@ pub fn generate_layer_final_step_accumulator<MW: MersenneWrapper, F: PrimeField>
                         };
 
                         let field_struct_local = MW::field_struct();
+                        // AddressSpaceType::RAM = 1, must be added to constant term
+                        // to match prover's inits_or_teardowns_as_flattened_relation.
+                        let ram_constant = coeff_to_internal_repr::<F>(1) as u32;
                         val_comp.extend(quote! {
-                            let #var = {
+                            let mut #var = {
                                 let mut result = permutation_argument_additive_part;
+                                field_ops::add_assign_base(&mut result, &#field_struct_local::from_reduced_raw_repr(#ram_constant));
                                 {
                                     let mut t = linearization_challenges[#MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
                                     field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(#setup_lo_idx)[j]);
@@ -1376,7 +1380,7 @@ pub fn generate_layer_final_step_accumulator<MW: MersenneWrapper, F: PrimeField>
                                 {
                                     let mut t = linearization_challenges[#MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
                                     let mut addr_hi = evals.get_unchecked(#setup_hi_idx)[j];
-                                    let set_bits = address_high_bits_shift * #set_idx_val as u32;
+                                    let set_bits = (#set_idx_val as u32) << address_high_bits_shift;
                                     if set_bits != 0 {
                                         let set_field = #field_struct_local::from_u32_unchecked(set_bits);
                                         field_ops::add_assign_base(&mut addr_hi, &set_field);

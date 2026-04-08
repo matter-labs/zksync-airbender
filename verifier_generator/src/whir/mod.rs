@@ -26,13 +26,11 @@ pub fn generate_whir_verify<MW: MersenneWrapper>(whir_hash_buf_size: usize) -> T
         pub fn verify_whir<I: NonDeterminismSource>(
             ts: &mut TranscriptState,
             batching_challenge: #quartic_struct,
-            setup_cap: &[u32; SETUP_CAP_WORDS],
-            memory_cap: &[u32; MEM_CAP_WORDS],
-            witness_cap: &[u32; WIT_CAP_WORDS],
+            oracle_caps: &[u32; TOTAL_CAP_WORDS],
         ) -> Result<(), WhirVerificationError> {
             let mut hash_buf = AlignedArray64::<u32, WHIR_HASH_BUF_SIZE>::new_uninit();
             let (mut claim, mut cap) = verify_initial_whir_round::<I>(
-                ts, &mut hash_buf, batching_challenge, setup_cap, memory_cap, witness_cap,
+                ts, &mut hash_buf, batching_challenge, oracle_caps,
             )?;
             let mut round_idx = 1;
             while round_idx <= NUM_INTERNAL_ROUNDS {

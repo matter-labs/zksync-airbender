@@ -15,6 +15,14 @@ pub fn generate_whir_common<MW: MersenneWrapper>(max_fold_steps: usize) -> Token
     let from_raw_words_i =
         MW::field_from_reduced_raw_repr(quote! { unsafe { *words.get_unchecked(i) } });
 
+    // MW operations for read_and_batch_leaf
+    let from_raw_0 = MW::field_from_reduced_raw_repr(quote! { raw0 });
+    let from_raw_1 = MW::field_from_reduced_raw_repr(quote! { raw1 });
+    let batch_mul_local_0 = MW::mul_assign_by_base(quote! { term }, quote! { base_val });
+    let batch_add_acc0 = MW::add_assign(quote! { *acc0 }, quote! { term });
+    let batch_mul_local_1 = MW::mul_assign_by_base(quote! { term }, quote! { base_val });
+    let batch_add_acc1 = MW::add_assign(quote! { *acc1 }, quote! { term });
+
     let ws_add_p1_c1 = MW::add_assign(quote! { p1 }, quote! { c1 });
     let ws_add_p1_c2 = MW::add_assign(quote! { p1 }, quote! { c2 });
     let ws_add_sum_p1 = MW::add_assign(quote! { sum }, quote! { p1 });
@@ -255,6 +263,82 @@ pub fn generate_whir_common<MW: MersenneWrapper>(max_fold_steps: usize) -> Token
                 i += 1;
             }
             unsafe { core::ptr::read(coeffs.as_slice().as_ptr().cast::<#quartic_struct>()) }
+        }
+
+        /// Read leaf data from NDS into hash_buf and batch into accumulators
+        /// in a single pass. NDS is column-major (matching Merkle hash layout).
+        #[inline(always)]
+        #[allow(clippy::too_many_arguments)]
+        pub unsafe fn read_and_batch_leaf<I: NonDeterminismSource>(
+            hash_buf: &mut [u32],
+            num_columns: usize,
+            gamma_powers: &[#quartic_struct],
+            gamma_offset: usize,
+            acc0: &mut #quartic_struct,
+            acc1: &mut #quartic_struct,
+        ) {
+            let mut col = 0;
+            while col < num_columns {
+                let gamma = *gamma_powers.get_unchecked(gamma_offset + col);
+                let idx = col * 2;
+
+                let raw0 = read_reduced_field_el::<I>();
+                *hash_buf.get_unchecked_mut(idx) = raw0;
+                let base_val = #from_raw_0;
+                let mut term = gamma;
+                #batch_mul_local_0;
+                #batch_add_acc0;
+
+                let raw1 = read_reduced_field_el::<I>();
+                *hash_buf.get_unchecked_mut(idx + 1) = raw1;
+                let base_val = #from_raw_1;
+                let mut term = gamma;
+                #batch_mul_local_1;
+                #batch_add_acc1;
+
+                col += 1;
+            }
+        }
+
+        /// Read oracle leaf, hash it, and verify the Merkle path.
+        /// Skips entirely for zero-column oracles (num_columns == 0).
+        #[inline(always)]
+        #[allow(clippy::too_many_arguments)]
+        pub unsafe fn process_oracle_query<I: NonDeterminismSource, const BUF_SIZE: usize>(
+            hasher: &mut DelegatedBlake2sState,
+            hash_buf: &mut ::verifier_common::blake2s_u32::AlignedArray64<core::mem::MaybeUninit<u32>, BUF_SIZE>,
+            num_columns: usize,
+            leaf_words: usize,
+            query_index: usize,
+            depth: usize,
+            cap: &[u32],
+            gamma_powers: &[#quartic_struct],
+            gamma_offset: usize,
+            acc0: &mut #quartic_struct,
+            acc1: &mut #quartic_struct,
+            query: usize,
+        ) -> Result<(), WhirVerificationError> {
+            use ::verifier_common::whir::{hash_leaf_data_into_state, verify_merkle_path};
+
+            let buf = hash_buf.assume_init_subarray_mut::<BUF_SIZE>();
+            read_and_batch_leaf::<I>(
+                &mut buf[..leaf_words], num_columns,
+                gamma_powers, gamma_offset, acc0, acc1,
+            );
+
+            // Zero the tail of the last Blake2s block for hash padding.
+            let block_end = leaf_words.next_multiple_of(
+                ::verifier_common::blake2s_u32::BLAKE2S_BLOCK_SIZE_U32_WORDS,
+            );
+            if block_end > leaf_words {
+                hash_buf.zero_range(leaf_words, block_end);
+            }
+            let buf = hash_buf.assume_init_subarray::<BUF_SIZE>();
+            hash_leaf_data_into_state(hasher, buf, leaf_words);
+            if !verify_merkle_path::<I>(hasher, query_index, depth, cap) {
+                return Err(WhirVerificationError::MerklePathFailed { query });
+            }
+            Ok(())
         }
     }
 }

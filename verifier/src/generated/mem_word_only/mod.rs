@@ -19,9 +19,7 @@ pub fn verify<I: NonDeterminismSource>() -> Result<(), VerificationError> {
     whir::verify_whir::<I>(
         &mut ts,
         gkr_output.whir_batching_challenge,
-        &gkr_output.setup_cap,
-        &gkr_output.memory_cap,
-        &gkr_output.witness_cap,
+        &gkr_output.oracle_caps,
     )
     .map_err(VerificationError::Whir)
 }

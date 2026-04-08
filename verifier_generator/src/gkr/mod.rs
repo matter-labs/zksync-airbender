@@ -18,12 +18,20 @@ pub mod constraint_kernel;
 pub mod dim_reducing_layer;
 pub mod standard_layer;
 
+/// Describes a single base-layer oracle (setup, memory, or witness).
+/// All three are structurally identical — only their column counts and
+/// cap sizes differ.
+#[derive(Clone, Debug)]
+pub struct OracleInfo {
+    pub num_columns: usize,
+    pub cap_size: usize, // number of cap digests (not words)
+    pub depth: usize,    // Merkle tree depth (0 for empty oracles)
+}
+
 pub struct GKRGeneratedFiles {
     pub constants: TokenStream,
     pub gkr: TokenStream,
-    pub num_mem_oracle_cols: usize,
-    pub num_wit_oracle_cols: usize,
-    pub num_setup_oracle_cols: usize,
+    pub oracles: Vec<OracleInfo>, // [setup, memory, witness] order
     pub trace_len_log2: usize,
 }
 
@@ -655,9 +663,22 @@ where
         .external_challenges
         .permutation_argument_linearization_challenges
         .len();
+
+    // trace_len_log2 is needed early for address_high_bits_shift computation.
+    let trace_len_log2 = proof
+        .sumcheck_intermediate_values
+        .get(&0)
+        .expect("proof must have sumcheck values for layer 0")
+        .sumcheck_num_rounds;
+
     // For circuits with teardown sets, this encodes the set index in the high
-    // bits of the address. Currently only inits_and_teardowns uses this.
-    let address_high_bits_shift_val: u32 = 0;
+    // bits of the address. Must match prover's high_bits_offset_for_inits_and_teardowns.
+    let address_high_bits_shift_val: u32 = if num_teardown_sets > 0 {
+        const WORD_BITS: u32 = 2;
+        (trace_len_log2 as u32) + WORD_BITS - 16
+    } else {
+        0
+    };
 
     let initial_transcript_num_u32_words = {
         let mut tmp = Vec::<u32>::new();
@@ -761,23 +782,26 @@ where
             }
         }
 
-        // Extract oracle caps before committing the transcript buffer.
-        let setup_cap: [u32; SETUP_CAP_WORDS] = {
-            let src = &transcript_buf.as_slice()
-                [CAPS_OFFSET_IN_TRANSCRIPT..CAPS_OFFSET_IN_TRANSCRIPT + SETUP_CAP_WORDS];
-            *<&[u32; SETUP_CAP_WORDS]>::try_from(src).unwrap_unchecked()
-        };
-        let memory_cap: [u32; MEM_CAP_WORDS] = {
-            let src = &transcript_buf.as_slice()
-                [CAPS_OFFSET_IN_TRANSCRIPT + SETUP_CAP_WORDS
-                    ..CAPS_OFFSET_IN_TRANSCRIPT + SETUP_CAP_WORDS + MEM_CAP_WORDS];
-            *<&[u32; MEM_CAP_WORDS]>::try_from(src).unwrap_unchecked()
-        };
-        let witness_cap: [u32; WIT_CAP_WORDS] = {
-            let src = &transcript_buf.as_slice()
-                [CAPS_OFFSET_IN_TRANSCRIPT + SETUP_CAP_WORDS + MEM_CAP_WORDS
-                    ..CAPS_OFFSET_IN_TRANSCRIPT + SETUP_CAP_WORDS + MEM_CAP_WORDS + WIT_CAP_WORDS];
-            *<&[u32; WIT_CAP_WORDS]>::try_from(src).unwrap_unchecked()
+        // Extract oracle caps, reordering from transcript layout [setup, memory, witness]
+        // to oracle list order [memory, witness, setup].
+        let oracle_caps: [u32; TOTAL_CAP_WORDS] = {
+            let mut caps = [0u32; TOTAL_CAP_WORDS];
+            let src = transcript_buf.as_slice();
+            let base = CAPS_OFFSET_IN_TRANSCRIPT;
+            let mut dst = 0;
+            let mut i = 0;
+            while i < NUM_ORACLES {
+                let words = ORACLE_CAP_WORDS[i];
+                let src_offset = ORACLE_CAP_TRANSCRIPT_OFFSETS[i];
+                let mut j = 0;
+                while j < words {
+                    caps[dst + j] = src[base + src_offset + j];
+                    j += 1;
+                }
+                dst += words;
+                i += 1;
+            }
+            caps
         };
 
         let mut ts = TranscriptState::new(
@@ -1153,19 +1177,11 @@ where
             additional_base_layer_openings: BASE_LAYER_ADDITIONAL_OPENINGS,
             whir_batching_challenge,
             whir_transcript_seed: ts.seed,
-            setup_cap,
-            memory_cap,
-            witness_cap,
+            oracle_caps,
         })
     });
 
     let field_use_stmts = MW::field_use_statements();
-
-    let trace_len_log2 = proof
-        .sumcheck_intermediate_values
-        .get(&0)
-        .expect("proof must have sumcheck values for layer 0")
-        .sumcheck_num_rounds;
 
     let whir_rounds = whir_schedule.whir_steps_schedule.len();
     let whir_fold_steps = &whir_schedule.whir_steps_schedule;
@@ -1186,34 +1202,61 @@ where
     let final_m = trace_len_log2 - total_fold_steps;
     let final_monomials_len = 1usize << final_m;
 
-    // Actual oracle column counts (from the proof, includes columns not in GKR base layer)
-    let num_mem_oracle_cols = proof.whir_proof.memory_commitment.num_columns;
-    let num_wit_oracle_cols = proof.whir_proof.witness_commitment.num_columns;
-    let num_setup_oracle_cols = proof.whir_proof.setup_commitment.num_columns;
-    let total_oracle_cols = num_mem_oracle_cols + num_wit_oracle_cols + num_setup_oracle_cols;
+    // Build uniform oracle list from proof: [memory, witness, setup]
+    // This order matches the prover's batching (gamma power assignment).
+    let oracle_commitments = [
+        &proof.whir_proof.memory_commitment,
+        &proof.whir_proof.witness_commitment,
+        &proof.whir_proof.setup_commitment,
+    ];
 
     let base_lde_factor_log2 = whir_base_lde_factor.trailing_zeros() as usize;
     let initial_fold_steps = whir_fold_steps[0];
 
-    // Compute per-oracle cap sizes from the actual proof (setup may differ from WHIR schedule).
-    let setup_cap_size = proof.whir_proof.setup_commitment.commitment.cap.cap.len();
-    let mem_cap_size = proof.whir_proof.memory_commitment.commitment.cap.cap.len();
-    let wit_cap_size = proof.whir_proof.witness_commitment.commitment.cap.cap.len();
-    let setup_cap_words = setup_cap_size * 8; // BLAKE2S_DIGEST_SIZE_U32_WORDS
-    let mem_cap_words = mem_cap_size * 8;
-    let wit_cap_words = wit_cap_size * 8;
+    let oracles: Vec<OracleInfo> = oracle_commitments
+        .iter()
+        .map(|c| {
+            let num_columns = c.num_columns;
+            let cap_size = c.commitment.cap.cap.len();
+            let depth = if cap_size == 0 {
+                0
+            } else {
+                let cap_size_log2 = cap_size.trailing_zeros() as usize;
+                trace_len_log2 + base_lde_factor_log2 - initial_fold_steps - cap_size_log2
+            };
+            OracleInfo {
+                num_columns,
+                cap_size,
+                depth,
+            }
+        })
+        .collect();
 
-    // WHIR_CAP_WORDS is used for intermediate oracles (from the WHIR schedule).
-    let whir_cap_words = whir_cap_size * 8; // BLAKE2S_DIGEST_SIZE_U32_WORDS
+    let total_oracle_cols: usize = oracles.iter().map(|o| o.num_columns).sum();
+    let digest_words = 8usize; // BLAKE2S_DIGEST_SIZE_U32_WORDS — TODO: use named constant
+    let oracle_cap_words: Vec<usize> = oracles.iter().map(|o| o.cap_size * digest_words).collect();
+    let total_cap_words: usize = oracle_cap_words.iter().sum();
+    let whir_cap_words = whir_cap_size * digest_words;
 
-    let setup_cap_size_log2 = setup_cap_size.trailing_zeros() as usize;
-    let base_oracle_depth =
-        trace_len_log2 + base_lde_factor_log2 - initial_fold_steps - whir_cap_size_log2;
-    let setup_oracle_depth =
-        trace_len_log2 + base_lde_factor_log2 - initial_fold_steps - setup_cap_size_log2;
+    let caps_offset_in_transcript = initial_transcript_num_u32_words - total_cap_words;
 
-    let caps_offset_in_transcript =
-        initial_transcript_num_u32_words - setup_cap_words - mem_cap_words - wit_cap_words;
+    // Transcript cap layout is [setup, memory, witness] (prover order).
+    // Oracle list order is [memory, witness, setup].
+    // Compute per-oracle byte offsets into the transcript cap region.
+    let setup_cap_words = proof.whir_proof.setup_commitment.commitment.cap.cap.len() * digest_words;
+    let mem_cap_words_val = proof.whir_proof.memory_commitment.commitment.cap.cap.len() * digest_words;
+    let wit_cap_words_val = proof.whir_proof.witness_commitment.commitment.cap.cap.len() * digest_words;
+    // Transcript layout: [setup | memory | witness] starting at caps_offset_in_transcript
+    // Oracle list: [memory, witness, setup]
+    let oracle_cap_transcript_offsets: Vec<usize> = vec![
+        setup_cap_words,                           // memory starts after setup
+        setup_cap_words + mem_cap_words_val,        // witness starts after setup + memory
+        0,                                          // setup starts at 0
+    ];
+
+    let oracle_depths: Vec<usize> = oracles.iter().map(|o| o.depth).collect();
+    let oracle_num_cols: Vec<usize> = oracles.iter().map(|o| o.num_columns).collect();
+    let num_oracles = oracles.len();
 
     let num_intermediate_oracles = whir_rounds - 1;
     let mut whir_oracle_depths = Vec::with_capacity(num_intermediate_oracles);
@@ -1245,18 +1288,16 @@ where
         pub const WHIR_QUERIES: [usize; #whir_rounds] = [#(#whir_queries),*];
         pub const WHIR_POW_BITS: [u32; #whir_rounds] = [#(#whir_pow_bits),*];
         pub const FINAL_MONOMIALS_LEN: usize = #final_monomials_len;
-        pub const BASE_ORACLE_DEPTH: usize = #base_oracle_depth;
-        pub const SETUP_ORACLE_DEPTH: usize = #setup_oracle_depth;
+        pub const NUM_ORACLES: usize = #num_oracles;
+        pub const ORACLE_NUM_COLS: [usize; #num_oracles] = [#(#oracle_num_cols),*];
+        pub const ORACLE_CAP_WORDS: [usize; #num_oracles] = [#(#oracle_cap_words),*];
+        pub const ORACLE_DEPTHS: [usize; #num_oracles] = [#(#oracle_depths),*];
+        pub const TOTAL_ORACLE_COLS: usize = #total_oracle_cols;
+        pub const TOTAL_CAP_WORDS: usize = #total_cap_words;
+        pub const ORACLE_CAP_TRANSCRIPT_OFFSETS: [usize; #num_oracles] = [#(#oracle_cap_transcript_offsets),*];
         pub const WHIR_ORACLE_DEPTHS: [usize; #num_intermediate_oracles] = [#(#whir_oracle_depths),*];
         pub const WHIR_CAP_WORDS: usize = #whir_cap_words;
-        pub const SETUP_CAP_WORDS: usize = #setup_cap_words;
-        pub const MEM_CAP_WORDS: usize = #mem_cap_words;
-        pub const WIT_CAP_WORDS: usize = #wit_cap_words;
         pub const CAPS_OFFSET_IN_TRANSCRIPT: usize = #caps_offset_in_transcript;
-        pub const NUM_MEM_ORACLE_COLS: usize = #num_mem_oracle_cols;
-        pub const NUM_WIT_ORACLE_COLS: usize = #num_wit_oracle_cols;
-        pub const NUM_SETUP_ORACLE_COLS: usize = #num_setup_oracle_cols;
-        pub const TOTAL_ORACLE_COLS: usize = #total_oracle_cols;
     };
 
     let gkr = quote! {
@@ -1282,7 +1323,7 @@ where
 
         #[allow(unused_braces, unused_mut, unused_variables, unused_unsafe, clippy::needless_borrow, clippy::needless_range_loop, clippy::large_const_arrays)]
         pub fn verify_gkr<I: NonDeterminismSource,
-        >() -> Result<GKRVerifierOutput<'static, #quartic_struct, GKR_ROUNDS, GKR_ADDRS, SETUP_CAP_WORDS, MEM_CAP_WORDS, WIT_CAP_WORDS>, GKRVerificationError> {
+        >() -> Result<GKRVerifierOutput<'static, #quartic_struct, GKR_ROUNDS, GKR_ADDRS, TOTAL_CAP_WORDS>, GKRVerificationError> {
             unsafe { #main_body }
         }
     };
@@ -1290,9 +1331,7 @@ where
     GKRGeneratedFiles {
         constants,
         gkr,
-        num_mem_oracle_cols,
-        num_wit_oracle_cols,
-        num_setup_oracle_cols,
+        oracles,
         trace_len_log2,
     }
 }

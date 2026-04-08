@@ -95,6 +95,11 @@ pub fn verify_merkle_path<I: NonDeterminismSource>(
         level += 1;
     }
 
+    // A zero-column oracle has no Merkle tree — nothing to verify.
+    if cap.is_empty() {
+        return true;
+    }
+
     let output_hash = hasher.read_state_for_output_ref();
     debug_assert!(cap.len() >= (leaf_index + 1) * BLAKE2S_DIGEST_SIZE_U32_WORDS);
     let cap_start = leaf_index * BLAKE2S_DIGEST_SIZE_U32_WORDS;
@@ -136,33 +141,38 @@ pub fn hash_leaf_data_into_state<const N: usize>(
     let num_full_blocks = num_words >> BLOCK_LOG2;
     let last_block_words = num_words & (BLAKE2S_BLOCK_SIZE_U32_WORDS - 1);
     let num_blocks = num_full_blocks + if last_block_words > 0 { 1 } else { 0 };
-    debug_assert!(num_blocks > 0);
-
     hasher.reset();
 
     #[cfg(feature = "blake2_with_compression")]
     unsafe {
-        for i in 0..num_blocks - 1 {
-            let block_ptr = buf.as_ptr().add(i * BLAKE2S_BLOCK_SIZE_U32_WORDS);
-            let block = &*(block_ptr
+        if num_blocks == 0 {
+            // Empty leaf: hash a single zero-filled finalization block.
+            let empty = &*(buf.as_ptr()
                 as *const blake2s_u32::AlignedArray64<u32, BLAKE2S_BLOCK_SIZE_U32_WORDS>);
-            hasher.run_round_function_with_input::<true>(
-                block,
-                BLAKE2S_BLOCK_SIZE_U32_WORDS,
-                false,
-            );
-        }
-        let last_ptr = buf
-            .as_ptr()
-            .add((num_blocks - 1) * BLAKE2S_BLOCK_SIZE_U32_WORDS);
-        let last_block =
-            &*(last_ptr as *const blake2s_u32::AlignedArray64<u32, BLAKE2S_BLOCK_SIZE_U32_WORDS>);
-        let last_active = if last_block_words > 0 {
-            last_block_words
+            hasher.run_round_function_with_input::<true>(empty, 0, true);
         } else {
-            BLAKE2S_BLOCK_SIZE_U32_WORDS
-        };
-        hasher.run_round_function_with_input::<true>(last_block, last_active, true);
+            for i in 0..num_blocks - 1 {
+                let block_ptr = buf.as_ptr().add(i * BLAKE2S_BLOCK_SIZE_U32_WORDS);
+                let block = &*(block_ptr
+                    as *const blake2s_u32::AlignedArray64<u32, BLAKE2S_BLOCK_SIZE_U32_WORDS>);
+                hasher.run_round_function_with_input::<true>(
+                    block,
+                    BLAKE2S_BLOCK_SIZE_U32_WORDS,
+                    false,
+                );
+            }
+            let last_ptr = buf
+                .as_ptr()
+                .add((num_blocks - 1) * BLAKE2S_BLOCK_SIZE_U32_WORDS);
+            let last_block = &*(last_ptr
+                as *const blake2s_u32::AlignedArray64<u32, BLAKE2S_BLOCK_SIZE_U32_WORDS>);
+            let last_active = if last_block_words > 0 {
+                last_block_words
+            } else {
+                BLAKE2S_BLOCK_SIZE_U32_WORDS
+            };
+            hasher.run_round_function_with_input::<true>(last_block, last_active, true);
+        }
     }
 
     #[cfg(not(feature = "blake2_with_compression"))]

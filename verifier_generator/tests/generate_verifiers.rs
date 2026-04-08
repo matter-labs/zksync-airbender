@@ -89,9 +89,7 @@ fn generate_whir_verifier<MW: MersenneWrapper>(
 
     let whir_initial = whir::generate_whir_inlined::<MW>(
         whir_schedule,
-        gkr_files.num_mem_oracle_cols,
-        gkr_files.num_wit_oracle_cols,
-        gkr_files.num_setup_oracle_cols,
+        &gkr_files.oracles,
         gkr_files.trace_len_log2,
     );
     let whir_internal =
@@ -100,15 +98,12 @@ fn generate_whir_verifier<MW: MersenneWrapper>(
 
     // Compute max hash buf size across all WHIR rounds (padded to 16-word boundary)
     let initial_vpf = 1usize << whir_schedule.whir_steps_schedule[0];
-    let initial_hbs = ([
-        gkr_files.num_mem_oracle_cols,
-        gkr_files.num_wit_oracle_cols,
-        gkr_files.num_setup_oracle_cols,
-    ]
-    .iter()
-    .map(|&c| c * initial_vpf)
-    .max()
-    .unwrap()
+    let initial_hbs = (gkr_files
+        .oracles
+        .iter()
+        .map(|o| o.num_columns * initial_vpf)
+        .max()
+        .unwrap_or(0)
         + 15)
         / 16
         * 16;
@@ -171,9 +166,7 @@ fn generate_verifier_for_circuit<MW: MersenneWrapper>(circuit: &CircuitData) {
             whir::verify_whir::<I>(
                 &mut ts,
                 gkr_output.whir_batching_challenge,
-                &gkr_output.setup_cap,
-                &gkr_output.memory_cap,
-                &gkr_output.witness_cap,
+                &gkr_output.oracle_caps,
             ).map_err(VerificationError::Whir)
         }
     };

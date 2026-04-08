@@ -3116,15 +3116,7 @@ unsafe fn dim_reducing_final_step_accumulator(
     clippy::large_const_arrays
 )]
 pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
-    GKRVerifierOutput<
-        'static,
-        BabyBearExt4,
-        GKR_ROUNDS,
-        GKR_ADDRS,
-        SETUP_CAP_WORDS,
-        MEM_CAP_WORDS,
-        WIT_CAP_WORDS,
-    >,
+    GKRVerifierOutput<'static, BabyBearExt4, GKR_ROUNDS, GKR_ADDRS, TOTAL_CAP_WORDS>,
     GKRVerificationError,
 > {
     unsafe {
@@ -3136,22 +3128,24 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                 i += 1;
             }
         }
-        let setup_cap: [u32; SETUP_CAP_WORDS] = {
-            let src = &transcript_buf.as_slice()
-                [CAPS_OFFSET_IN_TRANSCRIPT..CAPS_OFFSET_IN_TRANSCRIPT + SETUP_CAP_WORDS];
-            *<&[u32; SETUP_CAP_WORDS]>::try_from(src).unwrap_unchecked()
-        };
-        let memory_cap: [u32; MEM_CAP_WORDS] = {
-            let src = &transcript_buf.as_slice()[CAPS_OFFSET_IN_TRANSCRIPT + SETUP_CAP_WORDS
-                ..CAPS_OFFSET_IN_TRANSCRIPT + SETUP_CAP_WORDS + MEM_CAP_WORDS];
-            *<&[u32; MEM_CAP_WORDS]>::try_from(src).unwrap_unchecked()
-        };
-        let witness_cap: [u32; WIT_CAP_WORDS] = {
-            let src = &transcript_buf.as_slice()[CAPS_OFFSET_IN_TRANSCRIPT
-                + SETUP_CAP_WORDS
-                + MEM_CAP_WORDS
-                ..CAPS_OFFSET_IN_TRANSCRIPT + SETUP_CAP_WORDS + MEM_CAP_WORDS + WIT_CAP_WORDS];
-            *<&[u32; WIT_CAP_WORDS]>::try_from(src).unwrap_unchecked()
+        let oracle_caps: [u32; TOTAL_CAP_WORDS] = {
+            let mut caps = [0u32; TOTAL_CAP_WORDS];
+            let src = transcript_buf.as_slice();
+            let base = CAPS_OFFSET_IN_TRANSCRIPT;
+            let mut dst = 0;
+            let mut i = 0;
+            while i < NUM_ORACLES {
+                let words = ORACLE_CAP_WORDS[i];
+                let src_offset = ORACLE_CAP_TRANSCRIPT_OFFSETS[i];
+                let mut j = 0;
+                while j < words {
+                    caps[dst + j] = src[base + src_offset + j];
+                    j += 1;
+                }
+                dst += words;
+                i += 1;
+            }
+            caps
         };
         let mut ts =
             TranscriptState::new(Blake2sTranscript::commit_initial(transcript_buf.as_slice()));
@@ -4848,9 +4842,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             additional_base_layer_openings: BASE_LAYER_ADDITIONAL_OPENINGS,
             whir_batching_challenge,
             whir_transcript_seed: ts.seed,
-            setup_cap,
-            memory_cap,
-            witness_cap,
+            oracle_caps,
         })
     }
 }

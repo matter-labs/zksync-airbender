@@ -17,6 +17,7 @@ CIRCUITS=(
   mem_subword_only
   mem_word_only
   shift_binop
+  inits_and_teardowns
 )
 
 read_cycles() {
@@ -50,11 +51,11 @@ done
 # (cd prover && RUST_MIN_STACK=100000000 RUSTFLAGS="-Awarnings" cargo test -p prover --release --features gkr_self_checks \
 #   -- --nocapture gkr_run_basic_unrolled_test)
 
-# echo "==> Step 2: Regenerate inlined GKR verifier (variant=${VARIANT:-cached})"
-# RUSTFLAGS="-Awarnings" cargo test -p verifier_generator $VARIANT_FEATURES --test generate_verifiers
+echo "==> Step 2: Regenerate inlined GKR verifier (variant=${VARIANT:-cached})"
+RUSTFLAGS="-Awarnings" cargo test -p verifier_generator $VARIANT_FEATURES --test generate_verifiers
 
-# echo "==> Step 3: Build RISC-V binary"
-# (cd tools/gkr_verifier && ./dump_bin.sh)
+echo "==> Step 3: Build RISC-V binary"
+(cd tools/gkr_verifier && ./dump_bin.sh)
 
 echo "==> Step 4: Verifier tests (variant=${VARIANT:-cached})"
 RUSTFLAGS="-Awarnings" cargo test -p verifier --tests --features gkr_verify $VARIANT_FEATURES -- --include-ignored

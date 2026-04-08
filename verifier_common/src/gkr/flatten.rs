@@ -104,6 +104,7 @@ where
     flatten_field_els::<F, E>(&[proof.grand_product_accumulator_computed], &mut result);
 
     // --- WHIR oracle evals (read by verifier before sumcheck) ---
+    // Order: [memory, witness, setup] — matches prover's batching (gamma power assignment).
     let whir = &proof.whir_proof;
     flatten_field_els::<F, E>(&whir.memory_commitment.evals, &mut result);
     flatten_field_els::<F, E>(&whir.witness_commitment.evals, &mut result);
@@ -147,44 +148,35 @@ where
 
         // 5. Query data for this round
         if round == 0 {
-            // Initial round: base oracle queries (memory, witness, setup)
+            // Initial round: base oracle queries [memory, witness, setup]
+            // Order matches prover's batching (gamma power assignment).
             // Write leaf values in column-major order so the verifier can read
             // them sequentially (matching the Merkle hash layout).
             let values_per_leaf = 1usize << whir_schedule.whir_steps_schedule[0];
-            let num_queries = whir.memory_commitment.queries.len();
+            let base_oracles = [
+                &whir.memory_commitment,
+                &whir.witness_commitment,
+                &whir.setup_commitment,
+            ];
+            let num_queries = base_oracles
+                .iter()
+                .map(|o| o.queries.len())
+                .max()
+                .unwrap_or(0);
             for q in 0..num_queries {
-                // Memory leaf values (column-major) + Merkle path
-                let leaf = &whir.memory_commitment.queries[q].leaf_values_concatenated;
-                let num_cols = leaf.len() / values_per_leaf;
-                for col in 0..num_cols {
-                    for pos in 0..values_per_leaf {
-                        result.push(leaf[pos * num_cols + col].as_u32_raw_repr_reduced());
+                for oracle in &base_oracles {
+                    if q < oracle.queries.len() {
+                        let leaf = &oracle.queries[q].leaf_values_concatenated;
+                        let num_cols = leaf.len() / values_per_leaf;
+                        for col in 0..num_cols {
+                            for pos in 0..values_per_leaf {
+                                result.push(leaf[pos * num_cols + col].as_u32_raw_repr_reduced());
+                            }
+                        }
+                        for sibling in &oracle.queries[q].path {
+                            result.extend_from_slice(sibling);
+                        }
                     }
-                }
-                for sibling in &whir.memory_commitment.queries[q].path {
-                    result.extend_from_slice(sibling);
-                }
-                // Witness leaf values (column-major) + Merkle path
-                let leaf = &whir.witness_commitment.queries[q].leaf_values_concatenated;
-                let num_cols = leaf.len() / values_per_leaf;
-                for col in 0..num_cols {
-                    for pos in 0..values_per_leaf {
-                        result.push(leaf[pos * num_cols + col].as_u32_raw_repr_reduced());
-                    }
-                }
-                for sibling in &whir.witness_commitment.queries[q].path {
-                    result.extend_from_slice(sibling);
-                }
-                // Setup leaf values (column-major) + Merkle path
-                let leaf = &whir.setup_commitment.queries[q].leaf_values_concatenated;
-                let num_cols = leaf.len() / values_per_leaf;
-                for col in 0..num_cols {
-                    for pos in 0..values_per_leaf {
-                        result.push(leaf[pos * num_cols + col].as_u32_raw_repr_reduced());
-                    }
-                }
-                for sibling in &whir.setup_commitment.queries[q].path {
-                    result.extend_from_slice(sibling);
                 }
             }
         } else {

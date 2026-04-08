@@ -1,15 +1,14 @@
 use proc_macro2::TokenStream;
 use quote::quote;
 
+use crate::gkr::OracleInfo;
 use crate::mersenne_wrapper::MersenneWrapper;
 use prover::gkr::prover::WhirSchedule;
 
 /// Generate per-circuit WHIR verifier code (initial round).
 pub fn generate_whir_inlined<MW: MersenneWrapper>(
     whir_schedule: &WhirSchedule,
-    num_mem_oracle_cols: usize,
-    num_wit_oracle_cols: usize,
-    num_setup_oracle_cols: usize,
+    oracles: &[OracleInfo],
     trace_len_log2: usize,
 ) -> TokenStream {
     let field_use_stmts = MW::field_use_statements();
@@ -34,20 +33,17 @@ pub fn generate_whir_inlined<MW: MersenneWrapper>(
     let total_bits_needed = initial_num_queries * query_index_bits + 32;
     let draw_words = total_bits_needed.div_ceil(256) * 8;
 
-    // Leaf sizes per oracle (in u32 words) — uses actual oracle column counts
-    let mem_leaf_words = num_mem_oracle_cols * values_per_leaf;
-    let wit_leaf_words = num_wit_oracle_cols * values_per_leaf;
-    let setup_leaf_words = num_setup_oracle_cols * values_per_leaf;
-    let max_leaf_words = mem_leaf_words.max(wit_leaf_words).max(setup_leaf_words);
+    // Per-oracle leaf sizes
+    let oracle_leaf_words: Vec<usize> = oracles
+        .iter()
+        .map(|o| o.num_columns * values_per_leaf)
+        .collect();
+    let max_leaf_words = oracle_leaf_words.iter().copied().max().unwrap_or(0);
     // Padded to BLAKE2S_BLOCK_SIZE_U32_WORDS (16) boundary for aligned hashing
     let hash_buf_padded = max_leaf_words.div_ceil(16) * 16;
     let fold_buf_half = values_per_leaf / 2;
 
     // MW operations
-    let batch_mul_local_0 = MW::mul_assign_by_base(quote! { term }, quote! { base_val });
-    let batch_add_acc0 = MW::add_assign(quote! { *acc0 }, quote! { term });
-    let batch_mul_local_1 = MW::mul_assign_by_base(quote! { term }, quote! { base_val });
-    let batch_add_acc1 = MW::add_assign(quote! { *acc1 }, quote! { term });
     let mul_delin = MW::mul_assign(quote! { t }, quote! { delinearization_challenge });
     let add_correction = MW::add_assign(quote! { claim_correction }, quote! { t });
     let add_claim = MW::add_assign(quote! { claim }, quote! { claim_correction });
@@ -55,16 +51,14 @@ pub fn generate_whir_inlined<MW: MersenneWrapper>(
         quote! { claim_correction },
         quote! { delinearization_challenge },
     );
+    let batch_mul_eval = MW::mul_assign(quote! { term }, quote! { eval });
+    let add_claim_eval = MW::add_assign(quote! { claim }, quote! { term });
+
     let degree = 4usize; // EXT_DEGREE for BabyBear/Mersenne31 quartic
     let digest_words = 8usize; // BLAKE2S_DIGEST_SIZE_U32_WORDS
     let block_words = 16usize; // BLAKE2S_BLOCK_SIZE_U32_WORDS
     let ood_data_words = degree;
     let ood_commit_buf_size = (digest_words + ood_data_words).div_ceil(block_words) * block_words;
-
-    let from_raw_0 = MW::field_from_reduced_raw_repr(quote! { raw0 });
-    let from_raw_1 = MW::field_from_reduced_raw_repr(quote! { raw1 });
-    let batch_mul_eval = MW::mul_assign(quote! { term }, quote! { eval });
-    let add_claim_eval = MW::add_assign(quote! { claim }, quote! { term });
 
     quote! {
         #field_use_stmts
@@ -80,12 +74,13 @@ pub fn generate_whir_inlined<MW: MersenneWrapper>(
         use ::verifier_common::whir::{
             read_commit_return_merkle_cap,
             read_and_verify_pow,
-            draw_query_indices, verify_merkle_path, hash_leaf_data_into_state,
+            draw_query_indices,
         };
         use super::common::{
             verify_whir_sumcheck_step, fold_coset, materialize_gamma_powers,
             WhirVerificationError, read_field_el, read_field_els,
             read_reduced_field_el, draw_single_field_el, compute_tree_index,
+            read_and_batch_leaf, process_oracle_query,
         };
         use ::verifier_common::structs::{CommitBuf, TranscriptState};
         use super::constants::*;
@@ -96,133 +91,41 @@ pub fn generate_whir_inlined<MW: MersenneWrapper>(
         const INITIAL_POW_BITS: u32 = #initial_pow_bits;
         const INITIAL_DRAW_WORDS: usize = #draw_words;
         const INITIAL_RS_DOMAIN_LOG2: usize = #rs_domain_log2;
-        const MEM_LEAF_WORDS: usize = #mem_leaf_words;
-        const WIT_LEAF_WORDS: usize = #wit_leaf_words;
-        const SETUP_LEAF_WORDS: usize = #setup_leaf_words;
+        const ORACLE_LEAF_WORDS: [usize; NUM_ORACLES] = [#(#oracle_leaf_words),*];
         const HASH_BUF_SIZE: usize = #hash_buf_padded;
         const FOLD_BUF_HALF: usize = #fold_buf_half;
         const NUM_COSETS: usize = #num_cosets;
         const NUM_COSETS_LOG2: usize = #num_cosets_log2;
         const COSET_TREE_SIZE: usize = #coset_tree_size;
 
-        /// Read leaf data from NDS into hash_buf and batch into accumulators
-        /// in a single pass. NDS is column-major (matching Merkle hash layout).
-        #[inline(always)]
-        #[allow(clippy::too_many_arguments)]
-        unsafe fn read_and_batch_leaf<I: NonDeterminismSource>(
-            hash_buf: &mut [u32],
-            num_columns: usize,
-            gamma_powers: &[#quartic_struct],
-            gamma_offset: usize,
-            acc0: &mut #quartic_struct,
-            acc1: &mut #quartic_struct,
-        ) {
-            let mut col = 0;
-            while col < num_columns {
-                let gamma = *gamma_powers.get_unchecked(gamma_offset + col);
-                let idx = col * 2;
-
-                let raw0 = read_reduced_field_el::<I>();
-                *hash_buf.get_unchecked_mut(idx) = raw0;
-                let base_val = #from_raw_0;
-                let mut term = gamma;
-                #batch_mul_local_0;
-                #batch_add_acc0;
-
-                let raw1 = read_reduced_field_el::<I>();
-                *hash_buf.get_unchecked_mut(idx + 1) = raw1;
-                let base_val = #from_raw_1;
-                let mut term = gamma;
-                #batch_mul_local_1;
-                #batch_add_acc1;
-
-                col += 1;
-            }
-        }
-
-        #[inline(always)]
-        #[allow(clippy::too_many_arguments)]
-        unsafe fn process_oracle_query<I: NonDeterminismSource>(
-            hasher: &mut DelegatedBlake2sState,
-            hash_buf: &mut AlignedArray64<MaybeUninit<u32>, WHIR_HASH_BUF_SIZE>,
-            num_columns: usize,
-            leaf_words: usize,
-            query_index: usize,
-            depth: usize,
-            cap: &[u32],
-            gamma_powers: &[#quartic_struct],
-            gamma_offset: usize,
-            acc0: &mut #quartic_struct,
-            acc1: &mut #quartic_struct,
-            query: usize,
-        ) -> Result<(), WhirVerificationError> {
-            let buf = hash_buf.assume_init_subarray_mut::<HASH_BUF_SIZE>();
-            read_and_batch_leaf::<I>(
-                &mut buf[..leaf_words], num_columns,
-                gamma_powers, gamma_offset, acc0, acc1,
-            );
-
-            // Zero the tail of the last Blake2s block for hash padding.
-            let block_end = leaf_words.next_multiple_of(BLAKE2S_BLOCK_SIZE_U32_WORDS);
-            if block_end > leaf_words {
-                hash_buf.zero_range(leaf_words, block_end);
-            }
-            let buf = hash_buf.assume_init_subarray::<HASH_BUF_SIZE>();
-            hash_leaf_data_into_state(hasher, buf, leaf_words);
-            if !verify_merkle_path::<I>(hasher, query_index, depth, cap) {
-                return Err(WhirVerificationError::MerklePathFailed { query });
-            }
-            Ok(())
-        }
-
         #[allow(unused_braces, unused_mut, unused_variables, unused_unsafe, clippy::needless_borrow)]
         pub fn verify_initial_whir_round<I: NonDeterminismSource>(
             ts: &mut TranscriptState,
             hash_buf: &mut AlignedArray64<MaybeUninit<u32>, WHIR_HASH_BUF_SIZE>,
             batching_challenge: #quartic_struct,
-            setup_cap: &[u32; SETUP_CAP_WORDS],
-            memory_cap: &[u32; MEM_CAP_WORDS],
-            witness_cap: &[u32; WIT_CAP_WORDS],
+            oracle_caps: &[u32; TOTAL_CAP_WORDS],
         ) -> Result<(#quartic_struct, [u32; WHIR_CAP_WORDS]), WhirVerificationError> {
             unsafe {
 
                 // --- 0. Read all oracle evals from NDS and batch ---
-                // The prover provides evals for ALL oracle columns (not just GKR base layer).
-                // These are NOT committed to the transcript — same as the prover.
                 let gamma_powers: [#quartic_struct; TOTAL_ORACLE_COLS] =
                     materialize_gamma_powers(batching_challenge);
                 let mut claim = #quartic_zero;
                 {
                     let mut col_idx = 0;
-                    // Memory evals
-                    let mut i = 0;
-                    while i < NUM_MEM_ORACLE_COLS {
-                        let eval: #quartic_struct = read_field_el::<I>();
-                        let mut term = unsafe { *gamma_powers.get_unchecked(col_idx) };
-                        #batch_mul_eval;
-                        #add_claim_eval;
-                        col_idx += 1;
-                        i += 1;
-                    }
-                    // Witness evals
-                    i = 0;
-                    while i < NUM_WIT_ORACLE_COLS {
-                        let eval: #quartic_struct = read_field_el::<I>();
-                        let mut term = unsafe { *gamma_powers.get_unchecked(col_idx) };
-                        #batch_mul_eval;
-                        #add_claim_eval;
-                        col_idx += 1;
-                        i += 1;
-                    }
-                    // Setup evals
-                    i = 0;
-                    while i < NUM_SETUP_ORACLE_COLS {
-                        let eval: #quartic_struct = read_field_el::<I>();
-                        let mut term = unsafe { *gamma_powers.get_unchecked(col_idx) };
-                        #batch_mul_eval;
-                        #add_claim_eval;
-                        col_idx += 1;
-                        i += 1;
+                    let mut oracle_idx = 0;
+                    while oracle_idx < NUM_ORACLES {
+                        let num_cols = ORACLE_NUM_COLS[oracle_idx];
+                        let mut i = 0;
+                        while i < num_cols {
+                            let eval: #quartic_struct = read_field_el::<I>();
+                            let mut term = unsafe { *gamma_powers.get_unchecked(col_idx) };
+                            #batch_mul_eval;
+                            #add_claim_eval;
+                            col_idx += 1;
+                            i += 1;
+                        }
+                        oracle_idx += 1;
                     }
                 }
 
@@ -293,43 +196,39 @@ pub fn generate_whir_inlined<MW: MersenneWrapper>(
                 let mut q = 0;
                 while q < INITIAL_NUM_QUERIES {
                     let query_index = *query_indices.get(q);
-
-                    // query_index determines omega^k for the algebraic fold
                     let base_root_inv = extended_generator_inv.pow(query_index as u32);
-
-                    // Tree leaves are stored sequentially by coset (with bit-reversed
-                    // coset ordering).  Map from the interleaved query_index to the
-                    // actual tree leaf position.
                     let tree_index = compute_tree_index(
                         query_index, NUM_COSETS, NUM_COSETS_LOG2, COSET_TREE_SIZE,
                     );
 
-                    // Accumulators across 3 oracles — zero-init is semantic
+                    // Accumulators across all oracles
                     let mut acc0 = #quartic_zero;
                     let mut acc1 = #quartic_zero;
 
-                    // Memory oracle
-                    process_oracle_query::<I>(
-                        &mut ts.hasher, hash_buf,
-                        NUM_MEM_ORACLE_COLS, MEM_LEAF_WORDS, tree_index,
-                        BASE_ORACLE_DEPTH, memory_cap, &gamma_powers[..], 0,
-                        &mut acc0, &mut acc1, q,
-                    )?;
-                    // Witness oracle
-                    process_oracle_query::<I>(
-                        &mut ts.hasher, hash_buf,
-                        NUM_WIT_ORACLE_COLS, WIT_LEAF_WORDS, tree_index,
-                        BASE_ORACLE_DEPTH, witness_cap, &gamma_powers[..], NUM_MEM_ORACLE_COLS,
-                        &mut acc0, &mut acc1, q,
-                    )?;
-                    // Setup oracle
-                    process_oracle_query::<I>(
-                        &mut ts.hasher, hash_buf,
-                        NUM_SETUP_ORACLE_COLS, SETUP_LEAF_WORDS, tree_index,
-                        SETUP_ORACLE_DEPTH, setup_cap, &gamma_powers[..],
-                        NUM_MEM_ORACLE_COLS + NUM_WIT_ORACLE_COLS,
-                        &mut acc0, &mut acc1, q,
-                    )?;
+                    // Process each oracle uniformly
+                    let mut gamma_offset = 0usize;
+                    let mut cap_offset = 0usize;
+                    let mut oracle_idx = 0;
+                    while oracle_idx < NUM_ORACLES {
+                        let num_cols = ORACLE_NUM_COLS[oracle_idx];
+                        let leaf_words = ORACLE_LEAF_WORDS[oracle_idx];
+                        let cap_words = ORACLE_CAP_WORDS[oracle_idx];
+                        let depth = ORACLE_DEPTHS[oracle_idx];
+
+                        if num_cols > 0 {
+                            process_oracle_query::<I, WHIR_HASH_BUF_SIZE>(
+                                &mut ts.hasher, hash_buf,
+                                num_cols, leaf_words, tree_index,
+                                depth,
+                                &oracle_caps[cap_offset..cap_offset + cap_words],
+                                &gamma_powers[..], gamma_offset,
+                                &mut acc0, &mut acc1, q,
+                            )?;
+                        }
+                        gamma_offset += num_cols;
+                        cap_offset += cap_words;
+                        oracle_idx += 1;
+                    }
 
                     // Fold
                     let batched_evals = [acc0, acc1];

@@ -82,7 +82,9 @@ pub fn generate_whir_internal_rounds<MW: MersenneWrapper>(
             compute_high_powers_offsets, ext_from_raw_words,
             MAX_HIGH_POWERS, EXT_DEGREE,
         };
-        use ::verifier_common::whir::read_return_merkle_cap;
+        use ::verifier_common::whir::{
+            read_return_merkle_cap, hash_leaf_data_into_state, verify_merkle_path,
+        };
 
         pub const NUM_INTERNAL_ROUNDS: usize = #num_ir;
         const INTERNAL_QUERY_INDEX_BITS: [usize; NUM_INTERNAL_ROUNDS] =
