@@ -6,6 +6,7 @@ use era_cudart::slice::{DeviceSlice, DeviceVariable};
 use era_cudart::stream::CudaStream;
 use era_cudart_sys::{cudaError_t, cudaStream_t};
 
+use super::CUB_TEMP_STORAGE_EXTRA_ALIGNMENT_LOG2;
 use crate::primitives::context::DeviceProperties;
 use crate::primitives::device_structures::{
     DeviceMatrix, DeviceMatrixChunkImpl, DeviceVectorChunkImpl, PtrAndStride,
