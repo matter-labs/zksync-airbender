@@ -36,3 +36,5 @@ proof_utils = ["prover/prover", "dep:serde_json", "replace_csr"]
 replace_csr = ["prover/prover"]
 # GKR sumcheck verifier
 gkr_verify = ["blake2_with_compression"]
+# Use no-caches circuit descriptors (default for testing)
+no_caches = []

@@ -95,7 +95,7 @@ fn run_transpiler(name: &str) {
     println!("{}: circuit call counters:", name);
     println!("  add_sub_lui_auipc_mop: {}", c.add_sub_family);
     println!("  jump_branch_slt:       {}", c.slt_branch_family);
-    println!("  shift_binop_csr:       {}", c.binary_shift_csr_family);
+    println!("  shift_binop_csr:       {}", c.binary_shift_family);
     println!("  mul_div:               {}", c.mul_div_family);
     println!("  mem_word:              {}", c.word_size_mem_family);
     println!("  mem_subword:           {}", c.subword_size_mem_family);

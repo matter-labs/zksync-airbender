@@ -72,6 +72,7 @@ fn run_with_proof(
         proof,
         &compiled,
         circuit_data.whir_schedule(),
+        &[],
     );
 
     std::thread::scope(|s| {
@@ -90,6 +91,7 @@ fn run_with_proof(
     })
 }
 
+#[cfg(not(feature = "no_caches"))]
 #[test]
 fn rejects_corrupted_cache_relations() {
     let circuit_data = common::circuit_by_name(CIRCUIT);
@@ -177,6 +179,7 @@ fn rejects_zeroed_regions() {
 
 const DELEGATION_CIRCUIT: &str = "keccak_special5";
 
+#[cfg(not(feature = "no_caches"))]
 #[test]
 fn delegation_rejects_corrupted_cache_relations() {
     let circuit_data = common::circuit_by_name(DELEGATION_CIRCUIT);

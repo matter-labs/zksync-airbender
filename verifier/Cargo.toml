@@ -25,6 +25,7 @@ verifier_program = ["modular_ops"]
 # verifier_program = ["modular_ops", "modular_ext4_ops"]
 proof_utils = ["verifier_common/proof_utils"]
 gkr_verify = ["verifier_common/gkr_verify"]
+no_caches = ["verifier_common/no_caches"]
 
 # If enabled, allows passing custom values into CSR.
 replace_csr = ["verifier_common/replace_csr"]

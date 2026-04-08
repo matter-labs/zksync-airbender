@@ -905,7 +905,7 @@ mod test {
 
         serialize_to_file(
             &gkr_compiled,
-            "compiled_circuits/bigint_with_extended_control_preprocessed_layout_gkr.json",
+            "compiled_circuits/bigint_with_extended_control_gkr.json",
         );
     }
 
@@ -922,7 +922,7 @@ mod test {
         );
         serialize_to_file(
             &ssa_forms,
-            "compiled_circuits/bigint_with_extended_control_preprocessed_ssa_gkr.json",
+            "compiled_circuits/bigint_with_extended_control_ssa_gkr.json",
         );
     }
 
@@ -941,7 +941,7 @@ mod test {
 
         serialize_to_file(
             &gkr_compiled,
-            "compiled_circuits/bigint_with_extended_control_layout_no_caches_gkr.json",
+            "compiled_circuits/bigint_with_extended_control_no_caches_gkr.json",
         );
     }
 }

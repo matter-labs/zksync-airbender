@@ -1,10 +1,10 @@
 use verifier_common::cs::definitions::{GKRAddress, VirtualSetupPoly};
 pub const GKR_ROUNDS: usize = 24usize;
-pub const GKR_ADDRS: usize = 86usize;
+pub const GKR_ADDRS: usize = 70usize;
 pub const GKR_EVALS: usize = 128usize;
 pub const GKR_TRANSCRIPT_U32: usize = 540usize;
-pub const GKR_MAX_POW: usize = 12usize;
-pub const GKR_EVAL_BUF: usize = 1392usize;
+pub const GKR_MAX_POW: usize = 1usize;
+pub const GKR_EVAL_BUF: usize = 1136usize;
 pub const GKR_COMMIT_BUF: usize = 32usize;
 pub const GKR_EVALS_COMMIT_BUF: usize = 528usize;
 pub const DRAW_BUF_CAPACITY: usize = 24usize;
@@ -37,100 +37,6 @@ pub const LAYER_0_SORTED_ADDRS: &[GKRAddress] = &[
     GKRAddress::BaseLayerWitness(25usize),
     GKRAddress::BaseLayerWitness(26usize),
     GKRAddress::BaseLayerWitness(27usize),
-    GKRAddress::BaseLayerMemory(2usize),
-    GKRAddress::BaseLayerMemory(3usize),
-    GKRAddress::BaseLayerMemory(4usize),
-    GKRAddress::BaseLayerMemory(5usize),
-    GKRAddress::BaseLayerMemory(9usize),
-    GKRAddress::BaseLayerMemory(10usize),
-    GKRAddress::BaseLayerMemory(11usize),
-    GKRAddress::BaseLayerMemory(12usize),
-    GKRAddress::BaseLayerMemory(19usize),
-    GKRAddress::BaseLayerMemory(20usize),
-    GKRAddress::BaseLayerMemory(21usize),
-    GKRAddress::BaseLayerMemory(22usize),
-    GKRAddress::BaseLayerMemory(23usize),
-    GKRAddress::BaseLayerMemory(24usize),
-    GKRAddress::BaseLayerMemory(25usize),
-    GKRAddress::BaseLayerMemory(26usize),
-    GKRAddress::BaseLayerMemory(27usize),
-    GKRAddress::BaseLayerMemory(28usize),
-    GKRAddress::BaseLayerMemory(29usize),
-    GKRAddress::VirtualSetup(VirtualSetupPoly::RangeCheck16Bits),
-    GKRAddress::VirtualSetup(VirtualSetupPoly::RangeCheckTimestamp),
-    GKRAddress::Cached {
-        layer: 0usize,
-        offset: 0usize,
-    },
-    GKRAddress::Cached {
-        layer: 0usize,
-        offset: 1usize,
-    },
-    GKRAddress::Cached {
-        layer: 0usize,
-        offset: 2usize,
-    },
-    GKRAddress::Cached {
-        layer: 0usize,
-        offset: 3usize,
-    },
-    GKRAddress::Cached {
-        layer: 0usize,
-        offset: 4usize,
-    },
-    GKRAddress::Cached {
-        layer: 0usize,
-        offset: 5usize,
-    },
-    GKRAddress::Cached {
-        layer: 0usize,
-        offset: 6usize,
-    },
-    GKRAddress::Cached {
-        layer: 0usize,
-        offset: 7usize,
-    },
-    GKRAddress::Cached {
-        layer: 0usize,
-        offset: 8usize,
-    },
-    GKRAddress::Cached {
-        layer: 0usize,
-        offset: 9usize,
-    },
-    GKRAddress::Cached {
-        layer: 0usize,
-        offset: 10usize,
-    },
-    GKRAddress::Cached {
-        layer: 0usize,
-        offset: 11usize,
-    },
-    GKRAddress::Cached {
-        layer: 0usize,
-        offset: 12usize,
-    },
-    GKRAddress::Cached {
-        layer: 0usize,
-        offset: 13usize,
-    },
-    GKRAddress::Cached {
-        layer: 0usize,
-        offset: 14usize,
-    },
-    GKRAddress::Cached {
-        layer: 0usize,
-        offset: 15usize,
-    },
-];
-pub const BASE_LAYER_ADDITIONAL_OPENINGS: &[GKRAddress] = &[
-    GKRAddress::BaseLayerWitness(0usize),
-    GKRAddress::BaseLayerWitness(1usize),
-    GKRAddress::BaseLayerWitness(2usize),
-    GKRAddress::BaseLayerWitness(5usize),
-    GKRAddress::BaseLayerWitness(25usize),
-    GKRAddress::BaseLayerWitness(26usize),
-    GKRAddress::BaseLayerWitness(27usize),
     GKRAddress::BaseLayerMemory(0usize),
     GKRAddress::BaseLayerMemory(1usize),
     GKRAddress::BaseLayerMemory(2usize),
@@ -150,6 +56,17 @@ pub const BASE_LAYER_ADDITIONAL_OPENINGS: &[GKRAddress] = &[
     GKRAddress::BaseLayerMemory(16usize),
     GKRAddress::BaseLayerMemory(17usize),
     GKRAddress::BaseLayerMemory(18usize),
+    GKRAddress::BaseLayerMemory(19usize),
+    GKRAddress::BaseLayerMemory(20usize),
+    GKRAddress::BaseLayerMemory(21usize),
+    GKRAddress::BaseLayerMemory(22usize),
+    GKRAddress::BaseLayerMemory(23usize),
+    GKRAddress::BaseLayerMemory(24usize),
+    GKRAddress::BaseLayerMemory(25usize),
+    GKRAddress::BaseLayerMemory(26usize),
+    GKRAddress::BaseLayerMemory(27usize),
+    GKRAddress::BaseLayerMemory(28usize),
+    GKRAddress::BaseLayerMemory(29usize),
     GKRAddress::Setup(0usize),
     GKRAddress::Setup(1usize),
     GKRAddress::Setup(2usize),
@@ -160,7 +77,10 @@ pub const BASE_LAYER_ADDITIONAL_OPENINGS: &[GKRAddress] = &[
     GKRAddress::Setup(7usize),
     GKRAddress::Setup(8usize),
     GKRAddress::Setup(9usize),
+    GKRAddress::VirtualSetup(VirtualSetupPoly::RangeCheck16Bits),
+    GKRAddress::VirtualSetup(VirtualSetupPoly::RangeCheckTimestamp),
 ];
+pub const BASE_LAYER_ADDITIONAL_OPENINGS: &[GKRAddress] = &[];
 pub const WHIR_FOLD_STEPS: [usize; 6usize] = [1usize, 4usize, 4usize, 4usize, 4usize, 4usize];
 pub const WHIR_QUERIES: [usize; 6usize] = [68usize, 23usize, 12usize, 10usize, 10usize, 10usize];
 pub const WHIR_POW_BITS: [u32; 6usize] = [24u32, 24u32, 24u32, 24u32, 24u32, 24u32];

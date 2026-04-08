@@ -35,6 +35,7 @@ pub fn flatten_gkr_proof_for_nds<F: PrimeField, E: FieldExtension<F> + Field, T>
     proof: &GKRProof<F, E, T>,
     compiled_circuit: &GKRCircuitArtifact<F>,
     whir_schedule: &WhirSchedule,
+    inits_and_teardowns_top_bits: &[u32],
 ) -> Vec<u32>
 where
     T: ColumnMajorMerkleTreeConstructor<F>,
@@ -42,9 +43,7 @@ where
 {
     let mut result = Vec::new();
 
-    if let Some(top_bits) = proof.inits_and_teardowns_top_bits {
-        result.push(top_bits);
-    }
+    result.extend_from_slice(inits_and_teardowns_top_bits);
     proof.external_challenges.flatten_into_buffer(&mut result);
     proof
         .whir_proof

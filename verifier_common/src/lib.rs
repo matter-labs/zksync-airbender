@@ -20,6 +20,8 @@ macro_rules! gkr_circuits {
             bigint_with_extended_control: default_for_tests_80_bits_22,
             blake2_with_extended_control: default_for_tests_80_bits_20,
             keccak_special5: default_for_tests_80_bits_22,
+            // TODO: inits_and_teardowns needs special handling (no setup oracle)
+            // inits_and_teardowns: default_for_tests_80_bits_24,
         }
     };
 }

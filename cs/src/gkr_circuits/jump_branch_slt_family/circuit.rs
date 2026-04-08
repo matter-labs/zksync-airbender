@@ -774,7 +774,7 @@ mod test {
 
         serialize_to_file(
             &gkr_compiled,
-            "compiled_circuits/jump_branch_slt_preprocessed_layout_gkr.json",
+            "compiled_circuits/jump_branch_slt_gkr.json",
         );
     }
 
@@ -789,7 +789,7 @@ mod test {
         );
         serialize_to_file(
             &ssa_forms,
-            "compiled_circuits/jump_branch_slt_preprocessed_ssa_gkr.json",
+            "compiled_circuits/jump_branch_slt_ssa_gkr.json",
         );
     }
 
@@ -810,7 +810,7 @@ mod test {
 
         serialize_to_file(
             &gkr_compiled,
-            "compiled_circuits/jump_branch_slt_preprocessed_layout_no_caches_gkr.json",
+            "compiled_circuits/jump_branch_slt_no_caches_gkr.json",
         );
     }
 }

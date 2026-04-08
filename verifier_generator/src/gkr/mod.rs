@@ -650,11 +650,18 @@ where
     let evals_commit_total = digest_words + max_evals * degree;
     let evals_commit_buf_size = evals_commit_total.div_ceil(block_words) * block_words;
 
+    let num_teardown_sets = compiled_circuit.memory_layout.teardown_sets.len();
+    let num_linearization_challenges = proof
+        .external_challenges
+        .permutation_argument_linearization_challenges
+        .len();
+    // For circuits with teardown sets, this encodes the set index in the high
+    // bits of the address. Currently only inits_and_teardowns uses this.
+    let address_high_bits_shift_val: u32 = 0;
+
     let initial_transcript_num_u32_words = {
         let mut tmp = Vec::<u32>::new();
-        if let Some(top_bits) = proof.inits_and_teardowns_top_bits {
-            tmp.push(top_bits);
-        }
+        tmp.extend(core::iter::repeat(0u32).take(num_teardown_sets));
         proof.external_challenges.flatten_into_buffer(&mut tmp);
         proof
             .whir_proof
@@ -678,6 +685,9 @@ where
     };
 
     let mut layer_functions = TokenStream::new();
+
+    // Emit shared eval helper functions (used by table-driven gate evaluation)
+    layer_functions.extend(standard_layer::generate_eval_helpers::<MW, F>());
 
     for layer_idx in 0..num_standard_layers {
         layer_functions.extend(standard_layer::generate_layer_compute_claim::<MW>(
@@ -730,15 +740,8 @@ where
         });
     }
 
-    let base_layer_additional_openings: Vec<TokenStream> = if !compiled_circuit.layers.is_empty() {
-        compiled_circuit.layers[0]
-            .additional_base_layer_openings
-            .iter()
-            .map(transform_gkr_address)
-            .collect()
-    } else {
-        vec![]
-    };
+    // additional_base_layer_openings was removed in the no-caches refactor.
+    let base_layer_additional_openings: Vec<TokenStream> = vec![];
     let mut base_openings_stream = TokenStream::new();
     base_openings_stream.append_separated(base_layer_additional_openings.iter(), quote! {,});
 
@@ -787,6 +790,44 @@ where
         let lookup_alpha = *init_challenges.get(0);
         let lookup_additive_challenge = *init_challenges.get(1);
         let constraints_batch_challenge = *init_challenges.get(2);
+
+        // Extract external memory argument challenges from transcript buffer.
+        // Layout: [teardown_top_bits | linearization_challenges | additive_part | caps...]
+        let (linearization_challenges, permutation_argument_additive_part) = {
+            let ext_start = #num_teardown_sets;
+            let num_lin = #num_linearization_challenges;
+            let mut lin = LazyVec::<#quartic_struct, #num_linearization_challenges>::new();
+            let mut i = 0;
+            while i < num_lin {
+                let base = ext_start + i * EXT_DEGREE;
+                let mut arr = LazyVec::<#field_struct, EXT_DEGREE>::new();
+                let mut k = 0;
+                while k < EXT_DEGREE {
+                    arr.push(#field_struct::from_raw_repr_with_reduction(
+                        *transcript_buf.get(base + k),
+                    ));
+                    k += 1;
+                }
+                lin.push(unsafe {
+                    core::mem::transmute::<[#field_struct; EXT_DEGREE], #quartic_struct>(arr.into_array())
+                });
+                i += 1;
+            }
+            let add_base = ext_start + num_lin * EXT_DEGREE;
+            let mut add_arr = LazyVec::<#field_struct, EXT_DEGREE>::new();
+            let mut k = 0;
+            while k < EXT_DEGREE {
+                add_arr.push(#field_struct::from_raw_repr_with_reduction(
+                    *transcript_buf.get(add_base + k),
+                ));
+                k += 1;
+            }
+            let additive = unsafe {
+                core::mem::transmute::<[#field_struct; EXT_DEGREE], #quartic_struct>(add_arr.into_array())
+            };
+            (unsafe { lin.into_array() }, additive)
+        };
+        let address_high_bits_shift: u32 = #address_high_bits_shift_val;
     });
 
     let total_output_polys: usize = output_groups.iter().map(|g| g.num_addresses).sum();
@@ -1070,7 +1111,9 @@ where
                 {
                     let evals: &[[#quartic_struct; 2]] = eval_buf.data_as(#num_dedup_addrs);
                     let f = #final_step_fn(evals, state.batching_challenge,
-                        lookup_additive_challenge, lookup_alpha, &challenge_powers);
+                        lookup_additive_challenge, lookup_alpha, &challenge_powers,
+                        &linearization_challenges, permutation_argument_additive_part,
+                        address_high_bits_shift);
                     verify_final_step_check(f,
                         *state.prev_point.get_unchecked(state.prev_point_len - 1),
                         final_eq_prefactor, final_claim, #config_idx)?;

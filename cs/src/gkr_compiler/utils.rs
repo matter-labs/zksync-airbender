@@ -326,11 +326,7 @@ pub(crate) fn layout_machine_state_for_preprocessed_bytecode<F: PrimeField>(
     }
 }
 
-#[derive(Clone, Hash, Debug, serde::Serialize, serde::Deserialize)]
-pub struct CompiledDelegationCircuitState {
-    pub execute: usize,
-    pub invocation_timestamp: [usize; NUM_TIMESTAMP_COLUMNS_FOR_RAM],
-}
+pub use crate::definitions::gkr::CompiledDelegationCircuitState;
 
 pub(crate) fn layout_delegation_circuit_state(
     graph: &mut GKRGraph,

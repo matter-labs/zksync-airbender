@@ -39,9 +39,13 @@ impl CircuitData {
     }
 
     pub fn circuit_path(&self) -> String {
+        #[cfg(feature = "no_caches")]
+        let suffix = "_no_caches";
+        #[cfg(not(feature = "no_caches"))]
+        let suffix = "";
         format!(
-            "{}/cs/compiled_circuits/{}_preprocessed_layout_gkr.json",
-            REPO_ROOT, self.name
+            "{}/cs/compiled_circuits/{}{}_gkr.json",
+            REPO_ROOT, self.name, suffix
         )
     }
 
@@ -75,6 +79,7 @@ impl CircuitData {
             &self.proof(),
             &self.compiled_circuit(),
             self.whir_schedule(),
+            &[],
         )
     }
 }

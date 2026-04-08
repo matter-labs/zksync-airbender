@@ -1,8 +1,14 @@
 use proc_macro2::TokenStream;
 use quote::quote;
 
+use std::collections::BTreeSet;
+
+use prover::cs::definitions::gkr::RamWordRepresentation;
 use prover::cs::definitions::{GKRAddress, VirtualSetupPoly};
-use prover::cs::gkr_compiler::{GKRLayerDescription, NoFieldGKRRelation};
+use prover::cs::gkr_compiler::{
+    CompiledAddressSpaceRelationStrict, CompiledAddressStrict, CompiledMemoryTimestamp,
+    GKRLayerDescription, NoFieldGKRRelation, NoFieldSpecialMemoryContributionRelation,
+};
 use prover::field::PrimeField;
 
 pub mod sumcheck;
@@ -54,6 +60,64 @@ pub fn transform_gkr_address(addr: &GKRAddress) -> TokenStream {
                 }
             };
             quote! { GKRAddress::VirtualSetup(#variant) }
+        }
+    }
+}
+
+/// Collect all `BaseLayerMemory` addresses referenced by a memory expression.
+fn collect_mem_expr_addrs(
+    rel: &NoFieldSpecialMemoryContributionRelation,
+    addrs: &mut BTreeSet<GKRAddress>,
+) {
+    match &rel.address_space {
+        CompiledAddressSpaceRelationStrict::Constant(_) => {}
+        CompiledAddressSpaceRelationStrict::IsRam(offset)
+        | CompiledAddressSpaceRelationStrict::IsRegister(offset) => {
+            addrs.insert(GKRAddress::BaseLayerMemory(*offset));
+        }
+    }
+    match &rel.address {
+        CompiledAddressStrict::ConstantU16(_) | CompiledAddressStrict::Constant(_) => {}
+        CompiledAddressStrict::U16Space(offset) => {
+            addrs.insert(GKRAddress::BaseLayerMemory(*offset));
+        }
+        CompiledAddressStrict::U32Space([low, high]) => {
+            addrs.insert(GKRAddress::BaseLayerMemory(*low));
+            addrs.insert(GKRAddress::BaseLayerMemory(*high));
+        }
+        CompiledAddressStrict::U32SpaceSpecialIndirect {
+            low_base,
+            low_dynamic_offset,
+            high,
+            ..
+        } => {
+            addrs.insert(GKRAddress::BaseLayerMemory(*low_base));
+            if let Some((_, offset)) = low_dynamic_offset {
+                addrs.insert(GKRAddress::BaseLayerMemory(*offset));
+            }
+            addrs.insert(GKRAddress::BaseLayerMemory(*high));
+        }
+        CompiledAddressStrict::U32SpaceGeneric(..) => {
+            panic!("U32SpaceGeneric not supported");
+        }
+    }
+    match &rel.timestamp {
+        CompiledMemoryTimestamp::Zero => {}
+        CompiledMemoryTimestamp::Normal(ts) => {
+            addrs.insert(GKRAddress::BaseLayerMemory(ts[0]));
+            addrs.insert(GKRAddress::BaseLayerMemory(ts[1]));
+        }
+    }
+    match &rel.value {
+        RamWordRepresentation::Zero => {}
+        RamWordRepresentation::U16Limbs(limbs) => {
+            addrs.insert(GKRAddress::BaseLayerMemory(limbs[0]));
+            addrs.insert(GKRAddress::BaseLayerMemory(limbs[1]));
+        }
+        RamWordRepresentation::U8Limbs(bytes) => {
+            for &b in bytes {
+                addrs.insert(GKRAddress::BaseLayerMemory(b));
+            }
         }
     }
 }
@@ -185,6 +249,87 @@ pub fn collect_sorted_unique_addrs(layer: &GKRLayerDescription) -> Vec<GKRAddres
                 addrs.insert(input[0][1]);
                 addrs.insert(input[1][0]);
                 addrs.insert(input[1][1]);
+            }
+            // No-caches variants: memory expressions reference base-layer columns
+            // but those are NOT GKRAddresses in the layer's sorted addrs — they're
+            // accessed via the memory expression evaluation at runtime. Only the
+            // output address is tracked.
+            R::EnforceSingleMaxQuadraticConstraint { input } => {
+                for (addr, terms) in input.quadratic_terms.iter() {
+                    addrs.insert(*addr);
+                    for &(_, b) in terms.iter() {
+                        addrs.insert(b);
+                    }
+                }
+                for &(_, addr) in input.linear_terms.iter() {
+                    addrs.insert(addr);
+                }
+            }
+            R::InitialGrandProductWithoutCaches { input, .. } => {
+                collect_mem_expr_addrs(&input[0], &mut addrs);
+                collect_mem_expr_addrs(&input[1], &mut addrs);
+            }
+            R::MaterializeGrandProductTermExpression { input, .. } => {
+                collect_mem_expr_addrs(input, &mut addrs);
+            }
+            R::LookupWithDensAndSetupExpressions { input, setup, .. } => {
+                addrs.insert(input.0);
+                addrs.insert(setup.0);
+                for addr in setup.1.iter() {
+                    addrs.insert(*addr);
+                }
+                for col in &input.1.columns {
+                    for (_, addr) in &col.linear_terms {
+                        addrs.insert(*addr);
+                    }
+                }
+            }
+            R::LookupUnbalancedPairWithVectorInputs {
+                input, remainder, ..
+            } => {
+                addrs.insert(input[0]);
+                addrs.insert(input[1]);
+                for col in &remainder.columns {
+                    for (_, addr) in &col.linear_terms {
+                        addrs.insert(*addr);
+                    }
+                }
+            }
+            R::LookupFromVectorInputWithSetup { input, setup, .. } => {
+                addrs.insert(setup.0);
+                for addr in setup.1.iter() {
+                    addrs.insert(*addr);
+                }
+                for col in &input.columns {
+                    for (_, addr) in &col.linear_terms {
+                        addrs.insert(*addr);
+                    }
+                }
+            }
+            R::InitsOrTeardownsInitialPair {
+                timestamp_and_value,
+                setup,
+                ..
+            } => {
+                addrs.insert(setup[0]);
+                addrs.insert(setup[1]);
+                use prover::cs::gkr_compiler::InitsOrTeardownsTimestampAndValue;
+                if let InitsOrTeardownsTimestampAndValue::Teardown {
+                    lhs_timestamp,
+                    lhs_value,
+                    rhs_timestamp,
+                    rhs_value,
+                } = timestamp_and_value
+                {
+                    for ts in [lhs_timestamp, rhs_timestamp] {
+                        addrs.insert(GKRAddress::BaseLayerMemory(ts[0]));
+                        addrs.insert(GKRAddress::BaseLayerMemory(ts[1]));
+                    }
+                    for val in [lhs_value, rhs_value] {
+                        addrs.insert(GKRAddress::BaseLayerMemory(val[0]));
+                        addrs.insert(GKRAddress::BaseLayerMemory(val[1]));
+                    }
+                }
             }
         }
     }

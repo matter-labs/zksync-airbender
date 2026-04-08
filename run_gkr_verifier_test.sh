@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Circuit variant: "no_caches" (default) or "" for cached
+VARIANT="${GKR_VARIANT:-no_caches}"
+VARIANT_FEATURES=""
+if [[ -n "$VARIANT" ]]; then
+  VARIANT_FEATURES="--features $VARIANT"
+fi
+
 CIRCUITS=(
   add_sub_lui_auipc_mop
   bigint_with_extended_control
@@ -37,20 +44,20 @@ done
 # --- Run pipeline ---
 
 # echo "==> Step 0: Compile GKR circuits"
-# (cd cs && cargo test -p cs --release)
+# (cd cs && RUSTFLAGS="-Awarnings" cargo test -p cs -- gkr)
 
 # echo "==> Step 1: Generate proof"
-# (cd prover && RUST_MIN_STACK=100000000 cargo test -p prover --release --features gkr_self_checks \
+# (cd prover && RUST_MIN_STACK=100000000 RUSTFLAGS="-Awarnings" cargo test -p prover --release --features gkr_self_checks \
 #   -- --nocapture gkr_run_basic_unrolled_test)
 
-echo "==> Step 2: Regenerate inlined GKR verifier"
-RUSTFLAGS="-Awarnings" cargo test -p verifier_generator --test generate_verifiers
+# echo "==> Step 2: Regenerate inlined GKR verifier (variant=${VARIANT:-cached})"
+# RUSTFLAGS="-Awarnings" cargo test -p verifier_generator $VARIANT_FEATURES --test generate_verifiers
 
-echo "==> Step 3: Build RISC-V binary"
-(cd tools/gkr_verifier && ./dump_bin.sh)
+# echo "==> Step 3: Build RISC-V binary"
+# (cd tools/gkr_verifier && ./dump_bin.sh)
 
-echo "==> Step 4: Verifier tests"
-RUSTFLAGS="-Awarnings" cargo test -p verifier --tests --features gkr_verify -- --include-ignored
+echo "==> Step 4: Verifier tests (variant=${VARIANT:-cached})"
+RUSTFLAGS="-Awarnings" cargo test -p verifier --tests --features gkr_verify $VARIANT_FEATURES -- --include-ignored
 
 # --- Record AFTER cycles ---
 echo ""
