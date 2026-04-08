@@ -48,25 +48,45 @@ impl<B: StaticAllocationBackend> InnerStaticAllocator<B> {
         }
     }
 
-    pub(crate) fn alloc<T>(
+    fn alloc_impl<T>(
         &mut self,
         len: usize,
         placement: AllocationPlacement,
+        alignment: usize,
     ) -> CudaResult<StaticAllocationData<T>> {
         let size_of_t = size_of::<T>();
         let lcs = self.log_chunk_size;
-        let alignment = align_of::<T>();
+        assert!(alignment.is_power_of_two());
+        assert!(alignment >= align_of::<T>());
         let alloc_granularity = (1 << lcs).max(alignment);
         let alloc_len = (len * size_of_t).next_multiple_of(alloc_granularity);
         match self.tracker.alloc_aligned(alloc_len, placement, alignment) {
             Ok(ptr) => {
-                assert!(ptr.is_aligned_to(align_of::<T>()));
+                assert!(ptr.is_aligned_to(alignment));
                 let ptr = ptr.cast::<T>();
                 let data = StaticAllocationData::new(ptr, len, alloc_len);
                 Ok(data)
             }
             Err(_) => Err(CudaError::ErrorMemoryAllocation),
         }
+    }
+
+    pub(crate) fn alloc<T>(
+        &mut self,
+        len: usize,
+        placement: AllocationPlacement,
+    ) -> CudaResult<StaticAllocationData<T>> {
+        self.alloc_impl::<T>(len, placement, align_of::<T>())
+    }
+
+    pub(crate) fn alloc_with_extra_alignment<T, const EXTRA_ALIGNMENT_LOG2: u32>(
+        &mut self,
+        len: usize,
+        placement: AllocationPlacement,
+    ) -> CudaResult<StaticAllocationData<T>> {
+        let extra_alignment = 1usize << EXTRA_ALIGNMENT_LOG2;
+        let alignment = align_of::<T>().max(extra_alignment);
+        self.alloc_impl::<T>(len, placement, alignment)
     }
 
     pub(crate) fn free<T>(&mut self, data: StaticAllocationData<T>) {
@@ -177,7 +197,22 @@ impl<B: StaticAllocationBackend, W: InnerStaticAllocatorWrapper<B>> StaticAlloca
         placement: AllocationPlacement,
     ) -> CudaResult<StaticAllocation<T, B, W>> {
         self.inner
-            .execute(|inner| inner.alloc(len, placement))
+            .execute(|inner| inner.alloc::<T>(len, placement))
+            .map(|data| StaticAllocation {
+                allocator: self.clone(),
+                data,
+            })
+    }
+
+    pub fn alloc_with_extra_alignment<T, const EXTRA_ALIGNMENT_LOG2: u32>(
+        &self,
+        len: usize,
+        placement: AllocationPlacement,
+    ) -> CudaResult<StaticAllocation<T, B, W>> {
+        self.inner
+            .execute(|inner| {
+                inner.alloc_with_extra_alignment::<T, EXTRA_ALIGNMENT_LOG2>(len, placement)
+            })
             .map(|data| StaticAllocation {
                 allocator: self.clone(),
                 data,

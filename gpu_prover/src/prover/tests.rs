@@ -5,7 +5,6 @@ use super::gkr::{
     },
     base_layer_claims::prepare_base_layer_claims,
     forward::schedule_forward_pass as schedule_forward_pass_impl,
-    lowering::LayerNoCacheLoweringPlan,
     setup::{GpuGKRSetupHost, GpuGKRSetupTransfer},
     stage1::{GpuGKRStage1Output, GpuGKRTraceGeometry},
     GpuGKRStorage,
@@ -67,8 +66,7 @@ use cs::gkr_circuits::{
 use cs::gkr_compiler::{
     compile_unrolled_circuit_state_transition_into_gkr,
     compile_unrolled_circuit_state_transition_into_unrolled_gkr_without_caches, GKRCircuitArtifact,
-    GKRLayerDescription, NoFieldGKRCacheRelation, NoFieldGKRRelation,
-    NoFieldMaxQuadraticGKRRelation, OutputType,
+    GKRLayerDescription, NoFieldGKRRelation, NoFieldMaxQuadraticGKRRelation, OutputType,
 };
 use cs::tables::TableDriver;
 use era_cudart::event::{CudaEvent, CudaEventCreateFlags};
@@ -149,7 +147,7 @@ use riscv_transpiler::witness::{
 };
 use serial_test::serial;
 use std::alloc::Global;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::ops::DerefMut;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -209,11 +207,11 @@ fn insert_virtual_setup_polys_for_test<F: PrimeField, E: FieldExtension<F> + Fie
     );
     assert!(previous.is_none());
     let worker = Worker::new();
-    let (inits_low, inits_high) =
-        materialize_virtual_inits_and_teardowns_base_address_setup_poly::<F, Global, 2>(
-            trace_len.trailing_zeros(),
-            &worker,
-        );
+    let (inits_low, inits_high) = materialize_virtual_inits_and_teardowns_base_address_setup_poly::<
+        F,
+        Global,
+        2,
+    >(trace_len.trailing_zeros(), &worker);
     let previous = base_layer.insert(
         GKRAddress::VirtualSetup(VirtualSetupPoly::InitsAndTeardownsLow),
         BaseFieldPoly::new(inits_low),
@@ -635,6 +633,10 @@ struct BasicUnrolledFixtureBuildConfig<'a> {
     device_allocator_block_log_size: u32,
 }
 
+fn default_fixture_device_allocator_block_log_size() -> u32 {
+    crate::primitives::context::ProverContextConfig::default().allocator_block_log_size
+}
+
 fn prepare_basic_unrolled_fixture(
     build_config: BasicUnrolledFixtureBuildConfig<'_>,
 ) -> (
@@ -778,6 +780,11 @@ fn prepare_basic_unrolled_fixture(
         &decoder_table_data,
         trace_len,
         &compiled_circuit,
+    );
+    assert!(
+        build_config.device_allocator_block_log_size >= 4,
+        "basic unrolled fixture requires a device allocator block log size of at least 4 for aligned GPU allocations, got {}",
+        build_config.device_allocator_block_log_size,
     );
     let device_block_size = 1usize << build_config.device_allocator_block_log_size;
     let max_device_allocation_blocks_count = DEVICE_ALLOCATOR_ARENA_BYTES / device_block_size;
@@ -949,7 +956,7 @@ pub(crate) fn prepare_basic_unrolled_proof_fixture() -> BasicUnrolledProofFixtur
             text_path: BASIC_UNROLLED_CPU_PARITY_TEXT_PATH,
             non_determinism_reads: &[15, 1],
             compute_cpu_reference: true,
-            device_allocator_block_log_size: 20,
+            device_allocator_block_log_size: default_fixture_device_allocator_block_log_size(),
         });
     BasicUnrolledProofFixture {
         base,
@@ -965,7 +972,7 @@ fn prepare_basic_unrolled_profiling_fixture() -> BasicUnrolledFixture {
             text_path: "examples/basic_fibonacci/app.text",
             non_determinism_reads: &[],
             compute_cpu_reference: false,
-            device_allocator_block_log_size: 0,
+            device_allocator_block_log_size: default_fixture_device_allocator_block_log_size(),
         });
     assert!(
         expected_cpu_proof.is_none(),
@@ -1993,6 +2000,7 @@ pub(crate) struct BasicUnrolledAsyncBackwardFixture {
     pub(crate) evaluation_point: Vec<E4>,
     pub(crate) seed: Seed,
     pub(crate) batching_challenge: E4,
+    pub(crate) lookup_multiplicative_part: E4,
     pub(crate) lookup_additive_part: E4,
     pub(crate) constraints_batch_challenge: E4,
     pub(crate) expected_proof_layers: usize,
@@ -2157,6 +2165,7 @@ fn build_basic_unrolled_async_backward_fixture_from_base(
         evaluation_point,
         seed,
         batching_challenge,
+        lookup_multiplicative_part: lookup_alpha,
         lookup_additive_part,
         constraints_batch_challenge,
         expected_proof_layers,
@@ -2172,7 +2181,7 @@ pub(crate) fn prepare_basic_unrolled_async_backward_fixture(
             text_path: BASIC_UNROLLED_CPU_PARITY_TEXT_PATH,
             non_determinism_reads: &[15, 1],
             compute_cpu_reference: false,
-            device_allocator_block_log_size: 20,
+            device_allocator_block_log_size: default_fixture_device_allocator_block_log_size(),
         });
     assert!(
         expected_cpu_proof.is_none(),
@@ -2348,6 +2357,7 @@ pub(crate) fn expected_main_layer_kernel_specs_for_test<E: Field + FieldExtensio
     storage: &GpuGKRStorage<BF, E>,
     external_challenges: &GKRExternalChallenges<BF, E>,
     batch_challenge_base: E,
+    _lookup_multiplicative_challenge: E,
     lookup_additive_challenge: E,
     constraint_batch_challenge: E,
     num_base_layer_memory_polys: usize,
@@ -2374,11 +2384,10 @@ pub(crate) fn expected_main_layer_kernel_specs_for_test<E: Field + FieldExtensio
     };
 
     let mut specs = Vec::new();
-    let lowering_plan = LayerNoCacheLoweringPlan::new(layer_idx, layer);
-    for gate in lowering_plan
-        .lowered_gates
+    for gate in layer
+        .gates
         .iter()
-        .chain(lowering_plan.lowered_gates_with_external_connections.iter())
+        .chain(layer.gates_with_external_connections.iter())
     {
         match &gate.enforced_relation {
             NoFieldGKRRelation::Copy { input, output } => {
@@ -2415,6 +2424,24 @@ pub(crate) fn expected_main_layer_kernel_specs_for_test<E: Field + FieldExtensio
                         constraint_metadata: None,
                     });
                 }
+            }
+            NoFieldGKRRelation::InitialGrandProductWithoutCaches { input, output } => {
+                let (inputs, constraint_metadata) = crate::prover::gkr::backward::build_initial_grand_product_without_caches_inputs_and_metadata::<E>(
+                    input,
+                    *output,
+                    external_challenges,
+                );
+                specs.push(ExpectedMainLayerKernelSpec {
+                    kind: GpuGKRMainLayerKernelKind::InitialGrandProductWithoutCaches,
+                    inputs,
+                    batch_challenges: vec![get_challenge()],
+                    auxiliary_challenge: E::ZERO,
+                    constraint_metadata: Some(ExpectedMainLayerConstraintMetadata {
+                        quadratic_terms: constraint_metadata.quadratic_terms,
+                        linear_terms: constraint_metadata.linear_terms,
+                        constant_offset: constraint_metadata.constant_offset,
+                    }),
+                });
             }
             NoFieldGKRRelation::InitialGrandProductFromCaches { input, output }
             | NoFieldGKRRelation::TrivialProduct { input, output } => {
@@ -2468,6 +2495,24 @@ pub(crate) fn expected_main_layer_kernel_specs_for_test<E: Field + FieldExtensio
                     constraint_metadata: None,
                 });
             }
+            NoFieldGKRRelation::LookupPairFromBaseInputs { input, output, .. } => {
+                let (inputs, constraint_metadata) = crate::prover::gkr::backward::build_lookup_pair_from_base_inputs_inputs_and_metadata::<E>(
+                    input,
+                    *output,
+                    lookup_additive_challenge,
+                );
+                specs.push(ExpectedMainLayerKernelSpec {
+                    kind: GpuGKRMainLayerKernelKind::LookupPairFromBaseInputs,
+                    inputs,
+                    batch_challenges: vec![get_challenge(), get_challenge()],
+                    auxiliary_challenge: E::ZERO,
+                    constraint_metadata: Some(ExpectedMainLayerConstraintMetadata {
+                        quadratic_terms: constraint_metadata.quadratic_terms,
+                        linear_terms: constraint_metadata.linear_terms,
+                        constant_offset: constraint_metadata.constant_offset,
+                    }),
+                });
+            }
             NoFieldGKRRelation::LookupPairFromMaterializedBaseInputs { input, output } => {
                 let relation = LookupBasePairGKRRelation::<BF, E> {
                     inputs: *input,
@@ -2510,6 +2555,30 @@ pub(crate) fn expected_main_layer_kernel_specs_for_test<E: Field + FieldExtensio
                     constraint_metadata: None,
                 });
             }
+            NoFieldGKRRelation::LookupWithDensAndSetupExpressions {
+                input,
+                setup,
+                output,
+            } => {
+                let (inputs, constraint_metadata) = crate::prover::gkr::backward::build_lookup_with_dens_and_setup_expressions_inputs_and_metadata::<E>(
+                    input,
+                    setup,
+                    *output,
+                    _lookup_multiplicative_challenge,
+                    lookup_additive_challenge,
+                );
+                specs.push(ExpectedMainLayerKernelSpec {
+                    kind: GpuGKRMainLayerKernelKind::LookupWithDensAndSetupExpressions,
+                    inputs,
+                    batch_challenges: vec![get_challenge(), get_challenge()],
+                    auxiliary_challenge: E::ZERO,
+                    constraint_metadata: Some(ExpectedMainLayerConstraintMetadata {
+                        quadratic_terms: constraint_metadata.quadratic_terms,
+                        linear_terms: constraint_metadata.linear_terms,
+                        constant_offset: constraint_metadata.constant_offset,
+                    }),
+                });
+            }
             NoFieldGKRRelation::LookupFromMaterializedVectorInputWithSetup {
                 input,
                 setup,
@@ -2531,6 +2600,25 @@ pub(crate) fn expected_main_layer_kernel_specs_for_test<E: Field + FieldExtensio
                     batch_challenges: vec![get_challenge(), get_challenge()],
                     auxiliary_challenge: lookup_additive_challenge,
                     constraint_metadata: None,
+                });
+            }
+            NoFieldGKRRelation::LookupPairFromVectorInputs { input, output } => {
+                let (inputs, constraint_metadata) = crate::prover::gkr::backward::build_lookup_pair_from_vector_inputs_inputs_and_metadata::<E>(
+                    input,
+                    *output,
+                    _lookup_multiplicative_challenge,
+                    lookup_additive_challenge,
+                );
+                specs.push(ExpectedMainLayerKernelSpec {
+                    kind: GpuGKRMainLayerKernelKind::LookupPairFromVectorInputs,
+                    inputs,
+                    batch_challenges: vec![get_challenge(), get_challenge()],
+                    auxiliary_challenge: E::ZERO,
+                    constraint_metadata: Some(ExpectedMainLayerConstraintMetadata {
+                        quadratic_terms: constraint_metadata.quadratic_terms,
+                        linear_terms: constraint_metadata.linear_terms,
+                        constant_offset: constraint_metadata.constant_offset,
+                    }),
                 });
             }
             NoFieldGKRRelation::LookupUnbalancedPairWithMaterializedBaseInputs {
@@ -2631,6 +2719,72 @@ pub(crate) fn expected_main_layer_kernel_specs_for_test<E: Field + FieldExtensio
                     constraint_metadata: Some(constraint_metadata),
                 });
             }
+            NoFieldGKRRelation::LookupUnbalancedPairWithVectorInputs {
+                input,
+                remainder,
+                output,
+            } => {
+                let (inputs, constraint_metadata) = crate::prover::gkr::backward::build_lookup_unbalanced_pair_with_vector_inputs_inputs_and_metadata::<E>(
+                    *input,
+                    remainder,
+                    *output,
+                    _lookup_multiplicative_challenge,
+                    lookup_additive_challenge,
+                );
+                specs.push(ExpectedMainLayerKernelSpec {
+                    kind: GpuGKRMainLayerKernelKind::LookupUnbalancedPairWithVectorInputs,
+                    inputs,
+                    batch_challenges: vec![get_challenge(), get_challenge()],
+                    auxiliary_challenge: E::ZERO,
+                    constraint_metadata: Some(ExpectedMainLayerConstraintMetadata {
+                        quadratic_terms: constraint_metadata.quadratic_terms,
+                        linear_terms: constraint_metadata.linear_terms,
+                        constant_offset: constraint_metadata.constant_offset,
+                    }),
+                });
+            }
+            NoFieldGKRRelation::LookupFromVectorInputWithSetup {
+                input,
+                setup,
+                output,
+            } => {
+                let (inputs, constraint_metadata) = crate::prover::gkr::backward::build_lookup_from_vector_input_with_setup_inputs_and_metadata::<E>(
+                    input,
+                    setup,
+                    *output,
+                    _lookup_multiplicative_challenge,
+                    lookup_additive_challenge,
+                );
+                specs.push(ExpectedMainLayerKernelSpec {
+                    kind: GpuGKRMainLayerKernelKind::LookupFromVectorInputWithSetup,
+                    inputs,
+                    batch_challenges: vec![get_challenge(), get_challenge()],
+                    auxiliary_challenge: E::ZERO,
+                    constraint_metadata: Some(ExpectedMainLayerConstraintMetadata {
+                        quadratic_terms: constraint_metadata.quadratic_terms,
+                        linear_terms: constraint_metadata.linear_terms,
+                        constant_offset: constraint_metadata.constant_offset,
+                    }),
+                });
+            }
+            NoFieldGKRRelation::MaterializeGrandProductTermExpression { input, output } => {
+                let (inputs, constraint_metadata) = crate::prover::gkr::backward::build_materialize_grand_product_term_expression_inputs_and_metadata::<E>(
+                    input,
+                    *output,
+                    external_challenges,
+                );
+                specs.push(ExpectedMainLayerKernelSpec {
+                    kind: GpuGKRMainLayerKernelKind::MaterializeGrandProductTermExpression,
+                    inputs,
+                    batch_challenges: vec![get_challenge()],
+                    auxiliary_challenge: E::ZERO,
+                    constraint_metadata: Some(ExpectedMainLayerConstraintMetadata {
+                        quadratic_terms: constraint_metadata.quadratic_terms,
+                        linear_terms: constraint_metadata.linear_terms,
+                        constant_offset: constraint_metadata.constant_offset,
+                    }),
+                });
+            }
             NoFieldGKRRelation::MaterializeSingleLookupInput { input, output, .. } => {
                 let (inputs, constraint_metadata) =
                     expected_linear_base_kernel_inputs_and_metadata::<E>(&input.input, *output);
@@ -2652,13 +2806,6 @@ pub(crate) fn expected_main_layer_kernel_specs_for_test<E: Field + FieldExtensio
                     auxiliary_challenge: E::ZERO,
                     constraint_metadata: Some(constraint_metadata),
                 });
-            }
-            NoFieldGKRRelation::InitialGrandProductWithoutCaches { .. }
-            | NoFieldGKRRelation::MaterializeGrandProductTermExpression { .. }
-            | NoFieldGKRRelation::LookupWithDensAndSetupExpressions { .. }
-            | NoFieldGKRRelation::LookupFromVectorInputWithSetup { .. }
-            | NoFieldGKRRelation::LookupUnbalancedPairWithVectorInputs { .. } => {
-                unreachable!("test expectations must observe lowered no-cache relations")
             }
             NoFieldGKRRelation::InitsOrTeardownsInitialPair {
                 timestamp_and_value,
@@ -2691,8 +2838,6 @@ pub(crate) fn expected_main_layer_kernel_specs_for_test<E: Field + FieldExtensio
             }
             NoFieldGKRRelation::UnbalancedGrandProductWithCache { .. }
             | NoFieldGKRRelation::MaterializedVectorLookupInput { .. }
-            | NoFieldGKRRelation::LookupPairFromBaseInputs { .. }
-            | NoFieldGKRRelation::LookupPairFromVectorInputs { .. }
             | NoFieldGKRRelation::LookupPairFromMaterializedVectorInputs { .. }
             | NoFieldGKRRelation::LookupUnbalancedPairWithMaterializedVectorInputs { .. }
             | NoFieldGKRRelation::LookupPairFromCachedVectorInputs { .. }
@@ -3943,7 +4088,7 @@ fn assert_gpu_and_cpu_gkr_storage_match<
 >(
     gpu_storage: &GpuGKRStorage<BF, E>,
     cpu_storage: &GKRStorage<BF, E>,
-    compiled_circuit: &GKRCircuitArtifact<BF>,
+    _compiled_circuit: &GKRCircuitArtifact<BF>,
     context: &ProverContext,
 ) {
     assert_eq!(gpu_storage.layers.len(), cpu_storage.layers.len());
@@ -3953,23 +4098,7 @@ fn assert_gpu_and_cpu_gkr_storage_match<
         .zip(cpu_storage.layers.iter())
         .enumerate()
     {
-        let internal_helper_addresses = compiled_circuit
-            .layers
-            .get(layer_idx)
-            .map(|layer| {
-                LayerNoCacheLoweringPlan::new(layer_idx, layer)
-                    .internal_helper_relations
-                    .keys()
-                    .copied()
-                    .collect::<BTreeSet<_>>()
-            })
-            .unwrap_or_default();
-        let gpu_base_keys = gpu_layer
-            .base_field_inputs
-            .keys()
-            .copied()
-            .filter(|address| !internal_helper_addresses.contains(address))
-            .collect_vec();
+        let gpu_base_keys = gpu_layer.base_field_inputs.keys().copied().collect_vec();
         let cpu_base_keys = cpu_layer.base_field_inputs.keys().copied().collect_vec();
         assert_eq!(
             gpu_base_keys, cpu_base_keys,
@@ -3987,7 +4116,6 @@ fn assert_gpu_and_cpu_gkr_storage_match<
             .extension_field_inputs
             .keys()
             .copied()
-            .filter(|address| !internal_helper_addresses.contains(address))
             .collect_vec();
         let cpu_ext_keys = cpu_layer
             .extension_field_inputs
@@ -4012,6 +4140,36 @@ fn assert_gpu_and_cpu_gkr_storage_match<
     }
 }
 
+fn assert_no_same_layer_cached_storage_entries<E>(gpu_storage: &GpuGKRStorage<BF, E>) {
+    for (layer_idx, layer) in gpu_storage.layers.iter().enumerate() {
+        for address in layer
+            .base_field_inputs
+            .keys()
+            .chain(layer.extension_field_inputs.keys())
+        {
+            assert!(
+                !matches!(address, GKRAddress::Cached { layer, .. } if *layer == layer_idx),
+                "unexpected same-layer cached helper storage in layer {layer_idx}: {address:?}"
+            );
+        }
+    }
+}
+
+fn assert_no_same_layer_cached_kernel_addresses(layer_idx: usize, inputs: &GKRInputs, label: &str) {
+    for address in inputs
+        .inputs_in_base
+        .iter()
+        .chain(inputs.inputs_in_extension.iter())
+        .chain(inputs.outputs_in_base.iter())
+        .chain(inputs.outputs_in_extension.iter())
+    {
+        assert!(
+            !matches!(address, GKRAddress::Cached { layer, .. } if *layer == layer_idx),
+            "{label} unexpectedly referenced same-layer cached helper address {address:?}",
+        );
+    }
+}
+
 #[test]
 #[serial]
 fn run_basic_unrolled_async_scheduler_smoke_test() {
@@ -4025,6 +4183,7 @@ fn run_basic_unrolled_async_scheduler_smoke_test() {
         evaluation_point,
         seed,
         batching_challenge,
+        lookup_multiplicative_part,
         lookup_additive_part,
         constraints_batch_challenge,
         expected_proof_layers,
@@ -4039,6 +4198,7 @@ fn run_basic_unrolled_async_scheduler_smoke_test() {
             evaluation_point,
             seed,
             batching_challenge,
+            lookup_multiplicative_part,
             lookup_additive_part,
             constraints_batch_challenge,
             &context,
@@ -4084,6 +4244,7 @@ fn run_basic_unrolled_main_layer0_plan_matches_cpu_test() {
         evaluation_point: _,
         seed: _,
         batching_challenge,
+        lookup_multiplicative_part,
         lookup_additive_part,
         constraints_batch_challenge,
         expected_proof_layers: _,
@@ -4099,6 +4260,7 @@ fn run_basic_unrolled_main_layer0_plan_matches_cpu_test() {
     let mut main_layer_state = gpu_backward_state.into_main_layer_backward_state(
         compiled_circuit.clone(),
         external_challenges,
+        lookup_multiplicative_part,
         lookup_additive_part,
         constraints_batch_challenge,
     );
@@ -4122,6 +4284,7 @@ fn run_basic_unrolled_main_layer0_plan_matches_cpu_test() {
         main_layer_state.storage(),
         &external_challenges,
         batching_challenge,
+        lookup_multiplicative_part,
         lookup_additive_part,
         constraints_batch_challenge,
         compiled_circuit.memory_layout.total_width,
@@ -4222,6 +4385,7 @@ fn run_basic_unrolled_main_layer0_static_plan_matches_cpu_test() {
         evaluation_point: _,
         seed: _,
         batching_challenge,
+        lookup_multiplicative_part,
         lookup_additive_part,
         constraints_batch_challenge,
         expected_proof_layers: _,
@@ -4237,6 +4401,7 @@ fn run_basic_unrolled_main_layer0_static_plan_matches_cpu_test() {
     let mut main_layer_state = gpu_backward_state.into_main_layer_backward_state(
         compiled_circuit.clone(),
         external_challenges,
+        lookup_multiplicative_part,
         lookup_additive_part,
         constraints_batch_challenge,
     );
@@ -4260,6 +4425,7 @@ fn run_basic_unrolled_main_layer0_static_plan_matches_cpu_test() {
         main_layer_state.storage(),
         &external_challenges,
         batching_challenge,
+        lookup_multiplicative_part,
         lookup_additive_part,
         constraints_batch_challenge,
         compiled_circuit.memory_layout.total_width,
@@ -4351,6 +4517,7 @@ fn run_basic_unrolled_main_layer0_kernel_kind_trace_test() {
         external_challenges,
         mut gpu_backward_state,
         batching_challenge,
+        lookup_multiplicative_part,
         lookup_additive_part,
         constraints_batch_challenge,
         ..
@@ -4366,6 +4533,7 @@ fn run_basic_unrolled_main_layer0_kernel_kind_trace_test() {
     let mut main_layer_state = gpu_backward_state.into_main_layer_backward_state(
         compiled_circuit,
         external_challenges,
+        lookup_multiplicative_part,
         lookup_additive_part,
         constraints_batch_challenge,
     );
@@ -4402,6 +4570,7 @@ fn run_basic_unrolled_first_main_layer_static_vs_dynamic_execution_test() {
         mut current_point: Vec<E4>,
         mut seed: Seed,
         mut batching_challenge: E4,
+        lookup_multiplicative_part: E4,
         lookup_additive_part: E4,
         constraints_batch_challenge: E4,
         context: &ProverContext,
@@ -4437,6 +4606,7 @@ fn run_basic_unrolled_first_main_layer_static_vs_dynamic_execution_test() {
             state.into_main_layer_backward_state(
                 compiled_circuit.clone(),
                 external_challenges.clone(),
+                lookup_multiplicative_part,
                 lookup_additive_part,
                 constraints_batch_challenge,
             ),
@@ -4453,7 +4623,7 @@ fn run_basic_unrolled_first_main_layer_static_vs_dynamic_execution_test() {
             text_path: BASIC_UNROLLED_CPU_PARITY_TEXT_PATH,
             non_determinism_reads: &[15, 1],
             compute_cpu_reference: false,
-            device_allocator_block_log_size: 20,
+            device_allocator_block_log_size: default_fixture_device_allocator_block_log_size(),
         });
     assert!(expected_cpu_proof.is_none());
     let fixture_dynamic = build_basic_unrolled_async_backward_fixture_from_base(&base_fixture);
@@ -4475,6 +4645,7 @@ fn run_basic_unrolled_first_main_layer_static_vs_dynamic_execution_test() {
         fixture_dynamic.evaluation_point,
         fixture_dynamic.seed,
         fixture_dynamic.batching_challenge,
+        fixture_dynamic.lookup_multiplicative_part,
         fixture_dynamic.lookup_additive_part,
         fixture_dynamic.constraints_batch_challenge,
         &fixture_dynamic.context,
@@ -4490,6 +4661,7 @@ fn run_basic_unrolled_first_main_layer_static_vs_dynamic_execution_test() {
             fixture_static.evaluation_point,
             fixture_static.seed,
             fixture_static.batching_challenge,
+            fixture_static.lookup_multiplicative_part,
             fixture_static.lookup_additive_part,
             fixture_static.constraints_batch_challenge,
             &fixture_static.context,
@@ -4532,6 +4704,7 @@ fn run_basic_unrolled_first_main_layer_static_vs_dynamic_execution_test() {
         static_point,
         static_seed,
         static_batching_challenge,
+        fixture_static.lookup_multiplicative_part,
         fixture_static.lookup_additive_part,
         fixture_static.constraints_batch_challenge,
     );
@@ -4581,6 +4754,7 @@ fn run_basic_unrolled_main_layers_static_vs_dynamic_execution_test() {
         mut current_point: Vec<E4>,
         mut seed: Seed,
         mut batching_challenge: E4,
+        lookup_multiplicative_part: E4,
         lookup_additive_part: E4,
         constraints_batch_challenge: E4,
         context: &ProverContext,
@@ -4616,6 +4790,7 @@ fn run_basic_unrolled_main_layers_static_vs_dynamic_execution_test() {
             state.into_main_layer_backward_state(
                 compiled_circuit.clone(),
                 external_challenges.clone(),
+                lookup_multiplicative_part,
                 lookup_additive_part,
                 constraints_batch_challenge,
             ),
@@ -4643,6 +4818,7 @@ fn run_basic_unrolled_main_layers_static_vs_dynamic_execution_test() {
         fixture_dynamic.evaluation_point,
         fixture_dynamic.seed,
         fixture_dynamic.batching_challenge,
+        fixture_dynamic.lookup_multiplicative_part,
         fixture_dynamic.lookup_additive_part,
         fixture_dynamic.constraints_batch_challenge,
         &fixture_dynamic.context,
@@ -4662,6 +4838,7 @@ fn run_basic_unrolled_main_layers_static_vs_dynamic_execution_test() {
         fixture_static.evaluation_point,
         fixture_static.seed,
         fixture_static.batching_challenge,
+        fixture_static.lookup_multiplicative_part,
         fixture_static.lookup_additive_part,
         fixture_static.constraints_batch_challenge,
         &fixture_static.context,
@@ -4702,6 +4879,7 @@ fn run_basic_unrolled_main_layers_static_vs_dynamic_execution_test() {
             static_point.clone(),
             static_seed,
             static_batching_challenge,
+            fixture_static.lookup_multiplicative_part,
             fixture_static.lookup_additive_part,
             fixture_static.constraints_batch_challenge,
         );
@@ -4769,6 +4947,7 @@ fn run_basic_unrolled_async_allocator_regression_test() {
         evaluation_point,
         seed,
         batching_challenge,
+        lookup_multiplicative_part,
         lookup_additive_part,
         constraints_batch_challenge,
         expected_proof_layers: _,
@@ -4786,6 +4965,7 @@ fn run_basic_unrolled_async_allocator_regression_test() {
             evaluation_point,
             seed,
             batching_challenge,
+            lookup_multiplicative_part,
             lookup_additive_part,
             constraints_batch_challenge,
             &context,
@@ -4816,7 +4996,7 @@ fn forward_to_backward_handoff_releases_forward_scratch() {
             text_path: BASIC_UNROLLED_CPU_PARITY_TEXT_PATH,
             non_determinism_reads: &[15, 1],
             compute_cpu_reference: false,
-            device_allocator_block_log_size: 20,
+            device_allocator_block_log_size: default_fixture_device_allocator_block_log_size(),
         });
     assert!(expected_cpu_proof.is_none());
 
@@ -6156,75 +6336,53 @@ fn run_blake2_delegation_zero_call_workflow_input_parity_test() {
 }
 
 #[test]
-fn shift_binop_no_cache_lowering_regression_test() {
-    const TRACE_LEN_LOG2: usize = 24;
+#[serial]
+fn no_cache_main_layer_backward_plan_has_no_synthetic_readback_kernel_test() {
+    let BasicUnrolledAsyncBackwardFixture {
+        context,
+        compiled_circuit,
+        external_challenges,
+        mut gpu_backward_state,
+        lookup_multiplicative_part,
+        lookup_additive_part,
+        constraints_batch_challenge,
+        ..
+    } = prepare_basic_unrolled_async_backward_fixture(8);
 
-    let shift_binop_circuit =
-        compile_unrolled_circuit_state_transition_into_unrolled_gkr_without_caches::<BF>(
-            &|cs| shift_binop_table_addition_fn(cs),
-            &|cs| shift_binop_circuit_with_preprocessed_bytecode_for_gkr(cs),
-            1 << 20,
-            TRACE_LEN_LOG2,
-        );
-    let layer0 = &shift_binop_circuit.layers[0];
-    let lowering_plan = LayerNoCacheLoweringPlan::new(0, layer0);
-
-    assert!(
-        layer0.cached_relations.is_empty(),
-        "shift_binop no-cache regression expects no compiled cached relations on layer 0"
-    );
-    assert!(
-        !lowering_plan.internal_helper_relations.is_empty(),
-        "shift_binop no-cache regression expects GPU internal helper lowering on layer 0"
-    );
-
-    let mut helper_kinds = BTreeMap::<&'static str, usize>::new();
-    for relation in lowering_plan.internal_helper_relations.values() {
-        let kind = match relation {
-            NoFieldGKRCacheRelation::SingleColumnLookup { .. } => "SingleColumnLookup",
-            NoFieldGKRCacheRelation::VectorizedLookup(_) => "VectorizedLookup",
-            NoFieldGKRCacheRelation::VectorizedLookupSetup(..) => "VectorizedLookupSetup",
-            NoFieldGKRCacheRelation::MemoryTuple(..) => "MemoryTuple",
-        };
-        *helper_kinds.entry(kind).or_default() += 1;
+    while let Some(layer_plan) = gpu_backward_state
+        .prepare_next_layer_static(&context)
+        .unwrap()
+    {
+        drop(layer_plan);
     }
-    for required_kind in [
-        "SingleColumnLookup",
-        "VectorizedLookup",
-        "VectorizedLookupSetup",
-        "MemoryTuple",
-    ] {
-        assert!(
-            helper_kinds.contains_key(required_kind),
-            "expected layer 0 GPU lowering plan to materialize {required_kind} helpers"
+
+    let mut main_layer_state = gpu_backward_state.into_main_layer_backward_state(
+        compiled_circuit.clone(),
+        external_challenges,
+        lookup_multiplicative_part,
+        lookup_additive_part,
+        constraints_batch_challenge,
+    );
+
+    while let Some(layer_plan) = main_layer_state
+        .prepare_next_layer_static(&context)
+        .unwrap()
+    {
+        let compiled_layer = &compiled_circuit.layers[layer_plan.layer_idx];
+        assert_eq!(
+            layer_plan.kernel_plans().len(),
+            compiled_layer.gates.len() + compiled_layer.gates_with_external_connections.len(),
+            "layer {} should schedule exactly one kernel per compiled relation",
+            layer_plan.layer_idx,
         );
+        for kernel in layer_plan.kernel_plans() {
+            assert_no_same_layer_cached_kernel_addresses(
+                layer_plan.layer_idx,
+                &kernel.inputs,
+                "main-layer plan",
+            );
+        }
     }
-    assert!(
-        lowering_plan
-            .internal_helper_relations
-            .keys()
-            .all(|address| matches!(address, GKRAddress::Cached { layer: 0, .. })),
-        "shift_binop no-cache regression expects layer-0 internal helpers to stay on layer 0"
-    );
-    assert!(
-        lowering_plan
-            .lowered_gates
-            .iter()
-            .chain(lowering_plan.lowered_gates_with_external_connections.iter())
-            .all(|gate| {
-                !matches!(
-                    gate.enforced_relation,
-                    NoFieldGKRRelation::InitialGrandProductWithoutCaches { .. }
-                        | NoFieldGKRRelation::MaterializeGrandProductTermExpression { .. }
-                        | NoFieldGKRRelation::LookupPairFromBaseInputs { .. }
-                        | NoFieldGKRRelation::LookupWithDensAndSetupExpressions { .. }
-                        | NoFieldGKRRelation::LookupPairFromVectorInputs { .. }
-                        | NoFieldGKRRelation::LookupFromVectorInputWithSetup { .. }
-                        | NoFieldGKRRelation::LookupUnbalancedPairWithVectorInputs { .. }
-                )
-            }),
-        "shift_binop no-cache regression expects unsupported no-cache relations to be lowered away"
-    );
 }
 
 #[test]
@@ -6299,33 +6457,6 @@ fn run_shift_binop_no_cache_lowering_parity_test() {
         "expected hashed_fibonacci to exercise the shift family"
     );
     assert!(num_calls < NUM_CYCLES_PER_CHUNK);
-
-    let lowering_plan = LayerNoCacheLoweringPlan::new(0, &shift_binop_circuit.layers[0]);
-    assert!(
-        !lowering_plan.internal_helper_relations.is_empty(),
-        "shift_binop no-cache parity expects GPU internal helper lowering on layer 0"
-    );
-    let mut helper_kinds = BTreeMap::<&'static str, usize>::new();
-    for relation in lowering_plan.internal_helper_relations.values() {
-        let kind = match relation {
-            NoFieldGKRCacheRelation::SingleColumnLookup { .. } => "SingleColumnLookup",
-            NoFieldGKRCacheRelation::VectorizedLookup(_) => "VectorizedLookup",
-            NoFieldGKRCacheRelation::VectorizedLookupSetup(..) => "VectorizedLookupSetup",
-            NoFieldGKRCacheRelation::MemoryTuple(..) => "MemoryTuple",
-        };
-        *helper_kinds.entry(kind).or_default() += 1;
-    }
-    for required_kind in [
-        "SingleColumnLookup",
-        "VectorizedLookup",
-        "VectorizedLookupSetup",
-        "MemoryTuple",
-    ] {
-        assert!(
-            helper_kinds.contains_key(required_kind),
-            "expected layer 0 GPU lowering plan to materialize {required_kind} helpers"
-        );
-    }
 
     let mut replay_state = snapshotter.initial_snapshot.state;
     let mut ram_log_buffers = snapshotter
@@ -6598,6 +6729,7 @@ fn run_shift_binop_no_cache_lowering_parity_test() {
         &shift_binop_circuit,
         &context,
     );
+    assert_no_same_layer_cached_storage_entries(&gpu_forward_output.storage);
     assert_eq!(gpu_final_explicit_evaluations, final_explicit_evaluations);
     assert_eq!(gpu_evals_flattened, evals_flattened);
 }
@@ -7258,6 +7390,7 @@ fn run_basic_unrolled_stagewise_parity_test() {
                 evaluation_point.clone(),
                 backward_initial_seed,
                 batching_challenge,
+                lookup_alpha,
                 lookup_additive_part,
                 constraints_batch_challenge,
                 &context,
@@ -7638,8 +7771,8 @@ fn standalone_inits_and_teardowns_gpu_workflow_matches_cpu() {
         permutation_argument_additive_part,
         _marker: std::marker::PhantomData,
     };
-    let canonical_top_bits: Vec<_> = (0..compiled_circuit.memory_layout.teardown_sets.len() as u32)
-        .collect();
+    let canonical_top_bits: Vec<_> =
+        (0..compiled_circuit.memory_layout.teardown_sets.len() as u32).collect();
 
     let cpu_memory_columns = evaluate_init_and_teardown_memory_witness(
         inits_and_teardowns_columns.clone(),
@@ -7698,13 +7831,16 @@ fn standalone_inits_and_teardowns_gpu_workflow_matches_cpu() {
         trace_len.trailing_zeros() as usize,
         &worker,
     );
-    let cpu_memory_caps =
-        stage1_caps_from_tree(&mem_oracle.tree, whir_schedule.cap_size / whir_schedule.base_lde_factor);
+    let cpu_memory_caps = stage1_caps_from_tree(
+        &mem_oracle.tree,
+        whir_schedule.cap_size / whir_schedule.base_lde_factor,
+    );
 
     let context = make_test_context(64 * 1024, 1024);
     {
         let tracing_data_host = make_non_memory_tracing_host_for_test(Vec::new());
-        let mut tracing_data_transfer = TracingDataTransfer::new(tracing_data_host, &context).unwrap();
+        let mut tracing_data_transfer =
+            TracingDataTransfer::new(tracing_data_host, &context).unwrap();
         let inits_and_teardowns_host = ChunkedTraceHolder {
             chunks: vec![Arc::new(flattened_inits_and_teardowns.clone())],
         };
@@ -7741,7 +7877,10 @@ fn standalone_inits_and_teardowns_gpu_workflow_matches_cpu() {
         )
         .unwrap();
         context.get_exec_stream().synchronize().unwrap();
-        stage1_output.memory_trace_holder.commit_all(&context).unwrap();
+        stage1_output
+            .memory_trace_holder
+            .commit_all(&context)
+            .unwrap();
         context.get_exec_stream().synchronize().unwrap();
 
         if let Some(mismatch) = describe_first_trace_holder_column_mismatch(
@@ -7771,8 +7910,9 @@ fn standalone_inits_and_teardowns_gpu_workflow_matches_cpu() {
             &mut cpu_transcript_input,
         );
         let mut cpu_seed = Transcript::commit_initial(&cpu_transcript_input);
-        let cpu_lookup_challenges: [E4; 3] =
-            draw_random_field_els::<BF, E4>(&mut cpu_seed, 3).try_into().unwrap();
+        let cpu_lookup_challenges: [E4; 3] = draw_random_field_els::<BF, E4>(&mut cpu_seed, 3)
+            .try_into()
+            .unwrap();
 
         let mut gpu_transcript_input = Vec::new();
         gpu_transcript_input.extend_from_slice(&canonical_top_bits);
@@ -7783,9 +7923,13 @@ fn standalone_inits_and_teardowns_gpu_workflow_matches_cpu() {
             }
         }
         let mut gpu_seed = Transcript::commit_initial(&gpu_transcript_input);
-        let gpu_lookup_challenges: [E4; 3] =
-            draw_random_field_els::<BF, E4>(&mut gpu_seed, 3).try_into().unwrap();
-        assert_eq!(gpu_seed, cpu_seed, "transcript seed initialization diverged");
+        let gpu_lookup_challenges: [E4; 3] = draw_random_field_els::<BF, E4>(&mut gpu_seed, 3)
+            .try_into()
+            .unwrap();
+        assert_eq!(
+            gpu_seed, cpu_seed,
+            "transcript seed initialization diverged"
+        );
         assert_eq!(
             gpu_lookup_challenges, cpu_lookup_challenges,
             "transcript-derived lookup challenges diverged"
@@ -7795,8 +7939,8 @@ fn standalone_inits_and_teardowns_gpu_workflow_matches_cpu() {
             cpu_lookup_challenges;
         let mut gkr_storage = GKRStorage::<BF, E4>::default();
         insert_virtual_setup_polys_for_test(trace_len, &mut gkr_storage);
-        let (preprocessed_generic_lookup, decoder_lookup_fill_value) =
-            setup.preprocess_generic_lookups(
+        let (preprocessed_generic_lookup, decoder_lookup_fill_value) = setup
+            .preprocess_generic_lookups(
                 &compiled_circuit,
                 lookup_alpha,
                 trace_len,
@@ -7957,12 +8101,18 @@ fn standalone_inits_and_teardowns_trivial_accumulator_matches_cpu_expectation() 
             OutputType::PermutationProduct,
             [vec![E4::ONE; 4], vec![E4::ONE; 4]],
         ),
-        (OutputType::Lookup16Bits, [vec![E4::ONE; 4], vec![E4::ONE; 4]]),
+        (
+            OutputType::Lookup16Bits,
+            [vec![E4::ONE; 4], vec![E4::ONE; 4]],
+        ),
         (
             OutputType::LookupTimestamps,
             [vec![E4::ONE; 4], vec![E4::ONE; 4]],
         ),
-        (OutputType::GenericLookup, [vec![E4::ONE; 4], vec![E4::ONE; 4]]),
+        (
+            OutputType::GenericLookup,
+            [vec![E4::ONE; 4], vec![E4::ONE; 4]],
+        ),
     ]);
 
     assert_eq!(

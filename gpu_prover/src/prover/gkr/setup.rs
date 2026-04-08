@@ -470,7 +470,9 @@ where
         &host_decoder_lookup_fill_value,
         context.get_exec_stream(),
     )?;
-    let device_lookup_alpha_powers = if let Some(host_alpha_powers) = host_lookup_alpha_powers.as_ref() {
+    let device_lookup_alpha_powers = if let Some(host_alpha_powers) =
+        host_lookup_alpha_powers.as_ref()
+    {
         let mut device = context.alloc(host_alpha_powers.len(), AllocationPlacement::BestFit)?;
         memory_copy_async(&mut device, host_alpha_powers, context.get_exec_stream())?;
         Some(device)
@@ -478,9 +480,11 @@ where
         None
     };
 
-    if let (Some(generic_lookup), Some(device_lookup_alpha_powers), Some((setup_trace_holder, _))) =
-        (generic_lookup.as_mut(), device_lookup_alpha_powers.as_ref(), setup_trace_holder)
-    {
+    if let (Some(generic_lookup), Some(device_lookup_alpha_powers), Some((setup_trace_holder, _))) = (
+        generic_lookup.as_mut(),
+        device_lookup_alpha_powers.as_ref(),
+        setup_trace_holder,
+    ) {
         let generic_lookup_range = Range::new("gkr.forward_setup.build_generic_lookup")?;
         generic_lookup_range.start(stream)?;
         let raw = setup_trace_holder.get_hypercube_evals();
@@ -546,11 +550,11 @@ fn insert_virtual_setup_polys<E>(
         context,
     )?;
     let worker = worker::Worker::new();
-    let (low, high) =
-        materialize_virtual_inits_and_teardowns_base_address_setup_poly::<BF, std::alloc::Global, 2>(
-            trace_len_log2,
-            &worker,
-        );
+    let (low, high) = materialize_virtual_inits_and_teardowns_base_address_setup_poly::<
+        BF,
+        std::alloc::Global,
+        2,
+    >(trace_len_log2, &worker);
     upload_virtual_setup_poly(
         storage,
         GKRAddress::VirtualSetup(VirtualSetupPoly::InitsAndTeardownsLow),
@@ -808,10 +812,10 @@ mod tests {
     use era_cudart::memory::memory_copy_async;
     use field::{FieldExtension, PrimeField};
     use itertools::Itertools;
+    use prover::gkr::virtual_polys::init_and_teardown_base::materialize_virtual_inits_and_teardowns_base_address_setup_poly;
     use prover::merkle_trees::{
         ColumnMajorMerkleTreeConstructor, DefaultTreeConstructor, MerkleTreeCapVarLength,
     };
-    use prover::gkr::virtual_polys::init_and_teardown_base::materialize_virtual_inits_and_teardowns_base_address_setup_poly;
     use serial_test::serial;
     use worker::Worker;
 

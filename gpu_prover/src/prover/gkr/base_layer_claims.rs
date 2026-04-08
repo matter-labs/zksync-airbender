@@ -17,6 +17,7 @@ use crate::allocator::tracker::AllocationPlacement;
 use crate::ops::cub::device_reduce::{
     batch_reduce, get_batch_reduce_temp_storage_bytes, ReduceOperation,
 };
+use crate::ops::cub::CUB_TEMP_STORAGE_EXTRA_ALIGNMENT_LOG2;
 use crate::primitives::callbacks::Callbacks;
 use crate::primitives::context::{HostAllocation, ProverContext};
 use crate::primitives::device_structures::DeviceMatrix;
@@ -305,11 +306,11 @@ fn populate_virtual_setup_claims<E>(
                 trace_len_log2,
             )
         });
-    let (inits_low, inits_high) =
-        evaluate_virtual_inits_and_teardowns_base_address_setup_polys::<BF, E, 2>(
-            claim_point,
-            trace_len_log2,
-        );
+    let (inits_low, inits_high) = evaluate_virtual_inits_and_teardowns_base_address_setup_polys::<
+        BF,
+        E,
+        2,
+    >(claim_point, trace_len_log2);
     completed_claims
         .entry(GKRAddress::VirtualSetup(
             VirtualSetupPoly::InitsAndTeardownsLow,
@@ -361,7 +362,11 @@ where
         columns_count as i32,
         blocks_count as i32,
     )?;
-    let mut reduction_temp = context.alloc(reduction_temp_bytes, AllocationPlacement::BestFit)?;
+    let mut reduction_temp = context
+        .alloc_with_extra_alignment::<u8, CUB_TEMP_STORAGE_EXTRA_ALIGNMENT_LOG2>(
+            reduction_temp_bytes,
+            AllocationPlacement::BestFit,
+        )?;
     let stream = context.get_exec_stream();
     let reduction_range = Range::new(format!("gkr.base_layer_claims.reduce.{label}"))?;
     reduction_range.start(stream)?;
@@ -745,27 +750,22 @@ mod tests {
             );
 
         assert_eq!(
-            output.completed_claims[&GKRAddress::VirtualSetup(
-                VirtualSetupPoly::RangeCheck16Bits,
-            )],
+            output.completed_claims[&GKRAddress::VirtualSetup(VirtualSetupPoly::RangeCheck16Bits,)],
             expected_range_16,
         );
         assert_eq!(
-            output.completed_claims[&GKRAddress::VirtualSetup(
-                VirtualSetupPoly::RangeCheckTimestamp,
-            )],
+            output.completed_claims
+                [&GKRAddress::VirtualSetup(VirtualSetupPoly::RangeCheckTimestamp,)],
             expected_timestamp,
         );
         assert_eq!(
-            output.completed_claims[&GKRAddress::VirtualSetup(
-                VirtualSetupPoly::InitsAndTeardownsLow,
-            )],
+            output.completed_claims
+                [&GKRAddress::VirtualSetup(VirtualSetupPoly::InitsAndTeardownsLow,)],
             expected_inits_low,
         );
         assert_eq!(
-            output.completed_claims[&GKRAddress::VirtualSetup(
-                VirtualSetupPoly::InitsAndTeardownsHigh,
-            )],
+            output.completed_claims
+                [&GKRAddress::VirtualSetup(VirtualSetupPoly::InitsAndTeardownsHigh,)],
             expected_inits_high,
         );
         assert_eq!(output.mem_polys_claims, expected_memory);

@@ -17,7 +17,8 @@ use crate::prover::tracing_data::{
 use crate::witness::memory_delegation::generate_memory_and_witness_values_delegation;
 use crate::witness::memory_unrolled::{
     generate_memory_and_witness_values_unrolled_inits_and_teardowns,
-    generate_memory_and_witness_values_unrolled_memory, generate_memory_and_witness_values_unrolled_non_memory,
+    generate_memory_and_witness_values_unrolled_memory,
+    generate_memory_and_witness_values_unrolled_non_memory,
 };
 use crate::witness::multiplicities::{
     generate_generic_lookup_multiplicities, generate_range_check_lookup_mappings,
@@ -508,6 +509,40 @@ impl GpuGKRStage1Output {
             witness_trace_holder,
             scratch_space_trace: scratch_space_trace.map(Arc::new),
             lookup_mappings,
+        })
+    }
+
+    #[cfg(test)]
+    pub(crate) fn empty_for_tests(context: &ProverContext) -> CudaResult<Self> {
+        Ok(Self {
+            tracing_ranges: Vec::new(),
+            memory_trace_holder: TraceHolder::new_without_cosets(
+                1,
+                0,
+                0,
+                0,
+                0,
+                TreesCacheMode::CacheNone,
+                context,
+            )?,
+            witness_trace_holder: TraceHolder::new_without_cosets(
+                1,
+                0,
+                0,
+                0,
+                0,
+                TreesCacheMode::CacheNone,
+                context,
+            )?,
+            scratch_space_trace: None,
+            lookup_mappings: GpuGKRLookupMappings {
+                generic_family: None,
+                range_check_16: None,
+                timestamp: None,
+                trace_len: 0,
+                num_generic_sets: 0,
+                has_decoder: false,
+            },
         })
     }
 }
