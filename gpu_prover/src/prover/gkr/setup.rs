@@ -2,7 +2,7 @@ use std::marker::PhantomData;
 use std::ptr::{null, null_mut};
 use std::sync::Arc;
 
-use cs::definitions::{GKRAddress, VirtualSetupPoly, TIMESTAMP_COLUMNS_NUM_BITS};
+use cs::definitions::GKRAddress;
 use cs::gkr_compiler::GKRCircuitArtifact;
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
 use era_cudart::memory::memory_copy_async;
@@ -22,15 +22,13 @@ use crate::primitives::context::{DeviceAllocation, HostAllocation, ProverContext
 use crate::primitives::device_tracing::Range;
 use crate::primitives::field::{BF, E4};
 use crate::primitives::static_host::{
-    alloc_static_pinned_box_from_slice, alloc_static_pinned_box_uninit, StaticPinnedBox,
+    StaticPinnedBox, alloc_static_pinned_box_from_slice, alloc_static_pinned_box_uninit,
 };
 use crate::primitives::transfer::Transfer;
-use crate::primitives::utils::{get_grid_block_dims_for_threads_count, WARP_SIZE};
-use crate::prover::trace_holder::{allocate_tree_caps, TraceHolder, TreesCacheMode, TreesHolder};
+use crate::primitives::utils::{WARP_SIZE, get_grid_block_dims_for_threads_count};
+use crate::prover::trace_holder::{TraceHolder, TreesCacheMode, TreesHolder, allocate_tree_caps};
 use cs::tables::TableType;
 use prover::gkr::prover::setup::GKRSetup as CpuGKRSetup;
-use prover::gkr::virtual_polys::init_and_teardown_base::materialize_virtual_inits_and_teardowns_base_address_setup_poly;
-use prover::gkr::virtual_polys::range_check::materialize_virtual_range_check_setup_poly;
 
 pub(crate) use super::setup_kernels::*;
 
@@ -289,7 +287,6 @@ impl<'a> GpuGKRSetupTransfer<'a> {
 
         let mut storage = GpuGKRStorage::default();
         self.bind_setup_columns_into_storage(&mut storage);
-        insert_virtual_setup_polys(&mut storage, self.trace_holder.log_domain_size, context)?;
         bind_trace_holder_columns_into_storage(
             memory_trace_holder,
             &mut storage,
@@ -516,61 +513,7 @@ where
     })
 }
 
-fn upload_virtual_setup_poly<E>(
-    storage: &mut GpuGKRStorage<BF, E>,
-    address: GKRAddress,
-    values: Box<[BF]>,
-    context: &ProverContext,
-) -> CudaResult<()> {
-    let mut device = context.alloc(values.len(), AllocationPlacement::BestFit)?;
-    memory_copy_async(&mut device, &values[..], context.get_exec_stream())?;
-    storage.insert_base_field_at_layer(0, address, GpuBaseFieldPoly::new(device));
-    Ok(())
-}
-
-fn insert_virtual_setup_polys<E>(
-    storage: &mut GpuGKRStorage<BF, E>,
-    trace_len_log2: u32,
-    context: &ProverContext,
-) -> CudaResult<()> {
-    upload_virtual_setup_poly(
-        storage,
-        GKRAddress::VirtualSetup(VirtualSetupPoly::RangeCheck16Bits),
-        materialize_virtual_range_check_setup_poly::<BF, std::alloc::Global, 16>(trace_len_log2),
-        context,
-    )?;
-    upload_virtual_setup_poly(
-        storage,
-        GKRAddress::VirtualSetup(VirtualSetupPoly::RangeCheckTimestamp),
-        materialize_virtual_range_check_setup_poly::<
-            BF,
-            std::alloc::Global,
-            TIMESTAMP_COLUMNS_NUM_BITS,
-        >(trace_len_log2),
-        context,
-    )?;
-    let worker = worker::Worker::new();
-    let (low, high) = materialize_virtual_inits_and_teardowns_base_address_setup_poly::<
-        BF,
-        std::alloc::Global,
-        2,
-    >(trace_len_log2, &worker);
-    upload_virtual_setup_poly(
-        storage,
-        GKRAddress::VirtualSetup(VirtualSetupPoly::InitsAndTeardownsLow),
-        low,
-        context,
-    )?;
-    upload_virtual_setup_poly(
-        storage,
-        GKRAddress::VirtualSetup(VirtualSetupPoly::InitsAndTeardownsHigh),
-        high,
-        context,
-    )?;
-    Ok(())
-}
-
-pub(crate) fn bootstrap_storage_with_virtual_setup<E>(
+pub(crate) fn bootstrap_storage_from_trace_holders<E>(
     setup_trace_holder: Option<&TraceHolder<BF>>,
     setup_columns_count: usize,
     trace_len_log2: u32,
@@ -634,7 +577,6 @@ pub(crate) fn bootstrap_storage_with_virtual_setup<E>(
     if let Some(setup_trace_holder) = setup_trace_holder {
         bind_trace_holder_columns_into_storage(setup_trace_holder, &mut storage, GKRAddress::Setup);
     }
-    insert_virtual_setup_polys(&mut storage, trace_len_log2, context)?;
     bind_trace_holder_columns_into_storage(
         memory_trace_holder,
         &mut storage,
@@ -808,11 +750,10 @@ mod tests {
     use std::ops::DerefMut;
     use std::sync::Arc;
 
-    use cs::definitions::TIMESTAMP_COLUMNS_NUM_BITS;
+    use cs::definitions::VirtualSetupPoly;
     use era_cudart::memory::memory_copy_async;
     use field::{FieldExtension, PrimeField};
     use itertools::Itertools;
-    use prover::gkr::virtual_polys::init_and_teardown_base::materialize_virtual_inits_and_teardowns_base_address_setup_poly;
     use prover::merkle_trees::{
         ColumnMajorMerkleTreeConstructor, DefaultTreeConstructor, MerkleTreeCapVarLength,
     };
@@ -1237,47 +1178,18 @@ mod tests {
                 &setup.hypercube_evals[column][..]
             );
         }
-        let virtual_range_16 = copy_base_poly_from_storage(
-            &storage,
+        for address in [
             GKRAddress::VirtualSetup(VirtualSetupPoly::RangeCheck16Bits),
-            &context,
-        );
-        assert_eq!(
-            virtual_range_16,
-            materialize_virtual_range_check_setup_poly::<BF, Global, 16>(
-                trace_len.trailing_zeros()
-            )
-            .into_vec()
-        );
-        let virtual_timestamp = copy_base_poly_from_storage(
-            &storage,
             GKRAddress::VirtualSetup(VirtualSetupPoly::RangeCheckTimestamp),
-            &context,
-        );
-        assert_eq!(
-            virtual_timestamp,
-            materialize_virtual_range_check_setup_poly::<BF, Global, TIMESTAMP_COLUMNS_NUM_BITS>(
-                trace_len.trailing_zeros()
-            )
-            .into_vec()
-        );
-        let (expected_inits_low, expected_inits_high) =
-            materialize_virtual_inits_and_teardowns_base_address_setup_poly::<BF, Global, 2>(
-                trace_len.trailing_zeros(),
-                &Worker::new(),
-            );
-        let virtual_inits_low = copy_base_poly_from_storage(
-            &storage,
             GKRAddress::VirtualSetup(VirtualSetupPoly::InitsAndTeardownsLow),
-            &context,
-        );
-        assert_eq!(virtual_inits_low, expected_inits_low.into_vec());
-        let virtual_inits_high = copy_base_poly_from_storage(
-            &storage,
             GKRAddress::VirtualSetup(VirtualSetupPoly::InitsAndTeardownsHigh),
-            &context,
-        );
-        assert_eq!(virtual_inits_high, expected_inits_high.into_vec());
+        ] {
+            assert!(
+                storage.try_get_base_poly(address).is_none(),
+                "virtual setup source {:?} should not be materialized in storage",
+                address
+            );
+        }
         for column in 0..memory_columns {
             let expected = &memory_values[column * trace_len..(column + 1) * trace_len];
             assert_eq!(
@@ -1305,14 +1217,12 @@ mod tests {
     #[test]
     #[cfg(not(no_cuda))]
     #[serial]
-    fn bootstrap_storage_without_uploaded_setup_materializes_init_teardown_virtual_setup_polys() {
+    fn bootstrap_storage_without_uploaded_setup_leaves_virtual_setup_unmaterialized() {
         let trace_len = 1usize << 19;
         let log_lde_factor = 1u32;
         let log_rows_per_leaf = 1u32;
         let log_tree_cap_size = 1u32;
         let context = make_test_context(256, 64);
-        let worker = Worker::new();
-
         let memory_values = (0..trace_len)
             .map(|i| BF::from_u32_unchecked(i as u32 + 1))
             .collect_vec();
@@ -1335,7 +1245,7 @@ mod tests {
             &context,
         );
 
-        let storage = bootstrap_storage_with_virtual_setup::<E4>(
+        let storage = bootstrap_storage_from_trace_holders::<E4>(
             None,
             0,
             trace_len.trailing_zeros(),
@@ -1348,27 +1258,18 @@ mod tests {
         )
         .unwrap();
 
-        let (expected_low, expected_high) =
-            materialize_virtual_inits_and_teardowns_base_address_setup_poly::<BF, Global, 2>(
-                trace_len.trailing_zeros(),
-                &worker,
+        for address in [
+            GKRAddress::VirtualSetup(VirtualSetupPoly::RangeCheck16Bits),
+            GKRAddress::VirtualSetup(VirtualSetupPoly::RangeCheckTimestamp),
+            GKRAddress::VirtualSetup(VirtualSetupPoly::InitsAndTeardownsLow),
+            GKRAddress::VirtualSetup(VirtualSetupPoly::InitsAndTeardownsHigh),
+        ] {
+            assert!(
+                storage.try_get_base_poly(address).is_none(),
+                "virtual setup source {:?} should not be materialized in storage",
+                address
             );
-        assert_eq!(
-            copy_base_poly_from_storage(
-                &storage,
-                GKRAddress::VirtualSetup(VirtualSetupPoly::InitsAndTeardownsLow),
-                &context,
-            ),
-            expected_low.into_vec()
-        );
-        assert_eq!(
-            copy_base_poly_from_storage(
-                &storage,
-                GKRAddress::VirtualSetup(VirtualSetupPoly::InitsAndTeardownsHigh),
-                &context,
-            ),
-            expected_high.into_vec()
-        );
+        }
     }
 
     #[test]

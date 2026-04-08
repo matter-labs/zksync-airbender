@@ -35,8 +35,7 @@ use prover::transcript::Seed;
 
 use super::backward::evaluate_constraint_prefactor;
 use super::{
-    alloc_host_and_schedule_copy, GpuBaseFieldPolySource,
-    GpuBaseFieldPolySourceAfterOneFoldingLaunchDescriptor,
+    GpuBaseFieldPolySource, GpuBaseFieldPolySourceAfterOneFoldingLaunchDescriptor,
     GpuBaseFieldPolySourceAfterTwoFoldingsLaunchDescriptor,
     GpuExtensionFieldPolyContinuingLaunchDescriptor, GpuExtensionFieldPolyInitialSource,
     GpuGKRStorage, GpuSumcheckRound0HostLaunchDescriptors, GpuSumcheckRound0LaunchDescriptors,
@@ -45,19 +44,19 @@ use super::{
     GpuSumcheckRound2HostLaunchDescriptors, GpuSumcheckRound2PreparedStorage,
     GpuSumcheckRound2ScheduledLaunchDescriptors, GpuSumcheckRound3AndBeyondHostLaunchDescriptors,
     GpuSumcheckRound3AndBeyondPreparedStorage,
-    GpuSumcheckRound3AndBeyondScheduledLaunchDescriptors,
+    GpuSumcheckRound3AndBeyondScheduledLaunchDescriptors, alloc_host_and_schedule_copy,
 };
 use crate::allocator::tracker::AllocationPlacement;
 use crate::ops::cub::device_reduce::{
-    get_reduce_temp_storage_bytes, reduce, Reduce, ReduceOperation,
+    Reduce, ReduceOperation, get_reduce_temp_storage_bytes, reduce,
 };
-use crate::ops::simple::{mul_into_y, BinaryOp, Mul};
+use crate::ops::simple::{BinaryOp, Mul, mul_into_y};
 use crate::primitives::callbacks::Callbacks;
 use crate::primitives::context::{DeviceAllocation, HostAllocation, ProverContext, UnsafeAccessor};
 use crate::primitives::device_structures::{DeviceVectorChunk, DeviceVectorChunkMut};
 use crate::primitives::device_tracing::Range;
 use crate::primitives::field::{BF, E4};
-use crate::primitives::utils::{get_grid_block_dims_for_threads_count, WARP_SIZE};
+use crate::primitives::utils::{WARP_SIZE, get_grid_block_dims_for_threads_count};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct DimensionReducingKernelBlueprint<E> {
@@ -1241,8 +1240,8 @@ where
     }
 }
 
-pub(crate) fn make_deferred_backward_workflow_state<E>(
-) -> Arc<Mutex<ScheduledBackwardWorkflowState<E>>>
+pub(crate) fn make_deferred_backward_workflow_state<E>()
+-> Arc<Mutex<ScheduledBackwardWorkflowState<E>>>
 where
     E: FieldExtension<BF> + Field,
 {

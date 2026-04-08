@@ -9,4 +9,17 @@ namespace airbender::prover::gkr {
 
 GKR_FORWARD_CACHE_KERNELS(e4);
 
+#define GKR_VIRTUAL_BASE_ACCUM_KERNELS(arg_t)                                                                                                                  \
+  EXTERN __global__ void ab_gkr_virtual_base_accum_##arg_t##_kernel(const gkr_base_source_kind source_kind, const arg_t scalar, arg_t *dst,                    \
+                                                                    const unsigned count) {                                                                    \
+    const unsigned gid = static_cast<unsigned>(blockIdx.x) * blockDim.x + threadIdx.x;                                                                         \
+    if (gid >= count)                                                                                                                                          \
+      return;                                                                                                                                                  \
+    arg_t value = load<arg_t, ld_modifier::cs>(dst, gid);                                                                                                      \
+    value = arg_t::add(value, arg_t::mul(scalar, gkr_virtual_base_value(source_kind, gid)));                                                                   \
+    store<arg_t, st_modifier::cs>(dst, value, gid);                                                                                                            \
+  }
+
+GKR_VIRTUAL_BASE_ACCUM_KERNELS(e4);
+
 } // namespace airbender::prover::gkr

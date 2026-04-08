@@ -6,11 +6,11 @@ use std::slice;
 use std::sync::{Arc, Mutex};
 
 use cs::definitions::{
-    gkr::AddressSpaceType, GKRAddress, MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX,
+    GKRAddress, MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX,
     MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX,
     MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX,
     MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX, MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX,
-    MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX,
+    MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX, gkr::AddressSpaceType,
 };
 use cs::gkr_compiler::{
     GKRCircuitArtifact, GKRLayerDescription, InitsOrTeardownsTimestampAndValue, NoFieldGKRRelation,
@@ -44,8 +44,7 @@ use prover::transcript::Seed;
 pub(crate) use super::backward_kernels::*;
 use super::transform::normalize_compiled_circuit_for_gpu;
 use super::{
-    alloc_host_and_schedule_copy, GpuBaseFieldPolySource,
-    GpuBaseFieldPolySourceAfterOneFoldingLaunchDescriptor,
+    GpuBaseFieldPolySource, GpuBaseFieldPolySourceAfterOneFoldingLaunchDescriptor,
     GpuBaseFieldPolySourceAfterTwoFoldingsLaunchDescriptor,
     GpuExtensionFieldPolyContinuingLaunchDescriptor, GpuExtensionFieldPolyInitialSource,
     GpuGKRStorage, GpuSumcheckRound0HostLaunchDescriptors, GpuSumcheckRound0LaunchDescriptors,
@@ -54,20 +53,20 @@ use super::{
     GpuSumcheckRound2HostLaunchDescriptors, GpuSumcheckRound2PreparedStorage,
     GpuSumcheckRound2ScheduledLaunchDescriptors, GpuSumcheckRound3AndBeyondHostLaunchDescriptors,
     GpuSumcheckRound3AndBeyondPreparedStorage,
-    GpuSumcheckRound3AndBeyondScheduledLaunchDescriptors,
+    GpuSumcheckRound3AndBeyondScheduledLaunchDescriptors, alloc_host_and_schedule_copy,
 };
 use crate::allocator::tracker::AllocationPlacement;
-use crate::ops::cub::device_reduce::{
-    get_reduce_temp_storage_bytes, reduce, Reduce, ReduceOperation,
-};
 use crate::ops::cub::CUB_TEMP_STORAGE_EXTRA_ALIGNMENT_LOG2;
-use crate::ops::simple::{mul_into_y, BinaryOp, Mul};
+use crate::ops::cub::device_reduce::{
+    Reduce, ReduceOperation, get_reduce_temp_storage_bytes, reduce,
+};
+use crate::ops::simple::{BinaryOp, Mul, mul_into_y};
 use crate::primitives::callbacks::Callbacks;
 use crate::primitives::context::{DeviceAllocation, HostAllocation, ProverContext, UnsafeAccessor};
 use crate::primitives::device_structures::{DeviceVectorChunk, DeviceVectorChunkMut};
 use crate::primitives::device_tracing::Range;
 use crate::primitives::field::{BF, E4};
-use crate::primitives::utils::{get_grid_block_dims_for_threads_count, WARP_SIZE};
+use crate::primitives::utils::{WARP_SIZE, get_grid_block_dims_for_threads_count};
 
 fn remap_constraint_input(
     mapping: &mut BTreeMap<GKRAddress, usize>,
@@ -105,15 +104,19 @@ fn memory_query_as_flattened_relation<E: Field + FieldExtension<BF>>(
         }
         cs::gkr_compiler::CompiledAddressSpaceRelationStrict::IsRam(offset) => {
             assert_eq!(AddressSpaceType::RAM as u8, 1);
-            assert!(result
-                .insert(GKRAddress::BaseLayerMemory(offset), E::ONE)
-                .is_none());
+            assert!(
+                result
+                    .insert(GKRAddress::BaseLayerMemory(offset), E::ONE)
+                    .is_none()
+            );
         }
         cs::gkr_compiler::CompiledAddressSpaceRelationStrict::IsRegister(offset) => {
             assert_eq!(AddressSpaceType::Register as u8, 0);
-            assert!(result
-                .insert(GKRAddress::BaseLayerMemory(offset), E::MINUS_ONE)
-                .is_none());
+            assert!(
+                result
+                    .insert(GKRAddress::BaseLayerMemory(offset), E::MINUS_ONE)
+                    .is_none()
+            );
             constant_term.add_assign_base(&BF::ONE);
         }
     }
@@ -135,9 +138,11 @@ fn memory_query_as_flattened_relation<E: Field + FieldExtension<BF>>(
         cs::gkr_compiler::CompiledAddressStrict::U16Space(offset) => {
             let challenge = external_challenges.permutation_argument_linearization_challenges
                 [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
-            assert!(result
-                .insert(GKRAddress::BaseLayerMemory(*offset), challenge)
-                .is_none());
+            assert!(
+                result
+                    .insert(GKRAddress::BaseLayerMemory(*offset), challenge)
+                    .is_none()
+            );
         }
         cs::gkr_compiler::CompiledAddressStrict::U32Space([low, high]) => {
             for (idx, offset) in [
@@ -146,9 +151,11 @@ fn memory_query_as_flattened_relation<E: Field + FieldExtension<BF>>(
             ] {
                 let challenge =
                     external_challenges.permutation_argument_linearization_challenges[idx];
-                assert!(result
-                    .insert(GKRAddress::BaseLayerMemory(offset), challenge)
-                    .is_none());
+                assert!(
+                    result
+                        .insert(GKRAddress::BaseLayerMemory(offset), challenge)
+                        .is_none()
+                );
             }
         }
         cs::gkr_compiler::CompiledAddressStrict::U32SpaceGeneric(..) => {
@@ -165,26 +172,32 @@ fn memory_query_as_flattened_relation<E: Field + FieldExtension<BF>>(
                     .permutation_argument_linearization_challenges
                     [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
                 challenge.mul_assign_by_base(&BF::from_u32_unchecked(c as u32));
-                assert!(result
-                    .insert(GKRAddress::BaseLayerMemory(offset), challenge)
-                    .is_none());
+                assert!(
+                    result
+                        .insert(GKRAddress::BaseLayerMemory(offset), challenge)
+                        .is_none()
+                );
             }
             {
                 let mut challenge = external_challenges
                     .permutation_argument_linearization_challenges
                     [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
-                assert!(result
-                    .insert(GKRAddress::BaseLayerMemory(*low_base), challenge)
-                    .is_none());
+                assert!(
+                    result
+                        .insert(GKRAddress::BaseLayerMemory(*low_base), challenge)
+                        .is_none()
+                );
                 challenge.mul_assign_by_base(&BF::from_u32_unchecked(*low_offset as u32));
                 constant_term.add_assign(&challenge);
             }
             {
                 let challenge = external_challenges.permutation_argument_linearization_challenges
                     [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
-                assert!(result
-                    .insert(GKRAddress::BaseLayerMemory(*high), challenge)
-                    .is_none());
+                assert!(
+                    result
+                        .insert(GKRAddress::BaseLayerMemory(*high), challenge)
+                        .is_none()
+                );
             }
         }
     }
@@ -196,18 +209,22 @@ fn memory_query_as_flattened_relation<E: Field + FieldExtension<BF>>(
                 let mut challenge = external_challenges
                     .permutation_argument_linearization_challenges
                     [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
-                assert!(result
-                    .insert(GKRAddress::BaseLayerMemory(ts[0]), challenge)
-                    .is_none());
+                assert!(
+                    result
+                        .insert(GKRAddress::BaseLayerMemory(ts[0]), challenge)
+                        .is_none()
+                );
                 challenge.mul_assign_by_base(&BF::from_u32_unchecked(rel.timestamp_offset as u32));
                 constant_term.add_assign(&challenge);
             }
             {
                 let challenge = external_challenges.permutation_argument_linearization_challenges
                     [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
-                assert!(result
-                    .insert(GKRAddress::BaseLayerMemory(ts[1]), challenge)
-                    .is_none());
+                assert!(
+                    result
+                        .insert(GKRAddress::BaseLayerMemory(ts[1]), challenge)
+                        .is_none()
+                );
             }
         }
     }
@@ -221,9 +238,11 @@ fn memory_query_as_flattened_relation<E: Field + FieldExtension<BF>>(
             ] {
                 let challenge =
                     external_challenges.permutation_argument_linearization_challenges[idx];
-                assert!(result
-                    .insert(GKRAddress::BaseLayerMemory(offset), challenge)
-                    .is_none());
+                assert!(
+                    result
+                        .insert(GKRAddress::BaseLayerMemory(offset), challenge)
+                        .is_none()
+                );
             }
         }
         cs::definitions::gkr::RamWordRepresentation::U8Limbs(read_value_bytes) => {
@@ -242,13 +261,17 @@ fn memory_query_as_flattened_relation<E: Field + FieldExtension<BF>>(
             ] {
                 let mut challenge =
                     external_challenges.permutation_argument_linearization_challenges[idx];
-                assert!(result
-                    .insert(GKRAddress::BaseLayerMemory(offset_low), challenge)
-                    .is_none());
+                assert!(
+                    result
+                        .insert(GKRAddress::BaseLayerMemory(offset_low), challenge)
+                        .is_none()
+                );
                 challenge.mul_assign_by_base(&byte_shift);
-                assert!(result
-                    .insert(GKRAddress::BaseLayerMemory(offset_high), challenge)
-                    .is_none());
+                assert!(
+                    result
+                        .insert(GKRAddress::BaseLayerMemory(offset_high), challenge)
+                        .is_none()
+                );
             }
         }
     }
@@ -271,9 +294,11 @@ fn single_column_lookup_as_flattened_relation<
     };
 
     for (coeff, address) in rel.input.linear_terms.iter() {
-        assert!(result
-            .insert(*address, E::from_base(BF::from_u32_unchecked(*coeff)))
-            .is_none());
+        assert!(
+            result
+                .insert(*address, E::from_base(BF::from_u32_unchecked(*coeff)))
+                .is_none()
+        );
     }
     constant_term.add_assign_base(&BF::from_u32_unchecked(rel.input.constant));
 
@@ -5503,7 +5528,9 @@ where
 #[cfg(test)]
 mod tests {
     use super::{
-        build_dimension_reducing_kernel_blueprints,
+        GKRCircuitArtifact, GpuGKRDimensionReducingBackwardState,
+        GpuGKRMainLayerConstraintLinearTerm, GpuGKRMainLayerConstraintQuadraticTerm,
+        GpuGKRMainLayerKernelKind, build_dimension_reducing_kernel_blueprints,
         build_inits_and_teardowns_initial_pair_inputs_and_metadata,
         build_lookup_from_vector_input_with_setup_inputs_and_metadata,
         build_lookup_with_dens_and_setup_expressions_inputs_and_metadata,
@@ -5512,22 +5539,21 @@ mod tests {
         canonical_inits_and_teardowns_top_bits, launch_build_eq_values, launch_lookup_continuation,
         launch_lookup_round0, launch_main_round0, launch_pairwise_continuation,
         launch_pairwise_round0, make_deferred_backward_workflow_state,
-        populate_backward_workflow_state, GKRCircuitArtifact, GpuGKRDimensionReducingBackwardState,
-        GpuGKRMainLayerConstraintLinearTerm, GpuGKRMainLayerConstraintQuadraticTerm,
-        GpuGKRMainLayerKernelKind,
+        populate_backward_workflow_state,
     };
     use crate::allocator::tracker::AllocationPlacement;
-    use crate::ops::cub::device_reduce::{get_reduce_temp_storage_bytes, ReduceOperation};
+    use crate::ops::cub::device_reduce::{ReduceOperation, get_reduce_temp_storage_bytes};
     use crate::primitives::callbacks::Callbacks;
     use crate::primitives::context::{DeviceAllocation, ProverContext};
     use crate::primitives::field::{BF, E4};
     use crate::prover::gkr::{
-        GpuBaseFieldPolySource, GpuExtensionFieldPolyContinuingLaunchDescriptor,
-        GpuExtensionFieldPolyInitialSource, GpuSumcheckRound0DeviceLaunchDescriptors,
-        GpuSumcheckRound0HostLaunchDescriptors, GpuSumcheckRound0ScheduledLaunchDescriptors,
+        GpuBaseFieldPolySource, GpuBaseFieldSourceKind,
+        GpuExtensionFieldPolyContinuingLaunchDescriptor, GpuExtensionFieldPolyInitialSource,
+        GpuSumcheckRound0DeviceLaunchDescriptors, GpuSumcheckRound0HostLaunchDescriptors,
+        GpuSumcheckRound0ScheduledLaunchDescriptors,
     };
     use crate::prover::test_utils::make_test_context;
-    use cs::definitions::{GKRAddress, VirtualSetupPoly, NUM_MEM_ARGUMENT_KEY_PARTS};
+    use cs::definitions::{GKRAddress, NUM_MEM_ARGUMENT_KEY_PARTS, VirtualSetupPoly};
     use cs::gkr_compiler::{
         GKRLayerDescription, GateArtifacts, InitsOrTeardownsTimestampAndValue, NoFieldGKRRelation,
         NoFieldMaxQuadraticConstraintsGKRRelation, NoFieldMaxQuadraticGKRRelation, OutputType,
@@ -5536,9 +5562,9 @@ mod tests {
     use era_cudart::slice::{CudaSlice, CudaSliceMut, DeviceSlice};
     use field::{Field, FieldExtension, PrimeField};
     use prover::gkr::high_bits_offset_for_inits_and_teardowns;
+    use prover::gkr::prover::GKRExternalChallenges;
     use prover::gkr::prover::dimension_reduction::forward::DimensionReducingInputOutput;
     use prover::gkr::prover::transcript_utils::{commit_field_els, draw_random_field_els};
-    use prover::gkr::prover::GKRExternalChallenges;
     use prover::gkr::sumcheck::evaluation_kernels::{
         BatchConstraintEvalGKRRelation, BatchedGKRKernel,
     };
@@ -5640,6 +5666,10 @@ mod tests {
             assert_eq!(
                 actual.next_layer_size, expected.next_layer_size,
                 "{message}: next_layer_size mismatch at index {idx}"
+            );
+            assert_eq!(
+                actual.source_kind, expected.source_kind,
+                "{message}: source_kind mismatch at index {idx}"
             );
         }
     }
@@ -8015,11 +8045,13 @@ mod tests {
                 GpuBaseFieldPolySource {
                     start: input.as_ptr(),
                     next_layer_size: 2,
+                    source_kind: GpuBaseFieldSourceKind::Real,
                 };
             round0.host.base_field_outputs.get_mut_accessor().get_mut()[0] =
                 GpuBaseFieldPolySource {
                     start: output.as_ptr(),
                     next_layer_size: 2,
+                    source_kind: GpuBaseFieldSourceKind::Real,
                 };
         }
         memory_copy_async(
@@ -8082,6 +8114,7 @@ mod tests {
             .try_push_copy(&[GpuBaseFieldPolySource {
                 start: input.as_ptr(),
                 next_layer_size: 2,
+                source_kind: GpuBaseFieldSourceKind::Real,
             }])
             .unwrap();
         let extension_inputs = super::GpuGKRMainLayerPayloadRange::default();
@@ -8089,6 +8122,7 @@ mod tests {
             .try_push_copy(&[GpuBaseFieldPolySource {
                 start: output.as_ptr(),
                 next_layer_size: 2,
+                source_kind: GpuBaseFieldSourceKind::Real,
             }])
             .unwrap();
         let extension_outputs = super::GpuGKRMainLayerPayloadRange::default();
@@ -8161,6 +8195,7 @@ mod tests {
                 base_layer_half_size: 4,
                 next_layer_size: 2,
                 base_input_start: input.as_ptr(),
+                source_kind: GpuBaseFieldSourceKind::Real,
                 _marker: core::marker::PhantomData,
             },
         ];
@@ -8440,18 +8475,21 @@ mod tests {
                 base_layer_half_size: 4,
                 next_layer_size: 2,
                 base_input_start: input_a.as_ptr(),
+                source_kind: GpuBaseFieldSourceKind::Real,
                 _marker: core::marker::PhantomData::<E4>,
             },
             crate::prover::gkr::GpuBaseFieldPolySourceAfterOneFoldingLaunchDescriptor {
                 base_layer_half_size: 4,
                 next_layer_size: 2,
                 base_input_start: input_b.as_ptr(),
+                source_kind: GpuBaseFieldSourceKind::Real,
                 _marker: core::marker::PhantomData::<E4>,
             },
             crate::prover::gkr::GpuBaseFieldPolySourceAfterOneFoldingLaunchDescriptor {
                 base_layer_half_size: 4,
                 next_layer_size: 2,
                 base_input_start: input_c.as_ptr(),
+                source_kind: GpuBaseFieldSourceKind::Real,
                 _marker: core::marker::PhantomData::<E4>,
             },
         ];
@@ -8610,18 +8648,21 @@ mod tests {
                 base_layer_half_size: 4,
                 next_layer_size: 2,
                 base_input_start: input_a.as_ptr(),
+                source_kind: GpuBaseFieldSourceKind::Real,
                 _marker: core::marker::PhantomData::<E4>,
             },
             crate::prover::gkr::GpuBaseFieldPolySourceAfterOneFoldingLaunchDescriptor {
                 base_layer_half_size: 4,
                 next_layer_size: 2,
                 base_input_start: input_b.as_ptr(),
+                source_kind: GpuBaseFieldSourceKind::Real,
                 _marker: core::marker::PhantomData::<E4>,
             },
             crate::prover::gkr::GpuBaseFieldPolySourceAfterOneFoldingLaunchDescriptor {
                 base_layer_half_size: 4,
                 next_layer_size: 2,
                 base_input_start: input_c.as_ptr(),
+                source_kind: GpuBaseFieldSourceKind::Real,
                 _marker: core::marker::PhantomData::<E4>,
             },
         ];
@@ -8791,11 +8832,13 @@ mod tests {
                 GpuBaseFieldPolySource {
                     start: input_b.as_ptr(),
                     next_layer_size: 2,
+                    source_kind: GpuBaseFieldSourceKind::Real,
                 };
             round0.host.base_field_inputs.get_mut_accessor().get_mut()[1] =
                 GpuBaseFieldPolySource {
                     start: input_d.as_ptr(),
                     next_layer_size: 2,
+                    source_kind: GpuBaseFieldSourceKind::Real,
                 };
             round0
                 .host
@@ -8898,12 +8941,14 @@ mod tests {
                 base_layer_half_size: 4,
                 next_layer_size: 2,
                 base_input_start: input_a.as_ptr(),
+                source_kind: GpuBaseFieldSourceKind::Real,
                 _marker: core::marker::PhantomData,
             },
             crate::prover::gkr::GpuBaseFieldPolySourceAfterOneFoldingLaunchDescriptor {
                 base_layer_half_size: 4,
                 next_layer_size: 2,
                 base_input_start: input_c.as_ptr(),
+                source_kind: GpuBaseFieldSourceKind::Real,
                 _marker: core::marker::PhantomData,
             },
         ];
@@ -9056,12 +9101,14 @@ mod tests {
                 base_layer_half_size: 4,
                 next_layer_size: 2,
                 base_input_start: input_b.as_ptr(),
+                source_kind: GpuBaseFieldSourceKind::Real,
                 _marker: core::marker::PhantomData,
             },
             crate::prover::gkr::GpuBaseFieldPolySourceAfterOneFoldingLaunchDescriptor {
                 base_layer_half_size: 4,
                 next_layer_size: 2,
                 base_input_start: input_d.as_ptr(),
+                source_kind: GpuBaseFieldSourceKind::Real,
                 _marker: core::marker::PhantomData,
             },
         ];
@@ -9181,18 +9228,21 @@ mod tests {
                 base_layer_half_size: 4,
                 next_layer_size: 2,
                 base_input_start: input_b.as_ptr(),
+                source_kind: GpuBaseFieldSourceKind::Real,
                 _marker: core::marker::PhantomData,
             },
             crate::prover::gkr::GpuBaseFieldPolySourceAfterOneFoldingLaunchDescriptor {
                 base_layer_half_size: 4,
                 next_layer_size: 2,
                 base_input_start: input_c.as_ptr(),
+                source_kind: GpuBaseFieldSourceKind::Real,
                 _marker: core::marker::PhantomData,
             },
             crate::prover::gkr::GpuBaseFieldPolySourceAfterOneFoldingLaunchDescriptor {
                 base_layer_half_size: 4,
                 next_layer_size: 2,
                 base_input_start: input_d.as_ptr(),
+                source_kind: GpuBaseFieldSourceKind::Real,
                 _marker: core::marker::PhantomData,
             },
         ];

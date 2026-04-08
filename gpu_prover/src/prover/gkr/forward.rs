@@ -5,12 +5,12 @@ use std::ptr::null;
 use std::sync::Arc;
 
 use cs::definitions::{
-    gkr::{AddressSpaceType, RamWordRepresentation, DECODER_LOOKUP_FORMAL_SET_INDEX},
-    GKRAddress, VirtualSetupPoly, MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX,
+    GKRAddress, MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX,
     MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX,
     MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX,
     MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX, MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX,
-    MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX,
+    MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX, VirtualSetupPoly,
+    gkr::{AddressSpaceType, DECODER_LOOKUP_FORMAL_SET_INDEX, RamWordRepresentation},
 };
 use cs::gkr_compiler::{
     CompiledAddressSpaceRelationStrict, CompiledAddressStrict, CompiledMemoryTimestamp,
@@ -24,24 +24,24 @@ use era_cudart::result::CudaResult;
 use era_cudart::{cuda_kernel_declaration, cuda_kernel_signature_arguments_and_function};
 use field::{Field, FieldExtension, PrimeField};
 use prover::gkr::high_bits_offset_for_inits_and_teardowns;
-use prover::gkr::prover::dimension_reduction::forward::DimensionReducingInputOutput;
 use prover::gkr::prover::GKRExternalChallenges;
+use prover::gkr::prover::dimension_reduction::forward::DimensionReducingInputOutput;
 
 use super::backward::GpuGKRDimensionReducingBackwardState;
-use super::setup::{bootstrap_storage_with_virtual_setup, GpuGKRForwardSetup};
+use super::setup::{GpuGKRForwardSetup, bootstrap_storage_from_trace_holders};
 use super::stage1::GpuGKRStage1Output;
 use super::transform::normalize_compiled_circuit_for_gpu;
-use super::{GpuBaseFieldPoly, GpuExtensionFieldPoly, GpuGKRStorage};
+use super::{GpuBaseFieldPoly, GpuBaseFieldSourceKind, GpuExtensionFieldPoly, GpuGKRStorage};
 use crate::allocator::tracker::AllocationPlacement;
 use crate::ops::simple::{
-    add_into_y, mul_into_y, set_by_ref, set_by_val, sub_into_x, Add, BinaryOp, Mul, SetByRef,
-    SetByVal, Sub,
+    Add, BinaryOp, Mul, SetByRef, SetByVal, Sub, add_into_y, mul_into_y, set_by_ref, set_by_val,
+    sub_into_x,
 };
 use crate::primitives::context::{DeviceAllocation, HostAllocation, ProverContext, UnsafeAccessor};
 use crate::primitives::device_structures::DeviceVectorChunk;
 use crate::primitives::device_tracing::Range;
 use crate::primitives::field::{BF, E4};
-use crate::primitives::utils::{get_grid_block_dims_for_threads_count, WARP_SIZE};
+use crate::primitives::utils::{WARP_SIZE, get_grid_block_dims_for_threads_count};
 
 pub(crate) struct GpuGKRForwardOutput<B, E> {
     tracing_ranges: Vec<Range>,
@@ -170,6 +170,7 @@ where
         + SetByVal
         + GpuGKRForwardKernelSet
         + GpuGKRForwardCacheKernelSet
+        + GpuGKRVirtualBaseAccumKernelSet
         + GpuGKRDimensionReducingForwardKernelSet,
     Add: BinaryOp<E, E, E>,
     Add: BinaryOp<BF, E, E>,
@@ -198,7 +199,7 @@ where
     let setup_trace_holder = setup_trace_holder
         .or(synthetic_setup_trace_holder)
         .expect("forward pass requires either uploaded or synthetic setup trace holder");
-    let mut storage = bootstrap_storage_with_virtual_setup::<E>(
+    let mut storage = bootstrap_storage_from_trace_holders::<E>(
         Some(setup_trace_holder),
         setup_trace_holder.columns_count,
         setup_trace_holder.log_domain_size,
@@ -313,7 +314,8 @@ where
         + SetByRef
         + SetByVal
         + GpuGKRForwardKernelSet
-        + GpuGKRForwardCacheKernelSet,
+        + GpuGKRForwardCacheKernelSet
+        + GpuGKRVirtualBaseAccumKernelSet,
     Add: BinaryOp<E, E, E>,
     Add: BinaryOp<BF, E, E>,
     Add: BinaryOp<E, BF, E>,
@@ -862,7 +864,7 @@ fn lower_forward_layer<E>(
     context: &ProverContext,
 ) -> CudaResult<LoweredGpuGKRForwardLayer<E>>
 where
-    E: Field + FieldExtension<BF> + SetByVal,
+    E: Field + FieldExtension<BF> + GpuGKRVirtualBaseAccumKernelSet + SetByVal,
     Add: BinaryOp<E, E, E>,
     Mul: BinaryOp<BF, E, E>,
     Mul: BinaryOp<E, E, E>,
@@ -1011,7 +1013,15 @@ where
             } => {
                 let b = storage.get_base_layer(*input);
                 let c = storage.get_base_layer(setup[0]);
-                let d = storage.get_base_layer(setup[1]);
+                let (d, d_source_kind) =
+                    if let Some(source_kind) = GpuBaseFieldSourceKind::from_address(setup[1]) {
+                        (null(), source_kind)
+                    } else {
+                        (
+                            storage.get_base_layer(setup[1]).as_ptr(),
+                            GpuBaseFieldSourceKind::Real,
+                        )
+                    };
                 let mut num = alloc_ext(trace_len, context)?;
                 let mut den = alloc_ext(trace_len, context)?;
                 let num_ptr = num.as_mut_ptr();
@@ -1021,7 +1031,8 @@ where
                 GpuGKRForwardGateDescriptor::with_lookup_base_minus_multiplicity_by_base(
                     b.as_ptr(),
                     c.as_ptr(),
-                    d.as_ptr(),
+                    d,
+                    d_source_kind,
                     num_ptr,
                     den_ptr,
                 )
@@ -1506,14 +1517,16 @@ where
             } else {
                 GKRAddress::VirtualSetup(VirtualSetupPoly::RangeCheckTimestamp)
             };
-            let setup_values = storage.get_base_layer(setup_address).as_ptr();
+            let setup_source_kind = GpuBaseFieldSourceKind::from_address(setup_address)
+                .expect("single-column lookup setup must be virtual");
             let mut dst = alloc_base(trace_len, context)?;
             let base_output = dst.as_mut_ptr();
             Ok((
                 GpuGKRForwardCacheDescriptor {
                     kind: GpuGKRForwardCacheKind::SingleColumnLookup,
                     mapping: mapping.as_ptr(),
-                    setup_values,
+                    setup_values: null(),
+                    setup_source_kind,
                     base_output,
                     ..GpuGKRForwardCacheDescriptor::default()
                 },
@@ -2188,19 +2201,29 @@ fn materialize_linear_base_combination<E>(
     context: &ProverContext,
 ) -> CudaResult<DeviceAllocation<E>>
 where
-    E: Field + FieldExtension<BF> + SetByVal,
+    E: Field + FieldExtension<BF> + GpuGKRVirtualBaseAccumKernelSet + SetByVal,
     Add: BinaryOp<E, E, E>,
     Mul: BinaryOp<BF, E, E>,
 {
     let mut dst = context.alloc(trace_len, AllocationPlacement::BestFit)?;
     set_by_val(constant_term, dst.deref_mut(), context.get_exec_stream())?;
     for (&address, &challenge) in terms.iter() {
-        scale_and_add_base_column(
-            &mut dst,
-            storage.get_base_layer(address),
-            challenge,
-            context,
-        )?;
+        if let Some(source) = storage.try_get_base_poly(address) {
+            scale_and_add_base_column(&mut dst, source, challenge, context)?;
+        } else if let Some(source_kind) = GpuBaseFieldSourceKind::from_address(address) {
+            launch_virtual_base_accum(
+                source_kind,
+                challenge,
+                dst.as_mut_ptr(),
+                trace_len,
+                context,
+            )?;
+        } else {
+            panic!(
+                "base linear combination expects real or virtual base source, got {:?}",
+                address
+            );
+        }
     }
     Ok(dst)
 }
@@ -2216,7 +2239,7 @@ fn materialize_inits_and_teardowns_initial_pair<E>(
     context: &ProverContext,
 ) -> CudaResult<DeviceAllocation<E>>
 where
-    E: Field + FieldExtension<BF> + SetByVal,
+    E: Field + FieldExtension<BF> + GpuGKRVirtualBaseAccumKernelSet + SetByVal,
     Add: BinaryOp<E, E, E>,
     Mul: BinaryOp<BF, E, E>,
     Mul: BinaryOp<E, E, E>,
@@ -2404,6 +2427,13 @@ mod tests {
         host
     }
 
+    fn read_base_allocation(values: &DeviceAllocation<BF>, context: &ProverContext) -> Vec<BF> {
+        let mut host = vec![BF::ZERO; values.len()];
+        memory_copy_async(&mut host, values, context.get_exec_stream()).unwrap();
+        context.get_exec_stream().synchronize().unwrap();
+        host
+    }
+
     fn empty_constraints() -> NoFieldMaxQuadraticConstraintsGKRRelation {
         NoFieldMaxQuadraticConstraintsGKRRelation {
             quadratic_terms: Vec::new().into_boxed_slice(),
@@ -2546,6 +2576,82 @@ mod tests {
     #[test]
     #[cfg(not(no_cuda))]
     #[serial]
+    fn forward_cache_single_column_lookup_synthesizes_virtual_setup_values() {
+        let context = make_test_context(256, 32);
+        let mappings_range16 = [0u32, 1, 65_535, 65_536, 70_000, 42, 7, 2];
+        let mappings_timestamp = [0u32, 1, (1 << 19) - 1, 1 << 19, (1 << 19) + 1, 42, 7, 2];
+        let trace_len = mappings_range16.len();
+
+        let mut range16_dev = context.alloc(trace_len, AllocationPlacement::Top).unwrap();
+        memory_copy_async(
+            &mut range16_dev,
+            &mappings_range16,
+            context.get_exec_stream(),
+        )
+        .unwrap();
+        let mut timestamp_dev = context.alloc(trace_len, AllocationPlacement::Top).unwrap();
+        memory_copy_async(
+            &mut timestamp_dev,
+            &mappings_timestamp,
+            context.get_exec_stream(),
+        )
+        .unwrap();
+        let mut out_range16 = context.alloc(trace_len, AllocationPlacement::Top).unwrap();
+        let mut out_timestamp = context.alloc(trace_len, AllocationPlacement::Top).unwrap();
+
+        let mut batch: GpuGKRForwardCacheBatch<E4> = GpuGKRForwardCacheBatch::default();
+        batch.count = 2;
+        batch.descriptors[0] = GpuGKRForwardCacheDescriptor {
+            kind: GpuGKRForwardCacheKind::SingleColumnLookup,
+            mapping: range16_dev.as_ptr(),
+            setup_source_kind: GpuBaseFieldSourceKind::VirtualRangeCheck16Bits,
+            base_output: out_range16.as_mut_ptr(),
+            ..GpuGKRForwardCacheDescriptor::default()
+        };
+        batch.descriptors[1] = GpuGKRForwardCacheDescriptor {
+            kind: GpuGKRForwardCacheKind::SingleColumnLookup,
+            mapping: timestamp_dev.as_ptr(),
+            setup_source_kind: GpuBaseFieldSourceKind::VirtualRangeCheckTimestamp,
+            base_output: out_timestamp.as_mut_ptr(),
+            ..GpuGKRForwardCacheDescriptor::default()
+        };
+
+        launch_forward_cache(batch, trace_len, &context).unwrap();
+
+        let expected_range16 = mappings_range16
+            .iter()
+            .map(|&value| {
+                if value < (1 << 16) {
+                    BF::new(value)
+                } else {
+                    BF::ZERO
+                }
+            })
+            .collect::<Vec<_>>();
+        let expected_timestamp = mappings_timestamp
+            .iter()
+            .map(|&value| {
+                if value < (1 << 19) {
+                    BF::new(value)
+                } else {
+                    BF::ZERO
+                }
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            read_base_allocation(&out_range16, &context),
+            expected_range16
+        );
+        assert_eq!(
+            read_base_allocation(&out_timestamp, &context),
+            expected_timestamp
+        );
+    }
+
+    #[test]
+    #[cfg(not(no_cuda))]
+    #[serial]
     fn materialize_inits_and_teardowns_initial_pair_matches_cpu_for_init_and_teardown() {
         let context = make_test_context(256, 32);
         let trace_len = 1usize << 14;
@@ -2577,16 +2683,6 @@ mod tests {
             .collect::<Vec<_>>();
 
         let mut storage = GpuGKRStorage::<BF, E4>::default();
-        storage.insert_base_field_at_layer(
-            0,
-            setup[0],
-            upload_base_poly(address_low.as_ref(), &context),
-        );
-        storage.insert_base_field_at_layer(
-            0,
-            setup[1],
-            upload_base_poly(address_high.as_ref(), &context),
-        );
         storage.insert_base_field_at_layer(
             0,
             GKRAddress::BaseLayerMemory(0),
@@ -2891,9 +2987,11 @@ mod tests {
         let copied = storage
             .try_get_base_poly(copy_output)
             .expect("copy output must remain in base storage");
-        assert!(storage
-            .get_base_layer(copy_input)
-            .shares_backing_with(copied));
+        assert!(
+            storage
+                .get_base_layer(copy_input)
+                .shares_backing_with(copied)
+        );
 
         let expected_product = product_lhs_values
             .iter()
