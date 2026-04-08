@@ -4,12 +4,12 @@ use std::ops::DerefMut;
 use std::ptr::null;
 
 use cs::definitions::{
-    gkr::{RamWordRepresentation, DECODER_LOOKUP_FORMAL_SET_INDEX},
     GKRAddress, MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX,
     MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX,
     MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX,
     MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX, MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX,
     MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX,
+    gkr::{DECODER_LOOKUP_FORMAL_SET_INDEX, RamWordRepresentation},
 };
 use cs::gkr_compiler::{
     CompiledAddressSpaceRelationStrict, CompiledAddressStrict, GKRCircuitArtifact,
@@ -21,24 +21,24 @@ use era_cudart::paste::paste;
 use era_cudart::result::CudaResult;
 use era_cudart::{cuda_kernel_declaration, cuda_kernel_signature_arguments_and_function};
 use field::{Field, FieldExtension, PrimeField};
-use prover::gkr::prover::dimension_reduction::forward::DimensionReducingInputOutput;
 use prover::gkr::prover::GKRExternalChallenges;
+use prover::gkr::prover::dimension_reduction::forward::DimensionReducingInputOutput;
 
 use super::backward::GpuGKRDimensionReducingBackwardState;
 use super::forward::schedule_ext_poly_readback;
 use super::setup::{GpuGKRForwardSetup, GpuGKRSetupTransfer};
 use super::stage1::GpuGKRStage1Output;
-use super::{GpuBaseFieldPoly, GpuExtensionFieldPoly, GpuGKRStorage};
+use super::{GpuBaseFieldPoly, GpuBaseFieldSourceKind, GpuExtensionFieldPoly, GpuGKRStorage};
 use crate::allocator::tracker::AllocationPlacement;
 use crate::ops::simple::{
-    add_into_y, mul_into_y, set_by_ref, set_by_val, sub_into_x, Add, BinaryOp, Mul, SetByRef,
-    SetByVal, Sub,
+    Add, BinaryOp, Mul, SetByRef, SetByVal, Sub, add_into_y, mul_into_y, set_by_ref, set_by_val,
+    sub_into_x,
 };
 use crate::primitives::context::{DeviceAllocation, HostAllocation, ProverContext, UnsafeAccessor};
 use crate::primitives::device_structures::DeviceVectorChunk;
 use crate::primitives::device_tracing::Range;
 use crate::primitives::field::{BF, E4};
-use crate::primitives::utils::{get_grid_block_dims_for_threads_count, WARP_SIZE};
+use crate::primitives::utils::{WARP_SIZE, get_grid_block_dims_for_threads_count};
 
 pub(crate) struct GpuGKRForwardOutput<B, E> {
     pub(super) tracing_ranges: Vec<Range>,
@@ -315,6 +315,7 @@ pub(super) struct GpuGKRForwardLookupBaseMinusMultiplicityByBaseDescriptor<E> {
     pub(super) b: *const BF,
     pub(super) c: *const BF,
     pub(super) d: *const BF,
+    pub(super) d_source_kind: GpuBaseFieldSourceKind,
     pub(super) num: *mut E,
     pub(super) den: *mut E,
 }
@@ -715,6 +716,7 @@ impl<E> GpuGKRForwardGateDescriptor<E> {
         b: *const BF,
         c: *const BF,
         d: *const BF,
+        d_source_kind: GpuBaseFieldSourceKind,
         num: *mut E,
         den: *mut E,
     ) -> Self {
@@ -723,7 +725,14 @@ impl<E> GpuGKRForwardGateDescriptor<E> {
             _reserved: 0,
             payload: GpuGKRForwardGatePayload {
                 lookup_base_minus_multiplicity_by_base: ManuallyDrop::new(
-                    GpuGKRForwardLookupBaseMinusMultiplicityByBaseDescriptor { b, c, d, num, den },
+                    GpuGKRForwardLookupBaseMinusMultiplicityByBaseDescriptor {
+                        b,
+                        c,
+                        d,
+                        d_source_kind,
+                        num,
+                        den,
+                    },
                 ),
             },
         }
@@ -1059,6 +1068,7 @@ pub(super) struct GpuGKRForwardCacheDescriptor<E> {
     pub(super) address_space_kind: GpuGKRForwardCacheAddressSpaceKind,
     pub(super) mapping: *const u32,
     pub(super) setup_values: *const BF,
+    pub(super) setup_source_kind: GpuBaseFieldSourceKind,
     pub(super) generic_lookup: *const E,
     pub(super) decoder_mask: *const BF,
     pub(super) decoder_fill_value: *const E,
@@ -1079,6 +1089,7 @@ impl<E: Field> Default for GpuGKRForwardCacheDescriptor<E> {
             address_space_kind: GpuGKRForwardCacheAddressSpaceKind::Empty,
             mapping: null(),
             setup_values: null(),
+            setup_source_kind: GpuBaseFieldSourceKind::Empty,
             generic_lookup: null(),
             decoder_mask: null(),
             decoder_fill_value: null(),
@@ -1139,6 +1150,40 @@ macro_rules! gkr_forward_cache_kernels {
 }
 
 gkr_forward_cache_kernels!(E4);
+
+cuda_kernel_signature_arguments_and_function!(
+    GpuGKRVirtualBaseAccum<T>,
+    source_kind: GpuBaseFieldSourceKind,
+    scalar: T,
+    dst: *mut T,
+    count: u32,
+);
+
+pub(crate) trait GpuGKRVirtualBaseAccumKernelSet: Copy + Sized {
+    const VIRTUAL_BASE_ACCUM: GpuGKRVirtualBaseAccumSignature<Self>;
+}
+
+macro_rules! gkr_virtual_base_accum_kernels {
+    ($type:ty) => {
+        paste! {
+            cuda_kernel_declaration!(
+                [<ab_gkr_virtual_base_accum_ $type:lower _kernel>](
+                    source_kind: GpuBaseFieldSourceKind,
+                    scalar: $type,
+                    dst: *mut $type,
+                    count: u32,
+                )
+            );
+
+            impl GpuGKRVirtualBaseAccumKernelSet for $type {
+                const VIRTUAL_BASE_ACCUM: GpuGKRVirtualBaseAccumSignature<Self> =
+                    [<ab_gkr_virtual_base_accum_ $type:lower _kernel>];
+            }
+        }
+    };
+}
+
+gkr_virtual_base_accum_kernels!(E4);
 
 #[repr(u32)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -1371,6 +1416,19 @@ pub(super) fn launch_forward_cache<E: GpuGKRForwardCacheKernelSet>(
     let config = gkr_forward_cache_launch_config(trace_len as u32, context);
     let args = GpuGKRForwardCacheArguments::new(batch, trace_len as u32);
     GpuGKRForwardCacheFunction(E::FORWARD_CACHE).launch(&config, &args)
+}
+
+pub(super) fn launch_virtual_base_accum<E: GpuGKRVirtualBaseAccumKernelSet>(
+    source_kind: GpuBaseFieldSourceKind,
+    scalar: E,
+    dst: *mut E,
+    count: usize,
+    context: &ProverContext,
+) -> CudaResult<()> {
+    assert!(count <= u32::MAX as usize);
+    let config = gkr_forward_cache_launch_config(count as u32, context);
+    let args = GpuGKRVirtualBaseAccumArguments::new(source_kind, scalar, dst, count as u32);
+    GpuGKRVirtualBaseAccumFunction(E::VIRTUAL_BASE_ACCUM).launch(&config, &args)
 }
 
 pub(super) fn pack_dimension_reducing_forward_batch<E>(
