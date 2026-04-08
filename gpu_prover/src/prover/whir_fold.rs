@@ -29,6 +29,7 @@ use crate::ntt::{hypercube_coeffs_natural_to_natural_evals, natural_evals_to_bit
 use crate::ops::bit_reverse::{bit_reverse, bit_reverse_in_place};
 use crate::ops::blake2s::Digest;
 use crate::ops::cub::device_reduce::{get_reduce_temp_storage_bytes, reduce, ReduceOperation};
+use crate::ops::cub::CUB_TEMP_STORAGE_EXTRA_ALIGNMENT_LOG2;
 use crate::ops::powers::{get_powers_by_ref, get_powers_by_val};
 use crate::ops::simple::{add, add_into_y, mul, mul_into_x, set_to_zero};
 use crate::primitives::callbacks::Callbacks;
@@ -318,7 +319,11 @@ impl GpuWhirState {
                 AllocationPlacement::BestFit,
             )?,
             scalar: context.alloc(1, AllocationPlacement::BestFit)?,
-            reduce_temp: context.alloc(reduce_temp_bytes, AllocationPlacement::BestFit)?,
+            reduce_temp: context
+                .alloc_with_extra_alignment::<u8, CUB_TEMP_STORAGE_EXTRA_ALIGNMENT_LOG2>(
+                    reduce_temp_bytes,
+                    AllocationPlacement::BestFit,
+                )?,
             reduce_out: context.alloc(3, AllocationPlacement::BestFit)?,
             current_len: trace_len,
         })
