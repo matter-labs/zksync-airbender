@@ -89,19 +89,23 @@ impl GpuWhirExtensionOracle {
     }
 
     pub(crate) fn from_monomial_coeffs(
-        monomial_coeffs: &[E4],
+        monomial_coeffs: &[BF],
+        trace_len: usize,
         lde_factor: usize,
         values_per_leaf: usize,
         tree_cap_size: usize,
         context: &ProverContext,
     ) -> CudaResult<Self> {
-        let mut monomial_coeffs_device =
+        let mut monomial_coeffs_device_alloc =
             context.alloc(monomial_coeffs.len(), AllocationPlacement::BestFit)?;
+        let mut monomial_coeffs_device =
+            DeviceMatrixMut::new(&mut monomial_coeffs_device_alloc, trace_len);
         let stream = context.get_exec_stream();
         let host = alloc_static_pinned_box_from_slice(monomial_coeffs)?;
         memory_copy_async(&mut monomial_coeffs_device, &host[..], stream)?;
         Self::from_device_monomial_coeffs(
             &monomial_coeffs_device,
+            trace_len,
             lde_factor,
             values_per_leaf,
             tree_cap_size,
@@ -110,7 +114,8 @@ impl GpuWhirExtensionOracle {
     }
 
     pub(crate) fn from_device_monomial_coeffs(
-        monomial_coeffs: &DeviceSlice<E4>,
+        monomial_coeffs: &DeviceMatrixMut<BF>,
+        trace_len: usize,
         lde_factor: usize,
         values_per_leaf: usize,
         tree_cap_size: usize,
@@ -118,6 +123,7 @@ impl GpuWhirExtensionOracle {
     ) -> CudaResult<Self> {
         Self::from_device_monomial_coeffs_impl(
             monomial_coeffs,
+            trace_len,
             lde_factor,
             values_per_leaf,
             tree_cap_size,
@@ -127,7 +133,8 @@ impl GpuWhirExtensionOracle {
     }
 
     pub(crate) fn schedule_from_device_monomial_coeffs(
-        monomial_coeffs: &DeviceSlice<E4>,
+        monomial_coeffs: &DeviceMatrixMut<BF>,
+        trace_len: usize,
         lde_factor: usize,
         values_per_leaf: usize,
         tree_cap_size: usize,
@@ -135,6 +142,7 @@ impl GpuWhirExtensionOracle {
     ) -> CudaResult<Self> {
         Self::from_device_monomial_coeffs_impl(
             monomial_coeffs,
+            trace_len,
             lde_factor,
             values_per_leaf,
             tree_cap_size,
@@ -144,7 +152,8 @@ impl GpuWhirExtensionOracle {
     }
 
     fn from_device_monomial_coeffs_impl(
-        monomial_coeffs: &DeviceSlice<E4>,
+        monomial_coeffs: &DeviceMatrixMut<BF>,
+        trace_len: usize,
         lde_factor: usize,
         values_per_leaf: usize,
         tree_cap_size: usize,
@@ -161,7 +170,7 @@ impl GpuWhirExtensionOracle {
             "recursive WHIR oracles require LDE factor > 1"
         );
 
-        let trace_len = monomial_coeffs.len();
+        // let trace_len = monomial_coeffs.len();
         let trace_len_log2 = trace_len.trailing_zeros() as usize;
         let log_lde_factor = lde_factor.trailing_zeros() as u32;
         let log_values_per_leaf = values_per_leaf.trailing_zeros() as u32;
@@ -173,14 +182,14 @@ impl GpuWhirExtensionOracle {
         let trees_cache_mode =
             Self::recursive_tree_cache_mode(total_leaf_count_log2, log_tree_cap_size);
 
-        let mut serialized_coeffs_device =
-            context.alloc(trace_len * EXT4_DEGREE, AllocationPlacement::BestFit)?;
-        let stream = context.get_exec_stream();
-        serialize_whir_e4_columns(monomial_coeffs, &mut serialized_coeffs_device, stream)?;
-        {
-            let mut coeffs_matrix = DeviceMatrixMut::new(&mut serialized_coeffs_device, trace_len);
-            bit_reverse_in_place(&mut coeffs_matrix, stream)?;
-        }
+        // let mut serialized_coeffs_device =
+        //     context.alloc(trace_len * EXT4_DEGREE, AllocationPlacement::BestFit)?;
+        // let stream = context.get_exec_stream();
+        // serialize_whir_e4_columns(monomial_coeffs, &mut serialized_coeffs_device, stream)?;
+        // {
+        //     let mut coeffs_matrix = DeviceMatrixMut::new(&mut serialized_coeffs_device, trace_len);
+        //     bit_reverse_in_place(&mut coeffs_matrix, stream)?;
+        // }
 
         let mut trace_holder = TraceHolder::new(
             total_leaf_count_log2,
@@ -194,10 +203,13 @@ impl GpuWhirExtensionOracle {
         let mut natural_coset_values =
             context.alloc(trace_len * EXT4_DEGREE, AllocationPlacement::BestFit)?;
 
+        let monomial_coeffs_slice = monomial_coeffs.slice();
+        let monomial_coeffs_stride = monomial_coeffs.stride();
         for coset_index in 0..lde_factor {
             for base_column in 0..EXT4_DEGREE {
-                let column_start = base_column * trace_len;
-                let src = &serialized_coeffs_device[column_start..column_start + trace_len];
+                let src_column_start = base_column * monomial_coeffs_stride;
+                let dst_column_start = base_column * trace_len;
+                let src = &monomial_coeffs_slice[column_start..column_start + trace_len];
                 let dst = &mut natural_coset_values[column_start..column_start + trace_len];
                 crate::ntt::bitreversed_coeffs_to_natural_coset(
                     src,
@@ -212,10 +224,10 @@ impl GpuWhirExtensionOracle {
             let packed_trace = trace_holder.get_uninit_coset_evaluations_mut(0);
             let stage1_coset_index = bitreverse_index(coset_index, log_lde_factor);
             let mut packed_matrix = DeviceMatrixChunkMut::new(
-                packed_trace,
-                packed_leaf_count << log_lde_factor,
-                stage1_coset_index * packed_leaf_count,
-                packed_leaf_count,
+                packed_trace, // slice
+                packed_leaf_count << log_lde_factor, // stride
+                stage1_coset_index * packed_leaf_count, // offset
+                packed_leaf_count, // rows
             );
             pack_rows_for_whir_leaves(
                 &natural_matrix,

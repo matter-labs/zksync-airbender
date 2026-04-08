@@ -303,6 +303,28 @@ transpose_impl!(E2, 4);
 transpose_impl!(E4, 3);
 transpose_impl!(E6, 3);
 
+cuda_kernel!(
+  PartiallyEvaluateMonomialFormByRef,
+  partially_evaluate_monomial_form_by_ref,
+  src: PtrAndStride<BF>,
+  dst: MutPtrAndStride<BF>,
+  z: *const E4,
+  count: i32,
+};
+
+partially_evaluate_monomial_form_by_ref!(ab_partially_evaluate_monomial_form_by_ref_kernel);
+
+cuda_kernel!(
+  PartiallyEvaluateMonomialFormByVal,
+  partially_evaluate_monomial_form_by_val,
+  src: PtrAndStride<BF>,
+  dst: MutPtrAndStride<BF>,
+  z: E4,
+  count: i32,
+};
+
+partially_evaluate_monomial_form_by_val!(ab_partially_evaluate_monomial_form_by_val_kernel);
+
 cuda_kernel_signature_arguments_and_function!(
     SerializeWhirE4Columns,
     src: *const E4,
@@ -415,41 +437,39 @@ pub fn accumulate_whir_base_columns(
 }
 
 cuda_kernel_signature_arguments_and_function!(
-    WhirFoldMonomial,
-    src: *const E4,
+    WhirFoldSplitHalfVectorized,
+    values: MutPtrAndStride,
     challenge: *const E4,
-    dst: *mut E4,
-    half_len: u32,
+    half_len: i32,
 );
 
 cuda_kernel_declaration!(
-    ab_whir_fold_monomial_e4_kernel(
-        src: *const E4,
+    ab_whir_fold_split_half_vectorized_e4_kernel(
+        values: MutPtrAndStride,
         challenge: *const E4,
-        dst: *mut E4,
-        half_len: u32,
+        half_len: i32,
     )
 );
 
-pub fn whir_fold_monomial(
-    src: &DeviceSlice<E4>,
+pub fn whir_fold_split_half_in_place_vectorized(
+    values: &mut DeviceMatrixMut<BF>,
     challenge: &DeviceVariable<E4>,
-    dst: &mut DeviceSlice<E4>,
+    half_len: usize,
     stream: &CudaStream,
 ) -> CudaResult<()> {
-    assert!(src.len().is_power_of_two());
-    assert_eq!(src.len(), dst.len() * 2);
-    assert!(dst.len() <= u32::MAX as usize);
-    let half_len = dst.len() as u32;
+    assert!(values.rows().is_power_of_two());
+    assert_eq!(values.cols(), 4);
+    assert!(values.len() <= i32::MAX as usize);
+    assert!(values.len() <= half_len);
     let (grid_dim, block_dim) = get_launch_dims(half_len);
     let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
     let args = WhirFoldMonomialArguments::new(
-        src.as_ptr(),
+        values.as_ptr_and_stride(),
+        values.as_mut_ptr_and_stride(),
         challenge.as_ptr(),
-        dst.as_mut_ptr(),
         half_len,
     );
-    WhirFoldMonomialFunction(ab_whir_fold_monomial_e4_kernel).launch(&config, &args)
+    WhirFoldSplitHalfVectorizedFunction(ab_whir_fold_monomial_e4_kernel).launch(&config, &args)
 }
 
 cuda_kernel_signature_arguments_and_function!(

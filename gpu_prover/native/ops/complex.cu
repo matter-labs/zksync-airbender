@@ -3,6 +3,7 @@
 
 using namespace ::airbender::primitives::field;
 using namespace ::airbender::primitives::memory;
+using name
 
 namespace airbender::ops::complex {
 
@@ -142,6 +143,48 @@ TRANSPOSE_KERNEL(e2, 4);
 TRANSPOSE_KERNEL(e4, 3);
 TRANSPOSE_KERNEL(e6, 3);
 
+// Partially evaluates a polynomial at a single random point using Horner rule applied to bitreversed monomials.
+// Output size will be count / VALS_PER_THREAD.
+DEVICE_FORCEINLINE void partially_evaluate_bitrev_monomial_form_impl(vectorized_e4_matrix_getter<ld_modifier::cg> src,
+                                                                     e4 *dst,
+                                                                     const e4 z,
+                                                                     const unsigned count) {
+  constexpr int VALS_PER_THREAD = 32;
+  constexpr int BITREV_ORDER[VALS_PER_THREAD] =
+      {0, 16, 8, 24, 4, 20, 12, 28, 2, 18, 10, 26, 6, 22, 14, 30, 1, 17, 9, 25, 5, 21, 13, 29, 3, 19, 11, 27, 7, 23, 15, 31};
+
+  const int gid = blockIdx.x * blockDim.x + threadIdx.x;
+  const int gmem_stride = gridDim.x * blockDim.x;
+
+  src.add_row(gid);
+  dst.add_row(gid);
+
+  // Horner rule works backwards from highest powers
+  e4 result{src.get_at_row(count - gmem_stride + gid)};
+#pragma unroll
+  for (int i{1}; i < VALS_PER_THREAD; i++) {
+    result = e4::mul(z, result);
+    result = e4::add(src.get_at_row(stride * BITREV_ORDER[VALS_PER_THREAD - 1 - i]);
+  }
+
+  dst[gid] = result;
+}
+
+EXTERN __global__ void ab_partially_evaluate_bitrev_monomial_form_by_val_kernel(vectorized_e4_matrix_getter<ld_modifier::cg> src,
+                                                                                vectorized_e4_matrix_setter<ld_modifier::cg> dst,
+                                                                                const e4 z,
+                                                                                const unsigned count) {
+  partially_evaluate_bitrev_monomial_form_impl(src, dst, z, count);
+}
+
+EXTERN __global__ void ab_partially_evaluate_bitrev_monomial_form_by_ref_kernel(vectorized_e4_matrix_getter<ld_modifier::cg> src,
+                                                                                vectorized_e4_matrix_setter<ld_modifier::cg> dst,
+                                                                                const e4 *z_ref,
+                                                                                const unsigned count) {
+  const e4 z = *z_ref;
+  partially_evaluate_bitrev_monomial_form_impl(src, dst, z, count);
+}
+
 EXTERN __global__ void ab_serialize_whir_e4_columns_kernel(const e4 *src, bf *dst, const unsigned count) {
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
   if (gid >= count)
@@ -183,15 +226,18 @@ EXTERN __global__ void ab_accumulate_whir_base_columns_e4_kernel(const bf *value
   store<e4, st_modifier::cs>(result, acc, gid);
 }
 
-EXTERN __global__ void ab_whir_fold_monomial_e4_kernel(const e4 *src, const e4 *challenge, e4 *dst, const unsigned half_len) {
+EXTERN __global__ void ab_whir_fold_split_half_vectorized_e4_kernel(vectorized_e4_matrix_getter<ld_modifier::cg> src,
+                                                                    vectorized_e4_matrix_setter<st_modifier::cg> dst,
+                                                                    const e4 *challenge,
+                                                                    const unsigned half_len) {
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
   if (gid >= half_len)
     return;
 
-  const e4 c0 = load<e4, ld_modifier::cs>(src, 2 * gid);
-  const e4 c1 = load<e4, ld_modifier::cs>(src, 2 * gid + 1);
+  const e4 c0 = src.get_at_row(gid);
+  const e4 c1 = src.get_at_row(gid + half_len);
   const e4 folded = e4::add(c0, e4::mul(c1, *challenge));
-  store<e4, st_modifier::cs>(dst, folded, gid);
+  dst.set_at_row(gid, folded);
 }
 
 EXTERN __global__ void ab_whir_fold_split_half_e4_kernel(e4 *values, const e4 *challenge, const unsigned half_len) {

@@ -29,8 +29,8 @@ use crate::ntt::{hypercube_coeffs_natural_to_natural_evals, natural_evals_to_bit
 use crate::ops::blake2s::Digest;
 use crate::ops::complex::{
     accumulate_whir_base_columns, bit_reverse, bit_reverse_in_place, deserialize_whir_e4_columns,
-    get_powers_by_ref, get_powers_by_val, serialize_whir_e4_columns, whir_fold_monomial,
-    whir_fold_split_half_in_place,
+    get_powers_by_ref, get_powers_by_val, serialize_whir_e4_columns,
+    whir_fold_split_half_in_place, whir_fold_split_half_in_place_vectorized,
 };
 use crate::ops::cub::device_reduce::{get_reduce_temp_storage_bytes, reduce, ReduceOperation};
 use crate::ops::simple::{add, add_into_y, mul, mul_into_x, set_to_zero};
@@ -52,8 +52,8 @@ use crate::prover::whir::{GpuWhirExtensionOracle, GpuWhirExtensionQuery};
 
 const EXT4_DEGREE: usize = <E4 as FieldExtension<BF>>::DEGREE;
 struct GpuWhirState {
-    sumchecked_poly_monomial_form: DeviceAllocation<E4>,
-    monomial_buffer: DeviceAllocation<E4>,
+    sumchecked_poly_monomial_form_alloc: DeviceAllocation<BF>,
+    sumchecked_poly_monomial_form: DeviceMatrixMut<BF>,
     sumchecked_poly_evaluation_form: DeviceAllocation<E4>,
     eq_poly: DeviceAllocation<E4>,
     scratch0: DeviceAllocation<E4>,
@@ -291,10 +291,13 @@ impl GpuWhirState {
         let half_len = trace_len / 2;
         let reduce_temp_bytes =
             get_reduce_temp_storage_bytes::<E4>(ReduceOperation::Sum, half_len as i32)?;
+        let sumchecked_poly_monomial_form_alloc = context
+                .alloc(trace_len * EXT4_DEGREE, AllocationPlacement::BestFit)?,
+        let sumchecked_poly_monomial_form =
+            DeviceMatrixMut::new(&mut sumchecked_poly_monomial_form_alloc, trace_len);
         Ok(Self {
-            sumchecked_poly_monomial_form: context
-                .alloc(trace_len, AllocationPlacement::BestFit)?,
-            monomial_buffer: context.alloc(half_len, AllocationPlacement::BestFit)?,
+            sumchecked_poly_monomial_form_alloc,
+            sumchecked_poly_monomial_form,
             sumchecked_poly_evaluation_form: context
                 .alloc(trace_len, AllocationPlacement::BestFit)?,
             eq_poly: context.alloc(trace_len, AllocationPlacement::BestFit)?,
@@ -1152,6 +1155,7 @@ fn schedule_initialize_batched_forms(
             trace_holder.get_evaluations(),
             state.sumchecked_poly_evaluation_form.len(),
         );
+        // TODO: Make vectorized accumulator for this
         accumulate_whir_base_columns(
             &values,
             &challenge_powers_device[offset..offset + weights_len],
@@ -1163,34 +1167,30 @@ fn schedule_initialize_batched_forms(
     debug_assert_eq!(offset, total_base_oracles);
 
     let mut serialized = context.alloc(trace_len * EXT4_DEGREE, AllocationPlacement::BestFit)?;
-    let mut bf_scratch = context.alloc(trace_len, AllocationPlacement::BestFit)?;
     serialize_whir_e4_columns(
         &state.sumchecked_poly_evaluation_form[..trace_len],
         &mut serialized,
         stream,
     )?;
-    for column in 0..EXT4_DEGREE {
-        let src = &serialized[column * trace_len..(column + 1) * trace_len];
-        natural_evals_to_bitreversed_coeffs(
-            src,
-            &mut bf_scratch,
-            trace_len.trailing_zeros() as usize,
-            stream,
-        )?;
-        let dst = &mut serialized[column * trace_len..(column + 1) * trace_len];
-        memory_copy_async(dst, &bf_scratch, stream)?;
-    }
-    {
-        let mut coeffs_matrix = DeviceMatrixMut::new(&mut serialized, trace_len);
-        bit_reverse_in_place(&mut coeffs_matrix, stream)?;
-    }
-    deserialize_whir_e4_columns(
-        &serialized,
-        &mut state.sumchecked_poly_monomial_form[..trace_len],
+    let main_domain_evals_matrix = DeviceMatrix::new(serialized, trace_len);
+    natural_evals_to_bitreversed_monomials(
+        &main_domain_evals_matrix,
+        &mut state.sumchecked_poly_monomial_form,
+        witness_trace_holder.log_domain_size,
+        false, // transposed_monomials
         stream,
-    )?;
+        context.get_device_properties,
+    );
+    // TODO: remove after writing hypercube kernel
+    bit_reverse_in_place(&mut state.sumchecked_poly_monomial_form, stream)?;
+    // deserialize_whir_e4_columns(
+    //     &serialized,
+    //     &mut state.sumchecked_poly_monomial_form[..trace_len],
+    //     stream,
+    // )?;
+    let monomials_slice = &state.sumchecked_poly_monomial_form.slice();
     for column in 0..EXT4_DEGREE {
-        let src = &serialized[column * trace_len..(column + 1) * trace_len];
+        let src = &monomials_slice[column * trace_len..(column + 1) * trace_len];
         hypercube_coeffs_natural_to_natural_evals(
             src,
             &mut bf_scratch,
@@ -1202,6 +1202,7 @@ fn schedule_initialize_batched_forms(
     }
     {
         let mut evals_matrix = DeviceMatrixMut::new(&mut serialized, trace_len);
+        // TODO: remove after writing hypercube kernel
         bit_reverse_in_place(&mut evals_matrix, stream)?;
     }
     deserialize_whir_e4_columns(
@@ -1209,6 +1210,8 @@ fn schedule_initialize_batched_forms(
         &mut state.sumchecked_poly_evaluation_form[..trace_len],
         stream,
     )?;
+    // TODO: remove after writing hypercube kernel
+    bit_reverse_in_place(&mut state.sumchecked_poly_monomial_form, stream)?;
 
     Ok(())
 }
@@ -1394,16 +1397,12 @@ fn fold_monomial_form_in_place_device(
 ) -> CudaResult<()> {
     copy_scalar_to_device(challenge, state, context)?;
     let half = state.current_len / 2;
-    whir_fold_monomial(
-        &state.sumchecked_poly_monomial_form[..state.current_len],
+    whir_fold_split_half_in_place_vectorized(
+        &mut state.sumchecked_poly_monomial_form,
         &state.scalar[0],
-        &mut state.monomial_buffer[..half],
+        half,
         context.get_exec_stream(),
     )?;
-    core::mem::swap(
-        &mut state.sumchecked_poly_monomial_form,
-        &mut state.monomial_buffer,
-    );
     Ok(())
 }
 
@@ -1902,16 +1901,12 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
                     })?;
                 let current_len = state.current_len;
                 let next_len = current_len / 2;
-                whir_fold_monomial(
-                    &state.sumchecked_poly_monomial_form[..current_len],
+                whir_fold_split_half_in_place_vectorized(
+                    &mut state.sumchecked_poly_monomial_form,
                     &challenge_device[0],
-                    &mut state.monomial_buffer[..next_len],
+                    next_len,
                     stream,
                 )?;
-                core::mem::swap(
-                    &mut state.sumchecked_poly_monomial_form,
-                    &mut state.monomial_buffer,
-                );
                 whir_fold_split_half_in_place(
                     &mut state.sumchecked_poly_evaluation_form[..current_len],
                     &challenge_device[0],
@@ -1946,7 +1941,8 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         let commit_next_oracle_range = Range::new("gkr.whir.base_round.0.commit_next_oracle")?;
         commit_next_oracle_range.start(stream)?;
         let oracle = GpuWhirExtensionOracle::schedule_from_device_monomial_coeffs(
-            &state.sumchecked_poly_monomial_form[..state.current_len],
+            &state.sumchecked_poly_monomial_form,
+            state.current_len,
             lde_factor,
             1 << next_folding_steps,
             tree_cap_size,
@@ -3452,7 +3448,6 @@ mod tests {
 
         state.current_len = 8;
         state.sumchecked_poly_monomial_form = alloc_and_copy(&monomial, &context);
-        state.monomial_buffer = context.alloc(4, AllocationPlacement::BestFit).unwrap();
         state.sumchecked_poly_evaluation_form = alloc_and_copy(&evals, &context);
         state.eq_poly = alloc_and_copy(&eq, &context);
 
@@ -3514,7 +3509,6 @@ mod tests {
 
         state.current_len = monomial.len();
         state.sumchecked_poly_monomial_form = alloc_and_copy(&monomial, &context);
-        state.monomial_buffer = context.alloc(8, AllocationPlacement::BestFit).unwrap();
         state.sumchecked_poly_evaluation_form = alloc_and_copy(&evals, &context);
         state.eq_poly = alloc_and_copy(&eq, &context);
 
@@ -3579,9 +3573,6 @@ mod tests {
 
         state.current_len = monomial.len();
         state.sumchecked_poly_monomial_form = alloc_and_copy(&monomial, &context);
-        state.monomial_buffer = context
-            .alloc(LEN / 2, AllocationPlacement::BestFit)
-            .unwrap();
 
         let mut expected_monomial = monomial;
         for (step_idx, challenge) in challenges.into_iter().enumerate() {
@@ -3629,9 +3620,6 @@ mod tests {
 
         state.current_len = LEN;
         state.sumchecked_poly_monomial_form = alloc_and_copy(&monomial, &context);
-        state.monomial_buffer = context
-            .alloc(LEN / 2, AllocationPlacement::BestFit)
-            .unwrap();
         state.sumchecked_poly_evaluation_form = alloc_and_copy(&evals, &context);
         state.eq_poly = alloc_and_copy(&eq, &context);
 
