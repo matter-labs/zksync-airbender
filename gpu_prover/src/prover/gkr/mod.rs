@@ -19,7 +19,7 @@ use crate::allocator::tracker::AllocationPlacement;
 use crate::primitives::callbacks::Callbacks;
 use crate::primitives::context::{DeviceAllocation, HostAllocation, ProverContext};
 use crate::primitives::device_structures::DeviceVectorChunk;
-use cs::definitions::GKRAddress;
+use cs::definitions::{GKRAddress, VirtualSetupPoly};
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 use era_cudart::slice::{CudaSlice, DeviceSlice};
@@ -123,6 +123,7 @@ impl<B> GpuBaseFieldPoly<B> {
         GpuBaseFieldPolySource {
             start: self.as_ptr(),
             next_layer_size: self.len / 2,
+            source_kind: GpuBaseFieldSourceKind::Real,
         }
     }
 }
@@ -291,11 +292,55 @@ impl<E> GpuExtensionFieldPolyIntermediateFoldingStorage<E> {
     }
 }
 
+#[derive(Debug, PartialEq, Eq)]
+#[repr(u32)]
+pub(crate) enum GpuBaseFieldSourceKind {
+    Empty = 0,
+    Real = 1,
+    VirtualRangeCheck16Bits = 2,
+    VirtualRangeCheckTimestamp = 3,
+    VirtualInitsAndTeardownsLow = 4,
+    VirtualInitsAndTeardownsHigh = 5,
+}
+
+impl Clone for GpuBaseFieldSourceKind {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl Copy for GpuBaseFieldSourceKind {}
+
+impl Default for GpuBaseFieldSourceKind {
+    fn default() -> Self {
+        Self::Empty
+    }
+}
+
+impl GpuBaseFieldSourceKind {
+    pub(crate) const fn from_virtual_setup(poly: VirtualSetupPoly) -> Self {
+        match poly {
+            VirtualSetupPoly::RangeCheck16Bits => Self::VirtualRangeCheck16Bits,
+            VirtualSetupPoly::RangeCheckTimestamp => Self::VirtualRangeCheckTimestamp,
+            VirtualSetupPoly::InitsAndTeardownsLow => Self::VirtualInitsAndTeardownsLow,
+            VirtualSetupPoly::InitsAndTeardownsHigh => Self::VirtualInitsAndTeardownsHigh,
+        }
+    }
+
+    pub(crate) const fn from_address(address: GKRAddress) -> Option<Self> {
+        match address {
+            GKRAddress::VirtualSetup(poly) => Some(Self::from_virtual_setup(poly)),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug)]
 #[repr(C)]
 pub(crate) struct GpuBaseFieldPolySource<B> {
     pub(crate) start: *const B,
     pub(crate) next_layer_size: usize,
+    pub(crate) source_kind: GpuBaseFieldSourceKind,
 }
 
 impl<B> Clone for GpuBaseFieldPolySource<B> {
@@ -315,6 +360,7 @@ impl<B> GpuBaseFieldPolySource<B> {
         Self {
             start: null(),
             next_layer_size: 0,
+            source_kind: GpuBaseFieldSourceKind::Empty,
         }
     }
 }
@@ -327,6 +373,7 @@ pub(crate) struct GpuBaseFieldPolySourceAfterOneFoldingLaunchDescriptor<B, E> {
     pub(crate) base_layer_half_size: usize,
     pub(crate) next_layer_size: usize,
     pub(crate) base_input_start: *const B,
+    pub(crate) source_kind: GpuBaseFieldSourceKind,
     pub(crate) _marker: core::marker::PhantomData<E>,
 }
 
@@ -351,6 +398,7 @@ pub(crate) struct GpuBaseFieldPolySourceAfterTwoFoldingsLaunchDescriptor<B, E> {
     pub(crate) base_quarter_size: usize,
     pub(crate) next_layer_size: usize,
     pub(crate) first_access: bool,
+    pub(crate) source_kind: GpuBaseFieldSourceKind,
 }
 
 impl<B, E: Copy> Clone for GpuBaseFieldPolySourceAfterTwoFoldingsLaunchDescriptor<B, E> {
@@ -511,6 +559,7 @@ pub(crate) struct GpuBaseFieldPolySourceAfterOneFoldingPlan<B> {
     pub(crate) base_layer_half_size: usize,
     pub(crate) next_layer_size: usize,
     pub(crate) base_input_start: *const B,
+    pub(crate) source_kind: GpuBaseFieldSourceKind,
 }
 
 impl<B> Clone for GpuBaseFieldPolySourceAfterOneFoldingPlan<B> {
@@ -530,6 +579,7 @@ impl<B> GpuBaseFieldPolySourceAfterOneFoldingPlan<B> {
             base_layer_half_size: 0,
             next_layer_size: 0,
             base_input_start: null(),
+            source_kind: GpuBaseFieldSourceKind::Empty,
         }
     }
 }
@@ -542,6 +592,7 @@ pub(crate) struct GpuBaseFieldPolySourceAfterTwoFoldingsPlan<B, E> {
     pub(crate) base_quarter_size: usize,
     pub(crate) next_layer_size: usize,
     pub(crate) first_access: bool,
+    pub(crate) source_kind: GpuBaseFieldSourceKind,
 }
 
 impl<B, E> Clone for GpuBaseFieldPolySourceAfterTwoFoldingsPlan<B, E> {
@@ -564,6 +615,7 @@ impl<B, E> GpuBaseFieldPolySourceAfterTwoFoldingsPlan<B, E> {
             base_quarter_size: 0,
             next_layer_size: 0,
             first_access: false,
+            source_kind: GpuBaseFieldSourceKind::Empty,
         }
     }
 }
@@ -665,6 +717,19 @@ fn schedule_callback_populated_upload<'a, T: Copy + 'a>(
 }
 
 impl<B, E> GpuGKRStorage<B, E> {
+    fn base_trace_len(&self) -> usize {
+        self.layers
+            .first()
+            .and_then(|layer| {
+                layer
+                    .base_field_inputs
+                    .values()
+                    .map(GpuBaseFieldPoly::len)
+                    .max()
+            })
+            .expect("layer 0 must contain at least one real base-field polynomial")
+    }
+
     fn base_poly_layer(address: GKRAddress) -> Option<usize> {
         match address {
             GKRAddress::InnerLayer { layer, .. } | GKRAddress::Cached { layer, .. } => Some(layer),
@@ -695,6 +760,35 @@ impl<B, E> GpuGKRStorage<B, E> {
     fn get_ext_poly_for_address(&self, address: GKRAddress) -> Option<&GpuExtensionFieldPoly<E>> {
         let layer = Self::ext_poly_layer(address)?;
         self.layers.get(layer)?.extension_field_inputs.get(&address)
+    }
+
+    fn get_base_source_for_round_0(&self, address: GKRAddress) -> GpuBaseFieldPolySource<B> {
+        if let Some(source_kind) = GpuBaseFieldSourceKind::from_address(address) {
+            return GpuBaseFieldPolySource {
+                start: null(),
+                next_layer_size: self.base_trace_len() / 2,
+                source_kind,
+            };
+        }
+
+        let layer = match address {
+            GKRAddress::ScratchSpace(..) => unreachable!(),
+            GKRAddress::Cached { layer, .. } | GKRAddress::InnerLayer { layer, .. } => layer,
+            GKRAddress::BaseLayerMemory(..)
+            | GKRAddress::BaseLayerWitness(..)
+            | GKRAddress::Setup(..)
+            | GKRAddress::VirtualSetup(..) => 0,
+        };
+        let source = self.layers[layer]
+            .base_field_inputs
+            .get(&address)
+            .unwrap_or_else(|| {
+                panic!(
+                    "Polynomial with address {:?} is missing from input sources for base field polys",
+                    address
+                )
+            });
+        source.accessor()
     }
 
     #[cfg(test)]
@@ -798,12 +892,22 @@ impl<B: 'static, E: Field> GpuGKRStorage<B, E> {
         &self,
         poly: GKRAddress,
     ) -> GpuBaseFieldPolySourceAfterOneFoldingPlan<B> {
-        let poly = self.get_base_poly_for_address(poly).expect("must exist");
+        if let Some(source_kind) = GpuBaseFieldSourceKind::from_address(poly) {
+            let trace_len = self.base_trace_len();
+            return GpuBaseFieldPolySourceAfterOneFoldingPlan {
+                base_layer_half_size: trace_len / 2,
+                next_layer_size: trace_len / 4,
+                base_input_start: null(),
+                source_kind,
+            };
+        }
 
+        let poly = self.get_base_poly_for_address(poly).expect("must exist");
         GpuBaseFieldPolySourceAfterOneFoldingPlan {
             base_layer_half_size: poly.len() / 2,
             next_layer_size: poly.len() / 4,
             base_input_start: poly.as_ptr(),
+            source_kind: GpuBaseFieldSourceKind::Real,
         }
     }
 
@@ -814,10 +918,13 @@ impl<B: 'static, E: Field> GpuGKRStorage<B, E> {
     ) -> CudaResult<GpuBaseFieldPolySourceAfterTwoFoldingsPlan<B, E>> {
         let layer = Self::base_poly_layer(poly).expect("must exist");
         let sumcheck_step = 2;
-        let (base_poly_len, base_poly_ptr) = {
-            let poly = self.get_base_poly_for_address(poly).expect("must exist");
-            (poly.len(), poly.as_ptr())
-        };
+        let (base_poly_len, base_poly_ptr, source_kind) =
+            if let Some(source_kind) = GpuBaseFieldSourceKind::from_address(poly) {
+                (self.base_trace_len(), null(), source_kind)
+            } else {
+                let poly = self.get_base_poly_for_address(poly).expect("must exist");
+                (poly.len(), poly.as_ptr(), GpuBaseFieldSourceKind::Real)
+            };
 
         if !self.layers[layer]
             .intermediate_storage_for_folder_base_field_inputs
@@ -859,6 +966,7 @@ impl<B: 'static, E: Field> GpuGKRStorage<B, E> {
             base_quarter_size: base_poly_len / 4,
             next_layer_size: base_poly_len / 8,
             first_access,
+            source_kind,
         })
     }
 
@@ -986,17 +1094,9 @@ impl<B: 'static, E: Field> GpuGKRStorage<B, E> {
                     .base_field_inputs
                     .push(GpuBaseFieldPolySource::empty());
             } else {
-                let layer = Self::round_input_layer(*input);
-                let source = self.layers[layer]
+                storage
                     .base_field_inputs
-                    .get(input)
-                    .unwrap_or_else(|| {
-                        panic!(
-                            "Polynomial with address {:?} is missing from input sources for base field polys",
-                            input
-                        )
-                    });
-                storage.base_field_inputs.push(source.accessor());
+                    .push(self.get_base_source_for_round_0(*input));
             }
         }
 
@@ -1242,6 +1342,7 @@ impl<B: 'static, E: Field + 'static> GpuSumcheckRound1PreparedStorage<B, E> {
                     base_layer_half_size: plan.base_layer_half_size,
                     next_layer_size: plan.next_layer_size,
                     base_input_start: plan.base_input_start,
+                    source_kind: plan.source_kind,
                     _marker: core::marker::PhantomData,
                 },
             )
@@ -1298,6 +1399,7 @@ impl<B: 'static, E: Field + 'static> GpuSumcheckRound2PreparedStorage<B, E> {
                     base_quarter_size: plan.base_quarter_size,
                     next_layer_size: plan.next_layer_size,
                     first_access: plan.first_access,
+                    source_kind: plan.source_kind,
                 },
             )
             .collect();
@@ -1401,6 +1503,7 @@ mod tests {
     use crate::primitives::callbacks::Callbacks;
     use crate::primitives::field::{BF, E4};
     use crate::prover::test_utils::make_test_context;
+    use cs::definitions::VirtualSetupPoly;
     use era_cudart::memory::memory_copy_async;
     use serial_test::serial;
 
@@ -1409,17 +1512,6 @@ mod tests {
             .alloc(values.len(), AllocationPlacement::BestFit)
             .unwrap();
         memory_copy_async(&mut allocation, values, context.get_exec_stream()).unwrap();
-        allocation
-    }
-
-    fn alloc_host_values<T: Copy>(context: &ProverContext, values: &[T]) -> HostAllocation<[T]> {
-        let mut allocation = unsafe { context.alloc_host_uninit_slice(values.len()) };
-        unsafe {
-            allocation
-                .get_mut_accessor()
-                .get_mut()
-                .copy_from_slice(values);
-        }
         allocation
     }
 
@@ -1513,12 +1605,14 @@ mod tests {
 
         storage.purge_up_to_layer(0);
         assert_eq!(storage.layers.len(), 1);
-        assert!(storage
-            .try_get_ext_poly(GKRAddress::InnerLayer {
-                layer: 1,
-                offset: 0
-            })
-            .is_none());
+        assert!(
+            storage
+                .try_get_ext_poly(GKRAddress::InnerLayer {
+                    layer: 1,
+                    offset: 0
+                })
+                .is_none()
+        );
         assert_eq!(storage.get_base_layer_mem(0).as_ptr(), base_memory_ptr);
     }
 
@@ -1828,5 +1922,94 @@ mod tests {
 
         drop(storage);
         assert_eq!(context.get_used_mem_current(), baseline);
+    }
+
+    #[test]
+    #[cfg(not(no_cuda))]
+    #[serial]
+    fn virtual_setup_sources_lower_to_synthetic_descriptors() {
+        let context = make_test_context(64, 8);
+        let mut storage = GpuGKRStorage::<BF, E4>::default();
+        let base_values = (0..8)
+            .map(|idx| BF::new(idx as u32 + 1))
+            .collect::<Vec<_>>();
+        storage.insert_base_field_at_layer(
+            0,
+            GKRAddress::BaseLayerMemory(0),
+            GpuBaseFieldPoly::new(alloc_and_copy(&context, &base_values)),
+        );
+
+        let inputs = GKRInputs {
+            inputs_in_base: vec![
+                GKRAddress::VirtualSetup(VirtualSetupPoly::RangeCheck16Bits),
+                GKRAddress::VirtualSetup(VirtualSetupPoly::InitsAndTeardownsHigh),
+            ],
+            inputs_in_extension: Vec::new(),
+            outputs_in_base: Vec::new(),
+            outputs_in_extension: Vec::new(),
+        };
+
+        let round0 = storage.get_for_sumcheck_round_0(&inputs);
+        assert!(round0.base_field_inputs[0].start.is_null());
+        assert_eq!(round0.base_field_inputs[0].next_layer_size, 4);
+        assert_eq!(
+            round0.base_field_inputs[0].source_kind,
+            GpuBaseFieldSourceKind::VirtualRangeCheck16Bits
+        );
+        assert!(round0.base_field_inputs[1].start.is_null());
+        assert_eq!(round0.base_field_inputs[1].next_layer_size, 4);
+        assert_eq!(
+            round0.base_field_inputs[1].source_kind,
+            GpuBaseFieldSourceKind::VirtualInitsAndTeardownsHigh
+        );
+
+        let round1 = storage
+            .prepare_for_sumcheck_round_1(&inputs, &context)
+            .unwrap();
+        assert!(round1.base_field_inputs[0].base_input_start.is_null());
+        assert_eq!(round1.base_field_inputs[0].base_layer_half_size, 4);
+        assert_eq!(round1.base_field_inputs[0].next_layer_size, 2);
+        assert_eq!(
+            round1.base_field_inputs[0].source_kind,
+            GpuBaseFieldSourceKind::VirtualRangeCheck16Bits
+        );
+        assert!(round1.base_field_inputs[1].base_input_start.is_null());
+        assert_eq!(
+            round1.base_field_inputs[1].source_kind,
+            GpuBaseFieldSourceKind::VirtualInitsAndTeardownsHigh
+        );
+
+        let round2_first = storage
+            .prepare_for_sumcheck_round_2(&inputs, &context)
+            .unwrap();
+        assert!(round2_first.base_field_inputs[0].base_input_start.is_null());
+        assert_eq!(round2_first.base_field_inputs[0].base_layer_half_size, 4);
+        assert_eq!(round2_first.base_field_inputs[0].base_quarter_size, 2);
+        assert_eq!(round2_first.base_field_inputs[0].next_layer_size, 1);
+        assert!(round2_first.base_field_inputs[0].first_access);
+        assert_eq!(
+            round2_first.base_field_inputs[0].source_kind,
+            GpuBaseFieldSourceKind::VirtualRangeCheck16Bits
+        );
+        assert!(round2_first.base_field_inputs[1].base_input_start.is_null());
+        assert!(round2_first.base_field_inputs[1].first_access);
+        assert_eq!(
+            round2_first.base_field_inputs[1].source_kind,
+            GpuBaseFieldSourceKind::VirtualInitsAndTeardownsHigh
+        );
+
+        let round2_second = storage
+            .prepare_for_sumcheck_round_2(&inputs, &context)
+            .unwrap();
+        assert!(!round2_second.base_field_inputs[0].first_access);
+        assert!(!round2_second.base_field_inputs[1].first_access);
+        assert_eq!(
+            round2_second.base_field_inputs[0].source_kind,
+            GpuBaseFieldSourceKind::VirtualRangeCheck16Bits
+        );
+        assert_eq!(
+            round2_second.base_field_inputs[1].source_kind,
+            GpuBaseFieldSourceKind::VirtualInitsAndTeardownsHigh
+        );
     }
 }

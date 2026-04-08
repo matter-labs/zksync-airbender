@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
-use cs::definitions::{GKRAddress, VirtualSetupPoly, TIMESTAMP_COLUMNS_NUM_BITS};
+use cs::definitions::{GKRAddress, TIMESTAMP_COLUMNS_NUM_BITS, VirtualSetupPoly};
 use cs::gkr_compiler::GKRLayerDescription;
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
@@ -9,15 +9,15 @@ use era_cudart::slice::DeviceSlice;
 use field::{Field, FieldExtension};
 
 use super::backward::{
-    launch_build_eq_values, launch_trace_holder_block_partials, GpuDimensionReducingKernelSet,
-    GKR_TRACE_HOLDER_PARTIALS_COLUMNS_PER_CHUNK,
+    GKR_TRACE_HOLDER_PARTIALS_COLUMNS_PER_CHUNK, GpuDimensionReducingKernelSet,
+    launch_build_eq_values, launch_trace_holder_block_partials,
 };
 use super::transform::normalize_layer_for_gpu;
 use crate::allocator::tracker::AllocationPlacement;
-use crate::ops::cub::device_reduce::{
-    batch_reduce, get_batch_reduce_temp_storage_bytes, ReduceOperation,
-};
 use crate::ops::cub::CUB_TEMP_STORAGE_EXTRA_ALIGNMENT_LOG2;
+use crate::ops::cub::device_reduce::{
+    ReduceOperation, batch_reduce, get_batch_reduce_temp_storage_bytes,
+};
 use crate::primitives::callbacks::Callbacks;
 use crate::primitives::context::{HostAllocation, ProverContext};
 use crate::primitives::device_structures::DeviceMatrix;
@@ -603,7 +603,7 @@ where
 mod tests {
     use std::collections::BTreeMap;
 
-    use cs::definitions::{GKRAddress, VirtualSetupPoly, TIMESTAMP_COLUMNS_NUM_BITS};
+    use cs::definitions::{GKRAddress, TIMESTAMP_COLUMNS_NUM_BITS, VirtualSetupPoly};
     use cs::gkr_compiler::GKRLayerDescription;
     use era_cudart::memory::memory_copy_async;
     use field::{Field, FieldExtension, PrimeField};

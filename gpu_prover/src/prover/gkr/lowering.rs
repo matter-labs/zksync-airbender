@@ -225,7 +225,7 @@ fn lower_gate_relation(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cs::definitions::{gkr::NoFieldLinearRelation, GKRAddress, VirtualSetupPoly};
+    use cs::definitions::{GKRAddress, VirtualSetupPoly, gkr::NoFieldLinearRelation};
     use cs::gkr_compiler::{
         CompiledAddressSpaceRelationStrict, CompiledAddressStrict, CompiledMemoryTimestamp,
         InitsOrTeardownsTimestampAndValue, NoFieldMaxQuadraticGKRRelation,
