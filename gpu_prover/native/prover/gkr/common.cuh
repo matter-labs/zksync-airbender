@@ -67,9 +67,16 @@ enum gkr_main_kernel_kind : u32 {
   GKR_MAIN_ENFORCE_CONSTRAINTS = 10,
   GKR_MAIN_LINEAR_BASE_OUTPUT = 11,
   GKR_MAIN_INITS_AND_TEARDOWNS_INITIAL_PAIR = 12,
+  GKR_MAIN_INITIAL_GRAND_PRODUCT_WITHOUT_CACHES = 13,
+  GKR_MAIN_MATERIALIZE_GRAND_PRODUCT_TERM_EXPRESSION = 14,
+  GKR_MAIN_LOOKUP_PAIR_FROM_BASE_INPUTS = 15,
+  GKR_MAIN_LOOKUP_WITH_DENS_AND_SETUP_EXPRESSIONS = 16,
+  GKR_MAIN_LOOKUP_PAIR_FROM_VECTOR_INPUTS = 17,
+  GKR_MAIN_LOOKUP_FROM_VECTOR_INPUT_WITH_SETUP = 18,
+  GKR_MAIN_LOOKUP_UNBALANCED_PAIR_WITH_VECTOR_INPUTS = 19,
 };
 
-static constexpr unsigned GKR_FORWARD_MAX_GATES_PER_LAYER = 64;
+static constexpr unsigned GKR_FORWARD_MAX_GATES_PER_LAYER = 63;
 static constexpr unsigned GKR_BACKWARD_MAX_KERNELS_PER_LAYER = 64;
 static constexpr unsigned GKR_BACKWARD_MAX_INLINE_ROUND_BATCH_BYTES = 12 * 1024;
 static constexpr unsigned GKR_DIM_REDUCING_FORWARD_MAX_INPUTS = 5;
@@ -351,6 +358,15 @@ template <typename E> struct gkr_dim_reducing_round3_batch {
 
 DEVICE_FORCEINLINE bool gkr_dim_reducing_batch_descriptors_inline(const u32 record_mode) { return record_mode == GKR_DIM_REDUCING_BATCH_INLINE_DESCRIPTORS; }
 
+constexpr unsigned GKR_FORWARD_CACHE_MEMORY_LINEAR_TERMS = 8;
+
+enum gkr_forward_cache_address_space_kind : u32 {
+  GKR_FORWARD_CACHE_ADDRESS_SPACE_EMPTY = 0,
+  GKR_FORWARD_CACHE_ADDRESS_SPACE_CONSTANT = 1,
+  GKR_FORWARD_CACHE_ADDRESS_SPACE_IS = 2,
+  GKR_FORWARD_CACHE_ADDRESS_SPACE_NOT = 3,
+};
+
 enum gkr_forward_gate_kind : u32 {
   GKR_FORWARD_NO_OP = 0,
   GKR_FORWARD_PRODUCT = 1,
@@ -363,6 +379,13 @@ enum gkr_forward_gate_kind : u32 {
   GKR_FORWARD_LOOKUP_UNBALANCED_BASE = 8,
   GKR_FORWARD_LOOKUP_UNBALANCED_EXTENSION = 9,
   GKR_FORWARD_LOOKUP_EXT_PAIR = 10,
+  GKR_FORWARD_INITIAL_GRAND_PRODUCT_WITHOUT_CACHES = 11,
+  GKR_FORWARD_MATERIALIZE_GRAND_PRODUCT_TERM_EXPRESSION = 12,
+  GKR_FORWARD_LOOKUP_PAIR_FROM_BASE_INPUTS = 13,
+  GKR_FORWARD_LOOKUP_WITH_DENS_AND_SETUP_EXPRESSIONS = 14,
+  GKR_FORWARD_LOOKUP_PAIR_FROM_VECTOR_INPUTS = 15,
+  GKR_FORWARD_LOOKUP_FROM_VECTOR_INPUT_WITH_SETUP = 16,
+  GKR_FORWARD_LOOKUP_UNBALANCED_PAIR_WITH_VECTOR_INPUTS = 17,
 };
 
 struct gkr_forward_no_op_descriptor {
@@ -445,6 +468,70 @@ template <typename E> struct gkr_forward_lookup_unbalanced_extension_descriptor 
   E *den;
 };
 
+template <typename E> struct gkr_forward_memory_tuple_expression_descriptor {
+  gkr_forward_cache_address_space_kind address_space_kind;
+  const bf *address_space_ptr;
+  bf address_space_constant;
+  E constant_term;
+  const bf *linear_inputs[GKR_FORWARD_CACHE_MEMORY_LINEAR_TERMS];
+  E linear_challenges[GKR_FORWARD_CACHE_MEMORY_LINEAR_TERMS];
+};
+
+template <typename E> struct gkr_forward_initial_grand_product_without_caches_descriptor {
+  gkr_forward_memory_tuple_expression_descriptor<E> lhs;
+  gkr_forward_memory_tuple_expression_descriptor<E> rhs;
+  E *dst;
+};
+
+template <typename E> struct gkr_forward_materialize_grand_product_term_expression_descriptor {
+  gkr_forward_memory_tuple_expression_descriptor<E> input;
+  E *dst;
+};
+
+template <typename E> struct gkr_forward_lookup_pair_from_base_inputs_descriptor {
+  const u32 *lhs_mapping;
+  const u32 *rhs_mapping;
+  E *num;
+  E *den;
+};
+
+template <typename E> struct gkr_forward_lookup_with_dens_and_setup_expressions_descriptor {
+  const bf *decoder_predicate;
+  const u32 *input_mapping;
+  const bf *multiplicity;
+  const E *generic_lookup;
+  const E *decoder_fill_value;
+  u32 generic_lookup_len;
+  E *num;
+  E *den;
+};
+
+template <typename E> struct gkr_forward_lookup_pair_from_vector_inputs_descriptor {
+  const u32 *lhs_mapping;
+  const u32 *rhs_mapping;
+  const E *generic_lookup;
+  E *num;
+  E *den;
+};
+
+template <typename E> struct gkr_forward_lookup_from_vector_input_with_setup_descriptor {
+  const u32 *input_mapping;
+  const bf *multiplicity;
+  const E *generic_lookup;
+  u32 generic_lookup_len;
+  E *num;
+  E *den;
+};
+
+template <typename E> struct gkr_forward_lookup_unbalanced_pair_with_vector_inputs_descriptor {
+  const E *a;
+  const E *b;
+  const u32 *remainder_mapping;
+  const E *generic_lookup;
+  E *num;
+  E *den;
+};
+
 template <typename E> union gkr_forward_gate_payload {
   gkr_forward_no_op_descriptor no_op;
   gkr_forward_product_descriptor<E> product;
@@ -457,6 +544,13 @@ template <typename E> union gkr_forward_gate_payload {
   gkr_forward_lookup_ext_minus_multiplicity_by_ext_descriptor<E> lookup_ext_minus_multiplicity_by_ext;
   gkr_forward_lookup_unbalanced_base_descriptor<E> lookup_unbalanced_base;
   gkr_forward_lookup_unbalanced_extension_descriptor<E> lookup_unbalanced_extension;
+  gkr_forward_initial_grand_product_without_caches_descriptor<E> initial_grand_product_without_caches;
+  gkr_forward_materialize_grand_product_term_expression_descriptor<E> materialize_grand_product_term_expression;
+  gkr_forward_lookup_pair_from_base_inputs_descriptor<E> lookup_pair_from_base_inputs;
+  gkr_forward_lookup_with_dens_and_setup_expressions_descriptor<E> lookup_with_dens_and_setup_expressions;
+  gkr_forward_lookup_pair_from_vector_inputs_descriptor<E> lookup_pair_from_vector_inputs;
+  gkr_forward_lookup_from_vector_input_with_setup_descriptor<E> lookup_from_vector_input_with_setup;
+  gkr_forward_lookup_unbalanced_pair_with_vector_inputs_descriptor<E> lookup_unbalanced_pair_with_vector_inputs;
 };
 
 template <typename E> struct gkr_forward_gate_descriptor {
@@ -525,7 +619,6 @@ template <typename E> struct gkr_forward_setup_generic_lookup_batch {
 };
 
 constexpr unsigned GKR_FORWARD_CACHE_MAX_RELATIONS = 20;
-constexpr unsigned GKR_FORWARD_CACHE_MEMORY_LINEAR_TERMS = 8;
 
 enum gkr_forward_cache_kind : u32 {
   GKR_FORWARD_CACHE_EMPTY = 0,
@@ -533,13 +626,6 @@ enum gkr_forward_cache_kind : u32 {
   GKR_FORWARD_CACHE_VECTORIZED_LOOKUP = 2,
   GKR_FORWARD_CACHE_VECTORIZED_LOOKUP_SETUP = 3,
   GKR_FORWARD_CACHE_MEMORY_TUPLE = 4,
-};
-
-enum gkr_forward_cache_address_space_kind : u32 {
-  GKR_FORWARD_CACHE_ADDRESS_SPACE_EMPTY = 0,
-  GKR_FORWARD_CACHE_ADDRESS_SPACE_CONSTANT = 1,
-  GKR_FORWARD_CACHE_ADDRESS_SPACE_IS = 2,
-  GKR_FORWARD_CACHE_ADDRESS_SPACE_NOT = 3,
 };
 
 template <typename E> struct gkr_forward_cache_descriptor {
@@ -592,6 +678,38 @@ template <typename E> DEVICE_FORCEINLINE void gkr_forward_cache_memory_tuple(con
   }
 
   store<E, st_modifier::cs>(descriptor.ext_output, value, gid);
+}
+
+template <typename E>
+DEVICE_FORCEINLINE E gkr_forward_memory_tuple_value(const gkr_forward_memory_tuple_expression_descriptor<E> &descriptor, const unsigned gid) {
+  E value = descriptor.constant_term;
+  switch (descriptor.address_space_kind) {
+  case GKR_FORWARD_CACHE_ADDRESS_SPACE_CONSTANT:
+    value = E::add(value, gkr_lift_base<E>(descriptor.address_space_constant));
+    break;
+  case GKR_FORWARD_CACHE_ADDRESS_SPACE_IS:
+    value = E::add(value, gkr_lift_base<E>(load<bf, ld_modifier::cs>(descriptor.address_space_ptr, gid)));
+    break;
+  case GKR_FORWARD_CACHE_ADDRESS_SPACE_NOT:
+    value = E::add(value, E::sub(E::ONE(), gkr_lift_base<E>(load<bf, ld_modifier::cs>(descriptor.address_space_ptr, gid))));
+    break;
+  case GKR_FORWARD_CACHE_ADDRESS_SPACE_EMPTY:
+    break;
+  }
+
+#pragma unroll
+  for (unsigned term = 0; term < GKR_FORWARD_CACHE_MEMORY_LINEAR_TERMS; ++term) {
+    if (descriptor.linear_inputs[term] == nullptr)
+      continue;
+    const bf input = load<bf, ld_modifier::cs>(descriptor.linear_inputs[term], gid);
+    value = E::add(value, E::mul(descriptor.linear_challenges[term], input));
+  }
+
+  return value;
+}
+
+template <typename E> DEVICE_FORCEINLINE E gkr_forward_lookup_setup_value(const E *generic_lookup, const u32 generic_lookup_len, const unsigned gid) {
+  return gid < generic_lookup_len ? load<E, ld_modifier::cs>(generic_lookup, gid) : E::ZERO();
 }
 
 template <typename E> DEVICE_FORCEINLINE void gkr_forward_cache(const gkr_forward_cache_batch<E> &batch, const unsigned trace_len) {
@@ -1234,6 +1352,88 @@ template <typename E> DEVICE_FORCEINLINE void gkr_forward_layer(const gkr_forwar
       store<E, st_modifier::cs>(params.den, den, gid);
       break;
     }
+    case GKR_FORWARD_INITIAL_GRAND_PRODUCT_WITHOUT_CACHES: {
+      const auto params = descriptor.payload.initial_grand_product_without_caches;
+      const E lhs = gkr_forward_memory_tuple_value(params.lhs, gid);
+      const E rhs = gkr_forward_memory_tuple_value(params.rhs, gid);
+      E value;
+      gkr_eval_product(lhs, rhs, value);
+      store<E, st_modifier::cs>(params.dst, value, gid);
+      break;
+    }
+    case GKR_FORWARD_MATERIALIZE_GRAND_PRODUCT_TERM_EXPRESSION: {
+      const auto params = descriptor.payload.materialize_grand_product_term_expression;
+      const E value = gkr_forward_memory_tuple_value(params.input, gid);
+      store<E, st_modifier::cs>(params.dst, value, gid);
+      break;
+    }
+    case GKR_FORWARD_LOOKUP_PAIR_FROM_BASE_INPUTS: {
+      const auto params = descriptor.payload.lookup_pair_from_base_inputs;
+      const E b = gkr_lift_base<E>(bf::from_canonical_u32(params.lhs_mapping[gid]));
+      const E d = gkr_lift_base<E>(bf::from_canonical_u32(params.rhs_mapping[gid]));
+      const E gamma = load<E, ld_modifier::cs>(batch.lookup_additive_challenge, 0);
+      E num;
+      E den;
+      gkr_eval_lookup_base_pair(b, d, gamma, num, den);
+      store<E, st_modifier::cs>(params.num, num, gid);
+      store<E, st_modifier::cs>(params.den, den, gid);
+      break;
+    }
+    case GKR_FORWARD_LOOKUP_WITH_DENS_AND_SETUP_EXPRESSIONS: {
+      const auto params = descriptor.payload.lookup_with_dens_and_setup_expressions;
+      const bf enabled = load<bf, ld_modifier::cs>(params.decoder_predicate, gid);
+      const bool mask = enabled.limb != 0;
+      const u32 mapping = params.input_mapping[gid];
+      E b = mask ? load<E, ld_modifier::cs>(params.generic_lookup, mapping) : load<E, ld_modifier::cs>(params.decoder_fill_value, 0);
+      const E a = gkr_lift_base<E>(enabled);
+      const E c = gkr_lift_base<E>(load<bf, ld_modifier::cs>(params.multiplicity, gid));
+      const E d = gkr_forward_lookup_setup_value(params.generic_lookup, params.generic_lookup_len, gid);
+      const E gamma = load<E, ld_modifier::cs>(batch.lookup_additive_challenge, 0);
+      E num;
+      E den;
+      gkr_eval_lookup_cached_dens_and_setup(a, b, c, d, gamma, num, den);
+      store<E, st_modifier::cs>(params.num, num, gid);
+      store<E, st_modifier::cs>(params.den, den, gid);
+      break;
+    }
+    case GKR_FORWARD_LOOKUP_PAIR_FROM_VECTOR_INPUTS: {
+      const auto params = descriptor.payload.lookup_pair_from_vector_inputs;
+      const E b = load<E, ld_modifier::cs>(params.generic_lookup, params.lhs_mapping[gid]);
+      const E d = load<E, ld_modifier::cs>(params.generic_lookup, params.rhs_mapping[gid]);
+      const E gamma = load<E, ld_modifier::cs>(batch.lookup_additive_challenge, 0);
+      E num;
+      E den;
+      gkr_eval_lookup_ext_pair(b, d, gamma, num, den);
+      store<E, st_modifier::cs>(params.num, num, gid);
+      store<E, st_modifier::cs>(params.den, den, gid);
+      break;
+    }
+    case GKR_FORWARD_LOOKUP_FROM_VECTOR_INPUT_WITH_SETUP: {
+      const auto params = descriptor.payload.lookup_from_vector_input_with_setup;
+      const E b = load<E, ld_modifier::cs>(params.generic_lookup, params.input_mapping[gid]);
+      const E c = gkr_lift_base<E>(load<bf, ld_modifier::cs>(params.multiplicity, gid));
+      const E d = gkr_forward_lookup_setup_value(params.generic_lookup, params.generic_lookup_len, gid);
+      const E gamma = load<E, ld_modifier::cs>(batch.lookup_additive_challenge, 0);
+      E num;
+      E den;
+      gkr_eval_lookup_base_minus_multiplicity(b, c, d, gamma, num, den);
+      store<E, st_modifier::cs>(params.num, num, gid);
+      store<E, st_modifier::cs>(params.den, den, gid);
+      break;
+    }
+    case GKR_FORWARD_LOOKUP_UNBALANCED_PAIR_WITH_VECTOR_INPUTS: {
+      const auto params = descriptor.payload.lookup_unbalanced_pair_with_vector_inputs;
+      const E a = load<E, ld_modifier::cs>(params.a, gid);
+      const E b = load<E, ld_modifier::cs>(params.b, gid);
+      const E d = load<E, ld_modifier::cs>(params.generic_lookup, params.remainder_mapping[gid]);
+      const E gamma = load<E, ld_modifier::cs>(batch.lookup_additive_challenge, 0);
+      E num;
+      E den;
+      gkr_eval_lookup_unbalanced(d, a, b, gamma, num, den);
+      store<E, st_modifier::cs>(params.num, num, gid);
+      store<E, st_modifier::cs>(params.den, den, gid);
+      break;
+    }
     default:
       return;
     }
@@ -1444,6 +1644,194 @@ DEVICE_FORCEINLINE void gkr_eval_constraints_round3(const gkr_ext_continuing_sou
   }
 }
 
+static constexpr u32 GKR_NO_CACHE_LINEAR_FORM_CONSTANT_SENTINEL = UINT32_MAX;
+
+template <typename E>
+DEVICE_FORCEINLINE E gkr_no_cache_linear_form_initial_value(const gkr_base_initial_source<bf> *base_inputs,
+                                                            const gkr_main_constraint_quadratic_term<E> *terms,
+                                                            const unsigned terms_count, const unsigned gid) {
+  E result = E::ZERO();
+  for (unsigned i = 0; i < terms_count; ++i) {
+    const auto term = terms[i];
+    const E contribution = term.lhs == GKR_NO_CACHE_LINEAR_FORM_CONSTANT_SENTINEL ? E::ONE() : gkr_get_initial_base_value<E>(base_inputs[term.lhs], gid);
+    result = E::add(result, E::mul(contribution, term.challenge));
+  }
+  return result;
+}
+
+template <typename E>
+DEVICE_FORCEINLINE E gkr_no_cache_linear_form_initial_value(const gkr_base_initial_source<bf> *base_inputs,
+                                                            const gkr_main_constraint_linear_term<E> *terms,
+                                                            const unsigned terms_count, const unsigned gid) {
+  E result = E::ZERO();
+  for (unsigned i = 0; i < terms_count; ++i) {
+    const auto term = terms[i];
+    const E contribution = term.input == GKR_NO_CACHE_LINEAR_FORM_CONSTANT_SENTINEL ? E::ONE() : gkr_get_initial_base_value<E>(base_inputs[term.input], gid);
+    result = E::add(result, E::mul(contribution, term.challenge));
+  }
+  return result;
+}
+
+template <typename E>
+DEVICE_FORCEINLINE E gkr_no_cache_linear_form_initial_delta(const gkr_base_initial_source<bf> *base_inputs,
+                                                            const gkr_main_constraint_quadratic_term<E> *terms,
+                                                            const unsigned terms_count, const unsigned gid) {
+  E result = E::ZERO();
+  for (unsigned i = 0; i < terms_count; ++i) {
+    const auto term = terms[i];
+    if (term.lhs == GKR_NO_CACHE_LINEAR_FORM_CONSTANT_SENTINEL)
+      continue;
+    result = E::add(result, E::mul(gkr_get_initial_base_delta<E>(base_inputs[term.lhs], gid), term.challenge));
+  }
+  return result;
+}
+
+template <typename E>
+DEVICE_FORCEINLINE E gkr_no_cache_linear_form_initial_delta(const gkr_base_initial_source<bf> *base_inputs,
+                                                            const gkr_main_constraint_linear_term<E> *terms,
+                                                            const unsigned terms_count, const unsigned gid) {
+  E result = E::ZERO();
+  for (unsigned i = 0; i < terms_count; ++i) {
+    const auto term = terms[i];
+    if (term.input == GKR_NO_CACHE_LINEAR_FORM_CONSTANT_SENTINEL)
+      continue;
+    result = E::add(result, E::mul(gkr_get_initial_base_delta<E>(base_inputs[term.input], gid), term.challenge));
+  }
+  return result;
+}
+
+template <typename E, bool EXPLICIT_FORM>
+DEVICE_FORCEINLINE void gkr_no_cache_linear_form_round1_points(const gkr_base_after_one_source<bf, E> *base_inputs, const E folding_challenge,
+                                                               const gkr_main_constraint_quadratic_term<E> *terms, const unsigned terms_count,
+                                                               const unsigned gid, E &eval0, E &eval1) {
+  eval0 = E::ZERO();
+  eval1 = E::ZERO();
+  for (unsigned i = 0; i < terms_count; ++i) {
+    const auto term = terms[i];
+    if (term.lhs == GKR_NO_CACHE_LINEAR_FORM_CONSTANT_SENTINEL) {
+      eval0 = E::add(eval0, term.challenge);
+      if constexpr (EXPLICIT_FORM)
+        eval1 = E::add(eval1, term.challenge);
+      continue;
+    }
+    E value0;
+    E value1;
+    gkr_get_base_after_one_points<E, EXPLICIT_FORM>(base_inputs[term.lhs], folding_challenge, gid, value0, value1);
+    eval0 = E::add(eval0, E::mul(value0, term.challenge));
+    eval1 = E::add(eval1, E::mul(value1, term.challenge));
+  }
+}
+
+template <typename E, bool EXPLICIT_FORM>
+DEVICE_FORCEINLINE void gkr_no_cache_linear_form_round1_points(const gkr_base_after_one_source<bf, E> *base_inputs, const E folding_challenge,
+                                                               const gkr_main_constraint_linear_term<E> *terms, const unsigned terms_count,
+                                                               const unsigned gid, E &eval0, E &eval1) {
+  eval0 = E::ZERO();
+  eval1 = E::ZERO();
+  for (unsigned i = 0; i < terms_count; ++i) {
+    const auto term = terms[i];
+    if (term.input == GKR_NO_CACHE_LINEAR_FORM_CONSTANT_SENTINEL) {
+      eval0 = E::add(eval0, term.challenge);
+      if constexpr (EXPLICIT_FORM)
+        eval1 = E::add(eval1, term.challenge);
+      continue;
+    }
+    E value0;
+    E value1;
+    gkr_get_base_after_one_points<E, EXPLICIT_FORM>(base_inputs[term.input], folding_challenge, gid, value0, value1);
+    eval0 = E::add(eval0, E::mul(value0, term.challenge));
+    eval1 = E::add(eval1, E::mul(value1, term.challenge));
+  }
+}
+
+template <typename E, bool EXPLICIT_FORM>
+DEVICE_FORCEINLINE void gkr_no_cache_linear_form_round2_points(const gkr_base_after_two_source<bf, E> *base_inputs, const E first_folding_challenge,
+                                                               const E second_folding_challenge, const gkr_main_constraint_quadratic_term<E> *terms,
+                                                               const unsigned terms_count, const unsigned gid, E &eval0, E &eval1) {
+  eval0 = E::ZERO();
+  eval1 = E::ZERO();
+  for (unsigned i = 0; i < terms_count; ++i) {
+    const auto term = terms[i];
+    if (term.lhs == GKR_NO_CACHE_LINEAR_FORM_CONSTANT_SENTINEL) {
+      eval0 = E::add(eval0, term.challenge);
+      if constexpr (EXPLICIT_FORM)
+        eval1 = E::add(eval1, term.challenge);
+      continue;
+    }
+    E value0;
+    E value1;
+    gkr_get_base_after_two_points<E, EXPLICIT_FORM>(base_inputs[term.lhs], first_folding_challenge, second_folding_challenge, gid, value0, value1);
+    eval0 = E::add(eval0, E::mul(value0, term.challenge));
+    eval1 = E::add(eval1, E::mul(value1, term.challenge));
+  }
+}
+
+template <typename E, bool EXPLICIT_FORM>
+DEVICE_FORCEINLINE void gkr_no_cache_linear_form_round2_points(const gkr_base_after_two_source<bf, E> *base_inputs, const E first_folding_challenge,
+                                                               const E second_folding_challenge, const gkr_main_constraint_linear_term<E> *terms,
+                                                               const unsigned terms_count, const unsigned gid, E &eval0, E &eval1) {
+  eval0 = E::ZERO();
+  eval1 = E::ZERO();
+  for (unsigned i = 0; i < terms_count; ++i) {
+    const auto term = terms[i];
+    if (term.input == GKR_NO_CACHE_LINEAR_FORM_CONSTANT_SENTINEL) {
+      eval0 = E::add(eval0, term.challenge);
+      if constexpr (EXPLICIT_FORM)
+        eval1 = E::add(eval1, term.challenge);
+      continue;
+    }
+    E value0;
+    E value1;
+    gkr_get_base_after_two_points<E, EXPLICIT_FORM>(base_inputs[term.input], first_folding_challenge, second_folding_challenge, gid, value0, value1);
+    eval0 = E::add(eval0, E::mul(value0, term.challenge));
+    eval1 = E::add(eval1, E::mul(value1, term.challenge));
+  }
+}
+
+template <typename E, bool EXPLICIT_FORM>
+DEVICE_FORCEINLINE void gkr_no_cache_linear_form_round3_points(const gkr_ext_continuing_source<E> *base_inputs, const E folding_challenge,
+                                                               const gkr_main_constraint_quadratic_term<E> *terms, const unsigned terms_count,
+                                                               const unsigned gid, E &eval0, E &eval1) {
+  eval0 = E::ZERO();
+  eval1 = E::ZERO();
+  for (unsigned i = 0; i < terms_count; ++i) {
+    const auto term = terms[i];
+    if (term.lhs == GKR_NO_CACHE_LINEAR_FORM_CONSTANT_SENTINEL) {
+      eval0 = E::add(eval0, term.challenge);
+      if constexpr (EXPLICIT_FORM)
+        eval1 = E::add(eval1, term.challenge);
+      continue;
+    }
+    E value0;
+    E value1;
+    gkr_get_continuing_points<E, EXPLICIT_FORM>(base_inputs[term.lhs], folding_challenge, gid, value0, value1);
+    eval0 = E::add(eval0, E::mul(value0, term.challenge));
+    eval1 = E::add(eval1, E::mul(value1, term.challenge));
+  }
+}
+
+template <typename E, bool EXPLICIT_FORM>
+DEVICE_FORCEINLINE void gkr_no_cache_linear_form_round3_points(const gkr_ext_continuing_source<E> *base_inputs, const E folding_challenge,
+                                                               const gkr_main_constraint_linear_term<E> *terms, const unsigned terms_count,
+                                                               const unsigned gid, E &eval0, E &eval1) {
+  eval0 = E::ZERO();
+  eval1 = E::ZERO();
+  for (unsigned i = 0; i < terms_count; ++i) {
+    const auto term = terms[i];
+    if (term.input == GKR_NO_CACHE_LINEAR_FORM_CONSTANT_SENTINEL) {
+      eval0 = E::add(eval0, term.challenge);
+      if constexpr (EXPLICIT_FORM)
+        eval1 = E::add(eval1, term.challenge);
+      continue;
+    }
+    E value0;
+    E value1;
+    gkr_get_continuing_points<E, EXPLICIT_FORM>(base_inputs[term.input], folding_challenge, gid, value0, value1);
+    eval0 = E::add(eval0, E::mul(value0, term.challenge));
+    eval1 = E::add(eval1, E::mul(value1, term.challenge));
+  }
+}
+
 template <typename E>
 DEVICE_FORCEINLINE void
 gkr_main_round0_values(const unsigned kind, const gkr_base_initial_source<bf> *base_inputs, const gkr_ext_initial_source<E> *ext_inputs,
@@ -1475,6 +1863,21 @@ gkr_main_round0_values(const unsigned kind, const gkr_base_initial_source<bf> *b
     const E output_value = gkr_get_initial_value(ext_outputs[0], gid);
     c0 = E::mul(batch_challenge_0, output_value);
     c1 = E::mul(batch_challenge_0, gkr_eval_constraints_round0(base_inputs, gid, constraint_quadratic_terms, constraint_quadratic_terms_count));
+    break;
+  }
+  case GKR_MAIN_INITIAL_GRAND_PRODUCT_WITHOUT_CACHES: {
+    const E output_value = gkr_get_initial_value(ext_outputs[0], gid);
+    const E lhs_delta = gkr_no_cache_linear_form_initial_delta(base_inputs, constraint_quadratic_terms, constraint_quadratic_terms_count, gid);
+    const E rhs_delta = gkr_no_cache_linear_form_initial_delta(base_inputs, constraint_linear_terms, constraint_linear_terms_count, gid);
+    c0 = E::mul(batch_challenge_0, output_value);
+    c1 = E::mul(batch_challenge_0, E::mul(lhs_delta, rhs_delta));
+    break;
+  }
+  case GKR_MAIN_MATERIALIZE_GRAND_PRODUCT_TERM_EXPRESSION: {
+    const E output_value = gkr_get_initial_value(ext_outputs[0], gid);
+    const E delta = gkr_no_cache_linear_form_initial_delta(base_inputs, constraint_linear_terms, constraint_linear_terms_count, gid);
+    c0 = E::mul(batch_challenge_0, output_value);
+    c1 = E::mul(batch_challenge_0, delta);
     break;
   }
   case GKR_MAIN_EXT_COPY: {
@@ -1524,6 +1927,19 @@ gkr_main_round0_values(const unsigned kind, const gkr_base_initial_source<bf> *b
     c1 = E::add(E::mul(batch_challenge_0, num), E::mul(batch_challenge_1, den));
     break;
   }
+  case GKR_MAIN_LOOKUP_PAIR_FROM_BASE_INPUTS:
+  case GKR_MAIN_LOOKUP_PAIR_FROM_VECTOR_INPUTS: {
+    const E output_num = gkr_get_initial_value(ext_outputs[0], gid);
+    const E output_den = gkr_get_initial_value(ext_outputs[1], gid);
+    const E delta_b = gkr_no_cache_linear_form_initial_delta(base_inputs, constraint_quadratic_terms, constraint_quadratic_terms_count, gid);
+    const E delta_d = gkr_no_cache_linear_form_initial_delta(base_inputs, constraint_linear_terms, constraint_linear_terms_count, gid);
+    E num;
+    E den;
+    gkr_eval_lookup_base_pair_quadratic(delta_b, delta_d, num, den);
+    c0 = E::add(E::mul(batch_challenge_0, output_num), E::mul(batch_challenge_1, output_den));
+    c1 = E::add(E::mul(batch_challenge_0, num), E::mul(batch_challenge_1, den));
+    break;
+  }
   case GKR_MAIN_LOOKUP_BASE_MINUS_MULTIPLICITY: {
     const E output_num = gkr_get_initial_value(ext_outputs[0], gid);
     const E output_den = gkr_get_initial_value(ext_outputs[1], gid);
@@ -1533,6 +1949,20 @@ gkr_main_round0_values(const unsigned kind, const gkr_base_initial_source<bf> *b
     E num;
     E den;
     gkr_eval_lookup_base_minus_multiplicity_quadratic(delta_b, delta_c, delta_d, num, den);
+    c0 = E::add(E::mul(batch_challenge_0, output_num), E::mul(batch_challenge_1, output_den));
+    c1 = E::add(E::mul(batch_challenge_0, num), E::mul(batch_challenge_1, den));
+    break;
+  }
+  case GKR_MAIN_LOOKUP_WITH_DENS_AND_SETUP_EXPRESSIONS: {
+    const E output_num = gkr_get_initial_value(ext_outputs[0], gid);
+    const E output_den = gkr_get_initial_value(ext_outputs[1], gid);
+    const E delta_a = gkr_get_initial_base_delta<E>(base_inputs[0], gid);
+    const E delta_c = gkr_get_initial_base_delta<E>(base_inputs[1], gid);
+    const E delta_b = gkr_no_cache_linear_form_initial_delta(base_inputs + 2, constraint_quadratic_terms, constraint_quadratic_terms_count, gid);
+    const E delta_d = gkr_no_cache_linear_form_initial_delta(base_inputs + 2, constraint_linear_terms, constraint_linear_terms_count, gid);
+    E num;
+    E den;
+    gkr_eval_lookup_cached_dens_and_setup_quadratic(delta_a, delta_b, delta_c, delta_d, num, den);
     c0 = E::add(E::mul(batch_challenge_0, output_num), E::mul(batch_challenge_1, output_den));
     c1 = E::add(E::mul(batch_challenge_0, num), E::mul(batch_challenge_1, den));
     break;
@@ -1550,12 +1980,38 @@ gkr_main_round0_values(const unsigned kind, const gkr_base_initial_source<bf> *b
     c1 = E::add(E::mul(batch_challenge_0, num), E::mul(batch_challenge_1, den));
     break;
   }
+  case GKR_MAIN_LOOKUP_FROM_VECTOR_INPUT_WITH_SETUP: {
+    const E output_num = gkr_get_initial_value(ext_outputs[0], gid);
+    const E output_den = gkr_get_initial_value(ext_outputs[1], gid);
+    const E delta_c = gkr_get_initial_base_delta<E>(base_inputs[0], gid);
+    const E delta_b = gkr_no_cache_linear_form_initial_delta(base_inputs + 1, constraint_quadratic_terms, constraint_quadratic_terms_count, gid);
+    const E delta_d = gkr_no_cache_linear_form_initial_delta(base_inputs + 1, constraint_linear_terms, constraint_linear_terms_count, gid);
+    E num;
+    E den;
+    gkr_eval_lookup_base_minus_multiplicity_quadratic(delta_b, delta_c, delta_d, num, den);
+    c0 = E::add(E::mul(batch_challenge_0, output_num), E::mul(batch_challenge_1, output_den));
+    c1 = E::add(E::mul(batch_challenge_0, num), E::mul(batch_challenge_1, den));
+    break;
+  }
   case GKR_MAIN_LOOKUP_UNBALANCED: {
     const E output_num = gkr_get_initial_value(ext_outputs[0], gid);
     const E output_den = gkr_get_initial_value(ext_outputs[1], gid);
     const E delta_d = gkr_get_initial_base_delta<E>(base_inputs[0], gid);
     const E delta_a = gkr_get_initial_delta(ext_inputs[0], gid);
     const E delta_b = gkr_get_initial_delta(ext_inputs[1], gid);
+    E num;
+    E den;
+    gkr_eval_lookup_unbalanced_quadratic(delta_d, delta_a, delta_b, num, den);
+    c0 = E::add(E::mul(batch_challenge_0, output_num), E::mul(batch_challenge_1, output_den));
+    c1 = E::add(E::mul(batch_challenge_0, num), E::mul(batch_challenge_1, den));
+    break;
+  }
+  case GKR_MAIN_LOOKUP_UNBALANCED_PAIR_WITH_VECTOR_INPUTS: {
+    const E output_num = gkr_get_initial_value(ext_outputs[0], gid);
+    const E output_den = gkr_get_initial_value(ext_outputs[1], gid);
+    const E delta_a = gkr_get_initial_delta(ext_inputs[0], gid);
+    const E delta_b = gkr_get_initial_delta(ext_inputs[1], gid);
+    const E delta_d = gkr_no_cache_linear_form_initial_delta(base_inputs, constraint_linear_terms, constraint_linear_terms_count, gid);
     E num;
     E den;
     gkr_eval_lookup_unbalanced_quadratic(delta_d, delta_a, delta_b, num, den);
@@ -1647,6 +2103,32 @@ DEVICE_FORCEINLINE void gkr_main_round1_values(const unsigned kind, const gkr_ba
     c1 = E::mul(batch_challenge_0, eval1);
     break;
   }
+  case GKR_MAIN_INITIAL_GRAND_PRODUCT_WITHOUT_CACHES: {
+    E lhs0;
+    E lhs1;
+    gkr_no_cache_linear_form_round1_points<E, EXPLICIT_FORM>(base_inputs, current_folding_challenge, constraint_quadratic_terms,
+                                                             constraint_quadratic_terms_count, gid, lhs0, lhs1);
+    E rhs0;
+    E rhs1;
+    gkr_no_cache_linear_form_round1_points<E, EXPLICIT_FORM>(base_inputs, current_folding_challenge, constraint_linear_terms,
+                                                             constraint_linear_terms_count, gid, rhs0, rhs1);
+    E eval0;
+    E eval1;
+    gkr_eval_product(lhs0, rhs0, eval0);
+    gkr_eval_product(lhs1, rhs1, eval1);
+    c0 = E::mul(batch_challenge_0, eval0);
+    c1 = E::mul(batch_challenge_0, eval1);
+    break;
+  }
+  case GKR_MAIN_MATERIALIZE_GRAND_PRODUCT_TERM_EXPRESSION: {
+    E eval0;
+    E eval1;
+    gkr_no_cache_linear_form_round1_points<E, EXPLICIT_FORM>(base_inputs, current_folding_challenge, constraint_linear_terms,
+                                                             constraint_linear_terms_count, gid, eval0, eval1);
+    c0 = E::mul(batch_challenge_0, eval0);
+    c1 = E::mul(batch_challenge_0, eval1);
+    break;
+  }
   case GKR_MAIN_EXT_COPY: {
     E f0;
     E f1_or_delta;
@@ -1733,6 +2215,30 @@ DEVICE_FORCEINLINE void gkr_main_round1_values(const unsigned kind, const gkr_ba
     c1 = E::add(E::mul(batch_challenge_0, num1), E::mul(batch_challenge_1, den1));
     break;
   }
+  case GKR_MAIN_LOOKUP_PAIR_FROM_BASE_INPUTS:
+  case GKR_MAIN_LOOKUP_PAIR_FROM_VECTOR_INPUTS: {
+    E b0;
+    E b1;
+    gkr_no_cache_linear_form_round1_points<E, EXPLICIT_FORM>(base_inputs, current_folding_challenge, constraint_quadratic_terms,
+                                                             constraint_quadratic_terms_count, gid, b0, b1);
+    E d0;
+    E d1;
+    gkr_no_cache_linear_form_round1_points<E, EXPLICIT_FORM>(base_inputs, current_folding_challenge, constraint_linear_terms,
+                                                             constraint_linear_terms_count, gid, d0, d1);
+    E num0;
+    E den0;
+    E num1;
+    E den1;
+    gkr_eval_lookup_base_pair(b0, d0, E::ZERO(), num0, den0);
+    if constexpr (EXPLICIT_FORM) {
+      gkr_eval_lookup_base_pair(b1, d1, E::ZERO(), num1, den1);
+    } else {
+      gkr_eval_lookup_base_pair_quadratic(b1, d1, num1, den1);
+    }
+    c0 = E::add(E::mul(batch_challenge_0, num0), E::mul(batch_challenge_1, den0));
+    c1 = E::add(E::mul(batch_challenge_0, num1), E::mul(batch_challenge_1, den1));
+    break;
+  }
   case GKR_MAIN_LOOKUP_BASE_MINUS_MULTIPLICITY: {
     E b0;
     E b1;
@@ -1752,6 +2258,35 @@ DEVICE_FORCEINLINE void gkr_main_round1_values(const unsigned kind, const gkr_ba
       gkr_eval_lookup_base_minus_multiplicity(b1, c1_in, d1, current_aux_challenge, num1, den1);
     } else {
       gkr_eval_lookup_base_minus_multiplicity_quadratic(b1, c1_in, d1, num1, den1);
+    }
+    c0 = E::add(E::mul(batch_challenge_0, num0), E::mul(batch_challenge_1, den0));
+    c1 = E::add(E::mul(batch_challenge_0, num1), E::mul(batch_challenge_1, den1));
+    break;
+  }
+  case GKR_MAIN_LOOKUP_WITH_DENS_AND_SETUP_EXPRESSIONS: {
+    E a0;
+    E a1;
+    gkr_get_base_after_one_points<E, EXPLICIT_FORM>(base_inputs[0], current_folding_challenge, gid, a0, a1);
+    E c0_in;
+    E c1_in;
+    gkr_get_base_after_one_points<E, EXPLICIT_FORM>(base_inputs[1], current_folding_challenge, gid, c0_in, c1_in);
+    E b0;
+    E b1;
+    gkr_no_cache_linear_form_round1_points<E, EXPLICIT_FORM>(base_inputs + 2, current_folding_challenge, constraint_quadratic_terms,
+                                                             constraint_quadratic_terms_count, gid, b0, b1);
+    E d0;
+    E d1;
+    gkr_no_cache_linear_form_round1_points<E, EXPLICIT_FORM>(base_inputs + 2, current_folding_challenge, constraint_linear_terms,
+                                                             constraint_linear_terms_count, gid, d0, d1);
+    E num0;
+    E den0;
+    E num1;
+    E den1;
+    gkr_eval_lookup_cached_dens_and_setup(a0, b0, c0_in, d0, E::ZERO(), num0, den0);
+    if constexpr (EXPLICIT_FORM) {
+      gkr_eval_lookup_cached_dens_and_setup(a1, b1, c1_in, d1, E::ZERO(), num1, den1);
+    } else {
+      gkr_eval_lookup_cached_dens_and_setup_quadratic(a1, b1, c1_in, d1, num1, den1);
     }
     c0 = E::add(E::mul(batch_challenge_0, num0), E::mul(batch_challenge_1, den0));
     c1 = E::add(E::mul(batch_challenge_0, num1), E::mul(batch_challenge_1, den1));
@@ -1781,6 +2316,32 @@ DEVICE_FORCEINLINE void gkr_main_round1_values(const unsigned kind, const gkr_ba
     c1 = E::add(E::mul(batch_challenge_0, num1), E::mul(batch_challenge_1, den1));
     break;
   }
+  case GKR_MAIN_LOOKUP_FROM_VECTOR_INPUT_WITH_SETUP: {
+    E c0_in;
+    E c1_in;
+    gkr_get_base_after_one_points<E, EXPLICIT_FORM>(base_inputs[0], current_folding_challenge, gid, c0_in, c1_in);
+    E b0;
+    E b1;
+    gkr_no_cache_linear_form_round1_points<E, EXPLICIT_FORM>(base_inputs + 1, current_folding_challenge, constraint_quadratic_terms,
+                                                             constraint_quadratic_terms_count, gid, b0, b1);
+    E d0;
+    E d1;
+    gkr_no_cache_linear_form_round1_points<E, EXPLICIT_FORM>(base_inputs + 1, current_folding_challenge, constraint_linear_terms,
+                                                             constraint_linear_terms_count, gid, d0, d1);
+    E num0;
+    E den0;
+    E num1;
+    E den1;
+    gkr_eval_lookup_base_minus_multiplicity(b0, c0_in, d0, E::ZERO(), num0, den0);
+    if constexpr (EXPLICIT_FORM) {
+      gkr_eval_lookup_base_minus_multiplicity(b1, c1_in, d1, E::ZERO(), num1, den1);
+    } else {
+      gkr_eval_lookup_base_minus_multiplicity_quadratic(b1, c1_in, d1, num1, den1);
+    }
+    c0 = E::add(E::mul(batch_challenge_0, num0), E::mul(batch_challenge_1, den0));
+    c1 = E::add(E::mul(batch_challenge_0, num1), E::mul(batch_challenge_1, den1));
+    break;
+  }
   case GKR_MAIN_LOOKUP_UNBALANCED: {
     E d0;
     E d1;
@@ -1798,6 +2359,31 @@ DEVICE_FORCEINLINE void gkr_main_round1_values(const unsigned kind, const gkr_ba
     gkr_eval_lookup_unbalanced(d0, a0, b0, current_aux_challenge, num0, den0);
     if constexpr (EXPLICIT_FORM) {
       gkr_eval_lookup_unbalanced(d1, a1, b1, current_aux_challenge, num1, den1);
+    } else {
+      gkr_eval_lookup_unbalanced_quadratic(d1, a1, b1, num1, den1);
+    }
+    c0 = E::add(E::mul(batch_challenge_0, num0), E::mul(batch_challenge_1, den0));
+    c1 = E::add(E::mul(batch_challenge_0, num1), E::mul(batch_challenge_1, den1));
+    break;
+  }
+  case GKR_MAIN_LOOKUP_UNBALANCED_PAIR_WITH_VECTOR_INPUTS: {
+    E d0;
+    E d1;
+    gkr_no_cache_linear_form_round1_points<E, EXPLICIT_FORM>(base_inputs, current_folding_challenge, constraint_linear_terms,
+                                                             constraint_linear_terms_count, gid, d0, d1);
+    E a0;
+    E a1;
+    gkr_get_continuing_points<E, EXPLICIT_FORM>(ext_inputs[0], current_folding_challenge, gid, a0, a1);
+    E b0;
+    E b1;
+    gkr_get_continuing_points<E, EXPLICIT_FORM>(ext_inputs[1], current_folding_challenge, gid, b0, b1);
+    E num0;
+    E den0;
+    E num1;
+    E den1;
+    gkr_eval_lookup_unbalanced(d0, a0, b0, E::ZERO(), num0, den0);
+    if constexpr (EXPLICIT_FORM) {
+      gkr_eval_lookup_unbalanced(d1, a1, b1, E::ZERO(), num1, den1);
     } else {
       gkr_eval_lookup_unbalanced_quadratic(d1, a1, b1, num1, den1);
     }
@@ -1908,6 +2494,32 @@ DEVICE_FORCEINLINE void gkr_main_round2_values(const unsigned kind, const gkr_ba
     c1 = E::mul(batch_challenge_0, eval1);
     break;
   }
+  case GKR_MAIN_INITIAL_GRAND_PRODUCT_WITHOUT_CACHES: {
+    E lhs0;
+    E lhs1;
+    gkr_no_cache_linear_form_round2_points<E, EXPLICIT_FORM>(base_inputs, first_folding_challenge, second_folding_challenge,
+                                                             constraint_quadratic_terms, constraint_quadratic_terms_count, gid, lhs0, lhs1);
+    E rhs0;
+    E rhs1;
+    gkr_no_cache_linear_form_round2_points<E, EXPLICIT_FORM>(base_inputs, first_folding_challenge, second_folding_challenge,
+                                                             constraint_linear_terms, constraint_linear_terms_count, gid, rhs0, rhs1);
+    E eval0;
+    E eval1;
+    gkr_eval_product(lhs0, rhs0, eval0);
+    gkr_eval_product(lhs1, rhs1, eval1);
+    c0 = E::mul(batch_challenge_0, eval0);
+    c1 = E::mul(batch_challenge_0, eval1);
+    break;
+  }
+  case GKR_MAIN_MATERIALIZE_GRAND_PRODUCT_TERM_EXPRESSION: {
+    E eval0;
+    E eval1;
+    gkr_no_cache_linear_form_round2_points<E, EXPLICIT_FORM>(base_inputs, first_folding_challenge, second_folding_challenge,
+                                                             constraint_linear_terms, constraint_linear_terms_count, gid, eval0, eval1);
+    c0 = E::mul(batch_challenge_0, eval0);
+    c1 = E::mul(batch_challenge_0, eval1);
+    break;
+  }
   case GKR_MAIN_EXT_COPY: {
     E f0;
     E f1_or_delta;
@@ -1994,6 +2606,30 @@ DEVICE_FORCEINLINE void gkr_main_round2_values(const unsigned kind, const gkr_ba
     c1 = E::add(E::mul(batch_challenge_0, num1), E::mul(batch_challenge_1, den1));
     break;
   }
+  case GKR_MAIN_LOOKUP_PAIR_FROM_BASE_INPUTS:
+  case GKR_MAIN_LOOKUP_PAIR_FROM_VECTOR_INPUTS: {
+    E b0;
+    E b1;
+    gkr_no_cache_linear_form_round2_points<E, EXPLICIT_FORM>(base_inputs, first_folding_challenge, second_folding_challenge,
+                                                             constraint_quadratic_terms, constraint_quadratic_terms_count, gid, b0, b1);
+    E d0;
+    E d1;
+    gkr_no_cache_linear_form_round2_points<E, EXPLICIT_FORM>(base_inputs, first_folding_challenge, second_folding_challenge,
+                                                             constraint_linear_terms, constraint_linear_terms_count, gid, d0, d1);
+    E num0;
+    E den0;
+    E num1;
+    E den1;
+    gkr_eval_lookup_base_pair(b0, d0, E::ZERO(), num0, den0);
+    if constexpr (EXPLICIT_FORM) {
+      gkr_eval_lookup_base_pair(b1, d1, E::ZERO(), num1, den1);
+    } else {
+      gkr_eval_lookup_base_pair_quadratic(b1, d1, num1, den1);
+    }
+    c0 = E::add(E::mul(batch_challenge_0, num0), E::mul(batch_challenge_1, den0));
+    c1 = E::add(E::mul(batch_challenge_0, num1), E::mul(batch_challenge_1, den1));
+    break;
+  }
   case GKR_MAIN_LOOKUP_BASE_MINUS_MULTIPLICITY: {
     E b0;
     E b1;
@@ -2013,6 +2649,35 @@ DEVICE_FORCEINLINE void gkr_main_round2_values(const unsigned kind, const gkr_ba
       gkr_eval_lookup_base_minus_multiplicity(b1, c1_in, d1, current_aux_challenge, num1, den1);
     } else {
       gkr_eval_lookup_base_minus_multiplicity_quadratic(b1, c1_in, d1, num1, den1);
+    }
+    c0 = E::add(E::mul(batch_challenge_0, num0), E::mul(batch_challenge_1, den0));
+    c1 = E::add(E::mul(batch_challenge_0, num1), E::mul(batch_challenge_1, den1));
+    break;
+  }
+  case GKR_MAIN_LOOKUP_WITH_DENS_AND_SETUP_EXPRESSIONS: {
+    E a0;
+    E a1;
+    gkr_get_base_after_two_points<E, EXPLICIT_FORM>(base_inputs[0], first_folding_challenge, second_folding_challenge, gid, a0, a1);
+    E c0_in;
+    E c1_in;
+    gkr_get_base_after_two_points<E, EXPLICIT_FORM>(base_inputs[1], first_folding_challenge, second_folding_challenge, gid, c0_in, c1_in);
+    E b0;
+    E b1;
+    gkr_no_cache_linear_form_round2_points<E, EXPLICIT_FORM>(base_inputs + 2, first_folding_challenge, second_folding_challenge,
+                                                             constraint_quadratic_terms, constraint_quadratic_terms_count, gid, b0, b1);
+    E d0;
+    E d1;
+    gkr_no_cache_linear_form_round2_points<E, EXPLICIT_FORM>(base_inputs + 2, first_folding_challenge, second_folding_challenge,
+                                                             constraint_linear_terms, constraint_linear_terms_count, gid, d0, d1);
+    E num0;
+    E den0;
+    E num1;
+    E den1;
+    gkr_eval_lookup_cached_dens_and_setup(a0, b0, c0_in, d0, E::ZERO(), num0, den0);
+    if constexpr (EXPLICIT_FORM) {
+      gkr_eval_lookup_cached_dens_and_setup(a1, b1, c1_in, d1, E::ZERO(), num1, den1);
+    } else {
+      gkr_eval_lookup_cached_dens_and_setup_quadratic(a1, b1, c1_in, d1, num1, den1);
     }
     c0 = E::add(E::mul(batch_challenge_0, num0), E::mul(batch_challenge_1, den0));
     c1 = E::add(E::mul(batch_challenge_0, num1), E::mul(batch_challenge_1, den1));
@@ -2042,6 +2707,32 @@ DEVICE_FORCEINLINE void gkr_main_round2_values(const unsigned kind, const gkr_ba
     c1 = E::add(E::mul(batch_challenge_0, num1), E::mul(batch_challenge_1, den1));
     break;
   }
+  case GKR_MAIN_LOOKUP_FROM_VECTOR_INPUT_WITH_SETUP: {
+    E c0_in;
+    E c1_in;
+    gkr_get_base_after_two_points<E, EXPLICIT_FORM>(base_inputs[0], first_folding_challenge, second_folding_challenge, gid, c0_in, c1_in);
+    E b0;
+    E b1;
+    gkr_no_cache_linear_form_round2_points<E, EXPLICIT_FORM>(base_inputs + 1, first_folding_challenge, second_folding_challenge,
+                                                             constraint_quadratic_terms, constraint_quadratic_terms_count, gid, b0, b1);
+    E d0;
+    E d1;
+    gkr_no_cache_linear_form_round2_points<E, EXPLICIT_FORM>(base_inputs + 1, first_folding_challenge, second_folding_challenge,
+                                                             constraint_linear_terms, constraint_linear_terms_count, gid, d0, d1);
+    E num0;
+    E den0;
+    E num1;
+    E den1;
+    gkr_eval_lookup_base_minus_multiplicity(b0, c0_in, d0, E::ZERO(), num0, den0);
+    if constexpr (EXPLICIT_FORM) {
+      gkr_eval_lookup_base_minus_multiplicity(b1, c1_in, d1, E::ZERO(), num1, den1);
+    } else {
+      gkr_eval_lookup_base_minus_multiplicity_quadratic(b1, c1_in, d1, num1, den1);
+    }
+    c0 = E::add(E::mul(batch_challenge_0, num0), E::mul(batch_challenge_1, den0));
+    c1 = E::add(E::mul(batch_challenge_0, num1), E::mul(batch_challenge_1, den1));
+    break;
+  }
   case GKR_MAIN_LOOKUP_UNBALANCED: {
     E d0;
     E d1;
@@ -2059,6 +2750,31 @@ DEVICE_FORCEINLINE void gkr_main_round2_values(const unsigned kind, const gkr_ba
     gkr_eval_lookup_unbalanced(d0, a0, b0, current_aux_challenge, num0, den0);
     if constexpr (EXPLICIT_FORM) {
       gkr_eval_lookup_unbalanced(d1, a1, b1, current_aux_challenge, num1, den1);
+    } else {
+      gkr_eval_lookup_unbalanced_quadratic(d1, a1, b1, num1, den1);
+    }
+    c0 = E::add(E::mul(batch_challenge_0, num0), E::mul(batch_challenge_1, den0));
+    c1 = E::add(E::mul(batch_challenge_0, num1), E::mul(batch_challenge_1, den1));
+    break;
+  }
+  case GKR_MAIN_LOOKUP_UNBALANCED_PAIR_WITH_VECTOR_INPUTS: {
+    E d0;
+    E d1;
+    gkr_no_cache_linear_form_round2_points<E, EXPLICIT_FORM>(base_inputs, first_folding_challenge, second_folding_challenge,
+                                                             constraint_linear_terms, constraint_linear_terms_count, gid, d0, d1);
+    E a0;
+    E a1;
+    gkr_get_continuing_points<E, EXPLICIT_FORM>(ext_inputs[0], second_folding_challenge, gid, a0, a1);
+    E b0;
+    E b1;
+    gkr_get_continuing_points<E, EXPLICIT_FORM>(ext_inputs[1], second_folding_challenge, gid, b0, b1);
+    E num0;
+    E den0;
+    E num1;
+    E den1;
+    gkr_eval_lookup_unbalanced(d0, a0, b0, E::ZERO(), num0, den0);
+    if constexpr (EXPLICIT_FORM) {
+      gkr_eval_lookup_unbalanced(d1, a1, b1, E::ZERO(), num1, den1);
     } else {
       gkr_eval_lookup_unbalanced_quadratic(d1, a1, b1, num1, den1);
     }
@@ -2169,6 +2885,32 @@ DEVICE_FORCEINLINE void gkr_main_round3_values(const unsigned kind, const gkr_ex
     c1 = E::mul(batch_challenge_0, eval1);
     break;
   }
+  case GKR_MAIN_INITIAL_GRAND_PRODUCT_WITHOUT_CACHES: {
+    E lhs0;
+    E lhs1;
+    gkr_no_cache_linear_form_round3_points<E, EXPLICIT_FORM>(base_inputs, current_folding_challenge, constraint_quadratic_terms,
+                                                             constraint_quadratic_terms_count, gid, lhs0, lhs1);
+    E rhs0;
+    E rhs1;
+    gkr_no_cache_linear_form_round3_points<E, EXPLICIT_FORM>(base_inputs, current_folding_challenge, constraint_linear_terms,
+                                                             constraint_linear_terms_count, gid, rhs0, rhs1);
+    E eval0;
+    E eval1;
+    gkr_eval_product(lhs0, rhs0, eval0);
+    gkr_eval_product(lhs1, rhs1, eval1);
+    c0 = E::mul(batch_challenge_0, eval0);
+    c1 = E::mul(batch_challenge_0, eval1);
+    break;
+  }
+  case GKR_MAIN_MATERIALIZE_GRAND_PRODUCT_TERM_EXPRESSION: {
+    E eval0;
+    E eval1;
+    gkr_no_cache_linear_form_round3_points<E, EXPLICIT_FORM>(base_inputs, current_folding_challenge, constraint_linear_terms,
+                                                             constraint_linear_terms_count, gid, eval0, eval1);
+    c0 = E::mul(batch_challenge_0, eval0);
+    c1 = E::mul(batch_challenge_0, eval1);
+    break;
+  }
   case GKR_MAIN_EXT_COPY: {
     E f0;
     E f1_or_delta;
@@ -2255,6 +2997,30 @@ DEVICE_FORCEINLINE void gkr_main_round3_values(const unsigned kind, const gkr_ex
     c1 = E::add(E::mul(batch_challenge_0, num1), E::mul(batch_challenge_1, den1));
     break;
   }
+  case GKR_MAIN_LOOKUP_PAIR_FROM_BASE_INPUTS:
+  case GKR_MAIN_LOOKUP_PAIR_FROM_VECTOR_INPUTS: {
+    E b0;
+    E b1;
+    gkr_no_cache_linear_form_round3_points<E, EXPLICIT_FORM>(base_inputs, current_folding_challenge, constraint_quadratic_terms,
+                                                             constraint_quadratic_terms_count, gid, b0, b1);
+    E d0;
+    E d1;
+    gkr_no_cache_linear_form_round3_points<E, EXPLICIT_FORM>(base_inputs, current_folding_challenge, constraint_linear_terms,
+                                                             constraint_linear_terms_count, gid, d0, d1);
+    E num0;
+    E den0;
+    E num1;
+    E den1;
+    gkr_eval_lookup_base_pair(b0, d0, E::ZERO(), num0, den0);
+    if constexpr (EXPLICIT_FORM) {
+      gkr_eval_lookup_base_pair(b1, d1, E::ZERO(), num1, den1);
+    } else {
+      gkr_eval_lookup_base_pair_quadratic(b1, d1, num1, den1);
+    }
+    c0 = E::add(E::mul(batch_challenge_0, num0), E::mul(batch_challenge_1, den0));
+    c1 = E::add(E::mul(batch_challenge_0, num1), E::mul(batch_challenge_1, den1));
+    break;
+  }
   case GKR_MAIN_LOOKUP_BASE_MINUS_MULTIPLICITY: {
     E b0;
     E b1;
@@ -2274,6 +3040,35 @@ DEVICE_FORCEINLINE void gkr_main_round3_values(const unsigned kind, const gkr_ex
       gkr_eval_lookup_base_minus_multiplicity(b1, c1_in, d1, current_aux_challenge, num1, den1);
     } else {
       gkr_eval_lookup_base_minus_multiplicity_quadratic(b1, c1_in, d1, num1, den1);
+    }
+    c0 = E::add(E::mul(batch_challenge_0, num0), E::mul(batch_challenge_1, den0));
+    c1 = E::add(E::mul(batch_challenge_0, num1), E::mul(batch_challenge_1, den1));
+    break;
+  }
+  case GKR_MAIN_LOOKUP_WITH_DENS_AND_SETUP_EXPRESSIONS: {
+    E a0;
+    E a1;
+    gkr_get_continuing_points<E, EXPLICIT_FORM>(base_inputs[0], current_folding_challenge, gid, a0, a1);
+    E c0_in;
+    E c1_in;
+    gkr_get_continuing_points<E, EXPLICIT_FORM>(base_inputs[1], current_folding_challenge, gid, c0_in, c1_in);
+    E b0;
+    E b1;
+    gkr_no_cache_linear_form_round3_points<E, EXPLICIT_FORM>(base_inputs + 2, current_folding_challenge, constraint_quadratic_terms,
+                                                             constraint_quadratic_terms_count, gid, b0, b1);
+    E d0;
+    E d1;
+    gkr_no_cache_linear_form_round3_points<E, EXPLICIT_FORM>(base_inputs + 2, current_folding_challenge, constraint_linear_terms,
+                                                             constraint_linear_terms_count, gid, d0, d1);
+    E num0;
+    E den0;
+    E num1;
+    E den1;
+    gkr_eval_lookup_cached_dens_and_setup(a0, b0, c0_in, d0, E::ZERO(), num0, den0);
+    if constexpr (EXPLICIT_FORM) {
+      gkr_eval_lookup_cached_dens_and_setup(a1, b1, c1_in, d1, E::ZERO(), num1, den1);
+    } else {
+      gkr_eval_lookup_cached_dens_and_setup_quadratic(a1, b1, c1_in, d1, num1, den1);
     }
     c0 = E::add(E::mul(batch_challenge_0, num0), E::mul(batch_challenge_1, den0));
     c1 = E::add(E::mul(batch_challenge_0, num1), E::mul(batch_challenge_1, den1));
@@ -2303,6 +3098,32 @@ DEVICE_FORCEINLINE void gkr_main_round3_values(const unsigned kind, const gkr_ex
     c1 = E::add(E::mul(batch_challenge_0, num1), E::mul(batch_challenge_1, den1));
     break;
   }
+  case GKR_MAIN_LOOKUP_FROM_VECTOR_INPUT_WITH_SETUP: {
+    E c0_in;
+    E c1_in;
+    gkr_get_continuing_points<E, EXPLICIT_FORM>(base_inputs[0], current_folding_challenge, gid, c0_in, c1_in);
+    E b0;
+    E b1;
+    gkr_no_cache_linear_form_round3_points<E, EXPLICIT_FORM>(base_inputs + 1, current_folding_challenge, constraint_quadratic_terms,
+                                                             constraint_quadratic_terms_count, gid, b0, b1);
+    E d0;
+    E d1;
+    gkr_no_cache_linear_form_round3_points<E, EXPLICIT_FORM>(base_inputs + 1, current_folding_challenge, constraint_linear_terms,
+                                                             constraint_linear_terms_count, gid, d0, d1);
+    E num0;
+    E den0;
+    E num1;
+    E den1;
+    gkr_eval_lookup_base_minus_multiplicity(b0, c0_in, d0, E::ZERO(), num0, den0);
+    if constexpr (EXPLICIT_FORM) {
+      gkr_eval_lookup_base_minus_multiplicity(b1, c1_in, d1, E::ZERO(), num1, den1);
+    } else {
+      gkr_eval_lookup_base_minus_multiplicity_quadratic(b1, c1_in, d1, num1, den1);
+    }
+    c0 = E::add(E::mul(batch_challenge_0, num0), E::mul(batch_challenge_1, den0));
+    c1 = E::add(E::mul(batch_challenge_0, num1), E::mul(batch_challenge_1, den1));
+    break;
+  }
   case GKR_MAIN_LOOKUP_UNBALANCED: {
     E d0;
     E d1;
@@ -2320,6 +3141,31 @@ DEVICE_FORCEINLINE void gkr_main_round3_values(const unsigned kind, const gkr_ex
     gkr_eval_lookup_unbalanced(d0, a0, b0, current_aux_challenge, num0, den0);
     if constexpr (EXPLICIT_FORM) {
       gkr_eval_lookup_unbalanced(d1, a1, b1, current_aux_challenge, num1, den1);
+    } else {
+      gkr_eval_lookup_unbalanced_quadratic(d1, a1, b1, num1, den1);
+    }
+    c0 = E::add(E::mul(batch_challenge_0, num0), E::mul(batch_challenge_1, den0));
+    c1 = E::add(E::mul(batch_challenge_0, num1), E::mul(batch_challenge_1, den1));
+    break;
+  }
+  case GKR_MAIN_LOOKUP_UNBALANCED_PAIR_WITH_VECTOR_INPUTS: {
+    E d0;
+    E d1;
+    gkr_no_cache_linear_form_round3_points<E, EXPLICIT_FORM>(base_inputs, current_folding_challenge, constraint_linear_terms,
+                                                             constraint_linear_terms_count, gid, d0, d1);
+    E a0;
+    E a1;
+    gkr_get_continuing_points<E, EXPLICIT_FORM>(ext_inputs[0], current_folding_challenge, gid, a0, a1);
+    E b0;
+    E b1;
+    gkr_get_continuing_points<E, EXPLICIT_FORM>(ext_inputs[1], current_folding_challenge, gid, b0, b1);
+    E num0;
+    E den0;
+    E num1;
+    E den1;
+    gkr_eval_lookup_unbalanced(d0, a0, b0, E::ZERO(), num0, den0);
+    if constexpr (EXPLICIT_FORM) {
+      gkr_eval_lookup_unbalanced(d1, a1, b1, E::ZERO(), num1, den1);
     } else {
       gkr_eval_lookup_unbalanced_quadratic(d1, a1, b1, num1, den1);
     }

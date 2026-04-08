@@ -1,5 +1,5 @@
 use std::cell::UnsafeCell;
-use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::collections::{BTreeMap, VecDeque};
 use std::mem::align_of;
 use std::ptr::{null, null_mut};
 use std::slice;
@@ -97,6 +97,13 @@ pub(crate) enum GpuGKRMainLayerKernelKind {
     EnforceConstraintsMaxQuadratic = 10,
     LinearBaseOutput = 11,
     InitsAndTeardownsInitialPair = 12,
+    InitialGrandProductWithoutCaches = 13,
+    MaterializeGrandProductTermExpression = 14,
+    LookupPairFromBaseInputs = 15,
+    LookupWithDensAndSetupExpressions = 16,
+    LookupPairFromVectorInputs = 17,
+    LookupFromVectorInputWithSetup = 18,
+    LookupUnbalancedPairWithVectorInputs = 19,
 }
 
 impl GpuGKRMainLayerKernelKind {
@@ -1076,7 +1083,6 @@ pub(crate) struct GpuGKRMainLayerSumcheckLayerPlan<E> {
     pub(crate) trace_len: usize,
     pub(crate) folding_steps: usize,
     pub(super) batch_challenge_base: Option<E>,
-    pub(crate) internal_helper_addresses: BTreeSet<GKRAddress>,
     pub(super) kernel_plans: Vec<GpuGKRMainLayerKernelPlan<E>>,
     pub(super) round0_descriptors: Vec<GpuSumcheckRound0LaunchDescriptors<BF, E>>,
     pub(super) round0_batch_template: GpuGKRMainRound0Batch<E>,
@@ -1106,6 +1112,7 @@ pub(crate) struct GpuGKRMainLayerBackwardState<E: FieldExtension<BF> + Field> {
     pub(super) external_challenges: GKRExternalChallenges<BF, E>,
     pub(super) inits_and_teardowns_top_bits: Vec<u32>,
     pub(super) inits_and_teardowns_address_high_bits_shift: u32,
+    pub(super) lookup_multiplicative_challenge: E,
     pub(super) lookup_additive_challenge: E,
     pub(super) constraint_batch_challenge: E,
     pub(super) num_base_layer_memory_polys: usize,
@@ -1142,6 +1149,7 @@ pub(crate) struct ScheduledBackwardWorkflowState<E: FieldExtension<BF> + Field> 
     pub(super) current_claims: BTreeMap<GKRAddress, E>,
     pub(super) current_claim_point: Vec<E>,
     pub(super) current_batching_challenge: E,
+    pub(super) lookup_multiplicative_challenge: E,
     pub(super) lookup_additive_challenge: E,
     pub(super) constraint_batch_challenge: E,
     pub(super) seed: Seed,
@@ -1224,6 +1232,7 @@ where
             current_claims: BTreeMap::new(),
             current_claim_point: Vec::new(),
             current_batching_challenge: E::ZERO,
+            lookup_multiplicative_challenge: E::ZERO,
             lookup_additive_challenge: E::ZERO,
             constraint_batch_challenge: E::ZERO,
             seed: Seed::default(),
@@ -1248,6 +1257,7 @@ pub(crate) fn populate_backward_workflow_state<E>(
     evaluation_point: Vec<E>,
     seed: Seed,
     batching_challenge: E,
+    lookup_multiplicative_challenge: E,
     lookup_additive_challenge: E,
     constraint_batch_challenge: E,
 ) where
@@ -1261,6 +1271,7 @@ pub(crate) fn populate_backward_workflow_state<E>(
     state.current_claims = top_layer_claims;
     state.current_claim_point = evaluation_point;
     state.current_batching_challenge = batching_challenge;
+    state.lookup_multiplicative_challenge = lookup_multiplicative_challenge;
     state.lookup_additive_challenge = lookup_additive_challenge;
     state.constraint_batch_challenge = constraint_batch_challenge;
     state.seed = seed;

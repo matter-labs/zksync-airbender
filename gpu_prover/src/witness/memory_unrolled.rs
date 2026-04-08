@@ -1,3 +1,4 @@
+use crate::ops::simple::set_by_val;
 use crate::primitives::circuit_type::{UnrolledMemoryCircuitType, UnrolledNonMemoryCircuitType};
 use crate::primitives::device_structures::{DeviceMatrixMutImpl, MutPtrAndStride};
 use crate::primitives::field::BF;
@@ -6,8 +7,8 @@ use crate::witness::option::u32::Option;
 use crate::witness::ram_access::{RamAuxComparisonSet, RamQuery};
 use crate::witness::trace_unrolled::{
     ExecutorFamilyDecoderData, ShuffleRamInitsAndTeardownsDevice, ShuffleRamInitsAndTeardownsRaw,
-    UnrolledMemoryOracle, UnrolledMemoryTraceDevice,
-    UnrolledNonMemoryOracle, UnrolledNonMemoryTraceDevice,
+    UnrolledMemoryOracle, UnrolledMemoryTraceDevice, UnrolledNonMemoryOracle,
+    UnrolledNonMemoryTraceDevice,
 };
 use crate::witness::Address;
 use cs::definitions::gkr::{GKRMachineState, GKRMemoryLayout};
@@ -19,7 +20,6 @@ use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::CudaStream;
 use std::ops::Deref;
-use crate::ops::simple::set_by_val;
 #[repr(C)]
 #[derive(Clone, Copy, Default, Debug)]
 pub struct MachineState {
@@ -187,8 +187,14 @@ pub struct InitsAndTeardownsLayouts {
     pub layouts: [InitsAndTeardownsLayout; MAX_INITS_AND_TEARDOWNS_SETS_COUNT],
 }
 
-impl<T: Deref<Target = [([cs::definitions::GKRAddress; 2], [cs::definitions::GKRAddress; 2])]>>
-    From<&T> for InitsAndTeardownsLayouts
+impl<
+        T: Deref<
+            Target = [(
+                [cs::definitions::GKRAddress; 2],
+                [cs::definitions::GKRAddress; 2],
+            )],
+        >,
+    > From<&T> for InitsAndTeardownsLayouts
 {
     fn from(value: &T) -> Self {
         let len = value.len();
@@ -198,7 +204,9 @@ impl<T: Deref<Target = [([cs::definitions::GKRAddress; 2], [cs::definitions::GKR
         for (&(timestamps, values), dst) in value.iter().zip(layouts.iter_mut()) {
             dst.teardown_timestamps_columns = timestamps.map(|address| match address {
                 cs::definitions::GKRAddress::BaseLayerMemory(offset) => offset as u32,
-                _ => panic!("init/teardown memory layout expects base-layer memory timestamp columns"),
+                _ => panic!(
+                    "init/teardown memory layout expects base-layer memory timestamp columns"
+                ),
             });
             dst.teardown_values_columns = values.map(|address| match address {
                 cs::definitions::GKRAddress::BaseLayerMemory(offset) => offset as u32,
@@ -534,7 +542,11 @@ pub(crate) fn generate_memory_and_witness_values_unrolled_inits_and_teardowns(
 ) -> CudaResult<()> {
     let count = memory.stride();
     assert_eq!(memory.cols(), layout.total_width);
-    assert_eq!(witness.cols(), 0, "standalone init/teardown witness width is expected to be zero");
+    assert_eq!(
+        witness.cols(),
+        0,
+        "standalone init/teardown witness width is expected to be zero"
+    );
     set_by_val(BF::new(0), memory.slice_mut(), stream)?;
     assert!(
         inits_and_teardowns.inits_and_teardowns.len() <= count * layout.teardown_sets.len(),

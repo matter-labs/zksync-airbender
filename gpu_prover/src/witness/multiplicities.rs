@@ -4,6 +4,7 @@ use super::NoFieldLinearRelation;
 use crate::allocator::tracker::AllocationPlacement;
 use crate::ops::cub::device_radix_sort::{get_sort_keys_temp_storage_bytes, sort_keys};
 use crate::ops::cub::device_run_length_encode::{encode, get_encode_temp_storage_bytes};
+use crate::ops::cub::CUB_TEMP_STORAGE_EXTRA_ALIGNMENT_LOG2;
 use crate::ops::simple::set_to_zero;
 use crate::primitives::context::{DeviceAllocation, ProverContext};
 use crate::primitives::device_structures::{
@@ -61,10 +62,11 @@ pub fn generate_generic_lookup_multiplicities(
         0,
         lookup_mapping_bits_count,
     )?;
-    let mut mapping_sort_temp_storage = context.alloc::<u8>(
-        lookup_mapping_sort_temp_storage_size,
-        AllocationPlacement::BestFit,
-    )?;
+    let mut mapping_sort_temp_storage = context
+        .alloc_with_extra_alignment::<u8, CUB_TEMP_STORAGE_EXTRA_ALIGNMENT_LOG2>(
+            lookup_mapping_sort_temp_storage_size,
+            AllocationPlacement::BestFit,
+        )?;
     sort_keys(
         false,
         &mut mapping_sort_temp_storage,
@@ -81,8 +83,11 @@ pub fn generate_generic_lookup_multiplicities(
     let mut num_runs = context.alloc(1, AllocationPlacement::BestFit)?;
     let encode_temp_storage_bytes =
         get_encode_temp_storage_bytes::<u32>(lookup_mapping_size as i32)?;
-    let mut encode_temp_storage =
-        context.alloc::<u8>(encode_temp_storage_bytes, AllocationPlacement::BestFit)?;
+    let mut encode_temp_storage = context
+        .alloc_with_extra_alignment::<u8, CUB_TEMP_STORAGE_EXTRA_ALIGNMENT_LOG2>(
+            encode_temp_storage_bytes,
+            AllocationPlacement::BestFit,
+        )?;
     encode(
         &mut encode_temp_storage,
         &sorted_lookup_mapping,
