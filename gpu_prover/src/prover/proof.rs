@@ -42,8 +42,8 @@ use crate::prover::gkr::setup::{
 };
 use crate::prover::gkr::stage1::{GpuGKRStage1Keepalive, GpuGKRStage1Output, GpuGKRTraceGeometry};
 use crate::prover::trace_holder::{
-    allocate_tree_caps, allocate_trees, flatten_tree_caps, TraceHolder, TreesCacheMode, TreesHolder,
-    PARTIAL_TREE_REDUCTION_LAYERS,
+    allocate_tree_caps, allocate_trees, flatten_tree_caps, TraceHolder, TreesCacheMode,
+    TreesHolder, PARTIAL_TREE_REDUCTION_LAYERS,
 };
 use crate::prover::tracing_data::{InitsAndTeardownsTransfer, TracingDataTransfer};
 use crate::prover::whir_fold::{
@@ -467,10 +467,8 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
     transcript_init_range.start(stream)?;
     callbacks.schedule(
         move || unsafe {
-            let flattened_witness_tree_caps = flatten_tree_caps(
-                &witness_base_caps_accessors,
-                witness_log_lde_factor,
-            );
+            let flattened_witness_tree_caps =
+                flatten_tree_caps(&witness_base_caps_accessors, witness_log_lde_factor);
             let transcript_input = build_initial_transcript_input(
                 &canonical_top_bits,
                 &external_challenges_for_seed,
@@ -490,7 +488,11 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
     ranges.push(transcript_init_range);
 
     let mut forward_setup = if let Some(setup_transfer) = setup_transfer.as_ref() {
-        setup_transfer.schedule_forward_setup(&compiled_circuit, &lookup_challenges_host, context)?
+        setup_transfer.schedule_forward_setup(
+            &compiled_circuit,
+            &lookup_challenges_host,
+            context,
+        )?
     } else {
         schedule_forward_setup_for_shape::<E4>(
             None,
@@ -554,6 +556,7 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
                     evaluation_point,
                     seed_accessor.get().clone(),
                     batching_challenge,
+                    lookup_challenges[0],
                     lookup_challenges[1],
                     lookup_challenges[2],
                 );
@@ -625,7 +628,9 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
     let pre_whir_setup_cosets_range = Range::new("gkr.proof.pre_whir.setup_cosets")?;
     pre_whir_setup_cosets_range.start(stream)?;
     if let Some(setup_transfer) = setup_transfer.as_mut() {
-        setup_transfer.trace_holder.ensure_cosets_materialized(context)?;
+        setup_transfer
+            .trace_holder
+            .ensure_cosets_materialized(context)?;
     } else {
         let setup_trace_holder = synthetic_setup_trace_holder
             .as_mut()
@@ -707,7 +712,9 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
             },
             whir_schedule.cap_size,
             compiled_circuit.trace_len.trailing_zeros() as usize,
-            external_pow_challenges.clone().map(|pow| pow.whir_pow_nonces),
+            external_pow_challenges
+                .clone()
+                .map(|pow| pow.whir_pow_nonces),
             context,
         )?
     } else {
@@ -767,7 +774,9 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
             },
             whir_schedule.cap_size,
             compiled_circuit.trace_len.trailing_zeros() as usize,
-            external_pow_challenges.clone().map(|pow| pow.whir_pow_nonces),
+            external_pow_challenges
+                .clone()
+                .map(|pow| pow.whir_pow_nonces),
             context,
         )?
     };
@@ -925,8 +934,8 @@ mod tests {
     use super::{build_initial_transcript_input, draw_query_bits_with_external_nonce};
     use crate::primitives::field::{BF, E4};
     use prover::definitions::Transcript;
-    use prover::gkr::prover::GKRExternalChallenges;
     use prover::gkr::prover::transcript_utils::draw_query_bits;
+    use prover::gkr::prover::GKRExternalChallenges;
     use prover::query_utils::assemble_query_index;
     use prover::transcript::Seed;
     use worker::Worker;
