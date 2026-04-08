@@ -23,11 +23,11 @@ use crate::primitives::context::{DeviceAllocation, HostAllocation, ProverContext
 use crate::primitives::device_tracing::Range;
 use crate::primitives::field::{BF, E4};
 use crate::primitives::static_host::{
-    alloc_static_pinned_box_from_slice, alloc_static_pinned_box_uninit, StaticPinnedBox,
+    StaticPinnedBox, alloc_static_pinned_box_from_slice, alloc_static_pinned_box_uninit,
 };
 use crate::primitives::transfer::Transfer;
-use crate::primitives::utils::{get_grid_block_dims_for_threads_count, WARP_SIZE};
-use crate::prover::trace_holder::{allocate_tree_caps, TraceHolder, TreesCacheMode, TreesHolder};
+use crate::primitives::utils::{WARP_SIZE, get_grid_block_dims_for_threads_count};
+use crate::prover::trace_holder::{TraceHolder, TreesCacheMode, TreesHolder, allocate_tree_caps};
 use prover::gkr::prover::setup::GKRSetup as CpuGKRSetup;
 
 pub(super) const GKR_FORWARD_SETUP_GENERIC_LOOKUP_MAX_COLUMNS: usize = 10;
