@@ -261,8 +261,6 @@ pub(super) struct GpuGKRMainRound0BatchRecord<E> {
     pub(super) extension_inputs: GpuGKRMainLayerPayloadRange,
     pub(super) base_outputs: GpuGKRMainLayerPayloadRange,
     pub(super) extension_outputs: GpuGKRMainLayerPayloadRange,
-    pub(super) batch_challenge_offset: u32,
-    pub(super) batch_challenge_count: u32,
     pub(super) quadratic_terms: GpuGKRMainLayerPayloadRange,
     pub(super) linear_terms: GpuGKRMainLayerPayloadRange,
     pub(super) auxiliary_challenge: E,
@@ -280,8 +278,6 @@ impl<E: Field> Default for GpuGKRMainRound0BatchRecord<E> {
             extension_inputs: GpuGKRMainLayerPayloadRange::default(),
             base_outputs: GpuGKRMainLayerPayloadRange::default(),
             extension_outputs: GpuGKRMainLayerPayloadRange::default(),
-            batch_challenge_offset: 0,
-            batch_challenge_count: 0,
             quadratic_terms: GpuGKRMainLayerPayloadRange::default(),
             linear_terms: GpuGKRMainLayerPayloadRange::default(),
             auxiliary_challenge: E::ZERO,
@@ -299,8 +295,6 @@ pub(super) struct GpuGKRMainRound1BatchRecord<E> {
     pub(super) _reserved: u32,
     pub(super) base_inputs: GpuGKRMainLayerPayloadRange,
     pub(super) extension_inputs: GpuGKRMainLayerPayloadRange,
-    pub(super) batch_challenge_offset: u32,
-    pub(super) batch_challenge_count: u32,
     pub(super) quadratic_terms: GpuGKRMainLayerPayloadRange,
     pub(super) linear_terms: GpuGKRMainLayerPayloadRange,
     pub(super) auxiliary_challenge: E,
@@ -316,8 +310,6 @@ impl<E: Field> Default for GpuGKRMainRound1BatchRecord<E> {
             _reserved: 0,
             base_inputs: GpuGKRMainLayerPayloadRange::default(),
             extension_inputs: GpuGKRMainLayerPayloadRange::default(),
-            batch_challenge_offset: 0,
-            batch_challenge_count: 0,
             quadratic_terms: GpuGKRMainLayerPayloadRange::default(),
             linear_terms: GpuGKRMainLayerPayloadRange::default(),
             auxiliary_challenge: E::ZERO,
@@ -335,8 +327,6 @@ pub(super) struct GpuGKRMainRound2BatchRecord<E> {
     pub(super) _reserved: u32,
     pub(super) base_inputs: GpuGKRMainLayerPayloadRange,
     pub(super) extension_inputs: GpuGKRMainLayerPayloadRange,
-    pub(super) batch_challenge_offset: u32,
-    pub(super) batch_challenge_count: u32,
     pub(super) quadratic_terms: GpuGKRMainLayerPayloadRange,
     pub(super) linear_terms: GpuGKRMainLayerPayloadRange,
     pub(super) auxiliary_challenge: E,
@@ -352,8 +342,6 @@ impl<E: Field> Default for GpuGKRMainRound2BatchRecord<E> {
             _reserved: 0,
             base_inputs: GpuGKRMainLayerPayloadRange::default(),
             extension_inputs: GpuGKRMainLayerPayloadRange::default(),
-            batch_challenge_offset: 0,
-            batch_challenge_count: 0,
             quadratic_terms: GpuGKRMainLayerPayloadRange::default(),
             linear_terms: GpuGKRMainLayerPayloadRange::default(),
             auxiliary_challenge: E::ZERO,
@@ -371,8 +359,6 @@ pub(super) struct GpuGKRMainRound3BatchRecord<E> {
     pub(super) _reserved: u32,
     pub(super) base_inputs: GpuGKRMainLayerPayloadRange,
     pub(super) extension_inputs: GpuGKRMainLayerPayloadRange,
-    pub(super) batch_challenge_offset: u32,
-    pub(super) batch_challenge_count: u32,
     pub(super) quadratic_terms: GpuGKRMainLayerPayloadRange,
     pub(super) linear_terms: GpuGKRMainLayerPayloadRange,
     pub(super) auxiliary_challenge: E,
@@ -388,8 +374,6 @@ impl<E: Field> Default for GpuGKRMainRound3BatchRecord<E> {
             _reserved: 0,
             base_inputs: GpuGKRMainLayerPayloadRange::default(),
             extension_inputs: GpuGKRMainLayerPayloadRange::default(),
-            batch_challenge_offset: 0,
-            batch_challenge_count: 0,
             quadratic_terms: GpuGKRMainLayerPayloadRange::default(),
             linear_terms: GpuGKRMainLayerPayloadRange::default(),
             auxiliary_challenge: E::ZERO,
@@ -400,30 +384,22 @@ impl<E: Field> Default for GpuGKRMainRound3BatchRecord<E> {
 
 #[repr(C)]
 #[derive(Clone, Copy)]
-pub(super) struct GpuGKRMainRound0Batch<E> {
+pub(super) struct GpuGKRMainRound0BatchStatic<E> {
     pub(super) record_count: u32,
     pub(super) challenge_offset: u32,
     pub(super) challenge_count: u32,
     pub(super) _reserved: u32,
-    pub(super) claim_point: *const E,
-    pub(super) batch_challenge_base: *const E,
-    pub(super) contributions: *mut E,
-    pub(super) spill_payload: *const u8,
     pub(super) records: [GpuGKRMainRound0BatchRecord<E>; GKR_BACKWARD_MAX_KERNELS_PER_LAYER],
     pub(super) inline_payload: [u8; MAX_INLINE_ROUND_BATCH_BYTES],
 }
 
-impl<E: Field> Default for GpuGKRMainRound0Batch<E> {
+impl<E: Field> Default for GpuGKRMainRound0BatchStatic<E> {
     fn default() -> Self {
         Self {
             record_count: 0,
             challenge_offset: 0,
             challenge_count: 0,
             _reserved: 0,
-            claim_point: null(),
-            batch_challenge_base: null(),
-            contributions: null_mut(),
-            spill_payload: null(),
             records: [GpuGKRMainRound0BatchRecord::default(); GKR_BACKWARD_MAX_KERNELS_PER_LAYER],
             inline_payload: [0; MAX_INLINE_ROUND_BATCH_BYTES],
         }
@@ -432,36 +408,42 @@ impl<E: Field> Default for GpuGKRMainRound0Batch<E> {
 
 #[repr(C)]
 #[derive(Clone, Copy)]
-pub(super) struct GpuGKRMainRound1Batch<E> {
+pub(super) struct GpuGKRMainRound0BatchRuntime<E> {
+    pub(super) claim_point: *const E,
+    pub(super) batch_challenges: *const E,
+    pub(super) contributions: *mut E,
+    pub(super) spill_payload: *const u8,
+}
+
+impl<E: Field> Default for GpuGKRMainRound0BatchRuntime<E> {
+    fn default() -> Self {
+        Self {
+            claim_point: null(),
+            batch_challenges: null(),
+            contributions: null_mut(),
+            spill_payload: null(),
+        }
+    }
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub(super) struct GpuGKRMainRound1BatchStatic<E> {
     pub(super) record_count: u32,
     pub(super) challenge_offset: u32,
     pub(super) challenge_count: u32,
     pub(super) _reserved: u32,
-    pub(super) claim_point: *const E,
-    pub(super) batch_challenge_base: *const E,
-    pub(super) folding_challenge: *const E,
-    pub(super) contributions: *mut E,
-    pub(super) spill_payload: *const u8,
-    pub(super) explicit_form: bool,
-    pub(super) _padding: [u8; 7],
     pub(super) records: [GpuGKRMainRound1BatchRecord<E>; GKR_BACKWARD_MAX_KERNELS_PER_LAYER],
     pub(super) inline_payload: [u8; MAX_INLINE_ROUND_BATCH_BYTES],
 }
 
-impl<E: Field> Default for GpuGKRMainRound1Batch<E> {
+impl<E: Field> Default for GpuGKRMainRound1BatchStatic<E> {
     fn default() -> Self {
         Self {
             record_count: 0,
             challenge_offset: 0,
             challenge_count: 0,
             _reserved: 0,
-            claim_point: null(),
-            batch_challenge_base: null(),
-            folding_challenge: null(),
-            contributions: null_mut(),
-            spill_payload: null(),
-            explicit_form: false,
-            _padding: [0; 7],
             records: [GpuGKRMainRound1BatchRecord::default(); GKR_BACKWARD_MAX_KERNELS_PER_LAYER],
             inline_payload: [0; MAX_INLINE_ROUND_BATCH_BYTES],
         }
@@ -470,36 +452,44 @@ impl<E: Field> Default for GpuGKRMainRound1Batch<E> {
 
 #[repr(C)]
 #[derive(Clone, Copy)]
-pub(super) struct GpuGKRMainRound2Batch<E> {
+pub(super) struct GpuGKRMainRound1BatchRuntime<E> {
+    pub(super) claim_point: *const E,
+    pub(super) batch_challenges: *const E,
+    pub(super) folding_challenge: *const E,
+    pub(super) contributions: *mut E,
+    pub(super) spill_payload: *const u8,
+}
+
+impl<E: Field> Default for GpuGKRMainRound1BatchRuntime<E> {
+    fn default() -> Self {
+        Self {
+            claim_point: null(),
+            batch_challenges: null(),
+            folding_challenge: null(),
+            contributions: null_mut(),
+            spill_payload: null(),
+        }
+    }
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub(super) struct GpuGKRMainRound2BatchStatic<E> {
     pub(super) record_count: u32,
     pub(super) challenge_offset: u32,
     pub(super) challenge_count: u32,
     pub(super) _reserved: u32,
-    pub(super) claim_point: *const E,
-    pub(super) batch_challenge_base: *const E,
-    pub(super) folding_challenges: *const E,
-    pub(super) contributions: *mut E,
-    pub(super) spill_payload: *const u8,
-    pub(super) explicit_form: bool,
-    pub(super) _padding: [u8; 7],
     pub(super) records: [GpuGKRMainRound2BatchRecord<E>; GKR_BACKWARD_MAX_KERNELS_PER_LAYER],
     pub(super) inline_payload: [u8; MAX_INLINE_ROUND_BATCH_BYTES],
 }
 
-impl<E: Field> Default for GpuGKRMainRound2Batch<E> {
+impl<E: Field> Default for GpuGKRMainRound2BatchStatic<E> {
     fn default() -> Self {
         Self {
             record_count: 0,
             challenge_offset: 0,
             challenge_count: 0,
             _reserved: 0,
-            claim_point: null(),
-            batch_challenge_base: null(),
-            folding_challenges: null(),
-            contributions: null_mut(),
-            spill_payload: null(),
-            explicit_form: false,
-            _padding: [0; 7],
             records: [GpuGKRMainRound2BatchRecord::default(); GKR_BACKWARD_MAX_KERNELS_PER_LAYER],
             inline_payload: [0; MAX_INLINE_ROUND_BATCH_BYTES],
         }
@@ -508,38 +498,68 @@ impl<E: Field> Default for GpuGKRMainRound2Batch<E> {
 
 #[repr(C)]
 #[derive(Clone, Copy)]
-pub(super) struct GpuGKRMainRound3Batch<E> {
+pub(super) struct GpuGKRMainRound2BatchRuntime<E> {
+    pub(super) claim_point: *const E,
+    pub(super) batch_challenges: *const E,
+    pub(super) folding_challenges: *const E,
+    pub(super) contributions: *mut E,
+    pub(super) spill_payload: *const u8,
+}
+
+impl<E: Field> Default for GpuGKRMainRound2BatchRuntime<E> {
+    fn default() -> Self {
+        Self {
+            claim_point: null(),
+            batch_challenges: null(),
+            folding_challenges: null(),
+            contributions: null_mut(),
+            spill_payload: null(),
+        }
+    }
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub(super) struct GpuGKRMainRound3BatchStatic<E> {
     pub(super) record_count: u32,
     pub(super) challenge_offset: u32,
     pub(super) challenge_count: u32,
     pub(super) _reserved: u32,
-    pub(super) claim_point: *const E,
-    pub(super) batch_challenge_base: *const E,
-    pub(super) folding_challenge: *const E,
-    pub(super) contributions: *mut E,
-    pub(super) spill_payload: *const u8,
-    pub(super) explicit_form: bool,
-    pub(super) _padding: [u8; 7],
     pub(super) records: [GpuGKRMainRound3BatchRecord<E>; GKR_BACKWARD_MAX_KERNELS_PER_LAYER],
     pub(super) inline_payload: [u8; MAX_INLINE_ROUND_BATCH_BYTES],
 }
 
-impl<E: Field> Default for GpuGKRMainRound3Batch<E> {
+impl<E: Field> Default for GpuGKRMainRound3BatchStatic<E> {
     fn default() -> Self {
         Self {
             record_count: 0,
             challenge_offset: 0,
             challenge_count: 0,
             _reserved: 0,
+            records: [GpuGKRMainRound3BatchRecord::default(); GKR_BACKWARD_MAX_KERNELS_PER_LAYER],
+            inline_payload: [0; MAX_INLINE_ROUND_BATCH_BYTES],
+        }
+    }
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub(super) struct GpuGKRMainRound3BatchRuntime<E> {
+    pub(super) claim_point: *const E,
+    pub(super) batch_challenges: *const E,
+    pub(super) folding_challenge: *const E,
+    pub(super) contributions: *mut E,
+    pub(super) spill_payload: *const u8,
+}
+
+impl<E: Field> Default for GpuGKRMainRound3BatchRuntime<E> {
+    fn default() -> Self {
+        Self {
             claim_point: null(),
-            batch_challenge_base: null(),
+            batch_challenges: null(),
             folding_challenge: null(),
             contributions: null_mut(),
             spill_payload: null(),
-            explicit_form: false,
-            _padding: [0; 7],
-            records: [GpuGKRMainRound3BatchRecord::default(); GKR_BACKWARD_MAX_KERNELS_PER_LAYER],
-            inline_payload: [0; MAX_INLINE_ROUND_BATCH_BYTES],
         }
     }
 }
@@ -553,7 +573,7 @@ pub(super) struct GpuGKRMainLayerRound3HostDescriptors<E: Copy> {
 #[derive(Clone)]
 pub(super) struct GpuGKRMainLayerRound3BatchTemplate<E> {
     pub(super) step: usize,
-    pub(super) batch: GpuGKRMainRound3Batch<E>,
+    pub(super) batch: GpuGKRMainRound3BatchStatic<E>,
 }
 
 #[repr(C)]
@@ -1084,9 +1104,9 @@ pub(crate) struct GpuGKRMainLayerSumcheckLayerPlan<E> {
     pub(super) batch_challenge_base: Option<E>,
     pub(super) kernel_plans: Vec<GpuGKRMainLayerKernelPlan<E>>,
     pub(super) round0_descriptors: Vec<GpuSumcheckRound0LaunchDescriptors<BF, E>>,
-    pub(super) round0_batch_template: GpuGKRMainRound0Batch<E>,
-    pub(super) round1_batch_template: GpuGKRMainRound1Batch<E>,
-    pub(super) round2_batch_template: GpuGKRMainRound2Batch<E>,
+    pub(super) round0_batch_template: GpuGKRMainRound0BatchStatic<E>,
+    pub(super) round1_batch_template: GpuGKRMainRound1BatchStatic<E>,
+    pub(super) round2_batch_template: GpuGKRMainRound2BatchStatic<E>,
     pub(super) round3_batch_templates: Vec<GpuGKRMainLayerRound3BatchTemplate<E>>,
     pub(super) static_spill_bytes: Vec<u8>,
     pub(super) round_scratch: GpuGKRMainLayerRoundScratch<E>,
@@ -1133,6 +1153,8 @@ pub(crate) struct GpuGKRMainLayerScheduledLayerExecution<E: FieldExtension<BF> +
     pub(super) start_callbacks: Callbacks<'static>,
     #[allow(dead_code)]
     pub(super) static_spill_upload: Option<ScheduledUpload<u8>>,
+    #[allow(dead_code)]
+    pub(super) batch_challenge_buffer: ScheduledChallengeBuffer<E>,
     #[allow(dead_code)]
     pub(super) round_challenge_buffers: Vec<ScheduledChallengeBuffer<E>>,
     #[allow(dead_code)]
@@ -1199,6 +1221,8 @@ pub(crate) struct GpuGKRMainLayerHostKeepalive<E: FieldExtension<BF> + Field> {
     pub(super) start_callbacks: Callbacks<'static>,
     #[allow(dead_code)]
     pub(super) static_spill_upload: Option<HostScheduledUpload<u8>>,
+    #[allow(dead_code)]
+    pub(super) batch_challenge_buffer: HostScheduledChallengeBuffer<E>,
     #[allow(dead_code)]
     pub(super) round_challenge_buffers: Vec<HostScheduledChallengeBuffer<E>>,
     #[allow(dead_code)]
@@ -2059,13 +2083,33 @@ cuda_kernel_signature_arguments_and_function!(
     acc_size: u32,
 );
 
-cuda_kernel_signature_arguments_and_function!(GpuGKRMainRound0Batched<T>, batch: GpuGKRMainRound0Batch<T>, acc_size: u32,);
+cuda_kernel_signature_arguments_and_function!(
+    GpuGKRMainRound0Batched<T>,
+    batch_static: GpuGKRMainRound0BatchStatic<T>,
+    batch_runtime: GpuGKRMainRound0BatchRuntime<T>,
+    acc_size: u32,
+);
 
-cuda_kernel_signature_arguments_and_function!(GpuGKRMainRound1Batched<T>, batch: GpuGKRMainRound1Batch<T>, acc_size: u32,);
+cuda_kernel_signature_arguments_and_function!(
+    GpuGKRMainRound1Batched<T>,
+    batch_static: GpuGKRMainRound1BatchStatic<T>,
+    batch_runtime: GpuGKRMainRound1BatchRuntime<T>,
+    acc_size: u32,
+);
 
-cuda_kernel_signature_arguments_and_function!(GpuGKRMainRound2Batched<T>, batch: GpuGKRMainRound2Batch<T>, acc_size: u32,);
+cuda_kernel_signature_arguments_and_function!(
+    GpuGKRMainRound2Batched<T>,
+    batch_static: GpuGKRMainRound2BatchStatic<T>,
+    batch_runtime: GpuGKRMainRound2BatchRuntime<T>,
+    acc_size: u32,
+);
 
-cuda_kernel_signature_arguments_and_function!(GpuGKRMainRound3Batched<T>, batch: GpuGKRMainRound3Batch<T>, acc_size: u32,);
+cuda_kernel_signature_arguments_and_function!(
+    GpuGKRMainRound3Batched<T>,
+    batch_static: GpuGKRMainRound3BatchStatic<T>,
+    batch_runtime: GpuGKRMainRound3BatchRuntime<T>,
+    acc_size: u32,
+);
 
 pub(super) trait GpuMainLayerKernelSet: GpuDimensionReducingKernelSet {
     const MAIN_ROUND0: GpuGKRMainRound0Signature<Self>;
@@ -2209,43 +2253,50 @@ macro_rules! gkr_main_layer_kernels {
             );
             cuda_kernel_declaration!(
                 [<ab_gkr_main_round0_batched_ $type:lower _kernel>](
-                    batch: GpuGKRMainRound0Batch<$type>,
+                    batch_static: GpuGKRMainRound0BatchStatic<$type>,
+                    batch_runtime: GpuGKRMainRound0BatchRuntime<$type>,
                     acc_size: u32,
                 )
             );
             cuda_kernel_declaration!(
                 [<ab_gkr_main_round1_batched_explicit_ $type:lower _kernel>](
-                    batch: GpuGKRMainRound1Batch<$type>,
+                    batch_static: GpuGKRMainRound1BatchStatic<$type>,
+                    batch_runtime: GpuGKRMainRound1BatchRuntime<$type>,
                     acc_size: u32,
                 )
             );
             cuda_kernel_declaration!(
                 [<ab_gkr_main_round1_batched_compact_ $type:lower _kernel>](
-                    batch: GpuGKRMainRound1Batch<$type>,
+                    batch_static: GpuGKRMainRound1BatchStatic<$type>,
+                    batch_runtime: GpuGKRMainRound1BatchRuntime<$type>,
                     acc_size: u32,
                 )
             );
             cuda_kernel_declaration!(
                 [<ab_gkr_main_round2_batched_explicit_ $type:lower _kernel>](
-                    batch: GpuGKRMainRound2Batch<$type>,
+                    batch_static: GpuGKRMainRound2BatchStatic<$type>,
+                    batch_runtime: GpuGKRMainRound2BatchRuntime<$type>,
                     acc_size: u32,
                 )
             );
             cuda_kernel_declaration!(
                 [<ab_gkr_main_round2_batched_compact_ $type:lower _kernel>](
-                    batch: GpuGKRMainRound2Batch<$type>,
+                    batch_static: GpuGKRMainRound2BatchStatic<$type>,
+                    batch_runtime: GpuGKRMainRound2BatchRuntime<$type>,
                     acc_size: u32,
                 )
             );
             cuda_kernel_declaration!(
                 [<ab_gkr_main_round3_batched_explicit_ $type:lower _kernel>](
-                    batch: GpuGKRMainRound3Batch<$type>,
+                    batch_static: GpuGKRMainRound3BatchStatic<$type>,
+                    batch_runtime: GpuGKRMainRound3BatchRuntime<$type>,
                     acc_size: u32,
                 )
             );
             cuda_kernel_declaration!(
                 [<ab_gkr_main_round3_batched_compact_ $type:lower _kernel>](
-                    batch: GpuGKRMainRound3Batch<$type>,
+                    batch_static: GpuGKRMainRound3BatchStatic<$type>,
+                    batch_runtime: GpuGKRMainRound3BatchRuntime<$type>,
                     acc_size: u32,
                 )
             );
@@ -2742,23 +2793,28 @@ pub(super) fn launch_main_round3<E: GpuMainLayerKernelSet + Field>(
 }
 
 pub(super) fn launch_main_round0_batched<E: GpuMainLayerKernelSet + Field>(
-    batch: &GpuGKRMainRound0Batch<E>,
+    batch_static: &GpuGKRMainRound0BatchStatic<E>,
+    batch_runtime: &GpuGKRMainRound0BatchRuntime<E>,
     acc_size: usize,
     context: &ProverContext,
 ) -> CudaResult<()> {
     let config = gkr_dim_reducing_launch_config(acc_size as u32, context);
-    let args = GpuGKRMainRound0BatchedArguments::new(*batch, acc_size as u32);
+    let args =
+        GpuGKRMainRound0BatchedArguments::new(*batch_static, *batch_runtime, acc_size as u32);
     GpuGKRMainRound0BatchedFunction(E::MAIN_ROUND0_BATCHED).launch(&config, &args)
 }
 
 pub(super) fn launch_main_round1_batched<E: GpuMainLayerKernelSet + Field>(
-    batch: &GpuGKRMainRound1Batch<E>,
+    batch_static: &GpuGKRMainRound1BatchStatic<E>,
+    batch_runtime: &GpuGKRMainRound1BatchRuntime<E>,
     acc_size: usize,
+    explicit_form: bool,
     context: &ProverContext,
 ) -> CudaResult<()> {
     let config = gkr_dim_reducing_launch_config(acc_size as u32, context);
-    let args = GpuGKRMainRound1BatchedArguments::new(*batch, acc_size as u32);
-    let function = if batch.explicit_form {
+    let args =
+        GpuGKRMainRound1BatchedArguments::new(*batch_static, *batch_runtime, acc_size as u32);
+    let function = if explicit_form {
         E::MAIN_ROUND1_BATCHED_EXPLICIT
     } else {
         E::MAIN_ROUND1_BATCHED_COMPACT
@@ -2767,13 +2823,16 @@ pub(super) fn launch_main_round1_batched<E: GpuMainLayerKernelSet + Field>(
 }
 
 pub(super) fn launch_main_round2_batched<E: GpuMainLayerKernelSet + Field>(
-    batch: &GpuGKRMainRound2Batch<E>,
+    batch_static: &GpuGKRMainRound2BatchStatic<E>,
+    batch_runtime: &GpuGKRMainRound2BatchRuntime<E>,
     acc_size: usize,
+    explicit_form: bool,
     context: &ProverContext,
 ) -> CudaResult<()> {
     let config = gkr_dim_reducing_launch_config(acc_size as u32, context);
-    let args = GpuGKRMainRound2BatchedArguments::new(*batch, acc_size as u32);
-    let function = if batch.explicit_form {
+    let args =
+        GpuGKRMainRound2BatchedArguments::new(*batch_static, *batch_runtime, acc_size as u32);
+    let function = if explicit_form {
         E::MAIN_ROUND2_BATCHED_EXPLICIT
     } else {
         E::MAIN_ROUND2_BATCHED_COMPACT
@@ -2782,13 +2841,16 @@ pub(super) fn launch_main_round2_batched<E: GpuMainLayerKernelSet + Field>(
 }
 
 pub(super) fn launch_main_round3_batched<E: GpuMainLayerKernelSet + Field>(
-    batch: &GpuGKRMainRound3Batch<E>,
+    batch_static: &GpuGKRMainRound3BatchStatic<E>,
+    batch_runtime: &GpuGKRMainRound3BatchRuntime<E>,
     acc_size: usize,
+    explicit_form: bool,
     context: &ProverContext,
 ) -> CudaResult<()> {
     let config = gkr_dim_reducing_launch_config(acc_size as u32, context);
-    let args = GpuGKRMainRound3BatchedArguments::new(*batch, acc_size as u32);
-    let function = if batch.explicit_form {
+    let args =
+        GpuGKRMainRound3BatchedArguments::new(*batch_static, *batch_runtime, acc_size as u32);
+    let function = if explicit_form {
         E::MAIN_ROUND3_BATCHED_EXPLICIT
     } else {
         E::MAIN_ROUND3_BATCHED_COMPACT
