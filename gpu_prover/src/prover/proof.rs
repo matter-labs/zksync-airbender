@@ -36,7 +36,7 @@ use crate::prover::gkr::base_layer_claims::{
     fill_setup_polys_claims, fill_wit_polys_claims,
     schedule_prepare_base_layer_claims_with_sources, GpuGKRBaseLayerClaimsScheduledExecution,
 };
-use crate::prover::gkr::forward::{schedule_forward_pass, GpuGKRTranscriptHandoff};
+use crate::prover::gkr::forward::schedule_forward_pass;
 use crate::prover::gkr::setup::{
     schedule_forward_setup_for_shape, GpuGKRForwardSetupHostKeepalive, GpuGKRSetupTransfer,
     GpuGKRSetupTransferHostKeepalive,
@@ -61,7 +61,6 @@ struct GpuGKRProofJobKeepalive<'a> {
     _stage1: GpuGKRStage1Keepalive,
     _setup: Option<GpuGKRSetupTransferHostKeepalive<'a>>,
     _forward_setup: GpuGKRForwardSetupHostKeepalive<E4>,
-    _transcript_handoff: GpuGKRTranscriptHandoff<E4>,
     _backward: GpuGKRBackwardHostKeepalive<BF, E4>,
     _base_layer_claims: GpuGKRBaseLayerClaimsScheduledExecution<E4>,
     _whir: GpuWhirFoldScheduledExecution,
@@ -820,6 +819,7 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
     )?;
     finalize_range.end(stream)?;
     ranges.push(finalize_range);
+    drop(transcript_handoff);
 
     {
         let event = CudaEvent::create_with_flags(CudaEventCreateFlags::DISABLE_TIMING)?;
@@ -843,7 +843,6 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
             _stage1: stage1_output.into_keepalive(),
             _setup: setup_keepalive,
             _forward_setup: forward_setup_keepalive,
-            _transcript_handoff: transcript_handoff,
             _backward: backward_keepalive,
             _base_layer_claims: base_layer_claims_scheduled,
             _whir: whir_scheduled,
