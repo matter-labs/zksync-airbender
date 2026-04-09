@@ -146,10 +146,10 @@ TRANSPOSE_KERNEL(e6, 3);
 
 DEVICE_FORCEINLINE unsigned bitreverse_low_bits(const unsigned value, const unsigned num_bits) { return __brev(value) >> (32 - num_bits); }
 
-DEVICE_FORCEINLINE void partially_evaluate_bitrev_monomial_form_small_impl(vectorized_e4_matrix_getter<ld_modifier::cg> src,
-                                                                           e4 *dst,
-                                                                           const e4 z,
-                                                                           const unsigned log_count) {
+DEVICE_FORCEINLINE void partially_evaluate_monomial_form_small_impl(vectorized_e4_matrix_getter<ld_modifier::cg> src,
+                                                                    e4 *dst,
+                                                                    const e4 z,
+                                                                    const unsigned log_count) {
   const int count = 1 << log_count;
   const int gid = blockIdx.x * blockDim.x + threadIdx.x;
   if (gid >= count)
@@ -161,27 +161,27 @@ DEVICE_FORCEINLINE void partially_evaluate_bitrev_monomial_form_small_impl(vecto
   dst[gid] = e4::mul(result, adjustment);
 }
 
-EXTERN __global__ void ab_partially_evaluate_bitrev_monomial_form_by_val_small_kernel(vectorized_e4_matrix_getter<ld_modifier::cg> src,
-                                                                                      e4 *dst,
-                                                                                      const e4 z,
-                                                                                      const unsigned log_count) {
-  partially_evaluate_bitrev_monomial_form_small_impl(src, dst, z, log_count);
+EXTERN __global__ void ab_partially_evaluate_monomial_form_by_val_small_kernel(vectorized_e4_matrix_getter<ld_modifier::cg> src,
+                                                                               e4 *dst,
+                                                                               const e4 z,
+                                                                               const unsigned log_count) {
+  partially_evaluate_monomial_form_small_impl(src, dst, z, log_count);
 }
 
-EXTERN __global__ void ab_partially_evaluate_bitrev_monomial_form_by_ref_small_kernel(vectorized_e4_matrix_getter<ld_modifier::cg> src,
-                                                                                      e4 *dst,
-                                                                                      const e4 *z,
-                                                                                      const unsigned log_count) {
-  partially_evaluate_bitrev_monomial_form_small_impl(src, dst, *z, log_count);
+EXTERN __global__ void ab_partially_evaluate_monomial_form_by_ref_small_kernel(vectorized_e4_matrix_getter<ld_modifier::cg> src,
+                                                                               e4 *dst,
+                                                                               const e4 *z,
+                                                                               const unsigned log_count) {
+  partially_evaluate_monomial_form_small_impl(src, dst, *z, log_count);
 }
 
 // Partially evaluates a polynomial at a single random point using Horner rule applied to bitreversed monomials.
 // Output size will be count / VALS_PER_THREAD.
-DEVICE_FORCEINLINE void partially_evaluate_bitrev_monomial_form_impl(vectorized_e4_matrix_getter<ld_modifier::cg> src,
-                                                                     e4 *dst,
-                                                                     const e4 z,
-                                                                     const e4 z_chunk_adjustment,
-                                                                     const unsigned log_count) {
+DEVICE_FORCEINLINE void partially_evaluate_monomial_form_impl(vectorized_e4_matrix_getter<ld_modifier::cg> src,
+                                                              e4 *dst,
+                                                              const e4 z,
+                                                              const e4 z_chunk_adjustment,
+                                                              const unsigned log_count) {
   constexpr int VALS_PER_THREAD = 32;
   constexpr int BITREV_ORDER[VALS_PER_THREAD] =
       {0, 16, 8, 24, 4, 20, 12, 28, 2, 18, 10, 26, 6, 22, 14, 30, 1, 17, 9, 25, 5, 21, 13, 29, 3, 19, 11, 27, 7, 23, 15, 31};
@@ -193,7 +193,7 @@ DEVICE_FORCEINLINE void partially_evaluate_bitrev_monomial_form_impl(vectorized_
   src.add_row(gid);
 
   // Horner rule works backwards from highest powers
-  e4 result{src.get_at_row(count - gmem_stride + gid)};
+  e4 result{src.get_at_row(count - gmem_stride)};
 #pragma unroll
   for (int i{1}; i < VALS_PER_THREAD; i++) {
     result = e4::mul(result, z);
@@ -205,20 +205,20 @@ DEVICE_FORCEINLINE void partially_evaluate_bitrev_monomial_form_impl(vectorized_
   dst[gid] = e4::mul(result, adjustment);
 }
 
-EXTERN __global__ void ab_partially_evaluate_bitrev_monomial_form_by_val_kernel(vectorized_e4_matrix_getter<ld_modifier::cg> src,
-                                                                                e4 *dst,
-                                                                                const e4 z,
-                                                                                const e4 z_chunk_adjustment,
-                                                                                const unsigned log_count) {
-  partially_evaluate_bitrev_monomial_form_impl(src, dst, z, z_chunk_adjustment, log_count);
+EXTERN __global__ void ab_partially_evaluate_monomial_form_by_val_kernel(vectorized_e4_matrix_getter<ld_modifier::cg> src,
+                                                                         e4 *dst,
+                                                                         const e4 z,
+                                                                         const e4 z_chunk_adjustment,
+                                                                         const unsigned log_count) {
+  partially_evaluate_monomial_form_impl(src, dst, z, z_chunk_adjustment, log_count);
 }
 
-EXTERN __global__ void ab_partially_evaluate_bitrev_monomial_form_by_ref_kernel(vectorized_e4_matrix_getter<ld_modifier::cg> src,
-                                                                                e4 *dst,
-                                                                                const e4 *z_ref,
-                                                                                const e4 *z_chunk_adjustment_ref,
-                                                                                const unsigned log_count) {
-  partially_evaluate_bitrev_monomial_form_impl(src, dst, *z_ref, *z_chunk_adjustment_ref, log_count);
+EXTERN __global__ void ab_partially_evaluate_monomial_form_by_ref_kernel(vectorized_e4_matrix_getter<ld_modifier::cg> src,
+                                                                         e4 *dst,
+                                                                         const e4 *z_ref,
+                                                                         const e4 *z_chunk_adjustment_ref,
+                                                                         const unsigned log_count) {
+  partially_evaluate_monomial_form_impl(src, dst, *z_ref, *z_chunk_adjustment_ref, log_count);
 }
 
 EXTERN __global__ void ab_serialize_whir_e4_columns_kernel(const e4 *src, bf *dst, const unsigned count) {

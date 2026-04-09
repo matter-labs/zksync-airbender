@@ -49,7 +49,7 @@ struct vectorized_matrix_getter : vectorized_matrix_accessor<memory::matrix_gett
     coeffs[0] = this->internal.get_at_row(row);
 #pragma unroll
     for (unsigned i = 1; i < WIDTH; i++)
-      coeffs[1] = this->internal.get(row, i);
+      coeffs[i] = this->internal.get(row, i);
     return VALUE_TYPE(coeffs);
   }
 
