@@ -31,6 +31,9 @@
 
 ## Design Documents
 - `docs/gpu_scheduling_contract.md`: Async scheduling contract for GPU stream-ordered prover work (GKR, WHIR). Covers memory lifetime rules for device, transient host, and persistent host allocations, plus callback restrictions. Does not cover higher-level orchestration concurrency.
+- `docs/profiling.md`: Shared `gpu_prover` profiling setup, including the profiling test, NVTX identifiers, and test-binary workflow.
+- `docs/profiling_nsys.md`: `gpu_prover` `nsys` workflow around the existing top-level NVTX capture range.
+- `docs/profiling_ncu.md`: `gpu_prover` `ncu` workflow for quick kernel profiling, full-picture/source-correlated profiling, and dependency-sensitive range replay.
 
 ## Code Notes
 - Use `log` for diagnostic output rather than `println!`.
