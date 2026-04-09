@@ -373,6 +373,8 @@ pub(crate) struct GpuBaseFieldPolySourceAfterOneFoldingLaunchDescriptor<B, E> {
     pub(crate) base_layer_half_size: usize,
     pub(crate) next_layer_size: usize,
     pub(crate) base_input_start: *const B,
+    pub(crate) this_layer_cache_start: *mut E,
+    pub(crate) first_access: bool,
     pub(crate) source_kind: GpuBaseFieldSourceKind,
     pub(crate) _marker: core::marker::PhantomData<E>,
 }
@@ -555,30 +557,34 @@ pub(crate) struct GpuSumcheckRound3AndBeyondHostLaunchDescriptors<E: Copy> {
 }
 
 #[derive(Debug)]
-pub(crate) struct GpuBaseFieldPolySourceAfterOneFoldingPlan<B> {
+pub(crate) struct GpuBaseFieldPolySourceAfterOneFoldingPlan<B, E> {
     pub(crate) base_layer_half_size: usize,
     pub(crate) next_layer_size: usize,
     pub(crate) base_input_start: *const B,
+    pub(crate) this_layer_cache_start: *mut E,
+    pub(crate) first_access: bool,
     pub(crate) source_kind: GpuBaseFieldSourceKind,
 }
 
-impl<B> Clone for GpuBaseFieldPolySourceAfterOneFoldingPlan<B> {
+impl<B, E> Clone for GpuBaseFieldPolySourceAfterOneFoldingPlan<B, E> {
     fn clone(&self) -> Self {
         *self
     }
 }
 
-impl<B> Copy for GpuBaseFieldPolySourceAfterOneFoldingPlan<B> {}
+impl<B, E> Copy for GpuBaseFieldPolySourceAfterOneFoldingPlan<B, E> {}
 
-unsafe impl<B> Send for GpuBaseFieldPolySourceAfterOneFoldingPlan<B> {}
-unsafe impl<B> Sync for GpuBaseFieldPolySourceAfterOneFoldingPlan<B> {}
+unsafe impl<B, E> Send for GpuBaseFieldPolySourceAfterOneFoldingPlan<B, E> {}
+unsafe impl<B, E> Sync for GpuBaseFieldPolySourceAfterOneFoldingPlan<B, E> {}
 
-impl<B> GpuBaseFieldPolySourceAfterOneFoldingPlan<B> {
+impl<B, E> GpuBaseFieldPolySourceAfterOneFoldingPlan<B, E> {
     fn empty() -> Self {
         Self {
             base_layer_half_size: 0,
             next_layer_size: 0,
             base_input_start: null(),
+            this_layer_cache_start: null::<E>().cast_mut(),
+            first_access: false,
             source_kind: GpuBaseFieldSourceKind::Empty,
         }
     }
@@ -654,7 +660,7 @@ impl<E> GpuExtensionFieldPolyContinuingSourcePlan<E> {
 
 #[derive(Clone, Debug)]
 pub(crate) struct GpuSumcheckRound1PreparedStorage<B, E> {
-    pub(crate) base_field_inputs: Vec<GpuBaseFieldPolySourceAfterOneFoldingPlan<B>>,
+    pub(crate) base_field_inputs: Vec<GpuBaseFieldPolySourceAfterOneFoldingPlan<B, E>>,
     pub(crate) extension_field_inputs: Vec<GpuExtensionFieldPolyContinuingSourcePlan<E>>,
     pub(crate) sumcheck_step: usize,
 }
@@ -889,26 +895,53 @@ impl<B: 'static, E: Field> GpuGKRStorage<B, E> {
     }
 
     fn plan_base_source_for_round_1(
-        &self,
+        &mut self,
         poly: GKRAddress,
-    ) -> GpuBaseFieldPolySourceAfterOneFoldingPlan<B> {
-        if let Some(source_kind) = GpuBaseFieldSourceKind::from_address(poly) {
-            let trace_len = self.base_trace_len();
-            return GpuBaseFieldPolySourceAfterOneFoldingPlan {
-                base_layer_half_size: trace_len / 2,
-                next_layer_size: trace_len / 4,
-                base_input_start: null(),
-                source_kind,
+        context: &ProverContext,
+    ) -> CudaResult<GpuBaseFieldPolySourceAfterOneFoldingPlan<B, E>> {
+        let layer = Self::base_poly_layer(poly).expect("must exist");
+        let sumcheck_step = 1;
+        let (base_poly_len, base_poly_ptr, source_kind) =
+            if let Some(source_kind) = GpuBaseFieldSourceKind::from_address(poly) {
+                (self.base_trace_len(), null(), source_kind)
+            } else {
+                let poly = self.get_base_poly_for_address(poly).expect("must exist");
+                (poly.len(), poly.as_ptr(), GpuBaseFieldSourceKind::Real)
             };
+
+        if !self.layers[layer]
+            .intermediate_storage_for_folder_base_field_inputs
+            .contains_key(&poly)
+        {
+            let buffer = GpuBaseFieldPolyIntermediateFoldingStorage::new_for_base_poly_size(
+                base_poly_len,
+                context,
+            )?;
+            self.layers[layer]
+                .intermediate_storage_for_folder_base_field_inputs
+                .insert(poly, (0, buffer));
         }
 
-        let poly = self.get_base_poly_for_address(poly).expect("must exist");
-        GpuBaseFieldPolySourceAfterOneFoldingPlan {
-            base_layer_half_size: poly.len() / 2,
-            next_layer_size: poly.len() / 4,
-            base_input_start: poly.as_ptr(),
-            source_kind: GpuBaseFieldSourceKind::Real,
-        }
+        let (last_used_for_layer, buffer) = self.layers[layer]
+            .intermediate_storage_for_folder_base_field_inputs
+            .get_mut(&poly)
+            .expect("must be present");
+        let this_layer_start = buffer.initial_pointer();
+        let first_access = if *last_used_for_layer >= sumcheck_step {
+            false
+        } else {
+            *last_used_for_layer = sumcheck_step;
+            true
+        };
+
+        Ok(GpuBaseFieldPolySourceAfterOneFoldingPlan {
+            base_layer_half_size: base_poly_len / 2,
+            next_layer_size: base_poly_len / 4,
+            base_input_start: base_poly_ptr,
+            this_layer_cache_start: this_layer_start,
+            first_access,
+            source_kind,
+        })
     }
 
     fn plan_base_source_for_round_2(
@@ -1234,7 +1267,7 @@ impl<B: 'static, E: Field> GpuGKRStorage<B, E> {
             } else {
                 storage
                     .base_field_inputs
-                    .push(self.plan_base_source_for_round_1(*input));
+                    .push(self.plan_base_source_for_round_1(*input, context)?);
             }
         }
         for input in inputs.inputs_in_extension.iter() {
@@ -1342,6 +1375,8 @@ impl<B: 'static, E: Field + 'static> GpuSumcheckRound1PreparedStorage<B, E> {
                     base_layer_half_size: plan.base_layer_half_size,
                     next_layer_size: plan.next_layer_size,
                     base_input_start: plan.base_input_start,
+                    this_layer_cache_start: plan.this_layer_cache_start,
+                    first_access: plan.first_access,
                     source_kind: plan.source_kind,
                     _marker: core::marker::PhantomData,
                 },
