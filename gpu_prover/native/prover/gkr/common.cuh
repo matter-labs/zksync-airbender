@@ -33,6 +33,8 @@ template <typename B, typename E> struct gkr_base_after_one_source {
   size_t base_layer_half_size;
   size_t next_layer_size;
   const B *base_input_start;
+  E *this_layer_cache_start;
+  bool first_access;
   gkr_base_source_kind source_kind;
 };
 
@@ -126,8 +128,6 @@ template <typename E> struct gkr_main_round0_batch_record {
   gkr_main_payload_range extension_inputs;
   gkr_main_payload_range base_outputs;
   gkr_main_payload_range extension_outputs;
-  u32 batch_challenge_offset;
-  u32 batch_challenge_count;
   gkr_main_payload_range quadratic_terms;
   gkr_main_payload_range linear_terms;
   E auxiliary_challenge;
@@ -141,8 +141,6 @@ template <typename E> struct gkr_main_round1_batch_record {
   u32 reserved;
   gkr_main_payload_range base_inputs;
   gkr_main_payload_range extension_inputs;
-  u32 batch_challenge_offset;
-  u32 batch_challenge_count;
   gkr_main_payload_range quadratic_terms;
   gkr_main_payload_range linear_terms;
   E auxiliary_challenge;
@@ -156,8 +154,6 @@ template <typename E> struct gkr_main_round2_batch_record {
   u32 reserved;
   gkr_main_payload_range base_inputs;
   gkr_main_payload_range extension_inputs;
-  u32 batch_challenge_offset;
-  u32 batch_challenge_count;
   gkr_main_payload_range quadratic_terms;
   gkr_main_payload_range linear_terms;
   E auxiliary_challenge;
@@ -171,73 +167,77 @@ template <typename E> struct gkr_main_round3_batch_record {
   u32 reserved;
   gkr_main_payload_range base_inputs;
   gkr_main_payload_range extension_inputs;
-  u32 batch_challenge_offset;
-  u32 batch_challenge_count;
   gkr_main_payload_range quadratic_terms;
   gkr_main_payload_range linear_terms;
   E auxiliary_challenge;
   E constant_offset;
 };
 
-template <typename E> struct gkr_main_round0_batch {
+template <typename E> struct gkr_main_round0_batch_static {
   u32 record_count;
   u32 challenge_offset;
   u32 challenge_count;
   u32 reserved;
-  const E *claim_point;
-  const E *batch_challenge_base;
-  E *contributions;
-  const u8 *spill_payload;
   gkr_main_round0_batch_record<E> records[GKR_BACKWARD_MAX_KERNELS_PER_LAYER];
   u8 inline_payload[GKR_BACKWARD_MAX_INLINE_ROUND_BATCH_BYTES];
 };
 
-template <typename E> struct gkr_main_round1_batch {
+template <typename E> struct gkr_main_round0_batch_runtime {
+  const E *claim_point;
+  const E *batch_challenges;
+  E *contributions;
+  const u8 *spill_payload;
+};
+
+template <typename E> struct gkr_main_round1_batch_static {
   u32 record_count;
   u32 challenge_offset;
   u32 challenge_count;
   u32 reserved;
-  const E *claim_point;
-  const E *batch_challenge_base;
-  const E *folding_challenge;
-  E *contributions;
-  const u8 *spill_payload;
-  bool explicit_form;
-  u8 padding[7];
   gkr_main_round1_batch_record<E> records[GKR_BACKWARD_MAX_KERNELS_PER_LAYER];
   u8 inline_payload[GKR_BACKWARD_MAX_INLINE_ROUND_BATCH_BYTES];
 };
 
-template <typename E> struct gkr_main_round2_batch {
+template <typename E> struct gkr_main_round1_batch_runtime {
+  const E *claim_point;
+  const E *batch_challenges;
+  const E *folding_challenge;
+  E *contributions;
+  const u8 *spill_payload;
+};
+
+template <typename E> struct gkr_main_round2_batch_static {
   u32 record_count;
   u32 challenge_offset;
   u32 challenge_count;
   u32 reserved;
-  const E *claim_point;
-  const E *batch_challenge_base;
-  const E *folding_challenges;
-  E *contributions;
-  const u8 *spill_payload;
-  bool explicit_form;
-  u8 padding[7];
   gkr_main_round2_batch_record<E> records[GKR_BACKWARD_MAX_KERNELS_PER_LAYER];
   u8 inline_payload[GKR_BACKWARD_MAX_INLINE_ROUND_BATCH_BYTES];
 };
 
-template <typename E> struct gkr_main_round3_batch {
+template <typename E> struct gkr_main_round2_batch_runtime {
+  const E *claim_point;
+  const E *batch_challenges;
+  const E *folding_challenges;
+  E *contributions;
+  const u8 *spill_payload;
+};
+
+template <typename E> struct gkr_main_round3_batch_static {
   u32 record_count;
   u32 challenge_offset;
   u32 challenge_count;
   u32 reserved;
+  gkr_main_round3_batch_record<E> records[GKR_BACKWARD_MAX_KERNELS_PER_LAYER];
+  u8 inline_payload[GKR_BACKWARD_MAX_INLINE_ROUND_BATCH_BYTES];
+};
+
+template <typename E> struct gkr_main_round3_batch_runtime {
   const E *claim_point;
-  const E *batch_challenge_base;
+  const E *batch_challenges;
   const E *folding_challenge;
   E *contributions;
   const u8 *spill_payload;
-  bool explicit_form;
-  u8 padding[7];
-  gkr_main_round3_batch_record<E> records[GKR_BACKWARD_MAX_KERNELS_PER_LAYER];
-  u8 inline_payload[GKR_BACKWARD_MAX_INLINE_ROUND_BATCH_BYTES];
 };
 
 DEVICE_FORCEINLINE bool gkr_main_batch_descriptors_inline(const u32 record_mode) { return record_mode != GKR_MAIN_BATCH_POINTER_DESCRIPTORS; }
@@ -247,6 +247,14 @@ DEVICE_FORCEINLINE const T *gkr_main_batch_payload_ptr(const Batch &batch, const
   if (range.count == 0)
     return nullptr;
   const u8 *base = from_inline ? batch.inline_payload : batch.spill_payload;
+  return reinterpret_cast<const T *>(base + range.offset);
+}
+
+template <typename T, typename Batch>
+DEVICE_FORCEINLINE const T *gkr_main_batch_payload_ptr(const Batch &batch, const u8 *spill_payload, const gkr_main_payload_range &range, const bool from_inline) {
+  if (range.count == 0)
+    return nullptr;
+  const u8 *base = from_inline ? batch.inline_payload : spill_payload;
   return reinterpret_cast<const T *>(base + range.offset);
 }
 
@@ -263,15 +271,34 @@ template <typename E> DEVICE_FORCEINLINE const E *gkr_main_batch_challenges(cons
   return storage;
 }
 
+DEVICE_FORCEINLINE unsigned gkr_main_kind_batch_challenge_count(const u32 kind) {
+  switch (kind) {
+  case GKR_MAIN_LOOKUP_PAIR:
+  case GKR_MAIN_LOOKUP_BASE_PAIR:
+  case GKR_MAIN_LOOKUP_BASE_MINUS_MULTIPLICITY:
+  case GKR_MAIN_LOOKUP_EXT_MINUS_MULTIPLICITY_BY_EXT:
+  case GKR_MAIN_LOOKUP_UNBALANCED:
+  case GKR_MAIN_LOOKUP_WITH_CACHED_DENS_AND_SETUP:
+  case GKR_MAIN_LOOKUP_PAIR_FROM_BASE_INPUTS:
+  case GKR_MAIN_LOOKUP_WITH_DENS_AND_SETUP_EXPRESSIONS:
+  case GKR_MAIN_LOOKUP_PAIR_FROM_VECTOR_INPUTS:
+  case GKR_MAIN_LOOKUP_FROM_VECTOR_INPUT_WITH_SETUP:
+  case GKR_MAIN_LOOKUP_UNBALANCED_PAIR_WITH_VECTOR_INPUTS:
+    return 2;
+  default:
+    return 1;
+  }
+}
+
 template <typename E, typename Batch, typename Record>
-DEVICE_FORCEINLINE void gkr_main_batch_constraint_metadata(const Batch &batch, const Record &record,
+DEVICE_FORCEINLINE void gkr_main_batch_constraint_metadata(const Batch &batch, const u8 *spill_payload, const Record &record,
                                                            const gkr_main_constraint_quadratic_term<E> *&quadratic_terms, unsigned &quadratic_terms_count,
                                                            const gkr_main_constraint_linear_term<E> *&linear_terms, unsigned &linear_terms_count,
                                                            E &constant_offset) {
   const bool metadata_inline = record.metadata_inline != 0;
-  quadratic_terms = gkr_main_batch_payload_ptr<gkr_main_constraint_quadratic_term<E>>(batch, record.quadratic_terms, metadata_inline);
+  quadratic_terms = gkr_main_batch_payload_ptr<gkr_main_constraint_quadratic_term<E>>(batch, spill_payload, record.quadratic_terms, metadata_inline);
   quadratic_terms_count = record.quadratic_terms.count;
-  linear_terms = gkr_main_batch_payload_ptr<gkr_main_constraint_linear_term<E>>(batch, record.linear_terms, metadata_inline);
+  linear_terms = gkr_main_batch_payload_ptr<gkr_main_constraint_linear_term<E>>(batch, spill_payload, record.linear_terms, metadata_inline);
   linear_terms_count = record.linear_terms.count;
   constant_offset = record.constant_offset;
 }
@@ -665,8 +692,6 @@ template <typename E> struct gkr_forward_cache_batch {
   gkr_forward_cache_descriptor<E> descriptors[GKR_FORWARD_CACHE_MAX_RELATIONS];
 };
 
-template <typename E> DEVICE_FORCEINLINE E gkr_lift_base(const bf value) { return E::mul(E::ONE(), value); }
-
 static constexpr unsigned GKR_TIMESTAMP_COLUMNS_NUM_BITS = 19;
 
 DEVICE_FORCEINLINE bf gkr_virtual_base_value(const gkr_base_source_kind kind, const unsigned row) {
@@ -690,13 +715,13 @@ template <typename E> DEVICE_FORCEINLINE void gkr_forward_cache_memory_tuple(con
   E value = descriptor.constant_term;
   switch (descriptor.address_space_kind) {
   case GKR_FORWARD_CACHE_ADDRESS_SPACE_CONSTANT:
-    value = E::add(value, gkr_lift_base<E>(descriptor.address_space_constant));
+    value = E::add(value, descriptor.address_space_constant);
     break;
   case GKR_FORWARD_CACHE_ADDRESS_SPACE_IS:
-    value = E::add(value, gkr_lift_base<E>(load<bf, ld_modifier::cs>(descriptor.address_space_ptr, gid)));
+    value = E::add(value, load<bf, ld_modifier::cs>(descriptor.address_space_ptr, gid));
     break;
   case GKR_FORWARD_CACHE_ADDRESS_SPACE_NOT:
-    value = E::add(value, E::sub(E::ONE(), gkr_lift_base<E>(load<bf, ld_modifier::cs>(descriptor.address_space_ptr, gid))));
+    value = E::add(value, E::sub(E::ONE(), load<bf, ld_modifier::cs>(descriptor.address_space_ptr, gid)));
     break;
   case GKR_FORWARD_CACHE_ADDRESS_SPACE_EMPTY:
     break;
@@ -718,13 +743,13 @@ DEVICE_FORCEINLINE E gkr_forward_memory_tuple_value(const gkr_forward_memory_tup
   E value = descriptor.constant_term;
   switch (descriptor.address_space_kind) {
   case GKR_FORWARD_CACHE_ADDRESS_SPACE_CONSTANT:
-    value = E::add(value, gkr_lift_base<E>(descriptor.address_space_constant));
+    value = E::add(value, descriptor.address_space_constant);
     break;
   case GKR_FORWARD_CACHE_ADDRESS_SPACE_IS:
-    value = E::add(value, gkr_lift_base<E>(load<bf, ld_modifier::cs>(descriptor.address_space_ptr, gid)));
+    value = E::add(value, load<bf, ld_modifier::cs>(descriptor.address_space_ptr, gid));
     break;
   case GKR_FORWARD_CACHE_ADDRESS_SPACE_NOT:
-    value = E::add(value, E::sub(E::ONE(), gkr_lift_base<E>(load<bf, ld_modifier::cs>(descriptor.address_space_ptr, gid))));
+    value = E::add(value, E::sub(E::ONE(), load<bf, ld_modifier::cs>(descriptor.address_space_ptr, gid)));
     break;
   case GKR_FORWARD_CACHE_ADDRESS_SPACE_EMPTY:
     break;
@@ -791,10 +816,8 @@ template <typename E> DEVICE_FORCEINLINE void gkr_forward_cache(const gkr_forwar
 }
 
 template <typename E>
-DEVICE_FORCEINLINE E gkr_get_forward_lookup_base_setup_value(const gkr_forward_lookup_base_minus_multiplicity_by_base_descriptor<E> &params,
-                                                             const unsigned gid) {
-  const bf value = params.d_source_kind == GKR_BASE_SOURCE_REAL ? load<bf, ld_modifier::cs>(params.d, gid) : gkr_virtual_base_value(params.d_source_kind, gid);
-  return gkr_lift_base<E>(value);
+DEVICE_FORCEINLINE bf gkr_get_forward_lookup_base_setup_value(const gkr_forward_lookup_base_minus_multiplicity_by_base_descriptor<E> &params, const unsigned gid) {
+  return params.d_source_kind == GKR_BASE_SOURCE_REAL ? load<bf, ld_modifier::cs>(params.d, gid) : gkr_virtual_base_value(params.d_source_kind, gid);
 }
 
 DEVICE_FORCEINLINE bf gkr_get_initial_base_bf_value(const gkr_base_initial_source<bf> &source, const unsigned index) {
@@ -815,14 +838,14 @@ template <typename E> DEVICE_FORCEINLINE bf gkr_get_base_after_two_bf_value(cons
   return gkr_virtual_base_value(source.source_kind, index);
 }
 
-template <typename E> DEVICE_FORCEINLINE E gkr_get_initial_base_value(const gkr_base_initial_source<bf> &source, const unsigned index) {
-  return gkr_lift_base<E>(gkr_get_initial_base_bf_value(source, index));
+DEVICE_FORCEINLINE bf gkr_get_initial_base_value(const gkr_base_initial_source<bf> &source, const unsigned index) {
+  return gkr_get_initial_base_bf_value(source, index);
 }
 
-template <typename E> DEVICE_FORCEINLINE E gkr_get_initial_base_delta(const gkr_base_initial_source<bf> &source, const unsigned index) {
+DEVICE_FORCEINLINE bf gkr_get_initial_base_delta(const gkr_base_initial_source<bf> &source, const unsigned index) {
   const bf f0 = gkr_get_initial_base_bf_value(source, index);
   const bf f1 = gkr_get_initial_base_bf_value(source, source.next_layer_size + index);
-  return gkr_lift_base<E>(bf::sub(f1, f0));
+  return bf::sub(f1, f0);
 }
 
 template <typename E> DEVICE_FORCEINLINE E gkr_get_initial_value(const gkr_ext_initial_source<E> &source, const unsigned index) {
@@ -850,10 +873,15 @@ template <typename E> DEVICE_FORCEINLINE E gkr_get_initial_delta(const gkr_ext_i
 
 template <typename E>
 DEVICE_FORCEINLINE E gkr_get_base_after_one_value(const gkr_base_after_one_source<bf, E> &source, const E first_folding_challenge, const unsigned index) {
+  if (!source.first_access)
+    return load<E, ld_modifier::cs>(source.this_layer_cache_start, index);
+
   const bf f0 = gkr_get_base_after_one_bf_value(source, index);
   const bf f1 = gkr_get_base_after_one_bf_value(source, source.base_layer_half_size + index);
   const bf diff = bf::sub(f1, f0);
-  return E::add(E::mul(first_folding_challenge, diff), f0);
+  const E folded = E::add(E::mul(first_folding_challenge, diff), f0);
+  store<E, st_modifier::cs>(source.this_layer_cache_start, folded, index);
+  return folded;
 }
 
 template <typename E, bool EXPLICIT_FORM>
@@ -1212,20 +1240,23 @@ DEVICE_FORCEINLINE E gkr_eq_weight_at(const E *claim_point, const unsigned chall
 
 template <typename E> DEVICE_FORCEINLINE void gkr_eval_product(const E a, const E b, E &value) { value = E::mul(a, b); }
 
-template <typename E> DEVICE_FORCEINLINE void gkr_eval_mask_identity(const E mask, const E value, E &result) {
+template <typename E, typename Mask, typename Value> DEVICE_FORCEINLINE void gkr_eval_mask_identity(const Mask mask, const Value value, E &result) {
   result = E::sub(value, E::ONE());
   result = E::mul(result, mask);
   result = E::add(result, E::ONE());
 }
 
-template <typename E> DEVICE_FORCEINLINE void gkr_eval_mask_identity_quadratic(const E mask, const E value, E &result) { result = E::mul(value, mask); }
+template <typename E, typename Mask, typename Value>
+DEVICE_FORCEINLINE void gkr_eval_mask_identity_quadratic(const Mask mask, const Value value, E &result) {
+  result = E::mul(value, mask);
+}
 
 template <typename E> DEVICE_FORCEINLINE void gkr_eval_lookup_pair(const E a, const E b, const E c, const E d, E &num, E &den) {
   num = E::add(E::mul(a, d), E::mul(c, b));
   den = E::mul(b, d);
 }
 
-template <typename E> DEVICE_FORCEINLINE void gkr_eval_lookup_base_pair(const E b, const E d, const E gamma, E &num, E &den) {
+template <typename E, typename B, typename D> DEVICE_FORCEINLINE void gkr_eval_lookup_base_pair(const B b, const D d, const E gamma, E &num, E &den) {
   const E shifted_b = E::add(b, gamma);
   const E shifted_d = E::add(d, gamma);
   num = E::add(shifted_b, shifted_d);
@@ -1239,43 +1270,59 @@ template <typename E> DEVICE_FORCEINLINE void gkr_eval_lookup_ext_pair(const E b
   den = E::mul(shifted_b, shifted_d);
 }
 
-template <typename E> DEVICE_FORCEINLINE void gkr_eval_lookup_base_pair_quadratic(const E b, const E d, E &num, E &den) {
+template <typename E, typename B, typename D> DEVICE_FORCEINLINE void gkr_eval_lookup_base_pair_quadratic(const B b, const D d, E &num, E &den) {
   num = E::ZERO();
   den = E::mul(b, d);
 }
 
-template <typename E> DEVICE_FORCEINLINE void gkr_eval_lookup_base_minus_multiplicity(const E b, const E c, const E d, const E gamma, E &num, E &den) {
+template <typename E> DEVICE_FORCEINLINE void gkr_eval_lookup_base_pair_quadratic(const bf b, const bf d, E &num, E &den) {
+  num = E::ZERO();
+  den = E::add(E::ZERO(), bf::mul(b, d));
+}
+
+template <typename E, typename B, typename C, typename D>
+DEVICE_FORCEINLINE void gkr_eval_lookup_base_minus_multiplicity(const B b, const C c, const D d, const E gamma, E &num, E &den) {
   const E shifted_b = E::add(b, gamma);
   const E shifted_d = E::add(d, gamma);
   num = E::sub(shifted_d, E::mul(c, shifted_b));
   den = E::mul(shifted_b, shifted_d);
 }
 
-template <typename E> DEVICE_FORCEINLINE void gkr_eval_lookup_base_minus_multiplicity_quadratic(const E b, const E c, const E d, E &num, E &den) {
-  (void)d;
+template <typename E, typename B, typename C, typename D>
+DEVICE_FORCEINLINE void gkr_eval_lookup_base_minus_multiplicity_quadratic(const B b, const C c, const D d, E &num, E &den) {
   num = E::neg(E::mul(c, b));
   den = E::mul(b, d);
 }
 
-template <typename E> DEVICE_FORCEINLINE void gkr_eval_lookup_unbalanced(const E d, const E a, const E b, const E gamma, E &num, E &den) {
+template <typename E>
+DEVICE_FORCEINLINE void gkr_eval_lookup_base_minus_multiplicity_quadratic(const bf b, const bf c, const bf d, E &num, E &den) {
+  num = E::sub(E::ZERO(), bf::mul(c, b));
+  den = E::add(E::ZERO(), bf::mul(b, d));
+}
+
+template <typename E, typename D, typename A, typename B>
+DEVICE_FORCEINLINE void gkr_eval_lookup_unbalanced(const D d, const A a, const B b, const E gamma, E &num, E &den) {
   const E shifted_d = E::add(d, gamma);
   num = E::add(E::mul(a, shifted_d), b);
   den = E::mul(b, shifted_d);
 }
 
-template <typename E> DEVICE_FORCEINLINE void gkr_eval_lookup_unbalanced_quadratic(const E d, const E a, const E b, E &num, E &den) {
+template <typename E, typename D, typename A, typename B>
+DEVICE_FORCEINLINE void gkr_eval_lookup_unbalanced_quadratic(const D d, const A a, const B b, E &num, E &den) {
   num = E::mul(d, a);
   den = E::mul(d, b);
 }
 
-template <typename E> DEVICE_FORCEINLINE void gkr_eval_lookup_cached_dens_and_setup(const E a, const E b, const E c, const E d, const E gamma, E &num, E &den) {
+template <typename E, typename A, typename B, typename C, typename D>
+DEVICE_FORCEINLINE void gkr_eval_lookup_cached_dens_and_setup(const A a, const B b, const C c, const D d, const E gamma, E &num, E &den) {
   const E shifted_b = E::add(b, gamma);
   const E shifted_d = E::add(d, gamma);
   num = E::sub(E::mul(a, shifted_d), E::mul(c, shifted_b));
   den = E::mul(shifted_b, shifted_d);
 }
 
-template <typename E> DEVICE_FORCEINLINE void gkr_eval_lookup_cached_dens_and_setup_quadratic(const E a, const E b, const E c, const E d, E &num, E &den) {
+template <typename E, typename A, typename B, typename C, typename D>
+DEVICE_FORCEINLINE void gkr_eval_lookup_cached_dens_and_setup_quadratic(const A a, const B b, const C c, const D d, E &num, E &den) {
   num = E::sub(E::mul(a, d), E::mul(c, b));
   den = E::mul(b, d);
 }
@@ -1302,7 +1349,7 @@ template <typename E> DEVICE_FORCEINLINE void gkr_forward_layer(const gkr_forwar
     case GKR_FORWARD_MASK_IDENTITY: {
       const auto params = descriptor.payload.mask_identity;
       const E input = load<E, ld_modifier::cs>(params.input, gid);
-      const E mask = gkr_lift_base<E>(load<bf, ld_modifier::cs>(params.mask, gid));
+      const bf mask = load<bf, ld_modifier::cs>(params.mask, gid);
       E value;
       gkr_eval_mask_identity(mask, input, value);
       store<E, st_modifier::cs>(params.dst, value, gid);
@@ -1323,9 +1370,9 @@ template <typename E> DEVICE_FORCEINLINE void gkr_forward_layer(const gkr_forwar
     }
     case GKR_FORWARD_LOOKUP_WITH_CACHED_DENS_AND_SETUP: {
       const auto params = descriptor.payload.lookup_with_cached_dens_and_setup;
-      const E a = gkr_lift_base<E>(load<bf, ld_modifier::cs>(params.a, gid));
+      const bf a = load<bf, ld_modifier::cs>(params.a, gid);
       const E b = load<E, ld_modifier::cs>(params.b, gid);
-      const E c = gkr_lift_base<E>(load<bf, ld_modifier::cs>(params.c, gid));
+      const bf c = load<bf, ld_modifier::cs>(params.c, gid);
       const E d = load<E, ld_modifier::cs>(params.d, gid);
       const E gamma = load<E, ld_modifier::cs>(batch.lookup_additive_challenge, 0);
       E num;
@@ -1337,8 +1384,8 @@ template <typename E> DEVICE_FORCEINLINE void gkr_forward_layer(const gkr_forwar
     }
     case GKR_FORWARD_LOOKUP_BASE_PAIR: {
       const auto params = descriptor.payload.lookup_base_pair;
-      const E b = gkr_lift_base<E>(load<bf, ld_modifier::cs>(params.lhs, gid));
-      const E d = gkr_lift_base<E>(load<bf, ld_modifier::cs>(params.rhs, gid));
+      const bf b = load<bf, ld_modifier::cs>(params.lhs, gid);
+      const bf d = load<bf, ld_modifier::cs>(params.rhs, gid);
       const E gamma = load<E, ld_modifier::cs>(batch.lookup_additive_challenge, 0);
       E num;
       E den;
@@ -1361,9 +1408,9 @@ template <typename E> DEVICE_FORCEINLINE void gkr_forward_layer(const gkr_forwar
     }
     case GKR_FORWARD_LOOKUP_BASE_MINUS_MULTIPLICITY_BY_BASE: {
       const auto params = descriptor.payload.lookup_base_minus_multiplicity_by_base;
-      const E b = gkr_lift_base<E>(load<bf, ld_modifier::cs>(params.b, gid));
-      const E c = gkr_lift_base<E>(load<bf, ld_modifier::cs>(params.c, gid));
-      const E d = gkr_get_forward_lookup_base_setup_value(params, gid);
+      const bf b = load<bf, ld_modifier::cs>(params.b, gid);
+      const bf c = load<bf, ld_modifier::cs>(params.c, gid);
+      const bf d = gkr_get_forward_lookup_base_setup_value(params, gid);
       const E gamma = load<E, ld_modifier::cs>(batch.lookup_additive_challenge, 0);
       E num;
       E den;
@@ -1375,7 +1422,7 @@ template <typename E> DEVICE_FORCEINLINE void gkr_forward_layer(const gkr_forwar
     case GKR_FORWARD_LOOKUP_EXT_MINUS_MULTIPLICITY_BY_EXT: {
       const auto params = descriptor.payload.lookup_ext_minus_multiplicity_by_ext;
       const E b = load<E, ld_modifier::cs>(params.b, gid);
-      const E c = gkr_lift_base<E>(load<bf, ld_modifier::cs>(params.c, gid));
+      const bf c = load<bf, ld_modifier::cs>(params.c, gid);
       const E d = load<E, ld_modifier::cs>(params.d, gid);
       const E gamma = load<E, ld_modifier::cs>(batch.lookup_additive_challenge, 0);
       E num;
@@ -1389,7 +1436,7 @@ template <typename E> DEVICE_FORCEINLINE void gkr_forward_layer(const gkr_forwar
       const auto params = descriptor.payload.lookup_unbalanced_base;
       const E a = load<E, ld_modifier::cs>(params.a, gid);
       const E b = load<E, ld_modifier::cs>(params.b, gid);
-      const E d = gkr_lift_base<E>(load<bf, ld_modifier::cs>(params.remainder, gid));
+      const bf d = load<bf, ld_modifier::cs>(params.remainder, gid);
       const E gamma = load<E, ld_modifier::cs>(batch.lookup_additive_challenge, 0);
       E num;
       E den;
@@ -1428,8 +1475,8 @@ template <typename E> DEVICE_FORCEINLINE void gkr_forward_layer(const gkr_forwar
     }
     case GKR_FORWARD_LOOKUP_PAIR_FROM_BASE_INPUTS: {
       const auto params = descriptor.payload.lookup_pair_from_base_inputs;
-      const E b = gkr_lift_base<E>(bf::from_canonical_u32(params.lhs_mapping[gid]));
-      const E d = gkr_lift_base<E>(bf::from_canonical_u32(params.rhs_mapping[gid]));
+      const bf b = bf::from_canonical_u32(params.lhs_mapping[gid]);
+      const bf d = bf::from_canonical_u32(params.rhs_mapping[gid]);
       const E gamma = load<E, ld_modifier::cs>(batch.lookup_additive_challenge, 0);
       E num;
       E den;
@@ -1444,8 +1491,8 @@ template <typename E> DEVICE_FORCEINLINE void gkr_forward_layer(const gkr_forwar
       const bool mask = enabled.limb != 0;
       const u32 mapping = params.input_mapping[gid];
       E b = mask ? load<E, ld_modifier::cs>(params.generic_lookup, mapping) : load<E, ld_modifier::cs>(params.decoder_fill_value, 0);
-      const E a = gkr_lift_base<E>(enabled);
-      const E c = gkr_lift_base<E>(load<bf, ld_modifier::cs>(params.multiplicity, gid));
+      const bf a = enabled;
+      const bf c = load<bf, ld_modifier::cs>(params.multiplicity, gid);
       const E d = gkr_forward_lookup_setup_value(params.generic_lookup, params.generic_lookup_len, gid);
       const E gamma = load<E, ld_modifier::cs>(batch.lookup_additive_challenge, 0);
       E num;
@@ -1470,7 +1517,7 @@ template <typename E> DEVICE_FORCEINLINE void gkr_forward_layer(const gkr_forwar
     case GKR_FORWARD_LOOKUP_FROM_VECTOR_INPUT_WITH_SETUP: {
       const auto params = descriptor.payload.lookup_from_vector_input_with_setup;
       const E b = load<E, ld_modifier::cs>(params.generic_lookup, params.input_mapping[gid]);
-      const E c = gkr_lift_base<E>(load<bf, ld_modifier::cs>(params.multiplicity, gid));
+      const bf c = load<bf, ld_modifier::cs>(params.multiplicity, gid);
       const E d = gkr_forward_lookup_setup_value(params.generic_lookup, params.generic_lookup_len, gid);
       const E gamma = load<E, ld_modifier::cs>(batch.lookup_additive_challenge, 0);
       E num;
@@ -1560,7 +1607,7 @@ DEVICE_FORCEINLINE void gkr_forward_setup_generic_lookup(const gkr_forward_setup
     const auto descriptor = batch.descriptors[column_idx];
     const bf input = load<bf, ld_modifier::cs>(descriptor.input, gid);
     const E alpha_power = load<E, ld_modifier::ca>(batch.alpha_powers, column_idx);
-    value = E::add(value, E::mul(gkr_lift_base<E>(input), alpha_power));
+    value = E::add(value, E::mul(alpha_power, input));
   }
 
   store<E, st_modifier::cs>(batch.output, value, gid);
@@ -1572,11 +1619,9 @@ DEVICE_FORCEINLINE E gkr_eval_constraints_round0(const gkr_base_initial_source<b
   E result = E::ZERO();
   for (unsigned i = 0; i < quadratic_terms_count; ++i) {
     const auto term = quadratic_terms[i];
-    E lhs = gkr_get_initial_base_delta<E>(base_inputs[term.lhs], gid);
-    const E rhs = gkr_get_initial_base_delta<E>(base_inputs[term.rhs], gid);
-    lhs = E::mul(lhs, rhs);
-    lhs = E::mul(lhs, term.challenge);
-    result = E::add(result, lhs);
+    const bf lhs = gkr_get_initial_base_delta(base_inputs[term.lhs], gid);
+    const bf rhs = gkr_get_initial_base_delta(base_inputs[term.rhs], gid);
+    result = E::add(result, E::mul(term.challenge, bf::mul(lhs, rhs)));
   }
 
   return result;
@@ -1711,8 +1756,11 @@ DEVICE_FORCEINLINE E gkr_no_cache_linear_form_initial_value(const gkr_base_initi
   E result = E::ZERO();
   for (unsigned i = 0; i < terms_count; ++i) {
     const auto term = terms[i];
-    const E contribution = term.lhs == GKR_NO_CACHE_LINEAR_FORM_CONSTANT_SENTINEL ? E::ONE() : gkr_get_initial_base_value<E>(base_inputs[term.lhs], gid);
-    result = E::add(result, E::mul(contribution, term.challenge));
+    if (term.lhs == GKR_NO_CACHE_LINEAR_FORM_CONSTANT_SENTINEL) {
+      result = E::add(result, term.challenge);
+    } else {
+      result = E::add(result, E::mul(term.challenge, gkr_get_initial_base_value(base_inputs[term.lhs], gid)));
+    }
   }
   return result;
 }
@@ -1723,8 +1771,11 @@ DEVICE_FORCEINLINE E gkr_no_cache_linear_form_initial_value(const gkr_base_initi
   E result = E::ZERO();
   for (unsigned i = 0; i < terms_count; ++i) {
     const auto term = terms[i];
-    const E contribution = term.input == GKR_NO_CACHE_LINEAR_FORM_CONSTANT_SENTINEL ? E::ONE() : gkr_get_initial_base_value<E>(base_inputs[term.input], gid);
-    result = E::add(result, E::mul(contribution, term.challenge));
+    if (term.input == GKR_NO_CACHE_LINEAR_FORM_CONSTANT_SENTINEL) {
+      result = E::add(result, term.challenge);
+    } else {
+      result = E::add(result, E::mul(term.challenge, gkr_get_initial_base_value(base_inputs[term.input], gid)));
+    }
   }
   return result;
 }
@@ -1737,7 +1788,7 @@ DEVICE_FORCEINLINE E gkr_no_cache_linear_form_initial_delta(const gkr_base_initi
     const auto term = terms[i];
     if (term.lhs == GKR_NO_CACHE_LINEAR_FORM_CONSTANT_SENTINEL)
       continue;
-    result = E::add(result, E::mul(gkr_get_initial_base_delta<E>(base_inputs[term.lhs], gid), term.challenge));
+    result = E::add(result, E::mul(term.challenge, gkr_get_initial_base_delta(base_inputs[term.lhs], gid)));
   }
   return result;
 }
@@ -1750,7 +1801,7 @@ DEVICE_FORCEINLINE E gkr_no_cache_linear_form_initial_delta(const gkr_base_initi
     const auto term = terms[i];
     if (term.input == GKR_NO_CACHE_LINEAR_FORM_CONSTANT_SENTINEL)
       continue;
-    result = E::add(result, E::mul(gkr_get_initial_base_delta<E>(base_inputs[term.input], gid), term.challenge));
+    result = E::add(result, E::mul(term.challenge, gkr_get_initial_base_delta(base_inputs[term.input], gid)));
   }
   return result;
 }
@@ -1905,12 +1956,12 @@ gkr_main_round0_values(const unsigned kind, const gkr_base_initial_source<bf> *b
   c1 = E::ZERO();
   switch (kind) {
   case GKR_MAIN_BASE_COPY: {
-    const E output_value = gkr_get_initial_base_value<E>(base_outputs[0], gid);
+    const bf output_value = gkr_get_initial_base_value(base_outputs[0], gid);
     c0 = E::mul(batch_challenge_0, output_value);
     break;
   }
   case GKR_MAIN_LINEAR_BASE_OUTPUT: {
-    const E output_value = gkr_get_initial_base_value<E>(base_outputs[0], gid);
+    const bf output_value = gkr_get_initial_base_value(base_outputs[0], gid);
     c0 = E::mul(batch_challenge_0, output_value);
     break;
   }
@@ -1950,7 +2001,7 @@ gkr_main_round0_values(const unsigned kind, const gkr_base_initial_source<bf> *b
   }
   case GKR_MAIN_MASK_IDENTITY: {
     const E output_value = gkr_get_initial_value(ext_outputs[0], gid);
-    const E delta_mask = gkr_get_initial_base_delta<E>(base_inputs[0], gid);
+    const bf delta_mask = gkr_get_initial_base_delta(base_inputs[0], gid);
     const E delta_value = gkr_get_initial_delta(ext_inputs[0], gid);
     c0 = E::mul(batch_challenge_0, output_value);
     c1 = E::mul(batch_challenge_0, E::mul(delta_mask, delta_value));
@@ -1973,8 +2024,8 @@ gkr_main_round0_values(const unsigned kind, const gkr_base_initial_source<bf> *b
   case GKR_MAIN_LOOKUP_BASE_PAIR: {
     const E output_num = gkr_get_initial_value(ext_outputs[0], gid);
     const E output_den = gkr_get_initial_value(ext_outputs[1], gid);
-    const E delta_b = gkr_get_initial_base_delta<E>(base_inputs[0], gid);
-    const E delta_d = gkr_get_initial_base_delta<E>(base_inputs[1], gid);
+    const bf delta_b = gkr_get_initial_base_delta(base_inputs[0], gid);
+    const bf delta_d = gkr_get_initial_base_delta(base_inputs[1], gid);
     E num;
     E den;
     gkr_eval_lookup_base_pair_quadratic(delta_b, delta_d, num, den);
@@ -1998,9 +2049,9 @@ gkr_main_round0_values(const unsigned kind, const gkr_base_initial_source<bf> *b
   case GKR_MAIN_LOOKUP_BASE_MINUS_MULTIPLICITY: {
     const E output_num = gkr_get_initial_value(ext_outputs[0], gid);
     const E output_den = gkr_get_initial_value(ext_outputs[1], gid);
-    const E delta_b = gkr_get_initial_base_delta<E>(base_inputs[0], gid);
-    const E delta_c = gkr_get_initial_base_delta<E>(base_inputs[1], gid);
-    const E delta_d = gkr_get_initial_base_delta<E>(base_inputs[2], gid);
+    const bf delta_b = gkr_get_initial_base_delta(base_inputs[0], gid);
+    const bf delta_c = gkr_get_initial_base_delta(base_inputs[1], gid);
+    const bf delta_d = gkr_get_initial_base_delta(base_inputs[2], gid);
     E num;
     E den;
     gkr_eval_lookup_base_minus_multiplicity_quadratic(delta_b, delta_c, delta_d, num, den);
@@ -2011,8 +2062,8 @@ gkr_main_round0_values(const unsigned kind, const gkr_base_initial_source<bf> *b
   case GKR_MAIN_LOOKUP_WITH_DENS_AND_SETUP_EXPRESSIONS: {
     const E output_num = gkr_get_initial_value(ext_outputs[0], gid);
     const E output_den = gkr_get_initial_value(ext_outputs[1], gid);
-    const E delta_a = gkr_get_initial_base_delta<E>(base_inputs[0], gid);
-    const E delta_c = gkr_get_initial_base_delta<E>(base_inputs[1], gid);
+    const bf delta_a = gkr_get_initial_base_delta(base_inputs[0], gid);
+    const bf delta_c = gkr_get_initial_base_delta(base_inputs[1], gid);
     const E delta_b = gkr_no_cache_linear_form_initial_delta(base_inputs + 2, constraint_quadratic_terms, constraint_quadratic_terms_count, gid);
     const E delta_d = gkr_no_cache_linear_form_initial_delta(base_inputs + 2, constraint_linear_terms, constraint_linear_terms_count, gid);
     E num;
@@ -2025,7 +2076,7 @@ gkr_main_round0_values(const unsigned kind, const gkr_base_initial_source<bf> *b
   case GKR_MAIN_LOOKUP_EXT_MINUS_MULTIPLICITY_BY_EXT: {
     const E output_num = gkr_get_initial_value(ext_outputs[0], gid);
     const E output_den = gkr_get_initial_value(ext_outputs[1], gid);
-    const E delta_c = gkr_get_initial_base_delta<E>(base_inputs[0], gid);
+    const bf delta_c = gkr_get_initial_base_delta(base_inputs[0], gid);
     const E delta_b = gkr_get_initial_delta(ext_inputs[0], gid);
     const E delta_d = gkr_get_initial_delta(ext_inputs[1], gid);
     E num;
@@ -2038,7 +2089,7 @@ gkr_main_round0_values(const unsigned kind, const gkr_base_initial_source<bf> *b
   case GKR_MAIN_LOOKUP_FROM_VECTOR_INPUT_WITH_SETUP: {
     const E output_num = gkr_get_initial_value(ext_outputs[0], gid);
     const E output_den = gkr_get_initial_value(ext_outputs[1], gid);
-    const E delta_c = gkr_get_initial_base_delta<E>(base_inputs[0], gid);
+    const bf delta_c = gkr_get_initial_base_delta(base_inputs[0], gid);
     const E delta_b = gkr_no_cache_linear_form_initial_delta(base_inputs + 1, constraint_quadratic_terms, constraint_quadratic_terms_count, gid);
     const E delta_d = gkr_no_cache_linear_form_initial_delta(base_inputs + 1, constraint_linear_terms, constraint_linear_terms_count, gid);
     E num;
@@ -2051,7 +2102,7 @@ gkr_main_round0_values(const unsigned kind, const gkr_base_initial_source<bf> *b
   case GKR_MAIN_LOOKUP_UNBALANCED: {
     const E output_num = gkr_get_initial_value(ext_outputs[0], gid);
     const E output_den = gkr_get_initial_value(ext_outputs[1], gid);
-    const E delta_d = gkr_get_initial_base_delta<E>(base_inputs[0], gid);
+    const bf delta_d = gkr_get_initial_base_delta(base_inputs[0], gid);
     const E delta_a = gkr_get_initial_delta(ext_inputs[0], gid);
     const E delta_b = gkr_get_initial_delta(ext_inputs[1], gid);
     E num;
@@ -2077,9 +2128,9 @@ gkr_main_round0_values(const unsigned kind, const gkr_base_initial_source<bf> *b
   case GKR_MAIN_LOOKUP_WITH_CACHED_DENS_AND_SETUP: {
     const E output_num = gkr_get_initial_value(ext_outputs[0], gid);
     const E output_den = gkr_get_initial_value(ext_outputs[1], gid);
-    const E delta_a = gkr_get_initial_base_delta<E>(base_inputs[0], gid);
+    const bf delta_a = gkr_get_initial_base_delta(base_inputs[0], gid);
     const E delta_b = gkr_get_initial_delta(ext_inputs[0], gid);
-    const E delta_c = gkr_get_initial_base_delta<E>(base_inputs[1], gid);
+    const bf delta_c = gkr_get_initial_base_delta(base_inputs[1], gid);
     const E delta_d = gkr_get_initial_delta(ext_inputs[1], gid);
     E num;
     E den;
@@ -3357,30 +3408,34 @@ DEVICE_FORCEINLINE void gkr_dim_reducing_continuation_batched(const Batch &batch
   store<E, st_modifier::cs>(batch.contributions + acc_size, E::mul(total1, eq), gid);
 }
 
-template <typename E> DEVICE_FORCEINLINE void gkr_main_round0_batched(const gkr_main_round0_batch<E> &batch, const unsigned acc_size) {
+template <typename E>
+DEVICE_FORCEINLINE void gkr_main_round0_batched(const gkr_main_round0_batch_static<E> &batch_static,
+                                                const gkr_main_round0_batch_runtime<E> &batch_runtime, const unsigned acc_size) {
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
   if (gid >= acc_size)
     return;
 
-  const E eq = gkr_eq_weight_at(batch.claim_point, batch.challenge_offset, batch.challenge_count, gid);
+  const E eq = gkr_eq_weight_at(batch_runtime.claim_point, batch_static.challenge_offset, batch_static.challenge_count, gid);
   E total0 = E::ZERO();
   E total1 = E::ZERO();
-  for (unsigned i = 0; i < batch.record_count; ++i) {
-    const auto &record = batch.records[i];
+  unsigned consumed_batch_challenges = 0;
+  for (unsigned i = 0; i < batch_static.record_count; ++i) {
+    const auto &record = batch_static.records[i];
     const bool descriptors_inline = gkr_main_batch_descriptors_inline(record.record_mode);
-    const auto *base_inputs = gkr_main_batch_payload_ptr<gkr_base_initial_source<bf>>(batch, record.base_inputs, descriptors_inline);
-    const auto *extension_inputs = gkr_main_batch_payload_ptr<gkr_ext_initial_source<E>>(batch, record.extension_inputs, descriptors_inline);
-    const auto *base_outputs = gkr_main_batch_payload_ptr<gkr_base_initial_source<bf>>(batch, record.base_outputs, descriptors_inline);
-    const auto *extension_outputs = gkr_main_batch_payload_ptr<gkr_ext_initial_source<E>>(batch, record.extension_outputs, descriptors_inline);
-    E batch_challenge_storage[2];
-    const E *batch_challenges =
-        gkr_main_batch_challenges(batch.batch_challenge_base, record.batch_challenge_offset, record.batch_challenge_count, batch_challenge_storage);
+    const auto *base_inputs = gkr_main_batch_payload_ptr<gkr_base_initial_source<bf>>(batch_static, batch_runtime.spill_payload, record.base_inputs, descriptors_inline);
+    const auto *extension_inputs = gkr_main_batch_payload_ptr<gkr_ext_initial_source<E>>(batch_static, batch_runtime.spill_payload, record.extension_inputs, descriptors_inline);
+    const auto *base_outputs = gkr_main_batch_payload_ptr<gkr_base_initial_source<bf>>(batch_static, batch_runtime.spill_payload, record.base_outputs, descriptors_inline);
+    const auto *extension_outputs =
+        gkr_main_batch_payload_ptr<gkr_ext_initial_source<E>>(batch_static, batch_runtime.spill_payload, record.extension_outputs, descriptors_inline);
+    const E *batch_challenges = batch_runtime.batch_challenges + consumed_batch_challenges;
+    consumed_batch_challenges += gkr_main_kind_batch_challenge_count(record.kind);
     const gkr_main_constraint_quadratic_term<E> *quadratic_terms;
     const gkr_main_constraint_linear_term<E> *linear_terms;
     unsigned quadratic_terms_count;
     unsigned linear_terms_count;
     E constant_offset;
-    gkr_main_batch_constraint_metadata(batch, record, quadratic_terms, quadratic_terms_count, linear_terms, linear_terms_count, constant_offset);
+    gkr_main_batch_constraint_metadata(batch_static, batch_runtime.spill_payload, record, quadratic_terms, quadratic_terms_count, linear_terms,
+                                       linear_terms_count, constant_offset);
     E c0;
     E c1;
     gkr_main_round0_values(record.kind, base_inputs, extension_inputs, base_outputs, extension_outputs, batch_challenges, record.auxiliary_challenge,
@@ -3389,110 +3444,128 @@ template <typename E> DEVICE_FORCEINLINE void gkr_main_round0_batched(const gkr_
     total1 = E::add(total1, c1);
   }
 
-  store<E, st_modifier::cs>(batch.contributions, E::mul(total0, eq), gid);
-  store<E, st_modifier::cs>(batch.contributions + acc_size, E::mul(total1, eq), gid);
+  store<E, st_modifier::cs>(batch_runtime.contributions, E::mul(total0, eq), gid);
+  store<E, st_modifier::cs>(batch_runtime.contributions + acc_size, E::mul(total1, eq), gid);
 }
 
-template <typename E, bool EXPLICIT_FORM> DEVICE_FORCEINLINE void gkr_main_round1_batched(const gkr_main_round1_batch<E> &batch, const unsigned acc_size) {
+template <typename E, bool EXPLICIT_FORM>
+DEVICE_FORCEINLINE void gkr_main_round1_batched(const gkr_main_round1_batch_static<E> &batch_static,
+                                                const gkr_main_round1_batch_runtime<E> &batch_runtime, const unsigned acc_size) {
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
   if (gid >= acc_size)
     return;
 
-  const E eq = gkr_eq_weight_at(batch.claim_point, batch.challenge_offset, batch.challenge_count, gid);
+  const E eq = gkr_eq_weight_at(batch_runtime.claim_point, batch_static.challenge_offset, batch_static.challenge_count, gid);
   E total0 = E::ZERO();
   E total1 = E::ZERO();
-  for (unsigned i = 0; i < batch.record_count; ++i) {
-    const auto &record = batch.records[i];
+  unsigned consumed_batch_challenges = 0;
+  for (unsigned i = 0; i < batch_static.record_count; ++i) {
+    const auto &record = batch_static.records[i];
     const bool descriptors_inline = gkr_main_batch_descriptors_inline(record.record_mode);
-    const auto *base_inputs = gkr_main_batch_payload_ptr<gkr_base_after_one_source<bf, E>>(batch, record.base_inputs, descriptors_inline);
-    const auto *extension_inputs = gkr_main_batch_payload_ptr<gkr_ext_continuing_source<E>>(batch, record.extension_inputs, descriptors_inline);
-    E batch_challenge_storage[2];
-    const E *batch_challenges =
-        gkr_main_batch_challenges(batch.batch_challenge_base, record.batch_challenge_offset, record.batch_challenge_count, batch_challenge_storage);
+    const auto *base_inputs =
+        gkr_main_batch_payload_ptr<gkr_base_after_one_source<bf, E>>(batch_static, batch_runtime.spill_payload, record.base_inputs, descriptors_inline);
+    const auto *extension_inputs =
+        gkr_main_batch_payload_ptr<gkr_ext_continuing_source<E>>(batch_static, batch_runtime.spill_payload, record.extension_inputs, descriptors_inline);
+    const E *batch_challenges = batch_runtime.batch_challenges + consumed_batch_challenges;
+    consumed_batch_challenges += gkr_main_kind_batch_challenge_count(record.kind);
     const gkr_main_constraint_quadratic_term<E> *quadratic_terms;
     const gkr_main_constraint_linear_term<E> *linear_terms;
     unsigned quadratic_terms_count;
     unsigned linear_terms_count;
     E constant_offset;
-    gkr_main_batch_constraint_metadata(batch, record, quadratic_terms, quadratic_terms_count, linear_terms, linear_terms_count, constant_offset);
+    gkr_main_batch_constraint_metadata(batch_static, batch_runtime.spill_payload, record, quadratic_terms, quadratic_terms_count, linear_terms,
+                                       linear_terms_count, constant_offset);
     E c0;
     E c1;
-    gkr_main_round1_values<E, EXPLICIT_FORM>(record.kind, base_inputs, extension_inputs, batch_challenges, batch.folding_challenge, record.auxiliary_challenge,
-                                             quadratic_terms, quadratic_terms_count, linear_terms, linear_terms_count, constant_offset, gid, c0, c1);
+    gkr_main_round1_values<E, EXPLICIT_FORM>(record.kind, base_inputs, extension_inputs, batch_challenges, batch_runtime.folding_challenge,
+                                             record.auxiliary_challenge, quadratic_terms, quadratic_terms_count, linear_terms, linear_terms_count,
+                                             constant_offset, gid, c0, c1);
     total0 = E::add(total0, c0);
     total1 = E::add(total1, c1);
   }
 
-  store<E, st_modifier::cs>(batch.contributions, E::mul(total0, eq), gid);
-  store<E, st_modifier::cs>(batch.contributions + acc_size, E::mul(total1, eq), gid);
+  store<E, st_modifier::cs>(batch_runtime.contributions, E::mul(total0, eq), gid);
+  store<E, st_modifier::cs>(batch_runtime.contributions + acc_size, E::mul(total1, eq), gid);
 }
 
-template <typename E, bool EXPLICIT_FORM> DEVICE_FORCEINLINE void gkr_main_round2_batched(const gkr_main_round2_batch<E> &batch, const unsigned acc_size) {
+template <typename E, bool EXPLICIT_FORM>
+DEVICE_FORCEINLINE void gkr_main_round2_batched(const gkr_main_round2_batch_static<E> &batch_static,
+                                                const gkr_main_round2_batch_runtime<E> &batch_runtime, const unsigned acc_size) {
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
   if (gid >= acc_size)
     return;
 
-  const E eq = gkr_eq_weight_at(batch.claim_point, batch.challenge_offset, batch.challenge_count, gid);
+  const E eq = gkr_eq_weight_at(batch_runtime.claim_point, batch_static.challenge_offset, batch_static.challenge_count, gid);
   E total0 = E::ZERO();
   E total1 = E::ZERO();
-  for (unsigned i = 0; i < batch.record_count; ++i) {
-    const auto &record = batch.records[i];
+  unsigned consumed_batch_challenges = 0;
+  for (unsigned i = 0; i < batch_static.record_count; ++i) {
+    const auto &record = batch_static.records[i];
     const bool descriptors_inline = gkr_main_batch_descriptors_inline(record.record_mode);
-    const auto *base_inputs = gkr_main_batch_payload_ptr<gkr_base_after_two_source<bf, E>>(batch, record.base_inputs, descriptors_inline);
-    const auto *extension_inputs = gkr_main_batch_payload_ptr<gkr_ext_continuing_source<E>>(batch, record.extension_inputs, descriptors_inline);
-    E batch_challenge_storage[2];
-    const E *batch_challenges =
-        gkr_main_batch_challenges(batch.batch_challenge_base, record.batch_challenge_offset, record.batch_challenge_count, batch_challenge_storage);
+    const auto *base_inputs =
+        gkr_main_batch_payload_ptr<gkr_base_after_two_source<bf, E>>(batch_static, batch_runtime.spill_payload, record.base_inputs, descriptors_inline);
+    const auto *extension_inputs =
+        gkr_main_batch_payload_ptr<gkr_ext_continuing_source<E>>(batch_static, batch_runtime.spill_payload, record.extension_inputs, descriptors_inline);
+    const E *batch_challenges = batch_runtime.batch_challenges + consumed_batch_challenges;
+    consumed_batch_challenges += gkr_main_kind_batch_challenge_count(record.kind);
     const gkr_main_constraint_quadratic_term<E> *quadratic_terms;
     const gkr_main_constraint_linear_term<E> *linear_terms;
     unsigned quadratic_terms_count;
     unsigned linear_terms_count;
     E constant_offset;
-    gkr_main_batch_constraint_metadata(batch, record, quadratic_terms, quadratic_terms_count, linear_terms, linear_terms_count, constant_offset);
+    gkr_main_batch_constraint_metadata(batch_static, batch_runtime.spill_payload, record, quadratic_terms, quadratic_terms_count, linear_terms,
+                                       linear_terms_count, constant_offset);
     E c0;
     E c1;
-    gkr_main_round2_values<E, EXPLICIT_FORM>(record.kind, base_inputs, extension_inputs, batch_challenges, batch.folding_challenges, record.auxiliary_challenge,
-                                             quadratic_terms, quadratic_terms_count, linear_terms, linear_terms_count, constant_offset, gid, c0, c1);
+    gkr_main_round2_values<E, EXPLICIT_FORM>(record.kind, base_inputs, extension_inputs, batch_challenges, batch_runtime.folding_challenges,
+                                             record.auxiliary_challenge, quadratic_terms, quadratic_terms_count, linear_terms, linear_terms_count,
+                                             constant_offset, gid, c0, c1);
     total0 = E::add(total0, c0);
     total1 = E::add(total1, c1);
   }
 
-  store<E, st_modifier::cs>(batch.contributions, E::mul(total0, eq), gid);
-  store<E, st_modifier::cs>(batch.contributions + acc_size, E::mul(total1, eq), gid);
+  store<E, st_modifier::cs>(batch_runtime.contributions, E::mul(total0, eq), gid);
+  store<E, st_modifier::cs>(batch_runtime.contributions + acc_size, E::mul(total1, eq), gid);
 }
 
-template <typename E, bool EXPLICIT_FORM> DEVICE_FORCEINLINE void gkr_main_round3_batched(const gkr_main_round3_batch<E> &batch, const unsigned acc_size) {
+template <typename E, bool EXPLICIT_FORM>
+DEVICE_FORCEINLINE void gkr_main_round3_batched(const gkr_main_round3_batch_static<E> &batch_static,
+                                                const gkr_main_round3_batch_runtime<E> &batch_runtime, const unsigned acc_size) {
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
   if (gid >= acc_size)
     return;
 
-  const E eq = gkr_eq_weight_at(batch.claim_point, batch.challenge_offset, batch.challenge_count, gid);
+  const E eq = gkr_eq_weight_at(batch_runtime.claim_point, batch_static.challenge_offset, batch_static.challenge_count, gid);
   E total0 = E::ZERO();
   E total1 = E::ZERO();
-  for (unsigned i = 0; i < batch.record_count; ++i) {
-    const auto &record = batch.records[i];
+  unsigned consumed_batch_challenges = 0;
+  for (unsigned i = 0; i < batch_static.record_count; ++i) {
+    const auto &record = batch_static.records[i];
     const bool descriptors_inline = gkr_main_batch_descriptors_inline(record.record_mode);
-    const auto *base_inputs = gkr_main_batch_payload_ptr<gkr_ext_continuing_source<E>>(batch, record.base_inputs, descriptors_inline);
-    const auto *extension_inputs = gkr_main_batch_payload_ptr<gkr_ext_continuing_source<E>>(batch, record.extension_inputs, descriptors_inline);
-    E batch_challenge_storage[2];
-    const E *batch_challenges =
-        gkr_main_batch_challenges(batch.batch_challenge_base, record.batch_challenge_offset, record.batch_challenge_count, batch_challenge_storage);
+    const auto *base_inputs =
+        gkr_main_batch_payload_ptr<gkr_ext_continuing_source<E>>(batch_static, batch_runtime.spill_payload, record.base_inputs, descriptors_inline);
+    const auto *extension_inputs =
+        gkr_main_batch_payload_ptr<gkr_ext_continuing_source<E>>(batch_static, batch_runtime.spill_payload, record.extension_inputs, descriptors_inline);
+    const E *batch_challenges = batch_runtime.batch_challenges + consumed_batch_challenges;
+    consumed_batch_challenges += gkr_main_kind_batch_challenge_count(record.kind);
     const gkr_main_constraint_quadratic_term<E> *quadratic_terms;
     const gkr_main_constraint_linear_term<E> *linear_terms;
     unsigned quadratic_terms_count;
     unsigned linear_terms_count;
     E constant_offset;
-    gkr_main_batch_constraint_metadata(batch, record, quadratic_terms, quadratic_terms_count, linear_terms, linear_terms_count, constant_offset);
+    gkr_main_batch_constraint_metadata(batch_static, batch_runtime.spill_payload, record, quadratic_terms, quadratic_terms_count, linear_terms,
+                                       linear_terms_count, constant_offset);
     E c0;
     E c1;
-    gkr_main_round3_values<E, EXPLICIT_FORM>(record.kind, base_inputs, extension_inputs, batch_challenges, batch.folding_challenge, record.auxiliary_challenge,
-                                             quadratic_terms, quadratic_terms_count, linear_terms, linear_terms_count, constant_offset, gid, c0, c1);
+    gkr_main_round3_values<E, EXPLICIT_FORM>(record.kind, base_inputs, extension_inputs, batch_challenges, batch_runtime.folding_challenge,
+                                             record.auxiliary_challenge, quadratic_terms, quadratic_terms_count, linear_terms, linear_terms_count,
+                                             constant_offset, gid, c0, c1);
     total0 = E::add(total0, c0);
     total1 = E::add(total1, c1);
   }
 
-  store<E, st_modifier::cs>(batch.contributions, E::mul(total0, eq), gid);
-  store<E, st_modifier::cs>(batch.contributions + acc_size, E::mul(total1, eq), gid);
+  store<E, st_modifier::cs>(batch_runtime.contributions, E::mul(total0, eq), gid);
+  store<E, st_modifier::cs>(batch_runtime.contributions + acc_size, E::mul(total1, eq), gid);
 }
 
 } // namespace airbender::prover::gkr
