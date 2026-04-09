@@ -23,8 +23,10 @@ fn emit_rerun_if_changed_recursive(path: &Path) {
 fn main() {
     println!("cargo::rustc-check-cfg=cfg(no_cuda)");
     let deterministic_pow = std::env::var_os("CARGO_FEATURE_DETERMINISTIC_POW").is_some();
+    let enable_lineinfo = std::env::var_os("GPU_PROVER_ENABLE_LINEINFO").is_some();
     println!("cargo:rerun-if-env-changed=CARGO_FEATURE_BENCH");
     println!("cargo:rerun-if-env-changed=CARGO_FEATURE_DETERMINISTIC_POW");
+    println!("cargo:rerun-if-env-changed=GPU_PROVER_ENABLE_LINEINFO");
     emit_rerun_if_changed_recursive(Path::new("build"));
     emit_rerun_if_changed_recursive(Path::new("native"));
     if is_no_cuda() {
@@ -53,6 +55,10 @@ fn main() {
             "OFF"
         };
         config.define("GPU_PROVER_BUILD_BENCH", build_bench);
+        config.define(
+            "GPU_PROVER_ENABLE_LINEINFO",
+            if enable_lineinfo { "ON" } else { "OFF" },
+        );
         if deterministic_pow {
             config.define("AB_DETERMINISTIC_POW", "ON");
         }

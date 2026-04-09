@@ -19,25 +19,26 @@ Applies only to GPU-related code or commands that use the local GPU.
 For Rust tests, build unlocked and have `.agents/bin/cargo_test_executables.py` print the locked command to run next. This is the default required workflow for Rust GPU tests:
 
 ```bash
-cargo test -p gpu_prover some_gpu_test --no-run --message-format=json \
-  | python3 .agents/bin/cargo_test_executables.py --print-run-command --test-name some_gpu_test
+cargo test -p <crate> <cargo_filter> --release --no-run --message-format=json \
+  | python3 .agents/bin/cargo_test_executables.py \
+      --print-run-command \
+      --test-name module::submodule::some_gpu_test
+```
+
+When passing `--test-name`, use the full libtest name accepted by `--exact`. Do not pass a suffix such as just `some_gpu_test`; the helper validates the exact full test name against the built test binary and rejects partial matches.
+
+For ignored tests, append the runner args explicitly:
+
+```bash
+cargo test -p <crate> <cargo_filter> --release --no-run --message-format=json \
+  | python3 .agents/bin/cargo_test_executables.py \
+      --print-run-command \
+      --test-name module::submodule::some_gpu_test \
+      --test-arg=--ignored
 ```
 
 Example output:
 
 ```bash
-.agents/bin/with_gpu_lock.sh target/debug/deps/<test-binary> --exact some_gpu_test --nocapture
-```
-
-For heavy tests, compile and run the release binary under the lock:
-
-```bash
-cargo test -p gpu_prover some_gpu_test --release --no-run --message-format=json \
-  | python3 .agents/bin/cargo_test_executables.py --print-run-command --test-name some_gpu_test
-```
-
-Profile under the lock:
-
-```bash
-.agents/bin/with_gpu_lock.sh cargo flamegraph --root --unit-test -- tests::run_witness_get_test
+.agents/bin/with_gpu_lock.sh target/release/deps/<test-binary> --exact module::submodule::some_gpu_test --nocapture
 ```
