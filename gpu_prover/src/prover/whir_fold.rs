@@ -33,7 +33,9 @@ use crate::ops::cub::CUB_TEMP_STORAGE_EXTRA_ALIGNMENT_LOG2;
 use crate::ops::powers::{get_powers_by_ref, get_powers_by_val};
 use crate::ops::simple::{add, add_into_y, mul, mul_into_x, set_to_zero};
 use crate::primitives::callbacks::Callbacks;
-use crate::primitives::context::{DeviceAllocation, HostAllocation, ProverContext};
+use crate::primitives::context::{
+    DeviceAllocation, HostAllocation, ProverContext, UnsafeMutAccessor,
+};
 use crate::primitives::device_structures::{DeviceMatrix, DeviceMatrixMut};
 use crate::primitives::device_tracing::Range;
 use crate::primitives::field::{BF, E4};
@@ -256,14 +258,12 @@ pub(crate) struct GpuWhirFoldScheduledExecution {
     _recursive_queries: Vec<Vec<crate::prover::whir::GpuWhirScheduledExtensionQuery>>,
     #[allow(dead_code)]
     _final_callbacks: Callbacks<'static>,
-    shared_state: std::sync::Arc<std::sync::Mutex<ScheduledWhirProofState>>,
+    shared_state: Box<ScheduledWhirProofState>,
 }
 
 impl GpuWhirFoldScheduledExecution {
-    pub(crate) fn shared_state_handle(
-        &self,
-    ) -> std::sync::Arc<std::sync::Mutex<ScheduledWhirProofState>> {
-        std::sync::Arc::clone(&self.shared_state)
+    pub(crate) fn shared_state_handle(&mut self) -> UnsafeMutAccessor<ScheduledWhirProofState> {
+        UnsafeMutAccessor::new(self.shared_state.as_mut())
     }
 
     pub(crate) fn wait(
@@ -271,9 +271,10 @@ impl GpuWhirFoldScheduledExecution {
         context: &ProverContext,
     ) -> CudaResult<WhirPolyCommitProof<BF, E4, DefaultTreeConstructor>> {
         context.get_exec_stream().synchronize()?;
-        self.shared_state
-            .lock()
-            .unwrap()
+        let Self {
+            mut shared_state, ..
+        } = self;
+        shared_state
             .proof
             .take()
             .ok_or(era_cudart_sys::CudaError::ErrorInvalidValue)
@@ -281,11 +282,9 @@ impl GpuWhirFoldScheduledExecution {
 }
 
 pub(crate) fn take_scheduled_whir_proof(
-    shared_state: &std::sync::Arc<std::sync::Mutex<ScheduledWhirProofState>>,
+    shared_state: UnsafeMutAccessor<ScheduledWhirProofState>,
 ) -> WhirPolyCommitProof<BF, E4, DefaultTreeConstructor> {
-    shared_state
-        .lock()
-        .unwrap()
+    unsafe { shared_state.get_mut() }
         .proof
         .take()
         .expect("scheduled WHIR proof must be available")
@@ -293,9 +292,9 @@ pub(crate) fn take_scheduled_whir_proof(
 
 #[cfg(test)]
 pub(crate) fn clone_scheduled_whir_pre_pow_seeds(
-    shared_state: &std::sync::Arc<std::sync::Mutex<ScheduledWhirProofState>>,
+    shared_state: UnsafeMutAccessor<ScheduledWhirProofState>,
 ) -> Vec<Seed> {
-    shared_state.lock().unwrap().pre_pow_seeds.clone()
+    unsafe { shared_state.get() }.pre_pow_seeds.clone()
 }
 
 impl GpuWhirState {
@@ -1799,17 +1798,18 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         final_monomials: vec![],
     };
 
-    let shared_state = std::sync::Arc::new(std::sync::Mutex::new(ScheduledWhirProofState {
+    let mut shared_state = Box::new(ScheduledWhirProofState {
         proof: Some(scheduled_proof),
         #[cfg(test)]
         pre_pow_seeds: vec![Seed::default(); whir_pow_schedule.len()],
-    }));
+    });
+    let shared_state_handle = UnsafeMutAccessor::new(shared_state.as_mut());
     let mut start_callbacks = Callbacks::new();
     let mut seed_host = unsafe { context.alloc_host_uninit::<Seed>() };
     let seed_accessor = seed_host.get_mut_accessor();
     start_callbacks.schedule(
         move || unsafe {
-            seed_accessor.set(seed_source());
+            seed_accessor.write(seed_source());
         },
         stream,
     )?;
@@ -1824,9 +1824,9 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
     )?;
     start_callbacks.schedule(
         {
-            let shared_state = std::sync::Arc::clone(&shared_state);
+            let shared_state = shared_state_handle;
             move || {
-                let mut proof_state = shared_state.lock().unwrap();
+                let proof_state = unsafe { shared_state.get_mut() };
                 let proof = proof_state.proof.as_mut().unwrap();
                 fill_full_cap_from_accessors(
                     &mut proof.witness_commitment.commitment.cap.cap,
@@ -1921,7 +1921,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
             for _ in 0..num_folding_steps {
                 let readback = schedule_special_three_point_eval_device(state, context)?;
                 let readback_accessor = readback.get_accessor();
-                let shared_state = std::sync::Arc::clone(&shared_state);
+                let shared_state = shared_state_handle;
                 let sumcheck_poly_idx = scheduled_sumcheck_poly_idx;
                 scheduled_sumcheck_poly_idx += 1;
                 let (challenge_upload, _challenge_host, challenge_device) =
@@ -1935,7 +1935,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
                             f_half,
                             E4::from_base(two_inv),
                         );
-                        let mut proof_state = shared_state.lock().unwrap();
+                        let proof_state = shared_state.get_mut();
                         let proof = proof_state
                             .proof
                             .as_mut()
@@ -1999,9 +1999,9 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         let oracle_cap_accessors = oracle.tree_cap_accessors();
         final_callbacks.schedule(
             {
-                let shared_state = std::sync::Arc::clone(&shared_state);
+                let shared_state = shared_state_handle;
                 move || unsafe {
-                    let mut proof_state = shared_state.lock().unwrap();
+                    let proof_state = shared_state.get_mut();
                     let commitment = &mut proof_state
                         .proof
                         .as_mut()
@@ -2029,7 +2029,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         let ood_value_accessor = ood_value_host.get_mut_accessor();
         final_callbacks.schedule(
             {
-                let shared_state = std::sync::Arc::clone(&shared_state);
+                let shared_state = shared_state_handle;
                 let partial_accessors = ood_partials
                     .iter()
                     .map(HostAllocation::get_accessor)
@@ -2041,13 +2041,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
                     }
                     ood_value_accessor.get_mut()[0] = value;
                     commit_field_els::<BF, E4>(seed_accessor.get_mut(), &[value]);
-                    shared_state
-                        .lock()
-                        .unwrap()
-                        .proof
-                        .as_mut()
-                        .unwrap()
-                        .ood_samples[0] = value;
+                    shared_state.get_mut().proof.as_mut().unwrap().ood_samples[0] = value;
                 }
             },
             stream,
@@ -2076,11 +2070,11 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         {
             query_index_callbacks_for_round.schedule(
                 {
-                    let shared_state = std::sync::Arc::clone(&shared_state);
+                    let shared_state = shared_state_handle;
                     move || unsafe {
                         #[cfg(test)]
                         {
-                            shared_state.lock().unwrap().pre_pow_seeds[pow_round_idx] =
+                            shared_state.get_mut().pre_pow_seeds[pow_round_idx] =
                                 *seed_accessor.get();
                         }
                         let (_, mut bit_source) = draw_query_bits_with_external_nonce(
@@ -2093,13 +2087,8 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
                         for dst in query_indexes_accessor.get_mut().iter_mut() {
                             *dst = assemble_query_index(query_domain_log2, &mut bit_source) as u32;
                         }
-                        shared_state
-                            .lock()
-                            .unwrap()
-                            .proof
-                            .as_mut()
-                            .unwrap()
-                            .pow_nonces[pow_round_idx] = external_nonce;
+                        shared_state.get_mut().proof.as_mut().unwrap().pow_nonces[pow_round_idx] =
+                            external_nonce;
                     }
                 },
                 stream,
@@ -2108,10 +2097,9 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
             #[cfg(test)]
             query_index_callbacks_for_round.schedule(
                 {
-                    let shared_state = std::sync::Arc::clone(&shared_state);
+                    let shared_state = shared_state_handle;
                     move || unsafe {
-                        shared_state.lock().unwrap().pre_pow_seeds[pow_round_idx] =
-                            *seed_accessor.get();
+                        shared_state.get_mut().pre_pow_seeds[pow_round_idx] = *seed_accessor.get();
                     }
                 },
                 stream,
@@ -2126,7 +2114,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
             )?;
             query_index_callbacks_for_round.schedule(
                 {
-                    let shared_state = std::sync::Arc::clone(&shared_state);
+                    let shared_state = shared_state_handle;
                     move || unsafe {
                         let mut bit_source = draw_query_bits_after_verified_pow(
                             seed_accessor.get_mut(),
@@ -2135,13 +2123,8 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
                         for dst in query_indexes_accessor.get_mut().iter_mut() {
                             *dst = assemble_query_index(query_domain_log2, &mut bit_source) as u32;
                         }
-                        shared_state
-                            .lock()
-                            .unwrap()
-                            .proof
-                            .as_mut()
-                            .unwrap()
-                            .pow_nonces[pow_round_idx] = *nonce_accessor.get();
+                        shared_state.get_mut().proof.as_mut().unwrap().pow_nonces[pow_round_idx] =
+                            *nonce_accessor.get();
                     }
                 },
                 stream,
@@ -2267,7 +2250,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
             final_callbacks.extend(copy_callbacks);
             final_callbacks.schedule(
                 {
-                    let shared_state = std::sync::Arc::clone(&shared_state);
+                    let shared_state = shared_state_handle;
                     let memory_values_per_leaf = memory_query.values_per_leaf;
                     let memory_columns_count = memory_query.columns_count;
                     let memory_coset_tree_size = memory_query.coset_tree_size;
@@ -2280,8 +2263,8 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
                     let setup_columns_count = setup_query.columns_count;
                     let setup_coset_tree_size = setup_query.coset_tree_size;
                     let setup_log_lde_factor = setup_query.log_lde_factor;
-                    move || {
-                        let mut proof_state = shared_state.lock().unwrap();
+                    move || unsafe {
+                        let proof_state = shared_state.get_mut();
                         let proof = proof_state.proof.as_mut().unwrap();
                         let memory_index = unsafe { memory_query_index_accessor.get()[0] as usize };
                         fill_unknown_coset_base_field_query_from_accessors(
@@ -2367,9 +2350,9 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         let next_oracle_cap_accessors = next_oracle.tree_cap_accessors();
         final_callbacks.schedule(
             {
-                let shared_state = std::sync::Arc::clone(&shared_state);
+                let shared_state = shared_state_handle;
                 move || {
-                    let mut proof_state = shared_state.lock().unwrap();
+                    let proof_state = unsafe { shared_state.get_mut() };
                     let commitment = &mut proof_state
                         .proof
                         .as_mut()
@@ -2401,7 +2384,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         let ood_value_accessor = ood_value_host.get_mut_accessor();
         final_callbacks.schedule(
             {
-                let shared_state = std::sync::Arc::clone(&shared_state);
+                let shared_state = shared_state_handle;
                 let partial_accessors = ood_partials
                     .iter()
                     .map(HostAllocation::get_accessor)
@@ -2412,13 +2395,8 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
                         value.add_assign(&partial.get()[0]);
                     }
                     ood_value_accessor.get_mut()[0] = value;
-                    shared_state
-                        .lock()
-                        .unwrap()
-                        .proof
-                        .as_mut()
-                        .unwrap()
-                        .ood_samples[internal_round_idx + 1] = value;
+                    shared_state.get_mut().proof.as_mut().unwrap().ood_samples
+                        [internal_round_idx + 1] = value;
                 }
             },
             stream,
@@ -2447,11 +2425,11 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         {
             query_index_callbacks_for_round.schedule(
                 {
-                    let shared_state = std::sync::Arc::clone(&shared_state);
+                    let shared_state = shared_state_handle;
                     move || unsafe {
                         #[cfg(test)]
                         {
-                            shared_state.lock().unwrap().pre_pow_seeds[pow_round_idx] =
+                            shared_state.get_mut().pre_pow_seeds[pow_round_idx] =
                                 *seed_accessor.get();
                         }
                         let (_, mut bit_source) = draw_query_bits_with_external_nonce(
@@ -2464,13 +2442,8 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
                         for dst in query_indexes_accessor.get_mut().iter_mut() {
                             *dst = assemble_query_index(query_domain_log2, &mut bit_source) as u32;
                         }
-                        shared_state
-                            .lock()
-                            .unwrap()
-                            .proof
-                            .as_mut()
-                            .unwrap()
-                            .pow_nonces[pow_round_idx] = external_nonce;
+                        shared_state.get_mut().proof.as_mut().unwrap().pow_nonces[pow_round_idx] =
+                            external_nonce;
                     }
                 },
                 stream,
@@ -2479,10 +2452,9 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
             #[cfg(test)]
             query_index_callbacks_for_round.schedule(
                 {
-                    let shared_state = std::sync::Arc::clone(&shared_state);
+                    let shared_state = shared_state_handle;
                     move || unsafe {
-                        shared_state.lock().unwrap().pre_pow_seeds[pow_round_idx] =
-                            *seed_accessor.get();
+                        shared_state.get_mut().pre_pow_seeds[pow_round_idx] = *seed_accessor.get();
                     }
                 },
                 stream,
@@ -2497,7 +2469,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
             )?;
             query_index_callbacks_for_round.schedule(
                 {
-                    let shared_state = std::sync::Arc::clone(&shared_state);
+                    let shared_state = shared_state_handle;
                     move || unsafe {
                         let mut bit_source = draw_query_bits_after_verified_pow(
                             seed_accessor.get_mut(),
@@ -2506,13 +2478,8 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
                         for dst in query_indexes_accessor.get_mut().iter_mut() {
                             *dst = assemble_query_index(query_domain_log2, &mut bit_source) as u32;
                         }
-                        shared_state
-                            .lock()
-                            .unwrap()
-                            .proof
-                            .as_mut()
-                            .unwrap()
-                            .pow_nonces[pow_round_idx] = *nonce_accessor.get();
+                        shared_state.get_mut().proof.as_mut().unwrap().pow_nonces[pow_round_idx] =
+                            *nonce_accessor.get();
                     }
                 },
                 stream,
@@ -2587,14 +2554,13 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
             final_callbacks.extend(copy_callbacks);
             final_callbacks.schedule(
                 {
-                    let shared_state = std::sync::Arc::clone(&shared_state);
+                    let shared_state = shared_state_handle;
                     let query_indexes_accessor = query_indexes_host.get_accessor();
-                    move || {
+                    move || unsafe {
                         let index = unsafe { query_indexes_accessor.get()[query_idx] as usize };
                         fill_extension_query_from_accessors(
                             &mut shared_state
-                                .lock()
-                                .unwrap()
+                                .get_mut()
                                 .proof
                                 .as_mut()
                                 .unwrap()
@@ -2652,11 +2618,11 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         {
             query_index_callbacks_for_round.schedule(
                 {
-                    let shared_state = std::sync::Arc::clone(&shared_state);
+                    let shared_state = shared_state_handle;
                     move || unsafe {
                         #[cfg(test)]
                         {
-                            shared_state.lock().unwrap().pre_pow_seeds[pow_round_idx] =
+                            shared_state.get_mut().pre_pow_seeds[pow_round_idx] =
                                 *seed_accessor.get();
                         }
                         let (_, mut bit_source) = draw_query_bits_with_external_nonce(
@@ -2669,13 +2635,8 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
                         for dst in query_indexes_accessor.get_mut().iter_mut() {
                             *dst = assemble_query_index(query_domain_log2, &mut bit_source) as u32;
                         }
-                        shared_state
-                            .lock()
-                            .unwrap()
-                            .proof
-                            .as_mut()
-                            .unwrap()
-                            .pow_nonces[pow_round_idx] = external_nonce;
+                        shared_state.get_mut().proof.as_mut().unwrap().pow_nonces[pow_round_idx] =
+                            external_nonce;
                     }
                 },
                 stream,
@@ -2684,10 +2645,9 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
             #[cfg(test)]
             query_index_callbacks_for_round.schedule(
                 {
-                    let shared_state = std::sync::Arc::clone(&shared_state);
+                    let shared_state = shared_state_handle;
                     move || unsafe {
-                        shared_state.lock().unwrap().pre_pow_seeds[pow_round_idx] =
-                            *seed_accessor.get();
+                        shared_state.get_mut().pre_pow_seeds[pow_round_idx] = *seed_accessor.get();
                     }
                 },
                 stream,
@@ -2702,7 +2662,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
             )?;
             query_index_callbacks_for_round.schedule(
                 {
-                    let shared_state = std::sync::Arc::clone(&shared_state);
+                    let shared_state = shared_state_handle;
                     move || unsafe {
                         let mut bit_source = draw_query_bits_after_verified_pow(
                             seed_accessor.get_mut(),
@@ -2711,13 +2671,8 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
                         for dst in query_indexes_accessor.get_mut().iter_mut() {
                             *dst = assemble_query_index(query_domain_log2, &mut bit_source) as u32;
                         }
-                        shared_state
-                            .lock()
-                            .unwrap()
-                            .proof
-                            .as_mut()
-                            .unwrap()
-                            .pow_nonces[pow_round_idx] = *nonce_accessor.get();
+                        shared_state.get_mut().proof.as_mut().unwrap().pow_nonces[pow_round_idx] =
+                            *nonce_accessor.get();
                     }
                 },
                 stream,
@@ -2749,14 +2704,13 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
             final_callbacks.extend(copy_callbacks);
             final_callbacks.schedule(
                 {
-                    let shared_state = std::sync::Arc::clone(&shared_state);
+                    let shared_state = shared_state_handle;
                     let query_indexes_accessor = query_indexes_host.get_accessor();
-                    move || {
+                    move || unsafe {
                         let index = unsafe { query_indexes_accessor.get()[query_idx] as usize };
                         fill_extension_query_from_accessors(
                             &mut shared_state
-                                .lock()
-                                .unwrap()
+                                .get_mut()
                                 .proof
                                 .as_mut()
                                 .unwrap()

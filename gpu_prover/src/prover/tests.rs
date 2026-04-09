@@ -1,5 +1,4 @@
 use super::gkr::{
-    GpuGKRStorage,
     backward::{
         GpuGKRDimensionReducingBackwardState, GpuGKRDimensionReducingSumcheckLayerPlan,
         GpuGKRMainLayerKernelKind, GpuGKRMainLayerSumcheckLayerPlan,
@@ -8,22 +7,23 @@ use super::gkr::{
     forward::schedule_forward_pass as schedule_forward_pass_impl,
     setup::{GpuGKRSetupHost, GpuGKRSetupTransfer},
     stage1::{GpuGKRStage1Output, GpuGKRTraceGeometry},
+    GpuGKRStorage,
 };
 use crate::allocator::tracker::AllocationPlacement;
-use crate::ops::simple::{SetByRef, set_by_ref};
+use crate::ops::simple::{set_by_ref, SetByRef};
 use crate::primitives::circuit_type::{
     CircuitType, DelegationCircuitType, UnrolledCircuitType, UnrolledMemoryCircuitType,
     UnrolledNonMemoryCircuitType,
 };
-use crate::primitives::context::ProverContext;
+use crate::primitives::context::{ProverContext, UnsafeMutAccessor};
 use crate::primitives::field::{BF, E4};
 use crate::primitives::nvtx_registered::start_registered_range;
 use crate::primitives::static_host::alloc_static_pinned_box_from_slice;
 use crate::prover::decoder::DecoderTableTransfer;
 use crate::prover::memory::commit_memory;
 use crate::prover::proof::{
-    GkrExternalPowChallenges, GpuGKRProofJob, grand_product_accumulator_from_explicit_evaluations,
-    prove, prove_with_transfer_scheduling,
+    grand_product_accumulator_from_explicit_evaluations, prove, prove_with_transfer_scheduling,
+    GkrExternalPowChallenges, GpuGKRProofJob,
 };
 use crate::prover::test_utils::{
     make_test_context, make_test_context_with_device_allocator_block_log_size,
@@ -64,9 +64,9 @@ use cs::gkr_circuits::{
     shift_binop_table_driver_fn,
 };
 use cs::gkr_compiler::{
-    GKRCircuitArtifact, GKRLayerDescription, NoFieldGKRRelation, NoFieldMaxQuadraticGKRRelation,
-    OutputType, compile_unrolled_circuit_state_transition_into_gkr,
-    compile_unrolled_circuit_state_transition_into_unrolled_gkr_without_caches,
+    compile_unrolled_circuit_state_transition_into_gkr,
+    compile_unrolled_circuit_state_transition_into_unrolled_gkr_without_caches, GKRCircuitArtifact,
+    GKRLayerDescription, NoFieldGKRRelation, NoFieldMaxQuadraticGKRRelation, OutputType,
 };
 use cs::tables::TableDriver;
 use era_cudart::event::{CudaEvent, CudaEventCreateFlags};
@@ -74,8 +74,9 @@ use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 use fft::{
-    Twiddles, batch_inverse_inplace, bitreverse_enumeration_inplace, domain_generator_for_size,
+    batch_inverse_inplace, bitreverse_enumeration_inplace, domain_generator_for_size,
     materialize_powers_serial_starting_with_elem, materialize_powers_serial_starting_with_one,
+    Twiddles,
 };
 use field::baby_bear::base::BabyBearField;
 use field::baby_bear::ext4::BabyBearExt4;
@@ -88,7 +89,7 @@ use prover::gkr::prover::forward_loop;
 use prover::gkr::prover::prove_configured_with_gkr;
 use prover::gkr::prover::setup::GKRSetup;
 use prover::gkr::prover::stages::stage1;
-use prover::gkr::prover::stages::stage1::{ColumnMajorCosetBoundTracePart, commit_trace_part};
+use prover::gkr::prover::stages::stage1::{commit_trace_part, ColumnMajorCosetBoundTracePart};
 use prover::gkr::prover::sumcheck_loop;
 use prover::gkr::prover::transcript_utils::{
     add_whir_commitment_to_transcript, commit_field_els, draw_query_bits, draw_random_field_els,
@@ -109,16 +110,15 @@ use prover::gkr::sumcheck::evaluation_kernels::{
 use prover::gkr::virtual_polys::init_and_teardown_base::materialize_virtual_inits_and_teardowns_base_address_setup_poly;
 use prover::gkr::virtual_polys::range_check::materialize_virtual_range_check_setup_poly;
 use prover::gkr::whir::{
-    ColumnMajorBaseOracleForLDE, ColumnMajorExtensionOracleForCoset,
-    ColumnMajorExtensionOracleForLDE, WhirCommitment, WhirPolyCommitProof, whir_fold,
+    whir_fold, ColumnMajorBaseOracleForLDE, ColumnMajorExtensionOracleForCoset,
+    ColumnMajorExtensionOracleForLDE, WhirCommitment, WhirPolyCommitProof,
 };
 use prover::gkr::witness_gen::delegation_circuits::{
     evaluate_gkr_memory_witness_for_delegation_circuit, evaluate_gkr_witness_for_delegation_circuit,
 };
 use prover::gkr::witness_gen::family_circuits::{
-    GKRFullWitnessTrace, GKRMemoryOnlyWitnessTrace,
     evaluate_gkr_memory_witness_for_executor_family, evaluate_gkr_witness_for_executor_family,
-    evaluate_init_and_teardown_memory_witness,
+    evaluate_init_and_teardown_memory_witness, GKRFullWitnessTrace, GKRMemoryOnlyWitnessTrace,
 };
 use prover::gkr::witness_gen::oracles::{MemoryCircuitOracle, NonMemoryCircuitOracle};
 use prover::merkle_trees::{
@@ -130,8 +130,8 @@ use prover::tracers::oracles::transpiler_oracles::delegation::{
 };
 use prover::transcript::Seed;
 use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
+use riscv_transpiler::ir::simple_instruction_set::{preprocess_bytecode, Instruction};
 use riscv_transpiler::ir::FullUnsignedMachineDecoderConfig;
-use riscv_transpiler::ir::simple_instruction_set::{Instruction, preprocess_bytecode};
 use riscv_transpiler::replayer::{ReplayerRam, ReplayerVM};
 use riscv_transpiler::vm::{
     Counters, DelegationsAndFamiliesCounters, RamWithRomRegion, ReplayBuffer, SimpleSnapshotter,
@@ -1891,7 +1891,7 @@ fn assert_recursive_whir_oracle_parity_for_supported_path(
     let memory_base_caps_keepalive = gpu_mem_trace_holder.take_tree_caps_host();
     let witness_base_caps_keepalive = gpu_wit_trace_holder.take_tree_caps_host();
     let setup_base_caps_keepalive = gpu_setup_trace_holder.take_tree_caps_host();
-    let scheduled_gpu_whir = schedule_gpu_whir_fold_with_sources(
+    let mut scheduled_gpu_whir = schedule_gpu_whir_fold_with_sources(
         gpu_mem_trace_holder,
         memory_base_caps_keepalive,
         move |dst| dst.copy_from_slice(&mem_polys_claims_for_schedule),
@@ -1918,7 +1918,7 @@ fn assert_recursive_whir_oracle_parity_for_supported_path(
     .unwrap();
     let scheduled_shared_state = scheduled_gpu_whir.shared_state_handle();
     let scheduled_gpu_whir_proof = scheduled_gpu_whir.wait(context).unwrap();
-    let gpu_pre_pow_seeds = clone_scheduled_whir_pre_pow_seeds(&scheduled_shared_state);
+    let gpu_pre_pow_seeds = clone_scheduled_whir_pre_pow_seeds(scheduled_shared_state);
     let scheduled_recursive_caps = scheduled_gpu_whir_proof
         .intermediate_whir_oracles
         .iter()
@@ -2058,11 +2058,8 @@ fn build_basic_unrolled_async_backward_fixture_from_base(
     );
     let mut seed = Transcript::commit_initial(&transcript_input);
     let challenges: Vec<E4> = draw_random_field_els::<BF, E4>(&mut seed, 3);
-    let [
-        lookup_alpha,
-        lookup_additive_part,
-        constraints_batch_challenge,
-    ] = challenges.try_into().unwrap();
+    let [lookup_alpha, lookup_additive_part, constraints_batch_challenge] =
+        challenges.try_into().unwrap();
     unsafe {
         lookup_challenges_host
             .get_mut_accessor()
@@ -2105,20 +2102,12 @@ fn build_basic_unrolled_async_backward_fixture_from_base(
     let batching_challenge = challenges.pop().unwrap();
     let evaluation_point = challenges;
 
-    let [
-        claim_readset,
-        claim_writeset,
-        claim_rangechecknum,
-        claim_rangecheckden,
-        claim_timechecknum,
-        claim_timecheckden,
-        claim_lookupnum,
-        claim_lookupden,
-    ] = compute_initial_sumcheck_claims_from_explicit_evaluations_for_test(
-        &gpu_final_explicit_evaluations,
-        &evaluation_point,
-        &worker,
-    );
+    let [claim_readset, claim_writeset, claim_rangechecknum, claim_rangecheckden, claim_timechecknum, claim_timecheckden, claim_lookupnum, claim_lookupden] =
+        compute_initial_sumcheck_claims_from_explicit_evaluations_for_test(
+            &gpu_final_explicit_evaluations,
+            &evaluation_point,
+            &worker,
+        );
 
     let output_layer_for_sumcheck = gpu_forward_output
         .dimension_reducing_inputs
@@ -4708,9 +4697,10 @@ fn run_basic_unrolled_first_main_layer_static_vs_dynamic_execution_test() {
     eprintln!("first-main-layer: dynamic main-layer synchronized");
     let dynamic_execution = dynamic_scheduled.into_execution();
 
-    let shared_state = crate::prover::gkr::backward::make_deferred_backward_workflow_state();
+    let mut shared_state = crate::prover::gkr::backward::make_deferred_backward_workflow_state();
+    let shared_state_handle = UnsafeMutAccessor::new(shared_state.as_mut());
     crate::prover::gkr::backward::populate_backward_workflow_state(
-        &shared_state,
+        shared_state_handle,
         first_layer_idx + 1,
         static_claims,
         static_point,
@@ -4722,7 +4712,7 @@ fn run_basic_unrolled_first_main_layer_static_vs_dynamic_execution_test() {
     );
     let static_scheduled = static_plan
         .schedule_execute_main_layer_from_workflow_state(
-            std::sync::Arc::clone(&shared_state),
+            shared_state_handle,
             &fixture_static.context,
         )
         .unwrap();
@@ -4883,9 +4873,11 @@ fn run_basic_unrolled_main_layers_static_vs_dynamic_execution_test() {
             .unwrap();
         let dynamic_execution = dynamic_scheduled.into_execution();
 
-        let shared_state = crate::prover::gkr::backward::make_deferred_backward_workflow_state();
+        let mut shared_state =
+            crate::prover::gkr::backward::make_deferred_backward_workflow_state();
+        let shared_state_handle = UnsafeMutAccessor::new(shared_state.as_mut());
         crate::prover::gkr::backward::populate_backward_workflow_state(
-            &shared_state,
+            shared_state_handle,
             current_output_layer_idx,
             static_claims.clone(),
             static_point.clone(),
@@ -4897,7 +4889,7 @@ fn run_basic_unrolled_main_layers_static_vs_dynamic_execution_test() {
         );
         let static_scheduled = static_plan
             .schedule_execute_main_layer_from_workflow_state(
-                std::sync::Arc::clone(&shared_state),
+                shared_state_handle,
                 &fixture_static.context,
             )
             .unwrap();
@@ -5058,11 +5050,8 @@ fn forward_to_backward_handoff_releases_forward_scratch() {
     );
     let mut seed = Transcript::commit_initial(&transcript_input);
     let challenges: Vec<E4> = draw_random_field_els::<BF, E4>(&mut seed, 3);
-    let [
-        lookup_alpha,
-        lookup_additive_part,
-        constraints_batch_challenge,
-    ] = challenges.try_into().unwrap();
+    let [lookup_alpha, lookup_additive_part, constraints_batch_challenge] =
+        challenges.try_into().unwrap();
     unsafe {
         lookup_challenges_host
             .get_mut_accessor()
@@ -5652,11 +5641,8 @@ fn run_basic_unrolled_workflow_input_parity_test() {
         "lookup challenges diverged after matching transcript inputs",
     );
 
-    let [
-        lookup_alpha,
-        lookup_additive_part,
-        constraints_batch_challenge,
-    ]: [E4; 3] = cpu_lookup_challenges.try_into().unwrap();
+    let [lookup_alpha, lookup_additive_part, constraints_batch_challenge]: [E4; 3] =
+        cpu_lookup_challenges.try_into().unwrap();
     let mut lookup_challenges_host = unsafe { context.alloc_host_uninit_slice(3) };
     unsafe {
         lookup_challenges_host
@@ -6156,11 +6142,8 @@ fn run_jump_branch_slt_workflow_input_parity_test() {
         "lookup challenges diverged after matching transcript inputs",
     );
 
-    let [
-        lookup_alpha,
-        lookup_additive_part,
-        constraints_batch_challenge,
-    ]: [E4; 3] = cpu_lookup_challenges.try_into().unwrap();
+    let [lookup_alpha, lookup_additive_part, constraints_batch_challenge]: [E4; 3] =
+        cpu_lookup_challenges.try_into().unwrap();
     let mut lookup_challenges_host = unsafe { context.alloc_host_uninit_slice(3) };
     unsafe {
         lookup_challenges_host
@@ -7127,11 +7110,8 @@ fn run_basic_unrolled_stagewise_parity_test() {
 
     let mut seed = Transcript::commit_initial(&transcript_input);
     let challenges: Vec<E4> = draw_random_field_els::<BF, E4>(&mut seed, 3);
-    let [
-        lookup_alpha,
-        lookup_additive_part,
-        constraints_batch_challenge,
-    ] = challenges.try_into().unwrap();
+    let [lookup_alpha, lookup_additive_part, constraints_batch_challenge] =
+        challenges.try_into().unwrap();
 
     let mut lookup_challenges_host = unsafe { context.alloc_host_uninit_slice(3) };
     let lookup_challenges = [
@@ -7307,16 +7287,8 @@ fn run_basic_unrolled_stagewise_parity_test() {
         &worker,
     );
     assert_eq!(gpu_initial_claims, cpu_initial_claims);
-    let [
-        claim_readset,
-        claim_writeset,
-        claim_rangechecknum,
-        claim_rangecheckden,
-        claim_timechecknum,
-        claim_timecheckden,
-        claim_lookupnum,
-        claim_lookupden,
-    ] = cpu_initial_claims;
+    let [claim_readset, claim_writeset, claim_rangechecknum, claim_rangecheckden, claim_timechecknum, claim_timecheckden, claim_lookupnum, claim_lookupden] =
+        cpu_initial_claims;
     let gpu_backward_state = gpu_forward_output.into_dimension_reducing_backward_state();
 
     let output_map = output_layer_for_sumcheck;
@@ -7967,11 +7939,8 @@ fn standalone_inits_and_teardowns_gpu_workflow_matches_cpu() {
             "transcript-derived lookup challenges diverged"
         );
 
-        let [
-            lookup_alpha,
-            lookup_additive_part,
-            constraints_batch_challenge,
-        ] = cpu_lookup_challenges;
+        let [lookup_alpha, lookup_additive_part, constraints_batch_challenge] =
+            cpu_lookup_challenges;
         let mut gkr_storage = GKRStorage::<BF, E4>::default();
         insert_virtual_setup_polys_for_test(trace_len, &mut gkr_storage);
         let (preprocessed_generic_lookup, decoder_lookup_fill_value) = setup
@@ -9097,11 +9066,8 @@ fn assert_delegation_workflow_matches_cpu_inner<W, O, F>(
         "{label}: lookup challenges diverged after matching transcript inputs",
     );
 
-    let [
-        lookup_alpha,
-        lookup_additive_part,
-        constraints_batch_challenge,
-    ]: [E4; 3] = cpu_lookup_challenges.try_into().unwrap();
+    let [lookup_alpha, lookup_additive_part, constraints_batch_challenge]: [E4; 3] =
+        cpu_lookup_challenges.try_into().unwrap();
     let mut lookup_challenges_host = unsafe { context.alloc_host_uninit_slice(3) };
     unsafe {
         lookup_challenges_host
@@ -9620,12 +9586,12 @@ fn assert_keccak_delegation_workflow_matches_cpu(compiled_circuit: GKRCircuitArt
 mod add_sub_lui_auipc_mod {
     use crate::primitives::field::BF;
     use cs::oracle::Placeholder;
-    use cs::witness_placer::WitnessTypeSet;
     use cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
+    use cs::witness_placer::WitnessTypeSet;
     use cs::witness_placer::{
         WitnessComputationCore, WitnessComputationalField, WitnessComputationalI32,
-        WitnessComputationalInteger, WitnessComputationalU8, WitnessComputationalU16,
-        WitnessComputationalU32, WitnessMask,
+        WitnessComputationalInteger, WitnessComputationalU16, WitnessComputationalU32,
+        WitnessComputationalU8, WitnessMask,
     };
     use field::baby_bear::base::BabyBearField;
     use prover::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
@@ -9651,12 +9617,12 @@ mod add_sub_lui_auipc_mod {
 mod jump_branch_slt_mod {
     use crate::primitives::field::BF;
     use cs::oracle::Placeholder;
-    use cs::witness_placer::WitnessTypeSet;
     use cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
+    use cs::witness_placer::WitnessTypeSet;
     use cs::witness_placer::{
         WitnessComputationCore, WitnessComputationalField, WitnessComputationalI32,
-        WitnessComputationalInteger, WitnessComputationalU8, WitnessComputationalU16,
-        WitnessComputationalU32, WitnessMask,
+        WitnessComputationalInteger, WitnessComputationalU16, WitnessComputationalU32,
+        WitnessComputationalU8, WitnessMask,
     };
     use field::baby_bear::base::BabyBearField;
     use prover::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
@@ -9680,12 +9646,12 @@ mod jump_branch_slt_mod {
 mod shift_binop_mod {
     use crate::primitives::field::BF;
     use cs::oracle::Placeholder;
-    use cs::witness_placer::WitnessTypeSet;
     use cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
+    use cs::witness_placer::WitnessTypeSet;
     use cs::witness_placer::{
         WitnessComputationCore, WitnessComputationalField, WitnessComputationalI32,
-        WitnessComputationalInteger, WitnessComputationalU8, WitnessComputationalU16,
-        WitnessComputationalU32, WitnessMask,
+        WitnessComputationalInteger, WitnessComputationalU16, WitnessComputationalU32,
+        WitnessComputationalU8, WitnessMask,
     };
     use field::baby_bear::base::BabyBearField;
     use prover::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
@@ -9709,12 +9675,12 @@ mod shift_binop_mod {
 mod mem_word_only_mod {
     use crate::primitives::field::BF;
     use cs::oracle::Placeholder;
-    use cs::witness_placer::WitnessTypeSet;
     use cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
+    use cs::witness_placer::WitnessTypeSet;
     use cs::witness_placer::{
         WitnessComputationCore, WitnessComputationalField, WitnessComputationalI32,
-        WitnessComputationalInteger, WitnessComputationalU8, WitnessComputationalU16,
-        WitnessComputationalU32, WitnessMask,
+        WitnessComputationalInteger, WitnessComputationalU16, WitnessComputationalU32,
+        WitnessComputationalU8, WitnessMask,
     };
     use field::baby_bear::base::BabyBearField;
     use prover::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
@@ -9738,12 +9704,12 @@ mod mem_word_only_mod {
 mod mem_subword_only_mod {
     use crate::primitives::field::BF;
     use cs::oracle::Placeholder;
-    use cs::witness_placer::WitnessTypeSet;
     use cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
+    use cs::witness_placer::WitnessTypeSet;
     use cs::witness_placer::{
         WitnessComputationCore, WitnessComputationalField, WitnessComputationalI32,
-        WitnessComputationalInteger, WitnessComputationalU8, WitnessComputationalU16,
-        WitnessComputationalU32, WitnessMask,
+        WitnessComputationalInteger, WitnessComputationalU16, WitnessComputationalU32,
+        WitnessComputationalU8, WitnessMask,
     };
     use field::baby_bear::base::BabyBearField;
     use prover::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
@@ -9767,12 +9733,12 @@ mod mem_subword_only_mod {
 mod blake2_with_extended_control_mod {
     use crate::primitives::field::BF;
     use cs::oracle::Placeholder;
-    use cs::witness_placer::WitnessTypeSet;
     use cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
+    use cs::witness_placer::WitnessTypeSet;
     use cs::witness_placer::{
         WitnessComputationCore, WitnessComputationalField, WitnessComputationalI32,
-        WitnessComputationalInteger, WitnessComputationalU8, WitnessComputationalU16,
-        WitnessComputationalU32, WitnessMask,
+        WitnessComputationalInteger, WitnessComputationalU16, WitnessComputationalU32,
+        WitnessComputationalU8, WitnessMask,
     };
     use field::baby_bear::base::BabyBearField;
     use prover::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
@@ -9796,12 +9762,12 @@ mod blake2_with_extended_control_mod {
 mod bigint_with_extended_control_mod {
     use crate::primitives::field::BF;
     use cs::oracle::Placeholder;
-    use cs::witness_placer::WitnessTypeSet;
     use cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
+    use cs::witness_placer::WitnessTypeSet;
     use cs::witness_placer::{
         WitnessComputationCore, WitnessComputationalField, WitnessComputationalI32,
-        WitnessComputationalInteger, WitnessComputationalU8, WitnessComputationalU16,
-        WitnessComputationalU32, WitnessMask,
+        WitnessComputationalInteger, WitnessComputationalU16, WitnessComputationalU32,
+        WitnessComputationalU8, WitnessMask,
     };
     use field::baby_bear::base::BabyBearField;
     use prover::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
@@ -9825,12 +9791,12 @@ mod bigint_with_extended_control_mod {
 mod keccak_special5_mod {
     use crate::primitives::field::BF;
     use cs::oracle::Placeholder;
-    use cs::witness_placer::WitnessTypeSet;
     use cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
+    use cs::witness_placer::WitnessTypeSet;
     use cs::witness_placer::{
         WitnessComputationCore, WitnessComputationalField, WitnessComputationalI32,
-        WitnessComputationalInteger, WitnessComputationalU8, WitnessComputationalU16,
-        WitnessComputationalU32, WitnessMask,
+        WitnessComputationalInteger, WitnessComputationalU16, WitnessComputationalU32,
+        WitnessComputationalU8, WitnessMask,
     };
     use field::baby_bear::base::BabyBearField;
     use prover::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;

@@ -20,14 +20,14 @@ pub(crate) fn search_pow_challenge<'a>(
     if pow_bits == 0 {
         // no PoW required
         let set_challenge_fn = move || unsafe {
-            challenge_accessor.set(0);
+            challenge_accessor.write(0);
         };
         callbacks.schedule(set_challenge_fn, stream)?;
     } else {
         let seed_accessor = seed.get_mut_accessor();
         if let Some(external_challenge) = external_challenge {
             let set_challenge_fn = move || unsafe {
-                challenge_accessor.set(external_challenge);
+                challenge_accessor.write(external_challenge);
             };
             callbacks.schedule(set_challenge_fn, stream)?;
         } else {

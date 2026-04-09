@@ -116,7 +116,7 @@ template <typename E> struct gkr_main_constraint_metadata_device_pointers {
   u32 quadratic_terms_count;
   const gkr_main_constraint_linear_term<E> *linear_terms;
   u32 linear_terms_count;
-  E constant_offset;
+  const E *constant_offset;
 };
 
 template <typename E> struct gkr_main_round0_batch_record {
@@ -187,6 +187,8 @@ template <typename E> struct gkr_main_round0_batch_runtime {
   const E *batch_challenges;
   E *contributions;
   const u8 *spill_payload;
+  const E *auxiliary_challenges;
+  const gkr_main_constraint_metadata_device_pointers<E> *constraint_metadata;
 };
 
 template <typename E> struct gkr_main_round1_batch_static {
@@ -204,6 +206,8 @@ template <typename E> struct gkr_main_round1_batch_runtime {
   const E *folding_challenge;
   E *contributions;
   const u8 *spill_payload;
+  const E *auxiliary_challenges;
+  const gkr_main_constraint_metadata_device_pointers<E> *constraint_metadata;
 };
 
 template <typename E> struct gkr_main_round2_batch_static {
@@ -221,6 +225,8 @@ template <typename E> struct gkr_main_round2_batch_runtime {
   const E *folding_challenges;
   E *contributions;
   const u8 *spill_payload;
+  const E *auxiliary_challenges;
+  const gkr_main_constraint_metadata_device_pointers<E> *constraint_metadata;
 };
 
 template <typename E> struct gkr_main_round3_batch_static {
@@ -238,6 +244,8 @@ template <typename E> struct gkr_main_round3_batch_runtime {
   const E *folding_challenge;
   E *contributions;
   const u8 *spill_payload;
+  const E *auxiliary_challenges;
+  const gkr_main_constraint_metadata_device_pointers<E> *constraint_metadata;
 };
 
 DEVICE_FORCEINLINE bool gkr_main_batch_descriptors_inline(const u32 record_mode) { return record_mode != GKR_MAIN_BATCH_POINTER_DESCRIPTORS; }
@@ -292,9 +300,19 @@ DEVICE_FORCEINLINE unsigned gkr_main_kind_batch_challenge_count(const u32 kind) 
 
 template <typename E, typename Batch, typename Record>
 DEVICE_FORCEINLINE void gkr_main_batch_constraint_metadata(const Batch &batch, const u8 *spill_payload, const Record &record,
+                                                           const gkr_main_constraint_metadata_device_pointers<E> *runtime_metadata,
                                                            const gkr_main_constraint_quadratic_term<E> *&quadratic_terms, unsigned &quadratic_terms_count,
                                                            const gkr_main_constraint_linear_term<E> *&linear_terms, unsigned &linear_terms_count,
                                                            E &constant_offset) {
+  if (runtime_metadata != nullptr) {
+    quadratic_terms = runtime_metadata->quadratic_terms;
+    quadratic_terms_count = runtime_metadata->quadratic_terms_count;
+    linear_terms = runtime_metadata->linear_terms;
+    linear_terms_count = runtime_metadata->linear_terms_count;
+    constant_offset = runtime_metadata->constant_offset == nullptr ? E::ZERO() : *runtime_metadata->constant_offset;
+    if (quadratic_terms != nullptr || linear_terms != nullptr || runtime_metadata->constant_offset != nullptr)
+      return;
+  }
   const bool metadata_inline = record.metadata_inline != 0;
   quadratic_terms = gkr_main_batch_payload_ptr<gkr_main_constraint_quadratic_term<E>>(batch, spill_payload, record.quadratic_terms, metadata_inline);
   quadratic_terms_count = record.quadratic_terms.count;
@@ -3428,17 +3446,19 @@ DEVICE_FORCEINLINE void gkr_main_round0_batched(const gkr_main_round0_batch_stat
     const auto *extension_outputs =
         gkr_main_batch_payload_ptr<gkr_ext_initial_source<E>>(batch_static, batch_runtime.spill_payload, record.extension_outputs, descriptors_inline);
     const E *batch_challenges = batch_runtime.batch_challenges + consumed_batch_challenges;
+    const E auxiliary_challenge = batch_runtime.auxiliary_challenges == nullptr ? record.auxiliary_challenge : batch_runtime.auxiliary_challenges[i];
     consumed_batch_challenges += gkr_main_kind_batch_challenge_count(record.kind);
     const gkr_main_constraint_quadratic_term<E> *quadratic_terms;
     const gkr_main_constraint_linear_term<E> *linear_terms;
     unsigned quadratic_terms_count;
     unsigned linear_terms_count;
     E constant_offset;
-    gkr_main_batch_constraint_metadata(batch_static, batch_runtime.spill_payload, record, quadratic_terms, quadratic_terms_count, linear_terms,
-                                       linear_terms_count, constant_offset);
+    gkr_main_batch_constraint_metadata(batch_static, batch_runtime.spill_payload, record,
+                                       batch_runtime.constraint_metadata == nullptr ? nullptr : &batch_runtime.constraint_metadata[i], quadratic_terms,
+                                       quadratic_terms_count, linear_terms, linear_terms_count, constant_offset);
     E c0;
     E c1;
-    gkr_main_round0_values(record.kind, base_inputs, extension_inputs, base_outputs, extension_outputs, batch_challenges, record.auxiliary_challenge,
+    gkr_main_round0_values(record.kind, base_inputs, extension_inputs, base_outputs, extension_outputs, batch_challenges, auxiliary_challenge,
                            quadratic_terms, quadratic_terms_count, linear_terms, linear_terms_count, constant_offset, gid, c0, c1);
     total0 = E::add(total0, c0);
     total1 = E::add(total1, c1);
@@ -3467,18 +3487,20 @@ DEVICE_FORCEINLINE void gkr_main_round1_batched(const gkr_main_round1_batch_stat
     const auto *extension_inputs =
         gkr_main_batch_payload_ptr<gkr_ext_continuing_source<E>>(batch_static, batch_runtime.spill_payload, record.extension_inputs, descriptors_inline);
     const E *batch_challenges = batch_runtime.batch_challenges + consumed_batch_challenges;
+    const E auxiliary_challenge = batch_runtime.auxiliary_challenges == nullptr ? record.auxiliary_challenge : batch_runtime.auxiliary_challenges[i];
     consumed_batch_challenges += gkr_main_kind_batch_challenge_count(record.kind);
     const gkr_main_constraint_quadratic_term<E> *quadratic_terms;
     const gkr_main_constraint_linear_term<E> *linear_terms;
     unsigned quadratic_terms_count;
     unsigned linear_terms_count;
     E constant_offset;
-    gkr_main_batch_constraint_metadata(batch_static, batch_runtime.spill_payload, record, quadratic_terms, quadratic_terms_count, linear_terms,
-                                       linear_terms_count, constant_offset);
+    gkr_main_batch_constraint_metadata(batch_static, batch_runtime.spill_payload, record,
+                                       batch_runtime.constraint_metadata == nullptr ? nullptr : &batch_runtime.constraint_metadata[i], quadratic_terms,
+                                       quadratic_terms_count, linear_terms, linear_terms_count, constant_offset);
     E c0;
     E c1;
     gkr_main_round1_values<E, EXPLICIT_FORM>(record.kind, base_inputs, extension_inputs, batch_challenges, batch_runtime.folding_challenge,
-                                             record.auxiliary_challenge, quadratic_terms, quadratic_terms_count, linear_terms, linear_terms_count,
+                                             auxiliary_challenge, quadratic_terms, quadratic_terms_count, linear_terms, linear_terms_count,
                                              constant_offset, gid, c0, c1);
     total0 = E::add(total0, c0);
     total1 = E::add(total1, c1);
@@ -3507,18 +3529,20 @@ DEVICE_FORCEINLINE void gkr_main_round2_batched(const gkr_main_round2_batch_stat
     const auto *extension_inputs =
         gkr_main_batch_payload_ptr<gkr_ext_continuing_source<E>>(batch_static, batch_runtime.spill_payload, record.extension_inputs, descriptors_inline);
     const E *batch_challenges = batch_runtime.batch_challenges + consumed_batch_challenges;
+    const E auxiliary_challenge = batch_runtime.auxiliary_challenges == nullptr ? record.auxiliary_challenge : batch_runtime.auxiliary_challenges[i];
     consumed_batch_challenges += gkr_main_kind_batch_challenge_count(record.kind);
     const gkr_main_constraint_quadratic_term<E> *quadratic_terms;
     const gkr_main_constraint_linear_term<E> *linear_terms;
     unsigned quadratic_terms_count;
     unsigned linear_terms_count;
     E constant_offset;
-    gkr_main_batch_constraint_metadata(batch_static, batch_runtime.spill_payload, record, quadratic_terms, quadratic_terms_count, linear_terms,
-                                       linear_terms_count, constant_offset);
+    gkr_main_batch_constraint_metadata(batch_static, batch_runtime.spill_payload, record,
+                                       batch_runtime.constraint_metadata == nullptr ? nullptr : &batch_runtime.constraint_metadata[i], quadratic_terms,
+                                       quadratic_terms_count, linear_terms, linear_terms_count, constant_offset);
     E c0;
     E c1;
     gkr_main_round2_values<E, EXPLICIT_FORM>(record.kind, base_inputs, extension_inputs, batch_challenges, batch_runtime.folding_challenges,
-                                             record.auxiliary_challenge, quadratic_terms, quadratic_terms_count, linear_terms, linear_terms_count,
+                                             auxiliary_challenge, quadratic_terms, quadratic_terms_count, linear_terms, linear_terms_count,
                                              constant_offset, gid, c0, c1);
     total0 = E::add(total0, c0);
     total1 = E::add(total1, c1);
@@ -3547,18 +3571,20 @@ DEVICE_FORCEINLINE void gkr_main_round3_batched(const gkr_main_round3_batch_stat
     const auto *extension_inputs =
         gkr_main_batch_payload_ptr<gkr_ext_continuing_source<E>>(batch_static, batch_runtime.spill_payload, record.extension_inputs, descriptors_inline);
     const E *batch_challenges = batch_runtime.batch_challenges + consumed_batch_challenges;
+    const E auxiliary_challenge = batch_runtime.auxiliary_challenges == nullptr ? record.auxiliary_challenge : batch_runtime.auxiliary_challenges[i];
     consumed_batch_challenges += gkr_main_kind_batch_challenge_count(record.kind);
     const gkr_main_constraint_quadratic_term<E> *quadratic_terms;
     const gkr_main_constraint_linear_term<E> *linear_terms;
     unsigned quadratic_terms_count;
     unsigned linear_terms_count;
     E constant_offset;
-    gkr_main_batch_constraint_metadata(batch_static, batch_runtime.spill_payload, record, quadratic_terms, quadratic_terms_count, linear_terms,
-                                       linear_terms_count, constant_offset);
+    gkr_main_batch_constraint_metadata(batch_static, batch_runtime.spill_payload, record,
+                                       batch_runtime.constraint_metadata == nullptr ? nullptr : &batch_runtime.constraint_metadata[i], quadratic_terms,
+                                       quadratic_terms_count, linear_terms, linear_terms_count, constant_offset);
     E c0;
     E c1;
     gkr_main_round3_values<E, EXPLICIT_FORM>(record.kind, base_inputs, extension_inputs, batch_challenges, batch_runtime.folding_challenge,
-                                             record.auxiliary_challenge, quadratic_terms, quadratic_terms_count, linear_terms, linear_terms_count,
+                                             auxiliary_challenge, quadratic_terms, quadratic_terms_count, linear_terms, linear_terms_count,
                                              constant_offset, gid, c0, c1);
     total0 = E::add(total0, c0);
     total1 = E::add(total1, c1);
