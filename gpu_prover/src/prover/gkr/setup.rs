@@ -178,9 +178,6 @@ impl<'a> GpuGKRSetupTransfer<'a> {
         Ok(GpuGKRForwardSetup {
             _tracing_ranges: tracing_ranges,
             _callbacks: callbacks,
-            _host_lookup_additive_part: host_lookup_additive_part,
-            _host_decoder_lookup_fill_value: host_decoder_lookup_fill_value,
-            _host_lookup_alpha_powers: host_lookup_alpha_powers,
             device_lookup_additive_part,
             device_decoder_lookup_fill_value,
             _device_lookup_alpha_powers: device_lookup_alpha_powers,
@@ -503,9 +500,6 @@ where
     Ok(GpuGKRForwardSetup {
         _tracing_ranges: tracing_ranges,
         _callbacks: callbacks,
-        _host_lookup_additive_part: host_lookup_additive_part,
-        _host_decoder_lookup_fill_value: host_decoder_lookup_fill_value,
-        _host_lookup_alpha_powers: host_lookup_alpha_powers,
         device_lookup_additive_part,
         device_decoder_lookup_fill_value,
         _device_lookup_alpha_powers: device_lookup_alpha_powers,
@@ -594,9 +588,6 @@ pub(crate) fn bootstrap_storage_from_trace_holders<E>(
 pub(crate) struct GpuGKRForwardSetup<E> {
     _tracing_ranges: Vec<Range>,
     _callbacks: Callbacks<'static>,
-    _host_lookup_additive_part: HostAllocation<[E]>,
-    _host_decoder_lookup_fill_value: HostAllocation<[E]>,
-    _host_lookup_alpha_powers: Option<HostAllocation<[E]>>,
     device_lookup_additive_part: DeviceAllocation<E>,
     device_decoder_lookup_fill_value: DeviceAllocation<E>,
     _device_lookup_alpha_powers: Option<DeviceAllocation<E>>,
@@ -606,9 +597,6 @@ pub(crate) struct GpuGKRForwardSetup<E> {
 pub(crate) struct GpuGKRForwardSetupHostKeepalive<E> {
     _tracing_ranges: Vec<Range>,
     _callbacks: Callbacks<'static>,
-    _host_lookup_additive_part: HostAllocation<[E]>,
-    _host_decoder_lookup_fill_value: HostAllocation<[E]>,
-    _host_lookup_alpha_powers: Option<HostAllocation<[E]>>,
     _marker: PhantomData<E>,
 }
 
@@ -646,9 +634,6 @@ impl<E> GpuGKRForwardSetup<E> {
         let Self {
             _tracing_ranges,
             _callbacks,
-            _host_lookup_additive_part,
-            _host_decoder_lookup_fill_value,
-            _host_lookup_alpha_powers,
             device_lookup_additive_part: _,
             device_decoder_lookup_fill_value: _,
             _device_lookup_alpha_powers: _,
@@ -659,9 +644,6 @@ impl<E> GpuGKRForwardSetup<E> {
         GpuGKRForwardSetupHostKeepalive {
             _tracing_ranges,
             _callbacks,
-            _host_lookup_additive_part,
-            _host_decoder_lookup_fill_value,
-            _host_lookup_alpha_powers,
             _marker: PhantomData,
         }
     }
@@ -1390,14 +1372,6 @@ mod tests {
             lookup_alpha,
             generic_lookup_width,
         );
-        let actual_host_powers = read_host_ext_allocation(
-            scheduled
-                ._host_lookup_alpha_powers
-                .as_ref()
-                .expect("expected host alpha powers"),
-        );
-        assert_eq!(actual_host_powers, expected_powers);
-
         let actual_device_powers = read_ext_allocation(
             scheduled
                 ._device_lookup_alpha_powers
