@@ -61,9 +61,9 @@ callback): must remain alive until the read callback has been scheduled on
 exec_stream.
 
 **Proof output buffers**: all proof data is assembled inside exec-stream
-callbacks into non-pool heap memory (`Vec`, `BTreeMap`,
-`Arc<Mutex<Option<Proof>>>`). No context allocation needs to outlive the
-scheduling phase.
+callbacks into non-pool heap memory (`Vec`, `BTreeMap`, `Option<Proof>` held in
+owned host-backed state). No context allocation needs to outlive the scheduling
+phase.
 
 ## H2D copies
 

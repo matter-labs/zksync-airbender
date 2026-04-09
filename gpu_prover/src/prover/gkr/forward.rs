@@ -5,12 +5,12 @@ use std::ptr::null;
 use std::sync::Arc;
 
 use cs::definitions::{
-    GKRAddress, MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX,
+    gkr::{AddressSpaceType, RamWordRepresentation, DECODER_LOOKUP_FORMAL_SET_INDEX},
+    GKRAddress, VirtualSetupPoly, MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX,
     MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX,
     MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX,
     MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX, MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX,
-    MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX, VirtualSetupPoly,
-    gkr::{AddressSpaceType, DECODER_LOOKUP_FORMAL_SET_INDEX, RamWordRepresentation},
+    MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX,
 };
 use cs::gkr_compiler::{
     CompiledAddressSpaceRelationStrict, CompiledAddressStrict, CompiledMemoryTimestamp,
@@ -24,24 +24,24 @@ use era_cudart::result::CudaResult;
 use era_cudart::{cuda_kernel_declaration, cuda_kernel_signature_arguments_and_function};
 use field::{Field, FieldExtension, PrimeField};
 use prover::gkr::high_bits_offset_for_inits_and_teardowns;
-use prover::gkr::prover::GKRExternalChallenges;
 use prover::gkr::prover::dimension_reduction::forward::DimensionReducingInputOutput;
+use prover::gkr::prover::GKRExternalChallenges;
 
 use super::backward::GpuGKRDimensionReducingBackwardState;
-use super::setup::{GpuGKRForwardSetup, bootstrap_storage_from_trace_holders};
+use super::setup::{bootstrap_storage_from_trace_holders, GpuGKRForwardSetup};
 use super::stage1::GpuGKRStage1Output;
 use super::transform::normalize_compiled_circuit_for_gpu;
 use super::{GpuBaseFieldPoly, GpuBaseFieldSourceKind, GpuExtensionFieldPoly, GpuGKRStorage};
 use crate::allocator::tracker::AllocationPlacement;
 use crate::ops::simple::{
-    Add, BinaryOp, Mul, SetByRef, SetByVal, Sub, add_into_y, mul_into_y, set_by_ref, set_by_val,
-    sub_into_x,
+    add_into_y, mul_into_y, set_by_ref, set_by_val, sub_into_x, Add, BinaryOp, Mul, SetByRef,
+    SetByVal, Sub,
 };
 use crate::primitives::context::{DeviceAllocation, HostAllocation, ProverContext, UnsafeAccessor};
 use crate::primitives::device_structures::DeviceVectorChunk;
 use crate::primitives::device_tracing::Range;
 use crate::primitives::field::{BF, E4};
-use crate::primitives::utils::{WARP_SIZE, get_grid_block_dims_for_threads_count};
+use crate::primitives::utils::{get_grid_block_dims_for_threads_count, WARP_SIZE};
 
 pub(crate) struct GpuGKRForwardOutput<B, E> {
     tracing_ranges: Vec<Range>,
@@ -2987,11 +2987,9 @@ mod tests {
         let copied = storage
             .try_get_base_poly(copy_output)
             .expect("copy output must remain in base storage");
-        assert!(
-            storage
-                .get_base_layer(copy_input)
-                .shares_backing_with(copied)
-        );
+        assert!(storage
+            .get_base_layer(copy_input)
+            .shares_backing_with(copied));
 
         let expected_product = product_lhs_values
             .iter()

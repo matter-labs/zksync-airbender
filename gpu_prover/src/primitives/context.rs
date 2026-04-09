@@ -364,11 +364,18 @@ impl<T: ?Sized> UnsafeMutAccessor<T> {
         &mut *(self.0)
     }
 
-    pub unsafe fn set(&self, value: T)
+    pub unsafe fn write(&self, value: T)
     where
         T: Sized,
     {
-        *(self.0) = value;
+        std::ptr::write(self.0, value);
+    }
+
+    pub unsafe fn replace(&self, value: T) -> T
+    where
+        T: Sized,
+    {
+        std::ptr::replace(self.0, value)
     }
 }
 
