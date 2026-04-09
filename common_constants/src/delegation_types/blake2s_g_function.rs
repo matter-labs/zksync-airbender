@@ -37,20 +37,76 @@ pub unsafe fn blake_g_function_csr_trigger_delegation_reduced_rounds(
     unsafe {
         core::arch::asm!(
             "addi x12, x0, {imm}",
+            // can not use seq macro here easily, will hand-copy by 8
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+
+            in("x10") states_ptr.addr(),
+            in("x11") input_ptr.addr(),
             out("x12") _,
             imm = const BLAKE2S_G_FUNCTION_REDUCED_ROUNDS_INITIAL_CONTROL_REGISTER,
             options(nostack, preserves_flags)
         );
-
-        seq_macro::seq!(_i in 0..56 {
-            core::arch::asm!(
-                "csrrw x0, 0x7C8, x0",
-                in("x10") states_ptr.addr(),
-                in("x11") input_ptr.addr(),
-                out("x12") _,
-                options(nostack, preserves_flags)
-            );
-        });
     }
 }
 
@@ -62,21 +118,104 @@ pub unsafe fn blake_g_function_csr_trigger_delegation_full_rounds(
 ) {
     unsafe {
         core::arch::asm!(
-            "addi x12, {imm}",
+            "addi x12, x0, {imm}",
+            // can not use seq macro here easily, will hand-copy by 8
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+            "csrrw x0, 0x7C8, x0",
+
+            in("x10") states_ptr.addr(),
+            in("x11") input_ptr.addr(),
             out("x12") _,
             imm = const BLAKE2S_G_FUNCTION_FULL_ROUNDS_INITIAL_CONTROL_REGISTER,
             options(nostack, preserves_flags)
         );
-
-        seq_macro::seq!(_i in 0..80 {
-            core::arch::asm!(
-                "csrrw x0, 0x7C8, x0",
-                in("x10") states_ptr.addr(),
-                in("x11") input_ptr.addr(),
-                out("x12") _,
-                options(nostack, preserves_flags)
-            );
-        });
     }
 }
 

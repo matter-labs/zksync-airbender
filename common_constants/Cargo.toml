@@ -11,4 +11,3 @@ categories.workspace = true
 
 [dependencies]
 serde.workspace = true
-seq-macro.workspace = true
