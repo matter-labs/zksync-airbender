@@ -222,6 +222,10 @@ struct WhirHostUpload<T> {
     _phantom: std::marker::PhantomData<T>,
 }
 
+struct ScheduledUnknownCosetBaseFieldQueryKeepalive {
+    _callbacks: Callbacks<'static>,
+}
+
 struct ScheduledUnknownCosetBaseFieldQuery {
     callbacks: Callbacks<'static>,
     query_index: HostAllocation<[u32]>,
@@ -231,6 +235,24 @@ struct ScheduledUnknownCosetBaseFieldQuery {
     columns_count: usize,
     coset_tree_size: usize,
     log_lde_factor: u32,
+}
+
+impl ScheduledUnknownCosetBaseFieldQuery {
+    fn into_keepalive(self) -> ScheduledUnknownCosetBaseFieldQueryKeepalive {
+        let Self {
+            callbacks,
+            query_index: _,
+            value_leafs: _,
+            path_merkle_paths: _,
+            values_per_leaf: _,
+            columns_count: _,
+            coset_tree_size: _,
+            log_lde_factor: _,
+        } = self;
+        ScheduledUnknownCosetBaseFieldQueryKeepalive {
+            _callbacks: callbacks,
+        }
+    }
 }
 
 pub(crate) struct ScheduledWhirProofState {
@@ -253,9 +275,9 @@ pub(crate) struct GpuWhirFoldScheduledExecution {
     #[allow(dead_code)]
     _delinearization_challenges: Vec<WhirHostUpload<E4>>,
     #[allow(dead_code)]
-    _base_queries: Vec<[Vec<ScheduledUnknownCosetBaseFieldQuery>; 3]>,
+    _base_queries: Vec<[Vec<ScheduledUnknownCosetBaseFieldQueryKeepalive>; 3]>,
     #[allow(dead_code)]
-    _recursive_queries: Vec<Vec<crate::prover::whir::GpuWhirScheduledExtensionQuery>>,
+    _recursive_queries: Vec<Vec<crate::prover::whir::GpuWhirScheduledExtensionQueryKeepalive>>,
     #[allow(dead_code)]
     _final_callbacks: Callbacks<'static>,
     shared_state: Box<ScheduledWhirProofState>,
@@ -2311,7 +2333,12 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         }
         queries_range.end(stream)?;
         tracing_ranges.push(queries_range);
-        base_queries.push(round_base_queries);
+        base_queries.push(round_base_queries.map(|queries| {
+            queries
+                .into_iter()
+                .map(ScheduledUnknownCosetBaseFieldQuery::into_keepalive)
+                .collect()
+        }));
         query_index_callbacks.push(query_index_callbacks_for_round);
         query_indexes.push(query_indexes_host);
         delinearization_challenges.push(delinearization_upload);
@@ -2580,7 +2607,12 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         queries_range.end(stream)?;
         tracing_ranges.push(queries_range);
         recursive_caps_keepalive.push(oracle_to_query.into_host_tree_caps());
-        recursive_queries.push(round_recursive_queries);
+        recursive_queries.push(
+            round_recursive_queries
+                .into_iter()
+                .map(crate::prover::whir::GpuWhirScheduledExtensionQuery::into_keepalive)
+                .collect(),
+        );
         query_index_callbacks.push(query_index_callbacks_for_round);
         query_indexes.push(query_indexes_host);
         delinearization_challenges.push(delinearization_upload);
@@ -2730,7 +2762,12 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         queries_range.end(stream)?;
         tracing_ranges.push(queries_range);
         recursive_caps_keepalive.push(oracle_to_query.into_host_tree_caps());
-        recursive_queries.push(round_recursive_queries);
+        recursive_queries.push(
+            round_recursive_queries
+                .into_iter()
+                .map(crate::prover::whir::GpuWhirScheduledExtensionQuery::into_keepalive)
+                .collect(),
+        );
         query_index_callbacks.push(query_index_callbacks_for_round);
         query_indexes.push(query_indexes_host);
         pow_nonces.push(nonce_host);
