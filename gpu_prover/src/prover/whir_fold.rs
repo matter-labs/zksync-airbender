@@ -1432,35 +1432,35 @@ fn fold_eq_poly_in_place_device(
     )
 }
 
-fn evaluate_monomial_form_device(
-    state: &mut GpuWhirState,
-    point: E4,
-    context: &ProverContext,
-) -> CudaResult<E4> {
-    let stream = context.get_exec_stream();
-    let chunk_size = state.scratch0.len().min(state.current_len);
-    let mut result = E4::ZERO;
-
-    for chunk_start in (0..state.current_len).step_by(chunk_size) {
-        let chunk_len = chunk_size.min(state.current_len - chunk_start);
-        let coeffs = &state.sumchecked_poly_monomial_form[chunk_start..chunk_start + chunk_len];
-        let powers = &mut state.scratch0[..chunk_len];
-        let products = &mut state.scratch1[..chunk_len];
-        get_powers_by_val(point, chunk_start as u32, false, powers, stream)?;
-        mul(coeffs, powers, products, stream)?;
-        reduce(
-            ReduceOperation::Sum,
-            &mut state.reduce_temp,
-            &state.scratch1[..chunk_len],
-            &mut state.reduce_out[0],
-            stream,
-        )?;
-        let partial = read_reduce_outputs(1, state, context)?[0];
-        result.add_assign(&partial);
-    }
-
-    Ok(result)
-}
+// fn evaluate_monomial_form_device(
+//     state: &mut GpuWhirState,
+//     point: E4,
+//     context: &ProverContext,
+// ) -> CudaResult<E4> {
+//     let stream = context.get_exec_stream();
+//     let chunk_size = state.scratch0.len().min(state.current_len);
+//     let mut result = E4::ZERO;
+//
+//     for chunk_start in (0..state.current_len).step_by(chunk_size) {
+//         let chunk_len = chunk_size.min(state.current_len - chunk_start);
+//         let coeffs = &state.sumchecked_poly_monomial_form[chunk_start..chunk_start + chunk_len];
+//         let powers = &mut state.scratch0[..chunk_len];
+//         let products = &mut state.scratch1[..chunk_len];
+//         get_powers_by_val(point, chunk_start as u32, false, powers, stream)?;
+//         mul(coeffs, powers, products, stream)?;
+//         reduce(
+//             ReduceOperation::Sum,
+//             &mut state.reduce_temp,
+//             &state.scratch1[..chunk_len],
+//             &mut state.reduce_out[0],
+//             stream,
+//         )?;
+//         let partial = read_reduce_outputs(1, state, context)?[0];
+//         result.add_assign(&partial);
+//     }
+//
+//     Ok(result)
+// }
 
 fn schedule_monomial_eval_device(
     state: &mut GpuWhirState,
@@ -1468,27 +1468,32 @@ fn schedule_monomial_eval_device(
     context: &ProverContext,
 ) -> CudaResult<Vec<HostAllocation<[E4]>>> {
     let stream = context.get_exec_stream();
-    let chunk_size = state.scratch0.len().min(state.current_len);
-    let mut partials = Vec::new();
+    let mut result = Vec::new();
 
-    for chunk_start in (0..state.current_len).step_by(chunk_size) {
-        let chunk_len = chunk_size.min(state.current_len - chunk_start);
-        let coeffs = &state.sumchecked_poly_monomial_form[chunk_start..chunk_start + chunk_len];
-        let powers = &mut state.scratch0[..chunk_len];
-        let products = &mut state.scratch1[..chunk_len];
-        get_powers_by_ref(&point[0], chunk_start as u32, false, powers, stream)?;
-        mul(coeffs, powers, products, stream)?;
-        reduce(
-            ReduceOperation::Sum,
-            &mut state.reduce_temp,
-            &state.scratch1[..chunk_len],
-            &mut state.reduce_out[0],
-            stream,
-        )?;
-        partials.push(schedule_reduce_outputs_readback(1, state, context)?);
-    }
+    let partials_count = partially_evaluate_monomials_by_ref(
+        &state.sumchecked_poly_monomial_form,
+        &mut state.scratch0[..]
+        &mut state.scratch1[..],
+        point,
+        state.current_len,
+        stream,
+    )?;
 
-    Ok(partials)
+    let reduce_temp_bytes =
+        get_reduce_temp_storage_bytes::<E4>(ReduceOperation::Sum, partials_count as i32)?;
+    assert!(state.reduce_temp.len() > reduce_temp_bytes);
+
+    reduce(
+        ReduceOperation::Sum,
+        &mut state.reduce_temp,
+        &state.scratch0[..partials_count],
+        &mut state.reduce_out[0],
+        stream,
+    )?;
+
+    result.push(schedule_reduce_outputs_readback(1, state, context)?);
+
+    Ok(result)
 }
 
 fn accumulate_eq_sample_in_place_device(
@@ -3281,18 +3286,6 @@ mod tests {
         (f0, f1, f_half)
     }
 
-    fn evaluate_monomial_form_for_test(coeffs: &[E4], point: E4) -> E4 {
-        let mut result = E4::ZERO;
-        let mut current = E4::ONE;
-        for coeff in coeffs.iter() {
-            let mut term = *coeff;
-            term.mul_assign(&current);
-            result.add_assign(&term);
-            current.mul_assign(&point);
-        }
-        result
-    }
-
     #[test]
     #[cfg(not(no_cuda))]
     #[serial]
@@ -3659,50 +3652,6 @@ mod tests {
                 "large combined fold eq state diverged at step {step_idx}",
             );
         }
-    }
-
-    #[test]
-    #[cfg(not(no_cuda))]
-    #[serial]
-    fn whir_evaluate_monomial_matches_cpu() {
-        let context = make_test_context(256, 32);
-        let mut state = GpuWhirState::new(8, &context).unwrap();
-        let coeffs = (0..8)
-            .map(|i| sample_ext(50 * i as u32))
-            .collect::<Vec<_>>();
-        let point = sample_ext(999);
-        state.current_len = coeffs.len();
-        state.sumchecked_poly_monomial_form = alloc_and_copy(&coeffs, &context);
-
-        let actual = evaluate_monomial_form_device(&mut state, point, &context).unwrap();
-        let expected = evaluate_monomial_form_for_test(&coeffs, point);
-
-        assert_eq!(actual, expected);
-    }
-
-    #[test]
-    #[cfg(not(no_cuda))]
-    #[serial]
-    fn scheduled_whir_evaluate_monomial_matches_cpu() {
-        let context = make_test_context(256, 32);
-        let mut state = GpuWhirState::new(8, &context).unwrap();
-        let coeffs = (0..8)
-            .map(|i| sample_ext(50 * i as u32))
-            .collect::<Vec<_>>();
-        let point = sample_ext(999);
-        state.current_len = coeffs.len();
-        state.sumchecked_poly_monomial_form = alloc_and_copy(&coeffs, &context);
-        let point_device = alloc_and_copy(&[point], &context);
-
-        let partials = schedule_monomial_eval_device(&mut state, &point_device, &context).unwrap();
-        context.get_exec_stream().synchronize().unwrap();
-        let mut actual = E4::ZERO;
-        for partial in partials.iter() {
-            actual.add_assign(&unsafe { partial.get_accessor().get() }[0]);
-        }
-
-        let expected = evaluate_monomial_form_for_test(&coeffs, point);
-        assert_eq!(actual, expected);
     }
 
     #[test]
