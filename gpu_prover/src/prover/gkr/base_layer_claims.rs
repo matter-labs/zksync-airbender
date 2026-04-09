@@ -1,7 +1,6 @@
 use std::collections::BTreeMap;
-use std::sync::{Arc, Mutex};
 
-use cs::definitions::{GKRAddress, TIMESTAMP_COLUMNS_NUM_BITS, VirtualSetupPoly};
+use cs::definitions::{GKRAddress, VirtualSetupPoly, TIMESTAMP_COLUMNS_NUM_BITS};
 use cs::gkr_compiler::GKRLayerDescription;
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
@@ -9,17 +8,17 @@ use era_cudart::slice::DeviceSlice;
 use field::{Field, FieldExtension};
 
 use super::backward::{
-    GKR_TRACE_HOLDER_PARTIALS_COLUMNS_PER_CHUNK, GpuDimensionReducingKernelSet,
-    launch_build_eq_values, launch_trace_holder_block_partials,
+    launch_build_eq_values, launch_trace_holder_block_partials, GpuDimensionReducingKernelSet,
+    GKR_TRACE_HOLDER_PARTIALS_COLUMNS_PER_CHUNK,
 };
 use super::transform::normalize_layer_for_gpu;
 use crate::allocator::tracker::AllocationPlacement;
-use crate::ops::cub::CUB_TEMP_STORAGE_EXTRA_ALIGNMENT_LOG2;
 use crate::ops::cub::device_reduce::{
-    ReduceOperation, batch_reduce, get_batch_reduce_temp_storage_bytes,
+    batch_reduce, get_batch_reduce_temp_storage_bytes, ReduceOperation,
 };
+use crate::ops::cub::CUB_TEMP_STORAGE_EXTRA_ALIGNMENT_LOG2;
 use crate::primitives::callbacks::Callbacks;
-use crate::primitives::context::{HostAllocation, ProverContext};
+use crate::primitives::context::{HostAllocation, ProverContext, UnsafeMutAccessor};
 use crate::primitives::device_structures::DeviceMatrix;
 use crate::primitives::device_tracing::Range;
 use crate::primitives::field::BF;
@@ -55,14 +54,12 @@ pub(crate) struct ScheduledBaseLayerClaimsState<E> {
 }
 
 pub(crate) fn clone_base_layer_claims_result<E>(
-    shared_state: &Arc<Mutex<ScheduledBaseLayerClaimsState<E>>>,
+    shared_state: UnsafeMutAccessor<ScheduledBaseLayerClaimsState<E>>,
 ) -> GpuGKRBaseLayerTailOutput<E>
 where
     E: Clone,
 {
-    shared_state
-        .lock()
-        .unwrap()
+    unsafe { shared_state.get() }
         .result
         .as_ref()
         .cloned()
@@ -70,14 +67,14 @@ where
 }
 
 pub(crate) fn fill_base_layer_claim_vectors<E>(
-    shared_state: &Arc<Mutex<ScheduledBaseLayerClaimsState<E>>>,
+    shared_state: UnsafeMutAccessor<ScheduledBaseLayerClaimsState<E>>,
     mem_dst: &mut [E],
     wit_dst: &mut [E],
     setup_dst: &mut [E],
 ) where
     E: Copy,
 {
-    let state = shared_state.lock().unwrap();
+    let state = unsafe { shared_state.get() };
     let result = state
         .result
         .as_ref()
@@ -103,12 +100,12 @@ pub(crate) fn fill_base_layer_claim_vectors<E>(
 }
 
 pub(crate) fn fill_mem_polys_claims<E>(
-    shared_state: &Arc<Mutex<ScheduledBaseLayerClaimsState<E>>>,
+    shared_state: UnsafeMutAccessor<ScheduledBaseLayerClaimsState<E>>,
     dst: &mut [E],
 ) where
     E: Copy,
 {
-    let state = shared_state.lock().unwrap();
+    let state = unsafe { shared_state.get() };
     let src = &state
         .result
         .as_ref()
@@ -123,12 +120,12 @@ pub(crate) fn fill_mem_polys_claims<E>(
 }
 
 pub(crate) fn fill_wit_polys_claims<E>(
-    shared_state: &Arc<Mutex<ScheduledBaseLayerClaimsState<E>>>,
+    shared_state: UnsafeMutAccessor<ScheduledBaseLayerClaimsState<E>>,
     dst: &mut [E],
 ) where
     E: Copy,
 {
-    let state = shared_state.lock().unwrap();
+    let state = unsafe { shared_state.get() };
     let src = &state
         .result
         .as_ref()
@@ -143,12 +140,12 @@ pub(crate) fn fill_wit_polys_claims<E>(
 }
 
 pub(crate) fn fill_setup_polys_claims<E>(
-    shared_state: &Arc<Mutex<ScheduledBaseLayerClaimsState<E>>>,
+    shared_state: UnsafeMutAccessor<ScheduledBaseLayerClaimsState<E>>,
     dst: &mut [E],
 ) where
     E: Copy,
 {
-    let state = shared_state.lock().unwrap();
+    let state = unsafe { shared_state.get() };
     let src = &state
         .result
         .as_ref()
@@ -163,14 +160,12 @@ pub(crate) fn fill_setup_polys_claims<E>(
 }
 
 pub(crate) fn clone_base_layer_extra_evaluations_from_caching_relations<E>(
-    shared_state: &Arc<Mutex<ScheduledBaseLayerClaimsState<E>>>,
+    shared_state: UnsafeMutAccessor<ScheduledBaseLayerClaimsState<E>>,
 ) -> BTreeMap<GKRAddress, E>
 where
     E: Clone,
 {
-    shared_state
-        .lock()
-        .unwrap()
+    unsafe { shared_state.get() }
         .result
         .as_ref()
         .expect("base-layer claims result must be available")
@@ -179,14 +174,12 @@ where
 }
 
 pub(crate) fn clone_base_layer_extra_evaluations_transcript_batches<E>(
-    shared_state: &Arc<Mutex<ScheduledBaseLayerClaimsState<E>>>,
+    shared_state: UnsafeMutAccessor<ScheduledBaseLayerClaimsState<E>>,
 ) -> Vec<Vec<E>>
 where
     E: Clone,
 {
-    shared_state
-        .lock()
-        .unwrap()
+    unsafe { shared_state.get() }
         .result
         .as_ref()
         .expect("base-layer claims result must be available")
@@ -198,19 +191,22 @@ pub(crate) struct GpuGKRBaseLayerClaimsScheduledExecution<E> {
     _tracing_ranges: Vec<Range>,
     _start_callbacks: Callbacks<'static>,
     _finish_callbacks: Callbacks<'static>,
-    shared_state: Arc<Mutex<ScheduledBaseLayerClaimsState<E>>>,
+    shared_state: Box<ScheduledBaseLayerClaimsState<E>>,
 }
 
 impl<E> GpuGKRBaseLayerClaimsScheduledExecution<E> {
-    pub(crate) fn shared_state_handle(&self) -> Arc<Mutex<ScheduledBaseLayerClaimsState<E>>> {
-        Arc::clone(&self.shared_state)
+    pub(crate) fn shared_state_handle(
+        &mut self,
+    ) -> UnsafeMutAccessor<ScheduledBaseLayerClaimsState<E>> {
+        UnsafeMutAccessor::new(self.shared_state.as_mut())
     }
 
     pub(crate) fn wait(self, context: &ProverContext) -> CudaResult<GpuGKRBaseLayerTailOutput<E>> {
         context.get_exec_stream().synchronize()?;
-        self.shared_state
-            .lock()
-            .unwrap()
+        let Self {
+            mut shared_state, ..
+        } = self;
+        shared_state
             .result
             .take()
             .ok_or(era_cudart_sys::CudaError::ErrorInvalidValue)
@@ -491,7 +487,8 @@ where
         context,
     )?;
 
-    let shared_state = Arc::new(Mutex::new(ScheduledBaseLayerClaimsState { result: None }));
+    let mut shared_state = Box::new(ScheduledBaseLayerClaimsState { result: None });
+    let shared_state_handle = UnsafeMutAccessor::new(shared_state.as_mut());
     let finalize_range = Range::new("gkr.base_layer_claims.finalize")?;
     finalize_range.start(stream)?;
     let mut finish_callbacks = Callbacks::new();
@@ -499,7 +496,7 @@ where
     let mem_polys_claims_accessor = mem_polys_claims.get_accessor();
     let wit_polys_claims_accessor = wit_polys_claims.get_accessor();
     let setup_polys_claims_accessor = setup_polys_claims.get_accessor();
-    let shared_state_for_callback = Arc::clone(&shared_state);
+    let shared_state_for_callback = shared_state_handle;
     let trace_len_log2 = setup_trace_holder.log_domain_size;
     finish_callbacks.schedule(
         move || unsafe {
@@ -524,7 +521,7 @@ where
                     &wit_polys_claims,
                     &setup_polys_claims,
                 );
-            shared_state_for_callback.lock().unwrap().result = Some(GpuGKRBaseLayerTailOutput {
+            shared_state_for_callback.get_mut().result = Some(GpuGKRBaseLayerTailOutput {
                 completed_claims,
                 extra_evaluations_from_caching_relations,
                 extra_evaluations_transcript_batches,
@@ -603,7 +600,7 @@ where
 mod tests {
     use std::collections::BTreeMap;
 
-    use cs::definitions::{GKRAddress, TIMESTAMP_COLUMNS_NUM_BITS, VirtualSetupPoly};
+    use cs::definitions::{GKRAddress, VirtualSetupPoly, TIMESTAMP_COLUMNS_NUM_BITS};
     use cs::gkr_compiler::GKRLayerDescription;
     use era_cudart::memory::memory_copy_async;
     use field::{Field, FieldExtension, PrimeField};

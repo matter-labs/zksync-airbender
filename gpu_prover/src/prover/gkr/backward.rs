@@ -3,14 +3,13 @@ use std::collections::{BTreeMap, VecDeque};
 use std::mem::align_of;
 use std::ptr::{null, null_mut};
 use std::slice;
-use std::sync::{Arc, Mutex};
 
 use cs::definitions::{
-    GKRAddress, MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX,
+    gkr::AddressSpaceType, GKRAddress, MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX,
     MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX,
     MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX,
     MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX, MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX,
-    MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX, gkr::AddressSpaceType,
+    MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX,
 };
 use cs::gkr_compiler::{
     GKRCircuitArtifact, GKRLayerDescription, InitsOrTeardownsTimestampAndValue, NoFieldGKRRelation,
@@ -44,7 +43,8 @@ use prover::transcript::Seed;
 pub(crate) use super::backward_kernels::*;
 use super::transform::normalize_compiled_circuit_for_gpu;
 use super::{
-    GpuBaseFieldPolySource, GpuBaseFieldPolySourceAfterOneFoldingLaunchDescriptor,
+    alloc_host_and_schedule_copy, GpuBaseFieldPolySource,
+    GpuBaseFieldPolySourceAfterOneFoldingLaunchDescriptor,
     GpuBaseFieldPolySourceAfterTwoFoldingsLaunchDescriptor,
     GpuExtensionFieldPolyContinuingLaunchDescriptor, GpuExtensionFieldPolyInitialSource,
     GpuGKRStorage, GpuSumcheckRound0HostLaunchDescriptors, GpuSumcheckRound0LaunchDescriptors,
@@ -53,20 +53,22 @@ use super::{
     GpuSumcheckRound2HostLaunchDescriptors, GpuSumcheckRound2PreparedStorage,
     GpuSumcheckRound2ScheduledLaunchDescriptors, GpuSumcheckRound3AndBeyondHostLaunchDescriptors,
     GpuSumcheckRound3AndBeyondPreparedStorage,
-    GpuSumcheckRound3AndBeyondScheduledLaunchDescriptors, alloc_host_and_schedule_copy,
+    GpuSumcheckRound3AndBeyondScheduledLaunchDescriptors,
 };
 use crate::allocator::tracker::AllocationPlacement;
-use crate::ops::cub::CUB_TEMP_STORAGE_EXTRA_ALIGNMENT_LOG2;
 use crate::ops::cub::device_reduce::{
-    Reduce, ReduceOperation, get_reduce_temp_storage_bytes, reduce,
+    get_reduce_temp_storage_bytes, reduce, Reduce, ReduceOperation,
 };
-use crate::ops::simple::{BinaryOp, Mul, mul_into_y};
+use crate::ops::cub::CUB_TEMP_STORAGE_EXTRA_ALIGNMENT_LOG2;
+use crate::ops::simple::{mul_into_y, BinaryOp, Mul};
 use crate::primitives::callbacks::Callbacks;
-use crate::primitives::context::{DeviceAllocation, HostAllocation, ProverContext, UnsafeAccessor};
+use crate::primitives::context::{
+    DeviceAllocation, HostAllocation, ProverContext, UnsafeAccessor, UnsafeMutAccessor,
+};
 use crate::primitives::device_structures::{DeviceVectorChunk, DeviceVectorChunkMut};
 use crate::primitives::device_tracing::Range;
 use crate::primitives::field::{BF, E4};
-use crate::primitives::utils::{WARP_SIZE, get_grid_block_dims_for_threads_count};
+use crate::primitives::utils::{get_grid_block_dims_for_threads_count, WARP_SIZE};
 
 fn remap_constraint_input(
     mapping: &mut BTreeMap<GKRAddress, usize>,
@@ -104,19 +106,15 @@ fn memory_query_as_flattened_relation<E: Field + FieldExtension<BF>>(
         }
         cs::gkr_compiler::CompiledAddressSpaceRelationStrict::IsRam(offset) => {
             assert_eq!(AddressSpaceType::RAM as u8, 1);
-            assert!(
-                result
-                    .insert(GKRAddress::BaseLayerMemory(offset), E::ONE)
-                    .is_none()
-            );
+            assert!(result
+                .insert(GKRAddress::BaseLayerMemory(offset), E::ONE)
+                .is_none());
         }
         cs::gkr_compiler::CompiledAddressSpaceRelationStrict::IsRegister(offset) => {
             assert_eq!(AddressSpaceType::Register as u8, 0);
-            assert!(
-                result
-                    .insert(GKRAddress::BaseLayerMemory(offset), E::MINUS_ONE)
-                    .is_none()
-            );
+            assert!(result
+                .insert(GKRAddress::BaseLayerMemory(offset), E::MINUS_ONE)
+                .is_none());
             constant_term.add_assign_base(&BF::ONE);
         }
     }
@@ -138,11 +136,9 @@ fn memory_query_as_flattened_relation<E: Field + FieldExtension<BF>>(
         cs::gkr_compiler::CompiledAddressStrict::U16Space(offset) => {
             let challenge = external_challenges.permutation_argument_linearization_challenges
                 [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
-            assert!(
-                result
-                    .insert(GKRAddress::BaseLayerMemory(*offset), challenge)
-                    .is_none()
-            );
+            assert!(result
+                .insert(GKRAddress::BaseLayerMemory(*offset), challenge)
+                .is_none());
         }
         cs::gkr_compiler::CompiledAddressStrict::U32Space([low, high]) => {
             for (idx, offset) in [
@@ -151,11 +147,9 @@ fn memory_query_as_flattened_relation<E: Field + FieldExtension<BF>>(
             ] {
                 let challenge =
                     external_challenges.permutation_argument_linearization_challenges[idx];
-                assert!(
-                    result
-                        .insert(GKRAddress::BaseLayerMemory(offset), challenge)
-                        .is_none()
-                );
+                assert!(result
+                    .insert(GKRAddress::BaseLayerMemory(offset), challenge)
+                    .is_none());
             }
         }
         cs::gkr_compiler::CompiledAddressStrict::U32SpaceGeneric(..) => {
@@ -172,32 +166,26 @@ fn memory_query_as_flattened_relation<E: Field + FieldExtension<BF>>(
                     .permutation_argument_linearization_challenges
                     [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
                 challenge.mul_assign_by_base(&BF::from_u32_unchecked(c as u32));
-                assert!(
-                    result
-                        .insert(GKRAddress::BaseLayerMemory(offset), challenge)
-                        .is_none()
-                );
+                assert!(result
+                    .insert(GKRAddress::BaseLayerMemory(offset), challenge)
+                    .is_none());
             }
             {
                 let mut challenge = external_challenges
                     .permutation_argument_linearization_challenges
                     [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
-                assert!(
-                    result
-                        .insert(GKRAddress::BaseLayerMemory(*low_base), challenge)
-                        .is_none()
-                );
+                assert!(result
+                    .insert(GKRAddress::BaseLayerMemory(*low_base), challenge)
+                    .is_none());
                 challenge.mul_assign_by_base(&BF::from_u32_unchecked(*low_offset as u32));
                 constant_term.add_assign(&challenge);
             }
             {
                 let challenge = external_challenges.permutation_argument_linearization_challenges
                     [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
-                assert!(
-                    result
-                        .insert(GKRAddress::BaseLayerMemory(*high), challenge)
-                        .is_none()
-                );
+                assert!(result
+                    .insert(GKRAddress::BaseLayerMemory(*high), challenge)
+                    .is_none());
             }
         }
     }
@@ -209,22 +197,18 @@ fn memory_query_as_flattened_relation<E: Field + FieldExtension<BF>>(
                 let mut challenge = external_challenges
                     .permutation_argument_linearization_challenges
                     [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
-                assert!(
-                    result
-                        .insert(GKRAddress::BaseLayerMemory(ts[0]), challenge)
-                        .is_none()
-                );
+                assert!(result
+                    .insert(GKRAddress::BaseLayerMemory(ts[0]), challenge)
+                    .is_none());
                 challenge.mul_assign_by_base(&BF::from_u32_unchecked(rel.timestamp_offset as u32));
                 constant_term.add_assign(&challenge);
             }
             {
                 let challenge = external_challenges.permutation_argument_linearization_challenges
                     [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
-                assert!(
-                    result
-                        .insert(GKRAddress::BaseLayerMemory(ts[1]), challenge)
-                        .is_none()
-                );
+                assert!(result
+                    .insert(GKRAddress::BaseLayerMemory(ts[1]), challenge)
+                    .is_none());
             }
         }
     }
@@ -238,11 +222,9 @@ fn memory_query_as_flattened_relation<E: Field + FieldExtension<BF>>(
             ] {
                 let challenge =
                     external_challenges.permutation_argument_linearization_challenges[idx];
-                assert!(
-                    result
-                        .insert(GKRAddress::BaseLayerMemory(offset), challenge)
-                        .is_none()
-                );
+                assert!(result
+                    .insert(GKRAddress::BaseLayerMemory(offset), challenge)
+                    .is_none());
             }
         }
         cs::definitions::gkr::RamWordRepresentation::U8Limbs(read_value_bytes) => {
@@ -261,17 +243,13 @@ fn memory_query_as_flattened_relation<E: Field + FieldExtension<BF>>(
             ] {
                 let mut challenge =
                     external_challenges.permutation_argument_linearization_challenges[idx];
-                assert!(
-                    result
-                        .insert(GKRAddress::BaseLayerMemory(offset_low), challenge)
-                        .is_none()
-                );
+                assert!(result
+                    .insert(GKRAddress::BaseLayerMemory(offset_low), challenge)
+                    .is_none());
                 challenge.mul_assign_by_base(&byte_shift);
-                assert!(
-                    result
-                        .insert(GKRAddress::BaseLayerMemory(offset_high), challenge)
-                        .is_none()
-                );
+                assert!(result
+                    .insert(GKRAddress::BaseLayerMemory(offset_high), challenge)
+                    .is_none());
             }
         }
     }
@@ -294,11 +272,9 @@ fn single_column_lookup_as_flattened_relation<
     };
 
     for (coeff, address) in rel.input.linear_terms.iter() {
-        assert!(
-            result
-                .insert(*address, E::from_base(BF::from_u32_unchecked(*coeff)))
-                .is_none()
-        );
+        assert!(result
+            .insert(*address, E::from_base(BF::from_u32_unchecked(*coeff)))
+            .is_none());
     }
     constant_term.add_assign_base(&BF::from_u32_unchecked(rel.input.constant));
 
@@ -334,6 +310,99 @@ fn vector_lookup_as_flattened_relation<
     }
 
     (result, constant_term)
+}
+
+fn lookup_constraint_term(
+    coeff: u32,
+    source: GpuGKRMainLayerDeferredChallengeSource,
+    power: u32,
+) -> GpuGKRMainLayerConstraintChallengeTerm {
+    GpuGKRMainLayerConstraintChallengeTerm {
+        coeff: BF::from_u32_unchecked(coeff),
+        source,
+        power,
+    }
+}
+
+fn single_column_lookup_as_flattened_relation_template<const WITH_ADDITIVE_PART: bool>(
+    rel: &cs::definitions::gkr::NoFieldSingleColumnLookupRelation,
+) -> (
+    BTreeMap<GKRAddress, Vec<GpuGKRMainLayerConstraintChallengeTerm>>,
+    Vec<GpuGKRMainLayerConstraintChallengeTerm>,
+) {
+    let mut result = BTreeMap::new();
+    let mut constant_terms = Vec::new();
+    if WITH_ADDITIVE_PART {
+        constant_terms.push(lookup_constraint_term(
+            1,
+            GpuGKRMainLayerDeferredChallengeSource::LookupAdditive,
+            1,
+        ));
+    }
+    if rel.input.constant != 0 {
+        constant_terms.push(lookup_constraint_term(
+            rel.input.constant,
+            GpuGKRMainLayerDeferredChallengeSource::LookupAdditive,
+            0,
+        ));
+    }
+
+    for (coeff, address) in rel.input.linear_terms.iter() {
+        assert!(result
+            .insert(
+                *address,
+                vec![lookup_constraint_term(
+                    *coeff,
+                    GpuGKRMainLayerDeferredChallengeSource::LookupAdditive,
+                    0,
+                )],
+            )
+            .is_none());
+    }
+
+    (result, constant_terms)
+}
+
+fn vector_lookup_as_flattened_relation_template<const WITH_ADDITIVE_PART: bool>(
+    rel: &cs::definitions::gkr::NoFieldVectorLookupRelation,
+) -> (
+    BTreeMap<GKRAddress, Vec<GpuGKRMainLayerConstraintChallengeTerm>>,
+    Vec<GpuGKRMainLayerConstraintChallengeTerm>,
+) {
+    let mut result = BTreeMap::new();
+    let mut constant_terms = Vec::new();
+    if WITH_ADDITIVE_PART {
+        constant_terms.push(lookup_constraint_term(
+            1,
+            GpuGKRMainLayerDeferredChallengeSource::LookupAdditive,
+            1,
+        ));
+    }
+
+    for (idx, column) in rel.columns.iter().enumerate() {
+        let power = idx as u32;
+        for (coeff, address) in column.linear_terms.iter() {
+            assert!(result
+                .insert(
+                    *address,
+                    vec![lookup_constraint_term(
+                        *coeff,
+                        GpuGKRMainLayerDeferredChallengeSource::LookupMultiplicative,
+                        power,
+                    )],
+                )
+                .is_none());
+        }
+        if column.constant != 0 {
+            constant_terms.push(lookup_constraint_term(
+                column.constant,
+                GpuGKRMainLayerDeferredChallengeSource::LookupMultiplicative,
+                power,
+            ));
+        }
+    }
+
+    (result, constant_terms)
 }
 
 fn flatten_inits_or_teardowns_relation<E: Field + FieldExtension<BF>>(
@@ -545,6 +614,73 @@ pub(crate) fn build_single_max_quadratic_constraint_inputs_and_metadata<
     )
 }
 
+pub(crate) fn build_constraints_max_quadratic_inputs_and_template(
+    relation: &NoFieldMaxQuadraticConstraintsGKRRelation,
+) -> (GKRInputs, GpuGKRMainLayerConstraintTemplate) {
+    let mut mapping = BTreeMap::new();
+    let mut inputs = Vec::new();
+    let mut quadratic_terms = Vec::new();
+    let mut linear_terms = Vec::new();
+
+    for ((lhs, rhs), challenge_terms) in relation.quadratic_terms.iter() {
+        let lhs_idx = remap_constraint_input(&mut mapping, &mut inputs, *lhs);
+        let rhs_idx = if *lhs == *rhs {
+            lhs_idx
+        } else {
+            remap_constraint_input(&mut mapping, &mut inputs, *rhs)
+        };
+        quadratic_terms.push(GpuGKRMainLayerConstraintQuadraticTemplate {
+            lhs: lhs_idx as u32,
+            rhs: rhs_idx as u32,
+            challenge_terms: challenge_terms
+                .iter()
+                .map(|(coeff, power)| GpuGKRMainLayerConstraintChallengeTerm {
+                    coeff: BF::from_u32_with_reduction(*coeff),
+                    source: GpuGKRMainLayerDeferredChallengeSource::ConstraintBatch,
+                    power: *power as u32,
+                })
+                .collect(),
+        });
+    }
+
+    for (input, challenge_terms) in relation.linear_terms.iter() {
+        let input_idx = remap_constraint_input(&mut mapping, &mut inputs, *input);
+        linear_terms.push(GpuGKRMainLayerConstraintLinearTemplate {
+            input: input_idx as u32,
+            challenge_terms: challenge_terms
+                .iter()
+                .map(|(coeff, power)| GpuGKRMainLayerConstraintChallengeTerm {
+                    coeff: BF::from_u32_with_reduction(*coeff),
+                    source: GpuGKRMainLayerDeferredChallengeSource::ConstraintBatch,
+                    power: *power as u32,
+                })
+                .collect(),
+        });
+    }
+
+    (
+        GKRInputs {
+            inputs_in_base: inputs,
+            inputs_in_extension: Vec::new(),
+            outputs_in_base: Vec::new(),
+            outputs_in_extension: Vec::new(),
+        },
+        GpuGKRMainLayerConstraintTemplate {
+            quadratic_terms,
+            linear_terms,
+            constant_terms: relation
+                .constants
+                .iter()
+                .map(|(coeff, power)| GpuGKRMainLayerConstraintChallengeTerm {
+                    coeff: BF::from_u32_with_reduction(*coeff),
+                    source: GpuGKRMainLayerDeferredChallengeSource::ConstraintBatch,
+                    power: *power as u32,
+                })
+                .collect(),
+        },
+    )
+}
+
 fn build_linear_base_kernel_inputs_and_metadata<E: Field + FieldExtension<BF>>(
     relation: &cs::definitions::gkr::NoFieldLinearRelation,
     output: GKRAddress,
@@ -607,6 +743,27 @@ fn collect_no_cache_linear_form_inputs<E: Field>(
     (mapping, inputs)
 }
 
+fn remap_no_cache_linear_form_template_inputs(
+    mapping: &mut BTreeMap<GKRAddress, usize>,
+    inputs: &mut Vec<GKRAddress>,
+    terms: &BTreeMap<GKRAddress, Vec<GpuGKRMainLayerConstraintChallengeTerm>>,
+) {
+    for address in terms.keys().copied() {
+        remap_no_cache_base_input(mapping, inputs, address);
+    }
+}
+
+fn collect_no_cache_linear_form_template_inputs(
+    forms: &[&BTreeMap<GKRAddress, Vec<GpuGKRMainLayerConstraintChallengeTerm>>],
+) -> (BTreeMap<GKRAddress, usize>, Vec<GKRAddress>) {
+    let mut mapping = BTreeMap::new();
+    let mut inputs = Vec::new();
+    for terms in forms.iter().copied() {
+        remap_no_cache_linear_form_template_inputs(&mut mapping, &mut inputs, terms);
+    }
+    (mapping, inputs)
+}
+
 fn encode_linear_form_as_quadratic_terms<E: Field>(
     mapping: &BTreeMap<GKRAddress, usize>,
     terms: &BTreeMap<GKRAddress, E>,
@@ -648,6 +805,54 @@ fn encode_linear_form_as_linear_terms<E: Field>(
         encoded.push(GpuGKRMainLayerConstraintLinearTerm {
             input: NO_CACHE_LINEAR_FORM_CONSTANT_SENTINEL,
             challenge: constant,
+        });
+    }
+    encoded
+}
+
+fn encode_linear_form_as_quadratic_templates(
+    mapping: &BTreeMap<GKRAddress, usize>,
+    terms: &BTreeMap<GKRAddress, Vec<GpuGKRMainLayerConstraintChallengeTerm>>,
+    constant_terms: &[GpuGKRMainLayerConstraintChallengeTerm],
+) -> Vec<GpuGKRMainLayerConstraintQuadraticTemplate> {
+    let mut encoded = terms
+        .iter()
+        .map(
+            |(address, challenge_terms)| GpuGKRMainLayerConstraintQuadraticTemplate {
+                lhs: mapping[address] as u32,
+                rhs: 0,
+                challenge_terms: challenge_terms.clone(),
+            },
+        )
+        .collect::<Vec<_>>();
+    if !constant_terms.is_empty() {
+        encoded.push(GpuGKRMainLayerConstraintQuadraticTemplate {
+            lhs: NO_CACHE_LINEAR_FORM_CONSTANT_SENTINEL,
+            rhs: 0,
+            challenge_terms: constant_terms.to_vec(),
+        });
+    }
+    encoded
+}
+
+fn encode_linear_form_as_linear_templates(
+    mapping: &BTreeMap<GKRAddress, usize>,
+    terms: &BTreeMap<GKRAddress, Vec<GpuGKRMainLayerConstraintChallengeTerm>>,
+    constant_terms: &[GpuGKRMainLayerConstraintChallengeTerm],
+) -> Vec<GpuGKRMainLayerConstraintLinearTemplate> {
+    let mut encoded = terms
+        .iter()
+        .map(
+            |(address, challenge_terms)| GpuGKRMainLayerConstraintLinearTemplate {
+                input: mapping[address] as u32,
+                challenge_terms: challenge_terms.clone(),
+            },
+        )
+        .collect::<Vec<_>>();
+    if !constant_terms.is_empty() {
+        encoded.push(GpuGKRMainLayerConstraintLinearTemplate {
+            input: NO_CACHE_LINEAR_FORM_CONSTANT_SENTINEL,
+            challenge_terms: constant_terms.to_vec(),
         });
     }
     encoded
@@ -749,6 +954,35 @@ fn flatten_lookup_setup_relation<E: Field>(
     (terms, lookup_additive_challenge)
 }
 
+fn flatten_lookup_setup_relation_template(
+    setup: &[GKRAddress],
+) -> (
+    BTreeMap<GKRAddress, Vec<GpuGKRMainLayerConstraintChallengeTerm>>,
+    Vec<GpuGKRMainLayerConstraintChallengeTerm>,
+) {
+    let mut terms = BTreeMap::new();
+    for (idx, address) in setup.iter().copied().enumerate() {
+        assert!(terms
+            .insert(
+                address,
+                vec![lookup_constraint_term(
+                    1,
+                    GpuGKRMainLayerDeferredChallengeSource::LookupMultiplicative,
+                    idx as u32,
+                )],
+            )
+            .is_none());
+    }
+    (
+        terms,
+        vec![lookup_constraint_term(
+            1,
+            GpuGKRMainLayerDeferredChallengeSource::LookupAdditive,
+            1,
+        )],
+    )
+}
+
 pub(crate) fn build_lookup_pair_from_base_inputs_inputs_and_metadata<
     E: Field + FieldExtension<BF>,
 >(
@@ -777,6 +1011,39 @@ pub(crate) fn build_lookup_pair_from_base_inputs_inputs_and_metadata<
             outputs_in_extension: output.to_vec(),
         },
         metadata,
+    )
+}
+
+pub(crate) fn build_lookup_pair_from_base_inputs_inputs_and_template(
+    input: &[cs::definitions::gkr::NoFieldSingleColumnLookupRelation; 2],
+    output: [GKRAddress; 2],
+) -> (GKRInputs, GpuGKRMainLayerConstraintTemplate) {
+    let (lhs_terms, lhs_constant_terms) =
+        single_column_lookup_as_flattened_relation_template::<true>(&input[0]);
+    let (rhs_terms, rhs_constant_terms) =
+        single_column_lookup_as_flattened_relation_template::<true>(&input[1]);
+    let (mapping, inputs) = collect_no_cache_linear_form_template_inputs(&[&lhs_terms, &rhs_terms]);
+
+    (
+        GKRInputs {
+            inputs_in_base: inputs,
+            inputs_in_extension: Vec::new(),
+            outputs_in_base: Vec::new(),
+            outputs_in_extension: output.to_vec(),
+        },
+        GpuGKRMainLayerConstraintTemplate {
+            quadratic_terms: encode_linear_form_as_quadratic_templates(
+                &mapping,
+                &lhs_terms,
+                &lhs_constant_terms,
+            ),
+            linear_terms: encode_linear_form_as_linear_templates(
+                &mapping,
+                &rhs_terms,
+                &rhs_constant_terms,
+            ),
+            constant_terms: Vec::new(),
+        },
     )
 }
 
@@ -815,6 +1082,39 @@ pub(crate) fn build_lookup_pair_from_vector_inputs_inputs_and_metadata<
             outputs_in_extension: output.to_vec(),
         },
         metadata,
+    )
+}
+
+pub(crate) fn build_lookup_pair_from_vector_inputs_inputs_and_template(
+    input: &[cs::definitions::gkr::NoFieldVectorLookupRelation; 2],
+    output: [GKRAddress; 2],
+) -> (GKRInputs, GpuGKRMainLayerConstraintTemplate) {
+    let (lhs_terms, lhs_constant_terms) =
+        vector_lookup_as_flattened_relation_template::<true>(&input[0]);
+    let (rhs_terms, rhs_constant_terms) =
+        vector_lookup_as_flattened_relation_template::<true>(&input[1]);
+    let (mapping, inputs) = collect_no_cache_linear_form_template_inputs(&[&lhs_terms, &rhs_terms]);
+
+    (
+        GKRInputs {
+            inputs_in_base: inputs,
+            inputs_in_extension: Vec::new(),
+            outputs_in_base: Vec::new(),
+            outputs_in_extension: output.to_vec(),
+        },
+        GpuGKRMainLayerConstraintTemplate {
+            quadratic_terms: encode_linear_form_as_quadratic_templates(
+                &mapping,
+                &lhs_terms,
+                &lhs_constant_terms,
+            ),
+            linear_terms: encode_linear_form_as_linear_templates(
+                &mapping,
+                &rhs_terms,
+                &rhs_constant_terms,
+            ),
+            constant_terms: Vec::new(),
+        },
     )
 }
 
@@ -873,6 +1173,48 @@ pub(crate) fn build_lookup_with_dens_and_setup_expressions_inputs_and_metadata<
     )
 }
 
+pub(crate) fn build_lookup_with_dens_and_setup_expressions_inputs_and_template(
+    input: &(
+        GKRAddress,
+        cs::definitions::gkr::NoFieldVectorLookupRelation,
+    ),
+    setup: &(GKRAddress, Box<[GKRAddress]>),
+    output: [GKRAddress; 2],
+) -> (GKRInputs, GpuGKRMainLayerConstraintTemplate) {
+    let (input_terms, input_constant_terms) =
+        vector_lookup_as_flattened_relation_template::<true>(&input.1);
+    let (setup_terms, setup_constant_terms) =
+        flatten_lookup_setup_relation_template(setup.1.as_ref());
+    let (tail_mapping, tail_inputs) =
+        collect_no_cache_linear_form_template_inputs(&[&input_terms, &setup_terms]);
+    let inputs = std::iter::once(input.0)
+        .chain(std::iter::once(setup.0))
+        .chain(tail_inputs.iter().copied())
+        .collect::<Vec<_>>();
+
+    (
+        GKRInputs {
+            inputs_in_base: inputs,
+            inputs_in_extension: Vec::new(),
+            outputs_in_base: Vec::new(),
+            outputs_in_extension: output.to_vec(),
+        },
+        GpuGKRMainLayerConstraintTemplate {
+            quadratic_terms: encode_linear_form_as_quadratic_templates(
+                &tail_mapping,
+                &input_terms,
+                &input_constant_terms,
+            ),
+            linear_terms: encode_linear_form_as_linear_templates(
+                &tail_mapping,
+                &setup_terms,
+                &setup_constant_terms,
+            ),
+            constant_terms: Vec::new(),
+        },
+    )
+}
+
 pub(crate) fn build_lookup_from_vector_input_with_setup_inputs_and_metadata<
     E: Field + FieldExtension<BF>,
 >(
@@ -924,6 +1266,44 @@ pub(crate) fn build_lookup_from_vector_input_with_setup_inputs_and_metadata<
     )
 }
 
+pub(crate) fn build_lookup_from_vector_input_with_setup_inputs_and_template(
+    input: &cs::definitions::gkr::NoFieldVectorLookupRelation,
+    setup: &(GKRAddress, Box<[GKRAddress]>),
+    output: [GKRAddress; 2],
+) -> (GKRInputs, GpuGKRMainLayerConstraintTemplate) {
+    let (input_terms, input_constant_terms) =
+        vector_lookup_as_flattened_relation_template::<true>(input);
+    let (setup_terms, setup_constant_terms) =
+        flatten_lookup_setup_relation_template(setup.1.as_ref());
+    let (tail_mapping, tail_inputs) =
+        collect_no_cache_linear_form_template_inputs(&[&input_terms, &setup_terms]);
+    let inputs = std::iter::once(setup.0)
+        .chain(tail_inputs.iter().copied())
+        .collect::<Vec<_>>();
+
+    (
+        GKRInputs {
+            inputs_in_base: inputs,
+            inputs_in_extension: Vec::new(),
+            outputs_in_base: Vec::new(),
+            outputs_in_extension: output.to_vec(),
+        },
+        GpuGKRMainLayerConstraintTemplate {
+            quadratic_terms: encode_linear_form_as_quadratic_templates(
+                &tail_mapping,
+                &input_terms,
+                &input_constant_terms,
+            ),
+            linear_terms: encode_linear_form_as_linear_templates(
+                &tail_mapping,
+                &setup_terms,
+                &setup_constant_terms,
+            ),
+            constant_terms: Vec::new(),
+        },
+    )
+}
+
 pub(crate) fn build_lookup_unbalanced_pair_with_vector_inputs_inputs_and_metadata<
     E: Field + FieldExtension<BF>,
 >(
@@ -959,6 +1339,34 @@ pub(crate) fn build_lookup_unbalanced_pair_with_vector_inputs_inputs_and_metadat
             outputs_in_extension: output.to_vec(),
         },
         metadata,
+    )
+}
+
+pub(crate) fn build_lookup_unbalanced_pair_with_vector_inputs_inputs_and_template(
+    input: [GKRAddress; 2],
+    remainder: &cs::definitions::gkr::NoFieldVectorLookupRelation,
+    output: [GKRAddress; 2],
+) -> (GKRInputs, GpuGKRMainLayerConstraintTemplate) {
+    let (remainder_terms, remainder_constant_terms) =
+        vector_lookup_as_flattened_relation_template::<true>(remainder);
+    let (mapping, base_inputs) = collect_no_cache_linear_form_template_inputs(&[&remainder_terms]);
+
+    (
+        GKRInputs {
+            inputs_in_base: base_inputs,
+            inputs_in_extension: input.to_vec(),
+            outputs_in_base: Vec::new(),
+            outputs_in_extension: output.to_vec(),
+        },
+        GpuGKRMainLayerConstraintTemplate {
+            quadratic_terms: Vec::new(),
+            linear_terms: encode_linear_form_as_linear_templates(
+                &mapping,
+                &remainder_terms,
+                &remainder_constant_terms,
+            ),
+            constant_terms: Vec::new(),
+        },
     )
 }
 
@@ -1342,10 +1750,19 @@ fn resolve_main_layer_auxiliary_challenge<E: Copy>(
 
 pub(super) fn evaluate_constraint_prefactor<E: Field + FieldExtension<BF>>(
     challenge_terms: &[GpuGKRMainLayerConstraintChallengeTerm],
-    challenge: E,
+    lookup_multiplicative_challenge: E,
+    lookup_additive_challenge: E,
+    constraint_batch_challenge: E,
 ) -> E {
     let mut total = E::ZERO;
     for term in challenge_terms.iter() {
+        let challenge = match term.source {
+            GpuGKRMainLayerDeferredChallengeSource::LookupMultiplicative => {
+                lookup_multiplicative_challenge
+            }
+            GpuGKRMainLayerDeferredChallengeSource::LookupAdditive => lookup_additive_challenge,
+            GpuGKRMainLayerDeferredChallengeSource::ConstraintBatch => constraint_batch_challenge,
+        };
         let mut contribution = challenge.pow(term.power);
         contribution.mul_assign_by_base(&term.coeff);
         total.add_assign(&contribution);
@@ -1363,6 +1780,24 @@ fn resolve_main_layer_constraint_metadata<E: Field + FieldExtension<BF>>(
         Some(GpuGKRMainLayerConstraintMetadataSource::Deferred(_template)) => {
             unreachable!("static main-layer constraint metadata should be materialized eagerly")
         }
+    }
+}
+
+fn summarize_main_layer_constraint_metadata_source<E: Field>(
+    source: Option<&GpuGKRMainLayerConstraintMetadataSource<E>>,
+) -> Option<(usize, usize, E)> {
+    match source {
+        None => None,
+        Some(GpuGKRMainLayerConstraintMetadataSource::Immediate(metadata)) => Some((
+            metadata.quadratic_terms.len(),
+            metadata.linear_terms.len(),
+            metadata.constant_offset,
+        )),
+        Some(GpuGKRMainLayerConstraintMetadataSource::Deferred(template)) => Some((
+            template.quadratic_terms.len(),
+            template.linear_terms.len(),
+            E::ZERO,
+        )),
     }
 }
 
@@ -2420,9 +2855,6 @@ fn build_main_layer_kernel_blueprints_static<E: Field + FieldExtension<BF>>(
     external_challenges: &GKRExternalChallenges<BF, E>,
     inits_and_teardowns_top_bits: &[u32],
     inits_and_teardowns_address_high_bits_shift: u32,
-    lookup_multiplicative_challenge: E,
-    lookup_additive_challenge: E,
-    constraint_batch_challenge: E,
     _num_base_layer_memory_polys: usize,
     _num_base_layer_witness_polys: usize,
 ) -> Vec<GpuGKRMainLayerKernelBlueprint<E>> {
@@ -2578,7 +3010,7 @@ fn build_main_layer_kernel_blueprints_static<E: Field + FieldExtension<BF>>(
                 let relation = LookupBasePairGKRRelation::<BF, E> {
                     inputs: *input,
                     outputs: *output,
-                    lookup_additive_challenge,
+                    lookup_additive_challenge: E::ZERO,
                     _marker: core::marker::PhantomData,
                 };
                 let (batch_challenge_offset, batch_challenge_count) =
@@ -2592,19 +3024,14 @@ fn build_main_layer_kernel_blueprints_static<E: Field + FieldExtension<BF>>(
                     batch_challenge_offset,
                     batch_challenge_count,
                     batch_challenges: Vec::new(),
-                    auxiliary_challenge_source: GpuGKRMainLayerAuxiliaryChallengeSource::Immediate(
-                        lookup_additive_challenge,
-                    ),
+                    auxiliary_challenge_source:
+                        GpuGKRMainLayerAuxiliaryChallengeSource::LookupAdditive,
                     constraint_metadata_source: None,
                 });
             }
             NoFieldGKRRelation::LookupPairFromBaseInputs { input, output, .. } => {
                 let (inputs, constraint_metadata) =
-                    build_lookup_pair_from_base_inputs_inputs_and_metadata(
-                        input,
-                        *output,
-                        lookup_additive_challenge,
-                    );
+                    build_lookup_pair_from_base_inputs_inputs_and_template(input, *output);
                 let (batch_challenge_offset, batch_challenge_count) =
                     push_empty(2, &mut next_batch_challenge_offset);
                 blueprints.push(GpuGKRMainLayerKernelBlueprint {
@@ -2617,7 +3044,7 @@ fn build_main_layer_kernel_blueprints_static<E: Field + FieldExtension<BF>>(
                         E::ZERO,
                     ),
                     constraint_metadata_source: Some(
-                        GpuGKRMainLayerConstraintMetadataSource::Immediate(constraint_metadata),
+                        GpuGKRMainLayerConstraintMetadataSource::Deferred(constraint_metadata),
                     ),
                 });
             }
@@ -2630,7 +3057,7 @@ fn build_main_layer_kernel_blueprints_static<E: Field + FieldExtension<BF>>(
                     input: *input,
                     setup: *setup,
                     outputs: *output,
-                    lookup_additive_challenge,
+                    lookup_additive_challenge: E::ZERO,
                     _marker: core::marker::PhantomData,
                 };
                 let (batch_challenge_offset, batch_challenge_count) =
@@ -2645,9 +3072,8 @@ fn build_main_layer_kernel_blueprints_static<E: Field + FieldExtension<BF>>(
                     batch_challenge_offset,
                     batch_challenge_count,
                     batch_challenges: Vec::new(),
-                    auxiliary_challenge_source: GpuGKRMainLayerAuxiliaryChallengeSource::Immediate(
-                        lookup_additive_challenge,
-                    ),
+                    auxiliary_challenge_source:
+                        GpuGKRMainLayerAuxiliaryChallengeSource::LookupAdditive,
                     constraint_metadata_source: None,
                 });
             }
@@ -2657,12 +3083,8 @@ fn build_main_layer_kernel_blueprints_static<E: Field + FieldExtension<BF>>(
                 output,
             } => {
                 let (inputs, constraint_metadata) =
-                    build_lookup_with_dens_and_setup_expressions_inputs_and_metadata(
-                        input,
-                        setup,
-                        *output,
-                        lookup_multiplicative_challenge,
-                        lookup_additive_challenge,
+                    build_lookup_with_dens_and_setup_expressions_inputs_and_template(
+                        input, setup, *output,
                     );
                 let (batch_challenge_offset, batch_challenge_count) =
                     push_empty(2, &mut next_batch_challenge_offset);
@@ -2676,7 +3098,7 @@ fn build_main_layer_kernel_blueprints_static<E: Field + FieldExtension<BF>>(
                         E::ZERO,
                     ),
                     constraint_metadata_source: Some(
-                        GpuGKRMainLayerConstraintMetadataSource::Immediate(constraint_metadata),
+                        GpuGKRMainLayerConstraintMetadataSource::Deferred(constraint_metadata),
                     ),
                 });
             }
@@ -2689,7 +3111,7 @@ fn build_main_layer_kernel_blueprints_static<E: Field + FieldExtension<BF>>(
                     input: *input,
                     setup: *setup,
                     outputs: *output,
-                    lookup_additive_challenge,
+                    lookup_additive_challenge: E::ZERO,
                     _marker: core::marker::PhantomData,
                 };
                 let (batch_challenge_offset, batch_challenge_count) =
@@ -2703,20 +3125,14 @@ fn build_main_layer_kernel_blueprints_static<E: Field + FieldExtension<BF>>(
                     batch_challenge_offset,
                     batch_challenge_count,
                     batch_challenges: Vec::new(),
-                    auxiliary_challenge_source: GpuGKRMainLayerAuxiliaryChallengeSource::Immediate(
-                        lookup_additive_challenge,
-                    ),
+                    auxiliary_challenge_source:
+                        GpuGKRMainLayerAuxiliaryChallengeSource::LookupAdditive,
                     constraint_metadata_source: None,
                 });
             }
             NoFieldGKRRelation::LookupPairFromVectorInputs { input, output } => {
                 let (inputs, constraint_metadata) =
-                    build_lookup_pair_from_vector_inputs_inputs_and_metadata(
-                        input,
-                        *output,
-                        lookup_multiplicative_challenge,
-                        lookup_additive_challenge,
-                    );
+                    build_lookup_pair_from_vector_inputs_inputs_and_template(input, *output);
                 let (batch_challenge_offset, batch_challenge_count) =
                     push_empty(2, &mut next_batch_challenge_offset);
                 blueprints.push(GpuGKRMainLayerKernelBlueprint {
@@ -2729,7 +3145,7 @@ fn build_main_layer_kernel_blueprints_static<E: Field + FieldExtension<BF>>(
                         E::ZERO,
                     ),
                     constraint_metadata_source: Some(
-                        GpuGKRMainLayerConstraintMetadataSource::Immediate(constraint_metadata),
+                        GpuGKRMainLayerConstraintMetadataSource::Deferred(constraint_metadata),
                     ),
                 });
             }
@@ -2742,7 +3158,7 @@ fn build_main_layer_kernel_blueprints_static<E: Field + FieldExtension<BF>>(
                     inputs: *input,
                     remainder: *remainder,
                     outputs: *output,
-                    lookup_additive_challenge,
+                    lookup_additive_challenge: E::ZERO,
                     _marker: core::marker::PhantomData,
                 };
                 let (batch_challenge_offset, batch_challenge_count) =
@@ -2755,9 +3171,8 @@ fn build_main_layer_kernel_blueprints_static<E: Field + FieldExtension<BF>>(
                     batch_challenge_offset,
                     batch_challenge_count,
                     batch_challenges: Vec::new(),
-                    auxiliary_challenge_source: GpuGKRMainLayerAuxiliaryChallengeSource::Immediate(
-                        lookup_additive_challenge,
-                    ),
+                    auxiliary_challenge_source:
+                        GpuGKRMainLayerAuxiliaryChallengeSource::LookupAdditive,
                     constraint_metadata_source: None,
                 });
             }
@@ -2770,7 +3185,7 @@ fn build_main_layer_kernel_blueprints_static<E: Field + FieldExtension<BF>>(
                     inputs: *input,
                     remainder: *remainder,
                     outputs: *output,
-                    lookup_additive_challenge,
+                    lookup_additive_challenge: E::ZERO,
                     _marker: core::marker::PhantomData,
                 };
                 let (batch_challenge_offset, batch_challenge_count) =
@@ -2783,9 +3198,8 @@ fn build_main_layer_kernel_blueprints_static<E: Field + FieldExtension<BF>>(
                     batch_challenge_offset,
                     batch_challenge_count,
                     batch_challenges: Vec::new(),
-                    auxiliary_challenge_source: GpuGKRMainLayerAuxiliaryChallengeSource::Immediate(
-                        lookup_additive_challenge,
-                    ),
+                    auxiliary_challenge_source:
+                        GpuGKRMainLayerAuxiliaryChallengeSource::LookupAdditive,
                     constraint_metadata_source: None,
                 });
             }
@@ -2795,12 +3209,8 @@ fn build_main_layer_kernel_blueprints_static<E: Field + FieldExtension<BF>>(
                 output,
             } => {
                 let (inputs, constraint_metadata) =
-                    build_lookup_unbalanced_pair_with_vector_inputs_inputs_and_metadata(
-                        *input,
-                        remainder,
-                        *output,
-                        lookup_multiplicative_challenge,
-                        lookup_additive_challenge,
+                    build_lookup_unbalanced_pair_with_vector_inputs_inputs_and_template(
+                        *input, remainder, *output,
                     );
                 let (batch_challenge_offset, batch_challenge_count) =
                     push_empty(2, &mut next_batch_challenge_offset);
@@ -2814,7 +3224,7 @@ fn build_main_layer_kernel_blueprints_static<E: Field + FieldExtension<BF>>(
                         E::ZERO,
                     ),
                     constraint_metadata_source: Some(
-                        GpuGKRMainLayerConstraintMetadataSource::Immediate(constraint_metadata),
+                        GpuGKRMainLayerConstraintMetadataSource::Deferred(constraint_metadata),
                     ),
                 });
             }
@@ -2827,7 +3237,7 @@ fn build_main_layer_kernel_blueprints_static<E: Field + FieldExtension<BF>>(
                     nums: [input[0], setup[0]],
                     dens: [input[1], setup[1]],
                     outputs: *output,
-                    lookup_additive_challenge,
+                    lookup_additive_challenge: E::ZERO,
                     _marker: core::marker::PhantomData,
                 };
                 let (batch_challenge_offset, batch_challenge_count) =
@@ -2841,58 +3251,29 @@ fn build_main_layer_kernel_blueprints_static<E: Field + FieldExtension<BF>>(
                     batch_challenge_offset,
                     batch_challenge_count,
                     batch_challenges: Vec::new(),
-                    auxiliary_challenge_source: GpuGKRMainLayerAuxiliaryChallengeSource::Immediate(
-                        lookup_additive_challenge,
-                    ),
+                    auxiliary_challenge_source:
+                        GpuGKRMainLayerAuxiliaryChallengeSource::LookupAdditive,
                     constraint_metadata_source: None,
                 });
             }
             NoFieldGKRRelation::EnforceConstraintsMaxQuadratic { input } => {
-                let relation =
-                    BatchConstraintEvalGKRRelation::<BF, E>::new(input, constraint_batch_challenge);
-                let constraint_metadata = GpuGKRMainLayerConstraintHostMetadata {
-                    quadratic_terms: relation
-                        .kernel
-                        .quadratic_parts
-                        .iter()
-                        .map(
-                            |((lhs, rhs), challenge)| GpuGKRMainLayerConstraintQuadraticTerm {
-                                lhs: *lhs as u32,
-                                rhs: *rhs as u32,
-                                challenge: *challenge,
-                            },
-                        )
-                        .collect(),
-                    linear_terms: relation
-                        .kernel
-                        .linear_parts
-                        .iter()
-                        .map(|(input, challenge)| GpuGKRMainLayerConstraintLinearTerm {
-                            input: *input as u32,
-                            challenge: *challenge,
-                        })
-                        .collect(),
-                    constant_offset: relation.kernel.constant_offset,
-                };
+                let (inputs, constraint_metadata) =
+                    build_constraints_max_quadratic_inputs_and_template(input);
                 let (batch_challenge_offset, batch_challenge_count) =
                     push_empty(1, &mut next_batch_challenge_offset);
-                blueprints.push(
-                    GpuGKRMainLayerKernelBlueprint {
-                        kind: GpuGKRMainLayerKernelKind::EnforceConstraintsMaxQuadratic,
-                        inputs: <BatchConstraintEvalGKRRelation<BF, E> as BatchedGKRKernel<
-                            BF,
-                            E,
-                        >>::get_inputs(&relation),
-                        batch_challenge_offset,
-                        batch_challenge_count,
-                        batch_challenges: Vec::new(),
-                        auxiliary_challenge_source:
-                            GpuGKRMainLayerAuxiliaryChallengeSource::Immediate(E::ZERO),
-                        constraint_metadata_source: Some(
-                            GpuGKRMainLayerConstraintMetadataSource::Immediate(constraint_metadata),
-                        ),
-                    },
-                );
+                blueprints.push(GpuGKRMainLayerKernelBlueprint {
+                    kind: GpuGKRMainLayerKernelKind::EnforceConstraintsMaxQuadratic,
+                    inputs,
+                    batch_challenge_offset,
+                    batch_challenge_count,
+                    batch_challenges: Vec::new(),
+                    auxiliary_challenge_source: GpuGKRMainLayerAuxiliaryChallengeSource::Immediate(
+                        E::ZERO,
+                    ),
+                    constraint_metadata_source: Some(
+                        GpuGKRMainLayerConstraintMetadataSource::Deferred(constraint_metadata),
+                    ),
+                });
             }
             NoFieldGKRRelation::EnforceSingleMaxQuadraticConstraint { input } => {
                 let (inputs, constraint_metadata) =
@@ -2938,12 +3319,8 @@ fn build_main_layer_kernel_blueprints_static<E: Field + FieldExtension<BF>>(
                 output,
             } => {
                 let (inputs, constraint_metadata) =
-                    build_lookup_from_vector_input_with_setup_inputs_and_metadata(
-                        input,
-                        setup,
-                        *output,
-                        lookup_multiplicative_challenge,
-                        lookup_additive_challenge,
+                    build_lookup_from_vector_input_with_setup_inputs_and_template(
+                        input, setup, *output,
                     );
                 let (batch_challenge_offset, batch_challenge_count) =
                     push_empty(2, &mut next_batch_challenge_offset);
@@ -2957,7 +3334,7 @@ fn build_main_layer_kernel_blueprints_static<E: Field + FieldExtension<BF>>(
                         E::ZERO,
                     ),
                     constraint_metadata_source: Some(
-                        GpuGKRMainLayerConstraintMetadataSource::Immediate(constraint_metadata),
+                        GpuGKRMainLayerConstraintMetadataSource::Deferred(constraint_metadata),
                     ),
                 });
             }
@@ -3129,6 +3506,20 @@ impl<E: Field + FieldExtension<BF>> GpuGKRDimensionReducingBackwardState<BF, E> 
             num_base_layer_memory_polys: compiled_circuit.memory_layout.total_width,
             num_base_layer_witness_polys: compiled_circuit.witness_layout.total_width,
         }
+    }
+
+    pub(crate) fn into_main_layer_backward_state_static(
+        self,
+        compiled_circuit: GKRCircuitArtifact<BF>,
+        external_challenges: GKRExternalChallenges<BF, E>,
+    ) -> GpuGKRMainLayerBackwardState<E> {
+        self.into_main_layer_backward_state(
+            compiled_circuit,
+            external_challenges,
+            E::ZERO,
+            E::ZERO,
+            E::ZERO,
+        )
     }
 }
 
@@ -3391,21 +3782,34 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
             .zip(round2_prepared_all.into_iter())
             .zip(round3_prepared_all.into_iter())
         {
-            let auxiliary_challenge = resolve_main_layer_auxiliary_challenge(
-                blueprint.auxiliary_challenge_source,
-                self.lookup_additive_challenge,
-            );
-            let constraint_metadata = resolve_main_layer_constraint_metadata(
-                blueprint.constraint_metadata_source.clone(),
-                self.constraint_batch_challenge,
-            );
-            let constraint_metadata_summary = constraint_metadata.as_ref().map(|metadata| {
-                (
-                    metadata.quadratic_terms.len(),
-                    metadata.linear_terms.len(),
-                    metadata.constant_offset,
+            let auxiliary_challenge = if batch_challenge_base.is_some() {
+                resolve_main_layer_auxiliary_challenge(
+                    blueprint.auxiliary_challenge_source,
+                    self.lookup_additive_challenge,
                 )
-            });
+            } else {
+                match blueprint.auxiliary_challenge_source {
+                    GpuGKRMainLayerAuxiliaryChallengeSource::Immediate(value) => value,
+                    GpuGKRMainLayerAuxiliaryChallengeSource::LookupAdditive => E::ZERO,
+                }
+            };
+            let constraint_metadata = if batch_challenge_base.is_some() {
+                resolve_main_layer_constraint_metadata(
+                    blueprint.constraint_metadata_source.clone(),
+                    self.constraint_batch_challenge,
+                )
+            } else {
+                match blueprint.constraint_metadata_source.as_ref() {
+                    None => None,
+                    Some(GpuGKRMainLayerConstraintMetadataSource::Immediate(metadata)) => {
+                        Some(metadata.clone())
+                    }
+                    Some(GpuGKRMainLayerConstraintMetadataSource::Deferred(_)) => None,
+                }
+            };
+            let constraint_metadata_summary = summarize_main_layer_constraint_metadata_source(
+                blueprint.constraint_metadata_source.as_ref(),
+            );
             let round1_descriptors = round1_prepared.build_launch_descriptors();
             let round2_descriptors = round2_prepared.build_launch_descriptors();
             let round3_descriptors = round3_and_beyond_prepared
@@ -3433,7 +3837,6 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
                 batch_challenges: blueprint.batch_challenges,
                 auxiliary_challenge_source: blueprint.auxiliary_challenge_source,
                 constraint_metadata_source: blueprint.constraint_metadata_source,
-                auxiliary_challenge,
                 constraint_metadata_summary,
                 round1_prepared,
                 round2_prepared,
@@ -3535,9 +3938,6 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
             &self.external_challenges,
             &self.inits_and_teardowns_top_bits,
             self.inits_and_teardowns_address_high_bits_shift,
-            self.lookup_multiplicative_challenge,
-            self.lookup_additive_challenge,
-            self.constraint_batch_challenge,
             self.num_base_layer_memory_polys,
             self.num_base_layer_witness_polys,
         );
@@ -3604,7 +4004,9 @@ fn packed_main_layer_batch_challenge_specs<E: Clone>(
         .collect()
 }
 
-fn packed_main_layer_batch_challenge_len<E>(kernel_plans: &[GpuGKRMainLayerKernelPlan<E>]) -> usize {
+fn packed_main_layer_batch_challenge_len<E>(
+    kernel_plans: &[GpuGKRMainLayerKernelPlan<E>],
+) -> usize {
     kernel_plans
         .iter()
         .map(|kernel| {
@@ -3624,7 +4026,10 @@ fn fill_packed_main_layer_batch_challenges<E: Field>(
     batch_challenge_base: E,
     dst: &mut [E],
 ) {
-    assert_eq!(dst.len(), packed_main_layer_batch_challenge_len(kernel_plans));
+    assert_eq!(
+        dst.len(),
+        packed_main_layer_batch_challenge_len(kernel_plans)
+    );
     let mut packed_offset = 0usize;
     for kernel in kernel_plans.iter() {
         let count = main_layer_kind_batch_challenge_count(kernel.kind);
@@ -3648,7 +4053,7 @@ fn fill_packed_main_layer_batch_challenges<E: Field>(
             );
             dst_slice.copy_from_slice(&kernel.batch_challenges);
         }
-    packed_offset += count;
+        packed_offset += count;
     }
 }
 
@@ -4064,12 +4469,12 @@ where
         let last_step = self.folding_steps - 1;
         let static_spill_upload = schedule_static_spill_upload(context, &self.static_spill_bytes)?;
         let mut round_challenge_buffers = Vec::with_capacity(last_step);
-        let round_challenge_device = if last_step == 0 {
+        let mut round_challenge_storage = if last_step == 0 {
             None
         } else {
-            Some(Arc::new(SharedChallengeDevice::new(
+            Some(ScheduledChallengeStorage::new(
                 context.alloc(last_step, AllocationPlacement::Top)?,
-            )))
+            ))
         };
         let mut start_callbacks = Callbacks::new();
         let mut claim_point_values = previous_claim_point.to_vec();
@@ -4083,14 +4488,16 @@ where
         )?;
         drop(claim_point_host);
 
-        let shared_state = Arc::new(Mutex::new(ScheduledDimensionReducingLayerExecutionState {
+        let mut shared_state = Box::new(ScheduledDimensionReducingLayerExecutionState {
             seed,
             claim: self.compute_combined_claim(output_layer_claims),
             eq_prefactor: E::ONE,
             folding_challenges: Vec::with_capacity(self.folding_steps + 1),
             internal_round_coefficients: Vec::with_capacity(self.folding_steps - 1),
             result: None,
-        }));
+        });
+        let shared_state_handle =
+            crate::primitives::context::UnsafeMutAccessor::new(shared_state.as_mut());
         let mut reduction_states = Vec::with_capacity(last_step);
 
         for step in 0..last_step {
@@ -4127,7 +4534,7 @@ where
                 self.schedule_round_coefficients_reduction(step, acc_size, context)?;
             let reduction_accessor = reduction_output.get_accessor();
             let next_round_challenges_offset = if step < last_step { Some(step) } else { None };
-            let shared_state_for_callback = Arc::clone(&shared_state);
+            let shared_state_for_callback = shared_state_handle;
             let previous_claim_coord = previous_claim_point[step];
             let callback = move |dst: &mut [E]| {
                 debug_assert_eq!(dst.len(), 1);
@@ -4135,7 +4542,7 @@ where
                     let reduction = reduction_accessor.get();
                     let c0 = reduction[0];
                     let c2 = reduction[1];
-                    let mut state = shared_state_for_callback.lock().unwrap();
+                    let state = shared_state_for_callback.get_mut();
                     let mut normalized_claim = state.claim;
                     normalized_claim.mul_assign(
                         &state
@@ -4161,12 +4568,17 @@ where
                     dst[0] = folding_challenge;
                 }
             };
-            let callbacks = if let (Some(device), Some(offset)) = (
-                round_challenge_device.as_ref().cloned(),
+            let callbacks = if let (Some(storage), Some(offset)) = (
+                round_challenge_storage.as_mut(),
                 next_round_challenges_offset,
             ) {
                 round_challenge_buffers.push(schedule_packed_round_challenge_upload(
-                    context, device, offset, 1, callback,
+                    context,
+                    storage.device_accessor(),
+                    &mut storage.callbacks,
+                    offset,
+                    1,
+                    callback,
                 )?);
                 Callbacks::new()
             } else {
@@ -4216,7 +4628,7 @@ where
             .iter()
             .map(|(addr, values)| (*addr, values.get_accessor()))
             .collect();
-        let shared_state_for_callback = Arc::clone(&shared_state);
+        let shared_state_for_callback = shared_state_handle;
         let folding_steps = self.folding_steps;
         let mut final_readback_callbacks = Callbacks::new();
         final_readback_callbacks.schedule(
@@ -4231,7 +4643,7 @@ where
                     .values()
                     .flat_map(|values| values.iter().copied())
                     .collect();
-                let mut state = shared_state_for_callback.lock().unwrap();
+                let state = shared_state_for_callback.get_mut();
                 commit_field_els(&mut state.seed, &transcript_inputs);
 
                 let challenges = draw_random_field_els::<BF, E>(&mut state.seed, 3);
@@ -4277,6 +4689,7 @@ where
             tracing_ranges: Vec::new(),
             start_callbacks,
             static_spill_upload,
+            round_challenge_storage,
             round_challenge_buffers,
             reduction_states,
             final_readback: {
@@ -4293,7 +4706,7 @@ where
 
     pub(crate) fn schedule_execute_dimension_reducing_layer_from_workflow_state(
         &mut self,
-        workflow_state: Arc<Mutex<ScheduledBackwardWorkflowState<E>>>,
+        workflow_state: ScheduledBackwardWorkflowStateHandle<E>,
         context: &ProverContext,
     ) -> CudaResult<GpuGKRDimensionReducingScheduledLayerExecution<B, E>> {
         let stream = context.get_exec_stream();
@@ -4304,20 +4717,22 @@ where
         let last_step = self.folding_steps - 1;
         let mut start_callbacks = Callbacks::new();
         let static_spill_upload = schedule_static_spill_upload(context, &self.static_spill_bytes)?;
-        let shared_state = Arc::new(Mutex::new(ScheduledDimensionReducingLayerExecutionState {
+        let mut shared_state = Box::new(ScheduledDimensionReducingLayerExecutionState {
             seed: Seed::default(),
             claim: E::ZERO,
             eq_prefactor: E::ONE,
             folding_challenges: Vec::with_capacity(self.folding_steps + 1),
             internal_round_coefficients: Vec::with_capacity(self.folding_steps - 1),
             result: None,
-        }));
+        });
+        let shared_state_handle =
+            crate::primitives::context::UnsafeMutAccessor::new(shared_state.as_mut());
 
         let mut claim_point_host =
             unsafe { context.alloc_host_uninit_slice(self.folding_steps + 1) };
         let claim_point_accessor = claim_point_host.get_mut_accessor();
-        let workflow_state_for_start = Arc::clone(&workflow_state);
-        let shared_state_for_start = Arc::clone(&shared_state);
+        let workflow_state_for_start = workflow_state;
+        let shared_state_for_start = shared_state_handle;
         let layer_claim_callback = self
             .kernel_plans
             .iter()
@@ -4330,12 +4745,12 @@ where
             .collect::<Vec<_>>();
         start_callbacks.schedule(
             move || unsafe {
-                let workflow_state = workflow_state_for_start.lock().unwrap();
+                let workflow_state = workflow_state_for_start.get();
                 let dst = claim_point_accessor.get_mut();
                 let claim_len = dst.len() - 1;
                 dst[..claim_len].copy_from_slice(&workflow_state.current_claim_point);
                 dst[claim_len] = workflow_state.current_batching_challenge;
-                let mut layer_state = shared_state_for_start.lock().unwrap();
+                let layer_state = shared_state_for_start.get_mut();
                 layer_state.seed = workflow_state.seed;
                 layer_state.claim = {
                     let mut result = E::ZERO;
@@ -4367,12 +4782,12 @@ where
             stream,
         )?;
         let mut round_challenge_buffers = Vec::with_capacity(last_step);
-        let round_challenge_device = if last_step == 0 {
+        let mut round_challenge_storage = if last_step == 0 {
             None
         } else {
-            Some(Arc::new(SharedChallengeDevice::new(
+            Some(ScheduledChallengeStorage::new(
                 context.alloc(last_step, AllocationPlacement::Top)?,
-            )))
+            ))
         };
         let mut reduction_states = Vec::with_capacity(last_step);
 
@@ -4411,18 +4826,17 @@ where
                 self.schedule_round_coefficients_reduction(step, acc_size, context)?;
             let reduction_accessor = reduction_output.get_accessor();
             let next_round_challenges_offset = if step < last_step { Some(step) } else { None };
-            let shared_state_for_callback = Arc::clone(&shared_state);
+            let shared_state_for_callback = shared_state_handle;
             let previous_claim_coord_idx = step;
-            let claim_point_for_callback = Arc::clone(&workflow_state);
+            let claim_point_for_callback = workflow_state;
             let callback = move |dst: &mut [E]| unsafe {
                 debug_assert_eq!(dst.len(), 1);
                 let reduction = reduction_accessor.get();
                 let c0 = reduction[0];
                 let c2 = reduction[1];
                 let previous_claim_coord =
-                    claim_point_for_callback.lock().unwrap().current_claim_point
-                        [previous_claim_coord_idx];
-                let mut state = shared_state_for_callback.lock().unwrap();
+                    claim_point_for_callback.get().current_claim_point[previous_claim_coord_idx];
+                let state = shared_state_for_callback.get_mut();
                 let mut normalized_claim = state.claim;
                 normalized_claim.mul_assign(
                     &state
@@ -4447,12 +4861,17 @@ where
                 state.folding_challenges.push(folding_challenge);
                 dst[0] = folding_challenge;
             };
-            let callbacks = if let (Some(device), Some(offset)) = (
-                round_challenge_device.as_ref().cloned(),
+            let callbacks = if let (Some(storage), Some(offset)) = (
+                round_challenge_storage.as_mut(),
                 next_round_challenges_offset,
             ) {
                 round_challenge_buffers.push(schedule_packed_round_challenge_upload(
-                    context, device, offset, 1, callback,
+                    context,
+                    storage.device_accessor(),
+                    &mut storage.callbacks,
+                    offset,
+                    1,
+                    callback,
                 )?);
                 Callbacks::new()
             } else {
@@ -4502,8 +4921,8 @@ where
             .iter()
             .map(|(addr, values)| (*addr, values.get_accessor()))
             .collect();
-        let shared_state_for_callback = Arc::clone(&shared_state);
-        let workflow_state_for_callback = Arc::clone(&workflow_state);
+        let shared_state_for_callback = shared_state_handle;
+        let workflow_state_for_callback = workflow_state;
         let folding_steps = self.folding_steps;
         let layer_idx = self.layer_idx;
         let mut final_readback_callbacks = Callbacks::new();
@@ -4519,7 +4938,7 @@ where
                     .values()
                     .flat_map(|values| values.iter().copied())
                     .collect();
-                let mut state = shared_state_for_callback.lock().unwrap();
+                let state = shared_state_for_callback.get_mut();
                 commit_field_els(&mut state.seed, &transcript_inputs);
 
                 let challenges = draw_random_field_els::<BF, E>(&mut state.seed, 3);
@@ -4551,7 +4970,7 @@ where
                 };
 
                 {
-                    let mut workflow_state = workflow_state_for_callback.lock().unwrap();
+                    let workflow_state = workflow_state_for_callback.get_mut();
                     workflow_state.current_claims = new_claims.clone();
                     workflow_state.current_claim_point = new_claim_point.clone();
                     workflow_state.current_batching_challenge = next_batching_challenge;
@@ -4583,6 +5002,7 @@ where
             tracing_ranges,
             start_callbacks,
             static_spill_upload,
+            round_challenge_storage,
             round_challenge_buffers,
             reduction_states,
             final_readback: {
@@ -4604,7 +5024,8 @@ impl<B, E: FieldExtension<BF> + Field> GpuGKRDimensionReducingScheduledLayerExec
             tracing_ranges,
             start_callbacks,
             static_spill_upload,
-            round_challenge_buffers,
+            round_challenge_storage,
+            round_challenge_buffers: _,
             reduction_states,
             final_readback,
             shared_state,
@@ -4614,10 +5035,8 @@ impl<B, E: FieldExtension<BF> + Field> GpuGKRDimensionReducingScheduledLayerExec
             tracing_ranges,
             start_callbacks,
             static_spill_upload: static_spill_upload.map(upload_into_host_keepalive),
-            round_challenge_buffers: round_challenge_buffers
-                .into_iter()
-                .map(challenge_buffer_into_host_keepalive)
-                .collect(),
+            round_challenge_storage: round_challenge_storage
+                .map(challenge_storage_into_host_keepalive),
             reduction_states,
             final_readback,
             shared_state,
@@ -4626,9 +5045,10 @@ impl<B, E: FieldExtension<BF> + Field> GpuGKRDimensionReducingScheduledLayerExec
     }
 
     pub(crate) fn into_execution(self) -> GpuGKRDimensionReducingLayerExecution<E> {
-        self.shared_state
-            .lock()
-            .unwrap()
+        let Self {
+            mut shared_state, ..
+        } = self;
+        shared_state
             .result
             .take()
             .expect("dimension-reducing layer execution is not ready yet")
@@ -4700,26 +5120,33 @@ where
         &self,
         batch_challenge_base: E,
         context: &ProverContext,
-    ) -> CudaResult<ScheduledChallengeBuffer<E>> {
+    ) -> CudaResult<(ScheduledChallengeStorage<E>, ScheduledChallengeBuffer<E>)> {
         let packed = pack_main_layer_batch_challenges(&self.kernel_plans, batch_challenge_base);
         assert!(
             !packed.is_empty(),
             "main-layer batched execution requires at least one packed batch challenge"
         );
         let len = packed.len();
-        let device = Arc::new(SharedChallengeDevice::new(
-            context.alloc(len, AllocationPlacement::Top)?,
-        ));
-        schedule_packed_round_challenge_upload(context, device, 0, len, move |dst| {
-            dst.copy_from_slice(&packed);
-        })
+        let mut storage =
+            ScheduledChallengeStorage::new(context.alloc(len, AllocationPlacement::Top)?);
+        let buffer = schedule_packed_round_challenge_upload(
+            context,
+            storage.device_accessor(),
+            &mut storage.callbacks,
+            0,
+            len,
+            move |dst| {
+                dst.copy_from_slice(&packed);
+            },
+        )?;
+        Ok((storage, buffer))
     }
 
     fn schedule_batch_challenge_buffer_from_workflow_state(
         &self,
-        workflow_state: Arc<Mutex<ScheduledBackwardWorkflowState<E>>>,
+        workflow_state: ScheduledBackwardWorkflowStateHandle<E>,
         context: &ProverContext,
-    ) -> CudaResult<ScheduledChallengeBuffer<E>> {
+    ) -> CudaResult<(ScheduledChallengeStorage<E>, ScheduledChallengeBuffer<E>)> {
         let specs = packed_main_layer_batch_challenge_specs(&self.kernel_plans);
         let len = specs
             .iter()
@@ -4729,22 +5156,31 @@ where
             len > 0,
             "main-layer batched execution requires at least one packed batch challenge"
         );
-        let device = Arc::new(SharedChallengeDevice::new(
-            context.alloc(len, AllocationPlacement::Top)?,
-        ));
-        schedule_packed_round_challenge_upload(context, device, 0, len, move |dst| {
-            let batch_challenge_base = workflow_state.lock().unwrap().current_batching_challenge;
-            fill_packed_main_layer_batch_challenges_from_specs(
-                &specs,
-                batch_challenge_base,
-                dst,
-            );
-        })
+        let mut storage =
+            ScheduledChallengeStorage::new(context.alloc(len, AllocationPlacement::Top)?);
+        let buffer = schedule_packed_round_challenge_upload(
+            context,
+            storage.device_accessor(),
+            &mut storage.callbacks,
+            0,
+            len,
+            move |dst| {
+                let batch_challenge_base =
+                    unsafe { workflow_state.get() }.current_batching_challenge;
+                fill_packed_main_layer_batch_challenges_from_specs(
+                    &specs,
+                    batch_challenge_base,
+                    dst,
+                );
+            },
+        )?;
+        Ok((storage, buffer))
     }
 
     fn launch_round0_kernels(
         &mut self,
         batch_challenges: &ScheduledChallengeBuffer<E>,
+        runtime_uploads: Option<&ScheduledMainLayerRuntimeUploads<E>>,
         acc_size: usize,
         static_spill_upload: Option<&ScheduledUpload<u8>>,
         context: &ProverContext,
@@ -4756,14 +5192,26 @@ where
             spill_payload: static_spill_upload
                 .map(|upload| upload.device.as_ptr())
                 .unwrap_or(null()),
+            auxiliary_challenges: runtime_uploads
+                .map(|uploads| uploads.auxiliary_challenges.device.as_ptr())
+                .unwrap_or(null()),
+            constraint_metadata: runtime_uploads
+                .map(|uploads| uploads.constraint_metadata_pointers.device.as_ptr())
+                .unwrap_or(null()),
         };
-        launch_main_round0_batched(&self.round0_batch_template, &batch_runtime, acc_size, context)
+        launch_main_round0_batched(
+            &self.round0_batch_template,
+            &batch_runtime,
+            acc_size,
+            context,
+        )
     }
 
     fn launch_round1_kernels(
         &mut self,
         batch_challenges: &ScheduledChallengeBuffer<E>,
         folding_challenge: &ScheduledChallengeBuffer<E>,
+        runtime_uploads: Option<&ScheduledMainLayerRuntimeUploads<E>>,
         acc_size: usize,
         explicit_form: bool,
         static_spill_upload: Option<&ScheduledUpload<u8>>,
@@ -4776,6 +5224,12 @@ where
             contributions: self.round_scratch.accumulator.as_mut_ptr(),
             spill_payload: static_spill_upload
                 .map(|upload| upload.device.as_ptr())
+                .unwrap_or(null()),
+            auxiliary_challenges: runtime_uploads
+                .map(|uploads| uploads.auxiliary_challenges.device.as_ptr())
+                .unwrap_or(null()),
+            constraint_metadata: runtime_uploads
+                .map(|uploads| uploads.constraint_metadata_pointers.device.as_ptr())
                 .unwrap_or(null()),
         };
         launch_main_round1_batched(
@@ -4791,6 +5245,7 @@ where
         &mut self,
         batch_challenges: &ScheduledChallengeBuffer<E>,
         folding_challenges: &ScheduledChallengeBuffer<E>,
+        runtime_uploads: Option<&ScheduledMainLayerRuntimeUploads<E>>,
         acc_size: usize,
         explicit_form: bool,
         static_spill_upload: Option<&ScheduledUpload<u8>>,
@@ -4803,6 +5258,12 @@ where
             contributions: self.round_scratch.accumulator.as_mut_ptr(),
             spill_payload: static_spill_upload
                 .map(|upload| upload.device.as_ptr())
+                .unwrap_or(null()),
+            auxiliary_challenges: runtime_uploads
+                .map(|uploads| uploads.auxiliary_challenges.device.as_ptr())
+                .unwrap_or(null()),
+            constraint_metadata: runtime_uploads
+                .map(|uploads| uploads.constraint_metadata_pointers.device.as_ptr())
                 .unwrap_or(null()),
         };
         launch_main_round2_batched(
@@ -4819,6 +5280,7 @@ where
         step: usize,
         batch_challenges: &ScheduledChallengeBuffer<E>,
         folding_challenge: &ScheduledChallengeBuffer<E>,
+        runtime_uploads: Option<&ScheduledMainLayerRuntimeUploads<E>>,
         acc_size: usize,
         explicit_form: bool,
         static_spill_upload: Option<&ScheduledUpload<u8>>,
@@ -4837,6 +5299,12 @@ where
             contributions: self.round_scratch.accumulator.as_mut_ptr(),
             spill_payload: static_spill_upload
                 .map(|upload| upload.device.as_ptr())
+                .unwrap_or(null()),
+            auxiliary_challenges: runtime_uploads
+                .map(|uploads| uploads.auxiliary_challenges.device.as_ptr())
+                .unwrap_or(null()),
+            constraint_metadata: runtime_uploads
+                .map(|uploads| uploads.constraint_metadata_pointers.device.as_ptr())
                 .unwrap_or(null()),
         };
         launch_main_round3_batched(
@@ -4906,6 +5374,69 @@ where
         let mut host = unsafe { context.alloc_host_uninit_slice(len) };
         memory_copy_async(&mut host, device, context.get_exec_stream())?;
         Ok(host)
+    }
+
+    fn schedule_runtime_uploads_from_workflow_state(
+        &self,
+        workflow_state: ScheduledBackwardWorkflowStateHandle<E>,
+        context: &ProverContext,
+    ) -> CudaResult<ScheduledMainLayerRuntimeUploads<E>> {
+        let mut callbacks = Callbacks::new();
+        let auxiliary_challenges = schedule_callback_populated_upload(
+            context,
+            self.kernel_plans.len(),
+            &mut callbacks,
+            {
+                let sources = self
+                    .kernel_plans
+                    .iter()
+                    .map(|kernel| kernel.auxiliary_challenge_source)
+                    .collect::<Vec<_>>();
+                move |dst: &mut [E]| unsafe {
+                    let workflow_state = workflow_state.get();
+                    for (dst, source) in dst.iter_mut().zip(sources.iter().copied()) {
+                        *dst = match source {
+                            GpuGKRMainLayerAuxiliaryChallengeSource::Immediate(value) => value,
+                            GpuGKRMainLayerAuxiliaryChallengeSource::LookupAdditive => {
+                                workflow_state.lookup_additive_challenge
+                            }
+                        };
+                    }
+                }
+            },
+        )?;
+        let deferred_constraint_metadata = self
+            .kernel_plans
+            .iter()
+            .map(|kernel| match kernel.constraint_metadata_source.as_ref() {
+                Some(GpuGKRMainLayerConstraintMetadataSource::Deferred(template)) => Ok(Some(
+                    schedule_deferred_main_layer_constraint_metadata_upload(
+                        template,
+                        workflow_state,
+                        context,
+                    )?,
+                )),
+                _ => Ok(None),
+            })
+            .collect::<CudaResult<Vec<_>>>()?;
+        let metadata_pointers = deferred_constraint_metadata
+            .iter()
+            .map(|metadata| constraint_metadata_device_pointers(metadata.as_ref()))
+            .collect::<Vec<_>>();
+        let constraint_metadata_pointers = schedule_callback_populated_upload(
+            context,
+            metadata_pointers.len(),
+            &mut callbacks,
+            move |dst: &mut [GpuGKRMainLayerConstraintMetadataDevicePointers<E>]| {
+                dst.copy_from_slice(&metadata_pointers);
+            },
+        )?;
+        Ok(ScheduledMainLayerRuntimeUploads {
+            callbacks,
+            auxiliary_challenges,
+            deferred_constraint_metadata,
+            constraint_metadata_pointers,
+        })
     }
 
     fn final_evaluation_sources_for_last_step(
@@ -4991,9 +5522,9 @@ where
         let round_challenge_len = (1..=last_step)
             .map(main_layer_round_challenge_len)
             .sum::<usize>();
-        let round_challenge_device = Arc::new(SharedChallengeDevice::new(
+        let mut round_challenge_storage = ScheduledChallengeStorage::new(
             context.alloc(round_challenge_len, AllocationPlacement::Top)?,
-        ));
+        );
         let mut next_round_challenge_offset = 0usize;
         let mut start_callbacks = Callbacks::new();
         let mut start_state_values = previous_claim_point.to_vec();
@@ -5009,20 +5540,24 @@ where
             context.get_exec_stream(),
         )?;
         drop(claim_point_host);
-        let batch_challenge_buffer = self.schedule_batch_challenge_buffer(
-            self.batch_challenge_base
-                .expect("direct main-layer execution requires a prepared batching challenge base"),
-            context,
-        )?;
+        let (batch_challenge_storage, batch_challenge_buffer) = self
+            .schedule_batch_challenge_buffer(
+                self.batch_challenge_base.expect(
+                    "direct main-layer execution requires a prepared batching challenge base",
+                ),
+                context,
+            )?;
 
-        let shared_state = Arc::new(Mutex::new(ScheduledMainLayerExecutionState {
+        let mut shared_state = Box::new(ScheduledMainLayerExecutionState {
             seed,
             claim: self.compute_combined_claim(output_layer_claims),
             eq_prefactor: E::ONE,
             folding_challenges: Vec::with_capacity(self.folding_steps),
             internal_round_coefficients: Vec::with_capacity(self.folding_steps - 1),
             result: None,
-        }));
+        });
+        let shared_state_handle =
+            crate::primitives::context::UnsafeMutAccessor::new(shared_state.as_mut());
         let mut reduction_states = Vec::with_capacity(last_step);
 
         for step in 0..last_step {
@@ -5030,6 +5565,7 @@ where
             if step == 0 {
                 self.launch_round0_kernels(
                     &batch_challenge_buffer,
+                    None,
                     acc_size,
                     static_spill_upload.as_ref(),
                     context,
@@ -5039,6 +5575,7 @@ where
                     1 => self.launch_round1_kernels(
                         &batch_challenge_buffer,
                         &round_challenge_buffers[step - 1],
+                        None,
                         acc_size,
                         false,
                         static_spill_upload.as_ref(),
@@ -5047,6 +5584,7 @@ where
                     2 => self.launch_round2_kernels(
                         &batch_challenge_buffer,
                         &round_challenge_buffers[step - 1],
+                        None,
                         acc_size,
                         false,
                         static_spill_upload.as_ref(),
@@ -5056,6 +5594,7 @@ where
                         step,
                         &batch_challenge_buffer,
                         &round_challenge_buffers[step - 1],
+                        None,
                         acc_size,
                         false,
                         static_spill_upload.as_ref(),
@@ -5069,13 +5608,13 @@ where
             let reduction_accessor = reduction_output.get_accessor();
             let next_round_len =
                 (step < last_step).then(|| main_layer_round_challenge_len(step + 1));
-            let shared_state_for_callback = Arc::clone(&shared_state);
+            let shared_state_for_callback = shared_state_handle;
             let previous_claim_coord = previous_claim_point[step];
             let callback = move |dst: &mut [E]| unsafe {
                 let reduction = reduction_accessor.get();
                 let c0 = reduction[0];
                 let c2 = reduction[1];
-                let mut state = shared_state_for_callback.lock().unwrap();
+                let state = shared_state_for_callback.get_mut();
                 let mut normalized_claim = state.claim;
                 normalized_claim.mul_assign(
                     &state
@@ -5112,7 +5651,8 @@ where
                 next_round_challenge_offset += len;
                 round_challenge_buffers.push(schedule_packed_round_challenge_upload(
                     context,
-                    Arc::clone(&round_challenge_device),
+                    round_challenge_storage.device_accessor(),
+                    &mut round_challenge_storage.callbacks,
                     offset,
                     len,
                     callback,
@@ -5140,6 +5680,7 @@ where
             last_step,
             &batch_challenge_buffer,
             &round_challenge_buffers[last_step - 1],
+            None,
             1,
             true,
             static_spill_upload.as_ref(),
@@ -5150,7 +5691,7 @@ where
             .iter()
             .map(|(addr, values)| (*addr, values.get_accessor()))
             .collect();
-        let shared_state_for_callback = Arc::clone(&shared_state);
+        let shared_state_for_callback = shared_state_handle;
         let folding_steps = self.folding_steps;
         let mut final_readback_callbacks = Callbacks::new();
         final_readback_callbacks.schedule(
@@ -5165,7 +5706,7 @@ where
                     .values()
                     .flat_map(|values| values.iter().copied())
                     .collect();
-                let mut state = shared_state_for_callback.lock().unwrap();
+                let state = shared_state_for_callback.get_mut();
                 commit_field_els(&mut state.seed, &transcript_inputs);
 
                 let challenges = draw_random_field_els::<BF, E>(&mut state.seed, 2);
@@ -5202,7 +5743,9 @@ where
             tracing_ranges: Vec::new(),
             start_callbacks,
             static_spill_upload,
+            batch_challenge_storage,
             batch_challenge_buffer,
+            round_challenge_storage,
             round_challenge_buffers,
             reduction_states,
             final_readback: {
@@ -5212,13 +5755,14 @@ where
                     _phantom: std::marker::PhantomData,
                 }
             },
+            runtime_uploads: None,
             shared_state,
         })
     }
 
     pub(crate) fn schedule_execute_main_layer_from_workflow_state(
         &mut self,
-        workflow_state: Arc<Mutex<ScheduledBackwardWorkflowState<E>>>,
+        workflow_state: ScheduledBackwardWorkflowStateHandle<E>,
         context: &ProverContext,
     ) -> CudaResult<GpuGKRMainLayerScheduledLayerExecution<E>> {
         let stream = context.get_exec_stream();
@@ -5230,20 +5774,22 @@ where
         assert!(last_step >= 3);
         let mut start_callbacks = Callbacks::new();
         let static_spill_upload = schedule_static_spill_upload(context, &self.static_spill_bytes)?;
-        let shared_state = Arc::new(Mutex::new(ScheduledMainLayerExecutionState {
+        let mut shared_state = Box::new(ScheduledMainLayerExecutionState {
             seed: Seed::default(),
             claim: E::ZERO,
             eq_prefactor: E::ONE,
             folding_challenges: Vec::with_capacity(self.folding_steps),
             internal_round_coefficients: Vec::with_capacity(self.folding_steps - 1),
             result: None,
-        }));
+        });
+        let shared_state_handle =
+            crate::primitives::context::UnsafeMutAccessor::new(shared_state.as_mut());
 
         let mut claim_point_host =
             unsafe { context.alloc_host_uninit_slice(self.folding_steps + 1) };
         let claim_point_accessor = claim_point_host.get_mut_accessor();
-        let workflow_state_for_start = Arc::clone(&workflow_state);
-        let shared_state_for_start = Arc::clone(&shared_state);
+        let workflow_state_for_start = workflow_state;
+        let shared_state_for_start = shared_state_handle;
         let layer_claim_callback = self
             .kernel_plans
             .iter()
@@ -5265,12 +5811,12 @@ where
             .collect::<Vec<_>>();
         start_callbacks.schedule(
             move || unsafe {
-                let workflow_state = workflow_state_for_start.lock().unwrap();
+                let workflow_state = workflow_state_for_start.get();
                 let dst = claim_point_accessor.get_mut();
                 let claim_len = dst.len() - 1;
                 dst[..claim_len].copy_from_slice(&workflow_state.current_claim_point);
                 dst[claim_len] = workflow_state.current_batching_challenge;
-                let mut layer_state = shared_state_for_start.lock().unwrap();
+                let layer_state = shared_state_for_start.get_mut();
                 layer_state.seed = workflow_state.seed;
                 layer_state.claim = {
                     let mut result = E::ZERO;
@@ -5301,18 +5847,17 @@ where
             &claim_point_host,
             stream,
         )?;
-        let batch_challenge_buffer =
-            self.schedule_batch_challenge_buffer_from_workflow_state(
-                Arc::clone(&workflow_state),
-                context,
-            )?;
+        let (batch_challenge_storage, batch_challenge_buffer) =
+            self.schedule_batch_challenge_buffer_from_workflow_state(workflow_state, context)?;
+        let runtime_uploads =
+            self.schedule_runtime_uploads_from_workflow_state(workflow_state, context)?;
         let mut round_challenge_buffers = Vec::with_capacity(last_step);
         let round_challenge_len = (1..=last_step)
             .map(main_layer_round_challenge_len)
             .sum::<usize>();
-        let round_challenge_device = Arc::new(SharedChallengeDevice::new(
+        let mut round_challenge_storage = ScheduledChallengeStorage::new(
             context.alloc(round_challenge_len, AllocationPlacement::Top)?,
-        ));
+        );
         let mut next_round_challenge_offset = 0usize;
         let mut reduction_states = Vec::with_capacity(last_step);
 
@@ -5321,6 +5866,7 @@ where
             if step == 0 {
                 self.launch_round0_kernels(
                     &batch_challenge_buffer,
+                    Some(&runtime_uploads),
                     acc_size,
                     static_spill_upload.as_ref(),
                     context,
@@ -5330,6 +5876,7 @@ where
                     1 => self.launch_round1_kernels(
                         &batch_challenge_buffer,
                         &round_challenge_buffers[step - 1],
+                        Some(&runtime_uploads),
                         acc_size,
                         false,
                         static_spill_upload.as_ref(),
@@ -5338,6 +5885,7 @@ where
                     2 => self.launch_round2_kernels(
                         &batch_challenge_buffer,
                         &round_challenge_buffers[step - 1],
+                        Some(&runtime_uploads),
                         acc_size,
                         false,
                         static_spill_upload.as_ref(),
@@ -5347,6 +5895,7 @@ where
                         step,
                         &batch_challenge_buffer,
                         &round_challenge_buffers[step - 1],
+                        Some(&runtime_uploads),
                         acc_size,
                         false,
                         static_spill_upload.as_ref(),
@@ -5359,17 +5908,16 @@ where
             let reduction_accessor = reduction_output.get_accessor();
             let next_round_len =
                 (step < last_step).then(|| main_layer_round_challenge_len(step + 1));
-            let shared_state_for_callback = Arc::clone(&shared_state);
+            let shared_state_for_callback = shared_state_handle;
             let previous_claim_coord_idx = step;
-            let claim_point_for_callback = Arc::clone(&workflow_state);
+            let claim_point_for_callback = workflow_state;
             let callback = move |dst: &mut [E]| unsafe {
                 let reduction = reduction_accessor.get();
                 let c0 = reduction[0];
                 let c2 = reduction[1];
                 let previous_claim_coord =
-                    claim_point_for_callback.lock().unwrap().current_claim_point
-                        [previous_claim_coord_idx];
-                let mut state = shared_state_for_callback.lock().unwrap();
+                    claim_point_for_callback.get().current_claim_point[previous_claim_coord_idx];
+                let state = shared_state_for_callback.get_mut();
                 let mut normalized_claim = state.claim;
                 normalized_claim.mul_assign(
                     &state
@@ -5406,7 +5954,8 @@ where
                 next_round_challenge_offset += len;
                 round_challenge_buffers.push(schedule_packed_round_challenge_upload(
                     context,
-                    Arc::clone(&round_challenge_device),
+                    round_challenge_storage.device_accessor(),
+                    &mut round_challenge_storage.callbacks,
                     offset,
                     len,
                     callback,
@@ -5433,6 +5982,7 @@ where
             last_step,
             &batch_challenge_buffer,
             &round_challenge_buffers[last_step - 1],
+            Some(&runtime_uploads),
             1,
             true,
             static_spill_upload.as_ref(),
@@ -5443,8 +5993,8 @@ where
             .iter()
             .map(|(addr, values)| (*addr, values.get_accessor()))
             .collect();
-        let shared_state_for_callback = Arc::clone(&shared_state);
-        let workflow_state_for_callback = Arc::clone(&workflow_state);
+        let shared_state_for_callback = shared_state_handle;
+        let workflow_state_for_callback = workflow_state;
         let folding_steps = self.folding_steps;
         let layer_idx = self.layer_idx;
         let mut final_readback_callbacks = Callbacks::new();
@@ -5460,7 +6010,7 @@ where
                     .values()
                     .flat_map(|values| values.iter().copied())
                     .collect();
-                let mut state = shared_state_for_callback.lock().unwrap();
+                let state = shared_state_for_callback.get_mut();
                 commit_field_els(&mut state.seed, &transcript_inputs);
 
                 let challenges = draw_random_field_els::<BF, E>(&mut state.seed, 2);
@@ -5483,7 +6033,7 @@ where
                 };
 
                 {
-                    let mut workflow_state = workflow_state_for_callback.lock().unwrap();
+                    let workflow_state = workflow_state_for_callback.get_mut();
                     workflow_state.current_claims = new_claims.clone();
                     workflow_state.current_claim_point = new_claim_point.clone();
                     workflow_state.current_batching_challenge = next_batching_challenge;
@@ -5515,7 +6065,9 @@ where
             tracing_ranges,
             start_callbacks,
             static_spill_upload,
+            batch_challenge_storage,
             batch_challenge_buffer,
+            round_challenge_storage,
             round_challenge_buffers,
             reduction_states,
             final_readback: {
@@ -5525,6 +6077,7 @@ where
                     _phantom: std::marker::PhantomData,
                 }
             },
+            runtime_uploads: Some(runtime_uploads),
             shared_state,
         })
     }
@@ -5536,31 +6089,33 @@ impl<E: FieldExtension<BF> + Field> GpuGKRMainLayerScheduledLayerExecution<E> {
             tracing_ranges,
             start_callbacks,
             static_spill_upload,
-            batch_challenge_buffer,
-            round_challenge_buffers,
+            batch_challenge_storage,
+            round_challenge_storage,
+            batch_challenge_buffer: _,
+            round_challenge_buffers: _,
             reduction_states,
             final_readback,
+            runtime_uploads,
             shared_state,
         } = self;
         GpuGKRMainLayerHostKeepalive {
             tracing_ranges,
             start_callbacks,
             static_spill_upload: static_spill_upload.map(upload_into_host_keepalive),
-            batch_challenge_buffer: challenge_buffer_into_host_keepalive(batch_challenge_buffer),
-            round_challenge_buffers: round_challenge_buffers
-                .into_iter()
-                .map(challenge_buffer_into_host_keepalive)
-                .collect(),
+            batch_challenge_storage: challenge_storage_into_host_keepalive(batch_challenge_storage),
+            round_challenge_storage: challenge_storage_into_host_keepalive(round_challenge_storage),
             reduction_states,
             final_readback,
+            runtime_uploads: runtime_uploads.map(runtime_uploads_into_host_keepalive),
             shared_state,
         }
     }
 
     pub(crate) fn into_execution(self) -> GpuGKRMainLayerExecution<E> {
-        self.shared_state
-            .lock()
-            .unwrap()
+        let Self {
+            mut shared_state, ..
+        } = self;
+        shared_state
             .result
             .take()
             .expect("main-layer execution is not ready yet")
@@ -5592,13 +6147,16 @@ where
         }
     }
 
-    pub(crate) fn shared_state_handle(&self) -> Arc<Mutex<ScheduledBackwardWorkflowState<E>>> {
-        Arc::clone(&self.shared_state)
+    pub(crate) fn shared_state_handle(&mut self) -> ScheduledBackwardWorkflowStateHandle<E> {
+        crate::primitives::context::UnsafeMutAccessor::new(self.shared_state.as_mut())
     }
 
     pub(crate) fn wait(self, context: &ProverContext) -> CudaResult<GpuGKRBackwardExecution<E>> {
         context.get_exec_stream().synchronize()?;
-        let mut state = self.shared_state.lock().unwrap();
+        let Self {
+            mut shared_state, ..
+        } = self;
+        let state = shared_state.as_mut();
         Ok(GpuGKRBackwardExecution {
             proofs: std::mem::take(&mut state.proofs),
             claims_for_layers: std::mem::take(&mut state.claims_for_layers),
@@ -5619,9 +6177,11 @@ where
         mut self,
         compiled_circuit: GKRCircuitArtifact<BF>,
         external_challenges: GKRExternalChallenges<BF, E>,
-        shared_state: Arc<Mutex<ScheduledBackwardWorkflowState<E>>>,
+        mut shared_state: Box<ScheduledBackwardWorkflowState<E>>,
         context: &ProverContext,
     ) -> CudaResult<GpuGKRBackwardScheduledExecution<BF, E>> {
+        let shared_state_handle =
+            crate::primitives::context::UnsafeMutAccessor::new(shared_state.as_mut());
         let stream = context.get_exec_stream();
         let mut tracing_ranges = Vec::new();
         let workflow_range = Range::new("gkr.backward.schedule")?;
@@ -5633,7 +6193,7 @@ where
             let layer_idx = prepared_layer.layer_idx;
             dimension_reducing_layers.push(
                 prepared_layer.schedule_execute_dimension_reducing_layer_from_workflow_state(
-                    Arc::clone(&shared_state),
+                    shared_state_handle,
                     context,
                 )?,
             );
@@ -5644,25 +6204,8 @@ where
         dimension_reducing_layers_range.end(stream)?;
         tracing_ranges.push(dimension_reducing_layers_range);
 
-        let (
-            lookup_multiplicative_challenge,
-            lookup_additive_challenge,
-            constraint_batch_challenge,
-        ) = {
-            let workflow_state = shared_state.lock().unwrap();
-            (
-                workflow_state.lookup_multiplicative_challenge,
-                workflow_state.lookup_additive_challenge,
-                workflow_state.constraint_batch_challenge,
-            )
-        };
-        let mut main_backward_state = self.into_main_layer_backward_state(
-            compiled_circuit,
-            external_challenges,
-            lookup_multiplicative_challenge,
-            lookup_additive_challenge,
-            constraint_batch_challenge,
-        );
+        let mut main_backward_state =
+            self.into_main_layer_backward_state_static(compiled_circuit, external_challenges);
         let mut main_layers = Vec::new();
         let main_layers_range = Range::new("gkr.backward.main_layers")?;
         main_layers_range.start(stream)?;
@@ -5672,7 +6215,7 @@ where
             let layer_idx = prepared_layer.layer_idx;
             main_layers.push(
                 prepared_layer.schedule_execute_main_layer_from_workflow_state(
-                    Arc::clone(&shared_state),
+                    shared_state_handle,
                     context,
                 )?,
             );
@@ -5709,7 +6252,7 @@ where
         constraint_batch_challenge: E,
         context: &ProverContext,
     ) -> CudaResult<GpuGKRBackwardScheduledExecution<BF, E>> {
-        let shared_state = Arc::new(Mutex::new(ScheduledBackwardWorkflowState {
+        let mut shared_state = Box::new(ScheduledBackwardWorkflowState {
             claims_for_layers: BTreeMap::from([(
                 initial_output_layer_idx,
                 top_layer_claims.clone(),
@@ -5726,7 +6269,7 @@ where
             constraint_batch_challenge,
             seed,
             proofs: BTreeMap::new(),
-        }));
+        });
         self.schedule_execute_backward_workflow_from_shared_state(
             compiled_circuit,
             external_challenges,
@@ -5739,9 +6282,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::{
-        GKRCircuitArtifact, GpuGKRDimensionReducingBackwardState,
-        GpuGKRMainLayerConstraintLinearTerm, GpuGKRMainLayerConstraintQuadraticTerm,
-        GpuGKRMainLayerKernelKind, build_dimension_reducing_kernel_blueprints,
+        build_dimension_reducing_kernel_blueprints,
         build_inits_and_teardowns_initial_pair_inputs_and_metadata,
         build_lookup_from_vector_input_with_setup_inputs_and_metadata,
         build_lookup_with_dens_and_setup_expressions_inputs_and_metadata,
@@ -5750,10 +6291,12 @@ mod tests {
         canonical_inits_and_teardowns_top_bits, launch_build_eq_values, launch_lookup_continuation,
         launch_lookup_round0, launch_main_round0, launch_pairwise_continuation,
         launch_pairwise_round0, make_deferred_backward_workflow_state,
-        populate_backward_workflow_state,
+        populate_backward_workflow_state, GKRCircuitArtifact, GpuGKRDimensionReducingBackwardState,
+        GpuGKRMainLayerConstraintLinearTerm, GpuGKRMainLayerConstraintQuadraticTerm,
+        GpuGKRMainLayerKernelKind,
     };
     use crate::allocator::tracker::AllocationPlacement;
-    use crate::ops::cub::device_reduce::{ReduceOperation, get_reduce_temp_storage_bytes};
+    use crate::ops::cub::device_reduce::{get_reduce_temp_storage_bytes, ReduceOperation};
     use crate::primitives::callbacks::Callbacks;
     use crate::primitives::context::{DeviceAllocation, ProverContext};
     use crate::primitives::field::{BF, E4};
@@ -5763,9 +6306,8 @@ mod tests {
         GpuSumcheckRound0DeviceLaunchDescriptors, GpuSumcheckRound0HostLaunchDescriptors,
         GpuSumcheckRound0ScheduledLaunchDescriptors,
     };
-    use std::ptr::null;
     use crate::prover::test_utils::make_test_context;
-    use cs::definitions::{GKRAddress, NUM_MEM_ARGUMENT_KEY_PARTS, VirtualSetupPoly};
+    use cs::definitions::{GKRAddress, VirtualSetupPoly, NUM_MEM_ARGUMENT_KEY_PARTS};
     use cs::gkr_compiler::{
         GKRLayerDescription, GateArtifacts, InitsOrTeardownsTimestampAndValue, NoFieldGKRRelation,
         NoFieldMaxQuadraticConstraintsGKRRelation, NoFieldMaxQuadraticGKRRelation, OutputType,
@@ -5774,9 +6316,9 @@ mod tests {
     use era_cudart::slice::{CudaSlice, CudaSliceMut, DeviceSlice};
     use field::{Field, FieldExtension, PrimeField};
     use prover::gkr::high_bits_offset_for_inits_and_teardowns;
-    use prover::gkr::prover::GKRExternalChallenges;
     use prover::gkr::prover::dimension_reduction::forward::DimensionReducingInputOutput;
     use prover::gkr::prover::transcript_utils::{commit_field_els, draw_random_field_els};
+    use prover::gkr::prover::GKRExternalChallenges;
     use prover::gkr::sumcheck::evaluation_kernels::{
         BatchConstraintEvalGKRRelation, BatchedGKRKernel,
     };
@@ -5784,6 +6326,7 @@ mod tests {
     use prover::transcript::Seed;
     use serial_test::serial;
     use std::collections::BTreeMap;
+    use std::ptr::null;
 
     fn sample_ext(seed: u32) -> E4 {
         E4::from_array_of_base([
@@ -6092,9 +6635,11 @@ mod tests {
         );
 
         let mut backward_state = fixture.gpu_backward_state;
-        let shared_state = make_deferred_backward_workflow_state();
+        let mut shared_state = make_deferred_backward_workflow_state();
+        let shared_state_handle =
+            crate::primitives::context::UnsafeMutAccessor::new(shared_state.as_mut());
         populate_backward_workflow_state(
-            &shared_state,
+            shared_state_handle,
             fixture.initial_output_layer_idx,
             fixture.top_layer_claims,
             fixture.evaluation_point,
@@ -6113,7 +6658,7 @@ mod tests {
             let layer_idx = prepared_layer.layer_idx;
             let scheduled = prepared_layer
                 .schedule_execute_dimension_reducing_layer_from_workflow_state(
-                    std::sync::Arc::clone(&shared_state),
+                    shared_state_handle,
                     context,
                 )
                 .unwrap();
@@ -6147,15 +6692,12 @@ mod tests {
             .expect("expected first main-layer plan after dimension reduction");
         let first_main_layer_idx = first_main_layer.layer_idx;
         let _first_main_layer_execution = first_main_layer
-            .schedule_execute_main_layer_from_workflow_state(
-                std::sync::Arc::clone(&shared_state),
-                context,
-            )
+            .schedule_execute_main_layer_from_workflow_state(shared_state_handle, context)
             .unwrap();
 
         context.get_exec_stream().synchronize().unwrap();
 
-        let execution = super::take_backward_execution_from_shared_state(&shared_state);
+        let execution = super::take_backward_execution_from_shared_state(shared_state_handle);
         assert!(
             execution.proofs.contains_key(&first_main_layer_idx),
             "shared-state workflow should still schedule the first main layer after purging"
@@ -6432,9 +6974,11 @@ mod tests {
         );
         assert_eq!(static_plan.kernel_plans.len(), expected.len());
 
-        let shared_state = make_deferred_backward_workflow_state();
+        let mut shared_state = make_deferred_backward_workflow_state();
+        let shared_state_handle =
+            crate::primitives::context::UnsafeMutAccessor::new(shared_state.as_mut());
         populate_backward_workflow_state(
-            &shared_state,
+            shared_state_handle,
             static_plan.layer_idx + 1,
             current_claims,
             current_point,
@@ -6504,7 +7048,10 @@ mod tests {
                 "kernel {idx} batch challenge count mismatch",
             );
             assert_eq!(
-                record.auxiliary_challenge, expected_kernel.auxiliary_challenge,
+                record.auxiliary_challenge,
+                kernel_plan
+                    .auxiliary_challenge_summary()
+                    .unwrap_or(E4::ZERO),
                 "kernel {idx} auxiliary challenge mismatch",
             );
 
@@ -6551,13 +7098,22 @@ mod tests {
             );
 
             let metadata_inline = record.metadata_inline != 0;
-            match &expected_kernel.constraint_metadata {
+            match kernel_plan.constraint_metadata_source.as_ref() {
                 None => {
                     assert_eq!(record.quadratic_terms.count, 0);
                     assert_eq!(record.linear_terms.count, 0);
                     assert_eq!(record.constant_offset, E4::ZERO);
                 }
-                Some(expected_metadata) => {
+                Some(super::GpuGKRMainLayerConstraintMetadataSource::Deferred(_)) => {
+                    assert_eq!(record.quadratic_terms.count, 0);
+                    assert_eq!(record.linear_terms.count, 0);
+                    assert_eq!(record.constant_offset, E4::ZERO);
+                }
+                Some(super::GpuGKRMainLayerConstraintMetadataSource::Immediate(_)) => {
+                    let expected_metadata = expected_kernel
+                        .constraint_metadata
+                        .as_ref()
+                        .expect("immediate static metadata must match expected kernel metadata");
                     assert_eq!(
                         payload_slice::<GpuGKRMainLayerConstraintQuadraticTerm<E4>>(
                             &round0_batch.inline_payload,
@@ -6681,7 +7237,8 @@ mod tests {
             )
         }
 
-        let dynamic_fixture = crate::prover::tests::prepare_basic_unrolled_async_backward_fixture(8);
+        let dynamic_fixture =
+            crate::prover::tests::prepare_basic_unrolled_async_backward_fixture(8);
         let dynamic_context = &dynamic_fixture.context;
         let (mut dynamic_state, _, _, _, dynamic_batching_challenge) = advance_dimension_reduction(
             dynamic_fixture.gpu_backward_state,
@@ -6844,7 +7401,7 @@ mod tests {
             context.get_exec_stream(),
         )
         .unwrap();
-        let batch_challenge_buffer = layer0_plan
+        let (_batch_challenge_storage, batch_challenge_buffer) = layer0_plan
             .schedule_batch_challenge_buffer(batch_challenge_base, context)
             .unwrap();
 
@@ -6860,6 +7417,7 @@ mod tests {
                     layer0_plan
                         .launch_round0_kernels(
                             &batch_challenge_buffer,
+                            None,
                             acc_size,
                             static_spill_upload.as_ref(),
                             context,
@@ -6867,16 +7425,18 @@ mod tests {
                         .unwrap();
                 }
                 1 => {
-                    let folding_buffer = super::schedule_immediate_field_upload(
-                        context,
-                        1,
-                        &[folding_challenges[0]],
-                    )
-                    .unwrap();
+                    let (_folding_storage, folding_buffer) =
+                        super::schedule_immediate_field_upload(
+                            context,
+                            1,
+                            &[folding_challenges[0]],
+                        )
+                        .unwrap();
                     layer0_plan
                         .launch_round1_kernels(
                             &batch_challenge_buffer,
                             &folding_buffer,
+                            None,
                             acc_size,
                             false,
                             static_spill_upload.as_ref(),
@@ -6885,16 +7445,18 @@ mod tests {
                         .unwrap();
                 }
                 2 => {
-                    let folding_buffer = super::schedule_immediate_field_upload(
-                        context,
-                        2,
-                        &[folding_challenges[0], folding_challenges[1]],
-                    )
-                    .unwrap();
+                    let (_folding_storage, folding_buffer) =
+                        super::schedule_immediate_field_upload(
+                            context,
+                            2,
+                            &[folding_challenges[0], folding_challenges[1]],
+                        )
+                        .unwrap();
                     layer0_plan
                         .launch_round2_kernels(
                             &batch_challenge_buffer,
                             &folding_buffer,
+                            None,
                             acc_size,
                             false,
                             static_spill_upload.as_ref(),
@@ -6903,17 +7465,19 @@ mod tests {
                         .unwrap();
                 }
                 _ => {
-                    let folding_buffer = super::schedule_immediate_field_upload(
-                        context,
-                        1,
-                        &[*folding_challenges.last().unwrap()],
-                    )
-                    .unwrap();
+                    let (_folding_storage, folding_buffer) =
+                        super::schedule_immediate_field_upload(
+                            context,
+                            1,
+                            &[*folding_challenges.last().unwrap()],
+                        )
+                        .unwrap();
                     layer0_plan
                         .launch_round3_kernels(
                             step,
                             &batch_challenge_buffer,
                             &folding_buffer,
+                            None,
                             acc_size,
                             false,
                             static_spill_upload.as_ref(),
@@ -8548,6 +9112,8 @@ mod tests {
             batch_challenges: batch_challenges_dev.as_ptr(),
             contributions: contributions.as_mut_ptr(),
             spill_payload: null(),
+            auxiliary_challenges: null(),
+            constraint_metadata: null(),
         };
 
         super::launch_main_round0_batched(&batch_static, &batch_runtime, 2, &context).unwrap();
@@ -8684,6 +9250,8 @@ mod tests {
             batch_challenges: batch_challenges_dev.as_ptr(),
             contributions: contributions.as_mut_ptr(),
             spill_payload: null(),
+            auxiliary_challenges: null(),
+            constraint_metadata: null(),
         };
 
         super::launch_main_round0_batched(&batch_static, &batch_runtime, 2, &context).unwrap();
@@ -9081,7 +9649,6 @@ mod tests {
                 callbacks: Callbacks::new(),
                 device: alloc_and_copy(&context, &[constant_offset]),
             },
-            constant_offset_value: constant_offset,
         };
 
         let scheduled = crate::prover::gkr::GpuSumcheckRound1ScheduledLaunchDescriptors {
@@ -9268,6 +9835,8 @@ mod tests {
             folding_challenge: folding_challenge_dev.as_ptr(),
             contributions: contributions.as_mut_ptr(),
             spill_payload: spill_payload_dev.as_ptr(),
+            auxiliary_challenges: null(),
+            constraint_metadata: null(),
         };
 
         super::launch_main_round1_batched(&batch_static, &batch_runtime, 2, false, &context)
@@ -9445,6 +10014,8 @@ mod tests {
             folding_challenge: folding_challenge_dev.as_ptr(),
             contributions: contributions.as_mut_ptr(),
             spill_payload: null(),
+            auxiliary_challenges: null(),
+            constraint_metadata: null(),
         };
 
         super::launch_main_round1_batched(&batch_static, &batch_runtime, 2, false, &context)
@@ -10361,70 +10932,33 @@ mod tests {
             &external_challenges,
             &[],
             0,
-            sample_ext(10),
-            sample_ext(15),
-            constraint_batch_challenge,
             16,
             4,
         );
 
         assert_eq!(blueprints.len(), 1);
         let blueprint = &blueprints[0];
-        let relation = BatchConstraintEvalGKRRelation::<BF, E4>::new(
-            &constraint_input,
-            constraint_batch_challenge,
-        );
+        let (expected_inputs, expected_template) =
+            super::build_constraints_max_quadratic_inputs_and_template(&constraint_input);
 
         assert_eq!(
             blueprint.kind,
             GpuGKRMainLayerKernelKind::EnforceConstraintsMaxQuadratic
         );
         assert_eq!(blueprint.batch_challenges, Vec::<E4>::new());
-        assert_eq!(
-            blueprint.inputs,
-            <BatchConstraintEvalGKRRelation<BF, E4> as BatchedGKRKernel<BF, E4>>::get_inputs(
-                &relation,
-            )
-        );
+        assert_eq!(blueprint.inputs, expected_inputs);
 
         let metadata = blueprint
             .constraint_metadata_source
             .as_ref()
             .expect("constraint metadata must be present");
         let metadata = match metadata {
-            super::GpuGKRMainLayerConstraintMetadataSource::Immediate(metadata) => metadata,
-            super::GpuGKRMainLayerConstraintMetadataSource::Deferred(..) => {
-                panic!("static blueprint must materialize immediate constraint metadata")
+            super::GpuGKRMainLayerConstraintMetadataSource::Deferred(metadata) => metadata,
+            super::GpuGKRMainLayerConstraintMetadataSource::Immediate(..) => {
+                panic!("static blueprint must defer constraint metadata")
             }
         };
-        assert_eq!(metadata.constant_offset, relation.kernel.constant_offset);
-        assert_eq!(
-            metadata.quadratic_terms,
-            relation
-                .kernel
-                .quadratic_parts
-                .iter()
-                .map(
-                    |((lhs, rhs), challenge)| GpuGKRMainLayerConstraintQuadraticTerm {
-                        lhs: *lhs as u32,
-                        rhs: *rhs as u32,
-                        challenge: *challenge,
-                    }
-                )
-                .collect::<Vec<_>>()
-        );
-        assert_eq!(
-            metadata.linear_terms,
-            relation
-                .kernel
-                .linear_parts
-                .iter()
-                .map(|(input, challenge)| GpuGKRMainLayerConstraintLinearTerm {
-                    input: *input as u32,
-                    challenge: *challenge,
-                })
-                .collect::<Vec<_>>()
-        );
+        assert_eq!(metadata, &expected_template);
     }
 
     #[test]
@@ -10501,9 +11035,6 @@ mod tests {
             &external_challenges,
             &canonical_top_bits,
             high_bits_shift,
-            sample_ext(15),
-            sample_ext(20),
-            sample_ext(30),
             4,
             0,
         );
