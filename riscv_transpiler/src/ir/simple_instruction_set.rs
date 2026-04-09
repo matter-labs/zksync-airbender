@@ -11,6 +11,7 @@ pub enum DelegationType {
     Blake = common_constants::BLAKE2S_DELEGATION_CSR_REGISTER,
     BigInt = common_constants::BIGINT_OPS_WITH_CONTROL_CSR_REGISTER,
     Keccak = common_constants::KECCAK_SPECIAL5_CSR_REGISTER,
+    BlakeGFunction = common_constants::BLAKE2S_G_FUNCTION_DELEGATION_CSR_REGISTER,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -795,6 +796,46 @@ pub fn preprocess_bytecode<
                                 0,
                                 0,
                                 DelegationType::Keccak as u32,
+                            );
+
+                            if PROTECT_AGAINST_MID_DELEGATION_JUMPS {
+                                instructions[i] = instr;
+                            } else {
+                                for j in 0..num_calls {
+                                    instructions[i + j] = instr;
+                                }
+                            }
+                            i += num_calls;
+                            // short-cut
+                            continue;
+                        }
+                        common_constants::BLAKE2S_G_FUNCTION_DELEGATION_CSR_REGISTER => {
+                            assert_eq!(formal_rs1, 0);
+                            assert_eq!(rd, 0);
+                            use common_constants::BLAKE2S_G_FUNCTIONS_PER_ROUND_FUNCTION;
+
+                            // here we will peek into next instructions and issue only one call
+                            // we should expect 7 or 10 calls
+                            let mut num_calls = 0;
+                            for j in 1..=10 {
+                                if bytecode[i + j] == opcode {
+                                    continue;
+                                } else {
+                                    num_calls = j;
+                                    break;
+                                }
+                            }
+                            assert!(
+                                num_calls == (7 * BLAKE2S_G_FUNCTIONS_PER_ROUND_FUNCTION)
+                                    || num_calls == (10 * BLAKE2S_G_FUNCTIONS_PER_ROUND_FUNCTION)
+                            );
+
+                            let instr = Instruction::from_imm(
+                                InstructionName::ZicsrDelegation,
+                                0,
+                                0,
+                                0,
+                                DelegationType::BlakeGFunction as u32,
                             );
 
                             if PROTECT_AGAINST_MID_DELEGATION_JUMPS {

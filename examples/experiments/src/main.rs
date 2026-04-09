@@ -14,11 +14,17 @@ unsafe extern "C" fn start_rust() -> ! {
 
 #[inline(never)]
 fn main() -> ! {
-    use blake2s_u32::*;
-    let mut state = Blake2sState::new();
+    // use blake2s_u32::*;
+    // let mut state = Blake2sState::new();
+    // unsafe {
+    //     state.run_round_function::<true>(0, true);
+    // }
+
+    use blake2s_u32::state_with_extended_control::Blake2RoundFunctionEvaluator;
+    let mut state_evaluator = Blake2RoundFunctionEvaluator::new();
     unsafe {
-        state.run_round_function::<true>(0, true);
+        state_evaluator.run_round_function::<true>(0, true);
     }
 
-    zksync_os_finish_success(state.read_state_for_output_ref())
+    zksync_os_finish_success(state_evaluator.read_state_for_output_ref())
 }

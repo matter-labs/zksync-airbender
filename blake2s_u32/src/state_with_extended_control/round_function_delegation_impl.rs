@@ -1,35 +1,6 @@
-use core::mem::MaybeUninit;
-
-// NOTE: here we need struct definition for external crates, but we will panic in implementations instead
-
-use crate::aligned_array::AlignedArray64;
-
 use super::*;
-
-// Here we try different approach to Blake round function, but placing extra burden
-// into "precompile" in terms of control flow
-
-#[cfg(all(target_arch = "riscv32", feature = "blake2_with_compression"))]
 use common_constants::delegation_types::blake2s_with_control::*;
-
-// we will pass
-// - mutable ptr to state + extended state (basically - to self),
-// with words 12 and 14 set in the extended state to what we need if we do not use "compression" mode
-// - const ptr to input (that may be treated differently)
-// - round mask
-// - control register: output_flag || is_right flag for compression || compression mode flag
-
-#[derive(Clone, Copy, Debug)]
-#[repr(C, align(128))]
-pub struct Blake2RoundFunctionEvaluator {
-    pub state: [u32; BLAKE2S_STATE_WIDTH_IN_U32_WORDS], // represents current state
-    pub extended_state: [u32; BLAKE2S_EXTENDED_STATE_WIDTH_IN_U32_WORDS], // represents scratch space for evaluation
-    // there is no input buffer, and we will use registers to actually pass control flow flags
-    // there will be special buffer for witness to write into, that
-    // we will take care to initialize, even though we will use only half of it
-    pub input_buffer: AlignedArray64<u32, BLAKE2S_BLOCK_SIZE_U32_WORDS>,
-    pub t: u32, // we limit ourselves to <4Gb inputs
-}
+use core::mem::MaybeUninit;
 
 impl Blake2RoundFunctionEvaluator {
     pub const SUPPORT_SPEC_SINGLE_ROUND: bool = false;
@@ -58,30 +29,6 @@ impl Blake2RoundFunctionEvaluator {
 
             new
         }
-    }
-
-    #[inline(always)]
-    pub const fn read_state_for_output(&self) -> [u32; BLAKE2S_DIGEST_SIZE_U32_WORDS] {
-        [
-            self.state[0],
-            self.state[1],
-            self.state[2],
-            self.state[3],
-            self.state[4],
-            self.state[5],
-            self.state[6],
-            self.state[7],
-        ]
-    }
-
-    #[inline(always)]
-    pub const fn read_state_for_output_ref(&self) -> &[u32; BLAKE2S_DIGEST_SIZE_U32_WORDS] {
-        &self.state
-    }
-
-    #[inline(always)]
-    pub const fn get_witness_buffer(&mut self) -> &mut [u32; BLAKE2S_BLOCK_SIZE_U32_WORDS] {
-        self.input_buffer.deref_mut_impl()
     }
 
     #[inline(always)]
@@ -122,8 +69,6 @@ impl Blake2RoundFunctionEvaluator {
         last_round: bool,
     ) {
         self.t += input_size_bytes as u32;
-
-        #[cfg(all(target_arch = "riscv32", feature = "blake2_with_compression"))]
         {
             self.extended_state[12] = self.t ^ IV[4];
             self.extended_state[14] = (0xffffffff * last_round as u32) ^ IV[6];
@@ -146,42 +91,6 @@ impl Blake2RoundFunctionEvaluator {
                         control_register,
                     );
                 }
-            }
-        }
-
-        #[cfg(all(target_arch = "riscv32", not(feature = "blake2_with_compression")))]
-        panic!("feature `blake2_with_compression` must be activated on RISC-V architecture to use this module");
-
-        #[cfg(not(target_arch = "riscv32"))]
-        {
-            let mut extended_state = [
-                self.state[0],
-                self.state[1],
-                self.state[2],
-                self.state[3],
-                self.state[4],
-                self.state[5],
-                self.state[6],
-                self.state[7],
-                IV[0],
-                IV[1],
-                IV[2],
-                IV[3],
-                self.t ^ IV[4],
-                IV[5],
-                (0xffffffff * last_round as u32) ^ IV[6],
-                IV[7],
-            ];
-
-            if REDUCED_ROUNDS {
-                round_function_reduced_rounds(&mut extended_state, input_buffer);
-            } else {
-                round_function_full_rounds(&mut extended_state, input_buffer);
-            }
-
-            for i in 0..8 {
-                self.state[i] ^= extended_state[i];
-                self.state[i] ^= extended_state[i + 8];
             }
         }
     }
@@ -206,8 +115,6 @@ impl Blake2RoundFunctionEvaluator {
         last_round: bool,
     ) {
         self.t += input_size_bytes as u32;
-
-        #[cfg(all(target_arch = "riscv32", feature = "blake2_with_compression"))]
         {
             self.extended_state[12] = self.t ^ IV[4];
             self.extended_state[14] = (0xffffffff * last_round as u32) ^ IV[6];
@@ -232,42 +139,6 @@ impl Blake2RoundFunctionEvaluator {
                 }
             }
         }
-
-        #[cfg(all(target_arch = "riscv32", not(feature = "blake2_with_compression")))]
-        panic!("feature `blake2_with_compression` must be activated on RISC-V architecture to use this module");
-
-        #[cfg(not(target_arch = "riscv32"))]
-        {
-            let mut extended_state = [
-                self.state[0],
-                self.state[1],
-                self.state[2],
-                self.state[3],
-                self.state[4],
-                self.state[5],
-                self.state[6],
-                self.state[7],
-                IV[0],
-                IV[1],
-                IV[2],
-                IV[3],
-                self.t ^ IV[4],
-                IV[5],
-                (0xffffffff * last_round as u32) ^ IV[6],
-                IV[7],
-            ];
-
-            if REDUCED_ROUNDS {
-                round_function_reduced_rounds(&mut extended_state, &self.input_buffer);
-            } else {
-                round_function_full_rounds(&mut extended_state, &self.input_buffer);
-            }
-
-            for i in 0..8 {
-                self.state[i] ^= extended_state[i];
-                self.state[i] ^= extended_state[i + 8];
-            }
-        }
     }
 
     #[inline(always)]
@@ -282,7 +153,6 @@ impl Blake2RoundFunctionEvaluator {
     /// and self-state as the hash input and destination
     #[unroll::unroll_for_loops]
     pub fn compress_node<const REDUCED_ROUNDS: bool>(&mut self, is_right: bool) {
-        #[cfg(all(target_arch = "riscv32", feature = "blake2_with_compression"))]
         {
             if REDUCED_ROUNDS {
                 let control_register = BLAKE2S_NORMAL_MODE_REDUCED_ROUNDS_INITIAL_CONTROL_REGISTER
@@ -306,50 +176,6 @@ impl Blake2RoundFunctionEvaluator {
                         control_register,
                     );
                 }
-            }
-        }
-
-        #[cfg(all(target_arch = "riscv32", not(feature = "blake2_with_compression")))]
-        panic!("feature `blake2_with_compression` must be activated on RISC-V architecture to use this module");
-
-        #[cfg(not(target_arch = "riscv32"))]
-        {
-            let mut extended_state = [
-                CONFIGURED_IV[0],
-                CONFIGURED_IV[1],
-                CONFIGURED_IV[2],
-                CONFIGURED_IV[3],
-                CONFIGURED_IV[4],
-                CONFIGURED_IV[5],
-                CONFIGURED_IV[6],
-                CONFIGURED_IV[7],
-                IV[0],
-                IV[1],
-                IV[2],
-                IV[3],
-                (BLAKE2S_BLOCK_SIZE_BYTES as u32) ^ IV[4],
-                IV[5],
-                0xffffffff ^ IV[6],
-                IV[7],
-            ];
-
-            let mut input = [0u32; BLAKE2S_BLOCK_SIZE_U32_WORDS];
-            if is_right {
-                input[..8].copy_from_slice(&self.input_buffer[..8]);
-                input[8..16].copy_from_slice(&self.state);
-            } else {
-                input[..8].copy_from_slice(&self.state);
-                input[8..16].copy_from_slice(&self.input_buffer[..8]);
-            }
-
-            if REDUCED_ROUNDS {
-                round_function_reduced_rounds(&mut extended_state, &input);
-            } else {
-                round_function_full_rounds(&mut extended_state, &input);
-            }
-
-            for i in 0..8 {
-                self.state[i] = CONFIGURED_IV[i] ^ extended_state[i] ^ extended_state[i + 8];
             }
         }
     }
