@@ -136,7 +136,7 @@ impl<E: Copy, const N: usize> FoldBuffers<E, N> {
             (src, dst)
         }
     }
-.
+
     #[inline(always)]
     pub unsafe fn dst_a(&mut self, len: usize) -> &mut [E] {
         core::slice::from_raw_parts_mut(self.buf_a.as_mut_ptr().cast::<E>(), len)

@@ -14,7 +14,6 @@ dependencies = [
 name = "common_constants"
 version = "0.1.0"
 dependencies = [
- "seq-macro",
  "serde",
 ]
 
