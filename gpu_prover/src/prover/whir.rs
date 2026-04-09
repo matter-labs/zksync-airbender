@@ -42,6 +42,11 @@ pub(crate) struct GpuWhirScheduledExtensionQuery {
     values_per_leaf: usize,
 }
 
+pub(crate) struct GpuWhirScheduledExtensionQueryKeepalive {
+    // Keeps index-fill and query-index callbacks alive until the stream executes them.
+    _callbacks: Callbacks<'static>,
+}
+
 impl GpuWhirScheduledExtensionQuery {
     pub(crate) fn leafs_accessor(&self) -> UnsafeAccessor<[BF]> {
         self.leafs.get_accessor()
@@ -72,6 +77,18 @@ impl GpuWhirScheduledExtensionQuery {
         };
 
         (leaf_values_concatenated, query)
+    }
+
+    pub(crate) fn into_keepalive(self) -> GpuWhirScheduledExtensionQueryKeepalive {
+        let Self {
+            index: _,
+            coset_index: _,
+            _callbacks,
+            leafs: _,
+            merkle_paths: _,
+            values_per_leaf: _,
+        } = self;
+        GpuWhirScheduledExtensionQueryKeepalive { _callbacks }
     }
 }
 
