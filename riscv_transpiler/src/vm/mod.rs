@@ -757,4 +757,58 @@ pub(crate) mod test {
         println!("PC = 0x{:08x}", state.pc);
         dbg!(state.registers.map(|el| el.value));
     }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_blake_mixing_function_delegation() {
+        use crate::abstractions::non_determinism::QuasiUARTSource;
+        use crate::ir::*;
+
+        let (_, binary) = read_binary(&Path::new("../examples/experiments/app.bin"));
+        let (_, text) = read_binary(&Path::new("../examples/experiments/app.text"));
+
+        let mut source = QuasiUARTSource::new_with_reads(vec![]);
+
+        let instructions: Vec<Instruction> =
+            preprocess_bytecode::<FullUnsignedMachineDecoderConfig, true>(&text);
+        let tape = SimpleTape::new(&instructions);
+        let mut ram =
+            RamWithRomRegion::<{ common_constants::rom::ROM_SECOND_WORD_BITS }>::from_rom_content(
+                &binary,
+                1 << 30,
+            );
+
+        let cycles_bound = 1 << 30;
+
+        let mut state = State::initial_with_counters(DelegationsCounters::default());
+        let mut snapshotter = SimpleSnapshotter::new_with_cycle_limit(cycles_bound, state);
+
+        let now = std::time::Instant::now();
+        VM::<DelegationsCounters>::run_basic_unrolled::<
+            SimpleSnapshotter<DelegationsCounters, { common_constants::rom::ROM_SECOND_WORD_BITS }>,
+            _,
+            _,
+            Mersenne31Field,
+        >(
+            &mut state,
+            &mut ram,
+            &mut snapshotter,
+            &tape,
+            cycles_bound,
+            &mut source,
+        );
+        let elapsed = now.elapsed();
+
+        let final_timestamp = state.timestamp;
+        assert_eq!(final_timestamp % TIMESTAMP_STEP, 0);
+        let num_instructions = (final_timestamp - INITIAL_TIMESTAMP) / TIMESTAMP_STEP;
+        println!(
+            "Frequency is {} MHz over {} instructions",
+            (num_instructions as f64) * 1000f64 / (elapsed.as_nanos() as f64),
+            num_instructions,
+        );
+
+        println!("PC = 0x{:08x}", state.pc);
+        dbg!(state.registers.map(|el| el.value));
+    }
 }

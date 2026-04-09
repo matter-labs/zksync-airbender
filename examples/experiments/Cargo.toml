@@ -13,8 +13,9 @@ categories = ["cryptography"]
 [dependencies]
 common_constants = { path = "../../common_constants" }
 riscv_common = { path = "../../riscv_common", features = ["boot_sequence", "no_memset_override"] }
-# blake2s_u32 = { path = "../../blake2s_u32", features = ["mop_extension", "blake2_with_compression"] }
-blake2s_u32 = { path = "../../blake2s_u32", features = ["mop_extension", "blake2_g_function"] }
+# blake2s_u32 = { path = "../../blake2s_u32", features = ["mop_extension"] }
+# blake2s_u32 = { path = "../../blake2s_u32", features = ["blake2_with_compression"] }
+blake2s_u32 = { path = "../../blake2s_u32", features = ["blake2_g_function"] }
 
 [workspace]
 

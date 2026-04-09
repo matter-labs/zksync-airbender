@@ -2,8 +2,53 @@ use std::mem::MaybeUninit;
 
 use super::*;
 use blake2s_u32::g_function_control_flags::*;
+use blake2s_u32::state_with_extended_control::Blake2RoundFunctionEvaluator;
 use blake2s_u32::*;
 use common_constants::*;
+
+const MIXING_FUNCTION_ACCESS_IDXES: [[usize; 4]; BLAKE2S_G_FUNCTIONS_PER_ROUND_FUNCTION] = [
+    [0, 4, 8, 12],
+    [1, 5, 9, 13],
+    [2, 6, 10, 14],
+    [3, 7, 11, 15],
+    [0, 5, 10, 15],
+    [1, 6, 11, 12],
+    [2, 7, 8, 13],
+    [3, 4, 9, 14],
+];
+
+pub(crate) const STATE_EL_INTO_MIXING_FUNCTION_ROUND: [usize; 16] = const {
+    let mut result = [0; 16];
+    let mut i = 0;
+    while i < MIXING_FUNCTION_ACCESS_IDXES.len() {
+        let [a, b, c, d] = MIXING_FUNCTION_ACCESS_IDXES[i];
+        result[a] = i;
+        result[b] = i;
+        result[c] = i;
+        result[d] = i;
+        i += 1;
+    }
+
+    result
+};
+
+pub(crate) const REDUCED_ROUNDS_SIGMA_INV: [usize; 16] =
+    sigma_pairs_into_g_function_number(SIGMAS_BY_PAIRS[6]);
+pub(crate) const FULL_ROUNDS_SIGMA_INV: [usize; 16] =
+    sigma_pairs_into_g_function_number(SIGMAS_BY_PAIRS[9]);
+
+const fn sigma_pairs_into_g_function_number(sigma_pairs: [[usize; 2]; 8]) -> [usize; 16] {
+    let mut result = [0; 16];
+    let mut i = 0;
+    while i < sigma_pairs.len() {
+        let [x, y] = sigma_pairs[i];
+        result[x] = i;
+        result[y] = i;
+        i += 1;
+    }
+
+    result
+}
 
 #[inline(never)]
 pub(crate) fn blake2_g_function_call<
@@ -47,50 +92,24 @@ pub(crate) fn blake2_g_function_call<
 
     let reduced_rounds = control_bitmask & TEST_IF_REDUCE_ROUNDS_MASK == TEST_IF_REDUCE_ROUNDS_MASK;
 
-    // let round_number = (counter as usize) / BLAKE2S_G_FUNCTIONS_PER_ROUND_FUNCTION;
-    // let mixing_function_number = (counter as usize) % BLAKE2S_G_FUNCTIONS_PER_ROUND_FUNCTION;
-
-    {
-        let permutation_bitmask = x12 >> (16 + BLAKE2S_NUM_CONTROL_BITS);
-        assert!(
-            permutation_bitmask.is_power_of_two(),
-            "permutation bitmask must be a bitmask, but got 0b{:b}",
-            permutation_bitmask
-        );
-        let permutation_index = permutation_bitmask.trailing_zeros() as usize;
-        assert_eq!(permutation_index, 0);
-    }
-
     let num_rounds = if reduced_rounds { 7 } else { 10 };
-    let num_mixing_function = num_rounds * BLAKE2S_G_FUNCTIONS_PER_ROUND_FUNCTION;
+    let num_invocations = num_rounds * BLAKE2S_G_FUNCTIONS_PER_ROUND_FUNCTION;
 
     let final_x12 = control_bitmask << BLAKE2S_G_FUNCTION_COUNTER_BITS;
-
-    // let final_x12 = {
-    //     let mut next_counter = (counter + 1) as usize;
-    //     if next_counter == num_rounds * BLAKE2S_G_FUNCTIONS_PER_ROUND_FUNCTION {
-    //         next_counter = 0;
-    //     }
-
-    //     let final_x12 =
-    //         (control_bitmask << BLAKE2S_G_FUNCTION_COUNTER_BITS) | (next_counter as u32);
-
-    //     final_x12
-    // };
 
     // we run full round function
 
     state.registers[10].timestamp =
-        state.timestamp + ((num_mixing_function - 1) as TimestampScalar) * TIMESTAMP_STEP + 3;
+        state.timestamp + ((num_invocations - 1) as TimestampScalar) * TIMESTAMP_STEP + 3;
     state.registers[11].timestamp =
-        state.timestamp + ((num_mixing_function - 1) as TimestampScalar) * TIMESTAMP_STEP + 3;
+        state.timestamp + ((num_invocations - 1) as TimestampScalar) * TIMESTAMP_STEP + 3;
     state.registers[12].timestamp =
-        state.timestamp + ((num_mixing_function - 1) as TimestampScalar) * TIMESTAMP_STEP + 3;
+        state.timestamp + ((num_invocations - 1) as TimestampScalar) * TIMESTAMP_STEP + 3;
     state.registers[12].value = final_x12;
 
     // NOTE: we should touch x0 and give it a timestamp that would be at the very end of execution
     state.registers[0].timestamp =
-        (state.timestamp + ((num_mixing_function - 1) as TimestampScalar) * TIMESTAMP_STEP) | 2;
+        (state.timestamp + ((num_invocations - 1) as TimestampScalar) * TIMESTAMP_STEP) | 2;
 
     unsafe {
         // read blake state, and input in full for speed, and for purposes of replayer it's also sufficient - replayer
@@ -101,7 +120,7 @@ pub(crate) fn blake2_g_function_call<
             [const { MaybeUninit::uninit() }; BLAKE2S_EXTENDED_STATE_WIDTH_IN_U32_WORDS];
 
         let mut addr =
-            x10 + ((BLAKE2S_STATE_WIDTH_IN_U32_WORDS * core::mem::size_of::<u32>()) as u32);
+            x10 + (core::mem::offset_of!(Blake2RoundFunctionEvaluator, extended_state) as u32);
         for i in 0..BLAKE2S_EXTENDED_STATE_WIDTH_IN_U32_WORDS {
             let value = ram.peek_word(addr);
             addr += core::mem::size_of::<u32>() as u32;
@@ -122,45 +141,54 @@ pub(crate) fn blake2_g_function_call<
         }
         let input = input.map(|el| el.assume_init());
 
-        for round in 0..num_mixing_function {
-            let round_number = (round as usize) / BLAKE2S_G_FUNCTIONS_PER_ROUND_FUNCTION;
-            let mixing_function_number = (round as usize) % BLAKE2S_G_FUNCTIONS_PER_ROUND_FUNCTION;
+        for g_function_call_idx in 0..num_invocations {
+            let round_number =
+                (g_function_call_idx as usize) / BLAKE2S_G_FUNCTIONS_PER_ROUND_FUNCTION;
+            let mixing_function_number =
+                (g_function_call_idx as usize) % BLAKE2S_G_FUNCTIONS_PER_ROUND_FUNCTION;
             let sigma_pairs = &SIGMAS_BY_PAIRS[round_number];
-
-            const MIXING_FUNCTION_ACCESS_IDXES: [[usize; 4];
-                BLAKE2S_G_FUNCTIONS_PER_ROUND_FUNCTION] = [
-                [0, 4, 8, 12],
-                [1, 5, 9, 13],
-                [2, 6, 10, 14],
-                [3, 7, 11, 15],
-                [0, 5, 10, 15],
-                [1, 6, 11, 12],
-                [2, 7, 8, 13],
-                [3, 4, 9, 14],
-            ];
 
             let [a, b, c, d] = MIXING_FUNCTION_ACCESS_IDXES[mixing_function_number];
             let [x, y] = sigma_pairs[mixing_function_number];
 
             g_function(&mut extended_state, a, b, c, d, input[x], input[y]);
 
-            let write_ts = state.timestamp + ((round - 1) as TimestampScalar) * TIMESTAMP_STEP;
-            let write_ts = write_ts | 3;
+            // as we read all the input and touch all the state each round, we only need to
+            // bookkeep as if at the last round, and we do it below
+        }
 
-            // TODO: rework to be more like keccak
+        // bookkeeping {
+        {
+            let last_round_ts_base = state.timestamp
+                + (((num_rounds - 1) * BLAKE2S_G_FUNCTIONS_PER_ROUND_FUNCTION) as TimestampScalar)
+                    * TIMESTAMP_STEP;
+            let last_round_ts_base = last_round_ts_base | 3;
+            let sigma_invs = if reduced_rounds {
+                &REDUCED_ROUNDS_SIGMA_INV
+            } else {
+                &FULL_ROUNDS_SIGMA_INV
+            };
 
             let base_addr =
-                x10 + ((BLAKE2S_STATE_WIDTH_IN_U32_WORDS * core::mem::size_of::<u32>()) as u32);
-            for idx in [a, b, c, d] {
+                x10 + (core::mem::offset_of!(Blake2RoundFunctionEvaluator, extended_state) as u32);
+            let input_base_addr = x11;
+
+            // we need an inverse mapping of state element index => g function index in the round function
+            for idx in 0..BLAKE2S_EXTENDED_STATE_WIDTH_IN_U32_WORDS {
+                let g_function_index = STATE_EL_INTO_MIXING_FUNCTION_ROUND[idx];
+                let write_ts =
+                    last_round_ts_base + (g_function_index as TimestampScalar) * TIMESTAMP_STEP;
                 let value = extended_state[idx];
                 let state_address = base_addr + ((idx * core::mem::size_of::<u32>()) as u32);
                 let (ts, old_value) = ram.write_word(state_address, value, write_ts);
                 snapshotter.append_memory_read(addr, old_value, ts, write_ts);
             }
 
-            let base_addr = x11;
-            for idx in [x, y] {
-                let input_addr = base_addr + ((idx * core::mem::size_of::<u32>()) as u32);
+            for idx in 0..16 {
+                let g_function_index = sigma_invs[idx];
+                let write_ts =
+                    last_round_ts_base + (g_function_index as TimestampScalar) * TIMESTAMP_STEP;
+                let input_addr = input_base_addr + ((idx * core::mem::size_of::<u32>()) as u32);
                 let (ts, old_value) = ram.read_word(input_addr, write_ts);
                 snapshotter.append_memory_read(addr, old_value, ts, write_ts);
             }
@@ -171,21 +199,19 @@ pub(crate) fn blake2_g_function_call<
     // and full machine state also moves!
 
     // But timestamp needs 1 less bump
-    state.timestamp += ((num_mixing_function - 1) as TimestampScalar) * TIMESTAMP_STEP;
-    state
-        .counters
-        .bump_blake2_round_function(num_mixing_function);
+    state.timestamp += ((num_invocations - 1) as TimestampScalar) * TIMESTAMP_STEP;
+    state.counters.bump_blake2_round_function(num_invocations);
     E::on_delegation(
         state,
         BLAKE2S_DELEGATION_CSR_REGISTER,
-        num_mixing_function as u64,
+        num_invocations as u64,
     );
     state.pc = state
         .pc
-        .wrapping_add((core::mem::size_of::<u32>() * num_mixing_function) as u32);
+        .wrapping_add((core::mem::size_of::<u32>() * num_invocations) as u32);
     state
         .counters
         .log_multiple_circuit_family_calls::<ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX>(
-            num_mixing_function,
+            num_invocations,
         );
 }

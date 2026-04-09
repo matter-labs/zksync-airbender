@@ -64,7 +64,7 @@ impl Blake2RoundFunctionEvaluator {
         self.t += input_size_bytes as u32;
 
         {
-            let mut extended_state = [
+            self.extended_state = [
                 self.state[0],
                 self.state[1],
                 self.state[2],
@@ -84,14 +84,14 @@ impl Blake2RoundFunctionEvaluator {
             ];
 
             if REDUCED_ROUNDS {
-                round_function_reduced_rounds(&mut extended_state, input_buffer);
+                round_function_reduced_rounds(&mut self.extended_state, input_buffer);
             } else {
-                round_function_full_rounds(&mut extended_state, input_buffer);
+                round_function_full_rounds(&mut self.extended_state, input_buffer);
             }
 
             for i in 0..8 {
-                self.state[i] ^= extended_state[i];
-                self.state[i] ^= extended_state[i + 8];
+                self.state[i] ^= self.extended_state[i];
+                self.state[i] ^= self.extended_state[i + 8];
             }
         }
     }
@@ -118,7 +118,7 @@ impl Blake2RoundFunctionEvaluator {
         self.t += input_size_bytes as u32;
 
         {
-            let mut extended_state = [
+            self.extended_state = [
                 self.state[0],
                 self.state[1],
                 self.state[2],
@@ -138,14 +138,14 @@ impl Blake2RoundFunctionEvaluator {
             ];
 
             if REDUCED_ROUNDS {
-                round_function_reduced_rounds(&mut extended_state, &self.input_buffer);
+                round_function_reduced_rounds(&mut self.extended_state, &self.input_buffer);
             } else {
-                round_function_full_rounds(&mut extended_state, &self.input_buffer);
+                round_function_full_rounds(&mut self.extended_state, &self.input_buffer);
             }
 
             for i in 0..8 {
-                self.state[i] ^= extended_state[i];
-                self.state[i] ^= extended_state[i + 8];
+                self.state[i] ^= self.extended_state[i];
+                self.state[i] ^= self.extended_state[i + 8];
             }
         }
     }
@@ -159,11 +159,11 @@ impl Blake2RoundFunctionEvaluator {
     }
 
     /// This function will use witness scratch of self as path witness input,
-    /// and self-state as the hash input and destination
+    /// and self-state as the hash input and destination. Trashes the input buffer
     #[unroll::unroll_for_loops]
     pub fn compress_node<const REDUCED_ROUNDS: bool>(&mut self, is_right: bool) {
         {
-            let mut extended_state = [
+            self.extended_state = [
                 CONFIGURED_IV[0],
                 CONFIGURED_IV[1],
                 CONFIGURED_IV[2],
@@ -182,24 +182,45 @@ impl Blake2RoundFunctionEvaluator {
                 IV[7],
             ];
 
-            let mut input = [0u32; BLAKE2S_BLOCK_SIZE_U32_WORDS];
+            let mut input =
+                [const { core::mem::MaybeUninit::uninit() }; BLAKE2S_BLOCK_SIZE_U32_WORDS];
             if is_right {
-                input[..8].copy_from_slice(&self.input_buffer[..8]);
-                input[8..16].copy_from_slice(&self.state);
+                input[..8].write_copy_of_slice(&self.input_buffer[..8]);
+                input[8..16].write_copy_of_slice(&self.state);
             } else {
-                input[..8].copy_from_slice(&self.state);
-                input[8..16].copy_from_slice(&self.input_buffer[..8]);
+                input[..8].write_copy_of_slice(&self.state);
+                input[8..16].write_copy_of_slice(&self.input_buffer[..8]);
             }
+            let input = unsafe { input.map(|el| el.assume_init()) };
 
             if REDUCED_ROUNDS {
-                round_function_reduced_rounds(&mut extended_state, &input);
+                round_function_reduced_rounds(&mut self.extended_state, &input);
             } else {
-                round_function_full_rounds(&mut extended_state, &input);
+                round_function_full_rounds(&mut self.extended_state, &input);
             }
 
             for i in 0..8 {
-                self.state[i] = CONFIGURED_IV[i] ^ extended_state[i] ^ extended_state[i + 8];
+                self.state[i] =
+                    CONFIGURED_IV[i] ^ self.extended_state[i] ^ self.extended_state[i + 8];
             }
+        }
+    }
+
+    // if "is right" then the hash contained in the state is "right node"
+    #[inline(always)]
+    pub fn get_merkle_path_proof_buffer(
+        &mut self,
+        _is_right: bool,
+    ) -> &mut [u32; BLAKE2S_DIGEST_SIZE_U32_WORDS] {
+        // we use first "half" of the internal input buffer, without optimizations
+        unsafe {
+            self.input_buffer
+                .deref_mut_impl()
+                .as_chunks_mut()
+                .0
+                .iter_mut()
+                .next()
+                .unwrap_unchecked()
         }
     }
 }

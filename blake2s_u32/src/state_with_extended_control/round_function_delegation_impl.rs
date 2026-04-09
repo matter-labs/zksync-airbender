@@ -61,7 +61,6 @@ impl Blake2RoundFunctionEvaluator {
     }
 
     #[inline]
-    #[unroll::unroll_for_loops]
     pub unsafe fn run_round_function_with_input_and_byte_len<const REDUCED_ROUNDS: bool>(
         &mut self,
         input_buffer: &AlignedArray64<u32, BLAKE2S_BLOCK_SIZE_U32_WORDS>,
@@ -108,7 +107,6 @@ impl Blake2RoundFunctionEvaluator {
     }
 
     #[inline]
-    #[unroll::unroll_for_loops]
     pub unsafe fn run_round_function_with_byte_len<const REDUCED_ROUNDS: bool>(
         &mut self,
         input_size_bytes: usize,
@@ -151,7 +149,6 @@ impl Blake2RoundFunctionEvaluator {
 
     /// This function will use witness scratch of self as path witness input,
     /// and self-state as the hash input and destination
-    #[unroll::unroll_for_loops]
     pub fn compress_node<const REDUCED_ROUNDS: bool>(&mut self, is_right: bool) {
         {
             if REDUCED_ROUNDS {
@@ -177,6 +174,24 @@ impl Blake2RoundFunctionEvaluator {
                     );
                 }
             }
+        }
+    }
+
+    // if "is right" then the hash contained in the state is "right node"
+    #[inline(always)]
+    pub fn get_merkle_path_proof_buffer(
+        &mut self,
+        _is_right: bool,
+    ) -> &mut [u32; BLAKE2S_DIGEST_SIZE_U32_WORDS] {
+        // we use first "half" of the internal input buffer, and delegation takes care of it
+        unsafe {
+            self.input_buffer
+                .deref_mut_impl()
+                .as_chunks_mut()
+                .0
+                .iter_mut()
+                .next()
+                .unwrap_unchecked()
         }
     }
 }

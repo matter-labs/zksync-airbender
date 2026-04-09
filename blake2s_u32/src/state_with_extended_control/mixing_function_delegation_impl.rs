@@ -70,7 +70,7 @@ impl Blake2RoundFunctionEvaluator {
     ) {
         self.t += input_size_bytes as u32;
         {
-            let mut extended_state = [
+            self.extended_state = [
                 self.state[0],
                 self.state[1],
                 self.state[2],
@@ -106,8 +106,8 @@ impl Blake2RoundFunctionEvaluator {
             }
 
             for i in 0..8 {
-                self.state[i] ^= extended_state[i];
-                self.state[i] ^= extended_state[i + 8];
+                self.state[i] ^= self.extended_state[i];
+                self.state[i] ^= self.extended_state[i + 8];
             }
         }
     }
@@ -134,7 +134,7 @@ impl Blake2RoundFunctionEvaluator {
         self.t += input_size_bytes as u32;
 
         {
-            let mut extended_state = [
+            self.extended_state = [
                 self.state[0],
                 self.state[1],
                 self.state[2],
@@ -170,8 +170,8 @@ impl Blake2RoundFunctionEvaluator {
             }
 
             for i in 0..8 {
-                self.state[i] ^= extended_state[i];
-                self.state[i] ^= extended_state[i + 8];
+                self.state[i] ^= self.extended_state[i];
+                self.state[i] ^= self.extended_state[i + 8];
             }
         }
     }
@@ -185,11 +185,11 @@ impl Blake2RoundFunctionEvaluator {
     }
 
     /// This function will use witness scratch of self as path witness input,
-    /// and self-state as the hash input and destination
+    /// and self-state as the hash input and destination. Trashes the input buffer
     #[unroll::unroll_for_loops]
     pub fn compress_node<const REDUCED_ROUNDS: bool>(&mut self, is_right: bool) {
         {
-            let mut extended_state = [
+            self.extended_state = [
                 CONFIGURED_IV[0],
                 CONFIGURED_IV[1],
                 CONFIGURED_IV[2],
@@ -208,33 +208,59 @@ impl Blake2RoundFunctionEvaluator {
                 IV[7],
             ];
 
-            let mut input = [0u32; BLAKE2S_BLOCK_SIZE_U32_WORDS];
+            // TODO: update to only copy the state when all usages are changed into `get_merkle_path_proof_buffer`
             if is_right {
-                input[..8].copy_from_slice(&self.input_buffer[..8]);
-                input[8..16].copy_from_slice(&self.state);
+                self.input_buffer[8..16].copy_from_slice(&self.state);
             } else {
-                input[..8].copy_from_slice(&self.state);
-                input[8..16].copy_from_slice(&self.input_buffer[..8]);
+                unsafe {
+                    let (l, r) = self.input_buffer.split_at_mut_unchecked(8);
+                    let l: &mut [u32; BLAKE2S_DIGEST_SIZE_U32_WORDS] =
+                        l.as_mut_array().unwrap_unchecked();
+                    let r: &mut [u32; BLAKE2S_DIGEST_SIZE_U32_WORDS] =
+                        r.as_mut_array().unwrap_unchecked();
+                    r.copy_from_slice(&*l);
+                    l.copy_from_slice(&self.state);
+                }
             }
 
             if REDUCED_ROUNDS {
                 unsafe {
                     blake_g_function_csr_trigger_delegation_reduced_rounds(
                         self.state.as_mut_ptr(),
-                        self.input_buffer.as_ptr(),
+                        self.input_buffer.as_ptr().cast(),
                     );
                 }
             } else {
                 unsafe {
                     blake_g_function_csr_trigger_delegation_full_rounds(
                         self.state.as_mut_ptr(),
-                        self.input_buffer.as_ptr(),
+                        self.input_buffer.as_ptr().cast(),
                     );
                 }
             }
 
             for i in 0..8 {
-                self.state[i] = CONFIGURED_IV[i] ^ extended_state[i] ^ extended_state[i + 8];
+                self.state[i] =
+                    CONFIGURED_IV[i] ^ self.extended_state[i] ^ self.extended_state[i + 8];
+            }
+        }
+    }
+
+    // if "is right" then the hash contained in the state is "right node"
+    #[inline(always)]
+    pub fn get_merkle_path_proof_buffer(
+        &mut self,
+        is_right: bool,
+    ) -> &mut [u32; BLAKE2S_DIGEST_SIZE_U32_WORDS] {
+        // we use proper "half" of the internal input buffer and only copy over the state to the "other one"
+        unsafe {
+            let (l, r) = self.input_buffer.split_at_mut_unchecked(8);
+            let l: &mut [u32; BLAKE2S_DIGEST_SIZE_U32_WORDS] = l.as_mut_array().unwrap_unchecked();
+            let r: &mut [u32; BLAKE2S_DIGEST_SIZE_U32_WORDS] = r.as_mut_array().unwrap_unchecked();
+            if is_right {
+                l
+            } else {
+                r
             }
         }
     }

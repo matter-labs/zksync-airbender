@@ -1,7 +1,7 @@
 #![no_std]
 #![no_main]
 
-use riscv_common::{zksync_os_finish_success};
+use riscv_common::zksync_os_finish_success;
 
 #[no_mangle]
 extern "C" fn eh_personality() {}

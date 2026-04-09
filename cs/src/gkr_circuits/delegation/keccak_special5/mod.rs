@@ -1727,10 +1727,7 @@ mod test {
             22,
         );
 
-        serialize_to_file(
-            &gkr_compiled,
-            "compiled_circuits/keccak_special5_gkr.json",
-        );
+        serialize_to_file(&gkr_compiled, "compiled_circuits/keccak_special5_gkr.json");
     }
 
     #[test]
@@ -1744,10 +1741,7 @@ mod test {
                 let _ = define_keccak_special5_delegation_circuit::<_, _, false>(cs);
             },
         );
-        serialize_to_file(
-            &ssa_forms,
-            "compiled_circuits/keccak_special5_ssa_gkr.json",
-        );
+        serialize_to_file(&ssa_forms, "compiled_circuits/keccak_special5_ssa_gkr.json");
     }
 
     #[test]
