@@ -136,14 +136,11 @@ run_step() {
     echo "    $*"
     return 0
   fi
-  local start=$SECONDS
   if $VERBOSE; then
     "$@"
   else
     "$@" 2>&1 | grep -Ev "^warning|^\s*-->|^\s*\||^\s*=|generated .* warning"
   fi
-  local elapsed=$(( SECONDS - start ))
-  echo "==> ${label} ($(( elapsed / 60 ))m$(( elapsed % 60 ))s)"
 }
 
 read_cycles() {

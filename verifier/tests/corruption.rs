@@ -37,17 +37,19 @@ fn assert_rejects_xor(name: &str, idx: usize, mask: u32, label: &str) {
     );
 }
 
-fn assert_rejects_zeroed(name: &str, start: usize, count: usize, label: &str) {
+fn assert_rejects_overwritten(name: &str, start: usize, count: usize, label: &str) {
     let result = run_corrupted(name, |nds| {
         for i in start..start + count {
             if i < nds.len() {
-                nds[i] = 0;
+                // XOR to ensure corruption even if region is already zero
+                // (e.g. empty-trace circuits have zero oracle leaf data)
+                nds[i] ^= 0xDEAD_BEEF;
             }
         }
     });
     assert!(
         result.is_err(),
-        "{}: should reject zeroed region at {}",
+        "{}: should reject overwritten region at {}",
         name,
         label
     );
@@ -158,7 +160,7 @@ fn test_rejects_zeroed_regions(name: &str) {
         ];
 
         for &(start, count, label) in cases {
-            assert_rejects_zeroed(name, start, count, label);
+            assert_rejects_overwritten(name, start, count, label);
         }
     });
 }
@@ -198,6 +200,111 @@ fn test_rejects_corrupted_cache_relations(name: &str) {
     );
 }
 
+fn test_rejects_shifted_nds(name: &str) {
+    let result = run_corrupted(name, |nds| {
+        nds.insert(0, 0);
+    });
+    assert!(
+        result.is_err(),
+        "{}: should reject NDS shifted by one word",
+        name
+    );
+}
+
+fn test_rejects_corrupted_oracle_caps(name: &str) {
+    with_circuit!(name, |m| {
+        let caps_offset = m::constants::CAPS_OFFSET_IN_TRANSCRIPT;
+        let cap_offsets = m::constants::ORACLE_CAP_TRANSCRIPT_OFFSETS;
+
+        for (i, &off) in cap_offsets.iter().enumerate() {
+            let label = format!("oracle_cap_{}", i);
+            assert_rejects_xor(name, caps_offset + off, 1, &label);
+        }
+    });
+}
+
+/// Run a corrupted NDS through the verifier, treating both Err returns and panics
+/// (e.g. iterator exhaustion) as rejection. Suppresses panic output since these
+/// panics are expected.
+fn run_corrupted_panic_safe(name: &str, corrupt: impl FnOnce(&mut Vec<u32>)) -> bool {
+    let mut nds = common::load_nds(name);
+    corrupt(&mut nds);
+
+    let prev_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(|_| {}));
+
+    let accepted = std::thread::scope(|s| {
+        let handle = std::thread::Builder::new()
+            .name(format!("corruption_{}", name))
+            .stack_size(1 << 27)
+            .spawn_scoped(s, move || {
+                set_iterator(nds.into_iter());
+                with_circuit!(name, |m| {
+                    m::verify::<ThreadLocalBasedSource>().map_err(|e| format!("{:?}", e))
+                })
+            })
+            .expect("failed to spawn thread");
+
+        matches!(handle.join(), Ok(Ok(())))
+    });
+
+    std::panic::set_hook(prev_hook);
+    accepted
+}
+
+fn test_rejects_truncated_nds(name: &str) {
+    // Remove last 10% — verifier should either error or panic (iterator exhausted)
+    let accepted = run_corrupted_panic_safe(name, |nds| {
+        let new_len = nds.len() * 9 / 10;
+        nds.truncate(new_len);
+    });
+    assert!(!accepted, "{}: should reject truncated NDS", name);
+}
+
+fn test_rejects_corrupted_final_monomials(name: &str) {
+    with_circuit!(name, |m| {
+        let monomial_words = m::constants::FINAL_MONOMIALS_LEN * 4; // ext4 = 4 u32 per element
+        let nds_len = common::load_nds(name).len();
+        // Final monomials are the last monomial_words of the NDS
+        assert_rejects_overwritten(name, nds_len - monomial_words, monomial_words, "final_monomials");
+    });
+}
+
+/// Verify each circuit's NDS is not accepted by a different circuit's verifier.
+fn test_rejects_cross_circuit_nds(name: &str) {
+    // Pick a different circuit's NDS
+    let other = common::CIRCUITS
+        .iter()
+        .find(|c| c.name != name)
+        .expect("need at least two circuits");
+    let nds = other.load_nds();
+
+    let prev_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(|_| {}));
+
+    let accepted = std::thread::scope(|s| {
+        let handle = std::thread::Builder::new()
+            .name(format!("cross_circuit_{}", name))
+            .stack_size(1 << 27)
+            .spawn_scoped(s, move || {
+                set_iterator(nds.into_iter());
+                with_circuit!(name, |m| {
+                    m::verify::<ThreadLocalBasedSource>().map_err(|e| format!("{:?}", e))
+                })
+            })
+            .expect("failed to spawn thread");
+
+        matches!(handle.join(), Ok(Ok(())))
+    });
+
+    std::panic::set_hook(prev_hook);
+    assert!(
+        !accepted,
+        "{}: should reject NDS from {}",
+        name, other.name
+    );
+}
+
 // --- Generate per-circuit test functions ---
 
 macro_rules! generate_corruption_tests {
@@ -227,6 +334,31 @@ macro_rules! generate_corruption_tests {
                 #[test]
                 fn [<rejects_zeroed_regions_ $name>]() {
                     test_rejects_zeroed_regions(stringify!($name));
+                }
+
+                #[test]
+                fn [<rejects_shifted_nds_ $name>]() {
+                    test_rejects_shifted_nds(stringify!($name));
+                }
+
+                #[test]
+                fn [<rejects_corrupted_oracle_caps_ $name>]() {
+                    test_rejects_corrupted_oracle_caps(stringify!($name));
+                }
+
+                #[test]
+                fn [<rejects_truncated_nds_ $name>]() {
+                    test_rejects_truncated_nds(stringify!($name));
+                }
+
+                #[test]
+                fn [<rejects_corrupted_final_monomials_ $name>]() {
+                    test_rejects_corrupted_final_monomials(stringify!($name));
+                }
+
+                #[test]
+                fn [<rejects_cross_circuit_nds_ $name>]() {
+                    test_rejects_cross_circuit_nds(stringify!($name));
                 }
 
                 #[cfg(not(feature = "no_caches"))]
