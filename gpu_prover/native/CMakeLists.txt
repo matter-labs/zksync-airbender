@@ -6,6 +6,7 @@ if ((NOT DEFINED CMAKE_CUDA_ARCHITECTURES) OR (CMAKE_CUDA_ARCHITECTURES STREQUAL
     set(CMAKE_CUDA_ARCHITECTURES native)
 endif ()
 option(AB_DETERMINISTIC_POW "Enable deterministic PoW search" OFF)
+option(GPU_PROVER_ENABLE_LINEINFO "Enable lineinfo for CUDA profiling builds" OFF)
 add_library(gpu_prover_native STATIC
         common.cuh
 )
@@ -30,6 +31,8 @@ if (MSVC)
 endif ()
 target_compile_options(gpu_prover_native PRIVATE --expt-relaxed-constexpr)
 target_compile_options(gpu_prover_native PRIVATE --ptxas-options=-v)
-#target_compile_options(gpu_prover_native PRIVATE -lineinfo)
+if (GPU_PROVER_ENABLE_LINEINFO)
+    target_compile_options(gpu_prover_native PRIVATE -lineinfo)
+endif ()
 target_compile_options(gpu_prover_native PRIVATE --keep)
 install(TARGETS gpu_prover_native DESTINATION .)
