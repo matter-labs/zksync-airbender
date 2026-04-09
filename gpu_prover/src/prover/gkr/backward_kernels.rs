@@ -3,7 +3,6 @@ use std::collections::{BTreeMap, VecDeque};
 use std::mem::align_of;
 use std::ptr::{null, null_mut};
 use std::slice;
-use std::sync::{Arc, Mutex};
 
 use cs::definitions::GKRAddress;
 use cs::gkr_compiler::{
@@ -35,7 +34,8 @@ use prover::transcript::Seed;
 
 use super::backward::evaluate_constraint_prefactor;
 use super::{
-    GpuBaseFieldPolySource, GpuBaseFieldPolySourceAfterOneFoldingLaunchDescriptor,
+    alloc_host_and_schedule_copy, GpuBaseFieldPolySource,
+    GpuBaseFieldPolySourceAfterOneFoldingLaunchDescriptor,
     GpuBaseFieldPolySourceAfterTwoFoldingsLaunchDescriptor,
     GpuExtensionFieldPolyContinuingLaunchDescriptor, GpuExtensionFieldPolyInitialSource,
     GpuGKRStorage, GpuSumcheckRound0HostLaunchDescriptors, GpuSumcheckRound0LaunchDescriptors,
@@ -44,19 +44,21 @@ use super::{
     GpuSumcheckRound2HostLaunchDescriptors, GpuSumcheckRound2PreparedStorage,
     GpuSumcheckRound2ScheduledLaunchDescriptors, GpuSumcheckRound3AndBeyondHostLaunchDescriptors,
     GpuSumcheckRound3AndBeyondPreparedStorage,
-    GpuSumcheckRound3AndBeyondScheduledLaunchDescriptors, alloc_host_and_schedule_copy,
+    GpuSumcheckRound3AndBeyondScheduledLaunchDescriptors,
 };
 use crate::allocator::tracker::AllocationPlacement;
 use crate::ops::cub::device_reduce::{
-    Reduce, ReduceOperation, get_reduce_temp_storage_bytes, reduce,
+    get_reduce_temp_storage_bytes, reduce, Reduce, ReduceOperation,
 };
-use crate::ops::simple::{BinaryOp, Mul, mul_into_y};
+use crate::ops::simple::{mul_into_y, BinaryOp, Mul};
 use crate::primitives::callbacks::Callbacks;
-use crate::primitives::context::{DeviceAllocation, HostAllocation, ProverContext, UnsafeAccessor};
+use crate::primitives::context::{
+    DeviceAllocation, HostAllocation, ProverContext, UnsafeAccessor, UnsafeMutAccessor,
+};
 use crate::primitives::device_structures::{DeviceVectorChunk, DeviceVectorChunkMut};
 use crate::primitives::device_tracing::Range;
 use crate::primitives::field::{BF, E4};
-use crate::primitives::utils::{WARP_SIZE, get_grid_block_dims_for_threads_count};
+use crate::primitives::utils::{get_grid_block_dims_for_threads_count, WARP_SIZE};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct DimensionReducingKernelBlueprint<E> {
@@ -166,7 +168,15 @@ pub(crate) struct GpuGKRMainLayerConstraintHostMetadata<E> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct GpuGKRMainLayerConstraintChallengeTerm {
     pub(super) coeff: BF,
+    pub(super) source: GpuGKRMainLayerDeferredChallengeSource,
     pub(super) power: u32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum GpuGKRMainLayerDeferredChallengeSource {
+    LookupMultiplicative,
+    LookupAdditive,
+    ConstraintBatch,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -219,7 +229,7 @@ pub(super) struct GpuGKRMainLayerConstraintMetadataDevicePointers<E> {
     pub(super) quadratic_terms_count: u32,
     pub(super) linear_terms: *const GpuGKRMainLayerConstraintLinearTerm<E>,
     pub(super) linear_terms_count: u32,
-    pub(super) constant_offset: E,
+    pub(super) constant_offset: *const E,
 }
 
 impl<E: Field> Default for GpuGKRMainLayerConstraintMetadataDevicePointers<E> {
@@ -229,10 +239,16 @@ impl<E: Field> Default for GpuGKRMainLayerConstraintMetadataDevicePointers<E> {
             quadratic_terms_count: 0,
             linear_terms: null(),
             linear_terms_count: 0,
-            constant_offset: E::ZERO,
+            constant_offset: null(),
         }
     }
 }
+
+// SAFETY: this struct is a plain bundle of immutable device pointers and counts copied by value
+// into stream-ordered uploads and kernel arguments.
+unsafe impl<E> Send for GpuGKRMainLayerConstraintMetadataDevicePointers<E> {}
+// SAFETY: sharing this metadata between host closures only shares immutable device addresses.
+unsafe impl<E> Sync for GpuGKRMainLayerConstraintMetadataDevicePointers<E> {}
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -413,6 +429,8 @@ pub(super) struct GpuGKRMainRound0BatchRuntime<E> {
     pub(super) batch_challenges: *const E,
     pub(super) contributions: *mut E,
     pub(super) spill_payload: *const u8,
+    pub(super) auxiliary_challenges: *const E,
+    pub(super) constraint_metadata: *const GpuGKRMainLayerConstraintMetadataDevicePointers<E>,
 }
 
 impl<E: Field> Default for GpuGKRMainRound0BatchRuntime<E> {
@@ -422,6 +440,8 @@ impl<E: Field> Default for GpuGKRMainRound0BatchRuntime<E> {
             batch_challenges: null(),
             contributions: null_mut(),
             spill_payload: null(),
+            auxiliary_challenges: null(),
+            constraint_metadata: null(),
         }
     }
 }
@@ -458,6 +478,8 @@ pub(super) struct GpuGKRMainRound1BatchRuntime<E> {
     pub(super) folding_challenge: *const E,
     pub(super) contributions: *mut E,
     pub(super) spill_payload: *const u8,
+    pub(super) auxiliary_challenges: *const E,
+    pub(super) constraint_metadata: *const GpuGKRMainLayerConstraintMetadataDevicePointers<E>,
 }
 
 impl<E: Field> Default for GpuGKRMainRound1BatchRuntime<E> {
@@ -468,6 +490,8 @@ impl<E: Field> Default for GpuGKRMainRound1BatchRuntime<E> {
             folding_challenge: null(),
             contributions: null_mut(),
             spill_payload: null(),
+            auxiliary_challenges: null(),
+            constraint_metadata: null(),
         }
     }
 }
@@ -504,6 +528,8 @@ pub(super) struct GpuGKRMainRound2BatchRuntime<E> {
     pub(super) folding_challenges: *const E,
     pub(super) contributions: *mut E,
     pub(super) spill_payload: *const u8,
+    pub(super) auxiliary_challenges: *const E,
+    pub(super) constraint_metadata: *const GpuGKRMainLayerConstraintMetadataDevicePointers<E>,
 }
 
 impl<E: Field> Default for GpuGKRMainRound2BatchRuntime<E> {
@@ -514,6 +540,8 @@ impl<E: Field> Default for GpuGKRMainRound2BatchRuntime<E> {
             folding_challenges: null(),
             contributions: null_mut(),
             spill_payload: null(),
+            auxiliary_challenges: null(),
+            constraint_metadata: null(),
         }
     }
 }
@@ -550,6 +578,8 @@ pub(super) struct GpuGKRMainRound3BatchRuntime<E> {
     pub(super) folding_challenge: *const E,
     pub(super) contributions: *mut E,
     pub(super) spill_payload: *const u8,
+    pub(super) auxiliary_challenges: *const E,
+    pub(super) constraint_metadata: *const GpuGKRMainLayerConstraintMetadataDevicePointers<E>,
 }
 
 impl<E: Field> Default for GpuGKRMainRound3BatchRuntime<E> {
@@ -560,6 +590,8 @@ impl<E: Field> Default for GpuGKRMainRound3BatchRuntime<E> {
             folding_challenge: null(),
             contributions: null_mut(),
             spill_payload: null(),
+            auxiliary_challenges: null(),
+            constraint_metadata: null(),
         }
     }
 }
@@ -976,26 +1008,43 @@ impl<E> SharedChallengeDevice<E> {
 }
 
 pub(super) struct ScheduledChallengeBuffer<E> {
-    pub(super) callbacks: Arc<Callbacks<'static>>,
-    pub(super) device: Arc<SharedChallengeDevice<E>>,
+    pub(super) device: UnsafeAccessor<SharedChallengeDevice<E>>,
     pub(super) offset: usize,
     pub(super) len: usize,
 }
 
 impl<E> ScheduledChallengeBuffer<E> {
     pub(super) fn as_ptr(&self) -> *const E {
-        self.device.as_ptr(self.offset)
+        unsafe { self.device.get() }.as_ptr(self.offset)
     }
 
     #[cfg(test)]
     pub(super) fn device_slice(&self) -> &DeviceSlice<E> {
         // SAFETY: buffer views only expose ranges created from valid packed offsets.
-        unsafe { self.device.slice(self.offset, self.len) }
+        unsafe { self.device.get().slice(self.offset, self.len) }
     }
 }
 
-pub(super) struct HostScheduledChallengeBuffer<E> {
-    pub(super) callbacks: Arc<Callbacks<'static>>,
+pub(super) struct ScheduledChallengeStorage<E> {
+    pub(super) callbacks: Callbacks<'static>,
+    pub(super) device: Box<SharedChallengeDevice<E>>,
+}
+
+impl<E> ScheduledChallengeStorage<E> {
+    pub(super) fn new(device: DeviceAllocation<E>) -> Self {
+        Self {
+            callbacks: Callbacks::new(),
+            device: Box::new(SharedChallengeDevice::new(device)),
+        }
+    }
+
+    pub(super) fn device_accessor(&self) -> UnsafeAccessor<SharedChallengeDevice<E>> {
+        UnsafeAccessor::new(self.device.as_ref())
+    }
+}
+
+pub(super) struct HostScheduledChallengeStorage<E> {
+    pub(super) callbacks: Callbacks<'static>,
     pub(super) _phantom: std::marker::PhantomData<E>,
 }
 
@@ -1015,7 +1064,6 @@ pub(super) struct ScheduledMainLayerConstraintMetadataUpload<E> {
     pub(super) quadratic_terms: ScheduledUpload<GpuGKRMainLayerConstraintQuadraticTerm<E>>,
     pub(super) linear_terms: ScheduledUpload<GpuGKRMainLayerConstraintLinearTerm<E>>,
     pub(super) constant_offset: ScheduledUpload<E>,
-    pub(super) constant_offset_value: E,
 }
 
 pub(super) struct HostScheduledMainLayerConstraintMetadataUpload<E> {
@@ -1023,6 +1071,24 @@ pub(super) struct HostScheduledMainLayerConstraintMetadataUpload<E> {
     pub(super) quadratic_terms: HostScheduledUpload<GpuGKRMainLayerConstraintQuadraticTerm<E>>,
     pub(super) linear_terms: HostScheduledUpload<GpuGKRMainLayerConstraintLinearTerm<E>>,
     pub(super) constant_offset: HostScheduledUpload<E>,
+}
+
+pub(super) struct ScheduledMainLayerRuntimeUploads<E: Field> {
+    pub(super) callbacks: Callbacks<'static>,
+    pub(super) auxiliary_challenges: ScheduledUpload<E>,
+    pub(super) deferred_constraint_metadata:
+        Vec<Option<ScheduledMainLayerConstraintMetadataUpload<E>>>,
+    pub(super) constraint_metadata_pointers:
+        ScheduledUpload<GpuGKRMainLayerConstraintMetadataDevicePointers<E>>,
+}
+
+pub(super) struct HostScheduledMainLayerRuntimeUploads<E: Field> {
+    pub(super) callbacks: Callbacks<'static>,
+    pub(super) auxiliary_challenges: HostScheduledUpload<E>,
+    pub(super) deferred_constraint_metadata:
+        Vec<Option<HostScheduledMainLayerConstraintMetadataUpload<E>>>,
+    pub(super) constraint_metadata_pointers:
+        HostScheduledUpload<GpuGKRMainLayerConstraintMetadataDevicePointers<E>>,
 }
 
 pub(super) struct ScheduledDimensionReducingFinalReadback<E> {
@@ -1049,6 +1115,13 @@ pub(super) struct ScheduledMainLayerExecutionState<E: FieldExtension<BF> + Field
     pub(super) result: Option<GpuGKRMainLayerExecution<E>>,
 }
 
+pub(crate) type ScheduledDimensionReducingLayerExecutionStateHandle<E> =
+    UnsafeMutAccessor<ScheduledDimensionReducingLayerExecutionState<E>>;
+pub(crate) type ScheduledMainLayerExecutionStateHandle<E> =
+    UnsafeMutAccessor<ScheduledMainLayerExecutionState<E>>;
+pub(crate) type ScheduledBackwardWorkflowStateHandle<E> =
+    UnsafeMutAccessor<ScheduledBackwardWorkflowState<E>>;
+
 pub(crate) struct GpuGKRDimensionReducingScheduledLayerExecution<B, E: FieldExtension<BF> + Field> {
     #[allow(dead_code)] // Keeps queued NVTX host callbacks alive until the stream consumes them.
     pub(super) tracing_ranges: Vec<Range>,
@@ -1058,12 +1131,14 @@ pub(crate) struct GpuGKRDimensionReducingScheduledLayerExecution<B, E: FieldExte
     #[allow(dead_code)]
     pub(super) static_spill_upload: Option<ScheduledUpload<u8>>,
     #[allow(dead_code)]
+    pub(super) round_challenge_storage: Option<ScheduledChallengeStorage<E>>,
+    #[allow(dead_code)]
     pub(super) round_challenge_buffers: Vec<ScheduledChallengeBuffer<E>>,
     #[allow(dead_code)]
     pub(super) reduction_states: Vec<ScheduledDimensionReducingReductionState<E>>,
     #[allow(dead_code)]
     pub(super) final_readback: ScheduledDimensionReducingFinalReadback<E>,
-    pub(super) shared_state: Arc<Mutex<ScheduledDimensionReducingLayerExecutionState<E>>>,
+    pub(super) shared_state: Box<ScheduledDimensionReducingLayerExecutionState<E>>,
     #[allow(dead_code)]
     pub(super) _phantom: std::marker::PhantomData<B>,
 }
@@ -1090,7 +1165,6 @@ pub(crate) struct GpuGKRMainLayerKernelPlan<E> {
     pub(crate) batch_challenges: Vec<E>,
     pub(super) auxiliary_challenge_source: GpuGKRMainLayerAuxiliaryChallengeSource<E>,
     pub(super) constraint_metadata_source: Option<GpuGKRMainLayerConstraintMetadataSource<E>>,
-    pub(super) auxiliary_challenge: E,
     pub(super) constraint_metadata_summary: Option<(usize, usize, E)>,
     pub(super) round1_prepared: GpuSumcheckRound1PreparedStorage<BF, E>,
     pub(super) round2_prepared: GpuSumcheckRound2PreparedStorage<BF, E>,
@@ -1114,7 +1188,10 @@ pub(crate) struct GpuGKRMainLayerSumcheckLayerPlan<E> {
 
 impl<E: Copy + Field> GpuGKRMainLayerKernelPlan<E> {
     pub(crate) fn auxiliary_challenge_summary(&self) -> Option<E> {
-        Some(self.auxiliary_challenge)
+        match self.auxiliary_challenge_source {
+            GpuGKRMainLayerAuxiliaryChallengeSource::Immediate(value) => Some(value),
+            GpuGKRMainLayerAuxiliaryChallengeSource::LookupAdditive => None,
+        }
     }
 
     pub(crate) fn constraint_metadata_summary(&self) -> Option<(usize, usize, E)> {
@@ -1154,14 +1231,20 @@ pub(crate) struct GpuGKRMainLayerScheduledLayerExecution<E: FieldExtension<BF> +
     #[allow(dead_code)]
     pub(super) static_spill_upload: Option<ScheduledUpload<u8>>,
     #[allow(dead_code)]
+    pub(super) batch_challenge_storage: ScheduledChallengeStorage<E>,
+    #[allow(dead_code)]
     pub(super) batch_challenge_buffer: ScheduledChallengeBuffer<E>,
+    #[allow(dead_code)]
+    pub(super) round_challenge_storage: ScheduledChallengeStorage<E>,
     #[allow(dead_code)]
     pub(super) round_challenge_buffers: Vec<ScheduledChallengeBuffer<E>>,
     #[allow(dead_code)]
     pub(super) reduction_states: Vec<ScheduledDimensionReducingReductionState<E>>,
     #[allow(dead_code)]
     pub(super) final_readback: ScheduledDimensionReducingFinalReadback<E>,
-    pub(super) shared_state: Arc<Mutex<ScheduledMainLayerExecutionState<E>>>,
+    #[allow(dead_code)]
+    pub(super) runtime_uploads: Option<ScheduledMainLayerRuntimeUploads<E>>,
+    pub(super) shared_state: Box<ScheduledMainLayerExecutionState<E>>,
 }
 
 pub(crate) struct ScheduledBackwardWorkflowState<E: FieldExtension<BF> + Field> {
@@ -1192,7 +1275,7 @@ pub(crate) struct GpuGKRBackwardScheduledExecution<B, E: FieldExtension<BF> + Fi
     pub(super) dimension_reducing_layers: Vec<GpuGKRDimensionReducingScheduledLayerExecution<B, E>>,
     #[allow(dead_code)]
     pub(super) main_layers: Vec<GpuGKRMainLayerScheduledLayerExecution<E>>,
-    pub(super) shared_state: Arc<Mutex<ScheduledBackwardWorkflowState<E>>>,
+    pub(super) shared_state: Box<ScheduledBackwardWorkflowState<E>>,
 }
 
 pub(crate) struct GpuGKRDimensionReducingHostKeepalive<B, E: FieldExtension<BF> + Field> {
@@ -1203,7 +1286,7 @@ pub(crate) struct GpuGKRDimensionReducingHostKeepalive<B, E: FieldExtension<BF> 
     #[allow(dead_code)]
     pub(super) static_spill_upload: Option<HostScheduledUpload<u8>>,
     #[allow(dead_code)]
-    pub(super) round_challenge_buffers: Vec<HostScheduledChallengeBuffer<E>>,
+    pub(super) round_challenge_storage: Option<HostScheduledChallengeStorage<E>>,
     #[allow(dead_code)]
     pub(super) _phantom: std::marker::PhantomData<B>,
     #[allow(dead_code)]
@@ -1211,7 +1294,7 @@ pub(crate) struct GpuGKRDimensionReducingHostKeepalive<B, E: FieldExtension<BF> 
     #[allow(dead_code)]
     pub(super) final_readback: ScheduledDimensionReducingFinalReadback<E>,
     #[allow(dead_code)]
-    pub(super) shared_state: Arc<Mutex<ScheduledDimensionReducingLayerExecutionState<E>>>,
+    pub(super) shared_state: Box<ScheduledDimensionReducingLayerExecutionState<E>>,
 }
 
 pub(crate) struct GpuGKRMainLayerHostKeepalive<E: FieldExtension<BF> + Field> {
@@ -1222,15 +1305,17 @@ pub(crate) struct GpuGKRMainLayerHostKeepalive<E: FieldExtension<BF> + Field> {
     #[allow(dead_code)]
     pub(super) static_spill_upload: Option<HostScheduledUpload<u8>>,
     #[allow(dead_code)]
-    pub(super) batch_challenge_buffer: HostScheduledChallengeBuffer<E>,
+    pub(super) batch_challenge_storage: HostScheduledChallengeStorage<E>,
     #[allow(dead_code)]
-    pub(super) round_challenge_buffers: Vec<HostScheduledChallengeBuffer<E>>,
+    pub(super) round_challenge_storage: HostScheduledChallengeStorage<E>,
     #[allow(dead_code)]
     pub(super) reduction_states: Vec<ScheduledDimensionReducingReductionState<E>>,
     #[allow(dead_code)]
     pub(super) final_readback: ScheduledDimensionReducingFinalReadback<E>,
     #[allow(dead_code)]
-    pub(super) shared_state: Arc<Mutex<ScheduledMainLayerExecutionState<E>>>,
+    pub(super) runtime_uploads: Option<HostScheduledMainLayerRuntimeUploads<E>>,
+    #[allow(dead_code)]
+    pub(super) shared_state: Box<ScheduledMainLayerExecutionState<E>>,
 }
 
 pub(crate) struct GpuGKRBackwardHostKeepalive<B, E: FieldExtension<BF> + Field> {
@@ -1241,7 +1326,7 @@ pub(crate) struct GpuGKRBackwardHostKeepalive<B, E: FieldExtension<BF> + Field> 
     #[allow(dead_code)]
     pub(super) main_layers: Vec<GpuGKRMainLayerHostKeepalive<E>>,
     #[allow(dead_code)]
-    pub(super) shared_state: Arc<Mutex<ScheduledBackwardWorkflowState<E>>>,
+    pub(super) shared_state: Box<ScheduledBackwardWorkflowState<E>>,
 }
 
 impl<E> ScheduledBackwardWorkflowState<E>
@@ -1264,17 +1349,16 @@ where
     }
 }
 
-pub(crate) fn make_deferred_backward_workflow_state<E>()
--> Arc<Mutex<ScheduledBackwardWorkflowState<E>>>
+pub(crate) fn make_deferred_backward_workflow_state<E>() -> Box<ScheduledBackwardWorkflowState<E>>
 where
     E: FieldExtension<BF> + Field,
 {
-    Arc::new(Mutex::new(ScheduledBackwardWorkflowState::deferred()))
+    Box::new(ScheduledBackwardWorkflowState::deferred())
 }
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn populate_backward_workflow_state<E>(
-    shared_state: &Arc<Mutex<ScheduledBackwardWorkflowState<E>>>,
+    shared_state: ScheduledBackwardWorkflowStateHandle<E>,
     initial_output_layer_idx: usize,
     top_layer_claims: BTreeMap<GKRAddress, E>,
     evaluation_point: Vec<E>,
@@ -1286,7 +1370,7 @@ pub(crate) fn populate_backward_workflow_state<E>(
 ) where
     E: FieldExtension<BF> + Field,
 {
-    let mut state = shared_state.lock().unwrap();
+    let state = unsafe { shared_state.get_mut() };
     state.claims_for_layers =
         BTreeMap::from([(initial_output_layer_idx, top_layer_claims.clone())]);
     state.points_for_claims_at_layer =
@@ -1301,15 +1385,13 @@ pub(crate) fn populate_backward_workflow_state<E>(
 }
 
 pub(crate) fn clone_backward_claim_point_for_layer<E>(
-    shared_state: &Arc<Mutex<ScheduledBackwardWorkflowState<E>>>,
+    shared_state: ScheduledBackwardWorkflowStateHandle<E>,
     layer_idx: usize,
 ) -> Vec<E>
 where
     E: FieldExtension<BF> + Field + Clone,
 {
-    shared_state
-        .lock()
-        .unwrap()
+    unsafe { shared_state.get() }
         .points_for_claims_at_layer
         .get(&layer_idx)
         .cloned()
@@ -1317,13 +1399,13 @@ where
 }
 
 pub(crate) fn fill_backward_claim_point_for_layer<E>(
-    shared_state: &Arc<Mutex<ScheduledBackwardWorkflowState<E>>>,
+    shared_state: ScheduledBackwardWorkflowStateHandle<E>,
     layer_idx: usize,
     dst: &mut [E],
 ) where
     E: FieldExtension<BF> + Field + Copy,
 {
-    let state = shared_state.lock().unwrap();
+    let state = unsafe { shared_state.get() };
     let src = state
         .points_for_claims_at_layer
         .get(&layer_idx)
@@ -1337,15 +1419,13 @@ pub(crate) fn fill_backward_claim_point_for_layer<E>(
 }
 
 pub(crate) fn clone_backward_claims_for_layer<E>(
-    shared_state: &Arc<Mutex<ScheduledBackwardWorkflowState<E>>>,
+    shared_state: ScheduledBackwardWorkflowStateHandle<E>,
     layer_idx: usize,
 ) -> BTreeMap<GKRAddress, E>
 where
     E: FieldExtension<BF> + Field + Clone,
 {
-    shared_state
-        .lock()
-        .unwrap()
+    unsafe { shared_state.get() }
         .claims_for_layers
         .get(&layer_idx)
         .cloned()
@@ -1353,25 +1433,25 @@ where
 }
 
 pub(crate) fn current_backward_batching_challenge<E>(
-    shared_state: &Arc<Mutex<ScheduledBackwardWorkflowState<E>>>,
+    shared_state: ScheduledBackwardWorkflowStateHandle<E>,
 ) -> E
 where
     E: FieldExtension<BF> + Field + Copy,
 {
-    shared_state.lock().unwrap().current_batching_challenge
+    unsafe { shared_state.get() }.current_batching_challenge
 }
 
 pub(crate) fn current_backward_seed<E>(
-    shared_state: &Arc<Mutex<ScheduledBackwardWorkflowState<E>>>,
+    shared_state: ScheduledBackwardWorkflowStateHandle<E>,
 ) -> Seed
 where
     E: FieldExtension<BF> + Field,
 {
-    shared_state.lock().unwrap().seed
+    unsafe { shared_state.get() }.seed
 }
 
 pub(crate) fn apply_base_layer_extra_evaluations_to_workflow_state<E>(
-    shared_state: &Arc<Mutex<ScheduledBackwardWorkflowState<E>>>,
+    shared_state: ScheduledBackwardWorkflowStateHandle<E>,
     extra_evaluations_from_caching_relations: &BTreeMap<GKRAddress, E>,
     extra_evaluations_transcript_batches: &[Vec<E>],
 ) where
@@ -1382,7 +1462,7 @@ pub(crate) fn apply_base_layer_extra_evaluations_to_workflow_state<E>(
         return;
     }
 
-    let mut state = shared_state.lock().unwrap();
+    let state = unsafe { shared_state.get_mut() };
     for transcript_input in extra_evaluations_transcript_batches.iter() {
         commit_field_els::<BF, E>(&mut state.seed, transcript_input);
     }
@@ -1412,12 +1492,12 @@ pub(crate) fn apply_base_layer_extra_evaluations_to_workflow_state<E>(
 }
 
 pub(crate) fn take_backward_execution_from_shared_state<E>(
-    shared_state: &Arc<Mutex<ScheduledBackwardWorkflowState<E>>>,
+    shared_state: ScheduledBackwardWorkflowStateHandle<E>,
 ) -> GpuGKRBackwardExecution<E>
 where
     E: FieldExtension<BF> + Field,
 {
-    let mut state = shared_state.lock().unwrap();
+    let state = unsafe { shared_state.get_mut() };
     GpuGKRBackwardExecution {
         proofs: std::mem::take(&mut state.proofs),
         claims_for_layers: std::mem::take(&mut state.claims_for_layers),
@@ -1427,16 +1507,14 @@ where
     }
 }
 
-pub(super) fn challenge_buffer_into_host_keepalive<E>(
-    buffer: ScheduledChallengeBuffer<E>,
-) -> HostScheduledChallengeBuffer<E> {
-    let ScheduledChallengeBuffer {
+pub(super) fn challenge_storage_into_host_keepalive<E>(
+    storage: ScheduledChallengeStorage<E>,
+) -> HostScheduledChallengeStorage<E> {
+    let ScheduledChallengeStorage {
         callbacks,
         device: _,
-        offset: _,
-        len: _,
-    } = buffer;
-    HostScheduledChallengeBuffer {
+    } = storage;
+    HostScheduledChallengeStorage {
         callbacks,
         _phantom: std::marker::PhantomData,
     }
@@ -1461,7 +1539,6 @@ pub(super) fn constraint_upload_into_host_keepalive<E>(
         quadratic_terms,
         linear_terms,
         constant_offset,
-        constant_offset_value: _,
     } = upload;
     HostScheduledMainLayerConstraintMetadataUpload {
         callbacks,
@@ -1471,40 +1548,56 @@ pub(super) fn constraint_upload_into_host_keepalive<E>(
     }
 }
 
+pub(super) fn runtime_uploads_into_host_keepalive<E: Field>(
+    uploads: ScheduledMainLayerRuntimeUploads<E>,
+) -> HostScheduledMainLayerRuntimeUploads<E> {
+    let ScheduledMainLayerRuntimeUploads {
+        callbacks,
+        auxiliary_challenges,
+        deferred_constraint_metadata,
+        constraint_metadata_pointers,
+    } = uploads;
+    HostScheduledMainLayerRuntimeUploads {
+        callbacks,
+        auxiliary_challenges: upload_into_host_keepalive(auxiliary_challenges),
+        deferred_constraint_metadata: deferred_constraint_metadata
+            .into_iter()
+            .map(|upload| upload.map(constraint_upload_into_host_keepalive))
+            .collect(),
+        constraint_metadata_pointers: upload_into_host_keepalive(constraint_metadata_pointers),
+    }
+}
+
 pub(super) fn schedule_immediate_field_upload<E: Field + Send + Sync + 'static>(
     context: &ProverContext,
     padded_len: usize,
     values: &[E],
-) -> CudaResult<ScheduledChallengeBuffer<E>> {
+) -> CudaResult<(ScheduledChallengeStorage<E>, ScheduledChallengeBuffer<E>)> {
     assert!(values.len() <= padded_len);
     let values = values.to_vec();
-    let mut callbacks = Callbacks::new();
-    let (host, device) = schedule_callback_populated_field_upload(
+    let mut storage =
+        ScheduledChallengeStorage::new(context.alloc(padded_len, AllocationPlacement::Top)?);
+    let buffer = schedule_packed_round_challenge_upload(
         context,
+        storage.device_accessor(),
+        &mut storage.callbacks,
+        0,
         padded_len,
-        &mut callbacks,
         move |slice| {
             slice[..values.len()].copy_from_slice(&values);
         },
     )?;
-    // host is H2D staging only — drop it, no CPU readback needed
-    drop(host);
-    Ok(ScheduledChallengeBuffer {
-        callbacks: Arc::new(callbacks),
-        device: Arc::new(SharedChallengeDevice::new(device)),
-        offset: 0,
-        len: padded_len,
-    })
+    Ok((storage, buffer))
 }
 
 pub(super) fn schedule_packed_round_challenge_upload<E: Field + 'static>(
     context: &ProverContext,
-    device: Arc<SharedChallengeDevice<E>>,
+    device: UnsafeAccessor<SharedChallengeDevice<E>>,
+    callbacks: &mut Callbacks<'static>,
     offset: usize,
     len: usize,
     fill: impl Fn(&mut [E]) + Send + Sync + 'static,
 ) -> CudaResult<ScheduledChallengeBuffer<E>> {
-    let mut callbacks = Callbacks::new();
     let mut host = unsafe { context.alloc_host_uninit_slice(len) };
     let host_accessor = host.get_mut_accessor();
     callbacks.schedule(
@@ -1519,7 +1612,7 @@ pub(super) fn schedule_packed_round_challenge_upload<E: Field + 'static>(
     // this buffer view. Uploads are enqueued on a single CUDA stream in program order.
     unsafe {
         memory_copy_async(
-            device.slice_mut(offset, len),
+            device.get().slice_mut(offset, len),
             &host,
             context.get_exec_stream(),
         )?;
@@ -1527,7 +1620,6 @@ pub(super) fn schedule_packed_round_challenge_upload<E: Field + 'static>(
     drop(host);
 
     Ok(ScheduledChallengeBuffer {
-        callbacks: Arc::new(callbacks),
         device,
         offset,
         len,
@@ -1599,7 +1691,7 @@ pub(super) fn schedule_deferred_main_layer_constraint_metadata_upload<
     E: Field + FieldExtension<BF> + 'static,
 >(
     template: &GpuGKRMainLayerConstraintTemplate,
-    main_layer_challenges: UnsafeAccessor<[E]>,
+    workflow_state: ScheduledBackwardWorkflowStateHandle<E>,
     context: &ProverContext,
 ) -> CudaResult<ScheduledMainLayerConstraintMetadataUpload<E>> {
     let mut callbacks = Callbacks::new();
@@ -1610,12 +1702,17 @@ pub(super) fn schedule_deferred_main_layer_constraint_metadata_upload<
         {
             let template = template.quadratic_terms.clone();
             move |dst: &mut [GpuGKRMainLayerConstraintQuadraticTerm<E>]| unsafe {
-                let challenge = main_layer_challenges.get()[1];
+                let workflow_state = workflow_state.get();
                 for (dst, src) in dst.iter_mut().zip(template.iter()) {
                     *dst = GpuGKRMainLayerConstraintQuadraticTerm {
                         lhs: src.lhs,
                         rhs: src.rhs,
-                        challenge: evaluate_constraint_prefactor(&src.challenge_terms, challenge),
+                        challenge: evaluate_constraint_prefactor(
+                            &src.challenge_terms,
+                            workflow_state.lookup_multiplicative_challenge,
+                            workflow_state.lookup_additive_challenge,
+                            workflow_state.constraint_batch_challenge,
+                        ),
                     };
                 }
             }
@@ -1628,11 +1725,16 @@ pub(super) fn schedule_deferred_main_layer_constraint_metadata_upload<
         {
             let template = template.linear_terms.clone();
             move |dst: &mut [GpuGKRMainLayerConstraintLinearTerm<E>]| unsafe {
-                let challenge = main_layer_challenges.get()[1];
+                let workflow_state = workflow_state.get();
                 for (dst, src) in dst.iter_mut().zip(template.iter()) {
                     *dst = GpuGKRMainLayerConstraintLinearTerm {
                         input: src.input,
-                        challenge: evaluate_constraint_prefactor(&src.challenge_terms, challenge),
+                        challenge: evaluate_constraint_prefactor(
+                            &src.challenge_terms,
+                            workflow_state.lookup_multiplicative_challenge,
+                            workflow_state.lookup_additive_challenge,
+                            workflow_state.constraint_batch_challenge,
+                        ),
                     };
                 }
             }
@@ -1641,7 +1743,13 @@ pub(super) fn schedule_deferred_main_layer_constraint_metadata_upload<
     let constant_offset = schedule_callback_populated_upload(context, 1, &mut callbacks, {
         let template = template.constant_terms.clone();
         move |dst: &mut [E]| unsafe {
-            dst[0] = evaluate_constraint_prefactor(&template, main_layer_challenges.get()[1]);
+            let workflow_state = workflow_state.get();
+            dst[0] = evaluate_constraint_prefactor(
+                &template,
+                workflow_state.lookup_multiplicative_challenge,
+                workflow_state.lookup_additive_challenge,
+                workflow_state.constraint_batch_challenge,
+            );
         }
     })?;
     Ok(ScheduledMainLayerConstraintMetadataUpload {
@@ -1649,34 +1757,14 @@ pub(super) fn schedule_deferred_main_layer_constraint_metadata_upload<
         quadratic_terms,
         linear_terms,
         constant_offset,
-        constant_offset_value: E::ZERO,
     })
-}
-
-pub(super) fn schedule_main_layer_auxiliary_upload<E: Field + 'static>(
-    source: GpuGKRMainLayerAuxiliaryChallengeSource<E>,
-    main_layer_challenges: UnsafeAccessor<[E]>,
-    context: &ProverContext,
-) -> CudaResult<ScheduledUpload<E>> {
-    let mut callbacks = Callbacks::new();
-    let mut upload =
-        schedule_callback_populated_upload(context, 1, &mut callbacks, move |dst: &mut [E]| {
-            dst[0] = match source {
-                GpuGKRMainLayerAuxiliaryChallengeSource::Immediate(value) => value,
-                GpuGKRMainLayerAuxiliaryChallengeSource::LookupAdditive => unsafe {
-                    main_layer_challenges.get()[0]
-                },
-            };
-        })?;
-    upload.callbacks = callbacks;
-    Ok(upload)
 }
 
 pub(super) fn schedule_main_layer_constraint_metadata_upload<
     E: Field + FieldExtension<BF> + 'static,
 >(
     source: Option<&GpuGKRMainLayerConstraintMetadataSource<E>>,
-    main_layer_challenges: UnsafeAccessor<[E]>,
+    workflow_state: ScheduledBackwardWorkflowStateHandle<E>,
     context: &ProverContext,
 ) -> CudaResult<Option<ScheduledMainLayerConstraintMetadataUpload<E>>> {
     match source {
@@ -1684,7 +1772,7 @@ pub(super) fn schedule_main_layer_constraint_metadata_upload<
         Some(GpuGKRMainLayerConstraintMetadataSource::Deferred(template)) => Ok(Some(
             schedule_deferred_main_layer_constraint_metadata_upload(
                 template,
-                main_layer_challenges,
+                workflow_state,
                 context,
             )?,
         )),
@@ -1724,7 +1812,6 @@ pub(super) fn schedule_main_layer_constraint_metadata_upload<
                 quadratic_terms,
                 linear_terms,
                 constant_offset,
-                constant_offset_value: metadata.constant_offset,
             }))
         }
     }
@@ -1770,7 +1857,6 @@ pub(super) fn schedule_uploaded_main_layer_constraint_metadata<
         quadratic_terms,
         linear_terms,
         constant_offset,
-        constant_offset_value: metadata.constant_offset,
     })
 }
 
@@ -2615,7 +2701,7 @@ pub(super) fn constraint_metadata_device_pointers<E: Field>(
             quadratic_terms_count: metadata.quadratic_terms.device.len() as u32,
             linear_terms: metadata.linear_terms.device.as_ptr(),
             linear_terms_count: metadata.linear_terms.device.len() as u32,
-            constant_offset: metadata.constant_offset_value,
+            constant_offset: metadata.constant_offset.device.as_ptr(),
         }
     } else {
         GpuGKRMainLayerConstraintMetadataDevicePointers::default()
