@@ -1,3 +1,3 @@
 #!/bin/sh
-cargo build --release
-~/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/aarch64-apple-darwin/bin/llvm-objdump -d ./target/riscv32i-unknown-none-elf/release/experiments
+
+cargo objdump --release -Z build-std=core,alloc -v -- -d

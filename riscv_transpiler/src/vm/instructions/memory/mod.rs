@@ -33,7 +33,7 @@ pub(crate) fn lw<C: Counters, S: Snapshotter<C>, R: RAM>(
         panic!("Unaligned memory access at PC = 0x{:08x}", state.pc);
     }
     let (read_timestamp, old_value) = ram.read_word(address, state.timestamp | 1);
-    let mut rd = old_value;
+    let rd = old_value;
     write_register_for_pure_opcode::<C, 2>(state, instr.rd, rd);
     snapshotter.append_memory_read(address, old_value, read_timestamp, state.timestamp | 1);
     default_increase_pc::<C>(state);
@@ -129,7 +129,7 @@ pub(crate) fn lh<C: Counters, S: Snapshotter<C>, R: RAM, const SIGN_EXTEND: bool
     } else {
         value = (value as u16) as u32;
     }
-    let mut rd = value;
+    let rd = value;
     write_register_for_pure_opcode::<C, 2>(state, instr.rd, rd);
     snapshotter.append_memory_read(
         aligned_address,
@@ -158,7 +158,7 @@ pub(crate) fn lb<C: Counters, S: Snapshotter<C>, R: RAM, const SIGN_EXTEND: bool
     } else {
         value = (value as u8) as u32;
     }
-    let mut rd = value;
+    let rd = value;
     write_register_for_pure_opcode::<C, 2>(state, instr.rd, rd);
     snapshotter.append_memory_read(
         aligned_address,

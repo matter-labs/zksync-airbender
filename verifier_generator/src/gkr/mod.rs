@@ -18,20 +18,17 @@ pub mod constraint_kernel;
 pub mod dim_reducing_layer;
 pub mod standard_layer;
 
-/// Describes a single base-layer oracle (setup, memory, or witness).
-/// All three are structurally identical — only their column counts and
-/// cap sizes differ.
 #[derive(Clone, Debug)]
 pub struct OracleInfo {
     pub num_columns: usize,
-    pub cap_size: usize, // number of cap digests (not words)
-    pub depth: usize,    // Merkle tree depth (0 for empty oracles)
+    pub cap_size: usize,
+    pub depth: usize,
 }
 
 pub struct GKRGeneratedFiles {
     pub constants: TokenStream,
     pub gkr: TokenStream,
-    pub oracles: Vec<OracleInfo>, // [setup, memory, witness] order
+    pub oracles: Vec<OracleInfo>,
     pub trace_len_log2: usize,
 }
 
@@ -215,11 +212,6 @@ pub fn generate_gkr_common<MW: MersenneWrapper>() -> TokenStream {
     }
 }
 
-/// Generate code to verify cache relations for a layer.
-/// After sumcheck and fold, `state.prev_claims` has claims for all addresses
-/// in `target_addrs` order. This generates checks for lookup-type cache relations.
-///
-/// Uses const descriptor arrays + compact loops instead of unrolling per-relation.
 fn generate_cache_relation_checks<MW: MersenneWrapper, F: PrimeField>(
     layer: &GKRLayerDescription,
     target_addrs: &[GKRAddress],
@@ -232,20 +224,13 @@ fn generate_cache_relation_checks<MW: MersenneWrapper, F: PrimeField>(
 
     let coeff_to_mont = |c: u32| -> u32 { F::from_u32_with_reduction(c).as_u32_raw_repr_reduced() };
 
-    // Collect SingleColumnLookup descriptors: (cached_idx, constant, term_start, term_count)
-    // and flat terms: (coeff_mont, dep_idx)
     let mut single_descs: Vec<(usize, u32, usize, usize)> = Vec::new();
     let mut single_terms: Vec<(u32, usize)> = Vec::new();
 
-    // Collect VectorizedLookup descriptors: (cached_idx, col_start, col_count)
-    // col entries: (constant_mont, term_start, term_count)
-    // flat terms: (coeff_mont, dep_idx)
     let mut vector_descs: Vec<(usize, usize, usize)> = Vec::new();
     let mut vector_cols: Vec<(u32, usize, usize)> = Vec::new();
     let mut vector_terms: Vec<(u32, usize)> = Vec::new();
 
-    // Collect VectorizedLookupSetup descriptors: (cached_idx, dep_start, dep_count)
-    // flat deps: dep_idx
     let mut vsetup_descs: Vec<(usize, usize, usize)> = Vec::new();
     let mut vsetup_deps: Vec<usize> = Vec::new();
 
@@ -308,7 +293,6 @@ fn generate_cache_relation_checks<MW: MersenneWrapper, F: PrimeField>(
 
     let mut checks = TokenStream::new();
 
-    // SingleColumnLookup checks
     if !single_descs.is_empty() {
         let num_descs = single_descs.len();
         let sd_cached: Vec<usize> = single_descs.iter().map(|d| d.0).collect();
@@ -358,7 +342,6 @@ fn generate_cache_relation_checks<MW: MersenneWrapper, F: PrimeField>(
         });
     }
 
-    // VectorizedLookup checks
     if !vector_descs.is_empty() {
         let num_descs = vector_descs.len();
         let vd_cached: Vec<usize> = vector_descs.iter().map(|d| d.0).collect();
@@ -429,7 +412,6 @@ fn generate_cache_relation_checks<MW: MersenneWrapper, F: PrimeField>(
         });
     }
 
-    // VectorizedLookupSetup checks
     if !vsetup_descs.is_empty() {
         let num_descs = vsetup_descs.len();
         let vs_cached: Vec<usize> = vsetup_descs.iter().map(|d| d.0).collect();
@@ -641,7 +623,6 @@ where
 
     let degree = E::DEGREE;
     let digest_words = prover::transcript::blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS;
-    // Largest draw is all_challenges: (final_trace_size_log_2 + 1) extension elements.
     let draw_buf_capacity = ((final_trace_size_log_2 + 1) * degree).next_multiple_of(digest_words);
     let block_words = prover::transcript::blake2s_u32::BLAKE2S_BLOCK_SIZE_U32_WORDS;
     let dim_reducing_words_per_addr = 4 * degree;
@@ -664,15 +645,12 @@ where
         .permutation_argument_linearization_challenges
         .len();
 
-    // trace_len_log2 is needed early for address_high_bits_shift computation.
     let trace_len_log2 = proof
         .sumcheck_intermediate_values
         .get(&0)
         .expect("proof must have sumcheck values for layer 0")
         .sumcheck_num_rounds;
 
-    // For circuits with teardown sets, this encodes the set index in the high
-    // bits of the address. Must match prover's high_bits_offset_for_inits_and_teardowns.
     let address_high_bits_shift_val: u32 = if num_teardown_sets > 0 {
         const WORD_BITS: u32 = 2;
         (trace_len_log2 as u32) + WORD_BITS - 16
@@ -707,7 +685,6 @@ where
 
     let mut layer_functions = TokenStream::new();
 
-    // Emit shared eval helper functions (used by table-driven gate evaluation)
     layer_functions.extend(standard_layer::generate_eval_helpers::<MW, F>());
 
     for layer_idx in 0..num_standard_layers {
@@ -725,7 +702,6 @@ where
         );
     }
 
-    // Generate shared dim-reducing functions ONCE (not per layer).
     if num_standard_layers <= initial_layer_for_sumcheck {
         layer_functions
             .extend(dim_reducing_layer::generate_dim_reducing_compute_claim::<MW>(&output_groups));
@@ -734,7 +710,6 @@ where
         );
     }
 
-    // Generate per-layer const index arrays for dim-reducing layers.
     let mut dim_reduce_index_arrays = TokenStream::new();
     for (dim_idx, layer_idx) in (num_standard_layers..=initial_layer_for_sumcheck).enumerate() {
         let iteration_order_addrs = build_dim_reducing_addrs(layer_idx);
@@ -761,7 +736,6 @@ where
         });
     }
 
-    // additional_base_layer_openings was removed in the no-caches refactor.
     let base_layer_additional_openings: Vec<TokenStream> = vec![];
     let mut base_openings_stream = TokenStream::new();
     base_openings_stream.append_separated(base_layer_additional_openings.iter(), quote! {,});
@@ -782,8 +756,6 @@ where
             }
         }
 
-        // Extract oracle caps, reordering from transcript layout [setup, memory, witness]
-        // to oracle list order [memory, witness, setup].
         let oracle_caps: [u32; TOTAL_CAP_WORDS] = {
             let mut caps = [0u32; TOTAL_CAP_WORDS];
             let src = transcript_buf.as_slice();
@@ -815,8 +787,6 @@ where
         let lookup_additive_challenge = *init_challenges.get(1);
         let constraints_batch_challenge = *init_challenges.get(2);
 
-        // Extract external memory argument challenges from transcript buffer.
-        // Layout: [teardown_top_bits | linearization_challenges | additive_part | caps...]
         let (linearization_challenges, permutation_argument_additive_part) = {
             let ext_start = #num_teardown_sets;
             let num_lin = #num_linearization_challenges;
@@ -916,7 +886,6 @@ where
             for i in 0..#evaluation_point_len {
                 lv.push(*all_challenges.get(i));
             }
-            // Remaining slots are written by subsequent layers before being read.
             unsafe { lv.set_len(GKR_ROUNDS); }
             unsafe { lv.into_array() }
         };
@@ -1027,7 +996,6 @@ where
         );
         let num_extra = extra_addrs.len();
 
-        // Compute merged target_addrs (regular + extra, sorted) for cache relation checks.
         let regular_set: std::collections::BTreeSet<GKRAddress> =
             standard_sorted_addrs[config_idx].iter().copied().collect();
         let target_addrs: Vec<GKRAddress> = {
@@ -1043,7 +1011,6 @@ where
             let mul_r = MW::mul_assign(quote! { diff }, quote! { last_r });
             let add_f0 = MW::add_assign(quote! { diff }, quote! { f0 });
 
-            // Build a const array of extra positions: (merged_idx, extra_idx)
             let mut extra_positions: Vec<(usize, usize)> = Vec::new();
             let mut extra_idx = 0usize;
             for (merged_idx, addr) in target_addrs.iter().enumerate() {
@@ -1159,9 +1126,6 @@ where
     }
 
     main_body.extend(quote! {
-        // Draw WHIR batching challenge BEFORE reading the grand product.
-        // The prover draws this from the post-sumcheck seed, without committing
-        // the grand product first (grand product is computed later).
         let mut draw_buf = LazyVec::<#quartic_struct, 1>::new();
         unsafe { draw_buf.set_len(1); }
         draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, draw_buf.as_mut_slice());
@@ -1202,8 +1166,6 @@ where
     let final_m = trace_len_log2 - total_fold_steps;
     let final_monomials_len = 1usize << final_m;
 
-    // Build uniform oracle list from proof: [memory, witness, setup]
-    // This order matches the prover's batching (gamma power assignment).
     let oracle_commitments = [
         &proof.whir_proof.memory_commitment,
         &proof.whir_proof.witness_commitment,
@@ -1240,19 +1202,13 @@ where
 
     let caps_offset_in_transcript = initial_transcript_num_u32_words - total_cap_words;
 
-    // Transcript cap layout is [setup, memory, witness] (prover order).
-    // Oracle list order is [memory, witness, setup].
-    // Compute per-oracle byte offsets into the transcript cap region.
     let setup_cap_words = proof.whir_proof.setup_commitment.commitment.cap.cap.len() * digest_words;
-    let mem_cap_words_val = proof.whir_proof.memory_commitment.commitment.cap.cap.len() * digest_words;
-    let wit_cap_words_val = proof.whir_proof.witness_commitment.commitment.cap.cap.len() * digest_words;
-    // Transcript layout: [setup | memory | witness] starting at caps_offset_in_transcript
-    // Oracle list: [memory, witness, setup]
-    let oracle_cap_transcript_offsets: Vec<usize> = vec![
-        setup_cap_words,                           // memory starts after setup
-        setup_cap_words + mem_cap_words_val,        // witness starts after setup + memory
-        0,                                          // setup starts at 0
-    ];
+    let mem_cap_words_val =
+        proof.whir_proof.memory_commitment.commitment.cap.cap.len() * digest_words;
+    let wit_cap_words_val =
+        proof.whir_proof.witness_commitment.commitment.cap.cap.len() * digest_words;
+    let oracle_cap_transcript_offsets: Vec<usize> =
+        vec![setup_cap_words, setup_cap_words + mem_cap_words_val, 0];
 
     let oracle_depths: Vec<usize> = oracles.iter().map(|o| o.depth).collect();
     let oracle_num_cols: Vec<usize> = oracles.iter().map(|o| o.num_columns).collect();

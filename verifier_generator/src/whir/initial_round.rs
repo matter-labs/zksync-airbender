@@ -5,7 +5,6 @@ use crate::gkr::OracleInfo;
 use crate::mersenne_wrapper::MersenneWrapper;
 use prover::gkr::prover::WhirSchedule;
 
-/// Generate per-circuit WHIR verifier code (initial round).
 pub fn generate_whir_inlined<MW: MersenneWrapper>(
     whir_schedule: &WhirSchedule,
     oracles: &[OracleInfo],
@@ -29,21 +28,17 @@ pub fn generate_whir_inlined<MW: MersenneWrapper>(
     let initial_num_queries = whir_schedule.whir_queries_schedule[0];
     let initial_pow_bits = whir_schedule.whir_pow_schedule[0];
 
-    // draw_words for query bit generation
     let total_bits_needed = initial_num_queries * query_index_bits + 32;
     let draw_words = total_bits_needed.div_ceil(256) * 8;
 
-    // Per-oracle leaf sizes
     let oracle_leaf_words: Vec<usize> = oracles
         .iter()
         .map(|o| o.num_columns * values_per_leaf)
         .collect();
     let max_leaf_words = oracle_leaf_words.iter().copied().max().unwrap_or(0);
-    // Padded to BLAKE2S_BLOCK_SIZE_U32_WORDS (16) boundary for aligned hashing
     let hash_buf_padded = max_leaf_words.div_ceil(16) * 16;
     let fold_buf_half = values_per_leaf / 2;
 
-    // MW operations
     let mul_delin = MW::mul_assign(quote! { t }, quote! { delinearization_challenge });
     let add_correction = MW::add_assign(quote! { claim_correction }, quote! { t });
     let add_claim = MW::add_assign(quote! { claim }, quote! { claim_correction });
@@ -54,9 +49,9 @@ pub fn generate_whir_inlined<MW: MersenneWrapper>(
     let batch_mul_eval = MW::mul_assign(quote! { term }, quote! { eval });
     let add_claim_eval = MW::add_assign(quote! { claim }, quote! { term });
 
-    let degree = 4usize; // EXT_DEGREE for BabyBear/Mersenne31 quartic
-    let digest_words = 8usize; // BLAKE2S_DIGEST_SIZE_U32_WORDS
-    let block_words = 16usize; // BLAKE2S_BLOCK_SIZE_U32_WORDS
+    let degree = 4usize;
+    let digest_words = 8usize;
+    let block_words = 16usize;
     let ood_data_words = degree;
     let ood_commit_buf_size = (digest_words + ood_data_words).div_ceil(block_words) * block_words;
 
@@ -107,7 +102,6 @@ pub fn generate_whir_inlined<MW: MersenneWrapper>(
         ) -> Result<(#quartic_struct, [u32; WHIR_CAP_WORDS]), WhirVerificationError> {
             unsafe {
 
-                // --- 0. Read all oracle evals from NDS and batch ---
                 let gamma_powers: [#quartic_struct; TOTAL_ORACLE_COLS] =
                     materialize_gamma_powers(batching_challenge);
                 let mut claim = #quartic_zero;
@@ -129,7 +123,6 @@ pub fn generate_whir_inlined<MW: MersenneWrapper>(
                     }
                 }
 
-                // --- 1. Sumcheck folds ---
                 let mut folding_challenges: LazyVec<#quartic_struct, { WHIR_FOLD_STEPS[0] }> =
                     LazyVec::new();
                 let mut round_idx = 0;
@@ -142,7 +135,6 @@ pub fn generate_whir_inlined<MW: MersenneWrapper>(
                     round_idx += 1;
                 }
 
-                // --- 2. Read and commit intermediate oracle cap ---
                 const CAP_COMMIT_BUF: usize = {
                     let total = ::verifier_common::blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS + WHIR_CAP_WORDS;
                     (total + ::verifier_common::blake2s_u32::BLAKE2S_BLOCK_SIZE_U32_WORDS - 1)
@@ -154,7 +146,6 @@ pub fn generate_whir_inlined<MW: MersenneWrapper>(
                         ts,
                     );
 
-                // --- 3. OOD: draw point, read value, commit ---
                 let _ood_point = draw_single_field_el(ts);
 
                 let mut ood_buf = CommitBuf::<#ood_commit_buf_size>::new();
@@ -170,25 +161,20 @@ pub fn generate_whir_inlined<MW: MersenneWrapper>(
                 };
                 ts.commit(&mut ood_buf, #ood_data_words);
 
-                // --- 4. PoW + query indices ---
                 read_and_verify_pow::<I>(ts, INITIAL_POW_BITS);
                 let query_indices = draw_query_indices::<INITIAL_NUM_QUERIES, INITIAL_DRAW_WORDS>(
                     ts, INITIAL_NUM_QUERIES, INITIAL_QUERY_INDEX_BITS,
                     INITIAL_DRAW_WORDS,
                 );
 
-                // --- 5. Delinearization challenge ---
                 let delinearization_challenge = draw_single_field_el(ts);
 
-                // --- 6. Claim correction: starts with OOD contribution ---
                 let mut claim_correction = ood_value;
                 #mul_ood_delin;
 
-                // --- 7. Per-query processing ---
                 let extended_generator_inv = #field_struct::TWO_ADICITY_GENERATORS_INVERSED[INITIAL_RS_DOMAIN_LOG2];
                 let mut high_powers_offsets = LazyVec::<#field_struct, MAX_HIGH_POWERS>::new();
                 compute_high_powers_offsets(WHIR_FOLD_STEPS[0], &mut high_powers_offsets);
-                // Scratch buffers — fully written before read each iteration
                 let mut fold_buf_a = LazyVec::<#quartic_struct, FOLD_BUF_HALF>::new();
                 unsafe { fold_buf_a.set_len(FOLD_BUF_HALF); }
                 let mut fold_buf_b = LazyVec::<#quartic_struct, FOLD_BUF_HALF>::new();
@@ -201,11 +187,9 @@ pub fn generate_whir_inlined<MW: MersenneWrapper>(
                         query_index, NUM_COSETS, NUM_COSETS_LOG2, COSET_TREE_SIZE,
                     );
 
-                    // Accumulators across all oracles
                     let mut acc0 = #quartic_zero;
                     let mut acc1 = #quartic_zero;
 
-                    // Process each oracle uniformly
                     let mut gamma_offset = 0usize;
                     let mut cap_offset = 0usize;
                     let mut oracle_idx = 0;
@@ -230,7 +214,6 @@ pub fn generate_whir_inlined<MW: MersenneWrapper>(
                         oracle_idx += 1;
                     }
 
-                    // Fold
                     let batched_evals = [acc0, acc1];
                     let folded = fold_coset(
                         &batched_evals, WHIR_FOLD_STEPS[0],
@@ -239,7 +222,6 @@ pub fn generate_whir_inlined<MW: MersenneWrapper>(
                         fold_buf_a.as_mut_slice(), fold_buf_b.as_mut_slice(),
                     );
 
-                    // Accumulate claim correction
                     let mut t = folded;
                     #mul_delin;
                     #add_correction;
@@ -247,7 +229,6 @@ pub fn generate_whir_inlined<MW: MersenneWrapper>(
                     q += 1;
                 }
 
-                // --- 8. Update claim ---
                 #add_claim;
 
                 Ok((claim, intermediate_cap))

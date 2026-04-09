@@ -56,10 +56,6 @@ impl<V: Copy, const N: usize> LazyVec<V, N> {
         self.len == 0
     }
 
-    /// Access element at `idx` without bounds-checking against `self.len`.
-    /// Only asserts `idx < N` (capacity), not `idx < self.len`, because this
-    /// is used for positions written via `set_len` + direct writes that may
-    /// not yet have been logically "pushed".
     #[inline(always)]
     pub unsafe fn get_unchecked(&self, idx: usize) -> &V {
         debug_assert!(idx < N);

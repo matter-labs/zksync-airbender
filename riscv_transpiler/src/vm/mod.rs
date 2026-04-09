@@ -185,7 +185,7 @@ impl NonDeterminismCSRSource for () {
         0u32
     }
     fn write_with_memory_access<R: RamPeek>(&mut self, _ram: &R, _value: u32) {}
-    fn write_with_memory_access_dyn(&mut self, ram: &dyn RamPeek, value: u32) {}
+    fn write_with_memory_access_dyn(&mut self, _ram: &dyn RamPeek, _value: u32) {}
 }
 
 impl NonDeterminismCSRSource for crate::abstractions::non_determinism::QuasiUARTSource {
@@ -362,130 +362,117 @@ impl<C: Counters, E: ExecutionObserver<C>> VM<C, E> {
         nd: &mut ND,
     ) {
         use crate::vm::instructions::*;
-        unsafe {
-            let pc = state.pc;
-            let instr = instruction_tape.read_instruction(pc);
-            debug_assert_eq!(state.timestamp % TIMESTAMP_STEP, 0);
-            match instr.name {
-                InstructionName::Illegal => illegal(state, ram, snapshotter, instr),
-                InstructionName::Nop => {
-                    add_sub_family::nop_op::<C, S, R>(state, ram, snapshotter, instr)
-                }
-                InstructionName::Add => {
-                    add_sub_family::add_sub::add_op::<C, S, R>(state, ram, snapshotter, instr)
-                }
-                InstructionName::Sub => {
-                    add_sub_family::add_sub::sub_op(state, ram, snapshotter, instr)
-                }
-                InstructionName::Auipc => {
-                    add_sub_family::auipc::auipc::<C, S, R>(state, ram, snapshotter, instr)
-                }
-                InstructionName::ZimopAdd => {
-                    add_sub_family::mop::mop_addmod::<C, S, R, F>(state, ram, snapshotter, instr)
-                }
-                InstructionName::ZimopSub => {
-                    add_sub_family::mop::mop_submod::<C, S, R, F>(state, ram, snapshotter, instr)
-                }
-                InstructionName::ZimopMul => {
-                    add_sub_family::mop::mop_mulmod::<C, S, R, F>(state, ram, snapshotter, instr)
-                }
-                InstructionName::ZicsrNonDeterminismRead => {
-                    add_sub_family::non_determinism::nd_read::<C, S, R, ND>(
-                        state,
-                        ram,
-                        snapshotter,
-                        instr,
-                        nd,
-                    )
-                }
-                InstructionName::ZicsrNonDeterminismWrite => {
-                    add_sub_family::non_determinism::nd_write::<C, S, R, ND>(
-                        state,
-                        ram,
-                        snapshotter,
-                        instr,
-                        nd,
-                    )
-                }
-                InstructionName::ZicsrDelegation => {
-                    add_sub_family::delegation::call_delegation::<C, S, R, E>(
-                        state,
-                        ram,
-                        snapshotter,
-                        instr,
-                    )
-                }
-
-                InstructionName::Jal => {
-                    jump_branch_slt_family::jal_jalr::jal::<C, S, R>(state, ram, snapshotter, instr)
-                }
-                InstructionName::Jalr => jump_branch_slt_family::jal_jalr::jalr::<C, S, R>(
-                    state,
-                    ram,
-                    snapshotter,
-                    instr,
-                ),
-                InstructionName::Branch => jump_branch_slt_family::branch::branch::<C, S, R>(
-                    state,
-                    ram,
-                    snapshotter,
-                    instr,
-                ),
-                InstructionName::Slt => {
-                    jump_branch_slt_family::slt::slt::<C, S, R>(state, ram, snapshotter, instr)
-                }
-                InstructionName::Sltu => {
-                    jump_branch_slt_family::slt::sltu::<C, S, R>(state, ram, snapshotter, instr)
-                }
-
-                InstructionName::Sw => memory::sw::<C, S, R>(state, ram, snapshotter, instr),
-                InstructionName::Lw => memory::lw::<C, S, R>(state, ram, snapshotter, instr),
-
-                InstructionName::Sh => memory::sh::<C, S, R>(state, ram, snapshotter, instr),
-                InstructionName::Lhu => {
-                    memory::lh::<C, S, R, false>(state, ram, snapshotter, instr)
-                }
-                InstructionName::Lh => memory::lh::<C, S, R, true>(state, ram, snapshotter, instr),
-
-                InstructionName::Sb => memory::sb::<C, S, R>(state, ram, snapshotter, instr),
-                InstructionName::Lbu => {
-                    memory::lb::<C, S, R, false>(state, ram, snapshotter, instr)
-                }
-                InstructionName::Lb => memory::lb::<C, S, R, true>(state, ram, snapshotter, instr),
-
-                InstructionName::Xor => {
-                    binary_shifts_family::binary_ops::xor::<C, S, R>(state, ram, snapshotter, instr)
-                }
-                InstructionName::And => {
-                    binary_shifts_family::binary_ops::and::<C, S, R>(state, ram, snapshotter, instr)
-                }
-                InstructionName::Or => {
-                    binary_shifts_family::binary_ops::or::<C, S, R>(state, ram, snapshotter, instr)
-                }
-                InstructionName::Sll => {
-                    binary_shifts_family::shifts::sll::<C, S, R>(state, ram, snapshotter, instr)
-                }
-                InstructionName::Srl => {
-                    binary_shifts_family::shifts::srl::<C, S, R>(state, ram, snapshotter, instr)
-                }
-                InstructionName::Sra => {
-                    binary_shifts_family::shifts::sra::<C, S, R>(state, ram, snapshotter, instr)
-                }
-
-                InstructionName::Mul => mul_div::mul::<C, S, R>(state, ram, snapshotter, instr),
-                InstructionName::Mulhu => mul_div::mulhu::<C, S, R>(state, ram, snapshotter, instr),
-                InstructionName::Divu => mul_div::divu::<C, S, R>(state, ram, snapshotter, instr),
-                InstructionName::Remu => mul_div::remu::<C, S, R>(state, ram, snapshotter, instr),
-
-                InstructionName::ZicsrMarkerCsr => {
-                    marker::<C, S, R, E>(state, ram, snapshotter, instr)
-                }
-
-                a @ _ => {
-                    panic!("Unknown instruction {:?}", a);
-                }
-                _ => core::hint::unreachable_unchecked(),
+        let pc = state.pc;
+        let instr = instruction_tape.read_instruction(pc);
+        debug_assert_eq!(state.timestamp % TIMESTAMP_STEP, 0);
+        match instr.name {
+            InstructionName::Illegal => illegal(state, ram, snapshotter, instr),
+            InstructionName::Nop => {
+                add_sub_family::nop_op::<C, S, R>(state, ram, snapshotter, instr)
             }
+            InstructionName::Add => {
+                add_sub_family::add_sub::add_op::<C, S, R>(state, ram, snapshotter, instr)
+            }
+            InstructionName::Sub => add_sub_family::add_sub::sub_op(state, ram, snapshotter, instr),
+            InstructionName::Auipc => {
+                add_sub_family::auipc::auipc::<C, S, R>(state, ram, snapshotter, instr)
+            }
+            InstructionName::ZimopAdd => {
+                add_sub_family::mop::mop_addmod::<C, S, R, F>(state, ram, snapshotter, instr)
+            }
+            InstructionName::ZimopSub => {
+                add_sub_family::mop::mop_submod::<C, S, R, F>(state, ram, snapshotter, instr)
+            }
+            InstructionName::ZimopMul => {
+                add_sub_family::mop::mop_mulmod::<C, S, R, F>(state, ram, snapshotter, instr)
+            }
+            InstructionName::ZicsrNonDeterminismRead => add_sub_family::non_determinism::nd_read::<
+                C,
+                S,
+                R,
+                ND,
+            >(
+                state, ram, snapshotter, instr, nd
+            ),
+            InstructionName::ZicsrNonDeterminismWrite => {
+                add_sub_family::non_determinism::nd_write::<C, S, R, ND>(
+                    state,
+                    ram,
+                    snapshotter,
+                    instr,
+                    nd,
+                )
+            }
+            InstructionName::ZicsrDelegation => add_sub_family::delegation::call_delegation::<
+                C,
+                S,
+                R,
+                E,
+            >(state, ram, snapshotter, instr),
+
+            InstructionName::Jal => {
+                jump_branch_slt_family::jal_jalr::jal::<C, S, R>(state, ram, snapshotter, instr)
+            }
+            InstructionName::Jalr => {
+                jump_branch_slt_family::jal_jalr::jalr::<C, S, R>(state, ram, snapshotter, instr)
+            }
+            InstructionName::Branch => {
+                jump_branch_slt_family::branch::branch::<C, S, R>(state, ram, snapshotter, instr)
+            }
+            InstructionName::Slt => {
+                jump_branch_slt_family::slt::slt::<C, S, R>(state, ram, snapshotter, instr)
+            }
+            InstructionName::Sltu => {
+                jump_branch_slt_family::slt::sltu::<C, S, R>(state, ram, snapshotter, instr)
+            }
+
+            InstructionName::Sw => memory::sw::<C, S, R>(state, ram, snapshotter, instr),
+            InstructionName::Lw => memory::lw::<C, S, R>(state, ram, snapshotter, instr),
+
+            InstructionName::Sh => memory::sh::<C, S, R>(state, ram, snapshotter, instr),
+            InstructionName::Lhu => memory::lh::<C, S, R, false>(state, ram, snapshotter, instr),
+            InstructionName::Lh => memory::lh::<C, S, R, true>(state, ram, snapshotter, instr),
+
+            InstructionName::Sb => memory::sb::<C, S, R>(state, ram, snapshotter, instr),
+            InstructionName::Lbu => memory::lb::<C, S, R, false>(state, ram, snapshotter, instr),
+            InstructionName::Lb => memory::lb::<C, S, R, true>(state, ram, snapshotter, instr),
+
+            InstructionName::Xor => {
+                binary_shifts_family::binary_ops::xor::<C, S, R>(state, ram, snapshotter, instr)
+            }
+            InstructionName::And => {
+                binary_shifts_family::binary_ops::and::<C, S, R>(state, ram, snapshotter, instr)
+            }
+            InstructionName::Or => {
+                binary_shifts_family::binary_ops::or::<C, S, R>(state, ram, snapshotter, instr)
+            }
+            InstructionName::Sll => {
+                binary_shifts_family::shifts::sll::<C, S, R>(state, ram, snapshotter, instr)
+            }
+            InstructionName::Srl => {
+                binary_shifts_family::shifts::srl::<C, S, R>(state, ram, snapshotter, instr)
+            }
+            InstructionName::Sra => {
+                binary_shifts_family::shifts::sra::<C, S, R>(state, ram, snapshotter, instr)
+            }
+
+            InstructionName::Mul => mul_div::mul::<C, S, R>(state, ram, snapshotter, instr),
+            InstructionName::Mulhu => mul_div::mulhu::<C, S, R>(state, ram, snapshotter, instr),
+            InstructionName::Divu => mul_div::divu::<C, S, R>(state, ram, snapshotter, instr),
+            InstructionName::Remu => mul_div::remu::<C, S, R>(state, ram, snapshotter, instr),
+
+            InstructionName::ZicsrMarkerCsr => marker::<C, S, R, E>(state, ram, snapshotter, instr),
+
+            InstructionName::Rol => {
+                binary_shifts_family::shifts::rol::<C, S, R>(state, ram, snapshotter, instr)
+            }
+            InstructionName::Ror => {
+                binary_shifts_family::shifts::ror::<C, S, R>(state, ram, snapshotter, instr)
+            }
+
+            a @ _ => {
+                panic!("Unknown instruction {:?}", a);
+            } // _ => unsafe { core::hint::unreachable_unchecked() },
         }
     }
 }
@@ -673,6 +660,60 @@ pub(crate) mod test {
             .map(|el| u32::from_be_bytes(*el))
             .collect();
         let mut source = QuasiUARTSource::new_with_reads(witness);
+
+        let instructions: Vec<Instruction> =
+            preprocess_bytecode::<FullUnsignedMachineDecoderConfig, true>(&text);
+        let tape = SimpleTape::new(&instructions);
+        let mut ram =
+            RamWithRomRegion::<{ common_constants::rom::ROM_SECOND_WORD_BITS }>::from_rom_content(
+                &binary,
+                1 << 30,
+            );
+
+        let cycles_bound = 1 << 30;
+
+        let mut state = State::initial_with_counters(DelegationsCounters::default());
+        let mut snapshotter = SimpleSnapshotter::new_with_cycle_limit(cycles_bound, state);
+
+        let now = std::time::Instant::now();
+        VM::<DelegationsCounters>::run_basic_unrolled::<
+            SimpleSnapshotter<DelegationsCounters, { common_constants::rom::ROM_SECOND_WORD_BITS }>,
+            _,
+            _,
+            Mersenne31Field,
+        >(
+            &mut state,
+            &mut ram,
+            &mut snapshotter,
+            &tape,
+            cycles_bound,
+            &mut source,
+        );
+        let elapsed = now.elapsed();
+
+        let final_timestamp = state.timestamp;
+        assert_eq!(final_timestamp % TIMESTAMP_STEP, 0);
+        let num_instructions = (final_timestamp - INITIAL_TIMESTAMP) / TIMESTAMP_STEP;
+        println!(
+            "Frequency is {} MHz over {} instructions",
+            (num_instructions as f64) * 1000f64 / (elapsed.as_nanos() as f64),
+            num_instructions,
+        );
+
+        println!("PC = 0x{:08x}", state.pc);
+        dbg!(state.registers.map(|el| el.value));
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_special_rotation_opcodes() {
+        use crate::abstractions::non_determinism::QuasiUARTSource;
+        use crate::ir::*;
+
+        let (_, binary) = read_binary(&Path::new("../examples/experiments/app.bin"));
+        let (_, text) = read_binary(&Path::new("../examples/experiments/app.text"));
+
+        let mut source = QuasiUARTSource::new_with_reads(vec![]);
 
         let instructions: Vec<Instruction> =
             preprocess_bytecode::<FullUnsignedMachineDecoderConfig, true>(&text);

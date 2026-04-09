@@ -429,7 +429,7 @@ impl<C: Counters, const ROM_BOUND_SECOND_WORD_BITS: usize, MB: ReplayBuffer<(u32
     #[inline(always)]
     fn append_memory_read(
         &mut self,
-        address: u32,
+        _address: u32,
         read_value: u32,
         read_timestamp: TimestampScalar,
         _write_timestamp: TimestampScalar,

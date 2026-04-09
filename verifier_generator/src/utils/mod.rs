@@ -64,7 +64,6 @@ pub fn transform_gkr_address(addr: &GKRAddress) -> TokenStream {
     }
 }
 
-/// Collect all `BaseLayerMemory` addresses referenced by a memory expression.
 fn collect_mem_expr_addrs(
     rel: &NoFieldSpecialMemoryContributionRelation,
     addrs: &mut BTreeSet<GKRAddress>,
@@ -250,10 +249,6 @@ pub fn collect_sorted_unique_addrs(layer: &GKRLayerDescription) -> Vec<GKRAddres
                 addrs.insert(input[1][0]);
                 addrs.insert(input[1][1]);
             }
-            // No-caches variants: memory expressions reference base-layer columns
-            // but those are NOT GKRAddresses in the layer's sorted addrs — they're
-            // accessed via the memory expression evaluation at runtime. Only the
-            // output address is tracked.
             R::EnforceSingleMaxQuadraticConstraint { input } => {
                 for (addr, terms) in input.quadratic_terms.iter() {
                     addrs.insert(*addr);

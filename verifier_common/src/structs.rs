@@ -8,11 +8,8 @@ use core::mem::MaybeUninit;
 #[cfg(feature = "gkr_verify")]
 use transcript::{Blake2sTranscript, Seed};
 
-/// Aligned buffer for read-then-commit patterns.
-///
-/// Encapsulates the layout `[seed | data | zero-padding]` required by
-/// `commit_with_seed_using_hasher_and_aligned_buffer`. Callers write data
-/// via `data_write(i, val)` — the seed offset is handled internally.
+/// layout `[seed | data | zero-padding]`
+/// Callers write data via `data_write(i, val)` — the seed offset is handled internally.
 #[cfg(feature = "gkr_verify")]
 pub struct CommitBuf<const N: usize> {
     inner: AlignedArray64<MaybeUninit<u32>, N>,
@@ -27,15 +24,11 @@ impl<const N: usize> CommitBuf<N> {
         }
     }
 
-    /// Write a value at position `i` in the data region (after the seed).
     #[inline(always)]
     pub fn data_write(&mut self, i: usize, val: u32) {
         self.inner.write(BLAKE2S_DIGEST_SIZE_U32_WORDS + i, val);
     }
 
-    /// Commit the buffer contents to the transcript.
-    /// Zeros the padding tail (at most 15 words), copies seed, and calls the
-    /// aligned commit path.
     #[inline(always)]
     pub fn commit(
         &mut self,
@@ -50,40 +43,39 @@ impl<const N: usize> CommitBuf<N> {
             unsafe { self.inner.zero_range(total, padded) };
         }
         self.inner.copy_from_slice(0, &seed.0);
-        Blake2sTranscript::commit_with_seed_using_hasher_and_aligned_buffer(
-            hasher,
-            seed,
-            unsafe { self.inner.assume_init_ref() },
-            total,
-        );
+        #[cfg(any(feature = "blake2_with_compression", feature = "blake2_g_function"))]
+        {
+            Blake2sTranscript::commit_with_seed_using_hasher_and_aligned_buffer(
+                hasher,
+                seed,
+                unsafe { self.inner.assume_init_ref() },
+                total,
+            );
+        }
+        #[cfg(not(any(feature = "blake2_with_compression", feature = "blake2_g_function")))]
+        {
+            let buf = unsafe { self.inner.assume_init_ref() };
+            // Skip the seed region — commit_with_seed_using_hasher prepends it internally.
+            Blake2sTranscript::commit_with_seed_using_hasher(
+                hasher,
+                seed,
+                &buf[BLAKE2S_DIGEST_SIZE_U32_WORDS..total],
+            );
+        }
     }
 
-    /// Reinterpret the data region as a slice of `T`.
-    ///
-    /// # Safety
-    /// The caller must ensure that `count` elements of type `T` have been
-    /// written (via `data_write`) and that the alignment is correct.
     #[inline(always)]
     pub unsafe fn data_as<T>(&self, count: usize) -> &[T] {
         self.inner
             .transmute_subslice(BLAKE2S_DIGEST_SIZE_U32_WORDS, count)
     }
 
-    /// Read a single item of type `T` from the data region.
-    ///
-    /// # Safety
-    /// The caller must ensure that `size_of::<T>() / size_of::<u32>()` words
-    /// have been written via `data_write`.
     #[inline(always)]
     pub unsafe fn read_one<T: Copy>(&self) -> T {
         *self.data_as::<T>(1).get_unchecked(0)
     }
 }
 
-/// Bundles the Blake2s hasher and transcript seed used throughout verification.
-///
-/// Replaces the repeated `(&mut hasher, &mut seed)` parameter pair. The struct
-/// is stack-allocated and zero-cost.
 #[cfg(feature = "gkr_verify")]
 pub struct TranscriptState {
     pub hasher: DelegatedBlake2sState,
@@ -100,24 +92,17 @@ impl TranscriptState {
         }
     }
 
-    /// Commit the contents of a `CommitBuf` to the transcript.
     #[inline(always)]
     pub fn commit<const N: usize>(&mut self, buf: &mut CommitBuf<N>, data_words: usize) {
         buf.commit(&mut self.hasher, &mut self.seed, data_words);
     }
 
-    /// Draw raw u32 words from the transcript into `dst`.
-    /// This is the low-level draw — field-specific wrappers are generated.
     #[inline(always)]
     pub fn draw_raw(&mut self, dst: &mut [u32]) {
         Blake2sTranscript::draw_randomness_using_hasher(&mut self.hasher, &mut self.seed, dst);
     }
 }
 
-/// Double-buffered workspace for `fold_coset`.
-///
-/// Encapsulates the A/B buffer swap pattern, hiding raw pointer arithmetic
-/// behind a named interface. Both buffers use `MaybeUninit` (no zero-init).
 #[cfg(feature = "gkr_verify")]
 pub struct FoldBuffers<E: Copy, const N: usize> {
     buf_a: [MaybeUninit<E>; N],
@@ -134,20 +119,6 @@ impl<E: Copy, const N: usize> FoldBuffers<E, N> {
         }
     }
 
-    /// Get `(source, destination)` slices for the given fold round.
-    ///
-    /// Round 0 is special — the caller must provide the initial `evals` slice
-    /// as the source. For round > 0 this method returns the correct buffer pair.
-    ///
-    /// The buffer swap pattern matches `fold_coset`:
-    ///   - round 0 → dst = buf_a (src = external evals)
-    ///   - round 1 → src = buf_a, dst = buf_b
-    ///   - round 2 → src = buf_b, dst = buf_a
-    ///   - ...
-    ///
-    /// # Safety
-    /// `src_len` and `dst_len` must not exceed `N`.
-    /// Source buffer must have been written to in a prior round.
     #[inline(always)]
     pub unsafe fn src_dst(
         &mut self,
@@ -165,21 +136,12 @@ impl<E: Copy, const N: usize> FoldBuffers<E, N> {
             (src, dst)
         }
     }
-
-    /// Mutable access to buf_a for writing initial fold output (round 0).
-    ///
-    /// # Safety
-    /// `len` must not exceed `N`.
+.
     #[inline(always)]
     pub unsafe fn dst_a(&mut self, len: usize) -> &mut [E] {
         core::slice::from_raw_parts_mut(self.buf_a.as_mut_ptr().cast::<E>(), len)
     }
 
-    /// Get the final folded value after all rounds.
-    ///
-    /// # Safety
-    /// At least one round must have been executed, and the result must be
-    /// in the first element of the appropriate buffer.
     #[inline(always)]
     pub unsafe fn result(&self, num_rounds: usize) -> E {
         if num_rounds % 2 == 1 {
@@ -214,9 +176,6 @@ impl<'a> Iterator for BitSource<'a> {
 
         let word_index = self.index / (u32::BITS as usize);
         let bit_index = self.index % (u32::BITS as usize);
-        // Use read_volatile to force a full 32-bit load and prevent the
-        // compiler from optimizing into a subword (lhu/lbu) load, which
-        // the reduced RISC-V transpiler does not support.
         let word = unsafe { core::ptr::read_volatile(&self.u32_values[word_index]) };
         let bit = (word >> bit_index) & 1;
         self.index += 1;

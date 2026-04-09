@@ -11,9 +11,6 @@ pub fn generate_transcript_helpers<MW: MersenneWrapper>() -> TokenStream {
     let field_from_u32 = MW::field_from_raw_repr_with_reduction(quote! { w });
 
     quote! {
-        /// Read a single reduced field element from NDS. This is the single
-        /// entry point for all field-element NDS reads — ensures the correct
-        /// modulus is always used.
         #[inline(always)]
         pub fn read_reduced_field_el<I: NonDeterminismSource>() -> u32 {
             I::read_reduced_field_element(#field_struct::ORDER)
@@ -72,7 +69,6 @@ pub fn generate_transcript_helpers<MW: MersenneWrapper>() -> TokenStream {
             }
         }
 
-        /// Draw a single extension field element from the transcript.
         #[inline(always)]
         pub fn draw_single_field_el(
             ts: &mut TranscriptState,

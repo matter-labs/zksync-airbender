@@ -3,9 +3,12 @@ set -euo pipefail
 
 # Circuit variant: "no_caches" (default) or "" for cached
 VARIANT="${GKR_VARIANT:-no_caches}"
-VARIANT_FEATURES=""
+# Blake mode: blake2_with_compression (default), blake2_g_function, mop_extension
+BLAKE="${BLAKE_MODE:-blake2_with_compression}"
+
+FEATURES="gkr_verify,${BLAKE}"
 if [[ -n "$VARIANT" ]]; then
-  VARIANT_FEATURES="--features $VARIANT"
+  FEATURES="${FEATURES},${VARIANT}"
 fi
 
 CIRCUITS=(
@@ -52,13 +55,13 @@ done
 #   -- --nocapture gkr_run_basic_unrolled_test)
 
 echo "==> Step 2: Regenerate inlined GKR verifier (variant=${VARIANT:-cached})"
-RUSTFLAGS="-Awarnings" cargo test -p verifier_generator $VARIANT_FEATURES --test generate_verifiers
+RUSTFLAGS="-Awarnings" cargo test -p verifier_generator ${VARIANT:+--features $VARIANT} --test generate_verifiers
 
-echo "==> Step 3: Build RISC-V binary"
-(cd tools/gkr_verifier && ./dump_bin.sh)
+echo "==> Step 3: Build RISC-V binary (blake=${BLAKE}, variant=${VARIANT:-cached})"
+(cd tools/gkr_verifier && BLAKE_MODE="$BLAKE" GKR_VARIANT="$VARIANT" ./dump_bin.sh)
 
-echo "==> Step 4: Verifier tests (variant=${VARIANT:-cached})"
-RUSTFLAGS="-Awarnings" cargo test -p verifier --tests --features gkr_verify $VARIANT_FEATURES -- --include-ignored
+echo "==> Step 4: Verifier tests (blake=${BLAKE}, variant=${VARIANT:-cached})"
+RUSTFLAGS="-Awarnings" cargo test -p verifier --tests --features "$FEATURES" -- --include-ignored
 
 # --- Record AFTER cycles ---
 echo ""

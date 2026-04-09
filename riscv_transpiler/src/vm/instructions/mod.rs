@@ -88,9 +88,9 @@ pub(crate) fn increment_family_counter_by<C: Counters, const FAMILY: u8>(
 #[inline(always)]
 pub(crate) fn illegal<C: Counters, S: Snapshotter<C>, R: RAM>(
     state: &mut State<C>,
-    ram: &mut R,
-    snapshotter: &mut S,
-    instr: Instruction,
+    _ram: &mut R,
+    _snapshotter: &mut S,
+    _instr: Instruction,
 ) {
     panic!("Illegal instruction encounteted at PC = 0x{:08x}", state.pc);
 }

@@ -12,10 +12,21 @@ keywords = ["blockchain", "zksync", "zk"]
 categories = ["cryptography"]
 
 [dependencies]
-verifier_common = { path = "../../verifier_common", default-features = false, features = ["gkr_verify", "modular_ops", "blake2_with_compression"] }
+verifier_common = { path = "../../verifier_common", default-features = false, features = ["gkr_verify", "modular_ops"] }
 non_determinism_source = { path = "../../non_determinism_source" }
 riscv_common = { path = "../../riscv_common", features = ["boot_sequence", "no_memset_override"] }
 field = { path = "../../field", default-features = false, features = ["modular_ops"] }
+
+[features]
+blake2_with_compression = ["verifier_common/blake2_with_compression"]
+blake2_g_function = ["verifier_common/blake2_g_function"]
+mop_extension = ["verifier_common/mop_extension"]
+no_caches = ["verifier_common/no_caches"]
+default = ["blake2_with_compression"]
+
+[[bin]]
+name = "inits_and_teardowns"
+path = "src/bin/inits_and_teardowns.rs"
 
 [[bin]]
 name = "add_sub_lui_auipc_mop"

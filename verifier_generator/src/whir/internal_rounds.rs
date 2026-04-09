@@ -4,7 +4,6 @@ use quote::quote;
 use crate::mersenne_wrapper::MersenneWrapper;
 use prover::gkr::prover::WhirSchedule;
 
-/// Generate per-circuit WHIR verifier code for internal rounds.
 pub fn generate_whir_internal_rounds<MW: MersenneWrapper>(
     whir_schedule: &WhirSchedule,
     trace_len_log2: usize,
@@ -15,7 +14,6 @@ pub fn generate_whir_internal_rounds<MW: MersenneWrapper>(
     let num_rounds = whir_schedule.whir_steps_schedule.len();
     let num_internal_rounds = num_rounds - 2; // exclude initial (0) and final (last)
 
-    // Compute per-round constants for internal rounds (round indices 1..num_rounds-1)
     let mut internal_query_index_bits_vec = Vec::with_capacity(num_internal_rounds);
     let mut internal_num_cosets_vec = Vec::with_capacity(num_internal_rounds);
     let mut internal_num_cosets_log2_vec = Vec::with_capacity(num_internal_rounds);
@@ -44,7 +42,6 @@ pub fn generate_whir_internal_rounds<MW: MersenneWrapper>(
         poly_size_log2 -= fold_steps;
     }
 
-    // Max buffer sizes for const generics
     let internal_fold_steps_range = &whir_schedule.whir_steps_schedule[1..num_rounds - 1];
     let internal_queries_range = &whir_schedule.whir_queries_schedule[1..num_rounds - 1];
 
@@ -67,7 +64,6 @@ pub fn generate_whir_internal_rounds<MW: MersenneWrapper>(
 
     let num_ir = num_internal_rounds;
 
-    // MW operations
     let mul_delin = MW::mul_assign(quote! { t }, quote! { delinearization_challenge });
     let add_correction = MW::add_assign(quote! { claim_correction }, quote! { t });
     let add_claim = MW::add_assign(quote! { claim }, quote! { claim_correction });
@@ -77,7 +73,6 @@ pub fn generate_whir_internal_rounds<MW: MersenneWrapper>(
     );
 
     quote! {
-        // Additional imports for internal rounds (extending whir.rs)
         use super::common::{
             compute_high_powers_offsets, ext_from_raw_words,
             MAX_HIGH_POWERS, EXT_DEGREE,
@@ -106,10 +101,6 @@ pub fn generate_whir_internal_rounds<MW: MersenneWrapper>(
         const INTERNAL_DRAW_WORDS: [usize; NUM_INTERNAL_ROUNDS] =
             [#(#internal_draw_words_vec),*];
 
-        /// Verify one internal WHIR round (rounds 1..WHIR_ROUNDS-2).
-        /// `round_idx` is 1-based (1 = first internal round).
-        /// `prev_oracle_cap` is the cap committed in the previous round.
-        /// Returns (new_claim, next_intermediate_cap).
         #[allow(unused_braces, unused_mut, unused_variables, unused_unsafe, clippy::needless_borrow)]
         pub fn verify_internal_whir_round<I: NonDeterminismSource>(
             ts: &mut TranscriptState,
@@ -123,9 +114,8 @@ pub fn generate_whir_internal_rounds<MW: MersenneWrapper>(
                 let num_queries = WHIR_QUERIES[round_idx];
                 let values_per_leaf = 1usize << fold_steps;
                 let leaf_ext_words = values_per_leaf * EXT_DEGREE;
-                let ir = round_idx - 1; // 0-based internal round index
+                let ir = round_idx - 1;
 
-                // --- 1. Sumcheck folds ---
                 let mut claim = claim;
                 let mut folding_challenges: LazyVec<#quartic_struct, MAX_INTERNAL_FOLD_STEPS> =
                     LazyVec::new();
@@ -139,15 +129,12 @@ pub fn generate_whir_internal_rounds<MW: MersenneWrapper>(
                     round += 1;
                 }
 
-                // --- 2. Read intermediate oracle cap (NOT committed to transcript) ---
                 let intermediate_cap =
                     read_return_merkle_cap::<I, WHIR_CAP_WORDS>();
 
-                // --- 3. OOD: draw point, read value (NOT committed to transcript) ---
                 let _ood_point = draw_single_field_el(ts);
                 let ood_value: #quartic_struct = read_field_el::<I>();
 
-                // --- 4. PoW + query indices ---
                 read_and_verify_pow::<I>(ts, WHIR_POW_BITS[round_idx]);
                 let query_index_bits = INTERNAL_QUERY_INDEX_BITS[ir];
                 let draw_words = INTERNAL_DRAW_WORDS[ir];
@@ -156,14 +143,11 @@ pub fn generate_whir_internal_rounds<MW: MersenneWrapper>(
                         ts, num_queries, query_index_bits, draw_words,
                     );
 
-                // --- 5. Delinearization challenge ---
                 let delinearization_challenge = draw_single_field_el(ts);
 
-                // --- 6. Claim correction: starts with OOD contribution ---
                 let mut claim_correction = ood_value;
                 #mul_ood_delin;
 
-                // --- 7. Per-query processing ---
                 let rs_domain_log2 = INTERNAL_RS_DOMAIN_LOG2[ir];
                 let extended_generator_inv = #field_struct::TWO_ADICITY_GENERATORS_INVERSED[rs_domain_log2];
                 let num_cosets = INTERNAL_NUM_COSETS[ir];
@@ -174,7 +158,6 @@ pub fn generate_whir_internal_rounds<MW: MersenneWrapper>(
                 let mut high_powers_offsets = LazyVec::<#field_struct, MAX_HIGH_POWERS>::new();
                 compute_high_powers_offsets(fold_steps, &mut high_powers_offsets);
 
-                // Scratch buffers
                 let mut fold_buf_a = LazyVec::<#quartic_struct, MAX_INTERNAL_FOLD_BUF_HALF>::new();
                 unsafe { fold_buf_a.set_len(MAX_INTERNAL_FOLD_BUF_HALF); }
                 let mut fold_buf_b = LazyVec::<#quartic_struct, MAX_INTERNAL_FOLD_BUF_HALF>::new();
@@ -184,12 +167,10 @@ pub fn generate_whir_internal_rounds<MW: MersenneWrapper>(
                     let query_index = *query_indices.get(q);
                     let base_root_inv = extended_generator_inv.pow(query_index as u32);
 
-                    // Tree index mapping
                     let tree_index = compute_tree_index(
                         query_index, num_cosets, num_cosets_log2, coset_tree_size,
                     );
 
-                    // Read extension field leaf values from NDS (reduced)
                     {
                         let mut i = 0;
                         while i < leaf_ext_words {
@@ -197,11 +178,9 @@ pub fn generate_whir_internal_rounds<MW: MersenneWrapper>(
                             i += 1;
                         }
                     }
-                    // Zero only the tail of the last Blake2s block
                     let block_end = leaf_ext_words.next_multiple_of(BLAKE2S_BLOCK_SIZE_U32_WORDS);
                     hash_buf.zero_range(leaf_ext_words, block_end);
 
-                    // Hash and verify Merkle path
                     let init_buf = hash_buf.assume_init_subarray::<INTERNAL_HASH_BUF_SIZE>();
                     hash_leaf_data_into_state(&mut ts.hasher, init_buf, leaf_ext_words);
                     if !verify_merkle_path::<I>(
@@ -210,7 +189,6 @@ pub fn generate_whir_internal_rounds<MW: MersenneWrapper>(
                         return Err(WhirVerificationError::MerklePathFailed { query: q });
                     }
 
-                    // Reconstruct extension field elements from buffer
                     let mut evals: LazyVec<#quartic_struct, MAX_INTERNAL_VALUES_PER_LEAF> =
                         LazyVec::new();
                     let mut j = 0;
@@ -221,9 +199,6 @@ pub fn generate_whir_internal_rounds<MW: MersenneWrapper>(
                         j += 1;
                     }
 
-                    // Fold — pass as_slice(); fold_coset only accesses the first
-                    // 1 << (fold_steps - 1) elements, which is what
-                    // compute_high_powers_offsets filled.
                     let folded = fold_coset(
                         evals.as_slice(), fold_steps,
                         folding_challenges.as_slice(),
@@ -231,7 +206,6 @@ pub fn generate_whir_internal_rounds<MW: MersenneWrapper>(
                         fold_buf_a.as_mut_slice(), fold_buf_b.as_mut_slice(),
                     );
 
-                    // Accumulate claim correction
                     let mut t = folded;
                     #mul_delin;
                     #add_correction;
@@ -239,7 +213,6 @@ pub fn generate_whir_internal_rounds<MW: MersenneWrapper>(
                     q += 1;
                 }
 
-                // --- 8. Update claim ---
                 #add_claim;
 
                 Ok((claim, intermediate_cap))

@@ -84,13 +84,33 @@ pub fn verify_merkle_path<I: NonDeterminismSource>(
     let mut level = 0;
     while level < depth {
         let is_right = leaf_index & 1 == 1;
-        let witness_buf = hasher.get_witness_buffer();
-        let mut i = 0;
-        while i < BLAKE2S_DIGEST_SIZE_U32_WORDS {
-            witness_buf[i] = I::read_word();
-            i += 1;
+        #[cfg(any(feature = "blake2_with_compression", feature = "blake2_g_function"))]
+        {
+            let witness_buf = hasher.get_witness_buffer();
+            let mut i = 0;
+            while i < BLAKE2S_DIGEST_SIZE_U32_WORDS {
+                witness_buf[i] = I::read_word();
+                i += 1;
+            }
+            hasher.compress_node::<true>(is_right);
         }
-        hasher.compress_node::<true>(is_right);
+        #[cfg(not(any(feature = "blake2_with_compression", feature = "blake2_g_function")))]
+        {
+            use blake2s_u32::BLAKE2S_BLOCK_SIZE_U32_WORDS;
+            let state = hasher.read_state_for_output();
+            let offset = if is_right { 0 } else { 8 };
+            let mut i = 0;
+            while i < BLAKE2S_DIGEST_SIZE_U32_WORDS {
+                hasher.input_buffer[offset + i] = I::read_word();
+                i += 1;
+            }
+            let state_offset = if is_right { 8 } else { 0 };
+            hasher.input_buffer[state_offset..state_offset + 8].copy_from_slice(&state);
+            hasher.reset();
+            unsafe {
+                hasher.run_round_function::<true>(BLAKE2S_BLOCK_SIZE_U32_WORDS, true);
+            }
+        }
         leaf_index >>= 1;
         level += 1;
     }
@@ -115,19 +135,6 @@ pub fn verify_merkle_path<I: NonDeterminismSource>(
     }
 }
 
-/// Hash leaf data (raw u32 words, already in tree-hashing order) into the
-/// delegated hasher's state so that `verify_merkle_path` can be called
-/// immediately afterwards.
-///
-/// **IMPORTANT**: `buf` must be an `AlignedArray64` whose total size `N` is a
-/// multiple of `BLAKE2S_BLOCK_SIZE_U32_WORDS` (16).  Words beyond
-/// `num_words` must be zero (the caller is responsible for this; typically
-/// the buffer is zero-initialised once and the active region is overwritten
-/// each iteration).
-///
-/// With the `blake2_with_compression` feature, this uses hardware-delegated
-/// Blake2s via aligned buffers.  Without it, falls back to the software
-/// `absorb`/`absorb_final_block` path on the hasher directly.
 #[inline(always)]
 pub fn hash_leaf_data_into_state<const N: usize>(
     hasher: &mut DelegatedBlake2sState,
@@ -143,7 +150,7 @@ pub fn hash_leaf_data_into_state<const N: usize>(
     let num_blocks = num_full_blocks + if last_block_words > 0 { 1 } else { 0 };
     hasher.reset();
 
-    #[cfg(feature = "blake2_with_compression")]
+    #[cfg(any(feature = "blake2_with_compression", feature = "blake2_g_function"))]
     unsafe {
         if num_blocks == 0 {
             // Empty leaf: hash a single zero-filled finalization block.
@@ -175,7 +182,7 @@ pub fn hash_leaf_data_into_state<const N: usize>(
         }
     }
 
-    #[cfg(not(feature = "blake2_with_compression"))]
+    #[cfg(not(any(feature = "blake2_with_compression", feature = "blake2_g_function")))]
     {
         let data: &[u32] = &buf[..num_words];
         for block_idx in 0..num_full_blocks {

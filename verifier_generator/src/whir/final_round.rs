@@ -4,9 +4,6 @@ use quote::quote;
 use crate::mersenne_wrapper::MersenneWrapper;
 use prover::gkr::prover::WhirSchedule;
 
-/// Generate per-circuit WHIR verifier code for the final round.
-/// The final round does sumcheck + PoW + queries but has NO OOD sample,
-/// NO delinearization challenge, and NO new oracle commitment.
 pub fn generate_whir_final_round<MW: MersenneWrapper>(
     whir_schedule: &WhirSchedule,
     trace_len_log2: usize,
@@ -14,7 +11,6 @@ pub fn generate_whir_final_round<MW: MersenneWrapper>(
     let field_struct = MW::field_struct();
     let quartic_struct = MW::quartic_struct();
 
-    // MW operations for monomial evaluation (Horner's method)
     let horner_mul = MW::mul_assign_by_base(quote! { eval }, quote! { query_point });
     let horner_add = MW::add_assign(quote! { eval }, quote! { coeff });
 
@@ -27,12 +23,10 @@ pub fn generate_whir_final_round<MW: MersenneWrapper>(
     let hash_buf_size = leaf_ext_words.div_ceil(16) * 16;
     let fold_buf_half = values_per_leaf / 2;
 
-    // Compute final round geometry from the last intermediate oracle
     let mut poly_size_log2 = trace_len_log2;
     for i in 0..final_round_idx {
         poly_size_log2 -= whir_schedule.whir_steps_schedule[i];
     }
-    // poly_size_log2 is the size BEFORE the final round folds
     let last_lde_factor = whir_schedule.whir_steps_lde_factors[final_round_idx - 1];
     let last_lde_factor_log2 = last_lde_factor.trailing_zeros() as usize;
     let rs_domain_log2 = poly_size_log2 + last_lde_factor_log2;
@@ -41,7 +35,6 @@ pub fn generate_whir_final_round<MW: MersenneWrapper>(
     let num_cosets = last_lde_factor;
     let num_cosets_log2 = last_lde_factor_log2;
     let coset_tree_size = (1usize << poly_size_log2) / values_per_leaf;
-    // Oracle depth for the last intermediate oracle
     let last_oracle_depth_idx = final_round_idx - 1; // index into WHIR_ORACLE_DEPTHS
 
     let total_bits_needed = num_queries * query_index_bits + 32;
@@ -50,8 +43,6 @@ pub fn generate_whir_final_round<MW: MersenneWrapper>(
     let pow_bits = whir_schedule.whir_pow_schedule[final_round_idx];
 
     quote! {
-        // Mirrors WHIR_FOLD_STEPS[last] — both are derived from the same whir_schedule
-        // at generation time, so they cannot diverge.
         const FINAL_FOLD_STEPS: usize = #fold_steps;
         const FINAL_NUM_QUERIES: usize = #num_queries;
         const FINAL_VALUES_PER_LEAF: usize = #values_per_leaf;
@@ -67,9 +58,6 @@ pub fn generate_whir_final_round<MW: MersenneWrapper>(
         const FINAL_POW_BITS: u32 = #pow_bits;
         const FINAL_ORACLE_DEPTH_IDX: usize = #last_oracle_depth_idx;
 
-        /// Verify the final WHIR round.
-        /// No OOD sample, no delinearization, no new oracle commitment.
-        /// Queries verify against `prev_oracle_cap` (the last intermediate oracle's cap).
         #[allow(unused_braces, unused_mut, unused_variables, unused_unsafe, clippy::needless_borrow)]
         pub fn verify_final_whir_round<I: NonDeterminismSource>(
             ts: &mut TranscriptState,
@@ -79,7 +67,6 @@ pub fn generate_whir_final_round<MW: MersenneWrapper>(
         ) -> Result<(), WhirVerificationError> {
             unsafe {
 
-                // --- 1. Sumcheck folds ---
                 let mut claim = claim;
                 let mut folding_challenges: LazyVec<#quartic_struct, FINAL_FOLD_STEPS> =
                     LazyVec::new();
@@ -93,14 +80,12 @@ pub fn generate_whir_final_round<MW: MersenneWrapper>(
                     round += 1;
                 }
 
-                // --- 2. PoW + query indices ---
                 read_and_verify_pow::<I>(ts, FINAL_POW_BITS);
                 let query_indices =
                     draw_query_indices::<MAX_INTERNAL_NUM_QUERIES, MAX_INTERNAL_DRAW_WORDS>(
                         ts, FINAL_NUM_QUERIES, FINAL_QUERY_INDEX_BITS, FINAL_DRAW_WORDS,
                     );
 
-                // --- 3. Per-query processing ---
                 let extended_generator = #field_struct::TWO_ADICITY_GENERATORS[FINAL_RS_DOMAIN_LOG2];
                 let extended_generator_inv = #field_struct::TWO_ADICITY_GENERATORS_INVERSED[FINAL_RS_DOMAIN_LOG2];
                 let oracle_depth = WHIR_ORACLE_DEPTHS[FINAL_ORACLE_DEPTH_IDX];
@@ -108,12 +93,10 @@ pub fn generate_whir_final_round<MW: MersenneWrapper>(
                 let mut high_powers_offsets = LazyVec::<#field_struct, MAX_HIGH_POWERS>::new();
                 compute_high_powers_offsets(FINAL_FOLD_STEPS, &mut high_powers_offsets);
 
-                // Scratch buffers
                 let mut fold_buf_a = LazyVec::<#quartic_struct, FINAL_FOLD_BUF_HALF>::new();
                 unsafe { fold_buf_a.set_len(FINAL_FOLD_BUF_HALF); }
                 let mut fold_buf_b = LazyVec::<#quartic_struct, FINAL_FOLD_BUF_HALF>::new();
                 unsafe { fold_buf_b.set_len(FINAL_FOLD_BUF_HALF); }
-                // Buffers to store per-query results for fold-agreement check
                 let mut folded_values: LazyVec<#quartic_struct, FINAL_NUM_QUERIES> =
                     LazyVec::new();
                 let mut query_base_roots: LazyVec<#field_struct, FINAL_NUM_QUERIES> =
@@ -125,12 +108,10 @@ pub fn generate_whir_final_round<MW: MersenneWrapper>(
                     let base_root = extended_generator.pow(query_index as u32);
                     let base_root_inv = extended_generator_inv.pow(query_index as u32);
 
-                    // Tree index mapping
                     let tree_index = compute_tree_index(
                         query_index, FINAL_NUM_COSETS, FINAL_NUM_COSETS_LOG2, FINAL_COSET_TREE_SIZE,
                     );
 
-                    // Read extension field leaf values from NDS (reduced)
                     {
                         let mut i = 0;
                         while i < FINAL_LEAF_EXT_WORDS {
@@ -142,7 +123,6 @@ pub fn generate_whir_final_round<MW: MersenneWrapper>(
                         FINAL_LEAF_EXT_WORDS.next_multiple_of(BLAKE2S_BLOCK_SIZE_U32_WORDS);
                     hash_buf.zero_range(FINAL_LEAF_EXT_WORDS, FINAL_BLOCK_END);
 
-                    // Hash and verify Merkle path
                     let init_buf = hash_buf.assume_init_subarray::<FINAL_HASH_BUF_SIZE>();
                     hash_leaf_data_into_state(&mut ts.hasher, init_buf, FINAL_LEAF_EXT_WORDS);
                     if !verify_merkle_path::<I>(
@@ -151,7 +131,6 @@ pub fn generate_whir_final_round<MW: MersenneWrapper>(
                         return Err(WhirVerificationError::MerklePathFailed { query: q });
                     }
 
-                    // Reconstruct extension field elements from buffer
                     let mut evals: LazyVec<#quartic_struct, FINAL_VALUES_PER_LEAF> =
                         LazyVec::new();
                     let mut j = 0;
@@ -162,7 +141,6 @@ pub fn generate_whir_final_round<MW: MersenneWrapper>(
                         j += 1;
                     }
 
-                    // Fold
                     let folded = fold_coset(
                         evals.as_slice(), FINAL_FOLD_STEPS,
                         folding_challenges.as_slice(),
@@ -170,28 +148,21 @@ pub fn generate_whir_final_round<MW: MersenneWrapper>(
                         fold_buf_a.as_mut_slice(), fold_buf_b.as_mut_slice(),
                     );
 
-                    // Store for fold-agreement check after reading monomials
                     folded_values.push(folded);
                     query_base_roots.push(base_root);
 
                     q += 1;
                 }
 
-                // --- 4. Read final monomials from NDS ---
                 let mut monomials = LazyVec::<#quartic_struct, FINAL_MONOMIALS_LEN>::new();
                 unsafe { monomials.set_len(FINAL_MONOMIALS_LEN); }
                 read_field_els::<I>(monomials.as_mut_slice());
 
-                // --- 5. Fold-agreement check ---
-                // For each query, evaluate the monomial form at the query domain
-                // point and verify it matches the folded oracle value.
                 let mut q = 0;
                 while q < FINAL_NUM_QUERIES {
-                    // query_point = base_root^(2^fold_steps) via repeated squaring
                     let mut query_point = *query_base_roots.get(q);
                     query_point.exp_power_of_2(FINAL_FOLD_STEPS);
 
-                    // Horner evaluation: poly(r) = c_{n-1}*r^{n-1} + ... + c_1*r + c_0
                     let mut eval = unsafe { *monomials.get_unchecked(FINAL_MONOMIALS_LEN - 1) };
                     let mut j = FINAL_MONOMIALS_LEN - 1;
                     while j > 0 {

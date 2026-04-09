@@ -6,9 +6,6 @@ use prover::cs::gkr_compiler::OutputType;
 
 use super::GKROutputGroupInfo;
 
-/// Generate a single shared `dim_reducing_compute_claim` function.
-/// All dim-reducing layers share the same output group structure, so one
-/// function suffices — no per-layer variants needed.
 pub fn generate_dim_reducing_compute_claim<MW: MersenneWrapper>(
     output_groups: &[GKROutputGroupInfo],
 ) -> TokenStream {
@@ -100,9 +97,6 @@ pub fn generate_dim_reducing_compute_claim<MW: MersenneWrapper>(
     }
 }
 
-/// Generate a single shared `dim_reducing_final_step_accumulator` function.
-/// Takes an `indices` slice so the same function works for all dim-reducing
-/// layers — only the index mapping changes per layer.
 pub fn generate_dim_reducing_final_step_accumulator<MW: MersenneWrapper>(
     output_groups: &[GKROutputGroupInfo],
 ) -> TokenStream {

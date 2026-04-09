@@ -97,9 +97,6 @@ fn rejects_corrupted_cache_relations() {
     let circuit_data = common::circuit_by_name(CIRCUIT);
     let mut proof = circuit_data.proof();
 
-    // The base layer (layer 0) has cached relations: certain claims must equal
-    // a linear combination of other claims. The extra_evaluations_from_caching_relations
-    // field carries these values. Corrupting one should trigger CacheRelationFailed.
     let base_layer = proof
         .sumcheck_intermediate_values
         .get_mut(&0)
@@ -111,7 +108,6 @@ fn rejects_corrupted_cache_relations() {
         "base layer must have cached relations"
     );
 
-    // Corrupt the first cached relation evaluation by adding ONE
     let (_addr, eval) = base_layer
         .extra_evaluations_from_caching_relations
         .iter_mut()
@@ -248,13 +244,11 @@ fn delegation_rejects_corrupted_whir_region() {
 
 #[test]
 fn rejects_garbage_proof() {
-    // A completely random NDS should be rejected by every circuit.
     for circuit in common::CIRCUITS.iter() {
         let nds_len = circuit.load_nds().len();
         let result = run_corrupted(circuit.name, |nds| {
-            // Deterministic "random" fill: use index as seed
             for i in 0..nds_len {
-                nds[i] = (i as u32).wrapping_mul(2654435761); // Knuth multiplicative hash
+                nds[i] = (i as u32).wrapping_mul(2654435761);
             }
         });
         assert!(

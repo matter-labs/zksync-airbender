@@ -1,13 +1,23 @@
 #!/bin/sh
 set -euo pipefail
 
-CIRCUITS=$(ls src/bin/*.rs | sed 's|.*/||;s|\.rs||')
-COMMON_FLAGS="--release -Z panic-immediate-abort -Z build-std=core,alloc"
+# BLAKE_MODE: blake2_with_compression (default), blake2_g_function, mop_extension
+BLAKE_MODE="${BLAKE_MODE:-blake2_with_compression}"
 
-echo "==> Building all RISC-V binaries"
+# GKR_VARIANT: "no_caches" (default) or "" (cached)
+GKR_VARIANT="${GKR_VARIANT:-no_caches}"
+
+FEATURES="${BLAKE_MODE}"
+if [ -n "$GKR_VARIANT" ]; then
+    FEATURES="${FEATURES},${GKR_VARIANT}"
+fi
+
+CIRCUITS=$(ls src/bin/*.rs | sed 's|.*/||;s|\.rs||')
+COMMON_FLAGS="--release -Z panic-immediate-abort -Z build-std=core,alloc --no-default-features --features ${FEATURES}"
+
+echo "==> Building all RISC-V binaries (blake: ${BLAKE_MODE}, variant: ${GKR_VARIANT:-cached})"
 cargo build $COMMON_FLAGS --bins
 
-# Extract .bin / .elf / .text in parallel
 echo "==> Extracting binaries"
 for circuit in $CIRCUITS; do
     (
@@ -19,4 +29,4 @@ for circuit in $CIRCUITS; do
 done
 wait
 
-echo "==> All binaries built"
+echo "==> All binaries built (blake: ${BLAKE_MODE}, variant: ${GKR_VARIANT:-cached})"

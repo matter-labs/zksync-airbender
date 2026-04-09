@@ -108,16 +108,13 @@ impl<T, A, const N: usize> AlignedArray<MaybeUninit<T>, A, N> {
     }
 
     /// Zero-fill slots `start..end`.
-    ///
-    /// Uses `write_volatile` to prevent LLVM from converting the loop
-    /// into memset, which emits sub-word store instructions (sb/sh).
     #[inline(always)]
     pub unsafe fn zero_range(&mut self, start: usize, end: usize) {
         debug_assert!(end <= N);
         let ptr = self.data.as_mut_ptr();
         let mut i = start;
         while i < end {
-            core::ptr::write_volatile(ptr.add(i), core::mem::MaybeUninit::zeroed());
+            core::ptr::write_volatile(ptr.add(i), MaybeUninit::zeroed());
             i += 1;
         }
     }

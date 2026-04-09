@@ -22,28 +22,19 @@ use super::addr_to_idx;
 use super::coeff_to_internal_repr;
 use super::constraint_kernel::generate_constraint_kernel;
 
-// ---------------------------------------------------------------------------
-// Table-driven evaluation helpers (emitted once per generated gkr.rs)
-// ---------------------------------------------------------------------------
-
-/// Generate the shared eval helper functions used by table-driven gate evaluation.
-/// These are emitted once per generated gkr module, before the per-layer functions.
 pub fn generate_eval_helpers<MW: MersenneWrapper, F: PrimeField>() -> TokenStream {
     let field_struct = MW::field_struct();
     let quartic_struct = MW::quartic_struct();
     let quartic_zero = MW::quartic_zero();
     let quartic_one = MW::quartic_one();
 
-    // Pre-compute byte shift constant (256 in Montgomery form)
     let byte_shift_mont = coeff_to_internal_repr::<F>(1u32 << 8);
 
-    // --- eval_linear_relation ---
     let lr_from_base = MW::field_from_reduced_raw_repr(quote! { constant as u32 });
     let lr_coeff = MW::field_from_reduced_raw_repr(quote! { coeff as u32 });
     let lr_mul = MW::mul_assign_by_base(quote! { t }, lr_coeff.clone());
     let lr_add = MW::add_assign(quote! { result }, quote! { t });
 
-    // --- eval_vector_lookup ---
     let vl_mul_alpha = MW::mul_assign(quote! { result }, quote! { alpha });
     let vl_col_const = MW::field_from_reduced_raw_repr(quote! { col_const as u32 });
     let vl_term_coeff = MW::field_from_reduced_raw_repr(quote! { coeff as u32 });
@@ -51,7 +42,6 @@ pub fn generate_eval_helpers<MW: MersenneWrapper, F: PrimeField>() -> TokenStrea
     let vl_col_add = MW::add_assign(quote! { col_val }, quote! { t });
     let vl_result_add = MW::add_assign(quote! { result }, quote! { col_val });
 
-    // --- eval_max_quadratic ---
     let mq_const = MW::field_from_reduced_raw_repr(quote! { constant as u32 });
     let mq_inner_coeff = MW::field_from_reduced_raw_repr(quote! { coeff as u32 });
     let mq_inner_mul = MW::mul_assign_by_base(quote! { t }, mq_inner_coeff.clone());
@@ -62,8 +52,6 @@ pub fn generate_eval_helpers<MW: MersenneWrapper, F: PrimeField>() -> TokenStrea
     let mq_lin_mul = MW::mul_assign_by_base(quote! { lt }, mq_lin_coeff.clone());
     let mq_lin_add = MW::add_assign(quote! { val }, quote! { lt });
 
-    // --- eval_memory_expr ---
-    // Op type constants
     let me_add_base = MW::field_from_reduced_raw_repr(quote! { op[1] as u32 });
     let me_add_base_assign = MW::add_assign_base(quote! { result }, me_add_base.clone());
     let me_add_eval = MW::add_assign(quote! { result }, quote! { evals.get_unchecked(op[1])[j] });
@@ -77,13 +65,11 @@ pub fn generate_eval_helpers<MW: MersenneWrapper, F: PrimeField>() -> TokenStrea
     let me_ev_plus_const = MW::field_from_reduced_raw_repr(quote! { op[3] as u32 });
     let me_add_const_to_ev = MW::add_assign_base(quote! { ev }, me_ev_plus_const.clone());
     let me_mul_ev = MW::mul_assign_by_base(quote! { t }, quote! { ev });
-    // OP_CH_MUL_EVAL_PLUS_DYN
     let me_dyn_const = MW::field_from_reduced_raw_repr(quote! { op[4] as u32 });
     let me_dyn_add_const = MW::add_assign_base(quote! { ev }, me_dyn_const.clone());
     let me_dyn_coeff = MW::field_from_reduced_raw_repr(quote! { op[5] as u32 });
     let me_dyn_mul = MW::mul_assign_by_base(quote! { dyn_val }, me_dyn_coeff.clone());
     let me_dyn_add = MW::add_assign(quote! { ev }, quote! { dyn_val });
-    // OP_BYTE_VALUE_PAIR
     let byte_shift_field = MW::field_from_reduced_raw_repr(quote! { #byte_shift_mont });
     let me_byte_mul = MW::mul_assign_by_base(quote! { hi }, byte_shift_field.clone());
     let me_byte_add_lo = MW::add_assign(quote! { hi }, quote! { evals.get_unchecked(op[2])[j] });
@@ -262,12 +248,6 @@ pub fn generate_eval_helpers<MW: MersenneWrapper, F: PrimeField>() -> TokenStrea
     }
 }
 
-// ---------------------------------------------------------------------------
-// Shared code-generation helpers for complex gate types
-// ---------------------------------------------------------------------------
-
-/// Generate code that evaluates a `NoFieldLinearRelation` into variable `var_name`.
-/// Emits a const descriptor array + call to `eval_linear_relation`.
 fn emit_linear_relation_eval<MW: MersenneWrapper, F: PrimeField>(
     rel: &prover::cs::definitions::gkr::NoFieldLinearRelation,
     var_name: &str,
@@ -296,8 +276,6 @@ fn emit_linear_relation_eval<MW: MersenneWrapper, F: PrimeField>(
     }
 }
 
-/// Generate code that evaluates a `NoFieldVectorLookupRelation` via Horner's method
-/// into variable `var_name`. Emits const descriptor arrays + call to `eval_vector_lookup`.
 fn emit_vector_lookup_eval<MW: MersenneWrapper, F: PrimeField>(
     rel: &NoFieldVectorLookupRelation,
     var_name: &str,
@@ -318,7 +296,6 @@ fn emit_vector_lookup_eval<MW: MersenneWrapper, F: PrimeField>(
     let mut all_term_idx = Vec::new();
     let mut all_term_coeff = Vec::new();
 
-    // Columns in reverse order for Horner evaluation
     for col in rel.columns.iter().rev() {
         col_consts.push(coeff_to_internal_repr::<F>(col.constant) as usize);
         col_counts.push(col.linear_terms.len());
@@ -341,8 +318,6 @@ fn emit_vector_lookup_eval<MW: MersenneWrapper, F: PrimeField>(
     }
 }
 
-/// Emit the standard single-output gate wrapper:
-/// `{ let bc = current_batch; advance; for j in 0..2 { val = ...; contrib = bc * val; acc += contrib; } }`
 fn emit_single_output_gate<MW: MersenneWrapper>(
     body: &mut TokenStream,
     mul_batch: &TokenStream,
@@ -364,9 +339,6 @@ fn emit_single_output_gate<MW: MersenneWrapper>(
     });
 }
 
-/// Generate code that evaluates a Horner sum over setup addresses into `var_name`.
-/// Each address contributes one "column" with constant=0 and coeff=ONE,
-/// using the same `eval_vector_lookup` helper as vector lookup evaluations.
 fn emit_setup_horner_eval<F: PrimeField>(
     addrs: &[GKRAddress],
     var_name: &str,
@@ -388,7 +360,6 @@ fn emit_setup_horner_eval<F: PrimeField>(
     let mut term_idx = Vec::new();
     let mut term_coeff = Vec::new();
 
-    // Columns in reverse order for Horner (same as emit_vector_lookup_eval)
     for addr in addrs.iter().rev() {
         col_consts.push(0usize);
         col_counts.push(1usize);
@@ -409,8 +380,6 @@ fn emit_setup_horner_eval<F: PrimeField>(
     }
 }
 
-/// Generate code that evaluates a `NoFieldMaxQuadraticGKRRelation` into variable `var_name`.
-/// Emits const descriptor arrays + call to `eval_max_quadratic`.
 fn emit_max_quadratic_eval<F: PrimeField>(
     input: &prover::cs::gkr_compiler::NoFieldMaxQuadraticGKRRelation,
     var_name: &str,
@@ -457,12 +426,6 @@ fn emit_max_quadratic_eval<F: PrimeField>(
     }
 }
 
-/// Generate code that evaluates a `NoFieldSpecialMemoryContributionRelation`
-/// into variable `var_name`. Emits const op descriptor array + call to `eval_memory_expr`.
-///
-/// Op types match the ME_OP_* constants emitted by `generate_eval_helpers`:
-///   0=ADD_BASE_CONST, 1=ADD_EVAL, 2=ADD_ONE_MINUS_EVAL, 3=CH_MUL_EVAL,
-///   4=CH_MUL_CONST, 5=CH_MUL_EVAL_PLUS_CONST, 6=CH_MUL_EVAL_PLUS_DYN, 7=BYTE_VALUE_PAIR
 fn emit_memory_expression_eval<F: PrimeField>(
     rel: &NoFieldSpecialMemoryContributionRelation,
     var_name: &str,
@@ -480,7 +443,6 @@ fn emit_memory_expression_eval<F: PrimeField>(
 
     let mut ops: Vec<[usize; 6]> = Vec::new();
 
-    // Address space
     match &rel.address_space {
         CompiledAddressSpaceRelationStrict::Constant(c) => {
             ops.push([0, mont(*c), 0, 0, 0, 0]);
@@ -493,7 +455,6 @@ fn emit_memory_expression_eval<F: PrimeField>(
         }
     }
 
-    // Address
     match &rel.address {
         CompiledAddressStrict::ConstantU16(c) => {
             ops.push([
@@ -595,7 +556,6 @@ fn emit_memory_expression_eval<F: PrimeField>(
         }
     }
 
-    // Timestamp
     match &rel.timestamp {
         CompiledMemoryTimestamp::Zero => {}
         CompiledMemoryTimestamp::Normal(ts) => {
@@ -630,7 +590,6 @@ fn emit_memory_expression_eval<F: PrimeField>(
         }
     }
 
-    // Value
     match &rel.value {
         RamWordRepresentation::Zero => {}
         RamWordRepresentation::U16Limbs(limbs) => {
@@ -704,8 +663,6 @@ pub fn generate_layer_compute_claim<MW: MersenneWrapper>(
     let add_t0 = MW::add_assign(quote! { combined }, quote! { t0 });
     let add_t1 = MW::add_assign(quote! { combined }, quote! { t1 });
 
-    // Build descriptor array: (num_outputs, idx0, idx1)
-    // 0 = no output (constraint), 1 = single, 2 = pair
     let mut descs = Vec::new();
     for gate in layer
         .gates
@@ -802,7 +759,6 @@ pub fn generate_layer_compute_claim<MW: MersenneWrapper>(
     }
 }
 
-/// Gate type constants for the dispatch loop in final_step_accumulator.
 const GT_COPY: usize = 1;
 const GT_PRODUCT: usize = 2; // InitialGrandProductFromCaches, TrivialProduct
 const GT_MASK_PRODUCT: usize = 3;
@@ -813,7 +769,6 @@ const GT_LOOKUP_UNBAL: usize = 7;
 const GT_AGGREGATE_PAIR: usize = 8;
 const GT_LOOKUP_CACHED_DENS: usize = 9;
 
-/// Classify a gate as simple (returns Some(type, indices)) or complex (returns None).
 fn classify_gate(
     gate: &prover::cs::gkr_compiler::GateArtifacts,
     input_sorted_addrs: &[GKRAddress],
@@ -914,51 +869,42 @@ fn classify_gate(
     }
 }
 
-/// Generate the dispatch loop body for simple gates.
 fn generate_simple_gate_loop<MW: MersenneWrapper>(descs: &[(usize, [usize; 4])]) -> TokenStream {
     let field_one = MW::field_one();
     let mul_batch = MW::mul_assign(quote! { current_batch }, quote! { batch_base });
 
-    // Single-output gate helpers
     let mul_contrib = MW::mul_assign(quote! { contrib }, quote! { val });
     let add_acc = MW::add_assign(quote! { acc[j] }, quote! { contrib });
 
-    // Pair-output gate helpers
     let mul_c0 = MW::mul_assign(quote! { c0 }, quote! { out0 });
     let mul_c1 = MW::mul_assign(quote! { c1 }, quote! { out1 });
     let add_c0 = MW::add_assign(quote! { acc[j] }, quote! { c0 });
     let add_c1 = MW::add_assign(quote! { acc[j] }, quote! { c1 });
 
-    // Gate-specific ops
     let mul_ab = MW::mul_assign(quote! { val }, quote! { vb });
     let sub_one = MW::sub_assign_base(quote! { val }, field_one.clone());
     let mul_mask = MW::mul_assign(quote! { val }, quote! { mask_val });
     let add_one = MW::add_assign_base(quote! { val }, field_one);
     let mul_si = MW::mul_assign(quote! { val }, quote! { vi });
 
-    // Lookup pair ops
     let add_gamma_bg = MW::add_assign(quote! { bg }, quote! { lookup_additive_challenge });
     let add_gamma_dg = MW::add_assign(quote! { dg }, quote! { lookup_additive_challenge });
     let add_bd = MW::add_assign(quote! { num }, quote! { dg });
     let mul_den = MW::mul_assign(quote! { den }, quote! { dg });
 
-    // Lookup setup ops
     let mul_cb = MW::mul_assign(quote! { cb }, quote! { bg });
     let sub_cb = MW::sub_assign(quote! { num }, quote! { cb });
 
-    // Unbalanced ops
     let add_gamma_r = MW::add_assign(quote! { r_g }, quote! { lookup_additive_challenge });
     let mul_ar = MW::mul_assign(quote! { num }, quote! { r_g });
     let add_b_unbal = MW::add_assign(quote! { num }, quote! { b_val });
     let mul_br = MW::mul_assign(quote! { den }, quote! { r_g });
 
-    // Aggregate pair ops
     let mul_ad = MW::mul_assign(quote! { num }, quote! { d_val });
     let mul_cb_agg = MW::mul_assign(quote! { cb_tmp }, quote! { b_val });
     let add_cb_agg = MW::add_assign(quote! { num }, quote! { cb_tmp });
     let mul_bd_agg = MW::mul_assign(quote! { den }, quote! { d_val });
 
-    // Cached dens ops
     let add_gamma_b_cd = MW::add_assign(quote! { b_cd }, quote! { lookup_additive_challenge });
     let add_gamma_d_cd = MW::add_assign(quote! { d_cd }, quote! { lookup_additive_challenge });
     let mul_ad_cd = MW::mul_assign(quote! { ad_cd }, quote! { d_cd });
@@ -1165,7 +1111,6 @@ pub fn generate_layer_final_step_accumulator<MW: MersenneWrapper, F: PrimeField>
         let mut current_batch = #quartic_one;
     };
 
-    // Build segments: alternating inline (complex) and loop (simple) blocks
     let mut simple_group: Vec<(usize, [usize; 4])> = Vec::new();
 
     let gates: Vec<_> = layer
@@ -1178,12 +1123,10 @@ pub fn generate_layer_final_step_accumulator<MW: MersenneWrapper, F: PrimeField>
         if let Some(desc) = classify_gate(gate, input_sorted_addrs) {
             simple_group.push(desc);
         } else {
-            // Flush accumulated simple gates
             if !simple_group.is_empty() {
                 body.extend(generate_simple_gate_loop::<MW>(&simple_group));
                 simple_group.clear();
             }
-            // Emit complex gate inline
             use NoFieldGKRRelation as R;
             match &gate.enforced_relation {
                 R::EnforceSingleMaxQuadraticConstraint { input } => {
@@ -1268,7 +1211,6 @@ pub fn generate_layer_final_step_accumulator<MW: MersenneWrapper, F: PrimeField>
                     );
                 }
                 R::InitialGrandProductWithoutCaches { input, .. } => {
-                    // output = eval(mem_expr_a) * eval(mem_expr_b)
                     let mem_a =
                         emit_memory_expression_eval::<F>(&input[0], "mem_a", input_sorted_addrs);
                     let mem_b =
@@ -1283,7 +1225,6 @@ pub fn generate_layer_final_step_accumulator<MW: MersenneWrapper, F: PrimeField>
                     emit_single_output_gate::<MW>(&mut body, &mul_batch, val_comp);
                 }
                 R::MaterializeGrandProductTermExpression { input, .. } => {
-                    // output = eval(mem_expr)
                     let mem = emit_memory_expression_eval::<F>(input, "val", input_sorted_addrs);
                     emit_single_output_gate::<MW>(&mut body, &mul_batch, mem);
                 }
@@ -1293,21 +1234,15 @@ pub fn generate_layer_final_step_accumulator<MW: MersenneWrapper, F: PrimeField>
                     set_idxes,
                     ..
                 } => {
-                    // Computes product of two init/teardown memory tuples.
-                    // Each tuple: additive_part + addr_space + address + timestamp + value
-                    // For Init: timestamp=0, value=0, address from setup virtual poly
-                    // For Teardown: all components from base-layer columns
                     let setup_lo_idx = addr_to_idx(&setup[0], input_sorted_addrs);
                     let setup_hi_idx = addr_to_idx(&setup[1], input_sorted_addrs);
 
                     let mut val_comp = TokenStream::new();
 
-                    // Build two memory tuple evaluations, then multiply
                     for (side, set_idx) in ["lhs", "rhs"].iter().zip(set_idxes.iter()) {
                         let var = syn::Ident::new(side, proc_macro2::Span::call_site());
                         let set_idx_val = *set_idx;
 
-                        // Timestamp + value terms (only for Teardown)
                         let ts_val_terms = match timestamp_and_value {
                             InitsOrTeardownsTimestampAndValue::Init => {
                                 quote! {}
@@ -1365,8 +1300,6 @@ pub fn generate_layer_final_step_accumulator<MW: MersenneWrapper, F: PrimeField>
                         };
 
                         let field_struct_local = MW::field_struct();
-                        // AddressSpaceType::RAM = 1, must be added to constant term
-                        // to match prover's inits_or_teardowns_as_flattened_relation.
                         let ram_constant = coeff_to_internal_repr::<F>(1) as u32;
                         val_comp.extend(quote! {
                             let mut #var = {
@@ -1394,7 +1327,6 @@ pub fn generate_layer_final_step_accumulator<MW: MersenneWrapper, F: PrimeField>
                         });
                     }
 
-                    // Product of lhs and rhs
                     let mul_lr = MW::mul_assign(quote! { lhs }, quote! { rhs });
                     val_comp.extend(quote! {
                         #mul_lr;
@@ -1403,8 +1335,6 @@ pub fn generate_layer_final_step_accumulator<MW: MersenneWrapper, F: PrimeField>
                     emit_single_output_gate::<MW>(&mut body, &mul_batch, val_comp);
                 }
                 R::LookupWithDensAndSetupExpressions { input, setup, .. } => {
-                    // a/(b+gamma) - c/(d+gamma) where b is a vector lookup expression
-                    // and d is Horner over setup addresses
                     let a_idx = addr_to_idx(&input.0, input_sorted_addrs);
                     let c_idx = addr_to_idx(&setup.0, input_sorted_addrs);
                     let comp_b =
@@ -1426,7 +1356,6 @@ pub fn generate_layer_final_step_accumulator<MW: MersenneWrapper, F: PrimeField>
                             #add_gamma_d;
                         },
                         |mw_mul, _mw_add| {
-                            // num = a*d - c*b
                             let mul_ad = mw_mul(quote! { num }, quote! { d_val });
                             let mul_cb = mw_mul(quote! { cb_tmp }, quote! { b_val });
                             let sub_cb = MW::sub_assign(quote! { num }, quote! { cb_tmp });
@@ -1440,7 +1369,6 @@ pub fn generate_layer_final_step_accumulator<MW: MersenneWrapper, F: PrimeField>
                             }
                         },
                         |mw_mul, _| {
-                            // den = b * d
                             let mul_bd = mw_mul(quote! { den }, quote! { d_val });
                             quote! { let mut den = b_val; #mul_bd; den }
                         },
@@ -1449,7 +1377,6 @@ pub fn generate_layer_final_step_accumulator<MW: MersenneWrapper, F: PrimeField>
                 R::LookupUnbalancedPairWithVectorInputs {
                     input, remainder, ..
                 } => {
-                    // a/b + 1/(c+gamma) where c is a vector lookup expression
                     let a_idx = addr_to_idx(&input[0], input_sorted_addrs);
                     let b_idx = addr_to_idx(&input[1], input_sorted_addrs);
                     let comp_c =
@@ -1466,20 +1393,17 @@ pub fn generate_layer_final_step_accumulator<MW: MersenneWrapper, F: PrimeField>
                             #add_gamma_c;
                         },
                         |mw_mul, mw_add| {
-                            // num = a*(c+gamma) + b
                             let mul_ac = mw_mul(quote! { num }, quote! { c_val });
                             let add_b = mw_add(quote! { num }, quote! { b_val });
                             quote! { let mut num = a_val; #mul_ac; #add_b; num }
                         },
                         |mw_mul, _| {
-                            // den = b*(c+gamma)
                             let mul_bc = mw_mul(quote! { den }, quote! { c_val });
                             quote! { let mut den = b_val; #mul_bc; den }
                         },
                     );
                 }
                 R::LookupFromVectorInputWithSetup { input, setup, .. } => {
-                    // 1/(a+gamma) - multiplicity/(setup+gamma)
                     let comp_a =
                         emit_vector_lookup_eval::<MW, F>(input, "a_val", input_sorted_addrs);
                     let c_idx = addr_to_idx(&setup.0, input_sorted_addrs);
@@ -1499,7 +1423,6 @@ pub fn generate_layer_final_step_accumulator<MW: MersenneWrapper, F: PrimeField>
                             #add_gamma_d;
                         },
                         |mw_mul, _mw_add| {
-                            // num = d - c*a  (i.e. (d+gamma) - multiplicity*(a+gamma))
                             let mul_ca = mw_mul(quote! { cb_tmp }, quote! { a_val });
                             let sub_ca = MW::sub_assign(quote! { num }, quote! { cb_tmp });
                             quote! {
@@ -1511,7 +1434,6 @@ pub fn generate_layer_final_step_accumulator<MW: MersenneWrapper, F: PrimeField>
                             }
                         },
                         |mw_mul, _| {
-                            // den = a * d
                             let mul_ad = mw_mul(quote! { den }, quote! { d_val });
                             quote! { let mut den = a_val; #mul_ad; den }
                         },
@@ -1527,7 +1449,6 @@ pub fn generate_layer_final_step_accumulator<MW: MersenneWrapper, F: PrimeField>
         }
     }
 
-    // Flush remaining simple gates
     if !simple_group.is_empty() {
         body.extend(generate_simple_gate_loop::<MW>(&simple_group));
     }

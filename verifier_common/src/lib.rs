@@ -4,10 +4,6 @@
 #![feature(generic_const_exprs)]
 #![feature(maybe_uninit_array_assume_init)]
 
-/// Single source of truth for GKR circuit names and their WHIR test schedules.
-/// Define a callback macro accepting `($($name:ident: $schedule_fn:ident),* $(,)?)`,
-/// then invoke `verifier_common::gkr_circuits!(your_callback)`.
-/// `$schedule_fn` is a method name on `prover::gkr::prover::WhirSchedule`.
 #[macro_export]
 macro_rules! gkr_circuits {
     ($callback:ident) => {
@@ -164,10 +160,16 @@ pub type DefaultNonDeterminismSource = prover::nd_source_std::ThreadLocalBasedSo
 #[cfg(target_arch = "riscv32")]
 pub type DefaultNonDeterminismSource = non_determinism_source::CSRBasedSource;
 
-#[cfg(not(all(target_arch = "riscv32", feature = "blake2_with_compression")))]
+#[cfg(not(all(
+    target_arch = "riscv32",
+    any(feature = "blake2_with_compression", feature = "blake2_g_function")
+)))]
 pub type DefaultLeafInclusionVerifier = prover::definitions::Blake2sForEverythingVerifier;
 
-#[cfg(all(target_arch = "riscv32", feature = "blake2_with_compression"))]
+#[cfg(all(
+    target_arch = "riscv32",
+    any(feature = "blake2_with_compression", feature = "blake2_g_function")
+))]
 pub type DefaultLeafInclusionVerifier =
     prover::definitions::Blake2sForEverythingVerifierWithAlternativeCompression;
 

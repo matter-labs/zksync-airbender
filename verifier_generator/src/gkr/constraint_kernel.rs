@@ -11,12 +11,6 @@ use prover::field::PrimeField;
 use super::addr_to_idx;
 use super::coeff_to_internal_repr;
 
-/// Generate a data-driven constraint kernel using const descriptor arrays + loops.
-///
-/// Terms are grouped by challenge power index to minimise extension-field
-/// multiplications: within each group the inner sum is accumulated using
-/// cheaper base×ext operations, and the single ext×ext multiply by
-/// `challenge_powers[pow]` is performed once per group.
 pub fn generate_constraint_kernel<MW: MersenneWrapper, F: PrimeField>(
     rel: &NoFieldMaxQuadraticConstraintsGKRRelation,
     input_sorted_addrs: &[GKRAddress],
@@ -25,7 +19,6 @@ pub fn generate_constraint_kernel<MW: MersenneWrapper, F: PrimeField>(
     let quartic_struct = MW::quartic_struct();
     let field_struct = MW::field_struct();
 
-    // --- Constant terms: group by pow, sum coefficients at gen-time ---
     let mut const_by_pow: BTreeMap<usize, Vec<u32>> = BTreeMap::new();
     for &(c, pow) in &rel.constants {
         const_by_pow
@@ -33,7 +26,6 @@ pub fn generate_constraint_kernel<MW: MersenneWrapper, F: PrimeField>(
             .or_default()
             .push(coeff_to_internal_repr::<F>(c));
     }
-    // Sum coefficients per pow at generation time (field addition)
     let mut const_summed_coeffs: Vec<u32> = Vec::new();
     let mut const_summed_pows: Vec<usize> = Vec::new();
     for (pow, coeffs) in &const_by_pow {
@@ -49,8 +41,6 @@ pub fn generate_constraint_kernel<MW: MersenneWrapper, F: PrimeField>(
     }
     let num_const = const_summed_coeffs.len();
 
-    // --- Linear terms: group by pow ---
-    // Collect all (coeff, pow, eval_idx), then group by pow
     let mut lin_by_pow: BTreeMap<usize, Vec<(u32, usize)>> = BTreeMap::new();
     for (addr, terms) in &rel.linear_terms {
         let idx = addr_to_idx(addr, input_sorted_addrs);
@@ -61,7 +51,6 @@ pub fn generate_constraint_kernel<MW: MersenneWrapper, F: PrimeField>(
                 .push((coeff_to_internal_repr::<F>(coeff), idx));
         }
     }
-    // Build group descriptors + flattened terms
     let mut lin_group_pows: Vec<usize> = Vec::new();
     let mut lin_group_starts: Vec<usize> = Vec::new();
     let mut lin_group_counts: Vec<usize> = Vec::new();
@@ -79,7 +68,6 @@ pub fn generate_constraint_kernel<MW: MersenneWrapper, F: PrimeField>(
     let num_lin_groups = lin_group_pows.len();
     let num_lin_terms = lin_term_coeffs.len();
 
-    // --- Quadratic terms: group by pow (flatten across address pairs) ---
     let mut quad_by_pow: BTreeMap<usize, Vec<(u32, usize, usize)>> = BTreeMap::new();
     for ((addr_a, addr_b), terms) in &rel.quadratic_terms {
         let idx_a = addr_to_idx(addr_a, input_sorted_addrs);
@@ -111,14 +99,12 @@ pub fn generate_constraint_kernel<MW: MersenneWrapper, F: PrimeField>(
     let num_quad_groups = quad_group_pows.len();
     let num_quad_terms = quad_term_coeffs.len();
 
-    // --- Token generation helpers ---
     let mul_by_base = MW::mul_assign_by_base(
         quote! { t },
         quote! { #field_struct::from_reduced_raw_repr(coeff) },
     );
     let add_to_result = MW::add_assign(quote! { result }, quote! { t });
 
-    // Linear: coeff * eval → inner_sum
     let mul_val_by_coeff = MW::mul_assign_by_base(
         quote! { val },
         quote! { #field_struct::from_reduced_raw_repr(coeff) },
@@ -126,7 +112,6 @@ pub fn generate_constraint_kernel<MW: MersenneWrapper, F: PrimeField>(
     let add_to_inner = MW::add_assign(quote! { inner_sum }, quote! { val });
     let mul_inner_by_cp = MW::mul_assign(quote! { t }, quote! { inner_sum });
 
-    // Quadratic: prod = va * vb, then coeff * prod → inner_sum
     let mul_prod = MW::mul_assign(quote! { prod }, quote! { vb });
     let mul_prod_by_coeff = MW::mul_assign_by_base(
         quote! { prod },
@@ -141,7 +126,6 @@ pub fn generate_constraint_kernel<MW: MersenneWrapper, F: PrimeField>(
         let mut result: #quartic_struct = #quartic_zero;
     });
 
-    // --- Constant terms (pre-summed by pow at gen-time) ---
     if num_const > 0 {
         body.extend(quote! {
             {
@@ -160,7 +144,6 @@ pub fn generate_constraint_kernel<MW: MersenneWrapper, F: PrimeField>(
         });
     }
 
-    // --- Linear terms (grouped by challenge power) ---
     if num_lin_groups > 0 {
         body.extend(quote! {
             {
@@ -191,7 +174,6 @@ pub fn generate_constraint_kernel<MW: MersenneWrapper, F: PrimeField>(
         });
     }
 
-    // --- Quadratic terms (grouped by challenge power) ---
     if num_quad_groups > 0 {
         body.extend(quote! {
             {

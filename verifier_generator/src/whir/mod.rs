@@ -13,15 +13,12 @@ pub use final_round::generate_whir_final_round;
 pub use initial_round::generate_whir_inlined;
 pub use internal_rounds::generate_whir_internal_rounds;
 
-/// Generate a unified `verify_whir` function that chains initial -> internal -> final rounds.
-/// Creates the hash buffer and passes it + hasher to each round.
 pub fn generate_whir_verify<MW: MersenneWrapper>(whir_hash_buf_size: usize) -> TokenStream {
     let quartic_struct = MW::quartic_struct();
 
     quote! {
         pub const WHIR_HASH_BUF_SIZE: usize = #whir_hash_buf_size;
 
-        /// Run the full WHIR verification: initial round, all internal rounds, final round.
         #[allow(unused_braces, unused_mut, unused_variables, unused_unsafe, clippy::needless_borrow)]
         pub fn verify_whir<I: NonDeterminismSource>(
             ts: &mut TranscriptState,

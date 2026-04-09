@@ -81,7 +81,7 @@ impl Blake2sTranscript {
     /// already laid out in 16-word aligned blocks. Avoids the memcopy that `commit_with_seed`
     /// performs. Unused words in the last block must be zeroed by the caller.
     /// `total_words` is the number of meaningful words (seed + data, excluding padding).
-    #[cfg(feature = "blake2_with_compression")]
+    #[cfg(any(feature = "blake2_with_compression", feature = "blake2_g_function"))]
     #[inline(always)]
     pub fn commit_with_seed_using_hasher_and_aligned_buffer<const N: usize>(
         hasher: &mut blake2s_u32::DelegatedBlake2sState,

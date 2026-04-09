@@ -15,7 +15,6 @@ pub fn generate_whir_common<MW: MersenneWrapper>(max_fold_steps: usize) -> Token
     let from_raw_words_i =
         MW::field_from_reduced_raw_repr(quote! { unsafe { *words.get_unchecked(i) } });
 
-    // MW operations for read_and_batch_leaf
     let from_raw_0 = MW::field_from_reduced_raw_repr(quote! { raw0 });
     let from_raw_1 = MW::field_from_reduced_raw_repr(quote! { raw1 });
     let batch_mul_local_0 = MW::mul_assign_by_base(quote! { term }, quote! { base_val });
@@ -41,7 +40,6 @@ pub fn generate_whir_common<MW: MersenneWrapper>(max_fold_steps: usize) -> Token
     let fc_mul_t_half = MW::mul_assign_by_base(quote! { t }, quote! { #field_struct::HALF });
 
     quote! {
-        /// Compute tree index from query index for Merkle path verification.
         #[inline(always)]
         pub fn compute_tree_index(
             query_index: usize,
@@ -76,7 +74,6 @@ pub fn generate_whir_common<MW: MersenneWrapper>(max_fold_steps: usize) -> Token
             const WHIR_SC_DATA_WORDS: usize = 3 * EXT_DEGREE;
             const WHIR_SC_COMMIT_BUF: usize = {
                 let total = BLAKE2S_DIGEST_SIZE_U32_WORDS + WHIR_SC_DATA_WORDS;
-                // next_multiple_of is not const, so use manual rounding
                 (total + ::verifier_common::blake2s_u32::BLAKE2S_BLOCK_SIZE_U32_WORDS - 1)
                     / ::verifier_common::blake2s_u32::BLAKE2S_BLOCK_SIZE_U32_WORDS
                     * ::verifier_common::blake2s_u32::BLAKE2S_BLOCK_SIZE_U32_WORDS
@@ -91,13 +88,11 @@ pub fn generate_whir_common<MW: MersenneWrapper>(max_fold_steps: usize) -> Token
                 }
             }
 
-            // Copy coefficients out before committing.
             let coeffs: [#quartic_struct; 3] = unsafe {
                 *buf.data_as::<[#quartic_struct; 3]>(1).as_ptr()
             };
             let (c0, c1, c2) = (coeffs[0], coeffs[1], coeffs[2]);
 
-            // Check: p(0) + p(1) = c0 + (c0 + c1 + c2) == claim
             let p0 = c0;
             let mut p1 = c0;
             #ws_add_p1_c1;
@@ -115,7 +110,6 @@ pub fn generate_whir_common<MW: MersenneWrapper>(max_fold_steps: usize) -> Token
             draw_field_els_into::<BLAKE2S_DIGEST_SIZE_U32_WORDS>(ts, challenge_buf.as_mut_slice());
             let alpha = unsafe { *challenge_buf.get_unchecked(0) };
 
-            // Horner: c0 + alpha*(c1 + alpha*c2)
             let mut new_claim = c2;
             #ws_mul_nc_alpha;
             #ws_add_nc_c1;
@@ -252,7 +246,6 @@ pub fn generate_whir_common<MW: MersenneWrapper>(max_fold_steps: usize) -> Token
             bitreverse_inplace(&mut dst.as_mut_slice()[..count]);
         }
 
-        /// Reconstruct an extension field element from raw u32 words in a buffer.
         #[inline(always)]
         pub fn ext_from_raw_words(words: &[u32]) -> #quartic_struct {
             debug_assert!(words.len() >= EXT_DEGREE);
@@ -265,8 +258,6 @@ pub fn generate_whir_common<MW: MersenneWrapper>(max_fold_steps: usize) -> Token
             unsafe { core::ptr::read(coeffs.as_slice().as_ptr().cast::<#quartic_struct>()) }
         }
 
-        /// Read leaf data from NDS into hash_buf and batch into accumulators
-        /// in a single pass. NDS is column-major (matching Merkle hash layout).
         #[inline(always)]
         #[allow(clippy::too_many_arguments)]
         pub unsafe fn read_and_batch_leaf<I: NonDeterminismSource>(
@@ -300,8 +291,6 @@ pub fn generate_whir_common<MW: MersenneWrapper>(max_fold_steps: usize) -> Token
             }
         }
 
-        /// Read oracle leaf, hash it, and verify the Merkle path.
-        /// Skips entirely for zero-column oracles (num_columns == 0).
         #[inline(always)]
         #[allow(clippy::too_many_arguments)]
         pub unsafe fn process_oracle_query<I: NonDeterminismSource, const BUF_SIZE: usize>(
@@ -326,7 +315,6 @@ pub fn generate_whir_common<MW: MersenneWrapper>(max_fold_steps: usize) -> Token
                 gamma_powers, gamma_offset, acc0, acc1,
             );
 
-            // Zero the tail of the last Blake2s block for hash padding.
             let block_end = leaf_words.next_multiple_of(
                 ::verifier_common::blake2s_u32::BLAKE2S_BLOCK_SIZE_U32_WORDS,
             );

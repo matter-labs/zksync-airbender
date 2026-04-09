@@ -32,7 +32,7 @@ macro_rules! keccak_special5_invoke {
         core::arch::asm!(
             "csrrw x0, 0x7CB, x0",
             in("x11") $state,
-            out("x10") _,
+            eout("x10") _,
             options(nostack, preserves_flags)
         )
     };
