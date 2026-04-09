@@ -2,32 +2,38 @@ use era_cudart::event::{elapsed_time, CudaEvent};
 use era_cudart::execution::{launch_host_fn, HostFn};
 use era_cudart::result::CudaResult;
 use era_cudart::stream::CudaStream;
-use std::sync::{Arc, OnceLock};
+
+use crate::primitives::context::UnsafeMutAccessor;
 
 pub(crate) struct Range {
     start_event: CudaEvent,
     start_fn: HostFn<'static>,
     end_event: CudaEvent,
     end_fn: HostFn<'static>,
+    #[allow(dead_code)] // Keeps the shared range id alive for both queued callbacks.
+    id: Box<Option<i32>>,
 }
 
 impl Range {
-    pub fn new(name: impl Into<Arc<str>>) -> CudaResult<Self> {
+    pub fn new(name: impl Into<Box<str>>) -> CudaResult<Self> {
         let name = name.into();
-        let id = Arc::new(OnceLock::new());
+        let mut id = Box::new(None::<i32>);
+        let id_handle = UnsafeMutAccessor::new(id.as_mut());
         let start_event = CudaEvent::create()?;
         let start_fn = {
-            let id = id.clone();
-            let name = Arc::clone(&name);
-            HostFn::new(move || {
-                id.set(nvtx::range_start!("{}", name.as_ref())).unwrap();
+            let id = id_handle;
+            HostFn::new(move || unsafe {
+                *id.get_mut() = Some(nvtx::range_start!("{}", name.as_ref()));
             })
         };
         let end_event = CudaEvent::create()?;
         let end_fn = {
-            let id = id.clone();
-            HostFn::new(move || {
-                let id = *id.get().unwrap();
+            let id = id_handle;
+            HostFn::new(move || unsafe {
+                let id = id
+                    .get_mut()
+                    .take()
+                    .expect("NVTX range end callback ran before the start callback");
                 nvtx::range_end!(id);
             })
         };
@@ -36,6 +42,7 @@ impl Range {
             start_fn,
             end_event,
             end_fn,
+            id,
         };
         Ok(range)
     }

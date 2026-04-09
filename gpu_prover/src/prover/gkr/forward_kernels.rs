@@ -4,12 +4,12 @@ use std::ops::DerefMut;
 use std::ptr::null;
 
 use cs::definitions::{
+    gkr::{RamWordRepresentation, DECODER_LOOKUP_FORMAL_SET_INDEX},
     GKRAddress, MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX,
     MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX,
     MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX,
     MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX, MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX,
     MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX,
-    gkr::{DECODER_LOOKUP_FORMAL_SET_INDEX, RamWordRepresentation},
 };
 use cs::gkr_compiler::{
     CompiledAddressSpaceRelationStrict, CompiledAddressStrict, GKRCircuitArtifact,
@@ -21,8 +21,8 @@ use era_cudart::paste::paste;
 use era_cudart::result::CudaResult;
 use era_cudart::{cuda_kernel_declaration, cuda_kernel_signature_arguments_and_function};
 use field::{Field, FieldExtension, PrimeField};
-use prover::gkr::prover::GKRExternalChallenges;
 use prover::gkr::prover::dimension_reduction::forward::DimensionReducingInputOutput;
+use prover::gkr::prover::GKRExternalChallenges;
 
 use super::backward::GpuGKRDimensionReducingBackwardState;
 use super::forward::schedule_ext_poly_readback;
@@ -31,14 +31,14 @@ use super::stage1::GpuGKRStage1Output;
 use super::{GpuBaseFieldPoly, GpuBaseFieldSourceKind, GpuExtensionFieldPoly, GpuGKRStorage};
 use crate::allocator::tracker::AllocationPlacement;
 use crate::ops::simple::{
-    Add, BinaryOp, Mul, SetByRef, SetByVal, Sub, add_into_y, mul_into_y, set_by_ref, set_by_val,
-    sub_into_x,
+    add_into_y, mul_into_y, set_by_ref, set_by_val, sub_into_x, Add, BinaryOp, Mul, SetByRef,
+    SetByVal, Sub,
 };
 use crate::primitives::context::{DeviceAllocation, HostAllocation, ProverContext, UnsafeAccessor};
 use crate::primitives::device_structures::DeviceVectorChunk;
 use crate::primitives::device_tracing::Range;
 use crate::primitives::field::{BF, E4};
-use crate::primitives::utils::{WARP_SIZE, get_grid_block_dims_for_threads_count};
+use crate::primitives::utils::{get_grid_block_dims_for_threads_count, WARP_SIZE};
 
 pub(crate) struct GpuGKRForwardOutput<B, E> {
     pub(super) tracing_ranges: Vec<Range>,
