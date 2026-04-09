@@ -60,8 +60,6 @@ use prover::gkr::prover::GKRProof;
 use prover::merkle_trees::DefaultTreeConstructor;
 use verifier_common::gkr::flatten::flatten_gkr_proof_for_nds;
 
-const CIRCUIT: &str = "add_sub_lui_auipc_mop";
-
 fn run_with_proof(
     name: &str,
     proof: &GKRProof<BabyBearField, BabyBearExt4, DefaultTreeConstructor>,
@@ -91,182 +89,153 @@ fn run_with_proof(
     })
 }
 
-#[cfg(not(feature = "no_caches"))]
-#[test]
-fn rejects_corrupted_cache_relations() {
-    let circuit_data = common::circuit_by_name(CIRCUIT);
-    let mut proof = circuit_data.proof();
+// --- Per-circuit corruption test helpers ---
 
-    let base_layer = proof
-        .sumcheck_intermediate_values
-        .get_mut(&0)
-        .expect("proof must have layer 0");
-    assert!(
-        !base_layer
-            .extra_evaluations_from_caching_relations
-            .is_empty(),
-        "base layer must have cached relations"
-    );
-
-    let (_addr, eval) = base_layer
-        .extra_evaluations_from_caching_relations
-        .iter_mut()
-        .next()
-        .unwrap();
-    eval.add_assign(&BabyBearExt4::ONE);
-
-    let result = run_with_proof(CIRCUIT, &proof);
-    assert!(result.is_err(), "should reject corrupted cache relation");
-    let err = result.unwrap_err();
-    assert!(
-        err.contains("CacheRelationFailed"),
-        "expected CacheRelationFailed, got: {}",
-        err
-    );
-}
-
-#[test]
-fn rejects_corrupted_gkr_region() {
-    let gkr_off = verifier::add_sub_lui_auipc_mop::constants::GKR_TRANSCRIPT_U32;
-    let gkr_evals = verifier::add_sub_lui_auipc_mop::constants::GKR_EVALS;
-
-    let cases: &[(usize, u32, &str)] = &[
-        (10, 1, "transcript_start"),
-        (gkr_off - 1, 0xFF, "transcript_end"),
-        (gkr_off, 1, "first_eval"),
-        (gkr_off + 50, 1, "mid_eval"),
-        (gkr_off + gkr_evals * 4 + 10, 1, "sumcheck_coeffs"),
-    ];
-
-    for &(idx, mask, label) in cases {
-        assert_rejects_xor(CIRCUIT, idx, mask, label);
-    }
-}
-
-#[test]
-fn rejects_corrupted_whir_region() {
-    let nds_len = common::load_nds(CIRCUIT).len();
-
-    let cases: &[(usize, &str)] = &[
-        (nds_len / 2, "whir_early"),
-        (nds_len - 100, "whir_late"),
-        (nds_len - 1, "last_word"),
-    ];
-
-    for &(idx, label) in cases {
-        assert_rejects_xor(CIRCUIT, idx, 1, label);
-    }
-}
-
-#[test]
-fn rejects_zeroed_regions() {
-    let gkr_off = verifier::add_sub_lui_auipc_mop::constants::GKR_TRANSCRIPT_U32;
-    let nds_len = common::load_nds(CIRCUIT).len();
-
-    let cases: &[(usize, usize, &str)] = &[
-        (gkr_off + 200, 32, "sumcheck_chunk"),
-        (nds_len * 3 / 4, 64, "whir_chunk"),
-    ];
-
-    for &(start, count, label) in cases {
-        assert_rejects_zeroed(CIRCUIT, start, count, label);
-    }
-}
-
-const DELEGATION_CIRCUIT: &str = "keccak_special5";
-
-#[cfg(not(feature = "no_caches"))]
-#[test]
-fn delegation_rejects_corrupted_cache_relations() {
-    let circuit_data = common::circuit_by_name(DELEGATION_CIRCUIT);
-    let mut proof = circuit_data.proof();
-
-    let base_layer = proof
-        .sumcheck_intermediate_values
-        .get_mut(&0)
-        .expect("proof must have layer 0");
-    assert!(
-        !base_layer
-            .extra_evaluations_from_caching_relations
-            .is_empty(),
-        "base layer must have cached relations"
-    );
-
-    let (_addr, eval) = base_layer
-        .extra_evaluations_from_caching_relations
-        .iter_mut()
-        .next()
-        .unwrap();
-    eval.add_assign(&BabyBearExt4::ONE);
-
-    let result = run_with_proof(DELEGATION_CIRCUIT, &proof);
-    assert!(result.is_err(), "should reject corrupted cache relation");
-    let err = result.unwrap_err();
-    assert!(
-        err.contains("CacheRelationFailed"),
-        "expected CacheRelationFailed, got: {}",
-        err
-    );
-}
-
-#[test]
-fn delegation_rejects_corrupted_gkr_region() {
-    let gkr_off = verifier::keccak_special5::constants::GKR_TRANSCRIPT_U32;
-    let gkr_evals = verifier::keccak_special5::constants::GKR_EVALS;
-
-    let cases: &[(usize, u32, &str)] = &[
-        (10, 1, "transcript_start"),
-        (gkr_off - 1, 0xFF, "transcript_end"),
-        (gkr_off, 1, "first_eval"),
-        (gkr_off + 50, 1, "mid_eval"),
-        (gkr_off + gkr_evals * 4 + 10, 1, "sumcheck_coeffs"),
-    ];
-
-    for &(idx, mask, label) in cases {
-        assert_rejects_xor(DELEGATION_CIRCUIT, idx, mask, label);
-    }
-}
-
-#[test]
-fn delegation_rejects_corrupted_whir_region() {
-    let nds_len = common::load_nds(DELEGATION_CIRCUIT).len();
-
-    let cases: &[(usize, &str)] = &[
-        (nds_len / 2, "whir_early"),
-        (nds_len - 100, "whir_late"),
-        (nds_len - 1, "last_word"),
-    ];
-
-    for &(idx, label) in cases {
-        assert_rejects_xor(DELEGATION_CIRCUIT, idx, 1, label);
-    }
-}
-
-#[test]
-fn rejects_garbage_proof() {
-    for circuit in common::CIRCUITS.iter() {
-        let nds_len = circuit.load_nds().len();
-        let result = run_corrupted(circuit.name, |nds| {
-            for i in 0..nds_len {
-                nds[i] = (i as u32).wrapping_mul(2654435761);
-            }
-        });
-        assert!(
-            result.is_err(),
-            "{}: should reject garbage proof",
-            circuit.name
-        );
-    }
-}
-
-#[test]
-fn all_circuits_reject_corruption() {
-    for circuit in common::CIRCUITS.iter() {
-        let nds_len = circuit.load_nds().len();
-        for fraction in [0.25, 0.50, 0.75] {
-            let idx = (nds_len as f64 * fraction) as usize;
-            let label = format!("fraction {:.2}", fraction);
-            assert_rejects_xor(circuit.name, idx, 1, &label);
+fn test_rejects_garbage_proof(name: &str) {
+    let nds_len = common::load_nds(name).len();
+    let result = run_corrupted(name, |nds| {
+        for i in 0..nds_len {
+            nds[i] = (i as u32).wrapping_mul(2654435761);
         }
+    });
+    assert!(
+        result.is_err(),
+        "{}: should reject garbage proof",
+        name
+    );
+}
+
+fn test_rejects_corruption_at_fractions(name: &str) {
+    let nds_len = common::load_nds(name).len();
+    for fraction in [0.25, 0.50, 0.75] {
+        let idx = (nds_len as f64 * fraction) as usize;
+        let label = format!("fraction {:.2}", fraction);
+        assert_rejects_xor(name, idx, 1, &label);
     }
 }
+
+fn test_rejects_corrupted_gkr_region(name: &str) {
+    with_circuit!(name, |m| {
+        let gkr_off = m::constants::GKR_TRANSCRIPT_U32;
+        let gkr_evals = m::constants::GKR_EVALS;
+
+        let cases: &[(usize, u32, &str)] = &[
+            (10, 1, "transcript_start"),
+            (gkr_off - 1, 0xFF, "transcript_end"),
+            (gkr_off, 1, "first_eval"),
+            (gkr_off + 50, 1, "mid_eval"),
+            (gkr_off + gkr_evals * 4 + 10, 1, "sumcheck_coeffs"),
+        ];
+
+        for &(idx, mask, label) in cases {
+            assert_rejects_xor(name, idx, mask, label);
+        }
+    });
+}
+
+fn test_rejects_corrupted_whir_region(name: &str) {
+    let nds_len = common::load_nds(name).len();
+
+    let cases: &[(usize, &str)] = &[
+        (nds_len / 2, "whir_early"),
+        (nds_len - 100, "whir_late"),
+        (nds_len - 1, "last_word"),
+    ];
+
+    for &(idx, label) in cases {
+        assert_rejects_xor(name, idx, 1, label);
+    }
+}
+
+fn test_rejects_zeroed_regions(name: &str) {
+    with_circuit!(name, |m| {
+        let gkr_off = m::constants::GKR_TRANSCRIPT_U32;
+        let nds_len = common::load_nds(name).len();
+
+        let cases: &[(usize, usize, &str)] = &[
+            (gkr_off + 200, 32, "sumcheck_chunk"),
+            (nds_len * 3 / 4, 64, "whir_chunk"),
+        ];
+
+        for &(start, count, label) in cases {
+            assert_rejects_zeroed(name, start, count, label);
+        }
+    });
+}
+
+#[cfg(not(feature = "no_caches"))]
+fn test_rejects_corrupted_cache_relations(name: &str) {
+    let circuit_data = common::circuit_by_name(name);
+    let mut proof = circuit_data.proof();
+
+    let base_layer = proof
+        .sumcheck_intermediate_values
+        .get_mut(&0)
+        .expect("proof must have layer 0");
+    assert!(
+        !base_layer
+            .extra_evaluations_from_caching_relations
+            .is_empty(),
+        "{}: base layer must have cached relations",
+        name
+    );
+
+    let (_addr, eval) = base_layer
+        .extra_evaluations_from_caching_relations
+        .iter_mut()
+        .next()
+        .unwrap();
+    eval.add_assign(&BabyBearExt4::ONE);
+
+    let result = run_with_proof(name, &proof);
+    assert!(result.is_err(), "{}: should reject corrupted cache relation", name);
+    let err = result.unwrap_err();
+    assert!(
+        err.contains("CacheRelationFailed"),
+        "{}: expected CacheRelationFailed, got: {}",
+        name,
+        err
+    );
+}
+
+// --- Generate per-circuit test functions ---
+
+macro_rules! generate_corruption_tests {
+    ($($name:ident: $schedule:ident),* $(,)?) => {
+        $(
+            paste::paste! {
+                #[test]
+                fn [<rejects_garbage_proof_ $name>]() {
+                    test_rejects_garbage_proof(stringify!($name));
+                }
+
+                #[test]
+                fn [<rejects_corruption_ $name>]() {
+                    test_rejects_corruption_at_fractions(stringify!($name));
+                }
+
+                #[test]
+                fn [<rejects_corrupted_gkr_region_ $name>]() {
+                    test_rejects_corrupted_gkr_region(stringify!($name));
+                }
+
+                #[test]
+                fn [<rejects_corrupted_whir_region_ $name>]() {
+                    test_rejects_corrupted_whir_region(stringify!($name));
+                }
+
+                #[test]
+                fn [<rejects_zeroed_regions_ $name>]() {
+                    test_rejects_zeroed_regions(stringify!($name));
+                }
+
+                #[cfg(not(feature = "no_caches"))]
+                #[test]
+                fn [<rejects_corrupted_cache_relations_ $name>]() {
+                    test_rejects_corrupted_cache_relations(stringify!($name));
+                }
+            }
+        )*
+    };
+}
+verifier_common::gkr_circuits!(generate_corruption_tests);

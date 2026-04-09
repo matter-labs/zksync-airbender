@@ -9,9 +9,6 @@ use verifier_common::non_determinism_source::NonDeterminismSource;
 use verifier_common::structs::{CommitBuf, TranscriptState};
 use verifier_common::transcript::{Blake2sTranscript, Seed};
 pub const EXT_DEGREE: usize = <BabyBearExt4 as FieldExtension<BabyBearField>>::DEGREE;
-#[doc = r" Read a single reduced field element from NDS. This is the single"]
-#[doc = r" entry point for all field-element NDS reads — ensures the correct"]
-#[doc = r" modulus is always used."]
 #[inline(always)]
 pub fn read_reduced_field_el<I: NonDeterminismSource>() -> u32 {
     I::read_reduced_field_element(BabyBearField::ORDER)
@@ -65,7 +62,6 @@ pub fn draw_field_els_into<const BUF_CAP: usize>(
         i += 1;
     }
 }
-#[doc = r" Draw a single extension field element from the transcript."]
 #[inline(always)]
 pub fn draw_single_field_el(ts: &mut TranscriptState) -> BabyBearExt4 {
     let mut buf = LazyVec::<BabyBearExt4, 1>::new();
@@ -237,7 +233,6 @@ pub fn fold_standard_claims<const NUM_ADDRS: usize, const ADDRS: usize, const BU
         claims.push(diff);
     }
 }
-#[doc = r" Compute tree index from query index for Merkle path verification."]
 #[inline(always)]
 pub fn compute_tree_index(
     query_index: usize,
@@ -420,7 +415,6 @@ pub fn compute_high_powers_offsets(
     }
     bitreverse_inplace(&mut dst.as_mut_slice()[..count]);
 }
-#[doc = r" Reconstruct an extension field element from raw u32 words in a buffer."]
 #[inline(always)]
 pub fn ext_from_raw_words(words: &[u32]) -> BabyBearExt4 {
     debug_assert!(words.len() >= EXT_DEGREE);
@@ -434,8 +428,6 @@ pub fn ext_from_raw_words(words: &[u32]) -> BabyBearExt4 {
     }
     unsafe { core::ptr::read(coeffs.as_slice().as_ptr().cast::<BabyBearExt4>()) }
 }
-#[doc = r" Read leaf data from NDS into hash_buf and batch into accumulators"]
-#[doc = r" in a single pass. NDS is column-major (matching Merkle hash layout)."]
 #[inline(always)]
 #[allow(clippy::too_many_arguments)]
 pub unsafe fn read_and_batch_leaf<I: NonDeterminismSource>(
@@ -465,8 +457,6 @@ pub unsafe fn read_and_batch_leaf<I: NonDeterminismSource>(
         col += 1;
     }
 }
-#[doc = r" Read oracle leaf, hash it, and verify the Merkle path."]
-#[doc = r" Skips entirely for zero-column oracles (num_columns == 0)."]
 #[inline(always)]
 #[allow(clippy::too_many_arguments)]
 pub unsafe fn process_oracle_query<I: NonDeterminismSource, const BUF_SIZE: usize>(

@@ -46,3 +46,4 @@ riscv_transpiler = { workspace = true, features = ["flamegraph"] }
 common_constants = { workspace = true }
 verifier_generator = { workspace = true }
 rayon = "1.11.0"
+paste = "1"

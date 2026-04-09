@@ -189,10 +189,6 @@ const MAX_INTERNAL_FOLD_BUF_HALF: usize = 8usize;
 const MAX_INTERNAL_NUM_QUERIES: usize = 23usize;
 const MAX_INTERNAL_DRAW_WORDS: usize = 16usize;
 const INTERNAL_DRAW_WORDS: [usize; NUM_INTERNAL_ROUNDS] = [16usize, 16usize, 8usize, 8usize];
-#[doc = r" Verify one internal WHIR round (rounds 1..WHIR_ROUNDS-2)."]
-#[doc = r" `round_idx` is 1-based (1 = first internal round)."]
-#[doc = r" `prev_oracle_cap` is the cap committed in the previous round."]
-#[doc = r" Returns (new_claim, next_intermediate_cap)."]
 #[allow(
     unused_braces,
     unused_mut,
@@ -313,9 +309,6 @@ const FINAL_COSET_TREE_SIZE: usize = 8usize;
 const FINAL_DRAW_WORDS: usize = 8usize;
 const FINAL_POW_BITS: u32 = 24u32;
 const FINAL_ORACLE_DEPTH_IDX: usize = 4usize;
-#[doc = r" Verify the final WHIR round."]
-#[doc = r" No OOD sample, no delinearization, no new oracle commitment."]
-#[doc = r" Queries verify against `prev_oracle_cap` (the last intermediate oracle's cap)."]
 #[allow(
     unused_braces,
     unused_mut,
@@ -435,7 +428,6 @@ pub fn verify_final_whir_round<I: NonDeterminismSource>(
     }
 }
 pub const WHIR_HASH_BUF_SIZE: usize = 352usize;
-#[doc = r" Run the full WHIR verification: initial round, all internal rounds, final round."]
 #[allow(
     unused_braces,
     unused_mut,

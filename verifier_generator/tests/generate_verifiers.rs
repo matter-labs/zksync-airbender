@@ -131,7 +131,17 @@ fn generate_whir_verifier<MW: MersenneWrapper>(
     write_and_fmt(&format!("{}/whir.rs", dir), &whir_code);
 }
 
+static COMMON_ONCE: std::sync::Once = std::sync::Once::new();
+
+fn ensure_common() {
+    COMMON_ONCE.call_once(|| {
+        generate_common::<DefaultBabyBearField>();
+    });
+}
+
 fn generate_verifier_for_circuit<MW: MersenneWrapper>(circuit: &CircuitData) {
+    ensure_common();
+
     let dir = circuit.generated_dir();
     std::fs::create_dir_all(&dir).unwrap();
 
@@ -173,13 +183,15 @@ fn generate_verifier_for_circuit<MW: MersenneWrapper>(circuit: &CircuitData) {
     write_and_fmt(&format!("{}/mod.rs", dir), &mod_rs);
 }
 
-#[test]
-fn generate_verifiers() {
-    use rayon::prelude::*;
-
-    generate_common::<DefaultBabyBearField>();
-
-    CIRCUITS.par_iter().for_each(|circuit| {
-        generate_verifier_for_circuit::<DefaultBabyBearField>(circuit);
-    });
+macro_rules! generate_circuit_tests {
+    ($($name:ident: $schedule:ident),* $(,)?) => {
+        $(
+            #[test]
+            fn $name() {
+                let circuit = CIRCUITS.iter().find(|c| c.name == stringify!($name)).unwrap();
+                generate_verifier_for_circuit::<DefaultBabyBearField>(circuit);
+            }
+        )*
+    };
 }
+verifier_common::gkr_circuits!(generate_circuit_tests);
