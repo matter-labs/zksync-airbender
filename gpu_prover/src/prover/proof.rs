@@ -1,5 +1,4 @@
 use std::collections::BTreeMap;
-use std::sync::{Arc, Mutex};
 
 use blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS;
 use cs::definitions::GKRAddress;
@@ -19,36 +18,37 @@ use prover::transcript::Seed;
 use crate::circuit_type::CircuitType;
 use crate::ops::blake2s::Digest;
 use crate::primitives::callbacks::Callbacks;
-use crate::primitives::context::{HostAllocation, ProverContext, UnsafeAccessor};
+use crate::primitives::context::{
+    HostAllocation, ProverContext, UnsafeAccessor, UnsafeMutAccessor,
+};
 use crate::primitives::device_tracing::Range;
 use crate::primitives::field::{BF, E4};
 use crate::prover::decoder::DecoderTableTransfer;
 use crate::prover::gkr::backward::{
-    GpuGKRBackwardHostKeepalive, apply_base_layer_extra_evaluations_to_workflow_state,
-    clone_backward_claims_for_layer, current_backward_seed, fill_backward_claim_point_for_layer,
+    apply_base_layer_extra_evaluations_to_workflow_state, clone_backward_claims_for_layer,
+    current_backward_seed, fill_backward_claim_point_for_layer,
     make_deferred_backward_workflow_state, populate_backward_workflow_state,
-    take_backward_execution_from_shared_state,
+    take_backward_execution_from_shared_state, GpuGKRBackwardHostKeepalive,
 };
 use crate::prover::gkr::base_layer_claims::{
-    GpuGKRBaseLayerClaimsScheduledExecution,
     clone_base_layer_extra_evaluations_from_caching_relations,
     clone_base_layer_extra_evaluations_transcript_batches, fill_mem_polys_claims,
     fill_setup_polys_claims, fill_wit_polys_claims,
-    schedule_prepare_base_layer_claims_with_sources,
+    schedule_prepare_base_layer_claims_with_sources, GpuGKRBaseLayerClaimsScheduledExecution,
 };
-use crate::prover::gkr::forward::{GpuGKRTranscriptHandoff, schedule_forward_pass};
+use crate::prover::gkr::forward::{schedule_forward_pass, GpuGKRTranscriptHandoff};
 use crate::prover::gkr::setup::{
-    GpuGKRForwardSetupHostKeepalive, GpuGKRSetupTransfer, GpuGKRSetupTransferHostKeepalive,
-    schedule_forward_setup_for_shape,
+    schedule_forward_setup_for_shape, GpuGKRForwardSetupHostKeepalive, GpuGKRSetupTransfer,
+    GpuGKRSetupTransferHostKeepalive,
 };
 use crate::prover::gkr::stage1::{GpuGKRStage1Keepalive, GpuGKRStage1Output, GpuGKRTraceGeometry};
 use crate::prover::trace_holder::{
-    PARTIAL_TREE_REDUCTION_LAYERS, TraceHolder, TreesCacheMode, TreesHolder, allocate_tree_caps,
-    allocate_trees, flatten_tree_caps,
+    allocate_tree_caps, allocate_trees, flatten_tree_caps, TraceHolder, TreesCacheMode,
+    TreesHolder, PARTIAL_TREE_REDUCTION_LAYERS,
 };
 use crate::prover::tracing_data::{InitsAndTeardownsTransfer, TracingDataTransfer};
 use crate::prover::whir_fold::{
-    GpuWhirFoldScheduledExecution, schedule_gpu_whir_fold_with_sources, take_scheduled_whir_proof,
+    schedule_gpu_whir_fold_with_sources, take_scheduled_whir_proof, GpuWhirFoldScheduledExecution,
 };
 use prover::merkle_trees::MerkleTreeCapVarLength;
 
@@ -70,7 +70,7 @@ struct GpuGKRProofJobKeepalive<'a> {
 pub(crate) struct GpuGKRProofJob<'a> {
     pub(crate) is_finished_event: CudaEvent,
     pub(crate) callbacks: Callbacks<'a>,
-    pub(crate) proof: Arc<Mutex<Option<GKRProof<BF, E4, DefaultTreeConstructor>>>>,
+    pub(crate) proof: Box<Option<GKRProof<BF, E4, DefaultTreeConstructor>>>,
     pub(crate) ranges: Vec<Range>,
     keepalive: GpuGKRProofJobKeepalive<'a>,
 }
@@ -84,7 +84,7 @@ impl<'a> GpuGKRProofJob<'a> {
         let Self {
             is_finished_event,
             callbacks,
-            proof,
+            mut proof,
             ranges,
             keepalive,
         } = self;
@@ -92,8 +92,6 @@ impl<'a> GpuGKRProofJob<'a> {
         drop(callbacks);
         drop(keepalive);
         let proof = proof
-            .lock()
-            .unwrap()
             .take()
             .expect("proof must be materialized before finish");
         let proof_time_ms = ranges
@@ -137,16 +135,8 @@ pub(crate) fn build_top_layer_claims(
     >,
     claims: [E4; 8],
 ) -> BTreeMap<GKRAddress, E4> {
-    let [
-        claim_readset,
-        claim_writeset,
-        claim_rangechecknum,
-        claim_rangecheckden,
-        claim_timechecknum,
-        claim_timecheckden,
-        claim_lookupnum,
-        claim_lookupden,
-    ] = claims;
+    let [claim_readset, claim_writeset, claim_rangechecknum, claim_rangecheckden, claim_timechecknum, claim_timecheckden, claim_lookupnum, claim_lookupden] =
+        claims;
     let mut top_layer_claims = BTreeMap::new();
     let permutation_output = &output_layer_for_sumcheck[&OutputType::PermutationProduct];
     top_layer_claims.insert(permutation_output.output[0], claim_readset);
@@ -352,7 +342,8 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
 
     let stream = context.get_exec_stream();
     let mut callbacks = Callbacks::new();
-    let proof = Arc::new(Mutex::new(None));
+    let mut proof = Box::new(None);
+    let proof_handle = UnsafeMutAccessor::new(proof.as_mut());
     let mut ranges = Vec::new();
     let proof_range = Range::new("gkr.proof")?;
     proof_range.start(stream)?;
@@ -485,7 +476,7 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
                 &flattened_memory_tree_caps,
                 &flattened_witness_tree_caps,
             );
-            seed_accessor.set(Transcript::commit_initial(&transcript_input));
+            seed_accessor.write(Transcript::commit_initial(&transcript_input));
             let challenges = draw_random_field_els::<BF, E4>(seed_accessor.get_mut(), 3);
             lookup_challenges_write_accessor
                 .get_mut()
@@ -533,13 +524,14 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
     let backward_state = forward_output.into_dimension_reducing_backward_state();
     let forward_setup_keepalive = forward_setup.into_host_keepalive();
 
-    let backward_shared_state = make_deferred_backward_workflow_state();
+    let mut backward_shared_state = make_deferred_backward_workflow_state();
+    let backward_shared_state_handle = UnsafeMutAccessor::new(backward_shared_state.as_mut());
     let transcript_update_range = Range::new("gkr.proof.transcript_update")?;
     transcript_update_range.start(stream)?;
     let lookup_challenges_read_accessor = lookup_challenges_host.get_accessor();
     callbacks.schedule(
         {
-            let backward_shared_state = Arc::clone(&backward_shared_state);
+            let backward_shared_state = backward_shared_state_handle;
             move || unsafe {
                 let final_explicit_evaluations = collect_explicit_evaluations_from_accessors(
                     &transcript_handoff_accessors_for_backward,
@@ -559,7 +551,7 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
                     build_top_layer_claims(&output_layer_for_sumcheck, initial_claims);
                 let lookup_challenges = lookup_challenges_read_accessor.get();
                 populate_backward_workflow_state(
-                    &backward_shared_state,
+                    backward_shared_state,
                     initial_layer_for_sumcheck + 1,
                     top_layer_claims,
                     evaluation_point,
@@ -577,12 +569,14 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
     transcript_update_range.end(stream)?;
     ranges.push(transcript_update_range);
 
-    let backward_scheduled = backward_state.schedule_execute_backward_workflow_from_shared_state(
-        compiled_circuit.clone(),
-        external_challenges.clone(),
-        Arc::clone(&backward_shared_state),
-        context,
-    )?;
+    let mut backward_scheduled = backward_state
+        .schedule_execute_backward_workflow_from_shared_state(
+            compiled_circuit.clone(),
+            external_challenges.clone(),
+            backward_shared_state,
+            context,
+        )?;
+    let backward_shared_state = backward_scheduled.shared_state_handle();
     let setup_trace_holder = setup_transfer
         .as_ref()
         .map(|setup| &setup.trace_holder)
@@ -591,18 +585,18 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
                 .as_ref()
                 .expect("setup-less proof path must materialize a synthetic setup holder")
         });
-    let base_layer_claims_scheduled = schedule_prepare_base_layer_claims_with_sources(
+    let mut base_layer_claims_scheduled = schedule_prepare_base_layer_claims_with_sources(
         compiled_circuit.layers[0].clone(),
         compiled_circuit.trace_len.trailing_zeros() as usize,
         {
-            let backward_shared_state = Arc::clone(&backward_shared_state);
+            let backward_shared_state = backward_shared_state;
             move |dst| {
-                fill_backward_claim_point_for_layer(&backward_shared_state, 0, dst);
+                fill_backward_claim_point_for_layer(backward_shared_state, 0, dst);
             }
         },
         {
-            let backward_shared_state = Arc::clone(&backward_shared_state);
-            move || clone_backward_claims_for_layer(&backward_shared_state, 0)
+            let backward_shared_state = backward_shared_state;
+            move || clone_backward_claims_for_layer(backward_shared_state, 0)
         },
         setup_trace_holder,
         &stage1_output.memory_trace_holder,
@@ -612,19 +606,19 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
     let base_layer_claims_shared_state = base_layer_claims_scheduled.shared_state_handle();
     callbacks.schedule(
         {
-            let backward_shared_state = Arc::clone(&backward_shared_state);
-            let base_layer_claims_shared_state = Arc::clone(&base_layer_claims_shared_state);
+            let backward_shared_state = backward_shared_state;
+            let base_layer_claims_shared_state = base_layer_claims_shared_state;
             move || {
                 let extra_evaluations_from_caching_relations =
                     clone_base_layer_extra_evaluations_from_caching_relations(
-                        &base_layer_claims_shared_state,
+                        base_layer_claims_shared_state,
                     );
                 let extra_evaluations_transcript_batches =
                     clone_base_layer_extra_evaluations_transcript_batches(
-                        &base_layer_claims_shared_state,
+                        base_layer_claims_shared_state,
                     );
                 apply_base_layer_extra_evaluations_to_workflow_state(
-                    &backward_shared_state,
+                    backward_shared_state,
                     &extra_evaluations_from_caching_relations,
                     &extra_evaluations_transcript_batches,
                 );
@@ -671,39 +665,39 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
     pre_whir_memory_commit_range.end(stream)?;
     ranges.push(pre_whir_memory_commit_range);
 
-    let whir_scheduled = if let Some(setup_transfer) = setup_transfer.as_mut() {
+    let mut whir_scheduled = if let Some(setup_transfer) = setup_transfer.as_mut() {
         let setup_base_caps_keepalive = setup_transfer.trace_holder.take_tree_caps_host();
         schedule_gpu_whir_fold_with_sources(
             &mut stage1_output.memory_trace_holder,
             memory_base_caps_keepalive,
             {
-                let base_layer_claims_shared_state = Arc::clone(&base_layer_claims_shared_state);
-                move |dst| fill_mem_polys_claims(&base_layer_claims_shared_state, dst)
+                let base_layer_claims_shared_state = base_layer_claims_shared_state;
+                move |dst| fill_mem_polys_claims(base_layer_claims_shared_state, dst)
             },
             &mut stage1_output.witness_trace_holder,
             witness_base_caps_keepalive,
             {
-                let base_layer_claims_shared_state = Arc::clone(&base_layer_claims_shared_state);
-                move |dst| fill_wit_polys_claims(&base_layer_claims_shared_state, dst)
+                let base_layer_claims_shared_state = base_layer_claims_shared_state;
+                move |dst| fill_wit_polys_claims(base_layer_claims_shared_state, dst)
             },
             &mut setup_transfer.trace_holder,
             setup_base_caps_keepalive,
             {
-                let base_layer_claims_shared_state = Arc::clone(&base_layer_claims_shared_state);
-                move |dst| fill_setup_polys_claims(&base_layer_claims_shared_state, dst)
+                let base_layer_claims_shared_state = base_layer_claims_shared_state;
+                move |dst| fill_setup_polys_claims(base_layer_claims_shared_state, dst)
             },
             compiled_circuit.trace_len.trailing_zeros() as usize,
             {
-                let backward_shared_state = Arc::clone(&backward_shared_state);
+                let backward_shared_state = backward_shared_state;
                 move |dst| {
-                    fill_backward_claim_point_for_layer(&backward_shared_state, 0, dst);
+                    fill_backward_claim_point_for_layer(backward_shared_state, 0, dst);
                 }
             },
             whir_schedule.base_lde_factor,
             {
-                let backward_shared_state = Arc::clone(&backward_shared_state);
+                let backward_shared_state = backward_shared_state;
                 move || {
-                    let mut seed = current_backward_seed(&backward_shared_state);
+                    let mut seed = current_backward_seed(backward_shared_state);
                     draw_random_field_els::<BF, E4>(&mut seed, 1)[0]
                 }
             },
@@ -712,9 +706,9 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
             whir_schedule.whir_steps_lde_factors.clone(),
             whir_schedule.whir_pow_schedule.clone(),
             {
-                let backward_shared_state = Arc::clone(&backward_shared_state);
+                let backward_shared_state = backward_shared_state;
                 move || {
-                    let mut seed = current_backward_seed(&backward_shared_state);
+                    let mut seed = current_backward_seed(backward_shared_state);
                     let _whir_batching_challenge = draw_random_field_els::<BF, E4>(&mut seed, 1);
                     seed
                 }
@@ -739,33 +733,33 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
             &mut stage1_output.memory_trace_holder,
             memory_base_caps_keepalive,
             {
-                let base_layer_claims_shared_state = Arc::clone(&base_layer_claims_shared_state);
-                move |dst| fill_mem_polys_claims(&base_layer_claims_shared_state, dst)
+                let base_layer_claims_shared_state = base_layer_claims_shared_state;
+                move |dst| fill_mem_polys_claims(base_layer_claims_shared_state, dst)
             },
             &mut stage1_output.witness_trace_holder,
             witness_base_caps_keepalive,
             {
-                let base_layer_claims_shared_state = Arc::clone(&base_layer_claims_shared_state);
-                move |dst| fill_wit_polys_claims(&base_layer_claims_shared_state, dst)
+                let base_layer_claims_shared_state = base_layer_claims_shared_state;
+                move |dst| fill_wit_polys_claims(base_layer_claims_shared_state, dst)
             },
             setup_trace_holder,
             setup_base_caps_keepalive,
             {
-                let base_layer_claims_shared_state = Arc::clone(&base_layer_claims_shared_state);
-                move |dst| fill_setup_polys_claims(&base_layer_claims_shared_state, dst)
+                let base_layer_claims_shared_state = base_layer_claims_shared_state;
+                move |dst| fill_setup_polys_claims(base_layer_claims_shared_state, dst)
             },
             compiled_circuit.trace_len.trailing_zeros() as usize,
             {
-                let backward_shared_state = Arc::clone(&backward_shared_state);
+                let backward_shared_state = backward_shared_state;
                 move |dst| {
-                    fill_backward_claim_point_for_layer(&backward_shared_state, 0, dst);
+                    fill_backward_claim_point_for_layer(backward_shared_state, 0, dst);
                 }
             },
             whir_schedule.base_lde_factor,
             {
-                let backward_shared_state = Arc::clone(&backward_shared_state);
+                let backward_shared_state = backward_shared_state;
                 move || {
-                    let mut seed = current_backward_seed(&backward_shared_state);
+                    let mut seed = current_backward_seed(backward_shared_state);
                     draw_random_field_els::<BF, E4>(&mut seed, 1)[0]
                 }
             },
@@ -774,9 +768,9 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
             whir_schedule.whir_steps_lde_factors.clone(),
             whir_schedule.whir_pow_schedule.clone(),
             {
-                let backward_shared_state = Arc::clone(&backward_shared_state);
+                let backward_shared_state = backward_shared_state;
                 move || {
-                    let mut seed = current_backward_seed(&backward_shared_state);
+                    let mut seed = current_backward_seed(backward_shared_state);
                     let _whir_batching_challenge = draw_random_field_els::<BF, E4>(&mut seed, 1);
                     seed
                 }
@@ -798,22 +792,22 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
     finalize_range.start(stream)?;
     callbacks.schedule(
         {
-            let proof_slot = Arc::clone(&proof);
-            let backward_shared_state = Arc::clone(&backward_shared_state);
-            let whir_shared_state = Arc::clone(&whir_shared_state);
+            let proof_slot = proof_handle;
+            let backward_shared_state = backward_shared_state;
+            let whir_shared_state = whir_shared_state;
             let external_challenges = external_challenges.clone();
             move || {
                 let final_explicit_evaluations = collect_explicit_evaluations_from_accessors(
                     &transcript_handoff_accessors_for_final,
                 );
                 let backward_execution =
-                    take_backward_execution_from_shared_state(&backward_shared_state);
-                let whir_proof = take_scheduled_whir_proof(&whir_shared_state);
+                    take_backward_execution_from_shared_state(backward_shared_state);
+                let whir_proof = take_scheduled_whir_proof(whir_shared_state);
                 let grand_product_accumulator_computed =
                     grand_product_accumulator_from_explicit_evaluations(
                         &final_explicit_evaluations,
                     );
-                *proof_slot.lock().unwrap() = Some(GKRProof {
+                unsafe { proof_slot.get_mut() }.replace(GKRProof {
                     external_challenges: external_challenges.clone(),
                     final_explicit_evaluations,
                     sumcheck_intermediate_values: backward_execution.proofs,
@@ -943,8 +937,8 @@ mod tests {
     use super::{build_initial_transcript_input, draw_query_bits_with_external_nonce};
     use crate::primitives::field::{BF, E4};
     use prover::definitions::Transcript;
-    use prover::gkr::prover::GKRExternalChallenges;
     use prover::gkr::prover::transcript_utils::draw_query_bits;
+    use prover::gkr::prover::GKRExternalChallenges;
     use prover::query_utils::assemble_query_index;
     use prover::transcript::Seed;
     use worker::Worker;
