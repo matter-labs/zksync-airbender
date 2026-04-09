@@ -1368,8 +1368,6 @@ fn resolve_main_layer_constraint_metadata<E: Field + FieldExtension<BF>>(
 
 struct PreparedMainLayerKernelStaticData<E: Copy> {
     kind: GpuGKRMainLayerKernelKind,
-    batch_challenge_offset: usize,
-    batch_challenge_count: usize,
     auxiliary_challenge: E,
     constraint_metadata: Option<GpuGKRMainLayerConstraintHostMetadata<E>>,
     round0_descriptors: GpuSumcheckRound0LaunchDescriptors<BF, E>,
@@ -1421,8 +1419,8 @@ fn build_main_layer_round0_batch_template<E: Field>(
     folding_steps: usize,
     static_data: &[PreparedMainLayerKernelStaticData<E>],
     spill_builder: &mut SpillPayloadBuilder,
-) -> GpuGKRMainRound0Batch<E> {
-    let mut batch = GpuGKRMainRound0Batch::default();
+) -> GpuGKRMainRound0BatchStatic<E> {
+    let mut batch = GpuGKRMainRound0BatchStatic::default();
     batch.record_count = static_data.len() as u32;
     batch.challenge_offset = 1;
     batch.challenge_count = (folding_steps - 1) as u32;
@@ -1493,8 +1491,6 @@ fn build_main_layer_round0_batch_template<E: Field>(
             extension_inputs,
             base_outputs,
             extension_outputs,
-            batch_challenge_offset: kernel.batch_challenge_offset as u32,
-            batch_challenge_count: kernel.batch_challenge_count as u32,
             quadratic_terms,
             linear_terms,
             auxiliary_challenge: kernel.auxiliary_challenge,
@@ -1510,8 +1506,8 @@ fn build_main_layer_round1_batch_template<E: Field>(
     folding_steps: usize,
     static_data: &[PreparedMainLayerKernelStaticData<E>],
     spill_builder: &mut SpillPayloadBuilder,
-) -> GpuGKRMainRound1Batch<E> {
-    let mut batch = GpuGKRMainRound1Batch::default();
+) -> GpuGKRMainRound1BatchStatic<E> {
+    let mut batch = GpuGKRMainRound1BatchStatic::default();
     batch.record_count = static_data.len() as u32;
     batch.challenge_offset = 2;
     batch.challenge_count = (folding_steps - 2) as u32;
@@ -1564,8 +1560,6 @@ fn build_main_layer_round1_batch_template<E: Field>(
             _reserved: 0,
             base_inputs,
             extension_inputs,
-            batch_challenge_offset: kernel.batch_challenge_offset as u32,
-            batch_challenge_count: kernel.batch_challenge_count as u32,
             quadratic_terms,
             linear_terms,
             auxiliary_challenge: kernel.auxiliary_challenge,
@@ -1581,8 +1575,8 @@ fn build_main_layer_round2_batch_template<E: Field>(
     folding_steps: usize,
     static_data: &[PreparedMainLayerKernelStaticData<E>],
     spill_builder: &mut SpillPayloadBuilder,
-) -> GpuGKRMainRound2Batch<E> {
-    let mut batch = GpuGKRMainRound2Batch::default();
+) -> GpuGKRMainRound2BatchStatic<E> {
+    let mut batch = GpuGKRMainRound2BatchStatic::default();
     batch.record_count = static_data.len() as u32;
     batch.challenge_offset = 3;
     batch.challenge_count = (folding_steps - 3) as u32;
@@ -1635,8 +1629,6 @@ fn build_main_layer_round2_batch_template<E: Field>(
             _reserved: 0,
             base_inputs,
             extension_inputs,
-            batch_challenge_offset: kernel.batch_challenge_offset as u32,
-            batch_challenge_count: kernel.batch_challenge_count as u32,
             quadratic_terms,
             linear_terms,
             auxiliary_challenge: kernel.auxiliary_challenge,
@@ -1655,7 +1647,7 @@ fn build_main_layer_round3_batch_templates<E: Field>(
 ) -> Vec<GpuGKRMainLayerRound3BatchTemplate<E>> {
     let mut result = Vec::with_capacity(folding_steps.saturating_sub(3));
     for step in 3..folding_steps {
-        let mut batch = GpuGKRMainRound3Batch::default();
+        let mut batch = GpuGKRMainRound3BatchStatic::default();
         batch.record_count = static_data.len() as u32;
         batch.challenge_offset = (step + 1) as u32;
         batch.challenge_count = (folding_steps - step - 1) as u32;
@@ -1715,8 +1707,6 @@ fn build_main_layer_round3_batch_templates<E: Field>(
                 _reserved: 0,
                 base_inputs,
                 extension_inputs,
-                batch_challenge_offset: kernel.batch_challenge_offset as u32,
-                batch_challenge_count: kernel.batch_challenge_count as u32,
                 quadratic_terms,
                 linear_terms,
                 auxiliary_challenge: kernel.auxiliary_challenge,
@@ -1734,9 +1724,9 @@ fn build_main_layer_batch_templates<E: Field>(
     folding_steps: usize,
     static_data: &[PreparedMainLayerKernelStaticData<E>],
 ) -> (
-    GpuGKRMainRound0Batch<E>,
-    GpuGKRMainRound1Batch<E>,
-    GpuGKRMainRound2Batch<E>,
+    GpuGKRMainRound0BatchStatic<E>,
+    GpuGKRMainRound1BatchStatic<E>,
+    GpuGKRMainRound2BatchStatic<E>,
     Vec<GpuGKRMainLayerRound3BatchTemplate<E>>,
     Vec<u8>,
 ) {
@@ -3428,8 +3418,6 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
 
             static_data.push(PreparedMainLayerKernelStaticData {
                 kind: blueprint.kind,
-                batch_challenge_offset: blueprint.batch_challenge_offset,
-                batch_challenge_count: blueprint.batch_challenge_count,
                 auxiliary_challenge,
                 constraint_metadata: constraint_metadata.clone(),
                 round0_descriptors: round0_descriptors_for_kernel,
@@ -3577,6 +3565,137 @@ impl<E> GpuGKRMainLayerSumcheckLayerPlan<E> {
     pub(crate) fn round0_descriptors(&self) -> &[GpuSumcheckRound0LaunchDescriptors<BF, E>] {
         &self.round0_descriptors
     }
+}
+
+const fn main_layer_kind_batch_challenge_count(kind: GpuGKRMainLayerKernelKind) -> usize {
+    match kind {
+        GpuGKRMainLayerKernelKind::LookupPair
+        | GpuGKRMainLayerKernelKind::LookupBasePair
+        | GpuGKRMainLayerKernelKind::LookupBaseMinusMultiplicityByBase
+        | GpuGKRMainLayerKernelKind::LookupExtMinusMultiplicityByExt
+        | GpuGKRMainLayerKernelKind::LookupUnbalanced
+        | GpuGKRMainLayerKernelKind::LookupWithCachedDensAndSetup
+        | GpuGKRMainLayerKernelKind::LookupPairFromBaseInputs
+        | GpuGKRMainLayerKernelKind::LookupWithDensAndSetupExpressions
+        | GpuGKRMainLayerKernelKind::LookupPairFromVectorInputs
+        | GpuGKRMainLayerKernelKind::LookupFromVectorInputWithSetup
+        | GpuGKRMainLayerKernelKind::LookupUnbalancedPairWithVectorInputs => 2,
+        _ => 1,
+    }
+}
+
+#[derive(Clone)]
+struct PackedMainLayerBatchChallengeSpec<E> {
+    kind: GpuGKRMainLayerKernelKind,
+    batch_challenge_offset: usize,
+    batch_challenges: Vec<E>,
+}
+
+fn packed_main_layer_batch_challenge_specs<E: Clone>(
+    kernel_plans: &[GpuGKRMainLayerKernelPlan<E>],
+) -> Vec<PackedMainLayerBatchChallengeSpec<E>> {
+    kernel_plans
+        .iter()
+        .map(|kernel| PackedMainLayerBatchChallengeSpec {
+            kind: kernel.kind,
+            batch_challenge_offset: kernel.batch_challenge_offset,
+            batch_challenges: kernel.batch_challenges.clone(),
+        })
+        .collect()
+}
+
+fn packed_main_layer_batch_challenge_len<E>(kernel_plans: &[GpuGKRMainLayerKernelPlan<E>]) -> usize {
+    kernel_plans
+        .iter()
+        .map(|kernel| {
+            let count = main_layer_kind_batch_challenge_count(kernel.kind);
+            assert_eq!(
+                kernel.batch_challenge_count, count,
+                "kernel {:?} has unexpected batch-challenge count",
+                kernel.kind
+            );
+            count
+        })
+        .sum()
+}
+
+fn fill_packed_main_layer_batch_challenges<E: Field>(
+    kernel_plans: &[GpuGKRMainLayerKernelPlan<E>],
+    batch_challenge_base: E,
+    dst: &mut [E],
+) {
+    assert_eq!(dst.len(), packed_main_layer_batch_challenge_len(kernel_plans));
+    let mut packed_offset = 0usize;
+    for kernel in kernel_plans.iter() {
+        let count = main_layer_kind_batch_challenge_count(kernel.kind);
+        assert_eq!(
+            kernel.batch_challenge_offset, packed_offset,
+            "main-layer batch challenges must stay densely packed in record order"
+        );
+        let dst_slice = &mut dst[packed_offset..packed_offset + count];
+        if kernel.batch_challenges.is_empty() {
+            let mut challenge = field_pow(batch_challenge_base, kernel.batch_challenge_offset);
+            for dst in dst_slice.iter_mut() {
+                *dst = challenge;
+                challenge.mul_assign(&batch_challenge_base);
+            }
+        } else {
+            assert_eq!(
+                kernel.batch_challenges.len(),
+                count,
+                "kernel {:?} materialized unexpected batch-challenge count",
+                kernel.kind
+            );
+            dst_slice.copy_from_slice(&kernel.batch_challenges);
+        }
+    packed_offset += count;
+    }
+}
+
+fn fill_packed_main_layer_batch_challenges_from_specs<E: Field>(
+    specs: &[PackedMainLayerBatchChallengeSpec<E>],
+    batch_challenge_base: E,
+    dst: &mut [E],
+) {
+    let expected_len = specs
+        .iter()
+        .map(|spec| main_layer_kind_batch_challenge_count(spec.kind))
+        .sum::<usize>();
+    assert_eq!(dst.len(), expected_len);
+    let mut packed_offset = 0usize;
+    for spec in specs.iter() {
+        let count = main_layer_kind_batch_challenge_count(spec.kind);
+        assert_eq!(
+            spec.batch_challenge_offset, packed_offset,
+            "main-layer batch challenges must stay densely packed in record order"
+        );
+        let dst_slice = &mut dst[packed_offset..packed_offset + count];
+        if spec.batch_challenges.is_empty() {
+            let mut challenge = field_pow(batch_challenge_base, spec.batch_challenge_offset);
+            for dst in dst_slice.iter_mut() {
+                *dst = challenge;
+                challenge.mul_assign(&batch_challenge_base);
+            }
+        } else {
+            assert_eq!(
+                spec.batch_challenges.len(),
+                count,
+                "kernel {:?} materialized unexpected batch-challenge count",
+                spec.kind
+            );
+            dst_slice.copy_from_slice(&spec.batch_challenges);
+        }
+        packed_offset += count;
+    }
+}
+
+fn pack_main_layer_batch_challenges<E: Field>(
+    kernel_plans: &[GpuGKRMainLayerKernelPlan<E>],
+    batch_challenge_base: E,
+) -> Vec<E> {
+    let mut packed = vec![E::ZERO; packed_main_layer_batch_challenge_len(kernel_plans)];
+    fill_packed_main_layer_batch_challenges(kernel_plans, batch_challenge_base, &mut packed);
+    packed
 }
 
 impl<E: Field + 'static> GpuGKRMainLayerSumcheckLayerPlan<E> {
@@ -4577,96 +4696,156 @@ where
         result
     }
 
-    fn batch_challenge_base_ptr(&self) -> *const E {
-        // SAFETY: `claim_point` is allocated with `folding_steps + 1` elements in preparation.
-        unsafe {
-            self.round_scratch
-                .claim_point
-                .as_ptr()
-                .add(self.folding_steps)
-        }
+    fn schedule_batch_challenge_buffer(
+        &self,
+        batch_challenge_base: E,
+        context: &ProverContext,
+    ) -> CudaResult<ScheduledChallengeBuffer<E>> {
+        let packed = pack_main_layer_batch_challenges(&self.kernel_plans, batch_challenge_base);
+        assert!(
+            !packed.is_empty(),
+            "main-layer batched execution requires at least one packed batch challenge"
+        );
+        let len = packed.len();
+        let device = Arc::new(SharedChallengeDevice::new(
+            context.alloc(len, AllocationPlacement::Top)?,
+        ));
+        schedule_packed_round_challenge_upload(context, device, 0, len, move |dst| {
+            dst.copy_from_slice(&packed);
+        })
+    }
+
+    fn schedule_batch_challenge_buffer_from_workflow_state(
+        &self,
+        workflow_state: Arc<Mutex<ScheduledBackwardWorkflowState<E>>>,
+        context: &ProverContext,
+    ) -> CudaResult<ScheduledChallengeBuffer<E>> {
+        let specs = packed_main_layer_batch_challenge_specs(&self.kernel_plans);
+        let len = specs
+            .iter()
+            .map(|spec| main_layer_kind_batch_challenge_count(spec.kind))
+            .sum::<usize>();
+        assert!(
+            len > 0,
+            "main-layer batched execution requires at least one packed batch challenge"
+        );
+        let device = Arc::new(SharedChallengeDevice::new(
+            context.alloc(len, AllocationPlacement::Top)?,
+        ));
+        schedule_packed_round_challenge_upload(context, device, 0, len, move |dst| {
+            let batch_challenge_base = workflow_state.lock().unwrap().current_batching_challenge;
+            fill_packed_main_layer_batch_challenges_from_specs(
+                &specs,
+                batch_challenge_base,
+                dst,
+            );
+        })
     }
 
     fn launch_round0_kernels(
         &mut self,
+        batch_challenges: &ScheduledChallengeBuffer<E>,
         acc_size: usize,
         static_spill_upload: Option<&ScheduledUpload<u8>>,
         context: &ProverContext,
     ) -> CudaResult<()> {
-        let mut batch = self.round0_batch_template;
-        batch.claim_point = self.round_scratch.claim_point.as_ptr();
-        batch.batch_challenge_base = self.batch_challenge_base_ptr();
-        batch.contributions = self.round_scratch.accumulator.as_mut_ptr();
-        batch.spill_payload = static_spill_upload
-            .map(|upload| upload.device.as_ptr())
-            .unwrap_or(null());
-        launch_main_round0_batched(&batch, acc_size, context)
+        let batch_runtime = GpuGKRMainRound0BatchRuntime {
+            claim_point: self.round_scratch.claim_point.as_ptr(),
+            batch_challenges: batch_challenges.as_ptr(),
+            contributions: self.round_scratch.accumulator.as_mut_ptr(),
+            spill_payload: static_spill_upload
+                .map(|upload| upload.device.as_ptr())
+                .unwrap_or(null()),
+        };
+        launch_main_round0_batched(&self.round0_batch_template, &batch_runtime, acc_size, context)
     }
 
     fn launch_round1_kernels(
         &mut self,
+        batch_challenges: &ScheduledChallengeBuffer<E>,
         folding_challenge: &ScheduledChallengeBuffer<E>,
         acc_size: usize,
         explicit_form: bool,
         static_spill_upload: Option<&ScheduledUpload<u8>>,
         context: &ProverContext,
     ) -> CudaResult<()> {
-        let mut batch = self.round1_batch_template;
-        batch.claim_point = self.round_scratch.claim_point.as_ptr();
-        batch.batch_challenge_base = self.batch_challenge_base_ptr();
-        batch.folding_challenge = folding_challenge.as_ptr();
-        batch.contributions = self.round_scratch.accumulator.as_mut_ptr();
-        batch.spill_payload = static_spill_upload
-            .map(|upload| upload.device.as_ptr())
-            .unwrap_or(null());
-        batch.explicit_form = explicit_form;
-        launch_main_round1_batched(&batch, acc_size, context)
+        let batch_runtime = GpuGKRMainRound1BatchRuntime {
+            claim_point: self.round_scratch.claim_point.as_ptr(),
+            batch_challenges: batch_challenges.as_ptr(),
+            folding_challenge: folding_challenge.as_ptr(),
+            contributions: self.round_scratch.accumulator.as_mut_ptr(),
+            spill_payload: static_spill_upload
+                .map(|upload| upload.device.as_ptr())
+                .unwrap_or(null()),
+        };
+        launch_main_round1_batched(
+            &self.round1_batch_template,
+            &batch_runtime,
+            acc_size,
+            explicit_form,
+            context,
+        )
     }
 
     fn launch_round2_kernels(
         &mut self,
+        batch_challenges: &ScheduledChallengeBuffer<E>,
         folding_challenges: &ScheduledChallengeBuffer<E>,
         acc_size: usize,
         explicit_form: bool,
         static_spill_upload: Option<&ScheduledUpload<u8>>,
         context: &ProverContext,
     ) -> CudaResult<()> {
-        let mut batch = self.round2_batch_template;
-        batch.claim_point = self.round_scratch.claim_point.as_ptr();
-        batch.batch_challenge_base = self.batch_challenge_base_ptr();
-        batch.folding_challenges = folding_challenges.as_ptr();
-        batch.contributions = self.round_scratch.accumulator.as_mut_ptr();
-        batch.spill_payload = static_spill_upload
-            .map(|upload| upload.device.as_ptr())
-            .unwrap_or(null());
-        batch.explicit_form = explicit_form;
-        launch_main_round2_batched(&batch, acc_size, context)
+        let batch_runtime = GpuGKRMainRound2BatchRuntime {
+            claim_point: self.round_scratch.claim_point.as_ptr(),
+            batch_challenges: batch_challenges.as_ptr(),
+            folding_challenges: folding_challenges.as_ptr(),
+            contributions: self.round_scratch.accumulator.as_mut_ptr(),
+            spill_payload: static_spill_upload
+                .map(|upload| upload.device.as_ptr())
+                .unwrap_or(null()),
+        };
+        launch_main_round2_batched(
+            &self.round2_batch_template,
+            &batch_runtime,
+            acc_size,
+            explicit_form,
+            context,
+        )
     }
 
     fn launch_round3_kernels(
         &mut self,
         step: usize,
+        batch_challenges: &ScheduledChallengeBuffer<E>,
         folding_challenge: &ScheduledChallengeBuffer<E>,
         acc_size: usize,
         explicit_form: bool,
         static_spill_upload: Option<&ScheduledUpload<u8>>,
         context: &ProverContext,
     ) -> CudaResult<()> {
-        let mut batch = self
+        let batch_static = self
             .round3_batch_templates
             .iter()
             .find(|template| template.step == step)
             .unwrap_or_else(|| panic!("missing round 3 template for step {step}"))
             .batch;
-        batch.claim_point = self.round_scratch.claim_point.as_ptr();
-        batch.batch_challenge_base = self.batch_challenge_base_ptr();
-        batch.folding_challenge = folding_challenge.as_ptr();
-        batch.contributions = self.round_scratch.accumulator.as_mut_ptr();
-        batch.spill_payload = static_spill_upload
-            .map(|upload| upload.device.as_ptr())
-            .unwrap_or(null());
-        batch.explicit_form = explicit_form;
-        launch_main_round3_batched(&batch, acc_size, context)
+        let batch_runtime = GpuGKRMainRound3BatchRuntime {
+            claim_point: self.round_scratch.claim_point.as_ptr(),
+            batch_challenges: batch_challenges.as_ptr(),
+            folding_challenge: folding_challenge.as_ptr(),
+            contributions: self.round_scratch.accumulator.as_mut_ptr(),
+            spill_payload: static_spill_upload
+                .map(|upload| upload.device.as_ptr())
+                .unwrap_or(null()),
+        };
+        launch_main_round3_batched(
+            &batch_static,
+            &batch_runtime,
+            acc_size,
+            explicit_form,
+            context,
+        )
     }
 
     fn schedule_round_coefficients_reduction(
@@ -4830,6 +5009,11 @@ where
             context.get_exec_stream(),
         )?;
         drop(claim_point_host);
+        let batch_challenge_buffer = self.schedule_batch_challenge_buffer(
+            self.batch_challenge_base
+                .expect("direct main-layer execution requires a prepared batching challenge base"),
+            context,
+        )?;
 
         let shared_state = Arc::new(Mutex::new(ScheduledMainLayerExecutionState {
             seed,
@@ -4844,10 +5028,16 @@ where
         for step in 0..last_step {
             let acc_size = 1usize << (self.folding_steps - step - 1);
             if step == 0 {
-                self.launch_round0_kernels(acc_size, static_spill_upload.as_ref(), context)?;
+                self.launch_round0_kernels(
+                    &batch_challenge_buffer,
+                    acc_size,
+                    static_spill_upload.as_ref(),
+                    context,
+                )?;
             } else {
                 match step {
                     1 => self.launch_round1_kernels(
+                        &batch_challenge_buffer,
                         &round_challenge_buffers[step - 1],
                         acc_size,
                         false,
@@ -4855,6 +5045,7 @@ where
                         context,
                     )?,
                     2 => self.launch_round2_kernels(
+                        &batch_challenge_buffer,
                         &round_challenge_buffers[step - 1],
                         acc_size,
                         false,
@@ -4863,6 +5054,7 @@ where
                     )?,
                     _ => self.launch_round3_kernels(
                         step,
+                        &batch_challenge_buffer,
                         &round_challenge_buffers[step - 1],
                         acc_size,
                         false,
@@ -4946,6 +5138,7 @@ where
 
         self.launch_round3_kernels(
             last_step,
+            &batch_challenge_buffer,
             &round_challenge_buffers[last_step - 1],
             1,
             true,
@@ -5009,6 +5202,7 @@ where
             tracing_ranges: Vec::new(),
             start_callbacks,
             static_spill_upload,
+            batch_challenge_buffer,
             round_challenge_buffers,
             reduction_states,
             final_readback: {
@@ -5107,6 +5301,11 @@ where
             &claim_point_host,
             stream,
         )?;
+        let batch_challenge_buffer =
+            self.schedule_batch_challenge_buffer_from_workflow_state(
+                Arc::clone(&workflow_state),
+                context,
+            )?;
         let mut round_challenge_buffers = Vec::with_capacity(last_step);
         let round_challenge_len = (1..=last_step)
             .map(main_layer_round_challenge_len)
@@ -5120,10 +5319,16 @@ where
         for step in 0..last_step {
             let acc_size = 1usize << (self.folding_steps - step - 1);
             if step == 0 {
-                self.launch_round0_kernels(acc_size, static_spill_upload.as_ref(), context)?;
+                self.launch_round0_kernels(
+                    &batch_challenge_buffer,
+                    acc_size,
+                    static_spill_upload.as_ref(),
+                    context,
+                )?;
             } else {
                 match step {
                     1 => self.launch_round1_kernels(
+                        &batch_challenge_buffer,
                         &round_challenge_buffers[step - 1],
                         acc_size,
                         false,
@@ -5131,6 +5336,7 @@ where
                         context,
                     )?,
                     2 => self.launch_round2_kernels(
+                        &batch_challenge_buffer,
                         &round_challenge_buffers[step - 1],
                         acc_size,
                         false,
@@ -5139,6 +5345,7 @@ where
                     )?,
                     _ => self.launch_round3_kernels(
                         step,
+                        &batch_challenge_buffer,
                         &round_challenge_buffers[step - 1],
                         acc_size,
                         false,
@@ -5224,6 +5431,7 @@ where
         }
         self.launch_round3_kernels(
             last_step,
+            &batch_challenge_buffer,
             &round_challenge_buffers[last_step - 1],
             1,
             true,
@@ -5307,6 +5515,7 @@ where
             tracing_ranges,
             start_callbacks,
             static_spill_upload,
+            batch_challenge_buffer,
             round_challenge_buffers,
             reduction_states,
             final_readback: {
@@ -5327,6 +5536,7 @@ impl<E: FieldExtension<BF> + Field> GpuGKRMainLayerScheduledLayerExecution<E> {
             tracing_ranges,
             start_callbacks,
             static_spill_upload,
+            batch_challenge_buffer,
             round_challenge_buffers,
             reduction_states,
             final_readback,
@@ -5336,6 +5546,7 @@ impl<E: FieldExtension<BF> + Field> GpuGKRMainLayerScheduledLayerExecution<E> {
             tracing_ranges,
             start_callbacks,
             static_spill_upload: static_spill_upload.map(upload_into_host_keepalive),
+            batch_challenge_buffer: challenge_buffer_into_host_keepalive(batch_challenge_buffer),
             round_challenge_buffers: round_challenge_buffers
                 .into_iter()
                 .map(challenge_buffer_into_host_keepalive)
@@ -5552,6 +5763,7 @@ mod tests {
         GpuSumcheckRound0DeviceLaunchDescriptors, GpuSumcheckRound0HostLaunchDescriptors,
         GpuSumcheckRound0ScheduledLaunchDescriptors,
     };
+    use std::ptr::null;
     use crate::prover::test_utils::make_test_context;
     use cs::definitions::{GKRAddress, NUM_MEM_ARGUMENT_KEY_PARTS, VirtualSetupPoly};
     use cs::gkr_compiler::{
@@ -6263,6 +6475,21 @@ mod tests {
             round0_batch.challenge_count as usize,
             static_plan.folding_steps - 1
         );
+        let packed_batch_challenges =
+            super::pack_main_layer_batch_challenges(&static_plan.kernel_plans, batching_challenge);
+        let expected_packed_batch_challenges = expected
+            .iter()
+            .flat_map(|kernel| kernel.batch_challenges.iter().copied())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            super::packed_main_layer_batch_challenge_len(&static_plan.kernel_plans),
+            expected_packed_batch_challenges.len(),
+            "packed main-layer batch challenge length mismatch",
+        );
+        assert_eq!(
+            packed_batch_challenges, expected_packed_batch_challenges,
+            "packed main-layer batch challenges must match dynamic preparation order",
+        );
 
         for (idx, expected_kernel) in expected.iter().enumerate() {
             let kernel_plan = &static_plan.kernel_plans[idx];
@@ -6272,11 +6499,8 @@ mod tests {
 
             assert_eq!(record.kind, expected_kernel.kind.as_u32());
             assert_eq!(
-                record.batch_challenge_offset as usize, kernel_plan.batch_challenge_offset,
-                "kernel {idx} batch challenge offset mismatch",
-            );
-            assert_eq!(
-                record.batch_challenge_count as usize, kernel_plan.batch_challenge_count,
+                super::main_layer_kind_batch_challenge_count(kernel_plan.kind),
+                kernel_plan.batch_challenge_count,
                 "kernel {idx} batch challenge count mismatch",
             );
             assert_eq!(
@@ -6364,6 +6588,168 @@ mod tests {
     }
 
     #[test]
+    fn main_layer_kind_batch_challenge_count_matches_all_supported_kinds() {
+        let one_challenge_kinds = [
+            GpuGKRMainLayerKernelKind::BaseCopy,
+            GpuGKRMainLayerKernelKind::ExtCopy,
+            GpuGKRMainLayerKernelKind::Product,
+            GpuGKRMainLayerKernelKind::MaskIdentity,
+            GpuGKRMainLayerKernelKind::EnforceConstraintsMaxQuadratic,
+            GpuGKRMainLayerKernelKind::LinearBaseOutput,
+            GpuGKRMainLayerKernelKind::InitsAndTeardownsInitialPair,
+            GpuGKRMainLayerKernelKind::InitialGrandProductWithoutCaches,
+            GpuGKRMainLayerKernelKind::MaterializeGrandProductTermExpression,
+        ];
+        let two_challenge_kinds = [
+            GpuGKRMainLayerKernelKind::LookupPair,
+            GpuGKRMainLayerKernelKind::LookupBasePair,
+            GpuGKRMainLayerKernelKind::LookupBaseMinusMultiplicityByBase,
+            GpuGKRMainLayerKernelKind::LookupExtMinusMultiplicityByExt,
+            GpuGKRMainLayerKernelKind::LookupUnbalanced,
+            GpuGKRMainLayerKernelKind::LookupWithCachedDensAndSetup,
+            GpuGKRMainLayerKernelKind::LookupPairFromBaseInputs,
+            GpuGKRMainLayerKernelKind::LookupWithDensAndSetupExpressions,
+            GpuGKRMainLayerKernelKind::LookupPairFromVectorInputs,
+            GpuGKRMainLayerKernelKind::LookupFromVectorInputWithSetup,
+            GpuGKRMainLayerKernelKind::LookupUnbalancedPairWithVectorInputs,
+        ];
+
+        for kind in one_challenge_kinds {
+            assert_eq!(super::main_layer_kind_batch_challenge_count(kind), 1);
+        }
+        for kind in two_challenge_kinds {
+            assert_eq!(super::main_layer_kind_batch_challenge_count(kind), 2);
+        }
+    }
+
+    #[test]
+    #[cfg(not(no_cuda))]
+    #[serial]
+    fn main_layer_packed_batch_challenges_match_dynamic_and_static_preparation() {
+        fn advance_dimension_reduction(
+            mut state: GpuGKRDimensionReducingBackwardState<BF, E4>,
+            compiled_circuit: &GKRCircuitArtifact<BF>,
+            external_challenges: &GKRExternalChallenges<BF, E4>,
+            mut current_claims: BTreeMap<GKRAddress, E4>,
+            mut current_point: Vec<E4>,
+            mut seed: Seed,
+            mut batching_challenge: E4,
+            lookup_multiplicative_part: E4,
+            lookup_additive_part: E4,
+            constraints_batch_challenge: E4,
+            context: &ProverContext,
+        ) -> (
+            crate::prover::gkr::backward::GpuGKRMainLayerBackwardState<E4>,
+            BTreeMap<GKRAddress, E4>,
+            Vec<E4>,
+            Seed,
+            E4,
+        ) {
+            while let Some(mut plan) = state
+                .prepare_next_layer(batching_challenge, context)
+                .unwrap()
+            {
+                let scheduled = plan
+                    .schedule_execute_dimension_reducing_layer(
+                        &current_claims,
+                        &current_point,
+                        seed,
+                        batching_challenge,
+                        context,
+                    )
+                    .unwrap();
+                context.get_exec_stream().synchronize().unwrap();
+                let execution = scheduled.into_execution();
+                current_claims = execution.new_claims;
+                current_point = execution.new_claim_point;
+                seed = execution.updated_seed;
+                batching_challenge = execution.next_batching_challenge;
+            }
+
+            (
+                state.into_main_layer_backward_state(
+                    compiled_circuit.clone(),
+                    external_challenges.clone(),
+                    lookup_multiplicative_part,
+                    lookup_additive_part,
+                    constraints_batch_challenge,
+                ),
+                current_claims,
+                current_point,
+                seed,
+                batching_challenge,
+            )
+        }
+
+        let dynamic_fixture = crate::prover::tests::prepare_basic_unrolled_async_backward_fixture(8);
+        let dynamic_context = &dynamic_fixture.context;
+        let (mut dynamic_state, _, _, _, dynamic_batching_challenge) = advance_dimension_reduction(
+            dynamic_fixture.gpu_backward_state,
+            &dynamic_fixture.compiled_circuit,
+            &dynamic_fixture.external_challenges,
+            dynamic_fixture.top_layer_claims,
+            dynamic_fixture.evaluation_point,
+            dynamic_fixture.seed,
+            dynamic_fixture.batching_challenge,
+            dynamic_fixture.lookup_multiplicative_part,
+            dynamic_fixture.lookup_additive_part,
+            dynamic_fixture.constraints_batch_challenge,
+            dynamic_context,
+        );
+        let dynamic_plan = dynamic_state
+            .prepare_next_layer(dynamic_batching_challenge, dynamic_context)
+            .unwrap()
+            .expect("expected first main-layer plan");
+        let dynamic_packed = super::pack_main_layer_batch_challenges(
+            &dynamic_plan.kernel_plans,
+            dynamic_batching_challenge,
+        );
+
+        let static_fixture = crate::prover::tests::prepare_basic_unrolled_async_backward_fixture(8);
+        let static_context = &static_fixture.context;
+        let (mut static_state, _, _, _, static_batching_challenge) = advance_dimension_reduction(
+            static_fixture.gpu_backward_state,
+            &static_fixture.compiled_circuit,
+            &static_fixture.external_challenges,
+            static_fixture.top_layer_claims,
+            static_fixture.evaluation_point,
+            static_fixture.seed,
+            static_fixture.batching_challenge,
+            static_fixture.lookup_multiplicative_part,
+            static_fixture.lookup_additive_part,
+            static_fixture.constraints_batch_challenge,
+            static_context,
+        );
+        let static_plan = static_state
+            .prepare_next_layer_static(static_context)
+            .unwrap()
+            .expect("expected first main-layer plan");
+        let static_packed = super::pack_main_layer_batch_challenges(
+            &static_plan.kernel_plans,
+            static_batching_challenge,
+        );
+
+        assert_eq!(dynamic_batching_challenge, static_batching_challenge);
+        assert_eq!(
+            dynamic_packed.len(),
+            dynamic_plan
+                .kernel_plans
+                .iter()
+                .map(|kernel| kernel.batch_challenge_count)
+                .sum::<usize>(),
+        );
+        assert_eq!(
+            static_packed.len(),
+            static_plan
+                .kernel_plans
+                .iter()
+                .map(|kernel| kernel.batch_challenge_count)
+                .sum::<usize>(),
+        );
+        assert_eq!(dynamic_packed, static_packed);
+    }
+
+    #[test]
     #[serial]
     fn main_layer0_round_coefficients_match_cpu_reference() {
         let fixture = crate::prover::tests::prepare_basic_unrolled_async_backward_fixture(8);
@@ -6437,10 +6823,10 @@ mod tests {
             super::schedule_static_spill_upload(context, &layer0_plan.static_spill_bytes).unwrap();
         let mut start_state_host =
             unsafe { context.alloc_host_uninit_slice(current_point.len() + 1) };
+        let batch_challenge_base = layer0_plan
+            .batch_challenge_base
+            .expect("direct main-layer plan must store the batching challenge base");
         unsafe {
-            let batch_challenge_base = layer0_plan
-                .batch_challenge_base
-                .expect("direct main-layer plan must store the batching challenge base");
             start_state_host
                 .get_mut_accessor()
                 .get_mut()
@@ -6458,6 +6844,9 @@ mod tests {
             context.get_exec_stream(),
         )
         .unwrap();
+        let batch_challenge_buffer = layer0_plan
+            .schedule_batch_challenge_buffer(batch_challenge_base, context)
+            .unwrap();
 
         let mut probe_seed = seed;
         let mut probe_claim = layer0_plan.compute_combined_claim(&current_claims);
@@ -6469,7 +6858,12 @@ mod tests {
             match step {
                 0 => {
                     layer0_plan
-                        .launch_round0_kernels(acc_size, static_spill_upload.as_ref(), context)
+                        .launch_round0_kernels(
+                            &batch_challenge_buffer,
+                            acc_size,
+                            static_spill_upload.as_ref(),
+                            context,
+                        )
                         .unwrap();
                 }
                 1 => {
@@ -6481,6 +6875,7 @@ mod tests {
                     .unwrap();
                     layer0_plan
                         .launch_round1_kernels(
+                            &batch_challenge_buffer,
                             &folding_buffer,
                             acc_size,
                             false,
@@ -6498,6 +6893,7 @@ mod tests {
                     .unwrap();
                     layer0_plan
                         .launch_round2_kernels(
+                            &batch_challenge_buffer,
                             &folding_buffer,
                             acc_size,
                             false,
@@ -6516,6 +6912,7 @@ mod tests {
                     layer0_plan
                         .launch_round3_kernels(
                             step,
+                            &batch_challenge_buffer,
                             &folding_buffer,
                             acc_size,
                             false,
@@ -8108,7 +8505,7 @@ mod tests {
         let mut contributions: DeviceAllocation<E4> =
             context.alloc(4, AllocationPlacement::Top).unwrap();
         let batch_challenge = sample_ext(200);
-        let batch_challenge_base_dev = alloc_and_copy(&context, &[batch_challenge]);
+        let batch_challenges_dev = alloc_and_copy(&context, &[batch_challenge]);
         let mut inline_builder = super::InlinePayloadBuilder::new();
         let base_inputs = inline_builder
             .try_push_copy(&[GpuBaseFieldPolySource {
@@ -8127,15 +8524,12 @@ mod tests {
             .unwrap();
         let extension_outputs = super::GpuGKRMainLayerPayloadRange::default();
 
-        let mut batch = super::GpuGKRMainRound0Batch::default();
-        batch.record_count = 1;
-        batch.challenge_offset = 1;
-        batch.challenge_count = 1;
-        batch.claim_point = claim_point_dev.as_ptr();
-        batch.batch_challenge_base = batch_challenge_base_dev.as_ptr();
-        batch.contributions = contributions.as_mut_ptr();
-        batch.inline_payload = inline_builder.into_bytes();
-        batch.records[0] = super::GpuGKRMainRound0BatchRecord {
+        let mut batch_static = super::GpuGKRMainRound0BatchStatic::default();
+        batch_static.record_count = 1;
+        batch_static.challenge_offset = 1;
+        batch_static.challenge_count = 1;
+        batch_static.inline_payload = inline_builder.into_bytes();
+        batch_static.records[0] = super::GpuGKRMainRound0BatchRecord {
             kind: GpuGKRMainLayerKernelKind::BaseCopy.as_u32(),
             record_mode: super::GpuGKRMainLayerBatchRecordMode::InlineAll.as_u32(),
             metadata_inline: 1,
@@ -8144,15 +8538,19 @@ mod tests {
             extension_inputs,
             base_outputs,
             extension_outputs,
-            batch_challenge_offset: 1,
-            batch_challenge_count: 1,
             quadratic_terms: super::GpuGKRMainLayerPayloadRange::default(),
             linear_terms: super::GpuGKRMainLayerPayloadRange::default(),
             auxiliary_challenge: E4::ZERO,
             constant_offset: E4::ZERO,
         };
+        let batch_runtime = super::GpuGKRMainRound0BatchRuntime {
+            claim_point: claim_point_dev.as_ptr(),
+            batch_challenges: batch_challenges_dev.as_ptr(),
+            contributions: contributions.as_mut_ptr(),
+            spill_payload: null(),
+        };
 
-        super::launch_main_round0_batched(&batch, 2, &context).unwrap();
+        super::launch_main_round0_batched(&batch_static, &batch_runtime, 2, &context).unwrap();
 
         let mut host = unsafe { context.alloc_host_uninit_slice(4) };
         memory_copy_async(&mut host, &contributions, context.get_exec_stream()).unwrap();
@@ -8179,6 +8577,162 @@ mod tests {
     #[test]
     #[cfg(not(no_cuda))]
     #[serial]
+    fn main_round0_batched_mixed_challenge_arities_match_cpu() {
+        let context = make_test_context(64, 8);
+        let copy_input_values = (0..4).map(|i| BF::new(10 + i)).collect::<Vec<_>>();
+        let copy_output_values = (0..4).map(|i| BF::new(30 + i)).collect::<Vec<_>>();
+        let lookup_b_values = (0..4).map(|i| BF::new(50 + i)).collect::<Vec<_>>();
+        let lookup_d_values = (0..4).map(|i| BF::new(70 + i)).collect::<Vec<_>>();
+        let lookup_num_values = (0..4).map(|i| sample_ext(100 + i)).collect::<Vec<_>>();
+        let lookup_den_values = (0..4).map(|i| sample_ext(200 + i)).collect::<Vec<_>>();
+        let claim_point = [sample_ext(300), sample_ext(301)];
+
+        let copy_input = alloc_and_copy(&context, &copy_input_values);
+        let copy_output = alloc_and_copy(&context, &copy_output_values);
+        let lookup_b = alloc_and_copy(&context, &lookup_b_values);
+        let lookup_d = alloc_and_copy(&context, &lookup_d_values);
+        let lookup_num = alloc_and_copy(&context, &lookup_num_values);
+        let lookup_den = alloc_and_copy(&context, &lookup_den_values);
+        let claim_point_dev = alloc_and_copy(&context, &claim_point);
+        let mut contributions: DeviceAllocation<E4> =
+            context.alloc(4, AllocationPlacement::Top).unwrap();
+
+        let copy_batch = sample_ext(400);
+        let lookup_batch0 = sample_ext(500);
+        let lookup_batch1 = sample_ext(600);
+        let lookup_additive_challenge = sample_ext(700);
+        let batch_challenges_dev =
+            alloc_and_copy(&context, &[copy_batch, lookup_batch0, lookup_batch1]);
+
+        let mut inline_builder = super::InlinePayloadBuilder::new();
+        let copy_base_inputs = inline_builder
+            .try_push_copy(&[GpuBaseFieldPolySource {
+                start: copy_input.as_ptr(),
+                next_layer_size: 2,
+                source_kind: GpuBaseFieldSourceKind::Real,
+            }])
+            .unwrap();
+        let copy_base_outputs = inline_builder
+            .try_push_copy(&[GpuBaseFieldPolySource {
+                start: copy_output.as_ptr(),
+                next_layer_size: 2,
+                source_kind: GpuBaseFieldSourceKind::Real,
+            }])
+            .unwrap();
+        let lookup_base_inputs = inline_builder
+            .try_push_copy(&[
+                GpuBaseFieldPolySource {
+                    start: lookup_b.as_ptr(),
+                    next_layer_size: 2,
+                    source_kind: GpuBaseFieldSourceKind::Real,
+                },
+                GpuBaseFieldPolySource {
+                    start: lookup_d.as_ptr(),
+                    next_layer_size: 2,
+                    source_kind: GpuBaseFieldSourceKind::Real,
+                },
+            ])
+            .unwrap();
+        let lookup_extension_outputs = inline_builder
+            .try_push_copy(&[
+                GpuExtensionFieldPolyInitialSource {
+                    start: lookup_num.as_ptr(),
+                    next_layer_size: 2,
+                },
+                GpuExtensionFieldPolyInitialSource {
+                    start: lookup_den.as_ptr(),
+                    next_layer_size: 2,
+                },
+            ])
+            .unwrap();
+
+        let mut batch_static = super::GpuGKRMainRound0BatchStatic::default();
+        batch_static.record_count = 2;
+        batch_static.challenge_offset = 1;
+        batch_static.challenge_count = 1;
+        batch_static.inline_payload = inline_builder.into_bytes();
+        batch_static.records[0] = super::GpuGKRMainRound0BatchRecord {
+            kind: GpuGKRMainLayerKernelKind::BaseCopy.as_u32(),
+            record_mode: super::GpuGKRMainLayerBatchRecordMode::InlineAll.as_u32(),
+            metadata_inline: 1,
+            _reserved: 0,
+            base_inputs: copy_base_inputs,
+            extension_inputs: super::GpuGKRMainLayerPayloadRange::default(),
+            base_outputs: copy_base_outputs,
+            extension_outputs: super::GpuGKRMainLayerPayloadRange::default(),
+            quadratic_terms: super::GpuGKRMainLayerPayloadRange::default(),
+            linear_terms: super::GpuGKRMainLayerPayloadRange::default(),
+            auxiliary_challenge: E4::ZERO,
+            constant_offset: E4::ZERO,
+        };
+        batch_static.records[1] = super::GpuGKRMainRound0BatchRecord {
+            kind: GpuGKRMainLayerKernelKind::LookupBasePair.as_u32(),
+            record_mode: super::GpuGKRMainLayerBatchRecordMode::InlineAll.as_u32(),
+            metadata_inline: 1,
+            _reserved: 0,
+            base_inputs: lookup_base_inputs,
+            extension_inputs: super::GpuGKRMainLayerPayloadRange::default(),
+            base_outputs: super::GpuGKRMainLayerPayloadRange::default(),
+            extension_outputs: lookup_extension_outputs,
+            quadratic_terms: super::GpuGKRMainLayerPayloadRange::default(),
+            linear_terms: super::GpuGKRMainLayerPayloadRange::default(),
+            auxiliary_challenge: lookup_additive_challenge,
+            constant_offset: E4::ZERO,
+        };
+        let batch_runtime = super::GpuGKRMainRound0BatchRuntime {
+            claim_point: claim_point_dev.as_ptr(),
+            batch_challenges: batch_challenges_dev.as_ptr(),
+            contributions: contributions.as_mut_ptr(),
+            spill_payload: null(),
+        };
+
+        super::launch_main_round0_batched(&batch_static, &batch_runtime, 2, &context).unwrap();
+
+        let mut host = unsafe { context.alloc_host_uninit_slice(4) };
+        memory_copy_async(&mut host, &contributions, context.get_exec_stream()).unwrap();
+        context.get_exec_stream().synchronize().unwrap();
+        let actual = unsafe { host.get_accessor().get().to_vec() };
+
+        let r = claim_point[1];
+        let mut one_minus_r = E4::ONE;
+        one_minus_r.sub_assign(&r);
+        let eq = [one_minus_r, r];
+
+        let mut expected = Vec::new();
+        for gid in 0..2 {
+            let mut copy_c0 = copy_batch;
+            copy_c0.mul_assign_by_base(&copy_output_values[gid]);
+
+            let mut lookup_c0 = lookup_batch0;
+            lookup_c0.mul_assign(&lookup_num_values[gid]);
+            let mut lookup_den_term = lookup_batch1;
+            lookup_den_term.mul_assign(&lookup_den_values[gid]);
+            lookup_c0.add_assign(&lookup_den_term);
+
+            let mut b1 = lookup_b_values[gid + 2];
+            b1.sub_assign(&lookup_b_values[gid]);
+            let mut d1 = lookup_d_values[gid + 2];
+            d1.sub_assign(&lookup_d_values[gid]);
+            let mut lookup_den = b1;
+            lookup_den.mul_assign(&d1);
+            let mut lookup_c1 = lookup_batch1;
+            lookup_c1.mul_assign_by_base(&lookup_den);
+
+            let mut total0 = copy_c0;
+            total0.add_assign(&lookup_c0);
+            total0.mul_assign(&eq[gid]);
+            let mut total1 = lookup_c1;
+            total1.mul_assign(&eq[gid]);
+            expected.push(total0);
+            expected.push(total1);
+        }
+
+        assert_eq!(actual, interleaved_pairs_to_strided(&expected));
+    }
+
+    #[test]
+    #[cfg(not(no_cuda))]
+    #[serial]
     fn main_round1_base_copy_matches_cpu() {
         let context = make_test_context(64, 8);
         let input_values = (0..8).map(|i| BF::new(10 + i)).collect::<Vec<_>>();
@@ -8189,12 +8743,15 @@ mod tests {
         let folding_challenge_dev = alloc_and_copy(&context, &[folding_challenge]);
         let batch_challenges_dev = alloc_and_copy(&context, &[batch_challenge, E4::ZERO]);
         let auxiliary_challenge_dev = alloc_and_copy(&context, &[E4::ZERO]);
+        let base_cache: DeviceAllocation<E4> = context.alloc(4, AllocationPlacement::Top).unwrap();
 
         let base_descriptors = [
             crate::prover::gkr::GpuBaseFieldPolySourceAfterOneFoldingLaunchDescriptor {
                 base_layer_half_size: 4,
                 next_layer_size: 2,
                 base_input_start: input.as_ptr(),
+                this_layer_cache_start: base_cache.as_ptr().cast_mut(),
+                first_access: true,
                 source_kind: GpuBaseFieldSourceKind::Real,
                 _marker: core::marker::PhantomData,
             },
@@ -8469,12 +9026,15 @@ mod tests {
         let folding_challenge_dev = alloc_and_copy(&context, &[folding_challenge]);
         let batch_challenges_dev = alloc_and_copy(&context, &[batch_challenge, E4::ZERO]);
         let auxiliary_challenge_dev = alloc_and_copy(&context, &[E4::ZERO]);
+        let base_cache: DeviceAllocation<E4> = context.alloc(12, AllocationPlacement::Top).unwrap();
 
         let base_descriptors = [
             crate::prover::gkr::GpuBaseFieldPolySourceAfterOneFoldingLaunchDescriptor {
                 base_layer_half_size: 4,
                 next_layer_size: 2,
                 base_input_start: input_a.as_ptr(),
+                this_layer_cache_start: base_cache.as_ptr().cast_mut(),
+                first_access: true,
                 source_kind: GpuBaseFieldSourceKind::Real,
                 _marker: core::marker::PhantomData::<E4>,
             },
@@ -8482,6 +9042,8 @@ mod tests {
                 base_layer_half_size: 4,
                 next_layer_size: 2,
                 base_input_start: input_b.as_ptr(),
+                this_layer_cache_start: unsafe { base_cache.as_ptr().cast_mut().add(4) },
+                first_access: true,
                 source_kind: GpuBaseFieldSourceKind::Real,
                 _marker: core::marker::PhantomData::<E4>,
             },
@@ -8489,6 +9051,8 @@ mod tests {
                 base_layer_half_size: 4,
                 next_layer_size: 2,
                 base_input_start: input_c.as_ptr(),
+                this_layer_cache_start: unsafe { base_cache.as_ptr().cast_mut().add(8) },
+                first_access: true,
                 source_kind: GpuBaseFieldSourceKind::Real,
                 _marker: core::marker::PhantomData::<E4>,
             },
@@ -8641,13 +9205,16 @@ mod tests {
             challenge: sample_ext(700),
         }];
         let folding_challenge_dev = alloc_and_copy(&context, &[folding_challenge]);
-        let batch_challenge_base_dev = alloc_and_copy(&context, &[batch_challenge]);
+        let batch_challenges_dev = alloc_and_copy(&context, &[batch_challenge]);
+        let base_cache: DeviceAllocation<E4> = context.alloc(12, AllocationPlacement::Top).unwrap();
 
         let base_descriptors = [
             crate::prover::gkr::GpuBaseFieldPolySourceAfterOneFoldingLaunchDescriptor {
                 base_layer_half_size: 4,
                 next_layer_size: 2,
                 base_input_start: input_a.as_ptr(),
+                this_layer_cache_start: base_cache.as_ptr().cast_mut(),
+                first_access: true,
                 source_kind: GpuBaseFieldSourceKind::Real,
                 _marker: core::marker::PhantomData::<E4>,
             },
@@ -8655,6 +9222,8 @@ mod tests {
                 base_layer_half_size: 4,
                 next_layer_size: 2,
                 base_input_start: input_b.as_ptr(),
+                this_layer_cache_start: unsafe { base_cache.as_ptr().cast_mut().add(4) },
+                first_access: true,
                 source_kind: GpuBaseFieldSourceKind::Real,
                 _marker: core::marker::PhantomData::<E4>,
             },
@@ -8662,6 +9231,8 @@ mod tests {
                 base_layer_half_size: 4,
                 next_layer_size: 2,
                 base_input_start: input_c.as_ptr(),
+                this_layer_cache_start: unsafe { base_cache.as_ptr().cast_mut().add(8) },
+                first_access: true,
                 source_kind: GpuBaseFieldSourceKind::Real,
                 _marker: core::marker::PhantomData::<E4>,
             },
@@ -8675,32 +9246,32 @@ mod tests {
         let linear_terms_range = spill_builder.push_copy(&linear_terms);
         let spill_payload_dev = alloc_and_copy(&context, spill_builder.bytes.as_slice());
 
-        let mut batch = super::GpuGKRMainRound1Batch::default();
-        batch.record_count = 1;
-        batch.challenge_offset = 2;
-        batch.challenge_count = 1;
-        batch.claim_point = claim_point_dev.as_ptr();
-        batch.batch_challenge_base = batch_challenge_base_dev.as_ptr();
-        batch.folding_challenge = folding_challenge_dev.as_ptr();
-        batch.contributions = contributions.as_mut_ptr();
-        batch.spill_payload = spill_payload_dev.as_ptr();
-        batch.explicit_form = false;
-        batch.records[0] = super::GpuGKRMainRound1BatchRecord {
+        let mut batch_static = super::GpuGKRMainRound1BatchStatic::default();
+        batch_static.record_count = 1;
+        batch_static.challenge_offset = 2;
+        batch_static.challenge_count = 1;
+        batch_static.records[0] = super::GpuGKRMainRound1BatchRecord {
             kind: GpuGKRMainLayerKernelKind::EnforceConstraintsMaxQuadratic.as_u32(),
             record_mode: super::GpuGKRMainLayerBatchRecordMode::PointerDescriptors.as_u32(),
             metadata_inline: 0,
             _reserved: 0,
             base_inputs,
             extension_inputs,
-            batch_challenge_offset: 1,
-            batch_challenge_count: 1,
             quadratic_terms: quadratic_terms_range,
             linear_terms: linear_terms_range,
             auxiliary_challenge: E4::ZERO,
             constant_offset,
         };
+        let batch_runtime = super::GpuGKRMainRound1BatchRuntime {
+            claim_point: claim_point_dev.as_ptr(),
+            batch_challenges: batch_challenges_dev.as_ptr(),
+            folding_challenge: folding_challenge_dev.as_ptr(),
+            contributions: contributions.as_mut_ptr(),
+            spill_payload: spill_payload_dev.as_ptr(),
+        };
 
-        super::launch_main_round1_batched(&batch, 2, &context).unwrap();
+        super::launch_main_round1_batched(&batch_static, &batch_runtime, 2, false, &context)
+            .unwrap();
 
         let mut host = unsafe { context.alloc_host_uninit_slice(4) };
         memory_copy_async(&mut host, &contributions, context.get_exec_stream()).unwrap();
@@ -8770,6 +9341,177 @@ mod tests {
             c1.mul_assign(&eq[gid]);
             expected.push(c0);
             expected.push(c1);
+        }
+
+        assert_eq!(actual, interleaved_pairs_to_strided(&expected));
+    }
+
+    #[test]
+    #[cfg(not(no_cuda))]
+    #[serial]
+    fn main_round1_batched_mixed_challenge_arities_match_cpu() {
+        let context = make_test_context(64, 8);
+        let copy_input_values = (0..8).map(|i| BF::new(10 + i)).collect::<Vec<_>>();
+        let lookup_b_values = (0..8).map(|i| BF::new(30 + i)).collect::<Vec<_>>();
+        let lookup_d_values = (0..8).map(|i| BF::new(50 + i)).collect::<Vec<_>>();
+        let claim_point = [sample_ext(80), sample_ext(81), sample_ext(82)];
+
+        let copy_input = alloc_and_copy(&context, &copy_input_values);
+        let lookup_b = alloc_and_copy(&context, &lookup_b_values);
+        let lookup_d = alloc_and_copy(&context, &lookup_d_values);
+        let claim_point_dev = alloc_and_copy(&context, &claim_point);
+
+        let folding_challenge = sample_ext(100);
+        let copy_batch = sample_ext(200);
+        let lookup_batch0 = sample_ext(300);
+        let lookup_batch1 = sample_ext(400);
+        let lookup_additive_challenge = sample_ext(500);
+        let folding_challenge_dev = alloc_and_copy(&context, &[folding_challenge]);
+        let batch_challenges_dev =
+            alloc_and_copy(&context, &[copy_batch, lookup_batch0, lookup_batch1]);
+        let base_cache: DeviceAllocation<E4> = context.alloc(12, AllocationPlacement::Top).unwrap();
+        let mut contributions: DeviceAllocation<E4> =
+            context.alloc(4, AllocationPlacement::Top).unwrap();
+
+        let mut inline_builder = super::InlinePayloadBuilder::new();
+        let copy_base_inputs = inline_builder
+            .try_push_copy(&[
+                crate::prover::gkr::GpuBaseFieldPolySourceAfterOneFoldingLaunchDescriptor {
+                    base_layer_half_size: 4,
+                    next_layer_size: 2,
+                    base_input_start: copy_input.as_ptr(),
+                    this_layer_cache_start: base_cache.as_ptr().cast_mut(),
+                    first_access: true,
+                    source_kind: GpuBaseFieldSourceKind::Real,
+                    _marker: core::marker::PhantomData::<E4>,
+                },
+            ])
+            .unwrap();
+        let lookup_base_inputs = inline_builder
+            .try_push_copy(&[
+                crate::prover::gkr::GpuBaseFieldPolySourceAfterOneFoldingLaunchDescriptor {
+                    base_layer_half_size: 4,
+                    next_layer_size: 2,
+                    base_input_start: lookup_b.as_ptr(),
+                    this_layer_cache_start: unsafe { base_cache.as_ptr().cast_mut().add(4) },
+                    first_access: true,
+                    source_kind: GpuBaseFieldSourceKind::Real,
+                    _marker: core::marker::PhantomData::<E4>,
+                },
+                crate::prover::gkr::GpuBaseFieldPolySourceAfterOneFoldingLaunchDescriptor {
+                    base_layer_half_size: 4,
+                    next_layer_size: 2,
+                    base_input_start: lookup_d.as_ptr(),
+                    this_layer_cache_start: unsafe { base_cache.as_ptr().cast_mut().add(8) },
+                    first_access: true,
+                    source_kind: GpuBaseFieldSourceKind::Real,
+                    _marker: core::marker::PhantomData::<E4>,
+                },
+            ])
+            .unwrap();
+
+        let mut batch_static = super::GpuGKRMainRound1BatchStatic::default();
+        batch_static.record_count = 2;
+        batch_static.challenge_offset = 2;
+        batch_static.challenge_count = 1;
+        batch_static.inline_payload = inline_builder.into_bytes();
+        batch_static.records[0] = super::GpuGKRMainRound1BatchRecord {
+            kind: GpuGKRMainLayerKernelKind::BaseCopy.as_u32(),
+            record_mode: super::GpuGKRMainLayerBatchRecordMode::InlineAll.as_u32(),
+            metadata_inline: 1,
+            _reserved: 0,
+            base_inputs: copy_base_inputs,
+            extension_inputs: super::GpuGKRMainLayerPayloadRange::default(),
+            quadratic_terms: super::GpuGKRMainLayerPayloadRange::default(),
+            linear_terms: super::GpuGKRMainLayerPayloadRange::default(),
+            auxiliary_challenge: E4::ZERO,
+            constant_offset: E4::ZERO,
+        };
+        batch_static.records[1] = super::GpuGKRMainRound1BatchRecord {
+            kind: GpuGKRMainLayerKernelKind::LookupBasePair.as_u32(),
+            record_mode: super::GpuGKRMainLayerBatchRecordMode::InlineAll.as_u32(),
+            metadata_inline: 1,
+            _reserved: 0,
+            base_inputs: lookup_base_inputs,
+            extension_inputs: super::GpuGKRMainLayerPayloadRange::default(),
+            quadratic_terms: super::GpuGKRMainLayerPayloadRange::default(),
+            linear_terms: super::GpuGKRMainLayerPayloadRange::default(),
+            auxiliary_challenge: lookup_additive_challenge,
+            constant_offset: E4::ZERO,
+        };
+        let batch_runtime = super::GpuGKRMainRound1BatchRuntime {
+            claim_point: claim_point_dev.as_ptr(),
+            batch_challenges: batch_challenges_dev.as_ptr(),
+            folding_challenge: folding_challenge_dev.as_ptr(),
+            contributions: contributions.as_mut_ptr(),
+            spill_payload: null(),
+        };
+
+        super::launch_main_round1_batched(&batch_static, &batch_runtime, 2, false, &context)
+            .unwrap();
+
+        let mut host = unsafe { context.alloc_host_uninit_slice(4) };
+        memory_copy_async(&mut host, &contributions, context.get_exec_stream()).unwrap();
+        context.get_exec_stream().synchronize().unwrap();
+        let actual = unsafe { host.get_accessor().get().to_vec() };
+
+        let fold_base = |values: &[BF], idx: usize| {
+            let mut diff = values[4 + idx];
+            diff.sub_assign(&values[idx]);
+            let mut result = folding_challenge;
+            result.mul_assign_by_base(&diff);
+            result.add_assign_base(&values[idx]);
+            result
+        };
+
+        let r = claim_point[2];
+        let mut one_minus_r = E4::ONE;
+        one_minus_r.sub_assign(&r);
+        let eq = [one_minus_r, r];
+
+        let mut expected = Vec::new();
+        for gid in 0..2 {
+            let mut copy_c0 = copy_batch;
+            copy_c0.mul_assign(&fold_base(&copy_input_values, gid));
+
+            let b0 = fold_base(&lookup_b_values, gid);
+            let b1_full = fold_base(&lookup_b_values, gid + 2);
+            let mut db = b1_full;
+            db.sub_assign(&b0);
+
+            let d0 = fold_base(&lookup_d_values, gid);
+            let d1_full = fold_base(&lookup_d_values, gid + 2);
+            let mut dd = d1_full;
+            dd.sub_assign(&d0);
+
+            let mut shifted_b0 = b0;
+            shifted_b0.add_assign(&lookup_additive_challenge);
+            let mut shifted_d0 = d0;
+            shifted_d0.add_assign(&lookup_additive_challenge);
+
+            let mut num0 = shifted_b0;
+            num0.add_assign(&shifted_d0);
+            let mut den0 = shifted_b0;
+            den0.mul_assign(&shifted_d0);
+
+            let mut lookup_c0 = lookup_batch0;
+            lookup_c0.mul_assign(&num0);
+            let mut lookup_c0_den = lookup_batch1;
+            lookup_c0_den.mul_assign(&den0);
+            lookup_c0.add_assign(&lookup_c0_den);
+
+            let mut lookup_c1 = lookup_batch1;
+            let mut den1 = db;
+            den1.mul_assign(&dd);
+            lookup_c1.mul_assign(&den1);
+
+            let mut total0 = copy_c0;
+            total0.add_assign(&lookup_c0);
+            total0.mul_assign(&eq[gid]);
+            let mut total1 = lookup_c1;
+            total1.mul_assign(&eq[gid]);
+            expected.push(total0);
+            expected.push(total1);
         }
 
         assert_eq!(actual, interleaved_pairs_to_strided(&expected));
@@ -8935,12 +9677,15 @@ mod tests {
         let auxiliary_challenge_dev = alloc_and_copy(&context, &[lookup_additive_challenge]);
         let cache_b: DeviceAllocation<E4> = context.alloc(4, AllocationPlacement::Top).unwrap();
         let cache_d: DeviceAllocation<E4> = context.alloc(4, AllocationPlacement::Top).unwrap();
+        let base_cache: DeviceAllocation<E4> = context.alloc(8, AllocationPlacement::Top).unwrap();
 
         let base_descriptors = [
             crate::prover::gkr::GpuBaseFieldPolySourceAfterOneFoldingLaunchDescriptor {
                 base_layer_half_size: 4,
                 next_layer_size: 2,
                 base_input_start: input_a.as_ptr(),
+                this_layer_cache_start: base_cache.as_ptr().cast_mut(),
+                first_access: true,
                 source_kind: GpuBaseFieldSourceKind::Real,
                 _marker: core::marker::PhantomData,
             },
@@ -8948,6 +9693,8 @@ mod tests {
                 base_layer_half_size: 4,
                 next_layer_size: 2,
                 base_input_start: input_c.as_ptr(),
+                this_layer_cache_start: unsafe { base_cache.as_ptr().cast_mut().add(4) },
+                first_access: true,
                 source_kind: GpuBaseFieldSourceKind::Real,
                 _marker: core::marker::PhantomData,
             },
@@ -9095,12 +9842,15 @@ mod tests {
         let folding_challenge_dev = alloc_and_copy(&context, &[folding_challenge]);
         let batch_challenges_dev = alloc_and_copy(&context, &[batch0, batch1]);
         let auxiliary_challenge_dev = alloc_and_copy(&context, &[lookup_additive_challenge]);
+        let base_cache: DeviceAllocation<E4> = context.alloc(8, AllocationPlacement::Top).unwrap();
 
         let base_descriptors = [
             crate::prover::gkr::GpuBaseFieldPolySourceAfterOneFoldingLaunchDescriptor {
                 base_layer_half_size: 4,
                 next_layer_size: 2,
                 base_input_start: input_b.as_ptr(),
+                this_layer_cache_start: base_cache.as_ptr().cast_mut(),
+                first_access: true,
                 source_kind: GpuBaseFieldSourceKind::Real,
                 _marker: core::marker::PhantomData,
             },
@@ -9108,6 +9858,8 @@ mod tests {
                 base_layer_half_size: 4,
                 next_layer_size: 2,
                 base_input_start: input_d.as_ptr(),
+                this_layer_cache_start: unsafe { base_cache.as_ptr().cast_mut().add(4) },
+                first_access: true,
                 source_kind: GpuBaseFieldSourceKind::Real,
                 _marker: core::marker::PhantomData,
             },
@@ -9222,12 +9974,15 @@ mod tests {
         let folding_challenge_dev = alloc_and_copy(&context, &[folding_challenge]);
         let batch_challenges_dev = alloc_and_copy(&context, &[batch0, batch1]);
         let auxiliary_challenge_dev = alloc_and_copy(&context, &[lookup_additive_challenge]);
+        let base_cache: DeviceAllocation<E4> = context.alloc(12, AllocationPlacement::Top).unwrap();
 
         let base_descriptors = [
             crate::prover::gkr::GpuBaseFieldPolySourceAfterOneFoldingLaunchDescriptor {
                 base_layer_half_size: 4,
                 next_layer_size: 2,
                 base_input_start: input_b.as_ptr(),
+                this_layer_cache_start: base_cache.as_ptr().cast_mut(),
+                first_access: true,
                 source_kind: GpuBaseFieldSourceKind::Real,
                 _marker: core::marker::PhantomData,
             },
@@ -9235,6 +9990,8 @@ mod tests {
                 base_layer_half_size: 4,
                 next_layer_size: 2,
                 base_input_start: input_c.as_ptr(),
+                this_layer_cache_start: unsafe { base_cache.as_ptr().cast_mut().add(4) },
+                first_access: true,
                 source_kind: GpuBaseFieldSourceKind::Real,
                 _marker: core::marker::PhantomData,
             },
@@ -9242,6 +9999,8 @@ mod tests {
                 base_layer_half_size: 4,
                 next_layer_size: 2,
                 base_input_start: input_d.as_ptr(),
+                this_layer_cache_start: unsafe { base_cache.as_ptr().cast_mut().add(8) },
+                first_access: true,
                 source_kind: GpuBaseFieldSourceKind::Real,
                 _marker: core::marker::PhantomData,
             },
