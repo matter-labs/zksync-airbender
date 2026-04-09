@@ -3,10 +3,10 @@
 #include "field.cuh"
 #include "memory.cuh"
 
-using namespace ::airbender::field;
-using namespace ::airbender::memory;
+using namespace ::airbender::primitives::field;
+using namespace ::airbender::primitives::memory;
 
-namespace airbender::vectorized {
+namespace airbender::primitives::vectorized {
 
 // I'm basically imitating the wrapping_matrix pattern.
 // vectorized_e4_matrix_setter and getter both use "internal" and the add_row and add_col methods,

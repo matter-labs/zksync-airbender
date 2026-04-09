@@ -5,12 +5,16 @@ use era_cudart::paste::paste;
 use era_cudart::result::CudaResult;
 use era_cudart::slice::{DeviceSlice, DeviceVariable};
 use era_cudart::stream::CudaStream;
-use era_cudart::{cuda_kernel_declaration, cuda_kernel_signature_arguments_and_function};
+use era_cudart::{
+    cuda_kernel, cuda_kernel_declaration, cuda_kernel_signature_arguments_and_function,
+};
 
 // use crate::primitives::device_context::CIRCLE_GROUP_LOG_ORDER;
 use crate::ops::blake2s::DG;
+use crate::ops::simple::pow;
 use crate::primitives::device_structures::{
-    DeviceMatrixChunkImpl, DeviceMatrixChunkMutImpl, MutPtrAndStride, PtrAndStride,
+    DeviceMatrix, DeviceMatrixChunkImpl, DeviceMatrixChunkMutImpl, DeviceMatrixMut,
+    MutPtrAndStride, PtrAndStride,
 };
 use crate::primitives::field::*;
 use crate::primitives::utils::{
@@ -310,10 +314,10 @@ cuda_kernel!(
   dst: *mut E4,
   z: *const E4,
   count: i32,
-};
+);
 
-partially_evaluate_bitrev_monomial_form_by_ref_small!(
-    ab_partially_evaluate_bitrev_monomial_form_by_ref_small_kernel
+partially_evaluate_monomial_form_by_ref_small!(
+    ab_partially_evaluate_monomial_form_by_ref_small_kernel
 );
 
 cuda_kernel!(
@@ -324,10 +328,11 @@ cuda_kernel!(
   z: *const E4,
   z_adjustment_ptr: *const E4,
   count: i32,
-};
+);
 
-partially_evaluate_monomial_form_by_ref!(ab_partially_evaluate_bitrev_monomial_form_by_ref_kernel);
+partially_evaluate_monomial_form_by_ref!(ab_partially_evaluate_monomial_form_by_ref_kernel);
 
+#[allow(non_snake_case)]
 pub fn partially_evaluate_monomials_by_ref(
     monomials: DeviceMatrix<BF>,
     scratch0: &mut DeviceSlice<E4>,
@@ -337,41 +342,41 @@ pub fn partially_evaluate_monomials_by_ref(
     stream: &CudaStream,
 ) -> CudaResult<usize>{
     assert!(count.is_power_of_two());
+    let log_count = count.trailing_zeros() as i32;
     let monomials = monomials.as_ptr_and_stride();
-    let partial_evals = scratch0.as_ptr();
-    let z_ptr = point.get_ptr();
+    let partial_evals = scratch0.as_mut_ptr();
+    let z_ptr = point.as_ptr();
     let BLOCK_DIM = WARP_SIZE * 4;
     let VALS_PER_THREAD = 32;
-    if count < BLOCK_DIM * VALS_PER_THREAD {
-        assert!(scratch0.len >= count);
-        let (grid_dim, block_dim) = get_grid_block_dims_for_threads_count(BLOCK_DIM, count as u32)
+    if count < (BLOCK_DIM * VALS_PER_THREAD) as usize {
+        assert!(scratch0.len() >= count);
+        let (grid_dim, block_dim) = get_grid_block_dims_for_threads_count(BLOCK_DIM, count as u32);
         let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
         let args = PartiallyEvaluateMonomialFormByRefSmallArguments::new(
             monomials,
             partial_evals,
             z_ptr,
-            count,
+            log_count as i32,
         );
-        PartiallyEvaluateMonomialFormByRefSmallFunction(i
-            ab_partially_evaluate_bitrev_monomial_form_by_ref_small_kernel
+        PartiallyEvaluateMonomialFormByRefSmallFunction(
+            ab_partially_evaluate_monomial_form_by_ref_small_kernel
         ).launch(&config, &args)?;
         return Ok(count);
     }
     let z_chunk_adjustment = &mut scratch1[..1];
-    pow(&point[..1], VALS_PER_THREAD, z_chunk_adjustment, stream);
-    let log_count = count.trailing_zeros() as i32;
+    pow(&point[..1], VALS_PER_THREAD, z_chunk_adjustment, stream)?;
     let z_adjustment_ptr = z_chunk_adjustment.as_ptr();
-    let (grid_dim, block_dim) = get_grid_block_dims_for_threads_count(BLOCK_DIM, (count / VALS_PER_THREAD) as u32);
+    let (grid_dim, block_dim) = get_grid_block_dims_for_threads_count(BLOCK_DIM, count as u32 / VALS_PER_THREAD);
     let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
-    let args = PartiallyEvaluateMonomialFormByRefArguments(
+    let args = PartiallyEvaluateMonomialFormByRefArguments::new(
         monomials,
         partial_evals,
         z_ptr,
         z_adjustment_ptr,
-        log_count,
+        log_count as i32,
     );
     PartiallyEvaluateMonomialFormByRefFunction(
-        ab_partially_evaluate_bitrev_monomial_form_by_ref_kernel
+        ab_partially_evaluate_monomial_form_by_ref_kernel
     ).launch(&config, &args)?;
     Ok(count / 32)
 }
@@ -489,14 +494,16 @@ pub fn accumulate_whir_base_columns(
 
 cuda_kernel_signature_arguments_and_function!(
     WhirFoldSplitHalfVectorized,
-    values: MutPtrAndStride,
+    src: PtrAndStride<BF>,
+    dst: MutPtrAndStride<BF>,
     challenge: *const E4,
     half_len: i32,
 );
 
 cuda_kernel_declaration!(
     ab_whir_fold_split_half_vectorized_e4_kernel(
-        values: MutPtrAndStride,
+        src: PtrAndStride<BF>,
+        dst: MutPtrAndStride<BF>,
         challenge: *const E4,
         half_len: i32,
     )
@@ -510,17 +517,15 @@ pub fn whir_fold_split_half_in_place_vectorized(
 ) -> CudaResult<()> {
     assert!(values.rows().is_power_of_two());
     assert_eq!(values.cols(), 4);
-    assert!(values.len() <= i32::MAX as usize);
-    assert!(values.len() <= half_len);
-    let (grid_dim, block_dim) = get_launch_dims(half_len);
+    let (grid_dim, block_dim) = get_launch_dims(half_len as u32);
     let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
-    let args = WhirFoldMonomialArguments::new(
+    let args = WhirFoldSplitHalfVectorizedArguments::new(
         values.as_ptr_and_stride(),
         values.as_mut_ptr_and_stride(),
         challenge.as_ptr(),
-        half_len,
+        half_len as i32,
     );
-    WhirFoldSplitHalfVectorizedFunction(ab_whir_fold_monomial_e4_kernel).launch(&config, &args)
+    WhirFoldSplitHalfVectorizedFunction(ab_whir_fold_split_half_vectorized_e4_kernel).launch(&config, &args)
 }
 
 cuda_kernel_signature_arguments_and_function!(
@@ -1077,14 +1082,14 @@ mod tests {
         let mut h_monomials = (0..count).map(|i| {
             let coeffs = std::array::from_fn(|j| vectorized_src[i + stride * j]);
             E4::from_array_of_base(coeffs)
-        }
+        })
         .collect_vec();
         bitreverse_enumeration_inplace(&mut h_monomials);
         let z = E4::random_element(&mut rng());
         let mut cpu_result = h_monomials[count - 1];
         for i in 2..=count {
             cpu_result.mul_assign(&z);
-            cpu_result.add_assign(h_monomials[count - i];
+            cpu_result.add_assign(&h_monomials[count - i]);
         }
 
         let stream = CudaStream::default();
@@ -1116,21 +1121,21 @@ mod tests {
             &scratch0[..partials_count],
             &mut reduce_result[0],
             &stream
-        )
+        ).unwrap();
 
         let gpu_result = vec![E4::ZERO; 1];
         memory_copy_async(&mut gpu_result[..], &mut reduce_result[..], &stream).unwrap();
-        assert_eq!(h_
+        assert_eq!(cpu_result, gpu_result[0]);
     }
 
     #[test]
-    test_partially_evaluate_monomials_by_ref_small() {
-
+    fn test_partially_evaluate_monomials_by_ref_small() {
+        run_partially_evaluate_monomials_by_ref(6);
     }
 
     #[test]
-    test_partially_evaluate_monomials_by_ref() {
-
+    fn test_partially_evaluate_monomials_by_ref() {
+        run_partially_evaluate_monomials_by_ref(20);
     }
 
 

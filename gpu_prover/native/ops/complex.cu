@@ -1,9 +1,10 @@
 #include "complex.cuh"
+#include "../primitives/vectorized.cuh"
 // #include "context.cuh"
 
 using namespace ::airbender::primitives::field;
 using namespace ::airbender::primitives::memory;
-using name
+using namespace ::airbender::primitives::vectorized;
 
 namespace airbender::ops::complex {
 
@@ -156,7 +157,7 @@ DEVICE_FORCEINLINE void partially_evaluate_bitrev_monomial_form_small_impl(vecto
 
   e4 result{src.get_at_row(gid)};
   const unsigned power = bitreverse_low_bits(gid, log_count);
-  const e4 adjustment = e4::pow(z_chunk_adjustment, power);
+  const e4 adjustment = e4::pow(z, power);
   dst[gid] = e4::mul(result, adjustment);
 }
 
@@ -195,8 +196,8 @@ DEVICE_FORCEINLINE void partially_evaluate_bitrev_monomial_form_impl(vectorized_
   e4 result{src.get_at_row(count - gmem_stride + gid)};
 #pragma unroll
   for (int i{1}; i < VALS_PER_THREAD; i++) {
-    result = e4::mul(z, result);
-    result = e4::add(src.get_at_row(stride * BITREV_ORDER[VALS_PER_THREAD - 1 - i]);
+    result = e4::mul(result, z);
+    result = e4::add(result, src.get_at_row(gmem_stride * BITREV_ORDER[VALS_PER_THREAD - 1 - i]));
   }
 
   const unsigned power = bitreverse_low_bits(gid, log_count - 5);
@@ -205,7 +206,7 @@ DEVICE_FORCEINLINE void partially_evaluate_bitrev_monomial_form_impl(vectorized_
 }
 
 EXTERN __global__ void ab_partially_evaluate_bitrev_monomial_form_by_val_kernel(vectorized_e4_matrix_getter<ld_modifier::cg> src,
-                                                                                vectorized_e4_matrix_setter<ld_modifier::cg> dst,
+                                                                                e4 *dst,
                                                                                 const e4 z,
                                                                                 const e4 z_chunk_adjustment,
                                                                                 const unsigned log_count) {
@@ -213,7 +214,7 @@ EXTERN __global__ void ab_partially_evaluate_bitrev_monomial_form_by_val_kernel(
 }
 
 EXTERN __global__ void ab_partially_evaluate_bitrev_monomial_form_by_ref_kernel(vectorized_e4_matrix_getter<ld_modifier::cg> src,
-                                                                                vectorized_e4_matrix_setter<ld_modifier::cg> dst,
+                                                                                e4 *dst,
                                                                                 const e4 *z_ref,
                                                                                 const e4 *z_chunk_adjustment_ref,
                                                                                 const unsigned log_count) {
