@@ -2,6 +2,7 @@
 set -euo pipefail
 
 ALL_CIRCUITS=($(ls tools/gkr_verifier/src/bin/*.rs | sed 's|.*/||;s|\.rs||'))
+ALL_STEPS=(circuits prover generator native corruption binaries transpiler)
 
 usage() {
   echo "Usage: $0 [options] [steps...]"
@@ -11,7 +12,6 @@ usage() {
   echo "  --variant VAR      no_caches (default) or caches"
   echo "  --from STEP        run this step and everything after it"
   echo "  --circuits A,B,..  select circuit(s) (comma-separated, default: all)"
-  echo "  --verbose          show full test output (default: summary only)"
   echo "  --cycles           show before/after cycle count comparison"
   echo "  --warnings         show compiler warnings (suppressed by default)"
   echo "  --dry-run          print what would run without executing"
@@ -21,9 +21,9 @@ usage() {
   echo "  circuits      Compile GKR circuits"
   echo "  prover        Generate proof"
   echo "  generator     Regenerate inlined verifier"
-  echo "  binaries      Build RISC-V binaries"
   echo "  native        Run native tests"
   echo "  corruption    Run corruption tests"
+  echo "  binaries      Build RISC-V binaries"
   echo "  transpiler    Run transpiler tests"
   echo ""
   echo "  Shorthands:"
@@ -45,7 +45,6 @@ BLAKE="blake2_with_compression"
 VARIANT="no_caches"
 FROM=""
 SELECTED_CIRCUITS=()
-VERBOSE=false
 DRY_RUN=false
 SHOW_CYCLES=false
 SHOW_WARNINGS=false
@@ -57,7 +56,6 @@ while [[ $# -gt 0 ]]; do
     --variant) VARIANT="$2"; shift 2 ;;
     --from) FROM="$2"; shift 2 ;;
     --circuits) IFS=',' read -ra SELECTED_CIRCUITS <<< "$2"; shift 2 ;;
-    --verbose) VERBOSE=true; shift ;;
     --dry-run) DRY_RUN=true; shift ;;
     --cycles) SHOW_CYCLES=true; shift ;;
     --warnings) SHOW_WARNINGS=true; shift ;;
@@ -71,7 +69,7 @@ else
   CIRCUITS=("${SELECTED_CIRCUITS[@]}")
 fi
 
-ALL_STEPS=(circuits prover generator binaries native corruption transpiler)
+# --- Resolve steps ---
 
 expand_steps() {
   for s in "$@"; do
@@ -83,32 +81,39 @@ expand_steps() {
   done
 }
 
+VALID=" ${ALL_STEPS[*]} "
+
 if [[ $# -gt 0 ]]; then
-  STEPS=($(expand_steps "$@"))
+  RAW_STEPS=($(expand_steps "$@"))
+  for step in "${RAW_STEPS[@]}"; do
+    if [[ ! "$VALID" =~ " $step " ]]; then
+      echo "Unknown step: $step"
+      usage
+    fi
+  done
+  # Reorder to match pipeline order
+  STEPS=()
+  for s in "${ALL_STEPS[@]}"; do
+    if [[ " ${RAW_STEPS[*]} " =~ " $s " ]]; then
+      STEPS+=("$s")
+    fi
+  done
 elif [[ -n "$FROM" ]]; then
+  if [[ ! "$VALID" =~ " $FROM " ]]; then
+    echo "Unknown step for --from: $FROM"
+    usage
+  fi
   found=false
   STEPS=()
   for s in "${ALL_STEPS[@]}"; do
     if [[ "$s" = "$FROM" ]]; then found=true; fi
     if $found; then STEPS+=("$s"); fi
   done
-  if ! $found; then
-    echo "Unknown step for --from: $FROM"
-    usage
-  fi
 else
   STEPS=("${ALL_STEPS[@]}")
 fi
 
-VALID=" ${ALL_STEPS[*]} "
-for step in "${STEPS[@]}"; do
-  if [[ ! "$VALID" =~ " $step " ]]; then
-    echo "Unknown step: $step"
-    usage
-  fi
-done
-
-has_step() { [[ " ${STEPS[*]} " =~ " $1 " ]]; }
+# --- Build flags ---
 
 FEATURES="gkr_verify,${BLAKE}"
 VARIANT_FEATURES=""
@@ -136,11 +141,7 @@ run_step() {
     echo "    $*"
     return 0
   fi
-  if $VERBOSE; then
-    "$@"
-  else
-    "$@" 2>&1 | grep -Ev "^warning|^\s*-->|^\s*\||^\s*=|generated .* warning"
-  fi
+  "$@"
 }
 
 read_cycles() {
@@ -164,40 +165,31 @@ fi
 
 # --- Run pipeline ---
 
-if has_step circuits; then
-  run_step "Compile GKR circuits" \
-    bash -c "cd cs && RUSTFLAGS=\"$WARN_FLAGS\" cargo test -p cs -- gkr"
-fi
-
-if has_step prover; then
-  run_step "Generate proof" \
-    bash -c "cd prover && RUST_MIN_STACK=100000000 RUSTFLAGS=\"$WARN_FLAGS\" cargo test -p prover --release --features gkr_self_checks -- --nocapture gkr_run_basic_unrolled_test"
-fi
-
-if has_step generator; then
-  run_step "Regenerate verifier (variant=${VARIANT})" \
-    bash -c "RUSTFLAGS=\"$WARN_FLAGS\" cargo test -p verifier_generator $VARIANT_FEATURES --test generate_verifiers -- ${CIRCUIT_FILTER}"
-fi
-
-if has_step binaries; then
-  run_step "Build RISC-V binaries (blake=${BLAKE}, variant=${VARIANT})" \
-    bash -c "cd tools/gkr_verifier && ./dump_bin.sh --blake $BLAKE --variant $VARIANT $($SHOW_WARNINGS && echo --warnings) ${CIRCUITS[*]}"
-fi
-
-if has_step native; then
-  run_step "Native tests" \
-    env RUSTFLAGS="$WARN_FLAGS" cargo test -p verifier --features "$FEATURES" --test native -- ${CIRCUIT_FILTER:+"$CIRCUIT_FILTER"} --nocapture
-fi
-
-if has_step corruption; then
-  run_step "Corruption tests" \
-    env RUSTFLAGS="$WARN_FLAGS" cargo test -p verifier --features "$FEATURES" --test corruption -- ${CIRCUIT_FILTER:+"$CIRCUIT_FILTER"} --include-ignored --nocapture
-fi
-
-if has_step transpiler; then
-  run_step "Transpiler tests" \
-    env RUSTFLAGS="$WARN_FLAGS" cargo test -p verifier --features "$FEATURES" --test transpiler -- ${CIRCUIT_FILTER:+"$CIRCUIT_FILTER"} --include-ignored --nocapture
-fi
+for step in "${STEPS[@]}"; do
+  case "$step" in
+    circuits)
+      run_step "Compile GKR circuits" \
+        bash -c "cd cs && RUSTFLAGS=\"$WARN_FLAGS\" cargo test -p cs -- gkr" ;;
+    prover)
+      run_step "Generate proof" \
+        bash -c "cd prover && RUST_MIN_STACK=100000000 RUSTFLAGS=\"$WARN_FLAGS\" cargo test -p prover --release --features gkr_self_checks -- --nocapture gkr_run_basic_unrolled_test" ;;
+    generator)
+      run_step "Regenerate verifier (variant=${VARIANT})" \
+        bash -c "RUSTFLAGS=\"$WARN_FLAGS\" cargo test -p verifier_generator $VARIANT_FEATURES --test generate_verifiers -- ${CIRCUIT_FILTER}" ;;
+    native)
+      run_step "Native tests" \
+        env RUSTFLAGS="$WARN_FLAGS" cargo test -p verifier --features "$FEATURES" --test native -- ${CIRCUIT_FILTER:+"$CIRCUIT_FILTER"} --nocapture ;;
+    corruption)
+      run_step "Corruption tests" \
+        env RUSTFLAGS="$WARN_FLAGS" cargo test -p verifier --features "$FEATURES" --test corruption -- ${CIRCUIT_FILTER:+"$CIRCUIT_FILTER"} --include-ignored --nocapture ;;
+    binaries)
+      run_step "Build RISC-V binaries (blake=${BLAKE}, variant=${VARIANT})" \
+        bash -c "cd tools/gkr_verifier && ./dump_bin.sh --blake $BLAKE --variant $VARIANT $($SHOW_WARNINGS && echo --warnings) ${CIRCUITS[*]}" ;;
+    transpiler)
+      run_step "Transpiler tests" \
+        env RUSTFLAGS="$WARN_FLAGS" cargo test -p verifier --features "$FEATURES" --test transpiler -- ${CIRCUIT_FILTER:+"$CIRCUIT_FILTER"} --include-ignored --nocapture ;;
+  esac
+done
 
 # --- Cycle count comparison ---
 if $SHOW_CYCLES && ! $DRY_RUN; then
