@@ -340,7 +340,7 @@ pub fn partially_evaluate_monomials_by_ref(
     point: &DeviceSlice<E4>,
     count: usize,
     stream: &CudaStream,
-) -> CudaResult<usize>{
+) -> CudaResult<usize> {
     assert!(count.is_power_of_two());
     let log_count = count.trailing_zeros() as i32;
     let monomials = monomials.as_ptr_and_stride();
@@ -359,14 +359,16 @@ pub fn partially_evaluate_monomials_by_ref(
             log_count as i32,
         );
         PartiallyEvaluateMonomialFormByRefSmallFunction(
-            ab_partially_evaluate_monomial_form_by_ref_small_kernel
-        ).launch(&config, &args)?;
+            ab_partially_evaluate_monomial_form_by_ref_small_kernel,
+        )
+        .launch(&config, &args)?;
         return Ok(count);
     }
     let z_chunk_adjustment = &mut scratch1[..1];
     pow(&point[..1], VALS_PER_THREAD, z_chunk_adjustment, stream)?;
     let z_adjustment_ptr = z_chunk_adjustment.as_ptr();
-    let (grid_dim, block_dim) = get_grid_block_dims_for_threads_count(BLOCK_DIM, count as u32 / VALS_PER_THREAD);
+    let (grid_dim, block_dim) =
+        get_grid_block_dims_for_threads_count(BLOCK_DIM, count as u32 / VALS_PER_THREAD);
     let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
     let args = PartiallyEvaluateMonomialFormByRefArguments::new(
         monomials,
@@ -375,9 +377,8 @@ pub fn partially_evaluate_monomials_by_ref(
         z_adjustment_ptr,
         log_count as i32,
     );
-    PartiallyEvaluateMonomialFormByRefFunction(
-        ab_partially_evaluate_monomial_form_by_ref_kernel
-    ).launch(&config, &args)?;
+    PartiallyEvaluateMonomialFormByRefFunction(ab_partially_evaluate_monomial_form_by_ref_kernel)
+        .launch(&config, &args)?;
     Ok(count / 32)
 }
 
@@ -525,7 +526,8 @@ pub fn whir_fold_split_half_in_place_vectorized(
         challenge.as_ptr(),
         half_len as i32,
     );
-    WhirFoldSplitHalfVectorizedFunction(ab_whir_fold_split_half_vectorized_e4_kernel).launch(&config, &args)
+    WhirFoldSplitHalfVectorizedFunction(ab_whir_fold_split_half_vectorized_e4_kernel)
+        .launch(&config, &args)
 }
 
 cuda_kernel_signature_arguments_and_function!(
@@ -1067,22 +1069,24 @@ mod tests {
     }
 
     fn run_partially_evaluate_monomials_by_ref(log_count: usize) {
-        use fft::utils::bitreverse_enumeration_inplace;
         use crate::ops::cub::device_reduce::{
             get_reduce_temp_storage_bytes, reduce, ReduceOperation,
         };
+        use fft::utils::bitreverse_enumeration_inplace;
 
         let count = 1 << log_count;
         let stride = 2 * count;
         let bf_elems = 4 * stride;
-        let bitreversed_vectorized_src =
-            (0..bf_elems).map(|_| BF::random_element(&mut rng())).collect_vec();
+        let bitreversed_vectorized_src = (0..bf_elems)
+            .map(|_| BF::random_element(&mut rng()))
+            .collect_vec();
 
-        let mut h_monomials = (0..count).map(|i| {
-            let coeffs = std::array::from_fn(|j| bitreversed_vectorized_src[i + stride * j]);
-            E4::from_array_of_base(coeffs)
-        })
-        .collect_vec();
+        let mut h_monomials = (0..count)
+            .map(|i| {
+                let coeffs = std::array::from_fn(|j| bitreversed_vectorized_src[i + stride * j]);
+                E4::from_array_of_base(coeffs)
+            })
+            .collect_vec();
         bitreverse_enumeration_inplace(&mut h_monomials);
         let z = E4::random_element(&mut rng());
         let mut cpu_result = h_monomials[count - 1];
@@ -1106,12 +1110,12 @@ mod tests {
             &d_z[..],
             count,
             &stream,
-        ).unwrap();
+        )
+        .unwrap();
 
-        let reduce_temp_bytes = get_reduce_temp_storage_bytes::<E4>(
-            ReduceOperation::Sum,
-            partials_count as i32,
-        ).unwrap();
+        let reduce_temp_bytes =
+            get_reduce_temp_storage_bytes::<E4>(ReduceOperation::Sum, partials_count as i32)
+                .unwrap();
         let mut reduce_temp = DeviceAllocation::alloc(reduce_temp_bytes).unwrap();
         let mut reduce_result = DeviceAllocation::alloc(1).unwrap();
 
@@ -1121,7 +1125,8 @@ mod tests {
             &scratch0[..partials_count],
             &mut reduce_result[0],
             &stream,
-        ).unwrap();
+        )
+        .unwrap();
 
         let mut gpu_result = vec![E4::ZERO; 1];
         memory_copy_async(&mut gpu_result[..], &mut reduce_result[..], &stream).unwrap();
@@ -1142,7 +1147,6 @@ mod tests {
     fn test_partially_evaluate_monomials_by_ref() {
         run_partially_evaluate_monomials_by_ref(23);
     }
-
 
     // #[test]
     // #[serial]

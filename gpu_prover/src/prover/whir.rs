@@ -13,7 +13,7 @@ use crate::ops::complex::{
 use crate::primitives::callbacks::Callbacks;
 use crate::primitives::context::{HostAllocation, ProverContext, UnsafeAccessor};
 use crate::primitives::device_structures::{
-    DeviceMatrix, DeviceMatrixChunkMut, DeviceMatrixMut, DeviceMatrixImpl, DeviceMatrixMutImpl,
+    DeviceMatrix, DeviceMatrixChunkMut, DeviceMatrixImpl, DeviceMatrixMut, DeviceMatrixMutImpl,
 };
 use crate::primitives::field::{BF, E4};
 use crate::primitives::static_host::alloc_static_pinned_box_from_slice;
@@ -234,10 +234,10 @@ impl GpuWhirExtensionOracle {
             let packed_trace = trace_holder.get_uninit_coset_evaluations_mut(0);
             let stage1_coset_index = bitreverse_index(coset_index, log_lde_factor);
             let mut packed_matrix = DeviceMatrixChunkMut::new(
-                packed_trace, // slice
-                packed_leaf_count << log_lde_factor, // stride
+                packed_trace,                           // slice
+                packed_leaf_count << log_lde_factor,    // stride
                 stage1_coset_index * packed_leaf_count, // offset
-                packed_leaf_count, // rows
+                packed_leaf_count,                      // rows
             );
             pack_rows_for_whir_leaves(
                 &natural_matrix,
