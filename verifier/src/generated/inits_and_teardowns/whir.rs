@@ -1,13 +1,14 @@
 use super::common::{
     compute_tree_index, draw_single_field_el, fold_coset, materialize_gamma_powers,
     process_oracle_query, read_and_batch_leaf, read_field_el, read_field_els,
-    read_reduced_field_el, verify_whir_sumcheck_step, WhirVerificationError,
+    read_reduced_field_el, verify_whir_sumcheck_step,
 };
 use super::constants::*;
 use core::mem::MaybeUninit;
 use verifier_common::blake2s_u32::{
     AlignedArray64, DelegatedBlake2sState, BLAKE2S_BLOCK_SIZE_U32_WORDS,
 };
+use verifier_common::errors::ErrorCreator;
 use verifier_common::field::baby_bear::base::BabyBearField;
 use verifier_common::field::baby_bear::ext4::BabyBearExt4;
 use verifier_common::field::{Field, PrimeField};
@@ -38,12 +39,12 @@ const COSET_TREE_SIZE: usize = 8388608usize;
     unused_unsafe,
     clippy::needless_borrow
 )]
-pub fn verify_initial_whir_round<I: NonDeterminismSource>(
+pub fn verify_initial_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
     ts: &mut TranscriptState,
     hash_buf: &mut AlignedArray64<MaybeUninit<u32>, WHIR_HASH_BUF_SIZE>,
     batching_challenge: BabyBearExt4,
     oracle_caps: &[u32; TOTAL_CAP_WORDS],
-) -> Result<(BabyBearExt4, [u32; WHIR_CAP_WORDS]), WhirVerificationError> {
+) -> Result<(BabyBearExt4, [u32; WHIR_CAP_WORDS]), E::Error> {
     unsafe {
         let gamma_powers: [BabyBearExt4; TOTAL_ORACLE_COLS] =
             materialize_gamma_powers(batching_challenge);
@@ -68,7 +69,7 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource>(
         let mut folding_challenges: LazyVec<BabyBearExt4, { WHIR_FOLD_STEPS[0] }> = LazyVec::new();
         let mut round_idx = 0;
         while round_idx < WHIR_FOLD_STEPS[0] {
-            let (new_claim, alpha) = verify_whir_sumcheck_step::<I>(ts, claim, round_idx)?;
+            let (new_claim, alpha) = verify_whir_sumcheck_step::<I, E>(ts, claim, round_idx)?;
             claim = new_claim;
             folding_challenges.push(alpha);
             round_idx += 1;
@@ -132,7 +133,7 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource>(
                 let cap_words = ORACLE_CAP_WORDS[oracle_idx];
                 let depth = ORACLE_DEPTHS[oracle_idx];
                 if num_cols > 0 {
-                    process_oracle_query::<I, WHIR_HASH_BUF_SIZE>(
+                    process_oracle_query::<I, E, WHIR_HASH_BUF_SIZE>(
                         &mut ts.hasher,
                         hash_buf,
                         num_cols,
@@ -196,13 +197,13 @@ const INTERNAL_DRAW_WORDS: [usize; NUM_INTERNAL_ROUNDS] = [24usize, 16usize, 8us
     unused_unsafe,
     clippy::needless_borrow
 )]
-pub fn verify_internal_whir_round<I: NonDeterminismSource>(
+pub fn verify_internal_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
     ts: &mut TranscriptState,
     hash_buf: &mut AlignedArray64<MaybeUninit<u32>, WHIR_HASH_BUF_SIZE>,
     claim: BabyBearExt4,
     prev_oracle_cap: &[u32; WHIR_CAP_WORDS],
     round_idx: usize,
-) -> Result<(BabyBearExt4, [u32; WHIR_CAP_WORDS]), WhirVerificationError> {
+) -> Result<(BabyBearExt4, [u32; WHIR_CAP_WORDS]), E::Error> {
     unsafe {
         let fold_steps = WHIR_FOLD_STEPS[round_idx];
         let num_queries = WHIR_QUERIES[round_idx];
@@ -213,7 +214,7 @@ pub fn verify_internal_whir_round<I: NonDeterminismSource>(
         let mut folding_challenges: LazyVec<BabyBearExt4, MAX_INTERNAL_FOLD_STEPS> = LazyVec::new();
         let mut round = 0;
         while round < fold_steps {
-            let (new_claim, alpha) = verify_whir_sumcheck_step::<I>(ts, claim, round)?;
+            let (new_claim, alpha) = verify_whir_sumcheck_step::<I, E>(ts, claim, round)?;
             claim = new_claim;
             folding_challenges.push(alpha);
             round += 1;
@@ -267,7 +268,7 @@ pub fn verify_internal_whir_round<I: NonDeterminismSource>(
             let init_buf = hash_buf.assume_init_subarray::<INTERNAL_HASH_BUF_SIZE>();
             hash_leaf_data_into_state(&mut ts.hasher, init_buf, leaf_ext_words);
             if !verify_merkle_path::<I>(&mut ts.hasher, tree_index, oracle_depth, prev_oracle_cap) {
-                return Err(WhirVerificationError::MerklePathFailed { query: q });
+                return Err(E::whir_merkle_path_failed(q));
             }
             let mut evals: LazyVec<BabyBearExt4, MAX_INTERNAL_VALUES_PER_LEAF> = LazyVec::new();
             let mut j = 0;
@@ -316,18 +317,18 @@ const FINAL_ORACLE_DEPTH_IDX: usize = 4usize;
     unused_unsafe,
     clippy::needless_borrow
 )]
-pub fn verify_final_whir_round<I: NonDeterminismSource>(
+pub fn verify_final_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
     ts: &mut TranscriptState,
     hash_buf: &mut AlignedArray64<MaybeUninit<u32>, WHIR_HASH_BUF_SIZE>,
     claim: BabyBearExt4,
     prev_oracle_cap: &[u32; WHIR_CAP_WORDS],
-) -> Result<(), WhirVerificationError> {
+) -> Result<(), E::Error> {
     unsafe {
         let mut claim = claim;
         let mut folding_challenges: LazyVec<BabyBearExt4, FINAL_FOLD_STEPS> = LazyVec::new();
         let mut round = 0;
         while round < FINAL_FOLD_STEPS {
-            let (new_claim, alpha) = verify_whir_sumcheck_step::<I>(ts, claim, round)?;
+            let (new_claim, alpha) = verify_whir_sumcheck_step::<I, E>(ts, claim, round)?;
             claim = new_claim;
             folding_challenges.push(alpha);
             round += 1;
@@ -379,7 +380,7 @@ pub fn verify_final_whir_round<I: NonDeterminismSource>(
             let init_buf = hash_buf.assume_init_subarray::<FINAL_HASH_BUF_SIZE>();
             hash_leaf_data_into_state(&mut ts.hasher, init_buf, FINAL_LEAF_EXT_WORDS);
             if !verify_merkle_path::<I>(&mut ts.hasher, tree_index, oracle_depth, prev_oracle_cap) {
-                return Err(WhirVerificationError::MerklePathFailed { query: q });
+                return Err(E::whir_merkle_path_failed(q));
             }
             let mut evals: LazyVec<BabyBearExt4, FINAL_VALUES_PER_LEAF> = LazyVec::new();
             let mut j = 0;
@@ -420,7 +421,7 @@ pub fn verify_final_whir_round<I: NonDeterminismSource>(
                 field_ops::add_assign(&mut eval, &coeff);
             }
             if eval != *folded_values.get(q) {
-                return Err(WhirVerificationError::FoldAgreementFailed { query: q });
+                return Err(E::whir_fold_agreement_failed(q));
             }
             q += 1;
         }
@@ -435,22 +436,22 @@ pub const WHIR_HASH_BUF_SIZE: usize = 128usize;
     unused_unsafe,
     clippy::needless_borrow
 )]
-pub fn verify_whir<I: NonDeterminismSource>(
+pub fn verify_whir<I: NonDeterminismSource, E: ErrorCreator>(
     ts: &mut TranscriptState,
     batching_challenge: BabyBearExt4,
     oracle_caps: &[u32; TOTAL_CAP_WORDS],
-) -> Result<(), WhirVerificationError> {
+) -> Result<(), E::Error> {
     let mut hash_buf = AlignedArray64::<u32, WHIR_HASH_BUF_SIZE>::new_uninit();
     let (mut claim, mut cap) =
-        verify_initial_whir_round::<I>(ts, &mut hash_buf, batching_challenge, oracle_caps)?;
+        verify_initial_whir_round::<I, E>(ts, &mut hash_buf, batching_challenge, oracle_caps)?;
     let mut round_idx = 1;
     while round_idx <= NUM_INTERNAL_ROUNDS {
         let (new_claim, new_cap) =
-            verify_internal_whir_round::<I>(ts, &mut hash_buf, claim, &cap, round_idx)?;
+            verify_internal_whir_round::<I, E>(ts, &mut hash_buf, claim, &cap, round_idx)?;
         claim = new_claim;
         cap = new_cap;
         round_idx += 1;
     }
-    verify_final_whir_round::<I>(ts, &mut hash_buf, claim, &cap)?;
+    verify_final_whir_round::<I, E>(ts, &mut hash_buf, claim, &cap)?;
     Ok(())
 }

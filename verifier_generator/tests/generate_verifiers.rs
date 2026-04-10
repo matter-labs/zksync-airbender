@@ -41,7 +41,7 @@ fn generate_common<MW: MersenneWrapper>() {
         };
         use ::verifier_common::non_determinism_source::NonDeterminismSource;
         use ::verifier_common::transcript::{Blake2sTranscript, Seed};
-        use ::verifier_common::gkr::GKRVerificationError;
+        use ::verifier_common::errors::ErrorCreator;
         use ::verifier_common::structs::{CommitBuf, TranscriptState};
         use ::verifier_common::lazy_vec::LazyVec;
         #field_use_stmts
@@ -157,27 +157,19 @@ fn generate_verifier_for_circuit<MW: MersenneWrapper>(circuit: &CircuitData) {
         pub use gkr::verify_gkr;
 
         use ::verifier_common::non_determinism_source::NonDeterminismSource;
-        use ::verifier_common::gkr::GKRVerificationError;
-
-        #[derive(Clone, Debug)]
-        #[allow(dead_code)]
-        pub enum VerificationError {
-            Gkr(GKRVerificationError),
-            Whir(common::WhirVerificationError),
-        }
+        use ::verifier_common::errors::ErrorCreator;
 
         #[allow(unused_braces, unused_mut, unused_variables)]
-        pub fn verify<I: NonDeterminismSource>() -> Result<(), VerificationError> {
-            let gkr_output = verify_gkr::<I>()
-                .map_err(VerificationError::Gkr)?;
+        pub fn verify<I: NonDeterminismSource, E: ErrorCreator>() -> Result<(), E::Error> {
+            let gkr_output = verify_gkr::<I, E>()?;
             let mut ts = ::verifier_common::structs::TranscriptState::new(
                 gkr_output.whir_transcript_seed,
             );
-            whir::verify_whir::<I>(
+            whir::verify_whir::<I, E>(
                 &mut ts,
                 gkr_output.whir_batching_challenge,
                 &gkr_output.oracle_caps,
-            ).map_err(VerificationError::Whir)
+            )
         }
     };
     write_and_fmt(&format!("{}/mod.rs", dir), &mod_rs);

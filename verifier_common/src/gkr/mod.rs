@@ -15,13 +15,6 @@ pub struct LayerState<E: Field, const ROUNDS: usize, const ADDRS: usize> {
     pub batching_challenge: E,
 }
 
-#[derive(Clone, Debug)]
-pub enum GKRVerificationError {
-    SumcheckRoundFailed { layer: usize, round: usize },
-    FinalStepCheckFailed { layer: usize },
-    CacheRelationFailed { layer: usize },
-}
-
 pub struct GKRVerifierOutput<
     'a,
     E: Field,

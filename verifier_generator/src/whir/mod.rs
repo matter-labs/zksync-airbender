@@ -20,25 +20,25 @@ pub fn generate_whir_verify<MW: MersenneWrapper>(whir_hash_buf_size: usize) -> T
         pub const WHIR_HASH_BUF_SIZE: usize = #whir_hash_buf_size;
 
         #[allow(unused_braces, unused_mut, unused_variables, unused_unsafe, clippy::needless_borrow)]
-        pub fn verify_whir<I: NonDeterminismSource>(
+        pub fn verify_whir<I: NonDeterminismSource, E: ErrorCreator>(
             ts: &mut TranscriptState,
             batching_challenge: #quartic_struct,
             oracle_caps: &[u32; TOTAL_CAP_WORDS],
-        ) -> Result<(), WhirVerificationError> {
+        ) -> Result<(), E::Error> {
             let mut hash_buf = AlignedArray64::<u32, WHIR_HASH_BUF_SIZE>::new_uninit();
-            let (mut claim, mut cap) = verify_initial_whir_round::<I>(
+            let (mut claim, mut cap) = verify_initial_whir_round::<I, E>(
                 ts, &mut hash_buf, batching_challenge, oracle_caps,
             )?;
             let mut round_idx = 1;
             while round_idx <= NUM_INTERNAL_ROUNDS {
-                let (new_claim, new_cap) = verify_internal_whir_round::<I>(
+                let (new_claim, new_cap) = verify_internal_whir_round::<I, E>(
                     ts, &mut hash_buf, claim, &cap, round_idx,
                 )?;
                 claim = new_claim;
                 cap = new_cap;
                 round_idx += 1;
             }
-            verify_final_whir_round::<I>(ts, &mut hash_buf, claim, &cap)?;
+            verify_final_whir_round::<I, E>(ts, &mut hash_buf, claim, &cap)?;
             Ok(())
         }
     }

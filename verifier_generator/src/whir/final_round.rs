@@ -59,12 +59,12 @@ pub fn generate_whir_final_round<MW: MersenneWrapper>(
         const FINAL_ORACLE_DEPTH_IDX: usize = #last_oracle_depth_idx;
 
         #[allow(unused_braces, unused_mut, unused_variables, unused_unsafe, clippy::needless_borrow)]
-        pub fn verify_final_whir_round<I: NonDeterminismSource>(
+        pub fn verify_final_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
             ts: &mut TranscriptState,
             hash_buf: &mut AlignedArray64<MaybeUninit<u32>, WHIR_HASH_BUF_SIZE>,
             claim: #quartic_struct,
             prev_oracle_cap: &[u32; WHIR_CAP_WORDS],
-        ) -> Result<(), WhirVerificationError> {
+        ) -> Result<(), E::Error> {
             unsafe {
 
                 let mut claim = claim;
@@ -72,7 +72,7 @@ pub fn generate_whir_final_round<MW: MersenneWrapper>(
                     LazyVec::new();
                 let mut round = 0;
                 while round < FINAL_FOLD_STEPS {
-                    let (new_claim, alpha) = verify_whir_sumcheck_step::<I>(
+                    let (new_claim, alpha) = verify_whir_sumcheck_step::<I, E>(
                         ts, claim, round,
                     )?;
                     claim = new_claim;
@@ -128,7 +128,7 @@ pub fn generate_whir_final_round<MW: MersenneWrapper>(
                     if !verify_merkle_path::<I>(
                         &mut ts.hasher, tree_index, oracle_depth, prev_oracle_cap,
                     ) {
-                        return Err(WhirVerificationError::MerklePathFailed { query: q });
+                        return Err(E::whir_merkle_path_failed(q));
                     }
 
                     let mut evals: LazyVec<#quartic_struct, FINAL_VALUES_PER_LEAF> =
@@ -173,7 +173,7 @@ pub fn generate_whir_final_round<MW: MersenneWrapper>(
                     }
 
                     if eval != *folded_values.get(q) {
-                        return Err(WhirVerificationError::FoldAgreementFailed { query: q });
+                        return Err(E::whir_fold_agreement_failed(q));
                     }
                     q += 1;
                 }

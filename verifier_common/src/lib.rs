@@ -129,6 +129,8 @@ pub use prover;
 pub use transcript;
 pub mod fri_folding;
 #[cfg(feature = "gkr_verify")]
+pub mod errors;
+#[cfg(feature = "gkr_verify")]
 pub mod gkr;
 #[cfg(all(feature = "proof_utils", feature = "gkr_verify"))]
 pub mod test_circuits;

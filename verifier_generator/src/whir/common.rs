@@ -58,19 +58,12 @@ pub fn generate_whir_common<MW: MersenneWrapper>(max_fold_steps: usize) -> Token
             }
         }
 
-        #[derive(Clone, Debug)]
-        pub enum WhirVerificationError {
-            SumcheckFailed { round: usize },
-            FoldAgreementFailed { query: usize },
-            MerklePathFailed { query: usize },
-        }
-
         #[inline(always)]
-        pub fn verify_whir_sumcheck_step<I: NonDeterminismSource>(
+        pub fn verify_whir_sumcheck_step<I: NonDeterminismSource, E: ErrorCreator>(
             ts: &mut TranscriptState,
             claim: #quartic_struct,
             round: usize,
-        ) -> Result<(#quartic_struct, #quartic_struct), WhirVerificationError> {
+        ) -> Result<(#quartic_struct, #quartic_struct), E::Error> {
             const WHIR_SC_DATA_WORDS: usize = 3 * EXT_DEGREE;
             const WHIR_SC_COMMIT_BUF: usize = {
                 let total = BLAKE2S_DIGEST_SIZE_U32_WORDS + WHIR_SC_DATA_WORDS;
@@ -100,7 +93,7 @@ pub fn generate_whir_common<MW: MersenneWrapper>(max_fold_steps: usize) -> Token
             let mut sum = p0;
             #ws_add_sum_p1;
             if sum != claim {
-                return Err(WhirVerificationError::SumcheckFailed { round });
+                return Err(E::whir_sumcheck_failed(round));
             }
 
             ts.commit(&mut buf, WHIR_SC_DATA_WORDS);
@@ -249,13 +242,10 @@ pub fn generate_whir_common<MW: MersenneWrapper>(max_fold_steps: usize) -> Token
         #[inline(always)]
         pub fn ext_from_raw_words(words: &[u32]) -> #quartic_struct {
             debug_assert!(words.len() >= EXT_DEGREE);
-            let mut coeffs = LazyVec::<#field_struct, EXT_DEGREE>::new();
-            let mut i = 0;
-            while i < EXT_DEGREE {
-                coeffs.push(#from_raw_words_i);
-                i += 1;
-            }
-            unsafe { core::ptr::read(coeffs.as_slice().as_ptr().cast::<#quartic_struct>()) }
+            let raw = unsafe { (words.as_ptr() as *const [u32; EXT_DEGREE]).as_ref_unchecked() };
+            let mut tmp = LazyVec::<#quartic_struct, 1>::new();
+            tmp.push_from_raw_words(raw);
+            unsafe { *tmp.get_unchecked(0) }
         }
 
         #[inline(always)]
@@ -293,7 +283,7 @@ pub fn generate_whir_common<MW: MersenneWrapper>(max_fold_steps: usize) -> Token
 
         #[inline(always)]
         #[allow(clippy::too_many_arguments)]
-        pub unsafe fn process_oracle_query<I: NonDeterminismSource, const BUF_SIZE: usize>(
+        pub unsafe fn process_oracle_query<I: NonDeterminismSource, E: ErrorCreator, const BUF_SIZE: usize>(
             hasher: &mut DelegatedBlake2sState,
             hash_buf: &mut ::verifier_common::blake2s_u32::AlignedArray64<core::mem::MaybeUninit<u32>, BUF_SIZE>,
             num_columns: usize,
@@ -306,7 +296,7 @@ pub fn generate_whir_common<MW: MersenneWrapper>(max_fold_steps: usize) -> Token
             acc0: &mut #quartic_struct,
             acc1: &mut #quartic_struct,
             query: usize,
-        ) -> Result<(), WhirVerificationError> {
+        ) -> Result<(), E::Error> {
             use ::verifier_common::whir::{hash_leaf_data_into_state, verify_merkle_path};
 
             let buf = hash_buf.assume_init_subarray_mut::<BUF_SIZE>();
@@ -324,7 +314,7 @@ pub fn generate_whir_common<MW: MersenneWrapper>(max_fold_steps: usize) -> Token
             let buf = hash_buf.assume_init_subarray::<BUF_SIZE>();
             hash_leaf_data_into_state(hasher, buf, leaf_words);
             if !verify_merkle_path::<I>(hasher, query_index, depth, cap) {
-                return Err(WhirVerificationError::MerklePathFailed { query });
+                return Err(E::whir_merkle_path_failed(query));
             }
             Ok(())
         }

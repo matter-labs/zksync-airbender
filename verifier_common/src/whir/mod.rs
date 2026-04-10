@@ -86,10 +86,10 @@ pub fn verify_merkle_path<I: NonDeterminismSource>(
         let is_right = leaf_index & 1 == 1;
         #[cfg(any(feature = "blake2_with_compression", feature = "blake2_g_function"))]
         {
-            let witness_buf = hasher.get_witness_buffer();
+            let proof_buf = hasher.get_merkle_path_proof_buffer(is_right);
             let mut i = 0;
             while i < BLAKE2S_DIGEST_SIZE_U32_WORDS {
-                witness_buf[i] = I::read_word();
+                proof_buf[i] = I::read_word();
                 i += 1;
             }
             hasher.compress_node::<true>(is_right);

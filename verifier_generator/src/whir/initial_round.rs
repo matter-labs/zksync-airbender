@@ -73,10 +73,11 @@ pub fn generate_whir_inlined<MW: MersenneWrapper>(
         };
         use super::common::{
             verify_whir_sumcheck_step, fold_coset, materialize_gamma_powers,
-            WhirVerificationError, read_field_el, read_field_els,
+            read_field_el, read_field_els,
             read_reduced_field_el, draw_single_field_el, compute_tree_index,
             read_and_batch_leaf, process_oracle_query,
         };
+        use ::verifier_common::errors::ErrorCreator;
         use ::verifier_common::structs::{CommitBuf, TranscriptState};
         use super::constants::*;
 
@@ -94,12 +95,12 @@ pub fn generate_whir_inlined<MW: MersenneWrapper>(
         const COSET_TREE_SIZE: usize = #coset_tree_size;
 
         #[allow(unused_braces, unused_mut, unused_variables, unused_unsafe, clippy::needless_borrow)]
-        pub fn verify_initial_whir_round<I: NonDeterminismSource>(
+        pub fn verify_initial_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
             ts: &mut TranscriptState,
             hash_buf: &mut AlignedArray64<MaybeUninit<u32>, WHIR_HASH_BUF_SIZE>,
             batching_challenge: #quartic_struct,
             oracle_caps: &[u32; TOTAL_CAP_WORDS],
-        ) -> Result<(#quartic_struct, [u32; WHIR_CAP_WORDS]), WhirVerificationError> {
+        ) -> Result<(#quartic_struct, [u32; WHIR_CAP_WORDS]), E::Error> {
             unsafe {
 
                 let gamma_powers: [#quartic_struct; TOTAL_ORACLE_COLS] =
@@ -127,7 +128,7 @@ pub fn generate_whir_inlined<MW: MersenneWrapper>(
                     LazyVec::new();
                 let mut round_idx = 0;
                 while round_idx < WHIR_FOLD_STEPS[0] {
-                    let (new_claim, alpha) = verify_whir_sumcheck_step::<I>(
+                    let (new_claim, alpha) = verify_whir_sumcheck_step::<I, E>(
                         ts, claim, round_idx,
                     )?;
                     claim = new_claim;
@@ -200,7 +201,7 @@ pub fn generate_whir_inlined<MW: MersenneWrapper>(
                         let depth = ORACLE_DEPTHS[oracle_idx];
 
                         if num_cols > 0 {
-                            process_oracle_query::<I, WHIR_HASH_BUF_SIZE>(
+                            process_oracle_query::<I, E, WHIR_HASH_BUF_SIZE>(
                                 &mut ts.hasher, hash_buf,
                                 num_cols, leaf_words, tree_index,
                                 depth,

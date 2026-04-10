@@ -1,5 +1,10 @@
 use core::mem::MaybeUninit;
 
+use field::baby_bear::base::BabyBearField;
+use field::baby_bear::ext4::BabyBearExt4;
+use field::PrimeField;
+use non_determinism_source::NonDeterminismSource;
+
 #[derive(Clone, Debug)]
 #[repr(C)]
 pub struct LazyVec<V: Copy, const N: usize> {
@@ -102,5 +107,45 @@ impl<V: Copy, const N: usize> LazyVec<V, N> {
         debug_assert!(M <= N);
         debug_assert!(self.len >= M);
         &mut *self.data.as_mut_ptr().cast::<[V; M]>()
+    }
+}
+
+impl<const N: usize> LazyVec<BabyBearExt4, N> {
+    #[inline(always)]
+    pub fn push_from_nds<I: NonDeterminismSource>(&mut self) {
+        debug_assert!(self.len < N);
+        let el = BabyBearExt4::from_array_of_base([
+            BabyBearField::from_reduced_raw_repr(I::read_reduced_field_element(
+                BabyBearField::ORDER,
+            )),
+            BabyBearField::from_reduced_raw_repr(I::read_reduced_field_element(
+                BabyBearField::ORDER,
+            )),
+            BabyBearField::from_reduced_raw_repr(I::read_reduced_field_element(
+                BabyBearField::ORDER,
+            )),
+            BabyBearField::from_reduced_raw_repr(I::read_reduced_field_element(
+                BabyBearField::ORDER,
+            )),
+        ]);
+        unsafe {
+            self.data.get_unchecked_mut(self.len).write(el);
+        }
+        self.len += 1;
+    }
+
+    #[inline(always)]
+    pub fn push_from_raw_words(&mut self, words: &[u32; 4]) {
+        debug_assert!(self.len < N);
+        let el = BabyBearExt4::from_array_of_base([
+            BabyBearField::from_raw_repr_with_reduction(words[0]),
+            BabyBearField::from_raw_repr_with_reduction(words[1]),
+            BabyBearField::from_raw_repr_with_reduction(words[2]),
+            BabyBearField::from_raw_repr_with_reduction(words[3]),
+        ]);
+        unsafe {
+            self.data.get_unchecked_mut(self.len).write(el);
+        }
+        self.len += 1;
     }
 }

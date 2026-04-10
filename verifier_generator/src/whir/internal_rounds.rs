@@ -102,13 +102,13 @@ pub fn generate_whir_internal_rounds<MW: MersenneWrapper>(
             [#(#internal_draw_words_vec),*];
 
         #[allow(unused_braces, unused_mut, unused_variables, unused_unsafe, clippy::needless_borrow)]
-        pub fn verify_internal_whir_round<I: NonDeterminismSource>(
+        pub fn verify_internal_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
             ts: &mut TranscriptState,
             hash_buf: &mut AlignedArray64<MaybeUninit<u32>, WHIR_HASH_BUF_SIZE>,
             claim: #quartic_struct,
             prev_oracle_cap: &[u32; WHIR_CAP_WORDS],
             round_idx: usize,
-        ) -> Result<(#quartic_struct, [u32; WHIR_CAP_WORDS]), WhirVerificationError> {
+        ) -> Result<(#quartic_struct, [u32; WHIR_CAP_WORDS]), E::Error> {
             unsafe {
                 let fold_steps = WHIR_FOLD_STEPS[round_idx];
                 let num_queries = WHIR_QUERIES[round_idx];
@@ -121,7 +121,7 @@ pub fn generate_whir_internal_rounds<MW: MersenneWrapper>(
                     LazyVec::new();
                 let mut round = 0;
                 while round < fold_steps {
-                    let (new_claim, alpha) = verify_whir_sumcheck_step::<I>(
+                    let (new_claim, alpha) = verify_whir_sumcheck_step::<I, E>(
                         ts, claim, round,
                     )?;
                     claim = new_claim;
@@ -186,7 +186,7 @@ pub fn generate_whir_internal_rounds<MW: MersenneWrapper>(
                     if !verify_merkle_path::<I>(
                         &mut ts.hasher, tree_index, oracle_depth, prev_oracle_cap,
                     ) {
-                        return Err(WhirVerificationError::MerklePathFailed { query: q });
+                        return Err(E::whir_merkle_path_failed(q));
                     }
 
                     let mut evals: LazyVec<#quartic_struct, MAX_INTERNAL_VALUES_PER_LEAF> =

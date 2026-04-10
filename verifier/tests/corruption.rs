@@ -3,6 +3,7 @@
 #[macro_use]
 mod common;
 
+use verifier_common::errors::DebugErrorCreator;
 use verifier_common::prover::nd_source_std::{set_iterator, ThreadLocalBasedSource};
 
 fn run_corrupted(name: &str, corrupt: impl FnOnce(&mut Vec<u32>)) -> Result<(), String> {
@@ -16,7 +17,7 @@ fn run_corrupted(name: &str, corrupt: impl FnOnce(&mut Vec<u32>)) -> Result<(), 
             .spawn_scoped(s, move || {
                 set_iterator(nds.into_iter());
                 with_circuit!(name, |m| {
-                    m::verify::<ThreadLocalBasedSource>().map_err(|e| format!("{:?}", e))
+                    m::verify::<ThreadLocalBasedSource, DebugErrorCreator>().map_err(|e| format!("{:?}", e))
                 })
             })
             .expect("failed to spawn thread");
@@ -82,7 +83,7 @@ fn run_with_proof(
             .spawn_scoped(s, move || {
                 set_iterator(nds.into_iter());
                 with_circuit!(name, |m| {
-                    m::verify::<ThreadLocalBasedSource>().map_err(|e| format!("{:?}", e))
+                    m::verify::<ThreadLocalBasedSource, DebugErrorCreator>().map_err(|e| format!("{:?}", e))
                 })
             })
             .expect("failed to spawn thread");
@@ -240,7 +241,7 @@ fn run_corrupted_panic_safe(name: &str, corrupt: impl FnOnce(&mut Vec<u32>)) -> 
             .spawn_scoped(s, move || {
                 set_iterator(nds.into_iter());
                 with_circuit!(name, |m| {
-                    m::verify::<ThreadLocalBasedSource>().map_err(|e| format!("{:?}", e))
+                    m::verify::<ThreadLocalBasedSource, DebugErrorCreator>().map_err(|e| format!("{:?}", e))
                 })
             })
             .expect("failed to spawn thread");
@@ -289,7 +290,7 @@ fn test_rejects_cross_circuit_nds(name: &str) {
             .spawn_scoped(s, move || {
                 set_iterator(nds.into_iter());
                 with_circuit!(name, |m| {
-                    m::verify::<ThreadLocalBasedSource>().map_err(|e| format!("{:?}", e))
+                    m::verify::<ThreadLocalBasedSource, DebugErrorCreator>().map_err(|e| format!("{:?}", e))
                 })
             })
             .expect("failed to spawn thread");

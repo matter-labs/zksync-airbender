@@ -3,6 +3,7 @@
 #[macro_use]
 mod common;
 
+use verifier_common::errors::DebugErrorCreator;
 use verifier_common::prover::nd_source_std::{set_iterator, ThreadLocalBasedSource};
 
 fn run_native(name: &str) {
@@ -14,7 +15,7 @@ fn run_native(name: &str) {
             .spawn_scoped(s, move || {
                 set_iterator(nds.into_iter());
                 with_circuit!(name, |m| {
-                    m::verify::<ThreadLocalBasedSource>()
+                    m::verify::<ThreadLocalBasedSource, DebugErrorCreator>()
                         .unwrap_or_else(|e| panic!("{} failed: {:?}", name, e));
                 });
             })

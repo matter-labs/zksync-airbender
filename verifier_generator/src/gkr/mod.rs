@@ -74,6 +74,7 @@ pub fn generate_gkr_common<MW: MersenneWrapper>() -> TokenStream {
         #[inline(always)]
         pub fn verify_sumcheck_rounds<
             I: NonDeterminismSource,
+            E: ErrorCreator,
             const NUM_ROUNDS: usize,
             const COMMIT_BUF: usize,
         >(
@@ -81,7 +82,7 @@ pub fn generate_gkr_common<MW: MersenneWrapper>() -> TokenStream {
             initial_claim: #quartic_struct,
             challenges: &mut [#quartic_struct],
             layer_idx: usize,
-        ) -> Result<(#quartic_struct, #quartic_struct), GKRVerificationError> {
+        ) -> Result<(#quartic_struct, #quartic_struct), E::Error> {
             let mut claim = initial_claim;
             let mut eq_prefactor = #quartic_one;
 
@@ -116,22 +117,17 @@ pub fn generate_gkr_common<MW: MersenneWrapper>() -> TokenStream {
                 #sc_mul_sum_eq;
 
                 if sum != claim {
-                    return Err(GKRVerificationError::SumcheckRoundFailed {
-                        layer: layer_idx,
-                        round,
-                    });
+                    return Err(E::gkr_sumcheck_round_failed(layer_idx, round));
                 }
 
                 ts.commit(&mut commit_buf, coeff_data_words);
 
                 ts.draw_raw(draw_buf.as_mut_slice());
                 let r_k = {
-                    let mut arr = LazyVec::<#field_struct, EXT_DEGREE>::new();
-                    for i in 0..EXT_DEGREE {
-                        let w = *draw_buf.get(i);
-                        arr.push(#field_from_u32);
-                    }
-                    unsafe { core::mem::transmute::<[#field_struct; EXT_DEGREE], #quartic_struct>(arr.into_array()) }
+                    let raw = unsafe { (draw_buf.as_slice().as_ptr() as *const [u32; EXT_DEGREE]).as_ref_unchecked() };
+                    let mut tmp = LazyVec::<#quartic_struct, 1>::new();
+                    tmp.push_from_raw_words(raw);
+                    unsafe { *tmp.get_unchecked(0) }
                 };
 
                 {
@@ -165,13 +161,13 @@ pub fn generate_gkr_common<MW: MersenneWrapper>() -> TokenStream {
         }
 
         #[inline(always)]
-        pub fn verify_final_step_check(
+        pub fn verify_final_step_check<E: ErrorCreator>(
             f: [#quartic_struct; 2],
             last_prev_point: #quartic_struct,
             final_eq_prefactor: #quartic_struct,
             final_claim: #quartic_struct,
             layer_idx: usize,
-        ) -> Result<(), GKRVerificationError> {
+        ) -> Result<(), E::Error> {
             let mut eq0 = #quartic_one;
             #fs_sub_eq0_lpp;
             let mut rhs = eq0;
@@ -181,7 +177,7 @@ pub fn generate_gkr_common<MW: MersenneWrapper>() -> TokenStream {
             #fs_add_rhs_t;
             #fs_mul_rhs_eq;
             if rhs != final_claim {
-                return Err(GKRVerificationError::FinalStepCheckFailed { layer: layer_idx });
+                return Err(E::gkr_final_step_check_failed(layer_idx));
             }
             Ok(())
         }
@@ -334,7 +330,7 @@ fn generate_cache_relation_checks<MW: MersenneWrapper, F: PrimeField>(
                     }
                     let cached = *state.prev_claims.get_unchecked(cached_idx);
                     if expected != cached {
-                        return Err(GKRVerificationError::CacheRelationFailed { layer: #layer_idx });
+                        return Err(E::gkr_cache_relation_failed(#layer_idx));
                     }
                     _sc += 1;
                 }
@@ -404,7 +400,7 @@ fn generate_cache_relation_checks<MW: MersenneWrapper, F: PrimeField>(
                     }
                     let cached = *state.prev_claims.get_unchecked(cached_idx);
                     if expected != cached {
-                        return Err(GKRVerificationError::CacheRelationFailed { layer: #layer_idx });
+                        return Err(E::gkr_cache_relation_failed(#layer_idx));
                     }
                     _vl += 1;
                 }
@@ -448,7 +444,7 @@ fn generate_cache_relation_checks<MW: MersenneWrapper, F: PrimeField>(
                     }
                     let cached = *state.prev_claims.get_unchecked(cached_idx);
                     if expected != cached {
-                        return Err(GKRVerificationError::CacheRelationFailed { layer: #layer_idx });
+                        return Err(E::gkr_cache_relation_failed(#layer_idx));
                     }
                     _vs += 1;
                 }
@@ -794,31 +790,15 @@ where
             let mut i = 0;
             while i < num_lin {
                 let base = ext_start + i * EXT_DEGREE;
-                let mut arr = LazyVec::<#field_struct, EXT_DEGREE>::new();
-                let mut k = 0;
-                while k < EXT_DEGREE {
-                    arr.push(#field_struct::from_raw_repr_with_reduction(
-                        *transcript_buf.get(base + k),
-                    ));
-                    k += 1;
-                }
-                lin.push(unsafe {
-                    core::mem::transmute::<[#field_struct; EXT_DEGREE], #quartic_struct>(arr.into_array())
-                });
+                let raw = unsafe { (transcript_buf.as_slice().as_ptr().add(base) as *const [u32; EXT_DEGREE]).as_ref_unchecked() };
+                lin.push_from_raw_words(raw);
                 i += 1;
             }
             let add_base = ext_start + num_lin * EXT_DEGREE;
-            let mut add_arr = LazyVec::<#field_struct, EXT_DEGREE>::new();
-            let mut k = 0;
-            while k < EXT_DEGREE {
-                add_arr.push(#field_struct::from_raw_repr_with_reduction(
-                    *transcript_buf.get(add_base + k),
-                ));
-                k += 1;
-            }
-            let additive = unsafe {
-                core::mem::transmute::<[#field_struct; EXT_DEGREE], #quartic_struct>(add_arr.into_array())
-            };
+            let raw = unsafe { (transcript_buf.as_slice().as_ptr().add(add_base) as *const [u32; EXT_DEGREE]).as_ref_unchecked() };
+            let mut additive_tmp = LazyVec::<#quartic_struct, 1>::new();
+            additive_tmp.push_from_raw_words(raw);
+            let additive = unsafe { *additive_tmp.get_unchecked(0) };
             (unsafe { lin.into_array() }, additive)
         };
         let address_high_bits_shift: u32 = #address_high_bits_shift_val;
@@ -917,7 +897,7 @@ where
             {
                 let initial_claim = dim_reducing_compute_claim(&state.prev_claims, state.batching_challenge);
                 let (final_claim, final_eq_prefactor) =
-                    verify_sumcheck_rounds::<I, #num_regular_rounds, GKR_COMMIT_BUF>(
+                    verify_sumcheck_rounds::<I, E, #num_regular_rounds, GKR_COMMIT_BUF>(
                         &mut ts, initial_claim, &mut state.prev_point, #config_idx)?;
                 let mut fc_len = #num_regular_rounds;
                 let data_words = #num_input_addrs * 4 * <#quartic_struct as FieldExtension<#field_struct>>::DEGREE;
@@ -931,7 +911,7 @@ where
                 {
                     let evals: &[[#quartic_struct; 4]] = eval_buf.data_as(#num_input_addrs);
                     let f = dim_reducing_final_step_accumulator(evals, state.batching_challenge, &#indices_name);
-                    verify_final_step_check(f,
+                    verify_final_step_check::<E>(f,
                         *state.prev_point.get_unchecked(state.prev_point_len - 1),
                         final_eq_prefactor, final_claim, #config_idx)?;
                 }
@@ -1088,7 +1068,7 @@ where
             {
                 let initial_claim = #compute_claim_fn(&state.prev_claims, state.batching_challenge);
                 let (final_claim, final_eq_prefactor) =
-                    verify_sumcheck_rounds::<I, #num_regular_rounds, GKR_COMMIT_BUF>(
+                    verify_sumcheck_rounds::<I, E, #num_regular_rounds, GKR_COMMIT_BUF>(
                         &mut ts, initial_claim, &mut state.prev_point, #config_idx)?;
                 let mut fc_len = #num_regular_rounds;
                 let data_words = #num_dedup_addrs * 2 * <#quartic_struct as FieldExtension<#field_struct>>::DEGREE;
@@ -1105,7 +1085,7 @@ where
                         lookup_additive_challenge, lookup_alpha, &challenge_powers,
                         &linearization_challenges, permutation_argument_additive_part,
                         address_high_bits_shift);
-                    verify_final_step_check(f,
+                    verify_final_step_check::<E>(f,
                         *state.prev_point.get_unchecked(state.prev_point_len - 1),
                         final_eq_prefactor, final_claim, #config_idx)?;
                 }
@@ -1259,8 +1239,9 @@ where
     let gkr = quote! {
         #field_use_stmts
         use ::verifier_common::gkr::{
-            GKRVerifierOutput, GKRVerificationError, LayerState, LazyVec,
+            GKRVerifierOutput, LayerState, LazyVec,
         };
+        use ::verifier_common::errors::ErrorCreator;
         use ::verifier_common::structs::{CommitBuf, TranscriptState};
         use super::common::{
             verify_sumcheck_rounds, verify_final_step_check, fold_standard_claims,
@@ -1278,8 +1259,8 @@ where
         #layer_functions
 
         #[allow(unused_braces, unused_mut, unused_variables, unused_unsafe, clippy::needless_borrow, clippy::needless_range_loop, clippy::large_const_arrays)]
-        pub fn verify_gkr<I: NonDeterminismSource,
-        >() -> Result<GKRVerifierOutput<'static, #quartic_struct, GKR_ROUNDS, GKR_ADDRS, TOTAL_CAP_WORDS>, GKRVerificationError> {
+        pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator,
+        >() -> Result<GKRVerifierOutput<'static, #quartic_struct, GKR_ROUNDS, GKR_ADDRS, TOTAL_CAP_WORDS>, E::Error> {
             unsafe { #main_body }
         }
     };

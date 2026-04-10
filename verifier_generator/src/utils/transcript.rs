@@ -18,14 +18,9 @@ pub fn generate_transcript_helpers<MW: MersenneWrapper>() -> TokenStream {
 
         #[inline(always)]
         pub fn read_field_el<I: NonDeterminismSource>() -> #quartic_struct {
-            let mut words = LazyVec::<#field_struct, EXT_DEGREE>::new();
-            let mut k = 0;
-            while k < EXT_DEGREE {
-                let raw = read_reduced_field_el::<I>();
-                words.push(#field_from_raw);
-                k += 1;
-            }
-            unsafe { core::mem::transmute::<[#field_struct; EXT_DEGREE], #quartic_struct>(words.into_array()) }
+            let mut tmp = LazyVec::<#quartic_struct, 1>::new();
+            tmp.push_from_nds::<I>();
+            unsafe { *tmp.get_unchecked(0) }
         }
 
         #[inline(always)]
@@ -55,15 +50,11 @@ pub fn generate_transcript_helpers<MW: MersenneWrapper>() -> TokenStream {
             let mut i = 0;
             while i < n {
                 let base = i * EXT_DEGREE;
-                let mut arr = LazyVec::<#field_struct, EXT_DEGREE>::new();
-                let mut k = 0;
-                while k < EXT_DEGREE {
-                    let w = unsafe { *words.get_unchecked(base + k) };
-                    arr.push(#field_from_u32);
-                    k += 1;
-                }
+                let raw = unsafe { (words.as_slice().as_ptr().add(base) as *const [u32; EXT_DEGREE]).as_ref_unchecked() };
+                let mut tmp = LazyVec::<#quartic_struct, 1>::new();
+                tmp.push_from_raw_words(raw);
                 unsafe {
-                    *dst.get_unchecked_mut(i) = core::mem::transmute::<[#field_struct; EXT_DEGREE], #quartic_struct>(arr.into_array());
+                    *dst.get_unchecked_mut(i) = *tmp.get_unchecked(0);
                 }
                 i += 1;
             }

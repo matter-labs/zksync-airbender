@@ -4,11 +4,12 @@ use super::common::{
 };
 use super::constants::*;
 use verifier_common::blake2s_u32::DelegatedBlake2sState;
+use verifier_common::errors::ErrorCreator;
 use verifier_common::field::baby_bear::base::BabyBearField;
 use verifier_common::field::baby_bear::ext4::BabyBearExt4;
 use verifier_common::field::{Field, FieldExtension, PrimeField};
 use verifier_common::field_ops;
-use verifier_common::gkr::{GKRVerificationError, GKRVerifierOutput, LayerState, LazyVec};
+use verifier_common::gkr::{GKRVerifierOutput, LayerState, LazyVec};
 use verifier_common::non_determinism_source::NonDeterminismSource;
 use verifier_common::structs::{CommitBuf, TranscriptState};
 use verifier_common::transcript::Blake2sTranscript;
@@ -2937,9 +2938,9 @@ unsafe fn dim_reducing_final_step_accumulator(
     clippy::needless_range_loop,
     clippy::large_const_arrays
 )]
-pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
+pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
     GKRVerifierOutput<'static, BabyBearExt4, GKR_ROUNDS, GKR_ADDRS, TOTAL_CAP_WORDS>,
-    GKRVerificationError,
+    E::Error,
 > {
     unsafe {
         let mut transcript_buf = LazyVec::<u32, GKR_TRANSCRIPT_U32>::new();
@@ -2986,35 +2987,21 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             let mut i = 0;
             while i < num_lin {
                 let base = ext_start + i * EXT_DEGREE;
-                let mut arr = LazyVec::<BabyBearField, EXT_DEGREE>::new();
-                let mut k = 0;
-                while k < EXT_DEGREE {
-                    arr.push(BabyBearField::from_raw_repr_with_reduction(
-                        *transcript_buf.get(base + k),
-                    ));
-                    k += 1;
-                }
-                lin.push(unsafe {
-                    core::mem::transmute::<[BabyBearField; EXT_DEGREE], BabyBearExt4>(
-                        arr.into_array(),
-                    )
-                });
+                let raw = unsafe {
+                    (transcript_buf.as_slice().as_ptr().add(base) as *const [u32; EXT_DEGREE])
+                        .as_ref_unchecked()
+                };
+                lin.push_from_raw_words(raw);
                 i += 1;
             }
             let add_base = ext_start + num_lin * EXT_DEGREE;
-            let mut add_arr = LazyVec::<BabyBearField, EXT_DEGREE>::new();
-            let mut k = 0;
-            while k < EXT_DEGREE {
-                add_arr.push(BabyBearField::from_raw_repr_with_reduction(
-                    *transcript_buf.get(add_base + k),
-                ));
-                k += 1;
-            }
-            let additive = unsafe {
-                core::mem::transmute::<[BabyBearField; EXT_DEGREE], BabyBearExt4>(
-                    add_arr.into_array(),
-                )
+            let raw = unsafe {
+                (transcript_buf.as_slice().as_ptr().add(add_base) as *const [u32; EXT_DEGREE])
+                    .as_ref_unchecked()
             };
+            let mut additive_tmp = LazyVec::<BabyBearExt4, 1>::new();
+            additive_tmp.push_from_raw_words(raw);
+            let additive = unsafe { *additive_tmp.get_unchecked(0) };
             (unsafe { lin.into_array() }, additive)
         };
         let address_high_bits_shift: u32 = 0u32;
@@ -3179,7 +3166,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             let initial_claim =
                 dim_reducing_compute_claim(&state.prev_claims, state.batching_challenge);
             let (final_claim, final_eq_prefactor) =
-                verify_sumcheck_rounds::<I, 3usize, GKR_COMMIT_BUF>(
+                verify_sumcheck_rounds::<I, E, 3usize, GKR_COMMIT_BUF>(
                     &mut ts,
                     initial_claim,
                     &mut state.prev_point,
@@ -3201,7 +3188,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                     state.batching_challenge,
                     &DIM_REDUCE_INDICES_23,
                 );
-                verify_final_step_check(
+                verify_final_step_check::<E>(
                     f,
                     *state.prev_point.get_unchecked(state.prev_point_len - 1),
                     final_eq_prefactor,
@@ -3241,7 +3228,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             let initial_claim =
                 dim_reducing_compute_claim(&state.prev_claims, state.batching_challenge);
             let (final_claim, final_eq_prefactor) =
-                verify_sumcheck_rounds::<I, 4usize, GKR_COMMIT_BUF>(
+                verify_sumcheck_rounds::<I, E, 4usize, GKR_COMMIT_BUF>(
                     &mut ts,
                     initial_claim,
                     &mut state.prev_point,
@@ -3263,7 +3250,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                     state.batching_challenge,
                     &DIM_REDUCE_INDICES_22,
                 );
-                verify_final_step_check(
+                verify_final_step_check::<E>(
                     f,
                     *state.prev_point.get_unchecked(state.prev_point_len - 1),
                     final_eq_prefactor,
@@ -3303,7 +3290,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             let initial_claim =
                 dim_reducing_compute_claim(&state.prev_claims, state.batching_challenge);
             let (final_claim, final_eq_prefactor) =
-                verify_sumcheck_rounds::<I, 5usize, GKR_COMMIT_BUF>(
+                verify_sumcheck_rounds::<I, E, 5usize, GKR_COMMIT_BUF>(
                     &mut ts,
                     initial_claim,
                     &mut state.prev_point,
@@ -3325,7 +3312,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                     state.batching_challenge,
                     &DIM_REDUCE_INDICES_21,
                 );
-                verify_final_step_check(
+                verify_final_step_check::<E>(
                     f,
                     *state.prev_point.get_unchecked(state.prev_point_len - 1),
                     final_eq_prefactor,
@@ -3365,7 +3352,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             let initial_claim =
                 dim_reducing_compute_claim(&state.prev_claims, state.batching_challenge);
             let (final_claim, final_eq_prefactor) =
-                verify_sumcheck_rounds::<I, 6usize, GKR_COMMIT_BUF>(
+                verify_sumcheck_rounds::<I, E, 6usize, GKR_COMMIT_BUF>(
                     &mut ts,
                     initial_claim,
                     &mut state.prev_point,
@@ -3387,7 +3374,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                     state.batching_challenge,
                     &DIM_REDUCE_INDICES_20,
                 );
-                verify_final_step_check(
+                verify_final_step_check::<E>(
                     f,
                     *state.prev_point.get_unchecked(state.prev_point_len - 1),
                     final_eq_prefactor,
@@ -3427,7 +3414,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             let initial_claim =
                 dim_reducing_compute_claim(&state.prev_claims, state.batching_challenge);
             let (final_claim, final_eq_prefactor) =
-                verify_sumcheck_rounds::<I, 7usize, GKR_COMMIT_BUF>(
+                verify_sumcheck_rounds::<I, E, 7usize, GKR_COMMIT_BUF>(
                     &mut ts,
                     initial_claim,
                     &mut state.prev_point,
@@ -3449,7 +3436,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                     state.batching_challenge,
                     &DIM_REDUCE_INDICES_19,
                 );
-                verify_final_step_check(
+                verify_final_step_check::<E>(
                     f,
                     *state.prev_point.get_unchecked(state.prev_point_len - 1),
                     final_eq_prefactor,
@@ -3489,7 +3476,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             let initial_claim =
                 dim_reducing_compute_claim(&state.prev_claims, state.batching_challenge);
             let (final_claim, final_eq_prefactor) =
-                verify_sumcheck_rounds::<I, 8usize, GKR_COMMIT_BUF>(
+                verify_sumcheck_rounds::<I, E, 8usize, GKR_COMMIT_BUF>(
                     &mut ts,
                     initial_claim,
                     &mut state.prev_point,
@@ -3511,7 +3498,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                     state.batching_challenge,
                     &DIM_REDUCE_INDICES_18,
                 );
-                verify_final_step_check(
+                verify_final_step_check::<E>(
                     f,
                     *state.prev_point.get_unchecked(state.prev_point_len - 1),
                     final_eq_prefactor,
@@ -3551,7 +3538,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             let initial_claim =
                 dim_reducing_compute_claim(&state.prev_claims, state.batching_challenge);
             let (final_claim, final_eq_prefactor) =
-                verify_sumcheck_rounds::<I, 9usize, GKR_COMMIT_BUF>(
+                verify_sumcheck_rounds::<I, E, 9usize, GKR_COMMIT_BUF>(
                     &mut ts,
                     initial_claim,
                     &mut state.prev_point,
@@ -3573,7 +3560,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                     state.batching_challenge,
                     &DIM_REDUCE_INDICES_17,
                 );
-                verify_final_step_check(
+                verify_final_step_check::<E>(
                     f,
                     *state.prev_point.get_unchecked(state.prev_point_len - 1),
                     final_eq_prefactor,
@@ -3613,7 +3600,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             let initial_claim =
                 dim_reducing_compute_claim(&state.prev_claims, state.batching_challenge);
             let (final_claim, final_eq_prefactor) =
-                verify_sumcheck_rounds::<I, 10usize, GKR_COMMIT_BUF>(
+                verify_sumcheck_rounds::<I, E, 10usize, GKR_COMMIT_BUF>(
                     &mut ts,
                     initial_claim,
                     &mut state.prev_point,
@@ -3635,7 +3622,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                     state.batching_challenge,
                     &DIM_REDUCE_INDICES_16,
                 );
-                verify_final_step_check(
+                verify_final_step_check::<E>(
                     f,
                     *state.prev_point.get_unchecked(state.prev_point_len - 1),
                     final_eq_prefactor,
@@ -3675,7 +3662,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             let initial_claim =
                 dim_reducing_compute_claim(&state.prev_claims, state.batching_challenge);
             let (final_claim, final_eq_prefactor) =
-                verify_sumcheck_rounds::<I, 11usize, GKR_COMMIT_BUF>(
+                verify_sumcheck_rounds::<I, E, 11usize, GKR_COMMIT_BUF>(
                     &mut ts,
                     initial_claim,
                     &mut state.prev_point,
@@ -3697,7 +3684,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                     state.batching_challenge,
                     &DIM_REDUCE_INDICES_15,
                 );
-                verify_final_step_check(
+                verify_final_step_check::<E>(
                     f,
                     *state.prev_point.get_unchecked(state.prev_point_len - 1),
                     final_eq_prefactor,
@@ -3737,7 +3724,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             let initial_claim =
                 dim_reducing_compute_claim(&state.prev_claims, state.batching_challenge);
             let (final_claim, final_eq_prefactor) =
-                verify_sumcheck_rounds::<I, 12usize, GKR_COMMIT_BUF>(
+                verify_sumcheck_rounds::<I, E, 12usize, GKR_COMMIT_BUF>(
                     &mut ts,
                     initial_claim,
                     &mut state.prev_point,
@@ -3759,7 +3746,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                     state.batching_challenge,
                     &DIM_REDUCE_INDICES_14,
                 );
-                verify_final_step_check(
+                verify_final_step_check::<E>(
                     f,
                     *state.prev_point.get_unchecked(state.prev_point_len - 1),
                     final_eq_prefactor,
@@ -3799,7 +3786,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             let initial_claim =
                 dim_reducing_compute_claim(&state.prev_claims, state.batching_challenge);
             let (final_claim, final_eq_prefactor) =
-                verify_sumcheck_rounds::<I, 13usize, GKR_COMMIT_BUF>(
+                verify_sumcheck_rounds::<I, E, 13usize, GKR_COMMIT_BUF>(
                     &mut ts,
                     initial_claim,
                     &mut state.prev_point,
@@ -3821,7 +3808,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                     state.batching_challenge,
                     &DIM_REDUCE_INDICES_13,
                 );
-                verify_final_step_check(
+                verify_final_step_check::<E>(
                     f,
                     *state.prev_point.get_unchecked(state.prev_point_len - 1),
                     final_eq_prefactor,
@@ -3861,7 +3848,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             let initial_claim =
                 dim_reducing_compute_claim(&state.prev_claims, state.batching_challenge);
             let (final_claim, final_eq_prefactor) =
-                verify_sumcheck_rounds::<I, 14usize, GKR_COMMIT_BUF>(
+                verify_sumcheck_rounds::<I, E, 14usize, GKR_COMMIT_BUF>(
                     &mut ts,
                     initial_claim,
                     &mut state.prev_point,
@@ -3883,7 +3870,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                     state.batching_challenge,
                     &DIM_REDUCE_INDICES_12,
                 );
-                verify_final_step_check(
+                verify_final_step_check::<E>(
                     f,
                     *state.prev_point.get_unchecked(state.prev_point_len - 1),
                     final_eq_prefactor,
@@ -3923,7 +3910,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             let initial_claim =
                 dim_reducing_compute_claim(&state.prev_claims, state.batching_challenge);
             let (final_claim, final_eq_prefactor) =
-                verify_sumcheck_rounds::<I, 15usize, GKR_COMMIT_BUF>(
+                verify_sumcheck_rounds::<I, E, 15usize, GKR_COMMIT_BUF>(
                     &mut ts,
                     initial_claim,
                     &mut state.prev_point,
@@ -3945,7 +3932,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                     state.batching_challenge,
                     &DIM_REDUCE_INDICES_11,
                 );
-                verify_final_step_check(
+                verify_final_step_check::<E>(
                     f,
                     *state.prev_point.get_unchecked(state.prev_point_len - 1),
                     final_eq_prefactor,
@@ -3985,7 +3972,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             let initial_claim =
                 dim_reducing_compute_claim(&state.prev_claims, state.batching_challenge);
             let (final_claim, final_eq_prefactor) =
-                verify_sumcheck_rounds::<I, 16usize, GKR_COMMIT_BUF>(
+                verify_sumcheck_rounds::<I, E, 16usize, GKR_COMMIT_BUF>(
                     &mut ts,
                     initial_claim,
                     &mut state.prev_point,
@@ -4007,7 +3994,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                     state.batching_challenge,
                     &DIM_REDUCE_INDICES_10,
                 );
-                verify_final_step_check(
+                verify_final_step_check::<E>(
                     f,
                     *state.prev_point.get_unchecked(state.prev_point_len - 1),
                     final_eq_prefactor,
@@ -4047,7 +4034,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             let initial_claim =
                 dim_reducing_compute_claim(&state.prev_claims, state.batching_challenge);
             let (final_claim, final_eq_prefactor) =
-                verify_sumcheck_rounds::<I, 17usize, GKR_COMMIT_BUF>(
+                verify_sumcheck_rounds::<I, E, 17usize, GKR_COMMIT_BUF>(
                     &mut ts,
                     initial_claim,
                     &mut state.prev_point,
@@ -4069,7 +4056,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                     state.batching_challenge,
                     &DIM_REDUCE_INDICES_9,
                 );
-                verify_final_step_check(
+                verify_final_step_check::<E>(
                     f,
                     *state.prev_point.get_unchecked(state.prev_point_len - 1),
                     final_eq_prefactor,
@@ -4109,7 +4096,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             let initial_claim =
                 dim_reducing_compute_claim(&state.prev_claims, state.batching_challenge);
             let (final_claim, final_eq_prefactor) =
-                verify_sumcheck_rounds::<I, 18usize, GKR_COMMIT_BUF>(
+                verify_sumcheck_rounds::<I, E, 18usize, GKR_COMMIT_BUF>(
                     &mut ts,
                     initial_claim,
                     &mut state.prev_point,
@@ -4131,7 +4118,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                     state.batching_challenge,
                     &DIM_REDUCE_INDICES_8,
                 );
-                verify_final_step_check(
+                verify_final_step_check::<E>(
                     f,
                     *state.prev_point.get_unchecked(state.prev_point_len - 1),
                     final_eq_prefactor,
@@ -4171,7 +4158,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             let initial_claim =
                 dim_reducing_compute_claim(&state.prev_claims, state.batching_challenge);
             let (final_claim, final_eq_prefactor) =
-                verify_sumcheck_rounds::<I, 19usize, GKR_COMMIT_BUF>(
+                verify_sumcheck_rounds::<I, E, 19usize, GKR_COMMIT_BUF>(
                     &mut ts,
                     initial_claim,
                     &mut state.prev_point,
@@ -4193,7 +4180,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                     state.batching_challenge,
                     &DIM_REDUCE_INDICES_7,
                 );
-                verify_final_step_check(
+                verify_final_step_check::<E>(
                     f,
                     *state.prev_point.get_unchecked(state.prev_point_len - 1),
                     final_eq_prefactor,
@@ -4233,7 +4220,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             let initial_claim =
                 dim_reducing_compute_claim(&state.prev_claims, state.batching_challenge);
             let (final_claim, final_eq_prefactor) =
-                verify_sumcheck_rounds::<I, 20usize, GKR_COMMIT_BUF>(
+                verify_sumcheck_rounds::<I, E, 20usize, GKR_COMMIT_BUF>(
                     &mut ts,
                     initial_claim,
                     &mut state.prev_point,
@@ -4255,7 +4242,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                     state.batching_challenge,
                     &DIM_REDUCE_INDICES_6,
                 );
-                verify_final_step_check(
+                verify_final_step_check::<E>(
                     f,
                     *state.prev_point.get_unchecked(state.prev_point_len - 1),
                     final_eq_prefactor,
@@ -4295,7 +4282,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             let initial_claim =
                 dim_reducing_compute_claim(&state.prev_claims, state.batching_challenge);
             let (final_claim, final_eq_prefactor) =
-                verify_sumcheck_rounds::<I, 21usize, GKR_COMMIT_BUF>(
+                verify_sumcheck_rounds::<I, E, 21usize, GKR_COMMIT_BUF>(
                     &mut ts,
                     initial_claim,
                     &mut state.prev_point,
@@ -4317,7 +4304,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                     state.batching_challenge,
                     &DIM_REDUCE_INDICES_5,
                 );
-                verify_final_step_check(
+                verify_final_step_check::<E>(
                     f,
                     *state.prev_point.get_unchecked(state.prev_point_len - 1),
                     final_eq_prefactor,
@@ -4357,7 +4344,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
             let initial_claim =
                 dim_reducing_compute_claim(&state.prev_claims, state.batching_challenge);
             let (final_claim, final_eq_prefactor) =
-                verify_sumcheck_rounds::<I, 22usize, GKR_COMMIT_BUF>(
+                verify_sumcheck_rounds::<I, E, 22usize, GKR_COMMIT_BUF>(
                     &mut ts,
                     initial_claim,
                     &mut state.prev_point,
@@ -4379,7 +4366,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                     state.batching_challenge,
                     &DIM_REDUCE_INDICES_4,
                 );
-                verify_final_step_check(
+                verify_final_step_check::<E>(
                     f,
                     *state.prev_point.get_unchecked(state.prev_point_len - 1),
                     final_eq_prefactor,
@@ -4427,7 +4414,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
         {
             let initial_claim = layer_3_compute_claim(&state.prev_claims, state.batching_challenge);
             let (final_claim, final_eq_prefactor) =
-                verify_sumcheck_rounds::<I, 23usize, GKR_COMMIT_BUF>(
+                verify_sumcheck_rounds::<I, E, 23usize, GKR_COMMIT_BUF>(
                     &mut ts,
                     initial_claim,
                     &mut state.prev_point,
@@ -4454,7 +4441,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                     permutation_argument_additive_part,
                     address_high_bits_shift,
                 );
-                verify_final_step_check(
+                verify_final_step_check::<E>(
                     f,
                     *state.prev_point.get_unchecked(state.prev_point_len - 1),
                     final_eq_prefactor,
@@ -4483,7 +4470,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
         {
             let initial_claim = layer_2_compute_claim(&state.prev_claims, state.batching_challenge);
             let (final_claim, final_eq_prefactor) =
-                verify_sumcheck_rounds::<I, 23usize, GKR_COMMIT_BUF>(
+                verify_sumcheck_rounds::<I, E, 23usize, GKR_COMMIT_BUF>(
                     &mut ts,
                     initial_claim,
                     &mut state.prev_point,
@@ -4510,7 +4497,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                     permutation_argument_additive_part,
                     address_high_bits_shift,
                 );
-                verify_final_step_check(
+                verify_final_step_check::<E>(
                     f,
                     *state.prev_point.get_unchecked(state.prev_point_len - 1),
                     final_eq_prefactor,
@@ -4539,7 +4526,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
         {
             let initial_claim = layer_1_compute_claim(&state.prev_claims, state.batching_challenge);
             let (final_claim, final_eq_prefactor) =
-                verify_sumcheck_rounds::<I, 23usize, GKR_COMMIT_BUF>(
+                verify_sumcheck_rounds::<I, E, 23usize, GKR_COMMIT_BUF>(
                     &mut ts,
                     initial_claim,
                     &mut state.prev_point,
@@ -4566,7 +4553,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                     permutation_argument_additive_part,
                     address_high_bits_shift,
                 );
-                verify_final_step_check(
+                verify_final_step_check::<E>(
                     f,
                     *state.prev_point.get_unchecked(state.prev_point_len - 1),
                     final_eq_prefactor,
@@ -4595,7 +4582,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
         {
             let initial_claim = layer_0_compute_claim(&state.prev_claims, state.batching_challenge);
             let (final_claim, final_eq_prefactor) =
-                verify_sumcheck_rounds::<I, 23usize, GKR_COMMIT_BUF>(
+                verify_sumcheck_rounds::<I, E, 23usize, GKR_COMMIT_BUF>(
                     &mut ts,
                     initial_claim,
                     &mut state.prev_point,
@@ -4622,7 +4609,7 @@ pub fn verify_gkr<I: NonDeterminismSource>() -> Result<
                     permutation_argument_additive_part,
                     address_high_bits_shift,
                 );
-                verify_final_step_check(
+                verify_final_step_check::<E>(
                     f,
                     *state.prev_point.get_unchecked(state.prev_point_len - 1),
                     final_eq_prefactor,
