@@ -54,7 +54,7 @@ use crate::prover::proof::{
     draw_query_bits_after_verified_pow, draw_query_bits_with_external_nonce,
 };
 use crate::prover::trace_holder::{get_tree_caps, TraceHolder};
-use crate::prover::whir::{GpuWhirExtensionOracle, GpuWhirExtensionQuery};
+use crate::prover::whir::{GpuWhirExtensionOracle, GpuWhirExtensionQuery, e4_coeffs_to_vectorized};
 
 const EXT4_DEGREE: usize = <E4 as FieldExtension<BF>>::DEGREE;
 struct GpuWhirState {
@@ -1475,8 +1475,8 @@ fn evaluate_monomial_form_device(
     point: E4,
     context: &ProverContext,
 ) -> CudaResult<E4> {
-    let d_point = context.alloc(1, AllocationPlacement::BestFit);
-    memory_copy_async(&d_point[..1], &[point], context.get_exec_stream());
+    let mut d_point = context.alloc(1, AllocationPlacement::BestFit)?;
+    memory_copy_async(&mut d_point[..1], &[point], context.get_exec_stream());
 
     schedule_monomial_eval_device_impl(state, &d_point, context)?;
 
@@ -2872,8 +2872,8 @@ pub(crate) fn debug_build_initial_state_for_test(
     original_evaluation_point: &[E4],
     batching_challenge: E4,
     context: &ProverContext,
-) -> CudaResult<([Vec<E4>; 3], E4, Vec<E4>, Vec<E4>, Vec<E4>)> {
-    fn copy_back(values: &DeviceSlice<E4>, context: &ProverContext) -> Vec<E4> {
+) -> CudaResult<([Vec<E4>; 3], E4, Vec<BF>, Vec<E4>, Vec<E4>)> {
+    fn copy_back<T: Clone>(values: &DeviceSlice<T>, context: &ProverContext) -> Vec<T> {
         let mut host = unsafe { context.alloc_host_uninit_slice(values.len()) };
         memory_copy_async(&mut host, values, context.get_exec_stream()).unwrap();
         context.get_exec_stream().synchronize().unwrap();
@@ -2898,7 +2898,7 @@ pub(crate) fn debug_build_initial_state_for_test(
     Ok((
         batch_challenges,
         claim,
-        copy_back(&state.sumchecked_poly_monomial_form[..trace_len], context),
+        copy_back(state.sumchecked_poly_monomial_form.slice(), context),
         copy_back(&state.sumchecked_poly_evaluation_form[..trace_len], context),
         copy_back(&state.eq_poly[..trace_len], context),
     ))
@@ -3029,7 +3029,7 @@ pub(crate) fn debug_build_initial_state_snapshots_for_test(
 pub(crate) struct DebugInitialWhirRoundCheckpoint {
     pub(crate) sumcheck_polys: Vec<[E4; 3]>,
     pub(crate) folding_challenges: Vec<E4>,
-    pub(crate) folded_monomial_form: Vec<E4>,
+    pub(crate) folded_monomial_form: Vec<BF>,
     pub(crate) recursive_cap: MerkleTreeCapVarLength,
     pub(crate) ood_point: E4,
     pub(crate) ood_value: E4,
@@ -3092,17 +3092,17 @@ pub(crate) fn debug_initial_round_checkpoint_for_test(
         state.current_len /= 2;
     }
 
-    let mut folded_monomial_form_host = alloc_static_pinned_box_uninit(state.current_len)?;
+    let mut folded_monomial_form_host = alloc_static_pinned_box_uninit(trace_len * EXT4_DEGREE)?;
     memory_copy_async(
         &mut folded_monomial_form_host,
-        &state.sumchecked_poly_monomial_form[..state.current_len],
+        state.sumchecked_poly_monomial_form.slice(),
         context.get_exec_stream(),
     )?;
     context.get_exec_stream().synchronize()?;
     let folded_monomial_form = folded_monomial_form_host.to_vec();
 
     let oracle = GpuWhirExtensionOracle::from_device_monomial_coeffs(
-        &state.sumchecked_poly_monomial_form_matrix(),
+        &state.sumchecked_poly_monomial_form,
         state.current_len,
         first_recursive_lde_factor,
         1 << next_folding_steps,
@@ -3171,16 +3171,16 @@ pub(crate) fn debug_apply_initial_fold_challenge_for_test(
     debug_state: &mut DebugWhirInitialFoldState,
     challenge: E4,
     context: &ProverContext,
-) -> CudaResult<Vec<E4>> {
+) -> CudaResult<Vec<BF>> {
     fold_monomial_form_in_place_device(&mut debug_state.state, challenge, context)?;
     fold_evaluation_form_in_place_device(&mut debug_state.state, challenge, context)?;
     fold_eq_poly_in_place_device(&mut debug_state.state, challenge, context)?;
     debug_state.state.current_len /= 2;
 
-    let mut host = alloc_static_pinned_box_uninit(debug_state.state.current_len)?;
+    let mut host = alloc_static_pinned_box_uninit(debug_state.state.original_trace_len * EXT4_DEGREE)?;
     memory_copy_async(
         &mut host,
-        &debug_state.state.sumchecked_poly_monomial_form[..debug_state.state.current_len],
+        debug_state.state.sumchecked_poly_monomial_form.slice(),
         context.get_exec_stream(),
     )?;
     context.get_exec_stream().synchronize()?;
@@ -3214,7 +3214,7 @@ mod tests {
         ])
     }
 
-    fn alloc_and_copy(values: &[E4], context: &ProverContext) -> DeviceAllocation<E4> {
+    fn alloc_and_copy<T>(values: &[T], context: &ProverContext) -> DeviceAllocation<T> {
         let mut device = context
             .alloc(values.len(), AllocationPlacement::BestFit)
             .unwrap();
@@ -3445,7 +3445,11 @@ mod tests {
             .collect::<Vec<_>>();
 
         state.current_len = 8;
-        state.sumchecked_poly_monomial_form = alloc_and_copy(&monomial, &context);
+        let monomial_vectorized = e4_coeffs_to_vectorized(&monomial);
+        state.sumchecked_poly_monomial_form = DeviceMatrixOwnsAllocation::new(
+            alloc_and_copy(&monomial_vectorized, &context),
+            state.current_len,
+        );
         state.sumchecked_poly_evaluation_form = alloc_and_copy(&evals, &context);
         state.eq_poly = alloc_and_copy(&eq, &context);
 
@@ -3506,7 +3510,11 @@ mod tests {
         ];
 
         state.current_len = monomial.len();
-        state.sumchecked_poly_monomial_form = alloc_and_copy(&monomial, &context);
+        let monomial_vectorized = e4_coeffs_to_vectorized(&monomial);
+        state.sumchecked_poly_monomial_form = DeviceMatrixOwnsAllocation::new(
+            alloc_and_copy(&monomial_vectorized, &context),
+            state.current_len,
+        );
         state.sumchecked_poly_evaluation_form = alloc_and_copy(&evals, &context);
         state.eq_poly = alloc_and_copy(&eq, &context);
 

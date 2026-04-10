@@ -12,9 +12,7 @@ use crate::ops::complex::{
 };
 use crate::primitives::callbacks::Callbacks;
 use crate::primitives::context::{HostAllocation, ProverContext, UnsafeAccessor};
-use crate::primitives::device_structures::{
-    DeviceMatrix, DeviceMatrixChunkMut, DeviceMatrixImpl, DeviceMatrixMut, DeviceMatrixMutImpl,
-};
+use crate::primitives::device_structures::{DeviceMatrix, DeviceMatrixChunkMut, DeviceMatrixImpl};
 use crate::primitives::field::{BF, E4};
 use crate::primitives::static_host::alloc_static_pinned_box_from_slice;
 use crate::prover::trace_holder::{TraceHolder, TreesCacheMode, PARTIAL_TREE_REDUCTION_LAYERS};
@@ -78,6 +76,19 @@ impl GpuWhirScheduledExtensionQuery {
     }
 }
 
+pub(crate) fn e4_coeffs_to_vectorized(coeffs: &[E4]) -> Vec<BF> {
+    let trace_len = coeffs.len();
+    let mut vectorized_coeffs = vec![BF::default(); 4 * trace_len];
+    for i in 0..trace_len {
+        let coeff = coeffs[i];
+        let bf_coeffs = [coeff.c0.c0, coeff.c0.c1, coeff.c1.c0, coeff.c1.c1];
+        for j in 0..4 {
+            vectorized_coeffs[i + j * trace_len] = bf_coeffs[j];
+        }
+    }
+    vectorized_coeffs
+}
+
 impl GpuWhirExtensionOracle {
     fn recursive_tree_cache_mode(
         total_leaf_count_log2: u32,
@@ -98,21 +109,14 @@ impl GpuWhirExtensionOracle {
         context: &ProverContext,
     ) -> CudaResult<Self> {
         let trace_len = monomial_coeffs.len();
-        let mut vectorized_monomial_coeffs = vec![BF::default(); 4 * trace_len];
-        for i in 0..trace_len {
-            let coeff = monomial_coeffs[i];
-            let bf_coeffs = [coeff.c0.c0, coeff.c0.c1, coeff.c1.c0, coeff.c1.c1];
-            for j in 0..4 {
-                vectorized_monomial_coeffs[i + j * trace_len] = bf_coeffs[j];
-            }
-        }
+        let mut vectorized_monomial_coeffs = e4_coeffs_to_vectorized(&monomial_coeffs);
         let mut monomial_coeffs_device_alloc =
             context.alloc(monomial_coeffs.len(), AllocationPlacement::BestFit)?;
-        let mut monomial_coeffs_device =
-            DeviceMatrixMut::new(&mut monomial_coeffs_device_alloc, trace_len);
         let stream = context.get_exec_stream();
         let host = alloc_static_pinned_box_from_slice(&vectorized_monomial_coeffs[..])?;
-        memory_copy_async(monomial_coeffs_device.slice_mut(), &host[..], stream)?;
+        memory_copy_async(&mut monomial_coeffs_device_alloc, &host[..], stream)?;
+        let monomial_coeffs_device =
+            DeviceMatrix::new(&monomial_coeffs_device_alloc, trace_len);
         Self::from_device_monomial_coeffs(
             &monomial_coeffs_device,
             trace_len,
@@ -124,7 +128,7 @@ impl GpuWhirExtensionOracle {
     }
 
     pub(crate) fn from_device_monomial_coeffs(
-        monomial_coeffs: &DeviceMatrixMut<BF>,
+        monomial_coeffs: &impl DeviceMatrixImpl<BF>,
         trace_len: usize,
         lde_factor: usize,
         values_per_leaf: usize,
@@ -143,7 +147,7 @@ impl GpuWhirExtensionOracle {
     }
 
     pub(crate) fn schedule_from_device_monomial_coeffs(
-        monomial_coeffs: &impl DeviceMatrixMutImpl<BF>,
+        monomial_coeffs: &impl DeviceMatrixImpl<BF>,
         trace_len: usize,
         lde_factor: usize,
         values_per_leaf: usize,
@@ -162,7 +166,7 @@ impl GpuWhirExtensionOracle {
     }
 
     fn from_device_monomial_coeffs_impl(
-        monomial_coeffs: &impl DeviceMatrixMutImpl<BF>,
+        monomial_coeffs: &impl DeviceMatrixImpl<BF>,
         trace_len: usize,
         lde_factor: usize,
         values_per_leaf: usize,
@@ -706,22 +710,27 @@ pub(crate) mod tests {
         let twiddles = Twiddles::<BF, Global>::new(monomial_coeffs.len(), &worker);
         let cpu =
             cpu_extension_oracle_from_monomial_form(&monomial_coeffs, &twiddles, 4, 2, 4, &worker);
+        let trace_len = monomial_coeffs.len();
 
+        let monomial_coeffs_vectorized = super::e4_coeffs_to_vectorized(&monomial_coeffs);
         let mut monomial_coeffs_device = context
             .alloc(
-                monomial_coeffs.len(),
+                trace_len * super::EXT4_DEGREE,
                 crate::allocator::tracker::AllocationPlacement::BestFit,
             )
             .unwrap();
         memory_copy_async(
             &mut monomial_coeffs_device,
-            &monomial_coeffs,
+            &monomial_coeffs_vectorized,
             context.get_exec_stream(),
         )
         .unwrap();
+        let monomial_coeffs_device_matrix =
+            super::DeviceMatrix::new(&monomial_coeffs_device, trace_len);
 
         let mut gpu = GpuWhirExtensionOracle::schedule_from_device_monomial_coeffs(
-            &monomial_coeffs_device,
+            &monomial_coeffs_device_matrix,
+            trace_len,
             4,
             2,
             4,
