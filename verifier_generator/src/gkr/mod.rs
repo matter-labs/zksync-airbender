@@ -1251,14 +1251,13 @@ where
         };
         use ::verifier_common::field_ops;
         use ::verifier_common::transcript::Blake2sTranscript;
-        use ::verifier_common::blake2s_u32::DelegatedBlake2sState;
         use ::verifier_common::field::{Field, FieldExtension, PrimeField};
         use ::verifier_common::non_determinism_source::NonDeterminismSource;
         use super::constants::*;
 
         #layer_functions
 
-        #[allow(unused_braces, unused_mut, unused_variables, unused_unsafe, clippy::needless_borrow, clippy::needless_range_loop, clippy::large_const_arrays)]
+        #[allow(unused_variables, unused_mut, unused_unsafe)]
         pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator,
         >() -> Result<GKRVerifierOutput<'static, #quartic_struct, GKR_ROUNDS, GKR_ADDRS, TOTAL_CAP_WORDS>, E::Error> {
             unsafe { #main_body }

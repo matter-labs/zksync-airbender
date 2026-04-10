@@ -87,7 +87,7 @@ pub fn generate_dim_reducing_compute_claim<MW: MersenneWrapper>(
     let quartic_struct = MW::quartic_struct();
     quote! {
         #[inline(always)]
-        #[allow(clippy::needless_borrow)]
+        #[allow(unused_unsafe)]
         unsafe fn dim_reducing_compute_claim(
             output_claims: &LazyVec<#quartic_struct, GKR_ADDRS>,
             batch_base: #quartic_struct,
@@ -212,7 +212,7 @@ pub fn generate_dim_reducing_final_step_accumulator<MW: MersenneWrapper>(
 
     quote! {
         #[inline(always)]
-        #[allow(clippy::needless_borrow, clippy::large_const_arrays)]
+        #[allow(unused_unsafe)]
         unsafe fn dim_reducing_final_step_accumulator(
             evals: &[[#quartic_struct; 4]],
             batch_base: #quartic_struct,

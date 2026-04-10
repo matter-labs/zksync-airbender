@@ -58,11 +58,10 @@ pub fn generate_whir_inlined<MW: MersenneWrapper>(
     quote! {
         #field_use_stmts
         use core::mem::MaybeUninit;
-        use ::verifier_common::field::{Field, PrimeField};
+        use ::verifier_common::field::Field;
         use ::verifier_common::field_ops;
-        use ::verifier_common::transcript::Seed;
         use ::verifier_common::blake2s_u32::{
-            AlignedArray64, DelegatedBlake2sState, BLAKE2S_BLOCK_SIZE_U32_WORDS,
+            AlignedArray64, BLAKE2S_BLOCK_SIZE_U32_WORDS,
         };
         use ::verifier_common::non_determinism_source::NonDeterminismSource;
         use ::verifier_common::lazy_vec::LazyVec;
@@ -75,7 +74,7 @@ pub fn generate_whir_inlined<MW: MersenneWrapper>(
             verify_whir_sumcheck_step, fold_coset, materialize_gamma_powers,
             read_field_el, read_field_els,
             read_reduced_field_el, draw_single_field_el, compute_tree_index,
-            read_and_batch_leaf, process_oracle_query,
+            process_oracle_query,
         };
         use ::verifier_common::errors::ErrorCreator;
         use ::verifier_common::structs::{CommitBuf, TranscriptState};
@@ -94,7 +93,6 @@ pub fn generate_whir_inlined<MW: MersenneWrapper>(
         const NUM_COSETS_LOG2: usize = #num_cosets_log2;
         const COSET_TREE_SIZE: usize = #coset_tree_size;
 
-        #[allow(unused_braces, unused_mut, unused_variables, unused_unsafe, clippy::needless_borrow)]
         pub fn verify_initial_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
             ts: &mut TranscriptState,
             hash_buf: &mut AlignedArray64<MaybeUninit<u32>, WHIR_HASH_BUF_SIZE>,
@@ -177,9 +175,9 @@ pub fn generate_whir_inlined<MW: MersenneWrapper>(
                 let mut high_powers_offsets = LazyVec::<#field_struct, MAX_HIGH_POWERS>::new();
                 compute_high_powers_offsets(WHIR_FOLD_STEPS[0], &mut high_powers_offsets);
                 let mut fold_buf_a = LazyVec::<#quartic_struct, FOLD_BUF_HALF>::new();
-                unsafe { fold_buf_a.set_len(FOLD_BUF_HALF); }
+                fold_buf_a.set_len(FOLD_BUF_HALF);
                 let mut fold_buf_b = LazyVec::<#quartic_struct, FOLD_BUF_HALF>::new();
-                unsafe { fold_buf_b.set_len(FOLD_BUF_HALF); }
+                fold_buf_b.set_len(FOLD_BUF_HALF);
                 let mut q = 0;
                 while q < INITIAL_NUM_QUERIES {
                     let query_index = *query_indices.get(q);

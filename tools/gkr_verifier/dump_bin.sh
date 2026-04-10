@@ -49,25 +49,20 @@ fi
 
 COMMON_FLAGS="--release -Z panic-immediate-abort -Z build-std=core,alloc --no-default-features --features ${FEATURES}"
 
-# Wrapper: suppress warnings unless --warnings.
-# Can't use RUSTFLAGS=-Awarnings because it overrides .cargo/config.toml rustflags.
-cargo_run() {
-    if $SHOW_WARNINGS; then
-        cargo "$@"
-    else
-        cargo "$@" 2>/dev/null
-    fi
-}
-
-TOTAL=$(echo $CIRCUITS | wc -w | tr -d ' ')
-COUNT=0
+# Suppress warnings by appending -Awarnings to .cargo/config.toml rustflags.
+# Can't use RUSTFLAGS env var because it replaces (not merges) config.toml rustflags.
+if ! $SHOW_WARNINGS; then
+    sed -i.bak '/"-C", "force-frame-pointers",/a\
+  "-A", "warnings",' .cargo/config.toml
+    trap 'mv .cargo/config.toml.bak .cargo/config.toml' EXIT
+fi
 
 echo "==> Building RISC-V binaries (blake: ${BLAKE_MODE}, variant: ${VARIANT})"
+BIN_FLAGS=""
 for circuit in $CIRCUITS; do
-    COUNT=$((COUNT + 1))
-    echo "    [${COUNT}/${TOTAL}] Building ${circuit}"
-    cargo_run build $COMMON_FLAGS --bin "$circuit"
+    BIN_FLAGS="${BIN_FLAGS} --bin ${circuit}"
 done
+cargo build $COMMON_FLAGS $BIN_FLAGS
 
 # Extract .bin / .elf / .text in parallel
 echo "==> Extracting binaries"

@@ -35,12 +35,8 @@ fn generate_common<MW: MersenneWrapper>() {
     let common = quote::quote! {
         use ::verifier_common::field_ops;
         use ::verifier_common::field::{Field, FieldExtension, PrimeField};
-        use ::verifier_common::blake2s_u32::{
-            DelegatedBlake2sState,
-            BLAKE2S_DIGEST_SIZE_U32_WORDS,
-        };
+        use ::verifier_common::blake2s_u32::{DelegatedBlake2sState, BLAKE2S_DIGEST_SIZE_U32_WORDS};
         use ::verifier_common::non_determinism_source::NonDeterminismSource;
-        use ::verifier_common::transcript::{Blake2sTranscript, Seed};
         use ::verifier_common::errors::ErrorCreator;
         use ::verifier_common::structs::{CommitBuf, TranscriptState};
         use ::verifier_common::lazy_vec::LazyVec;
@@ -159,7 +155,6 @@ fn generate_verifier_for_circuit<MW: MersenneWrapper>(circuit: &CircuitData) {
         use ::verifier_common::non_determinism_source::NonDeterminismSource;
         use ::verifier_common::errors::ErrorCreator;
 
-        #[allow(unused_braces, unused_mut, unused_variables)]
         pub fn verify<I: NonDeterminismSource, E: ErrorCreator>() -> Result<(), E::Error> {
             let gkr_output = verify_gkr::<I, E>()?;
             let mut ts = ::verifier_common::structs::TranscriptState::new(

@@ -7,7 +7,6 @@ use verifier_common::field_ops;
 use verifier_common::lazy_vec::LazyVec;
 use verifier_common::non_determinism_source::NonDeterminismSource;
 use verifier_common::structs::{CommitBuf, TranscriptState};
-use verifier_common::transcript::{Blake2sTranscript, Seed};
 pub const EXT_DEGREE: usize = <BabyBearExt4 as FieldExtension<BabyBearField>>::DEGREE;
 #[inline(always)]
 pub fn read_reduced_field_el<I: NonDeterminismSource>() -> u32 {
@@ -64,7 +63,6 @@ pub fn draw_single_field_el(ts: &mut TranscriptState) -> BabyBearExt4 {
     *buf.get(0)
 }
 #[inline(always)]
-#[allow(clippy::needless_borrow, clippy::borrow_deref_ref)]
 pub fn dot_eq<const N: usize>(values: &[BabyBearExt4; N], eq: &[BabyBearExt4; N]) -> BabyBearExt4 {
     let mut result = BabyBearExt4::ZERO;
     for i in 0..N {

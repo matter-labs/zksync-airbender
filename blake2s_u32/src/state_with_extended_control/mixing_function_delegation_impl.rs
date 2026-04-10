@@ -208,19 +208,12 @@ impl Blake2RoundFunctionEvaluator {
                 IV[7],
             ];
 
-            // TODO: update to only copy the state when all usages are changed into `get_merkle_path_proof_buffer`
+            // Caller has written path witness into get_merkle_path_proof_buffer(is_right).
+            // We copy self.state into the other half.
             if is_right {
                 self.input_buffer[8..16].copy_from_slice(&self.state);
             } else {
-                unsafe {
-                    let (l, r) = self.input_buffer.split_at_mut_unchecked(8);
-                    let l: &mut [u32; BLAKE2S_DIGEST_SIZE_U32_WORDS] =
-                        l.as_mut_array().unwrap_unchecked();
-                    let r: &mut [u32; BLAKE2S_DIGEST_SIZE_U32_WORDS] =
-                        r.as_mut_array().unwrap_unchecked();
-                    r.copy_from_slice(&*l);
-                    l.copy_from_slice(&self.state);
-                }
+                self.input_buffer[0..8].copy_from_slice(&self.state);
             }
 
             if REDUCED_ROUNDS {

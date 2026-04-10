@@ -19,7 +19,6 @@ pub fn generate_whir_verify<MW: MersenneWrapper>(whir_hash_buf_size: usize) -> T
     quote! {
         pub const WHIR_HASH_BUF_SIZE: usize = #whir_hash_buf_size;
 
-        #[allow(unused_braces, unused_mut, unused_variables, unused_unsafe, clippy::needless_borrow)]
         pub fn verify_whir<I: NonDeterminismSource, E: ErrorCreator>(
             ts: &mut TranscriptState,
             batching_challenge: #quartic_struct,

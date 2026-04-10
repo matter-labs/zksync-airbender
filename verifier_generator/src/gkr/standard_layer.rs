@@ -77,7 +77,7 @@ pub fn generate_eval_helpers<MW: MersenneWrapper, F: PrimeField>() -> TokenStrea
 
     quote! {
         #[inline(always)]
-        #[allow(unused_variables, clippy::needless_borrow)]
+        #[allow(unused_variables)]
         unsafe fn eval_linear_relation(
             evals: &[[#quartic_struct; 2]],
             terms: &[(usize, usize)],
@@ -97,7 +97,7 @@ pub fn generate_eval_helpers<MW: MersenneWrapper, F: PrimeField>() -> TokenStrea
         }
 
         #[inline(always)]
-        #[allow(unused_variables, clippy::needless_borrow)]
+        #[allow(unused_variables)]
         unsafe fn eval_vector_lookup(
             evals: &[[#quartic_struct; 2]],
             alpha: #quartic_struct,
@@ -128,7 +128,7 @@ pub fn generate_eval_helpers<MW: MersenneWrapper, F: PrimeField>() -> TokenStrea
         }
 
         #[inline(always)]
-        #[allow(unused_variables, clippy::needless_borrow)]
+        #[allow(unused_variables)]
         unsafe fn eval_max_quadratic(
             evals: &[[#quartic_struct; 2]],
             quad_outer: &[(usize, usize)],
@@ -178,7 +178,7 @@ pub fn generate_eval_helpers<MW: MersenneWrapper, F: PrimeField>() -> TokenStrea
         const ME_OP_BYTE_VALUE_PAIR: usize = 7;
 
         #[inline(always)]
-        #[allow(unused_variables, clippy::needless_borrow)]
+        #[allow(unused_variables)]
         unsafe fn eval_memory_expr(
             evals: &[[#quartic_struct; 2]],
             challenges: &[#quartic_struct],
@@ -719,7 +719,7 @@ pub fn generate_layer_compute_claim<MW: MersenneWrapper>(
 
     quote! {
         #[inline(always)]
-        #[allow(clippy::needless_borrow)]
+        #[allow(unused_variables)]
         unsafe fn #fn_name(
             output_claims: &LazyVec<#quartic_struct, GKR_ADDRS>,
             batch_base: #quartic_struct,
@@ -1457,7 +1457,7 @@ pub fn generate_layer_final_step_accumulator<MW: MersenneWrapper, F: PrimeField>
 
     quote! {
         #[inline(always)]
-        #[allow(unused_variables, unused_mut, clippy::needless_borrow, clippy::needless_range_loop, clippy::large_const_arrays)]
+        #[allow(unused_variables, unused_mut, unused_unsafe)]
         unsafe fn #fn_name(
             evals: &[[#quartic_struct; 2]],
             batch_base: #quartic_struct,

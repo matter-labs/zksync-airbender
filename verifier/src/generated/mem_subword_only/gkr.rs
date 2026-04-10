@@ -3,7 +3,6 @@ use super::common::{
     read_reduced_field_el, verify_final_step_check, verify_sumcheck_rounds, EXT_DEGREE,
 };
 use super::constants::*;
-use verifier_common::blake2s_u32::DelegatedBlake2sState;
 use verifier_common::errors::ErrorCreator;
 use verifier_common::field::baby_bear::base::BabyBearField;
 use verifier_common::field::baby_bear::ext4::BabyBearExt4;
@@ -14,7 +13,7 @@ use verifier_common::non_determinism_source::NonDeterminismSource;
 use verifier_common::structs::{CommitBuf, TranscriptState};
 use verifier_common::transcript::Blake2sTranscript;
 #[inline(always)]
-#[allow(unused_variables, clippy::needless_borrow)]
+#[allow(unused_variables)]
 unsafe fn eval_linear_relation(
     evals: &[[BabyBearExt4; 2]],
     terms: &[(usize, usize)],
@@ -33,7 +32,7 @@ unsafe fn eval_linear_relation(
     result
 }
 #[inline(always)]
-#[allow(unused_variables, clippy::needless_borrow)]
+#[allow(unused_variables)]
 unsafe fn eval_vector_lookup(
     evals: &[[BabyBearExt4; 2]],
     alpha: BabyBearExt4,
@@ -67,7 +66,7 @@ unsafe fn eval_vector_lookup(
     result
 }
 #[inline(always)]
-#[allow(unused_variables, clippy::needless_borrow)]
+#[allow(unused_variables)]
 unsafe fn eval_max_quadratic(
     evals: &[[BabyBearExt4; 2]],
     quad_outer: &[(usize, usize)],
@@ -118,7 +117,7 @@ const ME_OP_CH_MUL_EVAL_PLUS_CONST: usize = 5;
 const ME_OP_CH_MUL_EVAL_PLUS_DYN: usize = 6;
 const ME_OP_BYTE_VALUE_PAIR: usize = 7;
 #[inline(always)]
-#[allow(unused_variables, clippy::needless_borrow)]
+#[allow(unused_variables)]
 unsafe fn eval_memory_expr(
     evals: &[[BabyBearExt4; 2]],
     challenges: &[BabyBearExt4],
@@ -204,7 +203,7 @@ unsafe fn eval_memory_expr(
     result
 }
 #[inline(always)]
-#[allow(clippy::needless_borrow)]
+#[allow(unused_variables)]
 unsafe fn layer_0_compute_claim(
     output_claims: &LazyVec<BabyBearExt4, GKR_ADDRS>,
     batch_base: BabyBearExt4,
@@ -289,13 +288,7 @@ unsafe fn layer_0_compute_claim(
     combined
 }
 #[inline(always)]
-#[allow(
-    unused_variables,
-    unused_mut,
-    clippy::needless_borrow,
-    clippy::needless_range_loop,
-    clippy::large_const_arrays
-)]
+#[allow(unused_variables, unused_mut, unused_unsafe)]
 unsafe fn layer_0_final_step_accumulator(
     evals: &[[BabyBearExt4; 2]],
     batch_base: BabyBearExt4,
@@ -2306,7 +2299,7 @@ unsafe fn layer_0_final_step_accumulator(
     acc
 }
 #[inline(always)]
-#[allow(clippy::needless_borrow)]
+#[allow(unused_variables)]
 unsafe fn layer_1_compute_claim(
     output_claims: &LazyVec<BabyBearExt4, GKR_ADDRS>,
     batch_base: BabyBearExt4,
@@ -2359,13 +2352,7 @@ unsafe fn layer_1_compute_claim(
     combined
 }
 #[inline(always)]
-#[allow(
-    unused_variables,
-    unused_mut,
-    clippy::needless_borrow,
-    clippy::needless_range_loop,
-    clippy::large_const_arrays
-)]
+#[allow(unused_variables, unused_mut, unused_unsafe)]
 unsafe fn layer_1_final_step_accumulator(
     evals: &[[BabyBearExt4; 2]],
     batch_base: BabyBearExt4,
@@ -2717,7 +2704,7 @@ unsafe fn layer_1_final_step_accumulator(
     acc
 }
 #[inline(always)]
-#[allow(clippy::needless_borrow)]
+#[allow(unused_variables)]
 unsafe fn layer_2_compute_claim(
     output_claims: &LazyVec<BabyBearExt4, GKR_ADDRS>,
     batch_base: BabyBearExt4,
@@ -2761,13 +2748,7 @@ unsafe fn layer_2_compute_claim(
     combined
 }
 #[inline(always)]
-#[allow(
-    unused_variables,
-    unused_mut,
-    clippy::needless_borrow,
-    clippy::needless_range_loop,
-    clippy::large_const_arrays
-)]
+#[allow(unused_variables, unused_mut, unused_unsafe)]
 unsafe fn layer_2_final_step_accumulator(
     evals: &[[BabyBearExt4; 2]],
     batch_base: BabyBearExt4,
@@ -3027,7 +3008,7 @@ unsafe fn layer_2_final_step_accumulator(
     acc
 }
 #[inline(always)]
-#[allow(clippy::needless_borrow)]
+#[allow(unused_variables)]
 unsafe fn layer_3_compute_claim(
     output_claims: &LazyVec<BabyBearExt4, GKR_ADDRS>,
     batch_base: BabyBearExt4,
@@ -3071,13 +3052,7 @@ unsafe fn layer_3_compute_claim(
     combined
 }
 #[inline(always)]
-#[allow(
-    unused_variables,
-    unused_mut,
-    clippy::needless_borrow,
-    clippy::needless_range_loop,
-    clippy::large_const_arrays
-)]
+#[allow(unused_variables, unused_mut, unused_unsafe)]
 unsafe fn layer_3_final_step_accumulator(
     evals: &[[BabyBearExt4; 2]],
     batch_base: BabyBearExt4,
@@ -3291,7 +3266,7 @@ unsafe fn layer_3_final_step_accumulator(
     acc
 }
 #[inline(always)]
-#[allow(clippy::needless_borrow)]
+#[allow(unused_unsafe)]
 unsafe fn dim_reducing_compute_claim(
     output_claims: &LazyVec<BabyBearExt4, GKR_ADDRS>,
     batch_base: BabyBearExt4,
@@ -3353,7 +3328,7 @@ unsafe fn dim_reducing_compute_claim(
     combined
 }
 #[inline(always)]
-#[allow(clippy::needless_borrow, clippy::large_const_arrays)]
+#[allow(unused_unsafe)]
 unsafe fn dim_reducing_final_step_accumulator(
     evals: &[[BabyBearExt4; 4]],
     batch_base: BabyBearExt4,
@@ -3553,15 +3528,7 @@ unsafe fn dim_reducing_final_step_accumulator(
     }
     acc
 }
-#[allow(
-    unused_braces,
-    unused_mut,
-    unused_variables,
-    unused_unsafe,
-    clippy::needless_borrow,
-    clippy::needless_range_loop,
-    clippy::large_const_arrays
-)]
+#[allow(unused_variables, unused_mut, unused_unsafe)]
 pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
     GKRVerifierOutput<'static, BabyBearExt4, GKR_ROUNDS, GKR_ADDRS, TOTAL_CAP_WORDS>,
     E::Error,

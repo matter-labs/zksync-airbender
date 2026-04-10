@@ -101,7 +101,6 @@ pub fn generate_whir_internal_rounds<MW: MersenneWrapper>(
         const INTERNAL_DRAW_WORDS: [usize; NUM_INTERNAL_ROUNDS] =
             [#(#internal_draw_words_vec),*];
 
-        #[allow(unused_braces, unused_mut, unused_variables, unused_unsafe, clippy::needless_borrow)]
         pub fn verify_internal_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
             ts: &mut TranscriptState,
             hash_buf: &mut AlignedArray64<MaybeUninit<u32>, WHIR_HASH_BUF_SIZE>,
@@ -159,9 +158,9 @@ pub fn generate_whir_internal_rounds<MW: MersenneWrapper>(
                 compute_high_powers_offsets(fold_steps, &mut high_powers_offsets);
 
                 let mut fold_buf_a = LazyVec::<#quartic_struct, MAX_INTERNAL_FOLD_BUF_HALF>::new();
-                unsafe { fold_buf_a.set_len(MAX_INTERNAL_FOLD_BUF_HALF); }
+                fold_buf_a.set_len(MAX_INTERNAL_FOLD_BUF_HALF);
                 let mut fold_buf_b = LazyVec::<#quartic_struct, MAX_INTERNAL_FOLD_BUF_HALF>::new();
-                unsafe { fold_buf_b.set_len(MAX_INTERNAL_FOLD_BUF_HALF); }
+                fold_buf_b.set_len(MAX_INTERNAL_FOLD_BUF_HALF);
                 let mut q = 0;
                 while q < num_queries {
                     let query_index = *query_indices.get(q);

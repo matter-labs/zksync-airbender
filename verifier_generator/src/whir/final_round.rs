@@ -58,7 +58,6 @@ pub fn generate_whir_final_round<MW: MersenneWrapper>(
         const FINAL_POW_BITS: u32 = #pow_bits;
         const FINAL_ORACLE_DEPTH_IDX: usize = #last_oracle_depth_idx;
 
-        #[allow(unused_braces, unused_mut, unused_variables, unused_unsafe, clippy::needless_borrow)]
         pub fn verify_final_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
             ts: &mut TranscriptState,
             hash_buf: &mut AlignedArray64<MaybeUninit<u32>, WHIR_HASH_BUF_SIZE>,
@@ -94,9 +93,9 @@ pub fn generate_whir_final_round<MW: MersenneWrapper>(
                 compute_high_powers_offsets(FINAL_FOLD_STEPS, &mut high_powers_offsets);
 
                 let mut fold_buf_a = LazyVec::<#quartic_struct, FINAL_FOLD_BUF_HALF>::new();
-                unsafe { fold_buf_a.set_len(FINAL_FOLD_BUF_HALF); }
+                fold_buf_a.set_len(FINAL_FOLD_BUF_HALF);
                 let mut fold_buf_b = LazyVec::<#quartic_struct, FINAL_FOLD_BUF_HALF>::new();
-                unsafe { fold_buf_b.set_len(FINAL_FOLD_BUF_HALF); }
+                fold_buf_b.set_len(FINAL_FOLD_BUF_HALF);
                 let mut folded_values: LazyVec<#quartic_struct, FINAL_NUM_QUERIES> =
                     LazyVec::new();
                 let mut query_base_roots: LazyVec<#field_struct, FINAL_NUM_QUERIES> =
@@ -155,7 +154,7 @@ pub fn generate_whir_final_round<MW: MersenneWrapper>(
                 }
 
                 let mut monomials = LazyVec::<#quartic_struct, FINAL_MONOMIALS_LEN>::new();
-                unsafe { monomials.set_len(FINAL_MONOMIALS_LEN); }
+                monomials.set_len(FINAL_MONOMIALS_LEN);
                 read_field_els::<I>(monomials.as_mut_slice());
 
                 let mut q = 0;
@@ -163,12 +162,12 @@ pub fn generate_whir_final_round<MW: MersenneWrapper>(
                     let mut query_point = *query_base_roots.get(q);
                     query_point.exp_power_of_2(FINAL_FOLD_STEPS);
 
-                    let mut eval = unsafe { *monomials.get_unchecked(FINAL_MONOMIALS_LEN - 1) };
+                    let mut eval = *monomials.get_unchecked(FINAL_MONOMIALS_LEN - 1);
                     let mut j = FINAL_MONOMIALS_LEN - 1;
                     while j > 0 {
                         j -= 1;
                         #horner_mul;
-                        let coeff = unsafe { *monomials.get_unchecked(j) };
+                        let coeff = *monomials.get_unchecked(j);
                         #horner_add;
                     }
 

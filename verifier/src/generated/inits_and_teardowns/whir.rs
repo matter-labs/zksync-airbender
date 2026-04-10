@@ -1,22 +1,19 @@
 use super::common::{
     compute_tree_index, draw_single_field_el, fold_coset, materialize_gamma_powers,
-    process_oracle_query, read_and_batch_leaf, read_field_el, read_field_els,
-    read_reduced_field_el, verify_whir_sumcheck_step,
+    process_oracle_query, read_field_el, read_field_els, read_reduced_field_el,
+    verify_whir_sumcheck_step,
 };
 use super::constants::*;
 use core::mem::MaybeUninit;
-use verifier_common::blake2s_u32::{
-    AlignedArray64, DelegatedBlake2sState, BLAKE2S_BLOCK_SIZE_U32_WORDS,
-};
+use verifier_common::blake2s_u32::{AlignedArray64, BLAKE2S_BLOCK_SIZE_U32_WORDS};
 use verifier_common::errors::ErrorCreator;
 use verifier_common::field::baby_bear::base::BabyBearField;
 use verifier_common::field::baby_bear::ext4::BabyBearExt4;
-use verifier_common::field::{Field, PrimeField};
+use verifier_common::field::Field;
 use verifier_common::field_ops;
 use verifier_common::lazy_vec::LazyVec;
 use verifier_common::non_determinism_source::NonDeterminismSource;
 use verifier_common::structs::{CommitBuf, TranscriptState};
-use verifier_common::transcript::Seed;
 use verifier_common::whir::{
     draw_query_indices, read_and_verify_pow, read_commit_return_merkle_cap,
 };
@@ -32,13 +29,6 @@ const FOLD_BUF_HALF: usize = 1usize;
 const NUM_COSETS: usize = 2usize;
 const NUM_COSETS_LOG2: usize = 1usize;
 const COSET_TREE_SIZE: usize = 8388608usize;
-#[allow(
-    unused_braces,
-    unused_mut,
-    unused_variables,
-    unused_unsafe,
-    clippy::needless_borrow
-)]
 pub fn verify_initial_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
     ts: &mut TranscriptState,
     hash_buf: &mut AlignedArray64<MaybeUninit<u32>, WHIR_HASH_BUF_SIZE>,
@@ -109,13 +99,9 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
         let mut high_powers_offsets = LazyVec::<BabyBearField, MAX_HIGH_POWERS>::new();
         compute_high_powers_offsets(WHIR_FOLD_STEPS[0], &mut high_powers_offsets);
         let mut fold_buf_a = LazyVec::<BabyBearExt4, FOLD_BUF_HALF>::new();
-        unsafe {
-            fold_buf_a.set_len(FOLD_BUF_HALF);
-        }
+        fold_buf_a.set_len(FOLD_BUF_HALF);
         let mut fold_buf_b = LazyVec::<BabyBearExt4, FOLD_BUF_HALF>::new();
-        unsafe {
-            fold_buf_b.set_len(FOLD_BUF_HALF);
-        }
+        fold_buf_b.set_len(FOLD_BUF_HALF);
         let mut q = 0;
         while q < INITIAL_NUM_QUERIES {
             let query_index = *query_indices.get(q);
@@ -190,13 +176,6 @@ const MAX_INTERNAL_FOLD_BUF_HALF: usize = 8usize;
 const MAX_INTERNAL_NUM_QUERIES: usize = 23usize;
 const MAX_INTERNAL_DRAW_WORDS: usize = 24usize;
 const INTERNAL_DRAW_WORDS: [usize; NUM_INTERNAL_ROUNDS] = [24usize, 16usize, 8usize, 8usize];
-#[allow(
-    unused_braces,
-    unused_mut,
-    unused_variables,
-    unused_unsafe,
-    clippy::needless_borrow
-)]
 pub fn verify_internal_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
     ts: &mut TranscriptState,
     hash_buf: &mut AlignedArray64<MaybeUninit<u32>, WHIR_HASH_BUF_SIZE>,
@@ -243,13 +222,9 @@ pub fn verify_internal_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
         let mut high_powers_offsets = LazyVec::<BabyBearField, MAX_HIGH_POWERS>::new();
         compute_high_powers_offsets(fold_steps, &mut high_powers_offsets);
         let mut fold_buf_a = LazyVec::<BabyBearExt4, MAX_INTERNAL_FOLD_BUF_HALF>::new();
-        unsafe {
-            fold_buf_a.set_len(MAX_INTERNAL_FOLD_BUF_HALF);
-        }
+        fold_buf_a.set_len(MAX_INTERNAL_FOLD_BUF_HALF);
         let mut fold_buf_b = LazyVec::<BabyBearExt4, MAX_INTERNAL_FOLD_BUF_HALF>::new();
-        unsafe {
-            fold_buf_b.set_len(MAX_INTERNAL_FOLD_BUF_HALF);
-        }
+        fold_buf_b.set_len(MAX_INTERNAL_FOLD_BUF_HALF);
         let mut q = 0;
         while q < num_queries {
             let query_index = *query_indices.get(q);
@@ -310,13 +285,6 @@ const FINAL_COSET_TREE_SIZE: usize = 8usize;
 const FINAL_DRAW_WORDS: usize = 8usize;
 const FINAL_POW_BITS: u32 = 24u32;
 const FINAL_ORACLE_DEPTH_IDX: usize = 4usize;
-#[allow(
-    unused_braces,
-    unused_mut,
-    unused_variables,
-    unused_unsafe,
-    clippy::needless_borrow
-)]
 pub fn verify_final_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
     ts: &mut TranscriptState,
     hash_buf: &mut AlignedArray64<MaybeUninit<u32>, WHIR_HASH_BUF_SIZE>,
@@ -347,13 +315,9 @@ pub fn verify_final_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
         let mut high_powers_offsets = LazyVec::<BabyBearField, MAX_HIGH_POWERS>::new();
         compute_high_powers_offsets(FINAL_FOLD_STEPS, &mut high_powers_offsets);
         let mut fold_buf_a = LazyVec::<BabyBearExt4, FINAL_FOLD_BUF_HALF>::new();
-        unsafe {
-            fold_buf_a.set_len(FINAL_FOLD_BUF_HALF);
-        }
+        fold_buf_a.set_len(FINAL_FOLD_BUF_HALF);
         let mut fold_buf_b = LazyVec::<BabyBearExt4, FINAL_FOLD_BUF_HALF>::new();
-        unsafe {
-            fold_buf_b.set_len(FINAL_FOLD_BUF_HALF);
-        }
+        fold_buf_b.set_len(FINAL_FOLD_BUF_HALF);
         let mut folded_values: LazyVec<BabyBearExt4, FINAL_NUM_QUERIES> = LazyVec::new();
         let mut query_base_roots: LazyVec<BabyBearField, FINAL_NUM_QUERIES> = LazyVec::new();
         let mut q = 0;
@@ -404,20 +368,18 @@ pub fn verify_final_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
             q += 1;
         }
         let mut monomials = LazyVec::<BabyBearExt4, FINAL_MONOMIALS_LEN>::new();
-        unsafe {
-            monomials.set_len(FINAL_MONOMIALS_LEN);
-        }
+        monomials.set_len(FINAL_MONOMIALS_LEN);
         read_field_els::<I>(monomials.as_mut_slice());
         let mut q = 0;
         while q < FINAL_NUM_QUERIES {
             let mut query_point = *query_base_roots.get(q);
             query_point.exp_power_of_2(FINAL_FOLD_STEPS);
-            let mut eval = unsafe { *monomials.get_unchecked(FINAL_MONOMIALS_LEN - 1) };
+            let mut eval = *monomials.get_unchecked(FINAL_MONOMIALS_LEN - 1);
             let mut j = FINAL_MONOMIALS_LEN - 1;
             while j > 0 {
                 j -= 1;
                 field_ops::mul_assign_by_base(&mut eval, &query_point);
-                let coeff = unsafe { *monomials.get_unchecked(j) };
+                let coeff = *monomials.get_unchecked(j);
                 field_ops::add_assign(&mut eval, &coeff);
             }
             if eval != *folded_values.get(q) {
@@ -429,13 +391,6 @@ pub fn verify_final_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
     }
 }
 pub const WHIR_HASH_BUF_SIZE: usize = 128usize;
-#[allow(
-    unused_braces,
-    unused_mut,
-    unused_variables,
-    unused_unsafe,
-    clippy::needless_borrow
-)]
 pub fn verify_whir<I: NonDeterminismSource, E: ErrorCreator>(
     ts: &mut TranscriptState,
     batching_challenge: BabyBearExt4,

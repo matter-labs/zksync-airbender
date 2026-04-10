@@ -17,7 +17,6 @@ pub fn generate_sumcheck_helpers<MW: MersenneWrapper>() -> TokenStream {
 
     quote! {
         #[inline(always)]
-        #[allow(clippy::needless_borrow, clippy::borrow_deref_ref)]
         pub fn dot_eq<const N: usize>(values: &[#quartic_struct; N], eq: &[#quartic_struct; N]) -> #quartic_struct {
             let mut result = #quartic_zero;
             for i in 0..N {
