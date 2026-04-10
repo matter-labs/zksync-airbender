@@ -237,6 +237,7 @@ pub unsafe fn verify_full_statement_for_unrolled_circuits<
     let mut proof_output_with_delegation_1: ProofOutput<CAP_SIZE, NUM_COSETS, 1, 0, 1> =
         MaybeUninit::uninit().assume_init();
     let mut state_variables = ProofPublicInputs::uninit();
+    let mut non_delegation_used = false;
     let mut delegation_used = false;
 
     // NOTE: in unrolled circuits we do have contribution from setup values into
@@ -255,8 +256,6 @@ pub unsafe fn verify_full_statement_for_unrolled_circuits<
         }
 
         for circuit_sequence in 0..num_circuits {
-            total_cycles += *capacity as u64;
-            assert!(total_cycles < MAX_CYCLES);
             match verifier_fn {
                 VerificationFunctionPointer::UnrolledNoDelegation(verifier_fn) => {
                     let (current, previous) = if circuit_sequence & 1 == 0 {
@@ -272,22 +271,30 @@ pub unsafe fn verify_full_statement_for_unrolled_circuits<
                     // and commit memory caps
                     transcript.absorb(current.memory_caps_flattened());
 
-                    // now we should check all invariants about continuity
+                    non_delegation_used |= true;
+
+                    // now we should check all invariants about continuity,
+                    // in our case it is:
+                    // - for the same circuit type (enumerated by circuit sequence) - it's the same setup
+                    // - for all the RISC-V circuits in the full statement (decided by `total_cycles` > 0) - same challenges
 
                     if circuit_sequence > 0 {
-                        // and check equality of the setup
                         assert!(MerkleTreeCap::compare(
                             &previous.setup_caps,
                             &current.setup_caps
                         ));
-                        // check that all challenges are the same
-                        assert_eq!(previous.memory_challenges, current.memory_challenges);
-                        assert_eq!(
-                            previous.delegation_challenges,
-                            current.delegation_challenges
-                        );
                     } else {
                         assert!(MerkleTreeCap::compare(*setup, &current.setup_caps));
+                    }
+
+                    if total_cycles > 0 {
+                        // check that all challenges are the same across different circuit families
+                        assert_eq!(previous.memory_challenges, current.memory_challenges);
+                        // there are no delegation challenges
+                        assert_eq!(
+                            previous.machine_state_permutation_challenges,
+                            current.machine_state_permutation_challenges
+                        );
                     }
 
                     // update accumulators
@@ -314,18 +321,22 @@ pub unsafe fn verify_full_statement_for_unrolled_circuits<
                     // and commit memory caps
                     transcript.absorb(current.memory_caps_flattened());
 
-                    // now we should check all invariants about continuity
-
                     delegation_used |= true;
 
+                    // now we should check all invariants about continuity, and it's a circuit type that
+                    // uses delegation argument and outputs it. So we compare all challenges across circuit
+                    // instances with delegations (of only single type!), and after the cycle compare between
+                    // circuits with different ProofOutput types
                     if circuit_sequence > 0 {
-                        // and check equality of the setup
                         assert!(MerkleTreeCap::compare(
                             &previous.setup_caps,
                             &current.setup_caps
                         ));
-                        // check that all challenges are the same
                         assert_eq!(previous.memory_challenges, current.memory_challenges);
+                        assert_eq!(
+                            previous.machine_state_permutation_challenges,
+                            current.machine_state_permutation_challenges
+                        );
                         assert_eq!(
                             previous.delegation_challenges,
                             current.delegation_challenges
@@ -340,15 +351,44 @@ pub unsafe fn verify_full_statement_for_unrolled_circuits<
                         .add_assign(&current.delegation_argument_accumulator[0]);
                 }
             }
+            total_cycles += *capacity as u64;
+            assert!(total_cycles < MAX_CYCLES);
         }
+    }
+
+    // Check that we actually run something meaningful
+    assert!(total_cycles > 0);
+
+    // Check that we have values initialized for challenge comparisons used below
+    assert!(non_delegation_used);
+
+    // Compare across delegation and non-delegation circuit types that challenges are the same
+    if delegation_used {
+        // we need memory and PC permutation
+        assert_eq!(
+            proof_output_0.memory_challenges,
+            proof_output_with_delegation_0.memory_challenges
+        );
+        assert_eq!(
+            proof_output_0.machine_state_permutation_challenges,
+            proof_output_with_delegation_0.machine_state_permutation_challenges
+        );
     }
 
     // then init/teardown circuits
     {
-        let mut proof_output_0: ProofOutput<CAP_SIZE, NUM_COSETS, 0, NUM_INIT_AND_TEARDOWN_SETS> =
-            MaybeUninit::uninit().assume_init();
-        let mut proof_output_1: ProofOutput<CAP_SIZE, NUM_COSETS, 0, NUM_INIT_AND_TEARDOWN_SETS> =
-            MaybeUninit::uninit().assume_init();
+        let mut inits_and_teardowns_proof_output_0: ProofOutput<
+            CAP_SIZE,
+            NUM_COSETS,
+            0,
+            NUM_INIT_AND_TEARDOWN_SETS,
+        > = MaybeUninit::uninit().assume_init();
+        let mut inits_and_teardowns_proof_output_1: ProofOutput<
+            CAP_SIZE,
+            NUM_COSETS,
+            0,
+            NUM_INIT_AND_TEARDOWN_SETS,
+        > = MaybeUninit::uninit().assume_init();
         let mut state_variables = ProofPublicInputs::uninit();
 
         let num_circuits = verifier_common::DefaultNonDeterminismSource::read_word();
@@ -365,9 +405,15 @@ pub unsafe fn verify_full_statement_for_unrolled_circuits<
             assert!(cells_initialized < MAX_MEMORY_CELLS_TO_INIT);
             let (setup, verifier_fn) = inits_and_teardowns_verifier;
             let (current, previous) = if circuit_sequence & 1 == 0 {
-                (&mut proof_output_0, &proof_output_1)
+                (
+                    &mut inits_and_teardowns_proof_output_0,
+                    &inits_and_teardowns_proof_output_1,
+                )
             } else {
-                (&mut proof_output_1, &proof_output_0)
+                (
+                    &mut inits_and_teardowns_proof_output_1,
+                    &inits_and_teardowns_proof_output_0,
+                )
             };
             (verifier_fn)(current, &mut state_variables);
 
@@ -377,7 +423,7 @@ pub unsafe fn verify_full_statement_for_unrolled_circuits<
             // and commit memory caps
             transcript.absorb(current.memory_caps_flattened());
 
-            // now we should check all invariants about continuity
+            // check that all of them share the same setup
 
             if circuit_sequence > 0 {
                 // and check equality of the setup
@@ -385,15 +431,12 @@ pub unsafe fn verify_full_statement_for_unrolled_circuits<
                     &previous.setup_caps,
                     &current.setup_caps
                 ));
-                // check that all challenges are the same
-                assert_eq!(previous.memory_challenges, current.memory_challenges);
-                assert_eq!(
-                    previous.delegation_challenges,
-                    current.delegation_challenges
-                );
             } else {
                 assert!(MerkleTreeCap::compare(setup, &current.setup_caps));
             }
+
+            // and same challenges as base circuits - memory only one
+            assert_eq!(proof_output_0.memory_challenges, current.memory_challenges);
 
             // update accumulators
             grand_product_accumulator.mul_assign(&current.grand_product_accumulator);
@@ -467,8 +510,6 @@ pub unsafe fn verify_full_statement_for_unrolled_circuits<
             }
 
             for _circuit_sequence in 0..num_circuits {
-                // Note: this will make sure that all external challenges are the same as we progress,
-                // and so we will only need to save the result at the very end
                 (verification_function)(&mut delegation_proof_output, &mut state_variables);
 
                 assert_eq!(delegation_proof_output.circuit_sequence, 0);
@@ -481,15 +522,17 @@ pub unsafe fn verify_full_statement_for_unrolled_circuits<
                 // and commit memory caps
                 transcript.absorb(delegation_proof_output.memory_caps_flattened());
 
-                // check that we use the same challenges
-                assert_eq!(
-                    delegation_proof_output.memory_challenges,
-                    proof_output_0.memory_challenges
-                );
-                assert_eq!(
-                    delegation_proof_output.delegation_challenges,
-                    proof_output_with_delegation_0.delegation_challenges
-                );
+                // check that we use the same challenges as base circuits if delegations are called
+                if delegation_used {
+                    assert_eq!(
+                        delegation_proof_output.memory_challenges,
+                        proof_output_with_delegation_0.memory_challenges
+                    );
+                    assert_eq!(
+                        delegation_proof_output.delegation_challenges,
+                        proof_output_with_delegation_0.delegation_challenges
+                    );
+                }
 
                 // update accumulators
                 grand_product_accumulator
@@ -510,6 +553,9 @@ pub unsafe fn verify_full_statement_for_unrolled_circuits<
         assert!(total_delegation_requests < Mersenne31Field::CHARACTERISTICS as u64);
     }
 
+    // so the only thing we need to compare are absolute values of memory and machine state permutation
+    // versus external transcript, and delegation challenges if used
+
     // finish with the transcript, compare memory values from transcript with ones used in proofs
     let memory_seed = transcript.finalize_reset();
 
@@ -528,18 +574,19 @@ pub unsafe fn verify_full_statement_for_unrolled_circuits<
         expected_challenges.memory_argument,
         proof_output_0.memory_challenges
     );
-    if delegation_used {
-        assert_eq!(
-            expected_challenges.delegation_argument.unwrap_unchecked(),
-            proof_output_with_delegation_0.delegation_challenges[0]
-        );
-    }
     assert_eq!(
         expected_challenges
             .machine_state_permutation_argument
             .unwrap_unchecked(),
         proof_output_0.machine_state_permutation_challenges[0]
     );
+
+    if delegation_used {
+        assert_eq!(
+            expected_challenges.delegation_argument.unwrap_unchecked(),
+            proof_output_with_delegation_0.delegation_challenges[0]
+        );
+    }
 
     // conclude that our memory argument is valid
     let register_contribution =
