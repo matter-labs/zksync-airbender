@@ -258,7 +258,7 @@ pub unsafe fn verify_full_statement_for_unrolled_circuits<
         for circuit_sequence in 0..num_circuits {
             match verifier_fn {
                 VerificationFunctionPointer::UnrolledNoDelegation(verifier_fn) => {
-                    let (current, previous) = if circuit_sequence & 1 == 0 {
+                    let (current, previous) = if total_cycles == 0 {
                         (&mut proof_output_0, &proof_output_1)
                     } else {
                         (&mut proof_output_1, &proof_output_0)
@@ -287,6 +287,7 @@ pub unsafe fn verify_full_statement_for_unrolled_circuits<
                         assert!(MerkleTreeCap::compare(*setup, &current.setup_caps));
                     }
 
+                    // in this case we initialized "previous" == `proof_output_0`
                     if total_cycles > 0 {
                         // check that all challenges are the same across different circuit families
                         assert_eq!(previous.memory_challenges, current.memory_challenges);
@@ -302,7 +303,7 @@ pub unsafe fn verify_full_statement_for_unrolled_circuits<
                     // no update for delegation accumulator
                 }
                 VerificationFunctionPointer::UnrolledWithDelegation(verifier_fn) => {
-                    let (current, previous) = if circuit_sequence & 1 == 0 {
+                    let (current, previous) = if circuit_sequence == 0 {
                         (
                             &mut proof_output_with_delegation_0,
                             &proof_output_with_delegation_1,
@@ -404,6 +405,7 @@ pub unsafe fn verify_full_statement_for_unrolled_circuits<
         for circuit_sequence in 0..num_circuits {
             assert!(cells_initialized < MAX_MEMORY_CELLS_TO_INIT);
             let (setup, verifier_fn) = inits_and_teardowns_verifier;
+            // NOTE: here we have some relations to check across circuits of the same type, so it's not just 0 check
             let (current, previous) = if circuit_sequence & 1 == 0 {
                 (
                     &mut inits_and_teardowns_proof_output_0,

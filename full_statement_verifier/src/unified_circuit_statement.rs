@@ -91,6 +91,7 @@ pub unsafe fn verify_unified_circuit_statement<const BASE_LAYER: bool>(
     for circuit_sequence in 0..num_circuits {
         total_cycles += unified_circuit_capacity as u64;
         assert!(total_cycles < MAX_CYCLES);
+        // NOTE: here we have some relations to check across circuits of the same type, so it's not just 0 check
         let (current, previous) = if circuit_sequence & 1 == 0 {
             (&mut proof_output_0, &proof_output_1)
         } else {
