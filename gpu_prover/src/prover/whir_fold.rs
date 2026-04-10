@@ -59,7 +59,6 @@ use crate::prover::whir::{GpuWhirExtensionOracle, GpuWhirExtensionQuery};
 const EXT4_DEGREE: usize = <E4 as FieldExtension<BF>>::DEGREE;
 struct GpuWhirState {
     sumchecked_poly_monomial_form: DeviceMatrixOwnsAllocation<BF>,
-    test: DeviceAllocation<BF>,
     sumchecked_poly_evaluation_form: DeviceAllocation<E4>,
     eq_poly: DeviceAllocation<E4>,
     scratch0: DeviceAllocation<E4>,
@@ -298,15 +297,11 @@ impl GpuWhirState {
         let half_len = trace_len / 2;
         let reduce_temp_bytes =
             get_reduce_temp_storage_bytes::<E4>(ReduceOperation::Sum, half_len as i32)?;
-        let test: DeviceAllocation::<BF> = context.alloc(trace_len * EXT4_DEGREE, AllocationPlacement::BestFit)?;
-        let alloc: DeviceAllocation::<BF> = context.alloc::<BF>(trace_len * EXT4_DEGREE, AllocationPlacement::BestFit);
-        let sumchecked_poly_monomial_form = DeviceMatrixOwnsAllocation::<BF> {
-                alloc,
-                stride: trace_len,
-            };
         Ok(Self {
-            sumchecked_poly_monomial_form,
-            test,
+            sumchecked_poly_monomial_form: DeviceMatrixOwnsAllocation::new(
+                context.alloc(trace_len * EXT4_DEGREE, AllocationPlacement::BestFit)?,
+                trace_len,
+            ),
             sumchecked_poly_evaluation_form: context
                 .alloc(trace_len, AllocationPlacement::BestFit)?,
             eq_poly: context.alloc(trace_len, AllocationPlacement::BestFit)?,
@@ -1017,7 +1012,7 @@ fn initialize_batched_forms_impl(
         false, // transposed_monomials
         stream,
         context.get_device_properties(),
-    );
+    )?;
     // TODO: remove after writing hypercube kernel
     bit_reverse_in_place(&mut state.sumchecked_poly_monomial_form, stream)?;
     // deserialize_whir_e4_columns(
@@ -1191,7 +1186,7 @@ fn schedule_initialize_batched_forms(
         false, // transposed_monomials
         stream,
         context.get_device_properties(),
-    );
+    )?;
     // TODO: remove after writing hypercube kernel
     bit_reverse_in_place(&mut state.sumchecked_poly_monomial_form, stream)?;
     // deserialize_whir_e4_columns(
