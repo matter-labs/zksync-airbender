@@ -528,6 +528,51 @@ impl<T> DeviceMatrixChunkImpl<T> for DeviceMatrix<'_, T> {
 }
 
 #[derive(Debug)]
+pub struct DeviceMatrixOwnsAllocation<T> {
+    alloc: DeviceAllocation<T>,
+    stride: usize,
+}
+
+impl<T> DeviceMatrixOwnsAllocation<T> {
+    pub fn new(alloc: DeviceAllocation<T>, stride: usize) -> Self {
+        assert_eq!((&alloc).len() % stride, 0);
+        Self { alloc, stride }
+    }
+}
+
+impl<T> DeviceMatrixImpl<T> for DeviceMatrixOwnsAllocation<T> {
+    fn slice(&self) -> &DeviceSlice<T> {
+        &self.alloc
+    }
+
+    fn stride(&self) -> usize {
+        self.stride
+    }
+}
+
+impl<T> DeviceMatrixMutImpl<T> for DeviceMatrixOwnsAllocation<T> {
+    fn slice_mut(&mut self) -> &mut DeviceSlice<T> {
+        &mut self.alloc
+    }
+}
+
+impl<T> DeviceMatrixChunkImpl<T> for DeviceMatrixOwnsAllocation<T> {
+    fn slice(&self) -> &DeviceSlice<T> {
+        &self.alloc
+    }
+
+    fn stride(&self) -> usize {
+        self.stride
+    }
+}
+
+impl<T> DeviceMatrixChunkMutImpl<T> for DeviceMatrixOwnsAllocation<T> {
+    fn slice_mut(&mut self) -> &mut DeviceSlice<T> {
+        &mut self.alloc
+    }
+}
+
+#[derive(Debug)]
 pub struct DeviceMatrixMut<'a, T> {
     slice: &'a mut DeviceSlice<T>,
     stride: usize,

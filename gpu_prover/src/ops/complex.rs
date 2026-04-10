@@ -14,7 +14,7 @@ use crate::ops::blake2s::DG;
 use crate::ops::simple::pow;
 use crate::primitives::device_structures::{
     DeviceMatrix, DeviceMatrixChunkImpl, DeviceMatrixChunkMutImpl, DeviceMatrixMut,
-    MutPtrAndStride, PtrAndStride,
+    DeviceMatrixMutImpl, MutPtrAndStride, PtrAndStride,
 };
 use crate::primitives::field::*;
 use crate::primitives::utils::{
@@ -334,7 +334,7 @@ partially_evaluate_monomial_form_by_ref!(ab_partially_evaluate_monomial_form_by_
 
 #[allow(non_snake_case)]
 pub fn partially_evaluate_monomials_by_ref(
-    monomials: &DeviceMatrix<BF>,
+    monomials: &impl DeviceMatrixChunkImpl<BF>,
     scratch0: &mut DeviceSlice<E4>,
     scratch1: &mut DeviceSlice<E4>,
     point: &DeviceSlice<E4>,
@@ -510,7 +510,7 @@ cuda_kernel_declaration!(
 );
 
 pub fn whir_fold_split_half_in_place_vectorized(
-    values: &mut DeviceMatrixMut<BF>,
+    values: &mut impl DeviceMatrixChunkMutImpl<BF>,
     challenge: &DeviceVariable<E4>,
     half_len: usize,
     stream: &CudaStream,

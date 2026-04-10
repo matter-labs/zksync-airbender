@@ -12,7 +12,9 @@ use crate::ops::complex::{
 };
 use crate::primitives::callbacks::Callbacks;
 use crate::primitives::context::{HostAllocation, ProverContext, UnsafeAccessor};
-use crate::primitives::device_structures::{DeviceMatrix, DeviceMatrixChunkMut, DeviceMatrixMut};
+use crate::primitives::device_structures::{
+    DeviceMatrix, DeviceMatrixChunkMut, DeviceMatrixMut, DeviceMatrixImpl, DeviceMatrixMutImpl,
+};
 use crate::primitives::field::{BF, E4};
 use crate::primitives::static_host::alloc_static_pinned_box_from_slice;
 use crate::prover::trace_holder::{TraceHolder, TreesCacheMode, PARTIAL_TREE_REDUCTION_LAYERS};
@@ -89,20 +91,28 @@ impl GpuWhirExtensionOracle {
     }
 
     pub(crate) fn from_monomial_coeffs(
-        monomial_coeffs: &[BF],
-        trace_len: usize,
+        monomial_coeffs: &[E4],
         lde_factor: usize,
         values_per_leaf: usize,
         tree_cap_size: usize,
         context: &ProverContext,
     ) -> CudaResult<Self> {
+        let trace_len = monomial_coeffs.len();
+        let mut vectorized_monomial_coeffs = vec![BF::default(); 4 * trace_len];
+        for i in 0..trace_len {
+            let coeff = monomial_coeffs[i];
+            let bf_coeffs = [coeff.c0.c0, coeff.c0.c1, coeff.c1.c0, coeff.c1.c1];
+            for j in 0..4 {
+                vectorized_monomial_coeffs[i + j * trace_len] = bf_coeffs[j];
+            }
+        }
         let mut monomial_coeffs_device_alloc =
             context.alloc(monomial_coeffs.len(), AllocationPlacement::BestFit)?;
         let mut monomial_coeffs_device =
             DeviceMatrixMut::new(&mut monomial_coeffs_device_alloc, trace_len);
         let stream = context.get_exec_stream();
-        let host = alloc_static_pinned_box_from_slice(monomial_coeffs)?;
-        memory_copy_async(&mut monomial_coeffs_device, &host[..], stream)?;
+        let host = alloc_static_pinned_box_from_slice(&vectorized_monomial_coeffs[..])?;
+        memory_copy_async(monomial_coeffs_device.slice_mut(), &host[..], stream)?;
         Self::from_device_monomial_coeffs(
             &monomial_coeffs_device,
             trace_len,
@@ -133,7 +143,7 @@ impl GpuWhirExtensionOracle {
     }
 
     pub(crate) fn schedule_from_device_monomial_coeffs(
-        monomial_coeffs: &DeviceMatrixMut<BF>,
+        monomial_coeffs: &impl DeviceMatrixMutImpl<BF>,
         trace_len: usize,
         lde_factor: usize,
         values_per_leaf: usize,
@@ -152,7 +162,7 @@ impl GpuWhirExtensionOracle {
     }
 
     fn from_device_monomial_coeffs_impl(
-        monomial_coeffs: &DeviceMatrixMut<BF>,
+        monomial_coeffs: &impl DeviceMatrixMutImpl<BF>,
         trace_len: usize,
         lde_factor: usize,
         values_per_leaf: usize,
@@ -160,8 +170,8 @@ impl GpuWhirExtensionOracle {
         context: &ProverContext,
         synchronize_at_end: bool,
     ) -> CudaResult<Self> {
-        assert!(!monomial_coeffs.is_empty());
-        assert!(monomial_coeffs.len().is_power_of_two());
+        assert!(!monomial_coeffs.slice().is_empty());
+        assert!(monomial_coeffs.slice().len().is_power_of_two());
         assert!(lde_factor.is_power_of_two());
         assert!(values_per_leaf.is_power_of_two());
         assert!(tree_cap_size.is_power_of_two());
@@ -184,13 +194,13 @@ impl GpuWhirExtensionOracle {
 
         // let mut serialized_coeffs_device =
         //     context.alloc(trace_len * EXT4_DEGREE, AllocationPlacement::BestFit)?;
-        // let stream = context.get_exec_stream();
         // serialize_whir_e4_columns(monomial_coeffs, &mut serialized_coeffs_device, stream)?;
         // {
         //     let mut coeffs_matrix = DeviceMatrixMut::new(&mut serialized_coeffs_device, trace_len);
         //     bit_reverse_in_place(&mut coeffs_matrix, stream)?;
         // }
 
+        let stream = context.get_exec_stream();
         let mut trace_holder = TraceHolder::new(
             total_leaf_count_log2,
             0,
@@ -209,8 +219,8 @@ impl GpuWhirExtensionOracle {
             for base_column in 0..EXT4_DEGREE {
                 let src_column_start = base_column * monomial_coeffs_stride;
                 let dst_column_start = base_column * trace_len;
-                let src = &monomial_coeffs_slice[column_start..column_start + trace_len];
-                let dst = &mut natural_coset_values[column_start..column_start + trace_len];
+                let src = &monomial_coeffs_slice[src_column_start..src_column_start + trace_len];
+                let dst = &mut natural_coset_values[dst_column_start..dst_column_start + trace_len];
                 crate::ntt::bitreversed_coeffs_to_natural_coset(
                     src,
                     dst,

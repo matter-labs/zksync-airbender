@@ -25,18 +25,24 @@ use prover::utils::extension_field_from_base_coeffs;
 use worker::Worker;
 
 use crate::allocator::tracker::AllocationPlacement;
-use crate::ntt::{hypercube_coeffs_natural_to_natural_evals, natural_evals_to_bitreversed_coeffs};
+use crate::ntt::{
+    hypercube_coeffs_natural_to_natural_evals, natural_evals_to_bitreversed_coeffs,
+    natural_evals_to_bitreversed_monomials,
+};
 use crate::ops::blake2s::Digest;
 use crate::ops::complex::{
     accumulate_whir_base_columns, bit_reverse, bit_reverse_in_place, deserialize_whir_e4_columns,
-    get_powers_by_ref, get_powers_by_val, serialize_whir_e4_columns,
-    whir_fold_split_half_in_place, whir_fold_split_half_in_place_vectorized,
+    get_powers_by_ref, get_powers_by_val, partially_evaluate_monomials_by_ref,
+    serialize_whir_e4_columns, whir_fold_split_half_in_place,
+    whir_fold_split_half_in_place_vectorized,
 };
 use crate::ops::cub::device_reduce::{get_reduce_temp_storage_bytes, reduce, ReduceOperation};
 use crate::ops::simple::{add, add_into_y, mul, mul_into_x, set_to_zero};
 use crate::primitives::callbacks::Callbacks;
 use crate::primitives::context::{DeviceAllocation, HostAllocation, ProverContext};
-use crate::primitives::device_structures::{DeviceMatrix, DeviceMatrixMut};
+use crate::primitives::device_structures::{
+    DeviceMatrix, DeviceMatrixImpl, DeviceMatrixMut, DeviceMatrixOwnsAllocation,
+};
 use crate::primitives::device_tracing::Range;
 use crate::primitives::field::{BF, E4};
 use crate::primitives::static_host::{
@@ -52,8 +58,8 @@ use crate::prover::whir::{GpuWhirExtensionOracle, GpuWhirExtensionQuery};
 
 const EXT4_DEGREE: usize = <E4 as FieldExtension<BF>>::DEGREE;
 struct GpuWhirState {
-    sumchecked_poly_monomial_form_alloc: DeviceAllocation<BF>,
-    sumchecked_poly_monomial_form: DeviceMatrixMut<BF>,
+    sumchecked_poly_monomial_form: DeviceMatrixOwnsAllocation<BF>,
+    test: DeviceAllocation<BF>,
     sumchecked_poly_evaluation_form: DeviceAllocation<E4>,
     eq_poly: DeviceAllocation<E4>,
     scratch0: DeviceAllocation<E4>,
@@ -63,6 +69,7 @@ struct GpuWhirState {
     reduce_temp: DeviceAllocation<u8>,
     reduce_out: DeviceAllocation<E4>,
     current_len: usize,
+    original_trace_len: usize,
 }
 
 pub(crate) struct GpuScheduledBaseFieldQuery {
@@ -291,13 +298,15 @@ impl GpuWhirState {
         let half_len = trace_len / 2;
         let reduce_temp_bytes =
             get_reduce_temp_storage_bytes::<E4>(ReduceOperation::Sum, half_len as i32)?;
-        let sumchecked_poly_monomial_form_alloc = context
-                .alloc(trace_len * EXT4_DEGREE, AllocationPlacement::BestFit)?,
-        let sumchecked_poly_monomial_form =
-            DeviceMatrixMut::new(&mut sumchecked_poly_monomial_form_alloc, trace_len);
+        let test: DeviceAllocation::<BF> = context.alloc(trace_len * EXT4_DEGREE, AllocationPlacement::BestFit)?;
+        let alloc: DeviceAllocation::<BF> = context.alloc::<BF>(trace_len * EXT4_DEGREE, AllocationPlacement::BestFit);
+        let sumchecked_poly_monomial_form = DeviceMatrixOwnsAllocation::<BF> {
+                alloc,
+                stride: trace_len,
+            };
         Ok(Self {
-            sumchecked_poly_monomial_form_alloc,
             sumchecked_poly_monomial_form,
+            test,
             sumchecked_poly_evaluation_form: context
                 .alloc(trace_len, AllocationPlacement::BestFit)?,
             eq_poly: context.alloc(trace_len, AllocationPlacement::BestFit)?,
@@ -311,6 +320,7 @@ impl GpuWhirState {
             reduce_temp: context.alloc(reduce_temp_bytes, AllocationPlacement::BestFit)?,
             reduce_out: context.alloc(3, AllocationPlacement::BestFit)?,
             current_len: trace_len,
+            original_trace_len: trace_len,
         })
     }
 }
@@ -993,35 +1003,33 @@ fn initialize_batched_forms_impl(
     )?;
 
     let mut serialized = context.alloc(trace_len * EXT4_DEGREE, AllocationPlacement::BestFit)?;
-    let mut bf_scratch = context.alloc(trace_len, AllocationPlacement::BestFit)?;
     let stream = context.get_exec_stream();
     serialize_whir_e4_columns(
         &state.sumchecked_poly_evaluation_form[..trace_len],
         &mut serialized,
         stream,
     )?;
-    for column in 0..EXT4_DEGREE {
-        let src = &serialized[column * trace_len..(column + 1) * trace_len];
-        natural_evals_to_bitreversed_coeffs(
-            src,
-            &mut bf_scratch,
-            trace_len.trailing_zeros() as usize,
-            stream,
-        )?;
-        let dst = &mut serialized[column * trace_len..(column + 1) * trace_len];
-        memory_copy_async(dst, &bf_scratch, stream)?;
-    }
-    {
-        let mut coeffs_matrix = DeviceMatrixMut::new(&mut serialized, trace_len);
-        bit_reverse_in_place(&mut coeffs_matrix, stream)?;
-    }
-    deserialize_whir_e4_columns(
-        &serialized,
-        &mut state.sumchecked_poly_monomial_form[..trace_len],
+    let main_domain_evals_matrix = DeviceMatrix::new(&serialized, trace_len);
+    natural_evals_to_bitreversed_monomials(
+        &main_domain_evals_matrix,
+        &mut state.sumchecked_poly_monomial_form,
+        witness_trace_holder.log_domain_size as usize,
+        false, // transposed_monomials
         stream,
-    )?;
+        context.get_device_properties(),
+    );
+    // TODO: remove after writing hypercube kernel
+    bit_reverse_in_place(&mut state.sumchecked_poly_monomial_form, stream)?;
+    // deserialize_whir_e4_columns(
+    //     &serialized,
+    //     &mut state.sumchecked_poly_monomial_form[..trace_len],
+    //     stream,
+    // )?;
+    let monomials_slice = state.sumchecked_poly_monomial_form.slice();
+    // TODO: remove after writing hypercube kernel
+    let mut bf_scratch = context.alloc(trace_len, AllocationPlacement::BestFit)?;
     for column in 0..EXT4_DEGREE {
-        let src = &serialized[column * trace_len..(column + 1) * trace_len];
+        let src = &monomials_slice[column * trace_len..(column + 1) * trace_len];
         hypercube_coeffs_natural_to_natural_evals(
             src,
             &mut bf_scratch,
@@ -1033,6 +1041,7 @@ fn initialize_batched_forms_impl(
     }
     {
         let mut evals_matrix = DeviceMatrixMut::new(&mut serialized, trace_len);
+        // TODO: remove after writing hypercube kernel
         bit_reverse_in_place(&mut evals_matrix, stream)?;
     }
     deserialize_whir_e4_columns(
@@ -1040,6 +1049,8 @@ fn initialize_batched_forms_impl(
         &mut state.sumchecked_poly_evaluation_form[..trace_len],
         stream,
     )?;
+    // TODO: remove after writing hypercube kernel
+    bit_reverse_in_place(&mut state.sumchecked_poly_monomial_form, stream)?;
 
     Ok([
         memory_weights.to_vec(),
@@ -1172,14 +1183,14 @@ fn schedule_initialize_batched_forms(
         &mut serialized,
         stream,
     )?;
-    let main_domain_evals_matrix = DeviceMatrix::new(serialized, trace_len);
+    let main_domain_evals_matrix = DeviceMatrix::new(&serialized, trace_len);
     natural_evals_to_bitreversed_monomials(
         &main_domain_evals_matrix,
         &mut state.sumchecked_poly_monomial_form,
-        witness_trace_holder.log_domain_size,
+        witness_trace_holder.log_domain_size as usize,
         false, // transposed_monomials
         stream,
-        context.get_device_properties,
+        context.get_device_properties(),
     );
     // TODO: remove after writing hypercube kernel
     bit_reverse_in_place(&mut state.sumchecked_poly_monomial_form, stream)?;
@@ -1188,7 +1199,9 @@ fn schedule_initialize_batched_forms(
     //     &mut state.sumchecked_poly_monomial_form[..trace_len],
     //     stream,
     // )?;
-    let monomials_slice = &state.sumchecked_poly_monomial_form.slice();
+    let monomials_slice = state.sumchecked_poly_monomial_form.slice();
+    // TODO: remove after writing hypercube kernel
+    let mut bf_scratch = context.alloc(trace_len, AllocationPlacement::BestFit)?;
     for column in 0..EXT4_DEGREE {
         let src = &monomials_slice[column * trace_len..(column + 1) * trace_len];
         hypercube_coeffs_natural_to_natural_evals(
@@ -1432,47 +1445,16 @@ fn fold_eq_poly_in_place_device(
     )
 }
 
-// fn evaluate_monomial_form_device(
-//     state: &mut GpuWhirState,
-//     point: E4,
-//     context: &ProverContext,
-// ) -> CudaResult<E4> {
-//     let stream = context.get_exec_stream();
-//     let chunk_size = state.scratch0.len().min(state.current_len);
-//     let mut result = E4::ZERO;
-//
-//     for chunk_start in (0..state.current_len).step_by(chunk_size) {
-//         let chunk_len = chunk_size.min(state.current_len - chunk_start);
-//         let coeffs = &state.sumchecked_poly_monomial_form[chunk_start..chunk_start + chunk_len];
-//         let powers = &mut state.scratch0[..chunk_len];
-//         let products = &mut state.scratch1[..chunk_len];
-//         get_powers_by_val(point, chunk_start as u32, false, powers, stream)?;
-//         mul(coeffs, powers, products, stream)?;
-//         reduce(
-//             ReduceOperation::Sum,
-//             &mut state.reduce_temp,
-//             &state.scratch1[..chunk_len],
-//             &mut state.reduce_out[0],
-//             stream,
-//         )?;
-//         let partial = read_reduce_outputs(1, state, context)?[0];
-//         result.add_assign(&partial);
-//     }
-//
-//     Ok(result)
-// }
-
-fn schedule_monomial_eval_device(
+fn schedule_monomial_eval_device_impl(
     state: &mut GpuWhirState,
     point: &DeviceSlice<E4>,
     context: &ProverContext,
-) -> CudaResult<Vec<HostAllocation<[E4]>>> {
+) -> CudaResult<()> {
     let stream = context.get_exec_stream();
-    let mut result = Vec::new();
 
     let partials_count = partially_evaluate_monomials_by_ref(
         &state.sumchecked_poly_monomial_form,
-        &mut state.scratch0[..]
+        &mut state.scratch0[..],
         &mut state.scratch1[..],
         point,
         state.current_len,
@@ -1489,8 +1471,34 @@ fn schedule_monomial_eval_device(
         &state.scratch0[..partials_count],
         &mut state.reduce_out[0],
         stream,
-    )?;
+    )
+}
 
+#[cfg(test)]
+fn evaluate_monomial_form_device(
+    state: &mut GpuWhirState,
+    point: E4,
+    context: &ProverContext,
+) -> CudaResult<E4> {
+    let d_point = context.alloc(1, AllocationPlacement::BestFit);
+    memory_copy_async(&d_point[..1], &[point], context.get_exec_stream());
+
+    schedule_monomial_eval_device_impl(state, &d_point, context)?;
+
+    let mut result = E4::ZERO;
+    let result = read_reduce_outputs(1, state, context)?[0];
+
+    Ok(result)
+}
+
+fn schedule_monomial_eval_device(
+    state: &mut GpuWhirState,
+    point: &DeviceSlice<E4>,
+    context: &ProverContext,
+) -> CudaResult<Vec<HostAllocation<[E4]>>> {
+    schedule_monomial_eval_device_impl(state, point, context)?;
+
+    let mut result = Vec::new();
     result.push(schedule_reduce_outputs_readback(1, state, context)?);
 
     Ok(result)
@@ -2315,7 +2323,8 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         let commit_next_oracle_range = Range::new(&*commit_name)?;
         commit_next_oracle_range.start(stream)?;
         let next_oracle = GpuWhirExtensionOracle::schedule_from_device_monomial_coeffs(
-            &state.sumchecked_poly_monomial_form[..state.current_len],
+            &state.sumchecked_poly_monomial_form,
+            state.current_len,
             lde_factor,
             1 << next_folding_steps,
             tree_cap_size,
@@ -3098,7 +3107,8 @@ pub(crate) fn debug_initial_round_checkpoint_for_test(
     let folded_monomial_form = folded_monomial_form_host.to_vec();
 
     let oracle = GpuWhirExtensionOracle::from_device_monomial_coeffs(
-        &state.sumchecked_poly_monomial_form[..state.current_len],
+        &state.sumchecked_poly_monomial_form_matrix(),
+        state.current_len,
         first_recursive_lde_factor,
         1 << next_folding_steps,
         tree_cap_size,

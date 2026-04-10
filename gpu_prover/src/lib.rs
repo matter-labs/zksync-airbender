@@ -10,7 +10,7 @@ pub mod bench;
 pub(crate) mod ntt;
 pub(crate) mod ops;
 pub mod primitives;
-// pub(crate) mod prover;
+pub(crate) mod prover;
 pub(crate) mod witness;
 
 pub use primitives::circuit_type;

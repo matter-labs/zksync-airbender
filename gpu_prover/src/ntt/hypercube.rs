@@ -8,8 +8,7 @@ use era_cudart::stream::CudaStream;
 use era_cudart_sys::{cudaFuncSetAttribute, CudaFuncAttribute};
 
 use super::{
-    bitreversed_coeffs_to_natural_coset, hypercube_evals_natural_to_bitreversed_coeffs,
-    MIN_LOG_N_FOR_MULTISTAGE_KERNELS,
+    hypercube_evals_natural_to_bitreversed_coeffs, MIN_LOG_N_FOR_MULTISTAGE_KERNELS,
 };
 
 use crate::device_structures::{
@@ -18,7 +17,6 @@ use crate::device_structures::{
 };
 use crate::field::BaseField;
 use crate::primitives::context::DeviceProperties;
-use crate::primitives::device_context::OMEGA_LOG_ORDER;
 use crate::utils::GetChunksCount;
 
 use std::mem::size_of;
