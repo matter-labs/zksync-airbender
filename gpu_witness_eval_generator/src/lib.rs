@@ -11,6 +11,7 @@ use std::path::Path;
 
 mod boolean;
 mod field;
+pub mod gkr_main_backward;
 mod integer;
 
 pub type F = ::field::baby_bear::base::BabyBearField;
@@ -377,6 +378,12 @@ pub fn generate_from_files(
         &compiled_circuit,
         perform_assignments_to_memory,
     ))
+}
+
+pub fn generate_add_sub_lui_auipc_mop_main_backward_from_files(
+    layout_path: impl AsRef<Path>,
+) -> Result<String, Box<dyn std::error::Error>> {
+    gkr_main_backward::generate_add_sub_lui_auipc_mop_main_backward_from_files(layout_path)
 }
 
 #[cfg(test)]

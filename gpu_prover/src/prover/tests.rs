@@ -2,6 +2,7 @@ use super::gkr::{
     backward::{
         GpuGKRDimensionReducingBackwardState, GpuGKRDimensionReducingSumcheckLayerPlan,
         GpuGKRMainLayerKernelKind, GpuGKRMainLayerSumcheckLayerPlan,
+        GpuGeneratedMainBackwardFamily,
     },
     base_layer_claims::prepare_base_layer_claims,
     forward::schedule_forward_pass as schedule_forward_pass_impl,
@@ -4197,6 +4198,7 @@ fn run_basic_unrolled_async_scheduler_smoke_test() {
         .schedule_execute_backward_workflow(
             compiled_circuit,
             external_challenges,
+            None,
             initial_output_layer_idx,
             top_layer_claims,
             evaluation_point,
@@ -4267,6 +4269,7 @@ fn run_basic_unrolled_main_layer0_plan_matches_cpu_test() {
         lookup_multiplicative_part,
         lookup_additive_part,
         constraints_batch_challenge,
+        None,
     );
 
     let layer0_plan = loop {
@@ -4408,6 +4411,7 @@ fn run_basic_unrolled_main_layer0_static_plan_matches_cpu_test() {
         lookup_multiplicative_part,
         lookup_additive_part,
         constraints_batch_challenge,
+        None,
     );
 
     let layer0_plan = loop {
@@ -4540,6 +4544,7 @@ fn run_basic_unrolled_main_layer0_kernel_kind_trace_test() {
         lookup_multiplicative_part,
         lookup_additive_part,
         constraints_batch_challenge,
+        None,
     );
 
     let layer0_plan = loop {
@@ -4613,6 +4618,7 @@ fn run_basic_unrolled_first_main_layer_static_vs_dynamic_execution_test() {
                 lookup_multiplicative_part,
                 lookup_additive_part,
                 constraints_batch_challenge,
+                None,
             ),
             current_claims,
             current_point,
@@ -4750,6 +4756,206 @@ fn run_basic_unrolled_first_main_layer_static_vs_dynamic_execution_test() {
 
 #[test]
 #[serial]
+fn run_basic_unrolled_first_main_layer_generated_vs_generic_execution_test() {
+    fn advance_dimension_reduction(
+        mut state: GpuGKRDimensionReducingBackwardState<BF, E4>,
+        compiled_circuit: &GKRCircuitArtifact<BF>,
+        external_challenges: &GKRExternalChallenges<BF, E4>,
+        mut current_claims: BTreeMap<GKRAddress, E4>,
+        mut current_point: Vec<E4>,
+        mut seed: Seed,
+        mut batching_challenge: E4,
+        lookup_multiplicative_part: E4,
+        lookup_additive_part: E4,
+        constraints_batch_challenge: E4,
+        generated_main_backward_family: Option<GpuGeneratedMainBackwardFamily>,
+        context: &ProverContext,
+    ) -> (
+        crate::prover::gkr::backward::GpuGKRMainLayerBackwardState<E4>,
+        BTreeMap<GKRAddress, E4>,
+        Vec<E4>,
+        Seed,
+        E4,
+    ) {
+        while let Some(mut plan) = state
+            .prepare_next_layer(batching_challenge, context)
+            .unwrap()
+        {
+            let scheduled = plan
+                .schedule_execute_dimension_reducing_layer(
+                    &current_claims,
+                    &current_point,
+                    seed,
+                    batching_challenge,
+                    context,
+                )
+                .unwrap();
+            context.get_exec_stream().synchronize().unwrap();
+            let execution = scheduled.into_execution();
+            current_claims = execution.new_claims;
+            current_point = execution.new_claim_point;
+            seed = execution.updated_seed;
+            batching_challenge = execution.next_batching_challenge;
+        }
+
+        (
+            state.into_main_layer_backward_state(
+                compiled_circuit.clone(),
+                external_challenges.clone(),
+                lookup_multiplicative_part,
+                lookup_additive_part,
+                constraints_batch_challenge,
+                generated_main_backward_family,
+            ),
+            current_claims,
+            current_point,
+            seed,
+            batching_challenge,
+        )
+    }
+
+    let (base_fixture, expected_cpu_proof) =
+        prepare_basic_unrolled_fixture(BasicUnrolledFixtureBuildConfig {
+            binary_path: BASIC_UNROLLED_CPU_PARITY_BINARY_PATH,
+            text_path: BASIC_UNROLLED_CPU_PARITY_TEXT_PATH,
+            non_determinism_reads: &[15, 1],
+            compute_cpu_reference: false,
+            device_allocator_block_log_size: default_fixture_device_allocator_block_log_size(),
+        });
+    assert!(expected_cpu_proof.is_none());
+    let generic_fixture = build_basic_unrolled_async_backward_fixture_from_base(&base_fixture);
+    let generated_fixture = build_basic_unrolled_async_backward_fixture_from_base(&base_fixture);
+
+    let (
+        mut generic_state,
+        generic_claims,
+        generic_point,
+        generic_seed,
+        generic_batching_challenge,
+    ) = advance_dimension_reduction(
+        generic_fixture.gpu_backward_state,
+        &generic_fixture.compiled_circuit,
+        &generic_fixture.external_challenges,
+        generic_fixture.top_layer_claims,
+        generic_fixture.evaluation_point,
+        generic_fixture.seed,
+        generic_fixture.batching_challenge,
+        generic_fixture.lookup_multiplicative_part,
+        generic_fixture.lookup_additive_part,
+        generic_fixture.constraints_batch_challenge,
+        None,
+        &generic_fixture.context,
+    );
+    let (
+        mut generated_state,
+        generated_claims,
+        generated_point,
+        generated_seed,
+        generated_batching_challenge,
+    ) = advance_dimension_reduction(
+        generated_fixture.gpu_backward_state,
+        &generated_fixture.compiled_circuit,
+        &generated_fixture.external_challenges,
+        generated_fixture.top_layer_claims,
+        generated_fixture.evaluation_point,
+        generated_fixture.seed,
+        generated_fixture.batching_challenge,
+        generated_fixture.lookup_multiplicative_part,
+        generated_fixture.lookup_additive_part,
+        generated_fixture.constraints_batch_challenge,
+        Some(GpuGeneratedMainBackwardFamily::AddSubLuiAuipcMop),
+        &generated_fixture.context,
+    );
+
+    let mut generic_plan = generic_state
+        .prepare_next_layer_static(&generic_fixture.context)
+        .unwrap()
+        .expect("expected first generic main-layer plan");
+    let first_layer_idx = generic_plan.layer_idx;
+    let mut generated_plan = generated_state
+        .prepare_next_layer_static(&generated_fixture.context)
+        .unwrap()
+        .expect("expected first generated main-layer plan");
+    assert_eq!(generated_plan.layer_idx, first_layer_idx);
+
+    let mut generic_shared_state =
+        crate::prover::gkr::backward::make_deferred_backward_workflow_state();
+    let generic_shared_state_handle = UnsafeMutAccessor::new(generic_shared_state.as_mut());
+    crate::prover::gkr::backward::populate_backward_workflow_state(
+        generic_shared_state_handle,
+        first_layer_idx + 1,
+        generic_claims,
+        generic_point,
+        generic_seed,
+        generic_batching_challenge,
+        generic_fixture.lookup_multiplicative_part,
+        generic_fixture.lookup_additive_part,
+        generic_fixture.constraints_batch_challenge,
+    );
+    let generic_scheduled = generic_plan
+        .schedule_execute_main_layer_from_workflow_state(
+            generic_shared_state_handle,
+            &generic_fixture.context,
+        )
+        .unwrap();
+
+    let mut generated_shared_state =
+        crate::prover::gkr::backward::make_deferred_backward_workflow_state();
+    let generated_shared_state_handle = UnsafeMutAccessor::new(generated_shared_state.as_mut());
+    crate::prover::gkr::backward::populate_backward_workflow_state(
+        generated_shared_state_handle,
+        first_layer_idx + 1,
+        generated_claims,
+        generated_point,
+        generated_seed,
+        generated_batching_challenge,
+        generated_fixture.lookup_multiplicative_part,
+        generated_fixture.lookup_additive_part,
+        generated_fixture.constraints_batch_challenge,
+    );
+    let generated_scheduled = generated_plan
+        .schedule_execute_main_layer_generated_from_workflow_state(
+            generated_shared_state_handle,
+            &generated_fixture.context,
+        )
+        .unwrap();
+
+    generic_fixture
+        .context
+        .get_exec_stream()
+        .synchronize()
+        .unwrap();
+    generated_fixture
+        .context
+        .get_exec_stream()
+        .synchronize()
+        .unwrap();
+
+    let generic_execution = generic_scheduled.into_execution();
+    let generated_execution = generated_scheduled.into_execution();
+
+    assert_sumcheck_intermediate_values_eq_for_test_with_layer(
+        &generated_execution.proof,
+        &generic_execution.proof,
+        first_layer_idx,
+    );
+    assert_eq!(generated_execution.new_claims, generic_execution.new_claims);
+    assert_eq!(
+        generated_execution.new_claim_point,
+        generic_execution.new_claim_point
+    );
+    assert_eq!(
+        generated_execution.next_batching_challenge,
+        generic_execution.next_batching_challenge
+    );
+    assert_eq!(
+        generated_execution.updated_seed,
+        generic_execution.updated_seed
+    );
+}
+
+#[test]
+#[serial]
 fn run_basic_unrolled_main_layers_static_vs_dynamic_execution_test() {
     fn advance_dimension_reduction(
         mut state: GpuGKRDimensionReducingBackwardState<BF, E4>,
@@ -4798,6 +5004,7 @@ fn run_basic_unrolled_main_layers_static_vs_dynamic_execution_test() {
                 lookup_multiplicative_part,
                 lookup_additive_part,
                 constraints_batch_challenge,
+                None,
             ),
             current_claims,
             current_point,
@@ -4967,6 +5174,7 @@ fn run_basic_unrolled_async_allocator_regression_test() {
         .schedule_execute_backward_workflow(
             compiled_circuit,
             external_challenges,
+            None,
             initial_output_layer_idx,
             top_layer_claims,
             evaluation_point,
@@ -5113,6 +5321,122 @@ fn run_basic_unrolled_test() {
 
     let (gpu_proof, _proof_time_ms) = proof_job.finish().unwrap();
     assert_gkr_proof_eq_for_test(&gpu_proof, &fixture.expected_cpu_proof);
+}
+
+#[test]
+#[serial]
+fn run_basic_unrolled_generated_main_backward_proof_matches_generic_test() {
+    const GENERATED_MAIN_BACKWARD_ENV: &str = "GPU_PROVER_USE_GENERATED_MAIN_BACKWARD";
+    let timing = std::env::var_os("GPU_PROVER_TEST_TIMING").is_some();
+
+    struct RestoreEnvVar {
+        key: &'static str,
+        value: Option<std::ffi::OsString>,
+    }
+
+    impl Drop for RestoreEnvVar {
+        fn drop(&mut self) {
+            match self.value.take() {
+                Some(value) => std::env::set_var(self.key, value),
+                None => std::env::remove_var(self.key),
+            }
+        }
+    }
+
+    let _restore_env = RestoreEnvVar {
+        key: GENERATED_MAIN_BACKWARD_ENV,
+        value: std::env::var_os(GENERATED_MAIN_BACKWARD_ENV),
+    };
+
+    let fixture_start = std::time::Instant::now();
+    let (fixture, expected_cpu_proof) =
+        prepare_basic_unrolled_fixture(BasicUnrolledFixtureBuildConfig {
+            binary_path: BASIC_UNROLLED_CPU_PARITY_BINARY_PATH,
+            text_path: BASIC_UNROLLED_CPU_PARITY_TEXT_PATH,
+            non_determinism_reads: &[15, 1],
+            compute_cpu_reference: false,
+            device_allocator_block_log_size: default_fixture_device_allocator_block_log_size(),
+        });
+    if timing {
+        eprintln!("generated-main-backward: fixture built in {:?}", fixture_start.elapsed());
+    }
+    assert!(
+        expected_cpu_proof.is_none(),
+        "generated-main-backward parity test does not require a CPU reference proof",
+    );
+
+    std::env::remove_var(GENERATED_MAIN_BACKWARD_ENV);
+    let generic_schedule_start = std::time::Instant::now();
+    let generic_job = fixture.schedule_prove(None).unwrap();
+    if timing {
+        eprintln!(
+            "generated-main-backward: generic schedule_prove in {:?}",
+            generic_schedule_start.elapsed()
+        );
+    }
+    let generic_finish_start = std::time::Instant::now();
+    let (generic_proof, _generic_time_ms) = generic_job.finish().unwrap();
+    if timing {
+        eprintln!(
+            "generated-main-backward: generic finish in {:?}",
+            generic_finish_start.elapsed()
+        );
+    }
+
+    std::env::set_var(GENERATED_MAIN_BACKWARD_ENV, "1");
+    let generated_schedule_start = std::time::Instant::now();
+    let generated_job = fixture.schedule_prove(None).unwrap();
+    if timing {
+        eprintln!(
+            "generated-main-backward: generated schedule_prove in {:?}",
+            generated_schedule_start.elapsed()
+        );
+    }
+    let generated_finish_start = std::time::Instant::now();
+    let (generated_proof, _generated_time_ms) = generated_job.finish().unwrap();
+    if timing {
+        eprintln!(
+            "generated-main-backward: generated finish in {:?}",
+            generated_finish_start.elapsed()
+        );
+    }
+
+    assert_eq!(
+        generated_proof.external_challenges,
+        generic_proof.external_challenges
+    );
+    assert_eq!(
+        generated_proof.final_explicit_evaluations,
+        generic_proof.final_explicit_evaluations
+    );
+    assert_eq!(
+        generated_proof.sumcheck_intermediate_values.len(),
+        generic_proof.sumcheck_intermediate_values.len(),
+    );
+    for (layer_idx, generic_values) in generic_proof.sumcheck_intermediate_values.iter() {
+        let generated_values = generated_proof
+            .sumcheck_intermediate_values
+            .get(layer_idx)
+            .unwrap_or_else(|| panic!("missing generated proof values for layer {layer_idx}"));
+        assert_sumcheck_intermediate_values_eq_for_test_with_layer(
+            generated_values,
+            generic_values,
+            *layer_idx,
+        );
+    }
+    assert_eq!(
+        generated_proof.whir_proof.pow_nonces.len(),
+        generic_proof.whir_proof.pow_nonces.len(),
+    );
+    assert_eq!(
+        generated_proof.whir_proof.final_monomials.len(),
+        generic_proof.whir_proof.final_monomials.len(),
+    );
+
+    #[cfg(feature = "deterministic_pow")]
+    {
+        assert_gkr_proof_eq_for_test(&generated_proof, &generic_proof);
+    }
 }
 
 #[test]
@@ -6369,6 +6693,7 @@ fn no_cache_main_layer_backward_plan_has_no_synthetic_readback_kernel_test() {
         lookup_multiplicative_part,
         lookup_additive_part,
         constraints_batch_challenge,
+        None,
     );
 
     while let Some(layer_plan) = main_layer_state
@@ -7392,6 +7717,7 @@ fn run_basic_unrolled_stagewise_parity_test() {
             .schedule_execute_backward_workflow(
                 add_sub_circuit.clone(),
                 external_challenges.clone(),
+                None,
                 initial_layer_for_sumcheck + 1,
                 top_layer_claims.clone(),
                 evaluation_point.clone(),

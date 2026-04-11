@@ -5,6 +5,11 @@ target_sources(gpu_prover_native PRIVATE
         forward_cache.cu
         forward_layer.cu
         main_backward_round0.cu
+        main_backward_generated_add_sub_lui_auipc_mop_round0.cu
+        main_backward_generated_add_sub_lui_auipc_mop_round1_compact.cu
+        main_backward_generated_add_sub_lui_auipc_mop_round2_compact.cu
+        main_backward_generated_add_sub_lui_auipc_mop_round3_compact.cu
+        main_backward_generated_add_sub_lui_auipc_mop_round3_explicit.cu
         main_backward_round1_compact.cu
         main_backward_round1_explicit.cu
         main_backward_round2_compact.cu

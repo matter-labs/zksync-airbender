@@ -113,6 +113,11 @@ impl GpuGKRMainLayerKernelKind {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum GpuGeneratedMainBackwardFamily {
+    AddSubLuiAuipcMop,
+}
+
 pub(super) const GKR_BACKWARD_MAX_KERNELS_PER_LAYER: usize = 64;
 pub(super) const MAX_INLINE_ROUND_BATCH_BYTES: usize = 12 * 1024;
 
@@ -592,6 +597,28 @@ impl<E: Field> Default for GpuGKRMainRound3BatchRuntime<E> {
             spill_payload: null(),
             auxiliary_challenges: null(),
             constraint_metadata: null(),
+        }
+    }
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct GpuGeneratedAddSubLuiAuipcMopMainChallenges<E> {
+    pub(crate) permutation_argument_linearization_challenges: [E; 6],
+    pub(crate) permutation_argument_additive_part: E,
+    pub(crate) lookup_multiplicative_challenge: E,
+    pub(crate) lookup_additive_challenge: E,
+    pub(crate) constraint_batch_challenge: E,
+}
+
+impl<E: Field> Default for GpuGeneratedAddSubLuiAuipcMopMainChallenges<E> {
+    fn default() -> Self {
+        Self {
+            permutation_argument_linearization_challenges: [E::ZERO; 6],
+            permutation_argument_additive_part: E::ZERO,
+            lookup_multiplicative_challenge: E::ZERO,
+            lookup_additive_challenge: E::ZERO,
+            constraint_batch_challenge: E::ZERO,
         }
     }
 }
@@ -1181,6 +1208,9 @@ pub(crate) struct GpuGKRMainLayerSumcheckLayerPlan<E> {
     pub(crate) trace_len: usize,
     pub(crate) folding_steps: usize,
     pub(super) batch_challenge_base: Option<E>,
+    pub(super) generated_main_backward_family: Option<GpuGeneratedMainBackwardFamily>,
+    pub(super) generated_challenges_template:
+        Option<GpuGeneratedAddSubLuiAuipcMopMainChallenges<E>>,
     pub(super) kernel_plans: Vec<GpuGKRMainLayerKernelPlan<E>>,
     pub(super) round0_descriptors: Vec<GpuSumcheckRound0LaunchDescriptors<BF, E>>,
     pub(super) round0_batch_template: GpuGKRMainRound0BatchStatic<E>,
@@ -1216,6 +1246,7 @@ pub(crate) struct GpuGKRMainLayerBackwardState<E: FieldExtension<BF> + Field> {
     pub(super) lookup_multiplicative_challenge: E,
     pub(super) lookup_additive_challenge: E,
     pub(super) constraint_batch_challenge: E,
+    pub(super) generated_main_backward_family: Option<GpuGeneratedMainBackwardFamily>,
     pub(super) num_base_layer_memory_polys: usize,
     pub(super) num_base_layer_witness_polys: usize,
 }
@@ -1249,6 +1280,9 @@ pub(crate) struct GpuGKRMainLayerScheduledLayerExecution<E: FieldExtension<BF> +
     pub(super) final_readback: ScheduledDimensionReducingFinalReadback<E>,
     #[allow(dead_code)]
     pub(super) runtime_uploads: Option<ScheduledMainLayerRuntimeUploads<E>>,
+    #[allow(dead_code)]
+    pub(super) generated_challenges:
+        Option<ScheduledUpload<GpuGeneratedAddSubLuiAuipcMopMainChallenges<E>>>,
     pub(super) shared_state: Box<ScheduledMainLayerExecutionState<E>>,
 }
 
@@ -1319,6 +1353,9 @@ pub(crate) struct GpuGKRMainLayerHostKeepalive<E: FieldExtension<BF> + Field> {
     pub(super) final_readback: ScheduledDimensionReducingFinalReadback<E>,
     #[allow(dead_code)]
     pub(super) runtime_uploads: Option<HostScheduledMainLayerRuntimeUploads<E>>,
+    #[allow(dead_code)]
+    pub(super) generated_challenges:
+        Option<HostScheduledUpload<GpuGeneratedAddSubLuiAuipcMopMainChallenges<E>>>,
     #[allow(dead_code)]
     pub(super) shared_state: Box<ScheduledMainLayerExecutionState<E>>,
 }
@@ -2256,6 +2293,42 @@ cuda_kernel_signature_arguments_and_function!(
     acc_size: u32,
 );
 
+cuda_kernel_signature_arguments_and_function!(
+    GpuGeneratedAddSubLuiAuipcMopMainRound0Batched<T>,
+    layer_idx: u32,
+    batch_static: GpuGKRMainRound0BatchStatic<T>,
+    batch_runtime: GpuGKRMainRound0BatchRuntime<T>,
+    challenges: *const GpuGeneratedAddSubLuiAuipcMopMainChallenges<T>,
+    acc_size: u32,
+);
+
+cuda_kernel_signature_arguments_and_function!(
+    GpuGeneratedAddSubLuiAuipcMopMainRound1Batched<T>,
+    layer_idx: u32,
+    batch_static: GpuGKRMainRound1BatchStatic<T>,
+    batch_runtime: GpuGKRMainRound1BatchRuntime<T>,
+    challenges: *const GpuGeneratedAddSubLuiAuipcMopMainChallenges<T>,
+    acc_size: u32,
+);
+
+cuda_kernel_signature_arguments_and_function!(
+    GpuGeneratedAddSubLuiAuipcMopMainRound2Batched<T>,
+    layer_idx: u32,
+    batch_static: GpuGKRMainRound2BatchStatic<T>,
+    batch_runtime: GpuGKRMainRound2BatchRuntime<T>,
+    challenges: *const GpuGeneratedAddSubLuiAuipcMopMainChallenges<T>,
+    acc_size: u32,
+);
+
+cuda_kernel_signature_arguments_and_function!(
+    GpuGeneratedAddSubLuiAuipcMopMainRound3Batched<T>,
+    layer_idx: u32,
+    batch_static: GpuGKRMainRound3BatchStatic<T>,
+    batch_runtime: GpuGKRMainRound3BatchRuntime<T>,
+    challenges: *const GpuGeneratedAddSubLuiAuipcMopMainChallenges<T>,
+    acc_size: u32,
+);
+
 pub(super) trait GpuMainLayerKernelSet: GpuDimensionReducingKernelSet {
     const MAIN_ROUND0: GpuGKRMainRound0Signature<Self>;
     const MAIN_ROUND1_EXPLICIT: GpuGKRMainRound1Signature<Self>;
@@ -2271,6 +2344,19 @@ pub(super) trait GpuMainLayerKernelSet: GpuDimensionReducingKernelSet {
     const MAIN_ROUND2_BATCHED_COMPACT: GpuGKRMainRound2BatchedSignature<Self>;
     const MAIN_ROUND3_BATCHED_EXPLICIT: GpuGKRMainRound3BatchedSignature<Self>;
     const MAIN_ROUND3_BATCHED_COMPACT: GpuGKRMainRound3BatchedSignature<Self>;
+}
+
+pub(super) trait GpuGeneratedAddSubLuiAuipcMopMainKernelSet: GpuMainLayerKernelSet {
+    const GENERATED_ADD_SUB_MAIN_ROUND0_BATCHED:
+        GpuGeneratedAddSubLuiAuipcMopMainRound0BatchedSignature<Self>;
+    const GENERATED_ADD_SUB_MAIN_ROUND1_BATCHED_COMPACT:
+        GpuGeneratedAddSubLuiAuipcMopMainRound1BatchedSignature<Self>;
+    const GENERATED_ADD_SUB_MAIN_ROUND2_BATCHED_COMPACT:
+        GpuGeneratedAddSubLuiAuipcMopMainRound2BatchedSignature<Self>;
+    const GENERATED_ADD_SUB_MAIN_ROUND3_BATCHED_COMPACT:
+        GpuGeneratedAddSubLuiAuipcMopMainRound3BatchedSignature<Self>;
+    const GENERATED_ADD_SUB_MAIN_ROUND3_BATCHED_EXPLICIT:
+        GpuGeneratedAddSubLuiAuipcMopMainRound3BatchedSignature<Self>;
 }
 
 macro_rules! gkr_main_layer_kernels {
@@ -2481,6 +2567,78 @@ macro_rules! gkr_main_layer_kernels {
 }
 
 gkr_main_layer_kernels!(E4);
+
+macro_rules! gkr_generated_add_sub_main_layer_kernels {
+    ($type:ty) => {
+        paste! {
+            cuda_kernel_declaration!(
+                [<ab_gkr_generated_add_sub_lui_auipc_mop_main_round0_batched_ $type:lower _kernel>](
+                    layer_idx: u32,
+                    batch_static: GpuGKRMainRound0BatchStatic<$type>,
+                    batch_runtime: GpuGKRMainRound0BatchRuntime<$type>,
+                    challenges: *const GpuGeneratedAddSubLuiAuipcMopMainChallenges<$type>,
+                    acc_size: u32,
+                )
+            );
+            cuda_kernel_declaration!(
+                [<ab_gkr_generated_add_sub_lui_auipc_mop_main_round1_batched_compact_ $type:lower _kernel>](
+                    layer_idx: u32,
+                    batch_static: GpuGKRMainRound1BatchStatic<$type>,
+                    batch_runtime: GpuGKRMainRound1BatchRuntime<$type>,
+                    challenges: *const GpuGeneratedAddSubLuiAuipcMopMainChallenges<$type>,
+                    acc_size: u32,
+                )
+            );
+            cuda_kernel_declaration!(
+                [<ab_gkr_generated_add_sub_lui_auipc_mop_main_round2_batched_compact_ $type:lower _kernel>](
+                    layer_idx: u32,
+                    batch_static: GpuGKRMainRound2BatchStatic<$type>,
+                    batch_runtime: GpuGKRMainRound2BatchRuntime<$type>,
+                    challenges: *const GpuGeneratedAddSubLuiAuipcMopMainChallenges<$type>,
+                    acc_size: u32,
+                )
+            );
+            cuda_kernel_declaration!(
+                [<ab_gkr_generated_add_sub_lui_auipc_mop_main_round3_batched_compact_ $type:lower _kernel>](
+                    layer_idx: u32,
+                    batch_static: GpuGKRMainRound3BatchStatic<$type>,
+                    batch_runtime: GpuGKRMainRound3BatchRuntime<$type>,
+                    challenges: *const GpuGeneratedAddSubLuiAuipcMopMainChallenges<$type>,
+                    acc_size: u32,
+                )
+            );
+            cuda_kernel_declaration!(
+                [<ab_gkr_generated_add_sub_lui_auipc_mop_main_round3_batched_explicit_ $type:lower _kernel>](
+                    layer_idx: u32,
+                    batch_static: GpuGKRMainRound3BatchStatic<$type>,
+                    batch_runtime: GpuGKRMainRound3BatchRuntime<$type>,
+                    challenges: *const GpuGeneratedAddSubLuiAuipcMopMainChallenges<$type>,
+                    acc_size: u32,
+                )
+            );
+
+            impl GpuGeneratedAddSubLuiAuipcMopMainKernelSet for $type {
+                const GENERATED_ADD_SUB_MAIN_ROUND0_BATCHED:
+                    GpuGeneratedAddSubLuiAuipcMopMainRound0BatchedSignature<Self> =
+                    [<ab_gkr_generated_add_sub_lui_auipc_mop_main_round0_batched_ $type:lower _kernel>];
+                const GENERATED_ADD_SUB_MAIN_ROUND1_BATCHED_COMPACT:
+                    GpuGeneratedAddSubLuiAuipcMopMainRound1BatchedSignature<Self> =
+                    [<ab_gkr_generated_add_sub_lui_auipc_mop_main_round1_batched_compact_ $type:lower _kernel>];
+                const GENERATED_ADD_SUB_MAIN_ROUND2_BATCHED_COMPACT:
+                    GpuGeneratedAddSubLuiAuipcMopMainRound2BatchedSignature<Self> =
+                    [<ab_gkr_generated_add_sub_lui_auipc_mop_main_round2_batched_compact_ $type:lower _kernel>];
+                const GENERATED_ADD_SUB_MAIN_ROUND3_BATCHED_COMPACT:
+                    GpuGeneratedAddSubLuiAuipcMopMainRound3BatchedSignature<Self> =
+                    [<ab_gkr_generated_add_sub_lui_auipc_mop_main_round3_batched_compact_ $type:lower _kernel>];
+                const GENERATED_ADD_SUB_MAIN_ROUND3_BATCHED_EXPLICIT:
+                    GpuGeneratedAddSubLuiAuipcMopMainRound3BatchedSignature<Self> =
+                    [<ab_gkr_generated_add_sub_lui_auipc_mop_main_round3_batched_explicit_ $type:lower _kernel>];
+            }
+        }
+    };
+}
+
+gkr_generated_add_sub_main_layer_kernels!(E4);
 
 pub(super) fn gkr_dim_reducing_launch_config(
     count: u32,
@@ -3089,4 +3247,101 @@ pub(super) fn launch_main_round3_batched<E: GpuMainLayerKernelSet + Field>(
         E::MAIN_ROUND3_BATCHED_COMPACT
     };
     GpuGKRMainRound3BatchedFunction(function).launch(&config, &args)
+}
+
+pub(super) fn launch_generated_add_sub_main_round0_batched<
+    E: GpuGeneratedAddSubLuiAuipcMopMainKernelSet + Field,
+>(
+    layer_idx: usize,
+    batch_static: &GpuGKRMainRound0BatchStatic<E>,
+    batch_runtime: &GpuGKRMainRound0BatchRuntime<E>,
+    challenges: *const GpuGeneratedAddSubLuiAuipcMopMainChallenges<E>,
+    acc_size: usize,
+    context: &ProverContext,
+) -> CudaResult<()> {
+    let config = gkr_dim_reducing_launch_config(acc_size as u32, context);
+    let args = GpuGeneratedAddSubLuiAuipcMopMainRound0BatchedArguments::new(
+        layer_idx as u32,
+        *batch_static,
+        *batch_runtime,
+        challenges,
+        acc_size as u32,
+    );
+    GpuGeneratedAddSubLuiAuipcMopMainRound0BatchedFunction(E::GENERATED_ADD_SUB_MAIN_ROUND0_BATCHED)
+        .launch(&config, &args)
+}
+
+pub(super) fn launch_generated_add_sub_main_round1_batched<
+    E: GpuGeneratedAddSubLuiAuipcMopMainKernelSet + Field,
+>(
+    layer_idx: usize,
+    batch_static: &GpuGKRMainRound1BatchStatic<E>,
+    batch_runtime: &GpuGKRMainRound1BatchRuntime<E>,
+    challenges: *const GpuGeneratedAddSubLuiAuipcMopMainChallenges<E>,
+    acc_size: usize,
+    context: &ProverContext,
+) -> CudaResult<()> {
+    let config = gkr_dim_reducing_launch_config(acc_size as u32, context);
+    let args = GpuGeneratedAddSubLuiAuipcMopMainRound1BatchedArguments::new(
+        layer_idx as u32,
+        *batch_static,
+        *batch_runtime,
+        challenges,
+        acc_size as u32,
+    );
+    GpuGeneratedAddSubLuiAuipcMopMainRound1BatchedFunction(
+        E::GENERATED_ADD_SUB_MAIN_ROUND1_BATCHED_COMPACT,
+    )
+    .launch(&config, &args)
+}
+
+pub(super) fn launch_generated_add_sub_main_round2_batched<
+    E: GpuGeneratedAddSubLuiAuipcMopMainKernelSet + Field,
+>(
+    layer_idx: usize,
+    batch_static: &GpuGKRMainRound2BatchStatic<E>,
+    batch_runtime: &GpuGKRMainRound2BatchRuntime<E>,
+    challenges: *const GpuGeneratedAddSubLuiAuipcMopMainChallenges<E>,
+    acc_size: usize,
+    context: &ProverContext,
+) -> CudaResult<()> {
+    let config = gkr_dim_reducing_launch_config(acc_size as u32, context);
+    let args = GpuGeneratedAddSubLuiAuipcMopMainRound2BatchedArguments::new(
+        layer_idx as u32,
+        *batch_static,
+        *batch_runtime,
+        challenges,
+        acc_size as u32,
+    );
+    GpuGeneratedAddSubLuiAuipcMopMainRound2BatchedFunction(
+        E::GENERATED_ADD_SUB_MAIN_ROUND2_BATCHED_COMPACT,
+    )
+    .launch(&config, &args)
+}
+
+pub(super) fn launch_generated_add_sub_main_round3_batched<
+    E: GpuGeneratedAddSubLuiAuipcMopMainKernelSet + Field,
+>(
+    layer_idx: usize,
+    batch_static: &GpuGKRMainRound3BatchStatic<E>,
+    batch_runtime: &GpuGKRMainRound3BatchRuntime<E>,
+    challenges: *const GpuGeneratedAddSubLuiAuipcMopMainChallenges<E>,
+    acc_size: usize,
+    explicit_form: bool,
+    context: &ProverContext,
+) -> CudaResult<()> {
+    let config = gkr_dim_reducing_launch_config(acc_size as u32, context);
+    let args = GpuGeneratedAddSubLuiAuipcMopMainRound3BatchedArguments::new(
+        layer_idx as u32,
+        *batch_static,
+        *batch_runtime,
+        challenges,
+        acc_size as u32,
+    );
+    let function = if explicit_form {
+        E::GENERATED_ADD_SUB_MAIN_ROUND3_BATCHED_EXPLICIT
+    } else {
+        E::GENERATED_ADD_SUB_MAIN_ROUND3_BATCHED_COMPACT
+    };
+    GpuGeneratedAddSubLuiAuipcMopMainRound3BatchedFunction(function).launch(&config, &args)
 }

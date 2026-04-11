@@ -15,7 +15,7 @@ use prover::merkle_trees::DefaultTreeConstructor;
 use prover::query_utils::BitSource;
 use prover::transcript::Seed;
 
-use crate::circuit_type::CircuitType;
+use crate::circuit_type::{CircuitType, UnrolledCircuitType, UnrolledNonMemoryCircuitType};
 use crate::ops::blake2s::Digest;
 use crate::primitives::callbacks::Callbacks;
 use crate::primitives::context::{
@@ -29,6 +29,7 @@ use crate::prover::gkr::backward::{
     current_backward_seed, fill_backward_claim_point_for_layer,
     make_deferred_backward_workflow_state, populate_backward_workflow_state,
     take_backward_execution_from_shared_state, GpuGKRBackwardHostKeepalive,
+    GpuGeneratedMainBackwardFamily,
 };
 use crate::prover::gkr::base_layer_claims::{
     clone_base_layer_extra_evaluations_from_caching_relations,
@@ -55,6 +56,27 @@ use prover::merkle_trees::MerkleTreeCapVarLength;
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct GkrExternalPowChallenges {
     pub whir_pow_nonces: Vec<u64>,
+}
+
+fn generated_main_backward_family_for(
+    circuit_type: CircuitType,
+) -> Option<GpuGeneratedMainBackwardFamily> {
+    let enabled = matches!(
+        std::env::var("GPU_PROVER_USE_GENERATED_MAIN_BACKWARD").as_deref(),
+        Ok("1")
+    );
+    if enabled
+        && matches!(
+            circuit_type,
+            CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
+                UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop,
+            ))
+        )
+    {
+        Some(GpuGeneratedMainBackwardFamily::AddSubLuiAuipcMop)
+    } else {
+        None
+    }
 }
 
 struct GpuGKRProofJobKeepalive<'a> {
@@ -572,6 +594,7 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
         .schedule_execute_backward_workflow_from_shared_state(
             compiled_circuit.clone(),
             external_challenges.clone(),
+            generated_main_backward_family_for(circuit_type),
             backward_shared_state,
             context,
         )?;

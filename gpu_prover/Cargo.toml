@@ -53,6 +53,7 @@ itertools = "0.14"
 rand = "0.9"
 serial_test = "3"
 blake2s_u32 = { workspace = true }
+gpu_witness_eval_generator = { workspace = true }
 serde = { workspace = true }
 serde_json = "*"
 
