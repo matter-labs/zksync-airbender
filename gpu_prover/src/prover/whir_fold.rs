@@ -42,7 +42,7 @@ use crate::primitives::field::{BF, E4};
 use crate::primitives::static_host::{
     alloc_static_pinned_box_from_slice, alloc_static_pinned_box_uninit,
 };
-use crate::prover::gkr::backward::launch_build_eq_values;
+use crate::prover::gkr::backward::{eq_group_tables_len, launch_build_eq_values_from_point};
 use crate::prover::pow::search_pow_challenge;
 use crate::prover::proof::{
     draw_query_bits_after_verified_pow, draw_query_bits_with_external_nonce,
@@ -60,6 +60,7 @@ struct GpuWhirState {
     monomial_buffer: DeviceAllocation<E4>,
     sumchecked_poly_evaluation_form: DeviceAllocation<E4>,
     eq_poly: DeviceAllocation<E4>,
+    eq_group_tables: DeviceAllocation<E4>,
     scratch0: DeviceAllocation<E4>,
     scratch1: DeviceAllocation<E4>,
     point_pows: DeviceAllocation<E4>,
@@ -324,6 +325,7 @@ impl GpuWhirState {
         assert!(trace_len.is_power_of_two());
         assert!(trace_len >= 2);
         let half_len = trace_len / 2;
+        let max_log_n = trace_len.trailing_zeros() as usize;
         let reduce_temp_bytes =
             get_reduce_temp_storage_bytes::<E4>(ReduceOperation::Sum, half_len as i32)?;
         Ok(Self {
@@ -333,6 +335,10 @@ impl GpuWhirState {
             sumchecked_poly_evaluation_form: context
                 .alloc(trace_len, AllocationPlacement::BestFit)?,
             eq_poly: context.alloc(trace_len, AllocationPlacement::BestFit)?,
+            eq_group_tables: context.alloc(
+                eq_group_tables_len(max_log_n).max(1),
+                AllocationPlacement::BestFit,
+            )?,
             scratch0: context.alloc(half_len, AllocationPlacement::BestFit)?,
             scratch1: context.alloc(half_len, AllocationPlacement::BestFit)?,
             point_pows: context.alloc(
@@ -1309,10 +1315,11 @@ fn build_initial_state(
         original_evaluation_point,
         context,
     )?;
-    launch_build_eq_values(
+    launch_build_eq_values_from_point(
         state.point_pows.as_ptr(),
         0,
         original_evaluation_point.len(),
+        state.eq_group_tables.as_mut_ptr(),
         state.eq_poly.as_mut_ptr(),
         trace_len,
         context,
@@ -1563,10 +1570,11 @@ fn accumulate_eq_sample_in_place_device(
     assert!(state.current_len <= state.scratch0.len());
     let pows = make_pows(point, log_n);
     copy_small_to_device(&mut state.point_pows[..log_n], &pows, context)?;
-    launch_build_eq_values(
+    launch_build_eq_values_from_point(
         state.point_pows.as_ptr(),
         0,
         log_n,
+        state.eq_group_tables.as_mut_ptr(),
         state.scratch0.as_mut_ptr(),
         state.current_len,
         context,
@@ -1593,10 +1601,11 @@ fn schedule_accumulate_eq_sample_in_place_device(
     let log_n = state.current_len.trailing_zeros() as usize;
     let (point_pows_upload, _point_pows_host, point_pows_device) =
         schedule_callback_populated_upload(context, log_n, fill_point_pows)?;
-    launch_build_eq_values(
+    launch_build_eq_values_from_point(
         point_pows_device.as_ptr(),
         0,
         log_n,
+        state.eq_group_tables.as_mut_ptr(),
         state.scratch0.as_mut_ptr(),
         state.current_len,
         context,
@@ -1903,10 +1912,11 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         &base_layer_point_host,
         stream,
     )?;
-    launch_build_eq_values(
+    launch_build_eq_values_from_point(
         state.point_pows.as_ptr(),
         0,
         base_layer_point_len,
+        state.eq_group_tables.as_mut_ptr(),
         state.eq_poly.as_mut_ptr(),
         trace_len,
         context,
@@ -3027,10 +3037,11 @@ pub(crate) fn debug_build_initial_state_snapshots_for_test(
         original_evaluation_point,
         context,
     )?;
-    launch_build_eq_values(
+    launch_build_eq_values_from_point(
         state.point_pows.as_ptr(),
         0,
         original_evaluation_point.len(),
+        state.eq_group_tables.as_mut_ptr(),
         state.eq_poly.as_mut_ptr(),
         trace_len,
         context,
@@ -4087,10 +4098,17 @@ mod tests {
         let mut eq = context
             .alloc(trace_len, AllocationPlacement::BestFit)
             .unwrap();
-        launch_build_eq_values(
+        let mut eq_group_tables = context
+            .alloc(
+                eq_group_tables_len(coordinates.len()).max(1),
+                AllocationPlacement::BestFit,
+            )
+            .unwrap();
+        launch_build_eq_values_from_point(
             point.as_ptr(),
             0,
             coordinates.len(),
+            eq_group_tables.as_mut_ptr(),
             eq.as_mut_ptr(),
             trace_len,
             &context,

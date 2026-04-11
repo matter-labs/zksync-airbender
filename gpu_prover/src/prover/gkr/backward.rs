@@ -19,7 +19,7 @@ use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
 use era_cudart::memory::memory_copy_async;
 use era_cudart::paste::paste;
 use era_cudart::result::CudaResult;
-use era_cudart::slice::{CudaSliceMut, DeviceSlice};
+use era_cudart::slice::{CudaSlice, CudaSliceMut, DeviceSlice};
 use era_cudart::{cuda_kernel_declaration, cuda_kernel_signature_arguments_and_function};
 use field::{Field, FieldExtension, PrimeField};
 use prover::gkr::high_bits_offset_for_inits_and_teardowns;
@@ -90,6 +90,29 @@ fn remap_constraint_input(
 
 pub(crate) fn canonical_inits_and_teardowns_top_bits(sets_count: usize) -> Vec<u32> {
     (0..sets_count as u32).collect()
+}
+
+fn fill_round0_eq_pair_values<E: Field>(dst: &mut [E], claim_point: &[E]) {
+    assert_eq!(
+        dst.len(),
+        round0_eq_pair_values_len(claim_point.len()),
+        "round-0 eq pair buffer must match the claim-point suffix length"
+    );
+    for (pair, challenge) in dst
+        .chunks_exact_mut(2)
+        .zip(claim_point.iter().skip(1).copied())
+    {
+        let mut one_minus = E::ONE;
+        one_minus.sub_assign(&challenge);
+        pair[0] = one_minus;
+        pair[1] = challenge;
+    }
+}
+
+fn make_round0_eq_pair_values<E: Field>(claim_point: &[E]) -> Vec<E> {
+    let mut result = vec![E::ZERO; round0_eq_pair_values_len(claim_point.len())];
+    fill_round0_eq_pair_values(&mut result, claim_point);
+    result
 }
 
 fn memory_query_as_flattened_relation<E: Field + FieldExtension<BF>>(
@@ -1509,8 +1532,6 @@ fn build_dimension_reducing_round0_batch_template<B, E: Field>(
 ) -> GpuGKRDimensionReducingRound0Batch<E> {
     let mut batch = GpuGKRDimensionReducingRound0Batch::default();
     batch.record_count = static_data.len() as u32;
-    batch.challenge_offset = 1;
-    batch.challenge_count = (folding_steps - 1) as u32;
     let mut inline_builder = InlinePayloadBuilder::new();
 
     for (idx, kernel) in static_data.iter().enumerate() {
@@ -1562,8 +1583,6 @@ fn build_dimension_reducing_round1_batch_template<B, E: Field>(
 ) -> GpuGKRDimensionReducingRound1Batch<E> {
     let mut batch = GpuGKRDimensionReducingRound1Batch::default();
     batch.record_count = static_data.len() as u32;
-    batch.challenge_offset = 2;
-    batch.challenge_count = (folding_steps - 2) as u32;
     let mut inline_builder = InlinePayloadBuilder::new();
 
     for (idx, kernel) in static_data.iter().enumerate() {
@@ -1606,8 +1625,6 @@ fn build_dimension_reducing_round2_batch_template<B, E: Field>(
 ) -> GpuGKRDimensionReducingRound2Batch<E> {
     let mut batch = GpuGKRDimensionReducingRound2Batch::default();
     batch.record_count = static_data.len() as u32;
-    batch.challenge_offset = 3;
-    batch.challenge_count = (folding_steps - 3) as u32;
     let mut inline_builder = InlinePayloadBuilder::new();
 
     for (idx, kernel) in static_data.iter().enumerate() {
@@ -1655,8 +1672,6 @@ fn build_dimension_reducing_round3_batch_templates<B, E: Field>(
     for step in 3..folding_steps {
         let mut batch = GpuGKRDimensionReducingRound3Batch::default();
         batch.record_count = static_data.len() as u32;
-        batch.challenge_offset = (step + 1) as u32;
-        batch.challenge_count = (folding_steps - step - 1) as u32;
         let mut inline_builder = InlinePayloadBuilder::new();
 
         for (idx, kernel) in static_data.iter().enumerate() {
@@ -1857,8 +1872,6 @@ fn build_main_layer_round0_batch_template<E: Field>(
 ) -> GpuGKRMainRound0BatchStatic<E> {
     let mut batch = GpuGKRMainRound0BatchStatic::default();
     batch.record_count = static_data.len() as u32;
-    batch.challenge_offset = 1;
-    batch.challenge_count = (folding_steps - 1) as u32;
     let mut inline_builder = InlinePayloadBuilder::new();
 
     for (idx, kernel) in static_data.iter().enumerate() {
@@ -1944,8 +1957,6 @@ fn build_main_layer_round1_batch_template<E: Field>(
 ) -> GpuGKRMainRound1BatchStatic<E> {
     let mut batch = GpuGKRMainRound1BatchStatic::default();
     batch.record_count = static_data.len() as u32;
-    batch.challenge_offset = 2;
-    batch.challenge_count = (folding_steps - 2) as u32;
     let mut inline_builder = InlinePayloadBuilder::new();
 
     for (idx, kernel) in static_data.iter().enumerate() {
@@ -2013,8 +2024,6 @@ fn build_main_layer_round2_batch_template<E: Field>(
 ) -> GpuGKRMainRound2BatchStatic<E> {
     let mut batch = GpuGKRMainRound2BatchStatic::default();
     batch.record_count = static_data.len() as u32;
-    batch.challenge_offset = 3;
-    batch.challenge_count = (folding_steps - 3) as u32;
     let mut inline_builder = InlinePayloadBuilder::new();
 
     for (idx, kernel) in static_data.iter().enumerate() {
@@ -2084,8 +2093,6 @@ fn build_main_layer_round3_batch_templates<E: Field>(
     for step in 3..folding_steps {
         let mut batch = GpuGKRMainRound3BatchStatic::default();
         batch.record_count = static_data.len() as u32;
-        batch.challenge_offset = (step + 1) as u32;
-        batch.challenge_count = (folding_steps - step - 1) as u32;
         let mut inline_builder = InlinePayloadBuilder::new();
 
         for (idx, kernel) in static_data.iter().enumerate() {
@@ -3650,6 +3657,15 @@ impl<B: 'static, E: Field + Reduce> GpuGKRDimensionReducingBackwardState<B, E> {
 
         let round_scratch = GpuGKRDimensionReducingRoundScratch {
             claim_point: context.alloc(folding_steps + 1, AllocationPlacement::Top)?,
+            eq_pair_values: context.alloc(
+                round0_eq_pair_values_len(folding_steps).max(1),
+                AllocationPlacement::Top,
+            )?,
+            eq_group_tables: context.alloc(
+                round0_eq_group_tables_len(folding_steps).max(1),
+                AllocationPlacement::Top,
+            )?,
+            eq_values: context.alloc(max_acc_size.max(1), AllocationPlacement::Top)?,
             accumulator: context.alloc(max_acc_size * 2, AllocationPlacement::Top)?,
             reduction_output: context.alloc(2, AllocationPlacement::Top)?,
             reduction_temp_storage: context
@@ -3857,7 +3873,15 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
             get_reduce_temp_storage_bytes::<E>(ReduceOperation::Sum, max_acc_size as i32)?;
         let round_scratch = GpuGKRMainLayerRoundScratch {
             claim_point: context.alloc(folding_steps + 1, AllocationPlacement::Top)?,
-            eq_values: context.alloc(max_acc_size, AllocationPlacement::Top)?,
+            eq_pair_values: context.alloc(
+                round0_eq_pair_values_len(folding_steps).max(1),
+                AllocationPlacement::Top,
+            )?,
+            eq_group_tables: context.alloc(
+                round0_eq_group_tables_len(folding_steps).max(1),
+                AllocationPlacement::Top,
+            )?,
+            eq_values: context.alloc(max_acc_size.max(1), AllocationPlacement::Top)?,
             accumulator: context.alloc(max_acc_size * 2, AllocationPlacement::Top)?,
             reduction_output: context.alloc(2, AllocationPlacement::Top)?,
             reduction_temp_storage: context
@@ -4213,6 +4237,42 @@ where
         result
     }
 
+    fn build_round0_eq_values(
+        &mut self,
+        eq_pair_values_host: &HostAllocation<[E]>,
+        context: &ProverContext,
+    ) -> CudaResult<()> {
+        let challenge_count = self.folding_steps.saturating_sub(1);
+        let acc_size = 1usize << challenge_count;
+        memory_copy_async(
+            &mut self.round_scratch.eq_pair_values[..eq_pair_values_host.len()],
+            eq_pair_values_host,
+            context.get_exec_stream(),
+        )?;
+        launch_build_round0_eq_values_from_pairs(
+            self.round_scratch.eq_pair_values.as_ptr(),
+            challenge_count,
+            self.round_scratch.eq_group_tables.as_mut_ptr(),
+            self.round_scratch.eq_values.as_mut_ptr(),
+            acc_size,
+            context,
+        )
+    }
+
+    fn fold_eq_values_for_next_round(
+        &mut self,
+        acc_size: usize,
+        context: &ProverContext,
+    ) -> CudaResult<()> {
+        debug_assert!(acc_size.is_power_of_two());
+        debug_assert!(acc_size >= 2);
+        launch_fold_eq_values_in_place(
+            self.round_scratch.eq_values.as_mut_ptr(),
+            acc_size / 2,
+            context,
+        )
+    }
+
     fn launch_round0_kernels(
         &mut self,
         acc_size: usize,
@@ -4220,7 +4280,7 @@ where
         context: &ProverContext,
     ) -> CudaResult<()> {
         let mut batch = self.round0_batch_template;
-        batch.claim_point = self.round_scratch.claim_point.as_ptr();
+        batch.eq_values = self.round_scratch.eq_values.as_ptr();
         batch.batch_challenge_base = self.batch_challenge_base_ptr();
         batch.contributions = self.round_scratch.accumulator.as_mut_ptr();
         batch.spill_payload = static_spill_upload
@@ -4238,7 +4298,7 @@ where
         context: &ProverContext,
     ) -> CudaResult<()> {
         let mut batch = self.round1_batch_template;
-        batch.claim_point = self.round_scratch.claim_point.as_ptr();
+        batch.eq_values = self.round_scratch.eq_values.as_ptr();
         batch.batch_challenge_base = self.batch_challenge_base_ptr();
         batch.folding_challenge = folding_challenge.as_ptr();
         batch.contributions = self.round_scratch.accumulator.as_mut_ptr();
@@ -4260,7 +4320,7 @@ where
         let mut batch = self
             .round2_batch_template
             .expect("round 2 batch template must be present");
-        batch.claim_point = self.round_scratch.claim_point.as_ptr();
+        batch.eq_values = self.round_scratch.eq_values.as_ptr();
         batch.batch_challenge_base = self.batch_challenge_base_ptr();
         batch.folding_challenge = folding_challenge.as_ptr();
         batch.contributions = self.round_scratch.accumulator.as_mut_ptr();
@@ -4288,7 +4348,7 @@ where
                 panic!("missing dimension-reducing round 3 template for step {step}")
             })
             .batch;
-        batch.claim_point = self.round_scratch.claim_point.as_ptr();
+        batch.eq_values = self.round_scratch.eq_values.as_ptr();
         batch.batch_challenge_base = self.batch_challenge_base_ptr();
         batch.folding_challenge = folding_challenge.as_ptr();
         batch.contributions = self.round_scratch.accumulator.as_mut_ptr();
@@ -4481,12 +4541,19 @@ where
         claim_point_values.push(batch_challenge_base);
         let claim_point_host =
             alloc_host_and_schedule_copy(context, &mut start_callbacks, claim_point_values);
+        let eq_pair_values_host = alloc_host_and_schedule_copy(
+            context,
+            &mut start_callbacks,
+            make_round0_eq_pair_values(previous_claim_point),
+        );
         memory_copy_async(
             &mut self.round_scratch.claim_point,
             &claim_point_host,
             context.get_exec_stream(),
         )?;
+        self.build_round0_eq_values(&eq_pair_values_host, context)?;
         drop(claim_point_host);
+        drop(eq_pair_values_host);
 
         let mut shared_state = Box::new(ScheduledDimensionReducingLayerExecutionState {
             seed,
@@ -4532,6 +4599,7 @@ where
             }
             let reduction_output =
                 self.schedule_round_coefficients_reduction(step, acc_size, context)?;
+            self.fold_eq_values_for_next_round(acc_size, context)?;
             let reduction_accessor = reduction_output.get_accessor();
             let next_round_challenges_offset = if step < last_step { Some(step) } else { None };
             let shared_state_for_callback = shared_state_handle;
@@ -4731,6 +4799,10 @@ where
         let mut claim_point_host =
             unsafe { context.alloc_host_uninit_slice(self.folding_steps + 1) };
         let claim_point_accessor = claim_point_host.get_mut_accessor();
+        let mut eq_pair_values_host = unsafe {
+            context.alloc_host_uninit_slice(round0_eq_pair_values_len(self.folding_steps))
+        };
+        let eq_pair_values_accessor = eq_pair_values_host.get_mut_accessor();
         let workflow_state_for_start = workflow_state;
         let shared_state_for_start = shared_state_handle;
         let layer_claim_callback = self
@@ -4750,6 +4822,10 @@ where
                 let claim_len = dst.len() - 1;
                 dst[..claim_len].copy_from_slice(&workflow_state.current_claim_point);
                 dst[claim_len] = workflow_state.current_batching_challenge;
+                fill_round0_eq_pair_values(
+                    eq_pair_values_accessor.get_mut(),
+                    &workflow_state.current_claim_point,
+                );
                 let layer_state = shared_state_for_start.get_mut();
                 layer_state.seed = workflow_state.seed;
                 layer_state.claim = {
@@ -4781,6 +4857,7 @@ where
             &claim_point_host,
             stream,
         )?;
+        self.build_round0_eq_values(&eq_pair_values_host, context)?;
         let mut round_challenge_buffers = Vec::with_capacity(last_step);
         let mut round_challenge_storage = if last_step == 0 {
             None
@@ -4824,6 +4901,7 @@ where
 
             let reduction_output =
                 self.schedule_round_coefficients_reduction(step, acc_size, context)?;
+            self.fold_eq_values_for_next_round(acc_size, context)?;
             let reduction_accessor = reduction_output.get_accessor();
             let next_round_challenges_offset = if step < last_step { Some(step) } else { None };
             let shared_state_for_callback = shared_state_handle;
@@ -4998,6 +5076,7 @@ where
         tracing_ranges.push(layer_range);
 
         drop(claim_point_host);
+        drop(eq_pair_values_host);
         Ok(GpuGKRDimensionReducingScheduledLayerExecution {
             tracing_ranges,
             start_callbacks,
@@ -5057,7 +5136,7 @@ impl<B, E: FieldExtension<BF> + Field> GpuGKRDimensionReducingScheduledLayerExec
 
 impl<E: 'static> GpuGKRMainLayerSumcheckLayerPlan<E>
 where
-    E: Field + FieldExtension<BF> + Reduce + GpuMainLayerKernelSet,
+    E: Field + FieldExtension<BF> + Reduce + GpuDimensionReducingKernelSet + GpuMainLayerKernelSet,
     Mul: BinaryOp<E, E, E>,
     [(); E::DEGREE]: Sized,
 {
@@ -5177,6 +5256,42 @@ where
         Ok((storage, buffer))
     }
 
+    fn build_round0_eq_values(
+        &mut self,
+        eq_pair_values_host: &HostAllocation<[E]>,
+        context: &ProverContext,
+    ) -> CudaResult<()> {
+        let challenge_count = self.folding_steps.saturating_sub(1);
+        let acc_size = 1usize << challenge_count;
+        memory_copy_async(
+            &mut self.round_scratch.eq_pair_values[..eq_pair_values_host.len()],
+            eq_pair_values_host,
+            context.get_exec_stream(),
+        )?;
+        launch_build_round0_eq_values_from_pairs(
+            self.round_scratch.eq_pair_values.as_ptr(),
+            challenge_count,
+            self.round_scratch.eq_group_tables.as_mut_ptr(),
+            self.round_scratch.eq_values.as_mut_ptr(),
+            acc_size,
+            context,
+        )
+    }
+
+    fn fold_eq_values_for_next_round(
+        &mut self,
+        acc_size: usize,
+        context: &ProverContext,
+    ) -> CudaResult<()> {
+        debug_assert!(acc_size.is_power_of_two());
+        debug_assert!(acc_size >= 2);
+        launch_fold_eq_values_in_place(
+            self.round_scratch.eq_values.as_mut_ptr(),
+            acc_size / 2,
+            context,
+        )
+    }
+
     fn launch_round0_kernels(
         &mut self,
         batch_challenges: &ScheduledChallengeBuffer<E>,
@@ -5186,7 +5301,7 @@ where
         context: &ProverContext,
     ) -> CudaResult<()> {
         let batch_runtime = GpuGKRMainRound0BatchRuntime {
-            claim_point: self.round_scratch.claim_point.as_ptr(),
+            eq_values: self.round_scratch.eq_values.as_ptr(),
             batch_challenges: batch_challenges.as_ptr(),
             contributions: self.round_scratch.accumulator.as_mut_ptr(),
             spill_payload: static_spill_upload
@@ -5218,7 +5333,7 @@ where
         context: &ProverContext,
     ) -> CudaResult<()> {
         let batch_runtime = GpuGKRMainRound1BatchRuntime {
-            claim_point: self.round_scratch.claim_point.as_ptr(),
+            eq_values: self.round_scratch.eq_values.as_ptr(),
             batch_challenges: batch_challenges.as_ptr(),
             folding_challenge: folding_challenge.as_ptr(),
             contributions: self.round_scratch.accumulator.as_mut_ptr(),
@@ -5252,7 +5367,7 @@ where
         context: &ProverContext,
     ) -> CudaResult<()> {
         let batch_runtime = GpuGKRMainRound2BatchRuntime {
-            claim_point: self.round_scratch.claim_point.as_ptr(),
+            eq_values: self.round_scratch.eq_values.as_ptr(),
             batch_challenges: batch_challenges.as_ptr(),
             folding_challenges: folding_challenges.as_ptr(),
             contributions: self.round_scratch.accumulator.as_mut_ptr(),
@@ -5293,7 +5408,7 @@ where
             .unwrap_or_else(|| panic!("missing round 3 template for step {step}"))
             .batch;
         let batch_runtime = GpuGKRMainRound3BatchRuntime {
-            claim_point: self.round_scratch.claim_point.as_ptr(),
+            eq_values: self.round_scratch.eq_values.as_ptr(),
             batch_challenges: batch_challenges.as_ptr(),
             folding_challenge: folding_challenge.as_ptr(),
             contributions: self.round_scratch.accumulator.as_mut_ptr(),
@@ -5534,12 +5649,19 @@ where
         );
         let claim_point_host =
             alloc_host_and_schedule_copy(context, &mut start_callbacks, start_state_values);
+        let eq_pair_values_host = alloc_host_and_schedule_copy(
+            context,
+            &mut start_callbacks,
+            make_round0_eq_pair_values(previous_claim_point),
+        );
         memory_copy_async(
             &mut self.round_scratch.claim_point,
             &claim_point_host,
             context.get_exec_stream(),
         )?;
+        self.build_round0_eq_values(&eq_pair_values_host, context)?;
         drop(claim_point_host);
+        drop(eq_pair_values_host);
         let (batch_challenge_storage, batch_challenge_buffer) = self
             .schedule_batch_challenge_buffer(
                 self.batch_challenge_base.expect(
@@ -5605,6 +5727,7 @@ where
 
             let reduction_output =
                 self.schedule_round_coefficients_reduction(step, acc_size, context)?;
+            self.fold_eq_values_for_next_round(acc_size, context)?;
             let reduction_accessor = reduction_output.get_accessor();
             let next_round_len =
                 (step < last_step).then(|| main_layer_round_challenge_len(step + 1));
@@ -5788,6 +5911,10 @@ where
         let mut claim_point_host =
             unsafe { context.alloc_host_uninit_slice(self.folding_steps + 1) };
         let claim_point_accessor = claim_point_host.get_mut_accessor();
+        let mut eq_pair_values_host = unsafe {
+            context.alloc_host_uninit_slice(round0_eq_pair_values_len(self.folding_steps))
+        };
+        let eq_pair_values_accessor = eq_pair_values_host.get_mut_accessor();
         let workflow_state_for_start = workflow_state;
         let shared_state_for_start = shared_state_handle;
         let layer_claim_callback = self
@@ -5816,6 +5943,10 @@ where
                 let claim_len = dst.len() - 1;
                 dst[..claim_len].copy_from_slice(&workflow_state.current_claim_point);
                 dst[claim_len] = workflow_state.current_batching_challenge;
+                fill_round0_eq_pair_values(
+                    eq_pair_values_accessor.get_mut(),
+                    &workflow_state.current_claim_point,
+                );
                 let layer_state = shared_state_for_start.get_mut();
                 layer_state.seed = workflow_state.seed;
                 layer_state.claim = {
@@ -5847,6 +5978,7 @@ where
             &claim_point_host,
             stream,
         )?;
+        self.build_round0_eq_values(&eq_pair_values_host, context)?;
         let (batch_challenge_storage, batch_challenge_buffer) =
             self.schedule_batch_challenge_buffer_from_workflow_state(workflow_state, context)?;
         let runtime_uploads =
@@ -5905,6 +6037,7 @@ where
             }
             let reduction_output =
                 self.schedule_round_coefficients_reduction(step, acc_size, context)?;
+            self.fold_eq_values_for_next_round(acc_size, context)?;
             let reduction_accessor = reduction_output.get_accessor();
             let next_round_len =
                 (step < last_step).then(|| main_layer_round_challenge_len(step + 1));
@@ -6061,6 +6194,7 @@ where
         tracing_ranges.push(layer_range);
 
         drop(claim_point_host);
+        drop(eq_pair_values_host);
         Ok(GpuGKRMainLayerScheduledLayerExecution {
             tracing_ranges,
             start_callbacks,
@@ -6169,7 +6303,12 @@ where
 
 impl<E> GpuGKRDimensionReducingBackwardState<BF, E>
 where
-    E: Field + FieldExtension<BF> + Reduce + GpuMainLayerKernelSet + 'static,
+    E: Field
+        + FieldExtension<BF>
+        + Reduce
+        + GpuDimensionReducingKernelSet
+        + GpuMainLayerKernelSet
+        + 'static,
     Mul: BinaryOp<E, E, E>,
     [(); E::DEGREE]: Sized,
 {
@@ -6288,10 +6427,12 @@ mod tests {
         build_lookup_with_dens_and_setup_expressions_inputs_and_metadata,
         build_main_layer_kernel_blueprints, build_main_layer_kernel_blueprints_static,
         build_single_max_quadratic_constraint_inputs_and_metadata,
-        canonical_inits_and_teardowns_top_bits, launch_build_eq_values, launch_lookup_continuation,
-        launch_lookup_round0, launch_main_round0, launch_pairwise_continuation,
-        launch_pairwise_round0, make_deferred_backward_workflow_state,
-        populate_backward_workflow_state, GKRCircuitArtifact, GpuGKRDimensionReducingBackwardState,
+        canonical_inits_and_teardowns_top_bits, eq_group_tables_len,
+        launch_build_eq_values_from_point, launch_build_round0_eq_values_from_pairs,
+        launch_fold_eq_values_in_place, launch_lookup_continuation, launch_lookup_round0,
+        launch_main_round0, launch_pairwise_continuation, launch_pairwise_round0,
+        make_deferred_backward_workflow_state, populate_backward_workflow_state,
+        GKRCircuitArtifact, GpuGKRDimensionReducingBackwardState,
         GpuGKRMainLayerConstraintLinearTerm, GpuGKRMainLayerConstraintQuadraticTerm,
         GpuGKRMainLayerKernelKind,
     };
@@ -6612,6 +6753,37 @@ mod tests {
         [one_minus, challenge]
     }
 
+    fn eq_values_for_suffix(challenges: &[E4]) -> Vec<E4> {
+        let acc_size = 1usize << challenges.len();
+        let mut result = Vec::with_capacity(acc_size);
+        for gid in 0..acc_size {
+            let mut acc = E4::ONE;
+            for (idx, challenge) in challenges.iter().copied().enumerate() {
+                let bit = ((gid >> (challenges.len() - 1 - idx)) & 1) != 0;
+                let term = if bit {
+                    challenge
+                } else {
+                    let mut one_minus = E4::ONE;
+                    one_minus.sub_assign(&challenge);
+                    one_minus
+                };
+                acc.mul_assign(&term);
+            }
+            result.push(acc);
+        }
+        result
+    }
+
+    fn fold_eq_values_cpu(values: &mut Vec<E4>) {
+        assert!(values.len().is_power_of_two());
+        let half_len = values.len() / 2;
+        for idx in 0..half_len {
+            let upper = values[idx + half_len];
+            values[idx].add_assign(&upper);
+        }
+        values.truncate(half_len);
+    }
+
     fn fold_continuing_value(values: &[E4], challenge: E4, idx: usize) -> E4 {
         let half = values.len() / 2;
         let mut delta = values[half + idx];
@@ -6741,11 +6913,6 @@ mod tests {
             round0_batch.record_count as usize,
             static_plan.kernel_plans.len()
         );
-        assert_eq!(round0_batch.challenge_offset as usize, 1);
-        assert_eq!(
-            round0_batch.challenge_count as usize,
-            static_plan.folding_steps - 1
-        );
 
         for (idx, kernel_plan) in static_plan.kernel_plans.iter().enumerate() {
             let record = &round0_batch.records[idx];
@@ -6788,11 +6955,6 @@ mod tests {
             round1_batch.record_count as usize,
             static_plan.kernel_plans.len()
         );
-        assert_eq!(round1_batch.challenge_offset as usize, 2);
-        assert_eq!(
-            round1_batch.challenge_count as usize,
-            static_plan.folding_steps - 2
-        );
         for (idx, kernel_plan) in static_plan.kernel_plans.iter().enumerate() {
             let record = &round1_batch.records[idx];
             let descriptors_inline = record.record_mode
@@ -6815,11 +6977,6 @@ mod tests {
             assert_eq!(
                 round2_batch.record_count as usize,
                 static_plan.kernel_plans.len()
-            );
-            assert_eq!(round2_batch.challenge_offset as usize, 3);
-            assert_eq!(
-                round2_batch.challenge_count as usize,
-                static_plan.folding_steps - 3
             );
             for (idx, kernel_plan) in static_plan.kernel_plans.iter().enumerate() {
                 let record = &round2_batch.records[idx];
@@ -6848,11 +7005,6 @@ mod tests {
             let step = round3_template.step;
             let batch = &round3_template.batch;
             assert_eq!(batch.record_count as usize, static_plan.kernel_plans.len());
-            assert_eq!(batch.challenge_offset as usize, step + 1);
-            assert_eq!(
-                batch.challenge_count as usize,
-                static_plan.folding_steps - step - 1
-            );
             for (idx, kernel_plan) in static_plan.kernel_plans.iter().enumerate() {
                 let record = &batch.records[idx];
                 let descriptors_inline = record.record_mode
@@ -7011,14 +7163,6 @@ mod tests {
 
         let round0_batch = &static_plan.round0_batch_template;
         assert_eq!(round0_batch.record_count as usize, expected.len());
-        assert_eq!(
-            round0_batch.challenge_offset as usize, 1,
-            "round0 should skip the first claim-point coordinate when building eq weights",
-        );
-        assert_eq!(
-            round0_batch.challenge_count as usize,
-            static_plan.folding_steps - 1
-        );
         let packed_batch_challenges =
             super::pack_main_layer_batch_challenges(&static_plan.kernel_plans, batching_challenge);
         let expected_packed_batch_challenges = expected
@@ -7696,7 +7840,8 @@ mod tests {
         let claim_point = [sample_ext(50), sample_ext(60)];
         let input = alloc_and_copy(&context, &input_values);
         let output = alloc_and_copy(&context, &output_values);
-        let claim_point_dev = alloc_and_copy(&context, &claim_point);
+        let eq = eq_weights_for_binary_tail(claim_point[1]);
+        let eq_dev = alloc_and_copy(&context, &eq);
         let batch_challenge_base = sample_ext(200);
         let batch_challenge_base_dev = alloc_and_copy(&context, &[batch_challenge_base]);
         let mut contributions = alloc_and_copy(&context, &[E4::ZERO; 4]);
@@ -7717,9 +7862,7 @@ mod tests {
 
         let mut batch = super::GpuGKRDimensionReducingRound0Batch::default();
         batch.record_count = 1;
-        batch.challenge_offset = 1;
-        batch.challenge_count = 1;
-        batch.claim_point = claim_point_dev.as_ptr();
+        batch.eq_values = eq_dev.as_ptr();
         batch.batch_challenge_base = batch_challenge_base_dev.as_ptr();
         batch.contributions = contributions.as_mut_ptr();
         batch.inline_payload = inline_builder.into_bytes();
@@ -7737,7 +7880,6 @@ mod tests {
         super::launch_dim_reducing_round0_batched(&batch, 2, &context).unwrap();
         let actual = copy_device_values(&context, &contributions);
 
-        let eq = eq_weights_for_binary_tail(claim_point[1]);
         let mut expected = Vec::new();
         for gid in 0..2 {
             let index = gid * 2;
@@ -7775,7 +7917,8 @@ mod tests {
         let input1 = alloc_and_copy(&context, &input1_values);
         let output_num = alloc_and_copy(&context, &output_num_values);
         let output_den = alloc_and_copy(&context, &output_den_values);
-        let claim_point_dev = alloc_and_copy(&context, &claim_point);
+        let eq = eq_weights_for_binary_tail(claim_point[1]);
+        let eq_dev = alloc_and_copy(&context, &eq);
         let batch_challenge_base = sample_ext(400);
         let batch_challenge_base_dev = alloc_and_copy(&context, &[batch_challenge_base]);
         let mut contributions = alloc_and_copy(&context, &[E4::ZERO; 4]);
@@ -7808,9 +7951,7 @@ mod tests {
 
         let mut batch = super::GpuGKRDimensionReducingRound0Batch::default();
         batch.record_count = 1;
-        batch.challenge_offset = 1;
-        batch.challenge_count = 1;
-        batch.claim_point = claim_point_dev.as_ptr();
+        batch.eq_values = eq_dev.as_ptr();
         batch.batch_challenge_base = batch_challenge_base_dev.as_ptr();
         batch.contributions = contributions.as_mut_ptr();
         batch.inline_payload = inline_builder.into_bytes();
@@ -7828,7 +7969,6 @@ mod tests {
         super::launch_dim_reducing_round0_batched(&batch, 2, &context).unwrap();
         let actual = copy_device_values(&context, &contributions);
 
-        let eq = eq_weights_for_binary_tail(claim_point[1]);
         let batch0 = batch_challenge_base;
         let batch1 = super::field_pow(batch_challenge_base, 2);
         let mut expected = Vec::new();
@@ -7885,7 +8025,8 @@ mod tests {
         let folding_challenge = sample_ext(300);
         let batch_challenge_base = sample_ext(400);
         let prev_dev = alloc_and_copy(&context, &prev);
-        let claim_point_dev = alloc_and_copy(&context, &claim_point);
+        let eq = eq_weights_for_binary_tail(claim_point[2]);
+        let eq_dev = alloc_and_copy(&context, &eq);
         let folding_challenge_dev = alloc_and_copy(&context, &[folding_challenge]);
         let batch_challenge_base_dev = alloc_and_copy(&context, &[batch_challenge_base]);
         let cache: DeviceAllocation<E4> = context.alloc(8, AllocationPlacement::Top).unwrap();
@@ -7904,9 +8045,7 @@ mod tests {
 
         let mut batch = super::GpuGKRDimensionReducingRound1Batch::default();
         batch.record_count = 1;
-        batch.challenge_offset = 2;
-        batch.challenge_count = 1;
-        batch.claim_point = claim_point_dev.as_ptr();
+        batch.eq_values = eq_dev.as_ptr();
         batch.batch_challenge_base = batch_challenge_base_dev.as_ptr();
         batch.folding_challenge = folding_challenge_dev.as_ptr();
         batch.contributions = contributions.as_mut_ptr();
@@ -7924,7 +8063,6 @@ mod tests {
         super::launch_dim_reducing_round1_batched(&batch, 2, &context).unwrap();
         let actual = copy_device_values(&context, &contributions);
 
-        let eq = eq_weights_for_binary_tail(claim_point[2]);
         let mut expected = Vec::new();
         for gid in 0..2 {
             let even_index = gid * 2;
@@ -7968,7 +8106,8 @@ mod tests {
         let batch_challenge_base = sample_ext(400);
         let prev0_dev = alloc_and_copy(&context, &prev0);
         let prev1_dev = alloc_and_copy(&context, &prev1);
-        let claim_point_dev = alloc_and_copy(&context, &claim_point);
+        let eq = eq_weights_for_binary_tail(claim_point[2]);
+        let eq_dev = alloc_and_copy(&context, &eq);
         let folding_challenge_dev = alloc_and_copy(&context, &[folding_challenge]);
         let batch_challenge_base_dev = alloc_and_copy(&context, &[batch_challenge_base]);
         let cache0: DeviceAllocation<E4> = context.alloc(8, AllocationPlacement::Top).unwrap();
@@ -7997,9 +8136,7 @@ mod tests {
 
         let mut batch = super::GpuGKRDimensionReducingRound1Batch::default();
         batch.record_count = 1;
-        batch.challenge_offset = 2;
-        batch.challenge_count = 1;
-        batch.claim_point = claim_point_dev.as_ptr();
+        batch.eq_values = eq_dev.as_ptr();
         batch.batch_challenge_base = batch_challenge_base_dev.as_ptr();
         batch.folding_challenge = folding_challenge_dev.as_ptr();
         batch.contributions = contributions.as_mut_ptr();
@@ -8017,7 +8154,6 @@ mod tests {
         super::launch_dim_reducing_round1_batched(&batch, 2, &context).unwrap();
         let actual = copy_device_values(&context, &contributions);
 
-        let eq = eq_weights_for_binary_tail(claim_point[2]);
         let batch0 = batch_challenge_base;
         let batch1 = super::field_pow(batch_challenge_base, 2);
         let mut expected = Vec::new();
@@ -8095,7 +8231,8 @@ mod tests {
         let folding_challenge = sample_ext(300);
         let batch_challenge_base = sample_ext(400);
         let prev_dev = alloc_and_copy(&context, &prev);
-        let claim_point_dev = alloc_and_copy(&context, &claim_point);
+        let eq = eq_weights_for_binary_tail(claim_point[3]);
+        let eq_dev = alloc_and_copy(&context, &eq);
         let folding_challenge_dev = alloc_and_copy(&context, &[folding_challenge]);
         let batch_challenge_base_dev = alloc_and_copy(&context, &[batch_challenge_base]);
         let cache: DeviceAllocation<E4> = context.alloc(8, AllocationPlacement::Top).unwrap();
@@ -8114,9 +8251,7 @@ mod tests {
 
         let mut batch = super::GpuGKRDimensionReducingRound2Batch::default();
         batch.record_count = 1;
-        batch.challenge_offset = 3;
-        batch.challenge_count = 1;
-        batch.claim_point = claim_point_dev.as_ptr();
+        batch.eq_values = eq_dev.as_ptr();
         batch.batch_challenge_base = batch_challenge_base_dev.as_ptr();
         batch.folding_challenge = folding_challenge_dev.as_ptr();
         batch.contributions = contributions.as_mut_ptr();
@@ -8134,7 +8269,6 @@ mod tests {
         super::launch_dim_reducing_round2_batched(&batch, 2, &context).unwrap();
         let actual = copy_device_values(&context, &contributions);
 
-        let eq = eq_weights_for_binary_tail(claim_point[3]);
         let mut expected = Vec::new();
         for gid in 0..2 {
             let even_index = gid * 2;
@@ -8184,7 +8318,8 @@ mod tests {
         let batch_challenge_base = sample_ext(400);
         let prev0_dev = alloc_and_copy(&context, &prev0);
         let prev1_dev = alloc_and_copy(&context, &prev1);
-        let claim_point_dev = alloc_and_copy(&context, &claim_point);
+        let eq = eq_weights_for_binary_tail(claim_point[4]);
+        let eq_dev = alloc_and_copy(&context, &eq);
         let folding_challenge_dev = alloc_and_copy(&context, &[folding_challenge]);
         let batch_challenge_base_dev = alloc_and_copy(&context, &[batch_challenge_base]);
         let cache0: DeviceAllocation<E4> = context.alloc(8, AllocationPlacement::Top).unwrap();
@@ -8213,9 +8348,7 @@ mod tests {
 
         let mut batch = super::GpuGKRDimensionReducingRound3Batch::default();
         batch.record_count = 1;
-        batch.challenge_offset = 4;
-        batch.challenge_count = 1;
-        batch.claim_point = claim_point_dev.as_ptr();
+        batch.eq_values = eq_dev.as_ptr();
         batch.batch_challenge_base = batch_challenge_base_dev.as_ptr();
         batch.folding_challenge = folding_challenge_dev.as_ptr();
         batch.contributions = contributions.as_mut_ptr();
@@ -8233,7 +8366,6 @@ mod tests {
         super::launch_dim_reducing_round3_batched(&batch, 2, &context).unwrap();
         let actual = copy_device_values(&context, &contributions);
 
-        let eq = eq_weights_for_binary_tail(claim_point[4]);
         let batch0 = batch_challenge_base;
         let batch1 = super::field_pow(batch_challenge_base, 2);
         let mut expected = Vec::new();
@@ -8909,50 +9041,119 @@ mod tests {
     #[test]
     #[cfg(not(no_cuda))]
     #[serial]
-    fn build_eq_values_matches_cpu() {
-        let context = make_test_context(64, 8);
-        let claim_point = vec![
-            sample_ext(40),
-            sample_ext(50),
-            sample_ext(60),
-            sample_ext(70),
-        ];
-        let claim_point_dev = alloc_and_copy(&context, &claim_point);
-        let mut eq_values = context.alloc(4, AllocationPlacement::Top).unwrap();
+    fn build_eq_values_from_point_matches_cpu() {
+        let context = make_test_context(1024, 512);
 
-        launch_build_eq_values::<E4>(
-            claim_point_dev.as_ptr(),
-            1,
-            2,
-            eq_values.as_mut_ptr(),
-            4,
-            &context,
-        )
-        .unwrap();
-        let mut host = unsafe { context.alloc_host_uninit_slice(4) };
-        memory_copy_async(&mut host, &eq_values, context.get_exec_stream()).unwrap();
-        context.get_exec_stream().synchronize().unwrap();
-        let actual = unsafe { host.get_accessor().get().to_vec() };
+        for (challenge_count, challenge_offset) in
+            [(0usize, 0usize), (1, 1), (7, 2), (8, 0), (9, 3), (23, 1)]
+        {
+            let claim_point_len = challenge_offset + challenge_count + 1;
+            let claim_point = (0..claim_point_len)
+                .map(|idx| sample_ext(40 + idx as u32))
+                .collect::<Vec<_>>();
+            let claim_point_dev = alloc_and_copy(&context, &claim_point);
+            let acc_size = 1usize << challenge_count;
+            let mut eq_group_tables = context
+                .alloc(
+                    eq_group_tables_len(challenge_count).max(1),
+                    AllocationPlacement::Top,
+                )
+                .unwrap();
+            let mut eq_values = context
+                .alloc(acc_size.max(1), AllocationPlacement::Top)
+                .unwrap();
 
-        let r0 = claim_point[1];
-        let r1 = claim_point[2];
-        let mut one_minus_r0 = E4::ONE;
-        one_minus_r0.sub_assign(&r0);
-        let mut one_minus_r1 = E4::ONE;
-        one_minus_r1.sub_assign(&r1);
+            launch_build_eq_values_from_point::<E4>(
+                claim_point_dev.as_ptr(),
+                challenge_offset,
+                challenge_count,
+                eq_group_tables.as_mut_ptr(),
+                eq_values.as_mut_ptr(),
+                acc_size,
+                &context,
+            )
+            .unwrap();
 
-        let mut expected_00 = one_minus_r0;
-        expected_00.mul_assign(&one_minus_r1);
-        let mut expected_01 = one_minus_r0;
-        expected_01.mul_assign(&r1);
-        let mut expected_10 = r0;
-        expected_10.mul_assign(&one_minus_r1);
-        let mut expected_11 = r0;
-        expected_11.mul_assign(&r1);
+            let actual = copy_device_values(&context, &eq_values);
+            let expected = eq_values_for_suffix(
+                &claim_point[challenge_offset..challenge_offset + challenge_count],
+            );
+            assert_eq!(
+                actual, expected,
+                "challenge_count={challenge_count}, challenge_offset={challenge_offset}"
+            );
+        }
+    }
 
-        let expected = vec![expected_00, expected_01, expected_10, expected_11];
+    #[test]
+    #[cfg(not(no_cuda))]
+    #[serial]
+    fn build_round0_eq_values_from_pairs_matches_cpu() {
+        let context = make_test_context(1024, 512);
 
-        assert_eq!(actual, interleaved_pairs_to_strided(&expected));
+        for challenge_count in [0usize, 1, 7, 8, 9, 23] {
+            let claim_point = (0..=challenge_count)
+                .map(|idx| sample_ext(400 + idx as u32))
+                .collect::<Vec<_>>();
+            let eq_pair_values = super::make_round0_eq_pair_values(&claim_point);
+            let acc_size = 1usize << challenge_count;
+            let mut eq_pair_values_dev = context
+                .alloc(eq_pair_values.len().max(1), AllocationPlacement::Top)
+                .unwrap();
+            if !eq_pair_values.is_empty() {
+                memory_copy_async(
+                    &mut eq_pair_values_dev,
+                    &eq_pair_values,
+                    context.get_exec_stream(),
+                )
+                .unwrap();
+            }
+            let eq_group_tables_len = super::round0_eq_group_tables_len(claim_point.len()).max(1);
+            let mut eq_group_tables = context
+                .alloc(eq_group_tables_len, AllocationPlacement::Top)
+                .unwrap();
+            let mut eq_values = context
+                .alloc(acc_size.max(1), AllocationPlacement::Top)
+                .unwrap();
+
+            launch_build_round0_eq_values_from_pairs::<E4>(
+                eq_pair_values_dev.as_ptr(),
+                challenge_count,
+                eq_group_tables.as_mut_ptr(),
+                eq_values.as_mut_ptr(),
+                acc_size,
+                &context,
+            )
+            .unwrap();
+
+            let actual = copy_device_values(&context, &eq_values);
+            let expected = eq_values_for_suffix(&claim_point[1..]);
+            assert_eq!(actual, expected, "challenge_count={challenge_count}");
+        }
+    }
+
+    #[test]
+    #[cfg(not(no_cuda))]
+    #[serial]
+    fn fold_eq_values_in_place_matches_cpu() {
+        let context = make_test_context(1024, 512);
+        let challenge_count = 23usize;
+        let claim_point = (0..=challenge_count)
+            .map(|idx| sample_ext(500 + idx as u32))
+            .collect::<Vec<_>>();
+        let mut expected = eq_values_for_suffix(&claim_point[1..]);
+        let mut eq_values = alloc_and_copy(&context, &expected);
+        let mut current_len = expected.len();
+
+        while current_len > 1 {
+            let half_len = current_len / 2;
+            launch_fold_eq_values_in_place::<E4>(eq_values.as_mut_ptr(), half_len, &context)
+                .unwrap();
+            fold_eq_values_cpu(&mut expected);
+            let actual = copy_device_values(&context, &eq_values[..half_len]);
+            assert_eq!(actual, expected, "current_len={current_len}");
+            current_len = half_len;
+        }
     }
 
     #[test]
@@ -9065,7 +9266,8 @@ mod tests {
         let claim_point = [sample_ext(50), sample_ext(60)];
         let input = alloc_and_copy(&context, &input_values);
         let output = alloc_and_copy(&context, &output_values);
-        let claim_point_dev = alloc_and_copy(&context, &claim_point);
+        let eq = eq_weights_for_binary_tail(claim_point[1]);
+        let eq_dev = alloc_and_copy(&context, &eq);
         let mut contributions: DeviceAllocation<E4> =
             context.alloc(4, AllocationPlacement::Top).unwrap();
         let batch_challenge = sample_ext(200);
@@ -9090,8 +9292,6 @@ mod tests {
 
         let mut batch_static = super::GpuGKRMainRound0BatchStatic::default();
         batch_static.record_count = 1;
-        batch_static.challenge_offset = 1;
-        batch_static.challenge_count = 1;
         batch_static.inline_payload = inline_builder.into_bytes();
         batch_static.records[0] = super::GpuGKRMainRound0BatchRecord {
             kind: GpuGKRMainLayerKernelKind::BaseCopy.as_u32(),
@@ -9108,7 +9308,7 @@ mod tests {
             constant_offset: E4::ZERO,
         };
         let batch_runtime = super::GpuGKRMainRound0BatchRuntime {
-            claim_point: claim_point_dev.as_ptr(),
+            eq_values: eq_dev.as_ptr(),
             batch_challenges: batch_challenges_dev.as_ptr(),
             contributions: contributions.as_mut_ptr(),
             spill_payload: null(),
@@ -9122,11 +9322,6 @@ mod tests {
         memory_copy_async(&mut host, &contributions, context.get_exec_stream()).unwrap();
         context.get_exec_stream().synchronize().unwrap();
         let actual = unsafe { host.get_accessor().get().to_vec() };
-
-        let r = claim_point[1];
-        let mut one_minus_r = E4::ONE;
-        one_minus_r.sub_assign(&r);
-        let eq = [one_minus_r, r];
 
         let mut expected = Vec::new();
         for gid in 0..2 {
@@ -9159,7 +9354,8 @@ mod tests {
         let lookup_d = alloc_and_copy(&context, &lookup_d_values);
         let lookup_num = alloc_and_copy(&context, &lookup_num_values);
         let lookup_den = alloc_and_copy(&context, &lookup_den_values);
-        let claim_point_dev = alloc_and_copy(&context, &claim_point);
+        let eq = eq_weights_for_binary_tail(claim_point[1]);
+        let eq_dev = alloc_and_copy(&context, &eq);
         let mut contributions: DeviceAllocation<E4> =
             context.alloc(4, AllocationPlacement::Top).unwrap();
 
@@ -9214,8 +9410,6 @@ mod tests {
 
         let mut batch_static = super::GpuGKRMainRound0BatchStatic::default();
         batch_static.record_count = 2;
-        batch_static.challenge_offset = 1;
-        batch_static.challenge_count = 1;
         batch_static.inline_payload = inline_builder.into_bytes();
         batch_static.records[0] = super::GpuGKRMainRound0BatchRecord {
             kind: GpuGKRMainLayerKernelKind::BaseCopy.as_u32(),
@@ -9246,7 +9440,7 @@ mod tests {
             constant_offset: E4::ZERO,
         };
         let batch_runtime = super::GpuGKRMainRound0BatchRuntime {
-            claim_point: claim_point_dev.as_ptr(),
+            eq_values: eq_dev.as_ptr(),
             batch_challenges: batch_challenges_dev.as_ptr(),
             contributions: contributions.as_mut_ptr(),
             spill_payload: null(),
@@ -9260,11 +9454,6 @@ mod tests {
         memory_copy_async(&mut host, &contributions, context.get_exec_stream()).unwrap();
         context.get_exec_stream().synchronize().unwrap();
         let actual = unsafe { host.get_accessor().get().to_vec() };
-
-        let r = claim_point[1];
-        let mut one_minus_r = E4::ONE;
-        one_minus_r.sub_assign(&r);
-        let eq = [one_minus_r, r];
 
         let mut expected = Vec::new();
         for gid in 0..2 {
@@ -9750,7 +9939,8 @@ mod tests {
         let input_a = alloc_and_copy(&context, &input_a_values);
         let input_b = alloc_and_copy(&context, &input_b_values);
         let input_c = alloc_and_copy(&context, &input_c_values);
-        let claim_point_dev = alloc_and_copy(&context, &claim_point);
+        let eq = eq_weights_for_binary_tail(claim_point[2]);
+        let eq_dev = alloc_and_copy(&context, &eq);
 
         let folding_challenge = sample_ext(200);
         let batch_challenge = sample_ext(300);
@@ -9815,8 +10005,6 @@ mod tests {
 
         let mut batch_static = super::GpuGKRMainRound1BatchStatic::default();
         batch_static.record_count = 1;
-        batch_static.challenge_offset = 2;
-        batch_static.challenge_count = 1;
         batch_static.records[0] = super::GpuGKRMainRound1BatchRecord {
             kind: GpuGKRMainLayerKernelKind::EnforceConstraintsMaxQuadratic.as_u32(),
             record_mode: super::GpuGKRMainLayerBatchRecordMode::PointerDescriptors.as_u32(),
@@ -9830,7 +10018,7 @@ mod tests {
             constant_offset,
         };
         let batch_runtime = super::GpuGKRMainRound1BatchRuntime {
-            claim_point: claim_point_dev.as_ptr(),
+            eq_values: eq_dev.as_ptr(),
             batch_challenges: batch_challenges_dev.as_ptr(),
             folding_challenge: folding_challenge_dev.as_ptr(),
             contributions: contributions.as_mut_ptr(),
@@ -9855,11 +10043,6 @@ mod tests {
             result.add_assign_base(&values[idx]);
             result
         };
-
-        let r = claim_point[2];
-        let mut one_minus_r = E4::ONE;
-        one_minus_r.sub_assign(&r);
-        let eq = [one_minus_r, r];
 
         let mut expected = Vec::new();
         for gid in 0..2 {
@@ -9928,7 +10111,8 @@ mod tests {
         let copy_input = alloc_and_copy(&context, &copy_input_values);
         let lookup_b = alloc_and_copy(&context, &lookup_b_values);
         let lookup_d = alloc_and_copy(&context, &lookup_d_values);
-        let claim_point_dev = alloc_and_copy(&context, &claim_point);
+        let eq = eq_weights_for_binary_tail(claim_point[2]);
+        let eq_dev = alloc_and_copy(&context, &eq);
 
         let folding_challenge = sample_ext(100);
         let copy_batch = sample_ext(200);
@@ -9981,8 +10165,6 @@ mod tests {
 
         let mut batch_static = super::GpuGKRMainRound1BatchStatic::default();
         batch_static.record_count = 2;
-        batch_static.challenge_offset = 2;
-        batch_static.challenge_count = 1;
         batch_static.inline_payload = inline_builder.into_bytes();
         batch_static.records[0] = super::GpuGKRMainRound1BatchRecord {
             kind: GpuGKRMainLayerKernelKind::BaseCopy.as_u32(),
@@ -10009,7 +10191,7 @@ mod tests {
             constant_offset: E4::ZERO,
         };
         let batch_runtime = super::GpuGKRMainRound1BatchRuntime {
-            claim_point: claim_point_dev.as_ptr(),
+            eq_values: eq_dev.as_ptr(),
             batch_challenges: batch_challenges_dev.as_ptr(),
             folding_challenge: folding_challenge_dev.as_ptr(),
             contributions: contributions.as_mut_ptr(),
@@ -10034,11 +10216,6 @@ mod tests {
             result.add_assign_base(&values[idx]);
             result
         };
-
-        let r = claim_point[2];
-        let mut one_minus_r = E4::ONE;
-        one_minus_r.sub_assign(&r);
-        let eq = [one_minus_r, r];
 
         let mut expected = Vec::new();
         for gid in 0..2 {

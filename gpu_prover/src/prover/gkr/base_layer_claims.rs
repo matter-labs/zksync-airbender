@@ -8,8 +8,8 @@ use era_cudart::slice::DeviceSlice;
 use field::{Field, FieldExtension};
 
 use super::backward::{
-    launch_build_eq_values, launch_trace_holder_block_partials, GpuDimensionReducingKernelSet,
-    GKR_TRACE_HOLDER_PARTIALS_COLUMNS_PER_CHUNK,
+    eq_group_tables_len, launch_build_eq_values_from_point, launch_trace_holder_block_partials,
+    GpuDimensionReducingKernelSet, GKR_TRACE_HOLDER_PARTIALS_COLUMNS_PER_CHUNK,
 };
 use super::transform::normalize_layer_for_gpu;
 use crate::allocator::tracker::AllocationPlacement;
@@ -453,11 +453,16 @@ where
 
     let eq_values_range = Range::new("gkr.base_layer_claims.eq_values")?;
     eq_values_range.start(stream)?;
+    let mut eq_group_tables = context.alloc(
+        eq_group_tables_len(claim_point_len).max(1),
+        AllocationPlacement::BestFit,
+    )?;
     let mut eq_values = context.alloc(trace_len, AllocationPlacement::BestFit)?;
-    launch_build_eq_values(
+    launch_build_eq_values_from_point(
         claim_point_device.as_ptr(),
         0,
         claim_point_len,
+        eq_group_tables.as_mut_ptr(),
         eq_values.as_mut_ptr(),
         trace_len,
         context,

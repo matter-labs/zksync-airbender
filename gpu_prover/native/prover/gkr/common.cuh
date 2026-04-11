@@ -99,6 +99,11 @@ static constexpr unsigned GKR_TRACE_HOLDER_PARTIALS_THREADS_PER_BLOCK = 512;
 static constexpr unsigned GKR_TRACE_HOLDER_PARTIALS_COLUMNS_PER_CHUNK = 4;
 static constexpr unsigned GKR_TRACE_HOLDER_PARTIALS_WARP_SIZE = 32;
 static constexpr unsigned GKR_TRACE_HOLDER_PARTIALS_WARPS_PER_BLOCK = GKR_TRACE_HOLDER_PARTIALS_THREADS_PER_BLOCK / GKR_TRACE_HOLDER_PARTIALS_WARP_SIZE;
+static constexpr unsigned GKR_EQ_GROUP_SIZE = 8;
+static constexpr unsigned GKR_EQ_GROUP_TABLE_LEN = 1u << GKR_EQ_GROUP_SIZE;
+static constexpr unsigned GKR_EQ_CHUNK_SIZE = 2;
+static constexpr unsigned GKR_EQ_CHUNK_TABLE_LEN = 1u << GKR_EQ_CHUNK_SIZE;
+static constexpr unsigned GKR_EQ_MAX_CHUNKS_PER_GROUP = GKR_EQ_GROUP_SIZE / GKR_EQ_CHUNK_SIZE;
 
 enum gkr_main_batch_record_mode : u32 {
   GKR_MAIN_BATCH_INLINE_ALL = 0,
@@ -175,15 +180,15 @@ template <typename E> struct gkr_main_round3_batch_record {
 
 template <typename E> struct gkr_main_round0_batch_static {
   u32 record_count;
-  u32 challenge_offset;
-  u32 challenge_count;
-  u32 reserved;
+  u32 reserved0;
+  u32 reserved1;
+  u32 reserved2;
   gkr_main_round0_batch_record<E> records[GKR_BACKWARD_MAX_KERNELS_PER_LAYER];
   u8 inline_payload[GKR_BACKWARD_MAX_INLINE_ROUND_BATCH_BYTES];
 };
 
 template <typename E> struct gkr_main_round0_batch_runtime {
-  const E *claim_point;
+  const E *eq_values;
   const E *batch_challenges;
   E *contributions;
   const u8 *spill_payload;
@@ -193,15 +198,15 @@ template <typename E> struct gkr_main_round0_batch_runtime {
 
 template <typename E> struct gkr_main_round1_batch_static {
   u32 record_count;
-  u32 challenge_offset;
-  u32 challenge_count;
-  u32 reserved;
+  u32 reserved0;
+  u32 reserved1;
+  u32 reserved2;
   gkr_main_round1_batch_record<E> records[GKR_BACKWARD_MAX_KERNELS_PER_LAYER];
   u8 inline_payload[GKR_BACKWARD_MAX_INLINE_ROUND_BATCH_BYTES];
 };
 
 template <typename E> struct gkr_main_round1_batch_runtime {
-  const E *claim_point;
+  const E *eq_values;
   const E *batch_challenges;
   const E *folding_challenge;
   E *contributions;
@@ -212,15 +217,15 @@ template <typename E> struct gkr_main_round1_batch_runtime {
 
 template <typename E> struct gkr_main_round2_batch_static {
   u32 record_count;
-  u32 challenge_offset;
-  u32 challenge_count;
-  u32 reserved;
+  u32 reserved0;
+  u32 reserved1;
+  u32 reserved2;
   gkr_main_round2_batch_record<E> records[GKR_BACKWARD_MAX_KERNELS_PER_LAYER];
   u8 inline_payload[GKR_BACKWARD_MAX_INLINE_ROUND_BATCH_BYTES];
 };
 
 template <typename E> struct gkr_main_round2_batch_runtime {
-  const E *claim_point;
+  const E *eq_values;
   const E *batch_challenges;
   const E *folding_challenges;
   E *contributions;
@@ -231,15 +236,15 @@ template <typename E> struct gkr_main_round2_batch_runtime {
 
 template <typename E> struct gkr_main_round3_batch_static {
   u32 record_count;
-  u32 challenge_offset;
-  u32 challenge_count;
-  u32 reserved;
+  u32 reserved0;
+  u32 reserved1;
+  u32 reserved2;
   gkr_main_round3_batch_record<E> records[GKR_BACKWARD_MAX_KERNELS_PER_LAYER];
   u8 inline_payload[GKR_BACKWARD_MAX_INLINE_ROUND_BATCH_BYTES];
 };
 
 template <typename E> struct gkr_main_round3_batch_runtime {
-  const E *claim_point;
+  const E *eq_values;
   const E *batch_challenges;
   const E *folding_challenge;
   E *contributions;
@@ -354,10 +359,10 @@ struct gkr_dim_reducing_continuation_batch_record {
 
 template <typename E> struct gkr_dim_reducing_round0_batch {
   u32 record_count;
-  u32 challenge_offset;
-  u32 challenge_count;
-  u32 reserved;
-  const E *claim_point;
+  u32 reserved0;
+  u32 reserved1;
+  u32 reserved2;
+  const E *eq_values;
   const E *batch_challenge_base;
   E *contributions;
   const u8 *spill_payload;
@@ -367,10 +372,10 @@ template <typename E> struct gkr_dim_reducing_round0_batch {
 
 template <typename E> struct gkr_dim_reducing_round1_batch {
   u32 record_count;
-  u32 challenge_offset;
-  u32 challenge_count;
-  u32 reserved;
-  const E *claim_point;
+  u32 reserved0;
+  u32 reserved1;
+  u32 reserved2;
+  const E *eq_values;
   const E *batch_challenge_base;
   const E *folding_challenge;
   E *contributions;
@@ -383,10 +388,10 @@ template <typename E> struct gkr_dim_reducing_round1_batch {
 
 template <typename E> struct gkr_dim_reducing_round2_batch {
   u32 record_count;
-  u32 challenge_offset;
-  u32 challenge_count;
-  u32 reserved;
-  const E *claim_point;
+  u32 reserved0;
+  u32 reserved1;
+  u32 reserved2;
+  const E *eq_values;
   const E *batch_challenge_base;
   const E *folding_challenge;
   E *contributions;
@@ -399,10 +404,10 @@ template <typename E> struct gkr_dim_reducing_round2_batch {
 
 template <typename E> struct gkr_dim_reducing_round3_batch {
   u32 record_count;
-  u32 challenge_offset;
-  u32 challenge_count;
-  u32 reserved;
-  const E *claim_point;
+  u32 reserved0;
+  u32 reserved1;
+  u32 reserved2;
+  const E *eq_values;
   const E *batch_challenge_base;
   const E *folding_challenge;
   E *contributions;
@@ -1114,22 +1119,155 @@ DEVICE_FORCEINLINE void gkr_lookup_continuation(const gkr_ext_continuing_source<
   gkr_accumulate_contribution(contributions, gid, acc_size, out0, out1);
 }
 
+DEVICE_FORCEINLINE unsigned gkr_eq_group_count(const unsigned challenge_count) {
+  return challenge_count == 0 ? 0 : (challenge_count + GKR_EQ_GROUP_SIZE - 1) / GKR_EQ_GROUP_SIZE;
+}
+
+DEVICE_FORCEINLINE unsigned gkr_eq_group_size(const unsigned challenge_count, const unsigned group_idx) {
+  const unsigned group_start = group_idx * GKR_EQ_GROUP_SIZE;
+  if (group_start >= challenge_count)
+    return 0;
+  const unsigned remaining = challenge_count - group_start;
+  return remaining < GKR_EQ_GROUP_SIZE ? remaining : GKR_EQ_GROUP_SIZE;
+}
+
 template <typename E>
-DEVICE_FORCEINLINE void gkr_build_eq_values(const E *claim_point, const unsigned challenge_offset, const unsigned challenge_count, E *eq_values,
-                                            const unsigned acc_size) {
-  const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
-  if (gid >= acc_size)
+DEVICE_FORCEINLINE void gkr_build_eq_group_tables_from_pairs(const E *eq_pair_values, const unsigned challenge_count, E *eq_group_tables) {
+  const unsigned group_idx = blockIdx.x;
+  const unsigned group_size = gkr_eq_group_size(challenge_count, group_idx);
+  if (group_size == 0)
+    return;
+
+  const unsigned tid = threadIdx.x;
+  const unsigned chunk_count = (group_size + GKR_EQ_CHUNK_SIZE - 1) / GKR_EQ_CHUNK_SIZE;
+  const unsigned group_start = group_idx * GKR_EQ_GROUP_SIZE;
+  __shared__ E chunk_tables[GKR_EQ_MAX_CHUNKS_PER_GROUP][GKR_EQ_CHUNK_TABLE_LEN];
+
+  if (tid < chunk_count * GKR_EQ_CHUNK_TABLE_LEN) {
+    const unsigned chunk_idx = tid / GKR_EQ_CHUNK_TABLE_LEN;
+    const unsigned chunk_table_idx = tid % GKR_EQ_CHUNK_TABLE_LEN;
+    const unsigned variable_offset = chunk_idx * GKR_EQ_CHUNK_SIZE;
+    const unsigned remaining = group_size - variable_offset;
+    const unsigned chunk_size = remaining < GKR_EQ_CHUNK_SIZE ? remaining : GKR_EQ_CHUNK_SIZE;
+    const unsigned chunk_len = 1u << chunk_size;
+    if (chunk_table_idx < chunk_len) {
+      const unsigned variable_idx = group_start + variable_offset;
+      const unsigned first_bit = chunk_size == 2 ? ((chunk_table_idx >> 1) & 1u) : (chunk_table_idx & 1u);
+      E value = load<E, ld_modifier::cs>(eq_pair_values, 2 * variable_idx + first_bit);
+      if (chunk_size == 2) {
+        const unsigned low_bit = chunk_table_idx & 1u;
+        value = E::mul(value, load<E, ld_modifier::cs>(eq_pair_values, 2 * (variable_idx + 1) + low_bit));
+      }
+      chunk_tables[chunk_idx][chunk_table_idx] = value;
+    }
+  }
+  __syncthreads();
+
+  const unsigned group_len = 1u << group_size;
+  if (tid >= group_len)
     return;
 
   E acc = E::ONE();
-  for (unsigned i = 0; i < challenge_count; ++i) {
-    const E challenge = load<E, ld_modifier::cs>(claim_point, challenge_offset + i);
-    const bool bit = ((gid >> (challenge_count - 1 - i)) & 1u) != 0;
-    const E term = bit ? challenge : E::sub(E::ONE(), challenge);
-    acc = E::mul(acc, term);
+  unsigned consumed_bits = 0;
+  for (unsigned chunk_idx = 0; chunk_idx < chunk_count; ++chunk_idx) {
+    const unsigned remaining = group_size - consumed_bits;
+    const unsigned chunk_size = remaining < GKR_EQ_CHUNK_SIZE ? remaining : GKR_EQ_CHUNK_SIZE;
+    const unsigned shift = group_size - consumed_bits - chunk_size;
+    const unsigned chunk_table_idx = (tid >> shift) & ((1u << chunk_size) - 1u);
+    acc = E::mul(acc, chunk_tables[chunk_idx][chunk_table_idx]);
+    consumed_bits += chunk_size;
+  }
+
+  store<E, st_modifier::cs>(eq_group_tables + group_idx * GKR_EQ_GROUP_TABLE_LEN, acc, tid);
+}
+
+template <typename E>
+DEVICE_FORCEINLINE void gkr_build_eq_group_tables_from_point(const E *claim_point, const unsigned challenge_offset, const unsigned challenge_count,
+                                                             E *eq_group_tables) {
+  const unsigned group_idx = blockIdx.x;
+  const unsigned group_size = gkr_eq_group_size(challenge_count, group_idx);
+  if (group_size == 0)
+    return;
+
+  const unsigned tid = threadIdx.x;
+  const unsigned chunk_count = (group_size + GKR_EQ_CHUNK_SIZE - 1) / GKR_EQ_CHUNK_SIZE;
+  const unsigned group_start = group_idx * GKR_EQ_GROUP_SIZE;
+  __shared__ E chunk_tables[GKR_EQ_MAX_CHUNKS_PER_GROUP][GKR_EQ_CHUNK_TABLE_LEN];
+
+  if (tid < chunk_count * GKR_EQ_CHUNK_TABLE_LEN) {
+    const unsigned chunk_idx = tid / GKR_EQ_CHUNK_TABLE_LEN;
+    const unsigned chunk_table_idx = tid % GKR_EQ_CHUNK_TABLE_LEN;
+    const unsigned variable_offset = chunk_idx * GKR_EQ_CHUNK_SIZE;
+    const unsigned remaining = group_size - variable_offset;
+    const unsigned chunk_size = remaining < GKR_EQ_CHUNK_SIZE ? remaining : GKR_EQ_CHUNK_SIZE;
+    const unsigned chunk_len = 1u << chunk_size;
+    if (chunk_table_idx < chunk_len) {
+      const unsigned variable_idx = group_start + variable_offset;
+      const unsigned first_bit = chunk_size == 2 ? ((chunk_table_idx >> 1) & 1u) : (chunk_table_idx & 1u);
+      const E first_challenge = load<E, ld_modifier::cs>(claim_point, challenge_offset + variable_idx);
+      E value = first_bit ? first_challenge : E::sub(E::ONE(), first_challenge);
+      if (chunk_size == 2) {
+        const unsigned low_bit = chunk_table_idx & 1u;
+        const E second_challenge = load<E, ld_modifier::cs>(claim_point, challenge_offset + variable_idx + 1);
+        const E second_term = low_bit ? second_challenge : E::sub(E::ONE(), second_challenge);
+        value = E::mul(value, second_term);
+      }
+      chunk_tables[chunk_idx][chunk_table_idx] = value;
+    }
+  }
+  __syncthreads();
+
+  const unsigned group_len = 1u << group_size;
+  if (tid >= group_len)
+    return;
+
+  E acc = E::ONE();
+  unsigned consumed_bits = 0;
+  for (unsigned chunk_idx = 0; chunk_idx < chunk_count; ++chunk_idx) {
+    const unsigned remaining = group_size - consumed_bits;
+    const unsigned chunk_size = remaining < GKR_EQ_CHUNK_SIZE ? remaining : GKR_EQ_CHUNK_SIZE;
+    const unsigned shift = group_size - consumed_bits - chunk_size;
+    const unsigned chunk_table_idx = (tid >> shift) & ((1u << chunk_size) - 1u);
+    acc = E::mul(acc, chunk_tables[chunk_idx][chunk_table_idx]);
+    consumed_bits += chunk_size;
+  }
+
+  store<E, st_modifier::cs>(eq_group_tables + group_idx * GKR_EQ_GROUP_TABLE_LEN, acc, tid);
+}
+
+template <typename E>
+DEVICE_FORCEINLINE void gkr_build_eq_values_from_group_tables(const E *eq_group_tables, const unsigned challenge_count, E *eq_values,
+                                                              const unsigned acc_size) {
+  const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
+  if (gid >= acc_size)
+    return;
+  if (challenge_count == 0) {
+    store<E, st_modifier::cs>(eq_values, E::ONE(), gid);
+    return;
+  }
+
+  E acc = E::ONE();
+  const unsigned groups_count = gkr_eq_group_count(challenge_count);
+  unsigned consumed_bits = 0;
+  for (unsigned group_idx = 0; group_idx < groups_count; ++group_idx) {
+    const unsigned group_size = gkr_eq_group_size(challenge_count, group_idx);
+    const unsigned shift = challenge_count - consumed_bits - group_size;
+    const unsigned local_gid = (gid >> shift) & ((1u << group_size) - 1u);
+    acc = E::mul(acc, load<E, ld_modifier::cs>(eq_group_tables + group_idx * GKR_EQ_GROUP_TABLE_LEN, local_gid));
+    consumed_bits += group_size;
   }
 
   store<E, st_modifier::cs>(eq_values, acc, gid);
+}
+
+template <typename E> DEVICE_FORCEINLINE void gkr_fold_eq_values_in_place(E *eq_values, const unsigned half_len) {
+  const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
+  if (gid >= half_len)
+    return;
+
+  const E low = load<E, ld_modifier::cs>(eq_values, gid);
+  const E high = load<E, ld_modifier::cs>(eq_values, gid + half_len);
+  store<E, st_modifier::cs>(eq_values, E::add(low, high), gid);
 }
 
 template <typename E>
@@ -1242,18 +1380,6 @@ DEVICE_FORCEINLINE void gkr_trace_holder_block_partials(const bf *raw_values, co
       store<E, st_modifier::cs>(block_partials, block_sum, partial_offset);
     }
   }
-}
-
-template <typename E>
-DEVICE_FORCEINLINE E gkr_eq_weight_at(const E *claim_point, const unsigned challenge_offset, const unsigned challenge_count, const unsigned gid) {
-  E acc = E::ONE();
-  for (unsigned i = 0; i < challenge_count; ++i) {
-    const E challenge = load<E, ld_modifier::cs>(claim_point, challenge_offset + i);
-    const bool bit = ((gid >> (challenge_count - 1 - i)) & 1u) != 0;
-    const E term = bit ? challenge : E::sub(E::ONE(), challenge);
-    acc = E::mul(acc, term);
-  }
-  return acc;
 }
 
 template <typename E> DEVICE_FORCEINLINE void gkr_eval_product(const E a, const E b, E &value) { value = E::mul(a, b); }
@@ -3359,7 +3485,6 @@ template <typename E> DEVICE_FORCEINLINE void gkr_dim_reducing_round0_batched(co
   if (gid >= acc_size)
     return;
 
-  const E eq = gkr_eq_weight_at(batch.claim_point, batch.challenge_offset, batch.challenge_count, gid);
   E total0 = E::ZERO();
   E total1 = E::ZERO();
   for (unsigned i = 0; i < batch.record_count; ++i) {
@@ -3386,6 +3511,7 @@ template <typename E> DEVICE_FORCEINLINE void gkr_dim_reducing_round0_batched(co
     total1 = E::add(total1, c1);
   }
 
+  const E eq = load<E, ld_modifier::cs>(batch.eq_values, gid);
   store<E, st_modifier::cs>(batch.contributions, E::mul(total0, eq), gid);
   store<E, st_modifier::cs>(batch.contributions + acc_size, E::mul(total1, eq), gid);
 }
@@ -3396,7 +3522,6 @@ DEVICE_FORCEINLINE void gkr_dim_reducing_continuation_batched(const Batch &batch
   if (gid >= acc_size)
     return;
 
-  const E eq = gkr_eq_weight_at(batch.claim_point, batch.challenge_offset, batch.challenge_count, gid);
   E total0 = E::ZERO();
   E total1 = E::ZERO();
   for (unsigned i = 0; i < batch.record_count; ++i) {
@@ -3422,6 +3547,7 @@ DEVICE_FORCEINLINE void gkr_dim_reducing_continuation_batched(const Batch &batch
     total1 = E::add(total1, c1);
   }
 
+  const E eq = load<E, ld_modifier::cs>(batch.eq_values, gid);
   store<E, st_modifier::cs>(batch.contributions, E::mul(total0, eq), gid);
   store<E, st_modifier::cs>(batch.contributions + acc_size, E::mul(total1, eq), gid);
 }
@@ -3433,7 +3559,6 @@ DEVICE_FORCEINLINE void gkr_main_round0_batched(const gkr_main_round0_batch_stat
   if (gid >= acc_size)
     return;
 
-  const E eq = gkr_eq_weight_at(batch_runtime.claim_point, batch_static.challenge_offset, batch_static.challenge_count, gid);
   E total0 = E::ZERO();
   E total1 = E::ZERO();
   unsigned consumed_batch_challenges = 0;
@@ -3464,6 +3589,7 @@ DEVICE_FORCEINLINE void gkr_main_round0_batched(const gkr_main_round0_batch_stat
     total1 = E::add(total1, c1);
   }
 
+  const E eq = load<E, ld_modifier::cs>(batch_runtime.eq_values, gid);
   store<E, st_modifier::cs>(batch_runtime.contributions, E::mul(total0, eq), gid);
   store<E, st_modifier::cs>(batch_runtime.contributions + acc_size, E::mul(total1, eq), gid);
 }
@@ -3475,7 +3601,6 @@ DEVICE_FORCEINLINE void gkr_main_round1_batched(const gkr_main_round1_batch_stat
   if (gid >= acc_size)
     return;
 
-  const E eq = gkr_eq_weight_at(batch_runtime.claim_point, batch_static.challenge_offset, batch_static.challenge_count, gid);
   E total0 = E::ZERO();
   E total1 = E::ZERO();
   unsigned consumed_batch_challenges = 0;
@@ -3506,6 +3631,7 @@ DEVICE_FORCEINLINE void gkr_main_round1_batched(const gkr_main_round1_batch_stat
     total1 = E::add(total1, c1);
   }
 
+  const E eq = load<E, ld_modifier::cs>(batch_runtime.eq_values, gid);
   store<E, st_modifier::cs>(batch_runtime.contributions, E::mul(total0, eq), gid);
   store<E, st_modifier::cs>(batch_runtime.contributions + acc_size, E::mul(total1, eq), gid);
 }
@@ -3517,7 +3643,6 @@ DEVICE_FORCEINLINE void gkr_main_round2_batched(const gkr_main_round2_batch_stat
   if (gid >= acc_size)
     return;
 
-  const E eq = gkr_eq_weight_at(batch_runtime.claim_point, batch_static.challenge_offset, batch_static.challenge_count, gid);
   E total0 = E::ZERO();
   E total1 = E::ZERO();
   unsigned consumed_batch_challenges = 0;
@@ -3548,6 +3673,7 @@ DEVICE_FORCEINLINE void gkr_main_round2_batched(const gkr_main_round2_batch_stat
     total1 = E::add(total1, c1);
   }
 
+  const E eq = load<E, ld_modifier::cs>(batch_runtime.eq_values, gid);
   store<E, st_modifier::cs>(batch_runtime.contributions, E::mul(total0, eq), gid);
   store<E, st_modifier::cs>(batch_runtime.contributions + acc_size, E::mul(total1, eq), gid);
 }
@@ -3559,7 +3685,6 @@ DEVICE_FORCEINLINE void gkr_main_round3_batched(const gkr_main_round3_batch_stat
   if (gid >= acc_size)
     return;
 
-  const E eq = gkr_eq_weight_at(batch_runtime.claim_point, batch_static.challenge_offset, batch_static.challenge_count, gid);
   E total0 = E::ZERO();
   E total1 = E::ZERO();
   unsigned consumed_batch_challenges = 0;
@@ -3590,6 +3715,7 @@ DEVICE_FORCEINLINE void gkr_main_round3_batched(const gkr_main_round3_batch_stat
     total1 = E::add(total1, c1);
   }
 
+  const E eq = load<E, ld_modifier::cs>(batch_runtime.eq_values, gid);
   store<E, st_modifier::cs>(batch_runtime.contributions, E::mul(total0, eq), gid);
   store<E, st_modifier::cs>(batch_runtime.contributions + acc_size, E::mul(total1, eq), gid);
 }
