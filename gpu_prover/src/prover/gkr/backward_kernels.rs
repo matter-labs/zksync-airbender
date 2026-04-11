@@ -402,9 +402,9 @@ impl<E: Field> Default for GpuGKRMainRound3BatchRecord<E> {
 #[derive(Clone, Copy)]
 pub(super) struct GpuGKRMainRound0BatchStatic<E> {
     pub(super) record_count: u32,
-    pub(super) challenge_offset: u32,
-    pub(super) challenge_count: u32,
-    pub(super) _reserved: u32,
+    pub(super) _reserved0: u32,
+    pub(super) _reserved1: u32,
+    pub(super) _reserved2: u32,
     pub(super) records: [GpuGKRMainRound0BatchRecord<E>; GKR_BACKWARD_MAX_KERNELS_PER_LAYER],
     pub(super) inline_payload: [u8; MAX_INLINE_ROUND_BATCH_BYTES],
 }
@@ -413,9 +413,9 @@ impl<E: Field> Default for GpuGKRMainRound0BatchStatic<E> {
     fn default() -> Self {
         Self {
             record_count: 0,
-            challenge_offset: 0,
-            challenge_count: 0,
-            _reserved: 0,
+            _reserved0: 0,
+            _reserved1: 0,
+            _reserved2: 0,
             records: [GpuGKRMainRound0BatchRecord::default(); GKR_BACKWARD_MAX_KERNELS_PER_LAYER],
             inline_payload: [0; MAX_INLINE_ROUND_BATCH_BYTES],
         }
@@ -425,7 +425,7 @@ impl<E: Field> Default for GpuGKRMainRound0BatchStatic<E> {
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub(super) struct GpuGKRMainRound0BatchRuntime<E> {
-    pub(super) claim_point: *const E,
+    pub(super) eq_values: *const E,
     pub(super) batch_challenges: *const E,
     pub(super) contributions: *mut E,
     pub(super) spill_payload: *const u8,
@@ -436,7 +436,7 @@ pub(super) struct GpuGKRMainRound0BatchRuntime<E> {
 impl<E: Field> Default for GpuGKRMainRound0BatchRuntime<E> {
     fn default() -> Self {
         Self {
-            claim_point: null(),
+            eq_values: null(),
             batch_challenges: null(),
             contributions: null_mut(),
             spill_payload: null(),
@@ -450,9 +450,9 @@ impl<E: Field> Default for GpuGKRMainRound0BatchRuntime<E> {
 #[derive(Clone, Copy)]
 pub(super) struct GpuGKRMainRound1BatchStatic<E> {
     pub(super) record_count: u32,
-    pub(super) challenge_offset: u32,
-    pub(super) challenge_count: u32,
-    pub(super) _reserved: u32,
+    pub(super) _reserved0: u32,
+    pub(super) _reserved1: u32,
+    pub(super) _reserved2: u32,
     pub(super) records: [GpuGKRMainRound1BatchRecord<E>; GKR_BACKWARD_MAX_KERNELS_PER_LAYER],
     pub(super) inline_payload: [u8; MAX_INLINE_ROUND_BATCH_BYTES],
 }
@@ -461,9 +461,9 @@ impl<E: Field> Default for GpuGKRMainRound1BatchStatic<E> {
     fn default() -> Self {
         Self {
             record_count: 0,
-            challenge_offset: 0,
-            challenge_count: 0,
-            _reserved: 0,
+            _reserved0: 0,
+            _reserved1: 0,
+            _reserved2: 0,
             records: [GpuGKRMainRound1BatchRecord::default(); GKR_BACKWARD_MAX_KERNELS_PER_LAYER],
             inline_payload: [0; MAX_INLINE_ROUND_BATCH_BYTES],
         }
@@ -473,7 +473,7 @@ impl<E: Field> Default for GpuGKRMainRound1BatchStatic<E> {
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub(super) struct GpuGKRMainRound1BatchRuntime<E> {
-    pub(super) claim_point: *const E,
+    pub(super) eq_values: *const E,
     pub(super) batch_challenges: *const E,
     pub(super) folding_challenge: *const E,
     pub(super) contributions: *mut E,
@@ -485,7 +485,7 @@ pub(super) struct GpuGKRMainRound1BatchRuntime<E> {
 impl<E: Field> Default for GpuGKRMainRound1BatchRuntime<E> {
     fn default() -> Self {
         Self {
-            claim_point: null(),
+            eq_values: null(),
             batch_challenges: null(),
             folding_challenge: null(),
             contributions: null_mut(),
@@ -500,9 +500,9 @@ impl<E: Field> Default for GpuGKRMainRound1BatchRuntime<E> {
 #[derive(Clone, Copy)]
 pub(super) struct GpuGKRMainRound2BatchStatic<E> {
     pub(super) record_count: u32,
-    pub(super) challenge_offset: u32,
-    pub(super) challenge_count: u32,
-    pub(super) _reserved: u32,
+    pub(super) _reserved0: u32,
+    pub(super) _reserved1: u32,
+    pub(super) _reserved2: u32,
     pub(super) records: [GpuGKRMainRound2BatchRecord<E>; GKR_BACKWARD_MAX_KERNELS_PER_LAYER],
     pub(super) inline_payload: [u8; MAX_INLINE_ROUND_BATCH_BYTES],
 }
@@ -511,9 +511,9 @@ impl<E: Field> Default for GpuGKRMainRound2BatchStatic<E> {
     fn default() -> Self {
         Self {
             record_count: 0,
-            challenge_offset: 0,
-            challenge_count: 0,
-            _reserved: 0,
+            _reserved0: 0,
+            _reserved1: 0,
+            _reserved2: 0,
             records: [GpuGKRMainRound2BatchRecord::default(); GKR_BACKWARD_MAX_KERNELS_PER_LAYER],
             inline_payload: [0; MAX_INLINE_ROUND_BATCH_BYTES],
         }
@@ -523,7 +523,7 @@ impl<E: Field> Default for GpuGKRMainRound2BatchStatic<E> {
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub(super) struct GpuGKRMainRound2BatchRuntime<E> {
-    pub(super) claim_point: *const E,
+    pub(super) eq_values: *const E,
     pub(super) batch_challenges: *const E,
     pub(super) folding_challenges: *const E,
     pub(super) contributions: *mut E,
@@ -535,7 +535,7 @@ pub(super) struct GpuGKRMainRound2BatchRuntime<E> {
 impl<E: Field> Default for GpuGKRMainRound2BatchRuntime<E> {
     fn default() -> Self {
         Self {
-            claim_point: null(),
+            eq_values: null(),
             batch_challenges: null(),
             folding_challenges: null(),
             contributions: null_mut(),
@@ -550,9 +550,9 @@ impl<E: Field> Default for GpuGKRMainRound2BatchRuntime<E> {
 #[derive(Clone, Copy)]
 pub(super) struct GpuGKRMainRound3BatchStatic<E> {
     pub(super) record_count: u32,
-    pub(super) challenge_offset: u32,
-    pub(super) challenge_count: u32,
-    pub(super) _reserved: u32,
+    pub(super) _reserved0: u32,
+    pub(super) _reserved1: u32,
+    pub(super) _reserved2: u32,
     pub(super) records: [GpuGKRMainRound3BatchRecord<E>; GKR_BACKWARD_MAX_KERNELS_PER_LAYER],
     pub(super) inline_payload: [u8; MAX_INLINE_ROUND_BATCH_BYTES],
 }
@@ -561,9 +561,9 @@ impl<E: Field> Default for GpuGKRMainRound3BatchStatic<E> {
     fn default() -> Self {
         Self {
             record_count: 0,
-            challenge_offset: 0,
-            challenge_count: 0,
-            _reserved: 0,
+            _reserved0: 0,
+            _reserved1: 0,
+            _reserved2: 0,
             records: [GpuGKRMainRound3BatchRecord::default(); GKR_BACKWARD_MAX_KERNELS_PER_LAYER],
             inline_payload: [0; MAX_INLINE_ROUND_BATCH_BYTES],
         }
@@ -573,7 +573,7 @@ impl<E: Field> Default for GpuGKRMainRound3BatchStatic<E> {
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub(super) struct GpuGKRMainRound3BatchRuntime<E> {
-    pub(super) claim_point: *const E,
+    pub(super) eq_values: *const E,
     pub(super) batch_challenges: *const E,
     pub(super) folding_challenge: *const E,
     pub(super) contributions: *mut E,
@@ -585,7 +585,7 @@ pub(super) struct GpuGKRMainRound3BatchRuntime<E> {
 impl<E: Field> Default for GpuGKRMainRound3BatchRuntime<E> {
     fn default() -> Self {
         Self {
-            claim_point: null(),
+            eq_values: null(),
             batch_challenges: null(),
             folding_challenge: null(),
             contributions: null_mut(),
@@ -666,10 +666,10 @@ impl Default for GpuGKRDimensionReducingContinuationBatchRecord {
 #[derive(Clone, Copy)]
 pub(crate) struct GpuGKRDimensionReducingRound0Batch<E> {
     pub(super) record_count: u32,
-    pub(super) challenge_offset: u32,
-    pub(super) challenge_count: u32,
-    pub(super) _reserved: u32,
-    pub(super) claim_point: *const E,
+    pub(super) _reserved0: u32,
+    pub(super) _reserved1: u32,
+    pub(super) _reserved2: u32,
+    pub(super) eq_values: *const E,
     pub(super) batch_challenge_base: *const E,
     pub(super) contributions: *mut E,
     pub(super) spill_payload: *const u8,
@@ -682,10 +682,10 @@ impl<E: Field> Default for GpuGKRDimensionReducingRound0Batch<E> {
     fn default() -> Self {
         Self {
             record_count: 0,
-            challenge_offset: 0,
-            challenge_count: 0,
-            _reserved: 0,
-            claim_point: null(),
+            _reserved0: 0,
+            _reserved1: 0,
+            _reserved2: 0,
+            eq_values: null(),
             batch_challenge_base: null(),
             contributions: null_mut(),
             spill_payload: null(),
@@ -700,10 +700,10 @@ impl<E: Field> Default for GpuGKRDimensionReducingRound0Batch<E> {
 #[derive(Clone, Copy)]
 pub(crate) struct GpuGKRDimensionReducingRound1Batch<E> {
     pub(super) record_count: u32,
-    pub(super) challenge_offset: u32,
-    pub(super) challenge_count: u32,
-    pub(super) _reserved: u32,
-    pub(super) claim_point: *const E,
+    pub(super) _reserved0: u32,
+    pub(super) _reserved1: u32,
+    pub(super) _reserved2: u32,
+    pub(super) eq_values: *const E,
     pub(super) batch_challenge_base: *const E,
     pub(super) folding_challenge: *const E,
     pub(super) contributions: *mut E,
@@ -719,10 +719,10 @@ impl<E: Field> Default for GpuGKRDimensionReducingRound1Batch<E> {
     fn default() -> Self {
         Self {
             record_count: 0,
-            challenge_offset: 0,
-            challenge_count: 0,
-            _reserved: 0,
-            claim_point: null(),
+            _reserved0: 0,
+            _reserved1: 0,
+            _reserved2: 0,
+            eq_values: null(),
             batch_challenge_base: null(),
             folding_challenge: null(),
             contributions: null_mut(),
@@ -740,10 +740,10 @@ impl<E: Field> Default for GpuGKRDimensionReducingRound1Batch<E> {
 #[derive(Clone, Copy)]
 pub(crate) struct GpuGKRDimensionReducingRound2Batch<E> {
     pub(super) record_count: u32,
-    pub(super) challenge_offset: u32,
-    pub(super) challenge_count: u32,
-    pub(super) _reserved: u32,
-    pub(super) claim_point: *const E,
+    pub(super) _reserved0: u32,
+    pub(super) _reserved1: u32,
+    pub(super) _reserved2: u32,
+    pub(super) eq_values: *const E,
     pub(super) batch_challenge_base: *const E,
     pub(super) folding_challenge: *const E,
     pub(super) contributions: *mut E,
@@ -759,10 +759,10 @@ impl<E: Field> Default for GpuGKRDimensionReducingRound2Batch<E> {
     fn default() -> Self {
         Self {
             record_count: 0,
-            challenge_offset: 0,
-            challenge_count: 0,
-            _reserved: 0,
-            claim_point: null(),
+            _reserved0: 0,
+            _reserved1: 0,
+            _reserved2: 0,
+            eq_values: null(),
             batch_challenge_base: null(),
             folding_challenge: null(),
             contributions: null_mut(),
@@ -780,10 +780,10 @@ impl<E: Field> Default for GpuGKRDimensionReducingRound2Batch<E> {
 #[derive(Clone, Copy)]
 pub(crate) struct GpuGKRDimensionReducingRound3Batch<E> {
     pub(super) record_count: u32,
-    pub(super) challenge_offset: u32,
-    pub(super) challenge_count: u32,
-    pub(super) _reserved: u32,
-    pub(super) claim_point: *const E,
+    pub(super) _reserved0: u32,
+    pub(super) _reserved1: u32,
+    pub(super) _reserved2: u32,
+    pub(super) eq_values: *const E,
     pub(super) batch_challenge_base: *const E,
     pub(super) folding_challenge: *const E,
     pub(super) contributions: *mut E,
@@ -799,10 +799,10 @@ impl<E: Field> Default for GpuGKRDimensionReducingRound3Batch<E> {
     fn default() -> Self {
         Self {
             record_count: 0,
-            challenge_offset: 0,
-            challenge_count: 0,
-            _reserved: 0,
-            claim_point: null(),
+            _reserved0: 0,
+            _reserved1: 0,
+            _reserved2: 0,
+            eq_values: null(),
             batch_challenge_base: null(),
             folding_challenge: null(),
             contributions: null_mut(),
@@ -916,6 +916,9 @@ pub(super) struct GpuGKRDimensionReducingRound3Prepared<E> {
 
 pub(super) struct GpuGKRDimensionReducingRoundScratch<E> {
     pub(super) claim_point: DeviceAllocation<E>,
+    pub(super) eq_pair_values: DeviceAllocation<E>,
+    pub(super) eq_group_tables: DeviceAllocation<E>,
+    pub(super) eq_values: DeviceAllocation<E>,
     pub(super) accumulator: DeviceAllocation<E>,
     pub(super) reduction_output: DeviceAllocation<E>,
     pub(super) reduction_temp_storage: DeviceAllocation<u8>,
@@ -1151,6 +1154,8 @@ pub(super) struct GpuGKRMainLayerRound3Prepared<E> {
 
 pub(super) struct GpuGKRMainLayerRoundScratch<E> {
     pub(super) claim_point: DeviceAllocation<E>,
+    pub(super) eq_pair_values: DeviceAllocation<E>,
+    pub(super) eq_group_tables: DeviceAllocation<E>,
     pub(super) eq_values: DeviceAllocation<E>,
     pub(super) accumulator: DeviceAllocation<E>,
     pub(super) reduction_output: DeviceAllocation<E>,
@@ -1890,6 +1895,8 @@ pub(super) fn empty_round0_host_launch_descriptors<B, E>(
 pub(super) const GKR_DIM_REDUCING_THREADS_PER_BLOCK: u32 = WARP_SIZE * 4;
 pub(super) const GKR_TRACE_HOLDER_PARTIALS_THREADS_PER_BLOCK: u32 = 512;
 pub(super) const GKR_TRACE_HOLDER_PARTIALS_COLUMNS_PER_CHUNK: usize = 4;
+pub(super) const GKR_EQ_GROUP_SIZE: usize = 8;
+pub(super) const GKR_EQ_GROUP_TABLE_LEN: usize = 1 << GKR_EQ_GROUP_SIZE;
 
 cuda_kernel_signature_arguments_and_function!(
     GpuDimensionReducingPairwiseRound0<T>,
@@ -1930,12 +1937,32 @@ cuda_kernel_signature_arguments_and_function!(
 );
 
 cuda_kernel_signature_arguments_and_function!(
-    GpuDimensionReducingBuildEq<T>,
+    GpuDimensionReducingBuildEqGroupTablesFromPairs<T>,
+    eq_pair_values: *const T,
+    challenge_count: u32,
+    eq_group_tables: *mut T,
+);
+
+cuda_kernel_signature_arguments_and_function!(
+    GpuDimensionReducingBuildEqGroupTablesFromPoint<T>,
     claim_point: *const T,
     challenge_offset: u32,
     challenge_count: u32,
+    eq_group_tables: *mut T,
+);
+
+cuda_kernel_signature_arguments_and_function!(
+    GpuDimensionReducingBuildEqValuesFromGroupTables<T>,
+    eq_group_tables: *const T,
+    challenge_count: u32,
     eq_values: *mut T,
     acc_size: u32,
+);
+
+cuda_kernel_signature_arguments_and_function!(
+    GpuDimensionReducingFoldEqValues<T>,
+    eq_values: *mut T,
+    half_len: u32,
 );
 
 cuda_kernel_signature_arguments_and_function!(
@@ -1978,7 +2005,13 @@ pub(crate) trait GpuDimensionReducingKernelSet: Reduce + Copy + Sized {
     const LOOKUP_ROUND0: GpuDimensionReducingLookupRound0Signature<Self>;
     const PAIRWISE_CONTINUATION: GpuDimensionReducingPairwiseContinuationSignature<Self>;
     const LOOKUP_CONTINUATION: GpuDimensionReducingLookupContinuationSignature<Self>;
-    const BUILD_EQ: GpuDimensionReducingBuildEqSignature<Self>;
+    const BUILD_EQ_GROUP_TABLES_FROM_PAIRS:
+        GpuDimensionReducingBuildEqGroupTablesFromPairsSignature<Self>;
+    const BUILD_EQ_GROUP_TABLES_FROM_POINT:
+        GpuDimensionReducingBuildEqGroupTablesFromPointSignature<Self>;
+    const BUILD_EQ_VALUES_FROM_GROUP_TABLES:
+        GpuDimensionReducingBuildEqValuesFromGroupTablesSignature<Self>;
+    const FOLD_EQ_VALUES: GpuDimensionReducingFoldEqValuesSignature<Self>;
     const TRACE_HOLDER_BLOCK_PARTIALS: GpuDimensionReducingTraceHolderBlockPartialsSignature<Self>;
     const ROUND0_BATCHED: GpuDimensionReducingRound0BatchedSignature<Self>;
     const ROUND1_BATCHED: GpuDimensionReducingRound1BatchedSignature<Self>;
@@ -2028,12 +2061,32 @@ macro_rules! gkr_dim_reducing_kernels {
                 )
             );
             cuda_kernel_declaration!(
-                [<ab_gkr_dim_reducing_build_eq_ $type:lower _kernel>](
+                [<ab_gkr_dim_reducing_build_eq_group_tables_from_pairs_ $type:lower _kernel>](
+                    eq_pair_values: *const $type,
+                    challenge_count: u32,
+                    eq_group_tables: *mut $type,
+                )
+            );
+            cuda_kernel_declaration!(
+                [<ab_gkr_dim_reducing_build_eq_group_tables_from_point_ $type:lower _kernel>](
                     claim_point: *const $type,
                     challenge_offset: u32,
                     challenge_count: u32,
+                    eq_group_tables: *mut $type,
+                )
+            );
+            cuda_kernel_declaration!(
+                [<ab_gkr_dim_reducing_build_eq_values_from_group_tables_ $type:lower _kernel>](
+                    eq_group_tables: *const $type,
+                    challenge_count: u32,
                     eq_values: *mut $type,
                     acc_size: u32,
+                )
+            );
+            cuda_kernel_declaration!(
+                [<ab_gkr_dim_reducing_fold_eq_values_ $type:lower _kernel>](
+                    eq_values: *mut $type,
+                    half_len: u32,
                 )
             );
             cuda_kernel_declaration!(
@@ -2081,8 +2134,14 @@ macro_rules! gkr_dim_reducing_kernels {
                     [<ab_gkr_dim_reducing_pairwise_continuation_ $type:lower _kernel>];
                 const LOOKUP_CONTINUATION: GpuDimensionReducingLookupContinuationSignature<Self> =
                     [<ab_gkr_dim_reducing_lookup_continuation_ $type:lower _kernel>];
-                const BUILD_EQ: GpuDimensionReducingBuildEqSignature<Self> =
-                    [<ab_gkr_dim_reducing_build_eq_ $type:lower _kernel>];
+                const BUILD_EQ_GROUP_TABLES_FROM_PAIRS: GpuDimensionReducingBuildEqGroupTablesFromPairsSignature<Self> =
+                    [<ab_gkr_dim_reducing_build_eq_group_tables_from_pairs_ $type:lower _kernel>];
+                const BUILD_EQ_GROUP_TABLES_FROM_POINT: GpuDimensionReducingBuildEqGroupTablesFromPointSignature<Self> =
+                    [<ab_gkr_dim_reducing_build_eq_group_tables_from_point_ $type:lower _kernel>];
+                const BUILD_EQ_VALUES_FROM_GROUP_TABLES: GpuDimensionReducingBuildEqValuesFromGroupTablesSignature<Self> =
+                    [<ab_gkr_dim_reducing_build_eq_values_from_group_tables_ $type:lower _kernel>];
+                const FOLD_EQ_VALUES: GpuDimensionReducingFoldEqValuesSignature<Self> =
+                    [<ab_gkr_dim_reducing_fold_eq_values_ $type:lower _kernel>];
                 const TRACE_HOLDER_BLOCK_PARTIALS: GpuDimensionReducingTraceHolderBlockPartialsSignature<Self> =
                     [<ab_gkr_dim_reducing_trace_holder_block_partials_ $type:lower _kernel>];
                 const ROUND0_BATCHED: GpuDimensionReducingRound0BatchedSignature<Self> =
@@ -2570,24 +2629,112 @@ pub(super) fn launch_dim_reducing_round3_batched<E: GpuDimensionReducingKernelSe
     GpuDimensionReducingRound3BatchedFunction(E::ROUND3_BATCHED).launch(&config, &args)
 }
 
-pub(crate) fn launch_build_eq_values<E: GpuDimensionReducingKernelSet>(
+pub(crate) fn launch_build_eq_values_from_point<E: GpuDimensionReducingKernelSet>(
     claim_point: *const E,
     challenge_offset: usize,
     challenge_count: usize,
+    eq_group_tables: *mut E,
     eq_values: *mut E,
     acc_size: usize,
     context: &ProverContext,
 ) -> CudaResult<()> {
+    assert!(challenge_offset <= u32::MAX as usize);
+    assert!(challenge_count <= u32::MAX as usize);
+    assert!(acc_size <= u32::MAX as usize);
+    let group_count = eq_group_count(challenge_count);
+    if group_count > 0 {
+        let config = CudaLaunchConfig::basic(
+            group_count as u32,
+            GKR_EQ_GROUP_TABLE_LEN as u32,
+            context.get_exec_stream(),
+        );
+        let args = GpuDimensionReducingBuildEqGroupTablesFromPointArguments::new(
+            claim_point,
+            challenge_offset as u32,
+            challenge_count as u32,
+            eq_group_tables,
+        );
+        GpuDimensionReducingBuildEqGroupTablesFromPointFunction(
+            E::BUILD_EQ_GROUP_TABLES_FROM_POINT,
+        )
+        .launch(&config, &args)?;
+    }
+
     let config = gkr_dim_reducing_launch_config(acc_size as u32, context);
-    let args = GpuDimensionReducingBuildEqArguments::new(
-        claim_point,
-        challenge_offset as u32,
+    let args = GpuDimensionReducingBuildEqValuesFromGroupTablesArguments::new(
+        eq_group_tables,
         challenge_count as u32,
         eq_values,
         acc_size as u32,
     );
+    GpuDimensionReducingBuildEqValuesFromGroupTablesFunction(E::BUILD_EQ_VALUES_FROM_GROUP_TABLES)
+        .launch(&config, &args)
+}
 
-    GpuDimensionReducingBuildEqFunction(E::BUILD_EQ).launch(&config, &args)
+pub(crate) fn round0_eq_pair_values_len(folding_steps: usize) -> usize {
+    2 * folding_steps.saturating_sub(1)
+}
+
+pub(crate) fn eq_group_count(challenge_count: usize) -> usize {
+    challenge_count.div_ceil(GKR_EQ_GROUP_SIZE)
+}
+
+pub(crate) fn eq_group_tables_len(challenge_count: usize) -> usize {
+    eq_group_count(challenge_count) * GKR_EQ_GROUP_TABLE_LEN
+}
+
+pub(crate) fn round0_eq_group_tables_len(folding_steps: usize) -> usize {
+    eq_group_tables_len(folding_steps.saturating_sub(1))
+}
+
+pub(crate) fn launch_build_round0_eq_values_from_pairs<E: GpuDimensionReducingKernelSet>(
+    eq_pair_values: *const E,
+    challenge_count: usize,
+    eq_group_tables: *mut E,
+    eq_values: *mut E,
+    acc_size: usize,
+    context: &ProverContext,
+) -> CudaResult<()> {
+    assert!(challenge_count <= u32::MAX as usize);
+    assert!(acc_size <= u32::MAX as usize);
+    let group_count = eq_group_count(challenge_count);
+    if group_count > 0 {
+        let config = CudaLaunchConfig::basic(
+            group_count as u32,
+            GKR_EQ_GROUP_TABLE_LEN as u32,
+            context.get_exec_stream(),
+        );
+        let args = GpuDimensionReducingBuildEqGroupTablesFromPairsArguments::new(
+            eq_pair_values,
+            challenge_count as u32,
+            eq_group_tables,
+        );
+        GpuDimensionReducingBuildEqGroupTablesFromPairsFunction(
+            E::BUILD_EQ_GROUP_TABLES_FROM_PAIRS,
+        )
+        .launch(&config, &args)?;
+    }
+
+    let config = gkr_dim_reducing_launch_config(acc_size as u32, context);
+    let args = GpuDimensionReducingBuildEqValuesFromGroupTablesArguments::new(
+        eq_group_tables,
+        challenge_count as u32,
+        eq_values,
+        acc_size as u32,
+    );
+    GpuDimensionReducingBuildEqValuesFromGroupTablesFunction(E::BUILD_EQ_VALUES_FROM_GROUP_TABLES)
+        .launch(&config, &args)
+}
+
+pub(crate) fn launch_fold_eq_values_in_place<E: GpuDimensionReducingKernelSet>(
+    eq_values: *mut E,
+    half_len: usize,
+    context: &ProverContext,
+) -> CudaResult<()> {
+    assert!(half_len <= u32::MAX as usize);
+    let config = gkr_dim_reducing_launch_config(half_len as u32, context);
+    let args = GpuDimensionReducingFoldEqValuesArguments::new(eq_values, half_len as u32);
+    GpuDimensionReducingFoldEqValuesFunction(E::FOLD_EQ_VALUES).launch(&config, &args)
 }
 
 pub(crate) fn launch_trace_holder_block_partials<E: GpuDimensionReducingKernelSet>(
