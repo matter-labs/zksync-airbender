@@ -40,6 +40,7 @@ use crate::prover::whir_fold::{
     debug_build_initial_state_for_test, debug_build_initial_state_snapshots_for_test,
     debug_initial_round_checkpoint_for_test, gpu_whir_fold_supported_path,
     gpu_whir_fold_supported_path_with_external_pow, schedule_gpu_whir_fold_with_sources,
+    take_scheduled_whir_proof,
 };
 use crate::witness::trace::ChunkedTraceHolder;
 use crate::witness::trace_unrolled::{
@@ -1917,8 +1918,10 @@ fn assert_recursive_whir_oracle_parity_for_supported_path(
     )
     .unwrap();
     let scheduled_shared_state = scheduled_gpu_whir.shared_state_handle();
-    let scheduled_gpu_whir_proof = scheduled_gpu_whir.wait(context).unwrap();
+    context.get_exec_stream().synchronize().unwrap();
     let gpu_pre_pow_seeds = clone_scheduled_whir_pre_pow_seeds(scheduled_shared_state);
+    let scheduled_gpu_whir_proof = take_scheduled_whir_proof(scheduled_shared_state);
+    drop(scheduled_gpu_whir);
     let scheduled_recursive_caps = scheduled_gpu_whir_proof
         .intermediate_whir_oracles
         .iter()
@@ -7522,6 +7525,22 @@ fn run_basic_unrolled_stagewise_parity_test() {
             let evaluation =
                 evaluate_base_poly_with_eq::<BF, E4>(gkr_storage.get_base_layer(key), &eq_at_z[..]);
             setup_polys_claims.push(evaluation);
+        }
+
+        for virtual_setup_poly in [
+            VirtualSetupPoly::RangeCheck16Bits,
+            VirtualSetupPoly::RangeCheckTimestamp,
+            VirtualSetupPoly::InitsAndTeardownsLow,
+            VirtualSetupPoly::InitsAndTeardownsHigh,
+        ] {
+            let key = GKRAddress::VirtualSetup(virtual_setup_poly);
+            if cpu_base_layer_claims.contains_key(&key) {
+                continue;
+            }
+
+            let evaluation =
+                evaluate_base_poly_with_eq::<BF, E4>(gkr_storage.get_base_layer(key), &eq_at_z[..]);
+            cpu_base_layer_claims.insert(key, evaluation);
         }
 
         (
