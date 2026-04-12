@@ -264,7 +264,8 @@ DEVICE_FORCEINLINE const T *gkr_main_batch_payload_ptr(const Batch &batch, const
 }
 
 template <typename T, typename Batch>
-DEVICE_FORCEINLINE const T *gkr_main_batch_payload_ptr(const Batch &batch, const u8 *spill_payload, const gkr_main_payload_range &range, const bool from_inline) {
+DEVICE_FORCEINLINE const T *gkr_main_batch_payload_ptr(const Batch &batch, const u8 *spill_payload, const gkr_main_payload_range &range,
+                                                       const bool from_inline) {
   if (range.count == 0)
     return nullptr;
   const u8 *base = from_inline ? batch.inline_payload : spill_payload;
@@ -839,7 +840,8 @@ template <typename E> DEVICE_FORCEINLINE void gkr_forward_cache(const gkr_forwar
 }
 
 template <typename E>
-DEVICE_FORCEINLINE bf gkr_get_forward_lookup_base_setup_value(const gkr_forward_lookup_base_minus_multiplicity_by_base_descriptor<E> &params, const unsigned gid) {
+DEVICE_FORCEINLINE bf gkr_get_forward_lookup_base_setup_value(const gkr_forward_lookup_base_minus_multiplicity_by_base_descriptor<E> &params,
+                                                              const unsigned gid) {
   return params.d_source_kind == GKR_BASE_SOURCE_REAL ? load<bf, ld_modifier::cs>(params.d, gid) : gkr_virtual_base_value(params.d_source_kind, gid);
 }
 
@@ -1236,8 +1238,7 @@ DEVICE_FORCEINLINE void gkr_build_eq_group_tables_from_point(const E *claim_poin
 }
 
 template <typename E>
-DEVICE_FORCEINLINE void gkr_build_eq_values_from_group_tables(const E *eq_group_tables, const unsigned challenge_count, E *eq_values,
-                                                              const unsigned acc_size) {
+DEVICE_FORCEINLINE void gkr_build_eq_values_from_group_tables(const E *eq_group_tables, const unsigned challenge_count, E *eq_values, const unsigned acc_size) {
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
   if (gid >= acc_size)
     return;
@@ -1390,8 +1391,7 @@ template <typename E, typename Mask, typename Value> DEVICE_FORCEINLINE void gkr
   result = E::add(result, E::ONE());
 }
 
-template <typename E, typename Mask, typename Value>
-DEVICE_FORCEINLINE void gkr_eval_mask_identity_quadratic(const Mask mask, const Value value, E &result) {
+template <typename E, typename Mask, typename Value> DEVICE_FORCEINLINE void gkr_eval_mask_identity_quadratic(const Mask mask, const Value value, E &result) {
   result = E::mul(value, mask);
 }
 
@@ -1438,8 +1438,7 @@ DEVICE_FORCEINLINE void gkr_eval_lookup_base_minus_multiplicity_quadratic(const 
   den = E::mul(b, d);
 }
 
-template <typename E>
-DEVICE_FORCEINLINE void gkr_eval_lookup_base_minus_multiplicity_quadratic(const bf b, const bf c, const bf d, E &num, E &den) {
+template <typename E> DEVICE_FORCEINLINE void gkr_eval_lookup_base_minus_multiplicity_quadratic(const bf b, const bf c, const bf d, E &num, E &den) {
   num = E::sub(E::ZERO(), bf::mul(c, b));
   den = E::add(E::ZERO(), bf::mul(b, d));
 }
@@ -3553,8 +3552,8 @@ DEVICE_FORCEINLINE void gkr_dim_reducing_continuation_batched(const Batch &batch
 }
 
 template <typename E>
-DEVICE_FORCEINLINE void gkr_main_round0_batched(const gkr_main_round0_batch_static<E> &batch_static,
-                                                const gkr_main_round0_batch_runtime<E> &batch_runtime, const unsigned acc_size) {
+DEVICE_FORCEINLINE void gkr_main_round0_batched(const gkr_main_round0_batch_static<E> &batch_static, const gkr_main_round0_batch_runtime<E> &batch_runtime,
+                                                const unsigned acc_size) {
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
   if (gid >= acc_size)
     return;
@@ -3565,9 +3564,12 @@ DEVICE_FORCEINLINE void gkr_main_round0_batched(const gkr_main_round0_batch_stat
   for (unsigned i = 0; i < batch_static.record_count; ++i) {
     const auto &record = batch_static.records[i];
     const bool descriptors_inline = gkr_main_batch_descriptors_inline(record.record_mode);
-    const auto *base_inputs = gkr_main_batch_payload_ptr<gkr_base_initial_source<bf>>(batch_static, batch_runtime.spill_payload, record.base_inputs, descriptors_inline);
-    const auto *extension_inputs = gkr_main_batch_payload_ptr<gkr_ext_initial_source<E>>(batch_static, batch_runtime.spill_payload, record.extension_inputs, descriptors_inline);
-    const auto *base_outputs = gkr_main_batch_payload_ptr<gkr_base_initial_source<bf>>(batch_static, batch_runtime.spill_payload, record.base_outputs, descriptors_inline);
+    const auto *base_inputs =
+        gkr_main_batch_payload_ptr<gkr_base_initial_source<bf>>(batch_static, batch_runtime.spill_payload, record.base_inputs, descriptors_inline);
+    const auto *extension_inputs =
+        gkr_main_batch_payload_ptr<gkr_ext_initial_source<E>>(batch_static, batch_runtime.spill_payload, record.extension_inputs, descriptors_inline);
+    const auto *base_outputs =
+        gkr_main_batch_payload_ptr<gkr_base_initial_source<bf>>(batch_static, batch_runtime.spill_payload, record.base_outputs, descriptors_inline);
     const auto *extension_outputs =
         gkr_main_batch_payload_ptr<gkr_ext_initial_source<E>>(batch_static, batch_runtime.spill_payload, record.extension_outputs, descriptors_inline);
     const E *batch_challenges = batch_runtime.batch_challenges + consumed_batch_challenges;
@@ -3583,8 +3585,8 @@ DEVICE_FORCEINLINE void gkr_main_round0_batched(const gkr_main_round0_batch_stat
                                        quadratic_terms_count, linear_terms, linear_terms_count, constant_offset);
     E c0;
     E c1;
-    gkr_main_round0_values(record.kind, base_inputs, extension_inputs, base_outputs, extension_outputs, batch_challenges, auxiliary_challenge,
-                           quadratic_terms, quadratic_terms_count, linear_terms, linear_terms_count, constant_offset, gid, c0, c1);
+    gkr_main_round0_values(record.kind, base_inputs, extension_inputs, base_outputs, extension_outputs, batch_challenges, auxiliary_challenge, quadratic_terms,
+                           quadratic_terms_count, linear_terms, linear_terms_count, constant_offset, gid, c0, c1);
     total0 = E::add(total0, c0);
     total1 = E::add(total1, c1);
   }
@@ -3595,8 +3597,8 @@ DEVICE_FORCEINLINE void gkr_main_round0_batched(const gkr_main_round0_batch_stat
 }
 
 template <typename E, bool EXPLICIT_FORM>
-DEVICE_FORCEINLINE void gkr_main_round1_batched(const gkr_main_round1_batch_static<E> &batch_static,
-                                                const gkr_main_round1_batch_runtime<E> &batch_runtime, const unsigned acc_size) {
+DEVICE_FORCEINLINE void gkr_main_round1_batched(const gkr_main_round1_batch_static<E> &batch_static, const gkr_main_round1_batch_runtime<E> &batch_runtime,
+                                                const unsigned acc_size) {
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
   if (gid >= acc_size)
     return;
@@ -3624,9 +3626,8 @@ DEVICE_FORCEINLINE void gkr_main_round1_batched(const gkr_main_round1_batch_stat
                                        quadratic_terms_count, linear_terms, linear_terms_count, constant_offset);
     E c0;
     E c1;
-    gkr_main_round1_values<E, EXPLICIT_FORM>(record.kind, base_inputs, extension_inputs, batch_challenges, batch_runtime.folding_challenge,
-                                             auxiliary_challenge, quadratic_terms, quadratic_terms_count, linear_terms, linear_terms_count,
-                                             constant_offset, gid, c0, c1);
+    gkr_main_round1_values<E, EXPLICIT_FORM>(record.kind, base_inputs, extension_inputs, batch_challenges, batch_runtime.folding_challenge, auxiliary_challenge,
+                                             quadratic_terms, quadratic_terms_count, linear_terms, linear_terms_count, constant_offset, gid, c0, c1);
     total0 = E::add(total0, c0);
     total1 = E::add(total1, c1);
   }
@@ -3637,8 +3638,8 @@ DEVICE_FORCEINLINE void gkr_main_round1_batched(const gkr_main_round1_batch_stat
 }
 
 template <typename E, bool EXPLICIT_FORM>
-DEVICE_FORCEINLINE void gkr_main_round2_batched(const gkr_main_round2_batch_static<E> &batch_static,
-                                                const gkr_main_round2_batch_runtime<E> &batch_runtime, const unsigned acc_size) {
+DEVICE_FORCEINLINE void gkr_main_round2_batched(const gkr_main_round2_batch_static<E> &batch_static, const gkr_main_round2_batch_runtime<E> &batch_runtime,
+                                                const unsigned acc_size) {
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
   if (gid >= acc_size)
     return;
@@ -3667,8 +3668,8 @@ DEVICE_FORCEINLINE void gkr_main_round2_batched(const gkr_main_round2_batch_stat
     E c0;
     E c1;
     gkr_main_round2_values<E, EXPLICIT_FORM>(record.kind, base_inputs, extension_inputs, batch_challenges, batch_runtime.folding_challenges,
-                                             auxiliary_challenge, quadratic_terms, quadratic_terms_count, linear_terms, linear_terms_count,
-                                             constant_offset, gid, c0, c1);
+                                             auxiliary_challenge, quadratic_terms, quadratic_terms_count, linear_terms, linear_terms_count, constant_offset,
+                                             gid, c0, c1);
     total0 = E::add(total0, c0);
     total1 = E::add(total1, c1);
   }
@@ -3679,8 +3680,8 @@ DEVICE_FORCEINLINE void gkr_main_round2_batched(const gkr_main_round2_batch_stat
 }
 
 template <typename E, bool EXPLICIT_FORM>
-DEVICE_FORCEINLINE void gkr_main_round3_batched(const gkr_main_round3_batch_static<E> &batch_static,
-                                                const gkr_main_round3_batch_runtime<E> &batch_runtime, const unsigned acc_size) {
+DEVICE_FORCEINLINE void gkr_main_round3_batched(const gkr_main_round3_batch_static<E> &batch_static, const gkr_main_round3_batch_runtime<E> &batch_runtime,
+                                                const unsigned acc_size) {
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
   if (gid >= acc_size)
     return;
@@ -3708,9 +3709,8 @@ DEVICE_FORCEINLINE void gkr_main_round3_batched(const gkr_main_round3_batch_stat
                                        quadratic_terms_count, linear_terms, linear_terms_count, constant_offset);
     E c0;
     E c1;
-    gkr_main_round3_values<E, EXPLICIT_FORM>(record.kind, base_inputs, extension_inputs, batch_challenges, batch_runtime.folding_challenge,
-                                             auxiliary_challenge, quadratic_terms, quadratic_terms_count, linear_terms, linear_terms_count,
-                                             constant_offset, gid, c0, c1);
+    gkr_main_round3_values<E, EXPLICIT_FORM>(record.kind, base_inputs, extension_inputs, batch_challenges, batch_runtime.folding_challenge, auxiliary_challenge,
+                                             quadratic_terms, quadratic_terms_count, linear_terms, linear_terms_count, constant_offset, gid, c0, c1);
     total0 = E::add(total0, c0);
     total1 = E::add(total1, c1);
   }

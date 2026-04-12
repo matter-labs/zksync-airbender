@@ -2,9 +2,13 @@ target_sources(gpu_prover_native PRIVATE
         common.cuh
         dim_reducing_backward.cu
         dim_reducing_forward.cu
+        flat_backward.cuh
+        flat_backward_coeff.cuh
         forward_cache.cu
         forward_layer.cu
         main_backward_round0.cu
+        main_backward_round0_compute_coeff.cu
+        main_backward_round0_flat.cu
         main_backward_round1_compact.cu
         main_backward_round1_explicit.cu
         main_backward_round2_compact.cu

@@ -1,6 +1,7 @@
 // GPU scheduling contract: see docs/gpu_scheduling_contract.md
 
 pub(crate) mod backward;
+pub(crate) mod backward_flat;
 pub(crate) mod backward_kernels;
 pub(crate) mod base_layer_claims;
 pub(crate) mod forward;
