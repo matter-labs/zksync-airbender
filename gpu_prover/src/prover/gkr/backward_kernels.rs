@@ -1184,6 +1184,18 @@ pub(crate) struct GpuGKRMainLayerSumcheckLayerPlan<E> {
     pub(super) kernel_plans: Vec<GpuGKRMainLayerKernelPlan<E>>,
     pub(super) round0_descriptors: Vec<GpuSumcheckRound0LaunchDescriptors<BF, E>>,
     pub(super) round0_batch_template: GpuGKRMainRound0BatchStatic<E>,
+    pub(super) flat_round0_template: Option<super::backward_flat::FlatRound0BuildPlan<E>>,
+    /// Device allocations for compiled recipe headers and terms (uploaded once at prepare time).
+    pub(super) flat_recipe_headers:
+        Option<DeviceAllocation<crate::ops::eval_recipes::GpuRecipeHeader>>,
+    pub(super) flat_recipe_terms:
+        Option<DeviceAllocation<crate::ops::eval_recipes::GpuPrefactorTerm>>,
+    /// Device buffer for eval_recipes output (delegation L1 only; others write to __constant__).
+    pub(super) flat_coeff_device_buf: Option<DeviceAllocation<E>>,
+    /// Device buffer for 4 challenge scalars fed to eval_recipes.
+    pub(super) flat_challenges_buf: Option<DeviceAllocation<E>>,
+    /// Whether this layer uses __constant__ for coefficients.
+    pub(super) flat_use_constant: bool,
     pub(super) round1_batch_template: GpuGKRMainRound1BatchStatic<E>,
     pub(super) round2_batch_template: GpuGKRMainRound2BatchStatic<E>,
     pub(super) round3_batch_templates: Vec<GpuGKRMainLayerRound3BatchTemplate<E>>,
@@ -1218,6 +1230,7 @@ pub(crate) struct GpuGKRMainLayerBackwardState<E: FieldExtension<BF> + Field> {
     pub(super) constraint_batch_challenge: E,
     pub(super) num_base_layer_memory_polys: usize,
     pub(super) num_base_layer_witness_polys: usize,
+    pub(super) is_delegation: bool,
 }
 
 pub(crate) struct GpuGKRMainLayerExecution<E: FieldExtension<BF> + Field> {
@@ -1249,6 +1262,8 @@ pub(crate) struct GpuGKRMainLayerScheduledLayerExecution<E: FieldExtension<BF> +
     pub(super) final_readback: ScheduledDimensionReducingFinalReadback<E>,
     #[allow(dead_code)]
     pub(super) runtime_uploads: Option<ScheduledMainLayerRuntimeUploads<E>>,
+    #[allow(dead_code)]
+    pub(super) flat_coeff_callbacks: Callbacks<'static>,
     pub(super) shared_state: Box<ScheduledMainLayerExecutionState<E>>,
 }
 

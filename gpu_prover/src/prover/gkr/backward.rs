@@ -3478,6 +3478,7 @@ impl<E: Field + FieldExtension<BF>> GpuGKRDimensionReducingBackwardState<BF, E> 
         lookup_multiplicative_challenge: E,
         lookup_additive_challenge: E,
         constraint_batch_challenge: E,
+        is_delegation: bool,
     ) -> GpuGKRMainLayerBackwardState<E> {
         let compiled_circuit = normalize_compiled_circuit_for_gpu(compiled_circuit);
         assert!(
@@ -3512,6 +3513,7 @@ impl<E: Field + FieldExtension<BF>> GpuGKRDimensionReducingBackwardState<BF, E> 
             constraint_batch_challenge,
             num_base_layer_memory_polys: compiled_circuit.memory_layout.total_width,
             num_base_layer_witness_polys: compiled_circuit.witness_layout.total_width,
+            is_delegation,
         }
     }
 
@@ -3519,6 +3521,7 @@ impl<E: Field + FieldExtension<BF>> GpuGKRDimensionReducingBackwardState<BF, E> 
         self,
         compiled_circuit: GKRCircuitArtifact<BF>,
         external_challenges: GKRExternalChallenges<BF, E>,
+        is_delegation: bool,
     ) -> GpuGKRMainLayerBackwardState<E> {
         self.into_main_layer_backward_state(
             compiled_circuit,
@@ -3526,6 +3529,7 @@ impl<E: Field + FieldExtension<BF>> GpuGKRDimensionReducingBackwardState<BF, E> 
             E::ZERO,
             E::ZERO,
             E::ZERO,
+            is_delegation,
         )
     }
 }
@@ -3868,6 +3872,78 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
             static_spill_bytes,
         ) = build_main_layer_batch_templates(folding_steps, &static_data);
 
+        // Build the flat round 0 plan from gate structure + constraint sources.
+        // Works for both deferred (production) and immediate (test) paths.
+        let flat_round0_template = {
+            let gates: Vec<_> = static_data
+                .iter()
+                .zip(kernel_plans.iter())
+                .map(|(sd, kp)| super::backward_flat::PreparedGateForFlatPlan {
+                    kind: sd.kind,
+                    round0: &sd.round0_descriptors,
+                    batch_challenge_power_offset: kp.batch_challenge_offset as u32,
+                    constraint_source: kp.constraint_metadata_source.as_ref(),
+                })
+                .collect();
+            Some(super::backward_flat::build_flat_round0_plan(&gates))
+        };
+
+        // Compile recipes for device and allocate buffers for eval_recipes.
+        let (
+            flat_recipe_headers,
+            flat_recipe_terms,
+            flat_coeff_device_buf,
+            flat_challenges_buf,
+            flat_use_constant,
+        ) = if let Some(ref plan) = flat_round0_template {
+            let total = plan.total_coefficients();
+            if total > 0 {
+                let compiled = super::backward_flat::compile_recipes_for_device(&plan.recipes);
+                let mut headers_dev: DeviceAllocation<crate::ops::eval_recipes::GpuRecipeHeader> =
+                    context.alloc(compiled.headers.len(), AllocationPlacement::BestFit)?;
+                memory_copy_async(
+                    &mut headers_dev,
+                    &compiled.headers,
+                    context.get_exec_stream(),
+                )?;
+                let terms_dev = if compiled.terms.is_empty() {
+                    context.alloc(1, AllocationPlacement::BestFit)?
+                } else {
+                    let mut d: DeviceAllocation<crate::ops::eval_recipes::GpuPrefactorTerm> =
+                        context.alloc(compiled.terms.len(), AllocationPlacement::BestFit)?;
+                    memory_copy_async(&mut d, &compiled.terms, context.get_exec_stream())?;
+                    d
+                };
+                let use_constant = !self.is_delegation || layer_idx != 0;
+                if use_constant {
+                    assert!(
+                        total <= super::backward_flat::FLAT_ROUND0_CONST_MAX,
+                        "flat round 0: {} coefficients exceeds __constant__ limit of {}",
+                        total,
+                        super::backward_flat::FLAT_ROUND0_CONST_MAX,
+                    );
+                }
+                let coeff_buf = if use_constant {
+                    None // eval_recipes writes directly to __constant__ symbol
+                } else {
+                    Some(context.alloc(total, AllocationPlacement::BestFit)?)
+                };
+                let challenges_buf: DeviceAllocation<E> =
+                    context.alloc(4, AllocationPlacement::BestFit)?;
+                (
+                    Some(headers_dev),
+                    Some(terms_dev),
+                    coeff_buf,
+                    Some(challenges_buf),
+                    use_constant,
+                )
+            } else {
+                (None, None, None, None, true)
+            }
+        } else {
+            (None, None, None, None, true)
+        };
+
         let max_acc_size = self.trace_len / 2;
         let reduction_temp_storage_bytes =
             get_reduce_temp_storage_bytes::<E>(ReduceOperation::Sum, max_acc_size as i32)?;
@@ -3899,6 +3975,12 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
             kernel_plans,
             round0_descriptors,
             round0_batch_template,
+            flat_round0_template,
+            flat_recipe_headers,
+            flat_recipe_terms,
+            flat_coeff_device_buf,
+            flat_challenges_buf,
+            flat_use_constant,
             round1_batch_template,
             round2_batch_template,
             round3_batch_templates,
@@ -5136,7 +5218,13 @@ impl<B, E: FieldExtension<BF> + Field> GpuGKRDimensionReducingScheduledLayerExec
 
 impl<E: 'static> GpuGKRMainLayerSumcheckLayerPlan<E>
 where
-    E: Field + FieldExtension<BF> + Reduce + GpuDimensionReducingKernelSet + GpuMainLayerKernelSet,
+    E: Field
+        + FieldExtension<BF>
+        + Reduce
+        + GpuDimensionReducingKernelSet
+        + GpuMainLayerKernelSet
+        + super::backward_flat::GpuFlatRound0KernelSet
+        + super::backward_flat::GpuFlatRound0ConstantKernelSet,
     Mul: BinaryOp<E, E, E>,
     [(); E::DEGREE]: Sized,
 {
@@ -5300,6 +5388,29 @@ where
         static_spill_upload: Option<&ScheduledUpload<u8>>,
         context: &ProverContext,
     ) -> CudaResult<()> {
+        // Use the flat kernel if eval_recipes has been scheduled (recipe headers exist).
+        if let Some(ref plan) = self.flat_round0_template {
+            if self.flat_recipe_headers.is_some() {
+                if self.flat_use_constant {
+                    return super::backward_flat::launch_main_round0_flat_constant(
+                        &plan.static_desc,
+                        self.round_scratch.eq_values.as_ptr(),
+                        self.round_scratch.accumulator.as_mut_ptr(),
+                        acc_size as u32,
+                        context,
+                    );
+                } else {
+                    return super::backward_flat::launch_main_round0_flat(
+                        &plan.static_desc,
+                        self.flat_coeff_device_buf.as_ref().unwrap().as_ptr(),
+                        self.round_scratch.eq_values.as_ptr(),
+                        self.round_scratch.accumulator.as_mut_ptr(),
+                        acc_size as u32,
+                        context,
+                    );
+                }
+            }
+        }
         let batch_runtime = GpuGKRMainRound0BatchRuntime {
             eq_values: self.round_scratch.eq_values.as_ptr(),
             batch_challenges: batch_challenges.as_ptr(),
@@ -5554,6 +5665,68 @@ where
         })
     }
 
+    /// Schedule eval_recipes on the GPU: callback uploads 4 challenge scalars,
+    /// then eval_recipes kernel computes coefficients in device memory.
+    /// Returns callbacks that must be kept alive until after execution.
+    fn schedule_flat_eval_recipes(
+        &mut self,
+        workflow_state: ScheduledBackwardWorkflowStateHandle<E>,
+        context: &ProverContext,
+    ) -> CudaResult<Callbacks<'static>> {
+        let challenges_buf = match self.flat_challenges_buf {
+            Some(ref mut buf) => buf,
+            None => return Ok(Callbacks::new()),
+        };
+        let headers = self.flat_recipe_headers.as_ref().unwrap();
+        let terms = self.flat_recipe_terms.as_ref().unwrap();
+
+        // Callback writes 4 challenge scalars to pinned host allocation.
+        let mut callbacks = Callbacks::new();
+        let challenges_upload: ScheduledUpload<E> = schedule_callback_populated_upload(
+            context,
+            4,
+            &mut callbacks,
+            move |dst: &mut [E]| unsafe {
+                let ws = workflow_state.get();
+                dst[0] = ws.current_batching_challenge;
+                dst[1] = ws.lookup_multiplicative_challenge;
+                dst[2] = ws.lookup_additive_challenge;
+                dst[3] = ws.constraint_batch_challenge;
+            },
+        )?;
+        // Async copy 4 scalars to device.
+        memory_copy_async(
+            challenges_buf,
+            &challenges_upload.device,
+            context.get_exec_stream(),
+        )?;
+
+        // Determine output pointer for eval_recipes.
+        let coeff_out_ptr: *mut E4 = if self.flat_use_constant {
+            super::backward_flat::get_constant_coefficients_device_ptr()
+        } else {
+            self.flat_coeff_device_buf
+                .as_mut()
+                .unwrap()
+                .as_mut_ptr()
+                .cast()
+        };
+
+        // Launch eval_recipes kernel.
+        crate::ops::eval_recipes::eval_recipes_e4(
+            challenges_buf.as_ptr().cast(),
+            headers,
+            terms,
+            coeff_out_ptr,
+            context.get_exec_stream(),
+        )?;
+
+        // Keep callback + upload alive until execution completes.
+        let mut result = challenges_upload.callbacks;
+        result.extend(callbacks);
+        Ok(result)
+    }
+
     fn final_evaluation_sources_for_last_step(
         &self,
         last_step: usize,
@@ -5681,6 +5854,37 @@ where
         let shared_state_handle =
             crate::primitives::context::UnsafeMutAccessor::new(shared_state.as_mut());
         let mut reduction_states = Vec::with_capacity(last_step);
+
+        // Schedule eval_recipes for the static path (challenges known at schedule time).
+        let flat_coeff_callbacks = if let Some(ref mut challenges_buf) = self.flat_challenges_buf {
+            let batch_base = self
+                .batch_challenge_base
+                .expect("static path requires batch_challenge_base");
+            // Upload 4 challenge scalars directly (no callback needed, values known now).
+            let challenges = [batch_base, E::ZERO, E::ZERO, E::ZERO];
+            memory_copy_async(challenges_buf, &challenges, context.get_exec_stream())?;
+            let headers = self.flat_recipe_headers.as_ref().unwrap();
+            let terms = self.flat_recipe_terms.as_ref().unwrap();
+            let coeff_out_ptr: *mut E4 = if self.flat_use_constant {
+                super::backward_flat::get_constant_coefficients_device_ptr()
+            } else {
+                self.flat_coeff_device_buf
+                    .as_mut()
+                    .unwrap()
+                    .as_mut_ptr()
+                    .cast()
+            };
+            crate::ops::eval_recipes::eval_recipes_e4(
+                challenges_buf.as_ptr().cast(),
+                headers,
+                terms,
+                coeff_out_ptr,
+                context.get_exec_stream(),
+            )?;
+            Callbacks::new()
+        } else {
+            Callbacks::new()
+        };
 
         for step in 0..last_step {
             let acc_size = 1usize << (self.folding_steps - step - 1);
@@ -5879,6 +6083,7 @@ where
                 }
             },
             runtime_uploads: None,
+            flat_coeff_callbacks,
             shared_state,
         })
     }
@@ -5983,6 +6188,7 @@ where
             self.schedule_batch_challenge_buffer_from_workflow_state(workflow_state, context)?;
         let runtime_uploads =
             self.schedule_runtime_uploads_from_workflow_state(workflow_state, context)?;
+        let flat_coeff_callbacks = self.schedule_flat_eval_recipes(workflow_state, context)?;
         let mut round_challenge_buffers = Vec::with_capacity(last_step);
         let round_challenge_len = (1..=last_step)
             .map(main_layer_round_challenge_len)
@@ -6212,6 +6418,7 @@ where
                 }
             },
             runtime_uploads: Some(runtime_uploads),
+            flat_coeff_callbacks,
             shared_state,
         })
     }
@@ -6230,6 +6437,7 @@ impl<E: FieldExtension<BF> + Field> GpuGKRMainLayerScheduledLayerExecution<E> {
             reduction_states,
             final_readback,
             runtime_uploads,
+            flat_coeff_callbacks: _,
             shared_state,
         } = self;
         GpuGKRMainLayerHostKeepalive {
@@ -6308,6 +6516,8 @@ where
         + Reduce
         + GpuDimensionReducingKernelSet
         + GpuMainLayerKernelSet
+        + super::backward_flat::GpuFlatRound0KernelSet
+        + super::backward_flat::GpuFlatRound0ConstantKernelSet
         + 'static,
     Mul: BinaryOp<E, E, E>,
     [(); E::DEGREE]: Sized,
@@ -6343,8 +6553,11 @@ where
         dimension_reducing_layers_range.end(stream)?;
         tracing_ranges.push(dimension_reducing_layers_range);
 
-        let mut main_backward_state =
-            self.into_main_layer_backward_state_static(compiled_circuit, external_challenges);
+        let mut main_backward_state = self.into_main_layer_backward_state_static(
+            compiled_circuit,
+            external_challenges,
+            false,
+        );
         let mut main_layers = Vec::new();
         let main_layers_range = Range::new("gkr.backward.main_layers")?;
         main_layers_range.start(stream)?;
@@ -6857,6 +7070,7 @@ mod tests {
             fixture.lookup_multiplicative_part,
             E4::ZERO,
             E4::ZERO,
+            false,
         );
         let mut first_main_layer = main_state
             .prepare_next_layer_static(context)
@@ -7083,6 +7297,7 @@ mod tests {
                     lookup_multiplicative_part,
                     lookup_additive_part,
                     constraints_batch_challenge,
+                    false,
                 ),
                 current_claims,
                 current_point,
@@ -7373,6 +7588,7 @@ mod tests {
                     lookup_multiplicative_part,
                     lookup_additive_part,
                     constraints_batch_challenge,
+                    false,
                 ),
                 current_claims,
                 current_point,
@@ -7495,6 +7711,7 @@ mod tests {
             fixture.lookup_multiplicative_part,
             fixture.lookup_additive_part,
             fixture.constraints_batch_challenge,
+            false,
         );
 
         let mut layer0_plan = loop {
