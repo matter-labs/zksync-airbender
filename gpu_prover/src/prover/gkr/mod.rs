@@ -261,7 +261,7 @@ impl<E> GpuExtensionFieldPolyIntermediateFoldingStorage<E> {
         assert!(poly_size.is_power_of_two());
         assert!(poly_size > 2);
 
-        let size_after_one_fold = poly_size / 4;
+        let size_after_one_fold = poly_size / 2;
         let buffer_size = size_after_one_fold * 2;
         let continuous_buffer = context.alloc(buffer_size, AllocationPlacement::Top)?;
 
@@ -1096,7 +1096,7 @@ impl<B: 'static, E: Field> GpuGKRStorage<B, E> {
             );
             let (previous_layer_start, this_layer_start) =
                 buffer.pointer_for_sumcheck_continuation(sumcheck_step);
-            let this_layer_size = buffer.size_after_one_fold >> (sumcheck_step - 2);
+            let this_layer_size = buffer.size_after_one_fold >> (sumcheck_step - 1);
             let next_layer_size = this_layer_size / 2;
 
             let first_access = if *last_used_for_layer >= sumcheck_step {

@@ -15,7 +15,7 @@ Use the default/basic set for fast turnaround and filter to the kernel of intere
   --kernel-name 'regex:<kernel_regex>' \
   --launch-skip <matching_launches_to_skip> \
   --launch-count <matching_launches_to_collect> \
-  -o "target/profiling/ncu/gpu_prover_kernel_$(date +%Y%m%d_%H%M%S)" \
+  -o "target/profiling/ncu/$(date +%Y%m%d_%H%M%S)_gpu_prover_kernel" \
   "$TEST_BINARY" \
   --exact prover::tests::run_basic_unrolled_proof_job_profile_test \
   --ignored \
@@ -56,7 +56,7 @@ Then profile with source import enabled and the explicit full-section list:
   --section SpeedOfLight_RooflineChart \
   --section WarpStateStats \
   --section WorkloadDistribution \
-  -o "target/profiling/ncu/gpu_prover_full_$(date +%Y%m%d_%H%M%S)" \
+  -o "target/profiling/ncu/$(date +%Y%m%d_%H%M%S)_gpu_prover_full" \
   "$TEST_BINARY" \
   --exact prover::tests::run_basic_unrolled_proof_job_profile_test \
   --ignored \
@@ -112,7 +112,7 @@ Then profile that temporary range with range replay, cache flushing disabled, so
   --section SpeedOfLight_RooflineChart \
   --section WarpStateStats \
   --section WorkloadDistribution \
-  -o "target/profiling/ncu/gpu_prover_range_$(date +%Y%m%d_%H%M%S)" \
+  -o "target/profiling/ncu/$(date +%Y%m%d_%H%M%S)_gpu_prover_range" \
   "$TEST_BINARY" \
   --exact prover::tests::run_basic_unrolled_proof_job_profile_test \
   --ignored \

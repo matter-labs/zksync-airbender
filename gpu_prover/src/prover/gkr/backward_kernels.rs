@@ -1181,6 +1181,9 @@ pub(crate) struct GpuGKRMainLayerSumcheckLayerPlan<E> {
     pub(crate) trace_len: usize,
     pub(crate) folding_steps: usize,
     pub(super) batch_challenge_base: Option<E>,
+    pub(super) lookup_multiplicative_challenge: E,
+    pub(super) lookup_additive_challenge: E,
+    pub(super) constraint_batch_challenge: E,
     pub(super) kernel_plans: Vec<GpuGKRMainLayerKernelPlan<E>>,
     pub(super) round0_descriptors: Vec<GpuSumcheckRound0LaunchDescriptors<BF, E>>,
     pub(super) round0_batch_template: GpuGKRMainRound0BatchStatic<E>,
@@ -1196,6 +1199,26 @@ pub(crate) struct GpuGKRMainLayerSumcheckLayerPlan<E> {
     pub(super) flat_challenges_buf: Option<DeviceAllocation<E>>,
     /// Whether this layer uses __constant__ for coefficients.
     pub(super) flat_use_constant: bool,
+    /// Flat continuation plan for rounds 1+ (shared term arrays + per-step source tables).
+    pub(super) flat_continuation_plan: Option<super::backward_flat::FlatContinuationBuildPlan<E>>,
+    /// Per-step static descriptions for flat round 3+ kernels.
+    pub(super) flat_continuation_descs: Vec<(
+        usize,
+        Box<super::backward_flat::GpuFlatContinuationStaticDesc>,
+    )>,
+    /// Device allocations for continuation recipe headers and terms.
+    pub(super) flat_cont_recipe_headers:
+        Option<DeviceAllocation<crate::ops::eval_recipes::GpuRecipeHeader>>,
+    pub(super) flat_cont_recipe_terms:
+        Option<DeviceAllocation<crate::ops::eval_recipes::GpuPrefactorTerm>>,
+    /// Device buffer for continuation eval_recipes output (delegation L1 only).
+    pub(super) flat_cont_coeff_device_buf: Option<DeviceAllocation<E>>,
+    /// Whether continuation rounds use __constant__ for coefficients.
+    pub(super) flat_cont_use_constant: bool,
+    /// Static description for flat round 1 kernel (single instance, not per-step).
+    pub(super) flat_round1_desc: Option<Box<super::backward_flat::GpuFlatRound1StaticDesc>>,
+    /// Static description for flat round 2 kernel (single instance, not per-step).
+    pub(super) flat_round2_desc: Option<Box<super::backward_flat::GpuFlatRound2StaticDesc>>,
     pub(super) round1_batch_template: GpuGKRMainRound1BatchStatic<E>,
     pub(super) round2_batch_template: GpuGKRMainRound2BatchStatic<E>,
     pub(super) round3_batch_templates: Vec<GpuGKRMainLayerRound3BatchTemplate<E>>,
@@ -1334,6 +1357,8 @@ pub(crate) struct GpuGKRMainLayerHostKeepalive<E: FieldExtension<BF> + Field> {
     pub(super) final_readback: ScheduledDimensionReducingFinalReadback<E>,
     #[allow(dead_code)]
     pub(super) runtime_uploads: Option<HostScheduledMainLayerRuntimeUploads<E>>,
+    #[allow(dead_code)]
+    pub(super) flat_coeff_callbacks: Callbacks<'static>,
     #[allow(dead_code)]
     pub(super) shared_state: Box<ScheduledMainLayerExecutionState<E>>,
 }

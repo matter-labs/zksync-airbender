@@ -78,30 +78,38 @@ template <typename E> DEVICE_FORCEINLINE E flat_load_ext_delta(const void *src, 
 
 // --- Flat round 0 kernel ---
 
-// Coefficient load helper: ca (cache in L1) — small buffer, all threads read
-// the same coeff[i] per iteration (broadcast), sequential access.
-template <typename E> DEVICE_FORCEINLINE E flat_load_coeff(const E *&coeff) {
-  const E val = load<E, ld_modifier::ca>(coeff, 0);
-  ++coeff;
-  return val;
-}
+// --- Coefficient loaders ---
+// CoeffLoader is a lightweight callable: operator() returns the next coefficient.
+// Two flavors: pointer-based (LDG) and constant-symbol (LDC).
 
-template <typename E>
-DEVICE_FORCEINLINE void flat_round0_compute(const flat_round0_static_desc &desc, const E *__restrict__ coefficients, const E *__restrict__ eq_values,
-                                            E *__restrict__ contributions, const unsigned acc_size, const unsigned gid) {
-  const E *coeff = coefficients;
+// Pointer-based: walks a device pointer with ca (cache-all) hint.
+template <typename E> struct coeff_loader_ptr {
+  const E *ptr;
+  DEVICE_FORCEINLINE E operator()() {
+    const E val = load<E, ld_modifier::ca>(ptr, 0);
+    ++ptr;
+    return val;
+  }
+};
+
+// Constant-symbol loaders are defined after each __constant__ declaration
+// so that they can name the symbol directly (required for LDC emission).
+
+template <typename E, typename CoeffLoader>
+DEVICE_FORCEINLINE void flat_round0_compute_impl(const flat_round0_static_desc &desc, CoeffLoader coeff_loader, const E *__restrict__ eq_values,
+                                                 E *__restrict__ contributions, const unsigned acc_size, const unsigned gid) {
   E c0 = E::ZERO();
 
   // c0: base field output terms
   for (unsigned i = 0; i < desc.num_c0_bf; i++) {
     const bf val = flat_load_bf_value(desc.sources[desc.c0_bf[i].source_idx], gid);
-    c0 = E::add(c0, E::mul(flat_load_coeff(coeff), val));
+    c0 = E::add(c0, E::mul(coeff_loader(), val));
   }
 
   // c0: extension field output terms
   for (unsigned i = 0; i < desc.num_c0_ext; i++) {
     const E val = flat_load_ext_value<E>(desc.sources[desc.c0_ext[i].source_idx], gid);
-    c0 = E::add(c0, E::mul(flat_load_coeff(coeff), val));
+    c0 = E::add(c0, E::mul(coeff_loader(), val));
   }
 
   E c1 = E::ZERO();
@@ -111,7 +119,7 @@ DEVICE_FORCEINLINE void flat_round0_compute(const flat_round0_static_desc &desc,
     const auto &t = desc.c1_bf_bf[i];
     const bf a = flat_load_bf_delta(desc.sources[t.source_a], gid, acc_size);
     const bf b = flat_load_bf_delta(desc.sources[t.source_b], gid, acc_size);
-    c1 = E::add(c1, E::mul(flat_load_coeff(coeff), bf::mul(a, b)));
+    c1 = E::add(c1, E::mul(coeff_loader(), bf::mul(a, b)));
   }
 
   // c1: E4*E4 quadratic terms
@@ -119,7 +127,7 @@ DEVICE_FORCEINLINE void flat_round0_compute(const flat_round0_static_desc &desc,
     const auto &t = desc.c1_e4_e4[i];
     const E a = flat_load_ext_delta<E>(desc.sources[t.source_a], gid, acc_size);
     const E b = flat_load_ext_delta<E>(desc.sources[t.source_b], gid, acc_size);
-    c1 = E::add(c1, E::mul(flat_load_coeff(coeff), E::mul(a, b)));
+    c1 = E::add(c1, E::mul(coeff_loader(), E::mul(a, b)));
   }
 
   // c1: bf*E4 mixed quadratic terms
@@ -127,19 +135,27 @@ DEVICE_FORCEINLINE void flat_round0_compute(const flat_round0_static_desc &desc,
     const auto &t = desc.c1_bf_e4[i];
     const bf a = flat_load_bf_delta(desc.sources[t.source_a], gid, acc_size);
     const E b = flat_load_ext_delta<E>(desc.sources[t.source_b], gid, acc_size);
-    c1 = E::add(c1, E::mul(flat_load_coeff(coeff), E::mul(b, a)));
+    c1 = E::add(c1, E::mul(coeff_loader(), E::mul(b, a)));
   }
 
   // c1: linear-in-delta terms
   for (unsigned i = 0; i < desc.num_c1_linear; i++) {
     const bf d = flat_load_bf_delta(desc.sources[desc.c1_linear[i].source_idx], gid, acc_size);
-    c1 = E::add(c1, E::mul(flat_load_coeff(coeff), d));
+    c1 = E::add(c1, E::mul(coeff_loader(), d));
   }
 
   // eq_values: cs (streaming, read once, large) — don't pollute L1 or L2.
   const E eq = load<E, ld_modifier::cs>(eq_values, gid);
   store<E, st_modifier::cs>(contributions, E::mul(c0, eq), gid);
   store<E, st_modifier::cs>(contributions + acc_size, E::mul(c1, eq), gid);
+}
+
+// Public API: pointer-based (non-constant path).
+template <typename E>
+DEVICE_FORCEINLINE void flat_round0_compute(const flat_round0_static_desc &desc, const E *__restrict__ coefficients, const E *__restrict__ eq_values,
+                                            E *__restrict__ contributions, const unsigned acc_size, const unsigned gid) {
+  coeff_loader_ptr<E> loader{coefficients};
+  flat_round0_compute_impl(desc, loader, eq_values, contributions, acc_size, gid);
 }
 
 } // namespace airbender::prover::gkr
@@ -150,13 +166,21 @@ EXTERN __device__ __constant__ e4 ab_gkr_flat_round0_coefficients[airbender::pro
 
 namespace airbender::prover::gkr {
 
+// Constant-symbol loader for round 0: accesses the symbol by index → LDC.
+// Not templated: the __constant__ symbol is e4, direct access is required for LDC.
+struct coeff_loader_round0_constant {
+  unsigned idx = 0;
+  DEVICE_FORCEINLINE e4 operator()() { return ::ab_gkr_flat_round0_coefficients[idx++]; }
+};
+
 // --- Constant-path round 0 kernel ---
-// Same as flat_round0_compute but reads coefficients from __constant__ symbol.
+// Same as flat_round0_compute but reads coefficients from __constant__ symbol via LDC.
 
 template <typename E>
 DEVICE_FORCEINLINE void flat_round0_compute_constant(const flat_round0_static_desc &desc, const E *__restrict__ eq_values, E *__restrict__ contributions,
                                                      const unsigned acc_size, const unsigned gid) {
-  flat_round0_compute(desc, reinterpret_cast<const E *>(::ab_gkr_flat_round0_coefficients), eq_values, contributions, acc_size, gid);
+  coeff_loader_round0_constant loader{};
+  flat_round0_compute_impl<E>(desc, loader, eq_values, contributions, acc_size, gid);
 }
 
 } // namespace airbender::prover::gkr
