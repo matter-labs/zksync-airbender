@@ -4267,6 +4267,7 @@ fn run_basic_unrolled_main_layer0_plan_matches_cpu_test() {
         lookup_multiplicative_part,
         lookup_additive_part,
         constraints_batch_challenge,
+        false,
     );
 
     let layer0_plan = loop {
@@ -4408,6 +4409,7 @@ fn run_basic_unrolled_main_layer0_static_plan_matches_cpu_test() {
         lookup_multiplicative_part,
         lookup_additive_part,
         constraints_batch_challenge,
+        false,
     );
 
     let layer0_plan = loop {
@@ -4540,6 +4542,7 @@ fn run_basic_unrolled_main_layer0_kernel_kind_trace_test() {
         lookup_multiplicative_part,
         lookup_additive_part,
         constraints_batch_challenge,
+        false,
     );
 
     let layer0_plan = loop {
@@ -4613,6 +4616,7 @@ fn run_basic_unrolled_first_main_layer_static_vs_dynamic_execution_test() {
                 lookup_multiplicative_part,
                 lookup_additive_part,
                 constraints_batch_challenge,
+                false,
             ),
             current_claims,
             current_point,
@@ -4798,6 +4802,7 @@ fn run_basic_unrolled_main_layers_static_vs_dynamic_execution_test() {
                 lookup_multiplicative_part,
                 lookup_additive_part,
                 constraints_batch_challenge,
+                false,
             ),
             current_claims,
             current_point,
@@ -6369,6 +6374,7 @@ fn no_cache_main_layer_backward_plan_has_no_synthetic_readback_kernel_test() {
         lookup_multiplicative_part,
         lookup_additive_part,
         constraints_batch_challenge,
+        false,
     );
 
     while let Some(layer_plan) = main_layer_state
