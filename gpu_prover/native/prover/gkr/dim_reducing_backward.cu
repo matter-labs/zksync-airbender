@@ -29,21 +29,19 @@ namespace airbender::prover::gkr {
     else                                                                                                                                                       \
       gkr_lookup_continuation<arg_t, false>(inputs, folding_challenge, batch_challenges, contributions, acc_size);                                             \
   }                                                                                                                                                            \
-  EXTERN __global__ void ab_gkr_dim_reducing_build_eq_group_tables_from_pairs_##arg_t##_kernel(const arg_t *eq_pair_values,                                  \
-                                                                                                const unsigned challenge_count, arg_t *eq_group_tables) {      \
+  EXTERN __global__ void ab_gkr_dim_reducing_build_eq_group_tables_from_pairs_##arg_t##_kernel(const arg_t *eq_pair_values, const unsigned challenge_count,    \
+                                                                                               arg_t *eq_group_tables) {                                       \
     gkr_build_eq_group_tables_from_pairs(eq_pair_values, challenge_count, eq_group_tables);                                                                    \
   }                                                                                                                                                            \
-  EXTERN __global__ void ab_gkr_dim_reducing_build_eq_group_tables_from_point_##arg_t##_kernel(const arg_t *claim_point,                                      \
-                                                                                                const unsigned challenge_offset,                                \
-                                                                                                const unsigned challenge_count, arg_t *eq_group_tables) {      \
+  EXTERN __global__ void ab_gkr_dim_reducing_build_eq_group_tables_from_point_##arg_t##_kernel(const arg_t *claim_point, const unsigned challenge_offset,      \
+                                                                                               const unsigned challenge_count, arg_t *eq_group_tables) {       \
     gkr_build_eq_group_tables_from_point(claim_point, challenge_offset, challenge_count, eq_group_tables);                                                     \
   }                                                                                                                                                            \
-  EXTERN __global__ void ab_gkr_dim_reducing_build_eq_values_from_group_tables_##arg_t##_kernel(const arg_t *eq_group_tables,                                 \
-                                                                                                  const unsigned challenge_count, arg_t *eq_values,             \
-                                                                                                  const unsigned acc_size) {                                    \
+  EXTERN __global__ void ab_gkr_dim_reducing_build_eq_values_from_group_tables_##arg_t##_kernel(const arg_t *eq_group_tables, const unsigned challenge_count,  \
+                                                                                                arg_t *eq_values, const unsigned acc_size) {                   \
     gkr_build_eq_values_from_group_tables(eq_group_tables, challenge_count, eq_values, acc_size);                                                              \
   }                                                                                                                                                            \
-  EXTERN __global__ void ab_gkr_dim_reducing_fold_eq_values_##arg_t##_kernel(arg_t *eq_values, const unsigned half_len) {                                    \
+  EXTERN __global__ void ab_gkr_dim_reducing_fold_eq_values_##arg_t##_kernel(arg_t *eq_values, const unsigned half_len) {                                      \
     gkr_fold_eq_values_in_place(eq_values, half_len);                                                                                                          \
   }                                                                                                                                                            \
   EXTERN __global__ void ab_gkr_dim_reducing_trace_holder_block_partials_##arg_t##_kernel(const bf *raw_values, const arg_t *eq_values, arg_t *block_partials, \
