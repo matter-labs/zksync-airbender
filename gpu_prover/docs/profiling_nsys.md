@@ -13,7 +13,7 @@ Prefer the existing top-level NVTX range instead of profiling the whole process:
   --capture-range=nvtx \
   --nvtx-capture='test.gpu.prove.profiled_call@gpu_prover.tests' \
   --capture-range-end=stop-shutdown \
-  --output target/profiling/nsys/gpu_prover_profile \
+  --output "target/profiling/nsys/gpu_prover_profile_$(date +%Y%m%d_%H%M%S)" \
   "$TEST_BINARY" \
   --exact prover::tests::run_basic_unrolled_proof_job_profile_test \
   --ignored \
