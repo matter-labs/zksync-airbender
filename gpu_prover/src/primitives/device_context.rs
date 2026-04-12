@@ -315,6 +315,8 @@ impl DeviceContext {
             )?;
         }
 
+        crate::prover::configure_kernel_attributes();
+
         Ok(Self {
             _powers_of_w_fine_for_ntt: powers_of_w_fine_for_ntt,
             _powers_of_w_coarse_for_ntt: powers_of_w_coarse_for_ntt,

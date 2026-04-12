@@ -13,9 +13,8 @@ ab_gkr_main_round3_compact_e4_kernel(const unsigned kind, const gkr_ext_continui
                              contributions, acc_size);
 }
 
-EXTERN __global__ void
-ab_gkr_main_round3_batched_compact_e4_kernel(const __grid_constant__ gkr_main_round3_batch_static<e4> batch_static,
-                                             const gkr_main_round3_batch_runtime<e4> batch_runtime, const unsigned acc_size) {
+EXTERN __global__ void ab_gkr_main_round3_batched_compact_e4_kernel(const __grid_constant__ gkr_main_round3_batch_static<e4> batch_static,
+                                                                    const gkr_main_round3_batch_runtime<e4> batch_runtime, const unsigned acc_size) {
   gkr_main_round3_batched<e4, false>(batch_static, batch_runtime, acc_size);
 }
 
