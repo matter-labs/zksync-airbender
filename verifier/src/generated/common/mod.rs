@@ -58,7 +58,7 @@ pub fn draw_single_field_el(ts: &mut TranscriptState) -> BabyBearExt4 {
         words.set_len(BLAKE2S_DIGEST_SIZE_U32_WORDS);
         ts.draw_raw(words.as_mut_slice());
     }
-    let raw = unsafe { (words.as_slice().as_ptr() as *const [u32; EXT_DEGREE]).as_ref_unchecked() };
+    let raw = unsafe { words.as_array::<EXT_DEGREE>() };
     ext_from_raw_words::<BabyBearField, BabyBearExt4>(raw)
 }
 #[inline(always)]
@@ -125,7 +125,7 @@ pub fn verify_sumcheck_rounds<
         {
             let mut i = 0;
             while i < coeff_data_words {
-                commit_buf.data_write(i, I::read_word());
+                commit_buf.data_write(i, read_reduced_field_el::<I>());
                 i += 1;
             }
         }

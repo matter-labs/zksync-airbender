@@ -1,6 +1,5 @@
 use core::mem::MaybeUninit;
 
-
 #[derive(Clone, Debug)]
 #[repr(C)]
 pub struct LazyVec<V: Copy, const N: usize> {
@@ -105,4 +104,3 @@ impl<V: Copy, const N: usize> LazyVec<V, N> {
         &mut *self.data.as_mut_ptr().cast::<[V; M]>()
     }
 }
-

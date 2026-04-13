@@ -4,9 +4,8 @@ use quote::{quote, TokenStreamExt};
 use crate::mersenne_wrapper::MersenneWrapper;
 pub use crate::utils::{
     addr_to_idx, coeff_to_internal_repr, collect_extra_addrs_from_cached_relations,
-    collect_sorted_unique_addrs, compute_max_pow, transform_gkr_address,
-    BATCHING_CHALLENGE_EXTRA, DIM_REDUCE_EVAL_POINTS, STANDARD_EVAL_POINTS,
-    SUMCHECK_POLY_COEFFS,
+    collect_sorted_unique_addrs, compute_max_pow, transform_gkr_address, BATCHING_CHALLENGE_EXTRA,
+    DIM_REDUCE_EVAL_POINTS, STANDARD_EVAL_POINTS, SUMCHECK_POLY_COEFFS,
 };
 use prover::cs::definitions::GKRAddress;
 use prover::cs::gkr_compiler::{
@@ -99,7 +98,7 @@ pub fn generate_gkr_common<MW: MersenneWrapper>() -> TokenStream {
                 {
                     let mut i = 0;
                     while i < coeff_data_words {
-                        commit_buf.data_write(i, I::read_word());
+                        commit_buf.data_write(i, read_reduced_field_el::<I>());
                         i += 1;
                     }
                 }
@@ -219,8 +218,6 @@ fn generate_cache_relation_checks<MW: MersenneWrapper, F: PrimeField>(
     let quartic_zero = MW::quartic_zero();
     let quartic_one = MW::quartic_one();
 
-    let coeff_to_mont = |c: u32| -> u32 { F::from_u32_with_reduction(c).as_u32_raw_repr_reduced() };
-
     let mut single_descs: Vec<(usize, u32, usize, usize)> = Vec::new();
     let mut single_terms: Vec<(u32, usize)> = Vec::new();
 
@@ -253,11 +250,11 @@ fn generate_cache_relation_checks<MW: MersenneWrapper, F: PrimeField>(
             } => {
                 let term_start = single_terms.len();
                 for &(coeff, ref addr) in rel.input.linear_terms.iter() {
-                    single_terms.push((coeff_to_mont(coeff), find_idx(addr)));
+                    single_terms.push((coeff_to_internal_repr::<F>(coeff), find_idx(addr)));
                 }
                 single_descs.push((
                     cached_idx,
-                    coeff_to_mont(rel.input.constant),
+                    coeff_to_internal_repr::<F>(rel.input.constant),
                     term_start,
                     rel.input.linear_terms.len(),
                 ));
@@ -267,10 +264,10 @@ fn generate_cache_relation_checks<MW: MersenneWrapper, F: PrimeField>(
                 for column in rel.columns.iter() {
                     let t_start = vector_terms.len();
                     for &(coeff, ref addr) in column.linear_terms.iter() {
-                        vector_terms.push((coeff_to_mont(coeff), find_idx(addr)));
+                        vector_terms.push((coeff_to_internal_repr::<F>(coeff), find_idx(addr)));
                     }
                     vector_cols.push((
-                        coeff_to_mont(column.constant),
+                        coeff_to_internal_repr::<F>(column.constant),
                         t_start,
                         column.linear_terms.len(),
                     ));
@@ -903,7 +900,7 @@ where
                 {
                     let mut i = 0;
                     while i < data_words {
-                        eval_buf.data_write(i, I::read_word());
+                        eval_buf.data_write(i, read_reduced_field_el::<I>());
                         i += 1;
                     }
                 }
@@ -1074,7 +1071,7 @@ where
                 {
                     let mut i = 0;
                     while i < data_words {
-                        eval_buf.data_write(i, I::read_word());
+                        eval_buf.data_write(i, read_reduced_field_el::<I>());
                         i += 1;
                     }
                 }
@@ -1182,8 +1179,8 @@ where
     // The verifier's oracle list is [memory, witness, setup] (eval order).
     // Compute the byte offset of each eval-order oracle's cap within the transcript.
     use verifier_common::gkr::{
-        CAP_TRANSCRIPT_ORDER, MEMORY_ORACLE_IDX, WITNESS_ORACLE_IDX, SETUP_ORACLE_IDX,
-        NUM_BASE_ORACLES,
+        CAP_TRANSCRIPT_ORDER, MEMORY_ORACLE_IDX, NUM_BASE_ORACLES, SETUP_ORACLE_IDX,
+        WITNESS_ORACLE_IDX,
     };
     let cap_words_by_eval_idx = [
         oracle_cap_words[MEMORY_ORACLE_IDX],

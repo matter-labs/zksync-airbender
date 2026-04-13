@@ -62,7 +62,7 @@ pub fn generate_transcript_helpers<MW: MersenneWrapper>() -> TokenStream {
                 words.set_len(BLAKE2S_DIGEST_SIZE_U32_WORDS);
                 ts.draw_raw(words.as_mut_slice());
             }
-            let raw = unsafe { words.as_array::<E::DEGREE>() };
+            let raw = unsafe { words.as_array::<EXT_DEGREE>() };
             ext_from_raw_words::<#field_struct, #quartic_struct>(raw)
         }
     }

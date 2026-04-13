@@ -774,39 +774,83 @@ fn emit_simple_gate(
         R::Copy { input, .. } => (GT_COPY, [addr_to_idx(input, input_sorted_addrs), 0, 0, 0]),
         R::InitialGrandProductFromCaches { input, .. } | R::TrivialProduct { input, .. } => (
             GT_PRODUCT,
-            [addr_to_idx(&input[0], input_sorted_addrs), addr_to_idx(&input[1], input_sorted_addrs), 0, 0],
+            [
+                addr_to_idx(&input[0], input_sorted_addrs),
+                addr_to_idx(&input[1], input_sorted_addrs),
+                0,
+                0,
+            ],
         ),
         R::MaskIntoIdentityProduct { input, mask, .. } => (
             GT_MASK_PRODUCT,
-            [addr_to_idx(input, input_sorted_addrs), addr_to_idx(mask, input_sorted_addrs), 0, 0],
+            [
+                addr_to_idx(input, input_sorted_addrs),
+                addr_to_idx(mask, input_sorted_addrs),
+                0,
+                0,
+            ],
         ),
         R::UnbalancedGrandProductWithCache { scalar, input, .. } => (
             GT_UNBAL_PRODUCT,
-            [addr_to_idx(scalar, input_sorted_addrs), addr_to_idx(input, input_sorted_addrs), 0, 0],
+            [
+                addr_to_idx(scalar, input_sorted_addrs),
+                addr_to_idx(input, input_sorted_addrs),
+                0,
+                0,
+            ],
         ),
         R::LookupPairFromMaterializedBaseInputs { input, .. }
         | R::LookupPairFromMaterializedVectorInputs { input, .. }
         | R::LookupPairFromCachedVectorInputs { input, .. } => (
             GT_LOOKUP_PAIR,
-            [addr_to_idx(&input[0], input_sorted_addrs), addr_to_idx(&input[1], input_sorted_addrs), 0, 0],
+            [
+                addr_to_idx(&input[0], input_sorted_addrs),
+                addr_to_idx(&input[1], input_sorted_addrs),
+                0,
+                0,
+            ],
         ),
         R::LookupFromMaterializedBaseInputWithSetup { input, setup, .. }
         | R::LookupFromMaterializedVectorInputWithSetup { input, setup, .. } => (
             GT_LOOKUP_SETUP,
-            [addr_to_idx(input, input_sorted_addrs), addr_to_idx(&setup[0], input_sorted_addrs), addr_to_idx(&setup[1], input_sorted_addrs), 0],
+            [
+                addr_to_idx(input, input_sorted_addrs),
+                addr_to_idx(&setup[0], input_sorted_addrs),
+                addr_to_idx(&setup[1], input_sorted_addrs),
+                0,
+            ],
         ),
-        R::LookupUnbalancedPairWithMaterializedBaseInputs { input, remainder, .. }
-        | R::LookupUnbalancedPairWithMaterializedVectorInputs { input, remainder, .. } => (
+        R::LookupUnbalancedPairWithMaterializedBaseInputs {
+            input, remainder, ..
+        }
+        | R::LookupUnbalancedPairWithMaterializedVectorInputs {
+            input, remainder, ..
+        } => (
             GT_LOOKUP_UNBAL,
-            [addr_to_idx(&input[0], input_sorted_addrs), addr_to_idx(&input[1], input_sorted_addrs), addr_to_idx(remainder, input_sorted_addrs), 0],
+            [
+                addr_to_idx(&input[0], input_sorted_addrs),
+                addr_to_idx(&input[1], input_sorted_addrs),
+                addr_to_idx(remainder, input_sorted_addrs),
+                0,
+            ],
         ),
         R::AggregateLookupRationalPair { input, .. } => (
             GT_AGGREGATE_PAIR,
-            [addr_to_idx(&input[0][0], input_sorted_addrs), addr_to_idx(&input[0][1], input_sorted_addrs), addr_to_idx(&input[1][0], input_sorted_addrs), addr_to_idx(&input[1][1], input_sorted_addrs)],
+            [
+                addr_to_idx(&input[0][0], input_sorted_addrs),
+                addr_to_idx(&input[0][1], input_sorted_addrs),
+                addr_to_idx(&input[1][0], input_sorted_addrs),
+                addr_to_idx(&input[1][1], input_sorted_addrs),
+            ],
         ),
         R::LookupWithCachedDensAndSetup { input, setup, .. } => (
             GT_LOOKUP_CACHED_DENS,
-            [addr_to_idx(&input[0], input_sorted_addrs), addr_to_idx(&input[1], input_sorted_addrs), addr_to_idx(&setup[0], input_sorted_addrs), addr_to_idx(&setup[1], input_sorted_addrs)],
+            [
+                addr_to_idx(&input[0], input_sorted_addrs),
+                addr_to_idx(&input[1], input_sorted_addrs),
+                addr_to_idx(&setup[0], input_sorted_addrs),
+                addr_to_idx(&setup[1], input_sorted_addrs),
+            ],
         ),
         _ => unreachable!("emit_simple_gate called with non-simple gate"),
     };
@@ -1236,7 +1280,10 @@ fn emit_inits_teardowns<MW: MersenneWrapper, F: PrimeField>(
 ) {
     use NoFieldGKRRelation as R;
     let R::InitsOrTeardownsInitialPair {
-        timestamp_and_value, setup, set_idxes, ..
+        timestamp_and_value,
+        setup,
+        set_idxes,
+        ..
     } = &gate.enforced_relation
     else {
         unreachable!()
@@ -1256,17 +1303,24 @@ fn emit_inits_teardowns<MW: MersenneWrapper, F: PrimeField>(
                 quote! {}
             }
             InitsOrTeardownsTimestampAndValue::Teardown {
-                lhs_timestamp, lhs_value, rhs_timestamp, rhs_value,
+                lhs_timestamp,
+                lhs_value,
+                rhs_timestamp,
+                rhs_value,
             } => {
                 let (ts, value) = if *side == "lhs" {
                     (lhs_timestamp, lhs_value)
                 } else {
                     (rhs_timestamp, rhs_value)
                 };
-                let ts_lo_idx = addr_to_idx(&GKRAddress::BaseLayerMemory(ts[0]), input_sorted_addrs);
-                let ts_hi_idx = addr_to_idx(&GKRAddress::BaseLayerMemory(ts[1]), input_sorted_addrs);
-                let val_lo_idx = addr_to_idx(&GKRAddress::BaseLayerMemory(value[0]), input_sorted_addrs);
-                let val_hi_idx = addr_to_idx(&GKRAddress::BaseLayerMemory(value[1]), input_sorted_addrs);
+                let ts_lo_idx =
+                    addr_to_idx(&GKRAddress::BaseLayerMemory(ts[0]), input_sorted_addrs);
+                let ts_hi_idx =
+                    addr_to_idx(&GKRAddress::BaseLayerMemory(ts[1]), input_sorted_addrs);
+                let val_lo_idx =
+                    addr_to_idx(&GKRAddress::BaseLayerMemory(value[0]), input_sorted_addrs);
+                let val_hi_idx =
+                    addr_to_idx(&GKRAddress::BaseLayerMemory(value[1]), input_sorted_addrs);
                 quote! {
                     {
                         let mut t = linearization_challenges[#MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
@@ -1323,30 +1377,6 @@ fn emit_inits_teardowns<MW: MersenneWrapper, F: PrimeField>(
     let mul_lr = MW::mul_assign(quote! { lhs }, quote! { rhs });
     val_comp.extend(quote! { #mul_lr; let val = lhs; });
     emit_single_output_gate::<MW>(body, mul_batch, val_comp);
-}
-
-/// Helper for the standard lookup pair pattern (used by LookupPairFromBaseInputs
-/// and LookupPairFromVectorInputs): num = a + b, den = a * b (after gamma addition).
-fn emit_standard_lookup_pair<MW: MersenneWrapper>(
-    body: &mut TokenStream,
-    mul_batch: &TokenStream,
-    comp_a: TokenStream,
-    comp_b: TokenStream,
-) {
-    generate_two_output_body::<MW>(
-        body, mul_batch,
-        quote! { #comp_a #comp_b },
-        |_, mw_add| {
-            let add_ga = mw_add(quote! { a_val }, quote! { lookup_additive_challenge });
-            let add_gb = mw_add(quote! { b_val }, quote! { lookup_additive_challenge });
-            let add_ab = mw_add(quote! { num }, quote! { b_val });
-            quote! { #add_ga; #add_gb; let mut num = a_val; #add_ab; num }
-        },
-        |mw_mul, _| {
-            let mul_ab = mw_mul(quote! { den }, quote! { b_val });
-            quote! { let mut den = a_val; #mul_ab; den }
-        },
-    );
 }
 
 pub fn generate_layer_final_step_accumulator<MW: MersenneWrapper, F: PrimeField>(
@@ -1423,7 +1453,12 @@ pub fn generate_layer_final_step_accumulator<MW: MersenneWrapper, F: PrimeField>
             | R::LookupUnbalancedPairWithVectorInputs { .. }
             | R::LookupFromVectorInputWithSetup { .. } => {
                 flush_simple(&mut body, &mut simple_group);
-                emit_dual_output_for_relation::<MW, F>(&mut body, &mul_batch, gate, input_sorted_addrs);
+                emit_dual_output_for_relation::<MW, F>(
+                    &mut body,
+                    &mul_batch,
+                    gate,
+                    input_sorted_addrs,
+                );
             }
 
             // Init/teardown — unique structure

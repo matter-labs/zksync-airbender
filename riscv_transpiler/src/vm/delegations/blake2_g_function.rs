@@ -157,7 +157,6 @@ pub(crate) fn blake2_g_function_call<
             // bookkeep as if at the last round, and we do it below
         }
 
-
         // bookkeeping {
         {
             let last_round_ts_base = state.timestamp
