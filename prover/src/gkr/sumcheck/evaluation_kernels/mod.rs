@@ -13,12 +13,14 @@ pub mod generic_kernel;
 pub mod simple_in_base;
 pub mod simple_in_extension;
 pub mod simple_mixed;
+pub mod symbolic_kernel;
 
 pub use self::generic_kernel::*;
 pub use self::kernel_impls::*;
 pub use self::simple_in_base::*;
 pub use self::simple_in_extension::*;
 pub use self::simple_mixed::*;
+pub use self::symbolic_kernel::*;
 
 pub trait TwoInputTypesBatchSumcheckEvaluationKernel<F: PrimeField, E: FieldExtension<F> + Field> {
     fn num_challenges(&self) -> usize;
