@@ -30,26 +30,21 @@ pub fn generate_eval_helpers<MW: MersenneWrapper, F: PrimeField>() -> TokenStrea
 
     let byte_shift_mont = coeff_to_internal_repr::<F>(1u32 << 8);
 
-    let lr_from_base = MW::field_from_reduced_raw_repr(quote! { constant as u32 });
-    let lr_coeff = MW::field_from_reduced_raw_repr(quote! { coeff as u32 });
-    let lr_mul = MW::mul_assign_by_base(quote! { t }, lr_coeff.clone());
+    let from_const = MW::field_from_reduced_raw_repr(quote! { constant as u32 });
+    let from_coeff = MW::field_from_reduced_raw_repr(quote! { coeff as u32 });
+    let from_col_const = MW::field_from_reduced_raw_repr(quote! { col_const as u32 });
+    let mul_t_by_coeff = MW::mul_assign_by_base(quote! { t }, from_coeff.clone());
+
     let lr_add = MW::add_assign(quote! { result }, quote! { t });
 
     let vl_mul_alpha = MW::mul_assign(quote! { result }, quote! { alpha });
-    let vl_col_const = MW::field_from_reduced_raw_repr(quote! { col_const as u32 });
-    let vl_term_coeff = MW::field_from_reduced_raw_repr(quote! { coeff as u32 });
-    let vl_term_mul = MW::mul_assign_by_base(quote! { t }, vl_term_coeff.clone());
     let vl_col_add = MW::add_assign(quote! { col_val }, quote! { t });
     let vl_result_add = MW::add_assign(quote! { result }, quote! { col_val });
 
-    let mq_const = MW::field_from_reduced_raw_repr(quote! { constant as u32 });
-    let mq_inner_coeff = MW::field_from_reduced_raw_repr(quote! { coeff as u32 });
-    let mq_inner_mul = MW::mul_assign_by_base(quote! { t }, mq_inner_coeff.clone());
     let mq_inner_add = MW::add_assign(quote! { inner }, quote! { t });
     let mq_mul_a = MW::mul_assign(quote! { inner }, quote! { a_val });
     let mq_add_inner = MW::add_assign(quote! { val }, quote! { inner });
-    let mq_lin_coeff = MW::field_from_reduced_raw_repr(quote! { coeff as u32 });
-    let mq_lin_mul = MW::mul_assign_by_base(quote! { lt }, mq_lin_coeff.clone());
+    let mq_lin_mul = MW::mul_assign_by_base(quote! { lt }, from_coeff.clone());
     let mq_lin_add = MW::add_assign(quote! { val }, quote! { lt });
 
     let me_add_base = MW::field_from_reduced_raw_repr(quote! { op[1] as u32 });
@@ -84,12 +79,12 @@ pub fn generate_eval_helpers<MW: MersenneWrapper, F: PrimeField>() -> TokenStrea
             constant: usize,
             j: usize,
         ) -> #quartic_struct {
-            let mut result = #quartic_struct::from_base(#lr_from_base);
+            let mut result = #quartic_struct::from_base(#from_const);
             let mut i = 0;
             while i < terms.len() {
                 let (idx, coeff) = *terms.get_unchecked(i);
                 let mut t = evals.get_unchecked(idx)[j];
-                #lr_mul;
+                #mul_t_by_coeff;
                 #lr_add;
                 i += 1;
             }
@@ -111,12 +106,12 @@ pub fn generate_eval_helpers<MW: MersenneWrapper, F: PrimeField>() -> TokenStrea
             while i < col_descs.len() {
                 #vl_mul_alpha;
                 let (col_const, num_terms) = *col_descs.get_unchecked(i);
-                let mut col_val = #quartic_struct::from_base(#vl_col_const);
+                let mut col_val = #quartic_struct::from_base(#from_col_const);
                 let mut k = 0;
                 while k < num_terms {
                     let (idx, coeff) = *terms.get_unchecked(term_offset + k);
                     let mut t = evals.get_unchecked(idx)[j];
-                    #vl_term_mul;
+                    #mul_t_by_coeff;
                     #vl_col_add;
                     k += 1;
                 }
@@ -137,7 +132,7 @@ pub fn generate_eval_helpers<MW: MersenneWrapper, F: PrimeField>() -> TokenStrea
             constant: usize,
             j: usize,
         ) -> #quartic_struct {
-            let mut val = #quartic_struct::from_base(#mq_const);
+            let mut val = #quartic_struct::from_base(#from_const);
             let mut inner_offset: usize = 0;
             let mut i = 0;
             while i < quad_outer.len() {
@@ -147,7 +142,7 @@ pub fn generate_eval_helpers<MW: MersenneWrapper, F: PrimeField>() -> TokenStrea
                 while k < num_inner {
                     let (addr_b, coeff) = *quad_inner.get_unchecked(inner_offset + k);
                     let mut t = evals.get_unchecked(addr_b)[j];
-                    #mq_inner_mul;
+                    #mul_t_by_coeff;
                     #mq_inner_add;
                     k += 1;
                 }
@@ -769,104 +764,53 @@ const GT_LOOKUP_UNBAL: usize = 7;
 const GT_AGGREGATE_PAIR: usize = 8;
 const GT_LOOKUP_CACHED_DENS: usize = 9;
 
-fn classify_gate(
+fn emit_simple_gate(
     gate: &prover::cs::gkr_compiler::GateArtifacts,
     input_sorted_addrs: &[GKRAddress],
-) -> Option<(usize, [usize; 4])> {
+    simple_group: &mut Vec<(usize, [usize; 4])>,
+) {
     use NoFieldGKRRelation as R;
-    match &gate.enforced_relation {
-        R::Copy { input, .. } => Some((GT_COPY, [addr_to_idx(input, input_sorted_addrs), 0, 0, 0])),
-        R::InitialGrandProductFromCaches { input, .. } | R::TrivialProduct { input, .. } => Some((
+    let desc = match &gate.enforced_relation {
+        R::Copy { input, .. } => (GT_COPY, [addr_to_idx(input, input_sorted_addrs), 0, 0, 0]),
+        R::InitialGrandProductFromCaches { input, .. } | R::TrivialProduct { input, .. } => (
             GT_PRODUCT,
-            [
-                addr_to_idx(&input[0], input_sorted_addrs),
-                addr_to_idx(&input[1], input_sorted_addrs),
-                0,
-                0,
-            ],
-        )),
-        R::MaskIntoIdentityProduct { input, mask, .. } => Some((
+            [addr_to_idx(&input[0], input_sorted_addrs), addr_to_idx(&input[1], input_sorted_addrs), 0, 0],
+        ),
+        R::MaskIntoIdentityProduct { input, mask, .. } => (
             GT_MASK_PRODUCT,
-            [
-                addr_to_idx(input, input_sorted_addrs),
-                addr_to_idx(mask, input_sorted_addrs),
-                0,
-                0,
-            ],
-        )),
-        R::UnbalancedGrandProductWithCache { scalar, input, .. } => Some((
+            [addr_to_idx(input, input_sorted_addrs), addr_to_idx(mask, input_sorted_addrs), 0, 0],
+        ),
+        R::UnbalancedGrandProductWithCache { scalar, input, .. } => (
             GT_UNBAL_PRODUCT,
-            [
-                addr_to_idx(scalar, input_sorted_addrs),
-                addr_to_idx(input, input_sorted_addrs),
-                0,
-                0,
-            ],
-        )),
+            [addr_to_idx(scalar, input_sorted_addrs), addr_to_idx(input, input_sorted_addrs), 0, 0],
+        ),
         R::LookupPairFromMaterializedBaseInputs { input, .. }
         | R::LookupPairFromMaterializedVectorInputs { input, .. }
-        | R::LookupPairFromCachedVectorInputs { input, .. } => Some((
+        | R::LookupPairFromCachedVectorInputs { input, .. } => (
             GT_LOOKUP_PAIR,
-            [
-                addr_to_idx(&input[0], input_sorted_addrs),
-                addr_to_idx(&input[1], input_sorted_addrs),
-                0,
-                0,
-            ],
-        )),
-        R::LookupFromMaterializedBaseInputWithSetup { input, setup, .. } => Some((
+            [addr_to_idx(&input[0], input_sorted_addrs), addr_to_idx(&input[1], input_sorted_addrs), 0, 0],
+        ),
+        R::LookupFromMaterializedBaseInputWithSetup { input, setup, .. }
+        | R::LookupFromMaterializedVectorInputWithSetup { input, setup, .. } => (
             GT_LOOKUP_SETUP,
-            [
-                addr_to_idx(input, input_sorted_addrs),
-                addr_to_idx(&setup[0], input_sorted_addrs),
-                addr_to_idx(&setup[1], input_sorted_addrs),
-                0,
-            ],
-        )),
-        R::LookupFromMaterializedVectorInputWithSetup { input, setup, .. } => Some((
-            GT_LOOKUP_SETUP,
-            [
-                addr_to_idx(input, input_sorted_addrs),
-                addr_to_idx(&setup[0], input_sorted_addrs),
-                addr_to_idx(&setup[1], input_sorted_addrs),
-                0,
-            ],
-        )),
-        R::LookupUnbalancedPairWithMaterializedBaseInputs {
-            input, remainder, ..
-        }
-        | R::LookupUnbalancedPairWithMaterializedVectorInputs {
-            input, remainder, ..
-        } => Some((
+            [addr_to_idx(input, input_sorted_addrs), addr_to_idx(&setup[0], input_sorted_addrs), addr_to_idx(&setup[1], input_sorted_addrs), 0],
+        ),
+        R::LookupUnbalancedPairWithMaterializedBaseInputs { input, remainder, .. }
+        | R::LookupUnbalancedPairWithMaterializedVectorInputs { input, remainder, .. } => (
             GT_LOOKUP_UNBAL,
-            [
-                addr_to_idx(&input[0], input_sorted_addrs),
-                addr_to_idx(&input[1], input_sorted_addrs),
-                addr_to_idx(remainder, input_sorted_addrs),
-                0,
-            ],
-        )),
-        R::AggregateLookupRationalPair { input, .. } => Some((
+            [addr_to_idx(&input[0], input_sorted_addrs), addr_to_idx(&input[1], input_sorted_addrs), addr_to_idx(remainder, input_sorted_addrs), 0],
+        ),
+        R::AggregateLookupRationalPair { input, .. } => (
             GT_AGGREGATE_PAIR,
-            [
-                addr_to_idx(&input[0][0], input_sorted_addrs),
-                addr_to_idx(&input[0][1], input_sorted_addrs),
-                addr_to_idx(&input[1][0], input_sorted_addrs),
-                addr_to_idx(&input[1][1], input_sorted_addrs),
-            ],
-        )),
-        R::LookupWithCachedDensAndSetup { input, setup, .. } => Some((
+            [addr_to_idx(&input[0][0], input_sorted_addrs), addr_to_idx(&input[0][1], input_sorted_addrs), addr_to_idx(&input[1][0], input_sorted_addrs), addr_to_idx(&input[1][1], input_sorted_addrs)],
+        ),
+        R::LookupWithCachedDensAndSetup { input, setup, .. } => (
             GT_LOOKUP_CACHED_DENS,
-            [
-                addr_to_idx(&input[0], input_sorted_addrs),
-                addr_to_idx(&input[1], input_sorted_addrs),
-                addr_to_idx(&setup[0], input_sorted_addrs),
-                addr_to_idx(&setup[1], input_sorted_addrs),
-            ],
-        )),
-        // Complex gates — stay inline
-        _ => None,
-    }
+            [addr_to_idx(&input[0], input_sorted_addrs), addr_to_idx(&input[1], input_sorted_addrs), addr_to_idx(&setup[0], input_sorted_addrs), addr_to_idx(&setup[1], input_sorted_addrs)],
+        ),
+        _ => unreachable!("emit_simple_gate called with non-simple gate"),
+    };
+    simple_group.push(desc);
 }
 
 fn generate_simple_gate_loop<MW: MersenneWrapper>(descs: &[(usize, [usize; 4])]) -> TokenStream {
@@ -1095,6 +1039,316 @@ fn generate_simple_gate_loop<MW: MersenneWrapper>(descs: &[(usize, [usize; 4])])
     }
 }
 
+fn emit_single_output_value<MW: MersenneWrapper, F: PrimeField>(
+    gate: &prover::cs::gkr_compiler::GateArtifacts,
+    input_sorted_addrs: &[GKRAddress],
+) -> Option<TokenStream> {
+    use NoFieldGKRRelation as R;
+    match &gate.enforced_relation {
+        R::EnforceSingleMaxQuadraticConstraint { input } => Some(emit_max_quadratic_eval::<F>(
+            input,
+            "val",
+            input_sorted_addrs,
+        )),
+        R::EnforceConstraintsMaxQuadratic { input } => {
+            let kernel_body = generate_constraint_kernel::<MW, F>(input, input_sorted_addrs);
+            Some(quote! { let val = { #kernel_body }; })
+        }
+        R::LinearBaseFieldRelation { input, .. } => Some(emit_linear_relation_eval::<MW, F>(
+            input,
+            "val",
+            input_sorted_addrs,
+        )),
+        R::MaxQuadratic { input, .. } => Some(emit_max_quadratic_eval::<F>(
+            input,
+            "val",
+            input_sorted_addrs,
+        )),
+        R::MaterializeSingleLookupInput { input, .. } => Some(emit_linear_relation_eval::<MW, F>(
+            &input.input,
+            "val",
+            input_sorted_addrs,
+        )),
+        R::MaterializedVectorLookupInput { input, .. } => Some(emit_vector_lookup_eval::<MW, F>(
+            input,
+            "val",
+            input_sorted_addrs,
+        )),
+        R::InitialGrandProductWithoutCaches { input, .. } => {
+            let mem_a = emit_memory_expression_eval::<F>(&input[0], "mem_a", input_sorted_addrs);
+            let mem_b = emit_memory_expression_eval::<F>(&input[1], "mem_b", input_sorted_addrs);
+            let mul_ab = MW::mul_assign(quote! { mem_a }, quote! { mem_b });
+            Some(quote! { #mem_a #mem_b #mul_ab; let val = mem_a; })
+        }
+        R::MaterializeGrandProductTermExpression { input, .. } => Some(
+            emit_memory_expression_eval::<F>(input, "val", input_sorted_addrs),
+        ),
+        _ => None,
+    }
+}
+
+fn emit_dual_output_for_relation<MW: MersenneWrapper, F: PrimeField>(
+    body: &mut TokenStream,
+    mul_batch: &TokenStream,
+    gate: &prover::cs::gkr_compiler::GateArtifacts,
+    input_sorted_addrs: &[GKRAddress],
+) -> bool {
+    use NoFieldGKRRelation as R;
+
+    let standard_lookup_pair =
+        |body: &mut TokenStream, comp_a: TokenStream, comp_b: TokenStream| {
+            generate_two_output_body::<MW>(
+                body,
+                mul_batch,
+                quote! { #comp_a #comp_b },
+                |_, mw_add| {
+                    let add_ga = mw_add(quote! { a_val }, quote! { lookup_additive_challenge });
+                    let add_gb = mw_add(quote! { b_val }, quote! { lookup_additive_challenge });
+                    let add_ab = mw_add(quote! { num }, quote! { b_val });
+                    quote! { #add_ga; #add_gb; let mut num = a_val; #add_ab; num }
+                },
+                |mw_mul, _| {
+                    let mul_ab = mw_mul(quote! { den }, quote! { b_val });
+                    quote! { let mut den = a_val; #mul_ab; den }
+                },
+            );
+        };
+
+    match &gate.enforced_relation {
+        R::LookupPairFromBaseInputs { input, .. } => {
+            let comp_a =
+                emit_linear_relation_eval::<MW, F>(&input[0].input, "a_val", input_sorted_addrs);
+            let comp_b =
+                emit_linear_relation_eval::<MW, F>(&input[1].input, "b_val", input_sorted_addrs);
+            standard_lookup_pair(body, comp_a, comp_b);
+            true
+        }
+        R::LookupPairFromVectorInputs { input, .. } => {
+            let comp_a = emit_vector_lookup_eval::<MW, F>(&input[0], "a_val", input_sorted_addrs);
+            let comp_b = emit_vector_lookup_eval::<MW, F>(&input[1], "b_val", input_sorted_addrs);
+            standard_lookup_pair(body, comp_a, comp_b);
+            true
+        }
+        R::LookupWithDensAndSetupExpressions { input, setup, .. } => {
+            let a_idx = addr_to_idx(&input.0, input_sorted_addrs);
+            let c_idx = addr_to_idx(&setup.0, input_sorted_addrs);
+            let comp_b = emit_vector_lookup_eval::<MW, F>(&input.1, "b_val", input_sorted_addrs);
+            let comp_d = emit_setup_horner_eval::<F>(&setup.1, "d_val", input_sorted_addrs);
+            let add_gamma_b =
+                MW::add_assign(quote! { b_val }, quote! { lookup_additive_challenge });
+            let add_gamma_d =
+                MW::add_assign(quote! { d_val }, quote! { lookup_additive_challenge });
+            generate_two_output_body::<MW>(
+                body,
+                mul_batch,
+                quote! {
+                    let a_val = evals.get_unchecked(#a_idx)[j];
+                    let c_val = evals.get_unchecked(#c_idx)[j];
+                    #comp_b #add_gamma_b;
+                    #comp_d #add_gamma_d;
+                },
+                |mw_mul, _| {
+                    let mul_ad = mw_mul(quote! { num }, quote! { d_val });
+                    let mul_cb = mw_mul(quote! { cb_tmp }, quote! { b_val });
+                    let sub_cb = MW::sub_assign(quote! { num }, quote! { cb_tmp });
+                    quote! {
+                        let mut num = a_val; #mul_ad;
+                        let mut cb_tmp = c_val; #mul_cb; #sub_cb;
+                        num
+                    }
+                },
+                |mw_mul, _| {
+                    let mul_bd = mw_mul(quote! { den }, quote! { d_val });
+                    quote! { let mut den = b_val; #mul_bd; den }
+                },
+            );
+            true
+        }
+        R::LookupUnbalancedPairWithVectorInputs {
+            input, remainder, ..
+        } => {
+            let a_idx = addr_to_idx(&input[0], input_sorted_addrs);
+            let b_idx = addr_to_idx(&input[1], input_sorted_addrs);
+            let comp_c = emit_vector_lookup_eval::<MW, F>(remainder, "c_val", input_sorted_addrs);
+            let add_gamma_c =
+                MW::add_assign(quote! { c_val }, quote! { lookup_additive_challenge });
+            generate_two_output_body::<MW>(
+                body,
+                mul_batch,
+                quote! {
+                    let a_val = evals.get_unchecked(#a_idx)[j];
+                    let b_val = evals.get_unchecked(#b_idx)[j];
+                    #comp_c #add_gamma_c;
+                },
+                |mw_mul, mw_add| {
+                    let mul_ac = mw_mul(quote! { num }, quote! { c_val });
+                    let add_b = mw_add(quote! { num }, quote! { b_val });
+                    quote! { let mut num = a_val; #mul_ac; #add_b; num }
+                },
+                |mw_mul, _| {
+                    let mul_bc = mw_mul(quote! { den }, quote! { c_val });
+                    quote! { let mut den = b_val; #mul_bc; den }
+                },
+            );
+            true
+        }
+        R::LookupFromVectorInputWithSetup { input, setup, .. } => {
+            let comp_a = emit_vector_lookup_eval::<MW, F>(input, "a_val", input_sorted_addrs);
+            let c_idx = addr_to_idx(&setup.0, input_sorted_addrs);
+            let comp_d = emit_setup_horner_eval::<F>(&setup.1, "d_val", input_sorted_addrs);
+            let add_gamma_a =
+                MW::add_assign(quote! { a_val }, quote! { lookup_additive_challenge });
+            let add_gamma_d =
+                MW::add_assign(quote! { d_val }, quote! { lookup_additive_challenge });
+            generate_two_output_body::<MW>(
+                body,
+                mul_batch,
+                quote! {
+                    #comp_a #add_gamma_a;
+                    let c_val = evals.get_unchecked(#c_idx)[j];
+                    #comp_d #add_gamma_d;
+                },
+                |mw_mul, _| {
+                    let mul_ca = mw_mul(quote! { cb_tmp }, quote! { a_val });
+                    let sub_ca = MW::sub_assign(quote! { num }, quote! { cb_tmp });
+                    quote! {
+                        let mut num = d_val;
+                        let mut cb_tmp = c_val; #mul_ca; #sub_ca;
+                        num
+                    }
+                },
+                |mw_mul, _| {
+                    let mul_ad = mw_mul(quote! { den }, quote! { d_val });
+                    quote! { let mut den = a_val; #mul_ad; den }
+                },
+            );
+            true
+        }
+        _ => false,
+    }
+}
+
+fn emit_inits_teardowns<MW: MersenneWrapper, F: PrimeField>(
+    body: &mut TokenStream,
+    mul_batch: &TokenStream,
+    gate: &prover::cs::gkr_compiler::GateArtifacts,
+    input_sorted_addrs: &[GKRAddress],
+) {
+    use NoFieldGKRRelation as R;
+    let R::InitsOrTeardownsInitialPair {
+        timestamp_and_value, setup, set_idxes, ..
+    } = &gate.enforced_relation
+    else {
+        unreachable!()
+    };
+
+    let setup_lo_idx = addr_to_idx(&setup[0], input_sorted_addrs);
+    let setup_hi_idx = addr_to_idx(&setup[1], input_sorted_addrs);
+
+    let mut val_comp = TokenStream::new();
+
+    for (side, set_idx) in ["lhs", "rhs"].iter().zip(set_idxes.iter()) {
+        let var = syn::Ident::new(side, proc_macro2::Span::call_site());
+        let set_idx_val = *set_idx;
+
+        let ts_val_terms = match timestamp_and_value {
+            InitsOrTeardownsTimestampAndValue::Init => {
+                quote! {}
+            }
+            InitsOrTeardownsTimestampAndValue::Teardown {
+                lhs_timestamp, lhs_value, rhs_timestamp, rhs_value,
+            } => {
+                let (ts, value) = if *side == "lhs" {
+                    (lhs_timestamp, lhs_value)
+                } else {
+                    (rhs_timestamp, rhs_value)
+                };
+                let ts_lo_idx = addr_to_idx(&GKRAddress::BaseLayerMemory(ts[0]), input_sorted_addrs);
+                let ts_hi_idx = addr_to_idx(&GKRAddress::BaseLayerMemory(ts[1]), input_sorted_addrs);
+                let val_lo_idx = addr_to_idx(&GKRAddress::BaseLayerMemory(value[0]), input_sorted_addrs);
+                let val_hi_idx = addr_to_idx(&GKRAddress::BaseLayerMemory(value[1]), input_sorted_addrs);
+                quote! {
+                    {
+                        let mut t = linearization_challenges[#MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
+                        field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(#ts_lo_idx)[j]);
+                        field_ops::add_assign(&mut result, &t);
+                    }
+                    {
+                        let mut t = linearization_challenges[#MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
+                        field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(#ts_hi_idx)[j]);
+                        field_ops::add_assign(&mut result, &t);
+                    }
+                    {
+                        let mut t = linearization_challenges[#MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
+                        field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(#val_lo_idx)[j]);
+                        field_ops::add_assign(&mut result, &t);
+                    }
+                    {
+                        let mut t = linearization_challenges[#MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
+                        field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(#val_hi_idx)[j]);
+                        field_ops::add_assign(&mut result, &t);
+                    }
+                }
+            }
+        };
+
+        let field_struct_local = MW::field_struct();
+        let ram_constant = coeff_to_internal_repr::<F>(1) as u32;
+        val_comp.extend(quote! {
+            let mut #var = {
+                let mut result = permutation_argument_additive_part;
+                field_ops::add_assign_base(&mut result, &#field_struct_local::from_reduced_raw_repr(#ram_constant));
+                {
+                    let mut t = linearization_challenges[#MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
+                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(#setup_lo_idx)[j]);
+                    field_ops::add_assign(&mut result, &t);
+                }
+                {
+                    let mut t = linearization_challenges[#MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
+                    let mut addr_hi = evals.get_unchecked(#setup_hi_idx)[j];
+                    let set_bits = (#set_idx_val as u32) << address_high_bits_shift;
+                    if set_bits != 0 {
+                        let set_field = #field_struct_local::from_u32_unchecked(set_bits);
+                        field_ops::add_assign_base(&mut addr_hi, &set_field);
+                    }
+                    field_ops::mul_assign_by_base(&mut t, &addr_hi);
+                    field_ops::add_assign(&mut result, &t);
+                }
+                #ts_val_terms
+                result
+            };
+        });
+    }
+
+    let mul_lr = MW::mul_assign(quote! { lhs }, quote! { rhs });
+    val_comp.extend(quote! { #mul_lr; let val = lhs; });
+    emit_single_output_gate::<MW>(body, mul_batch, val_comp);
+}
+
+/// Helper for the standard lookup pair pattern (used by LookupPairFromBaseInputs
+/// and LookupPairFromVectorInputs): num = a + b, den = a * b (after gamma addition).
+fn emit_standard_lookup_pair<MW: MersenneWrapper>(
+    body: &mut TokenStream,
+    mul_batch: &TokenStream,
+    comp_a: TokenStream,
+    comp_b: TokenStream,
+) {
+    generate_two_output_body::<MW>(
+        body, mul_batch,
+        quote! { #comp_a #comp_b },
+        |_, mw_add| {
+            let add_ga = mw_add(quote! { a_val }, quote! { lookup_additive_challenge });
+            let add_gb = mw_add(quote! { b_val }, quote! { lookup_additive_challenge });
+            let add_ab = mw_add(quote! { num }, quote! { b_val });
+            quote! { #add_ga; #add_gb; let mut num = a_val; #add_ab; num }
+        },
+        |mw_mul, _| {
+            let mul_ab = mw_mul(quote! { den }, quote! { b_val });
+            quote! { let mut den = a_val; #mul_ab; den }
+        },
+    );
+}
+
 pub fn generate_layer_final_step_accumulator<MW: MersenneWrapper, F: PrimeField>(
     layer: &GKRLayerDescription,
     layer_idx: usize,
@@ -1119,332 +1373,70 @@ pub fn generate_layer_final_step_accumulator<MW: MersenneWrapper, F: PrimeField>
         .chain(layer.gates_with_external_connections.iter())
         .collect();
 
+    let flush_simple = |body: &mut TokenStream, group: &mut Vec<(usize, [usize; 4])>| {
+        if !group.is_empty() {
+            body.extend(generate_simple_gate_loop::<MW>(group));
+            group.clear();
+        }
+    };
+
     for gate in &gates {
-        if let Some(desc) = classify_gate(gate, input_sorted_addrs) {
-            simple_group.push(desc);
-        } else {
-            if !simple_group.is_empty() {
-                body.extend(generate_simple_gate_loop::<MW>(&simple_group));
-                simple_group.clear();
+        use NoFieldGKRRelation as R;
+        match &gate.enforced_relation {
+            // Simple gates — batched into a const-array-driven runtime dispatch loop
+            R::Copy { .. }
+            | R::InitialGrandProductFromCaches { .. }
+            | R::TrivialProduct { .. }
+            | R::MaskIntoIdentityProduct { .. }
+            | R::UnbalancedGrandProductWithCache { .. }
+            | R::LookupPairFromMaterializedBaseInputs { .. }
+            | R::LookupPairFromMaterializedVectorInputs { .. }
+            | R::LookupPairFromCachedVectorInputs { .. }
+            | R::LookupFromMaterializedBaseInputWithSetup { .. }
+            | R::LookupFromMaterializedVectorInputWithSetup { .. }
+            | R::LookupUnbalancedPairWithMaterializedBaseInputs { .. }
+            | R::LookupUnbalancedPairWithMaterializedVectorInputs { .. }
+            | R::AggregateLookupRationalPair { .. }
+            | R::LookupWithCachedDensAndSetup { .. } => {
+                emit_simple_gate(gate, input_sorted_addrs, &mut simple_group);
             }
-            use NoFieldGKRRelation as R;
-            match &gate.enforced_relation {
-                R::EnforceSingleMaxQuadraticConstraint { input } => {
-                    let val_comp = emit_max_quadratic_eval::<F>(input, "val", input_sorted_addrs);
-                    emit_single_output_gate::<MW>(&mut body, &mul_batch, val_comp);
-                }
-                R::EnforceConstraintsMaxQuadratic { input } => {
-                    let kernel_body =
-                        generate_constraint_kernel::<MW, F>(input, input_sorted_addrs);
-                    let val_comp = quote! { let val = { #kernel_body }; };
-                    emit_single_output_gate::<MW>(&mut body, &mul_batch, val_comp);
-                }
-                R::LinearBaseFieldRelation { input, .. } => {
-                    let val_comp =
-                        emit_linear_relation_eval::<MW, F>(input, "val", input_sorted_addrs);
-                    emit_single_output_gate::<MW>(&mut body, &mul_batch, val_comp);
-                }
-                R::MaxQuadratic { input, .. } => {
-                    let val_comp = emit_max_quadratic_eval::<F>(input, "val", input_sorted_addrs);
-                    emit_single_output_gate::<MW>(&mut body, &mul_batch, val_comp);
-                }
-                R::MaterializeSingleLookupInput { input, .. } => {
-                    let val_comp =
-                        emit_linear_relation_eval::<MW, F>(&input.input, "val", input_sorted_addrs);
-                    emit_single_output_gate::<MW>(&mut body, &mul_batch, val_comp);
-                }
-                R::MaterializedVectorLookupInput { input, .. } => {
-                    let val_comp =
-                        emit_vector_lookup_eval::<MW, F>(input, "val", input_sorted_addrs);
-                    emit_single_output_gate::<MW>(&mut body, &mul_batch, val_comp);
-                }
-                R::LookupPairFromBaseInputs { input, .. } => {
-                    let comp_a = emit_linear_relation_eval::<MW, F>(
-                        &input[0].input,
-                        "a_val",
-                        input_sorted_addrs,
-                    );
-                    let comp_b = emit_linear_relation_eval::<MW, F>(
-                        &input[1].input,
-                        "b_val",
-                        input_sorted_addrs,
-                    );
-                    generate_two_output_body::<MW>(
-                        &mut body,
-                        &mul_batch,
-                        quote! { #comp_a #comp_b },
-                        |_, mw_add| {
-                            let add_ga =
-                                mw_add(quote! { a_val }, quote! { lookup_additive_challenge });
-                            let add_gb =
-                                mw_add(quote! { b_val }, quote! { lookup_additive_challenge });
-                            let add_ab = mw_add(quote! { num }, quote! { b_val });
-                            quote! { #add_ga; #add_gb; let mut num = a_val; #add_ab; num }
-                        },
-                        |mw_mul, _| {
-                            let mul_ab = mw_mul(quote! { den }, quote! { b_val });
-                            quote! { let mut den = a_val; #mul_ab; den }
-                        },
-                    );
-                }
-                R::LookupPairFromVectorInputs { input, .. } => {
-                    let comp_a =
-                        emit_vector_lookup_eval::<MW, F>(&input[0], "a_val", input_sorted_addrs);
-                    let comp_b =
-                        emit_vector_lookup_eval::<MW, F>(&input[1], "b_val", input_sorted_addrs);
-                    generate_two_output_body::<MW>(
-                        &mut body,
-                        &mul_batch,
-                        quote! { #comp_a #comp_b },
-                        |_, mw_add| {
-                            let add_ga =
-                                mw_add(quote! { a_val }, quote! { lookup_additive_challenge });
-                            let add_gb =
-                                mw_add(quote! { b_val }, quote! { lookup_additive_challenge });
-                            let add_ab = mw_add(quote! { num }, quote! { b_val });
-                            quote! { #add_ga; #add_gb; let mut num = a_val; #add_ab; num }
-                        },
-                        |mw_mul, _| {
-                            let mul_ab = mw_mul(quote! { den }, quote! { b_val });
-                            quote! { let mut den = a_val; #mul_ab; den }
-                        },
-                    );
-                }
-                R::InitialGrandProductWithoutCaches { input, .. } => {
-                    let mem_a =
-                        emit_memory_expression_eval::<F>(&input[0], "mem_a", input_sorted_addrs);
-                    let mem_b =
-                        emit_memory_expression_eval::<F>(&input[1], "mem_b", input_sorted_addrs);
-                    let mul_ab = MW::mul_assign(quote! { mem_a }, quote! { mem_b });
-                    let val_comp = quote! {
-                        #mem_a
-                        #mem_b
-                        #mul_ab;
-                        let val = mem_a;
-                    };
-                    emit_single_output_gate::<MW>(&mut body, &mul_batch, val_comp);
-                }
-                R::MaterializeGrandProductTermExpression { input, .. } => {
-                    let mem = emit_memory_expression_eval::<F>(input, "val", input_sorted_addrs);
-                    emit_single_output_gate::<MW>(&mut body, &mul_batch, mem);
-                }
-                R::InitsOrTeardownsInitialPair {
-                    timestamp_and_value,
-                    setup,
-                    set_idxes,
-                    ..
-                } => {
-                    let setup_lo_idx = addr_to_idx(&setup[0], input_sorted_addrs);
-                    let setup_hi_idx = addr_to_idx(&setup[1], input_sorted_addrs);
 
-                    let mut val_comp = TokenStream::new();
+            // Single-output gates — each needs expression evaluation
+            R::EnforceSingleMaxQuadraticConstraint { .. }
+            | R::EnforceConstraintsMaxQuadratic { .. }
+            | R::LinearBaseFieldRelation { .. }
+            | R::MaxQuadratic { .. }
+            | R::MaterializeSingleLookupInput { .. }
+            | R::MaterializedVectorLookupInput { .. }
+            | R::InitialGrandProductWithoutCaches { .. }
+            | R::MaterializeGrandProductTermExpression { .. } => {
+                flush_simple(&mut body, &mut simple_group);
+                let val = emit_single_output_value::<MW, F>(gate, input_sorted_addrs)
+                    .expect("matched single-output gate must produce value");
+                emit_single_output_gate::<MW>(&mut body, &mul_batch, val);
+            }
 
-                    for (side, set_idx) in ["lhs", "rhs"].iter().zip(set_idxes.iter()) {
-                        let var = syn::Ident::new(side, proc_macro2::Span::call_site());
-                        let set_idx_val = *set_idx;
+            // Dual-output lookup gates — need numerator/denominator expressions
+            R::LookupPairFromBaseInputs { .. }
+            | R::LookupPairFromVectorInputs { .. }
+            | R::LookupWithDensAndSetupExpressions { .. }
+            | R::LookupUnbalancedPairWithVectorInputs { .. }
+            | R::LookupFromVectorInputWithSetup { .. } => {
+                flush_simple(&mut body, &mut simple_group);
+                emit_dual_output_for_relation::<MW, F>(&mut body, &mul_batch, gate, input_sorted_addrs);
+            }
 
-                        let ts_val_terms = match timestamp_and_value {
-                            InitsOrTeardownsTimestampAndValue::Init => {
-                                quote! {}
-                            }
-                            InitsOrTeardownsTimestampAndValue::Teardown {
-                                lhs_timestamp,
-                                lhs_value,
-                                rhs_timestamp,
-                                rhs_value,
-                            } => {
-                                let (ts, value) = if *side == "lhs" {
-                                    (lhs_timestamp, lhs_value)
-                                } else {
-                                    (rhs_timestamp, rhs_value)
-                                };
-                                let ts_lo_idx = addr_to_idx(
-                                    &GKRAddress::BaseLayerMemory(ts[0]),
-                                    input_sorted_addrs,
-                                );
-                                let ts_hi_idx = addr_to_idx(
-                                    &GKRAddress::BaseLayerMemory(ts[1]),
-                                    input_sorted_addrs,
-                                );
-                                let val_lo_idx = addr_to_idx(
-                                    &GKRAddress::BaseLayerMemory(value[0]),
-                                    input_sorted_addrs,
-                                );
-                                let val_hi_idx = addr_to_idx(
-                                    &GKRAddress::BaseLayerMemory(value[1]),
-                                    input_sorted_addrs,
-                                );
-                                quote! {
-                                    {
-                                        let mut t = linearization_challenges[#MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
-                                        field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(#ts_lo_idx)[j]);
-                                        field_ops::add_assign(&mut result, &t);
-                                    }
-                                    {
-                                        let mut t = linearization_challenges[#MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
-                                        field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(#ts_hi_idx)[j]);
-                                        field_ops::add_assign(&mut result, &t);
-                                    }
-                                    {
-                                        let mut t = linearization_challenges[#MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
-                                        field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(#val_lo_idx)[j]);
-                                        field_ops::add_assign(&mut result, &t);
-                                    }
-                                    {
-                                        let mut t = linearization_challenges[#MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
-                                        field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(#val_hi_idx)[j]);
-                                        field_ops::add_assign(&mut result, &t);
-                                    }
-                                }
-                            }
-                        };
+            // Init/teardown — unique structure
+            R::InitsOrTeardownsInitialPair { .. } => {
+                flush_simple(&mut body, &mut simple_group);
+                emit_inits_teardowns::<MW, F>(&mut body, &mul_batch, gate, input_sorted_addrs);
+            }
 
-                        let field_struct_local = MW::field_struct();
-                        let ram_constant = coeff_to_internal_repr::<F>(1) as u32;
-                        val_comp.extend(quote! {
-                            let mut #var = {
-                                let mut result = permutation_argument_additive_part;
-                                field_ops::add_assign_base(&mut result, &#field_struct_local::from_reduced_raw_repr(#ram_constant));
-                                {
-                                    let mut t = linearization_challenges[#MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
-                                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(#setup_lo_idx)[j]);
-                                    field_ops::add_assign(&mut result, &t);
-                                }
-                                {
-                                    let mut t = linearization_challenges[#MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
-                                    let mut addr_hi = evals.get_unchecked(#setup_hi_idx)[j];
-                                    let set_bits = (#set_idx_val as u32) << address_high_bits_shift;
-                                    if set_bits != 0 {
-                                        let set_field = #field_struct_local::from_u32_unchecked(set_bits);
-                                        field_ops::add_assign_base(&mut addr_hi, &set_field);
-                                    }
-                                    field_ops::mul_assign_by_base(&mut t, &addr_hi);
-                                    field_ops::add_assign(&mut result, &t);
-                                }
-                                #ts_val_terms
-                                result
-                            };
-                        });
-                    }
-
-                    let mul_lr = MW::mul_assign(quote! { lhs }, quote! { rhs });
-                    val_comp.extend(quote! {
-                        #mul_lr;
-                        let val = lhs;
-                    });
-                    emit_single_output_gate::<MW>(&mut body, &mul_batch, val_comp);
-                }
-                R::LookupWithDensAndSetupExpressions { input, setup, .. } => {
-                    let a_idx = addr_to_idx(&input.0, input_sorted_addrs);
-                    let c_idx = addr_to_idx(&setup.0, input_sorted_addrs);
-                    let comp_b =
-                        emit_vector_lookup_eval::<MW, F>(&input.1, "b_val", input_sorted_addrs);
-                    let comp_d = emit_setup_horner_eval::<F>(&setup.1, "d_val", input_sorted_addrs);
-                    let add_gamma_b =
-                        MW::add_assign(quote! { b_val }, quote! { lookup_additive_challenge });
-                    let add_gamma_d =
-                        MW::add_assign(quote! { d_val }, quote! { lookup_additive_challenge });
-                    generate_two_output_body::<MW>(
-                        &mut body,
-                        &mul_batch,
-                        quote! {
-                            let a_val = evals.get_unchecked(#a_idx)[j];
-                            let c_val = evals.get_unchecked(#c_idx)[j];
-                            #comp_b
-                            #add_gamma_b;
-                            #comp_d
-                            #add_gamma_d;
-                        },
-                        |mw_mul, _mw_add| {
-                            let mul_ad = mw_mul(quote! { num }, quote! { d_val });
-                            let mul_cb = mw_mul(quote! { cb_tmp }, quote! { b_val });
-                            let sub_cb = MW::sub_assign(quote! { num }, quote! { cb_tmp });
-                            quote! {
-                                let mut num = a_val;
-                                #mul_ad;
-                                let mut cb_tmp = c_val;
-                                #mul_cb;
-                                #sub_cb;
-                                num
-                            }
-                        },
-                        |mw_mul, _| {
-                            let mul_bd = mw_mul(quote! { den }, quote! { d_val });
-                            quote! { let mut den = b_val; #mul_bd; den }
-                        },
-                    );
-                }
-                R::LookupUnbalancedPairWithVectorInputs {
-                    input, remainder, ..
-                } => {
-                    let a_idx = addr_to_idx(&input[0], input_sorted_addrs);
-                    let b_idx = addr_to_idx(&input[1], input_sorted_addrs);
-                    let comp_c =
-                        emit_vector_lookup_eval::<MW, F>(remainder, "c_val", input_sorted_addrs);
-                    let add_gamma_c =
-                        MW::add_assign(quote! { c_val }, quote! { lookup_additive_challenge });
-                    generate_two_output_body::<MW>(
-                        &mut body,
-                        &mul_batch,
-                        quote! {
-                            let a_val = evals.get_unchecked(#a_idx)[j];
-                            let b_val = evals.get_unchecked(#b_idx)[j];
-                            #comp_c
-                            #add_gamma_c;
-                        },
-                        |mw_mul, mw_add| {
-                            let mul_ac = mw_mul(quote! { num }, quote! { c_val });
-                            let add_b = mw_add(quote! { num }, quote! { b_val });
-                            quote! { let mut num = a_val; #mul_ac; #add_b; num }
-                        },
-                        |mw_mul, _| {
-                            let mul_bc = mw_mul(quote! { den }, quote! { c_val });
-                            quote! { let mut den = b_val; #mul_bc; den }
-                        },
-                    );
-                }
-                R::LookupFromVectorInputWithSetup { input, setup, .. } => {
-                    let comp_a =
-                        emit_vector_lookup_eval::<MW, F>(input, "a_val", input_sorted_addrs);
-                    let c_idx = addr_to_idx(&setup.0, input_sorted_addrs);
-                    let comp_d = emit_setup_horner_eval::<F>(&setup.1, "d_val", input_sorted_addrs);
-                    let add_gamma_a =
-                        MW::add_assign(quote! { a_val }, quote! { lookup_additive_challenge });
-                    let add_gamma_d =
-                        MW::add_assign(quote! { d_val }, quote! { lookup_additive_challenge });
-                    generate_two_output_body::<MW>(
-                        &mut body,
-                        &mul_batch,
-                        quote! {
-                            #comp_a
-                            #add_gamma_a;
-                            let c_val = evals.get_unchecked(#c_idx)[j];
-                            #comp_d
-                            #add_gamma_d;
-                        },
-                        |mw_mul, _mw_add| {
-                            let mul_ca = mw_mul(quote! { cb_tmp }, quote! { a_val });
-                            let sub_ca = MW::sub_assign(quote! { num }, quote! { cb_tmp });
-                            quote! {
-                                let mut num = d_val;
-                                let mut cb_tmp = c_val;
-                                #mul_ca;
-                                #sub_ca;
-                                num
-                            }
-                        },
-                        |mw_mul, _| {
-                            let mul_ad = mw_mul(quote! { den }, quote! { d_val });
-                            quote! { let mut den = a_val; #mul_ad; den }
-                        },
-                    );
-                }
-                _ => {
-                    panic!(
-                        "Unimplemented relation variant in GKR inlining generator: {:?}",
-                        gate.enforced_relation
-                    );
-                }
+            _ => {
+                panic!(
+                    "Unimplemented relation variant in GKR inlining generator: {:?}",
+                    gate.enforced_relation
+                );
             }
         }
     }

@@ -40,6 +40,8 @@ fn generate_common<MW: MersenneWrapper>() {
         use ::verifier_common::errors::ErrorCreator;
         use ::verifier_common::structs::{CommitBuf, TranscriptState};
         use ::verifier_common::lazy_vec::LazyVec;
+        pub use ::verifier_common::structs::{ext_from_nds, ext_from_raw_words};
+        pub use ::verifier_common::SUMCHECK_POLY_COEFFS;
         #field_use_stmts
 
         pub const EXT_DEGREE: usize =
@@ -83,7 +85,7 @@ fn generate_whir_verifier<MW: MersenneWrapper>(
 ) {
     let whir_schedule = circuit.whir_schedule();
 
-    let whir_initial = whir::generate_whir_inlined::<MW>(
+    let whir_initial = whir::generate_whir_initial_round::<MW>(
         whir_schedule,
         &gkr_files.oracles,
         gkr_files.trace_len_log2,

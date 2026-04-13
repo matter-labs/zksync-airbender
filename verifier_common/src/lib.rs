@@ -88,6 +88,15 @@ impl<const NUM_FOLDINGS: usize> SizedProofSecurityConfig<NUM_FOLDINGS> {
     }
 }
 
+/// GKR sumcheck polynomial is cubic
+pub const SUMCHECK_POLY_COEFFS: usize = 4;
+/// Dim-reducing layers use 4 evaluation points per address
+pub const DIM_REDUCE_EVAL_POINTS: usize = 4;
+/// Standard layers use 2 evaluation points per address (f(0) and f(1)).
+pub const STANDARD_EVAL_POINTS: usize = 2;
+/// One extra challenge for batching is drawn beyond the evaluation point challenges.
+pub const BATCHING_CHALLENGE_EXTRA: usize = 1;
+
 pub const fn transcript_challenge_array_size(num_elements: usize, pow_bits: usize) -> usize {
     if pow_bits > 0 {
         (num_elements + 1).next_multiple_of(blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS)
@@ -127,9 +136,9 @@ pub use field;
 pub use non_determinism_source;
 pub use prover;
 pub use transcript;
-pub mod fri_folding;
 #[cfg(feature = "gkr_verify")]
 pub mod errors;
+pub mod fri_folding;
 #[cfg(feature = "gkr_verify")]
 pub mod gkr;
 #[cfg(all(feature = "proof_utils", feature = "gkr_verify"))]

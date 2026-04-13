@@ -4,6 +4,18 @@ use transcript::Seed;
 
 pub use crate::lazy_vec::LazyVec;
 
+/// Oracle indices in eval/query ordering (used by flattener NDS data and verifier).
+/// The prover's `oracle_refs` array uses this order.
+pub const MEMORY_ORACLE_IDX: usize = 0;
+pub const WITNESS_ORACLE_IDX: usize = 1;
+pub const SETUP_ORACLE_IDX: usize = 2;
+pub const NUM_BASE_ORACLES: usize = 3;
+
+/// Transcript cap ordering: [setup, memory, witness].
+/// This is the order caps appear in the transcript (from `commit_initial`).
+pub const CAP_TRANSCRIPT_ORDER: [usize; NUM_BASE_ORACLES] =
+    [SETUP_ORACLE_IDX, MEMORY_ORACLE_IDX, WITNESS_ORACLE_IDX];
+
 #[cfg(any(test, feature = "proof_utils"))]
 pub mod flatten;
 

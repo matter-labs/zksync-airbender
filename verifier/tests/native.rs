@@ -39,3 +39,44 @@ macro_rules! generate_native_tests {
     };
 }
 verifier_common::gkr_circuits!(generate_native_tests);
+
+#[test]
+fn oracle_cap_ordering_matches_nds() {
+    use verifier_common::blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS;
+
+    for circuit_data in common::CIRCUITS.iter() {
+        let nds = circuit_data.load_nds();
+        let proof = circuit_data.proof();
+
+        let caps_by_eval_idx = [
+            &proof.whir_proof.memory_commitment.commitment.cap,
+            &proof.whir_proof.witness_commitment.commitment.cap,
+            &proof.whir_proof.setup_commitment.commitment.cap,
+        ];
+
+        with_circuit!(circuit_data.name, |m| {
+            let offsets = m::constants::ORACLE_CAP_TRANSCRIPT_OFFSETS;
+            let cap_words = m::constants::ORACLE_CAP_WORDS;
+            let caps_base = m::constants::CAPS_OFFSET_IN_TRANSCRIPT;
+
+            for oracle_idx in 0..m::constants::NUM_ORACLES {
+                let nds_start = caps_base + offsets[oracle_idx];
+                let nds_cap = &nds[nds_start..nds_start + cap_words[oracle_idx]];
+
+                let mut expected = Vec::new();
+                for hash in caps_by_eval_idx[oracle_idx].cap.iter() {
+                    expected.extend_from_slice(hash);
+                }
+
+                assert_eq!(
+                    nds_cap,
+                    &expected[..],
+                    "{}: oracle {} cap data mismatch at NDS offset {}",
+                    circuit_data.name,
+                    oracle_idx,
+                    nds_start
+                );
+            }
+        });
+    }
+}

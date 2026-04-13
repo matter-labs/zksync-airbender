@@ -11,33 +11,31 @@ pub fn generate_whir_common<MW: MersenneWrapper>(max_fold_steps: usize) -> Token
     } else {
         1
     };
-    let mul_pow_gen = MW::mul_assign(quote! { pow }, quote! { set_gen_inv });
-    let from_raw_words_i =
-        MW::field_from_reduced_raw_repr(quote! { unsafe { *words.get_unchecked(i) } });
-
-    let from_raw_0 = MW::field_from_reduced_raw_repr(quote! { raw0 });
-    let from_raw_1 = MW::field_from_reduced_raw_repr(quote! { raw1 });
-    let batch_mul_local_0 = MW::mul_assign_by_base(quote! { term }, quote! { base_val });
-    let batch_add_acc0 = MW::add_assign(quote! { *acc0 }, quote! { term });
-    let batch_mul_local_1 = MW::mul_assign_by_base(quote! { term }, quote! { base_val });
-    let batch_add_acc1 = MW::add_assign(quote! { *acc1 }, quote! { term });
-
-    let ws_add_p1_c1 = MW::add_assign(quote! { p1 }, quote! { c1 });
-    let ws_add_p1_c2 = MW::add_assign(quote! { p1 }, quote! { c2 });
-    let ws_add_sum_p1 = MW::add_assign(quote! { sum }, quote! { p1 });
-    let ws_mul_nc_alpha = MW::mul_assign(quote! { new_claim }, quote! { alpha });
-    let ws_add_nc_c1 = MW::add_assign(quote! { new_claim }, quote! { c1 });
-    let ws_add_nc_c0 = MW::add_assign(quote! { new_claim }, quote! { c0 });
-
-    let mul_gamma_pow = MW::mul_assign(quote! { gamma_pow }, quote! { gamma });
-
     let field_struct = MW::field_struct();
-    let fc_sub_t_b = MW::sub_assign(quote! { t }, quote! { b });
-    let fc_mul_t_challenge = MW::mul_assign(quote! { t }, quote! { challenge });
-    let fc_mul_t_root = MW::mul_assign_by_base(quote! { t }, quote! { root });
-    let fc_add_t_a = MW::add_assign(quote! { t }, quote! { a });
-    let fc_add_t_b = MW::add_assign(quote! { t }, quote! { b });
-    let fc_mul_t_half = MW::mul_assign_by_base(quote! { t }, quote! { #field_struct::HALF });
+
+    // read_and_batch_leaf ops
+    let from_raw = MW::field_from_reduced_raw_repr(quote! { raw });
+    let mul_term_base = MW::mul_assign_by_base(quote! { term }, quote! { base_val });
+    let add_acc0_term = MW::add_assign(quote! { *acc0 }, quote! { term });
+    let add_acc1_term = MW::add_assign(quote! { *acc1 }, quote! { term });
+
+    // whir sumcheck ops
+    let add_p1_c1 = MW::add_assign(quote! { p1 }, quote! { c1 });
+    let add_p1_c2 = MW::add_assign(quote! { p1 }, quote! { c2 });
+    let add_sum_p1 = MW::add_assign(quote! { sum }, quote! { p1 });
+    let mul_claim_alpha = MW::mul_assign(quote! { new_claim }, quote! { alpha });
+    let add_claim_c1 = MW::add_assign(quote! { new_claim }, quote! { c1 });
+    let add_claim_c0 = MW::add_assign(quote! { new_claim }, quote! { c0 });
+
+    // gamma power / fold coset ops
+    let mul_pow_gen = MW::mul_assign(quote! { pow }, quote! { set_gen_inv });
+    let mul_gamma_pow = MW::mul_assign(quote! { gamma_pow }, quote! { gamma });
+    let sub_t_b = MW::sub_assign(quote! { t }, quote! { b });
+    let mul_t_challenge = MW::mul_assign(quote! { t }, quote! { challenge });
+    let mul_t_root = MW::mul_assign_by_base(quote! { t }, quote! { root });
+    let add_t_a = MW::add_assign(quote! { t }, quote! { a });
+    let add_t_b = MW::add_assign(quote! { t }, quote! { b });
+    let mul_t_half = MW::mul_assign_by_base(quote! { t }, quote! { #field_struct::HALF });
 
     quote! {
         #[inline(always)]
@@ -88,26 +86,23 @@ pub fn generate_whir_common<MW: MersenneWrapper>(max_fold_steps: usize) -> Token
 
             let p0 = c0;
             let mut p1 = c0;
-            #ws_add_p1_c1;
-            #ws_add_p1_c2;
+            #add_p1_c1;
+            #add_p1_c2;
             let mut sum = p0;
-            #ws_add_sum_p1;
+            #add_sum_p1;
             if sum != claim {
                 return Err(E::whir_sumcheck_failed(round));
             }
 
             ts.commit(&mut buf, WHIR_SC_DATA_WORDS);
 
-            let mut challenge_buf = LazyVec::<#quartic_struct, 1>::new();
-            unsafe { challenge_buf.set_len(1); }
-            draw_field_els_into::<BLAKE2S_DIGEST_SIZE_U32_WORDS>(ts, challenge_buf.as_mut_slice());
-            let alpha = unsafe { *challenge_buf.get_unchecked(0) };
+            let alpha = draw_single_field_el(ts);
 
             let mut new_claim = c2;
-            #ws_mul_nc_alpha;
-            #ws_add_nc_c1;
-            #ws_mul_nc_alpha;
-            #ws_add_nc_c0;
+            #mul_claim_alpha;
+            #add_claim_c1;
+            #mul_claim_alpha;
+            #add_claim_c0;
 
             Ok((new_claim, alpha))
         }
@@ -169,16 +164,16 @@ pub fn generate_whir_common<MW: MersenneWrapper>(max_fold_steps: usize) -> Token
                     let b = unsafe { *src.get_unchecked(src_idx + 1) };
 
                     let mut t = a;
-                    #fc_sub_t_b;
-                    #fc_mul_t_challenge;
+                    #sub_t_b;
+                    #mul_t_challenge;
 
                     let mut root = root_inv;
                     field_ops::mul_assign(&mut root, unsafe { high_powers_offsets.get_unchecked(pair_idx) });
-                    #fc_mul_t_root;
+                    #mul_t_root;
 
-                    #fc_add_t_a;
-                    #fc_add_t_b;
-                    #fc_mul_t_half;
+                    #add_t_a;
+                    #add_t_b;
+                    #mul_t_half;
 
                     unsafe { *dst.get_unchecked_mut(pair_idx) = t; }
                     pair_idx += 1;
@@ -240,12 +235,10 @@ pub fn generate_whir_common<MW: MersenneWrapper>(max_fold_steps: usize) -> Token
         }
 
         #[inline(always)]
-        pub fn ext_from_raw_words(words: &[u32]) -> #quartic_struct {
+        pub fn ext_from_raw_word_slice(words: &[u32]) -> #quartic_struct {
             debug_assert!(words.len() >= EXT_DEGREE);
             let raw = unsafe { (words.as_ptr() as *const [u32; EXT_DEGREE]).as_ref_unchecked() };
-            let mut tmp = LazyVec::<#quartic_struct, 1>::new();
-            tmp.push_from_raw_words(raw);
-            unsafe { *tmp.get_unchecked(0) }
+            ext_from_raw_words::<#field_struct, #quartic_struct>(raw)
         }
 
         #[inline(always)]
@@ -263,19 +256,19 @@ pub fn generate_whir_common<MW: MersenneWrapper>(max_fold_steps: usize) -> Token
                 let gamma = *gamma_powers.get_unchecked(gamma_offset + col);
                 let idx = col * 2;
 
-                let raw0 = read_reduced_field_el::<I>();
-                *hash_buf.get_unchecked_mut(idx) = raw0;
-                let base_val = #from_raw_0;
+                let raw = read_reduced_field_el::<I>();
+                *hash_buf.get_unchecked_mut(idx) = raw;
+                let base_val = #from_raw;
                 let mut term = gamma;
-                #batch_mul_local_0;
-                #batch_add_acc0;
+                #mul_term_base;
+                #add_acc0_term;
 
-                let raw1 = read_reduced_field_el::<I>();
-                *hash_buf.get_unchecked_mut(idx + 1) = raw1;
-                let base_val = #from_raw_1;
+                let raw = read_reduced_field_el::<I>();
+                *hash_buf.get_unchecked_mut(idx + 1) = raw;
+                let base_val = #from_raw;
                 let mut term = gamma;
-                #batch_mul_local_1;
-                #batch_add_acc1;
+                #mul_term_base;
+                #add_acc1_term;
 
                 col += 1;
             }
@@ -283,11 +276,10 @@ pub fn generate_whir_common<MW: MersenneWrapper>(max_fold_steps: usize) -> Token
 
         #[inline(always)]
         #[allow(clippy::too_many_arguments)]
-        pub unsafe fn process_oracle_query<I: NonDeterminismSource, E: ErrorCreator, const BUF_SIZE: usize>(
+        pub unsafe fn process_oracle_query<I: NonDeterminismSource, E: ErrorCreator, const BUF_SIZE: usize, const LEAF_WORDS: usize>(
             hasher: &mut DelegatedBlake2sState,
             hash_buf: &mut ::verifier_common::blake2s_u32::AlignedArray64<core::mem::MaybeUninit<u32>, BUF_SIZE>,
             num_columns: usize,
-            leaf_words: usize,
             query_index: usize,
             depth: usize,
             cap: &[u32],
@@ -301,18 +293,18 @@ pub fn generate_whir_common<MW: MersenneWrapper>(max_fold_steps: usize) -> Token
 
             let buf = hash_buf.assume_init_subarray_mut::<BUF_SIZE>();
             read_and_batch_leaf::<I>(
-                &mut buf[..leaf_words], num_columns,
+                &mut buf[..LEAF_WORDS], num_columns,
                 gamma_powers, gamma_offset, acc0, acc1,
             );
 
-            let block_end = leaf_words.next_multiple_of(
+            let block_end = LEAF_WORDS.next_multiple_of(
                 ::verifier_common::blake2s_u32::BLAKE2S_BLOCK_SIZE_U32_WORDS,
             );
-            if block_end > leaf_words {
-                hash_buf.zero_range(leaf_words, block_end);
+            if block_end > LEAF_WORDS {
+                hash_buf.zero_range(LEAF_WORDS, block_end);
             }
             let buf = hash_buf.assume_init_subarray::<BUF_SIZE>();
-            hash_leaf_data_into_state(hasher, buf, leaf_words);
+            hash_leaf_data_into_state(hasher, buf, LEAF_WORDS);
             if !verify_merkle_path::<I>(hasher, query_index, depth, cap) {
                 return Err(E::whir_merkle_path_failed(query));
             }

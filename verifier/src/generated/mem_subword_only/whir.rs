@@ -5,7 +5,9 @@ use super::common::{
 };
 use super::constants::*;
 use core::mem::MaybeUninit;
-use verifier_common::blake2s_u32::{AlignedArray64, BLAKE2S_BLOCK_SIZE_U32_WORDS};
+use verifier_common::blake2s_u32::{
+    AlignedArray64, BLAKE2S_BLOCK_SIZE_U32_WORDS, BLAKE2S_DIGEST_SIZE_U32_WORDS,
+};
 use verifier_common::errors::ErrorCreator;
 use verifier_common::field::baby_bear::base::BabyBearField;
 use verifier_common::field::baby_bear::ext4::BabyBearExt4;
@@ -23,7 +25,6 @@ const INITIAL_NUM_QUERIES: usize = 68usize;
 const INITIAL_POW_BITS: u32 = 24u32;
 const INITIAL_DRAW_WORDS: usize = 56usize;
 const INITIAL_RS_DOMAIN_LOG2: usize = 25usize;
-const ORACLE_LEAF_WORDS: [usize; NUM_ORACLES] = [58usize, 32usize, 18usize];
 const HASH_BUF_SIZE: usize = 64usize;
 const FOLD_BUF_HALF: usize = 1usize;
 const NUM_COSETS: usize = 2usize;
@@ -65,25 +66,29 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
             round_idx += 1;
         }
         const CAP_COMMIT_BUF: usize = {
-            let total =
-                ::verifier_common::blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS + WHIR_CAP_WORDS;
-            (total + ::verifier_common::blake2s_u32::BLAKE2S_BLOCK_SIZE_U32_WORDS - 1)
-                / ::verifier_common::blake2s_u32::BLAKE2S_BLOCK_SIZE_U32_WORDS
-                * ::verifier_common::blake2s_u32::BLAKE2S_BLOCK_SIZE_U32_WORDS
+            let total = BLAKE2S_DIGEST_SIZE_U32_WORDS + WHIR_CAP_WORDS;
+            (total + BLAKE2S_BLOCK_SIZE_U32_WORDS - 1) / BLAKE2S_BLOCK_SIZE_U32_WORDS
+                * BLAKE2S_BLOCK_SIZE_U32_WORDS
         };
         let intermediate_cap =
             read_commit_return_merkle_cap::<I, WHIR_CAP_WORDS, CAP_COMMIT_BUF>(ts);
         let _ood_point = draw_single_field_el(ts);
-        let mut ood_buf = CommitBuf::<16usize>::new();
+        const OOD_DATA_WORDS: usize = super::common::EXT_DEGREE;
+        const OOD_COMMIT_BUF: usize = {
+            let total = BLAKE2S_DIGEST_SIZE_U32_WORDS + OOD_DATA_WORDS;
+            (total + BLAKE2S_BLOCK_SIZE_U32_WORDS - 1) / BLAKE2S_BLOCK_SIZE_U32_WORDS
+                * BLAKE2S_BLOCK_SIZE_U32_WORDS
+        };
+        let mut ood_buf = CommitBuf::<OOD_COMMIT_BUF>::new();
         {
             let mut i = 0;
-            while i < 4usize {
+            while i < OOD_DATA_WORDS {
                 ood_buf.data_write(i, read_reduced_field_el::<I>());
                 i += 1;
             }
         }
         let ood_value: BabyBearExt4 = unsafe { *ood_buf.data_as::<BabyBearExt4>(1).as_ptr() };
-        ts.commit(&mut ood_buf, 4usize);
+        ts.commit(&mut ood_buf, OOD_DATA_WORDS);
         read_and_verify_pow::<I>(ts, INITIAL_POW_BITS);
         let query_indices = draw_query_indices::<INITIAL_NUM_QUERIES, INITIAL_DRAW_WORDS>(
             ts,
@@ -110,34 +115,45 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
                 compute_tree_index(query_index, NUM_COSETS, NUM_COSETS_LOG2, COSET_TREE_SIZE);
             let mut acc0 = BabyBearExt4::ZERO;
             let mut acc1 = BabyBearExt4::ZERO;
-            let mut gamma_offset = 0usize;
-            let mut cap_offset = 0usize;
-            let mut oracle_idx = 0;
-            while oracle_idx < NUM_ORACLES {
-                let num_cols = ORACLE_NUM_COLS[oracle_idx];
-                let leaf_words = ORACLE_LEAF_WORDS[oracle_idx];
-                let cap_words = ORACLE_CAP_WORDS[oracle_idx];
-                let depth = ORACLE_DEPTHS[oracle_idx];
-                if num_cols > 0 {
-                    process_oracle_query::<I, E, WHIR_HASH_BUF_SIZE>(
-                        &mut ts.hasher,
-                        hash_buf,
-                        num_cols,
-                        leaf_words,
-                        tree_index,
-                        depth,
-                        &oracle_caps[cap_offset..cap_offset + cap_words],
-                        &gamma_powers[..],
-                        gamma_offset,
-                        &mut acc0,
-                        &mut acc1,
-                        q,
-                    )?;
-                }
-                gamma_offset += num_cols;
-                cap_offset += cap_words;
-                oracle_idx += 1;
-            }
+            process_oracle_query::<I, E, WHIR_HASH_BUF_SIZE, 58usize>(
+                &mut ts.hasher,
+                hash_buf,
+                29usize,
+                tree_index,
+                ORACLE_DEPTHS[0usize],
+                &oracle_caps[0usize..0usize + ORACLE_CAP_WORDS[0usize]],
+                &gamma_powers[..],
+                0usize,
+                &mut acc0,
+                &mut acc1,
+                q,
+            )?;
+            process_oracle_query::<I, E, WHIR_HASH_BUF_SIZE, 32usize>(
+                &mut ts.hasher,
+                hash_buf,
+                16usize,
+                tree_index,
+                ORACLE_DEPTHS[1usize],
+                &oracle_caps[128usize..128usize + ORACLE_CAP_WORDS[1usize]],
+                &gamma_powers[..],
+                29usize,
+                &mut acc0,
+                &mut acc1,
+                q,
+            )?;
+            process_oracle_query::<I, E, WHIR_HASH_BUF_SIZE, 18usize>(
+                &mut ts.hasher,
+                hash_buf,
+                9usize,
+                tree_index,
+                ORACLE_DEPTHS[2usize],
+                &oracle_caps[256usize..256usize + ORACLE_CAP_WORDS[2usize]],
+                &gamma_powers[..],
+                45usize,
+                &mut acc0,
+                &mut acc1,
+                q,
+            )?;
             let batched_evals = [acc0, acc1];
             let folded = fold_coset(
                 &batched_evals,
@@ -157,7 +173,9 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
         Ok((claim, intermediate_cap))
     }
 }
-use super::common::{compute_high_powers_offsets, ext_from_raw_words, EXT_DEGREE, MAX_HIGH_POWERS};
+use super::common::{
+    compute_high_powers_offsets, ext_from_raw_word_slice, EXT_DEGREE, MAX_HIGH_POWERS,
+};
 use verifier_common::whir::{
     hash_leaf_data_into_state, read_return_merkle_cap, verify_merkle_path,
 };
@@ -171,7 +189,10 @@ const INTERNAL_COSET_TREE_SIZE: [usize; NUM_INTERNAL_ROUNDS] =
 const INTERNAL_RS_DOMAIN_LOG2: [usize; NUM_INTERNAL_ROUNDS] = [26usize, 25usize, 22usize, 18usize];
 const MAX_INTERNAL_FOLD_STEPS: usize = 4usize;
 const MAX_INTERNAL_VALUES_PER_LEAF: usize = 16usize;
-const INTERNAL_HASH_BUF_SIZE: usize = 64usize;
+const MAX_INTERNAL_LEAF_EXT_WORDS: usize = MAX_INTERNAL_VALUES_PER_LEAF * EXT_DEGREE;
+const INTERNAL_HASH_BUF_SIZE: usize = MAX_INTERNAL_LEAF_EXT_WORDS
+    .div_ceil(BLAKE2S_BLOCK_SIZE_U32_WORDS)
+    * BLAKE2S_BLOCK_SIZE_U32_WORDS;
 const MAX_INTERNAL_FOLD_BUF_HALF: usize = 8usize;
 const MAX_INTERNAL_NUM_QUERIES: usize = 23usize;
 const MAX_INTERNAL_DRAW_WORDS: usize = 24usize;
@@ -238,17 +259,17 @@ pub fn verify_internal_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
                     i += 1;
                 }
             }
-            let block_end = leaf_ext_words.next_multiple_of(BLAKE2S_BLOCK_SIZE_U32_WORDS);
+            let block_end = (leaf_ext_words).next_multiple_of(BLAKE2S_BLOCK_SIZE_U32_WORDS);
             hash_buf.zero_range(leaf_ext_words, block_end);
             let init_buf = hash_buf.assume_init_subarray::<INTERNAL_HASH_BUF_SIZE>();
             hash_leaf_data_into_state(&mut ts.hasher, init_buf, leaf_ext_words);
             if !verify_merkle_path::<I>(&mut ts.hasher, tree_index, oracle_depth, prev_oracle_cap) {
                 return Err(E::whir_merkle_path_failed(q));
             }
-            let mut evals: LazyVec<BabyBearExt4, MAX_INTERNAL_VALUES_PER_LEAF> = LazyVec::new();
+            let mut evals: LazyVec<BabyBearExt4, { MAX_INTERNAL_VALUES_PER_LEAF }> = LazyVec::new();
             let mut j = 0;
-            while j < values_per_leaf {
-                evals.push(ext_from_raw_words(
+            while j < MAX_INTERNAL_VALUES_PER_LEAF {
+                evals.push(ext_from_raw_word_slice(
                     &init_buf[j * EXT_DEGREE..(j + 1) * EXT_DEGREE],
                 ));
                 j += 1;
@@ -274,8 +295,9 @@ pub fn verify_internal_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
 const FINAL_FOLD_STEPS: usize = 4usize;
 const FINAL_NUM_QUERIES: usize = 10usize;
 const FINAL_VALUES_PER_LEAF: usize = 16usize;
-const FINAL_LEAF_EXT_WORDS: usize = 64usize;
-const FINAL_HASH_BUF_SIZE: usize = 64usize;
+const FINAL_LEAF_EXT_WORDS: usize = FINAL_VALUES_PER_LEAF * EXT_DEGREE;
+const FINAL_HASH_BUF_SIZE: usize =
+    FINAL_LEAF_EXT_WORDS.div_ceil(BLAKE2S_BLOCK_SIZE_U32_WORDS) * BLAKE2S_BLOCK_SIZE_U32_WORDS;
 const FINAL_FOLD_BUF_HALF: usize = 8usize;
 const FINAL_QUERY_INDEX_BITS: usize = 10usize;
 const FINAL_RS_DOMAIN_LOG2: usize = 14usize;
@@ -338,18 +360,17 @@ pub fn verify_final_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
                     i += 1;
                 }
             }
-            const FINAL_BLOCK_END: usize =
-                FINAL_LEAF_EXT_WORDS.next_multiple_of(BLAKE2S_BLOCK_SIZE_U32_WORDS);
-            hash_buf.zero_range(FINAL_LEAF_EXT_WORDS, FINAL_BLOCK_END);
+            let block_end = (FINAL_LEAF_EXT_WORDS).next_multiple_of(BLAKE2S_BLOCK_SIZE_U32_WORDS);
+            hash_buf.zero_range(FINAL_LEAF_EXT_WORDS, block_end);
             let init_buf = hash_buf.assume_init_subarray::<FINAL_HASH_BUF_SIZE>();
             hash_leaf_data_into_state(&mut ts.hasher, init_buf, FINAL_LEAF_EXT_WORDS);
             if !verify_merkle_path::<I>(&mut ts.hasher, tree_index, oracle_depth, prev_oracle_cap) {
                 return Err(E::whir_merkle_path_failed(q));
             }
-            let mut evals: LazyVec<BabyBearExt4, FINAL_VALUES_PER_LEAF> = LazyVec::new();
+            let mut evals: LazyVec<BabyBearExt4, { FINAL_VALUES_PER_LEAF }> = LazyVec::new();
             let mut j = 0;
             while j < FINAL_VALUES_PER_LEAF {
-                evals.push(ext_from_raw_words(
+                evals.push(ext_from_raw_word_slice(
                     &init_buf[j * EXT_DEGREE..(j + 1) * EXT_DEGREE],
                 ));
                 j += 1;

@@ -1,6 +1,7 @@
 use super::common::{
-    dot_eq, draw_field_els_into, fold_standard_claims, make_eq_poly, read_field_el,
-    read_reduced_field_el, verify_final_step_check, verify_sumcheck_rounds, EXT_DEGREE,
+    dot_eq, draw_field_els_into, draw_single_field_el, ext_from_nds, ext_from_raw_words,
+    fold_standard_claims, make_eq_poly, read_field_el, read_reduced_field_el,
+    verify_final_step_check, verify_sumcheck_rounds, EXT_DEGREE,
 };
 use super::constants::*;
 use verifier_common::errors::ErrorCreator;
@@ -2935,7 +2936,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
                     (transcript_buf.as_slice().as_ptr().add(base) as *const [u32; EXT_DEGREE])
                         .as_ref_unchecked()
                 };
-                lin.push_from_raw_words(raw);
+                lin.push(ext_from_raw_words::<BabyBearField, BabyBearExt4>(raw));
                 i += 1;
             }
             let add_base = ext_start + num_lin * EXT_DEGREE;
@@ -2943,9 +2944,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
                 (transcript_buf.as_slice().as_ptr().add(add_base) as *const [u32; EXT_DEGREE])
                     .as_ref_unchecked()
             };
-            let mut additive_tmp = LazyVec::<BabyBearExt4, 1>::new();
-            additive_tmp.push_from_raw_words(raw);
-            let additive = unsafe { *additive_tmp.get_unchecked(0) };
+            let additive = ext_from_raw_words::<BabyBearField, BabyBearExt4>(raw);
             (unsafe { lin.into_array() }, additive)
         };
         let address_high_bits_shift: u32 = 0u32;
@@ -4579,12 +4578,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             state.batching_challenge = next_batching;
             state.prev_point_len = fc_len;
         }
-        let mut draw_buf = LazyVec::<BabyBearExt4, 1>::new();
-        unsafe {
-            draw_buf.set_len(1);
-        }
-        draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, draw_buf.as_mut_slice());
-        let whir_batching_challenge = *draw_buf.get(0);
+        let whir_batching_challenge = draw_single_field_el(&mut ts);
         let grand_product_accumulator: BabyBearExt4 = read_field_el::<I>();
         Ok(GKRVerifierOutput {
             base_layer_claims: state.prev_claims,

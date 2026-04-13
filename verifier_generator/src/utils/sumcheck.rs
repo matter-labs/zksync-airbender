@@ -8,12 +8,12 @@ pub fn generate_sumcheck_helpers<MW: MersenneWrapper>() -> TokenStream {
     let quartic_zero = MW::quartic_zero();
     let quartic_one = MW::quartic_one();
 
-    let dot_mul_t_eq = MW::mul_assign(quote! { t }, quote! { *unsafe { eq.get_unchecked(i) } });
-    let dot_add_result_t = MW::add_assign(quote! { result }, quote! { t });
+    let mul_t_eq = MW::mul_assign(quote! { t }, quote! { *unsafe { eq.get_unchecked(i) } });
+    let add_result_t = MW::add_assign(quote! { result }, quote! { t });
 
-    let eq_sub_f0_c = MW::sub_assign(quote! { f0 }, quote! { c });
-    let eq_mul_left_f0 = MW::mul_assign(quote! { left }, quote! { f0 });
-    let eq_mul_right_f1 = MW::mul_assign(quote! { right }, quote! { f1 });
+    let sub_f0_c = MW::sub_assign(quote! { f0 }, quote! { c });
+    let mul_left_f0 = MW::mul_assign(quote! { left }, quote! { f0 });
+    let mul_right_f1 = MW::mul_assign(quote! { right }, quote! { f1 });
 
     quote! {
         #[inline(always)]
@@ -21,8 +21,8 @@ pub fn generate_sumcheck_helpers<MW: MersenneWrapper>() -> TokenStream {
             let mut result = #quartic_zero;
             for i in 0..N {
                 let mut t = unsafe { *values.get_unchecked(i) };
-                #dot_mul_t_eq;
-                #dot_add_result_t;
+                #mul_t_eq;
+                #add_result_t;
             }
             result
         }
@@ -40,15 +40,15 @@ pub fn generate_sumcheck_helpers<MW: MersenneWrapper>() -> TokenStream {
                 let c = unsafe { *challenges.get_unchecked(idx) };
                 let f1 = c;
                 let mut f0 = #quartic_one;
-                #eq_sub_f0_c;
+                #sub_f0_c;
                 let half = size;
 
                 for i in (0..half).rev() {
                     let prev = unsafe { *buf.get_unchecked(i) };
                     let mut left = prev;
                     let mut right = prev;
-                    #eq_mul_left_f0;
-                    #eq_mul_right_f1;
+                    #mul_left_f0;
+                    #mul_right_f1;
                     unsafe {
                         buf.set_unchecked(i, left);
                         buf.set_unchecked(i + half, right);

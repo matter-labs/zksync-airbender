@@ -6,7 +6,9 @@ use verifier_common::field::{Field, FieldExtension, PrimeField};
 use verifier_common::field_ops;
 use verifier_common::lazy_vec::LazyVec;
 use verifier_common::non_determinism_source::NonDeterminismSource;
+pub use verifier_common::structs::{ext_from_nds, ext_from_raw_words};
 use verifier_common::structs::{CommitBuf, TranscriptState};
+pub use verifier_common::SUMCHECK_POLY_COEFFS;
 pub const EXT_DEGREE: usize = <BabyBearExt4 as FieldExtension<BabyBearField>>::DEGREE;
 #[inline(always)]
 pub fn read_reduced_field_el<I: NonDeterminismSource>() -> u32 {
@@ -14,9 +16,7 @@ pub fn read_reduced_field_el<I: NonDeterminismSource>() -> u32 {
 }
 #[inline(always)]
 pub fn read_field_el<I: NonDeterminismSource>() -> BabyBearExt4 {
-    let mut tmp = LazyVec::<BabyBearExt4, 1>::new();
-    tmp.push_from_nds::<I>();
-    unsafe { *tmp.get_unchecked(0) }
+    ext_from_nds::<BabyBearField, BabyBearExt4, I>()
 }
 #[inline(always)]
 pub fn read_field_els<I: NonDeterminismSource>(dst: &mut [BabyBearExt4]) {
@@ -45,22 +45,21 @@ pub fn draw_field_els_into<const BUF_CAP: usize>(
         let raw = unsafe {
             (words.as_slice().as_ptr().add(base) as *const [u32; EXT_DEGREE]).as_ref_unchecked()
         };
-        let mut tmp = LazyVec::<BabyBearExt4, 1>::new();
-        tmp.push_from_raw_words(raw);
         unsafe {
-            *dst.get_unchecked_mut(i) = *tmp.get_unchecked(0);
+            *dst.get_unchecked_mut(i) = ext_from_raw_words::<BabyBearField, BabyBearExt4>(raw);
         }
         i += 1;
     }
 }
 #[inline(always)]
 pub fn draw_single_field_el(ts: &mut TranscriptState) -> BabyBearExt4 {
-    let mut buf = LazyVec::<BabyBearExt4, 1>::new();
+    let mut words = LazyVec::<u32, BLAKE2S_DIGEST_SIZE_U32_WORDS>::new();
     unsafe {
-        buf.set_len(1);
+        words.set_len(BLAKE2S_DIGEST_SIZE_U32_WORDS);
+        ts.draw_raw(words.as_mut_slice());
     }
-    draw_field_els_into::<BLAKE2S_DIGEST_SIZE_U32_WORDS>(ts, buf.as_mut_slice());
-    *buf.get(0)
+    let raw = unsafe { (words.as_slice().as_ptr() as *const [u32; EXT_DEGREE]).as_ref_unchecked() };
+    ext_from_raw_words::<BabyBearField, BabyBearExt4>(raw)
 }
 #[inline(always)]
 pub fn dot_eq<const N: usize>(values: &[BabyBearExt4; N], eq: &[BabyBearExt4; N]) -> BabyBearExt4 {
@@ -116,7 +115,7 @@ pub fn verify_sumcheck_rounds<
 ) -> Result<(BabyBearExt4, BabyBearExt4), E::Error> {
     let mut claim = initial_claim;
     let mut eq_prefactor = BabyBearExt4::ONE;
-    let coeff_data_words = 4 * EXT_DEGREE;
+    let coeff_data_words = SUMCHECK_POLY_COEFFS * EXT_DEGREE;
     let mut commit_buf = CommitBuf::<COMMIT_BUF>::new();
     let mut draw_buf = LazyVec::<u32, BLAKE2S_DIGEST_SIZE_U32_WORDS>::new();
     unsafe {
@@ -149,9 +148,7 @@ pub fn verify_sumcheck_rounds<
             let raw = unsafe {
                 (draw_buf.as_slice().as_ptr() as *const [u32; EXT_DEGREE]).as_ref_unchecked()
             };
-            let mut tmp = LazyVec::<BabyBearExt4, 1>::new();
-            tmp.push_from_raw_words(raw);
-            unsafe { *tmp.get_unchecked(0) }
+            ext_from_raw_words::<BabyBearField, BabyBearExt4>(raw)
         };
         {
             let mut result = coeffs[3];
@@ -268,12 +265,7 @@ pub fn verify_whir_sumcheck_step<I: NonDeterminismSource, E: ErrorCreator>(
         return Err(E::whir_sumcheck_failed(round));
     }
     ts.commit(&mut buf, WHIR_SC_DATA_WORDS);
-    let mut challenge_buf = LazyVec::<BabyBearExt4, 1>::new();
-    unsafe {
-        challenge_buf.set_len(1);
-    }
-    draw_field_els_into::<BLAKE2S_DIGEST_SIZE_U32_WORDS>(ts, challenge_buf.as_mut_slice());
-    let alpha = unsafe { *challenge_buf.get_unchecked(0) };
+    let alpha = draw_single_field_el(ts);
     let mut new_claim = c2;
     field_ops::mul_assign(&mut new_claim, &alpha);
     field_ops::add_assign(&mut new_claim, &c1);
@@ -396,12 +388,10 @@ pub fn compute_high_powers_offsets(
     bitreverse_inplace(&mut dst.as_mut_slice()[..count]);
 }
 #[inline(always)]
-pub fn ext_from_raw_words(words: &[u32]) -> BabyBearExt4 {
+pub fn ext_from_raw_word_slice(words: &[u32]) -> BabyBearExt4 {
     debug_assert!(words.len() >= EXT_DEGREE);
     let raw = unsafe { (words.as_ptr() as *const [u32; EXT_DEGREE]).as_ref_unchecked() };
-    let mut tmp = LazyVec::<BabyBearExt4, 1>::new();
-    tmp.push_from_raw_words(raw);
-    unsafe { *tmp.get_unchecked(0) }
+    ext_from_raw_words::<BabyBearField, BabyBearExt4>(raw)
 }
 #[inline(always)]
 #[allow(clippy::too_many_arguments)]
@@ -417,15 +407,15 @@ pub unsafe fn read_and_batch_leaf<I: NonDeterminismSource>(
     while col < num_columns {
         let gamma = *gamma_powers.get_unchecked(gamma_offset + col);
         let idx = col * 2;
-        let raw0 = read_reduced_field_el::<I>();
-        *hash_buf.get_unchecked_mut(idx) = raw0;
-        let base_val = BabyBearField::from_reduced_raw_repr(raw0);
+        let raw = read_reduced_field_el::<I>();
+        *hash_buf.get_unchecked_mut(idx) = raw;
+        let base_val = BabyBearField::from_reduced_raw_repr(raw);
         let mut term = gamma;
         field_ops::mul_assign_by_base(&mut term, &base_val);
         field_ops::add_assign(&mut *acc0, &term);
-        let raw1 = read_reduced_field_el::<I>();
-        *hash_buf.get_unchecked_mut(idx + 1) = raw1;
-        let base_val = BabyBearField::from_reduced_raw_repr(raw1);
+        let raw = read_reduced_field_el::<I>();
+        *hash_buf.get_unchecked_mut(idx + 1) = raw;
+        let base_val = BabyBearField::from_reduced_raw_repr(raw);
         let mut term = gamma;
         field_ops::mul_assign_by_base(&mut term, &base_val);
         field_ops::add_assign(&mut *acc1, &term);
@@ -438,6 +428,7 @@ pub unsafe fn process_oracle_query<
     I: NonDeterminismSource,
     E: ErrorCreator,
     const BUF_SIZE: usize,
+    const LEAF_WORDS: usize,
 >(
     hasher: &mut DelegatedBlake2sState,
     hash_buf: &mut ::verifier_common::blake2s_u32::AlignedArray64<
@@ -445,7 +436,6 @@ pub unsafe fn process_oracle_query<
         BUF_SIZE,
     >,
     num_columns: usize,
-    leaf_words: usize,
     query_index: usize,
     depth: usize,
     cap: &[u32],
@@ -458,7 +448,7 @@ pub unsafe fn process_oracle_query<
     use verifier_common::whir::{hash_leaf_data_into_state, verify_merkle_path};
     let buf = hash_buf.assume_init_subarray_mut::<BUF_SIZE>();
     read_and_batch_leaf::<I>(
-        &mut buf[..leaf_words],
+        &mut buf[..LEAF_WORDS],
         num_columns,
         gamma_powers,
         gamma_offset,
@@ -466,12 +456,12 @@ pub unsafe fn process_oracle_query<
         acc1,
     );
     let block_end =
-        leaf_words.next_multiple_of(::verifier_common::blake2s_u32::BLAKE2S_BLOCK_SIZE_U32_WORDS);
-    if block_end > leaf_words {
-        hash_buf.zero_range(leaf_words, block_end);
+        LEAF_WORDS.next_multiple_of(::verifier_common::blake2s_u32::BLAKE2S_BLOCK_SIZE_U32_WORDS);
+    if block_end > LEAF_WORDS {
+        hash_buf.zero_range(LEAF_WORDS, block_end);
     }
     let buf = hash_buf.assume_init_subarray::<BUF_SIZE>();
-    hash_leaf_data_into_state(hasher, buf, leaf_words);
+    hash_leaf_data_into_state(hasher, buf, LEAF_WORDS);
     if !verify_merkle_path::<I>(hasher, query_index, depth, cap) {
         return Err(E::whir_merkle_path_failed(query));
     }

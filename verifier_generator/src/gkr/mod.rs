@@ -5,6 +5,8 @@ use crate::mersenne_wrapper::MersenneWrapper;
 pub use crate::utils::{
     addr_to_idx, coeff_to_internal_repr, collect_extra_addrs_from_cached_relations,
     collect_sorted_unique_addrs, compute_max_pow, transform_gkr_address,
+    BATCHING_CHALLENGE_EXTRA, DIM_REDUCE_EVAL_POINTS, STANDARD_EVAL_POINTS,
+    SUMCHECK_POLY_COEFFS,
 };
 use prover::cs::definitions::GKRAddress;
 use prover::cs::gkr_compiler::{
@@ -43,32 +45,33 @@ pub fn generate_gkr_common<MW: MersenneWrapper>() -> TokenStream {
     let quartic_struct = MW::quartic_struct();
     let quartic_one = MW::quartic_one();
 
-    let sc_add_p1_c1 = MW::add_assign(quote! { p1 }, quote! { coeffs[1] });
-    let sc_add_p1_c2 = MW::add_assign(quote! { p1 }, quote! { coeffs[2] });
-    let sc_add_p1_c3 = MW::add_assign(quote! { p1 }, quote! { coeffs[3] });
-    let sc_add_sum_p1 = MW::add_assign(quote! { sum }, quote! { p1 });
-    let sc_mul_sum_eq = MW::mul_assign(quote! { sum }, quote! { eq_prefactor });
-    let sc_mul_res_rk = MW::mul_assign(quote! { result }, quote! { r_k });
-    let sc_add_res_c2 = MW::add_assign(quote! { result }, quote! { coeffs[2] });
-    let sc_add_res_c1 = MW::add_assign(quote! { result }, quote! { coeffs[1] });
-    let sc_add_res_c0 = MW::add_assign(quote! { result }, quote! { coeffs[0] });
-    let sc_sub_omr_rk = MW::sub_assign(quote! { one_minus_r }, quote! { r_k });
-    let sc_sub_omp_p = MW::sub_assign(quote! { one_minus_p }, quote! { p });
-    let sc_mul_t_omp = MW::mul_assign(quote! { t }, quote! { one_minus_p });
-    let sc_mul_rp_p = MW::mul_assign(quote! { rp }, quote! { p });
-    let sc_add_t_rp = MW::add_assign(quote! { t }, quote! { rp });
+    // sumcheck round operations
+    let add_p1_c1 = MW::add_assign(quote! { p1 }, quote! { coeffs[1] });
+    let add_p1_c2 = MW::add_assign(quote! { p1 }, quote! { coeffs[2] });
+    let add_p1_c3 = MW::add_assign(quote! { p1 }, quote! { coeffs[3] });
+    let add_sum_p1 = MW::add_assign(quote! { sum }, quote! { p1 });
+    let mul_sum_eq = MW::mul_assign(quote! { sum }, quote! { eq_prefactor });
+    let mul_res_rk = MW::mul_assign(quote! { result }, quote! { r_k });
+    let add_res_c2 = MW::add_assign(quote! { result }, quote! { coeffs[2] });
+    let add_res_c1 = MW::add_assign(quote! { result }, quote! { coeffs[1] });
+    let add_res_c0 = MW::add_assign(quote! { result }, quote! { coeffs[0] });
+    let sub_omr_rk = MW::sub_assign(quote! { one_minus_r }, quote! { r_k });
+    let sub_omp_p = MW::sub_assign(quote! { one_minus_p }, quote! { p });
+    let mul_t_omp = MW::mul_assign(quote! { t }, quote! { one_minus_p });
+    let mul_rp_p = MW::mul_assign(quote! { rp }, quote! { p });
+    let add_t_rp = MW::add_assign(quote! { t }, quote! { rp });
 
-    let fs_sub_eq0_lpp = MW::sub_assign(quote! { eq0 }, quote! { last_prev_point });
-    let fs_mul_rhs_f0 = MW::mul_assign(quote! { rhs }, quote! { f[0] });
-    let fs_mul_t_f1 = MW::mul_assign(quote! { t }, quote! { f[1] });
-    let fs_add_rhs_t = MW::add_assign(quote! { rhs }, quote! { t });
-    let fs_mul_rhs_eq = MW::mul_assign(quote! { rhs }, quote! { final_eq_prefactor });
+    // final step check operations
+    let sub_eq0_lpp = MW::sub_assign(quote! { eq0 }, quote! { last_prev_point });
+    let mul_rhs_f0 = MW::mul_assign(quote! { rhs }, quote! { f[0] });
+    let mul_t_f1 = MW::mul_assign(quote! { t }, quote! { f[1] });
+    let add_rhs_t = MW::add_assign(quote! { rhs }, quote! { t });
+    let mul_rhs_eq = MW::mul_assign(quote! { rhs }, quote! { final_eq_prefactor });
 
-    let fold_sub_diff_f0 = MW::sub_assign(quote! { diff }, quote! { f0 });
-    let fold_mul_diff_lr = MW::mul_assign(quote! { diff }, quote! { last_r });
-    let fold_add_diff_f0 = MW::add_assign(quote! { diff }, quote! { f0 });
-
-    let field_from_u32 = MW::field_from_raw_repr_with_reduction(quote! { w });
+    // fold claims operations
+    let sub_diff_f0 = MW::sub_assign(quote! { diff }, quote! { f0 });
+    let mul_diff_lr = MW::mul_assign(quote! { diff }, quote! { last_r });
+    let add_diff_f0 = MW::add_assign(quote! { diff }, quote! { f0 });
 
     quote! {
         #[inline(always)]
@@ -86,7 +89,7 @@ pub fn generate_gkr_common<MW: MersenneWrapper>() -> TokenStream {
             let mut claim = initial_claim;
             let mut eq_prefactor = #quartic_one;
 
-            let coeff_data_words = 4 * EXT_DEGREE;
+            let coeff_data_words = SUMCHECK_POLY_COEFFS * EXT_DEGREE;
 
             let mut commit_buf = CommitBuf::<COMMIT_BUF>::new();
             let mut draw_buf = LazyVec::<u32, BLAKE2S_DIGEST_SIZE_U32_WORDS>::new();
@@ -108,13 +111,13 @@ pub fn generate_gkr_common<MW: MersenneWrapper>() -> TokenStream {
 
                 let p0 = coeffs[0];
                 let mut p1 = coeffs[0];
-                #sc_add_p1_c1;
-                #sc_add_p1_c2;
-                #sc_add_p1_c3;
+                #add_p1_c1;
+                #add_p1_c2;
+                #add_p1_c3;
 
                 let mut sum = p0;
-                #sc_add_sum_p1;
-                #sc_mul_sum_eq;
+                #add_sum_p1;
+                #mul_sum_eq;
 
                 if sum != claim {
                     return Err(E::gkr_sumcheck_round_failed(layer_idx, round));
@@ -125,32 +128,30 @@ pub fn generate_gkr_common<MW: MersenneWrapper>() -> TokenStream {
                 ts.draw_raw(draw_buf.as_mut_slice());
                 let r_k = {
                     let raw = unsafe { (draw_buf.as_slice().as_ptr() as *const [u32; EXT_DEGREE]).as_ref_unchecked() };
-                    let mut tmp = LazyVec::<#quartic_struct, 1>::new();
-                    tmp.push_from_raw_words(raw);
-                    unsafe { *tmp.get_unchecked(0) }
+                    ext_from_raw_words::<#field_struct, #quartic_struct>(raw)
                 };
 
                 {
                     let mut result = coeffs[3];
-                    #sc_mul_res_rk;
-                    #sc_add_res_c2;
-                    #sc_mul_res_rk;
-                    #sc_add_res_c1;
-                    #sc_mul_res_rk;
-                    #sc_add_res_c0;
+                    #mul_res_rk;
+                    #add_res_c2;
+                    #mul_res_rk;
+                    #add_res_c1;
+                    #mul_res_rk;
+                    #add_res_c0;
                     claim = result;
                 }
                 {
                     let p = unsafe { *challenges.get_unchecked(round) };
                     let mut one_minus_r = #quartic_one;
-                    #sc_sub_omr_rk;
+                    #sub_omr_rk;
                     let mut one_minus_p = #quartic_one;
-                    #sc_sub_omp_p;
+                    #sub_omp_p;
                     let mut t = one_minus_r;
-                    #sc_mul_t_omp;
+                    #mul_t_omp;
                     let mut rp = r_k;
-                    #sc_mul_rp_p;
-                    #sc_add_t_rp;
+                    #mul_rp_p;
+                    #add_t_rp;
                     eq_prefactor = t;
                 }
 
@@ -169,13 +170,13 @@ pub fn generate_gkr_common<MW: MersenneWrapper>() -> TokenStream {
             layer_idx: usize,
         ) -> Result<(), E::Error> {
             let mut eq0 = #quartic_one;
-            #fs_sub_eq0_lpp;
+            #sub_eq0_lpp;
             let mut rhs = eq0;
-            #fs_mul_rhs_f0;
+            #mul_rhs_f0;
             let mut t = last_prev_point;
-            #fs_mul_t_f1;
-            #fs_add_rhs_t;
-            #fs_mul_rhs_eq;
+            #mul_t_f1;
+            #add_rhs_t;
+            #mul_rhs_eq;
             if rhs != final_claim {
                 return Err(E::gkr_final_step_check_failed(layer_idx));
             }
@@ -199,9 +200,9 @@ pub fn generate_gkr_common<MW: MersenneWrapper>() -> TokenStream {
                 let evals = unsafe { final_step_evals.get_unchecked(i) };
                 let f0 = evals[0];
                 let mut diff = evals[1];
-                #fold_sub_diff_f0;
-                #fold_mul_diff_lr;
-                #fold_add_diff_f0;
+                #sub_diff_f0;
+                #mul_diff_lr;
+                #add_diff_f0;
                 claims.push(diff);
             }
         }
@@ -619,17 +620,18 @@ where
 
     let degree = E::DEGREE;
     let digest_words = prover::transcript::blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS;
-    let draw_buf_capacity = ((final_trace_size_log_2 + 1) * degree).next_multiple_of(digest_words);
+    let num_challenges = final_trace_size_log_2 + BATCHING_CHALLENGE_EXTRA;
+    let draw_buf_capacity = (num_challenges * degree).next_multiple_of(digest_words);
     let block_words = prover::transcript::blake2s_u32::BLAKE2S_BLOCK_SIZE_U32_WORDS;
-    let dim_reducing_words_per_addr = 4 * degree;
-    let standard_words_per_addr = 2 * degree;
+    let dim_reducing_words_per_addr = DIM_REDUCE_EVAL_POINTS * degree;
+    let standard_words_per_addr = STANDARD_EVAL_POINTS * degree;
     let max_data_words = (max_addrs * dim_reducing_words_per_addr)
         .max(max_addrs * standard_words_per_addr)
         .max(max_evals * degree);
     let total = digest_words + max_data_words;
     let eval_buf_size = total.div_ceil(block_words) * block_words;
 
-    let commit_buf_total = digest_words + 4 * degree;
+    let commit_buf_total = digest_words + SUMCHECK_POLY_COEFFS * degree;
     let commit_buf_size = commit_buf_total.div_ceil(block_words) * block_words;
 
     let evals_commit_total = digest_words + max_evals * degree;
@@ -791,14 +793,12 @@ where
             while i < num_lin {
                 let base = ext_start + i * EXT_DEGREE;
                 let raw = unsafe { (transcript_buf.as_slice().as_ptr().add(base) as *const [u32; EXT_DEGREE]).as_ref_unchecked() };
-                lin.push_from_raw_words(raw);
+                lin.push(ext_from_raw_words::<#field_struct, #quartic_struct>(raw));
                 i += 1;
             }
             let add_base = ext_start + num_lin * EXT_DEGREE;
             let raw = unsafe { (transcript_buf.as_slice().as_ptr().add(add_base) as *const [u32; EXT_DEGREE]).as_ref_unchecked() };
-            let mut additive_tmp = LazyVec::<#quartic_struct, 1>::new();
-            additive_tmp.push_from_raw_words(raw);
-            let additive = unsafe { *additive_tmp.get_unchecked(0) };
+            let additive = ext_from_raw_words::<#field_struct, #quartic_struct>(raw);
             (unsafe { lin.into_array() }, additive)
         };
         let address_high_bits_shift: u32 = #address_high_bits_shift_val;
@@ -807,7 +807,6 @@ where
     let total_output_polys: usize = output_groups.iter().map(|g| g.num_addresses).sum();
     let evals_per_poly = 1usize << final_trace_size_log_2;
     let total_evals_needed = total_output_polys * evals_per_poly;
-    let num_challenges = final_trace_size_log_2 + 1;
     let evaluation_point_len = final_trace_size_log_2;
 
     let mut claim_accum_body = TokenStream::new();
@@ -1106,10 +1105,7 @@ where
     }
 
     main_body.extend(quote! {
-        let mut draw_buf = LazyVec::<#quartic_struct, 1>::new();
-        unsafe { draw_buf.set_len(1); }
-        draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, draw_buf.as_mut_slice());
-        let whir_batching_challenge = *draw_buf.get(0);
+        let whir_batching_challenge = draw_single_field_el(&mut ts);
 
         let grand_product_accumulator: #quartic_struct = read_field_el::<I>();
         Ok(GKRVerifierOutput {
@@ -1175,20 +1171,33 @@ where
         .collect();
 
     let total_oracle_cols: usize = oracles.iter().map(|o| o.num_columns).sum();
-    let digest_words = 8usize; // BLAKE2S_DIGEST_SIZE_U32_WORDS — TODO: use named constant
+    let digest_words = prover::transcript::blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS;
     let oracle_cap_words: Vec<usize> = oracles.iter().map(|o| o.cap_size * digest_words).collect();
     let total_cap_words: usize = oracle_cap_words.iter().sum();
     let whir_cap_words = whir_cap_size * digest_words;
 
     let caps_offset_in_transcript = initial_transcript_num_u32_words - total_cap_words;
 
-    let setup_cap_words = proof.whir_proof.setup_commitment.commitment.cap.cap.len() * digest_words;
-    let mem_cap_words_val =
-        proof.whir_proof.memory_commitment.commitment.cap.cap.len() * digest_words;
-    let wit_cap_words_val =
-        proof.whir_proof.witness_commitment.commitment.cap.cap.len() * digest_words;
-    let oracle_cap_transcript_offsets: Vec<usize> =
-        vec![setup_cap_words, setup_cap_words + mem_cap_words_val, 0];
+    // Caps appear in the transcript as [setup, memory, witness] (CAP_TRANSCRIPT_ORDER).
+    // The verifier's oracle list is [memory, witness, setup] (eval order).
+    // Compute the byte offset of each eval-order oracle's cap within the transcript.
+    use verifier_common::gkr::{
+        CAP_TRANSCRIPT_ORDER, MEMORY_ORACLE_IDX, WITNESS_ORACLE_IDX, SETUP_ORACLE_IDX,
+        NUM_BASE_ORACLES,
+    };
+    let cap_words_by_eval_idx = [
+        oracle_cap_words[MEMORY_ORACLE_IDX],
+        oracle_cap_words[WITNESS_ORACLE_IDX],
+        oracle_cap_words[SETUP_ORACLE_IDX],
+    ];
+    let mut oracle_cap_transcript_offsets = vec![0usize; NUM_BASE_ORACLES];
+    {
+        let mut offset = 0;
+        for &eval_idx in CAP_TRANSCRIPT_ORDER.iter() {
+            oracle_cap_transcript_offsets[eval_idx] = offset;
+            offset += cap_words_by_eval_idx[eval_idx];
+        }
+    }
 
     let oracle_depths: Vec<usize> = oracles.iter().map(|o| o.depth).collect();
     let oracle_num_cols: Vec<usize> = oracles.iter().map(|o| o.num_columns).collect();
@@ -1245,8 +1254,9 @@ where
         use ::verifier_common::structs::{CommitBuf, TranscriptState};
         use super::common::{
             verify_sumcheck_rounds, verify_final_step_check, fold_standard_claims,
-            make_eq_poly, dot_eq, draw_field_els_into,
+            make_eq_poly, dot_eq, draw_field_els_into, draw_single_field_el,
             read_field_el, read_reduced_field_el,
+            ext_from_nds, ext_from_raw_words,
             EXT_DEGREE,
         };
         use ::verifier_common::field_ops;

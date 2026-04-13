@@ -202,3 +202,58 @@ pub fn bitreverse_for_bitlength(num: u32, bitlength: u32) -> u32 {
     let shift = u32::BITS - bitlength;
     num.reverse_bits() >> shift
 }
+
+#[inline(always)]
+pub fn ext_from_nds<
+    F: field::PrimeField,
+    E: field::FieldExtension<F>,
+    I: non_determinism_source::NonDeterminismSource,
+>() -> E
+where
+    [(); E::DEGREE]: Sized,
+{
+    // layout of E should be [F; E::DEGREE]
+    debug_assert_eq!(
+        core::mem::size_of::<E>(),
+        core::mem::size_of::<F>() * E::DEGREE
+    );
+    let mut result = core::mem::MaybeUninit::<E>::uninit();
+    let coeffs = unsafe {
+        &mut *result
+            .as_mut_ptr()
+            .cast::<[core::mem::MaybeUninit<F>; E::DEGREE]>()
+    };
+    let mut i = 0;
+    while i < E::DEGREE {
+        coeffs[i].write(F::from_reduced_raw_repr(I::read_reduced_field_element(
+            F::CHARACTERISTICS,
+        )));
+        i += 1;
+    }
+    unsafe { result.assume_init() }
+}
+
+#[inline(always)]
+pub fn ext_from_raw_words<F: field::PrimeField, E: field::FieldExtension<F>>(
+    words: &[u32; E::DEGREE],
+) -> E
+where
+    [(); E::DEGREE]: Sized,
+{
+    debug_assert_eq!(
+        core::mem::size_of::<E>(),
+        core::mem::size_of::<F>() * E::DEGREE
+    );
+    let mut result = core::mem::MaybeUninit::<E>::uninit();
+    let coeffs = unsafe {
+        &mut *result
+            .as_mut_ptr()
+            .cast::<[core::mem::MaybeUninit<F>; E::DEGREE]>()
+    };
+    let mut i = 0;
+    while i < E::DEGREE {
+        coeffs[i].write(F::from_raw_repr_with_reduction(words[i]));
+        i += 1;
+    }
+    unsafe { result.assume_init() }
+}

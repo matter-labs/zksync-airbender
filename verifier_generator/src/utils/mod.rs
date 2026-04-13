@@ -14,6 +14,11 @@ use prover::field::PrimeField;
 pub mod sumcheck;
 pub mod transcript;
 
+pub use verifier_common::{
+    BATCHING_CHALLENGE_EXTRA, DIM_REDUCE_EVAL_POINTS, STANDARD_EVAL_POINTS,
+    SUMCHECK_POLY_COEFFS,
+};
+
 pub fn coeff_to_internal_repr<F: PrimeField>(coeff: u32) -> u32 {
     F::from_u32_with_reduction(coeff).as_u32_raw_repr_reduced()
 }

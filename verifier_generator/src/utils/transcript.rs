@@ -7,9 +7,6 @@ pub fn generate_transcript_helpers<MW: MersenneWrapper>() -> TokenStream {
     let field_struct = MW::field_struct();
     let quartic_struct = MW::quartic_struct();
 
-    let field_from_raw = MW::field_from_reduced_raw_repr(quote! { raw });
-    let field_from_u32 = MW::field_from_raw_repr_with_reduction(quote! { w });
-
     quote! {
         #[inline(always)]
         pub fn read_reduced_field_el<I: NonDeterminismSource>() -> u32 {
@@ -18,9 +15,7 @@ pub fn generate_transcript_helpers<MW: MersenneWrapper>() -> TokenStream {
 
         #[inline(always)]
         pub fn read_field_el<I: NonDeterminismSource>() -> #quartic_struct {
-            let mut tmp = LazyVec::<#quartic_struct, 1>::new();
-            tmp.push_from_nds::<I>();
-            unsafe { *tmp.get_unchecked(0) }
+            ext_from_nds::<#field_struct, #quartic_struct, I>()
         }
 
         #[inline(always)]
@@ -51,10 +46,8 @@ pub fn generate_transcript_helpers<MW: MersenneWrapper>() -> TokenStream {
             while i < n {
                 let base = i * EXT_DEGREE;
                 let raw = unsafe { (words.as_slice().as_ptr().add(base) as *const [u32; EXT_DEGREE]).as_ref_unchecked() };
-                let mut tmp = LazyVec::<#quartic_struct, 1>::new();
-                tmp.push_from_raw_words(raw);
                 unsafe {
-                    *dst.get_unchecked_mut(i) = *tmp.get_unchecked(0);
+                    *dst.get_unchecked_mut(i) = ext_from_raw_words::<#field_struct, #quartic_struct>(raw);
                 }
                 i += 1;
             }
@@ -64,10 +57,13 @@ pub fn generate_transcript_helpers<MW: MersenneWrapper>() -> TokenStream {
         pub fn draw_single_field_el(
             ts: &mut TranscriptState,
         ) -> #quartic_struct {
-            let mut buf = LazyVec::<#quartic_struct, 1>::new();
-            unsafe { buf.set_len(1); }
-            draw_field_els_into::<BLAKE2S_DIGEST_SIZE_U32_WORDS>(ts, buf.as_mut_slice());
-            *buf.get(0)
+            let mut words = LazyVec::<u32, BLAKE2S_DIGEST_SIZE_U32_WORDS>::new();
+            unsafe {
+                words.set_len(BLAKE2S_DIGEST_SIZE_U32_WORDS);
+                ts.draw_raw(words.as_mut_slice());
+            }
+            let raw = unsafe { words.as_array::<E::DEGREE>() };
+            ext_from_raw_words::<#field_struct, #quartic_struct>(raw)
         }
     }
 }
