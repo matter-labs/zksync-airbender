@@ -39,6 +39,8 @@ const INITIAL_PC: u32 = 0;
 const NUM_INIT_AND_TEARDOWN_SETS: usize = 16;
 const WORD_BITS: u32 = core::mem::size_of::<u32>().trailing_zeros();
 
+const USE_GKR_WITH_CACHES: bool = true;
+
 // NOTE: these constants must match with ones used in CS crate to produce
 // layout and SSA forms, otherwise derived witness-gen functions may write into
 // invalid locations
@@ -307,13 +309,11 @@ pub fn gkr_run_basic_unrolled_test_impl(
         println!("Will try to prove ADD/SUB/LUI/AUIPC/MOP circuit");
         const CIRCUIT_TYPE: u8 = ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX;
 
-        // let circuit: GKRCircuitArtifact<BabyBearField> = {
-        //     deserialize_from_file(
-        //         "../cs/compiled_circuits/add_sub_lui_auipc_mop_preprocessed_layout_gkr.json",
-        //     )
-        // };
-
-        let circuit: GKRCircuitArtifact<BabyBearField> = {
+        let circuit: GKRCircuitArtifact<BabyBearField> = if USE_GKR_WITH_CACHES {
+            deserialize_from_file(
+                "../cs/compiled_circuits/add_sub_lui_auipc_mop_preprocessed_layout_gkr.json",
+            )
+        } else {
             deserialize_from_file(
                 "../cs/compiled_circuits/add_sub_lui_auipc_mop_preprocessed_layout_no_caches_gkr.json",
             )
@@ -499,13 +499,11 @@ pub fn gkr_run_basic_unrolled_test_impl(
         println!("Will try to prove JUMP/BRANCH/SLT circuit");
         const CIRCUIT_TYPE: u8 = JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX;
 
-        // let circuit: GKRCircuitArtifact<BabyBearField> = {
-        //     deserialize_from_file(
-        //         "../cs/compiled_circuits/jump_branch_slt_preprocessed_layout_gkr.json",
-        //     )
-        // };
-
-        let circuit: GKRCircuitArtifact<BabyBearField> = {
+        let circuit: GKRCircuitArtifact<BabyBearField> = if USE_GKR_WITH_CACHES {
+            deserialize_from_file(
+                "../cs/compiled_circuits/jump_branch_slt_preprocessed_layout_gkr.json",
+            )
+        } else {
             deserialize_from_file(
                 "../cs/compiled_circuits/jump_branch_slt_preprocessed_layout_no_caches_gkr.json",
             )
@@ -693,13 +691,11 @@ pub fn gkr_run_basic_unrolled_test_impl(
         println!("Will try to prove SHIFT/BINARY circuit");
         const CIRCUIT_TYPE: u8 = SHIFT_BINARY_CIRCUIT_FAMILY_IDX;
 
-        // let circuit: GKRCircuitArtifact<BabyBearField> = {
-        //     deserialize_from_file(
-        //         "../cs/compiled_circuits/shift_binop_preprocessed_layout_gkr.json",
-        //     )
-        // };
-
-        let circuit: GKRCircuitArtifact<BabyBearField> = {
+        let circuit: GKRCircuitArtifact<BabyBearField> = if USE_GKR_WITH_CACHES {
+            deserialize_from_file(
+                "../cs/compiled_circuits/shift_binop_preprocessed_layout_gkr.json",
+            )
+        } else {
             deserialize_from_file(
                 "../cs/compiled_circuits/shift_binop_preprocessed_layout_no_caches_gkr.json",
             )
@@ -1082,13 +1078,11 @@ pub fn gkr_run_basic_unrolled_test_impl(
         println!("Will try to prove word LOAD/STORE circuit");
         const CIRCUIT_TYPE: u8 = LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX;
 
-        // let circuit: GKRCircuitArtifact<BabyBearField> = {
-        //     deserialize_from_file(
-        //         "../cs/compiled_circuits/mem_word_only_preprocessed_layout_gkr.json",
-        //     )
-        // };
-
-        let circuit: GKRCircuitArtifact<BabyBearField> = {
+        let circuit: GKRCircuitArtifact<BabyBearField> = if USE_GKR_WITH_CACHES {
+            deserialize_from_file(
+                "../cs/compiled_circuits/mem_word_only_preprocessed_layout_gkr.json",
+            )
+        } else {
             deserialize_from_file(
                 "../cs/compiled_circuits/mem_word_only_preprocessed_layout_no_caches_gkr.json",
             )
@@ -1289,13 +1283,11 @@ pub fn gkr_run_basic_unrolled_test_impl(
         println!("Will try to prove subword LOAD/STORE circuit");
         const CIRCUIT_TYPE: u8 = LOAD_STORE_SUBWORD_ONLY_CIRCUIT_FAMILY_IDX;
 
-        // let circuit: GKRCircuitArtifact<BabyBearField> = {
-        //     deserialize_from_file(
-        //         "../cs/compiled_circuits/mem_subword_only_preprocessed_layout_gkr.json",
-        //     )
-        // };
-
-        let circuit: GKRCircuitArtifact<BabyBearField> = {
+        let circuit: GKRCircuitArtifact<BabyBearField> = if USE_GKR_WITH_CACHES {
+            deserialize_from_file(
+                "../cs/compiled_circuits/mem_subword_only_preprocessed_layout_gkr.json",
+            )
+        } else {
             deserialize_from_file(
                 "../cs/compiled_circuits/mem_subword_only_preprocessed_layout_no_caches_gkr.json",
             )
@@ -1485,7 +1477,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
     }
 
     // Machine state permutation ended
-    {
+    if PROVE_ADD_SUB && PROVE_JUMP_BRANCH && PROVE_SHIFTS_BINOPS {
         for (pc, ts) in write_set.iter().copied() {
             if read_set.contains(&(pc, ts)) == false {
                 panic!("read set doesn't contain a pair {:?}", (pc, ts));
@@ -1623,13 +1615,11 @@ pub fn gkr_run_basic_unrolled_test_impl(
     if PROVE_BLAKE {
         println!("Will try to prove Blake delegation");
 
-        // let circuit: GKRCircuitArtifact<BabyBearField> = {
-        //     deserialize_from_file(
-        //         "../cs/compiled_circuits/blake2_with_extended_control_layout_gkr.json",
-        //     )
-        // };
-
-        let circuit: GKRCircuitArtifact<BabyBearField> = {
+        let circuit: GKRCircuitArtifact<BabyBearField> = if USE_GKR_WITH_CACHES {
+            deserialize_from_file(
+                "../cs/compiled_circuits/blake2_with_extended_control_layout_gkr.json",
+            )
+        } else {
             deserialize_from_file(
                 "../cs/compiled_circuits/blake2_with_extended_control_layout_no_caches_gkr.json",
             )
@@ -1788,13 +1778,11 @@ pub fn gkr_run_basic_unrolled_test_impl(
     if PROVE_BIGINT {
         println!("Will try to prove Bigint delegation");
 
-        // let circuit: GKRCircuitArtifact<BabyBearField> = {
-        //     deserialize_from_file(
-        //         "../cs/compiled_circuits/bigint_with_extended_control_layout_gkr.json",
-        //     )
-        // };
-
-        let circuit: GKRCircuitArtifact<BabyBearField> = {
+        let circuit: GKRCircuitArtifact<BabyBearField> = if USE_GKR_WITH_CACHES {
+            deserialize_from_file(
+                "../cs/compiled_circuits/bigint_with_extended_control_layout_gkr.json",
+            )
+        } else {
             deserialize_from_file(
                 "../cs/compiled_circuits/bigint_with_extended_control_layout_no_caches_gkr.json",
             )
@@ -1954,10 +1942,9 @@ pub fn gkr_run_basic_unrolled_test_impl(
     if PROVE_KECCAK {
         println!("Will try to prove Keccak delegation");
 
-        // let circuit: GKRCircuitArtifact<BabyBearField> =
-        //     { deserialize_from_file("../cs/compiled_circuits/keccak_special5_layout_gkr.json") };
-
-        let circuit: GKRCircuitArtifact<BabyBearField> = {
+        let circuit: GKRCircuitArtifact<BabyBearField> = if USE_GKR_WITH_CACHES {
+            deserialize_from_file("../cs/compiled_circuits/keccak_special5_layout_gkr.json")
+        } else {
             deserialize_from_file(
                 "../cs/compiled_circuits/keccak_special5_layout_no_caches_gkr.json",
             )
