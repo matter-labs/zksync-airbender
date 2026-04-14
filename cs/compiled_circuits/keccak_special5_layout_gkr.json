@@ -6839,7 +6839,7 @@
         {
           "output_layer": 1,
           "enforced_relation": {
-            "Copy": {
+            "CopyInBaseField": {
               "input": {
                 "BaseLayerMemory": 88
               },
@@ -7233,7 +7233,7 @@
         {
           "output_layer": 1,
           "enforced_relation": {
-            "Copy": {
+            "CopyInBaseField": {
               "input": {
                 "Cached": {
                   "layer": 0,
@@ -7252,7 +7252,7 @@
         {
           "output_layer": 1,
           "enforced_relation": {
-            "Copy": {
+            "CopyInBaseField": {
               "input": {
                 "Cached": {
                   "layer": 0,
@@ -7790,7 +7790,7 @@
         {
           "output_layer": 1,
           "enforced_relation": {
-            "Copy": {
+            "CopyInBaseField": {
               "input": {
                 "Cached": {
                   "layer": 0,
@@ -30352,7 +30352,7 @@
         {
           "output_layer": 2,
           "enforced_relation": {
-            "Copy": {
+            "CopyInBaseField": {
               "input": {
                 "InnerLayer": {
                   "layer": 1,
@@ -31495,7 +31495,7 @@
         {
           "output_layer": 2,
           "enforced_relation": {
-            "Copy": {
+            "CopyInExtensionField": {
               "input": {
                 "InnerLayer": {
                   "layer": 1,
@@ -31514,7 +31514,7 @@
         {
           "output_layer": 2,
           "enforced_relation": {
-            "Copy": {
+            "CopyInExtensionField": {
               "input": {
                 "InnerLayer": {
                   "layer": 1,
@@ -31540,7 +31540,7 @@
         {
           "output_layer": 3,
           "enforced_relation": {
-            "Copy": {
+            "CopyInBaseField": {
               "input": {
                 "InnerLayer": {
                   "layer": 2,
@@ -32126,7 +32126,7 @@
         {
           "output_layer": 3,
           "enforced_relation": {
-            "Copy": {
+            "CopyInExtensionField": {
               "input": {
                 "InnerLayer": {
                   "layer": 2,
@@ -32145,7 +32145,7 @@
         {
           "output_layer": 3,
           "enforced_relation": {
-            "Copy": {
+            "CopyInExtensionField": {
               "input": {
                 "InnerLayer": {
                   "layer": 2,
@@ -32171,7 +32171,7 @@
         {
           "output_layer": 4,
           "enforced_relation": {
-            "Copy": {
+            "CopyInBaseField": {
               "input": {
                 "InnerLayer": {
                   "layer": 3,
@@ -32658,7 +32658,7 @@
         {
           "output_layer": 5,
           "enforced_relation": {
-            "Copy": {
+            "CopyInExtensionField": {
               "input": {
                 "InnerLayer": {
                   "layer": 4,
@@ -32677,7 +32677,7 @@
         {
           "output_layer": 5,
           "enforced_relation": {
-            "Copy": {
+            "CopyInExtensionField": {
               "input": {
                 "InnerLayer": {
                   "layer": 4,
@@ -32752,7 +32752,7 @@
         {
           "output_layer": 6,
           "enforced_relation": {
-            "Copy": {
+            "CopyInExtensionField": {
               "input": {
                 "InnerLayer": {
                   "layer": 5,
@@ -32771,7 +32771,7 @@
         {
           "output_layer": 6,
           "enforced_relation": {
-            "Copy": {
+            "CopyInExtensionField": {
               "input": {
                 "InnerLayer": {
                   "layer": 5,
@@ -32790,7 +32790,7 @@
         {
           "output_layer": 6,
           "enforced_relation": {
-            "Copy": {
+            "CopyInExtensionField": {
               "input": {
                 "InnerLayer": {
                   "layer": 5,
@@ -32809,7 +32809,7 @@
         {
           "output_layer": 6,
           "enforced_relation": {
-            "Copy": {
+            "CopyInExtensionField": {
               "input": {
                 "InnerLayer": {
                   "layer": 5,

@@ -61,7 +61,7 @@
         {
           "output_layer": 1,
           "enforced_relation": {
-            "Copy": {
+            "CopyInBaseField": {
               "input": {
                 "BaseLayerMemory": 222
               },
@@ -44181,7 +44181,7 @@
         {
           "output_layer": 2,
           "enforced_relation": {
-            "Copy": {
+            "CopyInBaseField": {
               "input": {
                 "InnerLayer": {
                   "layer": 1,
@@ -45906,7 +45906,7 @@
         {
           "output_layer": 2,
           "enforced_relation": {
-            "Copy": {
+            "CopyInExtensionField": {
               "input": {
                 "InnerLayer": {
                   "layer": 1,
@@ -45925,7 +45925,7 @@
         {
           "output_layer": 2,
           "enforced_relation": {
-            "Copy": {
+            "CopyInExtensionField": {
               "input": {
                 "InnerLayer": {
                   "layer": 1,
@@ -48586,7 +48586,7 @@
         {
           "output_layer": 2,
           "enforced_relation": {
-            "Copy": {
+            "CopyInExtensionField": {
               "input": {
                 "InnerLayer": {
                   "layer": 1,
@@ -48605,7 +48605,7 @@
         {
           "output_layer": 2,
           "enforced_relation": {
-            "Copy": {
+            "CopyInExtensionField": {
               "input": {
                 "InnerLayer": {
                   "layer": 1,
@@ -48631,7 +48631,7 @@
         {
           "output_layer": 3,
           "enforced_relation": {
-            "Copy": {
+            "CopyInBaseField": {
               "input": {
                 "InnerLayer": {
                   "layer": 2,
@@ -48785,7 +48785,7 @@
         {
           "output_layer": 3,
           "enforced_relation": {
-            "Copy": {
+            "CopyInExtensionField": {
               "input": {
                 "InnerLayer": {
                   "layer": 2,
@@ -48939,7 +48939,7 @@
         {
           "output_layer": 3,
           "enforced_relation": {
-            "Copy": {
+            "CopyInExtensionField": {
               "input": {
                 "InnerLayer": {
                   "layer": 2,
@@ -49519,7 +49519,7 @@
         {
           "output_layer": 3,
           "enforced_relation": {
-            "Copy": {
+            "CopyInExtensionField": {
               "input": {
                 "InnerLayer": {
                   "layer": 2,
@@ -49538,7 +49538,7 @@
         {
           "output_layer": 3,
           "enforced_relation": {
-            "Copy": {
+            "CopyInExtensionField": {
               "input": {
                 "InnerLayer": {
                   "layer": 2,
@@ -50883,7 +50883,7 @@
         {
           "output_layer": 3,
           "enforced_relation": {
-            "Copy": {
+            "CopyInExtensionField": {
               "input": {
                 "InnerLayer": {
                   "layer": 2,
@@ -50902,7 +50902,7 @@
         {
           "output_layer": 3,
           "enforced_relation": {
-            "Copy": {
+            "CopyInExtensionField": {
               "input": {
                 "InnerLayer": {
                   "layer": 2,
@@ -50928,7 +50928,7 @@
         {
           "output_layer": 4,
           "enforced_relation": {
-            "Copy": {
+            "CopyInBaseField": {
               "input": {
                 "InnerLayer": {
                   "layer": 3,
@@ -52078,7 +52078,7 @@
         {
           "output_layer": 4,
           "enforced_relation": {
-            "Copy": {
+            "CopyInExtensionField": {
               "input": {
                 "InnerLayer": {
                   "layer": 3,
@@ -52097,7 +52097,7 @@
         {
           "output_layer": 4,
           "enforced_relation": {
-            "Copy": {
+            "CopyInExtensionField": {
               "input": {
                 "InnerLayer": {
                   "layer": 3,
@@ -52123,7 +52123,7 @@
         {
           "output_layer": 5,
           "enforced_relation": {
-            "Copy": {
+            "CopyInBaseField": {
               "input": {
                 "InnerLayer": {
                   "layer": 4,
@@ -52169,7 +52169,7 @@
         {
           "output_layer": 5,
           "enforced_relation": {
-            "Copy": {
+            "CopyInExtensionField": {
               "input": {
                 "InnerLayer": {
                   "layer": 4,
@@ -52215,7 +52215,7 @@
         {
           "output_layer": 5,
           "enforced_relation": {
-            "Copy": {
+            "CopyInExtensionField": {
               "input": {
                 "InnerLayer": {
                   "layer": 4,
@@ -52751,7 +52751,7 @@
         {
           "output_layer": 6,
           "enforced_relation": {
-            "Copy": {
+            "CopyInBaseField": {
               "input": {
                 "InnerLayer": {
                   "layer": 5,
@@ -52875,7 +52875,7 @@
         {
           "output_layer": 6,
           "enforced_relation": {
-            "Copy": {
+            "CopyInExtensionField": {
               "input": {
                 "InnerLayer": {
                   "layer": 5,
@@ -52894,7 +52894,7 @@
         {
           "output_layer": 6,
           "enforced_relation": {
-            "Copy": {
+            "CopyInExtensionField": {
               "input": {
                 "InnerLayer": {
                   "layer": 5,
@@ -53066,7 +53066,7 @@
         {
           "output_layer": 6,
           "enforced_relation": {
-            "Copy": {
+            "CopyInExtensionField": {
               "input": {
                 "InnerLayer": {
                   "layer": 5,
@@ -53085,7 +53085,7 @@
         {
           "output_layer": 6,
           "enforced_relation": {
-            "Copy": {
+            "CopyInExtensionField": {
               "input": {
                 "InnerLayer": {
                   "layer": 5,
@@ -53370,7 +53370,7 @@
         {
           "output_layer": 8,
           "enforced_relation": {
-            "Copy": {
+            "CopyInExtensionField": {
               "input": {
                 "InnerLayer": {
                   "layer": 7,
@@ -53389,7 +53389,7 @@
         {
           "output_layer": 8,
           "enforced_relation": {
-            "Copy": {
+            "CopyInExtensionField": {
               "input": {
                 "InnerLayer": {
                   "layer": 7,
@@ -53408,7 +53408,7 @@
         {
           "output_layer": 8,
           "enforced_relation": {
-            "Copy": {
+            "CopyInExtensionField": {
               "input": {
                 "InnerLayer": {
                   "layer": 7,
@@ -53427,7 +53427,7 @@
         {
           "output_layer": 8,
           "enforced_relation": {
-            "Copy": {
+            "CopyInExtensionField": {
               "input": {
                 "InnerLayer": {
                   "layer": 7,
@@ -85665,7 +85665,7 @@
     "150": "Variable at cs/src/types.rs::145",
     "151": "Variable at cs/src/types.rs::145",
     "152": "perform final xor flag",
-    "153": "Variable at cs/src/cs/circuit_trait.rs::241",
+    "153": "Variable at cs/src/cs/circuit_trait.rs::239",
     "154": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/mod.rs::324",
     "155": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/mod.rs::333",
     "156": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/mod.rs::324",
@@ -85698,88 +85698,88 @@
     "183": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/mod.rs::333",
     "184": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/mod.rs::324",
     "185": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/mod.rs::333",
-    "186": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "187": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "188": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "189": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "190": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "191": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "192": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "193": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "194": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "195": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "196": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "197": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "198": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "199": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "200": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "201": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "202": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "203": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "204": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "205": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "206": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "207": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "208": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "209": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "210": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "211": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "212": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "213": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "214": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "215": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "216": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "217": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "218": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "219": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "220": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "221": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "222": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "223": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "224": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "225": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "226": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "227": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "228": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "229": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "230": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "231": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "232": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "233": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "234": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "235": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "236": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "237": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "238": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "239": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "240": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "241": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "242": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "243": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "244": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "245": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "246": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "247": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "248": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "249": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "250": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "251": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "252": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "253": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "254": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "255": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "256": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "257": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "258": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "259": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "260": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "261": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "262": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "263": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "264": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "265": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "266": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "267": "Variable at cs/src/cs/circuit_trait.rs::241",
+    "186": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "187": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "188": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "189": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "190": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "191": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "192": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "193": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "194": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "195": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "196": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "197": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "198": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "199": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "200": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "201": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "202": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "203": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "204": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "205": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "206": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "207": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "208": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "209": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "210": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "211": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "212": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "213": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "214": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "215": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "216": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "217": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "218": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "219": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "220": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "221": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "222": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "223": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "224": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "225": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "226": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "227": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "228": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "229": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "230": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "231": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "232": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "233": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "234": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "235": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "236": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "237": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "238": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "239": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "240": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "241": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "242": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "243": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "244": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "245": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "246": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "247": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "248": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "249": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "250": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "251": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "252": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "253": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "254": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "255": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "256": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "257": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "258": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "259": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "260": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "261": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "262": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "263": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "264": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "265": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "266": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "267": "Variable at cs/src/cs/circuit_trait.rs::239",
     "268": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::32",
     "269": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::32",
     "270": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::34",

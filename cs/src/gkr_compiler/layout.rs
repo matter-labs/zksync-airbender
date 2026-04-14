@@ -100,7 +100,8 @@ impl GKRGraph {
                                 // copy
                                 *current_output =
                                     current_output.each_ref().map(|(addr, _relation)| {
-                                        let copy_node = CopyNode::FromIntermediate(*addr);
+                                        let copy_node =
+                                            CopyNode::FromIntermediateInExtension(*addr);
                                         copy_node.add_at_layer(self, next_layer)
                                     });
                             }
@@ -123,11 +124,11 @@ impl GKRGraph {
                             for next_layer in (layer + 1)..=max_output_layer {
                                 // copy
                                 let [num, den] = &current_output.0;
-                                let copy_node = CopyNode::FromIntermediate(*num);
+                                let copy_node = CopyNode::FromIntermediateInExtension(*num);
                                 let (new_num_addr, new_num_rel) =
                                     copy_node.add_at_layer(self, next_layer);
 
-                                let copy_node = CopyNode::FromIntermediate(*den);
+                                let copy_node = CopyNode::FromIntermediateInExtension(*den);
                                 let (new_den_addr, new_den_rel) =
                                     copy_node.add_at_layer(self, next_layer);
                                 *current_output = (

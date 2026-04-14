@@ -52,7 +52,7 @@ impl GKRGate for MaterializeSingleInputNode {
         if self.input.input.is_trivial_single_input() {
             // just copy
             let input = self.input.input.linear_terms[0].1;
-            let relation = NoFieldGKRRelation::Copy { input, output };
+            let relation = NoFieldGKRRelation::CopyInBaseField { input, output };
             graph.add_enforced_relation(relation.clone(), output_layer);
 
             return (output, relation);
@@ -67,7 +67,7 @@ impl GKRGate for MaterializeSingleInputNode {
             let layer_for_caches = output_layer - 1;
             let cached_input = graph.add_cached_relation(cached_input, layer_for_caches);
 
-            let relation = NoFieldGKRRelation::Copy {
+            let relation = NoFieldGKRRelation::CopyInBaseField {
                 input: cached_input,
                 output,
             };
