@@ -88,6 +88,8 @@ enum gkr_main_kernel_kind : u32 {
   GKR_MAIN_LOOKUP_PAIR_FROM_VECTOR_INPUTS = 17,
   GKR_MAIN_LOOKUP_FROM_VECTOR_INPUT_WITH_SETUP = 18,
   GKR_MAIN_LOOKUP_UNBALANCED_PAIR_WITH_VECTOR_INPUTS = 19,
+  GKR_MAIN_LOOKUP_EXT_PAIR = 20,
+  GKR_MAIN_LOOKUP_UNBALANCED_EXTENSION = 21,
 };
 
 static constexpr unsigned GKR_FORWARD_MAX_GATES_PER_LAYER = 63;
@@ -298,6 +300,8 @@ DEVICE_FORCEINLINE unsigned gkr_main_kind_batch_challenge_count(const u32 kind) 
   case GKR_MAIN_LOOKUP_PAIR_FROM_VECTOR_INPUTS:
   case GKR_MAIN_LOOKUP_FROM_VECTOR_INPUT_WITH_SETUP:
   case GKR_MAIN_LOOKUP_UNBALANCED_PAIR_WITH_VECTOR_INPUTS:
+  case GKR_MAIN_LOOKUP_EXT_PAIR:
+  case GKR_MAIN_LOOKUP_UNBALANCED_EXTENSION:
     return 2;
   default:
     return 1;
@@ -2189,6 +2193,18 @@ gkr_main_round0_values(const unsigned kind, const gkr_base_initial_source<bf> *b
     c1 = E::add(E::mul(batch_challenge_0, num), E::mul(batch_challenge_1, den));
     break;
   }
+  case GKR_MAIN_LOOKUP_EXT_PAIR: {
+    const E output_num = gkr_get_initial_value(ext_outputs[0], gid);
+    const E output_den = gkr_get_initial_value(ext_outputs[1], gid);
+    const E delta_b = gkr_get_initial_delta(ext_inputs[0], gid);
+    const E delta_d = gkr_get_initial_delta(ext_inputs[1], gid);
+    E num;
+    E den;
+    gkr_eval_lookup_base_pair_quadratic(delta_b, delta_d, num, den);
+    c0 = E::add(E::mul(batch_challenge_0, output_num), E::mul(batch_challenge_1, output_den));
+    c1 = E::add(E::mul(batch_challenge_0, num), E::mul(batch_challenge_1, den));
+    break;
+  }
   case GKR_MAIN_LOOKUP_BASE_MINUS_MULTIPLICITY: {
     const E output_num = gkr_get_initial_value(ext_outputs[0], gid);
     const E output_den = gkr_get_initial_value(ext_outputs[1], gid);
@@ -2248,6 +2264,19 @@ gkr_main_round0_values(const unsigned kind, const gkr_base_initial_source<bf> *b
     const bf delta_d = gkr_get_initial_base_delta(base_inputs[0], gid);
     const E delta_a = gkr_get_initial_delta(ext_inputs[0], gid);
     const E delta_b = gkr_get_initial_delta(ext_inputs[1], gid);
+    E num;
+    E den;
+    gkr_eval_lookup_unbalanced_quadratic(delta_d, delta_a, delta_b, num, den);
+    c0 = E::add(E::mul(batch_challenge_0, output_num), E::mul(batch_challenge_1, output_den));
+    c1 = E::add(E::mul(batch_challenge_0, num), E::mul(batch_challenge_1, den));
+    break;
+  }
+  case GKR_MAIN_LOOKUP_UNBALANCED_EXTENSION: {
+    const E output_num = gkr_get_initial_value(ext_outputs[0], gid);
+    const E output_den = gkr_get_initial_value(ext_outputs[1], gid);
+    const E delta_a = gkr_get_initial_delta(ext_inputs[0], gid);
+    const E delta_b = gkr_get_initial_delta(ext_inputs[1], gid);
+    const E delta_d = gkr_get_initial_delta(ext_inputs[2], gid);
     E num;
     E den;
     gkr_eval_lookup_unbalanced_quadratic(delta_d, delta_a, delta_b, num, den);
@@ -2487,6 +2516,27 @@ DEVICE_FORCEINLINE void gkr_main_round1_values(const unsigned kind, const gkr_ba
     c1 = E::add(E::mul(batch_challenge_0, num1), E::mul(batch_challenge_1, den1));
     break;
   }
+  case GKR_MAIN_LOOKUP_EXT_PAIR: {
+    E b0;
+    E b1;
+    gkr_get_continuing_points<E, EXPLICIT_FORM>(ext_inputs[0], current_folding_challenge, gid, b0, b1);
+    E d0;
+    E d1;
+    gkr_get_continuing_points<E, EXPLICIT_FORM>(ext_inputs[1], current_folding_challenge, gid, d0, d1);
+    E num0;
+    E den0;
+    E num1;
+    E den1;
+    gkr_eval_lookup_base_pair(b0, d0, current_aux_challenge, num0, den0);
+    if constexpr (EXPLICIT_FORM) {
+      gkr_eval_lookup_base_pair(b1, d1, current_aux_challenge, num1, den1);
+    } else {
+      gkr_eval_lookup_base_pair_quadratic(b1, d1, num1, den1);
+    }
+    c0 = E::add(E::mul(batch_challenge_0, num0), E::mul(batch_challenge_1, den0));
+    c1 = E::add(E::mul(batch_challenge_0, num1), E::mul(batch_challenge_1, den1));
+    break;
+  }
   case GKR_MAIN_LOOKUP_BASE_MINUS_MULTIPLICITY: {
     E b0;
     E b1;
@@ -2600,6 +2650,30 @@ DEVICE_FORCEINLINE void gkr_main_round1_values(const unsigned kind, const gkr_ba
     E b0;
     E b1;
     gkr_get_continuing_points<E, EXPLICIT_FORM>(ext_inputs[1], current_folding_challenge, gid, b0, b1);
+    E num0;
+    E den0;
+    E num1;
+    E den1;
+    gkr_eval_lookup_unbalanced(d0, a0, b0, current_aux_challenge, num0, den0);
+    if constexpr (EXPLICIT_FORM) {
+      gkr_eval_lookup_unbalanced(d1, a1, b1, current_aux_challenge, num1, den1);
+    } else {
+      gkr_eval_lookup_unbalanced_quadratic(d1, a1, b1, num1, den1);
+    }
+    c0 = E::add(E::mul(batch_challenge_0, num0), E::mul(batch_challenge_1, den0));
+    c1 = E::add(E::mul(batch_challenge_0, num1), E::mul(batch_challenge_1, den1));
+    break;
+  }
+  case GKR_MAIN_LOOKUP_UNBALANCED_EXTENSION: {
+    E a0;
+    E a1;
+    gkr_get_continuing_points<E, EXPLICIT_FORM>(ext_inputs[0], current_folding_challenge, gid, a0, a1);
+    E b0;
+    E b1;
+    gkr_get_continuing_points<E, EXPLICIT_FORM>(ext_inputs[1], current_folding_challenge, gid, b0, b1);
+    E d0;
+    E d1;
+    gkr_get_continuing_points<E, EXPLICIT_FORM>(ext_inputs[2], current_folding_challenge, gid, d0, d1);
     E num0;
     E den0;
     E num1;
@@ -2878,6 +2952,27 @@ DEVICE_FORCEINLINE void gkr_main_round2_values(const unsigned kind, const gkr_ba
     c1 = E::add(E::mul(batch_challenge_0, num1), E::mul(batch_challenge_1, den1));
     break;
   }
+  case GKR_MAIN_LOOKUP_EXT_PAIR: {
+    E b0;
+    E b1;
+    gkr_get_continuing_points<E, EXPLICIT_FORM>(ext_inputs[0], second_folding_challenge, gid, b0, b1);
+    E d0;
+    E d1;
+    gkr_get_continuing_points<E, EXPLICIT_FORM>(ext_inputs[1], second_folding_challenge, gid, d0, d1);
+    E num0;
+    E den0;
+    E num1;
+    E den1;
+    gkr_eval_lookup_base_pair(b0, d0, current_aux_challenge, num0, den0);
+    if constexpr (EXPLICIT_FORM) {
+      gkr_eval_lookup_base_pair(b1, d1, current_aux_challenge, num1, den1);
+    } else {
+      gkr_eval_lookup_base_pair_quadratic(b1, d1, num1, den1);
+    }
+    c0 = E::add(E::mul(batch_challenge_0, num0), E::mul(batch_challenge_1, den0));
+    c1 = E::add(E::mul(batch_challenge_0, num1), E::mul(batch_challenge_1, den1));
+    break;
+  }
   case GKR_MAIN_LOOKUP_BASE_MINUS_MULTIPLICITY: {
     E b0;
     E b1;
@@ -2991,6 +3086,30 @@ DEVICE_FORCEINLINE void gkr_main_round2_values(const unsigned kind, const gkr_ba
     E b0;
     E b1;
     gkr_get_continuing_points<E, EXPLICIT_FORM>(ext_inputs[1], second_folding_challenge, gid, b0, b1);
+    E num0;
+    E den0;
+    E num1;
+    E den1;
+    gkr_eval_lookup_unbalanced(d0, a0, b0, current_aux_challenge, num0, den0);
+    if constexpr (EXPLICIT_FORM) {
+      gkr_eval_lookup_unbalanced(d1, a1, b1, current_aux_challenge, num1, den1);
+    } else {
+      gkr_eval_lookup_unbalanced_quadratic(d1, a1, b1, num1, den1);
+    }
+    c0 = E::add(E::mul(batch_challenge_0, num0), E::mul(batch_challenge_1, den0));
+    c1 = E::add(E::mul(batch_challenge_0, num1), E::mul(batch_challenge_1, den1));
+    break;
+  }
+  case GKR_MAIN_LOOKUP_UNBALANCED_EXTENSION: {
+    E a0;
+    E a1;
+    gkr_get_continuing_points<E, EXPLICIT_FORM>(ext_inputs[0], second_folding_challenge, gid, a0, a1);
+    E b0;
+    E b1;
+    gkr_get_continuing_points<E, EXPLICIT_FORM>(ext_inputs[1], second_folding_challenge, gid, b0, b1);
+    E d0;
+    E d1;
+    gkr_get_continuing_points<E, EXPLICIT_FORM>(ext_inputs[2], second_folding_challenge, gid, d0, d1);
     E num0;
     E den0;
     E num1;
@@ -3268,6 +3387,27 @@ DEVICE_FORCEINLINE void gkr_main_round3_values(const unsigned kind, const gkr_ex
     c1 = E::add(E::mul(batch_challenge_0, num1), E::mul(batch_challenge_1, den1));
     break;
   }
+  case GKR_MAIN_LOOKUP_EXT_PAIR: {
+    E b0;
+    E b1;
+    gkr_get_continuing_points<E, EXPLICIT_FORM>(ext_inputs[0], current_folding_challenge, gid, b0, b1);
+    E d0;
+    E d1;
+    gkr_get_continuing_points<E, EXPLICIT_FORM>(ext_inputs[1], current_folding_challenge, gid, d0, d1);
+    E num0;
+    E den0;
+    E num1;
+    E den1;
+    gkr_eval_lookup_base_pair(b0, d0, current_aux_challenge, num0, den0);
+    if constexpr (EXPLICIT_FORM) {
+      gkr_eval_lookup_base_pair(b1, d1, current_aux_challenge, num1, den1);
+    } else {
+      gkr_eval_lookup_base_pair_quadratic(b1, d1, num1, den1);
+    }
+    c0 = E::add(E::mul(batch_challenge_0, num0), E::mul(batch_challenge_1, den0));
+    c1 = E::add(E::mul(batch_challenge_0, num1), E::mul(batch_challenge_1, den1));
+    break;
+  }
   case GKR_MAIN_LOOKUP_BASE_MINUS_MULTIPLICITY: {
     E b0;
     E b1;
@@ -3381,6 +3521,30 @@ DEVICE_FORCEINLINE void gkr_main_round3_values(const unsigned kind, const gkr_ex
     E b0;
     E b1;
     gkr_get_continuing_points<E, EXPLICIT_FORM>(ext_inputs[1], current_folding_challenge, gid, b0, b1);
+    E num0;
+    E den0;
+    E num1;
+    E den1;
+    gkr_eval_lookup_unbalanced(d0, a0, b0, current_aux_challenge, num0, den0);
+    if constexpr (EXPLICIT_FORM) {
+      gkr_eval_lookup_unbalanced(d1, a1, b1, current_aux_challenge, num1, den1);
+    } else {
+      gkr_eval_lookup_unbalanced_quadratic(d1, a1, b1, num1, den1);
+    }
+    c0 = E::add(E::mul(batch_challenge_0, num0), E::mul(batch_challenge_1, den0));
+    c1 = E::add(E::mul(batch_challenge_0, num1), E::mul(batch_challenge_1, den1));
+    break;
+  }
+  case GKR_MAIN_LOOKUP_UNBALANCED_EXTENSION: {
+    E a0;
+    E a1;
+    gkr_get_continuing_points<E, EXPLICIT_FORM>(ext_inputs[0], current_folding_challenge, gid, a0, a1);
+    E b0;
+    E b1;
+    gkr_get_continuing_points<E, EXPLICIT_FORM>(ext_inputs[1], current_folding_challenge, gid, b0, b1);
+    E d0;
+    E d1;
+    gkr_get_continuing_points<E, EXPLICIT_FORM>(ext_inputs[2], current_folding_challenge, gid, d0, d1);
     E num0;
     E den0;
     E num1;

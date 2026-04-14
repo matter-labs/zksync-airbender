@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use era_cudart::execution::KernelFunction;
 use era_cudart::result::CudaResult;
 use era_cudart::{cuda_kernel_declaration, cuda_kernel_signature_arguments_and_function};
-use field::Field;
+use field::{Field, PrimeField};
 
 use crate::primitives::context::ProverContext;
 use crate::primitives::field::E4;
@@ -760,6 +760,21 @@ pub(super) fn build_flat_round0_plan<E: Field>(
             }
 
             // ---------------------------------------------------------------
+            // LookupUnbalancedExtension: d/a/b ext
+            // ---------------------------------------------------------------
+            GpuGKRMainLayerKernelKind::LookupUnbalancedExtension => {
+                let out_num = b.add_ext_source(&r0.extension_field_outputs[0]);
+                let out_den = b.add_ext_source(&r0.extension_field_outputs[1]);
+                b.push_c0_ext(out_num, bc0());
+                b.push_c0_ext(out_den, bc1());
+                let a = b.add_ext_source(&r0.extension_field_inputs[0]);
+                let bi = b.add_ext_source(&r0.extension_field_inputs[1]);
+                let d = b.add_ext_source(&r0.extension_field_inputs[2]);
+                b.push_c1_e4_e4(d, a, bc0());
+                b.push_c1_e4_e4(d, bi, bc1());
+            }
+
+            // ---------------------------------------------------------------
             // LookupWithCachedDensAndSetup: a/c bf, b/d ext
             // ---------------------------------------------------------------
             GpuGKRMainLayerKernelKind::LookupWithCachedDensAndSetup => {
@@ -811,6 +826,16 @@ pub(super) fn build_flat_round0_plan<E: Field>(
                 b.push_c0_ext(out_den, bc1());
                 // c1 = β₁ * cross_product(quad_terms, linear_terms)
                 emit_cross_product_gate(&mut b, gate, r0, p1, 0);
+            }
+
+            GpuGKRMainLayerKernelKind::LookupExtPair => {
+                let out_num = b.add_ext_source(&r0.extension_field_outputs[0]);
+                let out_den = b.add_ext_source(&r0.extension_field_outputs[1]);
+                b.push_c0_ext(out_num, bc0());
+                b.push_c0_ext(out_den, bc1());
+                let lhs = b.add_ext_source(&r0.extension_field_inputs[0]);
+                let rhs = b.add_ext_source(&r0.extension_field_inputs[1]);
+                b.push_c1_e4_e4(lhs, rhs, bc1());
             }
 
             GpuGKRMainLayerKernelKind::LookupWithDensAndSetupExpressions => {
@@ -1370,6 +1395,18 @@ impl<E: Field + field::FieldExtension<BF>> FlatContinuationBuildPlan<E> {
 // Continuation description builder
 // ---------------------------------------------------------------------------
 
+/// Apply an index permutation in-place to a slice.
+fn apply_permutation<T: Copy + Default>(order: &[usize], data: &mut [T]) {
+    let tmp: Vec<T> = order.iter().map(|&i| data[i]).collect();
+    data[..order.len()].copy_from_slice(&tmp);
+}
+
+/// Apply an index permutation in-place to a Vec.
+fn apply_permutation_vec<T: Clone>(order: &[usize], data: &mut Vec<T>) {
+    let tmp: Vec<T> = order.iter().map(|&i| data[i].clone()).collect();
+    *data = tmp;
+}
+
 /// Key for deduplicating continuation sources.
 /// We deduplicate by cache pointer plus source kind (base/ext), since round 1/2
 /// require base/ext separation even when the underlying continuation cache is shared.
@@ -1486,7 +1523,11 @@ impl<E: Field> FlatContinuationDescriptionBuilder<E> {
         self.recipes_linear.push(recipe);
     }
 
-    pub(super) fn finish(self) -> FlatContinuationBuildPlan<E> {
+    pub(super) fn finish(mut self) -> FlatContinuationBuildPlan<E> {
+        // Sort terms within each category by source-group affinity so that
+        // terms accessing the same sources are adjacent, improving L1 reuse.
+        self.sort_terms_by_source_group();
+
         // Concatenate recipes in tier order to match kernel's *coeff++ traversal:
         // constants, c0_only_linear, unified_quadratic, unified_linear
         let mut recipes = self.recipes_constants;
@@ -1497,6 +1538,74 @@ impl<E: Field> FlatContinuationDescriptionBuilder<E> {
             term_desc: self.desc,
             recipes,
             source_assignments: self.source_assignments,
+        }
+    }
+
+    /// Reorder terms within each category so that terms accessing the same
+    /// source groups are clustered together.  This improves L1 cache reuse
+    /// in the GPU kernel without any kernel-side changes.
+    fn sort_terms_by_source_group(&mut self) {
+        const SOURCE_GROUP_SIZE: u16 = 2;
+
+        let group = |idx: u16| idx / SOURCE_GROUP_SIZE;
+
+        // --- unified_quadratic: sort by (min_group, max_group, source_a, source_b) ---
+        {
+            let n = self.desc.num_unified_quadratic as usize;
+            let mut order: Vec<usize> = (0..n).collect();
+            let terms = &self.desc.unified_quadratic[..n];
+            order.sort_by(|&a, &b| {
+                let ta = terms[a];
+                let tb = terms[b];
+                let (ga_lo, ga_hi) = {
+                    let g0 = group(ta.source_a);
+                    let g1 = group(ta.source_b);
+                    (g0.min(g1), g0.max(g1))
+                };
+                let (gb_lo, gb_hi) = {
+                    let g0 = group(tb.source_a);
+                    let g1 = group(tb.source_b);
+                    (g0.min(g1), g0.max(g1))
+                };
+                (ga_lo, ga_hi, ta.source_a, ta.source_b).cmp(&(
+                    gb_lo,
+                    gb_hi,
+                    tb.source_a,
+                    tb.source_b,
+                ))
+            });
+            apply_permutation(&order, &mut self.desc.unified_quadratic[..n]);
+            apply_permutation_vec(&order, &mut self.recipes_quadratic);
+        }
+
+        // --- c0_only_linear: sort by source group ---
+        {
+            let n = self.desc.num_c0_only_linear as usize;
+            let mut order: Vec<usize> = (0..n).collect();
+            let terms = &self.desc.c0_only_linear[..n];
+            order.sort_by(|&a, &b| {
+                let sa = group(terms[a].source_idx);
+                let sb = group(terms[b].source_idx);
+                sa.cmp(&sb)
+                    .then(terms[a].source_idx.cmp(&terms[b].source_idx))
+            });
+            apply_permutation(&order, &mut self.desc.c0_only_linear[..n]);
+            apply_permutation_vec(&order, &mut self.recipes_c0_only);
+        }
+
+        // --- unified_linear: sort by source group ---
+        {
+            let n = self.desc.num_unified_linear as usize;
+            let mut order: Vec<usize> = (0..n).collect();
+            let terms = &self.desc.unified_linear[..n];
+            order.sort_by(|&a, &b| {
+                let sa = group(terms[a].source_idx);
+                let sb = group(terms[b].source_idx);
+                sa.cmp(&sb)
+                    .then(terms[a].source_idx.cmp(&terms[b].source_idx))
+            });
+            apply_permutation(&order, &mut self.desc.unified_linear[..n]);
+            apply_permutation_vec(&order, &mut self.recipes_linear);
         }
     }
 }
@@ -1717,6 +1826,20 @@ pub(super) fn build_flat_continuation_plan<E: Field>(
             }
 
             // ---------------------------------------------------------------
+            // LookupUnbalancedExtension: d/a/b ext
+            // ---------------------------------------------------------------
+            GpuGKRMainLayerKernelKind::LookupUnbalancedExtension => {
+                let a = add_ext(&mut b, 0);
+                let bi = add_ext(&mut b, 1);
+                let d = add_ext(&mut b, 2);
+                b.push_unified_quadratic(d, a, bc0());
+                b.push_unified_quadratic(d, bi, bc1());
+                b.push_c0_only_linear(bi, bc0());
+                b.push_c0_only_linear(a, bc0_gamma(BF::ONE, 1));
+                b.push_c0_only_linear(bi, bc1_gamma(BF::ONE, 1));
+            }
+
+            // ---------------------------------------------------------------
             // LookupWithCachedDensAndSetup: a/c base, b/d ext
             // ---------------------------------------------------------------
             GpuGKRMainLayerKernelKind::LookupWithCachedDensAndSetup => {
@@ -1768,6 +1891,18 @@ pub(super) fn build_flat_continuation_plan<E: Field>(
                 emit_continuation_linear_form(&mut b, gate, p0, false, false, 0);
                 emit_continuation_linear_form(&mut b, gate, p0, false, true, 0);
                 emit_continuation_cross_product_gate(&mut b, gate, p1, 0);
+            }
+
+            GpuGKRMainLayerKernelKind::LookupExtPair => {
+                let lhs = add_ext(&mut b, 0);
+                let rhs = add_ext(&mut b, 1);
+                b.push_unified_quadratic(lhs, rhs, bc1());
+                b.push_c0_only_linear(lhs, bc0());
+                b.push_c0_only_linear(rhs, bc0());
+                b.push_constant(bc0_gamma(BF::from_u32_unchecked(2), 1));
+                b.push_c0_only_linear(lhs, bc1_gamma(BF::ONE, 1));
+                b.push_c0_only_linear(rhs, bc1_gamma(BF::ONE, 1));
+                b.push_constant(bc1_gamma(BF::ONE, 2));
             }
 
             // ---------------------------------------------------------------
