@@ -1559,7 +1559,11 @@ pub fn gkr_run_basic_unrolled_test_impl(
     if PROVE_INITS_AND_TEARDOWNS {
         println!("Will try to prove memory inits and teardowns circuit");
 
-        let circuit: GKRCircuitArtifact<BabyBearField> = {
+        let circuit: GKRCircuitArtifact<BabyBearField> = if USE_GKR_WITH_CACHES {
+            deserialize_from_file(
+                "../cs/compiled_circuits/inits_and_teardowns_preprocessed_layout_gkr.json",
+            )
+        } else {
             deserialize_from_file(
                 "../cs/compiled_circuits/inits_and_teardowns_layout_no_caches_gkr.json",
             )
