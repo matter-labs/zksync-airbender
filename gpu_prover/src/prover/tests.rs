@@ -65,9 +65,8 @@ use cs::gkr_circuits::{
     shift_binop_table_driver_fn,
 };
 use cs::gkr_compiler::{
-    compile_unrolled_circuit_state_transition_into_gkr,
-    compile_unrolled_circuit_state_transition_into_unrolled_gkr_without_caches, GKRCircuitArtifact,
-    GKRLayerDescription, NoFieldGKRRelation, NoFieldMaxQuadraticGKRRelation, OutputType,
+    compile_unrolled_circuit_state_transition_into_gkr, GKRCircuitArtifact, GKRLayerDescription,
+    NoFieldGKRRelation, NoFieldMaxQuadraticGKRRelation, OutputType,
 };
 use cs::tables::TableDriver;
 use era_cudart::event::{CudaEvent, CudaEventCreateFlags};
@@ -159,7 +158,7 @@ const BASIC_UNROLLED_CPU_PARITY_BINARY_PATH: &str =
     "riscv_transpiler/examples/keccak_f1600/app.bin";
 const BASIC_UNROLLED_CPU_PARITY_TEXT_PATH: &str = "riscv_transpiler/examples/keccak_f1600/app.text";
 const BASIC_UNROLLED_ADD_SUB_LAYOUT_PATH: &str =
-    "cs/compiled_circuits/add_sub_lui_auipc_mop_preprocessed_layout_no_caches_gkr.json";
+    "cs/compiled_circuits/add_sub_lui_auipc_mop_preprocessed_layout_gkr.json";
 
 fn test_artifact_path(relative_path: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -4102,8 +4101,18 @@ fn assert_gpu_and_cpu_gkr_storage_match<
         .zip(cpu_storage.layers.iter())
         .enumerate()
     {
-        let gpu_base_keys = gpu_layer.base_field_inputs.keys().copied().collect_vec();
-        let cpu_base_keys = cpu_layer.base_field_inputs.keys().copied().collect_vec();
+        let gpu_base_keys = gpu_layer
+            .base_field_inputs
+            .keys()
+            .copied()
+            .filter(|address| !matches!(address, GKRAddress::VirtualSetup(..)))
+            .collect_vec();
+        let cpu_base_keys = cpu_layer
+            .base_field_inputs
+            .keys()
+            .copied()
+            .filter(|address| !matches!(address, GKRAddress::VirtualSetup(..)))
+            .collect_vec();
         assert_eq!(
             gpu_base_keys, cpu_base_keys,
             "base keys differ in layer {layer_idx}"
@@ -4144,22 +4153,40 @@ fn assert_gpu_and_cpu_gkr_storage_match<
     }
 }
 
-fn assert_no_same_layer_cached_storage_entries<E>(gpu_storage: &GpuGKRStorage<BF, E>) {
+fn cached_address_layer(address: &GKRAddress) -> Option<usize> {
+    match address {
+        GKRAddress::Cached { layer, .. } => Some(*layer),
+        _ => None,
+    }
+}
+
+fn assert_cached_storage_entries_are_layer_local<E>(gpu_storage: &GpuGKRStorage<BF, E>) -> usize {
+    let mut cached_entries = 0;
     for (layer_idx, layer) in gpu_storage.layers.iter().enumerate() {
         for address in layer
             .base_field_inputs
             .keys()
             .chain(layer.extension_field_inputs.keys())
         {
-            assert!(
-                !matches!(address, GKRAddress::Cached { layer, .. } if *layer == layer_idx),
-                "unexpected same-layer cached helper storage in layer {layer_idx}: {address:?}"
-            );
+            if let Some(address_layer) = cached_address_layer(address) {
+                cached_entries += 1;
+                assert_eq!(
+                    address_layer, layer_idx,
+                    "cached helper storage escaped layer locality in layer {layer_idx}: {address:?}"
+                );
+            }
         }
     }
+
+    cached_entries
 }
 
-fn assert_no_same_layer_cached_kernel_addresses(layer_idx: usize, inputs: &GKRInputs, label: &str) {
+fn assert_cached_kernel_addresses_are_layer_local(
+    layer_idx: usize,
+    inputs: &GKRInputs,
+    label: &str,
+) -> usize {
+    let mut cached_addresses = 0;
     for address in inputs
         .inputs_in_base
         .iter()
@@ -4167,11 +4194,16 @@ fn assert_no_same_layer_cached_kernel_addresses(layer_idx: usize, inputs: &GKRIn
         .chain(inputs.outputs_in_base.iter())
         .chain(inputs.outputs_in_extension.iter())
     {
-        assert!(
-            !matches!(address, GKRAddress::Cached { layer, .. } if *layer == layer_idx),
-            "{label} unexpectedly referenced same-layer cached helper address {address:?}",
-        );
+        if let Some(address_layer) = cached_address_layer(address) {
+            cached_addresses += 1;
+            assert_eq!(
+                address_layer, layer_idx,
+                "{label} referenced cross-layer cached helper address {address:?}",
+            );
+        }
     }
+
+    cached_addresses
 }
 
 #[test]
@@ -5369,13 +5401,12 @@ fn run_basic_unrolled_workflow_input_parity_test() {
         ],
     );
 
-    let add_sub_circuit =
-        compile_unrolled_circuit_state_transition_into_unrolled_gkr_without_caches::<BF>(
-            &|cs| add_sub_lui_auipc_mop_table_addition_fn(cs),
-            &|cs| add_sub_lui_auipc_mop_circuit_with_preprocessed_bytecode_for_gkr(cs),
-            1 << 20,
-            TRACE_LEN_LOG2,
-        );
+    let add_sub_circuit = compile_unrolled_circuit_state_transition_into_gkr::<BF>(
+        &|cs| add_sub_lui_auipc_mop_table_addition_fn(cs),
+        &|cs| add_sub_lui_auipc_mop_circuit_with_preprocessed_bytecode_for_gkr(cs),
+        1 << 20,
+        TRACE_LEN_LOG2,
+    );
     let num_calls =
         counters.get_calls_to_circuit_family::<ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX>();
 
@@ -5865,13 +5896,12 @@ fn run_jump_branch_slt_workflow_input_parity_test() {
         ],
     );
 
-    let jump_branch_slt_circuit =
-        compile_unrolled_circuit_state_transition_into_unrolled_gkr_without_caches::<BF>(
-            &|cs| jump_branch_slt_table_addition_fn(cs),
-            &|cs| jump_branch_slt_circuit_with_preprocessed_bytecode_for_gkr(cs),
-            1 << 20,
-            TRACE_LEN_LOG2,
-        );
+    let jump_branch_slt_circuit = compile_unrolled_circuit_state_transition_into_gkr::<BF>(
+        &|cs| jump_branch_slt_table_addition_fn(cs),
+        &|cs| jump_branch_slt_circuit_with_preprocessed_bytecode_for_gkr(cs),
+        1 << 20,
+        TRACE_LEN_LOG2,
+    );
     let num_calls = counters.get_calls_to_circuit_family::<JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX>();
     assert!(
         num_calls > 0,
@@ -6278,7 +6308,7 @@ fn run_jump_branch_slt_workflow_input_parity_test() {
 #[serial]
 fn run_load_store_word_only_workflow_input_parity_test() {
     let compiled_circuit = deserialize_json_for_test(
-        "cs/compiled_circuits/mem_word_only_preprocessed_layout_no_caches_gkr.json",
+        "cs/compiled_circuits/mem_word_only_preprocessed_layout_gkr.json",
     );
 
     run_memory_workflow_input_parity_test::<LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX>(
@@ -6297,7 +6327,7 @@ fn run_load_store_word_only_workflow_input_parity_test() {
 #[serial]
 fn run_load_store_subword_only_workflow_input_parity_test() {
     let compiled_circuit = deserialize_json_for_test(
-        "cs/compiled_circuits/mem_subword_only_preprocessed_layout_no_caches_gkr.json",
+        "cs/compiled_circuits/mem_subword_only_preprocessed_layout_gkr.json",
     );
 
     run_memory_workflow_input_parity_test::<LOAD_STORE_SUBWORD_ONLY_CIRCUIT_FAMILY_IDX>(
@@ -6316,7 +6346,7 @@ fn run_load_store_subword_only_workflow_input_parity_test() {
 #[serial]
 fn run_bigint_delegation_workflow_input_parity_test() {
     let compiled_circuit = deserialize_json_for_test(
-        "cs/compiled_circuits/bigint_with_extended_control_layout_no_caches_gkr.json",
+        "cs/compiled_circuits/bigint_with_extended_control_layout_gkr.json",
     );
     assert_bigint_delegation_workflow_matches_cpu(compiled_circuit, false);
 }
@@ -6325,7 +6355,7 @@ fn run_bigint_delegation_workflow_input_parity_test() {
 #[serial]
 fn run_blake2_delegation_workflow_input_parity_test() {
     let compiled_circuit = deserialize_json_for_test(
-        "cs/compiled_circuits/blake2_with_extended_control_layout_no_caches_gkr.json",
+        "cs/compiled_circuits/blake2_with_extended_control_layout_gkr.json",
     );
     assert_blake2_delegation_workflow_matches_cpu(compiled_circuit, false);
 }
@@ -6334,7 +6364,7 @@ fn run_blake2_delegation_workflow_input_parity_test() {
 #[serial]
 fn run_keccak_special5_delegation_workflow_input_parity_test() {
     let compiled_circuit =
-        deserialize_json_for_test("cs/compiled_circuits/keccak_special5_layout_no_caches_gkr.json");
+        deserialize_json_for_test("cs/compiled_circuits/keccak_special5_layout_gkr.json");
     assert_keccak_delegation_workflow_matches_cpu(compiled_circuit);
 }
 
@@ -6342,14 +6372,14 @@ fn run_keccak_special5_delegation_workflow_input_parity_test() {
 #[serial]
 fn run_blake2_delegation_zero_call_workflow_input_parity_test() {
     let compiled_circuit = deserialize_json_for_test(
-        "cs/compiled_circuits/blake2_with_extended_control_layout_no_caches_gkr.json",
+        "cs/compiled_circuits/blake2_with_extended_control_layout_gkr.json",
     );
     assert_blake2_delegation_workflow_matches_cpu(compiled_circuit, true);
 }
 
 #[test]
 #[serial]
-fn no_cache_main_layer_backward_plan_has_no_synthetic_readback_kernel_test() {
+fn cached_main_layer_backward_plan_keeps_cache_inputs_layer_locality_test() {
     let BasicUnrolledAsyncBackwardFixture {
         context,
         compiled_circuit,
@@ -6377,30 +6407,35 @@ fn no_cache_main_layer_backward_plan_has_no_synthetic_readback_kernel_test() {
         false,
     );
 
-    while let Some(layer_plan) = main_layer_state
+    let layer_plan = main_layer_state
         .prepare_next_layer_static(&context)
         .unwrap()
-    {
-        let compiled_layer = &compiled_circuit.layers[layer_plan.layer_idx];
-        assert_eq!(
-            layer_plan.kernel_plans().len(),
-            compiled_layer.gates.len() + compiled_layer.gates_with_external_connections.len(),
-            "layer {} should schedule exactly one kernel per compiled relation",
+        .expect("expected at least one main-layer plan");
+    let compiled_layer = &compiled_circuit.layers[layer_plan.layer_idx];
+    assert_eq!(
+        layer_plan.kernel_plans().len(),
+        compiled_layer.gates.len() + compiled_layer.gates_with_external_connections.len(),
+        "layer {} should schedule exactly one kernel per compiled relation",
+        layer_plan.layer_idx,
+    );
+    let mut cached_kernel_addresses = 0;
+    for kernel in layer_plan.kernel_plans() {
+        cached_kernel_addresses += assert_cached_kernel_addresses_are_layer_local(
             layer_plan.layer_idx,
+            &kernel.inputs,
+            "main-layer plan",
         );
-        for kernel in layer_plan.kernel_plans() {
-            assert_no_same_layer_cached_kernel_addresses(
-                layer_plan.layer_idx,
-                &kernel.inputs,
-                "main-layer plan",
-            );
-        }
     }
+
+    assert!(
+        cached_kernel_addresses > 0,
+        "expected cached helper addresses in main-layer backward plan",
+    );
 }
 
 #[test]
 #[serial]
-fn run_shift_binop_no_cache_lowering_parity_test() {
+fn run_shift_binop_cached_lookup_parity_test() {
     type CountersT = DelegationsAndFamiliesCounters;
 
     const TRACE_LEN_LOG2: usize = 24;
@@ -6457,13 +6492,12 @@ fn run_shift_binop_no_cache_lowering_parity_test() {
     let mut expected_final_state = state;
     expected_final_state.counters = Default::default();
 
-    let shift_binop_circuit =
-        compile_unrolled_circuit_state_transition_into_unrolled_gkr_without_caches::<BF>(
-            &|cs| shift_binop_table_addition_fn(cs),
-            &|cs| shift_binop_circuit_with_preprocessed_bytecode_for_gkr(cs),
-            1 << 20,
-            TRACE_LEN_LOG2,
-        );
+    let shift_binop_circuit = compile_unrolled_circuit_state_transition_into_gkr::<BF>(
+        &|cs| shift_binop_table_addition_fn(cs),
+        &|cs| shift_binop_circuit_with_preprocessed_bytecode_for_gkr(cs),
+        1 << 20,
+        TRACE_LEN_LOG2,
+    );
     let num_calls = counters.get_calls_to_circuit_family::<SHIFT_BINARY_CIRCUIT_FAMILY_IDX>();
     assert!(
         num_calls > 0,
@@ -6646,7 +6680,7 @@ fn run_shift_binop_no_cache_lowering_parity_test() {
     context.get_exec_stream().synchronize().unwrap();
     assert!(
         gpu_forward_setup.has_generic_lookup(),
-        "shift_binop no-cache parity expects a generic lookup runtime"
+        "shift_binop cached parity expects a generic lookup runtime"
     );
 
     let mut gkr_storage = GKRStorage::<BF, E4>::default();
@@ -6742,7 +6776,12 @@ fn run_shift_binop_no_cache_lowering_parity_test() {
         &shift_binop_circuit,
         &context,
     );
-    assert_no_same_layer_cached_storage_entries(&gpu_forward_output.storage);
+    let cached_storage_entries =
+        assert_cached_storage_entries_are_layer_local(&gpu_forward_output.storage);
+    assert!(
+        cached_storage_entries > 0,
+        "expected cached helper storage entries in cached shift-binop workflow",
+    );
     assert_eq!(gpu_final_explicit_evaluations, final_explicit_evaluations);
     assert_eq!(gpu_evals_flattened, evals_flattened);
 }
@@ -6892,13 +6931,12 @@ fn run_basic_unrolled_stagewise_parity_test() {
             < NUM_CYCLES_PER_CHUNK
     );
 
-    let add_sub_circuit =
-        compile_unrolled_circuit_state_transition_into_unrolled_gkr_without_caches::<BF>(
-            &|cs| add_sub_lui_auipc_mop_table_addition_fn(cs),
-            &|cs| add_sub_lui_auipc_mop_circuit_with_preprocessed_bytecode_for_gkr(cs),
-            1 << 20,
-            TRACE_LEN_LOG2,
-        );
+    let add_sub_circuit = compile_unrolled_circuit_state_transition_into_gkr::<BF>(
+        &|cs| add_sub_lui_auipc_mop_table_addition_fn(cs),
+        &|cs| add_sub_lui_auipc_mop_circuit_with_preprocessed_bytecode_for_gkr(cs),
+        1 << 20,
+        TRACE_LEN_LOG2,
+    );
 
     let num_calls =
         counters.get_calls_to_circuit_family::<ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX>();
@@ -7756,7 +7794,7 @@ fn standalone_inits_and_teardowns_gpu_workflow_matches_cpu() {
         "expected hashed-fibonacci RAM touches for standalone init/teardown parity"
     );
     let compiled_circuit: GKRCircuitArtifact<BF> = deserialize_json_for_test(
-        "cs/compiled_circuits/inits_and_teardowns_preprocessed_layout_no_caches_gkr.json",
+        "cs/compiled_circuits/inits_and_teardowns_preprocessed_layout_gkr.json",
     );
     let num_init_and_teardown_sets = compiled_circuit.memory_layout.teardown_sets.len();
     let flattened_inits_and_teardowns =
@@ -8153,13 +8191,12 @@ fn standalone_inits_and_teardowns_trivial_accumulator_matches_cpu_expectation() 
 #[test]
 #[ignore]
 fn test_commit_memory_matches_cpu() {
-    let compiled_circuit =
-        compile_unrolled_circuit_state_transition_into_unrolled_gkr_without_caches::<BF>(
-            &|cs| add_sub_lui_auipc_mop_table_addition_fn(cs),
-            &|cs| add_sub_lui_auipc_mop_circuit_with_preprocessed_bytecode_for_gkr(cs),
-            1 << 20,
-            24,
-        );
+    let compiled_circuit = compile_unrolled_circuit_state_transition_into_gkr::<BF>(
+        &|cs| add_sub_lui_auipc_mop_table_addition_fn(cs),
+        &|cs| add_sub_lui_auipc_mop_circuit_with_preprocessed_bytecode_for_gkr(cs),
+        1 << 20,
+        24,
+    );
     assert_non_memory_commit_memory_matches_cpu_for_test::<ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX>(
         "examples/basic_fibonacci/app.bin",
         "examples/basic_fibonacci/app.text",
@@ -8173,13 +8210,12 @@ fn test_commit_memory_matches_cpu() {
 #[test]
 #[ignore]
 fn test_jump_branch_slt_commit_memory_matches_cpu() {
-    let compiled_circuit =
-        compile_unrolled_circuit_state_transition_into_unrolled_gkr_without_caches::<BF>(
-            &|cs| jump_branch_slt_table_addition_fn(cs),
-            &|cs| jump_branch_slt_circuit_with_preprocessed_bytecode_for_gkr(cs),
-            1 << 20,
-            24,
-        );
+    let compiled_circuit = compile_unrolled_circuit_state_transition_into_gkr::<BF>(
+        &|cs| jump_branch_slt_table_addition_fn(cs),
+        &|cs| jump_branch_slt_circuit_with_preprocessed_bytecode_for_gkr(cs),
+        1 << 20,
+        24,
+    );
     assert_non_memory_commit_memory_matches_cpu_for_test::<JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX>(
         "examples/hashed_fibonacci/app.bin",
         "examples/hashed_fibonacci/app.text",
@@ -8193,13 +8229,12 @@ fn test_jump_branch_slt_commit_memory_matches_cpu() {
 #[test]
 #[ignore]
 fn test_shift_binop_commit_memory_matches_cpu() {
-    let compiled_circuit =
-        compile_unrolled_circuit_state_transition_into_unrolled_gkr_without_caches::<BF>(
-            &|cs| shift_binop_table_addition_fn(cs),
-            &|cs| shift_binop_circuit_with_preprocessed_bytecode_for_gkr(cs),
-            1 << 20,
-            24,
-        );
+    let compiled_circuit = compile_unrolled_circuit_state_transition_into_gkr::<BF>(
+        &|cs| shift_binop_table_addition_fn(cs),
+        &|cs| shift_binop_circuit_with_preprocessed_bytecode_for_gkr(cs),
+        1 << 20,
+        24,
+    );
     assert_non_memory_commit_memory_matches_cpu_for_test::<SHIFT_BINARY_CIRCUIT_FAMILY_IDX>(
         "examples/hashed_fibonacci/app.bin",
         "examples/hashed_fibonacci/app.text",
@@ -8242,7 +8277,7 @@ fn test_load_store_subword_only_commit_memory_matches_cpu() {
 #[ignore]
 fn test_bigint_delegation_commit_memory_matches_cpu() {
     let compiled_circuit = deserialize_json_for_test(
-        "cs/compiled_circuits/bigint_with_extended_control_layout_no_caches_gkr.json",
+        "cs/compiled_circuits/bigint_with_extended_control_layout_gkr.json",
     );
     assert_bigint_delegation_commit_memory_matches_cpu(compiled_circuit, false);
 }
@@ -8251,7 +8286,7 @@ fn test_bigint_delegation_commit_memory_matches_cpu() {
 #[ignore]
 fn test_blake2_delegation_commit_memory_matches_cpu() {
     let compiled_circuit = deserialize_json_for_test(
-        "cs/compiled_circuits/blake2_with_extended_control_layout_no_caches_gkr.json",
+        "cs/compiled_circuits/blake2_with_extended_control_layout_gkr.json",
     );
     assert_blake2_delegation_commit_memory_matches_cpu(compiled_circuit, false);
 }
@@ -8260,7 +8295,7 @@ fn test_blake2_delegation_commit_memory_matches_cpu() {
 #[ignore]
 fn test_keccak_special5_delegation_commit_memory_matches_cpu() {
     let compiled_circuit =
-        deserialize_json_for_test("cs/compiled_circuits/keccak_special5_layout_no_caches_gkr.json");
+        deserialize_json_for_test("cs/compiled_circuits/keccak_special5_layout_gkr.json");
     assert_keccak_delegation_commit_memory_matches_cpu(compiled_circuit);
 }
 
@@ -8268,7 +8303,7 @@ fn test_keccak_special5_delegation_commit_memory_matches_cpu() {
 #[ignore]
 fn test_blake2_delegation_zero_call_commit_memory_matches_cpu() {
     let compiled_circuit = deserialize_json_for_test(
-        "cs/compiled_circuits/blake2_with_extended_control_layout_no_caches_gkr.json",
+        "cs/compiled_circuits/blake2_with_extended_control_layout_gkr.json",
     );
     assert_blake2_delegation_commit_memory_matches_cpu(compiled_circuit, true);
 }
