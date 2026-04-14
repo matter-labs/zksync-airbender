@@ -2,7 +2,6 @@
 #![cfg_attr(not(test), no_std)]
 #![cfg_attr(target_arch = "riscv32", feature(core_intrinsics))]
 #![cfg_attr(target_arch = "riscv32", feature(const_eval_select))]
-#![cfg_attr(target_arch = "riscv32", feature(ptr_as_ref_unchecked))]
 
 use core::fmt::Debug;
 use core::fmt::Display;
