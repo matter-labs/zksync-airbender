@@ -201,29 +201,45 @@ impl<E: Field + field::FieldExtension<BF>> FlatRound0BuildPlan<E> {
 use era_cudart::result::CudaResultWrap;
 use era_cudart_sys::{cudaFuncSetAttribute, CudaFuncAttribute};
 
-/// One-time setup: minimize shared memory carveout to maximize L1 capacity
-/// for all flat round 0 kernel variants. Called once before first use.
+/// One-time setup: configure shared memory carveout for flat kernels.
+/// Kernels without shared memory get 0% (maximize L1).
+/// The warp-split kernel gets a small carveout (just enough for its smem).
 pub(in crate::prover) fn configure_flat_kernel_cache_preference() {
     static ONCE: std::sync::Once = std::sync::Once::new();
     ONCE.call_once(|| {
-        for kernel in [
+        // Kernels with zero shared memory → 0% carveout → maximize L1.
+        let no_smem_kernels: &[*const std::ffi::c_void] = &[
             ab_gkr_main_round0_flat_e4_kernel as *const std::ffi::c_void,
             ab_gkr_main_round0_flat_constant_e4_kernel as *const std::ffi::c_void,
-        ] {
-            let err = unsafe {
-                cudaFuncSetAttribute(
-                    kernel,
-                    CudaFuncAttribute::PreferredSharedMemoryCarveout,
-                    0, // 0% shared memory → maximize L1
-                )
-            };
-            if err != era_cudart_sys::CudaError::Success {
-                log::warn!(
-                    "cudaFuncSetAttribute(PreferredSharedMemoryCarveout, 0) returned {:?}",
-                    err
-                );
-            }
+            ab_gkr_main_round1_flat_compact_e4_kernel as *const std::ffi::c_void,
+            ab_gkr_main_round1_flat_constant_compact_e4_kernel as *const std::ffi::c_void,
+            ab_gkr_main_round1_flat_explicit_e4_kernel as *const std::ffi::c_void,
+            ab_gkr_main_round1_flat_constant_explicit_e4_kernel as *const std::ffi::c_void,
+        ];
+        for &kernel in no_smem_kernels {
+            set_shared_carveout(kernel, 0);
         }
+
+        // Warp-split kernel: ~2KB/block × 8 blocks ≈ 16KB → ~13% of 128KB pool.
+        set_shared_carveout(
+            ab_gkr_main_round1_flat_constant_compact_warp_split_e4_kernel
+                as *const std::ffi::c_void,
+            13,
+        );
+    });
+}
+
+fn set_shared_carveout(kernel: *const std::ffi::c_void, pct: i32) {
+    unsafe {
+        cudaFuncSetAttribute(
+            kernel,
+            CudaFuncAttribute::PreferredSharedMemoryCarveout,
+            pct,
+        )
+    }
+    .wrap()
+    .unwrap_or_else(|e| {
+        panic!("cudaFuncSetAttribute(PreferredSharedMemoryCarveout, {pct}) failed: {e:?}")
     });
 }
 
@@ -3382,6 +3398,63 @@ pub(super) fn launch_main_round1_flat_constant(
         )
         .launch(&config, &args)
     }
+}
+
+// ===========================================================================
+// Round 1 warp-split kernel: 4 warps share 32 gids, interleave terms.
+// ===========================================================================
+
+cuda_kernel_signature_arguments_and_function!(
+    GpuGKRMainRound1FlatConstantCompactWarpSplit<T>,
+    static_desc: GpuFlatRound1StaticDesc,
+    folding_challenge: *const T,
+    fold_stride: u32,
+    next_layer_size: u32,
+    eq_values: *const T,
+    contributions: *mut T,
+    acc_size: u32,
+);
+
+cuda_kernel_declaration!(
+    ab_gkr_main_round1_flat_constant_compact_warp_split_e4_kernel(
+        static_desc: GpuFlatRound1StaticDesc,
+        folding_challenge: *const E4,
+        fold_stride: u32,
+        next_layer_size: u32,
+        eq_values: *const E4,
+        contributions: *mut E4,
+        acc_size: u32,
+    )
+);
+
+pub(super) fn launch_main_round1_flat_constant_warp_split(
+    static_desc: &GpuFlatRound1StaticDesc,
+    folding_challenge: *const E4,
+    fold_stride: u32,
+    next_layer_size: u32,
+    eq_values: *const E4,
+    contributions: *mut E4,
+    acc_size: u32,
+    context: &ProverContext,
+) -> CudaResult<()> {
+    use era_cudart::execution::CudaLaunchConfig;
+    // 32 gids per block (4 warps share gids), block size still 128 threads.
+    let block_dim = 128u32;
+    let grid_dim = (acc_size + 31) / 32;
+    let config = CudaLaunchConfig::basic(grid_dim, block_dim, context.get_exec_stream());
+    let args = GpuGKRMainRound1FlatConstantCompactWarpSplitArguments::new(
+        *static_desc,
+        folding_challenge,
+        fold_stride,
+        next_layer_size,
+        eq_values,
+        contributions,
+        acc_size,
+    );
+    GpuGKRMainRound1FlatConstantCompactWarpSplitFunction(
+        ab_gkr_main_round1_flat_constant_compact_warp_split_e4_kernel,
+    )
+    .launch(&config, &args)
 }
 
 // ===========================================================================
