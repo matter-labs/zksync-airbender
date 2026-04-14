@@ -5,6 +5,7 @@ use crate::{definitions::VirtualSetupPoly, gkr_compiler::graph::GKRGraph, tables
 pub fn compile_inits_and_teardowns_circuit<F: PrimeField, const WORD_BITS: u32>(
     num_sets: usize,
     trace_len_log2: usize,
+    caching_is_allowed: bool,
 ) -> GKRCircuitArtifact<F> {
     assert!(
         num_sets.is_power_of_two(),
@@ -23,7 +24,7 @@ pub fn compile_inits_and_teardowns_circuit<F: PrimeField, const WORD_BITS: u32>(
     let mut all_variables_to_place = BTreeSet::new();
     let mut layers_mapping = HashMap::new();
 
-    let mut graph = GKRGraph::new(0, false);
+    let mut graph = GKRGraph::new(0, caching_is_allowed);
     for set_idx in 0..num_sets {
         let values: [Variable; 2] = std::array::from_fn(|i| {
             let var = add_compiler_defined_base_layer_variable(
@@ -248,11 +249,24 @@ mod test {
         skip_if_ci!();
         use ::field::baby_bear::base::BabyBearField;
 
-        let gkr_compiled = compile_inits_and_teardowns_circuit::<BabyBearField, 2>(16, 24);
+        let gkr_compiled = compile_inits_and_teardowns_circuit::<BabyBearField, 2>(16, 24, false);
 
         serialize_to_file(
             &gkr_compiled,
             "compiled_circuits/inits_and_teardowns_preprocessed_layout_no_caches_gkr.json",
+        );
+    }
+
+    #[test]
+    fn compile_inits_and_teardowns_into_gkr() {
+        skip_if_ci!();
+        use ::field::baby_bear::base::BabyBearField;
+
+        let gkr_compiled = compile_inits_and_teardowns_circuit::<BabyBearField, 2>(16, 24, true);
+
+        serialize_to_file(
+            &gkr_compiled,
+            "compiled_circuits/inits_and_teardowns_preprocessed_layout_gkr.json",
         );
     }
 }
