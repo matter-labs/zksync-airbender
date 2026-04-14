@@ -14,6 +14,7 @@ target_sources(gpu_prover_native PRIVATE
         main_backward_round1_explicit.cu
         main_backward_round1_flat_compact.cu
         main_backward_round1_flat_explicit.cu
+        main_backward_round1_flat_warp_split.cu
         main_backward_round2_compact.cu
         main_backward_round2_explicit.cu
         main_backward_round2_flat_compact.cu

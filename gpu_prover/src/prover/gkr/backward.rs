@@ -6347,17 +6347,30 @@ where
                     let contrib_ptr = self.round_scratch.accumulator.as_mut_ptr().cast();
 
                     if self.flat_cont_use_constant {
-                        super::backward_flat::launch_main_round1_flat_constant(
-                            desc,
-                            folding_ptr,
-                            sizes.fold_stride,
-                            sizes.next_layer_size,
-                            eq_ptr,
-                            contrib_ptr,
-                            acc_size as u32,
-                            explicit_form,
-                            context,
-                        )?;
+                        if !explicit_form && std::env::var("GPU_PROVER_WARP_SPLIT").is_ok() {
+                            super::backward_flat::launch_main_round1_flat_constant_warp_split(
+                                desc,
+                                folding_ptr,
+                                sizes.fold_stride,
+                                sizes.next_layer_size,
+                                eq_ptr,
+                                contrib_ptr,
+                                acc_size as u32,
+                                context,
+                            )?;
+                        } else {
+                            super::backward_flat::launch_main_round1_flat_constant(
+                                desc,
+                                folding_ptr,
+                                sizes.fold_stride,
+                                sizes.next_layer_size,
+                                eq_ptr,
+                                contrib_ptr,
+                                acc_size as u32,
+                                explicit_form,
+                                context,
+                            )?;
+                        }
                     } else {
                         let coeff_ptr = self
                             .flat_cont_coeff_device_buf
