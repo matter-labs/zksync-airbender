@@ -87,10 +87,9 @@ DEVICE_FORCEINLINE void flat_cont_load_pair(const flat_continuing_source_entry<E
 // --- Flat continuation kernel ---
 
 template <typename E, bool EXPLICIT_FORM, typename CoeffLoader>
-DEVICE_FORCEINLINE void flat_continuation_compute_impl(const flat_continuation_static_desc<E> &desc, CoeffLoader coeff_loader,
-                                                       const E &folding_challenge, const unsigned fold_stride, const unsigned next_layer_size,
-                                                       const E *__restrict__ eq_values, E *__restrict__ contributions, const unsigned acc_size,
-                                                       const unsigned gid) {
+DEVICE_FORCEINLINE void flat_continuation_compute_impl(const flat_continuation_static_desc<E> &desc, CoeffLoader coeff_loader, const E &folding_challenge,
+                                                       const unsigned fold_stride, const unsigned next_layer_size, const E *__restrict__ eq_values,
+                                                       E *__restrict__ contributions, const unsigned acc_size, const unsigned gid) {
   E c0 = E::ZERO();
   E c1 = E::ZERO();
 
@@ -146,10 +145,9 @@ DEVICE_FORCEINLINE void flat_continuation_compute_impl(const flat_continuation_s
 
 // Public API: pointer-based (non-constant path).
 template <typename E, bool EXPLICIT_FORM>
-DEVICE_FORCEINLINE void flat_continuation_compute(const flat_continuation_static_desc<E> &desc, const E *__restrict__ coefficients,
-                                                  const E &folding_challenge, const unsigned fold_stride, const unsigned next_layer_size,
-                                                  const E *__restrict__ eq_values, E *__restrict__ contributions, const unsigned acc_size,
-                                                  const unsigned gid) {
+DEVICE_FORCEINLINE void flat_continuation_compute(const flat_continuation_static_desc<E> &desc, const E *__restrict__ coefficients, const E &folding_challenge,
+                                                  const unsigned fold_stride, const unsigned next_layer_size, const E *__restrict__ eq_values,
+                                                  E *__restrict__ contributions, const unsigned acc_size, const unsigned gid) {
   coeff_loader_ptr<E> loader{coefficients};
   flat_continuation_compute_impl<E, EXPLICIT_FORM>(desc, loader, folding_challenge, fold_stride, next_layer_size, eq_values, contributions, acc_size, gid);
 }
@@ -287,10 +285,9 @@ DEVICE_FORCEINLINE void flat_round2_load_pair(const flat_round2_static_desc<bf, 
 
 // Round 2 flat compute kernel (templatized on CoeffLoader).
 template <typename E, bool EXPLICIT_FORM, typename CoeffLoader>
-DEVICE_FORCEINLINE void flat_round2_compute_impl(const flat_round2_static_desc<bf, E> &desc, CoeffLoader coeff_loader,
-                                                 const E &first_folding_challenge, const E &second_folding_challenge, const unsigned fold_stride,
-                                                 const unsigned next_layer_size, const E *__restrict__ eq_values, E *__restrict__ contributions,
-                                                 const unsigned acc_size, const unsigned gid) {
+DEVICE_FORCEINLINE void flat_round2_compute_impl(const flat_round2_static_desc<bf, E> &desc, CoeffLoader coeff_loader, const E &first_folding_challenge,
+                                                 const E &second_folding_challenge, const unsigned fold_stride, const unsigned next_layer_size,
+                                                 const E *__restrict__ eq_values, E *__restrict__ contributions, const unsigned acc_size, const unsigned gid) {
   E c0 = E::ZERO();
   E c1 = E::ZERO();
 
@@ -335,10 +332,9 @@ DEVICE_FORCEINLINE void flat_round2_compute_impl(const flat_round2_static_desc<b
 
 // Public API: pointer-based (non-constant path).
 template <typename E, bool EXPLICIT_FORM>
-DEVICE_FORCEINLINE void flat_round2_compute(const flat_round2_static_desc<bf, E> &desc, const E *__restrict__ coefficients,
-                                            const E &first_folding_challenge, const E &second_folding_challenge, const unsigned fold_stride,
-                                            const unsigned next_layer_size, const E *__restrict__ eq_values, E *__restrict__ contributions,
-                                            const unsigned acc_size, const unsigned gid) {
+DEVICE_FORCEINLINE void flat_round2_compute(const flat_round2_static_desc<bf, E> &desc, const E *__restrict__ coefficients, const E &first_folding_challenge,
+                                            const E &second_folding_challenge, const unsigned fold_stride, const unsigned next_layer_size,
+                                            const E *__restrict__ eq_values, E *__restrict__ contributions, const unsigned acc_size, const unsigned gid) {
   coeff_loader_ptr<E> loader{coefficients};
   flat_round2_compute_impl<E, EXPLICIT_FORM>(desc, loader, first_folding_challenge, second_folding_challenge, fold_stride, next_layer_size, eq_values,
                                              contributions, acc_size, gid);
@@ -363,9 +359,9 @@ struct coeff_loader_continuation_constant {
 // Constant-path variants: read coefficients from __constant__ symbol via LDC.
 
 template <typename E, bool EXPLICIT_FORM>
-DEVICE_FORCEINLINE void flat_continuation_compute_constant(const flat_continuation_static_desc<E> &desc, const E &folding_challenge,
-                                                           const unsigned fold_stride, const unsigned next_layer_size, const E *__restrict__ eq_values,
-                                                           E *__restrict__ contributions, const unsigned acc_size, const unsigned gid) {
+DEVICE_FORCEINLINE void flat_continuation_compute_constant(const flat_continuation_static_desc<E> &desc, const E &folding_challenge, const unsigned fold_stride,
+                                                           const unsigned next_layer_size, const E *__restrict__ eq_values, E *__restrict__ contributions,
+                                                           const unsigned acc_size, const unsigned gid) {
   coeff_loader_continuation_constant loader{};
   flat_continuation_compute_impl<E, EXPLICIT_FORM>(desc, loader, folding_challenge, fold_stride, next_layer_size, eq_values, contributions, acc_size, gid);
 }
@@ -386,6 +382,63 @@ DEVICE_FORCEINLINE void flat_round2_compute_constant(const flat_round2_static_de
   coeff_loader_continuation_constant loader{};
   flat_round2_compute_impl<E, EXPLICIT_FORM>(desc, loader, first_folding_challenge, second_folding_challenge, fold_stride, next_layer_size, eq_values,
                                              contributions, acc_size, gid);
+}
+
+// ===========================================================================
+// Warp-split variants: multiple warps share gids, interleave terms.
+// Reduces per-source L1 footprint by ~4x compared to the default kernels.
+// ===========================================================================
+
+// Indexed __constant__ coefficient loader: reads by explicit index (not idx++).
+struct coeff_loader_constant_indexed {
+  DEVICE_FORCEINLINE e4 operator()(unsigned idx) const { return ::ab_gkr_flat_continuation_coefficients[idx]; }
+};
+
+// Round 1 warp-split compute: each warp processes every NUM_WARPS-th term.
+// Accumulates partial c0/c1 (caller reduces across warps).
+template <typename E, bool EXPLICIT_FORM, unsigned NUM_WARPS>
+DEVICE_FORCEINLINE void flat_round1_compute_warp_split(const flat_round1_static_desc<bf, E> &desc, const E &folding_challenge, const unsigned fold_stride,
+                                                       const unsigned next_layer_size, const unsigned gid, const unsigned warp_id, E &c0, E &c1) {
+  unsigned coeff_base = 0;
+  coeff_loader_constant_indexed coeff{};
+
+  for (unsigned i = warp_id; i < desc.num_constants; i += NUM_WARPS) {
+    const E k = coeff(coeff_base + i);
+    c0 = E::add(c0, k);
+    if constexpr (EXPLICIT_FORM)
+      c1 = E::add(c1, k);
+  }
+  coeff_base += desc.num_constants;
+
+  for (unsigned i = warp_id; i < desc.num_c0_only_linear; i += NUM_WARPS) {
+    E f0, f1;
+    flat_round1_load_pair<E, EXPLICIT_FORM>(desc, desc.c0_only_linear[i].source_idx, folding_challenge, fold_stride, next_layer_size, gid, f0, f1);
+    const E k = coeff(coeff_base + i);
+    c0 = E::add(c0, E::mul(k, f0));
+    if constexpr (EXPLICIT_FORM)
+      c1 = E::add(c1, E::mul(k, f1));
+  }
+  coeff_base += desc.num_c0_only_linear;
+
+  for (unsigned i = warp_id; i < desc.num_unified_quadratic; i += NUM_WARPS) {
+    const auto &t = desc.unified_quadratic[i];
+    E a0, a1;
+    flat_round1_load_pair<E, EXPLICIT_FORM>(desc, t.source_a, folding_challenge, fold_stride, next_layer_size, gid, a0, a1);
+    E b0, b1;
+    flat_round1_load_pair<E, EXPLICIT_FORM>(desc, t.source_b, folding_challenge, fold_stride, next_layer_size, gid, b0, b1);
+    const E k = coeff(coeff_base + i);
+    c0 = E::add(c0, E::mul(k, E::mul(a0, b0)));
+    c1 = E::add(c1, E::mul(k, E::mul(a1, b1)));
+  }
+  coeff_base += desc.num_unified_quadratic;
+
+  for (unsigned i = warp_id; i < desc.num_unified_linear; i += NUM_WARPS) {
+    E f0, f1;
+    flat_round1_load_pair<E, EXPLICIT_FORM>(desc, desc.unified_linear[i].source_idx, folding_challenge, fold_stride, next_layer_size, gid, f0, f1);
+    const E k = coeff(coeff_base + i);
+    c0 = E::add(c0, E::mul(k, f0));
+    c1 = E::add(c1, E::mul(k, f1));
+  }
 }
 
 } // namespace airbender::prover::gkr
