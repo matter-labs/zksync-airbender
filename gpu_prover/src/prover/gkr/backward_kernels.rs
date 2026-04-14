@@ -105,6 +105,8 @@ pub(crate) enum GpuGKRMainLayerKernelKind {
     LookupPairFromVectorInputs = 17,
     LookupFromVectorInputWithSetup = 18,
     LookupUnbalancedPairWithVectorInputs = 19,
+    LookupExtPair = 20,
+    LookupUnbalancedExtension = 21,
 }
 
 impl GpuGKRMainLayerKernelKind {
@@ -1224,6 +1226,9 @@ pub(crate) struct GpuGKRMainLayerSumcheckLayerPlan<E> {
     pub(super) round3_batch_templates: Vec<GpuGKRMainLayerRound3BatchTemplate<E>>,
     pub(super) static_spill_bytes: Vec<u8>,
     pub(super) round_scratch: GpuGKRMainLayerRoundScratch<E>,
+    /// Keeps pinned-staging callbacks alive for recipe H2D copies scheduled at prepare time.
+    /// Moved into `GpuGKRMainLayerScheduledLayerExecution` during `schedule_execute_*`.
+    pub(super) recipe_upload_callbacks: Callbacks<'static>,
 }
 
 impl<E: Copy + Field> GpuGKRMainLayerKernelPlan<E> {
@@ -1287,6 +1292,8 @@ pub(crate) struct GpuGKRMainLayerScheduledLayerExecution<E: FieldExtension<BF> +
     pub(super) runtime_uploads: Option<ScheduledMainLayerRuntimeUploads<E>>,
     #[allow(dead_code)]
     pub(super) flat_coeff_callbacks: Callbacks<'static>,
+    #[allow(dead_code)]
+    pub(super) recipe_upload_callbacks: Callbacks<'static>,
     pub(super) shared_state: Box<ScheduledMainLayerExecutionState<E>>,
 }
 
@@ -1359,6 +1366,8 @@ pub(crate) struct GpuGKRMainLayerHostKeepalive<E: FieldExtension<BF> + Field> {
     pub(super) runtime_uploads: Option<HostScheduledMainLayerRuntimeUploads<E>>,
     #[allow(dead_code)]
     pub(super) flat_coeff_callbacks: Callbacks<'static>,
+    #[allow(dead_code)]
+    pub(super) recipe_upload_callbacks: Callbacks<'static>,
     #[allow(dead_code)]
     pub(super) shared_state: Box<ScheduledMainLayerExecutionState<E>>,
 }
