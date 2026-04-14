@@ -16,7 +16,7 @@ pub fn circuit_by_name(name: &str) -> &'static CircuitData {
 }
 
 macro_rules! define_dispatch {
-    ($($name:ident: $schedule:ident),* $(,)?) => {
+    ($($name:ident: $schedule:ident: $layout_suffix:expr),* $(,)?) => {
         macro_rules! with_circuit {
             ($circuit_name:expr, |$m:ident| $body:expr) => {
                 match $circuit_name {

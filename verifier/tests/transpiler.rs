@@ -130,7 +130,7 @@ fn run_transpiler(name: &str) {
 }
 
 macro_rules! generate_transpiler_tests {
-    ($($name:ident: $schedule:ident),* $(,)?) => {
+    ($($name:ident: $schedule:ident: $layout_suffix:expr),* $(,)?) => {
         $(
             #[test]
             #[ignore = "requires RISC-V binaries from tools/gkr_verifier"]

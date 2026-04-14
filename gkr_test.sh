@@ -172,7 +172,7 @@ for step in "${STEPS[@]}"; do
         bash -c "cd cs && RUSTFLAGS=\"$WARN_FLAGS\" cargo test -p cs -- gkr" ;;
     prover)
       run_step "Generate proof" \
-        bash -c "cd prover && RUST_MIN_STACK=100000000 RUSTFLAGS=\"$WARN_FLAGS\" cargo test -p prover --release --features gkr_self_checks -- --nocapture gkr_run_basic_unrolled_test" ;;
+        bash -c "cd prover && RUST_MIN_STACK=100000000 RUSTFLAGS=\"$WARN_FLAGS\" cargo test -p prover --release --features gkr_self_checks $VARIANT_FEATURES -- --nocapture gkr_run_basic_unrolled_test" ;;
     generator)
       run_step "Regenerate verifier (variant=${VARIANT})" \
         bash -c "RUSTFLAGS=\"$WARN_FLAGS\" cargo test -p verifier_generator $VARIANT_FEATURES --test generate_verifiers -- ${CIRCUIT_FILTER}" ;;

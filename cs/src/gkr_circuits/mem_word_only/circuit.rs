@@ -367,7 +367,7 @@ mod test {
             24,
         );
 
-        serialize_to_file(&gkr_compiled, "compiled_circuits/mem_word_only_gkr.json");
+        serialize_to_file(&gkr_compiled, "compiled_circuits/mem_word_only_preprocessed_layout_gkr.json");
     }
 
     #[test]
@@ -423,7 +423,7 @@ mod test {
 
         serialize_to_file(
             &gkr_compiled,
-            "compiled_circuits/mem_word_only_no_caches_gkr.json",
+            "compiled_circuits/mem_word_only_preprocessed_layout_no_caches_gkr.json",
         );
     }
 }

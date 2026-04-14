@@ -173,7 +173,7 @@ fn generate_verifier_for_circuit<MW: MersenneWrapper>(circuit: &CircuitData) {
 }
 
 macro_rules! generate_circuit_tests {
-    ($($name:ident: $schedule:ident),* $(,)?) => {
+    ($($name:ident: $schedule:ident: $layout_suffix:expr),* $(,)?) => {
         $(
             #[test]
             fn $name() {

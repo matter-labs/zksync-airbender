@@ -29,7 +29,7 @@ fn run_native(name: &str) {
 }
 
 macro_rules! generate_native_tests {
-    ($($name:ident: $schedule:ident),* $(,)?) => {
+    ($($name:ident: $schedule:ident: $layout_suffix:expr),* $(,)?) => {
         $(
             #[test]
             fn $name() {

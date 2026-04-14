@@ -616,7 +616,7 @@ mod test {
 
         serialize_to_file(
             &gkr_compiled,
-            "compiled_circuits/add_sub_lui_auipc_mop_gkr.json",
+            "compiled_circuits/add_sub_lui_auipc_mop_preprocessed_layout_gkr.json",
         );
     }
 
@@ -652,7 +652,7 @@ mod test {
 
         serialize_to_file(
             &gkr_compiled,
-            "compiled_circuits/add_sub_lui_auipc_mop_no_caches_gkr.json",
+            "compiled_circuits/add_sub_lui_auipc_mop_preprocessed_layout_no_caches_gkr.json",
         );
     }
 }

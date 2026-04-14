@@ -8,15 +8,15 @@
 macro_rules! gkr_circuits {
     ($callback:ident) => {
         $callback! {
-            add_sub_lui_auipc_mop: default_for_tests_80_bits_24,
-            jump_branch_slt: default_for_tests_80_bits_24,
-            shift_binop: default_for_tests_80_bits_24,
-            mem_word_only: default_for_tests_80_bits_24,
-            mem_subword_only: default_for_tests_80_bits_24,
-            bigint_with_extended_control: default_for_tests_80_bits_22,
-            blake2_with_extended_control: default_for_tests_80_bits_20,
-            keccak_special5: default_for_tests_80_bits_22,
-            inits_and_teardowns: default_for_tests_80_bits_24,
+            add_sub_lui_auipc_mop: default_for_tests_80_bits_24: "_preprocessed_layout",
+            jump_branch_slt: default_for_tests_80_bits_24: "_preprocessed_layout",
+            shift_binop: default_for_tests_80_bits_24: "_preprocessed_layout",
+            mem_word_only: default_for_tests_80_bits_24: "_preprocessed_layout",
+            mem_subword_only: default_for_tests_80_bits_24: "_preprocessed_layout",
+            bigint_with_extended_control: default_for_tests_80_bits_22: "_layout",
+            blake2_with_extended_control: default_for_tests_80_bits_20: "_layout",
+            keccak_special5: default_for_tests_80_bits_22: "_layout",
+            inits_and_teardowns: default_for_tests_80_bits_24: "_preprocessed_layout",
         }
     };
 }

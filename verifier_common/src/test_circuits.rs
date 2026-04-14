@@ -11,9 +11,10 @@ use crate::gkr::flatten::flatten_gkr_proof_for_nds;
 const REPO_ROOT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/..");
 
 macro_rules! make_circuits {
-    ($($name:ident: $schedule_fn:ident),* $(,)?) => {
+    ($($name:ident: $schedule_fn:ident: $layout_suffix:expr),* $(,)?) => {
         vec![$(CircuitData {
             name: stringify!($name),
+            layout_suffix: $layout_suffix,
             whir_schedule: WhirSchedule::$schedule_fn(),
             nds_cache: OnceLock::new(),
         }),*]
@@ -24,6 +25,7 @@ pub static CIRCUITS: LazyLock<Vec<CircuitData>> = LazyLock::new(|| gkr_circuits!
 
 pub struct CircuitData {
     pub name: &'static str,
+    pub layout_suffix: &'static str,
     pub whir_schedule: WhirSchedule,
     nds_cache: OnceLock<Vec<u32>>,
 }
@@ -46,8 +48,8 @@ impl CircuitData {
         #[cfg(not(feature = "no_caches"))]
         let suffix = "";
         format!(
-            "{}/cs/compiled_circuits/{}{}_gkr.json",
-            REPO_ROOT, self.name, suffix
+            "{}/cs/compiled_circuits/{}{}{}_gkr.json",
+            REPO_ROOT, self.name, self.layout_suffix, suffix
         )
     }
 
