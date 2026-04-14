@@ -119,7 +119,7 @@ impl GKRGate for GrandProductAccumulationStep {
                     let cached = graph.add_cached_relation(expr, cache_layer);
 
                     // and copy it
-                    let copy_node = CopyNode::FromBase(cached);
+                    let copy_node = CopyNode::FromBaseLayerInExtension(cached);
                     copy_node.add_at_layer(graph, output_layer)
                 } else {
                     let input = mem_permutation_expr_into_gkr_relation(access, graph);

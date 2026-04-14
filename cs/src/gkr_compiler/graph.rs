@@ -8,7 +8,8 @@ use std::{collections::BTreeMap, hash::Hash};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum CopyNode {
-    FromBase(GKRAddress),
+    FromBaseLayerInBase(GKRAddress),
+    FromBaseLayerInExtension(GKRAddress),
     FromIntermediateInBase(GKRAddress),
     FromIntermediateInExtension(GKRAddress),
 }
@@ -18,13 +19,10 @@ impl GKRGate for CopyNode {
 
     fn short_name(&self) -> String {
         match self {
-            Self::FromBase(var) => {
+            Self::FromBaseLayerInBase(var) | Self::FromIntermediateInBase(var) => {
                 format!("Copy of {:?} in base field", var)
             }
-            Self::FromIntermediateInBase(var) => {
-                format!("Copy of {:?} in base field", var)
-            }
-            Self::FromIntermediateInExtension(var) => {
+            Self::FromBaseLayerInExtension(var) | Self::FromIntermediateInExtension(var) => {
                 format!("Copy of {:?} in extension field", var)
             }
         }
@@ -38,8 +36,8 @@ impl GKRGate for CopyNode {
     ) -> (Self::Output, NoFieldGKRRelation) {
         let output = graph.add_intermediate_variable_at_layer(output_layer);
         match self {
-            Self::FromBase(input) | Self::FromIntermediateInBase(input) => {
-                println!("Copying variable {:?} -> {:?}", input, output);
+            Self::FromBaseLayerInBase(input) | Self::FromIntermediateInBase(input) => {
+                println!("Copying variable {:?} -> {:?} in base field", input, output);
                 let rel = NoFieldGKRRelation::CopyInBaseField {
                     input: *input,
                     output,
@@ -48,8 +46,11 @@ impl GKRGate for CopyNode {
 
                 (output, rel)
             }
-            Self::FromIntermediateInExtension(input) => {
-                println!("Copying variable {:?} -> {:?}", input, output);
+            Self::FromBaseLayerInExtension(input) | Self::FromIntermediateInExtension(input) => {
+                println!(
+                    "Copying variable {:?} -> {:?} in extension field",
+                    input, output
+                );
                 let rel = NoFieldGKRRelation::CopyInExtensionField {
                     input: *input,
                     output,
@@ -362,7 +363,7 @@ impl GraphHolder for GKRGraph {
 
     fn copy_base_layer_variable(&mut self, variable: Variable) -> GKRAddress {
         let pos = self.get_address_for_variable(variable);
-        let node = CopyNode::FromBase(pos);
+        let node = CopyNode::FromBaseLayerInBase(pos);
         let (out, _) = node.add_at_layer(self, 1);
 
         out

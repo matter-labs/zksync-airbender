@@ -7233,7 +7233,7 @@
         {
           "output_layer": 1,
           "enforced_relation": {
-            "CopyInBaseField": {
+            "CopyInExtensionField": {
               "input": {
                 "Cached": {
                   "layer": 0,
@@ -7252,7 +7252,7 @@
         {
           "output_layer": 1,
           "enforced_relation": {
-            "CopyInBaseField": {
+            "CopyInExtensionField": {
               "input": {
                 "Cached": {
                   "layer": 0,

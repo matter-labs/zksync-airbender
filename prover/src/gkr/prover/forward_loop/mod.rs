@@ -221,7 +221,8 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
 
         // let now = std::time::Instant::now();
         match &gate.enforced_relation {
-            NoFieldGKRRelation::Copy { input, output } => {
+            NoFieldGKRRelation::CopyInBaseField { input, output }
+            | NoFieldGKRRelation::CopyInExtensionField { input, output } => {
                 // println!("Should evaluate {:?}", &gate.enforced_relation);
                 copy::forward_evaluate_copy::<F, E, false>(
                     *input,
@@ -303,7 +304,8 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
 
         // let now = std::time::Instant::now();
         match &gate.enforced_relation {
-            NoFieldGKRRelation::Copy { input, output } => {
+            NoFieldGKRRelation::CopyInBaseField { input, output }
+            | NoFieldGKRRelation::CopyInExtensionField { input, output } => {
                 // even though it's handled above, we may need to copy cache relation to the
                 // next layer after making it, so we try again, but infailable option
                 copy::forward_evaluate_copy::<F, E, true>(

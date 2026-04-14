@@ -197,7 +197,7 @@ fn test_sumcheck_loop_multiple_gates() {
         gates: vec![
             GateArtifacts {
                 output_layer: 1,
-                enforced_relation: NoFieldGKRRelation::Copy {
+                enforced_relation: NoFieldGKRRelation::CopyInExtensionField {
                     input: addr_copy_in,
                     output: addr_copy_out,
                 },
