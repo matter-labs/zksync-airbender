@@ -382,7 +382,7 @@ mod tests {
     const SMALL_LCS: u32 = 4;
     const BIG_CHUNK: usize = 1 << BIG_LCS; // 1024
     const SMALL_CHUNK: usize = 1 << SMALL_LCS; // 16
-    // threshold = 1 << (10 - 2) = 256
+                                               // threshold = 1 << (10 - 2) = 256
     const THRESHOLD: usize = 1 << (BIG_LCS - 2);
 
     fn make_allocator(
@@ -392,12 +392,7 @@ mod tests {
         let total = num_big_chunks * BIG_CHUNK;
         let backend = TestBackend(vec![0u8; total]);
         let pool_size = small_pool_chunks * BIG_CHUNK;
-        InnerStaticAllocator::new_with_small_allocator(
-            [backend],
-            BIG_LCS,
-            SMALL_LCS,
-            pool_size,
-        )
+        InnerStaticAllocator::new_with_small_allocator([backend], BIG_LCS, SMALL_LCS, pool_size)
     }
 
     fn make_allocator_no_small(num_big_chunks: usize) -> InnerStaticAllocator<TestBackend> {
@@ -434,7 +429,9 @@ mod tests {
     fn big_alloc_bypasses_small() {
         let mut alloc = make_allocator(4, 1);
         // Allocate above threshold: 33 u64s = 264 bytes > 256 threshold
-        let data = alloc.alloc::<u64>(33, AllocationPlacement::BestFit).unwrap();
+        let data = alloc
+            .alloc::<u64>(33, AllocationPlacement::BestFit)
+            .unwrap();
         // alloc_len should be rounded to big chunk size (1024)
         assert_eq!(data.alloc_len, BIG_CHUNK);
         alloc.free(data);
@@ -446,7 +443,9 @@ mod tests {
         // Small allocation
         let small = alloc.alloc::<u64>(1, AllocationPlacement::BestFit).unwrap();
         // Big allocation
-        let big = alloc.alloc::<u64>(33, AllocationPlacement::BestFit).unwrap();
+        let big = alloc
+            .alloc::<u64>(33, AllocationPlacement::BestFit)
+            .unwrap();
         // Free in reverse order — should not panic
         alloc.free(big);
         alloc.free(small);
@@ -460,12 +459,7 @@ mod tests {
         // get_used_mem_current = big_used - backing_len + small_used = 1024 - 1024 + 0 = 0
         assert_eq!(
             alloc.tracker.get_used_mem_current() - BIG_CHUNK
-                + alloc
-                    .small
-                    .as_ref()
-                    .unwrap()
-                    .tracker
-                    .get_used_mem_current(),
+                + alloc.small.as_ref().unwrap().tracker.get_used_mem_current(),
             0
         );
 
@@ -486,12 +480,16 @@ mod tests {
     fn threshold_boundary() {
         let mut alloc = make_allocator(4, 1);
         // Exactly at threshold: 32 u64s = 256 bytes = threshold → small
-        let at = alloc.alloc::<u64>(32, AllocationPlacement::BestFit).unwrap();
+        let at = alloc
+            .alloc::<u64>(32, AllocationPlacement::BestFit)
+            .unwrap();
         assert!(at.alloc_len < BIG_CHUNK); // went to small allocator
         alloc.free(at);
 
         // One byte over: 33 u64s = 264 bytes > threshold → big
-        let over = alloc.alloc::<u64>(33, AllocationPlacement::BestFit).unwrap();
+        let over = alloc
+            .alloc::<u64>(33, AllocationPlacement::BestFit)
+            .unwrap();
         assert_eq!(over.alloc_len, BIG_CHUNK); // went to big allocator
         alloc.free(over);
     }
