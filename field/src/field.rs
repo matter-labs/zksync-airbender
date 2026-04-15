@@ -180,7 +180,7 @@ impl<F: Field, const M: usize> FixedArrayConvertible<F> for [F; M] {
         if N == M {
             unsafe {
                 // Safety: we checked same size, so it's a transmute
-                &*self.as_ptr().cast::<[F; N]>()
+                self.as_ptr().cast::<[F; N]>().as_ref_unchecked()
             }
         } else {
             panic!(
@@ -195,7 +195,7 @@ impl<F: Field, const M: usize> FixedArrayConvertible<F> for [F; M] {
         if N == M {
             unsafe {
                 // Safety: we checked same size, so it's a transmute
-                &mut *self.as_mut_ptr().cast::<[F; N]>()
+                self.as_mut_ptr().cast::<[F; N]>().as_mut_unchecked()
             }
         } else {
             panic!(
