@@ -338,6 +338,8 @@ impl Field for Mersenne31Field {
     const MINUS_ONE: Self = Self(Self::ORDER - 1);
     const TWO: Self = Self(2);
 
+    type CharField = Self;
+
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn is_zero(&self) -> bool {
         self.is_zero_impl()
@@ -512,5 +514,122 @@ impl BaseField<2> for Mersenne31Field {
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn mul_by_non_residue(elem: &mut Self) {
         Self::mul_by_non_residue_impl(elem);
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::field::Field;
+    use proptest::prelude::*;
+
+    fn arb_mersenne31() -> impl Strategy<Value = u32> {
+        0..Mersenne31Field::ORDER
+    }
+
+    proptest! {
+        #[test]
+        fn add_commutative(a in arb_mersenne31(), b in arb_mersenne31()) {
+            let fa = Mersenne31Field::new(a);
+            let fb = Mersenne31Field::new(b);
+            let mut ab = fa; ab.add_assign(&fb);
+            let mut ba = fb; ba.add_assign(&fa);
+            prop_assert_eq!(ab, ba);
+        }
+
+        #[test]
+        fn add_associative(a in arb_mersenne31(), b in arb_mersenne31(), c in arb_mersenne31()) {
+            let fa = Mersenne31Field::new(a);
+            let fb = Mersenne31Field::new(b);
+            let fc = Mersenne31Field::new(c);
+            let mut ab = fa; ab.add_assign(&fb);
+            let mut abc_left = ab; abc_left.add_assign(&fc);
+            let mut bc = fb; bc.add_assign(&fc);
+            let mut abc_right = fa; abc_right.add_assign(&bc);
+            prop_assert_eq!(abc_left, abc_right);
+        }
+
+        #[test]
+        fn add_identity(a in arb_mersenne31()) {
+            let fa = Mersenne31Field::new(a);
+            let mut r = fa;
+            r.add_assign(&Mersenne31Field::ZERO);
+            prop_assert_eq!(r, fa);
+        }
+
+        #[test]
+        fn add_inverse(a in arb_mersenne31()) {
+            let fa = Mersenne31Field::new(a);
+            let mut neg = fa; neg.negate();
+            let mut sum = fa; sum.add_assign(&neg);
+            prop_assert_eq!(sum, Mersenne31Field::ZERO);
+        }
+
+        #[test]
+        fn mul_commutative(a in arb_mersenne31(), b in arb_mersenne31()) {
+            let fa = Mersenne31Field::new(a);
+            let fb = Mersenne31Field::new(b);
+            let mut ab = fa; ab.mul_assign(&fb);
+            let mut ba = fb; ba.mul_assign(&fa);
+            prop_assert_eq!(ab, ba);
+        }
+
+        #[test]
+        fn mul_associative(a in arb_mersenne31(), b in arb_mersenne31(), c in arb_mersenne31()) {
+            let fa = Mersenne31Field::new(a);
+            let fb = Mersenne31Field::new(b);
+            let fc = Mersenne31Field::new(c);
+            let mut ab = fa; ab.mul_assign(&fb);
+            let mut abc_left = ab; abc_left.mul_assign(&fc);
+            let mut bc = fb; bc.mul_assign(&fc);
+            let mut abc_right = fa; abc_right.mul_assign(&bc);
+            prop_assert_eq!(abc_left, abc_right);
+        }
+
+        #[test]
+        fn mul_identity(a in arb_mersenne31()) {
+            let fa = Mersenne31Field::new(a);
+            let mut r = fa;
+            r.mul_assign(&Mersenne31Field::ONE);
+            prop_assert_eq!(r, fa);
+        }
+
+        #[test]
+        fn mul_inverse(a in 1..Mersenne31Field::ORDER) {
+            let fa = Mersenne31Field::new(a);
+            let inv = fa.inverse().unwrap();
+            let mut product = fa;
+            product.mul_assign(&inv);
+            prop_assert_eq!(product, Mersenne31Field::ONE);
+        }
+
+        #[test]
+        fn distributive(a in arb_mersenne31(), b in arb_mersenne31(), c in arb_mersenne31()) {
+            let fa = Mersenne31Field::new(a);
+            let fb = Mersenne31Field::new(b);
+            let fc = Mersenne31Field::new(c);
+            let mut bc = fb; bc.add_assign(&fc);
+            let mut left = fa; left.mul_assign(&bc);
+            let mut ab = fa; ab.mul_assign(&fb);
+            let mut ac = fa; ac.mul_assign(&fc);
+            let mut right = ab; right.add_assign(&ac);
+            prop_assert_eq!(left, right);
+        }
+
+        #[test]
+        fn double_is_add_self(a in arb_mersenne31()) {
+            let fa = Mersenne31Field::new(a);
+            let mut doubled = fa; doubled.double();
+            let mut added = fa; added.add_assign(&fa);
+            prop_assert_eq!(doubled, added);
+        }
+
+        #[test]
+        fn square_is_mul_self(a in arb_mersenne31()) {
+            let fa = Mersenne31Field::new(a);
+            let mut squared = fa; squared.square();
+            let mut mulled = fa; mulled.mul_assign(&fa);
+            prop_assert_eq!(squared, mulled);
+        }
     }
 }
