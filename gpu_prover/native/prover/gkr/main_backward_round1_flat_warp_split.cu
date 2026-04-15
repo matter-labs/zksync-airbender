@@ -5,10 +5,9 @@ namespace airbender::prover::gkr {
 // Unified tiled warp-split round 1 kernel: per-tile fold → sync → compute.
 // All term types mixed in a single array sorted by source-group tile affinity.
 EXTERN __launch_bounds__(128, 8) __global__
-    void ab_gkr_main_round1_flat_constant_compact_unified_e4_kernel(const __grid_constant__ flat_round1_unified_desc<bf, e4> desc,
-                                                                    const e4 *folding_challenge, const unsigned fold_stride,
-                                                                    const unsigned next_layer_size, const e4 *eq_values, e4 *contributions,
-                                                                    const unsigned acc_size) {
+    void ab_gkr_main_round1_flat_constant_compact_unified_e4_kernel(const __grid_constant__ flat_round1_unified_desc<bf, e4> desc, const e4 *folding_challenge,
+                                                                    const unsigned fold_stride, const unsigned next_layer_size, const e4 *eq_values,
+                                                                    e4 *contributions, const unsigned acc_size) {
   constexpr unsigned NUM_WARPS = 4;
   const unsigned lane = threadIdx.x % 32;
   const unsigned warp_id = threadIdx.x / 32;

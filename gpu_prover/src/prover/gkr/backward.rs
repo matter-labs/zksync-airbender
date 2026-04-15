@@ -6074,9 +6074,7 @@ where
             .flat_continuation_unified_descs
             .iter()
             .find(|(s, _)| *s == step)
-            .unwrap_or_else(|| {
-                panic!("flat round 3 unified desc must be built for step {step}")
-            });
+            .unwrap_or_else(|| panic!("flat round 3 unified desc must be built for step {step}"));
         assert!(
             self.flat_cont_recipe_headers.is_some(),
             "flat continuation recipe headers must be scheduled"

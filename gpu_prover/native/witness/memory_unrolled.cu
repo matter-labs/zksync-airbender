@@ -105,8 +105,7 @@ DEVICE_FORCEINLINE void copy_register(const u32 src[REGISTER_SIZE], u32 dst[REGI
 
 template <bool COMPUTE_WITNESS>
 DEVICE_FORCEINLINE void process_inits_and_teardowns(const InitsAndTeardownsLayouts &init_and_teardown_layouts,
-                                                    const ShuffleRamInitsAndTeardownsRaw &inits_and_teardowns,
-                                                    const matrix_setter<bf, st_modifier::cg> memory,
+                                                    const ShuffleRamInitsAndTeardownsRaw &inits_and_teardowns, const matrix_setter<bf, st_modifier::cg> memory,
                                                     const matrix_setter<bf, st_modifier::cg> witness, const unsigned count, const unsigned index) {
   (void)witness;
   static_assert(!COMPUTE_WITNESS, "standalone init/teardown witness columns are expected to stay empty");
@@ -447,9 +446,8 @@ EXTERN __global__ void ab_generate_memory_and_witness_values_unrolled_non_memory
 }
 
 EXTERN __global__ void ab_generate_memory_and_witness_values_unrolled_inits_and_teardowns_kernel(
-    const __grid_constant__ InitsAndTeardownsLayouts init_and_teardown_layouts,
-    const __grid_constant__ ShuffleRamInitsAndTeardownsRaw inits_and_teardowns, matrix_setter<bf, st_modifier::cg> memory,
-    matrix_setter<bf, st_modifier::cg> witness, const unsigned count) {
+    const __grid_constant__ InitsAndTeardownsLayouts init_and_teardown_layouts, const __grid_constant__ ShuffleRamInitsAndTeardownsRaw inits_and_teardowns,
+    matrix_setter<bf, st_modifier::cg> memory, matrix_setter<bf, st_modifier::cg> witness, const unsigned count) {
   const unsigned index = blockIdx.x * blockDim.x + threadIdx.x;
   process_inits_and_teardowns<false>(init_and_teardown_layouts, inits_and_teardowns, memory, witness, count, index);
 }

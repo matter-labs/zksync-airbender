@@ -28,9 +28,7 @@ use super::{
     GpuSumcheckRound3AndBeyondPreparedStorage,
 };
 use crate::allocator::tracker::AllocationPlacement;
-use crate::ops::cub::device_reduce::{
-    reduce, Reduce, ReduceOperation,
-};
+use crate::ops::cub::device_reduce::{reduce, Reduce, ReduceOperation};
 use crate::ops::simple::{mul_into_y, BinaryOp, Mul};
 use crate::primitives::callbacks::Callbacks;
 use crate::primitives::context::{
@@ -2203,5 +2201,3 @@ pub(super) fn constraint_metadata_device_pointers<E: Field>(
         GpuGKRMainLayerConstraintMetadataDevicePointers::default()
     }
 }
-
-
