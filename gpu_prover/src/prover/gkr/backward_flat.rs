@@ -334,11 +334,15 @@ impl<E: Field + field::FieldExtension<BF>> FlatRound0BuildPlan<E> {
 // ---------------------------------------------------------------------------
 
 use era_cudart::result::CudaResultWrap;
-use era_cudart_sys::{cudaFuncSetAttribute, CudaFuncAttribute};
+
+use crate::primitives::utils::{
+    compute_minimal_carveout, set_shared_carveout, smem_pool_bytes_per_sm,
+};
 
 /// One-time setup: configure shared memory carveout for flat kernels.
 /// Kernels without shared memory get 0% (maximize L1).
-/// The warp-split kernel gets a small carveout (just enough for its smem).
+/// The unified tiled kernels get a minimal carveout (just enough for their
+/// static shared memory at max occupancy), leaving the rest for L1.
 pub(in crate::prover) fn configure_flat_kernel_cache_preference() {
     static ONCE: std::sync::Once = std::sync::Once::new();
     ONCE.call_once(|| {
@@ -351,29 +355,20 @@ pub(in crate::prover) fn configure_flat_kernel_cache_preference() {
             set_shared_carveout(kernel, 0);
         }
 
-        // Unified tiled kernels: ~1.5KB/block × 8 blocks ≈ 12KB → ~13% of 128KB pool.
+        // Unified tiled kernels: compute the minimal carveout from the device's
+        // configurable shared/L1 pool size and each kernel's actual shared memory
+        // footprint at max occupancy.
+        let pool_bytes = smem_pool_bytes_per_sm();
+        let block_size = 128i32; // all unified tiled kernels use 128 threads
         for kernel in [
             ab_gkr_main_round1_flat_constant_compact_unified_e4_kernel as *const std::ffi::c_void,
             ab_gkr_main_round3_flat_constant_compact_unified_e4_kernel as *const std::ffi::c_void,
             ab_gkr_main_round3_flat_constant_explicit_unified_e4_kernel as *const std::ffi::c_void,
             ab_gkr_main_round2_flat_constant_compact_unified_e4_kernel as *const std::ffi::c_void,
         ] {
-            set_shared_carveout(kernel, 13);
+            let pct = compute_minimal_carveout(kernel, block_size, pool_bytes);
+            set_shared_carveout(kernel, pct);
         }
-    });
-}
-
-fn set_shared_carveout(kernel: *const std::ffi::c_void, pct: i32) {
-    unsafe {
-        cudaFuncSetAttribute(
-            kernel,
-            CudaFuncAttribute::PreferredSharedMemoryCarveout,
-            pct,
-        )
-    }
-    .wrap()
-    .unwrap_or_else(|e| {
-        panic!("cudaFuncSetAttribute(PreferredSharedMemoryCarveout, {pct}) failed: {e:?}")
     });
 }
 
