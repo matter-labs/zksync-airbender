@@ -75,3 +75,66 @@ pub unsafe fn memcpy_to_symbol_async<T>(
 //     // now we need to only use the bits that originally were "last" l, so shift
 //     r >> (size_of::<usize>() * 8) - l
 // }
+
+// ---------------------------------------------------------------------------
+// Shared-memory carveout helpers
+// ---------------------------------------------------------------------------
+
+/// Query the configurable shared-memory / L1 pool size (bytes) for the current device.
+pub fn smem_pool_bytes_per_sm() -> usize {
+    use era_cudart::device::{device_get_attribute, get_device};
+    use era_cudart_sys::CudaDeviceAttr;
+    let device_id = get_device().expect("get_device failed");
+    device_get_attribute(CudaDeviceAttr::MaxSharedMemoryPerMultiprocessor, device_id)
+        .expect("query MaxSharedMemoryPerMultiprocessor failed") as usize
+}
+
+/// Compute the smallest carveout percentage that accommodates a kernel's
+/// static shared memory at maximum occupancy.
+pub fn compute_minimal_carveout(kernel: *const c_void, block_size: i32, pool_bytes: usize) -> i32 {
+    use era_cudart_sys::{
+        cudaFuncGetAttributes, cudaOccupancyMaxActiveBlocksPerMultiprocessor, CudaFuncAttributes,
+    };
+    let mut attrs = std::mem::MaybeUninit::<CudaFuncAttributes>::zeroed();
+    // SAFETY: attrs is a plain-data struct; kernel pointer is valid (points to a __global__ fn).
+    unsafe { cudaFuncGetAttributes(attrs.as_mut_ptr(), kernel) }
+        .wrap()
+        .expect("cudaFuncGetAttributes failed");
+    let smem_per_block = unsafe { attrs.assume_init() }.sharedSizeBytes;
+    if smem_per_block == 0 {
+        return 0;
+    }
+
+    let mut max_blocks: i32 = 0;
+    // SAFETY: max_blocks is a valid i32 pointer; kernel and block_size are valid.
+    unsafe {
+        cudaOccupancyMaxActiveBlocksPerMultiprocessor(
+            &mut max_blocks,
+            kernel,
+            block_size,
+            0, // no dynamic shared memory
+        )
+    }
+    .wrap()
+    .expect("cudaOccupancyMaxActiveBlocksPerMultiprocessor failed");
+
+    let total_smem = smem_per_block * max_blocks as usize;
+    // Round up to the next whole percent.
+    ((total_smem * 100 + pool_bytes - 1) / pool_bytes) as i32
+}
+
+/// Set the preferred shared-memory carveout percentage for a kernel.
+pub fn set_shared_carveout(kernel: *const c_void, pct: i32) {
+    use era_cudart_sys::CudaFuncAttribute;
+    unsafe {
+        era_cudart_sys::cudaFuncSetAttribute(
+            kernel,
+            CudaFuncAttribute::PreferredSharedMemoryCarveout,
+            pct,
+        )
+    }
+    .wrap()
+    .unwrap_or_else(|e| {
+        panic!("cudaFuncSetAttribute(PreferredSharedMemoryCarveout, {pct}) failed: {e:?}")
+    });
+}
