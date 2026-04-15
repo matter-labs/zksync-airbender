@@ -61,7 +61,7 @@
         {
           "output_layer": 1,
           "enforced_relation": {
-            "Copy": {
+            "CopyInBaseField": {
               "input": {
                 "BaseLayerMemory": 88
               },
@@ -28693,7 +28693,7 @@
         {
           "output_layer": 2,
           "enforced_relation": {
-            "Copy": {
+            "CopyInBaseField": {
               "input": {
                 "InnerLayer": {
                   "layer": 1,
@@ -29836,7 +29836,7 @@
         {
           "output_layer": 2,
           "enforced_relation": {
-            "Copy": {
+            "CopyInExtensionField": {
               "input": {
                 "InnerLayer": {
                   "layer": 1,
@@ -29855,7 +29855,7 @@
         {
           "output_layer": 2,
           "enforced_relation": {
-            "Copy": {
+            "CopyInExtensionField": {
               "input": {
                 "InnerLayer": {
                   "layer": 1,
@@ -29881,7 +29881,7 @@
         {
           "output_layer": 3,
           "enforced_relation": {
-            "Copy": {
+            "CopyInBaseField": {
               "input": {
                 "InnerLayer": {
                   "layer": 2,
@@ -30467,7 +30467,7 @@
         {
           "output_layer": 3,
           "enforced_relation": {
-            "Copy": {
+            "CopyInExtensionField": {
               "input": {
                 "InnerLayer": {
                   "layer": 2,
@@ -30486,7 +30486,7 @@
         {
           "output_layer": 3,
           "enforced_relation": {
-            "Copy": {
+            "CopyInExtensionField": {
               "input": {
                 "InnerLayer": {
                   "layer": 2,
@@ -30512,7 +30512,7 @@
         {
           "output_layer": 4,
           "enforced_relation": {
-            "Copy": {
+            "CopyInBaseField": {
               "input": {
                 "InnerLayer": {
                   "layer": 3,
@@ -30999,7 +30999,7 @@
         {
           "output_layer": 5,
           "enforced_relation": {
-            "Copy": {
+            "CopyInExtensionField": {
               "input": {
                 "InnerLayer": {
                   "layer": 4,
@@ -31018,7 +31018,7 @@
         {
           "output_layer": 5,
           "enforced_relation": {
-            "Copy": {
+            "CopyInExtensionField": {
               "input": {
                 "InnerLayer": {
                   "layer": 4,
@@ -31093,7 +31093,7 @@
         {
           "output_layer": 6,
           "enforced_relation": {
-            "Copy": {
+            "CopyInExtensionField": {
               "input": {
                 "InnerLayer": {
                   "layer": 5,
@@ -31112,7 +31112,7 @@
         {
           "output_layer": 6,
           "enforced_relation": {
-            "Copy": {
+            "CopyInExtensionField": {
               "input": {
                 "InnerLayer": {
                   "layer": 5,
@@ -31131,7 +31131,7 @@
         {
           "output_layer": 6,
           "enforced_relation": {
-            "Copy": {
+            "CopyInExtensionField": {
               "input": {
                 "InnerLayer": {
                   "layer": 5,
@@ -31150,7 +31150,7 @@
         {
           "output_layer": 6,
           "enforced_relation": {
-            "Copy": {
+            "CopyInExtensionField": {
               "input": {
                 "InnerLayer": {
                   "layer": 5,
@@ -49643,12 +49643,12 @@
     "77": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::527",
     "78": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::527",
     "79": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::527",
-    "80": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "81": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "82": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "83": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "84": "Variable at cs/src/cs/circuit_trait.rs::241",
-    "85": "Variable at cs/src/cs/circuit_trait.rs::241",
+    "80": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "81": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "82": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "83": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "84": "Variable at cs/src/cs/circuit_trait.rs::239",
+    "85": "Variable at cs/src/cs/circuit_trait.rs::239",
     "86": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::667",
     "87": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::667",
     "88": "Variable at cs/src/gkr_circuits/delegation/keccak_special5/mod.rs::667",

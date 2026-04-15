@@ -171,7 +171,6 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelVariant<F, E> {
     pub fn from_enforced_relations(
         relation: &NoFieldGKRRelation,
         layer_idx: usize,
-        gkr_storage: &GKRStorage<F, E>,
         lookup_challenges_multiplicative_part: E,
         lookup_challenges_additive_part: E,
         challenge_for_constraints: E,
@@ -187,42 +186,27 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelVariant<F, E> {
         };
 
         match relation {
-            NoFieldGKRRelation::Copy { input, output } => {
+            NoFieldGKRRelation::CopyInBaseField { input, output } => {
                 let challenge = [get_challenge()];
-                let is_base_field = gkr_storage.layers[layer_idx]
-                    .base_field_inputs
-                    .contains_key(input);
-                if is_base_field {
-                    assert!(
-                        gkr_storage.layers[layer_idx]
-                            .extension_field_inputs
-                            .contains_key(input)
-                            == false
-                    );
-                    Self::BaseCopy(
-                        BaseFieldCopyGKRRelation {
-                            input: *input,
-                            output: *output,
-                        },
-                        challenge,
-                        *output,
-                    )
-                } else {
-                    assert!(
-                        gkr_storage.layers[layer_idx]
-                            .base_field_inputs
-                            .contains_key(input)
-                            == false
-                    );
-                    Self::ExtCopy(
-                        ExtensionCopyGKRRelation {
-                            input: *input,
-                            output: *output,
-                        },
-                        challenge,
-                        *output,
-                    )
-                }
+                Self::BaseCopy(
+                    BaseFieldCopyGKRRelation {
+                        input: *input,
+                        output: *output,
+                    },
+                    challenge,
+                    *output,
+                )
+            }
+            NoFieldGKRRelation::CopyInExtensionField { input, output } => {
+                let challenge = [get_challenge()];
+                Self::ExtCopy(
+                    ExtensionCopyGKRRelation {
+                        input: *input,
+                        output: *output,
+                    },
+                    challenge,
+                    *output,
+                )
             }
             NoFieldGKRRelation::InitialGrandProductFromCaches { input, output }
             | NoFieldGKRRelation::TrivialProduct { input, output } => {
@@ -610,7 +594,6 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
         layer: &GKRLayerDescription,
         layer_idx: usize,
         batch_challenge_base: E,
-        gkr_storage: &GKRStorage<F, E>,
         lookup_challenges_multiplicative_part: E,
         lookup_challenges_additive_part: E,
         challenge_for_constraints: E,
@@ -631,7 +614,6 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
             let kernel = KernelVariant::from_enforced_relations(
                 &gate.enforced_relation,
                 layer_idx,
-                gkr_storage,
                 lookup_challenges_multiplicative_part,
                 lookup_challenges_additive_part,
                 challenge_for_constraints,

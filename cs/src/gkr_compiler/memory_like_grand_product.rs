@@ -119,7 +119,7 @@ impl GKRGate for GrandProductAccumulationStep {
                     let cached = graph.add_cached_relation(expr, cache_layer);
 
                     // and copy it
-                    let copy_node = CopyNode::FromBase(cached);
+                    let copy_node = CopyNode::FromBaseLayerInExtension(cached);
                     copy_node.add_at_layer(graph, output_layer)
                 } else {
                     let input = mem_permutation_expr_into_gkr_relation(access, graph);
@@ -590,8 +590,8 @@ pub(crate) fn accumulate_memory_like_grand_product(
     let mut next_read_set = vec![];
     let mut next_write_set = vec![];
 
-    copied_predicate_for_grand_product_masking =
-        graph.copy_intermediate_layer_variable(copied_predicate_for_grand_product_masking);
+    copied_predicate_for_grand_product_masking = graph
+        .copy_intermediate_layer_base_field_variable(copied_predicate_for_grand_product_masking);
     copied_predicate_for_grand_product_masking.assert_as_layer(output_layer);
 
     assert!(grand_product_read_accumulation_nodes.len() > 1);
@@ -633,7 +633,8 @@ pub(crate) fn accumulate_memory_like_grand_product(
                     "Copying remaining contribution {:?} to the next layer",
                     &remainder
                 );
-                let copied_remainder = graph.copy_intermediate_layer_variable(*remainder);
+                let copied_remainder =
+                    graph.copy_intermediate_layer_extension_field_variable(*remainder);
                 dst.push(copied_remainder);
             }
             _ => {
@@ -662,8 +663,10 @@ pub(crate) fn accumulate_memory_like_grand_product(
 
             let initial_len = current_read_set.len();
 
-            copied_predicate_for_grand_product_masking =
-                graph.copy_intermediate_layer_variable(copied_predicate_for_grand_product_masking);
+            copied_predicate_for_grand_product_masking = graph
+                .copy_intermediate_layer_base_field_variable(
+                    copied_predicate_for_grand_product_masking,
+                );
             copied_predicate_for_grand_product_masking.assert_as_layer(output_layer);
 
             println!(
@@ -697,7 +700,8 @@ pub(crate) fn accumulate_memory_like_grand_product(
                             "Copying remaining contribution {:?} to the next layer",
                             &remainder
                         );
-                        let copied_remainder = graph.copy_intermediate_layer_variable(*remainder);
+                        let copied_remainder =
+                            graph.copy_intermediate_layer_extension_field_variable(*remainder);
                         dst.push(copied_remainder);
                     }
                     _ => {

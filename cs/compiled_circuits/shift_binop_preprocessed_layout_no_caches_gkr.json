@@ -61,7 +61,7 @@
         {
           "output_layer": 1,
           "enforced_relation": {
-            "Copy": {
+            "CopyInBaseField": {
               "input": {
                 "BaseLayerMemory": 21
               },
@@ -1893,7 +1893,7 @@
         {
           "output_layer": 1,
           "enforced_relation": {
-            "Copy": {
+            "CopyInBaseField": {
               "input": {
                 "BaseLayerMemory": 27
               },
@@ -2957,7 +2957,7 @@
         {
           "output_layer": 2,
           "enforced_relation": {
-            "Copy": {
+            "CopyInBaseField": {
               "input": {
                 "InnerLayer": {
                   "layer": 1,
@@ -3163,7 +3163,7 @@
         {
           "output_layer": 2,
           "enforced_relation": {
-            "Copy": {
+            "CopyInExtensionField": {
               "input": {
                 "InnerLayer": {
                   "layer": 1,
@@ -3182,7 +3182,7 @@
         {
           "output_layer": 2,
           "enforced_relation": {
-            "Copy": {
+            "CopyInExtensionField": {
               "input": {
                 "InnerLayer": {
                   "layer": 1,
@@ -4015,7 +4015,7 @@
         {
           "output_layer": 3,
           "enforced_relation": {
-            "Copy": {
+            "CopyInExtensionField": {
               "input": {
                 "InnerLayer": {
                   "layer": 2,
@@ -4034,7 +4034,7 @@
         {
           "output_layer": 3,
           "enforced_relation": {
-            "Copy": {
+            "CopyInExtensionField": {
               "input": {
                 "InnerLayer": {
                   "layer": 2,
@@ -4104,7 +4104,7 @@
         {
           "output_layer": 3,
           "enforced_relation": {
-            "Copy": {
+            "CopyInExtensionField": {
               "input": {
                 "InnerLayer": {
                   "layer": 2,
@@ -4123,7 +4123,7 @@
         {
           "output_layer": 3,
           "enforced_relation": {
-            "Copy": {
+            "CopyInExtensionField": {
               "input": {
                 "InnerLayer": {
                   "layer": 2,
@@ -4142,7 +4142,7 @@
         {
           "output_layer": 3,
           "enforced_relation": {
-            "Copy": {
+            "CopyInExtensionField": {
               "input": {
                 "InnerLayer": {
                   "layer": 2,
@@ -4161,7 +4161,7 @@
         {
           "output_layer": 3,
           "enforced_relation": {
-            "Copy": {
+            "CopyInExtensionField": {
               "input": {
                 "InnerLayer": {
                   "layer": 2,
@@ -4287,7 +4287,7 @@
         {
           "output_layer": 4,
           "enforced_relation": {
-            "Copy": {
+            "CopyInExtensionField": {
               "input": {
                 "InnerLayer": {
                   "layer": 3,
@@ -4306,7 +4306,7 @@
         {
           "output_layer": 4,
           "enforced_relation": {
-            "Copy": {
+            "CopyInExtensionField": {
               "input": {
                 "InnerLayer": {
                   "layer": 3,
@@ -4325,7 +4325,7 @@
         {
           "output_layer": 4,
           "enforced_relation": {
-            "Copy": {
+            "CopyInExtensionField": {
               "input": {
                 "InnerLayer": {
                   "layer": 3,
@@ -4344,7 +4344,7 @@
         {
           "output_layer": 4,
           "enforced_relation": {
-            "Copy": {
+            "CopyInExtensionField": {
               "input": {
                 "InnerLayer": {
                   "layer": 3,

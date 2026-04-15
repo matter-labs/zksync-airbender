@@ -63,7 +63,8 @@ pub fn no_field_gkr_max_quadratic_from_constraint<F: PrimeField>(
             if c.is_one() {
                 // just copy
                 let input = graph.get_address_for_variable(var);
-                return NoFieldGKRRelation::Copy { input, output };
+                // in circuits all elements are in base field
+                return NoFieldGKRRelation::CopyInBaseField { input, output };
             }
         }
     }
