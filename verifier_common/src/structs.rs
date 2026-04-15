@@ -114,8 +114,8 @@ impl<E: Copy, const N: usize> FoldBuffers<E, N> {
     #[inline(always)]
     pub fn new() -> Self {
         Self {
-            buf_a: unsafe { MaybeUninit::uninit().assume_init() },
-            buf_b: unsafe { MaybeUninit::uninit().assume_init() },
+            buf_a: [const { MaybeUninit::uninit() }; N],
+            buf_b: [const { MaybeUninit::uninit() }; N],
         }
     }
 

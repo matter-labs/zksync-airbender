@@ -2,7 +2,7 @@ use blake2s_u32::{DelegatedBlake2sState, BLAKE2S_DIGEST_SIZE_U32_WORDS};
 use non_determinism_source::NonDeterminismSource;
 use transcript::Blake2sTranscript;
 
-use crate::gkr::LazyVec;
+use crate::lazy_vec::LazyVec;
 use crate::structs::{assemble_query_index, BitSource, CommitBuf, TranscriptState};
 
 /// Read a Merkle cap from NDS, commit via aligned buffer, and return it.
@@ -31,13 +31,7 @@ pub fn read_commit_return_merkle_cap<
 #[inline(always)]
 pub fn read_return_merkle_cap<I: NonDeterminismSource, const CAP_WORDS: usize>() -> [u32; CAP_WORDS]
 {
-    let mut buf = LazyVec::<u32, CAP_WORDS>::new();
-    let mut i = 0;
-    while i < CAP_WORDS {
-        buf.push(I::read_word());
-        i += 1;
-    }
-    unsafe { buf.into_array() }
+    core::array::from_fn(|_| I::read_word())
 }
 
 #[inline(always)]

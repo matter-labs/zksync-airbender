@@ -152,16 +152,13 @@ pub fn collect_sorted_unique_addrs(layer: &GKRLayerDescription) -> Vec<GKRAddres
                     addrs.insert(addr);
                 }
             }
-            R::EnforceConstraintsMaxQuadratic { input } => {
-                for ((a, b), _) in &input.quadratic_terms {
-                    addrs.insert(*a);
-                    addrs.insert(*b);
-                }
-                for (addr, _) in &input.linear_terms {
-                    addrs.insert(*addr);
-                }
+            R::EnforceConstraintsMaxQuadratic { .. } => {
+                // TODO: remove once all circuits use individual EnforceSingleMaxQuadraticConstraint gates
+                unimplemented!(
+                    "EnforceConstraintsMaxQuadratic is not supported by the verifier generator"
+                );
             }
-            R::Copy { input, .. } => {
+            R::CopyInBaseField { input, .. } | R::CopyInExtensionField { input, .. } => {
                 addrs.insert(*input);
             }
             R::InitialGrandProductFromCaches { input, .. } | R::TrivialProduct { input, .. } => {
@@ -360,20 +357,11 @@ pub fn compute_max_pow(layer: &GKRLayerDescription) -> usize {
         .iter()
         .chain(layer.gates_with_external_connections.iter())
     {
-        if let R::EnforceConstraintsMaxQuadratic { input } = &gate.enforced_relation {
-            for (_, terms) in &input.quadratic_terms {
-                for &(_, pow) in terms.iter() {
-                    max_pow = max_pow.max(pow);
-                }
-            }
-            for (_, terms) in &input.linear_terms {
-                for &(_, pow) in terms.iter() {
-                    max_pow = max_pow.max(pow);
-                }
-            }
-            for &(_, pow) in input.constants.iter() {
-                max_pow = max_pow.max(pow);
-            }
+        if let R::EnforceConstraintsMaxQuadratic { .. } = &gate.enforced_relation {
+            // TODO: remove once all circuits use individual EnforceSingleMaxQuadraticConstraint gates
+            unimplemented!(
+                "EnforceConstraintsMaxQuadratic is not supported by the verifier generator"
+            );
         }
     }
     max_pow

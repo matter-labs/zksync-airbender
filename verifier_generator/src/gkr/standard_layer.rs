@@ -20,15 +20,12 @@ use prover::field::PrimeField;
 
 use super::addr_to_idx;
 use super::coeff_to_internal_repr;
-use super::constraint_kernel::generate_constraint_kernel;
 
-pub fn generate_eval_helpers<MW: MersenneWrapper, F: PrimeField>() -> TokenStream {
+pub fn generate_eval_helpers<MW: MersenneWrapper>() -> TokenStream {
     let field_struct = MW::field_struct();
     let quartic_struct = MW::quartic_struct();
     let quartic_zero = MW::quartic_zero();
     let quartic_one = MW::quartic_one();
-
-    let byte_shift_mont = coeff_to_internal_repr::<F>(1u32 << 8);
 
     let from_const = MW::field_from_reduced_raw_repr(quote! { constant as u32 });
     let from_coeff = MW::field_from_reduced_raw_repr(quote! { coeff as u32 });
@@ -65,7 +62,7 @@ pub fn generate_eval_helpers<MW: MersenneWrapper, F: PrimeField>() -> TokenStrea
     let me_dyn_coeff = MW::field_from_reduced_raw_repr(quote! { op[5] as u32 });
     let me_dyn_mul = MW::mul_assign_by_base(quote! { dyn_val }, me_dyn_coeff.clone());
     let me_dyn_add = MW::add_assign(quote! { ev }, quote! { dyn_val });
-    let byte_shift_field = MW::field_from_reduced_raw_repr(quote! { #byte_shift_mont });
+    let byte_shift_field = quote! { #field_struct::from_u32_with_reduction(1u32 << 8) };
     let me_byte_mul = MW::mul_assign_by_base(quote! { hi }, byte_shift_field.clone());
     let me_byte_add_lo = MW::add_assign(quote! { hi }, quote! { evals.get_unchecked(op[2])[j] });
     let me_byte_ch_mul = MW::mul_assign(quote! { t }, quote! { hi });
@@ -73,7 +70,7 @@ pub fn generate_eval_helpers<MW: MersenneWrapper, F: PrimeField>() -> TokenStrea
     quote! {
         #[inline(always)]
         #[allow(unused_variables)]
-        unsafe fn eval_linear_relation(
+        pub unsafe fn eval_linear_relation(
             evals: &[[#quartic_struct; 2]],
             terms: &[(usize, usize)],
             constant: usize,
@@ -93,7 +90,7 @@ pub fn generate_eval_helpers<MW: MersenneWrapper, F: PrimeField>() -> TokenStrea
 
         #[inline(always)]
         #[allow(unused_variables)]
-        unsafe fn eval_vector_lookup(
+        pub unsafe fn eval_vector_lookup(
             evals: &[[#quartic_struct; 2]],
             alpha: #quartic_struct,
             col_descs: &[(usize, usize)],
@@ -124,7 +121,7 @@ pub fn generate_eval_helpers<MW: MersenneWrapper, F: PrimeField>() -> TokenStrea
 
         #[inline(always)]
         #[allow(unused_variables)]
-        unsafe fn eval_max_quadratic(
+        pub unsafe fn eval_max_quadratic(
             evals: &[[#quartic_struct; 2]],
             quad_outer: &[(usize, usize)],
             quad_inner: &[(usize, usize)],
@@ -163,18 +160,18 @@ pub fn generate_eval_helpers<MW: MersenneWrapper, F: PrimeField>() -> TokenStrea
             val
         }
 
-        const ME_OP_ADD_BASE_CONST: usize = 0;
-        const ME_OP_ADD_EVAL: usize = 1;
-        const ME_OP_ADD_ONE_MINUS_EVAL: usize = 2;
-        const ME_OP_CH_MUL_EVAL: usize = 3;
-        const ME_OP_CH_MUL_CONST: usize = 4;
-        const ME_OP_CH_MUL_EVAL_PLUS_CONST: usize = 5;
-        const ME_OP_CH_MUL_EVAL_PLUS_DYN: usize = 6;
-        const ME_OP_BYTE_VALUE_PAIR: usize = 7;
+        pub const ME_OP_ADD_BASE_CONST: usize = 0;
+        pub const ME_OP_ADD_EVAL: usize = 1;
+        pub const ME_OP_ADD_ONE_MINUS_EVAL: usize = 2;
+        pub const ME_OP_CH_MUL_EVAL: usize = 3;
+        pub const ME_OP_CH_MUL_CONST: usize = 4;
+        pub const ME_OP_CH_MUL_EVAL_PLUS_CONST: usize = 5;
+        pub const ME_OP_CH_MUL_EVAL_PLUS_DYN: usize = 6;
+        pub const ME_OP_BYTE_VALUE_PAIR: usize = 7;
 
         #[inline(always)]
         #[allow(unused_variables)]
-        unsafe fn eval_memory_expr(
+        pub unsafe fn eval_memory_expr(
             evals: &[[#quartic_struct; 2]],
             challenges: &[#quartic_struct],
             additive_part: #quartic_struct,
@@ -267,7 +264,7 @@ fn emit_linear_relation_eval<MW: MersenneWrapper, F: PrimeField>(
         const #terms_name: [(usize, usize); #num_terms] = [
             #( (#term_idx, #term_coeff), )*
         ];
-        let mut #var = eval_linear_relation(evals, &#terms_name, #const_mont, j);
+        let mut #var = super::common::eval_linear_relation(evals, &#terms_name, #const_mont, j);
     }
 }
 
@@ -309,7 +306,7 @@ fn emit_vector_lookup_eval<MW: MersenneWrapper, F: PrimeField>(
         const #terms_name: [(usize, usize); #num_terms] = [
             #( (#all_term_idx, #all_term_coeff), )*
         ];
-        let mut #var = eval_vector_lookup(evals, lookup_alpha, &#cols_name, &#terms_name, j);
+        let mut #var = super::common::eval_vector_lookup(evals, lookup_alpha, &#cols_name, &#terms_name, j);
     }
 }
 
@@ -371,7 +368,7 @@ fn emit_setup_horner_eval<F: PrimeField>(
         const #terms_name: [(usize, usize); #num_terms] = [
             #( (#term_idx, #term_coeff), )*
         ];
-        let mut #var = eval_vector_lookup(evals, lookup_alpha, &#cols_name, &#terms_name, j);
+        let mut #var = super::common::eval_vector_lookup(evals, lookup_alpha, &#cols_name, &#terms_name, j);
     }
 }
 
@@ -417,7 +414,7 @@ fn emit_max_quadratic_eval<F: PrimeField>(
         const #qo_name: [(usize, usize); #nqo] = [ #( (#quad_outer_idx, #quad_outer_count), )* ];
         const #qi_name: [(usize, usize); #nqi] = [ #( (#quad_inner_idx, #quad_inner_coeff), )* ];
         const #ln_name: [(usize, usize); #nl] = [ #( (#lin_idx, #lin_coeff), )* ];
-        let #var = eval_max_quadratic(evals, &#qo_name, &#qi_name, &#ln_name, #constant, j);
+        let #var = super::common::eval_max_quadratic(evals, &#qo_name, &#qi_name, &#ln_name, #constant, j);
     }
 }
 
@@ -636,7 +633,7 @@ fn emit_memory_expression_eval<F: PrimeField>(
 
     quote! {
         const #ops_name: [[usize; 6]; #num_ops] = [ #( #ops_flat, )* ];
-        let mut #var = eval_memory_expr(evals, linearization_challenges,
+        let mut #var = super::common::eval_memory_expr(evals, linearization_challenges,
             permutation_argument_additive_part, &#ops_name, j);
     }
 }
@@ -648,16 +645,13 @@ pub fn generate_layer_compute_claim<MW: MersenneWrapper>(
 ) -> TokenStream {
     let fn_name = quote::format_ident!("layer_{}_compute_claim", layer_idx);
     let quartic_struct = MW::quartic_struct();
-    let quartic_zero = MW::quartic_zero();
-    let quartic_one = MW::quartic_one();
-    let mul_batch = MW::mul_assign(quote! { current_batch }, quote! { batch_base });
-    let mul_t = MW::mul_assign(quote! { t }, quote! { claim });
-    let add_combined = MW::add_assign(quote! { combined }, quote! { t });
-    let mul_t0 = MW::mul_assign(quote! { t0 }, quote! { c0 });
-    let mul_t1 = MW::mul_assign(quote! { t1 }, quote! { c1 });
-    let add_t0 = MW::add_assign(quote! { combined }, quote! { t0 });
-    let add_t1 = MW::add_assign(quote! { combined }, quote! { t1 });
 
+    // Build descriptor array for the generated compute_claim function.
+    // Each gate maps to a (kind, output_idx_0, output_idx_1) tuple.
+    // kind:
+    //   0 = constraint gate (no output), skips one batching slot
+    //   1 = single-output gate, accumulates batch * claim[o0] and advances batch
+    //   2 = dual-output gate (lookup pair), accumulates two claims and advances batch twice
     let mut descs = Vec::new();
     for gate in layer
         .gates
@@ -666,13 +660,19 @@ pub fn generate_layer_compute_claim<MW: MersenneWrapper>(
     {
         use NoFieldGKRRelation as R;
         match &gate.enforced_relation {
-            R::EnforceConstraintsMaxQuadratic { .. }
-            | R::EnforceSingleMaxQuadraticConstraint { .. } => {
+            R::EnforceSingleMaxQuadraticConstraint { .. } => {
                 descs.push((0usize, 0usize, 0usize));
+            }
+            R::EnforceConstraintsMaxQuadratic { .. } => {
+                // TODO: remove once all circuits use individual EnforceSingleMaxQuadraticConstraint gates
+                unimplemented!(
+                    "EnforceConstraintsMaxQuadratic is not supported by the verifier generator"
+                );
             }
             R::LinearBaseFieldRelation { output, .. }
             | R::MaxQuadratic { output, .. }
-            | R::Copy { output, .. }
+            | R::CopyInBaseField { output, .. }
+            | R::CopyInExtensionField { output, .. }
             | R::InitialGrandProductFromCaches { output, .. }
             | R::InitialGrandProductWithoutCaches { output, .. }
             | R::MaterializeGrandProductTermExpression { output, .. }
@@ -708,6 +708,7 @@ pub fn generate_layer_compute_claim<MW: MersenneWrapper>(
     }
 
     let num_descs = descs.len();
+    let num_output_addrs = output_sorted_addrs.len();
     let desc_n: Vec<_> = descs.iter().map(|(n, _, _)| *n).collect();
     let desc_o0: Vec<_> = descs.iter().map(|(_, o0, _)| *o0).collect();
     let desc_o1: Vec<_> = descs.iter().map(|(_, _, o1)| *o1).collect();
@@ -716,40 +717,13 @@ pub fn generate_layer_compute_claim<MW: MersenneWrapper>(
         #[inline(always)]
         #[allow(unused_variables)]
         unsafe fn #fn_name(
-            output_claims: &LazyVec<#quartic_struct, GKR_ADDRS>,
+            output_claims: &[#quartic_struct; #num_output_addrs],
             batch_base: #quartic_struct,
         ) -> #quartic_struct {
             const DESCS: [(usize, usize, usize); #num_descs] = [
                 #( (#desc_n, #desc_o0, #desc_o1), )*
             ];
-            let mut combined = #quartic_zero;
-            let mut current_batch = #quartic_one;
-            let mut i = 0;
-            while i < #num_descs {
-                let (n, o0, o1) = unsafe { *DESCS.get_unchecked(i) };
-                if n == 0 {
-                    #mul_batch;
-                } else if n == 1 {
-                    let claim = output_claims.get(o0);
-                    let mut t = current_batch;
-                    #mul_t;
-                    #add_combined;
-                    #mul_batch;
-                } else {
-                    let c0 = output_claims.get(o0);
-                    let mut t0 = current_batch;
-                    #mul_t0;
-                    #add_t0;
-                    #mul_batch;
-                    let c1 = output_claims.get(o1);
-                    let mut t1 = current_batch;
-                    #mul_t1;
-                    #add_t1;
-                    #mul_batch;
-                }
-                i += 1;
-            }
-            combined
+            super::common::compute_claim(output_claims, &DESCS, batch_base)
         }
     }
 }
@@ -771,7 +745,9 @@ fn emit_simple_gate(
 ) {
     use NoFieldGKRRelation as R;
     let desc = match &gate.enforced_relation {
-        R::Copy { input, .. } => (GT_COPY, [addr_to_idx(input, input_sorted_addrs), 0, 0, 0]),
+        R::CopyInBaseField { input, .. } | R::CopyInExtensionField { input, .. } => {
+            (GT_COPY, [addr_to_idx(input, input_sorted_addrs), 0, 0, 0])
+        }
         R::InitialGrandProductFromCaches { input, .. } | R::TrivialProduct { input, .. } => (
             GT_PRODUCT,
             [
@@ -1094,9 +1070,10 @@ fn emit_single_output_value<MW: MersenneWrapper, F: PrimeField>(
             "val",
             input_sorted_addrs,
         )),
-        R::EnforceConstraintsMaxQuadratic { input } => {
-            let kernel_body = generate_constraint_kernel::<MW, F>(input, input_sorted_addrs);
-            Some(quote! { let val = { #kernel_body }; })
+        R::EnforceConstraintsMaxQuadratic { .. } => {
+            unimplemented!(
+                "EnforceConstraintsMaxQuadratic is not supported; use individual EnforceSingleMaxQuadraticConstraint gates"
+            );
         }
         R::LinearBaseFieldRelation { input, .. } => Some(emit_linear_relation_eval::<MW, F>(
             input,
@@ -1414,7 +1391,8 @@ pub fn generate_layer_final_step_accumulator<MW: MersenneWrapper, F: PrimeField>
         use NoFieldGKRRelation as R;
         match &gate.enforced_relation {
             // Simple gates — batched into a const-array-driven runtime dispatch loop
-            R::Copy { .. }
+            R::CopyInBaseField { .. }
+            | R::CopyInExtensionField { .. }
             | R::InitialGrandProductFromCaches { .. }
             | R::TrivialProduct { .. }
             | R::MaskIntoIdentityProduct { .. }
@@ -1433,7 +1411,6 @@ pub fn generate_layer_final_step_accumulator<MW: MersenneWrapper, F: PrimeField>
 
             // Single-output gates — each needs expression evaluation
             R::EnforceSingleMaxQuadraticConstraint { .. }
-            | R::EnforceConstraintsMaxQuadratic { .. }
             | R::LinearBaseFieldRelation { .. }
             | R::MaxQuadratic { .. }
             | R::MaterializeSingleLookupInput { .. }

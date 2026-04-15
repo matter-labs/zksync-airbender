@@ -11,7 +11,7 @@ impl<V: Copy, const N: usize> LazyVec<V, N> {
     #[inline(always)]
     pub const fn new() -> Self {
         Self {
-            data: unsafe { MaybeUninit::uninit().assume_init() },
+            data: [const { MaybeUninit::uninit() }; N],
             len: 0,
         }
     }

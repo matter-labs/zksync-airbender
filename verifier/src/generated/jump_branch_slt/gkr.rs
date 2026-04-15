@@ -9,204 +9,15 @@ use verifier_common::field::baby_bear::base::BabyBearField;
 use verifier_common::field::baby_bear::ext4::BabyBearExt4;
 use verifier_common::field::{Field, FieldExtension, PrimeField};
 use verifier_common::field_ops;
-use verifier_common::gkr::{GKRVerifierOutput, LayerState, LazyVec};
+use verifier_common::gkr::{GKRVerifierOutput, LayerState};
+use verifier_common::lazy_vec::LazyVec;
 use verifier_common::non_determinism_source::NonDeterminismSource;
 use verifier_common::structs::{CommitBuf, TranscriptState};
 use verifier_common::transcript::Blake2sTranscript;
 #[inline(always)]
 #[allow(unused_variables)]
-unsafe fn eval_linear_relation(
-    evals: &[[BabyBearExt4; 2]],
-    terms: &[(usize, usize)],
-    constant: usize,
-    j: usize,
-) -> BabyBearExt4 {
-    let mut result = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(constant as u32));
-    let mut i = 0;
-    while i < terms.len() {
-        let (idx, coeff) = *terms.get_unchecked(i);
-        let mut t = evals.get_unchecked(idx)[j];
-        field_ops::mul_assign_by_base(&mut t, &BabyBearField::from_reduced_raw_repr(coeff as u32));
-        field_ops::add_assign(&mut result, &t);
-        i += 1;
-    }
-    result
-}
-#[inline(always)]
-#[allow(unused_variables)]
-unsafe fn eval_vector_lookup(
-    evals: &[[BabyBearExt4; 2]],
-    alpha: BabyBearExt4,
-    col_descs: &[(usize, usize)],
-    terms: &[(usize, usize)],
-    j: usize,
-) -> BabyBearExt4 {
-    let mut result = BabyBearExt4::ZERO;
-    let mut term_offset: usize = 0;
-    let mut i = 0;
-    while i < col_descs.len() {
-        field_ops::mul_assign(&mut result, &alpha);
-        let (col_const, num_terms) = *col_descs.get_unchecked(i);
-        let mut col_val =
-            BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(col_const as u32));
-        let mut k = 0;
-        while k < num_terms {
-            let (idx, coeff) = *terms.get_unchecked(term_offset + k);
-            let mut t = evals.get_unchecked(idx)[j];
-            field_ops::mul_assign_by_base(
-                &mut t,
-                &BabyBearField::from_reduced_raw_repr(coeff as u32),
-            );
-            field_ops::add_assign(&mut col_val, &t);
-            k += 1;
-        }
-        field_ops::add_assign(&mut result, &col_val);
-        term_offset += num_terms;
-        i += 1;
-    }
-    result
-}
-#[inline(always)]
-#[allow(unused_variables)]
-unsafe fn eval_max_quadratic(
-    evals: &[[BabyBearExt4; 2]],
-    quad_outer: &[(usize, usize)],
-    quad_inner: &[(usize, usize)],
-    linear: &[(usize, usize)],
-    constant: usize,
-    j: usize,
-) -> BabyBearExt4 {
-    let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(constant as u32));
-    let mut inner_offset: usize = 0;
-    let mut i = 0;
-    while i < quad_outer.len() {
-        let (addr_a, num_inner) = *quad_outer.get_unchecked(i);
-        let mut inner = BabyBearExt4::ZERO;
-        let mut k = 0;
-        while k < num_inner {
-            let (addr_b, coeff) = *quad_inner.get_unchecked(inner_offset + k);
-            let mut t = evals.get_unchecked(addr_b)[j];
-            field_ops::mul_assign_by_base(
-                &mut t,
-                &BabyBearField::from_reduced_raw_repr(coeff as u32),
-            );
-            field_ops::add_assign(&mut inner, &t);
-            k += 1;
-        }
-        let a_val = evals.get_unchecked(addr_a)[j];
-        field_ops::mul_assign(&mut inner, &a_val);
-        field_ops::add_assign(&mut val, &inner);
-        inner_offset += num_inner;
-        i += 1;
-    }
-    let mut li = 0;
-    while li < linear.len() {
-        let (addr, coeff) = *linear.get_unchecked(li);
-        let mut lt = evals.get_unchecked(addr)[j];
-        field_ops::mul_assign_by_base(&mut lt, &BabyBearField::from_reduced_raw_repr(coeff as u32));
-        field_ops::add_assign(&mut val, &lt);
-        li += 1;
-    }
-    val
-}
-const ME_OP_ADD_BASE_CONST: usize = 0;
-const ME_OP_ADD_EVAL: usize = 1;
-const ME_OP_ADD_ONE_MINUS_EVAL: usize = 2;
-const ME_OP_CH_MUL_EVAL: usize = 3;
-const ME_OP_CH_MUL_CONST: usize = 4;
-const ME_OP_CH_MUL_EVAL_PLUS_CONST: usize = 5;
-const ME_OP_CH_MUL_EVAL_PLUS_DYN: usize = 6;
-const ME_OP_BYTE_VALUE_PAIR: usize = 7;
-#[inline(always)]
-#[allow(unused_variables)]
-unsafe fn eval_memory_expr(
-    evals: &[[BabyBearExt4; 2]],
-    challenges: &[BabyBearExt4],
-    additive_part: BabyBearExt4,
-    ops: &[[usize; 6]],
-    j: usize,
-) -> BabyBearExt4 {
-    let mut result = additive_part;
-    let mut i = 0;
-    while i < ops.len() {
-        let op = *ops.get_unchecked(i);
-        match op[0] {
-            ME_OP_ADD_BASE_CONST => {
-                field_ops::add_assign_base(
-                    &mut result,
-                    &BabyBearField::from_reduced_raw_repr(op[1] as u32),
-                );
-            }
-            ME_OP_ADD_EVAL => {
-                field_ops::add_assign(&mut result, &evals.get_unchecked(op[1])[j]);
-            }
-            ME_OP_ADD_ONE_MINUS_EVAL => {
-                let mut t = BabyBearExt4::ONE;
-                field_ops::sub_assign(&mut t, &evals.get_unchecked(op[1])[j]);
-                field_ops::add_assign(&mut result, &t);
-            }
-            ME_OP_CH_MUL_EVAL => {
-                let mut t = challenges[op[1]];
-                field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(op[2])[j]);
-                field_ops::add_assign(&mut result, &t);
-            }
-            ME_OP_CH_MUL_CONST => {
-                let mut t = challenges[op[1]];
-                field_ops::mul_assign_by_base(
-                    &mut t,
-                    &BabyBearField::from_reduced_raw_repr(op[2] as u32),
-                );
-                field_ops::add_assign(&mut result, &t);
-            }
-            ME_OP_CH_MUL_EVAL_PLUS_CONST => {
-                let mut ev = evals.get_unchecked(op[2])[j];
-                field_ops::add_assign_base(
-                    &mut ev,
-                    &BabyBearField::from_reduced_raw_repr(op[3] as u32),
-                );
-                let mut t = challenges[op[1]];
-                field_ops::mul_assign_by_base(&mut t, &ev);
-                field_ops::add_assign(&mut result, &t);
-            }
-            ME_OP_CH_MUL_EVAL_PLUS_DYN => {
-                let mut ev = evals.get_unchecked(op[2])[j];
-                if op[4] != 0 {
-                    field_ops::add_assign_base(
-                        &mut ev,
-                        &BabyBearField::from_reduced_raw_repr(op[4] as u32),
-                    );
-                }
-                let mut dyn_val = evals.get_unchecked(op[3])[j];
-                field_ops::mul_assign_by_base(
-                    &mut dyn_val,
-                    &BabyBearField::from_reduced_raw_repr(op[5] as u32),
-                );
-                field_ops::add_assign(&mut ev, &dyn_val);
-                let mut t = challenges[op[1]];
-                field_ops::mul_assign_by_base(&mut t, &ev);
-                field_ops::add_assign(&mut result, &t);
-            }
-            ME_OP_BYTE_VALUE_PAIR => {
-                let mut hi = evals.get_unchecked(op[3])[j];
-                field_ops::mul_assign_by_base(
-                    &mut hi,
-                    &BabyBearField::from_reduced_raw_repr(268434910u32),
-                );
-                field_ops::add_assign(&mut hi, &evals.get_unchecked(op[2])[j]);
-                let mut t = challenges[op[1]];
-                field_ops::mul_assign(&mut t, &hi);
-                field_ops::add_assign(&mut result, &t);
-            }
-            _ => core::hint::unreachable_unchecked(),
-        }
-        i += 1;
-    }
-    result
-}
-#[inline(always)]
-#[allow(unused_variables)]
 unsafe fn layer_0_compute_claim(
-    output_claims: &LazyVec<BabyBearExt4, GKR_ADDRS>,
+    output_claims: &[BabyBearExt4; 25usize],
     batch_base: BabyBearExt4,
 ) -> BabyBearExt4 {
     const DESCS: [(usize, usize, usize); 41usize] = [
@@ -252,34 +63,7 @@ unsafe fn layer_0_compute_claim(
         (0usize, 0usize, 0usize),
         (0usize, 0usize, 0usize),
     ];
-    let mut combined = BabyBearExt4::ZERO;
-    let mut current_batch = BabyBearExt4::ONE;
-    let mut i = 0;
-    while i < 41usize {
-        let (n, o0, o1) = unsafe { *DESCS.get_unchecked(i) };
-        if n == 0 {
-            field_ops::mul_assign(&mut current_batch, &batch_base);
-        } else if n == 1 {
-            let claim = output_claims.get(o0);
-            let mut t = current_batch;
-            field_ops::mul_assign(&mut t, &claim);
-            field_ops::add_assign(&mut combined, &t);
-            field_ops::mul_assign(&mut current_batch, &batch_base);
-        } else {
-            let c0 = output_claims.get(o0);
-            let mut t0 = current_batch;
-            field_ops::mul_assign(&mut t0, &c0);
-            field_ops::add_assign(&mut combined, &t0);
-            field_ops::mul_assign(&mut current_batch, &batch_base);
-            let c1 = output_claims.get(o1);
-            let mut t1 = current_batch;
-            field_ops::mul_assign(&mut t1, &c1);
-            field_ops::add_assign(&mut combined, &t1);
-            field_ops::mul_assign(&mut current_batch, &batch_base);
-        }
-        i += 1;
-    }
-    combined
+    super::common::compute_claim(output_claims, &DESCS, batch_base)
 }
 #[inline(always)]
 #[allow(unused_variables, unused_mut, unused_unsafe)]
@@ -498,7 +282,7 @@ unsafe fn layer_0_final_step_accumulator(
                 [3usize, 4usize, 30usize, 0usize, 0usize, 0usize],
                 [3usize, 5usize, 31usize, 0usize, 0usize, 0usize],
             ];
-            let mut mem_a = eval_memory_expr(
+            let mut mem_a = super::common::eval_memory_expr(
                 evals,
                 linearization_challenges,
                 permutation_argument_additive_part,
@@ -513,7 +297,7 @@ unsafe fn layer_0_final_step_accumulator(
                 [3usize, 4usize, 35usize, 0usize, 0usize, 0usize],
                 [3usize, 5usize, 36usize, 0usize, 0usize, 0usize],
             ];
-            let mut mem_b = eval_memory_expr(
+            let mut mem_b = super::common::eval_memory_expr(
                 evals,
                 linearization_challenges,
                 permutation_argument_additive_part,
@@ -539,7 +323,7 @@ unsafe fn layer_0_final_step_accumulator(
                 [3usize, 4usize, 30usize, 0usize, 0usize, 0usize],
                 [3usize, 5usize, 31usize, 0usize, 0usize, 0usize],
             ];
-            let mut mem_a = eval_memory_expr(
+            let mut mem_a = super::common::eval_memory_expr(
                 evals,
                 linearization_challenges,
                 permutation_argument_additive_part,
@@ -554,7 +338,7 @@ unsafe fn layer_0_final_step_accumulator(
                 [3usize, 4usize, 35usize, 0usize, 0usize, 0usize],
                 [3usize, 5usize, 36usize, 0usize, 0usize, 0usize],
             ];
-            let mut mem_b = eval_memory_expr(
+            let mut mem_b = super::common::eval_memory_expr(
                 evals,
                 linearization_challenges,
                 permutation_argument_additive_part,
@@ -580,7 +364,7 @@ unsafe fn layer_0_final_step_accumulator(
                 [3usize, 4usize, 40usize, 0usize, 0usize, 0usize],
                 [3usize, 5usize, 41usize, 0usize, 0usize, 0usize],
             ];
-            let mut mem_a = eval_memory_expr(
+            let mut mem_a = super::common::eval_memory_expr(
                 evals,
                 linearization_challenges,
                 permutation_argument_additive_part,
@@ -595,7 +379,7 @@ unsafe fn layer_0_final_step_accumulator(
                 [3usize, 4usize, 46usize, 0usize, 0usize, 0usize],
                 [3usize, 5usize, 47usize, 0usize, 0usize, 0usize],
             ];
-            let mut mem_b = eval_memory_expr(
+            let mut mem_b = super::common::eval_memory_expr(
                 evals,
                 linearization_challenges,
                 permutation_argument_additive_part,
@@ -621,7 +405,7 @@ unsafe fn layer_0_final_step_accumulator(
                 [3usize, 4usize, 43usize, 0usize, 0usize, 0usize],
                 [3usize, 5usize, 44usize, 0usize, 0usize, 0usize],
             ];
-            let mut mem_a = eval_memory_expr(
+            let mut mem_a = super::common::eval_memory_expr(
                 evals,
                 linearization_challenges,
                 permutation_argument_additive_part,
@@ -636,7 +420,7 @@ unsafe fn layer_0_final_step_accumulator(
                 [3usize, 4usize, 50usize, 0usize, 0usize, 0usize],
                 [3usize, 5usize, 51usize, 0usize, 0usize, 0usize],
             ];
-            let mut mem_b = eval_memory_expr(
+            let mut mem_b = super::common::eval_memory_expr(
                 evals,
                 linearization_challenges,
                 permutation_argument_additive_part,
@@ -848,9 +632,9 @@ unsafe fn layer_0_final_step_accumulator(
         field_ops::mul_assign(&mut current_batch, &batch_base);
         for j in 0..2 {
             const A_VAL_TERMS: [(usize, usize); 1usize] = [(9usize, 268435454usize)];
-            let mut a_val = eval_linear_relation(evals, &A_VAL_TERMS, 0usize, j);
+            let mut a_val = super::common::eval_linear_relation(evals, &A_VAL_TERMS, 0usize, j);
             const B_VAL_TERMS: [(usize, usize); 1usize] = [(47usize, 268435454usize)];
-            let mut b_val = eval_linear_relation(evals, &B_VAL_TERMS, 0usize, j);
+            let mut b_val = super::common::eval_linear_relation(evals, &B_VAL_TERMS, 0usize, j);
             let out0 = {
                 field_ops::add_assign(&mut a_val, &lookup_additive_challenge);
                 field_ops::add_assign(&mut b_val, &lookup_additive_challenge);
@@ -1071,13 +855,13 @@ unsafe fn layer_0_final_step_accumulator(
         field_ops::mul_assign(&mut current_batch, &batch_base);
         for j in 0..2 {
             const A_VAL_TERMS: [(usize, usize); 1usize] = [(53usize, 268435454usize)];
-            let mut a_val = eval_linear_relation(evals, &A_VAL_TERMS, 0usize, j);
+            let mut a_val = super::common::eval_linear_relation(evals, &A_VAL_TERMS, 0usize, j);
             const B_VAL_TERMS: [(usize, usize); 3usize] = [
                 (48usize, 1744830467usize),
                 (28usize, 268435454usize),
                 (22usize, 133099247usize),
             ];
-            let mut b_val = eval_linear_relation(evals, &B_VAL_TERMS, 0usize, j);
+            let mut b_val = super::common::eval_linear_relation(evals, &B_VAL_TERMS, 0usize, j);
             let out0 = {
                 field_ops::add_assign(&mut a_val, &lookup_additive_challenge);
                 field_ops::add_assign(&mut b_val, &lookup_additive_challenge);
@@ -1109,13 +893,15 @@ unsafe fn layer_0_final_step_accumulator(
                 (29usize, 268435454usize),
                 (22usize, 1744830467usize),
             ];
-            let mut a_val = eval_linear_relation(evals, &A_VAL_TERMS, 133099247usize, j);
+            let mut a_val =
+                super::common::eval_linear_relation(evals, &A_VAL_TERMS, 133099247usize, j);
             const B_VAL_TERMS: [(usize, usize); 3usize] = [
                 (48usize, 1744830467usize),
                 (33usize, 268435454usize),
                 (23usize, 133099247usize),
             ];
-            let mut b_val = eval_linear_relation(evals, &B_VAL_TERMS, 1744830467usize, j);
+            let mut b_val =
+                super::common::eval_linear_relation(evals, &B_VAL_TERMS, 1744830467usize, j);
             let out0 = {
                 field_ops::add_assign(&mut a_val, &lookup_additive_challenge);
                 field_ops::add_assign(&mut b_val, &lookup_additive_challenge);
@@ -1147,13 +933,15 @@ unsafe fn layer_0_final_step_accumulator(
                 (34usize, 268435454usize),
                 (23usize, 1744830467usize),
             ];
-            let mut a_val = eval_linear_relation(evals, &A_VAL_TERMS, 133099247usize, j);
+            let mut a_val =
+                super::common::eval_linear_relation(evals, &A_VAL_TERMS, 133099247usize, j);
             const B_VAL_TERMS: [(usize, usize); 3usize] = [
                 (48usize, 1744830467usize),
                 (38usize, 268435454usize),
                 (24usize, 133099247usize),
             ];
-            let mut b_val = eval_linear_relation(evals, &B_VAL_TERMS, 1476395013usize, j);
+            let mut b_val =
+                super::common::eval_linear_relation(evals, &B_VAL_TERMS, 1476395013usize, j);
             let out0 = {
                 field_ops::add_assign(&mut a_val, &lookup_additive_challenge);
                 field_ops::add_assign(&mut b_val, &lookup_additive_challenge);
@@ -1183,7 +971,7 @@ unsafe fn layer_0_final_step_accumulator(
                 (39usize, 268435454usize),
                 (24usize, 1744830467usize),
             ];
-            let mut val = eval_linear_relation(evals, &VAL_TERMS, 133099247usize, j);
+            let mut val = super::common::eval_linear_relation(evals, &VAL_TERMS, 133099247usize, j);
             let mut contrib = bc;
             field_ops::mul_assign(&mut contrib, &val);
             field_ops::add_assign(&mut acc[j], &contrib);
@@ -1224,8 +1012,13 @@ unsafe fn layer_0_final_step_accumulator(
                 (47usize, 268435454usize),
                 (46usize, 268435454usize),
             ];
-            let mut b_val =
-                eval_vector_lookup(evals, lookup_alpha, &B_VAL_COLS, &B_VAL_VL_TERMS, j);
+            let mut b_val = super::common::eval_vector_lookup(
+                evals,
+                lookup_alpha,
+                &B_VAL_COLS,
+                &B_VAL_VL_TERMS,
+                j,
+            );
             field_ops::add_assign(&mut b_val, &lookup_additive_challenge);
             const D_VAL_COLS: [(usize, usize); 10usize] = [
                 (0usize, 1usize),
@@ -1251,8 +1044,13 @@ unsafe fn layer_0_final_step_accumulator(
                 (55usize, 268435454usize),
                 (54usize, 268435454usize),
             ];
-            let mut d_val =
-                eval_vector_lookup(evals, lookup_alpha, &D_VAL_COLS, &D_VAL_VL_TERMS, j);
+            let mut d_val = super::common::eval_vector_lookup(
+                evals,
+                lookup_alpha,
+                &D_VAL_COLS,
+                &D_VAL_VL_TERMS,
+                j,
+            );
             field_ops::add_assign(&mut d_val, &lookup_additive_challenge);
             let out0 = {
                 let mut num = a_val;
@@ -1298,8 +1096,13 @@ unsafe fn layer_0_final_step_accumulator(
                 (8usize, 268435454usize),
                 (9usize, 268435454usize),
             ];
-            let mut a_val =
-                eval_vector_lookup(evals, lookup_alpha, &A_VAL_COLS, &A_VAL_VL_TERMS, j);
+            let mut a_val = super::common::eval_vector_lookup(
+                evals,
+                lookup_alpha,
+                &A_VAL_COLS,
+                &A_VAL_VL_TERMS,
+                j,
+            );
             const B_VAL_COLS: [(usize, usize); 10usize] = [
                 (1342177270usize, 0usize),
                 (0usize, 0usize),
@@ -1314,8 +1117,13 @@ unsafe fn layer_0_final_step_accumulator(
             ];
             const B_VAL_VL_TERMS: [(usize, usize); 2usize] =
                 [(16usize, 268435454usize), (31usize, 268435454usize)];
-            let mut b_val =
-                eval_vector_lookup(evals, lookup_alpha, &B_VAL_COLS, &B_VAL_VL_TERMS, j);
+            let mut b_val = super::common::eval_vector_lookup(
+                evals,
+                lookup_alpha,
+                &B_VAL_COLS,
+                &B_VAL_VL_TERMS,
+                j,
+            );
             let out0 = {
                 field_ops::add_assign(&mut a_val, &lookup_additive_challenge);
                 field_ops::add_assign(&mut b_val, &lookup_additive_challenge);
@@ -1362,8 +1170,13 @@ unsafe fn layer_0_final_step_accumulator(
                 (15usize, 1073182584usize),
                 (16usize, 268295646usize),
             ];
-            let mut a_val =
-                eval_vector_lookup(evals, lookup_alpha, &A_VAL_COLS, &A_VAL_VL_TERMS, j);
+            let mut a_val = super::common::eval_vector_lookup(
+                evals,
+                lookup_alpha,
+                &A_VAL_COLS,
+                &A_VAL_VL_TERMS,
+                j,
+            );
             const B_VAL_COLS: [(usize, usize); 10usize] = [
                 (536870908usize, 0usize),
                 (0usize, 0usize),
@@ -1381,8 +1194,13 @@ unsafe fn layer_0_final_step_accumulator(
                 (19usize, 268435454usize),
                 (10usize, 268435454usize),
             ];
-            let mut b_val =
-                eval_vector_lookup(evals, lookup_alpha, &B_VAL_COLS, &B_VAL_VL_TERMS, j);
+            let mut b_val = super::common::eval_vector_lookup(
+                evals,
+                lookup_alpha,
+                &B_VAL_COLS,
+                &B_VAL_VL_TERMS,
+                j,
+            );
             let out0 = {
                 field_ops::add_assign(&mut a_val, &lookup_additive_challenge);
                 field_ops::add_assign(&mut b_val, &lookup_additive_challenge);
@@ -1410,7 +1228,8 @@ unsafe fn layer_0_final_step_accumulator(
             const VAL_QO: [(usize, usize); 1usize] = [(45usize, 1usize)];
             const VAL_QI: [(usize, usize); 1usize] = [(45usize, 268435454usize)];
             const VAL_LN: [(usize, usize); 1usize] = [(45usize, 1744830467usize)];
-            let val = eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
+            let val =
+                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
             let mut contrib = bc;
             field_ops::mul_assign(&mut contrib, &val);
             field_ops::add_assign(&mut acc[j], &contrib);
@@ -1446,7 +1265,8 @@ unsafe fn layer_0_final_step_accumulator(
             ];
             const VAL_LN: [(usize, usize); 2usize] =
                 [(3usize, 1073741816usize), (4usize, 1073741816usize)];
-            let val = eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
+            let val =
+                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
             let mut contrib = bc;
             field_ops::mul_assign(&mut contrib, &val);
             field_ops::add_assign(&mut acc[j], &contrib);
@@ -1485,7 +1305,8 @@ unsafe fn layer_0_final_step_accumulator(
                 (36usize, 268435454usize),
             ];
             const VAL_LN: [(usize, usize); 0usize] = [];
-            let val = eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
+            let val =
+                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
             let mut contrib = bc;
             field_ops::mul_assign(&mut contrib, &val);
             field_ops::add_assign(&mut acc[j], &contrib);
@@ -1498,7 +1319,8 @@ unsafe fn layer_0_final_step_accumulator(
             const VAL_QO: [(usize, usize); 1usize] = [(6usize, 1usize)];
             const VAL_QI: [(usize, usize); 1usize] = [(17usize, 268435454usize)];
             const VAL_LN: [(usize, usize); 1usize] = [(18usize, 1744830467usize)];
-            let val = eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
+            let val =
+                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
             let mut contrib = bc;
             field_ops::mul_assign(&mut contrib, &val);
             field_ops::add_assign(&mut acc[j], &contrib);
@@ -1537,7 +1359,8 @@ unsafe fn layer_0_final_step_accumulator(
                 (6usize, 1073741816usize),
                 (18usize, 939524105usize),
             ];
-            let val = eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
+            let val =
+                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
             let mut contrib = bc;
             field_ops::mul_assign(&mut contrib, &val);
             field_ops::add_assign(&mut acc[j], &contrib);
@@ -1576,7 +1399,8 @@ unsafe fn layer_0_final_step_accumulator(
                 (51usize, 1744830467usize),
             ];
             const VAL_LN: [(usize, usize); 0usize] = [];
-            let val = eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
+            let val =
+                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
             let mut contrib = bc;
             field_ops::mul_assign(&mut contrib, &val);
             field_ops::add_assign(&mut acc[j], &contrib);
@@ -1594,7 +1418,8 @@ unsafe fn layer_0_final_step_accumulator(
                 (19usize, 268435454usize),
             ];
             const VAL_LN: [(usize, usize); 0usize] = [];
-            let val = eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
+            let val =
+                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
             let mut contrib = bc;
             field_ops::mul_assign(&mut contrib, &val);
             field_ops::add_assign(&mut acc[j], &contrib);
@@ -1612,7 +1437,8 @@ unsafe fn layer_0_final_step_accumulator(
                 (17usize, 268435454usize),
             ];
             const VAL_LN: [(usize, usize); 1usize] = [(20usize, 1744830467usize)];
-            let val = eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
+            let val =
+                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
             let mut contrib = bc;
             field_ops::mul_assign(&mut contrib, &val);
             field_ops::add_assign(&mut acc[j], &contrib);
@@ -1626,7 +1452,8 @@ unsafe fn layer_0_final_step_accumulator(
             const VAL_QI: [(usize, usize); 2usize] =
                 [(9usize, 268435454usize), (9usize, 268435454usize)];
             const VAL_LN: [(usize, usize); 1usize] = [(21usize, 1744830467usize)];
-            let val = eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
+            let val =
+                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
             let mut contrib = bc;
             field_ops::mul_assign(&mut contrib, &val);
             field_ops::add_assign(&mut acc[j], &contrib);
@@ -1640,7 +1467,8 @@ unsafe fn layer_0_final_step_accumulator(
             const VAL_QI: [(usize, usize); 1usize] = [(20usize, 1744830467usize)];
             const VAL_LN: [(usize, usize); 2usize] =
                 [(20usize, 268435454usize), (43usize, 1744830467usize)];
-            let val = eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
+            let val =
+                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
             let mut contrib = bc;
             field_ops::mul_assign(&mut contrib, &val);
             field_ops::add_assign(&mut acc[j], &contrib);
@@ -1654,7 +1482,8 @@ unsafe fn layer_0_final_step_accumulator(
             const VAL_QI: [(usize, usize); 1usize] = [(21usize, 1744830467usize)];
             const VAL_LN: [(usize, usize); 2usize] =
                 [(21usize, 268435454usize), (44usize, 1744830467usize)];
-            let val = eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
+            let val =
+                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
             let mut contrib = bc;
             field_ops::mul_assign(&mut contrib, &val);
             field_ops::add_assign(&mut acc[j], &contrib);
@@ -1672,7 +1501,14 @@ unsafe fn layer_0_final_step_accumulator(
             ];
             const VAL_LN: [(usize, usize); 2usize] =
                 [(48usize, 1761599489usize), (52usize, 251666432usize)];
-            let val = eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 1509916673usize, j);
+            let val = super::common::eval_max_quadratic(
+                evals,
+                &VAL_QO,
+                &VAL_QI,
+                &VAL_LN,
+                1509916673usize,
+                j,
+            );
             let mut contrib = bc;
             field_ops::mul_assign(&mut contrib, &val);
             field_ops::add_assign(&mut acc[j], &contrib);
@@ -1690,7 +1526,14 @@ unsafe fn layer_0_final_step_accumulator(
                 (52usize, 8192usize),
                 (53usize, 268435454usize),
             ];
-            let val = eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 2013233153usize, j);
+            let val = super::common::eval_max_quadratic(
+                evals,
+                &VAL_QO,
+                &VAL_QI,
+                &VAL_LN,
+                2013233153usize,
+                j,
+            );
             let mut contrib = bc;
             field_ops::mul_assign(&mut contrib, &val);
             field_ops::add_assign(&mut acc[j], &contrib);
@@ -1703,7 +1546,8 @@ unsafe fn layer_0_final_step_accumulator(
             const VAL_QO: [(usize, usize); 1usize] = [(3usize, 1usize)];
             const VAL_QI: [(usize, usize); 1usize] = [(3usize, 268435454usize)];
             const VAL_LN: [(usize, usize); 1usize] = [(3usize, 1744830467usize)];
-            let val = eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
+            let val =
+                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
             let mut contrib = bc;
             field_ops::mul_assign(&mut contrib, &val);
             field_ops::add_assign(&mut acc[j], &contrib);
@@ -1716,7 +1560,8 @@ unsafe fn layer_0_final_step_accumulator(
             const VAL_QO: [(usize, usize); 1usize] = [(4usize, 1usize)];
             const VAL_QI: [(usize, usize); 1usize] = [(4usize, 268435454usize)];
             const VAL_LN: [(usize, usize); 1usize] = [(4usize, 1744830467usize)];
-            let val = eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
+            let val =
+                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
             let mut contrib = bc;
             field_ops::mul_assign(&mut contrib, &val);
             field_ops::add_assign(&mut acc[j], &contrib);
@@ -1729,7 +1574,8 @@ unsafe fn layer_0_final_step_accumulator(
             const VAL_QO: [(usize, usize); 1usize] = [(5usize, 1usize)];
             const VAL_QI: [(usize, usize); 1usize] = [(5usize, 268435454usize)];
             const VAL_LN: [(usize, usize); 1usize] = [(5usize, 1744830467usize)];
-            let val = eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
+            let val =
+                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
             let mut contrib = bc;
             field_ops::mul_assign(&mut contrib, &val);
             field_ops::add_assign(&mut acc[j], &contrib);
@@ -1742,7 +1588,8 @@ unsafe fn layer_0_final_step_accumulator(
             const VAL_QO: [(usize, usize); 1usize] = [(6usize, 1usize)];
             const VAL_QI: [(usize, usize); 1usize] = [(6usize, 268435454usize)];
             const VAL_LN: [(usize, usize); 1usize] = [(6usize, 1744830467usize)];
-            let val = eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
+            let val =
+                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
             let mut contrib = bc;
             field_ops::mul_assign(&mut contrib, &val);
             field_ops::add_assign(&mut acc[j], &contrib);
@@ -1755,7 +1602,8 @@ unsafe fn layer_0_final_step_accumulator(
             const VAL_QO: [(usize, usize); 1usize] = [(7usize, 1usize)];
             const VAL_QI: [(usize, usize); 1usize] = [(7usize, 268435454usize)];
             const VAL_LN: [(usize, usize); 1usize] = [(7usize, 1744830467usize)];
-            let val = eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
+            let val =
+                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
             let mut contrib = bc;
             field_ops::mul_assign(&mut contrib, &val);
             field_ops::add_assign(&mut acc[j], &contrib);
@@ -1768,7 +1616,8 @@ unsafe fn layer_0_final_step_accumulator(
             const VAL_QO: [(usize, usize); 1usize] = [(11usize, 1usize)];
             const VAL_QI: [(usize, usize); 1usize] = [(11usize, 268435454usize)];
             const VAL_LN: [(usize, usize); 1usize] = [(11usize, 1744830467usize)];
-            let val = eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
+            let val =
+                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
             let mut contrib = bc;
             field_ops::mul_assign(&mut contrib, &val);
             field_ops::add_assign(&mut acc[j], &contrib);
@@ -1781,7 +1630,8 @@ unsafe fn layer_0_final_step_accumulator(
             const VAL_QO: [(usize, usize); 1usize] = [(12usize, 1usize)];
             const VAL_QI: [(usize, usize); 1usize] = [(12usize, 268435454usize)];
             const VAL_LN: [(usize, usize); 1usize] = [(12usize, 1744830467usize)];
-            let val = eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
+            let val =
+                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
             let mut contrib = bc;
             field_ops::mul_assign(&mut contrib, &val);
             field_ops::add_assign(&mut acc[j], &contrib);
@@ -1794,7 +1644,8 @@ unsafe fn layer_0_final_step_accumulator(
             const VAL_QO: [(usize, usize); 1usize] = [(13usize, 1usize)];
             const VAL_QI: [(usize, usize); 1usize] = [(13usize, 268435454usize)];
             const VAL_LN: [(usize, usize); 1usize] = [(13usize, 1744830467usize)];
-            let val = eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
+            let val =
+                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
             let mut contrib = bc;
             field_ops::mul_assign(&mut contrib, &val);
             field_ops::add_assign(&mut acc[j], &contrib);
@@ -1807,7 +1658,8 @@ unsafe fn layer_0_final_step_accumulator(
             const VAL_QO: [(usize, usize); 1usize] = [(14usize, 1usize)];
             const VAL_QI: [(usize, usize); 1usize] = [(14usize, 268435454usize)];
             const VAL_LN: [(usize, usize); 1usize] = [(14usize, 1744830467usize)];
-            let val = eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
+            let val =
+                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
             let mut contrib = bc;
             field_ops::mul_assign(&mut contrib, &val);
             field_ops::add_assign(&mut acc[j], &contrib);
@@ -1820,7 +1672,8 @@ unsafe fn layer_0_final_step_accumulator(
             const VAL_QO: [(usize, usize); 1usize] = [(22usize, 1usize)];
             const VAL_QI: [(usize, usize); 1usize] = [(22usize, 268435454usize)];
             const VAL_LN: [(usize, usize); 1usize] = [(22usize, 1744830467usize)];
-            let val = eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
+            let val =
+                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
             let mut contrib = bc;
             field_ops::mul_assign(&mut contrib, &val);
             field_ops::add_assign(&mut acc[j], &contrib);
@@ -1833,7 +1686,8 @@ unsafe fn layer_0_final_step_accumulator(
             const VAL_QO: [(usize, usize); 1usize] = [(23usize, 1usize)];
             const VAL_QI: [(usize, usize); 1usize] = [(23usize, 268435454usize)];
             const VAL_LN: [(usize, usize); 1usize] = [(23usize, 1744830467usize)];
-            let val = eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
+            let val =
+                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
             let mut contrib = bc;
             field_ops::mul_assign(&mut contrib, &val);
             field_ops::add_assign(&mut acc[j], &contrib);
@@ -1846,7 +1700,8 @@ unsafe fn layer_0_final_step_accumulator(
             const VAL_QO: [(usize, usize); 1usize] = [(24usize, 1usize)];
             const VAL_QI: [(usize, usize); 1usize] = [(24usize, 268435454usize)];
             const VAL_LN: [(usize, usize); 1usize] = [(24usize, 1744830467usize)];
-            let val = eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
+            let val =
+                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
             let mut contrib = bc;
             field_ops::mul_assign(&mut contrib, &val);
             field_ops::add_assign(&mut acc[j], &contrib);
@@ -1857,7 +1712,7 @@ unsafe fn layer_0_final_step_accumulator(
 #[inline(always)]
 #[allow(unused_variables)]
 unsafe fn layer_1_compute_claim(
-    output_claims: &LazyVec<BabyBearExt4, GKR_ADDRS>,
+    output_claims: &[BabyBearExt4; 17usize],
     batch_base: BabyBearExt4,
 ) -> BabyBearExt4 {
     const DESCS: [(usize, usize, usize); 13usize] = [
@@ -1875,34 +1730,7 @@ unsafe fn layer_1_compute_claim(
         (1usize, 15usize, 0usize),
         (1usize, 16usize, 0usize),
     ];
-    let mut combined = BabyBearExt4::ZERO;
-    let mut current_batch = BabyBearExt4::ONE;
-    let mut i = 0;
-    while i < 13usize {
-        let (n, o0, o1) = unsafe { *DESCS.get_unchecked(i) };
-        if n == 0 {
-            field_ops::mul_assign(&mut current_batch, &batch_base);
-        } else if n == 1 {
-            let claim = output_claims.get(o0);
-            let mut t = current_batch;
-            field_ops::mul_assign(&mut t, &claim);
-            field_ops::add_assign(&mut combined, &t);
-            field_ops::mul_assign(&mut current_batch, &batch_base);
-        } else {
-            let c0 = output_claims.get(o0);
-            let mut t0 = current_batch;
-            field_ops::mul_assign(&mut t0, &c0);
-            field_ops::add_assign(&mut combined, &t0);
-            field_ops::mul_assign(&mut current_batch, &batch_base);
-            let c1 = output_claims.get(o1);
-            let mut t1 = current_batch;
-            field_ops::mul_assign(&mut t1, &c1);
-            field_ops::add_assign(&mut combined, &t1);
-            field_ops::mul_assign(&mut current_batch, &batch_base);
-        }
-        i += 1;
-    }
-    combined
+    super::common::compute_claim(output_claims, &DESCS, batch_base)
 }
 #[inline(always)]
 #[allow(unused_variables, unused_mut, unused_unsafe)]
@@ -2127,7 +1955,7 @@ unsafe fn layer_1_final_step_accumulator(
 #[inline(always)]
 #[allow(unused_variables)]
 unsafe fn layer_2_compute_claim(
-    output_claims: &LazyVec<BabyBearExt4, GKR_ADDRS>,
+    output_claims: &[BabyBearExt4; 10usize],
     batch_base: BabyBearExt4,
 ) -> BabyBearExt4 {
     const DESCS: [(usize, usize, usize); 7usize] = [
@@ -2139,34 +1967,7 @@ unsafe fn layer_2_compute_claim(
         (1usize, 7usize, 0usize),
         (2usize, 8usize, 9usize),
     ];
-    let mut combined = BabyBearExt4::ZERO;
-    let mut current_batch = BabyBearExt4::ONE;
-    let mut i = 0;
-    while i < 7usize {
-        let (n, o0, o1) = unsafe { *DESCS.get_unchecked(i) };
-        if n == 0 {
-            field_ops::mul_assign(&mut current_batch, &batch_base);
-        } else if n == 1 {
-            let claim = output_claims.get(o0);
-            let mut t = current_batch;
-            field_ops::mul_assign(&mut t, &claim);
-            field_ops::add_assign(&mut combined, &t);
-            field_ops::mul_assign(&mut current_batch, &batch_base);
-        } else {
-            let c0 = output_claims.get(o0);
-            let mut t0 = current_batch;
-            field_ops::mul_assign(&mut t0, &c0);
-            field_ops::add_assign(&mut combined, &t0);
-            field_ops::mul_assign(&mut current_batch, &batch_base);
-            let c1 = output_claims.get(o1);
-            let mut t1 = current_batch;
-            field_ops::mul_assign(&mut t1, &c1);
-            field_ops::add_assign(&mut combined, &t1);
-            field_ops::mul_assign(&mut current_batch, &batch_base);
-        }
-        i += 1;
-    }
-    combined
+    super::common::compute_claim(output_claims, &DESCS, batch_base)
 }
 #[inline(always)]
 #[allow(unused_variables, unused_mut, unused_unsafe)]
@@ -2385,7 +2186,7 @@ unsafe fn layer_2_final_step_accumulator(
 #[inline(always)]
 #[allow(unused_variables)]
 unsafe fn layer_3_compute_claim(
-    output_claims: &LazyVec<BabyBearExt4, GKR_ADDRS>,
+    output_claims: &[BabyBearExt4; 8usize],
     batch_base: BabyBearExt4,
 ) -> BabyBearExt4 {
     const DESCS: [(usize, usize, usize); 7usize] = [
@@ -2397,34 +2198,7 @@ unsafe fn layer_3_compute_claim(
         (1usize, 6usize, 0usize),
         (1usize, 7usize, 0usize),
     ];
-    let mut combined = BabyBearExt4::ZERO;
-    let mut current_batch = BabyBearExt4::ONE;
-    let mut i = 0;
-    while i < 7usize {
-        let (n, o0, o1) = unsafe { *DESCS.get_unchecked(i) };
-        if n == 0 {
-            field_ops::mul_assign(&mut current_batch, &batch_base);
-        } else if n == 1 {
-            let claim = output_claims.get(o0);
-            let mut t = current_batch;
-            field_ops::mul_assign(&mut t, &claim);
-            field_ops::add_assign(&mut combined, &t);
-            field_ops::mul_assign(&mut current_batch, &batch_base);
-        } else {
-            let c0 = output_claims.get(o0);
-            let mut t0 = current_batch;
-            field_ops::mul_assign(&mut t0, &c0);
-            field_ops::add_assign(&mut combined, &t0);
-            field_ops::mul_assign(&mut current_batch, &batch_base);
-            let c1 = output_claims.get(o1);
-            let mut t1 = current_batch;
-            field_ops::mul_assign(&mut t1, &c1);
-            field_ops::add_assign(&mut combined, &t1);
-            field_ops::mul_assign(&mut current_batch, &batch_base);
-        }
-        i += 1;
-    }
-    combined
+    super::common::compute_claim(output_claims, &DESCS, batch_base)
 }
 #[inline(always)]
 #[allow(unused_variables, unused_mut, unused_unsafe)]
@@ -2643,14 +2417,14 @@ unsafe fn layer_3_final_step_accumulator(
 #[inline(always)]
 #[allow(unused_unsafe)]
 unsafe fn dim_reducing_compute_claim(
-    output_claims: &LazyVec<BabyBearExt4, GKR_ADDRS>,
+    output_claims: &[BabyBearExt4; 8usize],
     batch_base: BabyBearExt4,
 ) -> BabyBearExt4 {
     let mut current_batch = BabyBearExt4::ONE;
     let combined = {
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
-        let claim = output_claims.get(0usize);
+        let claim = *output_claims.get_unchecked(0usize);
         let mut t = bc;
         field_ops::mul_assign(&mut t, &claim);
         t
@@ -2659,7 +2433,7 @@ unsafe fn dim_reducing_compute_claim(
     {
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
-        let claim = output_claims.get(1usize);
+        let claim = *output_claims.get_unchecked(1usize);
         let mut t = bc;
         field_ops::mul_assign(&mut t, &claim);
         field_ops::add_assign(&mut combined, &t);
@@ -2670,7 +2444,7 @@ unsafe fn dim_reducing_compute_claim(
         let bc1 = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
         for (bc, idx) in [(bc0, 2usize), (bc1, 3usize)] {
-            let claim = output_claims.get(idx);
+            let claim = *output_claims.get_unchecked(idx);
             let mut t = bc;
             field_ops::mul_assign(&mut t, &claim);
             field_ops::add_assign(&mut combined, &t);
@@ -2682,7 +2456,7 @@ unsafe fn dim_reducing_compute_claim(
         let bc1 = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
         for (bc, idx) in [(bc0, 4usize), (bc1, 5usize)] {
-            let claim = output_claims.get(idx);
+            let claim = *output_claims.get_unchecked(idx);
             let mut t = bc;
             field_ops::mul_assign(&mut t, &claim);
             field_ops::add_assign(&mut combined, &t);
@@ -2694,7 +2468,7 @@ unsafe fn dim_reducing_compute_claim(
         let bc1 = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
         for (bc, idx) in [(bc0, 6usize), (bc1, 7usize)] {
-            let claim = output_claims.get(idx);
+            let claim = *output_claims.get_unchecked(idx);
             let mut t = bc;
             field_ops::mul_assign(&mut t, &claim);
             field_ops::add_assign(&mut combined, &t);
@@ -3127,8 +2901,10 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             0usize, 1usize, 2usize, 3usize, 4usize, 5usize, 6usize, 7usize,
         ];
         {
-            let initial_claim =
-                dim_reducing_compute_claim(&state.prev_claims, state.batching_challenge);
+            let initial_claim = dim_reducing_compute_claim(
+                state.prev_claims.as_array::<8usize>(),
+                state.batching_challenge,
+            );
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, E, 3usize, GKR_COMMIT_BUF>(
                     &mut ts,
@@ -3189,8 +2965,10 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             state.prev_point_len = fc_len;
         }
         {
-            let initial_claim =
-                dim_reducing_compute_claim(&state.prev_claims, state.batching_challenge);
+            let initial_claim = dim_reducing_compute_claim(
+                state.prev_claims.as_array::<8usize>(),
+                state.batching_challenge,
+            );
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, E, 4usize, GKR_COMMIT_BUF>(
                     &mut ts,
@@ -3251,8 +3029,10 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             state.prev_point_len = fc_len;
         }
         {
-            let initial_claim =
-                dim_reducing_compute_claim(&state.prev_claims, state.batching_challenge);
+            let initial_claim = dim_reducing_compute_claim(
+                state.prev_claims.as_array::<8usize>(),
+                state.batching_challenge,
+            );
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, E, 5usize, GKR_COMMIT_BUF>(
                     &mut ts,
@@ -3313,8 +3093,10 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             state.prev_point_len = fc_len;
         }
         {
-            let initial_claim =
-                dim_reducing_compute_claim(&state.prev_claims, state.batching_challenge);
+            let initial_claim = dim_reducing_compute_claim(
+                state.prev_claims.as_array::<8usize>(),
+                state.batching_challenge,
+            );
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, E, 6usize, GKR_COMMIT_BUF>(
                     &mut ts,
@@ -3375,8 +3157,10 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             state.prev_point_len = fc_len;
         }
         {
-            let initial_claim =
-                dim_reducing_compute_claim(&state.prev_claims, state.batching_challenge);
+            let initial_claim = dim_reducing_compute_claim(
+                state.prev_claims.as_array::<8usize>(),
+                state.batching_challenge,
+            );
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, E, 7usize, GKR_COMMIT_BUF>(
                     &mut ts,
@@ -3437,8 +3221,10 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             state.prev_point_len = fc_len;
         }
         {
-            let initial_claim =
-                dim_reducing_compute_claim(&state.prev_claims, state.batching_challenge);
+            let initial_claim = dim_reducing_compute_claim(
+                state.prev_claims.as_array::<8usize>(),
+                state.batching_challenge,
+            );
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, E, 8usize, GKR_COMMIT_BUF>(
                     &mut ts,
@@ -3499,8 +3285,10 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             state.prev_point_len = fc_len;
         }
         {
-            let initial_claim =
-                dim_reducing_compute_claim(&state.prev_claims, state.batching_challenge);
+            let initial_claim = dim_reducing_compute_claim(
+                state.prev_claims.as_array::<8usize>(),
+                state.batching_challenge,
+            );
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, E, 9usize, GKR_COMMIT_BUF>(
                     &mut ts,
@@ -3561,8 +3349,10 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             state.prev_point_len = fc_len;
         }
         {
-            let initial_claim =
-                dim_reducing_compute_claim(&state.prev_claims, state.batching_challenge);
+            let initial_claim = dim_reducing_compute_claim(
+                state.prev_claims.as_array::<8usize>(),
+                state.batching_challenge,
+            );
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, E, 10usize, GKR_COMMIT_BUF>(
                     &mut ts,
@@ -3623,8 +3413,10 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             state.prev_point_len = fc_len;
         }
         {
-            let initial_claim =
-                dim_reducing_compute_claim(&state.prev_claims, state.batching_challenge);
+            let initial_claim = dim_reducing_compute_claim(
+                state.prev_claims.as_array::<8usize>(),
+                state.batching_challenge,
+            );
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, E, 11usize, GKR_COMMIT_BUF>(
                     &mut ts,
@@ -3685,8 +3477,10 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             state.prev_point_len = fc_len;
         }
         {
-            let initial_claim =
-                dim_reducing_compute_claim(&state.prev_claims, state.batching_challenge);
+            let initial_claim = dim_reducing_compute_claim(
+                state.prev_claims.as_array::<8usize>(),
+                state.batching_challenge,
+            );
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, E, 12usize, GKR_COMMIT_BUF>(
                     &mut ts,
@@ -3747,8 +3541,10 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             state.prev_point_len = fc_len;
         }
         {
-            let initial_claim =
-                dim_reducing_compute_claim(&state.prev_claims, state.batching_challenge);
+            let initial_claim = dim_reducing_compute_claim(
+                state.prev_claims.as_array::<8usize>(),
+                state.batching_challenge,
+            );
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, E, 13usize, GKR_COMMIT_BUF>(
                     &mut ts,
@@ -3809,8 +3605,10 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             state.prev_point_len = fc_len;
         }
         {
-            let initial_claim =
-                dim_reducing_compute_claim(&state.prev_claims, state.batching_challenge);
+            let initial_claim = dim_reducing_compute_claim(
+                state.prev_claims.as_array::<8usize>(),
+                state.batching_challenge,
+            );
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, E, 14usize, GKR_COMMIT_BUF>(
                     &mut ts,
@@ -3871,8 +3669,10 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             state.prev_point_len = fc_len;
         }
         {
-            let initial_claim =
-                dim_reducing_compute_claim(&state.prev_claims, state.batching_challenge);
+            let initial_claim = dim_reducing_compute_claim(
+                state.prev_claims.as_array::<8usize>(),
+                state.batching_challenge,
+            );
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, E, 15usize, GKR_COMMIT_BUF>(
                     &mut ts,
@@ -3933,8 +3733,10 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             state.prev_point_len = fc_len;
         }
         {
-            let initial_claim =
-                dim_reducing_compute_claim(&state.prev_claims, state.batching_challenge);
+            let initial_claim = dim_reducing_compute_claim(
+                state.prev_claims.as_array::<8usize>(),
+                state.batching_challenge,
+            );
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, E, 16usize, GKR_COMMIT_BUF>(
                     &mut ts,
@@ -3995,8 +3797,10 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             state.prev_point_len = fc_len;
         }
         {
-            let initial_claim =
-                dim_reducing_compute_claim(&state.prev_claims, state.batching_challenge);
+            let initial_claim = dim_reducing_compute_claim(
+                state.prev_claims.as_array::<8usize>(),
+                state.batching_challenge,
+            );
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, E, 17usize, GKR_COMMIT_BUF>(
                     &mut ts,
@@ -4057,8 +3861,10 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             state.prev_point_len = fc_len;
         }
         {
-            let initial_claim =
-                dim_reducing_compute_claim(&state.prev_claims, state.batching_challenge);
+            let initial_claim = dim_reducing_compute_claim(
+                state.prev_claims.as_array::<8usize>(),
+                state.batching_challenge,
+            );
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, E, 18usize, GKR_COMMIT_BUF>(
                     &mut ts,
@@ -4119,8 +3925,10 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             state.prev_point_len = fc_len;
         }
         {
-            let initial_claim =
-                dim_reducing_compute_claim(&state.prev_claims, state.batching_challenge);
+            let initial_claim = dim_reducing_compute_claim(
+                state.prev_claims.as_array::<8usize>(),
+                state.batching_challenge,
+            );
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, E, 19usize, GKR_COMMIT_BUF>(
                     &mut ts,
@@ -4181,8 +3989,10 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             state.prev_point_len = fc_len;
         }
         {
-            let initial_claim =
-                dim_reducing_compute_claim(&state.prev_claims, state.batching_challenge);
+            let initial_claim = dim_reducing_compute_claim(
+                state.prev_claims.as_array::<8usize>(),
+                state.batching_challenge,
+            );
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, E, 20usize, GKR_COMMIT_BUF>(
                     &mut ts,
@@ -4243,8 +4053,10 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             state.prev_point_len = fc_len;
         }
         {
-            let initial_claim =
-                dim_reducing_compute_claim(&state.prev_claims, state.batching_challenge);
+            let initial_claim = dim_reducing_compute_claim(
+                state.prev_claims.as_array::<8usize>(),
+                state.batching_challenge,
+            );
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, E, 21usize, GKR_COMMIT_BUF>(
                     &mut ts,
@@ -4305,8 +4117,10 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             state.prev_point_len = fc_len;
         }
         {
-            let initial_claim =
-                dim_reducing_compute_claim(&state.prev_claims, state.batching_challenge);
+            let initial_claim = dim_reducing_compute_claim(
+                state.prev_claims.as_array::<8usize>(),
+                state.batching_challenge,
+            );
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, E, 22usize, GKR_COMMIT_BUF>(
                     &mut ts,
@@ -4376,7 +4190,10 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             unsafe { lv.into_array() }
         };
         {
-            let initial_claim = layer_3_compute_claim(&state.prev_claims, state.batching_challenge);
+            let initial_claim = layer_3_compute_claim(
+                state.prev_claims.as_array::<8usize>(),
+                state.batching_challenge,
+            );
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, E, 23usize, GKR_COMMIT_BUF>(
                     &mut ts,
@@ -4432,7 +4249,10 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             state.prev_point_len = fc_len;
         }
         {
-            let initial_claim = layer_2_compute_claim(&state.prev_claims, state.batching_challenge);
+            let initial_claim = layer_2_compute_claim(
+                state.prev_claims.as_array::<10usize>(),
+                state.batching_challenge,
+            );
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, E, 23usize, GKR_COMMIT_BUF>(
                     &mut ts,
@@ -4488,7 +4308,10 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             state.prev_point_len = fc_len;
         }
         {
-            let initial_claim = layer_1_compute_claim(&state.prev_claims, state.batching_challenge);
+            let initial_claim = layer_1_compute_claim(
+                state.prev_claims.as_array::<17usize>(),
+                state.batching_challenge,
+            );
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, E, 23usize, GKR_COMMIT_BUF>(
                     &mut ts,
@@ -4544,7 +4367,10 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             state.prev_point_len = fc_len;
         }
         {
-            let initial_claim = layer_0_compute_claim(&state.prev_claims, state.batching_challenge);
+            let initial_claim = layer_0_compute_claim(
+                state.prev_claims.as_array::<25usize>(),
+                state.batching_challenge,
+            );
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, E, 23usize, GKR_COMMIT_BUF>(
                     &mut ts,

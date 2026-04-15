@@ -32,7 +32,7 @@ pub fn generate_dim_reducing_compute_claim<MW: MersenneWrapper>(
                             let combined = {
                                 let bc = current_batch;
                                 #mul_batch;
-                                let claim = output_claims.get(#idx);
+                                let claim = *output_claims.get_unchecked(#idx);
                                 let mut t = bc;
                                 #mul_t;
                                 t
@@ -45,7 +45,7 @@ pub fn generate_dim_reducing_compute_claim<MW: MersenneWrapper>(
                             {
                                 let bc = current_batch;
                                 #mul_batch;
-                                let claim = output_claims.get(#idx);
+                                let claim = *output_claims.get_unchecked(#idx);
                                 let mut t = bc;
                                 #mul_t;
                                 #add_combined;
@@ -71,7 +71,7 @@ pub fn generate_dim_reducing_compute_claim<MW: MersenneWrapper>(
                         let bc1 = current_batch;
                         #mul_batch;
                         for (bc, idx) in [(bc0, #idx0), (bc1, #idx1)] {
-                            let claim = output_claims.get(idx);
+                            let claim = *output_claims.get_unchecked(idx);
                             let mut t = bc;
                             #mul_t;
                             #add_combined;
@@ -85,11 +85,12 @@ pub fn generate_dim_reducing_compute_claim<MW: MersenneWrapper>(
     body.extend(quote! { combined });
 
     let quartic_struct = MW::quartic_struct();
+    let total_output_polys: usize = output_groups.iter().map(|g| g.num_addresses).sum();
     quote! {
         #[inline(always)]
         #[allow(unused_unsafe)]
         unsafe fn dim_reducing_compute_claim(
-            output_claims: &LazyVec<#quartic_struct, GKR_ADDRS>,
+            output_claims: &[#quartic_struct; #total_output_polys],
             batch_base: #quartic_struct,
         ) -> #quartic_struct {
             #body

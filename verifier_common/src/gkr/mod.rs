@@ -1,8 +1,7 @@
+use crate::lazy_vec::LazyVec;
 use cs::definitions::GKRAddress;
 use field::Field;
 use transcript::Seed;
-
-pub use crate::lazy_vec::LazyVec;
 
 /// Oracle indices in eval/query ordering (used by flattener NDS data and verifier).
 /// The prover's `oracle_refs` array uses this order.

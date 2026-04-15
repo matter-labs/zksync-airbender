@@ -15,7 +15,6 @@ use prover::field::{Field, FieldExtension, PrimeField};
 use prover::gkr::prover::{GKRProof, WhirSchedule};
 use prover::merkle_trees::ColumnMajorMerkleTreeConstructor;
 
-pub mod constraint_kernel;
 pub mod dim_reducing_layer;
 pub mod standard_layer;
 
@@ -72,7 +71,7 @@ pub fn generate_gkr_common<MW: MersenneWrapper>() -> TokenStream {
     let mul_diff_lr = MW::mul_assign(quote! { diff }, quote! { last_r });
     let add_diff_f0 = MW::add_assign(quote! { diff }, quote! { f0 });
 
-    quote! {
+    let common_fns = quote! {
         #[inline(always)]
         pub fn verify_sumcheck_rounds<
             I: NonDeterminismSource,
@@ -205,6 +204,62 @@ pub fn generate_gkr_common<MW: MersenneWrapper>() -> TokenStream {
                 claims.push(diff);
             }
         }
+    };
+
+    let eval_helpers = standard_layer::generate_eval_helpers::<MW>();
+
+    let quartic_zero = MW::quartic_zero();
+    let cc_mul_batch = MW::mul_assign(quote! { current_batch }, quote! { batch_base });
+    let cc_mul_t = MW::mul_assign(quote! { t }, quote! { claim });
+    let cc_add_combined = MW::add_assign(quote! { combined }, quote! { t });
+    let cc_mul_t0 = MW::mul_assign(quote! { t0 }, quote! { c0 });
+    let cc_mul_t1 = MW::mul_assign(quote! { t1 }, quote! { c1 });
+    let cc_add_t0 = MW::add_assign(quote! { combined }, quote! { t0 });
+    let cc_add_t1 = MW::add_assign(quote! { combined }, quote! { t1 });
+
+    let compute_claim = quote! {
+        #[inline(always)]
+        #[allow(unused_variables)]
+        pub unsafe fn compute_claim<const N: usize>(
+            output_claims: &[#quartic_struct],
+            descs: &[(usize, usize, usize); N],
+            batch_base: #quartic_struct,
+        ) -> #quartic_struct {
+            let mut combined = #quartic_zero;
+            let mut current_batch = #quartic_one;
+            let mut i = 0;
+            while i < N {
+                let (n, o0, o1) = unsafe { *descs.get_unchecked(i) };
+                if n == 0 {
+                    #cc_mul_batch;
+                } else if n == 1 {
+                    let claim = *output_claims.get_unchecked(o0);
+                    let mut t = current_batch;
+                    #cc_mul_t;
+                    #cc_add_combined;
+                    #cc_mul_batch;
+                } else {
+                    let c0 = *output_claims.get_unchecked(o0);
+                    let mut t0 = current_batch;
+                    #cc_mul_t0;
+                    #cc_add_t0;
+                    #cc_mul_batch;
+                    let c1 = *output_claims.get_unchecked(o1);
+                    let mut t1 = current_batch;
+                    #cc_mul_t1;
+                    #cc_add_t1;
+                    #cc_mul_batch;
+                }
+                i += 1;
+            }
+            combined
+        }
+    };
+
+    quote! {
+        #common_fns
+        #eval_helpers
+        #compute_claim
     }
 }
 
@@ -680,8 +735,6 @@ where
 
     let mut layer_functions = TokenStream::new();
 
-    layer_functions.extend(standard_layer::generate_eval_helpers::<MW, F>());
-
     for layer_idx in 0..num_standard_layers {
         layer_functions.extend(standard_layer::generate_layer_compute_claim::<MW>(
             &compiled_circuit.layers[layer_idx],
@@ -891,7 +944,7 @@ where
 
         main_body.extend(quote! {
             {
-                let initial_claim = dim_reducing_compute_claim(&state.prev_claims, state.batching_challenge);
+                let initial_claim = dim_reducing_compute_claim(state.prev_claims.as_array::<#total_output_polys>(), state.batching_challenge);
                 let (final_claim, final_eq_prefactor) =
                     verify_sumcheck_rounds::<I, E, #num_regular_rounds, GKR_COMMIT_BUF>(
                         &mut ts, initial_claim, &mut state.prev_point, #config_idx)?;
@@ -962,6 +1015,7 @@ where
             .expect("missing sumcheck values");
         let num_sumcheck_rounds = proof_values.sumcheck_num_rounds;
         let num_dedup_addrs = standard_sorted_addrs[config_idx].len();
+        let num_output_addrs = get_output_sorted_addrs(config_idx).len();
         let compute_claim_fn = quote::format_ident!("layer_{}_compute_claim", config_idx);
         let final_step_fn = quote::format_ident!("layer_{}_final_step_accumulator", config_idx);
         let num_regular_rounds = num_sumcheck_rounds - 1;
@@ -1062,7 +1116,7 @@ where
 
         main_body.extend(quote! {
             {
-                let initial_claim = #compute_claim_fn(&state.prev_claims, state.batching_challenge);
+                let initial_claim = #compute_claim_fn(state.prev_claims.as_array::<#num_output_addrs>(), state.batching_challenge);
                 let (final_claim, final_eq_prefactor) =
                     verify_sumcheck_rounds::<I, E, #num_regular_rounds, GKR_COMMIT_BUF>(
                         &mut ts, initial_claim, &mut state.prev_point, #config_idx)?;
@@ -1245,8 +1299,9 @@ where
     let gkr = quote! {
         #field_use_stmts
         use ::verifier_common::gkr::{
-            GKRVerifierOutput, LayerState, LazyVec,
+            GKRVerifierOutput, LayerState,
         };
+        use ::verifier_common::lazy_vec::LazyVec;
         use ::verifier_common::errors::ErrorCreator;
         use ::verifier_common::structs::{CommitBuf, TranscriptState};
         use super::common::{

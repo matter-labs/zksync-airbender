@@ -217,6 +217,232 @@ pub fn fold_standard_claims<const NUM_ADDRS: usize, const ADDRS: usize, const BU
     }
 }
 #[inline(always)]
+#[allow(unused_variables)]
+pub unsafe fn eval_linear_relation(
+    evals: &[[BabyBearExt4; 2]],
+    terms: &[(usize, usize)],
+    constant: usize,
+    j: usize,
+) -> BabyBearExt4 {
+    let mut result = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(constant as u32));
+    let mut i = 0;
+    while i < terms.len() {
+        let (idx, coeff) = *terms.get_unchecked(i);
+        let mut t = evals.get_unchecked(idx)[j];
+        field_ops::mul_assign_by_base(&mut t, &BabyBearField::from_reduced_raw_repr(coeff as u32));
+        field_ops::add_assign(&mut result, &t);
+        i += 1;
+    }
+    result
+}
+#[inline(always)]
+#[allow(unused_variables)]
+pub unsafe fn eval_vector_lookup(
+    evals: &[[BabyBearExt4; 2]],
+    alpha: BabyBearExt4,
+    col_descs: &[(usize, usize)],
+    terms: &[(usize, usize)],
+    j: usize,
+) -> BabyBearExt4 {
+    let mut result = BabyBearExt4::ZERO;
+    let mut term_offset: usize = 0;
+    let mut i = 0;
+    while i < col_descs.len() {
+        field_ops::mul_assign(&mut result, &alpha);
+        let (col_const, num_terms) = *col_descs.get_unchecked(i);
+        let mut col_val =
+            BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(col_const as u32));
+        let mut k = 0;
+        while k < num_terms {
+            let (idx, coeff) = *terms.get_unchecked(term_offset + k);
+            let mut t = evals.get_unchecked(idx)[j];
+            field_ops::mul_assign_by_base(
+                &mut t,
+                &BabyBearField::from_reduced_raw_repr(coeff as u32),
+            );
+            field_ops::add_assign(&mut col_val, &t);
+            k += 1;
+        }
+        field_ops::add_assign(&mut result, &col_val);
+        term_offset += num_terms;
+        i += 1;
+    }
+    result
+}
+#[inline(always)]
+#[allow(unused_variables)]
+pub unsafe fn eval_max_quadratic(
+    evals: &[[BabyBearExt4; 2]],
+    quad_outer: &[(usize, usize)],
+    quad_inner: &[(usize, usize)],
+    linear: &[(usize, usize)],
+    constant: usize,
+    j: usize,
+) -> BabyBearExt4 {
+    let mut val = BabyBearExt4::from_base(BabyBearField::from_reduced_raw_repr(constant as u32));
+    let mut inner_offset: usize = 0;
+    let mut i = 0;
+    while i < quad_outer.len() {
+        let (addr_a, num_inner) = *quad_outer.get_unchecked(i);
+        let mut inner = BabyBearExt4::ZERO;
+        let mut k = 0;
+        while k < num_inner {
+            let (addr_b, coeff) = *quad_inner.get_unchecked(inner_offset + k);
+            let mut t = evals.get_unchecked(addr_b)[j];
+            field_ops::mul_assign_by_base(
+                &mut t,
+                &BabyBearField::from_reduced_raw_repr(coeff as u32),
+            );
+            field_ops::add_assign(&mut inner, &t);
+            k += 1;
+        }
+        let a_val = evals.get_unchecked(addr_a)[j];
+        field_ops::mul_assign(&mut inner, &a_val);
+        field_ops::add_assign(&mut val, &inner);
+        inner_offset += num_inner;
+        i += 1;
+    }
+    let mut li = 0;
+    while li < linear.len() {
+        let (addr, coeff) = *linear.get_unchecked(li);
+        let mut lt = evals.get_unchecked(addr)[j];
+        field_ops::mul_assign_by_base(&mut lt, &BabyBearField::from_reduced_raw_repr(coeff as u32));
+        field_ops::add_assign(&mut val, &lt);
+        li += 1;
+    }
+    val
+}
+pub const ME_OP_ADD_BASE_CONST: usize = 0;
+pub const ME_OP_ADD_EVAL: usize = 1;
+pub const ME_OP_ADD_ONE_MINUS_EVAL: usize = 2;
+pub const ME_OP_CH_MUL_EVAL: usize = 3;
+pub const ME_OP_CH_MUL_CONST: usize = 4;
+pub const ME_OP_CH_MUL_EVAL_PLUS_CONST: usize = 5;
+pub const ME_OP_CH_MUL_EVAL_PLUS_DYN: usize = 6;
+pub const ME_OP_BYTE_VALUE_PAIR: usize = 7;
+#[inline(always)]
+#[allow(unused_variables)]
+pub unsafe fn eval_memory_expr(
+    evals: &[[BabyBearExt4; 2]],
+    challenges: &[BabyBearExt4],
+    additive_part: BabyBearExt4,
+    ops: &[[usize; 6]],
+    j: usize,
+) -> BabyBearExt4 {
+    let mut result = additive_part;
+    let mut i = 0;
+    while i < ops.len() {
+        let op = *ops.get_unchecked(i);
+        match op[0] {
+            ME_OP_ADD_BASE_CONST => {
+                field_ops::add_assign_base(
+                    &mut result,
+                    &BabyBearField::from_reduced_raw_repr(op[1] as u32),
+                );
+            }
+            ME_OP_ADD_EVAL => {
+                field_ops::add_assign(&mut result, &evals.get_unchecked(op[1])[j]);
+            }
+            ME_OP_ADD_ONE_MINUS_EVAL => {
+                let mut t = BabyBearExt4::ONE;
+                field_ops::sub_assign(&mut t, &evals.get_unchecked(op[1])[j]);
+                field_ops::add_assign(&mut result, &t);
+            }
+            ME_OP_CH_MUL_EVAL => {
+                let mut t = challenges[op[1]];
+                field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(op[2])[j]);
+                field_ops::add_assign(&mut result, &t);
+            }
+            ME_OP_CH_MUL_CONST => {
+                let mut t = challenges[op[1]];
+                field_ops::mul_assign_by_base(
+                    &mut t,
+                    &BabyBearField::from_reduced_raw_repr(op[2] as u32),
+                );
+                field_ops::add_assign(&mut result, &t);
+            }
+            ME_OP_CH_MUL_EVAL_PLUS_CONST => {
+                let mut ev = evals.get_unchecked(op[2])[j];
+                field_ops::add_assign_base(
+                    &mut ev,
+                    &BabyBearField::from_reduced_raw_repr(op[3] as u32),
+                );
+                let mut t = challenges[op[1]];
+                field_ops::mul_assign_by_base(&mut t, &ev);
+                field_ops::add_assign(&mut result, &t);
+            }
+            ME_OP_CH_MUL_EVAL_PLUS_DYN => {
+                let mut ev = evals.get_unchecked(op[2])[j];
+                if op[4] != 0 {
+                    field_ops::add_assign_base(
+                        &mut ev,
+                        &BabyBearField::from_reduced_raw_repr(op[4] as u32),
+                    );
+                }
+                let mut dyn_val = evals.get_unchecked(op[3])[j];
+                field_ops::mul_assign_by_base(
+                    &mut dyn_val,
+                    &BabyBearField::from_reduced_raw_repr(op[5] as u32),
+                );
+                field_ops::add_assign(&mut ev, &dyn_val);
+                let mut t = challenges[op[1]];
+                field_ops::mul_assign_by_base(&mut t, &ev);
+                field_ops::add_assign(&mut result, &t);
+            }
+            ME_OP_BYTE_VALUE_PAIR => {
+                let mut hi = evals.get_unchecked(op[3])[j];
+                field_ops::mul_assign_by_base(
+                    &mut hi,
+                    &BabyBearField::from_u32_with_reduction(1u32 << 8),
+                );
+                field_ops::add_assign(&mut hi, &evals.get_unchecked(op[2])[j]);
+                let mut t = challenges[op[1]];
+                field_ops::mul_assign(&mut t, &hi);
+                field_ops::add_assign(&mut result, &t);
+            }
+            _ => core::hint::unreachable_unchecked(),
+        }
+        i += 1;
+    }
+    result
+}
+#[inline(always)]
+#[allow(unused_variables)]
+pub unsafe fn compute_claim<const N: usize>(
+    output_claims: &[BabyBearExt4],
+    descs: &[(usize, usize, usize); N],
+    batch_base: BabyBearExt4,
+) -> BabyBearExt4 {
+    let mut combined = BabyBearExt4::ZERO;
+    let mut current_batch = BabyBearExt4::ONE;
+    let mut i = 0;
+    while i < N {
+        let (n, o0, o1) = unsafe { *descs.get_unchecked(i) };
+        if n == 0 {
+            field_ops::mul_assign(&mut current_batch, &batch_base);
+        } else if n == 1 {
+            let claim = *output_claims.get_unchecked(o0);
+            let mut t = current_batch;
+            field_ops::mul_assign(&mut t, &claim);
+            field_ops::add_assign(&mut combined, &t);
+            field_ops::mul_assign(&mut current_batch, &batch_base);
+        } else {
+            let c0 = *output_claims.get_unchecked(o0);
+            let mut t0 = current_batch;
+            field_ops::mul_assign(&mut t0, &c0);
+            field_ops::add_assign(&mut combined, &t0);
+            field_ops::mul_assign(&mut current_batch, &batch_base);
+            let c1 = *output_claims.get_unchecked(o1);
+            let mut t1 = current_batch;
+            field_ops::mul_assign(&mut t1, &c1);
+            field_ops::add_assign(&mut combined, &t1);
+            field_ops::mul_assign(&mut current_batch, &batch_base);
+        }
+        i += 1;
+    }
+    combined
+}
+#[inline(always)]
 pub fn compute_tree_index(
     query_index: usize,
     num_cosets: usize,
