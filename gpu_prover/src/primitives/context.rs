@@ -158,22 +158,22 @@ impl ProverContext {
         slack.free()?;
         let device_allocation_backend =
             StaticDeviceAllocationBackend::DeviceAllocation(device_allocation);
-        let device_allocator =
-            if let Some(small_log_chunk_size) = config.small_allocator_log_chunk_size {
-                let small_pool_size =
-                    config.small_allocator_pool_blocks << allocator_block_log_size;
-                NonConcurrentStaticDeviceAllocator::new_with_small_allocator(
-                    [device_allocation_backend],
-                    allocator_block_log_size,
-                    small_log_chunk_size,
-                    small_pool_size,
-                )
-            } else {
-                NonConcurrentStaticDeviceAllocator::new(
-                    [device_allocation_backend],
-                    allocator_block_log_size,
-                )
-            };
+        let device_allocator = if let Some(small_log_chunk_size) =
+            config.small_allocator_log_chunk_size
+        {
+            let small_pool_size = config.small_allocator_pool_blocks << allocator_block_log_size;
+            NonConcurrentStaticDeviceAllocator::new_with_small_allocator(
+                [device_allocation_backend],
+                allocator_block_log_size,
+                small_log_chunk_size,
+                small_pool_size,
+            )
+        } else {
+            NonConcurrentStaticDeviceAllocator::new(
+                [device_allocation_backend],
+                allocator_block_log_size,
+            )
+        };
         let device_allocator_mem_size = device_blocks_count << allocator_block_log_size;
         let host_block_log_size = config.host_allocator_block_log_size;
         let host_allocation_size = config.host_allocator_blocks_count << host_block_log_size;
