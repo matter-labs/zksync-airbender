@@ -80,6 +80,19 @@ DEVICE_FORCEINLINE u64 mul_wide(u32 a, u32 b) {
   return r;
 }
 
+// Fused multiply-accumulate: returns a * b + acc in u64.
+// Uses mad_lo_cc + madc_hi carry chain (2 multiply-pipe ops).
+DEVICE_FORCEINLINE u64 mad_wide(u32 a, u32 b, u64 acc) {
+  u32 acc_lo = reinterpret_cast<const u32 *>(&acc)[0];
+  u32 acc_hi = reinterpret_cast<const u32 *>(&acc)[1];
+  acc_lo = mad_lo_cc(a, b, acc_lo);
+  acc_hi = madc_hi(a, b, acc_hi);
+  u64 result;
+  reinterpret_cast<u32 *>(&result)[0] = acc_lo;
+  reinterpret_cast<u32 *>(&result)[1] = acc_hi;
+  return result;
+}
+
 /*****
  * u64
  *****/

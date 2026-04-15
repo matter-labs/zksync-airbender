@@ -103,13 +103,13 @@ DEVICE_FORCEINLINE void flat_round0_compute_impl(const flat_round0_static_desc &
   // c0: base field output terms
   for (unsigned i = 0; i < desc.num_c0_bf; i++) {
     const bf val = flat_load_bf_value(desc.sources[desc.c0_bf[i].source_idx], gid);
-    c0 = E::add(c0, E::mul(coeff_loader(), val));
+    c0 = E::fma(coeff_loader(), val, c0);
   }
 
   // c0: extension field output terms
   for (unsigned i = 0; i < desc.num_c0_ext; i++) {
     const E val = flat_load_ext_value<E>(desc.sources[desc.c0_ext[i].source_idx], gid);
-    c0 = E::add(c0, E::mul(coeff_loader(), val));
+    c0 = E::fma(coeff_loader(), val, c0);
   }
 
   E c1 = E::ZERO();
@@ -119,7 +119,7 @@ DEVICE_FORCEINLINE void flat_round0_compute_impl(const flat_round0_static_desc &
     const auto &t = desc.c1_bf_bf[i];
     const bf a = flat_load_bf_delta(desc.sources[t.source_a], gid, acc_size);
     const bf b = flat_load_bf_delta(desc.sources[t.source_b], gid, acc_size);
-    c1 = E::add(c1, E::mul(coeff_loader(), bf::mul(a, b)));
+    c1 = E::fma(coeff_loader(), bf::mul(a, b), c1);
   }
 
   // c1: E4*E4 quadratic terms
@@ -127,7 +127,7 @@ DEVICE_FORCEINLINE void flat_round0_compute_impl(const flat_round0_static_desc &
     const auto &t = desc.c1_e4_e4[i];
     const E a = flat_load_ext_delta<E>(desc.sources[t.source_a], gid, acc_size);
     const E b = flat_load_ext_delta<E>(desc.sources[t.source_b], gid, acc_size);
-    c1 = E::add(c1, E::mul(coeff_loader(), E::mul(a, b)));
+    c1 = E::fma(coeff_loader(), E::mul(a, b), c1);
   }
 
   // c1: bf*E4 mixed quadratic terms
@@ -135,13 +135,13 @@ DEVICE_FORCEINLINE void flat_round0_compute_impl(const flat_round0_static_desc &
     const auto &t = desc.c1_bf_e4[i];
     const bf a = flat_load_bf_delta(desc.sources[t.source_a], gid, acc_size);
     const E b = flat_load_ext_delta<E>(desc.sources[t.source_b], gid, acc_size);
-    c1 = E::add(c1, E::mul(coeff_loader(), E::mul(b, a)));
+    c1 = E::fma(coeff_loader(), E::mul(b, a), c1);
   }
 
   // c1: linear-in-delta terms
   for (unsigned i = 0; i < desc.num_c1_linear; i++) {
     const bf d = flat_load_bf_delta(desc.sources[desc.c1_linear[i].source_idx], gid, acc_size);
-    c1 = E::add(c1, E::mul(coeff_loader(), d));
+    c1 = E::fma(coeff_loader(), d, c1);
   }
 
   // eq_values: cs (streaming, read once, large) — don't pollute L1 or L2.

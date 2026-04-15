@@ -526,7 +526,7 @@ template <typename E> DEVICE_FORCEINLINE void gkr_forward_cache_memory_tuple(con
     if (descriptor.linear_inputs[term] == nullptr)
       continue;
     const bf input = load<bf, ld_modifier::cs>(descriptor.linear_inputs[term], gid);
-    value = E::add(value, E::mul(descriptor.linear_challenges[term], input));
+    value = E::fma(descriptor.linear_challenges[term], input, value);
   }
 
   store<E, st_modifier::cs>(descriptor.ext_output, value, gid);
@@ -554,7 +554,7 @@ DEVICE_FORCEINLINE E gkr_forward_memory_tuple_value(const gkr_forward_memory_tup
     if (descriptor.linear_inputs[term] == nullptr)
       continue;
     const bf input = load<bf, ld_modifier::cs>(descriptor.linear_inputs[term], gid);
-    value = E::add(value, E::mul(descriptor.linear_challenges[term], input));
+    value = E::fma(descriptor.linear_challenges[term], input, value);
   }
 
   return value;
@@ -639,7 +639,7 @@ DEVICE_FORCEINLINE E gkr_get_continuing_value(const gkr_ext_continuing_source<E>
   const E f0 = load<E, ld_modifier::cs>(source.previous_layer_start, index);
   const E f1 = load<E, ld_modifier::cs>(source.previous_layer_start, source.this_layer_size + index);
   const E diff = E::sub(f1, f0);
-  const E folded = E::add(f0, E::mul(folding_challenge, diff));
+  const E folded = E::fma(folding_challenge, diff, f0);
   store<E, st_modifier::cs>(source.this_layer_start, folded, index);
   return folded;
 }
@@ -695,8 +695,8 @@ DEVICE_FORCEINLINE E gkr_get_base_after_two_value(const gkr_base_after_two_sourc
 
   E combined_challenges = E::mul(first_folding_challenge, second_folding_challenge);
   E result = E::mul(first_folding_challenge, c01);
-  result = E::add(result, E::mul(second_folding_challenge, c10));
-  result = E::add(result, E::mul(combined_challenges, c11));
+  result = E::fma(second_folding_challenge, c10, result);
+  result = E::fma(combined_challenges, c11, result);
   result = E::add(result, f00);
 
   store<E, st_modifier::cs>(source.this_layer_cache_start, result, index);
@@ -767,11 +767,11 @@ DEVICE_FORCEINLINE void gkr_lookup_round0_values(const gkr_ext_initial_source<E>
   const E c = gkr_get_initial_delta(inputs[0], odd_index);
   const E d = gkr_get_initial_delta(inputs[1], odd_index);
 
-  const E num = E::add(E::mul(a, d), E::mul(c, b));
+  const E num = E::fma(a, d, E::mul(c, b));
   const E den = E::mul(b, d);
 
-  c0 = E::add(E::mul(batch_challenge_0, output_num), E::mul(batch_challenge_1, output_den));
-  c1 = E::add(E::mul(batch_challenge_0, num), E::mul(batch_challenge_1, den));
+  c0 = E::fma(batch_challenge_0, output_num, E::mul(batch_challenge_1, output_den));
+  c1 = E::fma(batch_challenge_0, num, E::mul(batch_challenge_1, den));
 }
 
 template <typename E, bool EXPLICIT_FORM>
@@ -818,13 +818,13 @@ DEVICE_FORCEINLINE void gkr_lookup_continuation_values(const gkr_ext_continuing_
   E d1;
   gkr_get_continuing_points<E, EXPLICIT_FORM>(inputs[1], current_folding_challenge, odd_index, d0, d1);
 
-  const E num0 = E::add(E::mul(a0, d0), E::mul(c0, b0));
+  const E num0 = E::fma(a0, d0, E::mul(c0, b0));
   const E den0 = E::mul(b0, d0);
-  const E num1 = E::add(E::mul(a1, d1), E::mul(c1, b1));
+  const E num1 = E::fma(a1, d1, E::mul(c1, b1));
   const E den1 = E::mul(b1, d1);
 
-  out0 = E::add(E::mul(batch_challenge_0, num0), E::mul(batch_challenge_1, den0));
-  out1 = E::add(E::mul(batch_challenge_0, num1), E::mul(batch_challenge_1, den1));
+  out0 = E::fma(batch_challenge_0, num0, E::mul(batch_challenge_1, den0));
+  out1 = E::fma(batch_challenge_0, num1, E::mul(batch_challenge_1, den1));
 }
 
 template <typename E>
@@ -1103,9 +1103,9 @@ DEVICE_FORCEINLINE void gkr_trace_holder_block_partials(const bf *raw_values, co
       const size_t row_offset = static_cast<size_t>(column) * trace_len + row;
       const auto values = load<gkr_trace_holder_bf4, ld_modifier::cs>(reinterpret_cast<const gkr_trace_holder_bf4 *>(raw_values), row_offset >> 2);
       E partial = E::mul(values.values[0], eq0);
-      partial = E::add(partial, E::mul(values.values[1], eq1));
-      partial = E::add(partial, E::mul(values.values[2], eq2));
-      partial = E::add(partial, E::mul(values.values[3], eq3));
+      partial = E::fma(eq1, values.values[1], partial);
+      partial = E::fma(eq2, values.values[2], partial);
+      partial = E::fma(eq3, values.values[3], partial);
       accumulators[local_col] = E::add(accumulators[local_col], partial);
     }
   }
@@ -1150,7 +1150,7 @@ template <typename E, typename Mask, typename Value> DEVICE_FORCEINLINE void gkr
 }
 
 template <typename E> DEVICE_FORCEINLINE void gkr_eval_lookup_pair(const E a, const E b, const E c, const E d, E &num, E &den) {
-  num = E::add(E::mul(a, d), E::mul(c, b));
+  num = E::fma(a, d, E::mul(c, b));
   den = E::mul(b, d);
 }
 
@@ -1200,7 +1200,7 @@ template <typename E> DEVICE_FORCEINLINE void gkr_eval_lookup_base_minus_multipl
 template <typename E, typename D, typename A, typename B>
 DEVICE_FORCEINLINE void gkr_eval_lookup_unbalanced(const D d, const A a, const B b, const E gamma, E &num, E &den) {
   const E shifted_d = E::add(d, gamma);
-  num = E::add(E::mul(a, shifted_d), b);
+  num = E::fma(a, shifted_d, b);
   den = E::mul(b, shifted_d);
 }
 
@@ -1214,13 +1214,13 @@ template <typename E, typename A, typename B, typename C, typename D>
 DEVICE_FORCEINLINE void gkr_eval_lookup_cached_dens_and_setup(const A a, const B b, const C c, const D d, const E gamma, E &num, E &den) {
   const E shifted_b = E::add(b, gamma);
   const E shifted_d = E::add(d, gamma);
-  num = E::sub(E::mul(a, shifted_d), E::mul(c, shifted_b));
+  num = E::fms(a, shifted_d, E::mul(c, shifted_b));
   den = E::mul(shifted_b, shifted_d);
 }
 
 template <typename E, typename A, typename B, typename C, typename D>
 DEVICE_FORCEINLINE void gkr_eval_lookup_cached_dens_and_setup_quadratic(const A a, const B b, const C c, const D d, E &num, E &den) {
-  num = E::sub(E::mul(a, d), E::mul(c, b));
+  num = E::fms(a, d, E::mul(c, b));
   den = E::mul(b, d);
 }
 
@@ -1504,7 +1504,7 @@ DEVICE_FORCEINLINE void gkr_forward_setup_generic_lookup(const gkr_forward_setup
     const auto descriptor = batch.descriptors[column_idx];
     const bf input = load<bf, ld_modifier::cs>(descriptor.input, gid);
     const E alpha_power = load<E, ld_modifier::ca>(batch.alpha_powers, column_idx);
-    value = E::add(value, E::mul(alpha_power, input));
+    value = E::fma(alpha_power, input, value);
   }
 
   store<E, st_modifier::cs>(batch.output, value, gid);

@@ -66,11 +66,45 @@ struct bf {
     return from_lt_2_order_u32(out_hi);
   }
 
+  // Extended Montgomery reduction for inputs up to ~4*p^2 (< 2^64).
+  // Standard red() only handles inputs < p*2^32. This variant tracks the carry
+  // from the intermediate m*ORDER + x that can overflow u64 when x >= p*2^32.
+  // Output: fully reduced in [0, p).
+  static DEVICE_FORCEINLINE bf red_wide(const u64 x) {
+    const auto x_u32 = reinterpret_cast<const u32 *>(&x);
+    const u32 lo = x_u32[0];
+    const u32 hi = x_u32[1];
+    const u32 m = mul_lo(lo, MONT_K);
+    [[maybe_unused]] const u32 out_lo = mad_lo_cc(m, ORDER, lo);
+    const u32 out_mid = madc_hi_cc(m, ORDER, hi);
+    const u32 carry = addc(0u, 0u);
+    // When carry=1 the true quotient is out_mid + 2^32.
+    // 2^32 mod p = MONT_R, and out_mid < p in this case, so out_mid + MONT_R < 2p.
+    // When carry=0 the result can be up to ~2.87p, needing two conditional subtracts.
+    u32 r = carry ? (out_mid + MONT_R) : out_mid;
+    if (r >= ORDER)
+      r -= ORDER;
+    if (r >= ORDER)
+      r -= ORDER;
+    return bf(r);
+  }
+
   static DEVICE_FORCEINLINE bf mul_u32(const u32 x, const u32 y) { return red(mul_wide(x, y)); }
 
   static DEVICE_FORCEINLINE bf mul(const bf x, const bf y) { return mul_u32(x.limb, y.limb); }
 
-  static DEVICE_FORCEINLINE bf mul_by_non_residue(const bf x) { return mul(x, NON_RES()); }
+  // Multiply by the non-residue (11) using Solinas reduction instead of full Montgomery mul.
+  // Since 11 is small and p = 2^31 - 2^27 + 1, we compute 11*x.limb mod p directly:
+  //   t = 11 * x.limb          (< 11*p < 2^35, fits in u64)
+  //   t mod p via: 2^31 ≡ 2^27 - 1 (mod p)
+  // Cost: 1 mul-pipe op + ALU, vs 4 mul-pipe ops for a full Montgomery mul.
+  static DEVICE_FORCEINLINE bf mul_by_non_residue(const bf x) {
+    const u64 t = static_cast<u64>(x.limb) * 11u;
+    const u32 lo = static_cast<u32>(t) & 0x7FFFFFFFu; // lower 31 bits
+    const u32 hi = static_cast<u32>(t >> 31);         // upper bits (≤ 10)
+    const u32 corr = (hi << 27) - hi;                 // hi * (2^27 - 1)
+    return from_lt_2_order_u32(lo + corr);
+  }
 
   static DEVICE_FORCEINLINE bf into_mont(const bf x) { return mul_u32(x.limb, MONT_R2); }
 
@@ -85,6 +119,25 @@ struct bf {
   static constexpr DEVICE_FORCEINLINE bf sub(const bf x, const bf y) { return from_lt_2_order_u32(ORDER + x.limb - y.limb); }
 
   static DEVICE_FORCEINLINE bf sqr(const bf x) { return mul(x, x); }
+
+  // Fused multiply-add: a*b + c.
+  // In Montgomery form, the wide product a.limb*b.limb has an R² factor while c.limb has R.
+  // To get (a*b + c)*R after reduction, we add c.limb to the HIGH word of the wide product
+  // (equivalent to adding c * 2^32 = c * R). Then red_wide gives the correct result.
+  // Overflow: hi(a*b) + c.limb < p + p = 2p < 2^32 (no u32 overflow in high word).
+  // Total value < p² + p·2³² < 2⁶⁴, and red_wide handles any u64 input.
+  static DEVICE_FORCEINLINE bf fma(const bf a, const bf b, const bf c) {
+    u64 w = mul_wide(a.limb, b.limb);
+    reinterpret_cast<u32 *>(&w)[1] += c.limb;
+    return red_wide(w);
+  }
+
+  // Fused multiply-subtract: a*b - c. Same principle but adds ORDER - c.limb to the high word.
+  static DEVICE_FORCEINLINE bf fms(const bf a, const bf b, const bf c) {
+    u64 w = mul_wide(a.limb, b.limb);
+    reinterpret_cast<u32 *>(&w)[1] += ORDER - c.limb;
+    return red_wide(w);
+  }
 
   static constexpr DEVICE_FORCEINLINE bf dbl(const bf x) { return add(x, x); }
 
@@ -208,14 +261,16 @@ struct __align__(8) e2 {
 
   static DEVICE_FORCEINLINE e2 mul(const bf x, const e2 y) { return e2(bf::mul(x, y[0]), bf::mul(x, y[1])); }
 
+  // Schoolbook multiplication with lazy reduction.
+  // Accumulates 2 products per output coefficient in u64, reduces once.
+  //   out[0] = x0·y0 + 11·x1·y1
+  //   out[1] = x0·y1 + x1·y0
+  // Overflow safety: 2·p² ≈ 8.11e18 < p·2³² ≈ 8.65e18. Standard red() handles this.
   static DEVICE_FORCEINLINE e2 mul(const e2 x, const e2 y) {
-    const auto a = bf::add(x[0], x[1]);
-    const auto b = bf::add(y[0], y[1]);
-    const auto c = bf::mul(x[0], y[0]);
-    const auto d = bf::mul(x[1], y[1]);
-    const auto e = bf::add(c, bf::mul_by_non_residue(d));
-    const auto f = bf::sub(bf::mul(a, b), bf::add(c, d));
-    return e2(e, f);
+    const u32 x1n = bf::mul_by_non_residue(x[1]).limb;
+    const u64 acc0 = mad_wide(x1n, y[1].limb, mul_wide(x[0].limb, y[0].limb));
+    const u64 acc1 = mad_wide(x[1].limb, y[0].limb, mul_wide(x[0].limb, y[1].limb));
+    return e2(bf::red(acc0), bf::red(acc1));
   }
 
   static DEVICE_FORCEINLINE e2 mul_by_quadratic_non_residue(const e2 x) {
@@ -233,13 +288,37 @@ struct __align__(8) e2 {
     return e2(d, e);
   }
 
+  // Squaring with lazy reduction.
+  //   out[0] = x0² + 11·x1²
+  //   out[1] = 2·x0·x1
   static DEVICE_FORCEINLINE e2 sqr(const e2 x) {
-    const auto a = bf::sqr(x[0]);
-    const auto b = bf::mul(x[0], x[1]);
-    const auto c = bf::sqr(x[1]);
-    const auto e = bf::add(a, bf::mul_by_non_residue(c));
-    const auto f = bf::dbl(b);
-    return e2(e, f);
+    const u32 x1n = bf::mul_by_non_residue(x[1]).limb;
+    const u64 acc0 = mad_wide(x1n, x[1].limb, mul_wide(x[0].limb, x[0].limb));
+    const u64 acc1 = mad_wide(x[0].limb, x[1].limb, mul_wide(x[0].limb, x[1].limb));
+    return e2(bf::red(acc0), bf::red(acc1));
+  }
+
+  // Fused multiply-add: a*b + c. Adds c to the HIGH word of each 2-product accumulator
+  // (c * 2^32 = c * R), then reduces with red_wide. This corrects the R-factor mismatch
+  // between the R² wide product and the R-form addend.
+  // Overflow: 2·p² + p·2³² ≈ 1.68e19 < 2⁶⁴. red_wide handles any u64 input.
+  static DEVICE_FORCEINLINE e2 fma(const e2 a, const e2 b, const e2 c) {
+    const u32 a1n = bf::mul_by_non_residue(a[1]).limb;
+    u64 acc0 = mad_wide(a1n, b[1].limb, mul_wide(a[0].limb, b[0].limb));
+    u64 acc1 = mad_wide(a[1].limb, b[0].limb, mul_wide(a[0].limb, b[1].limb));
+    reinterpret_cast<u32 *>(&acc0)[1] += c[0].limb;
+    reinterpret_cast<u32 *>(&acc1)[1] += c[1].limb;
+    return e2(bf::red_wide(acc0), bf::red_wide(acc1));
+  }
+
+  // Fused multiply-subtract: a*b - c. Adds (ORDER - cᵢ) to the high word.
+  static DEVICE_FORCEINLINE e2 fms(const e2 a, const e2 b, const e2 c) {
+    const u32 a1n = bf::mul_by_non_residue(a[1]).limb;
+    u64 acc0 = mad_wide(a1n, b[1].limb, mul_wide(a[0].limb, b[0].limb));
+    u64 acc1 = mad_wide(a[1].limb, b[0].limb, mul_wide(a[0].limb, b[1].limb));
+    reinterpret_cast<u32 *>(&acc0)[1] += bf::ORDER - c[0].limb;
+    reinterpret_cast<u32 *>(&acc1)[1] += bf::ORDER - c[1].limb;
+    return e2(bf::red_wide(acc0), bf::red_wide(acc1));
   }
 
   static DEVICE_FORCEINLINE e2 inv(const e2 x) {
@@ -342,24 +421,134 @@ struct __align__(16) e4 {
 
   static DEVICE_FORCEINLINE e4 mul(const e2 x, const e4 y) { return e4(e2::mul(x, y[0]), e2::mul(x, y[1])); }
 
+  // Flat quartic multiplication with lazy reduction.
+  // Operates directly on 4 bf limbs instead of tower Karatsuba over e2.
+  // Accumulates 4 products per output coefficient in u64, reduces once.
+  //
+  // For e4 = bf[α,β,αβ] with α²=11, β²=α, the multiplication table gives:
+  //   out[0] = a₀b₀ + 11·a₁b₁ + 11·a₂b₃ + 11·a₃b₂
+  //   out[1] = a₀b₁ + a₁b₀  +    a₂b₂  + 11·a₃b₃
+  //   out[2] = a₀b₂ + 11·a₁b₃ +  a₂b₀  + 11·a₃b₁
+  //   out[3] = a₀b₃ + a₁b₂  +    a₂b₁  +    a₃b₀
+  //
+  // Overflow safety: 4·p² ≈ 1.62e19 < 2⁶⁴ ≈ 1.84e19.
   static DEVICE_FORCEINLINE e4 mul(const e4 x, const e4 y) {
-    const auto a = e2::add(x[0], x[1]);
-    const auto b = e2::add(y[0], y[1]);
-    const auto c = e2::mul(x[0], y[0]);
-    const auto d = e2::mul(x[1], y[1]);
-    const auto e = e2::add(c, e2::mul_by_quadratic_non_residue(d));
-    const auto f = e2::sub(e2::mul(a, b), e2::add(c, d));
-    return e4(e, f);
+    const u32 a0 = x[0][0].limb, a1 = x[0][1].limb, a2 = x[1][0].limb, a3 = x[1][1].limb;
+    const u32 b0 = y[0][0].limb, b1 = y[0][1].limb, b2 = y[1][0].limb, b3 = y[1][1].limb;
+
+    // Precompute aᵢ·11 via Solinas reduction (1 mul-pipe op each)
+    const u32 a1n = bf::mul_by_non_residue(bf(a1)).limb;
+    const u32 a2n = bf::mul_by_non_residue(bf(a2)).limb;
+    const u32 a3n = bf::mul_by_non_residue(bf(a3)).limb;
+
+    u64 acc;
+
+    acc = mul_wide(a0, b0);
+    acc = mad_wide(a1n, b1, acc);
+    acc = mad_wide(a2n, b3, acc);
+    acc = mad_wide(a3n, b2, acc);
+    const bf o0 = bf::red_wide(acc);
+
+    acc = mul_wide(a0, b1);
+    acc = mad_wide(a1, b0, acc);
+    acc = mad_wide(a2, b2, acc);
+    acc = mad_wide(a3n, b3, acc);
+    const bf o1 = bf::red_wide(acc);
+
+    acc = mul_wide(a0, b2);
+    acc = mad_wide(a1n, b3, acc);
+    acc = mad_wide(a2, b0, acc);
+    acc = mad_wide(a3n, b1, acc);
+    const bf o2 = bf::red_wide(acc);
+
+    acc = mul_wide(a0, b3);
+    acc = mad_wide(a1, b2, acc);
+    acc = mad_wide(a2, b1, acc);
+    acc = mad_wide(a3, b0, acc);
+    const bf o3 = bf::red_wide(acc);
+
+    return e4(e2(o0, o1), e2(o2, o3));
   }
 
+  // Flat quartic squaring with lazy reduction.
+  // Exploits aᵢ=bᵢ symmetry: cross-products appear doubled.
+  //   out[0] = a₀² + 11·a₁² + 2·11·a₂a₃
+  //   out[1] = 2·a₀a₁ + a₂² + 11·a₃²
+  //   out[2] = 2·a₀a₂ + 2·11·a₁a₃
+  //   out[3] = 2·(a₀a₃ + a₁a₂)
   static DEVICE_FORCEINLINE e4 sqr(const e4 x) {
-    const auto a = e2::sqr(x[0]);
-    const auto b = e2::mul(x[0], x[1]);
-    const auto c = e2::sqr(x[1]);
-    const auto e = e2::add(a, e2::mul_by_quadratic_non_residue(c));
-    const auto f = e2::dbl(b);
-    return e4(e, f);
+    const u32 a0 = x[0][0].limb, a1 = x[0][1].limb, a2 = x[1][0].limb, a3 = x[1][1].limb;
+
+    const u32 a1n = bf::mul_by_non_residue(bf(a1)).limb;
+    const u32 a3n = bf::mul_by_non_residue(bf(a3)).limb;
+
+    u64 acc;
+
+    // out[0] = a0² + 11·a1² + 2·11·a2·a3
+    // Rewrite as: a0·a0 + a1n·a1 + a2n·a3 + a3n·a2 (same as mul with a=b, but we can also
+    // factor the doubled cross-product: a0·a0 + a1n·a1 + 2·a3n·a2)
+    // Using 2·a3n·a2 = a3n·a2 + a3n·a2 via double accumulation:
+    acc = mul_wide(a0, a0);
+    acc = mad_wide(a1n, a1, acc);
+    acc = mad_wide(a3n, a2, acc);
+    acc = mad_wide(a3n, a2, acc); // doubled cross-product
+    const bf o0 = bf::red_wide(acc);
+
+    // out[1] = 2·a0·a1 + a2² + 11·a3²
+    acc = mul_wide(a0, a1);
+    acc = mad_wide(a0, a1, acc); // doubled
+    acc = mad_wide(a2, a2, acc);
+    acc = mad_wide(a3n, a3, acc);
+    const bf o1 = bf::red_wide(acc);
+
+    // out[2] = 2·a0·a2 + 2·11·a1·a3
+    acc = mul_wide(a0, a2);
+    acc = mad_wide(a0, a2, acc); // doubled
+    acc = mad_wide(a1n, a3, acc);
+    acc = mad_wide(a1n, a3, acc); // doubled
+    const bf o2 = bf::red_wide(acc);
+
+    // out[3] = 2·(a0·a3 + a1·a2)
+    acc = mul_wide(a0, a3);
+    acc = mad_wide(a1, a2, acc);
+    acc = mad_wide(a0, a3, acc); // doubled
+    acc = mad_wide(a1, a2, acc); // doubled
+    const bf o3 = bf::red_wide(acc);
+
+    return e4(e2(o0, o1), e2(o2, o3));
   }
+
+  // Fused multiply-add: x*y + z.
+  // Cannot fuse into the flat quartic accumulator (4·p² + p·2³² > 2⁶⁴ would overflow).
+  static DEVICE_FORCEINLINE e4 fma(const e4 x, const e4 y, const e4 z) { return add(mul(x, y), z); }
+
+  // Fused multiply-subtract: x*y - z.
+  static DEVICE_FORCEINLINE e4 fms(const e4 x, const e4 y, const e4 z) { return sub(mul(x, y), z); }
+
+  // Fused scalar multiply-add: x*s + z where s is a base field scalar.
+  // Each output coefficient: xᵢ·s + zᵢ. Uses bf::fma (1 product, fusible).
+  static DEVICE_FORCEINLINE e4 fma(const e4 x, const bf s, const e4 z) {
+    return e4(e2(bf::fma(x[0][0], s, z[0][0]), bf::fma(x[0][1], s, z[0][1])), e2(bf::fma(x[1][0], s, z[1][0]), bf::fma(x[1][1], s, z[1][1])));
+  }
+
+  // Swapped: s*x + z (commutative in first two args).
+  static DEVICE_FORCEINLINE e4 fma(const bf s, const e4 x, const e4 z) { return fma(x, s, z); }
+
+  // Mixed: x*s + z_bf where z_bf is a base field element (added only to coefficient 0).
+  static DEVICE_FORCEINLINE e4 fma(const e4 x, const bf s, const bf z) {
+    return e4(e2(bf::fma(x[0][0], s, z), bf::mul(x[0][1], s)), e2(bf::mul(x[1][0], s), bf::mul(x[1][1], s)));
+  }
+
+  // Swapped: s*x + z_bf.
+  static DEVICE_FORCEINLINE e4 fma(const bf s, const e4 x, const bf z) { return fma(x, s, z); }
+
+  // Fused scalar multiply-subtract: x*s - z where s is a base field scalar.
+  static DEVICE_FORCEINLINE e4 fms(const e4 x, const bf s, const e4 z) {
+    return e4(e2(bf::fms(x[0][0], s, z[0][0]), bf::fms(x[0][1], s, z[0][1])), e2(bf::fms(x[1][0], s, z[1][0]), bf::fms(x[1][1], s, z[1][1])));
+  }
+
+  // Swapped: s*x - z.
+  static DEVICE_FORCEINLINE e4 fms(const bf s, const e4 x, const e4 z) { return fms(x, s, z); }
 
   static DEVICE_FORCEINLINE e4 inv(const e4 x) {
     const auto a = x[0];
