@@ -806,9 +806,6 @@ impl TableType {
             TableType::ShiftImplementationOverBytes => {
                 LookupWrapper::Initialized(create_shift_implementation_table::<F>(id))
             }
-            // TableType::RangeCheck8x8 => LookupWrapper::Dimensional3(
-            //     create_formal_width_3_range_check_table_for_two_tuple::<F, 8>(id),
-            // ),
             // TableType::AndNot => LookupWrapper::Dimensional3(create_and_not_table(id)),
             // TableType::QuickDecodeDecompositionCheck4x4x4 => {
             //     LookupWrapper::Dimensional3(create_quick_decoder_decomposition_table_4x4x4(id))
@@ -850,6 +847,9 @@ impl TableType {
             // TableType::U16SplitAsBytes => {
             //     LookupWrapper::Dimensional3(create_u16_split_into_bytes_table(id))
             // }
+            TableType::RangeCheck8x8 => {
+                LookupWrapper::Initialized(create_range_check_table_for_two_tuple::<F, 8>(id))
+            }
             TableType::RangeCheck9x9 => {
                 LookupWrapper::Initialized(create_range_check_table_for_two_tuple::<F, 9>(id))
             }

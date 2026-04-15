@@ -240,7 +240,382 @@ fn apply_mul_div_inner<F: PrimeField, CS: Circuit<F>, const SUPPORT_SIGNED: bool
         });
 
         // set witness for all those variables
-        {}
+        {
+            let value_fn = move |placer: &mut CS::WitnessPlacer| {
+                // NOTE: it is UNCONDITIONAL assignment, even though we select across multiple variants
+
+                let mut rd_value = <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::constant(0);
+                let mut extra_witness_value =
+                    <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::constant(0);
+                let mut remainder_comparison_value =
+                    <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::constant(0);
+
+                let intermediate_carry_0_value;
+                let intermediate_carry_1_value;
+                let intermediate_carry_2_value;
+
+                let mut quotient_byte_0_value =
+                    <CS::WitnessPlacer as WitnessTypeSet<F>>::U8::constant(0);
+                let mut quotient_byte_1_value =
+                    <CS::WitnessPlacer as WitnessTypeSet<F>>::U8::constant(0);
+                let mut quotient_byte_2_value =
+                    <CS::WitnessPlacer as WitnessTypeSet<F>>::U8::constant(0);
+                let mut quotient_byte_3_value =
+                    <CS::WitnessPlacer as WitnessTypeSet<F>>::U8::constant(0);
+
+                let rs1_u32 = placer.get_u32_from_u16_parts(rs1_limbs);
+                let rs2_u32 = placer.get_u32_from_u16_parts(rs2_limbs);
+                let rs2_is_zero = rs2_u32.is_zero();
+
+                let is_mul = placer.get_boolean(is_mul.get_variable().unwrap());
+                let is_mulhu = placer.get_boolean(is_mulhu.get_variable().unwrap());
+                let is_mul_family = is_mul.or(&is_mulhu);
+
+                let is_divu = placer.get_boolean(is_divu.get_variable().unwrap());
+                let is_remu = placer.get_boolean(is_remu.get_variable().unwrap());
+                let is_div_family = is_divu.or(&is_remu);
+
+                let mut low_for_enforcement =
+                    <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::constant(0);
+                let mut high_for_enforcement =
+                    <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::constant(0);
+                let mut remainder_for_enforcement =
+                    <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::constant(0);
+
+                let div_by_zero = is_div_family.and(&rs2_is_zero);
+                // first we need to get extra/rd values, to then get u8 splits,
+                // and perform comparisons
+
+                {
+                    // both multiplications are easy - we only need to set low/high into RD or extra witness
+                    let (low, high) = rs1_u32.split_widening_product(&rs2_u32);
+                    rd_value = <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::select(
+                        &is_mul, &low, &rd_value,
+                    );
+                    extra_witness_value = <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::select(
+                        &is_mul,
+                        &high,
+                        &extra_witness_value,
+                    );
+
+                    rd_value = <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::select(
+                        &is_mulhu, &high, &rd_value,
+                    );
+                    extra_witness_value = <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::select(
+                        &is_mulhu,
+                        &low,
+                        &extra_witness_value,
+                    );
+
+                    low_for_enforcement = <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::select(
+                        &is_mul_family,
+                        &low,
+                        &low_for_enforcement,
+                    );
+                    high_for_enforcement = <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::select(
+                        &is_mul_family,
+                        &high,
+                        &high_for_enforcement,
+                    );
+                }
+
+                // DIVU and REMU are more involved as they require masking
+                {
+                    // default case as if we divide by 0
+                    let masked_divisor = <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::select(
+                        &rs2_is_zero,
+                        &<CS::WitnessPlacer as WitnessTypeSet<F>>::U32::constant(u32::MAX),
+                        &rs2_u32,
+                    );
+
+                    let (maybe_quotient, maybe_remainder) = <CS::WitnessPlacer as WitnessTypeSet<
+                        F,
+                    >>::U32::div_rem_assume_nonzero_divisor(
+                        &rs1_u32, &masked_divisor
+                    );
+                    let quotient = <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::select(
+                        &rs2_is_zero,
+                        &<CS::WitnessPlacer as WitnessTypeSet<F>>::U32::constant(u32::MAX),
+                        &maybe_quotient,
+                    );
+                    let remainder = <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::select(
+                        &rs2_is_zero,
+                        &rs1_u32,
+                        &maybe_remainder,
+                    );
+
+                    remainder_for_enforcement =
+                        <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::select(
+                            &is_div_family,
+                            &remainder,
+                            &remainder_for_enforcement,
+                        );
+                    low_for_enforcement = <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::select(
+                        &is_div_family,
+                        &rs1_u32,
+                        &low_for_enforcement,
+                    );
+
+                    rd_value = <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::select(
+                        &is_divu, &quotient, &rd_value,
+                    );
+                    extra_witness_value = <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::select(
+                        &is_divu,
+                        &remainder,
+                        &extra_witness_value,
+                    );
+
+                    rd_value = <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::select(
+                        &is_remu, &remainder, &rd_value,
+                    );
+                    extra_witness_value = <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::select(
+                        &is_remu,
+                        &quotient,
+                        &extra_witness_value,
+                    );
+                }
+
+                // quickly decide on the byte splitting - we have all the values
+                {
+                    let rs1_byte_0 = rs1_u32.truncate().truncate();
+                    let rs1_byte_1 = rs2_u32.shr(8).truncate().truncate();
+                    let rs1_byte_2 = rs1_u32.shr(16).truncate().truncate();
+                    let rs1_byte_3 = rs2_u32.shr(24).truncate().truncate();
+                    quotient_byte_0_value = <CS::WitnessPlacer as WitnessTypeSet<F>>::U8::select(
+                        &is_mul_family,
+                        &rs1_byte_0,
+                        &quotient_byte_0_value,
+                    );
+                    quotient_byte_1_value = <CS::WitnessPlacer as WitnessTypeSet<F>>::U8::select(
+                        &is_mul_family,
+                        &rs1_byte_1,
+                        &quotient_byte_1_value,
+                    );
+                    quotient_byte_2_value = <CS::WitnessPlacer as WitnessTypeSet<F>>::U8::select(
+                        &is_mul_family,
+                        &rs1_byte_2,
+                        &quotient_byte_2_value,
+                    );
+                    quotient_byte_3_value = <CS::WitnessPlacer as WitnessTypeSet<F>>::U8::select(
+                        &is_mul_family,
+                        &rs1_byte_3,
+                        &quotient_byte_3_value,
+                    );
+
+                    // if we do DIVU, then we need RD
+                    let rd_byte_0 = rd_value.truncate().truncate();
+                    let rd_byte_1 = rd_value.shr(8).truncate().truncate();
+                    let rd_byte_2 = rd_value.shr(16).truncate().truncate();
+                    let rd_byte_3 = rd_value.shr(24).truncate().truncate();
+                    quotient_byte_0_value = <CS::WitnessPlacer as WitnessTypeSet<F>>::U8::select(
+                        &is_divu,
+                        &rd_byte_0,
+                        &quotient_byte_0_value,
+                    );
+                    quotient_byte_1_value = <CS::WitnessPlacer as WitnessTypeSet<F>>::U8::select(
+                        &is_divu,
+                        &rd_byte_1,
+                        &quotient_byte_1_value,
+                    );
+                    quotient_byte_2_value = <CS::WitnessPlacer as WitnessTypeSet<F>>::U8::select(
+                        &is_divu,
+                        &rd_byte_2,
+                        &quotient_byte_2_value,
+                    );
+                    quotient_byte_3_value = <CS::WitnessPlacer as WitnessTypeSet<F>>::U8::select(
+                        &is_divu,
+                        &rd_byte_3,
+                        &quotient_byte_3_value,
+                    );
+
+                    // if we do REMU, then we need extra witness
+                    let extra_witness_byte_0 = extra_witness_value.truncate().truncate();
+                    let extra_witness_byte_1 = extra_witness_value.shr(8).truncate().truncate();
+                    let extra_witness_byte_2 = extra_witness_value.shr(16).truncate().truncate();
+                    let extra_witness_byte_3 = extra_witness_value.shr(24).truncate().truncate();
+                    quotient_byte_0_value = <CS::WitnessPlacer as WitnessTypeSet<F>>::U8::select(
+                        &is_remu,
+                        &extra_witness_byte_0,
+                        &quotient_byte_0_value,
+                    );
+                    quotient_byte_2_value = <CS::WitnessPlacer as WitnessTypeSet<F>>::U8::select(
+                        &is_remu,
+                        &extra_witness_byte_1,
+                        &quotient_byte_2_value,
+                    );
+                    quotient_byte_2_value = <CS::WitnessPlacer as WitnessTypeSet<F>>::U8::select(
+                        &is_remu,
+                        &extra_witness_byte_2,
+                        &quotient_byte_2_value,
+                    );
+                    quotient_byte_3_value = <CS::WitnessPlacer as WitnessTypeSet<F>>::U8::select(
+                        &is_remu,
+                        &extra_witness_byte_3,
+                        &quotient_byte_3_value,
+                    );
+                }
+
+                let divisor_byte_0 = rs2_u32.truncate().truncate();
+                let divisor_byte_1 = rs2_u32.shr(8).truncate().truncate();
+                let divisor_byte_2 = rs2_u32.shr(16).truncate().truncate();
+                let divisor_byte_3 = rs2_u32.shr(24).truncate().truncate();
+
+                // and finally we can compute intermediate witness values
+                {
+                    // 0-16
+                    let mut bits_0_to_16_carry =
+                        <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::constant(0);
+                    bits_0_to_16_carry.add_assign(
+                        &quotient_byte_0_value
+                            .widening_product(&divisor_byte_0)
+                            .widen(),
+                    );
+                    bits_0_to_16_carry.add_assign(
+                        &quotient_byte_1_value
+                            .widening_product(&divisor_byte_0)
+                            .widen()
+                            .shl(8),
+                    );
+                    bits_0_to_16_carry.add_assign(
+                        &quotient_byte_0_value
+                            .widening_product(&divisor_byte_1)
+                            .widen()
+                            .shl(8),
+                    );
+                    bits_0_to_16_carry.add_assign(&remainder_for_enforcement.truncate().widen());
+                    bits_0_to_16_carry.sub_assign(&low_for_enforcement.truncate().widen());
+                    bits_0_to_16_carry = bits_0_to_16_carry.shr(16);
+                    intermediate_carry_0_value = bits_0_to_16_carry.truncate();
+
+                    // 16-32
+                    let mut bits_16_to_32_carry =
+                        <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::constant(0);
+                    bits_16_to_32_carry.add_assign(
+                        &quotient_byte_1_value
+                            .widening_product(&divisor_byte_1)
+                            .widen(),
+                    );
+                    bits_16_to_32_carry.add_assign(
+                        &quotient_byte_2_value
+                            .widening_product(&divisor_byte_0)
+                            .widen(),
+                    );
+                    bits_16_to_32_carry.add_assign(
+                        &quotient_byte_0_value
+                            .widening_product(&divisor_byte_2)
+                            .widen(),
+                    );
+                    bits_16_to_32_carry.add_assign(
+                        &quotient_byte_3_value
+                            .widening_product(&divisor_byte_0)
+                            .widen()
+                            .shl(8),
+                    );
+                    bits_16_to_32_carry.add_assign(
+                        &quotient_byte_0_value
+                            .widening_product(&divisor_byte_3)
+                            .widen()
+                            .shl(8),
+                    );
+                    bits_16_to_32_carry.add_assign(
+                        &quotient_byte_2_value
+                            .widening_product(&divisor_byte_1)
+                            .widen()
+                            .shl(8),
+                    );
+                    bits_16_to_32_carry.add_assign(
+                        &quotient_byte_1_value
+                            .widening_product(&divisor_byte_2)
+                            .widen()
+                            .shl(8),
+                    );
+                    bits_16_to_32_carry.add_assign(&remainder_for_enforcement.shr(16));
+                    bits_16_to_32_carry.add_assign(&bits_0_to_16_carry);
+                    bits_16_to_32_carry.sub_assign(&low_for_enforcement.shr(16));
+                    bits_16_to_32_carry = bits_16_to_32_carry.shr(16);
+                    intermediate_carry_1_value = bits_16_to_32_carry.truncate();
+
+                    // 32-48
+                    let mut bits_32_to_48_carry =
+                        <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::constant(0);
+                    bits_32_to_48_carry.add_assign(
+                        &quotient_byte_3_value
+                            .widening_product(&divisor_byte_1)
+                            .widen(),
+                    );
+                    bits_32_to_48_carry.add_assign(
+                        &quotient_byte_2_value
+                            .widening_product(&divisor_byte_2)
+                            .widen(),
+                    );
+                    bits_32_to_48_carry.add_assign(
+                        &quotient_byte_1_value
+                            .widening_product(&divisor_byte_3)
+                            .widen(),
+                    );
+                    bits_32_to_48_carry.add_assign(
+                        &quotient_byte_3_value
+                            .widening_product(&divisor_byte_2)
+                            .widen()
+                            .shl(8),
+                    );
+                    bits_32_to_48_carry.add_assign(
+                        &quotient_byte_3_value
+                            .widening_product(&divisor_byte_2)
+                            .widen()
+                            .shl(8),
+                    );
+                    bits_32_to_48_carry.add_assign(&bits_16_to_32_carry);
+                    bits_32_to_48_carry.sub_assign(&high_for_enforcement.truncate().widen());
+                    bits_32_to_48_carry = bits_32_to_48_carry.shr(16);
+                    intermediate_carry_2_value = bits_32_to_48_carry.truncate();
+
+                    // we do not need to continue the carry chain
+                }
+
+                // and the last one - is to assign something to the aux variables
+                // for remainder < divisor check
+                {
+                    let (t, _) = rd_value.overflowing_sub(&rs2_u32);
+                    remainder_comparison_value =
+                        <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::select(
+                            &is_remu,
+                            &t,
+                            &remainder_comparison_value,
+                        );
+
+                    let (t, _) = extra_witness_value.overflowing_sub(&rs2_u32);
+                    remainder_comparison_value =
+                        <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::select(
+                            &is_divu,
+                            &t,
+                            &remainder_comparison_value,
+                        );
+                }
+
+                // actually assign
+                if CS::ASSUME_MEMORY_VALUES_ASSIGNED == false {
+                    placer.assign_u32_from_u16_parts(rd_write_limbs, &rd_value);
+                }
+
+                placer.assign_u8(quotient_byte_0, &quotient_byte_0_value);
+                placer.assign_u8(quotient_byte_2, &quotient_byte_2_value);
+
+                placer.assign_u32_from_u16_parts(extra_witness, &extra_witness_value);
+                placer.assign_u32_from_u16_parts(
+                    [
+                        remainder_comparison_u16_witness_low,
+                        remainder_comparison_u16_witness_high,
+                    ],
+                    &remainder_comparison_value,
+                );
+
+                placer.assign_u16(intermedaite_carry_witness[0], &intermediate_carry_0_value);
+                placer.assign_u16(intermedaite_carry_witness[1], &intermediate_carry_1_value);
+                placer.assign_u16(intermedaite_carry_witness[2], &intermediate_carry_2_value);
+            };
+            cs.set_values(value_fn);
+        }
 
         // now we push everything to the intermediate layer
         let divisor_is_zero_if_division_layer_1 = cs
@@ -295,6 +670,11 @@ fn apply_mul_div_inner<F: PrimeField, CS: Circuit<F>, const SUPPORT_SIGNED: bool
             )
         });
 
+        let is_division_family_at_layer_1 = cs.add_intermediate_named_variable_from_constraint(
+            is_division_group_constraint,
+            "is division family at layer 1",
+        );
+
         let remainder_comparison_u16_witness_low_at_layer_1 = cs
             .add_intermediate_named_variable_from_constraint(
                 Constraint::from(remainder_comparison_u16_witness_low),
@@ -322,16 +702,18 @@ fn apply_mul_div_inner<F: PrimeField, CS: Circuit<F>, const SUPPORT_SIGNED: bool
             Constraint::from(quotient_byte_2),
             "quotient byte 2 at layer 1",
         );
-        let mut i = 0;
-        let intermedaite_carry_witness_layer_1 = intermedaite_carry_witness.map(|el| {
-            let t = cs.add_intermediate_named_variable_from_constraint(
-                Constraint::from(el),
-                &format!("intermediate carry witness[{}] at layer 1", i),
-            );
-            i += 1;
+        let intermedaite_carry_witness_layer_1 = {
+            let mut i = 0;
+            intermedaite_carry_witness.map(|el| {
+                let t = cs.add_intermediate_named_variable_from_constraint(
+                    Constraint::from(el),
+                    &format!("intermediate carry witness[{}] at layer 1", i),
+                );
+                i += 1;
 
-            t
-        });
+                t
+            })
+        };
 
         // enforce decomposition on the layer 1 for bytes
         cs.enforce_lookup_tuple_for_fixed_table(
@@ -353,36 +735,82 @@ fn apply_mul_div_inner<F: PrimeField, CS: Circuit<F>, const SUPPORT_SIGNED: bool
 
         // simply enforce the schoolbook multiplication relation
         {
-            // 0-16 bits
-            {
+            let quotient_bytes = [
+                Constraint::from(quotient_byte_0_at_layer_1),
+                Term::from(quotient_at_layer_1[0]) - Term::from(quotient_byte_0_at_layer_1),
+                Constraint::from(quotient_byte_2_at_layer_1),
+                Term::from(quotient_at_layer_1[1]) - Term::from(quotient_byte_2_at_layer_1),
+            ];
+
+            let divisor_bytes = [
+                Constraint::from(divisor_byte_0_at_layer_1),
+                Term::from(divisor_at_layer_1[0]) - Term::from(divisor_byte_0_at_layer_1),
+                Constraint::from(divisor_byte_2_at_layer_1),
+                Term::from(divisor_at_layer_1[1]) - Term::from(divisor_byte_2_at_layer_1),
+            ];
+
+            let target_u16_words = [
+                low_at_layer_1[0],
+                low_at_layer_1[1],
+                high_at_layer_1[0],
+                high_at_layer_1[1],
+            ];
+
+            let addends_u16_words = [
+                Some(remainder_at_layer_1[0]),
+                Some(remainder_at_layer_1[1]),
+                None,
+                None,
+            ];
+
+            let carry_out_u16_words = [
+                Some(intermedaite_carry_witness_layer_1[0]),
+                Some(intermedaite_carry_witness_layer_1[1]),
+                Some(intermedaite_carry_witness_layer_1[2]),
+                None,
+            ];
+
+            let carry_in_u16_words = [
+                None,
+                Some(intermedaite_carry_witness_layer_1[0]),
+                Some(intermedaite_carry_witness_layer_1[1]),
+                Some(intermedaite_carry_witness_layer_1[2]),
+            ];
+
+            for i in 0..4 {
                 let mut constraint = Constraint::<F>::empty();
-                constraint +=
-                    Term::from(divisor_byte_0_at_layer_1) * Term::from(quotient_byte_0_at_layer_1);
-                constraint += (Term::from(divisor_at_layer_1[0])
-                    - Term::from(divisor_byte_0_at_layer_1))
-                    * shift_right_8_bits_term
-                    * Term::from(quotient_byte_0_at_layer_1);
-                constraint += (Term::from(quotient_at_layer_1[0])
-                    - Term::from(quotient_byte_0_at_layer_1))
-                    * shift_right_8_bits_term
-                    * Term::from(divisor_byte_0_at_layer_1);
-                constraint += Term::from(remainder_at_layer_1[0]);
-                constraint -= Term::from(low_at_layer_1[0]);
-                constraint -= Term::from((shift_left_16_bits, intermedaite_carry_witness[0]));
+
+                for j in 0..4 {
+                    let q_byte = &quotient_bytes[j];
+                    for k in 0..4 {
+                        let d_byte = &divisor_bytes[k];
+                        if j + k == 2 * i {
+                            constraint += q_byte.clone() * d_byte.clone();
+                        } else if j + k == 2 * i + 1 {
+                            constraint += q_byte.clone() * d_byte.clone() * shift_right_8_bits_term;
+                        }
+                    }
+                }
+
+                if let Some(addend) = addends_u16_words[i] {
+                    constraint += Term::from(addend);
+                }
+                if let Some(carry_in) = carry_in_u16_words[i] {
+                    constraint += Term::from(carry_in);
+                }
+                if let Some(carry_out) = carry_out_u16_words[i] {
+                    constraint -= Term::from((shift_left_16_bits, carry_out));
+                }
+                constraint -= Term::from(target_u16_words[i]);
                 cs.add_constraint(constraint);
             }
-            // 16-32 bits
-            {}
-            // 32-48 bits
-            {}
-            // 48-64 bits
         }
 
         // and the last thing to do is to check that remainder < divisor unless divisor is 0,
         // and if divisor is 0 - then quotient is u32::MAX
 
         // 2^16 * of + remainder - divisor = witness
-        let mut t = Term::from(remainder_comparison_u16_witness_low)
+        let mut t = Term::from(remainder_comparison_u16_witness_low_at_layer_1)
             - Term::from(remainder_at_layer_1[0])
             + Term::from(divisor_at_layer_1[0]);
         t.scale(shift_left_16_bits.inverse().unwrap());
@@ -394,7 +822,9 @@ fn apply_mul_div_inner<F: PrimeField, CS: Circuit<F>, const SUPPORT_SIGNED: bool
         c = c + Term::from(remainder_at_layer_1[1]);
         c = c - Term::from(divisor_at_layer_1[1]);
         c = c - t;
-        c = c - Term::from(remainder_comparison_u16_witness_high);
+        c = c - Term::from(remainder_comparison_u16_witness_high_at_layer_1);
+        // and mask it into division family only
+        c = c * Term::from(is_division_family_at_layer_1);
         cs.add_constraint(c);
 
         cs.add_constraint(
@@ -414,244 +844,6 @@ fn apply_mul_div_inner<F: PrimeField, CS: Circuit<F>, const SUPPORT_SIGNED: bool
             (Term::<F>::from(u16::MAX as u32) - Term::from(quotient_at_layer_1[1]))
                 * Term::from(divisor_is_zero_if_division_layer_1),
         );
-
-        // Witness function - added before any constraints, so we can use debug machinery
-        {
-            let of_var = carry.get_variable().unwrap();
-            let intermediate_of_var = intermediate_carry.get_variable().unwrap();
-            let out_vars = [out_low, out_high];
-            let intermediate_vars = intermediate_tmp.0.map(|el| el.get_variable());
-            let imm_vars = inputs.decoder_data.imm;
-            let pc_vars = inputs.cycle_start_state.pc;
-            let rs1_vars = rs1_limbs;
-            let rs2_vars = rs2_limbs;
-
-            let is_add_var = is_add.get_variable().unwrap();
-            let is_sub_var = is_sub.get_variable().unwrap();
-            let is_auipc_var = is_auipc.get_variable().unwrap();
-            let is_addmod_var = is_addmod.get_variable().unwrap();
-            let is_submod_var = is_submod.get_variable().unwrap();
-            let is_mulmod_var = is_mulmod.get_variable().unwrap();
-            let _is_delegation_call_var = is_delegation_call.get_variable().unwrap();
-            let is_non_determinism_read_var = is_non_determinism_read.get_variable().unwrap();
-
-            let value_fn = move |placer: &mut CS::WitnessPlacer| {
-                // NOTE: it is UNCONDITIONAL assignment, even though we select across multiple variants
-
-                let mut out_value = <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::constant(0);
-                let mut intermediate_value =
-                    <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::constant(0);
-                let mut of_value = <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::constant(false);
-                let mut u16_intermedaite_carry_value =
-                    <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::constant(false);
-
-                let imm_low = placer.get_u16(imm_vars[0]);
-                let imm = placer.get_u32_from_u16_parts(imm_vars);
-                let rs1_low = placer.get_u16(rs1_vars[0]);
-                let rs1_u32 = placer.get_u32_from_u16_parts(rs1_vars);
-                let rs2_low = placer.get_u16(rs2_vars[0]);
-                let rs2_u32 = placer.get_u32_from_u16_parts(rs2_vars);
-                let pc_low = placer.get_u16(pc_vars[0]);
-                let pc_u32 = placer.get_u32_from_u16_parts(pc_vars);
-                let boolean_false = <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::constant(false);
-                let modulus_low = <CS::WitnessPlacer as WitnessTypeSet<F>>::U16::constant(
-                    F::CHARACTERISTICS as u16,
-                );
-                let modulus_constant = <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::constant(
-                    F::CHARACTERISTICS as u32,
-                );
-                {
-                    let is_add = placer.get_boolean(is_add_var);
-                    let (add_result, of0) = rs1_u32.overflowing_add(&rs2_u32);
-                    let (add_result, of1) = add_result.overflowing_add(&imm);
-                    let of = <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::or(&of0, &of1);
-                    out_value = <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::select(
-                        &is_add,
-                        &add_result,
-                        &out_value,
-                    );
-                    of_value = <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::select(
-                        &is_add, &of, &of_value,
-                    );
-                    update_intermediate_carry_value::<F, CS::WitnessPlacer, false>(
-                        &mut u16_intermedaite_carry_value,
-                        &is_add,
-                        &rs1_low,
-                        &rs2_low,
-                        Some(&imm_low),
-                    );
-                }
-                {
-                    let is_sub = placer.get_boolean(is_sub_var);
-                    let (sub_result, of) = rs1_u32.overflowing_sub(&rs2_u32);
-                    out_value = <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::select(
-                        &is_sub,
-                        &sub_result,
-                        &out_value,
-                    );
-                    of_value = <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::select(
-                        &is_sub, &of, &of_value,
-                    );
-                    update_intermediate_carry_value::<F, CS::WitnessPlacer, true>(
-                        &mut u16_intermedaite_carry_value,
-                        &is_sub,
-                        &rs1_low,
-                        &rs2_low,
-                        Some(&imm_low),
-                    );
-                }
-                {
-                    let is_auipc = placer.get_boolean(is_auipc_var);
-                    let (auipc_result, of) = pc_u32.overflowing_add(&imm);
-                    out_value = <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::select(
-                        &is_auipc,
-                        &auipc_result,
-                        &out_value,
-                    );
-                    of_value = <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::select(
-                        &is_auipc, &of, &of_value,
-                    );
-                    update_intermediate_carry_value::<F, CS::WitnessPlacer, false>(
-                        &mut u16_intermedaite_carry_value,
-                        &is_auipc,
-                        &pc_low,
-                        &imm_low,
-                        None,
-                    );
-                }
-
-                let rs1_f =
-                    <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field::from_integer(
-                        rs1_u32,
-                    );
-                let rs2_f =
-                    <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field::from_integer(
-                        rs2_u32,
-                    );
-
-                // addmod
-                {
-                    let is_addmod = placer.get_boolean(is_addmod_var);
-                    let addmod_result = {
-                        let mut addmod_f = rs1_f.clone();
-                        addmod_f.add_assign(&rs2_f);
-                        addmod_f.as_integer()
-                    };
-                    let add_mod_low = addmod_result.truncate();
-                    out_value = <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::select(
-                        &is_addmod,
-                        &addmod_result,
-                        &out_value,
-                    );
-                    // and also compute intermediate
-                    let (tmp, of) = addmod_result.overflowing_sub(&modulus_constant);
-                    intermediate_value = <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::select(
-                        &is_addmod,
-                        &tmp,
-                        &intermediate_value,
-                    );
-                    of_value = <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::select(
-                        &is_addmod, &of, &of_value,
-                    );
-                    update_intermediate_carry_value::<F, CS::WitnessPlacer, true>(
-                        &mut u16_intermedaite_carry_value,
-                        &is_addmod,
-                        &add_mod_low,
-                        &modulus_low,
-                        None,
-                    );
-                }
-                // submod
-                {
-                    let is_submod = placer.get_boolean(is_submod_var);
-                    let submod_result = {
-                        let mut submod_f = rs1_f.clone();
-                        submod_f.sub_assign(&rs2_f);
-                        submod_f.as_integer()
-                    };
-                    let sub_mod_low = submod_result.truncate();
-                    out_value = <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::select(
-                        &is_submod,
-                        &submod_result,
-                        &out_value,
-                    );
-                    let (tmp, of) = submod_result.overflowing_sub(&modulus_constant);
-                    intermediate_value = <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::select(
-                        &is_submod,
-                        &tmp,
-                        &intermediate_value,
-                    );
-                    of_value = <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::select(
-                        &is_submod, &of, &of_value,
-                    );
-                    update_intermediate_carry_value::<F, CS::WitnessPlacer, true>(
-                        &mut u16_intermedaite_carry_value,
-                        &is_submod,
-                        &sub_mod_low,
-                        &modulus_low,
-                        None,
-                    );
-                }
-                // mulmod - both final and intermediate var (unconditional)
-                {
-                    let is_mulmod = placer.get_boolean(is_mulmod_var);
-                    let mulmod_field = {
-                        let mut mulmod_f = rs1_f.clone();
-                        mulmod_f.mul_assign(&rs2_f);
-                        mulmod_f
-                    };
-                    placer.assign_field(mulmod_intermediate_var, &mulmod_field);
-                    let mulmod_result = mulmod_field.clone().as_integer();
-                    let mul_mod_low = mulmod_result.truncate();
-                    out_value = <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::select(
-                        &is_mulmod,
-                        &mulmod_result,
-                        &out_value,
-                    );
-                    let (tmp, of) = mulmod_result.overflowing_sub(&modulus_constant);
-                    intermediate_value = <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::select(
-                        &is_mulmod,
-                        &tmp,
-                        &intermediate_value,
-                    );
-                    of_value = <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::select(
-                        &is_mulmod, &of, &of_value,
-                    );
-                    update_intermediate_carry_value::<F, CS::WitnessPlacer, true>(
-                        &mut u16_intermedaite_carry_value,
-                        &is_mulmod,
-                        &mul_mod_low,
-                        &modulus_low,
-                        None,
-                    );
-                }
-                // non-determinism
-                {
-                    let is_non_determinism_read = placer.get_boolean(is_non_determinism_read_var);
-                    let oracle_value = placer.get_oracle_u32(Placeholder::ExternalOracle);
-                    out_value = <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::select(
-                        &is_non_determinism_read,
-                        &oracle_value,
-                        &out_value,
-                    );
-                    of_value = <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::select(
-                        &is_non_determinism_read,
-                        &boolean_false,
-                        &of_value,
-                    );
-                }
-
-                // actually assign
-                if CS::ASSUME_MEMORY_VALUES_ASSIGNED == false {
-                    placer.assign_u32_from_u16_parts(out_vars, &out_value);
-                }
-
-                placer.assign_u32_from_u16_parts(intermediate_vars, &intermediate_value);
-                placer.assign_mask(of_var, &of_value);
-                placer.assign_mask(intermediate_of_var, &u16_intermedaite_carry_value);
-            };
-            cs.set_values(value_fn);
-        }
     } else {
         todo!("support signed ops")
     }
