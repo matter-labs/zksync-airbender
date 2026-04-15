@@ -338,7 +338,7 @@ pub fn preprocess_bytecode<
                         }
                         0b100 => {
                             if OPT::SUPPORT_MUL_DIV && OPT::SUPPORT_SIGNED_MUL_DIV {
-                                Instruction::from_imm(
+                                Instruction::pure_from_imm(
                                     InstructionName::Div,
                                     formal_rs1,
                                     formal_rs2,
@@ -351,7 +351,7 @@ pub fn preprocess_bytecode<
                         }
                         0b101 => {
                             if OPT::SUPPORT_MUL_DIV {
-                                Instruction::from_imm(
+                                Instruction::pure_from_imm(
                                     InstructionName::Divu,
                                     formal_rs1,
                                     formal_rs2,
@@ -364,7 +364,7 @@ pub fn preprocess_bytecode<
                         }
                         0b110 => {
                             if OPT::SUPPORT_MUL_DIV && OPT::SUPPORT_SIGNED_MUL_DIV {
-                                Instruction::from_imm(
+                                Instruction::pure_from_imm(
                                     InstructionName::Rem,
                                     formal_rs1,
                                     formal_rs2,
@@ -377,7 +377,7 @@ pub fn preprocess_bytecode<
                         }
                         0b111 => {
                             if OPT::SUPPORT_MUL_DIV {
-                                Instruction::from_imm(
+                                Instruction::pure_from_imm(
                                     InstructionName::Remu,
                                     formal_rs1,
                                     formal_rs2,

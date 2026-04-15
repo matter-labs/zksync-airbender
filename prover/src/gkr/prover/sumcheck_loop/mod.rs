@@ -26,6 +26,7 @@ use transcript::Seed;
 
 mod batch_evaluation;
 mod kernel_collector;
+mod distribution_analysis;
 
 /// # Panics
 /// Panics if claims or challenge points for the output layer are missing from storage.
