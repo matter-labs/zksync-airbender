@@ -81,7 +81,7 @@ DEVICE_FORCEINLINE E flat_cont_fold_and_load(const flat_continuing_source_entry<
   }
   const E f0 = load<E, ld_modifier::cs>(entry.previous_layer_start, index);
   const E f1 = load<E, ld_modifier::cs>(entry.previous_layer_start, fold_stride + index);
-  const E folded = E::add(f0, E::mul(folding_challenge, E::sub(f1, f0)));
+  const E folded = E::fma(folding_challenge, E::sub(f1, f0), f0);
   store<E, st_modifier::wb>(entry.this_layer_cache_start, folded, index);
   return folded;
 }
@@ -99,12 +99,10 @@ constexpr u16 FLAT_CONT_EXT_SOURCE_BIT = 0x8000;
 
 // Unified tiled kernel constants.
 constexpr unsigned FLAT_CONT_UNIFIED_SOURCE_GROUP_SIZE = 4;
-constexpr unsigned FLAT_CONT_UNIFIED_MAX_GRID_DIM =
-    (FLAT_CONT_MAX_BASE_SOURCES + FLAT_CONT_MAX_EXT_SOURCES) / FLAT_CONT_UNIFIED_SOURCE_GROUP_SIZE;
+constexpr unsigned FLAT_CONT_UNIFIED_MAX_GRID_DIM = (FLAT_CONT_MAX_BASE_SOURCES + FLAT_CONT_MAX_EXT_SOURCES) / FLAT_CONT_UNIFIED_SOURCE_GROUP_SIZE;
 constexpr unsigned FLAT_CONT_UNIFIED_MAX_TERMS = 1024;
 constexpr unsigned FLAT_CONT_UNIFIED_MAX_TILES = FLAT_CONT_UNIFIED_MAX_TERMS;
-constexpr unsigned FLAT_CONT_UNIFIED_MAX_FOLD_SOURCES =
-    FLAT_CONT_MAX_BASE_SOURCES + FLAT_CONT_MAX_EXT_SOURCES;
+constexpr unsigned FLAT_CONT_UNIFIED_MAX_FOLD_SOURCES = FLAT_CONT_MAX_BASE_SOURCES + FLAT_CONT_MAX_EXT_SOURCES;
 
 // --- Round 1 static description ---
 // Base sources: gkr_base_after_one_source (self-contained, includes fold params).
@@ -277,9 +275,9 @@ DEVICE_FORCEINLINE void flat_round1_compute_unified(const flat_round1_unified_de
     case TERM_TYPE_C0_ONLY_LINEAR: {
       E f0, f1;
       flat_round1_load_pair_cached<E, EXPLICIT_FORM>(desc, t.source_a, next_layer_size, gid, f0, f1);
-      c0 = E::add(c0, E::mul(k, f0));
+      c0 = E::fma(k, f0, c0);
       if constexpr (EXPLICIT_FORM)
-        c1 = E::add(c1, E::mul(k, f1));
+        c1 = E::fma(k, f1, c1);
       break;
     }
     case TERM_TYPE_UNIFIED_QUADRATIC: {
@@ -287,15 +285,15 @@ DEVICE_FORCEINLINE void flat_round1_compute_unified(const flat_round1_unified_de
       flat_round1_load_pair_cached<E, EXPLICIT_FORM>(desc, t.source_a, next_layer_size, gid, a0, a1);
       E b0, b1;
       flat_round1_load_pair_cached<E, EXPLICIT_FORM>(desc, t.source_b, next_layer_size, gid, b0, b1);
-      c0 = E::add(c0, E::mul(k, E::mul(a0, b0)));
-      c1 = E::add(c1, E::mul(k, E::mul(a1, b1)));
+      c0 = E::fma(k, E::mul(a0, b0), c0);
+      c1 = E::fma(k, E::mul(a1, b1), c1);
       break;
     }
     case TERM_TYPE_UNIFIED_LINEAR: {
       E f0, f1;
       flat_round1_load_pair_cached<E, EXPLICIT_FORM>(desc, t.source_a, next_layer_size, gid, f0, f1);
-      c0 = E::add(c0, E::mul(k, f0));
-      c1 = E::add(c1, E::mul(k, f1));
+      c0 = E::fma(k, f0, c0);
+      c1 = E::fma(k, f1, c1);
       break;
     }
     }
@@ -354,9 +352,9 @@ DEVICE_FORCEINLINE void flat_cont_compute_unified(const flat_continuation_unifie
     case TERM_TYPE_C0_ONLY_LINEAR: {
       E f0, f1;
       flat_cont_load_pair_cached<E, EXPLICIT_FORM>(desc, t.source_a, next_layer_size, gid, f0, f1);
-      c0 = E::add(c0, E::mul(k, f0));
+      c0 = E::fma(k, f0, c0);
       if constexpr (EXPLICIT_FORM)
-        c1 = E::add(c1, E::mul(k, f1));
+        c1 = E::fma(k, f1, c1);
       break;
     }
     case TERM_TYPE_UNIFIED_QUADRATIC: {
@@ -364,15 +362,15 @@ DEVICE_FORCEINLINE void flat_cont_compute_unified(const flat_continuation_unifie
       flat_cont_load_pair_cached<E, EXPLICIT_FORM>(desc, t.source_a, next_layer_size, gid, a0, a1);
       E b0, b1;
       flat_cont_load_pair_cached<E, EXPLICIT_FORM>(desc, t.source_b, next_layer_size, gid, b0, b1);
-      c0 = E::add(c0, E::mul(k, E::mul(a0, b0)));
-      c1 = E::add(c1, E::mul(k, E::mul(a1, b1)));
+      c0 = E::fma(k, E::mul(a0, b0), c0);
+      c1 = E::fma(k, E::mul(a1, b1), c1);
       break;
     }
     case TERM_TYPE_UNIFIED_LINEAR: {
       E f0, f1;
       flat_cont_load_pair_cached<E, EXPLICIT_FORM>(desc, t.source_a, next_layer_size, gid, f0, f1);
-      c0 = E::add(c0, E::mul(k, f0));
-      c1 = E::add(c1, E::mul(k, f1));
+      c0 = E::fma(k, f0, c0);
+      c1 = E::fma(k, f1, c1);
       break;
     }
     }
@@ -444,9 +442,9 @@ DEVICE_FORCEINLINE void flat_round2_compute_unified(const flat_round2_unified_de
     case TERM_TYPE_C0_ONLY_LINEAR: {
       E f0, f1;
       flat_round2_load_pair_cached<E, EXPLICIT_FORM>(desc, t.source_a, next_layer_size, gid, f0, f1);
-      c0 = E::add(c0, E::mul(k, f0));
+      c0 = E::fma(k, f0, c0);
       if constexpr (EXPLICIT_FORM)
-        c1 = E::add(c1, E::mul(k, f1));
+        c1 = E::fma(k, f1, c1);
       break;
     }
     case TERM_TYPE_UNIFIED_QUADRATIC: {
@@ -454,15 +452,15 @@ DEVICE_FORCEINLINE void flat_round2_compute_unified(const flat_round2_unified_de
       flat_round2_load_pair_cached<E, EXPLICIT_FORM>(desc, t.source_a, next_layer_size, gid, a0, a1);
       E b0, b1;
       flat_round2_load_pair_cached<E, EXPLICIT_FORM>(desc, t.source_b, next_layer_size, gid, b0, b1);
-      c0 = E::add(c0, E::mul(k, E::mul(a0, b0)));
-      c1 = E::add(c1, E::mul(k, E::mul(a1, b1)));
+      c0 = E::fma(k, E::mul(a0, b0), c0);
+      c1 = E::fma(k, E::mul(a1, b1), c1);
       break;
     }
     case TERM_TYPE_UNIFIED_LINEAR: {
       E f0, f1;
       flat_round2_load_pair_cached<E, EXPLICIT_FORM>(desc, t.source_a, next_layer_size, gid, f0, f1);
-      c0 = E::add(c0, E::mul(k, f0));
-      c1 = E::add(c1, E::mul(k, f1));
+      c0 = E::fma(k, f0, c0);
+      c1 = E::fma(k, f1, c1);
       break;
     }
     }
