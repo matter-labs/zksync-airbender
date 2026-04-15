@@ -17,6 +17,23 @@ constexpr unsigned FLAT_CONT_MAX_UNIFIED_QUADRATIC = 4608;
 constexpr unsigned FLAT_CONT_MAX_UNIFIED_LINEAR = 128;
 constexpr unsigned FLAT_CONT_MAX_CONSTANT = 64;
 
+// Term types for the unified term array.
+constexpr u16 TERM_TYPE_CONSTANT = 0;
+constexpr u16 TERM_TYPE_C0_ONLY_LINEAR = 1;
+constexpr u16 TERM_TYPE_UNIFIED_QUADRATIC = 2;
+constexpr u16 TERM_TYPE_UNIFIED_LINEAR = 3;
+
+// Unified term entry: mixes all term types in a single array.
+// coeff_idx maps into the typed coefficient layout in __constant__ memory.
+struct flat_unified_term {
+  u16 source_a;
+  u16 source_b;
+  u16 term_type;
+  u16 coeff_idx;
+};
+
+// flat_round1_unified_desc: defined below, after round 1/2 source types.
+
 // Compact source descriptor for continuing sources (round 3+).
 // Stores only what varies per source — fold_stride (this_layer_size) and
 // next_layer_size are uniform within a step and passed as kernel parameters.
@@ -163,6 +180,15 @@ constexpr unsigned FLAT_CONT_MAX_EXT_SOURCES = 384;
 // Source index encoding: bit 15 = 1 means ext_sources[], bit 15 = 0 means base_sources[].
 constexpr u16 FLAT_CONT_EXT_SOURCE_BIT = 0x8000;
 
+// Unified tiled kernel constants.
+constexpr unsigned FLAT_CONT_UNIFIED_SOURCE_GROUP_SIZE = 4;
+constexpr unsigned FLAT_CONT_UNIFIED_MAX_GRID_DIM =
+    (FLAT_CONT_MAX_BASE_SOURCES + FLAT_CONT_MAX_EXT_SOURCES) / FLAT_CONT_UNIFIED_SOURCE_GROUP_SIZE;
+constexpr unsigned FLAT_CONT_UNIFIED_MAX_TERMS = 1024;
+constexpr unsigned FLAT_CONT_UNIFIED_MAX_TILES = FLAT_CONT_UNIFIED_MAX_TERMS;
+constexpr unsigned FLAT_CONT_UNIFIED_MAX_FOLD_SOURCES =
+    FLAT_CONT_MAX_BASE_SOURCES + FLAT_CONT_MAX_EXT_SOURCES;
+
 // --- Round 1 static description ---
 // Base sources: gkr_base_after_one_source (self-contained, includes fold params).
 // Ext sources: flat_continuing_source_entry (uses kernel-level fold_stride/next_layer_size).
@@ -181,6 +207,26 @@ template <typename B, typename E> struct flat_round1_static_desc {
   flat_c0_ref unified_linear[FLAT_CONT_MAX_UNIFIED_LINEAR];
   u32 num_unified_linear;
   u32 num_constants;
+};
+
+// Combined descriptor for the unified round 1 kernel: sources + mixed terms
+// with per-tile fold/compute metadata. Passed as a single __grid_constant__.
+template <typename B, typename E> struct flat_round1_unified_desc {
+  gkr_base_after_one_source<B, E> base_sources[FLAT_CONT_MAX_BASE_SOURCES];
+  u32 num_base_sources;
+
+  flat_continuing_source_entry<E> ext_sources[FLAT_CONT_MAX_EXT_SOURCES];
+  u32 num_ext_sources;
+
+  flat_unified_term terms[FLAT_CONT_UNIFIED_MAX_TERMS];
+  u32 num_terms;
+
+  // Tile metadata.
+  u32 num_constant_terms;
+  u32 num_tiles;
+  u16 tile_term_offsets[FLAT_CONT_UNIFIED_MAX_TILES + 1];
+  u16 tile_fold_offsets[FLAT_CONT_UNIFIED_MAX_TILES + 1];
+  u16 fold_sources[FLAT_CONT_UNIFIED_MAX_FOLD_SOURCES];
 };
 
 // Round 1 load pair: dispatches on source type bit.
@@ -438,6 +484,94 @@ DEVICE_FORCEINLINE void flat_round1_compute_warp_split(const flat_round1_static_
     const E k = coeff(coeff_base + i);
     c0 = E::add(c0, E::mul(k, f0));
     c1 = E::add(c1, E::mul(k, f1));
+  }
+}
+
+// --- Unified tiled kernel: per-tile fold → sync → compute from cache ---
+
+// Per-tile fold: fold sources from the fold_sources list, distributed across warps.
+// Syncs after folding if any work was done.
+template <typename E, unsigned NUM_WARPS>
+DEVICE_FORCEINLINE void flat_round1_tile_fold(const flat_round1_unified_desc<bf, E> &desc, const unsigned fold_start, const unsigned fold_end,
+                                              const E &folding_challenge, const unsigned fold_stride, const unsigned next_layer_size, const unsigned gid,
+                                              const unsigned warp_id) {
+  if (fold_start == fold_end)
+    return;
+  for (unsigned s = fold_start + warp_id; s < fold_end; s += NUM_WARPS) {
+    const u16 src_idx = desc.fold_sources[s];
+    if (src_idx & FLAT_CONT_EXT_SOURCE_BIT) {
+      const auto &entry = desc.ext_sources[src_idx & ~FLAT_CONT_EXT_SOURCE_BIT];
+      flat_cont_fold_and_load(entry, folding_challenge, fold_stride, gid);
+      flat_cont_fold_and_load(entry, folding_challenge, fold_stride, next_layer_size + gid);
+    } else {
+      const auto &source = desc.base_sources[src_idx];
+      gkr_get_base_after_one_value(source, folding_challenge, gid);
+      gkr_get_base_after_one_value(source, folding_challenge, next_layer_size + gid);
+    }
+  }
+  __syncthreads();
+}
+
+// Load pair from cache only (fold already done).
+template <typename E, bool EXPLICIT_FORM>
+DEVICE_FORCEINLINE void flat_round1_load_pair_cached(const flat_round1_unified_desc<bf, E> &desc, const u16 source_idx, const unsigned next_layer_size,
+                                                     const unsigned gid, E &f0, E &f1_or_delta) {
+  const E *cache;
+  if (source_idx & FLAT_CONT_EXT_SOURCE_BIT) {
+    cache = desc.ext_sources[source_idx & ~FLAT_CONT_EXT_SOURCE_BIT].this_layer_cache_start;
+  } else {
+    cache = desc.base_sources[source_idx].this_layer_cache_start;
+  }
+  f0 = load<E, ld_modifier::ca>(cache, gid);
+  const E f1 = load<E, ld_modifier::ca>(cache, next_layer_size + gid);
+  if constexpr (EXPLICIT_FORM) {
+    f1_or_delta = f1;
+  } else {
+    f1_or_delta = E::sub(f1, f0);
+  }
+}
+
+// Process a range of unified terms from cache. Warp-split with interleaving.
+template <typename E, bool EXPLICIT_FORM, unsigned NUM_WARPS>
+DEVICE_FORCEINLINE void flat_round1_compute_unified(const flat_round1_unified_desc<bf, E> &desc, const unsigned term_start, const unsigned term_end,
+                                                    const unsigned next_layer_size, const unsigned gid, const unsigned warp_id, E &c0, E &c1) {
+  coeff_loader_constant_indexed coeff{};
+
+  for (unsigned i = term_start + warp_id; i < term_end; i += NUM_WARPS) {
+    const flat_unified_term t = desc.terms[i];
+    const E k = coeff(t.coeff_idx);
+
+    switch (t.term_type) {
+    case TERM_TYPE_CONSTANT:
+      c0 = E::add(c0, k);
+      if constexpr (EXPLICIT_FORM)
+        c1 = E::add(c1, k);
+      break;
+    case TERM_TYPE_C0_ONLY_LINEAR: {
+      E f0, f1;
+      flat_round1_load_pair_cached<E, EXPLICIT_FORM>(desc, t.source_a, next_layer_size, gid, f0, f1);
+      c0 = E::add(c0, E::mul(k, f0));
+      if constexpr (EXPLICIT_FORM)
+        c1 = E::add(c1, E::mul(k, f1));
+      break;
+    }
+    case TERM_TYPE_UNIFIED_QUADRATIC: {
+      E a0, a1;
+      flat_round1_load_pair_cached<E, EXPLICIT_FORM>(desc, t.source_a, next_layer_size, gid, a0, a1);
+      E b0, b1;
+      flat_round1_load_pair_cached<E, EXPLICIT_FORM>(desc, t.source_b, next_layer_size, gid, b0, b1);
+      c0 = E::add(c0, E::mul(k, E::mul(a0, b0)));
+      c1 = E::add(c1, E::mul(k, E::mul(a1, b1)));
+      break;
+    }
+    case TERM_TYPE_UNIFIED_LINEAR: {
+      E f0, f1;
+      flat_round1_load_pair_cached<E, EXPLICIT_FORM>(desc, t.source_a, next_layer_size, gid, f0, f1);
+      c0 = E::add(c0, E::mul(k, f0));
+      c1 = E::add(c1, E::mul(k, f1));
+      break;
+    }
+    }
   }
 }
 
