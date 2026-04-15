@@ -24,7 +24,7 @@ pub trait Field:
     const TWO: Self;
     const MINUS_ONE: Self;
 
-    type CharField = Self;
+    type CharField;
 
     // zero check
     fn is_zero(&self) -> bool;

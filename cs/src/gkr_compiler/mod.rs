@@ -334,11 +334,14 @@ pub enum NoFieldGKRRelation {
     // LookupAggregationPostTrivialNumerator(NoFieldLookupPostTrivialNumeratorRelation),
 
     // Copy across GKR layers, relation is a(x) = \sum_y eq(x, y) a(y) formally
-    Copy {
+    CopyInBaseField {
         input: GKRAddress,
         output: GKRAddress,
     },
-
+    CopyInExtensionField {
+        input: GKRAddress,
+        output: GKRAddress,
+    },
     // Memory-like argument related
 
     // Computes (memory tuple) * (memory tuple)
@@ -514,7 +517,16 @@ impl NoFieldGKRRelation {
             Self::LinearBaseFieldRelation { .. } => vec![],
             Self::MaxQuadratic { input, output } => vec![],
             Self::EnforceConstraintsMaxQuadratic { input } => vec![],
-            Self::Copy { input, output } => {
+            Self::CopyInBaseField { input, output } => {
+                assert!(output.is_cache() == false);
+
+                if input.is_cache() {
+                    vec![*input]
+                } else {
+                    vec![]
+                }
+            }
+            Self::CopyInExtensionField { input, output } => {
                 assert!(output.is_cache() == false);
 
                 if input.is_cache() {

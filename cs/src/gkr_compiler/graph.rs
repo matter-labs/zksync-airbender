@@ -8,8 +8,10 @@ use std::{collections::BTreeMap, hash::Hash};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum CopyNode {
-    FromBase(GKRAddress),
-    FromIntermediate(GKRAddress),
+    FromBaseLayerInBase(GKRAddress),
+    FromBaseLayerInExtension(GKRAddress),
+    FromIntermediateInBase(GKRAddress),
+    FromIntermediateInExtension(GKRAddress),
 }
 
 impl GKRGate for CopyNode {
@@ -17,11 +19,11 @@ impl GKRGate for CopyNode {
 
     fn short_name(&self) -> String {
         match self {
-            Self::FromBase(var) => {
-                format!("Copy of {:?}", var)
+            Self::FromBaseLayerInBase(var) | Self::FromIntermediateInBase(var) => {
+                format!("Copy of {:?} in base field", var)
             }
-            Self::FromIntermediate(var) => {
-                format!("Copy of {:?}", var)
+            Self::FromBaseLayerInExtension(var) | Self::FromIntermediateInExtension(var) => {
+                format!("Copy of {:?} in extension field", var)
             }
         }
     }
@@ -33,15 +35,31 @@ impl GKRGate for CopyNode {
         output_layer: usize,
     ) -> (Self::Output, NoFieldGKRRelation) {
         let output = graph.add_intermediate_variable_at_layer(output_layer);
-        let input = match self {
-            Self::FromBase(input) => *input,
-            Self::FromIntermediate(input) => *input,
-        };
-        println!("Copying variable {:?} -> {:?}", input, output);
-        let rel = NoFieldGKRRelation::Copy { input, output };
-        graph.add_enforced_relation(rel.clone(), output_layer);
+        match self {
+            Self::FromBaseLayerInBase(input) | Self::FromIntermediateInBase(input) => {
+                println!("Copying variable {:?} -> {:?} in base field", input, output);
+                let rel = NoFieldGKRRelation::CopyInBaseField {
+                    input: *input,
+                    output,
+                };
+                graph.add_enforced_relation(rel.clone(), output_layer);
 
-        (output, rel)
+                (output, rel)
+            }
+            Self::FromBaseLayerInExtension(input) | Self::FromIntermediateInExtension(input) => {
+                println!(
+                    "Copying variable {:?} -> {:?} in extension field",
+                    input, output
+                );
+                let rel = NoFieldGKRRelation::CopyInExtensionField {
+                    input: *input,
+                    output,
+                };
+                graph.add_enforced_relation(rel.clone(), output_layer);
+
+                (output, rel)
+            }
+        }
     }
 }
 
@@ -345,17 +363,27 @@ impl GraphHolder for GKRGraph {
 
     fn copy_base_layer_variable(&mut self, variable: Variable) -> GKRAddress {
         let pos = self.get_address_for_variable(variable);
-        let node = CopyNode::FromBase(pos);
+        let node = CopyNode::FromBaseLayerInBase(pos);
         let (out, _) = node.add_at_layer(self, 1);
 
         out
     }
 
-    fn copy_intermediate_layer_variable(&mut self, pos: GKRAddress) -> GKRAddress {
+    fn copy_intermediate_layer_base_field_variable(&mut self, pos: GKRAddress) -> GKRAddress {
         let GKRAddress::InnerLayer { layer, .. } = pos else {
             unreachable!()
         };
-        let node = CopyNode::FromIntermediate(pos);
+        let node = CopyNode::FromIntermediateInBase(pos);
+        let (out, _) = node.add_at_layer(self, layer + 1);
+
+        out
+    }
+
+    fn copy_intermediate_layer_extension_field_variable(&mut self, pos: GKRAddress) -> GKRAddress {
+        let GKRAddress::InnerLayer { layer, .. } = pos else {
+            unreachable!()
+        };
+        let node = CopyNode::FromIntermediateInExtension(pos);
         let (out, _) = node.add_at_layer(self, layer + 1);
 
         out
@@ -378,7 +406,11 @@ pub trait GraphHolder {
 
     // copy variables across layers
     fn copy_base_layer_variable(&mut self, variable: Variable) -> GKRAddress;
-    fn copy_intermediate_layer_variable(&mut self, variable: GKRAddress) -> GKRAddress;
+    fn copy_intermediate_layer_base_field_variable(&mut self, variable: GKRAddress) -> GKRAddress;
+    fn copy_intermediate_layer_extension_field_variable(
+        &mut self,
+        variable: GKRAddress,
+    ) -> GKRAddress;
 
     // add cached relations
     fn add_cached_relation(

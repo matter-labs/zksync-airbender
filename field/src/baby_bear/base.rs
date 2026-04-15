@@ -292,6 +292,8 @@ impl Field for BabyBearField {
     const TWO: Self = Self::new(2);
     const MINUS_ONE: Self = Self::new(Self::ORDER - 1);
 
+    type CharField = Self;
+
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn is_zero(&self) -> bool {
         self.is_zero_impl()
@@ -522,25 +524,191 @@ impl crate::TwoAdicField for BabyBearField {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::field::Field;
+    use proptest::prelude::*;
 
-    #[test]
-    fn calculator() {
-        let one = BabyBearField::ONE;
-        // one = 268435454
-        dbg!(one);
-        dbg!(one.0);
-
-        dbg!(BabyBearField::TWO_ADICITY_GENERATORS);
-        dbg!(BabyBearField::TWO_ADICITY_GENERATORS_INVERSED);
+    fn arb_babybear() -> impl Strategy<Value = u32> {
+        0..BabyBearField::ORDER
     }
 
     #[test]
     fn test_inversion_chain() {
         let el = BabyBearField::new(42);
         let pow = BabyBearField::CHARACTERISTICS - 2;
-        dbg!(pow);
         let naive_inverse = el.pow(pow);
         let faster_inverse = el.inverse_impl().unwrap();
         assert_eq!(naive_inverse, faster_inverse);
+    }
+
+    // --- Field axiom tests ---
+
+    proptest! {
+        #[test]
+        fn add_commutative(a in arb_babybear(), b in arb_babybear()) {
+            let fa = BabyBearField::new(a);
+            let fb = BabyBearField::new(b);
+            let mut ab = fa; ab.add_assign(&fb);
+            let mut ba = fb; ba.add_assign(&fa);
+            prop_assert_eq!(ab, ba);
+        }
+
+        #[test]
+        fn add_associative(a in arb_babybear(), b in arb_babybear(), c in arb_babybear()) {
+            let fa = BabyBearField::new(a);
+            let fb = BabyBearField::new(b);
+            let fc = BabyBearField::new(c);
+            let mut ab = fa; ab.add_assign(&fb);
+            let mut abc_left = ab; abc_left.add_assign(&fc);
+            let mut bc = fb; bc.add_assign(&fc);
+            let mut abc_right = fa; abc_right.add_assign(&bc);
+            prop_assert_eq!(abc_left, abc_right);
+        }
+
+        #[test]
+        fn add_identity(a in arb_babybear()) {
+            let fa = BabyBearField::new(a);
+            let mut r = fa;
+            r.add_assign(&BabyBearField::ZERO);
+            prop_assert_eq!(r, fa);
+        }
+
+        #[test]
+        fn add_inverse(a in arb_babybear()) {
+            let fa = BabyBearField::new(a);
+            let mut neg = fa; neg.negate();
+            let mut sum = fa; sum.add_assign(&neg);
+            prop_assert_eq!(sum, BabyBearField::ZERO);
+        }
+
+        #[test]
+        fn mul_commutative(a in arb_babybear(), b in arb_babybear()) {
+            let fa = BabyBearField::new(a);
+            let fb = BabyBearField::new(b);
+            let mut ab = fa; ab.mul_assign(&fb);
+            let mut ba = fb; ba.mul_assign(&fa);
+            prop_assert_eq!(ab, ba);
+        }
+
+        #[test]
+        fn mul_associative(a in arb_babybear(), b in arb_babybear(), c in arb_babybear()) {
+            let fa = BabyBearField::new(a);
+            let fb = BabyBearField::new(b);
+            let fc = BabyBearField::new(c);
+            let mut ab = fa; ab.mul_assign(&fb);
+            let mut abc_left = ab; abc_left.mul_assign(&fc);
+            let mut bc = fb; bc.mul_assign(&fc);
+            let mut abc_right = fa; abc_right.mul_assign(&bc);
+            prop_assert_eq!(abc_left, abc_right);
+        }
+
+        #[test]
+        fn mul_identity(a in arb_babybear()) {
+            let fa = BabyBearField::new(a);
+            let mut r = fa;
+            r.mul_assign(&BabyBearField::ONE);
+            prop_assert_eq!(r, fa);
+        }
+
+        #[test]
+        fn mul_inverse(a in 1..BabyBearField::ORDER) {
+            let fa = BabyBearField::new(a);
+            let inv = fa.inverse().unwrap();
+            let mut product = fa;
+            product.mul_assign(&inv);
+            prop_assert_eq!(product, BabyBearField::ONE);
+        }
+
+        #[test]
+        fn distributive(a in arb_babybear(), b in arb_babybear(), c in arb_babybear()) {
+            let fa = BabyBearField::new(a);
+            let fb = BabyBearField::new(b);
+            let fc = BabyBearField::new(c);
+            let mut bc = fb; bc.add_assign(&fc);
+            let mut left = fa; left.mul_assign(&bc);
+            let mut ab = fa; ab.mul_assign(&fb);
+            let mut ac = fa; ac.mul_assign(&fc);
+            let mut right = ab; right.add_assign(&ac);
+            prop_assert_eq!(left, right);
+        }
+
+        #[test]
+        fn sub_is_add_neg(a in arb_babybear(), b in arb_babybear()) {
+            let fa = BabyBearField::new(a);
+            let fb = BabyBearField::new(b);
+            let mut via_sub = fa; via_sub.sub_assign(&fb);
+            let mut neg_b = fb; neg_b.negate();
+            let mut via_add = fa; via_add.add_assign(&neg_b);
+            prop_assert_eq!(via_sub, via_add);
+        }
+
+        #[test]
+        fn double_is_add_self(a in arb_babybear()) {
+            let fa = BabyBearField::new(a);
+            let mut doubled = fa; doubled.double();
+            let mut added = fa; added.add_assign(&fa);
+            prop_assert_eq!(doubled, added);
+        }
+
+        #[test]
+        fn square_is_mul_self(a in arb_babybear()) {
+            let fa = BabyBearField::new(a);
+            let mut squared = fa; squared.square();
+            let mut mulled = fa; mulled.mul_assign(&fa);
+            prop_assert_eq!(squared, mulled);
+        }
+    }
+
+    // --- Const value and generator tests ---
+
+    #[test]
+    fn two_adicity_generators_are_valid() {
+        for k in 1..=27 {
+            let g = BabyBearField::TWO_ADICITY_GENERATORS[k];
+            let mut powered = g;
+            for _ in 0..k {
+                powered.square();
+            }
+            assert_eq!(powered, BabyBearField::ONE, "generator[{k}]^(2^{k}) != 1");
+
+            let mut half_powered = g;
+            for _ in 0..k - 1 {
+                half_powered.square();
+            }
+            assert_ne!(
+                half_powered,
+                BabyBearField::ONE,
+                "generator[{k}] has order < 2^{k}"
+            );
+        }
+    }
+
+    #[test]
+    fn two_adicity_generators_inversed_are_correct() {
+        for k in 0..=27 {
+            let g = BabyBearField::TWO_ADICITY_GENERATORS[k];
+            let g_inv = BabyBearField::TWO_ADICITY_GENERATORS_INVERSED[k];
+            let mut product = g;
+            product.mul_assign(&g_inv);
+            assert_eq!(
+                product,
+                BabyBearField::ONE,
+                "generator[{k}] * inverse[{k}] != 1"
+            );
+        }
+    }
+
+    #[test]
+    fn const_values_are_correct() {
+        assert_eq!(BabyBearField::NON_RES.to_u32(), 11);
+
+        let mut two_halves = BabyBearField::HALF;
+        two_halves.double();
+        assert_eq!(two_halves, BabyBearField::ONE);
+
+        assert_eq!(BabyBearField::TWO.to_u32(), 2);
+
+        let mut should_be_zero = BabyBearField::MINUS_ONE;
+        should_be_zero.add_assign(&BabyBearField::ONE);
+        assert_eq!(should_be_zero, BabyBearField::ZERO);
     }
 }

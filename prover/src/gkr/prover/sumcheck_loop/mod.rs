@@ -210,7 +210,6 @@ where
         layer,
         layer_idx,
         batch_challenge_base,
-        gkr_storage,
         lookup_challenges_multiplicative_part,
         lookup_challenges_additive_part,
         constraints_batch_challenge,

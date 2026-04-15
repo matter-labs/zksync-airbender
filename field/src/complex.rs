@@ -523,3 +523,108 @@ impl FieldExtension<Mersenne31Field> for Mersenne31Complex {
         }
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::field::Field;
+    use proptest::prelude::*;
+
+    fn arb_mersenne31_complex() -> impl Strategy<Value = Mersenne31Complex> {
+        (0..Mersenne31Field::ORDER, 0..Mersenne31Field::ORDER).prop_map(|(a, b)| {
+            Mersenne31Complex::new(Mersenne31Field::new(a), Mersenne31Field::new(b))
+        })
+    }
+
+    proptest! {
+        #[test]
+        fn mul_commutative(
+            a in arb_mersenne31_complex(),
+            b in arb_mersenne31_complex(),
+        ) {
+            let mut ab = a; ab.mul_assign(&b);
+            let mut ba = b; ba.mul_assign(&a);
+            prop_assert_eq!(ab, ba);
+        }
+
+        #[test]
+        fn mul_associative(
+            a in arb_mersenne31_complex(),
+            b in arb_mersenne31_complex(),
+            c in arb_mersenne31_complex(),
+        ) {
+            let mut ab = a; ab.mul_assign(&b);
+            let mut abc_left = ab; abc_left.mul_assign(&c);
+            let mut bc = b; bc.mul_assign(&c);
+            let mut abc_right = a; abc_right.mul_assign(&bc);
+            prop_assert_eq!(abc_left, abc_right);
+        }
+
+        #[test]
+        fn mul_inverse(a in arb_mersenne31_complex()) {
+            if let Some(inv) = a.inverse() {
+                let mut product = a;
+                product.mul_assign(&inv);
+                prop_assert_eq!(product, Mersenne31Complex::ONE);
+            }
+        }
+
+        #[test]
+        fn distributive(
+            a in arb_mersenne31_complex(),
+            b in arb_mersenne31_complex(),
+            c in arb_mersenne31_complex(),
+        ) {
+            let mut bc = b; bc.add_assign(&c);
+            let mut left = a; left.mul_assign(&bc);
+            let mut ab = a; ab.mul_assign(&b);
+            let mut ac = a; ac.mul_assign(&c);
+            let mut right = ab; right.add_assign(&ac);
+            prop_assert_eq!(left, right);
+        }
+
+        #[test]
+        fn square_is_mul_self(a in arb_mersenne31_complex()) {
+            let mut squared = a; squared.square();
+            let mut mulled = a; mulled.mul_assign(&a);
+            prop_assert_eq!(squared, mulled);
+        }
+    }
+
+    #[test]
+    fn two_adicity_generators_are_valid() {
+        for k in 1..=31 {
+            let g = Mersenne31Complex::TWO_ADICITY_GENERATORS[k];
+            let mut powered = g;
+            for _ in 0..k {
+                powered.square();
+            }
+            assert_eq!(powered, Mersenne31Complex::ONE, "generator[{k}]^(2^{k}) != 1");
+
+            let mut half_powered = g;
+            for _ in 0..k - 1 {
+                half_powered.square();
+            }
+            assert_ne!(
+                half_powered,
+                Mersenne31Complex::ONE,
+                "generator[{k}] has order < 2^{k}"
+            );
+        }
+    }
+
+    #[test]
+    fn two_adicity_generators_inversed_are_correct() {
+        for k in 0..=31 {
+            let g = Mersenne31Complex::TWO_ADICITY_GENERATORS[k];
+            let g_inv = Mersenne31Complex::TWO_ADICITY_GENERATORS_INVERSED[k];
+            let mut product = g;
+            product.mul_assign(&g_inv);
+            assert_eq!(
+                product,
+                Mersenne31Complex::ONE,
+                "generator[{k}] * inverse[{k}] != 1"
+            );
+        }
+    }
+}

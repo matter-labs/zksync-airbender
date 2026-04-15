@@ -702,7 +702,7 @@
         {
           "output_layer": 1,
           "enforced_relation": {
-            "Copy": {
+            "CopyInBaseField": {
               "input": {
                 "BaseLayerMemory": 20
               },
@@ -1021,7 +1021,7 @@
         {
           "output_layer": 1,
           "enforced_relation": {
-            "Copy": {
+            "CopyInBaseField": {
               "input": {
                 "BaseLayerWitness": 4
               },
@@ -1190,7 +1190,7 @@
         {
           "output_layer": 1,
           "enforced_relation": {
-            "Copy": {
+            "CopyInBaseField": {
               "input": {
                 "BaseLayerMemory": 20
               },
@@ -1238,7 +1238,7 @@
         {
           "output_layer": 1,
           "enforced_relation": {
-            "Copy": {
+            "CopyInBaseField": {
               "input": {
                 "BaseLayerMemory": 26
               },
@@ -1388,7 +1388,7 @@
         {
           "output_layer": 1,
           "enforced_relation": {
-            "Copy": {
+            "CopyInBaseField": {
               "input": {
                 "Cached": {
                   "layer": 0,
@@ -2019,7 +2019,7 @@
         {
           "output_layer": 2,
           "enforced_relation": {
-            "Copy": {
+            "CopyInBaseField": {
               "input": {
                 "InnerLayer": {
                   "layer": 1,
@@ -2038,7 +2038,7 @@
         {
           "output_layer": 2,
           "enforced_relation": {
-            "Copy": {
+            "CopyInBaseField": {
               "input": {
                 "InnerLayer": {
                   "layer": 1,
@@ -2095,7 +2095,7 @@
         {
           "output_layer": 2,
           "enforced_relation": {
-            "Copy": {
+            "CopyInBaseField": {
               "input": {
                 "InnerLayer": {
                   "layer": 1,
@@ -2209,7 +2209,7 @@
         {
           "output_layer": 2,
           "enforced_relation": {
-            "Copy": {
+            "CopyInBaseField": {
               "input": {
                 "InnerLayer": {
                   "layer": 1,
@@ -2320,7 +2320,7 @@
         {
           "output_layer": 2,
           "enforced_relation": {
-            "Copy": {
+            "CopyInExtensionField": {
               "input": {
                 "InnerLayer": {
                   "layer": 1,
@@ -2339,7 +2339,7 @@
         {
           "output_layer": 2,
           "enforced_relation": {
-            "Copy": {
+            "CopyInExtensionField": {
               "input": {
                 "InnerLayer": {
                   "layer": 1,
@@ -2358,7 +2358,7 @@
         {
           "output_layer": 2,
           "enforced_relation": {
-            "Copy": {
+            "CopyInExtensionField": {
               "input": {
                 "InnerLayer": {
                   "layer": 1,
@@ -2377,7 +2377,7 @@
         {
           "output_layer": 2,
           "enforced_relation": {
-            "Copy": {
+            "CopyInExtensionField": {
               "input": {
                 "InnerLayer": {
                   "layer": 1,
@@ -2721,7 +2721,7 @@
         {
           "output_layer": 3,
           "enforced_relation": {
-            "Copy": {
+            "CopyInExtensionField": {
               "input": {
                 "InnerLayer": {
                   "layer": 2,
@@ -2740,7 +2740,7 @@
         {
           "output_layer": 3,
           "enforced_relation": {
-            "Copy": {
+            "CopyInExtensionField": {
               "input": {
                 "InnerLayer": {
                   "layer": 2,
@@ -2856,7 +2856,7 @@
         {
           "output_layer": 4,
           "enforced_relation": {
-            "Copy": {
+            "CopyInExtensionField": {
               "input": {
                 "InnerLayer": {
                   "layer": 3,
@@ -2875,7 +2875,7 @@
         {
           "output_layer": 4,
           "enforced_relation": {
-            "Copy": {
+            "CopyInExtensionField": {
               "input": {
                 "InnerLayer": {
                   "layer": 3,
@@ -2894,7 +2894,7 @@
         {
           "output_layer": 4,
           "enforced_relation": {
-            "Copy": {
+            "CopyInExtensionField": {
               "input": {
                 "InnerLayer": {
                   "layer": 3,
@@ -2913,7 +2913,7 @@
         {
           "output_layer": 4,
           "enforced_relation": {
-            "Copy": {
+            "CopyInExtensionField": {
               "input": {
                 "InnerLayer": {
                   "layer": 3,
@@ -2932,7 +2932,7 @@
         {
           "output_layer": 4,
           "enforced_relation": {
-            "Copy": {
+            "CopyInExtensionField": {
               "input": {
                 "InnerLayer": {
                   "layer": 3,
@@ -2951,7 +2951,7 @@
         {
           "output_layer": 4,
           "enforced_relation": {
-            "Copy": {
+            "CopyInExtensionField": {
               "input": {
                 "InnerLayer": {
                   "layer": 3,

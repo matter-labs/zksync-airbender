@@ -727,8 +727,9 @@ fn drive_lookup_placement<F: PrimeField, const SINGLE_COLUMN: bool>(
                 LookupNumerator::Identity,
                 LookupDenominator::BaseFieldValueWithoutAdditiveConstant(input),
             ) => {
+                assert!(SINGLE_COLUMN);
                 let output = graph.add_intermediate_variable_at_layer(input_layer + 1);
-                let relation = NoFieldGKRRelation::Copy { input, output };
+                let relation = NoFieldGKRRelation::CopyInBaseField { input, output };
                 graph.add_enforced_relation(relation.clone(), input_layer + 1);
 
                 intermediate_values
@@ -743,8 +744,9 @@ fn drive_lookup_placement<F: PrimeField, const SINGLE_COLUMN: bool>(
                 LookupNumerator::Identity,
                 LookupDenominator::ExtensionFieldValueWithoutAdditiveConstant(input),
             ) => {
+                assert!(SINGLE_COLUMN == false);
                 let output = graph.add_intermediate_variable_at_layer(input_layer + 1);
-                let relation = NoFieldGKRRelation::Copy { input, output };
+                let relation = NoFieldGKRRelation::CopyInExtensionField { input, output };
                 graph.add_enforced_relation(relation.clone(), input_layer + 1);
 
                 intermediate_values
@@ -762,7 +764,7 @@ fn drive_lookup_placement<F: PrimeField, const SINGLE_COLUMN: bool>(
                 // copy them
                 let [num, den] = [num, den].map(|el| {
                     let output = graph.add_intermediate_variable_at_layer(input_layer + 1);
-                    let relation = NoFieldGKRRelation::Copy { input: el, output };
+                    let relation = NoFieldGKRRelation::CopyInExtensionField { input: el, output };
                     graph.add_enforced_relation(relation.clone(), input_layer + 1);
 
                     output
