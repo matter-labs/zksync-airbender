@@ -4203,6 +4203,27 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
         };
         let flat_round2_desc =
             Self::build_flat_round2_desc(flat_continuation_plan.as_ref(), &kernel_plans);
+        // Build combined unified tiled desc for round 2.
+        let flat_round2_unified_desc = if let (Some(ref r2_desc), Some(plan)) =
+            (&flat_round2_desc, flat_continuation_plan.as_ref())
+        {
+            Some(super::backward_flat::build_round2_tiled_desc(r2_desc, plan))
+        } else {
+            None
+        };
+        // Build per-step unified tiled descs for round 3+ from the existing per-step
+        // static descs. The term structure is shared via the continuation plan.
+        let flat_continuation_unified_descs = if let Some(ref plan) = flat_continuation_plan {
+            flat_continuation_descs
+                .iter()
+                .map(|(step, desc)| {
+                    let unified = super::backward_flat::build_continuation_tiled_desc(desc, plan);
+                    (*step, unified)
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
 
         if std::env::var("GPU_PROVER_DUMP_FLAT_PLAN").is_ok() {
             super::backward_flat::dump_flat_round1_plan(
@@ -4239,6 +4260,8 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
             flat_round1_desc,
             flat_round1_unified_desc,
             flat_round2_desc,
+            flat_round2_unified_desc,
+            flat_continuation_unified_descs,
             round1_batch_template,
             round2_batch_template,
             round3_batch_templates,
@@ -6465,6 +6488,22 @@ where
                     let contrib_ptr = self.round_scratch.accumulator.as_mut_ptr().cast();
 
                     if self.flat_cont_use_constant {
+                        // Prefer unified tiled kernel for compact form.
+                        if !explicit_form {
+                            if let Some(ref unified_desc) = self.flat_round2_unified_desc {
+                                super::backward_flat::launch_main_round2_flat_constant_unified(
+                                    unified_desc,
+                                    folding_ptr,
+                                    sizes.fold_stride,
+                                    sizes.next_layer_size,
+                                    eq_ptr,
+                                    contrib_ptr,
+                                    acc_size as u32,
+                                    context,
+                                )?;
+                                return Ok(());
+                            }
+                        }
                         super::backward_flat::launch_main_round2_flat_constant(
                             desc,
                             folding_ptr,
@@ -6552,6 +6591,24 @@ where
                     let contrib_ptr = self.round_scratch.accumulator.as_mut_ptr().cast();
 
                     if self.flat_cont_use_constant {
+                        // Prefer unified tiled kernel if available.
+                        if let Some((_, unified_desc)) = self
+                            .flat_continuation_unified_descs
+                            .iter()
+                            .find(|(s, _)| *s == step)
+                        {
+                            return super::backward_flat::launch_main_round3_flat_constant_unified(
+                                unified_desc,
+                                folding_ptr,
+                                sizes.fold_stride,
+                                sizes.next_layer_size,
+                                eq_ptr,
+                                contrib_ptr,
+                                acc_size as u32,
+                                explicit_form,
+                                context,
+                            );
+                        }
                         return super::backward_flat::launch_main_round3_flat_constant(
                             desc,
                             folding_ptr,
