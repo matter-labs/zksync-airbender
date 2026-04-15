@@ -43,6 +43,8 @@ pub struct ProverContextConfig {
     pub max_device_allocation_blocks_count: Option<usize>,
     pub host_allocator_block_log_size: u32,
     pub host_allocator_blocks_count: usize,
+    pub small_allocator_log_chunk_size: Option<u32>,
+    pub small_allocator_pool_blocks: usize,
 }
 
 impl Default for ProverContextConfig {
@@ -55,6 +57,8 @@ impl Default for ProverContextConfig {
             max_device_allocation_blocks_count: None, // use all available memory
             host_allocator_block_log_size: 13, // 8 KB host blocks (small to avoid waste on tiny staging buffers)
             host_allocator_blocks_count: 163840, // 1.25 GB host allocator pool (163840 × 8 KB)
+            small_allocator_log_chunk_size: Some(8), // 256-byte granularity for small device allocations
+            small_allocator_pool_blocks: 16, // 16 blocks × 1 MB = 16 MB small allocation pool
         }
     }
 }
@@ -154,10 +158,22 @@ impl ProverContext {
         slack.free()?;
         let device_allocation_backend =
             StaticDeviceAllocationBackend::DeviceAllocation(device_allocation);
-        let device_allocator = NonConcurrentStaticDeviceAllocator::new(
-            [device_allocation_backend],
-            allocator_block_log_size,
-        );
+        let device_allocator =
+            if let Some(small_log_chunk_size) = config.small_allocator_log_chunk_size {
+                let small_pool_size =
+                    config.small_allocator_pool_blocks << allocator_block_log_size;
+                NonConcurrentStaticDeviceAllocator::new_with_small_allocator(
+                    [device_allocation_backend],
+                    allocator_block_log_size,
+                    small_log_chunk_size,
+                    small_pool_size,
+                )
+            } else {
+                NonConcurrentStaticDeviceAllocator::new(
+                    [device_allocation_backend],
+                    allocator_block_log_size,
+                )
+            };
         let device_allocator_mem_size = device_blocks_count << allocator_block_log_size;
         let host_block_log_size = config.host_allocator_block_log_size;
         let host_allocation_size = config.host_allocator_blocks_count << host_block_log_size;
