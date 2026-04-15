@@ -1224,6 +1224,14 @@ pub(crate) struct GpuGKRMainLayerSumcheckLayerPlan<E> {
         Option<Box<super::backward_flat::GpuFlatRound1UnifiedDesc>>,
     /// Static description for flat round 2 kernel (single instance, not per-step).
     pub(super) flat_round2_desc: Option<Box<super::backward_flat::GpuFlatRound2StaticDesc>>,
+    /// Combined descriptor for the unified round 2 kernel (sources + mixed terms).
+    pub(super) flat_round2_unified_desc:
+        Option<Box<super::backward_flat::GpuFlatRound2UnifiedDesc>>,
+    /// Per-step unified descriptors for flat round 3+ kernels (tiled warp-split).
+    pub(super) flat_continuation_unified_descs: Vec<(
+        usize,
+        Box<super::backward_flat::GpuFlatContinuationUnifiedDesc>,
+    )>,
     pub(super) round1_batch_template: GpuGKRMainRound1BatchStatic<E>,
     pub(super) round2_batch_template: GpuGKRMainRound2BatchStatic<E>,
     pub(super) round3_batch_templates: Vec<GpuGKRMainLayerRound3BatchTemplate<E>>,
