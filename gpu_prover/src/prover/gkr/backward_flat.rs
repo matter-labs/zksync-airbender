@@ -56,6 +56,65 @@ pub(super) struct GpuFlatC1Pair {
     pub(super) source_b: u16,
 }
 
+/// Term types for the unified term array.
+pub(super) const TERM_TYPE_CONSTANT: u16 = 0;
+pub(super) const TERM_TYPE_C0_ONLY_LINEAR: u16 = 1;
+pub(super) const TERM_TYPE_UNIFIED_QUADRATIC: u16 = 2;
+pub(super) const TERM_TYPE_UNIFIED_LINEAR: u16 = 3;
+
+/// Unified term entry: mixes all term types in a single array, sorted
+/// by source-group affinity. Each term carries its type tag and an index into
+/// the coefficient array so the coefficient layout doesn't need to change.
+#[repr(C)]
+#[derive(Clone, Copy, Default)]
+pub(super) struct GpuFlatUnifiedTerm {
+    pub(super) source_a: u16,
+    pub(super) source_b: u16,
+    pub(super) term_type: u16,
+    pub(super) coeff_idx: u16,
+}
+
+/// Combined descriptor for the unified round 1 kernel: sources + mixed terms
+/// with per-tile fold/compute metadata.
+/// Passed as a single __grid_constant__. Must match CUDA `flat_round1_unified_desc`.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub(super) struct GpuFlatRound1UnifiedDesc {
+    pub(super) base_sources: [GpuFlatBaseAfterOneSourceEntry; FLAT_CONT_MAX_BASE_SOURCES],
+    pub(super) num_base_sources: u32,
+    pub(super) ext_sources: [GpuFlatContinuingSourceEntry; FLAT_CONT_MAX_EXT_SOURCES],
+    pub(super) num_ext_sources: u32,
+    pub(super) terms: [GpuFlatUnifiedTerm; FLAT_CONT_UNIFIED_MAX_TERMS],
+    pub(super) num_terms: u32,
+    // Tile metadata
+    pub(super) num_constant_terms: u32,
+    pub(super) num_tiles: u32,
+    pub(super) tile_term_offsets: [u16; FLAT_CONT_UNIFIED_MAX_TILES + 1],
+    pub(super) tile_fold_offsets: [u16; FLAT_CONT_UNIFIED_MAX_TILES + 1],
+    pub(super) fold_sources: [u16; FLAT_CONT_UNIFIED_MAX_FOLD_SOURCES],
+}
+
+impl Default for GpuFlatRound1UnifiedDesc {
+    fn default() -> Self {
+        Self {
+            base_sources: [GpuFlatBaseAfterOneSourceEntry::default(); FLAT_CONT_MAX_BASE_SOURCES],
+            num_base_sources: 0,
+            ext_sources: [GpuFlatContinuingSourceEntry::default(); FLAT_CONT_MAX_EXT_SOURCES],
+            num_ext_sources: 0,
+            terms: [GpuFlatUnifiedTerm::default(); FLAT_CONT_UNIFIED_MAX_TERMS],
+            num_terms: 0,
+            num_constant_terms: 0,
+            num_tiles: 0,
+            tile_term_offsets: [0u16; FLAT_CONT_UNIFIED_MAX_TILES + 1],
+            tile_fold_offsets: [0u16; FLAT_CONT_UNIFIED_MAX_TILES + 1],
+            fold_sources: [0u16; FLAT_CONT_UNIFIED_MAX_FOLD_SOURCES],
+        }
+    }
+}
+
+unsafe impl Send for GpuFlatRound1UnifiedDesc {}
+unsafe impl Sync for GpuFlatRound1UnifiedDesc {}
+
 /// Static structural description for the flat round 0 kernel.
 /// Sources are encoded as raw pointers: real device pointers for memory-backed
 /// sources, low-bit-tagged null pointers for virtual sources (kind in bits 0..2).
@@ -220,12 +279,14 @@ pub(in crate::prover) fn configure_flat_kernel_cache_preference() {
             set_shared_carveout(kernel, 0);
         }
 
-        // Warp-split kernel: ~2KB/block × 8 blocks ≈ 16KB → ~13% of 128KB pool.
-        set_shared_carveout(
+        // Warp-split kernels: ~1.5KB/block × 8 blocks ≈ 12KB → ~13% of 128KB pool.
+        for kernel in [
             ab_gkr_main_round1_flat_constant_compact_warp_split_e4_kernel
                 as *const std::ffi::c_void,
-            13,
-        );
+            ab_gkr_main_round1_flat_constant_compact_unified_e4_kernel as *const std::ffi::c_void,
+        ] {
+            set_shared_carveout(kernel, 13);
+        }
     });
 }
 
@@ -1292,6 +1353,16 @@ pub(super) const FLAT_CONT_MAX_BASE_SOURCES: usize = 128;
 pub(super) const FLAT_CONT_MAX_EXT_SOURCES: usize = 384;
 pub(super) const FLAT_CONT_EXT_SOURCE_BIT: u16 = 0x8000;
 
+// Unified tiled kernel constants
+pub(super) const FLAT_CONT_UNIFIED_SOURCE_GROUP_SIZE: usize = 4;
+pub(super) const FLAT_CONT_UNIFIED_MAX_GRID_DIM: usize =
+    (FLAT_CONT_MAX_BASE_SOURCES + FLAT_CONT_MAX_EXT_SOURCES) / FLAT_CONT_UNIFIED_SOURCE_GROUP_SIZE;
+pub(super) const FLAT_CONT_UNIFIED_MAX_TERMS: usize = 1024;
+// Sparse: only non-empty tiles stored. Each tile has ≥1 term, so max tiles ≤ max terms.
+pub(super) const FLAT_CONT_UNIFIED_MAX_TILES: usize = FLAT_CONT_UNIFIED_MAX_TERMS;
+pub(super) const FLAT_CONT_UNIFIED_MAX_FOLD_SOURCES: usize =
+    FLAT_CONT_MAX_BASE_SOURCES + FLAT_CONT_MAX_EXT_SOURCES;
+
 // ---------------------------------------------------------------------------
 // Static description types (mirror CUDA structs)
 // ---------------------------------------------------------------------------
@@ -1624,6 +1695,203 @@ impl<E: Field> FlatContinuationDescriptionBuilder<E> {
             apply_permutation_vec(&order, &mut self.recipes_linear);
         }
     }
+}
+
+/// Build the unified tiled descriptor for the round 1 kernel.
+/// Reads remapped source indices from the round 1 desc, builds unified terms
+/// sorted by source-group tile key, then extracts tile boundaries and per-tile
+/// fold lists.
+pub(super) fn build_unified_tiled_desc<E>(
+    round1_desc: &GpuFlatRound1StaticDesc,
+    plan: &FlatContinuationBuildPlan<E>,
+) -> Box<GpuFlatRound1UnifiedDesc> {
+    use std::collections::HashSet;
+
+    const GROUP_SIZE: u16 = FLAT_CONT_UNIFIED_SOURCE_GROUP_SIZE as u16;
+    let group = |idx: u16| (idx & !FLAT_CONT_EXT_SOURCE_BIT) / GROUP_SIZE;
+
+    let tile_key = |t: &GpuFlatUnifiedTerm| -> (u16, u16) {
+        match t.term_type {
+            TERM_TYPE_CONSTANT => (0, 0),
+            TERM_TYPE_C0_ONLY_LINEAR | TERM_TYPE_UNIFIED_LINEAR => {
+                let g = group(t.source_a);
+                (g + 1, g + 1)
+            }
+            TERM_TYPE_UNIFIED_QUADRATIC => {
+                let g0 = group(t.source_a);
+                let g1 = group(t.source_b);
+                (g0.min(g1) + 1, g0.max(g1) + 1)
+            }
+            _ => unreachable!(),
+        }
+    };
+
+    // --- Step 1: Build unified terms from round1 desc (remapped source indices) ---
+    let td = &plan.term_desc;
+    let coeff_base_constants = 0u16;
+    let coeff_base_c0_only = coeff_base_constants + td.num_constants as u16;
+    let coeff_base_quadratic = coeff_base_c0_only + td.num_c0_only_linear as u16;
+    let coeff_base_linear = coeff_base_quadratic + td.num_unified_quadratic as u16;
+
+    let total_terms = td.num_constants as usize
+        + td.num_c0_only_linear as usize
+        + td.num_unified_quadratic as usize
+        + td.num_unified_linear as usize;
+    assert!(
+        total_terms <= FLAT_CONT_UNIFIED_MAX_TERMS,
+        "unified terms overflow: {total_terms} > {FLAT_CONT_UNIFIED_MAX_TERMS}",
+    );
+
+    let mut terms = Vec::with_capacity(total_terms);
+    for i in 0..td.num_constants as u16 {
+        terms.push(GpuFlatUnifiedTerm {
+            source_a: 0,
+            source_b: 0,
+            term_type: TERM_TYPE_CONSTANT,
+            coeff_idx: coeff_base_constants + i,
+        });
+    }
+    for i in 0..round1_desc.num_c0_only_linear as u16 {
+        terms.push(GpuFlatUnifiedTerm {
+            source_a: round1_desc.c0_only_linear[i as usize].source_idx,
+            source_b: 0,
+            term_type: TERM_TYPE_C0_ONLY_LINEAR,
+            coeff_idx: coeff_base_c0_only + i,
+        });
+    }
+    for i in 0..round1_desc.num_unified_quadratic as u16 {
+        let t = round1_desc.unified_quadratic[i as usize];
+        terms.push(GpuFlatUnifiedTerm {
+            source_a: t.source_a,
+            source_b: t.source_b,
+            term_type: TERM_TYPE_UNIFIED_QUADRATIC,
+            coeff_idx: coeff_base_quadratic + i,
+        });
+    }
+    for i in 0..round1_desc.num_unified_linear as u16 {
+        terms.push(GpuFlatUnifiedTerm {
+            source_a: round1_desc.unified_linear[i as usize].source_idx,
+            source_b: 0,
+            term_type: TERM_TYPE_UNIFIED_LINEAR,
+            coeff_idx: coeff_base_linear + i,
+        });
+    }
+
+    // Sort by tile key so constants come first, then terms are grouped by tile.
+    terms.sort_by(|a, b| {
+        tile_key(a)
+            .cmp(&tile_key(b))
+            .then(a.term_type.cmp(&b.term_type))
+            .then(a.source_a.cmp(&b.source_a))
+            .then(a.source_b.cmp(&b.source_b))
+    });
+
+    // --- Step 2: Identify tile boundaries ---
+    let num_constant_terms = terms
+        .iter()
+        .take_while(|t| t.term_type == TERM_TYPE_CONSTANT)
+        .count();
+
+    let mut tile_boundaries = Vec::new(); // (start, end) index pairs in `terms`
+    if num_constant_terms < terms.len() {
+        let mut current_key = tile_key(&terms[num_constant_terms]);
+        let mut tile_start = num_constant_terms;
+        for i in (num_constant_terms + 1)..terms.len() {
+            let key = tile_key(&terms[i]);
+            if key != current_key {
+                tile_boundaries.push((tile_start, i));
+                current_key = key;
+                tile_start = i;
+            }
+        }
+        tile_boundaries.push((tile_start, terms.len()));
+    }
+
+    let num_tiles = tile_boundaries.len();
+    assert!(
+        num_tiles <= FLAT_CONT_UNIFIED_MAX_TILES,
+        "unified tiles overflow: {num_tiles} > {FLAT_CONT_UNIFIED_MAX_TILES}",
+    );
+
+    // --- Step 3: Build per-tile fold lists ---
+    let mut fold_sources: Vec<u16> = Vec::new();
+    let mut tile_term_offsets = Vec::with_capacity(num_tiles + 1);
+    let mut tile_fold_offsets = Vec::with_capacity(num_tiles + 1);
+    let mut folded: HashSet<u16> = HashSet::new();
+
+    // Helper: check if a source needs first-time folding.
+    let needs_folding = |src_idx: u16| -> bool {
+        if src_idx & FLAT_CONT_EXT_SOURCE_BIT != 0 {
+            let raw = (src_idx & !FLAT_CONT_EXT_SOURCE_BIT) as usize;
+            !round1_desc.ext_sources[raw].previous_layer_start.is_null()
+        } else {
+            round1_desc.base_sources[src_idx as usize].first_access
+        }
+    };
+
+    for &(tile_start, tile_end) in &tile_boundaries {
+        tile_term_offsets.push(tile_start as u16);
+        tile_fold_offsets.push(fold_sources.len() as u16);
+
+        // Collect unique sources referenced by this tile's terms.
+        let mut tile_sources: Vec<u16> = Vec::new();
+        for t in &terms[tile_start..tile_end] {
+            match t.term_type {
+                TERM_TYPE_C0_ONLY_LINEAR | TERM_TYPE_UNIFIED_LINEAR => {
+                    tile_sources.push(t.source_a);
+                }
+                TERM_TYPE_UNIFIED_QUADRATIC => {
+                    tile_sources.push(t.source_a);
+                    tile_sources.push(t.source_b);
+                }
+                _ => {}
+            }
+        }
+        tile_sources.sort_unstable();
+        tile_sources.dedup();
+
+        // Add sources that need folding and haven't been assigned yet.
+        for src in tile_sources {
+            if !folded.contains(&src) && needs_folding(src) {
+                fold_sources.push(src);
+                folded.insert(src);
+            }
+        }
+    }
+    // Sentinel entries for the last tile.
+    tile_term_offsets.push(terms.len() as u16);
+    tile_fold_offsets.push(fold_sources.len() as u16);
+
+    assert!(
+        fold_sources.len() <= FLAT_CONT_UNIFIED_MAX_FOLD_SOURCES,
+        "unified fold_sources overflow: {} > {FLAT_CONT_UNIFIED_MAX_FOLD_SOURCES}",
+        fold_sources.len(),
+    );
+
+    // --- Step 4: Populate descriptor ---
+    let mut desc = Box::new(GpuFlatRound1UnifiedDesc::default());
+
+    // Copy source arrays from round1 desc.
+    let nb = round1_desc.num_base_sources as usize;
+    desc.base_sources[..nb].copy_from_slice(&round1_desc.base_sources[..nb]);
+    desc.num_base_sources = round1_desc.num_base_sources;
+
+    let ne = round1_desc.num_ext_sources as usize;
+    desc.ext_sources[..ne].copy_from_slice(&round1_desc.ext_sources[..ne]);
+    desc.num_ext_sources = round1_desc.num_ext_sources;
+
+    // Copy unified terms.
+    desc.terms[..terms.len()].copy_from_slice(&terms);
+    desc.num_terms = terms.len() as u32;
+
+    // Tile metadata.
+    desc.num_constant_terms = num_constant_terms as u32;
+    desc.num_tiles = num_tiles as u32;
+    desc.tile_term_offsets[..tile_term_offsets.len()].copy_from_slice(&tile_term_offsets);
+    desc.tile_fold_offsets[..tile_fold_offsets.len()].copy_from_slice(&tile_fold_offsets);
+    desc.fold_sources[..fold_sources.len()].copy_from_slice(&fold_sources);
+
+    desc
 }
 
 // ---------------------------------------------------------------------------
@@ -3453,6 +3721,62 @@ pub(super) fn launch_main_round1_flat_constant_warp_split(
     );
     GpuGKRMainRound1FlatConstantCompactWarpSplitFunction(
         ab_gkr_main_round1_flat_constant_compact_warp_split_e4_kernel,
+    )
+    .launch(&config, &args)
+}
+
+// ===========================================================================
+// Round 1 unified-term kernel: all types mixed, sorted by source group.
+// ===========================================================================
+
+cuda_kernel_signature_arguments_and_function!(
+    GpuGKRMainRound1FlatConstantCompactUnified<T>,
+    desc: GpuFlatRound1UnifiedDesc,
+    folding_challenge: *const T,
+    fold_stride: u32,
+    next_layer_size: u32,
+    eq_values: *const T,
+    contributions: *mut T,
+    acc_size: u32,
+);
+
+cuda_kernel_declaration!(
+    ab_gkr_main_round1_flat_constant_compact_unified_e4_kernel(
+        desc: GpuFlatRound1UnifiedDesc,
+        folding_challenge: *const E4,
+        fold_stride: u32,
+        next_layer_size: u32,
+        eq_values: *const E4,
+        contributions: *mut E4,
+        acc_size: u32,
+    )
+);
+
+pub(super) fn launch_main_round1_flat_constant_unified(
+    desc: &GpuFlatRound1UnifiedDesc,
+    folding_challenge: *const E4,
+    fold_stride: u32,
+    next_layer_size: u32,
+    eq_values: *const E4,
+    contributions: *mut E4,
+    acc_size: u32,
+    context: &ProverContext,
+) -> CudaResult<()> {
+    use era_cudart::execution::CudaLaunchConfig;
+    let block_dim = 128u32;
+    let grid_dim = (acc_size + 31) / 32;
+    let config = CudaLaunchConfig::basic(grid_dim, block_dim, context.get_exec_stream());
+    let args = GpuGKRMainRound1FlatConstantCompactUnifiedArguments::new(
+        *desc,
+        folding_challenge,
+        fold_stride,
+        next_layer_size,
+        eq_values,
+        contributions,
+        acc_size,
+    );
+    GpuGKRMainRound1FlatConstantCompactUnifiedFunction(
+        ab_gkr_main_round1_flat_constant_compact_unified_e4_kernel,
     )
     .launch(&config, &args)
 }
