@@ -1219,6 +1219,9 @@ pub(crate) struct GpuGKRMainLayerSumcheckLayerPlan<E> {
     pub(super) flat_cont_use_constant: bool,
     /// Static description for flat round 1 kernel (single instance, not per-step).
     pub(super) flat_round1_desc: Option<Box<super::backward_flat::GpuFlatRound1StaticDesc>>,
+    /// Combined descriptor for the unified round 1 kernel (sources + mixed terms).
+    pub(super) flat_round1_unified_desc:
+        Option<Box<super::backward_flat::GpuFlatRound1UnifiedDesc>>,
     /// Static description for flat round 2 kernel (single instance, not per-step).
     pub(super) flat_round2_desc: Option<Box<super::backward_flat::GpuFlatRound2StaticDesc>>,
     pub(super) round1_batch_template: GpuGKRMainRound1BatchStatic<E>,

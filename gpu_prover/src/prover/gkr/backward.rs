@@ -4191,6 +4191,16 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
 
         let flat_round1_desc =
             Self::build_flat_round1_desc(flat_continuation_plan.as_ref(), &kernel_plans);
+        // Build combined unified tiled desc from the round1 desc.
+        let flat_round1_unified_desc = if let (Some(ref r1_desc), Some(plan)) =
+            (&flat_round1_desc, flat_continuation_plan.as_ref())
+        {
+            Some(super::backward_flat::build_unified_tiled_desc(
+                r1_desc, plan,
+            ))
+        } else {
+            None
+        };
         let flat_round2_desc =
             Self::build_flat_round2_desc(flat_continuation_plan.as_ref(), &kernel_plans);
 
@@ -4227,6 +4237,7 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
             flat_cont_coeff_device_buf,
             flat_cont_use_constant,
             flat_round1_desc,
+            flat_round1_unified_desc,
             flat_round2_desc,
             round1_batch_template,
             round2_batch_template,
@@ -6347,17 +6358,30 @@ where
                     let contrib_ptr = self.round_scratch.accumulator.as_mut_ptr().cast();
 
                     if self.flat_cont_use_constant {
-                        if !explicit_form && std::env::var("GPU_PROVER_WARP_SPLIT").is_ok() {
-                            super::backward_flat::launch_main_round1_flat_constant_warp_split(
-                                desc,
-                                folding_ptr,
-                                sizes.fold_stride,
-                                sizes.next_layer_size,
-                                eq_ptr,
-                                contrib_ptr,
-                                acc_size as u32,
-                                context,
-                            )?;
+                        if !explicit_form {
+                            if let Some(ref unified_desc) = self.flat_round1_unified_desc {
+                                super::backward_flat::launch_main_round1_flat_constant_unified(
+                                    unified_desc,
+                                    folding_ptr,
+                                    sizes.fold_stride,
+                                    sizes.next_layer_size,
+                                    eq_ptr,
+                                    contrib_ptr,
+                                    acc_size as u32,
+                                    context,
+                                )?;
+                            } else {
+                                super::backward_flat::launch_main_round1_flat_constant_warp_split(
+                                    desc,
+                                    folding_ptr,
+                                    sizes.fold_stride,
+                                    sizes.next_layer_size,
+                                    eq_ptr,
+                                    contrib_ptr,
+                                    acc_size as u32,
+                                    context,
+                                )?;
+                            }
                         } else {
                             super::backward_flat::launch_main_round1_flat_constant(
                                 desc,
