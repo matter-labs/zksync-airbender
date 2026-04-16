@@ -30,7 +30,7 @@ nvtx = "1"
 rayon = "*"
 
 [features]
-default = ["security_80"]
+default = ["security_80", "deterministic_pow"]
 bench = []
 deterministic_pow = ["prover/deterministic_pow"]
 gpu_prover_full_tests = []
