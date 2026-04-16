@@ -52,11 +52,6 @@ use crate::prover::whir_fold::{
 };
 use prover::merkle_trees::MerkleTreeCapVarLength;
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct GkrExternalPowChallenges {
-    pub whir_pow_nonces: Vec<u64>,
-}
-
 struct GpuGKRProofJobKeepalive<'a> {
     _stage1: GpuGKRStage1Keepalive,
     _setup: Option<GpuGKRSetupTransferHostKeepalive<'a>>,
@@ -323,7 +318,6 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
     inits_and_teardowns_transfer: Option<InitsAndTeardownsTransfer<'a, A>>,
     mut tracing_data_transfer: TracingDataTransfer<'a, A>,
     memory_tree_caps: &[MerkleTreeCapVarLength],
-    external_pow_challenges: Option<GkrExternalPowChallenges>,
     context: &ProverContext,
 ) -> CudaResult<GpuGKRProofJob<'a>> {
     if let Some(setup_transfer) = setup_transfer.as_ref() {
@@ -714,9 +708,6 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
             },
             whir_schedule.cap_size,
             compiled_circuit.trace_len.trailing_zeros() as usize,
-            external_pow_challenges
-                .clone()
-                .map(|pow| pow.whir_pow_nonces),
             context,
         )?
     } else {
@@ -776,9 +767,6 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
             },
             whir_schedule.cap_size,
             compiled_circuit.trace_len.trailing_zeros() as usize,
-            external_pow_challenges
-                .clone()
-                .map(|pow| pow.whir_pow_nonces),
             context,
         )?
     };
@@ -862,7 +850,6 @@ pub(crate) fn prove_with_transfer_scheduling<'a, A: GoodAllocator + 'a>(
     mut inits_and_teardowns_transfer: Option<InitsAndTeardownsTransfer<'a, A>>,
     mut tracing_data_transfer: TracingDataTransfer<'a, A>,
     memory_tree_caps: &[MerkleTreeCapVarLength],
-    external_pow_challenges: Option<GkrExternalPowChallenges>,
     context: &ProverContext,
 ) -> CudaResult<GpuGKRProofJob<'a>> {
     let h2d_stream = context.get_h2d_stream();
@@ -891,7 +878,6 @@ pub(crate) fn prove_with_transfer_scheduling<'a, A: GoodAllocator + 'a>(
         inits_and_teardowns_transfer,
         tracing_data_transfer,
         memory_tree_caps,
-        external_pow_challenges,
         context,
     )?;
     proof_job.ranges.insert(0, transfer_range);
