@@ -27,7 +27,7 @@ struct wrapped_f {
   static DEVICE_FORCEINLINE wrapped_f mul(const wrapped_f &lhs, const wrapped_f &rhs) { return wrapped_f(bf::mul(lhs.inner, rhs.inner)); }
 
   static DEVICE_FORCEINLINE wrapped_f mul_add(const wrapped_f &mul_0, const wrapped_f &mul_1, const wrapped_f &add) {
-    return wrapped_f(bf::add(bf::mul(mul_0.inner, mul_1.inner), add.inner));
+    return wrapped_f(bf::fma(mul_0.inner, mul_1.inner, add.inner));
   }
 
   static DEVICE_FORCEINLINE wrapped_f inv(const wrapped_f &value) { return wrapped_f(bf::inv(value.inner)); }

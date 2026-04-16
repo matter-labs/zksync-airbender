@@ -658,7 +658,7 @@ DEVICE_FORCEINLINE E gkr_get_base_after_one_value(const gkr_base_after_one_sourc
   const bf f0 = gkr_get_base_after_one_bf_value(source, index);
   const bf f1 = gkr_get_base_after_one_bf_value(source, source.base_layer_half_size + index);
   const bf diff = bf::sub(f1, f0);
-  const E folded = E::add(E::mul(first_folding_challenge, diff), f0);
+  const E folded = E::fma(first_folding_challenge, diff, f0);
   store<E, st_modifier::cs>(source.this_layer_cache_start, folded, index);
   return folded;
 }
@@ -1175,7 +1175,7 @@ template <typename E, typename B, typename D> DEVICE_FORCEINLINE void gkr_eval_l
 
 template <typename E> DEVICE_FORCEINLINE void gkr_eval_lookup_base_pair_quadratic(const bf b, const bf d, E &num, E &den) {
   num = E::ZERO();
-  den = E::add(E::ZERO(), bf::mul(b, d));
+  den = E::from_scalar(bf::mul(b, d));
 }
 
 template <typename E, typename B, typename C, typename D>
@@ -1193,8 +1193,8 @@ DEVICE_FORCEINLINE void gkr_eval_lookup_base_minus_multiplicity_quadratic(const 
 }
 
 template <typename E> DEVICE_FORCEINLINE void gkr_eval_lookup_base_minus_multiplicity_quadratic(const bf b, const bf c, const bf d, E &num, E &den) {
-  num = E::sub(E::ZERO(), bf::mul(c, b));
-  den = E::add(E::ZERO(), bf::mul(b, d));
+  num = E::neg(E::from_scalar(bf::mul(c, b)));
+  den = E::from_scalar(bf::mul(b, d));
 }
 
 template <typename E, typename D, typename A, typename B>

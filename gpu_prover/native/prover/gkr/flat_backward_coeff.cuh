@@ -44,9 +44,8 @@ DEVICE_FORCEINLINE e4 eval_single_recipe(const gpu_recipe_header &recipe, const 
         challenge = constraint_batch;
         break;
       }
-      e4 val = e4::pow(challenge, term.power);
-      val = e4::mul(val, term.coeff);
-      group_sum = e4::add(group_sum, val);
+      const e4 val = e4::pow(challenge, term.power);
+      group_sum = e4::fma(val, term.coeff, group_sum);
     }
     offset += count;
     c = e4::mul(c, group_sum);

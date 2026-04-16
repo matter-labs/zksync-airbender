@@ -43,7 +43,7 @@ EXTERN __global__ void ab_accumulate_whir_base_columns_e4_kernel(const bf *value
   for (unsigned col = 0; col < cols; ++col) {
     const bf value = load<bf, ld_modifier::cs>(values, col * stride + gid);
     const e4 weight = load<e4, ld_modifier::cs>(weights, col);
-    acc = e4::add(acc, e4::mul(weight, value));
+    acc = e4::fma(weight, value, acc);
   }
   store<e4, st_modifier::cs>(result, acc, gid);
 }
