@@ -16,7 +16,7 @@ GKR_FORWARD_CACHE_KERNELS(e4);
     if (gid >= count)                                                                                                                                          \
       return;                                                                                                                                                  \
     arg_t value = load<arg_t, ld_modifier::cs>(dst, gid);                                                                                                      \
-    value = arg_t::add(value, arg_t::mul(scalar, gkr_virtual_base_value(source_kind, gid)));                                                                   \
+    value = arg_t::fma(scalar, gkr_virtual_base_value(source_kind, gid), value);                                                                               \
     store<arg_t, st_modifier::cs>(dst, value, gid);                                                                                                            \
   }
 
