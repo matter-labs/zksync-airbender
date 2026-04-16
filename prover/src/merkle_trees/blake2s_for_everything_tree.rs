@@ -1,9 +1,5 @@
 use super::*;
 use crate::definitions::Blake2sForEverythingVerifier;
-use blake2s_hash_leafs::{
-    blake2s_leaf_hashes_for_column_major_coset, blake2s_leaf_hashes_for_coset,
-    blake2s_leaf_hashes_separated_for_coset,
-};
 use blake2s_u32::*;
 use field::PrimeField;
 use std::alloc::Global;
@@ -16,109 +12,6 @@ pub struct Blake2sU32MerkleTreeWithCap<
     pub cap_size: usize,
     pub leaf_hashes: Vec<[u32; BLAKE2S_DIGEST_SIZE_U32_WORDS], A>,
     pub node_hashes_enumerated_from_leafs: Vec<Vec<[u32; BLAKE2S_DIGEST_SIZE_U32_WORDS], A>>,
-}
-
-impl<B: GoodAllocator, const USE_REDUCED_BLAKE2_ROUNDS: bool> MerkleTreeConstructor
-    for Blake2sU32MerkleTreeWithCap<B, USE_REDUCED_BLAKE2_ROUNDS>
-{
-    type Verifier = Blake2sForEverythingVerifier;
-
-    fn construct_for_coset<A: GoodAllocator, const N: usize>(
-        trace: &RowMajorTrace<Mersenne31Field, N, A>,
-        cap_size: usize,
-        bitreverse: bool,
-        worker: &Worker,
-    ) -> Self {
-        let leaf_hashes = blake2s_leaf_hashes_for_coset::<A, B, N, USE_REDUCED_BLAKE2_ROUNDS>(
-            trace, bitreverse, worker,
-        );
-
-        Self::continue_from_leaf_hashes(leaf_hashes, cap_size, worker)
-    }
-
-    fn construct_separated_for_coset<A: GoodAllocator, const N: usize>(
-        trace: &RowMajorTrace<Mersenne31Field, N, A>,
-        separators: &[usize],
-        cap_size: usize,
-        bitreverse: bool,
-        worker: &Worker,
-    ) -> Vec<Self> {
-        let leaf_hashes_set =
-            blake2s_leaf_hashes_separated_for_coset::<A, B, N, USE_REDUCED_BLAKE2_ROUNDS>(
-                trace, separators, bitreverse, worker,
-            );
-
-        leaf_hashes_set
-            .into_iter()
-            .map(|lh| Self::continue_from_leaf_hashes(lh, cap_size, worker))
-            .collect()
-    }
-
-    fn construct_for_column_major_coset<A: GoodAllocator>(
-        trace: &ColumnMajorTrace<Mersenne31Quartic, A>,
-        combine_by: usize,
-        cap_size: usize,
-        bitreverse: bool,
-        worker: &Worker,
-    ) -> Self {
-        let leaf_hashes =
-            blake2s_leaf_hashes_for_column_major_coset::<A, B, USE_REDUCED_BLAKE2_ROUNDS>(
-                trace, combine_by, bitreverse, worker,
-            );
-
-        Self::continue_from_leaf_hashes(leaf_hashes, cap_size, worker)
-    }
-
-    fn get_cap(&self) -> MerkleTreeCapVarLength {
-        let output = if let Some(cap) = self.node_hashes_enumerated_from_leafs.last() {
-            let mut result = Vec::new();
-            result.extend_from_slice(cap);
-
-            result
-        } else {
-            let mut result = Vec::new();
-            result.extend_from_slice(&self.leaf_hashes);
-
-            result
-        };
-
-        MerkleTreeCapVarLength { cap: output }
-    }
-
-    fn get_proof<C: GoodAllocator>(
-        &self,
-        idx: usize,
-    ) -> (
-        [u32; DIGEST_SIZE_U32_WORDS],
-        Vec<[u32; DIGEST_SIZE_U32_WORDS], C>,
-    ) {
-        let depth = self.node_hashes_enumerated_from_leafs.len(); // we do not need the element of the cap
-        let mut result = Vec::with_capacity_in(depth, C::default());
-        let mut idx = idx;
-        let this_el_leaf_hash = self.leaf_hashes[idx];
-        for i in 0..depth {
-            let pair_idx = idx ^ 1;
-            let proof_element = if i == 0 {
-                self.leaf_hashes[pair_idx]
-            } else {
-                self.node_hashes_enumerated_from_leafs[i - 1][pair_idx]
-            };
-
-            result.push(proof_element);
-            idx >>= 1;
-        }
-
-        (this_el_leaf_hash, result)
-    }
-
-    fn dump_caps(caps: &[Self]) -> Vec<MerkleTreeCapVarLength> {
-        let mut result = Vec::with_capacity(caps.len());
-        for el in caps.iter() {
-            result.push(<Self as MerkleTreeConstructor>::get_cap(el));
-        }
-
-        result
-    }
 }
 
 impl<A: GoodAllocator, const USE_REDUCED_BLAKE2_ROUNDS: bool>

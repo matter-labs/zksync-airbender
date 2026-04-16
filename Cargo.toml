@@ -7,7 +7,6 @@ members = [
     "field",
     "cs",
     "prover",
-    "trace_holder",
     "fft",
     "worker",
     "test_utils",
@@ -76,7 +75,6 @@ default-members = [
     "riscv_transpiler",
     # "tools/cli",
     "tools/generator",
-    "trace_holder",
     "transcript",
     "verifier",
     "verifier_common",
@@ -110,7 +108,6 @@ field = { path = "./field", default-features = false }
 blake2s_u32 = { path = "./blake2s_u32", default-features = false }
 common_constants = { path = "./common_constants" }
 riscv_common = { path = "./riscv_common", default-features = false }
-trace_holder = { path = "./trace_holder" }
 worker = { path = "./worker" }
 test_utils = { path = "./test_utils" }
 fft = { path = "./fft" }

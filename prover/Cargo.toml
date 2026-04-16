@@ -11,7 +11,6 @@ categories.workspace = true
 
 [dependencies]
 field = { workspace = true, default-features = false }
-trace_holder = { workspace = true, optional = true }
 worker = { workspace = true, optional = true }
 common_constants = { workspace = true }
 unroll = { workspace = true}
@@ -45,7 +44,7 @@ name = "pow_bench"
 harness = false
 
 [features]
-prover = ["trace_holder", "worker", "seq-macro", "fft", "cs/compiler", "transcript/pow", "riscv_transpiler", "proc-macro2", "quote", "serde_json", "serde_with", "itertools"]
+prover = ["worker", "seq-macro", "fft", "cs/compiler", "transcript/pow", "riscv_transpiler", "proc-macro2", "quote", "serde_json", "serde_with", "itertools"]
 deterministic_pow = ["transcript/deterministic_pow"]
 definitions_only = ["cs/definitions_only"]
 # Print logs related to timings only.
