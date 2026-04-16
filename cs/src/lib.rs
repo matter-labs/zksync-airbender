@@ -8,8 +8,6 @@ pub mod definitions;
 pub mod constraint;
 #[cfg(feature = "compiler")]
 pub mod cs;
-// #[cfg(feature = "compiler")]
-// pub mod delegation;
 #[cfg(feature = "compiler")]
 pub mod gkr_circuits;
 #[cfg(feature = "compiler")]
