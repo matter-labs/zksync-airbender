@@ -109,6 +109,8 @@ fn apply_mul_div_inner<F: PrimeField, CS: Circuit<F>, const SUPPORT_SIGNED: bool
     };
 
     let shift_left_16_bits = F::from_u32_with_reduction(1 << 16);
+    let shift_left_8_bits = F::from_u32_with_reduction(1 << 8);
+    let shift_left_8_bits_term = Term::from_field(shift_left_8_bits);
     let shift_right_8_bits = F::from_u32_with_reduction(1 << 8).inverse().unwrap();
     let shift_right_8_bits_term = Term::from_field(shift_right_8_bits);
 
@@ -591,6 +593,15 @@ fn apply_mul_div_inner<F: PrimeField, CS: Circuit<F>, const SUPPORT_SIGNED: bool
                             &t,
                             &remainder_comparison_value,
                         );
+
+                    let (t, _) = <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::constant(0)
+                        .overflowing_sub(&rs2_u32);
+                    remainder_comparison_value =
+                        <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::select(
+                            &is_mul_family,
+                            &t,
+                            &remainder_comparison_value,
+                        );
                 }
 
                 // actually assign
@@ -737,16 +748,20 @@ fn apply_mul_div_inner<F: PrimeField, CS: Circuit<F>, const SUPPORT_SIGNED: bool
         {
             let quotient_bytes = [
                 Constraint::from(quotient_byte_0_at_layer_1),
-                Term::from(quotient_at_layer_1[0]) - Term::from(quotient_byte_0_at_layer_1),
+                (Term::from(quotient_at_layer_1[0]) - Term::from(quotient_byte_0_at_layer_1))
+                    * shift_right_8_bits_term,
                 Constraint::from(quotient_byte_2_at_layer_1),
-                Term::from(quotient_at_layer_1[1]) - Term::from(quotient_byte_2_at_layer_1),
+                (Term::from(quotient_at_layer_1[1]) - Term::from(quotient_byte_2_at_layer_1))
+                    * shift_right_8_bits_term,
             ];
 
             let divisor_bytes = [
                 Constraint::from(divisor_byte_0_at_layer_1),
-                Term::from(divisor_at_layer_1[0]) - Term::from(divisor_byte_0_at_layer_1),
+                (Term::from(divisor_at_layer_1[0]) - Term::from(divisor_byte_0_at_layer_1))
+                    * shift_right_8_bits_term,
                 Constraint::from(divisor_byte_2_at_layer_1),
-                Term::from(divisor_at_layer_1[1]) - Term::from(divisor_byte_2_at_layer_1),
+                (Term::from(divisor_at_layer_1[1]) - Term::from(divisor_byte_2_at_layer_1))
+                    * shift_right_8_bits_term,
             ];
 
             let target_u16_words = [
@@ -778,6 +793,8 @@ fn apply_mul_div_inner<F: PrimeField, CS: Circuit<F>, const SUPPORT_SIGNED: bool
             ];
 
             for i in 0..4 {
+                println!("Computing enforcement on limb {}", i);
+
                 let mut constraint = Constraint::<F>::empty();
 
                 for j in 0..4 {
@@ -787,7 +804,7 @@ fn apply_mul_div_inner<F: PrimeField, CS: Circuit<F>, const SUPPORT_SIGNED: bool
                         if j + k == 2 * i {
                             constraint += q_byte.clone() * d_byte.clone();
                         } else if j + k == 2 * i + 1 {
-                            constraint += q_byte.clone() * d_byte.clone() * shift_right_8_bits_term;
+                            constraint += q_byte.clone() * d_byte.clone() * shift_left_8_bits_term;
                         }
                     }
                 }
@@ -809,12 +826,15 @@ fn apply_mul_div_inner<F: PrimeField, CS: Circuit<F>, const SUPPORT_SIGNED: bool
         // and the last thing to do is to check that remainder < divisor unless divisor is 0,
         // and if divisor is 0 - then quotient is u32::MAX
 
+        // NOTE: first boolean check is unconditional, so we should place there something even in case of multiplication.
+        // In this case remainder is 0
+
         // 2^16 * of + remainder - divisor = witness
         let mut t = Term::from(remainder_comparison_u16_witness_low_at_layer_1)
             - Term::from(remainder_at_layer_1[0])
             + Term::from(divisor_at_layer_1[0]);
         t.scale(shift_left_16_bits.inverse().unwrap());
-        cs.add_constraint(t.clone() * t.clone());
+        cs.add_constraint(t.clone() * (t.clone() - Term::from(1)));
 
         // 2^16*(1 - divisor_is_zero) + remainder - divisor - carry = witness
         let mut c = Term::from(1u32) - Term::from(divisor_is_zero_if_division_layer_1);

@@ -1692,8 +1692,8 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
                         }
                         println!("Assignments are {:?}", values);
                         panic!(
-                            "unsatisfied at constraint {:?} with value {:?}",
-                            constraint, value
+                            "unsatisfied at constraint {} with value {:?}",
+                            &constraint, value
                         );
                     }
                 }
