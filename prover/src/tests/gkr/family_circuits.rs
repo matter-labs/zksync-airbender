@@ -58,6 +58,7 @@ const PROVE_EMPTY: bool = false;
 const PROVE_ADD_SUB: bool = true;
 const PROVE_JUMP_BRANCH: bool = true;
 const PROVE_SHIFTS_BINOPS: bool = true;
+const PROVE_MUL_DIV: bool = true;
 const PROVE_MEM_WORD: bool = true;
 const PROVE_MEM_SUBWORD: bool = true;
 const PROVE_BLAKE: bool = true;
@@ -881,198 +882,190 @@ pub fn gkr_run_basic_unrolled_test_impl(
         }
     }
 
-    // if true {
-    //     println!("Will try to prove MUL/DIV circuit");
+    if PROVE_MUL_DIV {
+        println!("Will try to prove unsigned MUL/DIV circuit");
+        const CIRCUIT_TYPE: u8 = MUL_DIV_CIRCUIT_FAMILY_IDX;
 
-    //     use crate::cs::machine::ops::unrolled::mul_div::*;
+        let circuit: GKRCircuitArtifact<BabyBearField> = if USE_GKR_WITH_CACHES {
+            deserialize_from_file(
+                "../cs/compiled_circuits/unsigned_mul_div_preprocessed_layout_gkr.json",
+            )
+        } else {
+            deserialize_from_file(
+                "../cs/compiled_circuits/unsigned_mul_div_preprocessed_layout_no_caches_gkr.json",
+            )
+        };
 
-    //     let witness_fn = if SUPPORT_SIGNED {
-    //         mul_div::witness_eval_fn
-    //     } else {
-    //         mul_div_unsigned_only::witness_eval_fn
-    //     };
+        let mut table_driver = TableDriver::<BabyBearField>::new();
+        cs::gkr_circuits::mul_div::mul_div_table_driver_fn::<_, false>(&mut table_driver);
 
-    //     let mul_div_circuit = {
-    //         compile_unrolled_circuit_state_transition::<BabyBearField>(
-    //             &|cs| {
-    //                 mul_div_table_addition_fn(cs);
-    //             },
-    //             &|cs| mul_div_circuit_with_preprocessed_bytecode::<_, _, SUPPORT_SIGNED>(cs),
-    //             1 << 20,
-    //             TRACE_LEN_LOG2,
-    //         )
-    //     };
+        let num_calls = counters.get_calls_to_circuit_family::<CIRCUIT_TYPE>();
+        dbg!(num_calls);
 
-    //     let mut table_driver = TableDriver::<BabyBearField>::new();
-    //     mul_div_table_driver_fn(&mut table_driver);
+        let mut state = snapshotter.initial_snapshot.state;
 
-    //     let num_calls = counters.get_calls_to_circuit_family::<MUL_DIV_CIRCUIT_FAMILY_IDX>();
-    //     dbg!(num_calls);
+        let mut ram_log_buffers = snapshotter
+            .reads_buffer
+            .make_range(0..snapshotter.reads_buffer.len());
 
-    //     let mut state = snapshotter.initial_snapshot.state;
-    //     let mut ram_log_buffers = snapshotter
-    //         .reads_buffer
-    //         .make_range(0..snapshotter.reads_buffer.len());
+        let mut ram = ReplayerRam::<{ common_constants::ROM_SECOND_WORD_BITS }> {
+            ram_log: &mut ram_log_buffers,
+        };
 
-    //     let mut ram = ReplayerRam::<{ common_constants::ROM_SECOND_WORD_BITS }> {
-    //         ram_log: &mut ram_log_buffers,
-    //     };
+        let mut buffer = vec![NonMemoryOpcodeTracingDataWithTimestamp::default(); num_calls];
+        let mut buffers = vec![&mut buffer[..]];
+        let mut tracer = NonMemDestinationHolder::<CIRCUIT_TYPE> {
+            buffers: &mut buffers[..],
+        };
 
-    //     let mut buffer = vec![NonMemoryOpcodeTracingDataWithTimestamp::default(); num_calls];
-    //     let mut buffers = vec![&mut buffer[..]];
-    //     let mut tracer = NonMemDestinationHolder::<MUL_DIV_CIRCUIT_FAMILY_IDX> {
-    //         buffers: &mut buffers[..],
-    //     };
+        ReplayerVM::<CountersT>::replay_basic_unrolled::<_, _, BabyBearField>(
+            &mut state,
+            &mut ram,
+            &tape,
+            &mut (),
+            cycles_bound,
+            &mut tracer,
+        );
+        assert_eq!(expected_final_state, state);
 
-    //     ReplayerVM::<CountersT>::replay_basic_unrolled::<_, _>(
-    //         &mut state,
-    //         &mut ram,
-    //         &tape,
-    //         &mut (),
-    //         cycles_bound,
-    //         &mut tracer,
-    //     );
-    //     assert_eq!(expected_final_state, state);
+        let decoder_table_data = &preprocessing_data[&CIRCUIT_TYPE];
+        let witness_gen_data = decoder_table_data
+            .iter()
+            .map(|el| el.unwrap_or(Default::default()))
+            .collect::<Vec<_>>();
 
-    //     let (decoder_table_data, witness_gen_data) =
-    //         &preprocessing_data[&MUL_DIV_CIRCUIT_FAMILY_IDX];
-    //     let decoder_table_data = materialize_flattened_decoder_table(decoder_table_data);
+        let oracle = NonMemoryCircuitOracle {
+            inner: &buffer[..],
+            decoder_table: &witness_gen_data,
+            default_pc_value_in_padding: 4,
+        };
 
-    //     let oracle = NonMemoryCircuitOracle {
-    //         inner: &buffer[..],
-    //         decoder_table: witness_gen_data,
-    //         default_pc_value_in_padding: 4,
-    //     };
+        dbg!(oracle.inner.len());
 
-    //     let is_empty = oracle.inner.is_empty();
+        let is_empty = oracle.inner.is_empty();
 
-    //     let memory_trace = evaluate_memory_witness_for_executor_family::<_, Global>(
-    //         &mul_div_circuit,
-    //         NUM_CYCLES_PER_CHUNK,
-    //         &oracle,
-    //         &worker,
-    //         Global,
-    //     );
+        println!("Computing memory trace");
+        let memory_trace = evaluate_gkr_memory_witness_for_executor_family::<BabyBearField, _, _, _>(
+            &circuit,
+            NUM_CYCLES_PER_CHUNK,
+            &oracle,
+            &worker,
+            Global,
+            Global,
+        );
 
-    //     let full_trace = evaluate_witness_for_executor_family::<_, Global>(
-    //         &mul_div_circuit,
-    //         witness_fn,
-    //         NUM_CYCLES_PER_CHUNK,
-    //         &oracle,
-    //         &table_driver,
-    //         &worker,
-    //         Global,
-    //     );
+        println!("Computing full trace");
+        let full_trace = evaluate_gkr_witness_for_executor_family::<BabyBearField, _, _, _>(
+            &circuit,
+            unsigned_mul_div::witness_eval_fn,
+            NUM_CYCLES_PER_CHUNK,
+            &oracle,
+            &table_driver,
+            &worker,
+            Global,
+            Global,
+        );
 
-    //     ensure_memory_trace_consistency(&memory_trace, &full_trace);
+        ensure_memory_trace_consistency(&memory_trace, &full_trace);
 
-    //     parse_state_permutation_elements_from_full_trace(
-    //         &mul_div_circuit,
-    //         &full_trace,
-    //         &mut write_set,
-    //         &mut read_set,
-    //     );
-    //     parse_shuffle_ram_accesses_from_full_trace(
-    //         &mul_div_circuit,
-    //         &full_trace,
-    //         &mut memory_write_set,
-    //         &mut memory_read_set,
-    //     );
+        parse_state_permutation_elements_from_full_trace(
+            &circuit,
+            &memory_trace,
+            &mut write_set,
+            &mut read_set,
+        );
+        parse_shuffle_ram_accesses_from_full_trace(
+            &circuit,
+            &memory_trace,
+            &mut memory_write_set,
+            &mut memory_read_set,
+            &mut delegation_write_set,
+        );
 
-    //     if CHECK_MEMORY_PERMUTATION_ONLY == false {
-    //         let is_satisfied = check_satisfied(
-    //             &mul_div_circuit,
-    //             &full_trace.exec_trace,
-    //             full_trace.num_witness_columns,
-    //         );
-    //         assert!(is_satisfied);
+        if CHECK_MEMORY_PERMUTATION_ONLY == false && (PROVE_EMPTY == true || is_empty == false) {
+            // println!("Will check constraints satisfiability");
+            // let is_satisfied = check_satisfied(&add_sub_circuit, &full_trace);
+            // assert!(is_satisfied);
 
-    //         let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, &worker);
-    //         let lde_precomputations =
-    //             LdePrecomputations::new(trace_len, lde_factor, &[0, 1], &worker);
-    //         let setup = SetupPrecomputations::from_tables_and_trace_len_with_decoder_table(
-    //             &table_driver,
-    //             &decoder_table_data,
-    //             trace_len,
-    //             &mul_div_circuit.setup_layout,
-    //             &twiddles,
-    //             &lde_precomputations,
-    //             lde_factor,
-    //             tree_cap_size,
-    //             &worker,
-    //         );
+            println!("Preparing twiddles");
+            let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, &worker);
+            println!("Preparing setup");
+            let setup =
+                GKRSetup::construct(&table_driver, &decoder_table_data, trace_len, &circuit);
 
-    //         let lookup_mapping_for_gpu = if maybe_gpu_unrolled_comparison_hook.is_some() {
-    //             Some(full_trace.lookup_mapping.clone())
-    //         } else {
-    //             None
-    //         };
+            let setup_commitment = setup.commit(
+                &twiddles,
+                2,
+                1,
+                tree_cap_size,
+                trace_len.trailing_zeros() as usize,
+                &worker,
+            );
 
-    //         println!("Trying to prove");
+            // let lookup_mapping_for_gpu = if maybe_gpu_unrolled_comparison_hook.is_some() {
+            //     Some(full_trace.lookup_mapping.clone())
+            // } else {
+            //     None
+            // };
 
-    //         let now = std::time::Instant::now();
-    //         let (prover_data, proof) = prove_configured_for_unrolled_circuits::<
-    //             DEFAULT_TRACE_PADDING_MULTIPLE,
-    //             _,
-    //             DefaultTreeConstructor,
-    //         >(
-    //             &mul_div_circuit,
-    //             &vec![],
-    //             &external_challenges,
-    //             full_trace,
-    //             &[],
-    //             &setup,
-    //             &twiddles,
-    //             &lde_precomputations,
-    //             None,
-    //             lde_factor,
-    //             tree_cap_size,
-    //             53,
-    //             28,
-    //             &worker,
-    //         );
-    //         println!("Proving time is {:?}", now.elapsed());
+            let whir_schedule = WhirSchedule::default_for_tests_80_bits_24();
 
-    //         if is_empty {
-    //             assert_eq!(
-    //                 proof.permutation_grand_product_accumulator,
-    //                 BabyBearExt4::ONE
-    //             );
-    //         }
-    //         assert!(proof.delegation_argument_accumulator.is_none());
+            println!("Trying to prove");
 
-    //         if let Some(ref gpu_comparison_hook) = maybe_gpu_unrolled_comparison_hook {
-    //             let gpu_comparison_args = GpuComparisonArgs {
-    //                 circuit: &mul_div_circuit,
-    //                 setup: &setup,
-    //                 external_challenges: &external_challenges,
-    //                 aux_boundary_values: &[],
-    //                 public_inputs: &vec![],
-    //                 twiddles: &twiddles,
-    //                 lde_precomputations: &lde_precomputations,
-    //                 lookup_mapping: lookup_mapping_for_gpu.unwrap(),
-    //                 log_n: TRACE_LEN_LOG2,
-    //                 circuit_sequence: None,
-    //                 delegation_processing_type: None,
-    //                 is_unrolled: true,
-    //                 prover_data: &prover_data,
-    //             };
-    //             gpu_comparison_hook(&gpu_comparison_args);
-    //         }
+            let now = std::time::Instant::now();
+            let proof =
+                prove_configured_with_gkr::<BabyBearField, BabyBearExt4, DefaultTreeConstructor>(
+                    &circuit,
+                    &external_challenges,
+                    full_trace,
+                    &setup,
+                    &setup_commitment,
+                    &twiddles,
+                    &whir_schedule,
+                    Vec::new(),
+                    trace_len,
+                    &worker,
+                );
+            println!("Proving time is {:?}", now.elapsed());
 
-    //         if SUPPORT_SIGNED {
-    //             serialize_to_file_if_not_gpu_comparison(&proof, "mul_div_unrolled_proof.json");
-    //         } else {
-    //             serialize_to_file_if_not_gpu_comparison(
-    //                 &proof,
-    //                 "mul_div_unsigned_unrolled_proof.json",
-    //             );
-    //         };
+            println!(
+                "Estimated proof size without compression is {} bytes",
+                proof.estimate_size()
+            );
 
-    //         permutation_argument_accumulator
-    //             .mul_assign(&proof.permutation_grand_product_accumulator);
-    //     }
-    // }
+            if is_empty {
+                assert_eq!(proof.grand_product_accumulator_computed, BabyBearExt4::ONE);
+            }
+
+            serialize_to_file(&proof, "test_proofs/unsigned_mul_div_gkr_proof.json");
+
+            // serialize_to_file_if_not_gpu_comparison(
+            //     &proof,
+            //     "add_sub_lui_auipc_mop_unrolled_proof.json",
+            // );
+
+            // if let Some(ref gpu_comparison_hook) = maybe_gpu_unrolled_comparison_hook {
+            //     let gpu_comparison_args = GpuComparisonArgs {
+            //         circuit: &add_sub_circuit,
+            //         setup: &setup,
+            //         external_challenges: &external_challenges,
+            //         aux_boundary_values: &[],
+            //         public_inputs: &vec![],
+            //         twiddles: &twiddles,
+            //         lde_precomputations: &lde_precomputations,
+            //         lookup_mapping: lookup_mapping_for_gpu.unwrap(),
+            //         log_n: TRACE_LEN_LOG2,
+            //         circuit_sequence: None,
+            //         delegation_processing_type: None,
+            //         is_unrolled: true,
+            //         prover_data: &prover_data,
+            //     };
+            //     gpu_comparison_hook(&gpu_comparison_args);
+            // }
+
+            permutation_argument_accumulator.mul_assign(&proof.grand_product_accumulator_computed);
+        }
+    }
 
     if PROVE_MEM_WORD {
         println!("Will try to prove word LOAD/STORE circuit");

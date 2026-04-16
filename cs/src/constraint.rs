@@ -336,6 +336,15 @@ pub struct Constraint<F: PrimeField> {
     pub terms: Vec<Term<F>>,
 }
 
+impl<F: PrimeField> std::fmt::Display for Constraint<F> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for term in self.terms.iter() {
+            write!(f, "{term}")?;
+        }
+        writeln!(f, "")
+    }
+}
+
 impl<F: PrimeField> From<Variable> for Constraint<F> {
     fn from(value: Variable) -> Self {
         let term = Term::<F>::from(value);

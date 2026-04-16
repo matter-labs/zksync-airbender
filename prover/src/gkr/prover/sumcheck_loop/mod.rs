@@ -25,6 +25,7 @@ use kernel_collector::KernelCollector;
 use transcript::Seed;
 
 mod batch_evaluation;
+mod distribution_analysis;
 mod kernel_collector;
 
 /// # Panics

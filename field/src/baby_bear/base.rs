@@ -91,12 +91,15 @@ impl core::hash::Hash for BabyBearField {
 }
 
 impl Ord for BabyBearField {
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn cmp(&self, other: &Self) -> core::cmp::Ordering {
-        self.to_u32().cmp(&other.to_u32())
+        // we are always canonical, no reductions needed
+        Ord::cmp(&self.0, &other.0)
     }
 }
 
 impl PartialOrd for BabyBearField {
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
         Some(self.cmp(other))
     }

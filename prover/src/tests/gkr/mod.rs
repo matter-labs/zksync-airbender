@@ -9,12 +9,12 @@ use field::PrimeField;
 use std::alloc::Allocator;
 use std::collections::BTreeSet;
 
-fn serialize_to_file<T: serde::Serialize>(el: &T, filename: &str) {
+pub(crate) fn serialize_to_file<T: serde::Serialize>(el: &T, filename: &str) {
     let mut dst = std::fs::File::create(filename).unwrap();
     serde_json::to_writer_pretty(&mut dst, el).unwrap();
 }
 
-fn deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &str) -> T {
+pub(crate) fn deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &str) -> T {
     let src = std::fs::File::open(filename).unwrap();
     serde_json::from_reader(src).unwrap()
 }
@@ -325,6 +325,33 @@ mod shift_binary_ops {
     use cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
 
     include!("../../../compiled_circuits/shift_binop_generated_gkr.rs");
+
+    pub fn witness_eval_fn<'a, 'b>(
+        proxy: &'_ mut ColumnMajorWitnessProxy<'a, NonMemoryCircuitOracle<'b>, BabyBearField>,
+    ) {
+        let fn_ptr = evaluate_witness_fn::<
+            ScalarWitnessTypeSet<BabyBearField, true>,
+            ColumnMajorWitnessProxy<'a, NonMemoryCircuitOracle<'b>, BabyBearField>,
+        >;
+        (fn_ptr)(proxy);
+    }
+}
+
+mod unsigned_mul_div {
+    use crate::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
+    use crate::gkr::witness_gen::oracles::NonMemoryCircuitOracle;
+    use crate::gkr::witness_gen::witness_proxy::WitnessProxy;
+    use ::cs::oracle::Placeholder;
+    use ::cs::witness_placer::WitnessTypeSet;
+    use ::cs::witness_placer::{
+        WitnessComputationCore, WitnessComputationalField, WitnessComputationalI32,
+        WitnessComputationalInteger, WitnessComputationalU16, WitnessComputationalU32,
+        WitnessComputationalU8, WitnessMask,
+    };
+    use ::field::baby_bear::base::BabyBearField;
+    use cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
+
+    include!("../../../compiled_circuits/unsigned_mul_div_preprocessed_generated_gkr.rs");
 
     pub fn witness_eval_fn<'a, 'b>(
         proxy: &'_ mut ColumnMajorWitnessProxy<'a, NonMemoryCircuitOracle<'b>, BabyBearField>,

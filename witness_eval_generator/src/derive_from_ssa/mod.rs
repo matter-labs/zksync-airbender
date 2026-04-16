@@ -472,91 +472,20 @@ mod test {
         serde_json::from_reader(src).unwrap()
     }
 
-    // #[cfg(test)]
-    // #[test]
-    // fn launch() {
-    //     skip_if_ci!();
-    //     // let compiled_circuit: CompiledCircuitArtifact<Mersenne31Field> =
-    //     //     deserialize_from_file("../cs/full_machine_with_delegation_layout.json");
-    //     let compiled_circuit: CompiledCircuitArtifact<Mersenne31Field> =
-    //         deserialize_from_file("../prover/full_machine_layout.json");
-    //     let compiled_graph: Vec<Vec<RawExpression<Mersenne31Field>>> =
-    //         deserialize_from_file("../cs/full_machine_with_delegation_ssa.json");
-
-    //     let full_stream = derive_from_ssa(&compiled_graph, &compiled_circuit, false);
-
-    //     std::fs::File::create("src/generated.rs")
-    //         .unwrap()
-    //         .write_all(&full_stream.to_string().as_bytes())
-    //         .unwrap();
-    // }
-
-    // #[cfg(test)]
-    // #[test]
-    // fn gen_for_prover_tests() {
-    //     skip_if_ci!();
-    //     for prefix in [
-    //         "full_machine_with_delegation",
-    //         "minimal_machine_with_delegation",
-    //         "blake_delegation",
-    //         "keccak_delegation",
-    //     ] {
-    //         let compiled_circuit: CompiledCircuitArtifact<Mersenne31Field> =
-    //             deserialize_from_file(&format!("../cs/{}_layout.json", prefix));
-    //         let compiled_graph: Vec<Vec<RawExpression<Mersenne31Field>>> =
-    //             deserialize_from_file(&format!("../cs/{}_ssa.json", prefix));
-    //         let full_stream = derive_from_ssa(&compiled_graph, &compiled_circuit, false);
-
-    //         std::fs::File::create(&format!("../prover/{}_generated.rs", prefix))
-    //             .unwrap()
-    //             .write_all(&full_stream.to_string().as_bytes())
-    //             .unwrap();
-    //     }
-    // }
-
-    // #[cfg(test)]
-    // #[test]
-    // fn gen_for_unrolled_tests() {
-    //     skip_if_ci!();
-    //     for prefix in [
-    //         "add_sub_lui_auipc_mop_preprocessed",
-    //         "jump_branch_slt_preprocessed",
-    //         "shift_binop_csrrw_preprocessed",
-    //         "load_store_preprocessed",
-    //         "word_only_load_store_preprocessed",
-    //         "subword_only_load_store_preprocessed",
-    //         "mul_div_preprocessed",
-    //         "mul_div_unsigned_preprocessed",
-    //         "inits_and_teardowns_preprocessed",
-    //         "reduced_machine_preprocessed",
-    //     ] {
-    //         let compiled_circuit: CompiledCircuitArtifact<Mersenne31Field> =
-    //             deserialize_from_file(&format!("../cs/{}_layout.json", prefix));
-    //         let compiled_graph: Vec<Vec<RawExpression<Mersenne31Field>>> =
-    //             deserialize_from_file(&format!("../cs/{}_ssa.json", prefix));
-    //         let full_stream = derive_from_ssa(&compiled_graph, &compiled_circuit, false);
-
-    //         std::fs::File::create(&format!("../prover/{}_generated.rs", prefix))
-    //             .unwrap()
-    //             .write_all(&full_stream.to_string().as_bytes())
-    //             .unwrap();
-    //     }
-    // }
-
     #[test]
     fn gen_for_unrolled_gkr_tests() {
         skip_if_ci!();
         use ::field::baby_bear::base::BabyBearField;
 
         for prefix in [
-            "add_sub_lui_auipc_mop",
-            "jump_branch_slt",
-            "shift_binop",
-            "mem_word_only",
-            "mem_subword_only",
-            // "mul_div",
-            // "mul_div_unsigned",
-            // "reduced_machine",
+            "add_sub_lui_auipc_mop_preprocessed",
+            "jump_branch_slt_preprocessed",
+            "shift_binop_preprocessed",
+            "mem_word_only_preprocessed",
+            "mem_subword_only_preprocessed",
+            // "mul_div_preprocessed",
+            "unsigned_mul_div_preprocessed",
+            // "reduced_machine_preprocessed",
             "blake2_with_extended_control",
             "bigint_with_extended_control",
             "keccak_special5",
