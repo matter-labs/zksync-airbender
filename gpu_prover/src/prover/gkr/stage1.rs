@@ -449,6 +449,7 @@ impl GpuGKRStage1Output {
             generate_generic_lookup_multiplicities(
                 &mut DeviceMatrixMut::new(&mut generic_family, trace_len),
                 &mut DeviceMatrixMut::new(generic_lookup_multiplicities, trace_len),
+                u32::BITS as i32, // generic lookups: full 32-bit sort
                 context,
             )?;
             multiplicities_range.end(stream)?;
