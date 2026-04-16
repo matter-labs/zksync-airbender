@@ -34,6 +34,7 @@ cuda_kernel!(GenerateMultiplicities,
 pub fn generate_generic_lookup_multiplicities(
     lookup_mapping: &mut impl DeviceMatrixMutImpl<u32>,
     multiplicities: &mut impl DeviceMatrixMutImpl<BF>,
+    lookup_mapping_bits_count: i32,
     context: &ProverContext,
 ) -> CudaResult<()> {
     let stride = lookup_mapping.stride();
@@ -53,9 +54,6 @@ pub fn generate_generic_lookup_multiplicities(
         context.alloc(lookup_mapping_len, AllocationPlacement::BestFit)?;
     assert!(lookup_mapping_len <= u32::MAX as usize);
     let lookup_mapping_size = lookup_mapping_len as u32;
-    // Sort by full key width so placeholder values (e.g. u32::MAX) never alias
-    // valid table indexes due to truncated radix bits.
-    let lookup_mapping_bits_count = u32::BITS as i32;
     let lookup_mapping_sort_temp_storage_size = get_sort_keys_temp_storage_bytes::<u32>(
         false,
         lookup_mapping_size,
@@ -294,6 +292,7 @@ pub fn generate_range_check_multiplicities_from_mappings(
     generate_generic_lookup_multiplicities(
         range_check_16_lookup_mapping,
         &mut DeviceMatrixMut::new(range_check_16_lookup_multiplicities, trace_len),
+        17, // 16-bit values + 1 sentinel bit
         context,
     )?;
     let range_check_timestamp_lookup_multiplicities_range = circuit
@@ -306,6 +305,7 @@ pub fn generate_range_check_multiplicities_from_mappings(
     generate_generic_lookup_multiplicities(
         range_check_timestamp_lookup_mapping,
         &mut DeviceMatrixMut::new(range_check_timestamp_lookup_multiplicities, trace_len),
+        20, // 19-bit values (TIMESTAMP_COLUMNS_NUM_BITS) + 1 sentinel bit
         context,
     )?;
     Ok(())
