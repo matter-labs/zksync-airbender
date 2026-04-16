@@ -230,6 +230,8 @@ struct __align__(8) e2 {
 
   static consteval e2 ONE() { return e2(bf::ONE(), bf::ZERO()); }
 
+  static constexpr DEVICE_FORCEINLINE e2 from_scalar(const bf x) { return e2(x, bf::ZERO()); }
+
   static DEVICE_FORCEINLINE e2 add(const e2 x, const bf y) { return e2(bf::add(x[0], y), x[1]); }
 
   static DEVICE_FORCEINLINE e2 add(const bf x, const e2 y) { return e2(bf::add(x, y[0]), y[1]); }
@@ -310,6 +312,26 @@ struct __align__(8) e2 {
     return e2(bf::red_wide(acc0), bf::red_wide(acc1));
   }
 
+  // Fused scalar multiply-add: x*s + z where s is a base field scalar.
+  static DEVICE_FORCEINLINE e2 fma(const e2 x, const bf s, const e2 z) { return e2(bf::fma(x[0], s, z[0]), bf::fma(x[1], s, z[1])); }
+
+  static DEVICE_FORCEINLINE e2 fma(const bf s, const e2 x, const e2 z) { return fma(x, s, z); }
+
+  // Mixed: x*s + z_bf where z_bf is a base field element (added only to coefficient 0).
+  static DEVICE_FORCEINLINE e2 fma(const e2 x, const bf s, const bf z) { return e2(bf::fma(x[0], s, z), bf::mul(x[1], s)); }
+
+  static DEVICE_FORCEINLINE e2 fma(const bf s, const e2 x, const bf z) { return fma(x, s, z); }
+
+  // Fused scalar multiply-subtract: x*s - z where s is a base field scalar.
+  static DEVICE_FORCEINLINE e2 fms(const e2 x, const bf s, const e2 z) { return e2(bf::fms(x[0], s, z[0]), bf::fms(x[1], s, z[1])); }
+
+  static DEVICE_FORCEINLINE e2 fms(const bf s, const e2 x, const e2 z) { return fms(x, s, z); }
+
+  // Mixed: x*s - z_bf where z_bf is a base field element (subtracted only from coefficient 0).
+  static DEVICE_FORCEINLINE e2 fms(const e2 x, const bf s, const bf z) { return e2(bf::fms(x[0], s, z), bf::mul(x[1], s)); }
+
+  static DEVICE_FORCEINLINE e2 fms(const bf s, const e2 x, const bf z) { return fms(x, s, z); }
+
   static DEVICE_FORCEINLINE e2 inv(const e2 x) {
     const auto a = x[0];
     const auto b = x[1];
@@ -377,6 +399,10 @@ struct __align__(16) e4 {
   static consteval HOST_DEVICE_FORCEINLINE e4 ZERO() { return e4(e2::ZERO(), e2::ZERO()); }
 
   static consteval HOST_DEVICE_FORCEINLINE e4 ONE() { return e4(e2::ONE(), e2::ZERO()); }
+
+  static constexpr DEVICE_FORCEINLINE e4 from_scalar(const bf x) { return e4(e2(x, bf::ZERO()), e2::ZERO()); }
+
+  static constexpr DEVICE_FORCEINLINE e4 from_scalar(const e2 x) { return e4(x, e2::ZERO()); }
 
   static DEVICE_FORCEINLINE e4 add(const e4 x, const bf y) { return e4(e2::add(x[0], y), x[1]); }
 
@@ -539,6 +565,14 @@ struct __align__(16) e4 {
   // Swapped: s*x - z.
   static DEVICE_FORCEINLINE e4 fms(const bf s, const e4 x, const e4 z) { return fms(x, s, z); }
 
+  // Mixed: x*s - z_bf where z_bf is a base field element (subtracted only from coefficient [0][0]).
+  static DEVICE_FORCEINLINE e4 fms(const e4 x, const bf s, const bf z) {
+    return e4(e2(bf::fms(x[0][0], s, z), bf::mul(x[0][1], s)), e2(bf::mul(x[1][0], s), bf::mul(x[1][1], s)));
+  }
+
+  // Swapped: s*x - z_bf.
+  static DEVICE_FORCEINLINE e4 fms(const bf s, const e4 x, const bf z) { return fms(x, s, z); }
+
   static DEVICE_FORCEINLINE e4 inv(const e4 x) {
     const auto a = x[0];
     const auto b = x[1];
@@ -607,6 +641,10 @@ struct __align__(8) e6 {
 
   static consteval HOST_DEVICE_FORCEINLINE e6 ONE() { return e6(e2::ONE(), e2::ZERO(), e2::ZERO()); }
 
+  static constexpr DEVICE_FORCEINLINE e6 from_scalar(const bf x) { return e6(e2(x, bf::ZERO()), e2::ZERO(), e2::ZERO()); }
+
+  static constexpr DEVICE_FORCEINLINE e6 from_scalar(const e2 x) { return e6(x, e2::ZERO(), e2::ZERO()); }
+
   static DEVICE_FORCEINLINE e6 add(const e6 x, const bf y) { return e6(e2::add(x[0], y), x[1], x[2]); }
 
   static DEVICE_FORCEINLINE e6 add(const e6 x, const e2 y) { return e6(e2::add(x[0], y), x[1], x[2]); }
@@ -671,6 +709,52 @@ struct __align__(8) e6 {
     const auto c = e2::sub(e2::add(e2::add(s1, s2), s3), e2::add(s0, s4));
     return e6(a, b, c);
   }
+
+  // Fused multiply-add: x*y + z. Not fused internally (Karatsuba e6*e6 can't absorb addend).
+  static DEVICE_FORCEINLINE e6 fma(const e6 x, const e6 y, const e6 z) { return add(mul(x, y), z); }
+
+  // Fused multiply-subtract: x*y - z.
+  static DEVICE_FORCEINLINE e6 fms(const e6 x, const e6 y, const e6 z) { return sub(mul(x, y), z); }
+
+  // Fused scalar multiply-add: x*s + z where s is a base field scalar.
+  static DEVICE_FORCEINLINE e6 fma(const e6 x, const bf s, const e6 z) { return e6(e2::fma(x[0], s, z[0]), e2::fma(x[1], s, z[1]), e2::fma(x[2], s, z[2])); }
+
+  static DEVICE_FORCEINLINE e6 fma(const bf s, const e6 x, const e6 z) { return fma(x, s, z); }
+
+  // Fused scalar multiply-subtract: x*s - z where s is a base field scalar.
+  static DEVICE_FORCEINLINE e6 fms(const e6 x, const bf s, const e6 z) { return e6(e2::fms(x[0], s, z[0]), e2::fms(x[1], s, z[1]), e2::fms(x[2], s, z[2])); }
+
+  static DEVICE_FORCEINLINE e6 fms(const bf s, const e6 x, const e6 z) { return fms(x, s, z); }
+
+  // Fused e2-scalar multiply-add: x*s + z where s is an e2 scalar.
+  static DEVICE_FORCEINLINE e6 fma(const e6 x, const e2 s, const e6 z) { return e6(e2::fma(x[0], s, z[0]), e2::fma(x[1], s, z[1]), e2::fma(x[2], s, z[2])); }
+
+  static DEVICE_FORCEINLINE e6 fma(const e2 s, const e6 x, const e6 z) { return fma(x, s, z); }
+
+  // Fused e2-scalar multiply-subtract: x*s - z where s is an e2 scalar.
+  static DEVICE_FORCEINLINE e6 fms(const e6 x, const e2 s, const e6 z) { return e6(e2::fms(x[0], s, z[0]), e2::fms(x[1], s, z[1]), e2::fms(x[2], s, z[2])); }
+
+  static DEVICE_FORCEINLINE e6 fms(const e2 s, const e6 x, const e6 z) { return fms(x, s, z); }
+
+  // Mixed: x*s + z_bf where z_bf is a base field element (added only to coefficient [0]).
+  static DEVICE_FORCEINLINE e6 fma(const e6 x, const bf s, const bf z) { return e6(e2::fma(x[0], s, z), e2::mul(x[1], s), e2::mul(x[2], s)); }
+
+  static DEVICE_FORCEINLINE e6 fma(const bf s, const e6 x, const bf z) { return fma(x, s, z); }
+
+  // Mixed: x*s - z_bf.
+  static DEVICE_FORCEINLINE e6 fms(const e6 x, const bf s, const bf z) { return e6(e2::fms(x[0], s, z), e2::mul(x[1], s), e2::mul(x[2], s)); }
+
+  static DEVICE_FORCEINLINE e6 fms(const bf s, const e6 x, const bf z) { return fms(x, s, z); }
+
+  // Mixed: x*s + z_e2 where z_e2 is an e2 element (added only to coefficient [0]).
+  static DEVICE_FORCEINLINE e6 fma(const e6 x, const e2 s, const e2 z) { return e6(e2::fma(x[0], s, z), e2::mul(x[1], s), e2::mul(x[2], s)); }
+
+  static DEVICE_FORCEINLINE e6 fma(const e2 s, const e6 x, const e2 z) { return fma(x, s, z); }
+
+  // Mixed: x*s - z_e2.
+  static DEVICE_FORCEINLINE e6 fms(const e6 x, const e2 s, const e2 z) { return e6(e2::fms(x[0], s, z), e2::mul(x[1], s), e2::mul(x[2], s)); }
+
+  static DEVICE_FORCEINLINE e6 fms(const e2 s, const e6 x, const e2 z) { return fms(x, s, z); }
 
   static DEVICE_FORCEINLINE e6 inv(const e6 x) {
     const auto c0 = e2::add(e2::neg(e2::mul(e2::mul_by_cubic_non_residue(x[2]), x[1])), e2::sqr(x[0]));
