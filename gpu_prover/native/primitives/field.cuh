@@ -153,33 +153,22 @@ struct bf {
     if (x.limb == 0)
       return bf(0); // Placeholder: returning zero for undefined inversion
 
-    // Fermat's little theorem: a^(p-1) = 1 (mod p) => a^(p-2) = a^(-1) (mod p)
-    // Exponent: 0x78000001 - 2 = 0x77ffffff
-    // 0x77ffffff = 0b0111_0111_1111_1111_1111_1111_1111_1111
-    // 10
-    const bf p_10 = sqr(x);
-    const bf p_11 = mul(p_10, x);
-    const bf p_110 = sqr(p_11);
-    const bf p_111 = mul(p_110, x);
-    const bf p_1110 = sqr(p_111);
-    const bf p_1111 = mul(p_1110, x);
-
-    bf result = p_1110;
-    result = sqr(result);
-    result = sqr(result);
-    result = sqr(result);
-    // 0111_0000
-    result = mul(result, p_111);
-    // 0111_0111
+    // Fermat's little theorem: a^(p-2) = a^(-1) (mod p)
+    // Exponent: p - 2 = 0x77ffffff = 0b0111_0111_111111_111111_111111_111111
+    //
+    // Addition chain (29 sqr + 8 mul = 37 ops):
+    //   Build x^7, x^56 (intermediate), x^63, x^119 = x^63 * x^56.
+    //   Then 4× [sqr^6, mul x^63] appends 24 one-bits via a 6-bit window.
+    const bf x2 = sqr(x);
+    const bf x3 = mul(x2, x);
+    const bf x7 = mul(sqr(x3), x);      // x^6 * x
+    const bf x56 = pow_log2_exp<3>(x7); // x^7 << 3
+    const bf x63 = mul(x56, x7);        // x^56 + x^7 = x^63 = 0b111111
+    bf result = mul(x63, x56);          // x^63 + x^56 = x^119 = 0b01110111
 
 #pragma unroll
-    for (int i = 0; i < 6; ++i) {
-      // _1111 per iteration
-      result = sqr(result);
-      result = sqr(result);
-      result = sqr(result);
-      result = sqr(result);
-      result = mul(result, p_1111);
+    for (int i = 0; i < 4; ++i) {
+      result = mul(pow_log2_exp<6>(result), x63); // shift 6, fill with 111111
     }
 
     return result;
