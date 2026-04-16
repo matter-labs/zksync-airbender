@@ -3744,6 +3744,22 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
         }
         let whir_batching_challenge = draw_single_field_el(&mut ts);
         let grand_product_accumulator: BabyBearExt4 = read_field_el::<I>();
+        {
+            let mut read_product = BabyBearExt4::ONE;
+            for i in 0..16usize {
+                let eval = *evals_slice.get_unchecked(0usize + i);
+                field_ops::mul_assign(&mut read_product, &eval);
+            }
+            let mut write_product = BabyBearExt4::ONE;
+            for i in 0..16usize {
+                let eval = *evals_slice.get_unchecked(16usize + i);
+                field_ops::mul_assign(&mut write_product, &eval);
+            }
+            field_ops::mul_assign(&mut read_product, &grand_product_accumulator);
+            if read_product != write_product {
+                return Err(E::gkr_grand_product_check_failed());
+            }
+        }
         Ok(GKRVerifierOutput {
             base_layer_claims: state.prev_claims,
             base_layer_addrs: LAYER_0_SORTED_ADDRS,

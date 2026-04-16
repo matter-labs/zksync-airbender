@@ -790,6 +790,7 @@ where
 
     let field_struct = MW::field_struct();
     let quartic_struct = MW::quartic_struct();
+    let quartic_zero = MW::quartic_zero();
     let quartic_one = MW::quartic_one();
 
     let mut main_body = TokenStream::new();
@@ -1155,10 +1156,91 @@ where
         });
     }
 
+    let mut output_checks = TokenStream::new();
+    {
+        let mul = |a: TokenStream, b: TokenStream| MW::mul_assign(a, b);
+        let add = |a: TokenStream, b: TokenStream| MW::add_assign(a, b);
+
+        let mut eval_offset = 0usize;
+        let mut lookup_type_idx = 0usize;
+        for group in &output_groups {
+            match group.output_type {
+                OutputType::PermutationProduct => {
+                    assert_eq!(group.num_addresses, 2);
+                    let read_off = eval_offset;
+                    let write_off = eval_offset + evals_per_poly;
+                    eval_offset += 2 * evals_per_poly;
+
+                    let mul_rp = mul(quote! { read_product }, quote! { eval });
+                    let mul_wp = mul(quote! { write_product }, quote! { eval });
+                    let mul_gp = mul(
+                        quote! { read_product },
+                        quote! { grand_product_accumulator },
+                    );
+                    output_checks.extend(quote! {
+                        {
+                            let mut read_product = #quartic_one;
+                            for i in 0..#evals_per_poly {
+                                let eval = *evals_slice.get_unchecked(#read_off + i);
+                                #mul_rp;
+                            }
+                            let mut write_product = #quartic_one;
+                            for i in 0..#evals_per_poly {
+                                let eval = *evals_slice.get_unchecked(#write_off + i);
+                                #mul_wp;
+                            }
+                            #mul_gp;
+                            if read_product != write_product {
+                                return Err(E::gkr_grand_product_check_failed());
+                            }
+                        }
+                    });
+                }
+                OutputType::Lookup16Bits
+                | OutputType::LookupTimestamps
+                | OutputType::GenericLookup => {
+                    let num_off = eval_offset;
+                    let den_off = eval_offset + evals_per_poly;
+                    eval_offset += 2 * evals_per_poly;
+                    let lt_idx = lookup_type_idx;
+                    lookup_type_idx += 1;
+
+                    let mul_an_d = mul(quote! { acc_num }, quote! { d });
+                    let mul_n_ad = mul(quote! { t }, quote! { acc_den });
+                    let add_an_t = add(quote! { acc_num }, quote! { t });
+                    let mul_ad_d = mul(quote! { acc_den }, quote! { d });
+                    output_checks.extend(quote! {
+                        {
+                            let mut acc_num = #quartic_zero;
+                            let mut acc_den = #quartic_one;
+                            for i in 0..#evals_per_poly {
+                                let n = *evals_slice.get_unchecked(#num_off + i);
+                                let d = *evals_slice.get_unchecked(#den_off + i);
+                                // acc_num = acc_num * d + n * acc_den
+                                #mul_an_d;
+                                let mut t = n;
+                                #mul_n_ad;
+                                #add_an_t;
+                                // acc_den = acc_den * d
+                                #mul_ad_d;
+                            }
+                            if !acc_num.is_zero() || acc_den.is_zero() {
+                                return Err(E::gkr_lookup_identity_failed(#lt_idx));
+                            }
+                        }
+                    });
+                }
+            }
+        }
+    }
+
     main_body.extend(quote! {
         let whir_batching_challenge = draw_single_field_el(&mut ts);
 
         let grand_product_accumulator: #quartic_struct = read_field_el::<I>();
+
+        #output_checks
+
         Ok(GKRVerifierOutput {
             base_layer_claims: state.prev_claims,
             base_layer_addrs: LAYER_0_SORTED_ADDRS,

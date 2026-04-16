@@ -20,6 +20,7 @@ fn deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &str) -> T {
 }
 
 mod family_circuits;
+mod malicious_proofs;
 
 pub(crate) fn ensure_memory_trace_consistency<F: PrimeField>(
     memory_trace: &GKRMemoryOnlyWitnessTrace<F, impl Allocator + Clone, impl Allocator + Clone>,

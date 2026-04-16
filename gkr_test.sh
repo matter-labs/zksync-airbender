@@ -26,9 +26,11 @@ usage() {
   echo "  binaries      Build RISC-V binaries"
   echo "  transpiler    Run transpiler tests"
   echo ""
+  echo "  malicious     Generate & verify malicious proofs (soundness gap tests)"
+  echo ""
   echo "  Shorthands:"
   echo "  tests         = native + corruption + transpiler"
-  echo "  all           = full pipeline (default)"
+  echo "  all           = full pipeline (default, excludes malicious)"
   echo ""
   echo "Circuits:"
   for c in "${ALL_CIRCUITS[@]}"; do echo "  $c"; done
@@ -81,7 +83,7 @@ expand_steps() {
   done
 }
 
-VALID=" ${ALL_STEPS[*]} "
+VALID=" ${ALL_STEPS[*]} malicious "
 
 if [[ $# -gt 0 ]]; then
   RAW_STEPS=($(expand_steps "$@"))
@@ -91,13 +93,15 @@ if [[ $# -gt 0 ]]; then
       usage
     fi
   done
-  # Reorder to match pipeline order
   STEPS=()
   for s in "${ALL_STEPS[@]}"; do
     if [[ " ${RAW_STEPS[*]} " =~ " $s " ]]; then
       STEPS+=("$s")
     fi
   done
+  if [[ " ${RAW_STEPS[*]} " =~ " malicious " ]]; then
+    STEPS+=("malicious")
+  fi
 elif [[ -n "$FROM" ]]; then
   if [[ ! "$VALID" =~ " $FROM " ]]; then
     echo "Unknown step for --from: $FROM"
@@ -188,6 +192,11 @@ for step in "${STEPS[@]}"; do
     transpiler)
       run_step "Transpiler tests" \
         env RUSTFLAGS="$WARN_FLAGS" cargo test -p verifier --features "$FEATURES" --test transpiler -- ${CIRCUIT_FILTER:+"$CIRCUIT_FILTER"} --include-ignored --nocapture ;;
+    malicious)
+      run_step "Generate malicious proofs (corrupt witness, no self-checks)" \
+        bash -c "cd prover && RUST_MIN_STACK=100000000 RUSTFLAGS=\"$WARN_FLAGS\" cargo test -p prover --release --no-default-features --features prover,bincode $VARIANT_FEATURES -- --ignored --nocapture malicious_proof"
+      run_step "Verify malicious proofs rejected (soundness gap tests)" \
+        env RUSTFLAGS="$WARN_FLAGS" cargo test -p verifier --features "$FEATURES" --test malicious -- --include-ignored --nocapture ;;
   esac
 done
 

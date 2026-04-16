@@ -42,7 +42,7 @@ fn verify_nds(name: &str, nds: Vec<u32>) -> bool {
 
     if !accepted {
         if let Some(msg) = panic_msg.lock().unwrap().take() {
-            eprintln!("  [corruption test] {} rejected via panic: {}", name, msg);
+            println!("  [corruption test] {} rejected via panic: {}", name, msg);
         }
     }
 
@@ -295,6 +295,18 @@ fn test_rejects_corrupted_cache_relations(name: &str) {
     );
 }
 
+fn test_rejects_corrupted_grand_product(name: &str) {
+    let circuit_data = common::circuit_by_name(name);
+    let mut proof = circuit_data.proof();
+    proof.grand_product_accumulator_computed = BabyBearExt4::ZERO;
+    let nds = proof_to_nds(name, &proof);
+    assert!(
+        !verify_nds(name, nds),
+        "{}: should reject corrupted grand_product_accumulator",
+        name
+    );
+}
+
 macro_rules! generate_corruption_tests {
     ($($name:ident: $schedule:ident: $layout_suffix:expr),* $(,)?) => {
         $(
@@ -374,6 +386,12 @@ macro_rules! generate_corruption_tests {
                 fn [<rejects_corrupted_cache_relations_ $name>]() {
                     test_rejects_corrupted_cache_relations(stringify!($name));
                 }
+
+                #[test]
+                fn [<rejects_corrupted_grand_product_ $name>]() {
+                    test_rejects_corrupted_grand_product(stringify!($name));
+                }
+
             }
         )*
     };
