@@ -64,11 +64,6 @@ impl<const SUPPORT_SIGNED: bool> OpcodeFamilyDecoder for DivMulDecoder<SUPPORT_S
         common_constants::circuit_families::MUL_DIV_CIRCUIT_FAMILY_IDX
     }
 
-    // const IS_DIVISION_BIT: usize = 0;
-    // const MUL_MULH_MULHSU_DIV_REM: usize = 1;
-    // const MUL_MULH_DIV_REM: usize = 2;
-    // const MUL_DIV_DIVU: usize = 3;
-
     fn define_decoder_subspace(
         &self,
         preprocessed_opcode: Instruction,

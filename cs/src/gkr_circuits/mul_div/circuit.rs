@@ -3,7 +3,6 @@ use super::*;
 use crate::constraint::Constraint;
 use crate::constraint::Term;
 use crate::cs::circuit_trait::*;
-use crate::gkr_circuits::utils::update_intermediate_carry_value;
 use crate::oracle::Placeholder;
 use crate::tables::TableDriver;
 use crate::types::*;
@@ -17,9 +16,10 @@ const TABLES_TOTAL_WIDTH: usize = 8;
 
 pub fn mul_div_tables<const SUPPORT_SIGNED: bool>() -> Vec<TableType> {
     vec![
-        TableType::ZeroEntry, // we need it, as we use conditional lookup enforcements
+        TableType::U16GetLowByte,
         TableType::RegIsZero,
         TableType::RangeCheck8x8,
+        TableType::RangeCheck13,
     ]
 }
 

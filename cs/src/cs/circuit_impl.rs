@@ -376,24 +376,32 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
                         vars, name
                     );
 
-                    if Self::ASSUME_MEMORY_VALUES_ASSIGNED {
-                        let value_fn = move |placer: &mut Self::WitnessPlacer| {
-                            for el in vars.iter() {
-                                placer.assume_assigned(*el);
-                            }
-                        };
-                        self.set_values(value_fn);
-                    } else {
-                        let value_fn = move |placer: &mut Self::WitnessPlacer| {
-                            let value =
-                                placer.get_oracle_u32(Placeholder::ShuffleRamReadTimestamp(
-                                    local_timestamp_in_cycle as usize,
-                                ));
+                    // timestamps always assumed assigned
+                    let value_fn = move |placer: &mut Self::WitnessPlacer| {
+                        for el in vars.iter() {
+                            placer.assume_assigned(*el);
+                        }
+                    };
+                    self.set_values(value_fn);
 
-                            placer.assign_u32_from_u16_parts(vars, &value);
-                        };
-                        self.set_values(value_fn);
-                    }
+                    // if Self::ASSUME_MEMORY_VALUES_ASSIGNED {
+                    //     let value_fn = move |placer: &mut Self::WitnessPlacer| {
+                    //         for el in vars.iter() {
+                    //             placer.assume_assigned(*el);
+                    //         }
+                    //     };
+                    //     self.set_values(value_fn);
+                    // } else {
+                    //     let value_fn = move |placer: &mut Self::WitnessPlacer| {
+                    //         let value =
+                    //             placer.get_(Placeholder::ShuffleRamReadTimestamp(
+                    //                 local_timestamp_in_cycle as usize,
+                    //             ));
+
+                    //         placer.assign_u32_from_u16_parts(vars, &value);
+                    //     };
+                    //     self.set_values(value_fn);
+                    // }
 
                     vars
                 };
@@ -499,26 +507,33 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
                             let vars = std::array::from_fn(|i| {
                                 self.add_named_variable(&format!("{} read_timestamp[{}]", name, i))
                             });
+                            // Timestamps always assumed assigned
+                            let value_fn = move |placer: &mut Self::WitnessPlacer| {
+                                for el in vars.iter() {
+                                    placer.assume_assigned(*el);
+                                }
+                            };
+                            self.set_values(value_fn);
 
-                            if Self::ASSUME_MEMORY_VALUES_ASSIGNED {
-                                let value_fn = move |placer: &mut Self::WitnessPlacer| {
-                                    for el in vars.iter() {
-                                        placer.assume_assigned(*el);
-                                    }
-                                };
-                                self.set_values(value_fn);
-                            } else {
-                                let value_fn = move |placer: &mut Self::WitnessPlacer| {
-                                    let value = placer.get_oracle_u32(
-                                        Placeholder::ShuffleRamReadTimestamp(
-                                            local_timestamp_in_cycle as usize,
-                                        ),
-                                    );
+                            // if Self::ASSUME_MEMORY_VALUES_ASSIGNED {
+                            //     let value_fn = move |placer: &mut Self::WitnessPlacer| {
+                            //         for el in vars.iter() {
+                            //             placer.assume_assigned(*el);
+                            //         }
+                            //     };
+                            //     self.set_values(value_fn);
+                            // } else {
+                            //     let value_fn = move |placer: &mut Self::WitnessPlacer| {
+                            //         let value = placer.get_oracle_u32(
+                            //             Placeholder::ShuffleRamReadTimestamp(
+                            //                 local_timestamp_in_cycle as usize,
+                            //             ),
+                            //         );
 
-                                    placer.assign_u32_from_u16_parts(vars, &value);
-                                };
-                                self.set_values(value_fn);
-                            }
+                            //         placer.assign_u32_from_u16_parts(vars, &value);
+                            //     };
+                            //     self.set_values(value_fn);
+                            // }
 
                             vars
                         };
@@ -1326,9 +1341,19 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
 
         let final_pc: [Variable; 2] =
             std::array::from_fn(|i| self.add_named_variable(&format!("final_pc[{}]", i)));
-        final_pc.iter().enumerate().for_each(|(i, el)| {
-            self.require_invariant(*el, Invariant::Substituted((Placeholder::PcFin, i)))
-        });
+
+        if Self::ASSUME_MEMORY_VALUES_ASSIGNED == false {
+            // we will put next PC for debug purposes
+            let value_fn = move |placer: &mut Self::WitnessPlacer| {
+                let value = placer.get_oracle_u32(Placeholder::PcFin);
+                placer.assign_u32_from_u16_parts(final_pc, &value);
+            };
+            self.set_values(value_fn);
+        } else {
+            final_pc.iter().enumerate().for_each(|(i, el)| {
+                self.require_invariant(*el, Invariant::Substituted((Placeholder::PcFin, i)))
+            });
+        }
 
         let final_timestamp: [Variable; NUM_TIMESTAMP_COLUMNS_FOR_RAM] =
             std::array::from_fn(|i| self.add_named_variable(&format!("final_ts[{}]", i)));
@@ -1656,6 +1681,16 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
                     }
 
                     if value != F::ZERO {
+                        let mut values = BTreeMap::new();
+                        let (quad, linear, _) = constraint.clone().split_max_quadratic();
+                        for (_, a, b) in quad.into_iter() {
+                            values.insert(a, resolver.get_value(a).unwrap());
+                            values.insert(b, resolver.get_value(b).unwrap());
+                        }
+                        for (_, a) in linear.into_iter() {
+                            values.insert(a, resolver.get_value(a).unwrap());
+                        }
+                        println!("Assignments are {:?}", values);
                         panic!(
                             "unsatisfied at constraint {:?} with value {:?}",
                             constraint, value

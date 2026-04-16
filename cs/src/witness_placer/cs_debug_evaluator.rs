@@ -246,6 +246,7 @@ impl<F: PrimeField> WitnessPlacer<F> for CSDebugWitnessEvaluator<F> {
     }
 
     #[inline(always)]
+    #[track_caller]
     fn lookup<const M: usize, const N: usize>(
         &mut self,
         inputs: &[Self::Field; M],
@@ -255,6 +256,7 @@ impl<F: PrimeField> WitnessPlacer<F> for CSDebugWitnessEvaluator<F> {
     }
 
     #[inline(always)]
+    #[track_caller]
     fn peek_lookup<const M: usize, const N: usize>(
         &mut self,
         inputs: &[Self::Field; M],
@@ -265,6 +267,7 @@ impl<F: PrimeField> WitnessPlacer<F> for CSDebugWitnessEvaluator<F> {
     }
 
     #[inline(always)]
+    #[track_caller]
     fn maybe_lookup<const M: usize, const N: usize>(
         &mut self,
         inputs: &[Self::Field; M],
@@ -279,11 +282,11 @@ impl<F: PrimeField> WitnessPlacer<F> for CSDebugWitnessEvaluator<F> {
     }
 
     #[inline(always)]
+    #[track_caller]
     fn lookup_enforce<const M: usize>(&mut self, inputs: &[Self::Field; M], table_id: &Self::U16) {
-        todo!()
-        // let _ = self
-        //     .table_driver
-        //     .enforce_values_and_get_absolute_index(inputs, *table_id as u32);
+        let _ = self
+            .table_driver
+            .enforce_values_and_get_absolute_index(inputs, *table_id as u32);
     }
 
     fn assume_assigned(&mut self, _variable: Variable) {
