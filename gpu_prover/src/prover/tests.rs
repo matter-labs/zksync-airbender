@@ -23,7 +23,7 @@ use crate::prover::decoder::DecoderTableTransfer;
 use crate::prover::memory::commit_memory;
 use crate::prover::proof::{
     grand_product_accumulator_from_explicit_evaluations, prove, prove_with_transfer_scheduling,
-    GkrExternalPowChallenges, GpuGKRProofJob,
+    GpuGKRProofJob,
 };
 use crate::prover::test_utils::{
     make_test_context, make_test_context_with_device_allocator_block_log_size,
@@ -39,8 +39,7 @@ use crate::prover::whir_fold::{
     debug_build_initial_batched_main_domain_poly_for_test, debug_build_initial_fold_state_for_test,
     debug_build_initial_state_for_test, debug_build_initial_state_snapshots_for_test,
     debug_initial_round_checkpoint_for_test, gpu_whir_fold_supported_path,
-    gpu_whir_fold_supported_path_with_external_pow, schedule_gpu_whir_fold_with_sources,
-    take_scheduled_whir_proof,
+    schedule_gpu_whir_fold_with_sources, take_scheduled_whir_proof,
 };
 use crate::witness::trace::ChunkedTraceHolder;
 use crate::witness::trace_unrolled::{
@@ -389,22 +388,6 @@ where
         .collect()
 }
 
-fn parity_pow_challenges_for_test(
-    proof: &GKRProof<BF, E4, DefaultTreeConstructor>,
-) -> Option<GkrExternalPowChallenges> {
-    #[cfg(feature = "deterministic_pow")]
-    {
-        let _ = proof;
-        None
-    }
-    #[cfg(not(feature = "deterministic_pow"))]
-    {
-        Some(GkrExternalPowChallenges {
-            whir_pow_nonces: proof.whir_proof.pow_nonces.clone(),
-        })
-    }
-}
-
 fn setup_geometry_for_test(setup_transfer: &GpuGKRSetupTransfer<'_>) -> GpuGKRTraceGeometry {
     GpuGKRTraceGeometry {
         log_domain_size: setup_transfer.trace_holder.log_domain_size,
@@ -549,7 +532,6 @@ impl BasicUnrolledFixture {
     fn prove(
         &self,
         transfers: BasicUnrolledTransfers<'static>,
-        external_pow_challenges: Option<GkrExternalPowChallenges>,
     ) -> CudaResult<GpuGKRProofJob<'static>> {
         let BasicUnrolledTransfers {
             setup_transfer,
@@ -568,15 +550,11 @@ impl BasicUnrolledFixture {
             None,
             tracing_data_transfer,
             &self.memory_tree_caps,
-            external_pow_challenges,
             &self.context,
         )
     }
 
-    fn schedule_prove(
-        &self,
-        external_pow_challenges: Option<GkrExternalPowChallenges>,
-    ) -> CudaResult<GpuGKRProofJob<'static>> {
+    fn schedule_prove(&self) -> CudaResult<GpuGKRProofJob<'static>> {
         let BasicUnrolledTransfers {
             setup_transfer,
             decoder_transfer,
@@ -594,35 +572,14 @@ impl BasicUnrolledFixture {
             None,
             tracing_data_transfer,
             &self.memory_tree_caps,
-            external_pow_challenges,
             &self.context,
         )
     }
 }
 
 impl BasicUnrolledProofFixture {
-    fn override_pow_challenges(&self) -> GkrExternalPowChallenges {
-        GkrExternalPowChallenges {
-            whir_pow_nonces: self.expected_cpu_proof.whir_proof.pow_nonces.clone(),
-        }
-    }
-
-    fn parity_pow_challenges(&self) -> Option<GkrExternalPowChallenges> {
-        #[cfg(feature = "deterministic_pow")]
-        {
-            None
-        }
-        #[cfg(not(feature = "deterministic_pow"))]
-        {
-            Some(self.override_pow_challenges())
-        }
-    }
-
-    fn schedule_prove(
-        &self,
-        external_pow_challenges: Option<GkrExternalPowChallenges>,
-    ) -> CudaResult<GpuGKRProofJob<'static>> {
-        self.base.schedule_prove(external_pow_challenges)
+    fn schedule_prove(&self) -> CudaResult<GpuGKRProofJob<'static>> {
+        self.base.schedule_prove()
     }
 }
 
@@ -1912,7 +1869,6 @@ fn assert_recursive_whir_oracle_parity_for_supported_path(
         move || scheduled_transcript_seed,
         whir_schedule.cap_size,
         trace_len_log2,
-        Some(cpu_pow_nonces.clone()),
         context,
     )
     .unwrap();
@@ -5139,9 +5095,7 @@ fn forward_to_backward_handoff_releases_forward_scratch() {
 #[serial]
 fn run_basic_unrolled_test() {
     let fixture = prepare_basic_unrolled_proof_fixture();
-    let proof_job = fixture
-        .schedule_prove(fixture.parity_pow_challenges())
-        .unwrap();
+    let proof_job = fixture.schedule_prove().unwrap();
 
     assert!(
         !proof_job.is_finished().unwrap(),
@@ -5156,68 +5110,15 @@ fn run_basic_unrolled_test() {
 #[serial]
 fn run_basic_unrolled_proof_job_default_pow_smoke_test() {
     let fixture = prepare_basic_unrolled_proof_fixture();
-    let proof_job = fixture.schedule_prove(None).unwrap();
+    let proof_job = fixture.schedule_prove().unwrap();
 
     assert!(
         !proof_job.is_finished().unwrap(),
-        "prove() should remain non-blocking without external PoW overrides"
+        "prove() should remain non-blocking"
     );
 
     let (gpu_proof, _proof_time_ms) = proof_job.finish().unwrap();
-    assert_eq!(
-        gpu_proof.external_challenges,
-        fixture.expected_cpu_proof.external_challenges
-    );
-    assert_eq!(
-        gpu_proof.final_explicit_evaluations,
-        fixture.expected_cpu_proof.final_explicit_evaluations
-    );
-    // With default (non-external) PoW nonces, the GPU may find different valid
-    // nonces than the CPU.  Different nonces → different WHIR transcript state →
-    // different evaluation point → different backward sumcheck values.  So we can
-    // only check structural properties here, not exact values.
-    assert_eq!(
-        gpu_proof.sumcheck_intermediate_values.len(),
-        fixture
-            .expected_cpu_proof
-            .sumcheck_intermediate_values
-            .len(),
-        "number of proof layers must match"
-    );
-    for (layer_idx, expected_values) in fixture
-        .expected_cpu_proof
-        .sumcheck_intermediate_values
-        .iter()
-    {
-        let actual_values = gpu_proof
-            .sumcheck_intermediate_values
-            .get(layer_idx)
-            .unwrap_or_else(|| panic!("missing proof layer {layer_idx}"));
-        assert_eq!(
-            actual_values.sumcheck_num_rounds, expected_values.sumcheck_num_rounds,
-            "layer {layer_idx}: sumcheck_num_rounds must match"
-        );
-        assert_eq!(
-            actual_values.internal_round_coefficients.len(),
-            expected_values.internal_round_coefficients.len(),
-            "layer {layer_idx}: number of internal round coefficients must match"
-        );
-        assert_eq!(
-            actual_values.final_step_evaluations.len(),
-            expected_values.final_step_evaluations.len(),
-            "layer {layer_idx}: number of final step evaluations must match"
-        );
-    }
-    assert_eq!(
-        gpu_proof.whir_proof.pow_nonces.len(),
-        fixture.base.whir_schedule.whir_pow_schedule.len()
-    );
-    // final_monomials is not yet populated by the proof pipeline; just check
-    // it matches whatever the CPU reference has.
-    assert_eq!(
-        gpu_proof.whir_proof.final_monomials.len(),
-        fixture.expected_cpu_proof.whir_proof.final_monomials.len()
-    );
+    assert_gkr_proof_eq_for_test(&gpu_proof, &fixture.expected_cpu_proof);
 }
 
 #[test]
@@ -5226,14 +5127,10 @@ fn run_basic_unrolled_proof_job_multi_schedule_test() {
     let fixture = prepare_basic_unrolled_proof_fixture();
     let baseline_device_usage = fixture.base.context.get_used_mem_current();
     let t0 = std::time::Instant::now();
-    let proof_job_0 = fixture
-        .schedule_prove(fixture.parity_pow_challenges())
-        .unwrap();
+    let proof_job_0 = fixture.schedule_prove().unwrap();
     eprintln!("schedule_prove #0 took {:?}", t0.elapsed());
     let t1 = std::time::Instant::now();
-    let proof_job_1 = fixture
-        .schedule_prove(fixture.parity_pow_challenges())
-        .unwrap();
+    let proof_job_1 = fixture.schedule_prove().unwrap();
     eprintln!("schedule_prove #1 took {:?}", t1.elapsed());
 
     let (gpu_proof_0, proof_time_ms_0) = proof_job_0.finish().unwrap();
@@ -5266,7 +5163,7 @@ fn run_basic_unrolled_proof_job_profile_test() {
 
     let warmup_transfers = fixture.schedule_transfers().unwrap();
     fixture.context.get_h2d_stream().synchronize().unwrap();
-    let warmup_job = fixture.prove(warmup_transfers, None).unwrap();
+    let warmup_job = fixture.prove(warmup_transfers).unwrap();
     assert!(
         !warmup_job.is_finished().unwrap(),
         "prove() should remain non-blocking after transfers are ready",
@@ -5281,7 +5178,7 @@ fn run_basic_unrolled_proof_job_profile_test() {
     fixture.context.reset_used_mem_peak();
     let (profiled_proof, profiled_time_ms) = {
         let _range = start_registered_range(nsys_capture_domain, nsys_capture_message);
-        let profiled_job = fixture.prove(profiled_transfers, None).unwrap();
+        let profiled_job = fixture.prove(profiled_transfers).unwrap();
         assert!(
             !profiled_job.is_finished().unwrap(),
             "prove() should remain non-blocking for the profiled call",
@@ -7672,8 +7569,8 @@ fn run_basic_unrolled_stagewise_parity_test() {
         .unwrap();
     // The per-round WHIR check takes tree caps from the trace holders, so we
     // capture the full GPU WHIR proof from this call rather than running a
-    // second gpu_whir_fold_supported_path_with_external_pow (which would try to
-    // take the already-consumed tree caps and panic).
+    // second gpu_whir_fold_supported_path (which would try to take the
+    // already-consumed tree caps and panic).
     let gpu_whir_proof = {
         let _range = range!("test.gpu.whir.recursive_oracle_parity");
         assert_recursive_whir_oracle_parity_for_supported_path(
@@ -8138,7 +8035,6 @@ fn standalone_inits_and_teardowns_gpu_workflow_matches_cpu() {
         Some(inits_and_teardowns_transfer),
         tracing_data_transfer,
         &cpu_memory_caps,
-        None,
         &context,
     )
     .unwrap();

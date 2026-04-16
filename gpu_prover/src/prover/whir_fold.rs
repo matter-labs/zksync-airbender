@@ -44,9 +44,7 @@ use crate::primitives::static_host::{
 };
 use crate::prover::gkr::backward::{eq_group_tables_len, launch_build_eq_values_from_point};
 use crate::prover::pow::search_pow_challenge;
-use crate::prover::proof::{
-    draw_query_bits_after_verified_pow, draw_query_bits_with_external_nonce,
-};
+use crate::prover::proof::draw_query_bits_after_verified_pow;
 use crate::prover::trace_holder::{get_tree_caps, TraceHolder};
 use crate::prover::whir::{GpuWhirExtensionOracle, GpuWhirExtensionQuery};
 use crate::prover::whir_kernels::{
@@ -1645,7 +1643,6 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
     seed_source: impl Fn() -> Seed + Send + Sync + 'static,
     tree_cap_size: usize,
     trace_len_log2: usize,
-    external_pow_nonces: Option<Vec<u64>>,
     context: &ProverContext,
 ) -> CudaResult<GpuWhirFoldScheduledExecution> {
     let trace_len = 1usize << trace_len_log2;
@@ -1674,9 +1671,6 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
     assert_eq!(whir_steps_schedule.len(), whir_queries_schedule.len());
     assert_eq!(whir_steps_schedule.len(), whir_pow_schedule.len());
     assert_eq!(whir_steps_schedule.len(), whir_steps_lde_factors.len() + 1);
-    if let Some(external_pow_nonces) = external_pow_nonces.as_ref() {
-        assert_eq!(external_pow_nonces.len(), whir_pow_schedule.len());
-    }
 
     let stream = context.get_exec_stream();
     let mut tracing_ranges = Vec::new();
@@ -2096,72 +2090,40 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         let query_indexes_accessor = query_indexes_host.get_mut_accessor();
         let nonce_accessor = nonce_host.get_mut_accessor();
         let mut query_index_callbacks_for_round = Callbacks::new();
-        if let Some(external_nonce) = external_pow_nonces
-            .as_ref()
-            .map(|nonces| nonces[pow_round_idx])
-        {
-            query_index_callbacks_for_round.schedule(
-                {
-                    let shared_state = shared_state_handle;
-                    move || unsafe {
-                        #[cfg(test)]
-                        {
-                            shared_state.get_mut().pre_pow_seeds[pow_round_idx] =
-                                *seed_accessor.get();
-                        }
-                        let (_, mut bit_source) = draw_query_bits_with_external_nonce(
-                            seed_accessor.get_mut(),
-                            num_queries * query_domain_log2,
-                            pow_bits,
-                            external_nonce,
-                        );
-                        *nonce_accessor.get_mut() = external_nonce;
-                        for dst in query_indexes_accessor.get_mut().iter_mut() {
-                            *dst = assemble_query_index(query_domain_log2, &mut bit_source) as u32;
-                        }
-                        shared_state.get_mut().proof.as_mut().unwrap().pow_nonces[pow_round_idx] =
-                            external_nonce;
+        #[cfg(test)]
+        query_index_callbacks_for_round.schedule(
+            {
+                let shared_state = shared_state_handle;
+                move || unsafe {
+                    shared_state.get_mut().pre_pow_seeds[pow_round_idx] = *seed_accessor.get();
+                }
+            },
+            stream,
+        )?;
+        search_pow_challenge(
+            &mut seed_host,
+            &mut nonce_host,
+            pow_bits,
+            &mut final_callbacks,
+            context,
+        )?;
+        query_index_callbacks_for_round.schedule(
+            {
+                let shared_state = shared_state_handle;
+                move || unsafe {
+                    let mut bit_source = draw_query_bits_after_verified_pow(
+                        seed_accessor.get_mut(),
+                        num_queries * query_domain_log2,
+                    );
+                    for dst in query_indexes_accessor.get_mut().iter_mut() {
+                        *dst = assemble_query_index(query_domain_log2, &mut bit_source) as u32;
                     }
-                },
-                stream,
-            )?;
-        } else {
-            #[cfg(test)]
-            query_index_callbacks_for_round.schedule(
-                {
-                    let shared_state = shared_state_handle;
-                    move || unsafe {
-                        shared_state.get_mut().pre_pow_seeds[pow_round_idx] = *seed_accessor.get();
-                    }
-                },
-                stream,
-            )?;
-            search_pow_challenge(
-                &mut seed_host,
-                &mut nonce_host,
-                pow_bits,
-                None,
-                &mut final_callbacks,
-                context,
-            )?;
-            query_index_callbacks_for_round.schedule(
-                {
-                    let shared_state = shared_state_handle;
-                    move || unsafe {
-                        let mut bit_source = draw_query_bits_after_verified_pow(
-                            seed_accessor.get_mut(),
-                            num_queries * query_domain_log2,
-                        );
-                        for dst in query_indexes_accessor.get_mut().iter_mut() {
-                            *dst = assemble_query_index(query_domain_log2, &mut bit_source) as u32;
-                        }
-                        shared_state.get_mut().proof.as_mut().unwrap().pow_nonces[pow_round_idx] =
-                            *nonce_accessor.get();
-                    }
-                },
-                stream,
-            )?;
-        }
+                    shared_state.get_mut().proof.as_mut().unwrap().pow_nonces[pow_round_idx] =
+                        *nonce_accessor.get();
+                }
+            },
+            stream,
+        )?;
         pow_and_query_indexes_range.end(stream)?;
         tracing_ranges.push(pow_and_query_indexes_range);
 
@@ -2456,72 +2418,40 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         let query_indexes_accessor = query_indexes_host.get_mut_accessor();
         let nonce_accessor = nonce_host.get_mut_accessor();
         let mut query_index_callbacks_for_round = Callbacks::new();
-        if let Some(external_nonce) = external_pow_nonces
-            .as_ref()
-            .map(|nonces| nonces[pow_round_idx])
-        {
-            query_index_callbacks_for_round.schedule(
-                {
-                    let shared_state = shared_state_handle;
-                    move || unsafe {
-                        #[cfg(test)]
-                        {
-                            shared_state.get_mut().pre_pow_seeds[pow_round_idx] =
-                                *seed_accessor.get();
-                        }
-                        let (_, mut bit_source) = draw_query_bits_with_external_nonce(
-                            seed_accessor.get_mut(),
-                            num_queries * query_domain_log2,
-                            pow_bits,
-                            external_nonce,
-                        );
-                        *nonce_accessor.get_mut() = external_nonce;
-                        for dst in query_indexes_accessor.get_mut().iter_mut() {
-                            *dst = assemble_query_index(query_domain_log2, &mut bit_source) as u32;
-                        }
-                        shared_state.get_mut().proof.as_mut().unwrap().pow_nonces[pow_round_idx] =
-                            external_nonce;
+        #[cfg(test)]
+        query_index_callbacks_for_round.schedule(
+            {
+                let shared_state = shared_state_handle;
+                move || unsafe {
+                    shared_state.get_mut().pre_pow_seeds[pow_round_idx] = *seed_accessor.get();
+                }
+            },
+            stream,
+        )?;
+        search_pow_challenge(
+            &mut seed_host,
+            &mut nonce_host,
+            pow_bits,
+            &mut final_callbacks,
+            context,
+        )?;
+        query_index_callbacks_for_round.schedule(
+            {
+                let shared_state = shared_state_handle;
+                move || unsafe {
+                    let mut bit_source = draw_query_bits_after_verified_pow(
+                        seed_accessor.get_mut(),
+                        num_queries * query_domain_log2,
+                    );
+                    for dst in query_indexes_accessor.get_mut().iter_mut() {
+                        *dst = assemble_query_index(query_domain_log2, &mut bit_source) as u32;
                     }
-                },
-                stream,
-            )?;
-        } else {
-            #[cfg(test)]
-            query_index_callbacks_for_round.schedule(
-                {
-                    let shared_state = shared_state_handle;
-                    move || unsafe {
-                        shared_state.get_mut().pre_pow_seeds[pow_round_idx] = *seed_accessor.get();
-                    }
-                },
-                stream,
-            )?;
-            search_pow_challenge(
-                &mut seed_host,
-                &mut nonce_host,
-                pow_bits,
-                None,
-                &mut final_callbacks,
-                context,
-            )?;
-            query_index_callbacks_for_round.schedule(
-                {
-                    let shared_state = shared_state_handle;
-                    move || unsafe {
-                        let mut bit_source = draw_query_bits_after_verified_pow(
-                            seed_accessor.get_mut(),
-                            num_queries * query_domain_log2,
-                        );
-                        for dst in query_indexes_accessor.get_mut().iter_mut() {
-                            *dst = assemble_query_index(query_domain_log2, &mut bit_source) as u32;
-                        }
-                        shared_state.get_mut().proof.as_mut().unwrap().pow_nonces[pow_round_idx] =
-                            *nonce_accessor.get();
-                    }
-                },
-                stream,
-            )?;
-        }
+                    shared_state.get_mut().proof.as_mut().unwrap().pow_nonces[pow_round_idx] =
+                        *nonce_accessor.get();
+                }
+            },
+            stream,
+        )?;
         pow_and_query_indexes_range.end(stream)?;
         tracing_ranges.push(pow_and_query_indexes_range);
 
@@ -2654,72 +2584,40 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         let query_indexes_accessor = query_indexes_host.get_mut_accessor();
         let nonce_accessor = nonce_host.get_mut_accessor();
         let mut query_index_callbacks_for_round = Callbacks::new();
-        if let Some(external_nonce) = external_pow_nonces
-            .as_ref()
-            .map(|nonces| nonces[pow_round_idx])
-        {
-            query_index_callbacks_for_round.schedule(
-                {
-                    let shared_state = shared_state_handle;
-                    move || unsafe {
-                        #[cfg(test)]
-                        {
-                            shared_state.get_mut().pre_pow_seeds[pow_round_idx] =
-                                *seed_accessor.get();
-                        }
-                        let (_, mut bit_source) = draw_query_bits_with_external_nonce(
-                            seed_accessor.get_mut(),
-                            num_queries * query_domain_log2,
-                            pow_bits,
-                            external_nonce,
-                        );
-                        *nonce_accessor.get_mut() = external_nonce;
-                        for dst in query_indexes_accessor.get_mut().iter_mut() {
-                            *dst = assemble_query_index(query_domain_log2, &mut bit_source) as u32;
-                        }
-                        shared_state.get_mut().proof.as_mut().unwrap().pow_nonces[pow_round_idx] =
-                            external_nonce;
+        #[cfg(test)]
+        query_index_callbacks_for_round.schedule(
+            {
+                let shared_state = shared_state_handle;
+                move || unsafe {
+                    shared_state.get_mut().pre_pow_seeds[pow_round_idx] = *seed_accessor.get();
+                }
+            },
+            stream,
+        )?;
+        search_pow_challenge(
+            &mut seed_host,
+            &mut nonce_host,
+            pow_bits,
+            &mut final_callbacks,
+            context,
+        )?;
+        query_index_callbacks_for_round.schedule(
+            {
+                let shared_state = shared_state_handle;
+                move || unsafe {
+                    let mut bit_source = draw_query_bits_after_verified_pow(
+                        seed_accessor.get_mut(),
+                        num_queries * query_domain_log2,
+                    );
+                    for dst in query_indexes_accessor.get_mut().iter_mut() {
+                        *dst = assemble_query_index(query_domain_log2, &mut bit_source) as u32;
                     }
-                },
-                stream,
-            )?;
-        } else {
-            #[cfg(test)]
-            query_index_callbacks_for_round.schedule(
-                {
-                    let shared_state = shared_state_handle;
-                    move || unsafe {
-                        shared_state.get_mut().pre_pow_seeds[pow_round_idx] = *seed_accessor.get();
-                    }
-                },
-                stream,
-            )?;
-            search_pow_challenge(
-                &mut seed_host,
-                &mut nonce_host,
-                pow_bits,
-                None,
-                &mut final_callbacks,
-                context,
-            )?;
-            query_index_callbacks_for_round.schedule(
-                {
-                    let shared_state = shared_state_handle;
-                    move || unsafe {
-                        let mut bit_source = draw_query_bits_after_verified_pow(
-                            seed_accessor.get_mut(),
-                            num_queries * query_domain_log2,
-                        );
-                        for dst in query_indexes_accessor.get_mut().iter_mut() {
-                            *dst = assemble_query_index(query_domain_log2, &mut bit_source) as u32;
-                        }
-                        shared_state.get_mut().proof.as_mut().unwrap().pow_nonces[pow_round_idx] =
-                            *nonce_accessor.get();
-                    }
-                },
-                stream,
-            )?;
-        }
+                    shared_state.get_mut().proof.as_mut().unwrap().pow_nonces[pow_round_idx] =
+                        *nonce_accessor.get();
+                }
+            },
+            stream,
+        )?;
         pow_and_query_indexes_range.end(stream)?;
         tracing_ranges.push(pow_and_query_indexes_range);
         let queries_range = Range::new("gkr.whir.final_round.queries")?;
@@ -2802,7 +2700,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
     })
 }
 
-pub(crate) fn gpu_whir_fold_supported_path_with_external_pow(
+pub(crate) fn gpu_whir_fold_supported_path(
     memory_trace_holder: &mut TraceHolder<BF>,
     mem_polys_claims: Vec<E4>,
     witness_trace_holder: &mut TraceHolder<BF>,
@@ -2819,7 +2717,6 @@ pub(crate) fn gpu_whir_fold_supported_path_with_external_pow(
     mut transcript_seed: Seed,
     tree_cap_size: usize,
     trace_len_log2: usize,
-    external_pow_nonces: Option<Vec<u64>>,
     _worker: &Worker,
     context: &ProverContext,
 ) -> CudaResult<WhirPolyCommitProof<BF, E4, DefaultTreeConstructor>> {
@@ -2852,53 +2749,9 @@ pub(crate) fn gpu_whir_fold_supported_path_with_external_pow(
         move || transcript_seed.clone(),
         tree_cap_size,
         trace_len_log2,
-        external_pow_nonces,
         context,
     )?
     .wait(context)
-}
-
-pub(crate) fn gpu_whir_fold_supported_path(
-    memory_trace_holder: &mut TraceHolder<BF>,
-    mem_polys_claims: Vec<E4>,
-    witness_trace_holder: &mut TraceHolder<BF>,
-    wit_polys_claims: Vec<E4>,
-    setup_trace_holder: &mut TraceHolder<BF>,
-    setup_polys_claims: Vec<E4>,
-    original_evaluation_point: Vec<E4>,
-    original_lde_factor: usize,
-    batching_challenge: E4,
-    whir_steps_schedule: Vec<usize>,
-    whir_queries_schedule: Vec<usize>,
-    whir_steps_lde_factors: Vec<usize>,
-    whir_pow_schedule: Vec<u32>,
-    transcript_seed: Seed,
-    tree_cap_size: usize,
-    trace_len_log2: usize,
-    worker: &Worker,
-    context: &ProverContext,
-) -> CudaResult<WhirPolyCommitProof<BF, E4, DefaultTreeConstructor>> {
-    gpu_whir_fold_supported_path_with_external_pow(
-        memory_trace_holder,
-        mem_polys_claims,
-        witness_trace_holder,
-        wit_polys_claims,
-        setup_trace_holder,
-        setup_polys_claims,
-        original_evaluation_point,
-        original_lde_factor,
-        batching_challenge,
-        whir_steps_schedule,
-        whir_queries_schedule,
-        whir_steps_lde_factors,
-        whir_pow_schedule,
-        transcript_seed,
-        tree_cap_size,
-        trace_len_log2,
-        None,
-        worker,
-        context,
-    )
 }
 
 #[cfg(test)]
