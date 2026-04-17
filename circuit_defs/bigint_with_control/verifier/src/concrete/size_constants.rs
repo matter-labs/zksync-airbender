@@ -24,10 +24,12 @@ pub const FOLDING_PROPERTIES: verifier_common::prover::definitions::FoldingDescr
 pub const TREE_INDEX_MASK: u32 = (1u32 << TRACE_LEN_LOG2) - 1;
 pub const FRI_FACTOR_LOG2: usize = 1;
 pub const NUM_COSETS: usize = 1 << FRI_FACTOR_LOG2;
-pub const SECURITY_BITS: usize = verifier_common::SECURITY_BITS;
+pub const SECURITY_BITS: usize = super::SECURITY_BITS;
 pub const CHALLENGE_FIELD_SIZE_LOG2: usize = verifier_common::MERSENNE31QUARTIC_SIZE_LOG2;
 pub const SECURITY_CONFIG: verifier_common::SizedProofSecurityConfig<NUM_FRI_STEPS> =
-    verifier_common::SizedProofSecurityConfig::<NUM_FRI_STEPS>::worst_case_config();
+    verifier_common::SizedProofSecurityConfig::<NUM_FRI_STEPS>::worst_case_config_for_security_bits(
+        SECURITY_BITS,
+    );
 pub const NUM_QUERIES: usize = SECURITY_CONFIG.num_queries;
 pub const TOTAL_TREE_CAP_SIZE: usize = 1 << FOLDING_PROPERTIES.total_caps_size_log2;
 pub const TREE_CAP_SIZE: usize = TOTAL_TREE_CAP_SIZE / NUM_COSETS;
@@ -278,7 +280,7 @@ const NUM_BITS_IN_TIMESTAMP_FOR_INDEX_LOG_2: usize = const {
         .len()
         > 0
     {
-        use crate::NUM_EMPTY_BITS_FOR_RAM_TIMESTAMP;
+        use verifier_common::cs::definitions::NUM_EMPTY_BITS_FOR_RAM_TIMESTAMP;
         let t = VERIFIER_COMPILED_LAYOUT
             .memory_layout
             .shuffle_ram_access_sets

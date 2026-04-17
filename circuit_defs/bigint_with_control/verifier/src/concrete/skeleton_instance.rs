@@ -11,8 +11,8 @@ macro_rules! field_size {
     }};
 }
 
+use super::super::shared::{ProofSkeleton, QueryValues};
 use super::size_constants::*;
-use crate::skeleton::*;
 use core::mem::offset_of;
 use field::Mersenne31Field;
 use field::Mersenne31Quartic;

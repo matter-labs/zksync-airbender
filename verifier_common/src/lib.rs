@@ -10,15 +10,17 @@ compile_error!("multiple security levels selected at the same time");
 pub const MERSENNE31QUARTIC_SIZE_LOG2: usize = 124;
 pub const POW_BITS_FOR_80_SECURITY_BITS: usize = 28;
 pub const POW_BITS_FOR_100_SECURITY_BITS: usize = 28;
+pub const SECURITY_BITS_80: usize = 80;
+pub const SECURITY_BITS_100: usize = 100;
 
 #[cfg(feature = "security_80")]
-pub const SECURITY_BITS: usize = 80;
+pub const SECURITY_BITS: usize = SECURITY_BITS_80;
 #[cfg(all(feature = "security_80", not(feature = "worst_case_config_generation")))]
 pub const MEMORY_DELEGATION_POW_BITS: usize =
     pow_config_worst_constants::MEMORY_DELEGATION_POW_BITS_80;
 
 #[cfg(feature = "security_100")]
-pub const SECURITY_BITS: usize = 100;
+pub const SECURITY_BITS: usize = SECURITY_BITS_100;
 #[cfg(all(
     feature = "security_100",
     not(feature = "worst_case_config_generation")
@@ -28,6 +30,16 @@ pub const MEMORY_DELEGATION_POW_BITS: usize =
 
 #[cfg(feature = "worst_case_config_generation")]
 pub const MEMORY_DELEGATION_POW_BITS: usize = 0;
+#[cfg(not(feature = "worst_case_config_generation"))]
+pub const MEMORY_DELEGATION_POW_BITS_80: usize =
+    pow_config_worst_constants::MEMORY_DELEGATION_POW_BITS_80;
+#[cfg(not(feature = "worst_case_config_generation"))]
+pub const MEMORY_DELEGATION_POW_BITS_100: usize =
+    pow_config_worst_constants::MEMORY_DELEGATION_POW_BITS_100;
+#[cfg(feature = "worst_case_config_generation")]
+pub const MEMORY_DELEGATION_POW_BITS_80: usize = 0;
+#[cfg(feature = "worst_case_config_generation")]
+pub const MEMORY_DELEGATION_POW_BITS_100: usize = 0;
 
 #[derive(Clone, Copy, Debug, Hash, serde::Serialize, serde::Deserialize)]
 pub struct SizedProofSecurityConfig<const NUM_FOLDINGS: usize> {
@@ -69,20 +81,85 @@ mod pow_config_worst_constants {
         POW_BITS_FOR_MEMORY_AND_DELEGATION_FOR_80_SECURITY_BITS;
     pub(super) const MEMORY_DELEGATION_POW_BITS_100: usize =
         POW_BITS_FOR_MEMORY_AND_DELEGATION_FOR_100_SECURITY_BITS;
+
+    pub(super) const fn worst_case_config_80<const NUM_FOLDINGS: usize>(
+    ) -> SizedProofSecurityConfig<NUM_FOLDINGS> {
+        SizedProofSecurityConfig {
+            lookup_pow_bits: LOOKUP_POW_BITS_FOR_80_SECURITY_BITS as u32,
+            quotient_alpha_pow_bits: QUOTIENT_ALPHA_POW_BITS_FOR_80_SECURITY_BITS as u32,
+            quotient_z_pow_bits: QUOTIENT_Z_POW_BITS_FOR_80_SECURITY_BITS as u32,
+            deep_poly_alpha_pow_bits: DEEP_POLY_ALPHA_POW_BITS_FOR_80_SECURITY_BITS as u32,
+            foldings_pow_bits: [MAX_FOLDINGS_POW_BITS_FOR_80_SECURITY_BITS as u32; NUM_FOLDINGS],
+            fri_queries_pow_bits: FRI_QUERIES_POW_BITS_FOR_80_SECURITY_BITS as u32,
+            num_queries: NUM_QUERIES_FOR_80_SECURITY_BITS,
+        }
+    }
+
+    pub(super) const fn worst_case_config_100<const NUM_FOLDINGS: usize>(
+    ) -> SizedProofSecurityConfig<NUM_FOLDINGS> {
+        SizedProofSecurityConfig {
+            lookup_pow_bits: LOOKUP_POW_BITS_FOR_100_SECURITY_BITS as u32,
+            quotient_alpha_pow_bits: QUOTIENT_ALPHA_POW_BITS_FOR_100_SECURITY_BITS as u32,
+            quotient_z_pow_bits: QUOTIENT_Z_POW_BITS_FOR_100_SECURITY_BITS as u32,
+            deep_poly_alpha_pow_bits: DEEP_POLY_ALPHA_POW_BITS_FOR_100_SECURITY_BITS as u32,
+            foldings_pow_bits: [MAX_FOLDINGS_POW_BITS_FOR_100_SECURITY_BITS as u32; NUM_FOLDINGS],
+            fri_queries_pow_bits: FRI_QUERIES_POW_BITS_FOR_100_SECURITY_BITS as u32,
+            num_queries: NUM_QUERIES_FOR_100_SECURITY_BITS,
+        }
+    }
+}
+
+#[cfg(not(feature = "worst_case_config_generation"))]
+impl<const NUM_FOLDINGS: usize> SizedProofSecurityConfig<NUM_FOLDINGS> {
+    /// Build the verifier PoW schedule for an explicitly selected security level.
+    /// This lets migrated crates opt out of feature-selected configuration while
+    /// preserving the current generated constants and array-backed layout.
+    pub const fn worst_case_config_for_security_bits(security_bits: usize) -> Self {
+        match security_bits {
+            SECURITY_BITS_80 => pow_config_worst_constants::worst_case_config_80::<NUM_FOLDINGS>(),
+            SECURITY_BITS_100 => {
+                pow_config_worst_constants::worst_case_config_100::<NUM_FOLDINGS>()
+            }
+            _ => panic!("unsupported security level"),
+        }
+    }
+
+    pub const fn worst_case_config_80() -> Self {
+        Self::worst_case_config_for_security_bits(SECURITY_BITS_80)
+    }
+
+    pub const fn worst_case_config_100() -> Self {
+        Self::worst_case_config_for_security_bits(SECURITY_BITS_100)
+    }
 }
 
 #[cfg(feature = "worst_case_config_generation")]
 impl<const NUM_FOLDINGS: usize> SizedProofSecurityConfig<NUM_FOLDINGS> {
-    pub const fn worst_case_config() -> Self {
-        SizedProofSecurityConfig {
-            lookup_pow_bits: 0,
-            quotient_alpha_pow_bits: 0,
-            quotient_z_pow_bits: 0,
-            deep_poly_alpha_pow_bits: 0,
-            foldings_pow_bits: [0; NUM_FOLDINGS],
-            fri_queries_pow_bits: 0,
-            num_queries: 50,
+    pub const fn worst_case_config_for_security_bits(security_bits: usize) -> Self {
+        match security_bits {
+            SECURITY_BITS_80 | SECURITY_BITS_100 => SizedProofSecurityConfig {
+                lookup_pow_bits: 0,
+                quotient_alpha_pow_bits: 0,
+                quotient_z_pow_bits: 0,
+                deep_poly_alpha_pow_bits: 0,
+                foldings_pow_bits: [0; NUM_FOLDINGS],
+                fri_queries_pow_bits: 0,
+                num_queries: 50,
+            },
+            _ => panic!("unsupported security level"),
         }
+    }
+
+    pub const fn worst_case_config_80() -> Self {
+        Self::worst_case_config_for_security_bits(SECURITY_BITS_80)
+    }
+
+    pub const fn worst_case_config_100() -> Self {
+        Self::worst_case_config_for_security_bits(SECURITY_BITS_100)
+    }
+
+    pub const fn worst_case_config() -> Self {
+        Self::worst_case_config_80()
     }
 }
 

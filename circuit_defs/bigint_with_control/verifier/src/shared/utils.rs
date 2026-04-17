@@ -1,5 +1,5 @@
+use super::concrete::VERIFIER_COMPILED_LAYOUT;
 use super::*;
-use crate::concrete::VERIFIER_COMPILED_LAYOUT;
 
 pub(crate) unsafe fn precompute_for_consistency_checks(
     skeleton: &ProofSkeletonInstance,
