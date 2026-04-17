@@ -14,6 +14,14 @@ pub(crate) struct LayerNoCacheLoweringPlan {
 
 impl LayerNoCacheLoweringPlan {
     pub(crate) fn new(layer_idx: usize, layer: &GKRLayerDescription) -> Self {
+        Self::build(layer_idx, layer, lower_gate_relation)
+    }
+
+    pub(crate) fn grand_product_only(layer_idx: usize, layer: &GKRLayerDescription) -> Self {
+        Self::build(layer_idx, layer, lower_gate_relation_grand_product_only)
+    }
+
+    fn build(layer_idx: usize, layer: &GKRLayerDescription, lower: LowerRelationFn) -> Self {
         let mut next_cached_offset = layer
             .cached_relations
             .keys()
@@ -32,12 +40,14 @@ impl LayerNoCacheLoweringPlan {
             &layer.gates,
             &mut next_cached_offset,
             &mut internal_helper_relations,
+            lower,
         );
         let lowered_gates_with_external_connections = lower_gate_list(
             layer_idx,
             &layer.gates_with_external_connections,
             &mut next_cached_offset,
             &mut internal_helper_relations,
+            lower,
         );
 
         Self {
@@ -48,17 +58,25 @@ impl LayerNoCacheLoweringPlan {
     }
 }
 
+type LowerRelationFn = fn(
+    usize,
+    &NoFieldGKRRelation,
+    &mut usize,
+    &mut BTreeMap<GKRAddress, NoFieldGKRCacheRelation>,
+) -> NoFieldGKRRelation;
+
 fn lower_gate_list(
     layer_idx: usize,
     gates: &[GateArtifacts],
     next_cached_offset: &mut usize,
     internal_helper_relations: &mut BTreeMap<GKRAddress, NoFieldGKRCacheRelation>,
+    lower: LowerRelationFn,
 ) -> Vec<GateArtifacts> {
     gates
         .iter()
         .map(|gate| GateArtifacts {
             output_layer: gate.output_layer,
-            enforced_relation: lower_gate_relation(
+            enforced_relation: lower(
                 layer_idx,
                 &gate.enforced_relation,
                 next_cached_offset,
@@ -218,6 +236,24 @@ fn lower_gate_relation(
                 output: *output,
             }
         }
+        _ => relation.clone(),
+    }
+}
+
+fn lower_gate_relation_grand_product_only(
+    layer_idx: usize,
+    relation: &NoFieldGKRRelation,
+    next_cached_offset: &mut usize,
+    internal_helper_relations: &mut BTreeMap<GKRAddress, NoFieldGKRCacheRelation>,
+) -> NoFieldGKRRelation {
+    match relation {
+        NoFieldGKRRelation::InitialGrandProductWithoutCaches { .. }
+        | NoFieldGKRRelation::MaterializeGrandProductTermExpression { .. } => lower_gate_relation(
+            layer_idx,
+            relation,
+            next_cached_offset,
+            internal_helper_relations,
+        ),
         _ => relation.clone(),
     }
 }

@@ -163,10 +163,10 @@ where
         + Field
         + SetByRef
         + SetByVal
-        + GpuGKRForwardKernelSet
         + GpuGKRForwardCacheKernelSet
         + GpuGKRVirtualBaseAccumKernelSet
-        + GpuGKRDimensionReducingForwardKernelSet,
+        + GpuGKRDimensionReducingForwardTowerKernelSet
+        + super::forward_kernels::GpuGKRFlatForwardKernelSet,
     Add: BinaryOp<E, E, E>,
     Add: BinaryOp<BF, E, E>,
     Add: BinaryOp<E, BF, E>,
@@ -257,7 +257,8 @@ where
     let (initial_layer_for_sumcheck, dimension_reducing_inputs) =
         schedule_dimension_reduction_forward(
             &mut storage,
-            &compiled_circuit,
+            compiled_circuit.layers.len(),
+            compiled_circuit.global_output_map.clone(),
             trace_len.trailing_zeros() as usize,
             final_trace_size_log_2,
             &mut tracing_ranges,
@@ -308,9 +309,9 @@ where
         + Field
         + SetByRef
         + SetByVal
-        + GpuGKRForwardKernelSet
         + GpuGKRForwardCacheKernelSet
-        + GpuGKRVirtualBaseAccumKernelSet,
+        + GpuGKRVirtualBaseAccumKernelSet
+        + super::forward_kernels::GpuGKRFlatForwardKernelSet,
     Add: BinaryOp<E, E, E>,
     Add: BinaryOp<BF, E, E>,
     Add: BinaryOp<E, BF, E>,
@@ -323,10 +324,35 @@ where
 {
     let stream = context.get_exec_stream();
     hydrate_scratch_space_layer(layer_idx, compiled_circuit, stage1, storage);
-    if layer.cached_relations.is_empty() {
+    // Phase 3.2: decompose InitialGrandProductWithoutCaches and
+    // MaterializeGrandProductTermExpression gates into MemoryTuple cache
+    // relations plus lightweight follow-ups (InitialGrandProductFromCaches /
+    // Copy). The synthesized cache relations merge into this layer's cache
+    // batch; the lowered gate list replaces layer.gates / _with_external_connections
+    // for the rest of the scheduler.
+    let grand_product_plan =
+        super::lowering::LayerNoCacheLoweringPlan::grand_product_only(layer_idx, layer);
+    let merged_cached_relations = if grand_product_plan.internal_helper_relations.is_empty() {
+        None
+    } else {
+        let mut merged = layer.cached_relations.clone();
+        for (address, relation) in &grand_product_plan.internal_helper_relations {
+            let previous = merged.insert(*address, relation.clone());
+            assert!(
+                previous.is_none(),
+                "grand-product helper address {:?} collides with existing cache relation",
+                address
+            );
+        }
+        Some(merged)
+    };
+    let cached_relations_ref = merged_cached_relations
+        .as_ref()
+        .unwrap_or(&layer.cached_relations);
+    if cached_relations_ref.is_empty() {
         schedule_cache_relations(
             layer_idx,
-            &layer.cached_relations,
+            cached_relations_ref,
             storage,
             stage1,
             forward_setup,
@@ -340,7 +366,7 @@ where
         cache_range.start(stream)?;
         schedule_cache_relations(
             layer_idx,
-            &layer.cached_relations,
+            cached_relations_ref,
             storage,
             stage1,
             forward_setup,
@@ -375,24 +401,21 @@ where
         trace_len,
         context,
     )?;
-    let lowered = lower_forward_layer(
+    let plan = build_flat_forward_plan(
         layer_idx,
-        &layer.gates,
-        &layer.gates_with_external_connections,
+        &grand_product_plan.lowered_gates,
+        &grand_product_plan.lowered_gates_with_external_connections,
         &compiled_circuit.scratch_space_mapping,
         storage,
-        stage1,
-        forward_setup,
         external_challenges,
-        decoder_predicate_address,
         forward_setup.lookup_additive_part_device().as_ptr(),
         trace_len,
         context,
     )?;
-    for batch in &lowered.batches {
-        launch_forward_layer(batch, trace_len, context)?;
+    if super::forward_kernels::flat_desc_has_work(&plan.desc) {
+        super::forward_kernels::launch_flat_forward_layer(&plan.desc, trace_len, context)?;
     }
-    commit_lowered_forward_layer(expected_output_layer, storage, lowered);
+    commit_flat_forward_plan(expected_output_layer, storage, plan);
     gates_range.end(stream)?;
     tracing_ranges.push(gates_range);
 
@@ -637,241 +660,47 @@ fn single_column_lookup_mapping_ptr(
     }
 }
 
-fn build_forward_memory_tuple_expression_descriptor<E: FieldExtension<BF> + Field>(
-    relation: &cs::gkr_compiler::NoFieldSpecialMemoryContributionRelation,
-    storage: &GpuGKRStorage<BF, E>,
-    external_challenges: &GKRExternalChallenges<BF, E>,
-) -> GpuGKRForwardMemoryTupleExpressionDescriptor<E> {
-    let mut descriptor = GpuGKRForwardMemoryTupleExpressionDescriptor {
-        address_space_kind: GpuGKRForwardCacheAddressSpaceKind::Empty,
-        address_space_ptr: null(),
-        address_space_constant: BF::ZERO,
-        constant_term: external_challenges.permutation_argument_additive_part,
-        linear_inputs: [null(); MEMORY_TUPLE_LINEAR_TERMS],
-        linear_challenges: [E::ZERO; MEMORY_TUPLE_LINEAR_TERMS],
-    };
-    let mut deferred_low_dynamic_term: Option<(*const BF, E)> = None;
-    match relation.address_space {
-        CompiledAddressSpaceRelationStrict::Constant(c) => {
-            descriptor.address_space_kind = GpuGKRForwardCacheAddressSpaceKind::Constant;
-            descriptor.address_space_constant = BF::from_u32_unchecked(c);
-        }
-        CompiledAddressSpaceRelationStrict::IsRegister(offset) => {
-            descriptor.address_space_kind = GpuGKRForwardCacheAddressSpaceKind::Not;
-            descriptor.address_space_ptr = storage
-                .get_base_layer(GKRAddress::BaseLayerMemory(offset))
-                .as_ptr();
-        }
-        CompiledAddressSpaceRelationStrict::IsRam(offset) => {
-            descriptor.address_space_kind = GpuGKRForwardCacheAddressSpaceKind::Is;
-            descriptor.address_space_ptr = storage
-                .get_base_layer(GKRAddress::BaseLayerMemory(offset))
-                .as_ptr();
-        }
-    }
-
-    match &relation.address {
-        CompiledAddressStrict::ConstantU16(c) => {
-            let mut contribution = external_challenges
-                .permutation_argument_linearization_challenges
-                [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
-            contribution.mul_assign_by_base(&BF::from_u32_unchecked(*c as u32));
-            descriptor.constant_term.add_assign(&contribution);
-        }
-        CompiledAddressStrict::Constant(c) => {
-            let mut contribution = external_challenges
-                .permutation_argument_linearization_challenges
-                [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
-            contribution.mul_assign_by_base(&BF::from_u32_unchecked(*c));
-            descriptor.constant_term.add_assign(&contribution);
-        }
-        CompiledAddressStrict::U16Space(offset) => {
-            add_memory_tuple_linear_term(
-                &mut GpuGKRForwardCacheDescriptor {
-                    linear_inputs: descriptor.linear_inputs,
-                    linear_challenges: descriptor.linear_challenges,
-                    ..GpuGKRForwardCacheDescriptor::default()
-                },
-                MEMORY_TUPLE_ADDRESS_LOW_TERM,
-                storage
-                    .get_base_layer(GKRAddress::BaseLayerMemory(*offset))
-                    .as_ptr(),
-                external_challenges.permutation_argument_linearization_challenges
-                    [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX],
-            );
-            descriptor.linear_inputs[MEMORY_TUPLE_ADDRESS_LOW_TERM] = storage
-                .get_base_layer(GKRAddress::BaseLayerMemory(*offset))
-                .as_ptr();
-            descriptor.linear_challenges[MEMORY_TUPLE_ADDRESS_LOW_TERM] = external_challenges
-                .permutation_argument_linearization_challenges
-                [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
-        }
-        CompiledAddressStrict::U32Space([low, high]) => {
-            descriptor.linear_inputs[MEMORY_TUPLE_ADDRESS_LOW_TERM] = storage
-                .get_base_layer(GKRAddress::BaseLayerMemory(*low))
-                .as_ptr();
-            descriptor.linear_challenges[MEMORY_TUPLE_ADDRESS_LOW_TERM] = external_challenges
-                .permutation_argument_linearization_challenges
-                [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
-            descriptor.linear_inputs[MEMORY_TUPLE_ADDRESS_HIGH_TERM] = storage
-                .get_base_layer(GKRAddress::BaseLayerMemory(*high))
-                .as_ptr();
-            descriptor.linear_challenges[MEMORY_TUPLE_ADDRESS_HIGH_TERM] = external_challenges
-                .permutation_argument_linearization_challenges
-                [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
-        }
-        CompiledAddressStrict::U32SpaceSpecialIndirect {
-            low_base,
-            low_dynamic_offset,
-            low_offset,
-            high,
-        } => {
-            let low_challenge = external_challenges.permutation_argument_linearization_challenges
-                [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
-            let high_challenge = external_challenges.permutation_argument_linearization_challenges
-                [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
-            if *low_offset != 0 {
-                let mut contribution = low_challenge;
-                contribution.mul_assign_by_base(&BF::from_u32_unchecked(*low_offset));
-                descriptor.constant_term.add_assign(&contribution);
-            }
-            descriptor.linear_inputs[MEMORY_TUPLE_ADDRESS_LOW_TERM] = storage
-                .get_base_layer(GKRAddress::BaseLayerMemory(*low_base))
-                .as_ptr();
-            descriptor.linear_challenges[MEMORY_TUPLE_ADDRESS_LOW_TERM] = low_challenge;
-            if let Some((multiplier, dynamic_offset)) = *low_dynamic_offset {
-                let mut challenge = low_challenge;
-                challenge.mul_assign_by_base(&BF::from_u32_unchecked(multiplier as u32));
-                deferred_low_dynamic_term = Some((
-                    storage
-                        .get_base_layer(GKRAddress::BaseLayerMemory(dynamic_offset))
-                        .as_ptr(),
-                    challenge,
-                ));
-            }
-            descriptor.linear_inputs[MEMORY_TUPLE_ADDRESS_HIGH_TERM] = storage
-                .get_base_layer(GKRAddress::BaseLayerMemory(*high))
-                .as_ptr();
-            descriptor.linear_challenges[MEMORY_TUPLE_ADDRESS_HIGH_TERM] = high_challenge;
-        }
-        CompiledAddressStrict::U32SpaceGeneric(..) => {
-            unimplemented!(
-                "unsupported GPU memory tuple address relation: {:?}",
-                relation.address
-            )
-        }
-    }
-
-    match &relation.timestamp {
-        CompiledMemoryTimestamp::Zero => {}
-        CompiledMemoryTimestamp::Normal(timestamp) => {
-            descriptor.linear_inputs[MEMORY_TUPLE_TIMESTAMP_LOW_TERM] = storage
-                .get_base_layer(GKRAddress::BaseLayerMemory(timestamp[0]))
-                .as_ptr();
-            descriptor.linear_challenges[MEMORY_TUPLE_TIMESTAMP_LOW_TERM] = external_challenges
-                .permutation_argument_linearization_challenges
-                [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
-            if relation.timestamp_offset != 0 {
-                let mut contribution = external_challenges
-                    .permutation_argument_linearization_challenges
-                    [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
-                contribution.mul_assign_by_base(&BF::from_u32_unchecked(relation.timestamp_offset));
-                descriptor.constant_term.add_assign(&contribution);
-            }
-            descriptor.linear_inputs[MEMORY_TUPLE_TIMESTAMP_HIGH_TERM] = storage
-                .get_base_layer(GKRAddress::BaseLayerMemory(timestamp[1]))
-                .as_ptr();
-            descriptor.linear_challenges[MEMORY_TUPLE_TIMESTAMP_HIGH_TERM] = external_challenges
-                .permutation_argument_linearization_challenges
-                [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
-        }
-    }
-
-    match relation.value {
-        RamWordRepresentation::Zero => {}
-        RamWordRepresentation::U16Limbs(read_value) => {
-            descriptor.linear_inputs[MEMORY_TUPLE_VALUE_LOW_TERM] = storage
-                .get_base_layer(GKRAddress::BaseLayerMemory(read_value[0]))
-                .as_ptr();
-            descriptor.linear_challenges[MEMORY_TUPLE_VALUE_LOW_TERM] = external_challenges
-                .permutation_argument_linearization_challenges
-                [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
-            descriptor.linear_inputs[MEMORY_TUPLE_VALUE_HIGH_TERM] = storage
-                .get_base_layer(GKRAddress::BaseLayerMemory(read_value[1]))
-                .as_ptr();
-            descriptor.linear_challenges[MEMORY_TUPLE_VALUE_HIGH_TERM] = external_challenges
-                .permutation_argument_linearization_challenges
-                [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
-        }
-        RamWordRepresentation::U8Limbs(read_value_bytes) => {
-            let byte_shift = BF::from_u32_unchecked(1 << 8);
-            for (challenge_idx, low_term_idx, high_term_idx, low_offset, high_offset) in [
-                (
-                    MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX,
-                    MEMORY_TUPLE_VALUE_LOW_TERM,
-                    MEMORY_TUPLE_VALUE_LOW_EXTRA_TERM,
-                    read_value_bytes[0],
-                    read_value_bytes[1],
-                ),
-                (
-                    MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX,
-                    MEMORY_TUPLE_VALUE_HIGH_TERM,
-                    MEMORY_TUPLE_VALUE_HIGH_EXTRA_TERM,
-                    read_value_bytes[2],
-                    read_value_bytes[3],
-                ),
-            ] {
-                let challenge = external_challenges.permutation_argument_linearization_challenges
-                    [challenge_idx];
-                descriptor.linear_inputs[low_term_idx] = storage
-                    .get_base_layer(GKRAddress::BaseLayerMemory(low_offset))
-                    .as_ptr();
-                descriptor.linear_challenges[low_term_idx] = challenge;
-                let mut shifted = challenge;
-                shifted.mul_assign_by_base(&byte_shift);
-                descriptor.linear_inputs[high_term_idx] = storage
-                    .get_base_layer(GKRAddress::BaseLayerMemory(high_offset))
-                    .as_ptr();
-                descriptor.linear_challenges[high_term_idx] = shifted;
-            }
-        }
-    }
-
-    if let Some((input, challenge)) = deferred_low_dynamic_term {
-        let term_idx = descriptor
-            .linear_inputs
-            .iter()
-            .position(|ptr| ptr.is_null())
-            .expect("GPU memory tuple linear terms exceeded fixed descriptor capacity");
-        descriptor.linear_inputs[term_idx] = input;
-        descriptor.linear_challenges[term_idx] = challenge;
-    }
-
-    descriptor
+struct FlatBuilder<'a, E> {
+    desc: &'a mut GpuFlatForwardStaticDesc<E>,
+    src_map: std::collections::HashMap<usize, u16>,
 }
 
-fn forward_generic_lookup_ptr<E>(forward_setup: &GpuGKRForwardSetup<E>) -> *const E {
-    if forward_setup.generic_lookup_len() > 0 {
-        forward_setup.generic_lookup().as_ptr()
-    } else {
-        null()
+impl<E> FlatBuilder<'_, E> {
+    fn add_src(&mut self, ptr: *const u8) -> u16 {
+        let key = ptr as usize;
+        if let Some(&idx) = self.src_map.get(&key) {
+            return idx;
+        }
+        let idx = self.desc.num_sources;
+        assert!(
+            (idx as usize) < FLAT_FWD_MAX_SOURCES,
+            "flat forward: source table overflow ({idx} >= {FLAT_FWD_MAX_SOURCES})"
+        );
+        self.desc.sources[idx as usize] = ptr;
+        self.desc.num_sources = idx + 1;
+        let idx = idx as u16;
+        self.src_map.insert(key, idx);
+        idx
     }
 }
 
-fn lower_forward_layer<E>(
+/// Low-3-bits-tagged null pointer encoding for virtual base sources; mirrors
+/// `flat_fwd_load_bf` in native/prover/gkr/flat_forward.cuh.
+fn encode_virtual_source(kind: GpuBaseFieldSourceKind) -> *const u8 {
+    (kind as usize) as *const u8
+}
+
+fn build_flat_forward_plan<E>(
     layer_idx: usize,
     lowered_gates: &[cs::gkr_compiler::GateArtifacts],
     lowered_gates_with_external_connections: &[cs::gkr_compiler::GateArtifacts],
     scratch_space_mapping: &BTreeMap<GKRAddress, usize>,
     storage: &GpuGKRStorage<BF, E>,
-    stage1: &GpuGKRStage1Output,
-    forward_setup: &GpuGKRForwardSetup<E>,
     external_challenges: &GKRExternalChallenges<BF, E>,
-    decoder_predicate_address: Option<GKRAddress>,
     lookup_additive_challenge: *const E,
     trace_len: usize,
     context: &ProverContext,
-) -> CudaResult<LoweredGpuGKRForwardLayer<E>>
+) -> CudaResult<FlatForwardPlan<E>>
 where
     E: Field + FieldExtension<BF> + GpuGKRVirtualBaseAccumKernelSet + SetByVal,
     Add: BinaryOp<E, E, E>,
@@ -879,33 +708,24 @@ where
     Mul: BinaryOp<E, E, E>,
 {
     let expected_output_layer = layer_idx + 1;
-    let total_gates = lowered_gates.len() + lowered_gates_with_external_connections.len();
-    let mut batches = Vec::with_capacity(total_gates.div_ceil(GKR_FORWARD_MAX_GATES_PER_LAYER));
-    let mut batch = GpuGKRForwardLayerBatch::new(lookup_additive_challenge);
-    let mut batch_gate_idx = 0usize;
+
+    let mut desc: Box<GpuFlatForwardStaticDesc<E>> = Box::new(GpuFlatForwardStaticDesc::default());
+    desc.gamma = lookup_additive_challenge;
+    let mut builder = FlatBuilder {
+        desc: &mut desc,
+        src_map: std::collections::HashMap::new(),
+    };
 
     let mut computed_extension_outputs = Vec::new();
     let mut aliased_base_outputs = Vec::new();
     let mut aliased_extension_outputs = Vec::new();
-    assert!(
-        forward_setup.generic_lookup_len() <= u32::MAX as usize,
-        "generic lookup runtime too large for fused forward kernel"
-    );
-    let generic_lookup = forward_generic_lookup_ptr(forward_setup);
-    let generic_lookup_len = forward_setup.generic_lookup_len() as u32;
 
     for gate in lowered_gates
         .iter()
         .chain(lowered_gates_with_external_connections.iter())
     {
-        if batch_gate_idx == GKR_FORWARD_MAX_GATES_PER_LAYER {
-            batch.gate_count = batch_gate_idx as u32;
-            batches.push(batch);
-            batch = GpuGKRForwardLayerBatch::new(lookup_additive_challenge);
-            batch_gate_idx = 0;
-        }
         assert_eq!(gate.output_layer, expected_output_layer);
-        batch.descriptors[batch_gate_idx] = match &gate.enforced_relation {
+        match &gate.enforced_relation {
             NoFieldGKRRelation::Copy { input, output } => {
                 if let Some(source) = storage.try_get_base_poly(*input) {
                     aliased_base_outputs.push((*output, source.clone_shared()));
@@ -913,123 +733,175 @@ where
                     aliased_extension_outputs
                         .push((*output, storage.get_ext_poly(*input).clone_shared()));
                 }
-                GpuGKRForwardGateDescriptor::no_op()
             }
             NoFieldGKRRelation::InitialGrandProductFromCaches { input, output }
             | NoFieldGKRRelation::TrivialProduct { input, output } => {
-                let lhs = storage.get_ext_poly(input[0]);
-                let rhs = storage.get_ext_poly(input[1]);
+                let lhs = storage.get_ext_poly(input[0]).as_ptr();
+                let rhs = storage.get_ext_poly(input[1]).as_ptr();
                 let mut dst = alloc_ext(trace_len, context)?;
                 let dst_ptr = dst.as_mut_ptr();
                 computed_extension_outputs.push((*output, GpuExtensionFieldPoly::new(dst)));
-                GpuGKRForwardGateDescriptor::with_product(lhs.as_ptr(), rhs.as_ptr(), dst_ptr)
+                let src_a = builder.add_src(lhs as *const u8);
+                let src_b = builder.add_src(rhs as *const u8);
+                let i = builder.desc.num_products as usize;
+                assert!(
+                    i < FLAT_FWD_MAX_PER_CATEGORY,
+                    "flat forward: products overflow"
+                );
+                builder.desc.products[i] = GpuFlatFwdProductEntry {
+                    src_a,
+                    src_b,
+                    dst: dst_ptr,
+                };
+                builder.desc.num_products = (i + 1) as u32;
             }
             NoFieldGKRRelation::MaskIntoIdentityProduct {
                 input,
                 mask,
                 output,
             } => {
-                let input = storage.get_ext_poly(*input);
-                let mask = storage.get_base_layer(*mask);
+                let input_ptr = storage.get_ext_poly(*input).as_ptr();
+                let mask_ptr = storage.get_base_layer(*mask).as_ptr();
                 let mut dst = alloc_ext(trace_len, context)?;
                 let dst_ptr = dst.as_mut_ptr();
                 computed_extension_outputs.push((*output, GpuExtensionFieldPoly::new(dst)));
-                GpuGKRForwardGateDescriptor::with_mask_identity(
-                    input.as_ptr(),
-                    mask.as_ptr(),
-                    dst_ptr,
-                )
+                let src_mask = builder.add_src(mask_ptr as *const u8);
+                let src_input = builder.add_src(input_ptr as *const u8);
+                let i = builder.desc.num_masks as usize;
+                assert!(
+                    i < FLAT_FWD_MAX_PER_CATEGORY,
+                    "flat forward: masks overflow"
+                );
+                builder.desc.masks[i] = GpuFlatFwdMaskEntry {
+                    src_mask,
+                    src_input,
+                    dst: dst_ptr,
+                };
+                builder.desc.num_masks = (i + 1) as u32;
             }
             NoFieldGKRRelation::AggregateLookupRationalPair { input, output } => {
-                let [a, b] = input[0].map(|addr| storage.get_ext_poly(addr));
-                let [c, d] = input[1].map(|addr| storage.get_ext_poly(addr));
+                let [a, b] = input[0].map(|addr| storage.get_ext_poly(addr).as_ptr());
+                let [c, d] = input[1].map(|addr| storage.get_ext_poly(addr).as_ptr());
                 let mut num = alloc_ext(trace_len, context)?;
                 let mut den = alloc_ext(trace_len, context)?;
                 let num_ptr = num.as_mut_ptr();
                 let den_ptr = den.as_mut_ptr();
                 computed_extension_outputs.push((output[0], GpuExtensionFieldPoly::new(num)));
                 computed_extension_outputs.push((output[1], GpuExtensionFieldPoly::new(den)));
-                GpuGKRForwardGateDescriptor::with_lookup_pair(
-                    a.as_ptr(),
-                    b.as_ptr(),
-                    c.as_ptr(),
-                    d.as_ptr(),
-                    num_ptr,
-                    den_ptr,
-                )
+                let src_a = builder.add_src(a as *const u8);
+                let src_b = builder.add_src(b as *const u8);
+                let src_c = builder.add_src(c as *const u8);
+                let src_d = builder.add_src(d as *const u8);
+                let i = builder.desc.num_lookup4s as usize;
+                assert!(
+                    i < FLAT_FWD_MAX_PER_CATEGORY,
+                    "flat forward: lookup4s overflow"
+                );
+                builder.desc.lookup4s[i] = GpuFlatFwdLookup4Entry {
+                    src_a,
+                    src_b,
+                    src_c,
+                    src_d,
+                    num: num_ptr,
+                    den: den_ptr,
+                };
+                builder.desc.num_lookup4s = (i + 1) as u32;
             }
             NoFieldGKRRelation::LookupWithCachedDensAndSetup {
                 input,
                 setup,
                 output,
             } => {
-                let a = storage.get_base_layer(input[0]);
-                let b = storage.get_ext_poly(input[1]);
-                let c = storage.get_base_layer(setup[0]);
-                let d = storage.get_ext_poly(setup[1]);
+                let a = storage.get_base_layer(input[0]).as_ptr();
+                let b = storage.get_ext_poly(input[1]).as_ptr();
+                let c = storage.get_base_layer(setup[0]).as_ptr();
+                let d = storage.get_ext_poly(setup[1]).as_ptr();
                 let mut num = alloc_ext(trace_len, context)?;
                 let mut den = alloc_ext(trace_len, context)?;
                 let num_ptr = num.as_mut_ptr();
                 let den_ptr = den.as_mut_ptr();
                 computed_extension_outputs.push((output[0], GpuExtensionFieldPoly::new(num)));
                 computed_extension_outputs.push((output[1], GpuExtensionFieldPoly::new(den)));
-                GpuGKRForwardGateDescriptor::with_lookup_cached_dens_and_setup(
-                    a.as_ptr(),
-                    b.as_ptr(),
-                    c.as_ptr(),
-                    d.as_ptr(),
-                    num_ptr,
-                    den_ptr,
-                )
+                let src_a = builder.add_src(a as *const u8);
+                let src_b = builder.add_src(b as *const u8);
+                let src_c = builder.add_src(c as *const u8);
+                let src_d = builder.add_src(d as *const u8);
+                let i = builder.desc.num_cached_denses as usize;
+                assert!(
+                    i < FLAT_FWD_MAX_PER_CATEGORY,
+                    "flat forward: cached_denses overflow"
+                );
+                builder.desc.cached_denses[i] = GpuFlatFwdCachedDensEntry {
+                    src_a,
+                    src_b,
+                    src_c,
+                    src_d,
+                    num: num_ptr,
+                    den: den_ptr,
+                };
+                builder.desc.num_cached_denses = (i + 1) as u32;
             }
             NoFieldGKRRelation::LookupPairFromMaterializedBaseInputs { input, output } => {
-                let lhs = storage.get_base_layer(input[0]);
-                let rhs = storage.get_base_layer(input[1]);
+                let lhs = storage.get_base_layer(input[0]).as_ptr();
+                let rhs = storage.get_base_layer(input[1]).as_ptr();
                 let mut num = alloc_ext(trace_len, context)?;
                 let mut den = alloc_ext(trace_len, context)?;
                 let num_ptr = num.as_mut_ptr();
                 let den_ptr = den.as_mut_ptr();
                 computed_extension_outputs.push((output[0], GpuExtensionFieldPoly::new(num)));
                 computed_extension_outputs.push((output[1], GpuExtensionFieldPoly::new(den)));
-                GpuGKRForwardGateDescriptor::with_lookup_base_pair(
-                    lhs.as_ptr(),
-                    rhs.as_ptr(),
-                    num_ptr,
-                    den_ptr,
-                )
+                let src_b = builder.add_src(lhs as *const u8);
+                let src_d = builder.add_src(rhs as *const u8);
+                let i = builder.desc.num_bf_pairs as usize;
+                assert!(
+                    i < FLAT_FWD_MAX_PER_CATEGORY,
+                    "flat forward: bf_pairs overflow"
+                );
+                builder.desc.bf_pairs[i] = GpuFlatFwdBfPairEntry {
+                    src_b,
+                    src_d,
+                    num: num_ptr,
+                    den: den_ptr,
+                };
+                builder.desc.num_bf_pairs = (i + 1) as u32;
             }
             NoFieldGKRRelation::LookupPairFromMaterializedVectorInputs { input, output }
             | NoFieldGKRRelation::LookupPairFromCachedVectorInputs { input, output } => {
-                let lhs = storage.get_ext_poly(input[0]);
-                let rhs = storage.get_ext_poly(input[1]);
+                let lhs = storage.get_ext_poly(input[0]).as_ptr();
+                let rhs = storage.get_ext_poly(input[1]).as_ptr();
                 let mut num = alloc_ext(trace_len, context)?;
                 let mut den = alloc_ext(trace_len, context)?;
                 let num_ptr = num.as_mut_ptr();
                 let den_ptr = den.as_mut_ptr();
                 computed_extension_outputs.push((output[0], GpuExtensionFieldPoly::new(num)));
                 computed_extension_outputs.push((output[1], GpuExtensionFieldPoly::new(den)));
-                GpuGKRForwardGateDescriptor::with_lookup_ext_pair(
-                    lhs.as_ptr(),
-                    rhs.as_ptr(),
-                    num_ptr,
-                    den_ptr,
-                )
+                let src_b = builder.add_src(lhs as *const u8);
+                let src_d = builder.add_src(rhs as *const u8);
+                let i = builder.desc.num_e4_pairs as usize;
+                assert!(
+                    i < FLAT_FWD_MAX_PER_CATEGORY,
+                    "flat forward: e4_pairs overflow"
+                );
+                builder.desc.e4_pairs[i] = GpuFlatFwdE4PairEntry {
+                    src_b,
+                    src_d,
+                    num: num_ptr,
+                    den: den_ptr,
+                };
+                builder.desc.num_e4_pairs = (i + 1) as u32;
             }
             NoFieldGKRRelation::LookupFromMaterializedBaseInputWithSetup {
                 input,
                 setup,
                 output,
             } => {
-                let b = storage.get_base_layer(*input);
-                let c = storage.get_base_layer(setup[0]);
-                let (d, d_source_kind) =
-                    if let Some(source_kind) = GpuBaseFieldSourceKind::from_address(setup[1]) {
-                        (null(), source_kind)
+                let b = storage.get_base_layer(*input).as_ptr();
+                let c = storage.get_base_layer(setup[0]).as_ptr();
+                let d_ptr: *const u8 =
+                    if let Some(kind) = GpuBaseFieldSourceKind::from_address(setup[1]) {
+                        encode_virtual_source(kind)
                     } else {
-                        (
-                            storage.get_base_layer(setup[1]).as_ptr(),
-                            GpuBaseFieldSourceKind::Real,
-                        )
+                        storage.get_base_layer(setup[1]).as_ptr() as *const u8
                     };
                 let mut num = alloc_ext(trace_len, context)?;
                 let mut den = alloc_ext(trace_len, context)?;
@@ -1037,89 +909,125 @@ where
                 let den_ptr = den.as_mut_ptr();
                 computed_extension_outputs.push((output[0], GpuExtensionFieldPoly::new(num)));
                 computed_extension_outputs.push((output[1], GpuExtensionFieldPoly::new(den)));
-                GpuGKRForwardGateDescriptor::with_lookup_base_minus_multiplicity_by_base(
-                    b.as_ptr(),
-                    c.as_ptr(),
-                    d,
-                    d_source_kind,
-                    num_ptr,
-                    den_ptr,
-                )
+                let src_b = builder.add_src(b as *const u8);
+                let src_c = builder.add_src(c as *const u8);
+                let src_d = builder.add_src(d_ptr);
+                let i = builder.desc.num_bf_minus_mults as usize;
+                assert!(
+                    i < FLAT_FWD_MAX_PER_CATEGORY,
+                    "flat forward: bf_minus_mults overflow"
+                );
+                builder.desc.bf_minus_mults[i] = GpuFlatFwdBfMinusMultEntry {
+                    src_b,
+                    src_c,
+                    src_d,
+                    _pad: 0,
+                    num: num_ptr,
+                    den: den_ptr,
+                };
+                builder.desc.num_bf_minus_mults = (i + 1) as u32;
             }
             NoFieldGKRRelation::LookupFromMaterializedVectorInputWithSetup {
                 input,
                 setup,
                 output,
             } => {
-                let b = storage.get_ext_poly(*input);
-                let c = storage.get_base_layer(setup[0]);
-                let d = storage.get_ext_poly(setup[1]);
+                let b = storage.get_ext_poly(*input).as_ptr();
+                let c = storage.get_base_layer(setup[0]).as_ptr();
+                let d = storage.get_ext_poly(setup[1]).as_ptr();
                 let mut num = alloc_ext(trace_len, context)?;
                 let mut den = alloc_ext(trace_len, context)?;
                 let num_ptr = num.as_mut_ptr();
                 let den_ptr = den.as_mut_ptr();
                 computed_extension_outputs.push((output[0], GpuExtensionFieldPoly::new(num)));
                 computed_extension_outputs.push((output[1], GpuExtensionFieldPoly::new(den)));
-                GpuGKRForwardGateDescriptor::with_lookup_ext_minus_multiplicity_by_ext(
-                    b.as_ptr(),
-                    c.as_ptr(),
-                    d.as_ptr(),
-                    num_ptr,
-                    den_ptr,
-                )
+                let src_b = builder.add_src(b as *const u8);
+                let src_c = builder.add_src(c as *const u8);
+                let src_d = builder.add_src(d as *const u8);
+                let i = builder.desc.num_e4_minus_mults as usize;
+                assert!(
+                    i < FLAT_FWD_MAX_PER_CATEGORY,
+                    "flat forward: e4_minus_mults overflow"
+                );
+                builder.desc.e4_minus_mults[i] = GpuFlatFwdE4MinusMultEntry {
+                    src_b,
+                    src_c,
+                    src_d,
+                    _pad: 0,
+                    num: num_ptr,
+                    den: den_ptr,
+                };
+                builder.desc.num_e4_minus_mults = (i + 1) as u32;
             }
             NoFieldGKRRelation::LookupUnbalancedPairWithMaterializedBaseInputs {
                 input,
                 remainder,
                 output,
             } => {
-                let [a, b] = input.map(|addr| storage.get_ext_poly(addr));
-                let remainder = storage.get_base_layer(*remainder);
+                let [a, b] = input.map(|addr| storage.get_ext_poly(addr).as_ptr());
+                let remainder = storage.get_base_layer(*remainder).as_ptr();
                 let mut num = alloc_ext(trace_len, context)?;
                 let mut den = alloc_ext(trace_len, context)?;
                 let num_ptr = num.as_mut_ptr();
                 let den_ptr = den.as_mut_ptr();
                 computed_extension_outputs.push((output[0], GpuExtensionFieldPoly::new(num)));
                 computed_extension_outputs.push((output[1], GpuExtensionFieldPoly::new(den)));
-                GpuGKRForwardGateDescriptor::with_lookup_unbalanced_base(
-                    a.as_ptr(),
-                    b.as_ptr(),
-                    remainder.as_ptr(),
-                    num_ptr,
-                    den_ptr,
-                )
+                let src_a = builder.add_src(a as *const u8);
+                let src_b = builder.add_src(b as *const u8);
+                let src_d = builder.add_src(remainder as *const u8);
+                let i = builder.desc.num_bf_unbalanceds as usize;
+                assert!(
+                    i < FLAT_FWD_MAX_PER_CATEGORY,
+                    "flat forward: bf_unbalanceds overflow"
+                );
+                builder.desc.bf_unbalanceds[i] = GpuFlatFwdBfUnbalancedEntry {
+                    src_a,
+                    src_b,
+                    src_d,
+                    _pad: 0,
+                    num: num_ptr,
+                    den: den_ptr,
+                };
+                builder.desc.num_bf_unbalanceds = (i + 1) as u32;
             }
             NoFieldGKRRelation::LookupUnbalancedPairWithMaterializedVectorInputs {
                 input,
                 remainder,
                 output,
             } => {
-                let [a, b] = input.map(|addr| storage.get_ext_poly(addr));
-                let remainder = storage.get_ext_poly(*remainder);
+                let [a, b] = input.map(|addr| storage.get_ext_poly(addr).as_ptr());
+                let remainder = storage.get_ext_poly(*remainder).as_ptr();
                 let mut num = alloc_ext(trace_len, context)?;
                 let mut den = alloc_ext(trace_len, context)?;
                 let num_ptr = num.as_mut_ptr();
                 let den_ptr = den.as_mut_ptr();
                 computed_extension_outputs.push((output[0], GpuExtensionFieldPoly::new(num)));
                 computed_extension_outputs.push((output[1], GpuExtensionFieldPoly::new(den)));
-                GpuGKRForwardGateDescriptor::with_lookup_unbalanced_extension(
-                    a.as_ptr(),
-                    b.as_ptr(),
-                    remainder.as_ptr(),
-                    num_ptr,
-                    den_ptr,
-                )
+                let src_a = builder.add_src(a as *const u8);
+                let src_b = builder.add_src(b as *const u8);
+                let src_d = builder.add_src(remainder as *const u8);
+                let i = builder.desc.num_e4_unbalanceds as usize;
+                assert!(
+                    i < FLAT_FWD_MAX_PER_CATEGORY,
+                    "flat forward: e4_unbalanceds overflow"
+                );
+                builder.desc.e4_unbalanceds[i] = GpuFlatFwdE4UnbalancedEntry {
+                    src_a,
+                    src_b,
+                    src_d,
+                    _pad: 0,
+                    num: num_ptr,
+                    den: den_ptr,
+                };
+                builder.desc.num_e4_unbalanceds = (i + 1) as u32;
             }
-            NoFieldGKRRelation::EnforceConstraintsMaxQuadratic { .. } => {
-                GpuGKRForwardGateDescriptor::no_op()
-            }
+            NoFieldGKRRelation::EnforceConstraintsMaxQuadratic { .. } => {}
             NoFieldGKRRelation::MaterializedVectorLookupInput { output, .. } => {
                 assert!(
                     storage.try_get_ext_poly(*output).is_some(),
                     "materialized vector lookup output {:?} must be precomputed before gate lowering",
                     output
                 );
-                GpuGKRForwardGateDescriptor::no_op()
             }
             NoFieldGKRRelation::MaterializeSingleLookupInput { output, .. } => {
                 assert!(
@@ -1127,7 +1035,6 @@ where
                     "materialized single lookup output {:?} must be precomputed before gate lowering",
                     output
                 );
-                GpuGKRForwardGateDescriptor::no_op()
             }
             NoFieldGKRRelation::LinearBaseFieldRelation { output, .. } => {
                 assert!(
@@ -1135,159 +1042,23 @@ where
                     "materialized linear base output {:?} must be precomputed before gate lowering",
                     output
                 );
-                GpuGKRForwardGateDescriptor::no_op()
             }
             NoFieldGKRRelation::MaxQuadratic { output, .. }
                 if scratch_space_mapping.contains_key(output)
-                    || storage.try_get_base_poly(*output).is_some() =>
-            {
-                GpuGKRForwardGateDescriptor::no_op()
-            }
-            NoFieldGKRRelation::EnforceSingleMaxQuadraticConstraint { .. } => {
-                GpuGKRForwardGateDescriptor::no_op()
-            }
-            NoFieldGKRRelation::InitialGrandProductWithoutCaches { input, output } => {
-                let lhs = build_forward_memory_tuple_expression_descriptor(
-                    &input[0],
-                    storage,
-                    external_challenges,
-                );
-                let rhs = build_forward_memory_tuple_expression_descriptor(
-                    &input[1],
-                    storage,
-                    external_challenges,
-                );
-                let mut dst = alloc_ext(trace_len, context)?;
-                let dst_ptr = dst.as_mut_ptr();
-                computed_extension_outputs.push((*output, GpuExtensionFieldPoly::new(dst)));
-                GpuGKRForwardGateDescriptor::with_initial_grand_product_without_caches(
-                    lhs, rhs, dst_ptr,
-                )
-            }
-            NoFieldGKRRelation::MaterializeGrandProductTermExpression { input, output } => {
-                let input = build_forward_memory_tuple_expression_descriptor(
-                    input,
-                    storage,
-                    external_challenges,
-                );
-                let mut dst = alloc_ext(trace_len, context)?;
-                let dst_ptr = dst.as_mut_ptr();
-                computed_extension_outputs.push((*output, GpuExtensionFieldPoly::new(dst)));
-                GpuGKRForwardGateDescriptor::with_materialize_grand_product_term_expression(
-                    input, dst_ptr,
-                )
-            }
-            NoFieldGKRRelation::LookupPairFromBaseInputs {
-                input,
-                output,
-                range_check_width,
-            } => {
-                let lhs_mapping =
-                    single_column_lookup_mapping_ptr(stage1, &input[0], *range_check_width);
-                let rhs_mapping =
-                    single_column_lookup_mapping_ptr(stage1, &input[1], *range_check_width);
-                let mut num = alloc_ext(trace_len, context)?;
-                let mut den = alloc_ext(trace_len, context)?;
-                let num_ptr = num.as_mut_ptr();
-                let den_ptr = den.as_mut_ptr();
-                computed_extension_outputs.push((output[0], GpuExtensionFieldPoly::new(num)));
-                computed_extension_outputs.push((output[1], GpuExtensionFieldPoly::new(den)));
-                GpuGKRForwardGateDescriptor::with_lookup_pair_from_base_inputs(
-                    lhs_mapping,
-                    rhs_mapping,
-                    num_ptr,
-                    den_ptr,
-                )
-            }
-            NoFieldGKRRelation::LookupWithDensAndSetupExpressions {
-                input,
-                setup,
-                output,
-            } => {
-                let decoder_predicate = storage
-                    .get_base_layer(
-                        decoder_predicate_address
-                            .expect("decoder lookup requires a decoder predicate column"),
-                    )
-                    .as_ptr();
-                let input_mapping = vector_lookup_mapping_ptr(stage1, &input.1);
-                let multiplicity = storage.get_base_layer(setup.0).as_ptr();
-                let mut num = alloc_ext(trace_len, context)?;
-                let mut den = alloc_ext(trace_len, context)?;
-                let num_ptr = num.as_mut_ptr();
-                let den_ptr = den.as_mut_ptr();
-                computed_extension_outputs.push((output[0], GpuExtensionFieldPoly::new(num)));
-                computed_extension_outputs.push((output[1], GpuExtensionFieldPoly::new(den)));
-                GpuGKRForwardGateDescriptor::with_lookup_with_dens_and_setup_expressions(
-                    decoder_predicate,
-                    input_mapping,
-                    multiplicity,
-                    generic_lookup,
-                    forward_setup.decoder_lookup_fill_value_device().as_ptr(),
-                    generic_lookup_len,
-                    num_ptr,
-                    den_ptr,
-                )
-            }
-            NoFieldGKRRelation::LookupPairFromVectorInputs { input, output } => {
-                let lhs_mapping = vector_lookup_mapping_ptr(stage1, &input[0]);
-                let rhs_mapping = vector_lookup_mapping_ptr(stage1, &input[1]);
-                let mut num = alloc_ext(trace_len, context)?;
-                let mut den = alloc_ext(trace_len, context)?;
-                let num_ptr = num.as_mut_ptr();
-                let den_ptr = den.as_mut_ptr();
-                computed_extension_outputs.push((output[0], GpuExtensionFieldPoly::new(num)));
-                computed_extension_outputs.push((output[1], GpuExtensionFieldPoly::new(den)));
-                GpuGKRForwardGateDescriptor::with_lookup_pair_from_vector_inputs(
-                    lhs_mapping,
-                    rhs_mapping,
-                    generic_lookup,
-                    num_ptr,
-                    den_ptr,
-                )
-            }
-            NoFieldGKRRelation::LookupFromVectorInputWithSetup {
-                input,
-                setup,
-                output,
-            } => {
-                let input_mapping = vector_lookup_mapping_ptr(stage1, input);
-                let multiplicity = storage.get_base_layer(setup.0).as_ptr();
-                let mut num = alloc_ext(trace_len, context)?;
-                let mut den = alloc_ext(trace_len, context)?;
-                let num_ptr = num.as_mut_ptr();
-                let den_ptr = den.as_mut_ptr();
-                computed_extension_outputs.push((output[0], GpuExtensionFieldPoly::new(num)));
-                computed_extension_outputs.push((output[1], GpuExtensionFieldPoly::new(den)));
-                GpuGKRForwardGateDescriptor::with_lookup_from_vector_input_with_setup(
-                    input_mapping,
-                    multiplicity,
-                    generic_lookup,
-                    generic_lookup_len,
-                    num_ptr,
-                    den_ptr,
-                )
-            }
-            NoFieldGKRRelation::LookupUnbalancedPairWithVectorInputs {
-                input,
-                remainder,
-                output,
-            } => {
-                let [a, b] = input.map(|addr| storage.get_ext_poly(addr));
-                let remainder_mapping = vector_lookup_mapping_ptr(stage1, remainder);
-                let mut num = alloc_ext(trace_len, context)?;
-                let mut den = alloc_ext(trace_len, context)?;
-                let num_ptr = num.as_mut_ptr();
-                let den_ptr = den.as_mut_ptr();
-                computed_extension_outputs.push((output[0], GpuExtensionFieldPoly::new(num)));
-                computed_extension_outputs.push((output[1], GpuExtensionFieldPoly::new(den)));
-                GpuGKRForwardGateDescriptor::with_lookup_unbalanced_pair_with_vector_inputs(
-                    a.as_ptr(),
-                    b.as_ptr(),
-                    remainder_mapping,
-                    generic_lookup,
-                    num_ptr,
-                    den_ptr,
+                    || storage.try_get_base_poly(*output).is_some() => {}
+            NoFieldGKRRelation::EnforceSingleMaxQuadraticConstraint { .. } => {}
+            NoFieldGKRRelation::LookupPairFromBaseInputs { .. }
+            | NoFieldGKRRelation::LookupWithDensAndSetupExpressions { .. }
+            | NoFieldGKRRelation::LookupPairFromVectorInputs { .. }
+            | NoFieldGKRRelation::LookupFromVectorInputWithSetup { .. }
+            | NoFieldGKRRelation::LookupUnbalancedPairWithVectorInputs { .. } => {
+                // Mapping-based lookup relations only appear in uncached GKR
+                // layouts (`*_no_caches_gkr.json`); gpu_prover exclusively
+                // consumes cached layouts, where these are pre-materialized
+                // into the direct-source categories above.
+                unreachable!(
+                    "mapping-based GKR relation unexpected in cached layout: {:?}",
+                    gate.enforced_relation
                 )
             }
             NoFieldGKRRelation::InitsOrTeardownsInitialPair {
@@ -1307,7 +1078,13 @@ where
                     context,
                 )?;
                 computed_extension_outputs.push((*output, GpuExtensionFieldPoly::new(dst)));
-                GpuGKRForwardGateDescriptor::no_op()
+            }
+            NoFieldGKRRelation::InitialGrandProductWithoutCaches { .. }
+            | NoFieldGKRRelation::MaterializeGrandProductTermExpression { .. } => {
+                unreachable!(
+                    "grand-product gates must be decomposed by \
+                     LayerNoCacheLoweringPlan::grand_product_only before lowering"
+                )
             }
             NoFieldGKRRelation::MaxQuadratic { .. }
             | NoFieldGKRRelation::UnbalancedGrandProductWithCache { .. } => {
@@ -1316,34 +1093,28 @@ where
                     gate.enforced_relation
                 )
             }
-        };
-        batch_gate_idx += 1;
+        }
     }
 
-    if batch_gate_idx > 0 {
-        batch.gate_count = batch_gate_idx as u32;
-        batches.push(batch);
-    }
-
-    Ok(LoweredGpuGKRForwardLayer {
-        batches,
+    Ok(FlatForwardPlan {
+        desc,
         computed_extension_outputs,
         aliased_base_outputs,
         aliased_extension_outputs,
     })
 }
 
-fn commit_lowered_forward_layer<E>(
+fn commit_flat_forward_plan<E>(
     expected_output_layer: usize,
     storage: &mut GpuGKRStorage<BF, E>,
-    lowered: LoweredGpuGKRForwardLayer<E>,
+    plan: FlatForwardPlan<E>,
 ) {
-    let LoweredGpuGKRForwardLayer {
-        batches: _,
+    let FlatForwardPlan {
+        desc: _,
         computed_extension_outputs,
         aliased_base_outputs,
         aliased_extension_outputs,
-    } = lowered;
+    } = plan;
 
     for (address, poly) in computed_extension_outputs {
         storage.insert_extension_at_layer(expected_output_layer, address, poly);
@@ -1899,9 +1670,37 @@ where
     Ok(())
 }
 
-fn schedule_dimension_reduction_forward<E>(
+/// Per-slot initial input pointers handed to the first tower launch of each chunk.
+#[derive(Clone, Copy)]
+pub(super) enum LoweredSlotInitialInput<E> {
+    PairwiseProduct { input: *const E },
+    LookupPair { num: *const E, den: *const E },
+}
+
+/// Per-slot output pointers for a single reduction round.
+#[derive(Clone, Copy)]
+pub(super) enum LoweredSlotOutput<E> {
+    PairwiseProduct {
+        output: *mut E,
+    },
+    LookupPair {
+        output_num: *mut E,
+        output_den: *mut E,
+    },
+}
+
+pub(super) struct LoweredDimReducingForwardRound<E> {
+    pub(super) slot_initial_inputs: Vec<LoweredSlotInitialInput<E>>,
+    pub(super) slot_output_types: Vec<OutputType>,
+    pub(super) slot_outputs: Vec<LoweredSlotOutput<E>>,
+    pub(super) layer_description: BTreeMap<OutputType, DimensionReducingInputOutput>,
+    pub(super) computed_extension_outputs: Vec<(GKRAddress, GpuExtensionFieldPoly<E>)>,
+}
+
+pub(super) fn schedule_dimension_reduction_forward<E>(
     storage: &mut GpuGKRStorage<BF, E>,
-    compiled_circuit: &GKRCircuitArtifact<BF>,
+    initial_layer_idx: usize,
+    initial_output_map: BTreeMap<OutputType, Vec<GKRAddress>>,
     initial_trace_log_2: usize,
     final_trace_log_2: usize,
     tracing_ranges: &mut Vec<Range>,
@@ -1912,7 +1711,7 @@ fn schedule_dimension_reduction_forward<E>(
 )>
 where
     E: FieldExtension<BF> + Field + SetByRef + SetByVal,
-    E: GpuGKRDimensionReducingForwardKernelSet,
+    E: GpuGKRDimensionReducingForwardTowerKernelSet,
     Add: BinaryOp<E, E, E>,
     Add: BinaryOp<BF, E, E>,
     Add: BinaryOp<E, BF, E>,
@@ -1924,34 +1723,34 @@ where
     Sub: BinaryOp<BF, BF, BF>,
 {
     let mut dimension_reduction_description = BTreeMap::new();
-    let layer_idx = compiled_circuit.layers.len();
-    let mut current_layer_idx = layer_idx;
+    let mut current_layer_idx = initial_layer_idx;
     let stream = context.get_exec_stream();
+    let total_rounds = initial_trace_log_2.saturating_sub(final_trace_log_2);
+    if total_rounds == 0 {
+        return Ok((current_layer_idx, dimension_reduction_description));
+    }
 
-    for input_size_log_2 in ((final_trace_log_2 + 1)..=initial_trace_log_2).rev() {
-        let mut round_range = if input_size_log_2 >= 22 {
-            let range = Range::new(format!(
-                "gkr.forward.dimension_reduction.round.2pow{}_to_2pow{}",
-                input_size_log_2,
-                input_size_log_2 - 1
-            ))?;
-            range.start(stream)?;
-            Some(range)
-        } else {
-            None
-        };
-        let layer_inputs = if current_layer_idx != layer_idx {
+    // Phase 1: lower + commit every round sequentially so subsequent rounds can resolve inputs
+    // from storage. Collect per-round per-slot output pointers for the later tower assembly.
+    let mut per_round_slot_outputs: Vec<Vec<LoweredSlotOutput<E>>> =
+        Vec::with_capacity(total_rounds);
+    let mut slot_initial_inputs: Option<Vec<LoweredSlotInitialInput<E>>> = None;
+    let mut slot_output_types: Option<Vec<OutputType>> = None;
+
+    for round_idx in 0..total_rounds {
+        let input_size_log_2 = initial_trace_log_2 - round_idx;
+        let output_trace_len = 1usize << (input_size_log_2 - 1);
+
+        let layer_inputs = if current_layer_idx != initial_layer_idx {
             let previous: &BTreeMap<OutputType, DimensionReducingInputOutput> =
                 dimension_reduction_description
                     .get(&(current_layer_idx - 1))
                     .expect("dimension reduction input layer must exist");
             BTreeMap::from_iter(previous.iter().map(|(k, v)| (*k, v.output.clone())))
         } else {
-            compiled_circuit.global_output_map.clone()
+            initial_output_map.clone()
         };
 
-        let input_trace_len = 1 << input_size_log_2;
-        let output_trace_len = input_trace_len / 2;
         let lowered = lower_dimension_reducing_forward_round(
             &layer_inputs,
             current_layer_idx,
@@ -1959,21 +1758,151 @@ where
             storage,
             context,
         )?;
-        launch_dimension_reducing_forward(&lowered.batch, output_trace_len, context)?;
-        let layer_description = commit_lowered_dimension_reducing_forward_round(
-            current_layer_idx + 1,
-            storage,
-            lowered,
-        );
-        dimension_reduction_description.insert(current_layer_idx, layer_description);
-        current_layer_idx += 1;
-        if let Some(round_range) = round_range.take() {
-            round_range.end(stream)?;
-            tracing_ranges.push(round_range);
+
+        if round_idx == 0 {
+            slot_initial_inputs = Some(lowered.slot_initial_inputs.clone());
+            slot_output_types = Some(lowered.slot_output_types.clone());
         }
+        per_round_slot_outputs.push(lowered.slot_outputs.clone());
+
+        for (address, poly) in lowered.computed_extension_outputs {
+            storage.insert_extension_at_layer(current_layer_idx + 1, address, poly);
+        }
+        dimension_reduction_description.insert(current_layer_idx, lowered.layer_description);
+        current_layer_idx += 1;
+    }
+
+    // Phase 2: slot-major dispatch, all launches on exec_stream. Each slot's full reduction
+    // chain (every tower chunk) runs contiguously before the next slot starts. One NVTX range
+    // per OutputType wraps all slots belonging to that type — PermutationProduct covers both
+    // read_set and write_set chains; each lookup type covers its single (num, den) chain.
+    let slot_initial_inputs =
+        slot_initial_inputs.expect("non-zero rounds implies we captured initial inputs");
+    let slot_output_types =
+        slot_output_types.expect("non-zero rounds implies we captured slot output types");
+    let slot_count = slot_initial_inputs.len();
+    let log_block = GKR_DIM_REDUCING_FORWARD_TOWER_LOG_BLOCK as usize;
+
+    let mut slot_idx = 0usize;
+    while slot_idx < slot_count {
+        let range_type = slot_output_types[slot_idx];
+        let range_end = slot_output_types[slot_idx..]
+            .iter()
+            .position(|t| *t != range_type)
+            .map(|offset| slot_idx + offset)
+            .unwrap_or(slot_count);
+
+        let range = Range::new(format!(
+            "gkr.forward.dimension_reduction.tower.{:?}",
+            range_type
+        ))?;
+        range.start(stream)?;
+
+        for s in slot_idx..range_end {
+            let mut cur_input = slot_initial_inputs[s];
+            let mut cur_input_log_2 = initial_trace_log_2;
+            let mut r = 0usize;
+            while r < total_rounds {
+                let remaining = total_rounds - r;
+                let chunk_rounds = remaining.min(log_block);
+                let chunk_input_len = 1u32 << cur_input_log_2;
+                dispatch_tower_slot_launch(
+                    cur_input,
+                    s,
+                    r,
+                    chunk_rounds,
+                    chunk_input_len,
+                    &per_round_slot_outputs,
+                    stream,
+                )?;
+                r += chunk_rounds;
+                cur_input_log_2 -= chunk_rounds;
+                if r < total_rounds {
+                    let last_round = r - 1;
+                    cur_input = match per_round_slot_outputs[last_round][s] {
+                        LoweredSlotOutput::PairwiseProduct { output } => {
+                            LoweredSlotInitialInput::PairwiseProduct {
+                                input: output as *const E,
+                            }
+                        }
+                        LoweredSlotOutput::LookupPair {
+                            output_num,
+                            output_den,
+                        } => LoweredSlotInitialInput::LookupPair {
+                            num: output_num as *const E,
+                            den: output_den as *const E,
+                        },
+                    };
+                }
+            }
+        }
+
+        range.end(stream)?;
+        tracing_ranges.push(range);
+
+        slot_idx = range_end;
     }
 
     Ok((current_layer_idx - 1, dimension_reduction_description))
+}
+
+fn dispatch_tower_slot_launch<E>(
+    slot_input: LoweredSlotInitialInput<E>,
+    slot_idx: usize,
+    chunk_start_round: usize,
+    chunk_rounds: usize,
+    chunk_input_len: u32,
+    per_round_slot_outputs: &[Vec<LoweredSlotOutput<E>>],
+    stream: &era_cudart::stream::CudaStream,
+) -> CudaResult<()>
+where
+    E: GpuGKRDimensionReducingForwardTowerKernelSet,
+{
+    match slot_input {
+        LoweredSlotInitialInput::PairwiseProduct { input } => {
+            let mut batch = GpuGKRDimensionReducingForwardTowerPairwiseBatch::<E>::default();
+            batch.input = input;
+            batch.input_len = chunk_input_len;
+            batch.round_count = chunk_rounds as u32;
+            for local_r in 0..chunk_rounds {
+                let round_idx = chunk_start_round + local_r;
+                match per_round_slot_outputs[round_idx][slot_idx] {
+                    LoweredSlotOutput::PairwiseProduct { output } => {
+                        batch.round_outputs[local_r] = output;
+                    }
+                    LoweredSlotOutput::LookupPair { .. } => panic!(
+                        "tower slot {} changed kind between round 0 and round {}",
+                        slot_idx, round_idx
+                    ),
+                }
+            }
+            launch_dimension_reducing_forward_tower_pairwise(&batch, stream)
+        }
+        LoweredSlotInitialInput::LookupPair { num, den } => {
+            let mut batch = GpuGKRDimensionReducingForwardTowerLookupBatch::<E>::default();
+            batch.input_num = num;
+            batch.input_den = den;
+            batch.input_len = chunk_input_len;
+            batch.round_count = chunk_rounds as u32;
+            for local_r in 0..chunk_rounds {
+                let round_idx = chunk_start_round + local_r;
+                match per_round_slot_outputs[round_idx][slot_idx] {
+                    LoweredSlotOutput::LookupPair {
+                        output_num,
+                        output_den,
+                    } => {
+                        batch.round_outputs_num[local_r] = output_num;
+                        batch.round_outputs_den[local_r] = output_den;
+                    }
+                    LoweredSlotOutput::PairwiseProduct { .. } => panic!(
+                        "tower slot {} changed kind between round 0 and round {}",
+                        slot_idx, round_idx
+                    ),
+                }
+            }
+            launch_dimension_reducing_forward_tower_lookup(&batch, stream)
+        }
+    }
 }
 
 fn lower_dimension_reducing_forward_round<E>(
@@ -1982,14 +1911,16 @@ fn lower_dimension_reducing_forward_round<E>(
     output_trace_len: usize,
     storage: &GpuGKRStorage<BF, E>,
     context: &ProverContext,
-) -> CudaResult<LoweredGpuGKRDimensionReducingForwardRound<E>>
+) -> CudaResult<LoweredDimReducingForwardRound<E>>
 where
     E: FieldExtension<BF> + Field,
 {
     let output_layer = current_layer_idx + 1;
     let mut output_idx = 0usize;
     let mut layer_description = BTreeMap::new();
-    let mut lowered_inputs = Vec::new();
+    let mut slot_initial_inputs = Vec::new();
+    let mut slot_output_types = Vec::new();
+    let mut slot_outputs = Vec::new();
     let mut computed_extension_outputs = Vec::new();
 
     for (arg_type, inputs) in layer_inputs.iter() {
@@ -2010,12 +1941,12 @@ where
                     };
                     output_idx += 1;
                     let mut reduced = alloc_ext(output_trace_len, context)?;
-                    lowered_inputs.push(
-                        LoweredGpuGKRDimensionReducingForwardInput::PairwiseProduct {
-                            input: source.as_ptr(),
-                            output: reduced.as_mut_ptr(),
-                        },
-                    );
+                    let output_ptr = reduced.as_mut_ptr();
+                    slot_initial_inputs.push(LoweredSlotInitialInput::PairwiseProduct {
+                        input: source.as_ptr(),
+                    });
+                    slot_output_types.push(*arg_type);
+                    slot_outputs.push(LoweredSlotOutput::PairwiseProduct { output: output_ptr });
                     computed_extension_outputs.push((output, GpuExtensionFieldPoly::new(reduced)));
                     outputs[idx] = output;
                 }
@@ -2052,11 +1983,16 @@ where
                 output_idx += 1;
                 let mut reduced_num = alloc_ext(output_trace_len, context)?;
                 let mut reduced_den = alloc_ext(output_trace_len, context)?;
-                lowered_inputs.push(LoweredGpuGKRDimensionReducingForwardInput::LookupPair {
+                let num_ptr = reduced_num.as_mut_ptr();
+                let den_ptr = reduced_den.as_mut_ptr();
+                slot_initial_inputs.push(LoweredSlotInitialInput::LookupPair {
                     num: num.as_ptr(),
                     den: den.as_ptr(),
-                    output_num: reduced_num.as_mut_ptr(),
-                    output_den: reduced_den.as_mut_ptr(),
+                });
+                slot_output_types.push(*arg_type);
+                slot_outputs.push(LoweredSlotOutput::LookupPair {
+                    output_num: num_ptr,
+                    output_den: den_ptr,
                 });
                 computed_extension_outputs.push((new_num, GpuExtensionFieldPoly::new(reduced_num)));
                 computed_extension_outputs.push((new_den, GpuExtensionFieldPoly::new(reduced_den)));
@@ -2071,29 +2007,13 @@ where
         }
     }
 
-    Ok(LoweredGpuGKRDimensionReducingForwardRound {
-        batch: pack_dimension_reducing_forward_batch(&lowered_inputs),
+    Ok(LoweredDimReducingForwardRound {
+        slot_initial_inputs,
+        slot_output_types,
+        slot_outputs,
         layer_description,
         computed_extension_outputs,
     })
-}
-
-fn commit_lowered_dimension_reducing_forward_round<E>(
-    output_layer: usize,
-    storage: &mut GpuGKRStorage<BF, E>,
-    lowered: LoweredGpuGKRDimensionReducingForwardRound<E>,
-) -> BTreeMap<OutputType, DimensionReducingInputOutput> {
-    let LoweredGpuGKRDimensionReducingForwardRound {
-        batch: _,
-        layer_description,
-        computed_extension_outputs,
-    } = lowered;
-
-    for (address, poly) in computed_extension_outputs {
-        storage.insert_extension_at_layer(output_layer, address, poly);
-    }
-
-    layer_description
 }
 
 fn alloc_base(len: usize, context: &ProverContext) -> CudaResult<DeviceAllocation<BF>> {
@@ -2814,53 +2734,6 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "exceeding the fused forward cap")]
-    fn forward_layer_panics_when_gate_count_exceeds_cap() {
-        let context = make_test_context(64, 8);
-        let trace_len = 8;
-        let mut storage = GpuGKRStorage::<BF, E4>::default();
-        let input = GKRAddress::BaseLayerMemory(0);
-        storage.insert_base_field_at_layer(
-            0,
-            input,
-            upload_base_poly(&vec![BF::new(1); trace_len], &context),
-        );
-
-        let layer = GKRLayerDescription {
-            layer: 0,
-            gates_with_external_connections: Vec::new(),
-            cached_relations: BTreeMap::new(),
-            gates: (0..(GKR_FORWARD_MAX_GATES_PER_LAYER + 1))
-                .map(|offset| GateArtifacts {
-                    output_layer: 1,
-                    enforced_relation: NoFieldGKRRelation::Copy {
-                        input,
-                        output: GKRAddress::InnerLayer { layer: 1, offset },
-                    },
-                })
-                .collect(),
-        };
-        let external_challenges = sample_external_challenges(100);
-        let stage1 = GpuGKRStage1Output::empty_for_tests(&context).unwrap();
-        let forward_setup = make_empty_forward_setup(trace_len, sample_ext(101), &context);
-
-        let _ = lower_forward_layer(
-            0,
-            &layer.gates,
-            &layer.gates_with_external_connections,
-            &BTreeMap::new(),
-            &storage,
-            &stage1,
-            &forward_setup,
-            &external_challenges,
-            None,
-            forward_setup.lookup_additive_part_device().as_ptr(),
-            trace_len,
-            &context,
-        );
-    }
-
-    #[test]
     #[serial]
     fn forward_layer_lowering_and_launch_match_expected_outputs() {
         let context = make_test_context(256, 32);
@@ -2978,26 +2851,23 @@ mod tests {
             make_empty_forward_setup(trace_len, lookup_additive_challenge, &context);
 
         assert_forward_layer_invariants(0, 2, &layer);
-        let lowered = lower_forward_layer(
+        let plan = build_flat_forward_plan::<E4>(
             0,
             &layer.gates,
             &layer.gates_with_external_connections,
             &BTreeMap::new(),
             &storage,
-            &stage1,
-            &forward_setup,
             &external_challenges,
-            None,
             forward_setup.lookup_additive_part_device().as_ptr(),
             trace_len,
             &context,
         )
         .unwrap();
-        assert_eq!(lowered.batches.len(), 1);
-        assert_eq!(lowered.batches[0].gate_count, layer.gates.len() as u32);
-
-        launch_forward_layer::<E4>(&lowered.batches[0], trace_len, &context).unwrap();
-        commit_lowered_forward_layer(1, &mut storage, lowered);
+        super::super::forward_kernels::launch_flat_forward_layer::<E4>(
+            &plan.desc, trace_len, &context,
+        )
+        .unwrap();
+        commit_flat_forward_plan(1, &mut storage, plan);
         context.get_exec_stream().synchronize().unwrap();
 
         let copied = storage
@@ -3050,11 +2920,15 @@ mod tests {
 
     #[test]
     #[serial]
-    fn dimension_reducing_forward_round_lowering_and_launch_match_expected_outputs() {
-        let context = make_test_context(256, 32);
-        let input_trace_len = 8;
-        let output_trace_len = input_trace_len / 2;
-        let current_layer_idx = 7;
+    fn dimension_reducing_forward_tower_matches_reference() {
+        let context = make_test_context(1024, 32);
+        // initial_trace_log_2 = 11, final_trace_log_2 = 0 → 11 rounds total.
+        // With log_block = 8: one 8-round body launch (grid 2^3 = 8) + one 3-round tail launch
+        // (grid 1, parallel streams). Exercises both body and tail code paths.
+        let initial_trace_log_2 = 11usize;
+        let final_trace_log_2 = 0usize;
+        let initial_trace_len = 1usize << initial_trace_log_2;
+        let current_layer_idx = 3usize;
 
         let read_set = GKRAddress::InnerLayer {
             layer: current_layer_idx,
@@ -3089,29 +2963,29 @@ mod tests {
             offset: 7,
         };
 
-        let read_values = (0..input_trace_len)
-            .map(|idx| sample_ext(10 + idx as u32))
+        let read_values = (0..initial_trace_len)
+            .map(|idx| sample_ext(100 + idx as u32))
             .collect::<Vec<_>>();
-        let write_values = (0..input_trace_len)
-            .map(|idx| sample_ext(30 + idx as u32))
+        let write_values = (0..initial_trace_len)
+            .map(|idx| sample_ext(200 + idx as u32))
             .collect::<Vec<_>>();
-        let lookup16_num_values = (0..input_trace_len)
-            .map(|idx| sample_ext(50 + idx as u32))
+        let lookup16_num_values = (0..initial_trace_len)
+            .map(|idx| sample_ext(300 + idx as u32))
             .collect::<Vec<_>>();
-        let lookup16_den_values = (0..input_trace_len)
-            .map(|idx| sample_ext(70 + idx as u32))
+        let lookup16_den_values = (0..initial_trace_len)
+            .map(|idx| sample_ext(400 + idx as u32))
             .collect::<Vec<_>>();
-        let timestamp_num_values = (0..input_trace_len)
-            .map(|idx| sample_ext(90 + idx as u32))
+        let timestamp_num_values = (0..initial_trace_len)
+            .map(|idx| sample_ext(500 + idx as u32))
             .collect::<Vec<_>>();
-        let timestamp_den_values = (0..input_trace_len)
-            .map(|idx| sample_ext(110 + idx as u32))
+        let timestamp_den_values = (0..initial_trace_len)
+            .map(|idx| sample_ext(600 + idx as u32))
             .collect::<Vec<_>>();
-        let generic_num_values = (0..input_trace_len)
-            .map(|idx| sample_ext(130 + idx as u32))
+        let generic_num_values = (0..initial_trace_len)
+            .map(|idx| sample_ext(700 + idx as u32))
             .collect::<Vec<_>>();
-        let generic_den_values = (0..input_trace_len)
-            .map(|idx| sample_ext(150 + idx as u32))
+        let generic_den_values = (0..initial_trace_len)
+            .map(|idx| sample_ext(800 + idx as u32))
             .collect::<Vec<_>>();
 
         let mut storage = GpuGKRStorage::<BF, E4>::default();
@@ -3132,7 +3006,7 @@ mod tests {
             );
         }
 
-        let layer_inputs = BTreeMap::from([
+        let initial_output_map = BTreeMap::from([
             (OutputType::PermutationProduct, vec![read_set, write_set]),
             (OutputType::Lookup16Bits, vec![lookup16_num, lookup16_den]),
             (
@@ -3142,263 +3016,78 @@ mod tests {
             (OutputType::GenericLookup, vec![generic_num, generic_den]),
         ]);
 
-        let lowered = lower_dimension_reducing_forward_round(
-            &layer_inputs,
+        let mut tracing_ranges = Vec::new();
+        let (final_layer_idx, dim_reducing_inputs) = schedule_dimension_reduction_forward::<E4>(
+            &mut storage,
             current_layer_idx,
-            output_trace_len,
-            &storage,
+            initial_output_map,
+            initial_trace_log_2,
+            final_trace_log_2,
+            &mut tracing_ranges,
             &context,
         )
         .unwrap();
-        assert_eq!(lowered.batch.input_count, 5);
-
-        let expected_description = BTreeMap::from([
-            (
-                OutputType::PermutationProduct,
-                DimensionReducingInputOutput {
-                    inputs: vec![read_set, write_set],
-                    output: vec![
-                        GKRAddress::InnerLayer {
-                            layer: current_layer_idx + 1,
-                            offset: 0,
-                        },
-                        GKRAddress::InnerLayer {
-                            layer: current_layer_idx + 1,
-                            offset: 1,
-                        },
-                    ],
-                },
-            ),
-            (
-                OutputType::Lookup16Bits,
-                DimensionReducingInputOutput {
-                    inputs: vec![lookup16_num, lookup16_den],
-                    output: vec![
-                        GKRAddress::InnerLayer {
-                            layer: current_layer_idx + 1,
-                            offset: 2,
-                        },
-                        GKRAddress::InnerLayer {
-                            layer: current_layer_idx + 1,
-                            offset: 3,
-                        },
-                    ],
-                },
-            ),
-            (
-                OutputType::LookupTimestamps,
-                DimensionReducingInputOutput {
-                    inputs: vec![timestamp_num, timestamp_den],
-                    output: vec![
-                        GKRAddress::InnerLayer {
-                            layer: current_layer_idx + 1,
-                            offset: 4,
-                        },
-                        GKRAddress::InnerLayer {
-                            layer: current_layer_idx + 1,
-                            offset: 5,
-                        },
-                    ],
-                },
-            ),
-            (
-                OutputType::GenericLookup,
-                DimensionReducingInputOutput {
-                    inputs: vec![generic_num, generic_den],
-                    output: vec![
-                        GKRAddress::InnerLayer {
-                            layer: current_layer_idx + 1,
-                            offset: 6,
-                        },
-                        GKRAddress::InnerLayer {
-                            layer: current_layer_idx + 1,
-                            offset: 7,
-                        },
-                    ],
-                },
-            ),
-        ]);
-        assert_eq!(lowered.layer_description, expected_description);
-
-        launch_dimension_reducing_forward::<E4>(&lowered.batch, output_trace_len, &context)
-            .unwrap();
-        let layer_description = commit_lowered_dimension_reducing_forward_round(
-            current_layer_idx + 1,
-            &mut storage,
-            lowered,
-        );
         context.get_exec_stream().synchronize().unwrap();
 
-        assert_eq!(layer_description, expected_description);
+        let total_rounds = initial_trace_log_2 - final_trace_log_2;
+        assert_eq!(final_layer_idx, current_layer_idx + total_rounds - 1);
 
-        let expected_read = expected_pairwise_reduction(&read_values);
-        let expected_write = expected_pairwise_reduction(&write_values);
-        let (expected_lookup16_num, expected_lookup16_den) =
-            expected_lookup_pair_reduction(&lookup16_num_values, &lookup16_den_values);
-        let (expected_timestamp_num, expected_timestamp_den) =
-            expected_lookup_pair_reduction(&timestamp_num_values, &timestamp_den_values);
-        let (expected_generic_num, expected_generic_den) =
-            expected_lookup_pair_reduction(&generic_num_values, &generic_den_values);
+        // Walk every intermediate layer and compare against a fresh CPU reduction.
+        let mut expected_read = read_values.clone();
+        let mut expected_write = write_values.clone();
+        let mut expected_lookup16 = (lookup16_num_values.clone(), lookup16_den_values.clone());
+        let mut expected_timestamp = (timestamp_num_values.clone(), timestamp_den_values.clone());
+        let mut expected_generic = (generic_num_values.clone(), generic_den_values.clone());
 
-        assert_eq!(
-            read_ext_poly(
-                storage
-                    .get_ext_poly(expected_description[&OutputType::PermutationProduct].output[0]),
-                &context,
-            ),
-            expected_read
-        );
-        assert_eq!(
-            read_ext_poly(
-                storage
-                    .get_ext_poly(expected_description[&OutputType::PermutationProduct].output[1]),
-                &context,
-            ),
-            expected_write
-        );
-        assert_eq!(
-            read_ext_poly(
-                storage.get_ext_poly(expected_description[&OutputType::Lookup16Bits].output[0]),
-                &context,
-            ),
-            expected_lookup16_num
-        );
-        assert_eq!(
-            read_ext_poly(
-                storage.get_ext_poly(expected_description[&OutputType::Lookup16Bits].output[1]),
-                &context,
-            ),
-            expected_lookup16_den
-        );
-        assert_eq!(
-            read_ext_poly(
-                storage.get_ext_poly(expected_description[&OutputType::LookupTimestamps].output[0]),
-                &context,
-            ),
-            expected_timestamp_num
-        );
-        assert_eq!(
-            read_ext_poly(
-                storage.get_ext_poly(expected_description[&OutputType::LookupTimestamps].output[1]),
-                &context,
-            ),
-            expected_timestamp_den
-        );
-        assert_eq!(
-            read_ext_poly(
-                storage.get_ext_poly(expected_description[&OutputType::GenericLookup].output[0]),
-                &context,
-            ),
-            expected_generic_num
-        );
-        assert_eq!(
-            read_ext_poly(
-                storage.get_ext_poly(expected_description[&OutputType::GenericLookup].output[1]),
-                &context,
-            ),
-            expected_generic_den
-        );
-    }
+        for round_idx in 0..total_rounds {
+            expected_read = expected_pairwise_reduction(&expected_read);
+            expected_write = expected_pairwise_reduction(&expected_write);
+            expected_lookup16 =
+                expected_lookup_pair_reduction(&expected_lookup16.0, &expected_lookup16.1);
+            expected_timestamp =
+                expected_lookup_pair_reduction(&expected_timestamp.0, &expected_timestamp.1);
+            expected_generic =
+                expected_lookup_pair_reduction(&expected_generic.0, &expected_generic.1);
 
-    #[test]
-    #[serial]
-    fn dimension_reducing_forward_round_launch_respects_sparse_input_count() {
-        let context = make_test_context(256, 32);
-        let input_trace_len = 8;
-        let output_trace_len = input_trace_len / 2;
-        let current_layer_idx = 3;
+            let layer_description = dim_reducing_inputs
+                .get(&(current_layer_idx + round_idx))
+                .expect("dim reducing description present for round");
 
-        let num = GKRAddress::InnerLayer {
-            layer: current_layer_idx,
-            offset: 0,
-        };
-        let den = GKRAddress::InnerLayer {
-            layer: current_layer_idx,
-            offset: 1,
-        };
-        let num_values = (0..input_trace_len)
-            .map(|idx| sample_ext(200 + idx as u32))
-            .collect::<Vec<_>>();
-        let den_values = (0..input_trace_len)
-            .map(|idx| sample_ext(220 + idx as u32))
-            .collect::<Vec<_>>();
+            let permutation_outputs = &layer_description[&OutputType::PermutationProduct].output;
+            assert_eq!(
+                read_ext_poly(storage.get_ext_poly(permutation_outputs[0]), &context),
+                expected_read,
+                "read chain mismatch at round {}",
+                round_idx
+            );
+            assert_eq!(
+                read_ext_poly(storage.get_ext_poly(permutation_outputs[1]), &context),
+                expected_write,
+                "write chain mismatch at round {}",
+                round_idx
+            );
 
-        let mut storage = GpuGKRStorage::<BF, E4>::default();
-        storage.insert_extension_at_layer(
-            current_layer_idx,
-            num,
-            upload_ext_poly(&num_values, &context),
-        );
-        storage.insert_extension_at_layer(
-            current_layer_idx,
-            den,
-            upload_ext_poly(&den_values, &context),
-        );
-
-        let layer_inputs = BTreeMap::from([(OutputType::GenericLookup, vec![num, den])]);
-
-        let lowered = lower_dimension_reducing_forward_round(
-            &layer_inputs,
-            current_layer_idx,
-            output_trace_len,
-            &storage,
-            &context,
-        )
-        .unwrap();
-        assert_eq!(lowered.batch.input_count, 1);
-
-        launch_dimension_reducing_forward::<E4>(&lowered.batch, output_trace_len, &context)
-            .unwrap();
-        let layer_description = commit_lowered_dimension_reducing_forward_round(
-            current_layer_idx + 1,
-            &mut storage,
-            lowered,
-        );
-        context.get_exec_stream().synchronize().unwrap();
-
-        let expected_description = BTreeMap::from([(
-            OutputType::GenericLookup,
-            DimensionReducingInputOutput {
-                inputs: vec![num, den],
-                output: vec![
-                    GKRAddress::InnerLayer {
-                        layer: current_layer_idx + 1,
-                        offset: 0,
-                    },
-                    GKRAddress::InnerLayer {
-                        layer: current_layer_idx + 1,
-                        offset: 1,
-                    },
-                ],
-            },
-        )]);
-        assert_eq!(layer_description, expected_description);
-
-        let (expected_num, expected_den) = expected_lookup_pair_reduction(&num_values, &den_values);
-        assert_eq!(
-            read_ext_poly(
-                storage.get_ext_poly(expected_description[&OutputType::GenericLookup].output[0]),
-                &context,
-            ),
-            expected_num
-        );
-        assert_eq!(
-            read_ext_poly(
-                storage.get_ext_poly(expected_description[&OutputType::GenericLookup].output[1]),
-                &context,
-            ),
-            expected_den
-        );
-    }
-
-    #[test]
-    #[should_panic(expected = "exceeding the fused forward cap")]
-    fn dimension_reducing_forward_batch_panics_when_input_count_exceeds_cap() {
-        let input = LoweredGpuGKRDimensionReducingForwardInput::<E4>::PairwiseProduct {
-            input: null(),
-            output: null::<E4>().cast_mut(),
-        };
-        let lowered_inputs = vec![input; GKR_DIM_REDUCING_FORWARD_MAX_INPUTS + 1];
-        let _ = pack_dimension_reducing_forward_batch(&lowered_inputs);
+            for (arg, expected) in [
+                (OutputType::Lookup16Bits, &expected_lookup16),
+                (OutputType::LookupTimestamps, &expected_timestamp),
+                (OutputType::GenericLookup, &expected_generic),
+            ] {
+                let lookup_outputs = &layer_description[&arg].output;
+                assert_eq!(
+                    read_ext_poly(storage.get_ext_poly(lookup_outputs[0]), &context),
+                    expected.0,
+                    "{:?} num chain mismatch at round {}",
+                    arg,
+                    round_idx
+                );
+                assert_eq!(
+                    read_ext_poly(storage.get_ext_poly(lookup_outputs[1]), &context),
+                    expected.1,
+                    "{:?} den chain mismatch at round {}",
+                    arg,
+                    round_idx
+                );
+            }
+        }
     }
 }
