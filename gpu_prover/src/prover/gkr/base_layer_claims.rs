@@ -435,8 +435,6 @@ where
     let schedule_range = Range::new("gkr.base_layer_claims.schedule")?;
     schedule_range.start(stream)?;
 
-    let claim_point_range = Range::new("gkr.base_layer_claims.claim_point")?;
-    claim_point_range.start(stream)?;
     let mut start_callbacks = Callbacks::new();
     let mut claim_point_host = unsafe { context.alloc_host_uninit_slice(claim_point_len) };
     let claim_point_accessor = claim_point_host.get_mut_accessor();
@@ -448,11 +446,7 @@ where
     )?;
     let mut claim_point_device = context.alloc(claim_point_len, AllocationPlacement::BestFit)?;
     memory_copy_async(&mut claim_point_device, &claim_point_host, stream)?;
-    claim_point_range.end(stream)?;
-    tracing_ranges.push(claim_point_range);
 
-    let eq_values_range = Range::new("gkr.base_layer_claims.eq_values")?;
-    eq_values_range.start(stream)?;
     let mut eq_group_tables = context.alloc(
         eq_group_tables_len(claim_point_len).max(1),
         AllocationPlacement::BestFit,
@@ -467,8 +461,6 @@ where
         trace_len,
         context,
     )?;
-    eq_values_range.end(stream)?;
-    tracing_ranges.push(eq_values_range);
 
     let mem_polys_claims = schedule_reduce_trace_holder_claims(
         "memory",
@@ -494,8 +486,6 @@ where
 
     let mut shared_state = Box::new(ScheduledBaseLayerClaimsState { result: None });
     let shared_state_handle = UnsafeMutAccessor::new(shared_state.as_mut());
-    let finalize_range = Range::new("gkr.base_layer_claims.finalize")?;
-    finalize_range.start(stream)?;
     let mut finish_callbacks = Callbacks::new();
     let claim_point_accessor = claim_point_host.get_accessor();
     let mem_polys_claims_accessor = mem_polys_claims.get_accessor();
@@ -537,8 +527,6 @@ where
         },
         stream,
     )?;
-    finalize_range.end(stream)?;
-    tracing_ranges.push(finalize_range);
 
     schedule_range.end(stream)?;
     tracing_ranges.push(schedule_range);
