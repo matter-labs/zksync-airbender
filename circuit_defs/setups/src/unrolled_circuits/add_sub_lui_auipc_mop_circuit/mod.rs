@@ -17,7 +17,7 @@ pub fn add_sub_lui_auipc_mop_circuit_setup<A: GoodAllocator + 'static, B: GoodAl
     let decoder_table = materialize_flattened_decoder_table::<Mersenne31Field>(&decoder_table_data);
 
     let twiddles = Twiddles::get(::add_sub_lui_auipc_mop::DOMAIN_SIZE, &worker);
-    let lde_precomputations = LdePrecomputations::new(
+    let lde_precomputations = LdePrecomputations::get(
         ::add_sub_lui_auipc_mop::DOMAIN_SIZE,
         ::add_sub_lui_auipc_mop::LDE_FACTOR,
         ::add_sub_lui_auipc_mop::LDE_SOURCE_COSETS,

@@ -91,13 +91,12 @@ pub unsafe fn verify_unified_circuit_statement<const BASE_LAYER: bool>(
     for circuit_sequence in 0..num_circuits {
         total_cycles += unified_circuit_capacity as u64;
         assert!(total_cycles < MAX_CYCLES);
+        // NOTE: here we have some relations to check across circuits of the same type, so it's not just 0 check
         let (current, previous) = if circuit_sequence & 1 == 0 {
             (&mut proof_output_0, &proof_output_1)
         } else {
             (&mut proof_output_1, &proof_output_0)
         };
-        // Note: this will make sure that all external challenges are the same as we progress,
-        // and so we will only need to save the result at the very end
         (unified_circuit_verifier)(current, &mut state_variables);
 
         // Circuit sequence is legacy and unused
@@ -115,11 +114,16 @@ pub unsafe fn verify_unified_circuit_statement<const BASE_LAYER: bool>(
                 &previous.setup_caps,
                 &current.setup_caps
             ));
+
             // check that all challenges are the same
             assert_eq!(previous.memory_challenges, current.memory_challenges);
             assert_eq!(
                 previous.delegation_challenges,
                 current.delegation_challenges
+            );
+            assert_eq!(
+                previous.machine_state_permutation_challenges,
+                current.machine_state_permutation_challenges
             );
 
             // and we also check inits/teardowns
@@ -174,6 +178,10 @@ pub unsafe fn verify_unified_circuit_statement<const BASE_LAYER: bool>(
         }
     }
 
+    // Check that we actually run something meaningful, and that our proof output
+    // is initialized
+    assert!(total_cycles > 0);
+
     // NOTE: it's purely to match dumping code for unrolled circuits
     let num_init_and_teardown_circuits = verifier_common::DefaultNonDeterminismSource::read_word();
     assert_eq!(num_init_and_teardown_circuits, 0);
@@ -220,7 +228,7 @@ pub unsafe fn verify_unified_circuit_statement<const BASE_LAYER: bool>(
                 // and commit memory caps
                 transcript.absorb(delegation_proof_output.memory_caps_flattened());
 
-                // check that we use the same challenges
+                // check that we use the same challenges - only memory and delegation
                 assert_eq!(
                     delegation_proof_output.memory_challenges,
                     proof_output_0.memory_challenges
@@ -267,18 +275,19 @@ pub unsafe fn verify_unified_circuit_statement<const BASE_LAYER: bool>(
         expected_challenges.memory_argument,
         proof_output_0.memory_challenges
     );
-    if NUM_DELEGATION_CHALLENGES > 0 {
-        assert_eq!(
-            expected_challenges.delegation_argument.unwrap_unchecked(),
-            proof_output_0.delegation_challenges[0]
-        );
-    }
     assert_eq!(
         expected_challenges
             .machine_state_permutation_argument
             .unwrap_unchecked(),
         proof_output_0.machine_state_permutation_challenges[0]
     );
+
+    if NUM_DELEGATION_CHALLENGES > 0 {
+        assert_eq!(
+            expected_challenges.delegation_argument.unwrap_unchecked(),
+            proof_output_0.delegation_challenges[0]
+        );
+    }
 
     // conclude that our memory argument is valid
     let register_contribution =

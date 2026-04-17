@@ -62,6 +62,12 @@ unified_verifier_only_security_80 = [
     "blake2_with_compression_verifier/security_80",
     "unified_reduced_machine_verifier/security_80"
 ]
+unified_verifier_only_security_100 = [
+    "unified_verifier_only",
+    "verifier_common/security_100",
+    "blake2_with_compression_verifier/security_100",
+    "unified_reduced_machine_verifier/security_100"
+]
 
 security_80 = ["verifiers", "verifier_common/security_80", "blake2_with_compression_verifier/security_80", "bigint_with_control_verifier/security_80", "keccak_special5_verifier/security_80"]
 security_100 = ["verifiers", "verifier_common/security_100", "blake2_with_compression_verifier/security_100", "bigint_with_control_verifier/security_100", "keccak_special5_verifier/security_100"]

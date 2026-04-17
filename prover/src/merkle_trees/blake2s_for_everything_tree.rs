@@ -77,10 +77,7 @@ impl<B: GoodAllocator> MerkleTreeConstructor for Blake2sU32MerkleTreeWithCap<B> 
     fn get_proof<C: GoodAllocator>(
         &self,
         idx: usize,
-    ) -> (
-        [u32; DIGEST_SIZE_U32_WORDS],
-        Vec<[u32; DIGEST_SIZE_U32_WORDS], C>,
-    ) {
+    ) -> (MerkleTreeDigest, Vec<MerkleTreeDigest, C>) {
         let depth = self.node_hashes_enumerated_from_leafs.len(); // we do not need the element of the cap
         let mut result = Vec::with_capacity_in(depth, C::default());
         let mut idx = idx;

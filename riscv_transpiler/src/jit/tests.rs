@@ -11,6 +11,75 @@ use std::{alloc::Global, io::Read, path::Path};
 #[cfg(test)]
 use test_utils::skip_if_ci;
 
+fn assemble_single_instruction(instruction: &str) -> u32 {
+    let mut labels = std::collections::HashMap::new();
+    lib_rv32_asm::assemble_ir(instruction, &mut labels, 0)
+        .expect("single-instruction assembly should succeed")
+        .expect("single-instruction assembly should emit one opcode")
+}
+
+fn run_jit_program(program: &[u32]) {
+    JittedCode::<_>::run_alternative_simulator(program, &mut (), &[], None);
+}
+
+/// Assert that a JIT-triggered runtime panic occurs by re-running the current
+/// test in a subprocess.
+///
+/// We can not use `#[should_panic]` or `catch_unwind` here because the panic is
+/// raised from an `extern "sysv64"` callback reached from JIT-generated code.
+/// Rust treats that path as non-unwinding, so the process aborts instead of
+/// producing a catchable unwind.
+fn assert_jit_runtime_panic(test_name: &str, fixture_env_var: &str, instruction: &str) {
+    let output = std::process::Command::new(
+        std::env::current_exe().expect("test binary path should be available"),
+    )
+    .env(fixture_env_var, instruction)
+    .arg("--exact")
+    .arg(test_name)
+    .arg("--nocapture")
+    .output()
+    .expect("subprocess should launch");
+
+    assert!(
+        !output.status.success(),
+        "expected subprocess for `{instruction}` to abort, but it exited successfully",
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let combined_output = format!("{stdout}\n{stderr}");
+    assert!(
+        combined_output.contains("Runtime explicitly panicked"),
+        "expected runtime panic output for `{instruction}`, got:\n{combined_output}",
+    );
+}
+
+#[test]
+#[serial_test::serial]
+fn test_jit_unsupported_instructions_trap_at_runtime() {
+    let fixture_env_var = "RISCV_TRANSPILER_UNSUPPORTED_INSTRUCTION_FIXTURE";
+    let unsupported_instructions = [
+        "mulhsu x0, x1, x2",
+        "div x0, x1, x2",
+        "rem x0, x1, x2",
+        "ecall",
+        "ebreak",
+        "fence",
+    ];
+
+    if let Ok(instruction) = std::env::var(fixture_env_var) {
+        run_jit_program(&[assemble_single_instruction(&instruction)]);
+    } else {
+        for instruction in unsupported_instructions {
+            assert_jit_runtime_panic(
+                "jit::tests::test_jit_unsupported_instructions_trap_at_runtime",
+                fixture_env_var,
+                instruction,
+            );
+        }
+    }
+}
+
 #[test]
 #[serial_test::serial]
 fn test_jit_simple_fibonacci() {

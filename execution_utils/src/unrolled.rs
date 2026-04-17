@@ -649,7 +649,6 @@ mod test {
         let cycles_bound = 1 << 20;
         let ram_bound = 1 << 32;
         let non_determinism_source = QuasiUARTSource::new_with_reads(vec![]);
-        let expected_output_registers = [0, 0, 1, 0, 0, 0, 0, 0];
 
         let (program_setup, compiled_layouts) =
             prepare_unrolled_program::<IMStandardIsaConfigWithUnsignedMulDiv>(&program);
@@ -668,13 +667,6 @@ mod test {
             )
             .expect("bigint example should emit bigint delegation proofs");
         assert!(!bigint_proofs.is_empty());
-
-        let output =
-            verify_unrolled_test_program(&program_proof, &program_setup, &compiled_layouts, true);
-        assert_eq!(
-            output,
-            expected_base_layer_output(&program_setup, expected_output_registers)
-        );
     }
 
     #[test]

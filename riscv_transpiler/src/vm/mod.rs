@@ -1,7 +1,7 @@
 use crate::ir::DelegationType;
 use crate::ir::Instruction;
 use crate::ir::InstructionName;
-use crate::jit::{MachineState, MAX_NUM_COUNTERS};
+use crate::jit::{MachineCounters, MachineState};
 use common_constants::circuit_families::*;
 use common_constants::{TimestampScalar, INITIAL_TIMESTAMP, TIMESTAMP_STEP};
 use std::fmt::Debug;
@@ -66,7 +66,7 @@ impl<C: Counters> State<C> {
     }
 }
 
-impl<C: Counters + From<[u64; MAX_NUM_COUNTERS]>> From<MachineState> for State<C> {
+impl<C: Counters + From<MachineCounters>> From<MachineState> for State<C> {
     fn from(state: MachineState) -> Self {
         Self {
             registers: std::array::from_fn(|i| Register {

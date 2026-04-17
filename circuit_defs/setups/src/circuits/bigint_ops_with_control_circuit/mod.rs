@@ -7,7 +7,7 @@ pub fn get_bigint_with_control_circuit_setup<A: GoodAllocator + 'static, B: Good
     let table_driver = bigint_with_control::get_table_driver();
 
     let twiddles = Twiddles::get(bigint_with_control::DOMAIN_SIZE, &worker);
-    let lde_precomputations = LdePrecomputations::new(
+    let lde_precomputations = LdePrecomputations::get(
         bigint_with_control::DOMAIN_SIZE,
         bigint_with_control::LDE_FACTOR,
         bigint_with_control::LDE_SOURCE_COSETS,

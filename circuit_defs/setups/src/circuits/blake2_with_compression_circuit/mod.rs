@@ -7,7 +7,7 @@ pub fn get_blake2_with_compression_circuit_setup<A: GoodAllocator + 'static, B: 
     let table_driver = blake2_with_compression::get_table_driver();
 
     let twiddles = Twiddles::get(blake2_with_compression::DOMAIN_SIZE, &worker);
-    let lde_precomputations = LdePrecomputations::new(
+    let lde_precomputations = LdePrecomputations::get(
         blake2_with_compression::DOMAIN_SIZE,
         blake2_with_compression::LDE_FACTOR,
         blake2_with_compression::LDE_SOURCE_COSETS,

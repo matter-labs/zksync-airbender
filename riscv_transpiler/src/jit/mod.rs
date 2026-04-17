@@ -31,6 +31,10 @@ const MAX_RAM_SIZE: usize = 1 << 30; // 1 Gb, as we want to avoid having separat
 pub const RAM_SIZE: usize = 1 << 30;
 const NUM_RAM_WORDS: usize = RAM_SIZE / core::mem::size_of::<u32>();
 
+// Keep the RAM backing store type named so rustdoc does not have to normalize the
+// large inline `[u32; RAM_SIZE]` array at every public trait boundary.
+pub type RamImage = [u32; RAM_SIZE];
+
 // We will measure trace chunk in a number of memory accesses and not in a almost fixed number of cycles that did pass between them.
 // At most we extend a chunk by the number of accesses in delegation
 pub const TRACE_CHUNK_LEN: usize = 1 << 20;
@@ -42,6 +46,11 @@ pub const MAX_TRACE_CHUNK_LEN: usize = const {
 };
 
 pub const MAX_NUM_COUNTERS: usize = 16;
+
+// Rustdoc can hit query cycles when downstream crates expose inline `[u64; MAX_NUM_COUNTERS]`
+// bounds in their public APIs. Naming the counter payload keeps the machine layout intact
+// while letting those APIs depend on a stable type alias instead of a method-local const.
+pub type MachineCounters = [u64; MAX_NUM_COUNTERS];
 
 #[repr(u8)]
 pub enum CounterType {
@@ -66,7 +75,7 @@ const _: () = const {
 pub struct MachineState {
     pub registers: [u32; 32], // aligned at 16, so we can write XMMs directly into the stack
     pub register_timestamps: [TimestampScalar; 32],
-    pub counters: [u64; MAX_NUM_COUNTERS],
+    pub counters: MachineCounters,
     pub pc: u32,
     pub timestamp: TimestampScalar,
     pub(crate) context_ptr: *mut (),
@@ -135,7 +144,7 @@ pub struct TraceChunk {
 pub trait ContextImpl {
     fn read_nondeterminism(&mut self) -> u32;
 
-    fn write_nondeterminism(&mut self, value: u32, memory: &[u32; RAM_SIZE]);
+    fn write_nondeterminism(&mut self, value: u32, memory: &RamImage);
 
     fn receive_trace(
         &mut self,
