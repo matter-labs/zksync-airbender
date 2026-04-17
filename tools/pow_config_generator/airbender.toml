@@ -1,0 +1,102 @@
+# Airbender VM Configuration
+#
+# Generated with https://github.com/matter-labs/zksync-airbender/tree/dev/tools/pow_config_generator
+# Created: 2026-02-24
+# Commit:  9595d1be08a79e97b845600ccd8a0363c571f69c
+
+# Airbender has a layered proving architecture:
+# - Base layer: proves correct execution of the base program.
+# - Recursion layers: each layer proves the verifier program that verifies the
+#   *entire* previous layer.
+#
+# Airbender supports multiple circuit types, and each circuit type defines its
+# own instruction set. For a given layer, all proofs share a common state and
+# memory argument.
+#
+# The set of circuit types may differ across layers:
+# - Recursion layers do not need to support the full instruction set.
+# - Higher layers typically prioritize fewer circuit types to reduce complexity.
+#
+# In this configuration we use "worst-case" parameters across all circuit types.
+#
+# Note: Additional outer layers (using other proving systems) wrap the final
+# Airbender layer into a SNARK suitable for L1 verification.
+
+[zkevm]
+name = "Airbender"
+protocol_family = "FRI_STARK"
+field = "M31^4"
+hash_size_bits = 256
+
+
+[[circuits]]
+name = "generalized_circuit"
+rho = 0.5
+trace_length = 16777216
+
+air_max_degree = 2
+max_combo = 2
+
+num_columns = 1224
+num_constraints = 928
+batch_size = 1225
+
+grinding_deep = 12
+
+opening_points = 2
+power_batching = true
+
+fri_folding_factors = [16, 16, 16, 8, 8]
+fri_early_stop_degree = 128
+grinding_commit_phase = 5
+
+grinding_query_phase = 28
+num_queries = 87
+
+
+[[circuits.lookups]]
+name = "generic_lookup"
+logup_type = "univariate"
+
+rows_L = 16777215
+rows_T = 16777215
+num_columns_S = 4
+num_lookups_M = 208
+
+grinding_bits_lookup = 5
+
+
+[[circuits.lookups]]
+name = "range_check_16_lookup"
+logup_type = "univariate"
+
+rows_L = 16777215
+rows_T = 65536
+num_columns_S = 1
+num_lookups_M = 34
+
+grinding_bits_lookup = 5
+
+
+[[circuits.lookups]]
+name = "range_check_19_lookup"
+logup_type = "univariate"
+
+rows_L = 16777215
+rows_T = 524288
+num_columns_S = 1
+num_lookups_M = 86
+
+grinding_bits_lookup = 5
+
+
+[[circuits.lookups]]
+name = "decoder"
+logup_type = "univariate"
+
+rows_L = 16777215
+rows_T = 16777215
+num_columns_S = 10
+num_lookups_M = 1
+
+grinding_bits_lookup = 5

@@ -3,7 +3,6 @@ mod field;
 mod integer;
 
 use core::hash::Hash;
-use std::assert_matches;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
@@ -774,7 +773,7 @@ impl<F: PrimeField> WitnessGraphCreator<F> {
                         a @ FieldNodeExpression::OracleValue { .. } => {
                             let mut subexpr = a.clone();
                             mapper.add_field_subexprs(&mut subexpr);
-                            assert_matches!(subexpr, FieldNodeExpression::SubExpression(..));
+                            assert!(matches!(subexpr, FieldNodeExpression::SubExpression(..)));
                         }
                         _ => {
                             unreachable!();
@@ -784,10 +783,10 @@ impl<F: PrimeField> WitnessGraphCreator<F> {
                         a @ FixedWidthIntegerNodeExpression::U32OracleValue { .. } => {
                             let mut subexpr = a.clone();
                             mapper.add_integer_subexprs(&mut subexpr);
-                            assert_matches!(
+                            assert!(matches!(
                                 subexpr,
                                 FixedWidthIntegerNodeExpression::U32SubExpression(..)
-                            );
+                            ));
                         }
                         _ => {
                             unreachable!();
@@ -797,10 +796,10 @@ impl<F: PrimeField> WitnessGraphCreator<F> {
                         a @ FixedWidthIntegerNodeExpression::U16OracleValue { .. } => {
                             let mut subexpr = a.clone();
                             mapper.add_integer_subexprs(&mut subexpr);
-                            assert_matches!(
+                            assert!(matches!(
                                 subexpr,
                                 FixedWidthIntegerNodeExpression::U16SubExpression(..)
-                            );
+                            ));
                         }
                         _ => {
                             unreachable!();
@@ -810,7 +809,7 @@ impl<F: PrimeField> WitnessGraphCreator<F> {
                         a @ BoolNodeExpression::OracleValue { .. } => {
                             let mut subexpr = a.clone();
                             mapper.add_boolean_subexprs(&mut subexpr);
-                            assert_matches!(subexpr, BoolNodeExpression::SubExpression(..));
+                            assert!(matches!(subexpr, BoolNodeExpression::SubExpression(..)));
                         }
                         _ => {
                             unreachable!();
@@ -829,7 +828,7 @@ impl<F: PrimeField> WitnessGraphCreator<F> {
                             assert_eq!(input_var, input_var_2);
                             let mut subexpr = a.clone();
                             mapper.add_field_subexprs(&mut subexpr);
-                            assert_matches!(subexpr, FieldNodeExpression::SubExpression(..));
+                            assert!(matches!(subexpr, FieldNodeExpression::SubExpression(..)));
                         }
                         _ => {
                             unreachable!();
@@ -840,7 +839,7 @@ impl<F: PrimeField> WitnessGraphCreator<F> {
                             assert_eq!(input_var, input_var_2);
                             let mut subexpr = a.clone();
                             mapper.add_boolean_subexprs(&mut subexpr);
-                            assert_matches!(subexpr, BoolNodeExpression::SubExpression(..));
+                            assert!(matches!(subexpr, BoolNodeExpression::SubExpression(..)));
                         }
                         _ => {
                             unreachable!();
@@ -851,10 +850,10 @@ impl<F: PrimeField> WitnessGraphCreator<F> {
                             assert_eq!(input_var, input_var_2);
                             let mut subexpr = a.clone();
                             mapper.add_integer_subexprs(&mut subexpr);
-                            assert_matches!(
+                            assert!(matches!(
                                 subexpr,
                                 FixedWidthIntegerNodeExpression::U8SubExpression(..)
-                            );
+                            ));
                         }
                         _ => {
                             unreachable!();
@@ -865,10 +864,10 @@ impl<F: PrimeField> WitnessGraphCreator<F> {
                             assert_eq!(input_var, input_var_2);
                             let mut subexpr = a.clone();
                             mapper.add_integer_subexprs(&mut subexpr);
-                            assert_matches!(
+                            assert!(matches!(
                                 subexpr,
                                 FixedWidthIntegerNodeExpression::U16SubExpression(..)
-                            );
+                            ));
                         }
                         _ => {
                             unreachable!();

@@ -20,7 +20,6 @@ use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 use fft::GoodAllocator;
 use prover::merkle_trees::MerkleTreeCapVarLength;
-use std::assert_matches;
 
 pub struct MemoryCommitmentJob<'a> {
     is_finished_event: CudaEvent,
@@ -79,11 +78,11 @@ pub(crate) fn commit_memory<'a, A: GoodAllocator>(
     let mut callbacks = Callbacks::new();
     let inits_and_teardowns =
         if let Some(inits_and_teardowns_transfer) = inits_and_teardowns_transfer {
-            assert_matches!(
+            assert!(matches!(
                 circuit_type,
                 CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns)
                     | CircuitType::Unrolled(UnrolledCircuitType::Unified)
-            );
+            ));
             let InitsAndTeardownsTransfer {
                 data_host: _,
                 data_device,

@@ -1,6 +1,5 @@
 #![allow(incomplete_features)]
 #![feature(allocator_api)]
-#![feature(assert_matches)]
 #![feature(btree_cursors)]
 #![feature(extend_one_unchecked)]
 #![feature(generic_const_exprs)]
