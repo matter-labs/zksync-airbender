@@ -4,7 +4,6 @@
 #![feature(generic_const_exprs)]
 #![feature(iter_advance_by)]
 #![feature(option_zip)]
-#![feature(assert_matches)]
 #![feature(allocator_api)]
 
 pub mod definitions;

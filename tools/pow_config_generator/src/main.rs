@@ -6,6 +6,10 @@ use std::{
 
 use quote::quote;
 
+pub mod pow_computation;
+pub mod soundcalc;
+use pow_computation::*;
+
 fn main() {
     println!("Running PoW Config Generator");
 
@@ -47,6 +51,170 @@ fn main() {
         shift_binary_csr_verifier::concrete::size_constants::FRI_FACTOR_LOG2,
         inits_and_teardowns_verifier::concrete::size_constants::FRI_FACTOR_LOG2,
         unified_reduced_machine_verifier::concrete::size_constants::FRI_FACTOR_LOG2,
+    ]
+    .iter()
+    .max()
+    .unwrap();
+
+    let max_lde_size_log2 = max_trace_len_log2 + max_fri_factor_log2;
+
+    let num_range_16_lookups = *[
+        blake2_with_compression_verifier::concrete::layout_import::VERIFIER_COMPILED_LAYOUT
+            .witness_layout
+            .range_check_16_lookup_expressions
+            .len(),
+        bigint_with_control_verifier::concrete::layout_import::VERIFIER_COMPILED_LAYOUT
+            .witness_layout
+            .range_check_16_lookup_expressions
+            .len(),
+        keccak_special5_verifier::concrete::layout_import::VERIFIER_COMPILED_LAYOUT
+            .witness_layout
+            .range_check_16_lookup_expressions
+            .len(),
+        add_sub_lui_auipc_mop_verifier::concrete::layout_import::VERIFIER_COMPILED_LAYOUT
+            .witness_layout
+            .range_check_16_lookup_expressions
+            .len(),
+        jump_branch_slt_verifier::concrete::layout_import::VERIFIER_COMPILED_LAYOUT
+            .witness_layout
+            .range_check_16_lookup_expressions
+            .len(),
+        load_store_subword_only_verifier::concrete::layout_import::VERIFIER_COMPILED_LAYOUT
+            .witness_layout
+            .range_check_16_lookup_expressions
+            .len(),
+        load_store_word_only_verifier::concrete::layout_import::VERIFIER_COMPILED_LAYOUT
+            .witness_layout
+            .range_check_16_lookup_expressions
+            .len(),
+        mul_div_verifier::concrete::layout_import::VERIFIER_COMPILED_LAYOUT
+            .witness_layout
+            .range_check_16_lookup_expressions
+            .len(),
+        mul_div_unsigned_verifier::concrete::layout_import::VERIFIER_COMPILED_LAYOUT
+            .witness_layout
+            .range_check_16_lookup_expressions
+            .len(),
+        shift_binary_csr_verifier::concrete::layout_import::VERIFIER_COMPILED_LAYOUT
+            .witness_layout
+            .range_check_16_lookup_expressions
+            .len(),
+        inits_and_teardowns_verifier::concrete::layout_import::VERIFIER_COMPILED_LAYOUT
+            .witness_layout
+            .range_check_16_lookup_expressions
+            .len(),
+        unified_reduced_machine_verifier::concrete::layout_import::VERIFIER_COMPILED_LAYOUT
+            .witness_layout
+            .range_check_16_lookup_expressions
+            .len(),
+    ]
+    .iter()
+    .max()
+    .unwrap();
+
+    let num_range_19_lookups = *[
+        blake2_with_compression_verifier::concrete::layout_import::VERIFIER_COMPILED_LAYOUT
+            .witness_layout
+            .timestamp_range_check_lookup_expressions
+            .len(),
+        bigint_with_control_verifier::concrete::layout_import::VERIFIER_COMPILED_LAYOUT
+            .witness_layout
+            .timestamp_range_check_lookup_expressions
+            .len(),
+        keccak_special5_verifier::concrete::layout_import::VERIFIER_COMPILED_LAYOUT
+            .witness_layout
+            .timestamp_range_check_lookup_expressions
+            .len(),
+        add_sub_lui_auipc_mop_verifier::concrete::layout_import::VERIFIER_COMPILED_LAYOUT
+            .witness_layout
+            .timestamp_range_check_lookup_expressions
+            .len(),
+        jump_branch_slt_verifier::concrete::layout_import::VERIFIER_COMPILED_LAYOUT
+            .witness_layout
+            .timestamp_range_check_lookup_expressions
+            .len(),
+        load_store_subword_only_verifier::concrete::layout_import::VERIFIER_COMPILED_LAYOUT
+            .witness_layout
+            .timestamp_range_check_lookup_expressions
+            .len(),
+        load_store_word_only_verifier::concrete::layout_import::VERIFIER_COMPILED_LAYOUT
+            .witness_layout
+            .timestamp_range_check_lookup_expressions
+            .len(),
+        mul_div_verifier::concrete::layout_import::VERIFIER_COMPILED_LAYOUT
+            .witness_layout
+            .timestamp_range_check_lookup_expressions
+            .len(),
+        mul_div_unsigned_verifier::concrete::layout_import::VERIFIER_COMPILED_LAYOUT
+            .witness_layout
+            .timestamp_range_check_lookup_expressions
+            .len(),
+        shift_binary_csr_verifier::concrete::layout_import::VERIFIER_COMPILED_LAYOUT
+            .witness_layout
+            .timestamp_range_check_lookup_expressions
+            .len(),
+        inits_and_teardowns_verifier::concrete::layout_import::VERIFIER_COMPILED_LAYOUT
+            .witness_layout
+            .timestamp_range_check_lookup_expressions
+            .len(),
+        unified_reduced_machine_verifier::concrete::layout_import::VERIFIER_COMPILED_LAYOUT
+            .witness_layout
+            .timestamp_range_check_lookup_expressions
+            .len(),
+    ]
+    .iter()
+    .max()
+    .unwrap();
+
+    let num_width_3_lookups = *[
+        blake2_with_compression_verifier::concrete::layout_import::VERIFIER_COMPILED_LAYOUT
+            .witness_layout
+            .width_3_lookups
+            .len(),
+        bigint_with_control_verifier::concrete::layout_import::VERIFIER_COMPILED_LAYOUT
+            .witness_layout
+            .width_3_lookups
+            .len(),
+        keccak_special5_verifier::concrete::layout_import::VERIFIER_COMPILED_LAYOUT
+            .witness_layout
+            .width_3_lookups
+            .len(),
+        add_sub_lui_auipc_mop_verifier::concrete::layout_import::VERIFIER_COMPILED_LAYOUT
+            .witness_layout
+            .width_3_lookups
+            .len(),
+        jump_branch_slt_verifier::concrete::layout_import::VERIFIER_COMPILED_LAYOUT
+            .witness_layout
+            .width_3_lookups
+            .len(),
+        load_store_subword_only_verifier::concrete::layout_import::VERIFIER_COMPILED_LAYOUT
+            .witness_layout
+            .width_3_lookups
+            .len(),
+        load_store_word_only_verifier::concrete::layout_import::VERIFIER_COMPILED_LAYOUT
+            .witness_layout
+            .width_3_lookups
+            .len(),
+        mul_div_verifier::concrete::layout_import::VERIFIER_COMPILED_LAYOUT
+            .witness_layout
+            .width_3_lookups
+            .len(),
+        mul_div_unsigned_verifier::concrete::layout_import::VERIFIER_COMPILED_LAYOUT
+            .witness_layout
+            .width_3_lookups
+            .len(),
+        shift_binary_csr_verifier::concrete::layout_import::VERIFIER_COMPILED_LAYOUT
+            .witness_layout
+            .width_3_lookups
+            .len(),
+        inits_and_teardowns_verifier::concrete::layout_import::VERIFIER_COMPILED_LAYOUT
+            .witness_layout
+            .width_3_lookups
+            .len(),
+        unified_reduced_machine_verifier::concrete::layout_import::VERIFIER_COMPILED_LAYOUT
+            .witness_layout
+            .width_3_lookups
+            .len(),
     ]
     .iter()
     .max()
@@ -243,11 +411,7 @@ fn main() {
 
     let [quotient_z_pow_bits_for_80, quotient_z_pow_bits_for_100] =
         [80, 100].map(|security_bits| {
-            pow_bits_for_deep_z(
-                security_bits,
-                challenge_field_size,
-                max_trace_len_log2 + max_fri_factor_log2,
-            )
+            pow_bits_for_deep_z(security_bits, challenge_field_size, max_lde_size_log2)
         });
 
     let [
@@ -257,7 +421,7 @@ fn main() {
         pow_bits_for_deep_poly_alpha(
             security_bits,
             challenge_field_size,
-            max_trace_len_log2,
+            max_lde_size_log2,
             max_num_openings_at_z + max_num_openings_at_z_omega,
         )
     });
@@ -267,7 +431,7 @@ fn main() {
             pow_bits_for_folding_round(
                 security_bits,
                 challenge_field_size,
-                max_trace_len_log2,
+                max_lde_size_log2,
                 max_fri_folding_factors_log2,
             )
         });
@@ -278,6 +442,77 @@ fn main() {
     let num_queries_for_100 =
         num_queries_for_security_params(100, pow_bits_for_queries_for_100, max_fri_factor_log2);
 
+    generate_pow_config_worst_constants(
+        max_trace_len_log2,
+        max_fri_factor_log2,
+        challenge_field_size,
+        max_number_of_columns,
+        max_num_quotient_terms,
+        max_num_openings_at_z,
+        max_num_openings_at_z_omega,
+        max_fri_folding_factors_log2,
+        pow_bits_for_memory_and_delegation_for_80,
+        pow_bits_for_memory_and_delegation_for_100,
+        lookup_pow_bits_for_80,
+        lookup_pow_bits_for_100,
+        quotient_alpha_pow_bits_for_80,
+        quotient_alpha_pow_bits_for_100,
+        quotient_z_pow_bits_for_80,
+        quotient_z_pow_bits_for_100,
+        deep_poly_alpha_pow_bits_for_80,
+        deep_poly_alpha_pow_bits_for_100,
+        max_foldings_pow_bits_for_80,
+        max_foldings_pow_bits_for_100,
+        pow_bits_for_queries_for_80,
+        pow_bits_for_queries_for_100,
+        num_queries_for_80,
+        num_queries_for_100,
+    );
+
+    generate_airbender_toml_file(
+        max_trace_len_log2,
+        max_fri_factor_log2,
+        max_number_of_columns,
+        max_num_quotient_terms,
+        max_num_openings_at_z,
+        deep_poly_alpha_pow_bits_for_100,
+        max_foldings_pow_bits_for_100,
+        pow_bits_for_queries_for_100,
+        num_queries_for_100,
+        lookup_pow_bits_for_100,
+        num_width_3_lookups,
+        num_range_16_lookups,
+        num_range_19_lookups,
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
+fn generate_pow_config_worst_constants(
+    max_trace_len_log2: usize,
+    max_fri_factor_log2: usize,
+    challenge_field_size: usize,
+    max_number_of_columns: usize,
+    max_num_quotient_terms: usize,
+    max_num_openings_at_z: usize,
+    max_num_openings_at_z_omega: usize,
+    max_fri_folding_factors_log2: usize,
+    pow_bits_for_memory_and_delegation_for_80: usize,
+    pow_bits_for_memory_and_delegation_for_100: usize,
+    lookup_pow_bits_for_80: usize,
+    lookup_pow_bits_for_100: usize,
+    quotient_alpha_pow_bits_for_80: usize,
+    quotient_alpha_pow_bits_for_100: usize,
+    quotient_z_pow_bits_for_80: usize,
+    quotient_z_pow_bits_for_100: usize,
+    deep_poly_alpha_pow_bits_for_80: usize,
+    deep_poly_alpha_pow_bits_for_100: usize,
+    max_foldings_pow_bits_for_80: usize,
+    max_foldings_pow_bits_for_100: usize,
+    pow_bits_for_queries_for_80: usize,
+    pow_bits_for_queries_for_100: usize,
+    num_queries_for_80: usize,
+    num_queries_for_100: usize,
+) {
     let result_token_stream = quote! {
         const MAX_TRACE_LEN_LOG2: usize = #max_trace_len_log2;
         const MAX_FRI_FACTOR_LOG2: usize = #max_fri_factor_log2;
@@ -340,14 +575,7 @@ fn main() {
     let result_string = format_rust_code(&result_token_stream.to_string())
         .expect("Failed to format generated Rust code");
 
-    let prover_path = "../../prover/src/prover_stages";
     let verifier_common_path = "../../verifier_common/src";
-
-    std::fs::write(
-        Path::new(&prover_path).join("pow_config_worst_constants.rs"),
-        result_string.clone(),
-    )
-    .expect(&format!("Failed to write to {}", prover_path));
     std::fs::write(
         Path::new(&verifier_common_path).join("pow_config_worst_constants.rs"),
         result_string,
@@ -355,140 +583,117 @@ fn main() {
     .expect(&format!("Failed to write to {}", verifier_common_path));
 }
 
-/// PoW before getting challenges for
-/// - memory (linearization + gamma)
-/// - delegation (linearization + gamma)
-/// - state_permutation (linearization + gamma)
-fn pow_bits_for_memory_and_delegation(
-    security_bits: usize,
-    // These challenges are shared between all circuits in one layer, so we need to use the max number of cycles
-    max_cycles_log2: usize,
-    field_size_log2: usize,
-) -> usize {
-    let lookup_pow = pow_bits_for_cq_lookup(security_bits, max_cycles_log2, field_size_log2);
-    let memory_pow = pow_bits_for_memory_argument(security_bits, max_cycles_log2, field_size_log2);
+#[allow(clippy::too_many_arguments)]
+fn generate_airbender_toml_file(
+    max_trace_len_log2: usize,
+    max_fri_factor_log2: usize,
+    max_number_of_columns: usize,
+    max_num_quotient_terms: usize,
+    max_num_openings_at_z: usize,
+    deep_poly_alpha_pow_bits_for_100: usize,
+    max_foldings_pow_bits_for_100: usize,
+    pow_bits_for_queries_for_100: usize,
+    num_queries_for_100: usize,
+    lookup_pow_bits_for_100: usize,
+    num_width_3_lookups: usize,
+    num_range_16_lookups: usize,
+    num_range_19_lookups: usize,
+) {
+    let folding_props = prover::definitions::OPTIMAL_FOLDING_PROPERTIES[max_trace_len_log2];
 
-    if lookup_pow > memory_pow {
-        lookup_pow
-    } else {
-        memory_pow
-    }
-}
+    let trace_length = 1 << max_trace_len_log2;
 
-/// PoW before getting challenges for
-/// - FRI queries
-fn num_queries_for_security_params(
-    security_bits: usize,
-    pow_bits: usize,
-    lde_factor_log2: usize,
-) -> usize {
-    let bits = security_bits - pow_bits;
-    let init_res = bits.div_ceil(lde_factor_log2);
+    let created_date = Command::new("date")
+        .args(["+%Y-%m-%d"])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .unwrap_or_else(|| "unknown".to_string());
 
-    // We should add extra 20% of queries
-    init_res + init_res.div_ceil(5)
-}
+    let commit_hash = Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .unwrap_or_else(|| "unknown".to_string());
 
-fn pow_bits_for_cq_lookup(
-    security_bits: usize,
-    domain_size_log2: usize,
-    field_size_log2: usize,
-) -> usize {
-    let no_pow_security_bits = field_size_log2 - domain_size_log2 - 5;
-    if security_bits > no_pow_security_bits {
-        security_bits - no_pow_security_bits
-    } else {
-        0
-    }
-}
+    let toml_params = soundcalc::AirbenderTomlParams {
+        // Metadata
+        created_date,
+        commit_hash,
 
-fn pow_bits_for_memory_argument(
-    security_bits: usize,
-    domain_size_log2: usize,
-    field_size_log2: usize,
-) -> usize {
-    let no_pow_security_bits = field_size_log2 - domain_size_log2 - 2;
-    if security_bits > no_pow_security_bits {
-        security_bits - no_pow_security_bits
-    } else {
-        0
-    }
-}
+        // Constants (fixed for the proof system)
+        rho: (0.5f32).powf(max_fri_factor_log2 as f32) as f64,
+        air_max_degree: 2,
+        max_combo: 2,
+        opening_points: 2,
+        power_batching: true,
 
-// https://eprint.iacr.org/2022/1216.pdf
-// We can bound L^+ as 4
-fn pow_bits_for_quotient(
-    security_bits: usize,
-    challenge_field_size_log2: usize,
-    powers_of_alpha: usize,
-    lde_factor_log2: usize,
-) -> usize {
-    let powers_of_alpha_log2 = powers_of_alpha.next_power_of_two().trailing_zeros() as usize;
-    let no_pow_security_bits =
-        challenge_field_size_log2 - powers_of_alpha_log2 - 4 - lde_factor_log2.div_ceil(2);
-    if security_bits > no_pow_security_bits {
-        security_bits - no_pow_security_bits
-    } else {
-        0
-    }
-}
+        // Worst-case across verifiers
+        trace_length,
+        num_columns: max_number_of_columns,
+        num_constraints: max_num_quotient_terms,
+        batch_size: max_num_openings_at_z,
 
-// https://eprint.iacr.org/2022/1216.pdf
-// We can bound L^+ as 4
-fn pow_bits_for_deep_z(
-    security_bits: usize,
-    challenge_field_size_log2: usize,
-    lde_domain_size_log2: usize,
-) -> usize {
-    let no_pow_security_bits = challenge_field_size_log2 - lde_domain_size_log2 - 5;
-    if security_bits > no_pow_security_bits {
-        security_bits - no_pow_security_bits
-    } else {
-        0
-    }
-}
+        // FRI schedule (derived from worst-case trace length)
+        fri_folding_factors: folding_props
+            .folding_sequence
+            .iter()
+            .map(|f| 1usize << f)
+            .collect(),
+        fri_early_stop_degree: 1
+            << (folding_props.final_monomial_degree_log2 + max_fri_factor_log2),
 
-// https://hackmd.io/@pgaf/HkKs_1ytT
-fn pow_bits_for_deep_poly_alpha(
-    security_bits: usize,
-    challenge_field_size_log2: usize,
-    domain_size_log2: usize,
-    powers_of_alpha: usize,
-) -> usize {
-    let powers_of_alpha_log2 = powers_of_alpha.next_power_of_two().trailing_zeros() as usize;
-    let no_pow_security_bits = challenge_field_size_log2 - powers_of_alpha_log2 - domain_size_log2;
-    if security_bits > no_pow_security_bits {
-        security_bits - no_pow_security_bits
-    } else {
-        0
-    }
-}
+        // Security parameters (100-bit)
+        grinding_deep: deep_poly_alpha_pow_bits_for_100,
+        grinding_commit_phase: max_foldings_pow_bits_for_100,
+        grinding_query_phase: pow_bits_for_queries_for_100,
+        num_queries: num_queries_for_100,
 
-// https://hackmd.io/@pgaf/HkKs_1ytT
-fn pow_bits_for_folding_round(
-    security_bits: usize,
-    challenge_field_size_log2: usize,
-    domain_size_log2: usize,
-    folding_factor_log2: usize,
-) -> usize {
-    let no_pow_security_bits = challenge_field_size_log2 - folding_factor_log2 - domain_size_log2;
-    if security_bits > no_pow_security_bits {
-        security_bits - no_pow_security_bits
-    } else {
-        0
-    }
-}
+        lookups: vec![
+            soundcalc::LookupParams {
+                name: "generic_lookup".to_string(),
+                logup_type: "univariate".to_string(),
+                rows_l: trace_length - 1,
+                rows_t: trace_length - 1,
+                num_columns_s: 4, // COMMON_TABLE_WIDTH
+                num_lookups_m: num_width_3_lookups,
+                grinding_bits_lookup: lookup_pow_bits_for_100,
+            },
+            soundcalc::LookupParams {
+                name: "range_check_16_lookup".to_string(),
+                logup_type: "univariate".to_string(),
+                rows_l: trace_length - 1,
+                rows_t: 1 << 16,
+                num_columns_s: 1,
+                num_lookups_m: num_range_16_lookups,
+                grinding_bits_lookup: lookup_pow_bits_for_100,
+            },
+            soundcalc::LookupParams {
+                name: "range_check_19_lookup".to_string(),
+                logup_type: "univariate".to_string(),
+                rows_l: trace_length - 1,
+                rows_t: 1 << 19, // TIMESTAMP_COLUMNS_NUM_BITS
+                num_columns_s: 1,
+                num_lookups_m: num_range_19_lookups,
+                grinding_bits_lookup: lookup_pow_bits_for_100,
+            },
+            soundcalc::LookupParams {
+                name: "decoder".to_string(),
+                logup_type: "univariate".to_string(),
+                rows_l: trace_length - 1,
+                rows_t: trace_length - 1,
+                num_columns_s: 10, // EXECUTOR_FAMILY_CIRCUIT_DECODER_TABLE_WIDTH
+                num_lookups_m: 1,
+                grinding_bits_lookup: lookup_pow_bits_for_100,
+            },
+        ],
+    };
 
-#[allow(dead_code)]
-fn pow_bits_for_queries(security_bits: usize, num_queries: usize, lde_factor_log2: usize) -> usize {
-    // We should add extra 20% of queries
-    let queries_contribution = 5 * num_queries / 6;
-    let no_pow_security_bits = queries_contribution * lde_factor_log2;
-    if security_bits > no_pow_security_bits {
-        security_bits - no_pow_security_bits
-    } else {
-        0
-    }
+    let toml_string = soundcalc::generate_airbender_toml(&toml_params);
+    std::fs::write("airbender.toml", toml_string).expect("Failed to write airbender.toml");
 }
 
 /// Runs rustfmt to format the code.

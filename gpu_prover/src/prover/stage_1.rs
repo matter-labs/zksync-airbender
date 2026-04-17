@@ -39,7 +39,6 @@ use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 use fft::GoodAllocator;
 use itertools::Itertools;
-use std::assert_matches;
 use std::cmp::{max, min};
 use std::sync::Arc;
 
@@ -112,11 +111,11 @@ impl StageOneOutput {
         let log_domain_size = trace_len.trailing_zeros();
         let inits_and_teardowns =
             if let Some(inits_and_teardowns_transfer) = inits_and_teardowns_transfer {
-                assert_matches!(
+                assert!(matches!(
                     circuit_type,
                     CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns)
                         | CircuitType::Unrolled(UnrolledCircuitType::Unified)
-                );
+                ));
                 let InitsAndTeardownsTransfer {
                     data_host: _,
                     data_device,
