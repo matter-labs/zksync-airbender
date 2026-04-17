@@ -77,8 +77,6 @@ impl<'a> GpuGKRSetupTransfer<'a> {
         );
         let stream = context.get_exec_stream();
         let mut tracing_ranges = Vec::new();
-        let schedule_range = Range::new("gkr.forward_setup.schedule")?;
-        schedule_range.start(stream)?;
         let mut host_lookup_additive_part = unsafe { context.alloc_host_uninit_slice(1) };
         let mut host_decoder_lookup_fill_value = unsafe { context.alloc_host_uninit_slice(1) };
         let mut device_lookup_additive_part = context.alloc(1, AllocationPlacement::BestFit)?;
@@ -158,8 +156,6 @@ impl<'a> GpuGKRSetupTransfer<'a> {
         if let (Some(generic_lookup), Some(device_lookup_alpha_powers)) =
             (generic_lookup.as_mut(), device_lookup_alpha_powers.as_ref())
         {
-            let generic_lookup_range = Range::new("gkr.forward_setup.build_generic_lookup")?;
-            generic_lookup_range.start(stream)?;
             let raw = self.trace_holder.get_hypercube_evals();
             let batch = lower_forward_setup_generic_lookup_batch(
                 &self.host,
@@ -169,11 +165,7 @@ impl<'a> GpuGKRSetupTransfer<'a> {
                 generic_lookup,
             );
             launch_forward_setup_generic_lookup(&batch, generic_lookup.len(), context)?;
-            generic_lookup_range.end(stream)?;
-            tracing_ranges.push(generic_lookup_range);
         }
-        schedule_range.end(stream)?;
-        tracing_ranges.push(schedule_range);
 
         Ok(GpuGKRForwardSetup {
             _tracing_ranges: tracing_ranges,
@@ -397,8 +389,6 @@ where
     );
     let stream = context.get_exec_stream();
     let mut tracing_ranges = Vec::new();
-    let schedule_range = Range::new("gkr.forward_setup.schedule")?;
-    schedule_range.start(stream)?;
     let mut host_lookup_additive_part = unsafe { context.alloc_host_uninit_slice(1) };
     let mut host_decoder_lookup_fill_value = unsafe { context.alloc_host_uninit_slice(1) };
     let mut device_lookup_additive_part = context.alloc(1, AllocationPlacement::BestFit)?;
@@ -479,8 +469,6 @@ where
         device_lookup_alpha_powers.as_ref(),
         setup_trace_holder,
     ) {
-        let generic_lookup_range = Range::new("gkr.forward_setup.build_generic_lookup")?;
-        generic_lookup_range.start(stream)?;
         let raw = setup_trace_holder.get_hypercube_evals();
         let setup_columns = (0..generic_lookup_width)
             .map(|column_idx| unsafe { raw.as_ptr().add(column_idx * trace_len) })
@@ -491,11 +479,7 @@ where
             generic_lookup.as_mut_ptr(),
         );
         launch_forward_setup_generic_lookup(&batch, generic_lookup.len(), context)?;
-        generic_lookup_range.end(stream)?;
-        tracing_ranges.push(generic_lookup_range);
     }
-    schedule_range.end(stream)?;
-    tracing_ranges.push(schedule_range);
 
     Ok(GpuGKRForwardSetup {
         _tracing_ranges: tracing_ranges,

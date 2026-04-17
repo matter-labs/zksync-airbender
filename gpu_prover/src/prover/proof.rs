@@ -456,8 +456,6 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
     let mut lookup_challenges_host = unsafe { context.alloc_host_uninit_slice(3) };
     let lookup_challenges_write_accessor = lookup_challenges_host.get_mut_accessor();
     let external_challenges_for_seed = external_challenges.clone();
-    let transcript_init_range = Range::new("gkr.proof.transcript_init")?;
-    transcript_init_range.start(stream)?;
     callbacks.schedule(
         move || unsafe {
             let flattened_witness_tree_caps =
@@ -477,8 +475,6 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
         },
         stream,
     )?;
-    transcript_init_range.end(stream)?;
-    ranges.push(transcript_init_range);
 
     let mut forward_setup = if let Some(setup_transfer) = setup_transfer.as_ref() {
         setup_transfer.schedule_forward_setup(
@@ -519,8 +515,6 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
 
     let mut backward_shared_state = make_deferred_backward_workflow_state();
     let backward_shared_state_handle = UnsafeMutAccessor::new(backward_shared_state.as_mut());
-    let transcript_update_range = Range::new("gkr.proof.transcript_update")?;
-    transcript_update_range.start(stream)?;
     let lookup_challenges_read_accessor = lookup_challenges_host.get_accessor();
     callbacks.schedule(
         {
@@ -559,8 +553,6 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
         stream,
     )?;
     drop(lookup_challenges_host);
-    transcript_update_range.end(stream)?;
-    ranges.push(transcript_update_range);
 
     let mut backward_scheduled = backward_state
         .schedule_execute_backward_workflow_from_shared_state(
@@ -775,8 +767,6 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
     let backward_keepalive = backward_scheduled.into_host_keepalive();
     let setup_keepalive = setup_transfer.map(GpuGKRSetupTransfer::into_host_keepalive);
 
-    let finalize_range = Range::new("gkr.proof.finalize")?;
-    finalize_range.start(stream)?;
     callbacks.schedule(
         {
             let proof_slot = proof_handle;
@@ -805,8 +795,6 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
         },
         stream,
     )?;
-    finalize_range.end(stream)?;
-    ranges.push(finalize_range);
     drop(transcript_handoff);
 
     {

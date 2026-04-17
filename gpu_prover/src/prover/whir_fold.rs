@@ -1709,13 +1709,9 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
 
     let stream = context.get_exec_stream();
     let mut tracing_ranges = Vec::new();
-    let materialize_cosets_range = Range::new("gkr.whir.materialize_cosets")?;
-    materialize_cosets_range.start(stream)?;
     memory_trace_holder.ensure_cosets_materialized(context)?;
     witness_trace_holder.ensure_cosets_materialized(context)?;
     setup_trace_holder.ensure_cosets_materialized(context)?;
-    materialize_cosets_range.end(stream)?;
-    tracing_ranges.push(materialize_cosets_range);
 
     let schedule_range = Range::new("gkr.whir.schedule")?;
     schedule_range.start(stream)?;
@@ -1911,11 +1907,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         stream,
     )?;
 
-    let initialize_state_range = Range::new("gkr.whir.initialize_state")?;
-    initialize_state_range.start(stream)?;
     let mut state = GpuWhirState::new(trace_len, context)?;
-    initialize_state_range.end(stream)?;
-    tracing_ranges.push(initialize_state_range);
 
     let initialize_batched_forms_range = Range::new("gkr.whir.initialize_batched_forms")?;
     initialize_batched_forms_range.start(stream)?;
@@ -1934,8 +1926,6 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
     initialize_batched_forms_range.end(stream)?;
     tracing_ranges.push(initialize_batched_forms_range);
 
-    let base_eq_values_range = Range::new("gkr.whir.base_eq_values")?;
-    base_eq_values_range.start(stream)?;
     memory_copy_async(
         &mut state.point_pows[..base_layer_point_len],
         &base_layer_point_host,
@@ -1950,8 +1940,6 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         trace_len,
         context,
     )?;
-    base_eq_values_range.end(stream)?;
-    tracing_ranges.push(base_eq_values_range);
 
     let mut whir_steps_schedule = whir_steps_schedule.into_iter().peekable();
     let mut whir_queries_schedule = whir_queries_schedule.into_iter();
@@ -2008,8 +1996,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
 
             // Seed upload: stage the host seed into a pinned buffer via a
             // pre-kernel callback, then H2D copy into d_seed.
-            let mut h_seed_staging =
-                unsafe { context.alloc_host_uninit_slice::<u32>(STATE_SIZE) };
+            let mut h_seed_staging = unsafe { context.alloc_host_uninit_slice::<u32>(STATE_SIZE) };
             let mut upload_callbacks = Callbacks::new();
             let staging_accessor = h_seed_staging.get_mut_accessor();
             upload_callbacks.schedule(
@@ -2072,8 +2059,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
             let mut h_coeffs_all =
                 unsafe { context.alloc_host_uninit_slice::<E4>(3 * num_folding_steps) };
             memory_copy_async(&mut h_coeffs_all, &d_coeffs_all, stream)?;
-            let mut h_seed_mirror =
-                unsafe { context.alloc_host_uninit_slice::<u32>(STATE_SIZE) };
+            let mut h_seed_mirror = unsafe { context.alloc_host_uninit_slice::<u32>(STATE_SIZE) };
             memory_copy_async(&mut h_seed_mirror, &d_seed, stream)?;
             let h_coeffs_accessor = h_coeffs_all.get_accessor();
             let h_seed_mirror_accessor = h_seed_mirror.get_accessor();
@@ -2445,12 +2431,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         let num_folding_steps = whir_steps_schedule.next().unwrap();
         let num_queries = whir_queries_schedule.next().unwrap();
         let (pow_round_idx, pow_bits) = whir_pow_schedule.next().unwrap();
-        let folds_name = format!("{round_name}.folds");
-        let folds_range = Range::new(&*folds_name)?;
-        folds_range.start(stream)?;
         schedule_fold_round(num_folding_steps, &mut state)?;
-        folds_range.end(stream)?;
-        tracing_ranges.push(folds_range);
 
         let lde_factor = whir_steps_lde_factors.next().unwrap();
         let next_folding_steps = *whir_steps_schedule.peek().unwrap();
@@ -2489,9 +2470,6 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         tracing_ranges.push(commit_next_oracle_range);
         let mut oracle_to_query = rs_oracle.replace(next_oracle).unwrap();
 
-        let ood_sample_name = format!("{round_name}.ood_sample");
-        let ood_sample_range = Range::new(&*ood_sample_name)?;
-        ood_sample_range.start(stream)?;
         let (ood_point_upload, ood_point_host, ood_point_device) =
             schedule_callback_populated_upload(context, 1, move |dst: &mut [E4]| unsafe {
                 dst[0] = draw_random_field_els::<BF, E4>(seed_accessor.get_mut(), 1)[0];
@@ -2521,8 +2499,6 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         ood_partial_readbacks.push(ood_partials);
         ood_points.push(ood_point_upload);
         ood_values.push(ood_value_host);
-        ood_sample_range.end(stream)?;
-        tracing_ranges.push(ood_sample_range);
 
         let pow_and_query_indexes_name = format!("{round_name}.pow_and_query_indexes");
         let pow_and_query_indexes_range = Range::new(&*pow_and_query_indexes_name)?;
@@ -2573,9 +2549,6 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         pow_and_query_indexes_range.end(stream)?;
         tracing_ranges.push(pow_and_query_indexes_range);
 
-        let delinearization_eq_name = format!("{round_name}.delinearization_eq");
-        let delinearization_eq_range = Range::new(&*delinearization_eq_name)?;
-        delinearization_eq_range.start(stream)?;
         let (delinearization_upload, _delinearization_host, delinearization_device) =
             schedule_callback_populated_upload(context, 1, move |dst: &mut [E4]| unsafe {
                 dst[0] = draw_random_field_els::<BF, E4>(seed_accessor.get_mut(), 1)[0];
@@ -2594,8 +2567,6 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
             context,
         )?;
         ood_points.push(eq_upload);
-        delinearization_eq_range.end(stream)?;
-        tracing_ranges.push(delinearization_eq_range);
 
         let queries_name = format!("{round_name}.queries");
         let queries_range = Range::new(&*queries_name)?;
@@ -2685,11 +2656,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         let num_folding_steps = whir_steps_schedule.next().unwrap();
         let num_queries = whir_queries_schedule.next().unwrap();
         let (pow_round_idx, pow_bits) = whir_pow_schedule.next().unwrap();
-        let folds_range = Range::new("gkr.whir.final_round.folds")?;
-        folds_range.start(stream)?;
         schedule_fold_round(num_folding_steps, &mut state)?;
-        folds_range.end(stream)?;
-        tracing_ranges.push(folds_range);
 
         let mut oracle_to_query = rs_oracle.take().unwrap();
         let query_domain_log2 = state.current_len.trailing_zeros() as usize

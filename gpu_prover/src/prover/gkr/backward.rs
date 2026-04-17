@@ -40,10 +40,9 @@ use prover::gkr::sumcheck::{
 };
 use prover::transcript::Seed;
 
-pub(crate) use super::backward_kernels::*;
 use super::backward_kernels::GpuBackwardSumcheckRoundUpdateKernel;
+pub(crate) use super::backward_kernels::*;
 use super::transform::normalize_compiled_circuit_for_gpu;
-use crate::ops::blake2s::STATE_SIZE;
 use super::{
     alloc_host_and_schedule_copy, GpuBaseFieldPolySource,
     GpuBaseFieldPolySourceAfterOneFoldingLaunchDescriptor,
@@ -58,6 +57,7 @@ use super::{
     GpuSumcheckRound3AndBeyondScheduledLaunchDescriptors,
 };
 use crate::allocator::tracker::AllocationPlacement;
+use crate::ops::blake2s::STATE_SIZE;
 use crate::ops::cub::device_reduce::{
     get_reduce_temp_storage_bytes, reduce, Reduce, ReduceOperation,
 };
@@ -5468,12 +5468,21 @@ where
         workflow_state: ScheduledBackwardWorkflowStateHandle<E>,
         context: &ProverContext,
     ) -> CudaResult<GpuGKRDimensionReducingScheduledLayerExecution<B, E>> {
+        const DIMENSION_REDUCING_LAYER_RANGE_MIN_FOLDING_STEPS: usize = 19;
+
         let stream = context.get_exec_stream();
         let mut tracing_ranges = Vec::new();
-        let layer_name = format!("gkr.backward.dimension_reducing.layer.{}", self.layer_idx);
-        let layer_range = Range::new(layer_name.clone())?;
-        layer_range.start(stream)?;
         let last_step = self.folding_steps - 1;
+        let mut layer_range = if self.folding_steps
+            >= DIMENSION_REDUCING_LAYER_RANGE_MIN_FOLDING_STEPS
+        {
+            let layer_name = format!("gkr.backward.dimension_reducing.layer.{}", self.layer_idx);
+            let range = Range::new(layer_name)?;
+            range.start(stream)?;
+            Some(range)
+        } else {
+            None
+        };
         let mut start_callbacks = Callbacks::new();
         let static_spill_upload = schedule_static_spill_upload(context, &self.static_spill_bytes)?;
         let mut shared_state = Box::new(ScheduledDimensionReducingLayerExecutionState {
@@ -5650,8 +5659,7 @@ where
                 .as_ref()
                 .expect("round_challenge_storage allocated when last_step > 0");
             let prev_coord_slice = &self.round_scratch.claim_point[step..step + 1];
-            let coeffs_round_slice =
-                &mut device_coeffs[step * 4..step * 4 + 4];
+            let coeffs_round_slice = &mut device_coeffs[step * 4..step * 4 + 4];
             let challenge_slice = unsafe { storage.device.slice_mut(step, 1) };
             E::launch_backward_sumcheck_round_update(
                 &self.round_scratch.reduction_output,
@@ -5763,21 +5771,19 @@ where
                 state.internal_round_coefficients.clear();
                 if coeffs_total_len > 0 {
                     let coeffs_bytes = final_coeffs_accessor.get();
-                    state
-                        .internal_round_coefficients
-                        .extend(coeffs_bytes[..coeffs_total_len].chunks_exact(4).map(
-                            |c| {
-                                let mut out = [E::ZERO; 4];
-                                out.copy_from_slice(c);
-                                out
-                            },
-                        ));
+                    state.internal_round_coefficients.extend(
+                        coeffs_bytes[..coeffs_total_len].chunks_exact(4).map(|c| {
+                            let mut out = [E::ZERO; 4];
+                            out.copy_from_slice(c);
+                            out
+                        }),
+                    );
                 }
                 state.folding_challenges.clear();
                 if last_step > 0 {
-                    state.folding_challenges.extend_from_slice(
-                        &final_folding_challenges_accessor.get()[..last_step],
-                    );
+                    state
+                        .folding_challenges
+                        .extend_from_slice(&final_folding_challenges_accessor.get()[..last_step]);
                 }
 
                 let transcript_inputs: Vec<E> = last_evaluations
@@ -5839,8 +5845,10 @@ where
             },
             stream,
         )?;
-        layer_range.end(stream)?;
-        tracing_ranges.push(layer_range);
+        if let Some(layer_range) = layer_range.take() {
+            layer_range.end(stream)?;
+            tracing_ranges.push(layer_range);
+        }
 
         drop(claim_point_host);
         drop(eq_pair_values_host);
@@ -7008,7 +7016,11 @@ where
             let dst_offset = next_round_challenge_offset;
             // SAFETY: packed storage outlives the queued copy; the destination
             // range is within bounds (offset + len <= round_challenge_len).
-            let dst_slice = unsafe { round_challenge_storage.device.slice_mut(dst_offset, src_len) };
+            let dst_slice = unsafe {
+                round_challenge_storage
+                    .device
+                    .slice_mut(dst_offset, src_len)
+            };
             let src_slice = &device_folding_challenges[src_start..src_start + src_len];
             memory_copy_async(dst_slice, src_slice, stream)?;
             next_round_challenge_offset += src_len;
@@ -7083,15 +7095,13 @@ where
                 state.internal_round_coefficients.clear();
                 if coeffs_total_len > 0 {
                     let coeffs_bytes = final_coeffs_accessor.get();
-                    state
-                        .internal_round_coefficients
-                        .extend(coeffs_bytes[..coeffs_total_len].chunks_exact(4).map(
-                            |c| {
-                                let mut out = [E::ZERO; 4];
-                                out.copy_from_slice(c);
-                                out
-                            },
-                        ));
+                    state.internal_round_coefficients.extend(
+                        coeffs_bytes[..coeffs_total_len].chunks_exact(4).map(|c| {
+                            let mut out = [E::ZERO; 4];
+                            out.copy_from_slice(c);
+                            out
+                        }),
+                    );
                 }
                 state.folding_challenges.clear();
                 state
