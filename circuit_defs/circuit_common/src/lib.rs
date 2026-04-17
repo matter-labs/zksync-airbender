@@ -48,6 +48,7 @@ pub trait DelegationCircuit<F: PrimeField> {
 }
 
 pub trait RiscVCycleCircuit<F: PrimeField, const USE_BYTECODE: bool> {
+    const CIRCUIT_FAMILY: u8;
     const DOMAIN_SIZE_LOG2: u32;
 
     fn table_driver_fn(table_driver: &mut TableDriver<F>, bytecode: &[u32]);
@@ -145,6 +146,64 @@ pub fn generate_default_delegation_artifacts<C: DelegationCircuit<BabyBearField>
         C::get_circuit(use_caches);
     serialize_to_file(&compiled_circuit, "generated/layout.json");
     let ssa = C::get_ssa_form();
+
+    let full_stream = witness_eval_generator::derive_from_ssa::derive_from_gkr_ssa(
+        &ssa,
+        &compiled_circuit,
+        false,
+        "BabyBearField",
+    );
+    std::fs::File::create("generated/witness_generation_fn.rs")
+        .unwrap()
+        .write_all(&full_stream.to_string().as_bytes())
+        .unwrap();
+}
+
+pub fn generate_default_risc_v_non_mem_cycles_artifacts<
+    C: RiscVCycleCircuit<BabyBearField, false>,
+>(
+    use_caches: bool,
+) {
+    fn serialize_to_file<T: serde::Serialize>(el: &T, filename: &str) {
+        let mut dst = std::fs::File::create(filename).unwrap();
+        serde_json::to_writer_pretty(&mut dst, el).unwrap();
+    }
+
+    use std::io::Write;
+
+    let compiled_circuit: cs::gkr_compiler::GKRCircuitArtifact<BabyBearField> =
+        risc_v_non_mem_get_circuit::<BabyBearField, C>(use_caches);
+    serialize_to_file(&compiled_circuit, "generated/layout.json");
+    let ssa = risc_v_non_mem_get_ssa_form::<BabyBearField, C>();
+
+    let full_stream = witness_eval_generator::derive_from_ssa::derive_from_gkr_ssa(
+        &ssa,
+        &compiled_circuit,
+        false,
+        "BabyBearField",
+    );
+    std::fs::File::create("generated/witness_generation_fn.rs")
+        .unwrap()
+        .write_all(&full_stream.to_string().as_bytes())
+        .unwrap();
+}
+
+pub fn generate_default_risc_v_with_mem_cycles_artifacts<
+    C: RiscVCycleCircuit<BabyBearField, true>,
+>(
+    use_caches: bool,
+) {
+    fn serialize_to_file<T: serde::Serialize>(el: &T, filename: &str) {
+        let mut dst = std::fs::File::create(filename).unwrap();
+        serde_json::to_writer_pretty(&mut dst, el).unwrap();
+    }
+
+    use std::io::Write;
+
+    let compiled_circuit: cs::gkr_compiler::GKRCircuitArtifact<BabyBearField> =
+        risc_v_with_mem_get_circuit::<BabyBearField, C>(use_caches, &[]);
+    serialize_to_file(&compiled_circuit, "generated/layout.json");
+    let ssa = risc_v_with_mem_get_ssa_form::<BabyBearField, C>(&[]);
 
     let full_stream = witness_eval_generator::derive_from_ssa::derive_from_gkr_ssa(
         &ssa,
