@@ -1,6 +1,7 @@
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
+use fft::bitreverse_enumeration_inplace;
 use field::{Field, FieldExtension};
 use prover::merkle_trees::MerkleTreeCapVarLength;
 use prover::utils::{extension_field_from_base_coeffs, extension_field_into_base_coeffs};
@@ -109,7 +110,10 @@ impl GpuWhirExtensionOracle {
         context: &ProverContext,
     ) -> CudaResult<Self> {
         let trace_len = monomial_coeffs.len();
-        let mut vectorized_monomial_coeffs = e4_coeffs_to_vectorized(&monomial_coeffs);
+        let mut bitreversed_monomial_coeffs = monomial_coeffs.to_vec();
+        bitreverse_enumeration_inplace(&mut bitreversed_monomial_coeffs);
+        let mut vectorized_monomial_coeffs =
+            e4_coeffs_to_vectorized(&bitreversed_monomial_coeffs);
         let mut monomial_coeffs_device_alloc =
             context.alloc(monomial_coeffs.len(), AllocationPlacement::BestFit)?;
         let stream = context.get_exec_stream();
