@@ -19,7 +19,6 @@ use prover::gkr::whir::{
     WhirIntermediateCommitmentAndQueries, WhirPolyCommitProof,
 };
 use prover::merkle_trees::{DefaultTreeConstructor, MerkleTreeCapVarLength};
-use prover::query_utils::assemble_query_index;
 use prover::transcript::Seed;
 use prover::utils::extension_field_from_base_coeffs;
 use worker::Worker;
@@ -27,7 +26,7 @@ use worker::Worker;
 use crate::allocator::tracker::AllocationPlacement;
 use crate::ntt::{hypercube_coeffs_natural_to_natural_evals, natural_evals_to_bitreversed_coeffs};
 use crate::ops::bit_reverse::{bit_reverse, bit_reverse_in_place};
-use crate::ops::blake2s::Digest;
+use crate::ops::blake2s::{Digest, STATE_SIZE};
 use crate::ops::cub::device_reduce::{get_reduce_temp_storage_bytes, reduce, ReduceOperation};
 use crate::ops::cub::CUB_TEMP_STORAGE_EXTRA_ALIGNMENT_LOG2;
 use crate::ops::powers::{get_powers_by_ref, get_powers_by_val};
@@ -43,8 +42,7 @@ use crate::primitives::static_host::{
     alloc_static_pinned_box_from_slice, alloc_static_pinned_box_uninit,
 };
 use crate::prover::gkr::backward::{eq_group_tables_len, launch_build_eq_values_from_point};
-use crate::prover::pow::search_pow_challenge;
-use crate::prover::proof::draw_query_bits_after_verified_pow;
+use crate::prover::pow::{schedule_pow_verify_and_query_indexes, PowAndQueryIndexesKeepalives};
 use crate::prover::trace_holder::{get_tree_caps, TraceHolder};
 use crate::prover::whir::{GpuWhirExtensionOracle, GpuWhirExtensionQuery};
 use crate::prover::whir_kernels::{
@@ -267,6 +265,27 @@ pub(crate) struct GpuWhirFoldScheduledExecution {
     _start_callbacks: Callbacks<'static>,
     #[allow(dead_code)]
     _folding_challenges: Vec<WhirHostUpload<E4>>,
+    // Per-fold-round-group buffers that back the device-side transcript path.
+    // They must outlive the scheduled stream work; the final_callbacks block
+    // on them only by virtue of ordering, so we retain them on the struct.
+    #[allow(dead_code)]
+    _fold_round_group_device_seeds: Vec<DeviceAllocation<u32>>,
+    #[allow(dead_code)]
+    _fold_round_group_device_challenges: Vec<DeviceAllocation<E4>>,
+    #[allow(dead_code)]
+    _fold_round_group_device_coeffs: Vec<DeviceAllocation<E4>>,
+    #[allow(dead_code)]
+    _fold_round_group_host_seed_stagings: Vec<HostAllocation<[u32]>>,
+    #[allow(dead_code)]
+    _fold_round_group_host_seed_mirrors: Vec<HostAllocation<[u32]>>,
+    #[allow(dead_code)]
+    _fold_round_group_host_coeffs: Vec<HostAllocation<[E4]>>,
+    #[allow(dead_code)]
+    _fold_round_group_upload_callbacks: Vec<Callbacks<'static>>,
+    // Keepalives for the device-side PoW verify + query index assembly
+    // (one entry per WHIR round that goes through schedule_pow_verify_and_query_indexes).
+    #[allow(dead_code)]
+    _pow_keepalives: Vec<PowAndQueryIndexesKeepalives>,
     #[allow(dead_code)]
     _ood_points: Vec<WhirHostUpload<E4>>,
     #[allow(dead_code)]
@@ -1398,10 +1417,18 @@ fn special_three_point_eval_device(
     Ok((outputs[0], outputs[1], outputs[2]))
 }
 
-fn schedule_special_three_point_eval_device(
+/// Computes the three sumcheck reductions needed per WHIR fold round into
+/// `state.reduce_out[0..3]`. Output layout:
+///   [0] = ⟨eval_low, eq_low⟩          = f(0)
+///   [1] = ⟨eval_high, eq_high⟩        = f(1)
+///   [2] = ⟨eval_low+eval_high, eq_low+eq_high⟩   (callers scale by 1/4 to get f(1/2))
+///
+/// Leaves the result on the device; callers that need a host copy must follow
+/// up with `schedule_reduce_outputs_readback(3, ...)`.
+fn schedule_special_three_point_eval_device_compute(
     state: &mut GpuWhirState,
     context: &ProverContext,
-) -> CudaResult<HostAllocation<[E4]>> {
+) -> CudaResult<()> {
     let half = state.current_len / 2;
     assert!(half <= state.scratch0.len());
     let stream = context.get_exec_stream();
@@ -1450,6 +1477,14 @@ fn schedule_special_three_point_eval_device(
         stream,
     )?;
 
+    Ok(())
+}
+
+fn schedule_special_three_point_eval_device(
+    state: &mut GpuWhirState,
+    context: &ProverContext,
+) -> CudaResult<HostAllocation<[E4]>> {
+    schedule_special_three_point_eval_device_compute(state, context)?;
     schedule_reduce_outputs_readback(3, state, context)
 }
 
@@ -1918,8 +1953,6 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
     base_eq_values_range.end(stream)?;
     tracing_ranges.push(base_eq_values_range);
 
-    let quart = BF::from_u32_unchecked(4).inverse().unwrap();
-    let two_inv = BF::from_u32_unchecked(2).inverse().unwrap();
     let mut whir_steps_schedule = whir_steps_schedule.into_iter().peekable();
     let mut whir_queries_schedule = whir_queries_schedule.into_iter();
     let mut whir_steps_lde_factors = whir_steps_lde_factors.into_iter();
@@ -1927,8 +1960,22 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
     let num_whir_steps = num_intermediate_oracles;
     let mut rs_oracle: Option<GpuWhirExtensionOracle> = None;
 
-    let mut fold_eval_readbacks = Vec::new();
-    let mut folding_challenges = Vec::new();
+    let mut fold_eval_readbacks: Vec<HostAllocation<[E4]>> = Vec::new();
+    let mut folding_challenges: Vec<WhirHostUpload<E4>> = Vec::new();
+    // Per-fold-round-group device/host keepalives for the device-side
+    // transcript path: d_seed, d_challenge, d_coeffs, plus host staging/mirror
+    // buffers and the upload callbacks.
+    let mut fold_round_group_device_seeds: Vec<DeviceAllocation<u32>> = Vec::new();
+    let mut fold_round_group_device_challenges: Vec<DeviceAllocation<E4>> = Vec::new();
+    let mut fold_round_group_device_coeffs: Vec<DeviceAllocation<E4>> = Vec::new();
+    let mut fold_round_group_host_seed_stagings: Vec<HostAllocation<[u32]>> = Vec::new();
+    let mut fold_round_group_host_seed_mirrors: Vec<HostAllocation<[u32]>> = Vec::new();
+    let mut fold_round_group_host_coeffs: Vec<HostAllocation<[E4]>> = Vec::new();
+    let mut fold_round_group_upload_callbacks: Vec<Callbacks<'static>> = Vec::new();
+    // Per-WHIR-round keepalives for the device-side PoW verify + query index
+    // assembly: the contained device/host buffers must outlive the stream
+    // work scheduled by the caller around them.
+    let mut pow_keepalives_keepalive: Vec<PowAndQueryIndexesKeepalives> = Vec::new();
     let mut recursive_caps_keepalive = Vec::new();
     let mut ood_points = Vec::new();
     let mut ood_partial_readbacks = Vec::new();
@@ -1944,37 +1991,59 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
 
     let mut schedule_fold_round =
         |num_folding_steps: usize, state: &mut GpuWhirState| -> CudaResult<()> {
-            for _ in 0..num_folding_steps {
-                let readback = schedule_special_three_point_eval_device(state, context)?;
-                let readback_accessor = readback.get_accessor();
-                let shared_state = shared_state_handle;
-                let sumcheck_poly_idx = scheduled_sumcheck_poly_idx;
-                scheduled_sumcheck_poly_idx += 1;
-                let (challenge_upload, _challenge_host, challenge_device) =
-                    schedule_callback_populated_upload(context, 1, move |dst: &mut [E4]| unsafe {
-                        let values = readback_accessor.get();
-                        let mut f_half = values[2];
-                        f_half.mul_assign_by_base(&quart);
-                        let coeffs = special_lagrange_interpolate(
-                            values[0],
-                            values[1],
-                            f_half,
-                            E4::from_base(two_inv),
-                        );
-                        let proof_state = shared_state.get_mut();
-                        let proof = proof_state
-                            .proof
-                            .as_mut()
-                            .expect("proof must be initialized");
-                        proof.sumcheck_polys[sumcheck_poly_idx] = coeffs;
-                        commit_field_els::<BF, E4>(seed_accessor.get_mut(), &coeffs);
-                        dst[0] = draw_random_field_els::<BF, E4>(seed_accessor.get_mut(), 1)[0];
-                    })?;
+            if num_folding_steps == 0 {
+                return Ok(());
+            }
+
+            // Allocate persistent per-round-group device buffers: seed is
+            // threaded round-to-round, challenge is overwritten each round
+            // (stream-ordered, so safe to reuse), coeffs are packed into one
+            // contiguous [3 * num_folding_steps] block for bulk readback.
+            let mut d_seed: DeviceAllocation<u32> =
+                context.alloc(STATE_SIZE, AllocationPlacement::BestFit)?;
+            let mut d_challenge: DeviceAllocation<E4> =
+                context.alloc(1, AllocationPlacement::BestFit)?;
+            let mut d_coeffs_all: DeviceAllocation<E4> =
+                context.alloc(3 * num_folding_steps, AllocationPlacement::BestFit)?;
+
+            // Seed upload: stage the host seed into a pinned buffer via a
+            // pre-kernel callback, then H2D copy into d_seed.
+            let mut h_seed_staging =
+                unsafe { context.alloc_host_uninit_slice::<u32>(STATE_SIZE) };
+            let mut upload_callbacks = Callbacks::new();
+            let staging_accessor = h_seed_staging.get_mut_accessor();
+            upload_callbacks.schedule(
+                move || unsafe {
+                    staging_accessor
+                        .get_mut()
+                        .copy_from_slice(&seed_accessor.get().0);
+                },
+                stream,
+            )?;
+            memory_copy_async(&mut d_seed, &h_seed_staging, stream)?;
+
+            let group_start_idx = scheduled_sumcheck_poly_idx;
+            for round in 0..num_folding_steps {
+                // Compute the 3 reductions into state.reduce_out (on device).
+                schedule_special_three_point_eval_device_compute(state, context)?;
+
+                // Fused kernel: reads reduce_out + d_seed, writes
+                // d_coeffs[round*3..round*3+3], d_challenge, and the advanced
+                // d_seed — all device-side, no host roundtrip.
+                let coeff_range = (round * 3)..((round + 1) * 3);
+                crate::ops::blake2s::whir_fold_round_update(
+                    &state.reduce_out[..3],
+                    &mut d_seed,
+                    &mut d_coeffs_all[coeff_range],
+                    &mut d_challenge,
+                    stream,
+                )?;
+
                 let current_len = state.current_len;
                 let next_len = current_len / 2;
                 whir_fold_monomial(
                     &state.sumchecked_poly_monomial_form[..current_len],
-                    &challenge_device[0],
+                    &d_challenge[0],
                     &mut state.monomial_buffer[..next_len],
                     stream,
                 )?;
@@ -1984,18 +2053,67 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
                 );
                 whir_fold_split_half_in_place(
                     &mut state.sumchecked_poly_evaluation_form[..current_len],
-                    &challenge_device[0],
+                    &d_challenge[0],
                     stream,
                 )?;
                 whir_fold_split_half_in_place(
                     &mut state.eq_poly[..current_len],
-                    &challenge_device[0],
+                    &d_challenge[0],
                     stream,
                 )?;
                 state.current_len = next_len;
-                fold_eval_readbacks.push(readback);
-                folding_challenges.push(challenge_upload);
+                scheduled_sumcheck_poly_idx += 1;
             }
+
+            // Bulk D2H: all coeffs for this group, plus the updated seed.
+            // Schedule a final callback that rehydrates both into the shared
+            // proof state and the host seed (which subsequent host-side
+            // transcript ops — oracle commit, OOD, pow, queries — rely on).
+            let mut h_coeffs_all =
+                unsafe { context.alloc_host_uninit_slice::<E4>(3 * num_folding_steps) };
+            memory_copy_async(&mut h_coeffs_all, &d_coeffs_all, stream)?;
+            let mut h_seed_mirror =
+                unsafe { context.alloc_host_uninit_slice::<u32>(STATE_SIZE) };
+            memory_copy_async(&mut h_seed_mirror, &d_seed, stream)?;
+            let h_coeffs_accessor = h_coeffs_all.get_accessor();
+            let h_seed_mirror_accessor = h_seed_mirror.get_accessor();
+            // Rehydration callback goes into the same per-group Callbacks
+            // container as the upload callback; their stream-order is decided
+            // by scheduling position, not by the Callbacks object they belong
+            // to. Keeping it local avoids a mutable borrow conflict with the
+            // outer `final_callbacks` (which the surrounding scope also
+            // writes to).
+            {
+                let shared_state = shared_state_handle;
+                upload_callbacks.schedule(
+                    move || unsafe {
+                        let all = h_coeffs_accessor.get();
+                        let proof_state = shared_state.get_mut();
+                        let proof = proof_state
+                            .proof
+                            .as_mut()
+                            .expect("proof must be initialized");
+                        for i in 0..num_folding_steps {
+                            let base = i * 3;
+                            proof.sumcheck_polys[group_start_idx + i] =
+                                [all[base], all[base + 1], all[base + 2]];
+                        }
+                        // Mirror the device seed back into the host transcript
+                        // seed for subsequent host-side transcript operations.
+                        let new_seed = h_seed_mirror_accessor.get();
+                        seed_accessor.get_mut().0.copy_from_slice(new_seed);
+                    },
+                    stream,
+                )?;
+            }
+
+            fold_round_group_device_seeds.push(d_seed);
+            fold_round_group_device_challenges.push(d_challenge);
+            fold_round_group_device_coeffs.push(d_coeffs_all);
+            fold_round_group_host_seed_stagings.push(h_seed_staging);
+            fold_round_group_host_seed_mirrors.push(h_seed_mirror);
+            fold_round_group_host_coeffs.push(h_coeffs_all);
+            fold_round_group_upload_callbacks.push(upload_callbacks);
             Ok(())
         };
 
@@ -2087,7 +2205,6 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         let query_domain_size = 1u64 << query_domain_log2;
         let query_domain_generator = domain_generator_for_size::<BF>(query_domain_size);
         let mut query_indexes_host = unsafe { context.alloc_host_uninit_slice(num_queries) };
-        let query_indexes_accessor = query_indexes_host.get_mut_accessor();
         let nonce_accessor = nonce_host.get_mut_accessor();
         let mut query_index_callbacks_for_round = Callbacks::new();
         #[cfg(test)]
@@ -2100,24 +2217,25 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
             },
             stream,
         )?;
-        search_pow_challenge(
+        let pow_keepalives = schedule_pow_verify_and_query_indexes(
             &mut seed_host,
             &mut nonce_host,
+            &mut query_indexes_host,
+            num_queries,
             pow_bits,
-            &mut final_callbacks,
+            query_domain_log2,
             context,
         )?;
+        let h_seed_mirror_accessor = pow_keepalives.h_seed_mirror.get_accessor();
+        pow_keepalives_keepalive.push(pow_keepalives);
         query_index_callbacks_for_round.schedule(
             {
                 let shared_state = shared_state_handle;
                 move || unsafe {
-                    let mut bit_source = draw_query_bits_after_verified_pow(
-                        seed_accessor.get_mut(),
-                        num_queries * query_domain_log2,
-                    );
-                    for dst in query_indexes_accessor.get_mut().iter_mut() {
-                        *dst = assemble_query_index(query_domain_log2, &mut bit_source) as u32;
-                    }
+                    // Fused post-PoW host bookkeeping: advance the host seed
+                    // from the device mirror, then publish the nonce.
+                    let src = h_seed_mirror_accessor.get();
+                    seed_accessor.get_mut().0.copy_from_slice(src);
                     shared_state.get_mut().proof.as_mut().unwrap().pow_nonces[pow_round_idx] =
                         *nonce_accessor.get();
                 }
@@ -2415,7 +2533,6 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         let query_domain_size = 1u64 << query_domain_log2;
         let query_domain_generator = domain_generator_for_size::<BF>(query_domain_size);
         let mut query_indexes_host = unsafe { context.alloc_host_uninit_slice(num_queries) };
-        let query_indexes_accessor = query_indexes_host.get_mut_accessor();
         let nonce_accessor = nonce_host.get_mut_accessor();
         let mut query_index_callbacks_for_round = Callbacks::new();
         #[cfg(test)]
@@ -2428,24 +2545,25 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
             },
             stream,
         )?;
-        search_pow_challenge(
+        let pow_keepalives = schedule_pow_verify_and_query_indexes(
             &mut seed_host,
             &mut nonce_host,
+            &mut query_indexes_host,
+            num_queries,
             pow_bits,
-            &mut final_callbacks,
+            query_domain_log2,
             context,
         )?;
+        let h_seed_mirror_accessor = pow_keepalives.h_seed_mirror.get_accessor();
+        pow_keepalives_keepalive.push(pow_keepalives);
         query_index_callbacks_for_round.schedule(
             {
                 let shared_state = shared_state_handle;
                 move || unsafe {
-                    let mut bit_source = draw_query_bits_after_verified_pow(
-                        seed_accessor.get_mut(),
-                        num_queries * query_domain_log2,
-                    );
-                    for dst in query_indexes_accessor.get_mut().iter_mut() {
-                        *dst = assemble_query_index(query_domain_log2, &mut bit_source) as u32;
-                    }
+                    // Fused post-PoW host bookkeeping: advance the host seed
+                    // from the device mirror, then publish the nonce.
+                    let src = h_seed_mirror_accessor.get();
+                    seed_accessor.get_mut().0.copy_from_slice(src);
                     shared_state.get_mut().proof.as_mut().unwrap().pow_nonces[pow_round_idx] =
                         *nonce_accessor.get();
                 }
@@ -2581,7 +2699,6 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         pow_and_query_indexes_range.start(stream)?;
         let mut nonce_host = unsafe { context.alloc_host_uninit::<u64>() };
         let mut query_indexes_host = unsafe { context.alloc_host_uninit_slice(num_queries) };
-        let query_indexes_accessor = query_indexes_host.get_mut_accessor();
         let nonce_accessor = nonce_host.get_mut_accessor();
         let mut query_index_callbacks_for_round = Callbacks::new();
         #[cfg(test)]
@@ -2594,24 +2711,25 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
             },
             stream,
         )?;
-        search_pow_challenge(
+        let pow_keepalives = schedule_pow_verify_and_query_indexes(
             &mut seed_host,
             &mut nonce_host,
+            &mut query_indexes_host,
+            num_queries,
             pow_bits,
-            &mut final_callbacks,
+            query_domain_log2,
             context,
         )?;
+        let h_seed_mirror_accessor = pow_keepalives.h_seed_mirror.get_accessor();
+        pow_keepalives_keepalive.push(pow_keepalives);
         query_index_callbacks_for_round.schedule(
             {
                 let shared_state = shared_state_handle;
                 move || unsafe {
-                    let mut bit_source = draw_query_bits_after_verified_pow(
-                        seed_accessor.get_mut(),
-                        num_queries * query_domain_log2,
-                    );
-                    for dst in query_indexes_accessor.get_mut().iter_mut() {
-                        *dst = assemble_query_index(query_domain_log2, &mut bit_source) as u32;
-                    }
+                    // Fused post-PoW host bookkeeping: advance the host seed
+                    // from the device mirror, then publish the nonce.
+                    let src = h_seed_mirror_accessor.get();
+                    seed_accessor.get_mut().0.copy_from_slice(src);
                     shared_state.get_mut().proof.as_mut().unwrap().pow_nonces[pow_round_idx] =
                         *nonce_accessor.get();
                 }
@@ -2690,6 +2808,14 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         _tracing_ranges: tracing_ranges,
         _start_callbacks: start_callbacks,
         _folding_challenges: folding_challenges,
+        _fold_round_group_device_seeds: fold_round_group_device_seeds,
+        _fold_round_group_device_challenges: fold_round_group_device_challenges,
+        _fold_round_group_device_coeffs: fold_round_group_device_coeffs,
+        _fold_round_group_host_seed_stagings: fold_round_group_host_seed_stagings,
+        _fold_round_group_host_seed_mirrors: fold_round_group_host_seed_mirrors,
+        _fold_round_group_host_coeffs: fold_round_group_host_coeffs,
+        _fold_round_group_upload_callbacks: fold_round_group_upload_callbacks,
+        _pow_keepalives: pow_keepalives_keepalive,
         _ood_points: ood_points,
         _query_index_callbacks: query_index_callbacks,
         _delinearization_challenges: delinearization_challenges,
