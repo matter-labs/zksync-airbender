@@ -109,10 +109,7 @@ impl<B, E: Copy> GpuGKRForwardOutput<B, E> {
         &self,
         context: &ProverContext,
     ) -> CudaResult<GpuGKRTranscriptHandoff<E>> {
-        let stream = context.get_exec_stream();
         let mut tracing_ranges = Vec::new();
-        let handoff_range = Range::new("gkr.forward.transcript_handoff.schedule")?;
-        handoff_range.start(stream)?;
         let reduced_outputs = self
             .dimension_reducing_inputs
             .get(&self.initial_layer_for_sumcheck)
@@ -128,8 +125,6 @@ impl<B, E: Copy> GpuGKRForwardOutput<B, E> {
             let second = schedule_ext_poly_readback(&self.storage, second_addr, context)?;
             explicit_evaluations.insert(*output_type, [first, second]);
         }
-        handoff_range.end(stream)?;
-        tracing_ranges.push(handoff_range);
 
         Ok(GpuGKRTranscriptHandoff {
             _tracing_ranges: tracing_ranges,
@@ -328,21 +323,35 @@ where
 {
     let stream = context.get_exec_stream();
     hydrate_scratch_space_layer(layer_idx, compiled_circuit, stage1, storage);
-    let cache_range = Range::new(format!("gkr.forward.layer.{layer_idx}.cache"))?;
-    cache_range.start(stream)?;
-    schedule_cache_relations(
-        layer_idx,
-        &layer.cached_relations,
-        storage,
-        stage1,
-        forward_setup,
-        external_challenges,
-        decoder_predicate_address,
-        trace_len,
-        context,
-    )?;
-    cache_range.end(stream)?;
-    tracing_ranges.push(cache_range);
+    if layer.cached_relations.is_empty() {
+        schedule_cache_relations(
+            layer_idx,
+            &layer.cached_relations,
+            storage,
+            stage1,
+            forward_setup,
+            external_challenges,
+            decoder_predicate_address,
+            trace_len,
+            context,
+        )?;
+    } else {
+        let cache_range = Range::new(format!("gkr.forward.layer.{layer_idx}.cache"))?;
+        cache_range.start(stream)?;
+        schedule_cache_relations(
+            layer_idx,
+            &layer.cached_relations,
+            storage,
+            stage1,
+            forward_setup,
+            external_challenges,
+            decoder_predicate_address,
+            trace_len,
+            context,
+        )?;
+        cache_range.end(stream)?;
+        tracing_ranges.push(cache_range);
+    }
 
     let gates_range = Range::new(format!("gkr.forward.layer.{layer_idx}.gates"))?;
     gates_range.start(stream)?;
@@ -1920,12 +1929,17 @@ where
     let stream = context.get_exec_stream();
 
     for input_size_log_2 in ((final_trace_log_2 + 1)..=initial_trace_log_2).rev() {
-        let round_range = Range::new(format!(
-            "gkr.forward.dimension_reduction.round.2pow{}_to_2pow{}",
-            input_size_log_2,
-            input_size_log_2 - 1
-        ))?;
-        round_range.start(stream)?;
+        let mut round_range = if input_size_log_2 >= 22 {
+            let range = Range::new(format!(
+                "gkr.forward.dimension_reduction.round.2pow{}_to_2pow{}",
+                input_size_log_2,
+                input_size_log_2 - 1
+            ))?;
+            range.start(stream)?;
+            Some(range)
+        } else {
+            None
+        };
         let layer_inputs = if current_layer_idx != layer_idx {
             let previous: &BTreeMap<OutputType, DimensionReducingInputOutput> =
                 dimension_reduction_description
@@ -1953,8 +1967,10 @@ where
         );
         dimension_reduction_description.insert(current_layer_idx, layer_description);
         current_layer_idx += 1;
-        round_range.end(stream)?;
-        tracing_ranges.push(round_range);
+        if let Some(round_range) = round_range.take() {
+            round_range.end(stream)?;
+            tracing_ranges.push(round_range);
+        }
     }
 
     Ok((current_layer_idx - 1, dimension_reduction_description))
