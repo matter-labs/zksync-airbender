@@ -1,5 +1,4 @@
 use std::collections::BTreeMap;
-use std::mem::ManuallyDrop;
 use std::ops::DerefMut;
 use std::ptr::null;
 
@@ -19,6 +18,7 @@ use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
 use era_cudart::memory::memory_copy_async;
 use era_cudart::paste::paste;
 use era_cudart::result::CudaResult;
+use era_cudart::stream::CudaStream;
 use era_cudart::{cuda_kernel_declaration, cuda_kernel_signature_arguments_and_function};
 use field::{Field, FieldExtension, PrimeField};
 use prover::gkr::prover::dimension_reduction::forward::DimensionReducingInputOutput;
@@ -151,9 +151,12 @@ pub(super) struct ForwardLookupUsage {
     pub(super) last_generic_lookup_layer: Option<usize>,
 }
 
-pub(super) const GKR_FORWARD_MAX_GATES_PER_LAYER: usize = 63;
 pub(super) const GKR_FORWARD_THREADS_PER_BLOCK: u32 = WARP_SIZE * 4;
-pub(super) const GKR_DIM_REDUCING_FORWARD_MAX_INPUTS: usize = 5;
+pub(super) const GKR_DIM_REDUCING_FORWARD_TOWER_LOG_BLOCK: u32 = 8;
+pub(super) const GKR_DIM_REDUCING_FORWARD_TOWER_BLOCK: u32 =
+    1 << GKR_DIM_REDUCING_FORWARD_TOWER_LOG_BLOCK;
+pub(super) const GKR_DIM_REDUCING_FORWARD_TOWER_MAX_ROUNDS: usize =
+    GKR_DIM_REDUCING_FORWARD_TOWER_LOG_BLOCK as usize;
 pub(super) const MAX_CACHE_RELATIONS_PER_LAYER: usize = 20;
 pub(super) const MEMORY_TUPLE_LINEAR_TERMS: usize = 8;
 pub(super) const MEMORY_TUPLE_ADDRESS_LOW_TERM: usize = 0;
@@ -165,875 +168,12 @@ pub(super) const MEMORY_TUPLE_VALUE_LOW_EXTRA_TERM: usize = 5;
 pub(super) const MEMORY_TUPLE_VALUE_HIGH_TERM: usize = 6;
 pub(super) const MEMORY_TUPLE_VALUE_HIGH_EXTRA_TERM: usize = 7;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[repr(u32)]
-pub(super) enum GpuGKRForwardGateKind {
-    NoOp = 0,
-    Product = 1,
-    MaskIdentity = 2,
-    LookupPair = 3,
-    LookupWithCachedDensAndSetup = 4,
-    LookupBasePair = 5,
-    LookupBaseMinusMultiplicityByBase = 6,
-    LookupExtMinusMultiplicityByExt = 7,
-    LookupUnbalancedBase = 8,
-    LookupUnbalancedExtension = 9,
-    LookupExtPair = 10,
-    InitialGrandProductWithoutCaches = 11,
-    MaterializeGrandProductTermExpression = 12,
-    LookupPairFromBaseInputs = 13,
-    LookupWithDensAndSetupExpressions = 14,
-    LookupPairFromVectorInputs = 15,
-    LookupFromVectorInputWithSetup = 16,
-    LookupUnbalancedPairWithVectorInputs = 17,
-}
-
-impl GpuGKRForwardGateKind {
-    pub(super) const fn as_u32(self) -> u32 {
-        self as u32
-    }
-}
-
-#[repr(C)]
-#[derive(Clone, Copy, Debug, Default)]
-pub(super) struct GpuGKRForwardNoOpDescriptor {
-    pub(super) reserved: usize,
-}
-
-#[repr(C)]
-#[derive(Debug, Default)]
-pub(super) struct GpuGKRForwardProductDescriptor<E> {
-    pub(super) lhs: *const E,
-    pub(super) rhs: *const E,
-    pub(super) dst: *mut E,
-}
-
-impl<E> Copy for GpuGKRForwardProductDescriptor<E> {}
-
-impl<E> Clone for GpuGKRForwardProductDescriptor<E> {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
-
-#[repr(C)]
-#[derive(Debug, Default)]
-pub(super) struct GpuGKRForwardMaskIdentityDescriptor<E> {
-    pub(super) input: *const E,
-    pub(super) mask: *const BF,
-    pub(super) dst: *mut E,
-}
-
-impl<E> Copy for GpuGKRForwardMaskIdentityDescriptor<E> {}
-
-impl<E> Clone for GpuGKRForwardMaskIdentityDescriptor<E> {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
-
-#[repr(C)]
-#[derive(Debug, Default)]
-pub(super) struct GpuGKRForwardLookupPairDescriptor<E> {
-    pub(super) a: *const E,
-    pub(super) b: *const E,
-    pub(super) c: *const E,
-    pub(super) d: *const E,
-    pub(super) num: *mut E,
-    pub(super) den: *mut E,
-}
-
-impl<E> Copy for GpuGKRForwardLookupPairDescriptor<E> {}
-
-impl<E> Clone for GpuGKRForwardLookupPairDescriptor<E> {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
-
-#[repr(C)]
-#[derive(Debug, Default)]
-pub(super) struct GpuGKRForwardLookupWithCachedDensAndSetupDescriptor<E> {
-    pub(super) a: *const BF,
-    pub(super) b: *const E,
-    pub(super) c: *const BF,
-    pub(super) d: *const E,
-    pub(super) num: *mut E,
-    pub(super) den: *mut E,
-}
-
-impl<E> Copy for GpuGKRForwardLookupWithCachedDensAndSetupDescriptor<E> {}
-
-impl<E> Clone for GpuGKRForwardLookupWithCachedDensAndSetupDescriptor<E> {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
-
-#[repr(C)]
-#[derive(Debug, Default)]
-pub(super) struct GpuGKRForwardLookupBasePairDescriptor<E> {
-    pub(super) lhs: *const BF,
-    pub(super) rhs: *const BF,
-    pub(super) num: *mut E,
-    pub(super) den: *mut E,
-}
-
-impl<E> Copy for GpuGKRForwardLookupBasePairDescriptor<E> {}
-
-impl<E> Clone for GpuGKRForwardLookupBasePairDescriptor<E> {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
-
-#[repr(C)]
-#[derive(Debug, Default)]
-pub(super) struct GpuGKRForwardLookupExtPairDescriptor<E> {
-    pub(super) lhs: *const E,
-    pub(super) rhs: *const E,
-    pub(super) num: *mut E,
-    pub(super) den: *mut E,
-}
-
-impl<E> Copy for GpuGKRForwardLookupExtPairDescriptor<E> {}
-
-impl<E> Clone for GpuGKRForwardLookupExtPairDescriptor<E> {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
-
-#[repr(C)]
-#[derive(Debug, Default)]
-pub(super) struct GpuGKRForwardLookupBaseMinusMultiplicityByBaseDescriptor<E> {
-    pub(super) b: *const BF,
-    pub(super) c: *const BF,
-    pub(super) d: *const BF,
-    pub(super) d_source_kind: GpuBaseFieldSourceKind,
-    pub(super) num: *mut E,
-    pub(super) den: *mut E,
-}
-
-impl<E> Copy for GpuGKRForwardLookupBaseMinusMultiplicityByBaseDescriptor<E> {}
-
-impl<E> Clone for GpuGKRForwardLookupBaseMinusMultiplicityByBaseDescriptor<E> {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
-
-#[repr(C)]
-#[derive(Debug, Default)]
-pub(super) struct GpuGKRForwardLookupExtMinusMultiplicityByExtDescriptor<E> {
-    pub(super) b: *const E,
-    pub(super) c: *const BF,
-    pub(super) d: *const E,
-    pub(super) num: *mut E,
-    pub(super) den: *mut E,
-}
-
-impl<E> Copy for GpuGKRForwardLookupExtMinusMultiplicityByExtDescriptor<E> {}
-
-impl<E> Clone for GpuGKRForwardLookupExtMinusMultiplicityByExtDescriptor<E> {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
-
-#[repr(C)]
-#[derive(Debug, Default)]
-pub(super) struct GpuGKRForwardLookupUnbalancedBaseDescriptor<E> {
-    pub(super) a: *const E,
-    pub(super) b: *const E,
-    pub(super) remainder: *const BF,
-    pub(super) num: *mut E,
-    pub(super) den: *mut E,
-}
-
-impl<E> Copy for GpuGKRForwardLookupUnbalancedBaseDescriptor<E> {}
-
-impl<E> Clone for GpuGKRForwardLookupUnbalancedBaseDescriptor<E> {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
-
-#[repr(C)]
-#[derive(Debug, Default)]
-pub(super) struct GpuGKRForwardLookupUnbalancedExtensionDescriptor<E> {
-    pub(super) a: *const E,
-    pub(super) b: *const E,
-    pub(super) remainder: *const E,
-    pub(super) num: *mut E,
-    pub(super) den: *mut E,
-}
-
-impl<E> Copy for GpuGKRForwardLookupUnbalancedExtensionDescriptor<E> {}
-
-impl<E> Clone for GpuGKRForwardLookupUnbalancedExtensionDescriptor<E> {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
-
-#[repr(C)]
-#[derive(Debug, Default)]
-pub(super) struct GpuGKRForwardMemoryTupleExpressionDescriptor<E> {
-    pub(super) address_space_kind: GpuGKRForwardCacheAddressSpaceKind,
-    pub(super) address_space_ptr: *const BF,
-    pub(super) address_space_constant: BF,
-    pub(super) constant_term: E,
-    pub(super) linear_inputs: [*const BF; MEMORY_TUPLE_LINEAR_TERMS],
-    pub(super) linear_challenges: [E; MEMORY_TUPLE_LINEAR_TERMS],
-}
-
-impl<E: Copy> Copy for GpuGKRForwardMemoryTupleExpressionDescriptor<E> {}
-
-impl<E: Copy> Clone for GpuGKRForwardMemoryTupleExpressionDescriptor<E> {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
-
-#[repr(C)]
-#[derive(Debug, Default)]
-pub(super) struct GpuGKRForwardInitialGrandProductWithoutCachesDescriptor<E> {
-    pub(super) lhs: GpuGKRForwardMemoryTupleExpressionDescriptor<E>,
-    pub(super) rhs: GpuGKRForwardMemoryTupleExpressionDescriptor<E>,
-    pub(super) dst: *mut E,
-}
-
-impl<E: Copy> Copy for GpuGKRForwardInitialGrandProductWithoutCachesDescriptor<E> {}
-
-impl<E: Copy> Clone for GpuGKRForwardInitialGrandProductWithoutCachesDescriptor<E> {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
-
-#[repr(C)]
-#[derive(Debug, Default)]
-pub(super) struct GpuGKRForwardMaterializeGrandProductTermExpressionDescriptor<E> {
-    pub(super) input: GpuGKRForwardMemoryTupleExpressionDescriptor<E>,
-    pub(super) dst: *mut E,
-}
-
-impl<E: Copy> Copy for GpuGKRForwardMaterializeGrandProductTermExpressionDescriptor<E> {}
-
-impl<E: Copy> Clone for GpuGKRForwardMaterializeGrandProductTermExpressionDescriptor<E> {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
-
-#[repr(C)]
-#[derive(Debug, Default)]
-pub(super) struct GpuGKRForwardLookupPairFromBaseInputsDescriptor<E> {
-    pub(super) lhs_mapping: *const u32,
-    pub(super) rhs_mapping: *const u32,
-    pub(super) num: *mut E,
-    pub(super) den: *mut E,
-}
-
-impl<E: Copy> Copy for GpuGKRForwardLookupPairFromBaseInputsDescriptor<E> {}
-
-impl<E: Copy> Clone for GpuGKRForwardLookupPairFromBaseInputsDescriptor<E> {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
-
-#[repr(C)]
-#[derive(Debug, Default)]
-pub(super) struct GpuGKRForwardLookupWithDensAndSetupExpressionsDescriptor<E> {
-    pub(super) decoder_predicate: *const BF,
-    pub(super) input_mapping: *const u32,
-    pub(super) multiplicity: *const BF,
-    pub(super) generic_lookup: *const E,
-    pub(super) decoder_fill_value: *const E,
-    pub(super) generic_lookup_len: u32,
-    pub(super) num: *mut E,
-    pub(super) den: *mut E,
-}
-
-impl<E> Copy for GpuGKRForwardLookupWithDensAndSetupExpressionsDescriptor<E> {}
-
-impl<E> Clone for GpuGKRForwardLookupWithDensAndSetupExpressionsDescriptor<E> {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
-
-#[repr(C)]
-#[derive(Debug, Default)]
-pub(super) struct GpuGKRForwardLookupPairFromVectorInputsDescriptor<E> {
-    pub(super) lhs_mapping: *const u32,
-    pub(super) rhs_mapping: *const u32,
-    pub(super) generic_lookup: *const E,
-    pub(super) num: *mut E,
-    pub(super) den: *mut E,
-}
-
-impl<E> Copy for GpuGKRForwardLookupPairFromVectorInputsDescriptor<E> {}
-
-impl<E> Clone for GpuGKRForwardLookupPairFromVectorInputsDescriptor<E> {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
-
-#[repr(C)]
-#[derive(Debug, Default)]
-pub(super) struct GpuGKRForwardLookupFromVectorInputWithSetupDescriptor<E> {
-    pub(super) input_mapping: *const u32,
-    pub(super) multiplicity: *const BF,
-    pub(super) generic_lookup: *const E,
-    pub(super) generic_lookup_len: u32,
-    pub(super) num: *mut E,
-    pub(super) den: *mut E,
-}
-
-impl<E> Copy for GpuGKRForwardLookupFromVectorInputWithSetupDescriptor<E> {}
-
-impl<E> Clone for GpuGKRForwardLookupFromVectorInputWithSetupDescriptor<E> {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
-
-#[repr(C)]
-#[derive(Debug, Default)]
-pub(super) struct GpuGKRForwardLookupUnbalancedPairWithVectorInputsDescriptor<E> {
-    pub(super) a: *const E,
-    pub(super) b: *const E,
-    pub(super) remainder_mapping: *const u32,
-    pub(super) generic_lookup: *const E,
-    pub(super) num: *mut E,
-    pub(super) den: *mut E,
-}
-
-impl<E> Copy for GpuGKRForwardLookupUnbalancedPairWithVectorInputsDescriptor<E> {}
-
-impl<E> Clone for GpuGKRForwardLookupUnbalancedPairWithVectorInputsDescriptor<E> {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
-
-#[repr(C)]
-union GpuGKRForwardGatePayload<E> {
-    no_op: ManuallyDrop<GpuGKRForwardNoOpDescriptor>,
-    product: ManuallyDrop<GpuGKRForwardProductDescriptor<E>>,
-    mask_identity: ManuallyDrop<GpuGKRForwardMaskIdentityDescriptor<E>>,
-    lookup_pair: ManuallyDrop<GpuGKRForwardLookupPairDescriptor<E>>,
-    lookup_with_cached_dens_and_setup:
-        ManuallyDrop<GpuGKRForwardLookupWithCachedDensAndSetupDescriptor<E>>,
-    lookup_base_pair: ManuallyDrop<GpuGKRForwardLookupBasePairDescriptor<E>>,
-    lookup_ext_pair: ManuallyDrop<GpuGKRForwardLookupExtPairDescriptor<E>>,
-    lookup_base_minus_multiplicity_by_base:
-        ManuallyDrop<GpuGKRForwardLookupBaseMinusMultiplicityByBaseDescriptor<E>>,
-    lookup_ext_minus_multiplicity_by_ext:
-        ManuallyDrop<GpuGKRForwardLookupExtMinusMultiplicityByExtDescriptor<E>>,
-    lookup_unbalanced_base: ManuallyDrop<GpuGKRForwardLookupUnbalancedBaseDescriptor<E>>,
-    lookup_unbalanced_extension: ManuallyDrop<GpuGKRForwardLookupUnbalancedExtensionDescriptor<E>>,
-    initial_grand_product_without_caches:
-        ManuallyDrop<GpuGKRForwardInitialGrandProductWithoutCachesDescriptor<E>>,
-    materialize_grand_product_term_expression:
-        ManuallyDrop<GpuGKRForwardMaterializeGrandProductTermExpressionDescriptor<E>>,
-    lookup_pair_from_base_inputs: ManuallyDrop<GpuGKRForwardLookupPairFromBaseInputsDescriptor<E>>,
-    lookup_with_dens_and_setup_expressions:
-        ManuallyDrop<GpuGKRForwardLookupWithDensAndSetupExpressionsDescriptor<E>>,
-    lookup_pair_from_vector_inputs:
-        ManuallyDrop<GpuGKRForwardLookupPairFromVectorInputsDescriptor<E>>,
-    lookup_from_vector_input_with_setup:
-        ManuallyDrop<GpuGKRForwardLookupFromVectorInputWithSetupDescriptor<E>>,
-    lookup_unbalanced_pair_with_vector_inputs:
-        ManuallyDrop<GpuGKRForwardLookupUnbalancedPairWithVectorInputsDescriptor<E>>,
-}
-
-impl<E: Copy> Copy for GpuGKRForwardGatePayload<E> {}
-
-impl<E: Copy> Clone for GpuGKRForwardGatePayload<E> {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
-
-impl<E> Default for GpuGKRForwardGatePayload<E> {
-    fn default() -> Self {
-        Self {
-            no_op: ManuallyDrop::new(GpuGKRForwardNoOpDescriptor::default()),
-        }
-    }
-}
-
-#[repr(C)]
-#[derive(Default)]
-pub(super) struct GpuGKRForwardGateDescriptor<E> {
-    pub(super) kind: u32,
-    pub(super) _reserved: u32,
-    pub(super) payload: GpuGKRForwardGatePayload<E>,
-}
-
-impl<E: Copy> Copy for GpuGKRForwardGateDescriptor<E> {}
-
-impl<E: Copy> Clone for GpuGKRForwardGateDescriptor<E> {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
-
-impl<E> GpuGKRForwardGateDescriptor<E> {
-    pub(super) fn no_op() -> Self {
-        Self {
-            kind: GpuGKRForwardGateKind::NoOp.as_u32(),
-            _reserved: 0,
-            payload: GpuGKRForwardGatePayload::default(),
-        }
-    }
-
-    pub(super) fn with_product(lhs: *const E, rhs: *const E, dst: *mut E) -> Self {
-        Self {
-            kind: GpuGKRForwardGateKind::Product.as_u32(),
-            _reserved: 0,
-            payload: GpuGKRForwardGatePayload {
-                product: ManuallyDrop::new(GpuGKRForwardProductDescriptor { lhs, rhs, dst }),
-            },
-        }
-    }
-
-    pub(super) fn with_mask_identity(input: *const E, mask: *const BF, dst: *mut E) -> Self {
-        Self {
-            kind: GpuGKRForwardGateKind::MaskIdentity.as_u32(),
-            _reserved: 0,
-            payload: GpuGKRForwardGatePayload {
-                mask_identity: ManuallyDrop::new(GpuGKRForwardMaskIdentityDescriptor {
-                    input,
-                    mask,
-                    dst,
-                }),
-            },
-        }
-    }
-
-    pub(super) fn with_lookup_pair(
-        a: *const E,
-        b: *const E,
-        c: *const E,
-        d: *const E,
-        num: *mut E,
-        den: *mut E,
-    ) -> Self {
-        Self {
-            kind: GpuGKRForwardGateKind::LookupPair.as_u32(),
-            _reserved: 0,
-            payload: GpuGKRForwardGatePayload {
-                lookup_pair: ManuallyDrop::new(GpuGKRForwardLookupPairDescriptor {
-                    a,
-                    b,
-                    c,
-                    d,
-                    num,
-                    den,
-                }),
-            },
-        }
-    }
-
-    pub(super) fn with_lookup_cached_dens_and_setup(
-        a: *const BF,
-        b: *const E,
-        c: *const BF,
-        d: *const E,
-        num: *mut E,
-        den: *mut E,
-    ) -> Self {
-        Self {
-            kind: GpuGKRForwardGateKind::LookupWithCachedDensAndSetup.as_u32(),
-            _reserved: 0,
-            payload: GpuGKRForwardGatePayload {
-                lookup_with_cached_dens_and_setup: ManuallyDrop::new(
-                    GpuGKRForwardLookupWithCachedDensAndSetupDescriptor {
-                        a,
-                        b,
-                        c,
-                        d,
-                        num,
-                        den,
-                    },
-                ),
-            },
-        }
-    }
-
-    pub(super) fn with_lookup_base_pair(
-        lhs: *const BF,
-        rhs: *const BF,
-        num: *mut E,
-        den: *mut E,
-    ) -> Self {
-        Self {
-            kind: GpuGKRForwardGateKind::LookupBasePair.as_u32(),
-            _reserved: 0,
-            payload: GpuGKRForwardGatePayload {
-                lookup_base_pair: ManuallyDrop::new(GpuGKRForwardLookupBasePairDescriptor {
-                    lhs,
-                    rhs,
-                    num,
-                    den,
-                }),
-            },
-        }
-    }
-
-    pub(super) fn with_lookup_ext_pair(
-        lhs: *const E,
-        rhs: *const E,
-        num: *mut E,
-        den: *mut E,
-    ) -> Self {
-        Self {
-            kind: GpuGKRForwardGateKind::LookupExtPair.as_u32(),
-            _reserved: 0,
-            payload: GpuGKRForwardGatePayload {
-                lookup_ext_pair: ManuallyDrop::new(GpuGKRForwardLookupExtPairDescriptor {
-                    lhs,
-                    rhs,
-                    num,
-                    den,
-                }),
-            },
-        }
-    }
-
-    pub(super) fn with_lookup_base_minus_multiplicity_by_base(
-        b: *const BF,
-        c: *const BF,
-        d: *const BF,
-        d_source_kind: GpuBaseFieldSourceKind,
-        num: *mut E,
-        den: *mut E,
-    ) -> Self {
-        Self {
-            kind: GpuGKRForwardGateKind::LookupBaseMinusMultiplicityByBase.as_u32(),
-            _reserved: 0,
-            payload: GpuGKRForwardGatePayload {
-                lookup_base_minus_multiplicity_by_base: ManuallyDrop::new(
-                    GpuGKRForwardLookupBaseMinusMultiplicityByBaseDescriptor {
-                        b,
-                        c,
-                        d,
-                        d_source_kind,
-                        num,
-                        den,
-                    },
-                ),
-            },
-        }
-    }
-
-    pub(super) fn with_lookup_ext_minus_multiplicity_by_ext(
-        b: *const E,
-        c: *const BF,
-        d: *const E,
-        num: *mut E,
-        den: *mut E,
-    ) -> Self {
-        Self {
-            kind: GpuGKRForwardGateKind::LookupExtMinusMultiplicityByExt.as_u32(),
-            _reserved: 0,
-            payload: GpuGKRForwardGatePayload {
-                lookup_ext_minus_multiplicity_by_ext: ManuallyDrop::new(
-                    GpuGKRForwardLookupExtMinusMultiplicityByExtDescriptor { b, c, d, num, den },
-                ),
-            },
-        }
-    }
-
-    pub(super) fn with_lookup_unbalanced_base(
-        a: *const E,
-        b: *const E,
-        remainder: *const BF,
-        num: *mut E,
-        den: *mut E,
-    ) -> Self {
-        Self {
-            kind: GpuGKRForwardGateKind::LookupUnbalancedBase.as_u32(),
-            _reserved: 0,
-            payload: GpuGKRForwardGatePayload {
-                lookup_unbalanced_base: ManuallyDrop::new(
-                    GpuGKRForwardLookupUnbalancedBaseDescriptor {
-                        a,
-                        b,
-                        remainder,
-                        num,
-                        den,
-                    },
-                ),
-            },
-        }
-    }
-
-    pub(super) fn with_lookup_unbalanced_extension(
-        a: *const E,
-        b: *const E,
-        remainder: *const E,
-        num: *mut E,
-        den: *mut E,
-    ) -> Self {
-        Self {
-            kind: GpuGKRForwardGateKind::LookupUnbalancedExtension.as_u32(),
-            _reserved: 0,
-            payload: GpuGKRForwardGatePayload {
-                lookup_unbalanced_extension: ManuallyDrop::new(
-                    GpuGKRForwardLookupUnbalancedExtensionDescriptor {
-                        a,
-                        b,
-                        remainder,
-                        num,
-                        den,
-                    },
-                ),
-            },
-        }
-    }
-
-    pub(super) fn with_initial_grand_product_without_caches(
-        lhs: GpuGKRForwardMemoryTupleExpressionDescriptor<E>,
-        rhs: GpuGKRForwardMemoryTupleExpressionDescriptor<E>,
-        dst: *mut E,
-    ) -> Self {
-        Self {
-            kind: GpuGKRForwardGateKind::InitialGrandProductWithoutCaches.as_u32(),
-            _reserved: 0,
-            payload: GpuGKRForwardGatePayload {
-                initial_grand_product_without_caches: ManuallyDrop::new(
-                    GpuGKRForwardInitialGrandProductWithoutCachesDescriptor { lhs, rhs, dst },
-                ),
-            },
-        }
-    }
-
-    pub(super) fn with_materialize_grand_product_term_expression(
-        input: GpuGKRForwardMemoryTupleExpressionDescriptor<E>,
-        dst: *mut E,
-    ) -> Self {
-        Self {
-            kind: GpuGKRForwardGateKind::MaterializeGrandProductTermExpression.as_u32(),
-            _reserved: 0,
-            payload: GpuGKRForwardGatePayload {
-                materialize_grand_product_term_expression: ManuallyDrop::new(
-                    GpuGKRForwardMaterializeGrandProductTermExpressionDescriptor { input, dst },
-                ),
-            },
-        }
-    }
-
-    pub(super) fn with_lookup_pair_from_base_inputs(
-        lhs_mapping: *const u32,
-        rhs_mapping: *const u32,
-        num: *mut E,
-        den: *mut E,
-    ) -> Self {
-        Self {
-            kind: GpuGKRForwardGateKind::LookupPairFromBaseInputs.as_u32(),
-            _reserved: 0,
-            payload: GpuGKRForwardGatePayload {
-                lookup_pair_from_base_inputs: ManuallyDrop::new(
-                    GpuGKRForwardLookupPairFromBaseInputsDescriptor {
-                        lhs_mapping,
-                        rhs_mapping,
-                        num,
-                        den,
-                    },
-                ),
-            },
-        }
-    }
-
-    pub(super) fn with_lookup_with_dens_and_setup_expressions(
-        decoder_predicate: *const BF,
-        input_mapping: *const u32,
-        multiplicity: *const BF,
-        generic_lookup: *const E,
-        decoder_fill_value: *const E,
-        generic_lookup_len: u32,
-        num: *mut E,
-        den: *mut E,
-    ) -> Self {
-        Self {
-            kind: GpuGKRForwardGateKind::LookupWithDensAndSetupExpressions.as_u32(),
-            _reserved: 0,
-            payload: GpuGKRForwardGatePayload {
-                lookup_with_dens_and_setup_expressions: ManuallyDrop::new(
-                    GpuGKRForwardLookupWithDensAndSetupExpressionsDescriptor {
-                        decoder_predicate,
-                        input_mapping,
-                        multiplicity,
-                        generic_lookup,
-                        decoder_fill_value,
-                        generic_lookup_len,
-                        num,
-                        den,
-                    },
-                ),
-            },
-        }
-    }
-
-    pub(super) fn with_lookup_pair_from_vector_inputs(
-        lhs_mapping: *const u32,
-        rhs_mapping: *const u32,
-        generic_lookup: *const E,
-        num: *mut E,
-        den: *mut E,
-    ) -> Self {
-        Self {
-            kind: GpuGKRForwardGateKind::LookupPairFromVectorInputs.as_u32(),
-            _reserved: 0,
-            payload: GpuGKRForwardGatePayload {
-                lookup_pair_from_vector_inputs: ManuallyDrop::new(
-                    GpuGKRForwardLookupPairFromVectorInputsDescriptor {
-                        lhs_mapping,
-                        rhs_mapping,
-                        generic_lookup,
-                        num,
-                        den,
-                    },
-                ),
-            },
-        }
-    }
-
-    pub(super) fn with_lookup_from_vector_input_with_setup(
-        input_mapping: *const u32,
-        multiplicity: *const BF,
-        generic_lookup: *const E,
-        generic_lookup_len: u32,
-        num: *mut E,
-        den: *mut E,
-    ) -> Self {
-        Self {
-            kind: GpuGKRForwardGateKind::LookupFromVectorInputWithSetup.as_u32(),
-            _reserved: 0,
-            payload: GpuGKRForwardGatePayload {
-                lookup_from_vector_input_with_setup: ManuallyDrop::new(
-                    GpuGKRForwardLookupFromVectorInputWithSetupDescriptor {
-                        input_mapping,
-                        multiplicity,
-                        generic_lookup,
-                        generic_lookup_len,
-                        num,
-                        den,
-                    },
-                ),
-            },
-        }
-    }
-
-    pub(super) fn with_lookup_unbalanced_pair_with_vector_inputs(
-        a: *const E,
-        b: *const E,
-        remainder_mapping: *const u32,
-        generic_lookup: *const E,
-        num: *mut E,
-        den: *mut E,
-    ) -> Self {
-        Self {
-            kind: GpuGKRForwardGateKind::LookupUnbalancedPairWithVectorInputs.as_u32(),
-            _reserved: 0,
-            payload: GpuGKRForwardGatePayload {
-                lookup_unbalanced_pair_with_vector_inputs: ManuallyDrop::new(
-                    GpuGKRForwardLookupUnbalancedPairWithVectorInputsDescriptor {
-                        a,
-                        b,
-                        remainder_mapping,
-                        generic_lookup,
-                        num,
-                        den,
-                    },
-                ),
-            },
-        }
-    }
-}
-
-#[repr(C)]
-pub(super) struct GpuGKRForwardLayerBatch<
-    E,
-    const MAX_GATES: usize = GKR_FORWARD_MAX_GATES_PER_LAYER,
-> {
-    pub(super) gate_count: u32,
-    pub(super) _reserved: u32,
-    pub(super) lookup_additive_challenge: *const E,
-    pub(super) descriptors: [GpuGKRForwardGateDescriptor<E>; MAX_GATES],
-}
-
-impl<E: Copy, const MAX_GATES: usize> Copy for GpuGKRForwardLayerBatch<E, MAX_GATES> {}
-
-impl<E: Copy, const MAX_GATES: usize> Clone for GpuGKRForwardLayerBatch<E, MAX_GATES> {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
-
-impl<E, const MAX_GATES: usize> Default for GpuGKRForwardLayerBatch<E, MAX_GATES> {
-    fn default() -> Self {
-        Self {
-            gate_count: 0,
-            _reserved: 0,
-            lookup_additive_challenge: null(),
-            descriptors: std::array::from_fn(|_| GpuGKRForwardGateDescriptor::no_op()),
-        }
-    }
-}
-
-impl<E, const MAX_GATES: usize> GpuGKRForwardLayerBatch<E, MAX_GATES> {
-    pub(super) fn new(lookup_additive_challenge: *const E) -> Self {
-        Self {
-            lookup_additive_challenge,
-            ..Self::default()
-        }
-    }
-}
-
-pub(super) struct LoweredGpuGKRForwardLayer<E> {
-    pub(super) batches: Vec<GpuGKRForwardLayerBatch<E>>,
+pub(super) struct FlatForwardPlan<E> {
+    pub(super) desc: Box<GpuFlatForwardStaticDesc<E>>,
     pub(super) computed_extension_outputs: Vec<(GKRAddress, GpuExtensionFieldPoly<E>)>,
     pub(super) aliased_base_outputs: Vec<(GKRAddress, GpuBaseFieldPoly<BF>)>,
     pub(super) aliased_extension_outputs: Vec<(GKRAddress, GpuExtensionFieldPoly<E>)>,
 }
-
-cuda_kernel_signature_arguments_and_function!(
-    GpuGKRForwardLayer<T>,
-    batch: GpuGKRForwardLayerBatch<T>,
-    count: u32,
-);
-
-pub(crate) trait GpuGKRForwardKernelSet: Copy + Sized {
-    const FORWARD_LAYER: GpuGKRForwardLayerSignature<Self>;
-}
-
-macro_rules! gkr_forward_layer_kernels {
-    ($type:ty) => {
-        paste! {
-            cuda_kernel_declaration!(
-                [<ab_gkr_forward_layer_ $type:lower _kernel>](
-                    batch: GpuGKRForwardLayerBatch<$type>,
-                    count: u32,
-                )
-            );
-
-            impl GpuGKRForwardKernelSet for $type {
-                const FORWARD_LAYER: GpuGKRForwardLayerSignature<Self> =
-                    [<ab_gkr_forward_layer_ $type:lower _kernel>];
-            }
-        }
-    };
-}
-
-gkr_forward_layer_kernels!(E4);
 
 #[repr(u32)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -1180,219 +320,121 @@ macro_rules! gkr_virtual_base_accum_kernels {
 
 gkr_virtual_base_accum_kernels!(E4);
 
-#[repr(u32)]
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(super) enum GpuGKRDimensionReducingForwardInputKind {
-    #[default]
-    NoOp = 0,
-    PairwiseProduct = 1,
-    LookupPair = 2,
-}
-
-impl GpuGKRDimensionReducingForwardInputKind {
-    pub(super) const fn as_u32(self) -> u32 {
-        self as u32
-    }
-}
-
+// Per-slot tower batch: one kernel launch per slot, covering up to
+// `GKR_DIM_REDUCING_FORWARD_TOWER_MAX_ROUNDS` consecutive halving rounds.
+// Slots are PairwiseProduct (1 buffer) or LookupPair (2 buffers, num/den).
 #[repr(C)]
-#[derive(Clone, Copy, Debug, Default)]
-pub(super) struct GpuGKRDimensionReducingForwardNoOpDescriptor {
-    pub(super) reserved: usize,
-}
-
-#[repr(C)]
-#[derive(Debug, Default)]
-pub(super) struct GpuGKRDimensionReducingForwardPairwiseProductDescriptor<E> {
+pub(super) struct GpuGKRDimensionReducingForwardTowerPairwiseBatch<E> {
     pub(super) input: *const E,
-    pub(super) output: *mut E,
+    pub(super) round_outputs: [*mut E; GKR_DIM_REDUCING_FORWARD_TOWER_MAX_ROUNDS],
+    pub(super) input_len: u32,
+    pub(super) round_count: u32,
 }
 
-impl<E> Copy for GpuGKRDimensionReducingForwardPairwiseProductDescriptor<E> {}
+impl<E> Copy for GpuGKRDimensionReducingForwardTowerPairwiseBatch<E> {}
 
-impl<E> Clone for GpuGKRDimensionReducingForwardPairwiseProductDescriptor<E> {
+impl<E> Clone for GpuGKRDimensionReducingForwardTowerPairwiseBatch<E> {
     fn clone(&self) -> Self {
         *self
     }
 }
 
-#[repr(C)]
-#[derive(Debug, Default)]
-pub(super) struct GpuGKRDimensionReducingForwardLookupPairDescriptor<E> {
-    pub(super) num: *const E,
-    pub(super) den: *const E,
-    pub(super) output_num: *mut E,
-    pub(super) output_den: *mut E,
-}
-
-impl<E> Copy for GpuGKRDimensionReducingForwardLookupPairDescriptor<E> {}
-
-impl<E> Clone for GpuGKRDimensionReducingForwardLookupPairDescriptor<E> {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
-
-#[repr(C)]
-union GpuGKRDimensionReducingForwardInputPayload<E> {
-    no_op: ManuallyDrop<GpuGKRDimensionReducingForwardNoOpDescriptor>,
-    pairwise_product: ManuallyDrop<GpuGKRDimensionReducingForwardPairwiseProductDescriptor<E>>,
-    lookup_pair: ManuallyDrop<GpuGKRDimensionReducingForwardLookupPairDescriptor<E>>,
-}
-
-impl<E> Copy for GpuGKRDimensionReducingForwardInputPayload<E> {}
-
-impl<E> Clone for GpuGKRDimensionReducingForwardInputPayload<E> {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
-
-impl<E> Default for GpuGKRDimensionReducingForwardInputPayload<E> {
+impl<E> Default for GpuGKRDimensionReducingForwardTowerPairwiseBatch<E> {
     fn default() -> Self {
         Self {
-            no_op: ManuallyDrop::new(GpuGKRDimensionReducingForwardNoOpDescriptor::default()),
+            input: null(),
+            round_outputs: [null::<E>().cast_mut(); GKR_DIM_REDUCING_FORWARD_TOWER_MAX_ROUNDS],
+            input_len: 0,
+            round_count: 0,
         }
     }
 }
 
+// SAFETY: raw pointers are kept alive by the GpuGKRStorage allocations that
+// back them; the scheduler ensures kernel launches happen stream-ordered after
+// the pointers are written and before they are freed.
+unsafe impl<E> Send for GpuGKRDimensionReducingForwardTowerPairwiseBatch<E> {}
+unsafe impl<E> Sync for GpuGKRDimensionReducingForwardTowerPairwiseBatch<E> {}
+
 #[repr(C)]
-#[derive(Default)]
-pub(super) struct GpuGKRDimensionReducingForwardInputDescriptor<E> {
-    pub(super) kind: u32,
-    pub(super) _reserved: u32,
-    pub(super) payload: GpuGKRDimensionReducingForwardInputPayload<E>,
+pub(super) struct GpuGKRDimensionReducingForwardTowerLookupBatch<E> {
+    pub(super) input_num: *const E,
+    pub(super) input_den: *const E,
+    pub(super) round_outputs_num: [*mut E; GKR_DIM_REDUCING_FORWARD_TOWER_MAX_ROUNDS],
+    pub(super) round_outputs_den: [*mut E; GKR_DIM_REDUCING_FORWARD_TOWER_MAX_ROUNDS],
+    pub(super) input_len: u32,
+    pub(super) round_count: u32,
 }
 
-impl<E> Copy for GpuGKRDimensionReducingForwardInputDescriptor<E> {}
+impl<E> Copy for GpuGKRDimensionReducingForwardTowerLookupBatch<E> {}
 
-impl<E> Clone for GpuGKRDimensionReducingForwardInputDescriptor<E> {
+impl<E> Clone for GpuGKRDimensionReducingForwardTowerLookupBatch<E> {
     fn clone(&self) -> Self {
         *self
     }
 }
 
-impl<E> GpuGKRDimensionReducingForwardInputDescriptor<E> {
-    pub(super) fn no_op() -> Self {
-        Self {
-            kind: GpuGKRDimensionReducingForwardInputKind::NoOp.as_u32(),
-            _reserved: 0,
-            payload: GpuGKRDimensionReducingForwardInputPayload::default(),
-        }
-    }
-
-    pub(super) fn with_pairwise_product(input: *const E, output: *mut E) -> Self {
-        Self {
-            kind: GpuGKRDimensionReducingForwardInputKind::PairwiseProduct.as_u32(),
-            _reserved: 0,
-            payload: GpuGKRDimensionReducingForwardInputPayload {
-                pairwise_product: ManuallyDrop::new(
-                    GpuGKRDimensionReducingForwardPairwiseProductDescriptor { input, output },
-                ),
-            },
-        }
-    }
-
-    pub(super) fn with_lookup_pair(
-        num: *const E,
-        den: *const E,
-        output_num: *mut E,
-        output_den: *mut E,
-    ) -> Self {
-        Self {
-            kind: GpuGKRDimensionReducingForwardInputKind::LookupPair.as_u32(),
-            _reserved: 0,
-            payload: GpuGKRDimensionReducingForwardInputPayload {
-                lookup_pair: ManuallyDrop::new(
-                    GpuGKRDimensionReducingForwardLookupPairDescriptor {
-                        num,
-                        den,
-                        output_num,
-                        output_den,
-                    },
-                ),
-            },
-        }
-    }
-}
-
-#[derive(Clone, Copy)]
-pub(super) enum LoweredGpuGKRDimensionReducingForwardInput<E> {
-    PairwiseProduct {
-        input: *const E,
-        output: *mut E,
-    },
-    LookupPair {
-        num: *const E,
-        den: *const E,
-        output_num: *mut E,
-        output_den: *mut E,
-    },
-}
-
-#[repr(C)]
-pub(super) struct GpuGKRDimensionReducingForwardBatch<
-    E,
-    const MAX_INPUTS: usize = GKR_DIM_REDUCING_FORWARD_MAX_INPUTS,
-> {
-    pub(super) input_count: u32,
-    pub(super) _reserved: u32,
-    pub(super) descriptors: [GpuGKRDimensionReducingForwardInputDescriptor<E>; MAX_INPUTS],
-}
-
-impl<E, const MAX_INPUTS: usize> Copy for GpuGKRDimensionReducingForwardBatch<E, MAX_INPUTS> {}
-
-impl<E, const MAX_INPUTS: usize> Clone for GpuGKRDimensionReducingForwardBatch<E, MAX_INPUTS> {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
-
-impl<E, const MAX_INPUTS: usize> Default for GpuGKRDimensionReducingForwardBatch<E, MAX_INPUTS> {
+impl<E> Default for GpuGKRDimensionReducingForwardTowerLookupBatch<E> {
     fn default() -> Self {
         Self {
-            input_count: 0,
-            _reserved: 0,
-            descriptors: [GpuGKRDimensionReducingForwardInputDescriptor::no_op(); MAX_INPUTS],
+            input_num: null(),
+            input_den: null(),
+            round_outputs_num: [null::<E>().cast_mut(); GKR_DIM_REDUCING_FORWARD_TOWER_MAX_ROUNDS],
+            round_outputs_den: [null::<E>().cast_mut(); GKR_DIM_REDUCING_FORWARD_TOWER_MAX_ROUNDS],
+            input_len: 0,
+            round_count: 0,
         }
     }
 }
 
-pub(super) struct LoweredGpuGKRDimensionReducingForwardRound<E> {
-    pub(super) batch: GpuGKRDimensionReducingForwardBatch<E>,
-    pub(super) layer_description: BTreeMap<OutputType, DimensionReducingInputOutput>,
-    pub(super) computed_extension_outputs: Vec<(GKRAddress, GpuExtensionFieldPoly<E>)>,
-}
+unsafe impl<E> Send for GpuGKRDimensionReducingForwardTowerLookupBatch<E> {}
+unsafe impl<E> Sync for GpuGKRDimensionReducingForwardTowerLookupBatch<E> {}
 
 cuda_kernel_signature_arguments_and_function!(
-    GpuGKRDimensionReducingForward<T>,
-    batch: GpuGKRDimensionReducingForwardBatch<T>,
-    row_count: u32,
+    GpuGKRDimensionReducingForwardTowerPairwise<T>,
+    batch: GpuGKRDimensionReducingForwardTowerPairwiseBatch<T>,
 );
 
-pub(crate) trait GpuGKRDimensionReducingForwardKernelSet: Copy + Sized {
-    const DIMENSION_REDUCING_FORWARD: GpuGKRDimensionReducingForwardSignature<Self>;
+cuda_kernel_signature_arguments_and_function!(
+    GpuGKRDimensionReducingForwardTowerLookup<T>,
+    batch: GpuGKRDimensionReducingForwardTowerLookupBatch<T>,
+);
+
+pub(crate) trait GpuGKRDimensionReducingForwardTowerKernelSet: Copy + Sized {
+    const DIMENSION_REDUCING_FORWARD_TOWER_PAIRWISE:
+        GpuGKRDimensionReducingForwardTowerPairwiseSignature<Self>;
+    const DIMENSION_REDUCING_FORWARD_TOWER_LOOKUP:
+        GpuGKRDimensionReducingForwardTowerLookupSignature<Self>;
 }
 
-macro_rules! gkr_dim_reducing_forward_kernels {
+macro_rules! gkr_dim_reducing_forward_tower_kernels {
     ($type:ty) => {
         paste! {
             cuda_kernel_declaration!(
-                [<ab_gkr_dim_reducing_forward_ $type:lower _kernel>](
-                    batch: GpuGKRDimensionReducingForwardBatch<$type>,
-                    row_count: u32,
+                [<ab_gkr_dim_reducing_forward_tower_pairwise_ $type:lower _kernel>](
+                    batch: GpuGKRDimensionReducingForwardTowerPairwiseBatch<$type>,
                 )
             );
 
-            impl GpuGKRDimensionReducingForwardKernelSet for $type {
-                const DIMENSION_REDUCING_FORWARD: GpuGKRDimensionReducingForwardSignature<Self> =
-                    [<ab_gkr_dim_reducing_forward_ $type:lower _kernel>];
+            cuda_kernel_declaration!(
+                [<ab_gkr_dim_reducing_forward_tower_lookup_ $type:lower _kernel>](
+                    batch: GpuGKRDimensionReducingForwardTowerLookupBatch<$type>,
+                )
+            );
+
+            impl GpuGKRDimensionReducingForwardTowerKernelSet for $type {
+                const DIMENSION_REDUCING_FORWARD_TOWER_PAIRWISE:
+                    GpuGKRDimensionReducingForwardTowerPairwiseSignature<Self> =
+                    [<ab_gkr_dim_reducing_forward_tower_pairwise_ $type:lower _kernel>];
+                const DIMENSION_REDUCING_FORWARD_TOWER_LOOKUP:
+                    GpuGKRDimensionReducingForwardTowerLookupSignature<Self> =
+                    [<ab_gkr_dim_reducing_forward_tower_lookup_ $type:lower _kernel>];
             }
         }
     };
 }
 
-gkr_dim_reducing_forward_kernels!(E4);
+gkr_dim_reducing_forward_tower_kernels!(E4);
 
 pub(super) fn gkr_forward_cache_launch_config(
     count: u32,
@@ -1426,55 +468,50 @@ pub(super) fn launch_virtual_base_accum<E: GpuGKRVirtualBaseAccumKernelSet>(
     GpuGKRVirtualBaseAccumFunction(E::VIRTUAL_BASE_ACCUM).launch(&config, &args)
 }
 
-pub(super) fn pack_dimension_reducing_forward_batch<E>(
-    lowered_inputs: &[LoweredGpuGKRDimensionReducingForwardInput<E>],
-) -> GpuGKRDimensionReducingForwardBatch<E> {
-    assert!(
-        lowered_inputs.len() <= GKR_DIM_REDUCING_FORWARD_MAX_INPUTS,
-        "dimension reduction layer has {} lowered inputs, exceeding the fused forward cap of {}",
-        lowered_inputs.len(),
-        GKR_DIM_REDUCING_FORWARD_MAX_INPUTS
-    );
-
-    let mut batch = GpuGKRDimensionReducingForwardBatch::default();
-    batch.input_count = lowered_inputs.len() as u32;
-    for (lowered_input, descriptor) in lowered_inputs.iter().zip(batch.descriptors.iter_mut()) {
-        *descriptor = match *lowered_input {
-            LoweredGpuGKRDimensionReducingForwardInput::PairwiseProduct { input, output } => {
-                GpuGKRDimensionReducingForwardInputDescriptor::with_pairwise_product(input, output)
-            }
-            LoweredGpuGKRDimensionReducingForwardInput::LookupPair {
-                num,
-                den,
-                output_num,
-                output_den,
-            } => GpuGKRDimensionReducingForwardInputDescriptor::with_lookup_pair(
-                num, den, output_num, output_den,
-            ),
-        };
-    }
-
-    batch
-}
-
-pub(super) fn gkr_dimension_reducing_forward_launch_config(
-    row_count: u32,
-    context: &ProverContext,
-) -> CudaLaunchConfig<'_> {
-    let (grid_dim, block_dim) =
-        get_grid_block_dims_for_threads_count(GKR_FORWARD_THREADS_PER_BLOCK, row_count.max(1));
-    CudaLaunchConfig::basic(grid_dim, block_dim, context.get_exec_stream())
-}
-
-pub(super) fn launch_dimension_reducing_forward<E: GpuGKRDimensionReducingForwardKernelSet>(
-    batch: &GpuGKRDimensionReducingForwardBatch<E>,
-    row_count: usize,
-    context: &ProverContext,
+pub(super) fn launch_dimension_reducing_forward_tower_pairwise<
+    E: GpuGKRDimensionReducingForwardTowerKernelSet,
+>(
+    batch: &GpuGKRDimensionReducingForwardTowerPairwiseBatch<E>,
+    stream: &CudaStream,
 ) -> CudaResult<()> {
-    assert!(row_count <= u32::MAX as usize);
-    let config = gkr_dimension_reducing_forward_launch_config(row_count as u32, context);
-    let args = GpuGKRDimensionReducingForwardArguments::new(*batch, row_count as u32);
-    GpuGKRDimensionReducingForwardFunction(E::DIMENSION_REDUCING_FORWARD).launch(&config, &args)
+    let block_size = GKR_DIM_REDUCING_FORWARD_TOWER_BLOCK;
+    let input_len = batch.input_len;
+    assert!(input_len > 0, "tower pairwise batch has empty input");
+    let grid_dim = input_len.div_ceil(block_size).max(1);
+    let dynamic_smem_bytes = block_size as usize * std::mem::size_of::<E>();
+    let config = CudaLaunchConfig::builder()
+        .grid_dim(grid_dim)
+        .block_dim(block_size)
+        .dynamic_smem_bytes(dynamic_smem_bytes)
+        .stream(stream)
+        .build();
+    let args = GpuGKRDimensionReducingForwardTowerPairwiseArguments::new(*batch);
+    GpuGKRDimensionReducingForwardTowerPairwiseFunction(
+        E::DIMENSION_REDUCING_FORWARD_TOWER_PAIRWISE,
+    )
+    .launch(&config, &args)
+}
+
+pub(super) fn launch_dimension_reducing_forward_tower_lookup<
+    E: GpuGKRDimensionReducingForwardTowerKernelSet,
+>(
+    batch: &GpuGKRDimensionReducingForwardTowerLookupBatch<E>,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    let block_size = GKR_DIM_REDUCING_FORWARD_TOWER_BLOCK;
+    let input_len = batch.input_len;
+    assert!(input_len > 0, "tower lookup batch has empty input");
+    let grid_dim = input_len.div_ceil(block_size).max(1);
+    let dynamic_smem_bytes = 2 * block_size as usize * std::mem::size_of::<E>();
+    let config = CudaLaunchConfig::builder()
+        .grid_dim(grid_dim)
+        .block_dim(block_size)
+        .dynamic_smem_bytes(dynamic_smem_bytes)
+        .stream(stream)
+        .build();
+    let args = GpuGKRDimensionReducingForwardTowerLookupArguments::new(*batch);
+    GpuGKRDimensionReducingForwardTowerLookupFunction(E::DIMENSION_REDUCING_FORWARD_TOWER_LOOKUP)
+        .launch(&config, &args)
 }
 
 pub(super) fn gkr_forward_launch_config(
@@ -1486,14 +523,400 @@ pub(super) fn gkr_forward_launch_config(
     CudaLaunchConfig::basic(grid_dim, block_dim, context.get_exec_stream())
 }
 
-pub(super) fn launch_forward_layer<E: GpuGKRForwardKernelSet>(
-    batch: &GpuGKRForwardLayerBatch<E>,
+// ---------------------------------------------------------------------------
+// Flat forward kernel (Phase 1 skeleton — not yet wired in)
+// ---------------------------------------------------------------------------
+//
+// Mirrors `flat_forward_static_desc<E>` in native/prover/gkr/flat_forward.cuh.
+// The Rust lowering that populates these descriptors will be added in Phase 2
+// (new file `forward_flat.rs`); for now the types just need to exist so the
+// kernel binding and launch path compile.
+
+pub(super) const FLAT_FWD_MAX_SOURCES: usize = 256;
+pub(super) const FLAT_FWD_MAX_PER_CATEGORY: usize = 64;
+
+#[repr(C)]
+#[derive(Debug, Default)]
+pub(super) struct GpuFlatFwdProductEntry<E> {
+    pub(super) src_a: u16,
+    pub(super) src_b: u16,
+    pub(super) dst: *mut E,
+}
+
+impl<E> Copy for GpuFlatFwdProductEntry<E> {}
+
+impl<E> Clone for GpuFlatFwdProductEntry<E> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+#[repr(C)]
+#[derive(Debug, Default)]
+pub(super) struct GpuFlatFwdMaskEntry<E> {
+    pub(super) src_mask: u16,
+    pub(super) src_input: u16,
+    pub(super) dst: *mut E,
+}
+
+impl<E> Copy for GpuFlatFwdMaskEntry<E> {}
+
+impl<E> Clone for GpuFlatFwdMaskEntry<E> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+#[repr(C)]
+#[derive(Debug, Default)]
+pub(super) struct GpuFlatFwdLookup4Entry<E> {
+    pub(super) src_a: u16,
+    pub(super) src_b: u16,
+    pub(super) src_c: u16,
+    pub(super) src_d: u16,
+    pub(super) num: *mut E,
+    pub(super) den: *mut E,
+}
+
+impl<E> Copy for GpuFlatFwdLookup4Entry<E> {}
+
+impl<E> Clone for GpuFlatFwdLookup4Entry<E> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+#[repr(C)]
+#[derive(Debug, Default)]
+pub(super) struct GpuFlatFwdBfPairEntry<E> {
+    pub(super) src_b: u16,
+    pub(super) src_d: u16,
+    pub(super) num: *mut E,
+    pub(super) den: *mut E,
+}
+
+impl<E> Copy for GpuFlatFwdBfPairEntry<E> {}
+
+impl<E> Clone for GpuFlatFwdBfPairEntry<E> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+#[repr(C)]
+#[derive(Debug, Default)]
+pub(super) struct GpuFlatFwdE4PairEntry<E> {
+    pub(super) src_b: u16,
+    pub(super) src_d: u16,
+    pub(super) num: *mut E,
+    pub(super) den: *mut E,
+}
+
+impl<E> Copy for GpuFlatFwdE4PairEntry<E> {}
+
+impl<E> Clone for GpuFlatFwdE4PairEntry<E> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+#[repr(C)]
+#[derive(Debug, Default)]
+pub(super) struct GpuFlatFwdCachedDensEntry<E> {
+    pub(super) src_a: u16,
+    pub(super) src_b: u16,
+    pub(super) src_c: u16,
+    pub(super) src_d: u16,
+    pub(super) num: *mut E,
+    pub(super) den: *mut E,
+}
+
+impl<E> Copy for GpuFlatFwdCachedDensEntry<E> {}
+
+impl<E> Clone for GpuFlatFwdCachedDensEntry<E> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+#[repr(C)]
+#[derive(Debug, Default)]
+pub(super) struct GpuFlatFwdBfMinusMultEntry<E> {
+    pub(super) src_b: u16,
+    pub(super) src_c: u16,
+    pub(super) src_d: u16,
+    pub(super) _pad: u16,
+    pub(super) num: *mut E,
+    pub(super) den: *mut E,
+}
+
+impl<E> Copy for GpuFlatFwdBfMinusMultEntry<E> {}
+
+impl<E> Clone for GpuFlatFwdBfMinusMultEntry<E> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+#[repr(C)]
+#[derive(Debug, Default)]
+pub(super) struct GpuFlatFwdE4MinusMultEntry<E> {
+    pub(super) src_b: u16,
+    pub(super) src_c: u16,
+    pub(super) src_d: u16,
+    pub(super) _pad: u16,
+    pub(super) num: *mut E,
+    pub(super) den: *mut E,
+}
+
+impl<E> Copy for GpuFlatFwdE4MinusMultEntry<E> {}
+
+impl<E> Clone for GpuFlatFwdE4MinusMultEntry<E> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+#[repr(C)]
+#[derive(Debug, Default)]
+pub(super) struct GpuFlatFwdBfUnbalancedEntry<E> {
+    pub(super) src_a: u16,
+    pub(super) src_b: u16,
+    pub(super) src_d: u16,
+    pub(super) _pad: u16,
+    pub(super) num: *mut E,
+    pub(super) den: *mut E,
+}
+
+impl<E> Copy for GpuFlatFwdBfUnbalancedEntry<E> {}
+
+impl<E> Clone for GpuFlatFwdBfUnbalancedEntry<E> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+#[repr(C)]
+#[derive(Debug, Default)]
+pub(super) struct GpuFlatFwdE4UnbalancedEntry<E> {
+    pub(super) src_a: u16,
+    pub(super) src_b: u16,
+    pub(super) src_d: u16,
+    pub(super) _pad: u16,
+    pub(super) num: *mut E,
+    pub(super) den: *mut E,
+}
+
+impl<E> Copy for GpuFlatFwdE4UnbalancedEntry<E> {}
+
+impl<E> Clone for GpuFlatFwdE4UnbalancedEntry<E> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+/// Static description for the flat forward kernel.
+///
+/// Mirrors `flat_forward_static_desc<E>` in native/prover/gkr/flat_forward.cuh.
+/// Passed as `__grid_constant__`. Sources are encoded as raw pointers: real
+/// device pointers for memory-backed sources, low-bit-tagged null pointers
+/// for virtual base sources (range checks / inits+teardowns).
+#[repr(C)]
+pub(super) struct GpuFlatForwardStaticDesc<E> {
+    pub(super) sources: [*const u8; FLAT_FWD_MAX_SOURCES],
+    pub(super) num_sources: u32,
+
+    pub(super) gamma: *const E,
+
+    pub(super) products: [GpuFlatFwdProductEntry<E>; FLAT_FWD_MAX_PER_CATEGORY],
+    pub(super) num_products: u32,
+
+    pub(super) masks: [GpuFlatFwdMaskEntry<E>; FLAT_FWD_MAX_PER_CATEGORY],
+    pub(super) num_masks: u32,
+
+    pub(super) lookup4s: [GpuFlatFwdLookup4Entry<E>; FLAT_FWD_MAX_PER_CATEGORY],
+    pub(super) num_lookup4s: u32,
+
+    pub(super) bf_pairs: [GpuFlatFwdBfPairEntry<E>; FLAT_FWD_MAX_PER_CATEGORY],
+    pub(super) num_bf_pairs: u32,
+
+    pub(super) e4_pairs: [GpuFlatFwdE4PairEntry<E>; FLAT_FWD_MAX_PER_CATEGORY],
+    pub(super) num_e4_pairs: u32,
+
+    pub(super) cached_denses: [GpuFlatFwdCachedDensEntry<E>; FLAT_FWD_MAX_PER_CATEGORY],
+    pub(super) num_cached_denses: u32,
+
+    pub(super) bf_minus_mults: [GpuFlatFwdBfMinusMultEntry<E>; FLAT_FWD_MAX_PER_CATEGORY],
+    pub(super) num_bf_minus_mults: u32,
+
+    pub(super) e4_minus_mults: [GpuFlatFwdE4MinusMultEntry<E>; FLAT_FWD_MAX_PER_CATEGORY],
+    pub(super) num_e4_minus_mults: u32,
+
+    pub(super) bf_unbalanceds: [GpuFlatFwdBfUnbalancedEntry<E>; FLAT_FWD_MAX_PER_CATEGORY],
+    pub(super) num_bf_unbalanceds: u32,
+
+    pub(super) e4_unbalanceds: [GpuFlatFwdE4UnbalancedEntry<E>; FLAT_FWD_MAX_PER_CATEGORY],
+    pub(super) num_e4_unbalanceds: u32,
+}
+
+// The descriptor contains only POD data (pointers, indices, counts). Raw
+// pointers aren't auto-Send/Sync; safety is the caller's responsibility — the
+// Rust lowering (Phase 2) ensures source pointers outlive the kernel launch.
+unsafe impl<E> Send for GpuFlatForwardStaticDesc<E> {}
+unsafe impl<E> Sync for GpuFlatForwardStaticDesc<E> {}
+
+impl<E: Copy> Copy for GpuFlatForwardStaticDesc<E> {}
+
+impl<E: Copy> Clone for GpuFlatForwardStaticDesc<E> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<E> Default for GpuFlatForwardStaticDesc<E> {
+    fn default() -> Self {
+        Self {
+            sources: [null::<u8>(); FLAT_FWD_MAX_SOURCES],
+            num_sources: 0,
+            gamma: null(),
+            products: std::array::from_fn(|_| GpuFlatFwdProductEntry {
+                src_a: 0,
+                src_b: 0,
+                dst: null::<E>().cast_mut(),
+            }),
+            num_products: 0,
+            masks: std::array::from_fn(|_| GpuFlatFwdMaskEntry {
+                src_mask: 0,
+                src_input: 0,
+                dst: null::<E>().cast_mut(),
+            }),
+            num_masks: 0,
+            lookup4s: std::array::from_fn(|_| GpuFlatFwdLookup4Entry {
+                src_a: 0,
+                src_b: 0,
+                src_c: 0,
+                src_d: 0,
+                num: null::<E>().cast_mut(),
+                den: null::<E>().cast_mut(),
+            }),
+            num_lookup4s: 0,
+            bf_pairs: std::array::from_fn(|_| GpuFlatFwdBfPairEntry {
+                src_b: 0,
+                src_d: 0,
+                num: null::<E>().cast_mut(),
+                den: null::<E>().cast_mut(),
+            }),
+            num_bf_pairs: 0,
+            e4_pairs: std::array::from_fn(|_| GpuFlatFwdE4PairEntry {
+                src_b: 0,
+                src_d: 0,
+                num: null::<E>().cast_mut(),
+                den: null::<E>().cast_mut(),
+            }),
+            num_e4_pairs: 0,
+            cached_denses: std::array::from_fn(|_| GpuFlatFwdCachedDensEntry {
+                src_a: 0,
+                src_b: 0,
+                src_c: 0,
+                src_d: 0,
+                num: null::<E>().cast_mut(),
+                den: null::<E>().cast_mut(),
+            }),
+            num_cached_denses: 0,
+            bf_minus_mults: std::array::from_fn(|_| GpuFlatFwdBfMinusMultEntry {
+                src_b: 0,
+                src_c: 0,
+                src_d: 0,
+                _pad: 0,
+                num: null::<E>().cast_mut(),
+                den: null::<E>().cast_mut(),
+            }),
+            num_bf_minus_mults: 0,
+            e4_minus_mults: std::array::from_fn(|_| GpuFlatFwdE4MinusMultEntry {
+                src_b: 0,
+                src_c: 0,
+                src_d: 0,
+                _pad: 0,
+                num: null::<E>().cast_mut(),
+                den: null::<E>().cast_mut(),
+            }),
+            num_e4_minus_mults: 0,
+            bf_unbalanceds: std::array::from_fn(|_| GpuFlatFwdBfUnbalancedEntry {
+                src_a: 0,
+                src_b: 0,
+                src_d: 0,
+                _pad: 0,
+                num: null::<E>().cast_mut(),
+                den: null::<E>().cast_mut(),
+            }),
+            num_bf_unbalanceds: 0,
+            e4_unbalanceds: std::array::from_fn(|_| GpuFlatFwdE4UnbalancedEntry {
+                src_a: 0,
+                src_b: 0,
+                src_d: 0,
+                _pad: 0,
+                num: null::<E>().cast_mut(),
+                den: null::<E>().cast_mut(),
+            }),
+            num_e4_unbalanceds: 0,
+        }
+    }
+}
+
+cuda_kernel_signature_arguments_and_function!(
+    GpuGKRFlatForwardLayer<T>,
+    desc: GpuFlatForwardStaticDesc<T>,
+    count: u32,
+);
+
+pub(crate) trait GpuGKRFlatForwardKernelSet: Copy + Sized {
+    const FLAT_FORWARD_LAYER: GpuGKRFlatForwardLayerSignature<Self>;
+}
+
+macro_rules! gkr_flat_forward_layer_kernels {
+    ($type:ty) => {
+        paste! {
+            cuda_kernel_declaration!(
+                [<ab_gkr_flat_forward_layer_ $type:lower _kernel>](
+                    desc: GpuFlatForwardStaticDesc<$type>,
+                    count: u32,
+                )
+            );
+
+            impl GpuGKRFlatForwardKernelSet for $type {
+                const FLAT_FORWARD_LAYER: GpuGKRFlatForwardLayerSignature<Self> =
+                    [<ab_gkr_flat_forward_layer_ $type:lower _kernel>];
+            }
+        }
+    };
+}
+
+gkr_flat_forward_layer_kernels!(E4);
+
+pub(super) fn launch_flat_forward_layer<E: GpuGKRFlatForwardKernelSet>(
+    desc: &GpuFlatForwardStaticDesc<E>,
     trace_len: usize,
     context: &ProverContext,
 ) -> CudaResult<()> {
     assert!(trace_len <= u32::MAX as usize);
     let count = trace_len as u32;
     let config = gkr_forward_launch_config(count, context);
-    let args = GpuGKRForwardLayerArguments::new(*batch, count);
-    GpuGKRForwardLayerFunction(E::FORWARD_LAYER).launch(&config, &args)
+    let args = GpuGKRFlatForwardLayerArguments::new(*desc, count);
+    GpuGKRFlatForwardLayerFunction(E::FLAT_FORWARD_LAYER).launch(&config, &args)
+}
+
+/// True iff the flat descriptor has any gate entry. Used by the scheduler to
+/// skip the flat kernel launch when no gates were migrated.
+pub(super) fn flat_desc_has_work<E>(desc: &GpuFlatForwardStaticDesc<E>) -> bool {
+    desc.num_products
+        | desc.num_masks
+        | desc.num_lookup4s
+        | desc.num_bf_pairs
+        | desc.num_e4_pairs
+        | desc.num_cached_denses
+        | desc.num_bf_minus_mults
+        | desc.num_e4_minus_mults
+        | desc.num_bf_unbalanceds
+        | desc.num_e4_unbalanceds
+        != 0
 }
