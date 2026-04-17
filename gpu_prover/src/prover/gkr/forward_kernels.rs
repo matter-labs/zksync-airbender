@@ -106,10 +106,7 @@ impl<B, E: Copy> GpuGKRForwardOutput<B, E> {
         &self,
         context: &ProverContext,
     ) -> CudaResult<GpuGKRTranscriptHandoff<E>> {
-        let stream = context.get_exec_stream();
         let mut tracing_ranges = Vec::new();
-        let handoff_range = Range::new("gkr.forward.transcript_handoff.schedule")?;
-        handoff_range.start(stream)?;
         let reduced_outputs = self
             .dimension_reducing_inputs
             .get(&self.initial_layer_for_sumcheck)
@@ -125,8 +122,6 @@ impl<B, E: Copy> GpuGKRForwardOutput<B, E> {
             let second = schedule_ext_poly_readback(&self.storage, second_addr, context)?;
             explicit_evaluations.insert(*output_type, [first, second]);
         }
-        handoff_range.end(stream)?;
-        tracing_ranges.push(handoff_range);
 
         Ok(GpuGKRTranscriptHandoff {
             _tracing_ranges: tracing_ranges,
