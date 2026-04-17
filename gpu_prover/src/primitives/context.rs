@@ -67,13 +67,15 @@ pub type DeviceAllocator = NonConcurrentStaticDeviceAllocator;
 pub type DeviceAllocation<T> = NonConcurrentStaticDeviceAllocation<T>;
 pub type HostAllocator = NonConcurrentStaticHostAllocator;
 
+pub const AUX_STREAM_POOL_SIZE: usize = 8;
+
 pub struct ProverContext {
     // Own the device-resident twiddle tables for the full lifetime of the prover context.
     _device_context: DeviceContext,
     device_allocator: DeviceAllocator,
     host_allocator: HostAllocator,
     exec_stream: CudaStream,
-    aux_stream: CudaStream,
+    aux_streams: [CudaStream; AUX_STREAM_POOL_SIZE],
     h2d_stream: CudaStream,
     device_allocator_mem_size: usize,
     device_id: i32,
@@ -129,7 +131,15 @@ impl ProverContext {
         let allocator_block_log_size = config.allocator_block_log_size;
         let device_context = DeviceContext::create(config.powers_of_w_coarse_log_count)?;
         let exec_stream = CudaStream::create()?;
-        let aux_stream = CudaStream::create()?;
+        let aux_streams: [CudaStream; AUX_STREAM_POOL_SIZE] = {
+            let mut streams = Vec::with_capacity(AUX_STREAM_POOL_SIZE);
+            for _ in 0..AUX_STREAM_POOL_SIZE {
+                streams.push(CudaStream::create()?);
+            }
+            streams.try_into().unwrap_or_else(|_| {
+                unreachable!("constructed exactly AUX_STREAM_POOL_SIZE streams")
+            })
+        };
         let h2d_stream = CudaStream::create()?;
         let mut device_blocks_count =
             if let Some(max_blocks_count) = config.max_device_allocation_blocks_count {
@@ -189,7 +199,7 @@ impl ProverContext {
             device_allocator,
             host_allocator,
             exec_stream,
-            aux_stream,
+            aux_streams,
             h2d_stream,
             device_allocator_mem_size,
             device_id,
@@ -215,8 +225,10 @@ impl ProverContext {
         &self.exec_stream
     }
 
-    pub fn get_aux_stream(&self) -> &CudaStream {
-        &self.aux_stream
+    /// Pool of auxiliary streams for parallel kernel dispatch. Pool streams have no intrinsic
+    /// ordering with `exec_stream` — callers are responsible for fork/join event synchronization.
+    pub fn get_aux_streams(&self) -> &[CudaStream; AUX_STREAM_POOL_SIZE] {
+        &self.aux_streams
     }
 
     pub fn get_h2d_stream(&self) -> &CudaStream {
