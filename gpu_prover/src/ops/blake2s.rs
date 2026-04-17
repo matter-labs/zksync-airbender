@@ -2,7 +2,7 @@ use crate::ops::bit_reverse::bit_reverse_in_place;
 use crate::primitives::device_structures::{
     DeviceMatrixChunkImpl, DeviceMatrixChunkMutImpl, MutPtrAndStride, PtrAndStride,
 };
-use crate::primitives::field::BF;
+use crate::primitives::field::{BF, E4};
 use crate::primitives::utils::{get_grid_block_dims_for_threads_count, LOG_WARP_SIZE, WARP_SIZE};
 use era_cudart::cuda_kernel;
 use era_cudart::device::{device_get_attribute, get_device};
@@ -426,6 +426,208 @@ pub fn merkle_tree_cap(values: &DeviceSlice<DG>, log_tree_cap_size: u32) -> &Dev
 
 cuda_kernel!(Blake2SPow, ab_blake2s_pow_kernel(seed: *const u32, bits_count: u32, max_nonce: u64, result: *mut u64));
 
+cuda_kernel!(
+    TranscriptCommit,
+    ab_transcript_commit_kernel(seed_io: *mut u32, input: *const u32, input_len: u32)
+);
+
+cuda_kernel!(
+    TranscriptSqueeze,
+    ab_transcript_squeeze_kernel(seed_io: *mut u32, output: *mut u32, output_len: u32)
+);
+
+/// Device-side `commit_with_seed`: computes `new_seed = Blake2s(old_seed || input)`.
+///
+/// `seed` must be exactly `STATE_SIZE` u32 words. Updated in place.
+/// `input` contains the field-element data to absorb.
+pub fn transcript_commit(
+    seed: &mut DeviceSlice<u32>,
+    input: &DeviceSlice<u32>,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    assert_eq!(seed.len(), STATE_SIZE);
+    let seed_ptr = seed.as_mut_ptr();
+    let input_ptr = input.as_ptr();
+    let input_len = input.len() as u32;
+    let config = CudaLaunchConfig::basic(1u32, 1u32, stream);
+    let args = TranscriptCommitArguments::new(seed_ptr, input_ptr, input_len);
+    TranscriptCommitFunction::default().launch(&config, &args)
+}
+
+/// Device-side `draw_randomness`: expands the seed into `output.len()` u32 words.
+///
+/// The first `STATE_SIZE` words of `output` are the seed itself (no hashing).
+/// If more than `STATE_SIZE` words are requested, additional chunks are produced
+/// by iteratively hashing the seed. `seed` is updated in place when
+/// `output.len() > STATE_SIZE`.
+///
+/// `output.len()` must be a positive multiple of `STATE_SIZE`.
+pub fn transcript_squeeze(
+    seed: &mut DeviceSlice<u32>,
+    output: &mut DeviceSlice<u32>,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    assert_eq!(seed.len(), STATE_SIZE);
+    let output_len = output.len();
+    assert!(output_len > 0);
+    assert_eq!(output_len % STATE_SIZE, 0);
+    let seed_ptr = seed.as_mut_ptr();
+    let output_ptr = output.as_mut_ptr();
+    let config = CudaLaunchConfig::basic(1u32, 1u32, stream);
+    let args = TranscriptSqueezeArguments::new(seed_ptr, output_ptr, output_len as u32);
+    TranscriptSqueezeFunction::default().launch(&config, &args)
+}
+
+cuda_kernel!(
+    BackwardSumcheckRoundUpdate,
+    ab_backward_sumcheck_round_update_kernel(
+        reduction_output: *const E4,
+        prev_claim_coord: *const E4,
+        seed_io: *mut u32,
+        claim_io: *mut E4,
+        eq_prefactor_io: *mut E4,
+        coeffs_out: *mut E4,
+        challenge_out: *mut E4,
+    )
+);
+
+/// Fused device-side per-round backward sumcheck state update.
+///
+/// Replaces the host callback that runs after each CUB reduction in the
+/// backward sumcheck loop. Consumes device-resident state and writes back
+/// updated state plus the new folding challenge — no host round-trip.
+///
+/// Buffer contracts:
+/// - `reduction_output`: 2 E4 values `[e_partial, c_partial]` (constant and
+///   quadratic coefficients from the CUB reduction over round accumulators).
+/// - `prev_claim_coord`: 1 E4, the previous-round claim point coordinate.
+/// - `seed`: `STATE_SIZE` u32 words, updated in place with the new Blake2s seed.
+/// - `claim`: 1 E4, updated in place to `poly(challenge)`.
+/// - `eq_prefactor`: 1 E4, updated in place to `eq(challenge, prev_coord)`.
+/// - `coeffs_out`: 4 E4 values `[c0, c1, c2, c3]`, the round's univariate
+///   coefficients, written for later bulk readback.
+/// - `challenge_out`: 1 E4, the next round's folding challenge.
+pub fn backward_sumcheck_round_update(
+    reduction_output: &DeviceSlice<E4>,
+    prev_claim_coord: &DeviceSlice<E4>,
+    seed: &mut DeviceSlice<u32>,
+    claim: &mut DeviceSlice<E4>,
+    eq_prefactor: &mut DeviceSlice<E4>,
+    coeffs_out: &mut DeviceSlice<E4>,
+    challenge_out: &mut DeviceSlice<E4>,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    assert_eq!(reduction_output.len(), 2);
+    assert_eq!(prev_claim_coord.len(), 1);
+    assert_eq!(seed.len(), STATE_SIZE);
+    assert_eq!(claim.len(), 1);
+    assert_eq!(eq_prefactor.len(), 1);
+    assert_eq!(coeffs_out.len(), 4);
+    assert_eq!(challenge_out.len(), 1);
+    let config = CudaLaunchConfig::basic(1u32, 1u32, stream);
+    let args = BackwardSumcheckRoundUpdateArguments::new(
+        reduction_output.as_ptr(),
+        prev_claim_coord.as_ptr(),
+        seed.as_mut_ptr(),
+        claim.as_mut_ptr(),
+        eq_prefactor.as_mut_ptr(),
+        coeffs_out.as_mut_ptr(),
+        challenge_out.as_mut_ptr(),
+    );
+    BackwardSumcheckRoundUpdateFunction::default().launch(&config, &args)
+}
+
+cuda_kernel!(
+    WhirFoldRoundUpdate,
+    ab_whir_fold_round_update_kernel(
+        reduction_output: *const E4,
+        seed_io: *mut u32,
+        coeffs_out: *mut E4,
+        challenge_out: *mut E4,
+    )
+);
+
+/// Fused device-side per-round WHIR fold state update.
+///
+/// Replaces the host callback that runs after each special 3-point reduction
+/// in the WHIR folding loop. Consumes device-resident state and writes back
+/// the new coefficients, challenge, and updated seed — no host round-trip.
+///
+/// Buffer contracts:
+/// - `reduction_output`: 3 E4 values `[f(0), f(1), ⟨eval_l+eval_h, eq_l+eq_h⟩]`
+///   as produced by the three reductions in `schedule_special_three_point_eval_device`.
+///   The kernel scales the third element by `1/4` internally to obtain `f(1/2)`.
+/// - `seed`: `STATE_SIZE` u32 words, updated in place with the new Blake2s seed.
+/// - `coeffs_out`: 3 E4 values `[c0, c1, c2]`, the round's sumcheck polynomial
+///   coefficients, written for later bulk readback.
+/// - `challenge_out`: 1 E4, the next round's folding challenge.
+pub fn whir_fold_round_update(
+    reduction_output: &DeviceSlice<E4>,
+    seed: &mut DeviceSlice<u32>,
+    coeffs_out: &mut DeviceSlice<E4>,
+    challenge_out: &mut DeviceSlice<E4>,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    assert_eq!(reduction_output.len(), 3);
+    assert_eq!(seed.len(), STATE_SIZE);
+    assert_eq!(coeffs_out.len(), 3);
+    assert_eq!(challenge_out.len(), 1);
+    let config = CudaLaunchConfig::basic(1u32, 1u32, stream);
+    let args = WhirFoldRoundUpdateArguments::new(
+        reduction_output.as_ptr(),
+        seed.as_mut_ptr(),
+        coeffs_out.as_mut_ptr(),
+        challenge_out.as_mut_ptr(),
+    );
+    WhirFoldRoundUpdateFunction::default().launch(&config, &args)
+}
+
+cuda_kernel!(
+    AssembleQueryIndexes,
+    ab_assemble_query_indexes_kernel(
+        raw_bits: *const u32,
+        indexes_out: *mut u32,
+        num_queries: u32,
+        log_domain_size: u32,
+    )
+);
+
+/// Assembles `num_queries` query indexes on device from a padded random u32
+/// buffer as produced by `transcript_squeeze`.
+///
+/// Mirrors the host `draw_query_bits_after_verified_pow` + `BitSource` +
+/// `assemble_query_index` chain: the first 32 bits of `raw_bits` are skipped
+/// (they were the PoW header word), and each query reads `log_domain_size`
+/// LE-packed bits thereafter. `raw_bits.len()` must cover `ceil((32 +
+/// num_queries * log_domain_size) / 32)` u32 words (the caller typically
+/// over-allocates to a multiple of `STATE_SIZE` to match the squeeze output).
+pub fn assemble_query_indexes(
+    raw_bits: &DeviceSlice<u32>,
+    indexes_out: &mut DeviceSlice<u32>,
+    log_domain_size: u32,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    let num_queries = indexes_out.len() as u32;
+    assert!(num_queries > 0);
+    assert!(log_domain_size > 0);
+    assert!(log_domain_size <= 32);
+    let total_bits = 32u64 + (num_queries as u64) * (log_domain_size as u64);
+    let required_words = total_bits.div_ceil(32) as usize;
+    assert!(
+        raw_bits.len() >= required_words,
+        "raw_bits buffer is too small for query index assembly"
+    );
+    let (grid_dim, block_dim) = get_grid_block_dims_for_threads_count(WARP_SIZE * 4, num_queries);
+    let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
+    let args = AssembleQueryIndexesArguments::new(
+        raw_bits.as_ptr(),
+        indexes_out.as_mut_ptr(),
+        num_queries,
+        log_domain_size,
+    );
+    AssembleQueryIndexesFunction::default().launch(&config, &args)
+}
+
 pub fn blake2s_pow(
     seed: &DeviceSlice<u32>,
     bits_count: u32,
@@ -463,7 +665,6 @@ mod tests {
     use era_cudart::memory::{memory_copy_async, DeviceAllocation};
     use field::Field;
     use itertools::Itertools;
-    #[cfg(feature = "deterministic_pow")]
     use prover::transcript::{Blake2sTranscript, Seed};
     use rand::Rng;
     #[cfg(feature = "deterministic_pow")]
@@ -875,6 +1076,672 @@ mod tests {
                     "seed={seed:?}, pow_bits={pow_bits}"
                 );
             }
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Device-side transcript parity tests
+    // -----------------------------------------------------------------------
+
+    /// Helper: run device-side transcript_commit and return the resulting seed.
+    fn device_commit(seed: &[u32; STATE_SIZE], input: &[u32]) -> [u32; STATE_SIZE] {
+        let stream = CudaStream::default();
+        let mut d_seed = DeviceAllocation::alloc(STATE_SIZE).unwrap();
+        let mut d_input = DeviceAllocation::alloc(input.len()).unwrap();
+        memory_copy_async(&mut d_seed, &seed[..], &stream).unwrap();
+        memory_copy_async(&mut d_input, input, &stream).unwrap();
+        super::transcript_commit(&mut d_seed, &d_input, &stream).unwrap();
+        let mut h_result = [0u32; STATE_SIZE];
+        memory_copy_async(&mut h_result[..], &d_seed, &stream).unwrap();
+        stream.synchronize().unwrap();
+        h_result
+    }
+
+    /// Helper: run host-side commit_with_seed and return the resulting seed.
+    fn host_commit(seed: &[u32; STATE_SIZE], input: &[u32]) -> [u32; STATE_SIZE] {
+        let mut s = Seed(*seed);
+        Blake2sTranscript::commit_with_seed(&mut s, input);
+        s.0
+    }
+
+    #[test]
+    fn transcript_commit_parity_small() {
+        // 8 (seed) + 4 (input) = 12 words — fits in one block with padding.
+        let seed = [1, 2, 3, 4, 5, 6, 7, 8];
+        let input: Vec<u32> = (10..14).collect();
+        assert_eq!(device_commit(&seed, &input), host_commit(&seed, &input));
+    }
+
+    #[test]
+    fn transcript_commit_parity_exact_block() {
+        // 8 + 8 = 16 words — exactly one full block.
+        let seed = [0xaa; STATE_SIZE];
+        let input: Vec<u32> = (0..8).collect();
+        assert_eq!(device_commit(&seed, &input), host_commit(&seed, &input));
+    }
+
+    #[test]
+    fn transcript_commit_parity_two_blocks() {
+        // 8 + 12 = 20 words — two blocks (16 + 4). This is the typical backward
+        // sumcheck case: commit_field_els with 3 E4 elements.
+        let seed = [0x42; STATE_SIZE];
+        let input: Vec<u32> = (100..112).collect();
+        assert_eq!(device_commit(&seed, &input), host_commit(&seed, &input));
+    }
+
+    #[test]
+    fn transcript_commit_parity_large() {
+        // 8 + 32 = 40 words — three blocks (16 + 16 + 8).
+        let seed = [0xde, 0xad, 0xbe, 0xef, 0xca, 0xfe, 0xba, 0xbe];
+        let input: Vec<u32> = (0..32).collect();
+        assert_eq!(device_commit(&seed, &input), host_commit(&seed, &input));
+    }
+
+    #[test]
+    fn transcript_commit_parity_randomized() {
+        let mut rng = rand::rng();
+        let stream = CudaStream::default();
+        for input_len in [1, 4, 7, 8, 12, 15, 16, 20, 24, 31, 32, 48, 64] {
+            let seed: [u32; STATE_SIZE] = std::array::from_fn(|_| rng.random());
+            let input: Vec<u32> = (0..input_len).map(|_| rng.random()).collect();
+
+            let expected = host_commit(&seed, &input);
+
+            let mut d_seed = DeviceAllocation::alloc(STATE_SIZE).unwrap();
+            let mut d_input = DeviceAllocation::alloc(input_len).unwrap();
+            memory_copy_async(&mut d_seed, &seed[..], &stream).unwrap();
+            memory_copy_async(&mut d_input, &input, &stream).unwrap();
+            super::transcript_commit(&mut d_seed, &d_input, &stream).unwrap();
+            let mut actual = [0u32; STATE_SIZE];
+            memory_copy_async(&mut actual[..], &d_seed, &stream).unwrap();
+            stream.synchronize().unwrap();
+
+            assert_eq!(
+                actual, expected,
+                "commit mismatch for input_len={input_len}"
+            );
+        }
+    }
+
+    /// Helper: run device-side transcript_squeeze and return output + final seed.
+    fn device_squeeze(
+        seed: &[u32; STATE_SIZE],
+        output_len: usize,
+    ) -> (Vec<u32>, [u32; STATE_SIZE]) {
+        let stream = CudaStream::default();
+        let mut d_seed = DeviceAllocation::alloc(STATE_SIZE).unwrap();
+        let mut d_output = DeviceAllocation::alloc(output_len).unwrap();
+        memory_copy_async(&mut d_seed, &seed[..], &stream).unwrap();
+        super::transcript_squeeze(&mut d_seed, &mut d_output, &stream).unwrap();
+        let mut h_output = vec![0u32; output_len];
+        let mut h_seed = [0u32; STATE_SIZE];
+        memory_copy_async(&mut h_output, &d_output, &stream).unwrap();
+        memory_copy_async(&mut h_seed[..], &d_seed, &stream).unwrap();
+        stream.synchronize().unwrap();
+        (h_output, h_seed)
+    }
+
+    /// Helper: run host-side draw_randomness and return output + final seed.
+    fn host_squeeze(
+        seed: &[u32; STATE_SIZE],
+        output_len: usize,
+    ) -> (Vec<u32>, [u32; STATE_SIZE]) {
+        let mut s = Seed(*seed);
+        let mut output = vec![0u32; output_len];
+        Blake2sTranscript::draw_randomness(&mut s, &mut output);
+        (output, s.0)
+    }
+
+    #[test]
+    fn transcript_squeeze_parity_one_round() {
+        // 8 words = 1 round, seed unchanged, output = seed.
+        let seed = [10, 20, 30, 40, 50, 60, 70, 80];
+        let (d_out, d_seed) = device_squeeze(&seed, STATE_SIZE);
+        let (h_out, h_seed) = host_squeeze(&seed, STATE_SIZE);
+        assert_eq!(d_out, h_out);
+        assert_eq!(d_seed, h_seed);
+        // Seed must be unchanged for single-round squeeze.
+        assert_eq!(d_seed, seed);
+    }
+
+    #[test]
+    fn transcript_squeeze_parity_two_rounds() {
+        // 16 words = 2 rounds. Second round hashes the seed.
+        let seed = [0xff; STATE_SIZE];
+        let (d_out, d_seed) = device_squeeze(&seed, STATE_SIZE * 2);
+        let (h_out, h_seed) = host_squeeze(&seed, STATE_SIZE * 2);
+        assert_eq!(d_out, h_out);
+        assert_eq!(d_seed, h_seed);
+    }
+
+    #[test]
+    fn transcript_squeeze_parity_many_rounds() {
+        // 40 words = 5 rounds.
+        let seed = [0x42; STATE_SIZE];
+        let (d_out, d_seed) = device_squeeze(&seed, STATE_SIZE * 5);
+        let (h_out, h_seed) = host_squeeze(&seed, STATE_SIZE * 5);
+        assert_eq!(d_out, h_out);
+        assert_eq!(d_seed, h_seed);
+    }
+
+    #[test]
+    fn transcript_commit_then_squeeze_parity() {
+        // Simulates the backward sumcheck pattern: commit 3 E4 coefficients (12
+        // words), then draw 1 E4 challenge (4 words, padded to 8 = 1 round).
+        let seed = [0xab; STATE_SIZE];
+        let coeffs: Vec<u32> = (0..12).collect();
+
+        // Host path.
+        let mut h_seed = Seed(seed);
+        Blake2sTranscript::commit_with_seed(&mut h_seed, &coeffs);
+        let mut h_challenge = vec![0u32; STATE_SIZE];
+        Blake2sTranscript::draw_randomness(&mut h_seed, &mut h_challenge);
+
+        // Device path.
+        let stream = CudaStream::default();
+        let mut d_seed = DeviceAllocation::alloc(STATE_SIZE).unwrap();
+        let mut d_input = DeviceAllocation::alloc(coeffs.len()).unwrap();
+        let mut d_challenge = DeviceAllocation::alloc(STATE_SIZE).unwrap();
+        memory_copy_async(&mut d_seed, &seed[..], &stream).unwrap();
+        memory_copy_async(&mut d_input, &coeffs, &stream).unwrap();
+        super::transcript_commit(&mut d_seed, &d_input, &stream).unwrap();
+        super::transcript_squeeze(&mut d_seed, &mut d_challenge, &stream).unwrap();
+        let mut actual_seed = [0u32; STATE_SIZE];
+        let mut actual_challenge = vec![0u32; STATE_SIZE];
+        memory_copy_async(&mut actual_seed[..], &d_seed, &stream).unwrap();
+        memory_copy_async(&mut actual_challenge, &d_challenge, &stream).unwrap();
+        stream.synchronize().unwrap();
+
+        assert_eq!(actual_seed, h_seed.0);
+        assert_eq!(actual_challenge, h_challenge);
+    }
+
+    // -----------------------------------------------------------------------
+    // Fused backward sumcheck round-update kernel parity test.
+    //
+    // Mirrors the host per-round callback in
+    // backward.rs:schedule_execute_dimension_reducing_layer_from_workflow_state
+    // (and its main-layer twin) and checks that the device kernel produces
+    // bit-exact state updates: new seed, coefficients, challenge, claim,
+    // eq_prefactor.
+    // -----------------------------------------------------------------------
+
+    fn sample_e4(seed: u32) -> E4 {
+        use field::{FieldExtension, PrimeField};
+        E4::from_array_of_base([
+            BF::from_u32_with_reduction(seed.wrapping_mul(0x9E3779B1)),
+            BF::from_u32_with_reduction(seed.wrapping_mul(0x85EBCA77)),
+            BF::from_u32_with_reduction(seed.wrapping_mul(0xC2B2AE3D)),
+            BF::from_u32_with_reduction(seed.wrapping_mul(0x27D4EB2F)),
+        ])
+    }
+
+    /// Runs the exact host-side per-round callback logic and returns the
+    /// updated state plus the derived round coefficients and challenge.
+    fn host_backward_round_update(
+        mut seed: Seed,
+        mut claim: E4,
+        mut eq_prefactor: E4,
+        prev_coord: E4,
+        e_partial: E4,
+        c_partial: E4,
+    ) -> (Seed, E4, E4, [E4; 4], E4) {
+        use prover::gkr::prover::transcript_utils::{commit_field_els, draw_random_field_els};
+        use prover::gkr::sumcheck::{
+            evaluate_eq_poly, evaluate_small_univariate_poly,
+            output_univariate_monomial_form_max_quadratic,
+        };
+
+        let eq_prefactor_inv = eq_prefactor.inverse().expect("non-zero");
+        let mut normalized_claim = claim;
+        normalized_claim.mul_assign(&eq_prefactor_inv);
+
+        let coeffs = output_univariate_monomial_form_max_quadratic::<BF, E4>(
+            prev_coord,
+            normalized_claim,
+            e_partial,
+            c_partial,
+        );
+        commit_field_els::<BF, E4>(&mut seed, &coeffs);
+        let challenge = draw_random_field_els::<BF, E4>(&mut seed, 1)[0];
+        claim = evaluate_small_univariate_poly::<BF, E4, 4>(&coeffs, &challenge);
+        eq_prefactor = evaluate_eq_poly::<BF, E4>(&challenge, &prev_coord);
+        (seed, claim, eq_prefactor, coeffs, challenge)
+    }
+
+    fn run_device_backward_round_update(
+        seed_in: Seed,
+        claim_in: E4,
+        eq_prefactor_in: E4,
+        prev_coord: E4,
+        e_partial: E4,
+        c_partial: E4,
+    ) -> (Seed, E4, E4, [E4; 4], E4) {
+        let stream = CudaStream::default();
+
+        // Inputs.
+        let mut d_reduction: DeviceAllocation<E4> = DeviceAllocation::alloc(2).unwrap();
+        let mut d_prev_coord: DeviceAllocation<E4> = DeviceAllocation::alloc(1).unwrap();
+        memory_copy_async(&mut d_reduction, &[e_partial, c_partial], &stream).unwrap();
+        memory_copy_async(&mut d_prev_coord, &[prev_coord], &stream).unwrap();
+
+        // In/out state.
+        let mut d_seed: DeviceAllocation<u32> = DeviceAllocation::alloc(STATE_SIZE).unwrap();
+        let mut d_claim: DeviceAllocation<E4> = DeviceAllocation::alloc(1).unwrap();
+        let mut d_eq_prefactor: DeviceAllocation<E4> = DeviceAllocation::alloc(1).unwrap();
+        memory_copy_async(&mut d_seed, &seed_in.0[..], &stream).unwrap();
+        memory_copy_async(&mut d_claim, &[claim_in], &stream).unwrap();
+        memory_copy_async(&mut d_eq_prefactor, &[eq_prefactor_in], &stream).unwrap();
+
+        // Outputs.
+        let mut d_coeffs: DeviceAllocation<E4> = DeviceAllocation::alloc(4).unwrap();
+        let mut d_challenge: DeviceAllocation<E4> = DeviceAllocation::alloc(1).unwrap();
+
+        super::backward_sumcheck_round_update(
+            &d_reduction,
+            &d_prev_coord,
+            &mut d_seed,
+            &mut d_claim,
+            &mut d_eq_prefactor,
+            &mut d_coeffs,
+            &mut d_challenge,
+            &stream,
+        )
+        .unwrap();
+
+        let mut seed_out = Seed::default();
+        let mut claim_out = [E4::ZERO];
+        let mut eq_prefactor_out = [E4::ZERO];
+        let mut coeffs_out = [E4::ZERO; 4];
+        let mut challenge_out = [E4::ZERO];
+        memory_copy_async(&mut seed_out.0[..], &d_seed, &stream).unwrap();
+        memory_copy_async(&mut claim_out[..], &d_claim, &stream).unwrap();
+        memory_copy_async(&mut eq_prefactor_out[..], &d_eq_prefactor, &stream).unwrap();
+        memory_copy_async(&mut coeffs_out[..], &d_coeffs, &stream).unwrap();
+        memory_copy_async(&mut challenge_out[..], &d_challenge, &stream).unwrap();
+        stream.synchronize().unwrap();
+
+        (
+            seed_out,
+            claim_out[0],
+            eq_prefactor_out[0],
+            coeffs_out,
+            challenge_out[0],
+        )
+    }
+
+    fn assert_backward_round_parity(
+        seed_in: Seed,
+        claim_in: E4,
+        eq_prefactor_in: E4,
+        prev_coord: E4,
+        e_partial: E4,
+        c_partial: E4,
+    ) {
+        let (h_seed, h_claim, h_eq, h_coeffs, h_challenge) = host_backward_round_update(
+            seed_in,
+            claim_in,
+            eq_prefactor_in,
+            prev_coord,
+            e_partial,
+            c_partial,
+        );
+        let (d_seed, d_claim, d_eq, d_coeffs, d_challenge) = run_device_backward_round_update(
+            seed_in,
+            claim_in,
+            eq_prefactor_in,
+            prev_coord,
+            e_partial,
+            c_partial,
+        );
+        assert_eq!(d_seed.0, h_seed.0, "seed mismatch");
+        assert_eq!(d_coeffs, h_coeffs, "coeffs mismatch");
+        assert_eq!(d_challenge, h_challenge, "challenge mismatch");
+        assert_eq!(d_claim, h_claim, "claim mismatch");
+        assert_eq!(d_eq, h_eq, "eq_prefactor mismatch");
+    }
+
+    #[test]
+    fn backward_round_update_parity_fixed() {
+        let seed = Seed([
+            0x11111111, 0x22222222, 0x33333333, 0x44444444, 0x55555555, 0x66666666, 0x77777777,
+            0x88888888,
+        ]);
+        let claim = sample_e4(1);
+        let eq_prefactor = sample_e4(2);
+        let prev_coord = sample_e4(3);
+        let e_partial = sample_e4(4);
+        let c_partial = sample_e4(5);
+        assert_backward_round_parity(seed, claim, eq_prefactor, prev_coord, e_partial, c_partial);
+    }
+
+    #[test]
+    fn backward_round_update_parity_randomized() {
+        let mut rng = rand::rng();
+        for _ in 0..16 {
+            let seed = Seed(std::array::from_fn(|_| rng.random()));
+            let claim = sample_e4(rng.random());
+            let eq_prefactor = sample_e4(rng.random::<u32>() | 1); // avoid zero
+            let prev_coord = sample_e4(rng.random::<u32>() | 1); // prev_coord is also used as a_plus_b, must be non-zero
+            let e_partial = sample_e4(rng.random());
+            let c_partial = sample_e4(rng.random());
+            assert_backward_round_parity(
+                seed,
+                claim,
+                eq_prefactor,
+                prev_coord,
+                e_partial,
+                c_partial,
+            );
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Fused WHIR fold round-update kernel parity test.
+    //
+    // Mirrors the host per-round callback in whir_fold.rs:schedule_fold_round
+    // and checks that the device kernel produces bit-exact state updates: new
+    // seed, coefficients, challenge.
+    // -----------------------------------------------------------------------
+
+    /// Reference host-side implementation of the sumcheck Lagrange interpolant
+    /// at (0, 1, random_point). Mirrors `whir_fold::special_lagrange_interpolate`,
+    /// inlined here so this module's tests stay self-contained.
+    fn special_lagrange_interpolate_host(
+        eval_at_0: E4,
+        eval_at_1: E4,
+        eval_at_random: E4,
+        random_point: E4,
+    ) -> [E4; 3] {
+        use field::Field;
+
+        let mut coeffs_for_0 = [E4::ZERO, E4::ZERO, E4::ONE];
+        coeffs_for_0[1] = E4::ONE;
+        coeffs_for_0[1].add_assign(&random_point);
+        coeffs_for_0[1].negate();
+        coeffs_for_0[0] = random_point;
+
+        let mut coeffs_for_1 = [E4::ZERO, E4::ZERO, E4::ONE];
+        coeffs_for_1[1] = random_point;
+        coeffs_for_1[1].negate();
+
+        let mut coeffs_for_random = [E4::ZERO, E4::ZERO, E4::ONE];
+        coeffs_for_random[1] = E4::ONE;
+        coeffs_for_random[1].negate();
+
+        let mut dens = [E4::ONE, E4::ONE, E4::ONE];
+        let mut t = E4::ZERO;
+        t.sub_assign(&E4::ONE);
+        dens[0].mul_assign(&t);
+        let mut t = E4::ZERO;
+        t.sub_assign(&random_point);
+        dens[0].mul_assign(&t);
+
+        let mut t = E4::ONE;
+        t.sub_assign(&random_point);
+        dens[1].mul_assign(&t);
+
+        let mut t = random_point;
+        dens[2].mul_assign(&t);
+        let mut t = random_point;
+        t.sub_assign(&E4::ONE);
+        dens[2].mul_assign(&t);
+
+        for d in dens.iter_mut() {
+            *d = d.inverse().expect("non-zero denominator");
+        }
+
+        let mut result = [E4::ZERO; 3];
+        for (eval, den, coeffs) in [
+            (eval_at_0, dens[0], coeffs_for_0),
+            (eval_at_1, dens[1], coeffs_for_1),
+            (eval_at_random, dens[2], coeffs_for_random),
+        ] {
+            for (dst, coeff) in result.iter_mut().zip(coeffs.into_iter()) {
+                let mut term = coeff;
+                term.mul_assign(&den);
+                term.mul_assign(&eval);
+                dst.add_assign(&term);
+            }
+        }
+        result
+    }
+
+    /// Runs the exact host-side per-round callback logic and returns the
+    /// updated state plus the derived sumcheck coefficients and challenge.
+    fn host_whir_fold_round_update(
+        mut seed: Seed,
+        f_at_0: E4,
+        f_at_1: E4,
+        raw_half_input: E4,
+    ) -> (Seed, [E4; 3], E4) {
+        use field::{Field, FieldExtension, PrimeField};
+        use prover::gkr::prover::transcript_utils::{commit_field_els, draw_random_field_els};
+
+        let quart = BF::from_u32_unchecked(4).inverse().unwrap();
+        let two_inv = BF::from_u32_unchecked(2).inverse().unwrap();
+        let mut f_half = raw_half_input;
+        f_half.mul_assign_by_base(&quart);
+
+        let coeffs = special_lagrange_interpolate_host(
+            f_at_0,
+            f_at_1,
+            f_half,
+            E4::from_base(two_inv),
+        );
+        commit_field_els::<BF, E4>(&mut seed, &coeffs);
+        let challenge = draw_random_field_els::<BF, E4>(&mut seed, 1)[0];
+        (seed, coeffs, challenge)
+    }
+
+    fn run_device_whir_fold_round_update(
+        seed_in: Seed,
+        f_at_0: E4,
+        f_at_1: E4,
+        raw_half_input: E4,
+    ) -> (Seed, [E4; 3], E4) {
+        let stream = CudaStream::default();
+
+        let mut d_reduction: DeviceAllocation<E4> = DeviceAllocation::alloc(3).unwrap();
+        memory_copy_async(&mut d_reduction, &[f_at_0, f_at_1, raw_half_input], &stream).unwrap();
+
+        let mut d_seed: DeviceAllocation<u32> = DeviceAllocation::alloc(STATE_SIZE).unwrap();
+        memory_copy_async(&mut d_seed, &seed_in.0[..], &stream).unwrap();
+
+        let mut d_coeffs: DeviceAllocation<E4> = DeviceAllocation::alloc(3).unwrap();
+        let mut d_challenge: DeviceAllocation<E4> = DeviceAllocation::alloc(1).unwrap();
+
+        super::whir_fold_round_update(
+            &d_reduction,
+            &mut d_seed,
+            &mut d_coeffs,
+            &mut d_challenge,
+            &stream,
+        )
+        .unwrap();
+
+        let mut seed_out = Seed::default();
+        let mut coeffs_out = [E4::ZERO; 3];
+        let mut challenge_out = [E4::ZERO];
+        memory_copy_async(&mut seed_out.0[..], &d_seed, &stream).unwrap();
+        memory_copy_async(&mut coeffs_out[..], &d_coeffs, &stream).unwrap();
+        memory_copy_async(&mut challenge_out[..], &d_challenge, &stream).unwrap();
+        stream.synchronize().unwrap();
+
+        (seed_out, coeffs_out, challenge_out[0])
+    }
+
+    fn assert_whir_fold_round_parity(
+        seed_in: Seed,
+        f_at_0: E4,
+        f_at_1: E4,
+        raw_half_input: E4,
+    ) {
+        let (h_seed, h_coeffs, h_challenge) =
+            host_whir_fold_round_update(seed_in, f_at_0, f_at_1, raw_half_input);
+        let (d_seed, d_coeffs, d_challenge) =
+            run_device_whir_fold_round_update(seed_in, f_at_0, f_at_1, raw_half_input);
+        assert_eq!(d_seed.0, h_seed.0, "seed mismatch");
+        assert_eq!(d_coeffs, h_coeffs, "coeffs mismatch");
+        assert_eq!(d_challenge, h_challenge, "challenge mismatch");
+    }
+
+    #[test]
+    fn whir_fold_round_update_parity_fixed() {
+        let seed = Seed([
+            0x11111111, 0x22222222, 0x33333333, 0x44444444, 0x55555555, 0x66666666, 0x77777777,
+            0x88888888,
+        ]);
+        let f_at_0 = sample_e4(1);
+        let f_at_1 = sample_e4(2);
+        let raw_half_input = sample_e4(3);
+        assert_whir_fold_round_parity(seed, f_at_0, f_at_1, raw_half_input);
+    }
+
+    #[test]
+    fn whir_fold_round_update_parity_randomized() {
+        let mut rng = rand::rng();
+        for _ in 0..16 {
+            let seed = Seed(std::array::from_fn(|_| rng.random()));
+            let f_at_0 = sample_e4(rng.random());
+            let f_at_1 = sample_e4(rng.random());
+            let raw_half_input = sample_e4(rng.random());
+            assert_whir_fold_round_parity(seed, f_at_0, f_at_1, raw_half_input);
+        }
+    }
+
+    #[test]
+    fn whir_fold_round_update_parity_chained() {
+        // Emulates multiple sequential fold rounds: the output seed of one
+        // round becomes the input of the next. Catches state-propagation
+        // mismatches that a single-round test would miss.
+        let mut seed = Seed([0xcc; STATE_SIZE]);
+
+        for round in 0..8u32 {
+            let f_at_0 = sample_e4(round * 17 + 1);
+            let f_at_1 = sample_e4(round * 19 + 2);
+            let raw_half_input = sample_e4(round * 23 + 3);
+
+            let (h_seed, h_coeffs, h_challenge) =
+                host_whir_fold_round_update(seed, f_at_0, f_at_1, raw_half_input);
+            let (d_seed, d_coeffs, d_challenge) =
+                run_device_whir_fold_round_update(seed, f_at_0, f_at_1, raw_half_input);
+
+            assert_eq!(d_seed.0, h_seed.0, "round {round}: seed");
+            assert_eq!(d_coeffs, h_coeffs, "round {round}: coeffs");
+            assert_eq!(d_challenge, h_challenge, "round {round}: challenge");
+
+            seed = h_seed;
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Assemble-query-indexes kernel parity test.
+    //
+    // Mirrors `draw_query_bits_after_verified_pow` + `BitSource` +
+    // `assemble_query_index` chain: the kernel consumes the squeezed random
+    // buffer and produces query indexes matching the host reference.
+    // -----------------------------------------------------------------------
+
+    fn host_assemble_query_indexes(
+        raw_bits: &[u32],
+        num_queries: usize,
+        log_domain_size: usize,
+    ) -> Vec<u32> {
+        use prover::query_utils::{assemble_query_index, BitSource};
+
+        // Host path: skip the first word (PoW header), then assemble LE.
+        let source_after_skip = raw_bits[1..].to_vec();
+        let mut bit_source = BitSource::new(source_after_skip);
+        (0..num_queries)
+            .map(|_| assemble_query_index(log_domain_size, &mut bit_source) as u32)
+            .collect()
+    }
+
+    fn assert_assemble_query_indexes_parity(
+        raw_bits: &[u32],
+        num_queries: usize,
+        log_domain_size: u32,
+    ) {
+        let expected = host_assemble_query_indexes(raw_bits, num_queries, log_domain_size as usize);
+
+        let stream = CudaStream::default();
+        let mut d_raw: DeviceAllocation<u32> = DeviceAllocation::alloc(raw_bits.len()).unwrap();
+        let mut d_indexes: DeviceAllocation<u32> = DeviceAllocation::alloc(num_queries).unwrap();
+        memory_copy_async(&mut d_raw, raw_bits, &stream).unwrap();
+        super::assemble_query_indexes(&d_raw, &mut d_indexes, log_domain_size, &stream).unwrap();
+
+        let mut actual = vec![0u32; num_queries];
+        memory_copy_async(&mut actual, &d_indexes, &stream).unwrap();
+        stream.synchronize().unwrap();
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn assemble_query_indexes_parity_small() {
+        // 4 queries, 8-bit domain: 32 + 4*8 = 64 bits = 2 words (pad to 8 for
+        // squeeze alignment).
+        let raw_bits: Vec<u32> = (0..8).map(|i| 0xDEADBEEFu32.wrapping_mul(i + 1)).collect();
+        assert_assemble_query_indexes_parity(&raw_bits, 4, 8);
+    }
+
+    #[test]
+    fn assemble_query_indexes_parity_realistic() {
+        // Matches a typical WHIR round: ~32-64 queries with ~20-24-bit domain.
+        let mut rng = rand::rng();
+        for &(num_queries, log_domain_size) in
+            &[(32usize, 24u32), (48, 20), (64, 16), (16, 30), (1, 24)]
+        {
+            // Pad to multiple of 8 (squeeze output granularity).
+            let bits_needed = 32 + num_queries * log_domain_size as usize;
+            let words_needed = bits_needed.div_ceil(32);
+            let padded_words = words_needed.next_multiple_of(STATE_SIZE);
+            let raw_bits: Vec<u32> = (0..padded_words).map(|_| rng.random()).collect();
+            assert_assemble_query_indexes_parity(&raw_bits, num_queries, log_domain_size);
+        }
+    }
+
+    #[test]
+    fn backward_round_update_parity_chained() {
+        // Emulates multiple sequential rounds: the output seed/claim/eq of one
+        // round becomes the input of the next. This catches state-propagation
+        // mismatches that a single-round test would miss.
+        let mut seed = Seed([0xaa; STATE_SIZE]);
+        let mut claim = sample_e4(100);
+        let mut eq_prefactor = sample_e4(200);
+
+        for round in 0..8u32 {
+            let prev_coord = sample_e4(round * 7 + 1);
+            let e_partial = sample_e4(round * 11 + 3);
+            let c_partial = sample_e4(round * 13 + 5);
+
+            let (h_seed, h_claim, h_eq, h_coeffs, h_challenge) = host_backward_round_update(
+                seed,
+                claim,
+                eq_prefactor,
+                prev_coord,
+                e_partial,
+                c_partial,
+            );
+            let (d_seed, d_claim, d_eq, d_coeffs, d_challenge) = run_device_backward_round_update(
+                seed,
+                claim,
+                eq_prefactor,
+                prev_coord,
+                e_partial,
+                c_partial,
+            );
+
+            assert_eq!(d_seed.0, h_seed.0, "round {round}: seed");
+            assert_eq!(d_coeffs, h_coeffs, "round {round}: coeffs");
+            assert_eq!(d_challenge, h_challenge, "round {round}: challenge");
+            assert_eq!(d_claim, h_claim, "round {round}: claim");
+            assert_eq!(d_eq, h_eq, "round {round}: eq_prefactor");
+
+            seed = h_seed;
+            claim = h_claim;
+            eq_prefactor = h_eq;
         }
     }
 }

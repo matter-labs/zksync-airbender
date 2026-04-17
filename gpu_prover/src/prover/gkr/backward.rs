@@ -41,7 +41,9 @@ use prover::gkr::sumcheck::{
 use prover::transcript::Seed;
 
 pub(crate) use super::backward_kernels::*;
+use super::backward_kernels::GpuBackwardSumcheckRoundUpdateKernel;
 use super::transform::normalize_compiled_circuit_for_gpu;
+use crate::ops::blake2s::STATE_SIZE;
 use super::{
     alloc_host_and_schedule_copy, GpuBaseFieldPolySource,
     GpuBaseFieldPolySourceAfterOneFoldingLaunchDescriptor,
@@ -4853,7 +4855,11 @@ impl<E: Field + 'static> GpuGKRMainLayerSumcheckLayerPlan<E> {
 
 impl<B: 'static, E: 'static> GpuGKRDimensionReducingSumcheckLayerPlan<B, E>
 where
-    E: Field + FieldExtension<BF> + Reduce + GpuDimensionReducingKernelSet,
+    E: Field
+        + FieldExtension<BF>
+        + Reduce
+        + GpuDimensionReducingKernelSet
+        + GpuBackwardSumcheckRoundUpdateKernel,
     Mul: BinaryOp<E, E, E>,
     [(); E::DEGREE]: Sized,
 {
@@ -5037,6 +5043,26 @@ where
         acc_size: usize,
         context: &ProverContext,
     ) -> CudaResult<HostAllocation<[E]>> {
+        self.run_round_coefficients_reduction_device(step, acc_size, context)?;
+        let mut reduction_host = unsafe { context.alloc_host_uninit_slice(2) };
+        memory_copy_async(
+            &mut reduction_host,
+            &self.round_scratch.reduction_output,
+            context.get_exec_stream(),
+        )?;
+        Ok(reduction_host)
+    }
+
+    /// Runs the two CUB reductions for a round's sumcheck accumulator without
+    /// copying the result back to the host. Used by the on-device per-round
+    /// update path where the reduction output stays on the GPU and is consumed
+    /// by `launch_backward_sumcheck_round_update` directly.
+    fn run_round_coefficients_reduction_device(
+        &mut self,
+        step: usize,
+        acc_size: usize,
+        context: &ProverContext,
+    ) -> CudaResult<()> {
         let challenge_count = self.folding_steps - step - 1;
         assert_eq!(acc_size, 1usize << challenge_count);
         let stream = context.get_exec_stream();
@@ -5067,14 +5093,7 @@ where
                 stream,
             )?;
         }
-
-        let mut reduction_host = unsafe { context.alloc_host_uninit_slice(2) };
-        memory_copy_async(
-            &mut reduction_host,
-            &self.round_scratch.reduction_output,
-            context.get_exec_stream(),
-        )?;
-        Ok(reduction_host)
+        Ok(())
     }
 
     fn schedule_device_values_readback_from_raw_ptr(
@@ -5468,6 +5487,21 @@ where
         let shared_state_handle =
             crate::primitives::context::UnsafeMutAccessor::new(shared_state.as_mut());
 
+        // Device-resident per-layer state consumed by the fused per-round update
+        // kernel. These replace the host-only rolling state that the former
+        // per-round callback maintained.
+        let mut device_seed: DeviceAllocation<u32> =
+            context.alloc(STATE_SIZE, AllocationPlacement::Top)?;
+        let mut device_claim: DeviceAllocation<E> = context.alloc(1, AllocationPlacement::Top)?;
+        let mut device_eq_prefactor: DeviceAllocation<E> =
+            context.alloc(1, AllocationPlacement::Top)?;
+        let coeffs_total_len = last_step * 4;
+        // Allocate at least one element so we always have a valid handle to
+        // drop into the keepalive. Zero-size allocations are not required to be
+        // supported by the pool.
+        let mut device_coeffs: DeviceAllocation<E> =
+            context.alloc(coeffs_total_len.max(1), AllocationPlacement::Top)?;
+
         let mut claim_point_host =
             unsafe { context.alloc_host_uninit_slice(self.folding_steps + 1) };
         let claim_point_accessor = claim_point_host.get_mut_accessor();
@@ -5475,6 +5509,20 @@ where
             context.alloc_host_uninit_slice(round0_eq_pair_values_len(self.folding_steps))
         };
         let eq_pair_values_accessor = eq_pair_values_host.get_mut_accessor();
+
+        // Host staging buffers that receive the initial seed/claim/eq_prefactor
+        // inside the start callback, then get H2D'd into the device state
+        // buffers above. init_eq_prefactor is constant (E::ONE) but is staged
+        // the same way for uniformity.
+        let mut init_seed_host = unsafe { context.alloc_host_uninit_slice(STATE_SIZE) };
+        let init_seed_write_accessor = init_seed_host.get_mut_accessor();
+        let mut init_claim_host: HostAllocation<[E]> =
+            unsafe { context.alloc_host_uninit_slice(1) };
+        let init_claim_write_accessor = init_claim_host.get_mut_accessor();
+        let mut init_eq_prefactor_host: HostAllocation<[E]> =
+            unsafe { context.alloc_host_uninit_slice(1) };
+        let init_eq_prefactor_write_accessor = init_eq_prefactor_host.get_mut_accessor();
+
         let workflow_state_for_start = workflow_state;
         let shared_state_for_start = shared_state_handle;
         let layer_claim_callback = self
@@ -5521,6 +5569,14 @@ where
                 layer_state.eq_prefactor = E::ONE;
                 layer_state.folding_challenges.clear();
                 layer_state.internal_round_coefficients.clear();
+
+                // Mirror initial seed/claim/eq_prefactor into host staging so
+                // the following H2D copies land the correct values on device.
+                init_seed_write_accessor
+                    .get_mut()
+                    .copy_from_slice(&layer_state.seed.0);
+                init_claim_write_accessor.get_mut()[0] = layer_state.claim;
+                init_eq_prefactor_write_accessor.get_mut()[0] = E::ONE;
             },
             stream,
         )?;
@@ -5530,8 +5586,16 @@ where
             stream,
         )?;
         self.build_round0_eq_values(&eq_pair_values_host, context)?;
+
+        // H2D the initial layer state. Ordered after the start callback on
+        // exec_stream, so the host staging buffers have been populated before
+        // the copies start.
+        memory_copy_async(&mut device_seed, &init_seed_host, stream)?;
+        memory_copy_async(&mut device_claim, &init_claim_host, stream)?;
+        memory_copy_async(&mut device_eq_prefactor, &init_eq_prefactor_host, stream)?;
+
         let mut round_challenge_buffers = Vec::with_capacity(last_step);
-        let mut round_challenge_storage = if last_step == 0 {
+        let round_challenge_storage = if last_step == 0 {
             None
         } else {
             Some(ScheduledChallengeStorage::new(
@@ -5571,73 +5635,47 @@ where
                 }
             }
 
-            let reduction_output =
-                self.schedule_round_coefficients_reduction(step, acc_size, context)?;
+            // Device-only reduction: sums accumulator halves into
+            // `round_scratch.reduction_output` (2 E4 values) without any D2H.
+            self.run_round_coefficients_reduction_device(step, acc_size, context)?;
             self.fold_eq_values_for_next_round(acc_size, context)?;
-            let reduction_accessor = reduction_output.get_accessor();
-            let next_round_challenges_offset = if step < last_step { Some(step) } else { None };
-            let shared_state_for_callback = shared_state_handle;
-            let previous_claim_coord_idx = step;
-            let claim_point_for_callback = workflow_state;
-            let callback = move |dst: &mut [E]| unsafe {
-                debug_assert_eq!(dst.len(), 1);
-                let reduction = reduction_accessor.get();
-                let c0 = reduction[0];
-                let c2 = reduction[1];
-                let previous_claim_coord =
-                    claim_point_for_callback.get().current_claim_point[previous_claim_coord_idx];
-                let state = shared_state_for_callback.get_mut();
-                let mut normalized_claim = state.claim;
-                normalized_claim.mul_assign(
-                    &state
-                        .eq_prefactor
-                        .inverse()
-                        .expect("eq prefactor must be non-zero"),
-                );
-                let coeffs = output_univariate_monomial_form_max_quadratic::<BF, E>(
-                    previous_claim_coord,
-                    normalized_claim,
-                    c0,
-                    c2,
-                );
-                commit_field_els(&mut state.seed, &coeffs);
-                state.internal_round_coefficients.push(coeffs);
 
-                let folding_challenge = draw_random_field_els::<BF, E>(&mut state.seed, 1)[0];
-                state.claim =
-                    evaluate_small_univariate_poly::<BF, E, _>(&coeffs, &folding_challenge);
-                state.eq_prefactor =
-                    evaluate_eq_poly::<BF, E>(&folding_challenge, &previous_claim_coord);
-                state.folding_challenges.push(folding_challenge);
-                dst[0] = folding_challenge;
-            };
-            let callbacks = if let (Some(storage), Some(offset)) = (
-                round_challenge_storage.as_mut(),
-                next_round_challenges_offset,
-            ) {
-                round_challenge_buffers.push(schedule_packed_round_challenge_upload(
-                    context,
-                    storage.device_accessor(),
-                    &mut storage.callbacks,
-                    offset,
-                    1,
-                    callback,
-                )?);
-                Callbacks::new()
-            } else {
-                let mut callbacks = Callbacks::new();
-                callbacks.schedule(
-                    move || {
-                        let mut tmp = [E::ZERO; 1];
-                        callback(&mut tmp);
-                    },
-                    stream,
-                )?;
-                callbacks
-            };
-            drop(reduction_output);
+            // Fused on-device per-round update: reads the reduction output and
+            // current (seed, claim, eq_prefactor) state, derives the 4
+            // univariate coefficients, commits them to the transcript, extracts
+            // the next folding challenge, and folds claim/eq_prefactor — all in
+            // one single-thread kernel. The challenge lands in the packed
+            // storage slot at `step`, ready for the next round's kernel.
+            let storage = round_challenge_storage
+                .as_ref()
+                .expect("round_challenge_storage allocated when last_step > 0");
+            let prev_coord_slice = &self.round_scratch.claim_point[step..step + 1];
+            let coeffs_round_slice =
+                &mut device_coeffs[step * 4..step * 4 + 4];
+            let challenge_slice = unsafe { storage.device.slice_mut(step, 1) };
+            E::launch_backward_sumcheck_round_update(
+                &self.round_scratch.reduction_output,
+                prev_coord_slice,
+                &mut device_seed,
+                &mut device_claim,
+                &mut device_eq_prefactor,
+                coeffs_round_slice,
+                challenge_slice,
+                stream,
+            )?;
+
+            // Record a view over the just-written challenge slot for the next
+            // round's kernel to read.
+            round_challenge_buffers.push(ScheduledChallengeBuffer {
+                device: storage.device_accessor(),
+                offset: step,
+                len: 1,
+            });
+
+            // Empty reduction_state retained for struct ABI compatibility — the
+            // kernel-driven path no longer has per-round host callbacks.
             reduction_states.push(ScheduledDimensionReducingReductionState {
-                callbacks,
+                callbacks: Callbacks::new(),
                 _phantom: std::marker::PhantomData,
             });
         }
@@ -5671,6 +5709,37 @@ where
             .iter()
             .map(|(addr, values)| (*addr, values.get_accessor()))
             .collect();
+
+        // Bulk D2H the on-device per-layer state that the final readback
+        // callback needs for proof assembly. The reads are stream-ordered
+        // after the per-round kernels that wrote them.
+        let mut final_seed_host = unsafe { context.alloc_host_uninit_slice(STATE_SIZE) };
+        let final_seed_accessor = final_seed_host.get_accessor();
+        memory_copy_async(&mut final_seed_host, &device_seed, stream)?;
+
+        // Size exactly matches the D2H copy length when coeffs_total_len > 0;
+        // a length-1 stub keeps the allocation valid in the degenerate
+        // folding_steps == 1 case (no copy performed).
+        let mut final_coeffs_host: HostAllocation<[E]> =
+            unsafe { context.alloc_host_uninit_slice(coeffs_total_len.max(1)) };
+        let final_coeffs_accessor = final_coeffs_host.get_accessor();
+        if coeffs_total_len > 0 {
+            memory_copy_async(&mut final_coeffs_host, &device_coeffs, stream)?;
+        }
+
+        let mut final_folding_challenges_host: HostAllocation<[E]> =
+            unsafe { context.alloc_host_uninit_slice(last_step.max(1)) };
+        let final_folding_challenges_accessor = final_folding_challenges_host.get_accessor();
+        if last_step > 0 {
+            let storage = round_challenge_storage
+                .as_ref()
+                .expect("round_challenge_storage allocated when last_step > 0");
+            // SAFETY: the challenge storage buffer lives through the struct we
+            // return; the D2H copy is stream-ordered after all per-round writes.
+            let src = unsafe { storage.device.slice_mut(0, last_step) };
+            memory_copy_async(&mut final_folding_challenges_host, &*src, stream)?;
+        }
+
         let shared_state_for_callback = shared_state_handle;
         let workflow_state_for_callback = workflow_state;
         let folding_steps = self.folding_steps;
@@ -5684,11 +5753,37 @@ where
                     last_evaluations.insert(*address, values);
                 }
 
+                // Populate the rolling state from the D2H'd device state.
+                let state = shared_state_for_callback.get_mut();
+                state.seed = Seed(
+                    <&[u32; STATE_SIZE]>::try_from(final_seed_accessor.get())
+                        .expect("seed readback has STATE_SIZE words")
+                        .to_owned(),
+                );
+                state.internal_round_coefficients.clear();
+                if coeffs_total_len > 0 {
+                    let coeffs_bytes = final_coeffs_accessor.get();
+                    state
+                        .internal_round_coefficients
+                        .extend(coeffs_bytes[..coeffs_total_len].chunks_exact(4).map(
+                            |c| {
+                                let mut out = [E::ZERO; 4];
+                                out.copy_from_slice(c);
+                                out
+                            },
+                        ));
+                }
+                state.folding_challenges.clear();
+                if last_step > 0 {
+                    state.folding_challenges.extend_from_slice(
+                        &final_folding_challenges_accessor.get()[..last_step],
+                    );
+                }
+
                 let transcript_inputs: Vec<E> = last_evaluations
                     .values()
                     .flat_map(|values| values.iter().copied())
                     .collect();
-                let state = shared_state_for_callback.get_mut();
                 commit_field_els(&mut state.seed, &transcript_inputs);
 
                 let challenges = draw_random_field_els::<BF, E>(&mut state.seed, 3);
@@ -5749,6 +5844,16 @@ where
 
         drop(claim_point_host);
         drop(eq_pair_values_host);
+        drop(init_seed_host);
+        drop(init_claim_host);
+        drop(init_eq_prefactor_host);
+        drop(final_seed_host);
+        drop(final_coeffs_host);
+        drop(final_folding_challenges_host);
+        drop(device_seed);
+        drop(device_claim);
+        drop(device_eq_prefactor);
+        drop(device_coeffs);
         Ok(GpuGKRDimensionReducingScheduledLayerExecution {
             tracing_ranges,
             start_callbacks,
@@ -5812,6 +5917,7 @@ where
         + FieldExtension<BF>
         + Reduce
         + GpuDimensionReducingKernelSet
+        + GpuBackwardSumcheckRoundUpdateKernel
         + super::backward_flat::GpuFlatRound0KernelSet
         + super::backward_flat::GpuFlatRound0ConstantKernelSet,
     Mul: BinaryOp<E, E, E>,
@@ -6104,6 +6210,23 @@ where
         acc_size: usize,
         context: &ProverContext,
     ) -> CudaResult<HostAllocation<[E]>> {
+        self.run_round_coefficients_reduction_device(step, acc_size, context)?;
+        let mut reduction_host = unsafe { context.alloc_host_uninit_slice(2) };
+        memory_copy_async(
+            &mut reduction_host,
+            &self.round_scratch.reduction_output,
+            context.get_exec_stream(),
+        )?;
+        Ok(reduction_host)
+    }
+
+    /// Main-layer variant of the device-only sumcheck accumulator reduction.
+    fn run_round_coefficients_reduction_device(
+        &mut self,
+        step: usize,
+        acc_size: usize,
+        context: &ProverContext,
+    ) -> CudaResult<()> {
         let challenge_offset = step + 1;
         let challenge_count = self.folding_steps - step - 1;
         assert_eq!(acc_size, 1usize << challenge_count);
@@ -6136,14 +6259,7 @@ where
                 stream,
             )?;
         }
-
-        let mut reduction_host = unsafe { context.alloc_host_uninit_slice(2) };
-        memory_copy_async(
-            &mut reduction_host,
-            &self.round_scratch.reduction_output,
-            context.get_exec_stream(),
-        )?;
-        Ok(reduction_host)
+        Ok(())
     }
 
     fn schedule_device_values_readback_from_raw_ptr(
@@ -6700,6 +6816,21 @@ where
         let shared_state_handle =
             crate::primitives::context::UnsafeMutAccessor::new(shared_state.as_mut());
 
+        // Device-resident per-layer state buffers (same pattern as the
+        // dimension-reducing scheduler); device_folding_challenges accumulates
+        // each round's challenge in index-0-based order so we can populate the
+        // packed round_challenge_storage slots with a short D2D copy.
+        let mut device_seed: DeviceAllocation<u32> =
+            context.alloc(STATE_SIZE, AllocationPlacement::Top)?;
+        let mut device_claim: DeviceAllocation<E> = context.alloc(1, AllocationPlacement::Top)?;
+        let mut device_eq_prefactor: DeviceAllocation<E> =
+            context.alloc(1, AllocationPlacement::Top)?;
+        let coeffs_total_len = last_step * 4;
+        let mut device_coeffs: DeviceAllocation<E> =
+            context.alloc(coeffs_total_len.max(1), AllocationPlacement::Top)?;
+        let mut device_folding_challenges: DeviceAllocation<E> =
+            context.alloc(last_step, AllocationPlacement::Top)?;
+
         let mut claim_point_host =
             unsafe { context.alloc_host_uninit_slice(self.folding_steps + 1) };
         let claim_point_accessor = claim_point_host.get_mut_accessor();
@@ -6707,6 +6838,17 @@ where
             context.alloc_host_uninit_slice(round0_eq_pair_values_len(self.folding_steps))
         };
         let eq_pair_values_accessor = eq_pair_values_host.get_mut_accessor();
+
+        // Host staging buffers for initial state H2D.
+        let mut init_seed_host = unsafe { context.alloc_host_uninit_slice(STATE_SIZE) };
+        let init_seed_write_accessor = init_seed_host.get_mut_accessor();
+        let mut init_claim_host: HostAllocation<[E]> =
+            unsafe { context.alloc_host_uninit_slice(1) };
+        let init_claim_write_accessor = init_claim_host.get_mut_accessor();
+        let mut init_eq_prefactor_host: HostAllocation<[E]> =
+            unsafe { context.alloc_host_uninit_slice(1) };
+        let init_eq_prefactor_write_accessor = init_eq_prefactor_host.get_mut_accessor();
+
         let workflow_state_for_start = workflow_state;
         let shared_state_for_start = shared_state_handle;
         let layer_claim_callback = self
@@ -6762,6 +6904,14 @@ where
                 layer_state.eq_prefactor = E::ONE;
                 layer_state.folding_challenges.clear();
                 layer_state.internal_round_coefficients.clear();
+
+                // Mirror initial seed/claim/eq_prefactor into host staging so
+                // the following H2D copies land the correct values on device.
+                init_seed_write_accessor
+                    .get_mut()
+                    .copy_from_slice(&layer_state.seed.0);
+                init_claim_write_accessor.get_mut()[0] = layer_state.claim;
+                init_eq_prefactor_write_accessor.get_mut()[0] = E::ONE;
             },
             stream,
         )?;
@@ -6771,6 +6921,12 @@ where
             stream,
         )?;
         self.build_round0_eq_values(&eq_pair_values_host, context)?;
+
+        // H2D initial layer state.
+        memory_copy_async(&mut device_seed, &init_seed_host, stream)?;
+        memory_copy_async(&mut device_claim, &init_claim_host, stream)?;
+        memory_copy_async(&mut device_eq_prefactor, &init_eq_prefactor_host, stream)?;
+
         let (batch_challenge_storage, batch_challenge_buffer) =
             self.schedule_batch_challenge_buffer_from_workflow_state(workflow_state, context)?;
         let runtime_uploads =
@@ -6781,7 +6937,7 @@ where
         let round_challenge_len = (1..=last_step)
             .map(main_layer_round_challenge_len)
             .sum::<usize>();
-        let mut round_challenge_storage = ScheduledChallengeStorage::new(
+        let round_challenge_storage = ScheduledChallengeStorage::new(
             context.alloc(round_challenge_len, AllocationPlacement::Top)?,
         );
         let mut next_round_challenge_offset = 0usize;
@@ -6812,79 +6968,60 @@ where
                     )?,
                 }
             }
-            let reduction_output =
-                self.schedule_round_coefficients_reduction(step, acc_size, context)?;
-            self.fold_eq_values_for_next_round(acc_size, context)?;
-            let reduction_accessor = reduction_output.get_accessor();
-            let next_round_len =
-                (step < last_step).then(|| main_layer_round_challenge_len(step + 1));
-            let shared_state_for_callback = shared_state_handle;
-            let previous_claim_coord_idx = step;
-            let claim_point_for_callback = workflow_state;
-            let callback = move |dst: &mut [E]| unsafe {
-                let reduction = reduction_accessor.get();
-                let c0 = reduction[0];
-                let c2 = reduction[1];
-                let previous_claim_coord =
-                    claim_point_for_callback.get().current_claim_point[previous_claim_coord_idx];
-                let state = shared_state_for_callback.get_mut();
-                let mut normalized_claim = state.claim;
-                normalized_claim.mul_assign(
-                    &state
-                        .eq_prefactor
-                        .inverse()
-                        .expect("eq prefactor must be non-zero"),
-                );
-                let coeffs = output_univariate_monomial_form_max_quadratic::<BF, E>(
-                    previous_claim_coord,
-                    normalized_claim,
-                    c0,
-                    c2,
-                );
-                commit_field_els(&mut state.seed, &coeffs);
-                state.internal_round_coefficients.push(coeffs);
 
-                let folding_challenge = draw_random_field_els::<BF, E>(&mut state.seed, 1)[0];
-                state.claim =
-                    evaluate_small_univariate_poly::<BF, E, _>(&coeffs, &folding_challenge);
-                state.eq_prefactor =
-                    evaluate_eq_poly::<BF, E>(&folding_challenge, &previous_claim_coord);
-                state.folding_challenges.push(folding_challenge);
-                match step + 1 {
-                    1 => dst[0] = state.folding_challenges[0],
-                    2 => {
-                        dst[0] = state.folding_challenges[0];
-                        dst[1] = state.folding_challenges[1];
-                    }
-                    _ => dst[0] = *state.folding_challenges.last().unwrap(),
-                }
+            // Device-only reduction into round_scratch.reduction_output.
+            self.run_round_coefficients_reduction_device(step, acc_size, context)?;
+            self.fold_eq_values_for_next_round(acc_size, context)?;
+
+            // Fused per-round update: reads (seed, claim, eq_prefactor) +
+            // (e, c) reduction output + prev_coord; writes updated state,
+            // pushes the round's 4 coefficients into device_coeffs at
+            // [step*4..step*4+4], and emits the next folding challenge into
+            // device_folding_challenges[step].
+            let prev_coord_slice = &self.round_scratch.claim_point[step..step + 1];
+            let coeffs_round_slice = &mut device_coeffs[step * 4..step * 4 + 4];
+            let challenge_slot = &mut device_folding_challenges[step..step + 1];
+            E::launch_backward_sumcheck_round_update(
+                &self.round_scratch.reduction_output,
+                prev_coord_slice,
+                &mut device_seed,
+                &mut device_claim,
+                &mut device_eq_prefactor,
+                coeffs_round_slice,
+                challenge_slot,
+                stream,
+            )?;
+
+            // Populate the packed round_challenge_storage slot expected by the
+            // next round's kernel. Main-layer packing (1/2/1/1/…) means round 2
+            // wants BOTH prior challenges, while rounds 1, 3+ want only the
+            // latest. A D2D copy from device_folding_challenges is cheap and
+            // avoids any host involvement.
+            let next_round = step + 1;
+            let next_round_len = main_layer_round_challenge_len(next_round);
+            let (src_start, src_len) = match next_round {
+                1 => (0, 1),
+                2 => (0, 2),
+                _ => (step, 1),
             };
-            let callbacks = if let Some(len) = next_round_len {
-                let offset = next_round_challenge_offset;
-                next_round_challenge_offset += len;
-                round_challenge_buffers.push(schedule_packed_round_challenge_upload(
-                    context,
-                    round_challenge_storage.device_accessor(),
-                    &mut round_challenge_storage.callbacks,
-                    offset,
-                    len,
-                    callback,
-                )?);
-                Callbacks::new()
-            } else {
-                let mut callbacks = Callbacks::new();
-                callbacks.schedule(
-                    move || {
-                        let mut tmp = [E::ZERO; 2];
-                        callback(&mut tmp[..main_layer_round_challenge_len(step + 1)]);
-                    },
-                    stream,
-                )?;
-                callbacks
-            };
-            drop(reduction_output);
+            debug_assert_eq!(src_len, next_round_len);
+            let dst_offset = next_round_challenge_offset;
+            // SAFETY: packed storage outlives the queued copy; the destination
+            // range is within bounds (offset + len <= round_challenge_len).
+            let dst_slice = unsafe { round_challenge_storage.device.slice_mut(dst_offset, src_len) };
+            let src_slice = &device_folding_challenges[src_start..src_start + src_len];
+            memory_copy_async(dst_slice, src_slice, stream)?;
+            next_round_challenge_offset += src_len;
+
+            // Record a view over the slot the next-round kernel will read.
+            round_challenge_buffers.push(ScheduledChallengeBuffer {
+                device: round_challenge_storage.device_accessor(),
+                offset: dst_offset,
+                len: src_len,
+            });
+
             reduction_states.push(ScheduledDimensionReducingReductionState {
-                callbacks,
+                callbacks: Callbacks::new(),
                 _phantom: std::marker::PhantomData,
             });
         }
@@ -6900,6 +7037,29 @@ where
             .iter()
             .map(|(addr, values)| (*addr, values.get_accessor()))
             .collect();
+
+        // D2H the on-device per-layer state: seed, accumulated coefficients,
+        // and folding challenges. The proof-assembly callback reconstitutes
+        // the rolling host state from these buffers, replacing the per-round
+        // host accumulation that the former callback-driven path relied on.
+        let mut final_seed_host = unsafe { context.alloc_host_uninit_slice(STATE_SIZE) };
+        let final_seed_accessor = final_seed_host.get_accessor();
+        memory_copy_async(&mut final_seed_host, &device_seed, stream)?;
+        let mut final_coeffs_host: HostAllocation<[E]> =
+            unsafe { context.alloc_host_uninit_slice(coeffs_total_len.max(1)) };
+        let final_coeffs_accessor = final_coeffs_host.get_accessor();
+        if coeffs_total_len > 0 {
+            memory_copy_async(&mut final_coeffs_host, &device_coeffs, stream)?;
+        }
+        let mut final_folding_challenges_host: HostAllocation<[E]> =
+            unsafe { context.alloc_host_uninit_slice(last_step) };
+        let final_folding_challenges_accessor = final_folding_challenges_host.get_accessor();
+        memory_copy_async(
+            &mut final_folding_challenges_host,
+            &device_folding_challenges,
+            stream,
+        )?;
+
         let shared_state_for_callback = shared_state_handle;
         let workflow_state_for_callback = workflow_state;
         let folding_steps = self.folding_steps;
@@ -6913,11 +7073,35 @@ where
                     last_evaluations.insert(*address, values);
                 }
 
+                // Populate the rolling state from the D2H'd device state.
+                let state = shared_state_for_callback.get_mut();
+                state.seed = Seed(
+                    <&[u32; STATE_SIZE]>::try_from(final_seed_accessor.get())
+                        .expect("seed readback has STATE_SIZE words")
+                        .to_owned(),
+                );
+                state.internal_round_coefficients.clear();
+                if coeffs_total_len > 0 {
+                    let coeffs_bytes = final_coeffs_accessor.get();
+                    state
+                        .internal_round_coefficients
+                        .extend(coeffs_bytes[..coeffs_total_len].chunks_exact(4).map(
+                            |c| {
+                                let mut out = [E::ZERO; 4];
+                                out.copy_from_slice(c);
+                                out
+                            },
+                        ));
+                }
+                state.folding_challenges.clear();
+                state
+                    .folding_challenges
+                    .extend_from_slice(final_folding_challenges_accessor.get());
+
                 let transcript_inputs: Vec<E> = last_evaluations
                     .values()
                     .flat_map(|values| values.iter().copied())
                     .collect();
-                let state = shared_state_for_callback.get_mut();
                 commit_field_els(&mut state.seed, &transcript_inputs);
 
                 let challenges = draw_random_field_els::<BF, E>(&mut state.seed, 2);
@@ -6969,6 +7153,17 @@ where
 
         drop(claim_point_host);
         drop(eq_pair_values_host);
+        drop(init_seed_host);
+        drop(init_claim_host);
+        drop(init_eq_prefactor_host);
+        drop(final_seed_host);
+        drop(final_coeffs_host);
+        drop(final_folding_challenges_host);
+        drop(device_seed);
+        drop(device_claim);
+        drop(device_eq_prefactor);
+        drop(device_coeffs);
+        drop(device_folding_challenges);
         Ok(GpuGKRMainLayerScheduledLayerExecution {
             tracing_ranges,
             start_callbacks,
@@ -7090,6 +7285,7 @@ where
         + FieldExtension<BF>
         + Reduce
         + GpuDimensionReducingKernelSet
+        + GpuBackwardSumcheckRoundUpdateKernel
         + super::backward_flat::GpuFlatRound0KernelSet
         + super::backward_flat::GpuFlatRound0ConstantKernelSet
         + 'static,
