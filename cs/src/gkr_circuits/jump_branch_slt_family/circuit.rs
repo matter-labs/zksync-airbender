@@ -772,7 +772,10 @@ mod test {
             24,
         );
 
-        serialize_to_file(&gkr_compiled, "compiled_circuits/jump_branch_slt_preprocessed_layout_gkr.json");
+        serialize_to_file(
+            &gkr_compiled,
+            "compiled_circuits/jump_branch_slt_preprocessed_layout_gkr.json",
+        );
     }
 
     #[test]

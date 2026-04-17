@@ -1235,7 +1235,7 @@ where
     }
 
     main_body.extend(quote! {
-        let whir_batching_challenge = draw_single_field_el(&mut ts);
+        state.batching_challenge = draw_single_field_el(&mut ts);
 
         let grand_product_accumulator: #quartic_struct = read_field_el::<I>();
 
@@ -1248,7 +1248,7 @@ where
             evaluation_point_len: state.prev_point_len,
             grand_product_accumulator,
             additional_base_layer_openings: BASE_LAYER_ADDITIONAL_OPENINGS,
-            whir_batching_challenge,
+            whir_batching_challenge: state.batching_challenge,
             whir_transcript_seed: ts.seed,
             oracle_caps,
         })
@@ -1336,6 +1336,48 @@ where
     let oracle_num_cols: Vec<usize> = oracles.iter().map(|o| o.num_columns).collect();
     let num_oracles = oracles.len();
 
+    // Mapping from WHIR initial-round column index (in [memory, witness, setup] order) to
+    // the index in GKR's base_layer_claims (which is sorted per target_addrs of layer 0).
+    let initial_whir_claim_indices: Vec<usize> = {
+        use verifier_common::gkr::{MEMORY_ORACLE_IDX, SETUP_ORACLE_IDX, WITNESS_ORACLE_IDX};
+        let layer_0_target_addrs: Vec<GKRAddress> = {
+            let regular: std::collections::BTreeSet<GKRAddress> =
+                standard_sorted_addrs[0].iter().copied().collect();
+            let extras = collect_extra_addrs_from_cached_relations(
+                &compiled_circuit.layers[0],
+                &standard_sorted_addrs[0],
+            );
+            let mut all = regular;
+            for a in extras {
+                all.insert(a);
+            }
+            all.into_iter().collect()
+        };
+        let position = |addr: &GKRAddress| -> usize {
+            layer_0_target_addrs
+                .iter()
+                .position(|a| a == addr)
+                .unwrap_or_else(|| {
+                    panic!(
+                        "WHIR base-oracle address {:?} not found in layer 0 target_addrs; \
+                         circuits with unopened base oracles are not supported yet",
+                        addr
+                    )
+                })
+        };
+        let mut indices = Vec::with_capacity(total_oracle_cols);
+        for i in 0..oracles[MEMORY_ORACLE_IDX].num_columns {
+            indices.push(position(&GKRAddress::BaseLayerMemory(i)));
+        }
+        for i in 0..oracles[WITNESS_ORACLE_IDX].num_columns {
+            indices.push(position(&GKRAddress::BaseLayerWitness(i)));
+        }
+        for i in 0..oracles[SETUP_ORACLE_IDX].num_columns {
+            indices.push(position(&GKRAddress::Setup(i)));
+        }
+        indices
+    };
+
     let num_intermediate_oracles = whir_rounds - 1;
     let mut whir_oracle_depths = Vec::with_capacity(num_intermediate_oracles);
     {
@@ -1376,6 +1418,7 @@ where
         pub const WHIR_ORACLE_DEPTHS: [usize; #num_intermediate_oracles] = [#(#whir_oracle_depths),*];
         pub const WHIR_CAP_WORDS: usize = #whir_cap_words;
         pub const CAPS_OFFSET_IN_TRANSCRIPT: usize = #caps_offset_in_transcript;
+        pub const INITIAL_WHIR_CLAIM_INDICES: [usize; #total_oracle_cols] = [#(#initial_whir_claim_indices),*];
     };
 
     let gkr = quote! {

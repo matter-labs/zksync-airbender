@@ -599,7 +599,11 @@ mod test {
             for _ in 0..k {
                 powered.square();
             }
-            assert_eq!(powered, Mersenne31Complex::ONE, "generator[{k}]^(2^{k}) != 1");
+            assert_eq!(
+                powered,
+                Mersenne31Complex::ONE,
+                "generator[{k}]^(2^{k}) != 1"
+            );
 
             let mut half_powered = g;
             for _ in 0..k - 1 {

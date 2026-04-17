@@ -166,6 +166,7 @@ fn generate_verifier_for_circuit<MW: MersenneWrapper>(circuit: &CircuitData) {
                 &mut ts,
                 gkr_output.whir_batching_challenge,
                 &gkr_output.oracle_caps,
+                gkr_output.base_layer_claims.as_slice(),
             )
         }
     };

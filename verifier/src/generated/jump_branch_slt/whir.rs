@@ -35,6 +35,7 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
     hash_buf: &mut AlignedArray64<MaybeUninit<u32>, WHIR_HASH_BUF_SIZE>,
     batching_challenge: BabyBearExt4,
     oracle_caps: &[u32; TOTAL_CAP_WORDS],
+    base_layer_claims: &[BabyBearExt4],
 ) -> Result<(BabyBearExt4, [u32; WHIR_CAP_WORDS]), E::Error> {
     unsafe {
         let gamma_powers: [BabyBearExt4; TOTAL_ORACLE_COLS] =
@@ -42,19 +43,13 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
         let mut claim = BabyBearExt4::ZERO;
         {
             let mut col_idx = 0;
-            let mut oracle_idx = 0;
-            while oracle_idx < NUM_ORACLES {
-                let num_cols = ORACLE_NUM_COLS[oracle_idx];
-                let mut i = 0;
-                while i < num_cols {
-                    let eval: BabyBearExt4 = read_field_el::<I>();
-                    let mut term = unsafe { *gamma_powers.get_unchecked(col_idx) };
-                    field_ops::mul_assign(&mut term, &eval);
-                    field_ops::add_assign(&mut claim, &term);
-                    col_idx += 1;
-                    i += 1;
-                }
-                oracle_idx += 1;
+            while col_idx < TOTAL_ORACLE_COLS {
+                let claim_idx = *INITIAL_WHIR_CLAIM_INDICES.get_unchecked(col_idx);
+                let eval: BabyBearExt4 = *base_layer_claims.get_unchecked(claim_idx);
+                let mut term = *gamma_powers.get_unchecked(col_idx);
+                field_ops::mul_assign(&mut term, &eval);
+                field_ops::add_assign(&mut claim, &term);
+                col_idx += 1;
             }
         }
         let mut folding_challenges: LazyVec<BabyBearExt4, { WHIR_FOLD_STEPS[0] }> = LazyVec::new();
@@ -416,10 +411,16 @@ pub fn verify_whir<I: NonDeterminismSource, E: ErrorCreator>(
     ts: &mut TranscriptState,
     batching_challenge: BabyBearExt4,
     oracle_caps: &[u32; TOTAL_CAP_WORDS],
+    base_layer_claims: &[BabyBearExt4],
 ) -> Result<(), E::Error> {
     let mut hash_buf = AlignedArray64::<u32, WHIR_HASH_BUF_SIZE>::new_uninit();
-    let (mut claim, mut cap) =
-        verify_initial_whir_round::<I, E>(ts, &mut hash_buf, batching_challenge, oracle_caps)?;
+    let (mut claim, mut cap) = verify_initial_whir_round::<I, E>(
+        ts,
+        &mut hash_buf,
+        batching_challenge,
+        oracle_caps,
+        base_layer_claims,
+    )?;
     let mut round_idx = 1;
     while round_idx <= NUM_INTERNAL_ROUNDS {
         let (new_claim, new_cap) =

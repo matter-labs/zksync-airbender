@@ -423,7 +423,10 @@ mod test {
             24,
         );
 
-        serialize_to_file(&gkr_compiled, "compiled_circuits/shift_binop_preprocessed_layout_gkr.json");
+        serialize_to_file(
+            &gkr_compiled,
+            "compiled_circuits/shift_binop_preprocessed_layout_gkr.json",
+        );
     }
 
     #[test]

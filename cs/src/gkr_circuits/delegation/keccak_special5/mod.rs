@@ -1727,7 +1727,10 @@ mod test {
             22,
         );
 
-        serialize_to_file(&gkr_compiled, "compiled_circuits/keccak_special5_layout_gkr.json");
+        serialize_to_file(
+            &gkr_compiled,
+            "compiled_circuits/keccak_special5_layout_gkr.json",
+        );
     }
 
     #[test]

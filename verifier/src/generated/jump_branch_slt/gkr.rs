@@ -4425,7 +4425,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             state.batching_challenge = next_batching;
             state.prev_point_len = fc_len;
         }
-        let whir_batching_challenge = draw_single_field_el(&mut ts);
+        state.batching_challenge = draw_single_field_el(&mut ts);
         let grand_product_accumulator: BabyBearExt4 = read_field_el::<I>();
         {
             let mut read_product = BabyBearExt4::ONE;
@@ -4498,7 +4498,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             evaluation_point_len: state.prev_point_len,
             grand_product_accumulator,
             additional_base_layer_openings: BASE_LAYER_ADDITIONAL_OPENINGS,
-            whir_batching_challenge,
+            whir_batching_challenge: state.batching_challenge,
             whir_transcript_seed: ts.seed,
             oracle_caps,
         })

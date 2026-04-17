@@ -92,9 +92,6 @@ where
     flatten_field_els::<F, E>(&[proof.grand_product_accumulator_computed], &mut result);
 
     let whir = &proof.whir_proof;
-    flatten_field_els::<F, E>(&whir.memory_commitment.evals, &mut result);
-    flatten_field_els::<F, E>(&whir.witness_commitment.evals, &mut result);
-    flatten_field_els::<F, E>(&whir.setup_commitment.evals, &mut result);
 
     let num_rounds = whir
         .ood_samples

@@ -518,7 +518,10 @@ mod test {
             24,
         );
 
-        serialize_to_file(&gkr_compiled, "compiled_circuits/mem_subword_only_preprocessed_layout_gkr.json");
+        serialize_to_file(
+            &gkr_compiled,
+            "compiled_circuits/mem_subword_only_preprocessed_layout_gkr.json",
+        );
     }
 
     #[test]

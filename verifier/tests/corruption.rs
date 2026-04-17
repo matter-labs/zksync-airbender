@@ -8,51 +8,17 @@ use field::baby_bear::ext4::BabyBearExt4;
 use field::Field;
 use prover::gkr::prover::GKRProof;
 use prover::merkle_trees::DefaultTreeConstructor;
-use verifier_common::errors::DebugErrorCreator;
 use verifier_common::gkr::flatten::flatten_gkr_proof_for_nds;
-use verifier_common::prover::nd_source_std::{set_iterator, ThreadLocalBasedSource};
-
-/// Run the verifier on the given NDS, treating both Err returns and panics
-/// (e.g. iterator exhaustion, PoW check) as rejection.
-fn verify_nds(name: &str, nds: Vec<u32>) -> bool {
-    let prev_hook = std::panic::take_hook();
-    let panic_msg = std::sync::Arc::new(std::sync::Mutex::new(None::<String>));
-    let panic_msg_clone = panic_msg.clone();
-    std::panic::set_hook(Box::new(move |info| {
-        *panic_msg_clone.lock().unwrap() = Some(format!("{}", info));
-    }));
-
-    let accepted = std::thread::scope(|s| {
-        let handle = std::thread::Builder::new()
-            .name(format!("corruption_{}", name))
-            .stack_size(1 << 27)
-            .spawn_scoped(s, move || {
-                set_iterator(nds.into_iter());
-                with_circuit!(name, |m| {
-                    m::verify::<ThreadLocalBasedSource, DebugErrorCreator>()
-                        .map_err(|e| format!("{:?}", e))
-                })
-            })
-            .expect("failed to spawn thread");
-
-        matches!(handle.join(), Ok(Ok(())))
-    });
-
-    std::panic::set_hook(prev_hook);
-
-    if !accepted {
-        if let Some(msg) = panic_msg.lock().unwrap().take() {
-            println!("  [corruption test] {} rejected via panic: {}", name, msg);
-        }
-    }
-
-    accepted
-}
 
 fn assert_rejects_corrupted_nds(name: &str, label: &str, corrupt: impl FnOnce(&mut Vec<u32>)) {
     let mut nds = common::load_nds(name);
     corrupt(&mut nds);
-    assert!(!verify_nds(name, nds), "{}: should reject {}", name, label);
+    assert!(
+        !common::verify_nds(name, nds),
+        "{}: should reject {}",
+        name,
+        label
+    );
 }
 
 fn proof_to_nds(
@@ -240,7 +206,7 @@ fn test_rejects_corrupted_ood_sample(name: &str) {
     proof.whir_proof.ood_samples[0].add_assign(&BabyBearExt4::ONE);
     let nds = proof_to_nds(name, &proof);
     assert!(
-        !verify_nds(name, nds),
+        !common::verify_nds(name, nds),
         "{}: should reject corrupted OOD sample",
         name
     );
@@ -257,7 +223,7 @@ fn test_rejects_corrupted_pow_nonce(name: &str) {
     proof.whir_proof.pow_nonces[0] ^= 1;
     let nds = proof_to_nds(name, &proof);
     assert!(
-        !verify_nds(name, nds),
+        !common::verify_nds(name, nds),
         "{}: should reject corrupted PoW nonce",
         name
     );
@@ -289,7 +255,7 @@ fn test_rejects_corrupted_cache_relations(name: &str) {
 
     let nds = proof_to_nds(name, &proof);
     assert!(
-        !verify_nds(name, nds),
+        !common::verify_nds(name, nds),
         "{}: should reject corrupted cache relation",
         name
     );
@@ -301,7 +267,7 @@ fn test_rejects_corrupted_grand_product(name: &str) {
     proof.grand_product_accumulator_computed = BabyBearExt4::ZERO;
     let nds = proof_to_nds(name, &proof);
     assert!(
-        !verify_nds(name, nds),
+        !common::verify_nds(name, nds),
         "{}: should reject corrupted grand_product_accumulator",
         name
     );

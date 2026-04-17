@@ -7,9 +7,7 @@ use field::baby_bear::base::BabyBearField;
 use field::baby_bear::ext4::BabyBearExt4;
 use prover::gkr::prover::GKRProof;
 use prover::merkle_trees::DefaultTreeConstructor;
-use verifier_common::errors::DebugErrorCreator;
 use verifier_common::gkr::flatten::flatten_gkr_proof_for_nds;
-use verifier_common::prover::nd_source_std::{set_iterator, ThreadLocalBasedSource};
 
 const CIRCUIT_NAME: &str = "jump_branch_slt";
 
@@ -25,48 +23,6 @@ fn deserialize_from_file<T: serde::de::DeserializeOwned>(path: &str) -> T {
         )
     });
     serde_json::from_reader(src).unwrap()
-}
-
-fn verify_nds(nds: Vec<u32>) -> bool {
-    let prev_hook = std::panic::take_hook();
-    let panic_msg = std::sync::Arc::new(std::sync::Mutex::new(None::<String>));
-    let panic_msg_clone = panic_msg.clone();
-    std::panic::set_hook(Box::new(move |info| {
-        *panic_msg_clone.lock().unwrap() = Some(format!("{}", info));
-    }));
-
-    let accepted = std::thread::scope(|s| {
-        let handle = std::thread::Builder::new()
-            .name("malicious_verify".to_string())
-            .stack_size(1 << 27)
-            .spawn_scoped(s, move || {
-                set_iterator(nds.into_iter());
-                with_circuit!(CIRCUIT_NAME, |m| {
-                    m::verify::<ThreadLocalBasedSource, DebugErrorCreator>()
-                        .map_err(|e| format!("{:?}", e))
-                })
-            })
-            .expect("failed to spawn thread");
-
-        match handle.join() {
-            Ok(Ok(())) => true,
-            Ok(Err(e)) => {
-                println!("  [malicious test] rejected via error: {}", e);
-                false
-            }
-            Err(_) => false,
-        }
-    });
-
-    std::panic::set_hook(prev_hook);
-
-    if !accepted {
-        if let Some(msg) = panic_msg.lock().unwrap().take() {
-            println!("  [malicious test] rejected via panic: {}", msg);
-        }
-    }
-
-    accepted
 }
 
 fn load_malicious_proof(
@@ -95,7 +51,7 @@ fn malicious_proof_to_nds(variant: &str) -> Vec<u32> {
 fn test_rejects_malicious(variant: &str) {
     let nds = malicious_proof_to_nds(variant);
     assert!(
-        !verify_nds(nds),
+        !common::verify_nds(CIRCUIT_NAME, nds),
         "verifier should reject malicious proof: {}",
         variant
     );

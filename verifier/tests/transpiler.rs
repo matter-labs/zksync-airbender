@@ -14,29 +14,8 @@ fn run_transpiler(name: &str) {
 
     let (bin_path, text_path, elf_path) = common::binary_paths(name);
 
-    let binary_bytes = std::fs::read(&bin_path).unwrap_or_else(|_| {
-        panic!(
-            "Missing {} — run `cd tools/gkr_verifier && ./dump_bin.sh` first",
-            bin_path
-        )
-    });
-    assert!(binary_bytes.len() % 4 == 0);
-    let binary: Vec<u32> = binary_bytes
-        .chunks_exact(4)
-        .map(|c| u32::from_le_bytes([c[0], c[1], c[2], c[3]]))
-        .collect();
-
-    let text_bytes = std::fs::read(&text_path).unwrap_or_else(|_| {
-        panic!(
-            "Missing {} — run `cd tools/gkr_verifier && ./dump_bin.sh` first",
-            text_path
-        )
-    });
-    assert!(text_bytes.len() % 4 == 0);
-    let text_section: Vec<u32> = text_bytes
-        .chunks_exact(4)
-        .map(|c| u32::from_le_bytes([c[0], c[1], c[2], c[3]]))
-        .collect();
+    let binary = common::load_binary_section(&bin_path);
+    let text_section = common::load_binary_section(&text_path);
 
     let instructions: Vec<Instruction> =
         preprocess_bytecode::<ReducedMachineDecoderConfig, true>(&text_section);

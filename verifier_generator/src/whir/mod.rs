@@ -21,10 +21,11 @@ pub fn generate_whir_verify<MW: MersenneWrapper>(whir_hash_buf_size: usize) -> T
             ts: &mut TranscriptState,
             batching_challenge: #quartic_struct,
             oracle_caps: &[u32; TOTAL_CAP_WORDS],
+            base_layer_claims: &[#quartic_struct],
         ) -> Result<(), E::Error> {
             let mut hash_buf = AlignedArray64::<u32, WHIR_HASH_BUF_SIZE>::new_uninit();
             let (mut claim, mut cap) = verify_initial_whir_round::<I, E>(
-                ts, &mut hash_buf, batching_challenge, oracle_caps,
+                ts, &mut hash_buf, batching_challenge, oracle_caps, base_layer_claims,
             )?;
             let mut round_idx = 1;
             while round_idx <= NUM_INTERNAL_ROUNDS {

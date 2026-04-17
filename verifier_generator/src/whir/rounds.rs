@@ -223,6 +223,7 @@ pub fn generate_whir_initial_round<MW: MersenneWrapper>(
             hash_buf: &mut AlignedArray64<MaybeUninit<u32>, WHIR_HASH_BUF_SIZE>,
             batching_challenge: #quartic_struct,
             oracle_caps: &[u32; TOTAL_CAP_WORDS],
+            base_layer_claims: &[#quartic_struct],
         ) -> Result<(#quartic_struct, [u32; WHIR_CAP_WORDS]), E::Error> {
             unsafe {
                 let gamma_powers: [#quartic_struct; TOTAL_ORACLE_COLS] =
@@ -230,19 +231,13 @@ pub fn generate_whir_initial_round<MW: MersenneWrapper>(
                 let mut claim = #quartic_zero;
                 {
                     let mut col_idx = 0;
-                    let mut oracle_idx = 0;
-                    while oracle_idx < NUM_ORACLES {
-                        let num_cols = ORACLE_NUM_COLS[oracle_idx];
-                        let mut i = 0;
-                        while i < num_cols {
-                            let eval: #quartic_struct = read_field_el::<I>();
-                            let mut term = unsafe { *gamma_powers.get_unchecked(col_idx) };
-                            #batch_mul_eval;
-                            #add_claim_eval;
-                            col_idx += 1;
-                            i += 1;
-                        }
-                        oracle_idx += 1;
+                    while col_idx < TOTAL_ORACLE_COLS {
+                        let claim_idx = *INITIAL_WHIR_CLAIM_INDICES.get_unchecked(col_idx);
+                        let eval: #quartic_struct = *base_layer_claims.get_unchecked(claim_idx);
+                        let mut term = *gamma_powers.get_unchecked(col_idx);
+                        #batch_mul_eval;
+                        #add_claim_eval;
+                        col_idx += 1;
                     }
                 }
 

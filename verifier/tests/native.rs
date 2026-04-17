@@ -11,7 +11,7 @@ fn run_native(name: &str) {
     std::thread::scope(|s| {
         let handle = std::thread::Builder::new()
             .name(format!("gkr verifier {}", name))
-            .stack_size(1 << 27)
+            .stack_size(common::VERIFIER_STACK_SIZE)
             .spawn_scoped(s, move || {
                 set_iterator(nds.into_iter());
                 with_circuit!(name, |m| {
@@ -75,6 +75,47 @@ fn oracle_cap_ordering_matches_nds() {
                     circuit_data.name,
                     oracle_idx,
                     nds_start
+                );
+            }
+        });
+    }
+}
+
+#[test]
+fn initial_whir_claim_indices_mapping_is_correct() {
+    use verifier_common::cs::definitions::GKRAddress;
+
+    for circuit_data in common::CIRCUITS.iter() {
+        with_circuit!(circuit_data.name, |m| {
+            let sorted_addrs = m::constants::LAYER_0_SORTED_ADDRS;
+            let indices = m::constants::INITIAL_WHIR_CLAIM_INDICES;
+            let num_cols = m::constants::ORACLE_NUM_COLS;
+            let total_cols = m::constants::TOTAL_ORACLE_COLS;
+
+            let mem_count = num_cols[0];
+            let wit_count = num_cols[1];
+
+            for col in 0..total_cols {
+                let claim_idx = indices[col];
+                assert!(
+                    claim_idx < sorted_addrs.len(),
+                    "{}: INITIAL_WHIR_CLAIM_INDICES[{}] = {} out of bounds for LAYER_0_SORTED_ADDRS (len {})",
+                    circuit_data.name, col, claim_idx, sorted_addrs.len()
+                );
+                let actual_addr = sorted_addrs[claim_idx];
+
+                let expected_addr = if col < mem_count {
+                    GKRAddress::BaseLayerMemory(col)
+                } else if col < mem_count + wit_count {
+                    GKRAddress::BaseLayerWitness(col - mem_count)
+                } else {
+                    GKRAddress::Setup(col - mem_count - wit_count)
+                };
+
+                assert_eq!(
+                    actual_addr, expected_addr,
+                    "{}: WHIR column {} (oracle-order [mem,wit,setup]) maps via INITIAL_WHIR_CLAIM_INDICES[{}]={} to LAYER_0_SORTED_ADDRS[{}]={:?}, expected {:?}",
+                    circuit_data.name, col, col, claim_idx, claim_idx, actual_addr, expected_addr
                 );
             }
         });

@@ -91,3 +91,12 @@ pub const ORACLE_CAP_TRANSCRIPT_OFFSETS: [usize; 3usize] = [256usize, 384usize, 
 pub const WHIR_ORACLE_DEPTHS: [usize; 5usize] = [18usize, 17usize, 14usize, 10usize, 6usize];
 pub const WHIR_CAP_WORDS: usize = 128usize;
 pub const CAPS_OFFSET_IN_TRANSCRIPT: usize = 28usize;
+pub const INITIAL_WHIR_CLAIM_INDICES: [usize; 64usize] = [
+    28usize, 29usize, 30usize, 31usize, 32usize, 33usize, 34usize, 35usize, 36usize, 37usize,
+    38usize, 39usize, 40usize, 41usize, 42usize, 43usize, 44usize, 45usize, 46usize, 47usize,
+    48usize, 49usize, 50usize, 51usize, 52usize, 53usize, 0usize, 1usize, 2usize, 3usize, 4usize,
+    5usize, 6usize, 7usize, 8usize, 9usize, 10usize, 11usize, 12usize, 13usize, 14usize, 15usize,
+    16usize, 17usize, 18usize, 19usize, 20usize, 21usize, 22usize, 23usize, 24usize, 25usize,
+    26usize, 27usize, 54usize, 55usize, 56usize, 57usize, 58usize, 59usize, 60usize, 61usize,
+    62usize, 63usize,
+];
