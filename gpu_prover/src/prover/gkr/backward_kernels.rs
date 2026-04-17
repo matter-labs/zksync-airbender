@@ -11,6 +11,7 @@ use era_cudart::memory::memory_copy_async;
 use era_cudart::paste::paste;
 use era_cudart::result::CudaResult;
 use era_cudart::slice::{CudaSliceMut, DeviceSlice};
+use era_cudart::stream::CudaStream;
 use era_cudart::{cuda_kernel_declaration, cuda_kernel_signature_arguments_and_function};
 use field::{Field, FieldExtension};
 use prover::gkr::prover::dimension_reduction::forward::DimensionReducingInputOutput;
@@ -1853,6 +1854,48 @@ macro_rules! gkr_dim_reducing_kernels {
 }
 
 gkr_dim_reducing_kernels!(E4);
+
+/// Dispatches the fused per-round backward-sumcheck state update kernel.
+/// Currently only implemented for `E4`; the single impl exists to let the
+/// generic scheduler in `backward.rs` invoke the kernel without losing type
+/// parametricity in the surrounding code.
+pub(crate) trait GpuBackwardSumcheckRoundUpdateKernel: Sized {
+    #[allow(clippy::too_many_arguments)]
+    fn launch_backward_sumcheck_round_update(
+        reduction_output: &DeviceSlice<Self>,
+        prev_claim_coord: &DeviceSlice<Self>,
+        seed: &mut DeviceSlice<u32>,
+        claim: &mut DeviceSlice<Self>,
+        eq_prefactor: &mut DeviceSlice<Self>,
+        coeffs_out: &mut DeviceSlice<Self>,
+        challenge_out: &mut DeviceSlice<Self>,
+        stream: &CudaStream,
+    ) -> CudaResult<()>;
+}
+
+impl GpuBackwardSumcheckRoundUpdateKernel for E4 {
+    fn launch_backward_sumcheck_round_update(
+        reduction_output: &DeviceSlice<Self>,
+        prev_claim_coord: &DeviceSlice<Self>,
+        seed: &mut DeviceSlice<u32>,
+        claim: &mut DeviceSlice<Self>,
+        eq_prefactor: &mut DeviceSlice<Self>,
+        coeffs_out: &mut DeviceSlice<Self>,
+        challenge_out: &mut DeviceSlice<Self>,
+        stream: &CudaStream,
+    ) -> CudaResult<()> {
+        crate::ops::blake2s::backward_sumcheck_round_update(
+            reduction_output,
+            prev_claim_coord,
+            seed,
+            claim,
+            eq_prefactor,
+            coeffs_out,
+            challenge_out,
+            stream,
+        )
+    }
+}
 
 pub(super) fn gkr_dim_reducing_launch_config(
     count: u32,
