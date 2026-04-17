@@ -17,7 +17,11 @@ The prover maintains three streams:
   host-to-device transfers with exec-stream compute. It is **not** the default
   path for H2D copies — see *H2D copies* below.
 
-- **aux stream** (`aux_stream`): allocated but currently unused.
+- **aux stream pool** (`aux_streams`): a fixed-size pool of `AUX_STREAM_POOL_SIZE`
+  auxiliary streams (currently 8), used by subsystems that want to dispatch
+  independent work in parallel. Consumers pick streams by index and must fork/join
+  against exec_stream with explicit events (see rule below). Pool streams have
+  no intrinsic ordering with each other or with exec_stream.
 
 A dedicated D2H stream may be added in the future to overlap device-to-host
 transfers with exec work, following the same pattern as h2d_stream.
