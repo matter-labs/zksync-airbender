@@ -432,10 +432,10 @@ where
         + Field
         + crate::ops::simple::SetByRef
         + crate::ops::simple::SetByVal
-        + crate::prover::gkr::forward_kernels::GpuGKRForwardKernelSet
         + crate::prover::gkr::forward_kernels::GpuGKRForwardCacheKernelSet
         + crate::prover::gkr::forward_kernels::GpuGKRVirtualBaseAccumKernelSet
-        + crate::prover::gkr::forward_kernels::GpuGKRDimensionReducingForwardKernelSet,
+        + crate::prover::gkr::forward_kernels::GpuGKRDimensionReducingForwardTowerKernelSet
+        + crate::prover::gkr::forward_kernels::GpuGKRFlatForwardKernelSet,
     crate::ops::simple::Add: crate::ops::simple::BinaryOp<E, E, E>,
     crate::ops::simple::Add: crate::ops::simple::BinaryOp<BF, E, E>,
     crate::ops::simple::Add: crate::ops::simple::BinaryOp<E, BF, E>,
