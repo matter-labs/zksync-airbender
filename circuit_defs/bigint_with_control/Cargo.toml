@@ -11,10 +11,10 @@ categories.workspace = true
 
 [dependencies]
 prover = { workspace = true, features = ["prover"] }
-verifier_generator = { workspace = true }
+# verifier_generator = { workspace = true }
+witness_eval_generator = { workspace = true }
 common_constants = { workspace = true }
-serde = { workspace = true }
-serde_json = "*"
+circuit_common = { workspace = true }
 
 [features]
 

@@ -1,41 +1,159 @@
-pub const RISC_V_CIRCUIT_DOMAIN_SIZE: usize = 1 << 20;
-pub const NUM_PROC_CYCLES_PER_CIRCUIT: usize = RISC_V_CIRCUIT_DOMAIN_SIZE - 1;
+use cs::cs::circuit_trait::Circuit;
+use cs::gkr_compiler::*;
+use cs::tables::TableDriver;
+use cs::witness_placer::graph_description::RawExpression;
+use field::baby_bear::base::BabyBearField;
+use field::PrimeField;
 
-use ::field::{Mersenne31Complex, Mersenne31Field};
-use fft::*;
-use worker::Worker;
+pub trait DelegationCircuit<F: PrimeField> {
+    const DELEGATION_TYPE_ID: u16;
+    const DOMAIN_SIZE_LOG2: u32;
 
-pub fn run_for_witness() -> () {
-    ()
+    fn table_driver_fn(table_driver: &mut TableDriver<F>);
+    fn table_addition_fn<CS: Circuit<F>>(cs: &mut CS);
+    fn circuit_fn<CS: Circuit<F>>(cs: &mut CS);
+
+    fn get_circuit(use_caches: bool) -> GKRCircuitArtifact<F> {
+        if use_caches {
+            compile_delegation_circuit_into_gkr::<F>(
+                &|cs| Self::table_addition_fn(cs),
+                &|cs| {
+                    let _ = Self::circuit_fn(cs);
+                },
+                Self::DOMAIN_SIZE_LOG2 as usize,
+            )
+        } else {
+            compile_delegation_circuit_into_gkr_without_caches::<F>(
+                &|cs| Self::table_addition_fn(cs),
+                &|cs| {
+                    let _ = Self::circuit_fn(cs);
+                },
+                Self::DOMAIN_SIZE_LOG2 as usize,
+            )
+        }
+    }
+
+    fn get_ssa_form() -> Vec<Vec<RawExpression<F>>> {
+        dump_ssa_witness_eval_form::<F>(&|cs| Self::table_addition_fn(cs), &|cs| {
+            let _ = Self::circuit_fn(cs);
+        })
+    }
+
+    fn get_table_driver() -> TableDriver<F> {
+        let mut table_driver = TableDriver::<F>::new();
+        Self::table_driver_fn(&mut table_driver);
+
+        table_driver
+    }
 }
 
-pub fn u32_from_field_elems(src: &[Mersenne31Field; 2]) -> u32 {
-    use field::PrimeField;
+pub trait RiscVCycleCircuit<F: PrimeField, const USE_BYTECODE: bool> {
+    const DOMAIN_SIZE_LOG2: u32;
 
-    let low = u16::try_from(src[0].as_u32_reduced()).expect("read value is not 16 bit long") as u32;
-    let high =
-        u16::try_from(src[1].as_u32_reduced()).expect("read value is not 16 bit long") as u32;
-    low + (high << 16)
+    fn table_driver_fn(table_driver: &mut TableDriver<F>, bytecode: &[u32]);
+    fn table_addition_fn<CS: Circuit<F>>(cs: &mut CS, bytecode: &[u32]);
+    fn circuit_fn<CS: Circuit<F>>(cs: &mut CS, bytecode: &[u32]);
 }
 
-pub fn u32_into_field_elems(src: u32) -> [Mersenne31Field; 2] {
-    let low = src as u16;
-    let high = (src >> 16) as u16;
-
-    [Mersenne31Field(low as u32), Mersenne31Field(high as u32)]
+pub fn risc_v_non_mem_get_circuit<F: PrimeField, C: RiscVCycleCircuit<F, false>>(
+    use_caches: bool,
+) -> GKRCircuitArtifact<F> {
+    if use_caches {
+        compile_unrolled_circuit_state_transition_into_gkr::<F>(
+            &|cs| C::table_addition_fn(cs, &[]),
+            &|cs| C::circuit_fn(cs, &[]),
+            common_constants::ROM_WORD_SIZE,
+            C::DOMAIN_SIZE_LOG2 as usize,
+        )
+    } else {
+        compile_unrolled_circuit_state_transition_into_unrolled_gkr_without_caches::<F>(
+            &|cs| C::table_addition_fn(cs, &[]),
+            &|cs| C::circuit_fn(cs, &[]),
+            common_constants::ROM_WORD_SIZE,
+            C::DOMAIN_SIZE_LOG2 as usize,
+        )
+    }
 }
 
-pub fn create_lde_precomputations<A: GoodAllocator>(
-    trace_len: usize,
-    lde_factor: usize,
-    source_domains: &[usize],
-    worker: &Worker,
-) -> (Twiddles<Mersenne31Complex, A>, LdePrecomputations<A>) {
-    assert!(trace_len.is_power_of_two());
+pub fn risc_v_non_mem_get_ssa_form<F: PrimeField, C: RiscVCycleCircuit<F, false>>(
+) -> Vec<Vec<RawExpression<F>>> {
+    dump_ssa_witness_eval_form::<F>(&|cs| C::table_addition_fn(cs, &[]), &|cs| {
+        let _ = C::circuit_fn(cs, &[]);
+    })
+}
 
-    let twiddles: Twiddles<_, A> = Twiddles::new(trace_len, &worker);
-    let lde_precomputations =
-        LdePrecomputations::new(trace_len, lde_factor, source_domains, &worker);
+pub fn risc_v_non_mem_get_table_driver<F: PrimeField, C: RiscVCycleCircuit<F, false>>(
+) -> TableDriver<F> {
+    let mut table_driver = TableDriver::<F>::new();
+    C::table_driver_fn(&mut table_driver, &[]);
 
-    (twiddles, lde_precomputations)
+    table_driver
+}
+
+pub fn risc_v_with_mem_get_circuit<F: PrimeField, C: RiscVCycleCircuit<F, true>>(
+    use_caches: bool,
+    bytecode: &[u32],
+) -> GKRCircuitArtifact<F> {
+    assert!(bytecode.is_empty() || bytecode.len() == common_constants::ROM_WORD_SIZE);
+    if use_caches {
+        compile_unrolled_circuit_state_transition_into_gkr::<F>(
+            &|cs| C::table_addition_fn(cs, bytecode),
+            &|cs| C::circuit_fn(cs, bytecode),
+            common_constants::ROM_WORD_SIZE,
+            C::DOMAIN_SIZE_LOG2 as usize,
+        )
+    } else {
+        compile_unrolled_circuit_state_transition_into_unrolled_gkr_without_caches::<F>(
+            &|cs| C::table_addition_fn(cs, &[]),
+            &|cs| C::circuit_fn(cs, &[]),
+            common_constants::ROM_WORD_SIZE,
+            C::DOMAIN_SIZE_LOG2 as usize,
+        )
+    }
+}
+
+pub fn risc_v_with_mem_get_ssa_form<F: PrimeField, C: RiscVCycleCircuit<F, true>>(
+    bytecode: &[u32],
+) -> Vec<Vec<RawExpression<F>>> {
+    assert!(bytecode.is_empty() || bytecode.len() == common_constants::ROM_WORD_SIZE);
+    dump_ssa_witness_eval_form::<F>(&|cs| C::table_addition_fn(cs, bytecode), &|cs| {
+        let _ = C::circuit_fn(cs, bytecode);
+    })
+}
+
+pub fn risc_v_with_mem_get_table_driver<F: PrimeField, C: RiscVCycleCircuit<F, true>>(
+    bytecode: &[u32],
+) -> TableDriver<F> {
+    assert!(bytecode.is_empty() || bytecode.len() == common_constants::ROM_WORD_SIZE);
+    let mut table_driver = TableDriver::<F>::new();
+    C::table_driver_fn(&mut table_driver, bytecode);
+
+    table_driver
+}
+
+pub fn generate_default_delegation_artifacts<C: DelegationCircuit<BabyBearField>>(
+    use_caches: bool,
+) {
+    fn serialize_to_file<T: serde::Serialize>(el: &T, filename: &str) {
+        let mut dst = std::fs::File::create(filename).unwrap();
+        serde_json::to_writer_pretty(&mut dst, el).unwrap();
+    }
+
+    use std::io::Write;
+
+    let compiled_circuit: cs::gkr_compiler::GKRCircuitArtifact<BabyBearField> =
+        C::get_circuit(use_caches);
+    serialize_to_file(&compiled_circuit, "generated/layout.json");
+    let ssa = C::get_ssa_form();
+
+    let full_stream = witness_eval_generator::derive_from_ssa::derive_from_gkr_ssa(
+        &ssa,
+        &compiled_circuit,
+        false,
+        "BabyBearField",
+    );
+    std::fs::File::create("generated/witness_generation_fn.rs")
+        .unwrap()
+        .write_all(&full_stream.to_string().as_bytes())
+        .unwrap();
 }

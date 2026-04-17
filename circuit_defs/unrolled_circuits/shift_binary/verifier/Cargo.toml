@@ -1,5 +1,5 @@
 [package]
-name = "mul_div_verifier"
+name = "shift_binary_verifier"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

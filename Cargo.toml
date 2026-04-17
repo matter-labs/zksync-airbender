@@ -43,11 +43,11 @@ members = [
     "circuit_defs/unrolled_circuits/add_sub_lui_auipc_mop",
     "circuit_defs/unrolled_circuits/jump_branch_slt",
     "circuit_defs/unrolled_circuits/mul_div_unsigned",
-    "circuit_defs/unrolled_circuits/mul_div",
+    # "circuit_defs/unrolled_circuits/mul_div",
     "circuit_defs/unrolled_circuits/inits_and_teardowns",
     "circuit_defs/unrolled_circuits/load_store_word_only",
     "circuit_defs/unrolled_circuits/load_store_subword_only",
-    "circuit_defs/unrolled_circuits/shift_binary_csr",
+    "circuit_defs/unrolled_circuits/shift_binary",
     "circuit_defs/unrolled_circuits/unified_reduced_machine",
 
     "riscv_transpiler",
@@ -85,11 +85,11 @@ default-members = [
     "circuit_defs/unrolled_circuits/add_sub_lui_auipc_mop",
     "circuit_defs/unrolled_circuits/jump_branch_slt",
     "circuit_defs/unrolled_circuits/mul_div_unsigned",
-    "circuit_defs/unrolled_circuits/mul_div",
+    # "circuit_defs/unrolled_circuits/mul_div",
     "circuit_defs/unrolled_circuits/inits_and_teardowns",
     "circuit_defs/unrolled_circuits/load_store_word_only",
     "circuit_defs/unrolled_circuits/load_store_subword_only",
-    "circuit_defs/unrolled_circuits/shift_binary_csr",
+    "circuit_defs/unrolled_circuits/shift_binary",
     "circuit_defs/unrolled_circuits/unified_reduced_machine",
 ]
 
@@ -128,9 +128,9 @@ inits_and_teardowns = { path = "./circuit_defs/unrolled_circuits/inits_and_teard
 jump_branch_slt = { path = "./circuit_defs/unrolled_circuits/jump_branch_slt" }
 load_store_subword_only = { path = "./circuit_defs/unrolled_circuits/load_store_subword_only" }
 load_store_word_only = { path = "./circuit_defs/unrolled_circuits/load_store_word_only" }
-mul_div = { path = "./circuit_defs/unrolled_circuits/mul_div" }
+# mul_div = { path = "./circuit_defs/unrolled_circuits/mul_div" }
 mul_div_unsigned = { path = "./circuit_defs/unrolled_circuits/mul_div_unsigned" }
-shift_binary_csr = { path = "./circuit_defs/unrolled_circuits/shift_binary_csr" }
+shift_binary = { path = "./circuit_defs/unrolled_circuits/shift_binary" }
 unified_reduced_machine = { path = "./circuit_defs/unrolled_circuits/unified_reduced_machine" }
 
 trace_and_split = { path = "./circuit_defs/trace_and_split" }

@@ -1,5 +1,5 @@
 [package]
-name = "mul_div"
+name = "shift_binary"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -11,7 +11,8 @@ categories.workspace = true
 
 [dependencies]
 prover = { workspace = true, features = ["prover"] }
-verifier_generator = { workspace = true }
+# verifier_generator = { workspace = true }
+witness_eval_generator = { workspace = true }
 common_constants = {workspace = true }
 serde = { workspace = true }
 serde_json = "*"
