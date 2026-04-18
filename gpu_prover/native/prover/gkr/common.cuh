@@ -227,9 +227,10 @@ struct gkr_forward_setup_generic_lookup_descriptor {
 
 template <typename E> struct gkr_forward_setup_generic_lookup_batch {
   u32 column_count;
-  u32 reserved;
+  u32 decoder_table_id;
   const E *alpha_powers;
   E *output;
+  E *decoder_fill_value_out;
   gkr_forward_setup_generic_lookup_descriptor descriptors[GKR_FORWARD_SETUP_GENERIC_LOOKUP_MAX_COLUMNS];
 };
 
@@ -974,8 +975,7 @@ DEVICE_FORCEINLINE void gkr_eval_lookup_cached_dens_and_setup_quadratic(const A 
 // Pairwise-product tower: each block consumes B = blockDim.x contiguous input rows (or fewer, in
 // the single-block tail) and fuses up to log2(B) halving rounds in shared memory. Every round's
 // output is also written to DRAM for backward consumption.
-template <typename E>
-DEVICE_FORCEINLINE void gkr_dim_reducing_forward_tower_pairwise(const gkr_dim_reducing_forward_tower_pairwise_batch<E> &batch) {
+template <typename E> DEVICE_FORCEINLINE void gkr_dim_reducing_forward_tower_pairwise(const gkr_dim_reducing_forward_tower_pairwise_batch<E> &batch) {
   extern __shared__ E smem_pairwise[];
 
   const unsigned tid = threadIdx.x;
@@ -1001,16 +1001,15 @@ DEVICE_FORCEINLINE void gkr_dim_reducing_forward_tower_pairwise(const gkr_dim_re
       // Coalesced DRAM write — block b's slice of this level is [b*cur_len, (b+1)*cur_len).
       store<E, st_modifier::cs>(batch.round_outputs[r], out, bid * cur_len + tid);
     }
-    __syncthreads();  // Read phase complete; safe to overwrite shmem.
+    __syncthreads(); // Read phase complete; safe to overwrite shmem.
     if (active)
       smem_pairwise[tid] = out;
-    __syncthreads();  // Next round may read a wider slice; ensure all writes visible.
+    __syncthreads(); // Next round may read a wider slice; ensure all writes visible.
   }
 }
 
 // Lookup-pair tower: same shape as pairwise but with num/den shmem buffers side by side.
-template <typename E>
-DEVICE_FORCEINLINE void gkr_dim_reducing_forward_tower_lookup(const gkr_dim_reducing_forward_tower_lookup_batch<E> &batch) {
+template <typename E> DEVICE_FORCEINLINE void gkr_dim_reducing_forward_tower_lookup(const gkr_dim_reducing_forward_tower_lookup_batch<E> &batch) {
   extern __shared__ E smem_lookup[];
   E *smem_num = smem_lookup;
   E *smem_den = smem_lookup + blockDim.x;
@@ -1052,6 +1051,17 @@ DEVICE_FORCEINLINE void gkr_dim_reducing_forward_tower_lookup(const gkr_dim_redu
 template <typename E>
 DEVICE_FORCEINLINE void gkr_forward_setup_generic_lookup(const gkr_forward_setup_generic_lookup_batch<E> &batch, const unsigned row_count) {
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
+
+  // Thread 0 also folds the decoder fill value (alpha^(column_count-1) * decoder_table_id)
+  // into a 1-element device slot so downstream forward-cache kernels can read it
+  // directly, replacing the former host callback + H2D copy path.
+  if (gid == 0 && batch.decoder_fill_value_out != nullptr && batch.decoder_table_id != 0 && batch.column_count > 0) {
+    const E last_alpha_power = load<E, ld_modifier::ca>(batch.alpha_powers, batch.column_count - 1);
+    const bf table_id = bf::from_canonical_u32(batch.decoder_table_id);
+    const E fill = E::mul(last_alpha_power, table_id);
+    store<E, st_modifier::cs>(batch.decoder_fill_value_out, fill, 0);
+  }
+
   if (gid >= row_count)
     return;
 
