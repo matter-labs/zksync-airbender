@@ -1,59 +1,45 @@
+use std::cell::Cell;
+
 use era_cudart::event::{elapsed_time, CudaEvent};
-use era_cudart::execution::{launch_host_fn, HostFn};
 use era_cudart::result::CudaResult;
 use era_cudart::stream::CudaStream;
 
-use crate::primitives::context::UnsafeMutAccessor;
+use crate::primitives::nvtx::{end_range, start_range, RangeId};
+
+const DOMAIN_NAME: &str = "ab";
 
 pub(crate) struct Range {
+    name: String,
     start_event: CudaEvent,
-    start_fn: HostFn<'static>,
     end_event: CudaEvent,
-    end_fn: HostFn<'static>,
-    #[allow(dead_code)] // Keeps the shared range id alive for both queued callbacks.
-    id: Box<Option<i32>>,
+    id: Cell<Option<RangeId>>,
 }
 
 impl Range {
-    pub fn new(name: impl Into<Box<str>>) -> CudaResult<Self> {
-        let name = name.into();
-        let mut id = Box::new(None::<i32>);
-        let id_handle = UnsafeMutAccessor::new(id.as_mut());
+    pub fn new(name: impl AsRef<str>) -> CudaResult<Self> {
         let start_event = CudaEvent::create()?;
-        let start_fn = {
-            let id = id_handle;
-            HostFn::new(move || unsafe {
-                *id.get_mut() = Some(nvtx::range_start!("{}", name.as_ref()));
-            })
-        };
         let end_event = CudaEvent::create()?;
-        let end_fn = {
-            let id = id_handle;
-            HostFn::new(move || unsafe {
-                let id = id
-                    .get_mut()
-                    .take()
-                    .expect("NVTX range end callback ran before the start callback");
-                nvtx::range_end!(id);
-            })
-        };
-        let range = Self {
+        Ok(Self {
+            name: name.as_ref().to_owned(),
             start_event,
-            start_fn,
             end_event,
-            end_fn,
-            id,
-        };
-        Ok(range)
+            id: Cell::new(None),
+        })
     }
 
     pub fn start(&self, stream: &CudaStream) -> CudaResult<()> {
         self.start_event.record(stream)?;
-        launch_host_fn(stream, &self.start_fn)
+        let id = start_range(Some(DOMAIN_NAME), &self.name);
+        assert!(
+            self.id.replace(Some(id)).is_none(),
+            "NVTX range started twice without ending",
+        );
+        Ok(())
     }
 
     pub fn end(&self, stream: &CudaStream) -> CudaResult<()> {
-        launch_host_fn(stream, &self.end_fn)?;
+        let id = self.id.take().expect("NVTX range end called before start");
+        end_range(id);
         self.end_event.record(stream)
     }
 
