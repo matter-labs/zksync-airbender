@@ -42,7 +42,7 @@ fn main() {
             println!("cargo::warning=CUDA Toolkit version {cuda_version} detected. This crate is only tested with CUDA Toolkit versions 12.* and 13.*.");
         }
         cc::Build::new()
-            .file("native/nvtx_registered.c")
+            .file("native/nvtx.c")
             .include(&cuda_include_path)
             .compile("gpu_prover_nvtx");
         let cudaarchs = var("CUDAARCHS").unwrap_or("native".to_string());
