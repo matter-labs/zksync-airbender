@@ -464,6 +464,69 @@ EXTERN __global__ void ab_transcript_squeeze_kernel(u32 *seed_io, u32 *output, c
   }
 }
 
+DEVICE_FORCEINLINE bf reduce_raw_u32_to_bf_inline(const u32 x) {
+  // Host-side parity with BabyBearField::from_nonreduced_u32: reduce into [0, ORDER)
+  // with at most two subtractions, then multiply by MONT_R2 to land in Montgomery form.
+  u32 r = x;
+  if (r >= bf::ORDER)
+    r -= bf::ORDER;
+  if (r >= bf::ORDER)
+    r -= bf::ORDER;
+  return bf::from_canonical_u32(r);
+}
+
+// Device-side `Transcript::commit_initial` seed → `draw_random_field_els::<BF, E4>(seed, count)`.
+// Writes `count` E4 challenges in Montgomery form (matching host `from_u32_with_reduction` on
+// each 4-u32 squeeze chunk) and updates `seed_io` with the advanced seed.
+//
+// `count` must be positive. Each challenge consumes 4 consecutive raw squeeze u32 words; the
+// kernel advances the seed once per STATE_SIZE (= 8) raw words produced (i.e. every 2 E4s),
+// matching the CPU's `draw_randomness` chunking with `next_multiple_of(STATE_SIZE)` padding.
+EXTERN __global__ void ab_transcript_squeeze_e4_kernel(u32 *seed_io, e4 *output_e4, const unsigned count) {
+  if (count == 0)
+    return;
+  // Produce enough raw u32 words for `count` E4 challenges, padded to a multiple of STATE_SIZE.
+  const unsigned raw_len = ((count * 4u + STATE_SIZE - 1u) / STATE_SIZE) * STATE_SIZE;
+  const unsigned num_rounds = raw_len / STATE_SIZE;
+
+  u32 raw_chunk[STATE_SIZE];
+  // Round 0: verbatim seed.
+#pragma unroll
+  for (unsigned i = 0; i < STATE_SIZE; i++)
+    raw_chunk[i] = seed_io[i];
+
+  unsigned emitted = 0;
+  for (unsigned round = 0; round < num_rounds; round++) {
+    if (round > 0) {
+      // Advance seed by Blake2s(seed) and refill raw_chunk.
+      u32 state[STATE_SIZE];
+      initialize(state);
+      u32 block[BLOCK_SIZE] = {};
+#pragma unroll
+      for (unsigned i = 0; i < STATE_SIZE; i++)
+        block[i] = seed_io[i];
+      u32 t = 0;
+      compress<true>(state, t, block, STATE_SIZE);
+#pragma unroll
+      for (unsigned i = 0; i < STATE_SIZE; i++) {
+        seed_io[i] = state[i];
+        raw_chunk[i] = state[i];
+      }
+    }
+    // Consume raw_chunk 4 u32s at a time → 1 E4 challenge.
+    for (unsigned slot = 0; slot < STATE_SIZE / 4 && emitted < count; slot++) {
+      const u32 *src = &raw_chunk[slot * 4];
+      const bf c0 = reduce_raw_u32_to_bf_inline(src[0]);
+      const bf c1 = reduce_raw_u32_to_bf_inline(src[1]);
+      const bf c2 = reduce_raw_u32_to_bf_inline(src[2]);
+      const bf c3 = reduce_raw_u32_to_bf_inline(src[3]);
+      const e4 ch = e4(e2(c0, c1), e2(c2, c3));
+      output_e4[emitted] = ch;
+      emitted++;
+    }
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Backward sumcheck per-round state update (device-side).
 //
@@ -496,14 +559,11 @@ DEVICE_FORCEINLINE bf reduce_raw_u32_to_bf(const u32 x) {
 }
 
 DEVICE_FORCEINLINE e4 e4_from_raw_u32x4(const u32 *words) {
-  return e4(e2(reduce_raw_u32_to_bf(words[0]), reduce_raw_u32_to_bf(words[1])),
-            e2(reduce_raw_u32_to_bf(words[2]), reduce_raw_u32_to_bf(words[3])));
+  return e4(e2(reduce_raw_u32_to_bf(words[0]), reduce_raw_u32_to_bf(words[1])), e2(reduce_raw_u32_to_bf(words[2]), reduce_raw_u32_to_bf(words[3])));
 }
 
 // Port of prover::gkr::sumcheck::output_univariate_monomial_form_max_quadratic.
-DEVICE_FORCEINLINE void compute_univariate_coeffs_max_quadratic(
-    const e4 prev_challenge, const e4 prev_claim, const e4 e, const e4 c,
-    e4 out[4]) {
+DEVICE_FORCEINLINE void compute_univariate_coeffs_max_quadratic(const e4 prev_challenge, const e4 prev_claim, const e4 e, const e4 c, e4 out[4]) {
   const e4 ONE = e4::ONE();
   const e4 b = e4::sub(ONE, prev_challenge);
   const e4 a = e4::sub(e4::dbl(prev_challenge), ONE);
@@ -538,12 +598,8 @@ DEVICE_FORCEINLINE e4 eq_poly(const e4 x, const e4 y) {
   return e4::add(e4::mul(x, y), t);
 }
 
-EXTERN __global__ void
-ab_backward_sumcheck_round_update_kernel(const e4 *reduction_output,
-                                         const e4 *prev_claim_coord,
-                                         u32 *seed_io, e4 *claim_io,
-                                         e4 *eq_prefactor_io, e4 *coeffs_out,
-                                         e4 *challenge_out) {
+EXTERN __global__ void ab_backward_sumcheck_round_update_kernel(const e4 *reduction_output, const e4 *prev_claim_coord, u32 *seed_io, e4 *claim_io,
+                                                                e4 *eq_prefactor_io, e4 *coeffs_out, e4 *challenge_out) {
   // Load state.
   const e4 e_partial = reduction_output[0];
   const e4 c_partial = reduction_output[1];
@@ -556,8 +612,7 @@ ab_backward_sumcheck_round_update_kernel(const e4 *reduction_output,
 
   // Derive the round's 4 univariate coefficients.
   e4 coeffs[4];
-  compute_univariate_coeffs_max_quadratic(prev_coord, normalized_claim,
-                                          e_partial, c_partial, coeffs);
+  compute_univariate_coeffs_max_quadratic(prev_coord, normalized_claim, e_partial, c_partial, coeffs);
 #pragma unroll
   for (unsigned i = 0; i < 4; i++)
     coeffs_out[i] = coeffs[i];
@@ -619,9 +674,7 @@ ab_backward_sumcheck_round_update_kernel(const e4 *reduction_output,
 // layout of e4 is 4 consecutive u32 limbs (Montgomery-form base field), which
 // matches the host flatten order used by commit_field_els.
 // ---------------------------------------------------------------------------
-EXTERN __global__ void
-ab_whir_fold_round_update_kernel(const e4 *reduction_output, u32 *seed_io,
-                                 e4 *coeffs_out, e4 *challenge_out) {
+EXTERN __global__ void ab_whir_fold_round_update_kernel(const e4 *reduction_output, u32 *seed_io, e4 *coeffs_out, e4 *challenge_out) {
   // Derive constants: quart = 1/4, two_inv = 1/2 (Montgomery form).
   const bf two = bf::from_canonical_u32(2);
   const bf four = bf::from_canonical_u32(4);
@@ -735,10 +788,7 @@ ab_whir_fold_round_update_kernel(const e4 *reduction_output, u32 *seed_io,
 //   `ceil((32 + num_queries * log_domain_size) / 32)` words).
 // - `indexes_out`: `num_queries` u32 indexes, one per thread.
 // ---------------------------------------------------------------------------
-EXTERN __global__ void
-ab_assemble_query_indexes_kernel(const u32 *raw_bits, u32 *indexes_out,
-                                 const unsigned num_queries,
-                                 const unsigned log_domain_size) {
+EXTERN __global__ void ab_assemble_query_indexes_kernel(const u32 *raw_bits, u32 *indexes_out, const unsigned num_queries, const unsigned log_domain_size) {
   const unsigned idx = blockIdx.x * blockDim.x + threadIdx.x;
   if (idx >= num_queries)
     return;

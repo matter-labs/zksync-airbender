@@ -436,6 +436,11 @@ cuda_kernel!(
     ab_transcript_squeeze_kernel(seed_io: *mut u32, output: *mut u32, output_len: u32)
 );
 
+cuda_kernel!(
+    TranscriptSqueezeE4,
+    ab_transcript_squeeze_e4_kernel(seed_io: *mut u32, output_e4: *mut E4, count: u32)
+);
+
 /// Device-side `commit_with_seed`: computes `new_seed = Blake2s(old_seed || input)`.
 ///
 /// `seed` must be exactly `STATE_SIZE` u32 words. Updated in place.
@@ -476,6 +481,25 @@ pub fn transcript_squeeze(
     let config = CudaLaunchConfig::basic(1u32, 1u32, stream);
     let args = TranscriptSqueezeArguments::new(seed_ptr, output_ptr, output_len as u32);
     TranscriptSqueezeFunction::default().launch(&config, &args)
+}
+
+/// Device-side `draw_random_field_els::<BF, E4>(seed, count)`. Produces `count` E4 challenges
+/// in Montgomery form by squeezing raw u32 words from `seed` and applying per-limb
+/// `from_u32_with_reduction`. `seed` is updated in place to the post-draw state.
+pub fn transcript_squeeze_e4(
+    seed: &mut DeviceSlice<u32>,
+    output: &mut DeviceSlice<E4>,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    assert_eq!(seed.len(), STATE_SIZE);
+    let count = output.len();
+    assert!(count > 0);
+    assert!(count <= u32::MAX as usize);
+    let seed_ptr = seed.as_mut_ptr();
+    let output_ptr = output.as_mut_ptr();
+    let config = CudaLaunchConfig::basic(1u32, 1u32, stream);
+    let args = TranscriptSqueezeE4Arguments::new(seed_ptr, output_ptr, count as u32);
+    TranscriptSqueezeE4Function::default().launch(&config, &args)
 }
 
 cuda_kernel!(
@@ -1182,10 +1206,7 @@ mod tests {
     }
 
     /// Helper: run host-side draw_randomness and return output + final seed.
-    fn host_squeeze(
-        seed: &[u32; STATE_SIZE],
-        output_len: usize,
-    ) -> (Vec<u32>, [u32; STATE_SIZE]) {
+    fn host_squeeze(seed: &[u32; STATE_SIZE], output_len: usize) -> (Vec<u32>, [u32; STATE_SIZE]) {
         let mut s = Seed(*seed);
         let mut output = vec![0u32; output_len];
         Blake2sTranscript::draw_randomness(&mut s, &mut output);
@@ -1254,6 +1275,82 @@ mod tests {
 
         assert_eq!(actual_seed, h_seed.0);
         assert_eq!(actual_challenge, h_challenge);
+    }
+
+    /// Helper: run device-side `transcript_squeeze_e4` and return output E4s + final seed.
+    fn device_squeeze_e4(seed: &[u32; STATE_SIZE], count: usize) -> (Vec<E4>, [u32; STATE_SIZE]) {
+        let stream = CudaStream::default();
+        let mut d_seed = DeviceAllocation::alloc(STATE_SIZE).unwrap();
+        let mut d_output: DeviceAllocation<E4> = DeviceAllocation::alloc(count).unwrap();
+        memory_copy_async(&mut d_seed, &seed[..], &stream).unwrap();
+        super::transcript_squeeze_e4(&mut d_seed, &mut d_output, &stream).unwrap();
+        let mut h_output = vec![E4::ZERO; count];
+        let mut h_seed = [0u32; STATE_SIZE];
+        memory_copy_async(&mut h_output, &d_output, &stream).unwrap();
+        memory_copy_async(&mut h_seed[..], &d_seed, &stream).unwrap();
+        stream.synchronize().unwrap();
+        (h_output, h_seed)
+    }
+
+    /// Helper: host `draw_random_field_els::<BF, E4>` returning challenges + final seed.
+    fn host_draw_e4(seed: &[u32; STATE_SIZE], count: usize) -> (Vec<E4>, [u32; STATE_SIZE]) {
+        use prover::gkr::prover::transcript_utils::draw_random_field_els;
+        let mut s = Seed(*seed);
+        let challenges = draw_random_field_els::<BF, E4>(&mut s, count);
+        (challenges, s.0)
+    }
+
+    #[test]
+    fn transcript_squeeze_e4_parity_single() {
+        // 1 E4 = 4 u32 words, padded to 1 round (STATE_SIZE = 8).
+        let seed = [0x11; STATE_SIZE];
+        let (d_out, d_seed) = device_squeeze_e4(&seed, 1);
+        let (h_out, h_seed) = host_draw_e4(&seed, 1);
+        assert_eq!(d_out, h_out);
+        assert_eq!(d_seed, h_seed);
+    }
+
+    #[test]
+    fn transcript_squeeze_e4_parity_two_in_one_round() {
+        // 2 E4 = 8 u32 words, exactly 1 round. Both E4s drawn from the verbatim seed.
+        let seed = [0x22; STATE_SIZE];
+        let (d_out, d_seed) = device_squeeze_e4(&seed, 2);
+        let (h_out, h_seed) = host_draw_e4(&seed, 2);
+        assert_eq!(d_out, h_out);
+        assert_eq!(d_seed, h_seed);
+    }
+
+    #[test]
+    fn transcript_squeeze_e4_parity_three() {
+        // 3 E4 = 12 u32 words, padded to 16 = 2 rounds. Matches the initial lookup
+        // challenge draw in prove(): 3 E4 challenges off the seed.
+        let seed = [0xab; STATE_SIZE];
+        let (d_out, d_seed) = device_squeeze_e4(&seed, 3);
+        let (h_out, h_seed) = host_draw_e4(&seed, 3);
+        assert_eq!(d_out, h_out);
+        assert_eq!(d_seed, h_seed);
+    }
+
+    #[test]
+    fn transcript_squeeze_e4_parity_many_rounds() {
+        // 10 E4 = 40 u32 words, padded to 40 = 5 rounds.
+        let seed = [0xcd; STATE_SIZE];
+        let (d_out, d_seed) = device_squeeze_e4(&seed, 10);
+        let (h_out, h_seed) = host_draw_e4(&seed, 10);
+        assert_eq!(d_out, h_out);
+        assert_eq!(d_seed, h_seed);
+    }
+
+    #[test]
+    fn transcript_squeeze_e4_parity_randomized() {
+        let mut rng = rand::rng();
+        for count in [1, 2, 3, 4, 5, 7, 8, 9, 15, 16, 17] {
+            let seed: [u32; STATE_SIZE] = std::array::from_fn(|_| rng.random());
+            let (d_out, d_seed) = device_squeeze_e4(&seed, count);
+            let (h_out, h_seed) = host_draw_e4(&seed, count);
+            assert_eq!(d_out, h_out, "output mismatch for count={count}");
+            assert_eq!(d_seed, h_seed, "seed mismatch for count={count}");
+        }
     }
 
     // -----------------------------------------------------------------------
@@ -1523,12 +1620,8 @@ mod tests {
         let mut f_half = raw_half_input;
         f_half.mul_assign_by_base(&quart);
 
-        let coeffs = special_lagrange_interpolate_host(
-            f_at_0,
-            f_at_1,
-            f_half,
-            E4::from_base(two_inv),
-        );
+        let coeffs =
+            special_lagrange_interpolate_host(f_at_0, f_at_1, f_half, E4::from_base(two_inv));
         commit_field_els::<BF, E4>(&mut seed, &coeffs);
         let challenge = draw_random_field_els::<BF, E4>(&mut seed, 1)[0];
         (seed, coeffs, challenge)
@@ -1571,12 +1664,7 @@ mod tests {
         (seed_out, coeffs_out, challenge_out[0])
     }
 
-    fn assert_whir_fold_round_parity(
-        seed_in: Seed,
-        f_at_0: E4,
-        f_at_1: E4,
-        raw_half_input: E4,
-    ) {
+    fn assert_whir_fold_round_parity(seed_in: Seed, f_at_0: E4, f_at_1: E4, raw_half_input: E4) {
         let (h_seed, h_coeffs, h_challenge) =
             host_whir_fold_round_update(seed_in, f_at_0, f_at_1, raw_half_input);
         let (d_seed, d_coeffs, d_challenge) =

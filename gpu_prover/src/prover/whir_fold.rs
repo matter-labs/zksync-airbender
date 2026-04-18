@@ -545,6 +545,29 @@ fn fill_full_cap_from_accessors(
     }
 }
 
+fn fill_full_cap_from_slices(dst: &mut [Digest], caps: &[Vec<Digest>], log_lde_factor: u32) {
+    if caps.is_empty() {
+        assert!(dst.is_empty());
+        return;
+    }
+    let lde_factor = 1usize << log_lde_factor;
+    assert_eq!(caps.len(), lde_factor);
+    let expected_len = caps.iter().map(Vec::len).sum::<usize>();
+    assert_eq!(
+        dst.len(),
+        expected_len,
+        "WHIR cap destination length mismatch"
+    );
+    let mut offset = 0;
+    for stage1_pos in 0..lde_factor {
+        let natural_coset_index = bitreverse_index(stage1_pos, log_lde_factor);
+        let src = caps[natural_coset_index].as_slice();
+        let len = src.len();
+        dst[offset..offset + len].copy_from_slice(src);
+        offset += len;
+    }
+}
+
 fn make_preallocated_base_queries(
     count: usize,
     leaf_values_len: usize,
@@ -1659,7 +1682,7 @@ fn schedule_accumulate_eq_sample_in_place_device(
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn schedule_gpu_whir_fold_with_sources(
     memory_trace_holder: &mut TraceHolder<BF>,
-    memory_base_caps_keepalive: Vec<HostAllocation<[Digest]>>,
+    memory_base_caps_keepalive: Vec<Vec<Digest>>,
     fill_mem_polys_claims: impl Fn(&mut [E4]) + Send + Sync + 'static,
     witness_trace_holder: &mut TraceHolder<BF>,
     witness_base_caps_keepalive: Vec<HostAllocation<[Digest]>>,
@@ -1716,24 +1739,17 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
     let schedule_range = Range::new("gkr.whir.schedule")?;
     schedule_range.start(stream)?;
 
-    let base_caps_keepalive = [
-        memory_base_caps_keepalive,
-        witness_base_caps_keepalive,
-        setup_base_caps_keepalive,
-    ];
+    let witness_and_setup_base_caps_keepalive =
+        [witness_base_caps_keepalive, setup_base_caps_keepalive];
     let total_sumcheck_polys = whir_steps_schedule.iter().sum::<usize>();
     let initial_query_count = whir_queries_schedule[0];
     let intermediate_query_counts = whir_queries_schedule[1..].to_vec();
     let whir_pow_rounds = whir_pow_schedule.len();
-    let memory_caps_accessors = base_caps_keepalive[0]
+    let witness_caps_accessors = witness_and_setup_base_caps_keepalive[0]
         .iter()
         .map(HostAllocation::get_accessor)
         .collect::<Vec<_>>();
-    let witness_caps_accessors = base_caps_keepalive[1]
-        .iter()
-        .map(HostAllocation::get_accessor)
-        .collect::<Vec<_>>();
-    let setup_caps_accessors = base_caps_keepalive[2]
+    let setup_caps_accessors = witness_and_setup_base_caps_keepalive[1]
         .iter()
         .map(HostAllocation::get_accessor)
         .collect::<Vec<_>>();
@@ -1799,7 +1815,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
                 cap: MerkleTreeCapVarLength {
                     cap: vec![
                         Digest::default();
-                        cap_digest_count_from_accessors(&memory_caps_accessors)
+                        memory_base_caps_keepalive.iter().map(Vec::len).sum()
                     ],
                 },
                 _marker: PhantomData,
@@ -1881,6 +1897,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
     start_callbacks.schedule(
         {
             let shared_state = shared_state_handle;
+            let memory_base_caps_keepalive = memory_base_caps_keepalive;
             move || {
                 let proof_state = unsafe { shared_state.get_mut() };
                 let proof = proof_state.proof.as_mut().unwrap();
@@ -1889,9 +1906,9 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
                     &witness_caps_accessors,
                     witness_log_lde_factor,
                 );
-                fill_full_cap_from_accessors(
+                fill_full_cap_from_slices(
                     &mut proof.memory_commitment.commitment.cap.cap,
-                    &memory_caps_accessors,
+                    &memory_base_caps_keepalive,
                     memory_log_lde_factor,
                 );
                 fill_full_cap_from_accessors(
@@ -2813,7 +2830,13 @@ pub(crate) fn gpu_whir_fold_supported_path(
     _worker: &Worker,
     context: &ProverContext,
 ) -> CudaResult<WhirPolyCommitProof<BF, E4, DefaultTreeConstructor>> {
-    let memory_base_caps_keepalive = memory_trace_holder.take_tree_caps_host();
+    // Flatten memory caps into a plain Vec<Vec<Digest>> — the WHIR fold no longer keeps a
+    // pool-managed HostAllocation for memory caps, since they originate from plain host input.
+    let memory_base_caps_keepalive: Vec<Vec<Digest>> = memory_trace_holder
+        .take_tree_caps_host()
+        .into_iter()
+        .map(|alloc| unsafe { alloc.get_accessor().get().to_vec() })
+        .collect();
     let witness_base_caps_keepalive = witness_trace_holder.take_tree_caps_host();
     let setup_base_caps_keepalive = setup_trace_holder.take_tree_caps_host();
     let mem_polys_claims_for_source = mem_polys_claims.clone();
