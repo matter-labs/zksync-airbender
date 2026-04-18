@@ -17,7 +17,7 @@ use crate::primitives::circuit_type::{
 };
 use crate::primitives::context::{ProverContext, UnsafeMutAccessor};
 use crate::primitives::field::{BF, E4};
-use crate::primitives::nvtx_registered::start_registered_range;
+use crate::primitives::nvtx::scoped_range;
 use crate::primitives::static_host::alloc_static_pinned_box_from_slice;
 use crate::prover::decoder::DecoderTableTransfer;
 use crate::prover::memory::commit_memory;
@@ -81,7 +81,6 @@ use field::baby_bear::base::BabyBearField;
 use field::baby_bear::ext4::BabyBearExt4;
 use field::{Field, FieldExtension, PrimeField};
 use itertools::Itertools;
-use nvtx::range;
 use prover::definitions::{LazyInitAndTeardown, Transcript};
 use prover::gkr::prover::dimension_reduction::{self, forward::DimensionReducingInputOutput};
 use prover::gkr::prover::forward_loop;
@@ -5154,10 +5153,6 @@ fn run_basic_unrolled_proof_job_multi_schedule_test() {
 #[serial]
 #[ignore]
 fn run_basic_unrolled_proof_job_profile_test() {
-    let nsys_capture_domain = std::ffi::CStr::from_bytes_with_nul(b"gpu_prover.tests\0").unwrap();
-    let nsys_capture_message =
-        std::ffi::CStr::from_bytes_with_nul(b"test.gpu.prove.profiled_call\0").unwrap();
-
     let fixture = prepare_basic_unrolled_profiling_fixture();
     let baseline_device_usage = fixture.context.get_used_mem_current();
 
@@ -5177,7 +5172,7 @@ fn run_basic_unrolled_proof_job_profile_test() {
     fixture.context.get_h2d_stream().synchronize().unwrap();
     fixture.context.reset_used_mem_peak();
     let (profiled_proof, profiled_time_ms) = {
-        let _range = start_registered_range(nsys_capture_domain, nsys_capture_message);
+        let _range = scoped_range(Some("gpu_prover.tests"), "test.gpu.prove.profiled_call");
         let profiled_job = fixture.prove(profiled_transfers).unwrap();
         assert!(
             !profiled_job.is_finished().unwrap(),
@@ -6935,7 +6930,7 @@ fn run_basic_unrolled_stagewise_parity_test() {
     let mut gpu_setup_transfer =
         GpuGKRSetupTransfer::new(Arc::clone(&gpu_setup_host), &context).unwrap();
     {
-        let _range = range!("test.gpu.setup_transfer");
+        let _range = scoped_range(None, "test.gpu.setup_transfer");
         gpu_setup_transfer.schedule_transfer(&context).unwrap();
         context.get_h2d_stream().synchronize().unwrap();
     }
@@ -6981,7 +6976,7 @@ fn run_basic_unrolled_stagewise_parity_test() {
         },
     ));
     let mut stage1_output = {
-        let _range = range!("test.gpu.stage1.generate");
+        let _range = scoped_range(None, "test.gpu.stage1.generate");
         let stage1_output = generate_stage1_output_for_test(
             CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
                 UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop,
@@ -7070,7 +7065,7 @@ fn run_basic_unrolled_stagewise_parity_test() {
             .copy_from_slice(&lookup_challenges);
     }
     let mut gpu_forward_setup = {
-        let _range = range!("test.gpu.forward_setup.schedule");
+        let _range = scoped_range(None, "test.gpu.forward_setup.schedule");
         let gpu_forward_setup = gpu_setup_transfer
             .schedule_forward_setup(&add_sub_circuit, &lookup_challenges_host, &context)
             .unwrap();
@@ -7126,7 +7121,7 @@ fn run_basic_unrolled_stagewise_parity_test() {
     );
 
     let (gpu_forward_output, gpu_transcript_handoff) = {
-        let _range = range!("test.gpu.forward.schedule");
+        let _range = scoped_range(None, "test.gpu.forward.schedule");
         let gpu_forward_output = schedule_forward_pass(
             &gpu_setup_transfer,
             &mut stage1_output,
@@ -7147,7 +7142,7 @@ fn run_basic_unrolled_stagewise_parity_test() {
     let gpu_evals_flattened = gpu_transcript_handoff.flattened_transcript_evaluations();
     drop(gpu_transcript_handoff);
     {
-        let _range = range!("test.gpu.forward.readback_asserts");
+        let _range = scoped_range(None, "test.gpu.forward.readback_asserts");
         assert!(!stage1_output.lookup_mappings.has_generic_family());
         assert!(!stage1_output.lookup_mappings.has_range_check_16());
         assert!(!stage1_output.lookup_mappings.has_timestamp());
@@ -7279,9 +7274,12 @@ fn run_basic_unrolled_stagewise_parity_test() {
     let mut sumcheck_batching_challenge = batching_challenge;
     let mut reduced_trace_size_log_2 = final_trace_size_log_2;
     {
-        let _range = range!("test.cpu.sumcheck.dimension_reduction");
+        let _range = scoped_range(None, "test.cpu.sumcheck.dimension_reduction");
         for (layer_idx, layer) in dimension_reducing_inputs.into_iter().rev() {
-            let _layer_range = range!("test.cpu.sumcheck.dimension_reduction.layer.{}", layer_idx);
+            let _layer_range = scoped_range(
+                None,
+                &format!("test.cpu.sumcheck.dimension_reduction.layer.{layer_idx}"),
+            );
             let proof = sumcheck_loop::evaluate_dimension_reducing_sumcheck_for_layer(
                 layer_idx,
                 &layer,
@@ -7301,9 +7299,12 @@ fn run_basic_unrolled_stagewise_parity_test() {
     assert_eq!(1 << reduced_trace_size_log_2, trace_len);
 
     {
-        let _range = range!("test.cpu.sumcheck.main_layers");
+        let _range = scoped_range(None, "test.cpu.sumcheck.main_layers");
         for (layer_idx, layer) in add_sub_circuit.layers.iter().enumerate().rev() {
-            let _layer_range = range!("test.cpu.sumcheck.main_layers.layer.{}", layer_idx);
+            let _layer_range = scoped_range(
+                None,
+                &format!("test.cpu.sumcheck.main_layers.layer.{layer_idx}"),
+            );
 
             let proof = sumcheck_loop::evaluate_sumcheck_for_layer(
                 layer_idx,
@@ -7328,7 +7329,7 @@ fn run_basic_unrolled_stagewise_parity_test() {
     }
 
     let mut gpu_backward_execution = {
-        let _range = range!("test.gpu.sumcheck.backward_workflow");
+        let _range = scoped_range(None, "test.gpu.sumcheck.backward_workflow");
         gpu_backward_state
             .schedule_execute_backward_workflow(
                 add_sub_circuit.clone(),
@@ -7495,7 +7496,7 @@ fn run_basic_unrolled_stagewise_parity_test() {
     };
 
     let gpu_base_claims = {
-        let _range = range!("test.gpu.base_layer_claims.prepare");
+        let _range = scoped_range(None, "test.gpu.base_layer_claims.prepare");
         prepare_base_layer_claims(
             layer_desc,
             base_layer_z,
@@ -7572,7 +7573,7 @@ fn run_basic_unrolled_stagewise_parity_test() {
     // second gpu_whir_fold_supported_path (which would try to take the
     // already-consumed tree caps and panic).
     let gpu_whir_proof = {
-        let _range = range!("test.gpu.whir.recursive_oracle_parity");
+        let _range = scoped_range(None, "test.gpu.whir.recursive_oracle_parity");
         assert_recursive_whir_oracle_parity_for_supported_path(
             &mem_oracle,
             &gpu_base_claims.mem_polys_claims,
@@ -7595,7 +7596,7 @@ fn run_basic_unrolled_stagewise_parity_test() {
         )
     };
     let cpu_whir_proof = {
-        let _range = range!("test.cpu.whir_fold");
+        let _range = scoped_range(None, "test.cpu.whir_fold");
         whir_fold(
             mem_oracle,
             gpu_base_claims.mem_polys_claims.clone(),
