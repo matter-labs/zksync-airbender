@@ -2383,20 +2383,22 @@ mod tests {
         lookup_additive_challenge: E4,
         context: &ProverContext,
     ) -> GpuGKRForwardSetup<E4> {
-        let mut lookup_challenges_host = unsafe { context.alloc_host_uninit_slice(3) };
-        unsafe {
-            lookup_challenges_host
-                .get_mut_accessor()
-                .get_mut()
-                .copy_from_slice(&[E4::ONE, lookup_additive_challenge, E4::ZERO]);
-        }
+        let mut d_lookup_challenges: crate::primitives::context::DeviceAllocation<E4> = context
+            .alloc(3, crate::allocator::tracker::AllocationPlacement::BestFit)
+            .unwrap();
+        era_cudart::memory::memory_copy_async(
+            &mut d_lookup_challenges,
+            &[E4::ONE, lookup_additive_challenge, E4::ZERO][..],
+            context.get_exec_stream(),
+        )
+        .unwrap();
         crate::prover::gkr::setup::schedule_forward_setup_for_shape::<E4>(
             None,
             trace_len,
             0,
             0,
             false,
-            &lookup_challenges_host,
+            d_lookup_challenges,
             context,
         )
         .unwrap()
