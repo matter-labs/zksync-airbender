@@ -17,6 +17,10 @@ pub fn set_to_zero<T>(result: &mut DeviceSlice<T>, stream: &CudaStream) -> CudaR
     memory_set_async(unsafe { result.transmute_mut() }, 0, stream)
 }
 
+pub fn set_to_ones<T>(result: &mut DeviceSlice<T>, stream: &CudaStream) -> CudaResult<()> {
+    memory_set_async(unsafe { result.transmute_mut() }, 0xFF, stream)
+}
+
 fn get_launch_dims(rows: u32, cols: u32) -> (Dim3, Dim3) {
     let (mut grid_dim, block_dim) = get_grid_block_dims_for_threads_count(WARP_SIZE * 4, rows);
     grid_dim.y = cols;

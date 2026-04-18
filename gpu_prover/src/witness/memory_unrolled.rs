@@ -1,4 +1,4 @@
-use crate::ops::simple::set_by_val;
+use crate::ops::simple::set_to_zero;
 use crate::primitives::circuit_type::{UnrolledMemoryCircuitType, UnrolledNonMemoryCircuitType};
 use crate::primitives::device_structures::{DeviceMatrixMutImpl, MutPtrAndStride};
 use crate::primitives::field::BF;
@@ -547,7 +547,7 @@ pub(crate) fn generate_memory_and_witness_values_unrolled_inits_and_teardowns(
         0,
         "standalone init/teardown witness width is expected to be zero"
     );
-    set_by_val(BF::new(0), memory.slice_mut(), stream)?;
+    set_to_zero(memory.slice_mut(), stream)?;
     assert!(
         inits_and_teardowns.inits_and_teardowns.len() <= count * layout.teardown_sets.len(),
         "standalone init/teardown transfer exceeds per-set capacity",

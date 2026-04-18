@@ -2,7 +2,7 @@ use std::ops::DerefMut;
 use std::sync::Arc;
 
 use crate::allocator::tracker::AllocationPlacement;
-use crate::ops::simple::set_by_val;
+use crate::ops::simple::{set_to_ones, set_to_zero};
 use crate::primitives::circuit_type::{CircuitType, DelegationCircuitType, UnrolledCircuitType};
 use crate::primitives::context::{DeviceAllocation, ProverContext};
 use crate::primitives::device_structures::{
@@ -34,7 +34,6 @@ use crate::witness::witness_unrolled::{
 use cs::gkr_compiler::GKRCircuitArtifact;
 use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
-use field::Field;
 
 pub(crate) struct GpuGKRLookupMappings {
     generic_family: Option<DeviceAllocation<u32>>,
@@ -202,11 +201,7 @@ impl GpuGKRStage1Output {
             None
         };
         if let Some(scratch_space_trace) = scratch_space_trace.as_mut() {
-            set_by_val(
-                BF::ZERO,
-                scratch_space_trace.deref_mut(),
-                context.get_exec_stream(),
-            )?;
+            set_to_zero(scratch_space_trace.deref_mut(), context.get_exec_stream())?;
         }
 
         let num_generic_sets = compiled_circuit.generic_lookups.len();
@@ -217,11 +212,7 @@ impl GpuGKRStage1Output {
             AllocationPlacement::Top,
         )?;
         if !generic_family.is_empty() {
-            set_by_val(
-                u32::MAX,
-                generic_family.deref_mut(),
-                context.get_exec_stream(),
-            )?;
+            set_to_ones(generic_family.deref_mut(), context.get_exec_stream())?;
         }
 
         let generic_lookup_tables: &DeviceSlice<BF> =
