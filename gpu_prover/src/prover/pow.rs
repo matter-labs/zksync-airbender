@@ -67,7 +67,8 @@ pub(crate) fn schedule_pow_verify_and_query_indexes(
     let seed_accessor = seed_host.get_mut_accessor();
 
     // Allocate device buffers.
-    let mut d_seed: DeviceAllocation<u32> = context.alloc(STATE_SIZE, AllocationPlacement::BestFit)?;
+    let mut d_seed: DeviceAllocation<u32> =
+        context.alloc(STATE_SIZE, AllocationPlacement::BestFit)?;
     let mut d_nonce: DeviceAllocation<u64> = context.alloc(1, AllocationPlacement::BestFit)?;
     let mut d_indexes: DeviceAllocation<u32> =
         context.alloc(num_queries, AllocationPlacement::BestFit)?;
@@ -115,7 +116,12 @@ pub(crate) fn schedule_pow_verify_and_query_indexes(
     transcript_squeeze(&mut d_seed, &mut d_raw_bits, stream)?;
 
     // Assemble query indexes on device and D2H them.
-    assemble_query_indexes(&d_raw_bits, &mut d_indexes, query_domain_log2 as u32, stream)?;
+    assemble_query_indexes(
+        &d_raw_bits,
+        &mut d_indexes,
+        query_domain_log2 as u32,
+        stream,
+    )?;
     memory_copy_async(query_indexes_host, &d_indexes, &stream)?;
 
     // Mirror the advanced seed back to host-pinned memory so subsequent
@@ -137,4 +143,3 @@ pub(crate) fn schedule_pow_verify_and_query_indexes(
         h_seed_mirror,
     })
 }
-
