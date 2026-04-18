@@ -15,7 +15,9 @@ use crate::primitives::circuit_type::{
     CircuitType, DelegationCircuitType, UnrolledCircuitType, UnrolledMemoryCircuitType,
     UnrolledNonMemoryCircuitType,
 };
-use crate::primitives::context::{ProverContext, UnsafeMutAccessor};
+use crate::primitives::context::{
+    DeviceAllocation, HostAllocation, ProverContext, UnsafeMutAccessor,
+};
 use crate::primitives::field::{BF, E4};
 use crate::primitives::nvtx::scoped_range;
 use crate::primitives::static_host::alloc_static_pinned_box_from_slice;
@@ -162,6 +164,26 @@ fn test_artifact_path(relative_path: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("..")
         .join(relative_path)
+}
+
+/// Upload the 3 host-computed lookup challenges (alpha, additive_part, batch) into a
+/// `DeviceAllocation<E4>` the way `schedule_forward_setup` now consumes them. Test-only
+/// bridge: production code derives these on device; the test fixtures still compute them
+/// on host to keep their CPU-parity checks straightforward.
+fn upload_lookup_challenges_for_test(
+    lookup_challenges_host: &HostAllocation<[E4]>,
+    context: &ProverContext,
+) -> DeviceAllocation<E4> {
+    let len = unsafe { lookup_challenges_host.get_accessor().get().len() };
+    let mut d_lookup_challenges: DeviceAllocation<E4> =
+        context.alloc(len, AllocationPlacement::BestFit).unwrap();
+    memory_copy_async(
+        &mut d_lookup_challenges,
+        lookup_challenges_host,
+        context.get_exec_stream(),
+    )
+    .unwrap();
+    d_lookup_challenges
 }
 
 fn read_test_words(relative_path: &str) -> Vec<u32> {
@@ -1844,7 +1866,11 @@ fn assert_recursive_whir_oracle_parity_for_supported_path(
     let wit_polys_claims_for_schedule = wit_polys_claims.to_vec();
     let setup_polys_claims_for_schedule = setup_polys_claims.to_vec();
     let original_evaluation_point_for_schedule = original_evaluation_point.to_vec();
-    let memory_base_caps_keepalive = gpu_mem_trace_holder.take_tree_caps_host();
+    let memory_base_caps_keepalive: Vec<Vec<crate::ops::blake2s::Digest>> = gpu_mem_trace_holder
+        .take_tree_caps_host()
+        .into_iter()
+        .map(|alloc| unsafe { alloc.get_accessor().get().to_vec() })
+        .collect();
     let witness_base_caps_keepalive = gpu_wit_trace_holder.take_tree_caps_host();
     let setup_base_caps_keepalive = gpu_setup_trace_holder.take_tree_caps_host();
     let mut scheduled_gpu_whir = schedule_gpu_whir_fold_with_sources(
@@ -2029,7 +2055,11 @@ fn build_basic_unrolled_async_backward_fixture_from_base(
     }
     let mut gpu_forward_setup = transfers
         .setup_transfer
-        .schedule_forward_setup(&base.compiled_circuit, &lookup_challenges_host, &context)
+        .schedule_forward_setup(
+            &base.compiled_circuit,
+            upload_lookup_challenges_for_test(&lookup_challenges_host, &context),
+            &context,
+        )
         .unwrap();
     context.get_exec_stream().synchronize().unwrap();
     eprintln!("async-backward-from-base: forward setup ready");
@@ -3934,7 +3964,11 @@ fn run_memory_workflow_input_parity_test<const FAMILY_IDX: u8>(
             ]);
     }
     let mut gpu_forward_setup = gpu_setup_transfer
-        .schedule_forward_setup(&compiled_circuit, &lookup_challenges_host, &context)
+        .schedule_forward_setup(
+            &compiled_circuit,
+            upload_lookup_challenges_for_test(&lookup_challenges_host, &context),
+            &context,
+        )
         .unwrap();
     context.get_exec_stream().synchronize().unwrap();
 
@@ -5059,7 +5093,11 @@ fn forward_to_backward_handoff_releases_forward_scratch() {
     }
     let mut gpu_forward_setup = transfers
         .setup_transfer
-        .schedule_forward_setup(&base.compiled_circuit, &lookup_challenges_host, &context)
+        .schedule_forward_setup(
+            &base.compiled_circuit,
+            upload_lookup_challenges_for_test(&lookup_challenges_host, &context),
+            &context,
+        )
         .unwrap();
     context.get_exec_stream().synchronize().unwrap();
 
@@ -5587,7 +5625,11 @@ fn run_basic_unrolled_workflow_input_parity_test() {
     }
 
     let mut gpu_forward_setup = gpu_setup_transfer
-        .schedule_forward_setup(&add_sub_circuit, &lookup_challenges_host, &context)
+        .schedule_forward_setup(
+            &add_sub_circuit,
+            upload_lookup_challenges_for_test(&lookup_challenges_host, &context),
+            &context,
+        )
         .unwrap();
     context.get_exec_stream().synchronize().unwrap();
 
@@ -6087,7 +6129,11 @@ fn run_jump_branch_slt_workflow_input_parity_test() {
     }
 
     let mut gpu_forward_setup = gpu_setup_transfer
-        .schedule_forward_setup(&jump_branch_slt_circuit, &lookup_challenges_host, &context)
+        .schedule_forward_setup(
+            &jump_branch_slt_circuit,
+            upload_lookup_challenges_for_test(&lookup_challenges_host, &context),
+            &context,
+        )
         .unwrap();
     context.get_exec_stream().synchronize().unwrap();
 
@@ -6567,7 +6613,11 @@ fn run_shift_binop_cached_lookup_parity_test() {
             ]);
     }
     let mut gpu_forward_setup = gpu_setup_transfer
-        .schedule_forward_setup(&shift_binop_circuit, &lookup_challenges_host, &context)
+        .schedule_forward_setup(
+            &shift_binop_circuit,
+            upload_lookup_challenges_for_test(&lookup_challenges_host, &context),
+            &context,
+        )
         .unwrap();
     context.get_exec_stream().synchronize().unwrap();
     assert!(
@@ -7067,7 +7117,11 @@ fn run_basic_unrolled_stagewise_parity_test() {
     let mut gpu_forward_setup = {
         let _range = scoped_range(None, "test.gpu.forward_setup.schedule");
         let gpu_forward_setup = gpu_setup_transfer
-            .schedule_forward_setup(&add_sub_circuit, &lookup_challenges_host, &context)
+            .schedule_forward_setup(
+                &add_sub_circuit,
+                upload_lookup_challenges_for_test(&lookup_challenges_host, &context),
+                &context,
+            )
             .unwrap();
         context.get_exec_stream().synchronize().unwrap();
         gpu_forward_setup
@@ -7967,7 +8021,7 @@ fn standalone_inits_and_teardowns_gpu_workflow_matches_cpu() {
             compiled_circuit.generic_lookup_tables_width,
             compiled_circuit.total_tables_size,
             compiled_circuit.tables_ids_in_generic_lookups,
-            &lookup_challenges_host,
+            upload_lookup_challenges_for_test(&lookup_challenges_host, &context),
             &context,
         )
         .unwrap();
@@ -9038,7 +9092,11 @@ fn assert_delegation_workflow_matches_cpu_inner<W, O, F>(
     }
 
     let mut gpu_forward_setup = gpu_setup_transfer
-        .schedule_forward_setup(&compiled_circuit, &lookup_challenges_host, &context)
+        .schedule_forward_setup(
+            &compiled_circuit,
+            upload_lookup_challenges_for_test(&lookup_challenges_host, &context),
+            &context,
+        )
         .unwrap();
     context.get_exec_stream().synchronize().unwrap();
 
