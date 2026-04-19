@@ -7005,10 +7005,59 @@ where
             .map(|(addr, values)| (*addr, values.get_accessor()))
             .collect();
 
+        // Device-side inter-layer transcript (main-layer variant): pack the
+        // flattened last-round evaluations (2 E per address, vs 4 in dim-
+        // reducing), absorb them into device_seed via transcript_commit, then
+        // squeeze 2 E4 challenges `[last_r, next_batching_challenge]`.
+        let transcript_input_sources = self.final_evaluation_sources_for_last_step(last_step);
+        let transcript_inputs_len = transcript_input_sources.len() * 2;
+        let mut d_layer_transcript_inputs: DeviceAllocation<E> =
+            context.alloc(transcript_inputs_len.max(1), AllocationPlacement::Top)?;
+        {
+            let mut offset = 0usize;
+            for (_, ptr) in transcript_input_sources.iter() {
+                // SAFETY: raw ptr + length come from the layer's kernel plan;
+                // the 2-E region is alive through the struct we return.
+                let src =
+                    unsafe { era_cudart::slice::DeviceSlice::from_raw_parts(*ptr, 2) };
+                memory_copy_async(
+                    &mut d_layer_transcript_inputs[offset..offset + 2],
+                    src,
+                    stream,
+                )?;
+                offset += 2;
+            }
+            debug_assert_eq!(offset, transcript_inputs_len);
+        }
+        // SAFETY: E = E4 in every instantiation of this scheduler.
+        let d_transcript_inputs_u32 = unsafe {
+            d_layer_transcript_inputs[..transcript_inputs_len].transmute::<u32>()
+        };
+        crate::ops::blake2s::transcript_commit(&mut device_seed, d_transcript_inputs_u32, stream)?;
+
+        let mut d_layer_challenges: DeviceAllocation<E> =
+            context.alloc(2, AllocationPlacement::Top)?;
+        // SAFETY: E = E4 in every instantiation; matches host `draw_random_field_els::<BF, E4>`.
+        let d_layer_challenges_as_e4 = unsafe { d_layer_challenges.transmute_mut::<E4>() };
+        crate::ops::blake2s::transcript_squeeze_e4(
+            &mut device_seed,
+            d_layer_challenges_as_e4,
+            stream,
+        )?;
+
+        let mut layer_challenges_host: HostAllocation<[E]> =
+            unsafe { context.alloc_host_uninit_slice(2) };
+        let layer_challenges_accessor = layer_challenges_host.get_accessor();
+        memory_copy_async(&mut layer_challenges_host, &d_layer_challenges, stream)?;
+
         // D2H the on-device per-layer state: seed, accumulated coefficients,
         // and folding challenges. The proof-assembly callback reconstitutes
         // the rolling host state from these buffers, replacing the per-round
         // host accumulation that the former callback-driven path relied on.
+        // The seed D2H is stream-ordered *after* the device commit+squeeze,
+        // so it captures the post-transcript advanced seed — what the host
+        // `commit_field_els + draw_random_field_els(2)` pair used to produce.
+        // This D2H goes away in Phase E.
         let mut final_seed_host = unsafe { context.alloc_host_uninit_slice(STATE_SIZE) };
         let final_seed_accessor = final_seed_host.get_accessor();
         memory_copy_async(&mut final_seed_host, &device_seed, stream)?;
@@ -7040,7 +7089,9 @@ where
                     last_evaluations.insert(*address, values);
                 }
 
-                // Populate the rolling state from the D2H'd device state.
+                // Populate the rolling state from the D2H'd device state. The
+                // seed captured here is already post-commit+squeeze; the 2
+                // challenges live in `layer_challenges_host`.
                 let state = shared_state_for_callback.get_mut();
                 state.seed = Seed(
                     <&[u32; STATE_SIZE]>::try_from(final_seed_accessor.get())
@@ -7063,14 +7114,10 @@ where
                     .folding_challenges
                     .extend_from_slice(final_folding_challenges_accessor.get());
 
-                let transcript_inputs: Vec<E> = last_evaluations
-                    .values()
-                    .flat_map(|values| values.iter().copied())
-                    .collect();
-                commit_field_els(&mut state.seed, &transcript_inputs);
-
-                let challenges = draw_random_field_els::<BF, E>(&mut state.seed, 2);
-                let [last_r, next_batching_challenge]: [E; 2] = challenges.try_into().unwrap();
+                let [last_r, next_batching_challenge]: [E; 2] = layer_challenges_accessor
+                    .get()
+                    .try_into()
+                    .expect("layer challenges D2H has length 2");
                 let mut new_claim_point = state.folding_challenges.clone();
                 new_claim_point.push(last_r);
                 let new_claims = last_evaluations
@@ -7124,6 +7171,9 @@ where
         drop(final_seed_host);
         drop(final_coeffs_host);
         drop(final_folding_challenges_host);
+        drop(layer_challenges_host);
+        drop(d_layer_transcript_inputs);
+        drop(d_layer_challenges);
         drop(device_seed);
         drop(device_claim);
         drop(device_eq_prefactor);
