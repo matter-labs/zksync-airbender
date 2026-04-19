@@ -5328,6 +5328,7 @@ where
             },
             shared_state,
             device_seed: None,
+            device_claim_point_for_next_layer: None,
             _phantom: std::marker::PhantomData,
         })
     }
@@ -5336,6 +5337,7 @@ where
         &mut self,
         workflow_state: ScheduledBackwardWorkflowStateHandle<E>,
         mut device_seed: DeviceAllocation<u32>,
+        device_claim_point_in: DeviceAllocation<E>,
         context: &ProverContext,
     ) -> CudaResult<GpuGKRDimensionReducingScheduledLayerExecution<B, E>> {
         const DIMENSION_REDUCING_LAYER_RANGE_MIN_FOLDING_STEPS: usize = 19;
@@ -5381,17 +5383,10 @@ where
         let mut device_coeffs: DeviceAllocation<E> =
             context.alloc(coeffs_total_len.max(1), AllocationPlacement::Top)?;
 
-        let mut claim_point_host =
-            unsafe { context.alloc_host_uninit_slice(self.folding_steps + 1) };
-        let claim_point_accessor = claim_point_host.get_mut_accessor();
-        let mut eq_pair_values_host = unsafe {
-            context.alloc_host_uninit_slice(round0_eq_pair_values_len(self.folding_steps))
-        };
-        let eq_pair_values_accessor = eq_pair_values_host.get_mut_accessor();
-
         // Host staging for claim + eq_prefactor (written by the start
-        // callback, H2D'd into the device state). Seed is device-resident
-        // from end-to-end, so it no longer has a host staging slot.
+        // callback, H2D'd into the device state). Seed + claim_point +
+        // eq_pair_values are device-resident end-to-end, so they no longer
+        // have host staging slots.
         let mut init_claim_host: HostAllocation<[E]> =
             unsafe { context.alloc_host_uninit_slice(1) };
         let init_claim_write_accessor = init_claim_host.get_mut_accessor();
@@ -5414,14 +5409,6 @@ where
         start_callbacks.schedule(
             move || unsafe {
                 let workflow_state = workflow_state_for_start.get();
-                let dst = claim_point_accessor.get_mut();
-                let claim_len = dst.len() - 1;
-                dst[..claim_len].copy_from_slice(&workflow_state.current_claim_point);
-                dst[claim_len] = workflow_state.current_batching_challenge;
-                fill_round0_eq_pair_values(
-                    eq_pair_values_accessor.get_mut(),
-                    &workflow_state.current_claim_point,
-                );
                 let layer_state = shared_state_for_start.get_mut();
                 layer_state.claim = {
                     let mut result = E::ZERO;
@@ -5450,16 +5437,43 @@ where
             },
             stream,
         )?;
+        // D2D the `[claim_point || batching_challenge]` input from the
+        // orchestrator-owned device buffer into this layer's
+        // `round_scratch.claim_point` (consumed by per-round kernels for
+        // `prev_coord_slice` and by `launch_build_eq_values_from_point` below).
+        // Replaces the prior `claim_point_host` H2D driven by the start callback.
+        let claim_point_and_batching_len = self.folding_steps + 1;
+        assert_eq!(
+            device_claim_point_in.len(),
+            claim_point_and_batching_len,
+            "device claim_point input size must match this layer's folding_steps + 1",
+        );
         memory_copy_async(
-            &mut self.round_scratch.claim_point,
-            &claim_point_host,
+            &mut self.round_scratch.claim_point[..claim_point_and_batching_len],
+            &device_claim_point_in[..claim_point_and_batching_len],
             stream,
         )?;
-        self.build_round0_eq_values(&eq_pair_values_host, context)?;
+        // Build `eq_group_tables` + `eq_values` directly from the now-populated
+        // device claim_point (using coords `[1..folding_steps]` — the suffix
+        // that `fill_round0_eq_pair_values` used to expand on host). Replaces
+        // the `eq_pair_values_host` H2D + `build_round0_eq_values_from_pairs`
+        // kernel chain with a single on-device builder.
+        let challenge_count = self.folding_steps.saturating_sub(1);
+        let acc_size = 1usize << challenge_count;
+        launch_build_eq_values_from_point(
+            self.round_scratch.claim_point.as_ptr(),
+            1,
+            challenge_count,
+            self.round_scratch.eq_group_tables.as_mut_ptr(),
+            self.round_scratch.eq_values.as_mut_ptr(),
+            acc_size,
+            context,
+        )?;
 
-        // H2D claim + eq_prefactor only. Seed is device-resident and already
-        // holds the advanced state passed in from the previous layer (or from
-        // the post-forward device squeeze for the first layer).
+        // H2D claim + eq_prefactor only. Seed + claim_point + eq_pair_values
+        // are device-resident and already hold the advanced state passed in
+        // from the previous layer (or from the post-forward device squeeze for
+        // the first layer).
         memory_copy_async(&mut device_claim, &init_claim_host, stream)?;
         memory_copy_async(&mut device_eq_prefactor, &init_eq_prefactor_host, stream)?;
 
@@ -5629,6 +5643,39 @@ where
         let layer_challenges_accessor = layer_challenges_host.get_accessor();
         memory_copy_async(&mut layer_challenges_host, &d_layer_challenges, stream)?;
 
+        // Build the NEXT layer's `[claim_point || batching_challenge]` buffer
+        // entirely on device: `folding_challenges (last_step)` from this
+        // layer's `round_challenge_storage` + `d_layer_challenges[0..2]`
+        // (r_before_last, r_last) form the next claim_point; `d_layer_challenges[2]`
+        // is the next batching challenge. Total length `last_step + 3 =
+        // folding_steps + 2`, matching the next dim-reducing layer's
+        // `round_scratch.claim_point` size. Replaces the per-layer entry H2D
+        // that previously staged `workflow_state.current_claim_point` +
+        // `current_batching_challenge` from host.
+        let next_claim_point_and_batching_len = self.folding_steps + 2;
+        let mut device_claim_point_out: DeviceAllocation<E> = context.alloc(
+            next_claim_point_and_batching_len,
+            AllocationPlacement::Top,
+        )?;
+        if last_step > 0 {
+            let storage = round_challenge_storage
+                .as_ref()
+                .expect("round_challenge_storage allocated when last_step > 0");
+            // SAFETY: `round_challenge_storage` outlives the scheduled D2D;
+            // the destination slice is within the fresh allocation's bounds.
+            let src = unsafe { storage.device.slice_mut(0, last_step) };
+            memory_copy_async(
+                &mut device_claim_point_out[..last_step],
+                &*src,
+                stream,
+            )?;
+        }
+        memory_copy_async(
+            &mut device_claim_point_out[last_step..last_step + 3],
+            &d_layer_challenges[..3],
+            stream,
+        )?;
+
         // Bulk D2H the on-device per-layer state that the final readback
         // callback needs for proof assembly. The reads are stream-ordered
         // after the per-round kernels that wrote them. The seed D2H is
@@ -5765,8 +5812,6 @@ where
             tracing_ranges.push(layer_range);
         }
 
-        drop(claim_point_host);
-        drop(eq_pair_values_host);
         drop(init_claim_host);
         drop(init_eq_prefactor_host);
         drop(final_seed_host);
@@ -5778,6 +5823,7 @@ where
         drop(device_claim);
         drop(device_eq_prefactor);
         drop(device_coeffs);
+        drop(device_claim_point_in);
         Ok(GpuGKRDimensionReducingScheduledLayerExecution {
             tracing_ranges,
             start_callbacks,
@@ -5794,6 +5840,7 @@ where
             },
             shared_state,
             device_seed: Some(device_seed),
+            device_claim_point_for_next_layer: Some(device_claim_point_out),
             _phantom: std::marker::PhantomData,
         })
     }
@@ -5811,6 +5858,7 @@ impl<B, E: FieldExtension<BF> + Field> GpuGKRDimensionReducingScheduledLayerExec
             final_readback,
             shared_state,
             device_seed: _,
+            device_claim_point_for_next_layer: _,
             _phantom: _,
         } = self;
         GpuGKRDimensionReducingHostKeepalive {
@@ -6712,6 +6760,7 @@ where
             ),
             shared_state,
             device_seed: None,
+            device_claim_point_for_next_layer: None,
         })
     }
 
@@ -6719,6 +6768,7 @@ where
         &mut self,
         workflow_state: ScheduledBackwardWorkflowStateHandle<E>,
         mut device_seed: DeviceAllocation<u32>,
+        device_claim_point_in: DeviceAllocation<E>,
         context: &ProverContext,
     ) -> CudaResult<GpuGKRMainLayerScheduledLayerExecution<E>> {
         let stream = context.get_exec_stream();
@@ -6754,15 +6804,8 @@ where
         let mut device_folding_challenges: DeviceAllocation<E> =
             context.alloc(last_step, AllocationPlacement::Top)?;
 
-        let mut claim_point_host =
-            unsafe { context.alloc_host_uninit_slice(self.folding_steps + 1) };
-        let claim_point_accessor = claim_point_host.get_mut_accessor();
-        let mut eq_pair_values_host = unsafe {
-            context.alloc_host_uninit_slice(round0_eq_pair_values_len(self.folding_steps))
-        };
-        let eq_pair_values_accessor = eq_pair_values_host.get_mut_accessor();
-
-        // Host staging for claim + eq_prefactor. Seed is device-resident.
+        // Host staging for claim + eq_prefactor. Seed + claim_point +
+        // eq_pair_values are device-resident.
         let mut init_claim_host: HostAllocation<[E]> =
             unsafe { context.alloc_host_uninit_slice(1) };
         let init_claim_write_accessor = init_claim_host.get_mut_accessor();
@@ -6794,14 +6837,6 @@ where
         start_callbacks.schedule(
             move || unsafe {
                 let workflow_state = workflow_state_for_start.get();
-                let dst = claim_point_accessor.get_mut();
-                let claim_len = dst.len() - 1;
-                dst[..claim_len].copy_from_slice(&workflow_state.current_claim_point);
-                dst[claim_len] = workflow_state.current_batching_challenge;
-                fill_round0_eq_pair_values(
-                    eq_pair_values_accessor.get_mut(),
-                    &workflow_state.current_claim_point,
-                );
                 let layer_state = shared_state_for_start.get_mut();
                 layer_state.claim = {
                     let mut result = E::ZERO;
@@ -6830,14 +6865,35 @@ where
             },
             stream,
         )?;
+        // D2D input `[claim_point || batching_challenge]` from the orchestrator-
+        // owned device buffer, and build `eq_group_tables` + `eq_values`
+        // directly from it (offset 1, count folding_steps - 1) — same pattern
+        // as the dim-reducing twin.
+        let claim_point_and_batching_len = self.folding_steps + 1;
+        assert_eq!(
+            device_claim_point_in.len(),
+            claim_point_and_batching_len,
+            "device claim_point input size must match this layer's folding_steps + 1",
+        );
         memory_copy_async(
-            &mut self.round_scratch.claim_point,
-            &claim_point_host,
+            &mut self.round_scratch.claim_point[..claim_point_and_batching_len],
+            &device_claim_point_in[..claim_point_and_batching_len],
             stream,
         )?;
-        self.build_round0_eq_values(&eq_pair_values_host, context)?;
+        let challenge_count = self.folding_steps.saturating_sub(1);
+        let acc_size = 1usize << challenge_count;
+        launch_build_eq_values_from_point(
+            self.round_scratch.claim_point.as_ptr(),
+            1,
+            challenge_count,
+            self.round_scratch.eq_group_tables.as_mut_ptr(),
+            self.round_scratch.eq_values.as_mut_ptr(),
+            acc_size,
+            context,
+        )?;
 
-        // H2D claim + eq_prefactor only (seed is device-resident).
+        // H2D claim + eq_prefactor only (seed + claim_point + eq_pair_values
+        // are device-resident).
         memory_copy_async(&mut device_claim, &init_claim_host, stream)?;
         memory_copy_async(&mut device_eq_prefactor, &init_eq_prefactor_host, stream)?;
 
@@ -7001,6 +7057,30 @@ where
         let layer_challenges_accessor = layer_challenges_host.get_accessor();
         memory_copy_async(&mut layer_challenges_host, &d_layer_challenges, stream)?;
 
+        // Build the NEXT layer's `[claim_point || batching_challenge]` buffer
+        // on device: `device_folding_challenges (last_step)` +
+        // `d_layer_challenges[0]` (last_r) form the next claim_point;
+        // `d_layer_challenges[1]` is the next batching challenge. Total
+        // length `last_step + 2 = folding_steps + 1`. Main layers keep
+        // folding_steps constant, so this matches the next main layer's
+        // `round_scratch.claim_point` size. Replaces the per-layer entry
+        // H2D that used to stage claim_point + batching from host.
+        let next_claim_point_and_batching_len = self.folding_steps + 1;
+        let mut device_claim_point_out: DeviceAllocation<E> = context.alloc(
+            next_claim_point_and_batching_len,
+            AllocationPlacement::Top,
+        )?;
+        memory_copy_async(
+            &mut device_claim_point_out[..last_step],
+            &device_folding_challenges[..last_step],
+            stream,
+        )?;
+        memory_copy_async(
+            &mut device_claim_point_out[last_step..last_step + 2],
+            &d_layer_challenges[..2],
+            stream,
+        )?;
+
         // D2H the on-device per-layer state: seed, accumulated coefficients,
         // and folding challenges. The proof-assembly callback reconstitutes
         // the rolling host state from these buffers, replacing the per-round
@@ -7114,8 +7194,6 @@ where
         layer_range.end(stream)?;
         tracing_ranges.push(layer_range);
 
-        drop(claim_point_host);
-        drop(eq_pair_values_host);
         drop(init_claim_host);
         drop(init_eq_prefactor_host);
         drop(final_seed_host);
@@ -7128,6 +7206,7 @@ where
         drop(device_eq_prefactor);
         drop(device_coeffs);
         drop(device_folding_challenges);
+        drop(device_claim_point_in);
         Ok(GpuGKRMainLayerScheduledLayerExecution {
             tracing_ranges,
             start_callbacks,
@@ -7152,6 +7231,7 @@ where
             ),
             shared_state,
             device_seed: Some(device_seed),
+            device_claim_point_for_next_layer: Some(device_claim_point_out),
         })
     }
 }
@@ -7173,6 +7253,7 @@ impl<E: FieldExtension<BF> + Field> GpuGKRMainLayerScheduledLayerExecution<E> {
             recipe_upload_callbacks,
             shared_state,
             device_seed: _,
+            device_claim_point_for_next_layer: _,
         } = self;
         GpuGKRMainLayerHostKeepalive {
             tracing_ranges,
@@ -7264,6 +7345,7 @@ where
         external_challenges: GKRExternalChallenges<BF, E>,
         mut shared_state: Box<ScheduledBackwardWorkflowState<E>>,
         initial_d_seed: DeviceAllocation<u32>,
+        initial_d_claim_point_and_batching: DeviceAllocation<E>,
         context: &ProverContext,
     ) -> CudaResult<GpuGKRBackwardScheduledExecution<BF, E>> {
         let shared_state_handle =
@@ -7282,18 +7364,32 @@ where
         // the layer's returned `Execution::device_seed`. No H2D, no per-layer
         // allocation — the whole backward seed pipeline is GPU-resident.
         let mut shared_device_seed = initial_d_seed;
+        // `shared_device_claim_point` holds the next layer's input claim_point
+        // followed by its batching_challenge, in the same `[claim_point ||
+        // batching]` layout that each layer's `round_scratch.claim_point`
+        // consumes. The first layer receives the post-forward device squeeze
+        // buffer (`evaluation_point || batching_challenge`) unchanged; every
+        // subsequent layer reallocates to match its own size (`folding_steps +
+        // 1`) and is populated on device from the previous layer's
+        // `device_folding_challenges` + `d_layer_challenges`.
+        let mut shared_device_claim_point = initial_d_claim_point_and_batching;
         while let Some(mut prepared_layer) = self.prepare_next_layer_static(context)? {
             let layer_idx = prepared_layer.layer_idx;
             let mut execution = prepared_layer
                 .schedule_execute_dimension_reducing_layer_from_workflow_state(
                     shared_state_handle,
                     shared_device_seed,
+                    shared_device_claim_point,
                     context,
                 )?;
             shared_device_seed = execution
                 .device_seed
                 .take()
                 .expect("dim-reducing scheduler must return the device seed");
+            shared_device_claim_point = execution
+                .device_claim_point_for_next_layer
+                .take()
+                .expect("dim-reducing scheduler must return the device claim_point");
             dimension_reducing_layers.push(execution);
             // Stream-ordered storage can be dropped once the layer's uploads and kernels have
             // been fully enqueued on exec_stream.
@@ -7318,12 +7414,17 @@ where
                 .schedule_execute_main_layer_from_workflow_state(
                     shared_state_handle,
                     shared_device_seed,
+                    shared_device_claim_point,
                     context,
                 )?;
             shared_device_seed = execution
                 .device_seed
                 .take()
                 .expect("main-layer scheduler must return the device seed");
+            shared_device_claim_point = execution
+                .device_claim_point_for_next_layer
+                .take()
+                .expect("main-layer scheduler must return the device claim_point");
             main_layers.push(execution);
             main_backward_state.purge_up_to_layer(layer_idx);
         }
@@ -7332,10 +7433,11 @@ where
 
         let GpuGKRMainLayerBackwardState { storage: _, .. } = main_backward_state;
         // Remaining main-layer storage drops here after all exec-stream work has been scheduled.
-        // `shared_device_seed` holds the final advanced device seed; no downstream consumer reads
-        // it (host consumers go through `workflow_state.seed`, which last-layer end-of-layer
-        // callbacks keep up to date via the final_seed_host D2H). Drop it.
+        // `shared_device_seed` + `shared_device_claim_point` hold final advanced state; no
+        // downstream consumer reads them (host consumers go through `workflow_state`, which
+        // last-layer end-of-layer callbacks keep up to date via the D2H readbacks). Drop them.
         drop(shared_device_seed);
+        drop(shared_device_claim_point);
         workflow_range.end(stream)?;
         tracing_ranges.push(workflow_range);
 
@@ -7378,9 +7480,10 @@ where
             seed,
             proofs: BTreeMap::new(),
         });
-        // Host seed is only available via this test-path entry point; allocate
-        // a device seed and H2D from `shared_state.seed` so the orchestrator's
-        // device-resident seed pipeline kicks off with the right value.
+        // Host seed / claim_point / batching_challenge are only available via this
+        // test-path entry point; stage them into device buffers so the orchestrator's
+        // device-resident seed + claim_point pipelines kick off with the right values.
+        let stream = context.get_exec_stream();
         let mut initial_d_seed: DeviceAllocation<u32> =
             context.alloc(STATE_SIZE, AllocationPlacement::Top)?;
         let mut seed_host_slot =
@@ -7391,14 +7494,35 @@ where
                 .get_mut()
                 .copy_from_slice(&shared_state.seed.0)
         };
-        memory_copy_async(&mut initial_d_seed, &seed_host_slot, context.get_exec_stream())?;
+        memory_copy_async(&mut initial_d_seed, &seed_host_slot, stream)?;
         drop(seed_host_slot);
+
+        let claim_point_and_batching_len = shared_state.current_claim_point.len() + 1;
+        let mut initial_d_claim_point_and_batching: DeviceAllocation<E> =
+            context.alloc(claim_point_and_batching_len, AllocationPlacement::Top)?;
+        let mut claim_point_and_batching_host_slot =
+            unsafe { context.alloc_host_uninit_slice::<E>(claim_point_and_batching_len) };
+        let claim_point_and_batching_accessor =
+            claim_point_and_batching_host_slot.get_mut_accessor();
+        unsafe {
+            let dst = claim_point_and_batching_accessor.get_mut();
+            let (cp_dst, batching_dst) = dst.split_at_mut(shared_state.current_claim_point.len());
+            cp_dst.copy_from_slice(&shared_state.current_claim_point);
+            batching_dst[0] = shared_state.current_batching_challenge;
+        };
+        memory_copy_async(
+            &mut initial_d_claim_point_and_batching,
+            &claim_point_and_batching_host_slot,
+            stream,
+        )?;
+        drop(claim_point_and_batching_host_slot);
 
         self.schedule_execute_backward_workflow_from_shared_state(
             compiled_circuit,
             external_challenges,
             shared_state,
             initial_d_seed,
+            initial_d_claim_point_and_batching,
             context,
         )
     }
@@ -7792,6 +7916,7 @@ mod tests {
         let mut shared_state = make_deferred_backward_workflow_state();
         let shared_state_handle =
             crate::primitives::context::UnsafeMutAccessor::new(shared_state.as_mut());
+        let fixture_evaluation_point_for_device = fixture.evaluation_point.clone();
         populate_backward_workflow_state(
             shared_state_handle,
             fixture.initial_output_layer_idx,
@@ -7824,6 +7949,14 @@ mod tests {
             drop(host_slot);
         }
 
+        let mut shared_device_claim_point =
+            crate::prover::gkr::backward::h2d_claim_point_and_batching_from_host::<E4>(
+                context,
+                &fixture_evaluation_point_for_device,
+                fixture.batching_challenge,
+            )
+            .unwrap();
+
         let mut dimension_reducing_layers = Vec::new();
         let mut purged_layers = 0usize;
         while let Some(mut prepared_layer) =
@@ -7834,10 +7967,15 @@ mod tests {
                 .schedule_execute_dimension_reducing_layer_from_workflow_state(
                     shared_state_handle,
                     shared_device_seed,
+                    shared_device_claim_point,
                     context,
                 )
                 .unwrap();
             shared_device_seed = scheduled.device_seed.take().unwrap();
+            shared_device_claim_point = scheduled
+                .device_claim_point_for_next_layer
+                .take()
+                .unwrap();
             dimension_reducing_layers.push(scheduled);
             backward_state.purge_up_to_layer(layer_idx);
             purged_layers += 1;
@@ -7871,6 +8009,7 @@ mod tests {
             .schedule_execute_main_layer_from_workflow_state(
                 shared_state_handle,
                 shared_device_seed,
+                shared_device_claim_point,
                 context,
             )
             .unwrap();

@@ -690,7 +690,10 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
 
     // D2H only the squeezed (evaluation_point || batching_challenge) pair into a host pinned
     // slot for the post-forward callback. The seed stays on device and is threaded into the
-    // first backward layer as its `device_seed` — no D2H, no H2D.
+    // first backward layer as its `device_seed` — no D2H, no H2D. The device buffer itself
+    // flows into the first backward layer as `initial_d_claim_point_and_batching`: it holds
+    // the first layer's claim_point (`final_trace_size_log_2` entries) followed by its
+    // batching challenge (1 entry), matching the `round_scratch.claim_point` layout.
     let mut evaluation_point_and_batching_host =
         unsafe { context.alloc_host_uninit_slice::<E4>(num_challenges) };
     memory_copy_async(
@@ -698,7 +701,6 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
         &d_evaluation_point_and_batching,
         stream,
     )?;
-    drop(d_evaluation_point_and_batching);
 
     let evaluation_point_and_batching_accessor = evaluation_point_and_batching_host.get_accessor();
 
@@ -755,6 +757,7 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
             external_challenges.clone(),
             backward_shared_state,
             d_seed,
+            d_evaluation_point_and_batching,
             context,
         )?;
     let backward_shared_state = backward_scheduled.shared_state_handle();
