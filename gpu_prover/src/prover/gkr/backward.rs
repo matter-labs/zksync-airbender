@@ -5334,6 +5334,7 @@ where
     pub(crate) fn schedule_execute_dimension_reducing_layer_from_workflow_state(
         &mut self,
         workflow_state: ScheduledBackwardWorkflowStateHandle<E>,
+        initial_d_seed: Option<DeviceAllocation<u32>>,
         context: &ProverContext,
     ) -> CudaResult<GpuGKRDimensionReducingScheduledLayerExecution<B, E>> {
         const DIMENSION_REDUCING_LAYER_RANGE_MIN_FOLDING_STEPS: usize = 19;
@@ -5366,9 +5367,15 @@ where
 
         // Device-resident per-layer state consumed by the fused per-round update
         // kernel. These replace the host-only rolling state that the former
-        // per-round callback maintained.
-        let mut device_seed: DeviceAllocation<u32> =
-            context.alloc(STATE_SIZE, AllocationPlacement::Top)?;
+        // per-round callback maintained. If a caller supplied an `initial_d_seed`
+        // (the post-forward device seed), reuse it in place — no new allocation,
+        // no init_seed_host staging, and no entry H2D. This is the path taken by
+        // the first backward layer after Phase A's post-forward device squeeze.
+        let seed_is_preseeded = initial_d_seed.is_some();
+        let mut device_seed: DeviceAllocation<u32> = match initial_d_seed {
+            Some(d) => d,
+            None => context.alloc(STATE_SIZE, AllocationPlacement::Top)?,
+        };
         let mut device_claim: DeviceAllocation<E> = context.alloc(1, AllocationPlacement::Top)?;
         let mut device_eq_prefactor: DeviceAllocation<E> =
             context.alloc(1, AllocationPlacement::Top)?;
@@ -5390,9 +5397,16 @@ where
         // Host staging buffers that receive the initial seed/claim/eq_prefactor
         // inside the start callback, then get H2D'd into the device state
         // buffers above. init_eq_prefactor is constant (E::ONE) but is staged
-        // the same way for uniformity.
-        let mut init_seed_host = unsafe { context.alloc_host_uninit_slice(STATE_SIZE) };
-        let init_seed_write_accessor = init_seed_host.get_mut_accessor();
+        // the same way for uniformity. When `seed_is_preseeded`, the initial
+        // seed already lives on `device_seed` (moved in from `initial_d_seed`),
+        // so the seed mirror + H2D are skipped.
+        let mut init_seed_host: Option<HostAllocation<[u32]>> = if seed_is_preseeded {
+            None
+        } else {
+            Some(unsafe { context.alloc_host_uninit_slice(STATE_SIZE) })
+        };
+        let init_seed_write_accessor =
+            init_seed_host.as_mut().map(|h| h.get_mut_accessor());
         let mut init_claim_host: HostAllocation<[E]> =
             unsafe { context.alloc_host_uninit_slice(1) };
         let init_claim_write_accessor = init_claim_host.get_mut_accessor();
@@ -5449,9 +5463,11 @@ where
 
                 // Mirror initial seed/claim/eq_prefactor into host staging so
                 // the following H2D copies land the correct values on device.
-                init_seed_write_accessor
-                    .get_mut()
-                    .copy_from_slice(&layer_state.seed.0);
+                // Seed mirror + H2D are skipped when the seed was pre-seeded
+                // (device_seed already holds the post-forward device seed).
+                if let Some(acc) = init_seed_write_accessor.as_ref() {
+                    acc.get_mut().copy_from_slice(&layer_state.seed.0);
+                }
                 init_claim_write_accessor.get_mut()[0] = layer_state.claim;
                 init_eq_prefactor_write_accessor.get_mut()[0] = E::ONE;
             },
@@ -5466,8 +5482,10 @@ where
 
         // H2D the initial layer state. Ordered after the start callback on
         // exec_stream, so the host staging buffers have been populated before
-        // the copies start.
-        memory_copy_async(&mut device_seed, &init_seed_host, stream)?;
+        // the copies start. Seed H2D is skipped on the pre-seeded path.
+        if let Some(init_seed_host) = init_seed_host.as_ref() {
+            memory_copy_async(&mut device_seed, init_seed_host, stream)?;
+        }
         memory_copy_async(&mut device_claim, &init_claim_host, stream)?;
         memory_copy_async(&mut device_eq_prefactor, &init_eq_prefactor_host, stream)?;
 
@@ -6667,6 +6685,7 @@ where
     pub(crate) fn schedule_execute_main_layer_from_workflow_state(
         &mut self,
         workflow_state: ScheduledBackwardWorkflowStateHandle<E>,
+        initial_d_seed: Option<DeviceAllocation<u32>>,
         context: &ProverContext,
     ) -> CudaResult<GpuGKRMainLayerScheduledLayerExecution<E>> {
         let stream = context.get_exec_stream();
@@ -6693,8 +6712,11 @@ where
         // dimension-reducing scheduler); device_folding_challenges accumulates
         // each round's challenge in index-0-based order so we can populate the
         // packed round_challenge_storage slots with a short D2D copy.
-        let mut device_seed: DeviceAllocation<u32> =
-            context.alloc(STATE_SIZE, AllocationPlacement::Top)?;
+        let seed_is_preseeded = initial_d_seed.is_some();
+        let mut device_seed: DeviceAllocation<u32> = match initial_d_seed {
+            Some(d) => d,
+            None => context.alloc(STATE_SIZE, AllocationPlacement::Top)?,
+        };
         let mut device_claim: DeviceAllocation<E> = context.alloc(1, AllocationPlacement::Top)?;
         let mut device_eq_prefactor: DeviceAllocation<E> =
             context.alloc(1, AllocationPlacement::Top)?;
@@ -6712,9 +6734,15 @@ where
         };
         let eq_pair_values_accessor = eq_pair_values_host.get_mut_accessor();
 
-        // Host staging buffers for initial state H2D.
-        let mut init_seed_host = unsafe { context.alloc_host_uninit_slice(STATE_SIZE) };
-        let init_seed_write_accessor = init_seed_host.get_mut_accessor();
+        // Host staging buffers for initial state H2D. Seed staging is skipped
+        // on the pre-seeded path (device_seed already holds the correct value).
+        let mut init_seed_host: Option<HostAllocation<[u32]>> = if seed_is_preseeded {
+            None
+        } else {
+            Some(unsafe { context.alloc_host_uninit_slice(STATE_SIZE) })
+        };
+        let init_seed_write_accessor =
+            init_seed_host.as_mut().map(|h| h.get_mut_accessor());
         let mut init_claim_host: HostAllocation<[E]> =
             unsafe { context.alloc_host_uninit_slice(1) };
         let init_claim_write_accessor = init_claim_host.get_mut_accessor();
@@ -6780,9 +6808,11 @@ where
 
                 // Mirror initial seed/claim/eq_prefactor into host staging so
                 // the following H2D copies land the correct values on device.
-                init_seed_write_accessor
-                    .get_mut()
-                    .copy_from_slice(&layer_state.seed.0);
+                // Seed mirror + H2D are skipped when the seed was pre-seeded
+                // (device_seed already holds the post-forward device seed).
+                if let Some(acc) = init_seed_write_accessor.as_ref() {
+                    acc.get_mut().copy_from_slice(&layer_state.seed.0);
+                }
                 init_claim_write_accessor.get_mut()[0] = layer_state.claim;
                 init_eq_prefactor_write_accessor.get_mut()[0] = E::ONE;
             },
@@ -6795,8 +6825,10 @@ where
         )?;
         self.build_round0_eq_values(&eq_pair_values_host, context)?;
 
-        // H2D initial layer state.
-        memory_copy_async(&mut device_seed, &init_seed_host, stream)?;
+        // H2D initial layer state. Seed H2D is skipped on the pre-seeded path.
+        if let Some(init_seed_host) = init_seed_host.as_ref() {
+            memory_copy_async(&mut device_seed, init_seed_host, stream)?;
+        }
         memory_copy_async(&mut device_claim, &init_claim_host, stream)?;
         memory_copy_async(&mut device_eq_prefactor, &init_eq_prefactor_host, stream)?;
 
@@ -7172,6 +7204,7 @@ where
         compiled_circuit: GKRCircuitArtifact<BF>,
         external_challenges: GKRExternalChallenges<BF, E>,
         mut shared_state: Box<ScheduledBackwardWorkflowState<E>>,
+        initial_d_seed: Option<DeviceAllocation<u32>>,
         context: &ProverContext,
     ) -> CudaResult<GpuGKRBackwardScheduledExecution<BF, E>> {
         let shared_state_handle =
@@ -7183,11 +7216,15 @@ where
         let mut dimension_reducing_layers = Vec::new();
         let dimension_reducing_layers_range = Range::new("gkr.backward.dimension_reducing_layers")?;
         dimension_reducing_layers_range.start(stream)?;
+        // Hand `initial_d_seed` to the first backward layer; every subsequent layer
+        // receives None and allocates + H2Ds its own device seed as before.
+        let mut initial_d_seed = initial_d_seed;
         while let Some(mut prepared_layer) = self.prepare_next_layer_static(context)? {
             let layer_idx = prepared_layer.layer_idx;
             dimension_reducing_layers.push(
                 prepared_layer.schedule_execute_dimension_reducing_layer_from_workflow_state(
                     shared_state_handle,
+                    initial_d_seed.take(),
                     context,
                 )?,
             );
@@ -7213,6 +7250,7 @@ where
             main_layers.push(
                 prepared_layer.schedule_execute_main_layer_from_workflow_state(
                     shared_state_handle,
+                    initial_d_seed.take(),
                     context,
                 )?,
             );
@@ -7269,6 +7307,7 @@ where
             compiled_circuit,
             external_challenges,
             shared_state,
+            None,
             context,
         )
     }
@@ -7680,6 +7719,7 @@ mod tests {
             let scheduled = prepared_layer
                 .schedule_execute_dimension_reducing_layer_from_workflow_state(
                     shared_state_handle,
+                    None,
                     context,
                 )
                 .unwrap();
@@ -7713,7 +7753,7 @@ mod tests {
             .expect("expected first main-layer plan after dimension reduction");
         let first_main_layer_idx = first_main_layer.layer_idx;
         let _first_main_layer_execution = first_main_layer
-            .schedule_execute_main_layer_from_workflow_state(shared_state_handle, context)
+            .schedule_execute_main_layer_from_workflow_state(shared_state_handle, None, context)
             .unwrap();
 
         context.get_exec_stream().synchronize().unwrap();
