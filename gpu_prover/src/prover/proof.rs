@@ -688,20 +688,9 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
         stream,
     )?;
 
-    // D2H the advanced seed + the squeezed (evaluation_point || batching_challenge) pair into
-    // host pinned slots for the post-forward callback. The seed D2H is temporary: Phase B moves
-    // `workflow_state.seed` to a device handle, after which this readback goes away.
-    let mut seed_host = unsafe { context.alloc_host_uninit::<Seed>() };
-    {
-        // SAFETY: Seed is `[u32; STATE_SIZE]` — same layout as DeviceSlice<u32> of length STATE_SIZE.
-        let seed_host_u32 = unsafe {
-            std::slice::from_raw_parts_mut(
-                seed_host.get_mut_accessor().get_mut() as *mut Seed as *mut u32,
-                STATE_SIZE,
-            )
-        };
-        memory_copy_async(seed_host_u32, &d_seed, stream)?;
-    }
+    // D2H only the squeezed (evaluation_point || batching_challenge) pair into a host pinned
+    // slot for the post-forward callback. The seed stays on device and is threaded into the
+    // first backward layer as its `device_seed` — no D2H, no H2D.
     let mut evaluation_point_and_batching_host =
         unsafe { context.alloc_host_uninit_slice::<E4>(num_challenges) };
     memory_copy_async(
@@ -709,13 +698,8 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
         &d_evaluation_point_and_batching,
         stream,
     )?;
-    // d_seed and d_evaluation_point_and_batching have had all their stream reads queued; drop
-    // the device allocations (the allocator is stream-aware, so backing memory survives until
-    // the stream is done with it).
-    drop(d_seed);
     drop(d_evaluation_point_and_batching);
 
-    let seed_accessor = seed_host.get_mut_accessor();
     let evaluation_point_and_batching_accessor = evaluation_point_and_batching_host.get_accessor();
 
     let backward_state = forward_output.into_dimension_reducing_backward_state();
@@ -744,12 +728,17 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
                 let top_layer_claims =
                     build_top_layer_claims(&output_layer_for_sumcheck, initial_claims);
                 let lookup_challenges = lookup_challenges_read_accessor.get();
+                // `workflow_state.seed` (host `Seed`) is initialized to `Seed::default()` —
+                // the first backward layer's start callback reads the field but its value is
+                // dead (overwritten at end-of-layer by the D2H'd advanced device seed). The
+                // initial device seed is threaded separately into the first layer as
+                // `initial_d_seed`.
                 populate_backward_workflow_state(
                     backward_shared_state,
                     initial_layer_for_sumcheck + 1,
                     top_layer_claims,
                     evaluation_point,
-                    seed_accessor.get().clone(),
+                    Seed::default(),
                     batching_challenge,
                     lookup_challenges[0],
                     lookup_challenges[1],
@@ -765,6 +754,7 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
             compiled_circuit.clone(),
             external_challenges.clone(),
             backward_shared_state,
+            Some(d_seed),
             context,
         )?;
     let backward_shared_state = backward_scheduled.shared_state_handle();
