@@ -54,6 +54,10 @@ pub(crate) struct GpuGKRForwardOutput<B, E> {
 pub(crate) struct GpuGKRTranscriptHandoff<E> {
     _tracing_ranges: Vec<Range>,
     explicit_evaluations: BTreeMap<OutputType, [HostAllocation<[E]>; 2]>,
+    /// Device-resident flat copy of the host evaluations, packed in the same iteration order
+    /// as [`flatten_final_explicit_evaluations`] so that `transcript_commit` on this buffer
+    /// is byte-identical to host `commit_field_els` on the flattened host vector.
+    device_flat_evaluations: DeviceAllocation<E>,
 }
 
 impl<E: Copy> GpuGKRTranscriptHandoff<E> {
@@ -69,6 +73,10 @@ impl<E: Copy> GpuGKRTranscriptHandoff<E> {
                 )
             })
             .collect()
+    }
+
+    pub(crate) fn device_flat_evaluations(&self) -> &DeviceAllocation<E> {
+        &self.device_flat_evaluations
     }
 
     pub(crate) fn final_explicit_evaluations(&self) -> BTreeMap<OutputType, [Vec<E>; 2]> {
@@ -114,21 +122,55 @@ impl<B, E: Copy> GpuGKRForwardOutput<B, E> {
             .dimension_reducing_inputs
             .get(&self.initial_layer_for_sumcheck)
             .expect("reduced outputs for initial sumcheck layer must exist");
-        let mut explicit_evaluations = BTreeMap::new();
+        // First pass: resolve addresses + compute total size for the packed device flat buffer.
+        let mut address_pairs: Vec<(OutputType, [GKRAddress; 2])> =
+            Vec::with_capacity(reduced_outputs.len());
+        let mut flat_total_len = 0usize;
         for (output_type, reduced_io) in reduced_outputs.iter() {
             let [first_addr, second_addr]: [GKRAddress; 2] = reduced_io
                 .output
                 .clone()
                 .try_into()
                 .expect("transcript handoff expects exactly two reduced outputs per type");
+            for addr in [first_addr, second_addr] {
+                let poly = self
+                    .storage
+                    .try_get_ext_poly(addr)
+                    .unwrap_or_else(|| panic!("missing reduced extension poly for {:?}", addr));
+                flat_total_len += poly.len();
+            }
+            address_pairs.push((*output_type, [first_addr, second_addr]));
+        }
+        let mut device_flat_evaluations: DeviceAllocation<E> =
+            context.alloc(flat_total_len, AllocationPlacement::BestFit)?;
+        let stream = context.get_exec_stream();
+        let mut explicit_evaluations = BTreeMap::new();
+        let mut flat_offset = 0usize;
+        for (output_type, [first_addr, second_addr]) in address_pairs {
             let first = schedule_ext_poly_readback(&self.storage, first_addr, context)?;
             let second = schedule_ext_poly_readback(&self.storage, second_addr, context)?;
-            explicit_evaluations.insert(*output_type, [first, second]);
+            for addr in [first_addr, second_addr] {
+                let poly = self
+                    .storage
+                    .try_get_ext_poly(addr)
+                    .expect("reduced extension poly must still be present");
+                let src = poly.as_device_slice();
+                let len = src.len();
+                memory_copy_async(
+                    &mut device_flat_evaluations[flat_offset..flat_offset + len],
+                    src,
+                    stream,
+                )?;
+                flat_offset += len;
+            }
+            explicit_evaluations.insert(output_type, [first, second]);
         }
+        debug_assert_eq!(flat_offset, flat_total_len);
 
         Ok(GpuGKRTranscriptHandoff {
             _tracing_ranges: tracing_ranges,
             explicit_evaluations,
+            device_flat_evaluations,
         })
     }
 }
