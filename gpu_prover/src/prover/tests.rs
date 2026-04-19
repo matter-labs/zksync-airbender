@@ -4709,6 +4709,7 @@ fn run_basic_unrolled_first_main_layer_static_vs_dynamic_execution_test() {
 
     let mut shared_state = crate::prover::gkr::backward::make_deferred_backward_workflow_state();
     let shared_state_handle = UnsafeMutAccessor::new(shared_state.as_mut());
+    let static_point_for_device = static_point.clone();
     crate::prover::gkr::backward::populate_backward_workflow_state(
         shared_state_handle,
         first_layer_idx + 1,
@@ -4722,10 +4723,18 @@ fn run_basic_unrolled_first_main_layer_static_vs_dynamic_execution_test() {
     let shared_device_seed =
         crate::prover::gkr::backward::h2d_seed_from_host(&fixture_static.context, &static_seed)
             .unwrap();
+    let shared_device_claim_point =
+        crate::prover::gkr::backward::h2d_claim_point_and_batching_from_host(
+            &fixture_static.context,
+            &static_point_for_device,
+            static_batching_challenge,
+        )
+        .unwrap();
     let static_scheduled = static_plan
         .schedule_execute_main_layer_from_workflow_state(
             shared_state_handle,
             shared_device_seed,
+            shared_device_claim_point,
             &fixture_static.context,
         )
         .unwrap();
@@ -4901,10 +4910,18 @@ fn run_basic_unrolled_main_layers_static_vs_dynamic_execution_test() {
             &static_seed,
         )
         .unwrap();
+        let shared_device_claim_point =
+            crate::prover::gkr::backward::h2d_claim_point_and_batching_from_host(
+                &fixture_static.context,
+                &static_point,
+                static_batching_challenge,
+            )
+            .unwrap();
         let static_scheduled = static_plan
             .schedule_execute_main_layer_from_workflow_state(
                 shared_state_handle,
                 shared_device_seed,
+                shared_device_claim_point,
                 &fixture_static.context,
             )
             .unwrap();

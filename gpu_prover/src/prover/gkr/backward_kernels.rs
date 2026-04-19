@@ -793,6 +793,13 @@ pub(crate) struct GpuGKRDimensionReducingScheduledLayerExecution<B, E: FieldExte
     /// after the orchestrator has pulled it out. Replaces the per-layer entry
     /// H2D that used to mirror `workflow_state.seed` into a fresh device slot.
     pub(super) device_seed: Option<DeviceAllocation<u32>>,
+    /// Device-resident `[claim_point || batching_challenge]` buffer for the
+    /// NEXT backward layer. Populated on-device from this layer's folding
+    /// challenges + end-of-layer squeezed challenges. Taken by the orchestrator
+    /// via `.take()`. Replaces the per-layer entry H2D that used to copy
+    /// `workflow_state.current_claim_point` + `current_batching_challenge`
+    /// from host.
+    pub(super) device_claim_point_for_next_layer: Option<DeviceAllocation<E>>,
     #[allow(dead_code)]
     pub(super) _phantom: std::marker::PhantomData<B>,
 }
@@ -948,6 +955,9 @@ pub(crate) struct GpuGKRMainLayerScheduledLayerExecution<E: FieldExtension<BF> +
     /// Device-resident Fiat-Shamir seed (see dim-reducing twin). Taken by the
     /// orchestrator to thread into the next backward layer.
     pub(super) device_seed: Option<DeviceAllocation<u32>>,
+    /// Device-resident `[claim_point || batching_challenge]` for the NEXT
+    /// backward layer (see dim-reducing twin). Taken by the orchestrator.
+    pub(super) device_claim_point_for_next_layer: Option<DeviceAllocation<E>>,
 }
 
 pub(crate) struct ScheduledBackwardWorkflowState<E: FieldExtension<BF> + Field> {
@@ -1071,6 +1081,31 @@ pub(crate) fn h2d_seed_from_host(
     memory_copy_async(&mut d_seed, &host_slot, context.get_exec_stream())?;
     drop(host_slot);
     Ok(d_seed)
+}
+
+/// Allocate a device `DeviceAllocation<E>` of length `claim_point.len() + 1`, laid out as
+/// `[claim_point || batching_challenge]` (matching the first backward layer's
+/// `round_scratch.claim_point`), and H2D the host values into it. Only test paths still need
+/// this bridge — the hot path threads the post-forward device squeeze buffer
+/// (`d_evaluation_point_and_batching`) straight into the orchestrator.
+pub(crate) fn h2d_claim_point_and_batching_from_host<E: FieldExtension<BF> + Field>(
+    context: &ProverContext,
+    claim_point: &[E],
+    batching_challenge: E,
+) -> CudaResult<DeviceAllocation<E>> {
+    let len = claim_point.len() + 1;
+    let mut buf: DeviceAllocation<E> = context.alloc(len, AllocationPlacement::Top)?;
+    let mut host_slot = unsafe { context.alloc_host_uninit_slice::<E>(len) };
+    let accessor = host_slot.get_mut_accessor();
+    unsafe {
+        let dst = accessor.get_mut();
+        let (cp_dst, batching_dst) = dst.split_at_mut(claim_point.len());
+        cp_dst.copy_from_slice(claim_point);
+        batching_dst[0] = batching_challenge;
+    }
+    memory_copy_async(&mut buf, &host_slot, context.get_exec_stream())?;
+    drop(host_slot);
+    Ok(buf)
 }
 
 pub(crate) fn make_deferred_backward_workflow_state<E>() -> Box<ScheduledBackwardWorkflowState<E>>
