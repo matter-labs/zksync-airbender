@@ -4719,10 +4719,13 @@ fn run_basic_unrolled_first_main_layer_static_vs_dynamic_execution_test() {
         fixture_static.lookup_multiplicative_part,
         fixture_static.lookup_additive_part,
     );
+    let shared_device_seed =
+        crate::prover::gkr::backward::h2d_seed_from_host(&fixture_static.context, &static_seed)
+            .unwrap();
     let static_scheduled = static_plan
         .schedule_execute_main_layer_from_workflow_state(
             shared_state_handle,
-            None,
+            shared_device_seed,
             &fixture_static.context,
         )
         .unwrap();
@@ -4893,10 +4896,15 @@ fn run_basic_unrolled_main_layers_static_vs_dynamic_execution_test() {
             fixture_static.lookup_multiplicative_part,
             fixture_static.lookup_additive_part,
         );
+        let shared_device_seed = crate::prover::gkr::backward::h2d_seed_from_host(
+            &fixture_static.context,
+            &static_seed,
+        )
+        .unwrap();
         let static_scheduled = static_plan
             .schedule_execute_main_layer_from_workflow_state(
                 shared_state_handle,
-                None,
+                shared_device_seed,
                 &fixture_static.context,
             )
             .unwrap();
