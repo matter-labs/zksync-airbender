@@ -4722,6 +4722,7 @@ fn run_basic_unrolled_first_main_layer_static_vs_dynamic_execution_test() {
     let static_scheduled = static_plan
         .schedule_execute_main_layer_from_workflow_state(
             shared_state_handle,
+            None,
             &fixture_static.context,
         )
         .unwrap();
@@ -4895,6 +4896,7 @@ fn run_basic_unrolled_main_layers_static_vs_dynamic_execution_test() {
         let static_scheduled = static_plan
             .schedule_execute_main_layer_from_workflow_state(
                 shared_state_handle,
+                None,
                 &fixture_static.context,
             )
             .unwrap();
