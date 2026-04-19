@@ -11,7 +11,7 @@ use era_cudart::stream::CudaStreamWaitEventFlags;
 use fft::GoodAllocator;
 use field::Field;
 use prover::definitions::Transcript;
-use prover::gkr::prover::transcript_utils::{commit_field_els, draw_random_field_els};
+use prover::gkr::prover::transcript_utils::draw_random_field_els;
 use prover::gkr::prover::{GKRExternalChallenges, GKRProof, WhirSchedule};
 use prover::merkle_trees::DefaultTreeConstructor;
 use prover::query_utils::BitSource;
@@ -626,25 +626,16 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
         context.alloc(2, AllocationPlacement::BestFit)?;
     crate::ops::blake2s::transcript_squeeze_e4(&mut d_seed, &mut d_lookup_challenges, stream)?;
 
-    let mut seed_host = unsafe { context.alloc_host_uninit::<Seed>() };
+    // D2H the 2 lookup challenges into a host pinned slot consumed by the post-forward callback.
+    // The seed stays on device through the post-forward commit+squeeze; it is D2H'd later, once
+    // it has absorbed the forward explicit evaluations and been used to squeeze the evaluation
+    // point + batching challenge on device.
     let mut lookup_challenges_host = unsafe { context.alloc_host_uninit_slice::<E4>(2) };
-    {
-        // SAFETY: Seed is `[u32; STATE_SIZE]` — same layout as DeviceSlice<u32> of length STATE_SIZE.
-        let seed_host_u32 = unsafe {
-            std::slice::from_raw_parts_mut(
-                seed_host.get_mut_accessor().get_mut() as *mut Seed as *mut u32,
-                STATE_SIZE,
-            )
-        };
-        memory_copy_async(seed_host_u32, &d_seed, stream)?;
-    }
     memory_copy_async(&mut lookup_challenges_host, &d_lookup_challenges, stream)?;
 
     // `d_bucket2` and `d_transcript_input` can be dropped: exec_stream has queued all reads.
     drop(d_bucket2);
     drop(d_transcript_input);
-
-    let seed_accessor = seed_host.get_mut_accessor();
 
     let mut forward_setup = if let Some(setup_transfer) = setup_transfer.as_ref() {
         setup_transfer.schedule_forward_setup(&compiled_circuit, d_lookup_challenges, context)?
@@ -676,6 +667,57 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
     let initial_layer_for_sumcheck = forward_output.initial_layer_for_sumcheck;
     let output_layer_for_sumcheck =
         forward_output.dimension_reducing_inputs[&initial_layer_for_sumcheck].clone();
+
+    // Device post-forward transcript: absorb flattened explicit evaluations into d_seed and
+    // squeeze the evaluation point + batching challenge. Replaces the previous host pair
+    // `commit_field_els` / `draw_random_field_els` on the host seed.
+    //
+    // SAFETY: `device_flat_evaluations` is a packed `DeviceAllocation<E4>` whose u32 byte
+    // layout matches `commit_field_els::<BF, E4>` — E4 = 4 BF limbs, each limb stored as a
+    // u32 in Montgomery form. The parity is covered by
+    // `ops::blake2s::tests::transcript_squeeze_e4_parity_*`.
+    let d_flat_evals_u32: &era_cudart::slice::DeviceSlice<u32> =
+        unsafe { transcript_handoff.device_flat_evaluations().transmute::<u32>() };
+    crate::ops::blake2s::transcript_commit(&mut d_seed, d_flat_evals_u32, stream)?;
+    let num_challenges = final_trace_size_log_2 + 1;
+    let mut d_evaluation_point_and_batching: DeviceAllocation<E4> =
+        context.alloc(num_challenges, AllocationPlacement::BestFit)?;
+    crate::ops::blake2s::transcript_squeeze_e4(
+        &mut d_seed,
+        &mut d_evaluation_point_and_batching,
+        stream,
+    )?;
+
+    // D2H the advanced seed + the squeezed (evaluation_point || batching_challenge) pair into
+    // host pinned slots for the post-forward callback. The seed D2H is temporary: Phase B moves
+    // `workflow_state.seed` to a device handle, after which this readback goes away.
+    let mut seed_host = unsafe { context.alloc_host_uninit::<Seed>() };
+    {
+        // SAFETY: Seed is `[u32; STATE_SIZE]` — same layout as DeviceSlice<u32> of length STATE_SIZE.
+        let seed_host_u32 = unsafe {
+            std::slice::from_raw_parts_mut(
+                seed_host.get_mut_accessor().get_mut() as *mut Seed as *mut u32,
+                STATE_SIZE,
+            )
+        };
+        memory_copy_async(seed_host_u32, &d_seed, stream)?;
+    }
+    let mut evaluation_point_and_batching_host =
+        unsafe { context.alloc_host_uninit_slice::<E4>(num_challenges) };
+    memory_copy_async(
+        &mut evaluation_point_and_batching_host,
+        &d_evaluation_point_and_batching,
+        stream,
+    )?;
+    // d_seed and d_evaluation_point_and_batching have had all their stream reads queued; drop
+    // the device allocations (the allocator is stream-aware, so backing memory survives until
+    // the stream is done with it).
+    drop(d_seed);
+    drop(d_evaluation_point_and_batching);
+
+    let seed_accessor = seed_host.get_mut_accessor();
+    let evaluation_point_and_batching_accessor = evaluation_point_and_batching_host.get_accessor();
+
     let backward_state = forward_output.into_dimension_reducing_backward_state();
     let forward_setup_keepalive = forward_setup.into_host_keepalive();
 
@@ -689,13 +731,12 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
                 let final_explicit_evaluations = collect_explicit_evaluations_from_accessors(
                     &transcript_handoff_accessors_for_backward,
                 );
-                let flattened = flatten_final_explicit_evaluations(&final_explicit_evaluations);
-                commit_field_els::<BF, E4>(seed_accessor.get_mut(), &flattened);
-                let num_challenges = final_trace_size_log_2 + 1;
-                let mut challenges =
-                    draw_random_field_els::<BF, E4>(seed_accessor.get_mut(), num_challenges);
-                let batching_challenge = challenges.pop().unwrap();
-                let evaluation_point = challenges;
+                let eval_point_and_batching =
+                    evaluation_point_and_batching_accessor.get().to_vec();
+                let (evaluation_point, batching_slice) =
+                    eval_point_and_batching.split_at(num_challenges - 1);
+                let evaluation_point = evaluation_point.to_vec();
+                let batching_challenge = batching_slice[0];
                 let initial_claims = compute_initial_sumcheck_claims_from_explicit_evaluations(
                     &final_explicit_evaluations,
                     &evaluation_point,
