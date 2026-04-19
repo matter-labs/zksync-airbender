@@ -754,7 +754,7 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
             compiled_circuit.clone(),
             external_challenges.clone(),
             backward_shared_state,
-            Some(d_seed),
+            d_seed,
             context,
         )?;
     let backward_shared_state = backward_scheduled.shared_state_handle();

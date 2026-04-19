@@ -787,6 +787,12 @@ pub(crate) struct GpuGKRDimensionReducingScheduledLayerExecution<B, E: FieldExte
     #[allow(dead_code)]
     pub(super) final_readback: ScheduledDimensionReducingFinalReadback<E>,
     pub(super) shared_state: Box<ScheduledDimensionReducingLayerExecutionState<E>>,
+    /// Device-resident Fiat-Shamir seed passed in by the caller, consumed by
+    /// this layer's per-round + end-of-layer transcript work, and returned
+    /// via `.take()` for the next backward layer scheduler to reuse. `None`
+    /// after the orchestrator has pulled it out. Replaces the per-layer entry
+    /// H2D that used to mirror `workflow_state.seed` into a fresh device slot.
+    pub(super) device_seed: Option<DeviceAllocation<u32>>,
     #[allow(dead_code)]
     pub(super) _phantom: std::marker::PhantomData<B>,
 }
@@ -939,6 +945,9 @@ pub(crate) struct GpuGKRMainLayerScheduledLayerExecution<E: FieldExtension<BF> +
     #[allow(dead_code)]
     pub(super) recipe_upload_callbacks: Callbacks<'static>,
     pub(super) shared_state: Box<ScheduledMainLayerExecutionState<E>>,
+    /// Device-resident Fiat-Shamir seed (see dim-reducing twin). Taken by the
+    /// orchestrator to thread into the next backward layer.
+    pub(super) device_seed: Option<DeviceAllocation<u32>>,
 }
 
 pub(crate) struct ScheduledBackwardWorkflowState<E: FieldExtension<BF> + Field> {
@@ -1043,6 +1052,25 @@ where
             proofs: BTreeMap::new(),
         }
     }
+}
+
+/// Allocate a device `DeviceAllocation<u32>` of length `STATE_SIZE` and H2D a host `Seed`
+/// into it. Only test paths still need this bridge (the hot path threads the post-forward
+/// device seed straight through). The copy is queued on `context.get_exec_stream()` so all
+/// downstream device-seed reads see the value.
+pub(crate) fn h2d_seed_from_host(
+    context: &ProverContext,
+    host_seed: &Seed,
+) -> CudaResult<DeviceAllocation<u32>> {
+    let mut d_seed: DeviceAllocation<u32> =
+        context.alloc(crate::ops::blake2s::STATE_SIZE, AllocationPlacement::Top)?;
+    let mut host_slot = unsafe {
+        context.alloc_host_uninit_slice::<u32>(crate::ops::blake2s::STATE_SIZE)
+    };
+    unsafe { host_slot.get_mut_accessor().get_mut().copy_from_slice(&host_seed.0) };
+    memory_copy_async(&mut d_seed, &host_slot, context.get_exec_stream())?;
+    drop(host_slot);
+    Ok(d_seed)
 }
 
 pub(crate) fn make_deferred_backward_workflow_state<E>() -> Box<ScheduledBackwardWorkflowState<E>>
