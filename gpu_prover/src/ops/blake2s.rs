@@ -607,6 +607,85 @@ pub fn whir_fold_round_update(
 }
 
 cuda_kernel!(
+    BackwardNewClaimsTwoVar,
+    ab_backward_new_claims_two_var_kernel(
+        last_evals_packed: *const E4,
+        challenges: *const E4,
+        new_claims_out: *mut E4,
+        num_addresses: u32,
+    )
+);
+
+cuda_kernel!(
+    BackwardNewClaimsLinear,
+    ab_backward_new_claims_linear_kernel(
+        last_evals_packed: *const E4,
+        challenges: *const E4,
+        new_claims_out: *mut E4,
+        num_addresses: u32,
+    )
+);
+
+/// Device-side per-address dim-reducing `new_claims` evaluator.
+///
+/// Replaces the host loop inside the end-of-layer final-readback callback
+/// that computed `evaluate_with_two_variable_eq_ext(values, r_before_last,
+/// r_last)` per address. `last_evals_packed` holds 4 E4 values per address,
+/// `challenges` holds `[r_before_last, r_last]`. Produces `num_addresses`
+/// E4 outputs.
+pub fn backward_new_claims_two_var(
+    last_evals_packed: &DeviceSlice<E4>,
+    challenges: &DeviceSlice<E4>,
+    new_claims_out: &mut DeviceSlice<E4>,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    let num_addresses = new_claims_out.len();
+    assert!(num_addresses > 0);
+    assert!(num_addresses <= u32::MAX as usize);
+    assert_eq!(last_evals_packed.len(), num_addresses * 4);
+    assert!(challenges.len() >= 2);
+    let (grid_dim, block_dim) =
+        get_grid_block_dims_for_threads_count(WARP_SIZE * 4, num_addresses as u32);
+    let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
+    let args = BackwardNewClaimsTwoVarArguments::new(
+        last_evals_packed.as_ptr(),
+        challenges.as_ptr(),
+        new_claims_out.as_mut_ptr(),
+        num_addresses as u32,
+    );
+    BackwardNewClaimsTwoVarFunction::default().launch(&config, &args)
+}
+
+/// Device-side per-address main-layer `new_claims` evaluator.
+///
+/// Replaces the host loop inside the end-of-layer final-readback callback
+/// that computed `interpolate_linear(f0, f1, last_r)` per address.
+/// `last_evals_packed` holds 2 E4 values per address, `challenges` holds
+/// `[last_r, ..]`. Produces `num_addresses` E4 outputs.
+pub fn backward_new_claims_linear(
+    last_evals_packed: &DeviceSlice<E4>,
+    challenges: &DeviceSlice<E4>,
+    new_claims_out: &mut DeviceSlice<E4>,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    let num_addresses = new_claims_out.len();
+    assert!(num_addresses > 0);
+    assert!(num_addresses <= u32::MAX as usize);
+    assert_eq!(last_evals_packed.len(), num_addresses * 2);
+    assert!(!challenges.is_empty());
+    let (grid_dim, block_dim) =
+        get_grid_block_dims_for_threads_count(WARP_SIZE * 4, num_addresses as u32);
+    let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
+    let args = BackwardNewClaimsLinearArguments::new(
+        last_evals_packed.as_ptr(),
+        challenges.as_ptr(),
+        new_claims_out.as_mut_ptr(),
+        num_addresses as u32,
+    );
+    BackwardNewClaimsLinearFunction::default().launch(&config, &args)
+}
+
+cuda_kernel!(
     AssembleQueryIndexes,
     ab_assemble_query_indexes_kernel(
         raw_bits: *const u32,
@@ -1833,6 +1912,166 @@ mod tests {
             seed = h_seed;
             claim = h_claim;
             eq_prefactor = h_eq;
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Per-address backward new_claims evaluator parity tests.
+    //
+    // `backward_new_claims_two_var` must match the host
+    // `evaluate_with_two_variable_eq_ext(values, r_before_last, r_last)`.
+    // `backward_new_claims_linear` must match the host
+    // `interpolate_linear(f0, f1, last_r)`. Both kernels are called once per
+    // layer boundary in the backward pass and produce `num_addresses` E4s.
+    // -----------------------------------------------------------------------
+
+    fn host_new_claim_two_var(values: &[E4; 4], r_before_last: E4, r_last: E4) -> E4 {
+        let mut result = E4::ZERO;
+        let mut w00 = E4::ONE;
+        w00.sub_assign(&r_before_last);
+        let mut tmp = E4::ONE;
+        tmp.sub_assign(&r_last);
+        w00.mul_assign(&tmp);
+        let mut term = values[0];
+        term.mul_assign(&w00);
+        result.add_assign(&term);
+
+        let mut w01 = E4::ONE;
+        w01.sub_assign(&r_before_last);
+        w01.mul_assign(&r_last);
+        let mut term = values[1];
+        term.mul_assign(&w01);
+        result.add_assign(&term);
+
+        let mut w10 = r_before_last;
+        let mut tmp = E4::ONE;
+        tmp.sub_assign(&r_last);
+        w10.mul_assign(&tmp);
+        let mut term = values[2];
+        term.mul_assign(&w10);
+        result.add_assign(&term);
+
+        let mut w11 = r_before_last;
+        w11.mul_assign(&r_last);
+        let mut term = values[3];
+        term.mul_assign(&w11);
+        result.add_assign(&term);
+        result
+    }
+
+    fn host_new_claim_linear(f0: E4, f1: E4, r: E4) -> E4 {
+        let mut result = f1;
+        result.sub_assign(&f0);
+        result.mul_assign(&r);
+        result.add_assign(&f0);
+        result
+    }
+
+    fn run_device_new_claims_two_var(
+        packed_values: &[E4],
+        r_before_last: E4,
+        r_last: E4,
+    ) -> Vec<E4> {
+        let stream = CudaStream::default();
+        let num_addresses = packed_values.len() / 4;
+        let mut d_packed: DeviceAllocation<E4> =
+            DeviceAllocation::alloc(packed_values.len()).unwrap();
+        memory_copy_async(&mut d_packed, packed_values, &stream).unwrap();
+        let mut d_challenges: DeviceAllocation<E4> = DeviceAllocation::alloc(2).unwrap();
+        memory_copy_async(&mut d_challenges, &[r_before_last, r_last], &stream).unwrap();
+        let mut d_out: DeviceAllocation<E4> = DeviceAllocation::alloc(num_addresses).unwrap();
+        super::backward_new_claims_two_var(&d_packed, &d_challenges, &mut d_out, &stream).unwrap();
+        let mut out = vec![E4::ZERO; num_addresses];
+        memory_copy_async(&mut out[..], &d_out, &stream).unwrap();
+        stream.synchronize().unwrap();
+        out
+    }
+
+    fn run_device_new_claims_linear(packed_values: &[E4], last_r: E4) -> Vec<E4> {
+        let stream = CudaStream::default();
+        let num_addresses = packed_values.len() / 2;
+        let mut d_packed: DeviceAllocation<E4> =
+            DeviceAllocation::alloc(packed_values.len()).unwrap();
+        memory_copy_async(&mut d_packed, packed_values, &stream).unwrap();
+        let mut d_challenges: DeviceAllocation<E4> = DeviceAllocation::alloc(1).unwrap();
+        memory_copy_async(&mut d_challenges, &[last_r], &stream).unwrap();
+        let mut d_out: DeviceAllocation<E4> = DeviceAllocation::alloc(num_addresses).unwrap();
+        super::backward_new_claims_linear(&d_packed, &d_challenges, &mut d_out, &stream).unwrap();
+        let mut out = vec![E4::ZERO; num_addresses];
+        memory_copy_async(&mut out[..], &d_out, &stream).unwrap();
+        stream.synchronize().unwrap();
+        out
+    }
+
+    #[test]
+    fn backward_new_claims_two_var_parity_fixed() {
+        let r_before_last = sample_e4(17);
+        let r_last = sample_e4(23);
+        let num_addresses = 7usize;
+        let mut packed = Vec::with_capacity(num_addresses * 4);
+        for i in 0..num_addresses * 4 {
+            packed.push(sample_e4(100 + i as u32));
+        }
+        let device = run_device_new_claims_two_var(&packed, r_before_last, r_last);
+        for i in 0..num_addresses {
+            let v: [E4; 4] = packed[i * 4..i * 4 + 4].try_into().unwrap();
+            let host = host_new_claim_two_var(&v, r_before_last, r_last);
+            assert_eq!(device[i], host, "address {i} mismatch");
+        }
+    }
+
+    #[test]
+    fn backward_new_claims_two_var_parity_randomized() {
+        use rand::Rng;
+        let mut rng = rand::rng();
+        for num_addresses in [1usize, 2, 3, 8, 17, 64, 257] {
+            let r_before_last = sample_e4(rng.random::<u32>());
+            let r_last = sample_e4(rng.random::<u32>());
+            let packed: Vec<E4> = (0..num_addresses * 4)
+                .map(|_| sample_e4(rng.random::<u32>()))
+                .collect();
+            let device = run_device_new_claims_two_var(&packed, r_before_last, r_last);
+            for i in 0..num_addresses {
+                let v: [E4; 4] = packed[i * 4..i * 4 + 4].try_into().unwrap();
+                let host = host_new_claim_two_var(&v, r_before_last, r_last);
+                assert_eq!(device[i], host, "N={num_addresses} addr {i} mismatch");
+            }
+        }
+    }
+
+    #[test]
+    fn backward_new_claims_linear_parity_fixed() {
+        let last_r = sample_e4(31);
+        let num_addresses = 5usize;
+        let mut packed = Vec::with_capacity(num_addresses * 2);
+        for i in 0..num_addresses * 2 {
+            packed.push(sample_e4(200 + i as u32));
+        }
+        let device = run_device_new_claims_linear(&packed, last_r);
+        for i in 0..num_addresses {
+            let f0 = packed[i * 2];
+            let f1 = packed[i * 2 + 1];
+            let host = host_new_claim_linear(f0, f1, last_r);
+            assert_eq!(device[i], host, "address {i} mismatch");
+        }
+    }
+
+    #[test]
+    fn backward_new_claims_linear_parity_randomized() {
+        use rand::Rng;
+        let mut rng = rand::rng();
+        for num_addresses in [1usize, 2, 3, 8, 17, 64, 257] {
+            let last_r = sample_e4(rng.random::<u32>());
+            let packed: Vec<E4> = (0..num_addresses * 2)
+                .map(|_| sample_e4(rng.random::<u32>()))
+                .collect();
+            let device = run_device_new_claims_linear(&packed, last_r);
+            for i in 0..num_addresses {
+                let f0 = packed[i * 2];
+                let f1 = packed[i * 2 + 1];
+                let host = host_new_claim_linear(f0, f1, last_r);
+                assert_eq!(device[i], host, "N={num_addresses} addr {i} mismatch");
+            }
         }
     }
 }

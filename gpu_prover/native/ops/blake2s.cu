@@ -767,6 +767,67 @@ EXTERN __global__ void ab_whir_fold_round_update_kernel(const e4 *reduction_outp
 //   `ceil((32 + num_queries * log_domain_size) / 32)` words).
 // - `indexes_out`: `num_queries` u32 indexes, one per thread.
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Backward per-address "new_claims" evaluators (device-side).
+//
+// Replace the host loop that runs inside the end-of-layer final-readback
+// callback. For the dimension-reducing case, each address i has 4 E4 values
+// packed at `last_evals[4*i..4*i+4]` and the next claim is
+// eq_ext(values, r_before_last, r_last)
+//   = v0 * (1-r_bl) * (1-r_l)
+//   + v1 * (1-r_bl) *    r_l
+//   + v2 *    r_bl  * (1-r_l)
+//   + v3 *    r_bl  *    r_l
+//   = (1-r_bl) * lerp(v0, v1, r_l) + r_bl * lerp(v2, v3, r_l)
+//   = lerp(lerp(v0, v1, r_l), lerp(v2, v3, r_l), r_bl)
+// For the main-layer case, each address i has 2 E4 values at
+// `last_evals[2*i..2*i+2]` and the next claim is lerp(v0, v1, last_r).
+//
+// Both kernels use `lerp(a, b, r) = a + r * (b - a)` which matches the host
+// helpers `evaluate_with_two_variable_eq_ext` and `interpolate_linear`
+// bit-for-bit.
+//
+// Buffer contracts:
+// - `last_evals_packed`: `num_addresses * values_per_address` e4 values, packed
+//   `[addr0_v0, addr0_v1, ..., addr_{N-1}_v_{P-1}]`.
+// - `challenges`: 2 e4 `[r_before_last, r_last]` (two-var) or 1 e4 `[last_r]`
+//   (linear).
+// - `new_claims_out`: `num_addresses` e4 outputs.
+// ---------------------------------------------------------------------------
+DEVICE_FORCEINLINE e4 e4_lerp(const e4 a, const e4 b, const e4 r) {
+  // a + r * (b - a)
+  return e4::add(a, e4::mul(r, e4::sub(b, a)));
+}
+
+EXTERN __global__ void ab_backward_new_claims_two_var_kernel(const e4 *last_evals_packed, const e4 *challenges, e4 *new_claims_out,
+                                                              const unsigned num_addresses) {
+  const unsigned idx = blockIdx.x * blockDim.x + threadIdx.x;
+  if (idx >= num_addresses)
+    return;
+  const e4 r_before_last = challenges[0];
+  const e4 r_last = challenges[1];
+  const unsigned base = idx * 4u;
+  const e4 v0 = last_evals_packed[base + 0];
+  const e4 v1 = last_evals_packed[base + 1];
+  const e4 v2 = last_evals_packed[base + 2];
+  const e4 v3 = last_evals_packed[base + 3];
+  const e4 low = e4_lerp(v0, v1, r_last);
+  const e4 high = e4_lerp(v2, v3, r_last);
+  new_claims_out[idx] = e4_lerp(low, high, r_before_last);
+}
+
+EXTERN __global__ void ab_backward_new_claims_linear_kernel(const e4 *last_evals_packed, const e4 *challenges, e4 *new_claims_out,
+                                                             const unsigned num_addresses) {
+  const unsigned idx = blockIdx.x * blockDim.x + threadIdx.x;
+  if (idx >= num_addresses)
+    return;
+  const e4 r = challenges[0];
+  const unsigned base = idx * 2u;
+  const e4 v0 = last_evals_packed[base + 0];
+  const e4 v1 = last_evals_packed[base + 1];
+  new_claims_out[idx] = e4_lerp(v0, v1, r);
+}
+
 EXTERN __global__ void ab_assemble_query_indexes_kernel(const u32 *raw_bits, u32 *indexes_out, const unsigned num_queries, const unsigned log_domain_size) {
   const unsigned idx = blockIdx.x * blockDim.x + threadIdx.x;
   if (idx >= num_queries)

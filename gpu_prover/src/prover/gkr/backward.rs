@@ -5586,21 +5586,21 @@ where
                 context,
             )?,
         }
-        let final_evaluations = self.schedule_last_evaluations_readback(last_step, context)?;
-        let final_evaluation_accessors: Vec<_> = final_evaluations
-            .iter()
-            .map(|(addr, values)| (*addr, values.get_accessor()))
-            .collect();
-
         // Device-side inter-layer transcript: pack the flattened last-round
         // evaluations into a packed device buffer (D2D from each address's
         // 4-E source slot), absorb them into device_seed via transcript_commit,
         // then squeeze 3 E4 challenges `[r_before_last, r_last,
-        // next_batching_challenge]` via transcript_squeeze_e4. Replaces the
-        // host `commit_field_els` / `draw_random_field_els` pair that used to
-        // run inside the final readback callback.
+        // next_batching_challenge]` via transcript_squeeze_e4. The same packed
+        // buffer also feeds the on-device `backward_new_claims_two_var` kernel
+        // (Phase G) and a single bulk D2H for proof assembly — replacing the
+        // N per-address `schedule_last_evaluations_readback` D2Hs and the
+        // host `evaluate_with_two_variable_eq_ext` loop that used to run
+        // inside the final readback callback.
         let transcript_input_sources = self.final_evaluation_sources_for_last_step(last_step);
-        let transcript_inputs_len = transcript_input_sources.len() * 4;
+        let num_addresses = transcript_input_sources.len();
+        let transcript_inputs_len = num_addresses * 4;
+        let transcript_input_addresses: Vec<GKRAddress> =
+            transcript_input_sources.keys().copied().collect();
         let mut d_layer_transcript_inputs: DeviceAllocation<E> =
             context.alloc(transcript_inputs_len.max(1), AllocationPlacement::Top)?;
         {
@@ -5642,6 +5642,57 @@ where
             unsafe { context.alloc_host_uninit_slice(3) };
         let layer_challenges_accessor = layer_challenges_host.get_accessor();
         memory_copy_async(&mut layer_challenges_host, &d_layer_challenges, stream)?;
+
+        // Device-side per-address `new_claims` evaluator. Consumes the packed
+        // last-round evaluations (4 E per address) and the just-squeezed
+        // `[r_before_last, r_last]` to produce N E per-address next-layer
+        // claims. Replaces the host loop inside the final readback callback.
+        // The kernel is stream-ordered after the transcript squeeze and
+        // before the subsequent D2H of the result.
+        let mut device_new_claims: DeviceAllocation<E> =
+            context.alloc(num_addresses.max(1), AllocationPlacement::Top)?;
+        if num_addresses > 0 {
+            // SAFETY: E = E4 in every instantiation; the transmutes match the
+            // kernel's `e4` view of both the packed evals and the challenges.
+            let transcript_inputs_e4: &era_cudart::slice::DeviceSlice<E4> = unsafe {
+                d_layer_transcript_inputs[..transcript_inputs_len].transmute::<E4>()
+            };
+            let challenges_e4: &era_cudart::slice::DeviceSlice<E4> =
+                unsafe { d_layer_challenges[..2].transmute::<E4>() };
+            let new_claims_e4: &mut era_cudart::slice::DeviceSlice<E4> =
+                unsafe { device_new_claims[..num_addresses].transmute_mut::<E4>() };
+            crate::ops::blake2s::backward_new_claims_two_var(
+                transcript_inputs_e4,
+                challenges_e4,
+                new_claims_e4,
+                stream,
+            )?;
+        }
+
+        // Single bulk D2H of packed last-round evaluations + single D2H of
+        // device-computed new_claims. Replaces N per-address D2Hs (one per
+        // address × 4 E) + the host `evaluate_with_two_variable_eq_ext` loop.
+        let mut last_evaluations_packed_host: HostAllocation<[E]> = unsafe {
+            context.alloc_host_uninit_slice(transcript_inputs_len.max(1))
+        };
+        let last_evaluations_packed_accessor = last_evaluations_packed_host.get_accessor();
+        if transcript_inputs_len > 0 {
+            memory_copy_async(
+                &mut last_evaluations_packed_host,
+                &d_layer_transcript_inputs[..transcript_inputs_len],
+                stream,
+            )?;
+        }
+        let mut new_claims_host: HostAllocation<[E]> =
+            unsafe { context.alloc_host_uninit_slice(num_addresses.max(1)) };
+        let new_claims_accessor = new_claims_host.get_accessor();
+        if num_addresses > 0 {
+            memory_copy_async(
+                &mut new_claims_host,
+                &device_new_claims[..num_addresses],
+                stream,
+            )?;
+        }
 
         // Build the NEXT layer's `[claim_point || batching_challenge]` buffer
         // entirely on device: `folding_challenges (last_step)` from this
@@ -5718,11 +5769,20 @@ where
         let mut final_readback_callbacks = Callbacks::new();
         final_readback_callbacks.schedule(
             move || unsafe {
-                let mut last_evaluations = BTreeMap::new();
-                for (address, accessor) in final_evaluation_accessors.iter() {
-                    let values: [E; 4] = accessor.get().try_into().unwrap();
-                    last_evaluations.insert(*address, values);
-                }
+                // Rebuild `last_evaluations` from the single D2H'd packed
+                // buffer + address list captured at schedule time. Needed for
+                // proof assembly's `final_step_evaluations`.
+                let packed = last_evaluations_packed_accessor.get();
+                let last_evaluations: BTreeMap<GKRAddress, [E; 4]> =
+                    transcript_input_addresses
+                        .iter()
+                        .enumerate()
+                        .map(|(i, addr)| {
+                            let base = i * 4;
+                            let values: [E; 4] = packed[base..base + 4].try_into().unwrap();
+                            (*addr, values)
+                        })
+                        .collect();
 
                 // Populate the rolling state from the D2H'd device state. The
                 // seed captured here is already post-commit+squeeze (advanced
@@ -5761,15 +5821,16 @@ where
                 new_claim_point.push(r_before_last);
                 new_claim_point.push(r_last);
 
-                let new_claims = last_evaluations
+                // Rebuild `new_claims` from the D2H'd device-computed per-
+                // address buffer + the same address list. The host loop that
+                // used to evaluate `eq_ext(values, r_before_last, r_last)` per
+                // address is gone — the kernel already did it.
+                let new_claims_slice = new_claims_accessor.get();
+                let new_claims: BTreeMap<GKRAddress, E> = transcript_input_addresses
                     .iter()
-                    .map(|(addr, values)| {
-                        (
-                            *addr,
-                            Self::evaluate_with_two_variable_eq_ext(values, r_before_last, r_last),
-                        )
-                    })
-                    .collect::<BTreeMap<_, _>>();
+                    .enumerate()
+                    .map(|(i, addr)| (*addr, new_claims_slice[i]))
+                    .collect();
 
                 let proof = SumcheckIntermediateProofValues::<BF, E> {
                     sumcheck_num_rounds: folding_steps,
@@ -5818,8 +5879,11 @@ where
         drop(final_coeffs_host);
         drop(final_folding_challenges_host);
         drop(layer_challenges_host);
+        drop(last_evaluations_packed_host);
+        drop(new_claims_host);
         drop(d_layer_transcript_inputs);
         drop(d_layer_challenges);
+        drop(device_new_claims);
         drop(device_claim);
         drop(device_eq_prefactor);
         drop(device_coeffs);
@@ -5831,12 +5895,9 @@ where
             round_challenge_storage,
             round_challenge_buffers,
             reduction_states,
-            final_readback: {
-                drop(final_evaluations);
-                ScheduledDimensionReducingFinalReadback {
-                    callbacks: final_readback_callbacks,
-                    _phantom: std::marker::PhantomData,
-                }
+            final_readback: ScheduledDimensionReducingFinalReadback {
+                callbacks: final_readback_callbacks,
+                _phantom: std::marker::PhantomData,
             },
             shared_state,
             device_seed: Some(device_seed),
@@ -7006,18 +7067,17 @@ where
             true,
             context,
         )?;
-        let final_evaluations = self.schedule_last_evaluations_readback(last_step, context)?;
-        let final_evaluation_accessors: Vec<_> = final_evaluations
-            .iter()
-            .map(|(addr, values)| (*addr, values.get_accessor()))
-            .collect();
-
         // Device-side inter-layer transcript (main-layer variant): pack the
         // flattened last-round evaluations (2 E per address, vs 4 in dim-
         // reducing), absorb them into device_seed via transcript_commit, then
-        // squeeze 2 E4 challenges `[last_r, next_batching_challenge]`.
+        // squeeze 2 E4 challenges `[last_r, next_batching_challenge]`. The
+        // same packed buffer feeds `backward_new_claims_linear` and a single
+        // bulk D2H for proof assembly (Phase G).
         let transcript_input_sources = self.final_evaluation_sources_for_last_step(last_step);
-        let transcript_inputs_len = transcript_input_sources.len() * 2;
+        let num_addresses = transcript_input_sources.len();
+        let transcript_inputs_len = num_addresses * 2;
+        let transcript_input_addresses: Vec<GKRAddress> =
+            transcript_input_sources.keys().copied().collect();
         let mut d_layer_transcript_inputs: DeviceAllocation<E> =
             context.alloc(transcript_inputs_len.max(1), AllocationPlacement::Top)?;
         {
@@ -7056,6 +7116,53 @@ where
             unsafe { context.alloc_host_uninit_slice(2) };
         let layer_challenges_accessor = layer_challenges_host.get_accessor();
         memory_copy_async(&mut layer_challenges_host, &d_layer_challenges, stream)?;
+
+        // Device-side per-address `new_claims` evaluator (main-layer variant:
+        // `interpolate_linear(v0, v1, last_r)`). Replaces the host loop inside
+        // the final readback callback.
+        let mut device_new_claims: DeviceAllocation<E> =
+            context.alloc(num_addresses.max(1), AllocationPlacement::Top)?;
+        if num_addresses > 0 {
+            // SAFETY: E = E4 in every instantiation; transmutes match the
+            // kernel's `e4` view of the packed evals and challenges.
+            let transcript_inputs_e4: &era_cudart::slice::DeviceSlice<E4> = unsafe {
+                d_layer_transcript_inputs[..transcript_inputs_len].transmute::<E4>()
+            };
+            let challenges_e4: &era_cudart::slice::DeviceSlice<E4> =
+                unsafe { d_layer_challenges[..1].transmute::<E4>() };
+            let new_claims_e4: &mut era_cudart::slice::DeviceSlice<E4> =
+                unsafe { device_new_claims[..num_addresses].transmute_mut::<E4>() };
+            crate::ops::blake2s::backward_new_claims_linear(
+                transcript_inputs_e4,
+                challenges_e4,
+                new_claims_e4,
+                stream,
+            )?;
+        }
+
+        // Single bulk D2H of packed last-round evaluations + single D2H of
+        // device-computed new_claims.
+        let mut last_evaluations_packed_host: HostAllocation<[E]> = unsafe {
+            context.alloc_host_uninit_slice(transcript_inputs_len.max(1))
+        };
+        let last_evaluations_packed_accessor = last_evaluations_packed_host.get_accessor();
+        if transcript_inputs_len > 0 {
+            memory_copy_async(
+                &mut last_evaluations_packed_host,
+                &d_layer_transcript_inputs[..transcript_inputs_len],
+                stream,
+            )?;
+        }
+        let mut new_claims_host: HostAllocation<[E]> =
+            unsafe { context.alloc_host_uninit_slice(num_addresses.max(1)) };
+        let new_claims_accessor = new_claims_host.get_accessor();
+        if num_addresses > 0 {
+            memory_copy_async(
+                &mut new_claims_host,
+                &device_new_claims[..num_addresses],
+                stream,
+            )?;
+        }
 
         // Build the NEXT layer's `[claim_point || batching_challenge]` buffer
         // on device: `device_folding_challenges (last_step)` +
@@ -7114,11 +7221,19 @@ where
         let mut final_readback_callbacks = Callbacks::new();
         final_readback_callbacks.schedule(
             move || unsafe {
-                let mut last_evaluations = BTreeMap::new();
-                for (address, accessor) in final_evaluation_accessors.iter() {
-                    let values: [E; 2] = accessor.get().try_into().unwrap();
-                    last_evaluations.insert(*address, values);
-                }
+                // Rebuild `last_evaluations` from the D2H'd packed buffer +
+                // address list captured at schedule time (2 E per address).
+                let packed = last_evaluations_packed_accessor.get();
+                let last_evaluations: BTreeMap<GKRAddress, [E; 2]> =
+                    transcript_input_addresses
+                        .iter()
+                        .enumerate()
+                        .map(|(i, addr)| {
+                            let base = i * 2;
+                            let values: [E; 2] = packed[base..base + 2].try_into().unwrap();
+                            (*addr, values)
+                        })
+                        .collect();
 
                 // Populate the rolling state from the D2H'd device state. The
                 // seed captured here is already post-commit+squeeze; the 2
@@ -7151,10 +7266,14 @@ where
                     .expect("layer challenges D2H has length 2");
                 let mut new_claim_point = state.folding_challenges.clone();
                 new_claim_point.push(last_r);
-                let new_claims = last_evaluations
+                // Rebuild `new_claims` from the D2H'd device-computed buffer
+                // (host `interpolate_linear` loop is now a kernel).
+                let new_claims_slice = new_claims_accessor.get();
+                let new_claims: BTreeMap<GKRAddress, E> = transcript_input_addresses
                     .iter()
-                    .map(|(addr, [f0, f1])| (*addr, Self::interpolate_linear(*f0, *f1, &last_r)))
-                    .collect::<BTreeMap<_, _>>();
+                    .enumerate()
+                    .map(|(i, addr)| (*addr, new_claims_slice[i]))
+                    .collect();
                 let proof = SumcheckIntermediateProofValues::<BF, E> {
                     sumcheck_num_rounds: folding_steps,
                     internal_round_coefficients: state.internal_round_coefficients.clone(),
@@ -7200,8 +7319,11 @@ where
         drop(final_coeffs_host);
         drop(final_folding_challenges_host);
         drop(layer_challenges_host);
+        drop(last_evaluations_packed_host);
+        drop(new_claims_host);
         drop(d_layer_transcript_inputs);
         drop(d_layer_challenges);
+        drop(device_new_claims);
         drop(device_claim);
         drop(device_eq_prefactor);
         drop(device_coeffs);
@@ -7216,12 +7338,9 @@ where
             round_challenge_storage,
             round_challenge_buffers,
             reduction_states,
-            final_readback: {
-                drop(final_evaluations);
-                ScheduledDimensionReducingFinalReadback {
-                    callbacks: final_readback_callbacks,
-                    _phantom: std::marker::PhantomData,
-                }
+            final_readback: ScheduledDimensionReducingFinalReadback {
+                callbacks: final_readback_callbacks,
+                _phantom: std::marker::PhantomData,
             },
             runtime_uploads: Some(runtime_uploads),
             flat_coeff_callbacks,
