@@ -5604,9 +5604,65 @@ where
             .map(|(addr, values)| (*addr, values.get_accessor()))
             .collect();
 
+        // Device-side inter-layer transcript: pack the flattened last-round
+        // evaluations into a packed device buffer (D2D from each address's
+        // 4-E source slot), absorb them into device_seed via transcript_commit,
+        // then squeeze 3 E4 challenges `[r_before_last, r_last,
+        // next_batching_challenge]` via transcript_squeeze_e4. Replaces the
+        // host `commit_field_els` / `draw_random_field_els` pair that used to
+        // run inside the final readback callback.
+        let transcript_input_sources = self.final_evaluation_sources_for_last_step(last_step);
+        let transcript_inputs_len = transcript_input_sources.len() * 4;
+        let mut d_layer_transcript_inputs: DeviceAllocation<E> =
+            context.alloc(transcript_inputs_len.max(1), AllocationPlacement::Top)?;
+        {
+            let mut offset = 0usize;
+            for (_, ptr) in transcript_input_sources.iter() {
+                // SAFETY: raw ptr + length come from the layer's kernel plan;
+                // the 4-E region is alive through the struct we return.
+                let src =
+                    unsafe { era_cudart::slice::DeviceSlice::from_raw_parts(*ptr, 4) };
+                memory_copy_async(
+                    &mut d_layer_transcript_inputs[offset..offset + 4],
+                    src,
+                    stream,
+                )?;
+                offset += 4;
+            }
+            debug_assert_eq!(offset, transcript_inputs_len);
+        }
+        // SAFETY: E = E4 in every instantiation of this scheduler; the
+        // u32 view matches the host `commit_field_els::<BF, E4>` byte layout
+        // (covered by `ops::blake2s::tests::transcript_squeeze_e4_parity_*`).
+        let d_transcript_inputs_u32 = unsafe {
+            d_layer_transcript_inputs[..transcript_inputs_len].transmute::<u32>()
+        };
+        crate::ops::blake2s::transcript_commit(&mut device_seed, d_transcript_inputs_u32, stream)?;
+
+        let mut d_layer_challenges: DeviceAllocation<E> =
+            context.alloc(3, AllocationPlacement::Top)?;
+        // SAFETY: E = E4 in every instantiation; the transmute is a no-op at
+        // the byte level and matches host `draw_random_field_els::<BF, E4>`.
+        let d_layer_challenges_as_e4 = unsafe { d_layer_challenges.transmute_mut::<E4>() };
+        crate::ops::blake2s::transcript_squeeze_e4(
+            &mut device_seed,
+            d_layer_challenges_as_e4,
+            stream,
+        )?;
+
+        let mut layer_challenges_host: HostAllocation<[E]> =
+            unsafe { context.alloc_host_uninit_slice(3) };
+        let layer_challenges_accessor = layer_challenges_host.get_accessor();
+        memory_copy_async(&mut layer_challenges_host, &d_layer_challenges, stream)?;
+
         // Bulk D2H the on-device per-layer state that the final readback
         // callback needs for proof assembly. The reads are stream-ordered
-        // after the per-round kernels that wrote them.
+        // after the per-round kernels that wrote them. The seed D2H is
+        // stream-ordered *after* the device transcript work above, so it
+        // captures the post-commit+squeeze advanced seed — exactly what the
+        // old host `commit_field_els + draw_random_field_els` pair used to
+        // produce. This D2H goes away in Phase E once subsequent layers stop
+        // H2D'ing their entry seed from host.
         let mut final_seed_host = unsafe { context.alloc_host_uninit_slice(STATE_SIZE) };
         let final_seed_accessor = final_seed_host.get_accessor();
         memory_copy_async(&mut final_seed_host, &device_seed, stream)?;
@@ -5647,7 +5703,10 @@ where
                     last_evaluations.insert(*address, values);
                 }
 
-                // Populate the rolling state from the D2H'd device state.
+                // Populate the rolling state from the D2H'd device state. The
+                // seed captured here is already post-commit+squeeze (advanced
+                // on-device), so no host `commit_field_els`/`draw_random_field_els`
+                // is needed — the 3 challenges live in `layer_challenges_host`.
                 let state = shared_state_for_callback.get_mut();
                 state.seed = Seed(
                     <&[u32; STATE_SIZE]>::try_from(final_seed_accessor.get())
@@ -5672,15 +5731,11 @@ where
                         .extend_from_slice(&final_folding_challenges_accessor.get()[..last_step]);
                 }
 
-                let transcript_inputs: Vec<E> = last_evaluations
-                    .values()
-                    .flat_map(|values| values.iter().copied())
-                    .collect();
-                commit_field_els(&mut state.seed, &transcript_inputs);
-
-                let challenges = draw_random_field_els::<BF, E>(&mut state.seed, 3);
                 let [r_before_last, r_last, next_batching_challenge]: [E; 3] =
-                    challenges.try_into().unwrap();
+                    layer_challenges_accessor
+                        .get()
+                        .try_into()
+                        .expect("layer challenges D2H has length 3");
                 let mut new_claim_point = state.folding_challenges.clone();
                 new_claim_point.push(r_before_last);
                 new_claim_point.push(r_last);
@@ -5744,6 +5799,9 @@ where
         drop(final_seed_host);
         drop(final_coeffs_host);
         drop(final_folding_challenges_host);
+        drop(layer_challenges_host);
+        drop(d_layer_transcript_inputs);
+        drop(d_layer_challenges);
         drop(device_seed);
         drop(device_claim);
         drop(device_eq_prefactor);
