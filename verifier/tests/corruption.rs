@@ -3,45 +3,27 @@
 #[macro_use]
 mod common;
 
-use field::baby_bear::base::BabyBearField;
 use field::baby_bear::ext4::BabyBearExt4;
 use field::Field;
-use prover::gkr::prover::GKRProof;
-use prover::merkle_trees::DefaultTreeConstructor;
-use verifier_common::gkr::flatten::flatten_gkr_proof_for_nds;
+use verifier_common::errors::VerificationError;
 
-fn assert_rejects_corrupted_nds(name: &str, label: &str, corrupt: impl FnOnce(&mut Vec<u32>)) {
-    let mut nds = common::load_nds(name);
-    corrupt(&mut nds);
-    assert!(
-        !common::verify_nds(name, nds),
-        "{}: should reject {}",
-        name,
-        label
-    );
-}
-
-fn proof_to_nds(
-    name: &str,
-    proof: &GKRProof<BabyBearField, BabyBearExt4, DefaultTreeConstructor>,
-) -> Vec<u32> {
-    let circuit_data = common::circuit_by_name(name);
-    let compiled = circuit_data.compiled_circuit();
-    flatten_gkr_proof_for_nds::<BabyBearField, BabyBearExt4, DefaultTreeConstructor>(
-        proof,
-        &compiled,
-        circuit_data.whir_schedule(),
-        &[],
-    )
-}
+use common::{
+    assert_rejects_corrupted_nds, assert_rejects_via_panic, assert_rejects_with_variant,
+    proof_to_nds, VerifyRejection,
+};
 
 fn test_rejects_garbage_proof(name: &str) {
     let nds_len = common::load_nds(name).len();
-    assert_rejects_corrupted_nds(name, "garbage proof", |nds| {
-        for i in 0..nds_len {
-            nds[i] = (i as u32).wrapping_mul(2654435761);
-        }
-    });
+    assert_rejects_corrupted_nds(
+        name,
+        "garbage proof",
+        |nds| {
+            for i in 0..nds_len {
+                nds[i] = (i as u32).wrapping_mul(2654435761);
+            }
+        },
+        |r| matches!(r, VerifyRejection::Error(..)),
+    );
 }
 
 fn test_rejects_corruption_at_fractions(name: &str) {
@@ -49,9 +31,12 @@ fn test_rejects_corruption_at_fractions(name: &str) {
     for fraction in [0.25, 0.50, 0.75] {
         let label = format!("fraction {:.2}", fraction);
         let idx = (nds_len as f64 * fraction) as usize;
-        assert_rejects_corrupted_nds(name, &label, |nds| {
-            nds[idx] ^= 1;
-        });
+        assert_rejects_corrupted_nds(
+            name,
+            &label,
+            |nds| nds[idx] ^= 1,
+            |r| matches!(r, VerifyRejection::Error(..)),
+        );
     }
 }
 
@@ -69,9 +54,12 @@ fn test_rejects_corrupted_gkr_region(name: &str) {
         ];
 
         for &(idx, mask, label) in cases {
-            assert_rejects_corrupted_nds(name, label, |nds| {
-                nds[idx] ^= mask;
-            });
+            assert_rejects_corrupted_nds(
+                name,
+                label,
+                |nds| nds[idx] ^= mask,
+                |r| matches!(r, VerifyRejection::Error(..)),
+            );
         }
     });
 }
@@ -86,9 +74,12 @@ fn test_rejects_corrupted_whir_region(name: &str) {
     ];
 
     for &(idx, label) in cases {
-        assert_rejects_corrupted_nds(name, label, |nds| {
-            nds[idx] ^= 1;
-        });
+        assert_rejects_corrupted_nds(
+            name,
+            label,
+            |nds| nds[idx] ^= 1,
+            |r| matches!(r, VerifyRejection::Error(..)),
+        );
     }
 }
 
@@ -103,20 +94,28 @@ fn test_rejects_zeroed_regions(name: &str) {
         ];
 
         for &(start, count, label) in cases {
-            assert_rejects_corrupted_nds(name, label, |nds| {
-                let end = (start + count).min(nds.len());
-                for i in start..end {
-                    nds[i] ^= 0xDEAD_BEEF;
-                }
-            });
+            assert_rejects_corrupted_nds(
+                name,
+                label,
+                |nds| {
+                    let end = (start + count).min(nds.len());
+                    for i in start..end {
+                        nds[i] ^= 0xDEAD_BEEF;
+                    }
+                },
+                |r| matches!(r, VerifyRejection::Error(..)),
+            );
         }
     });
 }
 
 fn test_rejects_shifted_nds(name: &str) {
-    assert_rejects_corrupted_nds(name, "shifted by one word", |nds| {
-        nds.insert(0, 0);
-    });
+    assert_rejects_corrupted_nds(
+        name,
+        "shifted by one word",
+        |nds| nds.insert(0, 0),
+        |r| matches!(r, VerifyRejection::Error(..)),
+    );
 }
 
 fn test_rejects_corrupted_oracle_caps(name: &str) {
@@ -126,31 +125,53 @@ fn test_rejects_corrupted_oracle_caps(name: &str) {
 
         for (i, &off) in cap_offsets.iter().enumerate() {
             let label = format!("oracle_cap_{}", i);
-            assert_rejects_corrupted_nds(name, &label, |nds| {
-                nds[caps_offset + off] ^= 1;
-            });
+            assert_rejects_corrupted_nds(
+                name,
+                &label,
+                |nds| nds[caps_offset + off] ^= 1,
+                |r| {
+                    matches!(
+                        r,
+                        VerifyRejection::Error(VerificationError::GkrSumcheckRoundFailed { .. })
+                    )
+                },
+            );
         }
     });
 }
 
 fn test_rejects_truncated_nds(name: &str) {
-    assert_rejects_corrupted_nds(name, "truncated NDS", |nds| {
-        let new_len = nds.len() * 9 / 10;
-        nds.truncate(new_len);
-    });
+    assert_rejects_corrupted_nds(
+        name,
+        "truncated NDS",
+        |nds| {
+            let new_len = nds.len() * 9 / 10;
+            nds.truncate(new_len);
+        },
+        |r| matches!(r, VerifyRejection::Panic(..)),
+    );
 }
 
 fn test_rejects_corrupted_final_monomials(name: &str) {
     with_circuit!(name, |m| {
         let monomial_words = m::constants::FINAL_MONOMIALS_LEN * 4; // ext4 = 4 u32 per element
         let nds_len = common::load_nds(name).len();
-        assert_rejects_corrupted_nds(name, "final_monomials", |nds| {
-            let end = nds_len;
-            let start = end - monomial_words;
-            for i in start..end {
-                nds[i] ^= 0xDEAD_BEEF;
-            }
-        });
+        let start = nds_len - monomial_words;
+        assert_rejects_corrupted_nds(
+            name,
+            "corrupted final_monomials",
+            |nds| {
+                for word in &mut nds[start..nds_len] {
+                    *word ^= 0xDEAD_BEEF;
+                }
+            },
+            |r| {
+                matches!(
+                    r,
+                    VerifyRejection::Error(VerificationError::WhirFoldAgreementFailed { .. })
+                )
+            },
+        );
     });
 }
 
@@ -161,10 +182,15 @@ fn test_rejects_cross_circuit_nds(name: &str) {
         .expect("need at least two circuits");
 
     let other_nds = other.load_nds();
-    assert_rejects_corrupted_nds(name, &format!("NDS from {}", other.name), |nds| {
-        nds.clear();
-        nds.extend_from_slice(&other_nds);
-    });
+    assert_rejects_corrupted_nds(
+        name,
+        &format!("NDS from {}", other.name),
+        |nds| {
+            nds.clear();
+            nds.extend_from_slice(&other_nds);
+        },
+        |r| matches!(r, VerifyRejection::Error(..)),
+    );
 }
 
 fn test_rejects_corrupted_init_teardown_bits(name: &str) {
@@ -180,18 +206,26 @@ fn test_rejects_corrupted_init_teardown_bits(name: &str) {
     }
     for i in 0..num_teardown_sets {
         let label = format!("teardown_top_bit_{}", i);
-        assert_rejects_corrupted_nds(name, &label, |nds| {
-            nds[i] ^= 0xFFFF_FFFF;
-        });
+        assert_rejects_corrupted_nds(
+            name,
+            &label,
+            |nds| nds[i] ^= 0xFFFF_FFFF,
+            |r| matches!(r, VerifyRejection::Error(..)),
+        );
     }
 }
 
 fn test_rejects_non_canonical_field_element(name: &str) {
     with_circuit!(name, |m| {
         let gkr_off = m::constants::GKR_TRANSCRIPT_U32;
-        assert_rejects_corrupted_nds(name, "non_canonical_field_element", |nds| {
-            nds[gkr_off + 4] ^= 0x7800_0001;
-        });
+        assert_rejects_corrupted_nds(
+            name,
+            "non_canonical_field_element",
+            |nds| {
+                nds[gkr_off + 4] ^= 0x7800_0001;
+            },
+            |r| matches!(r, VerifyRejection::Error(..)),
+        );
     });
 }
 
@@ -204,12 +238,7 @@ fn test_rejects_corrupted_ood_sample(name: &str) {
         name
     );
     proof.whir_proof.ood_samples[0].add_assign(&BabyBearExt4::ONE);
-    let nds = proof_to_nds(name, &proof);
-    assert!(
-        !common::verify_nds(name, nds),
-        "{}: should reject corrupted OOD sample",
-        name
-    );
+    assert_rejects_via_panic(name, "corrupted OOD sample", &proof);
 }
 
 fn test_rejects_corrupted_pow_nonce(name: &str) {
@@ -221,12 +250,7 @@ fn test_rejects_corrupted_pow_nonce(name: &str) {
         name
     );
     proof.whir_proof.pow_nonces[0] ^= 1;
-    let nds = proof_to_nds(name, &proof);
-    assert!(
-        !common::verify_nds(name, nds),
-        "{}: should reject corrupted PoW nonce",
-        name
-    );
+    assert_rejects_via_panic(name, "corrupted PoW nonce", &proof);
 }
 
 #[cfg(not(feature = "no_caches"))]
@@ -253,24 +277,18 @@ fn test_rejects_corrupted_cache_relations(name: &str) {
         .unwrap();
     eval.add_assign(&BabyBearExt4::ONE);
 
-    let nds = proof_to_nds(name, &proof);
-    assert!(
-        !common::verify_nds(name, nds),
-        "{}: should reject corrupted cache relation",
-        name
-    );
+    assert_rejects_with_variant(name, "corrupted cache relation", &proof, |e| {
+        matches!(e, VerificationError::GkrCacheRelationFailed { .. })
+    });
 }
 
 fn test_rejects_corrupted_grand_product(name: &str) {
     let circuit_data = common::circuit_by_name(name);
     let mut proof = circuit_data.proof();
     proof.grand_product_accumulator_computed = BabyBearExt4::ZERO;
-    let nds = proof_to_nds(name, &proof);
-    assert!(
-        !common::verify_nds(name, nds),
-        "{}: should reject corrupted grand_product_accumulator",
-        name
-    );
+    assert_rejects_with_variant(name, "corrupted grand_product_accumulator", &proof, |e| {
+        matches!(e, VerificationError::GkrGrandProductCheckFailed)
+    });
 }
 
 macro_rules! generate_corruption_tests {

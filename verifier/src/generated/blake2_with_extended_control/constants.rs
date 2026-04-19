@@ -890,6 +890,7 @@ pub const BASE_LAYER_ADDITIONAL_OPENINGS: &[GKRAddress] = &[];
 pub const WHIR_FOLD_STEPS: [usize; 5usize] = [1usize, 4usize, 4usize, 4usize, 4usize];
 pub const WHIR_QUERIES: [usize; 5usize] = [68usize, 23usize, 12usize, 10usize, 10usize];
 pub const WHIR_POW_BITS: [u32; 5usize] = [24u32, 24u32, 24u32, 24u32, 24u32];
+pub const MAX_POW_ENTRIES: usize = 117usize;
 pub const FINAL_MONOMIALS_LEN: usize = 8usize;
 pub const NUM_ORACLES: usize = 3usize;
 pub const ORACLE_NUM_COLS: [usize; 3usize] = [225usize, 646usize, 4usize];

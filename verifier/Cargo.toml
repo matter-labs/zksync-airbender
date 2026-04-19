@@ -32,7 +32,7 @@ no_caches = ["verifier_common/no_caches"]
 # If enabled, allows passing custom values into CSR.
 replace_csr = ["verifier_common/replace_csr"]
 
-default = ["security_80"]
+default = ["security_80", "gkr_verify"]
 
 [dev-dependencies]
 test_utils = { workspace = true }

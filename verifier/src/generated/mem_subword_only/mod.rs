@@ -14,5 +14,6 @@ pub fn verify<I: NonDeterminismSource, E: ErrorCreator>() -> Result<(), E::Error
         gkr_output.whir_batching_challenge,
         &gkr_output.oracle_caps,
         gkr_output.base_layer_claims.as_slice(),
+        &gkr_output.evaluation_point[..gkr_output.evaluation_point_len],
     )
 }

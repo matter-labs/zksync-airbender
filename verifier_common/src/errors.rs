@@ -11,6 +11,7 @@ pub trait ErrorCreator {
     fn whir_sumcheck_failed(round: usize) -> Self::Error;
     fn whir_fold_agreement_failed(query: usize) -> Self::Error;
     fn whir_merkle_path_failed(query: usize) -> Self::Error;
+    fn whir_final_constraint_failed() -> Self::Error;
 }
 
 #[derive(Clone, Debug)]
@@ -23,6 +24,7 @@ pub enum VerificationError {
     WhirSumcheckFailed { round: usize },
     WhirFoldAgreementFailed { query: usize },
     WhirMerklePathFailed { query: usize },
+    WhirFinalConstraintFailed,
 }
 
 pub struct DebugErrorCreator;
@@ -62,6 +64,10 @@ impl ErrorCreator for DebugErrorCreator {
     fn whir_merkle_path_failed(query: usize) -> VerificationError {
         VerificationError::WhirMerklePathFailed { query }
     }
+    #[inline(always)]
+    fn whir_final_constraint_failed() -> VerificationError {
+        VerificationError::WhirFinalConstraintFailed
+    }
 }
 
 pub struct PanicErrorCreator;
@@ -100,5 +106,9 @@ impl ErrorCreator for PanicErrorCreator {
     #[inline(always)]
     fn whir_merkle_path_failed(query: usize) -> Infallible {
         panic!("WHIR merkle path failed: query {query}")
+    }
+    #[inline(always)]
+    fn whir_final_constraint_failed() -> Infallible {
+        panic!("WHIR final constraint failed")
     }
 }

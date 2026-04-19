@@ -183,7 +183,7 @@ pub fn generate_whir_initial_round<MW: MersenneWrapper>(
     quote! {
         #field_use_stmts
         use core::mem::MaybeUninit;
-        use ::verifier_common::field::Field;
+        use ::verifier_common::field::{Field, FieldExtension};
         use ::verifier_common::field_ops;
         use ::verifier_common::blake2s_u32::{
             AlignedArray64, BLAKE2S_BLOCK_SIZE_U32_WORDS,
@@ -201,6 +201,7 @@ pub fn generate_whir_initial_round<MW: MersenneWrapper>(
             read_field_el, read_field_els,
             read_reduced_field_el, draw_single_field_el, compute_tree_index,
             process_oracle_query,
+            fold_whir_accumulator, push_whir_pow_entry,
         };
         use ::verifier_common::errors::ErrorCreator;
         use ::verifier_common::structs::{CommitBuf, TranscriptState};
@@ -224,6 +225,10 @@ pub fn generate_whir_initial_round<MW: MersenneWrapper>(
             batching_challenge: #quartic_struct,
             oracle_caps: &[u32; TOTAL_CAP_WORDS],
             base_layer_claims: &[#quartic_struct],
+            z_initial: &[#quartic_struct],
+            accumulator: &mut ::verifier_common::whir::WhirAccumulator<
+                #quartic_struct, MAX_POW_ENTRIES,
+            >,
         ) -> Result<(#quartic_struct, [u32; WHIR_CAP_WORDS]), E::Error> {
             unsafe {
                 let gamma_powers: [#quartic_struct; TOTAL_ORACLE_COLS] =
@@ -250,6 +255,7 @@ pub fn generate_whir_initial_round<MW: MersenneWrapper>(
                     )?;
                     claim = new_claim;
                     folding_challenges.push(alpha);
+                    fold_whir_accumulator(accumulator, alpha, z_initial);
                     round_idx += 1;
                 }
 
@@ -262,7 +268,7 @@ pub fn generate_whir_initial_round<MW: MersenneWrapper>(
                 let intermediate_cap =
                     read_commit_return_merkle_cap::<I, WHIR_CAP_WORDS, CAP_COMMIT_BUF>(ts);
 
-                let _ood_point = draw_single_field_el(ts);
+                let ood_point = draw_single_field_el(ts);
 
                 const OOD_DATA_WORDS: usize = super::common::EXT_DEGREE;
                 const OOD_COMMIT_BUF: usize = {
@@ -292,9 +298,12 @@ pub fn generate_whir_initial_round<MW: MersenneWrapper>(
 
                 let delinearization_challenge = draw_single_field_el(ts);
 
+                push_whir_pow_entry(accumulator, ood_point, delinearization_challenge);
+
                 let mut claim_correction = ood_value;
                 #mul_ood_delin;
 
+                let extended_generator = #field_struct::TWO_ADICITY_GENERATORS[INITIAL_RS_DOMAIN_LOG2];
                 let extended_generator_inv = #field_struct::TWO_ADICITY_GENERATORS_INVERSED[INITIAL_RS_DOMAIN_LOG2];
                 let mut high_powers_offsets = LazyVec::<#field_struct, MAX_HIGH_POWERS>::new();
                 compute_high_powers_offsets(WHIR_FOLD_STEPS[0], &mut high_powers_offsets);
@@ -321,6 +330,14 @@ pub fn generate_whir_initial_round<MW: MersenneWrapper>(
                         folding_challenges.as_slice(),
                         base_root_inv, unsafe { high_powers_offsets.as_array::<{1 << (WHIR_FOLD_STEPS[0] - 1)}>() },
                         fold_buf_a.as_mut_slice(), fold_buf_b.as_mut_slice(),
+                    );
+
+                    let mut query_point_base = extended_generator.pow(query_index as u32);
+                    query_point_base.exp_power_of_2(WHIR_FOLD_STEPS[0]);
+                    push_whir_pow_entry(
+                        accumulator,
+                        <#quartic_struct>::from_base(query_point_base),
+                        delinearization_challenge,
                     );
 
                     let mut t = folded;
@@ -448,6 +465,10 @@ pub fn generate_whir_internal_rounds<MW: MersenneWrapper>(
             claim: #quartic_struct,
             prev_oracle_cap: &[u32; WHIR_CAP_WORDS],
             round_idx: usize,
+            z_initial: &[#quartic_struct],
+            accumulator: &mut ::verifier_common::whir::WhirAccumulator<
+                #quartic_struct, MAX_POW_ENTRIES,
+            >,
         ) -> Result<(#quartic_struct, [u32; WHIR_CAP_WORDS]), E::Error> {
             unsafe {
                 let fold_steps = WHIR_FOLD_STEPS[round_idx];
@@ -466,13 +487,14 @@ pub fn generate_whir_internal_rounds<MW: MersenneWrapper>(
                     )?;
                     claim = new_claim;
                     folding_challenges.push(alpha);
+                    fold_whir_accumulator(accumulator, alpha, z_initial);
                     round += 1;
                 }
 
                 let intermediate_cap =
                     read_return_merkle_cap::<I, WHIR_CAP_WORDS>();
 
-                let _ood_point = draw_single_field_el(ts);
+                let ood_point = draw_single_field_el(ts);
                 let ood_value: #quartic_struct = read_field_el::<I>();
 
                 read_and_verify_pow::<I>(ts, WHIR_POW_BITS[round_idx]);
@@ -485,10 +507,13 @@ pub fn generate_whir_internal_rounds<MW: MersenneWrapper>(
 
                 let delinearization_challenge = draw_single_field_el(ts);
 
+                push_whir_pow_entry(accumulator, ood_point, delinearization_challenge);
+
                 let mut claim_correction = ood_value;
                 #mul_ood_delin;
 
                 let rs_domain_log2 = INTERNAL_RS_DOMAIN_LOG2[ir];
+                let extended_generator = #field_struct::TWO_ADICITY_GENERATORS[rs_domain_log2];
                 let extended_generator_inv = #field_struct::TWO_ADICITY_GENERATORS_INVERSED[rs_domain_log2];
                 let num_cosets = INTERNAL_NUM_COSETS[ir];
                 let num_cosets_log2 = INTERNAL_NUM_COSETS_LOG2[ir];
@@ -511,6 +536,14 @@ pub fn generate_whir_internal_rounds<MW: MersenneWrapper>(
                     );
 
                     #query_body
+
+                    let mut query_point_base = extended_generator.pow(query_index as u32);
+                    query_point_base.exp_power_of_2(fold_steps);
+                    push_whir_pow_entry(
+                        accumulator,
+                        <#quartic_struct>::from_base(query_point_base),
+                        delinearization_challenge,
+                    );
 
                     let mut t = folded;
                     #mul_delin;
@@ -592,6 +625,10 @@ pub fn generate_whir_final_round<MW: MersenneWrapper>(
             hash_buf: &mut AlignedArray64<MaybeUninit<u32>, WHIR_HASH_BUF_SIZE>,
             claim: #quartic_struct,
             prev_oracle_cap: &[u32; WHIR_CAP_WORDS],
+            z_initial: &[#quartic_struct],
+            accumulator: &mut ::verifier_common::whir::WhirAccumulator<
+                #quartic_struct, MAX_POW_ENTRIES,
+            >,
         ) -> Result<(), E::Error> {
             unsafe {
                 let mut claim = claim;
@@ -604,8 +641,15 @@ pub fn generate_whir_final_round<MW: MersenneWrapper>(
                     )?;
                     claim = new_claim;
                     folding_challenges.push(alpha);
+                    fold_whir_accumulator(accumulator, alpha, z_initial);
                     round += 1;
                 }
+
+                debug_assert_eq!(
+                    accumulator.z_initial_idx + FINAL_MONOMIALS_LEN.trailing_zeros() as usize,
+                    z_initial.len(),
+                );
+                debug_assert_eq!(accumulator.pow_entries.len(), MAX_POW_ENTRIES);
 
                 read_and_verify_pow::<I>(ts, FINAL_POW_BITS);
                 let query_indices =
@@ -669,6 +713,65 @@ pub fn generate_whir_final_round<MW: MersenneWrapper>(
                         return Err(E::whir_fold_agreement_failed(q));
                     }
                     q += 1;
+                }
+
+                let mut f_m_buf = LazyVec::<#quartic_struct, FINAL_MONOMIALS_LEN>::new();
+                f_m_buf.set_len(FINAL_MONOMIALS_LEN);
+                {
+                    let mut i = 0;
+                    while i < FINAL_MONOMIALS_LEN {
+                        f_m_buf.set_unchecked(i, *monomials.get_unchecked(i));
+                        i += 1;
+                    }
+                }
+                {
+                    let mut level = 0;
+                    let mut active_len = FINAL_MONOMIALS_LEN;
+                    while active_len > 1 {
+                        let half = active_len >> 1;
+                        let zj = *z_initial.get_unchecked(accumulator.z_initial_idx + level);
+                        let mut i = 0;
+                        while i < half {
+                            let c0 = *f_m_buf.get_unchecked(2 * i);
+                            let c1 = *f_m_buf.get_unchecked(2 * i + 1);
+                            let mut t = c1;
+                            field_ops::mul_assign(&mut t, &zj);
+                            field_ops::add_assign(&mut t, &c0);
+                            f_m_buf.set_unchecked(i, t);
+                            i += 1;
+                        }
+                        active_len = half;
+                        level += 1;
+                    }
+                }
+                let f_m_at_z_initial = *f_m_buf.get_unchecked(0);
+
+                let mut expected = accumulator.z_initial_prefactor;
+                field_ops::mul_assign(&mut expected, &f_m_at_z_initial);
+
+                {
+                    let n = accumulator.pow_entries.len();
+                    let mut ei = 0;
+                    while ei < n {
+                        let entry = accumulator.pow_entries.get_unchecked(ei);
+                        let s = entry.current_scalar;
+                        let mut eval = *monomials.get_unchecked(FINAL_MONOMIALS_LEN - 1);
+                        let mut j = FINAL_MONOMIALS_LEN - 1;
+                        while j > 0 {
+                            j -= 1;
+                            field_ops::mul_assign(&mut eval, &s);
+                            let coeff = *monomials.get_unchecked(j);
+                            field_ops::add_assign(&mut eval, &coeff);
+                        }
+                        field_ops::mul_assign(&mut eval, &entry.prefactor);
+                        field_ops::mul_assign(&mut eval, &entry.coefficient);
+                        field_ops::add_assign(&mut expected, &eval);
+                        ei += 1;
+                    }
+                }
+
+                if expected != claim {
+                    return Err(E::whir_final_constraint_failed());
                 }
 
                 Ok(())

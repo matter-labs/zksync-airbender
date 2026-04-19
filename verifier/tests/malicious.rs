@@ -7,7 +7,7 @@ use field::baby_bear::base::BabyBearField;
 use field::baby_bear::ext4::BabyBearExt4;
 use prover::gkr::prover::GKRProof;
 use prover::merkle_trees::DefaultTreeConstructor;
-use verifier_common::gkr::flatten::flatten_gkr_proof_for_nds;
+use verifier_common::errors::VerificationError;
 
 const CIRCUIT_NAME: &str = "jump_branch_slt";
 
@@ -36,53 +36,55 @@ fn load_malicious_proof(
     deserialize_from_file(&path)
 }
 
-fn malicious_proof_to_nds(variant: &str) -> Vec<u32> {
+fn assert_rejects(variant: &str, expected: impl FnOnce(&VerificationError) -> bool) {
     let proof = load_malicious_proof(variant);
-    let circuit_data = common::circuit_by_name(CIRCUIT_NAME);
-    let compiled = circuit_data.compiled_circuit();
-    flatten_gkr_proof_for_nds::<BabyBearField, BabyBearExt4, DefaultTreeConstructor>(
-        &proof,
-        &compiled,
-        circuit_data.whir_schedule(),
-        &[],
-    )
-}
-
-fn test_rejects_malicious(variant: &str) {
-    let nds = malicious_proof_to_nds(variant);
-    assert!(
-        !common::verify_nds(CIRCUIT_NAME, nds),
-        "verifier should reject malicious proof: {}",
-        variant
-    );
+    common::assert_rejects_with_variant(CIRCUIT_NAME, variant, &proof, expected);
 }
 
 #[test]
 #[ignore]
 fn rejects_malicious_lookup_16bits() {
-    test_rejects_malicious("lookup_16bits");
+    assert_rejects("lookup_16bits", |e| {
+        matches!(e, VerificationError::GkrLookupIdentityFailed { .. })
+    });
 }
 
 #[test]
 #[ignore]
 fn rejects_malicious_lookup_timestamps() {
-    test_rejects_malicious("lookup_timestamps");
+    assert_rejects("lookup_timestamps", |e| {
+        matches!(e, VerificationError::GkrLookupIdentityFailed { .. })
+    });
 }
 
 #[test]
 #[ignore]
 fn rejects_malicious_lookup_generic() {
-    test_rejects_malicious("lookup_generic");
+    assert_rejects("lookup_generic", |e| {
+        matches!(e, VerificationError::GkrLookupIdentityFailed { .. })
+    });
 }
 
 #[test]
 #[ignore]
 fn rejects_malicious_witness_value() {
-    test_rejects_malicious("witness_value");
+    assert_rejects("witness_value", |e| {
+        matches!(
+            e,
+            VerificationError::GkrSumcheckRoundFailed { .. }
+                | VerificationError::GkrFinalStepCheckFailed { .. }
+        )
+    });
 }
 
 #[test]
 #[ignore]
 fn rejects_malicious_memory_value() {
-    test_rejects_malicious("memory_value");
+    assert_rejects("memory_value", |e| {
+        matches!(
+            e,
+            VerificationError::GkrSumcheckRoundFailed { .. }
+                | VerificationError::GkrFinalStepCheckFailed { .. }
+        )
+    });
 }

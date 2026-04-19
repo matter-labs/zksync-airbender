@@ -1265,6 +1265,8 @@ where
     let whir_cap_size = whir_schedule.cap_size;
     let whir_cap_size_log2 = whir_cap_size.trailing_zeros() as usize;
 
+    let max_pow_entries: usize = whir_queries[..whir_rounds - 1].iter().map(|q| 1 + q).sum();
+
     let total_fold_steps: usize = whir_fold_steps.iter().sum();
     assert!(
         trace_len_log2 >= total_fold_steps,
@@ -1407,6 +1409,7 @@ where
         pub const WHIR_FOLD_STEPS: [usize; #whir_rounds] = [#(#whir_fold_steps),*];
         pub const WHIR_QUERIES: [usize; #whir_rounds] = [#(#whir_queries),*];
         pub const WHIR_POW_BITS: [u32; #whir_rounds] = [#(#whir_pow_bits),*];
+        pub const MAX_POW_ENTRIES: usize = #max_pow_entries;
         pub const FINAL_MONOMIALS_LEN: usize = #final_monomials_len;
         pub const NUM_ORACLES: usize = #num_oracles;
         pub const ORACLE_NUM_COLS: [usize; #num_oracles] = [#(#oracle_num_cols),*];

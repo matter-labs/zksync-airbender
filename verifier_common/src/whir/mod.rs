@@ -5,6 +5,30 @@ use transcript::Blake2sTranscript;
 use crate::lazy_vec::LazyVec;
 use crate::structs::{assemble_query_index, BitSource, CommitBuf, TranscriptState};
 
+#[derive(Clone, Copy)]
+pub struct WhirPowEntry<E: Copy> {
+    pub current_scalar: E,
+    pub prefactor: E,
+    pub coefficient: E,
+}
+
+pub struct WhirAccumulator<E: Copy, const MAX_POW: usize> {
+    pub z_initial_idx: usize,
+    pub z_initial_prefactor: E,
+    pub pow_entries: LazyVec<WhirPowEntry<E>, MAX_POW>,
+}
+
+impl<E: Copy, const MAX_POW: usize> WhirAccumulator<E, MAX_POW> {
+    #[inline(always)]
+    pub const fn new(z_initial_prefactor: E) -> Self {
+        Self {
+            z_initial_idx: 0,
+            z_initial_prefactor,
+            pow_entries: LazyVec::new(),
+        }
+    }
+}
+
 /// Read a Merkle cap from NDS, commit via aligned buffer, and return it.
 ///
 /// `BUF` must be `(DIGEST_SIZE + CAP_WORDS)` rounded up to block size.
@@ -39,7 +63,7 @@ pub fn read_and_verify_pow<I: NonDeterminismSource>(ts: &mut TranscriptState, po
     let lo = I::read_word();
     let hi = I::read_word();
     let nonce = (lo as u64) | ((hi as u64) << 32);
-    Blake2sTranscript::verify_pow(&mut ts.seed, nonce, pow_bits);
+    Blake2sTranscript::verify_pow_using_hasher(&mut ts.hasher, &mut ts.seed, nonce, pow_bits);
 }
 
 #[inline(always)]

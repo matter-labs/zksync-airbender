@@ -275,6 +275,61 @@ pub fn generate_whir_common<MW: MersenneWrapper>(max_fold_steps: usize) -> Token
         }
 
         #[inline(always)]
+        pub fn fold_whir_accumulator<const MAX_POW: usize>(
+            acc: &mut ::verifier_common::whir::WhirAccumulator<#quartic_struct, MAX_POW>,
+            alpha: #quartic_struct,
+            z_initial: &[#quartic_struct],
+        ) {
+            let mut one_minus_alpha = #quartic_one;
+            field_ops::sub_assign(&mut one_minus_alpha, &alpha);
+
+            unsafe {
+                let zi = *z_initial.get_unchecked(acc.z_initial_idx);
+                let mut eq = one_minus_alpha;
+                let mut one_minus_zi = #quartic_one;
+                field_ops::sub_assign(&mut one_minus_zi, &zi);
+                field_ops::mul_assign(&mut eq, &one_minus_zi);
+                let mut a_zi = alpha;
+                field_ops::mul_assign(&mut a_zi, &zi);
+                field_ops::add_assign(&mut eq, &a_zi);
+                field_ops::mul_assign(&mut acc.z_initial_prefactor, &eq);
+                acc.z_initial_idx += 1;
+            }
+
+            let n = acc.pow_entries.len();
+            let mut i = 0;
+            while i < n {
+                unsafe {
+                    let entry = acc.pow_entries.get_unchecked_mut(i);
+                    let s = entry.current_scalar;
+                    let mut eq = one_minus_alpha;
+                    let mut one_minus_s = #quartic_one;
+                    field_ops::sub_assign(&mut one_minus_s, &s);
+                    field_ops::mul_assign(&mut eq, &one_minus_s);
+                    let mut a_s = alpha;
+                    field_ops::mul_assign(&mut a_s, &s);
+                    field_ops::add_assign(&mut eq, &a_s);
+                    field_ops::mul_assign(&mut entry.prefactor, &eq);
+                    field_ops::square(&mut entry.current_scalar);
+                }
+                i += 1;
+            }
+        }
+
+        #[inline(always)]
+        pub fn push_whir_pow_entry<const MAX_POW: usize>(
+            acc: &mut ::verifier_common::whir::WhirAccumulator<#quartic_struct, MAX_POW>,
+            current_scalar: #quartic_struct,
+            coefficient: #quartic_struct,
+        ) {
+            acc.pow_entries.push(::verifier_common::whir::WhirPowEntry {
+                current_scalar,
+                prefactor: #quartic_one,
+                coefficient,
+            });
+        }
+
+        #[inline(always)]
         #[allow(clippy::too_many_arguments)]
         pub unsafe fn process_oracle_query<I: NonDeterminismSource, E: ErrorCreator, const BUF_SIZE: usize, const LEAF_WORDS: usize>(
             hasher: &mut DelegatedBlake2sState,
