@@ -40,6 +40,70 @@ use crate::primitives::device_tracing::Range;
 use crate::primitives::field::{BF, E4};
 use crate::primitives::utils::{get_grid_block_dims_for_threads_count, WARP_SIZE};
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct ClaimBufferLayout {
+    pub(crate) addresses: Vec<GKRAddress>,
+    pub(crate) index_by_address: BTreeMap<GKRAddress, u32>,
+}
+
+impl ClaimBufferLayout {
+    pub(crate) fn from_addresses(addresses: Vec<GKRAddress>) -> Self {
+        assert!(
+            !addresses.is_empty(),
+            "claim buffer layout must contain at least one address"
+        );
+        assert!(
+            addresses.len() <= u32::MAX as usize,
+            "claim buffer layout exceeds u32 indexing"
+        );
+        let mut index_by_address = BTreeMap::new();
+        for (idx, address) in addresses.iter().copied().enumerate() {
+            let prev = index_by_address.insert(address, idx as u32);
+            assert!(
+                prev.is_none(),
+                "duplicate claim address in claim buffer layout: {address:?}"
+            );
+        }
+        Self {
+            addresses,
+            index_by_address,
+        }
+    }
+
+    pub(crate) fn from_claims<E>(claims: &BTreeMap<GKRAddress, E>) -> Self {
+        Self::from_addresses(claims.keys().copied().collect())
+    }
+
+    pub(crate) fn len(&self) -> usize {
+        self.addresses.len()
+    }
+
+    pub(crate) fn claim_idx(&self, address: &GKRAddress) -> u32 {
+        self.index_by_address
+            .get(address)
+            .copied()
+            .unwrap_or_else(|| panic!("missing claim address in layout: {address:?}"))
+    }
+
+    pub(crate) fn write_values_from_claims<E: Copy>(
+        &self,
+        claims: &BTreeMap<GKRAddress, E>,
+        dst: &mut [E],
+    ) {
+        assert_eq!(
+            dst.len(),
+            self.len(),
+            "claim buffer destination must match layout length"
+        );
+        for (idx, address) in self.addresses.iter().enumerate() {
+            dst[idx] = claims
+                .get(address)
+                .copied()
+                .unwrap_or_else(|| panic!("missing claim value for {address:?}"));
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct DimensionReducingKernelBlueprint<E> {
     pub(super) kind: GpuGKRDimensionReducingKernelKind,
@@ -800,6 +864,12 @@ pub(crate) struct GpuGKRDimensionReducingScheduledLayerExecution<B, E: FieldExte
     /// `workflow_state.current_claim_point` + `current_batching_challenge`
     /// from host.
     pub(super) device_claim_point_for_next_layer: Option<DeviceAllocation<E>>,
+    /// Device-resident `current_claims` buffer for the NEXT backward layer.
+    /// This layer's `device_new_claims` becomes the next layer's input to
+    /// `build_combined_claim`.
+    pub(super) device_claims_for_next_layer: Option<DeviceAllocation<E>>,
+    /// Explicit address order of `device_claims_for_next_layer`.
+    pub(super) claim_layout_for_next_layer: Option<ClaimBufferLayout>,
     #[allow(dead_code)]
     pub(super) _phantom: std::marker::PhantomData<B>,
 }
@@ -958,6 +1028,10 @@ pub(crate) struct GpuGKRMainLayerScheduledLayerExecution<E: FieldExtension<BF> +
     /// Device-resident `[claim_point || batching_challenge]` for the NEXT
     /// backward layer (see dim-reducing twin). Taken by the orchestrator.
     pub(super) device_claim_point_for_next_layer: Option<DeviceAllocation<E>>,
+    /// Device-resident `current_claims` buffer for the NEXT backward layer.
+    pub(super) device_claims_for_next_layer: Option<DeviceAllocation<E>>,
+    /// Explicit address order of `device_claims_for_next_layer`.
+    pub(super) claim_layout_for_next_layer: Option<ClaimBufferLayout>,
 }
 
 pub(crate) struct ScheduledBackwardWorkflowState<E: FieldExtension<BF> + Field> {
@@ -988,6 +1062,8 @@ pub(crate) struct GpuGKRBackwardScheduledExecution<B, E: FieldExtension<BF> + Fi
     #[allow(dead_code)]
     pub(super) main_layers: Vec<GpuGKRMainLayerScheduledLayerExecution<E>>,
     pub(super) shared_state: Box<ScheduledBackwardWorkflowState<E>>,
+    #[allow(dead_code)] // Keeps test-path initial-staging callbacks alive until the stream consumes them.
+    pub(super) initial_callbacks: Callbacks<'static>,
 }
 
 pub(crate) struct GpuGKRDimensionReducingHostKeepalive<B, E: FieldExtension<BF> + Field> {
@@ -1043,6 +1119,8 @@ pub(crate) struct GpuGKRBackwardHostKeepalive<B, E: FieldExtension<BF> + Field> 
     pub(super) main_layers: Vec<GpuGKRMainLayerHostKeepalive<E>>,
     #[allow(dead_code)]
     pub(super) shared_state: Box<ScheduledBackwardWorkflowState<E>>,
+    #[allow(dead_code)]
+    pub(super) initial_callbacks: Callbacks<'static>,
 }
 
 impl<E> ScheduledBackwardWorkflowState<E>
@@ -1066,10 +1144,12 @@ where
 
 /// Allocate a device `DeviceAllocation<u32>` of length `STATE_SIZE` and H2D a host `Seed`
 /// into it. Only test paths still need this bridge (the hot path threads the post-forward
-/// device seed straight through). The copy is queued on `context.get_exec_stream()` so all
-/// downstream device-seed reads see the value.
+/// device seed straight through). The staging buffer is filled inside a stream-ordered
+/// callback (per the GPU scheduling contract — `HostAllocation` contents must not be touched
+/// on the scheduling thread), so the caller-owned `Callbacks` must outlive stream execution.
 pub(crate) fn h2d_seed_from_host(
     context: &ProverContext,
+    callbacks: &mut Callbacks<'static>,
     host_seed: &Seed,
 ) -> CudaResult<DeviceAllocation<u32>> {
     let mut d_seed: DeviceAllocation<u32> =
@@ -1077,7 +1157,14 @@ pub(crate) fn h2d_seed_from_host(
     let mut host_slot = unsafe {
         context.alloc_host_uninit_slice::<u32>(crate::ops::blake2s::STATE_SIZE)
     };
-    unsafe { host_slot.get_mut_accessor().get_mut().copy_from_slice(&host_seed.0) };
+    let accessor = host_slot.get_mut_accessor();
+    let seed_words = host_seed.0;
+    callbacks.schedule(
+        move || unsafe {
+            accessor.get_mut().copy_from_slice(&seed_words);
+        },
+        context.get_exec_stream(),
+    )?;
     memory_copy_async(&mut d_seed, &host_slot, context.get_exec_stream())?;
     drop(host_slot);
     Ok(d_seed)
@@ -1087,9 +1174,12 @@ pub(crate) fn h2d_seed_from_host(
 /// `[claim_point || batching_challenge]` (matching the first backward layer's
 /// `round_scratch.claim_point`), and H2D the host values into it. Only test paths still need
 /// this bridge — the hot path threads the post-forward device squeeze buffer
-/// (`d_evaluation_point_and_batching`) straight into the orchestrator.
-pub(crate) fn h2d_claim_point_and_batching_from_host<E: FieldExtension<BF> + Field>(
+/// (`d_evaluation_point_and_batching`) straight into the orchestrator. The staging buffer is
+/// filled inside a stream-ordered callback; the caller-owned `Callbacks` must outlive stream
+/// execution.
+pub(crate) fn h2d_claim_point_and_batching_from_host<E: FieldExtension<BF> + Field + 'static>(
     context: &ProverContext,
+    callbacks: &mut Callbacks<'static>,
     claim_point: &[E],
     batching_challenge: E,
 ) -> CudaResult<DeviceAllocation<E>> {
@@ -1097,15 +1187,46 @@ pub(crate) fn h2d_claim_point_and_batching_from_host<E: FieldExtension<BF> + Fie
     let mut buf: DeviceAllocation<E> = context.alloc(len, AllocationPlacement::Top)?;
     let mut host_slot = unsafe { context.alloc_host_uninit_slice::<E>(len) };
     let accessor = host_slot.get_mut_accessor();
-    unsafe {
-        let dst = accessor.get_mut();
-        let (cp_dst, batching_dst) = dst.split_at_mut(claim_point.len());
-        cp_dst.copy_from_slice(claim_point);
-        batching_dst[0] = batching_challenge;
-    }
+    let claim_point_owned: Vec<E> = claim_point.to_vec();
+    callbacks.schedule(
+        move || unsafe {
+            let dst = accessor.get_mut();
+            let (cp_dst, batching_dst) = dst.split_at_mut(claim_point_owned.len());
+            cp_dst.copy_from_slice(&claim_point_owned);
+            batching_dst[0] = batching_challenge;
+        },
+        context.get_exec_stream(),
+    )?;
     memory_copy_async(&mut buf, &host_slot, context.get_exec_stream())?;
     drop(host_slot);
     Ok(buf)
+}
+
+/// Allocate a device claims buffer and upload values in the explicit order
+/// defined by the returned `ClaimBufferLayout`. The staging buffer is filled
+/// inside a stream-ordered callback; the caller-owned `Callbacks` must outlive
+/// stream execution.
+pub(crate) fn h2d_claims_from_host<E: FieldExtension<BF> + Field + 'static>(
+    context: &ProverContext,
+    callbacks: &mut Callbacks<'static>,
+    claims: &BTreeMap<GKRAddress, E>,
+) -> CudaResult<(DeviceAllocation<E>, ClaimBufferLayout)> {
+    let layout = ClaimBufferLayout::from_claims(claims);
+    let len = layout.len();
+    let mut buf: DeviceAllocation<E> = context.alloc(len, AllocationPlacement::Top)?;
+    let mut host_slot = unsafe { context.alloc_host_uninit_slice::<E>(len) };
+    let accessor = host_slot.get_mut_accessor();
+    let layout_for_callback = layout.clone();
+    let claims_owned = claims.clone();
+    callbacks.schedule(
+        move || unsafe {
+            layout_for_callback.write_values_from_claims(&claims_owned, accessor.get_mut());
+        },
+        context.get_exec_stream(),
+    )?;
+    memory_copy_async(&mut buf, &host_slot, context.get_exec_stream())?;
+    drop(host_slot);
+    Ok((buf, layout))
 }
 
 pub(crate) fn make_deferred_backward_workflow_state<E>() -> Box<ScheduledBackwardWorkflowState<E>>

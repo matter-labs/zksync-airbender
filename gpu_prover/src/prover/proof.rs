@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS;
 use cs::definitions::GKRAddress;
@@ -32,7 +32,7 @@ use crate::prover::gkr::backward::{
     apply_base_layer_extra_evaluations_to_workflow_state, clone_backward_claims_for_layer,
     current_backward_seed, fill_backward_claim_point_for_layer,
     make_deferred_backward_workflow_state, populate_backward_workflow_state,
-    take_backward_execution_from_shared_state, GpuGKRBackwardHostKeepalive,
+    take_backward_execution_from_shared_state, ClaimBufferLayout, GpuGKRBackwardHostKeepalive,
 };
 use crate::prover::gkr::base_layer_claims::{
     clone_base_layer_extra_evaluations_from_caching_relations,
@@ -157,6 +157,31 @@ pub(crate) fn build_top_layer_claims(
     }
 
     top_layer_claims
+}
+
+pub(crate) fn top_layer_claim_layout(
+    output_layer_for_sumcheck: &BTreeMap<
+        OutputType,
+        prover::gkr::prover::dimension_reduction::forward::DimensionReducingInputOutput,
+    >,
+) -> ClaimBufferLayout {
+    let mut addresses = BTreeSet::new();
+    let permutation_output = &output_layer_for_sumcheck[&OutputType::PermutationProduct];
+    addresses.insert(permutation_output.output[0]);
+    addresses.insert(permutation_output.output[1]);
+    if let Some(output) = output_layer_for_sumcheck.get(&OutputType::Lookup16Bits) {
+        addresses.insert(output.output[0]);
+        addresses.insert(output.output[1]);
+    }
+    if let Some(output) = output_layer_for_sumcheck.get(&OutputType::LookupTimestamps) {
+        addresses.insert(output.output[0]);
+        addresses.insert(output.output[1]);
+    }
+    if let Some(output) = output_layer_for_sumcheck.get(&OutputType::GenericLookup) {
+        addresses.insert(output.output[0]);
+        addresses.insert(output.output[1]);
+    }
+    ClaimBufferLayout::from_addresses(addresses.into_iter().collect())
 }
 
 pub(crate) fn draw_query_bits_with_external_nonce(
@@ -706,6 +731,13 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
 
     let backward_state = forward_output.into_dimension_reducing_backward_state();
     let forward_setup_keepalive = forward_setup.into_host_keepalive();
+    let top_layer_claim_layout = top_layer_claim_layout(&output_layer_for_sumcheck);
+    let num_top_claims = top_layer_claim_layout.len();
+    let mut initial_d_claims: DeviceAllocation<E4> =
+        context.alloc(num_top_claims, AllocationPlacement::BestFit)?;
+    let mut initial_claims_host: HostAllocation<[E4]> =
+        unsafe { context.alloc_host_uninit_slice::<E4>(num_top_claims) };
+    let initial_claims_host_accessor = initial_claims_host.get_mut_accessor();
 
     let mut backward_shared_state = make_deferred_backward_workflow_state();
     let backward_shared_state_handle = UnsafeMutAccessor::new(backward_shared_state.as_mut());
@@ -713,6 +745,7 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
     callbacks.schedule(
         {
             let backward_shared_state = backward_shared_state_handle;
+            let top_layer_claim_layout = top_layer_claim_layout.clone();
             move || unsafe {
                 let final_explicit_evaluations = collect_explicit_evaluations_from_accessors(
                     &transcript_handoff_accessors_for_backward,
@@ -729,6 +762,10 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
                 );
                 let top_layer_claims =
                     build_top_layer_claims(&output_layer_for_sumcheck, initial_claims);
+                top_layer_claim_layout.write_values_from_claims(
+                    &top_layer_claims,
+                    initial_claims_host_accessor.get_mut(),
+                );
                 let lookup_challenges = lookup_challenges_read_accessor.get();
                 // `workflow_state.seed` (host `Seed`) is initialized to `Seed::default()` —
                 // the first backward layer's start callback reads the field but its value is
@@ -750,6 +787,7 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
         stream,
     )?;
     drop(lookup_challenges_host);
+    memory_copy_async(&mut initial_d_claims, &initial_claims_host, stream)?;
 
     let mut backward_scheduled = backward_state
         .schedule_execute_backward_workflow_from_shared_state(
@@ -758,8 +796,11 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
             backward_shared_state,
             d_seed,
             d_evaluation_point_and_batching,
+            initial_d_claims,
+            top_layer_claim_layout,
             context,
         )?;
+    drop(initial_claims_host);
     let backward_shared_state = backward_scheduled.shared_state_handle();
     let setup_trace_holder = setup_transfer
         .as_ref()
