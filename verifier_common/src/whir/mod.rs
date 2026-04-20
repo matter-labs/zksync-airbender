@@ -51,13 +51,6 @@ pub fn read_commit_return_merkle_cap<
     cap
 }
 
-/// Read a Merkle cap from NDS and return it (no transcript commit).
-#[inline(always)]
-pub fn read_return_merkle_cap<I: NonDeterminismSource, const CAP_WORDS: usize>() -> [u32; CAP_WORDS]
-{
-    core::array::from_fn(|_| I::read_word())
-}
-
 #[inline(always)]
 pub fn read_and_verify_pow<I: NonDeterminismSource>(ts: &mut TranscriptState, pow_bits: u32) {
     let lo = I::read_word();

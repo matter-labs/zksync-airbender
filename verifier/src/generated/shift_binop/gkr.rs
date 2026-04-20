@@ -4644,7 +4644,8 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             state.prev_point_len = fc_len;
         }
         state.batching_challenge = draw_single_field_el(&mut ts);
-        let grand_product_accumulator: BabyBearExt4 = read_field_el::<I>();
+        let mut permutation_read_product: BabyBearExt4 = BabyBearExt4::ONE;
+        let mut permutation_write_product: BabyBearExt4 = BabyBearExt4::ONE;
         {
             let mut read_product = BabyBearExt4::ONE;
             for i in 0..16usize {
@@ -4656,10 +4657,8 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
                 let eval = *evals_slice.get_unchecked(16usize + i);
                 field_ops::mul_assign(&mut write_product, &eval);
             }
-            field_ops::mul_assign(&mut read_product, &grand_product_accumulator);
-            if read_product != write_product {
-                return Err(E::gkr_grand_product_check_failed());
-            }
+            permutation_read_product = read_product;
+            permutation_write_product = write_product;
         }
         {
             let mut acc_num = BabyBearExt4::ZERO;
@@ -4714,7 +4713,8 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             base_layer_addrs: LAYER_0_SORTED_ADDRS,
             evaluation_point: state.prev_point,
             evaluation_point_len: state.prev_point_len,
-            grand_product_accumulator,
+            permutation_read_product,
+            permutation_write_product,
             additional_base_layer_openings: BASE_LAYER_ADDITIONAL_OPENINGS,
             whir_batching_challenge: state.batching_challenge,
             whir_transcript_seed: ts.seed,

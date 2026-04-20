@@ -1173,10 +1173,6 @@ where
 
                     let mul_rp = mul(quote! { read_product }, quote! { eval });
                     let mul_wp = mul(quote! { write_product }, quote! { eval });
-                    let mul_gp = mul(
-                        quote! { read_product },
-                        quote! { grand_product_accumulator },
-                    );
                     output_checks.extend(quote! {
                         {
                             let mut read_product = #quartic_one;
@@ -1189,10 +1185,8 @@ where
                                 let eval = *evals_slice.get_unchecked(#write_off + i);
                                 #mul_wp;
                             }
-                            #mul_gp;
-                            if read_product != write_product {
-                                return Err(E::gkr_grand_product_check_failed());
-                            }
+                            permutation_read_product = read_product;
+                            permutation_write_product = write_product;
                         }
                     });
                 }
@@ -1237,7 +1231,8 @@ where
     main_body.extend(quote! {
         state.batching_challenge = draw_single_field_el(&mut ts);
 
-        let grand_product_accumulator: #quartic_struct = read_field_el::<I>();
+        let mut permutation_read_product: #quartic_struct = #quartic_one;
+        let mut permutation_write_product: #quartic_struct = #quartic_one;
 
         #output_checks
 
@@ -1246,7 +1241,8 @@ where
             base_layer_addrs: LAYER_0_SORTED_ADDRS,
             evaluation_point: state.prev_point,
             evaluation_point_len: state.prev_point_len,
-            grand_product_accumulator,
+            permutation_read_product,
+            permutation_write_product,
             additional_base_layer_openings: BASE_LAYER_ADDITIONAL_OPENINGS,
             whir_batching_challenge: state.batching_challenge,
             whir_transcript_seed: ts.seed,

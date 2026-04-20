@@ -98,6 +98,7 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
         push_whir_pow_entry(accumulator, ood_point, delinearization_challenge);
         let mut claim_correction = ood_value;
         field_ops::mul_assign(&mut claim_correction, &delinearization_challenge);
+        let mut current_delinearization_challenge = delinearization_challenge;
         let extended_generator = BabyBearField::TWO_ADICITY_GENERATORS[INITIAL_RS_DOMAIN_LOG2];
         let extended_generator_inv =
             BabyBearField::TWO_ADICITY_GENERATORS_INVERSED[INITIAL_RS_DOMAIN_LOG2];
@@ -109,6 +110,10 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
         fold_buf_b.set_len(FOLD_BUF_HALF);
         let mut q = 0;
         while q < INITIAL_NUM_QUERIES {
+            field_ops::mul_assign(
+                &mut current_delinearization_challenge,
+                &delinearization_challenge,
+            );
             let query_index = *query_indices.get(q);
             let base_root_inv = extended_generator_inv.pow(query_index as u32);
             let tree_index =
@@ -169,10 +174,10 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
             push_whir_pow_entry(
                 accumulator,
                 <BabyBearExt4>::from_base(query_point_base),
-                delinearization_challenge,
+                current_delinearization_challenge,
             );
             let mut t = folded;
-            field_ops::mul_assign(&mut t, &delinearization_challenge);
+            field_ops::mul_assign(&mut t, &current_delinearization_challenge);
             field_ops::add_assign(&mut claim_correction, &t);
             q += 1;
         }
@@ -183,9 +188,7 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
 use super::common::{
     compute_high_powers_offsets, ext_from_raw_word_slice, EXT_DEGREE, MAX_HIGH_POWERS,
 };
-use verifier_common::whir::{
-    hash_leaf_data_into_state, read_return_merkle_cap, verify_merkle_path,
-};
+use verifier_common::whir::{hash_leaf_data_into_state, verify_merkle_path};
 pub const NUM_INTERNAL_ROUNDS: usize = 3usize;
 const INTERNAL_QUERY_INDEX_BITS: [usize; NUM_INTERNAL_ROUNDS] = [18usize, 17usize, 14usize];
 const INTERNAL_NUM_COSETS: [usize; NUM_INTERNAL_ROUNDS] = [8usize, 64usize, 128usize];
@@ -227,9 +230,30 @@ pub fn verify_internal_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
             fold_whir_accumulator(accumulator, alpha, z_initial);
             round += 1;
         }
-        let intermediate_cap = read_return_merkle_cap::<I, WHIR_CAP_WORDS>();
+        const CAP_COMMIT_BUF: usize = {
+            let total = BLAKE2S_DIGEST_SIZE_U32_WORDS + WHIR_CAP_WORDS;
+            (total + BLAKE2S_BLOCK_SIZE_U32_WORDS - 1) / BLAKE2S_BLOCK_SIZE_U32_WORDS
+                * BLAKE2S_BLOCK_SIZE_U32_WORDS
+        };
+        let intermediate_cap =
+            read_commit_return_merkle_cap::<I, WHIR_CAP_WORDS, CAP_COMMIT_BUF>(ts);
         let ood_point = draw_single_field_el(ts);
-        let ood_value: BabyBearExt4 = read_field_el::<I>();
+        const OOD_DATA_WORDS: usize = EXT_DEGREE;
+        const OOD_COMMIT_BUF: usize = {
+            let total = BLAKE2S_DIGEST_SIZE_U32_WORDS + OOD_DATA_WORDS;
+            (total + BLAKE2S_BLOCK_SIZE_U32_WORDS - 1) / BLAKE2S_BLOCK_SIZE_U32_WORDS
+                * BLAKE2S_BLOCK_SIZE_U32_WORDS
+        };
+        let mut ood_buf = CommitBuf::<OOD_COMMIT_BUF>::new();
+        {
+            let mut i = 0;
+            while i < OOD_DATA_WORDS {
+                ood_buf.data_write(i, read_reduced_field_el::<I>());
+                i += 1;
+            }
+        }
+        let ood_value: BabyBearExt4 = unsafe { *ood_buf.data_as::<BabyBearExt4>(1).as_ptr() };
+        ts.commit(&mut ood_buf, OOD_DATA_WORDS);
         read_and_verify_pow::<I>(ts, WHIR_POW_BITS[round_idx]);
         let query_index_bits = INTERNAL_QUERY_INDEX_BITS[ir];
         let draw_words = INTERNAL_DRAW_WORDS[ir];
@@ -243,6 +267,7 @@ pub fn verify_internal_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
         push_whir_pow_entry(accumulator, ood_point, delinearization_challenge);
         let mut claim_correction = ood_value;
         field_ops::mul_assign(&mut claim_correction, &delinearization_challenge);
+        let mut current_delinearization_challenge = delinearization_challenge;
         let rs_domain_log2 = INTERNAL_RS_DOMAIN_LOG2[ir];
         let extended_generator = BabyBearField::TWO_ADICITY_GENERATORS[rs_domain_log2];
         let extended_generator_inv = BabyBearField::TWO_ADICITY_GENERATORS_INVERSED[rs_domain_log2];
@@ -258,6 +283,10 @@ pub fn verify_internal_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
         fold_buf_b.set_len(MAX_INTERNAL_FOLD_BUF_HALF);
         let mut q = 0;
         while q < num_queries {
+            field_ops::mul_assign(
+                &mut current_delinearization_challenge,
+                &delinearization_challenge,
+            );
             let query_index = *query_indices.get(q);
             let base_root_inv = extended_generator_inv.pow(query_index as u32);
             let tree_index =
@@ -298,10 +327,10 @@ pub fn verify_internal_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
             push_whir_pow_entry(
                 accumulator,
                 <BabyBearExt4>::from_base(query_point_base),
-                delinearization_challenge,
+                current_delinearization_challenge,
             );
             let mut t = folded;
-            field_ops::mul_assign(&mut t, &delinearization_challenge);
+            field_ops::mul_assign(&mut t, &current_delinearization_challenge);
             field_ops::add_assign(&mut claim_correction, &t);
             q += 1;
         }
@@ -348,6 +377,22 @@ pub fn verify_final_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
             z_initial.len(),
         );
         debug_assert_eq!(accumulator.pow_entries.len(), MAX_POW_ENTRIES);
+        const FINAL_MONOMIALS_DATA_WORDS: usize = FINAL_MONOMIALS_LEN * EXT_DEGREE;
+        const FINAL_MONOMIALS_COMMIT_BUF: usize = {
+            let total = BLAKE2S_DIGEST_SIZE_U32_WORDS + FINAL_MONOMIALS_DATA_WORDS;
+            (total + BLAKE2S_BLOCK_SIZE_U32_WORDS - 1) / BLAKE2S_BLOCK_SIZE_U32_WORDS
+                * BLAKE2S_BLOCK_SIZE_U32_WORDS
+        };
+        let mut monomials_buf = CommitBuf::<FINAL_MONOMIALS_COMMIT_BUF>::new();
+        {
+            let mut i = 0;
+            while i < FINAL_MONOMIALS_DATA_WORDS {
+                monomials_buf.data_write(i, read_reduced_field_el::<I>());
+                i += 1;
+            }
+        }
+        ts.commit(&mut monomials_buf, FINAL_MONOMIALS_DATA_WORDS);
+        let monomials: &[BabyBearExt4] = monomials_buf.data_as::<BabyBearExt4>(FINAL_MONOMIALS_LEN);
         read_and_verify_pow::<I>(ts, FINAL_POW_BITS);
         let query_indices = draw_query_indices::<MAX_INTERNAL_NUM_QUERIES, MAX_INTERNAL_DRAW_WORDS>(
             ts,
@@ -413,9 +458,6 @@ pub fn verify_final_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
             query_base_roots.push(base_root);
             q += 1;
         }
-        let mut monomials = LazyVec::<BabyBearExt4, FINAL_MONOMIALS_LEN>::new();
-        monomials.set_len(FINAL_MONOMIALS_LEN);
-        read_field_els::<I>(monomials.as_mut_slice());
         let mut q = 0;
         while q < FINAL_NUM_QUERIES {
             let mut query_point = *query_base_roots.get(q);

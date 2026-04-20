@@ -89,8 +89,6 @@ where
         }
     }
 
-    flatten_field_els::<F, E>(&[proof.grand_product_accumulator_computed], &mut result);
-
     let whir = &proof.whir_proof;
 
     let num_rounds = whir
@@ -173,6 +171,8 @@ where
             );
         }
 
+        flatten_field_els::<F, E>(&whir.final_monomials, &mut result);
+
         let nonce = whir.pow_nonces[final_round_idx];
         result.push(nonce as u32);
         result.push((nonce >> 32) as u32);
@@ -185,8 +185,6 @@ where
             }
         }
     }
-
-    flatten_field_els::<F, E>(&whir.final_monomials, &mut result);
 
     result
 }

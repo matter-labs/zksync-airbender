@@ -871,10 +871,10 @@ where
 
             // and add into sumcheck claim
             contributions_to_eq_poly_with_base_points
-                .push((query_point, delinearization_challenge));
+                .push((query_point, current_delinearization_challenge));
             {
                 let mut t = folded;
-                t.mul_assign(&delinearization_challenge);
+                t.mul_assign(&current_delinearization_challenge);
                 claim_correction.add_assign(&t);
             }
             current_delinearization_challenge.mul_assign(&delinearization_challenge);
@@ -1046,15 +1046,15 @@ where
                 tree_cap_size,
                 worker,
             );
-            proof
-                .intermediate_whir_oracles
-                .push(WhirIntermediateCommitmentAndQueries {
-                    commitment: WhirCommitment {
-                        cap: next_oracle.tree.get_cap(),
-                        _marker: core::marker::PhantomData,
-                    },
-                    queries: vec![],
-                });
+            let c = WhirIntermediateCommitmentAndQueries {
+                commitment: WhirCommitment {
+                    cap: next_oracle.tree.get_cap(),
+                    _marker: core::marker::PhantomData,
+                },
+                queries: vec![],
+            };
+            add_whir_commitment_to_transcript(&mut transcript_seed, &c.commitment);
+            proof.intermediate_whir_oracles.push(c);
             core::mem::replace(&mut rs_oracle, next_oracle)
         };
 
@@ -1064,6 +1064,7 @@ where
         // compute OOD value
         let ood_value =
             evaluate_monomial_form(&sumchecked_poly_monomial_form[..], &ood_point, worker);
+        commit_field_els(&mut transcript_seed, &[ood_value]);
         #[cfg(feature = "gkr_self_checks")]
         {
             let pows = make_pows(
@@ -1157,10 +1158,10 @@ where
 
             // and add into sumcheck claim
             contributions_to_eq_poly_with_base_points
-                .push((query_point, delinearization_challenge));
+                .push((query_point, current_delinearization_challenge));
             {
                 let mut t = folded;
-                t.mul_assign(&delinearization_challenge);
+                t.mul_assign(&current_delinearization_challenge);
                 claim_correction.add_assign(&t);
             }
             current_delinearization_challenge.mul_assign(&delinearization_challenge);
@@ -1291,6 +1292,9 @@ where
             let full_sum = dot_product(&sumchecked_poly_evaluation_form, &eq_poly, worker);
             assert_eq!(full_sum, claim);
         }
+
+        // commit final-round monomials before drawing queries
+        commit_field_els(&mut transcript_seed, &sumchecked_poly_monomial_form);
 
         // query
 

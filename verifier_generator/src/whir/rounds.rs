@@ -141,11 +141,15 @@ pub fn generate_whir_initial_round<MW: MersenneWrapper>(
     let coset_tree_size = params.coset_tree_size;
     let fold_buf_half = values_per_leaf / 2;
 
-    let mul_delin = MW::mul_assign(quote! { t }, quote! { delinearization_challenge });
+    let mul_delin = MW::mul_assign(quote! { t }, quote! { current_delinearization_challenge });
     let add_correction = MW::add_assign(quote! { claim_correction }, quote! { t });
     let add_claim = MW::add_assign(quote! { claim }, quote! { claim_correction });
     let mul_ood_delin = MW::mul_assign(
         quote! { claim_correction },
+        quote! { delinearization_challenge },
+    );
+    let advance_current_delin = MW::mul_assign(
+        quote! { current_delinearization_challenge },
         quote! { delinearization_challenge },
     );
     let batch_mul_eval = MW::mul_assign(quote! { term }, quote! { eval });
@@ -303,6 +307,8 @@ pub fn generate_whir_initial_round<MW: MersenneWrapper>(
                 let mut claim_correction = ood_value;
                 #mul_ood_delin;
 
+                let mut current_delinearization_challenge = delinearization_challenge;
+
                 let extended_generator = #field_struct::TWO_ADICITY_GENERATORS[INITIAL_RS_DOMAIN_LOG2];
                 let extended_generator_inv = #field_struct::TWO_ADICITY_GENERATORS_INVERSED[INITIAL_RS_DOMAIN_LOG2];
                 let mut high_powers_offsets = LazyVec::<#field_struct, MAX_HIGH_POWERS>::new();
@@ -313,6 +319,8 @@ pub fn generate_whir_initial_round<MW: MersenneWrapper>(
                 fold_buf_b.set_len(FOLD_BUF_HALF);
                 let mut q = 0;
                 while q < INITIAL_NUM_QUERIES {
+                    #advance_current_delin;
+
                     let query_index = *query_indices.get(q);
                     let base_root_inv = extended_generator_inv.pow(query_index as u32);
                     let tree_index = compute_tree_index(
@@ -337,7 +345,7 @@ pub fn generate_whir_initial_round<MW: MersenneWrapper>(
                     push_whir_pow_entry(
                         accumulator,
                         <#quartic_struct>::from_base(query_point_base),
-                        delinearization_challenge,
+                        current_delinearization_challenge,
                     );
 
                     let mut t = folded;
@@ -412,11 +420,15 @@ pub fn generate_whir_internal_rounds<MW: MersenneWrapper>(
 
     let num_ir = num_internal_rounds;
 
-    let mul_delin = MW::mul_assign(quote! { t }, quote! { delinearization_challenge });
+    let mul_delin = MW::mul_assign(quote! { t }, quote! { current_delinearization_challenge });
     let add_correction = MW::add_assign(quote! { claim_correction }, quote! { t });
     let add_claim = MW::add_assign(quote! { claim }, quote! { claim_correction });
     let mul_ood_delin = MW::mul_assign(
         quote! { claim_correction },
+        quote! { delinearization_challenge },
+    );
+    let advance_current_delin = MW::mul_assign(
+        quote! { current_delinearization_challenge },
         quote! { delinearization_challenge },
     );
 
@@ -435,7 +447,7 @@ pub fn generate_whir_internal_rounds<MW: MersenneWrapper>(
             MAX_HIGH_POWERS, EXT_DEGREE,
         };
         use ::verifier_common::whir::{
-            read_return_merkle_cap, hash_leaf_data_into_state, verify_merkle_path,
+            hash_leaf_data_into_state, verify_merkle_path,
         };
 
         pub const NUM_INTERNAL_ROUNDS: usize = #num_ir;
@@ -491,11 +503,36 @@ pub fn generate_whir_internal_rounds<MW: MersenneWrapper>(
                     round += 1;
                 }
 
+                const CAP_COMMIT_BUF: usize = {
+                    let total = BLAKE2S_DIGEST_SIZE_U32_WORDS + WHIR_CAP_WORDS;
+                    (total + BLAKE2S_BLOCK_SIZE_U32_WORDS - 1)
+                        / BLAKE2S_BLOCK_SIZE_U32_WORDS
+                        * BLAKE2S_BLOCK_SIZE_U32_WORDS
+                };
                 let intermediate_cap =
-                    read_return_merkle_cap::<I, WHIR_CAP_WORDS>();
+                    read_commit_return_merkle_cap::<I, WHIR_CAP_WORDS, CAP_COMMIT_BUF>(ts);
 
                 let ood_point = draw_single_field_el(ts);
-                let ood_value: #quartic_struct = read_field_el::<I>();
+
+                const OOD_DATA_WORDS: usize = EXT_DEGREE;
+                const OOD_COMMIT_BUF: usize = {
+                    let total = BLAKE2S_DIGEST_SIZE_U32_WORDS + OOD_DATA_WORDS;
+                    (total + BLAKE2S_BLOCK_SIZE_U32_WORDS - 1)
+                        / BLAKE2S_BLOCK_SIZE_U32_WORDS
+                        * BLAKE2S_BLOCK_SIZE_U32_WORDS
+                };
+                let mut ood_buf = CommitBuf::<OOD_COMMIT_BUF>::new();
+                {
+                    let mut i = 0;
+                    while i < OOD_DATA_WORDS {
+                        ood_buf.data_write(i, read_reduced_field_el::<I>());
+                        i += 1;
+                    }
+                }
+                let ood_value: #quartic_struct = unsafe {
+                    *ood_buf.data_as::<#quartic_struct>(1).as_ptr()
+                };
+                ts.commit(&mut ood_buf, OOD_DATA_WORDS);
 
                 read_and_verify_pow::<I>(ts, WHIR_POW_BITS[round_idx]);
                 let query_index_bits = INTERNAL_QUERY_INDEX_BITS[ir];
@@ -511,6 +548,8 @@ pub fn generate_whir_internal_rounds<MW: MersenneWrapper>(
 
                 let mut claim_correction = ood_value;
                 #mul_ood_delin;
+
+                let mut current_delinearization_challenge = delinearization_challenge;
 
                 let rs_domain_log2 = INTERNAL_RS_DOMAIN_LOG2[ir];
                 let extended_generator = #field_struct::TWO_ADICITY_GENERATORS[rs_domain_log2];
@@ -529,6 +568,8 @@ pub fn generate_whir_internal_rounds<MW: MersenneWrapper>(
                 fold_buf_b.set_len(MAX_INTERNAL_FOLD_BUF_HALF);
                 let mut q = 0;
                 while q < num_queries {
+                    #advance_current_delin;
+
                     let query_index = *query_indices.get(q);
                     let base_root_inv = extended_generator_inv.pow(query_index as u32);
                     let tree_index = compute_tree_index(
@@ -542,7 +583,7 @@ pub fn generate_whir_internal_rounds<MW: MersenneWrapper>(
                     push_whir_pow_entry(
                         accumulator,
                         <#quartic_struct>::from_base(query_point_base),
-                        delinearization_challenge,
+                        current_delinearization_challenge,
                     );
 
                     let mut t = folded;
@@ -651,6 +692,24 @@ pub fn generate_whir_final_round<MW: MersenneWrapper>(
                 );
                 debug_assert_eq!(accumulator.pow_entries.len(), MAX_POW_ENTRIES);
 
+                const FINAL_MONOMIALS_DATA_WORDS: usize = FINAL_MONOMIALS_LEN * EXT_DEGREE;
+                const FINAL_MONOMIALS_COMMIT_BUF: usize = {
+                    let total = BLAKE2S_DIGEST_SIZE_U32_WORDS + FINAL_MONOMIALS_DATA_WORDS;
+                    (total + BLAKE2S_BLOCK_SIZE_U32_WORDS - 1)
+                        / BLAKE2S_BLOCK_SIZE_U32_WORDS
+                        * BLAKE2S_BLOCK_SIZE_U32_WORDS
+                };
+                let mut monomials_buf = CommitBuf::<FINAL_MONOMIALS_COMMIT_BUF>::new();
+                {
+                    let mut i = 0;
+                    while i < FINAL_MONOMIALS_DATA_WORDS {
+                        monomials_buf.data_write(i, read_reduced_field_el::<I>());
+                        i += 1;
+                    }
+                }
+                ts.commit(&mut monomials_buf, FINAL_MONOMIALS_DATA_WORDS);
+                let monomials: &[#quartic_struct] = monomials_buf.data_as::<#quartic_struct>(FINAL_MONOMIALS_LEN);
+
                 read_and_verify_pow::<I>(ts, FINAL_POW_BITS);
                 let query_indices =
                     draw_query_indices::<MAX_INTERNAL_NUM_QUERIES, MAX_INTERNAL_DRAW_WORDS>(
@@ -691,9 +750,6 @@ pub fn generate_whir_final_round<MW: MersenneWrapper>(
                     q += 1;
                 }
 
-                let mut monomials = LazyVec::<#quartic_struct, FINAL_MONOMIALS_LEN>::new();
-                monomials.set_len(FINAL_MONOMIALS_LEN);
-                read_field_els::<I>(monomials.as_mut_slice());
 
                 let mut q = 0;
                 while q < FINAL_NUM_QUERIES {

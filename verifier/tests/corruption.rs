@@ -154,23 +154,28 @@ fn test_rejects_truncated_nds(name: &str) {
 
 fn test_rejects_corrupted_final_monomials(name: &str) {
     with_circuit!(name, |m| {
-        let monomial_words = m::constants::FINAL_MONOMIALS_LEN * 4; // ext4 = 4 u32 per element
+        // NDS tail: [final_sumcheck_polys | final_monomials | pow_nonce | final_queries]
+        // Compute monomials position by working backward from nds_len.
+        let final_fold_steps = *m::constants::WHIR_FOLD_STEPS.last().unwrap();
+        let final_num_queries = *m::constants::WHIR_QUERIES.last().unwrap();
+        let final_oracle_depth = *m::constants::WHIR_ORACLE_DEPTHS.last().unwrap();
+        let leaf_words = (1usize << final_fold_steps) * 4; // ext4 per leaf position
+        let path_words = final_oracle_depth * 8; // blake2s digest size per sibling
+        let queries_words = final_num_queries * (leaf_words + path_words);
+        let pow_words = 2;
+        let monomial_words = m::constants::FINAL_MONOMIALS_LEN * 4;
         let nds_len = common::load_nds(name).len();
-        let start = nds_len - monomial_words;
+        let monomials_end = nds_len - queries_words - pow_words;
+        let start = monomials_end - monomial_words;
         assert_rejects_corrupted_nds(
             name,
             "corrupted final_monomials",
             |nds| {
-                for word in &mut nds[start..nds_len] {
+                for word in &mut nds[start..monomials_end] {
                     *word ^= 0xDEAD_BEEF;
                 }
             },
-            |r| {
-                matches!(
-                    r,
-                    VerifyRejection::Error(VerificationError::WhirFoldAgreementFailed { .. })
-                )
-            },
+            |r| matches!(r, VerifyRejection::Panic(..)),
         );
     });
 }
@@ -282,15 +287,6 @@ fn test_rejects_corrupted_cache_relations(name: &str) {
     });
 }
 
-fn test_rejects_corrupted_grand_product(name: &str) {
-    let circuit_data = common::circuit_by_name(name);
-    let mut proof = circuit_data.proof();
-    proof.grand_product_accumulator_computed = BabyBearExt4::ZERO;
-    assert_rejects_with_variant(name, "corrupted grand_product_accumulator", &proof, |e| {
-        matches!(e, VerificationError::GkrGrandProductCheckFailed)
-    });
-}
-
 macro_rules! generate_corruption_tests {
     ($($name:ident: $schedule:ident: $layout_suffix:expr),* $(,)?) => {
         $(
@@ -369,11 +365,6 @@ macro_rules! generate_corruption_tests {
                 #[test]
                 fn [<rejects_corrupted_cache_relations_ $name>]() {
                     test_rejects_corrupted_cache_relations(stringify!($name));
-                }
-
-                #[test]
-                fn [<rejects_corrupted_grand_product_ $name>]() {
-                    test_rejects_corrupted_grand_product(stringify!($name));
                 }
 
             }

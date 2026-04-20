@@ -53,7 +53,7 @@ const RAM_BOUND_BYTES: usize = 1 << 30;
 const RAM_BOUND_WORDS: usize = RAM_BOUND_BYTES / core::mem::size_of::<u32>();
 
 const CHECK_MEMORY_PERMUTATION_ONLY: bool = false;
-const PROVE_EMPTY: bool = false;
+const PROVE_EMPTY: bool = true;
 
 const PROVE_ADD_SUB: bool = true;
 const PROVE_JUMP_BRANCH: bool = true;
