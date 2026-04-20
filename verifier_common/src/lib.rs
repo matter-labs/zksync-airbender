@@ -1,6 +1,5 @@
 #![cfg_attr(not(any(test, feature = "replace_csr")), no_std)]
 #![feature(allocator_api)]
-#![feature(slice_from_ptr_range)]
 #![allow(incomplete_features)]
 #![feature(generic_const_exprs)]
 

@@ -1502,7 +1502,7 @@ pub(crate) mod test {
 
     use super::*;
     use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
-    use riscv_transpiler::cycle::IMStandardIsaConfigWithUnsignedMulDiv;
+    use riscv_transpiler::cycle::IMStandardIsaConfigUnsignedMulDivOnly;
     use std::alloc::Global;
     use std::path::Path;
 
@@ -1625,11 +1625,7 @@ pub(crate) mod test {
             register_final_state,
             (final_pc, final_timestamp),
             pow_challenge,
-        ) = prove_unrolled_execution_with_replayer::<
-            IMStandardIsaConfigWithUnsignedMulDiv,
-            Global,
-            { common_constants::rom::ROM_SECOND_WORD_BITS },
-        >(
+        ) = prove_unrolled_execution_with_replayer::<IMStandardIsaConfigUnsignedMulDivOnly, Global>(
             1 << 24,
             &binary_image,
             &text_section,

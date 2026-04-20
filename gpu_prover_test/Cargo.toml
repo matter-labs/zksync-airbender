@@ -24,6 +24,6 @@ serde_json = "1.0"
 [features]
 security_80 = ["execution_utils/security_80"]
 security_100 = ["execution_utils/security_100"]
-verifier_80 = ["execution_utils/verifier_80"]
-verifier_100 = ["execution_utils/verifier_100"]
+# verifier_80 = ["execution_utils/verifier_80"]
+# verifier_100 = ["execution_utils/verifier_100"]
 default = ["security_80"]
