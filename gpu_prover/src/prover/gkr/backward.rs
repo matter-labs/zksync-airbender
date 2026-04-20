@@ -1514,9 +1514,8 @@ struct PreparedDimensionReducingKernelStaticData<B, E: Copy> {
 }
 
 fn build_dimension_reducing_round0_batch_template<B, E: Field>(
-    folding_steps: usize,
+    _folding_steps: usize,
     static_data: &[PreparedDimensionReducingKernelStaticData<B, E>],
-    spill_builder: &mut SpillPayloadBuilder,
 ) -> GpuGKRDimensionReducingRound0Batch<E> {
     let mut batch = GpuGKRDimensionReducingRound0Batch::default();
     batch.record_count = static_data.len() as u32;
@@ -1525,34 +1524,16 @@ fn build_dimension_reducing_round0_batch_template<B, E: Field>(
     for (idx, kernel) in static_data.iter().enumerate() {
         debug_assert!(kernel.round0_descriptors.base_field_inputs.is_empty());
         debug_assert!(kernel.round0_descriptors.base_field_outputs.is_empty());
-        let mark = inline_builder.mark();
-        let inline_ext_inputs =
-            inline_builder.try_push_copy(&kernel.round0_descriptors.extension_field_inputs);
-        let inline_ext_outputs =
-            inline_builder.try_push_copy(&kernel.round0_descriptors.extension_field_outputs);
-        let (record_mode, extension_inputs, extension_outputs) =
-            if let (Some(extension_inputs), Some(extension_outputs)) =
-                (inline_ext_inputs, inline_ext_outputs)
-            {
-                (
-                    GpuGKRDimensionReducingBatchRecordMode::InlineDescriptors,
-                    extension_inputs,
-                    extension_outputs,
-                )
-            } else {
-                inline_builder.restore(mark);
-                (
-                    GpuGKRDimensionReducingBatchRecordMode::PointerDescriptors,
-                    spill_builder.push_copy(&kernel.round0_descriptors.extension_field_inputs),
-                    spill_builder.push_copy(&kernel.round0_descriptors.extension_field_outputs),
-                )
-            };
+        let extension_inputs = inline_builder
+            .try_push_copy(&kernel.round0_descriptors.extension_field_inputs)
+            .expect("dim-reducing round 0 descriptors exceed MAX_INLINE_ROUND_BATCH_BYTES");
+        let extension_outputs = inline_builder
+            .try_push_copy(&kernel.round0_descriptors.extension_field_outputs)
+            .expect("dim-reducing round 0 descriptors exceed MAX_INLINE_ROUND_BATCH_BYTES");
 
         batch.records[idx] = GpuGKRDimensionReducingRound0BatchRecord {
             kind: kernel.kind.as_u32(),
-            record_mode: record_mode.as_u32(),
             _reserved0: 0,
-            _reserved1: 0,
             extension_inputs,
             extension_outputs,
             batch_challenge_offset: kernel.batch_challenge_offset as u32,
@@ -1565,9 +1546,8 @@ fn build_dimension_reducing_round0_batch_template<B, E: Field>(
 }
 
 fn build_dimension_reducing_round1_batch_template<B, E: Field>(
-    folding_steps: usize,
+    _folding_steps: usize,
     static_data: &[PreparedDimensionReducingKernelStaticData<B, E>],
-    spill_builder: &mut SpillPayloadBuilder,
 ) -> GpuGKRDimensionReducingRound1Batch<E> {
     let mut batch = GpuGKRDimensionReducingRound1Batch::default();
     batch.record_count = static_data.len() as u32;
@@ -1575,27 +1555,13 @@ fn build_dimension_reducing_round1_batch_template<B, E: Field>(
 
     for (idx, kernel) in static_data.iter().enumerate() {
         debug_assert!(kernel.round1_descriptors.base_field_inputs.is_empty());
-        let mark = inline_builder.mark();
-        let inline_ext_inputs =
-            inline_builder.try_push_copy(&kernel.round1_descriptors.extension_field_inputs);
-        let (record_mode, extension_inputs) = if let Some(extension_inputs) = inline_ext_inputs {
-            (
-                GpuGKRDimensionReducingBatchRecordMode::InlineDescriptors,
-                extension_inputs,
-            )
-        } else {
-            inline_builder.restore(mark);
-            (
-                GpuGKRDimensionReducingBatchRecordMode::PointerDescriptors,
-                spill_builder.push_copy(&kernel.round1_descriptors.extension_field_inputs),
-            )
-        };
+        let extension_inputs = inline_builder
+            .try_push_copy(&kernel.round1_descriptors.extension_field_inputs)
+            .expect("dim-reducing round 1 descriptors exceed MAX_INLINE_ROUND_BATCH_BYTES");
 
         batch.records[idx] = GpuGKRDimensionReducingContinuationBatchRecord {
             kind: kernel.kind.as_u32(),
-            record_mode: record_mode.as_u32(),
             _reserved0: 0,
-            _reserved1: 0,
             extension_inputs,
             batch_challenge_offset: kernel.batch_challenge_offset as u32,
             batch_challenge_count: kernel.batch_challenge_count as u32,
@@ -1607,9 +1573,8 @@ fn build_dimension_reducing_round1_batch_template<B, E: Field>(
 }
 
 fn build_dimension_reducing_round2_batch_template<B, E: Field>(
-    folding_steps: usize,
+    _folding_steps: usize,
     static_data: &[PreparedDimensionReducingKernelStaticData<B, E>],
-    spill_builder: &mut SpillPayloadBuilder,
 ) -> GpuGKRDimensionReducingRound2Batch<E> {
     let mut batch = GpuGKRDimensionReducingRound2Batch::default();
     batch.record_count = static_data.len() as u32;
@@ -1621,26 +1586,13 @@ fn build_dimension_reducing_round2_batch_template<B, E: Field>(
             .as_ref()
             .expect("round 2 descriptors must be present when round 2 template is built");
         debug_assert!(descriptors.base_field_inputs.is_empty());
-        let mark = inline_builder.mark();
-        let inline_ext_inputs = inline_builder.try_push_copy(&descriptors.extension_field_inputs);
-        let (record_mode, extension_inputs) = if let Some(extension_inputs) = inline_ext_inputs {
-            (
-                GpuGKRDimensionReducingBatchRecordMode::InlineDescriptors,
-                extension_inputs,
-            )
-        } else {
-            inline_builder.restore(mark);
-            (
-                GpuGKRDimensionReducingBatchRecordMode::PointerDescriptors,
-                spill_builder.push_copy(&descriptors.extension_field_inputs),
-            )
-        };
+        let extension_inputs = inline_builder
+            .try_push_copy(&descriptors.extension_field_inputs)
+            .expect("dim-reducing round 2 descriptors exceed MAX_INLINE_ROUND_BATCH_BYTES");
 
         batch.records[idx] = GpuGKRDimensionReducingContinuationBatchRecord {
             kind: kernel.kind.as_u32(),
-            record_mode: record_mode.as_u32(),
             _reserved0: 0,
-            _reserved1: 0,
             extension_inputs,
             batch_challenge_offset: kernel.batch_challenge_offset as u32,
             batch_challenge_count: kernel.batch_challenge_count as u32,
@@ -1654,7 +1606,6 @@ fn build_dimension_reducing_round2_batch_template<B, E: Field>(
 fn build_dimension_reducing_round3_batch_templates<B, E: Field>(
     folding_steps: usize,
     static_data: &[PreparedDimensionReducingKernelStaticData<B, E>],
-    spill_builder: &mut SpillPayloadBuilder,
 ) -> Vec<GpuGKRDimensionReducingRound3BatchTemplate<E>> {
     let mut result = Vec::with_capacity(folding_steps.saturating_sub(3));
     for step in 3..folding_steps {
@@ -1671,28 +1622,13 @@ fn build_dimension_reducing_round3_batch_templates<B, E: Field>(
                     panic!("missing dimension-reducing round 3 descriptors for step {step}")
                 });
             debug_assert!(descriptors.descriptors.base_field_inputs.is_empty());
-            let mark = inline_builder.mark();
-            let inline_ext_inputs =
-                inline_builder.try_push_copy(&descriptors.descriptors.extension_field_inputs);
-            let (record_mode, extension_inputs) = if let Some(extension_inputs) = inline_ext_inputs
-            {
-                (
-                    GpuGKRDimensionReducingBatchRecordMode::InlineDescriptors,
-                    extension_inputs,
-                )
-            } else {
-                inline_builder.restore(mark);
-                (
-                    GpuGKRDimensionReducingBatchRecordMode::PointerDescriptors,
-                    spill_builder.push_copy(&descriptors.descriptors.extension_field_inputs),
-                )
-            };
+            let extension_inputs = inline_builder
+                .try_push_copy(&descriptors.descriptors.extension_field_inputs)
+                .expect("dim-reducing round 3 descriptors exceed MAX_INLINE_ROUND_BATCH_BYTES");
 
             batch.records[idx] = GpuGKRDimensionReducingContinuationBatchRecord {
                 kind: kernel.kind.as_u32(),
-                record_mode: record_mode.as_u32(),
                 _reserved0: 0,
-                _reserved1: 0,
                 extension_inputs,
                 batch_challenge_offset: kernel.batch_challenge_offset as u32,
                 batch_challenge_count: kernel.batch_challenge_count as u32,
@@ -1713,32 +1649,13 @@ fn build_dimension_reducing_batch_templates<B, E: Field>(
     GpuGKRDimensionReducingRound1Batch<E>,
     Option<GpuGKRDimensionReducingRound2Batch<E>>,
     Vec<GpuGKRDimensionReducingRound3BatchTemplate<E>>,
-    Vec<u8>,
 ) {
-    let mut spill_builder = SpillPayloadBuilder::default();
-    let round0 = build_dimension_reducing_round0_batch_template(
-        folding_steps,
-        static_data,
-        &mut spill_builder,
-    );
-    let round1 = build_dimension_reducing_round1_batch_template(
-        folding_steps,
-        static_data,
-        &mut spill_builder,
-    );
-    let round2 = (folding_steps >= 3).then(|| {
-        build_dimension_reducing_round2_batch_template(
-            folding_steps,
-            static_data,
-            &mut spill_builder,
-        )
-    });
-    let round3 = build_dimension_reducing_round3_batch_templates(
-        folding_steps,
-        static_data,
-        &mut spill_builder,
-    );
-    (round0, round1, round2, round3, spill_builder.bytes)
+    let round0 = build_dimension_reducing_round0_batch_template(folding_steps, static_data);
+    let round1 = build_dimension_reducing_round1_batch_template(folding_steps, static_data);
+    let round2 = (folding_steps >= 3)
+        .then(|| build_dimension_reducing_round2_batch_template(folding_steps, static_data));
+    let round3 = build_dimension_reducing_round3_batch_templates(folding_steps, static_data);
+    (round0, round1, round2, round3)
 }
 
 fn resolve_main_layer_auxiliary_challenge<E: Copy>(
@@ -1809,45 +1726,6 @@ struct PreparedMainLayerKernelStaticData<E: Copy> {
     round1_descriptors: GpuSumcheckRound1HostLaunchDescriptors<BF, E>,
     round2_descriptors: GpuSumcheckRound2HostLaunchDescriptors<BF, E>,
     round3_descriptors: Vec<GpuGKRMainLayerRound3HostDescriptors<E>>,
-}
-
-fn pack_metadata_block<E: Field>(
-    metadata: Option<&GpuGKRMainLayerConstraintHostMetadata<E>>,
-    inline_builder: &mut InlinePayloadBuilder,
-    spill_builder: &mut SpillPayloadBuilder,
-) -> (
-    bool,
-    GpuGKRMainLayerPayloadRange,
-    GpuGKRMainLayerPayloadRange,
-    E,
-) {
-    let Some(metadata) = metadata else {
-        return (
-            true,
-            GpuGKRMainLayerPayloadRange::default(),
-            GpuGKRMainLayerPayloadRange::default(),
-            E::ZERO,
-        );
-    };
-
-    let mark = inline_builder.mark();
-    let inline_quadratic = inline_builder.try_push_copy(&metadata.quadratic_terms);
-    let inline_linear = inline_builder.try_push_copy(&metadata.linear_terms);
-    if let (Some(quadratic_terms), Some(linear_terms)) = (inline_quadratic, inline_linear) {
-        return (
-            true,
-            quadratic_terms,
-            linear_terms,
-            metadata.constant_offset,
-        );
-    }
-    inline_builder.restore(mark);
-    (
-        false,
-        spill_builder.push_copy(&metadata.quadratic_terms),
-        spill_builder.push_copy(&metadata.linear_terms),
-        metadata.constant_offset,
-    )
 }
 
 fn build_main_layer_kernel_blueprints<E: Field + FieldExtension<BF>>(
@@ -3351,7 +3229,6 @@ impl<B: 'static, E: Field + Reduce> GpuGKRDimensionReducingBackwardState<B, E> {
             round1_batch_template,
             round2_batch_template,
             round3_batch_templates,
-            static_spill_bytes,
         ) = build_dimension_reducing_batch_templates(folding_steps, &static_data);
 
         let max_acc_size = trace_len_after_reduction / 2;
@@ -3391,7 +3268,6 @@ impl<B: 'static, E: Field + Reduce> GpuGKRDimensionReducingBackwardState<B, E> {
             round1_batch_template,
             round2_batch_template,
             round3_batch_templates,
-            static_spill_bytes,
             round_scratch,
         })
     }
@@ -3612,10 +3488,6 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
             });
         }
 
-        // Spill bytes are no longer needed (batched kernels removed); keep the
-        // field to avoid churn in keepalive structures.
-        let static_spill_bytes = Vec::new();
-
         // Build the flat round 0 plan from gate structure + constraint sources.
         // Works for both deferred (production) and immediate (test) paths.
         let flat_round0_template = {
@@ -3805,7 +3677,6 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
             flat_round2_desc,
             flat_round2_unified_desc,
             flat_continuation_unified_descs,
-            static_spill_bytes,
             round_scratch,
             recipe_upload_callbacks: recipe_callbacks,
         })
@@ -4822,16 +4693,12 @@ where
     fn launch_round0_kernels(
         &mut self,
         acc_size: usize,
-        static_spill_upload: Option<&ScheduledUpload<u8>>,
         context: &ProverContext,
     ) -> CudaResult<()> {
         let mut batch = self.round0_batch_template;
         batch.eq_values = self.round_scratch.eq_values.as_ptr();
         batch.batch_challenge_base = self.batch_challenge_base_ptr();
         batch.contributions = self.round_scratch.accumulator.as_mut_ptr();
-        batch.spill_payload = static_spill_upload
-            .map(|upload| upload.device.as_ptr())
-            .unwrap_or(null());
         launch_dim_reducing_round0_batched(&batch, acc_size, context)
     }
 
@@ -4840,7 +4707,6 @@ where
         folding_challenge: &ScheduledChallengeBuffer<E>,
         acc_size: usize,
         explicit_form: bool,
-        static_spill_upload: Option<&ScheduledUpload<u8>>,
         context: &ProverContext,
     ) -> CudaResult<()> {
         let mut batch = self.round1_batch_template;
@@ -4848,9 +4714,6 @@ where
         batch.batch_challenge_base = self.batch_challenge_base_ptr();
         batch.folding_challenge = folding_challenge.as_ptr();
         batch.contributions = self.round_scratch.accumulator.as_mut_ptr();
-        batch.spill_payload = static_spill_upload
-            .map(|upload| upload.device.as_ptr())
-            .unwrap_or(null());
         batch.explicit_form = explicit_form;
         launch_dim_reducing_round1_batched(&batch, acc_size, context)
     }
@@ -4860,7 +4723,6 @@ where
         folding_challenge: &ScheduledChallengeBuffer<E>,
         acc_size: usize,
         explicit_form: bool,
-        static_spill_upload: Option<&ScheduledUpload<u8>>,
         context: &ProverContext,
     ) -> CudaResult<()> {
         let mut batch = self
@@ -4870,9 +4732,6 @@ where
         batch.batch_challenge_base = self.batch_challenge_base_ptr();
         batch.folding_challenge = folding_challenge.as_ptr();
         batch.contributions = self.round_scratch.accumulator.as_mut_ptr();
-        batch.spill_payload = static_spill_upload
-            .map(|upload| upload.device.as_ptr())
-            .unwrap_or(null());
         batch.explicit_form = explicit_form;
         launch_dim_reducing_round2_batched(&batch, acc_size, context)
     }
@@ -4883,7 +4742,6 @@ where
         folding_challenge: &ScheduledChallengeBuffer<E>,
         acc_size: usize,
         explicit_form: bool,
-        static_spill_upload: Option<&ScheduledUpload<u8>>,
         context: &ProverContext,
     ) -> CudaResult<()> {
         let mut batch = self
@@ -4898,9 +4756,6 @@ where
         batch.batch_challenge_base = self.batch_challenge_base_ptr();
         batch.folding_challenge = folding_challenge.as_ptr();
         batch.contributions = self.round_scratch.accumulator.as_mut_ptr();
-        batch.spill_payload = static_spill_upload
-            .map(|upload| upload.device.as_ptr())
-            .unwrap_or(null());
         batch.explicit_form = explicit_form;
         launch_dim_reducing_round3_batched(&batch, acc_size, context)
     }
@@ -5086,7 +4941,6 @@ where
         }
 
         let last_step = self.folding_steps - 1;
-        let static_spill_upload = schedule_static_spill_upload(context, &self.static_spill_bytes)?;
         let mut round_challenge_buffers = Vec::with_capacity(last_step);
         let mut round_challenge_storage = if last_step == 0 {
             None
@@ -5129,21 +4983,19 @@ where
         for step in 0..last_step {
             let acc_size = 1usize << (self.folding_steps - step - 1);
             if step == 0 {
-                self.launch_round0_kernels(acc_size, static_spill_upload.as_ref(), context)?;
+                self.launch_round0_kernels(acc_size, context)?;
             } else {
                 match step {
                     1 => self.launch_round1_kernels(
                         &round_challenge_buffers[step - 1],
                         acc_size,
                         false,
-                        static_spill_upload.as_ref(),
                         context,
                     )?,
                     2 => self.launch_round2_kernels(
                         &round_challenge_buffers[step - 1],
                         acc_size,
                         false,
-                        static_spill_upload.as_ref(),
                         context,
                     )?,
                     _ => self.launch_round3_kernels(
@@ -5151,7 +5003,6 @@ where
                         &round_challenge_buffers[step - 1],
                         acc_size,
                         false,
-                        static_spill_upload.as_ref(),
                         context,
                     )?,
                 }
@@ -5231,14 +5082,12 @@ where
                 &round_challenge_buffers[last_step - 1],
                 1,
                 true,
-                static_spill_upload.as_ref(),
                 context,
             )?,
             2 => self.launch_round2_kernels(
                 &round_challenge_buffers[last_step - 1],
                 1,
                 true,
-                static_spill_upload.as_ref(),
                 context,
             )?,
             step => self.launch_round3_kernels(
@@ -5246,7 +5095,6 @@ where
                 &round_challenge_buffers[last_step - 1],
                 1,
                 true,
-                static_spill_upload.as_ref(),
                 context,
             )?,
         }
@@ -5315,7 +5163,7 @@ where
         Ok(GpuGKRDimensionReducingScheduledLayerExecution {
             tracing_ranges: Vec::new(),
             start_callbacks,
-            static_spill_upload,
+            combined_claim_desc_upload: None,
             round_challenge_storage,
             round_challenge_buffers,
             reduction_states,
@@ -5359,13 +5207,10 @@ where
         } else {
             None
         };
-        // Compute the per-layer combined_claim descriptor and piggyback its
-        // byte representation onto the tail of the `static_spill_bytes` blob
-        // so ONE `schedule_static_spill_upload` call (one callback + one
-        // H2D) feeds both the per-round kernels (via `spill_payload`) and
-        // `build_combined_claim` (via a `DeviceSlice<u32>` view of the
-        // descriptor region). Replaces the former dedicated `start_callbacks`
-        // fill + separate descriptor host+device alloc + H2D.
+        // Compute the per-layer combined_claim `(exp, claim_idx)` descriptor
+        // consumed by `build_combined_claim` and upload it to a small pinned-
+        // staged device buffer. Static per layer (function of the compiled
+        // circuit's kernel plans + the incoming address layout).
         let mut desc_pairs: Vec<u32> = Vec::with_capacity(
             self.kernel_plans
                 .iter()
@@ -5378,23 +5223,8 @@ where
                 desc_pairs.push(claim_layout.claim_idx(output));
             }
         }
-        let desc_byte_len = desc_pairs.len() * 4;
-        let spill_bytes = self.static_spill_bytes.as_slice();
-        // Pad the spill region to u32 alignment so the descriptor region can
-        // be safely transmuted back as `DeviceSlice<u32>`.
-        let desc_byte_offset = (spill_bytes.len() + 3) & !3;
-        let mut fused_bytes: Vec<u8> = Vec::with_capacity(desc_byte_offset + desc_byte_len);
-        fused_bytes.extend_from_slice(spill_bytes);
-        fused_bytes.resize(desc_byte_offset, 0u8);
-        if desc_byte_len > 0 {
-            // SAFETY: u32 is `Copy` with no padding bytes; the byte view
-            // aliases `desc_pairs` only for the enclosing `extend_from_slice`
-            // copy, which takes ownership of the bytes into `fused_bytes`.
-            fused_bytes.extend_from_slice(unsafe {
-                std::slice::from_raw_parts(desc_pairs.as_ptr() as *const u8, desc_byte_len)
-            });
-        }
-        let static_spill_upload = schedule_static_spill_upload(context, &fused_bytes)?;
+        let desc_len = desc_pairs.len();
+        let combined_claim_desc_upload = schedule_combined_claim_desc_upload(context, desc_pairs)?;
         let mut shared_state = Box::new(ScheduledDimensionReducingLayerExecutionState {
             seed: Seed::default(),
             claim: E::ZERO,
@@ -5470,24 +5300,10 @@ where
                 unsafe { device_claim[..].transmute_mut::<E4>() };
             let eq_out_e4: &mut era_cudart::slice::DeviceSlice<E4> =
                 unsafe { device_eq_prefactor[..].transmute_mut::<E4>() };
-            // Slice the descriptor region out of the fused spill+desc
-            // upload. SAFETY: `desc_byte_offset` is u32-aligned by
-            // construction; `desc_byte_len` is a multiple of 4; the device
-            // allocation is pool-backed and aligned well beyond u32. The
-            // fused upload is `Some` whenever either spill or descriptor is
-            // non-empty, and any real backward layer has at least one
-            // output claim term.
-            let fused_upload = static_spill_upload
-                .as_ref()
-                .expect("fused spill+descriptor upload must be non-empty");
-            let desc_device_slice: &era_cudart::slice::DeviceSlice<u32> = unsafe {
-                fused_upload.device[desc_byte_offset..desc_byte_offset + desc_byte_len]
-                    .transmute::<u32>()
-            };
             crate::ops::blake2s::build_combined_claim(
                 claims_e4,
                 batching_e4,
-                desc_device_slice,
+                &combined_claim_desc_upload.device[..desc_len],
                 claim_out_e4,
                 eq_out_e4,
                 stream,
@@ -5507,21 +5323,19 @@ where
         for step in 0..last_step {
             let acc_size = 1usize << (self.folding_steps - step - 1);
             if step == 0 {
-                self.launch_round0_kernels(acc_size, static_spill_upload.as_ref(), context)?;
+                self.launch_round0_kernels(acc_size, context)?;
             } else {
                 match step {
                     1 => self.launch_round1_kernels(
                         &round_challenge_buffers[step - 1],
                         acc_size,
                         false,
-                        static_spill_upload.as_ref(),
                         context,
                     )?,
                     2 => self.launch_round2_kernels(
                         &round_challenge_buffers[step - 1],
                         acc_size,
                         false,
-                        static_spill_upload.as_ref(),
                         context,
                     )?,
                     _ => self.launch_round3_kernels(
@@ -5529,7 +5343,6 @@ where
                         &round_challenge_buffers[step - 1],
                         acc_size,
                         false,
-                        static_spill_upload.as_ref(),
                         context,
                     )?,
                 }
@@ -5584,14 +5397,12 @@ where
                 &round_challenge_buffers[last_step - 1],
                 1,
                 true,
-                static_spill_upload.as_ref(),
                 context,
             )?,
             2 => self.launch_round2_kernels(
                 &round_challenge_buffers[last_step - 1],
                 1,
                 true,
-                static_spill_upload.as_ref(),
                 context,
             )?,
             step => self.launch_round3_kernels(
@@ -5599,7 +5410,6 @@ where
                 &round_challenge_buffers[last_step - 1],
                 1,
                 true,
-                static_spill_upload.as_ref(),
                 context,
             )?,
         }
@@ -5908,7 +5718,7 @@ where
         Ok(GpuGKRDimensionReducingScheduledLayerExecution {
             tracing_ranges,
             start_callbacks: Callbacks::new(),
-            static_spill_upload,
+            combined_claim_desc_upload: Some(combined_claim_desc_upload),
             round_challenge_storage,
             round_challenge_buffers,
             reduction_states,
@@ -5931,7 +5741,7 @@ impl<B, E: FieldExtension<BF> + Field> GpuGKRDimensionReducingScheduledLayerExec
         let Self {
             tracing_ranges,
             start_callbacks,
-            static_spill_upload,
+            combined_claim_desc_upload,
             round_challenge_storage,
             round_challenge_buffers: _,
             reduction_states,
@@ -5946,7 +5756,7 @@ impl<B, E: FieldExtension<BF> + Field> GpuGKRDimensionReducingScheduledLayerExec
         GpuGKRDimensionReducingHostKeepalive {
             tracing_ranges,
             start_callbacks,
-            static_spill_upload: static_spill_upload.map(upload_into_host_keepalive),
+            combined_claim_desc_upload: combined_claim_desc_upload.map(upload_into_host_keepalive),
             round_challenge_storage: round_challenge_storage
                 .map(challenge_storage_into_host_keepalive),
             reduction_states,
@@ -6568,7 +6378,6 @@ where
 
         let last_step = self.folding_steps - 1;
         assert!(last_step >= 3);
-        let static_spill_upload = schedule_static_spill_upload(context, &self.static_spill_bytes)?;
         let mut round_challenge_buffers = Vec::with_capacity(last_step);
         let round_challenge_len = (1..=last_step)
             .map(main_layer_round_challenge_len)
@@ -6821,7 +6630,7 @@ where
         Ok(GpuGKRMainLayerScheduledLayerExecution {
             tracing_ranges: Vec::new(),
             start_callbacks,
-            static_spill_upload,
+            combined_claim_desc_upload: None,
             batch_challenge_storage,
             batch_challenge_buffer,
             round_challenge_storage,
@@ -6864,13 +6673,9 @@ where
         layer_range.start(stream)?;
         let last_step = self.folding_steps - 1;
         assert!(last_step >= 3);
-        // Compute the per-layer combined_claim descriptor and piggyback its
-        // byte representation onto the tail of the `static_spill_bytes` blob
-        // (empty for main-layer, so the fused blob is descriptor-only) so
-        // ONE `schedule_static_spill_upload` call (one callback + one H2D)
-        // feeds `build_combined_claim` via a `DeviceSlice<u32>` view of the
-        // descriptor region. Replaces the former dedicated `start_callbacks`
-        // fill + separate descriptor host+device alloc + H2D.
+        // Compute the per-layer combined_claim `(exp, claim_idx)` descriptor
+        // consumed by `build_combined_claim`. `EnforceConstraintsMaxQuadratic`
+        // kernels contribute no term (see `compute_combined_claim`).
         let mut desc_pairs: Vec<u32> = Vec::new();
         for kernel in self.kernel_plans.iter() {
             if kernel.kind == GpuGKRMainLayerKernelKind::EnforceConstraintsMaxQuadratic {
@@ -6887,20 +6692,8 @@ where
                 desc_pairs.push(claim_layout.claim_idx(output));
             }
         }
-        let desc_byte_len = desc_pairs.len() * 4;
-        let spill_bytes = self.static_spill_bytes.as_slice();
-        let desc_byte_offset = (spill_bytes.len() + 3) & !3;
-        let mut fused_bytes: Vec<u8> = Vec::with_capacity(desc_byte_offset + desc_byte_len);
-        fused_bytes.extend_from_slice(spill_bytes);
-        fused_bytes.resize(desc_byte_offset, 0u8);
-        if desc_byte_len > 0 {
-            // SAFETY: u32 is `Copy` with no padding; byte view aliases
-            // `desc_pairs` only for the `extend_from_slice` copy.
-            fused_bytes.extend_from_slice(unsafe {
-                std::slice::from_raw_parts(desc_pairs.as_ptr() as *const u8, desc_byte_len)
-            });
-        }
-        let static_spill_upload = schedule_static_spill_upload(context, &fused_bytes)?;
+        let desc_len = desc_pairs.len();
+        let combined_claim_desc_upload = schedule_combined_claim_desc_upload(context, desc_pairs)?;
         let mut shared_state = Box::new(ScheduledMainLayerExecutionState {
             seed: Seed::default(),
             claim: E::ZERO,
@@ -6969,20 +6762,10 @@ where
                 unsafe { device_claim[..].transmute_mut::<E4>() };
             let eq_out_e4: &mut era_cudart::slice::DeviceSlice<E4> =
                 unsafe { device_eq_prefactor[..].transmute_mut::<E4>() };
-            // SAFETY: `desc_byte_offset` is u32-aligned; `desc_byte_len` is
-            // a multiple of 4. See the fused-upload block near the top of
-            // this function for the construction invariants.
-            let fused_upload = static_spill_upload
-                .as_ref()
-                .expect("fused spill+descriptor upload must be non-empty");
-            let desc_device_slice: &era_cudart::slice::DeviceSlice<u32> = unsafe {
-                fused_upload.device[desc_byte_offset..desc_byte_offset + desc_byte_len]
-                    .transmute::<u32>()
-            };
             crate::ops::blake2s::build_combined_claim(
                 claims_e4,
                 batching_e4,
-                desc_device_slice,
+                &combined_claim_desc_upload.device[..desc_len],
                 claim_out_e4,
                 eq_out_e4,
                 stream,
@@ -7363,7 +7146,7 @@ where
         Ok(GpuGKRMainLayerScheduledLayerExecution {
             tracing_ranges,
             start_callbacks: Callbacks::new(),
-            static_spill_upload,
+            combined_claim_desc_upload: Some(combined_claim_desc_upload),
             batch_challenge_storage,
             batch_challenge_buffer,
             round_challenge_storage,
@@ -7393,7 +7176,7 @@ impl<E: FieldExtension<BF> + Field> GpuGKRMainLayerScheduledLayerExecution<E> {
         let Self {
             tracing_ranges,
             start_callbacks,
-            static_spill_upload,
+            combined_claim_desc_upload,
             batch_challenge_storage,
             round_challenge_storage,
             batch_challenge_buffer: _,
@@ -7412,7 +7195,7 @@ impl<E: FieldExtension<BF> + Field> GpuGKRMainLayerScheduledLayerExecution<E> {
         GpuGKRMainLayerHostKeepalive {
             tracing_ranges,
             start_callbacks,
-            static_spill_upload: static_spill_upload.map(upload_into_host_keepalive),
+            combined_claim_desc_upload: combined_claim_desc_upload.map(upload_into_host_keepalive),
             batch_challenge_storage: challenge_storage_into_host_keepalive(batch_challenge_storage),
             round_challenge_storage: challenge_storage_into_host_keepalive(round_challenge_storage),
             reduction_states,
@@ -7806,23 +7589,16 @@ mod tests {
 
     fn payload_slice<'a, T: Copy>(
         inline_payload: &'a [u8],
-        spill_payload: &'a [u8],
         range: super::GpuGKRMainLayerPayloadRange,
-        from_inline: bool,
     ) -> &'a [T] {
         if range.count == 0 {
             return &[];
         }
-        let bytes = if from_inline {
-            inline_payload
-        } else {
-            spill_payload
-        };
         let start = range.offset as usize;
         let len = range.count as usize;
-        // SAFETY: the payload builders align and serialize typed slices into these byte buffers,
-        // and tests decode them with the exact same element type and count.
-        unsafe { std::slice::from_raw_parts(bytes.as_ptr().add(start).cast::<T>(), len) }
+        // SAFETY: the payload builder aligns and serializes typed slices into this byte buffer,
+        // and tests decode it with the exact same element type and count.
+        unsafe { std::slice::from_raw_parts(inline_payload.as_ptr().add(start).cast::<T>(), len) }
     }
 
     fn assert_base_poly_source_slice_eq(
@@ -8213,21 +7989,7 @@ mod tests {
             static_plan.batch_challenge_base.is_none(),
             "static dimension-reducing preparation should defer the batching challenge base",
         );
-
-        let static_spill_upload =
-            super::schedule_static_spill_upload(context, &static_plan.static_spill_bytes).unwrap();
-        if let Some(upload) = static_spill_upload.as_ref() {
-            assert_eq!(
-                copy_device_values(context, &upload.device),
-                static_plan.static_spill_bytes,
-                "static spill upload must match the single packed spill blob",
-            );
-        } else {
-            assert!(
-                static_plan.static_spill_bytes.is_empty(),
-                "empty spill bytes should not schedule a spill upload",
-            );
-        }
+        let _ = context; // context kept only to satisfy the fixture borrow for GPU state
 
         let round0_batch = &static_plan.round0_batch_template;
         assert_eq!(
@@ -8237,8 +7999,6 @@ mod tests {
 
         for (idx, kernel_plan) in static_plan.kernel_plans.iter().enumerate() {
             let record = &round0_batch.records[idx];
-            let descriptors_inline = record.record_mode
-                == super::GpuGKRDimensionReducingBatchRecordMode::InlineDescriptors.as_u32();
             assert_eq!(record.kind, kernel_plan.kind.as_u32());
             assert_eq!(
                 record.batch_challenge_offset as usize,
@@ -8252,9 +8012,7 @@ mod tests {
             assert_extension_poly_source_slice_eq(
                 payload_slice::<GpuExtensionFieldPolyInitialSource<E4>>(
                     &round0_batch.inline_payload,
-                    &static_plan.static_spill_bytes,
                     record.extension_inputs,
-                    descriptors_inline,
                 ),
                 round0.extension_field_inputs.as_slice(),
                 &format!("kernel {idx} round0 extension input descriptors mismatch"),
@@ -8262,9 +8020,7 @@ mod tests {
             assert_extension_poly_source_slice_eq(
                 payload_slice::<GpuExtensionFieldPolyInitialSource<E4>>(
                     &round0_batch.inline_payload,
-                    &static_plan.static_spill_bytes,
                     record.extension_outputs,
-                    descriptors_inline,
                 ),
                 round0.extension_field_outputs.as_slice(),
                 &format!("kernel {idx} round0 extension output descriptors mismatch"),
@@ -8278,16 +8034,12 @@ mod tests {
         );
         for (idx, kernel_plan) in static_plan.kernel_plans.iter().enumerate() {
             let record = &round1_batch.records[idx];
-            let descriptors_inline = record.record_mode
-                == super::GpuGKRDimensionReducingBatchRecordMode::InlineDescriptors.as_u32();
             assert_eq!(record.kind, kernel_plan.kind.as_u32());
             let round1 = kernel_plan.round1_prepared.build_launch_descriptors();
             assert_extension_poly_continuing_slice_eq(
                 payload_slice::<GpuExtensionFieldPolyContinuingLaunchDescriptor<E4>>(
                     &round1_batch.inline_payload,
-                    &static_plan.static_spill_bytes,
                     record.extension_inputs,
-                    descriptors_inline,
                 ),
                 round1.extension_field_inputs.as_slice(),
                 &format!("kernel {idx} round1 extension input descriptors mismatch"),
@@ -8301,8 +8053,6 @@ mod tests {
             );
             for (idx, kernel_plan) in static_plan.kernel_plans.iter().enumerate() {
                 let record = &round2_batch.records[idx];
-                let descriptors_inline = record.record_mode
-                    == super::GpuGKRDimensionReducingBatchRecordMode::InlineDescriptors.as_u32();
                 assert_eq!(record.kind, kernel_plan.kind.as_u32());
                 let round2 = kernel_plan
                     .round2_prepared
@@ -8312,9 +8062,7 @@ mod tests {
                 assert_extension_poly_continuing_slice_eq(
                     payload_slice::<GpuExtensionFieldPolyContinuingLaunchDescriptor<E4>>(
                         &round2_batch.inline_payload,
-                        &static_plan.static_spill_bytes,
                         record.extension_inputs,
-                        descriptors_inline,
                     ),
                     round2.extension_field_inputs.as_slice(),
                     &format!("kernel {idx} round2 extension input descriptors mismatch"),
@@ -8328,8 +8076,6 @@ mod tests {
             assert_eq!(batch.record_count as usize, static_plan.kernel_plans.len());
             for (idx, kernel_plan) in static_plan.kernel_plans.iter().enumerate() {
                 let record = &batch.records[idx];
-                let descriptors_inline = record.record_mode
-                    == super::GpuGKRDimensionReducingBatchRecordMode::InlineDescriptors.as_u32();
                 assert_eq!(record.kind, kernel_plan.kind.as_u32());
                 let round3 = kernel_plan
                     .round3_and_beyond_prepared
@@ -8341,9 +8087,7 @@ mod tests {
                 assert_extension_poly_continuing_slice_eq(
                     payload_slice::<GpuExtensionFieldPolyContinuingLaunchDescriptor<E4>>(
                         &batch.inline_payload,
-                        &static_plan.static_spill_bytes,
                         record.extension_inputs,
-                        descriptors_inline,
                     ),
                     round3.extension_field_inputs.as_slice(),
                     &format!(
@@ -8715,9 +8459,7 @@ mod tests {
         batch.inline_payload = inline_builder.into_bytes();
         batch.records[0] = super::GpuGKRDimensionReducingRound0BatchRecord {
             kind: super::GpuGKRDimensionReducingKernelKind::Pairwise.as_u32(),
-            record_mode: super::GpuGKRDimensionReducingBatchRecordMode::InlineDescriptors.as_u32(),
             _reserved0: 0,
-            _reserved1: 0,
             extension_inputs,
             extension_outputs,
             batch_challenge_offset: 1,
@@ -8804,9 +8546,7 @@ mod tests {
         batch.inline_payload = inline_builder.into_bytes();
         batch.records[0] = super::GpuGKRDimensionReducingRound0BatchRecord {
             kind: super::GpuGKRDimensionReducingKernelKind::Lookup.as_u32(),
-            record_mode: super::GpuGKRDimensionReducingBatchRecordMode::InlineDescriptors.as_u32(),
             _reserved0: 0,
-            _reserved1: 0,
             extension_inputs,
             extension_outputs,
             batch_challenge_offset: 1,
@@ -8899,9 +8639,7 @@ mod tests {
         batch.inline_payload = inline_builder.into_bytes();
         batch.records[0] = super::GpuGKRDimensionReducingContinuationBatchRecord {
             kind: super::GpuGKRDimensionReducingKernelKind::Pairwise.as_u32(),
-            record_mode: super::GpuGKRDimensionReducingBatchRecordMode::InlineDescriptors.as_u32(),
             _reserved0: 0,
-            _reserved1: 0,
             extension_inputs,
             batch_challenge_offset: 1,
             batch_challenge_count: 1,
@@ -8990,9 +8728,7 @@ mod tests {
         batch.inline_payload = inline_builder.into_bytes();
         batch.records[0] = super::GpuGKRDimensionReducingContinuationBatchRecord {
             kind: super::GpuGKRDimensionReducingKernelKind::Lookup.as_u32(),
-            record_mode: super::GpuGKRDimensionReducingBatchRecordMode::InlineDescriptors.as_u32(),
             _reserved0: 0,
-            _reserved1: 0,
             extension_inputs,
             batch_challenge_offset: 1,
             batch_challenge_count: 2,
@@ -9105,9 +8841,7 @@ mod tests {
         batch.inline_payload = inline_builder.into_bytes();
         batch.records[0] = super::GpuGKRDimensionReducingContinuationBatchRecord {
             kind: super::GpuGKRDimensionReducingKernelKind::Pairwise.as_u32(),
-            record_mode: super::GpuGKRDimensionReducingBatchRecordMode::InlineDescriptors.as_u32(),
             _reserved0: 0,
-            _reserved1: 0,
             extension_inputs,
             batch_challenge_offset: 1,
             batch_challenge_count: 1,
@@ -9202,9 +8936,7 @@ mod tests {
         batch.inline_payload = inline_builder.into_bytes();
         batch.records[0] = super::GpuGKRDimensionReducingContinuationBatchRecord {
             kind: super::GpuGKRDimensionReducingKernelKind::Lookup.as_u32(),
-            record_mode: super::GpuGKRDimensionReducingBatchRecordMode::InlineDescriptors.as_u32(),
             _reserved0: 0,
-            _reserved1: 0,
             extension_inputs,
             batch_challenge_offset: 1,
             batch_challenge_count: 2,
