@@ -686,6 +686,47 @@ pub fn backward_new_claims_linear(
 }
 
 cuda_kernel!(
+    BuildCombinedClaim,
+    ab_build_combined_claim_kernel(
+        claims: *const E4,
+        batching: *const E4,
+        desc: *const u32,
+        num_terms: u32,
+        claim_out: *mut E4,
+        eq_prefactor_out: *mut E4,
+    )
+);
+
+pub fn build_combined_claim(
+    claims: &DeviceSlice<E4>,
+    batching: &DeviceSlice<E4>,
+    desc: &DeviceSlice<u32>,
+    claim_out: &mut DeviceSlice<E4>,
+    eq_prefactor_out: &mut DeviceSlice<E4>,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    assert_eq!(batching.len(), 1);
+    assert_eq!(claim_out.len(), 1);
+    assert_eq!(eq_prefactor_out.len(), 1);
+    assert_eq!(
+        desc.len() % 2,
+        0,
+        "combined-claim descriptor must be `(exponent, claim_idx)` pairs",
+    );
+    let num_terms = (desc.len() / 2) as u32;
+    let config = CudaLaunchConfig::basic(1u32, 1u32, stream);
+    let args = BuildCombinedClaimArguments::new(
+        claims.as_ptr(),
+        batching.as_ptr(),
+        desc.as_ptr(),
+        num_terms,
+        claim_out.as_mut_ptr(),
+        eq_prefactor_out.as_mut_ptr(),
+    );
+    BuildCombinedClaimFunction::default().launch(&config, &args)
+}
+
+cuda_kernel!(
     AssembleQueryIndexes,
     ab_assemble_query_indexes_kernel(
         raw_bits: *const u32,
@@ -2072,6 +2113,90 @@ mod tests {
                 let host = host_new_claim_linear(f0, f1, last_r);
                 assert_eq!(device[i], host, "N={num_addresses} addr {i} mismatch");
             }
+        }
+    }
+
+    fn host_combined_claim(claims: &[E4], batching: E4, exp_idx: &[(u32, u32)]) -> E4 {
+        let mut result = E4::ZERO;
+        for (exp, idx) in exp_idx {
+            let mut pow = E4::ONE;
+            for _ in 0..*exp {
+                pow.mul_assign(&batching);
+            }
+            let mut term = claims[*idx as usize];
+            term.mul_assign(&pow);
+            result.add_assign(&term);
+        }
+        result
+    }
+
+    fn run_device_combined_claim(claims: &[E4], batching: E4, exp_idx: &[(u32, u32)]) -> (E4, E4) {
+        let stream = CudaStream::default();
+        let mut d_claims: DeviceAllocation<E4> = DeviceAllocation::alloc(claims.len()).unwrap();
+        memory_copy_async(&mut d_claims, claims, &stream).unwrap();
+        let mut d_batching: DeviceAllocation<E4> = DeviceAllocation::alloc(1).unwrap();
+        memory_copy_async(&mut d_batching, &[batching], &stream).unwrap();
+        let desc_flat: Vec<u32> = exp_idx.iter().flat_map(|(exp, idx)| [*exp, *idx]).collect();
+        let mut d_desc: DeviceAllocation<u32> =
+            DeviceAllocation::alloc(desc_flat.len().max(1)).unwrap();
+        if !desc_flat.is_empty() {
+            memory_copy_async(&mut d_desc, &desc_flat[..], &stream).unwrap();
+        }
+        let mut d_claim_out: DeviceAllocation<E4> = DeviceAllocation::alloc(1).unwrap();
+        let mut d_eq_out: DeviceAllocation<E4> = DeviceAllocation::alloc(1).unwrap();
+        super::build_combined_claim(
+            &d_claims,
+            &d_batching,
+            &d_desc[..desc_flat.len()],
+            &mut d_claim_out,
+            &mut d_eq_out,
+            &stream,
+        )
+        .unwrap();
+        let mut claim_out = [E4::ZERO];
+        let mut eq_out = [E4::ZERO];
+        memory_copy_async(&mut claim_out[..], &d_claim_out, &stream).unwrap();
+        memory_copy_async(&mut eq_out[..], &d_eq_out, &stream).unwrap();
+        stream.synchronize().unwrap();
+        (claim_out[0], eq_out[0])
+    }
+
+    #[test]
+    fn build_combined_claim_parity_fixed() {
+        let claims: Vec<E4> = (0..6usize).map(|idx| sample_e4(500 + idx as u32)).collect();
+        let batching = sample_e4(999);
+        let exp_idx = vec![(0, 0), (1, 1), (2, 2), (3, 3), (4, 4), (5, 5)];
+        let (device_claim, device_eq) = run_device_combined_claim(&claims, batching, &exp_idx);
+        let host_claim = host_combined_claim(&claims, batching, &exp_idx);
+        assert_eq!(device_claim, host_claim, "combined-claim mismatch");
+        assert_eq!(device_eq, E4::ONE, "eq-prefactor must be ONE");
+    }
+
+    #[test]
+    fn build_combined_claim_parity_randomized() {
+        use rand::Rng;
+        let mut rng = rand::rng();
+        for _ in 0..8 {
+            let num_claims = rng.random_range(1usize..=40);
+            let num_terms = rng.random_range(1usize..=50);
+            let claims: Vec<E4> = (0..num_claims)
+                .map(|_| sample_e4(rng.random::<u32>()))
+                .collect();
+            let batching = sample_e4(rng.random::<u32>());
+            let exp_idx: Vec<(u32, u32)> = (0..num_terms)
+                .map(|_| {
+                    let exp = rng.random_range(0u32..=40);
+                    let idx = rng.random_range(0..num_claims as u32);
+                    (exp, idx)
+                })
+                .collect();
+            let (device_claim, device_eq) = run_device_combined_claim(&claims, batching, &exp_idx);
+            let host_claim = host_combined_claim(&claims, batching, &exp_idx);
+            assert_eq!(
+                device_claim, host_claim,
+                "random combined-claim mismatch (N_claims={num_claims}, N_terms={num_terms})"
+            );
+            assert_eq!(device_eq, E4::ONE);
         }
     }
 }

@@ -4710,6 +4710,7 @@ fn run_basic_unrolled_first_main_layer_static_vs_dynamic_execution_test() {
     let mut shared_state = crate::prover::gkr::backward::make_deferred_backward_workflow_state();
     let shared_state_handle = UnsafeMutAccessor::new(shared_state.as_mut());
     let static_point_for_device = static_point.clone();
+    let static_claims_for_device = static_claims.clone();
     crate::prover::gkr::backward::populate_backward_workflow_state(
         shared_state_handle,
         first_layer_idx + 1,
@@ -4720,21 +4721,34 @@ fn run_basic_unrolled_first_main_layer_static_vs_dynamic_execution_test() {
         fixture_static.lookup_multiplicative_part,
         fixture_static.lookup_additive_part,
     );
-    let shared_device_seed =
-        crate::prover::gkr::backward::h2d_seed_from_host(&fixture_static.context, &static_seed)
-            .unwrap();
+    let mut initial_callbacks = crate::primitives::callbacks::Callbacks::new();
+    let shared_device_seed = crate::prover::gkr::backward::h2d_seed_from_host(
+        &fixture_static.context,
+        &mut initial_callbacks,
+        &static_seed,
+    )
+    .unwrap();
     let shared_device_claim_point =
         crate::prover::gkr::backward::h2d_claim_point_and_batching_from_host(
             &fixture_static.context,
+            &mut initial_callbacks,
             &static_point_for_device,
             static_batching_challenge,
         )
         .unwrap();
+    let (shared_device_claims, shared_claim_layout) = crate::prover::gkr::backward::h2d_claims_from_host(
+        &fixture_static.context,
+        &mut initial_callbacks,
+        &static_claims_for_device,
+    )
+    .unwrap();
     let static_scheduled = static_plan
         .schedule_execute_main_layer_from_workflow_state(
             shared_state_handle,
             shared_device_seed,
             shared_device_claim_point,
+            shared_device_claims,
+            &shared_claim_layout,
             &fixture_static.context,
         )
         .unwrap();
@@ -4745,6 +4759,7 @@ fn run_basic_unrolled_first_main_layer_static_vs_dynamic_execution_test() {
         .synchronize()
         .unwrap();
     eprintln!("first-main-layer: static main-layer synchronized");
+    drop(initial_callbacks);
     let static_execution = static_scheduled.into_execution();
 
     assert_sumcheck_intermediate_values_eq_for_test_with_layer(
@@ -4905,16 +4920,26 @@ fn run_basic_unrolled_main_layers_static_vs_dynamic_execution_test() {
             fixture_static.lookup_multiplicative_part,
             fixture_static.lookup_additive_part,
         );
+        let mut initial_callbacks = crate::primitives::callbacks::Callbacks::new();
         let shared_device_seed = crate::prover::gkr::backward::h2d_seed_from_host(
             &fixture_static.context,
+            &mut initial_callbacks,
             &static_seed,
         )
         .unwrap();
         let shared_device_claim_point =
             crate::prover::gkr::backward::h2d_claim_point_and_batching_from_host(
                 &fixture_static.context,
+                &mut initial_callbacks,
                 &static_point,
                 static_batching_challenge,
+            )
+            .unwrap();
+        let (shared_device_claims, shared_claim_layout) =
+            crate::prover::gkr::backward::h2d_claims_from_host(
+                &fixture_static.context,
+                &mut initial_callbacks,
+                &static_claims,
             )
             .unwrap();
         let static_scheduled = static_plan
@@ -4922,6 +4947,8 @@ fn run_basic_unrolled_main_layers_static_vs_dynamic_execution_test() {
                 shared_state_handle,
                 shared_device_seed,
                 shared_device_claim_point,
+                shared_device_claims,
+                &shared_claim_layout,
                 &fixture_static.context,
             )
             .unwrap();
@@ -4930,6 +4957,7 @@ fn run_basic_unrolled_main_layers_static_vs_dynamic_execution_test() {
             .get_exec_stream()
             .synchronize()
             .unwrap();
+        drop(initial_callbacks);
         let static_execution = static_scheduled.into_execution();
 
         assert_sumcheck_intermediate_values_eq_for_test_with_layer(
