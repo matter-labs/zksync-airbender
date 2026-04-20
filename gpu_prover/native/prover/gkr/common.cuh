@@ -78,11 +78,10 @@ struct gkr_main_payload_range {
 };
 
 template <typename T, typename Batch>
-DEVICE_FORCEINLINE const T *gkr_main_batch_payload_ptr(const Batch &batch, const gkr_main_payload_range &range, const bool from_inline) {
+DEVICE_FORCEINLINE const T *gkr_main_batch_payload_ptr(const Batch &batch, const gkr_main_payload_range &range) {
   if (range.count == 0)
     return nullptr;
-  const u8 *base = from_inline ? batch.inline_payload : batch.spill_payload;
-  return reinterpret_cast<const T *>(base + range.offset);
+  return reinterpret_cast<const T *>(batch.inline_payload + range.offset);
 }
 
 template <typename E> DEVICE_FORCEINLINE const E *gkr_main_batch_challenges(const E *batch_challenge_base, const u32 offset, const u32 count, E (&storage)[2]) {
@@ -103,16 +102,9 @@ enum gkr_dim_reducing_kernel_kind : u32 {
   GKR_DIM_REDUCING_LOOKUP = 1,
 };
 
-enum gkr_dim_reducing_batch_record_mode : u32 {
-  GKR_DIM_REDUCING_BATCH_INLINE_DESCRIPTORS = 0,
-  GKR_DIM_REDUCING_BATCH_POINTER_DESCRIPTORS = 1,
-};
-
 struct gkr_dim_reducing_round0_batch_record {
   u32 kind;
-  u32 record_mode;
   u32 reserved0;
-  u32 reserved1;
   gkr_main_payload_range extension_inputs;
   gkr_main_payload_range extension_outputs;
   u32 batch_challenge_offset;
@@ -121,9 +113,7 @@ struct gkr_dim_reducing_round0_batch_record {
 
 struct gkr_dim_reducing_continuation_batch_record {
   u32 kind;
-  u32 record_mode;
   u32 reserved0;
-  u32 reserved1;
   gkr_main_payload_range extension_inputs;
   u32 batch_challenge_offset;
   u32 batch_challenge_count;
@@ -137,7 +127,6 @@ template <typename E> struct gkr_dim_reducing_round0_batch {
   const E *eq_values;
   const E *batch_challenge_base;
   E *contributions;
-  const u8 *spill_payload;
   gkr_dim_reducing_round0_batch_record records[GKR_BACKWARD_MAX_KERNELS_PER_LAYER];
   u8 inline_payload[GKR_BACKWARD_MAX_INLINE_ROUND_BATCH_BYTES];
 };
@@ -151,7 +140,6 @@ template <typename E> struct gkr_dim_reducing_round1_batch {
   const E *batch_challenge_base;
   const E *folding_challenge;
   E *contributions;
-  const u8 *spill_payload;
   bool explicit_form;
   u8 padding[7];
   gkr_dim_reducing_continuation_batch_record records[GKR_BACKWARD_MAX_KERNELS_PER_LAYER];
@@ -167,7 +155,6 @@ template <typename E> struct gkr_dim_reducing_round2_batch {
   const E *batch_challenge_base;
   const E *folding_challenge;
   E *contributions;
-  const u8 *spill_payload;
   bool explicit_form;
   u8 padding[7];
   gkr_dim_reducing_continuation_batch_record records[GKR_BACKWARD_MAX_KERNELS_PER_LAYER];
@@ -183,14 +170,11 @@ template <typename E> struct gkr_dim_reducing_round3_batch {
   const E *batch_challenge_base;
   const E *folding_challenge;
   E *contributions;
-  const u8 *spill_payload;
   bool explicit_form;
   u8 padding[7];
   gkr_dim_reducing_continuation_batch_record records[GKR_BACKWARD_MAX_KERNELS_PER_LAYER];
   u8 inline_payload[GKR_BACKWARD_MAX_INLINE_ROUND_BATCH_BYTES];
 };
-
-DEVICE_FORCEINLINE bool gkr_dim_reducing_batch_descriptors_inline(const u32 record_mode) { return record_mode == GKR_DIM_REDUCING_BATCH_INLINE_DESCRIPTORS; }
 
 constexpr unsigned GKR_FORWARD_CACHE_MEMORY_LINEAR_TERMS = 8;
 
@@ -1090,9 +1074,8 @@ template <typename E> DEVICE_FORCEINLINE void gkr_dim_reducing_round0_batched(co
   E total1 = E::ZERO();
   for (unsigned i = 0; i < batch.record_count; ++i) {
     const auto &record = batch.records[i];
-    const bool descriptors_inline = gkr_dim_reducing_batch_descriptors_inline(record.record_mode);
-    const auto *inputs = gkr_main_batch_payload_ptr<gkr_ext_initial_source<E>>(batch, record.extension_inputs, descriptors_inline);
-    const auto *outputs = gkr_main_batch_payload_ptr<gkr_ext_initial_source<E>>(batch, record.extension_outputs, descriptors_inline);
+    const auto *inputs = gkr_main_batch_payload_ptr<gkr_ext_initial_source<E>>(batch, record.extension_inputs);
+    const auto *outputs = gkr_main_batch_payload_ptr<gkr_ext_initial_source<E>>(batch, record.extension_outputs);
     E batch_challenge_storage[2];
     const E *batch_challenges =
         gkr_main_batch_challenges(batch.batch_challenge_base, record.batch_challenge_offset, record.batch_challenge_count, batch_challenge_storage);
@@ -1127,8 +1110,7 @@ DEVICE_FORCEINLINE void gkr_dim_reducing_continuation_batched(const Batch &batch
   E total1 = E::ZERO();
   for (unsigned i = 0; i < batch.record_count; ++i) {
     const auto &record = batch.records[i];
-    const bool descriptors_inline = gkr_dim_reducing_batch_descriptors_inline(record.record_mode);
-    const auto *inputs = gkr_main_batch_payload_ptr<gkr_ext_continuing_source<E>>(batch, record.extension_inputs, descriptors_inline);
+    const auto *inputs = gkr_main_batch_payload_ptr<gkr_ext_continuing_source<E>>(batch, record.extension_inputs);
     E batch_challenge_storage[2];
     const E *batch_challenges =
         gkr_main_batch_challenges(batch.batch_challenge_base, record.batch_challenge_offset, record.batch_challenge_count, batch_challenge_storage);

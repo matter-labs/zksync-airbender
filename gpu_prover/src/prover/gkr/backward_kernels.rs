@@ -177,19 +177,6 @@ impl GpuGKRMainLayerBatchRecordMode {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[repr(u32)]
-pub(super) enum GpuGKRDimensionReducingBatchRecordMode {
-    InlineDescriptors = 0,
-    PointerDescriptors = 1,
-}
-
-impl GpuGKRDimensionReducingBatchRecordMode {
-    pub(super) const fn as_u32(self) -> u32 {
-        self as u32
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(C)]
 pub(crate) struct GpuGKRMainLayerConstraintQuadraticTerm<E> {
     pub(crate) lhs: u32,
@@ -321,9 +308,7 @@ pub(super) struct GpuGKRMainLayerRound3HostDescriptors<E: Copy> {
 #[derive(Clone, Copy)]
 pub(super) struct GpuGKRDimensionReducingRound0BatchRecord {
     pub(super) kind: u32,
-    pub(super) record_mode: u32,
     pub(super) _reserved0: u32,
-    pub(super) _reserved1: u32,
     pub(super) extension_inputs: GpuGKRMainLayerPayloadRange,
     pub(super) extension_outputs: GpuGKRMainLayerPayloadRange,
     pub(super) batch_challenge_offset: u32,
@@ -334,9 +319,7 @@ impl Default for GpuGKRDimensionReducingRound0BatchRecord {
     fn default() -> Self {
         Self {
             kind: GpuGKRDimensionReducingKernelKind::Pairwise.as_u32(),
-            record_mode: GpuGKRDimensionReducingBatchRecordMode::PointerDescriptors.as_u32(),
             _reserved0: 0,
-            _reserved1: 0,
             extension_inputs: GpuGKRMainLayerPayloadRange::default(),
             extension_outputs: GpuGKRMainLayerPayloadRange::default(),
             batch_challenge_offset: 0,
@@ -349,9 +332,7 @@ impl Default for GpuGKRDimensionReducingRound0BatchRecord {
 #[derive(Clone, Copy)]
 pub(super) struct GpuGKRDimensionReducingContinuationBatchRecord {
     pub(super) kind: u32,
-    pub(super) record_mode: u32,
     pub(super) _reserved0: u32,
-    pub(super) _reserved1: u32,
     pub(super) extension_inputs: GpuGKRMainLayerPayloadRange,
     pub(super) batch_challenge_offset: u32,
     pub(super) batch_challenge_count: u32,
@@ -361,9 +342,7 @@ impl Default for GpuGKRDimensionReducingContinuationBatchRecord {
     fn default() -> Self {
         Self {
             kind: GpuGKRDimensionReducingKernelKind::Pairwise.as_u32(),
-            record_mode: GpuGKRDimensionReducingBatchRecordMode::PointerDescriptors.as_u32(),
             _reserved0: 0,
-            _reserved1: 0,
             extension_inputs: GpuGKRMainLayerPayloadRange::default(),
             batch_challenge_offset: 0,
             batch_challenge_count: 0,
@@ -381,7 +360,6 @@ pub(crate) struct GpuGKRDimensionReducingRound0Batch<E> {
     pub(super) eq_values: *const E,
     pub(super) batch_challenge_base: *const E,
     pub(super) contributions: *mut E,
-    pub(super) spill_payload: *const u8,
     pub(super) records:
         [GpuGKRDimensionReducingRound0BatchRecord; GKR_BACKWARD_MAX_KERNELS_PER_LAYER],
     pub(super) inline_payload: [u8; MAX_INLINE_ROUND_BATCH_BYTES],
@@ -397,7 +375,6 @@ impl<E: Field> Default for GpuGKRDimensionReducingRound0Batch<E> {
             eq_values: null(),
             batch_challenge_base: null(),
             contributions: null_mut(),
-            spill_payload: null(),
             records: [GpuGKRDimensionReducingRound0BatchRecord::default();
                 GKR_BACKWARD_MAX_KERNELS_PER_LAYER],
             inline_payload: [0; MAX_INLINE_ROUND_BATCH_BYTES],
@@ -416,7 +393,6 @@ pub(crate) struct GpuGKRDimensionReducingRound1Batch<E> {
     pub(super) batch_challenge_base: *const E,
     pub(super) folding_challenge: *const E,
     pub(super) contributions: *mut E,
-    pub(super) spill_payload: *const u8,
     pub(super) explicit_form: bool,
     pub(super) _padding: [u8; 7],
     pub(super) records:
@@ -435,7 +411,6 @@ impl<E: Field> Default for GpuGKRDimensionReducingRound1Batch<E> {
             batch_challenge_base: null(),
             folding_challenge: null(),
             contributions: null_mut(),
-            spill_payload: null(),
             explicit_form: false,
             _padding: [0; 7],
             records: [GpuGKRDimensionReducingContinuationBatchRecord::default();
@@ -456,7 +431,6 @@ pub(crate) struct GpuGKRDimensionReducingRound2Batch<E> {
     pub(super) batch_challenge_base: *const E,
     pub(super) folding_challenge: *const E,
     pub(super) contributions: *mut E,
-    pub(super) spill_payload: *const u8,
     pub(super) explicit_form: bool,
     pub(super) _padding: [u8; 7],
     pub(super) records:
@@ -475,7 +449,6 @@ impl<E: Field> Default for GpuGKRDimensionReducingRound2Batch<E> {
             batch_challenge_base: null(),
             folding_challenge: null(),
             contributions: null_mut(),
-            spill_payload: null(),
             explicit_form: false,
             _padding: [0; 7],
             records: [GpuGKRDimensionReducingContinuationBatchRecord::default();
@@ -496,7 +469,6 @@ pub(crate) struct GpuGKRDimensionReducingRound3Batch<E> {
     pub(super) batch_challenge_base: *const E,
     pub(super) folding_challenge: *const E,
     pub(super) contributions: *mut E,
-    pub(super) spill_payload: *const u8,
     pub(super) explicit_form: bool,
     pub(super) _padding: [u8; 7],
     pub(super) records:
@@ -515,7 +487,6 @@ impl<E: Field> Default for GpuGKRDimensionReducingRound3Batch<E> {
             batch_challenge_base: null(),
             folding_challenge: null(),
             contributions: null_mut(),
-            spill_payload: null(),
             explicit_form: false,
             _padding: [0; 7],
             records: [GpuGKRDimensionReducingContinuationBatchRecord::default();
@@ -584,29 +555,6 @@ impl InlinePayloadBuilder {
     }
 }
 
-#[derive(Default)]
-pub(super) struct SpillPayloadBuilder {
-    pub(super) bytes: Vec<u8>,
-}
-
-impl SpillPayloadBuilder {
-    pub(super) fn push_copy<T: Copy>(&mut self, values: &[T]) -> GpuGKRMainLayerPayloadRange {
-        if values.is_empty() {
-            return GpuGKRMainLayerPayloadRange::default();
-        }
-        let start = align_up(self.bytes.len(), align_of::<T>());
-        if start > self.bytes.len() {
-            self.bytes.resize(start, 0);
-        }
-        let bytes = as_bytes(values);
-        self.bytes.extend_from_slice(bytes);
-        GpuGKRMainLayerPayloadRange {
-            offset: start as u32,
-            count: values.len() as u32,
-        }
-    }
-}
-
 pub(super) fn align_up(value: usize, align: usize) -> usize {
     debug_assert!(align.is_power_of_two());
     (value + (align - 1)) & !(align - 1)
@@ -656,7 +604,6 @@ pub(crate) struct GpuGKRDimensionReducingSumcheckLayerPlan<B, E> {
     pub(super) round1_batch_template: GpuGKRDimensionReducingRound1Batch<E>,
     pub(super) round2_batch_template: Option<GpuGKRDimensionReducingRound2Batch<E>>,
     pub(super) round3_batch_templates: Vec<GpuGKRDimensionReducingRound3BatchTemplate<E>>,
-    pub(super) static_spill_bytes: Vec<u8>,
     pub(super) round_scratch: GpuGKRDimensionReducingRoundScratch<E>,
 }
 
@@ -841,7 +788,7 @@ pub(crate) struct GpuGKRDimensionReducingScheduledLayerExecution<B, E: FieldExte
     // Keeps layer-start callbacks alive until the stream consumes them.
     pub(super) start_callbacks: Callbacks<'static>,
     #[allow(dead_code)]
-    pub(super) static_spill_upload: Option<ScheduledUpload<u8>>,
+    pub(super) combined_claim_desc_upload: Option<ScheduledUpload<u32>>,
     #[allow(dead_code)]
     pub(super) round_challenge_storage: Option<ScheduledChallengeStorage<E>>,
     #[allow(dead_code)]
@@ -952,7 +899,6 @@ pub(crate) struct GpuGKRMainLayerSumcheckLayerPlan<E> {
         usize,
         Box<super::backward_flat::GpuFlatContinuationUnifiedDesc>,
     )>,
-    pub(super) static_spill_bytes: Vec<u8>,
     pub(super) round_scratch: GpuGKRMainLayerRoundScratch<E>,
     /// Keeps pinned-staging callbacks alive for recipe H2D copies scheduled at prepare time.
     /// Moved into `GpuGKRMainLayerScheduledLayerExecution` during `schedule_execute_*`.
@@ -1002,7 +948,7 @@ pub(crate) struct GpuGKRMainLayerScheduledLayerExecution<E: FieldExtension<BF> +
     #[allow(dead_code)]
     pub(super) start_callbacks: Callbacks<'static>,
     #[allow(dead_code)]
-    pub(super) static_spill_upload: Option<ScheduledUpload<u8>>,
+    pub(super) combined_claim_desc_upload: Option<ScheduledUpload<u32>>,
     #[allow(dead_code)]
     pub(super) batch_challenge_storage: ScheduledChallengeStorage<E>,
     #[allow(dead_code)]
@@ -1072,7 +1018,7 @@ pub(crate) struct GpuGKRDimensionReducingHostKeepalive<B, E: FieldExtension<BF> 
     #[allow(dead_code)]
     pub(super) start_callbacks: Callbacks<'static>,
     #[allow(dead_code)]
-    pub(super) static_spill_upload: Option<HostScheduledUpload<u8>>,
+    pub(super) combined_claim_desc_upload: Option<HostScheduledUpload<u32>>,
     #[allow(dead_code)]
     pub(super) round_challenge_storage: Option<HostScheduledChallengeStorage<E>>,
     #[allow(dead_code)]
@@ -1091,7 +1037,7 @@ pub(crate) struct GpuGKRMainLayerHostKeepalive<E: FieldExtension<BF> + Field> {
     #[allow(dead_code)]
     pub(super) start_callbacks: Callbacks<'static>,
     #[allow(dead_code)]
-    pub(super) static_spill_upload: Option<HostScheduledUpload<u8>>,
+    pub(super) combined_claim_desc_upload: Option<HostScheduledUpload<u32>>,
     #[allow(dead_code)]
     pub(super) batch_challenge_storage: HostScheduledChallengeStorage<E>,
     #[allow(dead_code)]
@@ -1548,21 +1494,27 @@ pub(super) fn schedule_callback_populated_upload<'a, T: Copy + 'a>(
     })
 }
 
-pub(super) fn schedule_static_spill_upload(
+/// Upload a per-layer combined-claim `(exp, claim_idx)` descriptor via the
+/// standard pinned-staging → H2D pattern. `desc_pairs` is pure compiled-
+/// circuit static; the upload carries both the device buffer and the
+/// stream-ordered fill callback that populates the pinned staging slot.
+pub(super) fn schedule_combined_claim_desc_upload(
     context: &ProverContext,
-    bytes: &[u8],
-) -> CudaResult<Option<ScheduledUpload<u8>>> {
-    if bytes.is_empty() {
-        return Ok(None);
-    }
-    let payload = bytes.to_vec();
+    desc_pairs: Vec<u32>,
+) -> CudaResult<ScheduledUpload<u32>> {
+    // Always allocate at least one element so downstream `.device[..]`
+    // indexing has a valid pointer even in the degenerate zero-term case.
+    let alloc_len = desc_pairs.len().max(1);
+    let payload = desc_pairs;
     let mut callbacks = Callbacks::new();
     let mut upload =
-        schedule_callback_populated_upload(context, payload.len(), &mut callbacks, move |dst| {
-            dst.copy_from_slice(&payload);
+        schedule_callback_populated_upload(context, alloc_len, &mut callbacks, move |dst| {
+            if !payload.is_empty() {
+                dst[..payload.len()].copy_from_slice(&payload);
+            }
         })?;
     upload.callbacks = callbacks;
-    Ok(Some(upload))
+    Ok(upload)
 }
 
 pub(super) fn schedule_deferred_main_layer_constraint_metadata_upload<
