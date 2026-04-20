@@ -1335,6 +1335,8 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
 
     assert_eq!(aux_all_challenges_seed, all_challenges_seed);
 
+    assert_eq!(permutation_argument_accumulator, BabyBearExt4::ONE);
+
     (
         main_proofs,
         inits_and_teardowns_proofs,
