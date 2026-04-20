@@ -397,37 +397,37 @@ pub fn compute_setup_commitment(
 //     description
 // }
 
-// pub fn binary_u8_to_u32(binary_u8: &[u8]) -> Vec<u32> {
-//     assert_eq!(binary_u8.len() % core::mem::size_of::<u32>(), 0);
-//     let mut binary = Vec::with_capacity(binary_u8.len() / core::mem::size_of::<u32>());
-//     for el in binary_u8.as_chunks::<4>().0 {
-//         binary.push(u32::from_le_bytes(*el));
-//     }
-//     binary
-// }
+pub fn binary_u8_to_u32(binary_u8: &[u8]) -> Vec<u32> {
+    assert_eq!(binary_u8.len() % core::mem::size_of::<u32>(), 0);
+    let mut binary = Vec::with_capacity(binary_u8.len() / core::mem::size_of::<u32>());
+    for el in binary_u8.as_chunks::<4>().0 {
+        binary.push(u32::from_le_bytes(*el));
+    }
+    binary
+}
 
-// pub fn read_binary(path: &Path) -> (Vec<u8>, Vec<u32>) {
-//     use std::io::Read;
-//     let mut file = std::fs::File::open(path).expect("must open provided file");
-//     let mut buffer = vec![];
-//     file.read_to_end(&mut buffer).expect("must read the file");
-//     let binary = binary_u8_to_u32(&buffer);
-//     (buffer, binary)
-// }
+pub fn read_binary(path: &Path) -> (Vec<u8>, Vec<u32>) {
+    use std::io::Read;
+    let mut file = std::fs::File::open(path).expect("must open provided file");
+    let mut buffer = vec![];
+    file.read_to_end(&mut buffer).expect("must read the file");
+    let binary = binary_u8_to_u32(&buffer);
+    (buffer, binary)
+}
 
-// pub fn read_and_pad_binary(path: &Path) -> (Vec<u8>, Vec<u32>) {
-//     let (mut buffer, mut binary) = read_binary(path);
-//     pad_bytecode_bytes_for_proving(&mut buffer);
-//     pad_bytecode_for_proving(&mut binary);
-//     (buffer, binary)
-// }
+pub fn read_and_pad_binary(path: &Path) -> (Vec<u8>, Vec<u32>) {
+    let (mut buffer, mut binary) = read_binary(path);
+    pad_bytecode_bytes_for_proving(&mut buffer);
+    pad_bytecode_for_proving(&mut binary);
+    (buffer, binary)
+}
 
-// pub fn pad_binary(mut buffer: Vec<u8>) -> (Vec<u8>, Vec<u32>) {
-//     let mut binary = binary_u8_to_u32(&buffer);
-//     pad_bytecode_bytes_for_proving(&mut buffer);
-//     pad_bytecode_for_proving(&mut binary);
-//     (buffer, binary)
-// }
+pub fn pad_binary(mut buffer: Vec<u8>) -> (Vec<u8>, Vec<u32>) {
+    let mut binary = binary_u8_to_u32(&buffer);
+    pad_bytecode_bytes_for_proving(&mut buffer);
+    pad_bytecode_for_proving(&mut binary);
+    (buffer, binary)
+}
 
 // pub fn compute_and_save_params(
 //     binary_image_path: &Path,
