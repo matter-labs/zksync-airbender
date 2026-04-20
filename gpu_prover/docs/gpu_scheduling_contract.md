@@ -43,6 +43,35 @@ explicit event fencing (see *H2D copies* below).
 
 Device allocations and host allocations share **identical** lifetime semantics.
 
+### Access rule
+
+Pool-backed allocations (device and host) are **reservations for stream-side
+access**. Every read and write must be expressed as a stream operation — a
+kernel launch, `memory_copy_async`, or a host callback scheduled via
+`Callbacks::schedule` / `launch_host_fn`.
+
+**The scheduling thread** — the Rust code currently enqueueing work — **must
+NOT dereference the memory.** That includes raw pointers, `UnsafeAccessor::get()`,
+`UnsafeMutAccessor::get_mut()`, `&*host_alloc`, slice indexing,
+`copy_from_slice`, and any other direct access. The scheduling thread has no
+synchronization with the stream: a previously-scheduled op may still be
+executing through the same pointer (or its DMA not yet complete), and the host
+pool allocator is not stream-aware — a freshly-allocated block may still be
+the target of an unfinished DMA from its prior owner.
+
+A common mistake is to fill a host staging buffer with `.copy_from_slice(...)`
+right after allocating it, then enqueue the `memory_copy_async`. This appears
+to work when the stream is idle but breaks as soon as the buffer's pool block
+has recently been recycled: the scheduling-thread overwrite races the prior
+owner's outstanding DMA.
+
+Accessors (`UnsafeAccessor`, `UnsafeMutAccessor`) exist to be **captured by
+value into stream-scheduled closures** or passed into `memory_copy_async`
+slots. Dereferencing them (`get()`, `get_mut()`) is only valid inside a
+stream-scheduled operation. The scheduling thread treats them as opaque.
+
+### Lifetime rules
+
 **Stream-ordered lifetime**: the logical lifetime of an allocation is determined
 by the already-queued exec-stream work, not by Rust ownership. A handle may be
 dropped as soon as all exec-stream operations that *use* it have been
@@ -54,15 +83,20 @@ scheduling point.
 **Hard Rust-lifetime obligation**: a handle must **not** be dropped before any
 exec-stream operation that holds a raw pointer into it — via `UnsafeAccessor`,
 `UnsafeMutAccessor`, or any struct embedding such a pointer — has been
-**scheduled**.
+**scheduled**. These accessors are for capture into stream-scheduled closures
+or into the source/dest slots of `memory_copy_async`; dereferencing them
+(`get()`, `get_mut()`) is only valid inside a stream op.
 
-**H2D staging buffers** (written by callback, then copied to device): may be
-dropped after `memory_copy_async` is scheduled. The copy holds its own
-reference to the source data.
+**H2D staging buffers**: fill the buffer by scheduling a host callback that
+writes to it (via an `UnsafeMutAccessor` captured by the closure). The callback
+runs as a stream op, so the subsequent `memory_copy_async` reads what the
+callback wrote. Once the memcpy is scheduled, the host handle may be dropped.
+**Do not fill the buffer from the scheduling thread.**
 
-**D2H readback buffers** (copied from device, then read by a subsequent
-callback): must remain alive until the read callback has been scheduled on
-exec_stream.
+**D2H readback buffers**: consume the buffer by scheduling a host callback that
+reads it after the `memory_copy_async` has written it. The handle must remain
+alive until the consuming callback has been scheduled on exec_stream. **Do not
+read the buffer from the scheduling thread.**
 
 **Proof output buffers**: all proof data is assembled inside exec-stream
 callbacks into non-pool heap memory (`Vec`, `BTreeMap`, `Option<Proof>` held in
