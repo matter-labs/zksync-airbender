@@ -828,6 +828,24 @@ EXTERN __global__ void ab_backward_new_claims_linear_kernel(const e4 *last_evals
   new_claims_out[idx] = e4_lerp(v0, v1, r);
 }
 
+EXTERN __global__ void ab_build_combined_claim_kernel(const e4 *claims, const e4 *batching, const u32 *desc, const unsigned num_terms,
+                                                       e4 *claim_out, e4 *eq_prefactor_out) {
+  if (threadIdx.x != 0 || blockIdx.x != 0)
+    return;
+  const e4 b = *batching;
+  e4 result = e4::ZERO();
+  for (unsigned i = 0; i < num_terms; i++) {
+    const unsigned exp = desc[2u * i];
+    const unsigned idx = desc[2u * i + 1u];
+    e4 pow = e4::ONE();
+    for (unsigned j = 0; j < exp; j++)
+      pow = e4::mul(pow, b);
+    result = e4::add(result, e4::mul(pow, claims[idx]));
+  }
+  *claim_out = result;
+  *eq_prefactor_out = e4::ONE();
+}
+
 EXTERN __global__ void ab_assemble_query_indexes_kernel(const u32 *raw_bits, u32 *indexes_out, const unsigned num_queries, const unsigned log_domain_size) {
   const unsigned idx = blockIdx.x * blockDim.x + threadIdx.x;
   if (idx >= num_queries)
