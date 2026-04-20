@@ -311,7 +311,7 @@ where
 //     caps
 // }
 
-pub fn commit_memory_tree_for_delegation_circuit_with_replayer_format<
+pub fn commit_memory_tree_for_delegation_circuit<
     F: PrimeField + TwoAdicField,
     T: ColumnMajorMerkleTreeConstructor<F>,
     A: GoodAllocator,
@@ -384,12 +384,10 @@ where
     cap
 }
 
-fn flatten_merkle_caps(trees: &[MerkleTreeCapVarLength]) -> Vec<u32> {
+fn flatten_merkle_cap(cap: &MerkleTreeCapVarLength) -> Vec<u32> {
     let mut result = vec![];
-    for subtree in trees.iter() {
-        for cap_element in subtree.cap.iter() {
-            result.extend_from_slice(cap_element);
-        }
+    for cap_element in cap.cap.iter() {
+        result.extend_from_slice(cap_element);
     }
 
     result
@@ -401,9 +399,9 @@ pub fn fs_transform_for_permutation_argument(
     final_register_values: &[FinalRegisterValue],
     final_pc: u32,
     final_timestamp: TimestampScalar,
-    circuit_families_memory_caps: &[(u32, Vec<Vec<MerkleTreeCapVarLength>>)],
-    inits_and_teardowns_memory_caps: &[Vec<MerkleTreeCapVarLength>],
-    delegation_circuits_memory_caps: &[(u32, Vec<Vec<MerkleTreeCapVarLength>>)],
+    circuit_families_memory_caps: &[(u32, Vec<MerkleTreeCapVarLength>)],
+    inits_and_teardowns_memory_caps: &[MerkleTreeCapVarLength],
+    delegation_circuits_memory_caps: &[(u32, Vec<MerkleTreeCapVarLength>)],
 ) -> Seed {
     use transcript::blake2s_u32::BLAKE2S_BLOCK_SIZE_U32_WORDS;
 
@@ -438,7 +436,7 @@ pub fn fs_transform_for_permutation_argument(
             memory_trace_transcript.absorb(&buffer);
         }
         for caps in caps.iter() {
-            let caps = flatten_merkle_caps(&caps);
+            let caps = flatten_merkle_cap(caps);
             memory_trace_transcript.absorb(&caps);
         }
     }
@@ -453,7 +451,7 @@ pub fn fs_transform_for_permutation_argument(
             memory_trace_transcript.absorb(&buffer);
         }
         for caps in inits_and_teardowns_memory_caps.iter() {
-            let caps = flatten_merkle_caps(&caps);
+            let caps = flatten_merkle_cap(caps);
             memory_trace_transcript.absorb(&caps);
         }
     }
@@ -475,7 +473,7 @@ pub fn fs_transform_for_permutation_argument(
             memory_trace_transcript.absorb(&buffer);
         }
         for caps in caps.iter() {
-            let caps = flatten_merkle_caps(&caps);
+            let caps = flatten_merkle_cap(caps);
             memory_trace_transcript.absorb(&caps);
         }
 

@@ -56,6 +56,91 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> GKRExternalChallenges<F, E> {
         flatten_field_els_into(&self.permutation_argument_linearization_challenges, dst);
         flatten_field_els_into(&[self.permutation_argument_additive_part], dst);
     }
+
+    #[cfg(feature = "prover")]
+    pub fn draw_from_transcript_seed_with_state_permutation(
+        mut seed: transcript::Seed,
+        pow_bits: usize,
+        pow_challenge: u64,
+    ) -> Self
+    where
+        [(); ((NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES + 1) * E::DEGREE + 1)
+            .next_multiple_of(blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS)]:,
+        [(); ((NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES + 1) * E::DEGREE)
+            .next_multiple_of(blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS)]:,
+        [(); E::DEGREE]:,
+    {
+        if pow_bits > 0 {
+            Transcript::verify_pow(&mut seed, pow_challenge, pow_bits as u32);
+        }
+
+        use crate::utils::*;
+        use blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS;
+
+        unsafe {
+            if pow_bits > 0 {
+                let mut transcript_challenges = [0u32;
+                    ((NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES + 1) * E::DEGREE + 1)
+                        .next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS)];
+                Transcript::draw_randomness(&mut seed, &mut transcript_challenges);
+
+                let mut it = transcript_challenges[1..]
+                    .as_chunks::<{ E::DEGREE }>()
+                    .0
+                    .iter();
+                let permutation_argument_linearization_challenges: [E;
+                    NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES] = core::array::from_fn(|_| {
+                    extension_field_from_base_coeffs(
+                        it.next()
+                            .unwrap_unchecked()
+                            .map(|el| F::from_raw_repr_with_reduction(el)),
+                    )
+                });
+                let permutation_argument_additive_part: E =
+                    extension_field_from_base_coeffs::<F, E>({
+                        let t = *it.next().unwrap_unchecked();
+                        let t: [F; E::DEGREE] = t.map(|el| F::from_raw_repr_with_reduction(el));
+                        t
+                    });
+
+                Self {
+                    permutation_argument_linearization_challenges,
+                    permutation_argument_additive_part,
+                    _marker: core::marker::PhantomData,
+                }
+            } else {
+                let mut transcript_challenges = [0u32;
+                    ((NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES + 1) * E::DEGREE)
+                        .next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS)];
+                Transcript::draw_randomness(&mut seed, &mut transcript_challenges);
+
+                let mut it = transcript_challenges[1..]
+                    .as_chunks::<{ E::DEGREE }>()
+                    .0
+                    .iter();
+                let permutation_argument_linearization_challenges: [E;
+                    NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES] = core::array::from_fn(|_| {
+                    extension_field_from_base_coeffs(
+                        it.next()
+                            .unwrap_unchecked()
+                            .map(|el| F::from_raw_repr_with_reduction(el)),
+                    )
+                });
+                let permutation_argument_additive_part: E =
+                    extension_field_from_base_coeffs::<F, E>({
+                        let t = *it.next().unwrap_unchecked();
+                        let t: [F; E::DEGREE] = t.map(|el| F::from_raw_repr_with_reduction(el));
+                        t
+                    });
+
+                Self {
+                    permutation_argument_linearization_challenges,
+                    permutation_argument_additive_part,
+                    _marker: core::marker::PhantomData,
+                }
+            }
+        }
+    }
 }
 
 #[serde_with::serde_as]

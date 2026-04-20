@@ -23,6 +23,19 @@ use std::path::Path;
 use std::sync::Arc;
 use worker::Worker;
 
+pub use ::add_sub_lui_auipc_mop::AddSubLuiAuipcMopCircuit;
+pub use ::jump_branch_slt::JumpBranchSltCircuit;
+pub use ::load_store_subword_only::LoadStoreSubwordOnlyCircuit;
+pub use ::load_store_word_only::LoadStoreWordOnlyCircuit;
+pub use ::mul_div_unsigned::UnsignedMulDivCircuit;
+pub use ::shift_binary::ShiftBinaryCircuit;
+
+pub use ::bigint_with_control::BigIntDelegationCircuit;
+pub use ::blake2_with_compression::Blake2sWithCompressionDelegationCircuit;
+pub use ::keccak_special5::KeccakSpecial5DelegationCircuit;
+
+pub use ::inits_and_teardowns;
+
 pub use bigint_with_control;
 pub use blake2_with_compression;
 pub use keccak_special5;

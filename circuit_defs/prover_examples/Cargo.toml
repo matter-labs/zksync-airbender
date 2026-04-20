@@ -14,7 +14,8 @@ common_constants = { workspace = true }
 prover = { workspace = true, features = ["prover"] }
 riscv_transpiler = { workspace = true }
 trace_and_split = { workspace = true }
-setups = { workspace = true, features = ["witness_eval_fn"]}
+setups = { workspace = true, features = ["witness_eval_fn"] }
+circuit_common = { workspace = true }
 serde = { workspace = true }
 serde_json = "*"
 bincode = { version = "1.3" }

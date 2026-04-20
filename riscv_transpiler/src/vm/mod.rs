@@ -1,6 +1,6 @@
 use crate::ir::simple_instruction_set::*;
 use crate::jit::{MachineState, MAX_NUM_COUNTERS};
-use common_constants::{INITIAL_PC, circuit_families::*};
+use common_constants::{circuit_families::*, INITIAL_PC};
 use common_constants::{TimestampScalar, INITIAL_TIMESTAMP, TIMESTAMP_STEP};
 use field::PrimeField;
 use std::fmt::Debug;
