@@ -5359,8 +5359,42 @@ where
         } else {
             None
         };
-        let mut start_callbacks = Callbacks::new();
-        let static_spill_upload = schedule_static_spill_upload(context, &self.static_spill_bytes)?;
+        // Compute the per-layer combined_claim descriptor and piggyback its
+        // byte representation onto the tail of the `static_spill_bytes` blob
+        // so ONE `schedule_static_spill_upload` call (one callback + one
+        // H2D) feeds both the per-round kernels (via `spill_payload`) and
+        // `build_combined_claim` (via a `DeviceSlice<u32>` view of the
+        // descriptor region). Replaces the former dedicated `start_callbacks`
+        // fill + separate descriptor host+device alloc + H2D.
+        let mut desc_pairs: Vec<u32> = Vec::with_capacity(
+            self.kernel_plans
+                .iter()
+                .map(|kernel| kernel.inputs.outputs_in_extension.len() * 2)
+                .sum(),
+        );
+        for kernel in self.kernel_plans.iter() {
+            for (j, output) in kernel.inputs.outputs_in_extension.iter().enumerate() {
+                desc_pairs.push((kernel.batch_challenge_offset + j) as u32);
+                desc_pairs.push(claim_layout.claim_idx(output));
+            }
+        }
+        let desc_byte_len = desc_pairs.len() * 4;
+        let spill_bytes = self.static_spill_bytes.as_slice();
+        // Pad the spill region to u32 alignment so the descriptor region can
+        // be safely transmuted back as `DeviceSlice<u32>`.
+        let desc_byte_offset = (spill_bytes.len() + 3) & !3;
+        let mut fused_bytes: Vec<u8> = Vec::with_capacity(desc_byte_offset + desc_byte_len);
+        fused_bytes.extend_from_slice(spill_bytes);
+        fused_bytes.resize(desc_byte_offset, 0u8);
+        if desc_byte_len > 0 {
+            // SAFETY: u32 is `Copy` with no padding bytes; the byte view
+            // aliases `desc_pairs` only for the enclosing `extend_from_slice`
+            // copy, which takes ownership of the bytes into `fused_bytes`.
+            fused_bytes.extend_from_slice(unsafe {
+                std::slice::from_raw_parts(desc_pairs.as_ptr() as *const u8, desc_byte_len)
+            });
+        }
+        let static_spill_upload = schedule_static_spill_upload(context, &fused_bytes)?;
         let mut shared_state = Box::new(ScheduledDimensionReducingLayerExecutionState {
             seed: Seed::default(),
             claim: E::ZERO,
@@ -5391,7 +5425,6 @@ where
         // orchestrator-owned device buffer into this layer's
         // `round_scratch.claim_point` (consumed by per-round kernels for
         // `prev_coord_slice` and by `launch_build_eq_values_from_point` below).
-        // Replaces the prior `claim_point_host` H2D driven by the start callback.
         let claim_point_and_batching_len = self.folding_steps + 1;
         assert_eq!(
             device_claim_point_in.len(),
@@ -5425,44 +5458,6 @@ where
             claim_layout.len(),
             "device claims buffer must match claim layout length",
         );
-        let mut desc_pairs: Vec<u32> = Vec::with_capacity(
-            self.kernel_plans
-                .iter()
-                .map(|kernel| kernel.inputs.outputs_in_extension.len() * 2)
-                .sum(),
-        );
-        for kernel in self.kernel_plans.iter() {
-            for (j, output) in kernel.inputs.outputs_in_extension.iter().enumerate() {
-                desc_pairs.push((kernel.batch_challenge_offset + j) as u32);
-                desc_pairs.push(claim_layout.claim_idx(output));
-            }
-        }
-        let desc_len = desc_pairs.len();
-        let mut combined_claim_desc_host: HostAllocation<[u32]> =
-            unsafe { context.alloc_host_uninit_slice::<u32>(desc_len.max(1)) };
-        let combined_claim_desc_host_accessor = combined_claim_desc_host.get_mut_accessor();
-        // HostAllocation contents must only be touched as stream ops; fill the
-        // staging buffer inside a stream-ordered callback so the subsequent
-        // memory_copy_async sees the correct bytes regardless of host-side
-        // pool recycling on preceding layers.
-        start_callbacks.schedule(
-            move || unsafe {
-                if desc_len > 0 {
-                    combined_claim_desc_host_accessor.get_mut()[..desc_len]
-                        .copy_from_slice(&desc_pairs);
-                }
-            },
-            stream,
-        )?;
-        let mut combined_claim_desc_device: DeviceAllocation<u32> =
-            context.alloc(desc_len.max(1), AllocationPlacement::Top)?;
-        if desc_len > 0 {
-            memory_copy_async(
-                &mut combined_claim_desc_device,
-                &combined_claim_desc_host,
-                stream,
-            )?;
-        }
 
         {
             let claims_e4: &era_cudart::slice::DeviceSlice<E4> =
@@ -5475,10 +5470,24 @@ where
                 unsafe { device_claim[..].transmute_mut::<E4>() };
             let eq_out_e4: &mut era_cudart::slice::DeviceSlice<E4> =
                 unsafe { device_eq_prefactor[..].transmute_mut::<E4>() };
+            // Slice the descriptor region out of the fused spill+desc
+            // upload. SAFETY: `desc_byte_offset` is u32-aligned by
+            // construction; `desc_byte_len` is a multiple of 4; the device
+            // allocation is pool-backed and aligned well beyond u32. The
+            // fused upload is `Some` whenever either spill or descriptor is
+            // non-empty, and any real backward layer has at least one
+            // output claim term.
+            let fused_upload = static_spill_upload
+                .as_ref()
+                .expect("fused spill+descriptor upload must be non-empty");
+            let desc_device_slice: &era_cudart::slice::DeviceSlice<u32> = unsafe {
+                fused_upload.device[desc_byte_offset..desc_byte_offset + desc_byte_len]
+                    .transmute::<u32>()
+            };
             crate::ops::blake2s::build_combined_claim(
                 claims_e4,
                 batching_e4,
-                &combined_claim_desc_device[..desc_len],
+                desc_device_slice,
                 claim_out_e4,
                 eq_out_e4,
                 stream,
@@ -5889,8 +5898,6 @@ where
         drop(layer_challenges_host);
         drop(last_evaluations_packed_host);
         drop(new_claims_host);
-        drop(combined_claim_desc_host);
-        drop(combined_claim_desc_device);
         drop(d_layer_transcript_inputs);
         drop(d_layer_challenges);
         drop(device_claim);
@@ -5900,7 +5907,7 @@ where
         drop(device_claims_in);
         Ok(GpuGKRDimensionReducingScheduledLayerExecution {
             tracing_ranges,
-            start_callbacks,
+            start_callbacks: Callbacks::new(),
             static_spill_upload,
             round_challenge_storage,
             round_challenge_buffers,
@@ -6857,8 +6864,43 @@ where
         layer_range.start(stream)?;
         let last_step = self.folding_steps - 1;
         assert!(last_step >= 3);
-        let mut start_callbacks = Callbacks::new();
-        let static_spill_upload = schedule_static_spill_upload(context, &self.static_spill_bytes)?;
+        // Compute the per-layer combined_claim descriptor and piggyback its
+        // byte representation onto the tail of the `static_spill_bytes` blob
+        // (empty for main-layer, so the fused blob is descriptor-only) so
+        // ONE `schedule_static_spill_upload` call (one callback + one H2D)
+        // feeds `build_combined_claim` via a `DeviceSlice<u32>` view of the
+        // descriptor region. Replaces the former dedicated `start_callbacks`
+        // fill + separate descriptor host+device alloc + H2D.
+        let mut desc_pairs: Vec<u32> = Vec::new();
+        for kernel in self.kernel_plans.iter() {
+            if kernel.kind == GpuGKRMainLayerKernelKind::EnforceConstraintsMaxQuadratic {
+                continue;
+            }
+            for (j, output) in kernel
+                .inputs
+                .outputs_in_base
+                .iter()
+                .chain(kernel.inputs.outputs_in_extension.iter())
+                .enumerate()
+            {
+                desc_pairs.push((kernel.batch_challenge_offset + j) as u32);
+                desc_pairs.push(claim_layout.claim_idx(output));
+            }
+        }
+        let desc_byte_len = desc_pairs.len() * 4;
+        let spill_bytes = self.static_spill_bytes.as_slice();
+        let desc_byte_offset = (spill_bytes.len() + 3) & !3;
+        let mut fused_bytes: Vec<u8> = Vec::with_capacity(desc_byte_offset + desc_byte_len);
+        fused_bytes.extend_from_slice(spill_bytes);
+        fused_bytes.resize(desc_byte_offset, 0u8);
+        if desc_byte_len > 0 {
+            // SAFETY: u32 is `Copy` with no padding; byte view aliases
+            // `desc_pairs` only for the `extend_from_slice` copy.
+            fused_bytes.extend_from_slice(unsafe {
+                std::slice::from_raw_parts(desc_pairs.as_ptr() as *const u8, desc_byte_len)
+            });
+        }
+        let static_spill_upload = schedule_static_spill_upload(context, &fused_bytes)?;
         let mut shared_state = Box::new(ScheduledMainLayerExecutionState {
             seed: Seed::default(),
             claim: E::ZERO,
@@ -6915,48 +6957,6 @@ where
             claim_layout.len(),
             "device claims buffer must match claim layout length",
         );
-        let mut desc_pairs = Vec::new();
-        for kernel in self.kernel_plans.iter() {
-            if kernel.kind == GpuGKRMainLayerKernelKind::EnforceConstraintsMaxQuadratic {
-                continue;
-            }
-            for (j, output) in kernel
-                .inputs
-                .outputs_in_base
-                .iter()
-                .chain(kernel.inputs.outputs_in_extension.iter())
-                .enumerate()
-            {
-                desc_pairs.push((kernel.batch_challenge_offset + j) as u32);
-                desc_pairs.push(claim_layout.claim_idx(output));
-            }
-        }
-        let desc_len = desc_pairs.len();
-        let mut combined_claim_desc_host: HostAllocation<[u32]> =
-            unsafe { context.alloc_host_uninit_slice::<u32>(desc_len.max(1)) };
-        let combined_claim_desc_host_accessor = combined_claim_desc_host.get_mut_accessor();
-        // HostAllocation contents must only be touched as stream ops; fill the
-        // staging buffer inside a stream-ordered callback so the subsequent
-        // memory_copy_async sees the correct bytes regardless of host-side
-        // pool recycling on preceding layers.
-        start_callbacks.schedule(
-            move || unsafe {
-                if desc_len > 0 {
-                    combined_claim_desc_host_accessor.get_mut()[..desc_len]
-                        .copy_from_slice(&desc_pairs);
-                }
-            },
-            stream,
-        )?;
-        let mut combined_claim_desc_device: DeviceAllocation<u32> =
-            context.alloc(desc_len.max(1), AllocationPlacement::Top)?;
-        if desc_len > 0 {
-            memory_copy_async(
-                &mut combined_claim_desc_device,
-                &combined_claim_desc_host,
-                stream,
-            )?;
-        }
 
         {
             let claims_e4: &era_cudart::slice::DeviceSlice<E4> =
@@ -6969,10 +6969,20 @@ where
                 unsafe { device_claim[..].transmute_mut::<E4>() };
             let eq_out_e4: &mut era_cudart::slice::DeviceSlice<E4> =
                 unsafe { device_eq_prefactor[..].transmute_mut::<E4>() };
+            // SAFETY: `desc_byte_offset` is u32-aligned; `desc_byte_len` is
+            // a multiple of 4. See the fused-upload block near the top of
+            // this function for the construction invariants.
+            let fused_upload = static_spill_upload
+                .as_ref()
+                .expect("fused spill+descriptor upload must be non-empty");
+            let desc_device_slice: &era_cudart::slice::DeviceSlice<u32> = unsafe {
+                fused_upload.device[desc_byte_offset..desc_byte_offset + desc_byte_len]
+                    .transmute::<u32>()
+            };
             crate::ops::blake2s::build_combined_claim(
                 claims_e4,
                 batching_e4,
-                &combined_claim_desc_device[..desc_len],
+                desc_device_slice,
                 claim_out_e4,
                 eq_out_e4,
                 stream,
@@ -7342,8 +7352,6 @@ where
         drop(layer_challenges_host);
         drop(last_evaluations_packed_host);
         drop(new_claims_host);
-        drop(combined_claim_desc_host);
-        drop(combined_claim_desc_device);
         drop(d_layer_transcript_inputs);
         drop(d_layer_challenges);
         drop(device_claim);
@@ -7354,7 +7362,7 @@ where
         drop(device_claims_in);
         Ok(GpuGKRMainLayerScheduledLayerExecution {
             tracing_ranges,
-            start_callbacks,
+            start_callbacks: Callbacks::new(),
             static_spill_upload,
             batch_challenge_storage,
             batch_challenge_buffer,
