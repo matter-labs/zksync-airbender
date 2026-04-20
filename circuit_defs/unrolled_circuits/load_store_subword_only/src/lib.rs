@@ -54,18 +54,29 @@ impl<F: PrimeField> circuit_common::RiscVCycleCircuit<F, true> for LoadStoreSubw
 
 mod sealed {
     use super::*;
+    use crate::cs::oracle::Placeholder;
     use prover::cs::witness_placer::*;
     use prover::gkr::witness_gen::witness_proxy::*;
 
     include!("../generated/witness_generation_fn.rs");
 }
 
-pub fn witness_eval_fn<'a, 'b>(
-    proxy: &'_ mut ColumnMajorWitnessProxy<'a, MemoryCircuitOracle<'b>, BabyBearField>,
+// pub fn witness_eval_fn<'a, 'b>(
+//     proxy: &'_ mut ColumnMajorWitnessProxy<'a, MemoryCircuitOracle<'b>, BabyBearField>,
+// ) {
+//     let fn_ptr = sealed::evaluate_witness_fn::<
+//         ScalarWitnessTypeSet<BabyBearField, true>,
+//         ColumnMajorWitnessProxy<'a, MemoryCircuitOracle<'b>, BabyBearField>,
+//     >;
+//     (fn_ptr)(proxy);
+// }
+
+pub fn witness_eval_fn(
+    proxy: &'_ mut ColumnMajorWitnessProxy<'_, MemoryCircuitOracle<'_>, BabyBearField>,
 ) {
     let fn_ptr = sealed::evaluate_witness_fn::<
         ScalarWitnessTypeSet<BabyBearField, true>,
-        ColumnMajorWitnessProxy<'a, MemoryCircuitOracle<'b>, BabyBearField>,
+        ColumnMajorWitnessProxy<'_, MemoryCircuitOracle<'_>, BabyBearField>,
     >;
     (fn_ptr)(proxy);
 }

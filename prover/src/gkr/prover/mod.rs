@@ -446,7 +446,9 @@ where
         worker
     ));
 
-    let final_trace_size_log_2 = 4;
+    // final trace size on which we output the polynomials in plain text
+    use crate::definitions::DEFAULT_PLAIN_TEXT_POLY_SIZE_LOG2;
+    let final_trace_size_log_2 = DEFAULT_PLAIN_TEXT_POLY_SIZE_LOG2;
 
     let (initial_layer_for_sumcheck, dimension_reducing_inputs) =
         dimension_reduction::forward::evaluate_dimension_reduction_forward(

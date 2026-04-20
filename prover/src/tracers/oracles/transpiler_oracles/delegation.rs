@@ -21,6 +21,8 @@ pub struct DelegationOracle<
     pub marker: core::marker::PhantomData<D>,
 }
 
+pub trait DelegationOracleMarker<'a> {}
+
 pub type BigintDelegationOracle<'a> = DelegationOracle<
     'a,
     BigintAbiDescription,
@@ -45,6 +47,12 @@ pub type KeccakDelegationOracle<'a> = DelegationOracle<
     KECCAK_SPECIAL5_X11_NUM_WRITES,
     KECCAK_SPECIAL5_NUM_VARIABLE_OFFSETS,
 >;
+
+impl<'a> DelegationOracleMarker<'a> for BigintDelegationOracle<'a> {}
+
+impl<'a> DelegationOracleMarker<'a> for Blake2sDelegationOracle<'a> {}
+
+impl<'a> DelegationOracleMarker<'a> for KeccakDelegationOracle<'a> {}
 
 impl<
         'a,

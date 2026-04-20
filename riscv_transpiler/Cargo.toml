@@ -28,7 +28,6 @@ riscv-decode = {version = "0.2", optional = true }
 capstone = {version = "0.13", optional = true }
 
 [features]
-delegation = []
 jit = ["dynasmrt", "riscv-decode", "capstone"]
 flamegraph = ["dep:inferno", "dep:addr2line_new", "dep:object"]
 default = ["jit"]

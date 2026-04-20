@@ -8,6 +8,10 @@ mod leaf_inclusion_verifier;
 mod optimal_folding;
 pub mod sumcheck_kernel;
 
+pub const DEFAULT_LDE_FACTOR: usize = 2;
+pub const DEFAULT_CAP_SIZE: usize = 16;
+pub const DEFAULT_PLAIN_TEXT_POLY_SIZE_LOG2: usize = 4;
+
 use crate::gkr::prover::GKRExternalChallenges;
 use crate::utils::mersenne_quartic_from_base_coeffs;
 use crate::utils::mersenne_quartic_into_base_coeffs;

@@ -37,18 +37,29 @@ impl<F: PrimeField> circuit_common::DelegationCircuit<F>
 
 mod sealed {
     use super::*;
+    use crate::cs::oracle::Placeholder;
     use prover::cs::witness_placer::*;
     use prover::gkr::witness_gen::witness_proxy::*;
 
     include!("../generated/witness_generation_fn.rs");
 }
 
-pub fn witness_eval_fn<'a, 'b>(
-    proxy: &'_ mut ColumnMajorWitnessProxy<'a, Blake2sDelegationOracle<'b>, BabyBearField>,
+// pub fn witness_eval_fn<'a, 'b>(
+//     proxy: &'_ mut ColumnMajorWitnessProxy<'a, Blake2sDelegationOracle<'b>, BabyBearField>,
+// ) {
+//     let fn_ptr = sealed::evaluate_witness_fn::<
+//         ScalarWitnessTypeSet<BabyBearField, true>,
+//         ColumnMajorWitnessProxy<'a, Blake2sDelegationOracle<'b>, BabyBearField>,
+//     >;
+//     (fn_ptr)(proxy);
+// }
+
+pub fn witness_eval_fn(
+    proxy: &'_ mut ColumnMajorWitnessProxy<'_, Blake2sDelegationOracle<'_>, BabyBearField>,
 ) {
     let fn_ptr = sealed::evaluate_witness_fn::<
         ScalarWitnessTypeSet<BabyBearField, true>,
-        ColumnMajorWitnessProxy<'a, Blake2sDelegationOracle<'b>, BabyBearField>,
+        ColumnMajorWitnessProxy<'_, Blake2sDelegationOracle<'_>, BabyBearField>,
     >;
     (fn_ptr)(proxy);
 }

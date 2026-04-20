@@ -33,18 +33,29 @@ impl<F: PrimeField> circuit_common::DelegationCircuit<F> for BigIntDelegationCir
 
 mod sealed {
     use super::*;
+    use crate::cs::oracle::Placeholder;
     use prover::cs::witness_placer::*;
     use prover::gkr::witness_gen::witness_proxy::*;
 
     include!("../generated/witness_generation_fn.rs");
 }
 
-pub fn witness_eval_fn<'a, 'b>(
-    proxy: &'_ mut ColumnMajorWitnessProxy<'a, BigintDelegationOracle<'b>, BabyBearField>,
+// pub fn witness_eval_fn<'a, 'b>(
+//     proxy: &'_ mut ColumnMajorWitnessProxy<'a, BigintDelegationOracle<'b>, BabyBearField>,
+// ) {
+//     let fn_ptr = sealed::evaluate_witness_fn::<
+//         ScalarWitnessTypeSet<BabyBearField, true>,
+//         ColumnMajorWitnessProxy<'a, BigintDelegationOracle<'b>, BabyBearField>,
+//     >;
+//     (fn_ptr)(proxy);
+// }
+
+pub fn witness_eval_fn(
+    proxy: &'_ mut ColumnMajorWitnessProxy<'_, BigintDelegationOracle<'_>, BabyBearField>,
 ) {
     let fn_ptr = sealed::evaluate_witness_fn::<
         ScalarWitnessTypeSet<BabyBearField, true>,
-        ColumnMajorWitnessProxy<'a, BigintDelegationOracle<'b>, BabyBearField>,
+        ColumnMajorWitnessProxy<'_, BigintDelegationOracle<'_>, BabyBearField>,
     >;
     (fn_ptr)(proxy);
 }
