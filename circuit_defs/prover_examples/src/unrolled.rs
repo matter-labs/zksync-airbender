@@ -4,64 +4,114 @@ use crate::DUMP_WITNESS_VAR;
 use crate::MEMORY_DELEGATION_POW_BITS;
 use common_constants::TimestampScalar;
 use common_constants::INITIAL_TIMESTAMP;
-use prover::check_satisfied;
+use common_constants::TIMESTAMP_STEP;
 use prover::cs::utils::split_timestamp;
 use prover::definitions::*;
 use prover::fft::*;
+use prover::field::baby_bear::base::BabyBearField;
+use prover::field::baby_bear::ext4::BabyBearExt4;
 use prover::field::*;
+use prover::gkr::prover::GKRProof;
 use prover::merkle_trees::DefaultTreeConstructor;
-use prover::prover_stages::unrolled_prover::UnrolledModeProof;
-use prover::prover_stages::Proof;
 use prover::tracers::oracles::transpiler_oracles::delegation::DelegationOracle;
-use prover::unrolled::evaluate_init_and_teardown_witness;
-use prover::unrolled::MemoryCircuitOracle;
-use prover::unrolled::NonMemoryCircuitOracle;
 use prover::worker;
-use prover::ExecutorFamilyWitnessEvaluationAuxData;
-use prover::WitnessEvaluationData;
-use prover::WitnessEvaluationDataForExecutionFamily;
-use prover::DEFAULT_TRACE_PADDING_MULTIPLE;
 use riscv_transpiler::cycle::MachineConfig;
+use riscv_transpiler::vm::Counters;
 use riscv_transpiler::witness::delegation::bigint::BigintAbiDescription;
 use riscv_transpiler::witness::delegation::blake2_round_function::Blake2sRoundFunctionAbiDescription;
 use riscv_transpiler::witness::delegation::keccak_special5::KeccakSpecial5AbiDescription;
 use riscv_transpiler::witness::DelegationAbiDescription;
-use setups::DelegationCircuitPrecomputations;
-use setups::UnrolledCircuitPrecomputations;
+use setups::CircuitSetup;
+use setups::DelegationCircuitSetup;
 use setups::UnrolledCircuitWitnessEvalFn;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use trace_and_split::commit_memory_tree_for_delegation_circuit_with_replayer_format;
-use trace_and_split::commit_memory_tree_for_inits_and_teardowns_unrolled_circuit;
+use trace_and_split::commit_memory_tree_for_inits_and_teardowns;
 use trace_and_split::commit_memory_tree_for_unrolled_mem_circuits;
 use trace_and_split::commit_memory_tree_for_unrolled_nonmem_circuits;
-use trace_and_split::fs_transform_for_memory_and_delegation_arguments_for_unrolled_circuits;
+use trace_and_split::fs_transform_for_permutation_argument;
 use trace_and_split::FinalRegisterValue;
 use trace_and_split::ENTRY_POINT;
+use riscv_transpiler::vm::SimpleSnapshot;
+use std::alloc::Global;
+use riscv_transpiler::vm::DelegationsAndFamiliesCounters;
+
+pub fn run_unrolled_machine_in_full<M: MachineConfig, C: Counters>(
+    cycles_bound: usize,
+    binary_image: &[u32],
+    text_section: &[u32],
+    ram_bound: usize,
+    initial_counters: C,
+    mut non_determinism: impl riscv_transpiler::vm::NonDeterminismCSRSource,
+    worker: &worker::Worker,
+) -> (
+    (u32, TimestampScalar),
+    Vec<SimpleSnapshot<C>>,
+    C,
+    Vec<Vec<(u32, (TimestampScalar, u32))>>
+) {
+    use riscv_transpiler::ir::simple_instruction_set::*;
+    use riscv_transpiler::vm::*;
+
+    let instructions: Vec<Instruction> =
+        preprocess_bytecode::<M::DecodingOptions, true>(&text_section);
+    let tape = SimpleTape::new(&instructions);
+    let mut ram = RamWithRomRegion::<{ common_constants::ROM_SECOND_WORD_BITS }>::from_rom_content(
+        &binary_image,
+        ram_bound,
+    );
+
+    let mut state = State::initial_with_counters(initial_counters);
+    let mut snapshotter = SimpleSnapshotter::<C, {common_constants::ROM_SECOND_WORD_BITS}>::new_with_cycle_limit(cycles_bound, state);
+
+    let is_program_finished = VM::<C>::run_basic_unrolled::<_, _, _, BabyBearField>(
+        &mut state,
+        &mut ram,
+        &mut snapshotter,
+        &tape,
+        cycles_bound,
+        &mut non_determinism,
+    );
+    assert!(is_program_finished); // check that we reached looping state (ie. end state for our vm)
+
+    let exact_cycles_passed = (state.timestamp - INITIAL_TIMESTAMP) / TIMESTAMP_STEP;
+    println!("Passed exactly {} cycles", exact_cycles_passed);
+
+    let counters = snapshotter.snapshots.last().unwrap().state.counters;
+    let shuffle_ram_touched_addresses = ram.collect_inits_and_teardowns(worker, Global);
+    let final_pc = state.pc;
+    let final_timestamp = state.timestamp;
+
+    (
+        (final_pc, final_timestamp),
+        snapshotter.snapshots,
+        counters,
+        shuffle_ram_touched_addresses,
+    )
+}
 
 pub fn prove_unrolled_execution_with_replayer<
     C: MachineConfig,
     A: GoodAllocator,
-    const ROM_BOUND_SECOND_WORD_BITS: usize,
 >(
     cycles_bound: usize,
     binary_image: &[u32],
     text_section: &[u32],
+    use_caches: bool,
     mut non_determinism: impl riscv_transpiler::vm::NonDeterminismCSRSource,
-    unrolled_circuits_precomputations: &BTreeMap<u8, UnrolledCircuitPrecomputations<A, A>>,
-    inits_and_teardowns_precomputation: &UnrolledCircuitPrecomputations<A, A>,
-    delegation_circuits_precomputations: &[(u32, DelegationCircuitPrecomputations<A, A>)],
+    unrolled_circuits_setups: &BTreeMap<u8, CircuitSetup<A>>,
+    delegation_circuits_setups: &BTreeMap<u16, DelegationCircuitSetup>,
     ram_bound: usize,
     worker: &worker::Worker,
 ) -> (
-    BTreeMap<u8, Vec<UnrolledModeProof>>,
-    Vec<UnrolledModeProof>,
-    Vec<(u32, Vec<Proof>)>,
+    BTreeMap<u8, Vec<GKRProof<BabyBearField, BabyBearExt4, DefaultTreeConstructor>>>,
+    Vec<GKRProof<BabyBearField, BabyBearExt4, DefaultTreeConstructor>>,
+    Vec<(u16, Vec<GKRProof<BabyBearField, BabyBearExt4, DefaultTreeConstructor>>)>,
     [FinalRegisterValue; 32],
     (u32, TimestampScalar),
     u64,
 ) {
-    use prover::unrolled::run_unrolled_machine;
 
     let family_chunk_sizes = HashMap::from_iter(
         [
@@ -112,23 +162,20 @@ pub fn prove_unrolled_execution_with_replayer<
     );
 
     let (
+        (
         final_pc,
-        final_timestamp,
-        _cycles_used,
-        non_mem_circuits,
-        mem_circuits,
-        (blake_circuits, bigint_circuits, keccak_circuits),
-        register_final_state,
+        final_timestamp
+        ),
+        snapshots,
+        counters,
         shuffle_ram_touched_addresses,
-    ) = run_unrolled_machine::<C, A, ROM_BOUND_SECOND_WORD_BITS>(
-        common_constants::INITIAL_PC,
+    ) = run_unrolled_machine_in_full::<C, DelegationsAndFamiliesCounters>(
+        cycles_bound,
         text_section,
         binary_image,
-        cycles_bound,
         ram_bound,
-        &mut non_determinism,
-        family_chunk_sizes,
-        delegation_chunk_sizes,
+        DelegationsAndFamiliesCounters::default(),
+        non_determinism,
         worker,
     );
 

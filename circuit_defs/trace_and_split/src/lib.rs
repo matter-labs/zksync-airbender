@@ -1,22 +1,24 @@
 #![allow(incomplete_features)]
 #![feature(generic_const_exprs)]
+#![feature(allocator_api)]
 
-use crate::cs::cs::oracle::ExecutorFamilyDecoderData;
+use std::alloc::Global;
+
+use crate::cs::gkr_circuits::ExecutorFamilyDecoderData;
 use common_constants::INITIAL_PC;
 use merkle_trees::MerkleTreeCapVarLength;
 use prover::cs::definitions::TimestampScalar;
+use prover::cs::gkr_compiler::GKRCircuitArtifact;
 use prover::cs::utils::split_timestamp;
-use prover::definitions::LazyInitAndTeardown;
+use prover::gkr::witness_gen::delegation_circuits::evaluate_gkr_memory_witness_for_delegation_circuit;
+use prover::gkr::witness_gen::family_circuits::evaluate_gkr_memory_witness_for_executor_family;
 use prover::tracers::oracles::transpiler_oracles::delegation::DelegationOracle;
-use riscv_transpiler::machine_mode_only_unrolled::MemoryOpcodeTracingDataWithTimestamp;
-use riscv_transpiler::machine_mode_only_unrolled::NonMemoryOpcodeTracingDataWithTimestamp;
-use riscv_transpiler::machine_mode_only_unrolled::UnifiedOpcodeTracingDataWithTimestamp;
 use riscv_transpiler::witness::DelegationAbiDescription;
-use setups::prover::definitions::OPTIMAL_FOLDING_PROPERTIES;
+use riscv_transpiler::witness::*;
+use setups::inits_and_teardowns::NUM_INIT_AND_TEARDOWN_SETS;
 use setups::prover::fft::*;
 use setups::prover::field::*;
-use setups::prover::merkle_trees::DefaultTreeConstructor;
-use setups::prover::merkle_trees::MerkleTreeConstructor;
+use setups::prover::merkle_trees::ColumnMajorMerkleTreeConstructor;
 use setups::prover::transcript::Seed;
 use setups::prover::*;
 use worker::Worker;
@@ -32,26 +34,29 @@ pub struct FinalRegisterValue {
     pub last_access_timestamp: TimestampScalar,
 }
 
-pub fn commit_memory_tree_for_unrolled_nonmem_circuits<A: GoodAllocator>(
-    circuit: &setups::prover::cs::one_row_compiler::CompiledCircuitArtifact<Mersenne31Field>,
+pub fn commit_memory_tree_for_unrolled_nonmem_circuits<
+    F: PrimeField + TwoAdicField,
+    T: ColumnMajorMerkleTreeConstructor<F>,
+    A: GoodAllocator,
+    B: GoodAllocator,
+>(
+    circuit: &GKRCircuitArtifact<F>,
     witness_chunk: &[NonMemoryOpcodeTracingDataWithTimestamp],
-    twiddles: &Twiddles<Mersenne31Complex, A>,
-    lde_precomputations: &LdePrecomputations<A>,
+    twiddles: &Twiddles<F, Global>,
+    tree_cap_size: usize,
+    lde_factor: usize,
     default_pc_value_in_padding: u32,
     decoder_data: &[ExecutorFamilyDecoderData],
     worker: &Worker,
-) -> Vec<MerkleTreeCapVarLength> {
-    use prover::unrolled::evaluate_memory_witness_for_executor_family;
-    use prover::unrolled::NonMemoryCircuitOracle;
-    let lde_factor = lde_precomputations.lde_factor;
-    assert_eq!(twiddles.domain_size, lde_precomputations.domain_size);
-    use setups::prover::prover_stages::stage1::compute_wide_ldes;
+) -> MerkleTreeCapVarLength
+where
+    [(); F::DEGREE]:,
+{
+    use prover::gkr::prover::stages::stage1::commit_trace_part;
+    use prover::gkr::witness_gen::oracles::NonMemoryCircuitOracle;
+
     let trace_len = twiddles.domain_size;
-
-    let optimal_folding = OPTIMAL_FOLDING_PROPERTIES[trace_len.trailing_zeros() as usize];
-
-    let num_cycles_in_chunk = trace_len - 1;
-    assert!(witness_chunk.len() <= num_cycles_in_chunk);
+    assert!(witness_chunk.len() <= trace_len);
     let now = std::time::Instant::now();
 
     let oracle = NonMemoryCircuitOracle {
@@ -60,86 +65,65 @@ pub fn commit_memory_tree_for_unrolled_nonmem_circuits<A: GoodAllocator>(
         default_pc_value_in_padding,
     };
 
-    let memory_trace = evaluate_memory_witness_for_executor_family::<_, A>(
+    let memory_trace = evaluate_gkr_memory_witness_for_executor_family::<F, _, A, B>(
         &circuit,
-        num_cycles_in_chunk,
+        trace_len,
         &oracle,
         &worker,
         A::default(),
+        B::default(),
     );
 
     println!(
         "Materializing memory trace for {} cycles took {:?}",
-        num_cycles_in_chunk,
+        trace_len,
         now.elapsed()
     );
 
-    let MemoryOnlyWitnessEvaluationDataForExecutionFamily { memory_trace } = memory_trace;
-    // now we should commit to it
-    let width = memory_trace.width();
-    let mut memory_trace = memory_trace;
-    adjust_to_zero_c0_var_length(&mut memory_trace, 0..width, worker);
-
-    let memory_ldes = compute_wide_ldes(
-        memory_trace,
+    let mem_inputs: Vec<_> = memory_trace
+        .column_major_trace
+        .iter()
+        .map(|el| &el[..])
+        .collect();
+    let mem = commit_trace_part::<F, T>(
+        &mem_inputs,
         twiddles,
-        lde_precomputations,
-        0,
         lde_factor,
+        lde_factor.trailing_zeros() as usize,
+        tree_cap_size,
+        trace_len.trailing_zeros() as usize,
         worker,
     );
-    assert_eq!(memory_ldes.len(), lde_factor);
 
-    // now form a tree
-    let subtree_cap_size = (1 << optimal_folding.total_caps_size_log2) / lde_factor;
-    assert!(subtree_cap_size > 0);
+    let cap = mem.tree.get_cap();
 
-    let mut memory_subtrees = Vec::with_capacity(lde_factor);
-    let now = std::time::Instant::now();
-    for domain in memory_ldes.iter() {
-        let memory_tree = DefaultTreeConstructor::construct_for_coset(
-            &domain.trace,
-            subtree_cap_size,
-            true,
-            worker,
-        );
-        memory_subtrees.push(memory_tree);
-    }
-
-    let dump_fn = |caps: &[DefaultTreeConstructor]| {
-        let mut result = Vec::with_capacity(caps.len());
-        for el in caps.iter() {
-            result.push(el.get_cap());
-        }
-
-        result
-    };
-
-    let caps = dump_fn(&memory_subtrees);
     println!("Memory witness commitment took {:?}", now.elapsed());
 
-    caps
+    cap
 }
 
-pub fn commit_memory_tree_for_unrolled_mem_circuits<A: GoodAllocator>(
-    circuit: &setups::prover::cs::one_row_compiler::CompiledCircuitArtifact<Mersenne31Field>,
+pub fn commit_memory_tree_for_unrolled_mem_circuits<
+    F: PrimeField + TwoAdicField,
+    T: ColumnMajorMerkleTreeConstructor<F>,
+    A: GoodAllocator,
+    B: GoodAllocator,
+>(
+    circuit: &GKRCircuitArtifact<F>,
     witness_chunk: &[MemoryOpcodeTracingDataWithTimestamp],
-    twiddles: &Twiddles<Mersenne31Complex, A>,
-    lde_precomputations: &LdePrecomputations<A>,
+    twiddles: &Twiddles<F, Global>,
+    tree_cap_size: usize,
+    lde_factor: usize,
     decoder_data: &[ExecutorFamilyDecoderData],
     worker: &Worker,
-) -> Vec<MerkleTreeCapVarLength> {
-    use prover::unrolled::evaluate_memory_witness_for_executor_family;
-    use prover::unrolled::MemoryCircuitOracle;
-    let lde_factor = lde_precomputations.lde_factor;
-    assert_eq!(twiddles.domain_size, lde_precomputations.domain_size);
-    use setups::prover::prover_stages::stage1::compute_wide_ldes;
+) -> MerkleTreeCapVarLength
+where
+    [(); F::DEGREE]:,
+{
+    use prover::gkr::prover::stages::stage1::commit_trace_part;
+    use prover::gkr::witness_gen::oracles::MemoryCircuitOracle;
+
     let trace_len = twiddles.domain_size;
-
-    let optimal_folding = OPTIMAL_FOLDING_PROPERTIES[trace_len.trailing_zeros() as usize];
-
-    let num_cycles_in_chunk = trace_len - 1;
-    assert!(witness_chunk.len() <= num_cycles_in_chunk);
+    assert!(witness_chunk.len() <= trace_len);
     let now = std::time::Instant::now();
 
     let oracle = MemoryCircuitOracle {
@@ -147,337 +131,257 @@ pub fn commit_memory_tree_for_unrolled_mem_circuits<A: GoodAllocator>(
         decoder_table: decoder_data,
     };
 
-    let memory_trace = evaluate_memory_witness_for_executor_family::<_, A>(
+    let memory_trace = evaluate_gkr_memory_witness_for_executor_family::<F, _, A, B>(
         &circuit,
-        num_cycles_in_chunk,
+        trace_len,
         &oracle,
         &worker,
         A::default(),
+        B::default(),
     );
 
     println!(
         "Materializing memory trace for {} cycles took {:?}",
-        num_cycles_in_chunk,
+        trace_len,
         now.elapsed()
     );
 
-    let MemoryOnlyWitnessEvaluationDataForExecutionFamily { memory_trace } = memory_trace;
-    // now we should commit to it
-    let width = memory_trace.width();
-    let mut memory_trace = memory_trace;
-    adjust_to_zero_c0_var_length(&mut memory_trace, 0..width, worker);
-
-    let memory_ldes = compute_wide_ldes(
-        memory_trace,
+    let mem_inputs: Vec<_> = memory_trace
+        .column_major_trace
+        .iter()
+        .map(|el| &el[..])
+        .collect();
+    let mem = commit_trace_part::<F, T>(
+        &mem_inputs,
         twiddles,
-        lde_precomputations,
-        0,
         lde_factor,
+        lde_factor.trailing_zeros() as usize,
+        tree_cap_size,
+        trace_len.trailing_zeros() as usize,
         worker,
     );
-    assert_eq!(memory_ldes.len(), lde_factor);
 
-    // now form a tree
-    let subtree_cap_size = (1 << optimal_folding.total_caps_size_log2) / lde_factor;
-    assert!(subtree_cap_size > 0);
+    let cap = mem.tree.get_cap();
 
-    let mut memory_subtrees = Vec::with_capacity(lde_factor);
-    let now = std::time::Instant::now();
-    for domain in memory_ldes.iter() {
-        let memory_tree = DefaultTreeConstructor::construct_for_coset(
-            &domain.trace,
-            subtree_cap_size,
-            true,
-            worker,
-        );
-        memory_subtrees.push(memory_tree);
-    }
-
-    let dump_fn = |caps: &[DefaultTreeConstructor]| {
-        let mut result = Vec::with_capacity(caps.len());
-        for el in caps.iter() {
-            result.push(el.get_cap());
-        }
-
-        result
-    };
-
-    let caps = dump_fn(&memory_subtrees);
     println!("Memory witness commitment took {:?}", now.elapsed());
 
-    caps
+    cap
 }
 
-pub fn commit_memory_tree_for_inits_and_teardowns_unrolled_circuit<A: GoodAllocator>(
-    circuit: &setups::prover::cs::one_row_compiler::CompiledCircuitArtifact<Mersenne31Field>,
-    lazy_init_data: &[LazyInitAndTeardown],
-    twiddles: &Twiddles<Mersenne31Complex, A>,
-    lde_precomputations: &LdePrecomputations<A>,
+pub fn commit_memory_tree_for_inits_and_teardowns<
+    F: PrimeField + TwoAdicField,
+    T: ColumnMajorMerkleTreeConstructor<F>,
+    A: GoodAllocator,
+    B: GoodAllocator,
+>(
+    circuit: &GKRCircuitArtifact<F>,
+    inits_and_teardowns: Vec<([Vec<F>; 2], [Vec<F>; 2])>,
+    twiddles: &Twiddles<F, Global>,
+    tree_cap_size: usize,
+    lde_factor: usize,
     worker: &Worker,
-) -> (Vec<MerkleTreeCapVarLength>, WitnessEvaluationAuxData) {
-    use prover::unrolled::evaluate_init_and_teardown_memory_witness;
-    let lde_factor = lde_precomputations.lde_factor;
-    assert_eq!(twiddles.domain_size, lde_precomputations.domain_size);
-    use setups::prover::prover_stages::stage1::compute_wide_ldes;
+) -> MerkleTreeCapVarLength
+where
+    [(); F::DEGREE]:,
+{
     let trace_len = twiddles.domain_size;
+    assert!(trace_len.is_power_of_two());
 
-    let optimal_folding = OPTIMAL_FOLDING_PROPERTIES[trace_len.trailing_zeros() as usize];
-
-    let num_cycles_in_chunk = trace_len - 1;
-    let max_to_init =
-        circuit.memory_layout.shuffle_ram_inits_and_teardowns.len() * num_cycles_in_chunk;
-    assert!(max_to_init > 0);
-    assert!(lazy_init_data.len() <= max_to_init);
-    let now = std::time::Instant::now();
-
-    let memory_trace = evaluate_init_and_teardown_memory_witness::<A>(
-        &circuit,
-        num_cycles_in_chunk,
-        lazy_init_data,
-        &worker,
-        A::default(),
+    assert_eq!(inits_and_teardowns.len(), NUM_INIT_AND_TEARDOWN_SETS);
+    assert_eq!(
+        inits_and_teardowns.len(),
+        circuit.memory_layout.teardown_sets.len()
     );
 
+    use prover::gkr::prover::stages::stage1::commit_trace_part;
+    use prover::gkr::witness_gen::family_circuits::evaluate_init_and_teardown_memory_witness;
+
+    let now = std::time::Instant::now();
+
+    let witness_inner =
+        evaluate_init_and_teardown_memory_witness(inits_and_teardowns, &circuit, Global, Global);
+
+    let mem_inputs: Vec<_> = witness_inner.iter().map(|el| &el[..]).collect();
+    let mem = commit_trace_part::<F, T>(
+        &mem_inputs,
+        twiddles,
+        lde_factor,
+        lde_factor.trailing_zeros() as usize,
+        tree_cap_size,
+        trace_len.trailing_zeros() as usize,
+        worker,
+    );
+
+    let cap = mem.tree.get_cap();
+
     println!(
-        "Materializing memory trace for {} cycles took {:?}",
-        num_cycles_in_chunk,
+        "Inits and teardowns memory witness commitment took {:?}",
         now.elapsed()
     );
 
-    let MemoryOnlyWitnessEvaluationData {
-        aux_data,
-        memory_trace,
-    } = memory_trace;
-    // now we should commit to it
-    let width = memory_trace.width();
-    let mut memory_trace = memory_trace;
-    adjust_to_zero_c0_var_length(&mut memory_trace, 0..width, worker);
-
-    let memory_ldes = compute_wide_ldes(
-        memory_trace,
-        twiddles,
-        lde_precomputations,
-        0,
-        lde_factor,
-        worker,
-    );
-    assert_eq!(memory_ldes.len(), lde_factor);
-
-    // now form a tree
-    let subtree_cap_size = (1 << optimal_folding.total_caps_size_log2) / lde_factor;
-    assert!(subtree_cap_size > 0);
-
-    let mut memory_subtrees = Vec::with_capacity(lde_factor);
-    let now = std::time::Instant::now();
-    for domain in memory_ldes.iter() {
-        let memory_tree = DefaultTreeConstructor::construct_for_coset(
-            &domain.trace,
-            subtree_cap_size,
-            true,
-            worker,
-        );
-        memory_subtrees.push(memory_tree);
-    }
-
-    let dump_fn = |caps: &[DefaultTreeConstructor]| {
-        let mut result = Vec::with_capacity(caps.len());
-        for el in caps.iter() {
-            result.push(el.get_cap());
-        }
-
-        result
-    };
-
-    let caps = dump_fn(&memory_subtrees);
-    println!("Memory witness commitment took {:?}", now.elapsed());
-
-    (caps, aux_data)
+    cap
 }
 
-pub fn commit_memory_tree_for_unified_circuits<A: GoodAllocator>(
-    circuit: &setups::prover::cs::one_row_compiler::CompiledCircuitArtifact<Mersenne31Field>,
-    witness_chunk: &[UnifiedOpcodeTracingDataWithTimestamp],
-    lazy_init_data: &[LazyInitAndTeardown],
-    twiddles: &Twiddles<Mersenne31Complex, A>,
-    lde_precomputations: &LdePrecomputations<A>,
-    decoder_data: &[ExecutorFamilyDecoderData],
-    worker: &Worker,
-) -> Vec<MerkleTreeCapVarLength> {
-    use prover::unrolled::evaluate_memory_witness_for_unified_executor;
-    use prover::unrolled::UnifiedRiscvCircuitOracle;
-    let lde_factor = lde_precomputations.lde_factor;
-    assert_eq!(twiddles.domain_size, lde_precomputations.domain_size);
-    use setups::prover::prover_stages::stage1::compute_wide_ldes;
-    let trace_len = twiddles.domain_size;
+// pub fn commit_memory_tree_for_unified_circuits<A: GoodAllocator>(
+//     circuit: &setups::prover::cs::one_row_compiler::CompiledCircuitArtifact<Mersenne31Field>,
+//     witness_chunk: &[UnifiedOpcodeTracingDataWithTimestamp],
+//     lazy_init_data: &[LazyInitAndTeardown],
+//     twiddles: &Twiddles<Mersenne31Complex, A>,
+//     lde_precomputations: &LdePrecomputations<A>,
+//     decoder_data: &[ExecutorFamilyDecoderData],
+//     worker: &Worker,
+// ) -> Vec<MerkleTreeCapVarLength> {
+//     use prover::unrolled::evaluate_memory_witness_for_unified_executor;
+//     use prover::unrolled::UnifiedRiscvCircuitOracle;
+//     let lde_factor = lde_precomputations.lde_factor;
+//     assert_eq!(twiddles.domain_size, lde_precomputations.domain_size);
+//     use setups::prover::prover_stages::stage1::compute_wide_ldes;
+//     let trace_len = twiddles.domain_size;
 
-    let optimal_folding = OPTIMAL_FOLDING_PROPERTIES[trace_len.trailing_zeros() as usize];
+//     let optimal_folding = OPTIMAL_FOLDING_PROPERTIES[trace_len.trailing_zeros() as usize];
 
-    let num_cycles_in_chunk = trace_len - 1;
-    assert!(witness_chunk.len() <= num_cycles_in_chunk);
-    let now = std::time::Instant::now();
+//     let num_cycles_in_chunk = trace_len - 1;
+//     assert!(witness_chunk.len() <= num_cycles_in_chunk);
+//     let now = std::time::Instant::now();
 
-    let oracle = UnifiedRiscvCircuitOracle {
-        inner: witness_chunk,
-        decoder_table: decoder_data,
-    };
+//     let oracle = UnifiedRiscvCircuitOracle {
+//         inner: witness_chunk,
+//         decoder_table: decoder_data,
+//     };
 
-    let memory_trace = evaluate_memory_witness_for_unified_executor::<_, A>(
-        &circuit,
-        num_cycles_in_chunk,
-        lazy_init_data,
-        &oracle,
-        &worker,
-        A::default(),
-    );
+//     let memory_trace = evaluate_memory_witness_for_unified_executor::<_, A>(
+//         &circuit,
+//         num_cycles_in_chunk,
+//         lazy_init_data,
+//         &oracle,
+//         &worker,
+//         A::default(),
+//     );
 
-    println!(
-        "Materializing memory trace for {} cycles took {:?}",
-        num_cycles_in_chunk,
-        now.elapsed()
-    );
+//     println!(
+//         "Materializing memory trace for {} cycles took {:?}",
+//         num_cycles_in_chunk,
+//         now.elapsed()
+//     );
 
-    let MemoryOnlyWitnessEvaluationDataForExecutionFamily { memory_trace } = memory_trace;
-    // now we should commit to it
-    let width = memory_trace.width();
-    let mut memory_trace = memory_trace;
-    adjust_to_zero_c0_var_length(&mut memory_trace, 0..width, worker);
+//     let MemoryOnlyWitnessEvaluationDataForExecutionFamily { memory_trace } = memory_trace;
+//     // now we should commit to it
+//     let width = memory_trace.width();
+//     let mut memory_trace = memory_trace;
+//     adjust_to_zero_c0_var_length(&mut memory_trace, 0..width, worker);
 
-    let memory_ldes = compute_wide_ldes(
-        memory_trace,
-        twiddles,
-        lde_precomputations,
-        0,
-        lde_factor,
-        worker,
-    );
-    assert_eq!(memory_ldes.len(), lde_factor);
+//     let memory_ldes = compute_wide_ldes(
+//         memory_trace,
+//         twiddles,
+//         lde_precomputations,
+//         0,
+//         lde_factor,
+//         worker,
+//     );
+//     assert_eq!(memory_ldes.len(), lde_factor);
 
-    // now form a tree
-    let subtree_cap_size = (1 << optimal_folding.total_caps_size_log2) / lde_factor;
-    assert!(subtree_cap_size > 0);
+//     // now form a tree
+//     let subtree_cap_size = (1 << optimal_folding.total_caps_size_log2) / lde_factor;
+//     assert!(subtree_cap_size > 0);
 
-    let mut memory_subtrees = Vec::with_capacity(lde_factor);
-    let now = std::time::Instant::now();
-    for domain in memory_ldes.iter() {
-        let memory_tree = DefaultTreeConstructor::construct_for_coset(
-            &domain.trace,
-            subtree_cap_size,
-            true,
-            worker,
-        );
-        memory_subtrees.push(memory_tree);
-    }
+//     let mut memory_subtrees = Vec::with_capacity(lde_factor);
+//     let now = std::time::Instant::now();
+//     for domain in memory_ldes.iter() {
+//         let memory_tree = DefaultTreeConstructor::construct_for_coset(
+//             &domain.trace,
+//             subtree_cap_size,
+//             true,
+//             worker,
+//         );
+//         memory_subtrees.push(memory_tree);
+//     }
 
-    let dump_fn = |caps: &[DefaultTreeConstructor]| {
-        let mut result = Vec::with_capacity(caps.len());
-        for el in caps.iter() {
-            result.push(el.get_cap());
-        }
+//     let dump_fn = |caps: &[DefaultTreeConstructor]| {
+//         let mut result = Vec::with_capacity(caps.len());
+//         for el in caps.iter() {
+//             result.push(el.get_cap());
+//         }
 
-        result
-    };
+//         result
+//     };
 
-    let caps = dump_fn(&memory_subtrees);
-    println!("Memory witness commitment took {:?}", now.elapsed());
+//     let caps = dump_fn(&memory_subtrees);
+//     println!("Memory witness commitment took {:?}", now.elapsed());
 
-    caps
-}
+//     caps
+// }
 
 pub fn commit_memory_tree_for_delegation_circuit_with_replayer_format<
+    F: PrimeField + TwoAdicField,
+    T: ColumnMajorMerkleTreeConstructor<F>,
     A: GoodAllocator,
+    B: GoodAllocator,
     D: DelegationAbiDescription,
     const REG_ACCESSES: usize,
     const INDIRECT_READS: usize,
     const INDIRECT_WRITES: usize,
     const VARIABLE_OFFSETS: usize,
 >(
-    compiled_machine: &setups::prover::cs::one_row_compiler::CompiledCircuitArtifact<
-        Mersenne31Field,
-    >,
+    circuit: &GKRCircuitArtifact<F>,
     witness_chunk: &[riscv_transpiler::witness::DelegationWitness<
         REG_ACCESSES,
         INDIRECT_READS,
         INDIRECT_WRITES,
         VARIABLE_OFFSETS,
     >],
-    num_cycles_in_circuit: usize,
-    twiddles: &Twiddles<Mersenne31Complex, A>,
-    lde_precomputations: &LdePrecomputations<A>,
+    twiddles: &Twiddles<F, Global>,
+    tree_cap_size: usize,
     lde_factor: usize,
-    _tree_cap_size: usize,
     worker: &Worker,
-) -> Vec<MerkleTreeCapVarLength> {
-    use setups::prover::prover_stages::stage1::compute_wide_ldes;
-    assert!((num_cycles_in_circuit + 1).is_power_of_two());
-    let trace_len = num_cycles_in_circuit + 1;
+) -> MerkleTreeCapVarLength
+where
+    [(); F::DEGREE]:,
+{
+    use prover::gkr::prover::stages::stage1::commit_trace_part;
 
+    let trace_len = twiddles.domain_size;
     assert!(trace_len.is_power_of_two());
-    let optimal_folding = OPTIMAL_FOLDING_PROPERTIES[trace_len.trailing_zeros() as usize];
 
     let now = std::time::Instant::now();
     let oracle = DelegationOracle::<D, _, _, _, _> {
         cycle_data: witness_chunk,
         marker: core::marker::PhantomData,
     };
-    let memory_chunk = evaluate_delegation_memory_witness(
-        compiled_machine,
-        num_cycles_in_circuit,
+    let memory_trace = evaluate_gkr_memory_witness_for_delegation_circuit(
+        circuit,
+        trace_len,
         &oracle,
         &worker,
         A::default(),
+        B::default(),
     );
     println!(
         "Materializing memory for delegation type {} trace for {} cycles took {:?}",
         D::DELEGATION_TYPE,
-        num_cycles_in_circuit,
+        trace_len,
         now.elapsed()
     );
 
-    let DelegationMemoryOnlyWitnessEvaluationData { memory_trace } = memory_chunk;
-    // now we should commit to it
-    let width = memory_trace.width();
-    let mut memory_trace = memory_trace;
-    adjust_to_zero_c0_var_length(&mut memory_trace, 0..width, worker);
-
-    let memory_ldes = compute_wide_ldes(
-        memory_trace,
+    let mem_inputs: Vec<_> = memory_trace
+        .column_major_trace
+        .iter()
+        .map(|el| &el[..])
+        .collect();
+    let mem = commit_trace_part::<F, T>(
+        &mem_inputs,
         twiddles,
-        lde_precomputations,
-        0,
         lde_factor,
+        lde_factor.trailing_zeros() as usize,
+        tree_cap_size,
+        trace_len.trailing_zeros() as usize,
         worker,
     );
-    assert_eq!(memory_ldes.len(), lde_factor);
 
-    // now form a tree
-    let subtree_cap_size = (1 << optimal_folding.total_caps_size_log2) / lde_factor;
-    assert!(subtree_cap_size > 0);
+    let cap = mem.tree.get_cap();
 
-    let mut memory_subtrees = Vec::with_capacity(lde_factor);
-    let now = std::time::Instant::now();
-    for domain in memory_ldes.iter() {
-        let memory_tree = DefaultTreeConstructor::construct_for_coset(
-            &domain.trace,
-            subtree_cap_size,
-            true,
-            worker,
-        );
-        memory_subtrees.push(memory_tree);
-    }
-
-    let dump_fn = |caps: &[DefaultTreeConstructor]| {
-        let mut result = Vec::with_capacity(caps.len());
-        for el in caps.iter() {
-            result.push(el.get_cap());
-        }
-
-        result
-    };
-
-    let caps = dump_fn(&memory_subtrees);
     println!("Memory witness commitment took {:?}", now.elapsed());
 
-    caps
+    cap
 }
 
 fn flatten_merkle_caps(trees: &[MerkleTreeCapVarLength]) -> Vec<u32> {
@@ -493,7 +397,7 @@ fn flatten_merkle_caps(trees: &[MerkleTreeCapVarLength]) -> Vec<u32> {
 
 /// We need to draw a common challenge based on all the values that will contribute to the memory permutation grand product, and
 /// delegation argument set equality
-pub fn fs_transform_for_memory_and_delegation_arguments_for_unrolled_circuits(
+pub fn fs_transform_for_permutation_argument(
     final_register_values: &[FinalRegisterValue],
     final_pc: u32,
     final_timestamp: TimestampScalar,

@@ -10,7 +10,7 @@ use prover::*;
 #[cfg(feature = "gpu")]
 pub mod gpu;
 
-pub mod unified;
+// pub mod unified;
 pub mod unrolled;
 
 pub const LDE_FACTOR_LOG2: usize = 1;
