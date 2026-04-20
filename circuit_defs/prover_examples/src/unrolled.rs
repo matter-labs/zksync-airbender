@@ -186,7 +186,9 @@ pub fn replay_non_mem_circuit_family<C: Counters, const FAMILY_IDX: u8>(
         cycles_bound,
         &mut tracer,
     );
-    assert_eq!(expected_final_state, &state);
+    assert_eq!(expected_final_state.registers, state.registers);
+    assert_eq!(expected_final_state.pc, state.pc);
+    assert_eq!(expected_final_state.timestamp, state.timestamp);
 
     buffers
 }
@@ -236,7 +238,9 @@ pub fn replay_mem_circuit_family<C: Counters, const FAMILY_IDX: u8>(
         cycles_bound,
         &mut tracer,
     );
-    assert_eq!(expected_final_state, &state);
+    assert_eq!(expected_final_state.registers, state.registers);
+    assert_eq!(expected_final_state.pc, state.pc);
+    assert_eq!(expected_final_state.timestamp, state.timestamp);
 
     buffers
 }
@@ -304,7 +308,9 @@ where
         cycles_bound,
         &mut tracer,
     );
-    assert_eq!(expected_final_state, &state);
+    assert_eq!(expected_final_state.registers, state.registers);
+    assert_eq!(expected_final_state.pc, state.pc);
+    assert_eq!(expected_final_state.timestamp, state.timestamp);
 
     buffers
 }

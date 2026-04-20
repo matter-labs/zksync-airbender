@@ -46,6 +46,16 @@ pub mod unrolled_circuits;
 pub use self::circuits::*;
 pub use self::unrolled_circuits::*;
 
+pub fn pad_bytecode_bytes_for_proving(bytecode: &mut Vec<u8>) {
+    assert!(bytecode.len() <= common_constants::ROM_BYTE_SIZE);
+    bytecode.resize(common_constants::ROM_BYTE_SIZE, 0);
+}
+
+pub fn pad_bytecode_for_proving(bytecode: &mut Vec<u32>) {
+    assert!(bytecode.len() <= common_constants::ROM_WORD_SIZE);
+    bytecode.resize(common_constants::ROM_WORD_SIZE, 0);
+}
+
 pub fn is_default_machine_configuration<C: MachineConfig>() -> bool {
     std::any::TypeId::of::<C>() == std::any::TypeId::of::<IMStandardIsaConfig>()
 }

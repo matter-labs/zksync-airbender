@@ -50,12 +50,3 @@ fn bincode_deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &str)
     let src = std::fs::File::open(filename).unwrap();
     bincode::deserialize_from(src).unwrap()
 }
-
-fn u32_from_field_elems(src: &[Mersenne31Field; 2]) -> u32 {
-    use prover::field::PrimeField;
-
-    let low = u16::try_from(src[0].as_u32_reduced()).expect("read value is not 16 bit long") as u32;
-    let high =
-        u16::try_from(src[1].as_u32_reduced()).expect("read value is not 16 bit long") as u32;
-    low + (high << 16)
-}
