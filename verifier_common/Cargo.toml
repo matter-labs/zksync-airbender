@@ -14,7 +14,7 @@ field = { workspace = true }
 blake2s_u32 = { workspace = true, default-features = false }
 transcript = { workspace = true, default-features = false }
 cs = { workspace = true, default-features = false, features = ["definitions_only"] }
-prover = { workspace = true, default-features = false, features = ["definitions_only"] }
+prover = { workspace = true, default-features = false, features = ["definitions_only", "prover"] }
 serde = { workspace = true, default-features = false, features = ["derive", "alloc"] }
 unroll = { workspace = true }
 non_determinism_source = { workspace = true }

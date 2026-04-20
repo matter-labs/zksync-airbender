@@ -382,49 +382,43 @@ fn main() {
     .max()
     .unwrap();
 
-    let [
-        pow_bits_for_memory_and_delegation_for_80,
-        pow_bits_for_memory_and_delegation_for_100,
-    ] = [80, 100].map(|security_bits| {
-        pow_bits_for_memory_and_delegation(
-            security_bits,
-            max_number_of_cycles,
-            challenge_field_size,
-        )
-    });
+    let [pow_bits_for_memory_and_delegation_for_80, pow_bits_for_memory_and_delegation_for_100] =
+        [80, 100].map(|security_bits| {
+            pow_bits_for_memory_and_delegation(
+                security_bits,
+                max_number_of_cycles,
+                challenge_field_size,
+            )
+        });
 
     let [lookup_pow_bits_for_80, lookup_pow_bits_for_100] = [80, 100].map(|security_bits| {
         pow_bits_for_cq_lookup(security_bits, max_trace_len_log2, challenge_field_size)
     });
 
-    let [
-        quotient_alpha_pow_bits_for_80,
-        quotient_alpha_pow_bits_for_100,
-    ] = [80, 100].map(|security_bits| {
-        pow_bits_for_quotient(
-            security_bits,
-            challenge_field_size,
-            max_num_quotient_terms,
-            max_fri_factor_log2,
-        )
-    });
+    let [quotient_alpha_pow_bits_for_80, quotient_alpha_pow_bits_for_100] =
+        [80, 100].map(|security_bits| {
+            pow_bits_for_quotient(
+                security_bits,
+                challenge_field_size,
+                max_num_quotient_terms,
+                max_fri_factor_log2,
+            )
+        });
 
     let [quotient_z_pow_bits_for_80, quotient_z_pow_bits_for_100] =
         [80, 100].map(|security_bits| {
             pow_bits_for_deep_z(security_bits, challenge_field_size, max_lde_size_log2)
         });
 
-    let [
-        deep_poly_alpha_pow_bits_for_80,
-        deep_poly_alpha_pow_bits_for_100,
-    ] = [80, 100].map(|security_bits| {
-        pow_bits_for_deep_poly_alpha(
-            security_bits,
-            challenge_field_size,
-            max_lde_size_log2,
-            max_num_openings_at_z + max_num_openings_at_z_omega,
-        )
-    });
+    let [deep_poly_alpha_pow_bits_for_80, deep_poly_alpha_pow_bits_for_100] =
+        [80, 100].map(|security_bits| {
+            pow_bits_for_deep_poly_alpha(
+                security_bits,
+                challenge_field_size,
+                max_lde_size_log2,
+                max_num_openings_at_z + max_num_openings_at_z_omega,
+            )
+        });
 
     let [max_foldings_pow_bits_for_80, max_foldings_pow_bits_for_100] =
         [80, 100].map(|security_bits| {
@@ -542,9 +536,9 @@ fn generate_pow_config_worst_constants(
         const NUM_QUERIES_FOR_100_SECURITY_BITS: usize = #num_queries_for_100;
 
         impl<const NUM_FOLDINGS: usize> SizedProofSecurityConfig<NUM_FOLDINGS> {
-            pub const fn worst_case_config(security: verifier_common::SecurityModel) -> Self {
+            pub const fn worst_case_config(security: crate::SecurityModel) -> Self {
                 match security {
-                    verifier_common::SecurityModel::Security80 => SizedProofSecurityConfig {
+                    crate::SecurityModel::Security80 => SizedProofSecurityConfig {
                         lookup_pow_bits: LOOKUP_POW_BITS_FOR_80_SECURITY_BITS as u32,
                         quotient_alpha_pow_bits: QUOTIENT_ALPHA_POW_BITS_FOR_80_SECURITY_BITS as u32,
                         quotient_z_pow_bits: QUOTIENT_Z_POW_BITS_FOR_80_SECURITY_BITS as u32,
@@ -554,7 +548,7 @@ fn generate_pow_config_worst_constants(
                         fri_queries_pow_bits: FRI_QUERIES_POW_BITS_FOR_80_SECURITY_BITS as u32,
                         num_queries: NUM_QUERIES_FOR_80_SECURITY_BITS,
                     },
-                    verifier_common::SecurityModel::Security80 => SizedProofSecurityConfig {
+                    crate::SecurityModel::Security100 => SizedProofSecurityConfig {
                         lookup_pow_bits: LOOKUP_POW_BITS_FOR_100_SECURITY_BITS as u32,
                         quotient_alpha_pow_bits: QUOTIENT_ALPHA_POW_BITS_FOR_100_SECURITY_BITS as u32,
                         quotient_z_pow_bits: QUOTIENT_Z_POW_BITS_FOR_100_SECURITY_BITS as u32,

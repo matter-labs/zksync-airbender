@@ -23,9 +23,9 @@ const FRI_QUERIES_POW_BITS_FOR_100_SECURITY_BITS: usize = 28usize;
 const NUM_QUERIES_FOR_80_SECURITY_BITS: usize = 63usize;
 const NUM_QUERIES_FOR_100_SECURITY_BITS: usize = 87usize;
 impl<const NUM_FOLDINGS: usize> SizedProofSecurityConfig<NUM_FOLDINGS> {
-    pub const fn worst_case_config(security: verifier_common::SecurityModel) -> Self {
+    pub const fn worst_case_config(security: crate::SecurityModel) -> Self {
         match security {
-            verifier_common::SecurityModel::Security80 => SizedProofSecurityConfig {
+            crate::SecurityModel::Security80 => SizedProofSecurityConfig {
                 lookup_pow_bits: LOOKUP_POW_BITS_FOR_80_SECURITY_BITS as u32,
                 quotient_alpha_pow_bits: QUOTIENT_ALPHA_POW_BITS_FOR_80_SECURITY_BITS as u32,
                 quotient_z_pow_bits: QUOTIENT_Z_POW_BITS_FOR_80_SECURITY_BITS as u32,
@@ -35,7 +35,7 @@ impl<const NUM_FOLDINGS: usize> SizedProofSecurityConfig<NUM_FOLDINGS> {
                 fri_queries_pow_bits: FRI_QUERIES_POW_BITS_FOR_80_SECURITY_BITS as u32,
                 num_queries: NUM_QUERIES_FOR_80_SECURITY_BITS,
             },
-            verifier_common::SecurityModel::Security100 => SizedProofSecurityConfig {
+            crate::SecurityModel::Security100 => SizedProofSecurityConfig {
                 lookup_pow_bits: LOOKUP_POW_BITS_FOR_100_SECURITY_BITS as u32,
                 quotient_alpha_pow_bits: QUOTIENT_ALPHA_POW_BITS_FOR_100_SECURITY_BITS as u32,
                 quotient_z_pow_bits: QUOTIENT_Z_POW_BITS_FOR_100_SECURITY_BITS as u32,
