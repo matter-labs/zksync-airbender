@@ -21,10 +21,16 @@ use crate::allocator::tracker::AllocationPlacement;
 use crate::circuit_type::CircuitType;
 use crate::ops::blake2s::Digest;
 use crate::ops::blake2s::STATE_SIZE;
+use crate::ops::cub::device_reduce::{
+    get_reduce_temp_storage_bytes, reduce, ReduceOperation,
+};
+use crate::ops::cub::CUB_TEMP_STORAGE_EXTRA_ALIGNMENT_LOG2;
+use crate::ops::simple::mul;
 use crate::primitives::callbacks::Callbacks;
 use crate::primitives::context::{
     DeviceAllocation, HostAllocation, ProverContext, UnsafeAccessor, UnsafeMutAccessor,
 };
+use crate::primitives::device_structures::{DeviceVectorChunk, DeviceVectorChunkMut};
 use crate::primitives::device_tracing::Range;
 use crate::primitives::field::{BF, E4};
 use crate::prover::decoder::DecoderTableTransfer;
@@ -34,6 +40,7 @@ use crate::prover::gkr::backward::{
     make_deferred_backward_workflow_state, populate_backward_workflow_state,
     take_backward_execution_from_shared_state, ClaimBufferLayout, GpuGKRBackwardHostKeepalive,
 };
+use crate::prover::gkr::backward_kernels::{eq_group_tables_len, launch_build_eq_values_from_point};
 use crate::prover::gkr::base_layer_claims::{
     clone_base_layer_extra_evaluations_from_caching_relations,
     clone_base_layer_extra_evaluations_transcript_batches, fill_mem_polys_claims,
@@ -103,60 +110,6 @@ impl<'a> GpuGKRProofJob<'a> {
 
         Ok((proof, proof_time_ms))
     }
-}
-
-pub(crate) fn compute_initial_sumcheck_claims_from_explicit_evaluations<E: Field>(
-    final_explicit_evaluations: &BTreeMap<OutputType, [Vec<E>; 2]>,
-    eval_point: &[E],
-) -> [E; 8] {
-    let eq = make_eq_poly_in_full_serial(eval_point);
-    let mut evals = Vec::with_capacity(8);
-    for key in [
-        OutputType::PermutationProduct,
-        OutputType::Lookup16Bits,
-        OutputType::LookupTimestamps,
-        OutputType::GenericLookup,
-    ] {
-        if let Some(explicit_evals) = final_explicit_evaluations.get(&key) {
-            for poly in explicit_evals.iter() {
-                evals.push(evaluate_ext_poly_with_eq(poly, &eq));
-            }
-        } else {
-            evals.push(E::ZERO);
-            evals.push(E::ZERO);
-        }
-    }
-
-    evals.try_into().expect("expected exactly eight claims")
-}
-
-pub(crate) fn build_top_layer_claims(
-    output_layer_for_sumcheck: &BTreeMap<
-        OutputType,
-        prover::gkr::prover::dimension_reduction::forward::DimensionReducingInputOutput,
-    >,
-    claims: [E4; 8],
-) -> BTreeMap<GKRAddress, E4> {
-    let [claim_readset, claim_writeset, claim_rangechecknum, claim_rangecheckden, claim_timechecknum, claim_timecheckden, claim_lookupnum, claim_lookupden] =
-        claims;
-    let mut top_layer_claims = BTreeMap::new();
-    let permutation_output = &output_layer_for_sumcheck[&OutputType::PermutationProduct];
-    top_layer_claims.insert(permutation_output.output[0], claim_readset);
-    top_layer_claims.insert(permutation_output.output[1], claim_writeset);
-    if let Some(output) = output_layer_for_sumcheck.get(&OutputType::Lookup16Bits) {
-        top_layer_claims.insert(output.output[0], claim_rangechecknum);
-        top_layer_claims.insert(output.output[1], claim_rangecheckden);
-    }
-    if let Some(output) = output_layer_for_sumcheck.get(&OutputType::LookupTimestamps) {
-        top_layer_claims.insert(output.output[0], claim_timechecknum);
-        top_layer_claims.insert(output.output[1], claim_timecheckden);
-    }
-    if let Some(output) = output_layer_for_sumcheck.get(&OutputType::GenericLookup) {
-        top_layer_claims.insert(output.output[0], claim_lookupnum);
-        top_layer_claims.insert(output.output[1], claim_lookupden);
-    }
-
-    top_layer_claims
 }
 
 pub(crate) fn top_layer_claim_layout(
@@ -686,8 +639,6 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
         context,
     )?;
     let transcript_handoff = forward_output.schedule_transcript_handoff(context)?;
-    let transcript_handoff_accessors_for_backward =
-        transcript_handoff.explicit_evaluation_accessors();
     let transcript_handoff_accessors_for_final = transcript_handoff.explicit_evaluation_accessors();
     let initial_layer_for_sumcheck = forward_output.initial_layer_for_sumcheck;
     let output_layer_for_sumcheck =
@@ -735,9 +686,70 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
     let num_top_claims = top_layer_claim_layout.len();
     let mut initial_d_claims: DeviceAllocation<E4> =
         context.alloc(num_top_claims, AllocationPlacement::BestFit)?;
+
+    // GPU-side initial claim computation: the top-layer sumcheck claims were
+    // previously computed on host via `compute_initial_sumcheck_claims_from_explicit_evaluations`
+    // (build eq poly from evaluation_point, inner-product against each reduced
+    // output poly) inside the post-forward callback, then H2D'd into
+    // `initial_d_claims`. Both the eq build and the 8 inner products now run
+    // on device, writing `initial_d_claims` directly; the callback D2Hs the 8
+    // resulting scalars for the host-side workflow_state mirror.
+    let poly_len = 1usize << final_trace_size_log_2;
+    let mut eq_group_tables_for_init: DeviceAllocation<E4> = context.alloc(
+        eq_group_tables_len(final_trace_size_log_2).max(1),
+        AllocationPlacement::Top,
+    )?;
+    let mut eq_values_for_init: DeviceAllocation<E4> =
+        context.alloc(poly_len, AllocationPlacement::Top)?;
+    launch_build_eq_values_from_point::<E4>(
+        d_evaluation_point_and_batching.as_ptr(),
+        0,
+        final_trace_size_log_2,
+        eq_group_tables_for_init.as_mut_ptr(),
+        eq_values_for_init.as_mut_ptr(),
+        poly_len,
+        context,
+    )?;
+    let mut init_mul_temp: DeviceAllocation<E4> =
+        context.alloc(poly_len, AllocationPlacement::Top)?;
+    let init_reduce_temp_bytes =
+        get_reduce_temp_storage_bytes::<E4>(ReduceOperation::Sum, poly_len as i32)?;
+    let mut init_reduce_temp: DeviceAllocation<u8> = context
+        .alloc_with_extra_alignment::<u8, CUB_TEMP_STORAGE_EXTRA_ALIGNMENT_LOG2>(
+            init_reduce_temp_bytes,
+            AllocationPlacement::Top,
+        )?;
+    {
+        let device_flat_evaluations = transcript_handoff.device_flat_evaluations();
+        let mut poly_idx = 0usize;
+        for (_output_type, reduced_io) in output_layer_for_sumcheck.iter() {
+            for half in 0..2 {
+                let address = reduced_io.output[half];
+                let slot = top_layer_claim_layout.claim_idx(&address) as usize;
+                let poly_chunk =
+                    DeviceVectorChunk::new(device_flat_evaluations, poly_idx * poly_len, poly_len);
+                let eq_chunk = DeviceVectorChunk::new(&eq_values_for_init, 0, poly_len);
+                let mut temp_chunk = DeviceVectorChunkMut::new(&mut init_mul_temp, 0, poly_len);
+                mul(&poly_chunk, &eq_chunk, &mut temp_chunk, stream)?;
+                reduce(
+                    ReduceOperation::Sum,
+                    &mut init_reduce_temp,
+                    &temp_chunk,
+                    &mut initial_d_claims[slot],
+                    stream,
+                )?;
+                poly_idx += 1;
+            }
+        }
+    }
+
+    // D2H the 8 device-computed claims into a pinned host slot so the callback
+    // can populate the host-side workflow_state mirror. Replaces the old
+    // host->device H2D of host-computed claims.
     let mut initial_claims_host: HostAllocation<[E4]> =
         unsafe { context.alloc_host_uninit_slice::<E4>(num_top_claims) };
-    let initial_claims_host_accessor = initial_claims_host.get_mut_accessor();
+    memory_copy_async(&mut initial_claims_host, &initial_d_claims, stream)?;
+    let initial_claims_host_accessor = initial_claims_host.get_accessor();
 
     let mut backward_shared_state = make_deferred_backward_workflow_state();
     let backward_shared_state_handle = UnsafeMutAccessor::new(backward_shared_state.as_mut());
@@ -747,25 +759,21 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
             let backward_shared_state = backward_shared_state_handle;
             let top_layer_claim_layout = top_layer_claim_layout.clone();
             move || unsafe {
-                let final_explicit_evaluations = collect_explicit_evaluations_from_accessors(
-                    &transcript_handoff_accessors_for_backward,
-                );
                 let eval_point_and_batching =
                     evaluation_point_and_batching_accessor.get().to_vec();
                 let (evaluation_point, batching_slice) =
                     eval_point_and_batching.split_at(num_challenges - 1);
                 let evaluation_point = evaluation_point.to_vec();
                 let batching_challenge = batching_slice[0];
-                let initial_claims = compute_initial_sumcheck_claims_from_explicit_evaluations(
-                    &final_explicit_evaluations,
-                    &evaluation_point,
-                );
-                let top_layer_claims =
-                    build_top_layer_claims(&output_layer_for_sumcheck, initial_claims);
-                top_layer_claim_layout.write_values_from_claims(
-                    &top_layer_claims,
-                    initial_claims_host_accessor.get_mut(),
-                );
+                // Reconstruct `top_layer_claims` as a BTreeMap keyed by GKRAddress
+                // using the same layout slot mapping that was used to write
+                // claims into `initial_d_claims` on device.
+                let claims_slice = initial_claims_host_accessor.get();
+                let mut top_layer_claims = BTreeMap::new();
+                for address in top_layer_claim_layout.addresses.iter().copied() {
+                    let slot = top_layer_claim_layout.claim_idx(&address) as usize;
+                    top_layer_claims.insert(address, claims_slice[slot]);
+                }
                 let lookup_challenges = lookup_challenges_read_accessor.get();
                 // `workflow_state.seed` (host `Seed`) is initialized to `Seed::default()` —
                 // the first backward layer's start callback reads the field but its value is
@@ -787,7 +795,6 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
         stream,
     )?;
     drop(lookup_challenges_host);
-    memory_copy_async(&mut initial_d_claims, &initial_claims_host, stream)?;
 
     let mut backward_scheduled = backward_state
         .schedule_execute_backward_workflow_from_shared_state(
@@ -1113,39 +1120,6 @@ pub(crate) fn prove_with_transfer_scheduling<'a, A: GoodAllocator + 'a>(
     )?;
     proof_job.ranges.insert(0, transfer_range);
     Ok(proof_job)
-}
-
-fn evaluate_ext_poly_with_eq<E: Field>(values: &[E], eq: &[E]) -> E {
-    assert_eq!(values.len(), eq.len());
-    let mut result = E::ZERO;
-    for (value, eq_value) in values.iter().zip(eq.iter()) {
-        let mut term = *value;
-        term.mul_assign(eq_value);
-        result.add_assign(&term);
-    }
-
-    result
-}
-
-fn make_eq_poly_in_full_serial<E: Field>(challenges: &[E]) -> Vec<E> {
-    assert!(!challenges.is_empty());
-    let mut layer = vec![E::ONE];
-    for challenge in challenges.iter().rev().copied() {
-        let mut next = vec![E::ZERO; layer.len() * 2];
-        let (left, right) = next.split_at_mut(layer.len());
-        for (src, (left_dst, right_dst)) in layer.iter().zip(left.iter_mut().zip(right.iter_mut()))
-        {
-            let mut right_value = *src;
-            right_value.mul_assign(&challenge);
-            let mut left_value = *src;
-            left_value.sub_assign(&right_value);
-            *left_dst = left_value;
-            *right_dst = right_value;
-        }
-        layer = next;
-    }
-
-    layer
 }
 
 #[cfg(test)]
