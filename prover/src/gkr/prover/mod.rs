@@ -58,7 +58,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> GKRExternalChallenges<F, E> {
     }
 
     #[cfg(feature = "prover")]
-    pub fn draw_from_transcript_seed_with_state_permutation(
+    pub fn draw_from_transcript_seed(
         mut seed: transcript::Seed,
         pow_bits: usize,
         pow_challenge: u64,
