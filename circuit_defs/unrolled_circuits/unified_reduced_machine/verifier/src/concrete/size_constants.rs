@@ -24,7 +24,6 @@ pub const FOLDING_PROPERTIES: verifier_common::prover::definitions::FoldingDescr
 pub const TREE_INDEX_MASK: u32 = (1u32 << TRACE_LEN_LOG2) - 1;
 pub const FRI_FACTOR_LOG2: usize = 1;
 pub const NUM_COSETS: usize = 1 << FRI_FACTOR_LOG2;
-pub const SECURITY_BITS: usize = verifier_common::SECURITY_BITS;
 pub const CHALLENGE_FIELD_SIZE_LOG2: usize = verifier_common::MERSENNE31QUARTIC_SIZE_LOG2;
 pub const SECURITY_CONFIG: verifier_common::SizedProofSecurityConfig<NUM_FRI_STEPS> =
     verifier_common::SizedProofSecurityConfig::<NUM_FRI_STEPS>::worst_case_config();

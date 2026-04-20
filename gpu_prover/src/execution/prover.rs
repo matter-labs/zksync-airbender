@@ -46,7 +46,7 @@ use trace_and_split::{
     fs_transform_for_memory_and_delegation_arguments_for_unrolled_circuits, FinalRegisterValue,
 };
 use type_map::concurrent::TypeMap;
-use verifier_common::MEMORY_DELEGATION_POW_BITS;
+use verifier_common::SecurityModel;
 use worker::Worker;
 
 /// Specifies the execution mode for the prover.
@@ -195,6 +195,7 @@ pub struct ExecutionProver {
     common_precomputations: BTreeMap<CircuitType, CircuitPrecomputations>,
     free_allocators_sender: Sender<A>,
     free_allocators_receiver: Receiver<A>,
+    security: SecurityModel,
 }
 
 impl ExecutionProver {
@@ -202,8 +203,8 @@ impl ExecutionProver {
     ///
     /// returns: an instance of `ExecutionProver` that can be used to generate memory commitments and proofs for the provided binaries, it is supposed to be a Singleton instance
     ///
-    pub fn new() -> Self {
-        Self::with_configuration(ExecutionProverConfiguration::default())
+    pub fn new(security: verifier_common::SecurityModel) -> Self {
+        Self::with_configuration(security, ExecutionProverConfiguration::default())
     }
 
     ///  Creates a new instance of `ExecutionProver` with the supplied configuration.
@@ -214,7 +215,10 @@ impl ExecutionProver {
     ///
     /// returns: an instance of `ExecutionProver` that can be used to generate memory commitments and proofs for the provided binaries, it is supposed to be a Singleton instance
     ///
-    pub fn with_configuration(configuration: ExecutionProverConfiguration) -> Self {
+    pub fn with_configuration(
+        security: verifier_common::SecurityModel,
+        configuration: ExecutionProverConfiguration,
+    ) -> Self {
         let ExecutionProverConfiguration {
             prover_context_config,
             max_thread_pool_threads,
@@ -290,7 +294,12 @@ impl ExecutionProver {
             common_precomputations,
             free_allocators_sender,
             free_allocators_receiver,
+            security,
         }
+    }
+
+    pub fn security(&self) -> verifier_common::SecurityModel {
+        self.security
     }
 
     /// Adds a binary to the `ExecutionProver` for proof or memory commitment generation.
@@ -1271,12 +1280,15 @@ impl ExecutionProver {
                     .map(|(i, v)| (*i, v.clone()))
                     .collect_vec(),
             );
-        let pow_challenge = if MEMORY_DELEGATION_POW_BITS == 0 {
+
+        let memory_delegation_pow_bits = self.security.memory_delegation_pow_bits();
+
+        let pow_challenge = if memory_delegation_pow_bits == 0 {
             0
         } else {
             Transcript::search_pow(
                 &all_challenges_seed,
-                MEMORY_DELEGATION_POW_BITS as u32,
+                memory_delegation_pow_bits as u32,
                 &self.worker,
             )
             .1
@@ -1284,7 +1296,7 @@ impl ExecutionProver {
         let external_challenges =
             ExternalChallenges::draw_from_transcript_seed_with_delegation_and_state_permutation(
                 all_challenges_seed,
-                MEMORY_DELEGATION_POW_BITS,
+                memory_delegation_pow_bits,
                 pow_challenge,
             );
         let prove_result = self.prove_inner(
@@ -1417,7 +1429,8 @@ mod tests {
         init_logger();
         let mut configuration = ExecutionProverConfiguration::default();
         configuration.replay_worker_threads_count = 8;
-        let mut prover = ExecutionProver::with_configuration(configuration);
+        let security = verifier_common::SecurityModel::Security80; // TODO(popzxc): cover 100 bit too
+        let mut prover = ExecutionProver::with_configuration(security, configuration);
         let (_, binary_image) = read_binary(&Path::new("../examples/hashed_fibonacci/app.bin"));
         let (_, text_section) = read_binary(&Path::new("../examples/hashed_fibonacci/app.text"));
         prover.add_binary(

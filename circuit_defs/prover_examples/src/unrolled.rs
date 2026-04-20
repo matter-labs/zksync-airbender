@@ -1,7 +1,6 @@
 use crate::bincode_serialize_to_file;
 use crate::u32_from_field_elems;
 use crate::DUMP_WITNESS_VAR;
-use crate::MEMORY_DELEGATION_POW_BITS;
 use common_constants::TimestampScalar;
 use common_constants::INITIAL_TIMESTAMP;
 use prover::check_satisfied;
@@ -53,6 +52,7 @@ pub fn prove_unrolled_execution_with_replayer<
     delegation_circuits_precomputations: &[(u32, DelegationCircuitPrecomputations<A, A>)],
     ram_bound: usize,
     worker: &worker::Worker,
+    security: verifier_common::SecurityModel,
 ) -> (
     BTreeMap<u8, Vec<UnrolledModeProof>>,
     Vec<UnrolledModeProof>,
@@ -441,21 +441,23 @@ pub fn prove_unrolled_execution_with_replayer<
     #[cfg(feature = "debug_logs")]
     println!("FS transformation memory seed is {:?}", all_challenges_seed);
 
-    let pow_challenge = if MEMORY_DELEGATION_POW_BITS > 0 {
+    let memory_delegation_pow_bits = security.memory_delegation_pow_bits();
+
+    let pow_challenge = if memory_delegation_pow_bits > 0 {
         #[cfg(feature = "debug_logs")]
-        println!("Searching for PoW for {} bits", MEMORY_DELEGATION_POW_BITS);
+        println!("Searching for PoW for {} bits", memory_delegation_pow_bits);
         #[cfg(feature = "timing_logs")]
         let now = std::time::Instant::now();
         let pow_challenge = Transcript::search_pow(
             &all_challenges_seed,
-            MEMORY_DELEGATION_POW_BITS as u32,
+            memory_delegation_pow_bits as u32,
             worker,
         )
         .1;
         #[cfg(feature = "timing_logs")]
         println!(
             "PoW for {} took {:?}",
-            MEMORY_DELEGATION_POW_BITS,
+            memory_delegation_pow_bits,
             now.elapsed()
         );
         pow_challenge
@@ -466,7 +468,7 @@ pub fn prove_unrolled_execution_with_replayer<
     let external_challenges =
         ExternalChallenges::draw_from_transcript_seed_with_delegation_and_state_permutation(
             all_challenges_seed,
-            MEMORY_DELEGATION_POW_BITS,
+            memory_delegation_pow_bits,
             pow_challenge,
         );
 
@@ -1245,6 +1247,8 @@ pub(crate) mod test {
 
         let non_determinism_source = QuasiUARTSource::new_with_reads(vec![15, 1]);
 
+        let security = verifier_common::SecurityModel::Security80; // TODO(popzxc): cover security100 too
+
         let (
             main_proofs,
             inits_and_teardowns_proofs,
@@ -1266,6 +1270,7 @@ pub(crate) mod test {
             &delegation_precomputations,
             1 << 32,
             &worker,
+            security,
         );
 
         bincode_serialize_to_file(
@@ -1346,6 +1351,8 @@ pub(crate) mod test {
 
                     let it = responses.into_iter();
                     prover::nd_source_std::set_iterator(it);
+                    
+                    let security = verifier_common::SecurityModel::Security80; // TODO(popzxc): cover security 100
 
                     #[allow(invalid_value)]
                     let _ = unsafe {
@@ -1354,6 +1361,7 @@ pub(crate) mod test {
                             full_statement_verifier::unrolled_proof_statement::FULL_UNSIGNED_MACHINE_UNROLLED_CIRCUITS_VERIFICATION_PARAMETERS,
                             (&inits_and_teardowns_setup, full_statement_verifier::unrolled_proof_statement::INITS_AND_TEARDOWNS_VERIFIER_PTR),
                             full_statement_verifier::imports::BASE_LAYER_DELEGATION_CIRCUITS_VERIFICATION_PARAMETERS,
+                            security,
                         )
                     };
                 })

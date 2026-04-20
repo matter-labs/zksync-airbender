@@ -29,12 +29,10 @@ cs = { workspace = true, optional = true }
 [dev-dependencies]
 test_utils = { workspace = true }
 lib-rv32-asm = {git = "https://github.com/shamatar/lib-rv32.git"}
-full_statement_verifier = { path = "../../full_statement_verifier", features=["replace_csr", "security_80"] }
+full_statement_verifier = { path = "../../full_statement_verifier", features=["replace_csr"] }
 serial_test = "3"
 
 [features]
-security_80 = ["verifier_common/security_80"]
-security_100 = ["verifier_common/security_100"]
 # When enabled, the crate will print detailed debug logs.
 debug_logs = []
 # Will perform satisfiability tests on witness
@@ -45,6 +43,6 @@ debug_satisfiable = ["prover/debug_satisfiable"]
 timing_logs = []
 verifiers = ["full_statement_verifier/verifiers"]
 
-default = ["timing_logs", "security_80", "verifier_common/proof_utils"]
+default = ["timing_logs", "verifier_common/proof_utils"]
 
 gpu = ["gpu_prover", "nvtx", "cs"]

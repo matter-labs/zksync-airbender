@@ -19,7 +19,9 @@ use execution_utils::unrolled::{
 #[cfg(feature = "gpu")]
 use execution_utils::unrolled_gpu::{UnrolledProver, UnrolledProverLevel};
 use execution_utils::verifier_binaries::{
-    RECURSION_UNIFIED_BIN, RECURSION_UNIFIED_TXT, RECURSION_UNROLLED_BIN, RECURSION_UNROLLED_TXT,
+    RECURSION_UNIFIED_100_BIN, RECURSION_UNIFIED_100_TXT, RECURSION_UNIFIED_80_BIN,
+    RECURSION_UNIFIED_80_TXT, RECURSION_UNROLLED_100_BIN, RECURSION_UNROLLED_100_TXT,
+    RECURSION_UNROLLED_80_BIN, RECURSION_UNROLLED_80_TXT,
 };
 use prover::transcript::Blake2sBufferingTranscript;
 use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
@@ -43,6 +45,11 @@ pub enum SecurityLevel {
     Security80,
     Security100,
 }
+
+#[cfg(feature = "security_80")]
+pub const SECURITY: verifier_common::SecurityModel = verifier_common::SecurityModel::Security80;
+#[cfg(feature = "security_100")]
+pub const SECURITY: verifier_common::SecurityModel = verifier_common::SecurityModel::Security100;
 
 #[cfg(feature = "security_80")]
 pub const COMPILED_SECURITY_LEVEL: SecurityLevel = SecurityLevel::Security80;
@@ -381,6 +388,7 @@ impl ProgramProver {
             source,
             self.config.cpu.ram_bound,
             &worker,
+            SECURITY,
         );
         let base_ms = elapsed_ms(start_base);
         let cycles = (proof.final_timestamp
@@ -536,6 +544,7 @@ pub fn verify_artifact(
                 &base_level.setup,
                 &base_level.layouts,
                 true,
+                SECURITY,
             )
             .map_err(|_| "base proof verification failed".to_string())
         }
@@ -556,6 +565,7 @@ pub fn verify_artifact(
                     &base_level.setup,
                     &base_level.layouts,
                     true,
+                    SECURITY,
                 )
                 .map_err(|_| "recursion(unrolled over base) verification failed".to_string())
             } else if previous_end_params == unrolled_level.setup.end_params {
@@ -564,6 +574,7 @@ pub fn verify_artifact(
                     &unrolled_level.setup,
                     &unrolled_level.layouts,
                     false,
+                    SECURITY,
                 )
                 .map_err(|_| {
                     "recursion(unrolled over recursion-unrolled) verification failed".to_string()
@@ -589,6 +600,7 @@ pub fn verify_artifact(
                 &unified_level.setup,
                 &unified_level.layouts,
                 false,
+                SECURITY,
             )
             .map_err(|_| "recursion(unified) verification failed".to_string())
         }
@@ -695,6 +707,7 @@ fn continue_with_unrolled_recursion(
             source,
             cpu.ram_bound,
             worker,
+            SECURITY,
         );
         timings.unrolled_recursion_ms.push(elapsed_ms(start));
 
@@ -749,6 +762,7 @@ fn continue_with_unified_recursion(
             source,
             cpu.ram_bound,
             worker,
+            SECURITY,
         );
         timings.unified_recursion_ms.push(elapsed_ms(start));
 

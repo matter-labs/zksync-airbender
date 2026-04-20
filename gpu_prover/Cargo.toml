@@ -39,12 +39,10 @@ transpose = "0.2"
 type-map = "0.5"
 
 [features]
-default = ["security_80"]
+default = []
 deterministic_pow = ["prover/deterministic_pow"]
 log_gpu_mem_usage = []
 log_gpu_stages_timings = []
-security_80 = ["verifier_common/security_80"]
-security_100 = ["verifier_common/security_100"]
 
 [dev-dependencies]
 # execution_utils = { workspace = true }

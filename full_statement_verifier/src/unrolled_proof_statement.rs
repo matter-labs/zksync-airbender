@@ -187,6 +187,7 @@ pub unsafe fn verify_full_statement_for_unrolled_circuits<
         &[MerkleTreeCap<CAP_SIZE>; NUM_COSETS],
         VerifierFunctionPointer<CAP_SIZE, NUM_COSETS, NUM_DELEGATION_CHALLENGES, 0, 0, 0>,
     )],
+    security_model: verifier_common::SecurityModel,
 ) -> [u32; 16] {
     assert_eq!(
         circuits_families_setups.len(),
@@ -576,10 +577,12 @@ pub unsafe fn verify_full_statement_for_unrolled_circuits<
     let pow_challenge_high = verifier_common::DefaultNonDeterminismSource::read_word();
     let pow_challenge = (pow_challenge_high as u64) << 32 | (pow_challenge_low as u64);
 
+    let memory_delegation_pow_bits = security_model.memory_delegation_pow_bits();
+
     let expected_challenges =
         ExternalChallenges::draw_from_transcript_seed_with_delegation_and_state_permutation(
             memory_seed,
-            MEMORY_DELEGATION_POW_BITS,
+            memory_delegation_pow_bits,
             pow_challenge,
         );
 
@@ -732,7 +735,7 @@ pub unsafe fn verify_full_statement_for_unrolled_circuits<
     output
 }
 
-pub fn verify_unrolled_base_layer() -> [u32; 16] {
+pub fn verify_unrolled_base_layer(security: verifier_common::SecurityModel) -> [u32; 16] {
     unsafe {
         let circuits_setups = read_setups::<
             DefaultNonDeterminismSource,
@@ -751,11 +754,12 @@ pub fn verify_unrolled_base_layer() -> [u32; 16] {
                 INITS_AND_TEARDOWNS_VERIFIER_PTR,
             ),
             BASE_LAYER_DELEGATION_CIRCUITS_VERIFICATION_PARAMETERS,
+            security,
         )
     }
 }
 
-pub fn verify_unrolled_recursion_layer() -> [u32; 16] {
+pub fn verify_unrolled_recursion_layer(security: verifier_common::SecurityModel) -> [u32; 16] {
     unsafe {
         let circuits_setups = read_setups::<
             DefaultNonDeterminismSource,
@@ -774,17 +778,20 @@ pub fn verify_unrolled_recursion_layer() -> [u32; 16] {
                 INITS_AND_TEARDOWNS_VERIFIER_PTR,
             ),
             RECURSION_LAYER_CIRCUITS_VERIFICATION_PARAMETERS,
+            security,
         )
     }
 }
 
-pub fn verify_base_or_recursion_unrolled_circuits() -> [u32; 16] {
+pub fn verify_base_or_recursion_unrolled_circuits(
+    security: verifier_common::SecurityModel,
+) -> [u32; 16] {
     // we just branch
     let op_type = DefaultNonDeterminismSource::read_word();
     use crate::definitions::*;
     match op_type {
-        OP_VERIFY_BASE_LAYER_IN_UNROLLED_CIRCUITS => verify_unrolled_base_layer(),
-        OP_VERIFY_RECURSIVE_LAYER_IN_UNROLLED_CIRCUITS => verify_unrolled_recursion_layer(),
+        OP_VERIFY_BASE_LAYER_IN_UNROLLED_CIRCUITS => verify_unrolled_base_layer(security),
+        OP_VERIFY_RECURSIVE_LAYER_IN_UNROLLED_CIRCUITS => verify_unrolled_recursion_layer(security),
         _ => {
             panic!("Unknown op");
         }

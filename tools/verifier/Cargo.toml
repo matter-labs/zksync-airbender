@@ -30,8 +30,6 @@ strip = true
 
 [features]
 panic_output = ["riscv_common/uart", "riscv_common/custom_panic"]
-security_80 = ["full_statement_verifier/security_80"]
-security_100 = ["full_statement_verifier/security_100"]
 # base_layer = ["full_statement_verifier/verifier_program", "full_statement_verifier/blake2_with_compression"]
 # recursion_step = ["full_statement_verifier/verifier_program", "full_statement_verifier/blake2_with_compression"]
 # recursion_log_23_step = ["full_statement_verifier/verifier_program", "full_statement_verifier/blake2_with_compression"]

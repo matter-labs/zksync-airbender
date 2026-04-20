@@ -94,12 +94,12 @@ pub fn flatten_proof_into_responses_for_unified_recursion(
     responses
 }
 
-#[cfg(any(feature = "verifier_80", feature = "verifier_100"))]
 pub fn verify_proof_in_unified_layer(
     proof: &UnrolledProgramProof,
     setup: &UnrolledProgramSetup,
     compiled_layouts: &CompiledCircuitsSet,
     input_is_unrolled: bool,
+    security: verifier_common::SecurityModel,
 ) -> Result<[u32; 16], ()> {
     for (k, v) in proof.circuit_families_proofs.iter() {
         println!("{} proofs for family {}", v.len(), k);
@@ -120,7 +120,7 @@ pub fn verify_proof_in_unified_layer(
             let it = responses.into_iter();
             prover::nd_source_std::set_iterator(it);
 
-            let regs = full_statement_verifier::unified_circuit_statement::verify_unrolled_or_unified_circuit_recursion_layer();
+            let regs = full_statement_verifier::unified_circuit_statement::verify_unrolled_or_unified_circuit_recursion_layer(security);
 
             regs
         }).map_err(|_| ());
@@ -137,7 +137,7 @@ pub fn verify_proof_in_unified_layer(
                 let it = responses.into_iter();
                 prover::nd_source_std::set_iterator(it);
 
-                let regs = full_statement_verifier::unified_circuit_statement::verify_unrolled_or_unified_circuit_recursion_layer();
+                let regs = full_statement_verifier::unified_circuit_statement::verify_unrolled_or_unified_circuit_recursion_layer(security);
 
                 regs
             })
@@ -158,6 +158,7 @@ pub fn prove_unified_for_machine_configuration_into_program_proof<C: MachineConf
     non_determinism: impl riscv_transpiler::vm::NonDeterminismCSRSource,
     ram_bound: usize,
     worker: &prover::worker::Worker,
+    security: verifier_common::SecurityModel,
 ) -> UnrolledProgramProof {
     use riscv_transpiler::common_constants::ROM_WORD_SIZE;
 
@@ -171,6 +172,7 @@ pub fn prove_unified_for_machine_configuration_into_program_proof<C: MachineConf
         non_determinism,
         ram_bound,
         &worker,
+        security,
     );
 
     let (
@@ -204,6 +206,7 @@ pub fn prove_unified_with_replayer_for_machine_configuration<C: MachineConfig>(
     non_determinism: impl riscv_transpiler::vm::NonDeterminismCSRSource,
     ram_bound: usize,
     worker: &prover::worker::Worker,
+    security: verifier_common::SecurityModel,
 ) -> (
     BTreeMap<u8, Vec<UnrolledModeProof>>,
     Vec<(u32, Vec<Proof>)>,
@@ -241,6 +244,7 @@ pub fn prove_unified_with_replayer_for_machine_configuration<C: MachineConfig>(
         &delegation_precomputations,
         ram_bound,
         worker,
+        security,
     );
 
     (
@@ -257,7 +261,6 @@ mod test {
     use test_utils::skip_if_ci;
 
     #[cfg(test)]
-    #[cfg(any(feature = "verifier_80", feature = "verifier_100"))]
     #[ignore = "requires pre-generated recursion fixtures"]
     #[test]
     fn test_unified_over_unrolled_verifier() {
@@ -280,6 +283,8 @@ mod test {
         )
         .unwrap();
 
+        let security = verifier_common::SecurityModel::Security80; // TODO(popzxc): cover 100 bit too
+
         println!("Verifying...");
         let cicuit_set = crate::unrolled::get_unrolled_circuits_artifacts_for_machine_type::<
             IWithoutByteAccessIsaConfigWithDelegation,
@@ -290,6 +295,7 @@ mod test {
             &setup,
             &cicuit_set,
             true,
+            security,
         )
         .expect("is valid proof");
         assert!(result.iter().all(|el| *el == 0) == false);
@@ -297,7 +303,6 @@ mod test {
     }
 
     #[cfg(test)]
-    #[cfg(any(feature = "verifier_80", feature = "verifier_100"))]
     #[ignore = "requires pre-generated recursion fixtures"]
     #[test]
     fn test_unified_over_unified_verifier() {
@@ -320,6 +325,8 @@ mod test {
         )
         .unwrap();
 
+        let security = verifier_common::SecurityModel::Security80; // TODO(popzxc): cover 100 bit too
+
         println!("Verifying...");
         let cicuit_set = crate::unified_circuit::get_unified_circuit_artifact_for_machine_type::<
             IWithoutByteAccessIsaConfigWithDelegation,
@@ -329,6 +336,7 @@ mod test {
             &setup,
             &cicuit_set,
             false,
+            security,
         )
         .expect("is valid proof");
         assert!(result.iter().all(|el| *el == 0) == false);
@@ -336,7 +344,6 @@ mod test {
     }
 
     #[cfg(test)]
-    #[cfg(any(feature = "verifier_80", feature = "verifier_100"))]
     #[ignore = "requires pre-generated recursion fixtures"]
     #[test]
     fn test_unified_x2_over_unified_verifier() {
@@ -359,6 +366,8 @@ mod test {
         )
         .unwrap();
 
+        let security = verifier_common::SecurityModel::Security80; // TODO(popzxc): cover 100 bit too
+
         println!("Verifying...");
         let cicuit_set = crate::unified_circuit::get_unified_circuit_artifact_for_machine_type::<
             IWithoutByteAccessIsaConfigWithDelegation,
@@ -368,6 +377,7 @@ mod test {
             &setup,
             &cicuit_set,
             false,
+            security,
         )
         .expect("is valid proof");
         assert!(result.iter().all(|el| *el == 0) == false);
@@ -433,11 +443,22 @@ mod test {
         )
         .unwrap();
         let worker = setups::prover::worker::Worker::new_with_num_threads(8);
+
+        let security = verifier_common::SecurityModel::Security80; // TODO(popzxc): cover 100 bit too
         println!("Computing proof");
+
         let mut output_proof =
             crate::unified_circuit::prove_unified_for_machine_configuration_into_program_proof::<
                 IWithoutByteAccessIsaConfigWithDelegation,
-            >(&binary_u32, &text_u32, 1 << 31, source, 1 << 30, &worker);
+            >(
+                &binary_u32,
+                &text_u32,
+                1 << 31,
+                source,
+                1 << 30,
+                &worker,
+                security,
+            );
 
         let existing_hash_chain = input_proof.recursion_chain_hash.unwrap();
         let existing_preimage = input_proof.recursion_chain_preimage.unwrap();

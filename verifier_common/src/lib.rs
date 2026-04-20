@@ -4,30 +4,39 @@
 #![allow(incomplete_features)]
 #![feature(generic_const_exprs)]
 
-#[cfg(all(feature = "security_80", feature = "security_100"))]
-compile_error!("multiple security levels selected at the same time");
+pub mod security_100;
+pub mod security_80;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SecurityModel {
+    Security80,
+    Security100,
+}
+
+impl SecurityModel {
+    pub const fn memory_delegation_pow_bits(self) -> usize {
+        match self {
+            Self::Security80 => crate::security_80::MEMORY_DELEGATION_POW_BITS,
+            Self::Security100 => crate::security_100::MEMORY_DELEGATION_POW_BITS,
+        }
+    }
+}
+
+// The file should be generated with tools/pow_config_generator
+#[cfg(not(feature = "worst_case_config_generation"))]
+#[allow(dead_code)]
+pub(crate) mod pow_config_worst_constants {
+    use crate::SizedProofSecurityConfig;
+
+    include!("pow_config_worst_constants.rs");
+
+    pub(super) const MEMORY_DELEGATION_POW_BITS_80: usize =
+        POW_BITS_FOR_MEMORY_AND_DELEGATION_FOR_80_SECURITY_BITS;
+    pub(super) const MEMORY_DELEGATION_POW_BITS_100: usize =
+        POW_BITS_FOR_MEMORY_AND_DELEGATION_FOR_100_SECURITY_BITS;
+}
 
 pub const MERSENNE31QUARTIC_SIZE_LOG2: usize = 124;
-pub const POW_BITS_FOR_80_SECURITY_BITS: usize = 28;
-pub const POW_BITS_FOR_100_SECURITY_BITS: usize = 28;
-
-#[cfg(feature = "security_80")]
-pub const SECURITY_BITS: usize = 80;
-#[cfg(all(feature = "security_80", not(feature = "worst_case_config_generation")))]
-pub const MEMORY_DELEGATION_POW_BITS: usize =
-    pow_config_worst_constants::MEMORY_DELEGATION_POW_BITS_80;
-
-#[cfg(feature = "security_100")]
-pub const SECURITY_BITS: usize = 100;
-#[cfg(all(
-    feature = "security_100",
-    not(feature = "worst_case_config_generation")
-))]
-pub const MEMORY_DELEGATION_POW_BITS: usize =
-    pow_config_worst_constants::MEMORY_DELEGATION_POW_BITS_100;
-
-#[cfg(feature = "worst_case_config_generation")]
-pub const MEMORY_DELEGATION_POW_BITS: usize = 0;
 
 #[derive(Clone, Copy, Debug, Hash, serde::Serialize, serde::Deserialize)]
 pub struct SizedProofSecurityConfig<const NUM_FOLDINGS: usize> {
@@ -57,23 +66,9 @@ impl<const NUM_FOLDINGS: usize> SizedProofSecurityConfig<NUM_FOLDINGS> {
     }
 }
 
-// The file should be generated with tools/pow_config_generator
-#[cfg(not(feature = "worst_case_config_generation"))]
-#[allow(dead_code)]
-mod pow_config_worst_constants {
-    use super::SizedProofSecurityConfig;
-
-    include!("pow_config_worst_constants.rs");
-
-    pub(super) const MEMORY_DELEGATION_POW_BITS_80: usize =
-        POW_BITS_FOR_MEMORY_AND_DELEGATION_FOR_80_SECURITY_BITS;
-    pub(super) const MEMORY_DELEGATION_POW_BITS_100: usize =
-        POW_BITS_FOR_MEMORY_AND_DELEGATION_FOR_100_SECURITY_BITS;
-}
-
 #[cfg(feature = "worst_case_config_generation")]
 impl<const NUM_FOLDINGS: usize> SizedProofSecurityConfig<NUM_FOLDINGS> {
-    pub const fn worst_case_config() -> Self {
+    pub const fn worst_case_config(_security: SecurityModel) -> Self {
         SizedProofSecurityConfig {
             lookup_pow_bits: 0,
             quotient_alpha_pow_bits: 0,
@@ -84,6 +79,10 @@ impl<const NUM_FOLDINGS: usize> SizedProofSecurityConfig<NUM_FOLDINGS> {
             num_queries: 50,
         }
     }
+}
+
+pub trait SecurityConfig<const NUM_FOLDINGS: usize> {
+    const CONFIG: SizedProofSecurityConfig<NUM_FOLDINGS>;
 }
 
 pub const fn transcript_challenge_array_size(num_elements: usize, pow_bits: usize) -> usize {

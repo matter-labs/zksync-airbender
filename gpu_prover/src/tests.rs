@@ -92,7 +92,6 @@ use trace_and_split::{
     fs_transform_for_memory_and_delegation_arguments_for_unrolled_circuits, FinalRegisterValue,
 };
 use trace_holder::RowMajorTrace;
-use verifier_common::MEMORY_DELEGATION_POW_BITS;
 use worker::Worker;
 
 const RECOMPUTE_COSETS_FOR_CORRECTNESS: bool = false;
@@ -3870,12 +3869,15 @@ pub fn prove_unrolled_execution_with_replayer<
             &delegation_memory_trees,
         );
 
-    let pow_challenge = if MEMORY_DELEGATION_POW_BITS == 0 {
+    let security = verifier_common::SecurityModel::Security80; // TODO(popzxc): cover security 100
+    let memory_delegation_pow_bits = security.memory_delegation_pow_bits();
+
+    let pow_challenge = if memory_delegation_pow_bits == 0 {
         0
     } else {
         Transcript::search_pow(
             &all_challenges_seed,
-            MEMORY_DELEGATION_POW_BITS as u32,
+            memory_delegation_pow_bits as u32,
             worker,
         )
         .1
@@ -3884,7 +3886,7 @@ pub fn prove_unrolled_execution_with_replayer<
     let external_challenges =
         ExternalChallenges::draw_from_transcript_seed_with_delegation_and_state_permutation(
             all_challenges_seed,
-            MEMORY_DELEGATION_POW_BITS,
+            memory_delegation_pow_bits,
             pow_challenge,
         );
 
