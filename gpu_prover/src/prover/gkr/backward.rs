@@ -4421,26 +4421,6 @@ const fn main_layer_kind_batch_challenge_count(kind: GpuGKRMainLayerKernelKind) 
     }
 }
 
-#[derive(Clone)]
-struct PackedMainLayerBatchChallengeSpec<E> {
-    kind: GpuGKRMainLayerKernelKind,
-    batch_challenge_offset: usize,
-    batch_challenges: Vec<E>,
-}
-
-fn packed_main_layer_batch_challenge_specs<E: Clone>(
-    kernel_plans: &[GpuGKRMainLayerKernelPlan<E>],
-) -> Vec<PackedMainLayerBatchChallengeSpec<E>> {
-    kernel_plans
-        .iter()
-        .map(|kernel| PackedMainLayerBatchChallengeSpec {
-            kind: kernel.kind,
-            batch_challenge_offset: kernel.batch_challenge_offset,
-            batch_challenges: kernel.batch_challenges.clone(),
-        })
-        .collect()
-}
-
 fn packed_main_layer_batch_challenge_len<E>(
     kernel_plans: &[GpuGKRMainLayerKernelPlan<E>],
 ) -> usize {
@@ -4489,43 +4469,6 @@ fn fill_packed_main_layer_batch_challenges<E: Field>(
                 kernel.kind
             );
             dst_slice.copy_from_slice(&kernel.batch_challenges);
-        }
-        packed_offset += count;
-    }
-}
-
-fn fill_packed_main_layer_batch_challenges_from_specs<E: Field>(
-    specs: &[PackedMainLayerBatchChallengeSpec<E>],
-    batch_challenge_base: E,
-    dst: &mut [E],
-) {
-    let expected_len = specs
-        .iter()
-        .map(|spec| main_layer_kind_batch_challenge_count(spec.kind))
-        .sum::<usize>();
-    assert_eq!(dst.len(), expected_len);
-    let mut packed_offset = 0usize;
-    for spec in specs.iter() {
-        let count = main_layer_kind_batch_challenge_count(spec.kind);
-        assert_eq!(
-            spec.batch_challenge_offset, packed_offset,
-            "main-layer batch challenges must stay densely packed in record order"
-        );
-        let dst_slice = &mut dst[packed_offset..packed_offset + count];
-        if spec.batch_challenges.is_empty() {
-            let mut challenge = field_pow(batch_challenge_base, spec.batch_challenge_offset);
-            for dst in dst_slice.iter_mut() {
-                *dst = challenge;
-                challenge.mul_assign(&batch_challenge_base);
-            }
-        } else {
-            assert_eq!(
-                spec.batch_challenges.len(),
-                count,
-                "kernel {:?} materialized unexpected batch-challenge count",
-                spec.kind
-            );
-            dst_slice.copy_from_slice(&spec.batch_challenges);
         }
         packed_offset += count;
     }
@@ -5870,38 +5813,56 @@ where
         Ok((storage, buffer))
     }
 
-    fn schedule_batch_challenge_buffer_from_workflow_state(
+    fn schedule_batch_challenge_buffer_on_device(
         &self,
-        workflow_state: ScheduledBackwardWorkflowStateHandle<E>,
         context: &ProverContext,
     ) -> CudaResult<(ScheduledChallengeStorage<E>, ScheduledChallengeBuffer<E>)> {
-        let specs = packed_main_layer_batch_challenge_specs(&self.kernel_plans);
-        let len = specs
-            .iter()
-            .map(|spec| main_layer_kind_batch_challenge_count(spec.kind))
-            .sum::<usize>();
+        let len = packed_main_layer_batch_challenge_len(&self.kernel_plans);
         assert!(
             len > 0,
             "main-layer batched execution requires at least one packed batch challenge"
         );
-        let mut storage =
+        // Static-blueprint main-layer plans never pre-populate `batch_challenges`;
+        // every packed slot is `base^(offset + k)` for the single device-resident
+        // batching challenge `base`. Assert so callers can't silently lose
+        // pre-drawn values.
+        assert!(
+            self.kernel_plans
+                .iter()
+                .all(|k| k.batch_challenges.is_empty()),
+            "schedule_batch_challenge_buffer_on_device requires static-blueprint specs",
+        );
+        let storage =
             ScheduledChallengeStorage::new(context.alloc(len, AllocationPlacement::Top)?);
-        let buffer = schedule_packed_round_challenge_upload(
-            context,
-            storage.device_accessor(),
-            &mut storage.callbacks,
-            0,
+        // Fill the packed buffer with powers of the device-resident batching
+        // challenge (last slot of `round_scratch.claim_point`, already staged
+        // via the D2D above). Replaces the old host callback that read
+        // `workflow_state.current_batching_challenge` and computed powers on
+        // the CPU before an H2D.
+        let batching_slice = &self.round_scratch.claim_point
+            [self.folding_steps..self.folding_steps + 1];
+        // SAFETY: `storage.device` was just allocated with capacity `len` and
+        // no other view into it exists yet; the `&mut DeviceSlice` is dropped
+        // before `storage.device_accessor()` is called below. The subsequent
+        // `get_powers_by_ref` launch is stream-ordered on `exec_stream`, so the
+        // buffer is populated before any downstream consumer reads it.
+        unsafe {
+            let dst_slice = storage.device.slice_mut(0, len);
+            let dst_e4 = dst_slice.transmute_mut::<E4>();
+            let batching_e4 = batching_slice.transmute::<E4>();
+            crate::ops::powers::get_powers_by_ref::<E4>(
+                &batching_e4[0],
+                0,
+                false,
+                dst_e4,
+                context.get_exec_stream(),
+            )?;
+        }
+        let buffer = ScheduledChallengeBuffer {
+            device: storage.device_accessor(),
+            offset: 0,
             len,
-            move |dst| {
-                let batch_challenge_base =
-                    unsafe { workflow_state.get() }.current_batching_challenge;
-                fill_packed_main_layer_batch_challenges_from_specs(
-                    &specs,
-                    batch_challenge_base,
-                    dst,
-                );
-            },
-        )?;
+        };
         Ok((storage, buffer))
     }
 
@@ -6773,7 +6734,7 @@ where
         }
 
         let (batch_challenge_storage, batch_challenge_buffer) =
-            self.schedule_batch_challenge_buffer_from_workflow_state(workflow_state, context)?;
+            self.schedule_batch_challenge_buffer_on_device(context)?;
         let runtime_uploads =
             self.schedule_runtime_uploads_from_workflow_state(workflow_state, context)?;
         let flat_coeff_callbacks = self.schedule_flat_eval_recipes(workflow_state, context)?;
