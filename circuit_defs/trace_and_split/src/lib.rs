@@ -97,7 +97,7 @@ where
 
     let cap = mem.tree.get_cap();
 
-    println!("Memory witness commitment took {:?}", now.elapsed());
+    println!("Memory commitment took {:?}", now.elapsed());
 
     cap
 }
@@ -163,7 +163,7 @@ where
 
     let cap = mem.tree.get_cap();
 
-    println!("Memory witness commitment took {:?}", now.elapsed());
+    println!("Memory commitment took {:?}", now.elapsed());
 
     cap
 }
@@ -215,7 +215,7 @@ where
     let cap = mem.tree.get_cap();
 
     println!(
-        "Inits and teardowns memory witness commitment took {:?}",
+        "Inits and teardowns memory commitment took {:?}",
         now.elapsed()
     );
 
@@ -379,7 +379,7 @@ where
 
     let cap = mem.tree.get_cap();
 
-    println!("Memory witness commitment took {:?}", now.elapsed());
+    println!("Memory commitment took {:?}", now.elapsed());
 
     cap
 }

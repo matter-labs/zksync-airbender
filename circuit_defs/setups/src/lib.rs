@@ -18,9 +18,7 @@ use prover::tracers::*;
 use prover::*;
 use riscv_transpiler::cycle::*;
 use std::alloc::Global;
-use std::collections::HashMap;
 use std::path::Path;
-use std::sync::Arc;
 use worker::Worker;
 
 pub use ::add_sub_lui_auipc_mop::AddSubLuiAuipcMopCircuit;

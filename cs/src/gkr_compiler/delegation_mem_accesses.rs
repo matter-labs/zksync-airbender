@@ -310,12 +310,6 @@ pub(crate) fn compile_register_and_indirect_mem_accesses<F: PrimeField>(
                     offset_place
                 };
 
-                dbg!(query_idx);
-                dbg!(indirect_access_idx);
-                dbg!(indirect_access_var_idx);
-                dbg!(offset);
-                dbg!(&offset_place);
-
                 let existing =
                     indirect_access_variable_offsets.insert(indirect_access_var_idx, offset_place);
                 if let Some(existing) = existing {
