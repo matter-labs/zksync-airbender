@@ -5,6 +5,7 @@ pub(crate) mod gkr;
 pub(crate) mod memory;
 mod pow;
 pub(crate) mod proof;
+pub(crate) mod proof_layout;
 pub(crate) mod trace_holder;
 pub(crate) mod tracing_data;
 pub(crate) mod whir;
