@@ -1,6 +1,7 @@
 /.idea
 /.vscode
 /target
+tools/gkr_verifier/target
 /Cargo.lock
 /output
 rustc-ice-*.*

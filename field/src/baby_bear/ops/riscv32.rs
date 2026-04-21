@@ -71,10 +71,16 @@ pub(crate) const fn mul_mod(a: u32, b: u32) -> u32 {
 
 #[cfg_attr(not(feature = "no_inline"), inline(always))]
 const fn mul_mod_ct(a: u32, b: u32) -> u32 {
-    let product = (a as u64) * (b as u64);
-    let product_low = (product as u32) & ((1 << 31) - 1);
-    let product_high = (product >> 31) as u32;
-    reduce_with_division_ct(product_low.wrapping_add(product_high))
+    use crate::baby_bear::base::BabyBearField;
+    let product = (a as u64).wrapping_mul(b as u64);
+    let m = (product as u32).wrapping_mul(BabyBearField::MONT_K);
+    let adjusted = product.wrapping_add((m as u64).wrapping_mul(BabyBearField::ORDER as u64));
+    let result = (adjusted >> 32) as u32;
+    if result >= BabyBearField::ORDER {
+        result - BabyBearField::ORDER
+    } else {
+        result
+    }
 }
 
 #[cfg(feature = "modular_ops")]

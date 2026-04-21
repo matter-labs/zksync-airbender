@@ -5,59 +5,6 @@ use blake2s_u32::state_with_extended_control_flags::*;
 use blake2s_u32::*;
 use common_constants::*;
 
-#[inline(always)]
-fn peek_read_words<R: RAM, const N: usize>(offset: u32, ram: &R) -> [u32; N] {
-    unsafe {
-        let mut result = [MaybeUninit::uninit(); N];
-        let mut addr = offset;
-        for dst in result.iter_mut() {
-            let value = ram.peek_word(addr);
-            addr += core::mem::size_of::<u32>() as u32;
-            dst.write(value);
-        }
-
-        result.map(|el| el.assume_init())
-    }
-}
-
-#[inline(always)]
-fn read_words<C: Counters, S: Snapshotter<C>, R: RAM, const N: usize>(
-    offset: u32,
-    ram: &mut R,
-    snapshotter: &mut S,
-    timestamp: TimestampScalar,
-) -> [u32; N] {
-    unsafe {
-        let mut result = [MaybeUninit::uninit(); N];
-        let mut addr = offset;
-        for dst in result.iter_mut() {
-            let (read_ts, value) = ram.read_word(addr, timestamp);
-            snapshotter.append_memory_read(addr, value, read_ts, timestamp);
-            addr += core::mem::size_of::<u32>() as u32;
-            dst.write(value);
-        }
-
-        result.map(|el| el.assume_init())
-    }
-}
-
-#[inline(always)]
-fn write_back_words<C: Counters, S: Snapshotter<C>, R: RAM, const N: usize>(
-    offset: u32,
-    ram: &mut R,
-    snapshotter: &mut S,
-    timestamp: TimestampScalar,
-    value: &[u32; N],
-) {
-    let mut addr = offset;
-    for src in value.iter() {
-        let new_value = *src as u32;
-        let (read_ts, low) = ram.write_word(addr, new_value, timestamp);
-        snapshotter.append_memory_read(addr, low, read_ts, timestamp);
-        addr += core::mem::size_of::<u32>() as u32;
-    }
-}
-
 #[inline(never)]
 pub(crate) fn blake2_round_function_call<
     C: Counters,
@@ -241,7 +188,7 @@ pub(crate) fn blake2_round_function_call<
         }
 
         let mut addr = x11;
-        for i in 0..16 {
+        for _i in 0..16 {
             // input is unchanged
             let (ts, old_value) = ram.read_word(addr, write_ts);
             snapshotter.append_memory_read(addr, old_value, ts, write_ts);

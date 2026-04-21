@@ -1,7 +1,6 @@
-use std::{alloc::Allocator, mem::MaybeUninit};
-
 use common_constants::TimestampScalar;
 use field::PrimeField;
+use std::alloc::Allocator;
 
 use crate::vm::{RamPeek, Register, RAM};
 
@@ -89,7 +88,7 @@ impl<const ROM_BOUND_SECOND_WORD_BITS: usize> RAM for RamWithRomRegion<ROM_BOUND
     }
 
     #[inline(always)]
-    fn skip_if_replaying(&mut self, num_snapshots: usize) {
+    fn skip_if_replaying(&mut self, _num_snapshots: usize) {
         panic!("mustn not be used in replayer");
     }
 

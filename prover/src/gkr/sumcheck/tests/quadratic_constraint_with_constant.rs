@@ -98,7 +98,7 @@ fn test_quadratic_constraint_with_constant() {
 
     let batching_challenges = vec![E::from_base(F::from_u32_with_reduction(42))];
 
-    let mut claim = E::ZERO; // constraints are satisified, so randomized sum is also 0
+    let mut claim = E::ZERO; // constraints are satisfied, so randomized sum is also 0
 
     dbg!(&batching_challenges);
 

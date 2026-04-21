@@ -3,8 +3,8 @@ use super::*;
 #[inline(always)]
 pub(crate) fn branch<C: Counters, S: Snapshotter<C>, R: RAM>(
     state: &mut State<C>,
-    ram: &mut R,
-    snapshotter: &mut S,
+    _ram: &mut R,
+    _snapshotter: &mut S,
     instr: Instruction,
 ) {
     let rs1_value = read_register::<C, 0>(state, instr.rs1);

@@ -9,8 +9,8 @@ pub(crate) mod non_determinism;
 #[inline(always)]
 pub(crate) fn nop_op<C: Counters, S: Snapshotter<C>, R: RAM>(
     state: &mut State<C>,
-    ram: &mut R,
-    snapshotter: &mut S,
+    _ram: &mut R,
+    _snapshotter: &mut S,
     instr: Instruction,
 ) {
     debug_assert_eq!(instr.rs1, 0);

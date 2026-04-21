@@ -1,7 +1,25 @@
 #![cfg_attr(not(any(test, feature = "replace_csr")), no_std)]
-#![feature(allocator_api)]
+#![cfg_attr(any(test, feature = "proof_utils"), feature(allocator_api))]
 #![allow(incomplete_features)]
 #![feature(generic_const_exprs)]
+#![feature(maybe_uninit_array_assume_init)]
+
+#[macro_export]
+macro_rules! gkr_circuits {
+    ($callback:ident) => {
+        $callback! {
+            add_sub_lui_auipc_mop: default_for_tests_80_bits_24: "_preprocessed_layout",
+            jump_branch_slt: default_for_tests_80_bits_24: "_preprocessed_layout",
+            shift_binop: default_for_tests_80_bits_24: "_preprocessed_layout",
+            mem_word_only: default_for_tests_80_bits_24: "_preprocessed_layout",
+            mem_subword_only: default_for_tests_80_bits_24: "_preprocessed_layout",
+            bigint_with_extended_control: default_for_tests_80_bits_22: "_layout",
+            blake2_with_extended_control: default_for_tests_80_bits_20: "_layout",
+            keccak_special5: default_for_tests_80_bits_22: "_layout",
+            inits_and_teardowns: default_for_tests_80_bits_24: "_preprocessed_layout",
+        }
+    };
+}
 
 #[cfg(all(feature = "security_80", feature = "security_100"))]
 compile_error!("multiple security levels selected at the same time");
@@ -70,6 +88,15 @@ impl<const NUM_FOLDINGS: usize> SizedProofSecurityConfig<NUM_FOLDINGS> {
     }
 }
 
+/// GKR sumcheck polynomial is cubic
+pub const SUMCHECK_POLY_COEFFS: usize = 4;
+/// Dim-reducing layers use 4 evaluation points per address
+pub const DIM_REDUCE_EVAL_POINTS: usize = 4;
+/// Standard layers use 2 evaluation points per address (f(0) and f(1)).
+pub const STANDARD_EVAL_POINTS: usize = 2;
+/// One extra challenge for batching is drawn beyond the evaluation point challenges.
+pub const BATCHING_CHALLENGE_EXTRA: usize = 1;
+
 pub const fn transcript_challenge_array_size(num_elements: usize, pow_bits: usize) -> usize {
     if pow_bits > 0 {
         (num_elements + 1).next_multiple_of(blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS)
@@ -109,9 +136,18 @@ pub use field;
 pub use non_determinism_source;
 pub use prover;
 pub use transcript;
+#[cfg(feature = "gkr_verify")]
+pub mod errors;
 pub mod fri_folding;
+#[cfg(feature = "gkr_verify")]
+pub mod gkr;
+#[cfg(all(feature = "proof_utils", feature = "gkr_verify"))]
+pub mod test_circuits;
+#[cfg(feature = "gkr_verify")]
+pub mod whir;
 
 pub mod inline_ops;
+pub mod lazy_vec;
 pub mod no_inline_ops;
 
 /// Wrappers for common field operations used by the verifier.
@@ -135,10 +171,16 @@ pub type DefaultNonDeterminismSource = prover::nd_source_std::ThreadLocalBasedSo
 #[cfg(target_arch = "riscv32")]
 pub type DefaultNonDeterminismSource = non_determinism_source::CSRBasedSource;
 
-#[cfg(not(all(target_arch = "riscv32", feature = "blake2_with_compression")))]
+#[cfg(not(all(
+    target_arch = "riscv32",
+    any(feature = "blake2_with_compression", feature = "blake2_g_function")
+)))]
 pub type DefaultLeafInclusionVerifier = prover::definitions::Blake2sForEverythingVerifier;
 
-#[cfg(all(target_arch = "riscv32", feature = "blake2_with_compression"))]
+#[cfg(all(
+    target_arch = "riscv32",
+    any(feature = "blake2_with_compression", feature = "blake2_g_function")
+))]
 pub type DefaultLeafInclusionVerifier =
     prover::definitions::Blake2sForEverythingVerifierWithAlternativeCompression;
 

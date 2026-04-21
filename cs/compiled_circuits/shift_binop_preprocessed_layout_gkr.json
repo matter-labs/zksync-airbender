@@ -6474,9 +6474,9 @@
     "89": "lookup input 6 for main part of ops for byte 3",
     "90": "lookup input 7 for main part of ops for byte 3",
     "91": "table ID for binary/shift main ops",
-    "92": "query 0, interm ts borrow",
-    "93": "query 1, interm ts borrow",
-    "94": "query 2, interm ts borrow",
+    "92": "query 0, interim ts borrow",
+    "93": "query 1, interim ts borrow",
+    "94": "query 2, interim ts borrow",
     "95": "Multiplicity for range check 16",
     "96": "Multiplicity for timestamp range check",
     "97": "Multiplicity for generic lookup"

@@ -10,7 +10,8 @@ mod mixing_function;
 pub mod vectorized_impls;
 
 pub use mixing_function::{
-    mixing_function, round_function_full_rounds, round_function_reduced_rounds,
+    g_function, g_function_raw, mixing_function, round_function_full_rounds,
+    round_function_reduced_rounds,
 };
 
 pub use aligned_array::{AlignedArray64, AlignedSlice64};
@@ -47,6 +48,8 @@ pub const SIGMAS: [[usize; 16]; 10] = [
     [10, 2, 8, 4, 7, 6, 1, 5, 15, 11, 9, 14, 3, 12, 13, 0],
 ];
 
+pub const SIGMAS_BY_PAIRS: [[[usize; 2]; 8]; 10] = unsafe { core::mem::transmute(SIGMAS) };
+
 pub const CONFIGURED_IV: [u32; 8] = const {
     let mut result = IV;
     result[0] = IV_0_TWIST;
@@ -68,12 +71,12 @@ pub const EXTENDED_CONFIGURED_IV: [u32; BLAKE2S_EXTENDED_STATE_WIDTH_IN_U32_WORD
 
 pub use self::baseline::Blake2sState;
 
-#[cfg(not(feature = "blake2_with_compression"))]
+#[cfg(not(any(feature = "blake2_with_compression", feature = "blake2_g_function")))]
 pub use self::baseline::Blake2sState as DelegatedBlake2sState;
 
 pub mod state_with_extended_control;
 
-#[cfg(feature = "blake2_with_compression")]
+#[cfg(any(feature = "blake2_with_compression", feature = "blake2_g_function"))]
 pub use self::state_with_extended_control::Blake2RoundFunctionEvaluator as DelegatedBlake2sState;
 
 pub mod state_with_extended_control_flags {
@@ -95,6 +98,12 @@ pub mod state_with_extended_control_flags {
 
         result
     };
+}
+
+pub mod g_function_control_flags {
+    pub const REDUCE_ROUNDS_BIT_IDX: usize = 0;
+
+    pub const TEST_IF_REDUCE_ROUNDS_MASK: u32 = 1 << REDUCE_ROUNDS_BIT_IDX;
 }
 
 #[cfg(target_arch = "riscv32")]

@@ -1,0 +1,71 @@
+cargo-features = ["panic-immediate-abort"]
+
+[package]
+name = "gkr_verifier"
+version = "0.1.0"
+edition = "2021"
+authors = ["The Matter Labs Team <hello@matterlabs.dev>"]
+homepage = "https://zksync.io/"
+repository = "https://github.com/matter-labs/zksync-airbender/"
+license = "MIT OR Apache-2.0"
+keywords = ["blockchain", "zksync", "zk"]
+categories = ["cryptography"]
+
+[dependencies]
+verifier_common = { path = "../../verifier_common", default-features = false, features = ["gkr_verify", "modular_ops"] }
+non_determinism_source = { path = "../../non_determinism_source" }
+riscv_common = { path = "../../riscv_common", features = ["boot_sequence", "no_memset_override"] }
+field = { path = "../../field", default-features = false, features = ["modular_ops"] }
+
+[features]
+blake2_with_compression = ["verifier_common/blake2_with_compression"]
+blake2_g_function = ["verifier_common/blake2_g_function"]
+mop_extension = ["verifier_common/mop_extension"]
+no_caches = ["verifier_common/no_caches"]
+default = ["blake2_with_compression"]
+
+[[bin]]
+name = "inits_and_teardowns"
+path = "src/bin/inits_and_teardowns.rs"
+
+[[bin]]
+name = "add_sub_lui_auipc_mop"
+path = "src/bin/add_sub_lui_auipc_mop.rs"
+
+[[bin]]
+name = "jump_branch_slt"
+path = "src/bin/jump_branch_slt.rs"
+
+[[bin]]
+name = "shift_binop"
+path = "src/bin/shift_binop.rs"
+
+[[bin]]
+name = "bigint_with_extended_control"
+path = "src/bin/bigint_with_extended_control.rs"
+
+[[bin]]
+name = "blake2_with_extended_control"
+path = "src/bin/blake2_with_extended_control.rs"
+
+[[bin]]
+name = "mem_word_only"
+path = "src/bin/mem_word_only.rs"
+
+[[bin]]
+name = "mem_subword_only"
+path = "src/bin/mem_subword_only.rs"
+
+[[bin]]
+name = "keccak_special5"
+path = "src/bin/keccak_special5.rs"
+
+[workspace]
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "immediate-abort"
+debug = true
+strip = false

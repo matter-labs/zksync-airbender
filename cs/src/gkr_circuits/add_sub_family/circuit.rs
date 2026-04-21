@@ -631,7 +631,7 @@ mod test {
         );
         serialize_to_file(
             &ssa_forms,
-            "compiled_circuits/add_sub_lui_auipc_mop_preprocessed_ssa_gkr.json",
+            "compiled_circuits/add_sub_lui_auipc_mop_ssa_gkr.json",
         );
     }
 

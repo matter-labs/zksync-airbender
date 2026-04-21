@@ -39,7 +39,7 @@ const INITIAL_PC: u32 = 0;
 const NUM_INIT_AND_TEARDOWN_SETS: usize = 16;
 const WORD_BITS: u32 = core::mem::size_of::<u32>().trailing_zeros();
 
-const USE_GKR_WITH_CACHES: bool = true;
+const USE_GKR_WITH_CACHES: bool = cfg!(not(feature = "no_caches"));
 
 // NOTE: these constants must match with ones used in CS crate to produce
 // layout and SSA forms, otherwise derived witness-gen functions may write into
@@ -53,7 +53,7 @@ const RAM_BOUND_BYTES: usize = 1 << 30;
 const RAM_BOUND_WORDS: usize = RAM_BOUND_BYTES / core::mem::size_of::<u32>();
 
 const CHECK_MEMORY_PERMUTATION_ONLY: bool = false;
-const PROVE_EMPTY: bool = false;
+const PROVE_EMPTY: bool = true;
 
 const PROVE_ADD_SUB: bool = true;
 const PROVE_JUMP_BRANCH: bool = true;

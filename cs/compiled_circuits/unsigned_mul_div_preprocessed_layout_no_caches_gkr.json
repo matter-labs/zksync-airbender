@@ -6672,9 +6672,9 @@
     "62": "intermediate carry witness[0] at layer 1",
     "63": "intermediate carry witness[1] at layer 1",
     "64": "intermediate carry witness[2] at layer 1",
-    "65": "query 0, interm ts borrow",
-    "66": "query 1, interm ts borrow",
-    "67": "query 2, interm ts borrow",
+    "65": "query 0, interim ts borrow",
+    "66": "query 1, interim ts borrow",
+    "67": "query 2, interim ts borrow",
     "68": "Multiplicity for range check 16",
     "69": "Multiplicity for timestamp range check",
     "70": "Multiplicity for generic lookup"

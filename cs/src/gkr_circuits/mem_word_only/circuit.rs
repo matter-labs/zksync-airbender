@@ -394,10 +394,7 @@ mod test {
             },
             &|cs| mem_word_only_circuit_with_preprocessed_bytecode_for_gkr(cs),
         );
-        serialize_to_file(
-            &ssa_forms,
-            "compiled_circuits/mem_word_only_preprocessed_ssa_gkr.json",
-        );
+        serialize_to_file(&ssa_forms, "compiled_circuits/mem_word_only_ssa_gkr.json");
     }
 
     #[test]

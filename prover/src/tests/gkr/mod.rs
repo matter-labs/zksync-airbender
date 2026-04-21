@@ -20,6 +20,7 @@ pub(crate) fn deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &s
 }
 
 mod family_circuits;
+mod malicious_proofs;
 
 pub(crate) fn ensure_memory_trace_consistency<F: PrimeField>(
     memory_trace: &GKRMemoryOnlyWitnessTrace<F, impl Allocator + Clone, impl Allocator + Clone>,
@@ -269,7 +270,7 @@ mod add_sub_lui_auipc_mop {
     use ::field::baby_bear::base::BabyBearField;
     use cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
 
-    include!("../../../compiled_circuits/add_sub_lui_auipc_mop_preprocessed_generated_gkr.rs");
+    include!("../../../compiled_circuits/add_sub_lui_auipc_mop_generated_gkr.rs");
 
     pub fn witness_eval_fn<'a, 'b>(
         proxy: &'_ mut ColumnMajorWitnessProxy<'a, NonMemoryCircuitOracle<'b>, BabyBearField>,
@@ -296,7 +297,7 @@ mod jump_branch_slt {
     use ::field::baby_bear::base::BabyBearField;
     use cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
 
-    include!("../../../compiled_circuits/jump_branch_slt_preprocessed_generated_gkr.rs");
+    include!("../../../compiled_circuits/jump_branch_slt_generated_gkr.rs");
 
     pub fn witness_eval_fn<'a, 'b>(
         proxy: &'_ mut ColumnMajorWitnessProxy<'a, NonMemoryCircuitOracle<'b>, BabyBearField>,
@@ -323,7 +324,7 @@ mod shift_binary_ops {
     use ::field::baby_bear::base::BabyBearField;
     use cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
 
-    include!("../../../compiled_circuits/shift_binop_preprocessed_generated_gkr.rs");
+    include!("../../../compiled_circuits/shift_binop_generated_gkr.rs");
 
     pub fn witness_eval_fn<'a, 'b>(
         proxy: &'_ mut ColumnMajorWitnessProxy<'a, NonMemoryCircuitOracle<'b>, BabyBearField>,
@@ -377,7 +378,7 @@ mod mem_word_only {
     use ::field::baby_bear::base::BabyBearField;
     use cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
 
-    include!("../../../compiled_circuits/mem_word_only_preprocessed_generated_gkr.rs");
+    include!("../../../compiled_circuits/mem_word_only_generated_gkr.rs");
 
     pub fn witness_eval_fn<'a, 'b>(
         proxy: &'_ mut ColumnMajorWitnessProxy<'a, MemoryCircuitOracle<'b>, BabyBearField>,
@@ -404,7 +405,7 @@ mod mem_subword_only {
     use ::field::baby_bear::base::BabyBearField;
     use cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
 
-    include!("../../../compiled_circuits/mem_subword_only_preprocessed_generated_gkr.rs");
+    include!("../../../compiled_circuits/mem_subword_only_generated_gkr.rs");
 
     pub fn witness_eval_fn<'a, 'b>(
         proxy: &'_ mut ColumnMajorWitnessProxy<'a, MemoryCircuitOracle<'b>, BabyBearField>,

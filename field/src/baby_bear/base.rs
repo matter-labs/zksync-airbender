@@ -31,7 +31,7 @@ impl BabyBearField {
         r2 as u32
     };
     const NON_RES: Self = Self::new(11);
-    const HALF: Self = const { Self::new(2).inverse_impl().unwrap() };
+    pub const HALF: Self = const { Self::new(2).inverse_impl().unwrap() };
 
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     pub const fn new(value: u32) -> Self {

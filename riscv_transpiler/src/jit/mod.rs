@@ -35,8 +35,9 @@ const NUM_RAM_WORDS: usize = RAM_SIZE / core::mem::size_of::<u32>();
 // At most we extend a chunk by the number of accesses in delegation
 pub const TRACE_CHUNK_LEN: usize = 1 << 20;
 pub const MAX_TRACE_CHUNK_LEN: usize = const {
-    let mut max = core::cmp::max(24 + 16, 31 * 2);
-    max = core::cmp::max(max, 8 + 8 + 1);
+    let mut max = core::cmp::max(24 + 16, 31 * 2); // blake round function or keccak
+    max = core::cmp::max(max, 8 + 8 + 1); // bigint
+    max = core::cmp::max(max, 16 + 16); // blake g function
 
     TRACE_CHUNK_LEN + max
 };

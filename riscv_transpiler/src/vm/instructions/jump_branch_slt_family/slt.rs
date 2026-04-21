@@ -3,8 +3,8 @@ use super::*;
 #[inline(always)]
 pub(crate) fn slt<C: Counters, S: Snapshotter<C>, R: RAM>(
     state: &mut State<C>,
-    ram: &mut R,
-    snapshotter: &mut S,
+    _ram: &mut R,
+    _snapshotter: &mut S,
     instr: Instruction,
 ) {
     let rs1_value = read_register::<C, 0>(state, instr.rs1);
@@ -17,7 +17,7 @@ pub(crate) fn slt<C: Counters, S: Snapshotter<C>, R: RAM>(
         }
     });
     rs2_value = rs2_value.wrapping_add(instr.imm);
-    let mut rd = ((rs1_value as i32) < (rs2_value as i32)) as u32;
+    let rd = ((rs1_value as i32) < (rs2_value as i32)) as u32;
     write_register_for_pure_opcode::<C, 2>(state, instr.rd, rd);
     default_increase_pc::<C>(state);
     increment_family_counter::<C, JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX>(state);
@@ -26,8 +26,8 @@ pub(crate) fn slt<C: Counters, S: Snapshotter<C>, R: RAM>(
 #[inline(always)]
 pub(crate) fn sltu<C: Counters, S: Snapshotter<C>, R: RAM>(
     state: &mut State<C>,
-    ram: &mut R,
-    snapshotter: &mut S,
+    _ram: &mut R,
+    _snapshotter: &mut S,
     instr: Instruction,
 ) {
     let rs1_value = read_register::<C, 0>(state, instr.rs1);
@@ -40,7 +40,7 @@ pub(crate) fn sltu<C: Counters, S: Snapshotter<C>, R: RAM>(
         }
     });
     rs2_value = rs2_value.wrapping_add(instr.imm);
-    let mut rd = (rs1_value < rs2_value) as u32;
+    let rd = (rs1_value < rs2_value) as u32;
     write_register_for_pure_opcode::<C, 2>(state, instr.rd, rd);
     default_increase_pc::<C>(state);
     increment_family_counter::<C, JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX>(state);

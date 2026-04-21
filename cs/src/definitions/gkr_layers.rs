@@ -1,3 +1,14 @@
+/// Output type categories for GKR circuit layers.
+#[derive(
+    Clone, Copy, Debug, Hash, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+pub enum OutputType {
+    PermutationProduct = 0,
+    Lookup16Bits,
+    LookupTimestamps,
+    GenericLookup,
+}
+
 #[derive(
     Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
 )]
@@ -11,6 +22,7 @@ pub enum VirtualSetupPoly {
 #[derive(
     Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
 )]
+#[repr(u32)]
 pub enum GKRAddress {
     BaseLayerWitness(usize),
     BaseLayerMemory(usize),

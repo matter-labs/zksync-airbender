@@ -547,7 +547,7 @@ mod test {
         );
         serialize_to_file(
             &ssa_forms,
-            "compiled_circuits/mem_subword_only_preprocessed_ssa_gkr.json",
+            "compiled_circuits/mem_subword_only_ssa_gkr.json",
         );
     }
 

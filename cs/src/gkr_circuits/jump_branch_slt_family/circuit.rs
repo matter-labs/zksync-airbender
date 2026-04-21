@@ -787,10 +787,7 @@ mod test {
             &|cs| jump_branch_slt_table_addition_fn(cs),
             &|cs| jump_branch_slt_circuit_with_preprocessed_bytecode_for_gkr(cs),
         );
-        serialize_to_file(
-            &ssa_forms,
-            "compiled_circuits/jump_branch_slt_preprocessed_ssa_gkr.json",
-        );
+        serialize_to_file(&ssa_forms, "compiled_circuits/jump_branch_slt_ssa_gkr.json");
     }
 
     #[test]

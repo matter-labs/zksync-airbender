@@ -109,7 +109,7 @@ pub trait ExtensionFieldInOutFixedSizesEvaluationKernel<
                 result[0].write(eval);
             }
 
-            // quadratic ony only, unless we want plain evaluations
+            // quadratic only, unless we want plain evaluations
             {
                 let evals = if EXPLICIT_FORM {
                     self.pointwise_eval(&p1s)

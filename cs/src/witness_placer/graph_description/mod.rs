@@ -768,7 +768,7 @@ impl<F: PrimeField> WitnessGraphCreator<F> {
             for i in 0..total_vars {
                 let var = Variable(i as u64);
                 if t.remove(&var) == false {
-                    println!("resolved variables do not containt variable {:?}", var);
+                    println!("resolved variables do not contain variable {:?}", var);
                 }
             }
             println!(
