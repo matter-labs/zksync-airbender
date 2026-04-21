@@ -5408,11 +5408,6 @@ where
             stream,
         )?;
 
-        let mut layer_challenges_host: HostAllocation<[E]> =
-            unsafe { context.alloc_host_uninit_slice(3) };
-        let layer_challenges_accessor = layer_challenges_host.get_accessor();
-        memory_copy_async(&mut layer_challenges_host, &d_layer_challenges, stream)?;
-
         // Device-side per-address `new_claims` evaluator. Consumes the packed
         // last-round evaluations (4 E per address) and the just-squeezed
         // `[r_before_last, r_last]` to produce N E per-address next-layer
@@ -5439,6 +5434,26 @@ where
             )?;
         }
 
+        // Fork exec -> d2h: every D2H source below has been written on exec by this point
+        // (d_layer_challenges via `transcript_squeeze_e4`, device_new_claims via
+        // `backward_new_claims_two_var`, device_seed/device_coeffs/round_challenge_storage/
+        // d_layer_transcript_inputs from earlier work in this layer). A single fork event
+        // covers all of them; the matching join is recorded after the last D2H below.
+        let layer_src_ready = era_cudart::event::CudaEvent::create_with_flags(
+            era_cudart::event::CudaEventCreateFlags::DISABLE_TIMING,
+        )?;
+        layer_src_ready.record(stream)?;
+        let d2h_stream = context.get_d2h_stream();
+        d2h_stream.wait_event(
+            &layer_src_ready,
+            era_cudart::stream::CudaStreamWaitEventFlags::DEFAULT,
+        )?;
+
+        let mut layer_challenges_host: HostAllocation<[E]> =
+            unsafe { context.alloc_host_uninit_slice(3) };
+        let layer_challenges_accessor = layer_challenges_host.get_accessor();
+        memory_copy_async(&mut layer_challenges_host, &d_layer_challenges, d2h_stream)?;
+
         // Single bulk D2H of packed last-round evaluations + single D2H of
         // device-computed new_claims. Replaces N per-address D2Hs (one per
         // address × 4 E) + the host `evaluate_with_two_variable_eq_ext` loop.
@@ -5450,7 +5465,7 @@ where
             memory_copy_async(
                 &mut last_evaluations_packed_host,
                 &d_layer_transcript_inputs[..transcript_inputs_len],
-                stream,
+                d2h_stream,
             )?;
         }
         let mut new_claims_host: HostAllocation<[E]> =
@@ -5460,7 +5475,7 @@ where
             memory_copy_async(
                 &mut new_claims_host,
                 &device_new_claims[..num_addresses],
-                stream,
+                d2h_stream,
             )?;
         }
 
@@ -5498,16 +5513,11 @@ where
         )?;
 
         // Bulk D2H the on-device per-layer state that the final readback
-        // callback needs for proof assembly. The reads are stream-ordered
-        // after the per-round kernels that wrote them. The seed D2H is
-        // stream-ordered *after* the device transcript work above, so it
-        // captures the post-commit+squeeze advanced seed — exactly what the
-        // old host `commit_field_els + draw_random_field_els` pair used to
-        // produce. This D2H goes away in Phase E once subsequent layers stop
-        // H2D'ing their entry seed from host.
+        // callback needs for proof assembly. All copies continue on `d2h_stream`
+        // within the same fork/join window as the D2Hs above.
         let mut final_seed_host = unsafe { context.alloc_host_uninit_slice(STATE_SIZE) };
         let final_seed_accessor = final_seed_host.get_accessor();
-        memory_copy_async(&mut final_seed_host, &device_seed, stream)?;
+        memory_copy_async(&mut final_seed_host, &device_seed, d2h_stream)?;
 
         // Size exactly matches the D2H copy length when coeffs_total_len > 0;
         // a length-1 stub keeps the allocation valid in the degenerate
@@ -5516,7 +5526,7 @@ where
             unsafe { context.alloc_host_uninit_slice(coeffs_total_len.max(1)) };
         let final_coeffs_accessor = final_coeffs_host.get_accessor();
         if coeffs_total_len > 0 {
-            memory_copy_async(&mut final_coeffs_host, &device_coeffs, stream)?;
+            memory_copy_async(&mut final_coeffs_host, &device_coeffs, d2h_stream)?;
         }
 
         let mut final_folding_challenges_host: HostAllocation<[E]> =
@@ -5529,8 +5539,20 @@ where
             // SAFETY: the challenge storage buffer lives through the struct we
             // return; the D2H copy is stream-ordered after all per-round writes.
             let src = unsafe { storage.device.slice_mut(0, last_step) };
-            memory_copy_async(&mut final_folding_challenges_host, &*src, stream)?;
+            memory_copy_async(&mut final_folding_challenges_host, &*src, d2h_stream)?;
         }
+
+        // Join d2h -> exec: the per-layer D2Hs above are fully scheduled. Exec waits on this
+        // event before the final readback callback (which reads the host slabs) is scheduled,
+        // and before any downstream drop of the source allocations at the end of this function.
+        let layer_d2h_done = era_cudart::event::CudaEvent::create_with_flags(
+            era_cudart::event::CudaEventCreateFlags::DISABLE_TIMING,
+        )?;
+        layer_d2h_done.record(d2h_stream)?;
+        stream.wait_event(
+            &layer_d2h_done,
+            era_cudart::stream::CudaStreamWaitEventFlags::DEFAULT,
+        )?;
 
         let next_claim_layout = ClaimBufferLayout::from_addresses(transcript_input_addresses.clone());
         let callback_addresses = next_claim_layout.addresses.clone();
@@ -6827,11 +6849,6 @@ where
             stream,
         )?;
 
-        let mut layer_challenges_host: HostAllocation<[E]> =
-            unsafe { context.alloc_host_uninit_slice(2) };
-        let layer_challenges_accessor = layer_challenges_host.get_accessor();
-        memory_copy_async(&mut layer_challenges_host, &d_layer_challenges, stream)?;
-
         // Device-side per-address `new_claims` evaluator (main-layer variant:
         // `interpolate_linear(v0, v1, last_r)`). Replaces the host loop inside
         // the final readback callback.
@@ -6855,6 +6872,26 @@ where
             )?;
         }
 
+        // Fork exec -> d2h: every D2H source below has been written on exec by this point
+        // (d_layer_challenges via `transcript_squeeze_e4`, device_new_claims via
+        // `backward_new_claims_linear`, device_seed/device_coeffs/device_folding_challenges/
+        // d_layer_transcript_inputs from earlier work in this layer). A single fork event
+        // covers all of them; the matching join is recorded after the last D2H below.
+        let layer_src_ready = era_cudart::event::CudaEvent::create_with_flags(
+            era_cudart::event::CudaEventCreateFlags::DISABLE_TIMING,
+        )?;
+        layer_src_ready.record(stream)?;
+        let d2h_stream = context.get_d2h_stream();
+        d2h_stream.wait_event(
+            &layer_src_ready,
+            era_cudart::stream::CudaStreamWaitEventFlags::DEFAULT,
+        )?;
+
+        let mut layer_challenges_host: HostAllocation<[E]> =
+            unsafe { context.alloc_host_uninit_slice(2) };
+        let layer_challenges_accessor = layer_challenges_host.get_accessor();
+        memory_copy_async(&mut layer_challenges_host, &d_layer_challenges, d2h_stream)?;
+
         // Single bulk D2H of packed last-round evaluations + single D2H of
         // device-computed new_claims.
         let mut last_evaluations_packed_host: HostAllocation<[E]> = unsafe {
@@ -6865,7 +6902,7 @@ where
             memory_copy_async(
                 &mut last_evaluations_packed_host,
                 &d_layer_transcript_inputs[..transcript_inputs_len],
-                stream,
+                d2h_stream,
             )?;
         }
         let mut new_claims_host: HostAllocation<[E]> =
@@ -6875,7 +6912,7 @@ where
             memory_copy_async(
                 &mut new_claims_host,
                 &device_new_claims[..num_addresses],
-                stream,
+                d2h_stream,
             )?;
         }
 
@@ -6904,21 +6941,16 @@ where
         )?;
 
         // D2H the on-device per-layer state: seed, accumulated coefficients,
-        // and folding challenges. The proof-assembly callback reconstitutes
-        // the rolling host state from these buffers, replacing the per-round
-        // host accumulation that the former callback-driven path relied on.
-        // The seed D2H is stream-ordered *after* the device commit+squeeze,
-        // so it captures the post-transcript advanced seed — what the host
-        // `commit_field_els + draw_random_field_els(2)` pair used to produce.
-        // This D2H goes away in Phase E.
+        // and folding challenges. All copies continue on `d2h_stream` within
+        // the same fork/join window as the D2Hs above.
         let mut final_seed_host = unsafe { context.alloc_host_uninit_slice(STATE_SIZE) };
         let final_seed_accessor = final_seed_host.get_accessor();
-        memory_copy_async(&mut final_seed_host, &device_seed, stream)?;
+        memory_copy_async(&mut final_seed_host, &device_seed, d2h_stream)?;
         let mut final_coeffs_host: HostAllocation<[E]> =
             unsafe { context.alloc_host_uninit_slice(coeffs_total_len.max(1)) };
         let final_coeffs_accessor = final_coeffs_host.get_accessor();
         if coeffs_total_len > 0 {
-            memory_copy_async(&mut final_coeffs_host, &device_coeffs, stream)?;
+            memory_copy_async(&mut final_coeffs_host, &device_coeffs, d2h_stream)?;
         }
         let mut final_folding_challenges_host: HostAllocation<[E]> =
             unsafe { context.alloc_host_uninit_slice(last_step) };
@@ -6926,7 +6958,19 @@ where
         memory_copy_async(
             &mut final_folding_challenges_host,
             &device_folding_challenges,
-            stream,
+            d2h_stream,
+        )?;
+
+        // Join d2h -> exec: the per-layer D2Hs above are fully scheduled. Exec waits on this
+        // event before the final readback callback (which reads the host slabs) is scheduled,
+        // and before any downstream drop of the source allocations at the end of this function.
+        let layer_d2h_done = era_cudart::event::CudaEvent::create_with_flags(
+            era_cudart::event::CudaEventCreateFlags::DISABLE_TIMING,
+        )?;
+        layer_d2h_done.record(d2h_stream)?;
+        stream.wait_event(
+            &layer_d2h_done,
+            era_cudart::stream::CudaStreamWaitEventFlags::DEFAULT,
         )?;
 
         let next_claim_layout = ClaimBufferLayout::from_addresses(transcript_input_addresses.clone());
@@ -7331,6 +7375,19 @@ where
         // Stream-ordered drop: the device buffer stays alive on GPU until all
         // scheduled reads (last layer's D2D into `flat_challenges_buf`) complete.
         drop(device_lookup_and_constraint);
+        // Backward-end join: per-layer joins already cover each layer's D2Hs individually, but
+        // this defensive join gives a single "both streams drained through backward" point
+        // before WHIR-setup callbacks on exec_stream read `workflow_state.points_for_claims_at_layer[0]`
+        // and `workflow_state.seed`, and before `backward_scheduled.wait()`'s
+        // `exec_stream.synchronize()` blocks the host thread.
+        let backward_d2h_done = era_cudart::event::CudaEvent::create_with_flags(
+            era_cudart::event::CudaEventCreateFlags::DISABLE_TIMING,
+        )?;
+        backward_d2h_done.record(context.get_d2h_stream())?;
+        stream.wait_event(
+            &backward_d2h_done,
+            era_cudart::stream::CudaStreamWaitEventFlags::DEFAULT,
+        )?;
         workflow_range.end(stream)?;
         tracing_ranges.push(workflow_range);
 
