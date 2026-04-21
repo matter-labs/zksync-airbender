@@ -10,7 +10,7 @@ use crate::prover::tracing_data::{
 use cs::definitions::{
     split_timestamp, TimestampScalar, BLAKE2S_DELEGATION_CSR_REGISTER, INITIAL_TIMESTAMP,
     NUM_DELEGATION_ARGUMENT_KEY_PARTS, NUM_MACHINE_STATE_LINEARIZATION_CHALLENGES,
-    NUM_MEM_ARGUMENT_KEY_PARTS, REDUCED_MACHINE_CIRCUIT_FAMILY_IDX, TIMESTAMP_STEP,
+    NUM_PERMUTATION_ARGUMENT_KEY_PARTS, REDUCED_MACHINE_CIRCUIT_FAMILY_IDX, TIMESTAMP_STEP,
 };
 use era_cudart::memory::{memory_copy, memory_copy_async};
 use era_cudart::result::CudaResult;
@@ -2800,10 +2800,10 @@ fn run_unrolled_reduced_test() -> CudaResult<()> {
     ]);
 
     let memory_argument_linearization_challenges_powers: [Mersenne31Quartic;
-        NUM_MEM_ARGUMENT_KEY_PARTS - 1] =
+        NUM_PERMUTATION_ARGUMENT_KEY_PARTS - 1] =
         materialize_powers_serial_starting_with_elem::<_, Global>(
             memory_argument_alpha,
-            NUM_MEM_ARGUMENT_KEY_PARTS - 1,
+            NUM_PERMUTATION_ARGUMENT_KEY_PARTS - 1,
         )
         .try_into()
         .unwrap();

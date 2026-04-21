@@ -130,14 +130,14 @@ pub(crate) fn evaluate_init<F: PrimeField, E: FieldExtension<F> + Field>(
     // address
     {
         let mut t = external_challenges.permutation_argument_linearization_challenges
-            [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
+            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
         let el = address_low[row];
         t.mul_assign_by_base(&el);
         result.add_assign(&t);
     }
     {
         let mut t = external_challenges.permutation_argument_linearization_challenges
-            [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
+            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
         let mut el = address_high[row];
         el.add_assign(&F::from_u32_unchecked(
             address_high_bits << high_bits_offset,
@@ -169,14 +169,14 @@ pub(crate) fn evaluate_teardown<F: PrimeField, E: FieldExtension<F> + Field>(
     // address
     {
         let mut t = external_challenges.permutation_argument_linearization_challenges
-            [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
+            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
         let el = address_low[row];
         t.mul_assign_by_base(&el);
         result.add_assign(&t);
     }
     {
         let mut t = external_challenges.permutation_argument_linearization_challenges
-            [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
+            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
         let mut el = address_high[row];
         el.add_assign(&F::from_u32_unchecked(
             address_high_bits << high_bits_offset,
@@ -187,11 +187,11 @@ pub(crate) fn evaluate_teardown<F: PrimeField, E: FieldExtension<F> + Field>(
 
     for (idx, offset) in [
         (
-            MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX,
+            PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX,
             timestamp[0],
         ),
         (
-            MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX,
+            PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX,
             timestamp[1],
         ),
     ] {
@@ -202,8 +202,14 @@ pub(crate) fn evaluate_teardown<F: PrimeField, E: FieldExtension<F> + Field>(
     }
 
     for (idx, offset) in [
-        (MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX, value[0]),
-        (MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX, value[1]),
+        (
+            PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX,
+            value[0],
+        ),
+        (
+            PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX,
+            value[1],
+        ),
     ] {
         let mut t = external_challenges.permutation_argument_linearization_challenges[idx];
         let el = mem_access_fn(base_layer_memory_sources, offset, row);

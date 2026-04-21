@@ -16,7 +16,7 @@ unsafe fn evaluate_every_row_except_last(
     lookup_argument_gamma: Mersenne31Quartic,
     lookup_argument_two_gamma: Mersenne31Quartic,
     memory_argument_linearization_challenges: &[Mersenne31Quartic;
-         NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES],
+         NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES],
     memory_argument_gamma: Mersenne31Quartic,
     delegation_argument_linearization_challenges : & [Mersenne31Quartic ; NUM_DELEGATION_ARGUMENT_LINEARIZATION_CHALLENGES],
     delegation_argument_gamma: Mersenne31Quartic,
@@ -3093,7 +3093,7 @@ unsafe fn evaluate_every_row_except_two(
     lookup_argument_gamma: Mersenne31Quartic,
     lookup_argument_two_gamma: Mersenne31Quartic,
     memory_argument_linearization_challenges: &[Mersenne31Quartic;
-         NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES],
+         NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES],
     memory_argument_gamma: Mersenne31Quartic,
     delegation_argument_linearization_challenges : & [Mersenne31Quartic ; NUM_DELEGATION_ARGUMENT_LINEARIZATION_CHALLENGES],
     delegation_argument_gamma: Mersenne31Quartic,
@@ -3129,7 +3129,7 @@ unsafe fn evaluate_last_row_and_zero(
     lookup_argument_gamma: Mersenne31Quartic,
     lookup_argument_two_gamma: Mersenne31Quartic,
     memory_argument_linearization_challenges: &[Mersenne31Quartic;
-         NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES],
+         NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES],
     memory_argument_gamma: Mersenne31Quartic,
     delegation_argument_linearization_challenges : & [Mersenne31Quartic ; NUM_DELEGATION_ARGUMENT_LINEARIZATION_CHALLENGES],
     delegation_argument_gamma: Mersenne31Quartic,
@@ -3238,7 +3238,7 @@ pub unsafe fn evaluate_quotient(
     lookup_argument_gamma: Mersenne31Quartic,
     lookup_argument_two_gamma: Mersenne31Quartic,
     memory_argument_linearization_challenges: &[Mersenne31Quartic;
-         NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES],
+         NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES],
     memory_argument_gamma: Mersenne31Quartic,
     delegation_argument_linearization_challenges : & [Mersenne31Quartic ; NUM_DELEGATION_ARGUMENT_LINEARIZATION_CHALLENGES],
     delegation_argument_gamma: Mersenne31Quartic,

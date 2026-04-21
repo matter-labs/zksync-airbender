@@ -1,14 +1,14 @@
 use std::collections::BTreeSet;
 
 use super::*;
-use cs::definitions::NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES;
+use cs::definitions::NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES;
 
 impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
     pub(crate) fn analyze_terms(&self) {
         let challenge_constants = BatchedGKRTermDescriptionConstants {
             external_challenges: GKRExternalChallenges {
                 permutation_argument_linearization_challenges: [E::ONE;
-                    NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES],
+                    NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES],
                 permutation_argument_additive_part: E::ONE,
                 _marker: core::marker::PhantomData,
             },

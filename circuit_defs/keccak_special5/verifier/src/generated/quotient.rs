@@ -17,7 +17,7 @@ unsafe fn evaluate_every_row_except_last(
     lookup_argument_gamma: Mersenne31Quartic,
     lookup_argument_two_gamma: Mersenne31Quartic,
     memory_argument_linearization_challenges: &[Mersenne31Quartic;
-         NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES],
+         NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES],
     memory_argument_gamma: Mersenne31Quartic,
     delegation_argument_linearization_challenges : & [Mersenne31Quartic ; NUM_DELEGATION_ARGUMENT_LINEARIZATION_CHALLENGES],
     delegation_argument_gamma: Mersenne31Quartic,
@@ -19762,17 +19762,17 @@ unsafe fn evaluate_every_row_except_last(
             let write_timestamp_high = *(memory.get_unchecked(3usize));
             let mut delegation_address_high_common_contribution =
                 memory_argument_linearization_challenges
-                    [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
+                    [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
             field_ops::mul_assign(
                 &mut delegation_address_high_common_contribution,
                 &address_high,
             );
             let mut t = memory_argument_linearization_challenges
-                [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
+                [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
             field_ops::mul_assign(&mut t, &write_timestamp_low);
             let mut write_timestamp_contribution = t;
             let mut t = memory_argument_linearization_challenges
-                [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
+                [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
             field_ops::mul_assign(&mut t, &write_timestamp_high);
             field_ops::add_assign(&mut write_timestamp_contribution, &t);
             {
@@ -19780,7 +19780,7 @@ unsafe fn evaluate_every_row_except_last(
                 let contribution = {
                     let individual_term = {
                         let mut address_contribution = memory_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
                         field_ops::mul_assign_by_base(
                             &mut address_contribution,
                             &Mersenne31Field(10u32),
@@ -19791,24 +19791,24 @@ unsafe fn evaluate_every_row_except_last(
                         );
                         let read_value_low = *(memory.get_unchecked(6usize));
                         let mut read_value_contribution = memory_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
                         field_ops::mul_assign(&mut read_value_contribution, &read_value_low);
                         let read_value_high = *(memory.get_unchecked(7usize));
                         let mut t = memory_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
                         field_ops::mul_assign(&mut t, &read_value_high);
                         field_ops::add_assign(&mut read_value_contribution, &t);
                         let read_timestamp_low = *(memory.get_unchecked(4usize));
                         let mut read_timestamp_contribution =
                             memory_argument_linearization_challenges
-                                [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
+                                [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
                         field_ops::mul_assign(
                             &mut read_timestamp_contribution,
                             &read_timestamp_low,
                         );
                         let read_timestamp_high = *(memory.get_unchecked(5usize));
                         let mut t = memory_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
                         field_ops::mul_assign(&mut t, &read_timestamp_high);
                         field_ops::add_assign(&mut read_timestamp_contribution, &t);
                         let mut numerator = memory_argument_gamma;
@@ -19816,11 +19816,11 @@ unsafe fn evaluate_every_row_except_last(
                         let previous = Mersenne31Quartic::ONE;
                         let write_value_low = *(memory.get_unchecked(8usize));
                         let mut write_value_contribution = memory_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
                         field_ops::mul_assign(&mut write_value_contribution, &write_value_low);
                         let write_value_high = *(memory.get_unchecked(9usize));
                         let mut t = memory_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
                         field_ops::mul_assign(&mut t, &write_value_high);
                         field_ops::add_assign(&mut write_value_contribution, &t);
                         let mut denom = numerator;
@@ -19844,7 +19844,7 @@ unsafe fn evaluate_every_row_except_last(
                 let contribution = {
                     let individual_term = {
                         let mut address_contribution = memory_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
                         field_ops::mul_assign_by_base(
                             &mut address_contribution,
                             &Mersenne31Field(11u32),
@@ -19855,24 +19855,24 @@ unsafe fn evaluate_every_row_except_last(
                         );
                         let read_value_low = *(memory.get_unchecked(12usize));
                         let mut read_value_contribution = memory_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
                         field_ops::mul_assign(&mut read_value_contribution, &read_value_low);
                         let read_value_high = *(memory.get_unchecked(13usize));
                         let mut t = memory_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
                         field_ops::mul_assign(&mut t, &read_value_high);
                         field_ops::add_assign(&mut read_value_contribution, &t);
                         let read_timestamp_low = *(memory.get_unchecked(10usize));
                         let mut read_timestamp_contribution =
                             memory_argument_linearization_challenges
-                                [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
+                                [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
                         field_ops::mul_assign(
                             &mut read_timestamp_contribution,
                             &read_timestamp_low,
                         );
                         let read_timestamp_high = *(memory.get_unchecked(11usize));
                         let mut t = memory_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
                         field_ops::mul_assign(&mut t, &read_timestamp_high);
                         field_ops::add_assign(&mut read_timestamp_contribution, &t);
                         let mut numerator = memory_argument_gamma;
@@ -19903,12 +19903,12 @@ unsafe fn evaluate_every_row_except_last(
                         field_ops::mul_assign_by_base(&mut variable_offset, &Mersenne31Field(8u32));
                         field_ops::add_assign(&mut address_low, &variable_offset);
                         let mut address_contribution = memory_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
                         field_ops::mul_assign(&mut address_contribution, &address_low);
                         let address_high = *(memory.get_unchecked(13usize));
                         let mut address_high_contribution =
                             memory_argument_linearization_challenges
-                                [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
+                                [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
                         field_ops::mul_assign(&mut address_high_contribution, &address_high);
                         field_ops::add_assign(
                             &mut address_contribution,
@@ -19916,24 +19916,24 @@ unsafe fn evaluate_every_row_except_last(
                         );
                         let read_value_low = *(memory.get_unchecked(17usize));
                         let mut read_value_contribution = memory_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
                         field_ops::mul_assign(&mut read_value_contribution, &read_value_low);
                         let read_value_high = *(memory.get_unchecked(18usize));
                         let mut t = memory_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
                         field_ops::mul_assign(&mut t, &read_value_high);
                         field_ops::add_assign(&mut read_value_contribution, &t);
                         let read_timestamp_low = *(memory.get_unchecked(14usize));
                         let mut read_timestamp_contribution =
                             memory_argument_linearization_challenges
-                                [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
+                                [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
                         field_ops::mul_assign(
                             &mut read_timestamp_contribution,
                             &read_timestamp_low,
                         );
                         let read_timestamp_high = *(memory.get_unchecked(15usize));
                         let mut t = memory_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
                         field_ops::mul_assign(&mut t, &read_timestamp_high);
                         field_ops::add_assign(&mut read_timestamp_contribution, &t);
                         let mut numerator = memory_argument_gamma;
@@ -19941,11 +19941,11 @@ unsafe fn evaluate_every_row_except_last(
                         let previous = *(stage_2.get_unchecked(78usize));
                         let write_value_low = *(memory.get_unchecked(19usize));
                         let mut write_value_contribution = memory_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
                         field_ops::mul_assign(&mut write_value_contribution, &write_value_low);
                         let write_value_high = *(memory.get_unchecked(20usize));
                         let mut t = memory_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
                         field_ops::mul_assign(&mut t, &write_value_high);
                         field_ops::add_assign(&mut write_value_contribution, &t);
                         let mut denom = numerator;
@@ -19974,12 +19974,12 @@ unsafe fn evaluate_every_row_except_last(
                         field_ops::mul_assign_by_base(&mut variable_offset, &Mersenne31Field(8u32));
                         field_ops::add_assign(&mut address_low, &variable_offset);
                         let mut address_contribution = memory_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
                         field_ops::mul_assign(&mut address_contribution, &address_low);
                         let address_high = *(memory.get_unchecked(13usize));
                         let mut address_high_contribution =
                             memory_argument_linearization_challenges
-                                [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
+                                [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
                         field_ops::mul_assign(&mut address_high_contribution, &address_high);
                         field_ops::add_assign(
                             &mut address_contribution,
@@ -19987,24 +19987,24 @@ unsafe fn evaluate_every_row_except_last(
                         );
                         let read_value_low = *(memory.get_unchecked(23usize));
                         let mut read_value_contribution = memory_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
                         field_ops::mul_assign(&mut read_value_contribution, &read_value_low);
                         let read_value_high = *(memory.get_unchecked(24usize));
                         let mut t = memory_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
                         field_ops::mul_assign(&mut t, &read_value_high);
                         field_ops::add_assign(&mut read_value_contribution, &t);
                         let read_timestamp_low = *(memory.get_unchecked(21usize));
                         let mut read_timestamp_contribution =
                             memory_argument_linearization_challenges
-                                [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
+                                [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
                         field_ops::mul_assign(
                             &mut read_timestamp_contribution,
                             &read_timestamp_low,
                         );
                         let read_timestamp_high = *(memory.get_unchecked(22usize));
                         let mut t = memory_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
                         field_ops::mul_assign(&mut t, &read_timestamp_high);
                         field_ops::add_assign(&mut read_timestamp_contribution, &t);
                         let mut numerator = memory_argument_gamma;
@@ -20012,11 +20012,11 @@ unsafe fn evaluate_every_row_except_last(
                         let previous = *(stage_2.get_unchecked(79usize));
                         let write_value_low = *(memory.get_unchecked(25usize));
                         let mut write_value_contribution = memory_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
                         field_ops::mul_assign(&mut write_value_contribution, &write_value_low);
                         let write_value_high = *(memory.get_unchecked(26usize));
                         let mut t = memory_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
                         field_ops::mul_assign(&mut t, &write_value_high);
                         field_ops::add_assign(&mut write_value_contribution, &t);
                         let mut denom = numerator;
@@ -20045,12 +20045,12 @@ unsafe fn evaluate_every_row_except_last(
                         field_ops::mul_assign_by_base(&mut variable_offset, &Mersenne31Field(8u32));
                         field_ops::add_assign(&mut address_low, &variable_offset);
                         let mut address_contribution = memory_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
                         field_ops::mul_assign(&mut address_contribution, &address_low);
                         let address_high = *(memory.get_unchecked(13usize));
                         let mut address_high_contribution =
                             memory_argument_linearization_challenges
-                                [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
+                                [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
                         field_ops::mul_assign(&mut address_high_contribution, &address_high);
                         field_ops::add_assign(
                             &mut address_contribution,
@@ -20058,24 +20058,24 @@ unsafe fn evaluate_every_row_except_last(
                         );
                         let read_value_low = *(memory.get_unchecked(30usize));
                         let mut read_value_contribution = memory_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
                         field_ops::mul_assign(&mut read_value_contribution, &read_value_low);
                         let read_value_high = *(memory.get_unchecked(31usize));
                         let mut t = memory_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
                         field_ops::mul_assign(&mut t, &read_value_high);
                         field_ops::add_assign(&mut read_value_contribution, &t);
                         let read_timestamp_low = *(memory.get_unchecked(27usize));
                         let mut read_timestamp_contribution =
                             memory_argument_linearization_challenges
-                                [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
+                                [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
                         field_ops::mul_assign(
                             &mut read_timestamp_contribution,
                             &read_timestamp_low,
                         );
                         let read_timestamp_high = *(memory.get_unchecked(28usize));
                         let mut t = memory_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
                         field_ops::mul_assign(&mut t, &read_timestamp_high);
                         field_ops::add_assign(&mut read_timestamp_contribution, &t);
                         let mut numerator = memory_argument_gamma;
@@ -20083,11 +20083,11 @@ unsafe fn evaluate_every_row_except_last(
                         let previous = *(stage_2.get_unchecked(80usize));
                         let write_value_low = *(memory.get_unchecked(32usize));
                         let mut write_value_contribution = memory_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
                         field_ops::mul_assign(&mut write_value_contribution, &write_value_low);
                         let write_value_high = *(memory.get_unchecked(33usize));
                         let mut t = memory_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
                         field_ops::mul_assign(&mut t, &write_value_high);
                         field_ops::add_assign(&mut write_value_contribution, &t);
                         let mut denom = numerator;
@@ -20116,12 +20116,12 @@ unsafe fn evaluate_every_row_except_last(
                         field_ops::mul_assign_by_base(&mut variable_offset, &Mersenne31Field(8u32));
                         field_ops::add_assign(&mut address_low, &variable_offset);
                         let mut address_contribution = memory_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
                         field_ops::mul_assign(&mut address_contribution, &address_low);
                         let address_high = *(memory.get_unchecked(13usize));
                         let mut address_high_contribution =
                             memory_argument_linearization_challenges
-                                [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
+                                [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
                         field_ops::mul_assign(&mut address_high_contribution, &address_high);
                         field_ops::add_assign(
                             &mut address_contribution,
@@ -20129,24 +20129,24 @@ unsafe fn evaluate_every_row_except_last(
                         );
                         let read_value_low = *(memory.get_unchecked(36usize));
                         let mut read_value_contribution = memory_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
                         field_ops::mul_assign(&mut read_value_contribution, &read_value_low);
                         let read_value_high = *(memory.get_unchecked(37usize));
                         let mut t = memory_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
                         field_ops::mul_assign(&mut t, &read_value_high);
                         field_ops::add_assign(&mut read_value_contribution, &t);
                         let read_timestamp_low = *(memory.get_unchecked(34usize));
                         let mut read_timestamp_contribution =
                             memory_argument_linearization_challenges
-                                [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
+                                [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
                         field_ops::mul_assign(
                             &mut read_timestamp_contribution,
                             &read_timestamp_low,
                         );
                         let read_timestamp_high = *(memory.get_unchecked(35usize));
                         let mut t = memory_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
                         field_ops::mul_assign(&mut t, &read_timestamp_high);
                         field_ops::add_assign(&mut read_timestamp_contribution, &t);
                         let mut numerator = memory_argument_gamma;
@@ -20154,11 +20154,11 @@ unsafe fn evaluate_every_row_except_last(
                         let previous = *(stage_2.get_unchecked(81usize));
                         let write_value_low = *(memory.get_unchecked(38usize));
                         let mut write_value_contribution = memory_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
                         field_ops::mul_assign(&mut write_value_contribution, &write_value_low);
                         let write_value_high = *(memory.get_unchecked(39usize));
                         let mut t = memory_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
                         field_ops::mul_assign(&mut t, &write_value_high);
                         field_ops::add_assign(&mut write_value_contribution, &t);
                         let mut denom = numerator;
@@ -20187,12 +20187,12 @@ unsafe fn evaluate_every_row_except_last(
                         field_ops::mul_assign_by_base(&mut variable_offset, &Mersenne31Field(8u32));
                         field_ops::add_assign(&mut address_low, &variable_offset);
                         let mut address_contribution = memory_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
                         field_ops::mul_assign(&mut address_contribution, &address_low);
                         let address_high = *(memory.get_unchecked(13usize));
                         let mut address_high_contribution =
                             memory_argument_linearization_challenges
-                                [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
+                                [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
                         field_ops::mul_assign(&mut address_high_contribution, &address_high);
                         field_ops::add_assign(
                             &mut address_contribution,
@@ -20200,24 +20200,24 @@ unsafe fn evaluate_every_row_except_last(
                         );
                         let read_value_low = *(memory.get_unchecked(43usize));
                         let mut read_value_contribution = memory_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
                         field_ops::mul_assign(&mut read_value_contribution, &read_value_low);
                         let read_value_high = *(memory.get_unchecked(44usize));
                         let mut t = memory_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
                         field_ops::mul_assign(&mut t, &read_value_high);
                         field_ops::add_assign(&mut read_value_contribution, &t);
                         let read_timestamp_low = *(memory.get_unchecked(40usize));
                         let mut read_timestamp_contribution =
                             memory_argument_linearization_challenges
-                                [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
+                                [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
                         field_ops::mul_assign(
                             &mut read_timestamp_contribution,
                             &read_timestamp_low,
                         );
                         let read_timestamp_high = *(memory.get_unchecked(41usize));
                         let mut t = memory_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
                         field_ops::mul_assign(&mut t, &read_timestamp_high);
                         field_ops::add_assign(&mut read_timestamp_contribution, &t);
                         let mut numerator = memory_argument_gamma;
@@ -20225,11 +20225,11 @@ unsafe fn evaluate_every_row_except_last(
                         let previous = *(stage_2.get_unchecked(82usize));
                         let write_value_low = *(memory.get_unchecked(45usize));
                         let mut write_value_contribution = memory_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
                         field_ops::mul_assign(&mut write_value_contribution, &write_value_low);
                         let write_value_high = *(memory.get_unchecked(46usize));
                         let mut t = memory_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
                         field_ops::mul_assign(&mut t, &write_value_high);
                         field_ops::add_assign(&mut write_value_contribution, &t);
                         let mut denom = numerator;
@@ -20258,12 +20258,12 @@ unsafe fn evaluate_every_row_except_last(
                         field_ops::mul_assign_by_base(&mut variable_offset, &Mersenne31Field(8u32));
                         field_ops::add_assign(&mut address_low, &variable_offset);
                         let mut address_contribution = memory_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
                         field_ops::mul_assign(&mut address_contribution, &address_low);
                         let address_high = *(memory.get_unchecked(13usize));
                         let mut address_high_contribution =
                             memory_argument_linearization_challenges
-                                [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
+                                [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
                         field_ops::mul_assign(&mut address_high_contribution, &address_high);
                         field_ops::add_assign(
                             &mut address_contribution,
@@ -20271,24 +20271,24 @@ unsafe fn evaluate_every_row_except_last(
                         );
                         let read_value_low = *(memory.get_unchecked(49usize));
                         let mut read_value_contribution = memory_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
                         field_ops::mul_assign(&mut read_value_contribution, &read_value_low);
                         let read_value_high = *(memory.get_unchecked(50usize));
                         let mut t = memory_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
                         field_ops::mul_assign(&mut t, &read_value_high);
                         field_ops::add_assign(&mut read_value_contribution, &t);
                         let read_timestamp_low = *(memory.get_unchecked(47usize));
                         let mut read_timestamp_contribution =
                             memory_argument_linearization_challenges
-                                [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
+                                [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
                         field_ops::mul_assign(
                             &mut read_timestamp_contribution,
                             &read_timestamp_low,
                         );
                         let read_timestamp_high = *(memory.get_unchecked(48usize));
                         let mut t = memory_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
                         field_ops::mul_assign(&mut t, &read_timestamp_high);
                         field_ops::add_assign(&mut read_timestamp_contribution, &t);
                         let mut numerator = memory_argument_gamma;
@@ -20296,11 +20296,11 @@ unsafe fn evaluate_every_row_except_last(
                         let previous = *(stage_2.get_unchecked(83usize));
                         let write_value_low = *(memory.get_unchecked(51usize));
                         let mut write_value_contribution = memory_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
                         field_ops::mul_assign(&mut write_value_contribution, &write_value_low);
                         let write_value_high = *(memory.get_unchecked(52usize));
                         let mut t = memory_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
                         field_ops::mul_assign(&mut t, &write_value_high);
                         field_ops::add_assign(&mut write_value_contribution, &t);
                         let mut denom = numerator;
@@ -20329,12 +20329,12 @@ unsafe fn evaluate_every_row_except_last(
                         field_ops::mul_assign_by_base(&mut variable_offset, &Mersenne31Field(8u32));
                         field_ops::add_assign(&mut address_low, &variable_offset);
                         let mut address_contribution = memory_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
                         field_ops::mul_assign(&mut address_contribution, &address_low);
                         let address_high = *(memory.get_unchecked(13usize));
                         let mut address_high_contribution =
                             memory_argument_linearization_challenges
-                                [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
+                                [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
                         field_ops::mul_assign(&mut address_high_contribution, &address_high);
                         field_ops::add_assign(
                             &mut address_contribution,
@@ -20342,24 +20342,24 @@ unsafe fn evaluate_every_row_except_last(
                         );
                         let read_value_low = *(memory.get_unchecked(56usize));
                         let mut read_value_contribution = memory_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
                         field_ops::mul_assign(&mut read_value_contribution, &read_value_low);
                         let read_value_high = *(memory.get_unchecked(57usize));
                         let mut t = memory_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
                         field_ops::mul_assign(&mut t, &read_value_high);
                         field_ops::add_assign(&mut read_value_contribution, &t);
                         let read_timestamp_low = *(memory.get_unchecked(53usize));
                         let mut read_timestamp_contribution =
                             memory_argument_linearization_challenges
-                                [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
+                                [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
                         field_ops::mul_assign(
                             &mut read_timestamp_contribution,
                             &read_timestamp_low,
                         );
                         let read_timestamp_high = *(memory.get_unchecked(54usize));
                         let mut t = memory_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
                         field_ops::mul_assign(&mut t, &read_timestamp_high);
                         field_ops::add_assign(&mut read_timestamp_contribution, &t);
                         let mut numerator = memory_argument_gamma;
@@ -20367,11 +20367,11 @@ unsafe fn evaluate_every_row_except_last(
                         let previous = *(stage_2.get_unchecked(84usize));
                         let write_value_low = *(memory.get_unchecked(58usize));
                         let mut write_value_contribution = memory_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
                         field_ops::mul_assign(&mut write_value_contribution, &write_value_low);
                         let write_value_high = *(memory.get_unchecked(59usize));
                         let mut t = memory_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
                         field_ops::mul_assign(&mut t, &write_value_high);
                         field_ops::add_assign(&mut write_value_contribution, &t);
                         let mut denom = numerator;
@@ -20400,12 +20400,12 @@ unsafe fn evaluate_every_row_except_last(
                         field_ops::mul_assign_by_base(&mut variable_offset, &Mersenne31Field(8u32));
                         field_ops::add_assign(&mut address_low, &variable_offset);
                         let mut address_contribution = memory_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
                         field_ops::mul_assign(&mut address_contribution, &address_low);
                         let address_high = *(memory.get_unchecked(13usize));
                         let mut address_high_contribution =
                             memory_argument_linearization_challenges
-                                [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
+                                [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
                         field_ops::mul_assign(&mut address_high_contribution, &address_high);
                         field_ops::add_assign(
                             &mut address_contribution,
@@ -20413,24 +20413,24 @@ unsafe fn evaluate_every_row_except_last(
                         );
                         let read_value_low = *(memory.get_unchecked(62usize));
                         let mut read_value_contribution = memory_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
                         field_ops::mul_assign(&mut read_value_contribution, &read_value_low);
                         let read_value_high = *(memory.get_unchecked(63usize));
                         let mut t = memory_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
                         field_ops::mul_assign(&mut t, &read_value_high);
                         field_ops::add_assign(&mut read_value_contribution, &t);
                         let read_timestamp_low = *(memory.get_unchecked(60usize));
                         let mut read_timestamp_contribution =
                             memory_argument_linearization_challenges
-                                [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
+                                [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
                         field_ops::mul_assign(
                             &mut read_timestamp_contribution,
                             &read_timestamp_low,
                         );
                         let read_timestamp_high = *(memory.get_unchecked(61usize));
                         let mut t = memory_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
                         field_ops::mul_assign(&mut t, &read_timestamp_high);
                         field_ops::add_assign(&mut read_timestamp_contribution, &t);
                         let mut numerator = memory_argument_gamma;
@@ -20438,11 +20438,11 @@ unsafe fn evaluate_every_row_except_last(
                         let previous = *(stage_2.get_unchecked(85usize));
                         let write_value_low = *(memory.get_unchecked(64usize));
                         let mut write_value_contribution = memory_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
                         field_ops::mul_assign(&mut write_value_contribution, &write_value_low);
                         let write_value_high = *(memory.get_unchecked(65usize));
                         let mut t = memory_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
                         field_ops::mul_assign(&mut t, &write_value_high);
                         field_ops::add_assign(&mut write_value_contribution, &t);
                         let mut denom = numerator;
@@ -20471,12 +20471,12 @@ unsafe fn evaluate_every_row_except_last(
                         field_ops::mul_assign_by_base(&mut variable_offset, &Mersenne31Field(8u32));
                         field_ops::add_assign(&mut address_low, &variable_offset);
                         let mut address_contribution = memory_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
                         field_ops::mul_assign(&mut address_contribution, &address_low);
                         let address_high = *(memory.get_unchecked(13usize));
                         let mut address_high_contribution =
                             memory_argument_linearization_challenges
-                                [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
+                                [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
                         field_ops::mul_assign(&mut address_high_contribution, &address_high);
                         field_ops::add_assign(
                             &mut address_contribution,
@@ -20484,24 +20484,24 @@ unsafe fn evaluate_every_row_except_last(
                         );
                         let read_value_low = *(memory.get_unchecked(69usize));
                         let mut read_value_contribution = memory_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
                         field_ops::mul_assign(&mut read_value_contribution, &read_value_low);
                         let read_value_high = *(memory.get_unchecked(70usize));
                         let mut t = memory_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
                         field_ops::mul_assign(&mut t, &read_value_high);
                         field_ops::add_assign(&mut read_value_contribution, &t);
                         let read_timestamp_low = *(memory.get_unchecked(66usize));
                         let mut read_timestamp_contribution =
                             memory_argument_linearization_challenges
-                                [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
+                                [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
                         field_ops::mul_assign(
                             &mut read_timestamp_contribution,
                             &read_timestamp_low,
                         );
                         let read_timestamp_high = *(memory.get_unchecked(67usize));
                         let mut t = memory_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
                         field_ops::mul_assign(&mut t, &read_timestamp_high);
                         field_ops::add_assign(&mut read_timestamp_contribution, &t);
                         let mut numerator = memory_argument_gamma;
@@ -20509,11 +20509,11 @@ unsafe fn evaluate_every_row_except_last(
                         let previous = *(stage_2.get_unchecked(86usize));
                         let write_value_low = *(memory.get_unchecked(71usize));
                         let mut write_value_contribution = memory_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
                         field_ops::mul_assign(&mut write_value_contribution, &write_value_low);
                         let write_value_high = *(memory.get_unchecked(72usize));
                         let mut t = memory_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
                         field_ops::mul_assign(&mut t, &write_value_high);
                         field_ops::add_assign(&mut write_value_contribution, &t);
                         let mut denom = numerator;
@@ -20542,12 +20542,12 @@ unsafe fn evaluate_every_row_except_last(
                         field_ops::mul_assign_by_base(&mut variable_offset, &Mersenne31Field(8u32));
                         field_ops::add_assign(&mut address_low, &variable_offset);
                         let mut address_contribution = memory_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
                         field_ops::mul_assign(&mut address_contribution, &address_low);
                         let address_high = *(memory.get_unchecked(13usize));
                         let mut address_high_contribution =
                             memory_argument_linearization_challenges
-                                [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
+                                [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
                         field_ops::mul_assign(&mut address_high_contribution, &address_high);
                         field_ops::add_assign(
                             &mut address_contribution,
@@ -20555,24 +20555,24 @@ unsafe fn evaluate_every_row_except_last(
                         );
                         let read_value_low = *(memory.get_unchecked(75usize));
                         let mut read_value_contribution = memory_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
                         field_ops::mul_assign(&mut read_value_contribution, &read_value_low);
                         let read_value_high = *(memory.get_unchecked(76usize));
                         let mut t = memory_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
                         field_ops::mul_assign(&mut t, &read_value_high);
                         field_ops::add_assign(&mut read_value_contribution, &t);
                         let read_timestamp_low = *(memory.get_unchecked(73usize));
                         let mut read_timestamp_contribution =
                             memory_argument_linearization_challenges
-                                [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
+                                [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
                         field_ops::mul_assign(
                             &mut read_timestamp_contribution,
                             &read_timestamp_low,
                         );
                         let read_timestamp_high = *(memory.get_unchecked(74usize));
                         let mut t = memory_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
                         field_ops::mul_assign(&mut t, &read_timestamp_high);
                         field_ops::add_assign(&mut read_timestamp_contribution, &t);
                         let mut numerator = memory_argument_gamma;
@@ -20580,11 +20580,11 @@ unsafe fn evaluate_every_row_except_last(
                         let previous = *(stage_2.get_unchecked(87usize));
                         let write_value_low = *(memory.get_unchecked(77usize));
                         let mut write_value_contribution = memory_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
                         field_ops::mul_assign(&mut write_value_contribution, &write_value_low);
                         let write_value_high = *(memory.get_unchecked(78usize));
                         let mut t = memory_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
                         field_ops::mul_assign(&mut t, &write_value_high);
                         field_ops::add_assign(&mut write_value_contribution, &t);
                         let mut denom = numerator;
@@ -20613,12 +20613,12 @@ unsafe fn evaluate_every_row_except_last(
                         field_ops::mul_assign_by_base(&mut variable_offset, &Mersenne31Field(8u32));
                         field_ops::add_assign(&mut address_low, &variable_offset);
                         let mut address_contribution = memory_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
                         field_ops::mul_assign(&mut address_contribution, &address_low);
                         let address_high = *(memory.get_unchecked(13usize));
                         let mut address_high_contribution =
                             memory_argument_linearization_challenges
-                                [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
+                                [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
                         field_ops::mul_assign(&mut address_high_contribution, &address_high);
                         field_ops::add_assign(
                             &mut address_contribution,
@@ -20626,24 +20626,24 @@ unsafe fn evaluate_every_row_except_last(
                         );
                         let read_value_low = *(memory.get_unchecked(82usize));
                         let mut read_value_contribution = memory_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
                         field_ops::mul_assign(&mut read_value_contribution, &read_value_low);
                         let read_value_high = *(memory.get_unchecked(83usize));
                         let mut t = memory_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
                         field_ops::mul_assign(&mut t, &read_value_high);
                         field_ops::add_assign(&mut read_value_contribution, &t);
                         let read_timestamp_low = *(memory.get_unchecked(79usize));
                         let mut read_timestamp_contribution =
                             memory_argument_linearization_challenges
-                                [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
+                                [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
                         field_ops::mul_assign(
                             &mut read_timestamp_contribution,
                             &read_timestamp_low,
                         );
                         let read_timestamp_high = *(memory.get_unchecked(80usize));
                         let mut t = memory_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
                         field_ops::mul_assign(&mut t, &read_timestamp_high);
                         field_ops::add_assign(&mut read_timestamp_contribution, &t);
                         let mut numerator = memory_argument_gamma;
@@ -20651,11 +20651,11 @@ unsafe fn evaluate_every_row_except_last(
                         let previous = *(stage_2.get_unchecked(88usize));
                         let write_value_low = *(memory.get_unchecked(84usize));
                         let mut write_value_contribution = memory_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
                         field_ops::mul_assign(&mut write_value_contribution, &write_value_low);
                         let write_value_high = *(memory.get_unchecked(85usize));
                         let mut t = memory_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
                         field_ops::mul_assign(&mut t, &write_value_high);
                         field_ops::add_assign(&mut write_value_contribution, &t);
                         let mut denom = numerator;
@@ -20684,12 +20684,12 @@ unsafe fn evaluate_every_row_except_last(
                         field_ops::mul_assign_by_base(&mut variable_offset, &Mersenne31Field(8u32));
                         field_ops::add_assign(&mut address_low, &variable_offset);
                         let mut address_contribution = memory_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
                         field_ops::mul_assign(&mut address_contribution, &address_low);
                         let address_high = *(memory.get_unchecked(13usize));
                         let mut address_high_contribution =
                             memory_argument_linearization_challenges
-                                [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
+                                [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
                         field_ops::mul_assign(&mut address_high_contribution, &address_high);
                         field_ops::add_assign(
                             &mut address_contribution,
@@ -20697,24 +20697,24 @@ unsafe fn evaluate_every_row_except_last(
                         );
                         let read_value_low = *(memory.get_unchecked(88usize));
                         let mut read_value_contribution = memory_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
                         field_ops::mul_assign(&mut read_value_contribution, &read_value_low);
                         let read_value_high = *(memory.get_unchecked(89usize));
                         let mut t = memory_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
                         field_ops::mul_assign(&mut t, &read_value_high);
                         field_ops::add_assign(&mut read_value_contribution, &t);
                         let read_timestamp_low = *(memory.get_unchecked(86usize));
                         let mut read_timestamp_contribution =
                             memory_argument_linearization_challenges
-                                [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
+                                [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
                         field_ops::mul_assign(
                             &mut read_timestamp_contribution,
                             &read_timestamp_low,
                         );
                         let read_timestamp_high = *(memory.get_unchecked(87usize));
                         let mut t = memory_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
                         field_ops::mul_assign(&mut t, &read_timestamp_high);
                         field_ops::add_assign(&mut read_timestamp_contribution, &t);
                         let mut numerator = memory_argument_gamma;
@@ -20722,11 +20722,11 @@ unsafe fn evaluate_every_row_except_last(
                         let previous = *(stage_2.get_unchecked(89usize));
                         let write_value_low = *(memory.get_unchecked(90usize));
                         let mut write_value_contribution = memory_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
                         field_ops::mul_assign(&mut write_value_contribution, &write_value_low);
                         let write_value_high = *(memory.get_unchecked(91usize));
                         let mut t = memory_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
                         field_ops::mul_assign(&mut t, &write_value_high);
                         field_ops::add_assign(&mut write_value_contribution, &t);
                         let mut denom = numerator;
@@ -20784,7 +20784,7 @@ unsafe fn evaluate_every_row_except_two(
     lookup_argument_gamma: Mersenne31Quartic,
     lookup_argument_two_gamma: Mersenne31Quartic,
     memory_argument_linearization_challenges: &[Mersenne31Quartic;
-         NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES],
+         NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES],
     memory_argument_gamma: Mersenne31Quartic,
     delegation_argument_linearization_challenges : & [Mersenne31Quartic ; NUM_DELEGATION_ARGUMENT_LINEARIZATION_CHALLENGES],
     delegation_argument_gamma: Mersenne31Quartic,
@@ -20820,7 +20820,7 @@ unsafe fn evaluate_last_row_and_zero(
     lookup_argument_gamma: Mersenne31Quartic,
     lookup_argument_two_gamma: Mersenne31Quartic,
     memory_argument_linearization_challenges: &[Mersenne31Quartic;
-         NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES],
+         NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES],
     memory_argument_gamma: Mersenne31Quartic,
     delegation_argument_linearization_challenges : & [Mersenne31Quartic ; NUM_DELEGATION_ARGUMENT_LINEARIZATION_CHALLENGES],
     delegation_argument_gamma: Mersenne31Quartic,
@@ -21019,7 +21019,7 @@ pub unsafe fn evaluate_quotient(
     lookup_argument_gamma: Mersenne31Quartic,
     lookup_argument_two_gamma: Mersenne31Quartic,
     memory_argument_linearization_challenges: &[Mersenne31Quartic;
-         NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES],
+         NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES],
     memory_argument_gamma: Mersenne31Quartic,
     delegation_argument_linearization_challenges : & [Mersenne31Quartic ; NUM_DELEGATION_ARGUMENT_LINEARIZATION_CHALLENGES],
     delegation_argument_gamma: Mersenne31Quartic,

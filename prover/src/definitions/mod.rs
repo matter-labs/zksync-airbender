@@ -31,7 +31,7 @@ pub type Transcript = Blake2sTranscript;
 #[repr(C)]
 pub struct GKRExternalChallenges<F: PrimeField, E: FieldExtension<F> + Field> {
     pub permutation_argument_linearization_challenges:
-        [E; NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES],
+        [E; NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES],
     pub permutation_argument_additive_part: E,
     pub _marker: core::marker::PhantomData<F>,
 }
@@ -52,9 +52,9 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> GKRExternalChallenges<F, E> {
         pow_challenge: u64,
     ) -> Self
     where
-        [(); ((NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES + 1) * E::DEGREE + 1)
+        [(); ((NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES + 1) * E::DEGREE + 1)
             .next_multiple_of(blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS)]:,
-        [(); ((NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES + 1) * E::DEGREE)
+        [(); ((NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES + 1) * E::DEGREE)
             .next_multiple_of(blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS)]:,
         [(); E::DEGREE]:,
     {
@@ -68,7 +68,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> GKRExternalChallenges<F, E> {
         unsafe {
             if pow_bits > 0 {
                 let mut transcript_challenges = [0u32;
-                    ((NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES + 1) * E::DEGREE + 1)
+                    ((NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES + 1) * E::DEGREE + 1)
                         .next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS)];
                 Transcript::draw_randomness(&mut seed, &mut transcript_challenges);
 
@@ -77,13 +77,14 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> GKRExternalChallenges<F, E> {
                     .0
                     .iter();
                 let permutation_argument_linearization_challenges: [E;
-                    NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES] = core::array::from_fn(|_| {
-                    extension_field_from_base_coeffs(
-                        it.next()
-                            .unwrap_unchecked()
-                            .map(|el| F::from_raw_repr_with_reduction(el)),
-                    )
-                });
+                    NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES] =
+                    core::array::from_fn(|_| {
+                        extension_field_from_base_coeffs(
+                            it.next()
+                                .unwrap_unchecked()
+                                .map(|el| F::from_raw_repr_with_reduction(el)),
+                        )
+                    });
                 let permutation_argument_additive_part: E =
                     extension_field_from_base_coeffs::<F, E>({
                         let t = *it.next().unwrap_unchecked();
@@ -98,7 +99,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> GKRExternalChallenges<F, E> {
                 }
             } else {
                 let mut transcript_challenges = [0u32;
-                    ((NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES + 1) * E::DEGREE)
+                    ((NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES + 1) * E::DEGREE)
                         .next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS)];
                 Transcript::draw_randomness(&mut seed, &mut transcript_challenges);
 
@@ -107,13 +108,14 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> GKRExternalChallenges<F, E> {
                     .0
                     .iter();
                 let permutation_argument_linearization_challenges: [E;
-                    NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES] = core::array::from_fn(|_| {
-                    extension_field_from_base_coeffs(
-                        it.next()
-                            .unwrap_unchecked()
-                            .map(|el| F::from_raw_repr_with_reduction(el)),
-                    )
-                });
+                    NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES] =
+                    core::array::from_fn(|_| {
+                        extension_field_from_base_coeffs(
+                            it.next()
+                                .unwrap_unchecked()
+                                .map(|el| F::from_raw_repr_with_reduction(el)),
+                        )
+                    });
                 let permutation_argument_additive_part: E =
                     extension_field_from_base_coeffs::<F, E>({
                         let t = *it.next().unwrap_unchecked();
@@ -149,7 +151,7 @@ pub fn produce_initial_permutation_product_contribution<
         let mut contribution =
             E::from_base(F::from_u32_unchecked(AddressSpaceType::Register as u32)); // without challenge
         let mut t = external_challenges.permutation_argument_linearization_challenges
-            [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
+            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
         t.mul_assign_by_base(&F::from_u32_unchecked(reg_idx as u32));
         contribution.add_assign(&t);
         contribution.add_assign(&external_challenges.permutation_argument_additive_part);
@@ -165,27 +167,27 @@ pub fn produce_initial_permutation_product_contribution<
         let mut contribution =
             E::from_base(F::from_u32_unchecked(AddressSpaceType::Register as u32)); // without challenge
         let mut t = external_challenges.permutation_argument_linearization_challenges
-            [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
+            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
         t.mul_assign_by_base(&F::from_u32_unchecked(reg_idx as u32));
         contribution.add_assign(&t);
 
         let mut t = external_challenges.permutation_argument_linearization_challenges
-            [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
+            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
         t.mul_assign_by_base(&F::from_u32_unchecked(timestamp_low));
         contribution.add_assign(&t);
 
         let mut t = external_challenges.permutation_argument_linearization_challenges
-            [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
+            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
         t.mul_assign_by_base(&F::from_u32_unchecked(timestamp_high));
         contribution.add_assign(&t);
 
         let mut t = external_challenges.permutation_argument_linearization_challenges
-            [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
+            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
         t.mul_assign_by_base(&F::from_u32_unchecked(value_low as u32));
         contribution.add_assign(&t);
 
         let mut t = external_challenges.permutation_argument_linearization_challenges
-            [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
+            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
         t.mul_assign_by_base(&F::from_u32_unchecked(value_high as u32));
         contribution.add_assign(&t);
 

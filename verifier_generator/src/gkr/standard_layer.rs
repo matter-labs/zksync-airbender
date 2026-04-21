@@ -6,10 +6,12 @@ use prover::cs::definitions::gkr::NoFieldVectorLookupRelation;
 use prover::cs::definitions::gkr::RamWordRepresentation;
 use prover::cs::definitions::GKRAddress;
 use prover::cs::definitions::{
-    MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX, MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX,
-    MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX,
-    MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX, MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX,
-    MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX,
+    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX,
+    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX,
+    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX,
+    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX,
+    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX,
+    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX,
 };
 use prover::cs::gkr_compiler::{
     CompiledAddressSpaceRelationStrict, CompiledAddressStrict, CompiledMemoryTimestamp,
@@ -451,7 +453,7 @@ fn emit_memory_expression_eval<F: PrimeField>(
         CompiledAddressStrict::ConstantU16(c) => {
             ops.push([
                 4,
-                MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX,
+                PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX,
                 mont(*c as u32),
                 0,
                 0,
@@ -461,7 +463,7 @@ fn emit_memory_expression_eval<F: PrimeField>(
         CompiledAddressStrict::Constant(c) => {
             ops.push([
                 4,
-                MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX,
+                PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX,
                 mont(*c),
                 0,
                 0,
@@ -471,7 +473,7 @@ fn emit_memory_expression_eval<F: PrimeField>(
         CompiledAddressStrict::U16Space(offset) => {
             ops.push([
                 3,
-                MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX,
+                PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX,
                 idx(*offset),
                 0,
                 0,
@@ -481,7 +483,7 @@ fn emit_memory_expression_eval<F: PrimeField>(
         CompiledAddressStrict::U32Space([low, high]) => {
             ops.push([
                 3,
-                MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX,
+                PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX,
                 idx(*low),
                 0,
                 0,
@@ -489,7 +491,7 @@ fn emit_memory_expression_eval<F: PrimeField>(
             ]);
             ops.push([
                 3,
-                MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX,
+                PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX,
                 idx(*high),
                 0,
                 0,
@@ -509,7 +511,7 @@ fn emit_memory_expression_eval<F: PrimeField>(
                 let c_mont = mont(*c as u32);
                 ops.push([
                     6,
-                    MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX,
+                    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX,
                     base_idx,
                     dyn_idx,
                     off_mont,
@@ -518,7 +520,7 @@ fn emit_memory_expression_eval<F: PrimeField>(
             } else if *low_offset != 0 {
                 ops.push([
                     5,
-                    MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX,
+                    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX,
                     base_idx,
                     off_mont,
                     0,
@@ -527,7 +529,7 @@ fn emit_memory_expression_eval<F: PrimeField>(
             } else {
                 ops.push([
                     3,
-                    MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX,
+                    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX,
                     base_idx,
                     0,
                     0,
@@ -536,7 +538,7 @@ fn emit_memory_expression_eval<F: PrimeField>(
             }
             ops.push([
                 3,
-                MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX,
+                PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX,
                 idx(*high),
                 0,
                 0,
@@ -555,7 +557,7 @@ fn emit_memory_expression_eval<F: PrimeField>(
             if ts_off != 0 {
                 ops.push([
                     5,
-                    MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX,
+                    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX,
                     idx(ts[0]),
                     mont(ts_off),
                     0,
@@ -564,7 +566,7 @@ fn emit_memory_expression_eval<F: PrimeField>(
             } else {
                 ops.push([
                     3,
-                    MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX,
+                    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX,
                     idx(ts[0]),
                     0,
                     0,
@@ -573,7 +575,7 @@ fn emit_memory_expression_eval<F: PrimeField>(
             }
             ops.push([
                 3,
-                MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX,
+                PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX,
                 idx(ts[1]),
                 0,
                 0,
@@ -587,7 +589,7 @@ fn emit_memory_expression_eval<F: PrimeField>(
         RamWordRepresentation::U16Limbs(limbs) => {
             ops.push([
                 3,
-                MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX,
+                PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX,
                 idx(limbs[0]),
                 0,
                 0,
@@ -595,7 +597,7 @@ fn emit_memory_expression_eval<F: PrimeField>(
             ]);
             ops.push([
                 3,
-                MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX,
+                PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX,
                 idx(limbs[1]),
                 0,
                 0,
@@ -605,7 +607,7 @@ fn emit_memory_expression_eval<F: PrimeField>(
         RamWordRepresentation::U8Limbs(bytes) => {
             ops.push([
                 7,
-                MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX,
+                PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX,
                 idx(bytes[0]),
                 idx(bytes[1]),
                 0,
@@ -613,7 +615,7 @@ fn emit_memory_expression_eval<F: PrimeField>(
             ]);
             ops.push([
                 7,
-                MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX,
+                PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX,
                 idx(bytes[2]),
                 idx(bytes[3]),
                 0,
@@ -1300,22 +1302,22 @@ fn emit_inits_teardowns<MW: MersenneWrapper, F: PrimeField>(
                     addr_to_idx(&GKRAddress::BaseLayerMemory(value[1]), input_sorted_addrs);
                 quote! {
                     {
-                        let mut t = linearization_challenges[#MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
+                        let mut t = linearization_challenges[#PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
                         field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(#ts_lo_idx)[j]);
                         field_ops::add_assign(&mut result, &t);
                     }
                     {
-                        let mut t = linearization_challenges[#MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
+                        let mut t = linearization_challenges[#PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
                         field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(#ts_hi_idx)[j]);
                         field_ops::add_assign(&mut result, &t);
                     }
                     {
-                        let mut t = linearization_challenges[#MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
+                        let mut t = linearization_challenges[#PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
                         field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(#val_lo_idx)[j]);
                         field_ops::add_assign(&mut result, &t);
                     }
                     {
-                        let mut t = linearization_challenges[#MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
+                        let mut t = linearization_challenges[#PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
                         field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(#val_hi_idx)[j]);
                         field_ops::add_assign(&mut result, &t);
                     }
@@ -1330,12 +1332,12 @@ fn emit_inits_teardowns<MW: MersenneWrapper, F: PrimeField>(
                 let mut result = permutation_argument_additive_part;
                 field_ops::add_assign_base(&mut result, &#field_struct_local::from_reduced_raw_repr(#ram_constant));
                 {
-                    let mut t = linearization_challenges[#MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
+                    let mut t = linearization_challenges[#PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
                     field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(#setup_lo_idx)[j]);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
-                    let mut t = linearization_challenges[#MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
+                    let mut t = linearization_challenges[#PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
                     let mut addr_hi = evals.get_unchecked(#setup_hi_idx)[j];
                     let set_bits = (#set_idx_val as u32) << address_high_bits_shift;
                     if set_bits != 0 {

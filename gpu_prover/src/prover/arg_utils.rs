@@ -3,12 +3,14 @@ use cs::definitions::{
     OptimizedOraclesForLookupWidth1, RegisterAccessColumns, RegisterAndIndirectAccessDescription,
     ShuffleRamAuxComparisonSet, ShuffleRamInitAndTeardownLayout,
     EXECUTOR_FAMILY_CIRCUIT_DECODER_TABLE_LINEARIZATION_CHALLENGES,
-    MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX, MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX,
-    MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX,
-    MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX, MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX,
-    MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX, NUM_DELEGATION_ARGUMENT_KEY_PARTS,
-    NUM_LOOKUP_ARGUMENT_KEY_PARTS, NUM_MACHINE_STATE_LINEARIZATION_CHALLENGES,
-    NUM_MEM_ARGUMENT_KEY_PARTS, NUM_TIMESTAMP_COLUMNS_FOR_RAM, REGISTER_SIZE,
+    NUM_DELEGATION_ARGUMENT_KEY_PARTS, NUM_LOOKUP_ARGUMENT_KEY_PARTS,
+    NUM_MACHINE_STATE_LINEARIZATION_CHALLENGES, NUM_PERMUTATION_ARGUMENT_KEY_PARTS,
+    NUM_TIMESTAMP_COLUMNS_FOR_RAM, PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX,
+    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX,
+    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX,
+    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX,
+    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX,
+    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX, REGISTER_SIZE,
 };
 use cs::one_row_compiler::{
     ColumnAddress, CompiledCircuitArtifact, LookupWidth1SourceDestInformation,
@@ -336,15 +338,19 @@ pub struct MemoryChallenges {
 impl MemoryChallenges {
     pub fn new(external_challenges: &ExternalMemoryArgumentChallenges) -> Self {
         let challenges = &external_challenges.memory_argument_linearization_challenges;
-        assert_eq!(NUM_MEM_ARGUMENT_KEY_PARTS, 7);
-        assert_eq!(challenges.len(), NUM_MEM_ARGUMENT_KEY_PARTS - 1);
+        assert_eq!(NUM_PERMUTATION_ARGUMENT_KEY_PARTS, 7);
+        assert_eq!(challenges.len(), NUM_PERMUTATION_ARGUMENT_KEY_PARTS - 1);
         Self {
-            address_low_challenge: challenges[MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX],
-            address_high_challenge: challenges[MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX],
-            timestamp_low_challenge: challenges[MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX],
-            timestamp_high_challenge: challenges[MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX],
-            value_low_challenge: challenges[MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX],
-            value_high_challenge: challenges[MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX],
+            address_low_challenge: challenges
+                [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX],
+            address_high_challenge: challenges
+                [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX],
+            timestamp_low_challenge: challenges
+                [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX],
+            timestamp_high_challenge: challenges
+                [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX],
+            value_low_challenge: challenges[PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX],
+            value_high_challenge: challenges[PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX],
             gamma: external_challenges.memory_argument_gamma,
         }
     }
