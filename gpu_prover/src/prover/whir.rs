@@ -112,15 +112,15 @@ impl GpuWhirExtensionOracle {
         let trace_len = monomial_coeffs.len();
         let mut bitreversed_monomial_coeffs = monomial_coeffs.to_vec();
         bitreverse_enumeration_inplace(&mut bitreversed_monomial_coeffs);
-        let mut vectorized_monomial_coeffs =
-            e4_coeffs_to_vectorized(&bitreversed_monomial_coeffs);
-        let mut monomial_coeffs_device_alloc =
-            context.alloc(monomial_coeffs.len(), AllocationPlacement::BestFit)?;
+        let mut vectorized_monomial_coeffs = e4_coeffs_to_vectorized(&bitreversed_monomial_coeffs);
+        let mut monomial_coeffs_device_alloc = context.alloc(
+            vectorized_monomial_coeffs.len(),
+            AllocationPlacement::BestFit,
+        )?;
         let stream = context.get_exec_stream();
         let host = alloc_static_pinned_box_from_slice(&vectorized_monomial_coeffs[..])?;
         memory_copy_async(&mut monomial_coeffs_device_alloc, &host[..], stream)?;
-        let monomial_coeffs_device =
-            DeviceMatrix::new(&monomial_coeffs_device_alloc, trace_len);
+        let monomial_coeffs_device = DeviceMatrix::new(&monomial_coeffs_device_alloc, trace_len);
         Self::from_device_monomial_coeffs(
             &monomial_coeffs_device,
             trace_len,
@@ -716,7 +716,10 @@ pub(crate) mod tests {
             cpu_extension_oracle_from_monomial_form(&monomial_coeffs, &twiddles, 4, 2, 4, &worker);
         let trace_len = monomial_coeffs.len();
 
-        let monomial_coeffs_vectorized = super::e4_coeffs_to_vectorized(&monomial_coeffs);
+        let mut bitreversed_monomial_coeffs = monomial_coeffs.to_vec();
+        bitreverse_enumeration_inplace(&mut bitreversed_monomial_coeffs);
+        let monomial_coeffs_vectorized =
+            super::e4_coeffs_to_vectorized(&bitreversed_monomial_coeffs);
         let mut monomial_coeffs_device = context
             .alloc(
                 trace_len * super::EXT4_DEGREE,
