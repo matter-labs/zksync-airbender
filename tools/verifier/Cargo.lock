@@ -129,7 +129,7 @@ dependencies = [
  "load_store_word_only_verifier",
  "mul_div_unsigned_verifier",
  "mul_div_verifier",
- "shift_binary_csr_verifier",
+ "shift_binary_verifier",
  "unified_reduced_machine_verifier",
  "verifier_common",
 ]
@@ -434,7 +434,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "shift_binary_csr_verifier"
+name = "shift_binary_verifier"
 version = "0.1.0"
 dependencies = [
  "field",

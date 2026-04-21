@@ -38,12 +38,12 @@ pub const LOAD_STORE_SUBWORD_ONLY_VERIFIER_PTR: VerificationFunctionPointer =
     VerificationFunctionPointer::UnrolledNoDelegation(load_store_subword_only_verifier::verify);
 pub const LOAD_STORE_WORD_ONLY_VERIFIER_PTR: VerificationFunctionPointer =
     VerificationFunctionPointer::UnrolledNoDelegation(load_store_word_only_verifier::verify);
-pub const MUL_DIV_VERIFIER_PTR: VerificationFunctionPointer =
-    VerificationFunctionPointer::UnrolledNoDelegation(mul_div_verifier::verify);
+// pub const MUL_DIV_VERIFIER_PTR: VerificationFunctionPointer =
+//     VerificationFunctionPointer::UnrolledNoDelegation(mul_div_verifier::verify);
 pub const MUL_DIV_UNSIGNED_VERIFIER_PTR: VerificationFunctionPointer =
     VerificationFunctionPointer::UnrolledNoDelegation(mul_div_unsigned_verifier::verify);
-pub const SHIFT_BINARY_CSR_VERIFIER_PTR: VerificationFunctionPointer =
-    VerificationFunctionPointer::UnrolledWithDelegation(shift_binary_csr_verifier::verify);
+pub const SHIFT_BINARY_VERIFIER_PTR: VerificationFunctionPointer =
+    VerificationFunctionPointer::UnrolledWithDelegation(shift_binary_verifier::verify);
 
 pub const FULL_MACHINE_UNROLLED_CIRCUITS_VERIFICATION_PARAMETERS: &[(
     u32, // family
@@ -62,14 +62,14 @@ pub const FULL_MACHINE_UNROLLED_CIRCUITS_VERIFICATION_PARAMETERS: &[(
     ),
     (
         common_constants::circuit_families::SHIFT_BINARY_CSR_CIRCUIT_FAMILY_IDX as u32,
-        (shift_binary_csr_verifier::concrete::size_constants::TRACE_LEN - 1) as u32,
-        SHIFT_BINARY_CSR_VERIFIER_PTR,
+        (shift_binary_verifier::concrete::size_constants::TRACE_LEN - 1) as u32,
+        shift_binary_verifier_PTR,
     ),
-    (
-        common_constants::circuit_families::MUL_DIV_CIRCUIT_FAMILY_IDX as u32,
-        (mul_div_verifier::concrete::size_constants::TRACE_LEN - 1) as u32,
-        MUL_DIV_VERIFIER_PTR,
-    ),
+    // (
+    //     common_constants::circuit_families::MUL_DIV_CIRCUIT_FAMILY_IDX as u32,
+    //     (mul_div_verifier::concrete::size_constants::TRACE_LEN - 1) as u32,
+    //     MUL_DIV_VERIFIER_PTR,
+    // ),
     (
         common_constants::circuit_families::LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX as u32,
         (load_store_word_only_verifier::concrete::size_constants::TRACE_LEN - 1) as u32,
@@ -102,8 +102,8 @@ pub const FULL_UNSIGNED_MACHINE_UNROLLED_CIRCUITS_VERIFICATION_PARAMETERS: &[(
     ),
     (
         common_constants::circuit_families::SHIFT_BINARY_CSR_CIRCUIT_FAMILY_IDX as u32,
-        (shift_binary_csr_verifier::concrete::size_constants::TRACE_LEN - 1) as u32,
-        SHIFT_BINARY_CSR_VERIFIER_PTR,
+        (shift_binary_verifier::concrete::size_constants::TRACE_LEN - 1) as u32,
+        shift_binary_verifier_PTR,
     ),
     (
         common_constants::circuit_families::MUL_DIV_CIRCUIT_FAMILY_IDX as u32,
@@ -142,8 +142,8 @@ pub const RECURSION_WORD_ONLY_UNSIGNED_MACHINE_UNROLLED_CIRCUITS_VERIFICATION_PA
     ),
     (
         common_constants::circuit_families::SHIFT_BINARY_CSR_CIRCUIT_FAMILY_IDX as u32,
-        (shift_binary_csr_verifier::concrete::size_constants::TRACE_LEN - 1) as u32,
-        SHIFT_BINARY_CSR_VERIFIER_PTR,
+        (shift_binary_verifier::concrete::size_constants::TRACE_LEN - 1) as u32,
+        shift_binary_verifier_PTR,
     ),
     (
         common_constants::circuit_families::LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX as u32,

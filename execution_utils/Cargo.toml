@@ -12,7 +12,7 @@ categories.workspace = true
 [dependencies]
 verifier_common = { workspace = true, features = ["proof_utils", "replace_csr"] }
 riscv_common = { workspace = true, default-features = false }
-riscv_transpiler = { workspace = true, features = ["delegation"] }
+riscv_transpiler = { workspace = true }
 trace_and_split = { workspace = true }
 setups = { workspace = true }
 clap = { workspace = true }
@@ -45,18 +45,18 @@ security_100 = [
     "prover_examples/security_100",
     "gpu_prover?/security_100",
 ]
-verifier_80 = [
-    "security_80",
-    "full_statement_verifier/verifiers",
-    "full_statement_verifier/replace_csr",
-    "prover_examples/verifiers",
-]
-verifier_100 = [
-    "security_100",
-    "full_statement_verifier/verifiers",
-    "full_statement_verifier/replace_csr",
-    "prover_examples/verifiers",
-]
+# verifier_80 = [
+#     "security_80",
+#     "full_statement_verifier/verifiers",
+#     "full_statement_verifier/replace_csr",
+#     "prover_examples/verifiers",
+# ]
+# verifier_100 = [
+#     "security_100",
+#     "full_statement_verifier/verifiers",
+#     "full_statement_verifier/replace_csr",
+#     "prover_examples/verifiers",
+# ]
 prover = ["prover_examples"]
 verifier_binaries = []
 # Will evaluate quotient on main domain for debug
@@ -64,6 +64,6 @@ debug_satisfiable = ["prover_examples/debug_satisfiable"]
 # Will perform satisfiability tests on witness
 precheck_satisfied = ["prover_examples/precheck_satisfied"]
 # debug = ["prover_examples/precheck_satisfied", "prover_examples/debug_satisfiable"]
-default = ["verifier_80", "prover"]
-# default = ["prover"]
+# default = ["verifier_80", "prover"]
+default = ["prover"]
 gpu_prover = ["prover", "dep:prover", "dep:gpu_prover"]

@@ -22,15 +22,11 @@ pub use transcript;
 #[cfg(feature = "prover")]
 pub use fft;
 #[cfg(feature = "prover")]
-pub use trace_holder;
-#[cfg(feature = "prover")]
 pub use worker;
 #[cfg(feature = "prover")]
 pub mod cap_holder;
 #[cfg(feature = "prover")]
 pub mod gkr;
-#[cfg(feature = "prover")]
-pub mod mem_utils;
 #[cfg(feature = "prover")]
 pub mod merkle_trees;
 #[cfg(feature = "prover")]

@@ -6,12 +6,12 @@ use field::Mersenne31Field;
 
 pub mod column_major;
 pub mod field_utils;
-pub mod row_major;
+pub mod twiddles;
 pub mod utils;
 
 pub use self::column_major::*;
 pub use self::field_utils::*;
-pub use self::row_major::*;
+pub use self::twiddles::*;
 pub use self::utils::*;
 
 pub trait GoodAllocator:

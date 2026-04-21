@@ -16,18 +16,7 @@ pub trait MachineConfig:
     + serde::Serialize
     + serde::de::DeserializeOwned
 {
-    const SUPPORT_MUL: bool;
-    const SUPPORT_DIV: bool;
-    const SUPPORT_SIGNED_MUL: bool;
-    const SUPPORT_SIGNED_DIV: bool;
-    const SUPPORT_SIGNED_LOAD: bool;
-    const SUPPORT_LOAD_LESS_THAN_WORD: bool;
-    const SUPPORT_SRA: bool;
-    const SUPPORT_ROT: bool;
-    const SUPPORT_MOPS: bool;
-    const HANDLE_EXCEPTIONS: bool;
-    const SUPPORT_STANDARD_CSRS: bool;
-    const SUPPORT_ONLY_CSRRW: bool;
+    type DecodingOptions: DecodingOptions;
     const ALLOWED_DELEGATION_CSRS: &'static [u32];
 }
 
@@ -36,6 +25,11 @@ mod markers;
 pub mod state {
     pub const NUM_REGISTERS: usize = 32;
 }
+
+use crate::ir::{
+    DecodingOptions, FullMachineDecoderConfig, FullUnsignedMachineDecoderConfig,
+    ReducedMachineDecoderConfig,
+};
 
 pub use self::markers::{CycleMarker, CycleMarkerHooks, Mark};
 pub use state::NUM_REGISTERS;
@@ -46,21 +40,7 @@ pub use state::NUM_REGISTERS;
 pub struct IMStandardIsaConfig;
 
 impl MachineConfig for IMStandardIsaConfig {
-    const SUPPORT_MUL: bool = true;
-    const SUPPORT_DIV: bool = true;
-    const SUPPORT_SIGNED_MUL: bool = true;
-    const SUPPORT_SIGNED_DIV: bool = true;
-    const SUPPORT_SIGNED_LOAD: bool = true;
-    const SUPPORT_LOAD_LESS_THAN_WORD: bool = true;
-    const SUPPORT_SRA: bool = true;
-    const SUPPORT_ROT: bool = false;
-    const SUPPORT_MOPS: bool = false;
-    const HANDLE_EXCEPTIONS: bool = false;
-    const SUPPORT_STANDARD_CSRS: bool = false;
-    const SUPPORT_ONLY_CSRRW: bool = true;
-    #[cfg(not(feature = "delegation"))]
-    const ALLOWED_DELEGATION_CSRS: &'static [u32] = &[];
-    #[cfg(feature = "delegation")]
+    type DecodingOptions = FullMachineDecoderConfig;
     const ALLOWED_DELEGATION_CSRS: &'static [u32] = &[
         common_constants::delegation_types::blake2s_with_control::BLAKE2S_DELEGATION_CSR_REGISTER,
         common_constants::delegation_types::bigint_with_control::BIGINT_OPS_WITH_CONTROL_CSR_REGISTER,
@@ -71,24 +51,10 @@ impl MachineConfig for IMStandardIsaConfig {
 #[derive(
     Clone, Copy, Debug, Hash, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize,
 )]
-pub struct IMStandardIsaConfigWithUnsignedMulDiv;
+pub struct IMStandardIsaConfigUnsignedMulDivOnly;
 
-impl MachineConfig for IMStandardIsaConfigWithUnsignedMulDiv {
-    const SUPPORT_MUL: bool = true;
-    const SUPPORT_DIV: bool = true;
-    const SUPPORT_SIGNED_MUL: bool = false;
-    const SUPPORT_SIGNED_DIV: bool = false;
-    const SUPPORT_SIGNED_LOAD: bool = true;
-    const SUPPORT_LOAD_LESS_THAN_WORD: bool = true;
-    const SUPPORT_SRA: bool = true;
-    const SUPPORT_ROT: bool = false;
-    const SUPPORT_MOPS: bool = false;
-    const HANDLE_EXCEPTIONS: bool = false;
-    const SUPPORT_STANDARD_CSRS: bool = false;
-    const SUPPORT_ONLY_CSRRW: bool = true;
-    #[cfg(not(feature = "delegation"))]
-    const ALLOWED_DELEGATION_CSRS: &'static [u32] = &[];
-    #[cfg(feature = "delegation")]
+impl MachineConfig for IMStandardIsaConfigUnsignedMulDivOnly {
+    type DecodingOptions = FullUnsignedMachineDecoderConfig;
     const ALLOWED_DELEGATION_CSRS: &'static [u32] = &[
         common_constants::delegation_types::blake2s_with_control::BLAKE2S_DELEGATION_CSR_REGISTER,
         common_constants::delegation_types::bigint_with_control::BIGINT_OPS_WITH_CONTROL_CSR_REGISTER,
@@ -99,24 +65,10 @@ impl MachineConfig for IMStandardIsaConfigWithUnsignedMulDiv {
 #[derive(
     Clone, Copy, Debug, Hash, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize,
 )]
-pub struct IWithoutByteAccessIsaConfigWithDelegation;
+pub struct ReducedMachineWithDelegation;
 
-impl MachineConfig for IWithoutByteAccessIsaConfigWithDelegation {
-    const SUPPORT_MUL: bool = false;
-    const SUPPORT_DIV: bool = false;
-    const SUPPORT_SIGNED_MUL: bool = false;
-    const SUPPORT_SIGNED_DIV: bool = false;
-    const SUPPORT_SIGNED_LOAD: bool = false;
-    const SUPPORT_LOAD_LESS_THAN_WORD: bool = false;
-    const SUPPORT_SRA: bool = true;
-    const SUPPORT_ROT: bool = false;
-    const SUPPORT_MOPS: bool = true;
-    const HANDLE_EXCEPTIONS: bool = false;
-    const SUPPORT_STANDARD_CSRS: bool = false;
-    const SUPPORT_ONLY_CSRRW: bool = true;
-    #[cfg(not(feature = "delegation"))]
-    const ALLOWED_DELEGATION_CSRS: &'static [u32] = &[];
-    #[cfg(feature = "delegation")]
+impl MachineConfig for ReducedMachineWithDelegation {
+    type DecodingOptions = ReducedMachineDecoderConfig;
     const ALLOWED_DELEGATION_CSRS: &'static [u32] = &[
         common_constants::delegation_types::blake2s_with_control::BLAKE2S_DELEGATION_CSR_REGISTER,
     ];
@@ -125,48 +77,9 @@ impl MachineConfig for IWithoutByteAccessIsaConfigWithDelegation {
 #[derive(
     Clone, Copy, Debug, Hash, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize,
 )]
-pub struct IWithoutByteAccessIsaConfig;
+pub struct ReducedMachineWithoutDelegation;
 
-impl MachineConfig for IWithoutByteAccessIsaConfig {
-    const SUPPORT_MUL: bool = false;
-    const SUPPORT_DIV: bool = false;
-    const SUPPORT_SIGNED_MUL: bool = false;
-    const SUPPORT_SIGNED_DIV: bool = false;
-    const SUPPORT_SIGNED_LOAD: bool = false;
-    const SUPPORT_LOAD_LESS_THAN_WORD: bool = false;
-    const SUPPORT_SRA: bool = true;
-    const SUPPORT_ROT: bool = false;
-    const SUPPORT_MOPS: bool = true;
-    const HANDLE_EXCEPTIONS: bool = false;
-    const SUPPORT_STANDARD_CSRS: bool = false;
-    const SUPPORT_ONLY_CSRRW: bool = true;
+impl MachineConfig for ReducedMachineWithoutDelegation {
+    type DecodingOptions = ReducedMachineDecoderConfig;
     const ALLOWED_DELEGATION_CSRS: &'static [u32] = &[];
-}
-
-#[derive(
-    Clone, Copy, Debug, Hash, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize,
-)]
-pub struct IMIsaConfigWithAllDelegations;
-
-impl MachineConfig for IMIsaConfigWithAllDelegations {
-    const SUPPORT_MUL: bool = true;
-    const SUPPORT_DIV: bool = true;
-    const SUPPORT_SIGNED_MUL: bool = true;
-    const SUPPORT_SIGNED_DIV: bool = true;
-    const SUPPORT_SIGNED_LOAD: bool = true;
-    const SUPPORT_LOAD_LESS_THAN_WORD: bool = true;
-    const SUPPORT_SRA: bool = true;
-    const SUPPORT_ROT: bool = false;
-    const SUPPORT_MOPS: bool = true;
-    const HANDLE_EXCEPTIONS: bool = false;
-    const SUPPORT_STANDARD_CSRS: bool = false;
-    const SUPPORT_ONLY_CSRRW: bool = true;
-    #[cfg(not(feature = "delegation"))]
-    const ALLOWED_DELEGATION_CSRS: &'static [u32] = &[];
-    #[cfg(feature = "delegation")]
-    const ALLOWED_DELEGATION_CSRS: &'static [u32] = &[
-        common_constants::delegation_types::blake2s_with_control::BLAKE2S_DELEGATION_CSR_REGISTER,
-        common_constants::delegation_types::bigint_with_control::BIGINT_OPS_WITH_CONTROL_CSR_REGISTER,
-        common_constants::delegation_types::keccak_special5::KECCAK_SPECIAL5_CSR_REGISTER,
-    ];
 }

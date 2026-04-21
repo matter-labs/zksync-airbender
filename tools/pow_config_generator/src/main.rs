@@ -24,9 +24,9 @@ fn main() {
         jump_branch_slt_verifier::concrete::size_constants::TRACE_LEN_LOG2,
         load_store_subword_only_verifier::concrete::size_constants::TRACE_LEN_LOG2,
         load_store_word_only_verifier::concrete::size_constants::TRACE_LEN_LOG2,
-        mul_div_verifier::concrete::size_constants::TRACE_LEN_LOG2,
+        // mul_div_verifier::concrete::size_constants::TRACE_LEN_LOG2,
         mul_div_unsigned_verifier::concrete::size_constants::TRACE_LEN_LOG2,
-        shift_binary_csr_verifier::concrete::size_constants::TRACE_LEN_LOG2,
+        shift_binary_verifier::concrete::size_constants::TRACE_LEN_LOG2,
         inits_and_teardowns_verifier::concrete::size_constants::TRACE_LEN_LOG2,
         unified_reduced_machine_verifier::concrete::size_constants::TRACE_LEN_LOG2,
     ]
@@ -42,9 +42,9 @@ fn main() {
         jump_branch_slt_verifier::concrete::size_constants::FRI_FACTOR_LOG2,
         load_store_subword_only_verifier::concrete::size_constants::FRI_FACTOR_LOG2,
         load_store_word_only_verifier::concrete::size_constants::FRI_FACTOR_LOG2,
-        mul_div_verifier::concrete::size_constants::FRI_FACTOR_LOG2,
+        // mul_div_verifier::concrete::size_constants::FRI_FACTOR_LOG2,
         mul_div_unsigned_verifier::concrete::size_constants::FRI_FACTOR_LOG2,
-        shift_binary_csr_verifier::concrete::size_constants::FRI_FACTOR_LOG2,
+        shift_binary_verifier::concrete::size_constants::FRI_FACTOR_LOG2,
         inits_and_teardowns_verifier::concrete::size_constants::FRI_FACTOR_LOG2,
         unified_reduced_machine_verifier::concrete::size_constants::FRI_FACTOR_LOG2,
     ]
@@ -81,18 +81,18 @@ fn main() {
             + load_store_word_only_verifier::concrete::size_constants::NUM_MEMORY_OPENINGS
             + load_store_word_only_verifier::concrete::size_constants::NUM_SETUP_OPENINGS
             + load_store_word_only_verifier::concrete::size_constants::NUM_STAGE2_OPENINGS,
-        mul_div_verifier::concrete::size_constants::NUM_WITNESS_OPENINGS
-            + mul_div_verifier::concrete::size_constants::NUM_MEMORY_OPENINGS
-            + mul_div_verifier::concrete::size_constants::NUM_SETUP_OPENINGS
-            + mul_div_verifier::concrete::size_constants::NUM_STAGE2_OPENINGS,
+        // mul_div_verifier::concrete::size_constants::NUM_WITNESS_OPENINGS
+        //     + mul_div_verifier::concrete::size_constants::NUM_MEMORY_OPENINGS
+        //     + mul_div_verifier::concrete::size_constants::NUM_SETUP_OPENINGS
+        //     + mul_div_verifier::concrete::size_constants::NUM_STAGE2_OPENINGS,
         mul_div_unsigned_verifier::concrete::size_constants::NUM_WITNESS_OPENINGS
             + mul_div_unsigned_verifier::concrete::size_constants::NUM_MEMORY_OPENINGS
             + mul_div_unsigned_verifier::concrete::size_constants::NUM_SETUP_OPENINGS
             + mul_div_unsigned_verifier::concrete::size_constants::NUM_STAGE2_OPENINGS,
-        shift_binary_csr_verifier::concrete::size_constants::NUM_WITNESS_OPENINGS
-            + shift_binary_csr_verifier::concrete::size_constants::NUM_MEMORY_OPENINGS
-            + shift_binary_csr_verifier::concrete::size_constants::NUM_SETUP_OPENINGS
-            + shift_binary_csr_verifier::concrete::size_constants::NUM_STAGE2_OPENINGS,
+        shift_binary_verifier::concrete::size_constants::NUM_WITNESS_OPENINGS
+            + shift_binary_verifier::concrete::size_constants::NUM_MEMORY_OPENINGS
+            + shift_binary_verifier::concrete::size_constants::NUM_SETUP_OPENINGS
+            + shift_binary_verifier::concrete::size_constants::NUM_STAGE2_OPENINGS,
         inits_and_teardowns_verifier::concrete::size_constants::NUM_WITNESS_OPENINGS
             + inits_and_teardowns_verifier::concrete::size_constants::NUM_MEMORY_OPENINGS
             + inits_and_teardowns_verifier::concrete::size_constants::NUM_SETUP_OPENINGS
@@ -114,9 +114,9 @@ fn main() {
         jump_branch_slt_verifier::concrete::size_constants::NUM_QUOTIENT_TERMS,
         load_store_subword_only_verifier::concrete::size_constants::NUM_QUOTIENT_TERMS,
         load_store_word_only_verifier::concrete::size_constants::NUM_QUOTIENT_TERMS,
-        mul_div_verifier::concrete::size_constants::NUM_QUOTIENT_TERMS,
+        // mul_div_verifier::concrete::size_constants::NUM_QUOTIENT_TERMS,
         mul_div_unsigned_verifier::concrete::size_constants::NUM_QUOTIENT_TERMS,
-        shift_binary_csr_verifier::concrete::size_constants::NUM_QUOTIENT_TERMS,
+        shift_binary_verifier::concrete::size_constants::NUM_QUOTIENT_TERMS,
         inits_and_teardowns_verifier::concrete::size_constants::NUM_QUOTIENT_TERMS,
         unified_reduced_machine_verifier::concrete::size_constants::NUM_QUOTIENT_TERMS,
     ]
@@ -132,9 +132,9 @@ fn main() {
         jump_branch_slt_verifier::concrete::size_constants::NUM_OPENINGS_AT_Z,
         load_store_subword_only_verifier::concrete::size_constants::NUM_OPENINGS_AT_Z,
         load_store_word_only_verifier::concrete::size_constants::NUM_OPENINGS_AT_Z,
-        mul_div_verifier::concrete::size_constants::NUM_OPENINGS_AT_Z,
+        // mul_div_verifier::concrete::size_constants::NUM_OPENINGS_AT_Z,
         mul_div_unsigned_verifier::concrete::size_constants::NUM_OPENINGS_AT_Z,
-        shift_binary_csr_verifier::concrete::size_constants::NUM_OPENINGS_AT_Z,
+        shift_binary_verifier::concrete::size_constants::NUM_OPENINGS_AT_Z,
         inits_and_teardowns_verifier::concrete::size_constants::NUM_OPENINGS_AT_Z,
         unified_reduced_machine_verifier::concrete::size_constants::NUM_OPENINGS_AT_Z,
     ]
@@ -150,9 +150,9 @@ fn main() {
         jump_branch_slt_verifier::concrete::size_constants::NUM_OPENINGS_AT_Z_OMEGA,
         load_store_subword_only_verifier::concrete::size_constants::NUM_OPENINGS_AT_Z_OMEGA,
         load_store_word_only_verifier::concrete::size_constants::NUM_OPENINGS_AT_Z_OMEGA,
-        mul_div_verifier::concrete::size_constants::NUM_OPENINGS_AT_Z_OMEGA,
+        // mul_div_verifier::concrete::size_constants::NUM_OPENINGS_AT_Z_OMEGA,
         mul_div_unsigned_verifier::concrete::size_constants::NUM_OPENINGS_AT_Z_OMEGA,
-        shift_binary_csr_verifier::concrete::size_constants::NUM_OPENINGS_AT_Z_OMEGA,
+        shift_binary_verifier::concrete::size_constants::NUM_OPENINGS_AT_Z_OMEGA,
         inits_and_teardowns_verifier::concrete::size_constants::NUM_OPENINGS_AT_Z_OMEGA,
         unified_reduced_machine_verifier::concrete::size_constants::NUM_OPENINGS_AT_Z_OMEGA,
     ]
@@ -189,15 +189,15 @@ fn main() {
             .iter()
             .max()
             .unwrap(),
-        mul_div_verifier::concrete::size_constants::FRI_FOLDING_SCHEDULE
-            .iter()
-            .max()
-            .unwrap(),
+        // mul_div_verifier::concrete::size_constants::FRI_FOLDING_SCHEDULE
+        //     .iter()
+        //     .max()
+        //     .unwrap(),
         mul_div_unsigned_verifier::concrete::size_constants::FRI_FOLDING_SCHEDULE
             .iter()
             .max()
             .unwrap(),
-        shift_binary_csr_verifier::concrete::size_constants::FRI_FOLDING_SCHEDULE
+        shift_binary_verifier::concrete::size_constants::FRI_FOLDING_SCHEDULE
             .iter()
             .max()
             .unwrap(),

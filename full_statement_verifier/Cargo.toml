@@ -21,9 +21,9 @@ add_sub_lui_auipc_mop_verifier = {path = "../circuit_defs/unrolled_circuits/add_
 jump_branch_slt_verifier = {path = "../circuit_defs/unrolled_circuits/jump_branch_slt/verifier", default-features = false, optional = true }
 load_store_subword_only_verifier = {path = "../circuit_defs/unrolled_circuits/load_store_subword_only/verifier", default-features = false, optional = true }
 load_store_word_only_verifier = {path = "../circuit_defs/unrolled_circuits/load_store_word_only/verifier", default-features = false, optional = true }
-mul_div_verifier = {path = "../circuit_defs/unrolled_circuits/mul_div/verifier", default-features = false, optional = true }
+# mul_div_verifier = {path = "../circuit_defs/unrolled_circuits/mul_div/verifier", default-features = false, optional = true }
 mul_div_unsigned_verifier = {path = "../circuit_defs/unrolled_circuits/mul_div_unsigned/verifier", default-features = false, optional = true }
-shift_binary_csr_verifier = {path = "../circuit_defs/unrolled_circuits/shift_binary_csr/verifier", default-features = false, optional = true }
+shift_binary_verifier = {path = "../circuit_defs/unrolled_circuits/shift_binary/verifier", default-features = false, optional = true }
 
 inits_and_teardowns_verifier = {path = "../circuit_defs/unrolled_circuits/inits_and_teardowns/verifier", default-features = false, optional = true }
 
@@ -40,9 +40,9 @@ verifiers = [
     "jump_branch_slt_verifier",
     "load_store_subword_only_verifier",
     "load_store_word_only_verifier",
-    "mul_div_verifier",
+    # "mul_div_verifier",
     "mul_div_unsigned_verifier",
-    "shift_binary_csr_verifier",
+    "shift_binary_verifier",
 
     "inits_and_teardowns_verifier",
     "unified_reduced_machine_verifier"

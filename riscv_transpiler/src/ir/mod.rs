@@ -18,7 +18,7 @@ pub trait DecodingOptions: 'static + Sized {
 pub struct FullMachineDecoderConfig;
 
 impl DecodingOptions for FullMachineDecoderConfig {
-    const SUPPORT_MOP: bool = false;
+    const SUPPORT_MOP: bool = true;
     const SUPPORT_MUL_DIV: bool = true;
     const SUPPORT_SIGNED_MUL_DIV: bool = true;
     const SUPPORT_SUBWORD_MEM_ACCESS: bool = true;

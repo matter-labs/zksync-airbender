@@ -1,123 +1,64 @@
 #![allow(incomplete_features)]
 #![feature(generic_const_exprs)]
 
+use crate::cs::gkr_circuits::delegation::keccak_special5::*;
+use crate::cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
 use prover::cs;
-use prover::cs::cs::witness_placer::graph_description::RawExpression;
-use prover::fft::GoodAllocator;
-use prover::field::Mersenne31Field;
-use prover::tracers::oracles::delegation_oracle::DelegationCircuitOracle;
+use prover::cs::tables::TableDriver;
+use prover::field::baby_bear::base::BabyBearField;
+use prover::field::PrimeField;
+use prover::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
 use prover::tracers::oracles::transpiler_oracles::delegation::*;
 use prover::*;
 
-pub const DELEGATION_TYPE_ID: u32 =
-    common_constants::delegation_types::keccak_special5::KECCAK_SPECIAL5_CSR_REGISTER;
-pub const TRACE_LEN_LOG2: u32 = 22;
-pub const DOMAIN_SIZE: usize = 1 << TRACE_LEN_LOG2;
-pub const NUM_DELEGATION_CYCLES: usize = DOMAIN_SIZE - 1;
-pub const LDE_FACTOR: usize = 2;
-pub const LDE_SOURCE_COSETS: &[usize] = &[0, 1];
-pub const TREE_CAP_SIZE: usize = 32;
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+pub struct KeccakSpecial5DelegationCircuit;
 
-fn serialize_to_file<T: serde::Serialize>(el: &T, filename: &str) {
-    let mut dst = std::fs::File::create(filename).unwrap();
-    serde_json::to_writer_pretty(&mut dst, el).unwrap();
-}
+impl<F: PrimeField> circuit_common::DelegationCircuit<F> for KeccakSpecial5DelegationCircuit {
+    const DELEGATION_TYPE_ID: u16 =
+        common_constants::delegation_types::keccak_special5::KECCAK_SPECIAL5_CSR_REGISTER as u16;
+    const DOMAIN_SIZE_LOG2: u32 = 22;
 
-pub fn get_delegation_circuit() -> DelegationProcessorDescription {
-    use crate::field::Mersenne31Field;
-    use cs::cs::circuit::Circuit;
-    use cs::cs::cs_reference::BasicAssembly;
-    use cs::delegation::keccak_special5::define_keccak_special5_delegation_circuit;
-    use cs::one_row_compiler::OneRowCompiler;
+    fn circuit_fn<CS: cs::cs::circuit_trait::Circuit<F>>(cs: &mut CS) {
+        define_keccak_special5_delegation_circuit::<_, _, false>(cs);
+    }
 
-    let mut cs = BasicAssembly::<Mersenne31Field>::new();
-    define_keccak_special5_delegation_circuit::<_, _, false>(&mut cs);
-    let (circuit_output, _) = cs.finalize();
-    let table_driver = circuit_output.table_driver.clone();
-    let compiler = OneRowCompiler::default();
-    let circuit = compiler
-        .compile_to_evaluate_delegations(circuit_output, DOMAIN_SIZE.trailing_zeros() as usize);
+    fn table_addition_fn<CS: cs::cs::circuit_trait::Circuit<F>>(cs: &mut CS) {
+        keccak_special5_delegation_circuit_table_addition_fn(cs)
+    }
 
-    let description = DelegationProcessorDescription {
-        delegation_type: DELEGATION_TYPE_ID,
-        num_requests_per_circuit: NUM_DELEGATION_CYCLES,
-        trace_len: DOMAIN_SIZE,
-        table_driver,
-        compiled_circuit: circuit,
-    };
-
-    description
-}
-
-pub fn get_ssa_form() -> Vec<Vec<RawExpression<Mersenne31Field>>> {
-    use crate::field::Mersenne31Field;
-    use cs::cs::circuit::Circuit;
-    use cs::cs::cs_reference::BasicAssembly;
-    use cs::cs::witness_placer::graph_description::WitnessGraphCreator;
-    use cs::delegation::keccak_special5::define_keccak_special5_delegation_circuit;
-
-    let mut cs = BasicAssembly::<Mersenne31Field, WitnessGraphCreator<Mersenne31Field>>::new();
-    cs.witness_placer = Some(WitnessGraphCreator::<Mersenne31Field>::new());
-    define_keccak_special5_delegation_circuit::<_, _, false>(&mut cs);
-
-    let witness_placer = cs.witness_placer.unwrap();
-    let (_resolution_order, ssa_forms) = witness_placer.compute_resolution_order();
-
-    ssa_forms
-}
-
-pub fn get_table_driver() -> prover::cs::tables::TableDriver<Mersenne31Field> {
-    use cs::delegation::keccak_special5::keccak_special5_delegation_circuit_create_table_driver;
-    keccak_special5_delegation_circuit_create_table_driver()
+    fn table_driver_fn(table_driver: &mut TableDriver<F>) {
+        keccak_special5_delegation_circuit_table_driver_fn(table_driver);
+    }
 }
 
 mod sealed {
-    use crate::Mersenne31Field;
-    use prover::cs::cs::witness_placer::*;
-    use prover::witness_proxy::WitnessProxy;
+    use super::*;
+    use crate::cs::oracle::Placeholder;
+    use prover::cs::witness_placer::*;
+    use prover::gkr::witness_gen::witness_proxy::*;
 
     include!("../generated/witness_generation_fn.rs");
 }
 
-pub fn witness_eval_fn_for_gpu_tracer<'a, 'b>(
-    proxy: &'_ mut SimpleWitnessProxy<'a, DelegationCircuitOracle<'b, impl GoodAllocator>>,
-) {
-    use cs::cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
+// pub fn witness_eval_fn<'a, 'b>(
+//     proxy: &'_ mut ColumnMajorWitnessProxy<'a, KeccakDelegationOracle<'b>, BabyBearField>,
+// ) {
+//     let fn_ptr = sealed::evaluate_witness_fn::<
+//         ScalarWitnessTypeSet<BabyBearField, true>,
+//         ColumnMajorWitnessProxy<'a, KeccakDelegationOracle<'b>, BabyBearField>,
+//     >;
+//     (fn_ptr)(proxy);
+// }
 
+pub fn witness_eval_fn(
+    proxy: &'_ mut ColumnMajorWitnessProxy<'_, KeccakDelegationOracle<'_>, BabyBearField>,
+) {
     let fn_ptr = sealed::evaluate_witness_fn::<
-        ScalarWitnessTypeSet<Mersenne31Field, true>,
-        SimpleWitnessProxy<'a, DelegationCircuitOracle<'b, _>>,
+        ScalarWitnessTypeSet<BabyBearField, true>,
+        ColumnMajorWitnessProxy<'_, KeccakDelegationOracle<'_>, BabyBearField>,
     >;
     (fn_ptr)(proxy);
-}
-
-pub fn witness_eval_fn_for_replayer<'a, 'b>(
-    proxy: &'_ mut SimpleWitnessProxy<'a, KeccakDelegationOracle<'b>>,
-) {
-    use cs::cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
-
-    let fn_ptr = sealed::evaluate_witness_fn::<
-        ScalarWitnessTypeSet<Mersenne31Field, true>,
-        SimpleWitnessProxy<'a, KeccakDelegationOracle<'b>>,
-    >;
-    (fn_ptr)(proxy);
-}
-
-pub fn generate_artifacts() {
-    use std::io::Write;
-
-    let compiled_circuit = get_delegation_circuit();
-    serialize_to_file(&compiled_circuit.compiled_circuit, "generated/layout");
-
-    let compiled_circuit = get_delegation_circuit();
-    let (layout, quotient) =
-        verifier_generator::generate_for_description(compiled_circuit.compiled_circuit);
-
-    let mut dst = std::fs::File::create("generated/circuit_layout.rs").unwrap();
-    dst.write_all(&layout.as_bytes()).unwrap();
-
-    let mut dst = std::fs::File::create("generated/quotient.rs").unwrap();
-    dst.write_all(&quotient.as_bytes()).unwrap();
 }
 
 #[cfg(test)]
@@ -129,6 +70,8 @@ mod test {
     #[test]
     fn generate() {
         skip_if_ci!();
-        generate_artifacts();
+        circuit_common::generate_default_delegation_artifacts::<KeccakSpecial5DelegationCircuit>(
+            true,
+        );
     }
 }
