@@ -6101,69 +6101,6 @@ where
         Ok(host)
     }
 
-    fn schedule_runtime_uploads_from_workflow_state(
-        &self,
-        workflow_state: ScheduledBackwardWorkflowStateHandle<E>,
-        context: &ProverContext,
-    ) -> CudaResult<ScheduledMainLayerRuntimeUploads<E>> {
-        let mut callbacks = Callbacks::new();
-        let auxiliary_challenges = schedule_callback_populated_upload(
-            context,
-            self.kernel_plans.len(),
-            &mut callbacks,
-            {
-                let sources = self
-                    .kernel_plans
-                    .iter()
-                    .map(|kernel| kernel.auxiliary_challenge_source)
-                    .collect::<Vec<_>>();
-                move |dst: &mut [E]| unsafe {
-                    let workflow_state = workflow_state.get();
-                    for (dst, source) in dst.iter_mut().zip(sources.iter().copied()) {
-                        *dst = match source {
-                            GpuGKRMainLayerAuxiliaryChallengeSource::Immediate(value) => value,
-                            GpuGKRMainLayerAuxiliaryChallengeSource::LookupAdditive => {
-                                workflow_state.lookup_additive_challenge
-                            }
-                        };
-                    }
-                }
-            },
-        )?;
-        let deferred_constraint_metadata = self
-            .kernel_plans
-            .iter()
-            .map(|kernel| match kernel.constraint_metadata_source.as_ref() {
-                Some(GpuGKRMainLayerConstraintMetadataSource::Deferred(template)) => Ok(Some(
-                    schedule_deferred_main_layer_constraint_metadata_upload(
-                        template,
-                        workflow_state,
-                        context,
-                    )?,
-                )),
-                _ => Ok(None),
-            })
-            .collect::<CudaResult<Vec<_>>>()?;
-        let metadata_pointers = deferred_constraint_metadata
-            .iter()
-            .map(|metadata| constraint_metadata_device_pointers(metadata.as_ref()))
-            .collect::<Vec<_>>();
-        let constraint_metadata_pointers = schedule_callback_populated_upload(
-            context,
-            metadata_pointers.len(),
-            &mut callbacks,
-            move |dst: &mut [GpuGKRMainLayerConstraintMetadataDevicePointers<E>]| {
-                dst.copy_from_slice(&metadata_pointers);
-            },
-        )?;
-        Ok(ScheduledMainLayerRuntimeUploads {
-            callbacks,
-            auxiliary_challenges,
-            deferred_constraint_metadata,
-            constraint_metadata_pointers,
-        })
-    }
-
     /// Schedule eval_recipes on the GPU: populates the 4-scalar challenges buffer
     /// via two D2D copies (batching from the device-resident claim_point,
     /// `[lookup_mul, lookup_add, constraint_batch]` from an orchestrator-scoped
@@ -6608,7 +6545,6 @@ where
                     _phantom: std::marker::PhantomData,
                 }
             },
-            runtime_uploads: None,
             flat_coeff_callbacks,
             recipe_upload_callbacks: std::mem::replace(
                 &mut self.recipe_upload_callbacks,
@@ -6740,8 +6676,6 @@ where
 
         let (batch_challenge_storage, batch_challenge_buffer) =
             self.schedule_batch_challenge_buffer_on_device(context)?;
-        let runtime_uploads =
-            self.schedule_runtime_uploads_from_workflow_state(workflow_state, context)?;
         let flat_coeff_callbacks =
             self.schedule_flat_eval_recipes(device_lookup_and_constraint_ptr, context)?;
         self.schedule_flat_continuation_eval_recipes(context)?;
@@ -7123,7 +7057,6 @@ where
                 callbacks: final_readback_callbacks,
                 _phantom: std::marker::PhantomData,
             },
-            runtime_uploads: Some(runtime_uploads),
             flat_coeff_callbacks,
             recipe_upload_callbacks: std::mem::replace(
                 &mut self.recipe_upload_callbacks,
@@ -7150,7 +7083,6 @@ impl<E: FieldExtension<BF> + Field> GpuGKRMainLayerScheduledLayerExecution<E> {
             round_challenge_buffers: _,
             reduction_states,
             final_readback,
-            runtime_uploads,
             flat_coeff_callbacks,
             recipe_upload_callbacks,
             shared_state,
@@ -7167,7 +7099,6 @@ impl<E: FieldExtension<BF> + Field> GpuGKRMainLayerScheduledLayerExecution<E> {
             round_challenge_storage: challenge_storage_into_host_keepalive(round_challenge_storage),
             reduction_states,
             final_readback,
-            runtime_uploads: runtime_uploads.map(runtime_uploads_into_host_keepalive),
             flat_coeff_callbacks,
             recipe_upload_callbacks,
             shared_state,
