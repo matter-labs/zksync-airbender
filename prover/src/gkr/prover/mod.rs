@@ -341,9 +341,8 @@ where
     let mut seed = Transcript::commit_initial(&transcript_input);
 
     // now we need to draw prove-local challenges, and in our case it's just a challenge for lookups, and challenge to batch all constraints
-    let challenges: Vec<E> = draw_random_field_els(&mut seed, 3);
-    let [lookup_alpha, lookup_additive_part, constraints_batch_challenge] =
-        challenges.try_into().unwrap();
+    let challenges: Vec<E> = draw_random_field_els(&mut seed, 2);
+    let [lookup_alpha, lookup_additive_part] = challenges.try_into().unwrap();
 
     let mut gkr_storage = GKRStorage::<F, E>::default();
 
@@ -413,7 +412,6 @@ where
             lookup_alpha,
             lookup_additive_part,
             decoder_lookup_fill_value,
-            constraints_batch_challenge,
             worker,
         );
     }
@@ -574,7 +572,6 @@ where
             trace_len,
             lookup_alpha,
             lookup_additive_part,
-            constraints_batch_challenge,
             &inits_and_teardowns_top_bits[..],
             address_high_bits_shift,
             external_challenges,

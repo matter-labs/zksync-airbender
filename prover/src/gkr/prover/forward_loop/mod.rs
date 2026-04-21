@@ -126,7 +126,6 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
     lookup_challenges_multiplicative_part: E,
     lookup_challenges_additive_part: E,
     decoder_lookup_fill_value: E,
-    _constraints_batch_challenge: E,
     worker: &Worker,
 ) {
     println!("Evaluating layer {} in forward direction", layer_idx);

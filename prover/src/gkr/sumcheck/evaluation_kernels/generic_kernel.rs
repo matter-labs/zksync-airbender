@@ -15,7 +15,6 @@ pub struct BatchedGKRTermDescriptionConstants<F: PrimeField, E: FieldExtension<F
     pub external_challenges: GKRExternalChallenges<F, E>,
     pub lookup_challenges_multiplicative_part: E,
     pub lookup_challenges_additive_part: E,
-    pub constraints_batch_challenge: E,
     pub _marker: core::marker::PhantomData<F>,
 }
 

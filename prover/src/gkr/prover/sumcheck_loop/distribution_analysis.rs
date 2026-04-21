@@ -14,7 +14,6 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
             },
             lookup_challenges_additive_part: E::ONE,
             lookup_challenges_multiplicative_part: E::ONE,
-            constraints_batch_challenge: E::ONE,
             _marker: core::marker::PhantomData,
         };
         let batched_description = self.make_batched_description(&challenge_constants, self.layer);
@@ -131,16 +130,8 @@ mod test {
         let layer_idx = 0;
         let layer = &circuit.layers[layer_idx];
 
-        let collector = KernelCollector::<F, E>::from_layer(
-            layer,
-            layer_idx,
-            E::ONE,
-            E::ONE,
-            E::ONE,
-            E::ONE,
-            &[],
-            0,
-        );
+        let collector =
+            KernelCollector::<F, E>::from_layer(layer, layer_idx, E::ONE, E::ONE, E::ONE, &[], 0);
 
         collector.analyze_terms();
     }

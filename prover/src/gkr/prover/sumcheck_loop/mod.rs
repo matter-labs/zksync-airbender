@@ -178,7 +178,6 @@ pub fn evaluate_sumcheck_for_layer<F: PrimeField, E: FieldExtension<F> + Field>(
     trace_len: usize,
     lookup_challenges_multiplicative_part: E,
     lookup_challenges_additive_part: E,
-    constraints_batch_challenge: E,
     inits_and_teardowns_top_bits: &[u32],
     address_high_bits_shift: u32,
     external_challenges: &GKRExternalChallenges<F, E>,
@@ -213,7 +212,6 @@ where
         batch_challenge_base,
         lookup_challenges_multiplicative_part,
         lookup_challenges_additive_part,
-        constraints_batch_challenge,
         inits_and_teardowns_top_bits,
         address_high_bits_shift,
     );
@@ -226,7 +224,6 @@ where
         external_challenges: *external_challenges,
         lookup_challenges_multiplicative_part: lookup_challenges_multiplicative_part,
         lookup_challenges_additive_part: lookup_challenges_additive_part,
-        constraints_batch_challenge,
         _marker: core::marker::PhantomData,
     };
 

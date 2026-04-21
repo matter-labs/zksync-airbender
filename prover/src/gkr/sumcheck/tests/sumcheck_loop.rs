@@ -75,7 +75,6 @@ fn test_sumcheck_loop_product() {
 
     let lookup_multiplicative_part = E::from_base(F::from_u64_with_reduction(0xff));
     let lookup_additive_part = E::from_base(F::from_u64_with_reduction(42));
-    let constraints_batch_challenge = E::from_base(F::from_u64_with_reduction(127));
 
     let mut batching_challenge = E::from_base(F::from_u64_with_reduction(0xff));
     let mut seed = Seed::default();
@@ -91,7 +90,6 @@ fn test_sumcheck_loop_product() {
         POLY_SIZE,
         lookup_multiplicative_part,
         lookup_additive_part,
-        constraints_batch_challenge,
         &[],
         0,
         &GKRExternalChallenges::default(),
@@ -233,7 +231,6 @@ fn test_sumcheck_loop_multiple_gates() {
 
     let lookup_multiplicative_part = E::from_base(F::from_u64_with_reduction(0xff));
     let lookup_additive_part = E::from_base(F::from_u64_with_reduction(42));
-    let constraints_batch_challenge = E::from_base(F::from_u64_with_reduction(127));
 
     let mut batching_challenge = E::from_base(F::from_u64_with_reduction(0xff));
     let mut seed = Seed::default();
@@ -249,7 +246,6 @@ fn test_sumcheck_loop_multiple_gates() {
         POLY_SIZE,
         lookup_multiplicative_part,
         lookup_additive_part,
-        constraints_batch_challenge,
         &[],
         0,
         &GKRExternalChallenges::default(),
