@@ -56,15 +56,7 @@ pub enum LookupType {
     Generic,
 }
 
-#[derive(
-    Clone, Copy, Debug, Hash, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
-)]
-pub enum OutputType {
-    PermutationProduct = 0,
-    Lookup16Bits,
-    LookupTimestamps,
-    GenericLookup,
-}
+pub use crate::definitions::OutputType;
 
 #[derive(Default)]
 pub struct GKRCompiler<F: PrimeField> {

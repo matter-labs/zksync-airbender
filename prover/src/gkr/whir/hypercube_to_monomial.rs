@@ -5,7 +5,7 @@ pub fn multivariate_coeffs_into_hypercube_evals<F: Field>(input: &mut [F], size_
 
     // e.g. we have a poly over X1 and X2 of c0 + c1 X1 + c2 X2 + c3 X1X2
     // and want to compute evaluations at (0, 0), (1, 0), (0, 1), and (1, 1) (and output in this order, so X1 is most-signinicant digit in enumeration)
-    // Coeffient at index [i] is one for the term where coefficient in front of X1 is get_bit(i, 0), coefficient for X2 is get_bit(i, 1) and so on.
+    // Coefficient at index [i] is one for the term where coefficient in front of X1 is get_bit(i, 0), coefficient for X2 is get_bit(i, 1) and so on.
     // This naturally corresponds to the mapping into univariate poly if X1 = X, X2 = X^2 and so on - then index [i] is just a coefficient for X^i
 
     // Evaluation procedure is very much like FFT - it's recursive, but out evaluation basis is not polynomial, even though highly structured.

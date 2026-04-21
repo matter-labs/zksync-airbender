@@ -8,6 +8,7 @@ mod leaf_inclusion_verifier;
 mod optimal_folding;
 pub mod sumcheck_kernel;
 
+#[cfg(feature = "prover")]
 use crate::gkr::prover::GKRExternalChallenges;
 use crate::utils::mersenne_quartic_from_base_coeffs;
 use crate::utils::mersenne_quartic_into_base_coeffs;
@@ -771,6 +772,7 @@ impl LazyInitAndTeardown {
 }
 
 /// (value, timestamp) for registers
+#[cfg(feature = "prover")]
 pub fn produce_initial_permutation_product_contribution<
     F: PrimeField,
     E: FieldExtension<F> + Field,

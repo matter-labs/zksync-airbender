@@ -1,4 +1,3 @@
 /target
-# Here app.bin is depending on the verifier code that keeps changing.
-app.bin
+app.*
 Cargo.lock

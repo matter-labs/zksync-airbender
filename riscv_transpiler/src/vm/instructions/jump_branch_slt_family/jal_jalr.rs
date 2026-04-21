@@ -3,8 +3,8 @@ use super::*;
 #[inline(always)]
 pub(crate) fn jal<C: Counters, S: Snapshotter<C>, R: RAM>(
     state: &mut State<C>,
-    ram: &mut R,
-    snapshotter: &mut S,
+    _ram: &mut R,
+    _snapshotter: &mut S,
     instr: Instruction,
 ) {
     debug_assert_eq!(instr.rs1, 0);
@@ -26,8 +26,8 @@ pub(crate) fn jal<C: Counters, S: Snapshotter<C>, R: RAM>(
 #[inline(always)]
 pub(crate) fn jalr<C: Counters, S: Snapshotter<C>, R: RAM>(
     state: &mut State<C>,
-    ram: &mut R,
-    snapshotter: &mut S,
+    _ram: &mut R,
+    _snapshotter: &mut S,
     instr: Instruction,
 ) {
     debug_assert_eq!(instr.rs2, 0);

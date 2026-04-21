@@ -129,7 +129,7 @@ fn apply_shift_binop_inner<F: PrimeField, CS: Circuit<F>>(
     // of the immediate with rs2 value
     // - for shifts we take lowest 2 bytes of rs2 and feed it into table to truncate shift amount and ensure correct byte
     // decomposition. Then we use 2 tables: each takes as an input 8-bit chunk of the word, shift amount (5 bits), and funct3, and output
-    // contrubutions to every other output word 8-bit chunk. One table is for the highest byte (for SRA), and another one for all other bytes
+    // contributions to every other output word 8-bit chunk. One table is for the highest byte (for SRA), and another one for all other bytes
 
     // scratch space
     // - for binary ops we need just 5: one for sign-extension of the immediate, and 4 for outputs
@@ -438,10 +438,7 @@ mod test {
             &|cs| shift_binop_table_addition_fn(cs),
             &|cs| shift_binop_circuit_with_preprocessed_bytecode_for_gkr(cs),
         );
-        serialize_to_file(
-            &ssa_forms,
-            "compiled_circuits/shift_binop_preprocessed_ssa_gkr.json",
-        );
+        serialize_to_file(&ssa_forms, "compiled_circuits/shift_binop_ssa_gkr.json");
     }
 
     #[test]

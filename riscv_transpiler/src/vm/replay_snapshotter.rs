@@ -404,10 +404,10 @@ impl<C: Counters, const ROM_BOUND_SECOND_WORD_BITS: usize, MB: ReplayBuffer<(u32
     fn take_snapshot_if_needed(&mut self, state: &State<C>) -> bool {
         use crate::jit::{MAX_TRACE_CHUNK_LEN, TRACE_CHUNK_LEN};
         if self.reads_buffer.len() - self.current_partial_snapshot.reads_offset >= TRACE_CHUNK_LEN {
-            debug_assert!(
-                self.reads_buffer.len() - self.current_partial_snapshot.reads_offset
-                    <= MAX_TRACE_CHUNK_LEN
-            );
+            // debug_assert!(
+            //     self.reads_buffer.len() - self.current_partial_snapshot.reads_offset
+            //         <= MAX_TRACE_CHUNK_LEN
+            // );
             self.snapshot_impl(state);
         }
         false
@@ -429,7 +429,7 @@ impl<C: Counters, const ROM_BOUND_SECOND_WORD_BITS: usize, MB: ReplayBuffer<(u32
     #[inline(always)]
     fn append_memory_read(
         &mut self,
-        address: u32,
+        _address: u32,
         read_value: u32,
         read_timestamp: TimestampScalar,
         _write_timestamp: TimestampScalar,

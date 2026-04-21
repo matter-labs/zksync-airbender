@@ -77,6 +77,50 @@ impl Blake2sTranscript {
         *seed = Seed(hasher.read_state_for_output());
     }
 
+    /// Commit from a pre-arranged aligned buffer where `[seed | data | zero-padding]` is
+    /// already laid out in 16-word aligned blocks. Avoids the memcopy that `commit_with_seed`
+    /// performs. Unused words in the last block must be zeroed by the caller.
+    /// `total_words` is the number of meaningful words (seed + data, excluding padding).
+    #[cfg(any(feature = "blake2_with_compression", feature = "blake2_g_function"))]
+    #[inline(always)]
+    pub fn commit_with_seed_using_hasher_and_aligned_buffer<const N: usize>(
+        hasher: &mut blake2s_u32::DelegatedBlake2sState,
+        seed: &mut Seed,
+        buf: &AlignedArray64<u32, N>,
+        total_words: usize,
+    ) {
+        hasher.reset();
+        let num_full_blocks = total_words / BLAKE2S_BLOCK_SIZE_U32_WORDS;
+        let last_block_words = total_words % BLAKE2S_BLOCK_SIZE_U32_WORDS;
+        let num_blocks = num_full_blocks + if last_block_words > 0 { 1 } else { 0 };
+        unsafe {
+            for i in 0..num_blocks - 1 {
+                let block_ptr = (buf.as_ptr()).add(i * BLAKE2S_BLOCK_SIZE_U32_WORDS);
+                let block =
+                    &*(block_ptr as *const AlignedArray64<u32, BLAKE2S_BLOCK_SIZE_U32_WORDS>);
+                hasher.run_round_function_with_input::<USE_REDUCED_BLAKE2_ROUNDS>(
+                    block,
+                    BLAKE2S_BLOCK_SIZE_U32_WORDS,
+                    false,
+                );
+            }
+            let last_ptr = (buf.as_ptr()).add((num_blocks - 1) * BLAKE2S_BLOCK_SIZE_U32_WORDS);
+            let last_block =
+                &*(last_ptr as *const AlignedArray64<u32, BLAKE2S_BLOCK_SIZE_U32_WORDS>);
+            let last_active = if last_block_words > 0 {
+                last_block_words
+            } else {
+                BLAKE2S_BLOCK_SIZE_U32_WORDS
+            };
+            hasher.run_round_function_with_input::<USE_REDUCED_BLAKE2_ROUNDS>(
+                last_block,
+                last_active,
+                true,
+            );
+        }
+        *seed = Seed(hasher.read_state_for_output());
+    }
+
     unsafe fn commit_inner(
         hasher: &mut blake2s_u32::DelegatedBlake2sState,
         input: &[u32],

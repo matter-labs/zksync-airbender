@@ -194,108 +194,70 @@ pub(crate) fn verify_cache_relations<F: PrimeField, E: FieldExtension<F> + Field
     layer_desc: &GKRLayerDescription,
     claims: &BTreeMap<GKRAddress, E>,
     external_challenges: &GKRExternalChallenges<F, E>,
-    lookup_multiplicative_constant: E,
+    lookup_alpha: E,
 ) -> bool {
     println!("Self-checking cache relations");
     for (cached_addr, relation) in layer_desc.cached_relations.iter() {
+        let cached_claim = match claims.get(cached_addr) {
+            Some(v) => *v,
+            None => {
+                panic!("Missing claim for cached address {:?}", cached_addr);
+            }
+        };
         match relation {
             NoFieldGKRCacheRelation::MemoryTuple(rel) => {
-                let cached_claim = match claims.get(cached_addr) {
-                    Some(v) => *v,
-                    None => {
-                        panic!(
-                            "Missing claim for cached address {:?} for relation {:?}",
-                            cached_addr, rel
-                        );
-                    }
-                };
-
                 let expected = evaluate_memory_tuple_from_claims(rel, claims, external_challenges);
 
                 if expected != cached_claim {
                     println!(
-                        "Memory tuple {:?} claim failure: expected {}, got {}",
-                        rel, expected, cached_claim
+                        "MemoryTuple cache relation mismatch at {:?}: expected {:?}, got {:?}",
+                        cached_addr, expected, cached_claim
                     );
                     return false;
                 }
             }
-            NoFieldGKRCacheRelation::SingleColumnLookup { relation, .. } => {
-                let cached_claim = match claims.get(cached_addr) {
-                    Some(v) => *v,
-                    None => {
-                        panic!(
-                            "Missing claim for cached address {:?} for relation {:?}",
-                            cached_addr, relation
-                        );
-                    }
-                };
-
-                let expected = evaluate_linear_relation(&relation.input, claims);
-
+            NoFieldGKRCacheRelation::SingleColumnLookup {
+                relation,
+                range_check_width: _,
+            } => {
+                // cached[row] = sum(coeff * dep[row]) + constant (linear relation)
+                let expected =
+                    evaluate_linear_relation_from_claims::<F, E>(&relation.input, claims);
                 if expected != cached_claim {
                     println!(
-                        "Single column lookup {:?} claim failure: expected {}, got {}",
-                        relation, expected, cached_claim
+                        "SingleColumnLookup cache relation mismatch at {:?}: expected {:?}, got {:?}",
+                        cached_addr, expected, cached_claim
                     );
                     return false;
                 }
             }
-            NoFieldGKRCacheRelation::VectorizedLookup(no_field_vector_lookup_relation) => {
-                let cached_claim = match claims.get(cached_addr) {
-                    Some(v) => *v,
-                    None => {
-                        panic!(
-                            "Missing claim for cached address {:?} for relation {:?}",
-                            cached_addr, no_field_vector_lookup_relation
-                        );
-                    }
-                };
-
-                let mut expected =
-                    evaluate_linear_relation(&no_field_vector_lookup_relation.columns[0], claims);
-                let mut challenge = lookup_multiplicative_constant;
-                for rel in no_field_vector_lookup_relation.columns[1..].iter() {
-                    let mut t = evaluate_linear_relation(rel, claims);
-                    t.mul_assign(&challenge);
+            NoFieldGKRCacheRelation::VectorizedLookup(rel) => {
+                // cached[row] = sum_j alpha^j * column_j(row), where column_j is a linear relation
+                let expected =
+                    evaluate_vectorized_lookup_from_claims::<F, E>(rel, claims, lookup_alpha);
+                if expected != cached_claim {
+                    println!(
+                        "VectorizedLookup cache relation mismatch at {:?}: expected {:?}, got {:?}",
+                        cached_addr, expected, cached_claim
+                    );
+                    return false;
+                }
+            }
+            NoFieldGKRCacheRelation::VectorizedLookupSetup(setup_addrs) => {
+                // cached[row] = sum_j alpha^j * setup_col_j[row]
+                let mut expected = E::ZERO;
+                let mut alpha_power = E::ONE;
+                for addr in setup_addrs.iter() {
+                    let claim = claims[addr];
+                    let mut t = alpha_power;
+                    t.mul_assign(&claim);
                     expected.add_assign(&t);
-
-                    challenge.mul_assign(&lookup_multiplicative_constant);
+                    alpha_power.mul_assign(&lookup_alpha);
                 }
-
                 if expected != cached_claim {
                     println!(
-                        "Vector lookup {:?} claim failure: expected {}, got {}",
-                        relation, expected, cached_claim
-                    );
-                    return false;
-                }
-            }
-            NoFieldGKRCacheRelation::VectorizedLookupSetup(items) => {
-                let cached_claim = match claims.get(cached_addr) {
-                    Some(v) => *v,
-                    None => {
-                        panic!(
-                            "Missing claim for cached address {:?} for vectorized lookup setup",
-                            cached_addr
-                        );
-                    }
-                };
-
-                let mut expected = claims[&items[0]];
-                let mut challenge = lookup_multiplicative_constant;
-                for address in items[1..].iter() {
-                    let mut t = claims[address];
-                    t.mul_assign(&challenge);
-                    expected.add_assign(&t);
-
-                    challenge.mul_assign(&lookup_multiplicative_constant);
-                }
-
-                if expected != cached_claim {
-                    println!(
-                        "Vector lookup setup claim failure: expected {}, got {}",
-                        expected, cached_claim
+                        "VectorizedLookupSetup cache relation mismatch at {:?}: expected {:?}, got {:?}",
+                        cached_addr, expected, cached_claim
                     );
                     return false;
                 }
@@ -303,6 +265,36 @@ pub(crate) fn verify_cache_relations<F: PrimeField, E: FieldExtension<F> + Field
         }
     }
     true
+}
+
+fn evaluate_linear_relation_from_claims<F: PrimeField, E: FieldExtension<F> + Field>(
+    rel: &cs::definitions::gkr::NoFieldLinearRelation,
+    claims: &BTreeMap<GKRAddress, E>,
+) -> E {
+    let mut result = E::from_base(F::from_u32_unchecked(rel.constant));
+    for &(coeff, addr) in rel.linear_terms.iter() {
+        let mut t = claims[&addr];
+        t.mul_assign_by_base(&F::from_u32_unchecked(coeff));
+        result.add_assign(&t);
+    }
+    result
+}
+
+fn evaluate_vectorized_lookup_from_claims<F: PrimeField, E: FieldExtension<F> + Field>(
+    rel: &cs::definitions::gkr::NoFieldVectorLookupRelation,
+    claims: &BTreeMap<GKRAddress, E>,
+    lookup_alpha: E,
+) -> E {
+    let mut result = E::ZERO;
+    let mut alpha_power = E::ONE;
+    for column in rel.columns.iter() {
+        let col_eval = evaluate_linear_relation_from_claims::<F, E>(column, claims);
+        let mut t = alpha_power;
+        t.mul_assign(&col_eval);
+        result.add_assign(&t);
+        alpha_power.mul_assign(&lookup_alpha);
+    }
+    result
 }
 
 fn evaluate_memory_tuple_from_claims<F: PrimeField, E: FieldExtension<F> + Field>(

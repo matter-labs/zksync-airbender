@@ -208,7 +208,7 @@ pub(crate) const fn keccak_special5_impl_extract_indices(
     };
 
     const PERMUTATIONS_ADJUSTED_AS_ARRAYS: [[usize; 25]; 25] =
-        { unsafe { core::mem::transmute(PERMUTATIONS_ADJUSTED) } };
+        unsafe { core::mem::transmute(PERMUTATIONS_ADJUSTED) };
 
     match precompile {
         PRECOMPILE_IOTA_COLUMNXOR => {
@@ -244,7 +244,7 @@ pub(crate) const fn keccak_special5_impl_extract_indices(
             [idx0, idx5, idx10, idx15, idx20, 25]
         }
         PRECOMPILE_CHI1 => {
-            let pi = &PERMUTATIONS_ADJUSTED_AS_ARRAYS[(round + 1)]; // indices after applying round permutation
+            let pi = &PERMUTATIONS_ADJUSTED_AS_ARRAYS[round + 1]; // indices after applying round permutation
             let idx = iteration * 5;
             let _idx0 = pi[idx];
             let idx1 = pi[idx + 1];
@@ -254,7 +254,7 @@ pub(crate) const fn keccak_special5_impl_extract_indices(
             [idx1, idx2, idx3, idx4, 25, 26]
         }
         PRECOMPILE_CHI2 => {
-            let pi = &PERMUTATIONS_ADJUSTED_AS_ARRAYS[(round + 1)]; // indices after applying round permutation
+            let pi = &PERMUTATIONS_ADJUSTED_AS_ARRAYS[round + 1]; // indices after applying round permutation
             let idx = iteration * 5;
             let idx0 = pi[idx];
             let _idx1 = pi[idx + 1];

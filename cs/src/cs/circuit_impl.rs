@@ -1336,7 +1336,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
         };
         self.set_values(value_fn);
 
-        // not make a final state - opcode family circuit is reponsible to create a PC,
+        // not make a final state - opcode family circuit is responsible to create a PC,
         // and timestamps bump comes from compiler
 
         let final_pc: [Variable; 2] =

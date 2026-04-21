@@ -5151,9 +5151,9 @@
     "45": "bit 1 for computed next PC",
     "46": "selected rd[0]",
     "47": "selected rd[1]",
-    "48": "query 0, interm ts borrow",
-    "49": "query 1, interm ts borrow",
-    "50": "query 2, interm ts borrow",
+    "48": "query 0, interim ts borrow",
+    "49": "query 1, interim ts borrow",
+    "50": "query 2, interim ts borrow",
     "51": "Multiplicity for range check 16",
     "52": "Multiplicity for timestamp range check",
     "53": "Multiplicity for generic lookup"

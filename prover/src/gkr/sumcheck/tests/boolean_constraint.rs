@@ -74,7 +74,7 @@ fn test_boolean_constraints() {
 
     let batching_challenges = vec![E::ONE];
 
-    let mut claim = E::ZERO; // constraints are satisified, so randomized sum is also 0
+    let mut claim = E::ZERO; // constraints are satisfied, so randomized sum is also 0
 
     dbg!(&batching_challenges);
 

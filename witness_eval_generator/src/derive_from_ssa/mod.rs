@@ -490,11 +490,9 @@ mod test {
             "bigint_with_extended_control",
             "keccak_special5",
         ] {
-            let compiled_circuit: GKRCircuitArtifact<BabyBearField> =
-                deserialize_from_file(&format!(
-                    "../cs/compiled_circuits/{}_layout_no_caches_gkr.json",
-                    prefix
-                ));
+            let compiled_circuit: GKRCircuitArtifact<BabyBearField> = deserialize_from_file(
+                &format!("../cs/compiled_circuits/{}_no_caches_gkr.json", prefix),
+            );
             let compiled_graph: Vec<Vec<RawExpression<BabyBearField>>> =
                 deserialize_from_file(&format!("../cs/compiled_circuits/{}_ssa_gkr.json", prefix));
             let full_stream =

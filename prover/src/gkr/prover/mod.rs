@@ -457,6 +457,7 @@ where
             worker,
         );
 
+    #[cfg(feature = "gkr_self_checks")]
     assert!(debug_utils::check_logup_identity_after_dimension_reduction(
         &dimension_reducing_inputs,
         &gkr_storage,

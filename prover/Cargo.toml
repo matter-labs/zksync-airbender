@@ -54,6 +54,8 @@ timing_logs = []
 debug_satisfiable = []
 # self-checks (logup identity, cache verification, claim verification, whir consistency)
 gkr_self_checks = []
+# When set, prover tests load no-caches circuit variants
+no_caches = []
 # Will perform witness evaluation in synthesis functions
 cs_debug = ["cs/debug_evaluate_witness"]
 # Print detailed debug logs

@@ -10,7 +10,7 @@
 // - Prover and verifier can engage in more than 1 sumcheck steps (here the tradeoff is less steps later, but more accesses to F0 oracle)
 // ---- Steps below are recursive, but we only use indexes 0/1 for clarity. Each step NUM_QUERIES also differs
 // - At this moment we would have something like
-// claim_0 = \sum_{x/folded coordiantes} eq(r1, r2, r3, x4, x5, ... y^0, y^1, y^2, y^4, ...) f(r1, r2, r3, x4, x5, ...)
+// claim_0 = \sum_{x/folded coordinates} eq(r1, r2, r3, x4, x5, ... y^0, y^1, y^2, y^4, ...) f(r1, r2, r3, x4, x5, ...)
 // - Now prover sends an oracle F1 to f1(x4, x5, ...) = f(r1, r2, r3, x4, x5, ...) at domain L1. Note that "degree" of f1(x4, x5, ...)
 // is smaller that of original f(x), but prover can decrease the rate for further iterations of the protocol
 // - As in STIR, we want to perform out of domain sampling. So, we draw OOD point y1 and prover sends evaluation of f1(y1^0, y1^1, ...) = z1
@@ -75,8 +75,8 @@ use crate::gkr::PAR_THRESHOLD;
 use crate::query_utils::assemble_query_index;
 use crate::{gkr::prover::apply_row_wise, merkle_trees::ColumnMajorMerkleTreeConstructor};
 use fft::{
-    batch_inverse_inplace, bitreverse_enumeration_inplace, domain_generator_for_size,
-    materialize_powers_serial_starting_with_one, Twiddles,
+    batch_inverse_inplace, bitreverse_enumeration_inplace, bitreverse_index,
+    domain_generator_for_size, materialize_powers_serial_starting_with_one, Twiddles,
 };
 use field::{Field, FieldExtension, PrimeField, TwoAdicField};
 use std::alloc::Global;
@@ -151,20 +151,87 @@ impl<F: PrimeField + TwoAdicField, T: ColumnMajorMerkleTreeConstructor<F>>
         &self,
         index: usize,
     ) -> (usize, Vec<Vec<F>>, BaseFieldQuery<F, T>) {
-        let coset_index = index & (self.cosets.len() - 1);
-        let internal_index = index / self.cosets.len();
-        assert!(internal_index < (1 << self.trace_len_log2) / self.values_per_leaf);
+        let num_cosets = self.cosets.len();
+        let coset_index = index & (num_cosets - 1);
+        let internal_index = index / num_cosets;
+        let coset_tree_size = (1 << self.trace_len_log2) / self.values_per_leaf;
+        assert!(internal_index < coset_tree_size);
         let values =
             self.cosets[coset_index].values_for_folded_index(internal_index, self.values_per_leaf);
 
-        let (_, path) = self.tree.get_proof(index);
+        // Tree leaves are laid out sequentially by coset (with bit-reversed coset
+        // order).  For 2 cosets the bit-reversal is identity, so the tree index is
+        // simply coset_index * coset_tree_size + internal_index.
+        let coset_dest_index = bitreverse_index(coset_index, num_cosets.trailing_zeros());
+        let tree_index = coset_dest_index * coset_tree_size + internal_index;
+
+        let (_leaf_hash, path) = self.tree.get_proof(tree_index);
+
+        #[cfg(feature = "gkr_self_checks")]
+        {
+            let recomputed = Self::compute_base_field_leaf_hash(
+                &self.cosets[coset_index],
+                internal_index,
+                self.values_per_leaf,
+            );
+            assert_eq!(
+                recomputed, _leaf_hash,
+                "Leaf hash mismatch at query_index={index}, tree_index={tree_index}"
+            );
+        }
+
         let query = BaseFieldQuery::<F, T> {
-            index,
+            index: tree_index,
             leaf_values_concatenated: values.iter().flatten().copied().collect(),
             path,
             _marker: core::marker::PhantomData,
         };
         (coset_index, values, query)
+    }
+
+    /// Hash leaf data the same way `blake2s_leaf_hashes_from_cosets` does:
+    /// column-major with bit-reversed offsets.
+    #[cfg(feature = "gkr_self_checks")]
+    fn compute_base_field_leaf_hash(
+        coset: &ColumnMajorBaseOracleForCoset<F>,
+        internal_index: usize,
+        values_per_leaf: usize,
+    ) -> [u32; 8] {
+        use blake2s_u32::{Blake2sState, BLAKE2S_BLOCK_SIZE_U32_WORDS};
+
+        let trace_len = 1 << coset.trace_len_log2;
+        let offsets = offsets_vec_for_leaf_construction(trace_len, values_per_leaf);
+
+        let mut buffer = Vec::new();
+        for col in coset.original_values_normal_order.iter() {
+            for &offset in offsets.iter() {
+                buffer.push(col.column[offset + internal_index].as_u32_raw_repr_reduced());
+            }
+        }
+
+        let mut h = Blake2sState::new();
+        let num_words = buffer.len();
+        let num_full_blocks = num_words / BLAKE2S_BLOCK_SIZE_U32_WORDS;
+        let remainder = num_words % BLAKE2S_BLOCK_SIZE_U32_WORDS;
+        let mut output = [0u32; 8];
+
+        for block_idx in 0..num_full_blocks {
+            let block_start = block_idx * BLAKE2S_BLOCK_SIZE_U32_WORDS;
+            let block: &[u32; BLAKE2S_BLOCK_SIZE_U32_WORDS] = unsafe {
+                &*(buffer.as_ptr().add(block_start) as *const [u32; BLAKE2S_BLOCK_SIZE_U32_WORDS])
+            };
+            if block_idx == num_full_blocks - 1 && remainder == 0 {
+                h.absorb_final_block::<true>(block, BLAKE2S_BLOCK_SIZE_U32_WORDS, &mut output);
+                return output;
+            }
+            h.absorb::<true>(block);
+        }
+
+        let mut last_block = [0u32; BLAKE2S_BLOCK_SIZE_U32_WORDS];
+        let tail_start = num_full_blocks * BLAKE2S_BLOCK_SIZE_U32_WORDS;
+        last_block[..remainder].copy_from_slice(&buffer[tail_start..]);
+        h.absorb_final_block::<true>(&last_block, remainder, &mut output);
+        output
     }
 }
 
@@ -282,13 +349,19 @@ impl<
         &self,
         index: usize,
     ) -> (usize, Vec<E>, ExtensionFieldQuery<F, E, T>) {
-        let coset_index = index & (self.cosets.len() - 1);
-        let internal_index = index / self.cosets.len();
+        let num_cosets = self.cosets.len();
+        let coset_index = index & (num_cosets - 1);
+        let internal_index = index / num_cosets;
+        let coset_tree_size = (1 << self.trace_len_log2) / self.values_per_leaf;
         let values =
             self.cosets[coset_index].values_for_folded_index(internal_index, self.values_per_leaf);
-        let (_leaf_hash, path) = self.tree.get_proof(index);
+
+        let coset_dest_index = bitreverse_index(coset_index, num_cosets.trailing_zeros());
+        let tree_index = coset_dest_index * coset_tree_size + internal_index;
+
+        let (_leaf_hash, path) = self.tree.get_proof(tree_index);
         let query = ExtensionFieldQuery {
-            index,
+            index: tree_index,
             leaf_values_concatenated: values.clone(),
             path,
             _marker: core::marker::PhantomData,
@@ -691,7 +764,7 @@ where
 
         // now can draw challenges
 
-        // and we can immediatelly query all the original oracles, and drop them. For that we need to draw indexes
+        // and we can immediately query all the original oracles, and drop them. For that we need to draw indexes
         let query_domain_size = 1u64 << query_domain_log2;
 
         let query_domain_generator = domain_generator_for_size::<F>(query_domain_size);
@@ -735,7 +808,6 @@ where
         }
         let mut current_delinearization_challenge = delinearization_challenge;
         current_delinearization_challenge.square();
-
         for &query_index in query_indexes.iter() {
             assert!(query_index < query_domain_size as usize);
             let query_point = query_domain_generator.pow(query_index as u32);
@@ -799,10 +871,10 @@ where
 
             // and add into sumcheck claim
             contributions_to_eq_poly_with_base_points
-                .push((query_point, delinearization_challenge));
+                .push((query_point, current_delinearization_challenge));
             {
                 let mut t = folded;
-                t.mul_assign(&delinearization_challenge);
+                t.mul_assign(&current_delinearization_challenge);
                 claim_correction.add_assign(&t);
             }
             current_delinearization_challenge.mul_assign(&delinearization_challenge);
@@ -840,7 +912,7 @@ where
         drop(mem_oracle);
         drop(wit_oracle);
 
-        // we now update the equality poly - initially we had eq(X, original_evalution_point), from which we folded few coordinates.
+        // we now update the equality poly - initially we had eq(X, original_evaluation_point), from which we folded few coordinates.
         // Now we should add more terms there to reflect OOD and in-domain samples
         update_eq_poly(
             eq_poly,
@@ -859,7 +931,7 @@ where
         num_internal_whir_steps
     );
 
-    // now we step into recursive procesure over one batched polynomial and it's evals. Our sequence is
+    // now we step into recursive procedure over one batched polynomial and it's evals. Our sequence is
     // - fold
     // - RS code word computation and commit
     // - query previous(!) RS oracle
@@ -974,15 +1046,15 @@ where
                 tree_cap_size,
                 worker,
             );
-            proof
-                .intermediate_whir_oracles
-                .push(WhirIntermediateCommitmentAndQueries {
-                    commitment: WhirCommitment {
-                        cap: next_oracle.tree.get_cap(),
-                        _marker: core::marker::PhantomData,
-                    },
-                    queries: vec![],
-                });
+            let c = WhirIntermediateCommitmentAndQueries {
+                commitment: WhirCommitment {
+                    cap: next_oracle.tree.get_cap(),
+                    _marker: core::marker::PhantomData,
+                },
+                queries: vec![],
+            };
+            add_whir_commitment_to_transcript(&mut transcript_seed, &c.commitment);
+            proof.intermediate_whir_oracles.push(c);
             core::mem::replace(&mut rs_oracle, next_oracle)
         };
 
@@ -992,6 +1064,7 @@ where
         // compute OOD value
         let ood_value =
             evaluate_monomial_form(&sumchecked_poly_monomial_form[..], &ood_point, worker);
+        commit_field_els(&mut transcript_seed, &[ood_value]);
         #[cfg(feature = "gkr_self_checks")]
         {
             let pows = make_pows(
@@ -1085,10 +1158,10 @@ where
 
             // and add into sumcheck claim
             contributions_to_eq_poly_with_base_points
-                .push((query_point, delinearization_challenge));
+                .push((query_point, current_delinearization_challenge));
             {
                 let mut t = folded;
-                t.mul_assign(&delinearization_challenge);
+                t.mul_assign(&current_delinearization_challenge);
                 claim_correction.add_assign(&t);
             }
             current_delinearization_challenge.mul_assign(&delinearization_challenge);
@@ -1123,7 +1196,7 @@ where
         #[cfg(not(feature = "gkr_self_checks"))]
         query_references.clear();
 
-        // we now update the equality poly - initially we had eq(X, original_evalution_point), from which we folded few coordinates.
+        // we now update the equality poly - initially we had eq(X, original_evaluation_point), from which we folded few coordinates.
         // Now we should add more terms there to reflect OOD and in-domain samples
         update_eq_poly(
             eq_poly,
@@ -1220,6 +1293,9 @@ where
             assert_eq!(full_sum, claim);
         }
 
+        // commit final-round monomials before drawing queries
+        commit_field_els(&mut transcript_seed, &sumchecked_poly_monomial_form);
+
         // query
 
         let rs_oracle_to_query = rs_oracle;
@@ -1311,6 +1387,21 @@ where
     assert!(whir_steps_schedule.next().is_none());
     assert!(whir_queries_schedule.next().is_none());
     assert!(whir_pow_schedule.next().is_none());
+
+    proof.final_monomials = sumchecked_poly_monomial_form;
+
+    #[cfg(feature = "gkr_self_checks")]
+    {
+        let final_len = 1usize << final_poly_log2;
+        let mut hypercube_evals = proof.final_monomials.clone();
+        multivariate_coeffs_into_hypercube_evals(&mut hypercube_evals, final_poly_log2 as u32);
+        bitreverse_enumeration_inplace(&mut hypercube_evals);
+        assert_eq!(
+            &hypercube_evals[..],
+            &sumchecked_poly_evaluation_form_vec[..final_len],
+            "final monomials → hypercube evals mismatch"
+        );
+    }
 
     proof
 }
