@@ -77,6 +77,7 @@ pub struct ProverContext {
     exec_stream: CudaStream,
     aux_streams: [CudaStream; AUX_STREAM_POOL_SIZE],
     h2d_stream: CudaStream,
+    d2h_stream: CudaStream,
     device_allocator_mem_size: usize,
     device_id: i32,
     device_properties: DeviceProperties,
@@ -141,6 +142,7 @@ impl ProverContext {
             })
         };
         let h2d_stream = CudaStream::create()?;
+        let d2h_stream = CudaStream::create()?;
         let mut device_blocks_count =
             if let Some(max_blocks_count) = config.max_device_allocation_blocks_count {
                 max_blocks_count
@@ -201,6 +203,7 @@ impl ProverContext {
             exec_stream,
             aux_streams,
             h2d_stream,
+            d2h_stream,
             device_allocator_mem_size,
             device_id,
             device_properties,
@@ -233,6 +236,15 @@ impl ProverContext {
 
     pub fn get_h2d_stream(&self) -> &CudaStream {
         &self.h2d_stream
+    }
+
+    /// Device-to-host transfer stream. Use for D2H copies (and their consumer callbacks) that
+    /// would otherwise serialize on `exec_stream`. Producers on `exec_stream` hand off to
+    /// `d2h_stream` via a fork event; `d2h_stream` joins back via a second event before the next
+    /// exec-stream op that reads what d2h wrote or frees a pool-backed source. See
+    /// `docs/gpu_scheduling_contract.md` for the fork/join/drop ownership rules.
+    pub fn get_d2h_stream(&self) -> &CudaStream {
+        &self.d2h_stream
     }
 
     pub fn alloc<T>(

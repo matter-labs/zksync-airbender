@@ -604,12 +604,19 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
         context.alloc(2, AllocationPlacement::BestFit)?;
     crate::ops::blake2s::transcript_squeeze_e4(&mut d_seed, &mut d_lookup_challenges, stream)?;
 
-    // D2H the 2 lookup challenges into a host pinned slot consumed by the post-forward callback.
-    // The seed stays on device through the post-forward commit+squeeze; it is D2H'd later, once
-    // it has absorbed the forward explicit evaluations and been used to squeeze the evaluation
-    // point + batching challenge on device.
+    // D2H the 2 lookup challenges onto `d2h_stream` via a fork/join pair: exec records
+    // `src_lookup_ready` after the squeeze; d2h waits, then copies. The local join
+    // `d2h_lookup_done` is awaited on exec_stream before `forward_setup.into_host_keepalive()`
+    // drops `d_lookup_challenges`, satisfying the fork/join/drop rule in
+    // `docs/gpu_scheduling_contract.md`.
     let mut lookup_challenges_host = unsafe { context.alloc_host_uninit_slice::<E4>(2) };
-    memory_copy_async(&mut lookup_challenges_host, &d_lookup_challenges, stream)?;
+    let src_lookup_ready = CudaEvent::create_with_flags(CudaEventCreateFlags::DISABLE_TIMING)?;
+    src_lookup_ready.record(stream)?;
+    let d2h_stream = context.get_d2h_stream();
+    d2h_stream.wait_event(&src_lookup_ready, CudaStreamWaitEventFlags::DEFAULT)?;
+    memory_copy_async(&mut lookup_challenges_host, &d_lookup_challenges, d2h_stream)?;
+    let d2h_lookup_done = CudaEvent::create_with_flags(CudaEventCreateFlags::DISABLE_TIMING)?;
+    d2h_lookup_done.record(d2h_stream)?;
 
     // `d_bucket2` and `d_transcript_input` can be dropped: exec_stream has queued all reads.
     drop(d_bucket2);
@@ -664,23 +671,21 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
         stream,
     )?;
 
-    // D2H only the squeezed (evaluation_point || batching_challenge) pair into a host pinned
-    // slot for the post-forward callback. The seed stays on device and is threaded into the
-    // first backward layer as its `device_seed` — no D2H, no H2D. The device buffer itself
-    // flows into the first backward layer as `initial_d_claim_point_and_batching`: it holds
-    // the first layer's claim_point (`final_trace_size_log_2` entries) followed by its
-    // batching challenge (1 entry), matching the `round_scratch.claim_point` layout.
+    // Allocate the (evaluation_point || batching_challenge) pinned host slot; the D2H is
+    // deferred to the post-forward fork/join window on d2h_stream. The device buffer itself
+    // flows into the first backward layer as `initial_d_claim_point_and_batching` (claim_point
+    // + batching challenge, matching the `round_scratch.claim_point` layout). The seed stays
+    // on device and threads into the first backward layer as its `device_seed` — no D2H, no H2D.
     let mut evaluation_point_and_batching_host =
         unsafe { context.alloc_host_uninit_slice::<E4>(num_challenges) };
-    memory_copy_async(
-        &mut evaluation_point_and_batching_host,
-        &d_evaluation_point_and_batching,
-        stream,
-    )?;
 
     let evaluation_point_and_batching_accessor = evaluation_point_and_batching_host.get_accessor();
 
     let backward_state = forward_output.into_dimension_reducing_backward_state();
+    // Join before `forward_setup.into_host_keepalive()` drops `d_lookup_challenges`. The lookup
+    // D2H was scheduled on `d2h_stream` above; exec_stream must wait on its completion before the
+    // underlying pool block can be recycled by a subsequent exec-side alloc.
+    stream.wait_event(&d2h_lookup_done, CudaStreamWaitEventFlags::DEFAULT)?;
     let forward_setup_keepalive = forward_setup.into_host_keepalive();
     let top_layer_claim_layout = top_layer_claim_layout(&output_layer_for_sumcheck);
     let num_top_claims = top_layer_claim_layout.len();
@@ -743,17 +748,35 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
         }
     }
 
-    // D2H the 8 device-computed claims into a pinned host slot so the callback
-    // can populate the host-side workflow_state mirror. Replaces the old
-    // host->device H2D of host-computed claims.
+    // D2H the 8 device-computed claims and the (evaluation_point || batching_challenge) buffer
+    // onto `d2h_stream`. Both sources are written on exec: `d_evaluation_point_and_batching` by
+    // `transcript_squeeze_e4` above and `initial_d_claims` by the `mul`+`reduce` loop. A single
+    // fork event after the last reduce covers both sources; d2h issues the two D2Hs in sequence.
+    // The join (`d2h_setup_done`) is awaited on exec_stream before the consumer callback below.
     let mut initial_claims_host: HostAllocation<[E4]> =
         unsafe { context.alloc_host_uninit_slice::<E4>(num_top_claims) };
-    memory_copy_async(&mut initial_claims_host, &initial_d_claims, stream)?;
+    let src_post_forward_ready =
+        CudaEvent::create_with_flags(CudaEventCreateFlags::DISABLE_TIMING)?;
+    src_post_forward_ready.record(stream)?;
+    let d2h_stream = context.get_d2h_stream();
+    d2h_stream.wait_event(&src_post_forward_ready, CudaStreamWaitEventFlags::DEFAULT)?;
+    memory_copy_async(
+        &mut evaluation_point_and_batching_host,
+        &d_evaluation_point_and_batching,
+        d2h_stream,
+    )?;
+    memory_copy_async(&mut initial_claims_host, &initial_d_claims, d2h_stream)?;
+    let d2h_setup_done = CudaEvent::create_with_flags(CudaEventCreateFlags::DISABLE_TIMING)?;
+    d2h_setup_done.record(d2h_stream)?;
     let initial_claims_host_accessor = initial_claims_host.get_accessor();
 
     let mut backward_shared_state = make_deferred_backward_workflow_state();
     let backward_shared_state_handle = UnsafeMutAccessor::new(backward_shared_state.as_mut());
     let lookup_challenges_read_accessor = lookup_challenges_host.get_accessor();
+    // Join d2h_stream back into exec_stream before the consumer callback reads the host slabs
+    // and writes `backward_shared_state`. The callback stays on exec_stream (write-exclusive
+    // access to shared state remains on exec).
+    stream.wait_event(&d2h_setup_done, CudaStreamWaitEventFlags::DEFAULT)?;
     callbacks.schedule(
         {
             let backward_shared_state = backward_shared_state_handle;
