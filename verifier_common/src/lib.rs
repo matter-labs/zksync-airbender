@@ -184,139 +184,139 @@ pub type DefaultLeafInclusionVerifier = prover::definitions::Blake2sForEverythin
 pub type DefaultLeafInclusionVerifier =
     prover::definitions::Blake2sForEverythingVerifierWithAlternativeCompression;
 
-pub type VerifierFunctionPointer<
-    const CAP_SIZE: usize,
-    const NUM_COSETS: usize,
-    const NUM_DELEGATION_CHALLENGES: usize,
-    const NUM_AUX_BOUNDARY_VALUES: usize,
-    const NUM_STATE_ELEMENTS: usize,
-    const NUM_MACHINE_STATE_CHALLENGES: usize = 0,
-> = unsafe fn(
-    &mut ProofOutput<
-        CAP_SIZE,
-        NUM_COSETS,
-        NUM_DELEGATION_CHALLENGES,
-        NUM_AUX_BOUNDARY_VALUES,
-        NUM_MACHINE_STATE_CHALLENGES,
-    >,
-    &mut ProofPublicInputs<NUM_STATE_ELEMENTS>,
-);
+// pub type VerifierFunctionPointer<
+//     const CAP_SIZE: usize,
+//     const NUM_COSETS: usize,
+//     const NUM_DELEGATION_CHALLENGES: usize,
+//     const NUM_AUX_BOUNDARY_VALUES: usize,
+//     const NUM_STATE_ELEMENTS: usize,
+//     const NUM_MACHINE_STATE_CHALLENGES: usize = 0,
+// > = unsafe fn(
+//     &mut ProofOutput<
+//         CAP_SIZE,
+//         NUM_COSETS,
+//         NUM_DELEGATION_CHALLENGES,
+//         NUM_AUX_BOUNDARY_VALUES,
+//         NUM_MACHINE_STATE_CHALLENGES,
+//     >,
+//     &mut ProofPublicInputs<NUM_STATE_ELEMENTS>,
+// );
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash)]
-pub struct ProofOutput<
-    const CAP_SIZE: usize,
-    const NUM_COSETS: usize,
-    const NUM_DELEGATION_CHALLENGES: usize,
-    const NUM_AUX_BOUNDARY_VALUES: usize,
-    const NUM_MACHINE_STATE_CHALLENGES: usize = 0,
-> {
-    #[serde(bound(
-        deserialize = "MerkleTreeCap<CAP_SIZE>: serde::Deserialize<'de>, [MerkleTreeCap<CAP_SIZE>; NUM_COSETS]: serde::Deserialize<'de>"
-    ))]
-    #[serde(bound(
-        serialize = "MerkleTreeCap<CAP_SIZE>: serde::Serialize, [MerkleTreeCap<CAP_SIZE>; NUM_COSETS]: serde::Serialize"
-    ))]
-    pub setup_caps: [MerkleTreeCap<CAP_SIZE>; NUM_COSETS],
-    pub memory_caps: [MerkleTreeCap<CAP_SIZE>; NUM_COSETS],
-    pub memory_challenges: ExternalMemoryArgumentChallenges,
-    #[serde(bound(
-        deserialize = "[ExternalDelegationArgumentChallenges; NUM_DELEGATION_CHALLENGES]: serde::Deserialize<'de>"
-    ))]
-    #[serde(bound(
-        serialize = "[ExternalDelegationArgumentChallenges; NUM_DELEGATION_CHALLENGES]: serde::Serialize"
-    ))]
-    pub delegation_challenges: [ExternalDelegationArgumentChallenges; NUM_DELEGATION_CHALLENGES],
-    #[serde(bound(
-        deserialize = "[ExternalMachineStateArgumentChallenges; NUM_MACHINE_STATE_CHALLENGES]: serde::Deserialize<'de>"
-    ))]
-    #[serde(bound(
-        serialize = "[ExternalMachineStateArgumentChallenges; NUM_MACHINE_STATE_CHALLENGES]: serde::Serialize"
-    ))]
-    pub machine_state_permutation_challenges:
-        [ExternalMachineStateArgumentChallenges; NUM_MACHINE_STATE_CHALLENGES],
-    #[serde(bound(
-        deserialize = "[AuxArgumentsBoundaryValues; NUM_AUX_BOUNDARY_VALUES]: serde::Deserialize<'de>"
-    ))]
-    #[serde(bound(
-        serialize = "[AuxArgumentsBoundaryValues; NUM_AUX_BOUNDARY_VALUES]: serde::Serialize"
-    ))]
-    pub lazy_init_boundary_values: [AuxArgumentsBoundaryValues; NUM_AUX_BOUNDARY_VALUES],
-    pub grand_product_accumulator: Mersenne31Quartic,
-    #[serde(bound(
-        deserialize = "[Mersenne31Quartic; NUM_DELEGATION_CHALLENGES]: serde::Deserialize<'de>"
-    ))]
-    #[serde(bound(
-        serialize = "[Mersenne31Quartic; NUM_DELEGATION_CHALLENGES]: serde::Serialize"
-    ))]
-    pub delegation_argument_accumulator: [Mersenne31Quartic; NUM_DELEGATION_CHALLENGES],
-    pub circuit_sequence: u32,
-    pub delegation_type: u32,
-}
+// #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash)]
+// pub struct ProofOutput<
+//     const CAP_SIZE: usize,
+//     const NUM_COSETS: usize,
+//     const NUM_DELEGATION_CHALLENGES: usize,
+//     const NUM_AUX_BOUNDARY_VALUES: usize,
+//     const NUM_MACHINE_STATE_CHALLENGES: usize = 0,
+// > {
+//     #[serde(bound(
+//         deserialize = "MerkleTreeCap<CAP_SIZE>: serde::Deserialize<'de>, [MerkleTreeCap<CAP_SIZE>; NUM_COSETS]: serde::Deserialize<'de>"
+//     ))]
+//     #[serde(bound(
+//         serialize = "MerkleTreeCap<CAP_SIZE>: serde::Serialize, [MerkleTreeCap<CAP_SIZE>; NUM_COSETS]: serde::Serialize"
+//     ))]
+//     pub setup_caps: [MerkleTreeCap<CAP_SIZE>; NUM_COSETS],
+//     pub memory_caps: [MerkleTreeCap<CAP_SIZE>; NUM_COSETS],
+//     pub memory_challenges: ExternalMemoryArgumentChallenges,
+//     #[serde(bound(
+//         deserialize = "[ExternalDelegationArgumentChallenges; NUM_DELEGATION_CHALLENGES]: serde::Deserialize<'de>"
+//     ))]
+//     #[serde(bound(
+//         serialize = "[ExternalDelegationArgumentChallenges; NUM_DELEGATION_CHALLENGES]: serde::Serialize"
+//     ))]
+//     pub delegation_challenges: [ExternalDelegationArgumentChallenges; NUM_DELEGATION_CHALLENGES],
+//     #[serde(bound(
+//         deserialize = "[ExternalMachineStateArgumentChallenges; NUM_MACHINE_STATE_CHALLENGES]: serde::Deserialize<'de>"
+//     ))]
+//     #[serde(bound(
+//         serialize = "[ExternalMachineStateArgumentChallenges; NUM_MACHINE_STATE_CHALLENGES]: serde::Serialize"
+//     ))]
+//     pub machine_state_permutation_challenges:
+//         [ExternalMachineStateArgumentChallenges; NUM_MACHINE_STATE_CHALLENGES],
+//     #[serde(bound(
+//         deserialize = "[AuxArgumentsBoundaryValues; NUM_AUX_BOUNDARY_VALUES]: serde::Deserialize<'de>"
+//     ))]
+//     #[serde(bound(
+//         serialize = "[AuxArgumentsBoundaryValues; NUM_AUX_BOUNDARY_VALUES]: serde::Serialize"
+//     ))]
+//     pub lazy_init_boundary_values: [AuxArgumentsBoundaryValues; NUM_AUX_BOUNDARY_VALUES],
+//     pub grand_product_accumulator: Mersenne31Quartic,
+//     #[serde(bound(
+//         deserialize = "[Mersenne31Quartic; NUM_DELEGATION_CHALLENGES]: serde::Deserialize<'de>"
+//     ))]
+//     #[serde(bound(
+//         serialize = "[Mersenne31Quartic; NUM_DELEGATION_CHALLENGES]: serde::Serialize"
+//     ))]
+//     pub delegation_argument_accumulator: [Mersenne31Quartic; NUM_DELEGATION_CHALLENGES],
+//     pub circuit_sequence: u32,
+//     pub delegation_type: u32,
+// }
 
-impl<
-        const CAP_SIZE: usize,
-        const NUM_COSETS: usize,
-        const NUM_DELEGATION_CHALLENGES: usize,
-        const NUM_AUX_BOUNDARY_VALUES: usize,
-        const NUM_MACHINE_STATE_CHALLENGES: usize,
-    >
-    ProofOutput<
-        CAP_SIZE,
-        NUM_COSETS,
-        NUM_DELEGATION_CHALLENGES,
-        NUM_AUX_BOUNDARY_VALUES,
-        NUM_MACHINE_STATE_CHALLENGES,
-    >
-{
-    pub fn setup_caps_flattened(&'_ self) -> &'_ [u32] {
-        unsafe {
-            core::slice::from_raw_parts(
-                self.setup_caps.as_ptr_range().start.cast::<u32>(),
-                self.setup_caps
-                    .as_ptr_range()
-                    .end
-                    .offset_from(self.setup_caps.as_ptr_range().start) as usize,
-            )
-        }
-    }
+// impl<
+//         const CAP_SIZE: usize,
+//         const NUM_COSETS: usize,
+//         const NUM_DELEGATION_CHALLENGES: usize,
+//         const NUM_AUX_BOUNDARY_VALUES: usize,
+//         const NUM_MACHINE_STATE_CHALLENGES: usize,
+//     >
+//     ProofOutput<
+//         CAP_SIZE,
+//         NUM_COSETS,
+//         NUM_DELEGATION_CHALLENGES,
+//         NUM_AUX_BOUNDARY_VALUES,
+//         NUM_MACHINE_STATE_CHALLENGES,
+//     >
+// {
+//     pub fn setup_caps_flattened(&'_ self) -> &'_ [u32] {
+//         unsafe {
+//             core::slice::from_raw_parts(
+//                 self.setup_caps.as_ptr_range().start.cast::<u32>(),
+//                 self.setup_caps
+//                     .as_ptr_range()
+//                     .end
+//                     .offset_from(self.setup_caps.as_ptr_range().start) as usize,
+//             )
+//         }
+//     }
 
-    pub fn memory_caps_flattened(&'_ self) -> &'_ [u32] {
-        unsafe {
-            core::slice::from_raw_parts(
-                self.memory_caps.as_ptr_range().start.cast::<u32>(),
-                self.memory_caps
-                    .as_ptr_range()
-                    .end
-                    .offset_from(self.memory_caps.as_ptr_range().start) as usize,
-            )
-        }
-    }
-}
+//     pub fn memory_caps_flattened(&'_ self) -> &'_ [u32] {
+//         unsafe {
+//             core::slice::from_raw_parts(
+//                 self.memory_caps.as_ptr_range().start.cast::<u32>(),
+//                 self.memory_caps
+//                     .as_ptr_range()
+//                     .end
+//                     .offset_from(self.memory_caps.as_ptr_range().start) as usize,
+//             )
+//         }
+//     }
+// }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash)]
-pub struct ProofPublicInputs<const NUM_STATE_ELEMENTS: usize> {
-    #[serde(bound(
-        deserialize = "[Mersenne31Field; NUM_STATE_ELEMENTS]: serde::Deserialize<'de>"
-    ))]
-    #[serde(bound(serialize = "[Mersenne31Field; NUM_STATE_ELEMENTS]: serde::Serialize"))]
-    pub input_state_variables: [Mersenne31Field; NUM_STATE_ELEMENTS],
-    #[serde(bound(
-        deserialize = "[Mersenne31Field; NUM_STATE_ELEMENTS]: serde::Deserialize<'de>"
-    ))]
-    #[serde(bound(serialize = "[Mersenne31Field; NUM_STATE_ELEMENTS]: serde::Serialize"))]
-    pub output_state_variables: [Mersenne31Field; NUM_STATE_ELEMENTS],
-}
+// #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash)]
+// pub struct ProofPublicInputs<const NUM_STATE_ELEMENTS: usize> {
+//     #[serde(bound(
+//         deserialize = "[Mersenne31Field; NUM_STATE_ELEMENTS]: serde::Deserialize<'de>"
+//     ))]
+//     #[serde(bound(serialize = "[Mersenne31Field; NUM_STATE_ELEMENTS]: serde::Serialize"))]
+//     pub input_state_variables: [Mersenne31Field; NUM_STATE_ELEMENTS],
+//     #[serde(bound(
+//         deserialize = "[Mersenne31Field; NUM_STATE_ELEMENTS]: serde::Deserialize<'de>"
+//     ))]
+//     #[serde(bound(serialize = "[Mersenne31Field; NUM_STATE_ELEMENTS]: serde::Serialize"))]
+//     pub output_state_variables: [Mersenne31Field; NUM_STATE_ELEMENTS],
+// }
 
-impl<const NUM_STATE_ELEMENTS: usize> ProofPublicInputs<NUM_STATE_ELEMENTS> {
-    pub fn uninit() -> Self {
-        unsafe {
-            Self {
-                input_state_variables: MaybeUninit::uninit().assume_init(),
-                output_state_variables: MaybeUninit::uninit().assume_init(),
-            }
-        }
-    }
-}
+// impl<const NUM_STATE_ELEMENTS: usize> ProofPublicInputs<NUM_STATE_ELEMENTS> {
+//     pub fn uninit() -> Self {
+//         unsafe {
+//             Self {
+//                 input_state_variables: MaybeUninit::uninit().assume_init(),
+//                 output_state_variables: MaybeUninit::uninit().assume_init(),
+//             }
+//         }
+//     }
+// }
 
 pub fn parse_field_els_as_u32_from_u16_limbs_checked(input: [Mersenne31Field; 2]) -> u32 {
     let [low, high] = input;
