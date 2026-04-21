@@ -1182,6 +1182,37 @@ where
     Box::new(ScheduledBackwardWorkflowState::deferred())
 }
 
+/// Stage `[lookup_multiplicative, lookup_additive]` into a 2-element
+/// device buffer, reading from `shared_state` inside a stream-ordered callback. Used
+/// once per proof by the main-layer pipeline so per-layer `schedule_flat_eval_recipes`
+/// can D2D these constants into its 3-scalar eval_recipes challenge buffer instead of
+/// reading from host `workflow_state` on every layer. The caller-owned `Callbacks` must
+/// outlive stream execution.
+pub(crate) fn h2d_lookup_and_constraint_from_shared_state<E>(
+    context: &ProverContext,
+    callbacks: &mut Callbacks<'static>,
+    shared_state: ScheduledBackwardWorkflowStateHandle<E>,
+) -> CudaResult<DeviceAllocation<E>>
+where
+    E: FieldExtension<BF> + Field + 'static,
+{
+    let mut buf: DeviceAllocation<E> = context.alloc(2, AllocationPlacement::Top)?;
+    let mut host_slot = unsafe { context.alloc_host_uninit_slice::<E>(2) };
+    let accessor = host_slot.get_mut_accessor();
+    callbacks.schedule(
+        move || unsafe {
+            let state = shared_state.get();
+            let dst = accessor.get_mut();
+            dst[0] = state.lookup_multiplicative_challenge;
+            dst[1] = state.lookup_additive_challenge;
+        },
+        context.get_exec_stream(),
+    )?;
+    memory_copy_async(&mut buf, &host_slot, context.get_exec_stream())?;
+    drop(host_slot);
+    Ok(buf)
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn populate_backward_workflow_state<E>(
     shared_state: ScheduledBackwardWorkflowStateHandle<E>,

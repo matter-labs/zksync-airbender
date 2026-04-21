@@ -4742,6 +4742,13 @@ fn run_basic_unrolled_first_main_layer_static_vs_dynamic_execution_test() {
         &static_claims_for_device,
     )
     .unwrap();
+    let device_lookup_and_constraint =
+        crate::prover::gkr::backward::h2d_lookup_and_constraint_from_shared_state::<E4>(
+            &fixture_static.context,
+            &mut initial_callbacks,
+            shared_state_handle,
+        )
+        .unwrap();
     let static_scheduled = static_plan
         .schedule_execute_main_layer_from_workflow_state(
             shared_state_handle,
@@ -4749,6 +4756,7 @@ fn run_basic_unrolled_first_main_layer_static_vs_dynamic_execution_test() {
             shared_device_claim_point,
             shared_device_claims,
             &shared_claim_layout,
+            device_lookup_and_constraint.as_ptr(),
             &fixture_static.context,
         )
         .unwrap();
@@ -4942,6 +4950,13 @@ fn run_basic_unrolled_main_layers_static_vs_dynamic_execution_test() {
                 &static_claims,
             )
             .unwrap();
+        let device_lookup_and_constraint =
+            crate::prover::gkr::backward::h2d_lookup_and_constraint_from_shared_state::<E4>(
+                &fixture_static.context,
+                &mut initial_callbacks,
+                shared_state_handle,
+            )
+            .unwrap();
         let static_scheduled = static_plan
             .schedule_execute_main_layer_from_workflow_state(
                 shared_state_handle,
@@ -4949,6 +4964,7 @@ fn run_basic_unrolled_main_layers_static_vs_dynamic_execution_test() {
                 shared_device_claim_point,
                 shared_device_claims,
                 &shared_claim_layout,
+                device_lookup_and_constraint.as_ptr(),
                 &fixture_static.context,
             )
             .unwrap();

@@ -6164,12 +6164,15 @@ where
         })
     }
 
-    /// Schedule eval_recipes on the GPU: callback uploads 4 challenge scalars,
-    /// then eval_recipes kernel computes coefficients in device memory.
-    /// Returns callbacks that must be kept alive until after execution.
+    /// Schedule eval_recipes on the GPU: populates the 4-scalar challenges buffer
+    /// via two D2D copies (batching from the device-resident claim_point,
+    /// `[lookup_mul, lookup_add, constraint_batch]` from an orchestrator-scoped
+    /// 3-element device buffer), then launches the eval_recipes kernel.
+    /// Replaces the previous per-layer `cudaLaunchHostFunc` that read
+    /// `workflow_state` and H2D'd the 4 scalars.
     fn schedule_flat_eval_recipes(
         &mut self,
-        workflow_state: ScheduledBackwardWorkflowStateHandle<E>,
+        device_lookup_and_constraint_ptr: *const E,
         context: &ProverContext,
     ) -> CudaResult<Callbacks<'static>> {
         let challenges_buf = match self.flat_challenges_buf {
@@ -6178,25 +6181,27 @@ where
         };
         let headers = self.flat_recipe_headers.as_ref().unwrap();
         let terms = self.flat_recipe_terms.as_ref().unwrap();
+        let stream = context.get_exec_stream();
 
-        let mut callbacks = Callbacks::new();
-        let challenges_upload: ScheduledUpload<E> = schedule_callback_populated_upload(
-            context,
-            3,
-            &mut callbacks,
-            move |dst: &mut [E]| unsafe {
-                let ws = workflow_state.get();
-                dst[0] = ws.current_batching_challenge;
-                dst[1] = ws.lookup_multiplicative_challenge;
-                dst[2] = ws.lookup_additive_challenge;
-            },
-        )?;
-        // Async copy 3 scalars to device.
-        memory_copy_async(
-            challenges_buf,
-            &challenges_upload.device,
-            context.get_exec_stream(),
-        )?;
+        // D2D batching challenge from the device-resident claim_point (staged
+        // earlier in this layer's setup). The last slot of `claim_point` always
+        // holds the next batching challenge, advanced on-device by the previous
+        // layer's end-of-round squeeze.
+        let batching_slice = &self.round_scratch.claim_point
+            [self.folding_steps..self.folding_steps + 1];
+        memory_copy_async(&mut challenges_buf[0..1], batching_slice, stream)?;
+        // D2D the 2 per-proof lookup constants. The source buffer is allocated once
+        // per backward workflow and threaded down as a raw pointer; it outlives
+        // this scheduling call per the stream-ordered DeviceAllocation drop
+        // rule in docs/gpu_scheduling_contract.md.
+        // SAFETY: `device_lookup_and_constraint_ptr` points to 2 device-resident
+        // `E` scalars owned by the orchestrator's workflow scope. The D2D is
+        // stream-ordered after its producer callback, and the source buffer
+        // stays allocated until all scheduled reads have completed on GPU.
+        unsafe {
+            let src = DeviceSlice::from_raw_parts(device_lookup_and_constraint_ptr, 2);
+            memory_copy_async(&mut challenges_buf[1..3], src, stream)?;
+        }
 
         // Determine output pointer for eval_recipes.
         let coeff_out_ptr: *mut E4 = if self.flat_use_constant {
@@ -6215,13 +6220,12 @@ where
             headers,
             terms,
             coeff_out_ptr,
-            context.get_exec_stream(),
+            stream,
         )?;
 
-        // Keep callback + upload alive until execution completes.
-        let mut result = challenges_upload.callbacks;
-        result.extend(callbacks);
-        Ok(result)
+        // No host callback to keep alive — the challenges buffer is populated
+        // entirely by D2D copies.
+        Ok(Callbacks::new())
     }
 
     /// Schedule eval_recipes for continuation coefficients (rounds 3+).
@@ -6625,6 +6629,7 @@ where
         device_claim_point_in: DeviceAllocation<E>,
         device_claims_in: DeviceAllocation<E>,
         claim_layout: &ClaimBufferLayout,
+        device_lookup_and_constraint_ptr: *const E,
         context: &ProverContext,
     ) -> CudaResult<GpuGKRMainLayerScheduledLayerExecution<E>> {
         let stream = context.get_exec_stream();
@@ -6737,7 +6742,8 @@ where
             self.schedule_batch_challenge_buffer_on_device(context)?;
         let runtime_uploads =
             self.schedule_runtime_uploads_from_workflow_state(workflow_state, context)?;
-        let flat_coeff_callbacks = self.schedule_flat_eval_recipes(workflow_state, context)?;
+        let flat_coeff_callbacks =
+            self.schedule_flat_eval_recipes(device_lookup_and_constraint_ptr, context)?;
         self.schedule_flat_continuation_eval_recipes(context)?;
         let mut round_challenge_buffers = Vec::with_capacity(last_step);
         let round_challenge_len = (1..=last_step)
@@ -7253,6 +7259,23 @@ where
         let shared_state_handle =
             crate::primitives::context::UnsafeMutAccessor::new(shared_state.as_mut());
         let stream = context.get_exec_stream();
+        let mut workflow_initial_callbacks = Callbacks::new();
+        // Stage `[lookup_mul, lookup_add, constraint_batch]` into a 3-element
+        // device buffer once per proof. Threaded as a raw pointer into every
+        // main-layer `schedule_flat_eval_recipes` call so those layers can D2D
+        // the 3 per-proof constants into their eval_recipes challenges buffer
+        // instead of reading `workflow_state` inside a per-layer host callback.
+        // The callback reads from `shared_state`, which is either populated
+        // synchronously (test path) or by an earlier stream-ordered population
+        // callback (prod path) — both ordering cases are covered by stream
+        // sequencing.
+        let device_lookup_and_constraint =
+            h2d_lookup_and_constraint_from_shared_state::<E>(
+                context,
+                &mut workflow_initial_callbacks,
+                shared_state_handle,
+            )?;
+        let device_lookup_and_constraint_ptr = device_lookup_and_constraint.as_ptr();
         let mut tracing_ranges = Vec::new();
         let workflow_range = Range::new("gkr.backward.schedule")?;
         workflow_range.start(stream)?;
@@ -7339,6 +7362,7 @@ where
                     shared_device_claim_point,
                     shared_device_claims,
                     &shared_claim_layout,
+                    device_lookup_and_constraint_ptr,
                     context,
                 )?;
             shared_device_seed = execution
@@ -7373,6 +7397,9 @@ where
         drop(shared_device_claim_point);
         drop(shared_device_claims);
         drop(shared_claim_layout);
+        // Stream-ordered drop: the device buffer stays alive on GPU until all
+        // scheduled reads (last layer's D2D into `flat_challenges_buf`) complete.
+        drop(device_lookup_and_constraint);
         workflow_range.end(stream)?;
         tracing_ranges.push(workflow_range);
 
@@ -7381,7 +7408,7 @@ where
             dimension_reducing_layers,
             main_layers,
             shared_state,
-            initial_callbacks: Callbacks::new(),
+            initial_callbacks: workflow_initial_callbacks,
         })
     }
 
@@ -7921,6 +7948,13 @@ mod tests {
             .unwrap()
             .expect("expected first main-layer plan after dimension reduction");
         let first_main_layer_idx = first_main_layer.layer_idx;
+        let device_lookup_and_constraint =
+            crate::prover::gkr::backward::h2d_lookup_and_constraint_from_shared_state::<E4>(
+                context,
+                &mut initial_callbacks,
+                shared_state_handle,
+            )
+            .unwrap();
         let _first_main_layer_execution = first_main_layer
             .schedule_execute_main_layer_from_workflow_state(
                 shared_state_handle,
@@ -7928,6 +7962,7 @@ mod tests {
                 shared_device_claim_point,
                 shared_device_claims,
                 &shared_claim_layout,
+                device_lookup_and_constraint.as_ptr(),
                 context,
             )
             .unwrap();
