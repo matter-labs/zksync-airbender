@@ -7315,20 +7315,10 @@ where
             external_challenges,
             false,
         );
-        // Pre-drain all main-layer plans so recipe compile + H2D host callbacks
-        // (scheduled inside `prepare_layer_from_blueprints` via
-        // `alloc_host_and_schedule_copy`) are enqueued on exec_stream *before*
-        // the per-layer scheduler loop, keeping the loop body closer to
-        // capturable stream-only work.
-        let mut prepared_main_layers = Vec::new();
-        while let Some(plan) = main_backward_state.prepare_next_layer_static(context)? {
-            prepared_main_layers.push(plan);
-        }
-
         let mut main_layers = Vec::new();
         let main_layers_range = Range::new("gkr.backward.main_layers")?;
         main_layers_range.start(stream)?;
-        for mut prepared_layer in prepared_main_layers {
+        while let Some(mut prepared_layer) = main_backward_state.prepare_next_layer_static(context)? {
             let layer_idx = prepared_layer.layer_idx;
             let mut execution = prepared_layer
                 .schedule_execute_main_layer_from_workflow_state(
