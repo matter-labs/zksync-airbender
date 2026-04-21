@@ -309,6 +309,32 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
     proof_range.start(stream)?;
 
     context.reset_used_mem_peak();
+
+    // Device-resident proof image (Phase 2a): allocate one `DeviceAllocation<u8>`
+    // at `prove()` start. Phases 2b/3/4 rewire per-layer and WHIR kernel writes
+    // into slab offsets via `ProofLayout` accessors; Phase 4 adds the single
+    // terminal D2H + host-side parse.
+    //
+    // Phase 2a placeholder inputs yield `total_bytes == 0`, so the slab itself
+    // is not yet allocated (`None`). The wiring lands here so that later phases
+    // only need to replace `placeholder_inputs_for_prove()` with the real
+    // computation and flip call sites to thread `proof_slab` + `proof_layout`.
+    let proof_layout =
+        crate::prover::proof_layout::ProofLayout::new(
+            &crate::prover::proof_layout::placeholder_inputs_for_prove(),
+        );
+    let _proof_slab: Option<DeviceAllocation<u8>> = if proof_layout.total_bytes > 0 {
+        let slab = context.alloc::<u8>(proof_layout.total_bytes, AllocationPlacement::Bottom)?;
+        debug_assert_eq!(
+            slab.as_ptr() as usize & 0xF,
+            0,
+            "proof slab base pointer must be 16-byte aligned for ProofLayout typed casts",
+        );
+        Some(slab)
+    } else {
+        None
+    };
+
     let setup_geometry = setup_transfer
         .as_ref()
         .map(|setup| GpuGKRTraceGeometry {
