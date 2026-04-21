@@ -20,7 +20,6 @@ use prover::gkr::prover::{GKRExternalChallenges, SumcheckIntermediateProofValues
 use prover::gkr::sumcheck::evaluation_kernels::GKRInputs;
 use prover::transcript::Seed;
 
-use super::backward::evaluate_constraint_prefactor;
 use super::{
     GpuExtensionFieldPolyContinuingLaunchDescriptor, GpuExtensionFieldPolyInitialSource,
     GpuGKRStorage, GpuSumcheckRound0HostLaunchDescriptors, GpuSumcheckRound0LaunchDescriptors,
@@ -253,34 +252,6 @@ pub(super) struct GpuGKRMainLayerKernelBlueprint<E> {
     pub(super) auxiliary_challenge_source: GpuGKRMainLayerAuxiliaryChallengeSource<E>,
     pub(super) constraint_metadata_source: Option<GpuGKRMainLayerConstraintMetadataSource<E>>,
 }
-
-#[repr(C)]
-#[derive(Clone, Copy)]
-pub(super) struct GpuGKRMainLayerConstraintMetadataDevicePointers<E> {
-    pub(super) quadratic_terms: *const GpuGKRMainLayerConstraintQuadraticTerm<E>,
-    pub(super) quadratic_terms_count: u32,
-    pub(super) linear_terms: *const GpuGKRMainLayerConstraintLinearTerm<E>,
-    pub(super) linear_terms_count: u32,
-    pub(super) constant_offset: *const E,
-}
-
-impl<E: Field> Default for GpuGKRMainLayerConstraintMetadataDevicePointers<E> {
-    fn default() -> Self {
-        Self {
-            quadratic_terms: null(),
-            quadratic_terms_count: 0,
-            linear_terms: null(),
-            linear_terms_count: 0,
-            constant_offset: null(),
-        }
-    }
-}
-
-// SAFETY: this struct is a plain bundle of immutable device pointers and counts copied by value
-// into stream-ordered uploads and kernel arguments.
-unsafe impl<E> Send for GpuGKRMainLayerConstraintMetadataDevicePointers<E> {}
-// SAFETY: sharing this metadata between host closures only shares immutable device addresses.
-unsafe impl<E> Sync for GpuGKRMainLayerConstraintMetadataDevicePointers<E> {}
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -718,38 +689,6 @@ pub(super) struct HostScheduledUpload<T> {
     pub(super) _phantom: std::marker::PhantomData<T>,
 }
 
-pub(super) struct ScheduledMainLayerConstraintMetadataUpload<E> {
-    pub(super) callbacks: Callbacks<'static>,
-    pub(super) quadratic_terms: ScheduledUpload<GpuGKRMainLayerConstraintQuadraticTerm<E>>,
-    pub(super) linear_terms: ScheduledUpload<GpuGKRMainLayerConstraintLinearTerm<E>>,
-    pub(super) constant_offset: ScheduledUpload<E>,
-}
-
-pub(super) struct HostScheduledMainLayerConstraintMetadataUpload<E> {
-    pub(super) callbacks: Callbacks<'static>,
-    pub(super) quadratic_terms: HostScheduledUpload<GpuGKRMainLayerConstraintQuadraticTerm<E>>,
-    pub(super) linear_terms: HostScheduledUpload<GpuGKRMainLayerConstraintLinearTerm<E>>,
-    pub(super) constant_offset: HostScheduledUpload<E>,
-}
-
-pub(super) struct ScheduledMainLayerRuntimeUploads<E: Field> {
-    pub(super) callbacks: Callbacks<'static>,
-    pub(super) auxiliary_challenges: ScheduledUpload<E>,
-    pub(super) deferred_constraint_metadata:
-        Vec<Option<ScheduledMainLayerConstraintMetadataUpload<E>>>,
-    pub(super) constraint_metadata_pointers:
-        ScheduledUpload<GpuGKRMainLayerConstraintMetadataDevicePointers<E>>,
-}
-
-pub(super) struct HostScheduledMainLayerRuntimeUploads<E: Field> {
-    pub(super) callbacks: Callbacks<'static>,
-    pub(super) auxiliary_challenges: HostScheduledUpload<E>,
-    pub(super) deferred_constraint_metadata:
-        Vec<Option<HostScheduledMainLayerConstraintMetadataUpload<E>>>,
-    pub(super) constraint_metadata_pointers:
-        HostScheduledUpload<GpuGKRMainLayerConstraintMetadataDevicePointers<E>>,
-}
-
 pub(super) struct ScheduledDimensionReducingFinalReadback<E> {
     pub(super) callbacks: Callbacks<'static>,
     #[allow(dead_code)]
@@ -962,8 +901,6 @@ pub(crate) struct GpuGKRMainLayerScheduledLayerExecution<E: FieldExtension<BF> +
     #[allow(dead_code)]
     pub(super) final_readback: ScheduledDimensionReducingFinalReadback<E>,
     #[allow(dead_code)]
-    pub(super) runtime_uploads: Option<ScheduledMainLayerRuntimeUploads<E>>,
-    #[allow(dead_code)]
     pub(super) flat_coeff_callbacks: Callbacks<'static>,
     #[allow(dead_code)]
     pub(super) recipe_upload_callbacks: Callbacks<'static>,
@@ -1046,8 +983,6 @@ pub(crate) struct GpuGKRMainLayerHostKeepalive<E: FieldExtension<BF> + Field> {
     pub(super) reduction_states: Vec<ScheduledDimensionReducingReductionState<E>>,
     #[allow(dead_code)]
     pub(super) final_readback: ScheduledDimensionReducingFinalReadback<E>,
-    #[allow(dead_code)]
-    pub(super) runtime_uploads: Option<HostScheduledMainLayerRuntimeUploads<E>>,
     #[allow(dead_code)]
     pub(super) flat_coeff_callbacks: Callbacks<'static>,
     #[allow(dead_code)]
@@ -1386,43 +1321,6 @@ pub(super) fn upload_into_host_keepalive<T>(upload: ScheduledUpload<T>) -> HostS
     }
 }
 
-pub(super) fn constraint_upload_into_host_keepalive<E>(
-    upload: ScheduledMainLayerConstraintMetadataUpload<E>,
-) -> HostScheduledMainLayerConstraintMetadataUpload<E> {
-    let ScheduledMainLayerConstraintMetadataUpload {
-        callbacks,
-        quadratic_terms,
-        linear_terms,
-        constant_offset,
-    } = upload;
-    HostScheduledMainLayerConstraintMetadataUpload {
-        callbacks,
-        quadratic_terms: upload_into_host_keepalive(quadratic_terms),
-        linear_terms: upload_into_host_keepalive(linear_terms),
-        constant_offset: upload_into_host_keepalive(constant_offset),
-    }
-}
-
-pub(super) fn runtime_uploads_into_host_keepalive<E: Field>(
-    uploads: ScheduledMainLayerRuntimeUploads<E>,
-) -> HostScheduledMainLayerRuntimeUploads<E> {
-    let ScheduledMainLayerRuntimeUploads {
-        callbacks,
-        auxiliary_challenges,
-        deferred_constraint_metadata,
-        constraint_metadata_pointers,
-    } = uploads;
-    HostScheduledMainLayerRuntimeUploads {
-        callbacks,
-        auxiliary_challenges: upload_into_host_keepalive(auxiliary_challenges),
-        deferred_constraint_metadata: deferred_constraint_metadata
-            .into_iter()
-            .map(|upload| upload.map(constraint_upload_into_host_keepalive))
-            .collect(),
-        constraint_metadata_pointers: upload_into_host_keepalive(constraint_metadata_pointers),
-    }
-}
-
 pub(super) fn schedule_immediate_field_upload<E: Field + Send + Sync + 'static>(
     context: &ProverContext,
     padded_len: usize,
@@ -1546,176 +1444,6 @@ pub(super) fn schedule_combined_claim_desc_upload(
         })?;
     upload.callbacks = callbacks;
     Ok(upload)
-}
-
-pub(super) fn schedule_deferred_main_layer_constraint_metadata_upload<
-    E: Field + FieldExtension<BF> + 'static,
->(
-    template: &GpuGKRMainLayerConstraintTemplate,
-    workflow_state: ScheduledBackwardWorkflowStateHandle<E>,
-    context: &ProverContext,
-) -> CudaResult<ScheduledMainLayerConstraintMetadataUpload<E>> {
-    let mut callbacks = Callbacks::new();
-    let quadratic_terms = schedule_callback_populated_upload(
-        context,
-        template.quadratic_terms.len(),
-        &mut callbacks,
-        {
-            let template = template.quadratic_terms.clone();
-            move |dst: &mut [GpuGKRMainLayerConstraintQuadraticTerm<E>]| unsafe {
-                let workflow_state = workflow_state.get();
-                for (dst, src) in dst.iter_mut().zip(template.iter()) {
-                    *dst = GpuGKRMainLayerConstraintQuadraticTerm {
-                        lhs: src.lhs,
-                        rhs: src.rhs,
-                        challenge: evaluate_constraint_prefactor(
-                            &src.challenge_terms,
-                            workflow_state.lookup_multiplicative_challenge,
-                            workflow_state.lookup_additive_challenge,
-                        ),
-                    };
-                }
-            }
-        },
-    )?;
-    let linear_terms = schedule_callback_populated_upload(
-        context,
-        template.linear_terms.len(),
-        &mut callbacks,
-        {
-            let template = template.linear_terms.clone();
-            move |dst: &mut [GpuGKRMainLayerConstraintLinearTerm<E>]| unsafe {
-                let workflow_state = workflow_state.get();
-                for (dst, src) in dst.iter_mut().zip(template.iter()) {
-                    *dst = GpuGKRMainLayerConstraintLinearTerm {
-                        input: src.input,
-                        challenge: evaluate_constraint_prefactor(
-                            &src.challenge_terms,
-                            workflow_state.lookup_multiplicative_challenge,
-                            workflow_state.lookup_additive_challenge,
-                        ),
-                    };
-                }
-            }
-        },
-    )?;
-    let constant_offset = schedule_callback_populated_upload(context, 1, &mut callbacks, {
-        let template = template.constant_terms.clone();
-        move |dst: &mut [E]| unsafe {
-            let workflow_state = workflow_state.get();
-            dst[0] = evaluate_constraint_prefactor(
-                &template,
-                workflow_state.lookup_multiplicative_challenge,
-                workflow_state.lookup_additive_challenge,
-            );
-        }
-    })?;
-    Ok(ScheduledMainLayerConstraintMetadataUpload {
-        callbacks,
-        quadratic_terms,
-        linear_terms,
-        constant_offset,
-    })
-}
-
-pub(super) fn schedule_main_layer_constraint_metadata_upload<
-    E: Field + FieldExtension<BF> + 'static,
->(
-    source: Option<&GpuGKRMainLayerConstraintMetadataSource<E>>,
-    workflow_state: ScheduledBackwardWorkflowStateHandle<E>,
-    context: &ProverContext,
-) -> CudaResult<Option<ScheduledMainLayerConstraintMetadataUpload<E>>> {
-    match source {
-        None => Ok(None),
-        Some(GpuGKRMainLayerConstraintMetadataSource::Deferred(template)) => Ok(Some(
-            schedule_deferred_main_layer_constraint_metadata_upload(
-                template,
-                workflow_state,
-                context,
-            )?,
-        )),
-        Some(GpuGKRMainLayerConstraintMetadataSource::Immediate(metadata)) => {
-            let mut callbacks = Callbacks::new();
-            let quadratic_terms = schedule_callback_populated_upload(
-                context,
-                metadata.quadratic_terms.len(),
-                &mut callbacks,
-                {
-                    let terms = metadata.quadratic_terms.clone();
-                    move |dst: &mut [GpuGKRMainLayerConstraintQuadraticTerm<E>]| {
-                        dst.copy_from_slice(&terms);
-                    }
-                },
-            )?;
-            let linear_terms = schedule_callback_populated_upload(
-                context,
-                metadata.linear_terms.len(),
-                &mut callbacks,
-                {
-                    let terms = metadata.linear_terms.clone();
-                    move |dst: &mut [GpuGKRMainLayerConstraintLinearTerm<E>]| {
-                        dst.copy_from_slice(&terms);
-                    }
-                },
-            )?;
-            let constant_offset =
-                schedule_callback_populated_upload(context, 1, &mut callbacks, {
-                    let constant = metadata.constant_offset;
-                    move |dst: &mut [E]| {
-                        dst[0] = constant;
-                    }
-                })?;
-            Ok(Some(ScheduledMainLayerConstraintMetadataUpload {
-                callbacks,
-                quadratic_terms,
-                linear_terms,
-                constant_offset,
-            }))
-        }
-    }
-}
-
-pub(super) fn schedule_uploaded_main_layer_constraint_metadata<
-    E: Field + FieldExtension<BF> + 'static,
->(
-    metadata: &GpuGKRMainLayerConstraintHostMetadata<E>,
-    context: &ProverContext,
-) -> CudaResult<ScheduledMainLayerConstraintMetadataUpload<E>> {
-    let mut callbacks = Callbacks::new();
-    let quadratic_terms = schedule_callback_populated_upload(
-        context,
-        metadata.quadratic_terms.len(),
-        &mut callbacks,
-        {
-            let terms = metadata.quadratic_terms.clone();
-            move |dst: &mut [GpuGKRMainLayerConstraintQuadraticTerm<E>]| {
-                dst.copy_from_slice(&terms);
-            }
-        },
-    )?;
-    let linear_terms = schedule_callback_populated_upload(
-        context,
-        metadata.linear_terms.len(),
-        &mut callbacks,
-        {
-            let terms = metadata.linear_terms.clone();
-            move |dst: &mut [GpuGKRMainLayerConstraintLinearTerm<E>]| {
-                dst.copy_from_slice(&terms);
-            }
-        },
-    )?;
-    let constant_offset = schedule_callback_populated_upload(context, 1, &mut callbacks, {
-        let constant = metadata.constant_offset;
-        move |dst: &mut [E]| {
-            dst[0] = constant;
-        }
-    })?;
-    Ok(ScheduledMainLayerConstraintMetadataUpload {
-        callbacks,
-        quadratic_terms,
-        linear_terms,
-        constant_offset,
-    })
 }
 
 pub(super) fn field_pow<E: Field>(base: E, exponent: usize) -> E {
@@ -2386,18 +2114,3 @@ where
     Ok(())
 }
 
-pub(super) fn constraint_metadata_device_pointers<E: Field>(
-    metadata: Option<&ScheduledMainLayerConstraintMetadataUpload<E>>,
-) -> GpuGKRMainLayerConstraintMetadataDevicePointers<E> {
-    if let Some(metadata) = metadata {
-        GpuGKRMainLayerConstraintMetadataDevicePointers {
-            quadratic_terms: metadata.quadratic_terms.device.as_ptr(),
-            quadratic_terms_count: metadata.quadratic_terms.device.len() as u32,
-            linear_terms: metadata.linear_terms.device.as_ptr(),
-            linear_terms_count: metadata.linear_terms.device.len() as u32,
-            constant_offset: metadata.constant_offset.device.as_ptr(),
-        }
-    } else {
-        GpuGKRMainLayerConstraintMetadataDevicePointers::default()
-    }
-}
