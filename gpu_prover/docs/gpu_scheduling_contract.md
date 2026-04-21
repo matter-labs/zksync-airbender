@@ -6,7 +6,7 @@ orchestration concurrency.
 
 ## Streams
 
-The prover maintains three streams:
+The prover maintains four streams:
 
 - **exec stream** (`exec_stream`): the single reference stream for all GPU work.
   Kernel launches, pool allocations, pool frees, and host callbacks are all
@@ -17,18 +17,21 @@ The prover maintains three streams:
   host-to-device transfers with exec-stream compute. It is **not** the default
   path for H2D copies — see *H2D copies* below.
 
+- **D2H stream** (`d2h_stream`): an auxiliary stream used to overlap
+  device-to-host transfers (and any host callbacks that consume those D2Hs) with
+  exec-stream compute. Ownership is transferred to `d2h_stream` via a fork event
+  and returned to `exec_stream` via a join event — see *D2H copies* below.
+
 - **aux stream pool** (`aux_streams`): a fixed-size pool of `AUX_STREAM_POOL_SIZE`
   auxiliary streams (currently 8), used by subsystems that want to dispatch
   independent work in parallel. Consumers pick streams by index and must fork/join
   against exec_stream with explicit events (see rule below). Pool streams have
   no intrinsic ordering with each other or with exec_stream.
 
-A dedicated D2H stream may be added in the future to overlap device-to-host
-transfers with exec work, following the same pattern as h2d_stream.
-
-**Rule for auxiliary streams**: any operation on an auxiliary stream must be
-explicitly ordered with respect to exec_stream using CUDA events. The driver
-gives independent streams no implicit ordering guarantees.
+**Rule for auxiliary streams**: any operation on an auxiliary stream
+(h2d_stream, d2h_stream, or an aux_streams entry) must be explicitly ordered
+with respect to exec_stream using CUDA events. The driver gives independent
+streams no implicit ordering guarantees.
 
 ## Stream ordering
 
@@ -130,6 +133,72 @@ exec_stream: wait_event(E_xfer)      ("don't use D before data arrives")
 The E_alloc fence ensures h2d_stream does not start writing to a device buffer
 before it has been allocated on the exec side. The E_xfer fence ensures exec
 kernels do not read a buffer that is still being transferred.
+
+## D2H copies
+
+D2H copies can be scheduled on either stream:
+
+**On exec_stream (default)**: call `memory_copy_async` directly on exec_stream.
+No additional fencing is required.
+
+**On d2h_stream (for copy/compute overlap)**: follow the fork/join/drop rules
+below. This is worthwhile when the D2H source is written well before any host
+consumer reads the destination, and meaningful exec-stream compute can run in
+parallel with the transfer.
+
+### Fork/join/drop ownership rules
+
+Pool-backed `DeviceAllocation` and `HostAllocation` handles are always allocated
+and dropped with **exec_stream** ordering; that never changes. A secondary
+stream (h2d_stream, d2h_stream, or an aux_streams entry) may access these
+allocations between a fork event and a join event, after which ordering returns
+to exec_stream for the drop.
+
+1. **Fork**: exec_stream records a `CudaEvent` after the last op that writes the
+   source; the secondary stream calls `wait_event` on that event before issuing
+   its first op on the source.
+2. **Join**: the secondary stream records a `CudaEvent` after its last op on
+   any shared buffer; exec_stream calls `wait_event` on that event before any
+   subsequent op that conflicts with the secondary stream's activity (see
+   write-exclusivity below) and before the allocation's Rust-level drop.
+3. **Drop always on exec_stream**: pool-backed allocations are freed on
+   exec_stream regardless of which streams accessed them. The Rust-level drop
+   must occur after the join wait has been scheduled on exec_stream;
+   stream-ordered pool free then guarantees the block is not recycled until the
+   secondary stream has finished. Skipping the join before drop is a
+   use-after-free.
+4. **Write-exclusivity**: within a fork/join window, writes to any shared
+   buffer (pool-backed allocation or `UnsafeMutAccessor` target such as shared
+   host state) must be done by exactly one stream. Concurrent reads across
+   streams are fine; concurrent writes, or a read on one stream racing a write
+   on another, are not. If the secondary stream writes a buffer, exec_stream
+   must not also write (or read) it inside the window. If both streams only
+   read, no coordination beyond fork/join is needed.
+
+```text
+exec_stream:   kernels write source buffer S and/or update shared host state X
+exec_stream:   record E_src_ready                ("S is written")
+d2h_stream:    wait_event(E_src_ready)           ("don't read S before it's written")
+d2h_stream:    memory_copy_async(H, S)           ("D2H into pinned host H")
+d2h_stream:    schedule consumer callback        ("reads H, writes X")
+d2h_stream:    record E_d2h_done                 ("X updated, H complete")
+exec_stream:   wait_event(E_d2h_done)            ("don't read X or drop S yet")
+exec_stream:   (subsequent ops / S drop)
+```
+
+The E_src_ready fence ensures the secondary stream does not read S before
+exec_stream has finished writing it. The E_d2h_done fence ensures exec_stream
+does not read X, recycle H's pool block, or free S before the secondary stream
+has finished with them.
+
+**CUDA event handle lifetime**: `cudaEventRecord` and `cudaStreamWaitEvent`
+hold internal refcounts. The Rust `CudaEvent` handle may be dropped immediately
+after its last `record` / `wait_event` call — no explicit keepalive is needed.
+
+**HostAllocation keepalive across streams**: pinned host slabs must live until
+their last scheduled op on any stream. Handles stored in execution keepalive
+structs automatically satisfy this because those structs outlive the
+final join.
 
 ## H2D keepalive callbacks
 
