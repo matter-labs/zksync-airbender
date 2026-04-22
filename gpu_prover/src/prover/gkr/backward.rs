@@ -6639,6 +6639,14 @@ where
         device_claims_in: DeviceAllocation<E>,
         claim_layout: &ClaimBufferLayout,
         device_lookup_and_constraint_ptr: *const E,
+        // Phase 2b: same pattern as the dim-reducing scheduler — when `Some`,
+        // the `device_coeffs` buffer is D2D-copied into the slab's
+        // `internal_round_coefficients` range for `layer_slot` after all
+        // per-round kernel writes complete. See Phase 2b notes on the
+        // dim-reducing variant for the transitional rationale.
+        proof_slab: Option<&DeviceAllocation<u8>>,
+        proof_layout: &ProofLayout,
+        layer_slot: usize,
         context: &ProverContext,
     ) -> CudaResult<GpuGKRMainLayerScheduledLayerExecution<E>> {
         let stream = context.get_exec_stream();
@@ -6855,6 +6863,33 @@ where
             true,
             context,
         )?;
+
+        // Phase 2b slab population for this main layer's
+        // `internal_round_coefficients`. See the dim-reducing twin for the
+        // transitional rationale; the D2H + workflow_state population below
+        // remain authoritative until Phase 4.
+        if let Some(slab) = proof_slab {
+            if coeffs_total_len > 0 {
+                let (dst_ptr, dst_len) = unsafe {
+                    proof_layout.backward_internal_coeffs_device_mut(
+                        slab.as_ptr() as *mut u8,
+                        layer_slot,
+                    )
+                };
+                debug_assert_eq!(
+                    dst_len, coeffs_total_len,
+                    "slab internal_round_coefficients range must match main-layer coeffs_total_len",
+                );
+                let dst = unsafe {
+                    era_cudart::slice::DeviceSlice::from_raw_parts_mut(
+                        dst_ptr as *mut E,
+                        dst_len,
+                    )
+                };
+                memory_copy_async(dst, &device_coeffs[..coeffs_total_len], stream)?;
+            }
+        }
+
         // Device-side inter-layer transcript (main-layer variant): pack the
         // flattened last-round evaluations (2 E per address, vs 4 in dim-
         // reducing), absorb them into device_seed via transcript_commit, then
@@ -7401,6 +7436,9 @@ where
                     shared_device_claims,
                     &shared_claim_layout,
                     device_lookup_and_constraint_ptr,
+                    proof_slab,
+                    proof_layout,
+                    backward_layer_slot,
                     context,
                 )?;
             shared_device_seed = execution
@@ -7420,6 +7458,7 @@ where
                 .take()
                 .expect("main-layer scheduler must return the claim layout");
             main_layers.push(execution);
+            backward_layer_slot += 1;
             main_backward_state.purge_up_to_layer(layer_idx);
         }
         main_layers_range.end(stream)?;
@@ -8018,6 +8057,9 @@ mod tests {
                 shared_state_handle,
             )
             .unwrap();
+        let main_proof_layout = crate::prover::proof_layout::ProofLayout::new(
+            &crate::prover::proof_layout::placeholder_inputs_for_prove(),
+        );
         let _first_main_layer_execution = first_main_layer
             .schedule_execute_main_layer_from_workflow_state(
                 shared_state_handle,
@@ -8026,6 +8068,9 @@ mod tests {
                 shared_device_claims,
                 &shared_claim_layout,
                 device_lookup_and_constraint.as_ptr(),
+                None,
+                &main_proof_layout,
+                0,
                 context,
             )
             .unwrap();
