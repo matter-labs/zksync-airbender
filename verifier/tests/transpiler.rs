@@ -17,6 +17,10 @@ fn run_transpiler(name: &str) {
     let binary = common::load_binary_section(&bin_path);
     let text_section = common::load_binary_section(&text_path);
 
+    let mut oracle_responses = vec![];
+    external_challenges.flatten_into_buffer(&mut oracle_responses);
+    oracle_responses.extend(nds);
+
     let instructions: Vec<Instruction> =
         preprocess_bytecode::<ReducedMachineDecoderConfig, true>(&text_section);
     let tape = SimpleTape::new(&instructions);
@@ -32,7 +36,7 @@ fn run_transpiler(name: &str) {
         DelegationsAndFamiliesCounters,
         { common_constants::rom::ROM_SECOND_WORD_BITS },
     >::new_with_cycle_limit(cycles_bound, state);
-    let mut non_determinism = QuasiUARTSource::new_with_reads(nds);
+    let mut non_determinism = QuasiUARTSource::new_with_reads(oracle_responses);
 
     let symbols_path = std::path::PathBuf::from(&elf_path);
     let output_path = std::env::current_dir()

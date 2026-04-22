@@ -13,7 +13,8 @@ unsafe extern "C" fn start_rust() -> ! {
 
 unsafe fn workload() -> ! {
     // PanicErrorCreator returns Infallible, so Result<(), Infallible> is always Ok
-    let Ok(()) = generated_gkr::verify::<CSRBasedSource, PanicErrorCreator>();
+    let external_challenges = ::verifier_common::read_external_challenges::<_, _, CSRBasedSource>();
+    let Ok(..) = generated_gkr::verify::<CSRBasedSource, PanicErrorCreator>(&external_challenges);
     zksync_os_finish_success(&[1, 0, 0, 0, 0, 0, 0, 0]);
 }
 

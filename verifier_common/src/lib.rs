@@ -325,3 +325,25 @@ where
         grand_product_write_set_accumulator: gkr_output.permutation_write_product,
     })
 }
+
+pub fn read_external_challenges<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    I: NonDeterminismSource
+>() -> GKRExternalChallenges<F, E> where [(); E::DEGREE]: {
+    use cs::definitions::NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES;
+    use crate::structs::ext_from_nds;
+
+    let permutation_argument_linearization_challenges: [E;
+        NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES] =
+        core::array::from_fn(|_| {
+            ext_from_nds::<F, E, I>()
+        });
+    let permutation_argument_additive_part: E = ext_from_nds::<F, E, I>();
+
+    GKRExternalChallenges {
+        permutation_argument_linearization_challenges,
+        permutation_argument_additive_part,
+        _marker: core::marker::PhantomData,
+    }
+}
