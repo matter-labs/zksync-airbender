@@ -18,10 +18,11 @@ use crate::ops::cub::device_reduce::{
 };
 use crate::ops::cub::CUB_TEMP_STORAGE_EXTRA_ALIGNMENT_LOG2;
 use crate::primitives::callbacks::Callbacks;
-use crate::primitives::context::{HostAllocation, ProverContext, UnsafeMutAccessor};
+use crate::primitives::context::{DeviceAllocation, HostAllocation, ProverContext, UnsafeMutAccessor};
 use crate::primitives::device_structures::DeviceMatrix;
 use crate::primitives::device_tracing::Range;
 use crate::primitives::field::BF;
+use crate::prover::proof_layout::{ProofLayout, WhirBaseLayerKind};
 use crate::prover::trace_holder::TraceHolder;
 use prover::gkr::virtual_polys::init_and_teardown_base::evaluate_virtual_inits_and_teardowns_base_address_setup_polys;
 use prover::gkr::virtual_polys::range_check::evaluate_virtual_range_check_setup_poly;
@@ -407,6 +408,12 @@ pub(crate) fn schedule_prepare_base_layer_claims_with_sources<E>(
     setup_trace_holder: &TraceHolder<BF>,
     memory_trace_holder: &TraceHolder<BF>,
     witness_trace_holder: &TraceHolder<BF>,
+    // Phase 3: when Some, H2D the pinned host claims (= WHIR base-layer
+    // `evals`) into the slab's
+    // `whir.{setup,memory,witness}.evals` ranges right after the existing
+    // D2H. `None` skips slab routing (test paths).
+    proof_slab: Option<&DeviceAllocation<u8>>,
+    proof_layout: &ProofLayout,
     context: &ProverContext,
 ) -> CudaResult<GpuGKRBaseLayerClaimsScheduledExecution<E>>
 where
@@ -484,6 +491,50 @@ where
         context,
     )?;
 
+    // Phase 3 slab routing: H2D from the pinned host claim vectors
+    // (D2H'd above by `schedule_reduce_trace_holder_claims`) into the slab's
+    // `whir.{memory,witness,setup}.evals` ranges. These are the per-column
+    // claim values WHIR later writes into `proof.*_commitment.evals`.
+    // Stream-ordering guarantees the H2D reads the post-D2H host buffer.
+    if let Some(slab) = proof_slab {
+        // Slab layout uses `E4` elements; the only caller with a non-None
+        // slab is proof.rs with `E = E4`. Guard against a future caller
+        // passing a non-`E4` extension field with slab routing enabled.
+        debug_assert_eq!(
+            std::mem::size_of::<E>(),
+            std::mem::size_of::<crate::primitives::field::E4>(),
+            "Phase 3 base-layer slab routing requires E to be E4-sized",
+        );
+        for (kind, host_claims) in [
+            (WhirBaseLayerKind::Memory, &mem_polys_claims),
+            (WhirBaseLayerKind::Witness, &wit_polys_claims),
+            (WhirBaseLayerKind::Setup, &setup_polys_claims),
+        ] {
+            let (dst_ptr, dst_len) = unsafe {
+                proof_layout.whir_base_evals_device_mut(slab.as_ptr() as *mut u8, kind)
+            };
+            assert_eq!(
+                dst_len,
+                unsafe { host_claims.get_accessor().get() }.len(),
+                "slab {:?} evals length mismatch",
+                kind,
+            );
+            if dst_len == 0 {
+                continue;
+            }
+            // SAFETY: the slab is 16-byte aligned, `E4` is 16 bytes so the
+            // field-start is aligned, and the target range is disjoint from
+            // other slab fields by construction.
+            let dst = unsafe {
+                era_cudart::slice::DeviceSlice::from_raw_parts_mut(
+                    dst_ptr as *mut E,
+                    dst_len,
+                )
+            };
+            memory_copy_async(dst, host_claims, stream)?;
+        }
+    }
+
     let mut shared_state = Box::new(ScheduledBaseLayerClaimsState { result: None });
     let shared_state_handle = UnsafeMutAccessor::new(shared_state.as_mut());
     let mut finish_callbacks = Callbacks::new();
@@ -546,6 +597,7 @@ pub(crate) fn schedule_prepare_base_layer_claims<E>(
     setup_trace_holder: &TraceHolder<BF>,
     memory_trace_holder: &TraceHolder<BF>,
     witness_trace_holder: &TraceHolder<BF>,
+    proof_layout: &ProofLayout,
     context: &ProverContext,
 ) -> CudaResult<GpuGKRBaseLayerClaimsScheduledExecution<E>>
 where
@@ -561,6 +613,8 @@ where
         setup_trace_holder,
         memory_trace_holder,
         witness_trace_holder,
+        None,
+        proof_layout,
         context,
     )
 }
@@ -572,6 +626,7 @@ pub(crate) fn prepare_base_layer_claims<E>(
     setup_trace_holder: &TraceHolder<BF>,
     memory_trace_holder: &TraceHolder<BF>,
     witness_trace_holder: &TraceHolder<BF>,
+    proof_layout: &ProofLayout,
     context: &ProverContext,
 ) -> CudaResult<GpuGKRBaseLayerTailOutput<E>>
 where
@@ -584,6 +639,7 @@ where
         setup_trace_holder,
         memory_trace_holder,
         witness_trace_holder,
+        proof_layout,
         context,
     )?
     .wait(context)
@@ -685,6 +741,9 @@ mod tests {
             gates: Vec::new(),
         };
 
+        let proof_layout = crate::prover::proof_layout::ProofLayout::new(
+            &crate::prover::proof_layout::placeholder_inputs_for_prove(),
+        );
         let output = prepare_base_layer_claims(
             &layer_desc,
             &base_layer_point,
@@ -692,6 +751,7 @@ mod tests {
             &setup_trace_holder,
             &memory_trace_holder,
             &witness_trace_holder,
+            &proof_layout,
             &context,
         )
         .unwrap();
