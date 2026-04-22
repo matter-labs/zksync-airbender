@@ -674,6 +674,22 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
             &external_challenges,
             &forward_output.storage,
         );
+    // Per-layer geometry for the slab — witness/memory may have different
+    // `log_lde_factor` / `log_tree_cap_size` than setup, so pass the actual
+    // trace-holder geometry for each base layer rather than reusing
+    // `setup_geometry`.
+    let memory_layer_geometry = GpuGKRTraceGeometry {
+        log_domain_size: stage1_output.memory_trace_holder.log_domain_size,
+        log_lde_factor: stage1_output.memory_trace_holder.log_lde_factor,
+        log_rows_per_leaf: stage1_output.memory_trace_holder.log_rows_per_leaf,
+        log_tree_cap_size: stage1_output.memory_trace_holder.log_tree_cap_size,
+    };
+    let witness_layer_geometry = GpuGKRTraceGeometry {
+        log_domain_size: stage1_output.witness_trace_holder.log_domain_size,
+        log_lde_factor: stage1_output.witness_trace_holder.log_lde_factor,
+        log_rows_per_leaf: stage1_output.witness_trace_holder.log_rows_per_leaf,
+        log_tree_cap_size: stage1_output.witness_trace_holder.log_tree_cap_size,
+    };
     let proof_layout_inputs = crate::prover::proof_layout::build_proof_layout_inputs(
         &compiled_circuit,
         &whir_schedule,
@@ -681,11 +697,11 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
         &forward_output.dimension_reducing_inputs,
         &main_layer_input_addresses_per_layer,
         crate::prover::proof_layout::ProofLayoutBaseLayerGeometry::from_geometry(
-            setup_geometry,
+            memory_layer_geometry,
             compiled_circuit.memory_layout.total_width,
         ),
         crate::prover::proof_layout::ProofLayoutBaseLayerGeometry::from_geometry(
-            setup_geometry,
+            witness_layer_geometry,
             compiled_circuit.witness_layout.total_width,
         ),
         crate::prover::proof_layout::ProofLayoutBaseLayerGeometry::from_geometry(
