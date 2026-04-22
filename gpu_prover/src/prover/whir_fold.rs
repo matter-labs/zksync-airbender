@@ -3198,6 +3198,16 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
             let query_values_per_leaf = query.values_per_leaf();
             let query_log_lde_factor = oracle_to_query.lde_factor().trailing_zeros();
             let query_coset_tree_size = oracle_to_query.packed_leaf_count();
+            copy_intermediate_query_to_slab(
+                query_indexes_host.get_accessor(),
+                query_leafs_accessor,
+                query_paths_accessor,
+                proof_slab,
+                proof_layout,
+                final_oracle_index,
+                query_idx,
+                stream,
+            )?;
             final_callbacks.extend(copy_callbacks);
             final_callbacks.schedule(
                 {

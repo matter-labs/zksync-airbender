@@ -30,6 +30,11 @@ use cs::definitions::GKRAddress;
 use cs::gkr_compiler::{GKRCircuitArtifact, OutputType};
 use prover::gkr::prover::{SumcheckIntermediateProofValues, WhirSchedule};
 use prover::gkr::prover::dimension_reduction::forward::DimensionReducingInputOutput;
+use prover::gkr::whir::{
+    BaseFieldQuery, ExtensionFieldQuery, WhirBaseLayerCommitmentAndQueries, WhirCommitment,
+    WhirIntermediateCommitmentAndQueries, WhirPolyCommitProof,
+};
+use prover::merkle_trees::{DefaultTreeConstructor, MerkleTreeCapVarLength};
 
 use crate::field::{BF, E4};
 use crate::prover::gkr::stage1::GpuGKRTraceGeometry;
@@ -851,6 +856,108 @@ impl ProofLayout {
         layer_slot: usize,
     ) -> &'a [E4] {
         Self::host_typed::<E4>(slab, &self.backward[layer_slot].final_step_evaluations)
+    }
+
+    /// Phase 4: parse every slab-resident WHIR proof field into a fresh
+    /// `WhirPolyCommitProof`. Base-layer `queries` are left as `Vec::new()`
+    /// (the caller is expected to overwrite from the host-side callback
+    /// path — base-layer queries stay on host per the approved plan);
+    /// `final_monomials` is `vec![]` (GPU prover leaves this empty today,
+    /// matching the layout's `final_monomials_len: 0`).
+    pub(crate) fn parse_whir_proof(
+        &self,
+        slab: &[u8],
+    ) -> WhirPolyCommitProof<BF, E4, DefaultTreeConstructor> {
+        let digest_bytes_of = |bytes: &[u32]| -> Vec<[u32; DIGEST_U32_WORDS]> {
+            bytes
+                .chunks_exact(DIGEST_U32_WORDS)
+                .map(|c| {
+                    let mut d = [0u32; DIGEST_U32_WORDS];
+                    d.copy_from_slice(c);
+                    d
+                })
+                .collect()
+        };
+        let base = |which: WhirBaseLayerKind| -> WhirBaseLayerCommitmentAndQueries<
+            BF,
+            E4,
+            DefaultTreeConstructor,
+        > {
+            let base_layout = self.whir_base(which);
+            let cap_flat = self.whir_base_cap_host(slab, which);
+            let cap = digest_bytes_of(cap_flat);
+            let evals = self.whir_base_evals_host(slab, which).to_vec();
+            WhirBaseLayerCommitmentAndQueries {
+                commitment: WhirCommitment {
+                    cap: MerkleTreeCapVarLength { cap },
+                    _marker: PhantomData,
+                },
+                num_columns: base_layout.num_columns,
+                evals,
+                queries: Vec::new(),
+            }
+        };
+        let setup_commitment = base(WhirBaseLayerKind::Setup);
+        let memory_commitment = base(WhirBaseLayerKind::Memory);
+        let witness_commitment = base(WhirBaseLayerKind::Witness);
+        let intermediate_whir_oracles: Vec<
+            WhirIntermediateCommitmentAndQueries<BF, E4, DefaultTreeConstructor>,
+        > = self
+            .whir
+            .intermediate
+            .iter()
+            .enumerate()
+            .map(|(round, inter)| {
+                let cap_flat = self.whir_intermediate_cap_host(slab, round);
+                let cap = digest_bytes_of(cap_flat);
+                let indices = self.whir_intermediate_query_indices_host(slab, round);
+                let leaves = self.whir_intermediate_query_leaves_host(slab, round);
+                let paths_flat = self.whir_intermediate_query_paths_host(slab, round);
+                let query_count = inter.query_count;
+                let leaf_values_len = inter.leaf_values_len;
+                let path_len = inter.path_len;
+                let queries: Vec<ExtensionFieldQuery<BF, E4, DefaultTreeConstructor>> = (0
+                    ..query_count)
+                    .map(|q| {
+                        let leaf_start = q * leaf_values_len;
+                        let leaf_end = leaf_start + leaf_values_len;
+                        let path_start_u32 = q * path_len * DIGEST_U32_WORDS;
+                        let path_end_u32 = path_start_u32 + path_len * DIGEST_U32_WORDS;
+                        ExtensionFieldQuery {
+                            index: indices[q] as usize,
+                            leaf_values_concatenated: leaves[leaf_start..leaf_end].to_vec(),
+                            path: digest_bytes_of(&paths_flat[path_start_u32..path_end_u32]),
+                            _marker: PhantomData,
+                        }
+                    })
+                    .collect();
+                WhirIntermediateCommitmentAndQueries {
+                    commitment: WhirCommitment {
+                        cap: MerkleTreeCapVarLength { cap },
+                        _marker: PhantomData,
+                    },
+                    queries,
+                }
+            })
+            .collect();
+        let ood_samples = self.whir_ood_samples_host(slab).to_vec();
+        let sumcheck_polys: Vec<[E4; 3]> = self
+            .whir_sumcheck_polys_host(slab)
+            .chunks_exact(3)
+            .map(|c| [c[0], c[1], c[2]])
+            .collect();
+        let pow_nonces = self.whir_pow_nonces_host(slab).to_vec();
+        let final_monomials = self.whir_final_monomials_host(slab).to_vec();
+        WhirPolyCommitProof {
+            setup_commitment,
+            memory_commitment,
+            witness_commitment,
+            intermediate_whir_oracles,
+            ood_samples,
+            sumcheck_polys,
+            pow_nonces,
+            final_monomials,
+        }
     }
 
     /// Phase 4: parse `final_explicit_evaluations:
