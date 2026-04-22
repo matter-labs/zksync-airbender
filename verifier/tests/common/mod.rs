@@ -49,7 +49,11 @@ pub enum VerifyRejection {
     Panic(String),
 }
 
-pub fn verify_nds(name: &str, external_challenges: &GKRExternalChallenges<BabyBearField, BabyBearExt4>, nds: Vec<u32>) -> Result<(), VerifyRejection> {
+pub fn verify_nds(
+    name: &str,
+    external_challenges: &GKRExternalChallenges<BabyBearField, BabyBearExt4>,
+    nds: Vec<u32>,
+) -> Result<(), VerifyRejection> {
     let prev_hook = std::panic::take_hook();
     let panic_msg = std::sync::Arc::new(std::sync::Mutex::new(None::<String>));
     let panic_msg_clone = panic_msg.clone();
@@ -64,7 +68,8 @@ pub fn verify_nds(name: &str, external_challenges: &GKRExternalChallenges<BabyBe
             .spawn_scoped(s, move || {
                 set_iterator(nds.into_iter());
                 with_circuit!(name, |m| {
-                    m::verify::<ThreadLocalBasedSource, DebugErrorCreator>(external_challenges).map(|_| ())
+                    m::verify::<ThreadLocalBasedSource, DebugErrorCreator>(external_challenges)
+                        .map(|_| ())
                 })
             })
             .expect("failed to spawn thread");

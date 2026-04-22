@@ -90,11 +90,15 @@ impl CircuitData {
         self.nds_cache
             .get_or_init(|| {
                 let circuit = self.compiled_circuit();
-                let inits_and_teardowns_top_bits: Vec<u32> = 
+                let inits_and_teardowns_top_bits: Vec<u32> =
                     (0..circuit.memory_layout.teardown_sets.len())
                         .map(|i| i as u32)
                         .collect();
-                let nds = flatten_gkr_proof_for_nds::<BabyBearField, BabyBearExt4, DefaultTreeConstructor>(
+                let nds = flatten_gkr_proof_for_nds::<
+                    BabyBearField,
+                    BabyBearExt4,
+                    DefaultTreeConstructor,
+                >(
                     &self.proof(),
                     &circuit,
                     self.whir_schedule(),

@@ -554,7 +554,8 @@ where
     let trace_len = compiled_circuit.trace_len;
     assert!(trace_len.is_power_of_two());
     let trace_len_log_2 = trace_len.trailing_zeros() as usize;
-    let initial_layer_for_sumcheck = num_standard_layers + trace_len_log_2 - sumcheck_output_size_log_2;
+    let initial_layer_for_sumcheck =
+        num_standard_layers + trace_len_log_2 - sumcheck_output_size_log_2;
 
     let standard_sorted_addrs: Vec<Vec<GKRAddress>> = compiled_circuit
         .layers
@@ -719,7 +720,8 @@ where
     let evals_commit_buf_size = evals_commit_total.div_ceil(block_words) * block_words;
 
     let num_teardown_sets = compiled_circuit.memory_layout.teardown_sets.len();
-    let num_linearization_challenges = ::cs::definitions::NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES;
+    let num_linearization_challenges =
+        ::cs::definitions::NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES;
     let external_challenges_flattened_size = degree * (num_linearization_challenges + 1);
 
     let trace_len_log2 = compiled_circuit.trace_len.trailing_zeros() as usize;
@@ -1224,7 +1226,8 @@ where
     let configured_cap_size: usize = whir_schedule.cap_size;
     assert!(configured_cap_size > 0);
     let cap_size_log2 = configured_cap_size.trailing_zeros() as usize;
-    let canonical_depth = trace_len_log2 + base_lde_factor_log2 - initial_fold_steps - cap_size_log2;
+    let canonical_depth =
+        trace_len_log2 + base_lde_factor_log2 - initial_fold_steps - cap_size_log2;
 
     let mut oracles = BTreeMap::new();
     {
@@ -1299,13 +1302,25 @@ where
                 })
         };
         let mut indices = Vec::with_capacity(total_oracle_cols);
-        for i in 0..oracles.get(&OracleType::Memory).map(|el| el.num_columns).unwrap_or(0) {
+        for i in 0..oracles
+            .get(&OracleType::Memory)
+            .map(|el| el.num_columns)
+            .unwrap_or(0)
+        {
             indices.push(position(&GKRAddress::BaseLayerMemory(i)));
         }
-        for i in 0..oracles.get(&OracleType::Witness).map(|el| el.num_columns).unwrap_or(0) {
+        for i in 0..oracles
+            .get(&OracleType::Witness)
+            .map(|el| el.num_columns)
+            .unwrap_or(0)
+        {
             indices.push(position(&GKRAddress::BaseLayerWitness(i)));
         }
-        for i in 0..oracles.get(&OracleType::Setup).map(|el| el.num_columns).unwrap_or(0) {
+        for i in 0..oracles
+            .get(&OracleType::Setup)
+            .map(|el| el.num_columns)
+            .unwrap_or(0)
+        {
             indices.push(position(&GKRAddress::Setup(i)));
         }
         indices

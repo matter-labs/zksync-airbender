@@ -308,11 +308,8 @@ where
         NUM_SETUP_COMMITS,
         PADDING_WORDS,
     >(external_challenges);
-    let gkr_output = V::verify_gkr::<I, E>(
-        external_challenges,
-        &initial_transcript_values,
-        &mut ts
-    )?;
+    let gkr_output =
+        V::verify_gkr::<I, E>(external_challenges, &initial_transcript_values, &mut ts)?;
     let _ = V::verify_whir::<I, E>(
         &initial_transcript_values,
         &mut ts,

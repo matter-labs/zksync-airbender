@@ -32,6 +32,7 @@ pub struct LayerState<E: Field, const ROUNDS: usize, const ADDRS: usize> {
 }
 
 // assigned sufficiently for precompile friendliness
+#[derive(Debug)]
 #[repr(C, align(64))]
 pub struct InitialGKRTranscript<
     E: Field,
@@ -194,12 +195,9 @@ where
             padding: [0u32; PADDING_WORDS],
             _marker: core::marker::PhantomData,
         };
-
         let mut hasher = blake2s_u32::DelegatedBlake2sState::new();
-        let seed = Blake2sTranscript::commit_initial_using_hasher_and_aligned_buffer(
-            &mut hasher,
-            initial_transcript_state.as_aligned_chunks(),
-            core::mem::size_of::<
+        let state_as_flattened_buffers = initial_transcript_state.as_aligned_chunks();
+        let meaningful_part_len = core::mem::offset_of!(
                 InitialGKRTranscript<
                     E,
                     INIT_AND_TEARDOWN_SETS,
@@ -209,8 +207,13 @@ where
                     NUM_WITNESS_COMMITS,
                     NUM_SETUP_COMMITS,
                     PADDING_WORDS,
-                >,
-            >() / core::mem::size_of::<u32>(),
+                >, padding);
+        assert_eq!(meaningful_part_len % core::mem::size_of::<u32>(), 0);
+        let total_words = meaningful_part_len / core::mem::size_of::<u32>();
+        let seed = Blake2sTranscript::commit_initial_using_hasher_and_aligned_buffer(
+            &mut hasher,
+            state_as_flattened_buffers,
+            total_words,
         );
         hasher.reset();
         let ts = TranscriptState::from_hasher_and_seed(hasher, seed);

@@ -15,7 +15,7 @@ pub struct AlignedSlice<T, A> {
     data: [T],
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 #[repr(align(64))]
 pub struct A64;
 
