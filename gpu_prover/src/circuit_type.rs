@@ -6,6 +6,9 @@ use setups::{
     jump_branch_slt, keccak_special5, load_store_subword_only, load_store_word_only, mul_div,
     mul_div_unsigned, shift_binary_csr, unified_reduced_machine,
 };
+use verifier_common::security_100::Security100Marker;
+use verifier_common::security_80::Security80Marker;
+use verifier_common::SecurityMarker;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub enum CircuitType {
@@ -77,10 +80,18 @@ impl CircuitType {
         // }
     }
 
-    pub fn get_security_config(&self) -> ProofSecurityConfig {
+    pub fn get_security_config_80(&self) -> ProofSecurityConfig {
+        self.get_security_config_for::<Security80Marker>()
+    }
+
+    pub fn get_security_config_100(&self) -> ProofSecurityConfig {
+        self.get_security_config_for::<Security100Marker>()
+    }
+
+    pub(crate) fn get_security_config_for<S: SecurityMarker>(&self) -> ProofSecurityConfig {
         match self {
-            Self::Delegation(delegation_type) => delegation_type.get_security_config(),
-            Self::Unrolled(unrolled_type) => unrolled_type.get_security_config(),
+            Self::Delegation(delegation_type) => delegation_type.get_security_config_for::<S>(),
+            Self::Unrolled(unrolled_type) => unrolled_type.get_security_config_for::<S>(),
         }
     }
 }
@@ -164,15 +175,25 @@ impl DelegationCircuitType {
         }
     }
 
-    pub fn get_security_config(&self) -> ProofSecurityConfig {
+    pub fn get_security_config_80(&self) -> ProofSecurityConfig {
+        self.get_security_config_for::<Security80Marker>()
+    }
+
+    pub fn get_security_config_100(&self) -> ProofSecurityConfig {
+        self.get_security_config_for::<Security100Marker>()
+    }
+
+    pub(crate) fn get_security_config_for<S: SecurityMarker>(&self) -> ProofSecurityConfig {
         match self {
             Self::BigIntWithControl => {
-                get_security_config::<{ bigint_with_control::DOMAIN_SIZE }>()
+                get_security_config_for_num_foldings::<S, BIGINT_WITH_CONTROL_NUM_FOLDINGS>()
             }
             Self::Blake2WithCompression => {
-                get_security_config::<{ blake2_with_compression::DOMAIN_SIZE }>()
+                get_security_config_for_num_foldings::<S, BLAKE2_WITH_COMPRESSION_NUM_FOLDINGS>()
             }
-            Self::KeccakSpecial5 => get_security_config::<{ keccak_special5::DOMAIN_SIZE }>(),
+            Self::KeccakSpecial5 => {
+                get_security_config_for_num_foldings::<S, KECCAK_SPECIAL5_NUM_FOLDINGS>()
+            }
         }
     }
 }
@@ -293,14 +314,24 @@ impl UnrolledCircuitType {
             .map(|id| DelegationCircuitType::from(*id as u16))
     }
 
-    pub fn get_security_config(&self) -> ProofSecurityConfig {
+    pub fn get_security_config_80(&self) -> ProofSecurityConfig {
+        self.get_security_config_for::<Security80Marker>()
+    }
+
+    pub fn get_security_config_100(&self) -> ProofSecurityConfig {
+        self.get_security_config_for::<Security100Marker>()
+    }
+
+    pub(crate) fn get_security_config_for<S: SecurityMarker>(&self) -> ProofSecurityConfig {
         match self {
             Self::InitsAndTeardowns => {
-                get_security_config::<{ inits_and_teardowns::DOMAIN_SIZE }>()
+                get_security_config_for_num_foldings::<S, INITS_AND_TEARDOWNS_NUM_FOLDINGS>()
             }
-            Self::Memory(circuit_type) => circuit_type.get_security_config(),
-            Self::NonMemory(circuit_type) => circuit_type.get_security_config(),
-            Self::Unified => get_security_config::<{ unified_reduced_machine::DOMAIN_SIZE }>(),
+            Self::Memory(circuit_type) => circuit_type.get_security_config_for::<S>(),
+            Self::NonMemory(circuit_type) => circuit_type.get_security_config_for::<S>(),
+            Self::Unified => {
+                get_security_config_for_num_foldings::<S, UNIFIED_REDUCED_MACHINE_NUM_FOLDINGS>()
+            }
         }
     }
 }
@@ -393,13 +424,21 @@ impl UnrolledMemoryCircuitType {
         }
     }
 
-    pub fn get_security_config(&self) -> ProofSecurityConfig {
+    pub fn get_security_config_80(&self) -> ProofSecurityConfig {
+        self.get_security_config_for::<Security80Marker>()
+    }
+
+    pub fn get_security_config_100(&self) -> ProofSecurityConfig {
+        self.get_security_config_for::<Security100Marker>()
+    }
+
+    pub(crate) fn get_security_config_for<S: SecurityMarker>(&self) -> ProofSecurityConfig {
         match self {
             Self::LoadStoreSubwordOnly => {
-                get_security_config::<{ load_store_subword_only::DOMAIN_SIZE }>()
+                get_security_config_for_num_foldings::<S, LOAD_STORE_SUBWORD_ONLY_NUM_FOLDINGS>()
             }
             Self::LoadStoreWordOnly => {
-                get_security_config::<{ load_store_word_only::DOMAIN_SIZE }>()
+                get_security_config_for_num_foldings::<S, LOAD_STORE_WORD_ONLY_NUM_FOLDINGS>()
             }
         }
     }
@@ -559,15 +598,29 @@ impl UnrolledNonMemoryCircuitType {
         }
     }
 
-    pub fn get_security_config(&self) -> ProofSecurityConfig {
+    pub fn get_security_config_80(&self) -> ProofSecurityConfig {
+        self.get_security_config_for::<Security80Marker>()
+    }
+
+    pub fn get_security_config_100(&self) -> ProofSecurityConfig {
+        self.get_security_config_for::<Security100Marker>()
+    }
+
+    pub(crate) fn get_security_config_for<S: SecurityMarker>(&self) -> ProofSecurityConfig {
         match self {
             Self::AddSubLuiAuipcMop => {
-                get_security_config::<{ add_sub_lui_auipc_mop::DOMAIN_SIZE }>()
+                get_security_config_for_num_foldings::<S, ADD_SUB_LUI_AUIPC_MOP_NUM_FOLDINGS>()
             }
-            Self::JumpBranchSlt => get_security_config::<{ jump_branch_slt::DOMAIN_SIZE }>(),
-            Self::MulDiv => get_security_config::<{ mul_div::DOMAIN_SIZE }>(),
-            Self::MulDivUnsigned => get_security_config::<{ mul_div_unsigned::DOMAIN_SIZE }>(),
-            Self::ShiftBinaryCsr => get_security_config::<{ shift_binary_csr::DOMAIN_SIZE }>(),
+            Self::JumpBranchSlt => {
+                get_security_config_for_num_foldings::<S, JUMP_BRANCH_SLT_NUM_FOLDINGS>()
+            }
+            Self::MulDiv => get_security_config_for_num_foldings::<S, MUL_DIV_NUM_FOLDINGS>(),
+            Self::MulDivUnsigned => {
+                get_security_config_for_num_foldings::<S, MUL_DIV_UNSIGNED_NUM_FOLDINGS>()
+            }
+            Self::ShiftBinaryCsr => {
+                get_security_config_for_num_foldings::<S, SHIFT_BINARY_CSR_NUM_FOLDINGS>()
+            }
         }
     }
 }
@@ -596,13 +649,31 @@ const fn get_num_foldings<const DOMAIN_SIZE: usize>() -> usize {
         .len()
 }
 
-fn get_security_config<const DOMAIN_SIZE: usize>() -> ProofSecurityConfig
-where
-    [(); get_num_foldings::<DOMAIN_SIZE>()]:,
-{
-    assert!(DOMAIN_SIZE.is_power_of_two());
-    let config = verifier_common::SizedProofSecurityConfig::<{
-        get_num_foldings::<DOMAIN_SIZE>()
-    }>::worst_case_config();
-    config.for_prover()
+// TODO: Needed since const generics evaluator is overly strict on `get_security_config_for_num_foldings`
+// and doesn't allow `{ get_num_foldings::<...>() }` as `NUM_FOLDINGS` generic.
+const BIGINT_WITH_CONTROL_NUM_FOLDINGS: usize =
+    get_num_foldings::<{ bigint_with_control::DOMAIN_SIZE }>();
+const BLAKE2_WITH_COMPRESSION_NUM_FOLDINGS: usize =
+    get_num_foldings::<{ blake2_with_compression::DOMAIN_SIZE }>();
+const KECCAK_SPECIAL5_NUM_FOLDINGS: usize = get_num_foldings::<{ keccak_special5::DOMAIN_SIZE }>();
+const INITS_AND_TEARDOWNS_NUM_FOLDINGS: usize =
+    get_num_foldings::<{ inits_and_teardowns::DOMAIN_SIZE }>();
+const UNIFIED_REDUCED_MACHINE_NUM_FOLDINGS: usize =
+    get_num_foldings::<{ unified_reduced_machine::DOMAIN_SIZE }>();
+const LOAD_STORE_SUBWORD_ONLY_NUM_FOLDINGS: usize =
+    get_num_foldings::<{ load_store_subword_only::DOMAIN_SIZE }>();
+const LOAD_STORE_WORD_ONLY_NUM_FOLDINGS: usize =
+    get_num_foldings::<{ load_store_word_only::DOMAIN_SIZE }>();
+const ADD_SUB_LUI_AUIPC_MOP_NUM_FOLDINGS: usize =
+    get_num_foldings::<{ add_sub_lui_auipc_mop::DOMAIN_SIZE }>();
+const JUMP_BRANCH_SLT_NUM_FOLDINGS: usize = get_num_foldings::<{ jump_branch_slt::DOMAIN_SIZE }>();
+const MUL_DIV_NUM_FOLDINGS: usize = get_num_foldings::<{ mul_div::DOMAIN_SIZE }>();
+const MUL_DIV_UNSIGNED_NUM_FOLDINGS: usize =
+    get_num_foldings::<{ mul_div_unsigned::DOMAIN_SIZE }>();
+const SHIFT_BINARY_CSR_NUM_FOLDINGS: usize =
+    get_num_foldings::<{ shift_binary_csr::DOMAIN_SIZE }>();
+
+fn get_security_config_for_num_foldings<S: SecurityMarker, const NUM_FOLDINGS: usize>(
+) -> ProofSecurityConfig {
+    S::proof_security_config::<NUM_FOLDINGS>().for_prover()
 }

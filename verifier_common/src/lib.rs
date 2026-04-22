@@ -13,6 +13,12 @@ pub enum SecurityModel {
     Security100,
 }
 
+pub trait SecurityMarker {
+    const MODEL: SecurityModel;
+
+    fn proof_security_config<const NUM_FOLDINGS: usize>() -> SizedProofSecurityConfig<NUM_FOLDINGS>;
+}
+
 impl SecurityModel {
     pub const fn memory_delegation_pow_bits(self) -> usize {
         match self {
@@ -81,7 +87,7 @@ impl<const NUM_FOLDINGS: usize> SizedProofSecurityConfig<NUM_FOLDINGS> {
     }
 }
 
-pub trait SecurityConfig<const NUM_FOLDINGS: usize> {
+pub trait SecurityConfig<const NUM_FOLDINGS: usize>: SecurityMarker {
     const CONFIG: SizedProofSecurityConfig<NUM_FOLDINGS>;
 }
 

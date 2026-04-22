@@ -54,6 +54,56 @@ pub const BASE_PROGRAM: &[u8] = include_bytes!("../../examples/hashed_fibonacci/
 pub const BASE_PROGRAM_TEXT_SECTION: &[u8] =
     include_bytes!("../../examples/hashed_fibonacci/app.text");
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RecursionLayer {
+    Unrolled,
+    Unified,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RecursionArtifact {
+    Bin,
+    Txt,
+}
+
+pub const fn recursion_artifact_path(
+    security: verifier_common::SecurityModel,
+    recursion: RecursionLayer,
+    artifact: RecursionArtifact,
+) -> &'static str {
+    use RecursionArtifact::*;
+    use RecursionLayer::*;
+    use verifier_common::SecurityModel::*;
+
+    match (security, recursion, artifact) {
+        (Security80, Unified, Bin) => "../tools/verifier/recursion_in_unified_layer.bin",
+        (Security80, Unified, Txt) => "../tools/verifier/recursion_in_unified_layer.text",
+        (Security80, Unrolled, Bin) => "../tools/verifier/recursion_in_unrolled_layer.bin",
+        (Security80, Unrolled, Txt) => "../tools/verifier/recursion_in_unrolled_layer.text",
+        (Security100, Unified, Bin) => {
+            "../tools/verifier/recursion_in_unified_layer_security_100_bits.bin"
+        }
+        (Security100, Unified, Txt) => {
+            "../tools/verifier/recursion_in_unified_layer_security_100_bits.text"
+        }
+        (Security100, Unrolled, Bin) => {
+            "../tools/verifier/recursion_in_unrolled_layer_security_100_bits.bin"
+        }
+        (Security100, Unrolled, Txt) => {
+            "../tools/verifier/recursion_in_unrolled_layer_security_100_bits.text"
+        }
+    }
+}
+
+pub const fn unified_recursion_target_family_proofs(
+    security: verifier_common::SecurityModel,
+) -> usize {
+    match security {
+        verifier_common::SecurityModel::Security80 => 1,
+        verifier_common::SecurityModel::Security100 => 2,
+    }
+}
+
 pub fn get_padded_binary(binary: &[u8]) -> Vec<u32> {
     let mut bytecode = binary
         .as_chunks::<4>()
@@ -174,8 +224,11 @@ pub fn compute_chain_encoding(data: Vec<[u32; 8]>) -> [u32; 8] {
     previous
 }
 
-#[cfg(feature = "verifier_binaries")]
+#[cfg(any(test, feature = "verifier_binaries", feature = "gpu_prover"))]
 pub mod verifier_binaries {
+    use super::{RecursionArtifact, RecursionLayer};
+    use verifier_common::SecurityModel;
+
     pub const RECURSION_UNROLLED_80_BIN: &[u8] =
         include_bytes!("../../tools/verifier/recursion_in_unrolled_layer.bin");
     pub const RECURSION_UNROLLED_80_TXT: &[u8] =
@@ -193,6 +246,27 @@ pub mod verifier_binaries {
         include_bytes!("../../tools/verifier/recursion_in_unified_layer_security_100_bits.bin");
     pub const RECURSION_UNIFIED_100_TXT: &[u8] =
         include_bytes!("../../tools/verifier/recursion_in_unified_layer_security_100_bits.text");
+
+    pub const fn recursion_artifact(
+        security: SecurityModel,
+        recursion: RecursionLayer,
+        artifact: RecursionArtifact,
+    ) -> &'static [u8] {
+        use RecursionArtifact::*;
+        use RecursionLayer::*;
+        use SecurityModel::*;
+
+        match (security, recursion, artifact) {
+            (Security80, Unified, Bin) => RECURSION_UNIFIED_80_BIN,
+            (Security80, Unified, Txt) => RECURSION_UNIFIED_80_TXT,
+            (Security80, Unrolled, Bin) => RECURSION_UNROLLED_80_BIN,
+            (Security80, Unrolled, Txt) => RECURSION_UNROLLED_80_TXT,
+            (Security100, Unified, Bin) => RECURSION_UNIFIED_100_BIN,
+            (Security100, Unified, Txt) => RECURSION_UNIFIED_100_TXT,
+            (Security100, Unrolled, Bin) => RECURSION_UNROLLED_100_BIN,
+            (Security100, Unrolled, Txt) => RECURSION_UNROLLED_100_TXT,
+        }
+    }
 }
 
 // #[cfg(feature = "verifier_binaries")]

@@ -3,6 +3,9 @@ use crate::unrolled::{
     compute_setup_for_machine_configuration, flatten_proof_into_responses_for_unrolled_recursion,
     UnrolledProgramProof, UnrolledProgramSetup,
 };
+use crate::verifier_binaries;
+use crate::unified_recursion_target_family_proofs;
+use crate::{RecursionArtifact, RecursionLayer};
 use gpu_prover::{
     execution::prover::{ExecutionKind, ExecutionProver, ExecutionProverConfiguration},
     machine_type::MachineType,
@@ -12,6 +15,8 @@ use setups::{
     get_unrolled_circuits_artifacts_for_machine_type, pad_bytecode_bytes_for_proving,
     pad_bytecode_for_proving, read_binary, CompiledCircuitsSet,
 };
+use verifier_common::security_100::Security100Marker;
+use verifier_common::security_80::Security80Marker;
 use verifier_common::SecurityModel;
 
 use crate::unified_circuit::{
@@ -83,66 +88,74 @@ pub struct UnrolledProverLevelData {
 pub struct UnrolledProver {
     pub max_level: UnrolledProverLevel,
     pub level_data: BTreeMap<UnrolledProverLevel, UnrolledProverLevelData>,
-    pub prover: ExecutionProver,
+    pub prover: RuntimeExecutionProver,
 }
 
-pub const RECURSION_UNROLLED_80_BIN: &[u8] =
-    include_bytes!("../../tools/verifier/recursion_in_unrolled_layer.bin");
-pub const RECURSION_UNROLLED_80_TXT: &[u8] =
-    include_bytes!("../../tools/verifier/recursion_in_unrolled_layer.text");
-pub const RECURSION_UNIFIED_80_BIN: &[u8] =
-    include_bytes!("../../tools/verifier/recursion_in_unified_layer.bin");
-pub const RECURSION_UNIFIED_80_TXT: &[u8] =
-    include_bytes!("../../tools/verifier/recursion_in_unified_layer.text");
-
-pub const RECURSION_UNROLLED_100_BIN: &[u8] =
-    include_bytes!("../../tools/verifier/recursion_in_unrolled_layer_security_100_bits.bin");
-pub const RECURSION_UNROLLED_100_TXT: &[u8] =
-    include_bytes!("../../tools/verifier/recursion_in_unrolled_layer_security_100_bits.text");
-pub const RECURSION_UNIFIED_100_BIN: &[u8] =
-    include_bytes!("../../tools/verifier/recursion_in_unified_layer_security_100_bits.bin");
-pub const RECURSION_UNIFIED_100_TXT: &[u8] =
-    include_bytes!("../../tools/verifier/recursion_in_unified_layer_security_100_bits.text");
-
-const UNIFIED_RECURSION_TARGET_FAMILY_80_PROOFS: usize = 1;
-const UNIFIED_RECURSION_TARGET_FAMILY_100_PROOFS: usize = 2;
-
-enum ArtifactKind {
-    Bin,
-    Txt,
+// `execution_utils` is the first layer that legitimately needs runtime
+// security selection, so the enum wrapper lives here instead of inside
+// `gpu_prover`.
+pub enum RuntimeExecutionProver {
+    Security80(ExecutionProver<Security80Marker>),
+    Security100(ExecutionProver<Security100Marker>),
 }
 
-enum RecursionKind {
-    Unified,
-    Unrolled,
-}
+impl RuntimeExecutionProver {
+    fn add_binary(
+        &mut self,
+        key: usize,
+        execution_kind: ExecutionKind,
+        machine_type: MachineType,
+        binary_image: Vec<u32>,
+        text_section: Vec<u32>,
+        cycles_bound: Option<u32>,
+    ) {
+        match self {
+            Self::Security80(prover) => prover.add_binary(
+                key,
+                execution_kind,
+                machine_type,
+                binary_image,
+                text_section,
+                cycles_bound,
+            ),
+            Self::Security100(prover) => prover.add_binary(
+                key,
+                execution_kind,
+                machine_type,
+                binary_image,
+                text_section,
+                cycles_bound,
+            ),
+        }
+    }
 
-fn artifact(
-    security: SecurityModel,
-    recursion: RecursionKind,
-    artifact: ArtifactKind,
-) -> &'static [u8] {
-    use ArtifactKind::*;
-    use RecursionKind::*;
-    use SecurityModel::*;
-    match (security, recursion, artifact) {
-        (Security80, Unified, Bin) => RECURSION_UNIFIED_80_BIN,
-        (Security80, Unified, Txt) => RECURSION_UNIFIED_80_TXT,
-        (Security80, Unrolled, Bin) => RECURSION_UNROLLED_80_BIN,
-        (Security80, Unrolled, Txt) => RECURSION_UNROLLED_80_TXT,
-        (Security100, Unified, Bin) => RECURSION_UNIFIED_100_BIN,
-        (Security100, Unified, Txt) => RECURSION_UNIFIED_100_TXT,
-        (Security100, Unrolled, Bin) => RECURSION_UNROLLED_100_BIN,
-        (Security100, Unrolled, Txt) => RECURSION_UNROLLED_100_TXT,
+    fn commit_memory_and_prove(
+        &self,
+        batch_id: u64,
+        binary_key: usize,
+        non_determinism_source: impl riscv_transpiler::vm::NonDeterminismCSRSource + Send + 'static,
+    ) -> ProveResult {
+        match self {
+            Self::Security80(prover) => {
+                prover.commit_memory_and_prove(batch_id, binary_key, non_determinism_source)
+            }
+            Self::Security100(prover) => {
+                prover.commit_memory_and_prove(batch_id, binary_key, non_determinism_source)
+            }
+        }
+    }
+
+    fn security(&self) -> SecurityModel {
+        match self {
+            Self::Security80(prover) => prover.security(),
+            Self::Security100(prover) => prover.security(),
+        }
     }
 }
 
 fn unified_recursion_has_converged(security: SecurityModel, family_proof_count: usize) -> bool {
     // Unified recursion converges once proof shape reaches target size.
-    let target = match security {
-        SecurityModel::Security80 => UNIFIED_RECURSION_TARGET_FAMILY_80_PROOFS,
-        SecurityModel::Security100 => UNIFIED_RECURSION_TARGET_FAMILY_100_PROOFS,
-    };
+    let target = unified_recursion_target_family_proofs(security);
     family_proof_count == target
 }
 
@@ -153,7 +166,16 @@ impl UnrolledProver {
         prover_configuration: ExecutionProverConfiguration,
         max_level: UnrolledProverLevel,
     ) -> Self {
-        let mut prover = ExecutionProver::with_configuration(security, prover_configuration);
+        let mut prover = match security {
+            SecurityModel::Security80 => RuntimeExecutionProver::Security80(
+                ExecutionProver::<Security80Marker>::with_configuration_80(prover_configuration),
+            ),
+            SecurityModel::Security100 => RuntimeExecutionProver::Security100(
+                ExecutionProver::<Security100Marker>::with_configuration_100(
+                    prover_configuration,
+                ),
+            ),
+        };
         let mut level_data = BTreeMap::new();
 
         {
@@ -198,9 +220,19 @@ impl UnrolledProver {
         }
 
         if max_level >= UnrolledProverLevel::RecursionUnrolled {
-            let binary = artifact(security, RecursionKind::Unrolled, ArtifactKind::Bin).to_vec();
+            let binary = verifier_binaries::recursion_artifact(
+                security,
+                RecursionLayer::Unrolled,
+                RecursionArtifact::Bin,
+            )
+            .to_vec();
             let binary_u32 = binary_u8_to_u32(&binary);
-            let text = artifact(security, RecursionKind::Unrolled, ArtifactKind::Txt).to_vec();
+            let text = verifier_binaries::recursion_artifact(
+                security,
+                RecursionLayer::Unrolled,
+                RecursionArtifact::Txt,
+            )
+            .to_vec();
             let text_u32 = binary_u8_to_u32(&text);
             prover.add_binary(
                 UnrolledProverLevel::RecursionUnrolled as usize,
@@ -243,9 +275,19 @@ impl UnrolledProver {
         }
 
         if max_level == UnrolledProverLevel::RecursionUnified {
-            let binary = artifact(security, RecursionKind::Unified, ArtifactKind::Bin).to_vec();
+            let binary = verifier_binaries::recursion_artifact(
+                security,
+                RecursionLayer::Unified,
+                RecursionArtifact::Bin,
+            )
+            .to_vec();
             let binary_u32 = binary_u8_to_u32(&binary);
-            let text = artifact(security, RecursionKind::Unified, ArtifactKind::Txt).to_vec();
+            let text = verifier_binaries::recursion_artifact(
+                security,
+                RecursionLayer::Unified,
+                RecursionArtifact::Txt,
+            )
+            .to_vec();
             let text_u32 = binary_u8_to_u32(&text);
             prover.add_binary(
                 UnrolledProverLevel::RecursionUnified as usize,

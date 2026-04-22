@@ -455,22 +455,42 @@ pub fn prove_unrolled_with_replayer_for_machine_configuration<C: MachineConfig>(
         register_final_state,
         (final_pc, final_timestamp),
         pow_challenge,
-    ) = prover_examples::unrolled::prove_unrolled_execution_with_replayer::<
-        C,
-        Global,
-        ROM_SECOND_WORD_BITS,
-    >(
-        cycles_bound,
-        &binary_image,
-        &text_section,
-        non_determinism,
-        &families_precomps,
-        &inits_and_teardowns_precomps,
-        &delegation_precomputations,
-        ram_bound,
-        worker,
-        security,
-    );
+    ) = match security {
+        verifier_common::SecurityModel::Security80 => {
+            prover_examples::unrolled::prove_unrolled_execution_with_replayer_80::<
+                C,
+                Global,
+                ROM_SECOND_WORD_BITS,
+            >(
+                cycles_bound,
+                &binary_image,
+                &text_section,
+                non_determinism,
+                &families_precomps,
+                &inits_and_teardowns_precomps,
+                &delegation_precomputations,
+                ram_bound,
+                worker,
+            )
+        }
+        verifier_common::SecurityModel::Security100 => {
+            prover_examples::unrolled::prove_unrolled_execution_with_replayer_100::<
+                C,
+                Global,
+                ROM_SECOND_WORD_BITS,
+            >(
+                cycles_bound,
+                &binary_image,
+                &text_section,
+                non_determinism,
+                &families_precomps,
+                &inits_and_teardowns_precomps,
+                &delegation_precomputations,
+                ram_bound,
+                worker,
+            )
+        }
+    };
 
     (
         main_proofs,
@@ -487,6 +507,7 @@ mod test {
     use test_utils::skip_if_ci;
 
     use super::*;
+    use crate::{recursion_artifact_path, RecursionArtifact, RecursionLayer};
     use std::path::Path;
 
     use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
@@ -511,6 +532,16 @@ mod test {
             text_section,
             text_section_u32,
         }
+    }
+
+    fn load_recursion_program(
+        security: verifier_common::SecurityModel,
+        recursion: RecursionLayer,
+    ) -> TestProgram {
+        load_test_program(
+            recursion_artifact_path(security, recursion, RecursionArtifact::Bin),
+            recursion_artifact_path(security, recursion, RecursionArtifact::Txt),
+        )
     }
 
     fn prepare_unrolled_program<C: MachineConfig>(
@@ -771,10 +802,7 @@ mod test {
 
         // Then feed that proof into the checked-in recursion verifier binary and prove
         // that program through the same replayer/transpiler path used by the current stack.
-        let recursion_program = load_test_program(
-            "../tools/verifier/recursion_in_unrolled_layer.bin",
-            "../tools/verifier/recursion_in_unrolled_layer.text",
-        );
+        let recursion_program = load_recursion_program(security, RecursionLayer::Unrolled);
         let recursion_cycles_bound = 1 << 26;
         let recursion_ram_bound = 1 << 30;
         let recursion_input = flatten_proof_into_responses_for_unrolled_recursion(

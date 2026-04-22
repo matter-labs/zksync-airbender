@@ -18,11 +18,8 @@ use execution_utils::unrolled::{
 };
 #[cfg(feature = "gpu")]
 use execution_utils::unrolled_gpu::{UnrolledProver, UnrolledProverLevel};
-use execution_utils::verifier_binaries::{
-    RECURSION_UNIFIED_100_BIN, RECURSION_UNIFIED_100_TXT, RECURSION_UNIFIED_80_BIN,
-    RECURSION_UNIFIED_80_TXT, RECURSION_UNROLLED_100_BIN, RECURSION_UNROLLED_100_TXT,
-    RECURSION_UNROLLED_80_BIN, RECURSION_UNROLLED_80_TXT,
-};
+use execution_utils::verifier_binaries::recursion_artifact;
+use execution_utils::{RecursionArtifact, RecursionLayer};
 use prover::transcript::Blake2sBufferingTranscript;
 use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
 use riscv_transpiler::cycle::{
@@ -33,37 +30,38 @@ use sha3::{Digest, Keccak256};
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
-#[cfg(all(feature = "security_80", feature = "security_100"))]
-compile_error!("multiple security levels selected at the same time");
-#[cfg(all(not(feature = "security_80"), not(feature = "security_100")))]
-compile_error!(
-    "one security level must be selected: enable either `security_80` or `security_100`"
-);
-
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, ValueEnum)]
 pub enum SecurityLevel {
+    #[value(name = "80")]
     Security80,
+    #[value(name = "100")]
     Security100,
 }
 
-#[cfg(feature = "security_80")]
-pub const SECURITY: verifier_common::SecurityModel = verifier_common::SecurityModel::Security80;
-#[cfg(feature = "security_100")]
-pub const SECURITY: verifier_common::SecurityModel = verifier_common::SecurityModel::Security100;
+impl SecurityLevel {
+    pub const fn model(self) -> verifier_common::SecurityModel {
+        match self {
+            Self::Security80 => verifier_common::SecurityModel::Security80,
+            Self::Security100 => verifier_common::SecurityModel::Security100,
+        }
+    }
 
-#[cfg(feature = "security_80")]
-pub const COMPILED_SECURITY_LEVEL: SecurityLevel = SecurityLevel::Security80;
-#[cfg(feature = "security_100")]
-pub const COMPILED_SECURITY_LEVEL: SecurityLevel = SecurityLevel::Security100;
+    pub const fn unified_recursion_target_family_proofs(self) -> usize {
+        match self {
+            Self::Security80 => 1,
+            Self::Security100 => 2,
+        }
+    }
 
-#[cfg(feature = "security_80")]
-const UNIFIED_RECURSION_TARGET_FAMILY_PROOFS: usize = 1;
-#[cfg(feature = "security_100")]
-const UNIFIED_RECURSION_TARGET_FAMILY_PROOFS: usize = 2;
+    pub const fn unified_recursion_has_converged(self, family_proof_count: usize) -> bool {
+        family_proof_count == self.unified_recursion_target_family_proofs()
+    }
+}
 
-fn unified_recursion_has_converged(family_proof_count: usize) -> bool {
-    // Unified recursion converges once proof shape reaches target size.
-    family_proof_count == UNIFIED_RECURSION_TARGET_FAMILY_PROOFS
+impl Default for SecurityLevel {
+    fn default() -> Self {
+        Self::Security80
+    }
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, ValueEnum)]
@@ -111,6 +109,7 @@ impl Default for GpuConfig {
 
 #[derive(Clone, Debug)]
 pub struct ProgramProverConfig {
+    pub security_level: SecurityLevel,
     pub target: ProofTarget,
     pub backend: ProverBackend,
     pub cpu: CpuConfig,
@@ -120,6 +119,7 @@ pub struct ProgramProverConfig {
 impl Default for ProgramProverConfig {
     fn default() -> Self {
         Self {
+            security_level: SecurityLevel::default(),
             target: ProofTarget::RecursionUnified,
             backend: default_backend_for_build(),
             cpu: CpuConfig::default(),
@@ -292,6 +292,7 @@ impl ProgramProver {
                     };
 
                     ProgramProverInner::Gpu(UnrolledProver::new(
+                        config.security_level.model(),
                         &path_without_bin,
                         prover_configuration,
                         max_level,
@@ -359,6 +360,7 @@ impl ProgramProver {
 
         let loaded = load_program(&self.source)?;
         Ok(make_artifact(
+            self.config.security_level,
             self.config.target,
             self.config.backend,
             batch_id,
@@ -374,6 +376,7 @@ impl ProgramProver {
         batch_id: u64,
         input_words: Vec<u32>,
     ) -> Result<ProofArtifact, String> {
+        let security = self.config.security_level.model();
         let loaded = load_program(&self.source)?;
         let worker = make_cpu_worker(&self.config.cpu);
 
@@ -388,7 +391,7 @@ impl ProgramProver {
             source,
             self.config.cpu.ram_bound,
             &worker,
-            SECURITY,
+            security,
         );
         let base_ms = elapsed_ms(start_base);
         let cycles = (proof.final_timestamp
@@ -404,6 +407,7 @@ impl ProgramProver {
 
         if self.config.target == ProofTarget::Base {
             return Ok(finalize_artifact(
+                self.config.security_level,
                 self.config.target,
                 self.config.backend,
                 batch_id,
@@ -416,13 +420,14 @@ impl ProgramProver {
 
         let base_level = make_base_level_data(&loaded);
         let recursion_unrolled =
-            load_embedded_program(RECURSION_UNROLLED_BIN, RECURSION_UNROLLED_TXT);
+            load_embedded_recursion_program(self.config.security_level, RecursionLayer::Unrolled);
         let unrolled_level = make_unrolled_recursion_level_data(&base_level, &recursion_unrolled);
         proof = continue_with_unrolled_recursion(
             proof,
             &mut timings,
             &self.config.cpu,
             &worker,
+            security,
             &base_level,
             &unrolled_level,
             &recursion_unrolled,
@@ -430,6 +435,7 @@ impl ProgramProver {
 
         if self.config.target == ProofTarget::RecursionUnrolled {
             return Ok(finalize_artifact(
+                self.config.security_level,
                 self.config.target,
                 self.config.backend,
                 batch_id,
@@ -440,19 +446,23 @@ impl ProgramProver {
             ));
         }
 
-        let recursion_unified = load_embedded_program(RECURSION_UNIFIED_BIN, RECURSION_UNIFIED_TXT);
+        let recursion_unified =
+            load_embedded_recursion_program(self.config.security_level, RecursionLayer::Unified);
         let unified_level = make_unified_recursion_level_data(&unrolled_level, &recursion_unified);
         proof = continue_with_unified_recursion(
             proof,
             &mut timings,
             &self.config.cpu,
             &worker,
+            self.config.security_level,
+            security,
             &unrolled_level,
             &unified_level,
             &recursion_unified,
         );
 
         Ok(finalize_artifact(
+            self.config.security_level,
             self.config.target,
             self.config.backend,
             batch_id,
@@ -468,7 +478,9 @@ impl ProgramProver {
 
         // Continuation still reuses the CPU proving pipeline. We only swap in the
         // persisted proof artifact as the previous stage instead of reproving base.
-        let loaded = load_and_validate_program(&self.source, &artifact)?;
+        let security = self.config.security_level.model();
+        let loaded =
+            load_and_validate_program(&self.source, &artifact, Some(self.config.security_level))?;
         let worker = make_cpu_worker(&self.config.cpu);
 
         let input_target = artifact.target;
@@ -479,7 +491,7 @@ impl ProgramProver {
 
         let base_level = make_base_level_data(&loaded);
         let recursion_unrolled =
-            load_embedded_program(RECURSION_UNROLLED_BIN, RECURSION_UNROLLED_TXT);
+            load_embedded_recursion_program(self.config.security_level, RecursionLayer::Unrolled);
         let unrolled_level = make_unrolled_recursion_level_data(&base_level, &recursion_unrolled);
 
         if input_target == ProofTarget::Base {
@@ -488,6 +500,7 @@ impl ProgramProver {
                 &mut timings,
                 &self.config.cpu,
                 &worker,
+                security,
                 &base_level,
                 &unrolled_level,
                 &recursion_unrolled,
@@ -496,6 +509,7 @@ impl ProgramProver {
 
         if self.config.target == ProofTarget::RecursionUnrolled {
             return Ok(finalize_artifact(
+                self.config.security_level,
                 self.config.target,
                 self.config.backend,
                 batch_id,
@@ -506,19 +520,23 @@ impl ProgramProver {
             ));
         }
 
-        let recursion_unified = load_embedded_program(RECURSION_UNIFIED_BIN, RECURSION_UNIFIED_TXT);
+        let recursion_unified =
+            load_embedded_recursion_program(self.config.security_level, RecursionLayer::Unified);
         let unified_level = make_unified_recursion_level_data(&unrolled_level, &recursion_unified);
         proof = continue_with_unified_recursion(
             proof,
             &mut timings,
             &self.config.cpu,
             &worker,
+            self.config.security_level,
+            security,
             &unrolled_level,
             &unified_level,
             &recursion_unified,
         );
 
         Ok(finalize_artifact(
+            self.config.security_level,
             self.config.target,
             self.config.backend,
             batch_id,
@@ -534,7 +552,8 @@ pub fn verify_artifact(
     artifact: &ProofArtifact,
     source: &ProgramSource,
 ) -> Result<[u32; 16], String> {
-    let loaded = load_and_validate_program(source, artifact)?;
+    let loaded = load_and_validate_program(source, artifact, None)?;
+    let security = artifact.security_level.model();
 
     match artifact.target {
         ProofTarget::Base => {
@@ -544,14 +563,14 @@ pub fn verify_artifact(
                 &base_level.setup,
                 &base_level.layouts,
                 true,
-                SECURITY,
+                security,
             )
             .map_err(|_| "base proof verification failed".to_string())
         }
         ProofTarget::RecursionUnrolled => {
             let base_level = make_base_level_data(&loaded);
             let recursion_unrolled =
-                load_embedded_program(RECURSION_UNROLLED_BIN, RECURSION_UNROLLED_TXT);
+                load_embedded_recursion_program(artifact.security_level, RecursionLayer::Unrolled);
             let unrolled_level =
                 make_unrolled_recursion_level_data(&base_level, &recursion_unrolled);
 
@@ -565,7 +584,7 @@ pub fn verify_artifact(
                     &base_level.setup,
                     &base_level.layouts,
                     true,
-                    SECURITY,
+                    security,
                 )
                 .map_err(|_| "recursion(unrolled over base) verification failed".to_string())
             } else if previous_end_params == unrolled_level.setup.end_params {
@@ -574,7 +593,7 @@ pub fn verify_artifact(
                     &unrolled_level.setup,
                     &unrolled_level.layouts,
                     false,
-                    SECURITY,
+                    security,
                 )
                 .map_err(|_| {
                     "recursion(unrolled over recursion-unrolled) verification failed".to_string()
@@ -585,9 +604,9 @@ pub fn verify_artifact(
         }
         ProofTarget::RecursionUnified => {
             let loaded_unrolled =
-                load_embedded_program(RECURSION_UNROLLED_BIN, RECURSION_UNROLLED_TXT);
+                load_embedded_recursion_program(artifact.security_level, RecursionLayer::Unrolled);
             let loaded_unified =
-                load_embedded_program(RECURSION_UNIFIED_BIN, RECURSION_UNIFIED_TXT);
+                load_embedded_recursion_program(artifact.security_level, RecursionLayer::Unified);
 
             let base_level = make_base_level_data(&loaded);
             let unrolled_level = make_unrolled_recursion_level_data(&base_level, &loaded_unrolled);
@@ -600,7 +619,7 @@ pub fn verify_artifact(
                 &unified_level.setup,
                 &unified_level.layouts,
                 false,
-                SECURITY,
+                security,
             )
             .map_err(|_| "recursion(unified) verification failed".to_string())
         }
@@ -626,6 +645,7 @@ fn validate_recursion_chain(proof: &UnrolledProgramProof) -> Result<[u32; 16], S
 }
 
 fn make_artifact(
+    security_level: SecurityLevel,
     target: ProofTarget,
     backend: ProverBackend,
     batch_id: u64,
@@ -650,7 +670,7 @@ fn make_artifact(
 
     ProofArtifact {
         schema_version: 1,
-        security_level: COMPILED_SECURITY_LEVEL,
+        security_level,
         target,
         backend,
         batch_id,
@@ -676,6 +696,7 @@ fn continue_with_unrolled_recursion(
     timings: &mut ProofTimingsMs,
     cpu: &CpuConfig,
     worker: &worker::Worker,
+    security: verifier_common::SecurityModel,
     base_level: &RecursionLevelData,
     unrolled_level: &RecursionLevelData,
     recursion_unrolled: &EmbeddedProgram,
@@ -707,7 +728,7 @@ fn continue_with_unrolled_recursion(
             source,
             cpu.ram_bound,
             worker,
-            SECURITY,
+            security,
         );
         timings.unrolled_recursion_ms.push(elapsed_ms(start));
 
@@ -731,6 +752,8 @@ fn continue_with_unified_recursion(
     timings: &mut ProofTimingsMs,
     cpu: &CpuConfig,
     worker: &worker::Worker,
+    security_level: SecurityLevel,
+    security: verifier_common::SecurityModel,
     unrolled_level: &RecursionLevelData,
     unified_level: &RecursionLevelData,
     recursion_unified: &EmbeddedProgram,
@@ -762,7 +785,7 @@ fn continue_with_unified_recursion(
             source,
             cpu.ram_bound,
             worker,
-            SECURITY,
+            security,
         );
         timings.unified_recursion_ms.push(elapsed_ms(start));
 
@@ -771,7 +794,7 @@ fn continue_with_unified_recursion(
         proof = new_proof;
 
         let (family_count, _, _) = proof.get_proof_counts();
-        if unified_recursion_has_converged(family_count) {
+        if security_level.unified_recursion_has_converged(family_count) {
             break;
         }
 
@@ -782,6 +805,7 @@ fn continue_with_unified_recursion(
 }
 
 fn finalize_artifact(
+    security_level: SecurityLevel,
     target: ProofTarget,
     backend: ProverBackend,
     batch_id: u64,
@@ -791,7 +815,16 @@ fn finalize_artifact(
     proof: UnrolledProgramProof,
 ) -> ProofArtifact {
     timings.total_ms = aggregate_timing_ms(&timings);
-    make_artifact(target, backend, batch_id, cycles, loaded, timings, proof)
+    make_artifact(
+        security_level,
+        target,
+        backend,
+        batch_id,
+        cycles,
+        loaded,
+        timings,
+        proof,
+    )
 }
 
 fn aggregate_timing_ms(timings: &ProofTimingsMs) -> u64 {
@@ -811,28 +844,34 @@ fn make_cpu_worker(cpu: &CpuConfig) -> worker::Worker {
 fn load_and_validate_program(
     source: &ProgramSource,
     artifact: &ProofArtifact,
+    expected_security_level: Option<SecurityLevel>,
 ) -> Result<LoadedProgram, String> {
     let loaded = load_program(source)?;
-    validate_artifact_against_program(artifact, &loaded)?;
+    validate_artifact_against_program(artifact, &loaded, expected_security_level)?;
     Ok(loaded)
 }
 
 fn validate_artifact_against_program(
     artifact: &ProofArtifact,
     loaded: &LoadedProgram,
+    expected_security_level: Option<SecurityLevel>,
 ) -> Result<(), String> {
-    if artifact.security_level != COMPILED_SECURITY_LEVEL {
-        return Err(format!(
-            "proof security level ({:?}) does not match binary security level ({:?})",
-            artifact.security_level, COMPILED_SECURITY_LEVEL
-        ));
+    if let Some(expected_security_level) = expected_security_level {
+        // Continuation uses the requested security level as an explicit contract.
+        // Standalone verification instead trusts the persisted artifact metadata.
+        if artifact.security_level != expected_security_level {
+            return Err(format!(
+                "proof security level ({:?}) does not match requested security level ({:?})",
+                artifact.security_level, expected_security_level
+            ));
+        }
     }
 
     let actual_bin_keccak = keccak256(&loaded.bin_bytes);
     if actual_bin_keccak != artifact.program_bin_keccak {
-        return Err(
-            "proof artifact program_bin_keccak does not match provided --bin file".to_string(),
-        );
+        return Err(format!(
+            "proof artifact program_bin_keccak does not match provided --bin file"
+        ));
     }
 
     let actual_text_keccak = keccak256(&loaded.text_bytes);
@@ -937,6 +976,16 @@ fn load_embedded_program(binary: &[u8], text: &[u8]) -> EmbeddedProgram {
         padded_bin_u32,
         padded_text_u32,
     }
+}
+
+fn load_embedded_recursion_program(
+    security_level: SecurityLevel,
+    recursion_layer: RecursionLayer,
+) -> EmbeddedProgram {
+    let security = security_level.model();
+    let binary = recursion_artifact(security, recursion_layer, RecursionArtifact::Bin);
+    let text = recursion_artifact(security, recursion_layer, RecursionArtifact::Txt);
+    load_embedded_program(binary, text)
 }
 
 fn make_base_level_data(loaded: &LoadedProgram) -> RecursionLevelData {

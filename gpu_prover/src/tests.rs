@@ -3096,7 +3096,7 @@ fn run_unrolled_reduced_test() -> CudaResult<()> {
     //     None
     // };
 
-    let security_config = CIRCUIT_TYPE.get_security_config();
+    let security_config = CIRCUIT_TYPE.get_security_config_80();
 
     println!("Trying to prove");
 
@@ -3869,8 +3869,9 @@ pub fn prove_unrolled_execution_with_replayer<
             &delegation_memory_trees,
         );
 
-    let security = verifier_common::SecurityModel::Security80; // TODO(popzxc): cover security 100
-    let memory_delegation_pow_bits = security.memory_delegation_pow_bits();
+    let memory_delegation_pow_bits =
+        <verifier_common::security_80::Security80Marker as verifier_common::SecurityMarker>::MODEL
+            .memory_delegation_pow_bits();
 
     let pow_challenge = if memory_delegation_pow_bits == 0 {
         0
@@ -3920,7 +3921,7 @@ pub fn prove_unrolled_execution_with_replayer<
         let circuit_type = Unrolled(UnrolledCircuitType::NonMemory(
             UnrolledNonMemoryCircuitType::from_family_idx(family_idx, machine_type),
         ));
-        let security_config = circuit_type.get_security_config();
+        let security_config = circuit_type.get_security_config_80();
         let h_decoder_table = decoder_table
             .iter()
             .copied()
@@ -4072,7 +4073,7 @@ pub fn prove_unrolled_execution_with_replayer<
         let circuit_type = Unrolled(UnrolledCircuitType::Memory(
             UnrolledMemoryCircuitType::from_family_idx(family_idx, machine_type),
         ));
-        let security_config = circuit_type.get_security_config();
+        let security_config = circuit_type.get_security_config_80();
         let h_decoder_table = decoder_table
             .iter()
             .copied()
@@ -4221,7 +4222,7 @@ pub fn prove_unrolled_execution_with_replayer<
             num_witness_columns,
             lookup_mapping,
         };
-        let security_config = UnrolledCircuitType::InitsAndTeardowns.get_security_config();
+        let security_config = UnrolledCircuitType::InitsAndTeardowns.get_security_config_80();
         let now = std::time::Instant::now();
         let (_prover_data, proof) = prove_configured_for_unrolled_circuits::<
             DEFAULT_TRACE_PADDING_MULTIPLE,
@@ -4502,7 +4503,7 @@ where
             aux_boundary_values: AuxArgumentsBoundaryValues::default(),
         };
 
-        let security_config = circuit_type.get_security_config();
+        let security_config = circuit_type.get_security_config_80();
 
         assert!(delegation_type < 1 << 12);
         let (_, proof) = prover::prover_stages::prove(

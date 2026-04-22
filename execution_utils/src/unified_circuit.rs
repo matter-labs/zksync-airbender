@@ -231,21 +231,40 @@ pub fn prove_unified_with_replayer_for_machine_configuration<C: MachineConfig>(
         register_final_state,
         (final_pc, final_timestamp),
         pow_challenge,
-    ) = prover_examples::unified::prove_unified_execution_with_replayer::<
-        C,
-        Global,
-        ROM_SECOND_WORD_BITS,
-    >(
-        cycles_bound,
-        &binary_image,
-        &text_section,
-        non_determinism,
-        &precomputation,
-        &delegation_precomputations,
-        ram_bound,
-        worker,
-        security,
-    );
+    ) = match security {
+        verifier_common::SecurityModel::Security80 => {
+            prover_examples::unified::prove_unified_execution_with_replayer_80::<
+                C,
+                Global,
+                ROM_SECOND_WORD_BITS,
+            >(
+                cycles_bound,
+                &binary_image,
+                &text_section,
+                non_determinism,
+                &precomputation,
+                &delegation_precomputations,
+                ram_bound,
+                worker,
+            )
+        }
+        verifier_common::SecurityModel::Security100 => {
+            prover_examples::unified::prove_unified_execution_with_replayer_100::<
+                C,
+                Global,
+                ROM_SECOND_WORD_BITS,
+            >(
+                cycles_bound,
+                &binary_image,
+                &text_section,
+                non_determinism,
+                &precomputation,
+                &delegation_precomputations,
+                ram_bound,
+                worker,
+            )
+        }
+    };
 
     (
         main_proofs,
@@ -258,21 +277,41 @@ pub fn prove_unified_with_replayer_for_machine_configuration<C: MachineConfig>(
 
 #[cfg(test)]
 mod test {
+    use crate::{recursion_artifact_path, RecursionArtifact, RecursionLayer};
     use test_utils::skip_if_ci;
+
+    fn read_recursion_binary_u32(
+        security: verifier_common::SecurityModel,
+    ) -> Vec<u32> {
+        let (_, binary_u32) = crate::setups::read_and_pad_binary(std::path::Path::new(
+            recursion_artifact_path(security, RecursionLayer::Unified, RecursionArtifact::Bin),
+        ));
+
+        binary_u32
+    }
+
+    fn read_unified_recursion_program(
+        security: verifier_common::SecurityModel,
+    ) -> (Vec<u8>, Vec<u32>, Vec<u8>, Vec<u32>) {
+        let (binary, binary_u32) = crate::setups::read_and_pad_binary(std::path::Path::new(
+            recursion_artifact_path(security, RecursionLayer::Unified, RecursionArtifact::Bin),
+        ));
+        let (text, text_u32) = crate::setups::read_and_pad_binary(std::path::Path::new(
+            recursion_artifact_path(security, RecursionLayer::Unified, RecursionArtifact::Txt),
+        ));
+
+        (binary, binary_u32, text, text_u32)
+    }
 
     #[cfg(test)]
     #[ignore = "requires pre-generated recursion fixtures"]
     #[test]
     fn test_unified_over_unrolled_verifier() {
         skip_if_ci!();
-        use crate::setups::read_and_pad_binary;
         use riscv_transpiler::cycle::IWithoutByteAccessIsaConfigWithDelegation;
         use std::fs::File;
-        use std::path::Path;
-
-        let (_, binary_u32) = read_and_pad_binary(Path::new(
-            "../tools/verifier/recursion_in_unified_layer.bin",
-        ));
+        let security = verifier_common::SecurityModel::Security80; // TODO(popzxc): cover 100 bit too
+        let binary_u32 = read_recursion_binary_u32(security);
 
         let setup: crate::unrolled::UnrolledProgramSetup = serde_json::from_reader(
             &File::open("../gpu_prover_test/setup_recursion_over_base.json").unwrap(),
@@ -282,8 +321,6 @@ mod test {
             &File::open("../gpu_prover_test/gpu_proof_recursion_over_base.json").unwrap(),
         )
         .unwrap();
-
-        let security = verifier_common::SecurityModel::Security80; // TODO(popzxc): cover 100 bit too
 
         println!("Verifying...");
         let cicuit_set = crate::unrolled::get_unrolled_circuits_artifacts_for_machine_type::<
@@ -307,14 +344,10 @@ mod test {
     #[test]
     fn test_unified_over_unified_verifier() {
         skip_if_ci!();
-        use crate::setups::read_and_pad_binary;
         use riscv_transpiler::cycle::IWithoutByteAccessIsaConfigWithDelegation;
         use std::fs::File;
-        use std::path::Path;
-
-        let (_, binary_u32) = read_and_pad_binary(Path::new(
-            "../tools/verifier/recursion_in_unified_layer.bin",
-        ));
+        let security = verifier_common::SecurityModel::Security80; // TODO(popzxc): cover 100 bit too
+        let binary_u32 = read_recursion_binary_u32(security);
 
         let setup: crate::unrolled::UnrolledProgramSetup = serde_json::from_reader(
             &File::open("../gpu_prover_test/setup_recursion_over_recursion.json").unwrap(),
@@ -324,8 +357,6 @@ mod test {
             &File::open("../gpu_prover_test/gpu_proof_recursion_over_recursion.json").unwrap(),
         )
         .unwrap();
-
-        let security = verifier_common::SecurityModel::Security80; // TODO(popzxc): cover 100 bit too
 
         println!("Verifying...");
         let cicuit_set = crate::unified_circuit::get_unified_circuit_artifact_for_machine_type::<
@@ -348,14 +379,10 @@ mod test {
     #[test]
     fn test_unified_x2_over_unified_verifier() {
         skip_if_ci!();
-        use crate::setups::read_and_pad_binary;
         use riscv_transpiler::cycle::IWithoutByteAccessIsaConfigWithDelegation;
         use std::fs::File;
-        use std::path::Path;
-
-        let (_, binary_u32) = read_and_pad_binary(Path::new(
-            "../tools/verifier/recursion_in_unified_layer.bin",
-        ));
+        let security = verifier_common::SecurityModel::Security80; // TODO(popzxc): cover 100 bit too
+        let binary_u32 = read_recursion_binary_u32(security);
 
         let setup: crate::unrolled::UnrolledProgramSetup = serde_json::from_reader(
             &File::open("../gpu_prover_test/setup_final_recursion.json").unwrap(),
@@ -365,8 +392,6 @@ mod test {
             &File::open("../gpu_prover_test/gpu_proof_final_recursion.json").unwrap(),
         )
         .unwrap();
-
-        let security = verifier_common::SecurityModel::Security80; // TODO(popzxc): cover 100 bit too
 
         println!("Verifying...");
         let cicuit_set = crate::unified_circuit::get_unified_circuit_artifact_for_machine_type::<
@@ -389,20 +414,13 @@ mod test {
     #[test]
     fn prove_unified_recursion() {
         skip_if_ci!();
-        use crate::setups::read_and_pad_binary;
         use crate::unified_circuit::flatten_proof_into_responses_for_unified_recursion;
         use crate::unrolled::*;
         use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
         use riscv_transpiler::cycle::IWithoutByteAccessIsaConfigWithDelegation;
         use std::fs::File;
-        use std::path::Path;
-
-        let (binary, binary_u32) = read_and_pad_binary(Path::new(
-            "../tools/verifier/recursion_in_unified_layer.bin",
-        ));
-        let (text, text_u32) = read_and_pad_binary(Path::new(
-            "../tools/verifier/recursion_in_unified_layer.text",
-        ));
+        let security = verifier_common::SecurityModel::Security80; // TODO(popzxc): cover 100 bit too
+        let (binary, binary_u32, text, text_u32) = read_unified_recursion_program(security);
 
         let input_setup: crate::unrolled::UnrolledProgramSetup = serde_json::from_reader(
             &File::open("../gpu_prover_test/setup_recursion_over_base.json").unwrap(),
@@ -443,8 +461,6 @@ mod test {
         )
         .unwrap();
         let worker = setups::prover::worker::Worker::new_with_num_threads(8);
-
-        let security = verifier_common::SecurityModel::Security80; // TODO(popzxc): cover 100 bit too
         println!("Computing proof");
 
         let mut output_proof =

@@ -8,6 +8,8 @@ use verifier_common::{
     cs::one_row_compiler::CompiledCircuitArtifact, DefaultLeafInclusionVerifier,
 };
 
+type TestSecurity = verifier_common::security_80::Security80Marker;
+
 #[allow(dead_code)]
 fn serialize_to_file<T: serde::Serialize>(el: &T, filename: &str) {
     let mut dst = std::fs::File::create(filename).unwrap();
@@ -67,7 +69,11 @@ fn test_unified_cycle_or_delegation() {
 
             #[allow(invalid_value)]
             unsafe {
-                verify_with_configuration::<ThreadLocalBasedSource, DefaultLeafInclusionVerifier>(
+                verify_with_configuration::<
+                    TestSecurity,
+                    ThreadLocalBasedSource,
+                    DefaultLeafInclusionVerifier,
+                >(
                     &mut MaybeUninit::uninit().assume_init(),
                     &mut ProofPublicInputs::uninit(),
                 )
@@ -127,7 +133,11 @@ fn test_unrolled_circuit() {
 
             #[allow(invalid_value)]
             unsafe {
-                verify_with_configuration::<ThreadLocalBasedSource, DefaultLeafInclusionVerifier>(
+                verify_with_configuration::<
+                    TestSecurity,
+                    ThreadLocalBasedSource,
+                    DefaultLeafInclusionVerifier,
+                >(
                     &mut MaybeUninit::uninit().assume_init(),
                     &mut ProofPublicInputs::uninit(),
                 )
@@ -145,85 +155,101 @@ fn test_unrolled_circuit() {
 
 #[test]
 fn test_query_values_offsets() {
-    // Create a dummy QueryValuesInstance to test pointer arithmetic
-    let dummy = MaybeUninit::<QueryValuesInstance>::uninit();
-    let base_ptr = dummy.as_ptr().cast::<u32>();
+    // TODO(codex): Add a proof-level 100-bit fixture once the prover side emits one reliably.
+    fn assert_offsets<S>()
+    where
+        S: verifier_common::SecurityConfig<NUM_FRI_STEPS>,
+        [(); Geometry::<S>::TOTAL_FRI_ORACLES_PATHS_LENGTH]:,
+        [(); Geometry::<S>::TOTAL_FRI_LEAFS_SIZES]:,
+        [(); Geometry::<S>::NUM_FRI_STEPS_WITH_ORACLES]:,
+        [(); Geometry::<S>::LAST_FRI_STEP_LEAFS_TOTAL_SIZE_PER_COSET]:,
+        [(); Geometry::<S>::NUM_QUERY_VALUES]:,
+    {
+        let dummy = MaybeUninit::<QueryValuesInstance<S>>::uninit();
+        let base_ptr = dummy.as_ptr().cast::<u32>();
 
-    for (i, &offset_increment) in BASE_CIRCUIT_QUERY_VALUES_OFFSETS.iter().enumerate() {
-        let current_ptr = unsafe { base_ptr.add(offset_increment) };
+        for (i, &offset_increment) in
+            <QueryValuesInstance<S> as QueryValuesInstanceExt<S>>::BASE_CIRCUIT_QUERY_VALUES_OFFSETS
+                .iter()
+                .enumerate()
+        {
+            let current_ptr = unsafe { base_ptr.add(offset_increment) };
 
-        match i {
-            0 => {
-                // After first offset, we should be at setup_leaf
-                let expected_ptr = unsafe {
-                    base_ptr.add(
-                        offset_of!(QueryValuesInstance, setup_leaf) / core::mem::size_of::<u32>(),
-                    )
-                };
-                assert_eq!(current_ptr, expected_ptr, "setup_leaf pointer mismatch");
+            match i {
+                0 => {
+                    // After the first offset we must land on the first aligned setup word.
+                    let expected_ptr = unsafe {
+                        base_ptr.add(
+                            offset_of!(QueryValuesInstance<S>, setup_leaf)
+                                / core::mem::size_of::<u32>(),
+                        )
+                    };
+                    assert_eq!(current_ptr, expected_ptr, "setup_leaf pointer mismatch");
+                }
+                idx if idx == LEAF_SIZE_SETUP => {
+                    let expected_ptr = unsafe {
+                        base_ptr.add(
+                            offset_of!(QueryValuesInstance<S>, witness_leaf)
+                                / core::mem::size_of::<u32>(),
+                        )
+                    };
+                    assert_eq!(current_ptr, expected_ptr, "witness_leaf pointer mismatch");
+                }
+                idx if idx == LEAF_SIZE_SETUP + LEAF_SIZE_WITNESS_TREE => {
+                    let expected_ptr = unsafe {
+                        base_ptr.add(
+                            offset_of!(QueryValuesInstance<S>, memory_leaf)
+                                / core::mem::size_of::<u32>(),
+                        )
+                    };
+                    assert_eq!(current_ptr, expected_ptr, "memory_leaf pointer mismatch");
+                }
+                idx if idx == LEAF_SIZE_SETUP + LEAF_SIZE_WITNESS_TREE + LEAF_SIZE_MEMORY_TREE => {
+                    let expected_ptr = unsafe {
+                        base_ptr.add(
+                            offset_of!(QueryValuesInstance<S>, stage_2_leaf)
+                                / core::mem::size_of::<u32>(),
+                        )
+                    };
+                    assert_eq!(current_ptr, expected_ptr, "stage_2_leaf pointer mismatch");
+                }
+                idx if idx
+                    == LEAF_SIZE_SETUP
+                        + LEAF_SIZE_WITNESS_TREE
+                        + LEAF_SIZE_MEMORY_TREE
+                        + LEAF_SIZE_STAGE_2 =>
+                {
+                    let expected_ptr = unsafe {
+                        base_ptr.add(
+                            offset_of!(QueryValuesInstance<S>, quotient_leaf)
+                                / core::mem::size_of::<u32>(),
+                        )
+                    };
+                    assert_eq!(current_ptr, expected_ptr, "quotient_leaf pointer mismatch");
+                }
+                idx if idx
+                    == LEAF_SIZE_SETUP
+                        + LEAF_SIZE_WITNESS_TREE
+                        + LEAF_SIZE_MEMORY_TREE
+                        + LEAF_SIZE_STAGE_2
+                        + LEAF_SIZE_QUOTIENT =>
+                {
+                    let expected_ptr = unsafe {
+                        base_ptr.add(
+                            offset_of!(QueryValuesInstance<S>, fri_oracles_leafs)
+                                / core::mem::size_of::<u32>(),
+                        )
+                    };
+                    assert_eq!(
+                        current_ptr, expected_ptr,
+                        "fri_oracles_leafs pointer mismatch"
+                    );
+                }
+                _ => {}
             }
-            idx if idx == LEAF_SIZE_SETUP => {
-                // After setup_leaf elements, we should be at witness_leaf
-                let expected_ptr = unsafe {
-                    base_ptr.add(
-                        offset_of!(QueryValuesInstance, witness_leaf) / core::mem::size_of::<u32>(),
-                    )
-                };
-                assert_eq!(current_ptr, expected_ptr, "witness_leaf pointer mismatch");
-            }
-            idx if idx == LEAF_SIZE_SETUP + LEAF_SIZE_WITNESS_TREE => {
-                // After witness_leaf elements, we should be at memory_leaf
-                let expected_ptr = unsafe {
-                    base_ptr.add(
-                        offset_of!(QueryValuesInstance, memory_leaf) / core::mem::size_of::<u32>(),
-                    )
-                };
-                assert_eq!(current_ptr, expected_ptr, "memory_leaf pointer mismatch");
-            }
-            idx if idx == LEAF_SIZE_SETUP + LEAF_SIZE_WITNESS_TREE + LEAF_SIZE_MEMORY_TREE => {
-                // After memory_leaf elements, we should be at stage_2_leaf
-                let expected_ptr = unsafe {
-                    base_ptr.add(
-                        offset_of!(QueryValuesInstance, stage_2_leaf) / core::mem::size_of::<u32>(),
-                    )
-                };
-                assert_eq!(current_ptr, expected_ptr, "stage_2_leaf pointer mismatch");
-            }
-            idx if idx
-                == LEAF_SIZE_SETUP
-                    + LEAF_SIZE_WITNESS_TREE
-                    + LEAF_SIZE_MEMORY_TREE
-                    + LEAF_SIZE_STAGE_2 =>
-            {
-                // After stage_2_leaf elements, we should be at quotient_leaf
-                let expected_ptr = unsafe {
-                    base_ptr.add(
-                        offset_of!(QueryValuesInstance, quotient_leaf)
-                            / core::mem::size_of::<u32>(),
-                    )
-                };
-                assert_eq!(current_ptr, expected_ptr, "quotient_leaf pointer mismatch");
-            }
-            idx if idx
-                == LEAF_SIZE_SETUP
-                    + LEAF_SIZE_WITNESS_TREE
-                    + LEAF_SIZE_MEMORY_TREE
-                    + LEAF_SIZE_STAGE_2
-                    + LEAF_SIZE_QUOTIENT =>
-            {
-                // After quotient_leaf elements, we should be at fri_oracles_leafs
-                let expected_ptr = unsafe {
-                    base_ptr.add(
-                        offset_of!(QueryValuesInstance, fri_oracles_leafs)
-                            / core::mem::size_of::<u32>(),
-                    )
-                };
-                assert_eq!(
-                    current_ptr, expected_ptr,
-                    "fri_oracles_leafs pointer mismatch"
-                );
-            }
-            _ => {}
         }
     }
+
+    assert_offsets::<verifier_common::security_80::Security80Marker>();
+    assert_offsets::<verifier_common::security_100::Security100Marker>();
 }

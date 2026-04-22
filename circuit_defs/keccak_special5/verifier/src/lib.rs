@@ -20,7 +20,6 @@ use verifier_common::fri_folding::fri_fold_by_log_n_with_fma;
 use verifier_common::non_determinism_source::NonDeterminismSource;
 use verifier_common::prover::definitions::*;
 use verifier_common::transcript::Blake2sTranscript;
-use verifier_common::transcript_challenge_array_size;
 use verifier_common::DefaultLeafInclusionVerifier;
 use verifier_common::DefaultNonDeterminismSource;
 use verifier_common::ProofOutput;
@@ -53,6 +52,7 @@ pub type ConcreteProofPublicInputs = ProofPublicInputs<NUM_STATE_ELEMENTS>;
 #[cfg(test)]
 mod tests;
 
+// TODO(codex): Remove the legacy entrypoint once higher-level callers dispatch security explicitly.
 #[allow(invalid_value)]
 #[allow(unreachable_code)]
 #[inline(always)]
@@ -66,10 +66,47 @@ pub unsafe fn verify(
     >,
     proof_input_dst: &mut ProofPublicInputs<NUM_STATE_ELEMENTS>,
 ) {
-    verify_with_configuration::<DefaultNonDeterminismSource, DefaultLeafInclusionVerifier>(
-        proof_state_dst,
-        proof_input_dst,
-    )
+    verify_80(proof_state_dst, proof_input_dst)
+}
+
+#[allow(invalid_value)]
+#[allow(unreachable_code)]
+#[inline(always)]
+pub unsafe fn verify_80(
+    proof_state_dst: &mut ProofOutput<
+        TREE_CAP_SIZE,
+        NUM_COSETS,
+        NUM_DELEGATION_CHALLENGES,
+        NUM_AUX_BOUNDARY_VALUES,
+        NUM_MACHINE_STATE_PERMUTATION_CHALLENGES,
+    >,
+    proof_input_dst: &mut ProofPublicInputs<NUM_STATE_ELEMENTS>,
+) {
+    verify_with_configuration::<
+        verifier_common::security_80::Security80Marker,
+        DefaultNonDeterminismSource,
+        DefaultLeafInclusionVerifier,
+    >(proof_state_dst, proof_input_dst)
+}
+
+#[allow(invalid_value)]
+#[allow(unreachable_code)]
+#[inline(always)]
+pub unsafe fn verify_100(
+    proof_state_dst: &mut ProofOutput<
+        TREE_CAP_SIZE,
+        NUM_COSETS,
+        NUM_DELEGATION_CHALLENGES,
+        NUM_AUX_BOUNDARY_VALUES,
+        NUM_MACHINE_STATE_PERMUTATION_CHALLENGES,
+    >,
+    proof_input_dst: &mut ProofPublicInputs<NUM_STATE_ELEMENTS>,
+) {
+    verify_with_configuration::<
+        verifier_common::security_100::Security100Marker,
+        DefaultNonDeterminismSource,
+        DefaultLeafInclusionVerifier,
+    >(proof_state_dst, proof_input_dst)
 }
 
 /// This function effectively asserts existence of the valid(!) proof for some fixed
@@ -81,7 +118,11 @@ pub unsafe fn verify(
 #[allow(invalid_value)]
 #[allow(unreachable_code)]
 #[inline(never)]
-pub unsafe fn verify_with_configuration<I: NonDeterminismSource, V: LeafInclusionVerifier>(
+pub unsafe fn verify_with_configuration<
+    S: verifier_common::SecurityConfig<NUM_FRI_STEPS>,
+    I: NonDeterminismSource,
+    V: LeafInclusionVerifier,
+>(
     proof_state_dst: &mut ProofOutput<
         TREE_CAP_SIZE,
         NUM_COSETS,
@@ -90,17 +131,35 @@ pub unsafe fn verify_with_configuration<I: NonDeterminismSource, V: LeafInclusio
         NUM_MACHINE_STATE_PERMUTATION_CHALLENGES,
     >,
     proof_input_dst: &mut ProofPublicInputs<NUM_STATE_ELEMENTS>,
-) {
+) where
+    [(); Geometry::<S>::TOTAL_FRI_ORACLES_PATHS_LENGTH]:,
+    [(); Geometry::<S>::TOTAL_FRI_LEAFS_SIZES]:,
+    [(); Geometry::<S>::NUM_FRI_STEPS_WITH_ORACLES]:,
+    [(); Geometry::<S>::LAST_FRI_STEP_LEAFS_TOTAL_SIZE_PER_COSET]:,
+    [(); Geometry::<S>::NUM_QUERIES]:,
+    [(); Geometry::<S>::NUM_QUERY_VALUES]:,
+    [(); Geometry::<S>::NUM_REQUIRED_WORDS_FOR_QUERY_INDEXES]:,
+    [(); Geometry::<S>::LOOKUP_TRANSCRIPT_CHALLENGE_ARRAY_SIZE]:,
+    [(); Geometry::<S>::QUOTIENT_ALPHA_TRANSCRIPT_CHALLENGE_ARRAY_SIZE]:,
+    [(); Geometry::<S>::QUOTIENT_Z_TRANSCRIPT_CHALLENGE_ARRAY_SIZE]:,
+    [(); Geometry::<S>::DEEP_POLY_ALPHA_TRANSCRIPT_CHALLENGE_ARRAY_SIZE]:,
+    [(); Geometry::<S>::LAST_FRI_FOLDING_TRANSCRIPT_CHALLENGE_ARRAY_SIZE]:,
+{
     Mersenne31Quartic::init_ext4_fma_ops();
 
     let mut leaf_inclusion_verifier = V::new();
 
-    let mut skeleton = MaybeUninit::<ProofSkeletonInstance>::uninit().assume_init();
-    ProofSkeletonInstance::fill::<I>((&mut skeleton) as *mut _);
+    let mut skeleton = MaybeUninit::<ProofSkeletonInstance<S>>::uninit().assume_init();
+    <ProofSkeletonInstance<S> as ProofSkeletonInstanceExt<S>>::fill::<I>((&mut skeleton) as *mut _);
     // let skeleton = skeleton.assume_init();
 
-    let mut queries = MaybeUninit::<[QueryValuesInstance; NUM_QUERIES]>::uninit().assume_init();
-    QueryValuesInstance::fill_array::<I, V, NUM_QUERIES>(
+    let mut queries =
+        MaybeUninit::<[QueryValuesInstance<S>; Geometry::<S>::NUM_QUERIES]>::uninit().assume_init();
+    <QueryValuesInstance<S> as QueryValuesInstanceExt<S>>::fill_array::<
+        I,
+        V,
+        { Geometry::<S>::NUM_QUERIES },
+    >(
         (&mut queries) as *mut _,
         &skeleton,
         &mut leaf_inclusion_verifier,
@@ -114,30 +173,26 @@ pub unsafe fn verify_with_configuration<I: NonDeterminismSource, V: LeafInclusio
         skeleton.transcript_elements_before_stage2(),
     );
 
-    if SECURITY_CONFIG.lookup_pow_bits > 0 {
+    if Geometry::<S>::LOOKUP_POW_BITS > 0 {
         Blake2sTranscript::verify_pow_using_hasher(
             &mut transcript_hasher,
             &mut seed,
             skeleton.pow_challenges.lookup_pow_challenge,
-            SECURITY_CONFIG.lookup_pow_bits as u32,
+            Geometry::<S>::LOOKUP_POW_BITS as u32,
         );
     }
 
     // draw local lookup argument challenges
-    let mut transcript_challenges = MaybeUninit::<
-        [u32; transcript_challenge_array_size(
-            NUM_STAGE_2_CHALLENGES * 4,
-            SECURITY_CONFIG.lookup_pow_bits as usize,
-        )],
-    >::uninit()
-    .assume_init();
+    let mut transcript_challenges =
+        MaybeUninit::<[u32; Geometry::<S>::LOOKUP_TRANSCRIPT_CHALLENGE_ARRAY_SIZE]>::uninit()
+            .assume_init();
     Transcript::draw_randomness_using_hasher(
         &mut transcript_hasher,
         &mut seed,
         &mut transcript_challenges,
     );
 
-    let mut it = if SECURITY_CONFIG.lookup_pow_bits > 0 {
+    let mut it = if Geometry::<S>::LOOKUP_POW_BITS > 0 {
         // skip 1 word used for PoW
         transcript_challenges[1..].as_chunks::<4>().0.iter()
     } else {
@@ -195,21 +250,18 @@ pub unsafe fn verify_with_configuration<I: NonDeterminismSource, V: LeafInclusio
         skeleton.transcript_elements_stage2_to_stage3(),
     );
 
-    if SECURITY_CONFIG.quotient_alpha_pow_bits > 0 {
+    if Geometry::<S>::QUOTIENT_ALPHA_POW_BITS > 0 {
         Blake2sTranscript::verify_pow_using_hasher(
             &mut transcript_hasher,
             &mut seed,
             skeleton.pow_challenges.quotient_alpha_pow_challenge,
-            SECURITY_CONFIG.quotient_alpha_pow_bits as u32,
+            Geometry::<S>::QUOTIENT_ALPHA_POW_BITS as u32,
         );
     }
 
     // draw quotient linearization challenges
     let mut transcript_challenges = MaybeUninit::<
-        [u32; transcript_challenge_array_size(
-            2usize * 4,
-            SECURITY_CONFIG.quotient_alpha_pow_bits as usize,
-        )],
+        [u32; Geometry::<S>::QUOTIENT_ALPHA_TRANSCRIPT_CHALLENGE_ARRAY_SIZE],
     >::uninit()
     .assume_init();
     Transcript::draw_randomness_using_hasher(
@@ -218,7 +270,7 @@ pub unsafe fn verify_with_configuration<I: NonDeterminismSource, V: LeafInclusio
         &mut transcript_challenges,
     );
 
-    let mut it = if SECURITY_CONFIG.quotient_alpha_pow_bits > 0 {
+    let mut it = if Geometry::<S>::QUOTIENT_ALPHA_POW_BITS > 0 {
         // skip 1 word used for PoW
         transcript_challenges[1..].as_chunks::<4>().0.iter()
     } else {
@@ -244,30 +296,26 @@ pub unsafe fn verify_with_configuration<I: NonDeterminismSource, V: LeafInclusio
         skeleton.transcript_elements_stage3_to_stage4(),
     );
 
-    if SECURITY_CONFIG.quotient_z_pow_bits > 0 {
+    if Geometry::<S>::QUOTIENT_Z_POW_BITS > 0 {
         Blake2sTranscript::verify_pow_using_hasher(
             &mut transcript_hasher,
             &mut seed,
             skeleton.pow_challenges.quotient_z_pow_challenge,
-            SECURITY_CONFIG.quotient_z_pow_bits as u32,
+            Geometry::<S>::QUOTIENT_Z_POW_BITS as u32,
         );
     }
 
     // draw DEEP poly linearization challenge
-    let mut transcript_challenges = MaybeUninit::<
-        [u32; transcript_challenge_array_size(
-            1usize * 4,
-            SECURITY_CONFIG.quotient_z_pow_bits as usize,
-        )],
-    >::uninit()
-    .assume_init();
+    let mut transcript_challenges =
+        MaybeUninit::<[u32; Geometry::<S>::QUOTIENT_Z_TRANSCRIPT_CHALLENGE_ARRAY_SIZE]>::uninit()
+            .assume_init();
     Transcript::draw_randomness_using_hasher(
         &mut transcript_hasher,
         &mut seed,
         &mut transcript_challenges,
     );
 
-    let mut it = if SECURITY_CONFIG.quotient_z_pow_bits > 0 {
+    let mut it = if Geometry::<S>::QUOTIENT_Z_POW_BITS > 0 {
         // skip 1 word used for PoW
         transcript_challenges[1..].as_chunks::<4>().0.iter()
     } else {
@@ -287,21 +335,18 @@ pub unsafe fn verify_with_configuration<I: NonDeterminismSource, V: LeafInclusio
         skeleton.transcript_elements_evaluations_at_z(),
     );
 
-    if SECURITY_CONFIG.deep_poly_alpha_pow_bits > 0 {
+    if Geometry::<S>::DEEP_POLY_ALPHA_POW_BITS > 0 {
         Blake2sTranscript::verify_pow_using_hasher(
             &mut transcript_hasher,
             &mut seed,
             skeleton.pow_challenges.deep_poly_alpha_pow_challenge,
-            SECURITY_CONFIG.deep_poly_alpha_pow_bits as u32,
+            Geometry::<S>::DEEP_POLY_ALPHA_POW_BITS as u32,
         );
     }
 
     // draw initial challenge for DEEP-poly
     let mut transcript_challenges = MaybeUninit::<
-        [u32; transcript_challenge_array_size(
-            1usize * 4,
-            SECURITY_CONFIG.deep_poly_alpha_pow_bits as usize,
-        )],
+        [u32; Geometry::<S>::DEEP_POLY_ALPHA_TRANSCRIPT_CHALLENGE_ARRAY_SIZE],
     >::uninit()
     .assume_init();
     Transcript::draw_randomness_using_hasher(
@@ -310,7 +355,7 @@ pub unsafe fn verify_with_configuration<I: NonDeterminismSource, V: LeafInclusio
         &mut transcript_challenges,
     );
 
-    let mut it = if SECURITY_CONFIG.deep_poly_alpha_pow_bits > 0 {
+    let mut it = if Geometry::<S>::DEEP_POLY_ALPHA_POW_BITS > 0 {
         // skip 1 word used for PoW
         transcript_challenges[1..].as_chunks::<4>().0.iter()
     } else {
@@ -333,7 +378,7 @@ pub unsafe fn verify_with_configuration<I: NonDeterminismSource, V: LeafInclusio
         .into_iter()
         .zip(fri_folding_challenges.iter_mut())
         .zip(skeleton.pow_challenges.foldings_pow_challenges)
-        .zip(SECURITY_CONFIG.foldings_pow_bits)
+        .zip(Geometry::<S>::FOLDINGS_POW_BITS)
     {
         Blake2sTranscript::commit_with_seed_using_hasher(&mut transcript_hasher, &mut seed, caps);
 
@@ -385,7 +430,7 @@ pub unsafe fn verify_with_configuration<I: NonDeterminismSource, V: LeafInclusio
         };
     }
 
-    if LAST_FRI_STEP_EXPOSE_LEAFS {
+    if Geometry::<S>::LAST_FRI_STEP_EXPOSE_LEAFS {
         let dst = &mut fri_folding_challenges[NUM_FRI_STEPS - 1];
         Blake2sTranscript::commit_with_seed_using_hasher(
             &mut transcript_hasher,
@@ -393,21 +438,18 @@ pub unsafe fn verify_with_configuration<I: NonDeterminismSource, V: LeafInclusio
             skeleton.transcript_elements_last_fri_step_leaf_values(),
         );
 
-        if SECURITY_CONFIG.foldings_pow_bits[NUM_FRI_STEPS - 1] > 0 {
+        if Geometry::<S>::FOLDINGS_POW_BITS[NUM_FRI_STEPS - 1] > 0 {
             Blake2sTranscript::verify_pow_using_hasher(
                 &mut transcript_hasher,
                 &mut seed,
                 skeleton.pow_challenges.foldings_pow_challenges[NUM_FRI_STEPS - 1],
-                SECURITY_CONFIG.foldings_pow_bits[NUM_FRI_STEPS - 1],
+                Geometry::<S>::FOLDINGS_POW_BITS[NUM_FRI_STEPS - 1],
             );
         }
 
         // draw initial challenge for DEEP-poly
         let mut transcript_challenges = MaybeUninit::<
-            [u32; transcript_challenge_array_size(
-                1usize * 4,
-                SECURITY_CONFIG.foldings_pow_bits[NUM_FRI_STEPS - 1] as usize,
-            )],
+            [u32; Geometry::<S>::LAST_FRI_FOLDING_TRANSCRIPT_CHALLENGE_ARRAY_SIZE],
         >::uninit()
         .assume_init();
         Transcript::draw_randomness_using_hasher(
@@ -416,7 +458,7 @@ pub unsafe fn verify_with_configuration<I: NonDeterminismSource, V: LeafInclusio
             &mut transcript_challenges,
         );
 
-        let mut it = if SECURITY_CONFIG.foldings_pow_bits[NUM_FRI_STEPS - 1] > 0 {
+        let mut it = if Geometry::<S>::FOLDINGS_POW_BITS[NUM_FRI_STEPS - 1] > 0 {
             // skip 1 word used for PoW
             transcript_challenges[1..].as_chunks::<4>().0.iter()
         } else {
@@ -442,12 +484,13 @@ pub unsafe fn verify_with_configuration<I: NonDeterminismSource, V: LeafInclusio
         &mut transcript_hasher,
         &mut seed,
         skeleton.pow_challenges.fri_queries_pow_challenge,
-        SECURITY_CONFIG.fri_queries_pow_bits as u32,
+        Geometry::<S>::FRI_QUERIES_POW_BITS as u32,
     );
 
     // now we need to draw enough bits to form query indexes
-    let mut indexes_bits: [u32; NUM_REQUIRED_WORDS_FOR_QUERY_INDEXES] =
-        MaybeUninit::<[u32; NUM_REQUIRED_WORDS_FOR_QUERY_INDEXES]>::uninit().assume_init();
+    let mut indexes_bits: [u32; Geometry::<S>::NUM_REQUIRED_WORDS_FOR_QUERY_INDEXES] =
+        MaybeUninit::<[u32; Geometry::<S>::NUM_REQUIRED_WORDS_FOR_QUERY_INDEXES]>::uninit()
+            .assume_init();
     Transcript::draw_randomness_using_hasher(&mut transcript_hasher, &mut seed, &mut indexes_bits);
 
     // NOTE: when we will use queries below, we MUST check that query set's index is exactly the index we draw from transcript.
@@ -770,7 +813,7 @@ pub unsafe fn verify_with_configuration<I: NonDeterminismSource, V: LeafInclusio
         // NOTE: here we skip 1 word because PoW is checked over it
         let mut bit_iterator = BitSource::new(&indexes_bits[1..]);
         let mut inversion_buffer = [Mersenne31Quartic::ZERO; 2];
-        for query_round in 0..NUM_QUERIES {
+        for query_round in 0..Geometry::<S>::NUM_QUERIES {
             let query = &queries[query_round];
             let query_index: u32 =
                 assemble_query_index(BITS_FOR_QUERY_INDEX, &mut bit_iterator) as u32;
@@ -842,26 +885,27 @@ pub unsafe fn verify_with_configuration<I: NonDeterminismSource, V: LeafInclusio
 
             for (step, folding_degree_log_2) in FRI_FOLDING_SCHEDULE.iter().enumerate() {
                 let leaf_size = (1 << *folding_degree_log_2) * 4;
-                let leaf_projection = if LAST_FRI_STEP_EXPOSE_LEAFS && (step == NUM_FRI_STEPS - 1) {
-                    let leaf_size_in_ext4_elements = leaf_size / 4;
-                    // we should peek into the skeleton for all leaf values
-                    let all_leaf_values_in_coset = skeleton
-                        .fri_final_step_leafs
-                        .get_unchecked(coset_index as usize);
-                    let leaf_index = tree_index / leaf_size_in_ext4_elements;
-                    let src = all_leaf_values_in_coset
-                        .as_ptr()
-                        .add(leaf_index * leaf_size_in_ext4_elements);
-                    let leaf_projection =
-                        core::slice::from_raw_parts(src.cast::<Mersenne31Field>(), leaf_size);
+                let leaf_projection =
+                    if Geometry::<S>::LAST_FRI_STEP_EXPOSE_LEAFS && (step == NUM_FRI_STEPS - 1) {
+                        let leaf_size_in_ext4_elements = leaf_size / 4;
+                        // we should peek into the skeleton for all leaf values
+                        let all_leaf_values_in_coset = skeleton
+                            .fri_final_step_leafs
+                            .get_unchecked(coset_index as usize);
+                        let leaf_index = tree_index / leaf_size_in_ext4_elements;
+                        let src = all_leaf_values_in_coset
+                            .as_ptr()
+                            .add(leaf_index * leaf_size_in_ext4_elements);
+                        let leaf_projection =
+                            core::slice::from_raw_parts(src.cast::<Mersenne31Field>(), leaf_size);
 
-                    leaf_projection
-                } else {
-                    let leaf_projection = core::slice::from_raw_parts(leaf_src, leaf_size);
-                    leaf_src = leaf_src.add(leaf_size);
+                        leaf_projection
+                    } else {
+                        let leaf_projection = core::slice::from_raw_parts(leaf_src, leaf_size);
+                        leaf_src = leaf_src.add(leaf_size);
 
-                    leaf_projection
-                };
+                        leaf_projection
+                    };
 
                 if Mersenne31Quartic::PREFER_FMA
                     && Mersenne31Quartic::USE_SPEC_MUL_BY_BASE_VIA_MUL_BY_SELF

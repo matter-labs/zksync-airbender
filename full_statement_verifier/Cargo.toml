@@ -56,10 +56,24 @@ unified_verifier_only = [
     "blake2_with_compression_verifier",
     "unified_reduced_machine_verifier"
 ]
+unified_verifier_only_security_80 = [
+    "unified_verifier_only",
+    "verifier_common/security_80",
+    "blake2_with_compression_verifier/security_80",
+    "unified_reduced_machine_verifier/security_80"
+]
+unified_verifier_only_security_100 = [
+    "unified_verifier_only",
+    "verifier_common/security_100",
+    "blake2_with_compression_verifier/security_100",
+    "unified_reduced_machine_verifier/security_100"
+]
 
+security_80 = ["verifiers", "verifier_common/security_80", "blake2_with_compression_verifier/security_80", "bigint_with_control_verifier/security_80", "keccak_special5_verifier/security_80"]
+security_100 = ["verifiers", "verifier_common/security_100", "blake2_with_compression_verifier/security_100", "bigint_with_control_verifier/security_100", "keccak_special5_verifier/security_100"]
 blake2_with_compression = ["verifier_common/blake2_with_compression", "blake2_with_compression_verifier/blake2_with_compression", "bigint_with_control_verifier/blake2_with_compression", "keccak_special5_verifier/blake2_with_compression"]
 modular_ops = ["verifier_common/modular_ops", "blake2_with_compression_verifier/modular_ops", "bigint_with_control_verifier/modular_ops", "keccak_special5_verifier/modular_ops"]
 verifier_program = ["modular_ops"]
 replace_csr = ["verifier_common/replace_csr"]
-default = ["replace_csr", "verifiers"]
-# default = []
+default = ["security_80", "replace_csr", "verifiers"]
+# default = ["security_80"]

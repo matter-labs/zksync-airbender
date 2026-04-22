@@ -19,6 +19,9 @@ pub mod unrolled_proof_statement;
 #[cfg(any(feature = "verifiers", feature = "unified_verifier_only"))]
 pub mod statement_common;
 
+#[cfg(test)]
+mod tests;
+
 #[cfg(any(feature = "verifiers", feature = "unified_verifier_only"))]
 mod verifier_imports {
     pub(super) use super::constants::*;

@@ -31,8 +31,86 @@ use trace_and_split::commit_memory_tree_for_unified_circuits;
 use trace_and_split::fs_transform_for_memory_and_delegation_arguments_for_unrolled_circuits;
 use trace_and_split::FinalRegisterValue;
 use trace_and_split::ENTRY_POINT;
+use verifier_common::security_100::Security100Marker;
+use verifier_common::security_80::Security80Marker;
+use verifier_common::{SecurityConfig, SecurityMarker};
 
-pub fn prove_unified_execution_with_replayer<
+pub fn prove_unified_execution_with_replayer_80<
+    C: MachineConfig,
+    A: GoodAllocator,
+    const ROM_BOUND_SECOND_WORD_BITS: usize,
+>(
+    cycles_bound: usize,
+    binary_image: &[u32],
+    text_section: &[u32],
+    non_determinism: impl riscv_transpiler::vm::NonDeterminismCSRSource,
+    unified_circuit_precomputation: &UnrolledCircuitPrecomputations<A, A>,
+    delegation_circuits_precomputations: &[(u32, DelegationCircuitPrecomputations<A, A>)],
+    ram_bound: usize,
+    worker: &worker::Worker,
+) -> (
+    BTreeMap<u8, Vec<UnrolledModeProof>>,
+    Vec<(u32, Vec<Proof>)>,
+    [FinalRegisterValue; 32],
+    (u32, TimestampScalar),
+    u64,
+) {
+    prove_unified_execution_with_replayer::<
+        Security80Marker,
+        C,
+        A,
+        ROM_BOUND_SECOND_WORD_BITS,
+    >(
+        cycles_bound,
+        binary_image,
+        text_section,
+        non_determinism,
+        unified_circuit_precomputation,
+        delegation_circuits_precomputations,
+        ram_bound,
+        worker,
+    )
+}
+
+pub fn prove_unified_execution_with_replayer_100<
+    C: MachineConfig,
+    A: GoodAllocator,
+    const ROM_BOUND_SECOND_WORD_BITS: usize,
+>(
+    cycles_bound: usize,
+    binary_image: &[u32],
+    text_section: &[u32],
+    non_determinism: impl riscv_transpiler::vm::NonDeterminismCSRSource,
+    unified_circuit_precomputation: &UnrolledCircuitPrecomputations<A, A>,
+    delegation_circuits_precomputations: &[(u32, DelegationCircuitPrecomputations<A, A>)],
+    ram_bound: usize,
+    worker: &worker::Worker,
+) -> (
+    BTreeMap<u8, Vec<UnrolledModeProof>>,
+    Vec<(u32, Vec<Proof>)>,
+    [FinalRegisterValue; 32],
+    (u32, TimestampScalar),
+    u64,
+) {
+    prove_unified_execution_with_replayer::<
+        Security100Marker,
+        C,
+        A,
+        ROM_BOUND_SECOND_WORD_BITS,
+    >(
+        cycles_bound,
+        binary_image,
+        text_section,
+        non_determinism,
+        unified_circuit_precomputation,
+        delegation_circuits_precomputations,
+        ram_bound,
+        worker,
+    )
+}
+
+fn prove_unified_execution_with_replayer<
+    S: SecurityConfig<{ crate::NUM_FOLDINGS }>,
     C: MachineConfig,
     A: GoodAllocator,
     const ROM_BOUND_SECOND_WORD_BITS: usize,
@@ -45,7 +123,6 @@ pub fn prove_unified_execution_with_replayer<
     delegation_circuits_precomputations: &[(u32, DelegationCircuitPrecomputations<A, A>)],
     ram_bound: usize,
     worker: &worker::Worker,
-    security: verifier_common::SecurityModel,
 ) -> (
     BTreeMap<u8, Vec<UnrolledModeProof>>,
     Vec<(u32, Vec<Proof>)>,
@@ -321,7 +398,7 @@ pub fn prove_unified_execution_with_replayer<
     #[cfg(feature = "debug_logs")]
     println!("FS transformation memory seed is {:?}", all_challenges_seed);
 
-    let memory_delegation_pow_bits = security.memory_delegation_pow_bits();
+    let memory_delegation_pow_bits = S::MODEL.memory_delegation_pow_bits();
 
     let pow_challenge = if memory_delegation_pow_bits > 0 {
         #[cfg(feature = "debug_logs")]
@@ -351,6 +428,7 @@ pub fn prove_unified_execution_with_replayer<
             memory_delegation_pow_bits,
             pow_challenge,
         );
+    let security_config = crate::proof_security_config::<S>();
 
     #[cfg(feature = "debug_logs")]
     println!("External challenges = {:?}", external_challenges);
@@ -484,7 +562,7 @@ pub fn prove_unified_execution_with_replayer<
                     None,
                     precomputation.lde_factor,
                     precomputation.tree_cap_size,
-                    &crate::SECURITY_CONFIG.for_prover(),
+                    &security_config,
                     &worker,
                 );
             println!("Proving time for unified circuit is {:?}", now.elapsed());
@@ -524,6 +602,7 @@ pub fn prove_unified_execution_with_replayer<
                 .unwrap();
             let prec = &delegation_circuits_precomputations[idx].1;
             let (proofs, per_tree_set) = prove_delegation_circuit_with_replayer_format::<
+                S,
                 A,
                 DelegationDescription,
                 _,
@@ -559,6 +638,7 @@ pub fn prove_unified_execution_with_replayer<
                 .unwrap();
             let prec = &delegation_circuits_precomputations[idx].1;
             let (proofs, per_tree_set) = prove_delegation_circuit_with_replayer_format::<
+                S,
                 A,
                 DelegationDescription,
                 _,
@@ -594,6 +674,7 @@ pub fn prove_unified_execution_with_replayer<
                 .unwrap();
             let prec = &delegation_circuits_precomputations[idx].1;
             let (proofs, per_tree_set) = prove_delegation_circuit_with_replayer_format::<
+                S,
                 A,
                 DelegationDescription,
                 _,
@@ -656,6 +737,7 @@ pub fn prove_unified_execution_with_replayer<
 }
 
 fn prove_delegation_circuit_with_replayer_format<
+    S: SecurityConfig<{ crate::NUM_FOLDINGS }>,
     A: GoodAllocator,
     D: DelegationAbiDescription,
     const REG_ACCESSES: usize,
@@ -697,6 +779,7 @@ fn prove_delegation_circuit_with_replayer_format<
     Vec<Proof>,
     Vec<Vec<prover::merkle_trees::MerkleTreeCapVarLength>>,
 ) {
+    let security_config = crate::proof_security_config::<S>();
     let mut per_tree_set = vec![];
 
     let mut per_delegation_type_proofs = vec![];
@@ -776,7 +859,7 @@ fn prove_delegation_circuit_with_replayer_format<
             Some(delegation_type as u16),
             prec.lde_factor,
             prec.tree_cap_size,
-            &crate::SECURITY_CONFIG.for_prover(),
+            &security_config,
             worker,
         );
         #[cfg(feature = "timing_logs")]

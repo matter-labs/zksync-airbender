@@ -7,6 +7,32 @@ use crate::statement_common::{
 use common_constants::{INITIAL_PC, INITIAL_TIMESTAMP};
 use verifier_common::{cs::definitions::split_timestamp, DefaultNonDeterminismSource};
 
+// ==============================================================================
+// Security-Aware Unified Verifier Dispatch
+// ==============================================================================
+//
+// Unified recursion only has one main verifier crate, so the migration here is
+// just an explicit runtime branch that selects the already-migrated child
+// verifier wrapper matching the requested proof security.
+
+pub const REDUCED_UNIFIED_CIRCUIT_VERIFIER_PTR_80: VerifierFunctionPointer<
+    CAP_SIZE,
+    NUM_COSETS,
+    1,
+    1,
+    0,
+    1,
+> = unified_reduced_machine_verifier::verify_80;
+pub const REDUCED_UNIFIED_CIRCUIT_VERIFIER_PTR_100: VerifierFunctionPointer<
+    CAP_SIZE,
+    NUM_COSETS,
+    1,
+    1,
+    0,
+    1,
+> = unified_reduced_machine_verifier::verify_100;
+// TODO(codex): remove this 80-bit compatibility alias once low-level callers
+// switch to `reduced_unified_circuit_verifier_ptr`.
 pub const REDUCED_UNIFIED_CIRCUIT_VERIFIER_PTR: VerifierFunctionPointer<
     CAP_SIZE,
     NUM_COSETS,
@@ -14,9 +40,19 @@ pub const REDUCED_UNIFIED_CIRCUIT_VERIFIER_PTR: VerifierFunctionPointer<
     1,
     0,
     1,
-> = unified_reduced_machine_verifier::verify;
+> = REDUCED_UNIFIED_CIRCUIT_VERIFIER_PTR_80;
 pub const REDUCED_UNIFIED_CIRCUIT_CAPACITY: u32 =
     (unified_reduced_machine_verifier::concrete::size_constants::TRACE_LEN - 1) as u32;
+
+#[inline(always)]
+pub const fn reduced_unified_circuit_verifier_ptr(
+    security: verifier_common::SecurityModel,
+) -> VerifierFunctionPointer<CAP_SIZE, NUM_COSETS, NUM_DELEGATION_CHALLENGES, 1, 0, 1> {
+    match security {
+        verifier_common::SecurityModel::Security80 => REDUCED_UNIFIED_CIRCUIT_VERIFIER_PTR_80,
+        verifier_common::SecurityModel::Security100 => REDUCED_UNIFIED_CIRCUIT_VERIFIER_PTR_100,
+    }
+}
 
 /// Unified circuit inherits PC + timestamp permutation technique from unrolled ones,
 /// but also keeps inits and teardowns in the one an only circuit
@@ -422,8 +458,8 @@ pub fn verify_unified_circuit_recursion_layer(
         verify_unified_circuit_statement::<false>(
             &main_setup[0],
             REDUCED_UNIFIED_CIRCUIT_CAPACITY,
-            REDUCED_UNIFIED_CIRCUIT_VERIFIER_PTR,
-            RECURSION_LAYER_CIRCUITS_VERIFICATION_PARAMETERS,
+            reduced_unified_circuit_verifier_ptr(security),
+            recursion_layer_circuits_verification_parameters(security),
             security,
         )
     }

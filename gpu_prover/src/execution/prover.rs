@@ -39,6 +39,7 @@ use riscv_transpiler::vm::{NonDeterminismCSRSource, RamPeek, SimpleTape};
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::fmt::Debug;
 use std::hash::Hash;
+use std::marker::PhantomData;
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
@@ -46,7 +47,9 @@ use trace_and_split::{
     fs_transform_for_memory_and_delegation_arguments_for_unrolled_circuits, FinalRegisterValue,
 };
 use type_map::concurrent::TypeMap;
-use verifier_common::SecurityModel;
+use verifier_common::security_100::Security100Marker;
+use verifier_common::security_80::Security80Marker;
+use verifier_common::{SecurityMarker, SecurityModel};
 use worker::Worker;
 
 /// Specifies the execution mode for the prover.
@@ -185,9 +188,15 @@ impl TraceCache {
     }
 }
 
-pub struct ExecutionProver {
+pub struct ExecutionProver<S: SecurityMarker> {
+    // The execution prover owns caches, binaries, and GPU workers for a single
+    // security model. Runtime security selection belongs in higher layers.
+    //
+    // Keeping the prover itself marker-generic matches the verifier migration:
+    // once a caller chooses `Security80Marker` or `Security100Marker`, the rest
+    // of the crate stays on that monomorphic path.
     configuration: ExecutionProverConfiguration,
-    gpu_manager: GpuManager,
+    gpu_manager: GpuManager<S>,
     worker: Arc<Worker>,
     memory_holders_cache: Arc<Mutex<Vec<LockedBoxedMemoryHolder>>>,
     trace_chunks_cache: Arc<Mutex<Vec<Vec<LockedBoxedTraceChunk>>>>,
@@ -195,30 +204,45 @@ pub struct ExecutionProver {
     common_precomputations: BTreeMap<CircuitType, CircuitPrecomputations>,
     free_allocators_sender: Sender<A>,
     free_allocators_receiver: Receiver<A>,
-    security: SecurityModel,
+    marker: PhantomData<S>,
 }
 
-impl ExecutionProver {
-    ///  Creates a new instance of `ExecutionProver` with the default configuration.
-    ///
-    /// returns: an instance of `ExecutionProver` that can be used to generate memory commitments and proofs for the provided binaries, it is supposed to be a Singleton instance
-    ///
-    pub fn new(security: verifier_common::SecurityModel) -> Self {
-        Self::with_configuration(security, ExecutionProverConfiguration::default())
+impl ExecutionProver<Security80Marker> {
+    /// Creates a new 80-bit execution prover with the default configuration.
+    pub fn new_80() -> Self {
+        Self::new()
     }
 
-    ///  Creates a new instance of `ExecutionProver` with the supplied configuration.
-    ///
-    /// # Arguments
-    ///
-    /// * `configuration`: the configuration for the execution prover
-    ///
-    /// returns: an instance of `ExecutionProver` that can be used to generate memory commitments and proofs for the provided binaries, it is supposed to be a Singleton instance
-    ///
-    pub fn with_configuration(
-        security: verifier_common::SecurityModel,
-        configuration: ExecutionProverConfiguration,
-    ) -> Self {
+    /// Creates a new 80-bit execution prover with the supplied configuration.
+    pub fn with_configuration_80(configuration: ExecutionProverConfiguration) -> Self {
+        Self::with_configuration(configuration)
+    }
+}
+
+impl ExecutionProver<Security100Marker> {
+    /// Creates a new 100-bit execution prover with the default configuration.
+    pub fn new_100() -> Self {
+        Self::new()
+    }
+
+    /// Creates a new 100-bit execution prover with the supplied configuration.
+    pub fn with_configuration_100(configuration: ExecutionProverConfiguration) -> Self {
+        Self::with_configuration(configuration)
+    }
+}
+
+impl<S: SecurityMarker> ExecutionProver<S> {
+    /// Creates a new execution prover with the default configuration.
+    pub fn new() -> Self {
+        Self::with_configuration(ExecutionProverConfiguration::default())
+    }
+
+    /// Creates a new execution prover with the supplied configuration.
+    pub fn with_configuration(configuration: ExecutionProverConfiguration) -> Self {
+        Self::build(configuration)
+    }
+
+    fn build(configuration: ExecutionProverConfiguration) -> Self {
         let ExecutionProverConfiguration {
             prover_context_config,
             max_thread_pool_threads,
@@ -232,7 +256,7 @@ impl ExecutionProver {
         let device_count = get_device_count().unwrap() as usize;
         assert_ne!(device_count, 0, "no CUDA capable devices found");
         let gpu_wait_group = WaitGroup::new();
-        let gpu_manager = GpuManager::new(gpu_wait_group.clone(), prover_context_config);
+        let gpu_manager = GpuManager::<S>::new(gpu_wait_group.clone(), prover_context_config);
         let worker = if let Some(thread_pool_threads_count) = max_thread_pool_threads {
             Worker::new_with_num_threads(thread_pool_threads_count)
         } else {
@@ -294,12 +318,12 @@ impl ExecutionProver {
             common_precomputations,
             free_allocators_sender,
             free_allocators_receiver,
-            security,
+            marker: PhantomData,
         }
     }
 
     pub fn security(&self) -> verifier_common::SecurityModel {
-        self.security
+        S::MODEL
     }
 
     /// Adds a binary to the `ExecutionProver` for proof or memory commitment generation.
@@ -1281,7 +1305,7 @@ impl ExecutionProver {
                     .collect_vec(),
             );
 
-        let memory_delegation_pow_bits = self.security.memory_delegation_pow_bits();
+        let memory_delegation_pow_bits = self.security().memory_delegation_pow_bits();
 
         let pow_challenge = if memory_delegation_pow_bits == 0 {
             0
@@ -1423,14 +1447,15 @@ mod tests {
     use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
     use setups::read_binary;
     use std::path::Path;
+    use verifier_common::security_80::Security80Marker;
 
     #[test]
     fn test_execution_prover() {
         init_logger();
         let mut configuration = ExecutionProverConfiguration::default();
         configuration.replay_worker_threads_count = 8;
-        let security = verifier_common::SecurityModel::Security80; // TODO(popzxc): cover 100 bit too
-        let mut prover = ExecutionProver::with_configuration(security, configuration);
+        let mut prover =
+            ExecutionProver::<Security80Marker>::with_configuration_80(configuration);
         let (_, binary_image) = read_binary(&Path::new("../examples/hashed_fibonacci/app.bin"));
         let (_, text_section) = read_binary(&Path::new("../examples/hashed_fibonacci/app.text"));
         prover.add_binary(
