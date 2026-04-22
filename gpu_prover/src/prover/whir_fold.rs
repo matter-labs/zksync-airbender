@@ -43,6 +43,7 @@ use crate::primitives::static_host::{
 };
 use crate::prover::gkr::backward::{eq_group_tables_len, launch_build_eq_values_from_point};
 use crate::prover::pow::{schedule_pow_verify_and_query_indexes, PowAndQueryIndexesKeepalives};
+use crate::prover::proof_layout::ProofLayout;
 use crate::prover::trace_holder::{get_tree_caps, TraceHolder};
 use crate::prover::whir::{GpuWhirExtensionOracle, GpuWhirExtensionQuery};
 use crate::prover::whir_kernels::{
@@ -51,6 +52,37 @@ use crate::prover::whir_kernels::{
 };
 
 const EXT4_DEGREE: usize = <E4 as FieldExtension<BF>>::DEGREE;
+
+/// Phase 3: D2D-copy the single-element `d_nonce` device buffer into the slab's
+/// `whir.pow_nonces[pow_round_idx]` offset. Transitional — the existing D2H
+/// into `nonce_host` + callback path is left in place until Phase 4 parse
+/// sources `pow_nonces` from the slab via the terminal D2H. `None` slab is a
+/// no-op (test paths).
+fn copy_pow_nonce_to_slab(
+    pow_keepalives: &PowAndQueryIndexesKeepalives,
+    proof_slab: Option<&DeviceAllocation<u8>>,
+    proof_layout: &ProofLayout,
+    pow_round_idx: usize,
+    stream: &era_cudart::stream::CudaStream,
+) -> CudaResult<()> {
+    let Some(slab) = proof_slab else { return Ok(()) };
+    let (dst_ptr, dst_len) = unsafe {
+        proof_layout.whir_pow_nonces_device_mut(slab.as_ptr() as *mut u8)
+    };
+    assert!(
+        pow_round_idx < dst_len,
+        "pow_round_idx {pow_round_idx} out of slab pow_nonces range (len {dst_len})",
+    );
+    // SAFETY: `dst_ptr + pow_round_idx` is a 16-byte-aligned offset inside the
+    // live `slab` allocation; slots are disjoint by construction and the
+    // single-u64 write does not race any other scheduled work.
+    let dst = unsafe {
+        era_cudart::slice::DeviceSlice::from_raw_parts_mut(dst_ptr.add(pow_round_idx), 1)
+    };
+    memory_copy_async(dst, &pow_keepalives.d_nonce[..1], stream)?;
+    Ok(())
+}
+
 struct GpuWhirState {
     sumchecked_poly_monomial_form: DeviceAllocation<E4>,
     monomial_buffer: DeviceAllocation<E4>,
@@ -1710,6 +1742,13 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
     seed_source: impl Fn() -> Seed + Send + Sync + 'static,
     tree_cap_size: usize,
     trace_len_log2: usize,
+    // Phase 3: slab + layout thread through so WHIR sub-phases can route
+    // proof fields (`pow_nonces` today; caps, evals, queries, ood_samples,
+    // sumcheck_polys, final_monomials in follow-up commits) into slab
+    // offsets via `ProofLayout` accessors. `None` skips all slab routing
+    // (test paths).
+    proof_slab: Option<&DeviceAllocation<u8>>,
+    proof_layout: &ProofLayout,
     context: &ProverContext,
 ) -> CudaResult<GpuWhirFoldScheduledExecution> {
     let trace_len = 1usize << trace_len_log2;
@@ -2238,6 +2277,13 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
             query_domain_log2,
             context,
         )?;
+        copy_pow_nonce_to_slab(
+            &pow_keepalives,
+            proof_slab,
+            proof_layout,
+            pow_round_idx,
+            stream,
+        )?;
         let h_seed_mirror_accessor = pow_keepalives.h_seed_mirror.get_accessor();
         pow_keepalives_keepalive.push(pow_keepalives);
         query_index_callbacks_for_round.schedule(
@@ -2572,6 +2618,13 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
             query_domain_log2,
             context,
         )?;
+        copy_pow_nonce_to_slab(
+            &pow_keepalives,
+            proof_slab,
+            proof_layout,
+            pow_round_idx,
+            stream,
+        )?;
         let h_seed_mirror_accessor = pow_keepalives.h_seed_mirror.get_accessor();
         pow_keepalives_keepalive.push(pow_keepalives);
         query_index_callbacks_for_round.schedule(
@@ -2774,6 +2827,13 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
             query_domain_log2,
             context,
         )?;
+        copy_pow_nonce_to_slab(
+            &pow_keepalives,
+            proof_slab,
+            proof_layout,
+            pow_round_idx,
+            stream,
+        )?;
         let h_seed_mirror_accessor = pow_keepalives.h_seed_mirror.get_accessor();
         pow_keepalives_keepalive.push(pow_keepalives);
         query_index_callbacks_for_round.schedule(
@@ -2902,6 +2962,8 @@ pub(crate) fn gpu_whir_fold_supported_path(
     mut transcript_seed: Seed,
     tree_cap_size: usize,
     trace_len_log2: usize,
+    proof_slab: Option<&DeviceAllocation<u8>>,
+    proof_layout: &ProofLayout,
     _worker: &Worker,
     context: &ProverContext,
 ) -> CudaResult<WhirPolyCommitProof<BF, E4, DefaultTreeConstructor>> {
@@ -2940,6 +3002,8 @@ pub(crate) fn gpu_whir_fold_supported_path(
         move || transcript_seed.clone(),
         tree_cap_size,
         trace_len_log2,
+        proof_slab,
+        proof_layout,
         context,
     )?
     .wait(context)
