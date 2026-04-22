@@ -11,7 +11,7 @@ fn decoder_for(encoding: u32) -> Vec<ExecutorFamilyDecoderData> {
 }
 
 
-fn check_rd(decoder_data: &[ExecutorFamilyDecoderData], case: &NonMemTestCase) {
+fn check_rd(decoder_data: &[ExecutorFamilyDecoderData], case: &NonMemTestCase, rd_reg: u8) {
     let circuit_regs = run_non_mem_circuit_test(
         decoder_data,
         add_sub_lui_auipc_mop_table_addition_fn,
@@ -19,9 +19,9 @@ fn check_rd(decoder_data: &[ExecutorFamilyDecoderData], case: &NonMemTestCase) {
         case,
     );
     assert_eq!(
-        circuit_regs[3], case.rd,
-        "{}: circuit wrote {:#010X} to x3 but expected {:#010X}",
-        case.label, circuit_regs[3], case.rd
+        circuit_regs[rd_reg as usize], case.rd,
+        "{}: circuit wrote {:#010X} to x{} but expected {:#010X}",
+        case.label, circuit_regs[rd_reg as usize], rd_reg, case.rd
     );
 }
 
@@ -39,37 +39,45 @@ const fn encode_u(opcode: u32, rd: u32, imm_upper: u32) -> u32 {
 
 // ==================== ADD  ====================
 
-const ADD: u32 = encode_r(0b000, 0b0000000, 3, 1, 2);
-
 #[test]
 fn test_add_compliance() {
     skip_if_ci!();
-    let dd = decoder_for(ADD);
-    for &(rs1, rs2, rd) in compliance_vectors::ADD_VECTORS {
-        check_rd(&dd, &NonMemTestCase {
-            label: "ADD",
-            rs1,
-            rs2,
-            rd,
-        });
+    for &(rd_reg, rs1_reg, rs2_reg, rs1, rs2, rd) in compliance_vectors::ADD_VECTORS {
+        let encoding = encode_r(
+            0b000,
+            0b0000000,
+            rd_reg as u32,
+            rs1_reg as u32,
+            rs2_reg as u32,
+        );
+        let dd = decoder_for(encoding);
+        check_rd(
+            &dd,
+            &NonMemTestCase { label: "ADD", rs1, rs2, rd },
+            rd_reg,
+        );
     }
 }
 
 // ==================== SUB (compliance) ====================
 
-const SUB: u32 = encode_r(0b000, 0b0100000, 3, 1, 2);
-
 #[test]
 fn test_sub_compliance() {
     skip_if_ci!();
-    let dd = decoder_for(SUB);
-    for &(rs1, rs2, rd) in compliance_vectors::SUB_VECTORS {
-        check_rd(&dd, &NonMemTestCase {
-            label: "SUB",
-            rs1,
-            rs2,
-            rd,
-        });
+    for &(rd_reg, rs1_reg, rs2_reg, rs1, rs2, rd) in compliance_vectors::SUB_VECTORS {
+        let encoding = encode_r(
+            0b000,
+            0b0100000,
+            rd_reg as u32,
+            rs1_reg as u32,
+            rs2_reg as u32,
+        );
+        let dd = decoder_for(encoding);
+        check_rd(
+            &dd,
+            &NonMemTestCase { label: "SUB", rs1, rs2, rd },
+            rd_reg,
+        );
     }
 }
 
@@ -78,15 +86,14 @@ fn test_sub_compliance() {
 #[test]
 fn test_addi_compliance() {
     skip_if_ci!();
-    for &(rs1, imm, rd) in compliance_vectors::ADDI_VECTORS {
-        let encoding = encode_i(0b000, 3, 1, imm & 0xFFF);
+    for &(rd_reg, rs1_reg, imm, rs1, rd) in compliance_vectors::ADDI_VECTORS {
+        let encoding = encode_i(0b000, rd_reg as u32, rs1_reg as u32, imm as u32 & 0xFFF);
         let dd = decoder_for(encoding);
-        check_rd(&dd, &NonMemTestCase {
-            label: "ADDI",
-            rs1,
-            rs2: 0,
-            rd,
-        });
+        check_rd(
+            &dd,
+            &NonMemTestCase { label: "ADDI", rs1, rs2: 0, rd },
+            rd_reg,
+        );
     }
 }
 
@@ -95,15 +102,14 @@ fn test_addi_compliance() {
 #[test]
 fn test_lui_compliance() {
     skip_if_ci!();
-    for &(imm_upper, rd) in compliance_vectors::LUI_VECTORS {
-        let encoding = encode_u(0x37, 3, imm_upper & 0xFFFFF);
+    for &(rd_reg, imm_upper, rd) in compliance_vectors::LUI_VECTORS {
+        let encoding = encode_u(0x37, rd_reg as u32, imm_upper & 0xFFFFF);
         let dd = decoder_for(encoding);
-        check_rd(&dd, &NonMemTestCase {
-            label: "LUI",
-            rs1: 0,
-            rs2: 0,
-            rd,
-        });
+        check_rd(
+            &dd,
+            &NonMemTestCase { label: "LUI", rs1: 0, rs2: 0, rd },
+            rd_reg,
+        );
     }
 }
 
@@ -112,15 +118,14 @@ fn test_lui_compliance() {
 #[test]
 fn test_auipc_compliance() {
     skip_if_ci!();
-    for &(imm_upper, rd) in compliance_vectors::AUIPC_VECTORS {
-        let encoding = encode_u(0x17, 3, imm_upper & 0xFFFFF);
+    for &(rd_reg, imm_upper, rd) in compliance_vectors::AUIPC_VECTORS {
+        let encoding = encode_u(0x17, rd_reg as u32, imm_upper & 0xFFFFF);
         let dd = decoder_for(encoding);
-        check_rd(&dd, &NonMemTestCase {
-            label: "AUIPC",
-            rs1: 0,
-            rs2: 0,
-            rd,
-        });
+        check_rd(
+            &dd,
+            &NonMemTestCase { label: "AUIPC", rs1: 0, rs2: 0, rd },
+            rd_reg,
+        );
     }
 }
 
@@ -143,7 +148,7 @@ fn test_addmod_compliance() {
     skip_if_ci!();
     let dd = decoder_for(ADDMOD);
     for &(rs1, rs2, rd) in compliance_vectors::ADDMOD_VECTORS {
-        check_rd(&dd, &NonMemTestCase { label: "ADDMOD", rs1, rs2, rd });
+        check_rd(&dd, &NonMemTestCase { label: "ADDMOD", rs1, rs2, rd }, 3);
     }
 }
 
@@ -152,7 +157,7 @@ fn test_submod_compliance() {
     skip_if_ci!();
     let dd = decoder_for(SUBMOD);
     for &(rs1, rs2, rd) in compliance_vectors::SUBMOD_VECTORS {
-        check_rd(&dd, &NonMemTestCase { label: "SUBMOD", rs1, rs2, rd });
+        check_rd(&dd, &NonMemTestCase { label: "SUBMOD", rs1, rs2, rd }, 3);
     }
 }
 
@@ -161,6 +166,6 @@ fn test_mulmod_compliance() {
     skip_if_ci!();
     let dd = decoder_for(MULMOD);
     for &(rs1, rs2, rd) in compliance_vectors::MULMOD_VECTORS {
-        check_rd(&dd, &NonMemTestCase { label: "MULMOD", rs1, rs2, rd });
+        check_rd(&dd, &NonMemTestCase { label: "MULMOD", rs1, rs2, rd }, 3);
     }
 }

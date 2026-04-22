@@ -15,7 +15,7 @@ fn decoder_for(encoding: u32) -> Vec<ExecutorFamilyDecoderData> {
     )
 }
 
-fn check_rd(decoder_data: &[ExecutorFamilyDecoderData], case: &NonMemTestCase) {
+fn check_rd(decoder_data: &[ExecutorFamilyDecoderData], case: &NonMemTestCase, rd_reg: u8) {
     let circuit_regs = run_non_mem_circuit_test_with_pc_padding(
         decoder_data,
         jump_branch_slt_table_addition_fn,
@@ -24,9 +24,9 @@ fn check_rd(decoder_data: &[ExecutorFamilyDecoderData], case: &NonMemTestCase) {
         0,
     );
     assert_eq!(
-        circuit_regs[3], case.rd,
-        "{}: circuit wrote {:#010X} to x3 but expected {:#010X}",
-        case.label, circuit_regs[3], case.rd
+        circuit_regs[rd_reg as usize], case.rd,
+        "{}: circuit wrote {:#010X} to x{} but expected {:#010X}",
+        case.label, circuit_regs[rd_reg as usize], rd_reg, case.rd
     );
 }
 
@@ -80,235 +80,106 @@ const fn encode_b(funct3: u32, rs1: u32, rs2: u32, imm: u32) -> u32 {
         | 0x63
 }
 
-// SLT x3, x1, x2
-const SLT: u32 = encode_r(0b010, 0b0000000, 3, 1, 2);
-// SLTU x3, x1, x2
-const SLTU: u32 = encode_r(0b011, 0b0000000, 3, 1, 2);
+fn run_slt_rr_test(label: &'static str, funct3: u32, vectors: &[(u8, u8, u8, u32, u32, u32)]) {
+    for &(rd_reg, rs1_reg, rs2_reg, rs1, rs2, rd) in vectors {
+        let encoding = encode_r(funct3, 0b0000000, rd_reg as u32, rs1_reg as u32, rs2_reg as u32);
+        let dd = decoder_for(encoding);
+        check_rd(&dd, &NonMemTestCase { label, rs1, rs2, rd }, rd_reg);
+    }
+}
 
-// Branch encodings: branch offset = 8 (imm=8), rs1=x1, rs2=x2
-const BEQ: u32 = encode_b(0b000, 1, 2, 8);
-const BNE: u32 = encode_b(0b001, 1, 2, 8);
-const BLT: u32 = encode_b(0b100, 1, 2, 8);
-const BGE: u32 = encode_b(0b101, 1, 2, 8);
-const BLTU: u32 = encode_b(0b110, 1, 2, 8);
-const BGEU: u32 = encode_b(0b111, 1, 2, 8);
+fn run_slt_imm_test(label: &'static str, funct3: u32, vectors: &[(u8, u8, u16, u32, u32)]) {
+    for &(rd_reg, rs1_reg, imm, rs1, rd) in vectors {
+        let encoding = encode_i(funct3, rd_reg as u32, rs1_reg as u32, (imm as u32) & 0xFFF);
+        let dd = decoder_for(encoding);
+        check_rd(&dd, &NonMemTestCase { label, rs1, rs2: 0, rd }, rd_reg);
+    }
+}
 
-// ==================== SLT ====================
+fn run_branch_test(label: &'static str, funct3: u32, vectors: &[(u8, u8, u32, u32, bool)]) {
+    for &(rs1_reg, rs2_reg, rs1, rs2, taken) in vectors {
+        let encoding = encode_b(funct3, rs1_reg as u32, rs2_reg as u32, 8);
+        let dd = decoder_for(encoding);
+        let new_pc = if taken { 8 } else { 4 };
+        check_with_pc(
+            &dd,
+            &NonMemTestCase { label, rs1, rs2, rd: 0 },
+            0,
+            new_pc,
+        );
+    }
+}
+
+// ==================== SLT family ====================
 
 #[test]
 #[ignore = "BasicAssembly cannot resolve jump/branch/SLT witness variables"]
 fn test_slt_compliance() {
     skip_if_ci!();
-    let dd = decoder_for(SLT);
-    for &(rs1, rs2, rd) in compliance_vectors::SLT_VECTORS {
-        check_rd(
-            &dd,
-            &NonMemTestCase {
-                label: "SLT",
-                rs1,
-                rs2,
-                rd,
-            },
-        );
-    }
+    run_slt_rr_test("SLT", 0b010, compliance_vectors::SLT_VECTORS);
 }
-
-// ==================== SLTU ====================
 
 #[test]
 #[ignore = "BasicAssembly cannot resolve jump/branch/SLT witness variables"]
 fn test_sltu_compliance() {
     skip_if_ci!();
-    let dd = decoder_for(SLTU);
-    for &(rs1, rs2, rd) in compliance_vectors::SLTU_VECTORS {
-        check_rd(
-            &dd,
-            &NonMemTestCase {
-                label: "SLTU",
-                rs1,
-                rs2,
-                rd,
-            },
-        );
-    }
+    run_slt_rr_test("SLTU", 0b011, compliance_vectors::SLTU_VECTORS);
 }
-
-// ==================== SLTI ====================
 
 #[test]
 #[ignore = "BasicAssembly cannot resolve jump/branch/SLT witness variables"]
 fn test_slti_compliance() {
     skip_if_ci!();
-    for &(rs1, imm, rd) in compliance_vectors::SLTI_VECTORS {
-        let encoding = encode_i(0b010, 3, 1, imm & 0xFFF);
-        let dd = decoder_for(encoding);
-        check_rd(
-            &dd,
-            &NonMemTestCase {
-                label: "SLTI",
-                rs1,
-                rs2: 0,
-                rd,
-            },
-        );
-    }
+    run_slt_imm_test("SLTI", 0b010, compliance_vectors::SLTI_VECTORS);
 }
-
-// ==================== SLTIU ====================
 
 #[test]
 #[ignore = "BasicAssembly cannot resolve jump/branch/SLT witness variables"]
 fn test_sltiu_compliance() {
     skip_if_ci!();
-    for &(rs1, imm, rd) in compliance_vectors::SLTIU_VECTORS {
-        let encoding = encode_i(0b011, 3, 1, imm & 0xFFF);
-        let dd = decoder_for(encoding);
-        check_rd(
-            &dd,
-            &NonMemTestCase {
-                label: "SLTIU",
-                rs1,
-                rs2: 0,
-                rd,
-            },
-        );
-    }
+    run_slt_imm_test("SLTIU", 0b011, compliance_vectors::SLTIU_VECTORS);
 }
 
-// ==================== BEQ ====================
+// ==================== Branches ====================
 
 #[test]
 #[ignore = "BasicAssembly cannot resolve jump/branch/SLT witness variables"]
 fn test_beq_compliance() {
     skip_if_ci!();
-    let dd = decoder_for(BEQ);
-    for &(rs1, rs2, taken) in compliance_vectors::BEQ_VECTORS {
-        let new_pc = if taken { 8 } else { 4 };
-        check_with_pc(
-            &dd,
-            &NonMemTestCase {
-                label: "BEQ",
-                rs1,
-                rs2,
-                rd: 0,
-            },
-            0,
-            new_pc,
-        );
-    }
+    run_branch_test("BEQ", 0b000, compliance_vectors::BEQ_VECTORS);
 }
-
-// ==================== BNE ====================
 
 #[test]
 #[ignore = "BasicAssembly cannot resolve jump/branch/SLT witness variables"]
 fn test_bne_compliance() {
     skip_if_ci!();
-    let dd = decoder_for(BNE);
-    for &(rs1, rs2, taken) in compliance_vectors::BNE_VECTORS {
-        let new_pc = if taken { 8 } else { 4 };
-        check_with_pc(
-            &dd,
-            &NonMemTestCase {
-                label: "BNE",
-                rs1,
-                rs2,
-                rd: 0,
-            },
-            0,
-            new_pc,
-        );
-    }
+    run_branch_test("BNE", 0b001, compliance_vectors::BNE_VECTORS);
 }
-
-// ==================== BLT ====================
 
 #[test]
 #[ignore = "BasicAssembly cannot resolve jump/branch/SLT witness variables"]
 fn test_blt_compliance() {
     skip_if_ci!();
-    let dd = decoder_for(BLT);
-    for &(rs1, rs2, taken) in compliance_vectors::BLT_VECTORS {
-        let new_pc = if taken { 8 } else { 4 };
-        check_with_pc(
-            &dd,
-            &NonMemTestCase {
-                label: "BLT",
-                rs1,
-                rs2,
-                rd: 0,
-            },
-            0,
-            new_pc,
-        );
-    }
+    run_branch_test("BLT", 0b100, compliance_vectors::BLT_VECTORS);
 }
-
-// ==================== BGE ====================
 
 #[test]
 #[ignore = "BasicAssembly cannot resolve jump/branch/SLT witness variables"]
 fn test_bge_compliance() {
     skip_if_ci!();
-    let dd = decoder_for(BGE);
-    for &(rs1, rs2, taken) in compliance_vectors::BGE_VECTORS {
-        let new_pc = if taken { 8 } else { 4 };
-        check_with_pc(
-            &dd,
-            &NonMemTestCase {
-                label: "BGE",
-                rs1,
-                rs2,
-                rd: 0,
-            },
-            0,
-            new_pc,
-        );
-    }
+    run_branch_test("BGE", 0b101, compliance_vectors::BGE_VECTORS);
 }
-
-// ==================== BLTU ====================
 
 #[test]
 #[ignore = "BasicAssembly cannot resolve jump/branch/SLT witness variables"]
 fn test_bltu_compliance() {
     skip_if_ci!();
-    let dd = decoder_for(BLTU);
-    for &(rs1, rs2, taken) in compliance_vectors::BLTU_VECTORS {
-        let new_pc = if taken { 8 } else { 4 };
-        check_with_pc(
-            &dd,
-            &NonMemTestCase {
-                label: "BLTU",
-                rs1,
-                rs2,
-                rd: 0,
-            },
-            0,
-            new_pc,
-        );
-    }
+    run_branch_test("BLTU", 0b110, compliance_vectors::BLTU_VECTORS);
 }
-
-// ==================== BGEU ====================
 
 #[test]
 #[ignore = "BasicAssembly cannot resolve jump/branch/SLT witness variables"]
 fn test_bgeu_compliance() {
     skip_if_ci!();
-    let dd = decoder_for(BGEU);
-    for &(rs1, rs2, taken) in compliance_vectors::BGEU_VECTORS {
-        let new_pc = if taken { 8 } else { 4 };
-        check_with_pc(
-            &dd,
-            &NonMemTestCase {
-                label: "BGEU",
-                rs1,
-                rs2,
-                rd: 0,
-            },
-            0,
-            new_pc,
-        );
-    }
+    run_branch_test("BGEU", 0b111, compliance_vectors::BGEU_VECTORS);
 }
