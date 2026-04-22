@@ -19,6 +19,8 @@ serde = { workspace = true, default-features = false, features = ["derive", "all
 serde_json = { version = "*", default-features = false, features = ["alloc"], optional = true }
 unroll = { workspace = true }
 non_determinism_source = { workspace = true }
+quote = { version = "1", optional = true }
+proc-macro2 = {version = "1", optional = true }
 
 [dev-dependencies]
 prover = { workspace = true, features = ["prover"] }
@@ -31,9 +33,8 @@ blake2_with_compression = ["blake2s_u32/blake2_with_compression", "transcript/bl
 blake2_g_function = ["blake2s_u32/blake2_g_function", "transcript/blake2_g_function"]
 mop_extension = ["blake2s_u32/mop_extension", "transcript/mop_extension"]
 modular_ops = ["field/modular_ops"]
-modular_ext4_ops = ["field/modular_ext4_ops"]
 verifier_program = ["modular_ops"]
-proof_utils = ["prover/prover", "dep:serde_json", "replace_csr"]
+proof_utils = ["prover/prover", "dep:serde_json", "replace_csr", "dep:quote", "dep:proc-macro2"]
 # If enabled, allows passing custom values into CSR.
 replace_csr = ["prover/prover"]
 # GKR sumcheck verifier

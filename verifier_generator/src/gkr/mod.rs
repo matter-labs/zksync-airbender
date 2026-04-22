@@ -1411,10 +1411,10 @@ where
             EXT_DEGREE,
         };
         use ::verifier_common::field_ops;
-        use ::verifier_common::transcript::Blake2sTranscript;
         use ::verifier_common::field::{Field, FieldExtension, PrimeField};
         use ::verifier_common::non_determinism_source::NonDeterminismSource;
         use ::verifier_common::GKRExternalChallenges;
+        use ::verifier_common::gkr::SimpleGateType;
         use super::constants::*;
 
         #layer_functions

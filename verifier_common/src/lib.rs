@@ -329,16 +329,17 @@ where
 pub fn read_external_challenges<
     F: PrimeField,
     E: FieldExtension<F> + Field,
-    I: NonDeterminismSource
->() -> GKRExternalChallenges<F, E> where [(); E::DEGREE]: {
-    use cs::definitions::NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES;
+    I: NonDeterminismSource,
+>() -> GKRExternalChallenges<F, E>
+where
+    [(); E::DEGREE]:,
+{
     use crate::structs::ext_from_nds;
+    use cs::definitions::NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES;
 
     let permutation_argument_linearization_challenges: [E;
         NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES] =
-        core::array::from_fn(|_| {
-            ext_from_nds::<F, E, I>()
-        });
+        core::array::from_fn(|_| ext_from_nds::<F, E, I>());
     let permutation_argument_additive_part: E = ext_from_nds::<F, E, I>();
 
     GKRExternalChallenges {

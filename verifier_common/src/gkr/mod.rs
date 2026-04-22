@@ -6,19 +6,59 @@ use field::{Field, FieldExtension, PrimeField};
 use non_determinism_source::NonDeterminismSource;
 use prover::definitions::GKRExternalChallenges;
 use transcript::Blake2sTranscript;
-use transcript::Seed;
 
-/// Oracle indices in eval/query ordering (used by flattener NDS data and verifier).
-/// The prover's `oracle_refs` array uses this order.
-pub const MEMORY_ORACLE_IDX: usize = 0;
-pub const WITNESS_ORACLE_IDX: usize = 1;
-pub const SETUP_ORACLE_IDX: usize = 2;
-pub const NUM_BASE_ORACLES: usize = 3;
+#[repr(usize)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum SimpleGateType {
+    Copy = 0,
+    Product = 1, // InitialGrandProductFromCaches, TrivialProduct
+    MaskToIdentity = 2,
+    UnbalancedProduct = 3,
+    LookupInitialPair = 4,
+    LookupWithSetup = 5,
+    LookupUnbalanced = 6,
+    LookupAggregatePair = 7,
+    LookupInitialWithCachedDenominators = 8,
+}
 
-/// Transcript cap ordering: [setup, memory, witness].
-/// This is the order caps appear in the transcript (from `commit_initial`).
-pub const CAP_TRANSCRIPT_ORDER: [usize; NUM_BASE_ORACLES] =
-    [SETUP_ORACLE_IDX, MEMORY_ORACLE_IDX, WITNESS_ORACLE_IDX];
+#[cfg(any(test, feature = "proof_utils"))]
+impl quote::ToTokens for SimpleGateType {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        use quote::quote;
+
+        let quote = match self {
+            SimpleGateType::Copy => {
+                quote! { SimpleGateType::Copy }
+            }
+            SimpleGateType::Product => {
+                quote! { SimpleGateType::Product }
+            }
+            SimpleGateType::MaskToIdentity => {
+                quote! { SimpleGateType::MaskToIdentity }
+            }
+            SimpleGateType::UnbalancedProduct => {
+                quote! { SimpleGateType::UnbalancedProduct }
+            }
+            SimpleGateType::LookupInitialPair => {
+                quote! { SimpleGateType::LookupInitialPair }
+            }
+            SimpleGateType::LookupWithSetup => {
+                quote! { SimpleGateType::LookupWithSetup }
+            }
+            SimpleGateType::LookupUnbalanced => {
+                quote! { SimpleGateType::LookupUnbalanced }
+            }
+            SimpleGateType::LookupAggregatePair => {
+                quote! { SimpleGateType::LookupAggregatePair }
+            }
+            SimpleGateType::LookupInitialWithCachedDenominators => {
+                quote! { SimpleGateType::LookupInitialWithCachedDenominators }
+            }
+        };
+
+        tokens.extend(quote);
+    }
+}
 
 #[cfg(any(test, feature = "proof_utils"))]
 pub mod flatten;

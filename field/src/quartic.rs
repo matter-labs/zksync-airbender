@@ -256,11 +256,7 @@ impl Field for Mersenne31Quartic {
 
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn fused_mul_add_assign(&'_ mut self, a: &Self, b: &Self) -> &'_ mut Self {
-        #[cfg(not(all(target_arch = "riscv32", feature = "modular_ext4_ops")))]
         fma_implementation(self, a, b);
-
-        #[cfg(all(target_arch = "riscv32", feature = "modular_ext4_ops"))]
-        fma_implementation_via_delegation(self, a, b);
 
         self
     }
@@ -410,154 +406,43 @@ impl FieldExtension<Mersenne31Field> for Mersenne31Quartic {
     }
 }
 
-#[cfg(not(all(target_arch = "riscv32", feature = "modular_ext4_ops")))]
 #[cfg_attr(not(feature = "no_inline"), inline(always))]
 fn fma_implementation(dst: &mut Mersenne31Quartic, a: &Mersenne31Quartic, b: &Mersenne31Quartic) {
     dst.mul_assign(a);
     dst.add_assign(b);
 }
 
-#[cfg(all(target_arch = "riscv32", feature = "modular_ext4_ops"))]
-#[cfg_attr(not(feature = "no_inline"), inline(always))]
-fn fma_implementation_via_delegation(
-    dst: &mut Mersenne31Quartic,
-    a: &Mersenne31Quartic,
-    b: &Mersenne31Quartic,
-) {
-    // NOTE: no guaranteed reduction here, so we will need to be careful to fully reduce
-    // for comparisons after such functions
-
-    unsafe {
-        core::arch::asm!(
-            "csrrw x0, 0x7c8, x0",
-            in("x10") (dst as *mut Mersenne31Quartic as *mut Mersenne31Field).addr(),
-            in("x11") (a as *const Mersenne31Quartic as *const Mersenne31Field).addr(),
-            in("x12") (b as *const Mersenne31Quartic as *const Mersenne31Field).addr(),
-            options(nostack, preserves_flags)
-        )
-    }
-}
-
-// We need these for precompile to work with data in RAM and not ROM
-#[cfg(all(target_arch = "riscv32", feature = "modular_ext4_ops"))]
-pub static mut ZERO_STATIC: core::mem::MaybeUninit<Mersenne31Quartic> =
-    core::mem::MaybeUninit::uninit();
-
-#[cfg(all(target_arch = "riscv32", feature = "modular_ext4_ops"))]
-pub static mut ONE_STATIC: core::mem::MaybeUninit<Mersenne31Quartic> =
-    core::mem::MaybeUninit::uninit();
-
-#[cfg(all(target_arch = "riscv32", feature = "modular_ext4_ops"))]
-pub static mut MINUS_ONE_STATIC: core::mem::MaybeUninit<Mersenne31Quartic> =
-    core::mem::MaybeUninit::uninit();
-
 impl Mersenne31Quartic {
-    #[cfg(not(all(target_arch = "riscv32", feature = "modular_ext4_ops")))]
     pub const USE_SPEC_MUL_BY_BASE_VIA_MUL_BY_SELF: bool = false;
 
-    #[cfg(not(all(target_arch = "riscv32", feature = "modular_ext4_ops")))]
     pub const PREFER_FMA: bool = false;
 
-    #[cfg(not(all(target_arch = "riscv32", feature = "modular_ext4_ops")))]
     pub const CAN_PROJECT_FROM_BASE: bool = const {
         core::mem::align_of::<Self>() == core::mem::align_of::<Mersenne31Field>()
             && core::mem::size_of::<Self>() == core::mem::size_of::<Mersenne31Field>() * 4
     };
 
-    #[cfg(all(target_arch = "riscv32", feature = "modular_ext4_ops"))]
-    pub const USE_SPEC_MUL_BY_BASE_VIA_MUL_BY_SELF: bool = true;
-
-    #[cfg(all(target_arch = "riscv32", feature = "modular_ext4_ops"))]
-    pub const PREFER_FMA: bool = true;
-
-    #[cfg(all(target_arch = "riscv32", feature = "modular_ext4_ops"))]
-    pub const CAN_PROJECT_FROM_BASE: bool = true;
-
-    #[cfg(not(all(target_arch = "riscv32", feature = "modular_ext4_ops")))]
     pub fn pow_with_fma(&self, exp: u32) -> Self {
         // no difference here
         self.pow(exp)
     }
 
-    #[cfg(all(target_arch = "riscv32", feature = "modular_ext4_ops"))]
-    pub fn pow_with_fma(&self, mut exp: u32) -> Self {
-        unsafe {
-            let mut base = *self;
-            let mut result = Self::ONE;
-            while exp > 0 {
-                if exp % 2 == 1 {
-                    result.fused_mul_add_assign(&base, ZERO_STATIC.assume_init_ref());
-                }
-
-                exp >>= 1;
-                // we can not provide two references here to the same value, so make a copy
-                let current_base = core::hint::black_box(base);
-                base.fused_mul_add_assign(&current_base, ZERO_STATIC.assume_init_ref());
-            }
-
-            result
-        }
-    }
-
-    #[cfg(not(all(target_arch = "riscv32", feature = "modular_ext4_ops")))]
     pub fn add_assign_with_fma(&'_ mut self, other: &Self) -> &'_ mut Self {
         self.add_assign(other)
     }
 
-    #[cfg(all(target_arch = "riscv32", feature = "modular_ext4_ops"))]
-    pub fn add_assign_with_fma(&'_ mut self, other: &Self) -> &'_ mut Self {
-        unsafe { self.fused_mul_add_assign(ONE_STATIC.assume_init_ref(), other) }
-    }
-
-    #[cfg(not(all(target_arch = "riscv32", feature = "modular_ext4_ops")))]
     pub fn negate_self_and_add_other_with_fma(&'_ mut self, other: &Self) -> &'_ mut Self {
         self.negate();
         self.add_assign(other)
     }
 
-    #[cfg(all(target_arch = "riscv32", feature = "modular_ext4_ops"))]
-    pub fn negate_self_and_add_other_with_fma(&'_ mut self, other: &Self) -> &'_ mut Self {
-        unsafe { self.fused_mul_add_assign(MINUS_ONE_STATIC.assume_init_ref(), other) }
-    }
-
-    #[cfg(not(all(target_arch = "riscv32", feature = "modular_ext4_ops")))]
     pub fn mul_assign_with_fma(&'_ mut self, other: &Self) -> &'_ mut Self {
         self.mul_assign(other)
     }
 
-    #[cfg(all(target_arch = "riscv32", feature = "modular_ext4_ops"))]
-    pub fn mul_assign_with_fma(&'_ mut self, other: &Self) -> &'_ mut Self {
-        unsafe { self.fused_mul_add_assign(other, ZERO_STATIC.assume_init_ref()) }
-    }
-
-    #[cfg(not(all(target_arch = "riscv32", feature = "modular_ext4_ops")))]
     pub fn square_with_fma(&'_ mut self) -> &'_ mut Self {
         self.square()
     }
 
-    #[cfg(all(target_arch = "riscv32", feature = "modular_ext4_ops"))]
-    pub fn square_with_fma(&'_ mut self) -> &'_ mut Self {
-        unsafe {
-            let self_copy = core::hint::black_box(*self);
-            self.fused_mul_add_assign(&self_copy, ZERO_STATIC.assume_init_ref())
-        }
-    }
-
-    #[cfg(not(all(target_arch = "riscv32", feature = "modular_ext4_ops")))]
     pub fn init_ext4_fma_ops() {}
-
-    #[cfg(all(target_arch = "riscv32", feature = "modular_ext4_ops"))]
-    pub fn init_ext4_fma_ops() {
-        // NOTE: even though in Rust constant is just an inline constant, and taking a reference
-        // to such value will give a reference to the temporary copy and so it's fine for our
-        // ROM + RAM model, we anyway can use statics to avoid making temporary copies
-
-        unsafe {
-            ZERO_STATIC.as_mut_ptr().write(Mersenne31Quartic::ZERO);
-            ONE_STATIC.as_mut_ptr().write(Mersenne31Quartic::ONE);
-            let mut minus_one = Self::ONE;
-            minus_one.negate();
-            MINUS_ONE_STATIC.as_mut_ptr().write(minus_one);
-        }
-    }
 }

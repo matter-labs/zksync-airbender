@@ -9,11 +9,11 @@ use verifier_common::field::baby_bear::base::BabyBearField;
 use verifier_common::field::baby_bear::ext4::BabyBearExt4;
 use verifier_common::field::{Field, FieldExtension, PrimeField};
 use verifier_common::field_ops;
+use verifier_common::gkr::SimpleGateType;
 use verifier_common::gkr::{GKRVerifierOutput, LayerState};
 use verifier_common::lazy_vec::LazyVec;
 use verifier_common::non_determinism_source::NonDeterminismSource;
 use verifier_common::structs::{CommitBuf, TranscriptState};
-use verifier_common::transcript::Blake2sTranscript;
 use verifier_common::GKRExternalChallenges;
 #[inline(always)]
 #[allow(unused_variables)]
@@ -280,67 +280,217 @@ unsafe fn layer_0_final_step_accumulator(
     let mut acc = [BabyBearExt4::ZERO; 2];
     let mut current_batch = BabyBearExt4::ONE;
     {
-        const SIMPLE_GATES: [(usize, [usize; 4]); 54usize] = [
-            (1usize, [227usize, 0usize, 0usize, 0usize]),
-            (2usize, [231usize, 232usize, 0usize, 0usize]),
-            (2usize, [233usize, 234usize, 0usize, 0usize]),
-            (2usize, [235usize, 236usize, 0usize, 0usize]),
-            (2usize, [237usize, 238usize, 0usize, 0usize]),
-            (2usize, [239usize, 240usize, 0usize, 0usize]),
-            (2usize, [241usize, 242usize, 0usize, 0usize]),
-            (2usize, [243usize, 244usize, 0usize, 0usize]),
-            (2usize, [245usize, 246usize, 0usize, 0usize]),
-            (2usize, [247usize, 248usize, 0usize, 0usize]),
-            (2usize, [249usize, 250usize, 0usize, 0usize]),
-            (2usize, [251usize, 252usize, 0usize, 0usize]),
-            (2usize, [253usize, 254usize, 0usize, 0usize]),
-            (2usize, [255usize, 256usize, 0usize, 0usize]),
-            (2usize, [257usize, 258usize, 0usize, 0usize]),
-            (1usize, [259usize, 0usize, 0usize, 0usize]),
-            (1usize, [260usize, 0usize, 0usize, 0usize]),
-            (6usize, [228usize, 173usize, 230usize, 0usize]),
-            (5usize, [229usize, 261usize, 0usize, 0usize]),
-            (5usize, [262usize, 263usize, 0usize, 0usize]),
-            (5usize, [264usize, 265usize, 0usize, 0usize]),
-            (5usize, [266usize, 267usize, 0usize, 0usize]),
-            (5usize, [268usize, 269usize, 0usize, 0usize]),
-            (5usize, [270usize, 271usize, 0usize, 0usize]),
-            (5usize, [272usize, 273usize, 0usize, 0usize]),
-            (5usize, [274usize, 275usize, 0usize, 0usize]),
-            (5usize, [276usize, 277usize, 0usize, 0usize]),
-            (5usize, [278usize, 279usize, 0usize, 0usize]),
-            (5usize, [280usize, 281usize, 0usize, 0usize]),
-            (5usize, [282usize, 283usize, 0usize, 0usize]),
-            (5usize, [284usize, 285usize, 0usize, 0usize]),
-            (5usize, [286usize, 287usize, 0usize, 0usize]),
-            (1usize, [288usize, 0usize, 0usize, 0usize]),
-            (6usize, [289usize, 174usize, 290usize, 0usize]),
-            (5usize, [291usize, 292usize, 0usize, 0usize]),
-            (5usize, [293usize, 294usize, 0usize, 0usize]),
-            (5usize, [295usize, 296usize, 0usize, 0usize]),
-            (5usize, [297usize, 298usize, 0usize, 0usize]),
-            (5usize, [299usize, 300usize, 0usize, 0usize]),
-            (5usize, [301usize, 302usize, 0usize, 0usize]),
-            (5usize, [303usize, 304usize, 0usize, 0usize]),
-            (5usize, [305usize, 306usize, 0usize, 0usize]),
-            (5usize, [307usize, 308usize, 0usize, 0usize]),
-            (5usize, [309usize, 310usize, 0usize, 0usize]),
-            (5usize, [311usize, 312usize, 0usize, 0usize]),
-            (5usize, [313usize, 314usize, 0usize, 0usize]),
-            (5usize, [315usize, 316usize, 0usize, 0usize]),
-            (5usize, [317usize, 318usize, 0usize, 0usize]),
-            (5usize, [319usize, 320usize, 0usize, 0usize]),
-            (5usize, [321usize, 322usize, 0usize, 0usize]),
-            (5usize, [323usize, 324usize, 0usize, 0usize]),
-            (5usize, [325usize, 326usize, 0usize, 0usize]),
-            (5usize, [327usize, 328usize, 0usize, 0usize]),
-            (5usize, [329usize, 330usize, 0usize, 0usize]),
+        const SIMPLE_GATES: [(SimpleGateType, [usize; 4]); 54usize] = [
+            (SimpleGateType::Copy, [227usize, 0usize, 0usize, 0usize]),
+            (
+                SimpleGateType::Product,
+                [231usize, 232usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::Product,
+                [233usize, 234usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::Product,
+                [235usize, 236usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::Product,
+                [237usize, 238usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::Product,
+                [239usize, 240usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::Product,
+                [241usize, 242usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::Product,
+                [243usize, 244usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::Product,
+                [245usize, 246usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::Product,
+                [247usize, 248usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::Product,
+                [249usize, 250usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::Product,
+                [251usize, 252usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::Product,
+                [253usize, 254usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::Product,
+                [255usize, 256usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::Product,
+                [257usize, 258usize, 0usize, 0usize],
+            ),
+            (SimpleGateType::Copy, [259usize, 0usize, 0usize, 0usize]),
+            (SimpleGateType::Copy, [260usize, 0usize, 0usize, 0usize]),
+            (
+                SimpleGateType::LookupWithSetup,
+                [228usize, 173usize, 230usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [229usize, 261usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [262usize, 263usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [264usize, 265usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [266usize, 267usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [268usize, 269usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [270usize, 271usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [272usize, 273usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [274usize, 275usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [276usize, 277usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [278usize, 279usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [280usize, 281usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [282usize, 283usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [284usize, 285usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [286usize, 287usize, 0usize, 0usize],
+            ),
+            (SimpleGateType::Copy, [288usize, 0usize, 0usize, 0usize]),
+            (
+                SimpleGateType::LookupWithSetup,
+                [289usize, 174usize, 290usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [291usize, 292usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [293usize, 294usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [295usize, 296usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [297usize, 298usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [299usize, 300usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [301usize, 302usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [303usize, 304usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [305usize, 306usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [307usize, 308usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [309usize, 310usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [311usize, 312usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [313usize, 314usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [315usize, 316usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [317usize, 318usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [319usize, 320usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [321usize, 322usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [323usize, 324usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [325usize, 326usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [327usize, 328usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [329usize, 330usize, 0usize, 0usize],
+            ),
         ];
         let mut _sg = 0;
         while _sg < 54usize {
             let (gt, idx) = unsafe { *SIMPLE_GATES.get_unchecked(_sg) };
             match gt {
-                1usize => {
+                SimpleGateType::Copy => {
                     let bc = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
@@ -350,7 +500,7 @@ unsafe fn layer_0_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &contrib);
                     }
                 }
-                2usize => {
+                SimpleGateType::Product => {
                     let bc = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
@@ -362,7 +512,7 @@ unsafe fn layer_0_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &contrib);
                     }
                 }
-                3usize => {
+                SimpleGateType::MaskToIdentity => {
                     let bc = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
@@ -376,7 +526,7 @@ unsafe fn layer_0_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &contrib);
                     }
                 }
-                4usize => {
+                SimpleGateType::UnbalancedProduct => {
                     let bc = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
@@ -388,7 +538,7 @@ unsafe fn layer_0_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &contrib);
                     }
                 }
-                5usize => {
+                SimpleGateType::LookupInitialPair => {
                     let bc0 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     let bc1 = current_batch;
@@ -412,7 +562,7 @@ unsafe fn layer_0_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &c1);
                     }
                 }
-                6usize => {
+                SimpleGateType::LookupWithSetup => {
                     let bc0 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     let bc1 = current_batch;
@@ -438,7 +588,7 @@ unsafe fn layer_0_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &c1);
                     }
                 }
-                7usize => {
+                SimpleGateType::LookupUnbalanced => {
                     let bc0 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     let bc1 = current_batch;
@@ -463,7 +613,7 @@ unsafe fn layer_0_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &c1);
                     }
                 }
-                8usize => {
+                SimpleGateType::LookupAggregatePair => {
                     let bc0 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     let bc1 = current_batch;
@@ -490,7 +640,7 @@ unsafe fn layer_0_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &c1);
                     }
                 }
-                9usize => {
+                SimpleGateType::LookupInitialWithCachedDenominators => {
                     let bc0 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     let bc1 = current_batch;
@@ -519,7 +669,6 @@ unsafe fn layer_0_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &c1);
                     }
                 }
-                _ => unreachable!(),
             }
             _sg += 1;
         }
@@ -6107,42 +6256,96 @@ unsafe fn layer_1_final_step_accumulator(
     let mut acc = [BabyBearExt4::ZERO; 2];
     let mut current_batch = BabyBearExt4::ONE;
     {
-        const SIMPLE_GATES: [(usize, [usize; 4]); 29usize] = [
-            (1usize, [0usize, 0usize, 0usize, 0usize]),
-            (2usize, [1usize, 3usize, 0usize, 0usize]),
-            (2usize, [5usize, 7usize, 0usize, 0usize]),
-            (2usize, [9usize, 11usize, 0usize, 0usize]),
-            (2usize, [13usize, 15usize, 0usize, 0usize]),
-            (2usize, [2usize, 4usize, 0usize, 0usize]),
-            (2usize, [6usize, 8usize, 0usize, 0usize]),
-            (2usize, [10usize, 12usize, 0usize, 0usize]),
-            (2usize, [14usize, 16usize, 0usize, 0usize]),
-            (7usize, [45usize, 46usize, 47usize, 0usize]),
-            (8usize, [43usize, 44usize, 41usize, 42usize]),
-            (8usize, [39usize, 40usize, 37usize, 38usize]),
-            (8usize, [35usize, 36usize, 33usize, 34usize]),
-            (8usize, [31usize, 32usize, 29usize, 30usize]),
-            (8usize, [27usize, 28usize, 25usize, 26usize]),
-            (8usize, [23usize, 24usize, 21usize, 22usize]),
-            (8usize, [19usize, 20usize, 17usize, 18usize]),
-            (8usize, [88usize, 89usize, 86usize, 87usize]),
-            (8usize, [84usize, 85usize, 82usize, 83usize]),
-            (8usize, [80usize, 81usize, 78usize, 79usize]),
-            (8usize, [76usize, 77usize, 74usize, 75usize]),
-            (8usize, [72usize, 73usize, 70usize, 71usize]),
-            (8usize, [68usize, 69usize, 66usize, 67usize]),
-            (8usize, [64usize, 65usize, 62usize, 63usize]),
-            (8usize, [60usize, 61usize, 58usize, 59usize]),
-            (8usize, [56usize, 57usize, 54usize, 55usize]),
-            (8usize, [52usize, 53usize, 50usize, 51usize]),
-            (1usize, [48usize, 0usize, 0usize, 0usize]),
-            (1usize, [49usize, 0usize, 0usize, 0usize]),
+        const SIMPLE_GATES: [(SimpleGateType, [usize; 4]); 29usize] = [
+            (SimpleGateType::Copy, [0usize, 0usize, 0usize, 0usize]),
+            (SimpleGateType::Product, [1usize, 3usize, 0usize, 0usize]),
+            (SimpleGateType::Product, [5usize, 7usize, 0usize, 0usize]),
+            (SimpleGateType::Product, [9usize, 11usize, 0usize, 0usize]),
+            (SimpleGateType::Product, [13usize, 15usize, 0usize, 0usize]),
+            (SimpleGateType::Product, [2usize, 4usize, 0usize, 0usize]),
+            (SimpleGateType::Product, [6usize, 8usize, 0usize, 0usize]),
+            (SimpleGateType::Product, [10usize, 12usize, 0usize, 0usize]),
+            (SimpleGateType::Product, [14usize, 16usize, 0usize, 0usize]),
+            (
+                SimpleGateType::LookupUnbalanced,
+                [45usize, 46usize, 47usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupAggregatePair,
+                [43usize, 44usize, 41usize, 42usize],
+            ),
+            (
+                SimpleGateType::LookupAggregatePair,
+                [39usize, 40usize, 37usize, 38usize],
+            ),
+            (
+                SimpleGateType::LookupAggregatePair,
+                [35usize, 36usize, 33usize, 34usize],
+            ),
+            (
+                SimpleGateType::LookupAggregatePair,
+                [31usize, 32usize, 29usize, 30usize],
+            ),
+            (
+                SimpleGateType::LookupAggregatePair,
+                [27usize, 28usize, 25usize, 26usize],
+            ),
+            (
+                SimpleGateType::LookupAggregatePair,
+                [23usize, 24usize, 21usize, 22usize],
+            ),
+            (
+                SimpleGateType::LookupAggregatePair,
+                [19usize, 20usize, 17usize, 18usize],
+            ),
+            (
+                SimpleGateType::LookupAggregatePair,
+                [88usize, 89usize, 86usize, 87usize],
+            ),
+            (
+                SimpleGateType::LookupAggregatePair,
+                [84usize, 85usize, 82usize, 83usize],
+            ),
+            (
+                SimpleGateType::LookupAggregatePair,
+                [80usize, 81usize, 78usize, 79usize],
+            ),
+            (
+                SimpleGateType::LookupAggregatePair,
+                [76usize, 77usize, 74usize, 75usize],
+            ),
+            (
+                SimpleGateType::LookupAggregatePair,
+                [72usize, 73usize, 70usize, 71usize],
+            ),
+            (
+                SimpleGateType::LookupAggregatePair,
+                [68usize, 69usize, 66usize, 67usize],
+            ),
+            (
+                SimpleGateType::LookupAggregatePair,
+                [64usize, 65usize, 62usize, 63usize],
+            ),
+            (
+                SimpleGateType::LookupAggregatePair,
+                [60usize, 61usize, 58usize, 59usize],
+            ),
+            (
+                SimpleGateType::LookupAggregatePair,
+                [56usize, 57usize, 54usize, 55usize],
+            ),
+            (
+                SimpleGateType::LookupAggregatePair,
+                [52usize, 53usize, 50usize, 51usize],
+            ),
+            (SimpleGateType::Copy, [48usize, 0usize, 0usize, 0usize]),
+            (SimpleGateType::Copy, [49usize, 0usize, 0usize, 0usize]),
         ];
         let mut _sg = 0;
         while _sg < 29usize {
             let (gt, idx) = unsafe { *SIMPLE_GATES.get_unchecked(_sg) };
             match gt {
-                1usize => {
+                SimpleGateType::Copy => {
                     let bc = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
@@ -6152,7 +6355,7 @@ unsafe fn layer_1_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &contrib);
                     }
                 }
-                2usize => {
+                SimpleGateType::Product => {
                     let bc = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
@@ -6164,7 +6367,7 @@ unsafe fn layer_1_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &contrib);
                     }
                 }
-                3usize => {
+                SimpleGateType::MaskToIdentity => {
                     let bc = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
@@ -6178,7 +6381,7 @@ unsafe fn layer_1_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &contrib);
                     }
                 }
-                4usize => {
+                SimpleGateType::UnbalancedProduct => {
                     let bc = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
@@ -6190,7 +6393,7 @@ unsafe fn layer_1_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &contrib);
                     }
                 }
-                5usize => {
+                SimpleGateType::LookupInitialPair => {
                     let bc0 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     let bc1 = current_batch;
@@ -6214,7 +6417,7 @@ unsafe fn layer_1_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &c1);
                     }
                 }
-                6usize => {
+                SimpleGateType::LookupWithSetup => {
                     let bc0 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     let bc1 = current_batch;
@@ -6240,7 +6443,7 @@ unsafe fn layer_1_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &c1);
                     }
                 }
-                7usize => {
+                SimpleGateType::LookupUnbalanced => {
                     let bc0 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     let bc1 = current_batch;
@@ -6265,7 +6468,7 @@ unsafe fn layer_1_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &c1);
                     }
                 }
-                8usize => {
+                SimpleGateType::LookupAggregatePair => {
                     let bc0 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     let bc1 = current_batch;
@@ -6292,7 +6495,7 @@ unsafe fn layer_1_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &c1);
                     }
                 }
-                9usize => {
+                SimpleGateType::LookupInitialWithCachedDenominators => {
                     let bc0 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     let bc1 = current_batch;
@@ -6321,7 +6524,6 @@ unsafe fn layer_1_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &c1);
                     }
                 }
-                _ => unreachable!(),
             }
             _sg += 1;
         }
@@ -6368,29 +6570,56 @@ unsafe fn layer_2_final_step_accumulator(
     let mut acc = [BabyBearExt4::ZERO; 2];
     let mut current_batch = BabyBearExt4::ONE;
     {
-        const SIMPLE_GATES: [(usize, [usize; 4]); 16usize] = [
-            (1usize, [0usize, 0usize, 0usize, 0usize]),
-            (2usize, [1usize, 2usize, 0usize, 0usize]),
-            (2usize, [3usize, 4usize, 0usize, 0usize]),
-            (2usize, [5usize, 6usize, 0usize, 0usize]),
-            (2usize, [7usize, 8usize, 0usize, 0usize]),
-            (8usize, [23usize, 24usize, 21usize, 22usize]),
-            (8usize, [19usize, 20usize, 17usize, 18usize]),
-            (8usize, [15usize, 16usize, 13usize, 14usize]),
-            (8usize, [11usize, 12usize, 9usize, 10usize]),
-            (8usize, [45usize, 46usize, 43usize, 44usize]),
-            (8usize, [41usize, 42usize, 39usize, 40usize]),
-            (8usize, [37usize, 38usize, 35usize, 36usize]),
-            (8usize, [33usize, 34usize, 31usize, 32usize]),
-            (8usize, [29usize, 30usize, 27usize, 28usize]),
-            (1usize, [25usize, 0usize, 0usize, 0usize]),
-            (1usize, [26usize, 0usize, 0usize, 0usize]),
+        const SIMPLE_GATES: [(SimpleGateType, [usize; 4]); 16usize] = [
+            (SimpleGateType::Copy, [0usize, 0usize, 0usize, 0usize]),
+            (SimpleGateType::Product, [1usize, 2usize, 0usize, 0usize]),
+            (SimpleGateType::Product, [3usize, 4usize, 0usize, 0usize]),
+            (SimpleGateType::Product, [5usize, 6usize, 0usize, 0usize]),
+            (SimpleGateType::Product, [7usize, 8usize, 0usize, 0usize]),
+            (
+                SimpleGateType::LookupAggregatePair,
+                [23usize, 24usize, 21usize, 22usize],
+            ),
+            (
+                SimpleGateType::LookupAggregatePair,
+                [19usize, 20usize, 17usize, 18usize],
+            ),
+            (
+                SimpleGateType::LookupAggregatePair,
+                [15usize, 16usize, 13usize, 14usize],
+            ),
+            (
+                SimpleGateType::LookupAggregatePair,
+                [11usize, 12usize, 9usize, 10usize],
+            ),
+            (
+                SimpleGateType::LookupAggregatePair,
+                [45usize, 46usize, 43usize, 44usize],
+            ),
+            (
+                SimpleGateType::LookupAggregatePair,
+                [41usize, 42usize, 39usize, 40usize],
+            ),
+            (
+                SimpleGateType::LookupAggregatePair,
+                [37usize, 38usize, 35usize, 36usize],
+            ),
+            (
+                SimpleGateType::LookupAggregatePair,
+                [33usize, 34usize, 31usize, 32usize],
+            ),
+            (
+                SimpleGateType::LookupAggregatePair,
+                [29usize, 30usize, 27usize, 28usize],
+            ),
+            (SimpleGateType::Copy, [25usize, 0usize, 0usize, 0usize]),
+            (SimpleGateType::Copy, [26usize, 0usize, 0usize, 0usize]),
         ];
         let mut _sg = 0;
         while _sg < 16usize {
             let (gt, idx) = unsafe { *SIMPLE_GATES.get_unchecked(_sg) };
             match gt {
-                1usize => {
+                SimpleGateType::Copy => {
                     let bc = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
@@ -6400,7 +6629,7 @@ unsafe fn layer_2_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &contrib);
                     }
                 }
-                2usize => {
+                SimpleGateType::Product => {
                     let bc = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
@@ -6412,7 +6641,7 @@ unsafe fn layer_2_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &contrib);
                     }
                 }
-                3usize => {
+                SimpleGateType::MaskToIdentity => {
                     let bc = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
@@ -6426,7 +6655,7 @@ unsafe fn layer_2_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &contrib);
                     }
                 }
-                4usize => {
+                SimpleGateType::UnbalancedProduct => {
                     let bc = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
@@ -6438,7 +6667,7 @@ unsafe fn layer_2_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &contrib);
                     }
                 }
-                5usize => {
+                SimpleGateType::LookupInitialPair => {
                     let bc0 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     let bc1 = current_batch;
@@ -6462,7 +6691,7 @@ unsafe fn layer_2_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &c1);
                     }
                 }
-                6usize => {
+                SimpleGateType::LookupWithSetup => {
                     let bc0 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     let bc1 = current_batch;
@@ -6488,7 +6717,7 @@ unsafe fn layer_2_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &c1);
                     }
                 }
-                7usize => {
+                SimpleGateType::LookupUnbalanced => {
                     let bc0 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     let bc1 = current_batch;
@@ -6513,7 +6742,7 @@ unsafe fn layer_2_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &c1);
                     }
                 }
-                8usize => {
+                SimpleGateType::LookupAggregatePair => {
                     let bc0 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     let bc1 = current_batch;
@@ -6540,7 +6769,7 @@ unsafe fn layer_2_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &c1);
                     }
                 }
-                9usize => {
+                SimpleGateType::LookupInitialWithCachedDenominators => {
                     let bc0 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     let bc1 = current_batch;
@@ -6569,7 +6798,6 @@ unsafe fn layer_2_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &c1);
                     }
                 }
-                _ => unreachable!(),
             }
             _sg += 1;
         }
@@ -6608,21 +6836,36 @@ unsafe fn layer_3_final_step_accumulator(
     let mut acc = [BabyBearExt4::ZERO; 2];
     let mut current_batch = BabyBearExt4::ONE;
     {
-        const SIMPLE_GATES: [(usize, [usize; 4]); 8usize] = [
-            (1usize, [0usize, 0usize, 0usize, 0usize]),
-            (2usize, [1usize, 2usize, 0usize, 0usize]),
-            (2usize, [3usize, 4usize, 0usize, 0usize]),
-            (8usize, [11usize, 12usize, 9usize, 10usize]),
-            (8usize, [7usize, 8usize, 5usize, 6usize]),
-            (8usize, [23usize, 24usize, 21usize, 22usize]),
-            (8usize, [19usize, 20usize, 17usize, 18usize]),
-            (8usize, [15usize, 16usize, 13usize, 14usize]),
+        const SIMPLE_GATES: [(SimpleGateType, [usize; 4]); 8usize] = [
+            (SimpleGateType::Copy, [0usize, 0usize, 0usize, 0usize]),
+            (SimpleGateType::Product, [1usize, 2usize, 0usize, 0usize]),
+            (SimpleGateType::Product, [3usize, 4usize, 0usize, 0usize]),
+            (
+                SimpleGateType::LookupAggregatePair,
+                [11usize, 12usize, 9usize, 10usize],
+            ),
+            (
+                SimpleGateType::LookupAggregatePair,
+                [7usize, 8usize, 5usize, 6usize],
+            ),
+            (
+                SimpleGateType::LookupAggregatePair,
+                [23usize, 24usize, 21usize, 22usize],
+            ),
+            (
+                SimpleGateType::LookupAggregatePair,
+                [19usize, 20usize, 17usize, 18usize],
+            ),
+            (
+                SimpleGateType::LookupAggregatePair,
+                [15usize, 16usize, 13usize, 14usize],
+            ),
         ];
         let mut _sg = 0;
         while _sg < 8usize {
             let (gt, idx) = unsafe { *SIMPLE_GATES.get_unchecked(_sg) };
             match gt {
-                1usize => {
+                SimpleGateType::Copy => {
                     let bc = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
@@ -6632,7 +6875,7 @@ unsafe fn layer_3_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &contrib);
                     }
                 }
-                2usize => {
+                SimpleGateType::Product => {
                     let bc = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
@@ -6644,7 +6887,7 @@ unsafe fn layer_3_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &contrib);
                     }
                 }
-                3usize => {
+                SimpleGateType::MaskToIdentity => {
                     let bc = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
@@ -6658,7 +6901,7 @@ unsafe fn layer_3_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &contrib);
                     }
                 }
-                4usize => {
+                SimpleGateType::UnbalancedProduct => {
                     let bc = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
@@ -6670,7 +6913,7 @@ unsafe fn layer_3_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &contrib);
                     }
                 }
-                5usize => {
+                SimpleGateType::LookupInitialPair => {
                     let bc0 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     let bc1 = current_batch;
@@ -6694,7 +6937,7 @@ unsafe fn layer_3_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &c1);
                     }
                 }
-                6usize => {
+                SimpleGateType::LookupWithSetup => {
                     let bc0 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     let bc1 = current_batch;
@@ -6720,7 +6963,7 @@ unsafe fn layer_3_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &c1);
                     }
                 }
-                7usize => {
+                SimpleGateType::LookupUnbalanced => {
                     let bc0 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     let bc1 = current_batch;
@@ -6745,7 +6988,7 @@ unsafe fn layer_3_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &c1);
                     }
                 }
-                8usize => {
+                SimpleGateType::LookupAggregatePair => {
                     let bc0 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     let bc1 = current_batch;
@@ -6772,7 +7015,7 @@ unsafe fn layer_3_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &c1);
                     }
                 }
-                9usize => {
+                SimpleGateType::LookupInitialWithCachedDenominators => {
                     let bc0 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     let bc1 = current_batch;
@@ -6801,7 +7044,6 @@ unsafe fn layer_3_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &c1);
                     }
                 }
-                _ => unreachable!(),
             }
             _sg += 1;
         }
@@ -6838,19 +7080,31 @@ unsafe fn layer_4_final_step_accumulator(
     let mut acc = [BabyBearExt4::ZERO; 2];
     let mut current_batch = BabyBearExt4::ONE;
     {
-        const SIMPLE_GATES: [(usize, [usize; 4]); 6usize] = [
-            (3usize, [1usize, 0usize, 0usize, 0usize]),
-            (3usize, [2usize, 0usize, 0usize, 0usize]),
-            (8usize, [5usize, 6usize, 3usize, 4usize]),
-            (8usize, [11usize, 12usize, 9usize, 10usize]),
-            (1usize, [7usize, 0usize, 0usize, 0usize]),
-            (1usize, [8usize, 0usize, 0usize, 0usize]),
+        const SIMPLE_GATES: [(SimpleGateType, [usize; 4]); 6usize] = [
+            (
+                SimpleGateType::MaskToIdentity,
+                [1usize, 0usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::MaskToIdentity,
+                [2usize, 0usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupAggregatePair,
+                [5usize, 6usize, 3usize, 4usize],
+            ),
+            (
+                SimpleGateType::LookupAggregatePair,
+                [11usize, 12usize, 9usize, 10usize],
+            ),
+            (SimpleGateType::Copy, [7usize, 0usize, 0usize, 0usize]),
+            (SimpleGateType::Copy, [8usize, 0usize, 0usize, 0usize]),
         ];
         let mut _sg = 0;
         while _sg < 6usize {
             let (gt, idx) = unsafe { *SIMPLE_GATES.get_unchecked(_sg) };
             match gt {
-                1usize => {
+                SimpleGateType::Copy => {
                     let bc = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
@@ -6860,7 +7114,7 @@ unsafe fn layer_4_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &contrib);
                     }
                 }
-                2usize => {
+                SimpleGateType::Product => {
                     let bc = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
@@ -6872,7 +7126,7 @@ unsafe fn layer_4_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &contrib);
                     }
                 }
-                3usize => {
+                SimpleGateType::MaskToIdentity => {
                     let bc = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
@@ -6886,7 +7140,7 @@ unsafe fn layer_4_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &contrib);
                     }
                 }
-                4usize => {
+                SimpleGateType::UnbalancedProduct => {
                     let bc = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
@@ -6898,7 +7152,7 @@ unsafe fn layer_4_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &contrib);
                     }
                 }
-                5usize => {
+                SimpleGateType::LookupInitialPair => {
                     let bc0 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     let bc1 = current_batch;
@@ -6922,7 +7176,7 @@ unsafe fn layer_4_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &c1);
                     }
                 }
-                6usize => {
+                SimpleGateType::LookupWithSetup => {
                     let bc0 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     let bc1 = current_batch;
@@ -6948,7 +7202,7 @@ unsafe fn layer_4_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &c1);
                     }
                 }
-                7usize => {
+                SimpleGateType::LookupUnbalanced => {
                     let bc0 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     let bc1 = current_batch;
@@ -6973,7 +7227,7 @@ unsafe fn layer_4_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &c1);
                     }
                 }
-                8usize => {
+                SimpleGateType::LookupAggregatePair => {
                     let bc0 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     let bc1 = current_batch;
@@ -7000,7 +7254,7 @@ unsafe fn layer_4_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &c1);
                     }
                 }
-                9usize => {
+                SimpleGateType::LookupInitialWithCachedDenominators => {
                     let bc0 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     let bc1 = current_batch;
@@ -7029,7 +7283,6 @@ unsafe fn layer_4_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &c1);
                     }
                 }
-                _ => unreachable!(),
             }
             _sg += 1;
         }
@@ -7065,18 +7318,21 @@ unsafe fn layer_5_final_step_accumulator(
     let mut acc = [BabyBearExt4::ZERO; 2];
     let mut current_batch = BabyBearExt4::ONE;
     {
-        const SIMPLE_GATES: [(usize, [usize; 4]); 5usize] = [
-            (8usize, [6usize, 7usize, 4usize, 5usize]),
-            (1usize, [0usize, 0usize, 0usize, 0usize]),
-            (1usize, [1usize, 0usize, 0usize, 0usize]),
-            (1usize, [2usize, 0usize, 0usize, 0usize]),
-            (1usize, [3usize, 0usize, 0usize, 0usize]),
+        const SIMPLE_GATES: [(SimpleGateType, [usize; 4]); 5usize] = [
+            (
+                SimpleGateType::LookupAggregatePair,
+                [6usize, 7usize, 4usize, 5usize],
+            ),
+            (SimpleGateType::Copy, [0usize, 0usize, 0usize, 0usize]),
+            (SimpleGateType::Copy, [1usize, 0usize, 0usize, 0usize]),
+            (SimpleGateType::Copy, [2usize, 0usize, 0usize, 0usize]),
+            (SimpleGateType::Copy, [3usize, 0usize, 0usize, 0usize]),
         ];
         let mut _sg = 0;
         while _sg < 5usize {
             let (gt, idx) = unsafe { *SIMPLE_GATES.get_unchecked(_sg) };
             match gt {
-                1usize => {
+                SimpleGateType::Copy => {
                     let bc = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
@@ -7086,7 +7342,7 @@ unsafe fn layer_5_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &contrib);
                     }
                 }
-                2usize => {
+                SimpleGateType::Product => {
                     let bc = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
@@ -7098,7 +7354,7 @@ unsafe fn layer_5_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &contrib);
                     }
                 }
-                3usize => {
+                SimpleGateType::MaskToIdentity => {
                     let bc = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
@@ -7112,7 +7368,7 @@ unsafe fn layer_5_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &contrib);
                     }
                 }
-                4usize => {
+                SimpleGateType::UnbalancedProduct => {
                     let bc = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
@@ -7124,7 +7380,7 @@ unsafe fn layer_5_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &contrib);
                     }
                 }
-                5usize => {
+                SimpleGateType::LookupInitialPair => {
                     let bc0 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     let bc1 = current_batch;
@@ -7148,7 +7404,7 @@ unsafe fn layer_5_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &c1);
                     }
                 }
-                6usize => {
+                SimpleGateType::LookupWithSetup => {
                     let bc0 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     let bc1 = current_batch;
@@ -7174,7 +7430,7 @@ unsafe fn layer_5_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &c1);
                     }
                 }
-                7usize => {
+                SimpleGateType::LookupUnbalanced => {
                     let bc0 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     let bc1 = current_batch;
@@ -7199,7 +7455,7 @@ unsafe fn layer_5_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &c1);
                     }
                 }
-                8usize => {
+                SimpleGateType::LookupAggregatePair => {
                     let bc0 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     let bc1 = current_batch;
@@ -7226,7 +7482,7 @@ unsafe fn layer_5_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &c1);
                     }
                 }
-                9usize => {
+                SimpleGateType::LookupInitialWithCachedDenominators => {
                     let bc0 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     let bc1 = current_batch;
@@ -7255,7 +7511,6 @@ unsafe fn layer_5_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &c1);
                     }
                 }
-                _ => unreachable!(),
             }
             _sg += 1;
         }
