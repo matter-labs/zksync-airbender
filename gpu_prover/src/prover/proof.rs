@@ -687,7 +687,7 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
         ),
     );
     let proof_layout = crate::prover::proof_layout::ProofLayout::new(&proof_layout_inputs);
-    let _proof_slab: Option<DeviceAllocation<u8>> = if proof_layout.total_bytes > 0 {
+    let proof_slab: Option<DeviceAllocation<u8>> = if proof_layout.total_bytes > 0 {
         let slab = context.alloc::<u8>(proof_layout.total_bytes, AllocationPlacement::Bottom)?;
         debug_assert_eq!(
             slab.as_ptr() as usize & 0xF,
@@ -876,6 +876,8 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
             d_evaluation_point_and_batching,
             initial_d_claims,
             top_layer_claim_layout,
+            proof_slab.as_ref(),
+            &proof_layout,
             context,
         )?;
     drop(initial_claims_host);
