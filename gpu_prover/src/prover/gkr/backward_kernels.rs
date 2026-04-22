@@ -16,7 +16,7 @@ use era_cudart::{cuda_kernel_declaration, cuda_kernel_signature_arguments_and_fu
 use field::{Field, FieldExtension};
 use prover::gkr::prover::dimension_reduction::forward::DimensionReducingInputOutput;
 use prover::gkr::prover::transcript_utils::commit_field_els;
-use prover::gkr::prover::{GKRExternalChallenges, SumcheckIntermediateProofValues};
+use prover::gkr::prover::GKRExternalChallenges;
 use prover::gkr::sumcheck::evaluation_kernels::GKRInputs;
 use prover::transcript::Seed;
 
@@ -588,7 +588,6 @@ pub(crate) struct GpuGKRDimensionReducingBackwardState<B, E> {
 }
 
 pub(crate) struct GpuGKRDimensionReducingLayerExecution<E: FieldExtension<BF> + Field> {
-    pub(crate) proof: SumcheckIntermediateProofValues<BF, E>,
     pub(crate) new_claims: BTreeMap<GKRAddress, E>,
     pub(crate) new_claim_point: Vec<E>,
     pub(crate) next_batching_challenge: E,
@@ -700,7 +699,6 @@ pub(super) struct ScheduledDimensionReducingLayerExecutionState<E: FieldExtensio
     pub(super) claim: E,
     pub(super) eq_prefactor: E,
     pub(super) folding_challenges: Vec<E>,
-    pub(super) internal_round_coefficients: Vec<[E; 4]>,
     pub(super) result: Option<GpuGKRDimensionReducingLayerExecution<E>>,
 }
 
@@ -709,7 +707,6 @@ pub(super) struct ScheduledMainLayerExecutionState<E: FieldExtension<BF> + Field
     pub(super) claim: E,
     pub(super) eq_prefactor: E,
     pub(super) folding_challenges: Vec<E>,
-    pub(super) internal_round_coefficients: Vec<[E; 4]>,
     pub(super) result: Option<GpuGKRMainLayerExecution<E>>,
 }
 
@@ -874,7 +871,6 @@ pub(crate) struct GpuGKRMainLayerBackwardState<E: FieldExtension<BF> + Field> {
 }
 
 pub(crate) struct GpuGKRMainLayerExecution<E: FieldExtension<BF> + Field> {
-    pub(crate) proof: SumcheckIntermediateProofValues<BF, E>,
     pub(crate) new_claims: BTreeMap<GKRAddress, E>,
     pub(crate) new_claim_point: Vec<E>,
     pub(crate) next_batching_challenge: E,
