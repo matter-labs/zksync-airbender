@@ -1202,7 +1202,7 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
                 // The legacy path via `transcript_handoff_accessors_for_final`
                 // and `backward_shared_state.proofs` stays only for the
                 // test paths that skip slab allocation.
-                let (final_explicit_evaluations, sumcheck_intermediate_values) =
+                let (final_explicit_evaluations, sumcheck_intermediate_values, whir_proof) =
                     if let Some(accessor) = proof_host_mirror_accessor.as_ref() {
                         let slab_bytes = unsafe { accessor.get() };
                         let final_explicit_evaluations =
@@ -1217,16 +1217,36 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
                         }
                         let sumcheck_intermediate_values = proof_layout_for_parse
                             .parse_sumcheck_intermediate_values(slab_bytes, extra_by_layer);
-                        (final_explicit_evaluations, sumcheck_intermediate_values)
+                        // Phase 4c: WHIR proof fields come from the slab;
+                        // base-layer queries stay on the host callback path
+                        // (per the approved plan — WHIR rewrite is deferred)
+                        // and are pulled from the existing shared state.
+                        let mut whir_proof = proof_layout_for_parse.parse_whir_proof(slab_bytes);
+                        let host_whir_proof = take_scheduled_whir_proof(whir_shared_state);
+                        whir_proof.setup_commitment.queries =
+                            host_whir_proof.setup_commitment.queries;
+                        whir_proof.memory_commitment.queries =
+                            host_whir_proof.memory_commitment.queries;
+                        whir_proof.witness_commitment.queries =
+                            host_whir_proof.witness_commitment.queries;
+                        (
+                            final_explicit_evaluations,
+                            sumcheck_intermediate_values,
+                            whir_proof,
+                        )
                     } else {
                         let final_explicit_evaluations = collect_explicit_evaluations_from_accessors(
                             &transcript_handoff_accessors_for_final,
                         );
                         let backward_execution =
                             take_backward_execution_from_shared_state(backward_shared_state);
-                        (final_explicit_evaluations, backward_execution.proofs)
+                        let whir_proof = take_scheduled_whir_proof(whir_shared_state);
+                        (
+                            final_explicit_evaluations,
+                            backward_execution.proofs,
+                            whir_proof,
+                        )
                     };
-                let whir_proof = take_scheduled_whir_proof(whir_shared_state);
                 let grand_product_accumulator_computed =
                     grand_product_accumulator_from_explicit_evaluations(
                         &final_explicit_evaluations,
