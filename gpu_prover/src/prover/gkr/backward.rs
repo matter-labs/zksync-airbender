@@ -5134,6 +5134,17 @@ where
         device_claim_point_in: DeviceAllocation<E>,
         device_claims_in: DeviceAllocation<E>,
         claim_layout: &ClaimBufferLayout,
+        // Phase 2b: when `Some`, the `device_coeffs` buffer is D2D-copied into
+        // the slab's `internal_round_coefficients` range for `layer_slot`
+        // after all per-round kernel writes complete. The host-side D2H into
+        // `final_coeffs_host` is retained for now so
+        // `ScheduledBackwardWorkflowState.proofs[layer_idx]` stays populated
+        // for the existing proof-assembly callback; Phase 4 replaces the D2H
+        // with a single terminal D2H off the slab and drops `device_coeffs`
+        // entirely.
+        proof_slab: Option<&DeviceAllocation<u8>>,
+        proof_layout: &ProofLayout,
+        layer_slot: usize,
         context: &ProverContext,
     ) -> CudaResult<GpuGKRDimensionReducingScheduledLayerExecution<B, E>> {
         const DIMENSION_REDUCING_LAYER_RANGE_MIN_FOLDING_STEPS: usize = 19;
@@ -5357,6 +5368,45 @@ where
                 context,
             )?,
         }
+
+        // Phase 2b slab population for this layer's `internal_round_coefficients`.
+        // All per-round kernels above have completed their writes to
+        // `device_coeffs` on `stream`; D2D-copy the populated `coeffs_total_len`
+        // prefix into the slab's per-layer range. Scheduled on `stream` (not
+        // `d2h_stream`) so the slab is self-consistent on `exec_stream` — which
+        // is where the Phase 4 terminal D2H will read it from. The existing
+        // host-side D2H + `workflow_state.proofs` population remains the
+        // authoritative source for proof assembly until Phase 4 swaps in the
+        // terminal D2H + slab parse.
+        if let Some(slab) = proof_slab {
+            if coeffs_total_len > 0 {
+                let (dst_ptr, dst_len) = unsafe {
+                    proof_layout.backward_internal_coeffs_device_mut(
+                        slab.as_ptr() as *mut u8,
+                        layer_slot,
+                    )
+                };
+                debug_assert_eq!(
+                    dst_len, coeffs_total_len,
+                    "slab internal_round_coefficients range must match layer's coeffs_total_len",
+                );
+                // SAFETY: `slab` outlives the stream work scheduled here
+                // (owned by `prove()` across the full backward + WHIR
+                // pipeline). The destination range is disjoint from every
+                // other per-layer slab range — `ProofLayout::new` laid out
+                // non-overlapping byte ranges per field. The `*mut E4` cast
+                // is sound because `E = E4` for every instantiation of this
+                // scheduler and the slab field starts are 16-byte aligned.
+                let dst = unsafe {
+                    era_cudart::slice::DeviceSlice::from_raw_parts_mut(
+                        dst_ptr as *mut E,
+                        dst_len,
+                    )
+                };
+                memory_copy_async(dst, &device_coeffs[..coeffs_total_len], stream)?;
+            }
+        }
+
         // Device-side inter-layer transcript: pack the flattened last-round
         // evaluations into a packed device buffer (D2D from each address's
         // 4-E source slot), absorb them into device_seed via transcript_commit,
@@ -7230,13 +7280,14 @@ where
         initial_d_claim_point_and_batching: DeviceAllocation<E>,
         initial_d_claims: DeviceAllocation<E>,
         initial_claim_layout: ClaimBufferLayout,
-        // Phase 2b plumbing: the proof slab and its layout flow in from prove()
-        // so upcoming per-layer rewires can route `internal_round_coefficients`
-        // (and later `final_step_evaluations` / `extra_evaluations`) kernel
-        // writes directly into slab offsets via `ProofLayout` accessors. Unused
-        // by the current body — see iterative-knitting-bumblebee.md § Phase 2b.
-        _proof_slab: Option<&DeviceAllocation<u8>>,
-        _proof_layout: &ProofLayout,
+        // Phase 2b: the proof slab and its layout thread through from prove().
+        // Per-layer schedulers route slab-bound fields
+        // (`internal_round_coefficients` today; `final_step_evaluations` and
+        // `extra_evaluations_from_caching_relations` in follow-up commits)
+        // into slab offsets via `ProofLayout` accessors. `None` skips all
+        // slab routing (test paths).
+        proof_slab: Option<&DeviceAllocation<u8>>,
+        proof_layout: &ProofLayout,
         context: &ProverContext,
     ) -> CudaResult<GpuGKRBackwardScheduledExecution<BF, E>> {
         let shared_state_handle =
@@ -7283,6 +7334,16 @@ where
         let mut shared_device_claim_point = initial_d_claim_point_and_batching;
         let mut shared_device_claims = initial_d_claims;
         let mut shared_claim_layout = initial_claim_layout;
+        // `backward_layer_slot` tracks the scheduler-order index into
+        // `_proof_layout.backward[...]`. The outer BTreeMap in
+        // `dimension_reducing_inputs` pops highest-first (see
+        // `GpuGKRDimensionReducingBackwardState::new`), which matches
+        // `build_proof_layout_inputs`'s dim-reducing slot numbering: slot 0 is
+        // the highest layer_idx (`initial_layer_for_sumcheck`) and slots
+        // ascend as we descend through the dim-reducing chain. Main layers
+        // continue from slot `num_dim_reducing_layers` and count downward
+        // through `compiled_circuit.layers[num_main - 1..=0]`.
+        let mut backward_layer_slot: usize = 0;
         while let Some(mut prepared_layer) = self.prepare_next_layer_static(context)? {
             let layer_idx = prepared_layer.layer_idx;
             let mut execution = prepared_layer
@@ -7292,6 +7353,9 @@ where
                     shared_device_claim_point,
                     shared_device_claims,
                     &shared_claim_layout,
+                    proof_slab,
+                    proof_layout,
+                    backward_layer_slot,
                     context,
                 )?;
             shared_device_seed = execution
@@ -7311,6 +7375,7 @@ where
                 .take()
                 .expect("dim-reducing scheduler must return the claim layout");
             dimension_reducing_layers.push(execution);
+            backward_layer_slot += 1;
             // Stream-ordered storage can be dropped once the layer's uploads and kernels have
             // been fully enqueued on exec_stream.
             self.purge_up_to_layer(layer_idx);
@@ -7886,8 +7951,12 @@ mod tests {
             )
             .unwrap();
 
+        let proof_layout = crate::prover::proof_layout::ProofLayout::new(
+            &crate::prover::proof_layout::placeholder_inputs_for_prove(),
+        );
         let mut dimension_reducing_layers = Vec::new();
         let mut purged_layers = 0usize;
+        let mut layer_slot = 0usize;
         while let Some(mut prepared_layer) =
             backward_state.prepare_next_layer_static(context).unwrap()
         {
@@ -7899,9 +7968,13 @@ mod tests {
                     shared_device_claim_point,
                     shared_device_claims,
                     &shared_claim_layout,
+                    None,
+                    &proof_layout,
+                    layer_slot,
                     context,
                 )
                 .unwrap();
+            layer_slot += 1;
             shared_device_seed = scheduled.device_seed.take().unwrap();
             shared_device_claim_point = scheduled
                 .device_claim_point_for_next_layer
