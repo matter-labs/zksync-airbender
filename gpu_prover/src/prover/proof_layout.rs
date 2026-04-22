@@ -401,11 +401,11 @@ pub(crate) fn build_proof_layout_inputs(
     let initial_query_count = whir_schedule.whir_queries_schedule[0];
 
     let base_layer_dims = |g: ProofLayoutBaseLayerGeometry| -> WhirBaseLayerDims {
-        // `cap_digest_count`: per-coset caps summed across the base layer's
-        // LDE cosets. Each coset tree has its own `1 << log_tree_cap_size`
-        // cap (whir_fold.rs:1800, cap_digest_count_from_accessors).
-        let lde_factor = 1usize << g.log_lde_factor;
-        let cap_digest_count = lde_factor * (1usize << g.log_tree_cap_size);
+        // `cap_digest_count`: total digests across all LDE cosets for this
+        // base layer. `allocate_tree_caps` sizes each coset at
+        // `1 << (log_tree_cap_size - log_lde_factor)` digests (trace_holder.rs)
+        // so the sum over `lde_factor` cosets is `1 << log_tree_cap_size`.
+        let cap_digest_count = 1usize << g.log_tree_cap_size;
         let leaf_values_len = g.columns_count * initial_values_per_leaf;
         // Matches whir_fold.rs:1765-1776 and the setup_columns_count==0
         // branch at 1846.

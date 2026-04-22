@@ -53,6 +53,58 @@ use crate::prover::whir_kernels::{
 
 const EXT4_DEGREE: usize = <E4 as FieldExtension<BF>>::DEGREE;
 
+/// Phase 3: H2D-copy a base-layer Merkle cap from multiple per-coset host
+/// sources into the slab's `whir.{setup,memory,witness}.cap` range.
+/// `coset_sources[i]` must be the cap for natural coset index `i`. The slab
+/// layout stores cosets in "stage1 position" order, so we iterate
+/// `stage1_pos = 0..lde_factor` and read from
+/// `coset_sources[bitreverse_index(stage1_pos, log_lde_factor)]` — this
+/// matches the ordering used by `fill_full_cap_from_accessors` /
+/// `fill_full_cap_from_slices` for the host `proof.*_commitment.cap.cap`
+/// vec. `None` slab is a no-op (test paths).
+fn copy_base_layer_cap_to_slab(
+    coset_sources: &[&[Digest]],
+    log_lde_factor: u32,
+    proof_slab: Option<&DeviceAllocation<u8>>,
+    proof_layout: &ProofLayout,
+    kind: crate::prover::proof_layout::WhirBaseLayerKind,
+    stream: &era_cudart::stream::CudaStream,
+) -> CudaResult<()> {
+    let Some(slab) = proof_slab else { return Ok(()) };
+    let (dst_ptr, dst_len_u32) = unsafe {
+        proof_layout.whir_base_cap_device_mut(slab.as_ptr() as *mut u8, kind)
+    };
+    if dst_len_u32 == 0 {
+        return Ok(());
+    }
+    let lde_factor = 1usize << log_lde_factor;
+    assert_eq!(coset_sources.len(), lde_factor);
+    let digest_u32_words = crate::prover::proof_layout::DIGEST_U32_WORDS;
+    let mut offset_u32 = 0usize;
+    for stage1_pos in 0..lde_factor {
+        let natural_coset_index = bitreverse_index(stage1_pos, log_lde_factor);
+        let src_digests = coset_sources[natural_coset_index];
+        let src_len_u32 = src_digests.len() * digest_u32_words;
+        // SAFETY: `Digest = [u32; DIGEST_U32_WORDS]` is transparent over
+        // `[u32]`; reinterpreting the host slice as `[u32]` is layout-safe.
+        let src_u32 = unsafe {
+            std::slice::from_raw_parts(src_digests.as_ptr() as *const u32, src_len_u32)
+        };
+        // SAFETY: `dst_ptr + offset_u32` is inside the live slab; per-coset
+        // sub-ranges are disjoint by construction.
+        let dst = unsafe {
+            era_cudart::slice::DeviceSlice::from_raw_parts_mut(
+                dst_ptr.add(offset_u32),
+                src_len_u32,
+            )
+        };
+        memory_copy_async(dst, src_u32, stream)?;
+        offset_u32 += src_len_u32;
+    }
+    assert_eq!(offset_u32, dst_len_u32);
+    Ok(())
+}
+
 /// Phase 3: H2D-copy the single-coset Merkle cap digests (flat `[u32]` tail of
 /// each `Digest = [u32; DIGEST_U32_WORDS]`) from an
 /// oracle's host-pinned tree caps into the slab's
@@ -1996,6 +2048,52 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         pow_nonces: vec![0u64; whir_pow_rounds],
         final_monomials: vec![],
     };
+
+    // Phase 3 slab routing: H2D-copy each base-layer Merkle cap into the slab's
+    // `whir.{witness,memory,setup}.cap` range. Stream-ordering serializes each
+    // H2D after the pre-WHIR trace-holder D2H that populates the pinned cap
+    // accessors; memory caps come as plain host Vecs and are copied via the
+    // same async API. The callback that mirrors these into the host-side
+    // `proof.*_commitment.commitment.cap.cap` stays in place for Phase 4.
+    {
+        use crate::prover::proof_layout::WhirBaseLayerKind;
+        let witness_cosets: Vec<&[Digest]> = witness_caps_accessors
+            .iter()
+            .map(|accessor| unsafe { accessor.get() })
+            .collect();
+        copy_base_layer_cap_to_slab(
+            &witness_cosets,
+            witness_log_lde_factor,
+            proof_slab,
+            proof_layout,
+            WhirBaseLayerKind::Witness,
+            stream,
+        )?;
+        let memory_cosets: Vec<&[Digest]> = memory_base_caps_keepalive
+            .iter()
+            .map(Vec::as_slice)
+            .collect();
+        copy_base_layer_cap_to_slab(
+            &memory_cosets,
+            memory_log_lde_factor,
+            proof_slab,
+            proof_layout,
+            WhirBaseLayerKind::Memory,
+            stream,
+        )?;
+        let setup_cosets: Vec<&[Digest]> = setup_caps_accessors
+            .iter()
+            .map(|accessor| unsafe { accessor.get() })
+            .collect();
+        copy_base_layer_cap_to_slab(
+            &setup_cosets,
+            setup_log_lde_factor,
+            proof_slab,
+            proof_layout,
+            WhirBaseLayerKind::Setup,
+            stream,
+        )?;
+    }
 
     let mut shared_state = Box::new(ScheduledWhirProofState {
         proof: Some(scheduled_proof),
