@@ -706,6 +706,48 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
         None
     };
 
+    // Phase 2b: D2D-copy per-OutputType reduced-output polynomials from the
+    // packed forward-handoff flat buffer into the slab's `output_evaluations`
+    // ranges. `transcript_handoff.device_flat_evaluations()` packs the polys
+    // in BTreeMap iteration order of `dimension_reducing_inputs[..initial..]`
+    // as `[read, write]` per OutputType (forward.rs:129-167); the slab layout
+    // allocates `output_evaluations[ot] = {read_set, write_set}` in
+    // BTreeMap key order of `compiled_circuit.global_output_map`, matching
+    // this order exactly. Phase 4 will source `final_explicit_evaluations`
+    // from the slab via the terminal D2H and retire the flat buffer.
+    if let Some(slab) = proof_slab.as_ref() {
+        let device_flat = transcript_handoff.device_flat_evaluations();
+        let reduced_poly_len = 1usize << final_trace_size_log_2;
+        let mut flat_offset = 0usize;
+        for (&output_type, _) in output_layer_for_sumcheck.iter() {
+            for half in 0..2usize {
+                let (dst_ptr, dst_len) = unsafe {
+                    if half == 0 {
+                        proof_layout
+                            .output_evaluations_read_device_mut(slab.as_ptr() as *mut u8, output_type)
+                    } else {
+                        proof_layout.output_evaluations_write_device_mut(
+                            slab.as_ptr() as *mut u8,
+                            output_type,
+                        )
+                    }
+                };
+                debug_assert_eq!(dst_len, reduced_poly_len);
+                // SAFETY: dst_ptr is inside the live `slab` allocation at a
+                // 16-byte-aligned offset, and ranges for distinct OutputTypes
+                // + halves are disjoint by construction of `ProofLayout`.
+                let dst = unsafe {
+                    era_cudart::slice::DeviceSlice::from_raw_parts_mut(dst_ptr, dst_len)
+                };
+                let src =
+                    &device_flat[flat_offset..flat_offset + reduced_poly_len];
+                memory_copy_async(dst, src, stream)?;
+                flat_offset += reduced_poly_len;
+            }
+        }
+        debug_assert_eq!(flat_offset, device_flat.len());
+    }
+
     // Device post-forward transcript: absorb flattened explicit evaluations into d_seed and
     // squeeze the evaluation point + batching challenge. Replaces the previous host pair
     // `commit_field_els` / `draw_random_field_els` on the host seed.
