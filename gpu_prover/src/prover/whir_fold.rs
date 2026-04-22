@@ -53,6 +53,53 @@ use crate::prover::whir_kernels::{
 
 const EXT4_DEGREE: usize = <E4 as FieldExtension<BF>>::DEGREE;
 
+/// Phase 3: H2D-copy the single-coset Merkle cap digests (flat `[u32]` tail of
+/// each `Digest = [u32; DIGEST_U32_WORDS]`) from an
+/// oracle's host-pinned tree caps into the slab's
+/// `whir.intermediate[round].cap` range. Intermediate WHIR oracles are built
+/// with `log_lde_factor = 0`, so each oracle has exactly one host cap
+/// accessor. Stream ordering sequences the H2D after the commit kernel's
+/// implicit D2H into the pinned accessor. `None` slab is a no-op (test
+/// paths).
+fn copy_intermediate_cap_to_slab(
+    cap_accessors: &[crate::primitives::context::UnsafeAccessor<[Digest]>],
+    proof_slab: Option<&DeviceAllocation<u8>>,
+    proof_layout: &ProofLayout,
+    round: usize,
+    stream: &era_cudart::stream::CudaStream,
+) -> CudaResult<()> {
+    let Some(slab) = proof_slab else { return Ok(()) };
+    let (dst_ptr, dst_len_u32) = unsafe {
+        proof_layout.whir_intermediate_cap_device_mut(slab.as_ptr() as *mut u8, round)
+    };
+    if dst_len_u32 == 0 {
+        return Ok(());
+    }
+    assert_eq!(
+        cap_accessors.len(),
+        1,
+        "intermediate oracle cap expects exactly one coset accessor (log_lde_factor = 0)",
+    );
+    let src_digests: &[Digest] = unsafe { cap_accessors[0].get() };
+    let digest_u32_words = crate::prover::proof_layout::DIGEST_U32_WORDS;
+    assert_eq!(src_digests.len() * digest_u32_words, dst_len_u32);
+    // SAFETY: `Digest = [u32; DIGEST_U32_WORDS]` is transparent over
+    // `[u32]`; reinterpreting the host slice as `[u32]` is layout-safe.
+    let src_u32 = unsafe {
+        std::slice::from_raw_parts(
+            src_digests.as_ptr() as *const u32,
+            src_digests.len() * digest_u32_words,
+        )
+    };
+    // SAFETY: `dst_ptr` points at a 16-byte-aligned, live, disjoint region
+    // inside the slab allocation.
+    let dst = unsafe {
+        era_cudart::slice::DeviceSlice::from_raw_parts_mut(dst_ptr, dst_len_u32)
+    };
+    memory_copy_async(dst, src_u32, stream)?;
+    Ok(())
+}
+
 /// Phase 3: H2D-copy the single-element `ood_value_host` pinned host buffer
 /// into the slab's `whir.ood_samples[ood_idx]` offset. Scheduled on the same
 /// stream as the preceding host callback that populates `ood_value_host`, so
@@ -2257,6 +2304,13 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
             context,
         )?;
         let oracle_cap_accessors = oracle.tree_cap_accessors();
+        copy_intermediate_cap_to_slab(
+            &oracle_cap_accessors,
+            proof_slab,
+            proof_layout,
+            0,
+            stream,
+        )?;
         final_callbacks.schedule(
             {
                 let shared_state = shared_state_handle;
@@ -2598,6 +2652,13 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
             context,
         )?;
         let next_oracle_cap_accessors = next_oracle.tree_cap_accessors();
+        copy_intermediate_cap_to_slab(
+            &next_oracle_cap_accessors,
+            proof_slab,
+            proof_layout,
+            internal_round_idx + 1,
+            stream,
+        )?;
         final_callbacks.schedule(
             {
                 let shared_state = shared_state_handle;
