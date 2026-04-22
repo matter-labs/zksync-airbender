@@ -853,6 +853,26 @@ impl ProofLayout {
         Self::host_typed::<E4>(slab, &self.backward[layer_slot].final_step_evaluations)
     }
 
+    /// Phase 4: parse `final_explicit_evaluations:
+    /// BTreeMap<OutputType, [Vec<E4>; 2]>` from the D2H'd slab.
+    pub(crate) fn parse_final_explicit_evaluations(
+        &self,
+        slab: &[u8],
+    ) -> BTreeMap<OutputType, [Vec<E4>; 2]> {
+        self.output_evaluations
+            .keys()
+            .map(|&output_type| {
+                let read = self
+                    .output_evaluations_read_host(slab, output_type)
+                    .to_vec();
+                let write = self
+                    .output_evaluations_write_host(slab, output_type)
+                    .to_vec();
+                (output_type, [read, write])
+            })
+            .collect()
+    }
+
     /// Phase 4: parse `sumcheck_intermediate_values: BTreeMap<layer_idx, _>`
     /// from the D2H'd slab, merging in host-side
     /// `extra_evaluations_from_caching_relations` (layer 0 only).
