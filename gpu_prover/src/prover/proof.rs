@@ -310,31 +310,6 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
 
     context.reset_used_mem_peak();
 
-    // Device-resident proof image (Phase 2a): allocate one `DeviceAllocation<u8>`
-    // at `prove()` start. Phases 2b/3/4 rewire per-layer and WHIR kernel writes
-    // into slab offsets via `ProofLayout` accessors; Phase 4 adds the single
-    // terminal D2H + host-side parse.
-    //
-    // Phase 2a placeholder inputs yield `total_bytes == 0`, so the slab itself
-    // is not yet allocated (`None`). The wiring lands here so that later phases
-    // only need to replace `placeholder_inputs_for_prove()` with the real
-    // computation and flip call sites to thread `proof_slab` + `proof_layout`.
-    let proof_layout =
-        crate::prover::proof_layout::ProofLayout::new(
-            &crate::prover::proof_layout::placeholder_inputs_for_prove(),
-        );
-    let _proof_slab: Option<DeviceAllocation<u8>> = if proof_layout.total_bytes > 0 {
-        let slab = context.alloc::<u8>(proof_layout.total_bytes, AllocationPlacement::Bottom)?;
-        debug_assert_eq!(
-            slab.as_ptr() as usize & 0xF,
-            0,
-            "proof slab base pointer must be 16-byte aligned for ProofLayout typed casts",
-        );
-        Some(slab)
-    } else {
-        None
-    };
-
     let setup_geometry = setup_transfer
         .as_ref()
         .map(|setup| GpuGKRTraceGeometry {
@@ -349,6 +324,53 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
             log_rows_per_leaf: whir_schedule.whir_steps_schedule[0] as u32,
             log_tree_cap_size: whir_schedule.cap_size.trailing_zeros(),
         });
+
+    // Device-resident proof image: allocate one `DeviceAllocation<u8>` sized
+    // by `ProofLayout`. Phases 2b/3/4 rewire per-layer and WHIR kernel writes
+    // into slab offsets via `ProofLayout` accessors; Phase 4 adds the single
+    // terminal D2H + host-side parse. Allocation happens here — after
+    // `setup_geometry` so base-layer dims are known, and before stage 1 so
+    // the slab sits at the bottom of the peak arena alongside other
+    // prove()-lifetime allocations.
+    //
+    // Memory and witness trace holders share `setup_geometry`
+    // (stage1.rs:181-194); they are materialized later during stage 1, but
+    // their column widths live in `compiled_circuit.{memory,witness}_layout`
+    // and their Merkle geometry matches `setup_geometry`. Setup columns
+    // come from `setup_transfer.trace_holder`; without a setup transfer the
+    // synthetic path has 0 setup columns (matches whir_fold.rs:1846 guard).
+    let proof_layout_setup_columns_count = setup_transfer
+        .as_ref()
+        .map_or(0, |s| s.trace_holder.columns_count);
+    let proof_layout_inputs = crate::prover::proof_layout::build_proof_layout_inputs(
+        &compiled_circuit,
+        &whir_schedule,
+        final_trace_size_log_2,
+        crate::prover::proof_layout::ProofLayoutBaseLayerGeometry::from_geometry(
+            setup_geometry,
+            compiled_circuit.memory_layout.total_width,
+        ),
+        crate::prover::proof_layout::ProofLayoutBaseLayerGeometry::from_geometry(
+            setup_geometry,
+            compiled_circuit.witness_layout.total_width,
+        ),
+        crate::prover::proof_layout::ProofLayoutBaseLayerGeometry::from_geometry(
+            setup_geometry,
+            proof_layout_setup_columns_count,
+        ),
+    );
+    let proof_layout = crate::prover::proof_layout::ProofLayout::new(&proof_layout_inputs);
+    let _proof_slab: Option<DeviceAllocation<u8>> = if proof_layout.total_bytes > 0 {
+        let slab = context.alloc::<u8>(proof_layout.total_bytes, AllocationPlacement::Bottom)?;
+        debug_assert_eq!(
+            slab.as_ptr() as usize & 0xF,
+            0,
+            "proof slab base pointer must be 16-byte aligned for ProofLayout typed casts",
+        );
+        Some(slab)
+    } else {
+        None
+    };
 
     // ---------------------------------------------------------------------
     // Initial Fiat-Shamir transcript: moved off exec_stream entirely.

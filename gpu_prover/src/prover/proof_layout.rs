@@ -24,9 +24,11 @@ use std::mem::size_of;
 use std::ops::Range;
 
 use cs::definitions::GKRAddress;
-use cs::gkr_compiler::OutputType;
+use cs::gkr_compiler::{GKRCircuitArtifact, OutputType};
+use prover::gkr::prover::WhirSchedule;
 
 use crate::field::{BF, E4};
+use crate::prover::gkr::stage1::GpuGKRTraceGeometry;
 
 /// Slab field-start alignment, in bytes. See module-level doc.
 pub(crate) const FIELD_ALIGN: usize = 16;
@@ -208,9 +210,10 @@ pub(crate) struct ProofLayout {
     pub(crate) total_bytes: usize,
 }
 
-/// Phase 2a placeholder — returns empty dims for every section. Used at
-/// `prove()` start to allocate the slab before Phases 2b/3/4 wire real kernel
-/// writes with real sizing. Replace call-sites as each section is wired.
+/// Phase 2a placeholder — returns empty dims for every section. Retained for
+/// unit-test coverage of the empty-slab edge case. Real `prove()` uses
+/// [`build_proof_layout_inputs`].
+#[cfg(test)]
 pub(crate) fn placeholder_inputs_for_prove() -> ProofLayoutInputs {
     ProofLayoutInputs {
         output_evaluations: BTreeMap::new(),
@@ -228,6 +231,7 @@ pub(crate) fn placeholder_inputs_for_prove() -> ProofLayoutInputs {
     }
 }
 
+#[cfg(test)]
 fn empty_base_layer_dims() -> WhirBaseLayerDims {
     WhirBaseLayerDims {
         num_columns: 0,
@@ -235,6 +239,196 @@ fn empty_base_layer_dims() -> WhirBaseLayerDims {
         query_count: 0,
         leaf_values_len: 0,
         path_len: 0,
+    }
+}
+
+/// Trace-holder geometry subset needed to size WHIR base-layer fields in the
+/// slab. See [`build_proof_layout_inputs`].
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct ProofLayoutBaseLayerGeometry {
+    pub(crate) columns_count: usize,
+    pub(crate) log_domain_size: u32,
+    pub(crate) log_lde_factor: u32,
+    pub(crate) log_rows_per_leaf: u32,
+    pub(crate) log_tree_cap_size: u32,
+}
+
+impl ProofLayoutBaseLayerGeometry {
+    pub(crate) fn from_geometry(geometry: GpuGKRTraceGeometry, columns_count: usize) -> Self {
+        Self {
+            columns_count,
+            log_domain_size: geometry.log_domain_size,
+            log_lde_factor: geometry.log_lde_factor,
+            log_rows_per_leaf: geometry.log_rows_per_leaf,
+            log_tree_cap_size: geometry.log_tree_cap_size,
+        }
+    }
+}
+
+/// Build real [`ProofLayoutInputs`] for one `prove()` invocation.
+///
+/// All dimensions are derivable from the WHIR schedule + circuit artifact +
+/// final-trace size — no runtime scheduler state is required, so this can be
+/// called before any backward or WHIR kernel has launched.
+///
+/// Field-by-field sourcing:
+///
+/// * `output_evaluations`: `global_output_map` keys × `[read_len, write_len]`
+///   where both lengths equal `1 << final_trace_size_log_2` (the reduced-output
+///   polynomial size at the initial sumcheck layer).
+/// * `backward_layers`: `initial_layer_for_sumcheck` down through main layer 0
+///   in scheduler (high-to-low) order. `sumcheck_num_rounds` follows the
+///   dim-reducing chain starting at `final_trace_size_log_2` and incrementing
+///   by one per dim-reducing layer, then saturates at
+///   `initial_trace_size_log_2` for every main layer. `final_step_eval_degree`
+///   is 4 for dim-reducing (see backward.rs:5188) and 2 for main
+///   (backward.rs:6646). `final_step_eval_addresses` and `extra_eval_addresses`
+///   are left empty in this commit; they will be populated in subsequent
+///   Phase 2b commits as each kernel write is rewired into slab offsets.
+/// * `whir`: derivation mirrors `whir_fold.rs:1742-1792`. `final_monomials_len`
+///   is 0 because the current GPU prover leaves `proof.final_monomials =
+///   vec![]` (whir_fold.rs:1870); revisit if that changes.
+pub(crate) fn build_proof_layout_inputs(
+    compiled_circuit: &GKRCircuitArtifact<BF>,
+    whir_schedule: &WhirSchedule,
+    final_trace_size_log_2: usize,
+    memory_geometry: ProofLayoutBaseLayerGeometry,
+    witness_geometry: ProofLayoutBaseLayerGeometry,
+    setup_geometry: ProofLayoutBaseLayerGeometry,
+) -> ProofLayoutInputs {
+    let initial_trace_size_log_2 = compiled_circuit.trace_len.trailing_zeros() as usize;
+    assert!(initial_trace_size_log_2 >= final_trace_size_log_2);
+    let num_dim_reducing_layers = initial_trace_size_log_2 - final_trace_size_log_2;
+    let num_main_layers = compiled_circuit.layers.len();
+
+    // ------------------------------------------------------------------
+    // output_evaluations
+    // ------------------------------------------------------------------
+    let reduced_poly_len = 1usize << final_trace_size_log_2;
+    let mut output_evaluations = BTreeMap::new();
+    for (&output_type, addresses) in compiled_circuit.global_output_map.iter() {
+        assert_eq!(
+            addresses.len(),
+            2,
+            "global_output_map[{:?}] must have exactly 2 entries (read + write set)",
+            output_type,
+        );
+        output_evaluations.insert(output_type, [reduced_poly_len, reduced_poly_len]);
+    }
+
+    // ------------------------------------------------------------------
+    // backward_layers (scheduler high-to-low order)
+    // ------------------------------------------------------------------
+    //
+    // Dim-reducing slot 0 is the highest layer_idx = `num_main_layers +
+    // num_dim_reducing_layers - 1` (= `initial_layer_for_sumcheck`), with
+    // sumcheck_num_rounds = final_trace_size_log_2. Each subsequent
+    // dim-reducing slot covers one lower layer_idx and one more folding step
+    // (see backward.rs:3251-3253 + backward.rs:3387). Main layers follow in
+    // `compiled_circuit.layers.into_iter().enumerate().rev()` order — index
+    // `num_main_layers - 1` down to 0 — each with
+    // `sumcheck_num_rounds = initial_trace_size_log_2` (backward.rs:3503).
+    let mut backward_layers = Vec::with_capacity(num_dim_reducing_layers + num_main_layers);
+    for slot in 0..num_dim_reducing_layers {
+        let layer_idx = num_main_layers + num_dim_reducing_layers - 1 - slot;
+        let sumcheck_num_rounds = final_trace_size_log_2 + slot;
+        backward_layers.push(BackwardLayerDims {
+            layer_idx,
+            sumcheck_num_rounds,
+            final_step_eval_addresses: Vec::new(),
+            final_step_eval_degree: 4,
+            extra_eval_addresses: Vec::new(),
+        });
+    }
+    for layer_idx in (0..num_main_layers).rev() {
+        backward_layers.push(BackwardLayerDims {
+            layer_idx,
+            sumcheck_num_rounds: initial_trace_size_log_2,
+            final_step_eval_addresses: Vec::new(),
+            final_step_eval_degree: 2,
+            extra_eval_addresses: Vec::new(),
+        });
+    }
+
+    // ------------------------------------------------------------------
+    // whir
+    // ------------------------------------------------------------------
+    assert_eq!(
+        whir_schedule.whir_steps_schedule.len(),
+        whir_schedule.whir_queries_schedule.len(),
+    );
+    assert_eq!(
+        whir_schedule.whir_steps_schedule.len(),
+        whir_schedule.whir_pow_schedule.len(),
+    );
+    assert_eq!(
+        whir_schedule.whir_steps_schedule.len(),
+        whir_schedule.whir_steps_lde_factors.len() + 1,
+    );
+    let initial_values_per_leaf = 1usize << whir_schedule.whir_steps_schedule[0];
+    let tree_cap_size = whir_schedule.cap_size;
+    let tree_cap_log2 = tree_cap_size.trailing_zeros() as usize;
+    let initial_query_count = whir_schedule.whir_queries_schedule[0];
+
+    let base_layer_dims = |g: ProofLayoutBaseLayerGeometry| -> WhirBaseLayerDims {
+        // `cap_digest_count`: per-coset caps summed across the base layer's
+        // LDE cosets. Each coset tree has its own `1 << log_tree_cap_size`
+        // cap (whir_fold.rs:1800, cap_digest_count_from_accessors).
+        let lde_factor = 1usize << g.log_lde_factor;
+        let cap_digest_count = lde_factor * (1usize << g.log_tree_cap_size);
+        let leaf_values_len = g.columns_count * initial_values_per_leaf;
+        // Matches whir_fold.rs:1765-1776 and the setup_columns_count==0
+        // branch at 1846.
+        let path_len = if g.columns_count == 0 {
+            0
+        } else {
+            (g.log_domain_size - g.log_rows_per_leaf
+                - (g.log_tree_cap_size - g.log_lde_factor)) as usize
+        };
+        WhirBaseLayerDims {
+            num_columns: g.columns_count,
+            cap_digest_count,
+            query_count: initial_query_count,
+            leaf_values_len,
+            path_len,
+        }
+    };
+
+    let mut folded_trace_len_log2 = initial_trace_size_log_2;
+    let mut intermediate = Vec::with_capacity(whir_schedule.whir_steps_lde_factors.len());
+    for (oracle_idx, &lde_factor) in whir_schedule.whir_steps_lde_factors.iter().enumerate() {
+        folded_trace_len_log2 -= whir_schedule.whir_steps_schedule[oracle_idx];
+        let values_per_leaf_log2 = whir_schedule.whir_steps_schedule[oracle_idx + 1];
+        let path_len = folded_trace_len_log2 + lde_factor.trailing_zeros() as usize
+            - values_per_leaf_log2
+            - tree_cap_log2;
+        intermediate.push(WhirIntermediateDims {
+            cap_digest_count: tree_cap_size,
+            query_count: whir_schedule.whir_queries_schedule[oracle_idx + 1],
+            leaf_values_len: 1usize << values_per_leaf_log2,
+            path_len,
+        });
+    }
+
+    let whir = WhirDims {
+        setup: base_layer_dims(setup_geometry),
+        memory: base_layer_dims(memory_geometry),
+        witness: base_layer_dims(witness_geometry),
+        intermediate,
+        num_ood_samples: whir_schedule.whir_steps_lde_factors.len(),
+        total_sumcheck_polys: whir_schedule.whir_steps_schedule.iter().sum::<usize>(),
+        pow_rounds: whir_schedule.whir_pow_schedule.len(),
+        // GPU prover currently leaves `WhirPolyCommitProof::final_monomials`
+        // as `vec![]` (whir_fold.rs:1870). If a future commit teaches WHIR
+        // to emit the final monomial basis, lift this from the schedule via
+        // `initial_trace_size_log_2 - sum(whir_steps_schedule)`.
+        final_monomials_len: 0,
+    };
+
+    ProofLayoutInputs {
+        output_evaluations,
+        backward_layers,
+        whir,
     }
 }
 
