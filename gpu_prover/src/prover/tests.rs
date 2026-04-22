@@ -7621,6 +7621,7 @@ fn run_basic_unrolled_stagewise_parity_test() {
             &gpu_setup_transfer.trace_holder,
             &stage1_output.memory_trace_holder,
             &stage1_output.witness_trace_holder,
+            &proof_layout,
             &context,
         )
         .unwrap()
