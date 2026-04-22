@@ -7027,6 +7027,42 @@ where
             }
             debug_assert_eq!(offset, transcript_inputs_len);
         }
+
+        // Phase 2b slab population for this main layer's `final_step_evaluations`.
+        // Mirrors the dim-reducing variant: the just-packed
+        // `d_layer_transcript_inputs` (flat `num_addresses * 2` `E`s in
+        // BTreeMap key order from `final_evaluation_sources_for_last_step`)
+        // is D2D-copied into the slab range for this layer's slot.
+        // `ProofLayout.backward[slot].final_step_eval_addresses` was populated
+        // at prove() start from `build_main_layer_kernel_blueprints_static`'s
+        // blueprint inputs — same underlying set as
+        // `final_evaluation_sources_for_last_step`'s keys.
+        if let Some(slab) = proof_slab {
+            if transcript_inputs_len > 0 {
+                let (dst_ptr, dst_len) = unsafe {
+                    proof_layout.backward_final_step_evals_device_mut(
+                        slab.as_ptr() as *mut u8,
+                        layer_slot,
+                    )
+                };
+                debug_assert_eq!(
+                    dst_len, transcript_inputs_len,
+                    "slab final_step_evaluations range must match main-layer transcript_inputs_len",
+                );
+                let dst = unsafe {
+                    era_cudart::slice::DeviceSlice::from_raw_parts_mut(
+                        dst_ptr as *mut E,
+                        dst_len,
+                    )
+                };
+                memory_copy_async(
+                    dst,
+                    &d_layer_transcript_inputs[..transcript_inputs_len],
+                    stream,
+                )?;
+            }
+        }
+
         // SAFETY: E = E4 in every instantiation of this scheduler.
         let d_transcript_inputs_u32 = unsafe {
             d_layer_transcript_inputs[..transcript_inputs_len].transmute::<u32>()
