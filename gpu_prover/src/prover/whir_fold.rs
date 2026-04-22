@@ -2149,6 +2149,39 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
                 scheduled_sumcheck_poly_idx += 1;
             }
 
+            // Phase 3 slab routing: before the host-directed D2H, D2D-copy the
+            // packed `d_coeffs_all` (the `[E4; 3]` sumcheck-round coefficients
+            // for every round in this group) into the slab's
+            // `whir.sumcheck_polys[group_start_idx * 3 .. (group_start_idx +
+            // num_folding_steps) * 3]` region. The slab range is flat
+            // `total_sumcheck_polys * 3` `E4` values in schedule order, which
+            // matches `d_coeffs_all`'s packing exactly.
+            if let Some(slab) = proof_slab {
+                let (dst_base_ptr, dst_total_len) = unsafe {
+                    proof_layout.whir_sumcheck_polys_device_mut(slab.as_ptr() as *mut u8)
+                };
+                let dst_offset = group_start_idx * 3;
+                let dst_len = num_folding_steps * 3;
+                assert!(
+                    dst_offset + dst_len <= dst_total_len,
+                    "sumcheck_polys slab range overflow: {}+{} > {}",
+                    dst_offset,
+                    dst_len,
+                    dst_total_len,
+                );
+                // SAFETY: offset is 16-byte-aligned (slab base is, and
+                // `E4` is 16 bytes so every element index is aligned);
+                // the destination sub-range is disjoint from other slab
+                // fields and from other fold-round groups.
+                let dst = unsafe {
+                    era_cudart::slice::DeviceSlice::from_raw_parts_mut(
+                        dst_base_ptr.add(dst_offset),
+                        dst_len,
+                    )
+                };
+                memory_copy_async(dst, &d_coeffs_all[..dst_len], stream)?;
+            }
+
             // Bulk D2H: all coeffs for this group, plus the updated seed.
             // Schedule a final callback that rehydrates both into the shared
             // proof state and the host seed (which subsequent host-side
