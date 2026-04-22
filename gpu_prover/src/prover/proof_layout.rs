@@ -271,11 +271,10 @@ impl ProofLayoutBaseLayerGeometry {
 /// Build real [`ProofLayoutInputs`] for one `prove()` invocation.
 ///
 /// All dimensions are derivable from the WHIR schedule + circuit artifact +
-/// final-trace size + the forward pass's `dimension_reducing_inputs`. The
-/// latter is populated by the forward scheduler and available once
-/// `schedule_forward_pass` returns, so this helper must be called after
-/// forward. Kernel scheduler state beyond the dim-reducing descriptions is
-/// not required.
+/// final-trace size + the forward pass's `dimension_reducing_inputs` +
+/// per-main-layer input address sets (from
+/// `collect_main_layer_input_addresses_per_layer`). All of these are
+/// available once `schedule_forward_pass` returns.
 ///
 /// Field-by-field sourcing:
 ///
@@ -292,9 +291,12 @@ impl ProofLayoutBaseLayerGeometry {
 ///   `dimension_reducing_inputs[layer_idx].values().flat_map(.inputs)`
 ///   deduplicated and sorted (matching the BTreeMap-keyed iteration order in
 ///   `final_evaluation_sources_for_last_step`, backward.rs:4945-4980). Main
-///   layer `final_step_eval_addresses` and `extra_eval_addresses` are left
-///   empty in this commit; a follow-up will populate them from the main
-///   layer's gate inputs (backward.rs:6359-6397) and cached-relation keys.
+///   layer `final_step_eval_addresses` come from
+///   `main_layer_input_addresses_per_layer[layer_idx]` (same underlying
+///   source: the union of `kernel.inputs.inputs_in_base` +
+///   `inputs_in_extension` per blueprint, matching main-layer
+///   `final_evaluation_sources_for_last_step`). `extra_eval_addresses` are
+///   still empty pending the caching-relations analysis.
 /// * `whir`: derivation mirrors `whir_fold.rs:1742-1792`. `final_monomials_len`
 ///   is 0 because the current GPU prover leaves `proof.final_monomials =
 ///   vec![]` (whir_fold.rs:1870); revisit if that changes.
@@ -303,6 +305,7 @@ pub(crate) fn build_proof_layout_inputs(
     whir_schedule: &WhirSchedule,
     final_trace_size_log_2: usize,
     dimension_reducing_inputs: &BTreeMap<usize, BTreeMap<OutputType, DimensionReducingInputOutput>>,
+    main_layer_input_addresses_per_layer: &[Vec<GKRAddress>],
     memory_geometry: ProofLayoutBaseLayerGeometry,
     witness_geometry: ProofLayoutBaseLayerGeometry,
     setup_geometry: ProofLayoutBaseLayerGeometry,
@@ -315,6 +318,11 @@ pub(crate) fn build_proof_layout_inputs(
         dimension_reducing_inputs.len(),
         num_dim_reducing_layers,
         "dimension_reducing_inputs must have one entry per dim-reducing layer",
+    );
+    assert_eq!(
+        main_layer_input_addresses_per_layer.len(),
+        num_main_layers,
+        "main_layer_input_addresses_per_layer must have one entry per main layer",
     );
 
     // ------------------------------------------------------------------
@@ -369,7 +377,7 @@ pub(crate) fn build_proof_layout_inputs(
         backward_layers.push(BackwardLayerDims {
             layer_idx,
             sumcheck_num_rounds: initial_trace_size_log_2,
-            final_step_eval_addresses: Vec::new(),
+            final_step_eval_addresses: main_layer_input_addresses_per_layer[layer_idx].clone(),
             final_step_eval_degree: 2,
             extra_eval_addresses: Vec::new(),
         });
