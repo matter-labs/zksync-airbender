@@ -5440,6 +5440,44 @@ where
             }
             debug_assert_eq!(offset, transcript_inputs_len);
         }
+
+        // Phase 2b slab population for this layer's `final_step_evaluations`.
+        // `d_layer_transcript_inputs` is the flat (num_addresses * 4) `E`
+        // buffer just packed above, with addresses in BTreeMap key order via
+        // `final_evaluation_sources_for_last_step`. That order matches what
+        // `build_proof_layout_inputs` stored in
+        // `ProofLayout.backward[slot].final_step_eval_addresses` (derived from
+        // the same `dimension_reducing_inputs[layer_idx].values().flat_map
+        // (.inputs)` set, collected through a BTreeSet<GKRAddress>).
+        // Transitional like the coeffs D2D: the existing host-side callback
+        // still builds `SumcheckIntermediateProofValues.final_step_evaluations`
+        // from the D2H'd host buffer; Phase 4 swaps that for a slab parse.
+        if let Some(slab) = proof_slab {
+            if transcript_inputs_len > 0 {
+                let (dst_ptr, dst_len) = unsafe {
+                    proof_layout.backward_final_step_evals_device_mut(
+                        slab.as_ptr() as *mut u8,
+                        layer_slot,
+                    )
+                };
+                debug_assert_eq!(
+                    dst_len, transcript_inputs_len,
+                    "slab final_step_evaluations range must match layer's transcript_inputs_len",
+                );
+                let dst = unsafe {
+                    era_cudart::slice::DeviceSlice::from_raw_parts_mut(
+                        dst_ptr as *mut E,
+                        dst_len,
+                    )
+                };
+                memory_copy_async(
+                    dst,
+                    &d_layer_transcript_inputs[..transcript_inputs_len],
+                    stream,
+                )?;
+            }
+        }
+
         // SAFETY: E = E4 in every instantiation of this scheduler; the
         // u32 view matches the host `commit_field_els::<BF, E4>` byte layout
         // (covered by `ops::blake2s::tests::transcript_squeeze_e4_parity_*`).
