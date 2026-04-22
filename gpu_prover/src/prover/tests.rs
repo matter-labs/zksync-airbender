@@ -1903,6 +1903,7 @@ fn assert_recursive_whir_oracle_parity_for_supported_path(
         .collect();
     let witness_base_caps_keepalive = gpu_wit_trace_holder.take_tree_caps_host();
     let setup_base_caps_keepalive = gpu_setup_trace_holder.take_tree_caps_host();
+    let whir_proof_layout = ProofLayout::new(&placeholder_inputs_for_prove());
     let mut scheduled_gpu_whir = schedule_gpu_whir_fold_with_sources(
         gpu_mem_trace_holder,
         memory_base_caps_keepalive,
@@ -1924,6 +1925,8 @@ fn assert_recursive_whir_oracle_parity_for_supported_path(
         move || scheduled_transcript_seed,
         whir_schedule.cap_size,
         trace_len_log2,
+        None,
+        &whir_proof_layout,
         context,
     )
     .unwrap();
