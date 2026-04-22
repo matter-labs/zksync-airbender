@@ -140,6 +140,10 @@ fn ensure_common() {
 fn generate_verifier_for_circuit<MW: MersenneWrapper>(circuit: &CircuitData) {
     ensure_common();
 
+    let field_struct = MW::field_struct();
+    let quartic_struct = MW::quartic_struct();
+    let field_use_stmts = MW::field_use_statements();
+
     let dir = circuit.generated_dir();
     std::fs::create_dir_all(&dir).unwrap();
 
@@ -152,6 +156,32 @@ fn generate_verifier_for_circuit<MW: MersenneWrapper>(circuit: &CircuitData) {
         pub mod whir;
         #[path = "../common/mod.rs"]
         pub mod common;
+
+        use ::verifier_common::GKRExternalChallenges;
+        use ::verifier_common::non_determinism_source::NonDeterminismSource;
+        use ::verifier_common::errors::ErrorCreator;
+        #field_use_stmts
+
+        pub fn verify<I: NonDeterminismSource, E: ErrorCreator>(
+            external_challenges: &GKRExternalChallenges<#field_struct, #quartic_struct>,
+        ) -> Result<constants::ConcreteVerifierOutput, E::Error> {
+            ::verifier_common::verify_impl::<
+            I,
+            E,
+            #field_struct,
+            #quartic_struct,
+            { constants::INIT_AND_TEARDOWN_SETS },
+            { constants::EXTERNAL_CHALLENGES_FLATTENED_SIZE },
+            { constants::CAP_SIZE },
+            { constants::NUM_MEMORY_COMMITS },
+            { constants::NUM_WITNESS_COMMITS },
+            { constants::NUM_SETUP_COMMITS },
+            { constants::PADDING_WORDS },
+            { constants::GKR_ROUNDS },
+            { constants::GKR_ADDRS },
+            gkr::VerifierImplementation,
+        >(external_challenges)
+        }
     };
     write_and_fmt(&format!("{}/mod.rs", dir), &mod_rs);
 }

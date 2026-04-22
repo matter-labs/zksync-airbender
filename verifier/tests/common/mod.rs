@@ -1,3 +1,4 @@
+use prover::definitions::GKRExternalChallenges;
 pub use verifier_common::test_circuits::{CircuitData, CIRCUITS};
 
 use field::baby_bear::base::BabyBearField;
@@ -27,7 +28,7 @@ macro_rules! define_dispatch {
 }
 verifier_common::gkr_circuits!(define_dispatch);
 
-pub fn load_nds(name: &str) -> Vec<u32> {
+pub fn load_nds(name: &str) -> (Vec<u32>, GKRExternalChallenges<BabyBearField, BabyBearExt4>) {
     circuit_by_name(name).load_nds()
 }
 
@@ -48,7 +49,7 @@ pub enum VerifyRejection {
     Panic(String),
 }
 
-pub fn verify_nds(name: &str, nds: Vec<u32>) -> Result<(), VerifyRejection> {
+pub fn verify_nds(name: &str, external_challenges: &GKRExternalChallenges<BabyBearField, BabyBearExt4>, nds: Vec<u32>) -> Result<(), VerifyRejection> {
     let prev_hook = std::panic::take_hook();
     let panic_msg = std::sync::Arc::new(std::sync::Mutex::new(None::<String>));
     let panic_msg_clone = panic_msg.clone();
@@ -63,7 +64,7 @@ pub fn verify_nds(name: &str, nds: Vec<u32>) -> Result<(), VerifyRejection> {
             .spawn_scoped(s, move || {
                 set_iterator(nds.into_iter());
                 with_circuit!(name, |m| {
-                    m::verify::<ThreadLocalBasedSource, DebugErrorCreator>()
+                    m::verify::<ThreadLocalBasedSource, DebugErrorCreator>(external_challenges).map(|_| ())
                 })
             })
             .expect("failed to spawn thread");
@@ -93,9 +94,9 @@ pub fn assert_rejects_corrupted_nds(
     corrupt: impl FnOnce(&mut Vec<u32>),
     expected: impl FnOnce(&VerifyRejection) -> bool,
 ) {
-    let mut nds = load_nds(name);
+    let (mut nds, external_challenges) = load_nds(name);
     corrupt(&mut nds);
-    match verify_nds(name, nds) {
+    match verify_nds(name, &external_challenges, nds) {
         Ok(()) => panic!("{}: should reject {}", name, label),
         Err(r) => assert!(
             expected(&r),
@@ -110,18 +111,21 @@ pub fn assert_rejects_corrupted_nds(
 pub fn proof_to_nds(
     name: &str,
     proof: &GKRProof<BabyBearField, BabyBearExt4, DefaultTreeConstructor>,
-) -> Vec<u32> {
+) -> (Vec<u32>, GKRExternalChallenges<BabyBearField, BabyBearExt4>) {
     let circuit_data = circuit_by_name(name);
     let compiled = circuit_data.compiled_circuit();
     let inits_and_teardowns_top_bits: Vec<u32> = (0..compiled.memory_layout.teardown_sets.len())
         .map(|i| i as u32)
         .collect();
-    flatten_gkr_proof_for_nds::<BabyBearField, BabyBearExt4, DefaultTreeConstructor>(
+    let nds = flatten_gkr_proof_for_nds::<BabyBearField, BabyBearExt4, DefaultTreeConstructor>(
         proof,
         &compiled,
         circuit_data.whir_schedule(),
         &inits_and_teardowns_top_bits,
-    )
+    );
+    let external_challenges = proof.external_challenges;
+
+    (nds, external_challenges)
 }
 
 pub fn assert_rejects_with_variant(
@@ -130,8 +134,8 @@ pub fn assert_rejects_with_variant(
     proof: &GKRProof<BabyBearField, BabyBearExt4, DefaultTreeConstructor>,
     expected: impl FnOnce(&VerificationError) -> bool,
 ) {
-    let nds = proof_to_nds(name, proof);
-    match verify_nds(name, nds) {
+    let (nds, external_challenges) = proof_to_nds(name, proof);
+    match verify_nds(name, &external_challenges, nds) {
         Ok(()) => panic!("{}: should reject {}", name, label),
         Err(VerifyRejection::Error(e)) => {
             assert!(
@@ -156,8 +160,8 @@ pub fn assert_rejects_via_panic(
     label: &str,
     proof: &GKRProof<BabyBearField, BabyBearExt4, DefaultTreeConstructor>,
 ) {
-    let nds = proof_to_nds(name, proof);
-    match verify_nds(name, nds) {
+    let (nds, external_challenges) = proof_to_nds(name, proof);
+    match verify_nds(name, &external_challenges, nds) {
         Ok(()) => panic!("{}: should reject {}", name, label),
         Err(VerifyRejection::Panic(_)) => {}
         Err(VerifyRejection::Error(e)) => {

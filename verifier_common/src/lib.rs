@@ -125,7 +125,7 @@ pub struct SizedProofPowChallenges<const NUM_FOLDINGS: usize> {
 
 extern crate alloc;
 use field::{Field, FieldExtension, PrimeField};
-use prover::definitions::*;
+pub use prover::definitions::*;
 
 pub use blake2s_u32;
 pub use cs;

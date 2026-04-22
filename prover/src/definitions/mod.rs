@@ -76,7 +76,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> GKRExternalChallenges<F, E> {
     {
         unsafe {
             #[allow(invalid_value)]
-            let mut dst = [const { MaybeUninit::uninit().assume_init() }; N];
+            let mut dst = [MaybeUninit::uninit().assume_init(); N];
             use core::mem::MaybeUninit;
             self.flatten_into_fixed_size_buffer_dst(&mut dst);
             dst

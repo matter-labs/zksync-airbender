@@ -9,7 +9,7 @@ use riscv_transpiler::ir::ReducedMachineDecoderConfig;
 use riscv_transpiler::vm::*;
 
 fn run_transpiler(name: &str) {
-    let nds = common::load_nds(name);
+    let (nds, external_challenges) = common::load_nds(name);
     println!("{}: oracle data length: {} u32 words", name, nds.len());
 
     let (bin_path, text_path, elf_path) = common::binary_paths(name);

@@ -1376,7 +1376,7 @@ where
             PADDING_WORDS,
         >;
         pub type ConcreteGKRVerifierOutput = ::verifier_common::GKRVerifierOutput<'static, #quartic_struct, GKR_ROUNDS, GKR_ADDRS>;
-
+        pub type ConcreteVerifierOutput = ::verifier_common::VerifierOutput<#quartic_struct, INIT_AND_TEARDOWN_SETS, CAP_SIZE, NUM_MEMORY_COMMITS, NUM_SETUP_COMMITS>;
 
     };
 

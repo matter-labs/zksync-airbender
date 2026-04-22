@@ -32,7 +32,6 @@ where
     let mut result = Vec::new();
 
     result.extend_from_slice(inits_and_teardowns_top_bits);
-    proof.external_challenges.flatten_into_buffer(&mut result);
     if compiled_circuit.generic_lookup_tables_width > 0 {
         proof
             .whir_proof
