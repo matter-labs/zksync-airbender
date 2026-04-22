@@ -105,6 +105,87 @@ fn copy_base_layer_cap_to_slab(
     Ok(())
 }
 
+/// Phase 3: H2D-copy one intermediate WHIR query's pinned host data into
+/// the slab's `whir.intermediate[round].query_{indices,leaves,paths}`
+/// sub-ranges at `query_idx`. `leafs_accessor` points at
+/// `values_per_leaf * EXT4_DEGREE` `BF` values whose byte layout matches
+/// the `values_per_leaf` `E4` slab slots (`E4 = #[repr(C, align(16))]
+/// { c0: BF, c1: BF, c0: BF, c1: BF }` via `Ext2`, equivalent to
+/// `[BF; 4]`). `merkle_paths_accessor` points at `path_len` `Digest`s,
+/// reinterpreted as flat `[u32]` for the slab. `None` slab is a no-op
+/// (test paths).
+fn copy_intermediate_query_to_slab(
+    all_indexes_accessor: crate::primitives::context::UnsafeAccessor<[u32]>,
+    leafs_accessor: crate::primitives::context::UnsafeAccessor<[BF]>,
+    paths_accessor: crate::primitives::context::UnsafeAccessor<[Digest]>,
+    proof_slab: Option<&DeviceAllocation<u8>>,
+    proof_layout: &ProofLayout,
+    round: usize,
+    query_idx: usize,
+    stream: &era_cudart::stream::CudaStream,
+) -> CudaResult<()> {
+    let Some(slab) = proof_slab else { return Ok(()) };
+    let digest_u32_words = crate::prover::proof_layout::DIGEST_U32_WORDS;
+
+    // Index (single u32 at `query_idx` in `all_indexes_accessor`).
+    let (idx_ptr, idx_total_len) = unsafe {
+        proof_layout.whir_intermediate_query_indices_device_mut(slab.as_ptr() as *mut u8, round)
+    };
+    if idx_total_len == 0 {
+        return Ok(());
+    }
+    assert!(query_idx < idx_total_len);
+    let idx_src = unsafe { all_indexes_accessor.get() };
+    // SAFETY: single-slot write inside the slab index array.
+    let idx_dst = unsafe {
+        era_cudart::slice::DeviceSlice::from_raw_parts_mut(idx_ptr.add(query_idx), 1)
+    };
+    memory_copy_async(idx_dst, &idx_src[query_idx..query_idx + 1], stream)?;
+
+    // Leaves: `values_per_leaf * EXT4_DEGREE` `BF` → `values_per_leaf` `E4`
+    // slots (byte-equivalent). Write as `BF` into the slab, treating the
+    // E4 slot as a `[BF; 4]` array.
+    let (leaves_ptr_e4, leaves_total_e4) = unsafe {
+        proof_layout.whir_intermediate_query_leaves_device_mut(slab.as_ptr() as *mut u8, round)
+    };
+    let leaf_values_len_e4 =
+        leaves_total_e4 / idx_total_len;
+    let leaves_src_bf = unsafe { leafs_accessor.get() };
+    assert_eq!(leaves_src_bf.len(), leaf_values_len_e4 * EXT4_DEGREE);
+    // SAFETY: slab `E4` slot at `query_idx` offset has `leaf_values_len_e4 * 4`
+    // BFs worth of storage.
+    let leaves_dst = unsafe {
+        era_cudart::slice::DeviceSlice::from_raw_parts_mut(
+            leaves_ptr_e4.add(query_idx * leaf_values_len_e4) as *mut BF,
+            leaves_src_bf.len(),
+        )
+    };
+    memory_copy_async(leaves_dst, leaves_src_bf, stream)?;
+
+    // Paths: flat Digest → `[u32]` reinterpret, `path_len` digests per query.
+    let (paths_ptr, paths_total_u32) = unsafe {
+        proof_layout.whir_intermediate_query_paths_device_mut(slab.as_ptr() as *mut u8, round)
+    };
+    let paths_len_digests_per_query = paths_total_u32 / (idx_total_len * digest_u32_words);
+    let paths_src_digests = unsafe { paths_accessor.get() };
+    assert_eq!(paths_src_digests.len(), paths_len_digests_per_query);
+    let paths_src_u32 = unsafe {
+        std::slice::from_raw_parts(
+            paths_src_digests.as_ptr() as *const u32,
+            paths_src_digests.len() * digest_u32_words,
+        )
+    };
+    let paths_dst = unsafe {
+        era_cudart::slice::DeviceSlice::from_raw_parts_mut(
+            paths_ptr.add(query_idx * paths_len_digests_per_query * digest_u32_words),
+            paths_src_u32.len(),
+        )
+    };
+    memory_copy_async(paths_dst, paths_src_u32, stream)?;
+
+    Ok(())
+}
+
 /// Phase 3: H2D-copy the single-coset Merkle cap digests (flat `[u32]` tail of
 /// each `Digest = [u32; DIGEST_U32_WORDS]`) from an
 /// oracle's host-pinned tree caps into the slab's
@@ -2930,6 +3011,16 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
             let query_values_per_leaf = query.values_per_leaf();
             let query_log_lde_factor = oracle_to_query.lde_factor().trailing_zeros();
             let query_coset_tree_size = oracle_to_query.packed_leaf_count();
+            copy_intermediate_query_to_slab(
+                query_indexes_host.get_accessor(),
+                query_leafs_accessor,
+                query_paths_accessor,
+                proof_slab,
+                proof_layout,
+                internal_round_idx,
+                query_idx,
+                stream,
+            )?;
             let query_indexes_accessor = query_indexes_host.get_accessor();
             let (eq_upload, _eq_host) = schedule_accumulate_eq_sample_in_place_device(
                 &mut state,
