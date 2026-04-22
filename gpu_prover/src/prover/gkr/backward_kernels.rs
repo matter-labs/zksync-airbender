@@ -926,11 +926,9 @@ pub(crate) struct ScheduledBackwardWorkflowState<E: FieldExtension<BF> + Field> 
     pub(super) lookup_multiplicative_challenge: E,
     pub(super) lookup_additive_challenge: E,
     pub(super) seed: Seed,
-    pub(super) proofs: BTreeMap<usize, SumcheckIntermediateProofValues<BF, E>>,
 }
 
 pub(crate) struct GpuGKRBackwardExecution<E: FieldExtension<BF> + Field> {
-    pub(crate) proofs: BTreeMap<usize, SumcheckIntermediateProofValues<BF, E>>,
     pub(crate) claims_for_layers: BTreeMap<usize, BTreeMap<GKRAddress, E>>,
     pub(crate) points_for_claims_at_layer: BTreeMap<usize, Vec<E>>,
     pub(crate) next_batching_challenge: E,
@@ -1018,7 +1016,6 @@ where
             lookup_multiplicative_challenge: E::ZERO,
             lookup_additive_challenge: E::ZERO,
             seed: Seed::default(),
-            proofs: BTreeMap::new(),
         }
     }
 }
@@ -1273,12 +1270,6 @@ pub(crate) fn apply_base_layer_extra_evaluations_to_workflow_state<E>(
             .iter()
             .map(|(address, value)| (*address, *value)),
     );
-    state
-        .proofs
-        .get_mut(&0)
-        .expect("missing layer-0 proof before base-layer transcript update")
-        .extra_evaluations_from_caching_relations =
-        extra_evaluations_from_caching_relations.clone();
 }
 
 pub(crate) fn take_backward_execution_from_shared_state<E>(
@@ -1289,7 +1280,6 @@ where
 {
     let state = unsafe { shared_state.get_mut() };
     GpuGKRBackwardExecution {
-        proofs: std::mem::take(&mut state.proofs),
         claims_for_layers: std::mem::take(&mut state.claims_for_layers),
         points_for_claims_at_layer: std::mem::take(&mut state.points_for_claims_at_layer),
         next_batching_challenge: state.current_batching_challenge,
