@@ -123,11 +123,8 @@ pub struct SizedProofPowChallenges<const NUM_FOLDINGS: usize> {
     pub fri_queries_pow_challenge: u64,
 }
 
-use core::mem::MaybeUninit;
-
 extern crate alloc;
-
-use field::{Mersenne31Field, Mersenne31Quartic};
+use field::{Field, FieldExtension, PrimeField};
 use prover::definitions::*;
 
 pub use blake2s_u32;
@@ -138,7 +135,7 @@ pub use prover;
 pub use transcript;
 #[cfg(feature = "gkr_verify")]
 pub mod errors;
-pub mod fri_folding;
+// pub mod fri_folding;
 #[cfg(feature = "gkr_verify")]
 pub mod gkr;
 #[cfg(all(feature = "proof_utils", feature = "gkr_verify"))]
@@ -149,6 +146,9 @@ pub mod whir;
 pub mod inline_ops;
 pub mod lazy_vec;
 pub mod no_inline_ops;
+
+#[cfg(feature = "gkr_verify")]
+pub use self::gkr::{GKRVerifierOutput, InitialGKRTranscript};
 
 /// Wrappers for common field operations used by the verifier.
 /// We use inline operations when compiling to RISC-V to maximize performance,
@@ -184,146 +184,147 @@ pub type DefaultLeafInclusionVerifier = prover::definitions::Blake2sForEverythin
 pub type DefaultLeafInclusionVerifier =
     prover::definitions::Blake2sForEverythingVerifierWithAlternativeCompression;
 
-// pub type VerifierFunctionPointer<
-//     const CAP_SIZE: usize,
-//     const NUM_COSETS: usize,
-//     const NUM_DELEGATION_CHALLENGES: usize,
-//     const NUM_AUX_BOUNDARY_VALUES: usize,
-//     const NUM_STATE_ELEMENTS: usize,
-//     const NUM_MACHINE_STATE_CHALLENGES: usize = 0,
-// > = unsafe fn(
-//     &mut ProofOutput<
-//         CAP_SIZE,
-//         NUM_COSETS,
-//         NUM_DELEGATION_CHALLENGES,
-//         NUM_AUX_BOUNDARY_VALUES,
-//         NUM_MACHINE_STATE_CHALLENGES,
-//     >,
-//     &mut ProofPublicInputs<NUM_STATE_ELEMENTS>,
-// );
-
-// #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash)]
-// pub struct ProofOutput<
-//     const CAP_SIZE: usize,
-//     const NUM_COSETS: usize,
-//     const NUM_DELEGATION_CHALLENGES: usize,
-//     const NUM_AUX_BOUNDARY_VALUES: usize,
-//     const NUM_MACHINE_STATE_CHALLENGES: usize = 0,
-// > {
-//     #[serde(bound(
-//         deserialize = "MerkleTreeCap<CAP_SIZE>: serde::Deserialize<'de>, [MerkleTreeCap<CAP_SIZE>; NUM_COSETS]: serde::Deserialize<'de>"
-//     ))]
-//     #[serde(bound(
-//         serialize = "MerkleTreeCap<CAP_SIZE>: serde::Serialize, [MerkleTreeCap<CAP_SIZE>; NUM_COSETS]: serde::Serialize"
-//     ))]
-//     pub setup_caps: [MerkleTreeCap<CAP_SIZE>; NUM_COSETS],
-//     pub memory_caps: [MerkleTreeCap<CAP_SIZE>; NUM_COSETS],
-//     pub memory_challenges: ExternalMemoryArgumentChallenges,
-//     #[serde(bound(
-//         deserialize = "[ExternalDelegationArgumentChallenges; NUM_DELEGATION_CHALLENGES]: serde::Deserialize<'de>"
-//     ))]
-//     #[serde(bound(
-//         serialize = "[ExternalDelegationArgumentChallenges; NUM_DELEGATION_CHALLENGES]: serde::Serialize"
-//     ))]
-//     pub delegation_challenges: [ExternalDelegationArgumentChallenges; NUM_DELEGATION_CHALLENGES],
-//     #[serde(bound(
-//         deserialize = "[ExternalMachineStateArgumentChallenges; NUM_MACHINE_STATE_CHALLENGES]: serde::Deserialize<'de>"
-//     ))]
-//     #[serde(bound(
-//         serialize = "[ExternalMachineStateArgumentChallenges; NUM_MACHINE_STATE_CHALLENGES]: serde::Serialize"
-//     ))]
-//     pub machine_state_permutation_challenges:
-//         [ExternalMachineStateArgumentChallenges; NUM_MACHINE_STATE_CHALLENGES],
-//     #[serde(bound(
-//         deserialize = "[AuxArgumentsBoundaryValues; NUM_AUX_BOUNDARY_VALUES]: serde::Deserialize<'de>"
-//     ))]
-//     #[serde(bound(
-//         serialize = "[AuxArgumentsBoundaryValues; NUM_AUX_BOUNDARY_VALUES]: serde::Serialize"
-//     ))]
-//     pub lazy_init_boundary_values: [AuxArgumentsBoundaryValues; NUM_AUX_BOUNDARY_VALUES],
-//     pub grand_product_accumulator: Mersenne31Quartic,
-//     #[serde(bound(
-//         deserialize = "[Mersenne31Quartic; NUM_DELEGATION_CHALLENGES]: serde::Deserialize<'de>"
-//     ))]
-//     #[serde(bound(
-//         serialize = "[Mersenne31Quartic; NUM_DELEGATION_CHALLENGES]: serde::Serialize"
-//     ))]
-//     pub delegation_argument_accumulator: [Mersenne31Quartic; NUM_DELEGATION_CHALLENGES],
-//     pub circuit_sequence: u32,
-//     pub delegation_type: u32,
-// }
-
-// impl<
-//         const CAP_SIZE: usize,
-//         const NUM_COSETS: usize,
-//         const NUM_DELEGATION_CHALLENGES: usize,
-//         const NUM_AUX_BOUNDARY_VALUES: usize,
-//         const NUM_MACHINE_STATE_CHALLENGES: usize,
-//     >
-//     ProofOutput<
-//         CAP_SIZE,
-//         NUM_COSETS,
-//         NUM_DELEGATION_CHALLENGES,
-//         NUM_AUX_BOUNDARY_VALUES,
-//         NUM_MACHINE_STATE_CHALLENGES,
-//     >
-// {
-//     pub fn setup_caps_flattened(&'_ self) -> &'_ [u32] {
-//         unsafe {
-//             core::slice::from_raw_parts(
-//                 self.setup_caps.as_ptr_range().start.cast::<u32>(),
-//                 self.setup_caps
-//                     .as_ptr_range()
-//                     .end
-//                     .offset_from(self.setup_caps.as_ptr_range().start) as usize,
-//             )
-//         }
-//     }
-
-//     pub fn memory_caps_flattened(&'_ self) -> &'_ [u32] {
-//         unsafe {
-//             core::slice::from_raw_parts(
-//                 self.memory_caps.as_ptr_range().start.cast::<u32>(),
-//                 self.memory_caps
-//                     .as_ptr_range()
-//                     .end
-//                     .offset_from(self.memory_caps.as_ptr_range().start) as usize,
-//             )
-//         }
-//     }
-// }
-
-// #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash)]
-// pub struct ProofPublicInputs<const NUM_STATE_ELEMENTS: usize> {
-//     #[serde(bound(
-//         deserialize = "[Mersenne31Field; NUM_STATE_ELEMENTS]: serde::Deserialize<'de>"
-//     ))]
-//     #[serde(bound(serialize = "[Mersenne31Field; NUM_STATE_ELEMENTS]: serde::Serialize"))]
-//     pub input_state_variables: [Mersenne31Field; NUM_STATE_ELEMENTS],
-//     #[serde(bound(
-//         deserialize = "[Mersenne31Field; NUM_STATE_ELEMENTS]: serde::Deserialize<'de>"
-//     ))]
-//     #[serde(bound(serialize = "[Mersenne31Field; NUM_STATE_ELEMENTS]: serde::Serialize"))]
-//     pub output_state_variables: [Mersenne31Field; NUM_STATE_ELEMENTS],
-// }
-
-// impl<const NUM_STATE_ELEMENTS: usize> ProofPublicInputs<NUM_STATE_ELEMENTS> {
-//     pub fn uninit() -> Self {
-//         unsafe {
-//             Self {
-//                 input_state_variables: MaybeUninit::uninit().assume_init(),
-//                 output_state_variables: MaybeUninit::uninit().assume_init(),
-//             }
-//         }
-//     }
-// }
-
-pub fn parse_field_els_as_u32_from_u16_limbs_checked(input: [Mersenne31Field; 2]) -> u32 {
+pub fn parse_field_els_as_u32_from_u16_limbs_checked(
+    input: [::field::baby_bear::base::BabyBearField; 2],
+) -> u32 {
     let [low, high] = input;
-    let low = low.to_reduced_u32();
-    let high = high.to_reduced_u32();
+    let low = low.as_u32_reduced();
+    let high = high.as_u32_reduced();
     assert!(low & core::hint::black_box(0xffff0000u32) == 0);
     assert!(high & core::hint::black_box(0xffff0000u32) == 0);
 
     low | (high << 16)
+}
+
+use crate::errors::ErrorCreator;
+use blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS;
+use non_determinism_source::NonDeterminismSource;
+
+pub struct VerifierOutput<
+    E: Field,
+    const INIT_AND_TEARDOWN_SETS: usize,
+    const CAP_SIZE: usize,
+    const NUM_MEMORY_COMMITS: usize,
+    const NUM_SETUP_COMMITS: usize,
+> {
+    pub inits_and_teardowns_top_bits: [u32; INIT_AND_TEARDOWN_SETS],
+    pub memory_caps: [[[u32; BLAKE2S_DIGEST_SIZE_U32_WORDS]; CAP_SIZE]; NUM_MEMORY_COMMITS],
+    pub grand_product_read_set_accumulator: E,
+    pub grand_product_write_set_accumulator: E,
+}
+
+pub trait ConcreteVerifierImpl<
+    F: PrimeField,
+    EE: FieldExtension<F> + Field,
+    const INIT_AND_TEARDOWN_SETS: usize,
+    const EXTERNAL_CHALLENGES_FLATTENED_SIZE: usize,
+    const CAP_SIZE: usize,
+    const NUM_MEMORY_COMMITS: usize,
+    const NUM_WITNESS_COMMITS: usize,
+    const NUM_SETUP_COMMITS: usize,
+    const PADDING_WORDS: usize,
+    const ROUNDS: usize,
+    const ADDRS: usize,
+>: 'static
+{
+    fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
+        external_challenges: &GKRExternalChallenges<F, EE>,
+        initial_transcript: &InitialGKRTranscript<
+            EE,
+            INIT_AND_TEARDOWN_SETS,
+            EXTERNAL_CHALLENGES_FLATTENED_SIZE,
+            CAP_SIZE,
+            NUM_MEMORY_COMMITS,
+            NUM_WITNESS_COMMITS,
+            NUM_SETUP_COMMITS,
+            PADDING_WORDS,
+        >,
+        transcript_state: &mut crate::structs::TranscriptState,
+    ) -> Result<GKRVerifierOutput<'static, EE, ROUNDS, ADDRS>, E::Error>;
+    fn verify_whir<I: NonDeterminismSource, E: ErrorCreator>(
+        initial_transcript: &InitialGKRTranscript<
+            EE,
+            INIT_AND_TEARDOWN_SETS,
+            EXTERNAL_CHALLENGES_FLATTENED_SIZE,
+            CAP_SIZE,
+            NUM_MEMORY_COMMITS,
+            NUM_WITNESS_COMMITS,
+            NUM_SETUP_COMMITS,
+            PADDING_WORDS,
+        >,
+        transcript_state: &mut crate::structs::TranscriptState,
+        whir_batching_challenge: EE,
+        base_layer_claims: &[EE],
+        initial_claim_point: &[EE],
+    ) -> Result<(), E::Error>;
+}
+
+pub fn verify_impl<
+    I: NonDeterminismSource,
+    E: ErrorCreator,
+    F: PrimeField,
+    EE: FieldExtension<F> + Field,
+    const INIT_AND_TEARDOWN_SETS: usize,
+    const EXTERNAL_CHALLENGES_FLATTENED_SIZE: usize,
+    const CAP_SIZE: usize,
+    const NUM_MEMORY_COMMITS: usize,
+    const NUM_WITNESS_COMMITS: usize,
+    const NUM_SETUP_COMMITS: usize,
+    const PADDING_WORDS: usize,
+    const ROUNDS: usize,
+    const ADDRS: usize,
+    V: ConcreteVerifierImpl<
+        F,
+        EE,
+        INIT_AND_TEARDOWN_SETS,
+        EXTERNAL_CHALLENGES_FLATTENED_SIZE,
+        CAP_SIZE,
+        NUM_MEMORY_COMMITS,
+        NUM_WITNESS_COMMITS,
+        NUM_SETUP_COMMITS,
+        PADDING_WORDS,
+        ROUNDS,
+        ADDRS,
+    >,
+>(
+    external_challenges: &GKRExternalChallenges<F, EE>,
+) -> Result<
+    VerifierOutput<EE, INIT_AND_TEARDOWN_SETS, CAP_SIZE, NUM_MEMORY_COMMITS, NUM_SETUP_COMMITS>,
+    E::Error,
+>
+where
+    [(); EE::DEGREE]:,
+{
+    use crate::gkr::make_initial_transcript;
+    let (initial_transcript_values, mut ts) = make_initial_transcript::<
+        F,
+        EE,
+        I,
+        INIT_AND_TEARDOWN_SETS,
+        EXTERNAL_CHALLENGES_FLATTENED_SIZE,
+        CAP_SIZE,
+        NUM_MEMORY_COMMITS,
+        NUM_WITNESS_COMMITS,
+        NUM_SETUP_COMMITS,
+        PADDING_WORDS,
+    >(external_challenges);
+    let gkr_output = V::verify_gkr::<I, E>(
+        external_challenges,
+        &initial_transcript_values,
+        &mut ts
+    )?;
+    let _ = V::verify_whir::<I, E>(
+        &initial_transcript_values,
+        &mut ts,
+        gkr_output.whir_batching_challenge,
+        gkr_output.base_layer_claims.as_slice(),
+        &gkr_output.evaluation_point[..gkr_output.evaluation_point_len],
+    )?;
+
+    Ok(VerifierOutput {
+        inits_and_teardowns_top_bits: initial_transcript_values.inits_and_teardowns_top_bits,
+        memory_caps: initial_transcript_values.memory_caps,
+        grand_product_read_set_accumulator: gkr_output.permutation_read_product,
+        grand_product_write_set_accumulator: gkr_output.permutation_write_product,
+    })
 }

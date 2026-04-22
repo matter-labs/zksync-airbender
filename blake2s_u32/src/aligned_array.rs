@@ -34,6 +34,17 @@ impl<T, A, const N: usize> AlignedArray<T, A, N> {
     }
 
     #[inline(always)]
+    pub fn as_chunks<'a, const M: usize>(&'a self) -> &'a [AlignedArray<T, A, M>] {
+        assert!(M > 0);
+        assert_eq!(N % M, 0);
+        assert_eq!(core::mem::size_of::<T>() * M, core::mem::align_of::<A>());
+        unsafe {
+            let len = N / M;
+            core::slice::from_raw_parts(self.data.as_ptr().cast(), len)
+        }
+    }
+
+    #[inline(always)]
     pub fn new_uninit() -> AlignedArray<MaybeUninit<T>, A, N> {
         AlignedArray {
             _aligner: [],

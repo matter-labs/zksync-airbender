@@ -81,8 +81,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
     type CountersT = DelegationsAndFamiliesCounters;
 
     let trace_len: usize = 1 << TRACE_LEN_LOG2;
-    let lde_factor = 2;
-    let tree_cap_size = 32;
+    let whir_schedule = WhirSchedule::default_for_tests_80_bits_24();
 
     // let worker = Worker::new_with_num_threads(1);
     let worker = Worker::new_with_num_threads(8);
@@ -426,7 +425,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
                 &twiddles,
                 2,
                 1,
-                tree_cap_size,
+                whir_schedule.cap_size,
                 trace_len.trailing_zeros() as usize,
                 &worker,
             );
@@ -618,7 +617,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
                 &twiddles,
                 2,
                 1,
-                tree_cap_size,
+                whir_schedule.cap_size,
                 trace_len.trailing_zeros() as usize,
                 &worker,
             );
@@ -812,7 +811,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
                 &twiddles,
                 2,
                 1,
-                tree_cap_size,
+                whir_schedule.cap_size,
                 trace_len.trailing_zeros() as usize,
                 &worker,
             );
@@ -997,7 +996,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
                 &twiddles,
                 2,
                 1,
-                tree_cap_size,
+                whir_schedule.cap_size,
                 trace_len.trailing_zeros() as usize,
                 &worker,
             );
@@ -1201,7 +1200,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
                 &twiddles,
                 2,
                 1,
-                tree_cap_size,
+                whir_schedule.cap_size,
                 trace_len.trailing_zeros() as usize,
                 &worker,
             );
@@ -1398,7 +1397,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
                 &twiddles,
                 2,
                 1,
-                tree_cap_size,
+                whir_schedule.cap_size,
                 trace_len.trailing_zeros() as usize,
                 &worker,
             );
@@ -1529,7 +1528,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
                 &twiddles,
                 2,
                 1,
-                tree_cap_size,
+                whir_schedule.cap_size,
                 trace_len.trailing_zeros() as usize,
                 &worker,
             );
@@ -1719,7 +1718,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
                 &twiddles,
                 2,
                 1,
-                tree_cap_size,
+                whir_schedule.cap_size,
                 BLAKE_NUM_DELEGATION_CYCLES.trailing_zeros() as usize,
                 &worker,
             );
@@ -1883,7 +1882,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
                 &twiddles,
                 2,
                 1,
-                tree_cap_size,
+                whir_schedule.cap_size,
                 BIGINT_NUM_DELEGATION_CYCLES.trailing_zeros() as usize,
                 &worker,
             );
@@ -2046,7 +2045,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
                 &twiddles,
                 2,
                 1,
-                tree_cap_size,
+                whir_schedule.cap_size,
                 KECCAK_NUM_DELEGATION_CYCLES.trailing_zeros() as usize,
                 &worker,
             );

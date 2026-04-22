@@ -37,6 +37,7 @@ pub struct GKRExternalChallenges<F: PrimeField, E: FieldExtension<F> + Field> {
 }
 
 impl<F: PrimeField, E: FieldExtension<F> + Field> GKRExternalChallenges<F, E> {
+    #[cfg(feature = "prover")]
     pub fn flatten_into_buffer(&self, dst: &mut Vec<u32>)
     where
         [(); E::DEGREE]: Sized,
@@ -44,6 +45,42 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> GKRExternalChallenges<F, E> {
         use crate::gkr::prover::transcript_utils::flatten_field_els_into;
         flatten_field_els_into(&self.permutation_argument_linearization_challenges, dst);
         flatten_field_els_into(&[self.permutation_argument_additive_part], dst);
+    }
+
+    #[inline(always)]
+    pub fn flatten_into_fixed_size_buffer_dst<const N: usize>(&self, dst: &mut [u32; N])
+    where
+        [(); E::DEGREE]: Sized,
+    {
+        assert_eq!(
+            N,
+            E::DEGREE * (NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES + 1)
+        );
+        unsafe {
+            let mut it = dst.as_chunks_unchecked_mut::<{ E::DEGREE }>().iter_mut();
+            for src in self.permutation_argument_linearization_challenges.iter() {
+                *it.next().unwrap_unchecked() = E::into_coeffs(*src)
+                    .into_array::<{ E::DEGREE }>()
+                    .map(|el: F| el.as_u32_raw_repr_reduced());
+            }
+            *it.next().unwrap_unchecked() = E::into_coeffs(self.permutation_argument_additive_part)
+                .into_array::<{ E::DEGREE }>()
+                .map(|el: F| el.as_u32_raw_repr_reduced());
+        }
+    }
+
+    #[inline(always)]
+    pub fn flatten_into_fixed_size_buffer<const N: usize>(&self) -> [u32; N]
+    where
+        [(); E::DEGREE]: Sized,
+    {
+        unsafe {
+            #[allow(invalid_value)]
+            let mut dst = [const { MaybeUninit::uninit().assume_init() }; N];
+            use core::mem::MaybeUninit;
+            self.flatten_into_fixed_size_buffer_dst(&mut dst);
+            dst
+        }
     }
 
     pub fn draw_from_transcript_seed(

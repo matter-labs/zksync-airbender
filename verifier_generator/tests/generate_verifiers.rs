@@ -68,7 +68,7 @@ fn generate_gkr_verifier<MW: MersenneWrapper>(
     let files = gkr::generate_gkr_inlined::<MW, _, _, _>(
         &compiled_circuit,
         &proof,
-        4,
+        prover::definitions::DEFAULT_PLAIN_TEXT_POLY_SIZE_LOG2,
         circuit.whir_schedule(),
     );
 
@@ -99,7 +99,7 @@ fn generate_whir_verifier<MW: MersenneWrapper>(
     let initial_hbs = (gkr_files
         .oracles
         .iter()
-        .map(|o| o.num_columns * initial_vpf)
+        .map(|(_, o)| o.num_columns * initial_vpf)
         .max()
         .unwrap_or(0)
         + 15)
@@ -152,24 +152,6 @@ fn generate_verifier_for_circuit<MW: MersenneWrapper>(circuit: &CircuitData) {
         pub mod whir;
         #[path = "../common/mod.rs"]
         pub mod common;
-        pub use gkr::verify_gkr;
-
-        use ::verifier_common::non_determinism_source::NonDeterminismSource;
-        use ::verifier_common::errors::ErrorCreator;
-
-        pub fn verify<I: NonDeterminismSource, E: ErrorCreator>() -> Result<(), E::Error> {
-            let gkr_output = verify_gkr::<I, E>()?;
-            let mut ts = ::verifier_common::structs::TranscriptState::new(
-                gkr_output.whir_transcript_seed,
-            );
-            whir::verify_whir::<I, E>(
-                &mut ts,
-                gkr_output.whir_batching_challenge,
-                &gkr_output.oracle_caps,
-                gkr_output.base_layer_claims.as_slice(),
-                &gkr_output.evaluation_point[..gkr_output.evaluation_point_len],
-            )
-        }
     };
     write_and_fmt(&format!("{}/mod.rs", dir), &mod_rs);
 }

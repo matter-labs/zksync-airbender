@@ -1469,7 +1469,6 @@ pub fn generate_layer_final_step_accumulator<MW: MersenneWrapper, F: PrimeField>
             batch_base: #quartic_struct,
             lookup_additive_challenge: #quartic_struct,
             lookup_alpha: #quartic_struct,
-            challenge_powers: &[#quartic_struct; GKR_MAX_POW],
             linearization_challenges: &[#quartic_struct],
             permutation_argument_additive_part: #quartic_struct,
             address_high_bits_shift: u32,

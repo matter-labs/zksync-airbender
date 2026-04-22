@@ -1,5 +1,6 @@
 use proc_macro2::TokenStream;
 use quote::{quote, TokenStreamExt};
+use std::collections::BTreeMap;
 
 use crate::mersenne_wrapper::MersenneWrapper;
 pub use crate::utils::{
@@ -18,6 +19,36 @@ use prover::merkle_trees::ColumnMajorMerkleTreeConstructor;
 pub mod dim_reducing_layer;
 pub mod standard_layer;
 
+// Ordering matches prover implementation
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum OracleType {
+    Memory = 0,
+    Witness,
+    Setup,
+}
+
+// it matches names of the corresponding accessor functions in the
+// initial transcript structure
+impl quote::ToTokens for OracleType {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        use quote::quote;
+
+        let quote = match self {
+            Self::Memory => {
+                quote! { memory_caps_slice }
+            }
+            Self::Witness => {
+                quote! { witness_caps_slice }
+            }
+            Self::Setup => {
+                quote! { setup_caps_slice }
+            }
+        };
+
+        tokens.extend(quote);
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct OracleInfo {
     pub num_columns: usize,
@@ -28,7 +59,7 @@ pub struct OracleInfo {
 pub struct GKRGeneratedFiles {
     pub constants: TokenStream,
     pub gkr: TokenStream,
-    pub oracles: Vec<OracleInfo>,
+    pub oracles: BTreeMap<OracleType, OracleInfo>,
     pub trace_len_log2: usize,
 }
 
@@ -512,7 +543,7 @@ fn generate_cache_relation_checks<MW: MersenneWrapper, F: PrimeField>(
 pub fn generate_gkr_inlined<MW: MersenneWrapper, F: PrimeField, E: FieldExtension<F> + Field, T>(
     compiled_circuit: &GKRCircuitArtifact<F>,
     proof: &GKRProof<F, E, T>,
-    final_trace_size_log_2: usize,
+    sumcheck_output_size_log_2: usize,
     whir_schedule: &WhirSchedule,
 ) -> GKRGeneratedFiles
 where
@@ -520,11 +551,10 @@ where
     [(); E::DEGREE]: Sized,
 {
     let num_standard_layers = compiled_circuit.layers.len();
-    let initial_layer_for_sumcheck = *proof
-        .sumcheck_intermediate_values
-        .keys()
-        .max()
-        .expect("proof must have sumcheck values");
+    let trace_len = compiled_circuit.trace_len;
+    assert!(trace_len.is_power_of_two());
+    let trace_len_log_2 = trace_len.trailing_zeros() as usize;
+    let initial_layer_for_sumcheck = trace_len_log_2 - sumcheck_output_size_log_2;
 
     let standard_sorted_addrs: Vec<Vec<GKRAddress>> = compiled_circuit
         .layers
@@ -619,12 +649,7 @@ where
         })
         .collect();
 
-    let max_sumcheck_rounds = proof
-        .sumcheck_intermediate_values
-        .values()
-        .map(|v| v.sumcheck_num_rounds)
-        .max()
-        .unwrap_or(0);
+    let max_sumcheck_rounds = trace_len_log_2 + compiled_circuit.layers.len() - sumcheck_output_size_log_2;
 
     let max_unique_addrs_standard = standard_sorted_addrs
         .iter()
@@ -668,11 +693,15 @@ where
         .unwrap_or(0)
         + 1;
 
-    let max_evals = total_output_polys * (1usize << final_trace_size_log_2);
+    let max_evals = total_output_polys * (1usize << sumcheck_output_size_log_2);
+
+    let num_memory_commits = (compiled_circuit.memory_layout.total_width > 0) as usize;
+    let num_witness_commits = (compiled_circuit.witness_layout.total_width > 0) as usize;
+    let num_setup_commits = (compiled_circuit.generic_lookup_tables_width > 0) as usize;
 
     let degree = E::DEGREE;
     let digest_words = prover::transcript::blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS;
-    let num_challenges = final_trace_size_log_2 + BATCHING_CHALLENGE_EXTRA;
+    let num_challenges = sumcheck_output_size_log_2 + BATCHING_CHALLENGE_EXTRA;
     let draw_buf_capacity = (num_challenges * degree).next_multiple_of(digest_words);
     let block_words = prover::transcript::blake2s_u32::BLAKE2S_BLOCK_SIZE_U32_WORDS;
     let dim_reducing_words_per_addr = DIM_REDUCE_EVAL_POINTS * degree;
@@ -690,47 +719,16 @@ where
     let evals_commit_buf_size = evals_commit_total.div_ceil(block_words) * block_words;
 
     let num_teardown_sets = compiled_circuit.memory_layout.teardown_sets.len();
-    let num_linearization_challenges = proof
-        .external_challenges
-        .permutation_argument_linearization_challenges
-        .len();
+    let num_linearization_challenges = ::cs::definitions::NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES;
+    let external_challenges_flattened_size = degree * (num_linearization_challenges + 1);
 
-    let trace_len_log2 = proof
-        .sumcheck_intermediate_values
-        .get(&0)
-        .expect("proof must have sumcheck values for layer 0")
-        .sumcheck_num_rounds;
+    let trace_len_log2 = compiled_circuit.trace_len.trailing_zeros() as usize;
 
     let address_high_bits_shift_val: u32 = if num_teardown_sets > 0 {
         const WORD_BITS: u32 = 2;
         (trace_len_log2 as u32) + WORD_BITS - 16
     } else {
         0
-    };
-
-    let initial_transcript_num_u32_words = {
-        let mut tmp = Vec::<u32>::new();
-        tmp.extend(core::iter::repeat(0u32).take(num_teardown_sets));
-        proof.external_challenges.flatten_into_buffer(&mut tmp);
-        proof
-            .whir_proof
-            .setup_commitment
-            .commitment
-            .cap
-            .add_into_buffer(&mut tmp);
-        proof
-            .whir_proof
-            .memory_commitment
-            .commitment
-            .cap
-            .add_into_buffer(&mut tmp);
-        proof
-            .whir_proof
-            .witness_commitment
-            .commitment
-            .cap
-            .add_into_buffer(&mut tmp);
-        tmp.len()
     };
 
     let mut layer_functions = TokenStream::new();
@@ -796,69 +794,18 @@ where
     let mut main_body = TokenStream::new();
 
     main_body.extend(quote! {
-        let mut transcript_buf = LazyVec::<u32, GKR_TRANSCRIPT_U32>::new();
-        {
-            let mut i = 0;
-            while i < GKR_TRANSCRIPT_U32 {
-                transcript_buf.push(I::read_word());
-                i += 1;
-            }
-        }
-
-        let oracle_caps: [u32; TOTAL_CAP_WORDS] = {
-            let mut caps = [0u32; TOTAL_CAP_WORDS];
-            let src = transcript_buf.as_slice();
-            let base = CAPS_OFFSET_IN_TRANSCRIPT;
-            let mut dst = 0;
-            let mut i = 0;
-            while i < NUM_ORACLES {
-                let words = ORACLE_CAP_WORDS[i];
-                let src_offset = ORACLE_CAP_TRANSCRIPT_OFFSETS[i];
-                let mut j = 0;
-                while j < words {
-                    caps[dst + j] = src[base + src_offset + j];
-                    j += 1;
-                }
-                dst += words;
-                i += 1;
-            }
-            caps
-        };
-
-        let mut ts = TranscriptState::new(
-            Blake2sTranscript::commit_initial(transcript_buf.as_slice())
-        );
-
-        let mut init_challenges = LazyVec::<#quartic_struct, 3>::new();
-        unsafe { init_challenges.set_len(3); }
-        draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, init_challenges.as_mut_slice());
+        let mut init_challenges = LazyVec::<#quartic_struct, 2>::new();
+        unsafe { init_challenges.set_len(2); }
+        draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, init_challenges.as_mut_slice());
         let lookup_alpha = *init_challenges.get(0);
         let lookup_additive_challenge = *init_challenges.get(1);
-        let constraints_batch_challenge = *init_challenges.get(2);
-
-        let (linearization_challenges, permutation_argument_additive_part) = {
-            let ext_start = #num_teardown_sets;
-            let num_lin = #num_linearization_challenges;
-            let mut lin = LazyVec::<#quartic_struct, #num_linearization_challenges>::new();
-            let mut i = 0;
-            while i < num_lin {
-                let base = ext_start + i * EXT_DEGREE;
-                let raw = unsafe { (transcript_buf.as_slice().as_ptr().add(base) as *const [u32; EXT_DEGREE]).as_ref_unchecked() };
-                lin.push(ext_from_raw_words::<#field_struct, #quartic_struct>(raw));
-                i += 1;
-            }
-            let add_base = ext_start + num_lin * EXT_DEGREE;
-            let raw = unsafe { (transcript_buf.as_slice().as_ptr().add(add_base) as *const [u32; EXT_DEGREE]).as_ref_unchecked() };
-            let additive = ext_from_raw_words::<#field_struct, #quartic_struct>(raw);
-            (unsafe { lin.into_array() }, additive)
-        };
         let address_high_bits_shift: u32 = #address_high_bits_shift_val;
     });
 
     let total_output_polys: usize = output_groups.iter().map(|g| g.num_addresses).sum();
-    let evals_per_poly = 1usize << final_trace_size_log_2;
+    let evals_per_poly = 1usize << sumcheck_output_size_log_2;
     let total_evals_needed = total_output_polys * evals_per_poly;
-    let evaluation_point_len = final_trace_size_log_2;
+    let evaluation_point_len = sumcheck_output_size_log_2;
 
     let mut claim_accum_body = TokenStream::new();
     let mut eval_offset_val = 0usize;
@@ -900,7 +847,7 @@ where
         let mut all_challenges = LazyVec::<#quartic_struct, { GKR_ROUNDS + 1 }>::new();
         unsafe { all_challenges.set_len(#num_challenges); }
         draw_field_els_into::<DRAW_BUF_CAPACITY>(
-            &mut ts, all_challenges.as_mut_slice());
+            ts, all_challenges.as_mut_slice());
         let batching_challenge = *all_challenges.get(#num_challenges - 1);
 
         let mut eq_buf = LazyVec::<#quartic_struct, #evals_per_poly>::new();
@@ -948,7 +895,7 @@ where
                 let initial_claim = dim_reducing_compute_claim(state.prev_claims.as_array::<#total_output_polys>(), state.batching_challenge);
                 let (final_claim, final_eq_prefactor) =
                     verify_sumcheck_rounds::<I, E, #num_regular_rounds, GKR_COMMIT_BUF>(
-                        &mut ts, initial_claim, &mut state.prev_point, #config_idx)?;
+                        ts, initial_claim, &mut state.prev_point, #config_idx)?;
                 let mut fc_len = #num_regular_rounds;
                 let data_words = #num_input_addrs * 4 * <#quartic_struct as FieldExtension<#field_struct>>::DEGREE;
                 {
@@ -968,7 +915,7 @@ where
                 ts.commit(&mut eval_buf, data_words);
                 let mut draw_buf = LazyVec::<#quartic_struct, 3>::new();
                 unsafe { draw_buf.set_len(3); }
-                draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, draw_buf.as_mut_slice());
+                draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
                 let r_before_last = *draw_buf.get(0);
                 let r_last = *draw_buf.get(1);
                 let next_batching = *draw_buf.get(2);
@@ -994,20 +941,20 @@ where
         });
     }
 
-    if num_standard_layers > 0 {
-        let mul_cb = MW::mul_assign(quote! { pow }, quote! { constraints_batch_challenge });
-        main_body.extend(quote! {
-            let challenge_powers: [#quartic_struct; GKR_MAX_POW] = {
-                let mut lv = LazyVec::<#quartic_struct, GKR_MAX_POW>::new();
-                let mut pow = #quartic_one;
-                for _ in 0..GKR_MAX_POW {
-                    lv.push(pow);
-                    #mul_cb;
-                }
-                unsafe { lv.into_array() }
-            };
-        });
-    }
+    // if num_standard_layers > 0 {
+    //     let mul_cb = MW::mul_assign(quote! { pow }, quote! { constraints_batch_challenge });
+    //     main_body.extend(quote! {
+    //         let challenge_powers: [#quartic_struct; GKR_MAX_POW] = {
+    //             let mut lv = LazyVec::<#quartic_struct, GKR_MAX_POW>::new();
+    //             let mut pow = #quartic_one;
+    //             for _ in 0..GKR_MAX_POW {
+    //                 lv.push(pow);
+    //                 #mul_cb;
+    //             }
+    //             unsafe { lv.into_array() }
+    //         };
+    //     });
+    // }
 
     for config_idx in (0..num_standard_layers).rev() {
         let proof_values = proof
@@ -1120,7 +1067,7 @@ where
                 let initial_claim = #compute_claim_fn(state.prev_claims.as_array::<#num_output_addrs>(), state.batching_challenge);
                 let (final_claim, final_eq_prefactor) =
                     verify_sumcheck_rounds::<I, E, #num_regular_rounds, GKR_COMMIT_BUF>(
-                        &mut ts, initial_claim, &mut state.prev_point, #config_idx)?;
+                        ts, initial_claim, &mut state.prev_point, #config_idx)?;
                 let mut fc_len = #num_regular_rounds;
                 let data_words = #num_dedup_addrs * 2 * <#quartic_struct as FieldExtension<#field_struct>>::DEGREE;
                 {
@@ -1133,8 +1080,9 @@ where
                 {
                     let evals: &[[#quartic_struct; 2]] = eval_buf.data_as(#num_dedup_addrs);
                     let f = #final_step_fn(evals, state.batching_challenge,
-                        lookup_additive_challenge, lookup_alpha, &challenge_powers,
-                        &linearization_challenges, permutation_argument_additive_part,
+                        lookup_additive_challenge, lookup_alpha,
+                        &external_challenges.permutation_argument_linearization_challenges,
+                        external_challenges.permutation_argument_additive_part,
                         address_high_bits_shift);
                     verify_final_step_check::<E>(f,
                         *state.prev_point.get_unchecked(state.prev_point_len - 1),
@@ -1143,7 +1091,7 @@ where
                 ts.commit(&mut eval_buf, data_words);
                 let mut draw_buf = LazyVec::<#quartic_struct, 2>::new();
                 unsafe { draw_buf.set_len(2); }
-                draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, draw_buf.as_mut_slice());
+                draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
                 let last_r = *draw_buf.get(0);
                 let next_batching = *draw_buf.get(1);
                 *state.prev_point.get_unchecked_mut(fc_len) = last_r;
@@ -1229,7 +1177,7 @@ where
     }
 
     main_body.extend(quote! {
-        state.batching_challenge = draw_single_field_el(&mut ts);
+        state.batching_challenge = draw_single_field_el(ts);
 
         let mut permutation_read_product: #quartic_struct = #quartic_one;
         let mut permutation_write_product: #quartic_struct = #quartic_one;
@@ -1245,8 +1193,6 @@ where
             permutation_write_product,
             additional_base_layer_openings: BASE_LAYER_ADDITIONAL_OPENINGS,
             whir_batching_challenge: state.batching_challenge,
-            whir_transcript_seed: ts.seed,
-            oracle_caps,
         })
     });
 
@@ -1273,71 +1219,60 @@ where
     let final_m = trace_len_log2 - total_fold_steps;
     let final_monomials_len = 1usize << final_m;
 
-    let oracle_commitments = [
-        &proof.whir_proof.memory_commitment,
-        &proof.whir_proof.witness_commitment,
-        &proof.whir_proof.setup_commitment,
-    ];
-
     let base_lde_factor_log2 = whir_base_lde_factor.trailing_zeros() as usize;
     let initial_fold_steps = whir_fold_steps[0];
+    let configured_cap_size: usize = whir_schedule.cap_size;
+    assert!(configured_cap_size > 0);
+    let cap_size_log2 = configured_cap_size.trailing_zeros() as usize;
+    let canonical_depth = trace_len_log2 + base_lde_factor_log2 - initial_fold_steps - cap_size_log2;
 
-    let oracles: Vec<OracleInfo> = oracle_commitments
-        .iter()
-        .map(|c| {
-            let num_columns = c.num_columns;
-            let cap_size = c.commitment.cap.cap.len();
-            let depth = if cap_size == 0 {
-                0
-            } else {
-                let cap_size_log2 = cap_size.trailing_zeros() as usize;
-                trace_len_log2 + base_lde_factor_log2 - initial_fold_steps - cap_size_log2
-            };
-            OracleInfo {
-                num_columns,
-                cap_size,
-                depth,
-            }
-        })
-        .collect();
-
-    let total_oracle_cols: usize = oracles.iter().map(|o| o.num_columns).sum();
-    let digest_words = prover::transcript::blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS;
-    let oracle_cap_words: Vec<usize> = oracles.iter().map(|o| o.cap_size * digest_words).collect();
-    let total_cap_words: usize = oracle_cap_words.iter().sum();
-    let whir_cap_words = whir_cap_size * digest_words;
-
-    let caps_offset_in_transcript = initial_transcript_num_u32_words - total_cap_words;
-
-    // Caps appear in the transcript as [setup, memory, witness] (CAP_TRANSCRIPT_ORDER).
-    // The verifier's oracle list is [memory, witness, setup] (eval order).
-    // Compute the byte offset of each eval-order oracle's cap within the transcript.
-    use verifier_common::gkr::{
-        CAP_TRANSCRIPT_ORDER, MEMORY_ORACLE_IDX, NUM_BASE_ORACLES, SETUP_ORACLE_IDX,
-        WITNESS_ORACLE_IDX,
-    };
-    let cap_words_by_eval_idx = [
-        oracle_cap_words[MEMORY_ORACLE_IDX],
-        oracle_cap_words[WITNESS_ORACLE_IDX],
-        oracle_cap_words[SETUP_ORACLE_IDX],
-    ];
-    let mut oracle_cap_transcript_offsets = vec![0usize; NUM_BASE_ORACLES];
+    let mut oracles = BTreeMap::new();
     {
-        let mut offset = 0;
-        for &eval_idx in CAP_TRANSCRIPT_ORDER.iter() {
-            oracle_cap_transcript_offsets[eval_idx] = offset;
-            offset += cap_words_by_eval_idx[eval_idx];
+        // memory
+        let num_columns = compiled_circuit.memory_layout.total_width;
+        if num_columns > 0 {
+            let info = OracleInfo {
+                num_columns,
+                cap_size: configured_cap_size,
+                depth: canonical_depth,
+            };
+            oracles.insert(OracleType::Memory, info);
+        }
+
+        // witness
+        let num_columns = compiled_circuit.witness_layout.total_width;
+        if num_columns > 0 {
+            let info = OracleInfo {
+                num_columns,
+                cap_size: configured_cap_size,
+                depth: canonical_depth,
+            };
+            oracles.insert(OracleType::Witness, info);
+        }
+
+        // setup
+        let num_columns = compiled_circuit.generic_lookup_tables_width;
+        if num_columns > 0 {
+            let info = OracleInfo {
+                num_columns,
+                cap_size: configured_cap_size,
+                depth: canonical_depth,
+            };
+            oracles.insert(OracleType::Setup, info);
         }
     }
 
-    let oracle_depths: Vec<usize> = oracles.iter().map(|o| o.depth).collect();
-    let oracle_num_cols: Vec<usize> = oracles.iter().map(|o| o.num_columns).collect();
+    let total_oracle_cols: usize = oracles.iter().map(|(_, o)| o.num_columns).sum();
+    let digest_words = prover::transcript::blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS;
+    let whir_cap_words = whir_cap_size * digest_words;
+
+    let oracle_depths: Vec<usize> = oracles.iter().map(|(_, o)| o.depth).collect();
+    let oracle_num_cols: Vec<usize> = oracles.iter().map(|(_, o)| o.num_columns).collect();
     let num_oracles = oracles.len();
 
     // Mapping from WHIR initial-round column index (in [memory, witness, setup] order) to
     // the index in GKR's base_layer_claims (which is sorted per target_addrs of layer 0).
     let initial_whir_claim_indices: Vec<usize> = {
-        use verifier_common::gkr::{MEMORY_ORACLE_IDX, SETUP_ORACLE_IDX, WITNESS_ORACLE_IDX};
         let layer_0_target_addrs: Vec<GKRAddress> = {
             let regular: std::collections::BTreeSet<GKRAddress> =
                 standard_sorted_addrs[0].iter().copied().collect();
@@ -1364,13 +1299,13 @@ where
                 })
         };
         let mut indices = Vec::with_capacity(total_oracle_cols);
-        for i in 0..oracles[MEMORY_ORACLE_IDX].num_columns {
+        for i in 0..oracles.get(&OracleType::Memory).map(|el| el.num_columns).unwrap_or(0) {
             indices.push(position(&GKRAddress::BaseLayerMemory(i)));
         }
-        for i in 0..oracles[WITNESS_ORACLE_IDX].num_columns {
+        for i in 0..oracles.get(&OracleType::Witness).map(|el| el.num_columns).unwrap_or(0) {
             indices.push(position(&GKRAddress::BaseLayerWitness(i)));
         }
-        for i in 0..oracles[SETUP_ORACLE_IDX].num_columns {
+        for i in 0..oracles.get(&OracleType::Setup).map(|el| el.num_columns).unwrap_or(0) {
             indices.push(position(&GKRAddress::Setup(i)));
         }
         indices
@@ -1391,10 +1326,23 @@ where
 
     let constants = quote! {
         use ::verifier_common::cs::definitions::{GKRAddress, VirtualSetupPoly};
+
         pub const GKR_ROUNDS: usize = #max_sumcheck_rounds;
         pub const GKR_ADDRS: usize = #max_addrs;
         pub const GKR_EVALS: usize = #max_evals;
-        pub const GKR_TRANSCRIPT_U32: usize = #initial_transcript_num_u32_words;
+
+        pub const INIT_AND_TEARDOWN_SETS: usize = #num_teardown_sets;
+
+        pub const EXTERNAL_CHALLENGES_FLATTENED_SIZE: usize = #external_challenges_flattened_size;
+
+        pub const CAP_SIZE: usize = #configured_cap_size;
+
+        pub const NUM_MEMORY_COMMITS: usize = #num_memory_commits;
+        pub const NUM_WITNESS_COMMITS: usize = #num_witness_commits;
+        pub const NUM_SETUP_COMMITS: usize = #num_setup_commits;
+
+        pub const PADDING_WORDS: usize = 0;
+
         pub const GKR_MAX_POW: usize = #max_pow;
         pub const GKR_EVAL_BUF: usize = #eval_buf_size;
         pub const GKR_COMMIT_BUF: usize = #commit_buf_size;
@@ -1409,15 +1357,27 @@ where
         pub const FINAL_MONOMIALS_LEN: usize = #final_monomials_len;
         pub const NUM_ORACLES: usize = #num_oracles;
         pub const ORACLE_NUM_COLS: [usize; #num_oracles] = [#(#oracle_num_cols),*];
-        pub const ORACLE_CAP_WORDS: [usize; #num_oracles] = [#(#oracle_cap_words),*];
         pub const ORACLE_DEPTHS: [usize; #num_oracles] = [#(#oracle_depths),*];
         pub const TOTAL_ORACLE_COLS: usize = #total_oracle_cols;
-        pub const TOTAL_CAP_WORDS: usize = #total_cap_words;
-        pub const ORACLE_CAP_TRANSCRIPT_OFFSETS: [usize; #num_oracles] = [#(#oracle_cap_transcript_offsets),*];
         pub const WHIR_ORACLE_DEPTHS: [usize; #num_intermediate_oracles] = [#(#whir_oracle_depths),*];
         pub const WHIR_CAP_WORDS: usize = #whir_cap_words;
-        pub const CAPS_OFFSET_IN_TRANSCRIPT: usize = #caps_offset_in_transcript;
         pub const INITIAL_WHIR_CLAIM_INDICES: [usize; #total_oracle_cols] = [#(#initial_whir_claim_indices),*];
+
+        #field_use_stmts
+
+        pub type ConcreteInitialTranscript = ::verifier_common::InitialGKRTranscript<
+            #quartic_struct,
+            INIT_AND_TEARDOWN_SETS,
+            EXTERNAL_CHALLENGES_FLATTENED_SIZE,
+            CAP_SIZE,
+            NUM_MEMORY_COMMITS,
+            NUM_WITNESS_COMMITS,
+            NUM_SETUP_COMMITS,
+            PADDING_WORDS,
+        >;
+        pub type ConcreteGKRVerifierOutput = ::verifier_common::GKRVerifierOutput<'static, #quartic_struct, GKR_ROUNDS, GKR_ADDRS>;
+
+
     };
 
     let gkr = quote! {
@@ -1439,14 +1399,63 @@ where
         use ::verifier_common::transcript::Blake2sTranscript;
         use ::verifier_common::field::{Field, FieldExtension, PrimeField};
         use ::verifier_common::non_determinism_source::NonDeterminismSource;
+        use crate::prover::gkr::prover::GKRExternalChallenges;
         use super::constants::*;
 
         #layer_functions
 
         #[allow(unused_variables, unused_mut, unused_unsafe)]
-        pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator,
-        >() -> Result<GKRVerifierOutput<'static, #quartic_struct, GKR_ROUNDS, GKR_ADDRS, TOTAL_CAP_WORDS>, E::Error> {
+        pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
+            external_challenges: &GKRExternalChallenges<#field_struct, #quartic_struct>,
+            initial_transcript: &ConcreteInitialTranscript,
+            ts: &mut ::verifier_common::structs::TranscriptState,
+        ) -> Result<ConcreteGKRVerifierOutput, E::Error> {
             unsafe { #main_body }
+        }
+
+        pub struct VerifierImplementation;
+
+        impl ::verifier_common::ConcreteVerifierImpl<
+            #field_struct,
+            #quartic_struct,
+            INIT_AND_TEARDOWN_SETS,
+            EXTERNAL_CHALLENGES_FLATTENED_SIZE,
+            CAP_SIZE,
+            NUM_MEMORY_COMMITS,
+            NUM_WITNESS_COMMITS,
+            NUM_SETUP_COMMITS,
+            PADDING_WORDS,
+            GKR_ROUNDS,
+            GKR_ADDRS,
+        > for VerifierImplementation {
+            #[inline(always)]
+            fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
+                external_challenges: &GKRExternalChallenges<#field_struct, #quartic_struct>,
+                initial_transcript: &ConcreteInitialTranscript,
+                transcript_state: &mut ::verifier_common::structs::TranscriptState,
+            ) -> Result<ConcreteGKRVerifierOutput, E::Error> {
+                verify_gkr::<I, E>(
+                    external_challenges,
+                    initial_transcript,
+                    transcript_state,
+                )
+            }
+            #[inline(always)]
+            fn verify_whir<I: NonDeterminismSource, E: ErrorCreator>(
+                initial_transcript: &ConcreteInitialTranscript,
+                transcript_state: &mut ::verifier_common::structs::TranscriptState,
+                whir_batching_challenge: #quartic_struct,
+                base_layer_claims: &[#quartic_struct],
+                initial_claim_point: &[#quartic_struct],
+            ) -> Result<(), E::Error> {
+                super::whir::verify_whir::<I, E>(
+                    initial_transcript,
+                    transcript_state,
+                    whir_batching_challenge,
+                    base_layer_claims,
+                    initial_claim_point,
+                )
+            }
         }
     };
 

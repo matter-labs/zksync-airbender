@@ -95,7 +95,6 @@ pub fn verify_merkle_path<I: NonDeterminismSource>(
     let mut level = 0;
     while level < depth {
         let is_right = leaf_index & 1 == 1;
-        #[cfg(any(feature = "blake2_with_compression", feature = "blake2_g_function"))]
         {
             let proof_buf = hasher.get_merkle_path_proof_buffer(is_right);
             let mut i = 0;
@@ -104,23 +103,6 @@ pub fn verify_merkle_path<I: NonDeterminismSource>(
                 i += 1;
             }
             hasher.compress_node::<true>(is_right);
-        }
-        #[cfg(not(any(feature = "blake2_with_compression", feature = "blake2_g_function")))]
-        {
-            use blake2s_u32::BLAKE2S_BLOCK_SIZE_U32_WORDS;
-            let state = hasher.read_state_for_output();
-            let offset = if is_right { 0 } else { 8 };
-            let mut i = 0;
-            while i < BLAKE2S_DIGEST_SIZE_U32_WORDS {
-                hasher.input_buffer[offset + i] = I::read_word();
-                i += 1;
-            }
-            let state_offset = if is_right { 8 } else { 0 };
-            hasher.input_buffer[state_offset..state_offset + 8].copy_from_slice(&state);
-            hasher.reset();
-            unsafe {
-                hasher.run_round_function::<true>(BLAKE2S_BLOCK_SIZE_U32_WORDS, true);
-            }
         }
         leaf_index >>= 1;
         level += 1;
@@ -161,7 +143,6 @@ pub fn hash_leaf_data_into_state<const N: usize>(
     let num_blocks = num_full_blocks + if last_block_words > 0 { 1 } else { 0 };
     hasher.reset();
 
-    #[cfg(any(feature = "blake2_with_compression", feature = "blake2_g_function"))]
     unsafe {
         if num_blocks == 0 {
             // Empty leaf: hash a single zero-filled finalization block.
@@ -191,29 +172,5 @@ pub fn hash_leaf_data_into_state<const N: usize>(
             };
             hasher.run_round_function_with_input::<true>(last_block, last_active, true);
         }
-    }
-
-    #[cfg(not(any(feature = "blake2_with_compression", feature = "blake2_g_function")))]
-    {
-        let data: &[u32] = &buf[..num_words];
-        for block_idx in 0..num_full_blocks {
-            let block_start = block_idx * BLAKE2S_BLOCK_SIZE_U32_WORDS;
-            let block: &[u32; BLAKE2S_BLOCK_SIZE_U32_WORDS] = unsafe {
-                &*(data.as_ptr().add(block_start) as *const [u32; BLAKE2S_BLOCK_SIZE_U32_WORDS])
-            };
-            if block_idx == num_full_blocks - 1 && last_block_words == 0 {
-                let mut dst = [0u32; BLAKE2S_DIGEST_SIZE_U32_WORDS];
-                hasher.absorb_final_block::<true>(block, BLAKE2S_BLOCK_SIZE_U32_WORDS, &mut dst);
-                hasher.state = dst;
-                return;
-            }
-            hasher.absorb::<true>(block);
-        }
-        let mut last_block = [0u32; BLAKE2S_BLOCK_SIZE_U32_WORDS];
-        let tail_start = num_full_blocks * BLAKE2S_BLOCK_SIZE_U32_WORDS;
-        last_block[..last_block_words].copy_from_slice(&data[tail_start..]);
-        let mut dst = [0u32; BLAKE2S_DIGEST_SIZE_U32_WORDS];
-        hasher.absorb_final_block::<true>(&last_block, last_block_words, &mut dst);
-        hasher.state = dst;
     }
 }

@@ -33,24 +33,30 @@ where
 
     result.extend_from_slice(inits_and_teardowns_top_bits);
     proof.external_challenges.flatten_into_buffer(&mut result);
-    proof
-        .whir_proof
-        .setup_commitment
-        .commitment
-        .cap
-        .add_into_buffer(&mut result);
-    proof
-        .whir_proof
-        .memory_commitment
-        .commitment
-        .cap
-        .add_into_buffer(&mut result);
-    proof
-        .whir_proof
-        .witness_commitment
-        .commitment
-        .cap
-        .add_into_buffer(&mut result);
+    if compiled_circuit.generic_lookup_tables_width > 0 {
+        proof
+            .whir_proof
+            .setup_commitment
+            .commitment
+            .cap
+            .add_into_buffer(&mut result);
+    }
+    if compiled_circuit.memory_layout.total_width > 0 {
+        proof
+            .whir_proof
+            .memory_commitment
+            .commitment
+            .cap
+            .add_into_buffer(&mut result);
+    }
+    if compiled_circuit.witness_layout.total_width > 0 {
+        proof
+            .whir_proof
+            .witness_commitment
+            .commitment
+            .cap
+            .add_into_buffer(&mut result);
+    }
 
     for (_output_type, pair) in &proof.final_explicit_evaluations {
         flatten_field_els::<F, E>(&pair[0], &mut result);

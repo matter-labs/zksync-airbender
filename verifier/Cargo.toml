@@ -12,7 +12,7 @@ categories.workspace = true
 [dependencies]
 field = { workspace = true }
 unroll = { workspace = true }
-verifier_common = { workspace = true , default-features = false}
+verifier_common = { workspace = true , default-features = false }
 
 [features]
 security_80 = ["verifier_common/security_80"]

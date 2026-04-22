@@ -1,7 +1,9 @@
+use std::collections::BTreeMap;
+
 use proc_macro2::TokenStream;
 use quote::quote;
 
-use crate::gkr::OracleInfo;
+use crate::gkr::{OracleInfo, OracleType};
 use crate::mersenne_wrapper::MersenneWrapper;
 use prover::gkr::prover::WhirSchedule;
 
@@ -107,7 +109,7 @@ fn generate_single_oracle_query_body<MW: MersenneWrapper>(
 
 pub fn generate_whir_initial_round<MW: MersenneWrapper>(
     whir_schedule: &WhirSchedule,
-    oracles: &[OracleInfo],
+    oracles: &BTreeMap<OracleType, OracleInfo>,
     trace_len_log2: usize,
 ) -> TokenStream {
     let field_use_stmts = MW::field_use_statements();
@@ -124,7 +126,7 @@ pub fn generate_whir_initial_round<MW: MersenneWrapper>(
 
     let oracle_leaf_words: Vec<usize> = oracles
         .iter()
-        .map(|o| o.num_columns * params.values_per_leaf)
+        .map(|(_, o)| o.num_columns * params.values_per_leaf)
         .collect();
     let max_leaf_words = oracle_leaf_words.iter().copied().max().unwrap_or(0);
     let block_words = prover::transcript::blake2s_u32::BLAKE2S_BLOCK_SIZE_U32_WORDS;
@@ -159,28 +161,25 @@ pub fn generate_whir_initial_round<MW: MersenneWrapper>(
     let mut unrolled_oracle_queries = TokenStream::new();
     {
         let mut gamma_offset_acc = 0usize;
-        let mut cap_offset_acc = 0usize;
-        for (i, oracle) in oracles.iter().enumerate() {
-            let num_cols = oracle.num_columns;
-            let leaf_words = oracle_leaf_words[i];
+        for (oracle_type, oracle_info) in oracles.iter() {
+            let num_cols = oracle_info.num_columns;
+            let leaf_words = num_cols * params.values_per_leaf;
             let gamma_off = gamma_offset_acc;
-            let cap_off = cap_offset_acc;
+            let depth = oracle_info.depth;
 
             if num_cols > 0 {
                 unrolled_oracle_queries.extend(quote! {
                     process_oracle_query::<I, E, WHIR_HASH_BUF_SIZE, #leaf_words>(
                         &mut ts.hasher, hash_buf,
                         #num_cols, tree_index,
-                        ORACLE_DEPTHS[#i],
-                        &oracle_caps[#cap_off..#cap_off + ORACLE_CAP_WORDS[#i]],
+                        #depth,
+                        initial_transcript. #oracle_type (),
                         &gamma_powers[..], #gamma_off,
                         &mut acc0, &mut acc1, q,
                     )?;
                 });
             }
             gamma_offset_acc += num_cols;
-            cap_offset_acc +=
-                oracle.cap_size * prover::transcript::blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS;
         }
     }
 
@@ -224,10 +223,10 @@ pub fn generate_whir_initial_round<MW: MersenneWrapper>(
         const COSET_TREE_SIZE: usize = #coset_tree_size;
 
         pub fn verify_initial_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
+            initial_transcript: &ConcreteInitialTranscript,
             ts: &mut TranscriptState,
             hash_buf: &mut AlignedArray64<MaybeUninit<u32>, WHIR_HASH_BUF_SIZE>,
             batching_challenge: #quartic_struct,
-            oracle_caps: &[u32; TOTAL_CAP_WORDS],
             base_layer_claims: &[#quartic_struct],
             z_initial: &[#quartic_struct],
             accumulator: &mut ::verifier_common::whir::WhirAccumulator<

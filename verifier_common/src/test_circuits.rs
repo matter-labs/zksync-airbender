@@ -43,14 +43,21 @@ impl CircuitData {
     }
 
     pub fn circuit_path(&self) -> String {
-        #[cfg(feature = "no_caches")]
-        let suffix = "_no_caches";
-        #[cfg(not(feature = "no_caches"))]
-        let suffix = "";
-        format!(
-            "{}/cs/compiled_circuits/{}{}{}_gkr.json",
-            REPO_ROOT, self.name, self.layout_suffix, suffix
-        )
+        if self.name == "inits_and_teardowns" {
+            format!(
+                "{}/cs/compiled_circuits/{}{}_no_caches_gkr.json",
+                REPO_ROOT, self.name, self.layout_suffix
+            )
+        } else {
+            #[cfg(feature = "no_caches")]
+            let suffix = "_no_caches";
+            #[cfg(not(feature = "no_caches"))]
+            let suffix = "";
+            format!(
+                "{}/cs/compiled_circuits/{}{}{}_gkr.json",
+                REPO_ROOT, self.name, self.layout_suffix, suffix
+            )
+        }
     }
 
     pub fn binary_paths(&self) -> (String, String, String) {
