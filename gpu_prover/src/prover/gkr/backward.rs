@@ -43,6 +43,7 @@ use prover::transcript::Seed;
 use super::backward_kernels::GpuBackwardSumcheckRoundUpdateKernel;
 pub(crate) use super::backward_kernels::*;
 use super::transform::normalize_compiled_circuit_for_gpu;
+use crate::prover::proof_layout::ProofLayout;
 use super::{
     alloc_host_and_schedule_copy, GpuBaseFieldPolySource,
     GpuBaseFieldPolySourceAfterOneFoldingLaunchDescriptor,
@@ -7229,6 +7230,13 @@ where
         initial_d_claim_point_and_batching: DeviceAllocation<E>,
         initial_d_claims: DeviceAllocation<E>,
         initial_claim_layout: ClaimBufferLayout,
+        // Phase 2b plumbing: the proof slab and its layout flow in from prove()
+        // so upcoming per-layer rewires can route `internal_round_coefficients`
+        // (and later `final_step_evaluations` / `extra_evaluations`) kernel
+        // writes directly into slab offsets via `ProofLayout` accessors. Unused
+        // by the current body — see iterative-knitting-bumblebee.md § Phase 2b.
+        _proof_slab: Option<&DeviceAllocation<u8>>,
+        _proof_layout: &ProofLayout,
         context: &ProverContext,
     ) -> CudaResult<GpuGKRBackwardScheduledExecution<BF, E>> {
         let shared_state_handle =
@@ -7402,6 +7410,8 @@ where
         batching_challenge: E,
         lookup_multiplicative_challenge: E,
         lookup_additive_challenge: E,
+        proof_slab: Option<&DeviceAllocation<u8>>,
+        proof_layout: &ProofLayout,
         context: &ProverContext,
     ) -> CudaResult<GpuGKRBackwardScheduledExecution<BF, E>> {
         let mut shared_state = Box::new(ScheduledBackwardWorkflowState {
@@ -7449,6 +7459,8 @@ where
             initial_d_claim_point_and_batching,
             initial_d_claims,
             initial_claim_layout,
+            proof_slab,
+            proof_layout,
             context,
         )?;
         execution.initial_callbacks.extend(initial_callbacks);
