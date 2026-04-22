@@ -554,7 +554,7 @@ where
     let trace_len = compiled_circuit.trace_len;
     assert!(trace_len.is_power_of_two());
     let trace_len_log_2 = trace_len.trailing_zeros() as usize;
-    let initial_layer_for_sumcheck = trace_len_log_2 - sumcheck_output_size_log_2;
+    let initial_layer_for_sumcheck = num_standard_layers + trace_len_log_2 - sumcheck_output_size_log_2;
 
     let standard_sorted_addrs: Vec<Vec<GKRAddress>> = compiled_circuit
         .layers
@@ -601,7 +601,7 @@ where
     };
 
     let dim_reducing_sorted_addrs: Vec<Vec<GKRAddress>> = (num_standard_layers
-        ..=initial_layer_for_sumcheck)
+        ..initial_layer_for_sumcheck)
         .map(|layer_idx| {
             let mut addrs = build_dim_reducing_addrs(layer_idx);
             addrs.sort();
@@ -649,7 +649,7 @@ where
         })
         .collect();
 
-    let max_sumcheck_rounds = trace_len_log_2 + compiled_circuit.layers.len() - sumcheck_output_size_log_2;
+    let total_gkr_rounds = num_standard_layers + trace_len_log_2 - sumcheck_output_size_log_2;
 
     let max_unique_addrs_standard = standard_sorted_addrs
         .iter()
@@ -757,7 +757,7 @@ where
     }
 
     let mut dim_reduce_index_arrays = TokenStream::new();
-    for (dim_idx, layer_idx) in (num_standard_layers..=initial_layer_for_sumcheck).enumerate() {
+    for (dim_idx, layer_idx) in (num_standard_layers..initial_layer_for_sumcheck).enumerate() {
         let iteration_order_addrs = build_dim_reducing_addrs(layer_idx);
         let sorted = &dim_reducing_sorted_addrs[dim_idx];
         let input_sorted_indices: Vec<usize> = iteration_order_addrs
@@ -879,7 +879,7 @@ where
         #dim_reduce_index_arrays
     });
 
-    for config_idx in (num_standard_layers..=initial_layer_for_sumcheck).rev() {
+    for config_idx in (num_standard_layers..initial_layer_for_sumcheck).rev() {
         let proof_values = proof
             .sumcheck_intermediate_values
             .get(&config_idx)
@@ -1327,7 +1327,7 @@ where
     let constants = quote! {
         use ::verifier_common::cs::definitions::{GKRAddress, VirtualSetupPoly};
 
-        pub const GKR_ROUNDS: usize = #max_sumcheck_rounds;
+        pub const GKR_ROUNDS: usize = #total_gkr_rounds;
         pub const GKR_ADDRS: usize = #max_addrs;
         pub const GKR_EVALS: usize = #max_evals;
 
@@ -1399,7 +1399,7 @@ where
         use ::verifier_common::transcript::Blake2sTranscript;
         use ::verifier_common::field::{Field, FieldExtension, PrimeField};
         use ::verifier_common::non_determinism_source::NonDeterminismSource;
-        use crate::prover::gkr::prover::GKRExternalChallenges;
+        use ::verifier_common::GKRExternalChallenges;
         use super::constants::*;
 
         #layer_functions

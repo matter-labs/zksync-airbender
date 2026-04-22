@@ -4,7 +4,6 @@ use super::common::{
     verify_final_step_check, verify_sumcheck_rounds, EXT_DEGREE,
 };
 use super::constants::*;
-use crate::prover::gkr::prover::GKRExternalChallenges;
 use verifier_common::errors::ErrorCreator;
 use verifier_common::field::baby_bear::base::BabyBearField;
 use verifier_common::field::baby_bear::ext4::BabyBearExt4;
@@ -15,6 +14,7 @@ use verifier_common::lazy_vec::LazyVec;
 use verifier_common::non_determinism_source::NonDeterminismSource;
 use verifier_common::structs::{CommitBuf, TranscriptState};
 use verifier_common::transcript::Blake2sTranscript;
+use verifier_common::GKRExternalChallenges;
 #[inline(always)]
 #[allow(unused_variables)]
 unsafe fn layer_0_compute_claim(
@@ -8078,6 +8078,341 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
         const DIM_REDUCE_INDICES_18: [usize; 8usize] = [
             0usize, 1usize, 2usize, 3usize, 4usize, 5usize, 6usize, 7usize,
         ];
+        const DIM_REDUCE_INDICES_19: [usize; 8usize] = [
+            0usize, 1usize, 2usize, 3usize, 4usize, 5usize, 6usize, 7usize,
+        ];
+        const DIM_REDUCE_INDICES_20: [usize; 8usize] = [
+            0usize, 1usize, 2usize, 3usize, 4usize, 5usize, 6usize, 7usize,
+        ];
+        const DIM_REDUCE_INDICES_21: [usize; 8usize] = [
+            0usize, 1usize, 2usize, 3usize, 4usize, 5usize, 6usize, 7usize,
+        ];
+        const DIM_REDUCE_INDICES_22: [usize; 8usize] = [
+            0usize, 1usize, 2usize, 3usize, 4usize, 5usize, 6usize, 7usize,
+        ];
+        const DIM_REDUCE_INDICES_23: [usize; 8usize] = [
+            0usize, 1usize, 2usize, 3usize, 4usize, 5usize, 6usize, 7usize,
+        ];
+        {
+            let initial_claim = dim_reducing_compute_claim(
+                state.prev_claims.as_array::<8usize>(),
+                state.batching_challenge,
+            );
+            let (final_claim, final_eq_prefactor) =
+                verify_sumcheck_rounds::<I, E, 3usize, GKR_COMMIT_BUF>(
+                    ts,
+                    initial_claim,
+                    &mut state.prev_point,
+                    23usize,
+                )?;
+            let mut fc_len = 3usize;
+            let data_words = 8usize * 4 * <BabyBearExt4 as FieldExtension<BabyBearField>>::DEGREE;
+            {
+                let mut i = 0;
+                while i < data_words {
+                    eval_buf.data_write(i, read_reduced_field_el::<I>());
+                    i += 1;
+                }
+            }
+            {
+                let evals: &[[BabyBearExt4; 4]] = eval_buf.data_as(8usize);
+                let f = dim_reducing_final_step_accumulator(
+                    evals,
+                    state.batching_challenge,
+                    &DIM_REDUCE_INDICES_23,
+                );
+                verify_final_step_check::<E>(
+                    f,
+                    *state.prev_point.get_unchecked(state.prev_point_len - 1),
+                    final_eq_prefactor,
+                    final_claim,
+                    23usize,
+                )?;
+            }
+            ts.commit(&mut eval_buf, data_words);
+            let mut draw_buf = LazyVec::<BabyBearExt4, 3>::new();
+            unsafe {
+                draw_buf.set_len(3);
+            }
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
+            let r_before_last = *draw_buf.get(0);
+            let r_last = *draw_buf.get(1);
+            let next_batching = *draw_buf.get(2);
+            *state.prev_point.get_unchecked_mut(fc_len) = r_before_last;
+            fc_len += 1;
+            *state.prev_point.get_unchecked_mut(fc_len) = r_last;
+            fc_len += 1;
+            const DIM_REDUCING_EXTRA_CHALLENGES: usize = 2;
+            const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;
+            let mut eq4 = LazyVec::<BabyBearExt4, DIM_REDUCING_EQ_SIZE>::new();
+            make_eq_poly(&[r_before_last, r_last], &mut eq4);
+            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(8usize);
+            let eq4_arr: &[BabyBearExt4; DIM_REDUCING_EQ_SIZE] =
+                eq4.as_slice().try_into().unwrap_unchecked();
+            state.prev_claims.clear();
+            for i in 0..8usize {
+                let e = evals.get_unchecked(i);
+                state.prev_claims.push(dot_eq(e, eq4_arr));
+            }
+            state.batching_challenge = next_batching;
+            state.prev_point_len = fc_len;
+        }
+        {
+            let initial_claim = dim_reducing_compute_claim(
+                state.prev_claims.as_array::<8usize>(),
+                state.batching_challenge,
+            );
+            let (final_claim, final_eq_prefactor) =
+                verify_sumcheck_rounds::<I, E, 4usize, GKR_COMMIT_BUF>(
+                    ts,
+                    initial_claim,
+                    &mut state.prev_point,
+                    22usize,
+                )?;
+            let mut fc_len = 4usize;
+            let data_words = 8usize * 4 * <BabyBearExt4 as FieldExtension<BabyBearField>>::DEGREE;
+            {
+                let mut i = 0;
+                while i < data_words {
+                    eval_buf.data_write(i, read_reduced_field_el::<I>());
+                    i += 1;
+                }
+            }
+            {
+                let evals: &[[BabyBearExt4; 4]] = eval_buf.data_as(8usize);
+                let f = dim_reducing_final_step_accumulator(
+                    evals,
+                    state.batching_challenge,
+                    &DIM_REDUCE_INDICES_22,
+                );
+                verify_final_step_check::<E>(
+                    f,
+                    *state.prev_point.get_unchecked(state.prev_point_len - 1),
+                    final_eq_prefactor,
+                    final_claim,
+                    22usize,
+                )?;
+            }
+            ts.commit(&mut eval_buf, data_words);
+            let mut draw_buf = LazyVec::<BabyBearExt4, 3>::new();
+            unsafe {
+                draw_buf.set_len(3);
+            }
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
+            let r_before_last = *draw_buf.get(0);
+            let r_last = *draw_buf.get(1);
+            let next_batching = *draw_buf.get(2);
+            *state.prev_point.get_unchecked_mut(fc_len) = r_before_last;
+            fc_len += 1;
+            *state.prev_point.get_unchecked_mut(fc_len) = r_last;
+            fc_len += 1;
+            const DIM_REDUCING_EXTRA_CHALLENGES: usize = 2;
+            const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;
+            let mut eq4 = LazyVec::<BabyBearExt4, DIM_REDUCING_EQ_SIZE>::new();
+            make_eq_poly(&[r_before_last, r_last], &mut eq4);
+            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(8usize);
+            let eq4_arr: &[BabyBearExt4; DIM_REDUCING_EQ_SIZE] =
+                eq4.as_slice().try_into().unwrap_unchecked();
+            state.prev_claims.clear();
+            for i in 0..8usize {
+                let e = evals.get_unchecked(i);
+                state.prev_claims.push(dot_eq(e, eq4_arr));
+            }
+            state.batching_challenge = next_batching;
+            state.prev_point_len = fc_len;
+        }
+        {
+            let initial_claim = dim_reducing_compute_claim(
+                state.prev_claims.as_array::<8usize>(),
+                state.batching_challenge,
+            );
+            let (final_claim, final_eq_prefactor) =
+                verify_sumcheck_rounds::<I, E, 5usize, GKR_COMMIT_BUF>(
+                    ts,
+                    initial_claim,
+                    &mut state.prev_point,
+                    21usize,
+                )?;
+            let mut fc_len = 5usize;
+            let data_words = 8usize * 4 * <BabyBearExt4 as FieldExtension<BabyBearField>>::DEGREE;
+            {
+                let mut i = 0;
+                while i < data_words {
+                    eval_buf.data_write(i, read_reduced_field_el::<I>());
+                    i += 1;
+                }
+            }
+            {
+                let evals: &[[BabyBearExt4; 4]] = eval_buf.data_as(8usize);
+                let f = dim_reducing_final_step_accumulator(
+                    evals,
+                    state.batching_challenge,
+                    &DIM_REDUCE_INDICES_21,
+                );
+                verify_final_step_check::<E>(
+                    f,
+                    *state.prev_point.get_unchecked(state.prev_point_len - 1),
+                    final_eq_prefactor,
+                    final_claim,
+                    21usize,
+                )?;
+            }
+            ts.commit(&mut eval_buf, data_words);
+            let mut draw_buf = LazyVec::<BabyBearExt4, 3>::new();
+            unsafe {
+                draw_buf.set_len(3);
+            }
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
+            let r_before_last = *draw_buf.get(0);
+            let r_last = *draw_buf.get(1);
+            let next_batching = *draw_buf.get(2);
+            *state.prev_point.get_unchecked_mut(fc_len) = r_before_last;
+            fc_len += 1;
+            *state.prev_point.get_unchecked_mut(fc_len) = r_last;
+            fc_len += 1;
+            const DIM_REDUCING_EXTRA_CHALLENGES: usize = 2;
+            const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;
+            let mut eq4 = LazyVec::<BabyBearExt4, DIM_REDUCING_EQ_SIZE>::new();
+            make_eq_poly(&[r_before_last, r_last], &mut eq4);
+            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(8usize);
+            let eq4_arr: &[BabyBearExt4; DIM_REDUCING_EQ_SIZE] =
+                eq4.as_slice().try_into().unwrap_unchecked();
+            state.prev_claims.clear();
+            for i in 0..8usize {
+                let e = evals.get_unchecked(i);
+                state.prev_claims.push(dot_eq(e, eq4_arr));
+            }
+            state.batching_challenge = next_batching;
+            state.prev_point_len = fc_len;
+        }
+        {
+            let initial_claim = dim_reducing_compute_claim(
+                state.prev_claims.as_array::<8usize>(),
+                state.batching_challenge,
+            );
+            let (final_claim, final_eq_prefactor) =
+                verify_sumcheck_rounds::<I, E, 6usize, GKR_COMMIT_BUF>(
+                    ts,
+                    initial_claim,
+                    &mut state.prev_point,
+                    20usize,
+                )?;
+            let mut fc_len = 6usize;
+            let data_words = 8usize * 4 * <BabyBearExt4 as FieldExtension<BabyBearField>>::DEGREE;
+            {
+                let mut i = 0;
+                while i < data_words {
+                    eval_buf.data_write(i, read_reduced_field_el::<I>());
+                    i += 1;
+                }
+            }
+            {
+                let evals: &[[BabyBearExt4; 4]] = eval_buf.data_as(8usize);
+                let f = dim_reducing_final_step_accumulator(
+                    evals,
+                    state.batching_challenge,
+                    &DIM_REDUCE_INDICES_20,
+                );
+                verify_final_step_check::<E>(
+                    f,
+                    *state.prev_point.get_unchecked(state.prev_point_len - 1),
+                    final_eq_prefactor,
+                    final_claim,
+                    20usize,
+                )?;
+            }
+            ts.commit(&mut eval_buf, data_words);
+            let mut draw_buf = LazyVec::<BabyBearExt4, 3>::new();
+            unsafe {
+                draw_buf.set_len(3);
+            }
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
+            let r_before_last = *draw_buf.get(0);
+            let r_last = *draw_buf.get(1);
+            let next_batching = *draw_buf.get(2);
+            *state.prev_point.get_unchecked_mut(fc_len) = r_before_last;
+            fc_len += 1;
+            *state.prev_point.get_unchecked_mut(fc_len) = r_last;
+            fc_len += 1;
+            const DIM_REDUCING_EXTRA_CHALLENGES: usize = 2;
+            const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;
+            let mut eq4 = LazyVec::<BabyBearExt4, DIM_REDUCING_EQ_SIZE>::new();
+            make_eq_poly(&[r_before_last, r_last], &mut eq4);
+            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(8usize);
+            let eq4_arr: &[BabyBearExt4; DIM_REDUCING_EQ_SIZE] =
+                eq4.as_slice().try_into().unwrap_unchecked();
+            state.prev_claims.clear();
+            for i in 0..8usize {
+                let e = evals.get_unchecked(i);
+                state.prev_claims.push(dot_eq(e, eq4_arr));
+            }
+            state.batching_challenge = next_batching;
+            state.prev_point_len = fc_len;
+        }
+        {
+            let initial_claim = dim_reducing_compute_claim(
+                state.prev_claims.as_array::<8usize>(),
+                state.batching_challenge,
+            );
+            let (final_claim, final_eq_prefactor) =
+                verify_sumcheck_rounds::<I, E, 7usize, GKR_COMMIT_BUF>(
+                    ts,
+                    initial_claim,
+                    &mut state.prev_point,
+                    19usize,
+                )?;
+            let mut fc_len = 7usize;
+            let data_words = 8usize * 4 * <BabyBearExt4 as FieldExtension<BabyBearField>>::DEGREE;
+            {
+                let mut i = 0;
+                while i < data_words {
+                    eval_buf.data_write(i, read_reduced_field_el::<I>());
+                    i += 1;
+                }
+            }
+            {
+                let evals: &[[BabyBearExt4; 4]] = eval_buf.data_as(8usize);
+                let f = dim_reducing_final_step_accumulator(
+                    evals,
+                    state.batching_challenge,
+                    &DIM_REDUCE_INDICES_19,
+                );
+                verify_final_step_check::<E>(
+                    f,
+                    *state.prev_point.get_unchecked(state.prev_point_len - 1),
+                    final_eq_prefactor,
+                    final_claim,
+                    19usize,
+                )?;
+            }
+            ts.commit(&mut eval_buf, data_words);
+            let mut draw_buf = LazyVec::<BabyBearExt4, 3>::new();
+            unsafe {
+                draw_buf.set_len(3);
+            }
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
+            let r_before_last = *draw_buf.get(0);
+            let r_last = *draw_buf.get(1);
+            let next_batching = *draw_buf.get(2);
+            *state.prev_point.get_unchecked_mut(fc_len) = r_before_last;
+            fc_len += 1;
+            *state.prev_point.get_unchecked_mut(fc_len) = r_last;
+            fc_len += 1;
+            const DIM_REDUCING_EXTRA_CHALLENGES: usize = 2;
+            const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;
+            let mut eq4 = LazyVec::<BabyBearExt4, DIM_REDUCING_EQ_SIZE>::new();
+            make_eq_poly(&[r_before_last, r_last], &mut eq4);
+            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(8usize);
+            let eq4_arr: &[BabyBearExt4; DIM_REDUCING_EQ_SIZE] =
+                eq4.as_slice().try_into().unwrap_unchecked();
+            state.prev_claims.clear();
+            for i in 0..8usize {
+                let e = evals.get_unchecked(i);
+                state.prev_claims.push(dot_eq(e, eq4_arr));
+            }
+            state.batching_challenge = next_batching;
+            state.prev_point_len = fc_len;
+        }
         {
             let initial_claim = dim_reducing_compute_claim(
                 state.prev_claims.as_array::<8usize>(),
