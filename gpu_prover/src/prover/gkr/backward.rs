@@ -25,7 +25,7 @@ use field::{Field, FieldExtension, PrimeField};
 use prover::gkr::high_bits_offset_for_inits_and_teardowns;
 use prover::gkr::prover::dimension_reduction::forward::DimensionReducingInputOutput;
 use prover::gkr::prover::transcript_utils::{commit_field_els, draw_random_field_els};
-use prover::gkr::prover::{GKRExternalChallenges, SumcheckIntermediateProofValues};
+use prover::gkr::prover::GKRExternalChallenges;
 use prover::gkr::sumcheck::evaluation_kernels::{
     BaseFieldCopyGKRRelation, BatchedGKRKernel,
     ExtensionCopyGKRRelation, GKRInputs, LookupBaseExtMinusBaseExtGKRRelation,
@@ -4987,7 +4987,6 @@ where
             claim: self.compute_combined_claim(output_layer_claims),
             eq_prefactor: E::ONE,
             folding_challenges: Vec::with_capacity(self.folding_steps + 1),
-            internal_round_coefficients: Vec::with_capacity(self.folding_steps - 1),
             result: None,
         });
         let shared_state_handle =
@@ -5049,7 +5048,6 @@ where
                         c2,
                     );
                     commit_field_els(&mut state.seed, &coeffs);
-                    state.internal_round_coefficients.push(coeffs);
 
                     let folding_challenge = draw_random_field_els::<BF, E>(&mut state.seed, 1)[0];
                     state.claim =
@@ -5118,7 +5116,6 @@ where
             .map(|(addr, values)| (*addr, values.get_accessor()))
             .collect();
         let shared_state_for_callback = shared_state_handle;
-        let folding_steps = self.folding_steps;
         let mut final_readback_callbacks = Callbacks::new();
         final_readback_callbacks.schedule(
             move || unsafe {
@@ -5152,19 +5149,7 @@ where
                     })
                     .collect();
 
-                let proof = SumcheckIntermediateProofValues::<BF, E> {
-                    sumcheck_num_rounds: folding_steps,
-                    internal_round_coefficients: state.internal_round_coefficients.clone(),
-                    final_step_evaluations: last_evaluations
-                        .iter()
-                        .map(|(addr, values)| (*addr, values.to_vec()))
-                        .collect(),
-                    extra_evaluations_from_caching_relations: BTreeMap::new(),
-                    _marker: core::marker::PhantomData,
-                };
-
                 state.result = Some(GpuGKRDimensionReducingLayerExecution {
-                    proof,
                     new_claims,
                     new_claim_point,
                     next_batching_challenge,
@@ -5251,7 +5236,6 @@ where
             claim: E::ZERO,
             eq_prefactor: E::ONE,
             folding_challenges: Vec::with_capacity(self.folding_steps + 1),
-            internal_round_coefficients: Vec::with_capacity(self.folding_steps - 1),
             result: None,
         });
         let shared_state_handle =
@@ -5475,11 +5459,12 @@ where
         // 4-E source slot), absorb them into device_seed via transcript_commit,
         // then squeeze 3 E4 challenges `[r_before_last, r_last,
         // next_batching_challenge]` via transcript_squeeze_e4. The same packed
-        // buffer also feeds the on-device `backward_new_claims_two_var` kernel
-        // (Phase G) and a single bulk D2H for proof assembly — replacing the
-        // N per-address `schedule_last_evaluations_readback` D2Hs and the
-        // host `evaluate_with_two_variable_eq_ext` loop that used to run
-        // inside the final readback callback.
+        // buffer feeds the on-device `backward_new_claims_two_var` kernel
+        // (Phase G) and is D2D-copied into the proof slab's
+        // `final_step_evaluations` range — replacing the N per-address
+        // `schedule_last_evaluations_readback` D2Hs and the host
+        // `evaluate_with_two_variable_eq_ext` loop that used to run inside
+        // the final readback callback.
         let transcript_input_sources = self.final_evaluation_sources_for_last_step(last_step);
         let num_addresses = transcript_input_sources.len();
         let transcript_inputs_len = num_addresses * 4;
@@ -5606,20 +5591,8 @@ where
         let layer_challenges_accessor = layer_challenges_host.get_accessor();
         memory_copy_async(&mut layer_challenges_host, &d_layer_challenges, d2h_stream)?;
 
-        // Single bulk D2H of packed last-round evaluations + single D2H of
-        // device-computed new_claims. Replaces N per-address D2Hs (one per
-        // address × 4 E) + the host `evaluate_with_two_variable_eq_ext` loop.
-        let mut last_evaluations_packed_host: HostAllocation<[E]> = unsafe {
-            context.alloc_host_uninit_slice(transcript_inputs_len.max(1))
-        };
-        let last_evaluations_packed_accessor = last_evaluations_packed_host.get_accessor();
-        if transcript_inputs_len > 0 {
-            memory_copy_async(
-                &mut last_evaluations_packed_host,
-                &d_layer_transcript_inputs[..transcript_inputs_len],
-                d2h_stream,
-            )?;
-        }
+        // Single D2H of device-computed new_claims. Replaces N per-address D2Hs
+        // (one per address × 4 E) + the host `evaluate_with_two_variable_eq_ext` loop.
         let mut new_claims_host: HostAllocation<[E]> =
             unsafe { context.alloc_host_uninit_slice(num_addresses.max(1)) };
         let new_claims_accessor = new_claims_host.get_accessor();
@@ -5665,21 +5638,13 @@ where
         )?;
 
         // Bulk D2H the on-device per-layer state that the final readback
-        // callback needs for proof assembly. All copies continue on `d2h_stream`
-        // within the same fork/join window as the D2Hs above.
+        // callback needs to advance the workflow (seed + folding challenges for
+        // WHIR host setup; packed `device_coeffs` + `last_evaluations` stay on
+        // device and flow through the proof slab). Copies continue on
+        // `d2h_stream` within the same fork/join window as the D2Hs above.
         let mut final_seed_host = unsafe { context.alloc_host_uninit_slice(STATE_SIZE) };
         let final_seed_accessor = final_seed_host.get_accessor();
         memory_copy_async(&mut final_seed_host, &device_seed, d2h_stream)?;
-
-        // Size exactly matches the D2H copy length when coeffs_total_len > 0;
-        // a length-1 stub keeps the allocation valid in the degenerate
-        // folding_steps == 1 case (no copy performed).
-        let mut final_coeffs_host: HostAllocation<[E]> =
-            unsafe { context.alloc_host_uninit_slice(coeffs_total_len.max(1)) };
-        let final_coeffs_accessor = final_coeffs_host.get_accessor();
-        if coeffs_total_len > 0 {
-            memory_copy_async(&mut final_coeffs_host, &device_coeffs, d2h_stream)?;
-        }
 
         let mut final_folding_challenges_host: HostAllocation<[E]> =
             unsafe { context.alloc_host_uninit_slice(last_step.max(1)) };
@@ -5710,26 +5675,10 @@ where
         let callback_addresses = next_claim_layout.addresses.clone();
         let shared_state_for_callback = shared_state_handle;
         let workflow_state_for_callback = workflow_state;
-        let folding_steps = self.folding_steps;
         let layer_idx = self.layer_idx;
         let mut final_readback_callbacks = Callbacks::new();
         final_readback_callbacks.schedule(
             move || unsafe {
-                // Rebuild `last_evaluations` from the single D2H'd packed
-                // buffer + address list captured at schedule time. Needed for
-                // proof assembly's `final_step_evaluations`.
-                let packed = last_evaluations_packed_accessor.get();
-                let last_evaluations: BTreeMap<GKRAddress, [E; 4]> =
-                    callback_addresses
-                        .iter()
-                        .enumerate()
-                        .map(|(i, addr)| {
-                            let base = i * 4;
-                            let values: [E; 4] = packed[base..base + 4].try_into().unwrap();
-                            (*addr, values)
-                        })
-                        .collect();
-
                 // Populate the rolling state from the D2H'd device state. The
                 // seed captured here is already post-commit+squeeze (advanced
                 // on-device), so no host `commit_field_els`/`draw_random_field_els`
@@ -5740,17 +5689,6 @@ where
                         .expect("seed readback has STATE_SIZE words")
                         .to_owned(),
                 );
-                state.internal_round_coefficients.clear();
-                if coeffs_total_len > 0 {
-                    let coeffs_bytes = final_coeffs_accessor.get();
-                    state.internal_round_coefficients.extend(
-                        coeffs_bytes[..coeffs_total_len].chunks_exact(4).map(|c| {
-                            let mut out = [E::ZERO; 4];
-                            out.copy_from_slice(c);
-                            out
-                        }),
-                    );
-                }
                 state.folding_challenges.clear();
                 if last_step > 0 {
                     state
@@ -5778,17 +5716,6 @@ where
                     .map(|(i, addr)| (*addr, new_claims_slice[i]))
                     .collect();
 
-                let proof = SumcheckIntermediateProofValues::<BF, E> {
-                    sumcheck_num_rounds: folding_steps,
-                    internal_round_coefficients: state.internal_round_coefficients.clone(),
-                    final_step_evaluations: last_evaluations
-                        .iter()
-                        .map(|(addr, values)| (*addr, values.to_vec()))
-                        .collect(),
-                    extra_evaluations_from_caching_relations: BTreeMap::new(),
-                    _marker: core::marker::PhantomData,
-                };
-
                 {
                     let workflow_state = workflow_state_for_callback.get_mut();
                     workflow_state.current_claims = new_claims.clone();
@@ -5804,7 +5731,6 @@ where
                 }
 
                 state.result = Some(GpuGKRDimensionReducingLayerExecution {
-                    proof,
                     new_claims,
                     new_claim_point,
                     next_batching_challenge,
@@ -5819,10 +5745,8 @@ where
         }
 
         drop(final_seed_host);
-        drop(final_coeffs_host);
         drop(final_folding_challenges_host);
         drop(layer_challenges_host);
-        drop(last_evaluations_packed_host);
         drop(new_claims_host);
         drop(d_layer_transcript_inputs);
         drop(d_layer_challenges);
@@ -6495,7 +6419,6 @@ where
             claim: self.compute_combined_claim(output_layer_claims),
             eq_prefactor: E::ONE,
             folding_challenges: Vec::with_capacity(self.folding_steps),
-            internal_round_coefficients: Vec::with_capacity(self.folding_steps - 1),
             result: None,
         });
         let shared_state_handle =
@@ -6595,7 +6518,6 @@ where
                     c2,
                 );
                 commit_field_els(&mut state.seed, &coeffs);
-                state.internal_round_coefficients.push(coeffs);
 
                 let folding_challenge = draw_random_field_els::<BF, E>(&mut state.seed, 1)[0];
                 state.claim =
@@ -6655,7 +6577,6 @@ where
             .map(|(addr, values)| (*addr, values.get_accessor()))
             .collect();
         let shared_state_for_callback = shared_state_handle;
-        let folding_steps = self.folding_steps;
         let mut final_readback_callbacks = Callbacks::new();
         final_readback_callbacks.schedule(
             move || unsafe {
@@ -6680,19 +6601,7 @@ where
                     .iter()
                     .map(|(addr, [f0, f1])| (*addr, Self::interpolate_linear(*f0, *f1, &last_r)))
                     .collect();
-                let proof = SumcheckIntermediateProofValues::<BF, E> {
-                    sumcheck_num_rounds: folding_steps,
-                    internal_round_coefficients: state.internal_round_coefficients.clone(),
-                    final_step_evaluations: last_evaluations
-                        .iter()
-                        .map(|(addr, values)| (*addr, values.to_vec()))
-                        .collect(),
-                    extra_evaluations_from_caching_relations: BTreeMap::new(),
-                    _marker: core::marker::PhantomData,
-                };
-
                 state.result = Some(GpuGKRMainLayerExecution {
-                    proof,
                     new_claims,
                     new_claim_point,
                     next_batching_challenge,
@@ -6782,7 +6691,6 @@ where
             claim: E::ZERO,
             eq_prefactor: E::ONE,
             folding_challenges: Vec::with_capacity(self.folding_steps),
-            internal_round_coefficients: Vec::with_capacity(self.folding_steps - 1),
             result: None,
         });
         let shared_state_handle =
@@ -6994,8 +6902,8 @@ where
         // flattened last-round evaluations (2 E per address, vs 4 in dim-
         // reducing), absorb them into device_seed via transcript_commit, then
         // squeeze 2 E4 challenges `[last_r, next_batching_challenge]`. The
-        // same packed buffer feeds `backward_new_claims_linear` and a single
-        // bulk D2H for proof assembly (Phase G).
+        // same packed buffer feeds `backward_new_claims_linear` and is
+        // D2D-copied into the proof slab's `final_step_evaluations` range.
         let transcript_input_sources = self.final_evaluation_sources_for_last_step(last_step);
         let num_addresses = transcript_input_sources.len();
         let transcript_inputs_len = num_addresses * 2;
@@ -7114,19 +7022,7 @@ where
         let layer_challenges_accessor = layer_challenges_host.get_accessor();
         memory_copy_async(&mut layer_challenges_host, &d_layer_challenges, d2h_stream)?;
 
-        // Single bulk D2H of packed last-round evaluations + single D2H of
-        // device-computed new_claims.
-        let mut last_evaluations_packed_host: HostAllocation<[E]> = unsafe {
-            context.alloc_host_uninit_slice(transcript_inputs_len.max(1))
-        };
-        let last_evaluations_packed_accessor = last_evaluations_packed_host.get_accessor();
-        if transcript_inputs_len > 0 {
-            memory_copy_async(
-                &mut last_evaluations_packed_host,
-                &d_layer_transcript_inputs[..transcript_inputs_len],
-                d2h_stream,
-            )?;
-        }
+        // Single D2H of device-computed new_claims.
         let mut new_claims_host: HostAllocation<[E]> =
             unsafe { context.alloc_host_uninit_slice(num_addresses.max(1)) };
         let new_claims_accessor = new_claims_host.get_accessor();
@@ -7162,18 +7058,14 @@ where
             stream,
         )?;
 
-        // D2H the on-device per-layer state: seed, accumulated coefficients,
-        // and folding challenges. All copies continue on `d2h_stream` within
+        // D2H the on-device per-layer state that the final readback needs to
+        // advance the workflow (seed + folding challenges for WHIR host setup;
+        // packed `device_coeffs` + `last_evaluations` stay on device and flow
+        // through the proof slab). All copies continue on `d2h_stream` within
         // the same fork/join window as the D2Hs above.
         let mut final_seed_host = unsafe { context.alloc_host_uninit_slice(STATE_SIZE) };
         let final_seed_accessor = final_seed_host.get_accessor();
         memory_copy_async(&mut final_seed_host, &device_seed, d2h_stream)?;
-        let mut final_coeffs_host: HostAllocation<[E]> =
-            unsafe { context.alloc_host_uninit_slice(coeffs_total_len.max(1)) };
-        let final_coeffs_accessor = final_coeffs_host.get_accessor();
-        if coeffs_total_len > 0 {
-            memory_copy_async(&mut final_coeffs_host, &device_coeffs, d2h_stream)?;
-        }
         let mut final_folding_challenges_host: HostAllocation<[E]> =
             unsafe { context.alloc_host_uninit_slice(last_step) };
         let final_folding_challenges_accessor = final_folding_challenges_host.get_accessor();
@@ -7199,25 +7091,10 @@ where
         let callback_addresses = next_claim_layout.addresses.clone();
         let shared_state_for_callback = shared_state_handle;
         let workflow_state_for_callback = workflow_state;
-        let folding_steps = self.folding_steps;
         let layer_idx = self.layer_idx;
         let mut final_readback_callbacks = Callbacks::new();
         final_readback_callbacks.schedule(
             move || unsafe {
-                // Rebuild `last_evaluations` from the D2H'd packed buffer +
-                // address list captured at schedule time (2 E per address).
-                let packed = last_evaluations_packed_accessor.get();
-                let last_evaluations: BTreeMap<GKRAddress, [E; 2]> =
-                    callback_addresses
-                        .iter()
-                        .enumerate()
-                        .map(|(i, addr)| {
-                            let base = i * 2;
-                            let values: [E; 2] = packed[base..base + 2].try_into().unwrap();
-                            (*addr, values)
-                        })
-                        .collect();
-
                 // Populate the rolling state from the D2H'd device state. The
                 // seed captured here is already post-commit+squeeze; the 2
                 // challenges live in `layer_challenges_host`.
@@ -7227,17 +7104,6 @@ where
                         .expect("seed readback has STATE_SIZE words")
                         .to_owned(),
                 );
-                state.internal_round_coefficients.clear();
-                if coeffs_total_len > 0 {
-                    let coeffs_bytes = final_coeffs_accessor.get();
-                    state.internal_round_coefficients.extend(
-                        coeffs_bytes[..coeffs_total_len].chunks_exact(4).map(|c| {
-                            let mut out = [E::ZERO; 4];
-                            out.copy_from_slice(c);
-                            out
-                        }),
-                    );
-                }
                 state.folding_challenges.clear();
                 state
                     .folding_challenges
@@ -7257,16 +7123,6 @@ where
                     .enumerate()
                     .map(|(i, addr)| (*addr, new_claims_slice[i]))
                     .collect();
-                let proof = SumcheckIntermediateProofValues::<BF, E> {
-                    sumcheck_num_rounds: folding_steps,
-                    internal_round_coefficients: state.internal_round_coefficients.clone(),
-                    final_step_evaluations: last_evaluations
-                        .iter()
-                        .map(|(addr, values)| (*addr, values.to_vec()))
-                        .collect(),
-                    extra_evaluations_from_caching_relations: BTreeMap::new(),
-                    _marker: core::marker::PhantomData,
-                };
 
                 {
                     let workflow_state = workflow_state_for_callback.get_mut();
@@ -7283,7 +7139,6 @@ where
                 }
 
                 state.result = Some(GpuGKRMainLayerExecution {
-                    proof,
                     new_claims,
                     new_claim_point,
                     next_batching_challenge,
@@ -7296,10 +7151,8 @@ where
         tracing_ranges.push(layer_range);
 
         drop(final_seed_host);
-        drop(final_coeffs_host);
         drop(final_folding_challenges_host);
         drop(layer_challenges_host);
-        drop(last_evaluations_packed_host);
         drop(new_claims_host);
         drop(d_layer_transcript_inputs);
         drop(d_layer_challenges);
