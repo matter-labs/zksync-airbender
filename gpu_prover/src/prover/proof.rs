@@ -37,8 +37,8 @@ use crate::prover::decoder::DecoderTableTransfer;
 use crate::prover::gkr::backward::{
     apply_base_layer_extra_evaluations_to_workflow_state, clone_backward_claims_for_layer,
     current_backward_seed, fill_backward_claim_point_for_layer,
-    make_deferred_backward_workflow_state, populate_backward_workflow_state,
-    take_backward_execution_from_shared_state, ClaimBufferLayout, GpuGKRBackwardHostKeepalive,
+    make_deferred_backward_workflow_state, populate_backward_workflow_state, ClaimBufferLayout,
+    GpuGKRBackwardHostKeepalive,
 };
 use crate::prover::gkr::backward_kernels::{eq_group_tables_len, launch_build_eq_values_from_point};
 use crate::prover::gkr::base_layer_claims::{
@@ -218,23 +218,6 @@ pub(crate) fn grand_product_accumulator_from_explicit_evaluations(
     );
 
     grand_product_accumulator_computed
-}
-
-fn collect_explicit_evaluations_from_accessors<E: Copy>(
-    accessors: &BTreeMap<OutputType, [UnsafeAccessor<[E]>; 2]>,
-) -> BTreeMap<OutputType, [Vec<E>; 2]> {
-    accessors
-        .iter()
-        .map(|(output_type, evals)| {
-            (
-                *output_type,
-                [
-                    unsafe { evals[0].get() }.to_vec(),
-                    unsafe { evals[1].get() }.to_vec(),
-                ],
-            )
-        })
-        .collect()
 }
 
 fn flatten_explicit_evaluations_from_accessors<E: Copy>(
@@ -655,7 +638,6 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
         context,
     )?;
     let transcript_handoff = forward_output.schedule_transcript_handoff(context)?;
-    let transcript_handoff_accessors_for_final = transcript_handoff.explicit_evaluation_accessors();
     let initial_layer_for_sumcheck = forward_output.initial_layer_for_sumcheck;
     let output_layer_for_sumcheck =
         forward_output.dimension_reducing_inputs[&initial_layer_for_sumcheck].clone();
@@ -1166,87 +1148,52 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
     let backward_keepalive = backward_scheduled.into_host_keepalive();
     let setup_keepalive = setup_transfer.map(GpuGKRSetupTransfer::into_host_keepalive);
 
-    // Phase 4a: terminal D2H of the whole proof slab into a pinned host
-    // mirror, scheduled after all slab-write work above. Only when the slab
-    // was actually allocated (placeholder test paths have
-    // `proof_layout.total_bytes == 0` and skip). The mirror drives the
-    // single host-side parse that replaces per-piece host bookkeeping.
-    let proof_host_mirror: Option<HostAllocation<[u8]>> =
-        if let Some(slab) = proof_slab.as_ref() {
-            let mut mirror =
-                unsafe { context.alloc_host_uninit_slice::<u8>(proof_layout.total_bytes) };
-            memory_copy_async(
-                unsafe { mirror.get_mut_accessor().get_mut() },
-                slab,
-                stream,
-            )?;
-            Some(mirror)
-        } else {
-            None
-        };
-
+    // Terminal D2H of the whole proof slab into a pinned host mirror, scheduled
+    // after all slab-write work above. The mirror drives the single host-side
+    // parse that replaces per-piece host bookkeeping.
+    let slab = proof_slab
+        .as_ref()
+        .expect("proof slab must be allocated for prove()");
+    let mut mirror = unsafe { context.alloc_host_uninit_slice::<u8>(proof_layout.total_bytes) };
+    memory_copy_async(
+        unsafe { mirror.get_mut_accessor().get_mut() },
+        slab,
+        stream,
+    )?;
+    let proof_host_mirror_accessor = mirror.get_accessor();
+    let proof_host_mirror = Some(mirror);
     callbacks.schedule(
         {
             let proof_slot = proof_handle;
-            let backward_shared_state = backward_shared_state;
             let whir_shared_state = whir_shared_state;
             let base_layer_claims_shared_state_for_final = base_layer_claims_shared_state;
             let external_challenges = external_challenges.clone();
             let proof_layout_for_parse = proof_layout.clone();
-            let proof_host_mirror_accessor =
-                proof_host_mirror.as_ref().map(|m| m.get_accessor());
             move || {
-                // Phase 4b: when the slab is live, source both
-                // `final_explicit_evaluations` and
-                // `sumcheck_intermediate_values` from the terminal-D2H'd slab.
-                // The legacy path via `transcript_handoff_accessors_for_final`
-                // and `backward_shared_state.proofs` stays only for the
-                // test paths that skip slab allocation.
-                let (final_explicit_evaluations, sumcheck_intermediate_values, whir_proof) =
-                    if let Some(accessor) = proof_host_mirror_accessor.as_ref() {
-                        let slab_bytes = unsafe { accessor.get() };
-                        let final_explicit_evaluations =
-                            proof_layout_for_parse.parse_final_explicit_evaluations(slab_bytes);
-                        let mut extra_by_layer = BTreeMap::new();
-                        let base_layer_idx = 0usize;
-                        let extra = clone_base_layer_extra_evaluations_from_caching_relations(
-                            base_layer_claims_shared_state_for_final,
-                        );
-                        if !extra.is_empty() {
-                            extra_by_layer.insert(base_layer_idx, extra);
-                        }
-                        let sumcheck_intermediate_values = proof_layout_for_parse
-                            .parse_sumcheck_intermediate_values(slab_bytes, extra_by_layer);
-                        // Phase 4c: WHIR proof fields come from the slab;
-                        // base-layer queries stay on the host callback path
-                        // (per the approved plan — WHIR rewrite is deferred)
-                        // and are pulled from the existing shared state.
-                        let mut whir_proof = proof_layout_for_parse.parse_whir_proof(slab_bytes);
-                        let host_whir_proof = take_scheduled_whir_proof(whir_shared_state);
-                        whir_proof.setup_commitment.queries =
-                            host_whir_proof.setup_commitment.queries;
-                        whir_proof.memory_commitment.queries =
-                            host_whir_proof.memory_commitment.queries;
-                        whir_proof.witness_commitment.queries =
-                            host_whir_proof.witness_commitment.queries;
-                        (
-                            final_explicit_evaluations,
-                            sumcheck_intermediate_values,
-                            whir_proof,
-                        )
-                    } else {
-                        let final_explicit_evaluations = collect_explicit_evaluations_from_accessors(
-                            &transcript_handoff_accessors_for_final,
-                        );
-                        let backward_execution =
-                            take_backward_execution_from_shared_state(backward_shared_state);
-                        let whir_proof = take_scheduled_whir_proof(whir_shared_state);
-                        (
-                            final_explicit_evaluations,
-                            backward_execution.proofs,
-                            whir_proof,
-                        )
-                    };
+                // Phase 4: source all device-produced proof fields from the
+                // terminal-D2H'd slab. Base-layer WHIR queries still come from
+                // the host callback path pending the WHIR rewrite.
+                let slab_bytes = unsafe { proof_host_mirror_accessor.get() };
+                let final_explicit_evaluations =
+                    proof_layout_for_parse.parse_final_explicit_evaluations(slab_bytes);
+                let mut extra_by_layer = BTreeMap::new();
+                let base_layer_idx = 0usize;
+                let extra = clone_base_layer_extra_evaluations_from_caching_relations(
+                    base_layer_claims_shared_state_for_final,
+                );
+                if !extra.is_empty() {
+                    extra_by_layer.insert(base_layer_idx, extra);
+                }
+                let sumcheck_intermediate_values = proof_layout_for_parse
+                    .parse_sumcheck_intermediate_values(slab_bytes, extra_by_layer);
+                let mut whir_proof = proof_layout_for_parse.parse_whir_proof(slab_bytes);
+                let host_whir_proof = take_scheduled_whir_proof(whir_shared_state);
+                whir_proof.setup_commitment.queries =
+                    host_whir_proof.setup_commitment.queries;
+                whir_proof.memory_commitment.queries =
+                    host_whir_proof.memory_commitment.queries;
+                whir_proof.witness_commitment.queries =
+                    host_whir_proof.witness_commitment.queries;
                 let grand_product_accumulator_computed =
                     grand_product_accumulator_from_explicit_evaluations(
                         &final_explicit_evaluations,

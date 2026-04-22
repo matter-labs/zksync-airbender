@@ -4237,8 +4237,9 @@ fn run_basic_unrolled_async_scheduler_smoke_test() {
     );
 
     let execution = scheduled.wait(&context).unwrap();
-    assert_eq!(execution.proofs.len(), expected_proof_layers);
-    assert!(execution.proofs.contains_key(&0));
+    // `claims_for_layers` carries one entry per proof-producing layer plus the
+    // initial top-layer claim seeded before scheduling.
+    assert_eq!(execution.claims_for_layers.len(), expected_proof_layers + 1);
     assert!(execution.claims_for_layers.contains_key(&0));
     assert!(execution.points_for_claims_at_layer.contains_key(&0));
     assert!(!execution.points_for_claims_at_layer[&0].is_empty());
@@ -7466,13 +7467,11 @@ fn run_basic_unrolled_stagewise_parity_test() {
             .unwrap()
     };
 
-    for (layer_idx, expected) in sumcheck_intermediate_values.iter() {
-        let actual = gpu_backward_execution
-            .proofs
-            .get(layer_idx)
-            .unwrap_or_else(|| panic!("missing GPU proof for layer {layer_idx}"));
-        assert_sumcheck_intermediate_values_eq_for_test_with_layer(actual, expected, *layer_idx);
-    }
+    // Per-layer sumcheck intermediate proof values are no longer exposed on the
+    // backward scheduler — they live in the device-resident proof slab and are
+    // parsed by the full `prove()` assembly path, which the end-to-end CPU parity
+    // tests (`run_basic_unrolled_test`, `run_basic_unrolled_proof_job_multi_schedule_test`)
+    // exercise directly.
     assert_layer_points_eq_for_test(
         &gpu_backward_execution.points_for_claims_at_layer,
         &points_for_claims_at_layer,
