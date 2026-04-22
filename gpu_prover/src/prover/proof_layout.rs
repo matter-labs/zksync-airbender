@@ -20,6 +20,7 @@
 //! trivially correct and reviewable in one place.
 
 use std::collections::BTreeMap;
+use std::marker::PhantomData;
 use std::mem::size_of;
 use std::ops::Range;
 
@@ -27,7 +28,7 @@ use std::collections::BTreeSet;
 
 use cs::definitions::GKRAddress;
 use cs::gkr_compiler::{GKRCircuitArtifact, OutputType};
-use prover::gkr::prover::WhirSchedule;
+use prover::gkr::prover::{SumcheckIntermediateProofValues, WhirSchedule};
 use prover::gkr::prover::dimension_reduction::forward::DimensionReducingInputOutput;
 
 use crate::field::{BF, E4};
@@ -850,6 +851,57 @@ impl ProofLayout {
         layer_slot: usize,
     ) -> &'a [E4] {
         Self::host_typed::<E4>(slab, &self.backward[layer_slot].final_step_evaluations)
+    }
+
+    /// Phase 4: parse `sumcheck_intermediate_values: BTreeMap<layer_idx, _>`
+    /// from the D2H'd slab, merging in host-side
+    /// `extra_evaluations_from_caching_relations` (layer 0 only).
+    pub(crate) fn parse_sumcheck_intermediate_values(
+        &self,
+        slab: &[u8],
+        mut extra_evaluations_by_layer: BTreeMap<usize, BTreeMap<GKRAddress, E4>>,
+    ) -> BTreeMap<usize, SumcheckIntermediateProofValues<BF, E4>> {
+        let mut result = BTreeMap::new();
+        for (layer_slot, bw) in self.backward.iter().enumerate() {
+            let coeffs_flat = self.backward_internal_coeffs_host(slab, layer_slot);
+            debug_assert_eq!(
+                coeffs_flat.len(),
+                bw.sumcheck_num_rounds.saturating_sub(1) * 4
+            );
+            let internal_round_coefficients: Vec<[E4; 4]> = coeffs_flat
+                .chunks_exact(4)
+                .map(|c| [c[0], c[1], c[2], c[3]])
+                .collect();
+            let finals_flat = self.backward_final_step_evals_host(slab, layer_slot);
+            debug_assert_eq!(
+                finals_flat.len(),
+                bw.final_step_eval_addresses.len() * bw.final_step_eval_degree
+            );
+            let final_step_evaluations: BTreeMap<GKRAddress, Vec<E4>> = bw
+                .final_step_eval_addresses
+                .iter()
+                .enumerate()
+                .map(|(i, addr)| {
+                    let start = i * bw.final_step_eval_degree;
+                    let end = start + bw.final_step_eval_degree;
+                    (*addr, finals_flat[start..end].to_vec())
+                })
+                .collect();
+            let extra_evaluations_from_caching_relations = extra_evaluations_by_layer
+                .remove(&bw.layer_idx)
+                .unwrap_or_default();
+            result.insert(
+                bw.layer_idx,
+                SumcheckIntermediateProofValues {
+                    sumcheck_num_rounds: bw.sumcheck_num_rounds,
+                    internal_round_coefficients,
+                    final_step_evaluations,
+                    extra_evaluations_from_caching_relations,
+                    _marker: PhantomData,
+                },
+            );
+        }
+        result
     }
 
     pub(crate) fn whir_base_cap_host<'a>(

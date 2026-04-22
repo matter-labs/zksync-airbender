@@ -74,6 +74,14 @@ struct GpuGKRProofJobKeepalive<'a> {
     /// canonical_top_bits ++ external_challenges ++ flattened_memory_caps for the initial
     /// transcript. Held here so the allocation outlives the H2D copy on h2d_stream.
     _initial_transcript_host_blob: HostAllocation<[u32]>,
+    /// Pinned host mirror of the device-resident proof slab (Phase 4). Populated
+    /// by the terminal D2H; read by the single assembly callback.
+    #[allow(dead_code)]
+    _proof_host_mirror: Option<HostAllocation<[u8]>>,
+    /// Proof slab itself — held here so it outlives all scheduled writes and
+    /// the terminal D2H.
+    #[allow(dead_code)]
+    _proof_slab: Option<DeviceAllocation<u8>>,
 }
 
 pub(crate) struct GpuGKRProofJob<'a> {
@@ -1158,18 +1166,66 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
     let backward_keepalive = backward_scheduled.into_host_keepalive();
     let setup_keepalive = setup_transfer.map(GpuGKRSetupTransfer::into_host_keepalive);
 
+    // Phase 4a: terminal D2H of the whole proof slab into a pinned host
+    // mirror, scheduled after all slab-write work above. Only when the slab
+    // was actually allocated (placeholder test paths have
+    // `proof_layout.total_bytes == 0` and skip). The mirror drives the
+    // single host-side parse that replaces per-piece host bookkeeping.
+    let proof_host_mirror: Option<HostAllocation<[u8]>> =
+        if let Some(slab) = proof_slab.as_ref() {
+            let mut mirror =
+                unsafe { context.alloc_host_uninit_slice::<u8>(proof_layout.total_bytes) };
+            memory_copy_async(
+                unsafe { mirror.get_mut_accessor().get_mut() },
+                slab,
+                stream,
+            )?;
+            Some(mirror)
+        } else {
+            None
+        };
+
     callbacks.schedule(
         {
             let proof_slot = proof_handle;
             let backward_shared_state = backward_shared_state;
             let whir_shared_state = whir_shared_state;
+            let base_layer_claims_shared_state_for_final = base_layer_claims_shared_state;
             let external_challenges = external_challenges.clone();
+            let proof_layout_for_parse = proof_layout.clone();
+            let proof_host_mirror_accessor =
+                proof_host_mirror.as_ref().map(|m| m.get_accessor());
             move || {
                 let final_explicit_evaluations = collect_explicit_evaluations_from_accessors(
                     &transcript_handoff_accessors_for_final,
                 );
-                let backward_execution =
-                    take_backward_execution_from_shared_state(backward_shared_state);
+                // Phase 4a: swap `sumcheck_intermediate_values` source from the
+                // host-mirrored `backward_shared_state.proofs` to a parse of the
+                // terminal-D2H'd slab. Extra evaluations for the base layer
+                // come directly from `base_layer_claims_shared_state` (they're
+                // host-computed from already-D2H'd base-layer claims and are
+                // not slab-resident — same parse-merge pattern the plan
+                // defines for `external_challenges` /
+                // `grand_product_accumulator_computed`).
+                let sumcheck_intermediate_values = if let Some(accessor) =
+                    proof_host_mirror_accessor.as_ref()
+                {
+                    let slab_bytes = unsafe { accessor.get() };
+                    let mut extra_by_layer = BTreeMap::new();
+                    let base_layer_idx = 0usize;
+                    let extra = clone_base_layer_extra_evaluations_from_caching_relations(
+                        base_layer_claims_shared_state_for_final,
+                    );
+                    if !extra.is_empty() {
+                        extra_by_layer.insert(base_layer_idx, extra);
+                    }
+                    proof_layout_for_parse
+                        .parse_sumcheck_intermediate_values(slab_bytes, extra_by_layer)
+                } else {
+                    let backward_execution =
+                        take_backward_execution_from_shared_state(backward_shared_state);
+                    backward_execution.proofs
+                };
                 let whir_proof = take_scheduled_whir_proof(whir_shared_state);
                 let grand_product_accumulator_computed =
                     grand_product_accumulator_from_explicit_evaluations(
@@ -1178,7 +1234,7 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
                 unsafe { proof_slot.get_mut() }.replace(GKRProof {
                     external_challenges: external_challenges.clone(),
                     final_explicit_evaluations,
-                    sumcheck_intermediate_values: backward_execution.proofs,
+                    sumcheck_intermediate_values,
                     whir_proof,
                     grand_product_accumulator_computed,
                 });
@@ -1214,6 +1270,8 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
             _base_layer_claims: base_layer_claims_scheduled,
             _whir: whir_scheduled,
             _initial_transcript_host_blob: bucket2_host,
+            _proof_host_mirror: proof_host_mirror,
+            _proof_slab: proof_slab,
         },
     })
 }
