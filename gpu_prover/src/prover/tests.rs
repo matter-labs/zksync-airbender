@@ -23,6 +23,7 @@ use crate::primitives::nvtx::scoped_range;
 use crate::primitives::static_host::alloc_static_pinned_box_from_slice;
 use crate::prover::decoder::DecoderTableTransfer;
 use crate::prover::memory::commit_memory;
+use crate::prover::proof_layout::{placeholder_inputs_for_prove, ProofLayout};
 use crate::prover::proof::{
     grand_product_accumulator_from_explicit_evaluations, prove, prove_with_transfer_scheduling,
     GpuGKRProofJob,
@@ -4206,6 +4207,7 @@ fn run_basic_unrolled_async_scheduler_smoke_test() {
         expected_proof_layers,
     } = prepare_basic_unrolled_async_backward_fixture(8);
 
+    let proof_layout = ProofLayout::new(&placeholder_inputs_for_prove());
     let scheduled = gpu_backward_state
         .schedule_execute_backward_workflow(
             compiled_circuit,
@@ -4217,6 +4219,8 @@ fn run_basic_unrolled_async_scheduler_smoke_test() {
             batching_challenge,
             lookup_multiplicative_part,
             lookup_additive_part,
+            None,
+            &proof_layout,
             &context,
         )
         .unwrap();
@@ -5036,6 +5040,7 @@ fn run_basic_unrolled_async_allocator_regression_test() {
     let host_before = context.get_host_used_mem_current();
     context.reset_host_used_mem_peak();
 
+    let proof_layout = ProofLayout::new(&placeholder_inputs_for_prove());
     let scheduled = gpu_backward_state
         .schedule_execute_backward_workflow(
             compiled_circuit,
@@ -5047,6 +5052,8 @@ fn run_basic_unrolled_async_allocator_regression_test() {
             batching_challenge,
             lookup_multiplicative_part,
             lookup_additive_part,
+            None,
+            &proof_layout,
             &context,
         )
         .unwrap();
@@ -7425,6 +7432,7 @@ fn run_basic_unrolled_stagewise_parity_test() {
         }
     }
 
+    let proof_layout = ProofLayout::new(&placeholder_inputs_for_prove());
     let mut gpu_backward_execution = {
         let _range = scoped_range(None, "test.gpu.sumcheck.backward_workflow");
         gpu_backward_state
@@ -7438,6 +7446,8 @@ fn run_basic_unrolled_stagewise_parity_test() {
                 batching_challenge,
                 lookup_alpha,
                 lookup_additive_part,
+                None,
+                &proof_layout,
                 &context,
             )
             .unwrap()
