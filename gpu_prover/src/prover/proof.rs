@@ -1069,6 +1069,8 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
             },
             whir_schedule.cap_size,
             compiled_circuit.trace_len.trailing_zeros() as usize,
+            proof_slab.as_ref(),
+            &proof_layout,
             context,
         )?
     } else {
@@ -1128,6 +1130,8 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
             },
             whir_schedule.cap_size,
             compiled_circuit.trace_len.trailing_zeros() as usize,
+            proof_slab.as_ref(),
+            &proof_layout,
             context,
         )?
     };
