@@ -5206,12 +5206,8 @@ where
         claim_layout: &ClaimBufferLayout,
         // Phase 2b: when `Some`, the `device_coeffs` buffer is D2D-copied into
         // the slab's `internal_round_coefficients` range for `layer_slot`
-        // after all per-round kernel writes complete. The host-side D2H into
-        // `final_coeffs_host` is retained for now so
-        // `ScheduledBackwardWorkflowState.proofs[layer_idx]` stays populated
-        // for the existing proof-assembly callback; Phase 4 replaces the D2H
-        // with a single terminal D2H off the slab and drops `device_coeffs`
-        // entirely.
+        // after all per-round kernel writes complete. The terminal D2H in
+        // `prove()` mirrors the slab to the host for proof assembly.
         proof_slab: Option<&DeviceAllocation<u8>>,
         proof_layout: &ProofLayout,
         layer_slot: usize,
@@ -5443,11 +5439,8 @@ where
         // All per-round kernels above have completed their writes to
         // `device_coeffs` on `stream`; D2D-copy the populated `coeffs_total_len`
         // prefix into the slab's per-layer range. Scheduled on `stream` (not
-        // `d2h_stream`) so the slab is self-consistent on `exec_stream` — which
-        // is where the Phase 4 terminal D2H will read it from. The existing
-        // host-side D2H + `workflow_state.proofs` population remains the
-        // authoritative source for proof assembly until Phase 4 swaps in the
-        // terminal D2H + slab parse.
+        // `d2h_stream`) so the slab is self-consistent on `exec_stream`, where
+        // the terminal D2H in `prove()` reads it.
         if let Some(slab) = proof_slab {
             if coeffs_total_len > 0 {
                 let (dst_ptr, dst_len) = unsafe {
@@ -5802,7 +5795,6 @@ where
                     workflow_state.current_claim_point = new_claim_point.clone();
                     workflow_state.current_batching_challenge = next_batching_challenge;
                     workflow_state.seed = state.seed;
-                    workflow_state.proofs.insert(layer_idx, proof.clone());
                     workflow_state
                         .claims_for_layers
                         .insert(layer_idx, new_claims.clone());
@@ -7282,7 +7274,6 @@ where
                     workflow_state.current_claim_point = new_claim_point.clone();
                     workflow_state.current_batching_challenge = next_batching_challenge;
                     workflow_state.seed = state.seed;
-                    workflow_state.proofs.insert(layer_idx, proof.clone());
                     workflow_state
                         .claims_for_layers
                         .insert(layer_idx, new_claims.clone());
@@ -7428,7 +7419,6 @@ where
         } = self;
         let state = shared_state.as_mut();
         Ok(GpuGKRBackwardExecution {
-            proofs: std::mem::take(&mut state.proofs),
             claims_for_layers: std::mem::take(&mut state.claims_for_layers),
             points_for_claims_at_layer: std::mem::take(&mut state.points_for_claims_at_layer),
             next_batching_challenge: state.current_batching_challenge,
@@ -7678,7 +7668,6 @@ where
             lookup_multiplicative_challenge,
             lookup_additive_challenge,
             seed,
-            proofs: BTreeMap::new(),
         });
         // Host seed / claim_point / batching_challenge are only available via this
         // test-path entry point; stage them into device buffers so the orchestrator's
@@ -8225,7 +8214,7 @@ mod tests {
 
         let execution = super::take_backward_execution_from_shared_state(shared_state_handle);
         assert!(
-            execution.proofs.contains_key(&first_main_layer_idx),
+            execution.claims_for_layers.contains_key(&first_main_layer_idx),
             "shared-state workflow should still schedule the first main layer after purging"
         );
     }
