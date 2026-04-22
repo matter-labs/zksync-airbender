@@ -668,11 +668,18 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
     let proof_layout_setup_columns_count = setup_transfer
         .as_ref()
         .map_or(0, |s| s.trace_holder.columns_count);
+    let main_layer_input_addresses_per_layer =
+        crate::prover::gkr::backward::collect_main_layer_input_addresses_per_layer::<E4>(
+            &compiled_circuit,
+            &external_challenges,
+            &forward_output.storage,
+        );
     let proof_layout_inputs = crate::prover::proof_layout::build_proof_layout_inputs(
         &compiled_circuit,
         &whir_schedule,
         final_trace_size_log_2,
         &forward_output.dimension_reducing_inputs,
+        &main_layer_input_addresses_per_layer,
         crate::prover::proof_layout::ProofLayoutBaseLayerGeometry::from_geometry(
             setup_geometry,
             compiled_circuit.memory_layout.total_width,
