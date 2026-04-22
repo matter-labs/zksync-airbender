@@ -7460,11 +7460,12 @@ where
         initial_d_claims: DeviceAllocation<E>,
         initial_claim_layout: ClaimBufferLayout,
         // Phase 2b: the proof slab and its layout thread through from prove().
-        // Per-layer schedulers route slab-bound fields
-        // (`internal_round_coefficients` today; `final_step_evaluations` and
-        // `extra_evaluations_from_caching_relations` in follow-up commits)
-        // into slab offsets via `ProofLayout` accessors. `None` skips all
-        // slab routing (test paths).
+        // Per-layer schedulers D2D-copy slab-bound fields
+        // (`internal_round_coefficients`, `final_step_evaluations`) into slab
+        // offsets via `ProofLayout` accessors. `extra_evaluations_from_caching_relations`
+        // is not in the slab — it is host-computed from already-D2H'd
+        // base-layer claims and merged at Phase 4 parse time.
+        // `None` skips all slab routing (test paths).
         proof_slab: Option<&DeviceAllocation<u8>>,
         proof_layout: &ProofLayout,
         context: &ProverContext,

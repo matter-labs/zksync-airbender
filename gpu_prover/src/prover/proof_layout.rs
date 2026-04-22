@@ -59,9 +59,6 @@ pub(crate) struct BackwardLayerDims {
     /// extension-field degree of the reduced output polynomial). Kept per-layer
     /// because it may vary between dim-reducing and main layers.
     pub(crate) final_step_eval_degree: usize,
-    /// Addresses for `extra_evaluations_from_caching_relations`, stable order.
-    /// Each entry contributes one `E4`. Empty for dim-reducing layers.
-    pub(crate) extra_eval_addresses: Vec<GKRAddress>,
 }
 
 /// Per-base-layer (setup/memory/witness) WHIR dimensions.
@@ -144,13 +141,9 @@ pub(crate) struct BackwardLayerLayout {
     /// final_step_eval_degree` `E4` values, address order matches
     /// `final_step_eval_addresses`.
     pub(crate) final_step_evaluations: Range<usize>,
-    /// `extra_evaluations_from_caching_relations` flat array — one `E4` per
-    /// entry in `extra_eval_addresses`.
-    pub(crate) extra_evaluations: Range<usize>,
-    /// Copies of the address ordering, retained for parse-time `BTreeMap`
+    /// Copy of the address ordering, retained for parse-time `BTreeMap`
     /// reconstruction.
     pub(crate) final_step_eval_addresses: Vec<GKRAddress>,
-    pub(crate) extra_eval_addresses: Vec<GKRAddress>,
     pub(crate) sumcheck_num_rounds: usize,
     pub(crate) final_step_eval_degree: usize,
 }
@@ -295,8 +288,14 @@ impl ProofLayoutBaseLayerGeometry {
 ///   `main_layer_input_addresses_per_layer[layer_idx]` (same underlying
 ///   source: the union of `kernel.inputs.inputs_in_base` +
 ///   `inputs_in_extension` per blueprint, matching main-layer
-///   `final_evaluation_sources_for_last_step`). `extra_eval_addresses` are
-///   still empty pending the caching-relations analysis.
+///   `final_evaluation_sources_for_last_step`).
+///
+/// Note: `extra_evaluations_from_caching_relations` (main layer 0 only) is
+/// intentionally not in the slab. It is host-computed in
+/// `fill_missing_cached_dependency_claims` from already-D2H'd base-layer
+/// claims; the Phase 4 parse callback merges it directly from
+/// `base_layer_claims_shared_state`, matching the host-only pattern used for
+/// `external_challenges` and `grand_product_accumulator_computed`.
 /// * `whir`: derivation mirrors `whir_fold.rs:1742-1792`. `final_monomials_len`
 ///   is 0 because the current GPU prover leaves `proof.final_monomials =
 ///   vec![]` (whir_fold.rs:1870); revisit if that changes.
@@ -370,7 +369,6 @@ pub(crate) fn build_proof_layout_inputs(
             sumcheck_num_rounds,
             final_step_eval_addresses: addresses.into_iter().collect(),
             final_step_eval_degree: 4,
-            extra_eval_addresses: Vec::new(),
         });
     }
     for layer_idx in (0..num_main_layers).rev() {
@@ -379,7 +377,6 @@ pub(crate) fn build_proof_layout_inputs(
             sumcheck_num_rounds: initial_trace_size_log_2,
             final_step_eval_addresses: main_layer_input_addresses_per_layer[layer_idx].clone(),
             final_step_eval_degree: 2,
-            extra_eval_addresses: Vec::new(),
         });
     }
 
@@ -500,15 +497,11 @@ impl ProofLayout {
             let final_evals_count =
                 layer.final_step_eval_addresses.len() * layer.final_step_eval_degree;
             let final_step_evaluations = alloc(&mut cur, final_evals_count, size_of::<E4>());
-            let extra_count = layer.extra_eval_addresses.len();
-            let extra_evaluations = alloc(&mut cur, extra_count, size_of::<E4>());
             backward.push(BackwardLayerLayout {
                 layer_idx: layer.layer_idx,
                 internal_round_coefficients,
                 final_step_evaluations,
-                extra_evaluations,
                 final_step_eval_addresses: layer.final_step_eval_addresses.clone(),
-                extra_eval_addresses: layer.extra_eval_addresses.clone(),
                 sumcheck_num_rounds: layer.sumcheck_num_rounds,
                 final_step_eval_degree: layer.final_step_eval_degree,
             });
@@ -672,14 +665,6 @@ impl ProofLayout {
         layer_slot: usize,
     ) -> (*mut E4, usize) {
         Self::device_typed::<E4>(slab_base, &self.backward[layer_slot].final_step_evaluations)
-    }
-
-    pub(crate) unsafe fn backward_extra_evals_device_mut(
-        &self,
-        slab_base: *mut u8,
-        layer_slot: usize,
-    ) -> (*mut E4, usize) {
-        Self::device_typed::<E4>(slab_base, &self.backward[layer_slot].extra_evaluations)
     }
 
     pub(crate) unsafe fn whir_base_cap_device_mut(
@@ -867,14 +852,6 @@ impl ProofLayout {
         Self::host_typed::<E4>(slab, &self.backward[layer_slot].final_step_evaluations)
     }
 
-    pub(crate) fn backward_extra_evals_host<'a>(
-        &self,
-        slab: &'a [u8],
-        layer_slot: usize,
-    ) -> &'a [E4] {
-        Self::host_typed::<E4>(slab, &self.backward[layer_slot].extra_evaluations)
-    }
-
     pub(crate) fn whir_base_cap_host<'a>(
         &self,
         slab: &'a [u8],
@@ -983,14 +960,12 @@ mod tests {
                 sumcheck_num_rounds: 3,
                 final_step_eval_addresses: vec![GKRAddress::BaseLayerWitness(0); 2],
                 final_step_eval_degree: 4,
-                extra_eval_addresses: vec![],
             },
             BackwardLayerDims {
                 layer_idx: 0,
                 sumcheck_num_rounds: 5,
                 final_step_eval_addresses: vec![GKRAddress::BaseLayerWitness(0); 3],
                 final_step_eval_degree: 2,
-                extra_eval_addresses: vec![GKRAddress::BaseLayerWitness(1); 1],
             },
         ];
 
@@ -1062,10 +1037,6 @@ mod tests {
                 format!("backward[{}].final", bw.layer_idx),
                 bw.final_step_evaluations.clone(),
             ));
-            ranges.push((
-                format!("backward[{}].extra", bw.layer_idx),
-                bw.extra_evaluations.clone(),
-            ));
         }
         for (name, base) in [
             ("setup", &layout.whir.setup),
@@ -1136,11 +1107,6 @@ mod tests {
             assert_eq!(
                 laid.final_step_evaluations.end - laid.final_step_evaluations.start,
                 final_len * size_of::<E4>()
-            );
-            let extra_len = dims.extra_eval_addresses.len();
-            assert_eq!(
-                laid.extra_evaluations.end - laid.extra_evaluations.start,
-                extra_len * size_of::<E4>()
             );
         }
     }
