@@ -52,7 +52,7 @@ pub type ConcreteProofPublicInputs = ProofPublicInputs<NUM_STATE_ELEMENTS>;
 #[cfg(test)]
 mod tests;
 
-// TODO(codex): Remove the legacy entrypoint once higher-level callers dispatch security explicitly.
+// TODO(popzxc): remove once migraton is complete
 #[allow(invalid_value)]
 #[allow(unreachable_code)]
 #[inline(always)]
@@ -66,6 +66,8 @@ pub unsafe fn verify(
     >,
     proof_input_dst: &mut ProofPublicInputs<NUM_STATE_ELEMENTS>,
 ) {
+    // Keep the legacy entrypoint pinned to 80-bit security while the rest of the
+    // workspace is still being migrated to explicit security dispatch.
     verify_80(proof_state_dst, proof_input_dst)
 }
 

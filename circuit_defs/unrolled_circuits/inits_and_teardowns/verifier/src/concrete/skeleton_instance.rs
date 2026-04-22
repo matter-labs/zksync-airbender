@@ -157,6 +157,7 @@ where
     total_size += field_size!(ProofSkeletonInstance<S>, pow_challenges);
 
     assert!(total_size <= core::mem::size_of::<ProofSkeletonInstance<S>>());
+
     assert!(total_size % core::mem::size_of::<u32>() == 0);
 
     total_size / core::mem::size_of::<u32>()

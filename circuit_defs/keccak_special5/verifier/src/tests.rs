@@ -155,7 +155,6 @@ fn test_unrolled_circuit() {
 
 #[test]
 fn test_query_values_offsets() {
-    // TODO(codex): Add a proof-level 100-bit fixture once the prover side emits one reliably.
     fn assert_offsets<S>()
     where
         S: verifier_common::SecurityConfig<NUM_FRI_STEPS>,

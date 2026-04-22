@@ -52,7 +52,7 @@ pub type ConcreteProofPublicInputs = ProofPublicInputs<NUM_STATE_ELEMENTS>;
 #[cfg(test)]
 mod tests;
 
-// TODO(codex): remove once migration is complete
+// TODO(popzxc): remove once migraton is complete
 #[allow(invalid_value)]
 #[allow(unreachable_code)]
 #[inline(always)]

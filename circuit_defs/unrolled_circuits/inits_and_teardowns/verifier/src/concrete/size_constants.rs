@@ -38,6 +38,7 @@ pub const DEFAULT_MERKLE_PATH_LENGTH: usize = TRACE_LEN_LOG2 - TREE_CAP_SIZE_LOG
 pub const BITS_FOR_QUERY_INDEX: usize = TRACE_LEN_LOG2 + FRI_FACTOR_LOG2;
 pub const CAP_ELEMENT_INDEX_MASK: u32 = TREE_CAP_SIZE as u32 - 1;
 pub const CAP_INDEX_SHIFT: u32 = TREE_CAP_SIZE_LOG2 as u32;
+
 pub const NUM_STAGE_2_CHALLENGES: usize = const {
     let mut result =
         verifier_common::cs::definitions::NUM_LOOKUP_ARGUMENT_LINEARIZATION_CHALLENGES + 1;
@@ -347,8 +348,10 @@ pub const MEMORY_GRAND_PRODUCT_ACCUMULATOR_POLY_INDEX: usize = VERIFIER_COMPILED
     .stage_2_layout
     .get_intermediate_polys_for_grand_product_accumulation_absolute_poly_idx_for_verifier();
 
-// We count padding so the variable-length proof prefix still lands the Merkle caps on
-// a 16-byte boundary, which keeps the rest of the skeleton layout aligned.
+// we should also count a padding so that variable-length parts of the skeleton structs (like public inputs, etc),
+// end up in such a way, that we start "setup caps" at offset 0 mod 16, and this way everything after that will be also
+// aligned
+
 pub const SKELETON_PADDING: usize = const {
     let mut size = 0;
     // circuit sequence

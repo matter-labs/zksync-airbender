@@ -38,6 +38,7 @@ pub const DEFAULT_MERKLE_PATH_LENGTH: usize = TRACE_LEN_LOG2 - TREE_CAP_SIZE_LOG
 pub const BITS_FOR_QUERY_INDEX: usize = TRACE_LEN_LOG2 + FRI_FACTOR_LOG2;
 pub const CAP_ELEMENT_INDEX_MASK: u32 = TREE_CAP_SIZE as u32 - 1;
 pub const CAP_INDEX_SHIFT: u32 = TREE_CAP_SIZE_LOG2 as u32;
+
 pub const NUM_STAGE_2_CHALLENGES: usize = const {
     let mut result =
         verifier_common::cs::definitions::NUM_LOOKUP_ARGUMENT_LINEARIZATION_CHALLENGES + 1;
