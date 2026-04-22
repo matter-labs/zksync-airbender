@@ -146,6 +146,14 @@ below. This is worthwhile when the D2H source is written well before any host
 consumer reads the destination, and meaningful exec-stream compute can run in
 parallel with the transfer.
 
+> Note: the terminal proof-slab D2H in `prove()` (which mirrors the whole
+> device-resident proof image into pinned host memory for the assembly callback)
+> intentionally runs on exec_stream. The slab is written and read on exec_stream
+> and the mirror is the last scheduled op before the assembly callback, so
+> there is no concurrent exec-stream work to overlap with. Other per-layer D2Hs
+> that still feed WHIR host setup continue to use `d2h_stream` via the
+> fork/join pattern below.
+
 ### Fork/join/drop ownership rules
 
 Pool-backed `DeviceAllocation` and `HostAllocation` handles are always allocated
