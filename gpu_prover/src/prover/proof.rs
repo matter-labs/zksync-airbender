@@ -1196,36 +1196,36 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
             let proof_host_mirror_accessor =
                 proof_host_mirror.as_ref().map(|m| m.get_accessor());
             move || {
-                let final_explicit_evaluations = collect_explicit_evaluations_from_accessors(
-                    &transcript_handoff_accessors_for_final,
-                );
-                // Phase 4a: swap `sumcheck_intermediate_values` source from the
-                // host-mirrored `backward_shared_state.proofs` to a parse of the
-                // terminal-D2H'd slab. Extra evaluations for the base layer
-                // come directly from `base_layer_claims_shared_state` (they're
-                // host-computed from already-D2H'd base-layer claims and are
-                // not slab-resident — same parse-merge pattern the plan
-                // defines for `external_challenges` /
-                // `grand_product_accumulator_computed`).
-                let sumcheck_intermediate_values = if let Some(accessor) =
-                    proof_host_mirror_accessor.as_ref()
-                {
-                    let slab_bytes = unsafe { accessor.get() };
-                    let mut extra_by_layer = BTreeMap::new();
-                    let base_layer_idx = 0usize;
-                    let extra = clone_base_layer_extra_evaluations_from_caching_relations(
-                        base_layer_claims_shared_state_for_final,
-                    );
-                    if !extra.is_empty() {
-                        extra_by_layer.insert(base_layer_idx, extra);
-                    }
-                    proof_layout_for_parse
-                        .parse_sumcheck_intermediate_values(slab_bytes, extra_by_layer)
-                } else {
-                    let backward_execution =
-                        take_backward_execution_from_shared_state(backward_shared_state);
-                    backward_execution.proofs
-                };
+                // Phase 4b: when the slab is live, source both
+                // `final_explicit_evaluations` and
+                // `sumcheck_intermediate_values` from the terminal-D2H'd slab.
+                // The legacy path via `transcript_handoff_accessors_for_final`
+                // and `backward_shared_state.proofs` stays only for the
+                // test paths that skip slab allocation.
+                let (final_explicit_evaluations, sumcheck_intermediate_values) =
+                    if let Some(accessor) = proof_host_mirror_accessor.as_ref() {
+                        let slab_bytes = unsafe { accessor.get() };
+                        let final_explicit_evaluations =
+                            proof_layout_for_parse.parse_final_explicit_evaluations(slab_bytes);
+                        let mut extra_by_layer = BTreeMap::new();
+                        let base_layer_idx = 0usize;
+                        let extra = clone_base_layer_extra_evaluations_from_caching_relations(
+                            base_layer_claims_shared_state_for_final,
+                        );
+                        if !extra.is_empty() {
+                            extra_by_layer.insert(base_layer_idx, extra);
+                        }
+                        let sumcheck_intermediate_values = proof_layout_for_parse
+                            .parse_sumcheck_intermediate_values(slab_bytes, extra_by_layer);
+                        (final_explicit_evaluations, sumcheck_intermediate_values)
+                    } else {
+                        let final_explicit_evaluations = collect_explicit_evaluations_from_accessors(
+                            &transcript_handoff_accessors_for_final,
+                        );
+                        let backward_execution =
+                            take_backward_execution_from_shared_state(backward_shared_state);
+                        (final_explicit_evaluations, backward_execution.proofs)
+                    };
                 let whir_proof = take_scheduled_whir_proof(whir_shared_state);
                 let grand_product_accumulator_computed =
                     grand_product_accumulator_from_explicit_evaluations(
