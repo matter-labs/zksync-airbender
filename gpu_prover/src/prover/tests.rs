@@ -2378,7 +2378,8 @@ pub(crate) fn expected_main_layer_kernel_specs_for_test<E: Field + FieldExtensio
         .chain(layer.gates_with_external_connections.iter())
     {
         match &gate.enforced_relation {
-            NoFieldGKRRelation::Copy { input, output } => {
+            NoFieldGKRRelation::CopyInBaseField { input, output }
+            | NoFieldGKRRelation::CopyInExtensionField { input, output } => {
                 let batch_challenges = vec![get_challenge()];
                 if storage.layers[layer_idx]
                     .base_field_inputs
@@ -7224,7 +7225,10 @@ fn run_basic_unrolled_stagewise_parity_test() {
                 .chain(layer.gates_with_external_connections.iter())
         })
         .find_map(|gate| match &gate.enforced_relation {
-            NoFieldGKRRelation::Copy { input, output } => Some((*input, *output)),
+            NoFieldGKRRelation::CopyInBaseField { input, output }
+            | NoFieldGKRRelation::CopyInExtensionField { input, output } => {
+                Some((*input, *output))
+            }
             _ => None,
         })
         .expect("test circuit must contain a Copy relation");
@@ -9614,7 +9618,7 @@ mod add_sub_lui_auipc_mod {
     use prover::gkr::witness_gen::witness_proxy::WitnessProxy;
 
     include!(
-        "../../../prover/compiled_circuits/add_sub_lui_auipc_mop_preprocessed_generated_gkr.rs"
+        "../../../prover/compiled_circuits/add_sub_lui_auipc_mop_generated_gkr.rs"
     );
 
     pub fn witness_eval_fn<'a, 'b>(
@@ -9644,7 +9648,7 @@ mod jump_branch_slt_mod {
     use prover::gkr::witness_gen::oracles::NonMemoryCircuitOracle;
     use prover::gkr::witness_gen::witness_proxy::WitnessProxy;
 
-    include!("../../../prover/compiled_circuits/jump_branch_slt_preprocessed_generated_gkr.rs");
+    include!("../../../prover/compiled_circuits/jump_branch_slt_generated_gkr.rs");
 
     pub fn witness_eval_fn<'a, 'b>(
         proxy: &'_ mut ColumnMajorWitnessProxy<'a, NonMemoryCircuitOracle<'b>, BF>,
@@ -9673,7 +9677,7 @@ mod shift_binop_mod {
     use prover::gkr::witness_gen::oracles::NonMemoryCircuitOracle;
     use prover::gkr::witness_gen::witness_proxy::WitnessProxy;
 
-    include!("../../../prover/compiled_circuits/shift_binop_preprocessed_generated_gkr.rs");
+    include!("../../../prover/compiled_circuits/shift_binop_generated_gkr.rs");
 
     pub fn witness_eval_fn<'a, 'b>(
         proxy: &'_ mut ColumnMajorWitnessProxy<'a, NonMemoryCircuitOracle<'b>, BF>,
@@ -9702,7 +9706,7 @@ mod mem_word_only_mod {
     use prover::gkr::witness_gen::oracles::MemoryCircuitOracle;
     use prover::gkr::witness_gen::witness_proxy::WitnessProxy;
 
-    include!("../../../prover/compiled_circuits/mem_word_only_preprocessed_generated_gkr.rs");
+    include!("../../../prover/compiled_circuits/mem_word_only_generated_gkr.rs");
 
     pub fn witness_eval_fn<'a, 'b>(
         proxy: &'_ mut ColumnMajorWitnessProxy<'a, MemoryCircuitOracle<'b>, BF>,
@@ -9731,7 +9735,7 @@ mod mem_subword_only_mod {
     use prover::gkr::witness_gen::oracles::MemoryCircuitOracle;
     use prover::gkr::witness_gen::witness_proxy::WitnessProxy;
 
-    include!("../../../prover/compiled_circuits/mem_subword_only_preprocessed_generated_gkr.rs");
+    include!("../../../prover/compiled_circuits/mem_subword_only_generated_gkr.rs");
 
     pub fn witness_eval_fn<'a, 'b>(
         proxy: &'_ mut ColumnMajorWitnessProxy<'a, MemoryCircuitOracle<'b>, BF>,
