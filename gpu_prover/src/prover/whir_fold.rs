@@ -53,6 +53,38 @@ use crate::prover::whir_kernels::{
 
 const EXT4_DEGREE: usize = <E4 as FieldExtension<BF>>::DEGREE;
 
+/// Phase 3: H2D-copy the single-element `ood_value_host` pinned host buffer
+/// into the slab's `whir.ood_samples[ood_idx]` offset. Scheduled on the same
+/// stream as the preceding host callback that populates `ood_value_host`, so
+/// stream ordering guarantees the H2D reads the post-callback value.
+/// Transitional — the existing host callback write to
+/// `shared_state.proof.ood_samples[..]` remains until Phase 4 sources
+/// `ood_samples` from the slab via the terminal D2H. `None` slab is a no-op
+/// (test paths).
+fn copy_ood_sample_to_slab(
+    ood_value_host: &HostAllocation<[E4]>,
+    proof_slab: Option<&DeviceAllocation<u8>>,
+    proof_layout: &ProofLayout,
+    ood_idx: usize,
+    stream: &era_cudart::stream::CudaStream,
+) -> CudaResult<()> {
+    let Some(slab) = proof_slab else { return Ok(()) };
+    let (dst_ptr, dst_len) = unsafe {
+        proof_layout.whir_ood_samples_device_mut(slab.as_ptr() as *mut u8)
+    };
+    assert!(
+        ood_idx < dst_len,
+        "ood_idx {ood_idx} out of slab ood_samples range (len {dst_len})",
+    );
+    // SAFETY: `dst_ptr + ood_idx` is a 16-byte-aligned offset inside the live
+    // `slab`; slots are disjoint by construction.
+    let dst = unsafe {
+        era_cudart::slice::DeviceSlice::from_raw_parts_mut(dst_ptr.add(ood_idx), 1)
+    };
+    memory_copy_async(dst, ood_value_host, stream)?;
+    Ok(())
+}
+
 /// Phase 3: D2D-copy the single-element `d_nonce` device buffer into the slab's
 /// `whir.pow_nonces[pow_round_idx]` offset. Transitional — the existing D2H
 /// into `nonce_host` + callback path is left in place until Phase 4 parse
@@ -2241,6 +2273,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
             },
             stream,
         )?;
+        copy_ood_sample_to_slab(&ood_value_host, proof_slab, proof_layout, 0, stream)?;
         ood_partial_readbacks.push(ood_partials);
         ood_points.push(ood_point_upload);
         ood_values.push(ood_value_host);
@@ -2582,6 +2615,13 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
                         [internal_round_idx + 1] = value;
                 }
             },
+            stream,
+        )?;
+        copy_ood_sample_to_slab(
+            &ood_value_host,
+            proof_slab,
+            proof_layout,
+            internal_round_idx + 1,
             stream,
         )?;
         ood_partial_readbacks.push(ood_partials);
