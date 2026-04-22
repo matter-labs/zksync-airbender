@@ -1,6 +1,5 @@
 use riscv_transpiler::cycle::{
-    IMStandardIsaConfig, IMStandardIsaConfigWithUnsignedMulDiv,
-    IWithoutByteAccessIsaConfigWithDelegation,
+    IMStandardIsaConfig, IMStandardIsaConfigUnsignedMulDivOnly, ReducedMachineWithDelegation,
 };
 use riscv_transpiler::ir::{
     FullMachineDecoderConfig, FullUnsignedMachineDecoderConfig, ReducedMachineDecoderConfig,
@@ -19,9 +18,9 @@ impl MachineType {
         let id = TypeId::of::<C>();
         if id == TypeId::of::<IMStandardIsaConfig>() {
             MachineType::Full
-        } else if id == TypeId::of::<IMStandardIsaConfigWithUnsignedMulDiv>() {
+        } else if id == TypeId::of::<IMStandardIsaConfigUnsignedMulDivOnly>() {
             MachineType::FullUnsigned
-        } else if id == TypeId::of::<IWithoutByteAccessIsaConfigWithDelegation>() {
+        } else if id == TypeId::of::<ReducedMachineWithDelegation>() {
             MachineType::Reduced
         } else {
             panic!("unknown machine configuration {:?}", type_name::<C>());

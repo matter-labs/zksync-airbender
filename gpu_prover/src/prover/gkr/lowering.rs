@@ -133,7 +133,7 @@ fn lower_gate_relation(
                 NoFieldGKRCacheRelation::MemoryTuple(input.clone()),
                 internal_helper_relations,
             );
-            NoFieldGKRRelation::Copy {
+            NoFieldGKRRelation::CopyInExtensionField {
                 input: lowered_input,
                 output: *output,
             }
@@ -392,7 +392,7 @@ mod tests {
         assert_eq!(plan.internal_helper_relations.len(), 1);
         assert_eq!(
             plan.lowered_gates[0].enforced_relation,
-            NoFieldGKRRelation::Copy {
+            NoFieldGKRRelation::CopyInExtensionField {
                 input: GKRAddress::Cached {
                     layer: 0,
                     offset: 4

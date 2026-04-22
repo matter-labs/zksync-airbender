@@ -726,7 +726,8 @@ where
     {
         assert_eq!(gate.output_layer, expected_output_layer);
         match &gate.enforced_relation {
-            NoFieldGKRRelation::Copy { input, output } => {
+            NoFieldGKRRelation::CopyInBaseField { input, output }
+            | NoFieldGKRRelation::CopyInExtensionField { input, output } => {
                 if let Some(source) = storage.try_get_base_poly(*input) {
                     aliased_base_outputs.push((*output, source.clone_shared()));
                 } else {
@@ -2820,7 +2821,7 @@ mod tests {
             gates: vec![
                 GateArtifacts {
                     output_layer: 1,
-                    enforced_relation: NoFieldGKRRelation::Copy {
+                    enforced_relation: NoFieldGKRRelation::CopyInExtensionField {
                         input: copy_input,
                         output: copy_output,
                     },

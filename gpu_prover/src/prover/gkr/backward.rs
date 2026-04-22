@@ -1957,7 +1957,8 @@ fn build_main_layer_kernel_blueprints<E: Field + FieldExtension<BF>>(
             (batch_challenge_offset, batch_challenges)
         };
         match &gate.enforced_relation {
-            NoFieldGKRRelation::Copy { input, output } => {
+            NoFieldGKRRelation::CopyInBaseField { input, output }
+            | NoFieldGKRRelation::CopyInExtensionField { input, output } => {
                 let (batch_challenge_offset, batch_challenges) =
                     push_challenges(1, &mut next_batch_challenge_offset, &mut get_challenge);
                 if storage.layers[layer_idx]
@@ -2664,7 +2665,8 @@ fn build_main_layer_kernel_blueprints_static<E: Field + FieldExtension<BF>>(
             (batch_challenge_offset, count)
         };
         match &gate.enforced_relation {
-            NoFieldGKRRelation::Copy { input, output } => {
+            NoFieldGKRRelation::CopyInBaseField { input, output }
+            | NoFieldGKRRelation::CopyInExtensionField { input, output } => {
                 let (batch_challenge_offset, batch_challenge_count) =
                     push_empty(1, &mut next_batch_challenge_offset);
                 if storage.layers[layer_idx]

@@ -197,3 +197,4 @@ FN_CALL(16)
 FN_END
 
 #define SCRATCH wrapped_f *scratch = scratch_storage + gid;
+
