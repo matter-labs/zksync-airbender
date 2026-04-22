@@ -42,13 +42,30 @@ pub struct NonMemTestCase {
     pub rd: u32,
 }
 
-/// Run a single opcode through the circuit and check constraint satisfaction only.
+/// Extract the final register state from the circuit's shuffle RAM queries.
+///
+/// Iterates over all shuffle RAM queries and collects the write value for each
+/// register access.  For read-only accesses the write value equals the read
+/// value, so the last write to each register index wins — which is the final
+/// value the circuit committed to.
+pub fn extract_circuit_registers(cs: &BasicAssembly<Mersenne31Field>) -> [u32; 32] {
+    let mut registers = [0u32; 32];
+    for query in &cs.shuffle_ram_queries {
+        if let Some(id) = query.query_type.get_register_id(cs) {
+            registers[id as usize] = query.get_write_value(cs);
+        }
+    }
+    registers
+}
+
+/// Run a single opcode through the circuit, check constraint satisfaction,
+/// and return the circuit's final register state.
 pub fn run_non_mem_circuit_test(
     decoder_data: &[ExecutorFamilyDecoderData],
     table_fn: fn(&mut BasicAssembly<Mersenne31Field>),
     circuit_fn: fn(&mut BasicAssembly<Mersenne31Field>),
     case: &NonMemTestCase,
-) {
+) -> [u32; 32] {
     let trace_data = make_trace_data(case);
 
     let oracle = NonMemoryCircuitOracle {
@@ -71,6 +88,8 @@ pub fn run_non_mem_circuit_test(
         "Constraints NOT satisfied for: {}",
         case.label
     );
+
+    extract_circuit_registers(&cs)
 }
 
 /// Full prove pipeline: compile circuit, generate witness, check constraints,
@@ -250,6 +269,55 @@ pub fn run_non_mem_prove_test(
     );
 }
 
+pub fn make_trace_data_with_pc(
+    case: &NonMemTestCase,
+    initial_pc: u32,
+    new_pc: u32,
+) -> Vec<NonMemoryOpcodeTracingDataWithTimestamp> {
+    vec![NonMemoryOpcodeTracingDataWithTimestamp {
+        opcode_data: NonMemoryOpcodeTracingData {
+            initial_pc,
+            rs1_value: case.rs1,
+            rs2_value: case.rs2,
+            rd_old_value: 0,
+            rd_value: case.rd,
+            new_pc,
+            delegation_type: 0,
+        },
+        rs1_read_timestamp: TimestampData::from_scalar(0),
+        rs2_read_timestamp: TimestampData::from_scalar(0),
+        rd_read_timestamp: TimestampData::from_scalar(0),
+        cycle_timestamp: TimestampData::from_scalar(4),
+    }]
+}
+
+/// Run a circuit test and return whether constraints are satisfied (does not panic).
+pub fn check_non_mem_circuit_satisfied(
+    decoder_data: &[ExecutorFamilyDecoderData],
+    table_fn: fn(&mut BasicAssembly<Mersenne31Field>),
+    circuit_fn: fn(&mut BasicAssembly<Mersenne31Field>),
+    case: &NonMemTestCase,
+) -> bool {
+    let trace_data = make_trace_data(case);
+
+    let oracle = NonMemoryCircuitOracle {
+        inner: &trace_data,
+        decoder_table: decoder_data,
+        default_pc_value_in_padding: 4,
+    };
+
+    let oracle: NonMemoryCircuitOracle<'static> = unsafe { core::mem::transmute(oracle) };
+    let mut cs = BasicAssembly::<Mersenne31Field>::new_with_oracle_and_preprocessed_decoder(
+        oracle,
+        decoder_data.to_vec(),
+    );
+
+    table_fn(&mut cs);
+    circuit_fn(&mut cs);
+
+    cs.is_satisfied()
+}
+
 fn make_trace_data(case: &NonMemTestCase) -> Vec<NonMemoryOpcodeTracingDataWithTimestamp> {
     vec![NonMemoryOpcodeTracingDataWithTimestamp {
         opcode_data: NonMemoryOpcodeTracingData {
@@ -294,7 +362,7 @@ pub fn run_non_mem_circuit_test_with_pc_padding(
     circuit_fn: fn(&mut BasicAssembly<Mersenne31Field>),
     case: &NonMemTestCase,
     default_pc_value_in_padding: u32,
-) {
+) -> [u32; 32] {
     let trace_data = make_trace_data(case);
 
     let oracle = NonMemoryCircuitOracle {
@@ -317,6 +385,8 @@ pub fn run_non_mem_circuit_test_with_pc_padding(
         "Constraints NOT satisfied for: {}",
         case.label
     );
+
+    extract_circuit_registers(&cs)
 }
 
 /// Test case for memory (load/store) circuits.
@@ -356,14 +426,20 @@ pub fn run_mem_circuit_test(
 }
 
 #[cfg(test)]
+mod compliance_vectors;
+#[cfg(test)]
 mod mul_div;
 #[cfg(test)]
 mod add_sub;
 #[cfg(test)]
 mod shift_binop;
-
-// mod jump_branch;
+#[cfg(test)]
+mod jump_branch;
 #[cfg(test)]
 mod load_store;
 #[cfg(test)]
+mod load_store_subword;
+#[cfg(test)]
 mod e2e_prove_verify;
+#[cfg(test)]
+mod fuzz;

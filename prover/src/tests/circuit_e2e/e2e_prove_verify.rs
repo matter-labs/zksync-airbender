@@ -1,7 +1,7 @@
 //! True end-to-end prove+verify tests for individual RISC-V opcodes.
 //!
 //! Each test:
-//!   1. Assembles a single instruction from its mnemonic string (e.g. "div x3, x1, x2")
+//!   1. Assembles a single instruction from its string (e.g. "div x3, x1, x2")
 //!   2. Builds a minimal RISC-V program (instruction + exit sequence, padded to ROM size)
 //!   3. Transpiles & executes the program through the VM
 //!   4. Generates a full STARK proof via the prover

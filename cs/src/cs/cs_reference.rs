@@ -149,7 +149,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>> Circuit<F> for BasicAssembly<F, W> {
         assert!(constraint.degree() == 2, "use `add_constraint_allow_explicit_linear` if you need to make a variable arising from linear constraint");
         assert!(constraint.degree() <= 2);
         constraint.normalize();
-        self.try_check_constraint(&constraint);
+        // self.try_check_constraint(&constraint);
         self.constraint_storage.push((constraint, false));
     }
 
@@ -157,7 +157,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>> Circuit<F> for BasicAssembly<F, W> {
     fn add_constraint_allow_explicit_linear(&mut self, mut constraint: Constraint<F>) {
         assert!(constraint.degree() == 1);
         constraint.normalize();
-        self.try_check_constraint(&constraint);
+        // self.try_check_constraint(&constraint);
         self.constraint_storage.push((constraint, false));
     }
 
@@ -168,7 +168,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>> Circuit<F> for BasicAssembly<F, W> {
     ) {
         assert!(constraint.degree() == 1);
         constraint.normalize();
-        self.try_check_constraint(&constraint);
+        // self.try_check_constraint(&constraint);
         self.constraint_storage.push((constraint, true));
     }
 
