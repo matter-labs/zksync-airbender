@@ -955,6 +955,8 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
         setup_trace_holder,
         &stage1_output.memory_trace_holder,
         &stage1_output.witness_trace_holder,
+        proof_slab.as_ref(),
+        &proof_layout,
         context,
     )?;
     let base_layer_claims_shared_state = base_layer_claims_scheduled.shared_state_handle();
