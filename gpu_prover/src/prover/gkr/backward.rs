@@ -2407,7 +2407,7 @@ fn build_main_layer_kernel_blueprints<E: Field + FieldExtension<BF>>(
     blueprints
 }
 
-fn build_main_layer_kernel_blueprints_static<E: Field + FieldExtension<BF>>(
+pub(crate) fn build_main_layer_kernel_blueprints_static<E: Field + FieldExtension<BF>>(
     layer: &GKRLayerDescription,
     layer_idx: usize,
     storage: &GpuGKRStorage<BF, E>,
@@ -3013,6 +3013,76 @@ fn build_main_layer_kernel_blueprints_static<E: Field + FieldExtension<BF>>(
     }
 
     blueprints
+}
+
+/// Collects, per main layer, the sorted unique set of input addresses that
+/// `schedule_execute_main_layer_from_workflow_state` will eventually observe
+/// in `final_evaluation_sources_for_last_step` — i.e. the keys of the
+/// `BTreeMap<GKRAddress, Vec<E>>` stored in
+/// `SumcheckIntermediateProofValues::final_step_evaluations` for that layer.
+///
+/// Implementation: run `build_main_layer_kernel_blueprints_static` for each
+/// layer at prove() start (after forward has populated `storage`), collect the
+/// union of `inputs_in_base` + `inputs_in_extension` from every blueprint's
+/// `GKRInputs`, deduplicate through a `BTreeSet<GKRAddress>` to get the same
+/// order the scheduler's `final_evaluation_sources_for_last_step` produces.
+///
+/// Result is indexed by natural `layer_idx` (0-based position in
+/// `compiled_circuit.layers`), not by backward-scheduler slot. Callers that
+/// build `ProofLayoutInputs.backward_layers` in scheduler order (high-to-low
+/// layer_idx after dim-reducing) index into the returned Vec accordingly.
+pub(crate) fn collect_main_layer_input_addresses_per_layer<E>(
+    compiled_circuit: &GKRCircuitArtifact<BF>,
+    external_challenges: &GKRExternalChallenges<BF, E>,
+    storage: &GpuGKRStorage<BF, E>,
+) -> Vec<Vec<GKRAddress>>
+where
+    E: Field + FieldExtension<BF>,
+{
+    let inits_and_teardowns_top_bits = canonical_inits_and_teardowns_top_bits(
+        compiled_circuit.memory_layout.teardown_sets.len(),
+    );
+    let inits_and_teardowns_address_high_bits_shift = if compiled_circuit
+        .memory_layout
+        .teardown_sets
+        .is_empty()
+    {
+        0
+    } else {
+        high_bits_offset_for_inits_and_teardowns::<2>(compiled_circuit.trace_len)
+    };
+    let num_base_layer_memory_polys = compiled_circuit.memory_layout.total_width;
+    let num_base_layer_witness_polys = compiled_circuit.witness_layout.total_width;
+    let mut per_layer = Vec::with_capacity(compiled_circuit.layers.len());
+    for (layer_idx, layer) in compiled_circuit.layers.iter().enumerate() {
+        let blueprints = build_main_layer_kernel_blueprints_static::<E>(
+            layer,
+            layer_idx,
+            storage,
+            external_challenges,
+            &inits_and_teardowns_top_bits,
+            inits_and_teardowns_address_high_bits_shift,
+            num_base_layer_memory_polys,
+            num_base_layer_witness_polys,
+        );
+        let mut addresses: std::collections::BTreeSet<GKRAddress> =
+            std::collections::BTreeSet::new();
+        for kernel in blueprints.iter() {
+            for addr in kernel
+                .inputs
+                .inputs_in_base
+                .iter()
+                .chain(kernel.inputs.inputs_in_extension.iter())
+            {
+                if *addr == GKRAddress::placeholder() {
+                    continue;
+                }
+                addresses.insert(*addr);
+            }
+        }
+        per_layer.push(addresses.into_iter().collect());
+    }
+    per_layer
 }
 
 impl<B, E> GpuGKRDimensionReducingBackwardState<B, E> {
