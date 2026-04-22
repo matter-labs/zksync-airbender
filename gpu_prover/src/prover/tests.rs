@@ -4753,6 +4753,7 @@ fn run_basic_unrolled_first_main_layer_static_vs_dynamic_execution_test() {
             shared_state_handle,
         )
         .unwrap();
+    let main_proof_layout = ProofLayout::new(&placeholder_inputs_for_prove());
     let static_scheduled = static_plan
         .schedule_execute_main_layer_from_workflow_state(
             shared_state_handle,
@@ -4761,6 +4762,9 @@ fn run_basic_unrolled_first_main_layer_static_vs_dynamic_execution_test() {
             shared_device_claims,
             &shared_claim_layout,
             device_lookup_and_constraint.as_ptr(),
+            None,
+            &main_proof_layout,
+            0,
             &fixture_static.context,
         )
         .unwrap();
@@ -4961,6 +4965,7 @@ fn run_basic_unrolled_main_layers_static_vs_dynamic_execution_test() {
                 shared_state_handle,
             )
             .unwrap();
+        let main_proof_layout = ProofLayout::new(&placeholder_inputs_for_prove());
         let static_scheduled = static_plan
             .schedule_execute_main_layer_from_workflow_state(
                 shared_state_handle,
@@ -4969,6 +4974,9 @@ fn run_basic_unrolled_main_layers_static_vs_dynamic_execution_test() {
                 shared_device_claims,
                 &shared_claim_layout,
                 device_lookup_and_constraint.as_ptr(),
+                None,
+                &main_proof_layout,
+                0,
                 &fixture_static.context,
             )
             .unwrap();
