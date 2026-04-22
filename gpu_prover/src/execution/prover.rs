@@ -1454,8 +1454,7 @@ mod tests {
         init_logger();
         let mut configuration = ExecutionProverConfiguration::default();
         configuration.replay_worker_threads_count = 8;
-        let mut prover =
-            ExecutionProver::<Security80Marker>::with_configuration_80(configuration);
+        let mut prover = ExecutionProver::<Security80Marker>::with_configuration_80(configuration);
         let (_, binary_image) = read_binary(&Path::new("../examples/hashed_fibonacci/app.bin"));
         let (_, text_section) = read_binary(&Path::new("../examples/hashed_fibonacci/app.text"));
         prover.add_binary(

@@ -63,12 +63,7 @@ pub fn prove_unrolled_execution_with_replayer_80<
     (u32, TimestampScalar),
     u64,
 ) {
-    prove_unrolled_execution_with_replayer::<
-        Security80Marker,
-        C,
-        A,
-        ROM_BOUND_SECOND_WORD_BITS,
-    >(
+    prove_unrolled_execution_with_replayer::<Security80Marker, C, A, ROM_BOUND_SECOND_WORD_BITS>(
         cycles_bound,
         binary_image,
         text_section,
@@ -103,12 +98,7 @@ pub fn prove_unrolled_execution_with_replayer_100<
     (u32, TimestampScalar),
     u64,
 ) {
-    prove_unrolled_execution_with_replayer::<
-        Security100Marker,
-        C,
-        A,
-        ROM_BOUND_SECOND_WORD_BITS,
-    >(
+    prove_unrolled_execution_with_replayer::<Security100Marker, C, A, ROM_BOUND_SECOND_WORD_BITS>(
         cycles_bound,
         binary_image,
         text_section,
@@ -1437,7 +1427,7 @@ pub(crate) mod test {
 
                     let it = responses.into_iter();
                     prover::nd_source_std::set_iterator(it);
-                    
+
                     let security = verifier_common::SecurityModel::Security80; // TODO(popzxc): cover security 100
 
                     #[allow(invalid_value)]

@@ -1,10 +1,10 @@
 use crate::get_padded_binary;
+use crate::unified_recursion_target_family_proofs;
 use crate::unrolled::{
     compute_setup_for_machine_configuration, flatten_proof_into_responses_for_unrolled_recursion,
     UnrolledProgramProof, UnrolledProgramSetup,
 };
 use crate::verifier_binaries;
-use crate::unified_recursion_target_family_proofs;
 use crate::{RecursionArtifact, RecursionLayer};
 use gpu_prover::{
     execution::prover::{ExecutionKind, ExecutionProver, ExecutionProverConfiguration},
@@ -167,13 +167,13 @@ impl UnrolledProver {
         max_level: UnrolledProverLevel,
     ) -> Self {
         let mut prover = match security {
-            SecurityModel::Security80 => RuntimeExecutionProver::Security80(
-                ExecutionProver::<Security80Marker>::with_configuration_80(prover_configuration),
-            ),
+            SecurityModel::Security80 => RuntimeExecutionProver::Security80(ExecutionProver::<
+                Security80Marker,
+            >::with_configuration_80(
+                prover_configuration
+            )),
             SecurityModel::Security100 => RuntimeExecutionProver::Security100(
-                ExecutionProver::<Security100Marker>::with_configuration_100(
-                    prover_configuration,
-                ),
+                ExecutionProver::<Security100Marker>::with_configuration_100(prover_configuration),
             ),
         };
         let mut level_data = BTreeMap::new();

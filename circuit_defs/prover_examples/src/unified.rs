@@ -55,12 +55,7 @@ pub fn prove_unified_execution_with_replayer_80<
     (u32, TimestampScalar),
     u64,
 ) {
-    prove_unified_execution_with_replayer::<
-        Security80Marker,
-        C,
-        A,
-        ROM_BOUND_SECOND_WORD_BITS,
-    >(
+    prove_unified_execution_with_replayer::<Security80Marker, C, A, ROM_BOUND_SECOND_WORD_BITS>(
         cycles_bound,
         binary_image,
         text_section,
@@ -92,12 +87,7 @@ pub fn prove_unified_execution_with_replayer_100<
     (u32, TimestampScalar),
     u64,
 ) {
-    prove_unified_execution_with_replayer::<
-        Security100Marker,
-        C,
-        A,
-        ROM_BOUND_SECOND_WORD_BITS,
-    >(
+    prove_unified_execution_with_replayer::<Security100Marker, C, A, ROM_BOUND_SECOND_WORD_BITS>(
         cycles_bound,
         binary_image,
         text_section,

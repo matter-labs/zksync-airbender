@@ -407,33 +407,33 @@ where
             let start = (self as *const Self)
                 .cast::<u32>()
                 .add(offset_of!(Self, stage_2_caps) / core::mem::size_of::<u32>());
-            let end = (self as *const Self).cast::<u32>().add(
-                offset_of!(Self, quotient_caps) / core::mem::size_of::<u32>(),
-            );
+            let end = (self as *const Self)
+                .cast::<u32>()
+                .add(offset_of!(Self, quotient_caps) / core::mem::size_of::<u32>());
             core::slice::from_ptr_range(start..end)
         }
     }
 
     fn transcript_elements_stage3_to_stage4(&'_ self) -> &'_ [u32] {
         unsafe {
-            let start = (self as *const Self).cast::<u32>().add(
-                offset_of!(Self, quotient_caps) / core::mem::size_of::<u32>(),
-            );
-            let end = (self as *const Self).cast::<u32>().add(
-                offset_of!(Self, openings_at_z) / core::mem::size_of::<u32>(),
-            );
+            let start = (self as *const Self)
+                .cast::<u32>()
+                .add(offset_of!(Self, quotient_caps) / core::mem::size_of::<u32>());
+            let end = (self as *const Self)
+                .cast::<u32>()
+                .add(offset_of!(Self, openings_at_z) / core::mem::size_of::<u32>());
             core::slice::from_ptr_range(start..end)
         }
     }
 
     fn transcript_elements_evaluations_at_z(&'_ self) -> &'_ [u32] {
         unsafe {
-            let start = (self as *const Self).cast::<u32>().add(
-                offset_of!(Self, openings_at_z) / core::mem::size_of::<u32>(),
-            );
-            let end = (self as *const Self).cast::<u32>().add(
-                offset_of!(Self, fri_intermediate_oracles) / core::mem::size_of::<u32>(),
-            );
+            let start = (self as *const Self)
+                .cast::<u32>()
+                .add(offset_of!(Self, openings_at_z) / core::mem::size_of::<u32>());
+            let end = (self as *const Self)
+                .cast::<u32>()
+                .add(offset_of!(Self, fri_intermediate_oracles) / core::mem::size_of::<u32>());
             core::slice::from_ptr_range(start..end)
         }
     }

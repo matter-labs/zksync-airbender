@@ -280,9 +280,7 @@ mod test {
     use crate::{recursion_artifact_path, RecursionArtifact, RecursionLayer};
     use test_utils::skip_if_ci;
 
-    fn read_recursion_binary_u32(
-        security: verifier_common::SecurityModel,
-    ) -> Vec<u32> {
+    fn read_recursion_binary_u32(security: verifier_common::SecurityModel) -> Vec<u32> {
         let (_, binary_u32) = crate::setups::read_and_pad_binary(std::path::Path::new(
             recursion_artifact_path(security, RecursionLayer::Unified, RecursionArtifact::Bin),
         ));

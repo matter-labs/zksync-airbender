@@ -71,9 +71,9 @@ pub const fn recursion_artifact_path(
     recursion: RecursionLayer,
     artifact: RecursionArtifact,
 ) -> &'static str {
+    use verifier_common::SecurityModel::*;
     use RecursionArtifact::*;
     use RecursionLayer::*;
-    use verifier_common::SecurityModel::*;
 
     match (security, recursion, artifact) {
         (Security80, Unified, Bin) => "../tools/verifier/recursion_in_unified_layer.bin",

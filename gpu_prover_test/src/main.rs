@@ -252,11 +252,7 @@ mod tests {
         }
         println!("Verifying GPU proof...");
         let result = execution_utils::unrolled::verify_unrolled_layer_proof(
-            &gpu_proof,
-            &setup,
-            &layouts,
-            true,
-            SECURITY,
+            &gpu_proof, &setup, &layouts, true, SECURITY,
         )
         .expect("is valid proof");
         assert_eq!(result.iter().all(|el| *el == 0), false);
@@ -291,22 +287,20 @@ mod tests {
             execution_utils::RecursionLayer::Unrolled,
             execution_utils::RecursionArtifact::Bin,
         )));
-        let (padded_binary, padded_binary_u32) = read_and_pad_binary(Path::new(
-            recursion_artifact_path(
+        let (padded_binary, padded_binary_u32) =
+            read_and_pad_binary(Path::new(recursion_artifact_path(
                 execution_utils::RecursionLayer::Unrolled,
                 execution_utils::RecursionArtifact::Bin,
-            ),
-        ));
+            )));
         let (text, text_u32) = read_binary(Path::new(recursion_artifact_path(
             execution_utils::RecursionLayer::Unrolled,
             execution_utils::RecursionArtifact::Txt,
         )));
-        let (padded_text, padded_text_u32) = read_and_pad_binary(Path::new(
-            recursion_artifact_path(
+        let (padded_text, padded_text_u32) =
+            read_and_pad_binary(Path::new(recursion_artifact_path(
                 execution_utils::RecursionLayer::Unrolled,
                 execution_utils::RecursionArtifact::Txt,
-            ),
-        ));
+            )));
 
         info!("Computing setup");
         let setup = execution_utils::unrolled::compute_setup_for_machine_configuration::<
@@ -399,11 +393,7 @@ mod tests {
 
         println!("Verifying GPU proof...");
         let result = execution_utils::unrolled::verify_unrolled_layer_proof(
-            &gpu_proof,
-            &setup,
-            &layouts,
-            false,
-            SECURITY,
+            &gpu_proof, &setup, &layouts, false, SECURITY,
         )
         .expect("is valid proof");
         assert_eq!(result.iter().all(|el| *el == 0), false);
@@ -441,22 +431,20 @@ mod tests {
             execution_utils::RecursionLayer::Unified,
             execution_utils::RecursionArtifact::Bin,
         )));
-        let (padded_binary, padded_binary_u32) = read_and_pad_binary(Path::new(
-            recursion_artifact_path(
+        let (padded_binary, padded_binary_u32) =
+            read_and_pad_binary(Path::new(recursion_artifact_path(
                 execution_utils::RecursionLayer::Unified,
                 execution_utils::RecursionArtifact::Bin,
-            ),
-        ));
+            )));
         let (text, text_u32) = read_binary(Path::new(recursion_artifact_path(
             execution_utils::RecursionLayer::Unified,
             execution_utils::RecursionArtifact::Txt,
         )));
-        let (padded_text, padded_text_u32) = read_and_pad_binary(Path::new(
-            recursion_artifact_path(
+        let (padded_text, padded_text_u32) =
+            read_and_pad_binary(Path::new(recursion_artifact_path(
                 execution_utils::RecursionLayer::Unified,
                 execution_utils::RecursionArtifact::Txt,
-            ),
-        ));
+            )));
 
         println!("Computing setup");
         let setup =
@@ -561,11 +549,7 @@ mod tests {
 
         println!("Verifying GPU proof...");
         let result = execution_utils::unified_circuit::verify_proof_in_unified_layer(
-            &gpu_proof,
-            &setup,
-            &layouts,
-            false,
-            SECURITY,
+            &gpu_proof, &setup, &layouts, false, SECURITY,
         )
         .expect("is valid proof");
         assert_eq!(result.iter().all(|el| *el == 0), false);
@@ -604,22 +588,20 @@ mod tests {
             execution_utils::RecursionLayer::Unified,
             execution_utils::RecursionArtifact::Bin,
         )));
-        let (padded_binary, padded_binary_u32) = read_and_pad_binary(Path::new(
-            recursion_artifact_path(
+        let (padded_binary, padded_binary_u32) =
+            read_and_pad_binary(Path::new(recursion_artifact_path(
                 execution_utils::RecursionLayer::Unified,
                 execution_utils::RecursionArtifact::Bin,
-            ),
-        ));
+            )));
         let (text, text_u32) = read_binary(Path::new(recursion_artifact_path(
             execution_utils::RecursionLayer::Unified,
             execution_utils::RecursionArtifact::Txt,
         )));
-        let (padded_text, padded_text_u32) = read_and_pad_binary(Path::new(
-            recursion_artifact_path(
+        let (padded_text, padded_text_u32) =
+            read_and_pad_binary(Path::new(recursion_artifact_path(
                 execution_utils::RecursionLayer::Unified,
                 execution_utils::RecursionArtifact::Txt,
-            ),
-        ));
+            )));
 
         println!("Computing setup");
         let setup =
@@ -718,11 +700,7 @@ mod tests {
 
         println!("Verifying GPU proof...");
         let result = execution_utils::unified_circuit::verify_proof_in_unified_layer(
-            &gpu_proof,
-            &setup,
-            &layouts,
-            false,
-            SECURITY,
+            &gpu_proof, &setup, &layouts, false, SECURITY,
         )
         .expect("is valid proof");
         assert_eq!(result.iter().all(|el| *el == 0), false);
