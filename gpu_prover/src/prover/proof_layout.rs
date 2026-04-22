@@ -23,9 +23,12 @@ use std::collections::BTreeMap;
 use std::mem::size_of;
 use std::ops::Range;
 
+use std::collections::BTreeSet;
+
 use cs::definitions::GKRAddress;
 use cs::gkr_compiler::{GKRCircuitArtifact, OutputType};
 use prover::gkr::prover::WhirSchedule;
+use prover::gkr::prover::dimension_reduction::forward::DimensionReducingInputOutput;
 
 use crate::field::{BF, E4};
 use crate::prover::gkr::stage1::GpuGKRTraceGeometry;
@@ -268,8 +271,11 @@ impl ProofLayoutBaseLayerGeometry {
 /// Build real [`ProofLayoutInputs`] for one `prove()` invocation.
 ///
 /// All dimensions are derivable from the WHIR schedule + circuit artifact +
-/// final-trace size — no runtime scheduler state is required, so this can be
-/// called before any backward or WHIR kernel has launched.
+/// final-trace size + the forward pass's `dimension_reducing_inputs`. The
+/// latter is populated by the forward scheduler and available once
+/// `schedule_forward_pass` returns, so this helper must be called after
+/// forward. Kernel scheduler state beyond the dim-reducing descriptions is
+/// not required.
 ///
 /// Field-by-field sourcing:
 ///
@@ -282,9 +288,13 @@ impl ProofLayoutBaseLayerGeometry {
 ///   by one per dim-reducing layer, then saturates at
 ///   `initial_trace_size_log_2` for every main layer. `final_step_eval_degree`
 ///   is 4 for dim-reducing (see backward.rs:5188) and 2 for main
-///   (backward.rs:6646). `final_step_eval_addresses` and `extra_eval_addresses`
-///   are left empty in this commit; they will be populated in subsequent
-///   Phase 2b commits as each kernel write is rewired into slab offsets.
+///   (backward.rs:6646). Dim-reducing `final_step_eval_addresses` come from
+///   `dimension_reducing_inputs[layer_idx].values().flat_map(.inputs)`
+///   deduplicated and sorted (matching the BTreeMap-keyed iteration order in
+///   `final_evaluation_sources_for_last_step`, backward.rs:4945-4980). Main
+///   layer `final_step_eval_addresses` and `extra_eval_addresses` are left
+///   empty in this commit; a follow-up will populate them from the main
+///   layer's gate inputs (backward.rs:6359-6397) and cached-relation keys.
 /// * `whir`: derivation mirrors `whir_fold.rs:1742-1792`. `final_monomials_len`
 ///   is 0 because the current GPU prover leaves `proof.final_monomials =
 ///   vec![]` (whir_fold.rs:1870); revisit if that changes.
@@ -292,6 +302,7 @@ pub(crate) fn build_proof_layout_inputs(
     compiled_circuit: &GKRCircuitArtifact<BF>,
     whir_schedule: &WhirSchedule,
     final_trace_size_log_2: usize,
+    dimension_reducing_inputs: &BTreeMap<usize, BTreeMap<OutputType, DimensionReducingInputOutput>>,
     memory_geometry: ProofLayoutBaseLayerGeometry,
     witness_geometry: ProofLayoutBaseLayerGeometry,
     setup_geometry: ProofLayoutBaseLayerGeometry,
@@ -300,6 +311,11 @@ pub(crate) fn build_proof_layout_inputs(
     assert!(initial_trace_size_log_2 >= final_trace_size_log_2);
     let num_dim_reducing_layers = initial_trace_size_log_2 - final_trace_size_log_2;
     let num_main_layers = compiled_circuit.layers.len();
+    assert_eq!(
+        dimension_reducing_inputs.len(),
+        num_dim_reducing_layers,
+        "dimension_reducing_inputs must have one entry per dim-reducing layer",
+    );
 
     // ------------------------------------------------------------------
     // output_evaluations
@@ -332,10 +348,19 @@ pub(crate) fn build_proof_layout_inputs(
     for slot in 0..num_dim_reducing_layers {
         let layer_idx = num_main_layers + num_dim_reducing_layers - 1 - slot;
         let sumcheck_num_rounds = final_trace_size_log_2 + slot;
+        let io_map = dimension_reducing_inputs.get(&layer_idx).unwrap_or_else(|| {
+            panic!("dimension_reducing_inputs missing entry for layer_idx {layer_idx}")
+        });
+        let mut addresses: BTreeSet<GKRAddress> = BTreeSet::new();
+        for io in io_map.values() {
+            for addr in io.inputs.iter() {
+                addresses.insert(*addr);
+            }
+        }
         backward_layers.push(BackwardLayerDims {
             layer_idx,
             sumcheck_num_rounds,
-            final_step_eval_addresses: Vec::new(),
+            final_step_eval_addresses: addresses.into_iter().collect(),
             final_step_eval_degree: 4,
             extra_eval_addresses: Vec::new(),
         });
