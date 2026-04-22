@@ -95,18 +95,8 @@ jobs:
           fi
 
   build_cli:
-    name: build_cli (${{ matrix.security_label }})
+    name: build_cli
     runs-on: [matterlabs-ci-runner-c3d]
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - security_label: security_80
-            artifact_name: cli_80
-            build_command: cargo build --release -p cli
-          - security_label: security_100
-            artifact_name: cli_100
-            build_command: cargo build --release -p cli --no-default-features --features security_100
     steps:
       - uses: actions/checkout@v3
       - uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -116,37 +106,33 @@ jobs:
       - name: Setup
         run: rustup set profile minimal
       - name: Compile
-        run: ${{ matrix.build_command }}
+        run: cargo build --release -p cli --no-default-features --features "security_80 security_100"
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact_name }}
+          name: cli
           path: |
             target/release/cli
             examples/basic_fibonacci/app.bin
             examples/basic_fibonacci/app.text
 
   cli_smoke_verify:
-    name: cli_smoke_verify (${{ matrix.security_label }})
+    name: cli_smoke_verify (${{ matrix.security_level }})
     runs-on: [matterlabs-ci-runner-c3d]
     needs: [build_cli]
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - security_label: security_80
-            artifact_name: cli_80
-          - security_label: security_100
-            artifact_name: cli_100
+        security_level: ["80", "100"]
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: ${{ matrix.artifact_name }}
+          name: cli
       - name: Setup
         run: |
           chmod +x ./target/release/cli
           mkdir -p output
       - name: Prove base
-        run: ./target/release/cli prove --bin examples/basic_fibonacci/app.bin --target base --backend cpu --cpu-cycles-bound 16777216 --cpu-worker-threads 8 --output-dir output --output-file base.json
+        run: ./target/release/cli prove --bin examples/basic_fibonacci/app.bin --security-level ${{ matrix.security_level }} --target base --backend cpu --cpu-cycles-bound 16777216 --cpu-worker-threads 8 --output-dir output --output-file base.json
       - name: Verify base
         run: ./target/release/cli verify --proof output/base.json --bin examples/basic_fibonacci/app.bin
       - name: Continue to recursion unified
