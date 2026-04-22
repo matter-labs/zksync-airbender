@@ -4,8 +4,8 @@ use field::FieldExtension;
 use field::Mersenne31Field;
 use field::Mersenne31Quartic;
 use field::PrimeField;
-use trace_holder::ColumnMajorTrace;
-use trace_holder::RowMajorTrace;
+use crate::trace_holder::ColumnMajorTrace;
+use crate::trace_holder::RowMajorTrace;
 use worker::Worker;
 
 pub mod blake2s_for_everything_tree;
