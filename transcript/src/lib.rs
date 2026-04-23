@@ -2,9 +2,6 @@
 
 use blake2s_u32::*;
 
-// const USE_REDUCED_BLAKE2_ROUNDS: bool = false;
-const USE_REDUCED_BLAKE2_ROUNDS: bool = true;
-
 pub use blake2s_u32;
 
 #[cfg(feature = "pow")]
@@ -16,12 +13,12 @@ pub mod pow;
 // - use seed -> (randomness, new_see)
 
 #[derive(Clone, Copy, Debug, Default)]
-pub struct Blake2sTranscript;
+pub struct Blake2sTranscript<const REDUCED_ROUNDS: bool = true>;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub struct Seed(pub [u32; BLAKE2S_DIGEST_SIZE_U32_WORDS]);
 
-impl Blake2sTranscript {
+impl<const REDUCED_ROUNDS: bool> Blake2sTranscript<REDUCED_ROUNDS> {
     pub fn commit_initial(input: &[u32]) -> Seed {
         let mut hasher = blake2s_u32::DelegatedBlake2sState::new();
         let mut offset = 0;
@@ -97,7 +94,7 @@ impl Blake2sTranscript {
                 let block_ptr = (buf.as_ptr()).add(i * BLAKE2S_BLOCK_SIZE_U32_WORDS);
                 let block =
                     &*(block_ptr as *const AlignedArray64<u32, BLAKE2S_BLOCK_SIZE_U32_WORDS>);
-                hasher.run_round_function_with_input::<USE_REDUCED_BLAKE2_ROUNDS>(
+                hasher.run_round_function_with_input::<REDUCED_ROUNDS>(
                     block,
                     BLAKE2S_BLOCK_SIZE_U32_WORDS,
                     false,
@@ -111,11 +108,7 @@ impl Blake2sTranscript {
             } else {
                 BLAKE2S_BLOCK_SIZE_U32_WORDS
             };
-            hasher.run_round_function_with_input::<USE_REDUCED_BLAKE2_ROUNDS>(
-                last_block,
-                last_active,
-                true,
-            );
+            hasher.run_round_function_with_input::<REDUCED_ROUNDS>(last_block, last_active, true);
         }
         *seed = Seed(hasher.read_state_for_output());
     }
@@ -137,7 +130,7 @@ impl Blake2sTranscript {
         unsafe {
             for i in 0..num_blocks - 1 {
                 let block_ptr = (buf.as_ptr()).add(i);
-                hasher.run_round_function_with_input::<USE_REDUCED_BLAKE2_ROUNDS>(
+                hasher.run_round_function_with_input::<REDUCED_ROUNDS>(
                     block_ptr.as_ref_unchecked(),
                     BLAKE2S_BLOCK_SIZE_U32_WORDS,
                     false,
@@ -149,7 +142,7 @@ impl Blake2sTranscript {
             } else {
                 BLAKE2S_BLOCK_SIZE_U32_WORDS
             };
-            hasher.run_round_function_with_input::<USE_REDUCED_BLAKE2_ROUNDS>(
+            hasher.run_round_function_with_input::<REDUCED_ROUNDS>(
                 last_ptr.as_ref_unchecked(),
                 last_active,
                 true,
@@ -194,10 +187,7 @@ impl Blake2sTranscript {
             );
             if remaining > 0 {
                 debug_assert_eq!(buffer_offset, BLAKE2S_BLOCK_SIZE_U32_WORDS);
-                hasher.run_round_function::<USE_REDUCED_BLAKE2_ROUNDS>(
-                    BLAKE2S_BLOCK_SIZE_U32_WORDS,
-                    false,
-                );
+                hasher.run_round_function::<REDUCED_ROUNDS>(BLAKE2S_BLOCK_SIZE_U32_WORDS, false);
 
                 buffer_offset = 0;
             }
@@ -207,7 +197,7 @@ impl Blake2sTranscript {
 
     #[inline(always)]
     unsafe fn flush(hasher: &mut blake2s_u32::DelegatedBlake2sState, offset: usize) {
-        hasher.run_round_function::<USE_REDUCED_BLAKE2_ROUNDS>(offset, true);
+        hasher.run_round_function::<REDUCED_ROUNDS>(offset, true);
     }
 
     pub fn draw_randomness(seed: &mut Seed, dst: &mut [u32]) {
@@ -249,27 +239,6 @@ impl Blake2sTranscript {
         }
     }
 
-    fn draw_randomness_using_hasher_into_fixed_buffer(
-        hasher: &mut blake2s_u32::DelegatedBlake2sState,
-        seed: &mut Seed,
-        dst: &mut [u32; BLAKE2S_DIGEST_SIZE_U32_WORDS],
-        need_hashing_round: bool,
-    ) {
-        unsafe {
-            if need_hashing_round {
-                Self::draw_randomness_inner(hasher, seed);
-            }
-
-            let mut dst_ptr: *mut u32 = dst.as_mut_ptr().cast::<u32>();
-            // first we can just take values from the seed
-            crate::spec_memcopy_u32_nonoverlapping(
-                seed.0.as_ptr().cast::<u32>(),
-                dst_ptr,
-                BLAKE2S_DIGEST_SIZE_U32_WORDS,
-            );
-        }
-    }
-
     #[unroll::unroll_for_loops]
     #[inline(always)]
     unsafe fn draw_randomness_inner(
@@ -293,17 +262,14 @@ impl Blake2sTranscript {
 
         if blake2s_u32::DelegatedBlake2sState::SUPPORT_SPEC_SINGLE_ROUND {
             unsafe {
-                hasher.spec_run_single_round_into_destination::<USE_REDUCED_BLAKE2_ROUNDS>(
+                hasher.spec_run_single_round_into_destination::<REDUCED_ROUNDS>(
                     BLAKE2S_DIGEST_SIZE_U32_WORDS,
                     &mut seed.0 as *mut _,
                 );
             }
         } else {
             // we take the seed + sequence id, and produce hash
-            hasher.run_round_function::<USE_REDUCED_BLAKE2_ROUNDS>(
-                BLAKE2S_DIGEST_SIZE_U32_WORDS,
-                true,
-            );
+            hasher.run_round_function::<REDUCED_ROUNDS>(BLAKE2S_DIGEST_SIZE_U32_WORDS, true);
 
             seed.0 = hasher.read_state_for_output();
         }
@@ -341,10 +307,7 @@ impl Blake2sTranscript {
                 hasher.input_buffer.as_mut_ptr_range().end.cast::<u32>(),
             );
 
-            hasher.run_round_function::<USE_REDUCED_BLAKE2_ROUNDS>(
-                BLAKE2S_DIGEST_SIZE_U32_WORDS + 2,
-                true,
-            );
+            hasher.run_round_function::<REDUCED_ROUNDS>(BLAKE2S_DIGEST_SIZE_U32_WORDS + 2, true);
         }
 
         // check that first element is small enough
@@ -363,12 +326,12 @@ impl Blake2sTranscript {
 }
 
 #[derive(Clone, Debug)]
-pub struct Blake2sBufferingTranscript {
+pub struct Blake2sBufferingTranscript<const REDUCED_ROUNDS: bool = true> {
     state: DelegatedBlake2sState,
     buffer_offset: usize,
 }
 
-impl Blake2sBufferingTranscript {
+impl<const REDUCED_ROUNDS: bool> Blake2sBufferingTranscript<REDUCED_ROUNDS> {
     pub fn new() -> Self {
         Self {
             state: DelegatedBlake2sState::new(),
@@ -412,7 +375,7 @@ impl Blake2sBufferingTranscript {
         debug_assert_eq!(self.buffer_offset, BLAKE2S_BLOCK_SIZE_U32_WORDS);
 
         self.state
-            .run_round_function::<USE_REDUCED_BLAKE2_ROUNDS>(BLAKE2S_BLOCK_SIZE_U32_WORDS, false);
+            .run_round_function::<REDUCED_ROUNDS>(BLAKE2S_BLOCK_SIZE_U32_WORDS, false);
 
         self.buffer_offset = 0;
     }
@@ -445,7 +408,7 @@ impl Blake2sBufferingTranscript {
                 self.state.input_buffer.as_mut_ptr_range().end.cast::<u32>(),
             );
             self.state
-                .run_round_function::<USE_REDUCED_BLAKE2_ROUNDS>(self.buffer_offset, true);
+                .run_round_function::<REDUCED_ROUNDS>(self.buffer_offset, true);
         }
 
         Seed(self.state.read_state_for_output())
@@ -463,7 +426,7 @@ impl Blake2sBufferingTranscript {
                 self.state.input_buffer.as_mut_ptr_range().end.cast::<u32>(),
             );
             self.state
-                .run_round_function::<USE_REDUCED_BLAKE2_ROUNDS>(self.buffer_offset, true);
+                .run_round_function::<REDUCED_ROUNDS>(self.buffer_offset, true);
         }
 
         let seed = Seed(self.state.read_state_for_output());
@@ -475,12 +438,12 @@ impl Blake2sBufferingTranscript {
     }
 }
 
-pub struct TranscriptState {
+pub struct TranscriptState<const REDUCED_ROUNDS: bool = true> {
     pub hasher: DelegatedBlake2sState,
     pub seed: Seed,
 }
 
-impl TranscriptState {
+impl<const REDUCED_ROUNDS: bool> TranscriptState<REDUCED_ROUNDS> {
     #[inline(always)]
     pub fn new(seed: Seed) -> Self {
         Self {
@@ -501,11 +464,15 @@ impl TranscriptState {
 
     #[inline(always)]
     pub fn draw_raw(&mut self, dst: &mut [u32]) {
-        Blake2sTranscript::draw_randomness_using_hasher(&mut self.hasher, &mut self.seed, dst);
+        Blake2sTranscript::<REDUCED_ROUNDS>::draw_randomness_using_hasher(
+            &mut self.hasher,
+            &mut self.seed,
+            dst,
+        );
     }
 
     #[inline(always)]
-    pub fn iterator<'a>(&'a mut self) -> TranscriptStateU32Iterator<'a> {
+    pub fn iterator<'a>(&'a mut self) -> TranscriptStateU32Iterator<'a, REDUCED_ROUNDS> {
         TranscriptStateU32Iterator {
             state: self,
             buffer_offset: 0,
@@ -518,12 +485,14 @@ impl TranscriptState {
     }
 }
 
-pub struct TranscriptStateU32Iterator<'a> {
-    state: &'a mut TranscriptState,
+pub struct TranscriptStateU32Iterator<'a, const REDUCED_ROUNDS: bool> {
+    state: &'a mut TranscriptState<REDUCED_ROUNDS>,
     buffer_offset: usize,
 }
 
-impl<'a> core::iter::Iterator for TranscriptStateU32Iterator<'a> {
+impl<'a, const REDUCED_ROUNDS: bool> core::iter::Iterator
+    for TranscriptStateU32Iterator<'a, REDUCED_ROUNDS>
+{
     type Item = u32;
 
     #[inline(always)]
@@ -531,7 +500,7 @@ impl<'a> core::iter::Iterator for TranscriptStateU32Iterator<'a> {
         unsafe {
             if self.buffer_offset == BLAKE2S_DIGEST_SIZE_U32_WORDS {
                 self.buffer_offset = 0;
-                Blake2sTranscript::draw_randomness_inner(
+                Blake2sTranscript::<REDUCED_ROUNDS>::draw_randomness_inner(
                     &mut self.state.hasher,
                     &mut self.state.seed,
                 );
@@ -547,11 +516,11 @@ impl<'a> core::iter::Iterator for TranscriptStateU32Iterator<'a> {
 
 /// layout `[seed | data | zero-padding]`
 /// Callers write data via `data_write(i, val)` — the seed offset is handled internally.
-pub struct CommitBuf<const N: usize> {
+pub struct CommitBuf<const N: usize, const REDUCED_ROUNDS: bool = true> {
     inner: AlignedArray64<core::mem::MaybeUninit<u32>, N>,
 }
 
-impl<const N: usize> CommitBuf<N> {
+impl<const N: usize, const REDUCED_ROUNDS: bool> CommitBuf<N, REDUCED_ROUNDS> {
     #[inline(always)]
     pub fn new() -> Self {
         Self {
@@ -579,7 +548,7 @@ impl<const N: usize> CommitBuf<N> {
         }
         self.inner.copy_from_slice(0, &seed.0);
         {
-            Blake2sTranscript::commit_with_seed_using_hasher_and_aligned_buffer(
+            Blake2sTranscript::<REDUCED_ROUNDS>::commit_with_seed_using_hasher_and_aligned_buffer(
                 hasher,
                 seed,
                 unsafe { self.inner.assume_init_ref() },

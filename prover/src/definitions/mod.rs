@@ -2,6 +2,9 @@ use ::cs::definitions::*;
 use ::field::*;
 use transcript::Blake2sTranscript;
 
+// pub const USE_REDUCED_BLAKE2_ROUNDS: bool = false;
+pub const USE_REDUCED_BLAKE2_ROUNDS: bool = true;
+
 fn split_u32_into_pair_u16(num: u32) -> (u32, u32) {
     let high_word = num >> 16;
     let low_word = num & core::hint::black_box(0x0000ffff);
@@ -118,7 +121,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> GKRExternalChallenges<F, E> {
             );
         }
         hasher.reset();
-        let mut transcript_state = transcript::TranscriptState::from_hasher_and_seed(hasher, seed);
+        let mut transcript_state = transcript::TranscriptState::<USE_REDUCED_BLAKE2_ROUNDS>::from_hasher_and_seed(hasher, seed);
 
         let mut it = transcript_state.iterator();
         if pow_bits > 0 {
