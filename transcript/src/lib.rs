@@ -249,6 +249,27 @@ impl Blake2sTranscript {
         }
     }
 
+    fn draw_randomness_using_hasher_into_fixed_buffer(
+        hasher: &mut blake2s_u32::DelegatedBlake2sState,
+        seed: &mut Seed,
+        dst: &mut [u32; BLAKE2S_DIGEST_SIZE_U32_WORDS],
+        need_hashing_round: bool,
+    ) {
+        unsafe {
+            if need_hashing_round {
+                Self::draw_randomness_inner(hasher, seed);
+            }
+
+            let mut dst_ptr: *mut u32 = dst.as_mut_ptr().cast::<u32>();
+            // first we can just take values from the seed
+            crate::spec_memcopy_u32_nonoverlapping(
+                seed.0.as_ptr().cast::<u32>(),
+                dst_ptr,
+                BLAKE2S_DIGEST_SIZE_U32_WORDS,
+            );
+        }
+    }
+
     #[unroll::unroll_for_loops]
     #[inline(always)]
     unsafe fn draw_randomness_inner(
@@ -451,5 +472,127 @@ impl Blake2sBufferingTranscript {
         self.buffer_offset = 0;
 
         seed
+    }
+}
+
+pub struct TranscriptState {
+    pub hasher: DelegatedBlake2sState,
+    pub seed: Seed,
+}
+
+impl TranscriptState {
+    #[inline(always)]
+    pub fn new(seed: Seed) -> Self {
+        Self {
+            hasher: DelegatedBlake2sState::new(),
+            seed,
+        }
+    }
+
+    #[inline(always)]
+    pub fn from_hasher_and_seed(hasher: DelegatedBlake2sState, seed: Seed) -> Self {
+        Self { hasher, seed }
+    }
+
+    #[inline(always)]
+    pub fn commit<const N: usize>(&mut self, buf: &mut CommitBuf<N>, data_words: usize) {
+        buf.commit(&mut self.hasher, &mut self.seed, data_words);
+    }
+
+    #[inline(always)]
+    pub fn draw_raw(&mut self, dst: &mut [u32]) {
+        Blake2sTranscript::draw_randomness_using_hasher(&mut self.hasher, &mut self.seed, dst);
+    }
+
+    #[inline(always)]
+    pub fn iterator<'a>(&'a mut self) -> TranscriptStateU32Iterator<'a> {
+        TranscriptStateU32Iterator {
+            state: self,
+            buffer_offset: 0
+        }
+    }
+
+    #[inline(always)]
+    pub fn into_seed(self) -> Seed {
+        self.seed
+    }
+}
+
+pub struct TranscriptStateU32Iterator<'a> {
+    state: &'a mut TranscriptState,
+    buffer_offset: usize,
+}
+
+impl<'a> core::iter::Iterator for TranscriptStateU32Iterator<'a> {
+    type Item = u32;
+
+    #[inline(always)]
+    fn next(&mut self) -> Option<Self::Item> {
+        unsafe {
+            if self.buffer_offset == BLAKE2S_DIGEST_SIZE_U32_WORDS {
+                self.buffer_offset = 0;
+                Blake2sTranscript::draw_randomness_inner(&mut self.state.hasher, &mut self.state.seed);
+            }
+
+            let word = *self.state.seed.0.get_unchecked(self.buffer_offset);
+            self.buffer_offset += 1;
+
+            Some(word)
+        }
+    }
+}
+
+/// layout `[seed | data | zero-padding]`
+/// Callers write data via `data_write(i, val)` — the seed offset is handled internally.
+pub struct CommitBuf<const N: usize> {
+    inner: AlignedArray64<core::mem::MaybeUninit<u32>, N>,
+}
+
+impl<const N: usize> CommitBuf<N> {
+    #[inline(always)]
+    pub fn new() -> Self {
+        Self {
+            inner: AlignedArray64::new_uninit(),
+        }
+    }
+
+    #[inline(always)]
+    pub fn data_write(&mut self, i: usize, val: u32) {
+        self.inner.write(BLAKE2S_DIGEST_SIZE_U32_WORDS + i, val);
+    }
+
+    #[inline(always)]
+    pub fn commit(
+        &mut self,
+        hasher: &mut DelegatedBlake2sState,
+        seed: &mut Seed,
+        data_words: usize,
+    ) {
+        let total = BLAKE2S_DIGEST_SIZE_U32_WORDS + data_words;
+        let padded = total.next_multiple_of(BLAKE2S_BLOCK_SIZE_U32_WORDS);
+        debug_assert!(padded <= N);
+        if padded > total {
+            unsafe { self.inner.zero_range(total, padded) };
+        }
+        self.inner.copy_from_slice(0, &seed.0);
+        {
+            Blake2sTranscript::commit_with_seed_using_hasher_and_aligned_buffer(
+                hasher,
+                seed,
+                unsafe { self.inner.assume_init_ref() },
+                total,
+            );
+        }
+    }
+
+    #[inline(always)]
+    pub unsafe fn data_as<T>(&self, count: usize) -> &[T] {
+        self.inner
+            .transmute_subslice(BLAKE2S_DIGEST_SIZE_U32_WORDS, count)
+    }
+
+    #[inline(always)]
+    pub unsafe fn read_one<T: Copy>(&self) -> T {
+        *self.data_as::<T>(1).get_unchecked(0)
     }
 }

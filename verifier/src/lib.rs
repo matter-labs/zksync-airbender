@@ -1,9 +1,7 @@
 #![cfg_attr(not(any(test, feature = "replace_csr")), no_std)]
-#![allow(incomplete_features)]
-#![feature(generic_const_exprs)]
+#![cfg_attr(not(any(test, feature = "proof_utils")), allow(incomplete_features))]
+#![cfg_attr(not(any(test, feature = "proof_utils")), feature(generic_const_exprs))]
 
-#[cfg(any(test, feature = "proof_utils"))]
-extern crate alloc;
 
 pub use field;
 pub use verifier_common;

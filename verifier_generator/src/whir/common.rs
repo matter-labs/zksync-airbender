@@ -238,7 +238,7 @@ pub fn generate_whir_common<MW: MersenneWrapper>(max_fold_steps: usize) -> Token
         pub fn ext_from_raw_word_slice(words: &[u32]) -> #quartic_struct {
             debug_assert!(words.len() >= EXT_DEGREE);
             let raw = unsafe { (words.as_ptr() as *const [u32; EXT_DEGREE]).as_ref_unchecked() };
-            ext_from_raw_words::<#field_struct, #quartic_struct>(raw)
+            ext_from_raw_words::<#field_struct, #quartic_struct, EXT_DEGREE>(raw)
         }
 
         #[inline(always)]

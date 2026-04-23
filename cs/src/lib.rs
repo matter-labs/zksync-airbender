@@ -1,6 +1,6 @@
 #![cfg_attr(not(feature = "compiler"), no_std)]
-#![allow(type_alias_bounds)]
-#![feature(allocator_api)]
+#![cfg_attr(feature = "compiler", feature(allocator_api))]
+#![cfg_attr(feature = "compiler", allow(type_alias_bounds))]
 
 pub mod definitions;
 

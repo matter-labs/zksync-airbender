@@ -137,11 +137,13 @@ pub trait BaseField<const N: usize>: Field {
     }
 }
 
-pub trait FixedArrayConvertible<F: Field> {
+pub trait FixedArrayConvertible<F: Field>: Sized {
     fn from_array<const N: usize>(array: [F; N]) -> Self;
     fn into_array<const N: usize>(self) -> [F; N];
     fn as_array<const N: usize>(&self) -> &[F; N];
     fn as_array_mut<const N: usize>(&mut self) -> &mut [F; N];
+
+    fn project_uninit<'a>(this: &'a mut core::mem::MaybeUninit<Self>) -> &'a mut [core::mem::MaybeUninit<F>];
 }
 
 impl<F: Field, const M: usize> FixedArrayConvertible<F> for [F; M] {
@@ -202,6 +204,13 @@ impl<F: Field, const M: usize> FixedArrayConvertible<F> for [F; M] {
                 "invalid array size: internally it's [F; {}], requested [F; {}]",
                 N, M
             );
+        }
+    }
+
+    #[inline(always)]
+    fn project_uninit<'a>(this: &'a mut core::mem::MaybeUninit<Self>) -> &'a mut [core::mem::MaybeUninit<F>] {
+        unsafe {
+            core::slice::from_raw_parts_mut((this as *mut core::mem::MaybeUninit<Self>).cast(), M)
         }
     }
 }

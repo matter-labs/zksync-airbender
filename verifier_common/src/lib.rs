@@ -1,8 +1,8 @@
 #![cfg_attr(not(any(test, feature = "replace_csr")), no_std)]
+#![cfg_attr(any(test, feature = "proof_utils"), allow(incomplete_features))]
 #![cfg_attr(any(test, feature = "proof_utils"), feature(allocator_api))]
-#![allow(incomplete_features)]
-#![feature(generic_const_exprs)]
-#![feature(maybe_uninit_array_assume_init)]
+#![cfg_attr(any(test, feature = "proof_utils"), feature(generic_const_exprs))]
+#![cfg_attr(any(test, feature = "proof_utils"), feature(maybe_uninit_array_assume_init))]
 
 #[macro_export]
 macro_rules! gkr_circuits {
@@ -239,7 +239,7 @@ pub trait ConcreteVerifierImpl<
             NUM_SETUP_COMMITS,
             PADDING_WORDS,
         >,
-        transcript_state: &mut crate::structs::TranscriptState,
+        transcript_state: &mut ::transcript::TranscriptState,
     ) -> Result<GKRVerifierOutput<'static, EE, ROUNDS, ADDRS>, E::Error>;
     fn verify_whir<I: NonDeterminismSource, E: ErrorCreator>(
         initial_transcript: &InitialGKRTranscript<
@@ -252,7 +252,7 @@ pub trait ConcreteVerifierImpl<
             NUM_SETUP_COMMITS,
             PADDING_WORDS,
         >,
-        transcript_state: &mut crate::structs::TranscriptState,
+        transcript_state: &mut transcript::TranscriptState,
         whir_batching_challenge: EE,
         base_layer_claims: &[EE],
         initial_claim_point: &[EE],
@@ -291,10 +291,7 @@ pub fn verify_impl<
 ) -> Result<
     VerifierOutput<EE, INIT_AND_TEARDOWN_SETS, CAP_SIZE, NUM_MEMORY_COMMITS, NUM_SETUP_COMMITS>,
     E::Error,
->
-where
-    [(); EE::DEGREE]:,
-{
+> {
     use crate::gkr::make_initial_transcript;
     let (initial_transcript_values, mut ts) = make_initial_transcript::<
         F,
@@ -330,10 +327,7 @@ pub fn read_external_challenges<
     F: PrimeField,
     E: FieldExtension<F> + Field,
     I: NonDeterminismSource,
->() -> GKRExternalChallenges<F, E>
-where
-    [(); E::DEGREE]:,
-{
+>() -> GKRExternalChallenges<F, E> {
     use crate::structs::ext_from_nds;
     use cs::definitions::NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES;
 

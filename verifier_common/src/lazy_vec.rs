@@ -83,7 +83,10 @@ impl<V: Copy, const N: usize> LazyVec<V, N> {
     #[inline(always)]
     pub unsafe fn into_array(self) -> [V; N] {
         debug_assert!(self.len == N);
-        MaybeUninit::array_assume_init(self.data)
+        // MaybeUninit::array_assume_init(self.data)
+        unsafe {
+            self.data.map(|el| el.assume_init())
+        }
     }
 
     /// Returns a reference to the first M elements as a fixed-size array.

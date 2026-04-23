@@ -186,10 +186,7 @@ pub fn make_initial_transcript<
         PADDING_WORDS,
     >,
     TranscriptState,
-)
-where
-    [(); E::DEGREE]:,
-{
+) {
     assert!(NUM_MEMORY_COMMITS == 0 || NUM_MEMORY_COMMITS == 1);
     assert!(NUM_WITNESS_COMMITS == 0 || NUM_WITNESS_COMMITS == 1);
     assert!(NUM_SETUP_COMMITS == 0 || NUM_SETUP_COMMITS == 1);

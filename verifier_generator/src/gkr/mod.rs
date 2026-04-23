@@ -179,7 +179,7 @@ pub fn generate_gkr_common<MW: MersenneWrapper>() -> TokenStream {
                 ts.draw_raw(draw_buf.as_mut_slice());
                 let r_k = {
                     let raw = unsafe { (draw_buf.as_slice().as_ptr() as *const [u32; EXT_DEGREE]).as_ref_unchecked() };
-                    ext_from_raw_words::<#field_struct, #quartic_struct>(raw)
+                    ext_from_raw_words::<#field_struct, #quartic_struct, EXT_DEGREE>(raw)
                 };
 
                 {

@@ -1,9 +1,9 @@
 #![cfg_attr(not(feature = "prover"), no_std)]
-#![allow(incomplete_features)]
-#![feature(generic_const_exprs)]
-#![feature(allocator_api)]
-#![feature(maybe_uninit_fill)]
-#![feature(lazy_type_alias)] // NECESSARY TO AVOID UGLY LIFETIME BOUND ISSUE
+#![cfg_attr(feature = "prover", allow(incomplete_features))]
+#![cfg_attr(feature = "prover", feature(generic_const_exprs))]
+#![cfg_attr(feature = "prover", feature(allocator_api))]
+#![cfg_attr(feature = "prover", feature(maybe_uninit_fill))]
+#![cfg_attr(feature = "prover", feature(lazy_type_alias))] // NECESSARY TO AVOID UGLY LIFETIME BOUND ISSUE
 
 #[cfg(feature = "debug_satisfiable")]
 pub const DEBUG_QUOTIENT: bool = true;

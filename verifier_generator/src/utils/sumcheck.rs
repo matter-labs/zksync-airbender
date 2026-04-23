@@ -28,14 +28,15 @@ pub fn generate_sumcheck_helpers<MW: MersenneWrapper>() -> TokenStream {
         }
 
         #[inline(always)]
-        pub fn make_eq_poly<const N: usize>(
-            challenges: &[#quartic_struct; N],
-            buf: &mut LazyVec<#quartic_struct, { 1 << N }>,
+        pub fn make_eq_poly<const M: usize, const N: usize>(
+            challenges: &[#quartic_struct; M],
+            buf: &mut LazyVec<#quartic_struct, N>,
         ) {
+            assert_eq!(N, 1 << M);
             unsafe { buf.set_unchecked(0, #quartic_one) };
             let mut size = 1usize;
-            let mut idx = N;
-            for _ in 0..N {
+            let mut idx = M;
+            for _ in 0..M {
                 idx -= 1;
                 let c = unsafe { *challenges.get_unchecked(idx) };
                 let f1 = c;
@@ -56,7 +57,7 @@ pub fn generate_sumcheck_helpers<MW: MersenneWrapper>() -> TokenStream {
                 }
                 size *= 2;
             }
-            unsafe { buf.set_len(1 << N) };
+            unsafe { buf.set_len(N) };
         }
     }
 }

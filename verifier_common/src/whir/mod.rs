@@ -1,9 +1,9 @@
 use blake2s_u32::{DelegatedBlake2sState, BLAKE2S_DIGEST_SIZE_U32_WORDS};
 use non_determinism_source::NonDeterminismSource;
-use transcript::Blake2sTranscript;
+use transcript::{Blake2sTranscript, CommitBuf, TranscriptState};
 
 use crate::lazy_vec::LazyVec;
-use crate::structs::{assemble_query_index, BitSource, CommitBuf, TranscriptState};
+use crate::structs::{assemble_query_index, BitSource};
 
 #[derive(Clone, Copy)]
 pub struct WhirPowEntry<E: Copy> {

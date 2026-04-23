@@ -46,7 +46,8 @@ pub fn draw_field_els_into<const BUF_CAP: usize>(
             (words.as_slice().as_ptr().add(base) as *const [u32; EXT_DEGREE]).as_ref_unchecked()
         };
         unsafe {
-            *dst.get_unchecked_mut(i) = ext_from_raw_words::<BabyBearField, BabyBearExt4>(raw);
+            *dst.get_unchecked_mut(i) =
+                ext_from_raw_words::<BabyBearField, BabyBearExt4, EXT_DEGREE>(raw);
         }
         i += 1;
     }
@@ -59,7 +60,7 @@ pub fn draw_single_field_el(ts: &mut TranscriptState) -> BabyBearExt4 {
         ts.draw_raw(words.as_mut_slice());
     }
     let raw = unsafe { words.as_array::<EXT_DEGREE>() };
-    ext_from_raw_words::<BabyBearField, BabyBearExt4>(raw)
+    ext_from_raw_words::<BabyBearField, BabyBearExt4, EXT_DEGREE>(raw)
 }
 #[inline(always)]
 pub fn dot_eq<const N: usize>(values: &[BabyBearExt4; N], eq: &[BabyBearExt4; N]) -> BabyBearExt4 {
@@ -72,14 +73,15 @@ pub fn dot_eq<const N: usize>(values: &[BabyBearExt4; N], eq: &[BabyBearExt4; N]
     result
 }
 #[inline(always)]
-pub fn make_eq_poly<const N: usize>(
-    challenges: &[BabyBearExt4; N],
-    buf: &mut LazyVec<BabyBearExt4, { 1 << N }>,
+pub fn make_eq_poly<const M: usize, const N: usize>(
+    challenges: &[BabyBearExt4; M],
+    buf: &mut LazyVec<BabyBearExt4, N>,
 ) {
+    assert_eq!(N, 1 << M);
     unsafe { buf.set_unchecked(0, BabyBearExt4::ONE) };
     let mut size = 1usize;
-    let mut idx = N;
-    for _ in 0..N {
+    let mut idx = M;
+    for _ in 0..M {
         idx -= 1;
         let c = unsafe { *challenges.get_unchecked(idx) };
         let f1 = c;
@@ -99,7 +101,7 @@ pub fn make_eq_poly<const N: usize>(
         }
         size *= 2;
     }
-    unsafe { buf.set_len(1 << N) };
+    unsafe { buf.set_len(N) };
 }
 #[inline(always)]
 pub fn verify_sumcheck_rounds<
@@ -148,7 +150,7 @@ pub fn verify_sumcheck_rounds<
             let raw = unsafe {
                 (draw_buf.as_slice().as_ptr() as *const [u32; EXT_DEGREE]).as_ref_unchecked()
             };
-            ext_from_raw_words::<BabyBearField, BabyBearExt4>(raw)
+            ext_from_raw_words::<BabyBearField, BabyBearExt4, EXT_DEGREE>(raw)
         };
         {
             let mut result = coeffs[3];
@@ -617,7 +619,7 @@ pub fn compute_high_powers_offsets(
 pub fn ext_from_raw_word_slice(words: &[u32]) -> BabyBearExt4 {
     debug_assert!(words.len() >= EXT_DEGREE);
     let raw = unsafe { (words.as_ptr() as *const [u32; EXT_DEGREE]).as_ref_unchecked() };
-    ext_from_raw_words::<BabyBearField, BabyBearExt4>(raw)
+    ext_from_raw_words::<BabyBearField, BabyBearExt4, EXT_DEGREE>(raw)
 }
 #[inline(always)]
 #[allow(clippy::too_many_arguments)]
