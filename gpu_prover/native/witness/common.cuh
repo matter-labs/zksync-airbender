@@ -39,7 +39,7 @@ struct NoFieldLinearRelation {
 
 DEVICE_FORCEINLINE bf evaluate_linear_relation(const matrix_getter<bf, ld_modifier::cg> memory, const matrix_getter<bf, ld_modifier::cg> witness,
                                                const matrix_getter<bf, ld_modifier::cg> scratch, const NoFieldLinearRelation relation) {
-  bf result = relation.constant == 0 ? bf::ZERO() : bf::from_canonical_u32(relation.constant);
+  bf result = relation.constant == 0 ? bf::ZERO() : bf::from_u32_unchecked(relation.constant);
 #pragma unroll
   for (int i = 0; i < MAX_LINEAR_TERMS_COUNT; ++i) {
     if (i == relation.linear_terms_count)
@@ -72,7 +72,7 @@ DEVICE_FORCEINLINE bf evaluate_linear_relation(const matrix_getter<bf, ld_modifi
       value = bf::neg(value);
       break;
     default:
-      value = bf::mul(value, bf::from_canonical_u32(coefficient));
+      value = bf::mul(value, bf::from_u32_unchecked(coefficient));
       break;
     }
     result = bf::add(result, value);
