@@ -2480,8 +2480,8 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         final_callbacks.schedule(
             {
                 let shared_state = shared_state_handle;
-                move || {
-                    let proof_state = unsafe { shared_state.get_mut() };
+                move || unsafe {
+                    let proof_state = shared_state.get_mut();
                     let commitment = &mut proof_state
                         .proof
                         .as_mut()
@@ -2493,6 +2493,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
                         &next_oracle_cap_accessors,
                         0,
                     );
+                    add_whir_commitment_to_transcript(seed_accessor.get_mut(), commitment);
                 }
             },
             stream,
