@@ -296,6 +296,11 @@ pub(crate) struct GpuWhirFoldScheduledExecution {
     _base_queries: Vec<[Vec<ScheduledUnknownCosetBaseFieldQueryKeepalive>; 3]>,
     #[allow(dead_code)]
     _recursive_queries: Vec<Vec<crate::prover::whir::GpuWhirScheduledExtensionQueryKeepalive>>,
+    // Host buffer that backs the final-round monomial-form readback. The callback
+    // that commits it to the transcript and writes `proof.final_monomials` holds a
+    // raw accessor into this allocation, so it must outlive `final_callbacks`.
+    #[allow(dead_code)]
+    _final_monomials_host: Option<HostAllocation<[E4]>>,
     #[allow(dead_code)]
     _final_callbacks: Callbacks<'static>,
     shared_state: Box<ScheduledWhirProofState>,
@@ -2695,6 +2700,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         tracing_ranges.push(round_range);
     }
 
+    let mut final_monomials_keepalive: Option<HostAllocation<[E4]>> = None;
     {
         let round_range = Range::new("gkr.whir.final_round")?;
         round_range.start(stream)?;
@@ -2702,6 +2708,34 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         let num_queries = whir_queries_schedule.next().unwrap();
         let (pow_round_idx, pow_bits) = whir_pow_schedule.next().unwrap();
         schedule_fold_round(num_folding_steps, &mut state)?;
+
+        // Mirror CPU `prover/src/gkr/whir/mod.rs` lines 1297 and 1391: after the final fold
+        // and before drawing the final PoW/query bits, CPU commits the remaining
+        // monomial-form coefficients into the transcript seed, and later stores them on the
+        // proof as `final_monomials`. Read them back asynchronously and do both in a single
+        // stream-ordered callback so the seed update is sequenced before
+        // `schedule_pow_verify_and_query_indexes` below.
+        let mut final_monomials_host =
+            unsafe { context.alloc_host_uninit_slice::<E4>(state.current_len) };
+        memory_copy_async(
+            &mut final_monomials_host,
+            &state.sumchecked_poly_monomial_form[..state.current_len],
+            stream,
+        )?;
+        let final_monomials_accessor = final_monomials_host.get_accessor();
+        final_callbacks.schedule(
+            {
+                let shared_state = shared_state_handle;
+                move || unsafe {
+                    let monomials = final_monomials_accessor.get();
+                    commit_field_els::<BF, E4>(seed_accessor.get_mut(), monomials);
+                    shared_state.get_mut().proof.as_mut().unwrap().final_monomials =
+                        monomials.to_vec();
+                }
+            },
+            stream,
+        )?;
+        final_monomials_keepalive = Some(final_monomials_host);
 
         let mut oracle_to_query = rs_oracle.take().unwrap();
         let query_domain_log2 = state.current_len.trailing_zeros() as usize
@@ -2833,6 +2867,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         _delinearization_challenges: delinearization_challenges,
         _base_queries: base_queries,
         _recursive_queries: recursive_queries,
+        _final_monomials_host: final_monomials_keepalive,
         _final_callbacks: final_callbacks,
         shared_state,
     })
