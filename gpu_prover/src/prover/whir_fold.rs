@@ -832,14 +832,23 @@ fn fill_unknown_coset_base_field_query_from_accessors(
     value_leafs: &[crate::primitives::context::UnsafeAccessor<[BF]>],
     path_merkle_paths: &[crate::primitives::context::UnsafeAccessor<[Digest]>],
 ) {
+    // CPU stores the merkle-tree-space index on `BaseFieldQuery.index` (see
+    // prover/src/gkr/whir/mod.rs `ColumnMajorBaseOracleForLDE::query_for_folded_index`):
+    //   tree_index = bitreverse(coset_index) * coset_tree_size + internal_index
+    // where `coset_index = index & (lde_factor - 1)` and
+    // `internal_index = index / lde_factor`. Match that here.
+    let lde_factor = 1usize << log_lde_factor;
+    let coset_index = index & (lde_factor - 1);
+    let internal_index = index / lde_factor;
+    let coset_dest_index = bitreverse_index(coset_index, log_lde_factor);
+    let tree_index = coset_dest_index * coset_tree_size + internal_index;
     if columns_count == 0 {
         dst.leaf_values_concatenated.clear();
         dst.path.clear();
-        dst.index = index;
+        dst.index = tree_index;
         return;
     }
-    let lde_factor = 1usize << log_lde_factor;
-    let value_coset_index = index & (lde_factor - 1);
+    let value_coset_index = coset_index;
     let stage1_coset_index = index / coset_tree_size;
     let path_coset_index = bitreverse_index(stage1_coset_index, log_lde_factor);
     let leafs = unsafe { value_leafs[value_coset_index].get() };
@@ -855,7 +864,7 @@ fn fill_unknown_coset_base_field_query_from_accessors(
         path.len(),
         "base-field query path destination length mismatch"
     );
-    dst.index = index;
+    dst.index = tree_index;
     for value_index in 0..values_per_leaf {
         for column in 0..columns_count {
             dst.leaf_values_concatenated[value_index * columns_count + column] =
@@ -892,6 +901,8 @@ fn decode_extension_query_from_accessors(
 fn fill_extension_query_from_accessors(
     dst: &mut ExtensionFieldQuery<BF, E4, DefaultTreeConstructor>,
     index: usize,
+    coset_tree_size: usize,
+    log_lde_factor: u32,
     values_per_leaf: usize,
     leafs_accessor: crate::primitives::context::UnsafeAccessor<[BF]>,
     path_accessor: crate::primitives::context::UnsafeAccessor<[Digest]>,
@@ -913,7 +924,13 @@ fn fill_extension_query_from_accessors(
         path.len(),
         "extension query path destination length mismatch"
     );
-    dst.index = index;
+    // Match CPU `ColumnMajorExtensionOracleForLDE::query_for_folded_index`:
+    //   tree_index = bitreverse(coset_index) * coset_tree_size + internal_index
+    let lde_factor = 1usize << log_lde_factor;
+    let coset_index = index & (lde_factor - 1);
+    let internal_index = index / lde_factor;
+    let coset_dest_index = bitreverse_index(coset_index, log_lde_factor);
+    dst.index = coset_dest_index * coset_tree_size + internal_index;
     for value_index in 0..values_per_leaf {
         let mut coeffs = [BF::ZERO; EXT4_DEGREE];
         for column in 0..EXT4_DEGREE {
@@ -2639,6 +2656,8 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
             let query_leafs_accessor = query.leafs_accessor();
             let query_paths_accessor = query.merkle_paths_accessor();
             let query_values_per_leaf = query.values_per_leaf();
+            let query_log_lde_factor = oracle_to_query.lde_factor().trailing_zeros();
+            let query_coset_tree_size = oracle_to_query.packed_leaf_count();
             let query_indexes_accessor = query_indexes_host.get_accessor();
             let (eq_upload, _eq_host) = schedule_accumulate_eq_sample_in_place_device(
                 &mut state,
@@ -2673,6 +2692,8 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
                                 .intermediate_whir_oracles[internal_round_idx]
                                 .queries[query_idx],
                             index,
+                            query_coset_tree_size,
+                            query_log_lde_factor,
                             query_values_per_leaf,
                             query_leafs_accessor,
                             query_paths_accessor,
@@ -2805,6 +2826,8 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
             let query_leafs_accessor = query.leafs_accessor();
             let query_paths_accessor = query.merkle_paths_accessor();
             let query_values_per_leaf = query.values_per_leaf();
+            let query_log_lde_factor = oracle_to_query.lde_factor().trailing_zeros();
+            let query_coset_tree_size = oracle_to_query.packed_leaf_count();
             final_callbacks.extend(copy_callbacks);
             final_callbacks.schedule(
                 {
@@ -2821,6 +2844,8 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
                                 .intermediate_whir_oracles[final_oracle_index]
                                 .queries[query_idx],
                             index,
+                            query_coset_tree_size,
+                            query_log_lde_factor,
                             query_values_per_leaf,
                             query_leafs_accessor,
                             query_paths_accessor,

@@ -273,6 +273,10 @@ impl GpuWhirExtensionOracle {
         self.values_per_leaf
     }
 
+    pub(crate) fn packed_leaf_count(&self) -> usize {
+        self.packed_leaf_count
+    }
+
     pub(crate) fn tree_cap_accessors(&self) -> Vec<UnsafeAccessor<[Digest]>> {
         self.trace_holder.get_tree_caps_accessors()
     }
