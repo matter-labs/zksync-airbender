@@ -10,6 +10,7 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
+cs = { workspace = true, features = ["compiler"] }
 prover = { workspace = true, features = ["prover"] }
 verifier_common = { workspace = true, features = ["gkr_verify"] }
 serde.workspace = true

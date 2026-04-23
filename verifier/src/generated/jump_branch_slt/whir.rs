@@ -31,10 +31,10 @@ const NUM_COSETS: usize = 2usize;
 const NUM_COSETS_LOG2: usize = 1usize;
 const COSET_TREE_SIZE: usize = 8388608usize;
 pub fn verify_initial_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
+    initial_transcript: &ConcreteInitialTranscript,
     ts: &mut TranscriptState,
     hash_buf: &mut AlignedArray64<MaybeUninit<u32>, WHIR_HASH_BUF_SIZE>,
     batching_challenge: BabyBearExt4,
-    oracle_caps: &[u32; TOTAL_CAP_WORDS],
     base_layer_claims: &[BabyBearExt4],
     z_initial: &[BabyBearExt4],
     accumulator: &mut ::verifier_common::whir::WhirAccumulator<BabyBearExt4, MAX_POW_ENTRIES>,
@@ -125,8 +125,8 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
                 hash_buf,
                 26usize,
                 tree_index,
-                ORACLE_DEPTHS[0usize],
-                &oracle_caps[0usize..0usize + ORACLE_CAP_WORDS[0usize]],
+                20usize,
+                initial_transcript.memory_caps_slice(),
                 &gamma_powers[..],
                 0usize,
                 &mut acc0,
@@ -138,8 +138,8 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
                 hash_buf,
                 28usize,
                 tree_index,
-                ORACLE_DEPTHS[1usize],
-                &oracle_caps[128usize..128usize + ORACLE_CAP_WORDS[1usize]],
+                20usize,
+                initial_transcript.witness_caps_slice(),
                 &gamma_powers[..],
                 26usize,
                 &mut acc0,
@@ -151,8 +151,8 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
                 hash_buf,
                 10usize,
                 tree_index,
-                ORACLE_DEPTHS[2usize],
-                &oracle_caps[256usize..256usize + ORACLE_CAP_WORDS[2usize]],
+                20usize,
+                initial_transcript.setup_caps_slice(),
                 &gamma_powers[..],
                 54usize,
                 &mut acc0,
@@ -537,9 +537,9 @@ pub fn verify_final_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
 }
 pub const WHIR_HASH_BUF_SIZE: usize = 64usize;
 pub fn verify_whir<I: NonDeterminismSource, E: ErrorCreator>(
+    initial_transcript: &ConcreteInitialTranscript,
     ts: &mut TranscriptState,
     batching_challenge: BabyBearExt4,
-    oracle_caps: &[u32; TOTAL_CAP_WORDS],
     base_layer_claims: &[BabyBearExt4],
     z_initial: &[BabyBearExt4],
 ) -> Result<(), E::Error> {
@@ -549,10 +549,10 @@ pub fn verify_whir<I: NonDeterminismSource, E: ErrorCreator>(
             BabyBearExt4::ONE,
         );
     let (mut claim, mut cap) = verify_initial_whir_round::<I, E>(
+        initial_transcript,
         ts,
         &mut hash_buf,
         batching_challenge,
-        oracle_caps,
         base_layer_claims,
         z_initial,
         &mut accumulator,

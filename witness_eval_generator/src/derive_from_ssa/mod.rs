@@ -1,8 +1,8 @@
 use std::collections::BTreeMap;
 
 use ::field::PrimeField;
+use cs::definitions::GKRAddress;
 use cs::definitions::Variable;
-use cs::definitions::{ColumnAddress, GKRAddress};
 use cs::gkr_compiler::GKRCircuitArtifact;
 use cs::utils::slice_to_token_array;
 use cs::witness_placer::graph_description::{
@@ -15,6 +15,14 @@ use quote::{ToTokens, quote};
 mod boolean;
 mod field;
 mod integer;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+enum ColumnAddress {
+    WitnessSubtree(usize),
+    MemorySubtree(usize),
+    SetupSubtree(usize),
+    OptimizedOut(usize),
+}
 
 struct SSAGenerator<F: PrimeField + ToTokens> {
     next_var_idx: usize,

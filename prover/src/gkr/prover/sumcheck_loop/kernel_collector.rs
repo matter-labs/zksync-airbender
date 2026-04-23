@@ -173,7 +173,6 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelVariant<F, E> {
         layer_idx: usize,
         lookup_challenges_multiplicative_part: E,
         lookup_challenges_additive_part: E,
-        challenge_for_constraints: E,
         inits_and_teardowns_top_bits: &[u32],
         address_high_bits_shift: u32,
         current_batch_challenge: &mut E,
@@ -333,11 +332,12 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelVariant<F, E> {
                 )
             }
             NoFieldGKRRelation::EnforceConstraintsMaxQuadratic { input } => {
-                let challenge = [get_challenge()];
-                Self::EnforceConstraintsMaxQuadratic(
-                    BatchConstraintEvalGKRRelation::new(input, challenge_for_constraints),
-                    challenge,
-                )
+                unimplemented!("no longer supported");
+                // let challenge = [get_challenge()];
+                // Self::EnforceConstraintsMaxQuadratic(
+                //     BatchConstraintEvalGKRRelation::new(input, challenge_for_constraints),
+                //     challenge,
+                // )
             }
             NoFieldGKRRelation::LookupPairFromMaterializedVectorInputs { input, output } => {
                 let challenges = [get_challenge(), get_challenge()];
@@ -596,7 +596,6 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
         batch_challenge_base: E,
         lookup_challenges_multiplicative_part: E,
         lookup_challenges_additive_part: E,
-        challenge_for_constraints: E,
         inits_and_teardowns_top_bits: &[u32],
         address_high_bits_shift: u32,
     ) -> Self {
@@ -616,7 +615,6 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
                 layer_idx,
                 lookup_challenges_multiplicative_part,
                 lookup_challenges_additive_part,
-                challenge_for_constraints,
                 inits_and_teardowns_top_bits,
                 address_high_bits_shift,
                 &mut collector.current_batch_challenge,

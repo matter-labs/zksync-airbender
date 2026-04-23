@@ -70,13 +70,8 @@ pub const EXTENDED_CONFIGURED_IV: [u32; BLAKE2S_EXTENDED_STATE_WIDTH_IN_U32_WORD
 };
 
 pub use self::baseline::Blake2sState;
-
-#[cfg(not(any(feature = "blake2_with_compression", feature = "blake2_g_function")))]
-pub use self::baseline::Blake2sState as DelegatedBlake2sState;
-
 pub mod state_with_extended_control;
 
-#[cfg(any(feature = "blake2_with_compression", feature = "blake2_g_function"))]
 pub use self::state_with_extended_control::Blake2RoundFunctionEvaluator as DelegatedBlake2sState;
 
 pub mod state_with_extended_control_flags {

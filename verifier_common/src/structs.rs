@@ -93,6 +93,11 @@ impl TranscriptState {
     }
 
     #[inline(always)]
+    pub fn from_hasher_and_seed(hasher: DelegatedBlake2sState, seed: Seed) -> Self {
+        Self { hasher, seed }
+    }
+
+    #[inline(always)]
     pub fn commit<const N: usize>(&mut self, buf: &mut CommitBuf<N>, data_words: usize) {
         buf.commit(&mut self.hasher, &mut self.seed, data_words);
     }

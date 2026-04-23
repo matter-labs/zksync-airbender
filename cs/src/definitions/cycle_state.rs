@@ -2,8 +2,6 @@ use crate::definitions::Vec;
 use crate::definitions::{Variable, NUM_TIMESTAMP_COLUMNS_FOR_RAM, REGISTER_SIZE};
 use field::PrimeField;
 
-use super::{ColumnAddress, ColumnSet};
-
 #[derive(Clone, Copy, Hash, Debug)]
 pub struct MachineCycleStartOrEndState<F: PrimeField> {
     pub pc: [Variable; 2],
@@ -54,29 +52,4 @@ pub struct DelegationCircuitState {
     pub(crate) delegation_type: u16,
     pub(crate) execute: Variable, // Boolean
     pub(crate) invocation_timestamp: [Variable; NUM_TIMESTAMP_COLUMNS_FOR_RAM],
-}
-
-#[derive(Clone, Copy, Hash, Debug, serde::Serialize, serde::Deserialize)]
-pub struct MachineStatePermutationVariables {
-    pub pc: ColumnSet<2>,
-    pub timestamp: ColumnSet<NUM_TIMESTAMP_COLUMNS_FOR_RAM>,
-}
-
-#[derive(Clone, Copy, Hash, Debug, serde::Serialize, serde::Deserialize)]
-pub struct IntermediateStatePermutationVariables {
-    pub execute: ColumnSet<1>,
-    pub pc: ColumnSet<2>,
-    pub timestamp: ColumnSet<NUM_TIMESTAMP_COLUMNS_FOR_RAM>,
-    pub rs1_index: ColumnSet<1>,
-    // can be memory or witness, as there can be some selection there
-    pub rs2_index: ColumnAddress,
-    pub rd_index: ColumnAddress,
-    // the rest are either all in memory, or all in witness
-    pub decoder_witness_is_in_memory: bool,
-    pub rd_is_zero: ColumnSet<1>,
-    pub imm: ColumnSet<REGISTER_SIZE>,
-    pub funct3: ColumnSet<1>,
-    pub funct7: ColumnSet<1>,         // can be empty
-    pub circuit_family: ColumnSet<1>, // can be empty
-    pub circuit_family_extra_mask: ColumnAddress,
 }

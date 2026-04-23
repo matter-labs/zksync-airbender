@@ -3,11 +3,12 @@ use std::collections::BTreeMap;
 use crate::gkr::prover::dimension_reduction::forward::DimensionReducingInputOutput;
 use cs::definitions::gkr::{AddressSpaceType, NoFieldLinearRelation, RamWordRepresentation};
 use cs::definitions::{
-    GKRAddress, MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX,
-    MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX,
-    MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX,
-    MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX, MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX,
-    MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX,
+    GKRAddress, PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX,
+    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX,
+    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX,
+    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX,
+    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX,
+    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX,
 };
 use cs::gkr_compiler::CompiledMemoryTimestamp;
 use cs::gkr_compiler::{
@@ -329,24 +330,24 @@ fn evaluate_memory_tuple_from_claims<F: PrimeField, E: FieldExtension<F> + Field
     // Address contribution
     match &rel.address {
         &CompiledAddressStrict::ConstantU16(c) => {
-            let mut t = challenges[MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
+            let mut t = challenges[PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
             t.mul_assign_by_base(&F::from_u32_unchecked(c as u32));
             result.add_assign(&t);
         }
         &CompiledAddressStrict::Constant(c) => {
-            let mut t = challenges[MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
+            let mut t = challenges[PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
             t.mul_assign_by_base(&F::from_u32_unchecked(c));
             result.add_assign(&t);
         }
         &CompiledAddressStrict::U16Space(offset) => {
-            let mut t = challenges[MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
+            let mut t = challenges[PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
             t.mul_assign(&claims[&GKRAddress::BaseLayerMemory(offset)]);
             result.add_assign(&t);
         }
         &CompiledAddressStrict::U32Space([low, high]) => {
             for (idx, offset) in [
-                (MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX, low),
-                (MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX, high),
+                (PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX, low),
+                (PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX, high),
             ] {
                 let mut t = challenges[idx];
                 t.mul_assign(&claims[&GKRAddress::BaseLayerMemory(offset)]);
@@ -364,7 +365,7 @@ fn evaluate_memory_tuple_from_claims<F: PrimeField, E: FieldExtension<F> + Field
         } => {
             {
                 let mut t = external_challenges.permutation_argument_linearization_challenges
-                    [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
+                    [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
                 let mut low = claims[&GKRAddress::BaseLayerMemory(*low_base)];
                 low.add_assign_base(&F::from_u32_unchecked(*low_offset));
                 if let Some((c, offset)) = *low_dynamic_offset {
@@ -377,7 +378,7 @@ fn evaluate_memory_tuple_from_claims<F: PrimeField, E: FieldExtension<F> + Field
             }
             {
                 let mut t = external_challenges.permutation_argument_linearization_challenges
-                    [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
+                    [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
                 let high = claims[&GKRAddress::BaseLayerMemory(*high)];
                 t.mul_assign(&high);
                 result.add_assign(&t);
@@ -388,14 +389,14 @@ fn evaluate_memory_tuple_from_claims<F: PrimeField, E: FieldExtension<F> + Field
         CompiledMemoryTimestamp::Zero => {}
         CompiledMemoryTimestamp::Normal(ts) => {
             {
-                let mut t = challenges[MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
+                let mut t = challenges[PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
                 let mut ts_low = claims[&GKRAddress::BaseLayerMemory(ts[0])];
                 ts_low.add_assign_base(&F::from_u32_unchecked(rel.timestamp_offset));
                 t.mul_assign(&ts_low);
                 result.add_assign(&t);
             }
             {
-                let mut t = challenges[MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
+                let mut t = challenges[PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
                 t.mul_assign(&claims[&GKRAddress::BaseLayerMemory(ts[1])]);
                 result.add_assign(&t);
             }
@@ -406,8 +407,14 @@ fn evaluate_memory_tuple_from_claims<F: PrimeField, E: FieldExtension<F> + Field
         RamWordRepresentation::Zero => {}
         RamWordRepresentation::U16Limbs(read_value) => {
             for (idx, offset) in [
-                (MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX, read_value[0]),
-                (MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX, read_value[1]),
+                (
+                    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX,
+                    read_value[0],
+                ),
+                (
+                    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX,
+                    read_value[1],
+                ),
             ] {
                 let mut t = challenges[idx];
                 t.mul_assign(&claims[&GKRAddress::BaseLayerMemory(offset)]);
@@ -417,12 +424,12 @@ fn evaluate_memory_tuple_from_claims<F: PrimeField, E: FieldExtension<F> + Field
         RamWordRepresentation::U8Limbs(read_value) => {
             for (idx, offset_low, offset_high) in [
                 (
-                    MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX,
+                    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX,
                     read_value[0],
                     read_value[1],
                 ),
                 (
-                    MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX,
+                    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX,
                     read_value[2],
                     read_value[3],
                 ),

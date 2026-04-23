@@ -9,11 +9,12 @@ use verifier_common::field::baby_bear::base::BabyBearField;
 use verifier_common::field::baby_bear::ext4::BabyBearExt4;
 use verifier_common::field::{Field, FieldExtension, PrimeField};
 use verifier_common::field_ops;
+use verifier_common::gkr::SimpleGateType;
 use verifier_common::gkr::{GKRVerifierOutput, LayerState};
 use verifier_common::lazy_vec::LazyVec;
 use verifier_common::non_determinism_source::NonDeterminismSource;
 use verifier_common::structs::{CommitBuf, TranscriptState};
-use verifier_common::transcript::Blake2sTranscript;
+use verifier_common::GKRExternalChallenges;
 #[inline(always)]
 #[allow(unused_variables)]
 unsafe fn layer_0_compute_claim(
@@ -272,7 +273,6 @@ unsafe fn layer_0_final_step_accumulator(
     batch_base: BabyBearExt4,
     lookup_additive_challenge: BabyBearExt4,
     lookup_alpha: BabyBearExt4,
-    challenge_powers: &[BabyBearExt4; GKR_MAX_POW],
     linearization_challenges: &[BabyBearExt4],
     permutation_argument_additive_part: BabyBearExt4,
     address_high_bits_shift: u32,
@@ -280,13 +280,217 @@ unsafe fn layer_0_final_step_accumulator(
     let mut acc = [BabyBearExt4::ZERO; 2];
     let mut current_batch = BabyBearExt4::ONE;
     {
-        const SIMPLE_GATES: [(usize, [usize; 4]); 1usize] =
-            [(1usize, [263usize, 0usize, 0usize, 0usize])];
+        const SIMPLE_GATES: [(SimpleGateType, [usize; 4]); 54usize] = [
+            (SimpleGateType::Copy, [227usize, 0usize, 0usize, 0usize]),
+            (
+                SimpleGateType::Product,
+                [231usize, 232usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::Product,
+                [233usize, 234usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::Product,
+                [235usize, 236usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::Product,
+                [237usize, 238usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::Product,
+                [239usize, 240usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::Product,
+                [241usize, 242usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::Product,
+                [243usize, 244usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::Product,
+                [245usize, 246usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::Product,
+                [247usize, 248usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::Product,
+                [249usize, 250usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::Product,
+                [251usize, 252usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::Product,
+                [253usize, 254usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::Product,
+                [255usize, 256usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::Product,
+                [257usize, 258usize, 0usize, 0usize],
+            ),
+            (SimpleGateType::Copy, [259usize, 0usize, 0usize, 0usize]),
+            (SimpleGateType::Copy, [260usize, 0usize, 0usize, 0usize]),
+            (
+                SimpleGateType::LookupWithSetup,
+                [228usize, 173usize, 230usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [229usize, 261usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [262usize, 263usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [264usize, 265usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [266usize, 267usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [268usize, 269usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [270usize, 271usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [272usize, 273usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [274usize, 275usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [276usize, 277usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [278usize, 279usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [280usize, 281usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [282usize, 283usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [284usize, 285usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [286usize, 287usize, 0usize, 0usize],
+            ),
+            (SimpleGateType::Copy, [288usize, 0usize, 0usize, 0usize]),
+            (
+                SimpleGateType::LookupWithSetup,
+                [289usize, 174usize, 290usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [291usize, 292usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [293usize, 294usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [295usize, 296usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [297usize, 298usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [299usize, 300usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [301usize, 302usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [303usize, 304usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [305usize, 306usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [307usize, 308usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [309usize, 310usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [311usize, 312usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [313usize, 314usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [315usize, 316usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [317usize, 318usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [319usize, 320usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [321usize, 322usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [323usize, 324usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [325usize, 326usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [327usize, 328usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupInitialPair,
+                [329usize, 330usize, 0usize, 0usize],
+            ),
+        ];
         let mut _sg = 0;
-        while _sg < 1usize {
+        while _sg < 54usize {
             let (gt, idx) = unsafe { *SIMPLE_GATES.get_unchecked(_sg) };
             match gt {
-                1usize => {
+                SimpleGateType::Copy => {
                     let bc = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
@@ -296,7 +500,7 @@ unsafe fn layer_0_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &contrib);
                     }
                 }
-                2usize => {
+                SimpleGateType::Product => {
                     let bc = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
@@ -308,7 +512,7 @@ unsafe fn layer_0_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &contrib);
                     }
                 }
-                3usize => {
+                SimpleGateType::MaskToIdentity => {
                     let bc = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
@@ -322,7 +526,7 @@ unsafe fn layer_0_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &contrib);
                     }
                 }
-                4usize => {
+                SimpleGateType::UnbalancedProduct => {
                     let bc = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
@@ -334,7 +538,7 @@ unsafe fn layer_0_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &contrib);
                     }
                 }
-                5usize => {
+                SimpleGateType::LookupInitialPair => {
                     let bc0 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     let bc1 = current_batch;
@@ -358,7 +562,7 @@ unsafe fn layer_0_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &c1);
                     }
                 }
-                6usize => {
+                SimpleGateType::LookupWithSetup => {
                     let bc0 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     let bc1 = current_batch;
@@ -384,7 +588,7 @@ unsafe fn layer_0_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &c1);
                     }
                 }
-                7usize => {
+                SimpleGateType::LookupUnbalanced => {
                     let bc0 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     let bc1 = current_batch;
@@ -409,7 +613,7 @@ unsafe fn layer_0_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &c1);
                     }
                 }
-                8usize => {
+                SimpleGateType::LookupAggregatePair => {
                     let bc0 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     let bc1 = current_batch;
@@ -436,7 +640,7 @@ unsafe fn layer_0_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &c1);
                     }
                 }
-                9usize => {
+                SimpleGateType::LookupInitialWithCachedDenominators => {
                     let bc0 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     let bc1 = current_batch;
@@ -465,7 +669,6 @@ unsafe fn layer_0_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &c1);
                     }
                 }
-                _ => unreachable!(),
             }
             _sg += 1;
         }
@@ -474,38 +677,11 @@ unsafe fn layer_0_final_step_accumulator(
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
         for j in 0..2 {
-            const MEM_A_OPS: [[usize; 6]; 6usize] = [
-                [0usize, 0usize, 0usize, 0usize, 0usize, 0usize],
-                [4usize, 0usize, 671088619usize, 0usize, 0usize, 0usize],
-                [3usize, 2usize, 175usize, 0usize, 0usize, 0usize],
-                [3usize, 3usize, 176usize, 0usize, 0usize, 0usize],
-                [3usize, 4usize, 177usize, 0usize, 0usize, 0usize],
-                [3usize, 5usize, 178usize, 0usize, 0usize, 0usize],
-            ];
-            let mut mem_a = super::common::eval_memory_expr(
-                evals,
-                linearization_challenges,
-                permutation_argument_additive_part,
-                &MEM_A_OPS,
-                j,
-            );
-            const MEM_B_OPS: [[usize; 6]; 6usize] = [
-                [0usize, 0usize, 0usize, 0usize, 0usize, 0usize],
-                [4usize, 0usize, 939524073usize, 0usize, 0usize, 0usize],
-                [3usize, 2usize, 181usize, 0usize, 0usize, 0usize],
-                [3usize, 3usize, 182usize, 0usize, 0usize, 0usize],
-                [3usize, 4usize, 183usize, 0usize, 0usize, 0usize],
-                [3usize, 5usize, 184usize, 0usize, 0usize, 0usize],
-            ];
-            let mut mem_b = super::common::eval_memory_expr(
-                evals,
-                linearization_challenges,
-                permutation_argument_additive_part,
-                &MEM_B_OPS,
-                j,
-            );
-            field_ops::mul_assign(&mut mem_a, &mem_b);
-            let val = mem_a;
+            const VAL_QO: [(usize, usize); 1usize] = [(227usize, 1usize)];
+            const VAL_QI: [(usize, usize); 1usize] = [(227usize, 268435454usize)];
+            const VAL_LN: [(usize, usize); 1usize] = [(227usize, 1744830467usize)];
+            let val =
+                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
             let mut contrib = bc;
             field_ops::mul_assign(&mut contrib, &val);
             field_ops::add_assign(&mut acc[j], &contrib);
@@ -515,3216 +691,9 @@ unsafe fn layer_0_final_step_accumulator(
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
         for j in 0..2 {
-            const MEM_A_OPS: [[usize; 6]; 6usize] = [
-                [0usize, 0usize, 0usize, 0usize, 0usize, 0usize],
-                [4usize, 0usize, 671088619usize, 0usize, 0usize, 0usize],
-                [5usize, 2usize, 264usize, 536870908usize, 0usize, 0usize],
-                [3usize, 3usize, 265usize, 0usize, 0usize, 0usize],
-                [3usize, 4usize, 179usize, 0usize, 0usize, 0usize],
-                [3usize, 5usize, 180usize, 0usize, 0usize, 0usize],
-            ];
-            let mut mem_a = super::common::eval_memory_expr(
-                evals,
-                linearization_challenges,
-                permutation_argument_additive_part,
-                &MEM_A_OPS,
-                j,
-            );
-            const MEM_B_OPS: [[usize; 6]; 6usize] = [
-                [0usize, 0usize, 0usize, 0usize, 0usize, 0usize],
-                [4usize, 0usize, 939524073usize, 0usize, 0usize, 0usize],
-                [5usize, 2usize, 264usize, 536870908usize, 0usize, 0usize],
-                [3usize, 3usize, 265usize, 0usize, 0usize, 0usize],
-                [3usize, 4usize, 183usize, 0usize, 0usize, 0usize],
-                [3usize, 5usize, 184usize, 0usize, 0usize, 0usize],
-            ];
-            let mut mem_b = super::common::eval_memory_expr(
-                evals,
-                linearization_challenges,
-                permutation_argument_additive_part,
-                &MEM_B_OPS,
-                j,
-            );
-            field_ops::mul_assign(&mut mem_a, &mem_b);
-            let val = mem_a;
-            let mut contrib = bc;
-            field_ops::mul_assign(&mut contrib, &val);
-            field_ops::add_assign(&mut acc[j], &contrib);
-        }
-    }
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..2 {
-            const MEM_A_OPS: [[usize; 6]; 7usize] = [
-                [0usize, 268435454usize, 0usize, 0usize, 0usize, 0usize],
-                [6usize, 0usize, 183usize, 189usize, 0usize, 134217711usize],
-                [3usize, 1usize, 184usize, 0usize, 0usize, 0usize],
-                [3usize, 2usize, 185usize, 0usize, 0usize, 0usize],
-                [3usize, 3usize, 186usize, 0usize, 0usize, 0usize],
-                [3usize, 4usize, 187usize, 0usize, 0usize, 0usize],
-                [3usize, 5usize, 188usize, 0usize, 0usize, 0usize],
-            ];
-            let mut mem_a = super::common::eval_memory_expr(
-                evals,
-                linearization_challenges,
-                permutation_argument_additive_part,
-                &MEM_A_OPS,
-                j,
-            );
-            const MEM_B_OPS: [[usize; 6]; 7usize] = [
-                [0usize, 268435454usize, 0usize, 0usize, 0usize, 0usize],
-                [
-                    6usize,
-                    0usize,
-                    183usize,
-                    189usize,
-                    1073741816usize,
-                    134217711usize,
-                ],
-                [3usize, 1usize, 184usize, 0usize, 0usize, 0usize],
-                [3usize, 2usize, 192usize, 0usize, 0usize, 0usize],
-                [3usize, 3usize, 193usize, 0usize, 0usize, 0usize],
-                [3usize, 4usize, 194usize, 0usize, 0usize, 0usize],
-                [3usize, 5usize, 195usize, 0usize, 0usize, 0usize],
-            ];
-            let mut mem_b = super::common::eval_memory_expr(
-                evals,
-                linearization_challenges,
-                permutation_argument_additive_part,
-                &MEM_B_OPS,
-                j,
-            );
-            field_ops::mul_assign(&mut mem_a, &mem_b);
-            let val = mem_a;
-            let mut contrib = bc;
-            field_ops::mul_assign(&mut contrib, &val);
-            field_ops::add_assign(&mut acc[j], &contrib);
-        }
-    }
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..2 {
-            const MEM_A_OPS: [[usize; 6]; 7usize] = [
-                [0usize, 268435454usize, 0usize, 0usize, 0usize, 0usize],
-                [6usize, 0usize, 183usize, 189usize, 0usize, 134217711usize],
-                [3usize, 1usize, 184usize, 0usize, 0usize, 0usize],
-                [5usize, 2usize, 264usize, 536870908usize, 0usize, 0usize],
-                [3usize, 3usize, 265usize, 0usize, 0usize, 0usize],
-                [3usize, 4usize, 190usize, 0usize, 0usize, 0usize],
-                [3usize, 5usize, 191usize, 0usize, 0usize, 0usize],
-            ];
-            let mut mem_a = super::common::eval_memory_expr(
-                evals,
-                linearization_challenges,
-                permutation_argument_additive_part,
-                &MEM_A_OPS,
-                j,
-            );
-            const MEM_B_OPS: [[usize; 6]; 7usize] = [
-                [0usize, 268435454usize, 0usize, 0usize, 0usize, 0usize],
-                [
-                    6usize,
-                    0usize,
-                    183usize,
-                    189usize,
-                    1073741816usize,
-                    134217711usize,
-                ],
-                [3usize, 1usize, 184usize, 0usize, 0usize, 0usize],
-                [5usize, 2usize, 264usize, 536870908usize, 0usize, 0usize],
-                [3usize, 3usize, 265usize, 0usize, 0usize, 0usize],
-                [3usize, 4usize, 196usize, 0usize, 0usize, 0usize],
-                [3usize, 5usize, 197usize, 0usize, 0usize, 0usize],
-            ];
-            let mut mem_b = super::common::eval_memory_expr(
-                evals,
-                linearization_challenges,
-                permutation_argument_additive_part,
-                &MEM_B_OPS,
-                j,
-            );
-            field_ops::mul_assign(&mut mem_a, &mem_b);
-            let val = mem_a;
-            let mut contrib = bc;
-            field_ops::mul_assign(&mut contrib, &val);
-            field_ops::add_assign(&mut acc[j], &contrib);
-        }
-    }
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..2 {
-            const MEM_A_OPS: [[usize; 6]; 7usize] = [
-                [0usize, 268435454usize, 0usize, 0usize, 0usize, 0usize],
-                [6usize, 0usize, 183usize, 202usize, 0usize, 134217711usize],
-                [3usize, 1usize, 184usize, 0usize, 0usize, 0usize],
-                [3usize, 2usize, 198usize, 0usize, 0usize, 0usize],
-                [3usize, 3usize, 199usize, 0usize, 0usize, 0usize],
-                [3usize, 4usize, 200usize, 0usize, 0usize, 0usize],
-                [3usize, 5usize, 201usize, 0usize, 0usize, 0usize],
-            ];
-            let mut mem_a = super::common::eval_memory_expr(
-                evals,
-                linearization_challenges,
-                permutation_argument_additive_part,
-                &MEM_A_OPS,
-                j,
-            );
-            const MEM_B_OPS: [[usize; 6]; 7usize] = [
-                [0usize, 268435454usize, 0usize, 0usize, 0usize, 0usize],
-                [
-                    6usize,
-                    0usize,
-                    183usize,
-                    202usize,
-                    1073741816usize,
-                    134217711usize,
-                ],
-                [3usize, 1usize, 184usize, 0usize, 0usize, 0usize],
-                [3usize, 2usize, 205usize, 0usize, 0usize, 0usize],
-                [3usize, 3usize, 206usize, 0usize, 0usize, 0usize],
-                [3usize, 4usize, 207usize, 0usize, 0usize, 0usize],
-                [3usize, 5usize, 208usize, 0usize, 0usize, 0usize],
-            ];
-            let mut mem_b = super::common::eval_memory_expr(
-                evals,
-                linearization_challenges,
-                permutation_argument_additive_part,
-                &MEM_B_OPS,
-                j,
-            );
-            field_ops::mul_assign(&mut mem_a, &mem_b);
-            let val = mem_a;
-            let mut contrib = bc;
-            field_ops::mul_assign(&mut contrib, &val);
-            field_ops::add_assign(&mut acc[j], &contrib);
-        }
-    }
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..2 {
-            const MEM_A_OPS: [[usize; 6]; 7usize] = [
-                [0usize, 268435454usize, 0usize, 0usize, 0usize, 0usize],
-                [6usize, 0usize, 183usize, 202usize, 0usize, 134217711usize],
-                [3usize, 1usize, 184usize, 0usize, 0usize, 0usize],
-                [5usize, 2usize, 264usize, 536870908usize, 0usize, 0usize],
-                [3usize, 3usize, 265usize, 0usize, 0usize, 0usize],
-                [3usize, 4usize, 203usize, 0usize, 0usize, 0usize],
-                [3usize, 5usize, 204usize, 0usize, 0usize, 0usize],
-            ];
-            let mut mem_a = super::common::eval_memory_expr(
-                evals,
-                linearization_challenges,
-                permutation_argument_additive_part,
-                &MEM_A_OPS,
-                j,
-            );
-            const MEM_B_OPS: [[usize; 6]; 7usize] = [
-                [0usize, 268435454usize, 0usize, 0usize, 0usize, 0usize],
-                [
-                    6usize,
-                    0usize,
-                    183usize,
-                    202usize,
-                    1073741816usize,
-                    134217711usize,
-                ],
-                [3usize, 1usize, 184usize, 0usize, 0usize, 0usize],
-                [5usize, 2usize, 264usize, 536870908usize, 0usize, 0usize],
-                [3usize, 3usize, 265usize, 0usize, 0usize, 0usize],
-                [3usize, 4usize, 209usize, 0usize, 0usize, 0usize],
-                [3usize, 5usize, 210usize, 0usize, 0usize, 0usize],
-            ];
-            let mut mem_b = super::common::eval_memory_expr(
-                evals,
-                linearization_challenges,
-                permutation_argument_additive_part,
-                &MEM_B_OPS,
-                j,
-            );
-            field_ops::mul_assign(&mut mem_a, &mem_b);
-            let val = mem_a;
-            let mut contrib = bc;
-            field_ops::mul_assign(&mut contrib, &val);
-            field_ops::add_assign(&mut acc[j], &contrib);
-        }
-    }
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..2 {
-            const MEM_A_OPS: [[usize; 6]; 7usize] = [
-                [0usize, 268435454usize, 0usize, 0usize, 0usize, 0usize],
-                [6usize, 0usize, 183usize, 215usize, 0usize, 134217711usize],
-                [3usize, 1usize, 184usize, 0usize, 0usize, 0usize],
-                [3usize, 2usize, 211usize, 0usize, 0usize, 0usize],
-                [3usize, 3usize, 212usize, 0usize, 0usize, 0usize],
-                [3usize, 4usize, 213usize, 0usize, 0usize, 0usize],
-                [3usize, 5usize, 214usize, 0usize, 0usize, 0usize],
-            ];
-            let mut mem_a = super::common::eval_memory_expr(
-                evals,
-                linearization_challenges,
-                permutation_argument_additive_part,
-                &MEM_A_OPS,
-                j,
-            );
-            const MEM_B_OPS: [[usize; 6]; 7usize] = [
-                [0usize, 268435454usize, 0usize, 0usize, 0usize, 0usize],
-                [
-                    6usize,
-                    0usize,
-                    183usize,
-                    215usize,
-                    1073741816usize,
-                    134217711usize,
-                ],
-                [3usize, 1usize, 184usize, 0usize, 0usize, 0usize],
-                [3usize, 2usize, 218usize, 0usize, 0usize, 0usize],
-                [3usize, 3usize, 219usize, 0usize, 0usize, 0usize],
-                [3usize, 4usize, 220usize, 0usize, 0usize, 0usize],
-                [3usize, 5usize, 221usize, 0usize, 0usize, 0usize],
-            ];
-            let mut mem_b = super::common::eval_memory_expr(
-                evals,
-                linearization_challenges,
-                permutation_argument_additive_part,
-                &MEM_B_OPS,
-                j,
-            );
-            field_ops::mul_assign(&mut mem_a, &mem_b);
-            let val = mem_a;
-            let mut contrib = bc;
-            field_ops::mul_assign(&mut contrib, &val);
-            field_ops::add_assign(&mut acc[j], &contrib);
-        }
-    }
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..2 {
-            const MEM_A_OPS: [[usize; 6]; 7usize] = [
-                [0usize, 268435454usize, 0usize, 0usize, 0usize, 0usize],
-                [6usize, 0usize, 183usize, 215usize, 0usize, 134217711usize],
-                [3usize, 1usize, 184usize, 0usize, 0usize, 0usize],
-                [5usize, 2usize, 264usize, 536870908usize, 0usize, 0usize],
-                [3usize, 3usize, 265usize, 0usize, 0usize, 0usize],
-                [3usize, 4usize, 216usize, 0usize, 0usize, 0usize],
-                [3usize, 5usize, 217usize, 0usize, 0usize, 0usize],
-            ];
-            let mut mem_a = super::common::eval_memory_expr(
-                evals,
-                linearization_challenges,
-                permutation_argument_additive_part,
-                &MEM_A_OPS,
-                j,
-            );
-            const MEM_B_OPS: [[usize; 6]; 7usize] = [
-                [0usize, 268435454usize, 0usize, 0usize, 0usize, 0usize],
-                [
-                    6usize,
-                    0usize,
-                    183usize,
-                    215usize,
-                    1073741816usize,
-                    134217711usize,
-                ],
-                [3usize, 1usize, 184usize, 0usize, 0usize, 0usize],
-                [5usize, 2usize, 264usize, 536870908usize, 0usize, 0usize],
-                [3usize, 3usize, 265usize, 0usize, 0usize, 0usize],
-                [3usize, 4usize, 222usize, 0usize, 0usize, 0usize],
-                [3usize, 5usize, 223usize, 0usize, 0usize, 0usize],
-            ];
-            let mut mem_b = super::common::eval_memory_expr(
-                evals,
-                linearization_challenges,
-                permutation_argument_additive_part,
-                &MEM_B_OPS,
-                j,
-            );
-            field_ops::mul_assign(&mut mem_a, &mem_b);
-            let val = mem_a;
-            let mut contrib = bc;
-            field_ops::mul_assign(&mut contrib, &val);
-            field_ops::add_assign(&mut acc[j], &contrib);
-        }
-    }
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..2 {
-            const MEM_A_OPS: [[usize; 6]; 7usize] = [
-                [0usize, 268435454usize, 0usize, 0usize, 0usize, 0usize],
-                [6usize, 0usize, 183usize, 228usize, 0usize, 134217711usize],
-                [3usize, 1usize, 184usize, 0usize, 0usize, 0usize],
-                [3usize, 2usize, 224usize, 0usize, 0usize, 0usize],
-                [3usize, 3usize, 225usize, 0usize, 0usize, 0usize],
-                [3usize, 4usize, 226usize, 0usize, 0usize, 0usize],
-                [3usize, 5usize, 227usize, 0usize, 0usize, 0usize],
-            ];
-            let mut mem_a = super::common::eval_memory_expr(
-                evals,
-                linearization_challenges,
-                permutation_argument_additive_part,
-                &MEM_A_OPS,
-                j,
-            );
-            const MEM_B_OPS: [[usize; 6]; 7usize] = [
-                [0usize, 268435454usize, 0usize, 0usize, 0usize, 0usize],
-                [
-                    6usize,
-                    0usize,
-                    183usize,
-                    228usize,
-                    1073741816usize,
-                    134217711usize,
-                ],
-                [3usize, 1usize, 184usize, 0usize, 0usize, 0usize],
-                [3usize, 2usize, 231usize, 0usize, 0usize, 0usize],
-                [3usize, 3usize, 232usize, 0usize, 0usize, 0usize],
-                [3usize, 4usize, 233usize, 0usize, 0usize, 0usize],
-                [3usize, 5usize, 234usize, 0usize, 0usize, 0usize],
-            ];
-            let mut mem_b = super::common::eval_memory_expr(
-                evals,
-                linearization_challenges,
-                permutation_argument_additive_part,
-                &MEM_B_OPS,
-                j,
-            );
-            field_ops::mul_assign(&mut mem_a, &mem_b);
-            let val = mem_a;
-            let mut contrib = bc;
-            field_ops::mul_assign(&mut contrib, &val);
-            field_ops::add_assign(&mut acc[j], &contrib);
-        }
-    }
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..2 {
-            const MEM_A_OPS: [[usize; 6]; 7usize] = [
-                [0usize, 268435454usize, 0usize, 0usize, 0usize, 0usize],
-                [6usize, 0usize, 183usize, 228usize, 0usize, 134217711usize],
-                [3usize, 1usize, 184usize, 0usize, 0usize, 0usize],
-                [5usize, 2usize, 264usize, 536870908usize, 0usize, 0usize],
-                [3usize, 3usize, 265usize, 0usize, 0usize, 0usize],
-                [3usize, 4usize, 229usize, 0usize, 0usize, 0usize],
-                [3usize, 5usize, 230usize, 0usize, 0usize, 0usize],
-            ];
-            let mut mem_a = super::common::eval_memory_expr(
-                evals,
-                linearization_challenges,
-                permutation_argument_additive_part,
-                &MEM_A_OPS,
-                j,
-            );
-            const MEM_B_OPS: [[usize; 6]; 7usize] = [
-                [0usize, 268435454usize, 0usize, 0usize, 0usize, 0usize],
-                [
-                    6usize,
-                    0usize,
-                    183usize,
-                    228usize,
-                    1073741816usize,
-                    134217711usize,
-                ],
-                [3usize, 1usize, 184usize, 0usize, 0usize, 0usize],
-                [5usize, 2usize, 264usize, 536870908usize, 0usize, 0usize],
-                [3usize, 3usize, 265usize, 0usize, 0usize, 0usize],
-                [3usize, 4usize, 235usize, 0usize, 0usize, 0usize],
-                [3usize, 5usize, 236usize, 0usize, 0usize, 0usize],
-            ];
-            let mut mem_b = super::common::eval_memory_expr(
-                evals,
-                linearization_challenges,
-                permutation_argument_additive_part,
-                &MEM_B_OPS,
-                j,
-            );
-            field_ops::mul_assign(&mut mem_a, &mem_b);
-            let val = mem_a;
-            let mut contrib = bc;
-            field_ops::mul_assign(&mut contrib, &val);
-            field_ops::add_assign(&mut acc[j], &contrib);
-        }
-    }
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..2 {
-            const MEM_A_OPS: [[usize; 6]; 7usize] = [
-                [0usize, 268435454usize, 0usize, 0usize, 0usize, 0usize],
-                [6usize, 0usize, 183usize, 241usize, 0usize, 134217711usize],
-                [3usize, 1usize, 184usize, 0usize, 0usize, 0usize],
-                [3usize, 2usize, 237usize, 0usize, 0usize, 0usize],
-                [3usize, 3usize, 238usize, 0usize, 0usize, 0usize],
-                [3usize, 4usize, 239usize, 0usize, 0usize, 0usize],
-                [3usize, 5usize, 240usize, 0usize, 0usize, 0usize],
-            ];
-            let mut mem_a = super::common::eval_memory_expr(
-                evals,
-                linearization_challenges,
-                permutation_argument_additive_part,
-                &MEM_A_OPS,
-                j,
-            );
-            const MEM_B_OPS: [[usize; 6]; 7usize] = [
-                [0usize, 268435454usize, 0usize, 0usize, 0usize, 0usize],
-                [
-                    6usize,
-                    0usize,
-                    183usize,
-                    241usize,
-                    1073741816usize,
-                    134217711usize,
-                ],
-                [3usize, 1usize, 184usize, 0usize, 0usize, 0usize],
-                [3usize, 2usize, 244usize, 0usize, 0usize, 0usize],
-                [3usize, 3usize, 245usize, 0usize, 0usize, 0usize],
-                [3usize, 4usize, 246usize, 0usize, 0usize, 0usize],
-                [3usize, 5usize, 247usize, 0usize, 0usize, 0usize],
-            ];
-            let mut mem_b = super::common::eval_memory_expr(
-                evals,
-                linearization_challenges,
-                permutation_argument_additive_part,
-                &MEM_B_OPS,
-                j,
-            );
-            field_ops::mul_assign(&mut mem_a, &mem_b);
-            let val = mem_a;
-            let mut contrib = bc;
-            field_ops::mul_assign(&mut contrib, &val);
-            field_ops::add_assign(&mut acc[j], &contrib);
-        }
-    }
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..2 {
-            const MEM_A_OPS: [[usize; 6]; 7usize] = [
-                [0usize, 268435454usize, 0usize, 0usize, 0usize, 0usize],
-                [6usize, 0usize, 183usize, 241usize, 0usize, 134217711usize],
-                [3usize, 1usize, 184usize, 0usize, 0usize, 0usize],
-                [5usize, 2usize, 264usize, 536870908usize, 0usize, 0usize],
-                [3usize, 3usize, 265usize, 0usize, 0usize, 0usize],
-                [3usize, 4usize, 242usize, 0usize, 0usize, 0usize],
-                [3usize, 5usize, 243usize, 0usize, 0usize, 0usize],
-            ];
-            let mut mem_a = super::common::eval_memory_expr(
-                evals,
-                linearization_challenges,
-                permutation_argument_additive_part,
-                &MEM_A_OPS,
-                j,
-            );
-            const MEM_B_OPS: [[usize; 6]; 7usize] = [
-                [0usize, 268435454usize, 0usize, 0usize, 0usize, 0usize],
-                [
-                    6usize,
-                    0usize,
-                    183usize,
-                    241usize,
-                    1073741816usize,
-                    134217711usize,
-                ],
-                [3usize, 1usize, 184usize, 0usize, 0usize, 0usize],
-                [5usize, 2usize, 264usize, 536870908usize, 0usize, 0usize],
-                [3usize, 3usize, 265usize, 0usize, 0usize, 0usize],
-                [3usize, 4usize, 248usize, 0usize, 0usize, 0usize],
-                [3usize, 5usize, 249usize, 0usize, 0usize, 0usize],
-            ];
-            let mut mem_b = super::common::eval_memory_expr(
-                evals,
-                linearization_challenges,
-                permutation_argument_additive_part,
-                &MEM_B_OPS,
-                j,
-            );
-            field_ops::mul_assign(&mut mem_a, &mem_b);
-            let val = mem_a;
-            let mut contrib = bc;
-            field_ops::mul_assign(&mut contrib, &val);
-            field_ops::add_assign(&mut acc[j], &contrib);
-        }
-    }
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..2 {
-            const MEM_A_OPS: [[usize; 6]; 7usize] = [
-                [0usize, 268435454usize, 0usize, 0usize, 0usize, 0usize],
-                [6usize, 0usize, 183usize, 254usize, 0usize, 134217711usize],
-                [3usize, 1usize, 184usize, 0usize, 0usize, 0usize],
-                [3usize, 2usize, 250usize, 0usize, 0usize, 0usize],
-                [3usize, 3usize, 251usize, 0usize, 0usize, 0usize],
-                [3usize, 4usize, 252usize, 0usize, 0usize, 0usize],
-                [3usize, 5usize, 253usize, 0usize, 0usize, 0usize],
-            ];
-            let mut mem_a = super::common::eval_memory_expr(
-                evals,
-                linearization_challenges,
-                permutation_argument_additive_part,
-                &MEM_A_OPS,
-                j,
-            );
-            const MEM_B_OPS: [[usize; 6]; 7usize] = [
-                [0usize, 268435454usize, 0usize, 0usize, 0usize, 0usize],
-                [
-                    6usize,
-                    0usize,
-                    183usize,
-                    254usize,
-                    1073741816usize,
-                    134217711usize,
-                ],
-                [3usize, 1usize, 184usize, 0usize, 0usize, 0usize],
-                [3usize, 2usize, 257usize, 0usize, 0usize, 0usize],
-                [3usize, 3usize, 258usize, 0usize, 0usize, 0usize],
-                [3usize, 4usize, 259usize, 0usize, 0usize, 0usize],
-                [3usize, 5usize, 260usize, 0usize, 0usize, 0usize],
-            ];
-            let mut mem_b = super::common::eval_memory_expr(
-                evals,
-                linearization_challenges,
-                permutation_argument_additive_part,
-                &MEM_B_OPS,
-                j,
-            );
-            field_ops::mul_assign(&mut mem_a, &mem_b);
-            let val = mem_a;
-            let mut contrib = bc;
-            field_ops::mul_assign(&mut contrib, &val);
-            field_ops::add_assign(&mut acc[j], &contrib);
-        }
-    }
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..2 {
-            const MEM_A_OPS: [[usize; 6]; 7usize] = [
-                [0usize, 268435454usize, 0usize, 0usize, 0usize, 0usize],
-                [6usize, 0usize, 183usize, 254usize, 0usize, 134217711usize],
-                [3usize, 1usize, 184usize, 0usize, 0usize, 0usize],
-                [5usize, 2usize, 264usize, 536870908usize, 0usize, 0usize],
-                [3usize, 3usize, 265usize, 0usize, 0usize, 0usize],
-                [3usize, 4usize, 255usize, 0usize, 0usize, 0usize],
-                [3usize, 5usize, 256usize, 0usize, 0usize, 0usize],
-            ];
-            let mut mem_a = super::common::eval_memory_expr(
-                evals,
-                linearization_challenges,
-                permutation_argument_additive_part,
-                &MEM_A_OPS,
-                j,
-            );
-            const MEM_B_OPS: [[usize; 6]; 7usize] = [
-                [0usize, 268435454usize, 0usize, 0usize, 0usize, 0usize],
-                [
-                    6usize,
-                    0usize,
-                    183usize,
-                    254usize,
-                    1073741816usize,
-                    134217711usize,
-                ],
-                [3usize, 1usize, 184usize, 0usize, 0usize, 0usize],
-                [5usize, 2usize, 264usize, 536870908usize, 0usize, 0usize],
-                [3usize, 3usize, 265usize, 0usize, 0usize, 0usize],
-                [3usize, 4usize, 261usize, 0usize, 0usize, 0usize],
-                [3usize, 5usize, 262usize, 0usize, 0usize, 0usize],
-            ];
-            let mut mem_b = super::common::eval_memory_expr(
-                evals,
-                linearization_challenges,
-                permutation_argument_additive_part,
-                &MEM_B_OPS,
-                j,
-            );
-            field_ops::mul_assign(&mut mem_a, &mem_b);
-            let val = mem_a;
-            let mut contrib = bc;
-            field_ops::mul_assign(&mut contrib, &val);
-            field_ops::add_assign(&mut acc[j], &contrib);
-        }
-    }
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..2 {
-            const VAL_OPS: [[usize; 6]; 4usize] = [
-                [0usize, 0usize, 0usize, 0usize, 0usize, 0usize],
-                [4usize, 0usize, 2013261665usize, 0usize, 0usize, 0usize],
-                [3usize, 2usize, 264usize, 0usize, 0usize, 0usize],
-                [3usize, 3usize, 265usize, 0usize, 0usize, 0usize],
-            ];
-            let mut val = super::common::eval_memory_expr(
-                evals,
-                linearization_challenges,
-                permutation_argument_additive_part,
-                &VAL_OPS,
-                j,
-            );
-            let mut contrib = bc;
-            field_ops::mul_assign(&mut contrib, &val);
-            field_ops::add_assign(&mut acc[j], &contrib);
-        }
-    }
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..2 {
-            const VAL_OPS: [[usize; 6]; 2usize] = [
-                [0usize, 0usize, 0usize, 0usize, 0usize, 0usize],
-                [4usize, 0usize, 2013261665usize, 0usize, 0usize, 0usize],
-            ];
-            let mut val = super::common::eval_memory_expr(
-                evals,
-                linearization_challenges,
-                permutation_argument_additive_part,
-                &VAL_OPS,
-                j,
-            );
-            let mut contrib = bc;
-            field_ops::mul_assign(&mut contrib, &val);
-            field_ops::add_assign(&mut acc[j], &contrib);
-        }
-    }
-    {
-        const SIMPLE_GATES: [(usize, [usize; 4]); 1usize] =
-            [(6usize, [264usize, 173usize, 274usize, 0usize])];
-        let mut _sg = 0;
-        while _sg < 1usize {
-            let (gt, idx) = unsafe { *SIMPLE_GATES.get_unchecked(_sg) };
-            match gt {
-                1usize => {
-                    let bc = current_batch;
-                    field_ops::mul_assign(&mut current_batch, &batch_base);
-                    for j in 0..2 {
-                        let val = evals.get_unchecked(idx[0])[j];
-                        let mut contrib = bc;
-                        field_ops::mul_assign(&mut contrib, &val);
-                        field_ops::add_assign(&mut acc[j], &contrib);
-                    }
-                }
-                2usize => {
-                    let bc = current_batch;
-                    field_ops::mul_assign(&mut current_batch, &batch_base);
-                    for j in 0..2 {
-                        let mut val = evals.get_unchecked(idx[0])[j];
-                        let vb = evals.get_unchecked(idx[1])[j];
-                        field_ops::mul_assign(&mut val, &vb);
-                        let mut contrib = bc;
-                        field_ops::mul_assign(&mut contrib, &val);
-                        field_ops::add_assign(&mut acc[j], &contrib);
-                    }
-                }
-                3usize => {
-                    let bc = current_batch;
-                    field_ops::mul_assign(&mut current_batch, &batch_base);
-                    for j in 0..2 {
-                        let mut val = evals.get_unchecked(idx[0])[j];
-                        let mask_val = evals.get_unchecked(idx[1])[j];
-                        field_ops::sub_assign_base(&mut val, &BabyBearField::ONE);
-                        field_ops::mul_assign(&mut val, &mask_val);
-                        field_ops::add_assign_base(&mut val, &BabyBearField::ONE);
-                        let mut contrib = bc;
-                        field_ops::mul_assign(&mut contrib, &val);
-                        field_ops::add_assign(&mut acc[j], &contrib);
-                    }
-                }
-                4usize => {
-                    let bc = current_batch;
-                    field_ops::mul_assign(&mut current_batch, &batch_base);
-                    for j in 0..2 {
-                        let mut val = evals.get_unchecked(idx[0])[j];
-                        let vi = evals.get_unchecked(idx[1])[j];
-                        field_ops::mul_assign(&mut val, &vi);
-                        let mut contrib = bc;
-                        field_ops::mul_assign(&mut contrib, &val);
-                        field_ops::add_assign(&mut acc[j], &contrib);
-                    }
-                }
-                5usize => {
-                    let bc0 = current_batch;
-                    field_ops::mul_assign(&mut current_batch, &batch_base);
-                    let bc1 = current_batch;
-                    field_ops::mul_assign(&mut current_batch, &batch_base);
-                    for j in 0..2 {
-                        let mut bg = evals.get_unchecked(idx[0])[j];
-                        let mut dg = evals.get_unchecked(idx[1])[j];
-                        field_ops::add_assign(&mut bg, &lookup_additive_challenge);
-                        field_ops::add_assign(&mut dg, &lookup_additive_challenge);
-                        let mut num = bg;
-                        field_ops::add_assign(&mut num, &dg);
-                        let mut den = bg;
-                        field_ops::mul_assign(&mut den, &dg);
-                        let out0 = num;
-                        let out1 = den;
-                        let mut c0 = bc0;
-                        field_ops::mul_assign(&mut c0, &out0);
-                        field_ops::add_assign(&mut acc[j], &c0);
-                        let mut c1 = bc1;
-                        field_ops::mul_assign(&mut c1, &out1);
-                        field_ops::add_assign(&mut acc[j], &c1);
-                    }
-                }
-                6usize => {
-                    let bc0 = current_batch;
-                    field_ops::mul_assign(&mut current_batch, &batch_base);
-                    let bc1 = current_batch;
-                    field_ops::mul_assign(&mut current_batch, &batch_base);
-                    for j in 0..2 {
-                        let mut bg = evals.get_unchecked(idx[0])[j];
-                        let mut dg = evals.get_unchecked(idx[2])[j];
-                        let mut cb = evals.get_unchecked(idx[1])[j];
-                        field_ops::add_assign(&mut bg, &lookup_additive_challenge);
-                        field_ops::add_assign(&mut dg, &lookup_additive_challenge);
-                        field_ops::mul_assign(&mut cb, &bg);
-                        let mut num = dg;
-                        field_ops::sub_assign(&mut num, &cb);
-                        let mut den = bg;
-                        field_ops::mul_assign(&mut den, &dg);
-                        let out0 = num;
-                        let out1 = den;
-                        let mut c0 = bc0;
-                        field_ops::mul_assign(&mut c0, &out0);
-                        field_ops::add_assign(&mut acc[j], &c0);
-                        let mut c1 = bc1;
-                        field_ops::mul_assign(&mut c1, &out1);
-                        field_ops::add_assign(&mut acc[j], &c1);
-                    }
-                }
-                7usize => {
-                    let bc0 = current_batch;
-                    field_ops::mul_assign(&mut current_batch, &batch_base);
-                    let bc1 = current_batch;
-                    field_ops::mul_assign(&mut current_batch, &batch_base);
-                    for j in 0..2 {
-                        let a_val = evals.get_unchecked(idx[0])[j];
-                        let b_val = evals.get_unchecked(idx[1])[j];
-                        let mut r_g = evals.get_unchecked(idx[2])[j];
-                        field_ops::add_assign(&mut r_g, &lookup_additive_challenge);
-                        let mut num = a_val;
-                        field_ops::mul_assign(&mut num, &r_g);
-                        field_ops::add_assign(&mut num, &b_val);
-                        let mut den = b_val;
-                        field_ops::mul_assign(&mut den, &r_g);
-                        let out0 = num;
-                        let out1 = den;
-                        let mut c0 = bc0;
-                        field_ops::mul_assign(&mut c0, &out0);
-                        field_ops::add_assign(&mut acc[j], &c0);
-                        let mut c1 = bc1;
-                        field_ops::mul_assign(&mut c1, &out1);
-                        field_ops::add_assign(&mut acc[j], &c1);
-                    }
-                }
-                8usize => {
-                    let bc0 = current_batch;
-                    field_ops::mul_assign(&mut current_batch, &batch_base);
-                    let bc1 = current_batch;
-                    field_ops::mul_assign(&mut current_batch, &batch_base);
-                    for j in 0..2 {
-                        let a_val = evals.get_unchecked(idx[0])[j];
-                        let b_val = evals.get_unchecked(idx[1])[j];
-                        let c_val = evals.get_unchecked(idx[2])[j];
-                        let d_val = evals.get_unchecked(idx[3])[j];
-                        let mut num = a_val;
-                        field_ops::mul_assign(&mut num, &d_val);
-                        let mut cb_tmp = c_val;
-                        field_ops::mul_assign(&mut cb_tmp, &b_val);
-                        field_ops::add_assign(&mut num, &cb_tmp);
-                        let mut den = b_val;
-                        field_ops::mul_assign(&mut den, &d_val);
-                        let out0 = num;
-                        let out1 = den;
-                        let mut c0 = bc0;
-                        field_ops::mul_assign(&mut c0, &out0);
-                        field_ops::add_assign(&mut acc[j], &c0);
-                        let mut c1 = bc1;
-                        field_ops::mul_assign(&mut c1, &out1);
-                        field_ops::add_assign(&mut acc[j], &c1);
-                    }
-                }
-                9usize => {
-                    let bc0 = current_batch;
-                    field_ops::mul_assign(&mut current_batch, &batch_base);
-                    let bc1 = current_batch;
-                    field_ops::mul_assign(&mut current_batch, &batch_base);
-                    for j in 0..2 {
-                        let a_val = evals.get_unchecked(idx[0])[j];
-                        let mut b_cd = evals.get_unchecked(idx[1])[j];
-                        let c_val = evals.get_unchecked(idx[2])[j];
-                        let mut d_cd = evals.get_unchecked(idx[3])[j];
-                        field_ops::add_assign(&mut b_cd, &lookup_additive_challenge);
-                        field_ops::add_assign(&mut d_cd, &lookup_additive_challenge);
-                        let mut ad_cd = a_val;
-                        field_ops::mul_assign(&mut ad_cd, &d_cd);
-                        let mut cb_cd = c_val;
-                        field_ops::mul_assign(&mut cb_cd, &b_cd);
-                        field_ops::sub_assign(&mut ad_cd, &cb_cd);
-                        let mut den = b_cd;
-                        field_ops::mul_assign(&mut den, &d_cd);
-                        let out0 = ad_cd;
-                        let out1 = den;
-                        let mut c0 = bc0;
-                        field_ops::mul_assign(&mut c0, &out0);
-                        field_ops::add_assign(&mut acc[j], &c0);
-                        let mut c1 = bc1;
-                        field_ops::mul_assign(&mut c1, &out1);
-                        field_ops::add_assign(&mut acc[j], &c1);
-                    }
-                }
-                _ => unreachable!(),
-            }
-            _sg += 1;
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..2 {
-            const A_VAL_TERMS: [(usize, usize); 1usize] = [(265usize, 268435454usize)];
-            let mut a_val = super::common::eval_linear_relation(evals, &A_VAL_TERMS, 0usize, j);
-            const B_VAL_TERMS: [(usize, usize); 3usize] = [
-                (264usize, 1744830467usize),
-                (175usize, 268435454usize),
-                (159usize, 133099247usize),
-            ];
-            let mut b_val =
-                super::common::eval_linear_relation(evals, &B_VAL_TERMS, 1476395013usize, j);
-            let out0 = {
-                field_ops::add_assign(&mut a_val, &lookup_additive_challenge);
-                field_ops::add_assign(&mut b_val, &lookup_additive_challenge);
-                let mut num = a_val;
-                field_ops::add_assign(&mut num, &b_val);
-                num
-            };
-            let out1 = {
-                let mut den = a_val;
-                field_ops::mul_assign(&mut den, &b_val);
-                den
-            };
-            let mut c0 = bc0;
-            field_ops::mul_assign(&mut c0, &out0);
-            let mut c1 = bc1;
-            field_ops::mul_assign(&mut c1, &out1);
-            field_ops::add_assign(&mut acc[j], &c0);
-            field_ops::add_assign(&mut acc[j], &c1);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..2 {
-            const A_VAL_TERMS: [(usize, usize); 3usize] = [
-                (265usize, 1744830467usize),
-                (176usize, 268435454usize),
-                (159usize, 1744830467usize),
-            ];
-            let mut a_val =
-                super::common::eval_linear_relation(evals, &A_VAL_TERMS, 133099247usize, j);
-            const B_VAL_TERMS: [(usize, usize); 3usize] = [
-                (264usize, 1744830467usize),
-                (181usize, 268435454usize),
-                (160usize, 133099247usize),
-            ];
-            let mut b_val =
-                super::common::eval_linear_relation(evals, &B_VAL_TERMS, 1476395013usize, j);
-            let out0 = {
-                field_ops::add_assign(&mut a_val, &lookup_additive_challenge);
-                field_ops::add_assign(&mut b_val, &lookup_additive_challenge);
-                let mut num = a_val;
-                field_ops::add_assign(&mut num, &b_val);
-                num
-            };
-            let out1 = {
-                let mut den = a_val;
-                field_ops::mul_assign(&mut den, &b_val);
-                den
-            };
-            let mut c0 = bc0;
-            field_ops::mul_assign(&mut c0, &out0);
-            let mut c1 = bc1;
-            field_ops::mul_assign(&mut c1, &out1);
-            field_ops::add_assign(&mut acc[j], &c0);
-            field_ops::add_assign(&mut acc[j], &c1);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..2 {
-            const A_VAL_TERMS: [(usize, usize); 3usize] = [
-                (265usize, 1744830467usize),
-                (182usize, 268435454usize),
-                (160usize, 1744830467usize),
-            ];
-            let mut a_val =
-                super::common::eval_linear_relation(evals, &A_VAL_TERMS, 133099247usize, j);
-            const B_VAL_TERMS: [(usize, usize); 3usize] = [
-                (264usize, 1744830467usize),
-                (185usize, 268435454usize),
-                (161usize, 133099247usize),
-            ];
-            let mut b_val =
-                super::common::eval_linear_relation(evals, &B_VAL_TERMS, 1476395013usize, j);
-            let out0 = {
-                field_ops::add_assign(&mut a_val, &lookup_additive_challenge);
-                field_ops::add_assign(&mut b_val, &lookup_additive_challenge);
-                let mut num = a_val;
-                field_ops::add_assign(&mut num, &b_val);
-                num
-            };
-            let out1 = {
-                let mut den = a_val;
-                field_ops::mul_assign(&mut den, &b_val);
-                den
-            };
-            let mut c0 = bc0;
-            field_ops::mul_assign(&mut c0, &out0);
-            let mut c1 = bc1;
-            field_ops::mul_assign(&mut c1, &out1);
-            field_ops::add_assign(&mut acc[j], &c0);
-            field_ops::add_assign(&mut acc[j], &c1);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..2 {
-            const A_VAL_TERMS: [(usize, usize); 3usize] = [
-                (265usize, 1744830467usize),
-                (186usize, 268435454usize),
-                (161usize, 1744830467usize),
-            ];
-            let mut a_val =
-                super::common::eval_linear_relation(evals, &A_VAL_TERMS, 133099247usize, j);
-            const B_VAL_TERMS: [(usize, usize); 3usize] = [
-                (264usize, 1744830467usize),
-                (192usize, 268435454usize),
-                (162usize, 133099247usize),
-            ];
-            let mut b_val =
-                super::common::eval_linear_relation(evals, &B_VAL_TERMS, 1476395013usize, j);
-            let out0 = {
-                field_ops::add_assign(&mut a_val, &lookup_additive_challenge);
-                field_ops::add_assign(&mut b_val, &lookup_additive_challenge);
-                let mut num = a_val;
-                field_ops::add_assign(&mut num, &b_val);
-                num
-            };
-            let out1 = {
-                let mut den = a_val;
-                field_ops::mul_assign(&mut den, &b_val);
-                den
-            };
-            let mut c0 = bc0;
-            field_ops::mul_assign(&mut c0, &out0);
-            let mut c1 = bc1;
-            field_ops::mul_assign(&mut c1, &out1);
-            field_ops::add_assign(&mut acc[j], &c0);
-            field_ops::add_assign(&mut acc[j], &c1);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..2 {
-            const A_VAL_TERMS: [(usize, usize); 3usize] = [
-                (265usize, 1744830467usize),
-                (193usize, 268435454usize),
-                (162usize, 1744830467usize),
-            ];
-            let mut a_val =
-                super::common::eval_linear_relation(evals, &A_VAL_TERMS, 133099247usize, j);
-            const B_VAL_TERMS: [(usize, usize); 3usize] = [
-                (264usize, 1744830467usize),
-                (198usize, 268435454usize),
-                (163usize, 133099247usize),
-            ];
-            let mut b_val =
-                super::common::eval_linear_relation(evals, &B_VAL_TERMS, 1476395013usize, j);
-            let out0 = {
-                field_ops::add_assign(&mut a_val, &lookup_additive_challenge);
-                field_ops::add_assign(&mut b_val, &lookup_additive_challenge);
-                let mut num = a_val;
-                field_ops::add_assign(&mut num, &b_val);
-                num
-            };
-            let out1 = {
-                let mut den = a_val;
-                field_ops::mul_assign(&mut den, &b_val);
-                den
-            };
-            let mut c0 = bc0;
-            field_ops::mul_assign(&mut c0, &out0);
-            let mut c1 = bc1;
-            field_ops::mul_assign(&mut c1, &out1);
-            field_ops::add_assign(&mut acc[j], &c0);
-            field_ops::add_assign(&mut acc[j], &c1);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..2 {
-            const A_VAL_TERMS: [(usize, usize); 3usize] = [
-                (265usize, 1744830467usize),
-                (199usize, 268435454usize),
-                (163usize, 1744830467usize),
-            ];
-            let mut a_val =
-                super::common::eval_linear_relation(evals, &A_VAL_TERMS, 133099247usize, j);
-            const B_VAL_TERMS: [(usize, usize); 3usize] = [
-                (264usize, 1744830467usize),
-                (205usize, 268435454usize),
-                (164usize, 133099247usize),
-            ];
-            let mut b_val =
-                super::common::eval_linear_relation(evals, &B_VAL_TERMS, 1476395013usize, j);
-            let out0 = {
-                field_ops::add_assign(&mut a_val, &lookup_additive_challenge);
-                field_ops::add_assign(&mut b_val, &lookup_additive_challenge);
-                let mut num = a_val;
-                field_ops::add_assign(&mut num, &b_val);
-                num
-            };
-            let out1 = {
-                let mut den = a_val;
-                field_ops::mul_assign(&mut den, &b_val);
-                den
-            };
-            let mut c0 = bc0;
-            field_ops::mul_assign(&mut c0, &out0);
-            let mut c1 = bc1;
-            field_ops::mul_assign(&mut c1, &out1);
-            field_ops::add_assign(&mut acc[j], &c0);
-            field_ops::add_assign(&mut acc[j], &c1);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..2 {
-            const A_VAL_TERMS: [(usize, usize); 3usize] = [
-                (265usize, 1744830467usize),
-                (206usize, 268435454usize),
-                (164usize, 1744830467usize),
-            ];
-            let mut a_val =
-                super::common::eval_linear_relation(evals, &A_VAL_TERMS, 133099247usize, j);
-            const B_VAL_TERMS: [(usize, usize); 3usize] = [
-                (264usize, 1744830467usize),
-                (211usize, 268435454usize),
-                (165usize, 133099247usize),
-            ];
-            let mut b_val =
-                super::common::eval_linear_relation(evals, &B_VAL_TERMS, 1476395013usize, j);
-            let out0 = {
-                field_ops::add_assign(&mut a_val, &lookup_additive_challenge);
-                field_ops::add_assign(&mut b_val, &lookup_additive_challenge);
-                let mut num = a_val;
-                field_ops::add_assign(&mut num, &b_val);
-                num
-            };
-            let out1 = {
-                let mut den = a_val;
-                field_ops::mul_assign(&mut den, &b_val);
-                den
-            };
-            let mut c0 = bc0;
-            field_ops::mul_assign(&mut c0, &out0);
-            let mut c1 = bc1;
-            field_ops::mul_assign(&mut c1, &out1);
-            field_ops::add_assign(&mut acc[j], &c0);
-            field_ops::add_assign(&mut acc[j], &c1);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..2 {
-            const A_VAL_TERMS: [(usize, usize); 3usize] = [
-                (265usize, 1744830467usize),
-                (212usize, 268435454usize),
-                (165usize, 1744830467usize),
-            ];
-            let mut a_val =
-                super::common::eval_linear_relation(evals, &A_VAL_TERMS, 133099247usize, j);
-            const B_VAL_TERMS: [(usize, usize); 3usize] = [
-                (264usize, 1744830467usize),
-                (218usize, 268435454usize),
-                (166usize, 133099247usize),
-            ];
-            let mut b_val =
-                super::common::eval_linear_relation(evals, &B_VAL_TERMS, 1476395013usize, j);
-            let out0 = {
-                field_ops::add_assign(&mut a_val, &lookup_additive_challenge);
-                field_ops::add_assign(&mut b_val, &lookup_additive_challenge);
-                let mut num = a_val;
-                field_ops::add_assign(&mut num, &b_val);
-                num
-            };
-            let out1 = {
-                let mut den = a_val;
-                field_ops::mul_assign(&mut den, &b_val);
-                den
-            };
-            let mut c0 = bc0;
-            field_ops::mul_assign(&mut c0, &out0);
-            let mut c1 = bc1;
-            field_ops::mul_assign(&mut c1, &out1);
-            field_ops::add_assign(&mut acc[j], &c0);
-            field_ops::add_assign(&mut acc[j], &c1);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..2 {
-            const A_VAL_TERMS: [(usize, usize); 3usize] = [
-                (265usize, 1744830467usize),
-                (219usize, 268435454usize),
-                (166usize, 1744830467usize),
-            ];
-            let mut a_val =
-                super::common::eval_linear_relation(evals, &A_VAL_TERMS, 133099247usize, j);
-            const B_VAL_TERMS: [(usize, usize); 3usize] = [
-                (264usize, 1744830467usize),
-                (224usize, 268435454usize),
-                (167usize, 133099247usize),
-            ];
-            let mut b_val =
-                super::common::eval_linear_relation(evals, &B_VAL_TERMS, 1476395013usize, j);
-            let out0 = {
-                field_ops::add_assign(&mut a_val, &lookup_additive_challenge);
-                field_ops::add_assign(&mut b_val, &lookup_additive_challenge);
-                let mut num = a_val;
-                field_ops::add_assign(&mut num, &b_val);
-                num
-            };
-            let out1 = {
-                let mut den = a_val;
-                field_ops::mul_assign(&mut den, &b_val);
-                den
-            };
-            let mut c0 = bc0;
-            field_ops::mul_assign(&mut c0, &out0);
-            let mut c1 = bc1;
-            field_ops::mul_assign(&mut c1, &out1);
-            field_ops::add_assign(&mut acc[j], &c0);
-            field_ops::add_assign(&mut acc[j], &c1);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..2 {
-            const A_VAL_TERMS: [(usize, usize); 3usize] = [
-                (265usize, 1744830467usize),
-                (225usize, 268435454usize),
-                (167usize, 1744830467usize),
-            ];
-            let mut a_val =
-                super::common::eval_linear_relation(evals, &A_VAL_TERMS, 133099247usize, j);
-            const B_VAL_TERMS: [(usize, usize); 3usize] = [
-                (264usize, 1744830467usize),
-                (231usize, 268435454usize),
-                (168usize, 133099247usize),
-            ];
-            let mut b_val =
-                super::common::eval_linear_relation(evals, &B_VAL_TERMS, 1476395013usize, j);
-            let out0 = {
-                field_ops::add_assign(&mut a_val, &lookup_additive_challenge);
-                field_ops::add_assign(&mut b_val, &lookup_additive_challenge);
-                let mut num = a_val;
-                field_ops::add_assign(&mut num, &b_val);
-                num
-            };
-            let out1 = {
-                let mut den = a_val;
-                field_ops::mul_assign(&mut den, &b_val);
-                den
-            };
-            let mut c0 = bc0;
-            field_ops::mul_assign(&mut c0, &out0);
-            let mut c1 = bc1;
-            field_ops::mul_assign(&mut c1, &out1);
-            field_ops::add_assign(&mut acc[j], &c0);
-            field_ops::add_assign(&mut acc[j], &c1);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..2 {
-            const A_VAL_TERMS: [(usize, usize); 3usize] = [
-                (265usize, 1744830467usize),
-                (232usize, 268435454usize),
-                (168usize, 1744830467usize),
-            ];
-            let mut a_val =
-                super::common::eval_linear_relation(evals, &A_VAL_TERMS, 133099247usize, j);
-            const B_VAL_TERMS: [(usize, usize); 3usize] = [
-                (264usize, 1744830467usize),
-                (237usize, 268435454usize),
-                (169usize, 133099247usize),
-            ];
-            let mut b_val =
-                super::common::eval_linear_relation(evals, &B_VAL_TERMS, 1476395013usize, j);
-            let out0 = {
-                field_ops::add_assign(&mut a_val, &lookup_additive_challenge);
-                field_ops::add_assign(&mut b_val, &lookup_additive_challenge);
-                let mut num = a_val;
-                field_ops::add_assign(&mut num, &b_val);
-                num
-            };
-            let out1 = {
-                let mut den = a_val;
-                field_ops::mul_assign(&mut den, &b_val);
-                den
-            };
-            let mut c0 = bc0;
-            field_ops::mul_assign(&mut c0, &out0);
-            let mut c1 = bc1;
-            field_ops::mul_assign(&mut c1, &out1);
-            field_ops::add_assign(&mut acc[j], &c0);
-            field_ops::add_assign(&mut acc[j], &c1);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..2 {
-            const A_VAL_TERMS: [(usize, usize); 3usize] = [
-                (265usize, 1744830467usize),
-                (238usize, 268435454usize),
-                (169usize, 1744830467usize),
-            ];
-            let mut a_val =
-                super::common::eval_linear_relation(evals, &A_VAL_TERMS, 133099247usize, j);
-            const B_VAL_TERMS: [(usize, usize); 3usize] = [
-                (264usize, 1744830467usize),
-                (244usize, 268435454usize),
-                (170usize, 133099247usize),
-            ];
-            let mut b_val =
-                super::common::eval_linear_relation(evals, &B_VAL_TERMS, 1476395013usize, j);
-            let out0 = {
-                field_ops::add_assign(&mut a_val, &lookup_additive_challenge);
-                field_ops::add_assign(&mut b_val, &lookup_additive_challenge);
-                let mut num = a_val;
-                field_ops::add_assign(&mut num, &b_val);
-                num
-            };
-            let out1 = {
-                let mut den = a_val;
-                field_ops::mul_assign(&mut den, &b_val);
-                den
-            };
-            let mut c0 = bc0;
-            field_ops::mul_assign(&mut c0, &out0);
-            let mut c1 = bc1;
-            field_ops::mul_assign(&mut c1, &out1);
-            field_ops::add_assign(&mut acc[j], &c0);
-            field_ops::add_assign(&mut acc[j], &c1);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..2 {
-            const A_VAL_TERMS: [(usize, usize); 3usize] = [
-                (265usize, 1744830467usize),
-                (245usize, 268435454usize),
-                (170usize, 1744830467usize),
-            ];
-            let mut a_val =
-                super::common::eval_linear_relation(evals, &A_VAL_TERMS, 133099247usize, j);
-            const B_VAL_TERMS: [(usize, usize); 3usize] = [
-                (264usize, 1744830467usize),
-                (250usize, 268435454usize),
-                (171usize, 133099247usize),
-            ];
-            let mut b_val =
-                super::common::eval_linear_relation(evals, &B_VAL_TERMS, 1476395013usize, j);
-            let out0 = {
-                field_ops::add_assign(&mut a_val, &lookup_additive_challenge);
-                field_ops::add_assign(&mut b_val, &lookup_additive_challenge);
-                let mut num = a_val;
-                field_ops::add_assign(&mut num, &b_val);
-                num
-            };
-            let out1 = {
-                let mut den = a_val;
-                field_ops::mul_assign(&mut den, &b_val);
-                den
-            };
-            let mut c0 = bc0;
-            field_ops::mul_assign(&mut c0, &out0);
-            let mut c1 = bc1;
-            field_ops::mul_assign(&mut c1, &out1);
-            field_ops::add_assign(&mut acc[j], &c0);
-            field_ops::add_assign(&mut acc[j], &c1);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..2 {
-            const A_VAL_TERMS: [(usize, usize); 3usize] = [
-                (265usize, 1744830467usize),
-                (251usize, 268435454usize),
-                (171usize, 1744830467usize),
-            ];
-            let mut a_val =
-                super::common::eval_linear_relation(evals, &A_VAL_TERMS, 133099247usize, j);
-            const B_VAL_TERMS: [(usize, usize); 3usize] = [
-                (264usize, 1744830467usize),
-                (257usize, 268435454usize),
-                (172usize, 133099247usize),
-            ];
-            let mut b_val =
-                super::common::eval_linear_relation(evals, &B_VAL_TERMS, 1476395013usize, j);
-            let out0 = {
-                field_ops::add_assign(&mut a_val, &lookup_additive_challenge);
-                field_ops::add_assign(&mut b_val, &lookup_additive_challenge);
-                let mut num = a_val;
-                field_ops::add_assign(&mut num, &b_val);
-                num
-            };
-            let out1 = {
-                let mut den = a_val;
-                field_ops::mul_assign(&mut den, &b_val);
-                den
-            };
-            let mut c0 = bc0;
-            field_ops::mul_assign(&mut c0, &out0);
-            let mut c1 = bc1;
-            field_ops::mul_assign(&mut c1, &out1);
-            field_ops::add_assign(&mut acc[j], &c0);
-            field_ops::add_assign(&mut acc[j], &c1);
-        }
-    }
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..2 {
-            const VAL_TERMS: [(usize, usize); 3usize] = [
-                (265usize, 1744830467usize),
-                (258usize, 268435454usize),
-                (172usize, 1744830467usize),
-            ];
-            let mut val = super::common::eval_linear_relation(evals, &VAL_TERMS, 133099247usize, j);
-            let mut contrib = bc;
-            field_ops::mul_assign(&mut contrib, &val);
-            field_ops::add_assign(&mut acc[j], &contrib);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..2 {
-            const A_VAL_COLS: [(usize, usize); 8usize] = [
-                (1879048114usize, 0usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-                (0usize, 2usize),
-            ];
-            const A_VAL_VL_TERMS: [(usize, usize); 8usize] = [
-                (254usize, 268435454usize),
-                (241usize, 268435454usize),
-                (228usize, 268435454usize),
-                (215usize, 268435454usize),
-                (202usize, 268435454usize),
-                (189usize, 268435454usize),
-                (263usize, 134213359usize),
-                (177usize, 268435454usize),
-            ];
-            let mut a_val = super::common::eval_vector_lookup(
-                evals,
-                lookup_alpha,
-                &A_VAL_COLS,
-                &A_VAL_VL_TERMS,
-                j,
-            );
-            field_ops::add_assign(&mut a_val, &lookup_additive_challenge);
-            let c_val = evals.get_unchecked(174usize)[j];
-            const D_VAL_COLS: [(usize, usize); 8usize] = [
-                (0usize, 1usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-            ];
-            const D_VAL_VL_TERMS: [(usize, usize); 8usize] = [
-                (273usize, 268435454usize),
-                (272usize, 268435454usize),
-                (271usize, 268435454usize),
-                (270usize, 268435454usize),
-                (269usize, 268435454usize),
-                (268usize, 268435454usize),
-                (267usize, 268435454usize),
-                (266usize, 268435454usize),
-            ];
-            let mut d_val = super::common::eval_vector_lookup(
-                evals,
-                lookup_alpha,
-                &D_VAL_COLS,
-                &D_VAL_VL_TERMS,
-                j,
-            );
-            field_ops::add_assign(&mut d_val, &lookup_additive_challenge);
-            let out0 = {
-                let mut num = d_val;
-                let mut cb_tmp = c_val;
-                field_ops::mul_assign(&mut cb_tmp, &a_val);
-                field_ops::sub_assign(&mut num, &cb_tmp);
-                num
-            };
-            let out1 = {
-                let mut den = a_val;
-                field_ops::mul_assign(&mut den, &d_val);
-                den
-            };
-            let mut c0 = bc0;
-            field_ops::mul_assign(&mut c0, &out0);
-            let mut c1 = bc1;
-            field_ops::mul_assign(&mut c1, &out1);
-            field_ops::add_assign(&mut acc[j], &c0);
-            field_ops::add_assign(&mut acc[j], &c1);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..2 {
-            const A_VAL_COLS: [(usize, usize); 8usize] = [
-                (0usize, 7usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-            ];
-            const A_VAL_VL_TERMS: [(usize, usize); 10usize] = [
-                (0usize, 134217647usize),
-                (1usize, 671088555usize),
-                (2usize, 671088555usize),
-                (3usize, 1073741816usize),
-                (4usize, 671088555usize),
-                (5usize, 402653101usize),
-                (6usize, 402653101usize),
-                (55usize, 268435454usize),
-                (47usize, 268435454usize),
-                (39usize, 268435454usize),
-            ];
-            let mut a_val = super::common::eval_vector_lookup(
-                evals,
-                lookup_alpha,
-                &A_VAL_COLS,
-                &A_VAL_VL_TERMS,
-                j,
-            );
-            const B_VAL_COLS: [(usize, usize); 8usize] = [
-                (0usize, 7usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-            ];
-            const B_VAL_VL_TERMS: [(usize, usize); 10usize] = [
-                (0usize, 134217647usize),
-                (1usize, 671088555usize),
-                (2usize, 671088555usize),
-                (3usize, 1073741816usize),
-                (4usize, 671088555usize),
-                (5usize, 402653101usize),
-                (6usize, 402653101usize),
-                (56usize, 268435454usize),
-                (48usize, 268435454usize),
-                (40usize, 268435454usize),
-            ];
-            let mut b_val = super::common::eval_vector_lookup(
-                evals,
-                lookup_alpha,
-                &B_VAL_COLS,
-                &B_VAL_VL_TERMS,
-                j,
-            );
-            let out0 = {
-                field_ops::add_assign(&mut a_val, &lookup_additive_challenge);
-                field_ops::add_assign(&mut b_val, &lookup_additive_challenge);
-                let mut num = a_val;
-                field_ops::add_assign(&mut num, &b_val);
-                num
-            };
-            let out1 = {
-                let mut den = a_val;
-                field_ops::mul_assign(&mut den, &b_val);
-                den
-            };
-            let mut c0 = bc0;
-            field_ops::mul_assign(&mut c0, &out0);
-            let mut c1 = bc1;
-            field_ops::mul_assign(&mut c1, &out1);
-            field_ops::add_assign(&mut acc[j], &c0);
-            field_ops::add_assign(&mut acc[j], &c1);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..2 {
-            const A_VAL_COLS: [(usize, usize); 8usize] = [
-                (0usize, 7usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-            ];
-            const A_VAL_VL_TERMS: [(usize, usize); 10usize] = [
-                (0usize, 134217647usize),
-                (1usize, 671088555usize),
-                (2usize, 671088555usize),
-                (3usize, 1073741816usize),
-                (4usize, 671088555usize),
-                (5usize, 402653101usize),
-                (6usize, 402653101usize),
-                (57usize, 268435454usize),
-                (49usize, 268435454usize),
-                (41usize, 268435454usize),
-            ];
-            let mut a_val = super::common::eval_vector_lookup(
-                evals,
-                lookup_alpha,
-                &A_VAL_COLS,
-                &A_VAL_VL_TERMS,
-                j,
-            );
-            const B_VAL_COLS: [(usize, usize); 8usize] = [
-                (0usize, 7usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-            ];
-            const B_VAL_VL_TERMS: [(usize, usize); 10usize] = [
-                (0usize, 134217647usize),
-                (1usize, 671088555usize),
-                (2usize, 671088555usize),
-                (3usize, 1073741816usize),
-                (4usize, 671088555usize),
-                (5usize, 402653101usize),
-                (6usize, 402653101usize),
-                (58usize, 268435454usize),
-                (50usize, 268435454usize),
-                (42usize, 268435454usize),
-            ];
-            let mut b_val = super::common::eval_vector_lookup(
-                evals,
-                lookup_alpha,
-                &B_VAL_COLS,
-                &B_VAL_VL_TERMS,
-                j,
-            );
-            let out0 = {
-                field_ops::add_assign(&mut a_val, &lookup_additive_challenge);
-                field_ops::add_assign(&mut b_val, &lookup_additive_challenge);
-                let mut num = a_val;
-                field_ops::add_assign(&mut num, &b_val);
-                num
-            };
-            let out1 = {
-                let mut den = a_val;
-                field_ops::mul_assign(&mut den, &b_val);
-                den
-            };
-            let mut c0 = bc0;
-            field_ops::mul_assign(&mut c0, &out0);
-            let mut c1 = bc1;
-            field_ops::mul_assign(&mut c1, &out1);
-            field_ops::add_assign(&mut acc[j], &c0);
-            field_ops::add_assign(&mut acc[j], &c1);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..2 {
-            const A_VAL_COLS: [(usize, usize); 8usize] = [
-                (0usize, 7usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-            ];
-            const A_VAL_VL_TERMS: [(usize, usize); 10usize] = [
-                (0usize, 134217647usize),
-                (1usize, 671088555usize),
-                (2usize, 671088555usize),
-                (3usize, 1073741816usize),
-                (4usize, 671088555usize),
-                (5usize, 402653101usize),
-                (6usize, 402653101usize),
-                (59usize, 268435454usize),
-                (51usize, 268435454usize),
-                (43usize, 268435454usize),
-            ];
-            let mut a_val = super::common::eval_vector_lookup(
-                evals,
-                lookup_alpha,
-                &A_VAL_COLS,
-                &A_VAL_VL_TERMS,
-                j,
-            );
-            const B_VAL_COLS: [(usize, usize); 8usize] = [
-                (0usize, 7usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-            ];
-            const B_VAL_VL_TERMS: [(usize, usize); 10usize] = [
-                (0usize, 134217647usize),
-                (1usize, 671088555usize),
-                (2usize, 671088555usize),
-                (3usize, 1073741816usize),
-                (4usize, 671088555usize),
-                (5usize, 402653101usize),
-                (6usize, 402653101usize),
-                (60usize, 268435454usize),
-                (52usize, 268435454usize),
-                (44usize, 268435454usize),
-            ];
-            let mut b_val = super::common::eval_vector_lookup(
-                evals,
-                lookup_alpha,
-                &B_VAL_COLS,
-                &B_VAL_VL_TERMS,
-                j,
-            );
-            let out0 = {
-                field_ops::add_assign(&mut a_val, &lookup_additive_challenge);
-                field_ops::add_assign(&mut b_val, &lookup_additive_challenge);
-                let mut num = a_val;
-                field_ops::add_assign(&mut num, &b_val);
-                num
-            };
-            let out1 = {
-                let mut den = a_val;
-                field_ops::mul_assign(&mut den, &b_val);
-                den
-            };
-            let mut c0 = bc0;
-            field_ops::mul_assign(&mut c0, &out0);
-            let mut c1 = bc1;
-            field_ops::mul_assign(&mut c1, &out1);
-            field_ops::add_assign(&mut acc[j], &c0);
-            field_ops::add_assign(&mut acc[j], &c1);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..2 {
-            const A_VAL_COLS: [(usize, usize); 8usize] = [
-                (0usize, 7usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-            ];
-            const A_VAL_VL_TERMS: [(usize, usize); 10usize] = [
-                (0usize, 134217647usize),
-                (1usize, 671088555usize),
-                (2usize, 671088555usize),
-                (3usize, 1073741816usize),
-                (4usize, 671088555usize),
-                (5usize, 402653101usize),
-                (6usize, 402653101usize),
-                (61usize, 268435454usize),
-                (53usize, 268435454usize),
-                (45usize, 268435454usize),
-            ];
-            let mut a_val = super::common::eval_vector_lookup(
-                evals,
-                lookup_alpha,
-                &A_VAL_COLS,
-                &A_VAL_VL_TERMS,
-                j,
-            );
-            const B_VAL_COLS: [(usize, usize); 8usize] = [
-                (0usize, 7usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-            ];
-            const B_VAL_VL_TERMS: [(usize, usize); 10usize] = [
-                (0usize, 134217647usize),
-                (1usize, 671088555usize),
-                (2usize, 671088555usize),
-                (3usize, 1073741816usize),
-                (4usize, 671088555usize),
-                (5usize, 402653101usize),
-                (6usize, 402653101usize),
-                (62usize, 268435454usize),
-                (54usize, 268435454usize),
-                (46usize, 268435454usize),
-            ];
-            let mut b_val = super::common::eval_vector_lookup(
-                evals,
-                lookup_alpha,
-                &B_VAL_COLS,
-                &B_VAL_VL_TERMS,
-                j,
-            );
-            let out0 = {
-                field_ops::add_assign(&mut a_val, &lookup_additive_challenge);
-                field_ops::add_assign(&mut b_val, &lookup_additive_challenge);
-                let mut num = a_val;
-                field_ops::add_assign(&mut num, &b_val);
-                num
-            };
-            let out1 = {
-                let mut den = a_val;
-                field_ops::mul_assign(&mut den, &b_val);
-                den
-            };
-            let mut c0 = bc0;
-            field_ops::mul_assign(&mut c0, &out0);
-            let mut c1 = bc1;
-            field_ops::mul_assign(&mut c1, &out1);
-            field_ops::add_assign(&mut acc[j], &c0);
-            field_ops::add_assign(&mut acc[j], &c1);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..2 {
-            const A_VAL_COLS: [(usize, usize); 8usize] = [
-                (0usize, 7usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-            ];
-            const A_VAL_VL_TERMS: [(usize, usize); 10usize] = [
-                (0usize, 1073741816usize),
-                (1usize, 671088555usize),
-                (2usize, 1073741816usize),
-                (3usize, 1073741816usize),
-                (4usize, 671088555usize),
-                (5usize, 402653101usize),
-                (6usize, 1073741816usize),
-                (79usize, 268435454usize),
-                (71usize, 268435454usize),
-                (63usize, 268435454usize),
-            ];
-            let mut a_val = super::common::eval_vector_lookup(
-                evals,
-                lookup_alpha,
-                &A_VAL_COLS,
-                &A_VAL_VL_TERMS,
-                j,
-            );
-            const B_VAL_COLS: [(usize, usize); 8usize] = [
-                (0usize, 7usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-            ];
-            const B_VAL_VL_TERMS: [(usize, usize); 10usize] = [
-                (0usize, 1073741816usize),
-                (1usize, 671088555usize),
-                (2usize, 1073741816usize),
-                (3usize, 1073741816usize),
-                (4usize, 671088555usize),
-                (5usize, 402653101usize),
-                (6usize, 1073741816usize),
-                (80usize, 268435454usize),
-                (72usize, 268435454usize),
-                (64usize, 268435454usize),
-            ];
-            let mut b_val = super::common::eval_vector_lookup(
-                evals,
-                lookup_alpha,
-                &B_VAL_COLS,
-                &B_VAL_VL_TERMS,
-                j,
-            );
-            let out0 = {
-                field_ops::add_assign(&mut a_val, &lookup_additive_challenge);
-                field_ops::add_assign(&mut b_val, &lookup_additive_challenge);
-                let mut num = a_val;
-                field_ops::add_assign(&mut num, &b_val);
-                num
-            };
-            let out1 = {
-                let mut den = a_val;
-                field_ops::mul_assign(&mut den, &b_val);
-                den
-            };
-            let mut c0 = bc0;
-            field_ops::mul_assign(&mut c0, &out0);
-            let mut c1 = bc1;
-            field_ops::mul_assign(&mut c1, &out1);
-            field_ops::add_assign(&mut acc[j], &c0);
-            field_ops::add_assign(&mut acc[j], &c1);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..2 {
-            const A_VAL_COLS: [(usize, usize); 8usize] = [
-                (0usize, 7usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-            ];
-            const A_VAL_VL_TERMS: [(usize, usize); 10usize] = [
-                (0usize, 1073741816usize),
-                (1usize, 671088555usize),
-                (2usize, 1073741816usize),
-                (3usize, 1073741816usize),
-                (4usize, 671088555usize),
-                (5usize, 402653101usize),
-                (6usize, 1073741816usize),
-                (81usize, 268435454usize),
-                (73usize, 268435454usize),
-                (65usize, 268435454usize),
-            ];
-            let mut a_val = super::common::eval_vector_lookup(
-                evals,
-                lookup_alpha,
-                &A_VAL_COLS,
-                &A_VAL_VL_TERMS,
-                j,
-            );
-            const B_VAL_COLS: [(usize, usize); 8usize] = [
-                (0usize, 7usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-            ];
-            const B_VAL_VL_TERMS: [(usize, usize); 10usize] = [
-                (0usize, 1073741816usize),
-                (1usize, 671088555usize),
-                (2usize, 1073741816usize),
-                (3usize, 1073741816usize),
-                (4usize, 671088555usize),
-                (5usize, 402653101usize),
-                (6usize, 1073741816usize),
-                (82usize, 268435454usize),
-                (74usize, 268435454usize),
-                (66usize, 268435454usize),
-            ];
-            let mut b_val = super::common::eval_vector_lookup(
-                evals,
-                lookup_alpha,
-                &B_VAL_COLS,
-                &B_VAL_VL_TERMS,
-                j,
-            );
-            let out0 = {
-                field_ops::add_assign(&mut a_val, &lookup_additive_challenge);
-                field_ops::add_assign(&mut b_val, &lookup_additive_challenge);
-                let mut num = a_val;
-                field_ops::add_assign(&mut num, &b_val);
-                num
-            };
-            let out1 = {
-                let mut den = a_val;
-                field_ops::mul_assign(&mut den, &b_val);
-                den
-            };
-            let mut c0 = bc0;
-            field_ops::mul_assign(&mut c0, &out0);
-            let mut c1 = bc1;
-            field_ops::mul_assign(&mut c1, &out1);
-            field_ops::add_assign(&mut acc[j], &c0);
-            field_ops::add_assign(&mut acc[j], &c1);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..2 {
-            const A_VAL_COLS: [(usize, usize); 8usize] = [
-                (0usize, 7usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-            ];
-            const A_VAL_VL_TERMS: [(usize, usize); 10usize] = [
-                (0usize, 1073741816usize),
-                (1usize, 671088555usize),
-                (2usize, 1073741816usize),
-                (3usize, 1073741816usize),
-                (4usize, 671088555usize),
-                (5usize, 402653101usize),
-                (6usize, 1073741816usize),
-                (83usize, 268435454usize),
-                (75usize, 268435454usize),
-                (67usize, 268435454usize),
-            ];
-            let mut a_val = super::common::eval_vector_lookup(
-                evals,
-                lookup_alpha,
-                &A_VAL_COLS,
-                &A_VAL_VL_TERMS,
-                j,
-            );
-            const B_VAL_COLS: [(usize, usize); 8usize] = [
-                (0usize, 7usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-            ];
-            const B_VAL_VL_TERMS: [(usize, usize); 10usize] = [
-                (0usize, 1073741816usize),
-                (1usize, 671088555usize),
-                (2usize, 1073741816usize),
-                (3usize, 1073741816usize),
-                (4usize, 671088555usize),
-                (5usize, 402653101usize),
-                (6usize, 1073741816usize),
-                (84usize, 268435454usize),
-                (76usize, 268435454usize),
-                (68usize, 268435454usize),
-            ];
-            let mut b_val = super::common::eval_vector_lookup(
-                evals,
-                lookup_alpha,
-                &B_VAL_COLS,
-                &B_VAL_VL_TERMS,
-                j,
-            );
-            let out0 = {
-                field_ops::add_assign(&mut a_val, &lookup_additive_challenge);
-                field_ops::add_assign(&mut b_val, &lookup_additive_challenge);
-                let mut num = a_val;
-                field_ops::add_assign(&mut num, &b_val);
-                num
-            };
-            let out1 = {
-                let mut den = a_val;
-                field_ops::mul_assign(&mut den, &b_val);
-                den
-            };
-            let mut c0 = bc0;
-            field_ops::mul_assign(&mut c0, &out0);
-            let mut c1 = bc1;
-            field_ops::mul_assign(&mut c1, &out1);
-            field_ops::add_assign(&mut acc[j], &c0);
-            field_ops::add_assign(&mut acc[j], &c1);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..2 {
-            const A_VAL_COLS: [(usize, usize); 8usize] = [
-                (0usize, 7usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-            ];
-            const A_VAL_VL_TERMS: [(usize, usize); 10usize] = [
-                (0usize, 1073741816usize),
-                (1usize, 671088555usize),
-                (2usize, 1073741816usize),
-                (3usize, 1073741816usize),
-                (4usize, 671088555usize),
-                (5usize, 402653101usize),
-                (6usize, 1073741816usize),
-                (85usize, 268435454usize),
-                (77usize, 268435454usize),
-                (69usize, 268435454usize),
-            ];
-            let mut a_val = super::common::eval_vector_lookup(
-                evals,
-                lookup_alpha,
-                &A_VAL_COLS,
-                &A_VAL_VL_TERMS,
-                j,
-            );
-            const B_VAL_COLS: [(usize, usize); 8usize] = [
-                (0usize, 7usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-            ];
-            const B_VAL_VL_TERMS: [(usize, usize); 10usize] = [
-                (0usize, 1073741816usize),
-                (1usize, 671088555usize),
-                (2usize, 1073741816usize),
-                (3usize, 1073741816usize),
-                (4usize, 671088555usize),
-                (5usize, 402653101usize),
-                (6usize, 1073741816usize),
-                (86usize, 268435454usize),
-                (78usize, 268435454usize),
-                (70usize, 268435454usize),
-            ];
-            let mut b_val = super::common::eval_vector_lookup(
-                evals,
-                lookup_alpha,
-                &B_VAL_COLS,
-                &B_VAL_VL_TERMS,
-                j,
-            );
-            let out0 = {
-                field_ops::add_assign(&mut a_val, &lookup_additive_challenge);
-                field_ops::add_assign(&mut b_val, &lookup_additive_challenge);
-                let mut num = a_val;
-                field_ops::add_assign(&mut num, &b_val);
-                num
-            };
-            let out1 = {
-                let mut den = a_val;
-                field_ops::mul_assign(&mut den, &b_val);
-                den
-            };
-            let mut c0 = bc0;
-            field_ops::mul_assign(&mut c0, &out0);
-            let mut c1 = bc1;
-            field_ops::mul_assign(&mut c1, &out1);
-            field_ops::add_assign(&mut acc[j], &c0);
-            field_ops::add_assign(&mut acc[j], &c1);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..2 {
-            const A_VAL_COLS: [(usize, usize); 8usize] = [
-                (0usize, 7usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-            ];
-            const A_VAL_VL_TERMS: [(usize, usize); 10usize] = [
-                (0usize, 1073741816usize),
-                (1usize, 1073741816usize),
-                (2usize, 671088555usize),
-                (3usize, 1073741816usize),
-                (4usize, 671088555usize),
-                (5usize, 1073741816usize),
-                (6usize, 402653101usize),
-                (103usize, 268435454usize),
-                (95usize, 268435454usize),
-                (87usize, 268435454usize),
-            ];
-            let mut a_val = super::common::eval_vector_lookup(
-                evals,
-                lookup_alpha,
-                &A_VAL_COLS,
-                &A_VAL_VL_TERMS,
-                j,
-            );
-            const B_VAL_COLS: [(usize, usize); 8usize] = [
-                (0usize, 7usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-            ];
-            const B_VAL_VL_TERMS: [(usize, usize); 10usize] = [
-                (0usize, 1073741816usize),
-                (1usize, 1073741816usize),
-                (2usize, 671088555usize),
-                (3usize, 1073741816usize),
-                (4usize, 671088555usize),
-                (5usize, 1073741816usize),
-                (6usize, 402653101usize),
-                (104usize, 268435454usize),
-                (96usize, 268435454usize),
-                (88usize, 268435454usize),
-            ];
-            let mut b_val = super::common::eval_vector_lookup(
-                evals,
-                lookup_alpha,
-                &B_VAL_COLS,
-                &B_VAL_VL_TERMS,
-                j,
-            );
-            let out0 = {
-                field_ops::add_assign(&mut a_val, &lookup_additive_challenge);
-                field_ops::add_assign(&mut b_val, &lookup_additive_challenge);
-                let mut num = a_val;
-                field_ops::add_assign(&mut num, &b_val);
-                num
-            };
-            let out1 = {
-                let mut den = a_val;
-                field_ops::mul_assign(&mut den, &b_val);
-                den
-            };
-            let mut c0 = bc0;
-            field_ops::mul_assign(&mut c0, &out0);
-            let mut c1 = bc1;
-            field_ops::mul_assign(&mut c1, &out1);
-            field_ops::add_assign(&mut acc[j], &c0);
-            field_ops::add_assign(&mut acc[j], &c1);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..2 {
-            const A_VAL_COLS: [(usize, usize); 8usize] = [
-                (0usize, 7usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-            ];
-            const A_VAL_VL_TERMS: [(usize, usize); 10usize] = [
-                (0usize, 1073741816usize),
-                (1usize, 1073741816usize),
-                (2usize, 671088555usize),
-                (3usize, 1073741816usize),
-                (4usize, 671088555usize),
-                (5usize, 1073741816usize),
-                (6usize, 402653101usize),
-                (105usize, 268435454usize),
-                (97usize, 268435454usize),
-                (89usize, 268435454usize),
-            ];
-            let mut a_val = super::common::eval_vector_lookup(
-                evals,
-                lookup_alpha,
-                &A_VAL_COLS,
-                &A_VAL_VL_TERMS,
-                j,
-            );
-            const B_VAL_COLS: [(usize, usize); 8usize] = [
-                (0usize, 7usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-            ];
-            const B_VAL_VL_TERMS: [(usize, usize); 10usize] = [
-                (0usize, 1073741816usize),
-                (1usize, 1073741816usize),
-                (2usize, 671088555usize),
-                (3usize, 1073741816usize),
-                (4usize, 671088555usize),
-                (5usize, 1073741816usize),
-                (6usize, 402653101usize),
-                (106usize, 268435454usize),
-                (98usize, 268435454usize),
-                (90usize, 268435454usize),
-            ];
-            let mut b_val = super::common::eval_vector_lookup(
-                evals,
-                lookup_alpha,
-                &B_VAL_COLS,
-                &B_VAL_VL_TERMS,
-                j,
-            );
-            let out0 = {
-                field_ops::add_assign(&mut a_val, &lookup_additive_challenge);
-                field_ops::add_assign(&mut b_val, &lookup_additive_challenge);
-                let mut num = a_val;
-                field_ops::add_assign(&mut num, &b_val);
-                num
-            };
-            let out1 = {
-                let mut den = a_val;
-                field_ops::mul_assign(&mut den, &b_val);
-                den
-            };
-            let mut c0 = bc0;
-            field_ops::mul_assign(&mut c0, &out0);
-            let mut c1 = bc1;
-            field_ops::mul_assign(&mut c1, &out1);
-            field_ops::add_assign(&mut acc[j], &c0);
-            field_ops::add_assign(&mut acc[j], &c1);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..2 {
-            const A_VAL_COLS: [(usize, usize); 8usize] = [
-                (0usize, 7usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-            ];
-            const A_VAL_VL_TERMS: [(usize, usize); 10usize] = [
-                (0usize, 1073741816usize),
-                (1usize, 1073741816usize),
-                (2usize, 671088555usize),
-                (3usize, 1073741816usize),
-                (4usize, 671088555usize),
-                (5usize, 1073741816usize),
-                (6usize, 402653101usize),
-                (107usize, 268435454usize),
-                (99usize, 268435454usize),
-                (91usize, 268435454usize),
-            ];
-            let mut a_val = super::common::eval_vector_lookup(
-                evals,
-                lookup_alpha,
-                &A_VAL_COLS,
-                &A_VAL_VL_TERMS,
-                j,
-            );
-            const B_VAL_COLS: [(usize, usize); 8usize] = [
-                (0usize, 7usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-            ];
-            const B_VAL_VL_TERMS: [(usize, usize); 10usize] = [
-                (0usize, 1073741816usize),
-                (1usize, 1073741816usize),
-                (2usize, 671088555usize),
-                (3usize, 1073741816usize),
-                (4usize, 671088555usize),
-                (5usize, 1073741816usize),
-                (6usize, 402653101usize),
-                (108usize, 268435454usize),
-                (100usize, 268435454usize),
-                (92usize, 268435454usize),
-            ];
-            let mut b_val = super::common::eval_vector_lookup(
-                evals,
-                lookup_alpha,
-                &B_VAL_COLS,
-                &B_VAL_VL_TERMS,
-                j,
-            );
-            let out0 = {
-                field_ops::add_assign(&mut a_val, &lookup_additive_challenge);
-                field_ops::add_assign(&mut b_val, &lookup_additive_challenge);
-                let mut num = a_val;
-                field_ops::add_assign(&mut num, &b_val);
-                num
-            };
-            let out1 = {
-                let mut den = a_val;
-                field_ops::mul_assign(&mut den, &b_val);
-                den
-            };
-            let mut c0 = bc0;
-            field_ops::mul_assign(&mut c0, &out0);
-            let mut c1 = bc1;
-            field_ops::mul_assign(&mut c1, &out1);
-            field_ops::add_assign(&mut acc[j], &c0);
-            field_ops::add_assign(&mut acc[j], &c1);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..2 {
-            const A_VAL_COLS: [(usize, usize); 8usize] = [
-                (0usize, 7usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-            ];
-            const A_VAL_VL_TERMS: [(usize, usize); 10usize] = [
-                (0usize, 1073741816usize),
-                (1usize, 1073741816usize),
-                (2usize, 671088555usize),
-                (3usize, 1073741816usize),
-                (4usize, 671088555usize),
-                (5usize, 1073741816usize),
-                (6usize, 402653101usize),
-                (109usize, 268435454usize),
-                (101usize, 268435454usize),
-                (93usize, 268435454usize),
-            ];
-            let mut a_val = super::common::eval_vector_lookup(
-                evals,
-                lookup_alpha,
-                &A_VAL_COLS,
-                &A_VAL_VL_TERMS,
-                j,
-            );
-            const B_VAL_COLS: [(usize, usize); 8usize] = [
-                (0usize, 7usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-            ];
-            const B_VAL_VL_TERMS: [(usize, usize); 10usize] = [
-                (0usize, 1073741816usize),
-                (1usize, 1073741816usize),
-                (2usize, 671088555usize),
-                (3usize, 1073741816usize),
-                (4usize, 671088555usize),
-                (5usize, 1073741816usize),
-                (6usize, 402653101usize),
-                (110usize, 268435454usize),
-                (102usize, 268435454usize),
-                (94usize, 268435454usize),
-            ];
-            let mut b_val = super::common::eval_vector_lookup(
-                evals,
-                lookup_alpha,
-                &B_VAL_COLS,
-                &B_VAL_VL_TERMS,
-                j,
-            );
-            let out0 = {
-                field_ops::add_assign(&mut a_val, &lookup_additive_challenge);
-                field_ops::add_assign(&mut b_val, &lookup_additive_challenge);
-                let mut num = a_val;
-                field_ops::add_assign(&mut num, &b_val);
-                num
-            };
-            let out1 = {
-                let mut den = a_val;
-                field_ops::mul_assign(&mut den, &b_val);
-                den
-            };
-            let mut c0 = bc0;
-            field_ops::mul_assign(&mut c0, &out0);
-            let mut c1 = bc1;
-            field_ops::mul_assign(&mut c1, &out1);
-            field_ops::add_assign(&mut acc[j], &c0);
-            field_ops::add_assign(&mut acc[j], &c1);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..2 {
-            const A_VAL_COLS: [(usize, usize); 8usize] = [
-                (0usize, 7usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-            ];
-            const A_VAL_VL_TERMS: [(usize, usize); 10usize] = [
-                (0usize, 1073741816usize),
-                (1usize, 671088555usize),
-                (2usize, 1073741816usize),
-                (3usize, 1073741816usize),
-                (4usize, 671088555usize),
-                (5usize, 402653101usize),
-                (6usize, 1073741816usize),
-                (127usize, 268435454usize),
-                (119usize, 268435454usize),
-                (111usize, 268435454usize),
-            ];
-            let mut a_val = super::common::eval_vector_lookup(
-                evals,
-                lookup_alpha,
-                &A_VAL_COLS,
-                &A_VAL_VL_TERMS,
-                j,
-            );
-            const B_VAL_COLS: [(usize, usize); 8usize] = [
-                (0usize, 7usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-            ];
-            const B_VAL_VL_TERMS: [(usize, usize); 10usize] = [
-                (0usize, 1073741816usize),
-                (1usize, 671088555usize),
-                (2usize, 1073741816usize),
-                (3usize, 1073741816usize),
-                (4usize, 671088555usize),
-                (5usize, 402653101usize),
-                (6usize, 1073741816usize),
-                (128usize, 268435454usize),
-                (120usize, 268435454usize),
-                (112usize, 268435454usize),
-            ];
-            let mut b_val = super::common::eval_vector_lookup(
-                evals,
-                lookup_alpha,
-                &B_VAL_COLS,
-                &B_VAL_VL_TERMS,
-                j,
-            );
-            let out0 = {
-                field_ops::add_assign(&mut a_val, &lookup_additive_challenge);
-                field_ops::add_assign(&mut b_val, &lookup_additive_challenge);
-                let mut num = a_val;
-                field_ops::add_assign(&mut num, &b_val);
-                num
-            };
-            let out1 = {
-                let mut den = a_val;
-                field_ops::mul_assign(&mut den, &b_val);
-                den
-            };
-            let mut c0 = bc0;
-            field_ops::mul_assign(&mut c0, &out0);
-            let mut c1 = bc1;
-            field_ops::mul_assign(&mut c1, &out1);
-            field_ops::add_assign(&mut acc[j], &c0);
-            field_ops::add_assign(&mut acc[j], &c1);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..2 {
-            const A_VAL_COLS: [(usize, usize); 8usize] = [
-                (0usize, 7usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-            ];
-            const A_VAL_VL_TERMS: [(usize, usize); 10usize] = [
-                (0usize, 1073741816usize),
-                (1usize, 671088555usize),
-                (2usize, 1073741816usize),
-                (3usize, 1073741816usize),
-                (4usize, 671088555usize),
-                (5usize, 402653101usize),
-                (6usize, 1073741816usize),
-                (129usize, 268435454usize),
-                (121usize, 268435454usize),
-                (113usize, 268435454usize),
-            ];
-            let mut a_val = super::common::eval_vector_lookup(
-                evals,
-                lookup_alpha,
-                &A_VAL_COLS,
-                &A_VAL_VL_TERMS,
-                j,
-            );
-            const B_VAL_COLS: [(usize, usize); 8usize] = [
-                (0usize, 7usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-            ];
-            const B_VAL_VL_TERMS: [(usize, usize); 10usize] = [
-                (0usize, 1073741816usize),
-                (1usize, 671088555usize),
-                (2usize, 1073741816usize),
-                (3usize, 1073741816usize),
-                (4usize, 671088555usize),
-                (5usize, 402653101usize),
-                (6usize, 1073741816usize),
-                (130usize, 268435454usize),
-                (122usize, 268435454usize),
-                (114usize, 268435454usize),
-            ];
-            let mut b_val = super::common::eval_vector_lookup(
-                evals,
-                lookup_alpha,
-                &B_VAL_COLS,
-                &B_VAL_VL_TERMS,
-                j,
-            );
-            let out0 = {
-                field_ops::add_assign(&mut a_val, &lookup_additive_challenge);
-                field_ops::add_assign(&mut b_val, &lookup_additive_challenge);
-                let mut num = a_val;
-                field_ops::add_assign(&mut num, &b_val);
-                num
-            };
-            let out1 = {
-                let mut den = a_val;
-                field_ops::mul_assign(&mut den, &b_val);
-                den
-            };
-            let mut c0 = bc0;
-            field_ops::mul_assign(&mut c0, &out0);
-            let mut c1 = bc1;
-            field_ops::mul_assign(&mut c1, &out1);
-            field_ops::add_assign(&mut acc[j], &c0);
-            field_ops::add_assign(&mut acc[j], &c1);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..2 {
-            const A_VAL_COLS: [(usize, usize); 8usize] = [
-                (0usize, 7usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-            ];
-            const A_VAL_VL_TERMS: [(usize, usize); 10usize] = [
-                (0usize, 1073741816usize),
-                (1usize, 671088555usize),
-                (2usize, 1073741816usize),
-                (3usize, 1073741816usize),
-                (4usize, 671088555usize),
-                (5usize, 402653101usize),
-                (6usize, 1073741816usize),
-                (131usize, 268435454usize),
-                (123usize, 268435454usize),
-                (115usize, 268435454usize),
-            ];
-            let mut a_val = super::common::eval_vector_lookup(
-                evals,
-                lookup_alpha,
-                &A_VAL_COLS,
-                &A_VAL_VL_TERMS,
-                j,
-            );
-            const B_VAL_COLS: [(usize, usize); 8usize] = [
-                (0usize, 7usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-            ];
-            const B_VAL_VL_TERMS: [(usize, usize); 10usize] = [
-                (0usize, 1073741816usize),
-                (1usize, 671088555usize),
-                (2usize, 1073741816usize),
-                (3usize, 1073741816usize),
-                (4usize, 671088555usize),
-                (5usize, 402653101usize),
-                (6usize, 1073741816usize),
-                (132usize, 268435454usize),
-                (124usize, 268435454usize),
-                (116usize, 268435454usize),
-            ];
-            let mut b_val = super::common::eval_vector_lookup(
-                evals,
-                lookup_alpha,
-                &B_VAL_COLS,
-                &B_VAL_VL_TERMS,
-                j,
-            );
-            let out0 = {
-                field_ops::add_assign(&mut a_val, &lookup_additive_challenge);
-                field_ops::add_assign(&mut b_val, &lookup_additive_challenge);
-                let mut num = a_val;
-                field_ops::add_assign(&mut num, &b_val);
-                num
-            };
-            let out1 = {
-                let mut den = a_val;
-                field_ops::mul_assign(&mut den, &b_val);
-                den
-            };
-            let mut c0 = bc0;
-            field_ops::mul_assign(&mut c0, &out0);
-            let mut c1 = bc1;
-            field_ops::mul_assign(&mut c1, &out1);
-            field_ops::add_assign(&mut acc[j], &c0);
-            field_ops::add_assign(&mut acc[j], &c1);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..2 {
-            const A_VAL_COLS: [(usize, usize); 8usize] = [
-                (0usize, 7usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-            ];
-            const A_VAL_VL_TERMS: [(usize, usize); 10usize] = [
-                (0usize, 1073741816usize),
-                (1usize, 671088555usize),
-                (2usize, 1073741816usize),
-                (3usize, 1073741816usize),
-                (4usize, 671088555usize),
-                (5usize, 402653101usize),
-                (6usize, 1073741816usize),
-                (133usize, 268435454usize),
-                (125usize, 268435454usize),
-                (117usize, 268435454usize),
-            ];
-            let mut a_val = super::common::eval_vector_lookup(
-                evals,
-                lookup_alpha,
-                &A_VAL_COLS,
-                &A_VAL_VL_TERMS,
-                j,
-            );
-            const B_VAL_COLS: [(usize, usize); 8usize] = [
-                (0usize, 7usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-            ];
-            const B_VAL_VL_TERMS: [(usize, usize); 10usize] = [
-                (0usize, 1073741816usize),
-                (1usize, 671088555usize),
-                (2usize, 1073741816usize),
-                (3usize, 1073741816usize),
-                (4usize, 671088555usize),
-                (5usize, 402653101usize),
-                (6usize, 1073741816usize),
-                (134usize, 268435454usize),
-                (126usize, 268435454usize),
-                (118usize, 268435454usize),
-            ];
-            let mut b_val = super::common::eval_vector_lookup(
-                evals,
-                lookup_alpha,
-                &B_VAL_COLS,
-                &B_VAL_VL_TERMS,
-                j,
-            );
-            let out0 = {
-                field_ops::add_assign(&mut a_val, &lookup_additive_challenge);
-                field_ops::add_assign(&mut b_val, &lookup_additive_challenge);
-                let mut num = a_val;
-                field_ops::add_assign(&mut num, &b_val);
-                num
-            };
-            let out1 = {
-                let mut den = a_val;
-                field_ops::mul_assign(&mut den, &b_val);
-                den
-            };
-            let mut c0 = bc0;
-            field_ops::mul_assign(&mut c0, &out0);
-            let mut c1 = bc1;
-            field_ops::mul_assign(&mut c1, &out1);
-            field_ops::add_assign(&mut acc[j], &c0);
-            field_ops::add_assign(&mut acc[j], &c1);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..2 {
-            const A_VAL_COLS: [(usize, usize); 8usize] = [
-                (0usize, 7usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-            ];
-            const A_VAL_VL_TERMS: [(usize, usize); 10usize] = [
-                (0usize, 1073741816usize),
-                (1usize, 1073741816usize),
-                (2usize, 1073741816usize),
-                (3usize, 1073741816usize),
-                (4usize, 671088555usize),
-                (5usize, 1073741816usize),
-                (6usize, 1073741816usize),
-                (151usize, 268435454usize),
-                (143usize, 268435454usize),
-                (135usize, 268435454usize),
-            ];
-            let mut a_val = super::common::eval_vector_lookup(
-                evals,
-                lookup_alpha,
-                &A_VAL_COLS,
-                &A_VAL_VL_TERMS,
-                j,
-            );
-            const B_VAL_COLS: [(usize, usize); 8usize] = [
-                (0usize, 7usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-            ];
-            const B_VAL_VL_TERMS: [(usize, usize); 10usize] = [
-                (0usize, 1073741816usize),
-                (1usize, 1073741816usize),
-                (2usize, 1073741816usize),
-                (3usize, 1073741816usize),
-                (4usize, 671088555usize),
-                (5usize, 1073741816usize),
-                (6usize, 1073741816usize),
-                (152usize, 268435454usize),
-                (144usize, 268435454usize),
-                (136usize, 268435454usize),
-            ];
-            let mut b_val = super::common::eval_vector_lookup(
-                evals,
-                lookup_alpha,
-                &B_VAL_COLS,
-                &B_VAL_VL_TERMS,
-                j,
-            );
-            let out0 = {
-                field_ops::add_assign(&mut a_val, &lookup_additive_challenge);
-                field_ops::add_assign(&mut b_val, &lookup_additive_challenge);
-                let mut num = a_val;
-                field_ops::add_assign(&mut num, &b_val);
-                num
-            };
-            let out1 = {
-                let mut den = a_val;
-                field_ops::mul_assign(&mut den, &b_val);
-                den
-            };
-            let mut c0 = bc0;
-            field_ops::mul_assign(&mut c0, &out0);
-            let mut c1 = bc1;
-            field_ops::mul_assign(&mut c1, &out1);
-            field_ops::add_assign(&mut acc[j], &c0);
-            field_ops::add_assign(&mut acc[j], &c1);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..2 {
-            const A_VAL_COLS: [(usize, usize); 8usize] = [
-                (0usize, 7usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-            ];
-            const A_VAL_VL_TERMS: [(usize, usize); 10usize] = [
-                (0usize, 1073741816usize),
-                (1usize, 1073741816usize),
-                (2usize, 1073741816usize),
-                (3usize, 1073741816usize),
-                (4usize, 671088555usize),
-                (5usize, 1073741816usize),
-                (6usize, 1073741816usize),
-                (153usize, 268435454usize),
-                (145usize, 268435454usize),
-                (137usize, 268435454usize),
-            ];
-            let mut a_val = super::common::eval_vector_lookup(
-                evals,
-                lookup_alpha,
-                &A_VAL_COLS,
-                &A_VAL_VL_TERMS,
-                j,
-            );
-            const B_VAL_COLS: [(usize, usize); 8usize] = [
-                (0usize, 7usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-            ];
-            const B_VAL_VL_TERMS: [(usize, usize); 10usize] = [
-                (0usize, 1073741816usize),
-                (1usize, 1073741816usize),
-                (2usize, 1073741816usize),
-                (3usize, 1073741816usize),
-                (4usize, 671088555usize),
-                (5usize, 1073741816usize),
-                (6usize, 1073741816usize),
-                (154usize, 268435454usize),
-                (146usize, 268435454usize),
-                (138usize, 268435454usize),
-            ];
-            let mut b_val = super::common::eval_vector_lookup(
-                evals,
-                lookup_alpha,
-                &B_VAL_COLS,
-                &B_VAL_VL_TERMS,
-                j,
-            );
-            let out0 = {
-                field_ops::add_assign(&mut a_val, &lookup_additive_challenge);
-                field_ops::add_assign(&mut b_val, &lookup_additive_challenge);
-                let mut num = a_val;
-                field_ops::add_assign(&mut num, &b_val);
-                num
-            };
-            let out1 = {
-                let mut den = a_val;
-                field_ops::mul_assign(&mut den, &b_val);
-                den
-            };
-            let mut c0 = bc0;
-            field_ops::mul_assign(&mut c0, &out0);
-            let mut c1 = bc1;
-            field_ops::mul_assign(&mut c1, &out1);
-            field_ops::add_assign(&mut acc[j], &c0);
-            field_ops::add_assign(&mut acc[j], &c1);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..2 {
-            const A_VAL_COLS: [(usize, usize); 8usize] = [
-                (0usize, 7usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-            ];
-            const A_VAL_VL_TERMS: [(usize, usize); 10usize] = [
-                (0usize, 1073741816usize),
-                (1usize, 1073741816usize),
-                (2usize, 1073741816usize),
-                (3usize, 1073741816usize),
-                (4usize, 671088555usize),
-                (5usize, 1073741816usize),
-                (6usize, 1073741816usize),
-                (155usize, 268435454usize),
-                (147usize, 268435454usize),
-                (139usize, 268435454usize),
-            ];
-            let mut a_val = super::common::eval_vector_lookup(
-                evals,
-                lookup_alpha,
-                &A_VAL_COLS,
-                &A_VAL_VL_TERMS,
-                j,
-            );
-            const B_VAL_COLS: [(usize, usize); 8usize] = [
-                (0usize, 7usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-            ];
-            const B_VAL_VL_TERMS: [(usize, usize); 10usize] = [
-                (0usize, 1073741816usize),
-                (1usize, 1073741816usize),
-                (2usize, 1073741816usize),
-                (3usize, 1073741816usize),
-                (4usize, 671088555usize),
-                (5usize, 1073741816usize),
-                (6usize, 1073741816usize),
-                (156usize, 268435454usize),
-                (148usize, 268435454usize),
-                (140usize, 268435454usize),
-            ];
-            let mut b_val = super::common::eval_vector_lookup(
-                evals,
-                lookup_alpha,
-                &B_VAL_COLS,
-                &B_VAL_VL_TERMS,
-                j,
-            );
-            let out0 = {
-                field_ops::add_assign(&mut a_val, &lookup_additive_challenge);
-                field_ops::add_assign(&mut b_val, &lookup_additive_challenge);
-                let mut num = a_val;
-                field_ops::add_assign(&mut num, &b_val);
-                num
-            };
-            let out1 = {
-                let mut den = a_val;
-                field_ops::mul_assign(&mut den, &b_val);
-                den
-            };
-            let mut c0 = bc0;
-            field_ops::mul_assign(&mut c0, &out0);
-            let mut c1 = bc1;
-            field_ops::mul_assign(&mut c1, &out1);
-            field_ops::add_assign(&mut acc[j], &c0);
-            field_ops::add_assign(&mut acc[j], &c1);
-        }
-    }
-    {
-        let bc0 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        let bc1 = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..2 {
-            const A_VAL_COLS: [(usize, usize); 8usize] = [
-                (0usize, 7usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-            ];
-            const A_VAL_VL_TERMS: [(usize, usize); 10usize] = [
-                (0usize, 1073741816usize),
-                (1usize, 1073741816usize),
-                (2usize, 1073741816usize),
-                (3usize, 1073741816usize),
-                (4usize, 671088555usize),
-                (5usize, 1073741816usize),
-                (6usize, 1073741816usize),
-                (157usize, 268435454usize),
-                (149usize, 268435454usize),
-                (141usize, 268435454usize),
-            ];
-            let mut a_val = super::common::eval_vector_lookup(
-                evals,
-                lookup_alpha,
-                &A_VAL_COLS,
-                &A_VAL_VL_TERMS,
-                j,
-            );
-            const B_VAL_COLS: [(usize, usize); 8usize] = [
-                (0usize, 7usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 0usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-                (0usize, 1usize),
-            ];
-            const B_VAL_VL_TERMS: [(usize, usize); 10usize] = [
-                (0usize, 1073741816usize),
-                (1usize, 1073741816usize),
-                (2usize, 1073741816usize),
-                (3usize, 1073741816usize),
-                (4usize, 671088555usize),
-                (5usize, 1073741816usize),
-                (6usize, 1073741816usize),
-                (158usize, 268435454usize),
-                (150usize, 268435454usize),
-                (142usize, 268435454usize),
-            ];
-            let mut b_val = super::common::eval_vector_lookup(
-                evals,
-                lookup_alpha,
-                &B_VAL_COLS,
-                &B_VAL_VL_TERMS,
-                j,
-            );
-            let out0 = {
-                field_ops::add_assign(&mut a_val, &lookup_additive_challenge);
-                field_ops::add_assign(&mut b_val, &lookup_additive_challenge);
-                let mut num = a_val;
-                field_ops::add_assign(&mut num, &b_val);
-                num
-            };
-            let out1 = {
-                let mut den = a_val;
-                field_ops::mul_assign(&mut den, &b_val);
-                den
-            };
-            let mut c0 = bc0;
-            field_ops::mul_assign(&mut c0, &out0);
-            let mut c1 = bc1;
-            field_ops::mul_assign(&mut c1, &out1);
-            field_ops::add_assign(&mut acc[j], &c0);
-            field_ops::add_assign(&mut acc[j], &c1);
-        }
-    }
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..2 {
-            const VAL_QO: [(usize, usize); 1usize] = [(263usize, 1usize)];
-            const VAL_QI: [(usize, usize); 1usize] = [(263usize, 268435454usize)];
-            const VAL_LN: [(usize, usize); 1usize] = [(263usize, 1744830467usize)];
+            const VAL_QO: [(usize, usize); 0usize] = [];
+            const VAL_QI: [(usize, usize); 0usize] = [];
+            const VAL_LN: [(usize, usize); 1usize] = [(176usize, 268435454usize)];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
             let mut contrib = bc;
@@ -3739,20 +708,6 @@ unsafe fn layer_0_final_step_accumulator(
             const VAL_QO: [(usize, usize); 0usize] = [];
             const VAL_QI: [(usize, usize); 0usize] = [];
             const VAL_LN: [(usize, usize); 1usize] = [(178usize, 268435454usize)];
-            let val =
-                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
-            let mut contrib = bc;
-            field_ops::mul_assign(&mut contrib, &val);
-            field_ops::add_assign(&mut acc[j], &contrib);
-        }
-    }
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..2 {
-            const VAL_QO: [(usize, usize); 0usize] = [];
-            const VAL_QI: [(usize, usize); 0usize] = [];
-            const VAL_LN: [(usize, usize); 1usize] = [(180usize, 268435454usize)];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
             let mut contrib = bc;
@@ -3782,7 +737,7 @@ unsafe fn layer_0_final_step_accumulator(
                 (14usize, 268434910usize),
                 (15usize, 536869820usize),
                 (16usize, 1073739640usize),
-                (177usize, 1744830467usize),
+                (175usize, 1744830467usize),
             ];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -3805,15 +760,15 @@ unsafe fn layer_0_final_step_accumulator(
                 (6usize, 1usize),
             ];
             const VAL_QI: [(usize, usize); 7usize] = [
-                (263usize, 268435454usize),
-                (263usize, 268435454usize),
-                (263usize, 268435454usize),
-                (263usize, 268435454usize),
-                (263usize, 268435454usize),
-                (263usize, 268435454usize),
-                (263usize, 268435454usize),
+                (227usize, 268435454usize),
+                (227usize, 268435454usize),
+                (227usize, 268435454usize),
+                (227usize, 268435454usize),
+                (227usize, 268435454usize),
+                (227usize, 268435454usize),
+                (227usize, 268435454usize),
             ];
-            const VAL_LN: [(usize, usize); 1usize] = [(263usize, 1744830467usize)];
+            const VAL_LN: [(usize, usize); 1usize] = [(227usize, 1744830467usize)];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
             let mut contrib = bc;
@@ -3833,13 +788,13 @@ unsafe fn layer_0_final_step_accumulator(
                 (11usize, 1usize),
             ];
             const VAL_QI: [(usize, usize); 5usize] = [
-                (263usize, 268435454usize),
-                (263usize, 268435454usize),
-                (263usize, 268435454usize),
-                (263usize, 268435454usize),
-                (263usize, 268435454usize),
+                (227usize, 268435454usize),
+                (227usize, 268435454usize),
+                (227usize, 268435454usize),
+                (227usize, 268435454usize),
+                (227usize, 268435454usize),
             ];
-            const VAL_LN: [(usize, usize); 1usize] = [(263usize, 1744830467usize)];
+            const VAL_LN: [(usize, usize); 1usize] = [(227usize, 1744830467usize)];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
             let mut contrib = bc;
@@ -3861,13 +816,13 @@ unsafe fn layer_0_final_step_accumulator(
                 (6usize, 1usize),
             ];
             const VAL_QI: [(usize, usize); 7usize] = [
-                (263usize, 1744830467usize),
-                (263usize, 1744830467usize),
-                (263usize, 1744830467usize),
-                (263usize, 1744830467usize),
-                (263usize, 1744830467usize),
-                (263usize, 1744830467usize),
-                (263usize, 1744830467usize),
+                (227usize, 1744830467usize),
+                (227usize, 1744830467usize),
+                (227usize, 1744830467usize),
+                (227usize, 1744830467usize),
+                (227usize, 1744830467usize),
+                (227usize, 1744830467usize),
+                (227usize, 1744830467usize),
             ];
             const VAL_LN: [(usize, usize); 7usize] = [
                 (0usize, 268435454usize),
@@ -3897,11 +852,11 @@ unsafe fn layer_0_final_step_accumulator(
                 (11usize, 1usize),
             ];
             const VAL_QI: [(usize, usize); 5usize] = [
-                (263usize, 1744830467usize),
-                (263usize, 1744830467usize),
-                (263usize, 1744830467usize),
-                (263usize, 1744830467usize),
-                (263usize, 1744830467usize),
+                (227usize, 1744830467usize),
+                (227usize, 1744830467usize),
+                (227usize, 1744830467usize),
+                (227usize, 1744830467usize),
+                (227usize, 1744830467usize),
             ];
             const VAL_LN: [(usize, usize); 5usize] = [
                 (7usize, 268435454usize),
@@ -3950,7 +905,7 @@ unsafe fn layer_0_final_step_accumulator(
                 (14usize, 268434910usize),
                 (15usize, 536869820usize),
                 (16usize, 1073739640usize),
-                (179usize, 1744830467usize),
+                (177usize, 1744830467usize),
             ];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -4173,7 +1128,7 @@ unsafe fn layer_0_final_step_accumulator(
                 (21usize, 2usize),
             ];
             const VAL_QI: [(usize, usize); 41usize] = [
-                (187usize, 1744830467usize),
+                (179usize, 1744830467usize),
                 (1usize, 1744970275usize),
                 (2usize, 1476674629usize),
                 (17usize, 1744970275usize),
@@ -4182,7 +1137,7 @@ unsafe fn layer_0_final_step_accumulator(
                 (20usize, 538688444usize),
                 (21usize, 806984090usize),
                 (40usize, 1744831011usize),
-                (187usize, 1744830467usize),
+                (179usize, 1744830467usize),
                 (2usize, 1744970275usize),
                 (17usize, 1744970275usize),
                 (18usize, 1476674629usize),
@@ -4190,11 +1145,11 @@ unsafe fn layer_0_final_step_accumulator(
                 (20usize, 538688444usize),
                 (21usize, 806984090usize),
                 (40usize, 1744831011usize),
-                (200usize, 1744830467usize),
                 (187usize, 1744830467usize),
-                (187usize, 1744830467usize),
-                (187usize, 1744830467usize),
-                (213usize, 1744830467usize),
+                (179usize, 1744830467usize),
+                (179usize, 1744830467usize),
+                (179usize, 1744830467usize),
+                (195usize, 1744830467usize),
                 (18usize, 1744970275usize),
                 (19usize, 270392798usize),
                 (20usize, 806984090usize),
@@ -4247,9 +1202,9 @@ unsafe fn layer_0_final_step_accumulator(
                 (48usize, 1744831011usize),
                 (47usize, 1744830467usize),
                 (48usize, 1744831011usize),
-                (252usize, 1744830467usize),
-                (200usize, 1744830467usize),
+                (219usize, 1744830467usize),
                 (187usize, 1744830467usize),
+                (179usize, 1744830467usize),
                 (47usize, 1744830467usize),
                 (48usize, 1744831011usize),
                 (47usize, 1744830467usize),
@@ -4289,16 +1244,16 @@ unsafe fn layer_0_final_step_accumulator(
                 (21usize, 4usize),
             ];
             const VAL_QI: [(usize, usize); 26usize] = [
-                (190usize, 1744830467usize),
+                (181usize, 1744830467usize),
                 (50usize, 268435454usize),
                 (56usize, 1744831011usize),
-                (255usize, 1744830467usize),
+                (221usize, 1744830467usize),
                 (27usize, 1744830467usize),
                 (50usize, 268435454usize),
                 (56usize, 1744831011usize),
-                (190usize, 1744830467usize),
-                (190usize, 1744830467usize),
-                (242usize, 1744830467usize),
+                (181usize, 1744830467usize),
+                (181usize, 1744830467usize),
+                (213usize, 1744830467usize),
                 (27usize, 1744830467usize),
                 (50usize, 268435454usize),
                 (56usize, 1744831011usize),
@@ -4344,7 +1299,7 @@ unsafe fn layer_0_final_step_accumulator(
                 (21usize, 4usize),
             ];
             const VAL_QI: [(usize, usize); 55usize] = [
-                (188usize, 1744830467usize),
+                (180usize, 1744830467usize),
                 (1usize, 1744970275usize),
                 (2usize, 1476674629usize),
                 (17usize, 1744970275usize),
@@ -4355,7 +1310,7 @@ unsafe fn layer_0_final_step_accumulator(
                 (40usize, 268435454usize),
                 (41usize, 1744830467usize),
                 (42usize, 1744831011usize),
-                (188usize, 1744830467usize),
+                (180usize, 1744830467usize),
                 (2usize, 1744970275usize),
                 (17usize, 1744970275usize),
                 (18usize, 1476674629usize),
@@ -4365,11 +1320,11 @@ unsafe fn layer_0_final_step_accumulator(
                 (40usize, 268435454usize),
                 (41usize, 1744830467usize),
                 (42usize, 1744831011usize),
-                (201usize, 1744830467usize),
                 (188usize, 1744830467usize),
-                (188usize, 1744830467usize),
-                (188usize, 1744830467usize),
-                (214usize, 1744830467usize),
+                (180usize, 1744830467usize),
+                (180usize, 1744830467usize),
+                (180usize, 1744830467usize),
+                (196usize, 1744830467usize),
                 (18usize, 1744970275usize),
                 (19usize, 270392798usize),
                 (20usize, 806984090usize),
@@ -4432,9 +1387,9 @@ unsafe fn layer_0_final_step_accumulator(
                 (50usize, 1744831011usize),
                 (49usize, 1744830467usize),
                 (50usize, 1744831011usize),
-                (253usize, 1744830467usize),
-                (201usize, 1744830467usize),
+                (220usize, 1744830467usize),
                 (188usize, 1744830467usize),
+                (180usize, 1744830467usize),
                 (49usize, 1744830467usize),
                 (50usize, 1744831011usize),
                 (49usize, 1744830467usize),
@@ -4474,20 +1429,20 @@ unsafe fn layer_0_final_step_accumulator(
                 (21usize, 4usize),
             ];
             const VAL_QI: [(usize, usize); 33usize] = [
-                (191usize, 1744830467usize),
+                (182usize, 1744830467usize),
                 (47usize, 268435454usize),
                 (56usize, 268435454usize),
                 (57usize, 1744830467usize),
                 (58usize, 1744831011usize),
-                (256usize, 1744830467usize),
+                (222usize, 1744830467usize),
                 (28usize, 1744830467usize),
                 (47usize, 268435454usize),
                 (56usize, 268435454usize),
                 (57usize, 1744830467usize),
                 (58usize, 1744831011usize),
-                (191usize, 1744830467usize),
-                (191usize, 1744830467usize),
-                (243usize, 1744830467usize),
+                (182usize, 1744830467usize),
+                (182usize, 1744830467usize),
+                (214usize, 1744830467usize),
                 (28usize, 1744830467usize),
                 (47usize, 268435454usize),
                 (56usize, 268435454usize),
@@ -4536,7 +1491,7 @@ unsafe fn layer_0_final_step_accumulator(
                 (21usize, 4usize),
             ];
             const VAL_QI: [(usize, usize); 55usize] = [
-                (194usize, 1744830467usize),
+                (183usize, 1744830467usize),
                 (1usize, 1744970275usize),
                 (2usize, 1476674629usize),
                 (17usize, 1744970275usize),
@@ -4547,7 +1502,7 @@ unsafe fn layer_0_final_step_accumulator(
                 (41usize, 268435454usize),
                 (43usize, 1744830467usize),
                 (44usize, 1744831011usize),
-                (194usize, 1744830467usize),
+                (183usize, 1744830467usize),
                 (2usize, 1744970275usize),
                 (17usize, 1744970275usize),
                 (18usize, 1476674629usize),
@@ -4557,11 +1512,11 @@ unsafe fn layer_0_final_step_accumulator(
                 (41usize, 268435454usize),
                 (43usize, 1744830467usize),
                 (44usize, 1744831011usize),
-                (207usize, 1744830467usize),
-                (194usize, 1744830467usize),
-                (194usize, 1744830467usize),
-                (194usize, 1744830467usize),
-                (220usize, 1744830467usize),
+                (191usize, 1744830467usize),
+                (183usize, 1744830467usize),
+                (183usize, 1744830467usize),
+                (183usize, 1744830467usize),
+                (199usize, 1744830467usize),
                 (18usize, 1744970275usize),
                 (19usize, 270392798usize),
                 (20usize, 806984090usize),
@@ -4624,9 +1579,9 @@ unsafe fn layer_0_final_step_accumulator(
                 (52usize, 1744831011usize),
                 (51usize, 1744830467usize),
                 (52usize, 1744831011usize),
-                (259usize, 1744830467usize),
-                (207usize, 1744830467usize),
-                (194usize, 1744830467usize),
+                (223usize, 1744830467usize),
+                (191usize, 1744830467usize),
+                (183usize, 1744830467usize),
                 (51usize, 1744830467usize),
                 (52usize, 1744831011usize),
                 (51usize, 1744830467usize),
@@ -4666,20 +1621,20 @@ unsafe fn layer_0_final_step_accumulator(
                 (21usize, 4usize),
             ];
             const VAL_QI: [(usize, usize); 35usize] = [
-                (196usize, 1744830467usize),
+                (185usize, 1744830467usize),
                 (48usize, 268435454usize),
                 (57usize, 268435454usize),
                 (59usize, 1744830467usize),
                 (60usize, 1744831011usize),
-                (261usize, 1744830467usize),
+                (225usize, 1744830467usize),
                 (29usize, 1744830467usize),
                 (48usize, 268435454usize),
                 (57usize, 268435454usize),
                 (59usize, 1744830467usize),
                 (60usize, 1744831011usize),
-                (196usize, 1744830467usize),
-                (196usize, 1744830467usize),
-                (248usize, 1744830467usize),
+                (185usize, 1744830467usize),
+                (185usize, 1744830467usize),
+                (217usize, 1744830467usize),
                 (29usize, 1744830467usize),
                 (48usize, 268435454usize),
                 (57usize, 268435454usize),
@@ -4730,7 +1685,7 @@ unsafe fn layer_0_final_step_accumulator(
                 (21usize, 4usize),
             ];
             const VAL_QI: [(usize, usize); 55usize] = [
-                (195usize, 1744830467usize),
+                (184usize, 1744830467usize),
                 (1usize, 1744970275usize),
                 (2usize, 1476674629usize),
                 (17usize, 1744970275usize),
@@ -4741,7 +1696,7 @@ unsafe fn layer_0_final_step_accumulator(
                 (42usize, 268435454usize),
                 (45usize, 1744830467usize),
                 (46usize, 1744831011usize),
-                (195usize, 1744830467usize),
+                (184usize, 1744830467usize),
                 (2usize, 1744970275usize),
                 (17usize, 1744970275usize),
                 (18usize, 1476674629usize),
@@ -4751,11 +1706,11 @@ unsafe fn layer_0_final_step_accumulator(
                 (42usize, 268435454usize),
                 (45usize, 1744830467usize),
                 (46usize, 1744831011usize),
-                (208usize, 1744830467usize),
-                (195usize, 1744830467usize),
-                (195usize, 1744830467usize),
-                (195usize, 1744830467usize),
-                (221usize, 1744830467usize),
+                (192usize, 1744830467usize),
+                (184usize, 1744830467usize),
+                (184usize, 1744830467usize),
+                (184usize, 1744830467usize),
+                (200usize, 1744830467usize),
                 (18usize, 1744970275usize),
                 (19usize, 270392798usize),
                 (20usize, 806984090usize),
@@ -4818,9 +1773,9 @@ unsafe fn layer_0_final_step_accumulator(
                 (54usize, 1744831011usize),
                 (53usize, 1744830467usize),
                 (54usize, 1744831011usize),
-                (260usize, 1744830467usize),
-                (208usize, 1744830467usize),
-                (195usize, 1744830467usize),
+                (224usize, 1744830467usize),
+                (192usize, 1744830467usize),
+                (184usize, 1744830467usize),
                 (53usize, 1744830467usize),
                 (54usize, 1744831011usize),
                 (53usize, 1744830467usize),
@@ -4860,20 +1815,20 @@ unsafe fn layer_0_final_step_accumulator(
                 (21usize, 4usize),
             ];
             const VAL_QI: [(usize, usize); 35usize] = [
-                (197usize, 1744830467usize),
+                (186usize, 1744830467usize),
                 (49usize, 268435454usize),
                 (58usize, 268435454usize),
                 (61usize, 1744830467usize),
                 (62usize, 1744831011usize),
-                (262usize, 1744830467usize),
+                (226usize, 1744830467usize),
                 (30usize, 1744830467usize),
                 (49usize, 268435454usize),
                 (58usize, 268435454usize),
                 (61usize, 1744830467usize),
                 (62usize, 1744831011usize),
-                (197usize, 1744830467usize),
-                (197usize, 1744830467usize),
-                (249usize, 1744830467usize),
+                (186usize, 1744830467usize),
+                (186usize, 1744830467usize),
+                (218usize, 1744830467usize),
                 (30usize, 1744830467usize),
                 (49usize, 268435454usize),
                 (58usize, 268435454usize),
@@ -4945,7 +1900,7 @@ unsafe fn layer_0_final_step_accumulator(
                 (21usize, 2usize),
             ];
             const VAL_QI: [(usize, usize); 34usize] = [
-                (190usize, 1744830467usize),
+                (181usize, 1744830467usize),
                 (1usize, 1744970275usize),
                 (17usize, 671787691usize),
                 (18usize, 538688444usize),
@@ -4953,12 +1908,12 @@ unsafe fn layer_0_final_step_accumulator(
                 (20usize, 1880166674usize),
                 (21usize, 671787691usize),
                 (64usize, 1744831011usize),
-                (213usize, 1744830467usize),
-                (239usize, 1744830467usize),
-                (200usize, 1744830467usize),
-                (200usize, 1744830467usize),
-                (200usize, 1744830467usize),
-                (200usize, 1744830467usize),
+                (195usize, 1744830467usize),
+                (211usize, 1744830467usize),
+                (187usize, 1744830467usize),
+                (187usize, 1744830467usize),
+                (187usize, 1744830467usize),
+                (187usize, 1744830467usize),
                 (17usize, 940083337usize),
                 (18usize, 1747067427usize),
                 (19usize, 1343575382usize),
@@ -5007,12 +1962,12 @@ unsafe fn layer_0_final_step_accumulator(
                 (21usize, 2usize),
             ];
             const VAL_QI: [(usize, usize); 17usize] = [
-                (200usize, 1744830467usize),
+                (187usize, 1744830467usize),
                 (71usize, 1744830467usize),
                 (72usize, 1744831011usize),
                 (27usize, 1744830467usize),
-                (252usize, 1744830467usize),
-                (213usize, 1744830467usize),
+                (219usize, 1744830467usize),
+                (195usize, 1744830467usize),
                 (27usize, 1744830467usize),
                 (71usize, 1744830467usize),
                 (72usize, 1744831011usize),
@@ -5057,11 +2012,11 @@ unsafe fn layer_0_final_step_accumulator(
                 (27usize, 1744830467usize),
                 (74usize, 268435454usize),
                 (80usize, 1744831011usize),
-                (242usize, 1744830467usize),
-                (203usize, 1744830467usize),
-                (203usize, 1744830467usize),
+                (213usize, 1744830467usize),
+                (189usize, 1744830467usize),
+                (189usize, 1744830467usize),
                 (27usize, 1744830467usize),
-                (203usize, 1744830467usize),
+                (189usize, 1744830467usize),
                 (72usize, 268435454usize),
                 (79usize, 1744830467usize),
                 (80usize, 1744831011usize),
@@ -5108,7 +2063,7 @@ unsafe fn layer_0_final_step_accumulator(
                 (21usize, 4usize),
             ];
             const VAL_QI: [(usize, usize); 46usize] = [
-                (191usize, 1744830467usize),
+                (182usize, 1744830467usize),
                 (1usize, 1744970275usize),
                 (17usize, 671787691usize),
                 (18usize, 538688444usize),
@@ -5118,12 +2073,12 @@ unsafe fn layer_0_final_step_accumulator(
                 (64usize, 268435454usize),
                 (65usize, 1744830467usize),
                 (66usize, 1744831011usize),
-                (214usize, 1744830467usize),
-                (240usize, 1744830467usize),
-                (201usize, 1744830467usize),
-                (201usize, 1744830467usize),
-                (201usize, 1744830467usize),
-                (201usize, 1744830467usize),
+                (196usize, 1744830467usize),
+                (212usize, 1744830467usize),
+                (188usize, 1744830467usize),
+                (188usize, 1744830467usize),
+                (188usize, 1744830467usize),
+                (188usize, 1744830467usize),
                 (17usize, 940083337usize),
                 (18usize, 1747067427usize),
                 (19usize, 1343575382usize),
@@ -5182,12 +2137,12 @@ unsafe fn layer_0_final_step_accumulator(
                 (21usize, 2usize),
             ];
             const VAL_QI: [(usize, usize); 17usize] = [
-                (201usize, 1744830467usize),
+                (188usize, 1744830467usize),
                 (73usize, 1744830467usize),
                 (74usize, 1744831011usize),
                 (28usize, 1744830467usize),
-                (253usize, 1744830467usize),
-                (214usize, 1744830467usize),
+                (220usize, 1744830467usize),
+                (196usize, 1744830467usize),
                 (28usize, 1744830467usize),
                 (73usize, 1744830467usize),
                 (74usize, 1744831011usize),
@@ -5234,11 +2189,11 @@ unsafe fn layer_0_final_step_accumulator(
                 (80usize, 268435454usize),
                 (81usize, 1744830467usize),
                 (82usize, 1744831011usize),
-                (243usize, 1744830467usize),
-                (204usize, 1744830467usize),
-                (204usize, 1744830467usize),
+                (214usize, 1744830467usize),
+                (190usize, 1744830467usize),
+                (190usize, 1744830467usize),
                 (28usize, 1744830467usize),
-                (204usize, 1744830467usize),
+                (190usize, 1744830467usize),
                 (73usize, 268435454usize),
                 (81usize, 1744830467usize),
                 (82usize, 544usize),
@@ -5284,7 +2239,7 @@ unsafe fn layer_0_final_step_accumulator(
                 (21usize, 4usize),
             ];
             const VAL_QI: [(usize, usize); 46usize] = [
-                (196usize, 1744830467usize),
+                (185usize, 1744830467usize),
                 (1usize, 1744970275usize),
                 (17usize, 671787691usize),
                 (18usize, 538688444usize),
@@ -5294,12 +2249,12 @@ unsafe fn layer_0_final_step_accumulator(
                 (65usize, 268435454usize),
                 (67usize, 1744830467usize),
                 (68usize, 1744831011usize),
-                (220usize, 1744830467usize),
-                (246usize, 1744830467usize),
-                (207usize, 1744830467usize),
-                (207usize, 1744830467usize),
-                (207usize, 1744830467usize),
-                (207usize, 1744830467usize),
+                (199usize, 1744830467usize),
+                (215usize, 1744830467usize),
+                (191usize, 1744830467usize),
+                (191usize, 1744830467usize),
+                (191usize, 1744830467usize),
+                (191usize, 1744830467usize),
                 (17usize, 940083337usize),
                 (18usize, 1747067427usize),
                 (19usize, 1343575382usize),
@@ -5358,12 +2313,12 @@ unsafe fn layer_0_final_step_accumulator(
                 (21usize, 2usize),
             ];
             const VAL_QI: [(usize, usize); 17usize] = [
-                (207usize, 1744830467usize),
+                (191usize, 1744830467usize),
                 (75usize, 1744830467usize),
                 (76usize, 1744831011usize),
                 (29usize, 1744830467usize),
-                (259usize, 1744830467usize),
-                (220usize, 1744830467usize),
+                (223usize, 1744830467usize),
+                (199usize, 1744830467usize),
                 (29usize, 1744830467usize),
                 (75usize, 1744830467usize),
                 (76usize, 1744831011usize),
@@ -5410,11 +2365,11 @@ unsafe fn layer_0_final_step_accumulator(
                 (81usize, 268435454usize),
                 (83usize, 1744830467usize),
                 (84usize, 1744831011usize),
-                (248usize, 1744830467usize),
-                (209usize, 1744830467usize),
-                (209usize, 1744830467usize),
+                (217usize, 1744830467usize),
+                (193usize, 1744830467usize),
+                (193usize, 1744830467usize),
                 (29usize, 1744830467usize),
-                (209usize, 1744830467usize),
+                (193usize, 1744830467usize),
                 (74usize, 268435454usize),
                 (79usize, 268435454usize),
                 (83usize, 1744830467usize),
@@ -5464,7 +2419,7 @@ unsafe fn layer_0_final_step_accumulator(
                 (21usize, 4usize),
             ];
             const VAL_QI: [(usize, usize); 46usize] = [
-                (197usize, 1744830467usize),
+                (186usize, 1744830467usize),
                 (1usize, 1744970275usize),
                 (17usize, 671787691usize),
                 (18usize, 538688444usize),
@@ -5474,12 +2429,12 @@ unsafe fn layer_0_final_step_accumulator(
                 (66usize, 268435454usize),
                 (69usize, 1744830467usize),
                 (70usize, 1744831011usize),
-                (221usize, 1744830467usize),
-                (247usize, 1744830467usize),
-                (208usize, 1744830467usize),
-                (208usize, 1744830467usize),
-                (208usize, 1744830467usize),
-                (208usize, 1744830467usize),
+                (200usize, 1744830467usize),
+                (216usize, 1744830467usize),
+                (192usize, 1744830467usize),
+                (192usize, 1744830467usize),
+                (192usize, 1744830467usize),
+                (192usize, 1744830467usize),
                 (17usize, 940083337usize),
                 (18usize, 1747067427usize),
                 (19usize, 1343575382usize),
@@ -5538,12 +2493,12 @@ unsafe fn layer_0_final_step_accumulator(
                 (21usize, 2usize),
             ];
             const VAL_QI: [(usize, usize); 17usize] = [
-                (208usize, 1744830467usize),
+                (192usize, 1744830467usize),
                 (77usize, 1744830467usize),
                 (78usize, 1744831011usize),
                 (30usize, 1744830467usize),
-                (260usize, 1744830467usize),
-                (221usize, 1744830467usize),
+                (224usize, 1744830467usize),
+                (200usize, 1744830467usize),
                 (30usize, 1744830467usize),
                 (77usize, 1744830467usize),
                 (78usize, 1744831011usize),
@@ -5590,11 +2545,11 @@ unsafe fn layer_0_final_step_accumulator(
                 (82usize, 268435454usize),
                 (85usize, 1744830467usize),
                 (86usize, 1744831011usize),
-                (249usize, 1744830467usize),
-                (210usize, 1744830467usize),
-                (210usize, 1744830467usize),
+                (218usize, 1744830467usize),
+                (194usize, 1744830467usize),
+                (194usize, 1744830467usize),
                 (30usize, 1744830467usize),
-                (210usize, 1744830467usize),
+                (194usize, 1744830467usize),
                 (71usize, 268435454usize),
                 (80usize, 268435454usize),
                 (85usize, 1744830467usize),
@@ -5666,7 +2621,7 @@ unsafe fn layer_0_final_step_accumulator(
             ];
             const VAL_QI: [(usize, usize); 34usize] = [
                 (27usize, 1744830467usize),
-                (187usize, 1744830467usize),
+                (179usize, 1744830467usize),
                 (2usize, 1744970275usize),
                 (17usize, 940083337usize),
                 (18usize, 1075279736usize),
@@ -5674,11 +2629,11 @@ unsafe fn layer_0_final_step_accumulator(
                 (20usize, 1343575382usize),
                 (21usize, 1880166674usize),
                 (88usize, 1744831011usize),
-                (226usize, 1744830467usize),
-                (213usize, 1744830467usize),
-                (213usize, 1744830467usize),
-                (187usize, 1744830467usize),
-                (187usize, 1744830467usize),
+                (203usize, 1744830467usize),
+                (195usize, 1744830467usize),
+                (195usize, 1744830467usize),
+                (179usize, 1744830467usize),
+                (179usize, 1744830467usize),
                 (17usize, 1208378983usize),
                 (18usize, 538688444usize),
                 (19usize, 270392798usize),
@@ -5727,13 +2682,13 @@ unsafe fn layer_0_final_step_accumulator(
                 (21usize, 2usize),
             ];
             const VAL_QI: [(usize, usize); 17usize] = [
-                (213usize, 1744830467usize),
+                (195usize, 1744830467usize),
                 (27usize, 1744830467usize),
                 (95usize, 1744830467usize),
                 (96usize, 1744831011usize),
-                (252usize, 1744830467usize),
+                (219usize, 1744830467usize),
                 (27usize, 1744830467usize),
-                (239usize, 1744830467usize),
+                (211usize, 1744830467usize),
                 (95usize, 1744830467usize),
                 (96usize, 1744831011usize),
                 (95usize, 1744830467usize),
@@ -5774,13 +2729,13 @@ unsafe fn layer_0_final_step_accumulator(
             ];
             const VAL_QI: [(usize, usize); 25usize] = [
                 (31usize, 1744830467usize),
-                (190usize, 1744830467usize),
+                (181usize, 1744830467usize),
                 (31usize, 1744830467usize),
                 (98usize, 268435454usize),
                 (104usize, 1744831011usize),
-                (216usize, 1744830467usize),
-                (216usize, 1744830467usize),
-                (190usize, 1744830467usize),
+                (197usize, 1744830467usize),
+                (197usize, 1744830467usize),
+                (181usize, 1744830467usize),
                 (31usize, 1744830467usize),
                 (98usize, 268435454usize),
                 (104usize, 1744831011usize),
@@ -5828,7 +2783,7 @@ unsafe fn layer_0_final_step_accumulator(
             ];
             const VAL_QI: [(usize, usize); 46usize] = [
                 (28usize, 1744830467usize),
-                (188usize, 1744830467usize),
+                (180usize, 1744830467usize),
                 (2usize, 1744970275usize),
                 (17usize, 940083337usize),
                 (18usize, 1075279736usize),
@@ -5838,11 +2793,11 @@ unsafe fn layer_0_final_step_accumulator(
                 (88usize, 268435454usize),
                 (89usize, 1744830467usize),
                 (90usize, 1744831011usize),
-                (227usize, 1744830467usize),
-                (214usize, 1744830467usize),
-                (214usize, 1744830467usize),
-                (188usize, 1744830467usize),
-                (188usize, 1744830467usize),
+                (204usize, 1744830467usize),
+                (196usize, 1744830467usize),
+                (196usize, 1744830467usize),
+                (180usize, 1744830467usize),
+                (180usize, 1744830467usize),
                 (17usize, 1208378983usize),
                 (18usize, 538688444usize),
                 (19usize, 270392798usize),
@@ -5901,13 +2856,13 @@ unsafe fn layer_0_final_step_accumulator(
                 (21usize, 2usize),
             ];
             const VAL_QI: [(usize, usize); 17usize] = [
-                (214usize, 1744830467usize),
+                (196usize, 1744830467usize),
                 (28usize, 1744830467usize),
                 (97usize, 1744830467usize),
                 (98usize, 1744831011usize),
-                (253usize, 1744830467usize),
+                (220usize, 1744830467usize),
                 (28usize, 1744830467usize),
-                (240usize, 1744830467usize),
+                (212usize, 1744830467usize),
                 (97usize, 1744830467usize),
                 (98usize, 1744831011usize),
                 (97usize, 1744830467usize),
@@ -5948,15 +2903,15 @@ unsafe fn layer_0_final_step_accumulator(
             ];
             const VAL_QI: [(usize, usize); 29usize] = [
                 (32usize, 1744830467usize),
-                (191usize, 1744830467usize),
+                (182usize, 1744830467usize),
                 (32usize, 1744830467usize),
                 (95usize, 268435454usize),
                 (104usize, 268435454usize),
                 (105usize, 1744830467usize),
                 (106usize, 1744831011usize),
-                (217usize, 1744830467usize),
-                (217usize, 1744830467usize),
-                (191usize, 1744830467usize),
+                (198usize, 1744830467usize),
+                (198usize, 1744830467usize),
+                (182usize, 1744830467usize),
                 (32usize, 1744830467usize),
                 (95usize, 268435454usize),
                 (104usize, 268435454usize),
@@ -6006,7 +2961,7 @@ unsafe fn layer_0_final_step_accumulator(
             ];
             const VAL_QI: [(usize, usize); 46usize] = [
                 (29usize, 1744830467usize),
-                (194usize, 1744830467usize),
+                (183usize, 1744830467usize),
                 (2usize, 1744970275usize),
                 (17usize, 940083337usize),
                 (18usize, 1075279736usize),
@@ -6016,11 +2971,11 @@ unsafe fn layer_0_final_step_accumulator(
                 (89usize, 268435454usize),
                 (91usize, 1744830467usize),
                 (92usize, 1744831011usize),
-                (233usize, 1744830467usize),
-                (220usize, 1744830467usize),
-                (220usize, 1744830467usize),
-                (194usize, 1744830467usize),
-                (194usize, 1744830467usize),
+                (207usize, 1744830467usize),
+                (199usize, 1744830467usize),
+                (199usize, 1744830467usize),
+                (183usize, 1744830467usize),
+                (183usize, 1744830467usize),
                 (17usize, 1208378983usize),
                 (18usize, 538688444usize),
                 (19usize, 270392798usize),
@@ -6079,13 +3034,13 @@ unsafe fn layer_0_final_step_accumulator(
                 (21usize, 2usize),
             ];
             const VAL_QI: [(usize, usize); 17usize] = [
-                (220usize, 1744830467usize),
+                (199usize, 1744830467usize),
                 (29usize, 1744830467usize),
                 (99usize, 1744830467usize),
                 (100usize, 1744831011usize),
-                (259usize, 1744830467usize),
+                (223usize, 1744830467usize),
                 (29usize, 1744830467usize),
-                (246usize, 1744830467usize),
+                (215usize, 1744830467usize),
                 (99usize, 1744830467usize),
                 (100usize, 1744831011usize),
                 (99usize, 1744830467usize),
@@ -6126,15 +3081,15 @@ unsafe fn layer_0_final_step_accumulator(
             ];
             const VAL_QI: [(usize, usize); 31usize] = [
                 (33usize, 1744830467usize),
-                (196usize, 1744830467usize),
+                (185usize, 1744830467usize),
                 (33usize, 1744830467usize),
                 (96usize, 268435454usize),
                 (105usize, 268435454usize),
                 (107usize, 1744830467usize),
                 (108usize, 1744831011usize),
-                (222usize, 1744830467usize),
-                (222usize, 1744830467usize),
-                (196usize, 1744830467usize),
+                (201usize, 1744830467usize),
+                (201usize, 1744830467usize),
+                (185usize, 1744830467usize),
                 (33usize, 1744830467usize),
                 (96usize, 268435454usize),
                 (105usize, 268435454usize),
@@ -6186,7 +3141,7 @@ unsafe fn layer_0_final_step_accumulator(
             ];
             const VAL_QI: [(usize, usize); 46usize] = [
                 (30usize, 1744830467usize),
-                (195usize, 1744830467usize),
+                (184usize, 1744830467usize),
                 (2usize, 1744970275usize),
                 (17usize, 940083337usize),
                 (18usize, 1075279736usize),
@@ -6196,11 +3151,11 @@ unsafe fn layer_0_final_step_accumulator(
                 (90usize, 268435454usize),
                 (93usize, 1744830467usize),
                 (94usize, 1744831011usize),
-                (234usize, 1744830467usize),
-                (221usize, 1744830467usize),
-                (221usize, 1744830467usize),
-                (195usize, 1744830467usize),
-                (195usize, 1744830467usize),
+                (208usize, 1744830467usize),
+                (200usize, 1744830467usize),
+                (200usize, 1744830467usize),
+                (184usize, 1744830467usize),
+                (184usize, 1744830467usize),
                 (17usize, 1208378983usize),
                 (18usize, 538688444usize),
                 (19usize, 270392798usize),
@@ -6259,13 +3214,13 @@ unsafe fn layer_0_final_step_accumulator(
                 (21usize, 2usize),
             ];
             const VAL_QI: [(usize, usize); 17usize] = [
-                (221usize, 1744830467usize),
+                (200usize, 1744830467usize),
                 (30usize, 1744830467usize),
                 (101usize, 1744830467usize),
                 (102usize, 1744831011usize),
-                (260usize, 1744830467usize),
+                (224usize, 1744830467usize),
                 (30usize, 1744830467usize),
-                (247usize, 1744830467usize),
+                (216usize, 1744830467usize),
                 (101usize, 1744830467usize),
                 (102usize, 1744831011usize),
                 (101usize, 1744830467usize),
@@ -6306,15 +3261,15 @@ unsafe fn layer_0_final_step_accumulator(
             ];
             const VAL_QI: [(usize, usize); 31usize] = [
                 (34usize, 1744830467usize),
-                (197usize, 1744830467usize),
+                (186usize, 1744830467usize),
                 (34usize, 1744830467usize),
                 (97usize, 268435454usize),
                 (106usize, 268435454usize),
                 (109usize, 1744830467usize),
                 (110usize, 1744831011usize),
-                (223usize, 1744830467usize),
-                (223usize, 1744830467usize),
-                (197usize, 1744830467usize),
+                (202usize, 1744830467usize),
+                (202usize, 1744830467usize),
+                (186usize, 1744830467usize),
                 (34usize, 1744830467usize),
                 (97usize, 268435454usize),
                 (106usize, 268435454usize),
@@ -6394,12 +3349,12 @@ unsafe fn layer_0_final_step_accumulator(
                 (20usize, 403492045usize),
                 (21usize, 1611871028usize),
                 (112usize, 1744831011usize),
-                (239usize, 1744830467usize),
-                (200usize, 1744830467usize),
-                (226usize, 1744830467usize),
-                (226usize, 1744830467usize),
-                (213usize, 1744830467usize),
-                (213usize, 1744830467usize),
+                (211usize, 1744830467usize),
+                (187usize, 1744830467usize),
+                (203usize, 1744830467usize),
+                (203usize, 1744830467usize),
+                (195usize, 1744830467usize),
+                (195usize, 1744830467usize),
                 (17usize, 1611871028usize),
                 (18usize, 137293551usize),
                 (19usize, 1613968180usize),
@@ -6448,12 +3403,12 @@ unsafe fn layer_0_final_step_accumulator(
                 (21usize, 2usize),
             ];
             const VAL_QI: [(usize, usize); 17usize] = [
-                (226usize, 1744830467usize),
+                (203usize, 1744830467usize),
                 (119usize, 1744830467usize),
                 (120usize, 1744831011usize),
                 (31usize, 1744830467usize),
-                (252usize, 1744830467usize),
-                (226usize, 1744830467usize),
+                (219usize, 1744830467usize),
+                (203usize, 1744830467usize),
                 (31usize, 1744830467usize),
                 (119usize, 1744830467usize),
                 (120usize, 1744831011usize),
@@ -6498,11 +3453,11 @@ unsafe fn layer_0_final_step_accumulator(
                 (31usize, 1744830467usize),
                 (122usize, 268435454usize),
                 (128usize, 1744831011usize),
-                (203usize, 1744830467usize),
-                (229usize, 1744830467usize),
-                (229usize, 1744830467usize),
+                (189usize, 1744830467usize),
+                (205usize, 1744830467usize),
+                (205usize, 1744830467usize),
                 (31usize, 1744830467usize),
-                (216usize, 1744830467usize),
+                (197usize, 1744830467usize),
                 (120usize, 268435454usize),
                 (127usize, 1744830467usize),
                 (128usize, 1744831011usize),
@@ -6558,12 +3513,12 @@ unsafe fn layer_0_final_step_accumulator(
                 (112usize, 268435454usize),
                 (113usize, 1744830467usize),
                 (114usize, 1744831011usize),
-                (240usize, 1744830467usize),
-                (201usize, 1744830467usize),
-                (227usize, 1744830467usize),
-                (227usize, 1744830467usize),
-                (214usize, 1744830467usize),
-                (214usize, 1744830467usize),
+                (212usize, 1744830467usize),
+                (188usize, 1744830467usize),
+                (204usize, 1744830467usize),
+                (204usize, 1744830467usize),
+                (196usize, 1744830467usize),
+                (196usize, 1744830467usize),
                 (17usize, 1611871028usize),
                 (18usize, 137293551usize),
                 (19usize, 1613968180usize),
@@ -6622,12 +3577,12 @@ unsafe fn layer_0_final_step_accumulator(
                 (21usize, 2usize),
             ];
             const VAL_QI: [(usize, usize); 17usize] = [
-                (227usize, 1744830467usize),
+                (204usize, 1744830467usize),
                 (121usize, 1744830467usize),
                 (122usize, 1744831011usize),
                 (32usize, 1744830467usize),
-                (253usize, 1744830467usize),
-                (227usize, 1744830467usize),
+                (220usize, 1744830467usize),
+                (204usize, 1744830467usize),
                 (32usize, 1744830467usize),
                 (121usize, 1744830467usize),
                 (122usize, 1744831011usize),
@@ -6674,11 +3629,11 @@ unsafe fn layer_0_final_step_accumulator(
                 (128usize, 268435454usize),
                 (129usize, 1744830467usize),
                 (130usize, 1744831011usize),
-                (204usize, 1744830467usize),
-                (230usize, 1744830467usize),
-                (230usize, 1744830467usize),
+                (190usize, 1744830467usize),
+                (206usize, 1744830467usize),
+                (206usize, 1744830467usize),
                 (32usize, 1744830467usize),
-                (217usize, 1744830467usize),
+                (198usize, 1744830467usize),
                 (121usize, 268435454usize),
                 (129usize, 1744830467usize),
                 (130usize, 544usize),
@@ -6736,12 +3691,12 @@ unsafe fn layer_0_final_step_accumulator(
                 (113usize, 268435454usize),
                 (115usize, 1744830467usize),
                 (116usize, 1744831011usize),
-                (246usize, 1744830467usize),
+                (215usize, 1744830467usize),
+                (191usize, 1744830467usize),
                 (207usize, 1744830467usize),
-                (233usize, 1744830467usize),
-                (233usize, 1744830467usize),
-                (220usize, 1744830467usize),
-                (220usize, 1744830467usize),
+                (207usize, 1744830467usize),
+                (199usize, 1744830467usize),
+                (199usize, 1744830467usize),
                 (17usize, 1611871028usize),
                 (18usize, 137293551usize),
                 (19usize, 1613968180usize),
@@ -6800,12 +3755,12 @@ unsafe fn layer_0_final_step_accumulator(
                 (21usize, 2usize),
             ];
             const VAL_QI: [(usize, usize); 17usize] = [
-                (233usize, 1744830467usize),
+                (207usize, 1744830467usize),
                 (123usize, 1744830467usize),
                 (124usize, 1744831011usize),
                 (33usize, 1744830467usize),
-                (259usize, 1744830467usize),
-                (233usize, 1744830467usize),
+                (223usize, 1744830467usize),
+                (207usize, 1744830467usize),
                 (33usize, 1744830467usize),
                 (123usize, 1744830467usize),
                 (124usize, 1744831011usize),
@@ -6852,11 +3807,11 @@ unsafe fn layer_0_final_step_accumulator(
                 (129usize, 268435454usize),
                 (131usize, 1744830467usize),
                 (132usize, 1744831011usize),
+                (193usize, 1744830467usize),
                 (209usize, 1744830467usize),
-                (235usize, 1744830467usize),
-                (235usize, 1744830467usize),
+                (209usize, 1744830467usize),
                 (33usize, 1744830467usize),
-                (222usize, 1744830467usize),
+                (201usize, 1744830467usize),
                 (122usize, 268435454usize),
                 (127usize, 268435454usize),
                 (131usize, 1744830467usize),
@@ -6916,12 +3871,12 @@ unsafe fn layer_0_final_step_accumulator(
                 (114usize, 268435454usize),
                 (117usize, 1744830467usize),
                 (118usize, 1744831011usize),
-                (247usize, 1744830467usize),
+                (216usize, 1744830467usize),
+                (192usize, 1744830467usize),
                 (208usize, 1744830467usize),
-                (234usize, 1744830467usize),
-                (234usize, 1744830467usize),
-                (221usize, 1744830467usize),
-                (221usize, 1744830467usize),
+                (208usize, 1744830467usize),
+                (200usize, 1744830467usize),
+                (200usize, 1744830467usize),
                 (17usize, 1611871028usize),
                 (18usize, 137293551usize),
                 (19usize, 1613968180usize),
@@ -6980,12 +3935,12 @@ unsafe fn layer_0_final_step_accumulator(
                 (21usize, 2usize),
             ];
             const VAL_QI: [(usize, usize); 17usize] = [
-                (234usize, 1744830467usize),
+                (208usize, 1744830467usize),
                 (125usize, 1744830467usize),
                 (126usize, 1744831011usize),
                 (34usize, 1744830467usize),
-                (260usize, 1744830467usize),
-                (234usize, 1744830467usize),
+                (224usize, 1744830467usize),
+                (208usize, 1744830467usize),
                 (34usize, 1744830467usize),
                 (125usize, 1744830467usize),
                 (126usize, 1744831011usize),
@@ -7032,11 +3987,11 @@ unsafe fn layer_0_final_step_accumulator(
                 (130usize, 268435454usize),
                 (133usize, 1744830467usize),
                 (134usize, 1744831011usize),
+                (194usize, 1744830467usize),
                 (210usize, 1744830467usize),
-                (236usize, 1744830467usize),
-                (236usize, 1744830467usize),
+                (210usize, 1744830467usize),
                 (34usize, 1744830467usize),
-                (223usize, 1744830467usize),
+                (202usize, 1744830467usize),
                 (119usize, 268435454usize),
                 (128usize, 268435454usize),
                 (133usize, 1744830467usize),
@@ -7108,12 +4063,12 @@ unsafe fn layer_0_final_step_accumulator(
             ];
             const VAL_QI: [(usize, usize); 27usize] = [
                 (35usize, 1744830467usize),
-                (213usize, 1744830467usize),
-                (226usize, 1744830467usize),
-                (239usize, 1744830467usize),
-                (239usize, 1744830467usize),
-                (200usize, 1744830467usize),
+                (195usize, 1744830467usize),
+                (203usize, 1744830467usize),
+                (211usize, 1744830467usize),
+                (211usize, 1744830467usize),
                 (187usize, 1744830467usize),
+                (179usize, 1744830467usize),
                 (17usize, 1476674629usize),
                 (18usize, 940083337usize),
                 (19usize, 2097152usize),
@@ -7162,12 +4117,12 @@ unsafe fn layer_0_final_step_accumulator(
                 (21usize, 2usize),
             ];
             const VAL_QI: [(usize, usize); 16usize] = [
-                (239usize, 1744830467usize),
+                (211usize, 1744830467usize),
                 (31usize, 1744830467usize),
-                (252usize, 1744830467usize),
-                (252usize, 1744830467usize),
+                (219usize, 1744830467usize),
+                (219usize, 1744830467usize),
                 (31usize, 1744830467usize),
-                (226usize, 1744830467usize),
+                (203usize, 1744830467usize),
                 (143usize, 1744830467usize),
                 (144usize, 1744831011usize),
                 (143usize, 1744830467usize),
@@ -7207,13 +4162,13 @@ unsafe fn layer_0_final_step_accumulator(
                 (21usize, 2usize),
             ];
             const VAL_QI: [(usize, usize); 21usize] = [
-                (255usize, 1744830467usize),
-                (216usize, 1744830467usize),
-                (229usize, 1744830467usize),
-                (242usize, 1744830467usize),
-                (242usize, 1744830467usize),
-                (203usize, 1744830467usize),
-                (190usize, 1744830467usize),
+                (221usize, 1744830467usize),
+                (197usize, 1744830467usize),
+                (205usize, 1744830467usize),
+                (213usize, 1744830467usize),
+                (213usize, 1744830467usize),
+                (189usize, 1744830467usize),
+                (181usize, 1744830467usize),
                 (145usize, 268435454usize),
                 (151usize, 1744830467usize),
                 (152usize, 1744831011usize),
@@ -7258,12 +4213,12 @@ unsafe fn layer_0_final_step_accumulator(
             ];
             const VAL_QI: [(usize, usize); 37usize] = [
                 (36usize, 1744830467usize),
-                (214usize, 1744830467usize),
-                (227usize, 1744830467usize),
-                (240usize, 1744830467usize),
-                (240usize, 1744830467usize),
-                (201usize, 1744830467usize),
+                (196usize, 1744830467usize),
+                (204usize, 1744830467usize),
+                (212usize, 1744830467usize),
+                (212usize, 1744830467usize),
                 (188usize, 1744830467usize),
+                (180usize, 1744830467usize),
                 (17usize, 1476674629usize),
                 (18usize, 940083337usize),
                 (19usize, 2097152usize),
@@ -7322,12 +4277,12 @@ unsafe fn layer_0_final_step_accumulator(
                 (21usize, 2usize),
             ];
             const VAL_QI: [(usize, usize); 16usize] = [
-                (240usize, 1744830467usize),
+                (212usize, 1744830467usize),
                 (32usize, 1744830467usize),
-                (253usize, 1744830467usize),
-                (253usize, 1744830467usize),
+                (220usize, 1744830467usize),
+                (220usize, 1744830467usize),
                 (32usize, 1744830467usize),
-                (227usize, 1744830467usize),
+                (204usize, 1744830467usize),
                 (145usize, 1744830467usize),
                 (146usize, 1744831011usize),
                 (145usize, 1744830467usize),
@@ -7367,13 +4322,13 @@ unsafe fn layer_0_final_step_accumulator(
                 (21usize, 4usize),
             ];
             const VAL_QI: [(usize, usize); 23usize] = [
-                (256usize, 1744830467usize),
-                (217usize, 1744830467usize),
-                (230usize, 1744830467usize),
-                (243usize, 1744830467usize),
-                (243usize, 1744830467usize),
-                (204usize, 1744830467usize),
-                (191usize, 1744830467usize),
+                (222usize, 1744830467usize),
+                (198usize, 1744830467usize),
+                (206usize, 1744830467usize),
+                (214usize, 1744830467usize),
+                (214usize, 1744830467usize),
+                (190usize, 1744830467usize),
+                (182usize, 1744830467usize),
                 (146usize, 268435454usize),
                 (151usize, 268435454usize),
                 (153usize, 1744830467usize),
@@ -7420,12 +4375,12 @@ unsafe fn layer_0_final_step_accumulator(
             ];
             const VAL_QI: [(usize, usize); 37usize] = [
                 (37usize, 1744830467usize),
-                (220usize, 1744830467usize),
-                (233usize, 1744830467usize),
-                (246usize, 1744830467usize),
-                (246usize, 1744830467usize),
+                (199usize, 1744830467usize),
                 (207usize, 1744830467usize),
-                (194usize, 1744830467usize),
+                (215usize, 1744830467usize),
+                (215usize, 1744830467usize),
+                (191usize, 1744830467usize),
+                (183usize, 1744830467usize),
                 (17usize, 1476674629usize),
                 (18usize, 940083337usize),
                 (19usize, 2097152usize),
@@ -7484,12 +4439,12 @@ unsafe fn layer_0_final_step_accumulator(
                 (21usize, 2usize),
             ];
             const VAL_QI: [(usize, usize); 16usize] = [
-                (246usize, 1744830467usize),
+                (215usize, 1744830467usize),
                 (33usize, 1744830467usize),
-                (259usize, 1744830467usize),
-                (259usize, 1744830467usize),
+                (223usize, 1744830467usize),
+                (223usize, 1744830467usize),
                 (33usize, 1744830467usize),
-                (233usize, 1744830467usize),
+                (207usize, 1744830467usize),
                 (147usize, 1744830467usize),
                 (148usize, 1744831011usize),
                 (147usize, 1744830467usize),
@@ -7529,13 +4484,13 @@ unsafe fn layer_0_final_step_accumulator(
                 (21usize, 4usize),
             ];
             const VAL_QI: [(usize, usize); 27usize] = [
-                (261usize, 1744830467usize),
-                (222usize, 1744830467usize),
-                (235usize, 1744830467usize),
-                (248usize, 1744830467usize),
-                (248usize, 1744830467usize),
+                (225usize, 1744830467usize),
+                (201usize, 1744830467usize),
                 (209usize, 1744830467usize),
-                (196usize, 1744830467usize),
+                (217usize, 1744830467usize),
+                (217usize, 1744830467usize),
+                (193usize, 1744830467usize),
+                (185usize, 1744830467usize),
                 (143usize, 268435454usize),
                 (152usize, 268435454usize),
                 (155usize, 1744830467usize),
@@ -7586,12 +4541,12 @@ unsafe fn layer_0_final_step_accumulator(
             ];
             const VAL_QI: [(usize, usize); 37usize] = [
                 (38usize, 1744830467usize),
-                (221usize, 1744830467usize),
-                (234usize, 1744830467usize),
-                (247usize, 1744830467usize),
-                (247usize, 1744830467usize),
+                (200usize, 1744830467usize),
                 (208usize, 1744830467usize),
-                (195usize, 1744830467usize),
+                (216usize, 1744830467usize),
+                (216usize, 1744830467usize),
+                (192usize, 1744830467usize),
+                (184usize, 1744830467usize),
                 (17usize, 1476674629usize),
                 (18usize, 940083337usize),
                 (19usize, 2097152usize),
@@ -7650,12 +4605,12 @@ unsafe fn layer_0_final_step_accumulator(
                 (21usize, 2usize),
             ];
             const VAL_QI: [(usize, usize); 16usize] = [
-                (247usize, 1744830467usize),
+                (216usize, 1744830467usize),
                 (34usize, 1744830467usize),
-                (260usize, 1744830467usize),
-                (260usize, 1744830467usize),
+                (224usize, 1744830467usize),
+                (224usize, 1744830467usize),
                 (34usize, 1744830467usize),
-                (234usize, 1744830467usize),
+                (208usize, 1744830467usize),
                 (149usize, 1744830467usize),
                 (150usize, 1744831011usize),
                 (149usize, 1744830467usize),
@@ -7695,13 +4650,13 @@ unsafe fn layer_0_final_step_accumulator(
                 (21usize, 4usize),
             ];
             const VAL_QI: [(usize, usize); 27usize] = [
-                (262usize, 1744830467usize),
-                (223usize, 1744830467usize),
-                (236usize, 1744830467usize),
-                (249usize, 1744830467usize),
-                (249usize, 1744830467usize),
+                (226usize, 1744830467usize),
+                (202usize, 1744830467usize),
                 (210usize, 1744830467usize),
-                (197usize, 1744830467usize),
+                (218usize, 1744830467usize),
+                (218usize, 1744830467usize),
+                (194usize, 1744830467usize),
+                (186usize, 1744830467usize),
                 (144usize, 268435454usize),
                 (153usize, 268435454usize),
                 (157usize, 1744830467usize),
@@ -7738,7 +4693,7 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..2 {
             const VAL_QO: [(usize, usize); 1usize] = [(0usize, 2usize)];
             const VAL_QI: [(usize, usize); 2usize] =
-                [(200usize, 268435454usize), (203usize, 1744830467usize)];
+                [(187usize, 268435454usize), (189usize, 1744830467usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -7753,7 +4708,127 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..2 {
             const VAL_QO: [(usize, usize); 1usize] = [(0usize, 2usize)];
             const VAL_QI: [(usize, usize); 2usize] =
-                [(201usize, 268435454usize), (204usize, 1744830467usize)];
+                [(188usize, 268435454usize), (190usize, 1744830467usize)];
+            const VAL_LN: [(usize, usize); 0usize] = [];
+            let val =
+                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
+            let mut contrib = bc;
+            field_ops::mul_assign(&mut contrib, &val);
+            field_ops::add_assign(&mut acc[j], &contrib);
+        }
+    }
+    {
+        let bc = current_batch;
+        field_ops::mul_assign(&mut current_batch, &batch_base);
+        for j in 0..2 {
+            const VAL_QO: [(usize, usize); 1usize] = [(0usize, 2usize)];
+            const VAL_QI: [(usize, usize); 2usize] =
+                [(191usize, 268435454usize), (193usize, 1744830467usize)];
+            const VAL_LN: [(usize, usize); 0usize] = [];
+            let val =
+                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
+            let mut contrib = bc;
+            field_ops::mul_assign(&mut contrib, &val);
+            field_ops::add_assign(&mut acc[j], &contrib);
+        }
+    }
+    {
+        let bc = current_batch;
+        field_ops::mul_assign(&mut current_batch, &batch_base);
+        for j in 0..2 {
+            const VAL_QO: [(usize, usize); 1usize] = [(0usize, 2usize)];
+            const VAL_QI: [(usize, usize); 2usize] =
+                [(192usize, 268435454usize), (194usize, 1744830467usize)];
+            const VAL_LN: [(usize, usize); 0usize] = [];
+            let val =
+                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
+            let mut contrib = bc;
+            field_ops::mul_assign(&mut contrib, &val);
+            field_ops::add_assign(&mut acc[j], &contrib);
+        }
+    }
+    {
+        let bc = current_batch;
+        field_ops::mul_assign(&mut current_batch, &batch_base);
+        for j in 0..2 {
+            const VAL_QO: [(usize, usize); 1usize] = [(0usize, 2usize)];
+            const VAL_QI: [(usize, usize); 2usize] =
+                [(195usize, 268435454usize), (197usize, 1744830467usize)];
+            const VAL_LN: [(usize, usize); 0usize] = [];
+            let val =
+                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
+            let mut contrib = bc;
+            field_ops::mul_assign(&mut contrib, &val);
+            field_ops::add_assign(&mut acc[j], &contrib);
+        }
+    }
+    {
+        let bc = current_batch;
+        field_ops::mul_assign(&mut current_batch, &batch_base);
+        for j in 0..2 {
+            const VAL_QO: [(usize, usize); 1usize] = [(0usize, 2usize)];
+            const VAL_QI: [(usize, usize); 2usize] =
+                [(196usize, 268435454usize), (198usize, 1744830467usize)];
+            const VAL_LN: [(usize, usize); 0usize] = [];
+            let val =
+                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
+            let mut contrib = bc;
+            field_ops::mul_assign(&mut contrib, &val);
+            field_ops::add_assign(&mut acc[j], &contrib);
+        }
+    }
+    {
+        let bc = current_batch;
+        field_ops::mul_assign(&mut current_batch, &batch_base);
+        for j in 0..2 {
+            const VAL_QO: [(usize, usize); 1usize] = [(0usize, 2usize)];
+            const VAL_QI: [(usize, usize); 2usize] =
+                [(199usize, 268435454usize), (201usize, 1744830467usize)];
+            const VAL_LN: [(usize, usize); 0usize] = [];
+            let val =
+                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
+            let mut contrib = bc;
+            field_ops::mul_assign(&mut contrib, &val);
+            field_ops::add_assign(&mut acc[j], &contrib);
+        }
+    }
+    {
+        let bc = current_batch;
+        field_ops::mul_assign(&mut current_batch, &batch_base);
+        for j in 0..2 {
+            const VAL_QO: [(usize, usize); 1usize] = [(0usize, 2usize)];
+            const VAL_QI: [(usize, usize); 2usize] =
+                [(200usize, 268435454usize), (202usize, 1744830467usize)];
+            const VAL_LN: [(usize, usize); 0usize] = [];
+            let val =
+                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
+            let mut contrib = bc;
+            field_ops::mul_assign(&mut contrib, &val);
+            field_ops::add_assign(&mut acc[j], &contrib);
+        }
+    }
+    {
+        let bc = current_batch;
+        field_ops::mul_assign(&mut current_batch, &batch_base);
+        for j in 0..2 {
+            const VAL_QO: [(usize, usize); 1usize] = [(0usize, 2usize)];
+            const VAL_QI: [(usize, usize); 2usize] =
+                [(203usize, 268435454usize), (205usize, 1744830467usize)];
+            const VAL_LN: [(usize, usize); 0usize] = [];
+            let val =
+                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
+            let mut contrib = bc;
+            field_ops::mul_assign(&mut contrib, &val);
+            field_ops::add_assign(&mut acc[j], &contrib);
+        }
+    }
+    {
+        let bc = current_batch;
+        field_ops::mul_assign(&mut current_batch, &batch_base);
+        for j in 0..2 {
+            const VAL_QO: [(usize, usize); 1usize] = [(0usize, 2usize)];
+            const VAL_QI: [(usize, usize); 2usize] =
+                [(204usize, 268435454usize), (206usize, 1744830467usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -7798,7 +4873,7 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..2 {
             const VAL_QO: [(usize, usize); 1usize] = [(0usize, 2usize)];
             const VAL_QI: [(usize, usize); 2usize] =
-                [(213usize, 268435454usize), (216usize, 1744830467usize)];
+                [(211usize, 268435454usize), (213usize, 1744830467usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -7813,7 +4888,7 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..2 {
             const VAL_QO: [(usize, usize); 1usize] = [(0usize, 2usize)];
             const VAL_QI: [(usize, usize); 2usize] =
-                [(214usize, 268435454usize), (217usize, 1744830467usize)];
+                [(212usize, 268435454usize), (214usize, 1744830467usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -7828,7 +4903,7 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..2 {
             const VAL_QO: [(usize, usize); 1usize] = [(0usize, 2usize)];
             const VAL_QI: [(usize, usize); 2usize] =
-                [(220usize, 268435454usize), (222usize, 1744830467usize)];
+                [(215usize, 268435454usize), (217usize, 1744830467usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -7843,127 +4918,7 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..2 {
             const VAL_QO: [(usize, usize); 1usize] = [(0usize, 2usize)];
             const VAL_QI: [(usize, usize); 2usize] =
-                [(221usize, 268435454usize), (223usize, 1744830467usize)];
-            const VAL_LN: [(usize, usize); 0usize] = [];
-            let val =
-                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
-            let mut contrib = bc;
-            field_ops::mul_assign(&mut contrib, &val);
-            field_ops::add_assign(&mut acc[j], &contrib);
-        }
-    }
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..2 {
-            const VAL_QO: [(usize, usize); 1usize] = [(0usize, 2usize)];
-            const VAL_QI: [(usize, usize); 2usize] =
-                [(226usize, 268435454usize), (229usize, 1744830467usize)];
-            const VAL_LN: [(usize, usize); 0usize] = [];
-            let val =
-                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
-            let mut contrib = bc;
-            field_ops::mul_assign(&mut contrib, &val);
-            field_ops::add_assign(&mut acc[j], &contrib);
-        }
-    }
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..2 {
-            const VAL_QO: [(usize, usize); 1usize] = [(0usize, 2usize)];
-            const VAL_QI: [(usize, usize); 2usize] =
-                [(227usize, 268435454usize), (230usize, 1744830467usize)];
-            const VAL_LN: [(usize, usize); 0usize] = [];
-            let val =
-                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
-            let mut contrib = bc;
-            field_ops::mul_assign(&mut contrib, &val);
-            field_ops::add_assign(&mut acc[j], &contrib);
-        }
-    }
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..2 {
-            const VAL_QO: [(usize, usize); 1usize] = [(0usize, 2usize)];
-            const VAL_QI: [(usize, usize); 2usize] =
-                [(233usize, 268435454usize), (235usize, 1744830467usize)];
-            const VAL_LN: [(usize, usize); 0usize] = [];
-            let val =
-                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
-            let mut contrib = bc;
-            field_ops::mul_assign(&mut contrib, &val);
-            field_ops::add_assign(&mut acc[j], &contrib);
-        }
-    }
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..2 {
-            const VAL_QO: [(usize, usize); 1usize] = [(0usize, 2usize)];
-            const VAL_QI: [(usize, usize); 2usize] =
-                [(234usize, 268435454usize), (236usize, 1744830467usize)];
-            const VAL_LN: [(usize, usize); 0usize] = [];
-            let val =
-                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
-            let mut contrib = bc;
-            field_ops::mul_assign(&mut contrib, &val);
-            field_ops::add_assign(&mut acc[j], &contrib);
-        }
-    }
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..2 {
-            const VAL_QO: [(usize, usize); 1usize] = [(0usize, 2usize)];
-            const VAL_QI: [(usize, usize); 2usize] =
-                [(239usize, 268435454usize), (242usize, 1744830467usize)];
-            const VAL_LN: [(usize, usize); 0usize] = [];
-            let val =
-                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
-            let mut contrib = bc;
-            field_ops::mul_assign(&mut contrib, &val);
-            field_ops::add_assign(&mut acc[j], &contrib);
-        }
-    }
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..2 {
-            const VAL_QO: [(usize, usize); 1usize] = [(0usize, 2usize)];
-            const VAL_QI: [(usize, usize); 2usize] =
-                [(240usize, 268435454usize), (243usize, 1744830467usize)];
-            const VAL_LN: [(usize, usize); 0usize] = [];
-            let val =
-                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
-            let mut contrib = bc;
-            field_ops::mul_assign(&mut contrib, &val);
-            field_ops::add_assign(&mut acc[j], &contrib);
-        }
-    }
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..2 {
-            const VAL_QO: [(usize, usize); 1usize] = [(0usize, 2usize)];
-            const VAL_QI: [(usize, usize); 2usize] =
-                [(246usize, 268435454usize), (248usize, 1744830467usize)];
-            const VAL_LN: [(usize, usize); 0usize] = [];
-            let val =
-                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
-            let mut contrib = bc;
-            field_ops::mul_assign(&mut contrib, &val);
-            field_ops::add_assign(&mut acc[j], &contrib);
-        }
-    }
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..2 {
-            const VAL_QO: [(usize, usize); 1usize] = [(0usize, 2usize)];
-            const VAL_QI: [(usize, usize); 2usize] =
-                [(247usize, 268435454usize), (249usize, 1744830467usize)];
+                [(216usize, 268435454usize), (218usize, 1744830467usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -7978,7 +4933,7 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..2 {
             const VAL_QO: [(usize, usize); 1usize] = [(1usize, 2usize)];
             const VAL_QI: [(usize, usize); 2usize] =
-                [(200usize, 268435454usize), (203usize, 1744830467usize)];
+                [(187usize, 268435454usize), (189usize, 1744830467usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -7993,7 +4948,67 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..2 {
             const VAL_QO: [(usize, usize); 1usize] = [(1usize, 2usize)];
             const VAL_QI: [(usize, usize); 2usize] =
-                [(201usize, 268435454usize), (204usize, 1744830467usize)];
+                [(188usize, 268435454usize), (190usize, 1744830467usize)];
+            const VAL_LN: [(usize, usize); 0usize] = [];
+            let val =
+                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
+            let mut contrib = bc;
+            field_ops::mul_assign(&mut contrib, &val);
+            field_ops::add_assign(&mut acc[j], &contrib);
+        }
+    }
+    {
+        let bc = current_batch;
+        field_ops::mul_assign(&mut current_batch, &batch_base);
+        for j in 0..2 {
+            const VAL_QO: [(usize, usize); 1usize] = [(1usize, 2usize)];
+            const VAL_QI: [(usize, usize); 2usize] =
+                [(191usize, 268435454usize), (193usize, 1744830467usize)];
+            const VAL_LN: [(usize, usize); 0usize] = [];
+            let val =
+                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
+            let mut contrib = bc;
+            field_ops::mul_assign(&mut contrib, &val);
+            field_ops::add_assign(&mut acc[j], &contrib);
+        }
+    }
+    {
+        let bc = current_batch;
+        field_ops::mul_assign(&mut current_batch, &batch_base);
+        for j in 0..2 {
+            const VAL_QO: [(usize, usize); 1usize] = [(1usize, 2usize)];
+            const VAL_QI: [(usize, usize); 2usize] =
+                [(192usize, 268435454usize), (194usize, 1744830467usize)];
+            const VAL_LN: [(usize, usize); 0usize] = [];
+            let val =
+                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
+            let mut contrib = bc;
+            field_ops::mul_assign(&mut contrib, &val);
+            field_ops::add_assign(&mut acc[j], &contrib);
+        }
+    }
+    {
+        let bc = current_batch;
+        field_ops::mul_assign(&mut current_batch, &batch_base);
+        for j in 0..2 {
+            const VAL_QO: [(usize, usize); 1usize] = [(1usize, 2usize)];
+            const VAL_QI: [(usize, usize); 2usize] =
+                [(203usize, 268435454usize), (205usize, 1744830467usize)];
+            const VAL_LN: [(usize, usize); 0usize] = [];
+            let val =
+                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
+            let mut contrib = bc;
+            field_ops::mul_assign(&mut contrib, &val);
+            field_ops::add_assign(&mut acc[j], &contrib);
+        }
+    }
+    {
+        let bc = current_batch;
+        field_ops::mul_assign(&mut current_batch, &batch_base);
+        for j in 0..2 {
+            const VAL_QO: [(usize, usize); 1usize] = [(1usize, 2usize)];
+            const VAL_QI: [(usize, usize); 2usize] =
+                [(204usize, 268435454usize), (206usize, 1744830467usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -8038,7 +5053,7 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..2 {
             const VAL_QO: [(usize, usize); 1usize] = [(1usize, 2usize)];
             const VAL_QI: [(usize, usize); 2usize] =
-                [(226usize, 268435454usize), (229usize, 1744830467usize)];
+                [(211usize, 268435454usize), (213usize, 1744830467usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -8053,7 +5068,7 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..2 {
             const VAL_QO: [(usize, usize); 1usize] = [(1usize, 2usize)];
             const VAL_QI: [(usize, usize); 2usize] =
-                [(227usize, 268435454usize), (230usize, 1744830467usize)];
+                [(212usize, 268435454usize), (214usize, 1744830467usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -8068,7 +5083,7 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..2 {
             const VAL_QO: [(usize, usize); 1usize] = [(1usize, 2usize)];
             const VAL_QI: [(usize, usize); 2usize] =
-                [(233usize, 268435454usize), (235usize, 1744830467usize)];
+                [(215usize, 268435454usize), (217usize, 1744830467usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -8083,67 +5098,7 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..2 {
             const VAL_QO: [(usize, usize); 1usize] = [(1usize, 2usize)];
             const VAL_QI: [(usize, usize); 2usize] =
-                [(234usize, 268435454usize), (236usize, 1744830467usize)];
-            const VAL_LN: [(usize, usize); 0usize] = [];
-            let val =
-                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
-            let mut contrib = bc;
-            field_ops::mul_assign(&mut contrib, &val);
-            field_ops::add_assign(&mut acc[j], &contrib);
-        }
-    }
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..2 {
-            const VAL_QO: [(usize, usize); 1usize] = [(1usize, 2usize)];
-            const VAL_QI: [(usize, usize); 2usize] =
-                [(239usize, 268435454usize), (242usize, 1744830467usize)];
-            const VAL_LN: [(usize, usize); 0usize] = [];
-            let val =
-                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
-            let mut contrib = bc;
-            field_ops::mul_assign(&mut contrib, &val);
-            field_ops::add_assign(&mut acc[j], &contrib);
-        }
-    }
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..2 {
-            const VAL_QO: [(usize, usize); 1usize] = [(1usize, 2usize)];
-            const VAL_QI: [(usize, usize); 2usize] =
-                [(240usize, 268435454usize), (243usize, 1744830467usize)];
-            const VAL_LN: [(usize, usize); 0usize] = [];
-            let val =
-                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
-            let mut contrib = bc;
-            field_ops::mul_assign(&mut contrib, &val);
-            field_ops::add_assign(&mut acc[j], &contrib);
-        }
-    }
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..2 {
-            const VAL_QO: [(usize, usize); 1usize] = [(1usize, 2usize)];
-            const VAL_QI: [(usize, usize); 2usize] =
-                [(246usize, 268435454usize), (248usize, 1744830467usize)];
-            const VAL_LN: [(usize, usize); 0usize] = [];
-            let val =
-                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
-            let mut contrib = bc;
-            field_ops::mul_assign(&mut contrib, &val);
-            field_ops::add_assign(&mut acc[j], &contrib);
-        }
-    }
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..2 {
-            const VAL_QO: [(usize, usize); 1usize] = [(1usize, 2usize)];
-            const VAL_QI: [(usize, usize); 2usize] =
-                [(247usize, 268435454usize), (249usize, 1744830467usize)];
+                [(216usize, 268435454usize), (218usize, 1744830467usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -8158,7 +5113,7 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..2 {
             const VAL_QO: [(usize, usize); 1usize] = [(2usize, 2usize)];
             const VAL_QI: [(usize, usize); 2usize] =
-                [(187usize, 268435454usize), (190usize, 1744830467usize)];
+                [(179usize, 268435454usize), (181usize, 1744830467usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -8173,7 +5128,7 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..2 {
             const VAL_QO: [(usize, usize); 1usize] = [(2usize, 2usize)];
             const VAL_QI: [(usize, usize); 2usize] =
-                [(188usize, 268435454usize), (191usize, 1744830467usize)];
+                [(180usize, 268435454usize), (182usize, 1744830467usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -8188,7 +5143,22 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..2 {
             const VAL_QO: [(usize, usize); 1usize] = [(2usize, 2usize)];
             const VAL_QI: [(usize, usize); 2usize] =
-                [(194usize, 268435454usize), (196usize, 1744830467usize)];
+                [(183usize, 268435454usize), (185usize, 1744830467usize)];
+            const VAL_LN: [(usize, usize); 0usize] = [];
+            let val =
+                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
+            let mut contrib = bc;
+            field_ops::mul_assign(&mut contrib, &val);
+            field_ops::add_assign(&mut acc[j], &contrib);
+        }
+    }
+    {
+        let bc = current_batch;
+        field_ops::mul_assign(&mut current_batch, &batch_base);
+        for j in 0..2 {
+            const VAL_QO: [(usize, usize); 1usize] = [(2usize, 2usize)];
+            const VAL_QI: [(usize, usize); 2usize] =
+                [(184usize, 268435454usize), (186usize, 1744830467usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -8218,7 +5188,7 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..2 {
             const VAL_QO: [(usize, usize); 1usize] = [(2usize, 2usize)];
             const VAL_QI: [(usize, usize); 2usize] =
-                [(213usize, 268435454usize), (216usize, 1744830467usize)];
+                [(196usize, 268435454usize), (198usize, 1744830467usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -8233,7 +5203,37 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..2 {
             const VAL_QO: [(usize, usize); 1usize] = [(2usize, 2usize)];
             const VAL_QI: [(usize, usize); 2usize] =
-                [(214usize, 268435454usize), (217usize, 1744830467usize)];
+                [(199usize, 268435454usize), (201usize, 1744830467usize)];
+            const VAL_LN: [(usize, usize); 0usize] = [];
+            let val =
+                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
+            let mut contrib = bc;
+            field_ops::mul_assign(&mut contrib, &val);
+            field_ops::add_assign(&mut acc[j], &contrib);
+        }
+    }
+    {
+        let bc = current_batch;
+        field_ops::mul_assign(&mut current_batch, &batch_base);
+        for j in 0..2 {
+            const VAL_QO: [(usize, usize); 1usize] = [(2usize, 2usize)];
+            const VAL_QI: [(usize, usize); 2usize] =
+                [(200usize, 268435454usize), (202usize, 1744830467usize)];
+            const VAL_LN: [(usize, usize); 0usize] = [];
+            let val =
+                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
+            let mut contrib = bc;
+            field_ops::mul_assign(&mut contrib, &val);
+            field_ops::add_assign(&mut acc[j], &contrib);
+        }
+    }
+    {
+        let bc = current_batch;
+        field_ops::mul_assign(&mut current_batch, &batch_base);
+        for j in 0..2 {
+            const VAL_QO: [(usize, usize); 1usize] = [(2usize, 2usize)];
+            const VAL_QI: [(usize, usize); 2usize] =
+                [(219usize, 268435454usize), (221usize, 1744830467usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -8263,7 +5263,7 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..2 {
             const VAL_QO: [(usize, usize); 1usize] = [(2usize, 2usize)];
             const VAL_QI: [(usize, usize); 2usize] =
-                [(221usize, 268435454usize), (223usize, 1744830467usize)];
+                [(223usize, 268435454usize), (225usize, 1744830467usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -8278,52 +5278,7 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..2 {
             const VAL_QO: [(usize, usize); 1usize] = [(2usize, 2usize)];
             const VAL_QI: [(usize, usize); 2usize] =
-                [(252usize, 268435454usize), (255usize, 1744830467usize)];
-            const VAL_LN: [(usize, usize); 0usize] = [];
-            let val =
-                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
-            let mut contrib = bc;
-            field_ops::mul_assign(&mut contrib, &val);
-            field_ops::add_assign(&mut acc[j], &contrib);
-        }
-    }
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..2 {
-            const VAL_QO: [(usize, usize); 1usize] = [(2usize, 2usize)];
-            const VAL_QI: [(usize, usize); 2usize] =
-                [(253usize, 268435454usize), (256usize, 1744830467usize)];
-            const VAL_LN: [(usize, usize); 0usize] = [];
-            let val =
-                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
-            let mut contrib = bc;
-            field_ops::mul_assign(&mut contrib, &val);
-            field_ops::add_assign(&mut acc[j], &contrib);
-        }
-    }
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..2 {
-            const VAL_QO: [(usize, usize); 1usize] = [(2usize, 2usize)];
-            const VAL_QI: [(usize, usize); 2usize] =
-                [(259usize, 268435454usize), (261usize, 1744830467usize)];
-            const VAL_LN: [(usize, usize); 0usize] = [];
-            let val =
-                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
-            let mut contrib = bc;
-            field_ops::mul_assign(&mut contrib, &val);
-            field_ops::add_assign(&mut acc[j], &contrib);
-        }
-    }
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..2 {
-            const VAL_QO: [(usize, usize); 1usize] = [(2usize, 2usize)];
-            const VAL_QI: [(usize, usize); 2usize] =
-                [(260usize, 268435454usize), (262usize, 1744830467usize)];
+                [(224usize, 268435454usize), (226usize, 1744830467usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -8338,7 +5293,7 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..2 {
             const VAL_QO: [(usize, usize); 1usize] = [(3usize, 2usize)];
             const VAL_QI: [(usize, usize); 2usize] =
-                [(252usize, 268435454usize), (255usize, 1744830467usize)];
+                [(219usize, 268435454usize), (221usize, 1744830467usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -8352,201 +5307,6 @@ unsafe fn layer_0_final_step_accumulator(
         field_ops::mul_assign(&mut current_batch, &batch_base);
         for j in 0..2 {
             const VAL_QO: [(usize, usize); 1usize] = [(3usize, 2usize)];
-            const VAL_QI: [(usize, usize); 2usize] =
-                [(253usize, 268435454usize), (256usize, 1744830467usize)];
-            const VAL_LN: [(usize, usize); 0usize] = [];
-            let val =
-                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
-            let mut contrib = bc;
-            field_ops::mul_assign(&mut contrib, &val);
-            field_ops::add_assign(&mut acc[j], &contrib);
-        }
-    }
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..2 {
-            const VAL_QO: [(usize, usize); 1usize] = [(3usize, 2usize)];
-            const VAL_QI: [(usize, usize); 2usize] =
-                [(259usize, 268435454usize), (261usize, 1744830467usize)];
-            const VAL_LN: [(usize, usize); 0usize] = [];
-            let val =
-                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
-            let mut contrib = bc;
-            field_ops::mul_assign(&mut contrib, &val);
-            field_ops::add_assign(&mut acc[j], &contrib);
-        }
-    }
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..2 {
-            const VAL_QO: [(usize, usize); 1usize] = [(3usize, 2usize)];
-            const VAL_QI: [(usize, usize); 2usize] =
-                [(260usize, 268435454usize), (262usize, 1744830467usize)];
-            const VAL_LN: [(usize, usize); 0usize] = [];
-            let val =
-                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
-            let mut contrib = bc;
-            field_ops::mul_assign(&mut contrib, &val);
-            field_ops::add_assign(&mut acc[j], &contrib);
-        }
-    }
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..2 {
-            const VAL_QO: [(usize, usize); 1usize] = [(4usize, 2usize)];
-            const VAL_QI: [(usize, usize); 2usize] =
-                [(252usize, 268435454usize), (255usize, 1744830467usize)];
-            const VAL_LN: [(usize, usize); 0usize] = [];
-            let val =
-                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
-            let mut contrib = bc;
-            field_ops::mul_assign(&mut contrib, &val);
-            field_ops::add_assign(&mut acc[j], &contrib);
-        }
-    }
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..2 {
-            const VAL_QO: [(usize, usize); 1usize] = [(4usize, 2usize)];
-            const VAL_QI: [(usize, usize); 2usize] =
-                [(253usize, 268435454usize), (256usize, 1744830467usize)];
-            const VAL_LN: [(usize, usize); 0usize] = [];
-            let val =
-                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
-            let mut contrib = bc;
-            field_ops::mul_assign(&mut contrib, &val);
-            field_ops::add_assign(&mut acc[j], &contrib);
-        }
-    }
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..2 {
-            const VAL_QO: [(usize, usize); 1usize] = [(4usize, 2usize)];
-            const VAL_QI: [(usize, usize); 2usize] =
-                [(259usize, 268435454usize), (261usize, 1744830467usize)];
-            const VAL_LN: [(usize, usize); 0usize] = [];
-            let val =
-                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
-            let mut contrib = bc;
-            field_ops::mul_assign(&mut contrib, &val);
-            field_ops::add_assign(&mut acc[j], &contrib);
-        }
-    }
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..2 {
-            const VAL_QO: [(usize, usize); 1usize] = [(4usize, 2usize)];
-            const VAL_QI: [(usize, usize); 2usize] =
-                [(260usize, 268435454usize), (262usize, 1744830467usize)];
-            const VAL_LN: [(usize, usize); 0usize] = [];
-            let val =
-                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
-            let mut contrib = bc;
-            field_ops::mul_assign(&mut contrib, &val);
-            field_ops::add_assign(&mut acc[j], &contrib);
-        }
-    }
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..2 {
-            const VAL_QO: [(usize, usize); 1usize] = [(5usize, 2usize)];
-            const VAL_QI: [(usize, usize); 2usize] =
-                [(187usize, 268435454usize), (255usize, 1744830467usize)];
-            const VAL_LN: [(usize, usize); 0usize] = [];
-            let val =
-                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
-            let mut contrib = bc;
-            field_ops::mul_assign(&mut contrib, &val);
-            field_ops::add_assign(&mut acc[j], &contrib);
-        }
-    }
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..2 {
-            const VAL_QO: [(usize, usize); 1usize] = [(5usize, 2usize)];
-            const VAL_QI: [(usize, usize); 2usize] =
-                [(188usize, 268435454usize), (256usize, 1744830467usize)];
-            const VAL_LN: [(usize, usize); 0usize] = [];
-            let val =
-                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
-            let mut contrib = bc;
-            field_ops::mul_assign(&mut contrib, &val);
-            field_ops::add_assign(&mut acc[j], &contrib);
-        }
-    }
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..2 {
-            const VAL_QO: [(usize, usize); 1usize] = [(5usize, 2usize)];
-            const VAL_QI: [(usize, usize); 2usize] =
-                [(194usize, 268435454usize), (261usize, 1744830467usize)];
-            const VAL_LN: [(usize, usize); 0usize] = [];
-            let val =
-                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
-            let mut contrib = bc;
-            field_ops::mul_assign(&mut contrib, &val);
-            field_ops::add_assign(&mut acc[j], &contrib);
-        }
-    }
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..2 {
-            const VAL_QO: [(usize, usize); 1usize] = [(5usize, 2usize)];
-            const VAL_QI: [(usize, usize); 2usize] =
-                [(195usize, 268435454usize), (262usize, 1744830467usize)];
-            const VAL_LN: [(usize, usize); 0usize] = [];
-            let val =
-                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
-            let mut contrib = bc;
-            field_ops::mul_assign(&mut contrib, &val);
-            field_ops::add_assign(&mut acc[j], &contrib);
-        }
-    }
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..2 {
-            const VAL_QO: [(usize, usize); 1usize] = [(5usize, 2usize)];
-            const VAL_QI: [(usize, usize); 2usize] =
-                [(213usize, 268435454usize), (216usize, 1744830467usize)];
-            const VAL_LN: [(usize, usize); 0usize] = [];
-            let val =
-                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
-            let mut contrib = bc;
-            field_ops::mul_assign(&mut contrib, &val);
-            field_ops::add_assign(&mut acc[j], &contrib);
-        }
-    }
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..2 {
-            const VAL_QO: [(usize, usize); 1usize] = [(5usize, 2usize)];
-            const VAL_QI: [(usize, usize); 2usize] =
-                [(214usize, 268435454usize), (217usize, 1744830467usize)];
-            const VAL_LN: [(usize, usize); 0usize] = [];
-            let val =
-                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
-            let mut contrib = bc;
-            field_ops::mul_assign(&mut contrib, &val);
-            field_ops::add_assign(&mut acc[j], &contrib);
-        }
-    }
-    {
-        let bc = current_batch;
-        field_ops::mul_assign(&mut current_batch, &batch_base);
-        for j in 0..2 {
-            const VAL_QO: [(usize, usize); 1usize] = [(5usize, 2usize)];
             const VAL_QI: [(usize, usize); 2usize] =
                 [(220usize, 268435454usize), (222usize, 1744830467usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
@@ -8561,9 +5321,84 @@ unsafe fn layer_0_final_step_accumulator(
         let bc = current_batch;
         field_ops::mul_assign(&mut current_batch, &batch_base);
         for j in 0..2 {
-            const VAL_QO: [(usize, usize); 1usize] = [(5usize, 2usize)];
+            const VAL_QO: [(usize, usize); 1usize] = [(3usize, 2usize)];
             const VAL_QI: [(usize, usize); 2usize] =
-                [(221usize, 268435454usize), (223usize, 1744830467usize)];
+                [(223usize, 268435454usize), (225usize, 1744830467usize)];
+            const VAL_LN: [(usize, usize); 0usize] = [];
+            let val =
+                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
+            let mut contrib = bc;
+            field_ops::mul_assign(&mut contrib, &val);
+            field_ops::add_assign(&mut acc[j], &contrib);
+        }
+    }
+    {
+        let bc = current_batch;
+        field_ops::mul_assign(&mut current_batch, &batch_base);
+        for j in 0..2 {
+            const VAL_QO: [(usize, usize); 1usize] = [(3usize, 2usize)];
+            const VAL_QI: [(usize, usize); 2usize] =
+                [(224usize, 268435454usize), (226usize, 1744830467usize)];
+            const VAL_LN: [(usize, usize); 0usize] = [];
+            let val =
+                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
+            let mut contrib = bc;
+            field_ops::mul_assign(&mut contrib, &val);
+            field_ops::add_assign(&mut acc[j], &contrib);
+        }
+    }
+    {
+        let bc = current_batch;
+        field_ops::mul_assign(&mut current_batch, &batch_base);
+        for j in 0..2 {
+            const VAL_QO: [(usize, usize); 1usize] = [(4usize, 2usize)];
+            const VAL_QI: [(usize, usize); 2usize] =
+                [(219usize, 268435454usize), (221usize, 1744830467usize)];
+            const VAL_LN: [(usize, usize); 0usize] = [];
+            let val =
+                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
+            let mut contrib = bc;
+            field_ops::mul_assign(&mut contrib, &val);
+            field_ops::add_assign(&mut acc[j], &contrib);
+        }
+    }
+    {
+        let bc = current_batch;
+        field_ops::mul_assign(&mut current_batch, &batch_base);
+        for j in 0..2 {
+            const VAL_QO: [(usize, usize); 1usize] = [(4usize, 2usize)];
+            const VAL_QI: [(usize, usize); 2usize] =
+                [(220usize, 268435454usize), (222usize, 1744830467usize)];
+            const VAL_LN: [(usize, usize); 0usize] = [];
+            let val =
+                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
+            let mut contrib = bc;
+            field_ops::mul_assign(&mut contrib, &val);
+            field_ops::add_assign(&mut acc[j], &contrib);
+        }
+    }
+    {
+        let bc = current_batch;
+        field_ops::mul_assign(&mut current_batch, &batch_base);
+        for j in 0..2 {
+            const VAL_QO: [(usize, usize); 1usize] = [(4usize, 2usize)];
+            const VAL_QI: [(usize, usize); 2usize] =
+                [(223usize, 268435454usize), (225usize, 1744830467usize)];
+            const VAL_LN: [(usize, usize); 0usize] = [];
+            let val =
+                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
+            let mut contrib = bc;
+            field_ops::mul_assign(&mut contrib, &val);
+            field_ops::add_assign(&mut acc[j], &contrib);
+        }
+    }
+    {
+        let bc = current_batch;
+        field_ops::mul_assign(&mut current_batch, &batch_base);
+        for j in 0..2 {
+            const VAL_QO: [(usize, usize); 1usize] = [(4usize, 2usize)];
+            const VAL_QI: [(usize, usize); 2usize] =
+                [(224usize, 268435454usize), (226usize, 1744830467usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -8578,7 +5413,7 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..2 {
             const VAL_QO: [(usize, usize); 1usize] = [(5usize, 2usize)];
             const VAL_QI: [(usize, usize); 2usize] =
-                [(226usize, 268435454usize), (229usize, 1744830467usize)];
+                [(179usize, 268435454usize), (221usize, 1744830467usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -8593,7 +5428,7 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..2 {
             const VAL_QO: [(usize, usize); 1usize] = [(5usize, 2usize)];
             const VAL_QI: [(usize, usize); 2usize] =
-                [(227usize, 268435454usize), (230usize, 1744830467usize)];
+                [(180usize, 268435454usize), (222usize, 1744830467usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -8608,7 +5443,7 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..2 {
             const VAL_QO: [(usize, usize); 1usize] = [(5usize, 2usize)];
             const VAL_QI: [(usize, usize); 2usize] =
-                [(233usize, 268435454usize), (235usize, 1744830467usize)];
+                [(183usize, 268435454usize), (225usize, 1744830467usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -8623,7 +5458,127 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..2 {
             const VAL_QO: [(usize, usize); 1usize] = [(5usize, 2usize)];
             const VAL_QI: [(usize, usize); 2usize] =
-                [(234usize, 268435454usize), (236usize, 1744830467usize)];
+                [(184usize, 268435454usize), (226usize, 1744830467usize)];
+            const VAL_LN: [(usize, usize); 0usize] = [];
+            let val =
+                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
+            let mut contrib = bc;
+            field_ops::mul_assign(&mut contrib, &val);
+            field_ops::add_assign(&mut acc[j], &contrib);
+        }
+    }
+    {
+        let bc = current_batch;
+        field_ops::mul_assign(&mut current_batch, &batch_base);
+        for j in 0..2 {
+            const VAL_QO: [(usize, usize); 1usize] = [(5usize, 2usize)];
+            const VAL_QI: [(usize, usize); 2usize] =
+                [(195usize, 268435454usize), (197usize, 1744830467usize)];
+            const VAL_LN: [(usize, usize); 0usize] = [];
+            let val =
+                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
+            let mut contrib = bc;
+            field_ops::mul_assign(&mut contrib, &val);
+            field_ops::add_assign(&mut acc[j], &contrib);
+        }
+    }
+    {
+        let bc = current_batch;
+        field_ops::mul_assign(&mut current_batch, &batch_base);
+        for j in 0..2 {
+            const VAL_QO: [(usize, usize); 1usize] = [(5usize, 2usize)];
+            const VAL_QI: [(usize, usize); 2usize] =
+                [(196usize, 268435454usize), (198usize, 1744830467usize)];
+            const VAL_LN: [(usize, usize); 0usize] = [];
+            let val =
+                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
+            let mut contrib = bc;
+            field_ops::mul_assign(&mut contrib, &val);
+            field_ops::add_assign(&mut acc[j], &contrib);
+        }
+    }
+    {
+        let bc = current_batch;
+        field_ops::mul_assign(&mut current_batch, &batch_base);
+        for j in 0..2 {
+            const VAL_QO: [(usize, usize); 1usize] = [(5usize, 2usize)];
+            const VAL_QI: [(usize, usize); 2usize] =
+                [(199usize, 268435454usize), (201usize, 1744830467usize)];
+            const VAL_LN: [(usize, usize); 0usize] = [];
+            let val =
+                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
+            let mut contrib = bc;
+            field_ops::mul_assign(&mut contrib, &val);
+            field_ops::add_assign(&mut acc[j], &contrib);
+        }
+    }
+    {
+        let bc = current_batch;
+        field_ops::mul_assign(&mut current_batch, &batch_base);
+        for j in 0..2 {
+            const VAL_QO: [(usize, usize); 1usize] = [(5usize, 2usize)];
+            const VAL_QI: [(usize, usize); 2usize] =
+                [(200usize, 268435454usize), (202usize, 1744830467usize)];
+            const VAL_LN: [(usize, usize); 0usize] = [];
+            let val =
+                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
+            let mut contrib = bc;
+            field_ops::mul_assign(&mut contrib, &val);
+            field_ops::add_assign(&mut acc[j], &contrib);
+        }
+    }
+    {
+        let bc = current_batch;
+        field_ops::mul_assign(&mut current_batch, &batch_base);
+        for j in 0..2 {
+            const VAL_QO: [(usize, usize); 1usize] = [(5usize, 2usize)];
+            const VAL_QI: [(usize, usize); 2usize] =
+                [(203usize, 268435454usize), (205usize, 1744830467usize)];
+            const VAL_LN: [(usize, usize); 0usize] = [];
+            let val =
+                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
+            let mut contrib = bc;
+            field_ops::mul_assign(&mut contrib, &val);
+            field_ops::add_assign(&mut acc[j], &contrib);
+        }
+    }
+    {
+        let bc = current_batch;
+        field_ops::mul_assign(&mut current_batch, &batch_base);
+        for j in 0..2 {
+            const VAL_QO: [(usize, usize); 1usize] = [(5usize, 2usize)];
+            const VAL_QI: [(usize, usize); 2usize] =
+                [(204usize, 268435454usize), (206usize, 1744830467usize)];
+            const VAL_LN: [(usize, usize); 0usize] = [];
+            let val =
+                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
+            let mut contrib = bc;
+            field_ops::mul_assign(&mut contrib, &val);
+            field_ops::add_assign(&mut acc[j], &contrib);
+        }
+    }
+    {
+        let bc = current_batch;
+        field_ops::mul_assign(&mut current_batch, &batch_base);
+        for j in 0..2 {
+            const VAL_QO: [(usize, usize); 1usize] = [(5usize, 2usize)];
+            const VAL_QI: [(usize, usize); 2usize] =
+                [(207usize, 268435454usize), (209usize, 1744830467usize)];
+            const VAL_LN: [(usize, usize); 0usize] = [];
+            let val =
+                super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
+            let mut contrib = bc;
+            field_ops::mul_assign(&mut contrib, &val);
+            field_ops::add_assign(&mut acc[j], &contrib);
+        }
+    }
+    {
+        let bc = current_batch;
+        field_ops::mul_assign(&mut current_batch, &batch_base);
+        for j in 0..2 {
+            const VAL_QO: [(usize, usize); 1usize] = [(5usize, 2usize)];
+            const VAL_QI: [(usize, usize); 2usize] =
+                [(208usize, 268435454usize), (210usize, 1744830467usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -8638,7 +5593,7 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..2 {
             const VAL_QO: [(usize, usize); 1usize] = [(6usize, 2usize)];
             const VAL_QI: [(usize, usize); 2usize] =
-                [(226usize, 268435454usize), (229usize, 1744830467usize)];
+                [(203usize, 268435454usize), (205usize, 1744830467usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -8653,7 +5608,7 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..2 {
             const VAL_QO: [(usize, usize); 1usize] = [(6usize, 2usize)];
             const VAL_QI: [(usize, usize); 2usize] =
-                [(227usize, 268435454usize), (230usize, 1744830467usize)];
+                [(204usize, 268435454usize), (206usize, 1744830467usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -8668,7 +5623,7 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..2 {
             const VAL_QO: [(usize, usize); 1usize] = [(6usize, 2usize)];
             const VAL_QI: [(usize, usize); 2usize] =
-                [(233usize, 268435454usize), (235usize, 1744830467usize)];
+                [(207usize, 268435454usize), (209usize, 1744830467usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -8683,7 +5638,7 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..2 {
             const VAL_QO: [(usize, usize); 1usize] = [(6usize, 2usize)];
             const VAL_QI: [(usize, usize); 2usize] =
-                [(234usize, 268435454usize), (236usize, 1744830467usize)];
+                [(208usize, 268435454usize), (210usize, 1744830467usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -8698,7 +5653,7 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..2 {
             const VAL_QO: [(usize, usize); 1usize] = [(6usize, 2usize)];
             const VAL_QI: [(usize, usize); 2usize] =
-                [(239usize, 268435454usize), (242usize, 1744830467usize)];
+                [(211usize, 268435454usize), (213usize, 1744830467usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -8713,7 +5668,7 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..2 {
             const VAL_QO: [(usize, usize); 1usize] = [(6usize, 2usize)];
             const VAL_QI: [(usize, usize); 2usize] =
-                [(240usize, 268435454usize), (243usize, 1744830467usize)];
+                [(212usize, 268435454usize), (214usize, 1744830467usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -8728,7 +5683,7 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..2 {
             const VAL_QO: [(usize, usize); 1usize] = [(6usize, 2usize)];
             const VAL_QI: [(usize, usize); 2usize] =
-                [(246usize, 268435454usize), (248usize, 1744830467usize)];
+                [(215usize, 268435454usize), (217usize, 1744830467usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -8743,7 +5698,7 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..2 {
             const VAL_QO: [(usize, usize); 1usize] = [(6usize, 2usize)];
             const VAL_QI: [(usize, usize); 2usize] =
-                [(247usize, 268435454usize), (249usize, 1744830467usize)];
+                [(216usize, 268435454usize), (218usize, 1744830467usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -8758,7 +5713,7 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..2 {
             const VAL_QO: [(usize, usize); 1usize] = [(6usize, 2usize)];
             const VAL_QI: [(usize, usize); 2usize] =
-                [(252usize, 268435454usize), (255usize, 1744830467usize)];
+                [(219usize, 268435454usize), (221usize, 1744830467usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -8773,7 +5728,7 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..2 {
             const VAL_QO: [(usize, usize); 1usize] = [(6usize, 2usize)];
             const VAL_QI: [(usize, usize); 2usize] =
-                [(253usize, 268435454usize), (256usize, 1744830467usize)];
+                [(220usize, 268435454usize), (222usize, 1744830467usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -8788,7 +5743,7 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..2 {
             const VAL_QO: [(usize, usize); 1usize] = [(6usize, 2usize)];
             const VAL_QI: [(usize, usize); 2usize] =
-                [(259usize, 268435454usize), (261usize, 1744830467usize)];
+                [(223usize, 268435454usize), (225usize, 1744830467usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -8803,7 +5758,7 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..2 {
             const VAL_QO: [(usize, usize); 1usize] = [(6usize, 2usize)];
             const VAL_QI: [(usize, usize); 2usize] =
-                [(260usize, 268435454usize), (262usize, 1744830467usize)];
+                [(224usize, 268435454usize), (226usize, 1744830467usize)];
             const VAL_LN: [(usize, usize); 0usize] = [];
             let val =
                 super::common::eval_max_quadratic(evals, &VAL_QO, &VAL_QI, &VAL_LN, 0usize, j);
@@ -9294,7 +6249,6 @@ unsafe fn layer_1_final_step_accumulator(
     batch_base: BabyBearExt4,
     lookup_additive_challenge: BabyBearExt4,
     lookup_alpha: BabyBearExt4,
-    challenge_powers: &[BabyBearExt4; GKR_MAX_POW],
     linearization_challenges: &[BabyBearExt4],
     permutation_argument_additive_part: BabyBearExt4,
     address_high_bits_shift: u32,
@@ -9302,42 +6256,96 @@ unsafe fn layer_1_final_step_accumulator(
     let mut acc = [BabyBearExt4::ZERO; 2];
     let mut current_batch = BabyBearExt4::ONE;
     {
-        const SIMPLE_GATES: [(usize, [usize; 4]); 29usize] = [
-            (1usize, [0usize, 0usize, 0usize, 0usize]),
-            (2usize, [1usize, 3usize, 0usize, 0usize]),
-            (2usize, [5usize, 7usize, 0usize, 0usize]),
-            (2usize, [9usize, 11usize, 0usize, 0usize]),
-            (2usize, [13usize, 15usize, 0usize, 0usize]),
-            (2usize, [2usize, 4usize, 0usize, 0usize]),
-            (2usize, [6usize, 8usize, 0usize, 0usize]),
-            (2usize, [10usize, 12usize, 0usize, 0usize]),
-            (2usize, [14usize, 16usize, 0usize, 0usize]),
-            (7usize, [45usize, 46usize, 47usize, 0usize]),
-            (8usize, [43usize, 44usize, 41usize, 42usize]),
-            (8usize, [39usize, 40usize, 37usize, 38usize]),
-            (8usize, [35usize, 36usize, 33usize, 34usize]),
-            (8usize, [31usize, 32usize, 29usize, 30usize]),
-            (8usize, [27usize, 28usize, 25usize, 26usize]),
-            (8usize, [23usize, 24usize, 21usize, 22usize]),
-            (8usize, [19usize, 20usize, 17usize, 18usize]),
-            (8usize, [88usize, 89usize, 86usize, 87usize]),
-            (8usize, [84usize, 85usize, 82usize, 83usize]),
-            (8usize, [80usize, 81usize, 78usize, 79usize]),
-            (8usize, [76usize, 77usize, 74usize, 75usize]),
-            (8usize, [72usize, 73usize, 70usize, 71usize]),
-            (8usize, [68usize, 69usize, 66usize, 67usize]),
-            (8usize, [64usize, 65usize, 62usize, 63usize]),
-            (8usize, [60usize, 61usize, 58usize, 59usize]),
-            (8usize, [56usize, 57usize, 54usize, 55usize]),
-            (8usize, [52usize, 53usize, 50usize, 51usize]),
-            (1usize, [48usize, 0usize, 0usize, 0usize]),
-            (1usize, [49usize, 0usize, 0usize, 0usize]),
+        const SIMPLE_GATES: [(SimpleGateType, [usize; 4]); 29usize] = [
+            (SimpleGateType::Copy, [0usize, 0usize, 0usize, 0usize]),
+            (SimpleGateType::Product, [1usize, 3usize, 0usize, 0usize]),
+            (SimpleGateType::Product, [5usize, 7usize, 0usize, 0usize]),
+            (SimpleGateType::Product, [9usize, 11usize, 0usize, 0usize]),
+            (SimpleGateType::Product, [13usize, 15usize, 0usize, 0usize]),
+            (SimpleGateType::Product, [2usize, 4usize, 0usize, 0usize]),
+            (SimpleGateType::Product, [6usize, 8usize, 0usize, 0usize]),
+            (SimpleGateType::Product, [10usize, 12usize, 0usize, 0usize]),
+            (SimpleGateType::Product, [14usize, 16usize, 0usize, 0usize]),
+            (
+                SimpleGateType::LookupUnbalanced,
+                [45usize, 46usize, 47usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupAggregatePair,
+                [43usize, 44usize, 41usize, 42usize],
+            ),
+            (
+                SimpleGateType::LookupAggregatePair,
+                [39usize, 40usize, 37usize, 38usize],
+            ),
+            (
+                SimpleGateType::LookupAggregatePair,
+                [35usize, 36usize, 33usize, 34usize],
+            ),
+            (
+                SimpleGateType::LookupAggregatePair,
+                [31usize, 32usize, 29usize, 30usize],
+            ),
+            (
+                SimpleGateType::LookupAggregatePair,
+                [27usize, 28usize, 25usize, 26usize],
+            ),
+            (
+                SimpleGateType::LookupAggregatePair,
+                [23usize, 24usize, 21usize, 22usize],
+            ),
+            (
+                SimpleGateType::LookupAggregatePair,
+                [19usize, 20usize, 17usize, 18usize],
+            ),
+            (
+                SimpleGateType::LookupAggregatePair,
+                [88usize, 89usize, 86usize, 87usize],
+            ),
+            (
+                SimpleGateType::LookupAggregatePair,
+                [84usize, 85usize, 82usize, 83usize],
+            ),
+            (
+                SimpleGateType::LookupAggregatePair,
+                [80usize, 81usize, 78usize, 79usize],
+            ),
+            (
+                SimpleGateType::LookupAggregatePair,
+                [76usize, 77usize, 74usize, 75usize],
+            ),
+            (
+                SimpleGateType::LookupAggregatePair,
+                [72usize, 73usize, 70usize, 71usize],
+            ),
+            (
+                SimpleGateType::LookupAggregatePair,
+                [68usize, 69usize, 66usize, 67usize],
+            ),
+            (
+                SimpleGateType::LookupAggregatePair,
+                [64usize, 65usize, 62usize, 63usize],
+            ),
+            (
+                SimpleGateType::LookupAggregatePair,
+                [60usize, 61usize, 58usize, 59usize],
+            ),
+            (
+                SimpleGateType::LookupAggregatePair,
+                [56usize, 57usize, 54usize, 55usize],
+            ),
+            (
+                SimpleGateType::LookupAggregatePair,
+                [52usize, 53usize, 50usize, 51usize],
+            ),
+            (SimpleGateType::Copy, [48usize, 0usize, 0usize, 0usize]),
+            (SimpleGateType::Copy, [49usize, 0usize, 0usize, 0usize]),
         ];
         let mut _sg = 0;
         while _sg < 29usize {
             let (gt, idx) = unsafe { *SIMPLE_GATES.get_unchecked(_sg) };
             match gt {
-                1usize => {
+                SimpleGateType::Copy => {
                     let bc = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
@@ -9347,7 +6355,7 @@ unsafe fn layer_1_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &contrib);
                     }
                 }
-                2usize => {
+                SimpleGateType::Product => {
                     let bc = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
@@ -9359,7 +6367,7 @@ unsafe fn layer_1_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &contrib);
                     }
                 }
-                3usize => {
+                SimpleGateType::MaskToIdentity => {
                     let bc = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
@@ -9373,7 +6381,7 @@ unsafe fn layer_1_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &contrib);
                     }
                 }
-                4usize => {
+                SimpleGateType::UnbalancedProduct => {
                     let bc = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
@@ -9385,7 +6393,7 @@ unsafe fn layer_1_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &contrib);
                     }
                 }
-                5usize => {
+                SimpleGateType::LookupInitialPair => {
                     let bc0 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     let bc1 = current_batch;
@@ -9409,7 +6417,7 @@ unsafe fn layer_1_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &c1);
                     }
                 }
-                6usize => {
+                SimpleGateType::LookupWithSetup => {
                     let bc0 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     let bc1 = current_batch;
@@ -9435,7 +6443,7 @@ unsafe fn layer_1_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &c1);
                     }
                 }
-                7usize => {
+                SimpleGateType::LookupUnbalanced => {
                     let bc0 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     let bc1 = current_batch;
@@ -9460,7 +6468,7 @@ unsafe fn layer_1_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &c1);
                     }
                 }
-                8usize => {
+                SimpleGateType::LookupAggregatePair => {
                     let bc0 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     let bc1 = current_batch;
@@ -9487,7 +6495,7 @@ unsafe fn layer_1_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &c1);
                     }
                 }
-                9usize => {
+                SimpleGateType::LookupInitialWithCachedDenominators => {
                     let bc0 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     let bc1 = current_batch;
@@ -9516,7 +6524,6 @@ unsafe fn layer_1_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &c1);
                     }
                 }
-                _ => unreachable!(),
             }
             _sg += 1;
         }
@@ -9556,7 +6563,6 @@ unsafe fn layer_2_final_step_accumulator(
     batch_base: BabyBearExt4,
     lookup_additive_challenge: BabyBearExt4,
     lookup_alpha: BabyBearExt4,
-    challenge_powers: &[BabyBearExt4; GKR_MAX_POW],
     linearization_challenges: &[BabyBearExt4],
     permutation_argument_additive_part: BabyBearExt4,
     address_high_bits_shift: u32,
@@ -9564,29 +6570,56 @@ unsafe fn layer_2_final_step_accumulator(
     let mut acc = [BabyBearExt4::ZERO; 2];
     let mut current_batch = BabyBearExt4::ONE;
     {
-        const SIMPLE_GATES: [(usize, [usize; 4]); 16usize] = [
-            (1usize, [0usize, 0usize, 0usize, 0usize]),
-            (2usize, [1usize, 2usize, 0usize, 0usize]),
-            (2usize, [3usize, 4usize, 0usize, 0usize]),
-            (2usize, [5usize, 6usize, 0usize, 0usize]),
-            (2usize, [7usize, 8usize, 0usize, 0usize]),
-            (8usize, [23usize, 24usize, 21usize, 22usize]),
-            (8usize, [19usize, 20usize, 17usize, 18usize]),
-            (8usize, [15usize, 16usize, 13usize, 14usize]),
-            (8usize, [11usize, 12usize, 9usize, 10usize]),
-            (8usize, [45usize, 46usize, 43usize, 44usize]),
-            (8usize, [41usize, 42usize, 39usize, 40usize]),
-            (8usize, [37usize, 38usize, 35usize, 36usize]),
-            (8usize, [33usize, 34usize, 31usize, 32usize]),
-            (8usize, [29usize, 30usize, 27usize, 28usize]),
-            (1usize, [25usize, 0usize, 0usize, 0usize]),
-            (1usize, [26usize, 0usize, 0usize, 0usize]),
+        const SIMPLE_GATES: [(SimpleGateType, [usize; 4]); 16usize] = [
+            (SimpleGateType::Copy, [0usize, 0usize, 0usize, 0usize]),
+            (SimpleGateType::Product, [1usize, 2usize, 0usize, 0usize]),
+            (SimpleGateType::Product, [3usize, 4usize, 0usize, 0usize]),
+            (SimpleGateType::Product, [5usize, 6usize, 0usize, 0usize]),
+            (SimpleGateType::Product, [7usize, 8usize, 0usize, 0usize]),
+            (
+                SimpleGateType::LookupAggregatePair,
+                [23usize, 24usize, 21usize, 22usize],
+            ),
+            (
+                SimpleGateType::LookupAggregatePair,
+                [19usize, 20usize, 17usize, 18usize],
+            ),
+            (
+                SimpleGateType::LookupAggregatePair,
+                [15usize, 16usize, 13usize, 14usize],
+            ),
+            (
+                SimpleGateType::LookupAggregatePair,
+                [11usize, 12usize, 9usize, 10usize],
+            ),
+            (
+                SimpleGateType::LookupAggregatePair,
+                [45usize, 46usize, 43usize, 44usize],
+            ),
+            (
+                SimpleGateType::LookupAggregatePair,
+                [41usize, 42usize, 39usize, 40usize],
+            ),
+            (
+                SimpleGateType::LookupAggregatePair,
+                [37usize, 38usize, 35usize, 36usize],
+            ),
+            (
+                SimpleGateType::LookupAggregatePair,
+                [33usize, 34usize, 31usize, 32usize],
+            ),
+            (
+                SimpleGateType::LookupAggregatePair,
+                [29usize, 30usize, 27usize, 28usize],
+            ),
+            (SimpleGateType::Copy, [25usize, 0usize, 0usize, 0usize]),
+            (SimpleGateType::Copy, [26usize, 0usize, 0usize, 0usize]),
         ];
         let mut _sg = 0;
         while _sg < 16usize {
             let (gt, idx) = unsafe { *SIMPLE_GATES.get_unchecked(_sg) };
             match gt {
-                1usize => {
+                SimpleGateType::Copy => {
                     let bc = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
@@ -9596,7 +6629,7 @@ unsafe fn layer_2_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &contrib);
                     }
                 }
-                2usize => {
+                SimpleGateType::Product => {
                     let bc = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
@@ -9608,7 +6641,7 @@ unsafe fn layer_2_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &contrib);
                     }
                 }
-                3usize => {
+                SimpleGateType::MaskToIdentity => {
                     let bc = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
@@ -9622,7 +6655,7 @@ unsafe fn layer_2_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &contrib);
                     }
                 }
-                4usize => {
+                SimpleGateType::UnbalancedProduct => {
                     let bc = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
@@ -9634,7 +6667,7 @@ unsafe fn layer_2_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &contrib);
                     }
                 }
-                5usize => {
+                SimpleGateType::LookupInitialPair => {
                     let bc0 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     let bc1 = current_batch;
@@ -9658,7 +6691,7 @@ unsafe fn layer_2_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &c1);
                     }
                 }
-                6usize => {
+                SimpleGateType::LookupWithSetup => {
                     let bc0 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     let bc1 = current_batch;
@@ -9684,7 +6717,7 @@ unsafe fn layer_2_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &c1);
                     }
                 }
-                7usize => {
+                SimpleGateType::LookupUnbalanced => {
                     let bc0 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     let bc1 = current_batch;
@@ -9709,7 +6742,7 @@ unsafe fn layer_2_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &c1);
                     }
                 }
-                8usize => {
+                SimpleGateType::LookupAggregatePair => {
                     let bc0 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     let bc1 = current_batch;
@@ -9736,7 +6769,7 @@ unsafe fn layer_2_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &c1);
                     }
                 }
-                9usize => {
+                SimpleGateType::LookupInitialWithCachedDenominators => {
                     let bc0 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     let bc1 = current_batch;
@@ -9765,7 +6798,6 @@ unsafe fn layer_2_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &c1);
                     }
                 }
-                _ => unreachable!(),
             }
             _sg += 1;
         }
@@ -9797,7 +6829,6 @@ unsafe fn layer_3_final_step_accumulator(
     batch_base: BabyBearExt4,
     lookup_additive_challenge: BabyBearExt4,
     lookup_alpha: BabyBearExt4,
-    challenge_powers: &[BabyBearExt4; GKR_MAX_POW],
     linearization_challenges: &[BabyBearExt4],
     permutation_argument_additive_part: BabyBearExt4,
     address_high_bits_shift: u32,
@@ -9805,21 +6836,36 @@ unsafe fn layer_3_final_step_accumulator(
     let mut acc = [BabyBearExt4::ZERO; 2];
     let mut current_batch = BabyBearExt4::ONE;
     {
-        const SIMPLE_GATES: [(usize, [usize; 4]); 8usize] = [
-            (1usize, [0usize, 0usize, 0usize, 0usize]),
-            (2usize, [1usize, 2usize, 0usize, 0usize]),
-            (2usize, [3usize, 4usize, 0usize, 0usize]),
-            (8usize, [11usize, 12usize, 9usize, 10usize]),
-            (8usize, [7usize, 8usize, 5usize, 6usize]),
-            (8usize, [23usize, 24usize, 21usize, 22usize]),
-            (8usize, [19usize, 20usize, 17usize, 18usize]),
-            (8usize, [15usize, 16usize, 13usize, 14usize]),
+        const SIMPLE_GATES: [(SimpleGateType, [usize; 4]); 8usize] = [
+            (SimpleGateType::Copy, [0usize, 0usize, 0usize, 0usize]),
+            (SimpleGateType::Product, [1usize, 2usize, 0usize, 0usize]),
+            (SimpleGateType::Product, [3usize, 4usize, 0usize, 0usize]),
+            (
+                SimpleGateType::LookupAggregatePair,
+                [11usize, 12usize, 9usize, 10usize],
+            ),
+            (
+                SimpleGateType::LookupAggregatePair,
+                [7usize, 8usize, 5usize, 6usize],
+            ),
+            (
+                SimpleGateType::LookupAggregatePair,
+                [23usize, 24usize, 21usize, 22usize],
+            ),
+            (
+                SimpleGateType::LookupAggregatePair,
+                [19usize, 20usize, 17usize, 18usize],
+            ),
+            (
+                SimpleGateType::LookupAggregatePair,
+                [15usize, 16usize, 13usize, 14usize],
+            ),
         ];
         let mut _sg = 0;
         while _sg < 8usize {
             let (gt, idx) = unsafe { *SIMPLE_GATES.get_unchecked(_sg) };
             match gt {
-                1usize => {
+                SimpleGateType::Copy => {
                     let bc = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
@@ -9829,7 +6875,7 @@ unsafe fn layer_3_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &contrib);
                     }
                 }
-                2usize => {
+                SimpleGateType::Product => {
                     let bc = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
@@ -9841,7 +6887,7 @@ unsafe fn layer_3_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &contrib);
                     }
                 }
-                3usize => {
+                SimpleGateType::MaskToIdentity => {
                     let bc = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
@@ -9855,7 +6901,7 @@ unsafe fn layer_3_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &contrib);
                     }
                 }
-                4usize => {
+                SimpleGateType::UnbalancedProduct => {
                     let bc = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
@@ -9867,7 +6913,7 @@ unsafe fn layer_3_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &contrib);
                     }
                 }
-                5usize => {
+                SimpleGateType::LookupInitialPair => {
                     let bc0 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     let bc1 = current_batch;
@@ -9891,7 +6937,7 @@ unsafe fn layer_3_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &c1);
                     }
                 }
-                6usize => {
+                SimpleGateType::LookupWithSetup => {
                     let bc0 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     let bc1 = current_batch;
@@ -9917,7 +6963,7 @@ unsafe fn layer_3_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &c1);
                     }
                 }
-                7usize => {
+                SimpleGateType::LookupUnbalanced => {
                     let bc0 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     let bc1 = current_batch;
@@ -9942,7 +6988,7 @@ unsafe fn layer_3_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &c1);
                     }
                 }
-                8usize => {
+                SimpleGateType::LookupAggregatePair => {
                     let bc0 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     let bc1 = current_batch;
@@ -9969,7 +7015,7 @@ unsafe fn layer_3_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &c1);
                     }
                 }
-                9usize => {
+                SimpleGateType::LookupInitialWithCachedDenominators => {
                     let bc0 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     let bc1 = current_batch;
@@ -9998,7 +7044,6 @@ unsafe fn layer_3_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &c1);
                     }
                 }
-                _ => unreachable!(),
             }
             _sg += 1;
         }
@@ -10028,7 +7073,6 @@ unsafe fn layer_4_final_step_accumulator(
     batch_base: BabyBearExt4,
     lookup_additive_challenge: BabyBearExt4,
     lookup_alpha: BabyBearExt4,
-    challenge_powers: &[BabyBearExt4; GKR_MAX_POW],
     linearization_challenges: &[BabyBearExt4],
     permutation_argument_additive_part: BabyBearExt4,
     address_high_bits_shift: u32,
@@ -10036,19 +7080,31 @@ unsafe fn layer_4_final_step_accumulator(
     let mut acc = [BabyBearExt4::ZERO; 2];
     let mut current_batch = BabyBearExt4::ONE;
     {
-        const SIMPLE_GATES: [(usize, [usize; 4]); 6usize] = [
-            (3usize, [1usize, 0usize, 0usize, 0usize]),
-            (3usize, [2usize, 0usize, 0usize, 0usize]),
-            (8usize, [5usize, 6usize, 3usize, 4usize]),
-            (8usize, [11usize, 12usize, 9usize, 10usize]),
-            (1usize, [7usize, 0usize, 0usize, 0usize]),
-            (1usize, [8usize, 0usize, 0usize, 0usize]),
+        const SIMPLE_GATES: [(SimpleGateType, [usize; 4]); 6usize] = [
+            (
+                SimpleGateType::MaskToIdentity,
+                [1usize, 0usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::MaskToIdentity,
+                [2usize, 0usize, 0usize, 0usize],
+            ),
+            (
+                SimpleGateType::LookupAggregatePair,
+                [5usize, 6usize, 3usize, 4usize],
+            ),
+            (
+                SimpleGateType::LookupAggregatePair,
+                [11usize, 12usize, 9usize, 10usize],
+            ),
+            (SimpleGateType::Copy, [7usize, 0usize, 0usize, 0usize]),
+            (SimpleGateType::Copy, [8usize, 0usize, 0usize, 0usize]),
         ];
         let mut _sg = 0;
         while _sg < 6usize {
             let (gt, idx) = unsafe { *SIMPLE_GATES.get_unchecked(_sg) };
             match gt {
-                1usize => {
+                SimpleGateType::Copy => {
                     let bc = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
@@ -10058,7 +7114,7 @@ unsafe fn layer_4_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &contrib);
                     }
                 }
-                2usize => {
+                SimpleGateType::Product => {
                     let bc = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
@@ -10070,7 +7126,7 @@ unsafe fn layer_4_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &contrib);
                     }
                 }
-                3usize => {
+                SimpleGateType::MaskToIdentity => {
                     let bc = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
@@ -10084,7 +7140,7 @@ unsafe fn layer_4_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &contrib);
                     }
                 }
-                4usize => {
+                SimpleGateType::UnbalancedProduct => {
                     let bc = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
@@ -10096,7 +7152,7 @@ unsafe fn layer_4_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &contrib);
                     }
                 }
-                5usize => {
+                SimpleGateType::LookupInitialPair => {
                     let bc0 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     let bc1 = current_batch;
@@ -10120,7 +7176,7 @@ unsafe fn layer_4_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &c1);
                     }
                 }
-                6usize => {
+                SimpleGateType::LookupWithSetup => {
                     let bc0 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     let bc1 = current_batch;
@@ -10146,7 +7202,7 @@ unsafe fn layer_4_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &c1);
                     }
                 }
-                7usize => {
+                SimpleGateType::LookupUnbalanced => {
                     let bc0 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     let bc1 = current_batch;
@@ -10171,7 +7227,7 @@ unsafe fn layer_4_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &c1);
                     }
                 }
-                8usize => {
+                SimpleGateType::LookupAggregatePair => {
                     let bc0 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     let bc1 = current_batch;
@@ -10198,7 +7254,7 @@ unsafe fn layer_4_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &c1);
                     }
                 }
-                9usize => {
+                SimpleGateType::LookupInitialWithCachedDenominators => {
                     let bc0 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     let bc1 = current_batch;
@@ -10227,7 +7283,6 @@ unsafe fn layer_4_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &c1);
                     }
                 }
-                _ => unreachable!(),
             }
             _sg += 1;
         }
@@ -10256,7 +7311,6 @@ unsafe fn layer_5_final_step_accumulator(
     batch_base: BabyBearExt4,
     lookup_additive_challenge: BabyBearExt4,
     lookup_alpha: BabyBearExt4,
-    challenge_powers: &[BabyBearExt4; GKR_MAX_POW],
     linearization_challenges: &[BabyBearExt4],
     permutation_argument_additive_part: BabyBearExt4,
     address_high_bits_shift: u32,
@@ -10264,18 +7318,21 @@ unsafe fn layer_5_final_step_accumulator(
     let mut acc = [BabyBearExt4::ZERO; 2];
     let mut current_batch = BabyBearExt4::ONE;
     {
-        const SIMPLE_GATES: [(usize, [usize; 4]); 5usize] = [
-            (8usize, [6usize, 7usize, 4usize, 5usize]),
-            (1usize, [0usize, 0usize, 0usize, 0usize]),
-            (1usize, [1usize, 0usize, 0usize, 0usize]),
-            (1usize, [2usize, 0usize, 0usize, 0usize]),
-            (1usize, [3usize, 0usize, 0usize, 0usize]),
+        const SIMPLE_GATES: [(SimpleGateType, [usize; 4]); 5usize] = [
+            (
+                SimpleGateType::LookupAggregatePair,
+                [6usize, 7usize, 4usize, 5usize],
+            ),
+            (SimpleGateType::Copy, [0usize, 0usize, 0usize, 0usize]),
+            (SimpleGateType::Copy, [1usize, 0usize, 0usize, 0usize]),
+            (SimpleGateType::Copy, [2usize, 0usize, 0usize, 0usize]),
+            (SimpleGateType::Copy, [3usize, 0usize, 0usize, 0usize]),
         ];
         let mut _sg = 0;
         while _sg < 5usize {
             let (gt, idx) = unsafe { *SIMPLE_GATES.get_unchecked(_sg) };
             match gt {
-                1usize => {
+                SimpleGateType::Copy => {
                     let bc = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
@@ -10285,7 +7342,7 @@ unsafe fn layer_5_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &contrib);
                     }
                 }
-                2usize => {
+                SimpleGateType::Product => {
                     let bc = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
@@ -10297,7 +7354,7 @@ unsafe fn layer_5_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &contrib);
                     }
                 }
-                3usize => {
+                SimpleGateType::MaskToIdentity => {
                     let bc = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
@@ -10311,7 +7368,7 @@ unsafe fn layer_5_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &contrib);
                     }
                 }
-                4usize => {
+                SimpleGateType::UnbalancedProduct => {
                     let bc = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
@@ -10323,7 +7380,7 @@ unsafe fn layer_5_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &contrib);
                     }
                 }
-                5usize => {
+                SimpleGateType::LookupInitialPair => {
                     let bc0 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     let bc1 = current_batch;
@@ -10347,7 +7404,7 @@ unsafe fn layer_5_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &c1);
                     }
                 }
-                6usize => {
+                SimpleGateType::LookupWithSetup => {
                     let bc0 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     let bc1 = current_batch;
@@ -10373,7 +7430,7 @@ unsafe fn layer_5_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &c1);
                     }
                 }
-                7usize => {
+                SimpleGateType::LookupUnbalanced => {
                     let bc0 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     let bc1 = current_batch;
@@ -10398,7 +7455,7 @@ unsafe fn layer_5_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &c1);
                     }
                 }
-                8usize => {
+                SimpleGateType::LookupAggregatePair => {
                     let bc0 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     let bc1 = current_batch;
@@ -10425,7 +7482,7 @@ unsafe fn layer_5_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &c1);
                     }
                 }
-                9usize => {
+                SimpleGateType::LookupInitialWithCachedDenominators => {
                     let bc0 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     let bc1 = current_batch;
@@ -10454,7 +7511,6 @@ unsafe fn layer_5_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &c1);
                     }
                 }
-                _ => unreachable!(),
             }
             _sg += 1;
         }
@@ -10664,70 +7720,19 @@ unsafe fn dim_reducing_final_step_accumulator(
     acc
 }
 #[allow(unused_variables, unused_mut, unused_unsafe)]
-pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
-    GKRVerifierOutput<'static, BabyBearExt4, GKR_ROUNDS, GKR_ADDRS, TOTAL_CAP_WORDS>,
-    E::Error,
-> {
+pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
+    external_challenges: &GKRExternalChallenges<BabyBearField, BabyBearExt4>,
+    initial_transcript: &ConcreteInitialTranscript,
+    ts: &mut ::verifier_common::structs::TranscriptState,
+) -> Result<ConcreteGKRVerifierOutput, E::Error> {
     unsafe {
-        let mut transcript_buf = LazyVec::<u32, GKR_TRANSCRIPT_U32>::new();
-        {
-            let mut i = 0;
-            while i < GKR_TRANSCRIPT_U32 {
-                transcript_buf.push(I::read_word());
-                i += 1;
-            }
-        }
-        let oracle_caps: [u32; TOTAL_CAP_WORDS] = {
-            let mut caps = [0u32; TOTAL_CAP_WORDS];
-            let src = transcript_buf.as_slice();
-            let base = CAPS_OFFSET_IN_TRANSCRIPT;
-            let mut dst = 0;
-            let mut i = 0;
-            while i < NUM_ORACLES {
-                let words = ORACLE_CAP_WORDS[i];
-                let src_offset = ORACLE_CAP_TRANSCRIPT_OFFSETS[i];
-                let mut j = 0;
-                while j < words {
-                    caps[dst + j] = src[base + src_offset + j];
-                    j += 1;
-                }
-                dst += words;
-                i += 1;
-            }
-            caps
-        };
-        let mut ts =
-            TranscriptState::new(Blake2sTranscript::commit_initial(transcript_buf.as_slice()));
-        let mut init_challenges = LazyVec::<BabyBearExt4, 3>::new();
+        let mut init_challenges = LazyVec::<BabyBearExt4, 2>::new();
         unsafe {
-            init_challenges.set_len(3);
+            init_challenges.set_len(2);
         }
-        draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, init_challenges.as_mut_slice());
+        draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, init_challenges.as_mut_slice());
         let lookup_alpha = *init_challenges.get(0);
         let lookup_additive_challenge = *init_challenges.get(1);
-        let constraints_batch_challenge = *init_challenges.get(2);
-        let (linearization_challenges, permutation_argument_additive_part) = {
-            let ext_start = 0usize;
-            let num_lin = 6usize;
-            let mut lin = LazyVec::<BabyBearExt4, 6usize>::new();
-            let mut i = 0;
-            while i < num_lin {
-                let base = ext_start + i * EXT_DEGREE;
-                let raw = unsafe {
-                    (transcript_buf.as_slice().as_ptr().add(base) as *const [u32; EXT_DEGREE])
-                        .as_ref_unchecked()
-                };
-                lin.push(ext_from_raw_words::<BabyBearField, BabyBearExt4>(raw));
-                i += 1;
-            }
-            let add_base = ext_start + num_lin * EXT_DEGREE;
-            let raw = unsafe {
-                (transcript_buf.as_slice().as_ptr().add(add_base) as *const [u32; EXT_DEGREE])
-                    .as_ref_unchecked()
-            };
-            let additive = ext_from_raw_words::<BabyBearField, BabyBearExt4>(raw);
-            (unsafe { lin.into_array() }, additive)
-        };
         let address_high_bits_shift: u32 = 0u32;
         let mut evals_commit_buf = CommitBuf::<GKR_EVALS_COMMIT_BUF>::new();
         let evals_data_words = 96usize * EXT_DEGREE;
@@ -10744,7 +7749,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
         unsafe {
             all_challenges.set_len(5usize);
         }
-        draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, all_challenges.as_mut_slice());
+        draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, all_challenges.as_mut_slice());
         let batching_challenge = *all_challenges.get(5usize - 1);
         let mut eq_buf = LazyVec::<BabyBearExt4, 16usize>::new();
         let eq_challenges: &[BabyBearExt4; 4usize] = all_challenges.as_slice()[..4usize]
@@ -10854,7 +7859,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             );
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, E, 3usize, GKR_COMMIT_BUF>(
-                    &mut ts,
+                    ts,
                     initial_claim,
                     &mut state.prev_point,
                     23usize,
@@ -10888,7 +7893,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             unsafe {
                 draw_buf.set_len(3);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, draw_buf.as_mut_slice());
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_before_last = *draw_buf.get(0);
             let r_last = *draw_buf.get(1);
             let next_batching = *draw_buf.get(2);
@@ -10918,7 +7923,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             );
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, E, 4usize, GKR_COMMIT_BUF>(
-                    &mut ts,
+                    ts,
                     initial_claim,
                     &mut state.prev_point,
                     22usize,
@@ -10952,7 +7957,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             unsafe {
                 draw_buf.set_len(3);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, draw_buf.as_mut_slice());
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_before_last = *draw_buf.get(0);
             let r_last = *draw_buf.get(1);
             let next_batching = *draw_buf.get(2);
@@ -10982,7 +7987,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             );
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, E, 5usize, GKR_COMMIT_BUF>(
-                    &mut ts,
+                    ts,
                     initial_claim,
                     &mut state.prev_point,
                     21usize,
@@ -11016,7 +8021,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             unsafe {
                 draw_buf.set_len(3);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, draw_buf.as_mut_slice());
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_before_last = *draw_buf.get(0);
             let r_last = *draw_buf.get(1);
             let next_batching = *draw_buf.get(2);
@@ -11046,7 +8051,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             );
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, E, 6usize, GKR_COMMIT_BUF>(
-                    &mut ts,
+                    ts,
                     initial_claim,
                     &mut state.prev_point,
                     20usize,
@@ -11080,7 +8085,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             unsafe {
                 draw_buf.set_len(3);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, draw_buf.as_mut_slice());
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_before_last = *draw_buf.get(0);
             let r_last = *draw_buf.get(1);
             let next_batching = *draw_buf.get(2);
@@ -11110,7 +8115,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             );
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, E, 7usize, GKR_COMMIT_BUF>(
-                    &mut ts,
+                    ts,
                     initial_claim,
                     &mut state.prev_point,
                     19usize,
@@ -11144,7 +8149,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             unsafe {
                 draw_buf.set_len(3);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, draw_buf.as_mut_slice());
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_before_last = *draw_buf.get(0);
             let r_last = *draw_buf.get(1);
             let next_batching = *draw_buf.get(2);
@@ -11174,7 +8179,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             );
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, E, 8usize, GKR_COMMIT_BUF>(
-                    &mut ts,
+                    ts,
                     initial_claim,
                     &mut state.prev_point,
                     18usize,
@@ -11208,7 +8213,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             unsafe {
                 draw_buf.set_len(3);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, draw_buf.as_mut_slice());
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_before_last = *draw_buf.get(0);
             let r_last = *draw_buf.get(1);
             let next_batching = *draw_buf.get(2);
@@ -11238,7 +8243,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             );
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, E, 9usize, GKR_COMMIT_BUF>(
-                    &mut ts,
+                    ts,
                     initial_claim,
                     &mut state.prev_point,
                     17usize,
@@ -11272,7 +8277,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             unsafe {
                 draw_buf.set_len(3);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, draw_buf.as_mut_slice());
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_before_last = *draw_buf.get(0);
             let r_last = *draw_buf.get(1);
             let next_batching = *draw_buf.get(2);
@@ -11302,7 +8307,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             );
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, E, 10usize, GKR_COMMIT_BUF>(
-                    &mut ts,
+                    ts,
                     initial_claim,
                     &mut state.prev_point,
                     16usize,
@@ -11336,7 +8341,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             unsafe {
                 draw_buf.set_len(3);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, draw_buf.as_mut_slice());
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_before_last = *draw_buf.get(0);
             let r_last = *draw_buf.get(1);
             let next_batching = *draw_buf.get(2);
@@ -11366,7 +8371,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             );
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, E, 11usize, GKR_COMMIT_BUF>(
-                    &mut ts,
+                    ts,
                     initial_claim,
                     &mut state.prev_point,
                     15usize,
@@ -11400,7 +8405,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             unsafe {
                 draw_buf.set_len(3);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, draw_buf.as_mut_slice());
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_before_last = *draw_buf.get(0);
             let r_last = *draw_buf.get(1);
             let next_batching = *draw_buf.get(2);
@@ -11430,7 +8435,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             );
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, E, 12usize, GKR_COMMIT_BUF>(
-                    &mut ts,
+                    ts,
                     initial_claim,
                     &mut state.prev_point,
                     14usize,
@@ -11464,7 +8469,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             unsafe {
                 draw_buf.set_len(3);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, draw_buf.as_mut_slice());
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_before_last = *draw_buf.get(0);
             let r_last = *draw_buf.get(1);
             let next_batching = *draw_buf.get(2);
@@ -11494,7 +8499,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             );
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, E, 13usize, GKR_COMMIT_BUF>(
-                    &mut ts,
+                    ts,
                     initial_claim,
                     &mut state.prev_point,
                     13usize,
@@ -11528,7 +8533,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             unsafe {
                 draw_buf.set_len(3);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, draw_buf.as_mut_slice());
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_before_last = *draw_buf.get(0);
             let r_last = *draw_buf.get(1);
             let next_batching = *draw_buf.get(2);
@@ -11558,7 +8563,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             );
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, E, 14usize, GKR_COMMIT_BUF>(
-                    &mut ts,
+                    ts,
                     initial_claim,
                     &mut state.prev_point,
                     12usize,
@@ -11592,7 +8597,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             unsafe {
                 draw_buf.set_len(3);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, draw_buf.as_mut_slice());
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_before_last = *draw_buf.get(0);
             let r_last = *draw_buf.get(1);
             let next_batching = *draw_buf.get(2);
@@ -11622,7 +8627,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             );
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, E, 15usize, GKR_COMMIT_BUF>(
-                    &mut ts,
+                    ts,
                     initial_claim,
                     &mut state.prev_point,
                     11usize,
@@ -11656,7 +8661,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             unsafe {
                 draw_buf.set_len(3);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, draw_buf.as_mut_slice());
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_before_last = *draw_buf.get(0);
             let r_last = *draw_buf.get(1);
             let next_batching = *draw_buf.get(2);
@@ -11686,7 +8691,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             );
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, E, 16usize, GKR_COMMIT_BUF>(
-                    &mut ts,
+                    ts,
                     initial_claim,
                     &mut state.prev_point,
                     10usize,
@@ -11720,7 +8725,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             unsafe {
                 draw_buf.set_len(3);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, draw_buf.as_mut_slice());
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_before_last = *draw_buf.get(0);
             let r_last = *draw_buf.get(1);
             let next_batching = *draw_buf.get(2);
@@ -11750,7 +8755,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             );
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, E, 17usize, GKR_COMMIT_BUF>(
-                    &mut ts,
+                    ts,
                     initial_claim,
                     &mut state.prev_point,
                     9usize,
@@ -11784,7 +8789,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             unsafe {
                 draw_buf.set_len(3);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, draw_buf.as_mut_slice());
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_before_last = *draw_buf.get(0);
             let r_last = *draw_buf.get(1);
             let next_batching = *draw_buf.get(2);
@@ -11814,7 +8819,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             );
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, E, 18usize, GKR_COMMIT_BUF>(
-                    &mut ts,
+                    ts,
                     initial_claim,
                     &mut state.prev_point,
                     8usize,
@@ -11848,7 +8853,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             unsafe {
                 draw_buf.set_len(3);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, draw_buf.as_mut_slice());
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_before_last = *draw_buf.get(0);
             let r_last = *draw_buf.get(1);
             let next_batching = *draw_buf.get(2);
@@ -11878,7 +8883,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             );
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, E, 19usize, GKR_COMMIT_BUF>(
-                    &mut ts,
+                    ts,
                     initial_claim,
                     &mut state.prev_point,
                     7usize,
@@ -11912,7 +8917,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             unsafe {
                 draw_buf.set_len(3);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, draw_buf.as_mut_slice());
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_before_last = *draw_buf.get(0);
             let r_last = *draw_buf.get(1);
             let next_batching = *draw_buf.get(2);
@@ -11942,7 +8947,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             );
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, E, 20usize, GKR_COMMIT_BUF>(
-                    &mut ts,
+                    ts,
                     initial_claim,
                     &mut state.prev_point,
                     6usize,
@@ -11976,7 +8981,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             unsafe {
                 draw_buf.set_len(3);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, draw_buf.as_mut_slice());
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_before_last = *draw_buf.get(0);
             let r_last = *draw_buf.get(1);
             let next_batching = *draw_buf.get(2);
@@ -11999,15 +9004,6 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             state.batching_challenge = next_batching;
             state.prev_point_len = fc_len;
         }
-        let challenge_powers: [BabyBearExt4; GKR_MAX_POW] = {
-            let mut lv = LazyVec::<BabyBearExt4, GKR_MAX_POW>::new();
-            let mut pow = BabyBearExt4::ONE;
-            for _ in 0..GKR_MAX_POW {
-                lv.push(pow);
-                field_ops::mul_assign(&mut pow, &constraints_batch_challenge);
-            }
-            unsafe { lv.into_array() }
-        };
         {
             let initial_claim = layer_5_compute_claim(
                 state.prev_claims.as_array::<6usize>(),
@@ -12015,7 +9011,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             );
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, E, 21usize, GKR_COMMIT_BUF>(
-                    &mut ts,
+                    ts,
                     initial_claim,
                     &mut state.prev_point,
                     5usize,
@@ -12036,9 +9032,8 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
                     state.batching_challenge,
                     lookup_additive_challenge,
                     lookup_alpha,
-                    &challenge_powers,
-                    &linearization_challenges,
-                    permutation_argument_additive_part,
+                    &external_challenges.permutation_argument_linearization_challenges,
+                    external_challenges.permutation_argument_additive_part,
                     address_high_bits_shift,
                 );
                 verify_final_step_check::<E>(
@@ -12054,7 +9049,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             unsafe {
                 draw_buf.set_len(2);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, draw_buf.as_mut_slice());
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let last_r = *draw_buf.get(0);
             let next_batching = *draw_buf.get(1);
             *state.prev_point.get_unchecked_mut(fc_len) = last_r;
@@ -12074,7 +9069,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             );
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, E, 21usize, GKR_COMMIT_BUF>(
-                    &mut ts,
+                    ts,
                     initial_claim,
                     &mut state.prev_point,
                     4usize,
@@ -12095,9 +9090,8 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
                     state.batching_challenge,
                     lookup_additive_challenge,
                     lookup_alpha,
-                    &challenge_powers,
-                    &linearization_challenges,
-                    permutation_argument_additive_part,
+                    &external_challenges.permutation_argument_linearization_challenges,
+                    external_challenges.permutation_argument_additive_part,
                     address_high_bits_shift,
                 );
                 verify_final_step_check::<E>(
@@ -12113,7 +9107,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             unsafe {
                 draw_buf.set_len(2);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, draw_buf.as_mut_slice());
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let last_r = *draw_buf.get(0);
             let next_batching = *draw_buf.get(1);
             *state.prev_point.get_unchecked_mut(fc_len) = last_r;
@@ -12133,7 +9127,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             );
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, E, 21usize, GKR_COMMIT_BUF>(
-                    &mut ts,
+                    ts,
                     initial_claim,
                     &mut state.prev_point,
                     3usize,
@@ -12154,9 +9148,8 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
                     state.batching_challenge,
                     lookup_additive_challenge,
                     lookup_alpha,
-                    &challenge_powers,
-                    &linearization_challenges,
-                    permutation_argument_additive_part,
+                    &external_challenges.permutation_argument_linearization_challenges,
+                    external_challenges.permutation_argument_additive_part,
                     address_high_bits_shift,
                 );
                 verify_final_step_check::<E>(
@@ -12172,7 +9165,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             unsafe {
                 draw_buf.set_len(2);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, draw_buf.as_mut_slice());
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let last_r = *draw_buf.get(0);
             let next_batching = *draw_buf.get(1);
             *state.prev_point.get_unchecked_mut(fc_len) = last_r;
@@ -12192,7 +9185,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             );
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, E, 21usize, GKR_COMMIT_BUF>(
-                    &mut ts,
+                    ts,
                     initial_claim,
                     &mut state.prev_point,
                     2usize,
@@ -12213,9 +9206,8 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
                     state.batching_challenge,
                     lookup_additive_challenge,
                     lookup_alpha,
-                    &challenge_powers,
-                    &linearization_challenges,
-                    permutation_argument_additive_part,
+                    &external_challenges.permutation_argument_linearization_challenges,
+                    external_challenges.permutation_argument_additive_part,
                     address_high_bits_shift,
                 );
                 verify_final_step_check::<E>(
@@ -12231,7 +9223,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             unsafe {
                 draw_buf.set_len(2);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, draw_buf.as_mut_slice());
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let last_r = *draw_buf.get(0);
             let next_batching = *draw_buf.get(1);
             *state.prev_point.get_unchecked_mut(fc_len) = last_r;
@@ -12251,7 +9243,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             );
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, E, 21usize, GKR_COMMIT_BUF>(
-                    &mut ts,
+                    ts,
                     initial_claim,
                     &mut state.prev_point,
                     1usize,
@@ -12272,9 +9264,8 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
                     state.batching_challenge,
                     lookup_additive_challenge,
                     lookup_alpha,
-                    &challenge_powers,
-                    &linearization_challenges,
-                    permutation_argument_additive_part,
+                    &external_challenges.permutation_argument_linearization_challenges,
+                    external_challenges.permutation_argument_additive_part,
                     address_high_bits_shift,
                 );
                 verify_final_step_check::<E>(
@@ -12290,7 +9281,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             unsafe {
                 draw_buf.set_len(2);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, draw_buf.as_mut_slice());
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let last_r = *draw_buf.get(0);
             let next_batching = *draw_buf.get(1);
             *state.prev_point.get_unchecked_mut(fc_len) = last_r;
@@ -12310,13 +9301,13 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             );
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, E, 21usize, GKR_COMMIT_BUF>(
-                    &mut ts,
+                    ts,
                     initial_claim,
                     &mut state.prev_point,
                     0usize,
                 )?;
             let mut fc_len = 21usize;
-            let data_words = 275usize * 2 * <BabyBearExt4 as FieldExtension<BabyBearField>>::DEGREE;
+            let data_words = 331usize * 2 * <BabyBearExt4 as FieldExtension<BabyBearField>>::DEGREE;
             {
                 let mut i = 0;
                 while i < data_words {
@@ -12325,15 +9316,14 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
                 }
             }
             {
-                let evals: &[[BabyBearExt4; 2]] = eval_buf.data_as(275usize);
+                let evals: &[[BabyBearExt4; 2]] = eval_buf.data_as(331usize);
                 let f = layer_0_final_step_accumulator(
                     evals,
                     state.batching_challenge,
                     lookup_additive_challenge,
                     lookup_alpha,
-                    &challenge_powers,
-                    &linearization_challenges,
-                    permutation_argument_additive_part,
+                    &external_challenges.permutation_argument_linearization_challenges,
+                    external_challenges.permutation_argument_additive_part,
                     address_high_bits_shift,
                 );
                 verify_final_step_check::<E>(
@@ -12349,20 +9339,1092 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             unsafe {
                 draw_buf.set_len(2);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, draw_buf.as_mut_slice());
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let last_r = *draw_buf.get(0);
             let next_batching = *draw_buf.get(1);
             *state.prev_point.get_unchecked_mut(fc_len) = last_r;
             fc_len += 1;
-            fold_standard_claims::<275usize, GKR_ADDRS, GKR_EVAL_BUF>(
-                &eval_buf,
-                last_r,
-                &mut state.prev_claims,
-            );
+            const EXTRA_COMMIT_BUF: usize = 192usize;
+            let mut extra_buf = CommitBuf::<EXTRA_COMMIT_BUF>::new();
+            let extra_data_words = 44usize * EXT_DEGREE;
+            {
+                let mut i = 0;
+                while i < extra_data_words {
+                    extra_buf.data_write(i, read_reduced_field_el::<I>());
+                    i += 1;
+                }
+            }
+            let mut extra_evals = LazyVec::<BabyBearExt4, 44usize>::new();
+            {
+                let slice: &[BabyBearExt4] = unsafe { extra_buf.data_as(44usize) };
+                for el in slice {
+                    extra_evals.push(*el);
+                }
+            }
+            ts.commit(&mut extra_buf, extra_data_words);
+            let final_step_evals: &[[BabyBearExt4; 2]] = unsafe { eval_buf.data_as(331usize) };
+            state.prev_claims.clear();
+            {
+                const EXTRA_POS: [(usize, usize); 44usize] = [
+                    (175usize, 0usize),
+                    (176usize, 1usize),
+                    (181usize, 2usize),
+                    (182usize, 3usize),
+                    (183usize, 4usize),
+                    (184usize, 5usize),
+                    (185usize, 6usize),
+                    (186usize, 7usize),
+                    (189usize, 8usize),
+                    (192usize, 9usize),
+                    (193usize, 10usize),
+                    (198usize, 11usize),
+                    (199usize, 12usize),
+                    (202usize, 13usize),
+                    (205usize, 14usize),
+                    (206usize, 15usize),
+                    (211usize, 16usize),
+                    (212usize, 17usize),
+                    (215usize, 18usize),
+                    (218usize, 19usize),
+                    (219usize, 20usize),
+                    (224usize, 21usize),
+                    (225usize, 22usize),
+                    (228usize, 23usize),
+                    (231usize, 24usize),
+                    (232usize, 25usize),
+                    (237usize, 26usize),
+                    (238usize, 27usize),
+                    (241usize, 28usize),
+                    (244usize, 29usize),
+                    (245usize, 30usize),
+                    (250usize, 31usize),
+                    (251usize, 32usize),
+                    (254usize, 33usize),
+                    (257usize, 34usize),
+                    (258usize, 35usize),
+                    (266usize, 36usize),
+                    (267usize, 37usize),
+                    (268usize, 38usize),
+                    (269usize, 39usize),
+                    (270usize, 40usize),
+                    (271usize, 41usize),
+                    (272usize, 42usize),
+                    (273usize, 43usize),
+                ];
+                let mut regular_idx: usize = 0;
+                let mut ep_idx: usize = 0;
+                let mut merged_idx: usize = 0;
+                while merged_idx < 375usize {
+                    if ep_idx < 44usize && EXTRA_POS[ep_idx].0 == merged_idx {
+                        state
+                            .prev_claims
+                            .push(*extra_evals.get(EXTRA_POS[ep_idx].1));
+                        ep_idx += 1;
+                    } else {
+                        let ev = final_step_evals.get_unchecked(regular_idx);
+                        let f0 = ev[0];
+                        let mut diff = ev[1];
+                        field_ops::sub_assign(&mut diff, &f0);
+                        field_ops::mul_assign(&mut diff, &last_r);
+                        field_ops::add_assign(&mut diff, &f0);
+                        state.prev_claims.push(diff);
+                        regular_idx += 1;
+                    }
+                    merged_idx += 1;
+                }
+            }
+            {
+                const SC_DESCS: [(usize, u32, usize, usize); 28usize] = [
+                    (305usize, 1476395013u32, 0usize, 3usize),
+                    (306usize, 133099247u32, 3usize, 3usize),
+                    (307usize, 1476395013u32, 6usize, 3usize),
+                    (308usize, 133099247u32, 9usize, 3usize),
+                    (309usize, 1476395013u32, 12usize, 3usize),
+                    (310usize, 133099247u32, 15usize, 3usize),
+                    (311usize, 1476395013u32, 18usize, 3usize),
+                    (312usize, 133099247u32, 21usize, 3usize),
+                    (313usize, 1476395013u32, 24usize, 3usize),
+                    (314usize, 133099247u32, 27usize, 3usize),
+                    (315usize, 1476395013u32, 30usize, 3usize),
+                    (316usize, 133099247u32, 33usize, 3usize),
+                    (317usize, 1476395013u32, 36usize, 3usize),
+                    (318usize, 133099247u32, 39usize, 3usize),
+                    (319usize, 1476395013u32, 42usize, 3usize),
+                    (320usize, 133099247u32, 45usize, 3usize),
+                    (321usize, 1476395013u32, 48usize, 3usize),
+                    (322usize, 133099247u32, 51usize, 3usize),
+                    (323usize, 1476395013u32, 54usize, 3usize),
+                    (324usize, 133099247u32, 57usize, 3usize),
+                    (325usize, 1476395013u32, 60usize, 3usize),
+                    (326usize, 133099247u32, 63usize, 3usize),
+                    (327usize, 1476395013u32, 66usize, 3usize),
+                    (328usize, 133099247u32, 69usize, 3usize),
+                    (329usize, 1476395013u32, 72usize, 3usize),
+                    (330usize, 133099247u32, 75usize, 3usize),
+                    (331usize, 1476395013u32, 78usize, 3usize),
+                    (332usize, 133099247u32, 81usize, 3usize),
+                ];
+                const SC_TERMS: [(u32, usize); 84usize] = [
+                    (1744830467u32, 264usize),
+                    (268435454u32, 175usize),
+                    (133099247u32, 159usize),
+                    (1744830467u32, 265usize),
+                    (268435454u32, 176usize),
+                    (1744830467u32, 159usize),
+                    (1744830467u32, 264usize),
+                    (268435454u32, 181usize),
+                    (133099247u32, 160usize),
+                    (1744830467u32, 265usize),
+                    (268435454u32, 182usize),
+                    (1744830467u32, 160usize),
+                    (1744830467u32, 264usize),
+                    (268435454u32, 185usize),
+                    (133099247u32, 161usize),
+                    (1744830467u32, 265usize),
+                    (268435454u32, 186usize),
+                    (1744830467u32, 161usize),
+                    (1744830467u32, 264usize),
+                    (268435454u32, 192usize),
+                    (133099247u32, 162usize),
+                    (1744830467u32, 265usize),
+                    (268435454u32, 193usize),
+                    (1744830467u32, 162usize),
+                    (1744830467u32, 264usize),
+                    (268435454u32, 198usize),
+                    (133099247u32, 163usize),
+                    (1744830467u32, 265usize),
+                    (268435454u32, 199usize),
+                    (1744830467u32, 163usize),
+                    (1744830467u32, 264usize),
+                    (268435454u32, 205usize),
+                    (133099247u32, 164usize),
+                    (1744830467u32, 265usize),
+                    (268435454u32, 206usize),
+                    (1744830467u32, 164usize),
+                    (1744830467u32, 264usize),
+                    (268435454u32, 211usize),
+                    (133099247u32, 165usize),
+                    (1744830467u32, 265usize),
+                    (268435454u32, 212usize),
+                    (1744830467u32, 165usize),
+                    (1744830467u32, 264usize),
+                    (268435454u32, 218usize),
+                    (133099247u32, 166usize),
+                    (1744830467u32, 265usize),
+                    (268435454u32, 219usize),
+                    (1744830467u32, 166usize),
+                    (1744830467u32, 264usize),
+                    (268435454u32, 224usize),
+                    (133099247u32, 167usize),
+                    (1744830467u32, 265usize),
+                    (268435454u32, 225usize),
+                    (1744830467u32, 167usize),
+                    (1744830467u32, 264usize),
+                    (268435454u32, 231usize),
+                    (133099247u32, 168usize),
+                    (1744830467u32, 265usize),
+                    (268435454u32, 232usize),
+                    (1744830467u32, 168usize),
+                    (1744830467u32, 264usize),
+                    (268435454u32, 237usize),
+                    (133099247u32, 169usize),
+                    (1744830467u32, 265usize),
+                    (268435454u32, 238usize),
+                    (1744830467u32, 169usize),
+                    (1744830467u32, 264usize),
+                    (268435454u32, 244usize),
+                    (133099247u32, 170usize),
+                    (1744830467u32, 265usize),
+                    (268435454u32, 245usize),
+                    (1744830467u32, 170usize),
+                    (1744830467u32, 264usize),
+                    (268435454u32, 250usize),
+                    (133099247u32, 171usize),
+                    (1744830467u32, 265usize),
+                    (268435454u32, 251usize),
+                    (1744830467u32, 171usize),
+                    (1744830467u32, 264usize),
+                    (268435454u32, 257usize),
+                    (133099247u32, 172usize),
+                    (1744830467u32, 265usize),
+                    (268435454u32, 258usize),
+                    (1744830467u32, 172usize),
+                ];
+                let mut _sc = 0;
+                while _sc < 28usize {
+                    let (cached_idx, constant, term_start, term_count) = SC_DESCS[_sc];
+                    let mut expected: BabyBearExt4 =
+                        <BabyBearExt4 as FieldExtension<BabyBearField>>::from_base(
+                            BabyBearField::from_reduced_raw_repr(constant),
+                        );
+                    let mut _t = 0;
+                    while _t < term_count {
+                        let (coeff, dep_idx) = SC_TERMS[term_start + _t];
+                        let mut t = *state.prev_claims.get_unchecked(dep_idx);
+                        field_ops::mul_assign_by_base(
+                            &mut t,
+                            &BabyBearField::from_reduced_raw_repr(coeff),
+                        );
+                        field_ops::add_assign(&mut expected, &t);
+                        _t += 1;
+                    }
+                    let cached = *state.prev_claims.get_unchecked(cached_idx);
+                    if expected != cached {
+                        return Err(E::gkr_cache_relation_failed(0usize));
+                    }
+                    _sc += 1;
+                }
+            }
+            {
+                const VL_DESCS: [(usize, usize, usize); 41usize] = [
+                    (333usize, 0usize, 8usize),
+                    (335usize, 8usize, 8usize),
+                    (336usize, 16usize, 8usize),
+                    (337usize, 24usize, 8usize),
+                    (338usize, 32usize, 8usize),
+                    (339usize, 40usize, 8usize),
+                    (340usize, 48usize, 8usize),
+                    (341usize, 56usize, 8usize),
+                    (342usize, 64usize, 8usize),
+                    (343usize, 72usize, 8usize),
+                    (344usize, 80usize, 8usize),
+                    (345usize, 88usize, 8usize),
+                    (346usize, 96usize, 8usize),
+                    (347usize, 104usize, 8usize),
+                    (348usize, 112usize, 8usize),
+                    (349usize, 120usize, 8usize),
+                    (350usize, 128usize, 8usize),
+                    (351usize, 136usize, 8usize),
+                    (352usize, 144usize, 8usize),
+                    (353usize, 152usize, 8usize),
+                    (354usize, 160usize, 8usize),
+                    (355usize, 168usize, 8usize),
+                    (356usize, 176usize, 8usize),
+                    (357usize, 184usize, 8usize),
+                    (358usize, 192usize, 8usize),
+                    (359usize, 200usize, 8usize),
+                    (360usize, 208usize, 8usize),
+                    (361usize, 216usize, 8usize),
+                    (362usize, 224usize, 8usize),
+                    (363usize, 232usize, 8usize),
+                    (364usize, 240usize, 8usize),
+                    (365usize, 248usize, 8usize),
+                    (366usize, 256usize, 8usize),
+                    (367usize, 264usize, 8usize),
+                    (368usize, 272usize, 8usize),
+                    (369usize, 280usize, 8usize),
+                    (370usize, 288usize, 8usize),
+                    (371usize, 296usize, 8usize),
+                    (372usize, 304usize, 8usize),
+                    (373usize, 312usize, 8usize),
+                    (374usize, 320usize, 8usize),
+                ];
+                const VL_COLS: [(u32, usize, usize); 328usize] = [
+                    (0u32, 0usize, 2usize),
+                    (0u32, 2usize, 1usize),
+                    (0u32, 3usize, 1usize),
+                    (0u32, 4usize, 1usize),
+                    (0u32, 5usize, 1usize),
+                    (0u32, 6usize, 1usize),
+                    (0u32, 7usize, 1usize),
+                    (1879048114u32, 8usize, 0usize),
+                    (0u32, 8usize, 1usize),
+                    (0u32, 9usize, 1usize),
+                    (0u32, 10usize, 1usize),
+                    (0u32, 11usize, 0usize),
+                    (0u32, 11usize, 0usize),
+                    (0u32, 11usize, 0usize),
+                    (0u32, 11usize, 0usize),
+                    (0u32, 11usize, 7usize),
+                    (0u32, 18usize, 1usize),
+                    (0u32, 19usize, 1usize),
+                    (0u32, 20usize, 1usize),
+                    (0u32, 21usize, 0usize),
+                    (0u32, 21usize, 0usize),
+                    (0u32, 21usize, 0usize),
+                    (0u32, 21usize, 0usize),
+                    (0u32, 21usize, 7usize),
+                    (0u32, 28usize, 1usize),
+                    (0u32, 29usize, 1usize),
+                    (0u32, 30usize, 1usize),
+                    (0u32, 31usize, 0usize),
+                    (0u32, 31usize, 0usize),
+                    (0u32, 31usize, 0usize),
+                    (0u32, 31usize, 0usize),
+                    (0u32, 31usize, 7usize),
+                    (0u32, 38usize, 1usize),
+                    (0u32, 39usize, 1usize),
+                    (0u32, 40usize, 1usize),
+                    (0u32, 41usize, 0usize),
+                    (0u32, 41usize, 0usize),
+                    (0u32, 41usize, 0usize),
+                    (0u32, 41usize, 0usize),
+                    (0u32, 41usize, 7usize),
+                    (0u32, 48usize, 1usize),
+                    (0u32, 49usize, 1usize),
+                    (0u32, 50usize, 1usize),
+                    (0u32, 51usize, 0usize),
+                    (0u32, 51usize, 0usize),
+                    (0u32, 51usize, 0usize),
+                    (0u32, 51usize, 0usize),
+                    (0u32, 51usize, 7usize),
+                    (0u32, 58usize, 1usize),
+                    (0u32, 59usize, 1usize),
+                    (0u32, 60usize, 1usize),
+                    (0u32, 61usize, 0usize),
+                    (0u32, 61usize, 0usize),
+                    (0u32, 61usize, 0usize),
+                    (0u32, 61usize, 0usize),
+                    (0u32, 61usize, 7usize),
+                    (0u32, 68usize, 1usize),
+                    (0u32, 69usize, 1usize),
+                    (0u32, 70usize, 1usize),
+                    (0u32, 71usize, 0usize),
+                    (0u32, 71usize, 0usize),
+                    (0u32, 71usize, 0usize),
+                    (0u32, 71usize, 0usize),
+                    (0u32, 71usize, 7usize),
+                    (0u32, 78usize, 1usize),
+                    (0u32, 79usize, 1usize),
+                    (0u32, 80usize, 1usize),
+                    (0u32, 81usize, 0usize),
+                    (0u32, 81usize, 0usize),
+                    (0u32, 81usize, 0usize),
+                    (0u32, 81usize, 0usize),
+                    (0u32, 81usize, 7usize),
+                    (0u32, 88usize, 1usize),
+                    (0u32, 89usize, 1usize),
+                    (0u32, 90usize, 1usize),
+                    (0u32, 91usize, 0usize),
+                    (0u32, 91usize, 0usize),
+                    (0u32, 91usize, 0usize),
+                    (0u32, 91usize, 0usize),
+                    (0u32, 91usize, 7usize),
+                    (0u32, 98usize, 1usize),
+                    (0u32, 99usize, 1usize),
+                    (0u32, 100usize, 1usize),
+                    (0u32, 101usize, 0usize),
+                    (0u32, 101usize, 0usize),
+                    (0u32, 101usize, 0usize),
+                    (0u32, 101usize, 0usize),
+                    (0u32, 101usize, 7usize),
+                    (0u32, 108usize, 1usize),
+                    (0u32, 109usize, 1usize),
+                    (0u32, 110usize, 1usize),
+                    (0u32, 111usize, 0usize),
+                    (0u32, 111usize, 0usize),
+                    (0u32, 111usize, 0usize),
+                    (0u32, 111usize, 0usize),
+                    (0u32, 111usize, 7usize),
+                    (0u32, 118usize, 1usize),
+                    (0u32, 119usize, 1usize),
+                    (0u32, 120usize, 1usize),
+                    (0u32, 121usize, 0usize),
+                    (0u32, 121usize, 0usize),
+                    (0u32, 121usize, 0usize),
+                    (0u32, 121usize, 0usize),
+                    (0u32, 121usize, 7usize),
+                    (0u32, 128usize, 1usize),
+                    (0u32, 129usize, 1usize),
+                    (0u32, 130usize, 1usize),
+                    (0u32, 131usize, 0usize),
+                    (0u32, 131usize, 0usize),
+                    (0u32, 131usize, 0usize),
+                    (0u32, 131usize, 0usize),
+                    (0u32, 131usize, 7usize),
+                    (0u32, 138usize, 1usize),
+                    (0u32, 139usize, 1usize),
+                    (0u32, 140usize, 1usize),
+                    (0u32, 141usize, 0usize),
+                    (0u32, 141usize, 0usize),
+                    (0u32, 141usize, 0usize),
+                    (0u32, 141usize, 0usize),
+                    (0u32, 141usize, 7usize),
+                    (0u32, 148usize, 1usize),
+                    (0u32, 149usize, 1usize),
+                    (0u32, 150usize, 1usize),
+                    (0u32, 151usize, 0usize),
+                    (0u32, 151usize, 0usize),
+                    (0u32, 151usize, 0usize),
+                    (0u32, 151usize, 0usize),
+                    (0u32, 151usize, 7usize),
+                    (0u32, 158usize, 1usize),
+                    (0u32, 159usize, 1usize),
+                    (0u32, 160usize, 1usize),
+                    (0u32, 161usize, 0usize),
+                    (0u32, 161usize, 0usize),
+                    (0u32, 161usize, 0usize),
+                    (0u32, 161usize, 0usize),
+                    (0u32, 161usize, 7usize),
+                    (0u32, 168usize, 1usize),
+                    (0u32, 169usize, 1usize),
+                    (0u32, 170usize, 1usize),
+                    (0u32, 171usize, 0usize),
+                    (0u32, 171usize, 0usize),
+                    (0u32, 171usize, 0usize),
+                    (0u32, 171usize, 0usize),
+                    (0u32, 171usize, 7usize),
+                    (0u32, 178usize, 1usize),
+                    (0u32, 179usize, 1usize),
+                    (0u32, 180usize, 1usize),
+                    (0u32, 181usize, 0usize),
+                    (0u32, 181usize, 0usize),
+                    (0u32, 181usize, 0usize),
+                    (0u32, 181usize, 0usize),
+                    (0u32, 181usize, 7usize),
+                    (0u32, 188usize, 1usize),
+                    (0u32, 189usize, 1usize),
+                    (0u32, 190usize, 1usize),
+                    (0u32, 191usize, 0usize),
+                    (0u32, 191usize, 0usize),
+                    (0u32, 191usize, 0usize),
+                    (0u32, 191usize, 0usize),
+                    (0u32, 191usize, 7usize),
+                    (0u32, 198usize, 1usize),
+                    (0u32, 199usize, 1usize),
+                    (0u32, 200usize, 1usize),
+                    (0u32, 201usize, 0usize),
+                    (0u32, 201usize, 0usize),
+                    (0u32, 201usize, 0usize),
+                    (0u32, 201usize, 0usize),
+                    (0u32, 201usize, 7usize),
+                    (0u32, 208usize, 1usize),
+                    (0u32, 209usize, 1usize),
+                    (0u32, 210usize, 1usize),
+                    (0u32, 211usize, 0usize),
+                    (0u32, 211usize, 0usize),
+                    (0u32, 211usize, 0usize),
+                    (0u32, 211usize, 0usize),
+                    (0u32, 211usize, 7usize),
+                    (0u32, 218usize, 1usize),
+                    (0u32, 219usize, 1usize),
+                    (0u32, 220usize, 1usize),
+                    (0u32, 221usize, 0usize),
+                    (0u32, 221usize, 0usize),
+                    (0u32, 221usize, 0usize),
+                    (0u32, 221usize, 0usize),
+                    (0u32, 221usize, 7usize),
+                    (0u32, 228usize, 1usize),
+                    (0u32, 229usize, 1usize),
+                    (0u32, 230usize, 1usize),
+                    (0u32, 231usize, 0usize),
+                    (0u32, 231usize, 0usize),
+                    (0u32, 231usize, 0usize),
+                    (0u32, 231usize, 0usize),
+                    (0u32, 231usize, 7usize),
+                    (0u32, 238usize, 1usize),
+                    (0u32, 239usize, 1usize),
+                    (0u32, 240usize, 1usize),
+                    (0u32, 241usize, 0usize),
+                    (0u32, 241usize, 0usize),
+                    (0u32, 241usize, 0usize),
+                    (0u32, 241usize, 0usize),
+                    (0u32, 241usize, 7usize),
+                    (0u32, 248usize, 1usize),
+                    (0u32, 249usize, 1usize),
+                    (0u32, 250usize, 1usize),
+                    (0u32, 251usize, 0usize),
+                    (0u32, 251usize, 0usize),
+                    (0u32, 251usize, 0usize),
+                    (0u32, 251usize, 0usize),
+                    (0u32, 251usize, 7usize),
+                    (0u32, 258usize, 1usize),
+                    (0u32, 259usize, 1usize),
+                    (0u32, 260usize, 1usize),
+                    (0u32, 261usize, 0usize),
+                    (0u32, 261usize, 0usize),
+                    (0u32, 261usize, 0usize),
+                    (0u32, 261usize, 0usize),
+                    (0u32, 261usize, 7usize),
+                    (0u32, 268usize, 1usize),
+                    (0u32, 269usize, 1usize),
+                    (0u32, 270usize, 1usize),
+                    (0u32, 271usize, 0usize),
+                    (0u32, 271usize, 0usize),
+                    (0u32, 271usize, 0usize),
+                    (0u32, 271usize, 0usize),
+                    (0u32, 271usize, 7usize),
+                    (0u32, 278usize, 1usize),
+                    (0u32, 279usize, 1usize),
+                    (0u32, 280usize, 1usize),
+                    (0u32, 281usize, 0usize),
+                    (0u32, 281usize, 0usize),
+                    (0u32, 281usize, 0usize),
+                    (0u32, 281usize, 0usize),
+                    (0u32, 281usize, 7usize),
+                    (0u32, 288usize, 1usize),
+                    (0u32, 289usize, 1usize),
+                    (0u32, 290usize, 1usize),
+                    (0u32, 291usize, 0usize),
+                    (0u32, 291usize, 0usize),
+                    (0u32, 291usize, 0usize),
+                    (0u32, 291usize, 0usize),
+                    (0u32, 291usize, 7usize),
+                    (0u32, 298usize, 1usize),
+                    (0u32, 299usize, 1usize),
+                    (0u32, 300usize, 1usize),
+                    (0u32, 301usize, 0usize),
+                    (0u32, 301usize, 0usize),
+                    (0u32, 301usize, 0usize),
+                    (0u32, 301usize, 0usize),
+                    (0u32, 301usize, 7usize),
+                    (0u32, 308usize, 1usize),
+                    (0u32, 309usize, 1usize),
+                    (0u32, 310usize, 1usize),
+                    (0u32, 311usize, 0usize),
+                    (0u32, 311usize, 0usize),
+                    (0u32, 311usize, 0usize),
+                    (0u32, 311usize, 0usize),
+                    (0u32, 311usize, 7usize),
+                    (0u32, 318usize, 1usize),
+                    (0u32, 319usize, 1usize),
+                    (0u32, 320usize, 1usize),
+                    (0u32, 321usize, 0usize),
+                    (0u32, 321usize, 0usize),
+                    (0u32, 321usize, 0usize),
+                    (0u32, 321usize, 0usize),
+                    (0u32, 321usize, 7usize),
+                    (0u32, 328usize, 1usize),
+                    (0u32, 329usize, 1usize),
+                    (0u32, 330usize, 1usize),
+                    (0u32, 331usize, 0usize),
+                    (0u32, 331usize, 0usize),
+                    (0u32, 331usize, 0usize),
+                    (0u32, 331usize, 0usize),
+                    (0u32, 331usize, 7usize),
+                    (0u32, 338usize, 1usize),
+                    (0u32, 339usize, 1usize),
+                    (0u32, 340usize, 1usize),
+                    (0u32, 341usize, 0usize),
+                    (0u32, 341usize, 0usize),
+                    (0u32, 341usize, 0usize),
+                    (0u32, 341usize, 0usize),
+                    (0u32, 341usize, 7usize),
+                    (0u32, 348usize, 1usize),
+                    (0u32, 349usize, 1usize),
+                    (0u32, 350usize, 1usize),
+                    (0u32, 351usize, 0usize),
+                    (0u32, 351usize, 0usize),
+                    (0u32, 351usize, 0usize),
+                    (0u32, 351usize, 0usize),
+                    (0u32, 351usize, 7usize),
+                    (0u32, 358usize, 1usize),
+                    (0u32, 359usize, 1usize),
+                    (0u32, 360usize, 1usize),
+                    (0u32, 361usize, 0usize),
+                    (0u32, 361usize, 0usize),
+                    (0u32, 361usize, 0usize),
+                    (0u32, 361usize, 0usize),
+                    (0u32, 361usize, 7usize),
+                    (0u32, 368usize, 1usize),
+                    (0u32, 369usize, 1usize),
+                    (0u32, 370usize, 1usize),
+                    (0u32, 371usize, 0usize),
+                    (0u32, 371usize, 0usize),
+                    (0u32, 371usize, 0usize),
+                    (0u32, 371usize, 0usize),
+                    (0u32, 371usize, 7usize),
+                    (0u32, 378usize, 1usize),
+                    (0u32, 379usize, 1usize),
+                    (0u32, 380usize, 1usize),
+                    (0u32, 381usize, 0usize),
+                    (0u32, 381usize, 0usize),
+                    (0u32, 381usize, 0usize),
+                    (0u32, 381usize, 0usize),
+                    (0u32, 381usize, 7usize),
+                    (0u32, 388usize, 1usize),
+                    (0u32, 389usize, 1usize),
+                    (0u32, 390usize, 1usize),
+                    (0u32, 391usize, 0usize),
+                    (0u32, 391usize, 0usize),
+                    (0u32, 391usize, 0usize),
+                    (0u32, 391usize, 0usize),
+                    (0u32, 391usize, 7usize),
+                    (0u32, 398usize, 1usize),
+                    (0u32, 399usize, 1usize),
+                    (0u32, 400usize, 1usize),
+                    (0u32, 401usize, 0usize),
+                    (0u32, 401usize, 0usize),
+                    (0u32, 401usize, 0usize),
+                    (0u32, 401usize, 0usize),
+                    (0u32, 401usize, 7usize),
+                ];
+                const VL_TERMS: [(u32, usize); 408usize] = [
+                    (134213359u32, 263usize),
+                    (268435454u32, 177usize),
+                    (268435454u32, 189usize),
+                    (268435454u32, 202usize),
+                    (268435454u32, 215usize),
+                    (268435454u32, 228usize),
+                    (268435454u32, 241usize),
+                    (268435454u32, 254usize),
+                    (268435454u32, 39usize),
+                    (268435454u32, 47usize),
+                    (268435454u32, 55usize),
+                    (134217647u32, 0usize),
+                    (671088555u32, 1usize),
+                    (671088555u32, 2usize),
+                    (1073741816u32, 3usize),
+                    (671088555u32, 4usize),
+                    (402653101u32, 5usize),
+                    (402653101u32, 6usize),
+                    (268435454u32, 40usize),
+                    (268435454u32, 48usize),
+                    (268435454u32, 56usize),
+                    (134217647u32, 0usize),
+                    (671088555u32, 1usize),
+                    (671088555u32, 2usize),
+                    (1073741816u32, 3usize),
+                    (671088555u32, 4usize),
+                    (402653101u32, 5usize),
+                    (402653101u32, 6usize),
+                    (268435454u32, 41usize),
+                    (268435454u32, 49usize),
+                    (268435454u32, 57usize),
+                    (134217647u32, 0usize),
+                    (671088555u32, 1usize),
+                    (671088555u32, 2usize),
+                    (1073741816u32, 3usize),
+                    (671088555u32, 4usize),
+                    (402653101u32, 5usize),
+                    (402653101u32, 6usize),
+                    (268435454u32, 42usize),
+                    (268435454u32, 50usize),
+                    (268435454u32, 58usize),
+                    (134217647u32, 0usize),
+                    (671088555u32, 1usize),
+                    (671088555u32, 2usize),
+                    (1073741816u32, 3usize),
+                    (671088555u32, 4usize),
+                    (402653101u32, 5usize),
+                    (402653101u32, 6usize),
+                    (268435454u32, 43usize),
+                    (268435454u32, 51usize),
+                    (268435454u32, 59usize),
+                    (134217647u32, 0usize),
+                    (671088555u32, 1usize),
+                    (671088555u32, 2usize),
+                    (1073741816u32, 3usize),
+                    (671088555u32, 4usize),
+                    (402653101u32, 5usize),
+                    (402653101u32, 6usize),
+                    (268435454u32, 44usize),
+                    (268435454u32, 52usize),
+                    (268435454u32, 60usize),
+                    (134217647u32, 0usize),
+                    (671088555u32, 1usize),
+                    (671088555u32, 2usize),
+                    (1073741816u32, 3usize),
+                    (671088555u32, 4usize),
+                    (402653101u32, 5usize),
+                    (402653101u32, 6usize),
+                    (268435454u32, 45usize),
+                    (268435454u32, 53usize),
+                    (268435454u32, 61usize),
+                    (134217647u32, 0usize),
+                    (671088555u32, 1usize),
+                    (671088555u32, 2usize),
+                    (1073741816u32, 3usize),
+                    (671088555u32, 4usize),
+                    (402653101u32, 5usize),
+                    (402653101u32, 6usize),
+                    (268435454u32, 46usize),
+                    (268435454u32, 54usize),
+                    (268435454u32, 62usize),
+                    (134217647u32, 0usize),
+                    (671088555u32, 1usize),
+                    (671088555u32, 2usize),
+                    (1073741816u32, 3usize),
+                    (671088555u32, 4usize),
+                    (402653101u32, 5usize),
+                    (402653101u32, 6usize),
+                    (268435454u32, 63usize),
+                    (268435454u32, 71usize),
+                    (268435454u32, 79usize),
+                    (1073741816u32, 0usize),
+                    (671088555u32, 1usize),
+                    (1073741816u32, 2usize),
+                    (1073741816u32, 3usize),
+                    (671088555u32, 4usize),
+                    (402653101u32, 5usize),
+                    (1073741816u32, 6usize),
+                    (268435454u32, 64usize),
+                    (268435454u32, 72usize),
+                    (268435454u32, 80usize),
+                    (1073741816u32, 0usize),
+                    (671088555u32, 1usize),
+                    (1073741816u32, 2usize),
+                    (1073741816u32, 3usize),
+                    (671088555u32, 4usize),
+                    (402653101u32, 5usize),
+                    (1073741816u32, 6usize),
+                    (268435454u32, 65usize),
+                    (268435454u32, 73usize),
+                    (268435454u32, 81usize),
+                    (1073741816u32, 0usize),
+                    (671088555u32, 1usize),
+                    (1073741816u32, 2usize),
+                    (1073741816u32, 3usize),
+                    (671088555u32, 4usize),
+                    (402653101u32, 5usize),
+                    (1073741816u32, 6usize),
+                    (268435454u32, 66usize),
+                    (268435454u32, 74usize),
+                    (268435454u32, 82usize),
+                    (1073741816u32, 0usize),
+                    (671088555u32, 1usize),
+                    (1073741816u32, 2usize),
+                    (1073741816u32, 3usize),
+                    (671088555u32, 4usize),
+                    (402653101u32, 5usize),
+                    (1073741816u32, 6usize),
+                    (268435454u32, 67usize),
+                    (268435454u32, 75usize),
+                    (268435454u32, 83usize),
+                    (1073741816u32, 0usize),
+                    (671088555u32, 1usize),
+                    (1073741816u32, 2usize),
+                    (1073741816u32, 3usize),
+                    (671088555u32, 4usize),
+                    (402653101u32, 5usize),
+                    (1073741816u32, 6usize),
+                    (268435454u32, 68usize),
+                    (268435454u32, 76usize),
+                    (268435454u32, 84usize),
+                    (1073741816u32, 0usize),
+                    (671088555u32, 1usize),
+                    (1073741816u32, 2usize),
+                    (1073741816u32, 3usize),
+                    (671088555u32, 4usize),
+                    (402653101u32, 5usize),
+                    (1073741816u32, 6usize),
+                    (268435454u32, 69usize),
+                    (268435454u32, 77usize),
+                    (268435454u32, 85usize),
+                    (1073741816u32, 0usize),
+                    (671088555u32, 1usize),
+                    (1073741816u32, 2usize),
+                    (1073741816u32, 3usize),
+                    (671088555u32, 4usize),
+                    (402653101u32, 5usize),
+                    (1073741816u32, 6usize),
+                    (268435454u32, 70usize),
+                    (268435454u32, 78usize),
+                    (268435454u32, 86usize),
+                    (1073741816u32, 0usize),
+                    (671088555u32, 1usize),
+                    (1073741816u32, 2usize),
+                    (1073741816u32, 3usize),
+                    (671088555u32, 4usize),
+                    (402653101u32, 5usize),
+                    (1073741816u32, 6usize),
+                    (268435454u32, 87usize),
+                    (268435454u32, 95usize),
+                    (268435454u32, 103usize),
+                    (1073741816u32, 0usize),
+                    (1073741816u32, 1usize),
+                    (671088555u32, 2usize),
+                    (1073741816u32, 3usize),
+                    (671088555u32, 4usize),
+                    (1073741816u32, 5usize),
+                    (402653101u32, 6usize),
+                    (268435454u32, 88usize),
+                    (268435454u32, 96usize),
+                    (268435454u32, 104usize),
+                    (1073741816u32, 0usize),
+                    (1073741816u32, 1usize),
+                    (671088555u32, 2usize),
+                    (1073741816u32, 3usize),
+                    (671088555u32, 4usize),
+                    (1073741816u32, 5usize),
+                    (402653101u32, 6usize),
+                    (268435454u32, 89usize),
+                    (268435454u32, 97usize),
+                    (268435454u32, 105usize),
+                    (1073741816u32, 0usize),
+                    (1073741816u32, 1usize),
+                    (671088555u32, 2usize),
+                    (1073741816u32, 3usize),
+                    (671088555u32, 4usize),
+                    (1073741816u32, 5usize),
+                    (402653101u32, 6usize),
+                    (268435454u32, 90usize),
+                    (268435454u32, 98usize),
+                    (268435454u32, 106usize),
+                    (1073741816u32, 0usize),
+                    (1073741816u32, 1usize),
+                    (671088555u32, 2usize),
+                    (1073741816u32, 3usize),
+                    (671088555u32, 4usize),
+                    (1073741816u32, 5usize),
+                    (402653101u32, 6usize),
+                    (268435454u32, 91usize),
+                    (268435454u32, 99usize),
+                    (268435454u32, 107usize),
+                    (1073741816u32, 0usize),
+                    (1073741816u32, 1usize),
+                    (671088555u32, 2usize),
+                    (1073741816u32, 3usize),
+                    (671088555u32, 4usize),
+                    (1073741816u32, 5usize),
+                    (402653101u32, 6usize),
+                    (268435454u32, 92usize),
+                    (268435454u32, 100usize),
+                    (268435454u32, 108usize),
+                    (1073741816u32, 0usize),
+                    (1073741816u32, 1usize),
+                    (671088555u32, 2usize),
+                    (1073741816u32, 3usize),
+                    (671088555u32, 4usize),
+                    (1073741816u32, 5usize),
+                    (402653101u32, 6usize),
+                    (268435454u32, 93usize),
+                    (268435454u32, 101usize),
+                    (268435454u32, 109usize),
+                    (1073741816u32, 0usize),
+                    (1073741816u32, 1usize),
+                    (671088555u32, 2usize),
+                    (1073741816u32, 3usize),
+                    (671088555u32, 4usize),
+                    (1073741816u32, 5usize),
+                    (402653101u32, 6usize),
+                    (268435454u32, 94usize),
+                    (268435454u32, 102usize),
+                    (268435454u32, 110usize),
+                    (1073741816u32, 0usize),
+                    (1073741816u32, 1usize),
+                    (671088555u32, 2usize),
+                    (1073741816u32, 3usize),
+                    (671088555u32, 4usize),
+                    (1073741816u32, 5usize),
+                    (402653101u32, 6usize),
+                    (268435454u32, 111usize),
+                    (268435454u32, 119usize),
+                    (268435454u32, 127usize),
+                    (1073741816u32, 0usize),
+                    (671088555u32, 1usize),
+                    (1073741816u32, 2usize),
+                    (1073741816u32, 3usize),
+                    (671088555u32, 4usize),
+                    (402653101u32, 5usize),
+                    (1073741816u32, 6usize),
+                    (268435454u32, 112usize),
+                    (268435454u32, 120usize),
+                    (268435454u32, 128usize),
+                    (1073741816u32, 0usize),
+                    (671088555u32, 1usize),
+                    (1073741816u32, 2usize),
+                    (1073741816u32, 3usize),
+                    (671088555u32, 4usize),
+                    (402653101u32, 5usize),
+                    (1073741816u32, 6usize),
+                    (268435454u32, 113usize),
+                    (268435454u32, 121usize),
+                    (268435454u32, 129usize),
+                    (1073741816u32, 0usize),
+                    (671088555u32, 1usize),
+                    (1073741816u32, 2usize),
+                    (1073741816u32, 3usize),
+                    (671088555u32, 4usize),
+                    (402653101u32, 5usize),
+                    (1073741816u32, 6usize),
+                    (268435454u32, 114usize),
+                    (268435454u32, 122usize),
+                    (268435454u32, 130usize),
+                    (1073741816u32, 0usize),
+                    (671088555u32, 1usize),
+                    (1073741816u32, 2usize),
+                    (1073741816u32, 3usize),
+                    (671088555u32, 4usize),
+                    (402653101u32, 5usize),
+                    (1073741816u32, 6usize),
+                    (268435454u32, 115usize),
+                    (268435454u32, 123usize),
+                    (268435454u32, 131usize),
+                    (1073741816u32, 0usize),
+                    (671088555u32, 1usize),
+                    (1073741816u32, 2usize),
+                    (1073741816u32, 3usize),
+                    (671088555u32, 4usize),
+                    (402653101u32, 5usize),
+                    (1073741816u32, 6usize),
+                    (268435454u32, 116usize),
+                    (268435454u32, 124usize),
+                    (268435454u32, 132usize),
+                    (1073741816u32, 0usize),
+                    (671088555u32, 1usize),
+                    (1073741816u32, 2usize),
+                    (1073741816u32, 3usize),
+                    (671088555u32, 4usize),
+                    (402653101u32, 5usize),
+                    (1073741816u32, 6usize),
+                    (268435454u32, 117usize),
+                    (268435454u32, 125usize),
+                    (268435454u32, 133usize),
+                    (1073741816u32, 0usize),
+                    (671088555u32, 1usize),
+                    (1073741816u32, 2usize),
+                    (1073741816u32, 3usize),
+                    (671088555u32, 4usize),
+                    (402653101u32, 5usize),
+                    (1073741816u32, 6usize),
+                    (268435454u32, 118usize),
+                    (268435454u32, 126usize),
+                    (268435454u32, 134usize),
+                    (1073741816u32, 0usize),
+                    (671088555u32, 1usize),
+                    (1073741816u32, 2usize),
+                    (1073741816u32, 3usize),
+                    (671088555u32, 4usize),
+                    (402653101u32, 5usize),
+                    (1073741816u32, 6usize),
+                    (268435454u32, 135usize),
+                    (268435454u32, 143usize),
+                    (268435454u32, 151usize),
+                    (1073741816u32, 0usize),
+                    (1073741816u32, 1usize),
+                    (1073741816u32, 2usize),
+                    (1073741816u32, 3usize),
+                    (671088555u32, 4usize),
+                    (1073741816u32, 5usize),
+                    (1073741816u32, 6usize),
+                    (268435454u32, 136usize),
+                    (268435454u32, 144usize),
+                    (268435454u32, 152usize),
+                    (1073741816u32, 0usize),
+                    (1073741816u32, 1usize),
+                    (1073741816u32, 2usize),
+                    (1073741816u32, 3usize),
+                    (671088555u32, 4usize),
+                    (1073741816u32, 5usize),
+                    (1073741816u32, 6usize),
+                    (268435454u32, 137usize),
+                    (268435454u32, 145usize),
+                    (268435454u32, 153usize),
+                    (1073741816u32, 0usize),
+                    (1073741816u32, 1usize),
+                    (1073741816u32, 2usize),
+                    (1073741816u32, 3usize),
+                    (671088555u32, 4usize),
+                    (1073741816u32, 5usize),
+                    (1073741816u32, 6usize),
+                    (268435454u32, 138usize),
+                    (268435454u32, 146usize),
+                    (268435454u32, 154usize),
+                    (1073741816u32, 0usize),
+                    (1073741816u32, 1usize),
+                    (1073741816u32, 2usize),
+                    (1073741816u32, 3usize),
+                    (671088555u32, 4usize),
+                    (1073741816u32, 5usize),
+                    (1073741816u32, 6usize),
+                    (268435454u32, 139usize),
+                    (268435454u32, 147usize),
+                    (268435454u32, 155usize),
+                    (1073741816u32, 0usize),
+                    (1073741816u32, 1usize),
+                    (1073741816u32, 2usize),
+                    (1073741816u32, 3usize),
+                    (671088555u32, 4usize),
+                    (1073741816u32, 5usize),
+                    (1073741816u32, 6usize),
+                    (268435454u32, 140usize),
+                    (268435454u32, 148usize),
+                    (268435454u32, 156usize),
+                    (1073741816u32, 0usize),
+                    (1073741816u32, 1usize),
+                    (1073741816u32, 2usize),
+                    (1073741816u32, 3usize),
+                    (671088555u32, 4usize),
+                    (1073741816u32, 5usize),
+                    (1073741816u32, 6usize),
+                    (268435454u32, 141usize),
+                    (268435454u32, 149usize),
+                    (268435454u32, 157usize),
+                    (1073741816u32, 0usize),
+                    (1073741816u32, 1usize),
+                    (1073741816u32, 2usize),
+                    (1073741816u32, 3usize),
+                    (671088555u32, 4usize),
+                    (1073741816u32, 5usize),
+                    (1073741816u32, 6usize),
+                    (268435454u32, 142usize),
+                    (268435454u32, 150usize),
+                    (268435454u32, 158usize),
+                    (1073741816u32, 0usize),
+                    (1073741816u32, 1usize),
+                    (1073741816u32, 2usize),
+                    (1073741816u32, 3usize),
+                    (671088555u32, 4usize),
+                    (1073741816u32, 5usize),
+                    (1073741816u32, 6usize),
+                ];
+                let mut _vl = 0;
+                while _vl < 41usize {
+                    let (cached_idx, col_start, col_count) = VL_DESCS[_vl];
+                    let mut expected: BabyBearExt4 = BabyBearExt4::ZERO;
+                    let mut alpha_power: BabyBearExt4 = BabyBearExt4::ONE;
+                    let mut _c = 0;
+                    while _c < col_count {
+                        let (col_constant, term_start, term_count) = VL_COLS[col_start + _c];
+                        let mut col_val: BabyBearExt4 =
+                            <BabyBearExt4 as FieldExtension<BabyBearField>>::from_base(
+                                BabyBearField::from_reduced_raw_repr(col_constant),
+                            );
+                        let mut _t = 0;
+                        while _t < term_count {
+                            let (coeff, dep_idx) = VL_TERMS[term_start + _t];
+                            let mut t = *state.prev_claims.get_unchecked(dep_idx);
+                            field_ops::mul_assign_by_base(
+                                &mut t,
+                                &BabyBearField::from_reduced_raw_repr(coeff),
+                            );
+                            field_ops::add_assign(&mut col_val, &t);
+                            _t += 1;
+                        }
+                        let mut term = col_val;
+                        field_ops::mul_assign(&mut term, &alpha_power);
+                        field_ops::add_assign(&mut expected, &term);
+                        field_ops::mul_assign(&mut alpha_power, &lookup_alpha);
+                        _c += 1;
+                    }
+                    let cached = *state.prev_claims.get_unchecked(cached_idx);
+                    if expected != cached {
+                        return Err(E::gkr_cache_relation_failed(0usize));
+                    }
+                    _vl += 1;
+                }
+            }
+            {
+                const VS_DESCS: [(usize, usize, usize); 1usize] = [(334usize, 0usize, 8usize)];
+                const VS_DEPS: [usize; 8usize] = [
+                    266usize, 267usize, 268usize, 269usize, 270usize, 271usize, 272usize, 273usize,
+                ];
+                let mut _vs = 0;
+                while _vs < 1usize {
+                    let (cached_idx, dep_start, dep_count) = VS_DESCS[_vs];
+                    let mut expected: BabyBearExt4 = BabyBearExt4::ZERO;
+                    let mut alpha_power: BabyBearExt4 = BabyBearExt4::ONE;
+                    let mut _d = 0;
+                    while _d < dep_count {
+                        let dep_idx = VS_DEPS[dep_start + _d];
+                        let mut term = *state.prev_claims.get_unchecked(dep_idx);
+                        field_ops::mul_assign(&mut term, &alpha_power);
+                        field_ops::add_assign(&mut expected, &term);
+                        field_ops::mul_assign(&mut alpha_power, &lookup_alpha);
+                        _d += 1;
+                    }
+                    let cached = *state.prev_claims.get_unchecked(cached_idx);
+                    if expected != cached {
+                        return Err(E::gkr_cache_relation_failed(0usize));
+                    }
+                    _vs += 1;
+                }
+            }
             state.batching_challenge = next_batching;
             state.prev_point_len = fc_len;
         }
-        state.batching_challenge = draw_single_field_el(&mut ts);
+        state.batching_challenge = draw_single_field_el(ts);
         let mut permutation_read_product: BabyBearExt4 = BabyBearExt4::ONE;
         let mut permutation_write_product: BabyBearExt4 = BabyBearExt4::ONE;
         {
@@ -12420,8 +10482,47 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             permutation_write_product,
             additional_base_layer_openings: BASE_LAYER_ADDITIONAL_OPENINGS,
             whir_batching_challenge: state.batching_challenge,
-            whir_transcript_seed: ts.seed,
-            oracle_caps,
         })
+    }
+}
+pub struct VerifierImplementation;
+impl
+    ::verifier_common::ConcreteVerifierImpl<
+        BabyBearField,
+        BabyBearExt4,
+        INIT_AND_TEARDOWN_SETS,
+        EXTERNAL_CHALLENGES_FLATTENED_SIZE,
+        CAP_SIZE,
+        NUM_MEMORY_COMMITS,
+        NUM_WITNESS_COMMITS,
+        NUM_SETUP_COMMITS,
+        PADDING_WORDS,
+        GKR_ROUNDS,
+        GKR_ADDRS,
+    > for VerifierImplementation
+{
+    #[inline(always)]
+    fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
+        external_challenges: &GKRExternalChallenges<BabyBearField, BabyBearExt4>,
+        initial_transcript: &ConcreteInitialTranscript,
+        transcript_state: &mut ::verifier_common::structs::TranscriptState,
+    ) -> Result<ConcreteGKRVerifierOutput, E::Error> {
+        verify_gkr::<I, E>(external_challenges, initial_transcript, transcript_state)
+    }
+    #[inline(always)]
+    fn verify_whir<I: NonDeterminismSource, E: ErrorCreator>(
+        initial_transcript: &ConcreteInitialTranscript,
+        transcript_state: &mut ::verifier_common::structs::TranscriptState,
+        whir_batching_challenge: BabyBearExt4,
+        base_layer_claims: &[BabyBearExt4],
+        initial_claim_point: &[BabyBearExt4],
+    ) -> Result<(), E::Error> {
+        super::whir::verify_whir::<I, E>(
+            initial_transcript,
+            transcript_state,
+            whir_batching_challenge,
+            base_layer_claims,
+            initial_claim_point,
+        )
     }
 }

@@ -9,11 +9,12 @@ use verifier_common::field::baby_bear::base::BabyBearField;
 use verifier_common::field::baby_bear::ext4::BabyBearExt4;
 use verifier_common::field::{Field, FieldExtension, PrimeField};
 use verifier_common::field_ops;
+use verifier_common::gkr::SimpleGateType;
 use verifier_common::gkr::{GKRVerifierOutput, LayerState};
 use verifier_common::lazy_vec::LazyVec;
 use verifier_common::non_determinism_source::NonDeterminismSource;
 use verifier_common::structs::{CommitBuf, TranscriptState};
-use verifier_common::transcript::Blake2sTranscript;
+use verifier_common::GKRExternalChallenges;
 #[inline(always)]
 #[allow(unused_variables)]
 unsafe fn layer_0_compute_claim(
@@ -47,7 +48,6 @@ unsafe fn layer_0_final_step_accumulator(
     batch_base: BabyBearExt4,
     lookup_additive_challenge: BabyBearExt4,
     lookup_alpha: BabyBearExt4,
-    challenge_powers: &[BabyBearExt4; GKR_MAX_POW],
     linearization_challenges: &[BabyBearExt4],
     permutation_argument_additive_part: BabyBearExt4,
     address_high_bits_shift: u32,
@@ -1345,7 +1345,6 @@ unsafe fn layer_1_final_step_accumulator(
     batch_base: BabyBearExt4,
     lookup_additive_challenge: BabyBearExt4,
     lookup_alpha: BabyBearExt4,
-    challenge_powers: &[BabyBearExt4; GKR_MAX_POW],
     linearization_challenges: &[BabyBearExt4],
     permutation_argument_additive_part: BabyBearExt4,
     address_high_bits_shift: u32,
@@ -1353,21 +1352,21 @@ unsafe fn layer_1_final_step_accumulator(
     let mut acc = [BabyBearExt4::ZERO; 2];
     let mut current_batch = BabyBearExt4::ONE;
     {
-        const SIMPLE_GATES: [(usize, [usize; 4]); 8usize] = [
-            (2usize, [1usize, 3usize, 0usize, 0usize]),
-            (2usize, [5usize, 7usize, 0usize, 0usize]),
-            (2usize, [9usize, 11usize, 0usize, 0usize]),
-            (2usize, [13usize, 15usize, 0usize, 0usize]),
-            (2usize, [0usize, 2usize, 0usize, 0usize]),
-            (2usize, [4usize, 6usize, 0usize, 0usize]),
-            (2usize, [8usize, 10usize, 0usize, 0usize]),
-            (2usize, [12usize, 14usize, 0usize, 0usize]),
+        const SIMPLE_GATES: [(SimpleGateType, [usize; 4]); 8usize] = [
+            (SimpleGateType::Product, [1usize, 3usize, 0usize, 0usize]),
+            (SimpleGateType::Product, [5usize, 7usize, 0usize, 0usize]),
+            (SimpleGateType::Product, [9usize, 11usize, 0usize, 0usize]),
+            (SimpleGateType::Product, [13usize, 15usize, 0usize, 0usize]),
+            (SimpleGateType::Product, [0usize, 2usize, 0usize, 0usize]),
+            (SimpleGateType::Product, [4usize, 6usize, 0usize, 0usize]),
+            (SimpleGateType::Product, [8usize, 10usize, 0usize, 0usize]),
+            (SimpleGateType::Product, [12usize, 14usize, 0usize, 0usize]),
         ];
         let mut _sg = 0;
         while _sg < 8usize {
             let (gt, idx) = unsafe { *SIMPLE_GATES.get_unchecked(_sg) };
             match gt {
-                1usize => {
+                SimpleGateType::Copy => {
                     let bc = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
@@ -1377,7 +1376,7 @@ unsafe fn layer_1_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &contrib);
                     }
                 }
-                2usize => {
+                SimpleGateType::Product => {
                     let bc = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
@@ -1389,7 +1388,7 @@ unsafe fn layer_1_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &contrib);
                     }
                 }
-                3usize => {
+                SimpleGateType::MaskToIdentity => {
                     let bc = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
@@ -1403,7 +1402,7 @@ unsafe fn layer_1_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &contrib);
                     }
                 }
-                4usize => {
+                SimpleGateType::UnbalancedProduct => {
                     let bc = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
@@ -1415,7 +1414,7 @@ unsafe fn layer_1_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &contrib);
                     }
                 }
-                5usize => {
+                SimpleGateType::LookupInitialPair => {
                     let bc0 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     let bc1 = current_batch;
@@ -1439,7 +1438,7 @@ unsafe fn layer_1_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &c1);
                     }
                 }
-                6usize => {
+                SimpleGateType::LookupWithSetup => {
                     let bc0 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     let bc1 = current_batch;
@@ -1465,7 +1464,7 @@ unsafe fn layer_1_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &c1);
                     }
                 }
-                7usize => {
+                SimpleGateType::LookupUnbalanced => {
                     let bc0 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     let bc1 = current_batch;
@@ -1490,7 +1489,7 @@ unsafe fn layer_1_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &c1);
                     }
                 }
-                8usize => {
+                SimpleGateType::LookupAggregatePair => {
                     let bc0 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     let bc1 = current_batch;
@@ -1517,7 +1516,7 @@ unsafe fn layer_1_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &c1);
                     }
                 }
-                9usize => {
+                SimpleGateType::LookupInitialWithCachedDenominators => {
                     let bc0 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     let bc1 = current_batch;
@@ -1546,7 +1545,6 @@ unsafe fn layer_1_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &c1);
                     }
                 }
-                _ => unreachable!(),
             }
             _sg += 1;
         }
@@ -1574,7 +1572,6 @@ unsafe fn layer_2_final_step_accumulator(
     batch_base: BabyBearExt4,
     lookup_additive_challenge: BabyBearExt4,
     lookup_alpha: BabyBearExt4,
-    challenge_powers: &[BabyBearExt4; GKR_MAX_POW],
     linearization_challenges: &[BabyBearExt4],
     permutation_argument_additive_part: BabyBearExt4,
     address_high_bits_shift: u32,
@@ -1582,17 +1579,17 @@ unsafe fn layer_2_final_step_accumulator(
     let mut acc = [BabyBearExt4::ZERO; 2];
     let mut current_batch = BabyBearExt4::ONE;
     {
-        const SIMPLE_GATES: [(usize, [usize; 4]); 4usize] = [
-            (2usize, [0usize, 1usize, 0usize, 0usize]),
-            (2usize, [2usize, 3usize, 0usize, 0usize]),
-            (2usize, [4usize, 5usize, 0usize, 0usize]),
-            (2usize, [6usize, 7usize, 0usize, 0usize]),
+        const SIMPLE_GATES: [(SimpleGateType, [usize; 4]); 4usize] = [
+            (SimpleGateType::Product, [0usize, 1usize, 0usize, 0usize]),
+            (SimpleGateType::Product, [2usize, 3usize, 0usize, 0usize]),
+            (SimpleGateType::Product, [4usize, 5usize, 0usize, 0usize]),
+            (SimpleGateType::Product, [6usize, 7usize, 0usize, 0usize]),
         ];
         let mut _sg = 0;
         while _sg < 4usize {
             let (gt, idx) = unsafe { *SIMPLE_GATES.get_unchecked(_sg) };
             match gt {
-                1usize => {
+                SimpleGateType::Copy => {
                     let bc = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
@@ -1602,7 +1599,7 @@ unsafe fn layer_2_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &contrib);
                     }
                 }
-                2usize => {
+                SimpleGateType::Product => {
                     let bc = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
@@ -1614,7 +1611,7 @@ unsafe fn layer_2_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &contrib);
                     }
                 }
-                3usize => {
+                SimpleGateType::MaskToIdentity => {
                     let bc = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
@@ -1628,7 +1625,7 @@ unsafe fn layer_2_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &contrib);
                     }
                 }
-                4usize => {
+                SimpleGateType::UnbalancedProduct => {
                     let bc = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
@@ -1640,7 +1637,7 @@ unsafe fn layer_2_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &contrib);
                     }
                 }
-                5usize => {
+                SimpleGateType::LookupInitialPair => {
                     let bc0 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     let bc1 = current_batch;
@@ -1664,7 +1661,7 @@ unsafe fn layer_2_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &c1);
                     }
                 }
-                6usize => {
+                SimpleGateType::LookupWithSetup => {
                     let bc0 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     let bc1 = current_batch;
@@ -1690,7 +1687,7 @@ unsafe fn layer_2_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &c1);
                     }
                 }
-                7usize => {
+                SimpleGateType::LookupUnbalanced => {
                     let bc0 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     let bc1 = current_batch;
@@ -1715,7 +1712,7 @@ unsafe fn layer_2_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &c1);
                     }
                 }
-                8usize => {
+                SimpleGateType::LookupAggregatePair => {
                     let bc0 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     let bc1 = current_batch;
@@ -1742,7 +1739,7 @@ unsafe fn layer_2_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &c1);
                     }
                 }
-                9usize => {
+                SimpleGateType::LookupInitialWithCachedDenominators => {
                     let bc0 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     let bc1 = current_batch;
@@ -1771,7 +1768,6 @@ unsafe fn layer_2_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &c1);
                     }
                 }
-                _ => unreachable!(),
             }
             _sg += 1;
         }
@@ -1795,7 +1791,6 @@ unsafe fn layer_3_final_step_accumulator(
     batch_base: BabyBearExt4,
     lookup_additive_challenge: BabyBearExt4,
     lookup_alpha: BabyBearExt4,
-    challenge_powers: &[BabyBearExt4; GKR_MAX_POW],
     linearization_challenges: &[BabyBearExt4],
     permutation_argument_additive_part: BabyBearExt4,
     address_high_bits_shift: u32,
@@ -1803,15 +1798,15 @@ unsafe fn layer_3_final_step_accumulator(
     let mut acc = [BabyBearExt4::ZERO; 2];
     let mut current_batch = BabyBearExt4::ONE;
     {
-        const SIMPLE_GATES: [(usize, [usize; 4]); 2usize] = [
-            (2usize, [0usize, 1usize, 0usize, 0usize]),
-            (2usize, [2usize, 3usize, 0usize, 0usize]),
+        const SIMPLE_GATES: [(SimpleGateType, [usize; 4]); 2usize] = [
+            (SimpleGateType::Product, [0usize, 1usize, 0usize, 0usize]),
+            (SimpleGateType::Product, [2usize, 3usize, 0usize, 0usize]),
         ];
         let mut _sg = 0;
         while _sg < 2usize {
             let (gt, idx) = unsafe { *SIMPLE_GATES.get_unchecked(_sg) };
             match gt {
-                1usize => {
+                SimpleGateType::Copy => {
                     let bc = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
@@ -1821,7 +1816,7 @@ unsafe fn layer_3_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &contrib);
                     }
                 }
-                2usize => {
+                SimpleGateType::Product => {
                     let bc = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
@@ -1833,7 +1828,7 @@ unsafe fn layer_3_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &contrib);
                     }
                 }
-                3usize => {
+                SimpleGateType::MaskToIdentity => {
                     let bc = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
@@ -1847,7 +1842,7 @@ unsafe fn layer_3_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &contrib);
                     }
                 }
-                4usize => {
+                SimpleGateType::UnbalancedProduct => {
                     let bc = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     for j in 0..2 {
@@ -1859,7 +1854,7 @@ unsafe fn layer_3_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &contrib);
                     }
                 }
-                5usize => {
+                SimpleGateType::LookupInitialPair => {
                     let bc0 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     let bc1 = current_batch;
@@ -1883,7 +1878,7 @@ unsafe fn layer_3_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &c1);
                     }
                 }
-                6usize => {
+                SimpleGateType::LookupWithSetup => {
                     let bc0 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     let bc1 = current_batch;
@@ -1909,7 +1904,7 @@ unsafe fn layer_3_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &c1);
                     }
                 }
-                7usize => {
+                SimpleGateType::LookupUnbalanced => {
                     let bc0 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     let bc1 = current_batch;
@@ -1934,7 +1929,7 @@ unsafe fn layer_3_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &c1);
                     }
                 }
-                8usize => {
+                SimpleGateType::LookupAggregatePair => {
                     let bc0 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     let bc1 = current_batch;
@@ -1961,7 +1956,7 @@ unsafe fn layer_3_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &c1);
                     }
                 }
-                9usize => {
+                SimpleGateType::LookupInitialWithCachedDenominators => {
                     let bc0 = current_batch;
                     field_ops::mul_assign(&mut current_batch, &batch_base);
                     let bc1 = current_batch;
@@ -1990,7 +1985,6 @@ unsafe fn layer_3_final_step_accumulator(
                         field_ops::add_assign(&mut acc[j], &c1);
                     }
                 }
-                _ => unreachable!(),
             }
             _sg += 1;
         }
@@ -2078,70 +2072,19 @@ unsafe fn dim_reducing_final_step_accumulator(
     acc
 }
 #[allow(unused_variables, unused_mut, unused_unsafe)]
-pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
-    GKRVerifierOutput<'static, BabyBearExt4, GKR_ROUNDS, GKR_ADDRS, TOTAL_CAP_WORDS>,
-    E::Error,
-> {
+pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
+    external_challenges: &GKRExternalChallenges<BabyBearField, BabyBearExt4>,
+    initial_transcript: &ConcreteInitialTranscript,
+    ts: &mut ::verifier_common::structs::TranscriptState,
+) -> Result<ConcreteGKRVerifierOutput, E::Error> {
     unsafe {
-        let mut transcript_buf = LazyVec::<u32, GKR_TRANSCRIPT_U32>::new();
-        {
-            let mut i = 0;
-            while i < GKR_TRANSCRIPT_U32 {
-                transcript_buf.push(I::read_word());
-                i += 1;
-            }
-        }
-        let oracle_caps: [u32; TOTAL_CAP_WORDS] = {
-            let mut caps = [0u32; TOTAL_CAP_WORDS];
-            let src = transcript_buf.as_slice();
-            let base = CAPS_OFFSET_IN_TRANSCRIPT;
-            let mut dst = 0;
-            let mut i = 0;
-            while i < NUM_ORACLES {
-                let words = ORACLE_CAP_WORDS[i];
-                let src_offset = ORACLE_CAP_TRANSCRIPT_OFFSETS[i];
-                let mut j = 0;
-                while j < words {
-                    caps[dst + j] = src[base + src_offset + j];
-                    j += 1;
-                }
-                dst += words;
-                i += 1;
-            }
-            caps
-        };
-        let mut ts =
-            TranscriptState::new(Blake2sTranscript::commit_initial(transcript_buf.as_slice()));
-        let mut init_challenges = LazyVec::<BabyBearExt4, 3>::new();
+        let mut init_challenges = LazyVec::<BabyBearExt4, 2>::new();
         unsafe {
-            init_challenges.set_len(3);
+            init_challenges.set_len(2);
         }
-        draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, init_challenges.as_mut_slice());
+        draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, init_challenges.as_mut_slice());
         let lookup_alpha = *init_challenges.get(0);
         let lookup_additive_challenge = *init_challenges.get(1);
-        let constraints_batch_challenge = *init_challenges.get(2);
-        let (linearization_challenges, permutation_argument_additive_part) = {
-            let ext_start = 16usize;
-            let num_lin = 6usize;
-            let mut lin = LazyVec::<BabyBearExt4, 6usize>::new();
-            let mut i = 0;
-            while i < num_lin {
-                let base = ext_start + i * EXT_DEGREE;
-                let raw = unsafe {
-                    (transcript_buf.as_slice().as_ptr().add(base) as *const [u32; EXT_DEGREE])
-                        .as_ref_unchecked()
-                };
-                lin.push(ext_from_raw_words::<BabyBearField, BabyBearExt4>(raw));
-                i += 1;
-            }
-            let add_base = ext_start + num_lin * EXT_DEGREE;
-            let raw = unsafe {
-                (transcript_buf.as_slice().as_ptr().add(add_base) as *const [u32; EXT_DEGREE])
-                    .as_ref_unchecked()
-            };
-            let additive = ext_from_raw_words::<BabyBearField, BabyBearExt4>(raw);
-            (unsafe { lin.into_array() }, additive)
-        };
         let address_high_bits_shift: u32 = 10u32;
         let mut evals_commit_buf = CommitBuf::<GKR_EVALS_COMMIT_BUF>::new();
         let evals_data_words = 32usize * EXT_DEGREE;
@@ -2158,7 +2101,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
         unsafe {
             all_challenges.set_len(5usize);
         }
-        draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, all_challenges.as_mut_slice());
+        draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, all_challenges.as_mut_slice());
         let batching_challenge = *all_challenges.get(5usize - 1);
         let mut eq_buf = LazyVec::<BabyBearExt4, 16usize>::new();
         let eq_challenges: &[BabyBearExt4; 4usize] = all_challenges.as_slice()[..4usize]
@@ -2224,7 +2167,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             );
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, E, 3usize, GKR_COMMIT_BUF>(
-                    &mut ts,
+                    ts,
                     initial_claim,
                     &mut state.prev_point,
                     23usize,
@@ -2258,7 +2201,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             unsafe {
                 draw_buf.set_len(3);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, draw_buf.as_mut_slice());
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_before_last = *draw_buf.get(0);
             let r_last = *draw_buf.get(1);
             let next_batching = *draw_buf.get(2);
@@ -2288,7 +2231,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             );
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, E, 4usize, GKR_COMMIT_BUF>(
-                    &mut ts,
+                    ts,
                     initial_claim,
                     &mut state.prev_point,
                     22usize,
@@ -2322,7 +2265,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             unsafe {
                 draw_buf.set_len(3);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, draw_buf.as_mut_slice());
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_before_last = *draw_buf.get(0);
             let r_last = *draw_buf.get(1);
             let next_batching = *draw_buf.get(2);
@@ -2352,7 +2295,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             );
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, E, 5usize, GKR_COMMIT_BUF>(
-                    &mut ts,
+                    ts,
                     initial_claim,
                     &mut state.prev_point,
                     21usize,
@@ -2386,7 +2329,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             unsafe {
                 draw_buf.set_len(3);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, draw_buf.as_mut_slice());
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_before_last = *draw_buf.get(0);
             let r_last = *draw_buf.get(1);
             let next_batching = *draw_buf.get(2);
@@ -2416,7 +2359,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             );
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, E, 6usize, GKR_COMMIT_BUF>(
-                    &mut ts,
+                    ts,
                     initial_claim,
                     &mut state.prev_point,
                     20usize,
@@ -2450,7 +2393,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             unsafe {
                 draw_buf.set_len(3);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, draw_buf.as_mut_slice());
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_before_last = *draw_buf.get(0);
             let r_last = *draw_buf.get(1);
             let next_batching = *draw_buf.get(2);
@@ -2480,7 +2423,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             );
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, E, 7usize, GKR_COMMIT_BUF>(
-                    &mut ts,
+                    ts,
                     initial_claim,
                     &mut state.prev_point,
                     19usize,
@@ -2514,7 +2457,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             unsafe {
                 draw_buf.set_len(3);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, draw_buf.as_mut_slice());
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_before_last = *draw_buf.get(0);
             let r_last = *draw_buf.get(1);
             let next_batching = *draw_buf.get(2);
@@ -2544,7 +2487,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             );
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, E, 8usize, GKR_COMMIT_BUF>(
-                    &mut ts,
+                    ts,
                     initial_claim,
                     &mut state.prev_point,
                     18usize,
@@ -2578,7 +2521,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             unsafe {
                 draw_buf.set_len(3);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, draw_buf.as_mut_slice());
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_before_last = *draw_buf.get(0);
             let r_last = *draw_buf.get(1);
             let next_batching = *draw_buf.get(2);
@@ -2608,7 +2551,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             );
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, E, 9usize, GKR_COMMIT_BUF>(
-                    &mut ts,
+                    ts,
                     initial_claim,
                     &mut state.prev_point,
                     17usize,
@@ -2642,7 +2585,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             unsafe {
                 draw_buf.set_len(3);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, draw_buf.as_mut_slice());
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_before_last = *draw_buf.get(0);
             let r_last = *draw_buf.get(1);
             let next_batching = *draw_buf.get(2);
@@ -2672,7 +2615,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             );
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, E, 10usize, GKR_COMMIT_BUF>(
-                    &mut ts,
+                    ts,
                     initial_claim,
                     &mut state.prev_point,
                     16usize,
@@ -2706,7 +2649,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             unsafe {
                 draw_buf.set_len(3);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, draw_buf.as_mut_slice());
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_before_last = *draw_buf.get(0);
             let r_last = *draw_buf.get(1);
             let next_batching = *draw_buf.get(2);
@@ -2736,7 +2679,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             );
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, E, 11usize, GKR_COMMIT_BUF>(
-                    &mut ts,
+                    ts,
                     initial_claim,
                     &mut state.prev_point,
                     15usize,
@@ -2770,7 +2713,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             unsafe {
                 draw_buf.set_len(3);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, draw_buf.as_mut_slice());
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_before_last = *draw_buf.get(0);
             let r_last = *draw_buf.get(1);
             let next_batching = *draw_buf.get(2);
@@ -2800,7 +2743,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             );
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, E, 12usize, GKR_COMMIT_BUF>(
-                    &mut ts,
+                    ts,
                     initial_claim,
                     &mut state.prev_point,
                     14usize,
@@ -2834,7 +2777,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             unsafe {
                 draw_buf.set_len(3);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, draw_buf.as_mut_slice());
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_before_last = *draw_buf.get(0);
             let r_last = *draw_buf.get(1);
             let next_batching = *draw_buf.get(2);
@@ -2864,7 +2807,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             );
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, E, 13usize, GKR_COMMIT_BUF>(
-                    &mut ts,
+                    ts,
                     initial_claim,
                     &mut state.prev_point,
                     13usize,
@@ -2898,7 +2841,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             unsafe {
                 draw_buf.set_len(3);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, draw_buf.as_mut_slice());
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_before_last = *draw_buf.get(0);
             let r_last = *draw_buf.get(1);
             let next_batching = *draw_buf.get(2);
@@ -2928,7 +2871,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             );
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, E, 14usize, GKR_COMMIT_BUF>(
-                    &mut ts,
+                    ts,
                     initial_claim,
                     &mut state.prev_point,
                     12usize,
@@ -2962,7 +2905,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             unsafe {
                 draw_buf.set_len(3);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, draw_buf.as_mut_slice());
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_before_last = *draw_buf.get(0);
             let r_last = *draw_buf.get(1);
             let next_batching = *draw_buf.get(2);
@@ -2992,7 +2935,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             );
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, E, 15usize, GKR_COMMIT_BUF>(
-                    &mut ts,
+                    ts,
                     initial_claim,
                     &mut state.prev_point,
                     11usize,
@@ -3026,7 +2969,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             unsafe {
                 draw_buf.set_len(3);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, draw_buf.as_mut_slice());
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_before_last = *draw_buf.get(0);
             let r_last = *draw_buf.get(1);
             let next_batching = *draw_buf.get(2);
@@ -3056,7 +2999,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             );
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, E, 16usize, GKR_COMMIT_BUF>(
-                    &mut ts,
+                    ts,
                     initial_claim,
                     &mut state.prev_point,
                     10usize,
@@ -3090,7 +3033,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             unsafe {
                 draw_buf.set_len(3);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, draw_buf.as_mut_slice());
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_before_last = *draw_buf.get(0);
             let r_last = *draw_buf.get(1);
             let next_batching = *draw_buf.get(2);
@@ -3120,7 +3063,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             );
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, E, 17usize, GKR_COMMIT_BUF>(
-                    &mut ts,
+                    ts,
                     initial_claim,
                     &mut state.prev_point,
                     9usize,
@@ -3154,7 +3097,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             unsafe {
                 draw_buf.set_len(3);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, draw_buf.as_mut_slice());
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_before_last = *draw_buf.get(0);
             let r_last = *draw_buf.get(1);
             let next_batching = *draw_buf.get(2);
@@ -3184,7 +3127,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             );
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, E, 18usize, GKR_COMMIT_BUF>(
-                    &mut ts,
+                    ts,
                     initial_claim,
                     &mut state.prev_point,
                     8usize,
@@ -3218,7 +3161,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             unsafe {
                 draw_buf.set_len(3);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, draw_buf.as_mut_slice());
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_before_last = *draw_buf.get(0);
             let r_last = *draw_buf.get(1);
             let next_batching = *draw_buf.get(2);
@@ -3248,7 +3191,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             );
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, E, 19usize, GKR_COMMIT_BUF>(
-                    &mut ts,
+                    ts,
                     initial_claim,
                     &mut state.prev_point,
                     7usize,
@@ -3282,7 +3225,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             unsafe {
                 draw_buf.set_len(3);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, draw_buf.as_mut_slice());
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_before_last = *draw_buf.get(0);
             let r_last = *draw_buf.get(1);
             let next_batching = *draw_buf.get(2);
@@ -3312,7 +3255,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             );
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, E, 20usize, GKR_COMMIT_BUF>(
-                    &mut ts,
+                    ts,
                     initial_claim,
                     &mut state.prev_point,
                     6usize,
@@ -3346,7 +3289,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             unsafe {
                 draw_buf.set_len(3);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, draw_buf.as_mut_slice());
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_before_last = *draw_buf.get(0);
             let r_last = *draw_buf.get(1);
             let next_batching = *draw_buf.get(2);
@@ -3376,7 +3319,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             );
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, E, 21usize, GKR_COMMIT_BUF>(
-                    &mut ts,
+                    ts,
                     initial_claim,
                     &mut state.prev_point,
                     5usize,
@@ -3410,7 +3353,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             unsafe {
                 draw_buf.set_len(3);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, draw_buf.as_mut_slice());
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_before_last = *draw_buf.get(0);
             let r_last = *draw_buf.get(1);
             let next_batching = *draw_buf.get(2);
@@ -3440,7 +3383,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             );
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, E, 22usize, GKR_COMMIT_BUF>(
-                    &mut ts,
+                    ts,
                     initial_claim,
                     &mut state.prev_point,
                     4usize,
@@ -3474,7 +3417,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             unsafe {
                 draw_buf.set_len(3);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, draw_buf.as_mut_slice());
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_before_last = *draw_buf.get(0);
             let r_last = *draw_buf.get(1);
             let next_batching = *draw_buf.get(2);
@@ -3497,15 +3440,6 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             state.batching_challenge = next_batching;
             state.prev_point_len = fc_len;
         }
-        let challenge_powers: [BabyBearExt4; GKR_MAX_POW] = {
-            let mut lv = LazyVec::<BabyBearExt4, GKR_MAX_POW>::new();
-            let mut pow = BabyBearExt4::ONE;
-            for _ in 0..GKR_MAX_POW {
-                lv.push(pow);
-                field_ops::mul_assign(&mut pow, &constraints_batch_challenge);
-            }
-            unsafe { lv.into_array() }
-        };
         {
             let initial_claim = layer_3_compute_claim(
                 state.prev_claims.as_array::<2usize>(),
@@ -3513,7 +3447,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             );
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, E, 23usize, GKR_COMMIT_BUF>(
-                    &mut ts,
+                    ts,
                     initial_claim,
                     &mut state.prev_point,
                     3usize,
@@ -3534,9 +3468,8 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
                     state.batching_challenge,
                     lookup_additive_challenge,
                     lookup_alpha,
-                    &challenge_powers,
-                    &linearization_challenges,
-                    permutation_argument_additive_part,
+                    &external_challenges.permutation_argument_linearization_challenges,
+                    external_challenges.permutation_argument_additive_part,
                     address_high_bits_shift,
                 );
                 verify_final_step_check::<E>(
@@ -3552,7 +3485,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             unsafe {
                 draw_buf.set_len(2);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, draw_buf.as_mut_slice());
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let last_r = *draw_buf.get(0);
             let next_batching = *draw_buf.get(1);
             *state.prev_point.get_unchecked_mut(fc_len) = last_r;
@@ -3572,7 +3505,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             );
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, E, 23usize, GKR_COMMIT_BUF>(
-                    &mut ts,
+                    ts,
                     initial_claim,
                     &mut state.prev_point,
                     2usize,
@@ -3593,9 +3526,8 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
                     state.batching_challenge,
                     lookup_additive_challenge,
                     lookup_alpha,
-                    &challenge_powers,
-                    &linearization_challenges,
-                    permutation_argument_additive_part,
+                    &external_challenges.permutation_argument_linearization_challenges,
+                    external_challenges.permutation_argument_additive_part,
                     address_high_bits_shift,
                 );
                 verify_final_step_check::<E>(
@@ -3611,7 +3543,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             unsafe {
                 draw_buf.set_len(2);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, draw_buf.as_mut_slice());
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let last_r = *draw_buf.get(0);
             let next_batching = *draw_buf.get(1);
             *state.prev_point.get_unchecked_mut(fc_len) = last_r;
@@ -3631,7 +3563,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             );
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, E, 23usize, GKR_COMMIT_BUF>(
-                    &mut ts,
+                    ts,
                     initial_claim,
                     &mut state.prev_point,
                     1usize,
@@ -3652,9 +3584,8 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
                     state.batching_challenge,
                     lookup_additive_challenge,
                     lookup_alpha,
-                    &challenge_powers,
-                    &linearization_challenges,
-                    permutation_argument_additive_part,
+                    &external_challenges.permutation_argument_linearization_challenges,
+                    external_challenges.permutation_argument_additive_part,
                     address_high_bits_shift,
                 );
                 verify_final_step_check::<E>(
@@ -3670,7 +3601,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             unsafe {
                 draw_buf.set_len(2);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, draw_buf.as_mut_slice());
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let last_r = *draw_buf.get(0);
             let next_batching = *draw_buf.get(1);
             *state.prev_point.get_unchecked_mut(fc_len) = last_r;
@@ -3690,7 +3621,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             );
             let (final_claim, final_eq_prefactor) =
                 verify_sumcheck_rounds::<I, E, 23usize, GKR_COMMIT_BUF>(
-                    &mut ts,
+                    ts,
                     initial_claim,
                     &mut state.prev_point,
                     0usize,
@@ -3711,9 +3642,8 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
                     state.batching_challenge,
                     lookup_additive_challenge,
                     lookup_alpha,
-                    &challenge_powers,
-                    &linearization_challenges,
-                    permutation_argument_additive_part,
+                    &external_challenges.permutation_argument_linearization_challenges,
+                    external_challenges.permutation_argument_additive_part,
                     address_high_bits_shift,
                 );
                 verify_final_step_check::<E>(
@@ -3729,7 +3659,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             unsafe {
                 draw_buf.set_len(2);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(&mut ts, draw_buf.as_mut_slice());
+            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let last_r = *draw_buf.get(0);
             let next_batching = *draw_buf.get(1);
             *state.prev_point.get_unchecked_mut(fc_len) = last_r;
@@ -3742,7 +3672,7 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             state.batching_challenge = next_batching;
             state.prev_point_len = fc_len;
         }
-        state.batching_challenge = draw_single_field_el(&mut ts);
+        state.batching_challenge = draw_single_field_el(ts);
         let mut permutation_read_product: BabyBearExt4 = BabyBearExt4::ONE;
         let mut permutation_write_product: BabyBearExt4 = BabyBearExt4::ONE;
         {
@@ -3768,8 +3698,47 @@ pub fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>() -> Result<
             permutation_write_product,
             additional_base_layer_openings: BASE_LAYER_ADDITIONAL_OPENINGS,
             whir_batching_challenge: state.batching_challenge,
-            whir_transcript_seed: ts.seed,
-            oracle_caps,
         })
+    }
+}
+pub struct VerifierImplementation;
+impl
+    ::verifier_common::ConcreteVerifierImpl<
+        BabyBearField,
+        BabyBearExt4,
+        INIT_AND_TEARDOWN_SETS,
+        EXTERNAL_CHALLENGES_FLATTENED_SIZE,
+        CAP_SIZE,
+        NUM_MEMORY_COMMITS,
+        NUM_WITNESS_COMMITS,
+        NUM_SETUP_COMMITS,
+        PADDING_WORDS,
+        GKR_ROUNDS,
+        GKR_ADDRS,
+    > for VerifierImplementation
+{
+    #[inline(always)]
+    fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
+        external_challenges: &GKRExternalChallenges<BabyBearField, BabyBearExt4>,
+        initial_transcript: &ConcreteInitialTranscript,
+        transcript_state: &mut ::verifier_common::structs::TranscriptState,
+    ) -> Result<ConcreteGKRVerifierOutput, E::Error> {
+        verify_gkr::<I, E>(external_challenges, initial_transcript, transcript_state)
+    }
+    #[inline(always)]
+    fn verify_whir<I: NonDeterminismSource, E: ErrorCreator>(
+        initial_transcript: &ConcreteInitialTranscript,
+        transcript_state: &mut ::verifier_common::structs::TranscriptState,
+        whir_batching_challenge: BabyBearExt4,
+        base_layer_claims: &[BabyBearExt4],
+        initial_claim_point: &[BabyBearExt4],
+    ) -> Result<(), E::Error> {
+        super::whir::verify_whir::<I, E>(
+            initial_transcript,
+            transcript_state,
+            whir_batching_challenge,
+            base_layer_claims,
+            initial_claim_point,
+        )
     }
 }

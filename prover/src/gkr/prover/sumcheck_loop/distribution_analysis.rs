@@ -1,20 +1,19 @@
 use std::collections::BTreeSet;
 
 use super::*;
-use cs::definitions::NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES;
+use cs::definitions::NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES;
 
 impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
     pub(crate) fn analyze_terms(&self) {
         let challenge_constants = BatchedGKRTermDescriptionConstants {
             external_challenges: GKRExternalChallenges {
                 permutation_argument_linearization_challenges: [E::ONE;
-                    NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES],
+                    NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES],
                 permutation_argument_additive_part: E::ONE,
                 _marker: core::marker::PhantomData,
             },
             lookup_challenges_additive_part: E::ONE,
             lookup_challenges_multiplicative_part: E::ONE,
-            constraints_batch_challenge: E::ONE,
             _marker: core::marker::PhantomData,
         };
         let batched_description = self.make_batched_description(&challenge_constants, self.layer);
@@ -131,16 +130,8 @@ mod test {
         let layer_idx = 0;
         let layer = &circuit.layers[layer_idx];
 
-        let collector = KernelCollector::<F, E>::from_layer(
-            layer,
-            layer_idx,
-            E::ONE,
-            E::ONE,
-            E::ONE,
-            E::ONE,
-            &[],
-            0,
-        );
+        let collector =
+            KernelCollector::<F, E>::from_layer(layer, layer_idx, E::ONE, E::ONE, E::ONE, &[], 0);
 
         collector.analyze_terms();
     }

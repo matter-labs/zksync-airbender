@@ -108,10 +108,10 @@ fn generate_proof(
     ]);
 
     let permutation_argument_linearization_challenges: [BabyBearExt4;
-        NUM_MEM_ARGUMENT_KEY_PARTS - 1] =
+        NUM_PERMUTATION_ARGUMENT_KEY_PARTS - 1] =
         materialize_powers_serial_starting_with_elem::<_, Global>(
             memory_argument_alpha,
-            NUM_MEM_ARGUMENT_KEY_PARTS - 1,
+            NUM_PERMUTATION_ARGUMENT_KEY_PARTS - 1,
         )
         .try_into()
         .unwrap();

@@ -13,7 +13,7 @@ use common::{
 };
 
 fn test_rejects_garbage_proof(name: &str) {
-    let nds_len = common::load_nds(name).len();
+    let nds_len = common::load_nds(name).0.len();
     assert_rejects_corrupted_nds(
         name,
         "garbage proof",
@@ -27,7 +27,7 @@ fn test_rejects_garbage_proof(name: &str) {
 }
 
 fn test_rejects_corruption_at_fractions(name: &str) {
-    let nds_len = common::load_nds(name).len();
+    let nds_len = common::load_nds(name).0.len();
     for fraction in [0.25, 0.50, 0.75] {
         let label = format!("fraction {:.2}", fraction);
         let idx = (nds_len as f64 * fraction) as usize;
@@ -42,7 +42,10 @@ fn test_rejects_corruption_at_fractions(name: &str) {
 
 fn test_rejects_corrupted_gkr_region(name: &str) {
     with_circuit!(name, |m| {
-        let gkr_off = m::constants::GKR_TRANSCRIPT_U32;
+        type InitialTranscript = m::constants::ConcreteInitialTranscript;
+        let initial_transcript_responses_offset = core::mem::offset_of!(InitialTranscript, _marker) - (core::mem::offset_of!(InitialTranscript, setup_caps) - core::mem::offset_of!(InitialTranscript, external_challenges_flattened));
+        let gkr_off = initial_transcript_responses_offset / core::mem::size_of::<u32>();
+
         let gkr_evals = m::constants::GKR_EVALS;
 
         let cases: &[(usize, u32, &str)] = &[
@@ -65,7 +68,7 @@ fn test_rejects_corrupted_gkr_region(name: &str) {
 }
 
 fn test_rejects_corrupted_whir_region(name: &str) {
-    let nds_len = common::load_nds(name).len();
+    let nds_len = common::load_nds(name).0.len();
 
     let cases: &[(usize, &str)] = &[
         (nds_len / 2, "whir_early"),
@@ -85,8 +88,11 @@ fn test_rejects_corrupted_whir_region(name: &str) {
 
 fn test_rejects_zeroed_regions(name: &str) {
     with_circuit!(name, |m| {
-        let gkr_off = m::constants::GKR_TRANSCRIPT_U32;
-        let nds_len = common::load_nds(name).len();
+        type InitialTranscript = m::constants::ConcreteInitialTranscript;
+        let initial_transcript_responses_offset = core::mem::offset_of!(InitialTranscript, _marker) - (core::mem::offset_of!(InitialTranscript, setup_caps) - core::mem::offset_of!(InitialTranscript, external_challenges_flattened));
+        let gkr_off = initial_transcript_responses_offset / core::mem::size_of::<u32>();
+
+        let nds_len = common::load_nds(name).0.len();
 
         let cases: &[(usize, usize, &str)] = &[
             (gkr_off + 200, 32, "sumcheck_chunk"),
@@ -120,15 +126,31 @@ fn test_rejects_shifted_nds(name: &str) {
 
 fn test_rejects_corrupted_oracle_caps(name: &str) {
     with_circuit!(name, |m| {
-        let caps_offset = m::constants::CAPS_OFFSET_IN_TRANSCRIPT;
-        let cap_offsets = m::constants::ORACLE_CAP_TRANSCRIPT_OFFSETS;
+        type InitialTranscript = m::constants::ConcreteInitialTranscript;
+        let setup_oracle_commit_offset = core::mem::offset_of!(InitialTranscript, setup_caps);
+        let memory_oracle_commit_offset = core::mem::offset_of!(InitialTranscript, memory_caps);
+        let witness_oracle_commit_offset = core::mem::offset_of!(InitialTranscript, witness_caps);
+        let end_offset = core::mem::offset_of!(InitialTranscript, _marker);
 
-        for (i, &off) in cap_offsets.iter().enumerate() {
-            let label = format!("oracle_cap_{}", i);
+        let setup_oracle_commit_size = memory_oracle_commit_offset - setup_oracle_commit_offset;
+        let memory_oracle_commit_size = witness_oracle_commit_offset - memory_oracle_commit_offset;
+        let witness_oracle_commit_size = end_offset - witness_oracle_commit_offset;
+
+        let inits_and_teardowns_size = core::mem::offset_of!(InitialTranscript, external_challenges_flattened);
+
+        for (cap_name, offset, size) in [
+            ("setup", (inits_and_teardowns_size) / core::mem::size_of::<u32>(), setup_oracle_commit_size),
+            ("memory", (inits_and_teardowns_size + setup_oracle_commit_size) / core::mem::size_of::<u32>(), memory_oracle_commit_size),
+            ("witness", (inits_and_teardowns_size + setup_oracle_commit_size + memory_oracle_commit_size) / core::mem::size_of::<u32>(), witness_oracle_commit_size),
+        ] {
+            if size == 0 {
+                continue;
+            }
+            let label = format!("oracle_cap_{}", cap_name);
             assert_rejects_corrupted_nds(
                 name,
                 &label,
-                |nds| nds[caps_offset + off] ^= 1,
+                |nds| nds[offset] ^= 1,
                 |r| {
                     matches!(
                         r,
@@ -164,7 +186,7 @@ fn test_rejects_corrupted_final_monomials(name: &str) {
         let queries_words = final_num_queries * (leaf_words + path_words);
         let pow_words = 2;
         let monomial_words = m::constants::FINAL_MONOMIALS_LEN * 4;
-        let nds_len = common::load_nds(name).len();
+        let nds_len = common::load_nds(name).0.len();
         let monomials_end = nds_len - queries_words - pow_words;
         let start = monomials_end - monomial_words;
         assert_rejects_corrupted_nds(
@@ -186,7 +208,7 @@ fn test_rejects_cross_circuit_nds(name: &str) {
         .find(|c| c.name != name)
         .expect("need at least two circuits");
 
-    let other_nds = other.load_nds();
+    let other_nds = other.load_nds().0;
     assert_rejects_corrupted_nds(
         name,
         &format!("NDS from {}", other.name),
@@ -222,7 +244,10 @@ fn test_rejects_corrupted_init_teardown_bits(name: &str) {
 
 fn test_rejects_non_canonical_field_element(name: &str) {
     with_circuit!(name, |m| {
-        let gkr_off = m::constants::GKR_TRANSCRIPT_U32;
+        type InitialTranscript = m::constants::ConcreteInitialTranscript;
+        let initial_transcript_responses_offset = core::mem::offset_of!(InitialTranscript, _marker) - (core::mem::offset_of!(InitialTranscript, setup_caps) - core::mem::offset_of!(InitialTranscript, external_challenges_flattened));
+        let gkr_off = initial_transcript_responses_offset / core::mem::size_of::<u32>();
+
         assert_rejects_corrupted_nds(
             name,
             "non_canonical_field_element",

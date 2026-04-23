@@ -3,17 +3,28 @@ pub mod common;
 pub mod constants;
 pub mod gkr;
 pub mod whir;
-pub use gkr::verify_gkr;
 use verifier_common::errors::ErrorCreator;
+use verifier_common::field::baby_bear::base::BabyBearField;
+use verifier_common::field::baby_bear::ext4::BabyBearExt4;
 use verifier_common::non_determinism_source::NonDeterminismSource;
-pub fn verify<I: NonDeterminismSource, E: ErrorCreator>() -> Result<(), E::Error> {
-    let gkr_output = verify_gkr::<I, E>()?;
-    let mut ts = ::verifier_common::structs::TranscriptState::new(gkr_output.whir_transcript_seed);
-    whir::verify_whir::<I, E>(
-        &mut ts,
-        gkr_output.whir_batching_challenge,
-        &gkr_output.oracle_caps,
-        gkr_output.base_layer_claims.as_slice(),
-        &gkr_output.evaluation_point[..gkr_output.evaluation_point_len],
-    )
+use verifier_common::GKRExternalChallenges;
+pub fn verify<I: NonDeterminismSource, E: ErrorCreator>(
+    external_challenges: &GKRExternalChallenges<BabyBearField, BabyBearExt4>,
+) -> Result<constants::ConcreteVerifierOutput, E::Error> {
+    ::verifier_common::verify_impl::<
+        I,
+        E,
+        BabyBearField,
+        BabyBearExt4,
+        { constants::INIT_AND_TEARDOWN_SETS },
+        { constants::EXTERNAL_CHALLENGES_FLATTENED_SIZE },
+        { constants::CAP_SIZE },
+        { constants::NUM_MEMORY_COMMITS },
+        { constants::NUM_WITNESS_COMMITS },
+        { constants::NUM_SETUP_COMMITS },
+        { constants::PADDING_WORDS },
+        { constants::GKR_ROUNDS },
+        { constants::GKR_ADDRS },
+        gkr::VerifierImplementation,
+    >(external_challenges)
 }

@@ -2,7 +2,13 @@ use verifier_common::cs::definitions::{GKRAddress, VirtualSetupPoly};
 pub const GKR_ROUNDS: usize = 24usize;
 pub const GKR_ADDRS: usize = 66usize;
 pub const GKR_EVALS: usize = 32usize;
-pub const GKR_TRANSCRIPT_U32: usize = 172usize;
+pub const INIT_AND_TEARDOWN_SETS: usize = 16usize;
+pub const EXTERNAL_CHALLENGES_FLATTENED_SIZE: usize = 28usize;
+pub const CAP_SIZE: usize = 16usize;
+pub const NUM_MEMORY_COMMITS: usize = 1usize;
+pub const NUM_WITNESS_COMMITS: usize = 0usize;
+pub const NUM_SETUP_COMMITS: usize = 0usize;
+pub const PADDING_WORDS: usize = 4usize;
 pub const GKR_MAX_POW: usize = 1usize;
 pub const GKR_EVAL_BUF: usize = 1072usize;
 pub const GKR_COMMIT_BUF: usize = 32usize;
@@ -82,16 +88,12 @@ pub const WHIR_QUERIES: [usize; 6usize] = [68usize, 23usize, 12usize, 10usize, 1
 pub const WHIR_POW_BITS: [u32; 6usize] = [24u32, 24u32, 24u32, 24u32, 24u32, 24u32];
 pub const MAX_POW_ENTRIES: usize = 128usize;
 pub const FINAL_MONOMIALS_LEN: usize = 8usize;
-pub const NUM_ORACLES: usize = 3usize;
-pub const ORACLE_NUM_COLS: [usize; 3usize] = [64usize, 0usize, 0usize];
-pub const ORACLE_CAP_WORDS: [usize; 3usize] = [128usize, 0usize, 0usize];
-pub const ORACLE_DEPTHS: [usize; 3usize] = [20usize, 0usize, 0usize];
+pub const NUM_ORACLES: usize = 1usize;
+pub const ORACLE_NUM_COLS: [usize; 1usize] = [64usize];
+pub const ORACLE_DEPTHS: [usize; 1usize] = [20usize];
 pub const TOTAL_ORACLE_COLS: usize = 64usize;
-pub const TOTAL_CAP_WORDS: usize = 128usize;
-pub const ORACLE_CAP_TRANSCRIPT_OFFSETS: [usize; 3usize] = [0usize, 128usize, 0usize];
 pub const WHIR_ORACLE_DEPTHS: [usize; 5usize] = [18usize, 17usize, 14usize, 10usize, 6usize];
 pub const WHIR_CAP_WORDS: usize = 128usize;
-pub const CAPS_OFFSET_IN_TRANSCRIPT: usize = 44usize;
 pub const INITIAL_WHIR_CLAIM_INDICES: [usize; 64usize] = [
     0usize, 1usize, 2usize, 3usize, 4usize, 5usize, 6usize, 7usize, 8usize, 9usize, 10usize,
     11usize, 12usize, 13usize, 14usize, 15usize, 16usize, 17usize, 18usize, 19usize, 20usize,
@@ -101,3 +103,24 @@ pub const INITIAL_WHIR_CLAIM_INDICES: [usize; 64usize] = [
     51usize, 52usize, 53usize, 54usize, 55usize, 56usize, 57usize, 58usize, 59usize, 60usize,
     61usize, 62usize, 63usize,
 ];
+use verifier_common::field::baby_bear::base::BabyBearField;
+use verifier_common::field::baby_bear::ext4::BabyBearExt4;
+pub type ConcreteInitialTranscript = ::verifier_common::InitialGKRTranscript<
+    BabyBearExt4,
+    INIT_AND_TEARDOWN_SETS,
+    EXTERNAL_CHALLENGES_FLATTENED_SIZE,
+    CAP_SIZE,
+    NUM_MEMORY_COMMITS,
+    NUM_WITNESS_COMMITS,
+    NUM_SETUP_COMMITS,
+    PADDING_WORDS,
+>;
+pub type ConcreteGKRVerifierOutput =
+    ::verifier_common::GKRVerifierOutput<'static, BabyBearExt4, GKR_ROUNDS, GKR_ADDRS>;
+pub type ConcreteVerifierOutput = ::verifier_common::VerifierOutput<
+    BabyBearExt4,
+    INIT_AND_TEARDOWN_SETS,
+    CAP_SIZE,
+    NUM_MEMORY_COMMITS,
+    NUM_SETUP_COMMITS,
+>;

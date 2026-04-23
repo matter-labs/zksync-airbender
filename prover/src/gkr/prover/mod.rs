@@ -7,6 +7,7 @@ use field::{Field, FieldExtension, PrimeField};
 use worker::WorkerGeometry;
 
 use super::*;
+pub use crate::definitions::GKRExternalChallenges;
 use crate::definitions::Transcript;
 use crate::fft::Twiddles;
 use crate::gkr::prover::debug_utils::compute_initial_sumcheck_claims;
@@ -22,7 +23,7 @@ use crate::gkr::witness_gen::family_circuits::GKRFullWitnessTrace;
 use crate::merkle_trees::ColumnMajorMerkleTreeConstructor;
 use crate::worker::Worker;
 use common_constants::TIMESTAMP_COLUMNS_NUM_BITS;
-use cs::definitions::{GKRAddress, VirtualSetupPoly, NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES};
+use cs::definitions::{GKRAddress, VirtualSetupPoly};
 
 mod debug_utils;
 pub mod dimension_reduction;
@@ -35,113 +36,6 @@ pub mod utils;
 
 pub(crate) struct SendPtr<T: Sized>(*mut T);
 unsafe impl<T: Send + Sync> Send for SendPtr<T> {}
-
-#[derive(
-    Clone, Copy, Debug, Hash, Default, serde::Serialize, serde::Deserialize, PartialEq, Eq,
-)]
-#[repr(C)]
-pub struct GKRExternalChallenges<F: PrimeField, E: FieldExtension<F> + Field> {
-    pub permutation_argument_linearization_challenges:
-        [E; NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES],
-    pub permutation_argument_additive_part: E,
-    pub _marker: core::marker::PhantomData<F>,
-}
-
-impl<F: PrimeField, E: FieldExtension<F> + Field> GKRExternalChallenges<F, E> {
-    pub fn flatten_into_buffer(&self, dst: &mut Vec<u32>)
-    where
-        [(); E::DEGREE]: Sized,
-    {
-        use crate::gkr::prover::transcript_utils::flatten_field_els_into;
-        flatten_field_els_into(&self.permutation_argument_linearization_challenges, dst);
-        flatten_field_els_into(&[self.permutation_argument_additive_part], dst);
-    }
-
-    #[cfg(feature = "prover")]
-    pub fn draw_from_transcript_seed(
-        mut seed: transcript::Seed,
-        pow_bits: usize,
-        pow_challenge: u64,
-    ) -> Self
-    where
-        [(); ((NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES + 1) * E::DEGREE + 1)
-            .next_multiple_of(blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS)]:,
-        [(); ((NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES + 1) * E::DEGREE)
-            .next_multiple_of(blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS)]:,
-        [(); E::DEGREE]:,
-    {
-        if pow_bits > 0 {
-            Transcript::verify_pow(&mut seed, pow_challenge, pow_bits as u32);
-        }
-
-        use crate::utils::*;
-        use blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS;
-
-        unsafe {
-            if pow_bits > 0 {
-                let mut transcript_challenges = [0u32;
-                    ((NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES + 1) * E::DEGREE + 1)
-                        .next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS)];
-                Transcript::draw_randomness(&mut seed, &mut transcript_challenges);
-
-                let mut it = transcript_challenges[1..]
-                    .as_chunks::<{ E::DEGREE }>()
-                    .0
-                    .iter();
-                let permutation_argument_linearization_challenges: [E;
-                    NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES] = core::array::from_fn(|_| {
-                    extension_field_from_base_coeffs(
-                        it.next()
-                            .unwrap_unchecked()
-                            .map(|el| F::from_raw_repr_with_reduction(el)),
-                    )
-                });
-                let permutation_argument_additive_part: E =
-                    extension_field_from_base_coeffs::<F, E>({
-                        let t = *it.next().unwrap_unchecked();
-                        let t: [F; E::DEGREE] = t.map(|el| F::from_raw_repr_with_reduction(el));
-                        t
-                    });
-
-                Self {
-                    permutation_argument_linearization_challenges,
-                    permutation_argument_additive_part,
-                    _marker: core::marker::PhantomData,
-                }
-            } else {
-                let mut transcript_challenges = [0u32;
-                    ((NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES + 1) * E::DEGREE)
-                        .next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS)];
-                Transcript::draw_randomness(&mut seed, &mut transcript_challenges);
-
-                let mut it = transcript_challenges[1..]
-                    .as_chunks::<{ E::DEGREE }>()
-                    .0
-                    .iter();
-                let permutation_argument_linearization_challenges: [E;
-                    NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES] = core::array::from_fn(|_| {
-                    extension_field_from_base_coeffs(
-                        it.next()
-                            .unwrap_unchecked()
-                            .map(|el| F::from_raw_repr_with_reduction(el)),
-                    )
-                });
-                let permutation_argument_additive_part: E =
-                    extension_field_from_base_coeffs::<F, E>({
-                        let t = *it.next().unwrap_unchecked();
-                        let t: [F; E::DEGREE] = t.map(|el| F::from_raw_repr_with_reduction(el));
-                        t
-                    });
-
-                Self {
-                    permutation_argument_linearization_challenges,
-                    permutation_argument_additive_part,
-                    _marker: core::marker::PhantomData,
-                }
-            }
-        }
-    }
-}
 
 #[serde_with::serde_as]
 #[derive(Clone, Debug, Hash, serde::Serialize, serde::Deserialize)]
@@ -447,9 +341,8 @@ where
     let mut seed = Transcript::commit_initial(&transcript_input);
 
     // now we need to draw prove-local challenges, and in our case it's just a challenge for lookups, and challenge to batch all constraints
-    let challenges: Vec<E> = draw_random_field_els(&mut seed, 3);
-    let [lookup_alpha, lookup_additive_part, constraints_batch_challenge] =
-        challenges.try_into().unwrap();
+    let challenges: Vec<E> = draw_random_field_els(&mut seed, 2);
+    let [lookup_alpha, lookup_additive_part] = challenges.try_into().unwrap();
 
     let mut gkr_storage = GKRStorage::<F, E>::default();
 
@@ -519,7 +412,6 @@ where
             lookup_alpha,
             lookup_additive_part,
             decoder_lookup_fill_value,
-            constraints_batch_challenge,
             worker,
         );
     }
@@ -680,7 +572,6 @@ where
             trace_len,
             lookup_alpha,
             lookup_additive_part,
-            constraints_batch_challenge,
             &inits_and_teardowns_top_bits[..],
             address_high_bits_shift,
             external_challenges,

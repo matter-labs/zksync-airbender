@@ -6,10 +6,12 @@ use prover::cs::definitions::gkr::NoFieldVectorLookupRelation;
 use prover::cs::definitions::gkr::RamWordRepresentation;
 use prover::cs::definitions::GKRAddress;
 use prover::cs::definitions::{
-    MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX, MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX,
-    MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX,
-    MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX, MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX,
-    MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX,
+    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX,
+    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX,
+    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX,
+    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX,
+    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX,
+    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX,
 };
 use prover::cs::gkr_compiler::{
     CompiledAddressSpaceRelationStrict, CompiledAddressStrict, CompiledMemoryTimestamp,
@@ -17,6 +19,7 @@ use prover::cs::gkr_compiler::{
     NoFieldSpecialMemoryContributionRelation,
 };
 use prover::field::PrimeField;
+use verifier_common::gkr::SimpleGateType;
 
 use super::addr_to_idx;
 use super::coeff_to_internal_repr;
@@ -451,7 +454,7 @@ fn emit_memory_expression_eval<F: PrimeField>(
         CompiledAddressStrict::ConstantU16(c) => {
             ops.push([
                 4,
-                MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX,
+                PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX,
                 mont(*c as u32),
                 0,
                 0,
@@ -461,7 +464,7 @@ fn emit_memory_expression_eval<F: PrimeField>(
         CompiledAddressStrict::Constant(c) => {
             ops.push([
                 4,
-                MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX,
+                PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX,
                 mont(*c),
                 0,
                 0,
@@ -471,7 +474,7 @@ fn emit_memory_expression_eval<F: PrimeField>(
         CompiledAddressStrict::U16Space(offset) => {
             ops.push([
                 3,
-                MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX,
+                PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX,
                 idx(*offset),
                 0,
                 0,
@@ -481,7 +484,7 @@ fn emit_memory_expression_eval<F: PrimeField>(
         CompiledAddressStrict::U32Space([low, high]) => {
             ops.push([
                 3,
-                MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX,
+                PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX,
                 idx(*low),
                 0,
                 0,
@@ -489,7 +492,7 @@ fn emit_memory_expression_eval<F: PrimeField>(
             ]);
             ops.push([
                 3,
-                MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX,
+                PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX,
                 idx(*high),
                 0,
                 0,
@@ -509,7 +512,7 @@ fn emit_memory_expression_eval<F: PrimeField>(
                 let c_mont = mont(*c as u32);
                 ops.push([
                     6,
-                    MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX,
+                    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX,
                     base_idx,
                     dyn_idx,
                     off_mont,
@@ -518,7 +521,7 @@ fn emit_memory_expression_eval<F: PrimeField>(
             } else if *low_offset != 0 {
                 ops.push([
                     5,
-                    MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX,
+                    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX,
                     base_idx,
                     off_mont,
                     0,
@@ -527,7 +530,7 @@ fn emit_memory_expression_eval<F: PrimeField>(
             } else {
                 ops.push([
                     3,
-                    MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX,
+                    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX,
                     base_idx,
                     0,
                     0,
@@ -536,7 +539,7 @@ fn emit_memory_expression_eval<F: PrimeField>(
             }
             ops.push([
                 3,
-                MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX,
+                PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX,
                 idx(*high),
                 0,
                 0,
@@ -555,7 +558,7 @@ fn emit_memory_expression_eval<F: PrimeField>(
             if ts_off != 0 {
                 ops.push([
                     5,
-                    MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX,
+                    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX,
                     idx(ts[0]),
                     mont(ts_off),
                     0,
@@ -564,7 +567,7 @@ fn emit_memory_expression_eval<F: PrimeField>(
             } else {
                 ops.push([
                     3,
-                    MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX,
+                    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX,
                     idx(ts[0]),
                     0,
                     0,
@@ -573,7 +576,7 @@ fn emit_memory_expression_eval<F: PrimeField>(
             }
             ops.push([
                 3,
-                MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX,
+                PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX,
                 idx(ts[1]),
                 0,
                 0,
@@ -587,7 +590,7 @@ fn emit_memory_expression_eval<F: PrimeField>(
         RamWordRepresentation::U16Limbs(limbs) => {
             ops.push([
                 3,
-                MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX,
+                PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX,
                 idx(limbs[0]),
                 0,
                 0,
@@ -595,7 +598,7 @@ fn emit_memory_expression_eval<F: PrimeField>(
             ]);
             ops.push([
                 3,
-                MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX,
+                PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX,
                 idx(limbs[1]),
                 0,
                 0,
@@ -605,7 +608,7 @@ fn emit_memory_expression_eval<F: PrimeField>(
         RamWordRepresentation::U8Limbs(bytes) => {
             ops.push([
                 7,
-                MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX,
+                PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX,
                 idx(bytes[0]),
                 idx(bytes[1]),
                 0,
@@ -613,7 +616,7 @@ fn emit_memory_expression_eval<F: PrimeField>(
             ]);
             ops.push([
                 7,
-                MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX,
+                PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX,
                 idx(bytes[2]),
                 idx(bytes[3]),
                 0,
@@ -728,28 +731,29 @@ pub fn generate_layer_compute_claim<MW: MersenneWrapper>(
     }
 }
 
-const GT_COPY: usize = 1;
-const GT_PRODUCT: usize = 2; // InitialGrandProductFromCaches, TrivialProduct
-const GT_MASK_PRODUCT: usize = 3;
-const GT_UNBAL_PRODUCT: usize = 4;
-const GT_LOOKUP_PAIR: usize = 5;
-const GT_LOOKUP_SETUP: usize = 6;
-const GT_LOOKUP_UNBAL: usize = 7;
-const GT_AGGREGATE_PAIR: usize = 8;
-const GT_LOOKUP_CACHED_DENS: usize = 9;
+// const GT_COPY: usize = 1;
+// const GT_PRODUCT: usize = 2; // InitialGrandProductFromCaches, TrivialProduct
+// const GT_MASK_PRODUCT: usize = 3;
+// const GT_UNBAL_PRODUCT: usize = 4;
+// const GT_LOOKUP_PAIR: usize = 5;
+// const GT_LOOKUP_SETUP: usize = 6;
+// const GT_LOOKUP_UNBAL: usize = 7;
+// const GT_AGGREGATE_PAIR: usize = 8;
+// const GT_LOOKUP_CACHED_DENS: usize = 9;
 
 fn emit_simple_gate(
     gate: &prover::cs::gkr_compiler::GateArtifacts,
     input_sorted_addrs: &[GKRAddress],
-    simple_group: &mut Vec<(usize, [usize; 4])>,
+    simple_group: &mut Vec<(SimpleGateType, [usize; 4])>,
 ) {
     use NoFieldGKRRelation as R;
     let desc = match &gate.enforced_relation {
-        R::CopyInBaseField { input, .. } | R::CopyInExtensionField { input, .. } => {
-            (GT_COPY, [addr_to_idx(input, input_sorted_addrs), 0, 0, 0])
-        }
+        R::CopyInBaseField { input, .. } | R::CopyInExtensionField { input, .. } => (
+            SimpleGateType::Copy,
+            [addr_to_idx(input, input_sorted_addrs), 0, 0, 0],
+        ),
         R::InitialGrandProductFromCaches { input, .. } | R::TrivialProduct { input, .. } => (
-            GT_PRODUCT,
+            SimpleGateType::Product,
             [
                 addr_to_idx(&input[0], input_sorted_addrs),
                 addr_to_idx(&input[1], input_sorted_addrs),
@@ -758,7 +762,7 @@ fn emit_simple_gate(
             ],
         ),
         R::MaskIntoIdentityProduct { input, mask, .. } => (
-            GT_MASK_PRODUCT,
+            SimpleGateType::MaskToIdentity,
             [
                 addr_to_idx(input, input_sorted_addrs),
                 addr_to_idx(mask, input_sorted_addrs),
@@ -767,7 +771,7 @@ fn emit_simple_gate(
             ],
         ),
         R::UnbalancedGrandProductWithCache { scalar, input, .. } => (
-            GT_UNBAL_PRODUCT,
+            SimpleGateType::UnbalancedProduct,
             [
                 addr_to_idx(scalar, input_sorted_addrs),
                 addr_to_idx(input, input_sorted_addrs),
@@ -778,7 +782,7 @@ fn emit_simple_gate(
         R::LookupPairFromMaterializedBaseInputs { input, .. }
         | R::LookupPairFromMaterializedVectorInputs { input, .. }
         | R::LookupPairFromCachedVectorInputs { input, .. } => (
-            GT_LOOKUP_PAIR,
+            SimpleGateType::LookupInitialPair,
             [
                 addr_to_idx(&input[0], input_sorted_addrs),
                 addr_to_idx(&input[1], input_sorted_addrs),
@@ -788,7 +792,7 @@ fn emit_simple_gate(
         ),
         R::LookupFromMaterializedBaseInputWithSetup { input, setup, .. }
         | R::LookupFromMaterializedVectorInputWithSetup { input, setup, .. } => (
-            GT_LOOKUP_SETUP,
+            SimpleGateType::LookupWithSetup,
             [
                 addr_to_idx(input, input_sorted_addrs),
                 addr_to_idx(&setup[0], input_sorted_addrs),
@@ -802,7 +806,7 @@ fn emit_simple_gate(
         | R::LookupUnbalancedPairWithMaterializedVectorInputs {
             input, remainder, ..
         } => (
-            GT_LOOKUP_UNBAL,
+            SimpleGateType::LookupUnbalanced,
             [
                 addr_to_idx(&input[0], input_sorted_addrs),
                 addr_to_idx(&input[1], input_sorted_addrs),
@@ -811,7 +815,7 @@ fn emit_simple_gate(
             ],
         ),
         R::AggregateLookupRationalPair { input, .. } => (
-            GT_AGGREGATE_PAIR,
+            SimpleGateType::LookupAggregatePair,
             [
                 addr_to_idx(&input[0][0], input_sorted_addrs),
                 addr_to_idx(&input[0][1], input_sorted_addrs),
@@ -820,7 +824,7 @@ fn emit_simple_gate(
             ],
         ),
         R::LookupWithCachedDensAndSetup { input, setup, .. } => (
-            GT_LOOKUP_CACHED_DENS,
+            SimpleGateType::LookupInitialWithCachedDenominators,
             [
                 addr_to_idx(&input[0], input_sorted_addrs),
                 addr_to_idx(&input[1], input_sorted_addrs),
@@ -833,7 +837,9 @@ fn emit_simple_gate(
     simple_group.push(desc);
 }
 
-fn generate_simple_gate_loop<MW: MersenneWrapper>(descs: &[(usize, [usize; 4])]) -> TokenStream {
+fn generate_simple_gate_loop<MW: MersenneWrapper>(
+    descs: &[(SimpleGateType, [usize; 4])],
+) -> TokenStream {
     let field_one = MW::field_one();
     let mul_batch = MW::mul_assign(quote! { current_batch }, quote! { batch_base });
 
@@ -877,7 +883,7 @@ fn generate_simple_gate_loop<MW: MersenneWrapper>(descs: &[(usize, [usize; 4])])
     let mul_bd_cd = MW::mul_assign(quote! { den }, quote! { d_cd });
 
     let num_descs = descs.len();
-    let desc_gt: Vec<usize> = descs.iter().map(|(gt, _)| *gt).collect();
+    let desc_gt: Vec<SimpleGateType> = descs.iter().map(|(gt, _)| *gt).collect();
     let desc_i0: Vec<usize> = descs.iter().map(|(_, idx)| idx[0]).collect();
     let desc_i1: Vec<usize> = descs.iter().map(|(_, idx)| idx[1]).collect();
     let desc_i2: Vec<usize> = descs.iter().map(|(_, idx)| idx[2]).collect();
@@ -885,14 +891,14 @@ fn generate_simple_gate_loop<MW: MersenneWrapper>(descs: &[(usize, [usize; 4])])
 
     quote! {
         {
-            const SIMPLE_GATES: [(usize, [usize; 4]); #num_descs] = [
+            const SIMPLE_GATES: [(SimpleGateType, [usize; 4]); #num_descs] = [
                 #( (#desc_gt, [#desc_i0, #desc_i1, #desc_i2, #desc_i3]), )*
             ];
             let mut _sg = 0;
             while _sg < #num_descs {
                 let (gt, idx) = unsafe { *SIMPLE_GATES.get_unchecked(_sg) };
                 match gt {
-                    #GT_COPY => {
+                    SimpleGateType::Copy => {
                         let bc = current_batch;
                         #mul_batch;
                         for j in 0..2 {
@@ -902,7 +908,7 @@ fn generate_simple_gate_loop<MW: MersenneWrapper>(descs: &[(usize, [usize; 4])])
                             #add_acc;
                         }
                     }
-                    #GT_PRODUCT => {
+                    SimpleGateType::Product => {
                         let bc = current_batch;
                         #mul_batch;
                         for j in 0..2 {
@@ -914,7 +920,7 @@ fn generate_simple_gate_loop<MW: MersenneWrapper>(descs: &[(usize, [usize; 4])])
                             #add_acc;
                         }
                     }
-                    #GT_MASK_PRODUCT => {
+                    SimpleGateType::MaskToIdentity => {
                         let bc = current_batch;
                         #mul_batch;
                         for j in 0..2 {
@@ -928,7 +934,7 @@ fn generate_simple_gate_loop<MW: MersenneWrapper>(descs: &[(usize, [usize; 4])])
                             #add_acc;
                         }
                     }
-                    #GT_UNBAL_PRODUCT => {
+                    SimpleGateType::UnbalancedProduct => {
                         let bc = current_batch;
                         #mul_batch;
                         for j in 0..2 {
@@ -940,7 +946,7 @@ fn generate_simple_gate_loop<MW: MersenneWrapper>(descs: &[(usize, [usize; 4])])
                             #add_acc;
                         }
                     }
-                    #GT_LOOKUP_PAIR => {
+                    SimpleGateType::LookupInitialPair => {
                         let bc0 = current_batch;
                         #mul_batch;
                         let bc1 = current_batch;
@@ -960,7 +966,7 @@ fn generate_simple_gate_loop<MW: MersenneWrapper>(descs: &[(usize, [usize; 4])])
                             let mut c1 = bc1; #mul_c1; #add_c1;
                         }
                     }
-                    #GT_LOOKUP_SETUP => {
+                    SimpleGateType::LookupWithSetup => {
                         let bc0 = current_batch;
                         #mul_batch;
                         let bc1 = current_batch;
@@ -982,7 +988,7 @@ fn generate_simple_gate_loop<MW: MersenneWrapper>(descs: &[(usize, [usize; 4])])
                             let mut c1 = bc1; #mul_c1; #add_c1;
                         }
                     }
-                    #GT_LOOKUP_UNBAL => {
+                    SimpleGateType::LookupUnbalanced => {
                         let bc0 = current_batch;
                         #mul_batch;
                         let bc1 = current_batch;
@@ -1003,7 +1009,7 @@ fn generate_simple_gate_loop<MW: MersenneWrapper>(descs: &[(usize, [usize; 4])])
                             let mut c1 = bc1; #mul_c1; #add_c1;
                         }
                     }
-                    #GT_AGGREGATE_PAIR => {
+                    SimpleGateType::LookupAggregatePair => {
                         let bc0 = current_batch;
                         #mul_batch;
                         let bc1 = current_batch;
@@ -1026,7 +1032,7 @@ fn generate_simple_gate_loop<MW: MersenneWrapper>(descs: &[(usize, [usize; 4])])
                             let mut c1 = bc1; #mul_c1; #add_c1;
                         }
                     }
-                    #GT_LOOKUP_CACHED_DENS => {
+                    SimpleGateType::LookupInitialWithCachedDenominators => {
                         let bc0 = current_batch;
                         #mul_batch;
                         let bc1 = current_batch;
@@ -1051,7 +1057,6 @@ fn generate_simple_gate_loop<MW: MersenneWrapper>(descs: &[(usize, [usize; 4])])
                             let mut c1 = bc1; #mul_c1; #add_c1;
                         }
                     }
-                    _ => unreachable!()
                 }
                 _sg += 1;
             }
@@ -1300,22 +1305,22 @@ fn emit_inits_teardowns<MW: MersenneWrapper, F: PrimeField>(
                     addr_to_idx(&GKRAddress::BaseLayerMemory(value[1]), input_sorted_addrs);
                 quote! {
                     {
-                        let mut t = linearization_challenges[#MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
+                        let mut t = linearization_challenges[#PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
                         field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(#ts_lo_idx)[j]);
                         field_ops::add_assign(&mut result, &t);
                     }
                     {
-                        let mut t = linearization_challenges[#MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
+                        let mut t = linearization_challenges[#PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
                         field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(#ts_hi_idx)[j]);
                         field_ops::add_assign(&mut result, &t);
                     }
                     {
-                        let mut t = linearization_challenges[#MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
+                        let mut t = linearization_challenges[#PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
                         field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(#val_lo_idx)[j]);
                         field_ops::add_assign(&mut result, &t);
                     }
                     {
-                        let mut t = linearization_challenges[#MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
+                        let mut t = linearization_challenges[#PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
                         field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(#val_hi_idx)[j]);
                         field_ops::add_assign(&mut result, &t);
                     }
@@ -1330,12 +1335,12 @@ fn emit_inits_teardowns<MW: MersenneWrapper, F: PrimeField>(
                 let mut result = permutation_argument_additive_part;
                 field_ops::add_assign_base(&mut result, &#field_struct_local::from_reduced_raw_repr(#ram_constant));
                 {
-                    let mut t = linearization_challenges[#MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
+                    let mut t = linearization_challenges[#PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
                     field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(#setup_lo_idx)[j]);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
-                    let mut t = linearization_challenges[#MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
+                    let mut t = linearization_challenges[#PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
                     let mut addr_hi = evals.get_unchecked(#setup_hi_idx)[j];
                     let set_bits = (#set_idx_val as u32) << address_high_bits_shift;
                     if set_bits != 0 {
@@ -1372,7 +1377,7 @@ pub fn generate_layer_final_step_accumulator<MW: MersenneWrapper, F: PrimeField>
         let mut current_batch = #quartic_one;
     };
 
-    let mut simple_group: Vec<(usize, [usize; 4])> = Vec::new();
+    let mut simple_group: Vec<(SimpleGateType, [usize; 4])> = Vec::new();
 
     let gates: Vec<_> = layer
         .gates
@@ -1380,7 +1385,7 @@ pub fn generate_layer_final_step_accumulator<MW: MersenneWrapper, F: PrimeField>
         .chain(layer.gates_with_external_connections.iter())
         .collect();
 
-    let flush_simple = |body: &mut TokenStream, group: &mut Vec<(usize, [usize; 4])>| {
+    let flush_simple = |body: &mut TokenStream, group: &mut Vec<(SimpleGateType, [usize; 4])>| {
         if !group.is_empty() {
             body.extend(generate_simple_gate_loop::<MW>(group));
             group.clear();
@@ -1467,7 +1472,6 @@ pub fn generate_layer_final_step_accumulator<MW: MersenneWrapper, F: PrimeField>
             batch_base: #quartic_struct,
             lookup_additive_challenge: #quartic_struct,
             lookup_alpha: #quartic_struct,
-            challenge_powers: &[#quartic_struct; GKR_MAX_POW],
             linearization_challenges: &[#quartic_struct],
             permutation_argument_additive_part: #quartic_struct,
             address_high_bits_shift: u32,
