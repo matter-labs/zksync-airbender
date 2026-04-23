@@ -1617,6 +1617,10 @@ fn assert_recursive_whir_oracle_parity_for_supported_path(
         t.mul_assign(&delinearization_challenge);
         t
     };
+    // Matches upstream `prover/src/gkr/whir/mod.rs`: OOD contribution uses x, and the i-th
+    // per-query contribution uses x^(i+2).
+    let mut current_delinearization_challenge = delinearization_challenge;
+    current_delinearization_challenge.square();
     let mut in_domain_samples = Vec::with_capacity(initial_queries);
     for _ in 0..initial_queries {
         let query_index = assemble_query_index(query_index_bits, &mut bit_source);
@@ -1646,9 +1650,10 @@ fn assert_recursive_whir_oracle_parity_for_supported_path(
             &two_inv,
         );
         let mut t = folded;
-        t.mul_assign(&delinearization_challenge);
+        t.mul_assign(&current_delinearization_challenge);
         claim_correction.add_assign(&t);
-        in_domain_samples.push((query_point, delinearization_challenge));
+        in_domain_samples.push((query_point, current_delinearization_challenge));
+        current_delinearization_challenge.mul_assign(&delinearization_challenge);
     }
     update_eq_poly_for_test(
         &mut eq_poly,
@@ -1705,15 +1710,27 @@ fn assert_recursive_whir_oracle_parity_for_supported_path(
                 &next_cpu_oracle.tree,
             )
         );
-        cpu_recursive_caps.push(
+        let next_cpu_oracle_cap =
             <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<BF>>::get_cap(
                 &next_cpu_oracle.tree,
-            ),
+            );
+        cpu_recursive_caps.push(next_cpu_oracle_cap.clone());
+        // Upstream now folds the recursive oracle cap into the transcript before drawing
+        // the next OOD point (see prover/src/gkr/whir/mod.rs ~line 1056).
+        add_whir_commitment_to_transcript(
+            &mut transcript_seed,
+            &WhirCommitment::<BF, DefaultTreeConstructor> {
+                cap: next_cpu_oracle_cap,
+                _marker: core::marker::PhantomData,
+            },
         );
 
         let ood_point = draw_random_field_els::<BF, E4>(&mut transcript_seed, 1)[0];
         let ood_value = evaluate_monomial_form_for_test(&sumchecked_poly_monomial_form, ood_point);
         cpu_ood_samples.push(ood_value);
+        // Upstream also commits the OOD value to the transcript in the recursive round
+        // (see prover/src/gkr/whir/mod.rs ~line 1067).
+        commit_field_els::<BF, E4>(&mut transcript_seed, &[ood_value]);
         let query_domain_size = 1u64 << query_domain_log2;
         let query_domain_generator = domain_generator_for_size::<BF>(query_domain_size);
         let extended_generator = domain_generator_for_size::<BF>(1u64 << rs_domain_log2);
@@ -1739,6 +1756,9 @@ fn assert_recursive_whir_oracle_parity_for_supported_path(
             t.mul_assign(&delinearization_challenge);
             t
         };
+        // Running-powers weighting: OOD uses x, the i-th query uses x^(i+2).
+        let mut current_delinearization_challenge = delinearization_challenge;
+        current_delinearization_challenge.square();
         let mut in_domain_samples = Vec::with_capacity(num_queries);
         let mut recursive_round_query_indexes = Vec::with_capacity(num_queries);
         for _ in 0..num_queries {
@@ -1768,9 +1788,10 @@ fn assert_recursive_whir_oracle_parity_for_supported_path(
                 &two_inv,
             );
             let mut t = folded;
-            t.mul_assign(&delinearization_challenge);
+            t.mul_assign(&current_delinearization_challenge);
             claim_correction.add_assign(&t);
-            in_domain_samples.push((query_point, delinearization_challenge));
+            in_domain_samples.push((query_point, current_delinearization_challenge));
+            current_delinearization_challenge.mul_assign(&delinearization_challenge);
         }
         update_eq_poly_for_test(
             &mut eq_poly,
@@ -1804,6 +1825,9 @@ fn assert_recursive_whir_oracle_parity_for_supported_path(
         fold_eq_poly_for_test(&mut eq_poly, folding_challenge);
     }
     poly_size_log2 -= final_folding_steps;
+    // Upstream commits the final monomial-form coefficients into the transcript before
+    // drawing the final query PoW (see prover/src/gkr/whir/mod.rs line ~1297).
+    commit_field_els::<BF, E4>(&mut transcript_seed, &sumchecked_poly_monomial_form);
     let query_domain_size = 1u64 << query_domain_log2;
     let query_domain_generator = domain_generator_for_size::<BF>(query_domain_size);
     let extended_generator = domain_generator_for_size::<BF>(1u64 << rs_domain_log2);
