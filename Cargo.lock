@@ -762,12 +762,12 @@ dependencies = [
 
 [[package]]
 name = "era_cudart"
-version = "0.154.10"
+version = "0.156.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f1a26bb3038da2def3a910c1052b30e2e20b78cbea51efb5d71c6033877ade4a"
+checksum = "de3f38cd4f1fa1c2535e30b1d1aa197b8f3c73d4368fbeb6524ac06fd7c23ef9"
 dependencies = [
  "bitflags",
- "era_cudart_sys 0.154.10",
+ "era_cudart_sys 0.156.0",
  "paste",
 ]
 
@@ -782,9 +782,9 @@ dependencies = [
 
 [[package]]
 name = "era_cudart_sys"
-version = "0.154.10"
+version = "0.156.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "322b32fb10bdffc0cebe146cbdc7ba0f3fa6ed7aac8700facff0c0077c5642b8"
+checksum = "37e6d410237bb86a4321999d771c0ea55c31a9073997c9657fe68ab6a255224a"
 dependencies = [
  "regex-lite",
 ]
@@ -1096,8 +1096,8 @@ dependencies = [
  "cs",
  "env_logger",
  "era_criterion_cuda",
- "era_cudart 0.154.10",
- "era_cudart_sys 0.154.10",
+ "era_cudart 0.156.0",
+ "era_cudart_sys 0.156.0",
  "execution_utils",
  "fft",
  "field",
