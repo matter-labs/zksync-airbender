@@ -309,45 +309,35 @@ impl GpuWhirExtensionOracle {
 
         let coset_index = index & (self.lde_factor - 1);
         let internal_index = index / self.lde_factor;
-        let stage1_coset_index =
+        let coset_dest_index =
             bitreverse_index(coset_index, self.lde_factor.trailing_zeros() as u32);
-        let logical_row_index = stage1_coset_index * self.packed_leaf_count + internal_index;
+        // tree_index matches CPU `ColumnMajorExtensionOracleForLDE::query_for_folded_index`
+        // (prover/src/gkr/whir/mod.rs). The extension oracle trace holder stores leaves in
+        // this order, so both value and path lookups go through the same index.
+        let tree_index = coset_dest_index * self.packed_leaf_count + internal_index;
 
         let mut callbacks = Callbacks::new();
-        let mut host_value_index = unsafe { context.alloc_host_uninit_slice(1) };
-        let vi_accessor = host_value_index.get_mut_accessor();
+        let mut host_tree_index = unsafe { context.alloc_host_uninit_slice(1) };
+        let ti_accessor = host_tree_index.get_mut_accessor();
         callbacks.schedule(
-            move || unsafe { vi_accessor.get_mut()[0] = logical_row_index as u32 },
+            move || unsafe { ti_accessor.get_mut()[0] = tree_index as u32 },
             context.get_exec_stream(),
         )?;
-        let mut device_value_index = context.alloc(1, AllocationPlacement::BestFit)?;
+        let mut device_tree_index = context.alloc(1, AllocationPlacement::BestFit)?;
         memory_copy_async(
-            &mut device_value_index,
-            &host_value_index,
+            &mut device_tree_index,
+            &host_tree_index,
             context.get_exec_stream(),
         )?;
-        drop(host_value_index);
+        drop(host_tree_index);
         let value_query = self
             .trace_holder
-            .get_query_leafs(0, &device_value_index, context)?;
-        let mut host_path_index = unsafe { context.alloc_host_uninit_slice(1) };
-        let pi_accessor = host_path_index.get_mut_accessor();
-        callbacks.schedule(
-            move || unsafe { pi_accessor.get_mut()[0] = index as u32 },
-            context.get_exec_stream(),
-        )?;
-        let mut device_path_index = context.alloc(1, AllocationPlacement::BestFit)?;
-        memory_copy_async(
-            &mut device_path_index,
-            &host_path_index,
-            context.get_exec_stream(),
-        )?;
-        drop(host_path_index);
-        let path_query =
-            self.trace_holder
-                .get_query_merkle_paths(0, &device_path_index, context)?;
+            .get_query_leafs(0, &device_tree_index, context)?;
+        let path_query = self
+            .trace_holder
+            .get_query_merkle_paths(0, &device_tree_index, context)?;
         Ok(GpuWhirScheduledExtensionQuery {
-            index,
+            index: tree_index,
             coset_index,
             _callbacks: callbacks,
             leafs: value_query,
@@ -362,47 +352,40 @@ impl GpuWhirExtensionOracle {
         context: &ProverContext,
     ) -> CudaResult<GpuWhirScheduledExtensionQuery> {
         let mut callbacks = Callbacks::new();
-        let mut value_index = unsafe { context.alloc_host_uninit_slice(1) };
-        let value_index_accessor = value_index.get_mut_accessor();
-        let mut path_index = unsafe { context.alloc_host_uninit_slice(1) };
-        let path_index_accessor = path_index.get_mut_accessor();
+        let mut tree_index_host = unsafe { context.alloc_host_uninit_slice(1) };
+        let tree_index_accessor = tree_index_host.get_mut_accessor();
         let query_index_accessor = query_index.get_accessor();
         let lde_factor = self.lde_factor;
         let packed_leaf_count = self.packed_leaf_count;
         callbacks.schedule(
             move || unsafe {
+                // See `schedule_query_for_folded_index` above: value and path lookups share
+                // the tree index, matching CPU's
+                // `ColumnMajorExtensionOracleForLDE::query_for_folded_index`.
                 let index = query_index_accessor.get()[0] as usize;
                 let coset_index = index & (lde_factor - 1);
                 let internal_index = index / lde_factor;
-                let stage1_coset_index =
+                let coset_dest_index =
                     bitreverse_index(coset_index, lde_factor.trailing_zeros() as u32);
-                value_index_accessor.get_mut()[0] =
-                    (stage1_coset_index * packed_leaf_count + internal_index) as u32;
-                path_index_accessor.get_mut()[0] = index as u32;
+                tree_index_accessor.get_mut()[0] =
+                    (coset_dest_index * packed_leaf_count + internal_index) as u32;
             },
             context.get_exec_stream(),
         )?;
-        let mut device_value_index = context.alloc(1, AllocationPlacement::BestFit)?;
+        let mut device_tree_index = context.alloc(1, AllocationPlacement::BestFit)?;
         memory_copy_async(
-            &mut device_value_index,
-            &value_index,
+            &mut device_tree_index,
+            &tree_index_host,
             context.get_exec_stream(),
         )?;
-        drop(value_index);
-        let mut device_path_index = context.alloc(1, AllocationPlacement::BestFit)?;
-        memory_copy_async(
-            &mut device_path_index,
-            &path_index,
-            context.get_exec_stream(),
-        )?;
-        drop(path_index);
+        drop(tree_index_host);
         drop(query_index);
         let value_query = self
             .trace_holder
-            .get_query_leafs(0, &device_value_index, context)?;
-        let path_query =
-            self.trace_holder
-                .get_query_merkle_paths(0, &device_path_index, context)?;
+            .get_query_leafs(0, &device_tree_index, context)?;
+        let path_query = self
+            .trace_holder
+            .get_query_merkle_paths(0, &device_tree_index, context)?;
         Ok(GpuWhirScheduledExtensionQuery {
             index: 0,
             coset_index: 0,
