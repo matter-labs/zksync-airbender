@@ -2522,6 +2522,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
                         value.add_assign(&partial.get()[0]);
                     }
                     ood_value_accessor.get_mut()[0] = value;
+                    commit_field_els::<BF, E4>(seed_accessor.get_mut(), &[value]);
                     shared_state.get_mut().proof.as_mut().unwrap().ood_samples
                         [internal_round_idx + 1] = value;
                 }
