@@ -121,7 +121,10 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> GKRExternalChallenges<F, E> {
             );
         }
         hasher.reset();
-        let mut transcript_state = transcript::TranscriptState::<USE_REDUCED_BLAKE2_ROUNDS>::from_hasher_and_seed(hasher, seed);
+        let mut transcript_state =
+            transcript::TranscriptState::<USE_REDUCED_BLAKE2_ROUNDS>::from_hasher_and_seed(
+                hasher, seed,
+            );
 
         let mut it = transcript_state.iterator();
         if pow_bits > 0 {
