@@ -1428,7 +1428,7 @@ pub(crate) mod test {
                     let it = responses.into_iter();
                     prover::nd_source_std::set_iterator(it);
 
-                    let security = verifier_common::SecurityModel::Security80; // TODO(popzxc): cover security 100
+                    let security = verifier_common::SecurityModel::Security80;
 
                     #[allow(invalid_value)]
                     let _ = unsafe {

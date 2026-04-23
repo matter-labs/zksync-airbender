@@ -308,7 +308,7 @@ mod test {
         skip_if_ci!();
         use riscv_transpiler::cycle::IWithoutByteAccessIsaConfigWithDelegation;
         use std::fs::File;
-        let security = verifier_common::SecurityModel::Security80; // TODO(popzxc): cover 100 bit too
+        let security = verifier_common::SecurityModel::Security80;
         let binary_u32 = read_recursion_binary_u32(security);
 
         let setup: crate::unrolled::UnrolledProgramSetup = serde_json::from_reader(
@@ -344,7 +344,7 @@ mod test {
         skip_if_ci!();
         use riscv_transpiler::cycle::IWithoutByteAccessIsaConfigWithDelegation;
         use std::fs::File;
-        let security = verifier_common::SecurityModel::Security80; // TODO(popzxc): cover 100 bit too
+        let security = verifier_common::SecurityModel::Security80;
         let binary_u32 = read_recursion_binary_u32(security);
 
         let setup: crate::unrolled::UnrolledProgramSetup = serde_json::from_reader(
@@ -379,7 +379,7 @@ mod test {
         skip_if_ci!();
         use riscv_transpiler::cycle::IWithoutByteAccessIsaConfigWithDelegation;
         use std::fs::File;
-        let security = verifier_common::SecurityModel::Security80; // TODO(popzxc): cover 100 bit too
+        let security = verifier_common::SecurityModel::Security80;
         let binary_u32 = read_recursion_binary_u32(security);
 
         let setup: crate::unrolled::UnrolledProgramSetup = serde_json::from_reader(
@@ -417,7 +417,7 @@ mod test {
         use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
         use riscv_transpiler::cycle::IWithoutByteAccessIsaConfigWithDelegation;
         use std::fs::File;
-        let security = verifier_common::SecurityModel::Security80; // TODO(popzxc): cover 100 bit too
+        let security = verifier_common::SecurityModel::Security80;
         let (binary, binary_u32, text, text_u32) = read_unified_recursion_program(security);
 
         let input_setup: crate::unrolled::UnrolledProgramSetup = serde_json::from_reader(

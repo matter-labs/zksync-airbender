@@ -627,7 +627,7 @@ mod test {
 
         let (program_setup, compiled_layouts) =
             prepare_unrolled_program::<IMStandardIsaConfigWithUnsignedMulDiv>(&program);
-        let security = verifier_common::SecurityModel::Security80; // TODO(popzxc): cover 100 bit too
+        let security = verifier_common::SecurityModel::Security80;
         let program_proof = prove_unrolled_test_program::<IMStandardIsaConfigWithUnsignedMulDiv>(
             &program,
             cycles_bound,
@@ -669,7 +669,7 @@ mod test {
 
         let (program_setup, compiled_layouts) =
             prepare_unrolled_program::<IMStandardIsaConfigWithUnsignedMulDiv>(&program);
-        let security = verifier_common::SecurityModel::Security80; // TODO(popzxc): cover 100 bit too
+        let security = verifier_common::SecurityModel::Security80;
         let program_proof = prove_unrolled_test_program::<IMStandardIsaConfigWithUnsignedMulDiv>(
             &program,
             cycles_bound,
@@ -710,7 +710,7 @@ mod test {
 
         let (program_setup, compiled_layouts) =
             prepare_unrolled_program::<IMStandardIsaConfigWithUnsignedMulDiv>(&program);
-        let security = verifier_common::SecurityModel::Security80; // TODO(popzxc): cover 100 bit too
+        let security = verifier_common::SecurityModel::Security80;
         let program_proof = prove_unrolled_test_program::<IMStandardIsaConfigWithUnsignedMulDiv>(
             &program,
             cycles_bound,
@@ -748,7 +748,7 @@ mod test {
 
         let (program_setup, compiled_layouts) =
             prepare_unrolled_program::<IMStandardIsaConfigWithUnsignedMulDiv>(&program);
-        let security = verifier_common::SecurityModel::Security80; // TODO(popzxc): cover 100 bit too
+        let security = verifier_common::SecurityModel::Security80;
         let program_proof = prove_unrolled_test_program::<IMStandardIsaConfigWithUnsignedMulDiv>(
             &program,
             cycles_bound,
@@ -790,7 +790,7 @@ mod test {
 
         let (base_program_setup, base_compiled_layouts) =
             prepare_unrolled_program::<IMStandardIsaConfigWithUnsignedMulDiv>(&base_program);
-        let security = verifier_common::SecurityModel::Security80; // TODO(popzxc): cover 100 bit too
+        let security = verifier_common::SecurityModel::Security80;
         let base_program_proof = prove_unrolled_test_program::<IMStandardIsaConfigWithUnsignedMulDiv>(
             &base_program,
             base_cycles_bound,

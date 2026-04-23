@@ -7,7 +7,7 @@ fn main() {}
 mod tests {
     #![expect(unused_variables)] // TODO: Remove unused variables
 
-    const SECURITY: verifier_common::SecurityModel = verifier_common::SecurityModel::Security80; // TODO(popzxc): Check security 100 too.
+    const SECURITY: verifier_common::SecurityModel = verifier_common::SecurityModel::Security80;
 
     use execution_utils::setups::prover::prover_stages::unrolled_prover::UnrolledModeProof;
     use execution_utils::setups::prover::prover_stages::Proof;

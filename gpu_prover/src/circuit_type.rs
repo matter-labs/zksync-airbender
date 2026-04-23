@@ -185,15 +185,18 @@ impl DelegationCircuitType {
 
     pub(crate) fn get_security_config_for<S: SecurityMarker>(&self) -> ProofSecurityConfig {
         match self {
-            Self::BigIntWithControl => {
-                get_security_config_for_num_foldings::<S, BIGINT_WITH_CONTROL_NUM_FOLDINGS>()
-            }
-            Self::Blake2WithCompression => {
-                get_security_config_for_num_foldings::<S, BLAKE2_WITH_COMPRESSION_NUM_FOLDINGS>()
-            }
-            Self::KeccakSpecial5 => {
-                get_security_config_for_num_foldings::<S, KECCAK_SPECIAL5_NUM_FOLDINGS>()
-            }
+            Self::BigIntWithControl => get_security_config_for_num_foldings::<
+                S,
+                { get_num_foldings(bigint_with_control::DOMAIN_SIZE) },
+            >(),
+            Self::Blake2WithCompression => get_security_config_for_num_foldings::<
+                S,
+                { get_num_foldings(blake2_with_compression::DOMAIN_SIZE) },
+            >(),
+            Self::KeccakSpecial5 => get_security_config_for_num_foldings::<
+                S,
+                { get_num_foldings(keccak_special5::DOMAIN_SIZE) },
+            >(),
         }
     }
 }
@@ -324,14 +327,16 @@ impl UnrolledCircuitType {
 
     pub(crate) fn get_security_config_for<S: SecurityMarker>(&self) -> ProofSecurityConfig {
         match self {
-            Self::InitsAndTeardowns => {
-                get_security_config_for_num_foldings::<S, INITS_AND_TEARDOWNS_NUM_FOLDINGS>()
-            }
+            Self::InitsAndTeardowns => get_security_config_for_num_foldings::<
+                S,
+                { get_num_foldings(inits_and_teardowns::DOMAIN_SIZE) },
+            >(),
             Self::Memory(circuit_type) => circuit_type.get_security_config_for::<S>(),
             Self::NonMemory(circuit_type) => circuit_type.get_security_config_for::<S>(),
-            Self::Unified => {
-                get_security_config_for_num_foldings::<S, UNIFIED_REDUCED_MACHINE_NUM_FOLDINGS>()
-            }
+            Self::Unified => get_security_config_for_num_foldings::<
+                S,
+                { get_num_foldings(unified_reduced_machine::DOMAIN_SIZE) },
+            >(),
         }
     }
 }
@@ -434,12 +439,14 @@ impl UnrolledMemoryCircuitType {
 
     pub(crate) fn get_security_config_for<S: SecurityMarker>(&self) -> ProofSecurityConfig {
         match self {
-            Self::LoadStoreSubwordOnly => {
-                get_security_config_for_num_foldings::<S, LOAD_STORE_SUBWORD_ONLY_NUM_FOLDINGS>()
-            }
-            Self::LoadStoreWordOnly => {
-                get_security_config_for_num_foldings::<S, LOAD_STORE_WORD_ONLY_NUM_FOLDINGS>()
-            }
+            Self::LoadStoreSubwordOnly => get_security_config_for_num_foldings::<
+                S,
+                { get_num_foldings(load_store_subword_only::DOMAIN_SIZE) },
+            >(),
+            Self::LoadStoreWordOnly => get_security_config_for_num_foldings::<
+                S,
+                { get_num_foldings(load_store_word_only::DOMAIN_SIZE) },
+            >(),
         }
     }
 }
@@ -608,19 +615,26 @@ impl UnrolledNonMemoryCircuitType {
 
     pub(crate) fn get_security_config_for<S: SecurityMarker>(&self) -> ProofSecurityConfig {
         match self {
-            Self::AddSubLuiAuipcMop => {
-                get_security_config_for_num_foldings::<S, ADD_SUB_LUI_AUIPC_MOP_NUM_FOLDINGS>()
+            Self::AddSubLuiAuipcMop => get_security_config_for_num_foldings::<
+                S,
+                { get_num_foldings(add_sub_lui_auipc_mop::DOMAIN_SIZE) },
+            >(),
+            Self::JumpBranchSlt => get_security_config_for_num_foldings::<
+                S,
+                { get_num_foldings(jump_branch_slt::DOMAIN_SIZE) },
+            >(),
+            Self::MulDiv => {
+                get_security_config_for_num_foldings::<S, { get_num_foldings(mul_div::DOMAIN_SIZE) }>(
+                )
             }
-            Self::JumpBranchSlt => {
-                get_security_config_for_num_foldings::<S, JUMP_BRANCH_SLT_NUM_FOLDINGS>()
-            }
-            Self::MulDiv => get_security_config_for_num_foldings::<S, MUL_DIV_NUM_FOLDINGS>(),
-            Self::MulDivUnsigned => {
-                get_security_config_for_num_foldings::<S, MUL_DIV_UNSIGNED_NUM_FOLDINGS>()
-            }
-            Self::ShiftBinaryCsr => {
-                get_security_config_for_num_foldings::<S, SHIFT_BINARY_CSR_NUM_FOLDINGS>()
-            }
+            Self::MulDivUnsigned => get_security_config_for_num_foldings::<
+                S,
+                { get_num_foldings(mul_div_unsigned::DOMAIN_SIZE) },
+            >(),
+            Self::ShiftBinaryCsr => get_security_config_for_num_foldings::<
+                S,
+                { get_num_foldings(shift_binary_csr::DOMAIN_SIZE) },
+            >(),
         }
     }
 }
@@ -642,36 +656,12 @@ pub const fn get_log_tree_cap_size_for_log_domain_size(log_domain_size: u32) -> 
     OPTIMAL_FOLDING_PROPERTIES[log_domain_size as usize].total_caps_size_log2
 }
 
-const fn get_num_foldings<const DOMAIN_SIZE: usize>() -> usize {
-    assert!(DOMAIN_SIZE.is_power_of_two());
-    OPTIMAL_FOLDING_PROPERTIES[DOMAIN_SIZE.trailing_zeros() as usize]
+const fn get_num_foldings(domain_size: usize) -> usize {
+    assert!(domain_size.is_power_of_two());
+    OPTIMAL_FOLDING_PROPERTIES[domain_size.trailing_zeros() as usize]
         .folding_sequence
         .len()
 }
-
-// TODO: Needed since const generics evaluator is overly strict on `get_security_config_for_num_foldings`
-// and doesn't allow `{ get_num_foldings::<...>() }` as `NUM_FOLDINGS` generic.
-const BIGINT_WITH_CONTROL_NUM_FOLDINGS: usize =
-    get_num_foldings::<{ bigint_with_control::DOMAIN_SIZE }>();
-const BLAKE2_WITH_COMPRESSION_NUM_FOLDINGS: usize =
-    get_num_foldings::<{ blake2_with_compression::DOMAIN_SIZE }>();
-const KECCAK_SPECIAL5_NUM_FOLDINGS: usize = get_num_foldings::<{ keccak_special5::DOMAIN_SIZE }>();
-const INITS_AND_TEARDOWNS_NUM_FOLDINGS: usize =
-    get_num_foldings::<{ inits_and_teardowns::DOMAIN_SIZE }>();
-const UNIFIED_REDUCED_MACHINE_NUM_FOLDINGS: usize =
-    get_num_foldings::<{ unified_reduced_machine::DOMAIN_SIZE }>();
-const LOAD_STORE_SUBWORD_ONLY_NUM_FOLDINGS: usize =
-    get_num_foldings::<{ load_store_subword_only::DOMAIN_SIZE }>();
-const LOAD_STORE_WORD_ONLY_NUM_FOLDINGS: usize =
-    get_num_foldings::<{ load_store_word_only::DOMAIN_SIZE }>();
-const ADD_SUB_LUI_AUIPC_MOP_NUM_FOLDINGS: usize =
-    get_num_foldings::<{ add_sub_lui_auipc_mop::DOMAIN_SIZE }>();
-const JUMP_BRANCH_SLT_NUM_FOLDINGS: usize = get_num_foldings::<{ jump_branch_slt::DOMAIN_SIZE }>();
-const MUL_DIV_NUM_FOLDINGS: usize = get_num_foldings::<{ mul_div::DOMAIN_SIZE }>();
-const MUL_DIV_UNSIGNED_NUM_FOLDINGS: usize =
-    get_num_foldings::<{ mul_div_unsigned::DOMAIN_SIZE }>();
-const SHIFT_BINARY_CSR_NUM_FOLDINGS: usize =
-    get_num_foldings::<{ shift_binary_csr::DOMAIN_SIZE }>();
 
 fn get_security_config_for_num_foldings<S: SecurityMarker, const NUM_FOLDINGS: usize>(
 ) -> ProofSecurityConfig {
