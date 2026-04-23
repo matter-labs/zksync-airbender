@@ -43,7 +43,9 @@ fn test_rejects_corruption_at_fractions(name: &str) {
 fn test_rejects_corrupted_gkr_region(name: &str) {
     with_circuit!(name, |m| {
         type InitialTranscript = m::constants::ConcreteInitialTranscript;
-        let initial_transcript_responses_offset = core::mem::offset_of!(InitialTranscript, _marker) - (core::mem::offset_of!(InitialTranscript, setup_caps) - core::mem::offset_of!(InitialTranscript, external_challenges_flattened));
+        let initial_transcript_responses_offset = core::mem::offset_of!(InitialTranscript, _marker)
+            - (core::mem::offset_of!(InitialTranscript, setup_caps)
+                - core::mem::offset_of!(InitialTranscript, external_challenges_flattened));
         let gkr_off = initial_transcript_responses_offset / core::mem::size_of::<u32>();
 
         let gkr_evals = m::constants::GKR_EVALS;
@@ -89,7 +91,9 @@ fn test_rejects_corrupted_whir_region(name: &str) {
 fn test_rejects_zeroed_regions(name: &str) {
     with_circuit!(name, |m| {
         type InitialTranscript = m::constants::ConcreteInitialTranscript;
-        let initial_transcript_responses_offset = core::mem::offset_of!(InitialTranscript, _marker) - (core::mem::offset_of!(InitialTranscript, setup_caps) - core::mem::offset_of!(InitialTranscript, external_challenges_flattened));
+        let initial_transcript_responses_offset = core::mem::offset_of!(InitialTranscript, _marker)
+            - (core::mem::offset_of!(InitialTranscript, setup_caps)
+                - core::mem::offset_of!(InitialTranscript, external_challenges_flattened));
         let gkr_off = initial_transcript_responses_offset / core::mem::size_of::<u32>();
 
         let nds_len = common::load_nds(name).0.len();
@@ -136,12 +140,26 @@ fn test_rejects_corrupted_oracle_caps(name: &str) {
         let memory_oracle_commit_size = witness_oracle_commit_offset - memory_oracle_commit_offset;
         let witness_oracle_commit_size = end_offset - witness_oracle_commit_offset;
 
-        let inits_and_teardowns_size = core::mem::offset_of!(InitialTranscript, external_challenges_flattened);
+        let inits_and_teardowns_size =
+            core::mem::offset_of!(InitialTranscript, external_challenges_flattened);
 
         for (cap_name, offset, size) in [
-            ("setup", (inits_and_teardowns_size) / core::mem::size_of::<u32>(), setup_oracle_commit_size),
-            ("memory", (inits_and_teardowns_size + setup_oracle_commit_size) / core::mem::size_of::<u32>(), memory_oracle_commit_size),
-            ("witness", (inits_and_teardowns_size + setup_oracle_commit_size + memory_oracle_commit_size) / core::mem::size_of::<u32>(), witness_oracle_commit_size),
+            (
+                "setup",
+                (inits_and_teardowns_size) / core::mem::size_of::<u32>(),
+                setup_oracle_commit_size,
+            ),
+            (
+                "memory",
+                (inits_and_teardowns_size + setup_oracle_commit_size) / core::mem::size_of::<u32>(),
+                memory_oracle_commit_size,
+            ),
+            (
+                "witness",
+                (inits_and_teardowns_size + setup_oracle_commit_size + memory_oracle_commit_size)
+                    / core::mem::size_of::<u32>(),
+                witness_oracle_commit_size,
+            ),
         ] {
             if size == 0 {
                 continue;
@@ -245,7 +263,9 @@ fn test_rejects_corrupted_init_teardown_bits(name: &str) {
 fn test_rejects_non_canonical_field_element(name: &str) {
     with_circuit!(name, |m| {
         type InitialTranscript = m::constants::ConcreteInitialTranscript;
-        let initial_transcript_responses_offset = core::mem::offset_of!(InitialTranscript, _marker) - (core::mem::offset_of!(InitialTranscript, setup_caps) - core::mem::offset_of!(InitialTranscript, external_challenges_flattened));
+        let initial_transcript_responses_offset = core::mem::offset_of!(InitialTranscript, _marker)
+            - (core::mem::offset_of!(InitialTranscript, setup_caps)
+                - core::mem::offset_of!(InitialTranscript, external_challenges_flattened));
         let gkr_off = initial_transcript_responses_offset / core::mem::size_of::<u32>();
 
         assert_rejects_corrupted_nds(

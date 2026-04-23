@@ -6,107 +6,7 @@ use blake2s_u32::{
 #[cfg(feature = "gkr_verify")]
 use core::mem::MaybeUninit;
 #[cfg(feature = "gkr_verify")]
-use transcript::{Blake2sTranscript, Seed};
-
-/// layout `[seed | data | zero-padding]`
-/// Callers write data via `data_write(i, val)` — the seed offset is handled internally.
-#[cfg(feature = "gkr_verify")]
-pub struct CommitBuf<const N: usize> {
-    inner: AlignedArray64<MaybeUninit<u32>, N>,
-}
-
-#[cfg(feature = "gkr_verify")]
-impl<const N: usize> CommitBuf<N> {
-    #[inline(always)]
-    pub fn new() -> Self {
-        Self {
-            inner: AlignedArray64::new_uninit(),
-        }
-    }
-
-    #[inline(always)]
-    pub fn data_write(&mut self, i: usize, val: u32) {
-        self.inner.write(BLAKE2S_DIGEST_SIZE_U32_WORDS + i, val);
-    }
-
-    #[inline(always)]
-    pub fn commit(
-        &mut self,
-        hasher: &mut DelegatedBlake2sState,
-        seed: &mut Seed,
-        data_words: usize,
-    ) {
-        let total = BLAKE2S_DIGEST_SIZE_U32_WORDS + data_words;
-        let padded = total.next_multiple_of(BLAKE2S_BLOCK_SIZE_U32_WORDS);
-        debug_assert!(padded <= N);
-        if padded > total {
-            unsafe { self.inner.zero_range(total, padded) };
-        }
-        self.inner.copy_from_slice(0, &seed.0);
-        #[cfg(any(feature = "blake2_with_compression", feature = "blake2_g_function"))]
-        {
-            Blake2sTranscript::commit_with_seed_using_hasher_and_aligned_buffer(
-                hasher,
-                seed,
-                unsafe { self.inner.assume_init_ref() },
-                total,
-            );
-        }
-        #[cfg(not(any(feature = "blake2_with_compression", feature = "blake2_g_function")))]
-        {
-            let buf = unsafe { self.inner.assume_init_ref() };
-            // Skip the seed region — commit_with_seed_using_hasher prepends it internally.
-            Blake2sTranscript::commit_with_seed_using_hasher(
-                hasher,
-                seed,
-                &buf[BLAKE2S_DIGEST_SIZE_U32_WORDS..total],
-            );
-        }
-    }
-
-    #[inline(always)]
-    pub unsafe fn data_as<T>(&self, count: usize) -> &[T] {
-        self.inner
-            .transmute_subslice(BLAKE2S_DIGEST_SIZE_U32_WORDS, count)
-    }
-
-    #[inline(always)]
-    pub unsafe fn read_one<T: Copy>(&self) -> T {
-        *self.data_as::<T>(1).get_unchecked(0)
-    }
-}
-
-#[cfg(feature = "gkr_verify")]
-pub struct TranscriptState {
-    pub hasher: DelegatedBlake2sState,
-    pub seed: Seed,
-}
-
-#[cfg(feature = "gkr_verify")]
-impl TranscriptState {
-    #[inline(always)]
-    pub fn new(seed: Seed) -> Self {
-        Self {
-            hasher: DelegatedBlake2sState::new(),
-            seed,
-        }
-    }
-
-    #[inline(always)]
-    pub fn from_hasher_and_seed(hasher: DelegatedBlake2sState, seed: Seed) -> Self {
-        Self { hasher, seed }
-    }
-
-    #[inline(always)]
-    pub fn commit<const N: usize>(&mut self, buf: &mut CommitBuf<N>, data_words: usize) {
-        buf.commit(&mut self.hasher, &mut self.seed, data_words);
-    }
-
-    #[inline(always)]
-    pub fn draw_raw(&mut self, dst: &mut [u32]) {
-        Blake2sTranscript::draw_randomness_using_hasher(&mut self.hasher, &mut self.seed, dst);
-    }
-}
+pub use transcript::{Blake2sTranscript, CommitBuf, Seed, TranscriptState};
 
 #[cfg(feature = "gkr_verify")]
 pub struct FoldBuffers<E: Copy, const N: usize> {
@@ -213,52 +113,51 @@ pub fn ext_from_nds<
     F: field::PrimeField,
     E: field::FieldExtension<F>,
     I: non_determinism_source::NonDeterminismSource,
->() -> E
-where
-    [(); E::DEGREE]: Sized,
-{
+>() -> E {
     // layout of E should be [F; E::DEGREE]
     debug_assert_eq!(
         core::mem::size_of::<E>(),
         core::mem::size_of::<F>() * E::DEGREE
     );
-    let mut result = core::mem::MaybeUninit::<E>::uninit();
-    let coeffs = unsafe {
-        &mut *result
-            .as_mut_ptr()
-            .cast::<[core::mem::MaybeUninit<F>; E::DEGREE]>()
-    };
-    let mut i = 0;
-    while i < E::DEGREE {
-        coeffs[i].write(F::from_reduced_raw_repr(I::read_reduced_field_element(
-            F::CHARACTERISTICS,
-        )));
-        i += 1;
+
+    use field::FixedArrayConvertible;
+
+    unsafe {
+        let mut coeffs = core::mem::MaybeUninit::<E::Coeffs>::uninit();
+        let dst = E::Coeffs::project_uninit(&mut coeffs);
+        let mut i = 0;
+        while i < E::DEGREE {
+            dst.get_unchecked_mut(i).write(F::from_reduced_raw_repr(
+                I::read_reduced_field_element(F::CHARACTERISTICS),
+            ));
+            i += 1;
+        }
+        E::from_coeffs(coeffs.assume_init())
     }
-    unsafe { result.assume_init() }
 }
 
 #[inline(always)]
-pub fn ext_from_raw_words<F: field::PrimeField, E: field::FieldExtension<F>>(
-    words: &[u32; E::DEGREE],
-) -> E
-where
-    [(); E::DEGREE]: Sized,
-{
+pub fn ext_from_raw_words<F: field::PrimeField, E: field::FieldExtension<F>, const N: usize>(
+    words: &[u32; N],
+) -> E {
+    assert_eq!(N, E::DEGREE);
+
     debug_assert_eq!(
         core::mem::size_of::<E>(),
         core::mem::size_of::<F>() * E::DEGREE
     );
-    let mut result = core::mem::MaybeUninit::<E>::uninit();
-    let coeffs = unsafe {
-        &mut *result
-            .as_mut_ptr()
-            .cast::<[core::mem::MaybeUninit<F>; E::DEGREE]>()
-    };
-    let mut i = 0;
-    while i < E::DEGREE {
-        coeffs[i].write(F::from_raw_repr_with_reduction(words[i]));
-        i += 1;
+
+    use field::FixedArrayConvertible;
+
+    unsafe {
+        let mut coeffs = core::mem::MaybeUninit::<E::Coeffs>::uninit();
+        let dst = E::Coeffs::project_uninit(&mut coeffs);
+        let mut i = 0;
+        while i < E::DEGREE {
+            dst.get_unchecked_mut(i)
+                .write(F::from_raw_repr_with_reduction(words[i]));
+            i += 1;
+        }
+        E::from_coeffs(coeffs.assume_init())
     }
-    unsafe { result.assume_init() }
 }

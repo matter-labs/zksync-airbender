@@ -47,7 +47,7 @@ pub fn generate_transcript_helpers<MW: MersenneWrapper>() -> TokenStream {
                 let base = i * EXT_DEGREE;
                 let raw = unsafe { (words.as_slice().as_ptr().add(base) as *const [u32; EXT_DEGREE]).as_ref_unchecked() };
                 unsafe {
-                    *dst.get_unchecked_mut(i) = ext_from_raw_words::<#field_struct, #quartic_struct>(raw);
+                    *dst.get_unchecked_mut(i) = ext_from_raw_words::<#field_struct, #quartic_struct, EXT_DEGREE>(raw);
                 }
                 i += 1;
             }
@@ -63,7 +63,7 @@ pub fn generate_transcript_helpers<MW: MersenneWrapper>() -> TokenStream {
                 ts.draw_raw(words.as_mut_slice());
             }
             let raw = unsafe { words.as_array::<EXT_DEGREE>() };
-            ext_from_raw_words::<#field_struct, #quartic_struct>(raw)
+            ext_from_raw_words::<#field_struct, #quartic_struct, EXT_DEGREE>(raw)
         }
     }
 }

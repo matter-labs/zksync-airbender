@@ -4,7 +4,7 @@ use worker::Worker;
 const BLAKE2S_NO_RESULT: u64 = u64::MAX;
 const BLAKE2S_ROUNDS_PER_INVOCAITON: usize = 1 << 16u32;
 
-impl Blake2sTranscript {
+impl<const REDUCED_ROUNDS: bool> Blake2sTranscript<REDUCED_ROUNDS> {
     pub fn search_pow(seed: &Seed, pow_bits: u32, worker: &Worker) -> (Seed, u64) {
         assert!(pow_bits <= 32);
 
@@ -146,7 +146,7 @@ impl Blake2sTranscript {
         input[BLAKE2S_DIGEST_SIZE_U32_WORDS] = challenge_u64 as u32;
         input[BLAKE2S_DIGEST_SIZE_U32_WORDS + 1] = (challenge_u64 >> 32) as u32;
         let mut state = *initial_state;
-        if USE_REDUCED_BLAKE2_ROUNDS {
+        if REDUCED_ROUNDS {
             round_function_reduced_rounds(&mut state, input);
         } else {
             round_function_full_rounds(&mut state, input);

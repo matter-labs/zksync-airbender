@@ -1,8 +1,8 @@
 use cs::definitions::NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES;
 use proc_macro2::TokenStream;
 use quote::{quote, TokenStreamExt};
-use verifier_common::blake2s_u32::{BLAKE2S_BLOCK_SIZE_U32_WORDS, BLAKE2S_DIGEST_SIZE_U32_WORDS};
 use std::collections::BTreeMap;
+use verifier_common::blake2s_u32::{BLAKE2S_BLOCK_SIZE_U32_WORDS, BLAKE2S_DIGEST_SIZE_U32_WORDS};
 
 use crate::mersenne_wrapper::MersenneWrapper;
 pub use crate::utils::{
@@ -82,7 +82,9 @@ fn compute_padding_words(
     let mut total_u32_words = 0;
     total_u32_words += inits_and_teardown_sets;
     total_u32_words += ext_degree * (NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES + 1);
-    total_u32_words += cap_size * BLAKE2S_DIGEST_SIZE_U32_WORDS * (memory_commits + witness_commits + setup_commits);
+    total_u32_words += cap_size
+        * BLAKE2S_DIGEST_SIZE_U32_WORDS
+        * (memory_commits + witness_commits + setup_commits);
 
     if total_u32_words % BLAKE2S_BLOCK_SIZE_U32_WORDS == 0 {
         0
@@ -179,7 +181,7 @@ pub fn generate_gkr_common<MW: MersenneWrapper>() -> TokenStream {
                 ts.draw_raw(draw_buf.as_mut_slice());
                 let r_k = {
                     let raw = unsafe { (draw_buf.as_slice().as_ptr() as *const [u32; EXT_DEGREE]).as_ref_unchecked() };
-                    ext_from_raw_words::<#field_struct, #quartic_struct>(raw)
+                    ext_from_raw_words::<#field_struct, #quartic_struct, EXT_DEGREE>(raw)
                 };
 
                 {
