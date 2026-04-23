@@ -1,4 +1,4 @@
-use std::ptr::null_mut;
+use std::ptr::{null, null_mut};
 
 use era_cudart::result::{CudaResult, CudaResultWrap};
 use era_cudart::slice::{DeviceSlice, DeviceVariable};
@@ -35,21 +35,20 @@ pub trait Encode: Sized {
     fn get_function() -> EncodeFunction<Self>;
 
     fn get_encode_temp_storage_bytes(num_items: i32) -> CudaResult<usize> {
-        let d_temp_storage = DeviceSlice::empty_mut();
+        // CUB convention: `d_temp_storage == nullptr` puts the call in
+        // size-query mode — CUB writes the required scratch size into
+        // `temp_storage_bytes` and returns without touching any data pointer.
+        // The other pointer arguments are likewise ignored in this mode.
         let mut temp_storage_bytes = 0;
-        let d_in = DeviceSlice::empty();
-        let d_unique_out = DeviceSlice::empty_mut();
-        let d_counts_out = DeviceSlice::empty_mut();
-        let d_num_runs_out = DeviceSlice::empty_mut();
         let function = Self::get_function();
         unsafe {
             function(
-                d_temp_storage.as_mut_ptr(),
+                null_mut(),
                 &mut temp_storage_bytes,
-                d_in.as_ptr(),
-                d_unique_out.as_mut_ptr(),
-                d_counts_out.as_mut_ptr(),
-                d_num_runs_out.as_mut_ptr(),
+                null(),
+                null_mut(),
+                null_mut(),
+                null_mut(),
                 num_items,
                 null_mut(),
             )
