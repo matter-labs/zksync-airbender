@@ -1434,9 +1434,12 @@ pub(crate) mod test {
                     let _ = unsafe {
                         full_statement_verifier::unrolled_proof_statement::verify_full_statement_for_unrolled_circuits::<true, { setups::inits_and_teardowns::NUM_INIT_AND_TEARDOWN_SETS }>(
                             &families_setups,
-                            full_statement_verifier::unrolled_proof_statement::FULL_UNSIGNED_MACHINE_UNROLLED_CIRCUITS_VERIFICATION_PARAMETERS,
-                            (&inits_and_teardowns_setup, full_statement_verifier::unrolled_proof_statement::INITS_AND_TEARDOWNS_VERIFIER_PTR),
-                            full_statement_verifier::imports::BASE_LAYER_DELEGATION_CIRCUITS_VERIFICATION_PARAMETERS,
+                            full_statement_verifier::unrolled_proof_statement::full_unsigned_machine_unrolled_circuits_verification_parameters(security),
+                            (
+                                &inits_and_teardowns_setup,
+                                full_statement_verifier::unrolled_proof_statement::inits_and_teardowns_verifier_ptr(security),
+                            ),
+                            full_statement_verifier::imports::base_layer_delegation_circuits_verification_parameters(security),
                             security,
                         )
                     };

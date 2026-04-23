@@ -55,11 +55,11 @@ jobs:
         shell: bash
         run: |
           mkdir artifacts
-          # Build one CLI binary that supports both security levels, then exercise
-          # each level at runtime in the test matrix below.
+          # Build one CLI binary with GPU support, then exercise each runtime
+          # security level in the test matrix below.
           # Build for A100 (sm_80), L4 (sm_89), and H100 (sm_90).
           CUDAARCHS="80;89;90" \
-          cargo +$RUST_TOOLCHAIN build -p cli --no-default-features --features "gpu security_80 security_100" --release --target x86_64-unknown-linux-gnu
+          cargo +$RUST_TOOLCHAIN build -p cli --features "gpu" --release --target x86_64-unknown-linux-gnu
           cp target/x86_64-unknown-linux-gnu/release/cli artifacts/cli
 
       - name: Upload CLI binary

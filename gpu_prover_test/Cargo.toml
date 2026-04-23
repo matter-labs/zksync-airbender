@@ -10,7 +10,7 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-execution_utils = { workspace = true, features = ["prover", "gpu_prover"] }
+execution_utils = { workspace = true, default-features = false, features = ["prover", "gpu_prover"] }
 gpu_prover = { workspace = true }
 riscv_transpiler = { workspace = true }
 verifier_common.workspace = true
@@ -21,10 +21,3 @@ bincode = { version =  "2", features = ["serde"] }
 env_logger = "0.11"
 hex = "0.4"
 serde_json = "1.0"
-
-[features]
-security_80 = ["execution_utils/security_80"]
-security_100 = ["execution_utils/security_100"]
-verifier_80 = ["execution_utils/verifier_80"]
-verifier_100 = ["execution_utils/verifier_100"]
-default = ["security_80"]

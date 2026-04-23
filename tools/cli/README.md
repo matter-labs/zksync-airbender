@@ -4,26 +4,21 @@
 
 ## Build
 
-Default build (`security_80`, verification included):
+Default build:
 
 ```bash
 cargo build -p cli
 ```
 
-Build one CLI binary that supports both security levels:
-
-```bash
-cargo build -p cli --no-default-features --features "security_80 security_100"
-```
+The default CLI build supports both 80-bit and 100-bit security.
 
 Build with GPU proving support:
 
 ```bash
-cargo build -p cli --no-default-features --features "gpu security_80 security_100"
+cargo build -p cli --features "gpu"
 ```
 
 The proof security level is selected at runtime with `--security-level 80|100`.
-If the binary is compiled with only one security feature, only that level is available.
 
 ## Commands
 
@@ -66,7 +61,7 @@ cargo run --release -p cli -- prove \
 Base layer proof on GPU:
 
 ```bash
-cargo run --release -p cli --no-default-features --features "gpu security_80 security_100" -- prove \
+cargo run --release -p cli --features "gpu" -- prove \
   --bin examples/basic_fibonacci/app.bin \
   --security-level 80 \
   --target base \
