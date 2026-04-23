@@ -69,22 +69,6 @@ pub const SHIFT_BINARY_CSR_VERIFIER_PTR_80: VerificationFunctionPointer =
 pub const SHIFT_BINARY_CSR_VERIFIER_PTR_100: VerificationFunctionPointer =
     VerificationFunctionPointer::UnrolledWithDelegation(shift_binary_csr_verifier::verify_100);
 
-// TODO(codex): remove these 80-bit compatibility aliases once low-level
-// callers switch to the security-aware table accessors below.
-pub const ADD_SUB_LUI_AUIPC_MOP_VERIFIER_PTR: VerificationFunctionPointer =
-    ADD_SUB_LUI_AUIPC_MOP_VERIFIER_PTR_80;
-pub const JUMP_BRANCH_SLT_VERIFIER_PTR: VerificationFunctionPointer =
-    JUMP_BRANCH_SLT_VERIFIER_PTR_80;
-pub const LOAD_STORE_SUBWORD_ONLY_VERIFIER_PTR: VerificationFunctionPointer =
-    LOAD_STORE_SUBWORD_ONLY_VERIFIER_PTR_80;
-pub const LOAD_STORE_WORD_ONLY_VERIFIER_PTR: VerificationFunctionPointer =
-    LOAD_STORE_WORD_ONLY_VERIFIER_PTR_80;
-pub const MUL_DIV_VERIFIER_PTR: VerificationFunctionPointer = MUL_DIV_VERIFIER_PTR_80;
-pub const MUL_DIV_UNSIGNED_VERIFIER_PTR: VerificationFunctionPointer =
-    MUL_DIV_UNSIGNED_VERIFIER_PTR_80;
-pub const SHIFT_BINARY_CSR_VERIFIER_PTR: VerificationFunctionPointer =
-    SHIFT_BINARY_CSR_VERIFIER_PTR_80;
-
 pub const FULL_MACHINE_UNROLLED_CIRCUITS_VERIFICATION_PARAMETERS_80: &[(
     u32, // family
     u32, // capacity
@@ -158,14 +142,6 @@ pub const FULL_MACHINE_UNROLLED_CIRCUITS_VERIFICATION_PARAMETERS_100: &[(
         LOAD_STORE_SUBWORD_ONLY_VERIFIER_PTR_100,
     ),
 ];
-
-// TODO(codex): remove this 80-bit compatibility table once callers switch to
-// `full_machine_unrolled_circuits_verification_parameters`.
-pub const FULL_MACHINE_UNROLLED_CIRCUITS_VERIFICATION_PARAMETERS: &[(
-    u32, // family
-    u32, // capacity
-    VerificationFunctionPointer,
-)] = FULL_MACHINE_UNROLLED_CIRCUITS_VERIFICATION_PARAMETERS_80;
 
 pub const FULL_MACHINE_NUM_UNROLLED_CIRCUITS: usize =
     const { FULL_MACHINE_UNROLLED_CIRCUITS_VERIFICATION_PARAMETERS_80.len() };
@@ -244,14 +220,6 @@ pub const FULL_UNSIGNED_MACHINE_UNROLLED_CIRCUITS_VERIFICATION_PARAMETERS_100: &
     ),
 ];
 
-// TODO(codex): remove this 80-bit compatibility table once callers switch to
-// `full_unsigned_machine_unrolled_circuits_verification_parameters`.
-pub const FULL_UNSIGNED_MACHINE_UNROLLED_CIRCUITS_VERIFICATION_PARAMETERS: &[(
-    u32, // family
-    u32, // capacity
-    VerificationFunctionPointer,
-)] = FULL_UNSIGNED_MACHINE_UNROLLED_CIRCUITS_VERIFICATION_PARAMETERS_80;
-
 pub const FULL_UNSIGNED_MACHINE_NUM_UNROLLED_CIRCUITS: usize =
     const { FULL_UNSIGNED_MACHINE_UNROLLED_CIRCUITS_VERIFICATION_PARAMETERS_80.len() };
 
@@ -310,14 +278,6 @@ pub const RECURSION_WORD_ONLY_UNSIGNED_MACHINE_UNROLLED_CIRCUITS_VERIFICATION_PA
     ),
 ];
 
-// TODO(codex): remove this 80-bit compatibility table once callers switch to
-// `recursion_word_only_unsigned_machine_unrolled_circuits_verification_parameters`.
-pub const RECURSION_WORD_ONLY_UNSIGNED_MACHINE_UNROLLED_CIRCUITS_VERIFICATION_PARAMETERS: &[(
-    u32, // family
-    u32, // capacity
-    VerificationFunctionPointer,
-)] = RECURSION_WORD_ONLY_UNSIGNED_MACHINE_UNROLLED_CIRCUITS_VERIFICATION_PARAMETERS_80;
-
 pub const RECURSION_WORD_ONLY_UNSIGNED_MACHINE_NUM_UNROLLED_CIRCUITS: usize = const {
     RECURSION_WORD_ONLY_UNSIGNED_MACHINE_UNROLLED_CIRCUITS_VERIFICATION_PARAMETERS_80.len()
 };
@@ -337,16 +297,6 @@ pub const INITS_AND_TEARDOWNS_VERIFIER_PTR_100: VerifierFunctionPointer<
     { inits_and_teardowns_verifier::concrete::size_constants::NUM_AUX_BOUNDARY_VALUES },
     0,
 > = inits_and_teardowns_verifier::verify_100;
-
-// TODO(codex): remove this 80-bit compatibility alias once low-level callers
-// switch to `inits_and_teardowns_verifier_ptr`.
-pub const INITS_AND_TEARDOWNS_VERIFIER_PTR: VerifierFunctionPointer<
-    CAP_SIZE,
-    NUM_COSETS,
-    0,
-    { inits_and_teardowns_verifier::concrete::size_constants::NUM_AUX_BOUNDARY_VALUES },
-    0,
-> = INITS_AND_TEARDOWNS_VERIFIER_PTR_80;
 
 #[inline(always)]
 pub const fn full_machine_unrolled_circuits_verification_parameters(

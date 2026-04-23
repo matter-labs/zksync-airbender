@@ -31,16 +31,6 @@ pub const REDUCED_UNIFIED_CIRCUIT_VERIFIER_PTR_100: VerifierFunctionPointer<
     0,
     1,
 > = unified_reduced_machine_verifier::verify_100;
-// TODO(codex): remove this 80-bit compatibility alias once low-level callers
-// switch to `reduced_unified_circuit_verifier_ptr`.
-pub const REDUCED_UNIFIED_CIRCUIT_VERIFIER_PTR: VerifierFunctionPointer<
-    CAP_SIZE,
-    NUM_COSETS,
-    1,
-    1,
-    0,
-    1,
-> = REDUCED_UNIFIED_CIRCUIT_VERIFIER_PTR_80;
 pub const REDUCED_UNIFIED_CIRCUIT_CAPACITY: u32 =
     (unified_reduced_machine_verifier::concrete::size_constants::TRACE_LEN - 1) as u32;
 

@@ -30,17 +30,6 @@ pub const BLAKE_WITH_COMPRESSION_VERIFIER_PTR_100: VerifierFunctionPointer<
 > = blake2_with_compression_verifier::verify_100;
 
 #[cfg(any(feature = "verifiers", feature = "unified_verifier_only"))]
-// TODO(codex): remove this 80-bit compatibility alias once low-level callers
-// switch to the explicit security-dispatch helpers above.
-pub const BLAKE_WITH_COMPRESSION_VERIFIER_PTR: VerifierFunctionPointer<
-    CAP_SIZE,
-    NUM_COSETS,
-    NUM_DELEGATION_CHALLENGES,
-    0,
-    0,
-> = BLAKE_WITH_COMPRESSION_VERIFIER_PTR_80;
-
-#[cfg(any(feature = "verifiers", feature = "unified_verifier_only"))]
 #[inline(always)]
 pub const fn blake_with_compression_verifier_ptr(
     security: verifier_common::SecurityModel,
@@ -70,17 +59,6 @@ pub const BIGINT_WITH_CONTROL_VERIFIER_PTR_100: VerifierFunctionPointer<
 > = bigint_with_control_verifier::verify_100;
 
 #[cfg(feature = "verifiers")]
-// TODO(codex): remove this 80-bit compatibility alias once low-level callers
-// switch to the explicit security-dispatch helpers above.
-pub const BIGINT_WITH_CONTROL_VERIFIER_PTR: VerifierFunctionPointer<
-    CAP_SIZE,
-    NUM_COSETS,
-    NUM_DELEGATION_CHALLENGES,
-    0,
-    0,
-> = BIGINT_WITH_CONTROL_VERIFIER_PTR_80;
-
-#[cfg(feature = "verifiers")]
 #[inline(always)]
 pub const fn bigint_with_control_verifier_ptr(
     security: verifier_common::SecurityModel,
@@ -108,17 +86,6 @@ pub const KECCAK_SPECIAL5_CONTROL_VERIFIER_PTR_100: VerifierFunctionPointer<
     0,
     0,
 > = keccak_special5_verifier::verify_100;
-
-#[cfg(feature = "verifiers")]
-// TODO(codex): remove this 80-bit compatibility alias once low-level callers
-// switch to the explicit security-dispatch helpers above.
-pub const KECCAK_SPECIAL5_CONTROL_VERIFIER_PTR: VerifierFunctionPointer<
-    CAP_SIZE,
-    NUM_COSETS,
-    NUM_DELEGATION_CHALLENGES,
-    0,
-    0,
-> = KECCAK_SPECIAL5_CONTROL_VERIFIER_PTR_80;
 
 #[cfg(feature = "verifiers")]
 #[inline(always)]
@@ -221,26 +188,6 @@ pub const RECURSION_LAYER_CIRCUITS_VERIFICATION_PARAMETERS_100: &[(
     &ALL_DELEGATION_CIRCUITS_PARAMS[0].2,
     BLAKE_WITH_COMPRESSION_VERIFIER_PTR_100,
 )];
-
-#[cfg(feature = "verifiers")]
-// TODO(codex): remove this 80-bit compatibility table once callers switch to
-// `base_layer_delegation_circuits_verification_parameters`.
-pub const BASE_LAYER_DELEGATION_CIRCUITS_VERIFICATION_PARAMETERS: &[(
-    u32, // delegation type
-    u32, // delegation capacity
-    &[MerkleTreeCap<CAP_SIZE>; NUM_COSETS],
-    VerifierFunctionPointer<CAP_SIZE, NUM_COSETS, NUM_DELEGATION_CHALLENGES, 0, 0>,
-)] = BASE_LAYER_DELEGATION_CIRCUITS_VERIFICATION_PARAMETERS_80;
-
-#[cfg(any(feature = "verifiers", feature = "unified_verifier_only"))]
-// TODO(codex): remove this 80-bit compatibility table once callers switch to
-// `recursion_layer_circuits_verification_parameters`.
-pub const RECURSION_LAYER_CIRCUITS_VERIFICATION_PARAMETERS: &[(
-    u32,
-    u32,
-    &[MerkleTreeCap<CAP_SIZE>; NUM_COSETS],
-    VerifierFunctionPointer<CAP_SIZE, NUM_COSETS, NUM_DELEGATION_CHALLENGES, 0, 0>,
-)] = RECURSION_LAYER_CIRCUITS_VERIFICATION_PARAMETERS_80;
 
 #[cfg(feature = "verifiers")]
 #[inline(always)]
