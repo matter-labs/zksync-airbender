@@ -114,6 +114,30 @@ struct bf {
 
   static DEVICE_FORCEINLINE u32 into_canonical_u32(const bf x) { return bf::from_mont(x).limb; }
 
+  // Mirrors host `BabyBearField::from_u32_with_reduction`: reduce an arbitrary u32 to [0, ORDER)
+  // via at most two conditional subtractions, then Montgomery-convert (multiply by MONT_R2).
+  static DEVICE_FORCEINLINE bf from_u32_with_reduction(const u32 x) {
+    u32 r = x;
+    if (r >= ORDER)
+      r -= ORDER;
+    if (r >= ORDER)
+      r -= ORDER;
+    return bf::into_mont(bf(r));
+  }
+
+  // Mirrors host `BabyBearField::from_raw_repr_with_reduction`: reduce an arbitrary u32 to
+  // [0, ORDER) via at most two conditional subtractions, then store raw — i.e. treat the
+  // reduced u32 as already being in Montgomery form. This is the transcript-squeeze conversion
+  // used to derive E4 challenges from raw Blake2s output words.
+  static constexpr DEVICE_FORCEINLINE bf from_raw_repr_with_reduction(const u32 x) {
+    u32 r = x;
+    if (r >= ORDER)
+      r -= ORDER;
+    if (r >= ORDER)
+      r -= ORDER;
+    return bf(r);
+  }
+
   static constexpr DEVICE_FORCEINLINE bf neg(const bf x) { return bf(x.limb == 0 ? 0 : ORDER - x.limb); }
 
   static constexpr DEVICE_FORCEINLINE bf sub(const bf x, const bf y) { return from_lt_2_order_u32(ORDER + x.limb - y.limb); }

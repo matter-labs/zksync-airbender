@@ -619,7 +619,7 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
     )?;
 
     // 3 E4 lookup challenges in Montgomery form, drawn via the device-side Fiat-Shamir path
-    // (mirrors host `draw_random_field_els::<BF, E4>(seed, 3)` with `from_u32_with_reduction`).
+    // (mirrors host `draw_random_field_els::<BF, E4>(seed, 3)` with `from_raw_repr_with_reduction`).
     let mut d_lookup_challenges: DeviceAllocation<E4> =
         context.alloc(3, AllocationPlacement::BestFit)?;
     crate::ops::blake2s::transcript_squeeze_e4(&mut d_seed, &mut d_lookup_challenges, stream)?;
