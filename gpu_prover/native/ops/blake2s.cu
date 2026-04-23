@@ -464,20 +464,10 @@ EXTERN __global__ void ab_transcript_squeeze_kernel(u32 *seed_io, u32 *output, c
   }
 }
 
-DEVICE_FORCEINLINE bf reduce_raw_u32_to_bf_inline(const u32 x) {
-  // Host-side parity with BabyBearField::from_nonreduced_u32: reduce into [0, ORDER)
-  // with at most two subtractions, then multiply by MONT_R2 to land in Montgomery form.
-  u32 r = x;
-  if (r >= bf::ORDER)
-    r -= bf::ORDER;
-  if (r >= bf::ORDER)
-    r -= bf::ORDER;
-  return bf::from_canonical_u32(r);
-}
-
 // Device-side `Transcript::commit_initial` seed → `draw_random_field_els::<BF, E4>(seed, count)`.
-// Writes `count` E4 challenges in Montgomery form (matching host `from_u32_with_reduction` on
-// each 4-u32 squeeze chunk) and updates `seed_io` with the advanced seed.
+// Writes `count` E4 challenges in Montgomery form, matching host
+// `BabyBearField::from_raw_repr_with_reduction` applied to each 4-u32 squeeze chunk, and
+// updates `seed_io` with the advanced seed.
 //
 // `count` must be positive. Each challenge consumes 4 consecutive raw squeeze u32 words; the
 // kernel advances the seed once per STATE_SIZE (= 8) raw words produced (i.e. every 2 E4s),
@@ -516,10 +506,10 @@ EXTERN __global__ void ab_transcript_squeeze_e4_kernel(u32 *seed_io, e4 *output_
     // Consume raw_chunk 4 u32s at a time → 1 E4 challenge.
     for (unsigned slot = 0; slot < STATE_SIZE / 4 && emitted < count; slot++) {
       const u32 *src = &raw_chunk[slot * 4];
-      const bf c0 = reduce_raw_u32_to_bf_inline(src[0]);
-      const bf c1 = reduce_raw_u32_to_bf_inline(src[1]);
-      const bf c2 = reduce_raw_u32_to_bf_inline(src[2]);
-      const bf c3 = reduce_raw_u32_to_bf_inline(src[3]);
+      const bf c0 = bf::from_raw_repr_with_reduction(src[0]);
+      const bf c1 = bf::from_raw_repr_with_reduction(src[1]);
+      const bf c2 = bf::from_raw_repr_with_reduction(src[2]);
+      const bf c3 = bf::from_raw_repr_with_reduction(src[3]);
       const e4 ch = e4(e2(c0, c1), e2(c2, c3));
       output_e4[emitted] = ch;
       emitted++;
@@ -537,7 +527,7 @@ EXTERN __global__ void ab_transcript_squeeze_e4_kernel(u32 *seed_io, e4 *output_
 //   2. derives the round's 4 univariate coefficients [c0..c3],
 //   3. commits those coefficients to the transcript (Blake2s),
 //   4. extracts the new folding challenge from the first 4 u32 words of the
-//      updated seed (Montgomery-reduced, matching host from_u32_with_reduction),
+//      updated seed (matching host `BabyBearField::from_raw_repr_with_reduction`),
 //   5. folds the claim through the univariate poly at the challenge,
 //   6. refreshes eq_prefactor = eq(challenge, prev_coord).
 //
@@ -546,20 +536,9 @@ EXTERN __global__ void ab_transcript_squeeze_e4_kernel(u32 *seed_io, e4 *output_
 // matching the host flatten order for commit_field_els.
 // ---------------------------------------------------------------------------
 
-DEVICE_FORCEINLINE bf reduce_raw_u32_to_bf(const u32 x) {
-  // Match host BabyBearField::from_nonreduced_u32: at most two conditional
-  // subtractions down to [0, ORDER), then multiply by MONT_R2 to land in
-  // Montgomery form.
-  u32 r = x;
-  if (r >= bf::ORDER)
-    r -= bf::ORDER;
-  if (r >= bf::ORDER)
-    r -= bf::ORDER;
-  return bf::from_canonical_u32(r);
-}
-
 DEVICE_FORCEINLINE e4 e4_from_raw_u32x4(const u32 *words) {
-  return e4(e2(reduce_raw_u32_to_bf(words[0]), reduce_raw_u32_to_bf(words[1])), e2(reduce_raw_u32_to_bf(words[2]), reduce_raw_u32_to_bf(words[3])));
+  return e4(e2(bf::from_raw_repr_with_reduction(words[0]), bf::from_raw_repr_with_reduction(words[1])),
+            e2(bf::from_raw_repr_with_reduction(words[2]), bf::from_raw_repr_with_reduction(words[3])));
 }
 
 // Port of prover::gkr::sumcheck::output_univariate_monomial_form_max_quadratic.
@@ -668,7 +647,7 @@ EXTERN __global__ void ab_backward_sumcheck_round_update_kernel(const e4 *reduct
 //   2. Lagrange-interpolates the degree-2 sumcheck univariate at (0, 1, 1/2),
 //   3. commits those 3 E4 coefficients to the transcript (Blake2s),
 //   4. extracts the fold challenge from the first 4 u32 words of the updated
-//      seed (Montgomery-reduced, matching host from_u32_with_reduction).
+//      seed (matching host `BabyBearField::from_raw_repr_with_reduction`).
 //
 // All I/O buffers are on device. The kernel is launched <<<1,1>>>. Memory
 // layout of e4 is 4 consecutive u32 limbs (Montgomery-form base field), which
