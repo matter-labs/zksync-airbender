@@ -1,4 +1,4 @@
-use std::ptr::null_mut;
+use std::ptr::{null, null_mut};
 
 use era_cudart::result::{CudaResult, CudaResultWrap};
 use era_cudart::slice::DeviceSlice;
@@ -55,17 +55,17 @@ pub trait SortKeys: Sized {
         begin_bit: i32,
         end_bit: i32,
     ) -> CudaResult<usize> {
-        let d_temp_storage = DeviceSlice::empty_mut();
+        // CUB convention: `d_temp_storage == nullptr` puts the call in
+        // size-query mode — CUB writes the required scratch size into
+        // `temp_storage_bytes` and returns without touching any data pointer.
         let mut temp_storage_bytes = 0;
-        let d_keys_in = DeviceSlice::empty();
-        let d_keys_out = DeviceSlice::empty_mut();
         let function = Self::get_function(descending);
         unsafe {
             function(
-                d_temp_storage.as_mut_ptr(),
+                null_mut(),
                 &mut temp_storage_bytes,
-                d_keys_in.as_ptr(),
-                d_keys_out.as_mut_ptr(),
+                null(),
+                null_mut(),
                 num_items,
                 begin_bit,
                 end_bit,
@@ -224,21 +224,19 @@ pub trait SortPairs<K, V> {
         begin_bit: i32,
         end_bit: i32,
     ) -> CudaResult<usize> {
-        let d_temp_storage = DeviceSlice::empty_mut();
+        // CUB convention: `d_temp_storage == nullptr` puts the call in
+        // size-query mode — CUB writes the required scratch size into
+        // `temp_storage_bytes` and returns without touching any data pointer.
         let mut temp_storage_bytes = 0;
-        let d_keys_in = DeviceSlice::empty();
-        let d_keys_out = DeviceSlice::empty_mut();
-        let d_values_in = DeviceSlice::empty();
-        let d_values_out = DeviceSlice::empty_mut();
         let function = Self::get_function(descending);
         unsafe {
             function(
-                d_temp_storage.as_mut_ptr(),
+                null_mut(),
                 &mut temp_storage_bytes,
-                d_keys_in.as_ptr(),
-                d_keys_out.as_mut_ptr(),
-                d_values_in.as_ptr(),
-                d_values_out.as_mut_ptr(),
+                null(),
+                null_mut(),
+                null(),
+                null_mut(),
                 num_items,
                 begin_bit,
                 end_bit,
