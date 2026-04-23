@@ -12,7 +12,7 @@ keywords = ["blockchain", "zksync", "zk"]
 categories = ["cryptography"]
 
 [dependencies]
-verifier_common = { path = "../../verifier_common", default-features = false, features = ["gkr_verify", "modular_ops"] }
+verifier_common = { path = "../../verifier_common", default-features = false, features = ["modular_ops"] }
 non_determinism_source = { path = "../../non_determinism_source" }
 riscv_common = { path = "../../riscv_common", features = ["boot_sequence", "no_memset_override"] }
 field = { path = "../../field", default-features = false, features = ["modular_ops"] }

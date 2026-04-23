@@ -1,5 +1,3 @@
-#![cfg(feature = "gkr_verify")]
-
 mod common;
 
 use field::baby_bear::base::BabyBearField;

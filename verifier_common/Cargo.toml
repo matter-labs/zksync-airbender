@@ -13,17 +13,20 @@ categories.workspace = true
 field = { workspace = true }
 blake2s_u32 = { workspace = true, default-features = false }
 transcript = { workspace = true, default-features = false }
-cs = { workspace = true, default-features = false, features = ["definitions_only"] }
-prover = { workspace = true, default-features = false, features = ["definitions_only"] }
-serde = { workspace = true, default-features = false, features = ["derive", "alloc"] }
-serde_json = { version = "*", default-features = false, features = ["alloc"], optional = true }
+cs = { workspace = true, default-features = false }
+prover = { workspace = true, default-features = false }
 unroll = { workspace = true }
 non_determinism_source = { workspace = true }
+serde = { workspace = true, default-features = false, features = ["derive", "alloc"] }
+
+serde_json = { version = "*", default-features = false, features = ["alloc"], optional = true }
 quote = { version = "1", optional = true }
 proc-macro2 = {version = "1", optional = true }
 
 [dev-dependencies]
 prover = { workspace = true, features = ["prover"] }
+quote = { version = "1" }
+proc-macro2 = {version = "1" }
 
 [features]
 security_80 = []
@@ -37,7 +40,7 @@ verifier_program = ["modular_ops"]
 proof_utils = ["prover/prover", "dep:serde_json", "replace_csr", "dep:quote", "dep:proc-macro2"]
 # If enabled, allows passing custom values into CSR.
 replace_csr = ["prover/prover"]
-# GKR sumcheck verifier
-gkr_verify = []
 # Use no-caches circuit descriptors (default for testing)
 no_caches = []
+
+default = []

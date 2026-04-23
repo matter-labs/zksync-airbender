@@ -4,7 +4,6 @@ use blake2s_u32::{AlignedArray64, BLAKE2S_BLOCK_SIZE_U32_WORDS, BLAKE2S_DIGEST_S
 use cs::definitions::GKRAddress;
 use field::{Field, FieldExtension, PrimeField};
 use non_determinism_source::NonDeterminismSource;
-use prover::definitions::{GKRExternalChallenges, USE_REDUCED_BLAKE2_ROUNDS};
 use transcript::Blake2sTranscript;
 
 #[repr(usize)]
@@ -173,7 +172,7 @@ pub fn make_initial_transcript<
     const NUM_SETUP_COMMITS: usize,
     const PADDING_WORDS: usize,
 >(
-    external_challenges: &GKRExternalChallenges<F, E>,
+    external_challenges: &prover::definitions::GKRExternalChallenges<F, E>,
 ) -> (
     InitialGKRTranscript<
         E,
@@ -252,7 +251,7 @@ pub fn make_initial_transcript<
                 >, padding);
         assert_eq!(meaningful_part_len % core::mem::size_of::<u32>(), 0);
         let total_words = meaningful_part_len / core::mem::size_of::<u32>();
-        let seed = Blake2sTranscript::<USE_REDUCED_BLAKE2_ROUNDS>::commit_initial_using_hasher_and_aligned_buffer(
+        let seed = Blake2sTranscript::<{ ::prover::definitions::USE_REDUCED_BLAKE2_ROUNDS }>::commit_initial_using_hasher_and_aligned_buffer(
             &mut hasher,
             state_as_flattened_buffers,
             total_words,

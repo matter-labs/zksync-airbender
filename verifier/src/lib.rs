@@ -5,12 +5,10 @@
 pub use field;
 pub use verifier_common;
 pub use verifier_common::blake2s_u32;
-#[cfg(feature = "gkr_verify")]
 pub use verifier_common::gkr;
 pub use verifier_common::prover;
 pub use verifier_common::transcript;
 
-#[cfg(feature = "gkr_verify")]
 #[path = "generated"]
 mod __generated {
     macro_rules! declare_gkr_modules {
@@ -20,5 +18,5 @@ mod __generated {
     }
     verifier_common::gkr_circuits!(declare_gkr_modules);
 }
-#[cfg(feature = "gkr_verify")]
+
 pub use __generated::*;

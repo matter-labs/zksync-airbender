@@ -5,6 +5,16 @@ pub trait NonDeterminismSource: 'static + Send + Sync + Clone + Copy {
     fn read_reduced_field_element(modulus: u32) -> u32;
 }
 
+impl NonDeterminismSource for () {
+    fn read_word() -> u32 {
+        0
+    }
+
+    fn read_reduced_field_element(_modulus: u32) -> u32 {
+        0
+    }
+}
+
 #[cfg(target_arch = "riscv32")]
 #[derive(Clone, Copy, Debug)]
 pub struct CSRBasedSource;

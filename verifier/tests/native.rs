@@ -1,5 +1,3 @@
-#![cfg(feature = "gkr_verify")]
-
 #[macro_use]
 mod common;
 

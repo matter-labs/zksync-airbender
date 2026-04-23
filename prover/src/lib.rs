@@ -11,9 +11,9 @@ pub const DEBUG_QUOTIENT: bool = true;
 #[cfg(not(feature = "debug_satisfiable"))]
 pub const DEBUG_QUOTIENT: bool = false;
 
+pub mod definitions;
 pub mod utils;
 
-pub mod definitions;
 pub use common_constants;
 pub use cs;
 pub use field;

@@ -1,8 +1,10 @@
+use core::cell::RefCell;
 use non_determinism_source::NonDeterminismSource;
-use std::cell::RefCell;
+
+extern crate alloc;
 
 thread_local! {
-    static SOURCE_ITERATOR: RefCell<Option<Box<dyn Iterator<Item = u32> + Send + Sync + 'static>>> = RefCell::new(None);
+    static SOURCE_ITERATOR: RefCell<Option<alloc::boxed::Box<dyn Iterator<Item = u32> + Send + Sync + 'static>>> = RefCell::new(None);
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -25,7 +27,7 @@ pub fn set_iterator(iterator: impl Iterator<Item = u32> + Send + Sync + 'static)
             assert!(it.next().is_none());
         }
 
-        *el = Some(Box::new(iterator))
+        *el = Some(alloc::boxed::Box::new(iterator))
     });
 }
 

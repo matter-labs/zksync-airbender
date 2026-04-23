@@ -1,20 +1,11 @@
-#[cfg(feature = "gkr_verify")]
-use blake2s_u32::{
-    AlignedArray64, DelegatedBlake2sState, BLAKE2S_BLOCK_SIZE_U32_WORDS,
-    BLAKE2S_DIGEST_SIZE_U32_WORDS,
-};
-#[cfg(feature = "gkr_verify")]
+pub use crate::transcript::{Blake2sTranscript, CommitBuf, Seed, TranscriptState};
 use core::mem::MaybeUninit;
-#[cfg(feature = "gkr_verify")]
-pub use transcript::{Blake2sTranscript, CommitBuf, Seed, TranscriptState};
 
-#[cfg(feature = "gkr_verify")]
 pub struct FoldBuffers<E: Copy, const N: usize> {
     buf_a: [MaybeUninit<E>; N],
     buf_b: [MaybeUninit<E>; N],
 }
 
-#[cfg(feature = "gkr_verify")]
 impl<E: Copy, const N: usize> FoldBuffers<E, N> {
     #[inline(always)]
     pub fn new() -> Self {

@@ -121,9 +121,13 @@ pub struct SizedProofPowChallenges<const NUM_FOLDINGS: usize> {
     pub fri_queries_pow_challenge: u64,
 }
 
+#[cfg(any(test, feature = "replace_csr", feature = "proof_utils"))]
 extern crate alloc;
+
+use crate::errors::ErrorCreator;
+use blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS;
 use field::{Field, FieldExtension, PrimeField};
-pub use prover::definitions::*;
+use non_determinism_source::NonDeterminismSource;
 
 pub use blake2s_u32;
 pub use cs;
@@ -131,22 +135,19 @@ pub use field;
 pub use non_determinism_source;
 pub use prover;
 pub use transcript;
-#[cfg(feature = "gkr_verify")]
 pub mod errors;
-// pub mod fri_folding;
-#[cfg(feature = "gkr_verify")]
 pub mod gkr;
-#[cfg(all(feature = "proof_utils", feature = "gkr_verify"))]
+pub mod structs;
+#[cfg(feature = "proof_utils")]
 pub mod test_circuits;
-#[cfg(feature = "gkr_verify")]
 pub mod whir;
 
 pub mod inline_ops;
 pub mod lazy_vec;
 pub mod no_inline_ops;
 
-#[cfg(feature = "gkr_verify")]
 pub use self::gkr::{GKRVerifierOutput, InitialGKRTranscript};
+pub use ::prover::definitions::{GKRExternalChallenges, USE_REDUCED_BLAKE2_ROUNDS};
 
 /// Wrappers for common field operations used by the verifier.
 /// We use inline operations when compiling to RISC-V to maximize performance,
@@ -161,10 +162,11 @@ pub mod field_ops {
     pub use crate::no_inline_ops::*;
 }
 
-pub mod structs;
+#[cfg(all(not(target_arch = "riscv32"), feature = "replace_csr"))]
+pub type DefaultNonDeterminismSource = ::prover::nd_source_std::ThreadLocalBasedSource;
 
-#[cfg(not(target_arch = "riscv32"))]
-pub type DefaultNonDeterminismSource = prover::nd_source_std::ThreadLocalBasedSource;
+#[cfg(all(not(target_arch = "riscv32"), not(feature = "replace_csr")))]
+pub type DefaultNonDeterminismSource = ();
 
 #[cfg(target_arch = "riscv32")]
 pub type DefaultNonDeterminismSource = non_determinism_source::CSRBasedSource;
@@ -173,14 +175,14 @@ pub type DefaultNonDeterminismSource = non_determinism_source::CSRBasedSource;
     target_arch = "riscv32",
     any(feature = "blake2_with_compression", feature = "blake2_g_function")
 )))]
-pub type DefaultLeafInclusionVerifier = prover::definitions::Blake2sForEverythingVerifier;
+pub type DefaultLeafInclusionVerifier = ::prover::definitions::Blake2sForEverythingVerifier;
 
 #[cfg(all(
     target_arch = "riscv32",
     any(feature = "blake2_with_compression", feature = "blake2_g_function")
 ))]
 pub type DefaultLeafInclusionVerifier =
-    prover::definitions::Blake2sForEverythingVerifierWithAlternativeCompression;
+    ::prover::definitions::Blake2sForEverythingVerifierWithAlternativeCompression;
 
 pub fn parse_field_els_as_u32_from_u16_limbs_checked(
     input: [::field::baby_bear::base::BabyBearField; 2],
@@ -193,10 +195,6 @@ pub fn parse_field_els_as_u32_from_u16_limbs_checked(
 
     low | (high << 16)
 }
-
-use crate::errors::ErrorCreator;
-use blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS;
-use non_determinism_source::NonDeterminismSource;
 
 pub struct VerifierOutput<
     E: Field,
@@ -226,7 +224,7 @@ pub trait ConcreteVerifierImpl<
 >: 'static
 {
     fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
-        external_challenges: &GKRExternalChallenges<F, EE>,
+        external_challenges: &::prover::definitions::GKRExternalChallenges<F, EE>,
         initial_transcript: &InitialGKRTranscript<
             EE,
             INIT_AND_TEARDOWN_SETS,
@@ -285,7 +283,7 @@ pub fn verify_impl<
         ADDRS,
     >,
 >(
-    external_challenges: &GKRExternalChallenges<F, EE>,
+    external_challenges: &prover::definitions::GKRExternalChallenges<F, EE>,
 ) -> Result<
     VerifierOutput<EE, INIT_AND_TEARDOWN_SETS, CAP_SIZE, NUM_MEMORY_COMMITS, NUM_SETUP_COMMITS>,
     E::Error,
@@ -325,7 +323,7 @@ pub fn read_external_challenges<
     F: PrimeField,
     E: FieldExtension<F> + Field,
     I: NonDeterminismSource,
->() -> GKRExternalChallenges<F, E> {
+>() -> prover::definitions::GKRExternalChallenges<F, E> {
     use crate::structs::ext_from_nds;
     use cs::definitions::NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES;
 
@@ -334,7 +332,7 @@ pub fn read_external_challenges<
         core::array::from_fn(|_| ext_from_nds::<F, E, I>());
     let permutation_argument_additive_part: E = ext_from_nds::<F, E, I>();
 
-    GKRExternalChallenges {
+    prover::definitions::GKRExternalChallenges {
         permutation_argument_linearization_challenges,
         permutation_argument_additive_part,
         _marker: core::marker::PhantomData,

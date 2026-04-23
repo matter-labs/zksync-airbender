@@ -12,7 +12,7 @@ categories.workspace = true
 [dependencies]
 cs = { workspace = true, features = ["compiler"] }
 prover = { workspace = true, features = ["prover"] }
-verifier_common = { workspace = true, features = ["gkr_verify"] }
+verifier_common = { workspace = true }
 serde.workspace = true
 syn = { version = "2", features = ["extra-traits", "printing", "full"]}
 quote = { version = "1" }
@@ -26,4 +26,4 @@ no_caches = ["verifier_common/no_caches"]
 test_utils = { workspace = true }
 serial_test = "3"
 rayon = "1"
-verifier_common = { workspace = true, features = ["proof_utils", "gkr_verify"] }
+verifier_common = { workspace = true, features = ["proof_utils"] }

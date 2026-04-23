@@ -119,7 +119,7 @@ fi
 
 # --- Build flags ---
 
-FEATURES="gkr_verify,${BLAKE}"
+FEATURES="${BLAKE}"
 VARIANT_FEATURES=""
 if [[ "$VARIANT" = "no_caches" ]]; then
   FEATURES="${FEATURES},no_caches"

@@ -2,7 +2,6 @@ use crate::lazy_vec::LazyVec;
 use crate::structs::{assemble_query_index, BitSource};
 use blake2s_u32::{DelegatedBlake2sState, BLAKE2S_DIGEST_SIZE_U32_WORDS};
 use non_determinism_source::NonDeterminismSource;
-use prover::definitions::USE_REDUCED_BLAKE2_ROUNDS;
 use transcript::{Blake2sTranscript, CommitBuf, TranscriptState};
 
 #[derive(Clone, Copy)]
@@ -56,7 +55,7 @@ pub fn read_and_verify_pow<I: NonDeterminismSource>(ts: &mut TranscriptState, po
     let lo = I::read_word();
     let hi = I::read_word();
     let nonce = (lo as u64) | ((hi as u64) << 32);
-    Blake2sTranscript::<USE_REDUCED_BLAKE2_ROUNDS>::verify_pow_using_hasher(
+    Blake2sTranscript::<{ ::prover::definitions::USE_REDUCED_BLAKE2_ROUNDS }>::verify_pow_using_hasher(
         &mut ts.hasher,
         &mut ts.seed,
         nonce,
