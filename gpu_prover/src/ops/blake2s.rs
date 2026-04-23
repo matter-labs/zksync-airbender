@@ -485,7 +485,7 @@ pub fn transcript_squeeze(
 
 /// Device-side `draw_random_field_els::<BF, E4>(seed, count)`. Produces `count` E4 challenges
 /// in Montgomery form by squeezing raw u32 words from `seed` and applying per-limb
-/// `from_u32_with_reduction`. `seed` is updated in place to the post-draw state.
+/// `from_raw_repr_with_reduction`. `seed` is updated in place to the post-draw state.
 pub fn transcript_squeeze_e4(
     seed: &mut DeviceSlice<u32>,
     output: &mut DeviceSlice<E4>,
