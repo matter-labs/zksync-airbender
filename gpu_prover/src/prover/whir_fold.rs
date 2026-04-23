@@ -2250,10 +2250,24 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
 
         let delinearization_eq_range = Range::new("gkr.whir.base_round.0.delinearization_eq")?;
         delinearization_eq_range.start(stream)?;
+        // Upload running powers [x, x^2, ..., x^(num_queries + 1)]. CPU weights the OOD
+        // contribution by x and the i-th query contribution by x^(i + 2) when accumulating
+        // `contributions_to_eq_poly` (see prover/src/gkr/whir/mod.rs, `current_delinearization_challenge`
+        // loop). The kernel reads a single scalar per call, so each call site selects the
+        // matching power by sub-slicing the device buffer.
         let (delinearization_upload, _delinearization_host, delinearization_device) =
-            schedule_callback_populated_upload(context, 1, move |dst: &mut [E4]| unsafe {
-                dst[0] = draw_random_field_els::<BF, E4>(seed_accessor.get_mut(), 1)[0];
-            })?;
+            schedule_callback_populated_upload(
+                context,
+                num_queries + 1,
+                move |dst: &mut [E4]| unsafe {
+                    let base = draw_random_field_els::<BF, E4>(seed_accessor.get_mut(), 1)[0];
+                    let mut power = base;
+                    for dst_el in dst.iter_mut() {
+                        *dst_el = power;
+                        power.mul_assign(&base);
+                    }
+                },
+            )?;
         let ood_point_accessor = ood_point_host.get_accessor();
         let (eq_upload, _eq_host) = schedule_accumulate_eq_sample_in_place_device(
             &mut state,
@@ -2264,7 +2278,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
                     value.square();
                 }
             },
-            &delinearization_device,
+            &delinearization_device[0..1],
             context,
         )?;
         ood_points.push(eq_upload);
@@ -2357,7 +2371,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
                         value.square();
                     }
                 },
-                &delinearization_device,
+                &delinearization_device[query_idx + 1..query_idx + 2],
                 context,
             )?;
             ood_points.push(eq_upload);
@@ -2566,10 +2580,22 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         pow_and_query_indexes_range.end(stream)?;
         tracing_ranges.push(pow_and_query_indexes_range);
 
+        // Upload running powers [x, x^2, ..., x^(num_queries + 1)] for this recursive WHIR
+        // round; see base-round comment above for the weighting that CPU applies to OOD and
+        // per-query contributions.
         let (delinearization_upload, _delinearization_host, delinearization_device) =
-            schedule_callback_populated_upload(context, 1, move |dst: &mut [E4]| unsafe {
-                dst[0] = draw_random_field_els::<BF, E4>(seed_accessor.get_mut(), 1)[0];
-            })?;
+            schedule_callback_populated_upload(
+                context,
+                num_queries + 1,
+                move |dst: &mut [E4]| unsafe {
+                    let base = draw_random_field_els::<BF, E4>(seed_accessor.get_mut(), 1)[0];
+                    let mut power = base;
+                    for dst_el in dst.iter_mut() {
+                        *dst_el = power;
+                        power.mul_assign(&base);
+                    }
+                },
+            )?;
         let ood_point_accessor = ood_point_host.get_accessor();
         let (eq_upload, _eq_host) = schedule_accumulate_eq_sample_in_place_device(
             &mut state,
@@ -2580,7 +2606,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
                     value.square();
                 }
             },
-            &delinearization_device,
+            &delinearization_device[0..1],
             context,
         )?;
         ood_points.push(eq_upload);
@@ -2619,7 +2645,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
                         value.square();
                     }
                 },
-                &delinearization_device,
+                &delinearization_device[query_idx + 1..query_idx + 2],
                 context,
             )?;
             ood_points.push(eq_upload);
