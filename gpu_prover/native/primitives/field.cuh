@@ -46,7 +46,7 @@ struct bf {
 
   static consteval bf NON_RES() { return const_into_mont(11); }
 
-  static constexpr DEVICE_FORCEINLINE bf from_raw_u32(const u32 x) { return bf(x); }
+  static constexpr DEVICE_FORCEINLINE bf from_reduced_raw_repr(const u32 x) { return bf(x); }
 
   static constexpr DEVICE_FORCEINLINE u32 into_raw_u32(const bf x) { return x.limb; }
 
@@ -110,7 +110,7 @@ struct bf {
 
   static DEVICE_FORCEINLINE bf from_mont(const bf x) { return mul_u32(x.limb, 1); }
 
-  static DEVICE_FORCEINLINE bf from_canonical_u32(const u32 x) { return bf::into_mont(bf(x)); }
+  static DEVICE_FORCEINLINE bf from_u32_unchecked(const u32 x) { return bf::into_mont(bf(x)); }
 
   static DEVICE_FORCEINLINE u32 into_canonical_u32(const bf x) { return bf::from_mont(x).limb; }
 
