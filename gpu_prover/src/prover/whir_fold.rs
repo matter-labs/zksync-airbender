@@ -108,26 +108,22 @@ impl ScheduledUnknownCosetBaseFieldQuery {
     ) {
         let index = unsafe { self.query_index.get_accessor().get()[0] as usize };
         let lde_factor = 1usize << self.log_lde_factor;
-        let value_coset_index = index & (lde_factor - 1);
-        let stage1_coset_index = index / self.coset_tree_size;
-        let path_coset_index = bitreverse_index(stage1_coset_index, self.log_lde_factor);
-        let leafs_accessor = self.value_leafs[value_coset_index].get_accessor();
+        let coset_index = index & (lde_factor - 1);
+        let internal_index = index / lde_factor;
+        let coset_dest_index = bitreverse_index(coset_index, self.log_lde_factor);
+        let tree_index = coset_dest_index * self.coset_tree_size + internal_index;
+        let leafs_accessor = self.value_leafs[coset_index].get_accessor();
         let leafs = unsafe { leafs_accessor.get() };
-        let path = unsafe {
-            self.path_merkle_paths[path_coset_index]
-                .get_accessor()
-                .get()
-                .to_vec()
-        };
+        let path = unsafe { self.path_merkle_paths[coset_index].get_accessor().get().to_vec() };
         let decoded = decode_base_leaf_values(leafs, self.values_per_leaf, self.columns_count);
         let cpu_query = BaseFieldQuery {
-            index,
+            index: tree_index,
             leaf_values_concatenated: decoded.iter().flatten().copied().collect(),
             path,
             _marker: PhantomData,
         };
 
-        (value_coset_index, decoded, cpu_query)
+        (coset_index, decoded, cpu_query)
     }
 }
 
@@ -152,52 +148,43 @@ fn schedule_unknown_coset_base_field_query(
         });
     }
     let mut callbacks = Callbacks::new();
-    let mut value_internal_index = unsafe { context.alloc_host_uninit_slice(1) };
-    let value_internal_accessor = value_internal_index.get_mut_accessor();
+    // After upstream efa7bbd3, CPU records `BaseFieldQuery.index = tree_index` and retrieves
+    // the merkle path at `tree_index` too (see prover/src/gkr/whir/mod.rs,
+    // `ColumnMajorBaseOracleForLDE::query_for_folded_index`). The combined CPU tree is laid
+    // out with bit-reversed coset order over per-coset buckets of `coset_tree_size` leaves,
+    // so `trees[lde_coset]` on GPU corresponds to CPU bucket `bitreverse(lde_coset)` and the
+    // path within it is at CPU's `internal_index = query_index / lde_factor`. We therefore
+    // use the same `internal_index` for both value and path lookups; the per-coset selection
+    // (value_leafs[coset_index], path_merkle_paths[coset_index]) is the LDE coset index.
+    let mut internal_index = unsafe { context.alloc_host_uninit_slice(1) };
+    let internal_index_accessor = internal_index.get_mut_accessor();
     let query_index_accessor = query_index.get_accessor();
     callbacks.schedule(
         move || unsafe {
-            value_internal_accessor.get_mut()[0] =
+            internal_index_accessor.get_mut()[0] =
                 query_index_accessor.get()[0] / (lde_factor as u32);
         },
         context.get_exec_stream(),
     )?;
-    let mut path_internal_index = unsafe { context.alloc_host_uninit_slice(1) };
-    let path_internal_accessor = path_internal_index.get_mut_accessor();
-    let query_index_accessor = query_index.get_accessor();
-    callbacks.schedule(
-        move || unsafe {
-            path_internal_accessor.get_mut()[0] =
-                query_index_accessor.get()[0] % (coset_tree_size as u32);
-        },
-        context.get_exec_stream(),
-    )?;
-    let mut device_value_index = context.alloc(1, AllocationPlacement::BestFit)?;
+    let mut device_internal_index = context.alloc(1, AllocationPlacement::BestFit)?;
     memory_copy_async(
-        &mut device_value_index,
-        &value_internal_index,
+        &mut device_internal_index,
+        &internal_index,
         context.get_exec_stream(),
     )?;
-    drop(value_internal_index);
-    let mut device_path_index = context.alloc(1, AllocationPlacement::BestFit)?;
-    memory_copy_async(
-        &mut device_path_index,
-        &path_internal_index,
-        context.get_exec_stream(),
-    )?;
-    drop(path_internal_index);
+    drop(internal_index);
 
     let mut value_leafs = Vec::with_capacity(lde_factor);
     let mut path_merkle_paths = Vec::with_capacity(lde_factor);
     for coset_index in 0..lde_factor {
         value_leafs.push(trace_holder.get_query_leafs(
             coset_index,
-            &device_value_index,
+            &device_internal_index,
             context,
         )?);
         path_merkle_paths.push(trace_holder.get_query_merkle_paths(
             coset_index,
-            &device_path_index,
+            &device_internal_index,
             context,
         )?);
     }
@@ -848,11 +835,11 @@ fn fill_unknown_coset_base_field_query_from_accessors(
         dst.index = tree_index;
         return;
     }
-    let value_coset_index = coset_index;
-    let stage1_coset_index = index / coset_tree_size;
-    let path_coset_index = bitreverse_index(stage1_coset_index, log_lde_factor);
-    let leafs = unsafe { value_leafs[value_coset_index].get() };
-    let path = unsafe { path_merkle_paths[path_coset_index].get() };
+    // Both value and path per-coset buffers are indexed by the LDE coset index; see the
+    // comment in `schedule_unknown_coset_base_field_query` for why this matches the new
+    // CPU tree-index convention.
+    let leafs = unsafe { value_leafs[coset_index].get() };
+    let path = unsafe { path_merkle_paths[coset_index].get() };
     let expected_leaf_values = values_per_leaf * columns_count;
     assert_eq!(
         dst.leaf_values_concatenated.len(),
