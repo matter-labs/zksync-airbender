@@ -220,7 +220,7 @@ EXTERN __global__ void ab_gather_rows_and_merkle_paths_kernel(const unsigned *in
       if (is_output_lane && offset < values_count) {
         const unsigned row = offset & ((1u << log_rows_per_leaf) - 1);
         const unsigned col = offset >> log_rows_per_leaf;
-        leaf_values.set((idx << log_rows_per_leaf) + row, col, bf::from_raw_u32(value));
+        leaf_values.set((idx << log_rows_per_leaf) + row, col, bf::from_reduced_raw_repr(value));
       }
     }
     if (is_final_block)
@@ -655,8 +655,8 @@ EXTERN __global__ void ab_backward_sumcheck_round_update_kernel(const e4 *reduct
 // ---------------------------------------------------------------------------
 EXTERN __global__ void ab_whir_fold_round_update_kernel(const e4 *reduction_output, u32 *seed_io, e4 *coeffs_out, e4 *challenge_out) {
   // Derive constants: quart = 1/4, two_inv = 1/2 (Montgomery form).
-  const bf two = bf::from_canonical_u32(2);
-  const bf four = bf::from_canonical_u32(4);
+  const bf two = bf::from_u32_unchecked(2);
+  const bf four = bf::from_u32_unchecked(4);
   const bf two_inv_bf = bf::inv(two);
   const bf quart_bf = bf::inv(four);
   const e4 random_point = e4::from_scalar(two_inv_bf);

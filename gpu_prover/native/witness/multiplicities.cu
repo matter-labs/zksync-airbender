@@ -24,7 +24,7 @@ EXTERN __global__ void ab_generate_multiplicities_kernel(const u32 *const __rest
     return;
   const unsigned row = index % stride;
   const unsigned col = index / stride;
-  const bf value = bf::from_canonical_u32(counts[gid]);
+  const bf value = bf::from_u32_unchecked(counts[gid]);
   multiplicities.set(row, col, value);
 }
 

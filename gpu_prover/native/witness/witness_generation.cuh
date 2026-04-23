@@ -16,7 +16,7 @@ struct wrapped_f {
 
   static consteval DEVICE_FORCEINLINE wrapped_f new_const(const u32 value) { return {bf::const_into_mont(value)}; }
 
-  template <typename T> static DEVICE_FORCEINLINE wrapped_f from(const T &value) { return wrapped_f(bf::from_canonical_u32(value.inner)); }
+  template <typename T> static DEVICE_FORCEINLINE wrapped_f from(const T &value) { return wrapped_f(bf::from_u32_unchecked(value.inner)); }
 
   static DEVICE_FORCEINLINE wrapped_f from(const wrapped_f &value) { return value; }
 

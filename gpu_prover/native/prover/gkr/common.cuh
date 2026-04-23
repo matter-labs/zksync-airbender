@@ -273,13 +273,13 @@ static constexpr unsigned GKR_TIMESTAMP_COLUMNS_NUM_BITS = 19;
 DEVICE_FORCEINLINE bf gkr_virtual_base_value(const gkr_base_source_kind kind, const unsigned row) {
   switch (kind) {
   case GKR_BASE_SOURCE_VIRTUAL_RANGE_CHECK_16_BITS:
-    return row < (1u << 16) ? bf::from_canonical_u32(row) : bf::ZERO();
+    return row < (1u << 16) ? bf::from_u32_unchecked(row) : bf::ZERO();
   case GKR_BASE_SOURCE_VIRTUAL_RANGE_CHECK_TIMESTAMP:
-    return row < (1u << GKR_TIMESTAMP_COLUMNS_NUM_BITS) ? bf::from_canonical_u32(row) : bf::ZERO();
+    return row < (1u << GKR_TIMESTAMP_COLUMNS_NUM_BITS) ? bf::from_u32_unchecked(row) : bf::ZERO();
   case GKR_BASE_SOURCE_VIRTUAL_INITS_AND_TEARDOWNS_LOW:
-    return bf::from_canonical_u32((row << 2) & 0xffffu);
+    return bf::from_u32_unchecked((row << 2) & 0xffffu);
   case GKR_BASE_SOURCE_VIRTUAL_INITS_AND_TEARDOWNS_HIGH:
-    return bf::from_canonical_u32(row >> 14);
+    return bf::from_u32_unchecked(row >> 14);
   case GKR_BASE_SOURCE_EMPTY:
   case GKR_BASE_SOURCE_REAL:
   default:
@@ -1057,7 +1057,7 @@ DEVICE_FORCEINLINE void gkr_forward_setup_generic_lookup(const gkr_forward_setup
   // directly, replacing the former host callback + H2D copy path.
   if (gid == 0 && batch.decoder_fill_value_out != nullptr && batch.decoder_table_id != 0 && batch.column_count > 0) {
     const E last_alpha_power = load<E, ld_modifier::ca>(batch.alpha_powers, batch.column_count - 1);
-    const bf table_id = bf::from_canonical_u32(batch.decoder_table_id);
+    const bf table_id = bf::from_u32_unchecked(batch.decoder_table_id);
     const E fill = E::mul(last_alpha_power, table_id);
     store<E, st_modifier::cs>(batch.decoder_fill_value_out, fill, 0);
   }
