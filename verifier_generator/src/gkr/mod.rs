@@ -1,5 +1,7 @@
+use cs::definitions::NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES;
 use proc_macro2::TokenStream;
 use quote::{quote, TokenStreamExt};
+use verifier_common::blake2s_u32::{BLAKE2S_BLOCK_SIZE_U32_WORDS, BLAKE2S_DIGEST_SIZE_U32_WORDS};
 use std::collections::BTreeMap;
 
 use crate::mersenne_wrapper::MersenneWrapper;
@@ -67,6 +69,26 @@ pub struct GKRGeneratedFiles {
 pub struct GKROutputGroupInfo {
     pub output_type: OutputType,
     pub num_addresses: usize,
+}
+
+fn compute_padding_words(
+    inits_and_teardown_sets: usize,
+    ext_degree: usize,
+    cap_size: usize,
+    memory_commits: usize,
+    witness_commits: usize,
+    setup_commits: usize,
+) -> usize {
+    let mut total_u32_words = 0;
+    total_u32_words += inits_and_teardown_sets;
+    total_u32_words += ext_degree * (NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES + 1);
+    total_u32_words += cap_size * BLAKE2S_DIGEST_SIZE_U32_WORDS * (memory_commits + witness_commits + setup_commits);
+
+    if total_u32_words % BLAKE2S_BLOCK_SIZE_U32_WORDS == 0 {
+        0
+    } else {
+        BLAKE2S_BLOCK_SIZE_U32_WORDS - (total_u32_words % BLAKE2S_BLOCK_SIZE_U32_WORDS)
+    }
 }
 
 pub fn generate_gkr_common<MW: MersenneWrapper>() -> TokenStream {
@@ -650,7 +672,7 @@ where
         })
         .collect();
 
-    let total_gkr_rounds = num_standard_layers + trace_len_log_2 - sumcheck_output_size_log_2;
+    let max_sumcheck_rounds = trace_len_log_2;
 
     let max_unique_addrs_standard = standard_sorted_addrs
         .iter()
@@ -943,21 +965,6 @@ where
         });
     }
 
-    // if num_standard_layers > 0 {
-    //     let mul_cb = MW::mul_assign(quote! { pow }, quote! { constraints_batch_challenge });
-    //     main_body.extend(quote! {
-    //         let challenge_powers: [#quartic_struct; GKR_MAX_POW] = {
-    //             let mut lv = LazyVec::<#quartic_struct, GKR_MAX_POW>::new();
-    //             let mut pow = #quartic_one;
-    //             for _ in 0..GKR_MAX_POW {
-    //                 lv.push(pow);
-    //                 #mul_cb;
-    //             }
-    //             unsafe { lv.into_array() }
-    //         };
-    //     });
-    // }
-
     for config_idx in (0..num_standard_layers).rev() {
         let proof_values = proof
             .sumcheck_intermediate_values
@@ -1229,6 +1236,15 @@ where
     let canonical_depth =
         trace_len_log2 + base_lde_factor_log2 - initial_fold_steps - cap_size_log2;
 
+    let padding_words = compute_padding_words(
+        compiled_circuit.memory_layout.teardown_sets.len(),
+        degree,
+        configured_cap_size,
+        num_memory_commits,
+        num_witness_commits,
+        num_setup_commits,
+    );
+
     let mut oracles = BTreeMap::new();
     {
         // memory
@@ -1342,7 +1358,9 @@ where
     let constants = quote! {
         use ::verifier_common::cs::definitions::{GKRAddress, VirtualSetupPoly};
 
-        pub const GKR_ROUNDS: usize = #total_gkr_rounds;
+        // Upper bound on GKR sumcheck rounds for internal buffers
+        pub const GKR_ROUNDS: usize = #max_sumcheck_rounds;
+
         pub const GKR_ADDRS: usize = #max_addrs;
         pub const GKR_EVALS: usize = #max_evals;
 
@@ -1356,7 +1374,7 @@ where
         pub const NUM_WITNESS_COMMITS: usize = #num_witness_commits;
         pub const NUM_SETUP_COMMITS: usize = #num_setup_commits;
 
-        pub const PADDING_WORDS: usize = 0;
+        pub const PADDING_WORDS: usize = #padding_words;
 
         pub const GKR_MAX_POW: usize = #max_pow;
         pub const GKR_EVAL_BUF: usize = #eval_buf_size;

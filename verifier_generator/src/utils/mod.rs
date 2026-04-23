@@ -351,7 +351,6 @@ pub fn collect_extra_addrs_from_cached_relations(
 
 pub fn compute_max_pow(layer: &GKRLayerDescription) -> usize {
     use NoFieldGKRRelation as R;
-    let mut max_pow = 0usize;
     for gate in layer
         .gates
         .iter()
@@ -364,5 +363,5 @@ pub fn compute_max_pow(layer: &GKRLayerDescription) -> usize {
             );
         }
     }
-    max_pow
+    0
 }

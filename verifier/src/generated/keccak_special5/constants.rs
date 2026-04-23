@@ -1,5 +1,5 @@
 use verifier_common::cs::definitions::{GKRAddress, VirtualSetupPoly};
-pub const GKR_ROUNDS: usize = 24usize;
+pub const GKR_ROUNDS: usize = 22usize;
 pub const GKR_ADDRS: usize = 375usize;
 pub const GKR_EVALS: usize = 96usize;
 pub const INIT_AND_TEARDOWN_SETS: usize = 0usize;
@@ -8,7 +8,7 @@ pub const CAP_SIZE: usize = 16usize;
 pub const NUM_MEMORY_COMMITS: usize = 1usize;
 pub const NUM_WITNESS_COMMITS: usize = 1usize;
 pub const NUM_SETUP_COMMITS: usize = 1usize;
-pub const PADDING_WORDS: usize = 0;
+pub const PADDING_WORDS: usize = 4usize;
 pub const GKR_MAX_POW: usize = 1usize;
 pub const GKR_EVAL_BUF: usize = 6016usize;
 pub const GKR_COMMIT_BUF: usize = 32usize;

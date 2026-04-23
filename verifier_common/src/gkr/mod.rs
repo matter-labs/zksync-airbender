@@ -123,6 +123,11 @@ impl<
             0
         );
         assert_eq!(
+                core::mem::offset_of!(Self,_marker)
+                % core::mem::size_of::<AlignedArray64<u32, BLAKE2S_BLOCK_SIZE_U32_WORDS>>(),
+            0
+        );
+        assert_eq!(
             core::mem::align_of::<Self>(),
             core::mem::align_of::<AlignedArray64<u32, BLAKE2S_BLOCK_SIZE_U32_WORDS>>()
         );
