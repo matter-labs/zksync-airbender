@@ -143,7 +143,9 @@ pub trait FixedArrayConvertible<F: Field>: Sized {
     fn as_array<const N: usize>(&self) -> &[F; N];
     fn as_array_mut<const N: usize>(&mut self) -> &mut [F; N];
 
-    fn project_uninit<'a>(this: &'a mut core::mem::MaybeUninit<Self>) -> &'a mut [core::mem::MaybeUninit<F>];
+    fn project_uninit<'a>(
+        this: &'a mut core::mem::MaybeUninit<Self>,
+    ) -> &'a mut [core::mem::MaybeUninit<F>];
 }
 
 impl<F: Field, const M: usize> FixedArrayConvertible<F> for [F; M] {
@@ -208,7 +210,9 @@ impl<F: Field, const M: usize> FixedArrayConvertible<F> for [F; M] {
     }
 
     #[inline(always)]
-    fn project_uninit<'a>(this: &'a mut core::mem::MaybeUninit<Self>) -> &'a mut [core::mem::MaybeUninit<F>] {
+    fn project_uninit<'a>(
+        this: &'a mut core::mem::MaybeUninit<Self>,
+    ) -> &'a mut [core::mem::MaybeUninit<F>] {
         unsafe {
             core::slice::from_raw_parts_mut((this as *mut core::mem::MaybeUninit<Self>).cast(), M)
         }

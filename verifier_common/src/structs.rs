@@ -6,7 +6,7 @@ use blake2s_u32::{
 #[cfg(feature = "gkr_verify")]
 use core::mem::MaybeUninit;
 #[cfg(feature = "gkr_verify")]
-pub use transcript::{Blake2sTranscript, Seed, TranscriptState, CommitBuf};
+pub use transcript::{Blake2sTranscript, CommitBuf, Seed, TranscriptState};
 
 #[cfg(feature = "gkr_verify")]
 pub struct FoldBuffers<E: Copy, const N: usize> {
@@ -127,12 +127,12 @@ pub fn ext_from_nds<
         let dst = E::Coeffs::project_uninit(&mut coeffs);
         let mut i = 0;
         while i < E::DEGREE {
-            dst.get_unchecked_mut(i).write(F::from_reduced_raw_repr(I::read_reduced_field_element(
-                F::CHARACTERISTICS,
-            )));
+            dst.get_unchecked_mut(i).write(F::from_reduced_raw_repr(
+                I::read_reduced_field_element(F::CHARACTERISTICS),
+            ));
             i += 1;
         }
-        E::from_coeffs(coeffs.assume_init()) 
+        E::from_coeffs(coeffs.assume_init())
     }
 }
 
@@ -154,9 +154,10 @@ pub fn ext_from_raw_words<F: field::PrimeField, E: field::FieldExtension<F>, con
         let dst = E::Coeffs::project_uninit(&mut coeffs);
         let mut i = 0;
         while i < E::DEGREE {
-            dst.get_unchecked_mut(i).write(F::from_raw_repr_with_reduction(words[i]));
+            dst.get_unchecked_mut(i)
+                .write(F::from_raw_repr_with_reduction(words[i]));
             i += 1;
         }
-        E::from_coeffs(coeffs.assume_init()) 
+        E::from_coeffs(coeffs.assume_init())
     }
 }

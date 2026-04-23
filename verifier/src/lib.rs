@@ -2,7 +2,6 @@
 #![cfg_attr(not(any(test, feature = "proof_utils")), allow(incomplete_features))]
 #![cfg_attr(not(any(test, feature = "proof_utils")), feature(generic_const_exprs))]
 
-
 pub use field;
 pub use verifier_common;
 pub use verifier_common::blake2s_u32;

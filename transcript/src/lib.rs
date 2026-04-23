@@ -508,7 +508,7 @@ impl TranscriptState {
     pub fn iterator<'a>(&'a mut self) -> TranscriptStateU32Iterator<'a> {
         TranscriptStateU32Iterator {
             state: self,
-            buffer_offset: 0
+            buffer_offset: 0,
         }
     }
 
@@ -531,7 +531,10 @@ impl<'a> core::iter::Iterator for TranscriptStateU32Iterator<'a> {
         unsafe {
             if self.buffer_offset == BLAKE2S_DIGEST_SIZE_U32_WORDS {
                 self.buffer_offset = 0;
-                Blake2sTranscript::draw_randomness_inner(&mut self.state.hasher, &mut self.state.seed);
+                Blake2sTranscript::draw_randomness_inner(
+                    &mut self.state.hasher,
+                    &mut self.state.seed,
+                );
             }
 
             let word = *self.state.seed.0.get_unchecked(self.buffer_offset);
