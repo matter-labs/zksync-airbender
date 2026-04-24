@@ -1194,6 +1194,9 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
                     host_whir_proof.memory_commitment.queries;
                 whir_proof.witness_commitment.queries =
                     host_whir_proof.witness_commitment.queries;
+                whir_proof.final_monomials = host_whir_proof.final_monomials;
+                whir_proof.intermediate_whir_oracles =
+                    host_whir_proof.intermediate_whir_oracles;
                 let grand_product_accumulator_computed =
                     grand_product_accumulator_from_explicit_evaluations(
                         &final_explicit_evaluations,
