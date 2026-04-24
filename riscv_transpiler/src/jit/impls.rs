@@ -615,6 +615,7 @@ impl<I: ContextImpl> JittedCode<I> {
             // print_registers!(ops, pc, raw_instruction);
 
             {
+                use crate::ir::decode::*;
                 use crate::ir::instructions::*;
                 use crate::ir::*;
 
