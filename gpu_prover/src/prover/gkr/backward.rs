@@ -27,7 +27,7 @@ use prover::gkr::prover::dimension_reduction::forward::DimensionReducingInputOut
 use prover::gkr::prover::transcript_utils::{commit_field_els, draw_random_field_els};
 use prover::gkr::prover::{GKRExternalChallenges, SumcheckIntermediateProofValues};
 use prover::gkr::sumcheck::evaluation_kernels::{
-    BaseFieldCopyGKRRelation, BatchConstraintEvalGKRRelation, BatchedGKRKernel,
+    BaseFieldCopyGKRRelation, BatchedGKRKernel,
     ExtensionCopyGKRRelation, GKRInputs, LookupBaseExtMinusBaseExtGKRRelation,
     LookupBaseMinusMultiplicityByBaseGKRRelation, LookupBasePairGKRRelation,
     LookupExtensionMinusMultiplicityByExtensionGKRRelation, LookupExtensionPairGKRRelation,
@@ -635,73 +635,6 @@ pub(crate) fn build_single_max_quadratic_constraint_inputs_and_metadata<
             quadratic_terms,
             linear_terms,
             constant_offset: E::from_base(BF::from_u32_with_reduction(relation.constant)),
-        },
-    )
-}
-
-pub(crate) fn build_constraints_max_quadratic_inputs_and_template(
-    relation: &NoFieldMaxQuadraticConstraintsGKRRelation,
-) -> (GKRInputs, GpuGKRMainLayerConstraintTemplate) {
-    let mut mapping = BTreeMap::new();
-    let mut inputs = Vec::new();
-    let mut quadratic_terms = Vec::new();
-    let mut linear_terms = Vec::new();
-
-    for ((lhs, rhs), challenge_terms) in relation.quadratic_terms.iter() {
-        let lhs_idx = remap_constraint_input(&mut mapping, &mut inputs, *lhs);
-        let rhs_idx = if *lhs == *rhs {
-            lhs_idx
-        } else {
-            remap_constraint_input(&mut mapping, &mut inputs, *rhs)
-        };
-        quadratic_terms.push(GpuGKRMainLayerConstraintQuadraticTemplate {
-            lhs: lhs_idx as u32,
-            rhs: rhs_idx as u32,
-            challenge_terms: challenge_terms
-                .iter()
-                .map(|(coeff, power)| GpuGKRMainLayerConstraintChallengeTerm {
-                    coeff: BF::from_u32_with_reduction(*coeff),
-                    source: GpuGKRMainLayerDeferredChallengeSource::ConstraintBatch,
-                    power: *power as u32,
-                })
-                .collect(),
-        });
-    }
-
-    for (input, challenge_terms) in relation.linear_terms.iter() {
-        let input_idx = remap_constraint_input(&mut mapping, &mut inputs, *input);
-        linear_terms.push(GpuGKRMainLayerConstraintLinearTemplate {
-            input: input_idx as u32,
-            challenge_terms: challenge_terms
-                .iter()
-                .map(|(coeff, power)| GpuGKRMainLayerConstraintChallengeTerm {
-                    coeff: BF::from_u32_with_reduction(*coeff),
-                    source: GpuGKRMainLayerDeferredChallengeSource::ConstraintBatch,
-                    power: *power as u32,
-                })
-                .collect(),
-        });
-    }
-
-    (
-        GKRInputs {
-            inputs_in_base: inputs,
-            inputs_in_extension: Vec::new(),
-            outputs_in_base: Vec::new(),
-            outputs_in_extension: Vec::new(),
-        },
-        GpuGKRMainLayerConstraintTemplate {
-            quadratic_terms,
-            linear_terms,
-            constant_terms: relation
-                .constants
-                .iter()
-                .map(|(coeff, power)| GpuGKRMainLayerConstraintChallengeTerm {
-                    coeff: BF::from_u32_with_reduction(*coeff),
-                    source: GpuGKRMainLayerDeferredChallengeSource::ConstraintBatch,
-                    power: *power as u32,
-                })
-                .collect(),
         },
     )
 }
@@ -1822,7 +1755,6 @@ pub(super) fn evaluate_constraint_prefactor<E: Field + FieldExtension<BF>>(
     challenge_terms: &[GpuGKRMainLayerConstraintChallengeTerm],
     lookup_multiplicative_challenge: E,
     lookup_additive_challenge: E,
-    constraint_batch_challenge: E,
 ) -> E {
     let mut total = E::ZERO;
     for term in challenge_terms.iter() {
@@ -1831,7 +1763,6 @@ pub(super) fn evaluate_constraint_prefactor<E: Field + FieldExtension<BF>>(
                 lookup_multiplicative_challenge
             }
             GpuGKRMainLayerDeferredChallengeSource::LookupAdditive => lookup_additive_challenge,
-            GpuGKRMainLayerDeferredChallengeSource::ConstraintBatch => constraint_batch_challenge,
         };
         let mut contribution = challenge.pow(term.power);
         contribution.mul_assign_by_base(&term.coeff);
@@ -1842,7 +1773,6 @@ pub(super) fn evaluate_constraint_prefactor<E: Field + FieldExtension<BF>>(
 
 fn resolve_main_layer_constraint_metadata<E: Field + FieldExtension<BF>>(
     source: Option<GpuGKRMainLayerConstraintMetadataSource<E>>,
-    constraint_batch_challenge: E,
 ) -> Option<GpuGKRMainLayerConstraintHostMetadata<E>> {
     match source {
         None => None,
@@ -1930,7 +1860,6 @@ fn build_main_layer_kernel_blueprints<E: Field + FieldExtension<BF>>(
     batch_challenge_base: E,
     lookup_multiplicative_challenge: E,
     lookup_additive_challenge: E,
-    constraint_batch_challenge: E,
     num_base_layer_memory_polys: usize,
     num_base_layer_witness_polys: usize,
 ) -> Vec<GpuGKRMainLayerKernelBlueprint<E>> {
@@ -2435,52 +2364,9 @@ fn build_main_layer_kernel_blueprints<E: Field + FieldExtension<BF>>(
                     constraint_metadata_source: None,
                 });
             }
-            NoFieldGKRRelation::EnforceConstraintsMaxQuadratic { input } => {
-                let relation =
-                    BatchConstraintEvalGKRRelation::<BF, E>::new(input, constraint_batch_challenge);
-                let constraint_metadata = GpuGKRMainLayerConstraintHostMetadata {
-                    quadratic_terms: relation
-                        .kernel
-                        .quadratic_parts
-                        .iter()
-                        .map(
-                            |((lhs, rhs), challenge)| GpuGKRMainLayerConstraintQuadraticTerm {
-                                lhs: *lhs as u32,
-                                rhs: *rhs as u32,
-                                challenge: *challenge,
-                            },
-                        )
-                        .collect(),
-                    linear_terms: relation
-                        .kernel
-                        .linear_parts
-                        .iter()
-                        .map(|(input, challenge)| GpuGKRMainLayerConstraintLinearTerm {
-                            input: *input as u32,
-                            challenge: *challenge,
-                        })
-                        .collect(),
-                    constant_offset: relation.kernel.constant_offset,
-                };
-                blueprints.push(
-                    GpuGKRMainLayerKernelBlueprint {
-                        kind: GpuGKRMainLayerKernelKind::EnforceConstraintsMaxQuadratic,
-                        inputs: <BatchConstraintEvalGKRRelation<BF, E> as BatchedGKRKernel<
-                            BF,
-                            E,
-                        >>::get_inputs(&relation),
-                        batch_challenge_offset: next_batch_challenge_offset,
-                        batch_challenge_count: 1,
-                        batch_challenges: {
-                            next_batch_challenge_offset += 1;
-                            vec![get_challenge()]
-                        },
-                        auxiliary_challenge_source:
-                            GpuGKRMainLayerAuxiliaryChallengeSource::Immediate(E::ZERO),
-                        constraint_metadata_source: Some(
-                            GpuGKRMainLayerConstraintMetadataSource::Immediate(constraint_metadata),
-                        ),
-                    },
+            NoFieldGKRRelation::EnforceConstraintsMaxQuadratic { .. } => {
+                unreachable!(
+                    "batched max-quadratic constraints not supported on GPU; cs/ must emit EnforceSingleMaxQuadraticConstraint (USE_BATCHING=false)"
                 );
             }
             NoFieldGKRRelation::EnforceSingleMaxQuadraticConstraint { input } => {
@@ -3096,24 +2982,10 @@ fn build_main_layer_kernel_blueprints_static<E: Field + FieldExtension<BF>>(
                     constraint_metadata_source: None,
                 });
             }
-            NoFieldGKRRelation::EnforceConstraintsMaxQuadratic { input } => {
-                let (inputs, constraint_metadata) =
-                    build_constraints_max_quadratic_inputs_and_template(input);
-                let (batch_challenge_offset, batch_challenge_count) =
-                    push_empty(1, &mut next_batch_challenge_offset);
-                blueprints.push(GpuGKRMainLayerKernelBlueprint {
-                    kind: GpuGKRMainLayerKernelKind::EnforceConstraintsMaxQuadratic,
-                    inputs,
-                    batch_challenge_offset,
-                    batch_challenge_count,
-                    batch_challenges: Vec::new(),
-                    auxiliary_challenge_source: GpuGKRMainLayerAuxiliaryChallengeSource::Immediate(
-                        E::ZERO,
-                    ),
-                    constraint_metadata_source: Some(
-                        GpuGKRMainLayerConstraintMetadataSource::Deferred(constraint_metadata),
-                    ),
-                });
+            NoFieldGKRRelation::EnforceConstraintsMaxQuadratic { .. } => {
+                unreachable!(
+                    "batched max-quadratic constraints not supported on GPU; cs/ must emit EnforceSingleMaxQuadraticConstraint (USE_BATCHING=false)"
+                );
             }
             NoFieldGKRRelation::EnforceSingleMaxQuadraticConstraint { input } => {
                 let (inputs, constraint_metadata) =
@@ -3307,7 +3179,6 @@ impl<E: Field + FieldExtension<BF>> GpuGKRDimensionReducingBackwardState<BF, E> 
         external_challenges: GKRExternalChallenges<BF, E>,
         lookup_multiplicative_challenge: E,
         lookup_additive_challenge: E,
-        constraint_batch_challenge: E,
         is_delegation: bool,
     ) -> GpuGKRMainLayerBackwardState<E> {
         let compiled_circuit = normalize_compiled_circuit_for_gpu(compiled_circuit);
@@ -3340,7 +3211,6 @@ impl<E: Field + FieldExtension<BF>> GpuGKRDimensionReducingBackwardState<BF, E> 
             },
             lookup_multiplicative_challenge,
             lookup_additive_challenge,
-            constraint_batch_challenge,
             num_base_layer_memory_polys: compiled_circuit.memory_layout.total_width,
             num_base_layer_witness_polys: compiled_circuit.witness_layout.total_width,
             is_delegation,
@@ -3356,7 +3226,6 @@ impl<E: Field + FieldExtension<BF>> GpuGKRDimensionReducingBackwardState<BF, E> 
         self.into_main_layer_backward_state(
             compiled_circuit,
             external_challenges,
-            E::ZERO,
             E::ZERO,
             E::ZERO,
             is_delegation,
@@ -3696,7 +3565,6 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
             let constraint_metadata = if batch_challenge_base.is_some() {
                 resolve_main_layer_constraint_metadata(
                     blueprint.constraint_metadata_source.clone(),
-                    self.constraint_batch_challenge,
                 )
             } else {
                 match blueprint.constraint_metadata_source.as_ref() {
@@ -3813,7 +3681,7 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
                     Some(context.alloc(total, AllocationPlacement::BestFit)?)
                 };
                 let challenges_buf: DeviceAllocation<E> =
-                    context.alloc(4, AllocationPlacement::BestFit)?;
+                    context.alloc(3, AllocationPlacement::BestFit)?;
                 (
                     Some(headers_dev),
                     Some(terms_dev),
@@ -3920,7 +3788,6 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
             batch_challenge_base,
             lookup_multiplicative_challenge: self.lookup_multiplicative_challenge,
             lookup_additive_challenge: self.lookup_additive_challenge,
-            constraint_batch_challenge: self.constraint_batch_challenge,
             kernel_plans,
             round0_descriptors,
             flat_round0_template,
@@ -4488,7 +4355,6 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
             batch_challenge_base,
             self.lookup_multiplicative_challenge,
             self.lookup_additive_challenge,
-            self.constraint_batch_challenge,
             self.num_base_layer_memory_polys,
             self.num_base_layer_witness_polys,
         );
@@ -6362,21 +6228,19 @@ where
         let headers = self.flat_recipe_headers.as_ref().unwrap();
         let terms = self.flat_recipe_terms.as_ref().unwrap();
 
-        // Callback writes 4 challenge scalars to pinned host allocation.
         let mut callbacks = Callbacks::new();
         let challenges_upload: ScheduledUpload<E> = schedule_callback_populated_upload(
             context,
-            4,
+            3,
             &mut callbacks,
             move |dst: &mut [E]| unsafe {
                 let ws = workflow_state.get();
                 dst[0] = ws.current_batching_challenge;
                 dst[1] = ws.lookup_multiplicative_challenge;
                 dst[2] = ws.lookup_additive_challenge;
-                dst[3] = ws.constraint_batch_challenge;
             },
         )?;
-        // Async copy 4 scalars to device.
+        // Async copy 3 scalars to device.
         memory_copy_async(
             challenges_buf,
             &challenges_upload.device,
@@ -6583,12 +6447,11 @@ where
                 .expect("static path requires batch_challenge_base");
             let lm = self.lookup_multiplicative_challenge;
             let la = self.lookup_additive_challenge;
-            let cb = self.constraint_batch_challenge;
             let mut challenges_callbacks = Callbacks::new();
             let challenges_host = alloc_host_and_schedule_copy(
                 context,
                 &mut challenges_callbacks,
-                vec![batch_base, lm, la, cb],
+                vec![batch_base, lm, la],
             );
             memory_copy_async(challenges_buf, &challenges_host, context.get_exec_stream())?;
             drop(challenges_host);
@@ -7383,7 +7246,6 @@ where
         batching_challenge: E,
         lookup_multiplicative_challenge: E,
         lookup_additive_challenge: E,
-        constraint_batch_challenge: E,
         context: &ProverContext,
     ) -> CudaResult<GpuGKRBackwardScheduledExecution<BF, E>> {
         let mut shared_state = Box::new(ScheduledBackwardWorkflowState {
@@ -7400,7 +7262,6 @@ where
             current_batching_challenge: batching_challenge,
             lookup_multiplicative_challenge,
             lookup_additive_challenge,
-            constraint_batch_challenge,
             seed,
             proofs: BTreeMap::new(),
         });
@@ -7453,9 +7314,7 @@ mod tests {
     use prover::gkr::high_bits_offset_for_inits_and_teardowns;
     use prover::gkr::prover::dimension_reduction::forward::DimensionReducingInputOutput;
     use prover::gkr::prover::GKRExternalChallenges;
-    use prover::gkr::sumcheck::evaluation_kernels::{
-        BatchConstraintEvalGKRRelation, BatchedGKRKernel,
-    };
+    use prover::gkr::sumcheck::evaluation_kernels::BatchedGKRKernel;
     use prover::transcript::Seed;
     use serial_test::serial;
     use std::collections::BTreeMap;
@@ -7810,7 +7669,6 @@ mod tests {
             fixture.batching_challenge,
             fixture.lookup_multiplicative_part,
             fixture.lookup_additive_part,
-            fixture.constraints_batch_challenge,
         );
 
         let mut dimension_reducing_layers = Vec::new();
@@ -7846,7 +7704,6 @@ mod tests {
             fixture.compiled_circuit,
             fixture.external_challenges,
             fixture.lookup_multiplicative_part,
-            E4::ZERO,
             E4::ZERO,
             false,
         );
@@ -8076,7 +7933,6 @@ mod tests {
             mut batching_challenge: E4,
             lookup_multiplicative_part: E4,
             lookup_additive_part: E4,
-            constraints_batch_challenge: E4,
             context: &ProverContext,
         ) -> (
             crate::prover::gkr::backward::GpuGKRMainLayerBackwardState<E4>,
@@ -8112,7 +7968,6 @@ mod tests {
                     external_challenges.clone(),
                     lookup_multiplicative_part,
                     lookup_additive_part,
-                    constraints_batch_challenge,
                     false,
                 ),
                 current_claims,
@@ -8135,7 +7990,6 @@ mod tests {
             dynamic_fixture.batching_challenge,
             dynamic_fixture.lookup_multiplicative_part,
             dynamic_fixture.lookup_additive_part,
-            dynamic_fixture.constraints_batch_challenge,
             dynamic_context,
         );
         let dynamic_plan = dynamic_state
@@ -8159,7 +8013,6 @@ mod tests {
             static_fixture.batching_challenge,
             static_fixture.lookup_multiplicative_part,
             static_fixture.lookup_additive_part,
-            static_fixture.constraints_batch_challenge,
             static_context,
         );
         let static_plan = static_state
@@ -9679,131 +9532,6 @@ mod tests {
     }
 
     #[test]
-    fn main_layer_constraint_blueprint_metadata_matches_cpu() {
-        let storage = crate::prover::gkr::GpuGKRStorage::<BF, E4> {
-            layers: vec![Default::default()],
-        };
-        let constraint_input = NoFieldMaxQuadraticConstraintsGKRRelation {
-            quadratic_terms: vec![
-                (
-                    (
-                        GKRAddress::BaseLayerMemory(0),
-                        GKRAddress::BaseLayerWitness(1),
-                    ),
-                    vec![(2u32, 0usize), (3u32, 2usize)].into_boxed_slice(),
-                ),
-                (
-                    (
-                        GKRAddress::BaseLayerWitness(1),
-                        GKRAddress::BaseLayerWitness(1),
-                    ),
-                    vec![(5u32, 1usize)].into_boxed_slice(),
-                ),
-            ]
-            .into_boxed_slice(),
-            linear_terms: vec![(
-                GKRAddress::BaseLayerMemory(1),
-                vec![(7u32, 0usize)].into_boxed_slice(),
-            )]
-            .into_boxed_slice(),
-            constants: vec![(11u32, 0usize), (13u32, 1usize)].into_boxed_slice(),
-        };
-        let layer = GKRLayerDescription {
-            layer: 0,
-            gates_with_external_connections: Vec::new(),
-            cached_relations: BTreeMap::new(),
-            gates: vec![GateArtifacts {
-                output_layer: 1,
-                enforced_relation: NoFieldGKRRelation::EnforceConstraintsMaxQuadratic {
-                    input: constraint_input.clone(),
-                },
-            }],
-        };
-        let constraint_batch_challenge = sample_ext(20);
-        let external_challenges = sample_external_challenges(30);
-        let blueprints = build_main_layer_kernel_blueprints(
-            &layer,
-            0,
-            &storage,
-            &external_challenges,
-            &[],
-            0,
-            sample_ext(10),
-            sample_ext(25),
-            sample_ext(30),
-            constraint_batch_challenge,
-            2,
-            2,
-        );
-
-        assert_eq!(blueprints.len(), 1);
-        let blueprint = &blueprints[0];
-        let relation = BatchConstraintEvalGKRRelation::<BF, E4>::new(
-            &constraint_input,
-            constraint_batch_challenge,
-        );
-
-        assert_eq!(
-            blueprint.kind,
-            GpuGKRMainLayerKernelKind::EnforceConstraintsMaxQuadratic
-        );
-        assert_eq!(blueprint.batch_challenges, vec![E4::ONE]);
-        assert_eq!(
-            blueprint.inputs,
-            <BatchConstraintEvalGKRRelation<BF, E4> as BatchedGKRKernel<BF, E4>>::get_inputs(
-                &relation,
-            )
-        );
-
-        let metadata = blueprint
-            .constraint_metadata_source
-            .as_ref()
-            .expect("constraint metadata must be present");
-        let metadata = match metadata {
-            super::GpuGKRMainLayerConstraintMetadataSource::Immediate(metadata) => metadata,
-            super::GpuGKRMainLayerConstraintMetadataSource::Deferred(..) => {
-                panic!("dynamic blueprint must materialize immediate constraint metadata")
-            }
-        };
-        assert_eq!(metadata.constant_offset, relation.kernel.constant_offset);
-        assert_eq!(
-            metadata.quadratic_terms.len(),
-            relation.kernel.quadratic_parts.len()
-        );
-        assert_eq!(
-            metadata.linear_terms.len(),
-            relation.kernel.linear_parts.len()
-        );
-        assert_eq!(
-            metadata.quadratic_terms,
-            relation
-                .kernel
-                .quadratic_parts
-                .iter()
-                .map(
-                    |((lhs, rhs), challenge)| GpuGKRMainLayerConstraintQuadraticTerm {
-                        lhs: *lhs as u32,
-                        rhs: *rhs as u32,
-                        challenge: *challenge,
-                    }
-                )
-                .collect::<Vec<_>>()
-        );
-        assert_eq!(
-            metadata.linear_terms,
-            relation
-                .kernel
-                .linear_parts
-                .iter()
-                .map(|(input, challenge)| GpuGKRMainLayerConstraintLinearTerm {
-                    input: *input as u32,
-                    challenge: *challenge,
-                })
-                .collect::<Vec<_>>()
-        );
-    }
-
-    #[test]
     fn single_max_quadratic_constraint_uses_direct_metadata_and_no_outputs() {
         let storage = crate::prover::gkr::GpuGKRStorage::<BF, E4> {
             layers: vec![Default::default()],
@@ -9854,7 +9582,6 @@ mod tests {
             sample_ext(10),
             sample_ext(20),
             sample_ext(20),
-            sample_ext(30),
             2,
             2,
         );
@@ -9883,85 +9610,6 @@ mod tests {
             }
         };
         assert_eq!(metadata, &expected_metadata);
-    }
-
-    #[test]
-    fn main_layer_static_constraint_blueprint_metadata_matches_cpu() {
-        let storage = crate::prover::gkr::GpuGKRStorage::<BF, E4> {
-            layers: vec![Default::default()],
-        };
-        let constraint_input = NoFieldMaxQuadraticConstraintsGKRRelation {
-            quadratic_terms: vec![
-                (
-                    (
-                        GKRAddress::BaseLayerMemory(14),
-                        GKRAddress::BaseLayerWitness(1),
-                    ),
-                    vec![(2u32, 0usize), (3u32, 2usize)].into_boxed_slice(),
-                ),
-                (
-                    (
-                        GKRAddress::BaseLayerMemory(0),
-                        GKRAddress::BaseLayerMemory(14),
-                    ),
-                    vec![(5u32, 1usize)].into_boxed_slice(),
-                ),
-            ]
-            .into_boxed_slice(),
-            linear_terms: vec![(
-                GKRAddress::BaseLayerWitness(0),
-                vec![(7u32, 0usize)].into_boxed_slice(),
-            )]
-            .into_boxed_slice(),
-            constants: vec![(11u32, 0usize), (13u32, 1usize)].into_boxed_slice(),
-        };
-        let layer = GKRLayerDescription {
-            layer: 0,
-            gates_with_external_connections: Vec::new(),
-            cached_relations: BTreeMap::new(),
-            gates: vec![GateArtifacts {
-                output_layer: 1,
-                enforced_relation: NoFieldGKRRelation::EnforceConstraintsMaxQuadratic {
-                    input: constraint_input.clone(),
-                },
-            }],
-        };
-        let constraint_batch_challenge = sample_ext(20);
-        let external_challenges = sample_external_challenges(50);
-        let blueprints = build_main_layer_kernel_blueprints_static(
-            &layer,
-            0,
-            &storage,
-            &external_challenges,
-            &[],
-            0,
-            16,
-            4,
-        );
-
-        assert_eq!(blueprints.len(), 1);
-        let blueprint = &blueprints[0];
-        let (expected_inputs, expected_template) =
-            super::build_constraints_max_quadratic_inputs_and_template(&constraint_input);
-
-        assert_eq!(
-            blueprint.kind,
-            GpuGKRMainLayerKernelKind::EnforceConstraintsMaxQuadratic
-        );
-        assert_eq!(blueprint.batch_challenges, Vec::<E4>::new());
-        assert_eq!(blueprint.inputs, expected_inputs);
-
-        let metadata = blueprint
-            .constraint_metadata_source
-            .as_ref()
-            .expect("constraint metadata must be present");
-        let metadata = match metadata {
-            super::GpuGKRMainLayerConstraintMetadataSource::Deferred(metadata) => metadata,
-            super::GpuGKRMainLayerConstraintMetadataSource::Immediate(..) => {
-                panic!("static blueprint must defer constraint metadata")
-            }
-        };
-        assert_eq!(metadata, &expected_template);
     }
 
     #[test]
@@ -10027,7 +9675,6 @@ mod tests {
             sample_ext(10),
             sample_ext(15),
             sample_ext(20),
-            sample_ext(30),
             4,
             0,
         );
