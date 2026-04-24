@@ -6,11 +6,11 @@ use std::sync::Arc;
 
 use cs::definitions::{
     gkr::{AddressSpaceType, RamWordRepresentation, DECODER_LOOKUP_FORMAL_SET_INDEX},
-    GKRAddress, VirtualSetupPoly, MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX,
-    MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX,
-    MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX,
-    MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX, MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX,
-    MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX,
+    GKRAddress, VirtualSetupPoly, PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX,
+    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX,
+    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX,
+    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX, PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX,
+    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX,
 };
 use cs::gkr_compiler::{
     CompiledAddressSpaceRelationStrict, CompiledAddressStrict, CompiledMemoryTimestamp,
@@ -1399,14 +1399,14 @@ where
                 CompiledAddressStrict::ConstantU16(c) => {
                     let mut contribution = external_challenges
                         .permutation_argument_linearization_challenges
-                        [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
+                        [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
                     contribution.mul_assign_by_base(&BF::from_u32_unchecked(*c as u32));
                     descriptor.constant_term.add_assign(&contribution);
                 }
                 CompiledAddressStrict::Constant(c) => {
                     let mut contribution = external_challenges
                         .permutation_argument_linearization_challenges
-                        [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
+                        [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
                     contribution.mul_assign_by_base(&BF::from_u32_unchecked(*c));
                     descriptor.constant_term.add_assign(&contribution);
                 }
@@ -1418,7 +1418,7 @@ where
                             .get_base_layer(GKRAddress::BaseLayerMemory(*offset))
                             .as_ptr(),
                         external_challenges.permutation_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX],
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX],
                     );
                 }
                 CompiledAddressStrict::U32Space([low, high]) => {
@@ -1429,7 +1429,7 @@ where
                             .get_base_layer(GKRAddress::BaseLayerMemory(*low))
                             .as_ptr(),
                         external_challenges.permutation_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX],
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX],
                     );
                     add_memory_tuple_linear_term(
                         &mut descriptor,
@@ -1438,7 +1438,7 @@ where
                             .get_base_layer(GKRAddress::BaseLayerMemory(*high))
                             .as_ptr(),
                         external_challenges.permutation_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX],
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX],
                     );
                 }
                 CompiledAddressStrict::U32SpaceSpecialIndirect {
@@ -1449,10 +1449,10 @@ where
                 } => {
                     let low_challenge = external_challenges
                         .permutation_argument_linearization_challenges
-                        [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
+                        [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
                     let high_challenge = external_challenges
                         .permutation_argument_linearization_challenges
-                        [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
+                        [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
                     if *low_offset != 0 {
                         let mut contribution = low_challenge;
                         contribution.mul_assign_by_base(&BF::from_u32_unchecked(*low_offset));
@@ -1503,12 +1503,12 @@ where
                             .get_base_layer(GKRAddress::BaseLayerMemory(timestamp[0]))
                             .as_ptr(),
                         external_challenges.permutation_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX],
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX],
                     );
                     if rel.timestamp_offset != 0 {
                         let mut contribution = external_challenges
                             .permutation_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
                         contribution
                             .mul_assign_by_base(&BF::from_u32_unchecked(rel.timestamp_offset));
                         descriptor.constant_term.add_assign(&contribution);
@@ -1520,7 +1520,7 @@ where
                             .get_base_layer(GKRAddress::BaseLayerMemory(timestamp[1]))
                             .as_ptr(),
                         external_challenges.permutation_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX],
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX],
                     );
                 }
             }
@@ -1535,7 +1535,7 @@ where
                             .get_base_layer(GKRAddress::BaseLayerMemory(read_value[0]))
                             .as_ptr(),
                         external_challenges.permutation_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX],
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX],
                     );
                     add_memory_tuple_linear_term(
                         &mut descriptor,
@@ -1544,21 +1544,21 @@ where
                             .get_base_layer(GKRAddress::BaseLayerMemory(read_value[1]))
                             .as_ptr(),
                         external_challenges.permutation_argument_linearization_challenges
-                            [MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX],
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX],
                     );
                 }
                 RamWordRepresentation::U8Limbs(read_value_bytes) => {
                     let byte_shift = BF::from_u32_unchecked(1 << 8);
                     for (challenge_idx, low_term_idx, high_term_idx, low_offset, high_offset) in [
                         (
-                            MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX,
+                            PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX,
                             MEMORY_TUPLE_VALUE_LOW_TERM,
                             MEMORY_TUPLE_VALUE_LOW_EXTRA_TERM,
                             read_value_bytes[0],
                             read_value_bytes[1],
                         ),
                         (
-                            MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX,
+                            PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX,
                             MEMORY_TUPLE_VALUE_HIGH_TERM,
                             MEMORY_TUPLE_VALUE_HIGH_EXTRA_TERM,
                             read_value_bytes[2],
@@ -2090,12 +2090,12 @@ fn flatten_inits_or_teardowns_linear_combination<E: Field + FieldExtension<BF>>(
 
     {
         let challenge = external_challenges.permutation_argument_linearization_challenges
-            [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
+            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
         assert!(result.insert(setup[0], challenge).is_none());
     }
     {
         let mut challenge = external_challenges.permutation_argument_linearization_challenges
-            [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
+            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
         assert!(result.insert(setup[1], challenge).is_none());
         challenge.mul_assign_by_base(&BF::from_u32_unchecked(
             address_high_bits << address_high_bits_shift,
@@ -2106,19 +2106,19 @@ fn flatten_inits_or_teardowns_linear_combination<E: Field + FieldExtension<BF>>(
     if let Some((timestamps, values)) = timestamps_and_values {
         for (idx, address) in [
             (
-                MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX,
+                PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX,
                 GKRAddress::BaseLayerMemory(timestamps[0]),
             ),
             (
-                MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX,
+                PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX,
                 GKRAddress::BaseLayerMemory(timestamps[1]),
             ),
             (
-                MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX,
+                PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX,
                 GKRAddress::BaseLayerMemory(values[0]),
             ),
             (
-                MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX,
+                PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX,
                 GKRAddress::BaseLayerMemory(values[1]),
             ),
         ] {
@@ -2449,7 +2449,7 @@ mod tests {
 
         let mut address_low_term = external_challenges
             .permutation_argument_linearization_challenges
-            [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
+            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
         address_low_term.mul_assign_by_base(&address_low[row]);
         result.add_assign(&address_low_term);
 
@@ -2459,7 +2459,7 @@ mod tests {
         ));
         let mut address_high_term = external_challenges
             .permutation_argument_linearization_challenges
-            [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
+            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
         address_high_term.mul_assign_by_base(&address_high_value);
         result.add_assign(&address_high_term);
 
@@ -2488,19 +2488,19 @@ mod tests {
 
         for (idx, offset) in [
             (
-                MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX,
+                PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX,
                 timestamp_offsets[0],
             ),
             (
-                MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX,
+                PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX,
                 timestamp_offsets[1],
             ),
             (
-                MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX,
+                PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX,
                 value_offsets[0],
             ),
             (
-                MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX,
+                PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX,
                 value_offsets[1],
             ),
         ] {
