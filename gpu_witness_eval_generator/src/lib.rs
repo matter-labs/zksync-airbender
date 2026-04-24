@@ -1,4 +1,4 @@
-use cs::definitions::{ColumnAddress, GKRAddress, Variable, VirtualSetupPoly};
+use cs::definitions::{GKRAddress, Variable, VirtualSetupPoly};
 use cs::gkr_compiler::GKRCircuitArtifact;
 use cs::oracle::Placeholder;
 use cs::witness_placer::graph_description::{
@@ -12,6 +12,17 @@ use std::path::Path;
 mod boolean;
 mod field;
 mod integer;
+
+/// Internal column-address kind used by the generator. Upstream removed the
+/// `cs::definitions::ColumnAddress` enum; we keep a local one here that the
+/// generator maps `GKRAddress` into, so the SSA-walker code unchanged.
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum ColumnAddress {
+    MemorySubtree(usize),
+    WitnessSubtree(usize),
+    SetupSubtree(usize),
+    OptimizedOut(usize),
+}
 
 pub type F = ::field::baby_bear::base::BabyBearField;
 
