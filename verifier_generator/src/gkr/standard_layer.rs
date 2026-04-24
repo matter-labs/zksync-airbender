@@ -1,7 +1,7 @@
 use proc_macro2::TokenStream;
 use quote::quote;
 
-use crate::mersenne_wrapper::MersenneWrapper;
+use crate::field_wrapper::FieldWrapper;
 use prover::cs::definitions::gkr::NoFieldVectorLookupRelation;
 use prover::cs::definitions::gkr::RamWordRepresentation;
 use prover::cs::definitions::GKRAddress;
@@ -24,7 +24,7 @@ use verifier_common::gkr::SimpleGateType;
 use super::addr_to_idx;
 use super::coeff_to_internal_repr;
 
-pub fn generate_eval_helpers<MW: MersenneWrapper>() -> TokenStream {
+pub fn generate_eval_helpers<MW: FieldWrapper>() -> TokenStream {
     let field_struct = MW::field_struct();
     let quartic_struct = MW::quartic_struct();
     let quartic_zero = MW::quartic_zero();
@@ -243,7 +243,7 @@ pub fn generate_eval_helpers<MW: MersenneWrapper>() -> TokenStream {
     }
 }
 
-fn emit_linear_relation_eval<MW: MersenneWrapper, F: PrimeField>(
+fn emit_linear_relation_eval<MW: FieldWrapper, F: PrimeField>(
     rel: &prover::cs::definitions::gkr::NoFieldLinearRelation,
     var_name: &str,
     input_sorted_addrs: &[GKRAddress],
@@ -271,7 +271,7 @@ fn emit_linear_relation_eval<MW: MersenneWrapper, F: PrimeField>(
     }
 }
 
-fn emit_vector_lookup_eval<MW: MersenneWrapper, F: PrimeField>(
+fn emit_vector_lookup_eval<MW: FieldWrapper, F: PrimeField>(
     rel: &NoFieldVectorLookupRelation,
     var_name: &str,
     input_sorted_addrs: &[GKRAddress],
@@ -313,7 +313,7 @@ fn emit_vector_lookup_eval<MW: MersenneWrapper, F: PrimeField>(
     }
 }
 
-fn emit_single_output_gate<MW: MersenneWrapper>(
+fn emit_single_output_gate<MW: FieldWrapper>(
     body: &mut TokenStream,
     mul_batch: &TokenStream,
     val_computation: TokenStream,
@@ -641,7 +641,7 @@ fn emit_memory_expression_eval<F: PrimeField>(
     }
 }
 
-pub fn generate_layer_compute_claim<MW: MersenneWrapper>(
+pub fn generate_layer_compute_claim<MW: FieldWrapper>(
     layer: &GKRLayerDescription,
     layer_idx: usize,
     output_sorted_addrs: &[GKRAddress],
@@ -837,7 +837,7 @@ fn emit_simple_gate(
     simple_group.push(desc);
 }
 
-fn generate_simple_gate_loop<MW: MersenneWrapper>(
+fn generate_simple_gate_loop<MW: FieldWrapper>(
     descs: &[(SimpleGateType, [usize; 4])],
 ) -> TokenStream {
     let field_one = MW::field_one();
@@ -1064,7 +1064,7 @@ fn generate_simple_gate_loop<MW: MersenneWrapper>(
     }
 }
 
-fn emit_single_output_value<MW: MersenneWrapper, F: PrimeField>(
+fn emit_single_output_value<MW: FieldWrapper, F: PrimeField>(
     gate: &prover::cs::gkr_compiler::GateArtifacts,
     input_sorted_addrs: &[GKRAddress],
 ) -> Option<TokenStream> {
@@ -1113,7 +1113,7 @@ fn emit_single_output_value<MW: MersenneWrapper, F: PrimeField>(
     }
 }
 
-fn emit_dual_output_for_relation<MW: MersenneWrapper, F: PrimeField>(
+fn emit_dual_output_for_relation<MW: FieldWrapper, F: PrimeField>(
     body: &mut TokenStream,
     mul_batch: &TokenStream,
     gate: &prover::cs::gkr_compiler::GateArtifacts,
@@ -1254,7 +1254,7 @@ fn emit_dual_output_for_relation<MW: MersenneWrapper, F: PrimeField>(
     }
 }
 
-fn emit_inits_teardowns<MW: MersenneWrapper, F: PrimeField>(
+fn emit_inits_teardowns<MW: FieldWrapper, F: PrimeField>(
     body: &mut TokenStream,
     mul_batch: &TokenStream,
     gate: &prover::cs::gkr_compiler::GateArtifacts,
@@ -1373,7 +1373,7 @@ fn emit_inits_teardowns<MW: MersenneWrapper, F: PrimeField>(
     emit_single_output_gate::<MW>(body, mul_batch, val_comp);
 }
 
-pub fn generate_layer_final_step_accumulator<MW: MersenneWrapper, F: PrimeField>(
+pub fn generate_layer_final_step_accumulator<MW: FieldWrapper, F: PrimeField>(
     layer: &GKRLayerDescription,
     layer_idx: usize,
     input_sorted_addrs: &[GKRAddress],
@@ -1493,7 +1493,7 @@ pub fn generate_layer_final_step_accumulator<MW: MersenneWrapper, F: PrimeField>
     }
 }
 
-fn generate_two_output_body<MW: MersenneWrapper>(
+fn generate_two_output_body<MW: FieldWrapper>(
     body: &mut TokenStream,
     mul_batch: &TokenStream,
     setup_vars: TokenStream,

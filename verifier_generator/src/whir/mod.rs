@@ -1,7 +1,7 @@
 use proc_macro2::TokenStream;
 use quote::quote;
 
-use crate::mersenne_wrapper::MersenneWrapper;
+use crate::field_wrapper::FieldWrapper;
 
 pub mod common;
 pub mod rounds;
@@ -11,7 +11,7 @@ pub use rounds::{
     generate_whir_final_round, generate_whir_initial_round, generate_whir_internal_rounds,
 };
 
-pub fn generate_whir_verify<MW: MersenneWrapper>(whir_hash_buf_size: usize) -> TokenStream {
+pub fn generate_whir_verify<MW: FieldWrapper>(whir_hash_buf_size: usize) -> TokenStream {
     let quartic_struct = MW::quartic_struct();
     let quartic_one = MW::quartic_one();
 

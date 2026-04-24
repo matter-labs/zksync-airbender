@@ -1,9 +1,9 @@
 use proc_macro2::TokenStream;
 use quote::quote;
 
-use crate::mersenne_wrapper::MersenneWrapper;
+use crate::field_wrapper::FieldWrapper;
 
-pub fn generate_sumcheck_helpers<MW: MersenneWrapper>() -> TokenStream {
+pub fn generate_sumcheck_helpers<MW: FieldWrapper>() -> TokenStream {
     let quartic_struct = MW::quartic_struct();
     let quartic_zero = MW::quartic_zero();
     let quartic_one = MW::quartic_one();

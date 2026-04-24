@@ -4,7 +4,7 @@ use proc_macro2::TokenStream;
 use quote::quote;
 
 use crate::gkr::{OracleInfo, OracleType};
-use crate::mersenne_wrapper::MersenneWrapper;
+use crate::field_wrapper::FieldWrapper;
 use prover::gkr::prover::WhirSchedule;
 
 /// Compute draw_words for a given number of queries and query index bits.
@@ -57,7 +57,7 @@ fn round_params(
 
 /// Generate the query loop body for reading a single-oracle leaf, hashing, verifying
 /// merkle path, extracting evals, and folding. Used by both internal and final rounds.
-fn generate_single_oracle_query_body<MW: MersenneWrapper>(
+fn generate_single_oracle_query_body<MW: FieldWrapper>(
     leaf_ext_words_expr: TokenStream,
     hash_buf_size_const: TokenStream,
     values_per_leaf_expr: TokenStream,
@@ -107,7 +107,7 @@ fn generate_single_oracle_query_body<MW: MersenneWrapper>(
 
 // ---- Initial Round ----
 
-pub fn generate_whir_initial_round<MW: MersenneWrapper>(
+pub fn generate_whir_initial_round<MW: FieldWrapper>(
     whir_schedule: &WhirSchedule,
     oracles: &BTreeMap<OracleType, OracleInfo>,
     trace_len_log2: usize,
@@ -364,7 +364,7 @@ pub fn generate_whir_initial_round<MW: MersenneWrapper>(
 
 // ---- Internal Rounds ----
 
-pub fn generate_whir_internal_rounds<MW: MersenneWrapper>(
+pub fn generate_whir_internal_rounds<MW: FieldWrapper>(
     whir_schedule: &WhirSchedule,
     trace_len_log2: usize,
 ) -> TokenStream {
@@ -602,7 +602,7 @@ pub fn generate_whir_internal_rounds<MW: MersenneWrapper>(
 
 // ---- Final Round ----
 
-pub fn generate_whir_final_round<MW: MersenneWrapper>(
+pub fn generate_whir_final_round<MW: FieldWrapper>(
     whir_schedule: &WhirSchedule,
     trace_len_log2: usize,
 ) -> TokenStream {

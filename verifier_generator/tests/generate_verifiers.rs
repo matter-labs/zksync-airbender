@@ -2,7 +2,7 @@ use std::io::Write;
 
 use verifier_common::test_circuits::{CircuitData, CIRCUITS};
 use verifier_generator::gkr::GKRGeneratedFiles;
-use verifier_generator::mersenne_wrapper::MersenneWrapper;
+use verifier_generator::field_wrapper::FieldWrapper;
 use verifier_generator::{gkr, utils, whir, DefaultBabyBearField};
 
 fn write_and_fmt(path: &str, content: &proc_macro2::TokenStream) {
@@ -15,7 +15,7 @@ fn write_and_fmt(path: &str, content: &proc_macro2::TokenStream) {
         .ok();
 }
 
-fn generate_common<MW: MersenneWrapper>() {
+fn generate_common<MW: FieldWrapper>() {
     let max_fold_steps = CIRCUITS
         .iter()
         .flat_map(|c| &c.whir_schedule().whir_steps_schedule)
@@ -58,10 +58,7 @@ fn generate_common<MW: MersenneWrapper>() {
     write_and_fmt(&format!("{}/mod.rs", common_dir), &common);
 }
 
-fn generate_gkr_verifier<MW: MersenneWrapper>(
-    circuit: &CircuitData,
-    dir: &str,
-) -> GKRGeneratedFiles {
+fn generate_gkr_verifier<MW: FieldWrapper>(circuit: &CircuitData, dir: &str) -> GKRGeneratedFiles {
     let compiled_circuit = circuit.compiled_circuit();
     let proof = circuit.proof();
 
@@ -78,7 +75,7 @@ fn generate_gkr_verifier<MW: MersenneWrapper>(
     files
 }
 
-fn generate_whir_verifier<MW: MersenneWrapper>(
+fn generate_whir_verifier<MW: FieldWrapper>(
     circuit: &CircuitData,
     dir: &str,
     gkr_files: &GKRGeneratedFiles,
@@ -137,7 +134,7 @@ fn ensure_common() {
     });
 }
 
-fn generate_verifier_for_circuit<MW: MersenneWrapper>(circuit: &CircuitData) {
+fn generate_verifier_for_circuit<MW: FieldWrapper>(circuit: &CircuitData) {
     ensure_common();
 
     let field_struct = MW::field_struct();

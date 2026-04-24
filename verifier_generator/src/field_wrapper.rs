@@ -1,7 +1,7 @@
 use proc_macro2::TokenStream;
 use quote::quote;
 
-pub trait MersenneWrapper {
+pub trait FieldWrapper {
     fn field_struct() -> TokenStream;
     fn complex_struct() -> TokenStream;
     fn quartic_struct() -> TokenStream;
@@ -46,7 +46,7 @@ pub trait MersenneWrapper {
 
 pub struct DefaultBabyBearField;
 
-impl MersenneWrapper for DefaultBabyBearField {
+impl FieldWrapper for DefaultBabyBearField {
     fn field_struct() -> TokenStream {
         quote! { BabyBearField }
     }
@@ -149,7 +149,7 @@ impl MersenneWrapper for DefaultBabyBearField {
 
 pub struct DefaultMersenne31Field;
 
-impl MersenneWrapper for DefaultMersenne31Field {
+impl FieldWrapper for DefaultMersenne31Field {
     fn field_struct() -> TokenStream {
         quote! { Mersenne31Field }
     }

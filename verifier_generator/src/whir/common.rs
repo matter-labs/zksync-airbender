@@ -1,9 +1,9 @@
 use proc_macro2::TokenStream;
 use quote::quote;
 
-use crate::mersenne_wrapper::MersenneWrapper;
+use crate::field_wrapper::FieldWrapper;
 
-pub fn generate_whir_common<MW: MersenneWrapper>(max_fold_steps: usize) -> TokenStream {
+pub fn generate_whir_common<MW: FieldWrapper>(max_fold_steps: usize) -> TokenStream {
     let quartic_struct = MW::quartic_struct();
     let quartic_one = MW::quartic_one();
     let max_high_powers = if max_fold_steps > 0 {
