@@ -16,7 +16,8 @@ use crate::prover::tracing_data::{
 };
 use crate::witness::memory_delegation::generate_memory_and_witness_values_delegation;
 use crate::witness::memory_unrolled::{
-    generate_memory_and_witness_values_unrolled_inits_and_teardowns,
+    // TODO(init-teardown-port): re-add `generate_memory_and_witness_values_unrolled_inits_and_teardowns,`
+    // here when the GPU inits-and-teardowns path is restored.
     generate_memory_and_witness_values_unrolled_memory,
     generate_memory_and_witness_values_unrolled_non_memory,
 };
@@ -25,7 +26,9 @@ use crate::witness::multiplicities::{
     generate_range_check_multiplicities_from_mappings,
 };
 use crate::witness::trace_unrolled::{
-    ExecutorFamilyDecoderData, ShuffleRamInitsAndTeardownsDevice,
+    // TODO(init-teardown-port): re-add `ShuffleRamInitsAndTeardownsDevice,`
+    // here when the GPU inits-and-teardowns path is restored.
+    ExecutorFamilyDecoderData,
 };
 use crate::witness::witness_delegation::generate_witness_values_delegation;
 use crate::witness::witness_unrolled::{
@@ -167,7 +170,8 @@ impl GpuGKRStage1Output {
         geometry: GpuGKRTraceGeometry,
         setup_hypercube_evals: Option<&DeviceSlice<BF>>,
         decoder_table: Option<&DeviceSlice<ExecutorFamilyDecoderData>>,
-        inits_and_teardowns: Option<&ShuffleRamInitsAndTeardownsDevice>,
+        // TODO(init-teardown-port): restore parameter once path is re-enabled.
+        // inits_and_teardowns: Option<&ShuffleRamInitsAndTeardownsDevice>,
         tracing_data: &TracingDataDevice,
         context: &ProverContext,
     ) -> CudaResult<Self> {
@@ -404,22 +408,29 @@ impl GpuGKRStage1Output {
                     witness_values_range.end(stream)?;
                     tracing_ranges.push(witness_values_range);
                 }
+                // TODO(init-teardown-port): disabled — the GPU inits-and-teardowns path
+                // awaits a port to the new CPU shape. Restore when re-enabling.
+                // (CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns), _) => {
+                //     let witness_values_range =
+                //         Range::new("gkr.stage1.generate.memory_and_witness_values")?;
+                //     witness_values_range.start(stream)?;
+                //     let inits_and_teardowns = inits_and_teardowns.expect(
+                //         "standalone init/teardown circuit requires transferred init/teardown data",
+                //     );
+                //     generate_memory_and_witness_values_unrolled_inits_and_teardowns(
+                //         &compiled_circuit.memory_layout,
+                //         inits_and_teardowns,
+                //         &mut memory_matrix,
+                //         &mut witness_matrix,
+                //         context.get_exec_stream(),
+                //     )?;
+                //     witness_values_range.end(stream)?;
+                //     tracing_ranges.push(witness_values_range);
+                // }
                 (CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns), _) => {
-                    let witness_values_range =
-                        Range::new("gkr.stage1.generate.memory_and_witness_values")?;
-                    witness_values_range.start(stream)?;
-                    let inits_and_teardowns = inits_and_teardowns.expect(
-                        "standalone init/teardown circuit requires transferred init/teardown data",
+                    panic!(
+                        "inits-and-teardowns path disabled — see TODO(init-teardown-port)"
                     );
-                    generate_memory_and_witness_values_unrolled_inits_and_teardowns(
-                        &compiled_circuit.memory_layout,
-                        inits_and_teardowns,
-                        &mut memory_matrix,
-                        &mut witness_matrix,
-                        context.get_exec_stream(),
-                    )?;
-                    witness_values_range.end(stream)?;
-                    tracing_ranges.push(witness_values_range);
                 }
                 _ => unimplemented!(
                     "GPU GKR stage1 currently supports only unrolled non-memory and memory traces",
