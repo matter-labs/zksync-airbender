@@ -3,7 +3,10 @@ use crate::primitives::context::ProverContext;
 use crate::primitives::transfer::Transfer;
 use crate::witness::trace_delegation::{DelegationTraceDevice, DelegationTraceHost};
 use crate::witness::trace_unrolled::{
-    ShuffleRamInitsAndTeardownsDevice, ShuffleRamInitsAndTeardownsHost, UnrolledMemoryTraceDevice,
+    // TODO(init-teardown-port): re-add `ShuffleRamInitsAndTeardownsDevice,
+    // ShuffleRamInitsAndTeardownsHost,` here when the GPU inits-and-teardowns
+    // path is restored.
+    UnrolledMemoryTraceDevice,
     UnrolledMemoryTraceHost, UnrolledNonMemoryTraceDevice, UnrolledNonMemoryTraceHost,
     UnrolledUnifiedTraceDevice, UnrolledUnifiedTraceHost,
 };
@@ -237,47 +240,48 @@ impl<'a, A: GoodAllocator + 'a> TracingDataTransfer<'a, A> {
     }
 }
 
-pub(crate) struct InitsAndTeardownsTransfer<'a, A: GoodAllocator> {
-    pub data_host: ShuffleRamInitsAndTeardownsHost<A>,
-    pub data_device: ShuffleRamInitsAndTeardownsDevice,
-    pub transfer: Transfer<'a>,
-}
-
-impl<'a, A: GoodAllocator + 'a> InitsAndTeardownsTransfer<'a, A> {
-    pub fn new(
-        data_host: ShuffleRamInitsAndTeardownsHost<A>,
-        context: &ProverContext,
-    ) -> CudaResult<Self> {
-        let data_device = {
-            let inits_and_teardowns = context.alloc(data_host.len(), AllocationPlacement::Top)?;
-            ShuffleRamInitsAndTeardownsDevice {
-                inits_and_teardowns,
-            }
-        };
-        let transfer = Transfer::new()?;
-        transfer.record_allocated(context)?;
-        Ok(Self {
-            data_host,
-            data_device,
-            transfer,
-        })
-    }
-
-    pub fn schedule_transfer(&mut self, context: &ProverContext) -> CudaResult<()> {
-        self.transfer.schedule_multiple(
-            &self.data_host.chunks,
-            &mut self.data_device.inits_and_teardowns,
-            context,
-        )?;
-        self.transfer.record_transferred(context)
-    }
-
-    pub(crate) fn into_host_keepalive(self) -> crate::primitives::callbacks::Callbacks<'a> {
-        let Self {
-            data_host: _,
-            data_device: _,
-            transfer,
-        } = self;
-        transfer.into_callbacks()
-    }
-}
+// TODO(init-teardown-port): disabled until the GPU inits-and-teardowns path is ported.
+// pub(crate) struct InitsAndTeardownsTransfer<'a, A: GoodAllocator> {
+//     pub data_host: ShuffleRamInitsAndTeardownsHost<A>,
+//     pub data_device: ShuffleRamInitsAndTeardownsDevice,
+//     pub transfer: Transfer<'a>,
+// }
+//
+// impl<'a, A: GoodAllocator + 'a> InitsAndTeardownsTransfer<'a, A> {
+//     pub fn new(
+//         data_host: ShuffleRamInitsAndTeardownsHost<A>,
+//         context: &ProverContext,
+//     ) -> CudaResult<Self> {
+//         let data_device = {
+//             let inits_and_teardowns = context.alloc(data_host.len(), AllocationPlacement::Top)?;
+//             ShuffleRamInitsAndTeardownsDevice {
+//                 inits_and_teardowns,
+//             }
+//         };
+//         let transfer = Transfer::new()?;
+//         transfer.record_allocated(context)?;
+//         Ok(Self {
+//             data_host,
+//             data_device,
+//             transfer,
+//         })
+//     }
+//
+//     pub fn schedule_transfer(&mut self, context: &ProverContext) -> CudaResult<()> {
+//         self.transfer.schedule_multiple(
+//             &self.data_host.chunks,
+//             &mut self.data_device.inits_and_teardowns,
+//             context,
+//         )?;
+//         self.transfer.record_transferred(context)
+//     }
+//
+//     pub(crate) fn into_host_keepalive(self) -> crate::primitives::callbacks::Callbacks<'a> {
+//         let Self {
+//             data_host: _,
+//             data_device: _,
+//             transfer,
+//         } = self;
+//         transfer.into_callbacks()
+//     }
+// }

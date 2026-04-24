@@ -689,7 +689,10 @@ mod tests {
     use era_cudart::memory::{memory_copy_async, DeviceAllocation};
     use field::Field;
     use itertools::Itertools;
-    use prover::transcript::{Blake2sTranscript, Seed};
+    use prover::transcript::Seed;
+    type Blake2sTranscript = prover::transcript::Blake2sTranscript<
+        { prover::definitions::USE_REDUCED_BLAKE2_ROUNDS },
+    >;
     use rand::Rng;
     #[cfg(feature = "deterministic_pow")]
     use worker::Worker;
