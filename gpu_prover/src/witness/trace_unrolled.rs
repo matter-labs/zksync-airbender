@@ -2,7 +2,9 @@ use super::option::u8::Option;
 use crate::primitives::context::DeviceAllocation;
 use crate::witness::trace::ChunkedTraceHolder;
 use cs::gkr_circuits::ExecutorFamilyDecoderData as CSExecutorFamilyDecoderData;
-use prover::definitions::LazyInitAndTeardown;
+// TODO(init-teardown-port): `LazyInitAndTeardown` removed from `prover::definitions` upstream
+// (137e531e). Restore when the GPU inits-and-teardowns witness path is ported.
+// use prover::definitions::LazyInitAndTeardown;
 use riscv_transpiler::witness::{
     MemoryOpcodeTracingDataWithTimestamp, NonMemoryOpcodeTracingDataWithTimestamp,
     UnifiedOpcodeTracingDataWithTimestamp,
@@ -121,27 +123,30 @@ pub(crate) struct UnrolledUnifiedOracle {
     pub decoder_table: *const ExecutorFamilyDecoderData,
 }
 
-pub struct ShuffleRamInitsAndTeardownsDevice {
-    pub inits_and_teardowns: DeviceAllocation<LazyInitAndTeardown>,
-}
-
-#[repr(C)]
-#[derive(Default)]
-pub(crate) struct ShuffleRamInitsAndTeardownsRaw {
-    pub count: u32,
-    pub inits_and_teardowns: *const LazyInitAndTeardown,
-}
-
-impl From<&ShuffleRamInitsAndTeardownsDevice> for ShuffleRamInitsAndTeardownsRaw {
-    fn from(value: &ShuffleRamInitsAndTeardownsDevice) -> Self {
-        Self {
-            count: value.inits_and_teardowns.len() as u32,
-            inits_and_teardowns: value.inits_and_teardowns.as_ptr(),
-        }
-    }
-}
-
-pub(crate) type ShuffleRamInitsAndTeardownsHost<A> = ChunkedTraceHolder<LazyInitAndTeardown, A>;
+// TODO(init-teardown-port): disabled — the `LazyInitAndTeardown` struct was removed
+// upstream when the CPU init/teardown witness flow was reshaped. Restore these types
+// (and their call sites, which are also commented out) when porting the GPU path.
+// pub struct ShuffleRamInitsAndTeardownsDevice {
+//     pub inits_and_teardowns: DeviceAllocation<LazyInitAndTeardown>,
+// }
+//
+// #[repr(C)]
+// #[derive(Default)]
+// pub(crate) struct ShuffleRamInitsAndTeardownsRaw {
+//     pub count: u32,
+//     pub inits_and_teardowns: *const LazyInitAndTeardown,
+// }
+//
+// impl From<&ShuffleRamInitsAndTeardownsDevice> for ShuffleRamInitsAndTeardownsRaw {
+//     fn from(value: &ShuffleRamInitsAndTeardownsDevice) -> Self {
+//         Self {
+//             count: value.inits_and_teardowns.len() as u32,
+//             inits_and_teardowns: value.inits_and_teardowns.as_ptr(),
+//         }
+//     }
+// }
+//
+// pub(crate) type ShuffleRamInitsAndTeardownsHost<A> = ChunkedTraceHolder<LazyInitAndTeardown, A>;
 
 // pub(crate) fn get_aux_arguments_boundary_values(
 //     compiled_circuit: &CompiledCircuitArtifact<BF>,

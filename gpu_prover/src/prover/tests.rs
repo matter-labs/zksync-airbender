@@ -32,7 +32,8 @@ use crate::prover::test_utils::{
 };
 use crate::prover::trace_holder::TraceHolder;
 use crate::prover::tracing_data::{
-    DelegationTracingDataDevice, InitsAndTeardownsTransfer, TracingDataDevice, TracingDataHost,
+    // TODO(init-teardown-port): re-add `InitsAndTeardownsTransfer,` once restored.
+    DelegationTracingDataDevice, TracingDataDevice, TracingDataHost,
     TracingDataTransfer, UnrolledTracingDataDevice, UnrolledTracingDataHost,
 };
 use crate::prover::whir::GpuWhirExtensionOracle;
@@ -45,7 +46,8 @@ use crate::prover::whir_fold::{
 };
 use crate::witness::trace::ChunkedTraceHolder;
 use crate::witness::trace_unrolled::{
-    ExecutorFamilyDecoderData, ShuffleRamInitsAndTeardownsDevice, UnrolledMemoryTraceDevice,
+    // TODO(init-teardown-port): re-add `ShuffleRamInitsAndTeardownsDevice,` once restored.
+    ExecutorFamilyDecoderData, UnrolledMemoryTraceDevice,
     UnrolledNonMemoryTraceDevice,
 };
 use common_constants::TimestampData;
@@ -83,7 +85,8 @@ use field::baby_bear::base::BabyBearField;
 use field::baby_bear::ext4::BabyBearExt4;
 use field::{Field, FieldExtension, PrimeField};
 use itertools::Itertools;
-use prover::definitions::{LazyInitAndTeardown, Transcript};
+// TODO(init-teardown-port): re-add `LazyInitAndTeardown,` once restored upstream.
+use prover::definitions::Transcript;
 use prover::gkr::prover::dimension_reduction::{self, forward::DimensionReducingInputOutput};
 use prover::gkr::prover::forward_loop;
 use prover::gkr::prover::prove_configured_with_gkr;
@@ -392,22 +395,23 @@ fn make_non_memory_tracing_host_for_test(
     }))
 }
 
-fn flatten_sparse_inits_and_teardowns_for_transfer<A>(
-    sparse_inits_and_teardowns: &[Vec<(u32, (u64, u32)), A>],
-) -> Vec<LazyInitAndTeardown>
-where
-    A: std::alloc::Allocator + Clone,
-{
-    sparse_inits_and_teardowns
-        .iter()
-        .flat_map(|chunk| chunk.iter())
-        .map(|(address, (timestamp, value))| LazyInitAndTeardown {
-            address: *address,
-            teardown_value: *value,
-            teardown_timestamp: TimestampData::from_scalar(*timestamp),
-        })
-        .collect()
-}
+// TODO(init-teardown-port): disabled alongside the GPU inits-and-teardowns path.
+// fn flatten_sparse_inits_and_teardowns_for_transfer<A>(
+//     sparse_inits_and_teardowns: &[Vec<(u32, (u64, u32)), A>],
+// ) -> Vec<LazyInitAndTeardown>
+// where
+//     A: std::alloc::Allocator + Clone,
+// {
+//     sparse_inits_and_teardowns
+//         .iter()
+//         .flat_map(|chunk| chunk.iter())
+//         .map(|(address, (timestamp, value))| LazyInitAndTeardown {
+//             address: *address,
+//             teardown_value: *value,
+//             teardown_timestamp: TimestampData::from_scalar(*timestamp),
+//         })
+//         .collect()
+// }
 
 fn setup_geometry_for_test(setup_transfer: &GpuGKRSetupTransfer<'_>) -> GpuGKRTraceGeometry {
     GpuGKRTraceGeometry {
@@ -423,7 +427,8 @@ fn generate_stage1_output_for_test(
     compiled_circuit: &GKRCircuitArtifact<BF>,
     setup_transfer: &GpuGKRSetupTransfer<'_>,
     decoder_table: Option<&DeviceSlice<ExecutorFamilyDecoderData>>,
-    inits_and_teardowns: Option<&ShuffleRamInitsAndTeardownsDevice>,
+    // TODO(init-teardown-port): restore once path is re-enabled.
+    // inits_and_teardowns: Option<&ShuffleRamInitsAndTeardownsDevice>,
     tracing_data: &TracingDataDevice,
     context: &ProverContext,
 ) -> CudaResult<GpuGKRStage1Output> {
@@ -433,7 +438,7 @@ fn generate_stage1_output_for_test(
         setup_geometry_for_test(setup_transfer),
         Some(setup_transfer.trace_holder.get_hypercube_evals()),
         decoder_table,
-        inits_and_teardowns,
+        // TODO(init-teardown-port): restore `inits_and_teardowns,` arg.
         tracing_data,
         context,
     )
@@ -568,7 +573,7 @@ impl BasicUnrolledFixture {
             self.final_trace_size_log_2,
             Some(setup_transfer),
             decoder_transfer,
-            None,
+            // TODO(init-teardown-port): restore `None,` arg for inits_and_teardowns_transfer.
             tracing_data_transfer,
             &self.memory_tree_caps,
             &self.context,
@@ -590,7 +595,7 @@ impl BasicUnrolledFixture {
             self.final_trace_size_log_2,
             Some(setup_transfer),
             decoder_transfer,
-            None,
+            // TODO(init-teardown-port): restore `None,` arg for inits_and_teardowns_transfer.
             tracing_data_transfer,
             &self.memory_tree_caps,
             &self.context,
@@ -2032,7 +2037,7 @@ fn build_basic_unrolled_async_backward_fixture_from_base(
             .decoder_transfer
             .as_ref()
             .map(|transfer| &transfer.data_device[..]),
-        None,
+        // TODO(init-teardown-port): restore `None,` arg for inits_and_teardowns.
         &transfers.tracing_data_transfer.data_device,
         &context,
     )
@@ -3843,7 +3848,7 @@ fn run_memory_workflow_input_parity_test<const FAMILY_IDX: u8>(
         } else {
             None
         },
-        None,
+        // TODO(init-teardown-port): restore `None,` arg for inits_and_teardowns.
         &gpu_trace,
         &context,
     )
@@ -4038,7 +4043,6 @@ fn run_memory_workflow_input_parity_test<const FAMILY_IDX: u8>(
             lookup_alpha,
             lookup_additive_part,
             decoder_lookup_fill_value,
-            constraints_batch_challenge,
             &worker,
         );
     }
@@ -5072,7 +5076,7 @@ fn forward_to_backward_handoff_releases_forward_scratch() {
             .decoder_transfer
             .as_ref()
             .map(|transfer| &transfer.data_device[..]),
-        None,
+        // TODO(init-teardown-port): restore `None,` arg for inits_and_teardowns.
         &transfers.tracing_data_transfer.data_device,
         &context,
     )
@@ -5490,7 +5494,7 @@ fn run_basic_unrolled_workflow_input_parity_test() {
         } else {
             None
         },
-        None,
+        // TODO(init-teardown-port): restore `None,` arg for inits_and_teardowns.
         &gpu_trace,
         &context,
     )
@@ -5699,7 +5703,6 @@ fn run_basic_unrolled_workflow_input_parity_test() {
             lookup_alpha,
             lookup_additive_part,
             decoder_lookup_fill_value,
-            constraints_batch_challenge,
             &worker,
         );
     }
@@ -5994,7 +5997,7 @@ fn run_jump_branch_slt_workflow_input_parity_test() {
         } else {
             None
         },
-        None,
+        // TODO(init-teardown-port): restore `None,` arg for inits_and_teardowns.
         &gpu_trace,
         &context,
     )
@@ -6203,7 +6206,6 @@ fn run_jump_branch_slt_workflow_input_parity_test() {
             lookup_alpha,
             lookup_additive_part,
             decoder_lookup_fill_value,
-            constraints_batch_challenge,
             &worker,
         );
     }
@@ -6597,7 +6599,7 @@ fn run_shift_binop_cached_lookup_parity_test() {
         } else {
             None
         },
-        None,
+        // TODO(init-teardown-port): restore `None,` arg for inits_and_teardowns.
         &gpu_trace,
         &context,
     )
@@ -6691,7 +6693,6 @@ fn run_shift_binop_cached_lookup_parity_test() {
             lookup_alpha,
             lookup_additive_part,
             decoder_lookup_fill_value,
-            constraints_batch_challenge,
             &worker,
         );
     }
@@ -7063,7 +7064,7 @@ fn run_basic_unrolled_stagewise_parity_test() {
             } else {
                 None
             },
-            None,
+            // TODO(init-teardown-port): restore `None,` arg for inits_and_teardowns.
             &gpu_trace,
             &context,
         )
@@ -7178,7 +7179,6 @@ fn run_basic_unrolled_stagewise_parity_test() {
             lookup_alpha,
             lookup_additive_part,
             decoder_lookup_fill_value,
-            constraints_batch_challenge,
             &worker,
         );
     }
@@ -7399,7 +7399,6 @@ fn run_basic_unrolled_stagewise_parity_test() {
                 trace_len,
                 lookup_alpha,
                 lookup_additive_part,
-                constraints_batch_challenge,
                 &[],
                 0,
                 &external_challenges,
@@ -7733,6 +7732,11 @@ fn run_basic_unrolled_stagewise_parity_test() {
 #[ignore]
 #[serial]
 fn standalone_inits_and_teardowns_gpu_workflow_matches_cpu() {
+    // TODO(init-teardown-port): body disabled alongside the GPU inits-and-teardowns path.
+    // The `#[ignore]` attribute already prevents it from running by default; the body is
+    // wrapped in a nested block comment so the crate still compiles while `LazyInitAndTeardown`
+    // / `ShuffleRamInitsAndTeardownsDevice` / `InitsAndTeardownsTransfer` remain disabled.
+    /*
     type CountersT = DelegationsAndFamiliesCounters;
 
     const TRACE_LEN_LOG2: usize = 24;
@@ -8138,6 +8142,7 @@ fn standalone_inits_and_teardowns_gpu_workflow_matches_cpu() {
             E4::ONE
         );
     }
+    */
 }
 
 #[test]
@@ -8947,7 +8952,7 @@ fn assert_delegation_workflow_matches_cpu_inner<W, O, F>(
         &compiled_circuit,
         &gpu_setup_transfer,
         None,
-        None,
+        // TODO(init-teardown-port): restore `None,` arg for inits_and_teardowns.
         &gpu_trace,
         &context,
     )
@@ -9169,7 +9174,6 @@ fn assert_delegation_workflow_matches_cpu_inner<W, O, F>(
             lookup_alpha,
             lookup_additive_part,
             decoder_lookup_fill_value,
-            constraints_batch_challenge,
             &worker,
         );
     }
