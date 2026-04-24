@@ -103,7 +103,7 @@ use prover::gkr::sumcheck::access_and_fold::{BaseFieldPoly, GKRLayerSource, GKRS
 use prover::gkr::sumcheck::eq_poly::make_eq_poly_in_full;
 use prover::gkr::sumcheck::evaluate_small_univariate_poly;
 use prover::gkr::sumcheck::evaluation_kernels::{
-    BaseFieldCopyGKRRelation, BatchConstraintEvalGKRRelation, BatchedGKRKernel,
+    BaseFieldCopyGKRRelation, BatchedGKRKernel,
     ExtensionCopyGKRRelation, GKRInputs, LookupBaseExtMinusBaseExtGKRRelation,
     LookupBaseMinusMultiplicityByBaseGKRRelation, LookupBasePairGKRRelation,
     LookupExtensionMinusMultiplicityByExtensionGKRRelation, LookupPairGKRRelation,
@@ -2376,7 +2376,6 @@ pub(crate) fn expected_main_layer_kernel_specs_for_test<E: Field + FieldExtensio
     batch_challenge_base: E,
     _lookup_multiplicative_challenge: E,
     lookup_additive_challenge: E,
-    constraint_batch_challenge: E,
     num_base_layer_memory_polys: usize,
     num_base_layer_witness_polys: usize,
 ) -> Vec<ExpectedMainLayerKernelSpec<E>> {
@@ -2685,45 +2684,9 @@ pub(crate) fn expected_main_layer_kernel_specs_for_test<E: Field + FieldExtensio
                     constraint_metadata: None,
                 });
             }
-            NoFieldGKRRelation::EnforceConstraintsMaxQuadratic { input } => {
-                let relation =
-                    BatchConstraintEvalGKRRelation::<BF, E>::new(input, constraint_batch_challenge);
-                specs.push(
-                    ExpectedMainLayerKernelSpec {
-                        kind: GpuGKRMainLayerKernelKind::EnforceConstraintsMaxQuadratic,
-                        inputs: <BatchConstraintEvalGKRRelation<BF, E> as BatchedGKRKernel<
-                            BF,
-                            E,
-                        >>::get_inputs(&relation),
-                        batch_challenges: vec![get_challenge()],
-                        auxiliary_challenge: E::ZERO,
-                        constraint_metadata: Some(ExpectedMainLayerConstraintMetadata {
-                            quadratic_terms: relation
-                                .kernel
-                                .quadratic_parts
-                                .iter()
-                                .map(
-                                    |((lhs, rhs), challenge)| crate::prover::gkr::backward::GpuGKRMainLayerConstraintQuadraticTerm {
-                                        lhs: *lhs as u32,
-                                        rhs: *rhs as u32,
-                                        challenge: *challenge,
-                                    },
-                                )
-                                .collect(),
-                            linear_terms: relation
-                                .kernel
-                                .linear_parts
-                                .iter()
-                                .map(
-                                    |(input, challenge)| crate::prover::gkr::backward::GpuGKRMainLayerConstraintLinearTerm {
-                                        input: *input as u32,
-                                        challenge: *challenge,
-                                    },
-                                )
-                                .collect(),
-                            constant_offset: relation.kernel.constant_offset,
-                        }),
-                    },
+            NoFieldGKRRelation::EnforceConstraintsMaxQuadratic { .. } => {
+                unreachable!(
+                    "batched max-quadratic constraints not supported on GPU; cs/ must emit EnforceSingleMaxQuadraticConstraint (USE_BATCHING=false)"
                 );
             }
             NoFieldGKRRelation::EnforceSingleMaxQuadraticConstraint { input } => {
@@ -4254,7 +4217,6 @@ fn run_basic_unrolled_async_scheduler_smoke_test() {
             batching_challenge,
             lookup_multiplicative_part,
             lookup_additive_part,
-            constraints_batch_challenge,
             &context,
         )
         .unwrap();
@@ -4316,7 +4278,6 @@ fn run_basic_unrolled_main_layer0_plan_matches_cpu_test() {
         external_challenges,
         lookup_multiplicative_part,
         lookup_additive_part,
-        constraints_batch_challenge,
         false,
     );
 
@@ -4341,7 +4302,6 @@ fn run_basic_unrolled_main_layer0_plan_matches_cpu_test() {
         batching_challenge,
         lookup_multiplicative_part,
         lookup_additive_part,
-        constraints_batch_challenge,
         compiled_circuit.memory_layout.total_width,
         compiled_circuit.witness_layout.total_width,
     );
@@ -4458,7 +4418,6 @@ fn run_basic_unrolled_main_layer0_static_plan_matches_cpu_test() {
         external_challenges,
         lookup_multiplicative_part,
         lookup_additive_part,
-        constraints_batch_challenge,
         false,
     );
 
@@ -4483,7 +4442,6 @@ fn run_basic_unrolled_main_layer0_static_plan_matches_cpu_test() {
         batching_challenge,
         lookup_multiplicative_part,
         lookup_additive_part,
-        constraints_batch_challenge,
         compiled_circuit.memory_layout.total_width,
         compiled_circuit.witness_layout.total_width,
     );
@@ -4591,7 +4549,6 @@ fn run_basic_unrolled_main_layer0_kernel_kind_trace_test() {
         external_challenges,
         lookup_multiplicative_part,
         lookup_additive_part,
-        constraints_batch_challenge,
         false,
     );
 
@@ -4629,7 +4586,6 @@ fn run_basic_unrolled_first_main_layer_static_vs_dynamic_execution_test() {
         mut batching_challenge: E4,
         lookup_multiplicative_part: E4,
         lookup_additive_part: E4,
-        constraints_batch_challenge: E4,
         context: &ProverContext,
     ) -> (
         crate::prover::gkr::backward::GpuGKRMainLayerBackwardState<E4>,
@@ -4665,7 +4621,6 @@ fn run_basic_unrolled_first_main_layer_static_vs_dynamic_execution_test() {
                 external_challenges.clone(),
                 lookup_multiplicative_part,
                 lookup_additive_part,
-                constraints_batch_challenge,
                 false,
             ),
             current_claims,
@@ -4705,7 +4660,6 @@ fn run_basic_unrolled_first_main_layer_static_vs_dynamic_execution_test() {
         fixture_dynamic.batching_challenge,
         fixture_dynamic.lookup_multiplicative_part,
         fixture_dynamic.lookup_additive_part,
-        fixture_dynamic.constraints_batch_challenge,
         &fixture_dynamic.context,
     );
     eprintln!("first-main-layer: dynamic dimension reduction ready");
@@ -4721,7 +4675,6 @@ fn run_basic_unrolled_first_main_layer_static_vs_dynamic_execution_test() {
             fixture_static.batching_challenge,
             fixture_static.lookup_multiplicative_part,
             fixture_static.lookup_additive_part,
-            fixture_static.constraints_batch_challenge,
             &fixture_static.context,
         );
     eprintln!("first-main-layer: static dimension reduction ready");
@@ -4765,7 +4718,6 @@ fn run_basic_unrolled_first_main_layer_static_vs_dynamic_execution_test() {
         static_batching_challenge,
         fixture_static.lookup_multiplicative_part,
         fixture_static.lookup_additive_part,
-        fixture_static.constraints_batch_challenge,
     );
     let static_scheduled = static_plan
         .schedule_execute_main_layer_from_workflow_state(
@@ -4815,7 +4767,6 @@ fn run_basic_unrolled_main_layers_static_vs_dynamic_execution_test() {
         mut batching_challenge: E4,
         lookup_multiplicative_part: E4,
         lookup_additive_part: E4,
-        constraints_batch_challenge: E4,
         context: &ProverContext,
     ) -> (
         crate::prover::gkr::backward::GpuGKRMainLayerBackwardState<E4>,
@@ -4851,7 +4802,6 @@ fn run_basic_unrolled_main_layers_static_vs_dynamic_execution_test() {
                 external_challenges.clone(),
                 lookup_multiplicative_part,
                 lookup_additive_part,
-                constraints_batch_challenge,
                 false,
             ),
             current_claims,
@@ -4880,7 +4830,6 @@ fn run_basic_unrolled_main_layers_static_vs_dynamic_execution_test() {
         fixture_dynamic.batching_challenge,
         fixture_dynamic.lookup_multiplicative_part,
         fixture_dynamic.lookup_additive_part,
-        fixture_dynamic.constraints_batch_challenge,
         &fixture_dynamic.context,
     );
 
@@ -4900,7 +4849,6 @@ fn run_basic_unrolled_main_layers_static_vs_dynamic_execution_test() {
         fixture_static.batching_challenge,
         fixture_static.lookup_multiplicative_part,
         fixture_static.lookup_additive_part,
-        fixture_static.constraints_batch_challenge,
         &fixture_static.context,
     );
 
@@ -4943,7 +4891,6 @@ fn run_basic_unrolled_main_layers_static_vs_dynamic_execution_test() {
             static_batching_challenge,
             fixture_static.lookup_multiplicative_part,
             fixture_static.lookup_additive_part,
-            fixture_static.constraints_batch_challenge,
         );
         let static_scheduled = static_plan
             .schedule_execute_main_layer_from_workflow_state(
@@ -5029,7 +4976,6 @@ fn run_basic_unrolled_async_allocator_regression_test() {
             batching_challenge,
             lookup_multiplicative_part,
             lookup_additive_part,
-            constraints_batch_challenge,
             &context,
         )
         .unwrap();
@@ -6368,7 +6314,6 @@ fn cached_main_layer_backward_plan_keeps_cache_inputs_layer_locality_test() {
         external_challenges,
         lookup_multiplicative_part,
         lookup_additive_part,
-        constraints_batch_challenge,
         false,
     );
 
@@ -7422,7 +7367,6 @@ fn run_basic_unrolled_stagewise_parity_test() {
                 batching_challenge,
                 lookup_alpha,
                 lookup_additive_part,
-                constraints_batch_challenge,
                 &context,
             )
             .unwrap()
