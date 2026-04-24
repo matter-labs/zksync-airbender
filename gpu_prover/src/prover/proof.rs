@@ -620,16 +620,14 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
         stream,
     )?;
 
-    // 3 E4 lookup challenges in Montgomery form, drawn via the device-side Fiat-Shamir path
-    // (mirrors host `draw_random_field_els::<BF, E4>(seed, 3)` with `from_raw_repr_with_reduction`).
+    // 2 E4 lookup challenges in Montgomery form, drawn via the device-side Fiat-Shamir path
+    // (mirrors host `draw_random_field_els::<BF, E4>(seed, 2)` with `from_raw_repr_with_reduction`).
     let mut d_lookup_challenges: DeviceAllocation<E4> =
-        context.alloc(3, AllocationPlacement::BestFit)?;
+        context.alloc(2, AllocationPlacement::BestFit)?;
     crate::ops::blake2s::transcript_squeeze_e4(&mut d_seed, &mut d_lookup_challenges, stream)?;
 
-    // D2H the seed and 3-of-4 lookup challenges into host pinned slots used by subsequent
-    // host-side callbacks (backward workflow state population, WHIR seed source).
     let mut seed_host = unsafe { context.alloc_host_uninit::<Seed>() };
-    let mut lookup_challenges_host = unsafe { context.alloc_host_uninit_slice::<E4>(3) };
+    let mut lookup_challenges_host = unsafe { context.alloc_host_uninit_slice::<E4>(2) };
     {
         // SAFETY: Seed is `[u32; STATE_SIZE]` — same layout as DeviceSlice<u32> of length STATE_SIZE.
         let seed_host_u32 = unsafe {
@@ -714,7 +712,6 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
                     batching_challenge,
                     lookup_challenges[0],
                     lookup_challenges[1],
-                    lookup_challenges[2],
                 );
             }
         },
