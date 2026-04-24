@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS;
 use cs::definitions::GKRAddress;
-use cs::definitions::NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES;
+use cs::definitions::NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES;
 use cs::gkr_compiler::{GKRCircuitArtifact, OutputType};
 use era_cudart::event::{CudaEvent, CudaEventCreateFlags};
 use era_cudart::memory::memory_copy_async;
@@ -366,7 +366,7 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
     // Sizes that are known at prove() entry (no stage1 output needed).
     let canonical_top_bits = canonical_inits_and_teardowns_top_bits(&compiled_circuit);
     let canonical_top_bits_len = canonical_top_bits.len();
-    let external_challenges_u32_len = (NUM_MEM_ARGUMENT_LINEARIZATION_CHALLENGES + 1) * 4;
+    let external_challenges_u32_len = (NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES + 1) * 4;
     let memory_caps_total_u32 = memory_tree_caps
         .iter()
         .map(|c| c.cap.len() * BLAKE2S_DIGEST_SIZE_U32_WORDS)

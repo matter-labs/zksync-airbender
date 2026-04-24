@@ -5,11 +5,11 @@ use std::ptr::{null, null_mut};
 use std::slice;
 
 use cs::definitions::{
-    gkr::AddressSpaceType, GKRAddress, MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX,
-    MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX,
-    MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX,
-    MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX, MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX,
-    MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX,
+    gkr::AddressSpaceType, GKRAddress, PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX,
+    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX,
+    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX,
+    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX, PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX,
+    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX,
 };
 use cs::gkr_compiler::{
     GKRCircuitArtifact, GKRLayerDescription, InitsOrTeardownsTimestampAndValue, NoFieldGKRRelation,
@@ -147,28 +147,28 @@ fn memory_query_as_flattened_relation<E: Field + FieldExtension<BF>>(
     match &rel.address {
         cs::gkr_compiler::CompiledAddressStrict::ConstantU16(c) => {
             let mut challenge = external_challenges.permutation_argument_linearization_challenges
-                [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
+                [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
             challenge.mul_assign_by_base(&BF::from_u32_unchecked(*c as u32));
             constant_term.add_assign(&challenge);
         }
         cs::gkr_compiler::CompiledAddressStrict::Constant(c) => {
             assert!(*c < (1u32 << 16));
             let mut challenge = external_challenges.permutation_argument_linearization_challenges
-                [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
+                [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
             challenge.mul_assign_by_base(&BF::from_u32_unchecked(*c));
             constant_term.add_assign(&challenge);
         }
         cs::gkr_compiler::CompiledAddressStrict::U16Space(offset) => {
             let challenge = external_challenges.permutation_argument_linearization_challenges
-                [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
+                [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
             assert!(result
                 .insert(GKRAddress::BaseLayerMemory(*offset), challenge)
                 .is_none());
         }
         cs::gkr_compiler::CompiledAddressStrict::U32Space([low, high]) => {
             for (idx, offset) in [
-                (MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX, *low),
-                (MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX, *high),
+                (PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX, *low),
+                (PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX, *high),
             ] {
                 let challenge =
                     external_challenges.permutation_argument_linearization_challenges[idx];
@@ -189,7 +189,7 @@ fn memory_query_as_flattened_relation<E: Field + FieldExtension<BF>>(
             if let Some((c, offset)) = *low_dynamic_offset {
                 let mut challenge = external_challenges
                     .permutation_argument_linearization_challenges
-                    [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
+                    [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
                 challenge.mul_assign_by_base(&BF::from_u32_unchecked(c as u32));
                 assert!(result
                     .insert(GKRAddress::BaseLayerMemory(offset), challenge)
@@ -198,7 +198,7 @@ fn memory_query_as_flattened_relation<E: Field + FieldExtension<BF>>(
             {
                 let mut challenge = external_challenges
                     .permutation_argument_linearization_challenges
-                    [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
+                    [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
                 assert!(result
                     .insert(GKRAddress::BaseLayerMemory(*low_base), challenge)
                     .is_none());
@@ -207,7 +207,7 @@ fn memory_query_as_flattened_relation<E: Field + FieldExtension<BF>>(
             }
             {
                 let challenge = external_challenges.permutation_argument_linearization_challenges
-                    [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
+                    [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
                 assert!(result
                     .insert(GKRAddress::BaseLayerMemory(*high), challenge)
                     .is_none());
@@ -221,7 +221,7 @@ fn memory_query_as_flattened_relation<E: Field + FieldExtension<BF>>(
             {
                 let mut challenge = external_challenges
                     .permutation_argument_linearization_challenges
-                    [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
+                    [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
                 assert!(result
                     .insert(GKRAddress::BaseLayerMemory(ts[0]), challenge)
                     .is_none());
@@ -230,7 +230,7 @@ fn memory_query_as_flattened_relation<E: Field + FieldExtension<BF>>(
             }
             {
                 let challenge = external_challenges.permutation_argument_linearization_challenges
-                    [MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
+                    [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
                 assert!(result
                     .insert(GKRAddress::BaseLayerMemory(ts[1]), challenge)
                     .is_none());
@@ -242,8 +242,8 @@ fn memory_query_as_flattened_relation<E: Field + FieldExtension<BF>>(
         cs::definitions::gkr::RamWordRepresentation::Zero => {}
         cs::definitions::gkr::RamWordRepresentation::U16Limbs(read_value) => {
             for (idx, offset) in [
-                (MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX, read_value[0]),
-                (MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX, read_value[1]),
+                (PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX, read_value[0]),
+                (PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX, read_value[1]),
             ] {
                 let challenge =
                     external_challenges.permutation_argument_linearization_challenges[idx];
@@ -256,12 +256,12 @@ fn memory_query_as_flattened_relation<E: Field + FieldExtension<BF>>(
             let byte_shift = BF::from_u32_unchecked(1u32 << 8);
             for (idx, offset_low, offset_high) in [
                 (
-                    MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX,
+                    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX,
                     read_value_bytes[0],
                     read_value_bytes[1],
                 ),
                 (
-                    MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX,
+                    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX,
                     read_value_bytes[2],
                     read_value_bytes[3],
                 ),
@@ -443,12 +443,12 @@ fn flatten_inits_or_teardowns_relation<E: Field + FieldExtension<BF>>(
 
     {
         let challenge = external_challenges.permutation_argument_linearization_challenges
-            [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
+            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
         assert!(result.insert(setup[0], challenge).is_none());
     }
     {
         let mut challenge = external_challenges.permutation_argument_linearization_challenges
-            [MEM_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
+            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
         assert!(result.insert(setup[1], challenge).is_none());
         challenge.mul_assign_by_base(&BF::from_u32_unchecked(
             address_high_bits << address_high_bits_shift,
@@ -459,15 +459,15 @@ fn flatten_inits_or_teardowns_relation<E: Field + FieldExtension<BF>>(
     if let Some((timestamps, values)) = timestamps_and_values {
         for (idx, address) in [
             (
-                MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX,
+                PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX,
                 timestamps[0],
             ),
             (
-                MEM_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX,
+                PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX,
                 timestamps[1],
             ),
-            (MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX, values[0]),
-            (MEM_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX, values[1]),
+            (PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX, values[0]),
+            (PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX, values[1]),
         ] {
             let challenge = external_challenges.permutation_argument_linearization_challenges[idx];
             assert!(result.insert(address, challenge).is_none());

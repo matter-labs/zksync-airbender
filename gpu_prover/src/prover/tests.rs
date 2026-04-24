@@ -740,10 +740,10 @@ fn prepare_basic_unrolled_fixture(
         E4::from_array_of_base([BF::new(2), BF::new(5), BF::new(42), BF::new(123)]);
     let permutation_argument_additive_part =
         E4::from_array_of_base([BF::new(7), BF::new(11), BF::new(1024), BF::new(8000)]);
-    let permutation_argument_linearization_challenges: [E4; NUM_MEM_ARGUMENT_KEY_PARTS - 1] =
+    let permutation_argument_linearization_challenges: [E4; NUM_PERMUTATION_ARGUMENT_KEY_PARTS - 1] =
         materialize_powers_serial_starting_with_elem::<_, Global>(
             memory_argument_alpha,
-            NUM_MEM_ARGUMENT_KEY_PARTS - 1,
+            NUM_PERMUTATION_ARGUMENT_KEY_PARTS - 1,
         )
         .try_into()
         .unwrap();
@@ -3959,10 +3959,10 @@ fn run_memory_workflow_input_parity_test<const FAMILY_IDX: u8>(
         E4::from_array_of_base([BF::new(2), BF::new(5), BF::new(42), BF::new(123)]);
     let permutation_argument_additive_part =
         E4::from_array_of_base([BF::new(7), BF::new(11), BF::new(1024), BF::new(8000)]);
-    let permutation_argument_linearization_challenges: [E4; NUM_MEM_ARGUMENT_KEY_PARTS - 1] =
+    let permutation_argument_linearization_challenges: [E4; NUM_PERMUTATION_ARGUMENT_KEY_PARTS - 1] =
         materialize_powers_serial_starting_with_elem::<_, Global>(
             memory_argument_alpha,
-            NUM_MEM_ARGUMENT_KEY_PARTS - 1,
+            NUM_PERMUTATION_ARGUMENT_KEY_PARTS - 1,
         )
         .try_into()
         .unwrap();
@@ -5326,10 +5326,10 @@ fn run_basic_unrolled_workflow_input_parity_test() {
         E4::from_array_of_base([BF::new(2), BF::new(5), BF::new(42), BF::new(123)]);
     let permutation_argument_additive_part =
         E4::from_array_of_base([BF::new(7), BF::new(11), BF::new(1024), BF::new(8000)]);
-    let permutation_argument_linearization_challenges: [E4; NUM_MEM_ARGUMENT_KEY_PARTS - 1] =
+    let permutation_argument_linearization_challenges: [E4; NUM_PERMUTATION_ARGUMENT_KEY_PARTS - 1] =
         materialize_powers_serial_starting_with_elem::<_, Global>(
             memory_argument_alpha,
-            NUM_MEM_ARGUMENT_KEY_PARTS - 1,
+            NUM_PERMUTATION_ARGUMENT_KEY_PARTS - 1,
         )
         .try_into()
         .unwrap();
@@ -5825,10 +5825,10 @@ fn run_jump_branch_slt_workflow_input_parity_test() {
         E4::from_array_of_base([BF::new(2), BF::new(5), BF::new(42), BF::new(123)]);
     let permutation_argument_additive_part =
         E4::from_array_of_base([BF::new(7), BF::new(11), BF::new(1024), BF::new(8000)]);
-    let permutation_argument_linearization_challenges: [E4; NUM_MEM_ARGUMENT_KEY_PARTS - 1] =
+    let permutation_argument_linearization_challenges: [E4; NUM_PERMUTATION_ARGUMENT_KEY_PARTS - 1] =
         materialize_powers_serial_starting_with_elem::<_, Global>(
             memory_argument_alpha,
-            NUM_MEM_ARGUMENT_KEY_PARTS - 1,
+            NUM_PERMUTATION_ARGUMENT_KEY_PARTS - 1,
         )
         .try_into()
         .unwrap();
@@ -6608,10 +6608,10 @@ fn run_shift_binop_cached_lookup_parity_test() {
         E4::from_array_of_base([BF::new(2), BF::new(5), BF::new(42), BF::new(123)]);
     let permutation_argument_additive_part =
         E4::from_array_of_base([BF::new(7), BF::new(11), BF::new(1024), BF::new(8000)]);
-    let permutation_argument_linearization_challenges: [E4; NUM_MEM_ARGUMENT_KEY_PARTS - 1] =
+    let permutation_argument_linearization_challenges: [E4; NUM_PERMUTATION_ARGUMENT_KEY_PARTS - 1] =
         materialize_powers_serial_starting_with_elem::<_, Global>(
             memory_argument_alpha,
-            NUM_MEM_ARGUMENT_KEY_PARTS - 1,
+            NUM_PERMUTATION_ARGUMENT_KEY_PARTS - 1,
         )
         .try_into()
         .unwrap();
@@ -6842,10 +6842,10 @@ fn run_basic_unrolled_stagewise_parity_test() {
     let permutation_argument_additive_part =
         E4::from_array_of_base([BF::new(7), BF::new(11), BF::new(1024), BF::new(8000)]);
 
-    let permutation_argument_linearization_challenges: [E4; NUM_MEM_ARGUMENT_KEY_PARTS - 1] =
+    let permutation_argument_linearization_challenges: [E4; NUM_PERMUTATION_ARGUMENT_KEY_PARTS - 1] =
         materialize_powers_serial_starting_with_elem::<_, Global>(
             memory_argument_alpha,
-            NUM_MEM_ARGUMENT_KEY_PARTS - 1,
+            NUM_PERMUTATION_ARGUMENT_KEY_PARTS - 1,
         )
         .try_into()
         .unwrap();
@@ -7806,10 +7806,10 @@ fn standalone_inits_and_teardowns_gpu_workflow_matches_cpu() {
         E4::from_array_of_base([BF::new(2), BF::new(5), BF::new(42), BF::new(123)]);
     let permutation_argument_additive_part =
         E4::from_array_of_base([BF::new(7), BF::new(11), BF::new(1024), BF::new(8000)]);
-    let permutation_argument_linearization_challenges: [E4; NUM_MEM_ARGUMENT_KEY_PARTS - 1] =
+    let permutation_argument_linearization_challenges: [E4; NUM_PERMUTATION_ARGUMENT_KEY_PARTS - 1] =
         materialize_powers_serial_starting_with_elem::<_, Global>(
             memory_argument_alpha,
-            NUM_MEM_ARGUMENT_KEY_PARTS - 1,
+            NUM_PERMUTATION_ARGUMENT_KEY_PARTS - 1,
         )
         .try_into()
         .unwrap();
@@ -8761,10 +8761,10 @@ fn test_external_challenges() -> GKRExternalChallenges<BF, E4> {
         E4::from_array_of_base([BF::new(2), BF::new(5), BF::new(42), BF::new(123)]);
     let permutation_argument_additive_part =
         E4::from_array_of_base([BF::new(7), BF::new(11), BF::new(1024), BF::new(8000)]);
-    let permutation_argument_linearization_challenges: [E4; NUM_MEM_ARGUMENT_KEY_PARTS - 1] =
+    let permutation_argument_linearization_challenges: [E4; NUM_PERMUTATION_ARGUMENT_KEY_PARTS - 1] =
         materialize_powers_serial_starting_with_elem::<_, Global>(
             memory_argument_alpha,
-            NUM_MEM_ARGUMENT_KEY_PARTS - 1,
+            NUM_PERMUTATION_ARGUMENT_KEY_PARTS - 1,
         )
         .try_into()
         .unwrap();
