@@ -271,7 +271,6 @@ pub(super) fn resolve_coefficient<E: Field + field::FieldExtension<BF>>(
     batch_challenge_base: E,
     lookup_multiplicative: E,
     lookup_additive: E,
-    constraint_batch: E,
 ) -> E {
     let mut coeff = batch_challenge_base.pow(recipe.batch_power);
     coeff.mul_assign(&recipe.immediate_factor);
@@ -283,7 +282,6 @@ pub(super) fn resolve_coefficient<E: Field + field::FieldExtension<BF>>(
             terms,
             lookup_multiplicative,
             lookup_additive,
-            constraint_batch,
         );
         coeff.mul_assign(&pf);
     }
@@ -312,7 +310,6 @@ impl<E: Field + field::FieldExtension<BF>> FlatRound0BuildPlan<E> {
         batch_challenge_base: E,
         lookup_multiplicative: E,
         lookup_additive: E,
-        constraint_batch: E,
     ) -> Vec<E> {
         self.recipes
             .iter()
@@ -322,7 +319,6 @@ impl<E: Field + field::FieldExtension<BF>> FlatRound0BuildPlan<E> {
                     batch_challenge_base,
                     lookup_multiplicative,
                     lookup_additive,
-                    constraint_batch,
                 )
             })
             .collect()
@@ -529,7 +525,6 @@ pub(super) fn compile_recipes_for_device<E: Field + field::FieldExtension<BF>>(
                 let source = match term.source {
                     GpuGKRMainLayerDeferredChallengeSource::LookupMultiplicative => 0u32,
                     GpuGKRMainLayerDeferredChallengeSource::LookupAdditive => 1u32,
-                    GpuGKRMainLayerDeferredChallengeSource::ConstraintBatch => 2u32,
                 };
                 terms.push(GpuPrefactorTerm {
                     coeff: term.coeff,
@@ -1529,7 +1524,6 @@ impl<E: Field + field::FieldExtension<BF>> FlatContinuationBuildPlan<E> {
         batch_challenge_base: E,
         lookup_multiplicative: E,
         lookup_additive: E,
-        constraint_batch: E,
     ) -> Vec<E> {
         self.recipes
             .iter()
@@ -1539,7 +1533,6 @@ impl<E: Field + field::FieldExtension<BF>> FlatContinuationBuildPlan<E> {
                     batch_challenge_base,
                     lookup_multiplicative,
                     lookup_additive,
-                    constraint_batch,
                 )
             })
             .collect()
@@ -3996,7 +3989,6 @@ mod tests {
         batch_challenge_base: E4,
         lookup_multiplicative: E4,
         lookup_additive: E4,
-        constraint_batch: E4,
     ) -> Vec<E4> {
         plan.recipes
             .iter()
@@ -4006,7 +3998,6 @@ mod tests {
                     batch_challenge_base,
                     lookup_multiplicative,
                     lookup_additive,
-                    constraint_batch,
                 )
             })
             .collect()
@@ -4877,7 +4868,7 @@ mod tests {
         );
         let plan = b.finish();
 
-        let coeffs = plan.resolve_all(E4::ONE, E4::ZERO, E4::ZERO, E4::ZERO);
+        let coeffs = plan.resolve_all(E4::ONE, E4::ZERO, E4::ZERO);
         let coeffs_dev = alloc_and_copy(&context, &coeffs);
 
         launch_main_round0_flat(
@@ -4964,7 +4955,7 @@ mod tests {
         let plan = build_flat_round0_plan(&[gate]);
 
         // Resolve: batch_power=0 → base^0 = 1
-        let coeffs = plan.resolve_all(batch_challenge_base, E4::ZERO, E4::ZERO, E4::ZERO);
+        let coeffs = plan.resolve_all(batch_challenge_base, E4::ZERO, E4::ZERO);
         let coeffs_dev = alloc_and_copy(&context, &coeffs);
 
         launch_main_round0_flat(

@@ -158,7 +158,6 @@ pub(super) struct GpuGKRMainLayerConstraintChallengeTerm {
 pub(super) enum GpuGKRMainLayerDeferredChallengeSource {
     LookupMultiplicative,
     LookupAdditive,
-    ConstraintBatch,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -829,7 +828,6 @@ pub(crate) struct GpuGKRMainLayerSumcheckLayerPlan<E> {
     pub(super) batch_challenge_base: Option<E>,
     pub(super) lookup_multiplicative_challenge: E,
     pub(super) lookup_additive_challenge: E,
-    pub(super) constraint_batch_challenge: E,
     pub(super) kernel_plans: Vec<GpuGKRMainLayerKernelPlan<E>>,
     pub(super) round0_descriptors: Vec<GpuSumcheckRound0LaunchDescriptors<BF, E>>,
     pub(super) flat_round0_template: Option<super::backward_flat::FlatRound0BuildPlan<E>>,
@@ -902,7 +900,6 @@ pub(crate) struct GpuGKRMainLayerBackwardState<E: FieldExtension<BF> + Field> {
     pub(super) inits_and_teardowns_address_high_bits_shift: u32,
     pub(super) lookup_multiplicative_challenge: E,
     pub(super) lookup_additive_challenge: E,
-    pub(super) constraint_batch_challenge: E,
     pub(super) num_base_layer_memory_polys: usize,
     pub(super) num_base_layer_witness_polys: usize,
     pub(super) is_delegation: bool,
@@ -952,7 +949,6 @@ pub(crate) struct ScheduledBackwardWorkflowState<E: FieldExtension<BF> + Field> 
     pub(super) current_batching_challenge: E,
     pub(super) lookup_multiplicative_challenge: E,
     pub(super) lookup_additive_challenge: E,
-    pub(super) constraint_batch_challenge: E,
     pub(super) seed: Seed,
     pub(super) proofs: BTreeMap<usize, SumcheckIntermediateProofValues<BF, E>>,
 }
@@ -1043,7 +1039,6 @@ where
             current_batching_challenge: E::ZERO,
             lookup_multiplicative_challenge: E::ZERO,
             lookup_additive_challenge: E::ZERO,
-            constraint_batch_challenge: E::ZERO,
             seed: Seed::default(),
             proofs: BTreeMap::new(),
         }
@@ -1067,7 +1062,6 @@ pub(crate) fn populate_backward_workflow_state<E>(
     batching_challenge: E,
     lookup_multiplicative_challenge: E,
     lookup_additive_challenge: E,
-    constraint_batch_challenge: E,
 ) where
     E: FieldExtension<BF> + Field,
 {
@@ -1081,7 +1075,6 @@ pub(crate) fn populate_backward_workflow_state<E>(
     state.current_batching_challenge = batching_challenge;
     state.lookup_multiplicative_challenge = lookup_multiplicative_challenge;
     state.lookup_additive_challenge = lookup_additive_challenge;
-    state.constraint_batch_challenge = constraint_batch_challenge;
     state.seed = seed;
 }
 
@@ -1412,7 +1405,6 @@ pub(super) fn schedule_deferred_main_layer_constraint_metadata_upload<
                             &src.challenge_terms,
                             workflow_state.lookup_multiplicative_challenge,
                             workflow_state.lookup_additive_challenge,
-                            workflow_state.constraint_batch_challenge,
                         ),
                     };
                 }
@@ -1434,7 +1426,6 @@ pub(super) fn schedule_deferred_main_layer_constraint_metadata_upload<
                             &src.challenge_terms,
                             workflow_state.lookup_multiplicative_challenge,
                             workflow_state.lookup_additive_challenge,
-                            workflow_state.constraint_batch_challenge,
                         ),
                     };
                 }
@@ -1449,7 +1440,6 @@ pub(super) fn schedule_deferred_main_layer_constraint_metadata_upload<
                 &template,
                 workflow_state.lookup_multiplicative_challenge,
                 workflow_state.lookup_additive_challenge,
-                workflow_state.constraint_batch_challenge,
             );
         }
     })?;
