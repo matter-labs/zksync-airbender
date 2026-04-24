@@ -60,13 +60,12 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..2 {
             let mut lhs = {
                 let mut result = permutation_argument_additive_part;
-                field_ops::add_assign_base(
-                    &mut result,
-                    &BabyBearField::from_reduced_raw_repr(268435454u32),
-                );
+                let ram_constant_el = BabyBearField::from_reduced_raw_repr(268435454u32);
+                field_ops::add_assign_base(&mut result, &ram_constant_el);
                 {
                     let mut t = linearization_challenges[0usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(64usize)[j]);
+                    let base = evals.get_unchecked(64usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
@@ -84,13 +83,12 @@ unsafe fn layer_0_final_step_accumulator(
             };
             let mut rhs = {
                 let mut result = permutation_argument_additive_part;
-                field_ops::add_assign_base(
-                    &mut result,
-                    &BabyBearField::from_reduced_raw_repr(268435454u32),
-                );
+                let ram_constant_el = BabyBearField::from_reduced_raw_repr(268435454u32);
+                field_ops::add_assign_base(&mut result, &ram_constant_el);
                 {
                     let mut t = linearization_challenges[0usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(64usize)[j]);
+                    let base = evals.get_unchecked(64usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
@@ -119,13 +117,12 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..2 {
             let mut lhs = {
                 let mut result = permutation_argument_additive_part;
-                field_ops::add_assign_base(
-                    &mut result,
-                    &BabyBearField::from_reduced_raw_repr(268435454u32),
-                );
+                let ram_constant_el = BabyBearField::from_reduced_raw_repr(268435454u32);
+                field_ops::add_assign_base(&mut result, &ram_constant_el);
                 {
                     let mut t = linearization_challenges[0usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(64usize)[j]);
+                    let base = evals.get_unchecked(64usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
@@ -141,35 +138,38 @@ unsafe fn layer_0_final_step_accumulator(
                 }
                 {
                     let mut t = linearization_challenges[2usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(2usize)[j]);
+                    let base = evals.get_unchecked(2usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
                     let mut t = linearization_challenges[3usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(3usize)[j]);
+                    let base = evals.get_unchecked(3usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
                     let mut t = linearization_challenges[4usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(0usize)[j]);
+                    let base = evals.get_unchecked(0usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
                     let mut t = linearization_challenges[5usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(1usize)[j]);
+                    let base = evals.get_unchecked(1usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 result
             };
             let mut rhs = {
                 let mut result = permutation_argument_additive_part;
-                field_ops::add_assign_base(
-                    &mut result,
-                    &BabyBearField::from_reduced_raw_repr(268435454u32),
-                );
+                let ram_constant_el = BabyBearField::from_reduced_raw_repr(268435454u32);
+                field_ops::add_assign_base(&mut result, &ram_constant_el);
                 {
                     let mut t = linearization_challenges[0usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(64usize)[j]);
+                    let base = evals.get_unchecked(64usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
@@ -185,22 +185,26 @@ unsafe fn layer_0_final_step_accumulator(
                 }
                 {
                     let mut t = linearization_challenges[2usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(6usize)[j]);
+                    let base = evals.get_unchecked(6usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
                     let mut t = linearization_challenges[3usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(7usize)[j]);
+                    let base = evals.get_unchecked(7usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
                     let mut t = linearization_challenges[4usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(4usize)[j]);
+                    let base = evals.get_unchecked(4usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
                     let mut t = linearization_challenges[5usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(5usize)[j]);
+                    let base = evals.get_unchecked(5usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 result
@@ -218,13 +222,12 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..2 {
             let mut lhs = {
                 let mut result = permutation_argument_additive_part;
-                field_ops::add_assign_base(
-                    &mut result,
-                    &BabyBearField::from_reduced_raw_repr(268435454u32),
-                );
+                let ram_constant_el = BabyBearField::from_reduced_raw_repr(268435454u32);
+                field_ops::add_assign_base(&mut result, &ram_constant_el);
                 {
                     let mut t = linearization_challenges[0usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(64usize)[j]);
+                    let base = evals.get_unchecked(64usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
@@ -242,13 +245,12 @@ unsafe fn layer_0_final_step_accumulator(
             };
             let mut rhs = {
                 let mut result = permutation_argument_additive_part;
-                field_ops::add_assign_base(
-                    &mut result,
-                    &BabyBearField::from_reduced_raw_repr(268435454u32),
-                );
+                let ram_constant_el = BabyBearField::from_reduced_raw_repr(268435454u32);
+                field_ops::add_assign_base(&mut result, &ram_constant_el);
                 {
                     let mut t = linearization_challenges[0usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(64usize)[j]);
+                    let base = evals.get_unchecked(64usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
@@ -277,13 +279,12 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..2 {
             let mut lhs = {
                 let mut result = permutation_argument_additive_part;
-                field_ops::add_assign_base(
-                    &mut result,
-                    &BabyBearField::from_reduced_raw_repr(268435454u32),
-                );
+                let ram_constant_el = BabyBearField::from_reduced_raw_repr(268435454u32);
+                field_ops::add_assign_base(&mut result, &ram_constant_el);
                 {
                     let mut t = linearization_challenges[0usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(64usize)[j]);
+                    let base = evals.get_unchecked(64usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
@@ -299,35 +300,38 @@ unsafe fn layer_0_final_step_accumulator(
                 }
                 {
                     let mut t = linearization_challenges[2usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(10usize)[j]);
+                    let base = evals.get_unchecked(10usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
                     let mut t = linearization_challenges[3usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(11usize)[j]);
+                    let base = evals.get_unchecked(11usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
                     let mut t = linearization_challenges[4usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(8usize)[j]);
+                    let base = evals.get_unchecked(8usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
                     let mut t = linearization_challenges[5usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(9usize)[j]);
+                    let base = evals.get_unchecked(9usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 result
             };
             let mut rhs = {
                 let mut result = permutation_argument_additive_part;
-                field_ops::add_assign_base(
-                    &mut result,
-                    &BabyBearField::from_reduced_raw_repr(268435454u32),
-                );
+                let ram_constant_el = BabyBearField::from_reduced_raw_repr(268435454u32);
+                field_ops::add_assign_base(&mut result, &ram_constant_el);
                 {
                     let mut t = linearization_challenges[0usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(64usize)[j]);
+                    let base = evals.get_unchecked(64usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
@@ -343,22 +347,26 @@ unsafe fn layer_0_final_step_accumulator(
                 }
                 {
                     let mut t = linearization_challenges[2usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(14usize)[j]);
+                    let base = evals.get_unchecked(14usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
                     let mut t = linearization_challenges[3usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(15usize)[j]);
+                    let base = evals.get_unchecked(15usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
                     let mut t = linearization_challenges[4usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(12usize)[j]);
+                    let base = evals.get_unchecked(12usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
                     let mut t = linearization_challenges[5usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(13usize)[j]);
+                    let base = evals.get_unchecked(13usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 result
@@ -376,13 +384,12 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..2 {
             let mut lhs = {
                 let mut result = permutation_argument_additive_part;
-                field_ops::add_assign_base(
-                    &mut result,
-                    &BabyBearField::from_reduced_raw_repr(268435454u32),
-                );
+                let ram_constant_el = BabyBearField::from_reduced_raw_repr(268435454u32);
+                field_ops::add_assign_base(&mut result, &ram_constant_el);
                 {
                     let mut t = linearization_challenges[0usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(64usize)[j]);
+                    let base = evals.get_unchecked(64usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
@@ -400,13 +407,12 @@ unsafe fn layer_0_final_step_accumulator(
             };
             let mut rhs = {
                 let mut result = permutation_argument_additive_part;
-                field_ops::add_assign_base(
-                    &mut result,
-                    &BabyBearField::from_reduced_raw_repr(268435454u32),
-                );
+                let ram_constant_el = BabyBearField::from_reduced_raw_repr(268435454u32);
+                field_ops::add_assign_base(&mut result, &ram_constant_el);
                 {
                     let mut t = linearization_challenges[0usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(64usize)[j]);
+                    let base = evals.get_unchecked(64usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
@@ -435,13 +441,12 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..2 {
             let mut lhs = {
                 let mut result = permutation_argument_additive_part;
-                field_ops::add_assign_base(
-                    &mut result,
-                    &BabyBearField::from_reduced_raw_repr(268435454u32),
-                );
+                let ram_constant_el = BabyBearField::from_reduced_raw_repr(268435454u32);
+                field_ops::add_assign_base(&mut result, &ram_constant_el);
                 {
                     let mut t = linearization_challenges[0usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(64usize)[j]);
+                    let base = evals.get_unchecked(64usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
@@ -457,35 +462,38 @@ unsafe fn layer_0_final_step_accumulator(
                 }
                 {
                     let mut t = linearization_challenges[2usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(18usize)[j]);
+                    let base = evals.get_unchecked(18usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
                     let mut t = linearization_challenges[3usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(19usize)[j]);
+                    let base = evals.get_unchecked(19usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
                     let mut t = linearization_challenges[4usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(16usize)[j]);
+                    let base = evals.get_unchecked(16usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
                     let mut t = linearization_challenges[5usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(17usize)[j]);
+                    let base = evals.get_unchecked(17usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 result
             };
             let mut rhs = {
                 let mut result = permutation_argument_additive_part;
-                field_ops::add_assign_base(
-                    &mut result,
-                    &BabyBearField::from_reduced_raw_repr(268435454u32),
-                );
+                let ram_constant_el = BabyBearField::from_reduced_raw_repr(268435454u32);
+                field_ops::add_assign_base(&mut result, &ram_constant_el);
                 {
                     let mut t = linearization_challenges[0usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(64usize)[j]);
+                    let base = evals.get_unchecked(64usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
@@ -501,22 +509,26 @@ unsafe fn layer_0_final_step_accumulator(
                 }
                 {
                     let mut t = linearization_challenges[2usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(22usize)[j]);
+                    let base = evals.get_unchecked(22usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
                     let mut t = linearization_challenges[3usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(23usize)[j]);
+                    let base = evals.get_unchecked(23usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
                     let mut t = linearization_challenges[4usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(20usize)[j]);
+                    let base = evals.get_unchecked(20usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
                     let mut t = linearization_challenges[5usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(21usize)[j]);
+                    let base = evals.get_unchecked(21usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 result
@@ -534,13 +546,12 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..2 {
             let mut lhs = {
                 let mut result = permutation_argument_additive_part;
-                field_ops::add_assign_base(
-                    &mut result,
-                    &BabyBearField::from_reduced_raw_repr(268435454u32),
-                );
+                let ram_constant_el = BabyBearField::from_reduced_raw_repr(268435454u32);
+                field_ops::add_assign_base(&mut result, &ram_constant_el);
                 {
                     let mut t = linearization_challenges[0usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(64usize)[j]);
+                    let base = evals.get_unchecked(64usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
@@ -558,13 +569,12 @@ unsafe fn layer_0_final_step_accumulator(
             };
             let mut rhs = {
                 let mut result = permutation_argument_additive_part;
-                field_ops::add_assign_base(
-                    &mut result,
-                    &BabyBearField::from_reduced_raw_repr(268435454u32),
-                );
+                let ram_constant_el = BabyBearField::from_reduced_raw_repr(268435454u32);
+                field_ops::add_assign_base(&mut result, &ram_constant_el);
                 {
                     let mut t = linearization_challenges[0usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(64usize)[j]);
+                    let base = evals.get_unchecked(64usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
@@ -593,13 +603,12 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..2 {
             let mut lhs = {
                 let mut result = permutation_argument_additive_part;
-                field_ops::add_assign_base(
-                    &mut result,
-                    &BabyBearField::from_reduced_raw_repr(268435454u32),
-                );
+                let ram_constant_el = BabyBearField::from_reduced_raw_repr(268435454u32);
+                field_ops::add_assign_base(&mut result, &ram_constant_el);
                 {
                     let mut t = linearization_challenges[0usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(64usize)[j]);
+                    let base = evals.get_unchecked(64usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
@@ -615,35 +624,38 @@ unsafe fn layer_0_final_step_accumulator(
                 }
                 {
                     let mut t = linearization_challenges[2usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(26usize)[j]);
+                    let base = evals.get_unchecked(26usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
                     let mut t = linearization_challenges[3usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(27usize)[j]);
+                    let base = evals.get_unchecked(27usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
                     let mut t = linearization_challenges[4usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(24usize)[j]);
+                    let base = evals.get_unchecked(24usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
                     let mut t = linearization_challenges[5usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(25usize)[j]);
+                    let base = evals.get_unchecked(25usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 result
             };
             let mut rhs = {
                 let mut result = permutation_argument_additive_part;
-                field_ops::add_assign_base(
-                    &mut result,
-                    &BabyBearField::from_reduced_raw_repr(268435454u32),
-                );
+                let ram_constant_el = BabyBearField::from_reduced_raw_repr(268435454u32);
+                field_ops::add_assign_base(&mut result, &ram_constant_el);
                 {
                     let mut t = linearization_challenges[0usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(64usize)[j]);
+                    let base = evals.get_unchecked(64usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
@@ -659,22 +671,26 @@ unsafe fn layer_0_final_step_accumulator(
                 }
                 {
                     let mut t = linearization_challenges[2usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(30usize)[j]);
+                    let base = evals.get_unchecked(30usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
                     let mut t = linearization_challenges[3usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(31usize)[j]);
+                    let base = evals.get_unchecked(31usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
                     let mut t = linearization_challenges[4usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(28usize)[j]);
+                    let base = evals.get_unchecked(28usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
                     let mut t = linearization_challenges[5usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(29usize)[j]);
+                    let base = evals.get_unchecked(29usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 result
@@ -692,13 +708,12 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..2 {
             let mut lhs = {
                 let mut result = permutation_argument_additive_part;
-                field_ops::add_assign_base(
-                    &mut result,
-                    &BabyBearField::from_reduced_raw_repr(268435454u32),
-                );
+                let ram_constant_el = BabyBearField::from_reduced_raw_repr(268435454u32);
+                field_ops::add_assign_base(&mut result, &ram_constant_el);
                 {
                     let mut t = linearization_challenges[0usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(64usize)[j]);
+                    let base = evals.get_unchecked(64usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
@@ -716,13 +731,12 @@ unsafe fn layer_0_final_step_accumulator(
             };
             let mut rhs = {
                 let mut result = permutation_argument_additive_part;
-                field_ops::add_assign_base(
-                    &mut result,
-                    &BabyBearField::from_reduced_raw_repr(268435454u32),
-                );
+                let ram_constant_el = BabyBearField::from_reduced_raw_repr(268435454u32);
+                field_ops::add_assign_base(&mut result, &ram_constant_el);
                 {
                     let mut t = linearization_challenges[0usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(64usize)[j]);
+                    let base = evals.get_unchecked(64usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
@@ -751,13 +765,12 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..2 {
             let mut lhs = {
                 let mut result = permutation_argument_additive_part;
-                field_ops::add_assign_base(
-                    &mut result,
-                    &BabyBearField::from_reduced_raw_repr(268435454u32),
-                );
+                let ram_constant_el = BabyBearField::from_reduced_raw_repr(268435454u32);
+                field_ops::add_assign_base(&mut result, &ram_constant_el);
                 {
                     let mut t = linearization_challenges[0usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(64usize)[j]);
+                    let base = evals.get_unchecked(64usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
@@ -773,35 +786,38 @@ unsafe fn layer_0_final_step_accumulator(
                 }
                 {
                     let mut t = linearization_challenges[2usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(34usize)[j]);
+                    let base = evals.get_unchecked(34usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
                     let mut t = linearization_challenges[3usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(35usize)[j]);
+                    let base = evals.get_unchecked(35usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
                     let mut t = linearization_challenges[4usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(32usize)[j]);
+                    let base = evals.get_unchecked(32usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
                     let mut t = linearization_challenges[5usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(33usize)[j]);
+                    let base = evals.get_unchecked(33usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 result
             };
             let mut rhs = {
                 let mut result = permutation_argument_additive_part;
-                field_ops::add_assign_base(
-                    &mut result,
-                    &BabyBearField::from_reduced_raw_repr(268435454u32),
-                );
+                let ram_constant_el = BabyBearField::from_reduced_raw_repr(268435454u32);
+                field_ops::add_assign_base(&mut result, &ram_constant_el);
                 {
                     let mut t = linearization_challenges[0usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(64usize)[j]);
+                    let base = evals.get_unchecked(64usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
@@ -817,22 +833,26 @@ unsafe fn layer_0_final_step_accumulator(
                 }
                 {
                     let mut t = linearization_challenges[2usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(38usize)[j]);
+                    let base = evals.get_unchecked(38usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
                     let mut t = linearization_challenges[3usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(39usize)[j]);
+                    let base = evals.get_unchecked(39usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
                     let mut t = linearization_challenges[4usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(36usize)[j]);
+                    let base = evals.get_unchecked(36usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
                     let mut t = linearization_challenges[5usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(37usize)[j]);
+                    let base = evals.get_unchecked(37usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 result
@@ -850,13 +870,12 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..2 {
             let mut lhs = {
                 let mut result = permutation_argument_additive_part;
-                field_ops::add_assign_base(
-                    &mut result,
-                    &BabyBearField::from_reduced_raw_repr(268435454u32),
-                );
+                let ram_constant_el = BabyBearField::from_reduced_raw_repr(268435454u32);
+                field_ops::add_assign_base(&mut result, &ram_constant_el);
                 {
                     let mut t = linearization_challenges[0usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(64usize)[j]);
+                    let base = evals.get_unchecked(64usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
@@ -874,13 +893,12 @@ unsafe fn layer_0_final_step_accumulator(
             };
             let mut rhs = {
                 let mut result = permutation_argument_additive_part;
-                field_ops::add_assign_base(
-                    &mut result,
-                    &BabyBearField::from_reduced_raw_repr(268435454u32),
-                );
+                let ram_constant_el = BabyBearField::from_reduced_raw_repr(268435454u32);
+                field_ops::add_assign_base(&mut result, &ram_constant_el);
                 {
                     let mut t = linearization_challenges[0usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(64usize)[j]);
+                    let base = evals.get_unchecked(64usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
@@ -909,13 +927,12 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..2 {
             let mut lhs = {
                 let mut result = permutation_argument_additive_part;
-                field_ops::add_assign_base(
-                    &mut result,
-                    &BabyBearField::from_reduced_raw_repr(268435454u32),
-                );
+                let ram_constant_el = BabyBearField::from_reduced_raw_repr(268435454u32);
+                field_ops::add_assign_base(&mut result, &ram_constant_el);
                 {
                     let mut t = linearization_challenges[0usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(64usize)[j]);
+                    let base = evals.get_unchecked(64usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
@@ -931,35 +948,38 @@ unsafe fn layer_0_final_step_accumulator(
                 }
                 {
                     let mut t = linearization_challenges[2usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(42usize)[j]);
+                    let base = evals.get_unchecked(42usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
                     let mut t = linearization_challenges[3usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(43usize)[j]);
+                    let base = evals.get_unchecked(43usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
                     let mut t = linearization_challenges[4usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(40usize)[j]);
+                    let base = evals.get_unchecked(40usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
                     let mut t = linearization_challenges[5usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(41usize)[j]);
+                    let base = evals.get_unchecked(41usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 result
             };
             let mut rhs = {
                 let mut result = permutation_argument_additive_part;
-                field_ops::add_assign_base(
-                    &mut result,
-                    &BabyBearField::from_reduced_raw_repr(268435454u32),
-                );
+                let ram_constant_el = BabyBearField::from_reduced_raw_repr(268435454u32);
+                field_ops::add_assign_base(&mut result, &ram_constant_el);
                 {
                     let mut t = linearization_challenges[0usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(64usize)[j]);
+                    let base = evals.get_unchecked(64usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
@@ -975,22 +995,26 @@ unsafe fn layer_0_final_step_accumulator(
                 }
                 {
                     let mut t = linearization_challenges[2usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(46usize)[j]);
+                    let base = evals.get_unchecked(46usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
                     let mut t = linearization_challenges[3usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(47usize)[j]);
+                    let base = evals.get_unchecked(47usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
                     let mut t = linearization_challenges[4usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(44usize)[j]);
+                    let base = evals.get_unchecked(44usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
                     let mut t = linearization_challenges[5usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(45usize)[j]);
+                    let base = evals.get_unchecked(45usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 result
@@ -1008,13 +1032,12 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..2 {
             let mut lhs = {
                 let mut result = permutation_argument_additive_part;
-                field_ops::add_assign_base(
-                    &mut result,
-                    &BabyBearField::from_reduced_raw_repr(268435454u32),
-                );
+                let ram_constant_el = BabyBearField::from_reduced_raw_repr(268435454u32);
+                field_ops::add_assign_base(&mut result, &ram_constant_el);
                 {
                     let mut t = linearization_challenges[0usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(64usize)[j]);
+                    let base = evals.get_unchecked(64usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
@@ -1032,13 +1055,12 @@ unsafe fn layer_0_final_step_accumulator(
             };
             let mut rhs = {
                 let mut result = permutation_argument_additive_part;
-                field_ops::add_assign_base(
-                    &mut result,
-                    &BabyBearField::from_reduced_raw_repr(268435454u32),
-                );
+                let ram_constant_el = BabyBearField::from_reduced_raw_repr(268435454u32);
+                field_ops::add_assign_base(&mut result, &ram_constant_el);
                 {
                     let mut t = linearization_challenges[0usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(64usize)[j]);
+                    let base = evals.get_unchecked(64usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
@@ -1067,13 +1089,12 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..2 {
             let mut lhs = {
                 let mut result = permutation_argument_additive_part;
-                field_ops::add_assign_base(
-                    &mut result,
-                    &BabyBearField::from_reduced_raw_repr(268435454u32),
-                );
+                let ram_constant_el = BabyBearField::from_reduced_raw_repr(268435454u32);
+                field_ops::add_assign_base(&mut result, &ram_constant_el);
                 {
                     let mut t = linearization_challenges[0usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(64usize)[j]);
+                    let base = evals.get_unchecked(64usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
@@ -1089,35 +1110,38 @@ unsafe fn layer_0_final_step_accumulator(
                 }
                 {
                     let mut t = linearization_challenges[2usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(50usize)[j]);
+                    let base = evals.get_unchecked(50usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
                     let mut t = linearization_challenges[3usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(51usize)[j]);
+                    let base = evals.get_unchecked(51usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
                     let mut t = linearization_challenges[4usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(48usize)[j]);
+                    let base = evals.get_unchecked(48usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
                     let mut t = linearization_challenges[5usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(49usize)[j]);
+                    let base = evals.get_unchecked(49usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 result
             };
             let mut rhs = {
                 let mut result = permutation_argument_additive_part;
-                field_ops::add_assign_base(
-                    &mut result,
-                    &BabyBearField::from_reduced_raw_repr(268435454u32),
-                );
+                let ram_constant_el = BabyBearField::from_reduced_raw_repr(268435454u32);
+                field_ops::add_assign_base(&mut result, &ram_constant_el);
                 {
                     let mut t = linearization_challenges[0usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(64usize)[j]);
+                    let base = evals.get_unchecked(64usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
@@ -1133,22 +1157,26 @@ unsafe fn layer_0_final_step_accumulator(
                 }
                 {
                     let mut t = linearization_challenges[2usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(54usize)[j]);
+                    let base = evals.get_unchecked(54usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
                     let mut t = linearization_challenges[3usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(55usize)[j]);
+                    let base = evals.get_unchecked(55usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
                     let mut t = linearization_challenges[4usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(52usize)[j]);
+                    let base = evals.get_unchecked(52usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
                     let mut t = linearization_challenges[5usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(53usize)[j]);
+                    let base = evals.get_unchecked(53usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 result
@@ -1166,13 +1194,12 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..2 {
             let mut lhs = {
                 let mut result = permutation_argument_additive_part;
-                field_ops::add_assign_base(
-                    &mut result,
-                    &BabyBearField::from_reduced_raw_repr(268435454u32),
-                );
+                let ram_constant_el = BabyBearField::from_reduced_raw_repr(268435454u32);
+                field_ops::add_assign_base(&mut result, &ram_constant_el);
                 {
                     let mut t = linearization_challenges[0usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(64usize)[j]);
+                    let base = evals.get_unchecked(64usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
@@ -1190,13 +1217,12 @@ unsafe fn layer_0_final_step_accumulator(
             };
             let mut rhs = {
                 let mut result = permutation_argument_additive_part;
-                field_ops::add_assign_base(
-                    &mut result,
-                    &BabyBearField::from_reduced_raw_repr(268435454u32),
-                );
+                let ram_constant_el = BabyBearField::from_reduced_raw_repr(268435454u32);
+                field_ops::add_assign_base(&mut result, &ram_constant_el);
                 {
                     let mut t = linearization_challenges[0usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(64usize)[j]);
+                    let base = evals.get_unchecked(64usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
@@ -1225,13 +1251,12 @@ unsafe fn layer_0_final_step_accumulator(
         for j in 0..2 {
             let mut lhs = {
                 let mut result = permutation_argument_additive_part;
-                field_ops::add_assign_base(
-                    &mut result,
-                    &BabyBearField::from_reduced_raw_repr(268435454u32),
-                );
+                let ram_constant_el = BabyBearField::from_reduced_raw_repr(268435454u32);
+                field_ops::add_assign_base(&mut result, &ram_constant_el);
                 {
                     let mut t = linearization_challenges[0usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(64usize)[j]);
+                    let base = evals.get_unchecked(64usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
@@ -1247,35 +1272,38 @@ unsafe fn layer_0_final_step_accumulator(
                 }
                 {
                     let mut t = linearization_challenges[2usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(58usize)[j]);
+                    let base = evals.get_unchecked(58usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
                     let mut t = linearization_challenges[3usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(59usize)[j]);
+                    let base = evals.get_unchecked(59usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
                     let mut t = linearization_challenges[4usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(56usize)[j]);
+                    let base = evals.get_unchecked(56usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
                     let mut t = linearization_challenges[5usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(57usize)[j]);
+                    let base = evals.get_unchecked(57usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 result
             };
             let mut rhs = {
                 let mut result = permutation_argument_additive_part;
-                field_ops::add_assign_base(
-                    &mut result,
-                    &BabyBearField::from_reduced_raw_repr(268435454u32),
-                );
+                let ram_constant_el = BabyBearField::from_reduced_raw_repr(268435454u32);
+                field_ops::add_assign_base(&mut result, &ram_constant_el);
                 {
                     let mut t = linearization_challenges[0usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(64usize)[j]);
+                    let base = evals.get_unchecked(64usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
@@ -1291,22 +1319,26 @@ unsafe fn layer_0_final_step_accumulator(
                 }
                 {
                     let mut t = linearization_challenges[2usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(62usize)[j]);
+                    let base = evals.get_unchecked(62usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
                     let mut t = linearization_challenges[3usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(63usize)[j]);
+                    let base = evals.get_unchecked(63usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
                     let mut t = linearization_challenges[4usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(60usize)[j]);
+                    let base = evals.get_unchecked(60usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 {
                     let mut t = linearization_challenges[5usize];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(61usize)[j]);
+                    let base = evals.get_unchecked(61usize)[j];
+                    field_ops::mul_assign_by_base(&mut t, &base);
                     field_ops::add_assign(&mut result, &t);
                 }
                 result

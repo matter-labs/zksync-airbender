@@ -612,6 +612,14 @@ pub fn generate_whir_final_round<MW: MersenneWrapper>(
     let horner_mul = MW::mul_assign_by_base(quote! { eval }, quote! { query_point });
     let horner_add = MW::add_assign(quote! { eval }, quote! { coeff });
 
+    let mul_t_zj = MW::mul_assign(quote! { t }, quote! { zj });
+    let add_t_c0 = MW::add_assign(quote! { t }, quote! { c0 });
+    let mul_expected_fm = MW::mul_assign(quote! { expected }, quote! { f_m_at_z_initial });
+    let horner_mul_s = MW::mul_assign(quote! { eval }, quote! { s });
+    let mul_eval_prefactor = MW::mul_assign(quote! { eval }, quote! { entry.prefactor });
+    let mul_eval_coefficient = MW::mul_assign(quote! { eval }, quote! { entry.coefficient });
+    let add_expected_eval = MW::add_assign(quote! { expected }, quote! { eval });
+
     let num_rounds = whir_schedule.whir_steps_schedule.len();
     let final_round_idx = num_rounds - 1;
 
@@ -790,8 +798,8 @@ pub fn generate_whir_final_round<MW: MersenneWrapper>(
                             let c0 = *f_m_buf.get_unchecked(2 * i);
                             let c1 = *f_m_buf.get_unchecked(2 * i + 1);
                             let mut t = c1;
-                            field_ops::mul_assign(&mut t, &zj);
-                            field_ops::add_assign(&mut t, &c0);
+                            #mul_t_zj;
+                            #add_t_c0;
                             f_m_buf.set_unchecked(i, t);
                             i += 1;
                         }
@@ -802,7 +810,7 @@ pub fn generate_whir_final_round<MW: MersenneWrapper>(
                 let f_m_at_z_initial = *f_m_buf.get_unchecked(0);
 
                 let mut expected = accumulator.z_initial_prefactor;
-                field_ops::mul_assign(&mut expected, &f_m_at_z_initial);
+                #mul_expected_fm;
 
                 {
                     let n = accumulator.pow_entries.len();
@@ -814,13 +822,13 @@ pub fn generate_whir_final_round<MW: MersenneWrapper>(
                         let mut j = FINAL_MONOMIALS_LEN - 1;
                         while j > 0 {
                             j -= 1;
-                            field_ops::mul_assign(&mut eval, &s);
+                            #horner_mul_s;
                             let coeff = *monomials.get_unchecked(j);
-                            field_ops::add_assign(&mut eval, &coeff);
+                            #horner_add;
                         }
-                        field_ops::mul_assign(&mut eval, &entry.prefactor);
-                        field_ops::mul_assign(&mut eval, &entry.coefficient);
-                        field_ops::add_assign(&mut expected, &eval);
+                        #mul_eval_prefactor;
+                        #mul_eval_coefficient;
+                        #add_expected_eval;
                         ei += 1;
                     }
                 }

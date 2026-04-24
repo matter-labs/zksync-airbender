@@ -1274,6 +1274,12 @@ fn emit_inits_teardowns<MW: MersenneWrapper, F: PrimeField>(
     let setup_lo_idx = addr_to_idx(&setup[0], input_sorted_addrs);
     let setup_hi_idx = addr_to_idx(&setup[1], input_sorted_addrs);
 
+    let mul_t_base = MW::mul_assign_by_base(quote! { t }, quote! { base });
+    let add_result_t = MW::add_assign(quote! { result }, quote! { t });
+    let add_result_ram = MW::add_assign_base(quote! { result }, quote! { ram_constant_el });
+    let add_addr_set = MW::add_assign_base(quote! { addr_hi }, quote! { set_field });
+    let mul_t_addr = MW::mul_assign_by_base(quote! { t }, quote! { addr_hi });
+
     let mut val_comp = TokenStream::new();
 
     for (side, set_idx) in ["lhs", "rhs"].iter().zip(set_idxes.iter()) {
@@ -1306,23 +1312,27 @@ fn emit_inits_teardowns<MW: MersenneWrapper, F: PrimeField>(
                 quote! {
                     {
                         let mut t = linearization_challenges[#PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
-                        field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(#ts_lo_idx)[j]);
-                        field_ops::add_assign(&mut result, &t);
+                        let base = evals.get_unchecked(#ts_lo_idx)[j];
+                        #mul_t_base;
+                        #add_result_t;
                     }
                     {
                         let mut t = linearization_challenges[#PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
-                        field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(#ts_hi_idx)[j]);
-                        field_ops::add_assign(&mut result, &t);
+                        let base = evals.get_unchecked(#ts_hi_idx)[j];
+                        #mul_t_base;
+                        #add_result_t;
                     }
                     {
                         let mut t = linearization_challenges[#PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
-                        field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(#val_lo_idx)[j]);
-                        field_ops::add_assign(&mut result, &t);
+                        let base = evals.get_unchecked(#val_lo_idx)[j];
+                        #mul_t_base;
+                        #add_result_t;
                     }
                     {
                         let mut t = linearization_challenges[#PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
-                        field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(#val_hi_idx)[j]);
-                        field_ops::add_assign(&mut result, &t);
+                        let base = evals.get_unchecked(#val_hi_idx)[j];
+                        #mul_t_base;
+                        #add_result_t;
                     }
                 }
             }
@@ -1333,11 +1343,13 @@ fn emit_inits_teardowns<MW: MersenneWrapper, F: PrimeField>(
         val_comp.extend(quote! {
             let mut #var = {
                 let mut result = permutation_argument_additive_part;
-                field_ops::add_assign_base(&mut result, &#field_struct_local::from_reduced_raw_repr(#ram_constant));
+                let ram_constant_el = #field_struct_local::from_reduced_raw_repr(#ram_constant);
+                #add_result_ram;
                 {
                     let mut t = linearization_challenges[#PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(#setup_lo_idx)[j]);
-                    field_ops::add_assign(&mut result, &t);
+                    let base = evals.get_unchecked(#setup_lo_idx)[j];
+                    #mul_t_base;
+                    #add_result_t;
                 }
                 {
                     let mut t = linearization_challenges[#PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
@@ -1345,10 +1357,10 @@ fn emit_inits_teardowns<MW: MersenneWrapper, F: PrimeField>(
                     let set_bits = (#set_idx_val as u32) << address_high_bits_shift;
                     if set_bits != 0 {
                         let set_field = #field_struct_local::from_u32_unchecked(set_bits);
-                        field_ops::add_assign_base(&mut addr_hi, &set_field);
+                        #add_addr_set;
                     }
-                    field_ops::mul_assign_by_base(&mut t, &addr_hi);
-                    field_ops::add_assign(&mut result, &t);
+                    #mul_t_addr;
+                    #add_result_t;
                 }
                 #ts_val_terms
                 result

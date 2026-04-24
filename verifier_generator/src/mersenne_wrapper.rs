@@ -19,6 +19,8 @@ pub trait MersenneWrapper {
     fn sub_assign_base(a: TokenStream, b: TokenStream) -> TokenStream;
     fn mul_assign_by_base(a: TokenStream, b: TokenStream) -> TokenStream;
 
+    fn double(a: TokenStream) -> TokenStream;
+    fn square(a: TokenStream) -> TokenStream;
     fn negate(a: TokenStream) -> TokenStream;
 
     /// Convert a raw u32 word to a base field element (from NDS).
@@ -95,6 +97,14 @@ impl MersenneWrapper for DefaultBabyBearField {
 
     fn mul_assign_by_base(a: TokenStream, b: TokenStream) -> TokenStream {
         quote! { field_ops::mul_assign_by_base(&mut #a, & #b) }
+    }
+
+    fn double(a: TokenStream) -> TokenStream {
+        quote! { field_ops::double(&mut #a) }
+    }
+
+    fn square(a: TokenStream) -> TokenStream {
+        quote! { field_ops::square(&mut #a) }
     }
 
     fn negate(a: TokenStream) -> TokenStream {
@@ -190,6 +200,14 @@ impl MersenneWrapper for DefaultMersenne31Field {
 
     fn mul_assign_by_base(a: TokenStream, b: TokenStream) -> TokenStream {
         quote! { field_ops::mul_assign_by_base(&mut #a, & #b) }
+    }
+
+    fn double(a: TokenStream) -> TokenStream {
+        quote! { field_ops::double(&mut #a) }
+    }
+
+    fn square(a: TokenStream) -> TokenStream {
+        quote! { field_ops::square(&mut #a) }
     }
 
     fn negate(a: TokenStream) -> TokenStream {

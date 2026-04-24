@@ -36,6 +36,20 @@ pub fn generate_whir_common<MW: MersenneWrapper>(max_fold_steps: usize) -> Token
     let add_t_a = MW::add_assign(quote! { t }, quote! { a });
     let add_t_b = MW::add_assign(quote! { t }, quote! { b });
     let mul_t_half = MW::mul_assign_by_base(quote! { t }, quote! { #field_struct::HALF });
+    let mul_root_offset = MW::mul_assign(quote! { root }, quote! { high_powers_offset });
+    let square_root_inv = MW::square(quote! { root_inv });
+
+    let sub_oma_alpha = MW::sub_assign(quote! { one_minus_alpha }, quote! { alpha });
+    let double_two_alpha = MW::double(quote! { two_alpha });
+    let mul_two_a_zi_zi = MW::mul_assign(quote! { two_a_zi }, quote! { zi });
+    let add_eq_two_a_zi = MW::add_assign(quote! { eq }, quote! { two_a_zi });
+    let sub_eq_zi = MW::sub_assign(quote! { eq }, quote! { zi });
+    let mul_prefactor_eq = MW::mul_assign(quote! { acc.z_initial_prefactor }, quote! { eq });
+    let mul_two_a_s_s = MW::mul_assign(quote! { two_a_s }, quote! { s });
+    let add_eq_two_a_s = MW::add_assign(quote! { eq }, quote! { two_a_s });
+    let sub_eq_s = MW::sub_assign(quote! { eq }, quote! { s });
+    let mul_entry_prefactor_eq = MW::mul_assign(quote! { entry.prefactor }, quote! { eq });
+    let square_current_scalar = MW::square(quote! { entry.current_scalar });
 
     quote! {
         #[inline(always)]
@@ -168,7 +182,8 @@ pub fn generate_whir_common<MW: MersenneWrapper>(max_fold_steps: usize) -> Token
                     #mul_t_challenge;
 
                     let mut root = root_inv;
-                    field_ops::mul_assign(&mut root, unsafe { high_powers_offsets.get_unchecked(pair_idx) });
+                    let high_powers_offset = unsafe { *high_powers_offsets.get_unchecked(pair_idx) };
+                    #mul_root_offset;
                     #mul_t_root;
 
                     #add_t_a;
@@ -179,7 +194,7 @@ pub fn generate_whir_common<MW: MersenneWrapper>(max_fold_steps: usize) -> Token
                     pair_idx += 1;
                 }
 
-                field_ops::square(&mut root_inv);
+                #square_root_inv;
                 round += 1;
             }
 
@@ -280,19 +295,21 @@ pub fn generate_whir_common<MW: MersenneWrapper>(max_fold_steps: usize) -> Token
             alpha: #quartic_struct,
             z_initial: &[#quartic_struct],
         ) {
+            // eq(z, α) = (1-z)(1-α) + zα = (1-α) - z + 2αz
+            // precompute (1-α) and 2α; each inner eq eval is 1 mul + 1 add + 1 sub.
             let mut one_minus_alpha = #quartic_one;
-            field_ops::sub_assign(&mut one_minus_alpha, &alpha);
+            #sub_oma_alpha;
+            let mut two_alpha = alpha;
+            #double_two_alpha;
 
             unsafe {
                 let zi = *z_initial.get_unchecked(acc.z_initial_idx);
                 let mut eq = one_minus_alpha;
-                let mut one_minus_zi = #quartic_one;
-                field_ops::sub_assign(&mut one_minus_zi, &zi);
-                field_ops::mul_assign(&mut eq, &one_minus_zi);
-                let mut a_zi = alpha;
-                field_ops::mul_assign(&mut a_zi, &zi);
-                field_ops::add_assign(&mut eq, &a_zi);
-                field_ops::mul_assign(&mut acc.z_initial_prefactor, &eq);
+                let mut two_a_zi = two_alpha;
+                #mul_two_a_zi_zi;
+                #add_eq_two_a_zi;
+                #sub_eq_zi;
+                #mul_prefactor_eq;
                 acc.z_initial_idx += 1;
             }
 
@@ -303,14 +320,12 @@ pub fn generate_whir_common<MW: MersenneWrapper>(max_fold_steps: usize) -> Token
                     let entry = acc.pow_entries.get_unchecked_mut(i);
                     let s = entry.current_scalar;
                     let mut eq = one_minus_alpha;
-                    let mut one_minus_s = #quartic_one;
-                    field_ops::sub_assign(&mut one_minus_s, &s);
-                    field_ops::mul_assign(&mut eq, &one_minus_s);
-                    let mut a_s = alpha;
-                    field_ops::mul_assign(&mut a_s, &s);
-                    field_ops::add_assign(&mut eq, &a_s);
-                    field_ops::mul_assign(&mut entry.prefactor, &eq);
-                    field_ops::square(&mut entry.current_scalar);
+                    let mut two_a_s = two_alpha;
+                    #mul_two_a_s_s;
+                    #add_eq_two_a_s;
+                    #sub_eq_s;
+                    #mul_entry_prefactor_eq;
+                    #square_current_scalar;
                 }
                 i += 1;
             }
