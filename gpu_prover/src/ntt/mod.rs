@@ -24,7 +24,7 @@ pub(crate) use ntt::{
 };
 
 mod hypercube;
-pub use hypercube::hypercube_natural_evals_to_bitreversed_monomials;
+pub use hypercube::hypercube_X1_MSB_evals_to_X1_MSB_monomials;
 #[cfg(test)]
 pub(crate) use hypercube::{
     hypercube_evals_to_monomials_2_pass, hypercube_evals_to_monomials_3_pass,
@@ -215,6 +215,25 @@ pub(crate) fn hypercube_coeffs_natural_to_natural_evals(
     }
 
     for stage in 0..log_n {
+        launch_hypercube_forward_stage(dst, log_n, stage, stream)?;
+    }
+    Ok(())
+}
+
+pub(crate) fn hypercube_coeffs_bitrev_to_bitrev_evals(
+    src: &DeviceSlice<BF>,
+    dst: &mut DeviceSlice<BF>,
+    log_n: usize,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    assert_eq!(src.len(), 1usize << log_n);
+    assert_eq!(dst.len(), src.len());
+    memory_copy_async(dst, src, stream)?;
+    if log_n == 0 {
+        return Ok(());
+    }
+
+    for stage in (0..log_n).rev() {
         launch_hypercube_forward_stage(dst, log_n, stage, stream)?;
     }
     Ok(())

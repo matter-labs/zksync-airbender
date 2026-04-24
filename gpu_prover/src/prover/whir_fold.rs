@@ -26,8 +26,8 @@ use worker::Worker;
 
 use crate::allocator::tracker::AllocationPlacement;
 use crate::ntt::{
-    hypercube_coeffs_natural_to_natural_evals, natural_evals_to_bitreversed_coeffs,
-    natural_evals_to_bitreversed_monomials,
+    hypercube_coeffs_bitrev_to_bitrev_evals, hypercube_coeffs_natural_to_natural_evals,
+    natural_evals_to_bitreversed_coeffs, natural_evals_to_bitreversed_monomials,
 };
 use crate::ops::blake2s::Digest;
 use crate::ops::complex::{
@@ -1014,7 +1014,7 @@ fn initialize_batched_forms_impl(
         context.get_device_properties(),
     )?;
     // TODO: remove after writing hypercube kernel
-    bit_reverse_in_place(&mut state.sumchecked_poly_monomial_form, stream)?;
+    // bit_reverse_in_place(&mut state.sumchecked_poly_monomial_form, stream)?;
     // deserialize_whir_e4_columns(
     //     &serialized,
     //     &mut state.sumchecked_poly_monomial_form[..trace_len],
@@ -1025,7 +1025,8 @@ fn initialize_batched_forms_impl(
     let mut bf_scratch = context.alloc(trace_len, AllocationPlacement::BestFit)?;
     for column in 0..EXT4_DEGREE {
         let src = &monomials_slice[column * trace_len..(column + 1) * trace_len];
-        hypercube_coeffs_natural_to_natural_evals(
+        // hypercube_coeffs_natural_to_natural_evals(
+        hypercube_coeffs_bitrev_to_bitrev_evals(
             src,
             &mut bf_scratch,
             trace_len.trailing_zeros() as usize,
@@ -1037,7 +1038,7 @@ fn initialize_batched_forms_impl(
     {
         let mut evals_matrix = DeviceMatrixMut::new(&mut serialized, trace_len);
         // TODO: remove after writing hypercube kernel
-        bit_reverse_in_place(&mut evals_matrix, stream)?;
+        // bit_reverse_in_place(&mut evals_matrix, stream)?;
     }
     deserialize_whir_e4_columns(
         &serialized,
@@ -1045,7 +1046,7 @@ fn initialize_batched_forms_impl(
         stream,
     )?;
     // TODO: remove after writing hypercube kernel
-    bit_reverse_in_place(&mut state.sumchecked_poly_monomial_form, stream)?;
+    // bit_reverse_in_place(&mut state.sumchecked_poly_monomial_form, stream)?;
 
     Ok([
         memory_weights.to_vec(),
@@ -1188,7 +1189,7 @@ fn schedule_initialize_batched_forms(
         context.get_device_properties(),
     )?;
     // TODO: remove after writing hypercube kernel
-    bit_reverse_in_place(&mut state.sumchecked_poly_monomial_form, stream)?;
+    // bit_reverse_in_place(&mut state.sumchecked_poly_monomial_form, stream)?;
     // deserialize_whir_e4_columns(
     //     &serialized,
     //     &mut state.sumchecked_poly_monomial_form[..trace_len],
@@ -1199,7 +1200,8 @@ fn schedule_initialize_batched_forms(
     let mut bf_scratch = context.alloc(trace_len, AllocationPlacement::BestFit)?;
     for column in 0..EXT4_DEGREE {
         let src = &monomials_slice[column * trace_len..(column + 1) * trace_len];
-        hypercube_coeffs_natural_to_natural_evals(
+        // hypercube_coeffs_natural_to_natural_evals(
+        hypercube_coeffs_bitrev_to_bitrev_evals(
             src,
             &mut bf_scratch,
             trace_len.trailing_zeros() as usize,
@@ -1211,7 +1213,7 @@ fn schedule_initialize_batched_forms(
     {
         let mut evals_matrix = DeviceMatrixMut::new(&mut serialized, trace_len);
         // TODO: remove after writing hypercube kernel
-        bit_reverse_in_place(&mut evals_matrix, stream)?;
+        // bit_reverse_in_place(&mut evals_matrix, stream)?;
     }
     deserialize_whir_e4_columns(
         &serialized,
@@ -1219,7 +1221,7 @@ fn schedule_initialize_batched_forms(
         stream,
     )?;
     // TODO: remove after writing hypercube kernel
-    bit_reverse_in_place(&mut state.sumchecked_poly_monomial_form, stream)?;
+    // bit_reverse_in_place(&mut state.sumchecked_poly_monomial_form, stream)?;
 
     Ok(())
 }
