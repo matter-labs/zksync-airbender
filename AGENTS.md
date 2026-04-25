@@ -19,11 +19,44 @@
 
 ## Context Efficiency
 
-- Prefer targeted reads over whole-file reads for large files: locate the relevant span first with `grep`/`rg`, then read only that range.
-- Prefer `rg` (ripgrep) over recursive `grep` when available; fall back to `grep -r` otherwise.
-- For chatty commands, trim output at the source rather than paging it into context: `cargo build 2>&1 | tail -50`, `cargo test ... 2>&1 | grep -E 'FAIL|error'`, `| wc -l` when only the count matters.
-- For expensive-to-rerun commands (long release builds, full test suites, profiling runs), redirect to a file and query it afterwards, so you can re-inspect with different filters without re-running: `cargo test -p <crate> > /tmp/test.out 2>&1`, then `tail -40 /tmp/test.out` or `rg -n 'FAIL|error' /tmp/test.out`.
-- When only errors matter from a Rust build/check, suppress warnings with `RUSTFLAGS="-Awarnings"` (e.g. `RUSTFLAGS="-Awarnings" cargo check -p <crate>`). This repo's crates produce substantial warning noise that is usually unrelated to the task.
-- Run `cargo check -p <crate>` before a `cargo build --release` on that crate — much faster feedback loop, and release builds here can take multiple minutes.
-- Scope cargo invocations with `-p <crate>` (and `--lib` / `--tests` / `--bin <name>` where possible) instead of building the whole workspace.
-- Delegate broad codebase exploration or any task with large intermediate outputs to a subagent when your harness supports it, so the noise stays out of the main context and only the summary comes back.
+This repo contains generated circuit code, large layout/proof JSON, legacy-GPU
+reference dirs, and pre-built `.elf` binaries. A single unscoped `rg` or `git
+show` can pull hundreds of thousands of tokens into context. The rules below
+are not preferences — follow them on every search and history inspection.
+
+### Search Hygiene
+
+- **Use the agent ignore file for broad searches.** Default to `rg --ignore-file .agents/search_excludes.txt <pattern>`. That file excludes generated code, compiled-circuit layouts, proof JSON, legacy-GPU dirs, `.elf` binaries, and other artifacts that bloat context with no semantic value. Drop the flag only when the task specifically needs to search those paths. Excluded files are still tracked by git and remain readable directly via `Read`/`cat` — `--ignore-file` only filters search.
+- **List before reading content.** First pass of a search uses `rg -l <pattern>` (file list) or `rg -c <pattern>` (per-file counts), not bare `rg <pattern>`. Decide which files are relevant from the list, then read content only from those. Don't dump full match output into context as a first step.
+- **Cap match count when probing.** When you need content, use `rg -n -m 3 <pattern>` or `rg -n --max-columns 200 <pattern>` for the first look. Widen only if needed.
+- **Targeted reads over whole-file reads.** For files >500 lines, locate the relevant span with `rg -n` first and read only that range. Never read a full file in `compiled_circuits/`, `test_proofs/`, or `**/generated/` — they are machine-generated and not meaningfully readable end-to-end.
+- **Prefer `rg` over recursive `grep`.** Fall back to `grep -r` only if `rg` is unavailable.
+
+### Output Trimming
+
+- **Trim chatty commands at the source**, not by paging into context: `cargo build 2>&1 | tail -50`, `cargo test ... 2>&1 | grep -E 'FAIL|error'`, `| wc -l` when only the count matters.
+- **Cache expensive runs.** For long builds, full test suites, or profiling, redirect to a file and query afterwards: `cargo test -p <crate> > /tmp/test.out 2>&1`, then `tail -40 /tmp/test.out` or `rg -n 'FAIL|error' /tmp/test.out`. Lets you re-inspect with different filters without re-running.
+- **Suppress warnings** when only errors matter: `RUSTFLAGS="-Awarnings" cargo check -p <crate>`. This repo's crates produce substantial warning noise that is usually unrelated to the task.
+
+### Cargo Scoping
+
+- Run `cargo check -p <crate>` before `cargo build --release` — much faster feedback, and release builds here can take multiple minutes.
+- Always scope with `-p <crate>` (and `--lib` / `--tests` / `--bin <name>` where possible) instead of building the workspace.
+
+### Git History Hygiene
+
+- **Always start with `git show --stat <sha>`**, never `git show <sha>` on a commit you haven't sized. If `--stat` shows generated-file paths, scope the diff: `git show <sha> -- <path>` or skip the full diff entirely.
+- **Don't use `git log -p`** without a path filter when generated files might be touched.
+
+### Size-Aware Abort
+
+- If a single tool result exceeds ~500 lines or is visibly very large, **stop**. Do not read further matches from it. Re-scope (narrower path, narrower pattern, lower `-m`) and retry. If you cannot narrow it, hand the search to a subagent and only consume the summary.
+
+### Subagent Triggers (Required, Not Optional)
+
+Any of the following MUST go through a subagent so the bulk output stays out of the main context:
+
+- An unscoped `rg` / `grep` across the workspace.
+- Exploratory reads of files under `compiled_circuits/`, `test_proofs/`, `**/generated/`, `gpu_prover_old/`, or `gpu_witness_eval_generator_old/`. (Targeted single-file reads with a known path are fine.)
+- `git show <sha>` or `git log -p` on commits known or suspected to touch generated files.
+- Any task that will produce large intermediate output where you only need the summary.
