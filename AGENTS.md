@@ -45,18 +45,23 @@ are not preferences — follow them on every search and history inspection.
 
 ### Git History Hygiene
 
-- **Always start with `git show --stat <sha>`**, never `git show <sha>` on a commit you haven't sized. If `--stat` shows generated-file paths, scope the diff: `git show <sha> -- <path>` or skip the full diff entirely.
-- **Don't use `git log -p`** without a path filter when generated files might be touched.
+- **Preflight unfamiliar commits with `git diff-tree --no-commit-id --name-only -r <sha>`** (paths only, no diff or stat). For commits that may touch generated paths or have a wide blast radius, do this before any `--stat`/diff and decide which paths actually matter.
+- **Cap `git show --stat`.** Use `git show --stat --stat-count=80 <sha>`; if the output reports files were omitted, decide whether the omitted paths matter before widening. Never run `git show <sha>` (full diff) on a commit you haven't sized.
+- **Scope full diffs.** When you need diff content, scope it: `git show <sha> -- <path>` or `git log -p -- <path>`. Don't use `git log -p` without a path filter when generated files might be touched.
 
 ### Size-Aware Abort
 
-- If a single tool result exceeds ~500 lines or is visibly very large, **stop**. Do not read further matches from it. Re-scope (narrower path, narrower pattern, lower `-m`) and retry. If you cannot narrow it, hand the search to a subagent and only consume the summary.
+- If a single tool result exceeds ~500 lines or is visibly very large, **stop**. Do not read further matches from it. Re-scope (narrower path, narrower pattern, lower `-m`) and retry. If narrowing isn't possible, fall back to subagent delegation (below) or summarize aggressively without ingesting the full output.
 
-### Subagent Triggers (Required, Not Optional)
+### Subagent Delegation
 
-Any of the following MUST go through a subagent so the bulk output stays out of the main context:
+If subagents are available and permitted by the active runtime instructions, delegate the operations below so the bulk output stays out of the main conversation. If subagents are unavailable or restricted, narrow the operation locally and summarize aggressively instead — do not run the broad operation in-context as a fallback.
 
 - An unscoped `rg` / `grep` across the workspace.
 - Exploratory reads of files under `compiled_circuits/`, `test_proofs/`, `**/generated/`, `gpu_prover_old/`, or `gpu_witness_eval_generator_old/`. (Targeted single-file reads with a known path are fine.)
 - `git show <sha>` or `git log -p` on commits known or suspected to touch generated files.
 - Any task that will produce large intermediate output where you only need the summary.
+
+### Research Termination
+
+- **Stop once the question is answered.** For explanation-only tasks, stop collecting evidence as soon as you have enough source-backed support for your answer. Don't enumerate line anchors for every supporting detail unless the user asks for exhaustive references.
