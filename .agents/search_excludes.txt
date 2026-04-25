@@ -1,0 +1,47 @@
+# Ripgrep ignore file for AI agent broad searches.
+#
+# Usage:
+#   rg --ignore-file .agents/search_excludes.txt <pattern>
+#
+# Files listed here remain tracked in git and readable directly by path
+# (Read tool, cat, less, targeted `rg path/to/file`). This file only filters
+# *broad* rg searches. Drop the flag when the task specifically needs to
+# search generated, proof, layout, or legacy-GPU content.
+#
+# Syntax is gitignore-style. Patterns are matched anywhere in the tree
+# unless anchored with a leading `/`.
+
+# --- Build artifacts ---
+target/
+
+# --- Generated source (Rust + CUDA) ---
+generated/
+compiled_circuits/
+tools/generator/output/
+
+# --- Proof, witness, and layout artifacts ---
+prover/test_proofs/
+*_gkr_proof.json
+*_layout_gkr.json
+*_layout_no_caches_gkr.json
+*_preprocessed_layout_gkr.json
+*_preprocessed_layout_no_caches_gkr.json
+*_ssa_gkr.json
+*_witness
+*.vk.json
+
+# --- Legacy GPU code (kept for reference/diffing, not active) ---
+gpu_prover_old/
+gpu_witness_eval_generator_old/
+
+# --- Compiled binaries ---
+*.elf
+*.bin
+*.text
+tools/gkr_verifier/
+
+# --- Profiling / visualization artifacts ---
+verifier/gkr_flamegraph_*.svg
+
+# --- Large reference docs ---
+unpriv-isa-asciidoc.pdf
