@@ -1,5 +1,8 @@
 #![no_std]
-#![cfg_attr(all(feature = "verifier_stats", not(target_arch = "riscv32")), feature(thread_local))]
+#![cfg_attr(
+    all(feature = "verifier_stats", not(target_arch = "riscv32")),
+    feature(thread_local)
+)]
 
 #[cfg(feature = "verifier_stats")]
 pub mod stats;

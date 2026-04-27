@@ -33,9 +33,9 @@ pub unsafe fn blake_csr_trigger_delegation_reduced_rounds(
     mut mask: u32,
 ) {
     #[cfg(feature = "verifier_stats")]
-        {
-            crate::stats::GKR_VERIFY_STATS.borrow_mut().blake2s_hashes += 1;
-        }
+    {
+        crate::stats::GKR_VERIFY_STATS.borrow_mut().blake2s_hashes += 1;
+    }
 
     unsafe {
         core::arch::asm!(
@@ -64,9 +64,9 @@ pub unsafe fn blake_csr_trigger_delegation_full_rounds(
     mut mask: u32,
 ) {
     #[cfg(feature = "verifier_stats")]
-        {
-            crate::stats::GKR_VERIFY_STATS.borrow_mut().blake2s_hashes += 1;
-        }
+    {
+        crate::stats::GKR_VERIFY_STATS.borrow_mut().blake2s_hashes += 1;
+    }
 
     unsafe {
         core::arch::asm!(

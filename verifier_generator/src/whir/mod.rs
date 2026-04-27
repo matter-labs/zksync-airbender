@@ -23,7 +23,7 @@ pub fn generate_whir_verify<MW: FieldWrapper>(whir_hash_buf_size: usize) -> Toke
         "WHIR SINGLE ROUND 16", "WHIR SINGLE ROUND 17", "WHIR SINGLE ROUND 18", "WHIR SINGLE ROUND 19",
         "WHIR SINGLE ROUND 20", "WHIR SINGLE ROUND 21", "WHIR SINGLE ROUND 22", "WHIR SINGLE ROUND 23",
         "WHIR SINGLE ROUND 24", "WHIR SINGLE ROUND 25", "WHIR SINGLE ROUND 26", "WHIR SINGLE ROUND 27",
-    ]};                                                                                                                                    
+    ]};
     quote! {
         #[cfg(feature = "verifier_stats")]
         const _: () = assert!(

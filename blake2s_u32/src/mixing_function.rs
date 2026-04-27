@@ -126,9 +126,11 @@ pub fn round_function_reduced_rounds(
     message_block: &[u32; BLAKE2S_BLOCK_SIZE_U32_WORDS],
 ) {
     #[cfg(feature = "verifier_stats")]
-        {
-            common_constants::stats::GKR_VERIFY_STATS.borrow_mut().blake2s_hashes += 1;
-        }
+    {
+        common_constants::stats::GKR_VERIFY_STATS
+            .borrow_mut()
+            .blake2s_hashes += 1;
+    }
 
     // reduced rounds
     for i in 0..7 {
@@ -144,9 +146,11 @@ pub fn round_function_full_rounds(
     message_block: &[u32; BLAKE2S_BLOCK_SIZE_U32_WORDS],
 ) {
     #[cfg(feature = "verifier_stats")]
-        {
-            common_constants::stats::GKR_VERIFY_STATS.borrow_mut().blake2s_hashes += 1;
-        }
+    {
+        common_constants::stats::GKR_VERIFY_STATS
+            .borrow_mut()
+            .blake2s_hashes += 1;
+    }
 
     // full rounds
     for i in 0..10 {

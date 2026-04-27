@@ -80,13 +80,13 @@ pub fn print_stats_log(circuit_name: &str) {
         // println!("---------------------------------------------------------------------------");
         let (gf, gn, gh) = GAS_COSTS;
         print_padded!(
-            "gas/op", 
-            gas(gf.fext_adds), 
-            gas(gf.fext_muls), 
-            gas(gf.fbase_adds), 
-            gas(gf.fbase_muls), 
-            gas(gn.read_bytes), 
-            gas(gh.blake2s_hashes), 
+            "gas/op",
+            gas(gf.fext_adds),
+            gas(gf.fext_muls),
+            gas(gf.fbase_adds),
+            gas(gf.fbase_muls),
+            gas(gn.read_bytes),
+            gas(gh.blake2s_hashes),
             "",
         );
         println!("---------------------------------------------------------------------------");

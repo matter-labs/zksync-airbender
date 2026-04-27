@@ -11,8 +11,7 @@ pub type Snapshot = (
 );
 
 #[thread_local]
-pub static STATS_LOG: RefCell<LazyVec<Snapshot, MAX_LOG_ENTRIES>> =
-    RefCell::new(LazyVec::new());
+pub static STATS_LOG: RefCell<LazyVec<Snapshot, MAX_LOG_ENTRIES>> = RefCell::new(LazyVec::new());
 
 #[inline]
 pub fn log(label: &'static str) {
