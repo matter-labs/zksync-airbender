@@ -308,63 +308,113 @@ impl Field for BabyBearField {
     }
 
     fn inverse(&self) -> Option<Self> {
+        #[cfg(feature = "verifier_stats")]
+        unsafe {
+            crate::stats::FIELD_STATS.fbase_muls += 40;
+        }
         self.inverse_impl()
     }
 
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn add_assign(&'_ mut self, other: &Self) -> &'_ mut Self {
+        #[cfg(feature = "verifier_stats")]
+        unsafe {
+            crate::stats::FIELD_STATS.fbase_adds += 1;
+        }
         self.add_assign_impl(other)
     }
 
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn sub_assign(&'_ mut self, other: &Self) -> &'_ mut Self {
+        #[cfg(feature = "verifier_stats")]
+        unsafe {
+            crate::stats::FIELD_STATS.fbase_adds += 1;
+        }
         self.sub_assign_impl(other)
     }
 
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn mul_assign(&'_ mut self, other: &Self) -> &'_ mut Self {
+        #[cfg(feature = "verifier_stats")]
+        unsafe {
+            crate::stats::FIELD_STATS.fbase_muls += 1;
+        }
         self.mul_assign_impl(other)
     }
 
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn square(&'_ mut self) -> &'_ mut Self {
+        #[cfg(feature = "verifier_stats")]
+        unsafe {
+            crate::stats::FIELD_STATS.fbase_muls += 1;
+        }
         self.square_impl()
     }
 
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn negate(&'_ mut self) -> &'_ mut Self {
+        #[cfg(feature = "verifier_stats")]
+        unsafe {
+            crate::stats::FIELD_STATS.fbase_adds += 1;
+        }
         self.negate_impl()
     }
 
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn double(&'_ mut self) -> &'_ mut Self {
+        #[cfg(feature = "verifier_stats")]
+        unsafe {
+            crate::stats::FIELD_STATS.fbase_adds += 1;
+        }
         self.double_impl()
     }
 
     #[cfg_attr(not(feature = "no_inline"), inline)]
     fn exp_power_of_2(&mut self, power_log: usize) {
+        #[cfg(feature = "verifier_stats")]
+        unsafe {
+            crate::stats::FIELD_STATS.fbase_muls += power_log;
+        }
         self.exp_power_of_2_impl(power_log);
     }
 
     #[cfg_attr(not(feature = "no_inline"), inline)]
     fn mul_by_two(&'_ mut self) -> &'_ mut Self {
+        #[cfg(feature = "verifier_stats")]
+        unsafe {
+            crate::stats::FIELD_STATS.fbase_adds += 1;
+        }
         self.double_impl();
         self
     }
 
     #[cfg_attr(not(feature = "no_inline"), inline)]
     fn div_by_two(&'_ mut self) -> &'_ mut Self {
+        #[cfg(feature = "verifier_stats")]
+        unsafe {
+            crate::stats::FIELD_STATS.fbase_muls += 1;
+        }
         self.mul_assign_impl(&Self::HALF)
     }
 
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn fused_mul_add_assign(&'_ mut self, a: &Self, b: &Self) -> &'_ mut Self {
+        #[cfg(feature = "verifier_stats")]
+        unsafe {
+            crate::stats::FIELD_STATS.fbase_muls += 1;
+            crate::stats::FIELD_STATS.fbase_adds += 1;
+        }
         self.0 = ops::fma_mod(self.0, a.0, b.0);
         self
     }
 
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn add_assign_product(&'_ mut self, a: &Self, b: &Self) -> &'_ mut Self {
+        #[cfg(feature = "verifier_stats")]
+        unsafe {
+            crate::stats::FIELD_STATS.fbase_muls += 1;
+            crate::stats::FIELD_STATS.fbase_adds += 1;
+        }
         self.0 = ops::fma_mod(a.0, b.0, self.0);
         self
     }

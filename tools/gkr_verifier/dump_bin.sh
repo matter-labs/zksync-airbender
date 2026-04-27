@@ -24,6 +24,7 @@ usage() {
 BLAKE_MODE="blake2_with_compression"
 VARIANT="no_caches"
 SHOW_WARNINGS=false
+STATS=false
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -31,6 +32,7 @@ while [ $# -gt 0 ]; do
         --blake) BLAKE_MODE="$2"; shift 2 ;;
         --variant) VARIANT="$2"; shift 2 ;;
         --warnings) SHOW_WARNINGS=true; shift ;;
+        --stats) STATS=true; shift ;;
         *) break ;;
     esac
 done
@@ -45,6 +47,9 @@ fi
 FEATURES="${BLAKE_MODE}"
 if [ "$VARIANT" = "no_caches" ]; then
     FEATURES="${FEATURES},no_caches"
+fi
+if $STATS; then
+    FEATURES="${FEATURES},verifier_stats"
 fi
 
 COMMON_FLAGS="--release -Z panic-immediate-abort -Z build-std=core,alloc --no-default-features --features ${FEATURES}"

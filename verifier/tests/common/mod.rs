@@ -43,6 +43,244 @@ pub fn circuit_by_name(name: &str) -> &'static CircuitData {
         .unwrap_or_else(|| panic!("unknown circuit: {}", name))
 }
 
+#[cfg(feature = "verifier_stats")]
+pub fn resolve_symbol_address(elf_path: &str, name_contains: &str) -> Option<u32> {
+    use object::{Object, ObjectSymbol};
+    let bytes = std::fs::read(elf_path).ok()?;
+    let obj = object::File::parse(&*bytes).ok()?;
+    obj.symbols()
+        .find(|s| s.name().map(|n| n.contains(name_contains)).unwrap_or(false))
+        .map(|s| s.address() as u32)
+}
+
+#[cfg(feature = "verifier_stats")]
+pub fn extract_riscv_stats_log<R: riscv_transpiler::vm::RamPeek>(ram: &R, elf_path: &str) {
+    // Reconstruct a host-side `T` from riscv guest memory.
+    //
+    // Layout assumption: `T` is a packed sequence of host-`usize`-sized fields,
+    // each of which corresponds to a single 32-bit word in the guest. The host
+    // may be 32- or 64-bit; in the 64-bit case each guest u32 is zero-extended
+    // into a host usize slot (this matches how rustc lays out structs of
+    // `usize`/pointer fields, since the host code declares them as `usize`).
+    //
+    // Writes go through a properly-aligned `MaybeUninit<T>`, so the final
+    // `assume_init` is safe (no unaligned read, no Vec<u8> indirection).
+    unsafe fn read_rv_struct<T, R: riscv_transpiler::vm::RamPeek>(ram: &R, addr: u32) -> T {
+        const {
+            assert!(
+                std::mem::size_of::<T>() % std::mem::size_of::<usize>() == 0,
+                "read_rv_struct: T must be a packed sequence of usize-sized fields",
+            );
+            assert!(
+                std::mem::align_of::<T>() <= std::mem::align_of::<usize>(),
+                "read_rv_struct: T's alignment must not exceed usize",
+            );
+        }
+        let mut out = std::mem::MaybeUninit::<T>::uninit();
+        let slot = out.as_mut_ptr() as *mut usize;
+        let n = std::mem::size_of::<T>() / std::mem::size_of::<usize>();
+        for i in 0..n {
+            let v = ram.peek_word(addr + (i as u32) * 4) as usize;
+            slot.add(i).write(v);
+        }
+        out.assume_init()
+    }
+
+    let addr = resolve_symbol_address(elf_path, "STATS_LOG").expect("STATS_LOG missing in ELF");
+    let rw = |a: u32| ram.peek_word(a & !3);
+    let rb = |a: u32| -> u8 { ((rw(a) >> ((a & 3) * 8)) & 0xff) as u8 };
+
+    unsafe {
+        // Single bulk deserialize: widens every riscv u32 to host usize and
+        // transmutes into the whole LazyVec<Snapshot, MAX_LOG_ENTRIES>.
+        verifier_common::stats::STATS_LOG = read_rv_struct(ram, addr);
+        // Fix up each label: its ptr field currently holds a riscv address
+        // (widened to usize). Read the string bytes from RAM and replace.
+        for i in 0..verifier_common::stats::STATS_LOG.len() {
+            let entry = verifier_common::stats::STATS_LOG.get_unchecked_mut(i);
+            let riscv_ptr = entry.0.as_ptr() as usize as u32;
+            let ll = entry.0.len() as u32;
+            let lb: Vec<u8> = (0..ll).map(|j| rb(riscv_ptr + j)).collect();
+            entry.0 = Box::leak(String::from_utf8_lossy(&lb).into_owned().into_boxed_str());
+        }
+    }
+}
+
+#[cfg(feature = "verifier_stats")]
+pub fn print_stats_log(circuit_name: &str) {
+    type Counters = (
+        field::stats::Stats,
+        verifier_common::non_determinism_source::stats::Stats,
+        common_constants::stats::Stats,
+    );
+    const GAS_COSTS: Counters = (
+        field::stats::Stats {
+            fext_adds: 8,
+            fext_muls: 8,
+            fbase_adds: 8,
+            fbase_muls: 8,
+        },
+        verifier_common::non_determinism_source::stats::Stats { read_bytes: 16 },
+        common_constants::stats::Stats { blake2s_hashes: 42 },
+    );
+
+    macro_rules! print_padded {
+        ($($arg:expr),* $(,)?) => {
+            println!(
+                "{:<25} {:^6} {:^6} {:^5} {:^6} {:^7} {:^6} {:^8}",
+                $($arg),*
+            )
+        };
+    }
+
+    fn first_two_words(label: &str) -> (&str, &str) {
+        let mut words = label.split_whitespace();
+        (words.next().unwrap_or(""), words.next().unwrap_or(""))
+    }
+
+    fn print_header() {
+        print_padded!("", "F4+", "F4*", "F+", "F*", "bytes", "hashes", "tot.gas");
+        // println!("---------------------------------------------------------------------------");
+        let (gf, gn, gh) = GAS_COSTS;
+        print_padded!(
+            "gas/op", 
+            gas(gf.fext_adds), 
+            gas(gf.fext_muls), 
+            gas(gf.fbase_adds), 
+            gas(gf.fbase_muls), 
+            gas(gn.read_bytes), 
+            gas(gh.blake2s_hashes), 
+            "",
+        );
+        println!("---------------------------------------------------------------------------");
+    }
+
+    fn print_row(label: &str, cur: Counters, prev: Counters) {
+        let (f, n, h) = cur;
+        let (pf, pn, ph) = prev;
+        print_padded!(
+            label,
+            f.fext_adds - pf.fext_adds,
+            f.fext_muls - pf.fext_muls,
+            f.fbase_adds - pf.fbase_adds,
+            f.fbase_muls - pf.fbase_muls,
+            n.read_bytes - pn.read_bytes,
+            h.blake2s_hashes - ph.blake2s_hashes,
+            "",
+        );
+    }
+
+    fn gas(gas: usize) -> String {
+        format!("({})", gas)
+    }
+    fn gas_k(gas: usize) -> String {
+        format!("({}k)", gas.div_ceil(1000))
+    }
+    fn gas_totk(gas: usize) -> String {
+        format!("{}k", gas.div_ceil(1000))
+    }
+
+    fn print_gas_row(cur: Counters, prev: Counters) {
+        let (f, n, h) = cur;
+        let (pf, pn, ph) = prev;
+        let (gf, gn, gh) = GAS_COSTS;
+        let fext_adds_gas = (f.fext_adds - pf.fext_adds) * gf.fext_adds;
+        let fext_muls_gas = (f.fext_muls - pf.fext_muls) * gf.fext_muls;
+        let fbase_adds_gas = (f.fbase_adds - pf.fbase_adds) * gf.fbase_adds;
+        let fbase_muls_gas = (f.fbase_muls - pf.fbase_muls) * gf.fbase_muls;
+        let read_bytes_gas = (n.read_bytes - pn.read_bytes) * gn.read_bytes;
+        let hashes_gas = (h.blake2s_hashes - ph.blake2s_hashes) * gh.blake2s_hashes;
+        let total_gas = fext_adds_gas
+            + fext_muls_gas
+            + fbase_adds_gas
+            + fbase_muls_gas
+            + read_bytes_gas
+            + hashes_gas;
+
+        print_padded!(
+            "",
+            gas_k(fext_adds_gas),
+            gas_k(fext_muls_gas),
+            gas_k(fbase_adds_gas),
+            gas_k(fbase_muls_gas),
+            gas_k(read_bytes_gas),
+            gas_k(hashes_gas),
+            gas_totk(total_gas),
+        );
+    }
+
+    fn print_totals(
+        first: &str,
+        two_word_totals: &[(&str, &str, Counters, Counters)],
+        cur: Counters,
+        prev: Counters,
+    ) {
+        println!();
+        print_header();
+        for (first, second, cur, prev) in two_word_totals {
+            print_row(&format!("TOTAL {} {}", first, second), *cur, *prev);
+            print_gas_row(*cur, *prev);
+        }
+        print_row(&format!("TOTAL {}", first), cur, prev);
+        print_gas_row(cur, prev);
+        println!();
+        println!();
+        print_header();
+    }
+
+    let log = unsafe { &verifier_common::stats::STATS_LOG };
+    println!(
+        "\n=== {} stats log ({} entries) ===",
+        circuit_name,
+        log.len()
+    );
+    println!();
+    print_header();
+
+    let zero = (
+        field::stats::Stats::default(),
+        verifier_common::non_determinism_source::stats::Stats::default(),
+        common_constants::stats::Stats::default(),
+    );
+    let (first_label, _, _, _) = *log.get(0);
+    let (mut current_first, mut current_second) = first_two_words(first_label);
+    let mut prev = zero;
+    let mut prev_two_word_total = zero;
+    let mut prev_one_word_total = zero;
+    let mut two_word_totals = Vec::new();
+
+    for i in 0..log.len() {
+        let (label, f, n, h) = *log.get(i);
+        let cur = (f, n, h);
+        let (first, second) = first_two_words(label);
+
+        if first != current_first {
+            two_word_totals.push((current_first, current_second, prev, prev_two_word_total));
+            print_totals(current_first, &two_word_totals, prev, prev_one_word_total);
+            two_word_totals.clear();
+            prev_one_word_total = prev;
+            prev_two_word_total = prev;
+            current_first = first;
+            current_second = second;
+        } else if second != current_second {
+            two_word_totals.push((current_first, current_second, prev, prev_two_word_total));
+            prev_two_word_total = prev;
+            current_second = second;
+        }
+
+        print_row(label, cur, prev);
+        prev = cur;
+    }
+
+    two_word_totals.push((current_first, current_second, prev, prev_two_word_total));
+    print_totals(current_first, &two_word_totals, prev, prev_one_word_total);
+
+    let (_label, f, n, h) = *log.get(log.len() - 1);
+    print_row("TOTAL ALL", (f, n, h), zero);
+    print_gas_row((f, n, h), zero);
+    println!();
+}
+
 #[derive(Debug)]
 pub enum VerifyRejection {
     Error(VerificationError),

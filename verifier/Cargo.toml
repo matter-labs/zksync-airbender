@@ -25,6 +25,7 @@ modular_ops = ["verifier_common/modular_ops"]
 verifier_program = ["modular_ops"]
 proof_utils = ["verifier_common/proof_utils"]
 no_caches = ["verifier_common/no_caches"]
+verifier_stats = ["verifier_common/verifier_stats"]
 
 # If enabled, allows passing custom values into CSR.
 replace_csr = ["verifier_common/replace_csr"]
@@ -44,3 +45,5 @@ common_constants = { workspace = true }
 verifier_generator = { workspace = true }
 rayon = "1.11.0"
 paste = "1"
+object = { workspace = true }
+serial_test = "3"

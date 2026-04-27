@@ -7,6 +7,9 @@ use riscv_transpiler::ir::ReducedMachineDecoderConfig;
 use riscv_transpiler::vm::*;
 
 fn run_transpiler(name: &str) {
+    #[cfg(feature = "verifier_stats")]
+    verifier_common::stats::reset();
+
     let (nds, external_challenges) = common::load_nds(name);
     println!("{}: oracle data length: {} u32 words", name, nds.len());
 
@@ -106,6 +109,12 @@ fn run_transpiler(name: &str) {
     }
     assert_eq!(a0, 1, "{}: a0 = {} (expected 1 for success)", name, a0);
 
+    #[cfg(feature = "verifier_stats")]
+    {
+        common::extract_riscv_stats_log(&ram, &elf_path);
+        common::print_stats_log(name);
+    }
+
     println!("{}: completed successfully in transpiler", name);
     println!("Flamegraph written to {}", output_path.display());
 }
@@ -115,6 +124,9 @@ macro_rules! generate_transpiler_tests {
         $(
             #[test]
             #[ignore = "requires RISC-V binaries from tools/gkr_verifier"]
+            // Stats counters / STATS_LOG are global; serialize stats-enabled
+            // runs so parallel tests don't clobber each other's measurements.
+            #[cfg_attr(feature = "verifier_stats", serial_test::serial)]
             fn $name() {
                 run_transpiler(stringify!($name));
             }

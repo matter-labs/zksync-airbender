@@ -289,15 +289,15 @@ impl Field for BabyBearExt2 {
 
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn mul_by_two(&'_ mut self) -> &'_ mut Self {
-        self.c0.mul_by_two();
-        self.c1.mul_by_two();
+        self.c0.double_impl();
+        self.c1.double_impl();
         self
     }
 
     #[cfg_attr(not(feature = "no_inline"), inline)]
     fn div_by_two(&'_ mut self) -> &'_ mut Self {
-        self.c0.div_by_two();
-        self.c1.div_by_two();
+        self.c0.mul_assign_impl(&BabyBearField::HALF);
+        self.c1.mul_assign_impl(&BabyBearField::HALF);
         self
     }
 }

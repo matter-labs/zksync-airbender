@@ -145,6 +145,8 @@ pub mod whir;
 pub mod inline_ops;
 pub mod lazy_vec;
 pub mod no_inline_ops;
+#[cfg(feature = "verifier_stats")]
+pub mod stats;
 
 pub use self::gkr::{GKRVerifierOutput, InitialGKRTranscript};
 pub use ::prover::definitions::{GKRExternalChallenges, USE_REDUCED_BLAKE2_ROUNDS};

@@ -5,6 +5,9 @@ use verifier_common::errors::DebugErrorCreator;
 use verifier_common::prover::nd_source_std::{set_iterator, ThreadLocalBasedSource};
 
 fn run_native(name: &str) {
+    #[cfg(feature = "verifier_stats")]
+    verifier_common::stats::reset();
+
     let (nds, external_challenges) = common::load_nds(name);
     std::thread::scope(|s| {
         let handle = std::thread::Builder::new()
@@ -16,6 +19,8 @@ fn run_native(name: &str) {
                     m::verify::<ThreadLocalBasedSource, DebugErrorCreator>(&external_challenges)
                         .unwrap_or_else(|e| panic!("{} failed: {:?}", name, e));
                 });
+                #[cfg(feature = "verifier_stats")]
+                common::print_stats_log(name);
             })
             .expect("failed to spawn verifier thread");
 
@@ -30,6 +35,9 @@ macro_rules! generate_native_tests {
     ($($name:ident: $schedule:ident: $layout_suffix:expr),* $(,)?) => {
         $(
             #[test]
+            // Stats counters are global; serialize stats-enabled runs so
+            // parallel tests don't clobber each other's measurements.
+            #[cfg_attr(feature = "verifier_stats", serial_test::serial)]
             fn $name() {
                 run_native(stringify!($name));
             }

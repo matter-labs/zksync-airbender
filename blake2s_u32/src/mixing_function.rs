@@ -125,6 +125,11 @@ pub fn round_function_reduced_rounds(
     state: &mut [u32; BLAKE2S_EXTENDED_STATE_WIDTH_IN_U32_WORDS],
     message_block: &[u32; BLAKE2S_BLOCK_SIZE_U32_WORDS],
 ) {
+    #[cfg(feature = "verifier_stats")]
+    unsafe {
+        common_constants::stats::GKR_VERIFY_STATS.blake2s_hashes += 1;
+    }
+
     // reduced rounds
     for i in 0..7 {
         let sigma = &SIGMAS[i];
@@ -138,6 +143,11 @@ pub fn round_function_full_rounds(
     state: &mut [u32; BLAKE2S_EXTENDED_STATE_WIDTH_IN_U32_WORDS],
     message_block: &[u32; BLAKE2S_BLOCK_SIZE_U32_WORDS],
 ) {
+    #[cfg(feature = "verifier_stats")]
+    unsafe {
+        common_constants::stats::GKR_VERIFY_STATS.blake2s_hashes += 1;
+    }
+
     // full rounds
     for i in 0..10 {
         let sigma = &SIGMAS[i];
