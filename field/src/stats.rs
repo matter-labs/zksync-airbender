@@ -1,3 +1,5 @@
+use core::cell::RefCell;
+
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Stats {
     pub fext_adds: usize,
@@ -6,9 +8,10 @@ pub struct Stats {
     pub fbase_muls: usize,
 }
 
-pub static mut FIELD_STATS: Stats = Stats {
+#[thread_local]
+pub static FIELD_STATS: RefCell<Stats> = RefCell::new(Stats {
     fext_adds: 0,
     fext_muls: 0,
     fbase_adds: 0,
     fbase_muls: 0,
-};
+});

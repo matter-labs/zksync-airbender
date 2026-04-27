@@ -1,4 +1,5 @@
 #![no_std]
+#![cfg_attr(all(feature = "verifier_stats", not(target_arch = "riscv32")), feature(thread_local, stmt_expr_attributes))]
 
 #[cfg(feature = "verifier_stats")]
 pub mod stats;
@@ -27,16 +28,16 @@ impl NonDeterminismSource for CSRBasedSource {
     #[inline(always)]
     fn read_word() -> u32 {
         #[cfg(feature = "verifier_stats")]
-        unsafe {
-            stats::NDS_STATS.read_bytes += core::mem::size_of::<u32>();
+        {
+            stats::NDS_STATS.borrow_mut().read_bytes += core::mem::size_of::<u32>();
         }
         csr_read_word()
     }
     #[inline(always)]
     fn read_reduced_field_element(modulus: u32) -> u32 {
         #[cfg(feature = "verifier_stats")]
-        unsafe {
-            stats::NDS_STATS.read_bytes += core::mem::size_of::<u32>();
+        {
+            stats::NDS_STATS.borrow_mut().read_bytes += core::mem::size_of::<u32>();
         }
         csr_read_field_element(modulus)
     }

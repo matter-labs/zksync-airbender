@@ -165,7 +165,7 @@ pub fn print_stats_log(circuit_name: &str) {
         print_header();
     }
 
-    let log = unsafe { &verifier_common::stats::STATS_LOG };
+    let log = verifier_common::stats::STATS_LOG.borrow();
     println!(
         "\n=== {} stats log ({} entries) ===",
         circuit_name,
