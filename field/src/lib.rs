@@ -2,7 +2,7 @@
 #![cfg_attr(target_arch = "riscv32", allow(internal_features))]
 #![cfg_attr(target_arch = "riscv32", feature(core_intrinsics))]
 #![cfg_attr(target_arch = "riscv32", feature(const_eval_select))]
-#![cfg_attr(all(feature = "verifier_stats", not(target_arch = "riscv32")), feature(thread_local, stmt_expr_attributes))]
+#![cfg_attr(all(feature = "verifier_stats", not(target_arch = "riscv32")), feature(thread_local))]
 
 use core::fmt::Debug;
 use core::fmt::Display;

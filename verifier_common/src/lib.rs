@@ -1,7 +1,7 @@
 #![cfg_attr(not(any(test, feature = "replace_csr")), no_std)]
 #![cfg_attr(any(test, feature = "proof_utils"), allow(incomplete_features))]
 #![cfg_attr(any(test, feature = "proof_utils"), feature(generic_const_exprs))]
-#![cfg_attr(all(feature = "verifier_stats", not(target_arch = "riscv32")), feature(thread_local, stmt_expr_attributes))]
+#![cfg_attr(all(feature = "verifier_stats", not(target_arch = "riscv32")), feature(thread_local))]
 
 #[macro_export]
 macro_rules! gkr_circuits {
