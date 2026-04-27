@@ -1,4 +1,4 @@
-use std::ptr::null_mut;
+use std::ptr::{null, null_mut};
 
 use crate::primitives::field::BF;
 use era_cudart::result::{CudaResult, CudaResultWrap};
@@ -52,17 +52,16 @@ pub trait SortKeys: Sized {
         begin_bit: i32,
         end_bit: i32,
     ) -> CudaResult<usize> {
-        let d_temp_storage = DeviceSlice::empty_mut();
+        // CUB size-query mode is selected by passing null temp storage.
+        // In that mode CUB only writes temp_storage_bytes and ignores data pointers.
         let mut temp_storage_bytes = 0;
-        let d_keys_in = DeviceSlice::empty();
-        let d_keys_out = DeviceSlice::empty_mut();
         let function = Self::get_function(descending);
         unsafe {
             function(
-                d_temp_storage.as_mut_ptr(),
+                null_mut(),
                 &mut temp_storage_bytes,
-                d_keys_in.as_ptr(),
-                d_keys_out.as_mut_ptr(),
+                null(),
+                null_mut(),
                 num_items,
                 begin_bit,
                 end_bit,
@@ -221,21 +220,18 @@ pub trait SortPairs<K, V> {
         begin_bit: i32,
         end_bit: i32,
     ) -> CudaResult<usize> {
-        let d_temp_storage = DeviceSlice::empty_mut();
+        // CUB size-query mode is selected by passing null temp storage.
+        // In that mode CUB only writes temp_storage_bytes and ignores data pointers.
         let mut temp_storage_bytes = 0;
-        let d_keys_in = DeviceSlice::empty();
-        let d_keys_out = DeviceSlice::empty_mut();
-        let d_values_in = DeviceSlice::empty();
-        let d_values_out = DeviceSlice::empty_mut();
         let function = Self::get_function(descending);
         unsafe {
             function(
-                d_temp_storage.as_mut_ptr(),
+                null_mut(),
                 &mut temp_storage_bytes,
-                d_keys_in.as_ptr(),
-                d_keys_out.as_mut_ptr(),
-                d_values_in.as_ptr(),
-                d_values_out.as_mut_ptr(),
+                null(),
+                null_mut(),
+                null(),
+                null_mut(),
                 num_items,
                 begin_bit,
                 end_bit,
