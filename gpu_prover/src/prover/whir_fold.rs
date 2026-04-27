@@ -25,8 +25,8 @@ use worker::Worker;
 
 use crate::allocator::tracker::AllocationPlacement;
 use crate::ntt::{
-    hypercube_coeffs_bitrev_to_bitrev_evals, hypercube_coeffs_natural_to_natural_evals,
-    natural_evals_to_bitreversed_coeffs, natural_evals_to_bitreversed_monomials,
+    hypercube_coeffs_bitrev_to_bitrev_evals, natural_evals_to_bitreversed_coeffs,
+    natural_evals_to_bitreversed_monomials,
 };
 use crate::ops::bit_reverse::{bit_reverse, bit_reverse_in_place};
 use crate::ops::blake2s::{Digest, STATE_SIZE};
@@ -34,12 +34,14 @@ use crate::ops::cub::device_reduce::{get_reduce_temp_storage_bytes, reduce, Redu
 use crate::ops::cub::CUB_TEMP_STORAGE_EXTRA_ALIGNMENT_LOG2;
 use crate::ops::powers::{get_powers_by_ref, get_powers_by_val};
 use crate::ops::simple::{add, add_into_y, mul, mul_into_x, set_to_zero};
+use crate::ops::transpose::transpose;
 use crate::primitives::callbacks::Callbacks;
 use crate::primitives::context::{
     DeviceAllocation, HostAllocation, ProverContext, UnsafeMutAccessor,
 };
 use crate::primitives::device_structures::{
-    DeviceMatrix, DeviceMatrixImpl, DeviceMatrixMut, DeviceMatrixOwnsAllocation,
+    DeviceMatrix, DeviceMatrixChunk, DeviceMatrixImpl, DeviceMatrixMut,
+    DeviceMatrixOwnsAllocation,
 };
 use crate::primitives::device_tracing::Range;
 use crate::primitives::field::{BF, E4};
@@ -50,9 +52,10 @@ use crate::prover::gkr::backward::{eq_group_tables_len, launch_build_eq_values_f
 use crate::prover::pow::{schedule_pow_verify_and_query_indexes, PowAndQueryIndexesKeepalives};
 use crate::prover::proof_layout::ProofLayout;
 use crate::prover::trace_holder::{get_tree_caps, TraceHolder};
-use crate::prover::whir::{GpuWhirExtensionOracle, GpuWhirExtensionQuery};
+use crate::prover::whir::{e4_coeffs_to_vectorized, GpuWhirExtensionOracle, GpuWhirExtensionQuery};
 use crate::prover::whir_kernels::{
     accumulate_whir_base_columns, deserialize_whir_e4_columns, pack_rows_for_whir_leaves,
+    partially_evaluate_monomials_by_ref,
     serialize_whir_e4_columns, whir_fold_split_half_in_place,
     whir_fold_split_half_in_place_vectorized,
 };
@@ -993,7 +996,7 @@ fn special_lagrange_interpolate(
     t.sub_assign(&random_point);
     dens[1].mul_assign(&t);
 
-    let mut t = random_point;
+    let t = random_point;
     dens[2].mul_assign(&t);
     let mut t = random_point;
     t.sub_assign(&E4::ONE);
@@ -1395,11 +1398,11 @@ fn initialize_batched_forms_impl(
         let dst = &mut serialized[column * trace_len..(column + 1) * trace_len];
         memory_copy_async(dst, &bf_scratch, stream)?;
     }
-    {
-        let mut evals_matrix = DeviceMatrixMut::new(&mut serialized, trace_len);
-        // TODO: remove after writing hypercube kernel
-        // bit_reverse_in_place(&mut evals_matrix, stream)?;
-    }
+    // {
+    //     // let mut evals_matrix = DeviceMatrixMut::new(&mut serialized, trace_len);
+    //     // TODO: remove after writing hypercube kernel
+    //     // bit_reverse_in_place(&mut evals_matrix, stream)?;
+    // }
     deserialize_whir_e4_columns(
         &serialized,
         &mut state.sumchecked_poly_evaluation_form[..trace_len],
@@ -1570,11 +1573,11 @@ fn schedule_initialize_batched_forms(
         let dst = &mut serialized[column * trace_len..(column + 1) * trace_len];
         memory_copy_async(dst, &bf_scratch, stream)?;
     }
-    {
-        let mut evals_matrix = DeviceMatrixMut::new(&mut serialized, trace_len);
-        // TODO: remove after writing hypercube kernel
-        // bit_reverse_in_place(&mut evals_matrix, stream)?;
-    }
+    // {
+    //     // let mut evals_matrix = DeviceMatrixMut::new(&mut serialized, trace_len);
+    //     // TODO: remove after writing hypercube kernel
+    //     // bit_reverse_in_place(&mut evals_matrix, stream)?;
+    // }
     deserialize_whir_e4_columns(
         &serialized,
         &mut state.sumchecked_poly_evaluation_form[..trace_len],
@@ -2361,7 +2364,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
                 let next_len = current_len / 2;
                 whir_fold_split_half_in_place_vectorized(
                     &mut state.sumchecked_poly_monomial_form,
-                    &challenge_device[0],
+                    &d_challenge[0],
                     next_len,
                     stream,
                 )?;
@@ -3108,10 +3111,22 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         let mut final_monomials_host =
             unsafe { context.alloc_host_uninit_slice::<E4>(state.current_len) };
         let mut final_monomials_device =
-            unsafe { context.alloc_host_uninit_slice::<E4>(state.current_len) };
+            context.alloc::<E4>(state.current_len, AllocationPlacement::BestFit)?;
+        let mut transpose_dst = unsafe { final_monomials_device.transmute_mut::<BF>() };
+        let mut transpose_dst_matrix = DeviceMatrixMut::new(
+            &mut transpose_dst,
+            EXT4_DEGREE,
+        );
+        let monomials_matrix_chunk = DeviceMatrixChunk::new(
+            state.sumchecked_poly_monomial_form.slice(),
+            state.original_trace_len,
+            0,
+            state.current_len,
+        );
+        transpose(&monomials_matrix_chunk, &mut transpose_dst_matrix, stream)?;
         memory_copy_async(
             &mut final_monomials_host,
-            &state.sumchecked_poly_monomial_form[..state.current_len],
+            &final_monomials_device,
             stream,
         )?;
         let final_monomials_accessor = final_monomials_host.get_accessor();

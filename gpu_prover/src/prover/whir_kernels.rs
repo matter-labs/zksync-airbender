@@ -2,8 +2,11 @@ use era_cudart::execution::{CudaLaunchConfig, Dim3, KernelFunction};
 use era_cudart::result::CudaResult;
 use era_cudart::slice::{DeviceSlice, DeviceVariable};
 use era_cudart::stream::CudaStream;
-use era_cudart::{cuda_kernel_declaration, cuda_kernel_signature_arguments_and_function};
+use era_cudart::{
+    cuda_kernel, cuda_kernel_declaration, cuda_kernel_signature_arguments_and_function,
+};
 
+use crate::ops::simple::pow;
 use crate::primitives::device_structures::{
     DeviceMatrixChunkImpl, DeviceMatrixChunkMutImpl, MutPtrAndStride, PtrAndStride,
 };
@@ -325,6 +328,13 @@ pub fn partially_evaluate_monomials_by_ref(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    use crate::device_structures::DeviceMatrix;
+    use era_cudart::memory::{DeviceAllocation, memory_copy_async};
+    use field::{Field, Rand};
+    use itertools::Itertools;
+    use rand::rng;
+    use serial_test::serial;
 
     fn run_partially_evaluate_monomials_by_ref(log_count: usize) {
         use crate::ops::cub::device_reduce::{

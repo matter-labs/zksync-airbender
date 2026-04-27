@@ -201,10 +201,11 @@ pub(crate) fn hypercube_evals_natural_to_bitreversed_coeffs(
     Ok(())
 }
 
-pub(crate) fn hypercube_coeffs_natural_to_natural_evals(
+pub(crate) fn hypercube_coeffs_to_evals_impl(
     src: &DeviceSlice<BF>,
     dst: &mut DeviceSlice<BF>,
     log_n: usize,
+    bitrev: bool,
     stream: &CudaStream,
 ) -> CudaResult<()> {
     assert_eq!(src.len(), 1usize << log_n);
@@ -214,10 +215,36 @@ pub(crate) fn hypercube_coeffs_natural_to_natural_evals(
         return Ok(());
     }
 
-    for stage in 0..log_n {
-        launch_hypercube_forward_stage(dst, log_n, stage, stream)?;
-    }
+    if bitrev {
+        for stage in (0..log_n).rev() {
+            launch_hypercube_forward_stage(dst, log_n, stage, stream)?;
+        }
+    } else {
+        for stage in 0..log_n {
+            launch_hypercube_forward_stage(dst, log_n, stage, stream)?;
+        }
+    };
+
     Ok(())
+
+}
+
+pub(crate) fn hypercube_coeffs_natural_to_natural_evals(
+    src: &DeviceSlice<BF>,
+    dst: &mut DeviceSlice<BF>,
+    log_n: usize,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    hypercube_coeffs_to_evals_impl(src, dst, log_n, false, stream)
+}
+
+pub(crate) fn hypercube_coeffs_bitrev_to_bitrev_evals(
+    src: &DeviceSlice<BF>,
+    dst: &mut DeviceSlice<BF>,
+    log_n: usize,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    hypercube_coeffs_to_evals_impl(src, dst, log_n, true, stream)
 }
 
 pub(crate) fn natural_evals_to_bitreversed_coeffs(
