@@ -21,8 +21,8 @@ riscv_transpiler = { workspace = true, features = ["jit"] }
 verifier_common = { workspace = true }
 worker = { workspace = true }
 
-era_cudart = "0.154"
-era_cudart_sys = "0.154"
+era_cudart = "=0.156.0"
+era_cudart_sys = "=0.156.0"
 
 itertools = "*"
 log = "0.4.29"
@@ -42,7 +42,7 @@ test_no_inline = ["field/no_inline"]
 [build-dependencies]
 cc = "1"
 cmake = "0.1"
-era_cudart_sys = "0.154"
+era_cudart_sys = "=0.156.0"
 
 [dev-dependencies]
 env_logger = "0.11"
