@@ -184,6 +184,7 @@ impl GKRGraph {
             };
 
             let layer_for_caches = layer;
+            let output_layer = layer + 1;
             let relations = &self.enforced_relations[&layer];
             let cache_relations_for_this_layer = self
                 .cached_relations
@@ -199,7 +200,7 @@ impl GKRGraph {
                     // so no caching can happen here
                     assert!(rel.cached_addresses().is_empty());
                     let artifact = GateArtifacts {
-                        output_layer: layer,
+                        output_layer,
                         enforced_relation: rel.clone(),
                     };
                     descr.gates_with_external_connections.push(artifact);
@@ -231,7 +232,7 @@ impl GKRGraph {
                                 }
 
                                 let artifact = GateArtifacts {
-                                    output_layer: layer + 1,
+                                    output_layer,
                                     enforced_relation: rel.clone(),
                                 };
                                 descr.gates_with_external_connections.push(artifact);
@@ -265,7 +266,7 @@ impl GKRGraph {
                                     }
 
                                     let artifact = GateArtifacts {
-                                        output_layer: layer + 1,
+                                        output_layer,
                                         enforced_relation: rel.clone(),
                                     };
                                     descr.gates_with_external_connections.push(artifact);
@@ -292,7 +293,7 @@ impl GKRGraph {
                     descr.cached_relations.insert(cached, relation);
                 }
                 let artifact = GateArtifacts {
-                    output_layer: layer + 1,
+                    output_layer,
                     enforced_relation: rel.clone(),
                 };
                 descr.gates.push(artifact);

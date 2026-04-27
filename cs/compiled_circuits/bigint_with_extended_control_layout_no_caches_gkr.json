@@ -36086,7 +36086,7 @@
       "layer": 5,
       "gates_with_external_connections": [
         {
-          "output_layer": 5,
+          "output_layer": 6,
           "enforced_relation": {
             "MaskIntoIdentityProduct": {
               "input": {
@@ -36111,7 +36111,7 @@
           }
         },
         {
-          "output_layer": 5,
+          "output_layer": 6,
           "enforced_relation": {
             "MaskIntoIdentityProduct": {
               "input": {

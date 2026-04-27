@@ -2857,7 +2857,7 @@
           }
         },
         {
-          "output_layer": 3,
+          "output_layer": 4,
           "enforced_relation": {
             "CopyInExtensionField": {
               "input": {
@@ -2876,7 +2876,7 @@
           }
         },
         {
-          "output_layer": 3,
+          "output_layer": 4,
           "enforced_relation": {
             "CopyInExtensionField": {
               "input": {
