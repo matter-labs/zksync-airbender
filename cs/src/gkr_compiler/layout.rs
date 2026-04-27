@@ -19,7 +19,7 @@ pub struct GKRLayerDescription {
     #[serde_as(as = "Vec<(_, _)>")]
     pub cached_relations: BTreeMap<GKRAddress, NoFieldGKRCacheRelation>,
     pub gates: Vec<GateArtifacts>,
-    // pub additional_base_layer_openings: Vec<GKRAddress>,
+    pub intermediate_layer_width: Option<usize>, // number of polys in intermediate layers. None for the base one
 }
 
 #[derive(Clone, Debug)]
@@ -32,14 +32,14 @@ pub(crate) enum LookupOutput {
 }
 
 impl GKRGraph {
-    fn dump_base_layer_set(&self) -> BTreeSet<GKRAddress> {
-        let mut result = BTreeSet::new();
-        result.extend(self.base_layer_memory_rev.keys().copied());
-        result.extend(self.base_layer_witness_rev.keys().copied());
-        result.extend(self.setups.iter().copied());
+    // fn dump_base_layer_set(&self) -> BTreeSet<GKRAddress> {
+    //     let mut result = BTreeSet::new();
+    //     result.extend(self.base_layer_memory_rev.keys().copied());
+    //     result.extend(self.base_layer_witness_rev.keys().copied());
+    //     result.extend(self.setups.iter().copied());
 
-        result
-    }
+    //     result
+    // }
 
     pub(crate) fn layout_layers(
         &mut self,
@@ -50,7 +50,6 @@ impl GKRGraph {
         BTreeMap<OutputType, Vec<GKRAddress>>,
     ) {
         assert!(self.enforced_relations.len() > 0);
-        assert!(self.enforced_relations.get(&0).is_none());
 
         // We put all external outputs to the same layer
 
@@ -59,11 +58,12 @@ impl GKRGraph {
         // stable iteration order
         let mut output_layers = BTreeMap::new();
         {
-            for layer in (1..(1 + total_layers)).rev() {
+            for layer in (0..total_layers).rev() {
+                let output_layer = layer + 1;
                 let relations = &self.enforced_relations[&layer];
                 'outer: for rel in relations.iter() {
                     if rel == &grand_product_outputs[0].1 || rel == &grand_product_outputs[1].1 {
-                        output_layers.insert(OutputType::PermutationProduct, layer);
+                        output_layers.insert(OutputType::PermutationProduct, output_layer);
                         continue 'outer;
                     }
                     for (k, (_, el)) in lookup_outputs.iter() {
@@ -73,13 +73,14 @@ impl GKRGraph {
                         if el == rel {
                             match k {
                                 LookupType::RangeCheck16 => {
-                                    output_layers.insert(OutputType::Lookup16Bits, layer);
+                                    output_layers.insert(OutputType::Lookup16Bits, output_layer);
                                 }
                                 LookupType::TimestampRangeCheck => {
-                                    output_layers.insert(OutputType::LookupTimestamps, layer);
+                                    output_layers
+                                        .insert(OutputType::LookupTimestamps, output_layer);
                                 }
                                 LookupType::Generic => {
-                                    output_layers.insert(OutputType::GenericLookup, layer);
+                                    output_layers.insert(OutputType::GenericLookup, output_layer);
                                 }
                             }
                             continue 'outer;
@@ -88,15 +89,15 @@ impl GKRGraph {
                 }
             }
 
-            let max_output_layer = output_layers.iter().map(|(k, v)| *v).max().unwrap();
+            let max_output_layer = output_layers.iter().map(|(_k, v)| *v).max().unwrap();
             assert!(output_layers.len() <= 4);
 
-            for (k, layer) in output_layers.into_iter() {
-                if layer != max_output_layer {
+            for (k, output_layer_idx) in output_layers.into_iter() {
+                if output_layer_idx != max_output_layer {
                     match k {
                         OutputType::PermutationProduct => {
                             let current_output = &mut grand_product_outputs;
-                            for next_layer in (layer + 1)..=max_output_layer {
+                            for next_layer in (output_layer_idx + 1)..=max_output_layer {
                                 // copy
                                 *current_output =
                                     current_output.each_ref().map(|(addr, _relation)| {
@@ -121,7 +122,7 @@ impl GKRGraph {
                                     todo!()
                                 }
                             };
-                            for next_layer in (layer + 1)..=max_output_layer {
+                            for next_layer in (output_layer_idx + 1)..=max_output_layer {
                                 // copy
                                 let [num, den] = &current_output.0;
                                 let copy_node = CopyNode::FromIntermediateInExtension(*num);
@@ -168,16 +169,21 @@ impl GKRGraph {
         // the only difficult topic is if a layer has any connection to the size-reducing part of GKR, otherwise we just take
         // all relations without splitting
 
-        for layer in (1..(1 + total_layers)).rev() {
+        for layer in (0..total_layers).rev() {
+            let width = if layer == 0 {
+                None
+            } else {
+                Some(self.intermediate_layers_offsets[&layer])
+            };
             let mut descr = GKRLayerDescription {
                 layer,
                 gates_with_external_connections: vec![],
                 gates: vec![],
                 cached_relations: BTreeMap::new(),
-                // additional_base_layer_openings: vec![],
+                intermediate_layer_width: width,
             };
 
-            let layer_for_caches = layer - 1;
+            let layer_for_caches = layer;
             let relations = &self.enforced_relations[&layer];
             let cache_relations_for_this_layer = self
                 .cached_relations
@@ -186,12 +192,6 @@ impl GKRGraph {
                 .unwrap_or_default();
 
             let mut external_lookup_connections = BTreeSet::new();
-
-            let mut base_layer_polys_to_open_for_caches = if layer == 1 {
-                self.dump_base_layer_set()
-            } else {
-                BTreeSet::new()
-            };
 
             'outer: for rel in relations.iter() {
                 if rel == &grand_product_outputs[0].1 || rel == &grand_product_outputs[1].1 {
@@ -209,7 +209,7 @@ impl GKRGraph {
                     match el {
                         LookupOutput::Direct(el) => {
                             if el == rel {
-                                if layer > 1 {
+                                if layer > 0 {
                                     assert!(rel.cached_addresses().is_empty());
                                 } else {
                                     for cached in rel.cached_addresses().into_iter() {
@@ -217,7 +217,7 @@ impl GKRGraph {
                                             unreachable!();
                                         };
                                         assert_eq!(
-                                            l + 1,
+                                            l,
                                             layer,
                                             "relation {:?} is at layer {}, but references cache {:?}",
                                             rel,
@@ -228,13 +228,10 @@ impl GKRGraph {
                                             cache_relations_for_this_layer[offset].clone();
                                         descr.cached_relations.insert(cached, relation);
                                     }
-                                    // for claim in rel.created_claims().into_iter() {
-                                    //     base_layer_polys_to_open_for_caches.remove(&claim);
-                                    // }
                                 }
 
                                 let artifact = GateArtifacts {
-                                    output_layer: layer,
+                                    output_layer: layer + 1,
                                     enforced_relation: rel.clone(),
                                 };
                                 descr.gates_with_external_connections.push(artifact);
@@ -245,7 +242,7 @@ impl GKRGraph {
                         LookupOutput::Copied { num, den } => {
                             for el in [num, den] {
                                 if el == rel {
-                                    if layer > 1 {
+                                    if layer > 0 {
                                         assert!(rel.cached_addresses().is_empty());
                                     } else {
                                         for cached in rel.cached_addresses().into_iter() {
@@ -254,7 +251,7 @@ impl GKRGraph {
                                                 unreachable!();
                                             };
                                             assert_eq!(
-                                                l + 1,
+                                                l,
                                                 layer,
                                                 "relation {:?} is at layer {}, but references cache {:?}",
                                                 rel,
@@ -265,13 +262,10 @@ impl GKRGraph {
                                                 cache_relations_for_this_layer[offset].clone();
                                             descr.cached_relations.insert(cached, relation);
                                         }
-                                        // for claim in rel.created_claims().into_iter() {
-                                        //     base_layer_polys_to_open_for_caches.remove(&claim);
-                                        // }
                                     }
 
                                     let artifact = GateArtifacts {
-                                        output_layer: layer,
+                                        output_layer: layer + 1,
                                         enforced_relation: rel.clone(),
                                     };
                                     descr.gates_with_external_connections.push(artifact);
@@ -290,23 +284,15 @@ impl GKRGraph {
                         unreachable!();
                     };
                     assert_eq!(
-                        l + 1,
-                        layer,
+                        l, layer,
                         "relation {:?} is at layer {}, but references cache {:?}",
-                        rel,
-                        layer,
-                        cached
+                        rel, layer, cached
                     );
                     let relation = cache_relations_for_this_layer[offset].clone();
                     descr.cached_relations.insert(cached, relation);
                 }
-                // if layer == 1 {
-                //     for claim in rel.created_claims().into_iter() {
-                //         base_layer_polys_to_open_for_caches.remove(&claim);
-                //     }
-                // }
                 let artifact = GateArtifacts {
-                    output_layer: layer,
+                    output_layer: layer + 1,
                     enforced_relation: rel.clone(),
                 };
                 descr.gates.push(artifact);
@@ -315,12 +301,6 @@ impl GKRGraph {
             for k in external_lookup_connections.into_iter() {
                 lookup_outputs.remove(&k);
             }
-
-            // if layer == 1 {
-            //     descr
-            //         .additional_base_layer_openings
-            //         .extend(base_layer_polys_to_open_for_caches.into_iter());
-            // }
 
             result.push(descr);
         }

@@ -54,7 +54,7 @@
   "has_decoder_lookup": false,
   "layers": [
     {
-      "layer": 1,
+      "layer": 0,
       "gates_with_external_connections": [],
       "cached_relations": [],
       "gates": [
@@ -44171,10 +44171,11 @@
             }
           }
         }
-      ]
+      ],
+      "intermediate_layer_width": null
     },
     {
-      "layer": 2,
+      "layer": 1,
       "gates_with_external_connections": [],
       "cached_relations": [],
       "gates": [
@@ -48621,10 +48622,11 @@
             }
           }
         }
-      ]
+      ],
+      "intermediate_layer_width": 343
     },
     {
-      "layer": 3,
+      "layer": 2,
       "gates_with_external_connections": [],
       "cached_relations": [],
       "gates": [
@@ -50918,10 +50920,11 @@
             }
           }
         }
-      ]
+      ],
+      "intermediate_layer_width": 175
     },
     {
-      "layer": 4,
+      "layer": 3,
       "gates_with_external_connections": [],
       "cached_relations": [],
       "gates": [
@@ -52113,10 +52116,11 @@
             }
           }
         }
-      ]
+      ],
+      "intermediate_layer_width": 91
     },
     {
-      "layer": 5,
+      "layer": 4,
       "gates_with_external_connections": [],
       "cached_relations": [],
       "gates": [
@@ -52741,10 +52745,11 @@
             }
           }
         }
-      ]
+      ],
+      "intermediate_layer_width": 47
     },
     {
-      "layer": 6,
+      "layer": 5,
       "gates_with_external_connections": [],
       "cached_relations": [],
       "gates": [
@@ -53101,10 +53106,11 @@
             }
           }
         }
-      ]
+      ],
+      "intermediate_layer_width": 25
     },
     {
-      "layer": 7,
+      "layer": 6,
       "gates_with_external_connections": [],
       "cached_relations": [],
       "gates": [
@@ -53311,10 +53317,11 @@
             }
           }
         }
-      ]
+      ],
+      "intermediate_layer_width": 15
     },
     {
-      "layer": 8,
+      "layer": 7,
       "gates_with_external_connections": [
         {
           "output_layer": 8,
@@ -53368,7 +53375,7 @@
           }
         },
         {
-          "output_layer": 8,
+          "output_layer": 7,
           "enforced_relation": {
             "CopyInExtensionField": {
               "input": {
@@ -53387,7 +53394,7 @@
           }
         },
         {
-          "output_layer": 8,
+          "output_layer": 7,
           "enforced_relation": {
             "CopyInExtensionField": {
               "input": {
@@ -53445,7 +53452,8 @@
         }
       ],
       "cached_relations": [],
-      "gates": []
+      "gates": [],
+      "intermediate_layer_width": 8
     }
   ],
   "global_output_map": {

@@ -54,7 +54,7 @@
   "has_decoder_lookup": true,
   "layers": [
     {
-      "layer": 1,
+      "layer": 0,
       "gates_with_external_connections": [],
       "cached_relations": [],
       "gates": [
@@ -1711,10 +1711,11 @@
             }
           }
         }
-      ]
+      ],
+      "intermediate_layer_width": null
     },
     {
-      "layer": 2,
+      "layer": 1,
       "gates_with_external_connections": [],
       "cached_relations": [],
       "gates": [
@@ -2217,10 +2218,11 @@
             }
           }
         }
-      ]
+      ],
+      "intermediate_layer_width": 27
     },
     {
-      "layer": 3,
+      "layer": 2,
       "gates_with_external_connections": [],
       "cached_relations": [],
       "gates": [
@@ -2520,10 +2522,11 @@
             }
           }
         }
-      ]
+      ],
+      "intermediate_layer_width": 18
     },
     {
-      "layer": 4,
+      "layer": 3,
       "gates_with_external_connections": [
         {
           "output_layer": 4,
@@ -2577,7 +2580,7 @@
           }
         },
         {
-          "output_layer": 4,
+          "output_layer": 3,
           "enforced_relation": {
             "CopyInExtensionField": {
               "input": {
@@ -2596,7 +2599,7 @@
           }
         },
         {
-          "output_layer": 4,
+          "output_layer": 3,
           "enforced_relation": {
             "CopyInExtensionField": {
               "input": {
@@ -2692,7 +2695,8 @@
         }
       ],
       "cached_relations": [],
-      "gates": []
+      "gates": [],
+      "intermediate_layer_width": 10
     }
   ],
   "global_output_map": {
