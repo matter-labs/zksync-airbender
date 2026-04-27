@@ -6,9 +6,10 @@ NOCACHES=false
 for arg in "$@"; do
     case "$arg" in
         --refresh) REFRESH=true ;;
-        # Use the no-caches circuit/verifier variant. Currently broken upstream
-        # (regenerated no-caches code disagrees with the committed proof.json),
-        # so leave it off until upstream regenerates a matching proof.
+        # Use the no-caches circuit/verifier variant. Requires a proof.json
+        # that was generated against the no-caches circuit; regenerate via
+        # `cargo test --release -p prover --features no_caches -- gkr_run_basic_unrolled_test`
+        # before running with this flag.
         --nocaches) NOCACHES=true ;;
         *) echo "unknown arg: $arg" >&2; exit 1 ;;
     esac
@@ -16,11 +17,9 @@ done
 
 REGEN_FEATURES=()
 TEST_FEATURES="verifier_stats,blake2_with_compression"
-DUMP_VARIANT="caches"
 if $NOCACHES; then
     REGEN_FEATURES=(--features no_caches)
     TEST_FEATURES="${TEST_FEATURES},no_caches"
-    DUMP_VARIANT="no_caches"
 fi
 
 if $REFRESH; then
@@ -28,9 +27,3 @@ if $REFRESH; then
 fi
 
 env RUSTFLAGS=-Awarnings cargo test -p verifier --features "${TEST_FEATURES}" --test native -- add_sub_lui_auipc_mop --nocapture
-
-if $REFRESH; then
-    (cd tools/gkr_verifier && ./dump_bin.sh --stats --variant "${DUMP_VARIANT}" add_sub_lui_auipc_mop)
-fi
-
-env RUSTFLAGS=-Awarnings cargo test --profile test-release -p verifier --features "${TEST_FEATURES}" --test transpiler -- --ignored add_sub_lui_auipc_mop --nocapture

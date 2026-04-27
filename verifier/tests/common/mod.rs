@@ -44,69 +44,6 @@ pub fn circuit_by_name(name: &str) -> &'static CircuitData {
 }
 
 #[cfg(feature = "verifier_stats")]
-pub fn resolve_symbol_address(elf_path: &str, name_contains: &str) -> Option<u32> {
-    use object::{Object, ObjectSymbol};
-    let bytes = std::fs::read(elf_path).ok()?;
-    let obj = object::File::parse(&*bytes).ok()?;
-    obj.symbols()
-        .find(|s| s.name().map(|n| n.contains(name_contains)).unwrap_or(false))
-        .map(|s| s.address() as u32)
-}
-
-#[cfg(feature = "verifier_stats")]
-pub fn extract_riscv_stats_log<R: riscv_transpiler::vm::RamPeek>(ram: &R, elf_path: &str) {
-    // Reconstruct a host-side `T` from riscv guest memory.
-    //
-    // Layout assumption: `T` is a packed sequence of host-`usize`-sized fields,
-    // each of which corresponds to a single 32-bit word in the guest. The host
-    // may be 32- or 64-bit; in the 64-bit case each guest u32 is zero-extended
-    // into a host usize slot (this matches how rustc lays out structs of
-    // `usize`/pointer fields, since the host code declares them as `usize`).
-    //
-    // Writes go through a properly-aligned `MaybeUninit<T>`, so the final
-    // `assume_init` is safe (no unaligned read, no Vec<u8> indirection).
-    unsafe fn read_rv_struct<T, R: riscv_transpiler::vm::RamPeek>(ram: &R, addr: u32) -> T {
-        const {
-            assert!(
-                std::mem::size_of::<T>() % std::mem::size_of::<usize>() == 0,
-                "read_rv_struct: T must be a packed sequence of usize-sized fields",
-            );
-            assert!(
-                std::mem::align_of::<T>() <= std::mem::align_of::<usize>(),
-                "read_rv_struct: T's alignment must not exceed usize",
-            );
-        }
-        let mut out = std::mem::MaybeUninit::<T>::uninit();
-        let slot = out.as_mut_ptr() as *mut usize;
-        let n = std::mem::size_of::<T>() / std::mem::size_of::<usize>();
-        for i in 0..n {
-            let v = ram.peek_word(addr + (i as u32) * 4) as usize;
-            slot.add(i).write(v);
-        }
-        out.assume_init()
-    }
-
-    let addr = resolve_symbol_address(elf_path, "STATS_LOG").expect("STATS_LOG missing in ELF");
-    let rw = |a: u32| ram.peek_word(a & !3);
-    let rb = |a: u32| -> u8 { ((rw(a) >> ((a & 3) * 8)) & 0xff) as u8 };
-
-    unsafe {
-        // Single bulk deserialize: widens every riscv u32 to host usize and
-        // transmutes into the whole LazyVec<Snapshot, MAX_LOG_ENTRIES>.
-        verifier_common::stats::STATS_LOG = read_rv_struct(ram, addr);
-        // Fix up each label: its ptr field currently holds a riscv address
-        // (widened to usize). Read the string bytes from RAM and replace.
-        for i in 0..verifier_common::stats::STATS_LOG.len() {
-            let entry = verifier_common::stats::STATS_LOG.get_unchecked_mut(i);
-            let riscv_ptr = entry.0.as_ptr() as usize as u32;
-            let ll = entry.0.len() as u32;
-            let lb: Vec<u8> = (0..ll).map(|j| rb(riscv_ptr + j)).collect();
-            entry.0 = Box::leak(String::from_utf8_lossy(&lb).into_owned().into_boxed_str());
-        }
-    }
-}
-
-#[cfg(feature = "verifier_stats")]
 pub fn print_stats_log(circuit_name: &str) {
     type Counters = (
         field::stats::Stats,
