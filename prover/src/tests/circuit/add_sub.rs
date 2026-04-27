@@ -136,36 +136,38 @@ const fn encode_r_system(funct3: u32, funct7: u32, rd: u32, rs1: u32, rs2: u32) 
     (funct7 << 25) | (rs2 << 20) | (rs1 << 15) | (funct3 << 12) | (rd << 7) | 0x73
 }
 
-// ADDMOD x3, x1, x2  (funct3=0b100, funct7=0b1000001)
-const ADDMOD: u32 = encode_r_system(0b100, 0b1000001, 3, 1, 2);
-// SUBMOD x3, x1, x2  (funct3=0b100, funct7=0b1000011)
-const SUBMOD: u32 = encode_r_system(0b100, 0b1000011, 3, 1, 2);
-// MULMOD x3, x1, x2  (funct3=0b100, funct7=0b1000101)
-const MULMOD: u32 = encode_r_system(0b100, 0b1000101, 3, 1, 2);
+fn run_mop_test(label: &'static str, funct7: u32, vectors: &[(u8, u8, u8, u32, u32, u32)]) {
+    for &(rd_reg, rs1_reg, rs2_reg, rs1, rs2, rd) in vectors {
+        let encoding = encode_r_system(
+            0b100,
+            funct7,
+            rd_reg as u32,
+            rs1_reg as u32,
+            rs2_reg as u32,
+        );
+        let dd = decoder_for(encoding);
+        check_rd(
+            &dd,
+            &NonMemTestCase { label, rs1, rs2, rd },
+            rd_reg,
+        );
+    }
+}
 
 #[test]
 fn test_addmod_compliance() {
     skip_if_ci!();
-    let dd = decoder_for(ADDMOD);
-    for &(rs1, rs2, rd) in compliance_vectors::ADDMOD_VECTORS {
-        check_rd(&dd, &NonMemTestCase { label: "ADDMOD", rs1, rs2, rd }, 3);
-    }
+    run_mop_test("ADDMOD", 0b1000001, compliance_vectors::ADDMOD_VECTORS);
 }
 
 #[test]
 fn test_submod_compliance() {
     skip_if_ci!();
-    let dd = decoder_for(SUBMOD);
-    for &(rs1, rs2, rd) in compliance_vectors::SUBMOD_VECTORS {
-        check_rd(&dd, &NonMemTestCase { label: "SUBMOD", rs1, rs2, rd }, 3);
-    }
+    run_mop_test("SUBMOD", 0b1000011, compliance_vectors::SUBMOD_VECTORS);
 }
 
 #[test]
 fn test_mulmod_compliance() {
     skip_if_ci!();
-    let dd = decoder_for(MULMOD);
-    for &(rs1, rs2, rd) in compliance_vectors::MULMOD_VECTORS {
-        check_rd(&dd, &NonMemTestCase { label: "MULMOD", rs1, rs2, rd }, 3);
-    }
+    run_mop_test("MULMOD", 0b1000101, compliance_vectors::MULMOD_VECTORS);
 }

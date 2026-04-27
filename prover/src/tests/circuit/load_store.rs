@@ -1,8 +1,8 @@
 use super::*;
+use super::compliance_vectors;
 
 use cs::machine::ops::unrolled::decoder::WordOnlyMemoryFamilyDecoder;
 use cs::machine::ops::unrolled::load_store_word_only::*;
-use cs::tables::LookupWrapper;
 
 const FAMILY_IDX: u8 = common_constants::circuit_families::LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX;
 
@@ -187,4 +187,85 @@ fn test_sw_basic() {
         label: "SW",
         data,
     });
+}
+
+// ==================== Compliance vector tests ====================
+
+fn check_lw(rd_reg: u8, rs1_reg: u8, ram: u32, rd: u32) {
+    let encoding = encode_load(0b010, rd_reg as u32, rs1_reg as u32, 0);
+    let rom_word_size = common_constants::rom::ROM_BYTE_SIZE / 4;
+    let mut bytecode = vec![encoding];
+    bytecode.resize(rom_word_size, 0);
+    let dd = decoder_for_word(encoding);
+    check_word(
+        &bytecode,
+        &dd,
+        &MemTestCase {
+            label: "LW",
+            data: MemoryOpcodeTracingDataWithTimestamp {
+                opcode_data: LoadOpcodeTracingData {
+                    initial_pc: 0,
+                    rs1_value: RAM_ADDR,
+                    aligned_ram_address: RAM_ADDR,
+                    aligned_ram_read_value: ram,
+                    rd_old_value: 0,
+                    rd_value: rd,
+                },
+                discr: MEM_LOAD_TRACE_DATA_MARKER,
+                rs1_read_timestamp: TimestampData::from_scalar(0),
+                rs2_or_ram_read_timestamp: TimestampData::from_scalar(0),
+                rd_or_ram_read_timestamp: TimestampData::from_scalar(0),
+                cycle_timestamp: TimestampData::from_scalar(4),
+            },
+        },
+    );
+}
+
+fn check_sw(rs1_reg: u8, rs2_reg: u8, old: u32, rs2_val: u32, new: u32) {
+    let encoding = encode_store(0b010, rs1_reg as u32, rs2_reg as u32, 0);
+    let rom_word_size = common_constants::rom::ROM_BYTE_SIZE / 4;
+    let mut bytecode = vec![encoding];
+    bytecode.resize(rom_word_size, 0);
+    let dd = decoder_for_word(encoding);
+
+    let store_data = StoreOpcodeTracingData {
+        initial_pc: 0,
+        rs1_value: RAM_ADDR,
+        aligned_ram_address: RAM_ADDR,
+        aligned_ram_old_value: old,
+        rs2_value: rs2_val,
+        aligned_ram_write_value: new,
+    };
+
+    check_word(
+        &bytecode,
+        &dd,
+        &MemTestCase {
+            label: "SW",
+            data: MemoryOpcodeTracingDataWithTimestamp {
+                opcode_data: unsafe { core::mem::transmute(store_data) },
+                discr: MEM_STORE_TRACE_DATA_MARKER,
+                rs1_read_timestamp: TimestampData::from_scalar(0),
+                rs2_or_ram_read_timestamp: TimestampData::from_scalar(0),
+                rd_or_ram_read_timestamp: TimestampData::from_scalar(0),
+                cycle_timestamp: TimestampData::from_scalar(4),
+            },
+        },
+    );
+}
+
+#[test]
+fn test_lw_compliance() {
+    skip_if_ci!();
+    for &(rd_reg, rs1_reg, ram, rd) in compliance_vectors::LW_VECTORS {
+        check_lw(rd_reg, rs1_reg, ram, rd);
+    }
+}
+
+#[test]
+fn test_sw_compliance() {
+    skip_if_ci!();
+    for &(rs1_reg, rs2_reg, old, rs2_val, new) in compliance_vectors::SW_VECTORS {
+        check_sw(rs1_reg, rs2_reg, old, rs2_val, new);
+    }
 }

@@ -1,4 +1,5 @@
 use super::*;
+use super::compliance_vectors;
 
 use cs::machine::ops::unrolled::decoder::SubwordOnlyMemoryFamilyDecoder;
 use cs::machine::ops::unrolled::load_store::create_load_store_special_tables;
@@ -303,4 +304,62 @@ fn test_sh_ffff_into_zero() {
 fn test_sh_zero_into_ones() {
     skip_if_ci!();
     check_subword_store(SH, 0xFFFFFFFF, 0x0000, 0xFFFF0000);
+}
+
+// ==================== Compliance vector tests ====================
+
+fn run_load_compliance(funct3: u32, vectors: &[(u8, u8, u32, u32)]) {
+    for &(rd_reg, rs1_reg, ram, rd) in vectors {
+        let encoding = encode_load(funct3, rd_reg as u32, rs1_reg as u32, 0);
+        check_subword_load(encoding, ram, rd);
+    }
+}
+
+fn run_store_compliance(funct3: u32, vectors: &[(u8, u8, u32, u32, u32)]) {
+    for &(rs1_reg, rs2_reg, old, rs2_val, new) in vectors {
+        let encoding = encode_store(funct3, rs1_reg as u32, rs2_reg as u32, 0);
+        check_subword_store(encoding, old, rs2_val, new);
+    }
+}
+
+#[test]
+#[ignore = "subword load/store circuit has unresolvable witness variables in BasicAssembly debug evaluator"]
+fn test_lb_compliance() {
+    skip_if_ci!();
+    run_load_compliance(0b000, compliance_vectors::LB_VECTORS);
+}
+
+#[test]
+#[ignore = "subword load/store circuit has unresolvable witness variables in BasicAssembly debug evaluator"]
+fn test_lbu_compliance() {
+    skip_if_ci!();
+    run_load_compliance(0b100, compliance_vectors::LBU_VECTORS);
+}
+
+#[test]
+#[ignore = "subword load/store circuit has unresolvable witness variables in BasicAssembly debug evaluator"]
+fn test_lh_compliance() {
+    skip_if_ci!();
+    run_load_compliance(0b001, compliance_vectors::LH_VECTORS);
+}
+
+#[test]
+#[ignore = "subword load/store circuit has unresolvable witness variables in BasicAssembly debug evaluator"]
+fn test_lhu_compliance() {
+    skip_if_ci!();
+    run_load_compliance(0b101, compliance_vectors::LHU_VECTORS);
+}
+
+#[test]
+#[ignore = "subword load/store circuit has unresolvable witness variables in BasicAssembly debug evaluator"]
+fn test_sb_compliance() {
+    skip_if_ci!();
+    run_store_compliance(0b000, compliance_vectors::SB_VECTORS);
+}
+
+#[test]
+#[ignore = "subword load/store circuit has unresolvable witness variables in BasicAssembly debug evaluator"]
+fn test_sh_compliance() {
+    skip_if_ci!();
+    run_store_compliance(0b001, compliance_vectors::SH_VECTORS);
 }

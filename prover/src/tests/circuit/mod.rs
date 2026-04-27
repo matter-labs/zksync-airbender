@@ -1,13 +1,3 @@
-//! End-to-end circuit constraint satisfaction tests for individual RISC-V opcodes.
-//!
-//! Each test encodes a single RISC-V instruction, provides register inputs/outputs
-//! as oracle data, runs the full circuit (witness generation + constraint check),
-//! and optionally runs the full prover + verifier pipeline.
-//!
-//! These tests require the `debug_evaluate_witness` feature (enabled by the prover's
-//! `cs_debug` feature) so that `BasicAssembly::is_satisfied()` actually evaluates
-//! constraints against the resolved witness.
-
 use crate::cs::cs::cs_reference::BasicAssembly;
 use crate::definitions::*;
 use crate::merkle_trees::DefaultTreeConstructor;
