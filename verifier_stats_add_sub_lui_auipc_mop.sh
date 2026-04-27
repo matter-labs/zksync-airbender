@@ -26,4 +26,9 @@ if $REFRESH; then
     env RUSTFLAGS=-Awarnings cargo test -p verifier_generator ${REGEN_FEATURES[@]+"${REGEN_FEATURES[@]}"} --test generate_verifiers add_sub_lui_auipc_mop
 fi
 
-env RUSTFLAGS=-Awarnings cargo test -p verifier --features "${TEST_FEATURES}" --test native -- add_sub_lui_auipc_mop --nocapture
+OUT="verifier/verifier_stats_add_sub_lui_auipc_mop.txt"
+TMP=$(mktemp)
+trap 'rm -f "$TMP"' EXIT
+env RUSTFLAGS=-Awarnings cargo test -p verifier --features "${TEST_FEATURES}" --test native -- add_sub_lui_auipc_mop --nocapture | tee "$TMP"
+mv "$TMP" "$OUT"
+chmod 644 "$OUT"
