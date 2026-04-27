@@ -14,7 +14,7 @@ mod ram_with_rom_region;
 mod replay_snapshotter;
 mod simple_tape;
 
-pub(crate) mod delegations;
+pub mod delegations;
 
 pub use self::execution_observer::ExecutionObserver;
 #[cfg(feature = "flamegraph")]

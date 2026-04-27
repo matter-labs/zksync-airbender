@@ -6,7 +6,7 @@ use blake2s_u32::state_with_extended_control::Blake2RoundFunctionEvaluator;
 use blake2s_u32::*;
 use common_constants::*;
 
-const MIXING_FUNCTION_ACCESS_IDXES: [[usize; 4]; BLAKE2S_G_FUNCTIONS_PER_ROUND_FUNCTION] = [
+pub const MIXING_FUNCTION_ACCESS_IDXES: [[usize; 4]; BLAKE2S_G_FUNCTIONS_PER_ROUND_FUNCTION] = [
     [0, 4, 8, 12],
     [1, 5, 9, 13],
     [2, 6, 10, 14],
@@ -17,7 +17,7 @@ const MIXING_FUNCTION_ACCESS_IDXES: [[usize; 4]; BLAKE2S_G_FUNCTIONS_PER_ROUND_F
     [3, 4, 9, 14],
 ];
 
-pub(crate) const STATE_EL_INTO_MIXING_FUNCTION_ROUND: [usize; 16] = const {
+pub const STATE_EL_INTO_MIXING_FUNCTION_ROUND: [usize; 16] = const {
     let mut result = [0; 16];
     let mut i = 0;
     while i < MIXING_FUNCTION_ACCESS_IDXES.len() {
@@ -76,7 +76,7 @@ pub(crate) fn blake2_g_function_call<
 
     assert!(x10 != x11);
 
-    assert!(x10 % 128 == 0, "state pointer is unaligned");
+    assert!(x10 % 64 == 0, "state pointer is unaligned");
     assert!(x11 % 64 == 0, "input pointer is unaligned");
 
     assert!(
