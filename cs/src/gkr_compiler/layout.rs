@@ -22,6 +22,34 @@ pub struct GKRLayerDescription {
     pub intermediate_layer_width: Option<usize>, // number of polys in intermediate layers. None for the base one
 }
 
+impl GKRLayerDescription {
+    pub fn inputs(&self) -> BTreeSet<GKRAddress> {
+        let mut result = BTreeSet::new();
+        for gate in self
+            .gates_with_external_connections
+            .iter()
+            .chain(self.gates.iter())
+        {
+            gate.enforced_relation.dump_inputs(&mut result);
+        }
+
+        result
+    }
+
+    pub fn outputs(&self) -> BTreeSet<GKRAddress> {
+        let mut result = BTreeSet::new();
+        for gate in self
+            .gates_with_external_connections
+            .iter()
+            .chain(self.gates.iter())
+        {
+            gate.enforced_relation.dump_outputs(&mut result);
+        }
+
+        result
+    }
+}
+
 #[derive(Clone, Debug)]
 pub(crate) enum LookupOutput {
     Direct(NoFieldGKRRelation),

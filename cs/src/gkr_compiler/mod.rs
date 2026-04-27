@@ -712,161 +712,313 @@ impl NoFieldGKRRelation {
         }
     }
 
-    // pub fn created_claims(&self) -> Vec<GKRAddress> {
-    //     match self {
-    //         // Self::FormalBaseLayerInput(..) => vec![],
-    //         Self::LinearBaseFieldRelation { input, output } => {
-    //             let mut result = BTreeSet::new();
-    //             for (_, el) in input.linear_terms.iter() {
-    //                 result.insert(*el);
-    //             }
-    //             result.into_iter().collect()
-    //         }
-    //         Self::MaxQuadratic { input, output } => vec![],
-    //         Self::EnforceConstraintsMaxQuadratic { input } => {
-    //             let mut result = BTreeSet::new();
-    //             for ((a, b), _) in input.quadratic_terms.iter() {
-    //                 result.insert(*a);
-    //                 result.insert(*b);
-    //             }
-    //             for (el, _) in input.linear_terms.iter() {
-    //                 result.insert(*el);
-    //             }
-    //             result.into_iter().collect()
-    //         }
-    //         Self::Copy { input, output } => {
-    //             vec![*input]
-    //         }
-    //         Self::InitialGrandProductFromCaches { input, output } => {
-    //             vec![]
-    //         }
-    //         Self::InitialGrandProductWithoutCaches { input, output } => {
-    //             todo!();
-    //         }
-    //         Self::UnbalancedGrandProductWithCache {
-    //             scalar,
-    //             input,
-    //             output,
-    //         } => {
-    //             vec![*scalar]
-    //         }
-    //         Self::TrivialProduct { input, output } => input.to_vec(),
-    //         Self::MaskIntoIdentityProduct {
-    //             input,
-    //             mask,
-    //             output,
-    //         } => {
-    //             vec![*input, *mask]
-    //         }
-    //         Self::MaterializeSingleLookupInput { input, output } => {
-    //             let mut result = BTreeSet::new();
-    //             for (_, el) in input.input.linear_terms.iter() {
-    //                 result.insert(*el);
-    //             }
-    //             result.into_iter().collect()
-    //         }
-    //         Self::MaterializedVectorLookupInput { input, output } => {
-    //             let mut result = BTreeSet::new();
-    //             for el in input.columns.iter() {
-    //                 for (_, el) in el.linear_terms.iter() {
-    //                     result.insert(*el);
-    //                 }
-    //             }
-    //             result.into_iter().collect()
-    //         }
-    //         Self::LookupWithCachedDensAndSetup {
-    //             input,
-    //             setup,
-    //             output,
-    //         } => {
-    //             vec![]
-    //         }
-    //         Self::LookupPairFromBaseInputs { input, output } => {
-    //             let mut result = BTreeSet::new();
-    //             for el in input.iter() {
-    //                 for (_, el) in el.input.linear_terms.iter() {
-    //                     result.insert(*el);
-    //                 }
-    //             }
-    //             result.into_iter().collect()
-    //         }
-    //         Self::LookupPairFromMaterializedBaseInputs { input, output } => {
-    //             vec![]
-    //         }
-    //         // Self::LookupUnbalancedPairWithBaseInputs {
-    //         //     input,
-    //         //     remainder,
-    //         //     output,
-    //         // } => {
-    //         //     let mut result = BTreeSet::new();
-    //         //     for (_, el) in remainder.input.linear_terms.iter() {
-    //         //         result.insert(*el);
-    //         //     }
-    //         //     let mut result: Vec<GKRAddress> = result.into_iter().collect();
-    //         //     result.extend_from_slice(input);
-    //         //     result
-    //         // }
-    //         Self::LookupUnbalancedPairWithMaterializedBaseInputs {
-    //             input,
-    //             remainder,
-    //             output,
-    //         } => {
-    //             let mut result: Vec<GKRAddress> = vec![];
-    //             result.extend_from_slice(input);
-    //             result.push(*remainder);
-    //             result
-    //         }
-    //         // Self::LookupFromBaseInputsWithSetup {
-    //         //     input,
-    //         //     setup,
-    //         //     output,
-    //         // } => {
-    //         //     let mut result = BTreeSet::new();
-    //         //     for (_, el) in input.input.linear_terms.iter() {
-    //         //         result.insert(*el);
-    //         //     }
-    //         //     let mut result: Vec<GKRAddress> = result.into_iter().collect();
-    //         //     result.extend_from_slice(setup);
-    //         //     result
-    //         // }
-    //         Self::LookupFromMaterializedBaseInputWithSetup {
-    //             input,
-    //             setup,
-    //             output,
-    //         } => {
-    //             vec![]
-    //         }
-    //         Self::LookupPairFromVectorInputs { input, output } => {
-    //             let mut result = BTreeSet::new();
-    //             for input in input.iter() {
-    //                 for el in input.columns.iter() {
-    //                     for (_, el) in el.linear_terms.iter() {
-    //                         result.insert(*el);
-    //                     }
-    //                 }
-    //             }
-    //             result.into_iter().collect()
-    //         }
-    //         Self::LookupPairFromMaterializedVectorInputs { input, output } => input.to_vec(),
-    //         Self::LookupPairFromCachedVectorInputs { input, output } => input.to_vec(),
-    //         Self::LookupFromMaterializedVectorInputWithSetup {
-    //             input,
-    //             setup,
-    //             output,
-    //         } => {
-    //             assert!(input.is_cache());
-    //             assert!(setup[0].is_cache() == false);
-    //             assert!(setup[1].is_cache());
-    //             vec![setup[0]]
-    //         }
-    //         Self::AggregateLookupRationalPair { input, output } => {
-    //             input.iter().flatten().copied().collect()
-    //         }
-    //         a @ _ => {
-    //             panic!("Not yet implemented for relation {:?}", a);
-    //         }
-    //     }
-    // }
+    /// Dump inputs for data flow. Sumcheck will make new claims evaluations of these
+    /// inputs at random point
+    pub fn dump_inputs(&self, result: &mut BTreeSet<GKRAddress>) {
+        match self {
+            Self::LinearBaseFieldRelation { input, output } => {
+                for (_, el) in input.linear_terms.iter() {
+                    result.insert(*el);
+                }
+            }
+            Self::MaxQuadratic { input, output } => {
+                for (a, other) in input.quadratic_terms.iter() {
+                    result.insert(*a);
+                    for (_, b) in other.iter() {
+                        result.insert(*b);
+                    }
+                }
+                for (_, a) in input.linear_terms.iter() {
+                    result.insert(*a);
+                }
+            }
+            Self::EnforceConstraintsMaxQuadratic { input } => {
+                for ((a, b), _) in input.quadratic_terms.iter() {
+                    result.insert(*a);
+                    result.insert(*b);
+                }
+                for (el, _) in input.linear_terms.iter() {
+                    result.insert(*el);
+                }
+            }
+            Self::CopyInBaseField { input, .. } | Self::CopyInExtensionField { input, .. } => {
+                result.insert(*input);
+            }
+            Self::InitialGrandProductFromCaches { input, output } => {
+                result.insert(input[0]);
+                result.insert(input[1]);
+            }
+            Self::InitialGrandProductWithoutCaches { input, output } => {
+                input[0].dump_inputs(result);
+                input[1].dump_inputs(result);
+            }
+            Self::UnbalancedGrandProductWithCache {
+                scalar,
+                input,
+                output,
+            } => {
+                result.insert(*scalar);
+                result.insert(*input);
+            }
+            Self::TrivialProduct { input, output } => {
+                result.insert(input[0]);
+                result.insert(input[1]);
+            }
+            Self::MaskIntoIdentityProduct {
+                input,
+                mask,
+                output,
+            } => {
+                result.insert(*input);
+                result.insert(*mask);
+            }
+            Self::MaterializeSingleLookupInput { input, output, .. } => {
+                for (_, el) in input.input.linear_terms.iter() {
+                    result.insert(*el);
+                }
+            }
+            Self::MaterializedVectorLookupInput { input, output } => {
+                for el in input.columns.iter() {
+                    for (_, el) in el.linear_terms.iter() {
+                        result.insert(*el);
+                    }
+                }
+            }
+            Self::LookupWithCachedDensAndSetup {
+                input,
+                setup,
+                output,
+            } => {
+                result.insert(input[0]);
+                result.insert(input[1]);
+                result.insert(setup[0]);
+                result.insert(setup[1]);
+            }
+            Self::LookupPairFromBaseInputs { input, output, .. } => {
+                for el in input.iter() {
+                    for (_, el) in el.input.linear_terms.iter() {
+                        result.insert(*el);
+                    }
+                }
+            }
+            Self::LookupPairFromMaterializedBaseInputs { input, output } => {
+                result.insert(input[0]);
+                result.insert(input[1]);
+            }
+            // Self::LookupUnbalancedPairWithBaseInputs {
+            //     input,
+            //     remainder,
+            //     output,
+            // } => {
+            //     let mut result = BTreeSet::new();
+            //     for (_, el) in remainder.input.linear_terms.iter() {
+            //         result.insert(*el);
+            //     }
+            //     let mut result: Vec<GKRAddress> = result.into_iter().collect();
+            //     result.extend_from_slice(input);
+            //     result
+            // }
+            Self::LookupUnbalancedPairWithMaterializedBaseInputs {
+                input,
+                remainder,
+                output,
+            } => {
+                result.insert(input[0]);
+                result.insert(input[1]);
+                result.insert(*remainder);
+            }
+            // Self::LookupFromBaseInputsWithSetup {
+            //     input,
+            //     setup,
+            //     output,
+            // } => {
+            //     let mut result = BTreeSet::new();
+            //     for (_, el) in input.input.linear_terms.iter() {
+            //         result.insert(*el);
+            //     }
+            //     let mut result: Vec<GKRAddress> = result.into_iter().collect();
+            //     result.extend_from_slice(setup);
+            //     result
+            // }
+            Self::LookupFromMaterializedBaseInputWithSetup {
+                input,
+                setup,
+                output,
+            } => {
+                result.insert(*input);
+                result.insert(setup[0]);
+                result.insert(setup[1]);
+            }
+            Self::LookupPairFromVectorInputs { input, output } => {
+                for input in input.iter() {
+                    for el in input.columns.iter() {
+                        for (_, el) in el.linear_terms.iter() {
+                            result.insert(*el);
+                        }
+                    }
+                }
+            }
+            Self::LookupPairFromMaterializedVectorInputs { input, output } => {
+                result.insert(input[0]);
+                result.insert(input[1]);
+            }
+            Self::LookupPairFromCachedVectorInputs { input, output } => {
+                result.insert(input[0]);
+                result.insert(input[1]);
+            }
+            Self::LookupFromMaterializedVectorInputWithSetup {
+                input,
+                setup,
+                output,
+            } => {
+                result.insert(*input);
+                result.insert(setup[0]);
+                result.insert(setup[1]);
+            }
+            Self::AggregateLookupRationalPair { input, output } => {
+                result.insert(input[0][0]);
+                result.insert(input[0][1]);
+                result.insert(input[1][0]);
+                result.insert(input[1][1]);
+            }
+            a @ _ => {
+                panic!("Not yet implemented for relation {:?}", a);
+            }
+        }
+    }
+
+    /// Dump outputs for data flow. Sumcheck will use claims about evaluations of these
+    /// polys at random point as the starting point
+    pub fn dump_outputs(&self, result: &mut BTreeSet<GKRAddress>) {
+        match self {
+            Self::LinearBaseFieldRelation { input, output } => {
+                result.insert(*output);
+            }
+            Self::MaxQuadratic { input, output } => {
+                result.insert(*output);
+            }
+            Self::EnforceConstraintsMaxQuadratic { input } => {
+                // nothing
+            }
+            Self::CopyInBaseField { output, .. } | Self::CopyInExtensionField { output, .. } => {
+                result.insert(*output);
+            }
+            Self::InitialGrandProductFromCaches { input, output } => {
+                result.insert(*output);
+            }
+            Self::InitialGrandProductWithoutCaches { input, output } => {
+                result.insert(*output);
+            }
+            Self::UnbalancedGrandProductWithCache {
+                scalar,
+                input,
+                output,
+            } => {
+                result.insert(*output);
+            }
+            Self::TrivialProduct { input, output } => {
+                result.insert(*output);
+            }
+            Self::MaskIntoIdentityProduct {
+                input,
+                mask,
+                output,
+            } => {
+                result.insert(*output);
+            }
+            Self::MaterializeSingleLookupInput { input, output, .. } => {
+                result.insert(*output);
+            }
+            Self::MaterializedVectorLookupInput { input, output } => {
+                result.insert(*output);
+            }
+            Self::LookupWithCachedDensAndSetup {
+                input,
+                setup,
+                output,
+            } => {
+                result.insert(output[0]);
+                result.insert(output[1]);
+            }
+            Self::LookupPairFromBaseInputs { input, output, .. } => {
+                result.insert(output[0]);
+                result.insert(output[1]);
+            }
+            Self::LookupPairFromMaterializedBaseInputs { input, output } => {
+                result.insert(output[0]);
+                result.insert(output[1]);
+            }
+            // Self::LookupUnbalancedPairWithBaseInputs {
+            //     input,
+            //     remainder,
+            //     output,
+            // } => {
+            //     let mut result = BTreeSet::new();
+            //     for (_, el) in remainder.input.linear_terms.iter() {
+            //         result.insert(*el);
+            //     }
+            //     let mut result: Vec<GKRAddress> = result.into_iter().collect();
+            //     result.extend_from_slice(input);
+            //     result
+            // }
+            Self::LookupUnbalancedPairWithMaterializedBaseInputs {
+                input,
+                remainder,
+                output,
+            } => {
+                result.insert(output[0]);
+                result.insert(output[1]);
+            }
+            // Self::LookupFromBaseInputsWithSetup {
+            //     input,
+            //     setup,
+            //     output,
+            // } => {
+            //     let mut result = BTreeSet::new();
+            //     for (_, el) in input.input.linear_terms.iter() {
+            //         result.insert(*el);
+            //     }
+            //     let mut result: Vec<GKRAddress> = result.into_iter().collect();
+            //     result.extend_from_slice(setup);
+            //     result
+            // }
+            Self::LookupFromMaterializedBaseInputWithSetup {
+                input,
+                setup,
+                output,
+            } => {
+                result.insert(output[0]);
+                result.insert(output[1]);
+            }
+            Self::LookupPairFromVectorInputs { input, output } => {
+                result.insert(output[0]);
+                result.insert(output[1]);
+            }
+            Self::LookupPairFromMaterializedVectorInputs { input, output } => {
+                result.insert(output[0]);
+                result.insert(output[1]);
+            }
+            Self::LookupPairFromCachedVectorInputs { input, output } => {
+                result.insert(output[0]);
+                result.insert(output[1]);
+            }
+            Self::LookupFromMaterializedVectorInputWithSetup {
+                input,
+                setup,
+                output,
+            } => {
+                result.insert(output[0]);
+                result.insert(output[1]);
+            }
+            Self::AggregateLookupRationalPair { input, output } => {
+                result.insert(output[0]);
+                result.insert(output[1]);
+            }
+            a @ _ => {
+                panic!("Not yet implemented for relation {:?}", a);
+            }
+        }
+    }
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
