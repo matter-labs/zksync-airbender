@@ -333,9 +333,9 @@ impl GpuWhirExtensionOracle {
         let value_query = self
             .trace_holder
             .get_query_leafs(0, &device_tree_index, context)?;
-        let path_query = self
-            .trace_holder
-            .get_query_merkle_paths(0, &device_tree_index, context)?;
+        let path_query =
+            self.trace_holder
+                .get_query_merkle_paths(0, &device_tree_index, context)?;
         Ok(GpuWhirScheduledExtensionQuery {
             index: tree_index,
             coset_index,
@@ -383,9 +383,9 @@ impl GpuWhirExtensionOracle {
         let value_query = self
             .trace_holder
             .get_query_leafs(0, &device_tree_index, context)?;
-        let path_query = self
-            .trace_holder
-            .get_query_merkle_paths(0, &device_tree_index, context)?;
+        let path_query =
+            self.trace_holder
+                .get_query_merkle_paths(0, &device_tree_index, context)?;
         Ok(GpuWhirScheduledExtensionQuery {
             index: 0,
             coset_index: 0,
