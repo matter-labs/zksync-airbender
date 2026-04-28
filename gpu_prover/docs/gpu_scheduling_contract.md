@@ -16,9 +16,16 @@ edge cases, and wiring behind each rule.
   `Callbacks::schedule` / `launch_host_fn`. `UnsafeAccessor::get()` /
   `UnsafeMutAccessor::get_mut()` are only valid inside stream-scheduled
   closures.
-- **MUST** fill H2D staging buffers via a scheduled host callback (captured
-  `UnsafeMutAccessor`). `.copy_from_slice(...)` right after allocation races
-  the prior pool owner's outstanding DMA, even when it appears to work.
+- **MUST** fill stream-ordered H2D staging buffers via a scheduled host
+  callback (captured `UnsafeMutAccessor`). `.copy_from_slice(...)` right after
+  allocation races the prior pool owner's outstanding DMA, even when it
+  appears to work.
+- **`SchedulerHostAllocator` is the separate pinned host pool for immutable,
+  scheduling-time-known H2D sources** (compiled kernel descriptors, recipe
+  tables, etc.). Its access rule is **inverted** relative to the stream-ordered
+  pool: the scheduling thread writes once during construction, and every stream
+  operation thereafter only reads. See *SchedulerHostAllocator* below for the
+  construction invariant and what belongs there.
 - **MUST** consume D2H readback buffers via a scheduled host callback, never
   from the scheduling thread.
 - **MUST** fork/join any op on an auxiliary stream (`h2d_stream`, `d2h_stream`,
@@ -49,8 +56,9 @@ The prover maintains four streams:
 
 - **exec stream** (`exec_stream`): the single reference stream for all GPU work.
   Kernel launches, pool allocations, pool frees, and host callbacks are all
-  ordered relative to this stream. When the contract says "stream-ordered", it
-  always means exec-stream-ordered.
+  ordered relative to this stream and serialize against each other without
+  explicit synchronization. When the contract says "stream-ordered", it always
+  means exec-stream-ordered.
 
 - **H2D stream** (`h2d_stream`): an auxiliary stream used to overlap
   host-to-device transfers with exec-stream compute. It is **not** the default
@@ -72,25 +80,30 @@ The prover maintains four streams:
 with respect to exec_stream using CUDA events. The driver gives independent
 streams no implicit ordering guarantees.
 
-## Stream ordering
-
-All kernel launches, pool allocations, pool frees, and host callbacks are
-logically ordered on the **exec stream**. The stream serializes these
-operations, so no explicit synchronization is needed between them.
-
-H2D copies are an exception when routed through h2d_stream — they require
-explicit event fencing (see *H2D copies* below).
-
 ## Memory lifetime
 
 Device allocations and host allocations share **identical** lifetime semantics.
 
+Two pinned host pools coexist with **opposite** access rules:
+
+- The **stream-ordered host pool** (the default; what *Access rule* and
+  *Lifetime rules* below describe) is for any buffer the stream *writes* —
+  H2D staging filled in a callback, D2H destinations, mutable scratch. The
+  scheduling thread treats it as opaque.
+- **`SchedulerHostAllocator`** is for H2D *sources* whose contents are fully
+  determined at scheduling time. The scheduling thread writes them once during
+  construction, and the stream only reads them. See *SchedulerHostAllocator*
+  below.
+
+Unless otherwise stated, "host pool" / "pool-backed" below means the
+stream-ordered pool.
+
 ### Access rule
 
-Pool-backed allocations (device and host) are **reservations for stream-side
-access**. Every read and write must be expressed as a stream operation — a
-kernel launch, `memory_copy_async`, or a host callback scheduled via
-`Callbacks::schedule` / `launch_host_fn`.
+Pool-backed allocations (device and stream-ordered host) are **reservations
+for stream-side access**. Every read and write must be expressed as a stream
+operation — a kernel launch, `memory_copy_async`, or a host callback scheduled
+via `Callbacks::schedule` / `launch_host_fn`.
 
 **The scheduling thread** — the Rust code currently enqueueing work — **must
 NOT dereference the memory.** That includes raw pointers, `UnsafeAccessor::get()`,
@@ -106,11 +119,6 @@ right after allocating it, then enqueue the `memory_copy_async`. This appears
 to work when the stream is idle but breaks as soon as the buffer's pool block
 has recently been recycled: the scheduling-thread overwrite races the prior
 owner's outstanding DMA.
-
-Accessors (`UnsafeAccessor`, `UnsafeMutAccessor`) exist to be **captured by
-value into stream-scheduled closures** or passed into `memory_copy_async`
-slots. Dereferencing them (`get()`, `get_mut()`) is only valid inside a
-stream-scheduled operation. The scheduling thread treats them as opaque.
 
 ### Lifetime rules
 
@@ -129,21 +137,66 @@ exec-stream operation that holds a raw pointer into it — via `UnsafeAccessor`,
 or into the source/dest slots of `memory_copy_async`; dereferencing them
 (`get()`, `get_mut()`) is only valid inside a stream op.
 
-**H2D staging buffers**: fill the buffer by scheduling a host callback that
-writes to it (via an `UnsafeMutAccessor` captured by the closure). The callback
-runs as a stream op, so the subsequent `memory_copy_async` reads what the
-callback wrote. Once the memcpy is scheduled, the host handle may be dropped.
-**Do not fill the buffer from the scheduling thread.**
+**Filling and consuming**: H2D staging is filled by a callback writing through
+a captured `UnsafeMutAccessor`; D2H readbacks are consumed by a callback
+reading the destination after the `memory_copy_async`. Drop the host handle
+once the *next* stream op holding the pointer (the memcpy after a fill, the
+consumer callback after a readback) has been **scheduled**. Never fill or read
+from the scheduling thread.
 
-**D2H readback buffers**: consume the buffer by scheduling a host callback that
-reads it after the `memory_copy_async` has written it. The handle must remain
-alive until the consuming callback has been scheduled on exec_stream. **Do not
-read the buffer from the scheduling thread.**
+**Proof output buffers**: proof data is assembled inside exec-stream callbacks
+into non-pool heap memory (`Vec`, `BTreeMap`, owned `Option<Proof>`). No
+context allocation needs to outlive the scheduling phase.
 
-**Proof output buffers**: all proof data is assembled inside exec-stream
-callbacks into non-pool heap memory (`Vec`, `BTreeMap`, `Option<Proof>` held in
-owned host-backed state). No context allocation needs to outlive the scheduling
-phase.
+### SchedulerHostAllocator
+
+`SchedulerHostAllocator` is the second pinned host pool, with **inverted
+access semantics** vs. the stream-ordered pool above: the scheduling thread
+writes once during construction, and every stream operation thereafter only
+reads.
+
+**Why a second pool.** The "fill via callback" rule guards against a
+scheduling-thread write racing a prior owner's outstanding DMA on a recycled
+block. That hazard only exists for buffers the stream *writes*.
+Scheduling-time-known H2D inputs — recipe headers and terms, combined-claim
+descriptors, lookup-and-constraint constants, similar compiled-kernel inputs
+— are never written by the GPU; staging them through a callback is pure
+overhead (an extra CPU hop, a serialization point on `exec_stream`, profile
+noise).
+
+**Construction invariant.** Fill the buffer with direct scheduling-thread
+writes during construction (e.g. `scheduler_host_from_slice`). Once any
+`memory_copy_async` reading it has been **enqueued**, the buffer is frozen:
+no further scheduling-thread mutation, no callback writes, no use as a DMA
+destination, no kernel writes. The buffer stays owned by its handle until
+drop — it is not stream-recycled into and out of active service the way
+stream-ordered blocks are, so a late prior DMA cannot corrupt content nobody
+writes again. This is the **only** circumstance in which the scheduling
+thread may dereference pinned-host pool memory; the *Access rule* still
+holds for everything else.
+
+**What belongs where:**
+
+| Use                                              | Pool                       |
+| ------------------------------------------------ | -------------------------- |
+| H2D source for transcript-derived challenge data | stream-ordered host pool   |
+| H2D source for compiled / scheduling-time data   | `SchedulerHostAllocator`   |
+| D2H readback destination                         | stream-ordered host pool   |
+| Callback-populated staging                       | stream-ordered host pool   |
+| Mutable scratch on the stream side               | stream-ordered host pool   |
+
+Rule of thumb: if a buffer needs **any** stream-side write — DMA target,
+callback fill, transcript-dependent content — it does not belong in
+`SchedulerHostAllocator`.
+
+**Lifetime and concurrency.** Same scheduled-not-completed rule as the
+stream-ordered pool: keep the handle alive until the last H2D reading it has
+been scheduled. In practice, attach to a keepalive that outlives all
+in-flight prove() work; the pool is concurrent on the allocator side, so
+drops may happen on a thread distinct from the scheduling thread. Do not
+allocate scheduler-host memory for an empty input — skip the H2D, or keep an
+existing one-element dummy device buffer when a kernel signature requires a
+valid pointer.
 
 ## H2D copies
 
@@ -185,13 +238,10 @@ below. This is worthwhile when the D2H source is written well before any host
 consumer reads the destination, and meaningful exec-stream compute can run in
 parallel with the transfer.
 
-> Note: the terminal proof-slab D2H in `prove()` (which mirrors the whole
-> device-resident proof image into pinned host memory for the assembly callback)
-> intentionally runs on exec_stream. The slab is written and read on exec_stream
-> and the mirror is the last scheduled op before the assembly callback, so
-> there is no concurrent exec-stream work to overlap with. Other per-layer D2Hs
-> that still feed WHIR host setup continue to use `d2h_stream` via the
-> fork/join pattern below.
+> The terminal proof-slab D2H in `prove()` runs on exec_stream because it is
+> the last scheduled op before the assembly callback, so there is no
+> concurrent exec-stream work to overlap with. Per-layer D2Hs that feed WHIR
+> host setup continue to use d2h_stream via the fork/join pattern below.
 
 ### Fork/join/drop ownership rules
 
@@ -214,13 +264,11 @@ to exec_stream for the drop.
    stream-ordered pool free then guarantees the block is not recycled until the
    secondary stream has finished. Skipping the join before drop is a
    use-after-free.
-4. **Write-exclusivity**: within a fork/join window, writes to any shared
-   buffer (pool-backed allocation or `UnsafeMutAccessor` target such as shared
-   host state) must be done by exactly one stream. Concurrent reads across
-   streams are fine; concurrent writes, or a read on one stream racing a write
-   on another, are not. If the secondary stream writes a buffer, exec_stream
-   must not also write (or read) it inside the window. If both streams only
-   read, no coordination beyond fork/join is needed.
+4. **Write-exclusivity**: within a fork/join window, exactly one stream
+   writes any shared buffer (pool-backed allocation or `UnsafeMutAccessor`
+   target such as shared host state); the other side may only read.
+   Concurrent reads are fine. If the secondary stream writes, exec_stream
+   must not also touch the buffer inside the window.
 
 ```text
 exec_stream:   kernels write source buffer S and/or update shared host state X
@@ -273,13 +321,10 @@ exec_stream:
    work for this proof is complete. This is a general completion signal,
    separate from the fence above.
 
-`prove()` itself must stay enqueue-only: it may add stream waits/fences/events,
-but it must not block the host thread waiting for exec_stream progress. Host
-blocking is reserved for `GpuGKRProofJob::finish()` via `is_finished_event`.
-
-In particular, debug or profiling instrumentation inside `prove()` must not
-introduce `stream.synchronize()` or similar host waits just to sample memory
-usage or timing mid-workflow.
+`prove()` itself must stay enqueue-only: stream waits/fences/events are fine,
+but no host blocking on exec_stream progress — including for debug or
+profiling instrumentation. Host blocking is reserved for
+`GpuGKRProofJob::finish()` via `is_finished_event`.
 
 ## Callback restrictions
 
