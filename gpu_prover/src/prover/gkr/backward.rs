@@ -7340,30 +7340,13 @@ where
             unsafe { context.alloc_host_uninit_slice::<E>(claim_layout.len()) };
         let final_claims_accessor = final_claims_host.get_accessor();
 
-        let handoff_src_ready = era_cudart::event::CudaEvent::create_with_flags(
-            era_cudart::event::CudaEventCreateFlags::DISABLE_TIMING,
-        )?;
-        handoff_src_ready.record(stream)?;
-        let d2h_stream = context.get_d2h_stream();
-        d2h_stream.wait_event(
-            &handoff_src_ready,
-            era_cudart::stream::CudaStreamWaitEventFlags::DEFAULT,
-        )?;
-        memory_copy_async(&mut final_seed_host, device_seed, d2h_stream)?;
+        memory_copy_async(&mut final_seed_host, device_seed, stream)?;
         memory_copy_async(
             &mut final_claim_point_and_batching_host,
             device_claim_point_and_batching,
-            d2h_stream,
+            stream,
         )?;
-        memory_copy_async(&mut final_claims_host, device_claims, d2h_stream)?;
-        let handoff_done = era_cudart::event::CudaEvent::create_with_flags(
-            era_cudart::event::CudaEventCreateFlags::DISABLE_TIMING,
-        )?;
-        handoff_done.record(d2h_stream)?;
-        stream.wait_event(
-            &handoff_done,
-            era_cudart::stream::CudaStreamWaitEventFlags::DEFAULT,
-        )?;
+        memory_copy_async(&mut final_claims_host, device_claims, stream)?;
 
         let shared_state = self.shared_state_handle();
         let mut callbacks = Callbacks::new();
