@@ -32,7 +32,8 @@ use crate::ops::cub::device_reduce::{reduce, Reduce, ReduceOperation};
 use crate::ops::simple::{mul_into_y, BinaryOp, Mul};
 use crate::primitives::callbacks::Callbacks;
 use crate::primitives::context::{
-    DeviceAllocation, HostAllocation, ProverContext, UnsafeAccessor, UnsafeMutAccessor,
+    DeviceAllocation, HostAllocation, ProverContext, SchedulerHostAllocation, UnsafeAccessor,
+    UnsafeMutAccessor,
 };
 use crate::primitives::device_structures::{DeviceVectorChunk, DeviceVectorChunkMut};
 use crate::primitives::device_tracing::Range;
@@ -680,10 +681,14 @@ pub(super) struct HostScheduledChallengeStorage<E> {
 pub(super) struct ScheduledUpload<T> {
     pub(super) callbacks: Callbacks<'static>,
     pub(super) device: DeviceAllocation<T>,
+    #[allow(dead_code)]
+    pub(super) scheduler_host: Option<SchedulerHostAllocation<[T]>>,
 }
 
 pub(super) struct HostScheduledUpload<T> {
     pub(super) callbacks: Callbacks<'static>,
+    #[allow(dead_code)]
+    pub(super) scheduler_host: Option<SchedulerHostAllocation<[T]>>,
     #[allow(dead_code)]
     pub(super) _phantom: std::marker::PhantomData<T>,
 }
@@ -802,6 +807,12 @@ pub(crate) struct GpuGKRMainLayerSumcheckLayerPlan<E> {
         Option<DeviceAllocation<crate::ops::eval_recipes::GpuRecipeHeader>>,
     pub(super) flat_recipe_terms:
         Option<DeviceAllocation<crate::ops::eval_recipes::GpuPrefactorTerm>>,
+    #[allow(dead_code)]
+    pub(super) flat_recipe_headers_host:
+        Option<SchedulerHostAllocation<[crate::ops::eval_recipes::GpuRecipeHeader]>>,
+    #[allow(dead_code)]
+    pub(super) flat_recipe_terms_host:
+        Option<SchedulerHostAllocation<[crate::ops::eval_recipes::GpuPrefactorTerm]>>,
     /// Device buffer for eval_recipes output (delegation L0 round 0 only; others write to __constant__).
     pub(super) flat_coeff_device_buf: Option<DeviceAllocation<E>>,
     /// Device buffer for 4 challenge scalars fed to eval_recipes.
@@ -820,6 +831,12 @@ pub(crate) struct GpuGKRMainLayerSumcheckLayerPlan<E> {
         Option<DeviceAllocation<crate::ops::eval_recipes::GpuRecipeHeader>>,
     pub(super) flat_cont_recipe_terms:
         Option<DeviceAllocation<crate::ops::eval_recipes::GpuPrefactorTerm>>,
+    #[allow(dead_code)]
+    pub(super) flat_cont_recipe_headers_host:
+        Option<SchedulerHostAllocation<[crate::ops::eval_recipes::GpuRecipeHeader]>>,
+    #[allow(dead_code)]
+    pub(super) flat_cont_recipe_terms_host:
+        Option<SchedulerHostAllocation<[crate::ops::eval_recipes::GpuPrefactorTerm]>>,
     /// Static description for flat round 1 kernel (intermediate for building unified desc).
     pub(super) flat_round1_desc: Option<Box<super::backward_flat::GpuFlatRound1StaticDesc>>,
     /// Combined descriptor for the unified round 1 kernel (sources + mixed terms).
@@ -900,6 +917,18 @@ pub(crate) struct GpuGKRMainLayerScheduledLayerExecution<E: FieldExtension<BF> +
     pub(super) flat_coeff_callbacks: Callbacks<'static>,
     #[allow(dead_code)]
     pub(super) recipe_upload_callbacks: Callbacks<'static>,
+    #[allow(dead_code)]
+    pub(super) flat_recipe_headers_host:
+        Option<SchedulerHostAllocation<[crate::ops::eval_recipes::GpuRecipeHeader]>>,
+    #[allow(dead_code)]
+    pub(super) flat_recipe_terms_host:
+        Option<SchedulerHostAllocation<[crate::ops::eval_recipes::GpuPrefactorTerm]>>,
+    #[allow(dead_code)]
+    pub(super) flat_cont_recipe_headers_host:
+        Option<SchedulerHostAllocation<[crate::ops::eval_recipes::GpuRecipeHeader]>>,
+    #[allow(dead_code)]
+    pub(super) flat_cont_recipe_terms_host:
+        Option<SchedulerHostAllocation<[crate::ops::eval_recipes::GpuPrefactorTerm]>>,
     pub(super) shared_state: Box<ScheduledMainLayerExecutionState<E>>,
     /// Device-resident Fiat-Shamir seed (see dim-reducing twin). Taken by the
     /// orchestrator to thread into the next backward layer.
@@ -939,8 +968,26 @@ pub(crate) struct GpuGKRBackwardScheduledExecution<B, E: FieldExtension<BF> + Fi
     #[allow(dead_code)]
     pub(super) main_layers: Vec<GpuGKRMainLayerScheduledLayerExecution<E>>,
     pub(super) shared_state: Box<ScheduledBackwardWorkflowState<E>>,
-    #[allow(dead_code)] // Keeps test-path initial-staging callbacks alive until the stream consumes them.
+    #[allow(dead_code)]
+    // Keeps test-path initial-staging callbacks alive until the stream consumes them.
     pub(super) initial_callbacks: Callbacks<'static>,
+    pub(super) final_device_seed: Option<DeviceAllocation<u32>>,
+    pub(super) final_device_claim_point_and_batching: Option<DeviceAllocation<E>>,
+    pub(super) final_device_claims: Option<DeviceAllocation<E>>,
+    pub(super) final_claim_layout: Option<ClaimBufferLayout>,
+    // Pinned host buffers populated by `schedule_post_backward_handoff`'s D2H. The
+    // host callback that mirrors them into `ScheduledBackwardWorkflowState` reads
+    // via raw-pointer accessors, so the buffers must outlive the callback. Holding
+    // them on `self` (which lives until `into_host_keepalive`) is straightforward
+    // and survives multi-prove pool reuse — without this, a sibling prove can
+    // reallocate the freed chunks before this prove's callback fires.
+    #[allow(dead_code)]
+    pub(super) final_seed_host: Option<crate::primitives::context::HostAllocation<[u32]>>,
+    #[allow(dead_code)]
+    pub(super) final_claim_point_and_batching_host:
+        Option<crate::primitives::context::HostAllocation<[E]>>,
+    #[allow(dead_code)]
+    pub(super) final_claims_host: Option<crate::primitives::context::HostAllocation<[E]>>,
 }
 
 pub(crate) struct GpuGKRDimensionReducingHostKeepalive<B, E: FieldExtension<BF> + Field> {
@@ -982,6 +1029,18 @@ pub(crate) struct GpuGKRMainLayerHostKeepalive<E: FieldExtension<BF> + Field> {
     #[allow(dead_code)]
     pub(super) recipe_upload_callbacks: Callbacks<'static>,
     #[allow(dead_code)]
+    pub(super) flat_recipe_headers_host:
+        Option<SchedulerHostAllocation<[crate::ops::eval_recipes::GpuRecipeHeader]>>,
+    #[allow(dead_code)]
+    pub(super) flat_recipe_terms_host:
+        Option<SchedulerHostAllocation<[crate::ops::eval_recipes::GpuPrefactorTerm]>>,
+    #[allow(dead_code)]
+    pub(super) flat_cont_recipe_headers_host:
+        Option<SchedulerHostAllocation<[crate::ops::eval_recipes::GpuRecipeHeader]>>,
+    #[allow(dead_code)]
+    pub(super) flat_cont_recipe_terms_host:
+        Option<SchedulerHostAllocation<[crate::ops::eval_recipes::GpuPrefactorTerm]>>,
+    #[allow(dead_code)]
     pub(super) shared_state: Box<ScheduledMainLayerExecutionState<E>>,
 }
 
@@ -996,6 +1055,21 @@ pub(crate) struct GpuGKRBackwardHostKeepalive<B, E: FieldExtension<BF> + Field> 
     pub(super) shared_state: Box<ScheduledBackwardWorkflowState<E>>,
     #[allow(dead_code)]
     pub(super) initial_callbacks: Callbacks<'static>,
+    #[allow(dead_code)]
+    pub(super) final_device_seed: Option<DeviceAllocation<u32>>,
+    #[allow(dead_code)]
+    pub(super) final_device_claim_point_and_batching: Option<DeviceAllocation<E>>,
+    #[allow(dead_code)]
+    pub(super) final_device_claims: Option<DeviceAllocation<E>>,
+    #[allow(dead_code)]
+    pub(super) final_claim_layout: Option<ClaimBufferLayout>,
+    #[allow(dead_code)]
+    pub(super) final_seed_host: Option<crate::primitives::context::HostAllocation<[u32]>>,
+    #[allow(dead_code)]
+    pub(super) final_claim_point_and_batching_host:
+        Option<crate::primitives::context::HostAllocation<[E]>>,
+    #[allow(dead_code)]
+    pub(super) final_claims_host: Option<crate::primitives::context::HostAllocation<[E]>>,
 }
 
 impl<E> ScheduledBackwardWorkflowState<E>
@@ -1028,9 +1102,8 @@ pub(crate) fn h2d_seed_from_host(
 ) -> CudaResult<DeviceAllocation<u32>> {
     let mut d_seed: DeviceAllocation<u32> =
         context.alloc(crate::ops::blake2s::STATE_SIZE, AllocationPlacement::Top)?;
-    let mut host_slot = unsafe {
-        context.alloc_host_uninit_slice::<u32>(crate::ops::blake2s::STATE_SIZE)
-    };
+    let mut host_slot =
+        unsafe { context.alloc_host_uninit_slice::<u32>(crate::ops::blake2s::STATE_SIZE) };
     let accessor = host_slot.get_mut_accessor();
     let seed_words = host_seed.0;
     callbacks.schedule(
@@ -1300,9 +1373,11 @@ pub(super) fn upload_into_host_keepalive<T>(upload: ScheduledUpload<T>) -> HostS
     let ScheduledUpload {
         callbacks,
         device: _,
+        scheduler_host,
     } = upload;
     HostScheduledUpload {
         callbacks,
+        scheduler_host,
         _phantom: std::marker::PhantomData,
     }
 }
@@ -1406,30 +1481,33 @@ pub(super) fn schedule_callback_populated_upload<'a, T: Copy + 'a>(
     Ok(ScheduledUpload {
         callbacks: Callbacks::new(),
         device,
+        scheduler_host: None,
     })
 }
 
 /// Upload a per-layer combined-claim `(exp, claim_idx)` descriptor via the
-/// standard pinned-staging → H2D pattern. `desc_pairs` is pure compiled-
-/// circuit static; the upload carries both the device buffer and the
-/// stream-ordered fill callback that populates the pinned staging slot.
+/// scheduler-host pinned H2D path. `desc_pairs` is pure compiled-circuit static, so it is safe to
+/// write on the scheduling thread before enqueue and then treat as immutable.
 pub(super) fn schedule_combined_claim_desc_upload(
     context: &ProverContext,
     desc_pairs: Vec<u32>,
 ) -> CudaResult<ScheduledUpload<u32>> {
     // Always allocate at least one element so downstream `.device[..]`
     // indexing has a valid pointer even in the degenerate zero-term case.
-    let alloc_len = desc_pairs.len().max(1);
-    let payload = desc_pairs;
-    let mut callbacks = Callbacks::new();
-    let mut upload =
-        schedule_callback_populated_upload(context, alloc_len, &mut callbacks, move |dst| {
-            if !payload.is_empty() {
-                dst[..payload.len()].copy_from_slice(&payload);
-            }
-        })?;
-    upload.callbacks = callbacks;
-    Ok(upload)
+    let desc_len = desc_pairs.len();
+    let mut device = context.alloc(desc_len.max(1), AllocationPlacement::Top)?;
+    let scheduler_host = if desc_len == 0 {
+        None
+    } else {
+        let host = context.scheduler_host_from_slice(&desc_pairs)?;
+        memory_copy_async(&mut device[..desc_len], &host, context.get_exec_stream())?;
+        Some(host)
+    };
+    Ok(ScheduledUpload {
+        callbacks: Callbacks::new(),
+        device,
+        scheduler_host,
+    })
 }
 
 pub(super) fn field_pow<E: Field>(base: E, exponent: usize) -> E {
@@ -2099,4 +2177,3 @@ where
 
     Ok(())
 }
-
