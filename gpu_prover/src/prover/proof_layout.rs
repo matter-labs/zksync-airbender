@@ -28,8 +28,8 @@ use std::collections::BTreeSet;
 
 use cs::definitions::GKRAddress;
 use cs::gkr_compiler::{GKRCircuitArtifact, OutputType};
-use prover::gkr::prover::{SumcheckIntermediateProofValues, WhirSchedule};
 use prover::gkr::prover::dimension_reduction::forward::DimensionReducingInputOutput;
+use prover::gkr::prover::{SumcheckIntermediateProofValues, WhirSchedule};
 use prover::gkr::whir::{
     BaseFieldQuery, ExtensionFieldQuery, WhirBaseLayerCommitmentAndQueries, WhirCommitment,
     WhirIntermediateCommitmentAndQueries, WhirPolyCommitProof,
@@ -361,9 +361,11 @@ pub(crate) fn build_proof_layout_inputs(
     for slot in 0..num_dim_reducing_layers {
         let layer_idx = num_main_layers + num_dim_reducing_layers - 1 - slot;
         let sumcheck_num_rounds = final_trace_size_log_2 + slot;
-        let io_map = dimension_reducing_inputs.get(&layer_idx).unwrap_or_else(|| {
-            panic!("dimension_reducing_inputs missing entry for layer_idx {layer_idx}")
-        });
+        let io_map = dimension_reducing_inputs
+            .get(&layer_idx)
+            .unwrap_or_else(|| {
+                panic!("dimension_reducing_inputs missing entry for layer_idx {layer_idx}")
+            });
         let mut addresses: BTreeSet<GKRAddress> = BTreeSet::new();
         for io in io_map.values() {
             for addr in io.inputs.iter() {
@@ -418,8 +420,8 @@ pub(crate) fn build_proof_layout_inputs(
         let path_len = if g.columns_count == 0 {
             0
         } else {
-            (g.log_domain_size - g.log_rows_per_leaf
-                - (g.log_tree_cap_size - g.log_lde_factor)) as usize
+            (g.log_domain_size - g.log_rows_per_leaf - (g.log_tree_cap_size - g.log_lde_factor))
+                as usize
         };
         WhirBaseLayerDims {
             num_columns: g.columns_count,
@@ -498,8 +500,7 @@ impl ProofLayout {
         let mut backward = Vec::with_capacity(inputs.backward_layers.len());
         for layer in inputs.backward_layers.iter() {
             let internal_count = layer.sumcheck_num_rounds.saturating_sub(1);
-            let internal_round_coefficients =
-                alloc(&mut cur, internal_count * 4, size_of::<E4>());
+            let internal_round_coefficients = alloc(&mut cur, internal_count * 4, size_of::<E4>());
             let final_evals_count =
                 layer.final_step_eval_addresses.len() * layer.final_step_eval_degree;
             let final_step_evaluations = alloc(&mut cur, final_evals_count, size_of::<E4>());
@@ -537,8 +538,7 @@ impl ProofLayout {
             let cap = alloc(cur, d.cap_digest_count * DIGEST_U32_WORDS, size_of::<u32>());
             let evals = alloc(cur, d.num_columns, size_of::<E4>());
             let query_indices = alloc(cur, d.query_count, size_of::<u32>());
-            let query_leaves =
-                alloc(cur, d.query_count * d.leaf_values_len, size_of::<BF>());
+            let query_leaves = alloc(cur, d.query_count * d.leaf_values_len, size_of::<BF>());
             let query_paths = alloc(
                 cur,
                 d.query_count * d.path_len * DIGEST_U32_WORDS,
@@ -557,26 +557,26 @@ impl ProofLayout {
             }
         };
 
-        let lay_intermediate = |cur: &mut usize, d: &WhirIntermediateDims| -> WhirIntermediateByteLayout {
-            let cap = alloc(cur, d.cap_digest_count * DIGEST_U32_WORDS, size_of::<u32>());
-            let query_indices = alloc(cur, d.query_count, size_of::<u32>());
-            let query_leaves =
-                alloc(cur, d.query_count * d.leaf_values_len, size_of::<E4>());
-            let query_paths = alloc(
-                cur,
-                d.query_count * d.path_len * DIGEST_U32_WORDS,
-                size_of::<u32>(),
-            );
-            WhirIntermediateByteLayout {
-                cap,
-                query_indices,
-                query_leaves,
-                query_paths,
-                query_count: d.query_count,
-                leaf_values_len: d.leaf_values_len,
-                path_len: d.path_len,
-            }
-        };
+        let lay_intermediate =
+            |cur: &mut usize, d: &WhirIntermediateDims| -> WhirIntermediateByteLayout {
+                let cap = alloc(cur, d.cap_digest_count * DIGEST_U32_WORDS, size_of::<u32>());
+                let query_indices = alloc(cur, d.query_count, size_of::<u32>());
+                let query_leaves = alloc(cur, d.query_count * d.leaf_values_len, size_of::<E4>());
+                let query_paths = alloc(
+                    cur,
+                    d.query_count * d.path_len * DIGEST_U32_WORDS,
+                    size_of::<u32>(),
+                );
+                WhirIntermediateByteLayout {
+                    cap,
+                    query_indices,
+                    query_leaves,
+                    query_paths,
+                    query_count: d.query_count,
+                    leaf_values_len: d.leaf_values_len,
+                    path_len: d.path_len,
+                }
+            };
 
         let setup = lay_base(cur, &dims.setup);
         let memory = lay_base(cur, &dims.memory);
@@ -662,7 +662,10 @@ impl ProofLayout {
         slab_base: *mut u8,
         layer_slot: usize,
     ) -> (*mut E4, usize) {
-        Self::device_typed::<E4>(slab_base, &self.backward[layer_slot].internal_round_coefficients)
+        Self::device_typed::<E4>(
+            slab_base,
+            &self.backward[layer_slot].internal_round_coefficients,
+        )
     }
 
     pub(crate) unsafe fn backward_final_step_evals_device_mut(
@@ -1071,11 +1074,7 @@ impl ProofLayout {
         Self::host_typed::<u32>(slab, &self.whir_base(which).query_paths)
     }
 
-    pub(crate) fn whir_intermediate_cap_host<'a>(
-        &self,
-        slab: &'a [u8],
-        round: usize,
-    ) -> &'a [u32] {
+    pub(crate) fn whir_intermediate_cap_host<'a>(&self, slab: &'a [u8], round: usize) -> &'a [u32] {
         Self::host_typed::<u32>(slab, &self.whir.intermediate[round].cap)
     }
 
@@ -1230,8 +1229,14 @@ mod tests {
         }
         for (i, im) in layout.whir.intermediate.iter().enumerate() {
             ranges.push((format!("whir.intermediate[{i}].cap"), im.cap.clone()));
-            ranges.push((format!("whir.intermediate[{i}].qi"), im.query_indices.clone()));
-            ranges.push((format!("whir.intermediate[{i}].ql"), im.query_leaves.clone()));
+            ranges.push((
+                format!("whir.intermediate[{i}].qi"),
+                im.query_indices.clone(),
+            ));
+            ranges.push((
+                format!("whir.intermediate[{i}].ql"),
+                im.query_leaves.clone(),
+            ));
             ranges.push((format!("whir.intermediate[{i}].qp"), im.query_paths.clone()));
         }
         ranges.push(("whir.ood".to_string(), layout.whir.ood_samples.clone()));
@@ -1239,7 +1244,10 @@ mod tests {
             "whir.sumcheck_polys".to_string(),
             layout.whir.sumcheck_polys.clone(),
         ));
-        ranges.push(("whir.pow_nonces".to_string(), layout.whir.pow_nonces.clone()));
+        ranges.push((
+            "whir.pow_nonces".to_string(),
+            layout.whir.pow_nonces.clone(),
+        ));
         ranges.push((
             "whir.final_monomials".to_string(),
             layout.whir.final_monomials.clone(),
@@ -1378,11 +1386,20 @@ mod tests {
         for (i, bw_layout) in layout.backward.iter().enumerate() {
             unsafe {
                 let (ptr, len) = layout.backward_final_step_evals_device_mut(slab_ptr, i);
-                assert_eq!(ptr as *const u8 as usize, slab_ptr as usize + bw_layout.final_step_evaluations.start);
-                assert_eq!(len * size_of::<E4>(), bw_layout.final_step_evaluations.end - bw_layout.final_step_evaluations.start);
+                assert_eq!(
+                    ptr as *const u8 as usize,
+                    slab_ptr as usize + bw_layout.final_step_evaluations.start
+                );
+                assert_eq!(
+                    len * size_of::<E4>(),
+                    bw_layout.final_step_evaluations.end - bw_layout.final_step_evaluations.start
+                );
             }
             let host = layout.backward_final_step_evals_host(&slab, i);
-            assert_eq!(host.len() * size_of::<E4>(), bw_layout.final_step_evaluations.end - bw_layout.final_step_evaluations.start);
+            assert_eq!(
+                host.len() * size_of::<E4>(),
+                bw_layout.final_step_evaluations.end - bw_layout.final_step_evaluations.start
+            );
         }
     }
 }

@@ -77,8 +77,7 @@ struct gkr_main_payload_range {
   u32 count;
 };
 
-template <typename T, typename Batch>
-DEVICE_FORCEINLINE const T *gkr_main_batch_payload_ptr(const Batch &batch, const gkr_main_payload_range &range) {
+template <typename T, typename Batch> DEVICE_FORCEINLINE const T *gkr_main_batch_payload_ptr(const Batch &batch, const gkr_main_payload_range &range) {
   if (range.count == 0)
     return nullptr;
   return reinterpret_cast<const T *>(batch.inline_payload + range.offset);
@@ -800,7 +799,9 @@ template <typename E> DEVICE_FORCEINLINE E gkr_trace_holder_partials_warp_reduce
   return value;
 }
 
-struct __align__(16) gkr_trace_holder_bf4 { bf values[4]; };
+struct __align__(16) gkr_trace_holder_bf4 {
+  bf values[4];
+};
 
 template <typename E>
 DEVICE_FORCEINLINE void gkr_trace_holder_block_partials(const bf *raw_values, const E *eq_values, E *block_partials, const unsigned trace_len,

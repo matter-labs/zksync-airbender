@@ -10,7 +10,9 @@ use crate::witness::trace_unrolled::{
     // ShuffleRamInitsAndTeardownsRaw,` here when the GPU inits-and-teardowns
     // path is restored.
     ExecutorFamilyDecoderData,
-    UnrolledMemoryOracle, UnrolledMemoryTraceDevice, UnrolledNonMemoryOracle,
+    UnrolledMemoryOracle,
+    UnrolledMemoryTraceDevice,
+    UnrolledNonMemoryOracle,
     UnrolledNonMemoryTraceDevice,
 };
 use crate::witness::Address;

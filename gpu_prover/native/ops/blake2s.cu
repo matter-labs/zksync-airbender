@@ -800,7 +800,7 @@ DEVICE_FORCEINLINE e4 e4_lerp(const e4 a, const e4 b, const e4 r) {
 }
 
 EXTERN __global__ void ab_backward_new_claims_two_var_kernel(const e4 *last_evals_packed, const e4 *challenges, e4 *new_claims_out,
-                                                              const unsigned num_addresses) {
+                                                             const unsigned num_addresses) {
   const unsigned idx = blockIdx.x * blockDim.x + threadIdx.x;
   if (idx >= num_addresses)
     return;
@@ -817,7 +817,7 @@ EXTERN __global__ void ab_backward_new_claims_two_var_kernel(const e4 *last_eval
 }
 
 EXTERN __global__ void ab_backward_new_claims_linear_kernel(const e4 *last_evals_packed, const e4 *challenges, e4 *new_claims_out,
-                                                             const unsigned num_addresses) {
+                                                            const unsigned num_addresses) {
   const unsigned idx = blockIdx.x * blockDim.x + threadIdx.x;
   if (idx >= num_addresses)
     return;
@@ -828,8 +828,8 @@ EXTERN __global__ void ab_backward_new_claims_linear_kernel(const e4 *last_evals
   new_claims_out[idx] = e4_lerp(v0, v1, r);
 }
 
-EXTERN __global__ void ab_build_combined_claim_kernel(const e4 *claims, const e4 *batching, const u32 *desc, const unsigned num_terms,
-                                                       e4 *claim_out, e4 *eq_prefactor_out) {
+EXTERN __global__ void ab_build_combined_claim_kernel(const e4 *claims, const e4 *batching, const u32 *desc, const unsigned num_terms, e4 *claim_out,
+                                                      e4 *eq_prefactor_out) {
   if (threadIdx.x != 0 || blockIdx.x != 0)
     return;
   const e4 b = *batching;

@@ -20,7 +20,9 @@ use crate::ops::cub::device_reduce::{
 };
 use crate::ops::cub::CUB_TEMP_STORAGE_EXTRA_ALIGNMENT_LOG2;
 use crate::primitives::callbacks::Callbacks;
-use crate::primitives::context::{DeviceAllocation, HostAllocation, ProverContext, UnsafeMutAccessor};
+use crate::primitives::context::{
+    DeviceAllocation, HostAllocation, ProverContext, UnsafeMutAccessor,
+};
 use crate::primitives::device_structures::DeviceMatrix;
 use crate::primitives::device_tracing::Range;
 use crate::primitives::field::{BF, E4};
@@ -246,15 +248,16 @@ impl<E: 'static> GpuGKRBaseLayerClaimsScheduledExecution<E> {
     /// start callback chain. The caller becomes responsible for scheduling
     /// (and keeping the resulting `HostFn` alive); on this struct we no longer
     /// own the closure.
-    pub(crate) fn take_pending_aggregation(
-        &mut self,
-    ) -> Box<dyn Fn() + Send + Sync + 'static> {
+    pub(crate) fn take_pending_aggregation(&mut self) -> Box<dyn Fn() + Send + Sync + 'static> {
         self.pending_aggregation
             .take()
             .expect("aggregation callback already scheduled")
     }
 
-    pub(crate) fn wait(mut self, context: &ProverContext) -> CudaResult<GpuGKRBaseLayerTailOutput<E>> {
+    pub(crate) fn wait(
+        mut self,
+        context: &ProverContext,
+    ) -> CudaResult<GpuGKRBaseLayerTailOutput<E>> {
         // Test-only path: schedule the aggregation now, then sync.
         if self.pending_aggregation.is_some() {
             self.schedule_aggregation(context.get_exec_stream())?;
@@ -482,8 +485,10 @@ where
         std::mem::size_of::<E4>(),
         "virtual-setup-claims kernel requires E = E4",
     );
-    let mut virtual_setup_claims_device =
-        context.alloc::<E>(VIRTUAL_SETUP_CLAIMS_OUTPUT_LEN, AllocationPlacement::BestFit)?;
+    let mut virtual_setup_claims_device = context.alloc::<E>(
+        VIRTUAL_SETUP_CLAIMS_OUTPUT_LEN,
+        AllocationPlacement::BestFit,
+    )?;
     launch_eval_virtual_setup_claims(
         claim_point_device.as_ptr() as *const E4,
         trace_len_log2,
@@ -492,7 +497,11 @@ where
     )?;
     let mut virtual_setup_claims_host =
         unsafe { context.alloc_host_uninit_slice::<E>(VIRTUAL_SETUP_CLAIMS_OUTPUT_LEN) };
-    memory_copy_async(&mut virtual_setup_claims_host, &virtual_setup_claims_device, stream)?;
+    memory_copy_async(
+        &mut virtual_setup_claims_host,
+        &virtual_setup_claims_device,
+        stream,
+    )?;
 
     let mut eq_group_tables = context.alloc(
         eq_group_tables_len(claim_point_len).max(1),
@@ -550,9 +559,8 @@ where
             (WhirBaseLayerKind::Witness, &wit_polys_claims),
             (WhirBaseLayerKind::Setup, &setup_polys_claims),
         ] {
-            let (dst_ptr, dst_len) = unsafe {
-                proof_layout.whir_base_evals_device_mut(slab.as_ptr() as *mut u8, kind)
-            };
+            let (dst_ptr, dst_len) =
+                unsafe { proof_layout.whir_base_evals_device_mut(slab.as_ptr() as *mut u8, kind) };
             assert_eq!(
                 dst_len,
                 unsafe { host_claims.get_accessor().get() }.len(),
@@ -566,10 +574,7 @@ where
             // field-start is aligned, and the target range is disjoint from
             // other slab fields by construction.
             let dst = unsafe {
-                era_cudart::slice::DeviceSlice::from_raw_parts_mut(
-                    dst_ptr as *mut E,
-                    dst_len,
-                )
+                era_cudart::slice::DeviceSlice::from_raw_parts_mut(dst_ptr as *mut E, dst_len)
             };
             memory_copy_async(dst, host_claims, stream)?;
         }
@@ -671,9 +676,13 @@ where
     // pass a device slice from backward directly.
     let mut point_host = unsafe { context.alloc_host_uninit_slice::<E>(base_layer_point.len()) };
     unsafe {
-        point_host.get_mut_accessor().get_mut().copy_from_slice(base_layer_point);
+        point_host
+            .get_mut_accessor()
+            .get_mut()
+            .copy_from_slice(base_layer_point);
     }
-    let mut point_device = context.alloc::<E>(base_layer_point.len(), AllocationPlacement::BestFit)?;
+    let mut point_device =
+        context.alloc::<E>(base_layer_point.len(), AllocationPlacement::BestFit)?;
     memory_copy_async(&mut point_device, &point_host, context.get_exec_stream())?;
     schedule_prepare_base_layer_claims_with_sources(
         layer_desc.clone(),

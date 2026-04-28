@@ -202,8 +202,7 @@ template <typename E> DEVICE_FORCEINLINE E flat_fwd_load_ext(const void *src, co
 // Kernel body
 // ---------------------------------------------------------------------------
 
-template <typename E>
-DEVICE_FORCEINLINE void flat_forward_compute(const flat_forward_static_desc<E> &desc, const unsigned gid) {
+template <typename E> DEVICE_FORCEINLINE void flat_forward_compute(const flat_forward_static_desc<E> &desc, const unsigned gid) {
   // PRODUCT: ext * ext -> ext.
   for (unsigned i = 0; i < desc.num_products; i++) {
     const auto &t = desc.products[i];
@@ -239,8 +238,7 @@ DEVICE_FORCEINLINE void flat_forward_compute(const flat_forward_static_desc<E> &
 
   // Gamma is used by every remaining category. All threads branch the same
   // way on grid-constant counts, so this compiles to a uniform predicate.
-  const bool has_lookup_with_gamma = desc.num_bf_pairs || desc.num_e4_pairs || desc.num_cached_denses ||
-                                     desc.num_bf_minus_mults || desc.num_e4_minus_mults ||
+  const bool has_lookup_with_gamma = desc.num_bf_pairs || desc.num_e4_pairs || desc.num_cached_denses || desc.num_bf_minus_mults || desc.num_e4_minus_mults ||
                                      desc.num_bf_unbalanceds || desc.num_e4_unbalanceds;
   E gamma = E::ZERO();
   if (has_lookup_with_gamma)

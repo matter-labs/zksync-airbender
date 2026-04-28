@@ -1,11 +1,11 @@
 use crate::definitions::{LeafInclusionVerifier, MerkleTreeCap, DIGEST_SIZE_U32_WORDS};
+use crate::trace_holder::ColumnMajorTrace;
+use crate::trace_holder::RowMajorTrace;
 use fft::GoodAllocator;
 use field::FieldExtension;
 use field::Mersenne31Field;
 use field::Mersenne31Quartic;
 use field::PrimeField;
-use crate::trace_holder::ColumnMajorTrace;
-use crate::trace_holder::RowMajorTrace;
 use worker::Worker;
 
 pub mod blake2s_for_everything_tree;
