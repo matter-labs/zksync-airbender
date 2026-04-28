@@ -553,9 +553,8 @@ pub fn fold_coset(
             field_ops::sub_assign(&mut t, &b);
             field_ops::mul_assign(&mut t, &challenge);
             let mut root = root_inv;
-            field_ops::mul_assign(&mut root, unsafe {
-                high_powers_offsets.get_unchecked(pair_idx)
-            });
+            let high_powers_offset = unsafe { *high_powers_offsets.get_unchecked(pair_idx) };
+            field_ops::mul_assign(&mut root, &high_powers_offset);
             field_ops::mul_assign_by_base(&mut t, &root);
             field_ops::add_assign(&mut t, &a);
             field_ops::add_assign(&mut t, &b);
@@ -658,15 +657,15 @@ pub fn fold_whir_accumulator<const MAX_POW: usize>(
 ) {
     let mut one_minus_alpha = BabyBearExt4::ONE;
     field_ops::sub_assign(&mut one_minus_alpha, &alpha);
+    let mut two_alpha = alpha;
+    field_ops::double(&mut two_alpha);
     unsafe {
         let zi = *z_initial.get_unchecked(acc.z_initial_idx);
         let mut eq = one_minus_alpha;
-        let mut one_minus_zi = BabyBearExt4::ONE;
-        field_ops::sub_assign(&mut one_minus_zi, &zi);
-        field_ops::mul_assign(&mut eq, &one_minus_zi);
-        let mut a_zi = alpha;
-        field_ops::mul_assign(&mut a_zi, &zi);
-        field_ops::add_assign(&mut eq, &a_zi);
+        let mut two_a_zi = two_alpha;
+        field_ops::mul_assign(&mut two_a_zi, &zi);
+        field_ops::add_assign(&mut eq, &two_a_zi);
+        field_ops::sub_assign(&mut eq, &zi);
         field_ops::mul_assign(&mut acc.z_initial_prefactor, &eq);
         acc.z_initial_idx += 1;
     }
@@ -677,12 +676,10 @@ pub fn fold_whir_accumulator<const MAX_POW: usize>(
             let entry = acc.pow_entries.get_unchecked_mut(i);
             let s = entry.current_scalar;
             let mut eq = one_minus_alpha;
-            let mut one_minus_s = BabyBearExt4::ONE;
-            field_ops::sub_assign(&mut one_minus_s, &s);
-            field_ops::mul_assign(&mut eq, &one_minus_s);
-            let mut a_s = alpha;
-            field_ops::mul_assign(&mut a_s, &s);
-            field_ops::add_assign(&mut eq, &a_s);
+            let mut two_a_s = two_alpha;
+            field_ops::mul_assign(&mut two_a_s, &s);
+            field_ops::add_assign(&mut eq, &two_a_s);
+            field_ops::sub_assign(&mut eq, &s);
             field_ops::mul_assign(&mut entry.prefactor, &eq);
             field_ops::square(&mut entry.current_scalar);
         }

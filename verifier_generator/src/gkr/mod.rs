@@ -4,7 +4,7 @@ use quote::{quote, TokenStreamExt};
 use std::collections::BTreeMap;
 use verifier_common::blake2s_u32::{BLAKE2S_BLOCK_SIZE_U32_WORDS, BLAKE2S_DIGEST_SIZE_U32_WORDS};
 
-use crate::mersenne_wrapper::MersenneWrapper;
+use crate::field_wrapper::FieldWrapper;
 pub use crate::utils::{
     addr_to_idx, coeff_to_internal_repr, collect_extra_addrs_from_cached_relations,
     collect_sorted_unique_addrs, compute_max_pow, transform_gkr_address, BATCHING_CHALLENGE_EXTRA,
@@ -93,7 +93,7 @@ fn compute_padding_words(
     }
 }
 
-pub fn generate_gkr_common<MW: MersenneWrapper>() -> TokenStream {
+pub fn generate_gkr_common<MW: FieldWrapper>() -> TokenStream {
     let field_struct = MW::field_struct();
     let quartic_struct = MW::quartic_struct();
     let quartic_one = MW::quartic_one();
@@ -318,7 +318,7 @@ pub fn generate_gkr_common<MW: MersenneWrapper>() -> TokenStream {
     }
 }
 
-fn generate_cache_relation_checks<MW: MersenneWrapper, F: PrimeField>(
+fn generate_cache_relation_checks<MW: FieldWrapper, F: PrimeField>(
     layer: &GKRLayerDescription,
     target_addrs: &[GKRAddress],
     layer_idx: usize,
@@ -564,7 +564,7 @@ fn generate_cache_relation_checks<MW: MersenneWrapper, F: PrimeField>(
 }
 
 #[allow(clippy::needless_range_loop)]
-pub fn generate_gkr_inlined<MW: MersenneWrapper, F: PrimeField, E: FieldExtension<F> + Field, T>(
+pub fn generate_gkr_inlined<MW: FieldWrapper, F: PrimeField, E: FieldExtension<F> + Field, T>(
     compiled_circuit: &GKRCircuitArtifact<F>,
     proof: &GKRProof<F, E, T>,
     sumcheck_output_size_log_2: usize,
