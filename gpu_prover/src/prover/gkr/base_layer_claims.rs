@@ -205,6 +205,13 @@ where
 pub(crate) struct GpuGKRBaseLayerClaimsScheduledExecution<E> {
     _tracing_ranges: Vec<Range>,
     _finish_callbacks: Callbacks<'static>,
+    // Pinned D2H readbacks consumed by the deferred aggregation closure below.
+    // The closure captures raw accessors, so the underlying chunks must not
+    // return to the host pool before the closure is scheduled.
+    _virtual_setup_claims_host: HostAllocation<[E]>,
+    _mem_polys_claims: HostAllocation<[E]>,
+    _wit_polys_claims: HostAllocation<[E]>,
+    _setup_polys_claims: HostAllocation<[E]>,
     shared_state: Box<ScheduledBaseLayerClaimsState<E>>,
     // Deferred aggregation closure built by `schedule_prepare_base_layer_claims_with_sources`.
     // Holds the captured pinned-host accessors and `layer_desc`; the caller schedules it
@@ -635,6 +642,10 @@ where
     Ok(GpuGKRBaseLayerClaimsScheduledExecution {
         _tracing_ranges: tracing_ranges,
         _finish_callbacks: Callbacks::new(),
+        _virtual_setup_claims_host: virtual_setup_claims_host,
+        _mem_polys_claims: mem_polys_claims,
+        _wit_polys_claims: wit_polys_claims,
+        _setup_polys_claims: setup_polys_claims,
         shared_state,
         pending_aggregation: Some(pending_aggregation),
     })

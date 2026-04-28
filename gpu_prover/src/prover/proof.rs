@@ -865,12 +865,6 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
             &proof_layout,
             context,
         )?;
-    let post_backward_handoff_range = Range::new("gkr.proof.post_backward_handoff")?;
-    post_backward_handoff_range.start(stream)?;
-    let post_backward_callbacks = backward_scheduled.schedule_post_backward_handoff(context)?;
-    post_backward_handoff_range.end(stream)?;
-    ranges.push(post_backward_handoff_range);
-    callbacks.extend(post_backward_callbacks);
     let backward_shared_state = backward_scheduled.shared_state_handle();
     let setup_trace_holder = setup_transfer
         .as_ref()
@@ -947,6 +941,13 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
     }
     pre_whir_memory_commit_range.end(stream)?;
     ranges.push(pre_whir_memory_commit_range);
+
+    let post_backward_handoff_range = Range::new("gkr.proof.post_backward_handoff")?;
+    post_backward_handoff_range.start(stream)?;
+    let post_backward_callbacks = backward_scheduled.schedule_post_backward_handoff(context)?;
+    post_backward_handoff_range.end(stream)?;
+    ranges.push(post_backward_handoff_range);
+    callbacks.extend(post_backward_callbacks);
 
     let mut whir_scheduled = if let Some(setup_transfer) = setup_transfer.as_mut() {
         let setup_base_caps_keepalive = setup_transfer.trace_holder.take_tree_caps_host();
