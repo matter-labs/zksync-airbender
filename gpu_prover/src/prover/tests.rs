@@ -16,7 +16,7 @@ use crate::primitives::circuit_type::{
     UnrolledNonMemoryCircuitType,
 };
 use crate::primitives::context::{
-    DeviceAllocation, HostAllocation, ProverContext, UnsafeMutAccessor,
+    DeviceAllocation, HostAllocation, ProverContext, SchedulerHostAllocation, UnsafeMutAccessor,
 };
 use crate::primitives::field::{BF, E4};
 use crate::primitives::nvtx::scoped_range;
@@ -1896,11 +1896,13 @@ fn assert_recursive_whir_oracle_parity_for_supported_path(
     let wit_polys_claims_for_schedule = wit_polys_claims.to_vec();
     let setup_polys_claims_for_schedule = setup_polys_claims.to_vec();
     let original_evaluation_point_for_schedule = original_evaluation_point.to_vec();
-    let memory_base_caps_keepalive: Vec<Vec<crate::ops::blake2s::Digest>> = gpu_mem_trace_holder
-        .take_tree_caps_host()
-        .into_iter()
-        .map(|alloc| unsafe { alloc.get_accessor().get().to_vec() })
-        .collect();
+    let memory_base_caps_keepalive: Vec<SchedulerHostAllocation<[crate::ops::blake2s::Digest]>> =
+        gpu_mem_trace_holder
+            .take_tree_caps_host()
+            .into_iter()
+            .map(|alloc| context.scheduler_host_from_slice(unsafe { alloc.get_accessor().get() }))
+            .collect::<era_cudart::result::CudaResult<Vec<_>>>()
+            .unwrap();
     let witness_base_caps_keepalive = gpu_wit_trace_holder.take_tree_caps_host();
     let setup_base_caps_keepalive = gpu_setup_trace_holder.take_tree_caps_host();
     let whir_proof_layout = ProofLayout::new(&placeholder_inputs_for_prove());
@@ -1927,6 +1929,7 @@ fn assert_recursive_whir_oracle_parity_for_supported_path(
         trace_len_log2,
         None,
         &whir_proof_layout,
+        None,
         context,
     )
     .unwrap();
@@ -2109,7 +2112,7 @@ fn build_basic_unrolled_async_backward_fixture_from_base(
     .unwrap();
     eprintln!("async-backward-from-base: forward pass scheduled");
     let gpu_transcript_handoff = gpu_forward_output
-        .schedule_transcript_handoff(&context)
+        .schedule_transcript_handoff(true, &context)
         .unwrap();
     context.get_exec_stream().synchronize().unwrap();
     eprintln!("async-backward-from-base: transcript handoff ready");
@@ -4040,7 +4043,7 @@ fn run_memory_workflow_input_parity_test<const FAMILY_IDX: u8>(
     )
     .unwrap();
     let gpu_transcript_handoff = gpu_forward_output
-        .schedule_transcript_handoff(&context)
+        .schedule_transcript_handoff(true, &context)
         .unwrap();
     context.get_exec_stream().synchronize().unwrap();
     let gpu_final_explicit_evaluations = gpu_transcript_handoff.final_explicit_evaluations();
@@ -4769,6 +4772,7 @@ fn run_basic_unrolled_first_main_layer_static_vs_dynamic_execution_test() {
             None,
             &main_proof_layout,
             0,
+            true,
             &fixture_static.context,
         )
         .unwrap();
@@ -4981,6 +4985,7 @@ fn run_basic_unrolled_main_layers_static_vs_dynamic_execution_test() {
                 None,
                 &main_proof_layout,
                 0,
+                true,
                 &fixture_static.context,
             )
             .unwrap();
@@ -5050,6 +5055,8 @@ fn run_basic_unrolled_async_allocator_regression_test() {
 
     let host_before = context.get_host_used_mem_current();
     context.reset_host_used_mem_peak();
+    let scheduler_host_before = context.get_scheduler_host_used_mem_current();
+    context.reset_scheduler_host_used_mem_peak();
 
     let proof_layout = ProofLayout::new(&placeholder_inputs_for_prove());
     let scheduled = gpu_backward_state
@@ -5073,6 +5080,10 @@ fn run_basic_unrolled_async_allocator_regression_test() {
         context.get_host_used_mem_peak() > host_before,
         "backward scheduling should allocate from the host allocator"
     );
+    assert!(
+        context.get_scheduler_host_used_mem_peak() > scheduler_host_before,
+        "backward scheduling should allocate immutable descriptors from the scheduler-host allocator"
+    );
 
     let execution = scheduled.wait(&context).unwrap();
     drop(execution);
@@ -5081,6 +5092,11 @@ fn run_basic_unrolled_async_allocator_regression_test() {
         context.get_host_used_mem_current(),
         host_before,
         "host allocator usage should return to baseline after drop"
+    );
+    assert_eq!(
+        context.get_scheduler_host_used_mem_current(),
+        scheduler_host_before,
+        "scheduler-host allocator usage should return to baseline after drop"
     );
 }
 
@@ -5770,7 +5786,7 @@ fn run_basic_unrolled_workflow_input_parity_test() {
         )
         .unwrap();
         let gpu_transcript_handoff = gpu_forward_output
-            .schedule_transcript_handoff(&context)
+            .schedule_transcript_handoff(true, &context)
             .unwrap();
         context.get_exec_stream().synchronize().unwrap();
         (gpu_forward_output, gpu_transcript_handoff)
@@ -6273,7 +6289,7 @@ fn run_jump_branch_slt_workflow_input_parity_test() {
         )
         .unwrap();
         let gpu_transcript_handoff = gpu_forward_output
-            .schedule_transcript_handoff(&context)
+            .schedule_transcript_handoff(true, &context)
             .unwrap();
         context.get_exec_stream().synchronize().unwrap();
         (gpu_forward_output, gpu_transcript_handoff)
@@ -6757,7 +6773,7 @@ fn run_shift_binop_cached_lookup_parity_test() {
     )
     .unwrap();
     let gpu_transcript_handoff = gpu_forward_output
-        .schedule_transcript_handoff(&context)
+        .schedule_transcript_handoff(true, &context)
         .unwrap();
     context.get_exec_stream().synchronize().unwrap();
     let gpu_final_explicit_evaluations = gpu_transcript_handoff.final_explicit_evaluations();
@@ -7246,7 +7262,7 @@ fn run_basic_unrolled_stagewise_parity_test() {
         )
         .unwrap();
         let gpu_transcript_handoff = gpu_forward_output
-            .schedule_transcript_handoff(&context)
+            .schedule_transcript_handoff(true, &context)
             .unwrap();
         context.get_exec_stream().synchronize().unwrap();
         (gpu_forward_output, gpu_transcript_handoff)
@@ -8114,7 +8130,7 @@ fn standalone_inits_and_teardowns_gpu_workflow_matches_cpu() {
         )
         .unwrap();
         let gpu_transcript_handoff = gpu_forward_output
-            .schedule_transcript_handoff(&context)
+            .schedule_transcript_handoff(true, &context)
             .unwrap();
         context.get_exec_stream().synchronize().unwrap();
         assert_eq!(
@@ -9241,7 +9257,7 @@ fn assert_delegation_workflow_matches_cpu_inner<W, O, F>(
         )
         .unwrap();
         let gpu_transcript_handoff = gpu_forward_output
-            .schedule_transcript_handoff(&context)
+            .schedule_transcript_handoff(true, &context)
             .unwrap();
         context.get_exec_stream().synchronize().unwrap();
         (gpu_forward_output, gpu_transcript_handoff)
