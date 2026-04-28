@@ -30,11 +30,11 @@ pub mod gkr;
 #[cfg(feature = "prover")]
 pub mod merkle_trees;
 #[cfg(feature = "prover")]
-pub mod trace_holder;
-#[cfg(feature = "prover")]
 pub mod nd_source_std;
 #[cfg(feature = "prover")]
 pub mod query_utils;
+#[cfg(feature = "prover")]
+pub mod trace_holder;
 #[cfg(feature = "prover")]
 pub mod tracers;
 
