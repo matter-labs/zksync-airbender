@@ -19,9 +19,15 @@ summary — the contract document is the source of truth.
   `Callbacks::schedule` / `launch_host_fn`. `UnsafeAccessor::get()` /
   `UnsafeMutAccessor::get_mut()` are only valid inside stream-scheduled
   closures.
-- **MUST** fill H2D staging buffers via a scheduled host callback (captured
-  `UnsafeMutAccessor`). `.copy_from_slice(...)` right after allocation races
-  the prior pool owner's outstanding DMA, even when it appears to work.
+- **MUST** fill stream-ordered H2D staging buffers via a scheduled host
+  callback (captured `UnsafeMutAccessor`). `.copy_from_slice(...)` right after
+  allocation races the prior pool owner's outstanding DMA, even when it
+  appears to work.
+- **`SchedulerHostAllocator` is the separate pinned host pool for immutable,
+  scheduling-time-known H2D sources** (compiled kernel descriptors, recipe
+  tables, etc.). Its access rule is **inverted** vs. the stream-ordered pool:
+  the scheduling thread writes once during construction, and every stream
+  operation thereafter only reads.
 - **MUST** consume D2H readback buffers via a scheduled host callback, never
   from the scheduling thread.
 - **MUST** fork/join any op on an auxiliary stream (`h2d_stream`, `d2h_stream`,
