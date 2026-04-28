@@ -428,9 +428,7 @@ impl GpuGKRStage1Output {
                 //     tracing_ranges.push(witness_values_range);
                 // }
                 (CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns), _) => {
-                    panic!(
-                        "inits-and-teardowns path disabled — see TODO(init-teardown-port)"
-                    );
+                    panic!("inits-and-teardowns path disabled — see TODO(init-teardown-port)");
                 }
                 _ => unimplemented!(
                     "GPU GKR stage1 currently supports only unrolled non-memory and memory traces",
