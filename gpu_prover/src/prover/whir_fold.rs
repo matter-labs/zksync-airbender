@@ -3738,6 +3738,7 @@ mod tests {
     use serial_test::serial;
 
     use crate::allocator::tracker::AllocationPlacement;
+    use crate::ntt::MIN_LOG_N_FOR_MULTISTAGE_KERNELS;
     use crate::prover::test_utils::make_test_context;
     use crate::prover::trace_holder::TreesCacheMode;
 
@@ -4245,99 +4246,118 @@ mod tests {
         }
     }
 
-    #[test]
     #[cfg(not(no_cuda))]
-    #[serial]
-    fn whir_evaluate_monomial_matches_cpu() {
+    fn run_whir_evaluate_monomial_matches_cpu(count: usize, is_small: bool) {
         let context = make_test_context(256, 32);
 
-        for count in [8, 8192] {
-            let mut state = GpuWhirState::new(count, &context).unwrap();
-            let coeffs = (0..count)
-                .map(|i| sample_ext(50 * i as u32))
-                .collect::<Vec<_>>();
-            let point = sample_ext(999);
-            state.current_len = coeffs.len();
-            let mut monomial_bitreversed = coeffs.clone();
-            bitreverse_enumeration_inplace(&mut monomial_bitreversed);
-            let monomial_vectorized = e4_coeffs_to_vectorized(&monomial_bitreversed);
-            state.sumchecked_poly_monomial_form = DeviceMatrixOwnsAllocation::new(
-                alloc_and_copy(&monomial_vectorized, &context),
-                state.current_len,
-            );
+        let mut state = GpuWhirState::new(count, &context).unwrap();
+        let coeffs = (0..count)
+            .map(|i| sample_ext(50 * i as u32))
+            .collect::<Vec<_>>();
+        let point = sample_ext(999);
+        state.current_len = coeffs.len();
+        let mut monomial_bitreversed = coeffs.clone();
+        bitreverse_enumeration_inplace(&mut monomial_bitreversed);
+        let monomial_vectorized = e4_coeffs_to_vectorized(&monomial_bitreversed);
+        state.sumchecked_poly_monomial_form = DeviceMatrixOwnsAllocation::new(
+            alloc_and_copy(&monomial_vectorized, &context),
+            state.current_len,
+        );
 
-            if count == 8 {
-                // lets partially_evaluate_monomials_by_ref work with artificially small size
-                state.scratch0 =
-                    context.alloc(state.current_len, AllocationPlacement::BestFit).unwrap();
-            }
-
-            let actual = evaluate_monomial_form_device(&mut state, point, &context).unwrap();
-            let expected = evaluate_monomial_form_for_test(&coeffs, point);
-
-            assert_eq!(actual, expected);
+        if is_small {
+            // lets partially_evaluate_monomials_by_ref work with artificially small size
+            state.scratch0 =
+                context.alloc(state.current_len, AllocationPlacement::BestFit).unwrap();
         }
+
+        let actual = evaluate_monomial_form_device(&mut state, point, &context).unwrap();
+        let expected = evaluate_monomial_form_for_test(&coeffs, point);
+
+        assert_eq!(actual, expected);
     }
 
     #[test]
     #[cfg(not(no_cuda))]
     #[serial]
-    fn scheduled_whir_evaluate_monomial_matches_cpu() {
-        let context = make_test_context(256, 32);
-
-        for count in [8, 8192] {
-            let mut state = GpuWhirState::new(count, &context).unwrap();
-            let coeffs = (0..count)
-                .map(|i| sample_ext(50 * i as u32))
-                .collect::<Vec<_>>();
-            let point = sample_ext(999);
-            state.current_len = coeffs.len();
-            let mut monomial_bitreversed = coeffs.clone();
-            bitreverse_enumeration_inplace(&mut monomial_bitreversed);
-            let monomial_vectorized = e4_coeffs_to_vectorized(&monomial_bitreversed);
-            state.sumchecked_poly_monomial_form = DeviceMatrixOwnsAllocation::new(
-                alloc_and_copy(&monomial_vectorized, &context),
-                state.current_len,
-            );
-            let point_device = alloc_and_copy(&[point], &context);
-
-            if count == 8 {
-                // lets partially_evaluate_monomials_by_ref work with artificially small size
-                state.scratch0 =
-                    context.alloc(state.current_len, AllocationPlacement::BestFit).unwrap();
-            }
-
-            let partials =
-                schedule_monomial_eval_device(&mut state, &point_device, &context).unwrap();
-            context.get_exec_stream().synchronize().unwrap();
-            let mut actual = E4::ZERO;
-            for partial in partials.iter() {
-                actual.add_assign(&unsafe { partial.get_accessor().get() }[0]);
-            }
-
-            let expected = evaluate_monomial_form_for_test(&coeffs, point);
-            assert_eq!(actual, expected);
-        }
+    fn whir_evaluate_monomial_matches_cpu_small() {
+        run_whir_evaluate_monomial_matches_cpu(8, true);
     }
 
     #[test]
     #[cfg(not(no_cuda))]
     #[serial]
-    fn whir_initial_state_matches_cpu() {
+    fn whir_evaluate_monomial_matches_cpu_large() {
+        run_whir_evaluate_monomial_matches_cpu(8192, false);
+    }
+
+    #[cfg(not(no_cuda))]
+    fn run_scheduled_whir_evaluate_monomial_matches_cpu(count: usize, is_small: bool) {
+        let context = make_test_context(256, 32);
+
+        let mut state = GpuWhirState::new(count, &context).unwrap();
+        let coeffs = (0..count)
+            .map(|i| sample_ext(50 * i as u32))
+            .collect::<Vec<_>>();
+        let point = sample_ext(999);
+        state.current_len = coeffs.len();
+        let mut monomial_bitreversed = coeffs.clone();
+        bitreverse_enumeration_inplace(&mut monomial_bitreversed);
+        let monomial_vectorized = e4_coeffs_to_vectorized(&monomial_bitreversed);
+        state.sumchecked_poly_monomial_form = DeviceMatrixOwnsAllocation::new(
+            alloc_and_copy(&monomial_vectorized, &context),
+            state.current_len,
+        );
+        let point_device = alloc_and_copy(&[point], &context);
+
+        if is_small {
+            // lets partially_evaluate_monomials_by_ref work with artificially small size
+            state.scratch0 =
+                context.alloc(state.current_len, AllocationPlacement::BestFit).unwrap();
+        }
+
+        let partials =
+            schedule_monomial_eval_device(&mut state, &point_device, &context).unwrap();
+        context.get_exec_stream().synchronize().unwrap();
+        let mut actual = E4::ZERO;
+        for partial in partials.iter() {
+            actual.add_assign(&unsafe { partial.get_accessor().get() }[0]);
+        }
+
+        let expected = evaluate_monomial_form_for_test(&coeffs, point);
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    #[cfg(not(no_cuda))]
+    #[serial]
+    fn scheduled_whir_evaluate_monomial_matches_cpu_small() {
+        run_scheduled_whir_evaluate_monomial_matches_cpu(8, true);
+    }
+
+    #[test]
+    #[cfg(not(no_cuda))]
+    #[serial]
+    fn scheduled_whir_evaluate_monomial_matches_cpu_large() {
+        run_scheduled_whir_evaluate_monomial_matches_cpu(8192, false);
+    }
+
+    #[cfg(not(no_cuda))]
+    fn run_whir_initial_state_matches_cpu(log_count: usize) {
         let context = make_test_context(256, 32);
         let worker = Worker::new();
+        let count = 1 << log_count;
         let memory_columns = vec![
-            (0..8)
+            (0..count)
                 .map(|i| BF::from_u32_unchecked(10 + i as u32))
                 .collect(),
-            (0..8)
+            (0..count)
                 .map(|i| BF::from_u32_unchecked(30 + i as u32))
                 .collect(),
         ];
-        let witness_columns = vec![(0..8)
+        let witness_columns = vec![(0..count)
             .map(|i| BF::from_u32_unchecked(50 + i as u32))
             .collect()];
-        let setup_columns = vec![(0..8)
+        let setup_columns = vec![(0..count)
             .map(|i| BF::from_u32_unchecked(70 + i as u32))
             .collect()];
 
@@ -4361,10 +4381,10 @@ mod tests {
         let mem_polys_claims = vec![sample_ext(10), sample_ext(20)];
         let wit_polys_claims = vec![sample_ext(30)];
         let setup_polys_claims = vec![sample_ext(40)];
-        let original_evaluation_point = vec![sample_ext(100), sample_ext(200), sample_ext(300)];
+        let original_evaluation_point = (0..log_count).map(|i| sample_ext(10 * i as u32)).collect::<Vec<_>>();
         let batching_challenge = sample_ext(500);
 
-        let mut state = GpuWhirState::new(8, &context).unwrap();
+        let mut state = GpuWhirState::new(count, &context).unwrap();
         let (batch_challenges, claim) = build_initial_state(
             &memory_trace_holder,
             &mem_polys_claims,
@@ -4391,7 +4411,7 @@ mod tests {
         assert_eq!(batch_challenges[1], witness_weights);
         assert_eq!(batch_challenges[2], setup_weights);
 
-        let mut expected_evals = vec![E4::ZERO; 8];
+        let mut expected_evals = vec![E4::ZERO; count];
         for (weights, columns) in [
             (memory_weights, memory_main_domain.as_slice()),
             (witness_weights, witness_main_domain.as_slice()),
@@ -4456,10 +4476,25 @@ mod tests {
         bitreverse_enumeration_inplace(&mut monomial_from_gpu);
         assert_eq!(monomial_from_gpu, expected_monomials);
         assert_eq!(
-            copy_back(&state.sumchecked_poly_evaluation_form[..8], &context),
+            copy_back(&state.sumchecked_poly_evaluation_form[..count], &context),
             expected_eval_form
         );
-        assert_eq!(copy_back(&state.eq_poly[..8], &context), expected_eq);
+        assert_eq!(copy_back(&state.eq_poly[..count], &context), expected_eq);
+    }
+
+    #[test]
+    #[cfg(not(no_cuda))]
+    #[serial]
+    fn whir_initial_state_matches_cpu_small() {
+        run_whir_initial_state_matches_cpu(3);
+    }
+
+    #[test]
+    #[cfg(not(no_cuda))]
+    #[serial]
+    #[ignore]
+    fn whir_initial_state_matches_cpu_large() {
+        run_whir_initial_state_matches_cpu(MIN_LOG_N_FOR_MULTISTAGE_KERNELS + 1);
     }
 
     #[test]
