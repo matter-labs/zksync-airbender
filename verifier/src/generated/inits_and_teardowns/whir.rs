@@ -1,7 +1,8 @@
 use super::common::{
-    compute_tree_index, draw_single_field_el, fold_coset, fold_whir_accumulator,
-    materialize_gamma_powers, process_oracle_query, push_whir_pow_entry, read_field_el,
-    read_field_els, read_reduced_field_el, verify_whir_sumcheck_step,
+    compute_tree_index, draw_single_field_el, eval_multilinear_with_monomial_tensor,
+    evals_to_multilinear_coeffs, fold_whir_accumulator, materialize_gamma_powers,
+    precompute_monomial_tensor, process_oracle_query, push_whir_pow_entry, read_reduced_field_el,
+    verify_whir_sumcheck_step,
 };
 use super::constants::*;
 use core::mem::MaybeUninit;
@@ -26,7 +27,6 @@ const INITIAL_POW_BITS: u32 = 24u32;
 const INITIAL_DRAW_WORDS: usize = 56usize;
 const INITIAL_RS_DOMAIN_LOG2: usize = 25usize;
 const HASH_BUF_SIZE: usize = 128usize;
-const FOLD_BUF_HALF: usize = 1usize;
 const NUM_COSETS: usize = 2usize;
 const NUM_COSETS_LOG2: usize = 1usize;
 const COSET_TREE_SIZE: usize = 8388608usize;
@@ -104,10 +104,6 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
             BabyBearField::TWO_ADICITY_GENERATORS_INVERSED[INITIAL_RS_DOMAIN_LOG2];
         let mut high_powers_offsets = LazyVec::<BabyBearField, MAX_HIGH_POWERS>::new();
         compute_high_powers_offsets(WHIR_FOLD_STEPS[0], &mut high_powers_offsets);
-        let mut fold_buf_a = LazyVec::<BabyBearExt4, FOLD_BUF_HALF>::new();
-        fold_buf_a.set_len(FOLD_BUF_HALF);
-        let mut fold_buf_b = LazyVec::<BabyBearExt4, FOLD_BUF_HALF>::new();
-        fold_buf_b.set_len(FOLD_BUF_HALF);
         let mut q = 0;
         while q < INITIAL_NUM_QUERIES {
             field_ops::mul_assign(
@@ -133,16 +129,17 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
                 &mut acc1,
                 q,
             )?;
-            let batched_evals = [acc0, acc1];
-            let folded = fold_coset(
-                &batched_evals,
-                WHIR_FOLD_STEPS[0],
-                folding_challenges.as_slice(),
-                base_root_inv,
-                unsafe { high_powers_offsets.as_array::<{ 1 << (WHIR_FOLD_STEPS[0] - 1) }>() },
-                fold_buf_a.as_mut_slice(),
-                fold_buf_b.as_mut_slice(),
-            );
+            let mut sum = acc0;
+            field_ops::add_assign(&mut sum, &acc1);
+            let mut diff = acc0;
+            field_ops::sub_assign(&mut diff, &acc1);
+            let mut alpha_r = unsafe { *folding_challenges.get_unchecked(0) };
+            field_ops::mul_assign_by_base(&mut alpha_r, &base_root_inv);
+            let mut scaled_diff = diff;
+            field_ops::mul_assign(&mut scaled_diff, &alpha_r);
+            let mut folded = sum;
+            field_ops::add_assign(&mut folded, &scaled_diff);
+            field_ops::mul_assign_by_base(&mut folded, &BabyBearField::HALF);
             let mut query_point_base = extended_generator.pow(query_index as u32);
             query_point_base.exp_power_of_2(WHIR_FOLD_STEPS[0]);
             push_whir_pow_entry(
@@ -177,7 +174,6 @@ const MAX_INTERNAL_LEAF_EXT_WORDS: usize = MAX_INTERNAL_VALUES_PER_LEAF * EXT_DE
 const INTERNAL_HASH_BUF_SIZE: usize = MAX_INTERNAL_LEAF_EXT_WORDS
     .div_ceil(BLAKE2S_BLOCK_SIZE_U32_WORDS)
     * BLAKE2S_BLOCK_SIZE_U32_WORDS;
-const MAX_INTERNAL_FOLD_BUF_HALF: usize = 8usize;
 const MAX_INTERNAL_NUM_QUERIES: usize = 23usize;
 const MAX_INTERNAL_DRAW_WORDS: usize = 24usize;
 const INTERNAL_DRAW_WORDS: [usize; NUM_INTERNAL_ROUNDS] = [24usize, 16usize, 8usize, 8usize];
@@ -246,17 +242,12 @@ pub fn verify_internal_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
         let mut current_delinearization_challenge = delinearization_challenge;
         let rs_domain_log2 = INTERNAL_RS_DOMAIN_LOG2[ir];
         let extended_generator = BabyBearField::TWO_ADICITY_GENERATORS[rs_domain_log2];
-        let extended_generator_inv = BabyBearField::TWO_ADICITY_GENERATORS_INVERSED[rs_domain_log2];
         let num_cosets = INTERNAL_NUM_COSETS[ir];
         let num_cosets_log2 = INTERNAL_NUM_COSETS_LOG2[ir];
         let coset_tree_size = INTERNAL_COSET_TREE_SIZE[ir];
         let oracle_depth = WHIR_ORACLE_DEPTHS[round_idx - 1];
-        let mut high_powers_offsets = LazyVec::<BabyBearField, MAX_HIGH_POWERS>::new();
-        compute_high_powers_offsets(fold_steps, &mut high_powers_offsets);
-        let mut fold_buf_a = LazyVec::<BabyBearExt4, MAX_INTERNAL_FOLD_BUF_HALF>::new();
-        fold_buf_a.set_len(MAX_INTERNAL_FOLD_BUF_HALF);
-        let mut fold_buf_b = LazyVec::<BabyBearExt4, MAX_INTERNAL_FOLD_BUF_HALF>::new();
-        fold_buf_b.set_len(MAX_INTERNAL_FOLD_BUF_HALF);
+        let mut monomial_weights = LazyVec::<BabyBearExt4, MAX_INTERNAL_VALUES_PER_LEAF>::new();
+        precompute_monomial_tensor(folding_challenges.as_slice(), &mut monomial_weights);
         let mut q = 0;
         while q < num_queries {
             field_ops::mul_assign(
@@ -264,7 +255,6 @@ pub fn verify_internal_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
                 &delinearization_challenge,
             );
             let query_index = *query_indices.get(q);
-            let base_root_inv = extended_generator_inv.pow(query_index as u32);
             let tree_index =
                 compute_tree_index(query_index, num_cosets, num_cosets_log2, coset_tree_size);
             {
@@ -281,22 +271,18 @@ pub fn verify_internal_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
             if !verify_merkle_path::<I>(&mut ts.hasher, tree_index, oracle_depth, prev_oracle_cap) {
                 return Err(E::whir_merkle_path_failed(q));
             }
-            let mut evals: LazyVec<BabyBearExt4, { MAX_INTERNAL_VALUES_PER_LEAF }> = LazyVec::new();
+            let mut coeffs: LazyVec<BabyBearExt4, { MAX_INTERNAL_VALUES_PER_LEAF }> =
+                LazyVec::new();
             let mut j = 0;
             while j < MAX_INTERNAL_VALUES_PER_LEAF {
-                evals.push(ext_from_raw_word_slice(
+                coeffs.push(ext_from_raw_word_slice(
                     &init_buf[j * EXT_DEGREE..(j + 1) * EXT_DEGREE],
                 ));
                 j += 1;
             }
-            let folded = fold_coset(
-                evals.as_slice(),
-                fold_steps,
-                folding_challenges.as_slice(),
-                base_root_inv,
-                high_powers_offsets.as_slice(),
-                fold_buf_a.as_mut_slice(),
-                fold_buf_b.as_mut_slice(),
+            let folded = eval_multilinear_with_monomial_tensor(
+                coeffs.as_slice(),
+                monomial_weights.as_slice(),
             );
             let mut query_point_base = extended_generator.pow(query_index as u32);
             query_point_base.exp_power_of_2(fold_steps);
@@ -320,7 +306,6 @@ const FINAL_VALUES_PER_LEAF: usize = 16usize;
 const FINAL_LEAF_EXT_WORDS: usize = FINAL_VALUES_PER_LEAF * EXT_DEGREE;
 const FINAL_HASH_BUF_SIZE: usize =
     FINAL_LEAF_EXT_WORDS.div_ceil(BLAKE2S_BLOCK_SIZE_U32_WORDS) * BLAKE2S_BLOCK_SIZE_U32_WORDS;
-const FINAL_FOLD_BUF_HALF: usize = 8usize;
 const FINAL_QUERY_INDEX_BITS: usize = 10usize;
 const FINAL_RS_DOMAIN_LOG2: usize = 14usize;
 const FINAL_NUM_COSETS: usize = 128usize;
@@ -377,22 +362,15 @@ pub fn verify_final_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
             FINAL_DRAW_WORDS,
         );
         let extended_generator = BabyBearField::TWO_ADICITY_GENERATORS[FINAL_RS_DOMAIN_LOG2];
-        let extended_generator_inv =
-            BabyBearField::TWO_ADICITY_GENERATORS_INVERSED[FINAL_RS_DOMAIN_LOG2];
         let oracle_depth = WHIR_ORACLE_DEPTHS[FINAL_ORACLE_DEPTH_IDX];
-        let mut high_powers_offsets = LazyVec::<BabyBearField, MAX_HIGH_POWERS>::new();
-        compute_high_powers_offsets(FINAL_FOLD_STEPS, &mut high_powers_offsets);
-        let mut fold_buf_a = LazyVec::<BabyBearExt4, FINAL_FOLD_BUF_HALF>::new();
-        fold_buf_a.set_len(FINAL_FOLD_BUF_HALF);
-        let mut fold_buf_b = LazyVec::<BabyBearExt4, FINAL_FOLD_BUF_HALF>::new();
-        fold_buf_b.set_len(FINAL_FOLD_BUF_HALF);
+        let mut monomial_weights = LazyVec::<BabyBearExt4, FINAL_VALUES_PER_LEAF>::new();
+        precompute_monomial_tensor(folding_challenges.as_slice(), &mut monomial_weights);
         let mut folded_values: LazyVec<BabyBearExt4, FINAL_NUM_QUERIES> = LazyVec::new();
         let mut query_base_roots: LazyVec<BabyBearField, FINAL_NUM_QUERIES> = LazyVec::new();
         let mut q = 0;
         while q < FINAL_NUM_QUERIES {
             let query_index = *query_indices.get(q);
             let base_root = extended_generator.pow(query_index as u32);
-            let base_root_inv = extended_generator_inv.pow(query_index as u32);
             let tree_index = compute_tree_index(
                 query_index,
                 FINAL_NUM_COSETS,
@@ -413,22 +391,17 @@ pub fn verify_final_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
             if !verify_merkle_path::<I>(&mut ts.hasher, tree_index, oracle_depth, prev_oracle_cap) {
                 return Err(E::whir_merkle_path_failed(q));
             }
-            let mut evals: LazyVec<BabyBearExt4, { FINAL_VALUES_PER_LEAF }> = LazyVec::new();
+            let mut coeffs: LazyVec<BabyBearExt4, { FINAL_VALUES_PER_LEAF }> = LazyVec::new();
             let mut j = 0;
             while j < FINAL_VALUES_PER_LEAF {
-                evals.push(ext_from_raw_word_slice(
+                coeffs.push(ext_from_raw_word_slice(
                     &init_buf[j * EXT_DEGREE..(j + 1) * EXT_DEGREE],
                 ));
                 j += 1;
             }
-            let folded = fold_coset(
-                evals.as_slice(),
-                FINAL_FOLD_STEPS,
-                folding_challenges.as_slice(),
-                base_root_inv,
-                high_powers_offsets.as_slice(),
-                fold_buf_a.as_mut_slice(),
-                fold_buf_b.as_mut_slice(),
+            let folded = eval_multilinear_with_monomial_tensor(
+                coeffs.as_slice(),
+                monomial_weights.as_slice(),
             );
             folded_values.push(folded);
             query_base_roots.push(base_root);

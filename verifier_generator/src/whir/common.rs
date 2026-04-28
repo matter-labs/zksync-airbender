@@ -27,18 +27,24 @@ pub fn generate_whir_common<MW: FieldWrapper>(max_fold_steps: usize) -> TokenStr
     let add_claim_c1 = MW::add_assign(quote! { new_claim }, quote! { c1 });
     let add_claim_c0 = MW::add_assign(quote! { new_claim }, quote! { c0 });
 
-    // gamma power / fold coset ops
+    // gamma power / coeff conversion ops
     let mul_pow_gen = MW::mul_assign(quote! { pow }, quote! { set_gen_inv });
     let mul_gamma_pow = MW::mul_assign(quote! { gamma_pow }, quote! { gamma });
-    let sub_t_b = MW::sub_assign(quote! { t }, quote! { b });
-    let mul_t_challenge = MW::mul_assign(quote! { t }, quote! { challenge });
-    let mul_t_root = MW::mul_assign_by_base(quote! { t }, quote! { root });
-    let add_t_a = MW::add_assign(quote! { t }, quote! { a });
-    let add_t_b = MW::add_assign(quote! { t }, quote! { b });
-    let mul_t_half = MW::mul_assign_by_base(quote! { t }, quote! { #field_struct::HALF });
-    let mul_root_offset = MW::mul_assign(quote! { root }, quote! { high_powers_offset });
+    // evals_to_multilinear_coeffs: c_even = (a+b)/2, c_odd = (a-b)*root/2
+    let even_add_b = MW::add_assign(quote! { c_even }, quote! { b });
+    let even_mul_half = MW::mul_assign_by_base(quote! { c_even }, quote! { #field_struct::HALF });
+    let odd_sub_b = MW::sub_assign(quote! { c_odd }, quote! { b });
+    let odd_mul_root = MW::mul_assign_by_base(quote! { c_odd }, quote! { root });
+    let odd_mul_half = MW::mul_assign_by_base(quote! { c_odd }, quote! { #field_struct::HALF });
+    let mul_root_offset = MW::mul_assign(quote! { r }, quote! { hp_offset });
     let square_root_inv = MW::square(quote! { root_inv });
+    // eval_multilinear_with_monomial_tensor: result += c * w
+    let term_mul_weight = MW::mul_assign(quote! { term }, quote! { w });
+    let result_add_term = MW::add_assign(quote! { result }, quote! { term });
+    // precompute_monomial_tensor: w_alpha = w * alpha
+    let walpha_mul_alpha = MW::mul_assign(quote! { w_alpha }, quote! { alpha });
 
+    // fold_whir_accumulator (eq trick from PR #273): eq(z, α) = (1-α) - z + 2αz
     let sub_oma_alpha = MW::sub_assign(quote! { one_minus_alpha }, quote! { alpha });
     let double_two_alpha = MW::double(quote! { two_alpha });
     let mul_two_a_zi_zi = MW::mul_assign(quote! { two_a_zi }, quote! { zi });
@@ -143,68 +149,132 @@ pub fn generate_whir_common<MW: FieldWrapper>(max_fold_steps: usize) -> TokenStr
 
         #[inline(always)]
         #[allow(clippy::too_many_arguments)]
-        pub fn fold_coset(
-            evals: &[#quartic_struct],
-            num_rounds: usize,
-            folding_challenges: &[#quartic_struct],
+        pub fn evals_to_multilinear_coeffs<const N: usize>(
+            data: &mut [#quartic_struct],
             mut root_inv: #field_struct,
             high_powers_offsets: &[#field_struct],
-            buf_a: &mut [#quartic_struct],
-            buf_b: &mut [#quartic_struct],
-        ) -> #quartic_struct {
-            debug_assert!(num_rounds == 0 || high_powers_offsets.len() >= 1 << (num_rounds - 1));
-            let mut round = 0;
-            while round < num_rounds {
-                let half = 1 << (num_rounds - round - 1);
-                let challenge = unsafe { *folding_challenges.get_unchecked(round) };
+            num_folding_rounds: usize,
+            buf_a: &mut LazyVec<#quartic_struct, N>,
+            buf_b: &mut LazyVec<#quartic_struct, N>,
+        ) {
+            let n = 1usize << num_folding_rounds;
+            debug_assert_eq!(data.len(), n);
+            debug_assert!(n <= N);
+            if num_folding_rounds == 0 {
+                return;
+            }
 
-                let src: &[#quartic_struct] = if round == 0 {
-                    evals
-                } else if round % 2 == 1 {
-                    unsafe { core::slice::from_raw_parts(buf_a.as_ptr(), half * 2) }
+            let mut stage = 0;
+            while stage < num_folding_rounds {
+                let src_ptr: *const #quartic_struct = if stage == 0 {
+                    data.as_ptr()
+                } else if stage % 2 == 1 {
+                    buf_a.as_ptr()
                 } else {
-                    unsafe { core::slice::from_raw_parts(buf_b.as_ptr(), half * 2) }
+                    buf_b.as_ptr()
                 };
-                let dst: &mut [#quartic_struct] = if round % 2 == 0 {
-                    unsafe { core::slice::from_raw_parts_mut(buf_a.as_mut_ptr(), half) }
+                let dst_ptr: *mut #quartic_struct = if stage + 1 == num_folding_rounds {
+                    data.as_mut_ptr()
+                } else if stage % 2 == 0 {
+                    buf_a.as_mut_ptr()
                 } else {
-                    unsafe { core::slice::from_raw_parts_mut(buf_b.as_mut_ptr(), half) }
+                    buf_b.as_mut_ptr()
                 };
 
-                let mut pair_idx = 0;
-                while pair_idx < half {
-                    let src_idx = pair_idx * 2;
-                    let a = unsafe { *src.get_unchecked(src_idx) };
-                    let b = unsafe { *src.get_unchecked(src_idx + 1) };
+                let num_existing = 1usize << stage;
+                let block_len = n >> stage;
+                let half = block_len / 2;
 
-                    let mut t = a;
-                    #sub_t_b;
-                    #mul_t_challenge;
+                let mut idx = 0;
+                while idx < num_existing {
+                    let base = idx * block_len;
+                    let out_base = idx * half;
+                    let linear_base = (idx | num_existing) * half;
+                    let mut set_idx = 0;
+                    while set_idx < half {
+                        let a = unsafe { *src_ptr.add(base + 2 * set_idx) };
+                        let b = unsafe { *src_ptr.add(base + 2 * set_idx + 1) };
 
-                    let mut root = root_inv;
-                    let high_powers_offset = unsafe { *high_powers_offsets.get_unchecked(pair_idx) };
-                    #mul_root_offset;
-                    #mul_t_root;
+                        // high_powers_offsets[0] == ONE, so skip the mul for set_idx=0.
+                        let root = if set_idx == 0 {
+                            root_inv
+                        } else {
+                            let hp_offset = unsafe {
+                                *high_powers_offsets.get_unchecked(set_idx)
+                            };
+                            let mut r = root_inv;
+                            #mul_root_offset;
+                            r
+                        };
 
-                    #add_t_a;
-                    #add_t_b;
-                    #mul_t_half;
+                        let mut c_even = a;
+                        #even_add_b;
+                        #even_mul_half;
 
-                    unsafe { *dst.get_unchecked_mut(pair_idx) = t; }
-                    pair_idx += 1;
+                        let mut c_odd = a;
+                        #odd_sub_b;
+                        #odd_mul_root;
+                        #odd_mul_half;
+
+                        unsafe { dst_ptr.add(out_base + set_idx).write(c_even); }
+                        unsafe { dst_ptr.add(linear_base + set_idx).write(c_odd); }
+                        set_idx += 1;
+                    }
+                    idx += 1;
                 }
 
-                #square_root_inv;
-                round += 1;
+                // Skip the square on the final stage — root_inv is unused afterward.
+                if stage + 1 < num_folding_rounds {
+                    #square_root_inv;
+                }
+                stage += 1;
             }
+        }
 
-            if num_rounds == 0 {
-                unsafe { *evals.get_unchecked(0) }
-            } else if num_rounds % 2 == 1 {
-                unsafe { *buf_a.get_unchecked(0) }
-            } else {
-                unsafe { *buf_b.get_unchecked(0) }
+
+        #[inline(always)]
+        pub fn precompute_monomial_tensor<const N: usize>(
+            challenges: &[#quartic_struct],
+            weights: &mut LazyVec<#quartic_struct, N>,
+        ) {
+            let k = challenges.len();
+            let len = 1usize << k;
+            debug_assert!(len <= N);
+            unsafe { weights.set_unchecked(0, #quartic_one); }
+            let mut j = 0;
+            while j < k {
+                let alpha = unsafe { *challenges.get_unchecked(j) };
+                let bit = 1usize << j;
+                let mut i = bit;
+                while i > 0 {
+                    i -= 1;
+                    let w = unsafe { *weights.get_unchecked(i) };
+                    let mut w_alpha = w;
+                    #walpha_mul_alpha;
+                    unsafe { weights.set_unchecked(i + bit, w_alpha); }
+                }
+                j += 1;
             }
+            unsafe { weights.set_len(len); }
+        }
+
+        #[inline(always)]
+        pub fn eval_multilinear_with_monomial_tensor(
+            coeffs: &[#quartic_struct],
+            weights: &[#quartic_struct],
+        ) -> #quartic_struct {
+            debug_assert_eq!(coeffs.len(), weights.len());
+            let n = coeffs.len();
+            let mut result = unsafe { *coeffs.get_unchecked(0) };
+            let mut i = 1;
+            while i < n {
+                let mut term = unsafe { *coeffs.get_unchecked(i) };
+                let w = unsafe { *weights.get_unchecked(i) };
+                #term_mul_weight;
+                #result_add_term;
+                i += 1;
+            }
+            result
         }
 
         pub const MAX_HIGH_POWERS: usize = #max_high_powers;

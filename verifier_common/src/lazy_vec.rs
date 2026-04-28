@@ -42,6 +42,16 @@ impl<V: Copy, const N: usize> LazyVec<V, N> {
     }
 
     #[inline(always)]
+    pub fn as_ptr(&self) -> *const V {
+        self.data.as_ptr().cast::<V>()
+    }
+
+    #[inline(always)]
+    pub fn as_mut_ptr(&mut self) -> *mut V {
+        self.data.as_mut_ptr().cast::<V>()
+    }
+
+    #[inline(always)]
     pub const fn clear(&mut self) {
         self.len = 0;
     }

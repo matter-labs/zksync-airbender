@@ -9,7 +9,7 @@ usage() {
   echo ""
   echo "Options:"
   echo "  --blake MODE       blake2_with_compression (default), blake2_g_function, mop_extension"
-  echo "  --variant VAR      no_caches (default) or caches"
+  echo "  --variant VAR      caches (default) or no_caches"
   echo "  --from STEP        run this step and everything after it"
   echo "  --circuits A,B,..  select circuit(s) (comma-separated, default: all)"
   echo "  --cycles           show before/after cycle count comparison"
@@ -44,7 +44,7 @@ usage() {
 }
 
 BLAKE="blake2_with_compression"
-VARIANT="no_caches"
+VARIANT="caches"
 FROM=""
 SELECTED_CIRCUITS=()
 DRY_RUN=false
