@@ -1,7 +1,9 @@
 use std::collections::BTreeMap;
 
-use cs::definitions::{GKRAddress, VirtualSetupPoly, TIMESTAMP_COLUMNS_NUM_BITS};
+use cs::definitions::{GKRAddress, VirtualSetupPoly};
 use cs::gkr_compiler::GKRLayerDescription;
+use era_cudart::cuda_kernel;
+use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
@@ -21,11 +23,37 @@ use crate::primitives::callbacks::Callbacks;
 use crate::primitives::context::{DeviceAllocation, HostAllocation, ProverContext, UnsafeMutAccessor};
 use crate::primitives::device_structures::DeviceMatrix;
 use crate::primitives::device_tracing::Range;
-use crate::primitives::field::BF;
+use crate::primitives::field::{BF, E4};
 use crate::prover::proof_layout::{ProofLayout, WhirBaseLayerKind};
 use crate::prover::trace_holder::TraceHolder;
-use prover::gkr::virtual_polys::init_and_teardown_base::evaluate_virtual_inits_and_teardowns_base_address_setup_polys;
-use prover::gkr::virtual_polys::range_check::evaluate_virtual_range_check_setup_poly;
+
+cuda_kernel!(
+    EvalVirtualSetupClaims,
+    ab_gkr_eval_virtual_setup_claims_e4_kernel(
+        claim_point: *const E4,
+        trace_len_log2: u32,
+        output: *mut E4,
+    )
+);
+
+/// Number of E4 outputs produced by the virtual-setup-claims kernel:
+/// [RangeCheck16, RangeCheckTimestamp, InitsAndTeardownsLow, InitsAndTeardownsHigh].
+pub(crate) const VIRTUAL_SETUP_CLAIMS_OUTPUT_LEN: usize = 4;
+
+/// Launches the single-thread kernel that evaluates the four virtual setup
+/// polynomials at `claim_point` (length `trace_len_log2`) and writes the
+/// `[RangeCheck16, RangeCheckTimestamp, InitsAndTeardownsLow,
+/// InitsAndTeardownsHigh]` E4 values into `output`.
+fn launch_eval_virtual_setup_claims(
+    claim_point: *const E4,
+    trace_len_log2: u32,
+    output: *mut E4,
+    context: &ProverContext,
+) -> CudaResult<()> {
+    let config = CudaLaunchConfig::basic(1, 1, context.get_exec_stream());
+    let args = EvalVirtualSetupClaimsArguments::new(claim_point, trace_len_log2, output);
+    EvalVirtualSetupClaimsFunction::default().launch(&config, &args)
+}
 
 #[derive(Clone)]
 pub(crate) struct GpuGKRBaseLayerTailOutput<E> {
@@ -174,35 +202,56 @@ where
         .clone()
 }
 
-pub(crate) fn clone_base_layer_extra_evaluations_transcript_batches<E>(
-    shared_state: UnsafeMutAccessor<ScheduledBaseLayerClaimsState<E>>,
-) -> Vec<Vec<E>>
-where
-    E: Clone,
-{
-    unsafe { shared_state.get() }
-        .result
-        .as_ref()
-        .expect("base-layer claims result must be available")
-        .extra_evaluations_transcript_batches
-        .clone()
-}
-
 pub(crate) struct GpuGKRBaseLayerClaimsScheduledExecution<E> {
     _tracing_ranges: Vec<Range>,
-    _start_callbacks: Callbacks<'static>,
     _finish_callbacks: Callbacks<'static>,
     shared_state: Box<ScheduledBaseLayerClaimsState<E>>,
+    // Deferred aggregation closure built by `schedule_prepare_base_layer_claims_with_sources`.
+    // Holds the captured pinned-host accessors and `layer_desc`; the caller schedules it
+    // exactly once via `schedule_aggregation` after the underlying H2D readbacks complete.
+    pending_aggregation: Option<Box<dyn Fn() + Send + Sync + 'static>>,
 }
 
-impl<E> GpuGKRBaseLayerClaimsScheduledExecution<E> {
+impl<E: 'static> GpuGKRBaseLayerClaimsScheduledExecution<E> {
     pub(crate) fn shared_state_handle(
         &mut self,
     ) -> UnsafeMutAccessor<ScheduledBaseLayerClaimsState<E>> {
         UnsafeMutAccessor::new(self.shared_state.as_mut())
     }
 
-    pub(crate) fn wait(self, context: &ProverContext) -> CudaResult<GpuGKRBaseLayerTailOutput<E>> {
+    /// Schedules the deferred aggregation callback on `stream`. Must be called
+    /// exactly once. The callback finalizes `shared_state.result` and runs the
+    /// caller-supplied `post_aggregation` closure (e.g. mirror extras into
+    /// backward state).
+    pub(crate) fn schedule_aggregation(
+        &mut self,
+        stream: &era_cudart::stream::CudaStream,
+    ) -> CudaResult<()> {
+        let closure = self
+            .pending_aggregation
+            .take()
+            .expect("aggregation callback already scheduled");
+        self._finish_callbacks.schedule(closure, stream)
+    }
+
+    /// Hands the deferred aggregation closure to a sibling scheduler (e.g. WHIR
+    /// fold setup) so it can be scheduled as part of that scheduler's own
+    /// start callback chain. The caller becomes responsible for scheduling
+    /// (and keeping the resulting `HostFn` alive); on this struct we no longer
+    /// own the closure.
+    pub(crate) fn take_pending_aggregation(
+        &mut self,
+    ) -> Box<dyn Fn() + Send + Sync + 'static> {
+        self.pending_aggregation
+            .take()
+            .expect("aggregation callback already scheduled")
+    }
+
+    pub(crate) fn wait(mut self, context: &ProverContext) -> CudaResult<GpuGKRBaseLayerTailOutput<E>> {
+        // Test-only path: schedule the aggregation now, then sync.
+        if self.pending_aggregation.is_some() {
+            self.schedule_aggregation(context.get_exec_stream())?;
+        }
         context.get_exec_stream().synchronize()?;
         let Self {
             mut shared_state, ..
@@ -279,45 +328,6 @@ fn fill_missing_cached_dependency_claims<E: Copy>(
         extra_evaluations_from_caching_relations,
         extra_evaluations_transcript_batches,
     )
-}
-
-fn populate_virtual_setup_claims<E>(
-    completed_claims: &mut BTreeMap<GKRAddress, E>,
-    claim_point: &[E],
-    trace_len_log2: u32,
-) where
-    E: FieldExtension<BF> + Field,
-{
-    completed_claims
-        .entry(GKRAddress::VirtualSetup(VirtualSetupPoly::RangeCheck16Bits))
-        .or_insert_with(|| {
-            evaluate_virtual_range_check_setup_poly::<BF, E, 16>(claim_point, trace_len_log2)
-        });
-    completed_claims
-        .entry(GKRAddress::VirtualSetup(
-            VirtualSetupPoly::RangeCheckTimestamp,
-        ))
-        .or_insert_with(|| {
-            evaluate_virtual_range_check_setup_poly::<BF, E, TIMESTAMP_COLUMNS_NUM_BITS>(
-                claim_point,
-                trace_len_log2,
-            )
-        });
-    let (inits_low, inits_high) = evaluate_virtual_inits_and_teardowns_base_address_setup_polys::<
-        BF,
-        E,
-        2,
-    >(claim_point, trace_len_log2);
-    completed_claims
-        .entry(GKRAddress::VirtualSetup(
-            VirtualSetupPoly::InitsAndTeardownsLow,
-        ))
-        .or_insert(inits_low);
-    completed_claims
-        .entry(GKRAddress::VirtualSetup(
-            VirtualSetupPoly::InitsAndTeardownsHigh,
-        ))
-        .or_insert(inits_high);
 }
 
 fn schedule_reduce_trace_holder_claims<E>(
@@ -402,9 +412,13 @@ where
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn schedule_prepare_base_layer_claims_with_sources<E>(
     mut layer_desc: GKRLayerDescription,
-    claim_point_len: usize,
-    point_fill: impl Fn(&mut [E]) + Send + Sync + 'static,
+    claim_point_device: &DeviceSlice<E>,
     initial_claims: impl Fn() -> BTreeMap<GKRAddress, E> + Send + Sync + 'static,
+    // Runs at the END of the (deferred) aggregation callback. The hot path
+    // uses this to mirror `extra_evaluations_*` into `backward_shared_state`
+    // (replacing the former separate apply-extras callback). Test paths can
+    // pass a no-op closure.
+    post_aggregation: impl Fn(&GpuGKRBaseLayerTailOutput<E>) + Send + Sync + 'static,
     setup_trace_holder: &TraceHolder<BF>,
     memory_trace_holder: &TraceHolder<BF>,
     witness_trace_holder: &TraceHolder<BF>,
@@ -431,6 +445,7 @@ where
     }
 
     let trace_len = 1usize << setup_trace_holder.log_domain_size;
+    let claim_point_len = claim_point_device.len();
     assert_eq!(
         claim_point_len,
         trace_len.trailing_zeros() as usize,
@@ -442,17 +457,35 @@ where
     let schedule_range = Range::new("gkr.base_layer_claims.schedule")?;
     schedule_range.start(stream)?;
 
-    let mut start_callbacks = Callbacks::new();
-    let mut claim_point_host = unsafe { context.alloc_host_uninit_slice(claim_point_len) };
-    let claim_point_accessor = claim_point_host.get_mut_accessor();
-    start_callbacks.schedule(
-        move || unsafe {
-            point_fill(claim_point_accessor.get_mut());
-        },
-        stream,
+    let trace_len_log2 = setup_trace_holder.log_domain_size;
+
+    // Evaluate the four virtual setup polynomial values (RangeCheck16,
+    // RangeCheckTimestamp, InitsAndTeardownsLow, InitsAndTeardownsHigh) on
+    // device from the device-resident claim_point. The kernel consumes only
+    // the device claim_point and writes a 64-byte device buffer that we then
+    // D2H into a pinned host slot for the finish callback to read. Replaces
+    // the host-side `populate_virtual_setup_claims` E4 polynomial eval and
+    // removes the prior `claim_point` D2H entirely.
+    //
+    // The kernel is E4-only; the trait bounds on `E` resolve to `E4` in
+    // practice (`GpuDimensionReducingKernelSet` is implemented only for E4),
+    // and we assert layout compatibility before casting.
+    debug_assert_eq!(
+        std::mem::size_of::<E>(),
+        std::mem::size_of::<E4>(),
+        "virtual-setup-claims kernel requires E = E4",
+    );
+    let mut virtual_setup_claims_device =
+        context.alloc::<E>(VIRTUAL_SETUP_CLAIMS_OUTPUT_LEN, AllocationPlacement::BestFit)?;
+    launch_eval_virtual_setup_claims(
+        claim_point_device.as_ptr() as *const E4,
+        trace_len_log2,
+        virtual_setup_claims_device.as_mut_ptr() as *mut E4,
+        context,
     )?;
-    let mut claim_point_device = context.alloc(claim_point_len, AllocationPlacement::BestFit)?;
-    memory_copy_async(&mut claim_point_device, &claim_point_host, stream)?;
+    let mut virtual_setup_claims_host =
+        unsafe { context.alloc_host_uninit_slice::<E>(VIRTUAL_SETUP_CLAIMS_OUTPUT_LEN) };
+    memory_copy_async(&mut virtual_setup_claims_host, &virtual_setup_claims_device, stream)?;
 
     let mut eq_group_tables = context.alloc(
         eq_group_tables_len(claim_point_len).max(1),
@@ -537,56 +570,73 @@ where
 
     let mut shared_state = Box::new(ScheduledBaseLayerClaimsState { result: None });
     let shared_state_handle = UnsafeMutAccessor::new(shared_state.as_mut());
-    let mut finish_callbacks = Callbacks::new();
-    let claim_point_accessor = claim_point_host.get_accessor();
     let mem_polys_claims_accessor = mem_polys_claims.get_accessor();
     let wit_polys_claims_accessor = wit_polys_claims.get_accessor();
     let setup_polys_claims_accessor = setup_polys_claims.get_accessor();
+    let virtual_setup_claims_accessor = virtual_setup_claims_host.get_accessor();
     let shared_state_for_callback = shared_state_handle;
-    let trace_len_log2 = setup_trace_holder.log_domain_size;
-    finish_callbacks.schedule(
-        move || unsafe {
-            let collect = |accessor: crate::primitives::context::UnsafeAccessor<[E]>| {
-                accessor.get().iter().copied().collect::<Vec<_>>()
-            };
+    // Build the aggregation closure but defer its scheduling: the caller calls
+    // `schedule_aggregation` on the returned struct, which lets the merged
+    // callback land outside `gkr.base_layer_claims.schedule` (e.g. inside
+    // `gkr.whir.schedule`). Mirrors keys populated by the previous host-side
+    // `populate_virtual_setup_claims`; the four E4 values come from the kernel
+    // output via `virtual_setup_claims_accessor`.
+    let pending_aggregation: Box<dyn Fn() + Send + Sync + 'static> = Box::new(move || unsafe {
+        let collect = |accessor: crate::primitives::context::UnsafeAccessor<[E]>| {
+            accessor.get().iter().copied().collect::<Vec<_>>()
+        };
 
-            let mem_polys_claims = collect(mem_polys_claims_accessor);
-            let wit_polys_claims = collect(wit_polys_claims_accessor);
-            let setup_polys_claims = collect(setup_polys_claims_accessor);
-            let mut completed_claims = initial_claims();
-            populate_virtual_setup_claims(
+        let mem_polys_claims = collect(mem_polys_claims_accessor);
+        let wit_polys_claims = collect(wit_polys_claims_accessor);
+        let setup_polys_claims = collect(setup_polys_claims_accessor);
+        let virtual_setup_claims = virtual_setup_claims_accessor.get();
+        let mut completed_claims = initial_claims();
+        completed_claims
+            .entry(GKRAddress::VirtualSetup(VirtualSetupPoly::RangeCheck16Bits))
+            .or_insert(virtual_setup_claims[0]);
+        completed_claims
+            .entry(GKRAddress::VirtualSetup(
+                VirtualSetupPoly::RangeCheckTimestamp,
+            ))
+            .or_insert(virtual_setup_claims[1]);
+        completed_claims
+            .entry(GKRAddress::VirtualSetup(
+                VirtualSetupPoly::InitsAndTeardownsLow,
+            ))
+            .or_insert(virtual_setup_claims[2]);
+        completed_claims
+            .entry(GKRAddress::VirtualSetup(
+                VirtualSetupPoly::InitsAndTeardownsHigh,
+            ))
+            .or_insert(virtual_setup_claims[3]);
+        let (extra_evaluations_from_caching_relations, extra_evaluations_transcript_batches) =
+            fill_missing_cached_dependency_claims(
+                &layer_desc,
                 &mut completed_claims,
-                claim_point_accessor.get(),
-                trace_len_log2,
+                &mem_polys_claims,
+                &wit_polys_claims,
+                &setup_polys_claims,
             );
-            let (extra_evaluations_from_caching_relations, extra_evaluations_transcript_batches) =
-                fill_missing_cached_dependency_claims(
-                    &layer_desc,
-                    &mut completed_claims,
-                    &mem_polys_claims,
-                    &wit_polys_claims,
-                    &setup_polys_claims,
-                );
-            shared_state_for_callback.get_mut().result = Some(GpuGKRBaseLayerTailOutput {
-                completed_claims,
-                extra_evaluations_from_caching_relations,
-                extra_evaluations_transcript_batches,
-                mem_polys_claims,
-                wit_polys_claims,
-                setup_polys_claims,
-            });
-        },
-        stream,
-    )?;
+        let result = GpuGKRBaseLayerTailOutput {
+            completed_claims,
+            extra_evaluations_from_caching_relations,
+            extra_evaluations_transcript_batches,
+            mem_polys_claims,
+            wit_polys_claims,
+            setup_polys_claims,
+        };
+        post_aggregation(&result);
+        shared_state_for_callback.get_mut().result = Some(result);
+    });
 
     schedule_range.end(stream)?;
     tracing_ranges.push(schedule_range);
 
     Ok(GpuGKRBaseLayerClaimsScheduledExecution {
         _tracing_ranges: tracing_ranges,
-        _start_callbacks: start_callbacks,
-        _finish_callbacks: finish_callbacks,
+        _finish_callbacks: Callbacks::new(),
         shared_state,
+        pending_aggregation: Some(pending_aggregation),
     })
 }
 
@@ -603,13 +653,22 @@ pub(crate) fn schedule_prepare_base_layer_claims<E>(
 where
     E: GpuDimensionReducingKernelSet + FieldExtension<BF> + Field + 'static,
 {
-    let base_layer_point = base_layer_point.to_vec();
     let layer_0_claims = layer_0_claims.clone();
+    // Test-only convenience: stage the host-provided base layer point through a
+    // pinned host buffer + ephemeral device buffer so the new prove-time API
+    // (device claim_point in) keeps a single source of truth. Production callers
+    // pass a device slice from backward directly.
+    let mut point_host = unsafe { context.alloc_host_uninit_slice::<E>(base_layer_point.len()) };
+    unsafe {
+        point_host.get_mut_accessor().get_mut().copy_from_slice(base_layer_point);
+    }
+    let mut point_device = context.alloc::<E>(base_layer_point.len(), AllocationPlacement::BestFit)?;
+    memory_copy_async(&mut point_device, &point_host, context.get_exec_stream())?;
     schedule_prepare_base_layer_claims_with_sources(
         layer_desc.clone(),
-        base_layer_point.len(),
-        move |dst| dst.copy_from_slice(&base_layer_point),
+        &point_device,
         move || layer_0_claims.clone(),
+        |_| {},
         setup_trace_holder,
         memory_trace_holder,
         witness_trace_holder,

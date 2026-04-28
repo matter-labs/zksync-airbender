@@ -113,11 +113,22 @@ impl<E: Copy> GpuGKRTranscriptHandoff<E> {
 }
 
 impl<B, E: Copy> GpuGKRForwardOutput<B, E> {
+    /// Pack the per-`OutputType` reduced output polys into a contiguous device buffer.
+    ///
+    /// `with_host_readback`:
+    /// - `false` (hot path): skip per-poly D2H readbacks; `explicit_evaluations` is empty,
+    ///   and only `device_flat_evaluations()` is meaningful. The hot path consumes the
+    ///   flat buffer directly via `transcript_commit` / `transcript_squeeze` and the
+    ///   on-device initial-claim computation in `prove()`.
+    /// - `true` (tests): also schedule per-poly D2H readbacks into pinned host slots so
+    ///   `final_explicit_evaluations()` / `flattened_transcript_evaluations()` produce
+    ///   the host-side mirror used to validate against CPU baselines.
     pub(crate) fn schedule_transcript_handoff(
         &self,
+        with_host_readback: bool,
         context: &ProverContext,
     ) -> CudaResult<GpuGKRTranscriptHandoff<E>> {
-        let mut tracing_ranges = Vec::new();
+        let tracing_ranges = Vec::new();
         let reduced_outputs = self
             .dimension_reducing_inputs
             .get(&self.initial_layer_for_sumcheck)
@@ -147,8 +158,11 @@ impl<B, E: Copy> GpuGKRForwardOutput<B, E> {
         let mut explicit_evaluations = BTreeMap::new();
         let mut flat_offset = 0usize;
         for (output_type, [first_addr, second_addr]) in address_pairs {
-            let first = schedule_ext_poly_readback(&self.storage, first_addr, context)?;
-            let second = schedule_ext_poly_readback(&self.storage, second_addr, context)?;
+            if with_host_readback {
+                let first = schedule_ext_poly_readback(&self.storage, first_addr, context)?;
+                let second = schedule_ext_poly_readback(&self.storage, second_addr, context)?;
+                explicit_evaluations.insert(output_type, [first, second]);
+            }
             for addr in [first_addr, second_addr] {
                 let poly = self
                     .storage
@@ -163,7 +177,6 @@ impl<B, E: Copy> GpuGKRForwardOutput<B, E> {
                 )?;
                 flat_offset += len;
             }
-            explicit_evaluations.insert(output_type, [first, second]);
         }
         debug_assert_eq!(flat_offset, flat_total_len);
 
