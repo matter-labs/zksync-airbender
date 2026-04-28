@@ -130,7 +130,8 @@ pub(crate) fn blake2_g_function_call<
         let mut extended_state = extended_state.map(|el| el.assume_init());
 
         // and input doesn't change across calls
-        let mut input: [MaybeUninit<u32>; 16] = [const { MaybeUninit::uninit() }; 16];
+        let mut input: [MaybeUninit<u32>; BLAKE2S_BLOCK_SIZE_U32_WORDS] =
+            [const { MaybeUninit::uninit() }; BLAKE2S_BLOCK_SIZE_U32_WORDS];
 
         let mut addr = x11;
         for i in 0..16 {
@@ -203,7 +204,7 @@ pub(crate) fn blake2_g_function_call<
     state.counters.bump_blake2_round_function(num_invocations);
     E::on_delegation(
         state,
-        BLAKE2S_DELEGATION_CSR_REGISTER,
+        BLAKE2S_G_FUNCTION_DELEGATION_CSR_REGISTER,
         num_invocations as u64,
     );
     state.pc = state

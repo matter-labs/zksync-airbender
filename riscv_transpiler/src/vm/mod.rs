@@ -27,6 +27,7 @@ pub trait Counters: 'static + Clone + Copy + Debug + PartialEq + Eq + Send + Syn
     fn bump_bigint(&mut self, by: usize);
     fn bump_blake2_round_function(&mut self, by: usize);
     fn bump_keccak_special5(&mut self, by: usize);
+    fn bump_blake2_g_function(&mut self, by: usize);
     #[inline(always)]
     fn log_circuit_family<const FAMILY: u8>(&mut self) {
         self.log_multiple_circuit_family_calls::<FAMILY>(1)

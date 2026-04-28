@@ -37,6 +37,9 @@ pub(crate) fn call_delegation<C: Counters, R: RAM>(
         a if a == DelegationType::Keccak as u32 => {
             delegations::keccak_special5::keccak_special5_call::<C, R>(state, ram, tracer);
         }
+        a if a == DelegationType::BlakeGFunction as u32 => {
+            delegations::blake2_g_function::blake2_g_function_call::<C, R>(state, ram, tracer);
+        }
         _ => unsafe { core::hint::unreachable_unchecked() },
     }
 }
