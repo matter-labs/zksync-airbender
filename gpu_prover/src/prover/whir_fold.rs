@@ -1840,7 +1840,7 @@ fn schedule_monomial_eval_device_impl(
 
     let reduce_temp_bytes =
         get_reduce_temp_storage_bytes::<E4>(ReduceOperation::Sum, partials_count as i32)?;
-    assert!(state.reduce_temp.len() > reduce_temp_bytes);
+    assert!(state.reduce_temp.len() >= reduce_temp_bytes);
 
     reduce(
         ReduceOperation::Sum,
@@ -3377,7 +3377,7 @@ pub(crate) fn debug_build_initial_state_for_test(
     batching_challenge: E4,
     context: &ProverContext,
 ) -> CudaResult<([Vec<E4>; 3], E4, Vec<E4>, Vec<E4>, Vec<E4>)> {
-    fn copy_back(values: &DeviceSlice<E4>, context: &ProverContext) -> Vec<E4> {
+    fn copy_back<T: Clone>(values: &DeviceSlice<T>, context: &ProverContext) -> Vec<T> {
         let mut host = unsafe { context.alloc_host_uninit_slice(values.len()) };
         memory_copy_async(&mut host, values, context.get_exec_stream()).unwrap();
         context.get_exec_stream().synchronize().unwrap();
@@ -3399,10 +3399,17 @@ pub(crate) fn debug_build_initial_state_for_test(
         context,
     )?;
 
+    let monomials_vectorized = copy_back(state.sumchecked_poly_monomial_form.slice(), context);
+    let monomials = vectorized_to_e4_coeffs(
+        &monomials_vectorized,
+        state.original_trace_len,
+        state.current_len,
+    );
+
     Ok((
         batch_challenges,
         claim,
-        copy_back(&state.sumchecked_poly_monomial_form[..trace_len], context),
+        monomials,
         copy_back(&state.sumchecked_poly_evaluation_form[..trace_len], context),
         copy_back(&state.eq_poly[..trace_len], context),
     ))
@@ -4243,18 +4250,33 @@ mod tests {
     #[serial]
     fn whir_evaluate_monomial_matches_cpu() {
         let context = make_test_context(256, 32);
-        let mut state = GpuWhirState::new(8, &context).unwrap();
-        let coeffs = (0..8)
-            .map(|i| sample_ext(50 * i as u32))
-            .collect::<Vec<_>>();
-        let point = sample_ext(999);
-        state.current_len = coeffs.len();
-        state.sumchecked_poly_monomial_form = alloc_and_copy(&coeffs, &context);
 
-        let actual = evaluate_monomial_form_device(&mut state, point, &context).unwrap();
-        let expected = evaluate_monomial_form_for_test(&coeffs, point);
+        for count in [8, 8192] {
+            let mut state = GpuWhirState::new(count, &context).unwrap();
+            let coeffs = (0..count)
+                .map(|i| sample_ext(50 * i as u32))
+                .collect::<Vec<_>>();
+            let point = sample_ext(999);
+            state.current_len = coeffs.len();
+            let mut monomial_bitreversed = coeffs.clone();
+            bitreverse_enumeration_inplace(&mut monomial_bitreversed);
+            let monomial_vectorized = e4_coeffs_to_vectorized(&monomial_bitreversed);
+            state.sumchecked_poly_monomial_form = DeviceMatrixOwnsAllocation::new(
+                alloc_and_copy(&monomial_vectorized, &context),
+                state.current_len,
+            );
 
-        assert_eq!(actual, expected);
+            if count == 8 {
+                // lets partially_evaluate_monomials_by_ref work with artificially small size
+                state.scratch0 =
+                    context.alloc(state.current_len, AllocationPlacement::BestFit).unwrap();
+            }
+
+            let actual = evaluate_monomial_form_device(&mut state, point, &context).unwrap();
+            let expected = evaluate_monomial_form_for_test(&coeffs, point);
+
+            assert_eq!(actual, expected);
+        }
     }
 
     #[test]
@@ -4262,24 +4284,40 @@ mod tests {
     #[serial]
     fn scheduled_whir_evaluate_monomial_matches_cpu() {
         let context = make_test_context(256, 32);
-        let mut state = GpuWhirState::new(8, &context).unwrap();
-        let coeffs = (0..8)
-            .map(|i| sample_ext(50 * i as u32))
-            .collect::<Vec<_>>();
-        let point = sample_ext(999);
-        state.current_len = coeffs.len();
-        state.sumchecked_poly_monomial_form = alloc_and_copy(&coeffs, &context);
-        let point_device = alloc_and_copy(&[point], &context);
 
-        let partials = schedule_monomial_eval_device(&mut state, &point_device, &context).unwrap();
-        context.get_exec_stream().synchronize().unwrap();
-        let mut actual = E4::ZERO;
-        for partial in partials.iter() {
-            actual.add_assign(&unsafe { partial.get_accessor().get() }[0]);
+        for count in [8, 8192] {
+            let mut state = GpuWhirState::new(count, &context).unwrap();
+            let coeffs = (0..count)
+                .map(|i| sample_ext(50 * i as u32))
+                .collect::<Vec<_>>();
+            let point = sample_ext(999);
+            state.current_len = coeffs.len();
+            let mut monomial_bitreversed = coeffs.clone();
+            bitreverse_enumeration_inplace(&mut monomial_bitreversed);
+            let monomial_vectorized = e4_coeffs_to_vectorized(&monomial_bitreversed);
+            state.sumchecked_poly_monomial_form = DeviceMatrixOwnsAllocation::new(
+                alloc_and_copy(&monomial_vectorized, &context),
+                state.current_len,
+            );
+            let point_device = alloc_and_copy(&[point], &context);
+
+            if count == 8 {
+                // lets partially_evaluate_monomials_by_ref work with artificially small size
+                state.scratch0 =
+                    context.alloc(state.current_len, AllocationPlacement::BestFit).unwrap();
+            }
+
+            let partials =
+                schedule_monomial_eval_device(&mut state, &point_device, &context).unwrap();
+            context.get_exec_stream().synchronize().unwrap();
+            let mut actual = E4::ZERO;
+            for partial in partials.iter() {
+                actual.add_assign(&unsafe { partial.get_accessor().get() }[0]);
+            }
+
+            let expected = evaluate_monomial_form_for_test(&coeffs, point);
+            assert_eq!(actual, expected);
         }
-
-        let expected = evaluate_monomial_form_for_test(&coeffs, point);
-        assert_eq!(actual, expected);
     }
 
     #[test]
