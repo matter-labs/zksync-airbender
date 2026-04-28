@@ -236,7 +236,7 @@ pub(crate) fn run_replayer<T: TracingType>(
     trace!("BATCH[{batch_id}] REPLAYER[{worker_id}] finished");
 }
 
-fn collect_inits_and_teardowns(
+pub(super) fn collect_inits_and_teardowns(
     holder: &mut MemoryHolder,
     worker: &Worker,
 ) -> Vec<Vec<LazyInitAndTeardown>> {
@@ -283,7 +283,7 @@ fn collect_inits_and_teardowns(
     chunks
 }
 
-fn get_inits_and_teardowns_chunks(
+pub(super) fn get_inits_and_teardowns_chunks(
     values: Vec<Vec<LazyInitAndTeardown>>,
     partition_size: usize,
     free_allocators: Receiver<A>,
