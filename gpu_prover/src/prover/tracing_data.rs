@@ -7,8 +7,11 @@ use crate::witness::trace_unrolled::{
     // ShuffleRamInitsAndTeardownsHost,` here when the GPU inits-and-teardowns
     // path is restored.
     UnrolledMemoryTraceDevice,
-    UnrolledMemoryTraceHost, UnrolledNonMemoryTraceDevice, UnrolledNonMemoryTraceHost,
-    UnrolledUnifiedTraceDevice, UnrolledUnifiedTraceHost,
+    UnrolledMemoryTraceHost,
+    UnrolledNonMemoryTraceDevice,
+    UnrolledNonMemoryTraceHost,
+    UnrolledUnifiedTraceDevice,
+    UnrolledUnifiedTraceHost,
 };
 use era_cudart::result::CudaResult;
 use fft::GoodAllocator;
