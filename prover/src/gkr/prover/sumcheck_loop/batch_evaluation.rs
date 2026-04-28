@@ -1,7 +1,10 @@
 use super::*;
 use crate::definitions::sumcheck_kernel::*;
-use crate::gkr::sumcheck::access_and_fold::ExtensionFieldPolyContinuingSource;
+use crate::gkr::sumcheck::access_and_fold::{
+    BaseFieldPolySource, ExtensionFieldPolyContinuingSource, ExtensionFieldPolyInitialSource,
+};
 use crate::gkr::sumcheck::evaluation_kernels::BatchedGKRTermDescriptionConstants;
+use field::{ReducedAccumulator, UnreducedAccumulator};
 
 #[derive(Clone, Debug, Default)]
 struct BatchedGKRDescriptionDraft<F: PrimeField, E: FieldExtension<F> + Field> {
@@ -190,7 +193,7 @@ pub(crate) fn evaluate_batched_gkr_description<
     storage: &mut GKRStorage<F, E>,
     step: usize,
     folding_challenges: &[E],
-    accumulator: &mut [[E; 2]],
+    output: &mut [[E; 2]],
     total_sumcheck_rounds: usize,
     last_evaluations: &mut BTreeMap<GKRAddress, [E; N]>,
     worker: &Worker,
@@ -201,16 +204,21 @@ pub(crate) fn evaluate_batched_gkr_description<
 
     // TODO: restructure to batch [(b, c)] and then multiply by a
 
-    let work_size = accumulator.len();
+    let work_size = output.len();
     assert!(work_size.is_power_of_two());
 
-    match step {
-        0 => {
+    if step == 0 {
+        let zero = <<E as FieldExtension<F>>::Unreduced as UnreducedAccumulator<F, E>>::ZERO;
+        let mut scratch: Vec<[<E as FieldExtension<F>>::Unreduced; 2]> = vec![[zero; 2]; work_size];
+        let accumulator: &mut [[<E as FieldExtension<F>>::Unreduced; 2]] = scratch.as_mut_slice();
+
+        {
             for (a, other_terms) in description.quadratic_part_base_by_base.iter() {
                 for (b, c) in other_terms {
                     let a_s = storage.get_base_field_initial_source(a);
                     let b_s = storage.get_base_field_initial_source(b);
-                    evaluate_quadratic_term::<F, E, _, _, _, _, true, false>(
+
+                    evaluate_quadratic_term_first_round_base_by_base::<F, E>(
                         &a_s,
                         &b_s,
                         *c,
@@ -223,7 +231,8 @@ pub(crate) fn evaluate_batched_gkr_description<
                 for (b, c) in other_terms {
                     let a_s = storage.get_base_field_initial_source(a);
                     let b_s = storage.get_extension_field_initial_source(b);
-                    evaluate_quadratic_term::<F, E, _, _, _, _, true, false>(
+
+                    evaluate_quadratic_term_first_round_base_by_ext::<F, E>(
                         &a_s,
                         &b_s,
                         *c,
@@ -236,7 +245,7 @@ pub(crate) fn evaluate_batched_gkr_description<
                 for (b, c) in other_terms {
                     let a_s = storage.get_extension_field_initial_source(a);
                     let b_s = storage.get_extension_field_initial_source(b);
-                    evaluate_quadratic_term::<F, E, _, _, _, _, true, false>(
+                    evaluate_quadratic_term::<F, E, _, _, _, _, _, true, false>(
                         &a_s,
                         &b_s,
                         *c,
@@ -247,256 +256,330 @@ pub(crate) fn evaluate_batched_gkr_description<
             }
             for (a, c) in description.linear_part_base_by_everything.iter() {
                 let a_s = storage.get_base_field_initial_source(a);
-                evaluate_linear_term::<F, E, _, _, true, false>(&a_s, *c, accumulator, worker);
+                evaluate_linear_term::<F, E, _, _, _, true, false>(&a_s, *c, accumulator, worker);
             }
             for (a, c) in description.linear_part_ext_by_everything.iter() {
                 let a_s = storage.get_extension_field_initial_source(a);
-                evaluate_linear_term::<F, E, _, _, true, false>(&a_s, *c, accumulator, worker);
+                evaluate_linear_term::<F, E, _, _, _, true, false>(&a_s, *c, accumulator, worker);
             }
             for (a, c) in description.outputs_in_base.iter() {
                 let a_s = storage.get_base_field_initial_source(a);
-                add_output_term::<F, E, _, _>(&a_s, *c, accumulator, worker);
+                add_output_term::<F, E, _, _, _>(&a_s, *c, accumulator, worker);
             }
             for (a, c) in description.outputs_in_ext.iter() {
                 let a_s = storage.get_extension_field_initial_source(a);
-                add_output_term::<F, E, _, _>(&a_s, *c, accumulator, worker);
+                add_output_term::<F, E, _, _, _>(&a_s, *c, accumulator, worker);
             }
         }
-        // for all other rounds we care bound constant term as we do not have outputs
-        1 => {
-            fill_constant_term::<_, _, false>(description.constant_term, accumulator, worker);
 
-            for (a, other_terms) in description.quadratic_part_base_by_base.iter() {
-                for (b, c) in other_terms {
+        for i in 0..work_size {
+            output[i][0] = accumulator[i][0].finalize();
+            output[i][1] = accumulator[i][1].finalize();
+        }
+    } else {
+        output.fill([E::ZERO; 2]);
+
+        let accumulator: &mut [[ReducedAccumulator<E>; 2]] = unsafe {
+            let len = output.len();
+            let ptr = output.as_mut_ptr() as *mut [ReducedAccumulator<E>; 2];
+            std::slice::from_raw_parts_mut(ptr, len)
+        };
+
+        match step {
+            0 => unreachable!(),
+            1 => {
+                fill_constant_term::<_, _, _, false>(
+                    description.constant_term,
+                    accumulator,
+                    worker,
+                );
+
+                for (a, other_terms) in description.quadratic_part_base_by_base.iter() {
+                    for (b, c) in other_terms {
+                        let a_s = storage.make_base_source_for_round_1(*a, folding_challenges);
+                        let b_s = storage.make_base_source_for_round_1(*b, folding_challenges);
+                        evaluate_quadratic_term::<F, E, _, _, _, _, _, false, false>(
+                            &a_s,
+                            &b_s,
+                            *c,
+                            accumulator,
+                            worker,
+                        );
+                    }
+                }
+                for (a, other_terms) in description.quadratic_part_base_by_ext.iter() {
+                    for (b, c) in other_terms {
+                        let a_s = storage.make_base_source_for_round_1(*a, folding_challenges);
+                        let b_s =
+                            storage.make_ext_source_for_rounds_1_and_beyond(*b, folding_challenges);
+                        evaluate_quadratic_term::<F, E, _, _, _, _, _, false, false>(
+                            &a_s,
+                            &b_s,
+                            *c,
+                            accumulator,
+                            worker,
+                        );
+                    }
+                }
+                for (a, other_terms) in description.quadratic_part_ext_by_ext.iter() {
+                    for (b, c) in other_terms {
+                        let a_s =
+                            storage.make_ext_source_for_rounds_1_and_beyond(*a, folding_challenges);
+                        let b_s =
+                            storage.make_ext_source_for_rounds_1_and_beyond(*b, folding_challenges);
+                        evaluate_quadratic_term::<F, E, _, _, _, _, _, false, false>(
+                            &a_s,
+                            &b_s,
+                            *c,
+                            accumulator,
+                            worker,
+                        );
+                    }
+                }
+                for (a, c) in description.linear_part_base_by_everything.iter() {
                     let a_s = storage.make_base_source_for_round_1(*a, folding_challenges);
-                    let b_s = storage.make_base_source_for_round_1(*b, folding_challenges);
-                    evaluate_quadratic_term::<F, E, _, _, _, _, false, false>(
+                    evaluate_linear_term::<F, E, _, _, _, false, false>(
                         &a_s,
-                        &b_s,
                         *c,
                         accumulator,
                         worker,
                     );
                 }
-            }
-            for (a, other_terms) in description.quadratic_part_base_by_ext.iter() {
-                for (b, c) in other_terms {
-                    let a_s = storage.make_base_source_for_round_1(*a, folding_challenges);
-                    let b_s =
-                        storage.make_ext_source_for_rounds_1_and_beyond(*b, folding_challenges);
-                    evaluate_quadratic_term::<F, E, _, _, _, _, false, false>(
-                        &a_s,
-                        &b_s,
-                        *c,
-                        accumulator,
-                        worker,
-                    );
-                }
-            }
-            for (a, other_terms) in description.quadratic_part_ext_by_ext.iter() {
-                for (b, c) in other_terms {
+                for (a, c) in description.linear_part_ext_by_everything.iter() {
                     let a_s =
                         storage.make_ext_source_for_rounds_1_and_beyond(*a, folding_challenges);
-                    let b_s =
-                        storage.make_ext_source_for_rounds_1_and_beyond(*b, folding_challenges);
-                    evaluate_quadratic_term::<F, E, _, _, _, _, false, false>(
+                    evaluate_linear_term::<F, E, _, _, _, false, false>(
                         &a_s,
-                        &b_s,
                         *c,
                         accumulator,
                         worker,
                     );
                 }
             }
-            for (a, c) in description.linear_part_base_by_everything.iter() {
-                let a_s = storage.make_base_source_for_round_1(*a, folding_challenges);
-                evaluate_linear_term::<F, E, _, _, false, false>(&a_s, *c, accumulator, worker);
-            }
-            for (a, c) in description.linear_part_ext_by_everything.iter() {
-                let a_s = storage.make_ext_source_for_rounds_1_and_beyond(*a, folding_challenges);
-                evaluate_linear_term::<F, E, _, _, false, false>(&a_s, *c, accumulator, worker);
-            }
-        }
-        2 => {
-            fill_constant_term::<_, _, false>(description.constant_term, accumulator, worker);
+            2 => {
+                fill_constant_term::<_, _, _, false>(
+                    description.constant_term,
+                    accumulator,
+                    worker,
+                );
 
-            for (a, other_terms) in description.quadratic_part_base_by_base.iter() {
-                for (b, c) in other_terms {
+                for (a, other_terms) in description.quadratic_part_base_by_base.iter() {
+                    for (b, c) in other_terms {
+                        let a_s = storage.make_base_source_for_round_2(*a, folding_challenges);
+                        let b_s = storage.make_base_source_for_round_2(*b, folding_challenges);
+                        evaluate_quadratic_term::<F, E, _, _, _, _, _, false, false>(
+                            &a_s,
+                            &b_s,
+                            *c,
+                            accumulator,
+                            worker,
+                        );
+                    }
+                }
+                for (a, other_terms) in description.quadratic_part_base_by_ext.iter() {
+                    for (b, c) in other_terms {
+                        let a_s = storage.make_base_source_for_round_2(*a, folding_challenges);
+                        let b_s =
+                            storage.make_ext_source_for_rounds_1_and_beyond(*b, folding_challenges);
+                        evaluate_quadratic_term::<F, E, _, _, _, _, _, false, false>(
+                            &a_s,
+                            &b_s,
+                            *c,
+                            accumulator,
+                            worker,
+                        );
+                    }
+                }
+                for (a, other_terms) in description.quadratic_part_ext_by_ext.iter() {
+                    for (b, c) in other_terms {
+                        let a_s =
+                            storage.make_ext_source_for_rounds_1_and_beyond(*a, folding_challenges);
+                        let b_s =
+                            storage.make_ext_source_for_rounds_1_and_beyond(*b, folding_challenges);
+                        evaluate_quadratic_term::<F, E, _, _, _, _, _, false, false>(
+                            &a_s,
+                            &b_s,
+                            *c,
+                            accumulator,
+                            worker,
+                        );
+                    }
+                }
+                for (a, c) in description.linear_part_base_by_everything.iter() {
                     let a_s = storage.make_base_source_for_round_2(*a, folding_challenges);
-                    let b_s = storage.make_base_source_for_round_2(*b, folding_challenges);
-                    evaluate_quadratic_term::<F, E, _, _, _, _, false, false>(
+                    evaluate_linear_term::<F, E, _, _, _, false, false>(
                         &a_s,
-                        &b_s,
                         *c,
                         accumulator,
                         worker,
                     );
                 }
-            }
-            for (a, other_terms) in description.quadratic_part_base_by_ext.iter() {
-                for (b, c) in other_terms {
-                    let a_s = storage.make_base_source_for_round_2(*a, folding_challenges);
-                    let b_s =
-                        storage.make_ext_source_for_rounds_1_and_beyond(*b, folding_challenges);
-                    evaluate_quadratic_term::<F, E, _, _, _, _, false, false>(
-                        &a_s,
-                        &b_s,
-                        *c,
-                        accumulator,
-                        worker,
-                    );
-                }
-            }
-            for (a, other_terms) in description.quadratic_part_ext_by_ext.iter() {
-                for (b, c) in other_terms {
+                for (a, c) in description.linear_part_ext_by_everything.iter() {
                     let a_s =
                         storage.make_ext_source_for_rounds_1_and_beyond(*a, folding_challenges);
-                    let b_s =
-                        storage.make_ext_source_for_rounds_1_and_beyond(*b, folding_challenges);
-                    evaluate_quadratic_term::<F, E, _, _, _, _, false, false>(
+                    evaluate_linear_term::<F, E, _, _, _, false, false>(
                         &a_s,
-                        &b_s,
                         *c,
                         accumulator,
                         worker,
                     );
                 }
             }
-            for (a, c) in description.linear_part_base_by_everything.iter() {
-                let a_s = storage.make_base_source_for_round_2(*a, folding_challenges);
-                evaluate_linear_term::<F, E, _, _, false, false>(&a_s, *c, accumulator, worker);
-            }
-            for (a, c) in description.linear_part_ext_by_everything.iter() {
-                let a_s = storage.make_ext_source_for_rounds_1_and_beyond(*a, folding_challenges);
-                evaluate_linear_term::<F, E, _, _, false, false>(&a_s, *c, accumulator, worker);
-            }
-        }
-        i if i + 1 == total_sumcheck_rounds => {
-            assert!(i >= 3);
-            fill_constant_term::<_, _, true>(description.constant_term, accumulator, worker);
+            i if i + 1 == total_sumcheck_rounds => {
+                assert!(i >= 3);
+                fill_constant_term::<_, _, _, true>(description.constant_term, accumulator, worker);
 
-            for (a, other_terms) in description.quadratic_part_base_by_base.iter() {
-                for (b, c) in other_terms {
+                for (a, other_terms) in description.quadratic_part_base_by_base.iter() {
+                    for (b, c) in other_terms {
+                        let a_s = storage
+                            .make_base_source_for_rounds_3_and_beyond(*a, folding_challenges);
+                        let b_s = storage
+                            .make_base_source_for_rounds_3_and_beyond(*b, folding_challenges);
+                        evaluate_quadratic_term::<F, E, _, _, _, _, _, false, true>(
+                            &a_s,
+                            &b_s,
+                            *c,
+                            accumulator,
+                            worker,
+                        );
+
+                        dump_last_evals(a, a_s, last_evaluations);
+                        dump_last_evals(b, b_s, last_evaluations);
+                    }
+                }
+                for (a, other_terms) in description.quadratic_part_base_by_ext.iter() {
+                    for (b, c) in other_terms {
+                        let a_s = storage
+                            .make_base_source_for_rounds_3_and_beyond(*a, folding_challenges);
+                        let b_s =
+                            storage.make_ext_source_for_rounds_1_and_beyond(*b, folding_challenges);
+                        evaluate_quadratic_term::<F, E, _, _, _, _, _, false, true>(
+                            &a_s,
+                            &b_s,
+                            *c,
+                            accumulator,
+                            worker,
+                        );
+
+                        dump_last_evals(a, a_s, last_evaluations);
+                        dump_last_evals(b, b_s, last_evaluations);
+                    }
+                }
+                for (a, other_terms) in description.quadratic_part_ext_by_ext.iter() {
+                    for (b, c) in other_terms {
+                        let a_s =
+                            storage.make_ext_source_for_rounds_1_and_beyond(*a, folding_challenges);
+                        let b_s =
+                            storage.make_ext_source_for_rounds_1_and_beyond(*b, folding_challenges);
+                        evaluate_quadratic_term::<F, E, _, _, _, _, _, false, true>(
+                            &a_s,
+                            &b_s,
+                            *c,
+                            accumulator,
+                            worker,
+                        );
+
+                        dump_last_evals(a, a_s, last_evaluations);
+                        dump_last_evals(b, b_s, last_evaluations);
+                    }
+                }
+                for (a, c) in description.linear_part_base_by_everything.iter() {
                     let a_s =
                         storage.make_base_source_for_rounds_3_and_beyond(*a, folding_challenges);
-                    let b_s =
-                        storage.make_base_source_for_rounds_3_and_beyond(*b, folding_challenges);
-                    evaluate_quadratic_term::<F, E, _, _, _, _, false, true>(
+                    evaluate_linear_term::<F, E, _, _, _, false, true>(
                         &a_s,
-                        &b_s,
                         *c,
                         accumulator,
                         worker,
                     );
 
                     dump_last_evals(a, a_s, last_evaluations);
-                    dump_last_evals(b, b_s, last_evaluations);
                 }
-            }
-            for (a, other_terms) in description.quadratic_part_base_by_ext.iter() {
-                for (b, c) in other_terms {
+                for (a, c) in description.linear_part_ext_by_everything.iter() {
                     let a_s =
-                        storage.make_base_source_for_rounds_3_and_beyond(*a, folding_challenges);
-                    let b_s =
-                        storage.make_ext_source_for_rounds_1_and_beyond(*b, folding_challenges);
-                    evaluate_quadratic_term::<F, E, _, _, _, _, false, true>(
+                        storage.make_ext_source_for_rounds_1_and_beyond(*a, folding_challenges);
+                    evaluate_linear_term::<F, E, _, _, _, false, true>(
                         &a_s,
-                        &b_s,
                         *c,
                         accumulator,
                         worker,
                     );
 
                     dump_last_evals(a, a_s, last_evaluations);
-                    dump_last_evals(b, b_s, last_evaluations);
                 }
             }
-            for (a, other_terms) in description.quadratic_part_ext_by_ext.iter() {
-                for (b, c) in other_terms {
-                    let a_s =
-                        storage.make_ext_source_for_rounds_1_and_beyond(*a, folding_challenges);
-                    let b_s =
-                        storage.make_ext_source_for_rounds_1_and_beyond(*b, folding_challenges);
-                    evaluate_quadratic_term::<F, E, _, _, _, _, false, true>(
-                        &a_s,
-                        &b_s,
-                        *c,
-                        accumulator,
-                        worker,
-                    );
+            3.. => {
+                fill_constant_term::<_, _, _, false>(
+                    description.constant_term,
+                    accumulator,
+                    worker,
+                );
 
-                    dump_last_evals(a, a_s, last_evaluations);
-                    dump_last_evals(b, b_s, last_evaluations);
+                for (a, other_terms) in description.quadratic_part_base_by_base.iter() {
+                    for (b, c) in other_terms {
+                        let a_s = storage
+                            .make_base_source_for_rounds_3_and_beyond(*a, folding_challenges);
+                        let b_s = storage
+                            .make_base_source_for_rounds_3_and_beyond(*b, folding_challenges);
+                        evaluate_quadratic_term::<F, E, _, _, _, _, _, false, false>(
+                            &a_s,
+                            &b_s,
+                            *c,
+                            accumulator,
+                            worker,
+                        );
+                    }
                 }
-            }
-            for (a, c) in description.linear_part_base_by_everything.iter() {
-                let a_s = storage.make_base_source_for_rounds_3_and_beyond(*a, folding_challenges);
-                evaluate_linear_term::<F, E, _, _, false, true>(&a_s, *c, accumulator, worker);
-
-                dump_last_evals(a, a_s, last_evaluations);
-            }
-            for (a, c) in description.linear_part_ext_by_everything.iter() {
-                let a_s = storage.make_ext_source_for_rounds_1_and_beyond(*a, folding_challenges);
-                evaluate_linear_term::<F, E, _, _, false, true>(&a_s, *c, accumulator, worker);
-
-                dump_last_evals(a, a_s, last_evaluations);
-            }
-        }
-        3.. => {
-            fill_constant_term::<_, _, false>(description.constant_term, accumulator, worker);
-
-            for (a, other_terms) in description.quadratic_part_base_by_base.iter() {
-                for (b, c) in other_terms {
+                for (a, other_terms) in description.quadratic_part_base_by_ext.iter() {
+                    for (b, c) in other_terms {
+                        let a_s = storage
+                            .make_base_source_for_rounds_3_and_beyond(*a, folding_challenges);
+                        let b_s =
+                            storage.make_ext_source_for_rounds_1_and_beyond(*b, folding_challenges);
+                        evaluate_quadratic_term::<F, E, _, _, _, _, _, false, false>(
+                            &a_s,
+                            &b_s,
+                            *c,
+                            accumulator,
+                            worker,
+                        );
+                    }
+                }
+                for (a, other_terms) in description.quadratic_part_ext_by_ext.iter() {
+                    for (b, c) in other_terms {
+                        let a_s =
+                            storage.make_ext_source_for_rounds_1_and_beyond(*a, folding_challenges);
+                        let b_s =
+                            storage.make_ext_source_for_rounds_1_and_beyond(*b, folding_challenges);
+                        evaluate_quadratic_term::<F, E, _, _, _, _, _, false, false>(
+                            &a_s,
+                            &b_s,
+                            *c,
+                            accumulator,
+                            worker,
+                        );
+                    }
+                }
+                for (a, c) in description.linear_part_base_by_everything.iter() {
                     let a_s =
                         storage.make_base_source_for_rounds_3_and_beyond(*a, folding_challenges);
-                    let b_s =
-                        storage.make_base_source_for_rounds_3_and_beyond(*b, folding_challenges);
-                    evaluate_quadratic_term::<F, E, _, _, _, _, false, false>(
+                    evaluate_linear_term::<F, E, _, _, _, false, false>(
                         &a_s,
-                        &b_s,
                         *c,
                         accumulator,
                         worker,
                     );
                 }
-            }
-            for (a, other_terms) in description.quadratic_part_base_by_ext.iter() {
-                for (b, c) in other_terms {
-                    let a_s =
-                        storage.make_base_source_for_rounds_3_and_beyond(*a, folding_challenges);
-                    let b_s =
-                        storage.make_ext_source_for_rounds_1_and_beyond(*b, folding_challenges);
-                    evaluate_quadratic_term::<F, E, _, _, _, _, false, false>(
-                        &a_s,
-                        &b_s,
-                        *c,
-                        accumulator,
-                        worker,
-                    );
-                }
-            }
-            for (a, other_terms) in description.quadratic_part_ext_by_ext.iter() {
-                for (b, c) in other_terms {
+                for (a, c) in description.linear_part_ext_by_everything.iter() {
                     let a_s =
                         storage.make_ext_source_for_rounds_1_and_beyond(*a, folding_challenges);
-                    let b_s =
-                        storage.make_ext_source_for_rounds_1_and_beyond(*b, folding_challenges);
-                    evaluate_quadratic_term::<F, E, _, _, _, _, false, false>(
+                    evaluate_linear_term::<F, E, _, _, _, false, false>(
                         &a_s,
-                        &b_s,
                         *c,
                         accumulator,
                         worker,
                     );
                 }
-            }
-            for (a, c) in description.linear_part_base_by_everything.iter() {
-                let a_s = storage.make_base_source_for_rounds_3_and_beyond(*a, folding_challenges);
-                evaluate_linear_term::<F, E, _, _, false, false>(&a_s, *c, accumulator, worker);
-            }
-            for (a, c) in description.linear_part_ext_by_everything.iter() {
-                let a_s = storage.make_ext_source_for_rounds_1_and_beyond(*a, folding_challenges);
-                evaluate_linear_term::<F, E, _, _, false, false>(&a_s, *c, accumulator, worker);
             }
         }
     }
@@ -509,13 +592,14 @@ fn evaluate_quadratic_term<
     RB: EvaluationRepresentation<F, E>,
     SA: EvaluationFormStorage<F, E, RA>,
     SB: EvaluationFormStorage<F, E, RB>,
+    A: UnreducedAccumulator<F, E>,
     const FIRST_ROUND: bool,
     const EXPLICIT_FORM: bool,
 >(
     a_s: &SA,
     b_s: &SB,
     c: E,
-    accumulator: &mut [[E; 2]],
+    accumulator: &mut [[A; 2]],
     worker: &Worker,
 ) {
     use crate::gkr::prover::apply_row_wise;
@@ -541,7 +625,7 @@ fn evaluate_quadratic_term<
                     let eval_1 = a1.mul_by_ext::<true>(&c, a_ctx);
                     let eval_1 = b1.mul_by_ext::<true>(&eval_1, b_ctx);
 
-                    accumulator[index][1].add_assign(&eval_1);
+                    accumulator[index][1].add_assign_ext(eval_1);
                 } else {
                     let [a0, a1] = a_s.get_two_points::<EXPLICIT_FORM>(absolute_index);
                     let [b0, b1] = b_s.get_two_points::<EXPLICIT_FORM>(absolute_index);
@@ -551,9 +635,83 @@ fn evaluate_quadratic_term<
                     let eval_1 = a1.mul_by_ext::<true>(&c, a_ctx);
                     let eval_1 = b1.mul_by_ext::<true>(&eval_1, b_ctx);
 
-                    accumulator[index][0].add_assign(&eval_0);
-                    accumulator[index][1].add_assign(&eval_1);
+                    accumulator[index][0].add_assign_ext(eval_0);
+                    accumulator[index][1].add_assign_ext(eval_1);
                 }
+            }
+        },
+    );
+}
+
+fn evaluate_quadratic_term_first_round_base_by_base<F: PrimeField, E: FieldExtension<F> + Field>(
+    a_s: &BaseFieldPolySource<F>,
+    b_s: &BaseFieldPolySource<F>,
+    c: E,
+    accumulator: &mut [[<E as FieldExtension<F>>::Unreduced; 2]],
+    worker: &Worker,
+) {
+    use crate::gkr::prover::apply_row_wise;
+    let work_size = accumulator.len();
+    apply_row_wise::<F, _>(
+        vec![],
+        vec![accumulator],
+        work_size,
+        worker,
+        |_, mut ext_dest, chunk_start, chunk_size| {
+            assert_eq!(ext_dest.len(), 1);
+            let accumulator = ext_dest.pop().unwrap();
+            for index in 0..chunk_size {
+                let absolute_index = chunk_start + index;
+                let a1 = <BaseFieldPolySource<F> as EvaluationFormStorage<
+                    F,
+                    E,
+                    BaseFieldRepresentation<F>,
+                >>::get_f1_minus_f0_only(a_s, absolute_index);
+                let b1 = <BaseFieldPolySource<F> as EvaluationFormStorage<
+                    F,
+                    E,
+                    BaseFieldRepresentation<F>,
+                >>::get_f1_minus_f0_only(b_s, absolute_index);
+                let mut s = a1.0;
+                s.mul_assign(&b1.0);
+                accumulator[index][1].add_assign_base_times_ext(s, c);
+            }
+        },
+    );
+}
+
+fn evaluate_quadratic_term_first_round_base_by_ext<F: PrimeField, E: FieldExtension<F> + Field>(
+    a_s: &BaseFieldPolySource<F>,
+    b_s: &ExtensionFieldPolyInitialSource<F, E>,
+    c: E,
+    accumulator: &mut [[<E as FieldExtension<F>>::Unreduced; 2]],
+    worker: &Worker,
+) {
+    use crate::gkr::prover::apply_row_wise;
+    let work_size = accumulator.len();
+    apply_row_wise::<F, _>(
+        vec![],
+        vec![accumulator],
+        work_size,
+        worker,
+        |_, mut ext_dest, chunk_start, chunk_size| {
+            assert_eq!(ext_dest.len(), 1);
+            let accumulator = ext_dest.pop().unwrap();
+            for index in 0..chunk_size {
+                let absolute_index = chunk_start + index;
+                let a1 = <BaseFieldPolySource<F> as EvaluationFormStorage<
+                    F,
+                    E,
+                    BaseFieldRepresentation<F>,
+                >>::get_f1_minus_f0_only(a_s, absolute_index);
+                let b1 = <ExtensionFieldPolyInitialSource<F, E> as EvaluationFormStorage<
+                    F,
+                    E,
+                    ExtensionFieldRepresentation<F, E>,
+                >>::get_f1_minus_f0_only(b_s, absolute_index);
+                let mut bc = b1.value;
+                bc.mul_assign(&c);
+                accumulator[index][1].add_assign_base_times_ext(a1.0, bc);
             }
         },
     );
@@ -564,12 +722,13 @@ fn evaluate_linear_term<
     E: FieldExtension<F> + Field,
     RA: EvaluationRepresentation<F, E>,
     SA: EvaluationFormStorage<F, E, RA>,
+    A: UnreducedAccumulator<F, E>,
     const FIRST_ROUND: bool,
     const EXPLICIT_FORM: bool,
 >(
     a_s: &SA,
     c: E,
-    accumulator: &mut [[E; 2]],
+    accumulator: &mut [[A; 2]],
     worker: &Worker,
 ) {
     if FIRST_ROUND {
@@ -602,15 +761,15 @@ fn evaluate_linear_term<
 
                         let eval_1 = a1.mul_by_ext::<true>(&c, a_ctx);
 
-                        accumulator[index][0].add_assign(&eval_0);
-                        accumulator[index][1].add_assign(&eval_1);
+                        accumulator[index][0].add_assign_ext(eval_0);
+                        accumulator[index][1].add_assign_ext(eval_1);
                     } else {
                         // only half
                         let a0 = a_s.get_f0_only(absolute_index);
 
                         let eval_0 = a0.mul_by_ext::<true>(&c, a_ctx);
 
-                        accumulator[index][0].add_assign(&eval_0);
+                        accumulator[index][0].add_assign_ext(eval_0);
                     }
                 }
             }
@@ -623,10 +782,11 @@ fn add_output_term<
     E: FieldExtension<F> + Field,
     RA: EvaluationRepresentation<F, E>,
     SA: EvaluationFormStorage<F, E, RA>,
+    A: UnreducedAccumulator<F, E>,
 >(
     a_s: &SA,
     c: E,
-    accumulator: &mut [[E; 2]],
+    accumulator: &mut [[A; 2]],
     worker: &Worker,
 ) {
     use crate::gkr::prover::apply_row_wise;
@@ -648,18 +808,25 @@ fn add_output_term<
 
                 let eval_0 = a0.mul_by_ext::<true>(&c, a_ctx);
 
-                accumulator[index][0].add_assign(&eval_0);
+                accumulator[index][0].add_assign_ext(eval_0);
             }
         },
     );
 }
 
-fn fill_constant_term<F: PrimeField, E: FieldExtension<F> + Field, const EXPLICIT_FORM: bool>(
+fn fill_constant_term<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    A: UnreducedAccumulator<F, E>,
+    const EXPLICIT_FORM: bool,
+>(
     c: E,
-    accumulator: &mut [[E; 2]],
+    accumulator: &mut [[A; 2]],
     worker: &Worker,
 ) {
     use crate::gkr::prover::apply_row_wise;
+    let mut unreduced_c = A::ZERO;
+    unreduced_c.add_assign_ext(c);
     let work_size = accumulator.len();
     apply_row_wise::<F, _>(
         vec![],
@@ -670,9 +837,9 @@ fn fill_constant_term<F: PrimeField, E: FieldExtension<F> + Field, const EXPLICI
             assert_eq!(ext_dest.len(), 1);
             let accumulator = ext_dest.pop().unwrap();
             for index in 0..chunk_size {
-                accumulator[index][0] = c;
+                accumulator[index][0] = unreduced_c;
                 if EXPLICIT_FORM {
-                    accumulator[index][1] = c;
+                    accumulator[index][1] = unreduced_c;
                 }
             }
         },

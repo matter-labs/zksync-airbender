@@ -25,7 +25,7 @@ impl BabyBearField {
         let r = (1u64 << 32) % (Self::ORDER as u64);
         r as u32
     };
-    const MONT_R2: u32 = const {
+    pub(crate) const MONT_R2: u32 = const {
         let r = (1u64 << 32) % (Self::ORDER as u64);
         let r2 = (r * r) % (Self::ORDER as u64);
         r2 as u32

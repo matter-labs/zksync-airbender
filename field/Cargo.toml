@@ -18,6 +18,12 @@ quote = {version = "1", optional = true }
 
 [dev-dependencies]
 proptest = "1"
+criterion = "0.5"
+rand = { workspace = true, features = ["std", "std_rng", "small_rng"] }
+
+[[bench]]
+name = "unreduced_accum"
+harness = false
 
 [features]
 use_division = []

@@ -2,7 +2,8 @@ use std::collections::BTreeMap;
 
 use cs::definitions::GKRAddress;
 use cs::gkr_compiler::NoFieldMaxQuadraticConstraintsGKRRelation;
-use field::{Field, FieldExtension, Mersenne31Field, Mersenne31Quartic};
+use field::baby_bear::{base::BabyBearField, ext4::BabyBearExt4};
+use field::{Field, FieldExtension};
 use worker::Worker;
 
 use crate::gkr::sumcheck::access_and_fold::BaseFieldPoly;
@@ -17,8 +18,8 @@ use super::*;
 
 #[test]
 fn test_quadratic_constraint_with_constant() {
-    type F = Mersenne31Field;
-    type E = Mersenne31Quartic;
+    type F = BabyBearField;
+    type E = BabyBearExt4;
 
     const FOLDING_STEPS: usize = 5;
     const POLY_SIZE: usize = 1 << FOLDING_STEPS;
@@ -57,29 +58,29 @@ fn test_quadratic_constraint_with_constant() {
                     GKRAddress::BaseLayerMemory(0),
                     GKRAddress::BaseLayerMemory(0),
                 ),
-                vec![(F::ONE.to_reduced_u32(), 0)].into_boxed_slice(),
+                vec![(F::ONE.as_u32_reduced(), 0)].into_boxed_slice(),
             ),
             (
                 (
                     GKRAddress::BaseLayerMemory(0),
                     GKRAddress::BaseLayerMemory(1),
                 ),
-                vec![(F::ONE.to_reduced_u32(), 1)].into_boxed_slice(),
+                vec![(F::ONE.as_u32_reduced(), 1)].into_boxed_slice(),
             ),
         ]
         .into_boxed_slice(),
         linear_terms: vec![
             (
                 GKRAddress::BaseLayerMemory(0),
-                vec![(F::ONE.to_reduced_u32(), 0)].into_boxed_slice(),
+                vec![(F::ONE.as_u32_reduced(), 0)].into_boxed_slice(),
             ),
             (
                 GKRAddress::BaseLayerMemory(1),
-                vec![(F::MINUS_ONE.to_reduced_u32(), 1)].into_boxed_slice(),
+                vec![(F::MINUS_ONE.as_u32_reduced(), 1)].into_boxed_slice(),
             ),
         ]
         .into_boxed_slice(),
-        constants: vec![(minus_6.to_reduced_u32(), 0), (minus_4.to_reduced_u32(), 1)]
+        constants: vec![(minus_6.as_u32_reduced(), 0), (minus_4.as_u32_reduced(), 1)]
             .into_boxed_slice(),
     };
 

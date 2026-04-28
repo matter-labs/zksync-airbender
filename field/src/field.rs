@@ -219,7 +219,47 @@ impl<F: Field, const M: usize> FixedArrayConvertible<F> for [F; M] {
     }
 }
 
-pub trait FieldExtension<BaseField: Field>: 'static + Clone + Copy + Send + Sync {
+pub trait UnreducedAccumulator<F, E>: 'static + Clone + Copy + Send + Sync + Sized {
+    const ZERO: Self;
+
+    fn add_assign_base_times_ext(&mut self, a: F, c: E);
+
+    fn add_assign_ext(&mut self, e: E);
+
+    fn finalize(self) -> E;
+}
+
+/// Default "no optimization" accumulator — keeps each partial sum fully Montgomery-reduced.
+#[repr(transparent)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ReducedAccumulator<E>(pub E);
+
+impl<F, E> UnreducedAccumulator<F, E> for ReducedAccumulator<E>
+where
+    F: Field,
+    E: Field + FieldExtension<F>,
+{
+    const ZERO: Self = ReducedAccumulator(E::ZERO);
+
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
+    fn add_assign_base_times_ext(&mut self, a: F, c: E) {
+        let mut t = c;
+        t.mul_assign_by_base(&a);
+        self.0.add_assign(&t);
+    }
+
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
+    fn add_assign_ext(&mut self, e: E) {
+        self.0.add_assign(&e);
+    }
+
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
+    fn finalize(self) -> E {
+        self.0
+    }
+}
+
+pub trait FieldExtension<BaseField: Field>: 'static + Clone + Copy + Send + Sync + Field {
     const DEGREE: usize;
 
     type Coeffs: 'static
@@ -233,6 +273,8 @@ pub trait FieldExtension<BaseField: Field>: 'static + Clone + Copy + Send + Sync
         + Index<usize, Output = BaseField>
         + IndexMut<usize, Output = BaseField>
         + FixedArrayConvertible<BaseField>;
+
+    type Unreduced: UnreducedAccumulator<BaseField, Self> = ReducedAccumulator<Self>;
 
     fn into_coeffs(self) -> Self::Coeffs;
     fn from_coeffs(coeffs: Self::Coeffs) -> Self;

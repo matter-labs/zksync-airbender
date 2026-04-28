@@ -1,7 +1,8 @@
 use std::collections::BTreeMap;
 
 use cs::definitions::GKRAddress;
-use field::{Field, FieldExtension, Mersenne31Field, Mersenne31Quartic};
+use field::baby_bear::{base::BabyBearField, ext4::BabyBearExt4};
+use field::{Field, FieldExtension};
 use worker::Worker;
 
 use crate::gkr::sumcheck::access_and_fold::BaseFieldPoly;
@@ -15,8 +16,8 @@ use super::*;
 
 #[test]
 fn test_base_minus_multiplicity_by_base() {
-    type F = Mersenne31Field;
-    type E = Mersenne31Quartic;
+    type F = BabyBearField;
+    type E = BabyBearExt4;
 
     const FOLDING_STEPS: usize = 4;
     const POLY_SIZE: usize = 1 << FOLDING_STEPS;

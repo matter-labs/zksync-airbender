@@ -467,9 +467,6 @@ where
     for step in 0..folding_steps - 1 {
         let acc_size = 1 << (folding_steps - step - 1);
         let accumulator = &mut accumulator_buffer[..acc_size];
-        if step > 0 {
-            accumulator.fill([E::ZERO; 2]);
-        }
 
         if USE_BATCHING {
             use crate::gkr::prover::sumcheck_loop::batch_evaluation::evaluate_batched_gkr_description;
@@ -545,7 +542,6 @@ where
     {
         let step = folding_steps - 1;
         let accumulator = &mut accumulator_buffer[..1];
-        accumulator.fill([E::ZERO; 2]);
 
         if USE_BATCHING {
             use crate::gkr::prover::sumcheck_loop::batch_evaluation::evaluate_batched_gkr_description;

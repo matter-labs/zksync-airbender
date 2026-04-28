@@ -3,7 +3,8 @@ use std::mem::MaybeUninit;
 
 use cs::definitions::GKRAddress;
 use cs::gkr_compiler::{GKRLayerDescription, GateArtifacts, NoFieldGKRRelation};
-use field::{Field, FieldExtension, Mersenne31Field, Mersenne31Quartic, PrimeField};
+use field::baby_bear::{base::BabyBearField, ext4::BabyBearExt4};
+use field::{Field, FieldExtension, PrimeField};
 use transcript::Seed;
 use worker::Worker;
 
@@ -12,8 +13,8 @@ use crate::gkr::prover::sumcheck_loop::evaluate_sumcheck_for_layer;
 use crate::gkr::prover::GKRExternalChallenges;
 use crate::gkr::sumcheck::eq_poly::*;
 
-type F = Mersenne31Field;
-type E = Mersenne31Quartic;
+type F = BabyBearField;
+type E = BabyBearExt4;
 
 /// Test the full sumcheck loop with a simple product gate.
 #[test]

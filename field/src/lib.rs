@@ -2,6 +2,7 @@
 #![cfg_attr(target_arch = "riscv32", allow(internal_features))]
 #![cfg_attr(target_arch = "riscv32", feature(core_intrinsics))]
 #![cfg_attr(target_arch = "riscv32", feature(const_eval_select))]
+#![feature(associated_type_defaults)]
 
 use core::fmt::Debug;
 use core::fmt::Display;

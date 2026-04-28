@@ -348,6 +348,9 @@ impl FieldExtension<BabyBearField> for BabyBearExt4 {
 
     type Coeffs = [BabyBearField; 4];
 
+    #[cfg(not(target_arch = "riscv32"))]
+    type Unreduced = crate::baby_bear::unreduced::BabyBearExt4RawProductSum;
+
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn into_coeffs(self) -> Self::Coeffs {
         [self.c0.c0, self.c0.c1, self.c1.c0, self.c1.c1]
