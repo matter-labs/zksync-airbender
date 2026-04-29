@@ -510,10 +510,10 @@ mod test {
             let full_stream =
                 derive_from_gkr_ssa(&compiled_graph, &compiled_circuit, false, "BabyBearField");
 
-            write_and_fmt(&format!(
-                "../prover/compiled_circuits/{}_generated_gkr.rs",
-                prefix
-            ), &full_stream);
+            write_and_fmt(
+                &format!("../prover/compiled_circuits/{}_generated_gkr.rs", prefix),
+                &full_stream,
+            );
             // std::fs::File::create(&format!(
             //     "../prover/compiled_circuits/{}_generated_gkr.rs",
             //     prefix

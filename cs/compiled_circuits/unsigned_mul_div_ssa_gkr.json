@@ -1,147 +1,6 @@
 [
   [
     {
-      "Field": {
-        "Place": 41
-      }
-    },
-    {
-      "Field": {
-        "Constant": 0
-      }
-    },
-    {
-      "Field": {
-        "Constant": 268435454
-      }
-    },
-    {
-      "Field": {
-        "AddProduct": {
-          "additive_term": {
-            "SubExpression": 1
-          },
-          "mul_0": {
-            "SubExpression": 2
-          },
-          "mul_1": {
-            "SubExpression": 0
-          }
-        }
-      }
-    },
-    {
-      "Integer": {
-        "ConstantU16": 26
-      }
-    },
-    {
-      "PerformLookup": {
-        "input_subexpr_idxes": [
-          3
-        ],
-        "table_id_subexpr_idx": 4,
-        "num_outputs": 0,
-        "lookup_mapping_idx": 3
-      }
-    }
-  ],
-  [
-    {
-      "Field": {
-        "Place": 42
-      }
-    },
-    {
-      "Field": {
-        "Constant": 0
-      }
-    },
-    {
-      "Field": {
-        "Constant": 268435454
-      }
-    },
-    {
-      "Field": {
-        "AddProduct": {
-          "additive_term": {
-            "SubExpression": 1
-          },
-          "mul_0": {
-            "SubExpression": 2
-          },
-          "mul_1": {
-            "SubExpression": 0
-          }
-        }
-      }
-    },
-    {
-      "Integer": {
-        "ConstantU16": 26
-      }
-    },
-    {
-      "PerformLookup": {
-        "input_subexpr_idxes": [
-          3
-        ],
-        "table_id_subexpr_idx": 4,
-        "num_outputs": 0,
-        "lookup_mapping_idx": 4
-      }
-    }
-  ],
-  [
-    {
-      "Field": {
-        "Place": 43
-      }
-    },
-    {
-      "Field": {
-        "Constant": 0
-      }
-    },
-    {
-      "Field": {
-        "Constant": 268435454
-      }
-    },
-    {
-      "Field": {
-        "AddProduct": {
-          "additive_term": {
-            "SubExpression": 1
-          },
-          "mul_0": {
-            "SubExpression": 2
-          },
-          "mul_1": {
-            "SubExpression": 0
-          }
-        }
-      }
-    },
-    {
-      "Integer": {
-        "ConstantU16": 26
-      }
-    },
-    {
-      "PerformLookup": {
-        "input_subexpr_idxes": [
-          3
-        ],
-        "table_id_subexpr_idx": 4,
-        "num_outputs": 0,
-        "lookup_mapping_idx": 5
-      }
-    }
-  ],
-  [
-    {
       "Integer": {
         "U32OracleValue": {
           "placeholder": "PcInit"
@@ -2291,6 +2150,147 @@
           }
         },
         "condition_subexpr_idx": null
+      }
+    }
+  ],
+  [
+    {
+      "Field": {
+        "Place": 41
+      }
+    },
+    {
+      "Field": {
+        "Constant": 0
+      }
+    },
+    {
+      "Field": {
+        "Constant": 268435454
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 1
+          },
+          "mul_0": {
+            "SubExpression": 2
+          },
+          "mul_1": {
+            "SubExpression": 0
+          }
+        }
+      }
+    },
+    {
+      "Integer": {
+        "ConstantU16": 26
+      }
+    },
+    {
+      "PerformLookup": {
+        "input_subexpr_idxes": [
+          3
+        ],
+        "table_id_subexpr_idx": 4,
+        "num_outputs": 0,
+        "lookup_mapping_idx": 3
+      }
+    }
+  ],
+  [
+    {
+      "Field": {
+        "Place": 42
+      }
+    },
+    {
+      "Field": {
+        "Constant": 0
+      }
+    },
+    {
+      "Field": {
+        "Constant": 268435454
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 1
+          },
+          "mul_0": {
+            "SubExpression": 2
+          },
+          "mul_1": {
+            "SubExpression": 0
+          }
+        }
+      }
+    },
+    {
+      "Integer": {
+        "ConstantU16": 26
+      }
+    },
+    {
+      "PerformLookup": {
+        "input_subexpr_idxes": [
+          3
+        ],
+        "table_id_subexpr_idx": 4,
+        "num_outputs": 0,
+        "lookup_mapping_idx": 4
+      }
+    }
+  ],
+  [
+    {
+      "Field": {
+        "Place": 43
+      }
+    },
+    {
+      "Field": {
+        "Constant": 0
+      }
+    },
+    {
+      "Field": {
+        "Constant": 268435454
+      }
+    },
+    {
+      "Field": {
+        "AddProduct": {
+          "additive_term": {
+            "SubExpression": 1
+          },
+          "mul_0": {
+            "SubExpression": 2
+          },
+          "mul_1": {
+            "SubExpression": 0
+          }
+        }
+      }
+    },
+    {
+      "Integer": {
+        "ConstantU16": 26
+      }
+    },
+    {
+      "PerformLookup": {
+        "input_subexpr_idxes": [
+          3
+        ],
+        "table_id_subexpr_idx": 4,
+        "num_outputs": 0,
+        "lookup_mapping_idx": 5
       }
     }
   ],

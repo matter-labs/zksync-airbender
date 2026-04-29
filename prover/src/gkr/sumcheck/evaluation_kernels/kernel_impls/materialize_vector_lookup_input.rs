@@ -177,6 +177,15 @@ impl<F: PrimeField, E: FieldExtension<F> + Field>
     for MaterializeVectorLookupInputGKRRelationKernel<F, E>
 {
     #[inline(always)]
+    fn evaluate_forward<SB: EvaluationFormStorage<F, E, BaseFieldRepresentation<F>>>(
+        &self,
+        _index: usize,
+        _sources: &[SB],
+    ) -> [F; 1] {
+        unimplemented!("not used")
+    }
+
+    #[inline(always)]
     fn evaluate_first_round<
         R0: EvaluationRepresentation<F, E>,
         S0: EvaluationFormStorage<F, E, R0>,

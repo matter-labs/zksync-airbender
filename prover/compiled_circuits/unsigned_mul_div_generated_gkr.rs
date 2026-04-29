@@ -1,66 +1,6 @@
 #[allow(unused_variables)]
 #[inline(always)]
-fn eval_fn_0<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyBearField, W> + 'b>(
-    witness_proxy: &'a mut P,
-) where
-    W::Field: Copy,
-    W::Mask: Copy,
-    W::U32: Copy,
-    W::U16: Copy,
-    W::U8: Copy,
-    W::I32: Copy,
-{
-    let v_0 = witness_proxy.get_witness_place(15usize);
-    let v_1 = W::Field::constant(BabyBearField(0u32));
-    let v_2 = W::Field::constant(BabyBearField(268435454u32));
-    let mut v_3 = v_1;
-    W::Field::add_assign_product(&mut v_3, &v_2, &v_0);
-    let v_4 = W::U16::constant(26u16);
-    let v_5 = witness_proxy.lookup_enforce::<1usize>(&[v_3], v_4, 3usize);
-}
-#[allow(unused_variables)]
-#[inline(always)]
 fn eval_fn_1<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyBearField, W> + 'b>(
-    witness_proxy: &'a mut P,
-) where
-    W::Field: Copy,
-    W::Mask: Copy,
-    W::U32: Copy,
-    W::U16: Copy,
-    W::U8: Copy,
-    W::I32: Copy,
-{
-    let v_0 = witness_proxy.get_witness_place(16usize);
-    let v_1 = W::Field::constant(BabyBearField(0u32));
-    let v_2 = W::Field::constant(BabyBearField(268435454u32));
-    let mut v_3 = v_1;
-    W::Field::add_assign_product(&mut v_3, &v_2, &v_0);
-    let v_4 = W::U16::constant(26u16);
-    let v_5 = witness_proxy.lookup_enforce::<1usize>(&[v_3], v_4, 4usize);
-}
-#[allow(unused_variables)]
-#[inline(always)]
-fn eval_fn_2<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyBearField, W> + 'b>(
-    witness_proxy: &'a mut P,
-) where
-    W::Field: Copy,
-    W::Mask: Copy,
-    W::U32: Copy,
-    W::U16: Copy,
-    W::U8: Copy,
-    W::I32: Copy,
-{
-    let v_0 = witness_proxy.get_witness_place(17usize);
-    let v_1 = W::Field::constant(BabyBearField(0u32));
-    let v_2 = W::Field::constant(BabyBearField(268435454u32));
-    let mut v_3 = v_1;
-    W::Field::add_assign_product(&mut v_3, &v_2, &v_0);
-    let v_4 = W::U16::constant(26u16);
-    let v_5 = witness_proxy.lookup_enforce::<1usize>(&[v_3], v_4, 5usize);
-}
-#[allow(unused_variables)]
-#[inline(always)]
-fn eval_fn_4<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyBearField, W> + 'b>(
     witness_proxy: &'a mut P,
 ) where
     W::Field: Copy,
@@ -85,7 +25,7 @@ fn eval_fn_4<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyB
 }
 #[allow(unused_variables)]
 #[inline(always)]
-fn eval_fn_5<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyBearField, W> + 'b>(
+fn eval_fn_2<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyBearField, W> + 'b>(
     witness_proxy: &'a mut P,
 ) where
     W::Field: Copy,
@@ -107,7 +47,7 @@ fn eval_fn_5<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyB
 }
 #[allow(unused_variables)]
 #[inline(always)]
-fn eval_fn_6<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyBearField, W> + 'b>(
+fn eval_fn_3<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyBearField, W> + 'b>(
     witness_proxy: &'a mut P,
 ) where
     W::Field: Copy,
@@ -128,7 +68,7 @@ fn eval_fn_6<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyB
     witness_proxy.set_witness_place(8usize, v_6);
 }
 #[allow(unused_variables)]
-fn eval_fn_7<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyBearField, W> + 'b>(
+fn eval_fn_4<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyBearField, W> + 'b>(
     witness_proxy: &'a mut P,
 ) where
     W::Field: Copy,
@@ -353,6 +293,66 @@ fn eval_fn_7<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyB
     let v_185 = v_184.shr(16u32);
     let v_186 = v_185.truncate();
     witness_proxy.set_witness_place_u16(17usize, v_186);
+}
+#[allow(unused_variables)]
+#[inline(always)]
+fn eval_fn_5<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyBearField, W> + 'b>(
+    witness_proxy: &'a mut P,
+) where
+    W::Field: Copy,
+    W::Mask: Copy,
+    W::U32: Copy,
+    W::U16: Copy,
+    W::U8: Copy,
+    W::I32: Copy,
+{
+    let v_0 = witness_proxy.get_witness_place(15usize);
+    let v_1 = W::Field::constant(BabyBearField(0u32));
+    let v_2 = W::Field::constant(BabyBearField(268435454u32));
+    let mut v_3 = v_1;
+    W::Field::add_assign_product(&mut v_3, &v_2, &v_0);
+    let v_4 = W::U16::constant(26u16);
+    let v_5 = witness_proxy.lookup_enforce::<1usize>(&[v_3], v_4, 3usize);
+}
+#[allow(unused_variables)]
+#[inline(always)]
+fn eval_fn_6<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyBearField, W> + 'b>(
+    witness_proxy: &'a mut P,
+) where
+    W::Field: Copy,
+    W::Mask: Copy,
+    W::U32: Copy,
+    W::U16: Copy,
+    W::U8: Copy,
+    W::I32: Copy,
+{
+    let v_0 = witness_proxy.get_witness_place(16usize);
+    let v_1 = W::Field::constant(BabyBearField(0u32));
+    let v_2 = W::Field::constant(BabyBearField(268435454u32));
+    let mut v_3 = v_1;
+    W::Field::add_assign_product(&mut v_3, &v_2, &v_0);
+    let v_4 = W::U16::constant(26u16);
+    let v_5 = witness_proxy.lookup_enforce::<1usize>(&[v_3], v_4, 4usize);
+}
+#[allow(unused_variables)]
+#[inline(always)]
+fn eval_fn_7<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyBearField, W> + 'b>(
+    witness_proxy: &'a mut P,
+) where
+    W::Field: Copy,
+    W::Mask: Copy,
+    W::U32: Copy,
+    W::U16: Copy,
+    W::U8: Copy,
+    W::I32: Copy,
+{
+    let v_0 = witness_proxy.get_witness_place(17usize);
+    let v_1 = W::Field::constant(BabyBearField(0u32));
+    let v_2 = W::Field::constant(BabyBearField(268435454u32));
+    let mut v_3 = v_1;
+    W::Field::add_assign_product(&mut v_3, &v_2, &v_0);
+    let v_4 = W::U16::constant(26u16);
+    let v_5 = witness_proxy.lookup_enforce::<1usize>(&[v_3], v_4, 5usize);
 }
 #[allow(unused_variables)]
 #[inline(always)]
@@ -982,9 +982,9 @@ pub fn evaluate_witness_fn<
     W::U8: Copy,
     W::I32: Copy,
 {
-    eval_fn_0(witness_proxy);
     eval_fn_1(witness_proxy);
     eval_fn_2(witness_proxy);
+    eval_fn_3(witness_proxy);
     eval_fn_4(witness_proxy);
     eval_fn_5(witness_proxy);
     eval_fn_6(witness_proxy);

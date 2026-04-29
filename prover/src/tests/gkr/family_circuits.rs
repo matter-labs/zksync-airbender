@@ -953,7 +953,9 @@ pub fn gkr_run_basic_unrolled_test_impl(
             default_pc_value_in_padding: 4,
         };
 
-        dbg!(oracle.inner.len());
+        let row = 0;
+        dbg!(oracle.inner[row]);
+        dbg!(oracle.decoder_table[(oracle.inner[row].opcode_data.initial_pc / 4) as usize]);
 
         let is_empty = oracle.inner.is_empty();
 

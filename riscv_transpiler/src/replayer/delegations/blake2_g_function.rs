@@ -18,7 +18,10 @@ pub(crate) fn blake2_g_function_call<C: Counters, R: RAM>(
 ) {
     let needs_cycle_data =
         tracer.needs_tracing_data_for_circuit_family::<ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX>();
-    let needs_delegation_data = tracer.needs_tracing_data_for_delegation_type::<{common_constants::blake2s_g_function::BLAKE2S_G_FUNCTION_DELEGATION_CSR_REGISTER as u16}>();
+    let needs_delegation_data =
+        tracer.needs_tracing_data_for_delegation_type::<{
+            common_constants::blake2s_g_function::BLAKE2S_G_FUNCTION_DELEGATION_CSR_REGISTER as u16
+        }>();
 
     let x10 = state.registers[10].value;
     let x11 = state.registers[11].value;
