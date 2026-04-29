@@ -7,5 +7,9 @@ rustflags = [
   "-C", "link-arg=-Tsrc/lds/link.x",
   "-C", "link-arg=--save-temps",
   "-C", "force-frame-pointers",
+  # reproducibility
+  "--remap-path-prefix= /=/src",
+  "-C", "link-arg=--build-id=sha1",
+  "-C", "codegen-units=1",
 ]
 
