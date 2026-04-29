@@ -330,7 +330,7 @@ mod tests {
     use super::*;
 
     use crate::device_structures::DeviceMatrix;
-    use era_cudart::memory::{DeviceAllocation, memory_copy_async};
+    use era_cudart::memory::{memory_copy_async, DeviceAllocation};
     use field::{Field, Rand};
     use itertools::Itertools;
     use rand::rng;
