@@ -16,26 +16,30 @@ use crate::primitives::circuit_type::{
     UnrolledNonMemoryCircuitType,
 };
 use crate::primitives::context::{
-    DeviceAllocation, HostAllocation, ProverContext, UnsafeMutAccessor,
+    DeviceAllocation, HostAllocation, ProverContext, SchedulerHostAllocation, UnsafeMutAccessor,
 };
 use crate::primitives::field::{BF, E4};
 use crate::primitives::nvtx::scoped_range;
 use crate::primitives::static_host::alloc_static_pinned_box_from_slice;
 use crate::prover::decoder::DecoderTableTransfer;
 use crate::prover::memory::commit_memory;
-use crate::prover::proof_layout::{placeholder_inputs_for_prove, ProofLayout};
 use crate::prover::proof::{
     grand_product_accumulator_from_explicit_evaluations, prove, prove_with_transfer_scheduling,
     GpuGKRProofJob,
 };
+use crate::prover::proof_layout::{placeholder_inputs_for_prove, ProofLayout};
 use crate::prover::test_utils::{
     make_test_context, make_test_context_with_device_allocator_block_log_size,
 };
 use crate::prover::trace_holder::TraceHolder;
 use crate::prover::tracing_data::{
     // TODO(init-teardown-port): re-add `InitsAndTeardownsTransfer,` once restored.
-    DelegationTracingDataDevice, TracingDataDevice, TracingDataHost,
-    TracingDataTransfer, UnrolledTracingDataDevice, UnrolledTracingDataHost,
+    DelegationTracingDataDevice,
+    TracingDataDevice,
+    TracingDataHost,
+    TracingDataTransfer,
+    UnrolledTracingDataDevice,
+    UnrolledTracingDataHost,
 };
 use crate::prover::whir::GpuWhirExtensionOracle;
 use crate::prover::whir_fold::{
@@ -48,7 +52,8 @@ use crate::prover::whir_fold::{
 use crate::witness::trace::ChunkedTraceHolder;
 use crate::witness::trace_unrolled::{
     // TODO(init-teardown-port): re-add `ShuffleRamInitsAndTeardownsDevice,` once restored.
-    ExecutorFamilyDecoderData, UnrolledMemoryTraceDevice,
+    ExecutorFamilyDecoderData,
+    UnrolledMemoryTraceDevice,
     UnrolledNonMemoryTraceDevice,
 };
 use common_constants::TimestampData;
@@ -104,12 +109,11 @@ use prover::gkr::sumcheck::access_and_fold::{BaseFieldPoly, GKRLayerSource, GKRS
 use prover::gkr::sumcheck::eq_poly::make_eq_poly_in_full;
 use prover::gkr::sumcheck::evaluate_small_univariate_poly;
 use prover::gkr::sumcheck::evaluation_kernels::{
-    BaseFieldCopyGKRRelation, BatchedGKRKernel,
-    ExtensionCopyGKRRelation, GKRInputs, LookupBaseExtMinusBaseExtGKRRelation,
-    LookupBaseMinusMultiplicityByBaseGKRRelation, LookupBasePairGKRRelation,
-    LookupExtensionMinusMultiplicityByExtensionGKRRelation, LookupPairGKRRelation,
-    LookupRationalPairWithUnbalancedBaseGKRRelation, MaskIntoIdentityProductGKRRelation,
-    SameSizeProductGKRRelation,
+    BaseFieldCopyGKRRelation, BatchedGKRKernel, ExtensionCopyGKRRelation, GKRInputs,
+    LookupBaseExtMinusBaseExtGKRRelation, LookupBaseMinusMultiplicityByBaseGKRRelation,
+    LookupBasePairGKRRelation, LookupExtensionMinusMultiplicityByExtensionGKRRelation,
+    LookupPairGKRRelation, LookupRationalPairWithUnbalancedBaseGKRRelation,
+    MaskIntoIdentityProductGKRRelation, SameSizeProductGKRRelation,
 };
 use prover::gkr::virtual_polys::init_and_teardown_base::materialize_virtual_inits_and_teardowns_base_address_setup_poly;
 use prover::gkr::virtual_polys::range_check::materialize_virtual_range_check_setup_poly;
@@ -746,13 +750,13 @@ fn prepare_basic_unrolled_fixture(
         E4::from_array_of_base([BF::new(2), BF::new(5), BF::new(42), BF::new(123)]);
     let permutation_argument_additive_part =
         E4::from_array_of_base([BF::new(7), BF::new(11), BF::new(1024), BF::new(8000)]);
-    let permutation_argument_linearization_challenges: [E4; NUM_PERMUTATION_ARGUMENT_KEY_PARTS - 1] =
-        materialize_powers_serial_starting_with_elem::<_, Global>(
-            memory_argument_alpha,
-            NUM_PERMUTATION_ARGUMENT_KEY_PARTS - 1,
-        )
-        .try_into()
-        .unwrap();
+    let permutation_argument_linearization_challenges: [E4; NUM_PERMUTATION_ARGUMENT_KEY_PARTS
+        - 1] = materialize_powers_serial_starting_with_elem::<_, Global>(
+        memory_argument_alpha,
+        NUM_PERMUTATION_ARGUMENT_KEY_PARTS - 1,
+    )
+    .try_into()
+    .unwrap();
     let external_challenges: GKRExternalChallenges<BF, E4> = GKRExternalChallenges {
         permutation_argument_linearization_challenges,
         permutation_argument_additive_part,
@@ -1716,10 +1720,9 @@ fn assert_recursive_whir_oracle_parity_for_supported_path(
                 &next_cpu_oracle.tree,
             )
         );
-        let next_cpu_oracle_cap =
-            <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<BF>>::get_cap(
-                &next_cpu_oracle.tree,
-            );
+        let next_cpu_oracle_cap = <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<
+            BF,
+        >>::get_cap(&next_cpu_oracle.tree);
         cpu_recursive_caps.push(next_cpu_oracle_cap.clone());
         // Upstream now folds the recursive oracle cap into the transcript before drawing
         // the next OOD point (see prover/src/gkr/whir/mod.rs ~line 1056).
@@ -1896,11 +1899,13 @@ fn assert_recursive_whir_oracle_parity_for_supported_path(
     let wit_polys_claims_for_schedule = wit_polys_claims.to_vec();
     let setup_polys_claims_for_schedule = setup_polys_claims.to_vec();
     let original_evaluation_point_for_schedule = original_evaluation_point.to_vec();
-    let memory_base_caps_keepalive: Vec<Vec<crate::ops::blake2s::Digest>> = gpu_mem_trace_holder
-        .take_tree_caps_host()
-        .into_iter()
-        .map(|alloc| unsafe { alloc.get_accessor().get().to_vec() })
-        .collect();
+    let memory_base_caps_keepalive: Vec<SchedulerHostAllocation<[crate::ops::blake2s::Digest]>> =
+        gpu_mem_trace_holder
+            .take_tree_caps_host()
+            .into_iter()
+            .map(|alloc| context.scheduler_host_from_slice(unsafe { alloc.get_accessor().get() }))
+            .collect::<era_cudart::result::CudaResult<Vec<_>>>()
+            .unwrap();
     let witness_base_caps_keepalive = gpu_wit_trace_holder.take_tree_caps_host();
     let setup_base_caps_keepalive = gpu_setup_trace_holder.take_tree_caps_host();
     let whir_proof_layout = ProofLayout::new(&placeholder_inputs_for_prove());
@@ -1927,6 +1932,7 @@ fn assert_recursive_whir_oracle_parity_for_supported_path(
         trace_len_log2,
         None,
         &whir_proof_layout,
+        None,
         context,
     )
     .unwrap();
@@ -2109,7 +2115,7 @@ fn build_basic_unrolled_async_backward_fixture_from_base(
     .unwrap();
     eprintln!("async-backward-from-base: forward pass scheduled");
     let gpu_transcript_handoff = gpu_forward_output
-        .schedule_transcript_handoff(&context)
+        .schedule_transcript_handoff(true, &context)
         .unwrap();
     context.get_exec_stream().synchronize().unwrap();
     eprintln!("async-backward-from-base: transcript handoff ready");
@@ -3931,13 +3937,13 @@ fn run_memory_workflow_input_parity_test<const FAMILY_IDX: u8>(
         E4::from_array_of_base([BF::new(2), BF::new(5), BF::new(42), BF::new(123)]);
     let permutation_argument_additive_part =
         E4::from_array_of_base([BF::new(7), BF::new(11), BF::new(1024), BF::new(8000)]);
-    let permutation_argument_linearization_challenges: [E4; NUM_PERMUTATION_ARGUMENT_KEY_PARTS - 1] =
-        materialize_powers_serial_starting_with_elem::<_, Global>(
-            memory_argument_alpha,
-            NUM_PERMUTATION_ARGUMENT_KEY_PARTS - 1,
-        )
-        .try_into()
-        .unwrap();
+    let permutation_argument_linearization_challenges: [E4; NUM_PERMUTATION_ARGUMENT_KEY_PARTS
+        - 1] = materialize_powers_serial_starting_with_elem::<_, Global>(
+        memory_argument_alpha,
+        NUM_PERMUTATION_ARGUMENT_KEY_PARTS - 1,
+    )
+    .try_into()
+    .unwrap();
     let external_challenges: GKRExternalChallenges<BF, E4> = GKRExternalChallenges {
         permutation_argument_linearization_challenges,
         permutation_argument_additive_part,
@@ -4040,7 +4046,7 @@ fn run_memory_workflow_input_parity_test<const FAMILY_IDX: u8>(
     )
     .unwrap();
     let gpu_transcript_handoff = gpu_forward_output
-        .schedule_transcript_handoff(&context)
+        .schedule_transcript_handoff(true, &context)
         .unwrap();
     context.get_exec_stream().synchronize().unwrap();
     let gpu_final_explicit_evaluations = gpu_transcript_handoff.final_explicit_evaluations();
@@ -4744,12 +4750,13 @@ fn run_basic_unrolled_first_main_layer_static_vs_dynamic_execution_test() {
             static_batching_challenge,
         )
         .unwrap();
-    let (shared_device_claims, shared_claim_layout) = crate::prover::gkr::backward::h2d_claims_from_host(
-        &fixture_static.context,
-        &mut initial_callbacks,
-        &static_claims_for_device,
-    )
-    .unwrap();
+    let (shared_device_claims, shared_claim_layout) =
+        crate::prover::gkr::backward::h2d_claims_from_host(
+            &fixture_static.context,
+            &mut initial_callbacks,
+            &static_claims_for_device,
+        )
+        .unwrap();
     let device_lookup_and_constraint =
         crate::prover::gkr::backward::h2d_lookup_and_constraint_from_shared_state::<E4>(
             &fixture_static.context,
@@ -4769,6 +4776,7 @@ fn run_basic_unrolled_first_main_layer_static_vs_dynamic_execution_test() {
             None,
             &main_proof_layout,
             0,
+            true,
             &fixture_static.context,
         )
         .unwrap();
@@ -4981,6 +4989,7 @@ fn run_basic_unrolled_main_layers_static_vs_dynamic_execution_test() {
                 None,
                 &main_proof_layout,
                 0,
+                true,
                 &fixture_static.context,
             )
             .unwrap();
@@ -5050,6 +5059,8 @@ fn run_basic_unrolled_async_allocator_regression_test() {
 
     let host_before = context.get_host_used_mem_current();
     context.reset_host_used_mem_peak();
+    let scheduler_host_before = context.get_scheduler_host_used_mem_current();
+    context.reset_scheduler_host_used_mem_peak();
 
     let proof_layout = ProofLayout::new(&placeholder_inputs_for_prove());
     let scheduled = gpu_backward_state
@@ -5073,6 +5084,10 @@ fn run_basic_unrolled_async_allocator_regression_test() {
         context.get_host_used_mem_peak() > host_before,
         "backward scheduling should allocate from the host allocator"
     );
+    assert!(
+        context.get_scheduler_host_used_mem_peak() > scheduler_host_before,
+        "backward scheduling should allocate immutable descriptors from the scheduler-host allocator"
+    );
 
     let execution = scheduled.wait(&context).unwrap();
     drop(execution);
@@ -5081,6 +5096,11 @@ fn run_basic_unrolled_async_allocator_regression_test() {
         context.get_host_used_mem_current(),
         host_before,
         "host allocator usage should return to baseline after drop"
+    );
+    assert_eq!(
+        context.get_scheduler_host_used_mem_current(),
+        scheduler_host_before,
+        "scheduler-host allocator usage should return to baseline after drop"
     );
 }
 
@@ -5365,13 +5385,13 @@ fn run_basic_unrolled_workflow_input_parity_test() {
         E4::from_array_of_base([BF::new(2), BF::new(5), BF::new(42), BF::new(123)]);
     let permutation_argument_additive_part =
         E4::from_array_of_base([BF::new(7), BF::new(11), BF::new(1024), BF::new(8000)]);
-    let permutation_argument_linearization_challenges: [E4; NUM_PERMUTATION_ARGUMENT_KEY_PARTS - 1] =
-        materialize_powers_serial_starting_with_elem::<_, Global>(
-            memory_argument_alpha,
-            NUM_PERMUTATION_ARGUMENT_KEY_PARTS - 1,
-        )
-        .try_into()
-        .unwrap();
+    let permutation_argument_linearization_challenges: [E4; NUM_PERMUTATION_ARGUMENT_KEY_PARTS
+        - 1] = materialize_powers_serial_starting_with_elem::<_, Global>(
+        memory_argument_alpha,
+        NUM_PERMUTATION_ARGUMENT_KEY_PARTS - 1,
+    )
+    .try_into()
+    .unwrap();
     let external_challenges: GKRExternalChallenges<BF, E4> = GKRExternalChallenges {
         permutation_argument_linearization_challenges,
         permutation_argument_additive_part,
@@ -5770,7 +5790,7 @@ fn run_basic_unrolled_workflow_input_parity_test() {
         )
         .unwrap();
         let gpu_transcript_handoff = gpu_forward_output
-            .schedule_transcript_handoff(&context)
+            .schedule_transcript_handoff(true, &context)
             .unwrap();
         context.get_exec_stream().synchronize().unwrap();
         (gpu_forward_output, gpu_transcript_handoff)
@@ -5863,13 +5883,13 @@ fn run_jump_branch_slt_workflow_input_parity_test() {
         E4::from_array_of_base([BF::new(2), BF::new(5), BF::new(42), BF::new(123)]);
     let permutation_argument_additive_part =
         E4::from_array_of_base([BF::new(7), BF::new(11), BF::new(1024), BF::new(8000)]);
-    let permutation_argument_linearization_challenges: [E4; NUM_PERMUTATION_ARGUMENT_KEY_PARTS - 1] =
-        materialize_powers_serial_starting_with_elem::<_, Global>(
-            memory_argument_alpha,
-            NUM_PERMUTATION_ARGUMENT_KEY_PARTS - 1,
-        )
-        .try_into()
-        .unwrap();
+    let permutation_argument_linearization_challenges: [E4; NUM_PERMUTATION_ARGUMENT_KEY_PARTS
+        - 1] = materialize_powers_serial_starting_with_elem::<_, Global>(
+        memory_argument_alpha,
+        NUM_PERMUTATION_ARGUMENT_KEY_PARTS - 1,
+    )
+    .try_into()
+    .unwrap();
     let external_challenges: GKRExternalChallenges<BF, E4> = GKRExternalChallenges {
         permutation_argument_linearization_challenges,
         permutation_argument_additive_part,
@@ -6273,7 +6293,7 @@ fn run_jump_branch_slt_workflow_input_parity_test() {
         )
         .unwrap();
         let gpu_transcript_handoff = gpu_forward_output
-            .schedule_transcript_handoff(&context)
+            .schedule_transcript_handoff(true, &context)
             .unwrap();
         context.get_exec_stream().synchronize().unwrap();
         (gpu_forward_output, gpu_transcript_handoff)
@@ -6644,13 +6664,13 @@ fn run_shift_binop_cached_lookup_parity_test() {
         E4::from_array_of_base([BF::new(2), BF::new(5), BF::new(42), BF::new(123)]);
     let permutation_argument_additive_part =
         E4::from_array_of_base([BF::new(7), BF::new(11), BF::new(1024), BF::new(8000)]);
-    let permutation_argument_linearization_challenges: [E4; NUM_PERMUTATION_ARGUMENT_KEY_PARTS - 1] =
-        materialize_powers_serial_starting_with_elem::<_, Global>(
-            memory_argument_alpha,
-            NUM_PERMUTATION_ARGUMENT_KEY_PARTS - 1,
-        )
-        .try_into()
-        .unwrap();
+    let permutation_argument_linearization_challenges: [E4; NUM_PERMUTATION_ARGUMENT_KEY_PARTS
+        - 1] = materialize_powers_serial_starting_with_elem::<_, Global>(
+        memory_argument_alpha,
+        NUM_PERMUTATION_ARGUMENT_KEY_PARTS - 1,
+    )
+    .try_into()
+    .unwrap();
     let external_challenges: GKRExternalChallenges<BF, E4> = GKRExternalChallenges {
         permutation_argument_linearization_challenges,
         permutation_argument_additive_part,
@@ -6757,7 +6777,7 @@ fn run_shift_binop_cached_lookup_parity_test() {
     )
     .unwrap();
     let gpu_transcript_handoff = gpu_forward_output
-        .schedule_transcript_handoff(&context)
+        .schedule_transcript_handoff(true, &context)
         .unwrap();
     context.get_exec_stream().synchronize().unwrap();
     let gpu_final_explicit_evaluations = gpu_transcript_handoff.final_explicit_evaluations();
@@ -6877,13 +6897,13 @@ fn run_basic_unrolled_stagewise_parity_test() {
     let permutation_argument_additive_part =
         E4::from_array_of_base([BF::new(7), BF::new(11), BF::new(1024), BF::new(8000)]);
 
-    let permutation_argument_linearization_challenges: [E4; NUM_PERMUTATION_ARGUMENT_KEY_PARTS - 1] =
-        materialize_powers_serial_starting_with_elem::<_, Global>(
-            memory_argument_alpha,
-            NUM_PERMUTATION_ARGUMENT_KEY_PARTS - 1,
-        )
-        .try_into()
-        .unwrap();
+    let permutation_argument_linearization_challenges: [E4; NUM_PERMUTATION_ARGUMENT_KEY_PARTS
+        - 1] = materialize_powers_serial_starting_with_elem::<_, Global>(
+        memory_argument_alpha,
+        NUM_PERMUTATION_ARGUMENT_KEY_PARTS - 1,
+    )
+    .try_into()
+    .unwrap();
 
     let external_challenges: GKRExternalChallenges<BF, E4> = GKRExternalChallenges {
         permutation_argument_linearization_challenges,
@@ -7246,7 +7266,7 @@ fn run_basic_unrolled_stagewise_parity_test() {
         )
         .unwrap();
         let gpu_transcript_handoff = gpu_forward_output
-            .schedule_transcript_handoff(&context)
+            .schedule_transcript_handoff(true, &context)
             .unwrap();
         context.get_exec_stream().synchronize().unwrap();
         (gpu_forward_output, gpu_transcript_handoff)
@@ -7284,9 +7304,7 @@ fn run_basic_unrolled_stagewise_parity_test() {
         })
         .find_map(|gate| match &gate.enforced_relation {
             NoFieldGKRRelation::CopyInBaseField { input, output }
-            | NoFieldGKRRelation::CopyInExtensionField { input, output } => {
-                Some((*input, *output))
-            }
+            | NoFieldGKRRelation::CopyInExtensionField { input, output } => Some((*input, *output)),
             _ => None,
         })
         .expect("test circuit must contain a Copy relation");
@@ -8114,7 +8132,7 @@ fn standalone_inits_and_teardowns_gpu_workflow_matches_cpu() {
         )
         .unwrap();
         let gpu_transcript_handoff = gpu_forward_output
-            .schedule_transcript_handoff(&context)
+            .schedule_transcript_handoff(true, &context)
             .unwrap();
         context.get_exec_stream().synchronize().unwrap();
         assert_eq!(
@@ -8801,13 +8819,13 @@ fn test_external_challenges() -> GKRExternalChallenges<BF, E4> {
         E4::from_array_of_base([BF::new(2), BF::new(5), BF::new(42), BF::new(123)]);
     let permutation_argument_additive_part =
         E4::from_array_of_base([BF::new(7), BF::new(11), BF::new(1024), BF::new(8000)]);
-    let permutation_argument_linearization_challenges: [E4; NUM_PERMUTATION_ARGUMENT_KEY_PARTS - 1] =
-        materialize_powers_serial_starting_with_elem::<_, Global>(
-            memory_argument_alpha,
-            NUM_PERMUTATION_ARGUMENT_KEY_PARTS - 1,
-        )
-        .try_into()
-        .unwrap();
+    let permutation_argument_linearization_challenges: [E4; NUM_PERMUTATION_ARGUMENT_KEY_PARTS
+        - 1] = materialize_powers_serial_starting_with_elem::<_, Global>(
+        memory_argument_alpha,
+        NUM_PERMUTATION_ARGUMENT_KEY_PARTS - 1,
+    )
+    .try_into()
+    .unwrap();
 
     GKRExternalChallenges {
         permutation_argument_linearization_challenges,
@@ -9241,7 +9259,7 @@ fn assert_delegation_workflow_matches_cpu_inner<W, O, F>(
         )
         .unwrap();
         let gpu_transcript_handoff = gpu_forward_output
-            .schedule_transcript_handoff(&context)
+            .schedule_transcript_handoff(true, &context)
             .unwrap();
         context.get_exec_stream().synchronize().unwrap();
         (gpu_forward_output, gpu_transcript_handoff)
@@ -9680,9 +9698,7 @@ mod add_sub_lui_auipc_mod {
     use prover::gkr::witness_gen::oracles::NonMemoryCircuitOracle;
     use prover::gkr::witness_gen::witness_proxy::WitnessProxy;
 
-    include!(
-        "../../../prover/compiled_circuits/add_sub_lui_auipc_mop_generated_gkr.rs"
-    );
+    include!("../../../prover/compiled_circuits/add_sub_lui_auipc_mop_generated_gkr.rs");
 
     pub fn witness_eval_fn<'a, 'b>(
         proxy: &'_ mut ColumnMajorWitnessProxy<'a, NonMemoryCircuitOracle<'b>, BF>,

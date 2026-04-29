@@ -1,0 +1,47 @@
+# Ripgrep / fd / ag ignore file (auto-discovered).
+#
+# These patterns are filtered from broad searches by default. They cover
+# generated code, layout/proof artifacts, legacy-GPU dirs, compiled
+# binaries, and other content with no semantic value for code search.
+#
+# Files listed here remain tracked in git and readable directly by path
+# (Read tool, cat, less, targeted `rg path/to/file`). To bypass these
+# rules for a one-off search (e.g. when actually inspecting generated
+# code), pass `--no-ignore` or `-uu` to ripgrep.
+#
+# Syntax is gitignore-style. Patterns are matched anywhere in the tree
+# unless anchored with a leading `/`.
+#
+# Note: `target/` is intentionally omitted — it is covered by .gitignore,
+# which ripgrep honors by default.
+
+# --- Generated source (Rust + CUDA) ---
+generated/
+compiled_circuits/
+tools/generator/output/
+
+# --- Proof, witness, and layout artifacts ---
+prover/test_proofs/
+*_gkr_proof.json
+*_layout_gkr.json
+*_layout_no_caches_gkr.json
+*_preprocessed_layout_gkr.json
+*_preprocessed_layout_no_caches_gkr.json
+*_ssa_gkr.json
+*_witness
+*.vk.json
+
+# --- Legacy GPU code (kept for reference/diffing, not active) ---
+gpu_prover_old/
+gpu_witness_eval_generator_old/
+
+# --- Compiled binaries ---
+*.elf
+*.bin
+*.text
+
+# --- Profiling / visualization artifacts ---
+verifier/gkr_flamegraph_*.svg
+
+# --- Large reference docs ---
+unpriv-isa-asciidoc.pdf

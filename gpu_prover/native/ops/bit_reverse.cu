@@ -7,7 +7,9 @@ using namespace ::airbender::primitives::memory;
 
 namespace airbender::ops {
 
-struct __align__(32) dg { bf values[8]; };
+struct __align__(32) dg {
+  bf values[8];
+};
 
 template <class T>
 DEVICE_FORCEINLINE void bit_reverse_naive(const matrix_getter<T, ld_modifier::cs> src, const matrix_setter<T, st_modifier::cs> dst, const unsigned log_count) {

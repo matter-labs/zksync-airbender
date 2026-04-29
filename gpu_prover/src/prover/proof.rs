@@ -1,7 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS;
-use cs::definitions::GKRAddress;
 use cs::definitions::NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES;
 use cs::gkr_compiler::{GKRCircuitArtifact, OutputType};
 use era_cudart::event::{CudaEvent, CudaEventCreateFlags};
@@ -21,14 +20,13 @@ use crate::allocator::tracker::AllocationPlacement;
 use crate::circuit_type::CircuitType;
 use crate::ops::blake2s::Digest;
 use crate::ops::blake2s::STATE_SIZE;
-use crate::ops::cub::device_reduce::{
-    get_reduce_temp_storage_bytes, reduce, ReduceOperation,
-};
+use crate::ops::cub::device_reduce::{get_reduce_temp_storage_bytes, reduce, ReduceOperation};
 use crate::ops::cub::CUB_TEMP_STORAGE_EXTRA_ALIGNMENT_LOG2;
 use crate::ops::simple::mul;
 use crate::primitives::callbacks::Callbacks;
 use crate::primitives::context::{
-    DeviceAllocation, HostAllocation, ProverContext, UnsafeAccessor, UnsafeMutAccessor,
+    DeviceAllocation, HostAllocation, ProverContext, SchedulerHostAllocation, UnsafeAccessor,
+    UnsafeMutAccessor,
 };
 use crate::primitives::device_structures::{DeviceVectorChunk, DeviceVectorChunkMut};
 use crate::primitives::device_tracing::Range;
@@ -37,15 +35,16 @@ use crate::prover::decoder::DecoderTableTransfer;
 use crate::prover::gkr::backward::{
     apply_base_layer_extra_evaluations_to_workflow_state, clone_backward_claims_for_layer,
     current_backward_seed, fill_backward_claim_point_for_layer,
-    make_deferred_backward_workflow_state, populate_backward_workflow_state, ClaimBufferLayout,
-    GpuGKRBackwardHostKeepalive,
+    make_deferred_backward_workflow_state, ClaimBufferLayout, GpuGKRBackwardHostKeepalive,
 };
-use crate::prover::gkr::backward_kernels::{eq_group_tables_len, launch_build_eq_values_from_point};
+use crate::prover::gkr::backward_kernels::{
+    eq_group_tables_len, launch_build_eq_values_from_point,
+};
 use crate::prover::gkr::base_layer_claims::{
-    clone_base_layer_extra_evaluations_from_caching_relations,
-    clone_base_layer_extra_evaluations_transcript_batches, fill_mem_polys_claims,
+    clone_base_layer_extra_evaluations_from_caching_relations, fill_mem_polys_claims,
     fill_setup_polys_claims, fill_wit_polys_claims,
     schedule_prepare_base_layer_claims_with_sources, GpuGKRBaseLayerClaimsScheduledExecution,
+    GpuGKRBaseLayerTailOutput,
 };
 use crate::prover::gkr::forward::schedule_forward_pass;
 use crate::prover::gkr::setup::{
@@ -444,12 +443,15 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
         "memory trace holder LDE factor must match setup geometry used for the h2d pack",
     );
 
-    // Memory tree caps come from the caller as plain heap Vecs. Keep a WHIR-side copy
-    // (plain Vec<Vec<Digest>>) — no pool-managed HostAllocation and no exec-stream callback.
-    let memory_tree_caps_owned_for_whir: Vec<Vec<Digest>> = memory_tree_caps
+    // Memory tree caps come from the caller as plain heap Vecs. Stage them in the
+    // scheduler-host pinned pool so the per-coset H2D into the slab and the host
+    // callback that mirrors them into `proof.memory_commitment.cap` both read pinned
+    // memory — pageable sources would otherwise force `cudaMemcpyAsync` to fall back
+    // to a synchronous staged copy.
+    let memory_tree_caps_owned_for_whir: Vec<SchedulerHostAllocation<[Digest]>> = memory_tree_caps
         .iter()
-        .map(|c| c.cap.clone())
-        .collect::<Vec<_>>();
+        .map(|c| context.scheduler_host_from_slice(&c.cap))
+        .collect::<CudaResult<Vec<_>>>()?;
 
     let witness_log_lde_factor = stage1_output.witness_trace_holder.log_lde_factor;
     let witness_base_caps_keepalive = stage1_output.witness_trace_holder.take_tree_caps_host();
@@ -595,20 +597,13 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
     let mut d_lookup_challenges: DeviceAllocation<E4> =
         context.alloc(2, AllocationPlacement::BestFit)?;
     crate::ops::blake2s::transcript_squeeze_e4(&mut d_seed, &mut d_lookup_challenges, stream)?;
-
-    // D2H the 2 lookup challenges onto `d2h_stream` via a fork/join pair: exec records
-    // `src_lookup_ready` after the squeeze; d2h waits, then copies. The local join
-    // `d2h_lookup_done` is awaited on exec_stream before `forward_setup.into_host_keepalive()`
-    // drops `d_lookup_challenges`, satisfying the fork/join/drop rule in
-    // `docs/gpu_scheduling_contract.md`.
-    let mut lookup_challenges_host = unsafe { context.alloc_host_uninit_slice::<E4>(2) };
-    let src_lookup_ready = CudaEvent::create_with_flags(CudaEventCreateFlags::DISABLE_TIMING)?;
-    src_lookup_ready.record(stream)?;
-    let d2h_stream = context.get_d2h_stream();
-    d2h_stream.wait_event(&src_lookup_ready, CudaStreamWaitEventFlags::DEFAULT)?;
-    memory_copy_async(&mut lookup_challenges_host, &d_lookup_challenges, d2h_stream)?;
-    let d2h_lookup_done = CudaEvent::create_with_flags(CudaEventCreateFlags::DISABLE_TIMING)?;
-    d2h_lookup_done.record(d2h_stream)?;
+    let mut d_lookup_challenges_for_backward: DeviceAllocation<E4> =
+        context.alloc(2, AllocationPlacement::BestFit)?;
+    memory_copy_async(
+        &mut d_lookup_challenges_for_backward,
+        &d_lookup_challenges,
+        stream,
+    )?;
 
     // `d_bucket2` and `d_transcript_input` can be dropped: exec_stream has queued all reads.
     drop(d_bucket2);
@@ -637,7 +632,9 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
         final_trace_size_log_2,
         context,
     )?;
-    let transcript_handoff = forward_output.schedule_transcript_handoff(context)?;
+    let post_forward_handoff_range = Range::new("gkr.proof.post_forward_handoff")?;
+    post_forward_handoff_range.start(stream)?;
+    let transcript_handoff = forward_output.schedule_transcript_handoff(false, context)?;
     let initial_layer_for_sumcheck = forward_output.initial_layer_for_sumcheck;
     let output_layer_for_sumcheck =
         forward_output.dimension_reducing_inputs[&initial_layer_for_sumcheck].clone();
@@ -729,8 +726,10 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
             for half in 0..2usize {
                 let (dst_ptr, dst_len) = unsafe {
                     if half == 0 {
-                        proof_layout
-                            .output_evaluations_read_device_mut(slab.as_ptr() as *mut u8, output_type)
+                        proof_layout.output_evaluations_read_device_mut(
+                            slab.as_ptr() as *mut u8,
+                            output_type,
+                        )
                     } else {
                         proof_layout.output_evaluations_write_device_mut(
                             slab.as_ptr() as *mut u8,
@@ -742,11 +741,9 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
                 // SAFETY: dst_ptr is inside the live `slab` allocation at a
                 // 16-byte-aligned offset, and ranges for distinct OutputTypes
                 // + halves are disjoint by construction of `ProofLayout`.
-                let dst = unsafe {
-                    era_cudart::slice::DeviceSlice::from_raw_parts_mut(dst_ptr, dst_len)
-                };
-                let src =
-                    &device_flat[flat_offset..flat_offset + reduced_poly_len];
+                let dst =
+                    unsafe { era_cudart::slice::DeviceSlice::from_raw_parts_mut(dst_ptr, dst_len) };
+                let src = &device_flat[flat_offset..flat_offset + reduced_poly_len];
                 memory_copy_async(dst, src, stream)?;
                 flat_offset += reduced_poly_len;
             }
@@ -762,8 +759,11 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
     // layout matches `commit_field_els::<BF, E4>` — E4 = 4 BF limbs, each limb stored as a
     // u32 in Montgomery form. The parity is covered by
     // `ops::blake2s::tests::transcript_squeeze_e4_parity_*`.
-    let d_flat_evals_u32: &era_cudart::slice::DeviceSlice<u32> =
-        unsafe { transcript_handoff.device_flat_evaluations().transmute::<u32>() };
+    let d_flat_evals_u32: &era_cudart::slice::DeviceSlice<u32> = unsafe {
+        transcript_handoff
+            .device_flat_evaluations()
+            .transmute::<u32>()
+    };
     crate::ops::blake2s::transcript_commit(&mut d_seed, d_flat_evals_u32, stream)?;
     let num_challenges = final_trace_size_log_2 + 1;
     let mut d_evaluation_point_and_batching: DeviceAllocation<E4> =
@@ -774,21 +774,11 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
         stream,
     )?;
 
-    // Allocate the (evaluation_point || batching_challenge) pinned host slot; the D2H is
-    // deferred to the post-forward fork/join window on d2h_stream. The device buffer itself
-    // flows into the first backward layer as `initial_d_claim_point_and_batching` (claim_point
-    // + batching challenge, matching the `round_scratch.claim_point` layout). The seed stays
-    // on device and threads into the first backward layer as its `device_seed` — no D2H, no H2D.
-    let mut evaluation_point_and_batching_host =
-        unsafe { context.alloc_host_uninit_slice::<E4>(num_challenges) };
-
-    let evaluation_point_and_batching_accessor = evaluation_point_and_batching_host.get_accessor();
-
+    // The (evaluation_point || batching_challenge) and seed buffers stay device-resident:
+    // `d_evaluation_point_and_batching` flows into the first backward layer as
+    // `initial_d_claim_point_and_batching` (claim_point + batching challenge, matching
+    // the `round_scratch.claim_point` layout); `d_seed` threads through as `device_seed`.
     let backward_state = forward_output.into_dimension_reducing_backward_state();
-    // Join before `forward_setup.into_host_keepalive()` drops `d_lookup_challenges`. The lookup
-    // D2H was scheduled on `d2h_stream` above; exec_stream must wait on its completion before the
-    // underlying pool block can be recycled by a subsequent exec-side alloc.
-    stream.wait_event(&d2h_lookup_done, CudaStreamWaitEventFlags::DEFAULT)?;
     let forward_setup_keepalive = forward_setup.into_host_keepalive();
     let top_layer_claim_layout = top_layer_claim_layout(&output_layer_for_sumcheck);
     let num_top_claims = top_layer_claim_layout.len();
@@ -824,9 +814,9 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
         get_reduce_temp_storage_bytes::<E4>(ReduceOperation::Sum, poly_len as i32)?;
     let mut init_reduce_temp: DeviceAllocation<u8> = context
         .alloc_with_extra_alignment::<u8, CUB_TEMP_STORAGE_EXTRA_ALIGNMENT_LOG2>(
-            init_reduce_temp_bytes,
-            AllocationPlacement::Top,
-        )?;
+        init_reduce_temp_bytes,
+        AllocationPlacement::Top,
+    )?;
     {
         let device_flat_evaluations = transcript_handoff.device_flat_evaluations();
         let mut poly_idx = 0usize;
@@ -851,76 +841,14 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
         }
     }
 
-    // D2H the 8 device-computed claims and the (evaluation_point || batching_challenge) buffer
-    // onto `d2h_stream`. Both sources are written on exec: `d_evaluation_point_and_batching` by
-    // `transcript_squeeze_e4` above and `initial_d_claims` by the `mul`+`reduce` loop. A single
-    // fork event after the last reduce covers both sources; d2h issues the two D2Hs in sequence.
-    // The join (`d2h_setup_done`) is awaited on exec_stream before the consumer callback below.
-    let mut initial_claims_host: HostAllocation<[E4]> =
-        unsafe { context.alloc_host_uninit_slice::<E4>(num_top_claims) };
-    let src_post_forward_ready =
-        CudaEvent::create_with_flags(CudaEventCreateFlags::DISABLE_TIMING)?;
-    src_post_forward_ready.record(stream)?;
-    let d2h_stream = context.get_d2h_stream();
-    d2h_stream.wait_event(&src_post_forward_ready, CudaStreamWaitEventFlags::DEFAULT)?;
-    memory_copy_async(
-        &mut evaluation_point_and_batching_host,
-        &d_evaluation_point_and_batching,
-        d2h_stream,
-    )?;
-    memory_copy_async(&mut initial_claims_host, &initial_d_claims, d2h_stream)?;
-    let d2h_setup_done = CudaEvent::create_with_flags(CudaEventCreateFlags::DISABLE_TIMING)?;
-    d2h_setup_done.record(d2h_stream)?;
-    let initial_claims_host_accessor = initial_claims_host.get_accessor();
-
-    let mut backward_shared_state = make_deferred_backward_workflow_state();
-    let backward_shared_state_handle = UnsafeMutAccessor::new(backward_shared_state.as_mut());
-    let lookup_challenges_read_accessor = lookup_challenges_host.get_accessor();
-    // Join d2h_stream back into exec_stream before the consumer callback reads the host slabs
-    // and writes `backward_shared_state`. The callback stays on exec_stream (write-exclusive
-    // access to shared state remains on exec).
-    stream.wait_event(&d2h_setup_done, CudaStreamWaitEventFlags::DEFAULT)?;
-    callbacks.schedule(
-        {
-            let backward_shared_state = backward_shared_state_handle;
-            let top_layer_claim_layout = top_layer_claim_layout.clone();
-            move || unsafe {
-                let eval_point_and_batching =
-                    evaluation_point_and_batching_accessor.get().to_vec();
-                let (evaluation_point, batching_slice) =
-                    eval_point_and_batching.split_at(num_challenges - 1);
-                let evaluation_point = evaluation_point.to_vec();
-                let batching_challenge = batching_slice[0];
-                // Reconstruct `top_layer_claims` as a BTreeMap keyed by GKRAddress
-                // using the same layout slot mapping that was used to write
-                // claims into `initial_d_claims` on device.
-                let claims_slice = initial_claims_host_accessor.get();
-                let mut top_layer_claims = BTreeMap::new();
-                for address in top_layer_claim_layout.addresses.iter().copied() {
-                    let slot = top_layer_claim_layout.claim_idx(&address) as usize;
-                    top_layer_claims.insert(address, claims_slice[slot]);
-                }
-                let lookup_challenges = lookup_challenges_read_accessor.get();
-                // `workflow_state.seed` (host `Seed`) is initialized to `Seed::default()` —
-                // the first backward layer's start callback reads the field but its value is
-                // dead (overwritten at end-of-layer by the D2H'd advanced device seed). The
-                // initial device seed is threaded separately into the first layer as
-                // `initial_d_seed`.
-                populate_backward_workflow_state(
-                    backward_shared_state,
-                    initial_layer_for_sumcheck + 1,
-                    top_layer_claims,
-                    evaluation_point,
-                    Seed::default(),
-                    batching_challenge,
-                    lookup_challenges[0],
-                    lookup_challenges[1],
-                );
-            }
-        },
-        stream,
-    )?;
-    drop(lookup_challenges_host);
+    // No host mirror of the initial claims / evaluation_point / batching / seed / lookup
+    // challenges is needed on the hot path: backward consumes them as device buffers, and
+    // post-backward overwrites the layer-0 host fields that downstream base-layer / WHIR
+    // setup reads. `backward_shared_state` is created empty and populated by the
+    // post-backward handoff for layer 0.
+    let backward_shared_state = make_deferred_backward_workflow_state();
+    post_forward_handoff_range.end(stream)?;
+    ranges.push(post_forward_handoff_range);
 
     let mut backward_scheduled = backward_state
         .schedule_execute_backward_workflow_from_shared_state(
@@ -931,11 +859,12 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
             d_evaluation_point_and_batching,
             initial_d_claims,
             top_layer_claim_layout,
+            d_lookup_challenges_for_backward,
+            false,
             proof_slab.as_ref(),
             &proof_layout,
             context,
         )?;
-    drop(initial_claims_host);
     let backward_shared_state = backward_scheduled.shared_state_handle();
     let setup_trace_holder = setup_transfer
         .as_ref()
@@ -947,16 +876,24 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
         });
     let mut base_layer_claims_scheduled = schedule_prepare_base_layer_claims_with_sources(
         compiled_circuit.layers[0].clone(),
-        compiled_circuit.trace_len.trailing_zeros() as usize,
-        {
-            let backward_shared_state = backward_shared_state;
-            move |dst| {
-                fill_backward_claim_point_for_layer(backward_shared_state, 0, dst);
-            }
-        },
+        backward_scheduled.final_device_claim_point(),
         {
             let backward_shared_state = backward_shared_state;
             move || clone_backward_claims_for_layer(backward_shared_state, 0)
+        },
+        // Mirror the caching-relations extras into backward state at the end of
+        // the deferred aggregation callback. This fold of the former separate
+        // apply-extras callback removes one host callback from the
+        // post_backward → pre-WHIR window.
+        {
+            let backward_shared_state = backward_shared_state;
+            move |result: &GpuGKRBaseLayerTailOutput<E4>| {
+                apply_base_layer_extra_evaluations_to_workflow_state(
+                    backward_shared_state,
+                    &result.extra_evaluations_from_caching_relations,
+                    &result.extra_evaluations_transcript_batches,
+                );
+            }
         },
         setup_trace_holder,
         &stage1_output.memory_trace_holder,
@@ -966,28 +903,6 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
         context,
     )?;
     let base_layer_claims_shared_state = base_layer_claims_scheduled.shared_state_handle();
-    callbacks.schedule(
-        {
-            let backward_shared_state = backward_shared_state;
-            let base_layer_claims_shared_state = base_layer_claims_shared_state;
-            move || {
-                let extra_evaluations_from_caching_relations =
-                    clone_base_layer_extra_evaluations_from_caching_relations(
-                        base_layer_claims_shared_state,
-                    );
-                let extra_evaluations_transcript_batches =
-                    clone_base_layer_extra_evaluations_transcript_batches(
-                        base_layer_claims_shared_state,
-                    );
-                apply_base_layer_extra_evaluations_to_workflow_state(
-                    backward_shared_state,
-                    &extra_evaluations_from_caching_relations,
-                    &extra_evaluations_transcript_batches,
-                );
-            }
-        },
-        stream,
-    )?;
     // Materialize deferred cosets for setup and memory right before WHIR fold queries.
     // Setup: cosets allocated on demand; partial trees already transferred from host.
     let pre_whir_setup_cosets_range = Range::new("gkr.proof.pre_whir.setup_cosets")?;
@@ -1026,6 +941,13 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
     }
     pre_whir_memory_commit_range.end(stream)?;
     ranges.push(pre_whir_memory_commit_range);
+
+    let post_backward_handoff_range = Range::new("gkr.proof.post_backward_handoff")?;
+    post_backward_handoff_range.start(stream)?;
+    let post_backward_callbacks = backward_scheduled.schedule_post_backward_handoff(context)?;
+    post_backward_handoff_range.end(stream)?;
+    ranges.push(post_backward_handoff_range);
+    callbacks.extend(post_backward_callbacks);
 
     let mut whir_scheduled = if let Some(setup_transfer) = setup_transfer.as_mut() {
         let setup_base_caps_keepalive = setup_transfer.trace_holder.take_tree_caps_host();
@@ -1079,6 +1001,7 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
             compiled_circuit.trace_len.trailing_zeros() as usize,
             proof_slab.as_ref(),
             &proof_layout,
+            Some(base_layer_claims_scheduled.take_pending_aggregation()),
             context,
         )?
     } else {
@@ -1140,6 +1063,7 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
             compiled_circuit.trace_len.trailing_zeros() as usize,
             proof_slab.as_ref(),
             &proof_layout,
+            Some(base_layer_claims_scheduled.take_pending_aggregation()),
             context,
         )?
     };
@@ -1155,11 +1079,7 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
         .as_ref()
         .expect("proof slab must be allocated for prove()");
     let mut mirror = unsafe { context.alloc_host_uninit_slice::<u8>(proof_layout.total_bytes) };
-    memory_copy_async(
-        unsafe { mirror.get_mut_accessor().get_mut() },
-        slab,
-        stream,
-    )?;
+    memory_copy_async(unsafe { mirror.get_mut_accessor().get_mut() }, slab, stream)?;
     let proof_host_mirror_accessor = mirror.get_accessor();
     let proof_host_mirror = Some(mirror);
     callbacks.schedule(
@@ -1188,15 +1108,11 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
                     .parse_sumcheck_intermediate_values(slab_bytes, extra_by_layer);
                 let mut whir_proof = proof_layout_for_parse.parse_whir_proof(slab_bytes);
                 let host_whir_proof = take_scheduled_whir_proof(whir_shared_state);
-                whir_proof.setup_commitment.queries =
-                    host_whir_proof.setup_commitment.queries;
-                whir_proof.memory_commitment.queries =
-                    host_whir_proof.memory_commitment.queries;
-                whir_proof.witness_commitment.queries =
-                    host_whir_proof.witness_commitment.queries;
+                whir_proof.setup_commitment.queries = host_whir_proof.setup_commitment.queries;
+                whir_proof.memory_commitment.queries = host_whir_proof.memory_commitment.queries;
+                whir_proof.witness_commitment.queries = host_whir_proof.witness_commitment.queries;
                 whir_proof.final_monomials = host_whir_proof.final_monomials;
-                whir_proof.intermediate_whir_oracles =
-                    host_whir_proof.intermediate_whir_oracles;
+                whir_proof.intermediate_whir_oracles = host_whir_proof.intermediate_whir_oracles;
                 let grand_product_accumulator_computed =
                     grand_product_accumulator_from_explicit_evaluations(
                         &final_explicit_evaluations,
