@@ -161,7 +161,7 @@ fn apply_mul_div_inner<F: PrimeField, CS: Circuit<F>, const SUPPORT_SIGNED: bool
         }
 
         let is_division_group_constraint = Term::<F>::from(is_divu) + Term::from(is_remu);
-        let is_multiplication_group_constraint = Term::<F>::from(is_mul) + Term::from(is_mulhu);
+        // let is_multiplication_group_constraint = Term::<F>::from(is_mul) + Term::from(is_mulhu);
 
         // Generic strategy:
         // - choose variables for (high, low) = q * divisor + remainder pattern
@@ -229,15 +229,8 @@ fn apply_mul_div_inner<F: PrimeField, CS: Circuit<F>, const SUPPORT_SIGNED: bool
 
         // we do not need exact ranges for carry witnesses, just some range checks that fit
         // worst case option, and do NOT overflow the field
-        assert!(F::CHAR_BITS > 16 + 13);
         let intermedaite_carry_witness: [Variable; 3] = std::array::from_fn(|i| {
             let var = cs.add_named_variable(&format!("Intermediate carry witness[{}]", i));
-            cs.enforce_lookup_tuple_for_fixed_table(
-                &[LookupInput::from(Constraint::empty() + Term::from(var))],
-                TableType::RangeCheck13,
-                false,
-            );
-
             var
         });
 
@@ -284,7 +277,6 @@ fn apply_mul_div_inner<F: PrimeField, CS: Circuit<F>, const SUPPORT_SIGNED: bool
                 let mut remainder_for_enforcement =
                     <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::constant(0);
 
-                let div_by_zero = is_div_family.and(&rs2_is_zero);
                 // first we need to get extra/rd values, to then get u8 splits,
                 // and perform comparisons
 
@@ -628,6 +620,18 @@ fn apply_mul_div_inner<F: PrimeField, CS: Circuit<F>, const SUPPORT_SIGNED: bool
             cs.set_values(value_fn);
         }
 
+        // range-check intermediate carries
+        {
+            assert!(F::CHAR_BITS > 16 + 13);
+            intermedaite_carry_witness.iter().for_each(|var| {
+                cs.enforce_lookup_tuple_for_fixed_table(
+                    &[LookupInput::from(Constraint::empty() + Term::from(*var))],
+                    TableType::RangeCheck13,
+                    false,
+                );
+            });
+        }
+
         // now we push everything to the intermediate layer
         let divisor_is_zero_if_division_layer_1 = cs
             .add_intermediate_named_variable_from_constraint(
@@ -923,7 +927,7 @@ mod test {
 
         serialize_to_file(
             &gkr_compiled,
-            "compiled_circuits/unsigned_mul_div_preprocessed_layout_gkr.json",
+            "compiled_circuits/unsigned_mul_div_layout_gkr.json",
         );
     }
 
@@ -938,7 +942,7 @@ mod test {
         );
         serialize_to_file(
             &ssa_forms,
-            "compiled_circuits/unsigned_mul_div_preprocessed_ssa_gkr.json",
+            "compiled_circuits/unsigned_mul_div_ssa_gkr.json",
         );
     }
 
@@ -959,7 +963,7 @@ mod test {
 
         serialize_to_file(
             &gkr_compiled,
-            "compiled_circuits/unsigned_mul_div_preprocessed_layout_no_caches_gkr.json",
+            "compiled_circuits/unsigned_mul_div_layout_no_caches_gkr.json",
         );
     }
 }

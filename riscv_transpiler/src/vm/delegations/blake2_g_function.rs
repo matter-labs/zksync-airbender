@@ -201,7 +201,7 @@ pub(crate) fn blake2_g_function_call<
 
     // But timestamp needs 1 less bump
     state.timestamp += ((num_invocations - 1) as TimestampScalar) * TIMESTAMP_STEP;
-    state.counters.bump_blake2_round_function(num_invocations);
+    state.counters.bump_blake2_g_function(num_invocations);
     E::on_delegation(
         state,
         BLAKE2S_G_FUNCTION_DELEGATION_CSR_REGISTER,

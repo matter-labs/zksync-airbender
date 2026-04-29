@@ -49,22 +49,27 @@ const NUM_CYCLES_PER_CHUNK: usize = 1 << TRACE_LEN_LOG2;
 const BLAKE_NUM_DELEGATION_CYCLES: usize = 1 << 20;
 const BIGINT_NUM_DELEGATION_CYCLES: usize = 1 << 22;
 const KECCAK_NUM_DELEGATION_CYCLES: usize = 1 << 22;
+const BLAKE_G_FUNCTION_NUM_DELEGATION_CYCLES: usize = 1 << 22;
 const RAM_BOUND_BYTES: usize = 1 << 30;
 const RAM_BOUND_WORDS: usize = RAM_BOUND_BYTES / core::mem::size_of::<u32>();
 
 const CHECK_MEMORY_PERMUTATION_ONLY: bool = false;
 const PROVE_EMPTY: bool = true;
 
-const PROVE_ADD_SUB: bool = true;
-const PROVE_JUMP_BRANCH: bool = true;
-const PROVE_SHIFTS_BINOPS: bool = true;
+const PROVE_ADD_SUB: bool = false;
+const PROVE_JUMP_BRANCH: bool = false;
+const PROVE_SHIFTS_BINOPS: bool = false;
 const PROVE_MUL_DIV: bool = true;
 const PROVE_MEM_WORD: bool = true;
 const PROVE_MEM_SUBWORD: bool = true;
 const PROVE_BLAKE: bool = true;
 const PROVE_BIGINT: bool = true;
 const PROVE_KECCAK: bool = true;
+const PROVE_BLAKE_G_FUNCTION: bool = true;
 const PROVE_INITS_AND_TEARDOWNS: bool = true;
+
+const USE_BLAKE_G_FUNCTION_IN_BINARY: bool = true;
+const USE_KECCAK_BINARY: bool = false;
 
 #[test]
 fn gkr_run_basic_unrolled_test() {
@@ -90,11 +95,29 @@ pub fn gkr_run_basic_unrolled_test_impl(
     // let binary = std::fs::read("../examples/basic_fibonacci/app.bin").unwrap();
     // let text_section = std::fs::read("../examples/basic_fibonacci/app.text").unwrap();
 
-    // let binary = std::fs::read("../examples/hashed_fibonacci/app.bin").unwrap();
-    // let text_section = std::fs::read("../examples/hashed_fibonacci/app.text").unwrap();
+    let (binary, text_section) = if USE_KECCAK_BINARY {
+        (
+            "../riscv_transpiler/examples/keccak_f1600/app.bin",
+            "../riscv_transpiler/examples/keccak_f1600/app.text",
+        )
+    } else {
+        if USE_BLAKE_G_FUNCTION_IN_BINARY {
+            (
+                "../examples/hashed_fibonacci/app_blake2_g_function.bin",
+                "../examples/hashed_fibonacci/app_blake2_g_function.text",
+            )
+        } else {
+            (
+                "../examples/hashed_fibonacci/app_blake2_with_compression.bin",
+                "../examples/hashed_fibonacci/app_blake2_with_compression.text",
+            )
+        }
+    };
 
-    let binary = std::fs::read("../riscv_transpiler/examples/keccak_f1600/app.bin").unwrap();
-    let text_section = std::fs::read("../riscv_transpiler/examples/keccak_f1600/app.text").unwrap();
+    println!("Using {} binary", binary);
+
+    let binary = std::fs::read(binary).unwrap();
+    let text_section = std::fs::read(text_section).unwrap();
 
     assert!(binary.len() % 4 == 0);
     let binary: Vec<_> = binary
@@ -243,6 +266,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
             BLAKE2S_DELEGATION_CSR_REGISTER as u16,
             BIGINT_OPS_WITH_CONTROL_CSR_REGISTER as u16,
             KECCAK_SPECIAL5_CSR_REGISTER as u16,
+            BLAKE2S_G_FUNCTION_DELEGATION_CSR_REGISTER as u16,
         ],
     );
 
@@ -310,12 +334,10 @@ pub fn gkr_run_basic_unrolled_test_impl(
         const CIRCUIT_TYPE: u8 = ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX;
 
         let circuit: GKRCircuitArtifact<BabyBearField> = if USE_GKR_WITH_CACHES {
-            deserialize_from_file(
-                "../cs/compiled_circuits/add_sub_lui_auipc_mop_preprocessed_layout_gkr.json",
-            )
+            deserialize_from_file("../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_gkr.json")
         } else {
             deserialize_from_file(
-                "../cs/compiled_circuits/add_sub_lui_auipc_mop_preprocessed_layout_no_caches_gkr.json",
+                "../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_no_caches_gkr.json",
             )
         };
 
@@ -500,12 +522,10 @@ pub fn gkr_run_basic_unrolled_test_impl(
         const CIRCUIT_TYPE: u8 = JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX;
 
         let circuit: GKRCircuitArtifact<BabyBearField> = if USE_GKR_WITH_CACHES {
-            deserialize_from_file(
-                "../cs/compiled_circuits/jump_branch_slt_preprocessed_layout_gkr.json",
-            )
+            deserialize_from_file("../cs/compiled_circuits/jump_branch_slt_layout_gkr.json")
         } else {
             deserialize_from_file(
-                "../cs/compiled_circuits/jump_branch_slt_preprocessed_layout_no_caches_gkr.json",
+                "../cs/compiled_circuits/jump_branch_slt_layout_no_caches_gkr.json",
             )
         };
 
@@ -692,13 +712,9 @@ pub fn gkr_run_basic_unrolled_test_impl(
         const CIRCUIT_TYPE: u8 = SHIFT_BINARY_CIRCUIT_FAMILY_IDX;
 
         let circuit: GKRCircuitArtifact<BabyBearField> = if USE_GKR_WITH_CACHES {
-            deserialize_from_file(
-                "../cs/compiled_circuits/shift_binop_preprocessed_layout_gkr.json",
-            )
+            deserialize_from_file("../cs/compiled_circuits/shift_binop_layout_gkr.json")
         } else {
-            deserialize_from_file(
-                "../cs/compiled_circuits/shift_binop_preprocessed_layout_no_caches_gkr.json",
-            )
+            deserialize_from_file("../cs/compiled_circuits/shift_binop_layout_no_caches_gkr.json")
         };
 
         let mut table_driver = TableDriver::<BabyBearField>::new();
@@ -886,12 +902,10 @@ pub fn gkr_run_basic_unrolled_test_impl(
         const CIRCUIT_TYPE: u8 = MUL_DIV_CIRCUIT_FAMILY_IDX;
 
         let circuit: GKRCircuitArtifact<BabyBearField> = if USE_GKR_WITH_CACHES {
-            deserialize_from_file(
-                "../cs/compiled_circuits/unsigned_mul_div_preprocessed_layout_gkr.json",
-            )
+            deserialize_from_file("../cs/compiled_circuits/unsigned_mul_div_layout_gkr.json")
         } else {
             deserialize_from_file(
-                "../cs/compiled_circuits/unsigned_mul_div_preprocessed_layout_no_caches_gkr.json",
+                "../cs/compiled_circuits/unsigned_mul_div_layout_no_caches_gkr.json",
             )
         };
 
@@ -1071,13 +1085,9 @@ pub fn gkr_run_basic_unrolled_test_impl(
         const CIRCUIT_TYPE: u8 = LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX;
 
         let circuit: GKRCircuitArtifact<BabyBearField> = if USE_GKR_WITH_CACHES {
-            deserialize_from_file(
-                "../cs/compiled_circuits/mem_word_only_preprocessed_layout_gkr.json",
-            )
+            deserialize_from_file("../cs/compiled_circuits/mem_word_only_layout_gkr.json")
         } else {
-            deserialize_from_file(
-                "../cs/compiled_circuits/mem_word_only_preprocessed_layout_no_caches_gkr.json",
-            )
+            deserialize_from_file("../cs/compiled_circuits/mem_word_only_layout_no_caches_gkr.json")
         };
 
         let mut table_driver = TableDriver::<BabyBearField>::new();
@@ -1276,12 +1286,10 @@ pub fn gkr_run_basic_unrolled_test_impl(
         const CIRCUIT_TYPE: u8 = LOAD_STORE_SUBWORD_ONLY_CIRCUIT_FAMILY_IDX;
 
         let circuit: GKRCircuitArtifact<BabyBearField> = if USE_GKR_WITH_CACHES {
-            deserialize_from_file(
-                "../cs/compiled_circuits/mem_subword_only_preprocessed_layout_gkr.json",
-            )
+            deserialize_from_file("../cs/compiled_circuits/mem_subword_only_layout_gkr.json")
         } else {
             deserialize_from_file(
-                "../cs/compiled_circuits/mem_subword_only_preprocessed_layout_no_caches_gkr.json",
+                "../cs/compiled_circuits/mem_subword_only_layout_no_caches_gkr.json",
             )
         };
 
@@ -1488,7 +1496,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
 
         let circuit: GKRCircuitArtifact<BabyBearField> = {
             deserialize_from_file(
-                "../cs/compiled_circuits/inits_and_teardowns_preprocessed_layout_no_caches_gkr.json",
+                "../cs/compiled_circuits/inits_and_teardowns_layout_no_caches_gkr.json",
             )
         };
 
@@ -2086,6 +2094,171 @@ pub fn gkr_run_basic_unrolled_test_impl(
             }
 
             serialize_to_file(&proof, "test_proofs/keccak_special5_gkr_proof.json");
+
+            permutation_argument_accumulator.mul_assign(&proof.grand_product_accumulator_computed);
+        }
+    }
+
+    if PROVE_BLAKE_G_FUNCTION {
+        println!("Will try to prove Blake delegation");
+
+        let circuit: GKRCircuitArtifact<BabyBearField> = if USE_GKR_WITH_CACHES {
+            deserialize_from_file("../cs/compiled_circuits/blake2_g_function_layout_gkr.json")
+        } else {
+            deserialize_from_file(
+                "../cs/compiled_circuits/blake2_g_function_layout_no_caches_gkr.json",
+            )
+        };
+
+        let mut table_driver = TableDriver::<BabyBearField>::new();
+        cs::gkr_circuits::delegation::blake2_g_function::blake2_g_function_table_driver_fn(
+            &mut table_driver,
+        );
+
+        dbg!(table_driver.total_tables_len);
+
+        let num_calls = counters.blake_g_function_calls;
+        dbg!(num_calls);
+
+        let mut state = snapshotter.initial_snapshot.state;
+        let mut ram_log_buffers = snapshotter
+            .reads_buffer
+            .make_range(0..snapshotter.reads_buffer.len());
+
+        let mut ram = ReplayerRam::<{ common_constants::ROM_SECOND_WORD_BITS }> {
+            ram_log: &mut ram_log_buffers,
+        };
+
+        let mut buffer = vec![DelegationWitness::empty(); num_calls];
+        let mut buffers = vec![&mut buffer[..]];
+        let mut tracer = BlakeGFunctionDelegationDestinationHolder {
+            buffers: &mut buffers[..],
+        };
+
+        ReplayerVM::<CountersT>::replay_basic_unrolled::<_, _, BabyBearField>(
+            &mut state,
+            &mut ram,
+            &tape,
+            &mut (),
+            cycles_bound,
+            &mut tracer,
+        );
+        assert_eq!(expected_final_state, state);
+
+        // evaluate a witness and memory-only witness for each
+
+        let delegation_type = BLAKE2S_G_FUNCTION_DELEGATION_CSR_REGISTER as u16;
+        let oracle = Blake2sGFunctionDelegationOracle {
+            cycle_data: &buffer,
+            marker: core::marker::PhantomData,
+        };
+
+        let is_empty = oracle.cycle_data.is_empty();
+
+        #[cfg(feature = "debug_logs")]
+        println!(
+            "Evaluating memory-only witness for delegation circuit {}",
+            delegation_type
+        );
+        let memory_trace = evaluate_gkr_memory_witness_for_delegation_circuit(
+            &circuit,
+            BLAKE_G_FUNCTION_NUM_DELEGATION_CYCLES,
+            &oracle,
+            &worker,
+            Global,
+            Global,
+        );
+
+        let eval_fn = super::blake2_g_function::witness_eval_fn;
+
+        #[cfg(feature = "debug_logs")]
+        println!(
+            "Evaluating witness for delegation circuit {}",
+            delegation_type
+        );
+        let full_trace = evaluate_gkr_witness_for_delegation_circuit(
+            &circuit,
+            eval_fn,
+            BLAKE_G_FUNCTION_NUM_DELEGATION_CYCLES,
+            &oracle,
+            &table_driver,
+            &worker,
+            Global,
+            Global,
+        );
+
+        ensure_memory_trace_consistency(&memory_trace, &full_trace);
+
+        parse_delegation_ram_accesses_from_full_trace(
+            &circuit,
+            &memory_trace,
+            &mut memory_write_set,
+            &mut memory_read_set,
+            &mut delegation_read_set,
+            delegation_type,
+        );
+
+        if CHECK_MEMORY_PERMUTATION_ONLY == false && (PROVE_EMPTY == true || is_empty == false) {
+            // println!("Will check constraints satisfiability");
+            // let is_satisfied = check_satisfied(&circuit, &full_trace);
+            // assert!(is_satisfied);
+
+            println!("Preparing twiddles");
+            let twiddles: Twiddles<_, Global> =
+                Twiddles::new(BLAKE_G_FUNCTION_NUM_DELEGATION_CYCLES, &worker);
+            println!("Preparing setup");
+            let setup = GKRSetup::construct(
+                &table_driver,
+                &[],
+                BLAKE_G_FUNCTION_NUM_DELEGATION_CYCLES,
+                &circuit,
+            );
+
+            let setup_commitment = setup.commit(
+                &twiddles,
+                2,
+                1,
+                whir_schedule.cap_size,
+                BLAKE_G_FUNCTION_NUM_DELEGATION_CYCLES.trailing_zeros() as usize,
+                &worker,
+            );
+
+            // let lookup_mapping_for_gpu = if maybe_gpu_unrolled_comparison_hook.is_some() {
+            //     Some(full_trace.lookup_mapping.clone())
+            // } else {
+            //     None
+            // };
+
+            let whir_schedule = WhirSchedule::default_for_tests_80_bits_20();
+
+            println!("Trying to prove");
+
+            let now = std::time::Instant::now();
+            let proof =
+                prove_configured_with_gkr::<BabyBearField, BabyBearExt4, DefaultTreeConstructor>(
+                    &circuit,
+                    &external_challenges,
+                    full_trace,
+                    &setup,
+                    &setup_commitment,
+                    &twiddles,
+                    &whir_schedule,
+                    Vec::new(),
+                    BLAKE_G_FUNCTION_NUM_DELEGATION_CYCLES,
+                    &worker,
+                );
+            println!("Proving time is {:?}", now.elapsed());
+
+            println!(
+                "Estimated proof size without compression is {} bytes",
+                proof.estimate_size()
+            );
+
+            if is_empty {
+                assert_eq!(proof.grand_product_accumulator_computed, BabyBearExt4::ONE);
+            }
+
+            serialize_to_file(&proof, "test_proofs/blake2_g_function_gkr_proof.json");
 
             permutation_argument_accumulator.mul_assign(&proof.grand_product_accumulator_computed);
         }

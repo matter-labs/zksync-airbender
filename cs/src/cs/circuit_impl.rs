@@ -871,6 +871,11 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
                             placer.assign_u16(var, &value);
                         };
                         self.set_values(value_fn);
+                    } else {
+                        let value_fn = move |placer: &mut Self::WitnessPlacer| {
+                            placer.assume_assigned(var);
+                        };
+                        self.set_values(value_fn);
                     }
                 }
 
@@ -1251,6 +1256,18 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
             execute,
             Invariant::Substituted((Placeholder::ExecuteOpcodeFamilyCycle, 0)),
         );
+        if Self::ASSUME_MEMORY_VALUES_ASSIGNED == false {
+            let value_fn = move |placer: &mut Self::WitnessPlacer| {
+                let value = placer.get_oracle_boolean(Placeholder::ExecuteOpcodeFamilyCycle);
+                placer.assign_mask(execute, &value);
+            };
+            self.set_values(value_fn);
+        } else {
+            let value_fn = move |placer: &mut Self::WitnessPlacer| {
+                placer.assume_assigned(execute);
+            };
+            self.set_values(value_fn);
+        }
         use crate::constraint::Term;
         self.add_constraint((Term::from(execute) - Term::from(1u32)) * Term::from(execute));
 

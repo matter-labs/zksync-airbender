@@ -366,12 +366,20 @@ pub fn define_keccak_special5_delegation_circuit<
             // control is properly range checked later by bitmasks, so don't worry :)
             let control_with_exe =
                 Constraint::from(control) + Term::from(1 << 11) * Term::from(execute);
-            let [s1, s2, s3, s4, s5, s6] = [s1, s2, s3, s4, s5, s6].map(Constraint::from);
-            cs.enforce_lookup_tuple_for_fixed_table(
-                &[control_with_exe.clone(), s1, s2, s3, s4, s5, s6].map(LookupInput::from),
-                TableType::KeccakPermutationIndices,
-                false,
-            );
+            if CS::ASSUME_MEMORY_VALUES_ASSIGNED {
+                let [s1, s2, s3, s4, s5, s6] = [s1, s2, s3, s4, s5, s6].map(Constraint::from);
+                cs.enforce_lookup_tuple_for_fixed_table(
+                    &[control_with_exe.clone(), s1, s2, s3, s4, s5, s6].map(LookupInput::from),
+                    TableType::KeccakPermutationIndices,
+                    false,
+                );
+            } else {
+                cs.set_variables_from_lookup_constrained(
+                    &[control_with_exe.clone()].map(LookupInput::from),
+                    &[s1, s2, s3, s4, s5, s6],
+                    LookupQueryTableType::Constant(TableType::KeccakPermutationIndices),
+                );
+            }
         }
         [s1, s2, s3, s4, s5, s6]
     };

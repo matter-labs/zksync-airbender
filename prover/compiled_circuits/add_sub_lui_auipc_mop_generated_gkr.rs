@@ -1,1 +1,138 @@
-# [allow (unused_variables)] fn eval_fn_1 < 'a , 'b : 'a , W : WitnessTypeSet < BabyBearField > , P : WitnessProxy < BabyBearField , W > + 'b > (witness_proxy : & 'a mut P) where W :: Field : Copy , W :: Mask : Copy , W :: U32 : Copy , W :: U16 : Copy , W :: U8 : Copy , W :: I32 : Copy { let v_0 = witness_proxy . get_oracle_value_u32 (Placeholder :: ExternalOracle) ; let v_1 = witness_proxy . get_memory_place_u16 (18usize) ; let v_2 = witness_proxy . get_memory_place_u16 (19usize) ; let v_3 = witness_proxy . get_witness_place_u16 (0usize) ; let v_4 = witness_proxy . get_witness_place_u16 (1usize) ; let v_5 = witness_proxy . get_witness_place_boolean (2usize) ; let v_6 = witness_proxy . get_witness_place_boolean (3usize) ; let v_7 = witness_proxy . get_witness_place_boolean (4usize) ; let v_8 = witness_proxy . get_witness_place_boolean (5usize) ; let v_9 = witness_proxy . get_witness_place_boolean (6usize) ; let v_10 = witness_proxy . get_witness_place_boolean (7usize) ; let v_11 = witness_proxy . get_witness_place_boolean (9usize) ; let v_12 = witness_proxy . get_memory_place_u16 (2usize) ; let v_13 = witness_proxy . get_memory_place_u16 (3usize) ; let v_14 = witness_proxy . get_memory_place_u16 (7usize) ; let v_15 = witness_proxy . get_memory_place_u16 (8usize) ; let v_16 = v_13 . widen () ; let v_17 = v_16 . shl (16u32) ; let v_18 = v_12 . widen () ; let mut v_19 = v_17 ; W :: U32 :: add_assign (& mut v_19 , & v_18) ; let v_20 = W :: Field :: from_integer (v_19) ; let v_21 = v_15 . widen () ; let v_22 = v_21 . shl (16u32) ; let v_23 = v_14 . widen () ; let mut v_24 = v_22 ; W :: U32 :: add_assign (& mut v_24 , & v_23) ; let v_25 = W :: Field :: from_integer (v_24) ; let mut v_26 = v_20 ; W :: Field :: mul_assign (& mut v_26 , & v_25) ; let v_27 = v_26 . as_integer () ; let v_28 = W :: U32 :: constant (2013265921u32) ; let mut v_29 = v_27 ; W :: U32 :: sub_assign (& mut v_29 , & v_28) ; let mut v_30 = v_20 ; W :: Field :: sub_assign (& mut v_30 , & v_25) ; let v_31 = v_30 . as_integer () ; let mut v_32 = v_31 ; W :: U32 :: sub_assign (& mut v_32 , & v_28) ; let mut v_33 = v_20 ; W :: Field :: add_assign (& mut v_33 , & v_25) ; let v_34 = v_33 . as_integer () ; let mut v_35 = v_34 ; W :: U32 :: sub_assign (& mut v_35 , & v_28) ; let v_36 = W :: U32 :: constant (0u32) ; let v_37 = WitnessComputationCore :: select (& v_8 , & v_35 , & v_36) ; let v_38 = WitnessComputationCore :: select (& v_9 , & v_32 , & v_37) ; let v_39 = WitnessComputationCore :: select (& v_10 , & v_29 , & v_38) ; let v_40 = v_39 . truncate () ; witness_proxy . set_witness_place_u16 (10usize , v_40) ; let v_42 = v_39 . shr (16u32) ; let v_43 = v_42 . truncate () ; witness_proxy . set_witness_place_u16 (11usize , v_43) ; let v_45 = v_27 . truncate () ; let v_46 = W :: U16 :: constant (1u16) ; let v_47 = W :: U16 :: overflowing_sub (& v_45 , & v_46) . 1 ; let v_48 = v_31 . truncate () ; let v_49 = W :: U16 :: overflowing_sub (& v_48 , & v_46) . 1 ; let v_50 = v_34 . truncate () ; let v_51 = W :: U16 :: overflowing_sub (& v_50 , & v_46) . 1 ; let v_52 = W :: U16 :: overflowing_add (& v_1 , & v_3) . 1 ; let v_53 = W :: U16 :: overflowing_sub (& v_12 , & v_14) . 1 ; let mut v_54 = v_12 ; W :: U16 :: sub_assign (& mut v_54 , & v_14) ; let v_55 = W :: U16 :: overflowing_sub (& v_54 , & v_3) . 1 ; let v_56 = W :: Mask :: or (& v_53 , & v_55) ; let v_57 = W :: U16 :: overflowing_add (& v_12 , & v_14) . 1 ; let mut v_58 = v_12 ; W :: U16 :: add_assign (& mut v_58 , & v_14) ; let v_59 = W :: U16 :: overflowing_add (& v_58 , & v_3) . 1 ; let v_60 = W :: Mask :: or (& v_57 , & v_59) ; let v_61 = W :: Mask :: constant (false) ; let v_62 = W :: Mask :: select (& v_5 , & v_60 , & v_61) ; let v_63 = W :: Mask :: select (& v_6 , & v_56 , & v_62) ; let v_64 = W :: Mask :: select (& v_7 , & v_52 , & v_63) ; let v_65 = W :: Mask :: select (& v_8 , & v_51 , & v_64) ; let v_66 = W :: Mask :: select (& v_9 , & v_49 , & v_65) ; let v_67 = W :: Mask :: select (& v_10 , & v_47 , & v_66) ; witness_proxy . set_witness_place_boolean (12usize , v_67) ; let v_69 = W :: U32 :: overflowing_sub (& v_27 , & v_28) . 1 ; let v_70 = W :: U32 :: overflowing_sub (& v_31 , & v_28) . 1 ; let v_71 = W :: U32 :: overflowing_sub (& v_34 , & v_28) . 1 ; let v_72 = v_2 . widen () ; let v_73 = v_72 . shl (16u32) ; let v_74 = v_1 . widen () ; let mut v_75 = v_73 ; W :: U32 :: add_assign (& mut v_75 , & v_74) ; let v_76 = v_4 . widen () ; let v_77 = v_76 . shl (16u32) ; let v_78 = v_3 . widen () ; let mut v_79 = v_77 ; W :: U32 :: add_assign (& mut v_79 , & v_78) ; let v_80 = W :: U32 :: overflowing_add (& v_75 , & v_79) . 1 ; let v_81 = W :: U32 :: overflowing_sub (& v_19 , & v_24) . 1 ; let v_82 = W :: U32 :: overflowing_add (& v_19 , & v_24) . 1 ; let mut v_83 = v_19 ; W :: U32 :: add_assign (& mut v_83 , & v_24) ; let v_84 = W :: U32 :: overflowing_add (& v_83 , & v_79) . 1 ; let v_85 = W :: Mask :: or (& v_82 , & v_84) ; let v_86 = W :: Mask :: select (& v_5 , & v_85 , & v_61) ; let v_87 = W :: Mask :: select (& v_6 , & v_81 , & v_86) ; let v_88 = W :: Mask :: select (& v_7 , & v_80 , & v_87) ; let v_89 = W :: Mask :: select (& v_8 , & v_71 , & v_88) ; let v_90 = W :: Mask :: select (& v_9 , & v_70 , & v_89) ; let v_91 = W :: Mask :: select (& v_10 , & v_69 , & v_90) ; let v_92 = W :: Mask :: select (& v_11 , & v_61 , & v_91) ; witness_proxy . set_witness_place_boolean (13usize , v_92) ; witness_proxy . set_witness_place (14usize , v_26) ; } # [allow (dead_code)] pub fn evaluate_witness_fn < 'a , 'b : 'a , W : WitnessTypeSet < BabyBearField > , P : WitnessProxy < BabyBearField , W > + 'b > (witness_proxy : & 'a mut P) where W :: Field : Copy , W :: Mask : Copy , W :: U32 : Copy , W :: U16 : Copy , W :: U8 : Copy , W :: I32 : Copy { eval_fn_1 (witness_proxy) ; }
+#[allow(unused_variables)]
+fn eval_fn_1<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyBearField, W> + 'b>(
+    witness_proxy: &'a mut P,
+) where
+    W::Field: Copy,
+    W::Mask: Copy,
+    W::U32: Copy,
+    W::U16: Copy,
+    W::U8: Copy,
+    W::I32: Copy,
+{
+    let v_0 = witness_proxy.get_oracle_value_u32(Placeholder::ExternalOracle);
+    let v_1 = witness_proxy.get_memory_place_u16(18usize);
+    let v_2 = witness_proxy.get_memory_place_u16(19usize);
+    let v_3 = witness_proxy.get_witness_place_u16(0usize);
+    let v_4 = witness_proxy.get_witness_place_u16(1usize);
+    let v_5 = witness_proxy.get_witness_place_boolean(2usize);
+    let v_6 = witness_proxy.get_witness_place_boolean(3usize);
+    let v_7 = witness_proxy.get_witness_place_boolean(4usize);
+    let v_8 = witness_proxy.get_witness_place_boolean(5usize);
+    let v_9 = witness_proxy.get_witness_place_boolean(6usize);
+    let v_10 = witness_proxy.get_witness_place_boolean(7usize);
+    let v_11 = witness_proxy.get_witness_place_boolean(9usize);
+    let v_12 = witness_proxy.get_memory_place_u16(2usize);
+    let v_13 = witness_proxy.get_memory_place_u16(3usize);
+    let v_14 = witness_proxy.get_memory_place_u16(7usize);
+    let v_15 = witness_proxy.get_memory_place_u16(8usize);
+    let v_16 = v_13.widen();
+    let v_17 = v_16.shl(16u32);
+    let v_18 = v_12.widen();
+    let mut v_19 = v_17;
+    W::U32::add_assign(&mut v_19, &v_18);
+    let v_20 = W::Field::from_integer(v_19);
+    let v_21 = v_15.widen();
+    let v_22 = v_21.shl(16u32);
+    let v_23 = v_14.widen();
+    let mut v_24 = v_22;
+    W::U32::add_assign(&mut v_24, &v_23);
+    let v_25 = W::Field::from_integer(v_24);
+    let mut v_26 = v_20;
+    W::Field::mul_assign(&mut v_26, &v_25);
+    let v_27 = v_26.as_integer();
+    let v_28 = W::U32::constant(2013265921u32);
+    let mut v_29 = v_27;
+    W::U32::sub_assign(&mut v_29, &v_28);
+    let mut v_30 = v_20;
+    W::Field::sub_assign(&mut v_30, &v_25);
+    let v_31 = v_30.as_integer();
+    let mut v_32 = v_31;
+    W::U32::sub_assign(&mut v_32, &v_28);
+    let mut v_33 = v_20;
+    W::Field::add_assign(&mut v_33, &v_25);
+    let v_34 = v_33.as_integer();
+    let mut v_35 = v_34;
+    W::U32::sub_assign(&mut v_35, &v_28);
+    let v_36 = W::U32::constant(0u32);
+    let v_37 = WitnessComputationCore::select(&v_8, &v_35, &v_36);
+    let v_38 = WitnessComputationCore::select(&v_9, &v_32, &v_37);
+    let v_39 = WitnessComputationCore::select(&v_10, &v_29, &v_38);
+    let v_40 = v_39.truncate();
+    witness_proxy.set_witness_place_u16(10usize, v_40);
+    let v_42 = v_39.shr(16u32);
+    let v_43 = v_42.truncate();
+    witness_proxy.set_witness_place_u16(11usize, v_43);
+    let v_45 = v_27.truncate();
+    let v_46 = W::U16::constant(1u16);
+    let v_47 = W::U16::overflowing_sub(&v_45, &v_46).1;
+    let v_48 = v_31.truncate();
+    let v_49 = W::U16::overflowing_sub(&v_48, &v_46).1;
+    let v_50 = v_34.truncate();
+    let v_51 = W::U16::overflowing_sub(&v_50, &v_46).1;
+    let v_52 = W::U16::overflowing_add(&v_1, &v_3).1;
+    let v_53 = W::U16::overflowing_sub(&v_12, &v_14).1;
+    let mut v_54 = v_12;
+    W::U16::sub_assign(&mut v_54, &v_14);
+    let v_55 = W::U16::overflowing_sub(&v_54, &v_3).1;
+    let v_56 = W::Mask::or(&v_53, &v_55);
+    let v_57 = W::U16::overflowing_add(&v_12, &v_14).1;
+    let mut v_58 = v_12;
+    W::U16::add_assign(&mut v_58, &v_14);
+    let v_59 = W::U16::overflowing_add(&v_58, &v_3).1;
+    let v_60 = W::Mask::or(&v_57, &v_59);
+    let v_61 = W::Mask::constant(false);
+    let v_62 = W::Mask::select(&v_5, &v_60, &v_61);
+    let v_63 = W::Mask::select(&v_6, &v_56, &v_62);
+    let v_64 = W::Mask::select(&v_7, &v_52, &v_63);
+    let v_65 = W::Mask::select(&v_8, &v_51, &v_64);
+    let v_66 = W::Mask::select(&v_9, &v_49, &v_65);
+    let v_67 = W::Mask::select(&v_10, &v_47, &v_66);
+    witness_proxy.set_witness_place_boolean(12usize, v_67);
+    let v_69 = W::U32::overflowing_sub(&v_27, &v_28).1;
+    let v_70 = W::U32::overflowing_sub(&v_31, &v_28).1;
+    let v_71 = W::U32::overflowing_sub(&v_34, &v_28).1;
+    let v_72 = v_2.widen();
+    let v_73 = v_72.shl(16u32);
+    let v_74 = v_1.widen();
+    let mut v_75 = v_73;
+    W::U32::add_assign(&mut v_75, &v_74);
+    let v_76 = v_4.widen();
+    let v_77 = v_76.shl(16u32);
+    let v_78 = v_3.widen();
+    let mut v_79 = v_77;
+    W::U32::add_assign(&mut v_79, &v_78);
+    let v_80 = W::U32::overflowing_add(&v_75, &v_79).1;
+    let v_81 = W::U32::overflowing_sub(&v_19, &v_24).1;
+    let v_82 = W::U32::overflowing_add(&v_19, &v_24).1;
+    let mut v_83 = v_19;
+    W::U32::add_assign(&mut v_83, &v_24);
+    let v_84 = W::U32::overflowing_add(&v_83, &v_79).1;
+    let v_85 = W::Mask::or(&v_82, &v_84);
+    let v_86 = W::Mask::select(&v_5, &v_85, &v_61);
+    let v_87 = W::Mask::select(&v_6, &v_81, &v_86);
+    let v_88 = W::Mask::select(&v_7, &v_80, &v_87);
+    let v_89 = W::Mask::select(&v_8, &v_71, &v_88);
+    let v_90 = W::Mask::select(&v_9, &v_70, &v_89);
+    let v_91 = W::Mask::select(&v_10, &v_69, &v_90);
+    let v_92 = W::Mask::select(&v_11, &v_61, &v_91);
+    witness_proxy.set_witness_place_boolean(13usize, v_92);
+    witness_proxy.set_witness_place(14usize, v_26);
+}
+#[allow(dead_code)]
+pub fn evaluate_witness_fn<
+    'a,
+    'b: 'a,
+    W: WitnessTypeSet<BabyBearField>,
+    P: WitnessProxy<BabyBearField, W> + 'b,
+>(
+    witness_proxy: &'a mut P,
+) where
+    W::Field: Copy,
+    W::Mask: Copy,
+    W::U32: Copy,
+    W::U16: Copy,
+    W::U8: Copy,
+    W::I32: Copy,
+{
+    eval_fn_1(witness_proxy);
+}
