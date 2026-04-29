@@ -10822,6 +10822,52 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
                 return Err(E::gkr_lookup_identity_failed(2usize));
             }
         }
+        unsafe {
+            let pt = state.prev_point.get_unchecked(..22usize);
+            let mut result: BabyBearExt4 = BabyBearExt4::ZERO;
+            let mut prefactor: BabyBearField = BabyBearField::ONE;
+            let mut k: usize = 0;
+            while k < 16usize {
+                let mut t = *pt.get_unchecked(22usize - 1 - k);
+                field_ops::mul_assign_by_base(&mut t, &prefactor);
+                field_ops::add_assign(&mut result, &t);
+                field_ops::double(&mut prefactor);
+                k += 1;
+            }
+            while k < 22usize {
+                let mut t: BabyBearExt4 = BabyBearExt4::ONE;
+                let p = pt.get_unchecked(22usize - 1 - k);
+                field_ops::sub_assign(&mut t, &*p);
+                field_ops::mul_assign(&mut result, &t);
+                k += 1;
+            }
+            if result != *state.prev_claims.get_unchecked(261usize) {
+                return Err(E::gkr_virtual_setup_eval_mismatch(261usize));
+            }
+        }
+        unsafe {
+            let pt = state.prev_point.get_unchecked(..22usize);
+            let mut result: BabyBearExt4 = BabyBearExt4::ZERO;
+            let mut prefactor: BabyBearField = BabyBearField::ONE;
+            let mut k: usize = 0;
+            while k < 19usize {
+                let mut t = *pt.get_unchecked(22usize - 1 - k);
+                field_ops::mul_assign_by_base(&mut t, &prefactor);
+                field_ops::add_assign(&mut result, &t);
+                field_ops::double(&mut prefactor);
+                k += 1;
+            }
+            while k < 22usize {
+                let mut t: BabyBearExt4 = BabyBearExt4::ONE;
+                let p = pt.get_unchecked(22usize - 1 - k);
+                field_ops::sub_assign(&mut t, &*p);
+                field_ops::mul_assign(&mut result, &t);
+                k += 1;
+            }
+            if result != *state.prev_claims.get_unchecked(262usize) {
+                return Err(E::gkr_virtual_setup_eval_mismatch(262usize));
+            }
+        }
         Ok(GKRVerifierOutput {
             base_layer_claims: state.prev_claims,
             base_layer_addrs: LAYER_0_SORTED_ADDRS,

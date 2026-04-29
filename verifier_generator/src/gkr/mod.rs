@@ -8,7 +8,8 @@ pub use crate::utils::{
     compute_max_pow, transform_gkr_address, BATCHING_CHALLENGE_EXTRA, DIM_REDUCE_EVAL_POINTS,
     STANDARD_EVAL_POINTS, SUMCHECK_POLY_COEFFS,
 };
-use prover::cs::definitions::GKRAddress;
+use prover::cs::definitions::{GKRAddress, VirtualSetupPoly};
+use prover::common_constants::TIMESTAMP_COLUMNS_NUM_BITS;
 use prover::cs::gkr_compiler::{
     GKRCircuitArtifact, GKRLayerDescription, NoFieldGKRCacheRelation, OutputType,
 };
@@ -292,7 +293,162 @@ pub fn generate_gkr_common<MW: FieldWrapper>() -> TokenStream {
     }
 }
 
-fn generate_cache_relation_checks<MW: FieldWrapper>(
+fn build_virtual_setup_eval_checks<MW: FieldWrapper>(
+    layer_0_target_addrs: &[GKRAddress],
+    trace_len_log_2: usize,
+) -> TokenStream {
+    let mut out = TokenStream::new();
+
+    let mut its_low_idx: Option<usize> = None;
+    let mut its_high_idx: Option<usize> = None;
+
+    for (idx, addr) in layer_0_target_addrs.iter().enumerate() {
+        let GKRAddress::VirtualSetup(poly) = addr else {
+            continue;
+        };
+        match poly {
+            VirtualSetupPoly::RangeCheck16Bits => {
+                out.extend(emit_range_check_eval_check::<MW>(idx, 16, trace_len_log_2));
+            }
+            VirtualSetupPoly::RangeCheckTimestamp => {
+                out.extend(emit_range_check_eval_check::<MW>(
+                    idx,
+                    TIMESTAMP_COLUMNS_NUM_BITS as usize,
+                    trace_len_log_2,
+                ));
+            }
+            VirtualSetupPoly::InitsAndTeardownsLow => {
+                its_low_idx = Some(idx);
+            }
+            VirtualSetupPoly::InitsAndTeardownsHigh => {
+                its_high_idx = Some(idx);
+            }
+        }
+    }
+
+    if its_low_idx.is_some() || its_high_idx.is_some() {
+        let lo = its_low_idx.expect("InitsAndTeardownsLow expected when High is present");
+        let hi = its_high_idx.expect("InitsAndTeardownsHigh expected when Low is present");
+        out.extend(emit_inits_and_teardowns_eval_check::<MW>(
+            lo,
+            hi,
+            2,
+            trace_len_log_2,
+        ));
+    }
+
+    out
+}
+
+fn emit_range_check_eval_check<MW: FieldWrapper>(
+    idx: usize,
+    bits: usize,
+    n: usize,
+) -> TokenStream {
+    let field_struct = MW::field_struct();
+    let quartic_struct = MW::quartic_struct();
+    let field_one = MW::field_one();
+    let quartic_zero = MW::quartic_zero();
+    let quartic_one = MW::quartic_one();
+
+    let mul_t_pre = MW::mul_assign_by_base(quote! { t }, quote! { prefactor });
+    let add_res_t = MW::add_assign(quote! { result }, quote! { t });
+    let dbl_pre = MW::double(quote! { prefactor });
+    let sub_t_p = MW::sub_assign(quote! { t }, quote! { *p });
+    let mul_res_t = MW::mul_assign(quote! { result }, quote! { t });
+
+    quote! {
+        unsafe {
+            let pt = state.prev_point.get_unchecked(..#n);
+            let mut result: #quartic_struct = #quartic_zero;
+            let mut prefactor: #field_struct = #field_one;
+            let mut k: usize = 0;
+            while k < #bits {
+                let mut t = *pt.get_unchecked(#n - 1 - k);
+                #mul_t_pre;
+                #add_res_t;
+                #dbl_pre;
+                k += 1;
+            }
+            while k < #n {
+                let mut t: #quartic_struct = #quartic_one;
+                let p = pt.get_unchecked(#n - 1 - k);
+                #sub_t_p;
+                #mul_res_t;
+                k += 1;
+            }
+            if result != *state.prev_claims.get_unchecked(#idx) {
+                return Err(E::gkr_virtual_setup_eval_mismatch(#idx));
+            }
+        }
+    }
+}
+
+
+fn emit_inits_and_teardowns_eval_check<MW: FieldWrapper>(
+    lo_idx: usize,
+    hi_idx: usize,
+    word_bits: usize,
+    n: usize,
+) -> TokenStream {
+    let field_struct = MW::field_struct();
+    let quartic_struct = MW::quartic_struct();
+    let field_one = MW::field_one();
+    let quartic_zero = MW::quartic_zero();
+
+    let mul_t_pre = MW::mul_assign_by_base(quote! { t }, quote! { prefactor });
+    let add_low_t = MW::add_assign(quote! { low_eval }, quote! { t });
+    let add_high_t = MW::add_assign(quote! { high_eval }, quote! { t });
+    let dbl_pre = MW::double(quote! { prefactor });
+
+    let take_count = 16 - word_bits;
+
+    quote! {
+        unsafe {
+            let pt = state.prev_point.get_unchecked(..#n);
+
+            let mut low_eval: #quartic_struct = #quartic_zero;
+            {
+                let mut prefactor: #field_struct = #field_one;
+                let mut wb: usize = 0;
+                while wb < #word_bits {
+                    #dbl_pre;
+                    wb += 1;
+                }
+                let mut k: usize = 0;
+                while k < #take_count {
+                    let mut t = *pt.get_unchecked(#n - 1 - k);
+                    #mul_t_pre;
+                    #add_low_t;
+                    #dbl_pre;
+                    k += 1;
+                }
+            }
+
+            let mut high_eval: #quartic_struct = #quartic_zero;
+            {
+                let mut prefactor: #field_struct = #field_one;
+                let mut k: usize = 0;
+                while k < #n - #take_count {
+                    let mut t = *pt.get_unchecked(#n - 1 - #take_count - k);
+                    #mul_t_pre;
+                    #add_high_t;
+                    #dbl_pre;
+                    k += 1;
+                }
+            }
+
+            if low_eval != *state.prev_claims.get_unchecked(#lo_idx) {
+                return Err(E::gkr_virtual_setup_eval_mismatch(#lo_idx));
+            }
+            if high_eval != *state.prev_claims.get_unchecked(#hi_idx) {
+                return Err(E::gkr_virtual_setup_eval_mismatch(#hi_idx));
+            }
+        }
+    }
+}
+
+fn generate_cache_relation_checks<MW: FieldWrapper, F: PrimeField>(
     layer: &GKRLayerDescription,
     target_addrs: &[GKRAddress],
     layer_idx: usize,
@@ -1128,6 +1284,23 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
         }
     }
 
+    let virtual_setup_checks = if standard_sorted_addrs.is_empty() {
+        TokenStream::new()
+    } else {
+        use std::collections::BTreeSet;
+        let regular: BTreeSet<GKRAddress> = standard_sorted_addrs[0].iter().copied().collect();
+        let extras = collect_extra_addrs_from_cached_relations(
+            &compiled_circuit.layers[0],
+            &standard_sorted_addrs[0],
+        );
+        let mut merged = regular;
+        for a in extras {
+            merged.insert(a);
+        }
+        let layer_0_target_addrs: Vec<GKRAddress> = merged.into_iter().collect();
+        build_virtual_setup_eval_checks::<MW>(&layer_0_target_addrs, trace_len_log_2)
+    };
+
     main_body.extend(quote! {
         state.batching_challenge = draw_single_field_el(ts);
 
@@ -1135,6 +1308,8 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
         let mut permutation_write_product: #quartic_struct = #quartic_one;
 
         #output_checks
+
+        #virtual_setup_checks
 
         Ok(GKRVerifierOutput {
             base_layer_claims: state.prev_claims,

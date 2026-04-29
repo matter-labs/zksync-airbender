@@ -3722,6 +3722,44 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
             permutation_read_product = read_product;
             permutation_write_product = write_product;
         }
+        unsafe {
+            let pt = state.prev_point.get_unchecked(..24usize);
+            let mut low_eval: BabyBearExt4 = BabyBearExt4::ZERO;
+            {
+                let mut prefactor: BabyBearField = BabyBearField::ONE;
+                let mut wb: usize = 0;
+                while wb < 2usize {
+                    field_ops::double(&mut prefactor);
+                    wb += 1;
+                }
+                let mut k: usize = 0;
+                while k < 14usize {
+                    let mut t = *pt.get_unchecked(24usize - 1 - k);
+                    field_ops::mul_assign_by_base(&mut t, &prefactor);
+                    field_ops::add_assign(&mut low_eval, &t);
+                    field_ops::double(&mut prefactor);
+                    k += 1;
+                }
+            }
+            let mut high_eval: BabyBearExt4 = BabyBearExt4::ZERO;
+            {
+                let mut prefactor: BabyBearField = BabyBearField::ONE;
+                let mut k: usize = 0;
+                while k < 24usize - 14usize {
+                    let mut t = *pt.get_unchecked(24usize - 1 - 14usize - k);
+                    field_ops::mul_assign_by_base(&mut t, &prefactor);
+                    field_ops::add_assign(&mut high_eval, &t);
+                    field_ops::double(&mut prefactor);
+                    k += 1;
+                }
+            }
+            if low_eval != *state.prev_claims.get_unchecked(64usize) {
+                return Err(E::gkr_virtual_setup_eval_mismatch(64usize));
+            }
+            if high_eval != *state.prev_claims.get_unchecked(65usize) {
+                return Err(E::gkr_virtual_setup_eval_mismatch(65usize));
+            }
+        }
         Ok(GKRVerifierOutput {
             base_layer_claims: state.prev_claims,
             base_layer_addrs: LAYER_0_SORTED_ADDRS,
