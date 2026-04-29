@@ -3143,9 +3143,14 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
                 let shared_state = shared_state_handle;
                 move || unsafe {
                     let mut monomials = final_monomials_accessor.get().to_vec();
-                    bitreverse_enumeration_inplace(&mut monomials)
+                    bitreverse_enumeration_inplace(&mut monomials);
                     commit_field_els::<BF, E4>(seed_accessor.get_mut(), &monomials);
-                    shared_state.get_mut().proof.as_mut().unwrap().final_monomials = monomials;
+                    shared_state
+                        .get_mut()
+                        .proof
+                        .as_mut()
+                        .unwrap()
+                        .final_monomials = monomials;
                 }
             },
             stream,
