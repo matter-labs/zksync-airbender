@@ -3134,10 +3134,10 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
             {
                 let shared_state = shared_state_handle;
                 move || unsafe {
-                    let monomials = final_monomials_accessor.get();
-                    commit_field_els::<BF, E4>(seed_accessor.get_mut(), monomials);
-                    shared_state.get_mut().proof.as_mut().unwrap().final_monomials =
-                        monomials.to_vec();
+                    let mut monomials = final_monomials_accessor.get().to_vec();
+                    bitreverse_enumeration_inplace(&mut monomials);
+                    commit_field_els::<BF, E4>(seed_accessor.get_mut(), &monomials);
+                    shared_state.get_mut().proof.as_mut().unwrap().final_monomials = monomials;
                 }
             },
             stream,
@@ -4342,8 +4342,12 @@ mod tests {
     }
 
     #[cfg(not(no_cuda))]
-    fn run_whir_initial_state_matches_cpu(log_count: usize) {
-        let context = make_test_context(256, 32);
+    fn run_whir_initial_state_matches_cpu(log_count: usize, is_large: bool) {
+        let context = if is_large {
+            make_test_context(64 * 1024, 1024)
+        } else {
+            make_test_context(256, 32)
+        };
         let worker = Worker::new();
         let count = 1 << log_count;
         let memory_columns = vec![
@@ -4486,7 +4490,7 @@ mod tests {
     #[cfg(not(no_cuda))]
     #[serial]
     fn whir_initial_state_matches_cpu_small() {
-        run_whir_initial_state_matches_cpu(3);
+        run_whir_initial_state_matches_cpu(3, false);
     }
 
     #[test]
@@ -4494,7 +4498,7 @@ mod tests {
     #[serial]
     #[ignore]
     fn whir_initial_state_matches_cpu_large() {
-        run_whir_initial_state_matches_cpu(MIN_LOG_N_FOR_MULTISTAGE_KERNELS + 1);
+        run_whir_initial_state_matches_cpu(MIN_LOG_N_FOR_MULTISTAGE_KERNELS + 1, true);
     }
 
     #[test]
