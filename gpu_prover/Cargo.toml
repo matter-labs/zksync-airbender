@@ -12,7 +12,7 @@ build = "build/main.rs"
 
 [build-dependencies]
 cmake = "0.1"
-era_cudart_sys = "0.154"
+era_cudart_sys = "=0.156.0"
 
 [dependencies]
 blake2s_u32 = { workspace = true }
@@ -28,8 +28,8 @@ worker = { workspace = true }
 itertools = { workspace = true }
 log = { workspace = true }
 
-era_cudart = "0.154"
-era_cudart_sys = "0.154"
+era_cudart = "=0.156.0"
+era_cudart_sys = "=0.156.0"
 
 crossbeam-channel = "0.5"
 crossbeam-utils = "0.8"
@@ -46,7 +46,7 @@ log_gpu_stages_timings = []
 [dev-dependencies]
 # execution_utils = { workspace = true }
 prover = { workspace = true, features = ["test"] }
-rand = { workspace = true }
+rand = { workspace = true, features = ["std", "thread_rng", "std_rng"] }
 riscv_common = { workspace = true }
 setups = { workspace = true, features = ["witness_eval_fn"] }
 trace_holder = { workspace = true }
