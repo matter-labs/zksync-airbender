@@ -47,7 +47,7 @@ use crate::prover::gkr::backward::{eq_group_tables_len, launch_build_eq_values_f
 use crate::prover::pow::{schedule_pow_verify_and_query_indexes, PowAndQueryIndexesKeepalives};
 use crate::prover::proof_layout::ProofLayout;
 use crate::prover::trace_holder::TraceHolder;
-use crate::prover::whir::GpuWhirExtensionOracle, GpuWhirExtensionQuery;
+use crate::prover::whir::{GpuWhirExtensionOracle, GpuWhirExtensionQuery};
 use crate::prover::whir_kernels::{
     accumulate_whir_base_columns, deserialize_whir_e4_columns, partially_evaluate_monomials_by_ref,
     serialize_whir_e4_columns, whir_fold_split_half_in_place,
