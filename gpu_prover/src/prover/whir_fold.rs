@@ -33,7 +33,7 @@ use crate::ops::simple::{add, add_into_y, mul, mul_into_x, set_to_zero};
 use crate::ops::transpose::transpose;
 use crate::primitives::callbacks::Callbacks;
 use crate::primitives::context::{
-    DeviceAllocation, HostAllocation, ProverContext, SchedulerHostAllocation, UnsafeMutAccessor,
+    DeviceAllocation, HostAllocation, ProverContext, UnsafeMutAccessor,
 };
 use crate::primitives::device_structures::{
     DeviceMatrix, DeviceMatrixChunk, DeviceMatrixImpl, DeviceMatrixMut, DeviceMatrixOwnsAllocation,
@@ -46,8 +46,8 @@ use crate::primitives::static_host::{
 use crate::prover::gkr::backward::{eq_group_tables_len, launch_build_eq_values_from_point};
 use crate::prover::pow::{schedule_pow_verify_and_query_indexes, PowAndQueryIndexesKeepalives};
 use crate::prover::proof_layout::ProofLayout;
-use crate::prover::trace_holder::{get_tree_caps, TraceHolder};
-use crate::prover::whir::{e4_coeffs_to_vectorized, GpuWhirExtensionOracle, GpuWhirExtensionQuery};
+use crate::prover::trace_holder::TraceHolder;
+use crate::prover::whir::GpuWhirExtensionOracle, GpuWhirExtensionQuery;
 use crate::prover::whir_kernels::{
     accumulate_whir_base_columns, deserialize_whir_e4_columns, partially_evaluate_monomials_by_ref,
     serialize_whir_e4_columns, whir_fold_split_half_in_place,
@@ -56,18 +56,14 @@ use crate::prover::whir_kernels::{
 
 const EXT4_DEGREE: usize = <E4 as FieldExtension<BF>>::DEGREE;
 
-/// Phase 3: H2D-copy a base-layer Merkle cap from multiple per-coset host
-/// sources into the slab's `whir.{setup,memory,witness}.cap` range.
-/// `coset_sources[i]` must be the cap for natural coset index `i`. The slab
-/// layout stores cosets in "stage1 position" order, so we iterate
-/// `stage1_pos = 0..lde_factor` and read from
-/// `coset_sources[bitreverse_index(stage1_pos, log_lde_factor)]` — this
-/// matches the ordering used by `fill_full_cap_from_accessors` /
-/// `fill_full_cap_from_slices` for the host `proof.*_commitment.cap.cap`
-/// vec. `None` slab is a no-op (test paths).
+/// D2D-copy the device-resident unified base-layer Merkle cap into the slab's
+/// `whir.{setup,memory,witness}.cap` range. The unified cap is already in the
+/// canonical bit-reversed coset order (`stage1_pos = 0..lde_factor`) that the
+/// slab and the verifier-side proof object expect, so this is a single
+/// contiguous D2D — no per-coset H2Ds, no host pointer tables, no gather
+/// kernel. `None` slab is a no-op (test paths).
 fn copy_base_layer_cap_to_slab(
-    coset_sources: &[&[Digest]],
-    log_lde_factor: u32,
+    unified_device_cap: &DeviceAllocation<Digest>,
     proof_slab: Option<&DeviceAllocation<u8>>,
     proof_layout: &ProofLayout,
     kind: crate::prover::proof_layout::WhirBaseLayerKind,
@@ -81,28 +77,20 @@ fn copy_base_layer_cap_to_slab(
     if dst_len_u32 == 0 {
         return Ok(());
     }
-    let lde_factor = 1usize << log_lde_factor;
-    assert_eq!(coset_sources.len(), lde_factor);
     let digest_u32_words = crate::prover::proof_layout::DIGEST_U32_WORDS;
-    let mut offset_u32 = 0usize;
-    for stage1_pos in 0..lde_factor {
-        let natural_coset_index = bitreverse_index(stage1_pos, log_lde_factor);
-        let src_digests = coset_sources[natural_coset_index];
-        let src_len_u32 = src_digests.len() * digest_u32_words;
-        // SAFETY: `Digest = [u32; DIGEST_U32_WORDS]` is transparent over
-        // `[u32]`; reinterpreting the host slice as `[u32]` is layout-safe.
-        let src_u32 =
-            unsafe { std::slice::from_raw_parts(src_digests.as_ptr() as *const u32, src_len_u32) };
-        // SAFETY: `dst_ptr + offset_u32` is inside the live slab; per-coset
-        // sub-ranges are disjoint by construction.
-        let dst = unsafe {
-            era_cudart::slice::DeviceSlice::from_raw_parts_mut(dst_ptr.add(offset_u32), src_len_u32)
-        };
-        memory_copy_async(dst, src_u32, stream)?;
-        offset_u32 += src_len_u32;
-    }
-    assert_eq!(offset_u32, dst_len_u32);
-    Ok(())
+    assert_eq!(
+        unified_device_cap.len() * digest_u32_words,
+        dst_len_u32,
+        "unified cap size must match slab whir base cap range",
+    );
+    // SAFETY: `Digest = [u32; DIGEST_U32_WORDS]` is transparent over `[u32]`;
+    // reinterpreting the device allocation as a `DeviceSlice<u32>` is
+    // layout-safe.
+    let src_u32 = unsafe { unified_device_cap.transmute::<u32>() };
+    // SAFETY: `dst_ptr` points at a 16-byte-aligned, live, disjoint region
+    // inside the slab allocation.
+    let dst = unsafe { era_cudart::slice::DeviceSlice::from_raw_parts_mut(dst_ptr, dst_len_u32) };
+    memory_copy_async(dst, src_u32, stream)
 }
 
 /// Phase 3: H2D-copy one intermediate WHIR query's pinned host data into
@@ -186,16 +174,12 @@ fn copy_intermediate_query_to_slab(
     Ok(())
 }
 
-/// Phase 3: H2D-copy the single-coset Merkle cap digests (flat `[u32]` tail of
-/// each `Digest = [u32; DIGEST_U32_WORDS]`) from an
-/// oracle's host-pinned tree caps into the slab's
+/// D2D-copy the intermediate WHIR oracle's unified device cap into the slab's
 /// `whir.intermediate[round].cap` range. Intermediate WHIR oracles are built
-/// with `log_lde_factor = 0`, so each oracle has exactly one host cap
-/// accessor. Stream ordering sequences the H2D after the commit kernel's
-/// implicit D2H into the pinned accessor. `None` slab is a no-op (test
-/// paths).
+/// with `log_lde_factor = 0`, so the unified cap is the single per-coset cap.
+/// `None` slab is a no-op (test paths).
 fn copy_intermediate_cap_to_slab(
-    cap_accessors: &[crate::primitives::context::UnsafeAccessor<[Digest]>],
+    unified_device_cap: &DeviceAllocation<Digest>,
     proof_slab: Option<&DeviceAllocation<u8>>,
     proof_layout: &ProofLayout,
     round: usize,
@@ -209,27 +193,18 @@ fn copy_intermediate_cap_to_slab(
     if dst_len_u32 == 0 {
         return Ok(());
     }
-    assert_eq!(
-        cap_accessors.len(),
-        1,
-        "intermediate oracle cap expects exactly one coset accessor (log_lde_factor = 0)",
-    );
-    let src_digests: &[Digest] = unsafe { cap_accessors[0].get() };
     let digest_u32_words = crate::prover::proof_layout::DIGEST_U32_WORDS;
-    assert_eq!(src_digests.len() * digest_u32_words, dst_len_u32);
-    // SAFETY: `Digest = [u32; DIGEST_U32_WORDS]` is transparent over
-    // `[u32]`; reinterpreting the host slice as `[u32]` is layout-safe.
-    let src_u32 = unsafe {
-        std::slice::from_raw_parts(
-            src_digests.as_ptr() as *const u32,
-            src_digests.len() * digest_u32_words,
-        )
-    };
+    assert_eq!(
+        unified_device_cap.len() * digest_u32_words,
+        dst_len_u32,
+        "intermediate unified cap size must match slab whir intermediate cap range",
+    );
+    // SAFETY: `Digest = [u32; DIGEST_U32_WORDS]` is transparent over `[u32]`.
+    let src_u32 = unsafe { unified_device_cap.transmute::<u32>() };
     // SAFETY: `dst_ptr` points at a 16-byte-aligned, live, disjoint region
     // inside the slab allocation.
     let dst = unsafe { era_cudart::slice::DeviceSlice::from_raw_parts_mut(dst_ptr, dst_len_u32) };
-    memory_copy_async(dst, src_u32, stream)?;
-    Ok(())
+    memory_copy_async(dst, src_u32, stream)
 }
 
 /// Phase 3: H2D-copy the single-element `ood_value_host` pinned host buffer
@@ -532,6 +507,23 @@ pub(crate) struct GpuWhirFoldScheduledExecution {
     _base_queries: Vec<[Vec<ScheduledUnknownCosetBaseFieldQueryKeepalive>; 3]>,
     #[allow(dead_code)]
     _recursive_queries: Vec<Vec<crate::prover::whir::GpuWhirScheduledExtensionQueryKeepalive>>,
+    // Pinned host buffers that back D2H readbacks of the base-layer unified
+    // device caps and the per-round intermediate WHIR oracle caps. The
+    // start_callbacks / final_callbacks copy from these into the host-side
+    // `proof.*_commitment.commitment.cap.cap` fields, so they must outlive
+    // those callbacks.
+    #[allow(dead_code)]
+    _witness_cap_host_for_proof: HostAllocation<[Digest]>,
+    #[allow(dead_code)]
+    _memory_cap_host_for_proof: HostAllocation<[Digest]>,
+    #[allow(dead_code)]
+    _setup_cap_host_for_proof: Option<HostAllocation<[Digest]>>,
+    #[allow(dead_code)]
+    _intermediate_oracle_cap_hosts: Vec<HostAllocation<[Digest]>>,
+    // Trace holders of retired intermediate WHIR oracles — kept alive so any
+    // scheduled D2D/D2H reads against their unified device cap remain valid.
+    #[allow(dead_code)]
+    _recursive_caps_keepalive: Vec<crate::prover::whir::GpuWhirExtensionOracleKeepalive>,
     // Host buffer that backs the final-round monomial-form readback. The callback
     // that commits it to the transcript and writes `proof.final_monomials` holds a
     // raw accessor into this allocation, so it must outlive `final_callbacks`.
@@ -709,106 +701,20 @@ fn schedule_reduce_outputs_readback(
     Ok(host)
 }
 
-fn full_cap_from_trace_holder(trace_holder: &TraceHolder<BF>) -> MerkleTreeCapVarLength {
-    MerkleTreeCapVarLength {
-        cap: trace_holder
-            .get_tree_caps()
-            .into_iter()
-            .flat_map(|subcap| subcap.cap)
-            .collect(),
-    }
-}
-
-fn full_cap_from_host_caps(
-    tree_caps: &[HostAllocation<[Digest]>],
-    log_lde_factor: u32,
-) -> MerkleTreeCapVarLength {
-    MerkleTreeCapVarLength {
-        cap: get_tree_caps(
-            &tree_caps
-                .iter()
-                .map(HostAllocation::get_accessor)
-                .collect::<Vec<_>>(),
-            log_lde_factor,
-        )
-        .into_iter()
-        .flat_map(|subcap| subcap.cap)
-        .collect(),
-    }
-}
-
-fn full_cap_from_accessors(
-    accessors: &[crate::primitives::context::UnsafeAccessor<[Digest]>],
-    log_lde_factor: u32,
-) -> MerkleTreeCapVarLength {
-    MerkleTreeCapVarLength {
-        cap: get_tree_caps(accessors, log_lde_factor)
-            .into_iter()
-            .flat_map(|subcap| subcap.cap)
-            .collect(),
-    }
-}
-
-fn cap_digest_count_from_accessors(
-    accessors: &[crate::primitives::context::UnsafeAccessor<[Digest]>],
-) -> usize {
-    accessors
-        .iter()
-        .map(|accessor| unsafe { accessor.get().len() })
-        .sum()
-}
-
-fn fill_full_cap_from_accessors(
-    dst: &mut [Digest],
-    accessors: &[crate::primitives::context::UnsafeAccessor<[Digest]>],
-    log_lde_factor: u32,
-) {
-    if accessors.is_empty() {
-        assert!(dst.is_empty());
-        return;
-    }
-    let lde_factor = 1usize << log_lde_factor;
-    assert_eq!(accessors.len(), lde_factor);
-    let expected_len = accessors
-        .iter()
-        .map(|accessor| unsafe { accessor.get().len() })
-        .sum::<usize>();
-    assert_eq!(
-        dst.len(),
-        expected_len,
-        "WHIR cap destination length mismatch"
-    );
-    let mut offset = 0;
-    for stage1_pos in 0..lde_factor {
-        let natural_coset_index = bitreverse_index(stage1_pos, log_lde_factor);
-        let src = unsafe { accessors[natural_coset_index].get() };
-        let len = src.len();
-        dst[offset..offset + len].copy_from_slice(src);
-        offset += len;
-    }
-}
-
-fn fill_full_cap_from_slices(dst: &mut [Digest], caps: &[&[Digest]], log_lde_factor: u32) {
-    if caps.is_empty() {
-        assert!(dst.is_empty());
-        return;
-    }
-    let lde_factor = 1usize << log_lde_factor;
-    assert_eq!(caps.len(), lde_factor);
-    let expected_len = caps.iter().map(|c| c.len()).sum::<usize>();
-    assert_eq!(
-        dst.len(),
-        expected_len,
-        "WHIR cap destination length mismatch"
-    );
-    let mut offset = 0;
-    for stage1_pos in 0..lde_factor {
-        let natural_coset_index = bitreverse_index(stage1_pos, log_lde_factor);
-        let src = caps[natural_coset_index];
-        let len = src.len();
-        dst[offset..offset + len].copy_from_slice(src);
-        offset += len;
-    }
+/// Schedules a D2H of the unified device cap into a freshly allocated pinned
+/// host buffer on `exec_stream`. Returns the buffer; the caller captures an
+/// accessor into a downstream callback that fills the host-side
+/// `proof.*_commitment.commitment.cap.cap`. The host buffer outlives every
+/// scheduled op holding into it via the proof-job keepalive.
+fn schedule_unified_cap_d2h(
+    unified_device_cap: &DeviceAllocation<Digest>,
+    context: &ProverContext,
+    stream: &era_cudart::stream::CudaStream,
+) -> CudaResult<HostAllocation<[Digest]>> {
+    let cap_size = unified_device_cap.len();
+    let mut host = unsafe { context.alloc_host_uninit_slice::<Digest>(cap_size) };
+    memory_copy_async(&mut host, unified_device_cap, stream)?;
+    Ok(host)
 }
 
 fn make_preallocated_base_queries(
@@ -1937,16 +1843,10 @@ fn schedule_accumulate_eq_sample_in_place_device(
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn schedule_gpu_whir_fold_with_sources(
     memory_trace_holder: &mut TraceHolder<BF>,
-    memory_base_caps_keepalive: Vec<SchedulerHostAllocation<[Digest]>>,
-    fill_mem_polys_claims: impl Fn(&mut [E4]) + Send + Sync + 'static,
+    memory_unified_device_cap: &DeviceAllocation<Digest>,
     witness_trace_holder: &mut TraceHolder<BF>,
-    witness_base_caps_keepalive: Vec<HostAllocation<[Digest]>>,
-    fill_wit_polys_claims: impl Fn(&mut [E4]) + Send + Sync + 'static,
     setup_trace_holder: &mut TraceHolder<BF>,
-    setup_base_caps_keepalive: Vec<HostAllocation<[Digest]>>,
-    fill_setup_polys_claims: impl Fn(&mut [E4]) + Send + Sync + 'static,
-    base_layer_point_len: usize,
-    fill_base_layer_point: impl Fn(&mut [E4]) + Send + Sync + 'static,
+    base_layer_point_device: &DeviceSlice<E4>,
     original_lde_factor: usize,
     batching_challenge_source: impl Fn() -> E4 + Send + Sync + 'static,
     whir_steps_schedule: Vec<usize>,
@@ -2009,23 +1909,10 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
     let schedule_range = Range::new("gkr.whir.schedule")?;
     schedule_range.start(stream)?;
 
-    let witness_and_setup_base_caps_keepalive =
-        [witness_base_caps_keepalive, setup_base_caps_keepalive];
     let total_sumcheck_polys = whir_steps_schedule.iter().sum::<usize>();
     let initial_query_count = whir_queries_schedule[0];
     let intermediate_query_counts = whir_queries_schedule[1..].to_vec();
     let whir_pow_rounds = whir_pow_schedule.len();
-    let witness_caps_accessors = witness_and_setup_base_caps_keepalive[0]
-        .iter()
-        .map(HostAllocation::get_accessor)
-        .collect::<Vec<_>>();
-    let setup_caps_accessors = witness_and_setup_base_caps_keepalive[1]
-        .iter()
-        .map(HostAllocation::get_accessor)
-        .collect::<Vec<_>>();
-    let memory_log_lde_factor = memory_trace_holder.log_lde_factor;
-    let witness_log_lde_factor = witness_trace_holder.log_lde_factor;
-    let setup_log_lde_factor = setup_trace_holder.log_lde_factor;
     let memory_columns_count = memory_trace_holder.columns_count;
     let witness_columns_count = witness_trace_holder.columns_count;
     let setup_columns_count = setup_trace_holder.columns_count;
@@ -2061,14 +1948,22 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
             )
         })
         .collect::<Vec<_>>();
+    let witness_unified_device_cap = witness_trace_holder.unified_device_cap();
+    let setup_unified_device_cap = if setup_columns_count == 0 {
+        None
+    } else {
+        Some(setup_trace_holder.unified_device_cap())
+    };
+    let witness_cap_size = witness_unified_device_cap.len();
+    let memory_cap_size = memory_unified_device_cap.len();
+    let setup_cap_size = setup_unified_device_cap
+        .as_ref()
+        .map_or(0, |cap| cap.len());
     let scheduled_proof = WhirPolyCommitProof {
         witness_commitment: WhirBaseLayerCommitmentAndQueries {
             commitment: WhirCommitment {
                 cap: MerkleTreeCapVarLength {
-                    cap: vec![
-                        Digest::default();
-                        cap_digest_count_from_accessors(&witness_caps_accessors)
-                    ],
+                    cap: vec![Digest::default(); witness_cap_size],
                 },
                 _marker: PhantomData,
             },
@@ -2083,13 +1978,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         memory_commitment: WhirBaseLayerCommitmentAndQueries {
             commitment: WhirCommitment {
                 cap: MerkleTreeCapVarLength {
-                    cap: vec![
-                        Digest::default();
-                        memory_base_caps_keepalive
-                            .iter()
-                            .map(SchedulerHostAllocation::len)
-                            .sum()
-                    ],
+                    cap: vec![Digest::default(); memory_cap_size],
                 },
                 _marker: PhantomData,
             },
@@ -2104,10 +1993,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         setup_commitment: WhirBaseLayerCommitmentAndQueries {
             commitment: WhirCommitment {
                 cap: MerkleTreeCapVarLength {
-                    cap: vec![
-                        Digest::default();
-                        cap_digest_count_from_accessors(&setup_caps_accessors)
-                    ],
+                    cap: vec![Digest::default(); setup_cap_size],
                 },
                 _marker: PhantomData,
             },
@@ -2143,51 +2029,62 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         final_monomials: vec![],
     };
 
-    // Phase 3 slab routing: H2D-copy each base-layer Merkle cap into the slab's
-    // `whir.{witness,memory,setup}.cap` range. Stream-ordering serializes each
-    // H2D after the pre-WHIR trace-holder D2H that populates the pinned cap
-    // accessors; memory caps come as plain host Vecs and are copied via the
-    // same async API. The callback that mirrors these into the host-side
-    // `proof.*_commitment.commitment.cap.cap` stays in place for Phase 4.
-    {
-        use crate::prover::proof_layout::WhirBaseLayerKind;
-        let witness_cosets: Vec<&[Digest]> = witness_caps_accessors
-            .iter()
-            .map(|accessor| unsafe { accessor.get() })
-            .collect();
+    // Slab routing: D2D-copy each base-layer unified device cap into the slab's
+    // `whir.{witness,memory,setup}.cap` range. Setup and memory unified caps
+    // were H2D'd pre-prove on h2d_stream and the exec-stream waits on their
+    // `Transfer::transferred` events were already recorded inside `prove()`.
+    // Witness's unified cap was assembled by stage 1's per-coset commits on
+    // exec_stream, so it's already visible here. One D2D per source replaces
+    // the prior per-coset host-pinned H2D loop.
+    //
+    // We also schedule one D2H per source from the unified device cap into a
+    // pinned host buffer; the start callback below `copy_from_slice`s those
+    // pinned buffers into `proof.*_commitment.commitment.cap.cap`. Replaces
+    // the prior `fill_full_cap_from_*` paths that walked per-coset host
+    // accessors.
+    use crate::prover::proof_layout::WhirBaseLayerKind;
+    copy_base_layer_cap_to_slab(
+        witness_unified_device_cap,
+        proof_slab,
+        proof_layout,
+        WhirBaseLayerKind::Witness,
+        stream,
+    )?;
+    copy_base_layer_cap_to_slab(
+        memory_unified_device_cap,
+        proof_slab,
+        proof_layout,
+        WhirBaseLayerKind::Memory,
+        stream,
+    )?;
+    if let Some(setup_unified_device_cap) = setup_unified_device_cap {
         copy_base_layer_cap_to_slab(
-            &witness_cosets,
-            witness_log_lde_factor,
-            proof_slab,
-            proof_layout,
-            WhirBaseLayerKind::Witness,
-            stream,
-        )?;
-        let memory_cosets: Vec<&[Digest]> = memory_base_caps_keepalive
-            .iter()
-            .map(SchedulerHostAllocation::as_slice)
-            .collect();
-        copy_base_layer_cap_to_slab(
-            &memory_cosets,
-            memory_log_lde_factor,
-            proof_slab,
-            proof_layout,
-            WhirBaseLayerKind::Memory,
-            stream,
-        )?;
-        let setup_cosets: Vec<&[Digest]> = setup_caps_accessors
-            .iter()
-            .map(|accessor| unsafe { accessor.get() })
-            .collect();
-        copy_base_layer_cap_to_slab(
-            &setup_cosets,
-            setup_log_lde_factor,
+            setup_unified_device_cap,
             proof_slab,
             proof_layout,
             WhirBaseLayerKind::Setup,
             stream,
         )?;
     }
+    let witness_cap_host_for_proof =
+        schedule_unified_cap_d2h(witness_unified_device_cap, context, stream)?;
+    let witness_cap_host_accessor = witness_cap_host_for_proof.get_accessor();
+    let memory_cap_host_for_proof =
+        schedule_unified_cap_d2h(memory_unified_device_cap, context, stream)?;
+    let memory_cap_host_accessor = memory_cap_host_for_proof.get_accessor();
+    let setup_cap_host_for_proof = if let Some(setup_unified_device_cap) = setup_unified_device_cap
+    {
+        Some(schedule_unified_cap_d2h(
+            setup_unified_device_cap,
+            context,
+            stream,
+        )?)
+    } else {
+        None
+    };
+    let setup_cap_host_accessor = setup_cap_host_for_proof
+        .as_ref()
+        .map(HostAllocation::get_accessor);
 
     let mut shared_state = Box::new(ScheduledWhirProofState {
         proof: Some(scheduled_proof),
@@ -2210,44 +2107,33 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         },
         stream,
     )?;
-    let mut base_layer_point_host =
-        unsafe { context.alloc_host_uninit_slice(base_layer_point_len) };
-    let base_layer_point_accessor = base_layer_point_host.get_mut_accessor();
-    start_callbacks.schedule(
-        move || unsafe {
-            fill_base_layer_point(base_layer_point_accessor.get_mut());
-        },
-        stream,
-    )?;
+    let base_layer_point_len = base_layer_point_device.len();
     start_callbacks.schedule(
         {
             let shared_state = shared_state_handle;
-            let memory_base_caps_keepalive = memory_base_caps_keepalive;
-            move || {
-                let proof_state = unsafe { shared_state.get_mut() };
+            move || unsafe {
+                let proof_state = shared_state.get_mut();
                 let proof = proof_state.proof.as_mut().unwrap();
-                fill_full_cap_from_accessors(
-                    &mut proof.witness_commitment.commitment.cap.cap,
-                    &witness_caps_accessors,
-                    witness_log_lde_factor,
-                );
-                let memory_cosets: Vec<&[Digest]> = memory_base_caps_keepalive
-                    .iter()
-                    .map(SchedulerHostAllocation::as_slice)
-                    .collect();
-                fill_full_cap_from_slices(
-                    &mut proof.memory_commitment.commitment.cap.cap,
-                    &memory_cosets,
-                    memory_log_lde_factor,
-                );
-                fill_full_cap_from_accessors(
-                    &mut proof.setup_commitment.commitment.cap.cap,
-                    &setup_caps_accessors,
-                    setup_log_lde_factor,
-                );
-                fill_wit_polys_claims(&mut proof.witness_commitment.evals);
-                fill_mem_polys_claims(&mut proof.memory_commitment.evals);
-                fill_setup_polys_claims(&mut proof.setup_commitment.evals);
+                proof
+                    .witness_commitment
+                    .commitment
+                    .cap
+                    .cap
+                    .copy_from_slice(witness_cap_host_accessor.get());
+                proof
+                    .memory_commitment
+                    .commitment
+                    .cap
+                    .cap
+                    .copy_from_slice(memory_cap_host_accessor.get());
+                if let Some(setup_cap_host_accessor) = setup_cap_host_accessor {
+                    proof
+                        .setup_commitment
+                        .commitment
+                        .cap
+                        .cap
+                        .copy_from_slice(setup_cap_host_accessor.get());
+                }
             }
         },
         stream,
@@ -2274,7 +2160,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
 
     memory_copy_async(
         &mut state.point_pows[..base_layer_point_len],
-        &base_layer_point_host,
+        base_layer_point_device,
         stream,
     )?;
     launch_build_eq_values_from_point(
@@ -2310,7 +2196,13 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
     // assembly: the contained device/host buffers must outlive the stream
     // work scheduled by the caller around them.
     let mut pow_keepalives_keepalive: Vec<PowAndQueryIndexesKeepalives> = Vec::new();
-    let mut recursive_caps_keepalive = Vec::new();
+    let mut recursive_caps_keepalive: Vec<crate::prover::whir::GpuWhirExtensionOracleKeepalive> =
+        Vec::new();
+    // Pinned host buffers backing per-round D2Hs of intermediate oracle caps.
+    // Each entry is read once by the corresponding final-callback that
+    // populates `proof.intermediate_whir_oracles[round].commitment.cap.cap`,
+    // and must outlive that callback.
+    let mut intermediate_oracle_cap_hosts: Vec<HostAllocation<[Digest]>> = Vec::new();
     let mut ood_points = Vec::new();
     let mut ood_partial_readbacks = Vec::new();
     let mut ood_values = Vec::new();
@@ -2502,8 +2394,21 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
             tree_cap_size,
             context,
         )?;
-        let oracle_cap_accessors = oracle.tree_cap_accessors();
-        copy_intermediate_cap_to_slab(&oracle_cap_accessors, proof_slab, proof_layout, 0, stream)?;
+        copy_intermediate_cap_to_slab(
+            oracle.unified_device_cap(),
+            proof_slab,
+            proof_layout,
+            0,
+            stream,
+        )?;
+        // D2H the oracle's unified device cap into a pinned host buffer; the
+        // final callback `copy_from_slice`s it into
+        // `proof.intermediate_whir_oracles[0].commitment.cap.cap` and folds
+        // that commitment into the transcript.
+        let oracle_cap_host_for_proof =
+            schedule_unified_cap_d2h(oracle.unified_device_cap(), context, stream)?;
+        let oracle_cap_host_accessor = oracle_cap_host_for_proof.get_accessor();
+        intermediate_oracle_cap_hosts.push(oracle_cap_host_for_proof);
         final_callbacks.schedule(
             {
                 let shared_state = shared_state_handle;
@@ -2515,7 +2420,10 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
                         .unwrap()
                         .intermediate_whir_oracles[0]
                         .commitment;
-                    fill_full_cap_from_accessors(&mut commitment.cap.cap, &oracle_cap_accessors, 0);
+                    commitment
+                        .cap
+                        .cap
+                        .copy_from_slice(oracle_cap_host_accessor.get());
                     add_whir_commitment_to_transcript(seed_accessor.get_mut(), commitment);
                 }
             },
@@ -2845,14 +2753,17 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
             tree_cap_size,
             context,
         )?;
-        let next_oracle_cap_accessors = next_oracle.tree_cap_accessors();
         copy_intermediate_cap_to_slab(
-            &next_oracle_cap_accessors,
+            next_oracle.unified_device_cap(),
             proof_slab,
             proof_layout,
             internal_round_idx + 1,
             stream,
         )?;
+        let next_oracle_cap_host_for_proof =
+            schedule_unified_cap_d2h(next_oracle.unified_device_cap(), context, stream)?;
+        let next_oracle_cap_host_accessor = next_oracle_cap_host_for_proof.get_accessor();
+        intermediate_oracle_cap_hosts.push(next_oracle_cap_host_for_proof);
         final_callbacks.schedule(
             {
                 let shared_state = shared_state_handle;
@@ -2864,11 +2775,10 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
                         .unwrap()
                         .intermediate_whir_oracles[internal_round_idx + 1]
                         .commitment;
-                    fill_full_cap_from_accessors(
-                        &mut commitment.cap.cap,
-                        &next_oracle_cap_accessors,
-                        0,
-                    );
+                    commitment
+                        .cap
+                        .cap
+                        .copy_from_slice(next_oracle_cap_host_accessor.get());
                     add_whir_commitment_to_transcript(seed_accessor.get_mut(), commitment);
                 }
             },
@@ -3084,7 +2994,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         }
         queries_range.end(stream)?;
         tracing_ranges.push(queries_range);
-        recursive_caps_keepalive.push(oracle_to_query.into_host_tree_caps());
+        recursive_caps_keepalive.push(oracle_to_query.into_host_keepalive());
         recursive_queries.push(
             round_recursive_queries
                 .into_iter()
@@ -3265,7 +3175,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         }
         queries_range.end(stream)?;
         tracing_ranges.push(queries_range);
-        recursive_caps_keepalive.push(oracle_to_query.into_host_tree_caps());
+        recursive_caps_keepalive.push(oracle_to_query.into_host_keepalive());
         recursive_queries.push(
             round_recursive_queries
                 .into_iter()
@@ -3299,75 +3209,15 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         _delinearization_challenges: delinearization_challenges,
         _base_queries: base_queries,
         _recursive_queries: recursive_queries,
+        _witness_cap_host_for_proof: witness_cap_host_for_proof,
+        _memory_cap_host_for_proof: memory_cap_host_for_proof,
+        _setup_cap_host_for_proof: setup_cap_host_for_proof,
+        _intermediate_oracle_cap_hosts: intermediate_oracle_cap_hosts,
+        _recursive_caps_keepalive: recursive_caps_keepalive,
         _final_monomials_host: final_monomials_keepalive,
         _final_callbacks: final_callbacks,
         shared_state,
     })
-}
-
-pub(crate) fn gpu_whir_fold_supported_path(
-    memory_trace_holder: &mut TraceHolder<BF>,
-    mem_polys_claims: Vec<E4>,
-    witness_trace_holder: &mut TraceHolder<BF>,
-    wit_polys_claims: Vec<E4>,
-    setup_trace_holder: &mut TraceHolder<BF>,
-    setup_polys_claims: Vec<E4>,
-    original_evaluation_point: Vec<E4>,
-    original_lde_factor: usize,
-    batching_challenge: E4,
-    whir_steps_schedule: Vec<usize>,
-    whir_queries_schedule: Vec<usize>,
-    whir_steps_lde_factors: Vec<usize>,
-    whir_pow_schedule: Vec<u32>,
-    mut transcript_seed: Seed,
-    tree_cap_size: usize,
-    trace_len_log2: usize,
-    proof_slab: Option<&DeviceAllocation<u8>>,
-    proof_layout: &ProofLayout,
-    _worker: &Worker,
-    context: &ProverContext,
-) -> CudaResult<WhirPolyCommitProof<BF, E4, DefaultTreeConstructor>> {
-    // Stage memory caps in the scheduler-host pinned pool to match the prove() path,
-    // so per-coset H2Ds and the host callback both see pinned source memory.
-    let memory_base_caps_keepalive: Vec<SchedulerHostAllocation<[Digest]>> = memory_trace_holder
-        .take_tree_caps_host()
-        .into_iter()
-        .map(|alloc| context.scheduler_host_from_slice(unsafe { alloc.get_accessor().get() }))
-        .collect::<CudaResult<Vec<_>>>()?;
-    let witness_base_caps_keepalive = witness_trace_holder.take_tree_caps_host();
-    let setup_base_caps_keepalive = setup_trace_holder.take_tree_caps_host();
-    let mem_polys_claims_for_source = mem_polys_claims.clone();
-    let wit_polys_claims_for_source = wit_polys_claims.clone();
-    let setup_polys_claims_for_source = setup_polys_claims.clone();
-    let original_evaluation_point_len = original_evaluation_point.len();
-
-    schedule_gpu_whir_fold_with_sources(
-        memory_trace_holder,
-        memory_base_caps_keepalive,
-        move |dst| dst.copy_from_slice(&mem_polys_claims_for_source),
-        witness_trace_holder,
-        witness_base_caps_keepalive,
-        move |dst| dst.copy_from_slice(&wit_polys_claims_for_source),
-        setup_trace_holder,
-        setup_base_caps_keepalive,
-        move |dst| dst.copy_from_slice(&setup_polys_claims_for_source),
-        original_evaluation_point_len,
-        move |dst| dst.copy_from_slice(&original_evaluation_point),
-        original_lde_factor,
-        move || batching_challenge,
-        whir_steps_schedule,
-        whir_queries_schedule,
-        whir_steps_lde_factors,
-        whir_pow_schedule,
-        move || transcript_seed.clone(),
-        tree_cap_size,
-        trace_len_log2,
-        proof_slab,
-        proof_layout,
-        None,
-        context,
-    )?
-    .wait(context)
 }
 
 #[cfg(test)]
@@ -3633,7 +3483,7 @@ pub(crate) fn debug_initial_round_checkpoint_for_test(
         tree_cap_size,
         context,
     )?;
-    let recursive_cap = oracle.get_tree_cap();
+    let recursive_cap = oracle.get_tree_cap(context)?;
     add_whir_commitment_to_transcript(
         &mut transcript_seed,
         &WhirCommitment::<BF, DefaultTreeConstructor> {
@@ -3749,6 +3599,7 @@ mod tests {
     use crate::ntt::MIN_LOG_N_FOR_MULTISTAGE_KERNELS;
     use crate::prover::test_utils::make_test_context;
     use crate::prover::trace_holder::TreesCacheMode;
+    use crate::prover::whir::e4_coeffs_to_vectorized;
 
     fn sample_ext(seed: u32) -> E4 {
         E4::from_array_of_base([

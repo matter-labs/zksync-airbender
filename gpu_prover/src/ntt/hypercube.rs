@@ -7,9 +7,7 @@ use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::CudaStream;
 use era_cudart_sys::{cudaFuncSetAttribute, CudaFuncAttribute};
 
-use super::{
-    hypercube_evals_natural_to_bitreversed_coeffs, MIN_LOG_N_FOR_MULTISTAGE_KERNELS,
-};
+use super::{hypercube_evals_natural_to_bitreversed_coeffs, MIN_LOG_N_FOR_MULTISTAGE_KERNELS};
 
 use crate::device_structures::{
     DeviceMatrixChunk, DeviceMatrixChunkImpl, DeviceMatrixChunkMut, DeviceMatrixChunkMutImpl,

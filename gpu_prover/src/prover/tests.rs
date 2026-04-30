@@ -46,8 +46,8 @@ use crate::prover::whir_fold::{
     clone_scheduled_whir_pre_pow_seeds, debug_apply_initial_fold_challenge_for_test,
     debug_build_initial_batched_main_domain_poly_for_test, debug_build_initial_fold_state_for_test,
     debug_build_initial_state_for_test, debug_build_initial_state_snapshots_for_test,
-    debug_initial_round_checkpoint_for_test, gpu_whir_fold_supported_path,
-    schedule_gpu_whir_fold_with_sources, take_scheduled_whir_proof,
+    debug_initial_round_checkpoint_for_test, schedule_gpu_whir_fold_with_sources,
+    take_scheduled_whir_proof,
 };
 use crate::witness::trace::ChunkedTraceHolder;
 use crate::witness::trace_unrolled::{
@@ -509,6 +509,7 @@ struct BasicUnrolledTransfers<'a> {
     setup_transfer: GpuGKRSetupTransfer<'a>,
     decoder_transfer: Option<DecoderTableTransfer<'a>>,
     tracing_data_transfer: TracingDataTransfer<'a, Global>,
+    memory_transfer: crate::prover::memory_transfer::GpuGKRMemoryTransfer<'a>,
 }
 
 impl<'a> BasicUnrolledTransfers<'a> {
@@ -517,7 +518,8 @@ impl<'a> BasicUnrolledTransfers<'a> {
         if let Some(decoder_transfer) = self.decoder_transfer.as_mut() {
             decoder_transfer.schedule_transfer(context)?;
         }
-        self.tracing_data_transfer.schedule_transfer(context)
+        self.tracing_data_transfer.schedule_transfer(context)?;
+        self.memory_transfer.schedule_transfer(context)
     }
 }
 
@@ -546,11 +548,21 @@ impl BasicUnrolledFixture {
         };
         let tracing_data_transfer =
             TracingDataTransfer::new(self.tracing_data_host.clone(), context)?;
+        let memory_transfer_host = Arc::new(
+            crate::prover::memory_transfer::GpuGKRMemoryTransferHost::from_per_coset_caps(
+                &self.memory_tree_caps,
+                self.gpu_setup_host.log_lde_factor,
+                self.gpu_setup_host.log_tree_cap_size,
+            )?,
+        );
+        let memory_transfer =
+            crate::prover::memory_transfer::GpuGKRMemoryTransfer::new(memory_transfer_host, context)?;
 
         Ok(BasicUnrolledTransfers {
             setup_transfer,
             decoder_transfer,
             tracing_data_transfer,
+            memory_transfer,
         })
     }
 
@@ -568,6 +580,7 @@ impl BasicUnrolledFixture {
             setup_transfer,
             decoder_transfer,
             tracing_data_transfer,
+            memory_transfer,
         } = transfers;
 
         prove::<Global>(
@@ -580,7 +593,7 @@ impl BasicUnrolledFixture {
             decoder_transfer,
             // TODO(init-teardown-port): restore `None,` arg for inits_and_teardowns_transfer.
             tracing_data_transfer,
-            &self.memory_tree_caps,
+            memory_transfer,
             &self.context,
         )
     }
@@ -590,6 +603,7 @@ impl BasicUnrolledFixture {
             setup_transfer,
             decoder_transfer,
             tracing_data_transfer,
+            memory_transfer,
         } = self.create_transfers()?;
 
         prove_with_transfer_scheduling::<Global>(
@@ -602,7 +616,7 @@ impl BasicUnrolledFixture {
             decoder_transfer,
             // TODO(init-teardown-port): restore `None,` arg for inits_and_teardowns_transfer.
             tracing_data_transfer,
-            &self.memory_tree_caps,
+            memory_transfer,
             &self.context,
         )
     }
@@ -1502,7 +1516,7 @@ fn assert_recursive_whir_oracle_parity_for_supported_path(
     )
     .unwrap();
     assert_eq!(
-        gpu_rs_oracle.get_tree_cap(),
+        gpu_rs_oracle.get_tree_cap(&context).unwrap(),
         <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<BF>>::get_cap(
             &cpu_rs_oracle.tree,
         )
@@ -1566,7 +1580,7 @@ fn assert_recursive_whir_oracle_parity_for_supported_path(
     .unwrap();
     assert_eq!(
         gpu_initial_round_checkpoint.recursive_cap,
-        gpu_materialized_initial_rs_oracle.get_tree_cap(),
+        gpu_materialized_initial_rs_oracle.get_tree_cap(&context).unwrap(),
         "initial recursive WHIR commitment does not match the cap rebuilt from the materialized folded monomial form",
     );
     if gpu_initial_round_checkpoint.folded_monomial_form != sumchecked_poly_monomial_form {
@@ -1715,7 +1729,7 @@ fn assert_recursive_whir_oracle_parity_for_supported_path(
         )
         .unwrap();
         assert_eq!(
-            next_gpu_oracle.get_tree_cap(),
+            next_gpu_oracle.get_tree_cap(&context).unwrap(),
             <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<BF>>::get_cap(
                 &next_cpu_oracle.tree,
             )
@@ -1895,32 +1909,35 @@ fn assert_recursive_whir_oracle_parity_for_supported_path(
         );
     }
     cpu_recursive_query_indexes.push(final_round_query_indexes);
-    let mem_polys_claims_for_schedule = mem_polys_claims.to_vec();
-    let wit_polys_claims_for_schedule = wit_polys_claims.to_vec();
-    let setup_polys_claims_for_schedule = setup_polys_claims.to_vec();
-    let original_evaluation_point_for_schedule = original_evaluation_point.to_vec();
-    let memory_base_caps_keepalive: Vec<SchedulerHostAllocation<[crate::ops::blake2s::Digest]>> =
-        gpu_mem_trace_holder
-            .take_tree_caps_host()
-            .into_iter()
-            .map(|alloc| context.scheduler_host_from_slice(unsafe { alloc.get_accessor().get() }))
-            .collect::<era_cudart::result::CudaResult<Vec<_>>>()
-            .unwrap();
-    let witness_base_caps_keepalive = gpu_wit_trace_holder.take_tree_caps_host();
-    let setup_base_caps_keepalive = gpu_setup_trace_holder.take_tree_caps_host();
     let whir_proof_layout = ProofLayout::new(&placeholder_inputs_for_prove());
+    let mut base_layer_point_device: DeviceAllocation<E4> = context
+        .alloc(
+            original_evaluation_point.len().max(1),
+            AllocationPlacement::Top,
+        )
+        .unwrap();
+    let mut base_layer_point_host =
+        unsafe { context.alloc_host_uninit_slice::<E4>(original_evaluation_point.len()) };
+    unsafe { base_layer_point_host.get_mut_accessor().get_mut() }
+        .copy_from_slice(original_evaluation_point);
+    memory_copy_async(
+        &mut base_layer_point_device[..original_evaluation_point.len()],
+        &base_layer_point_host,
+        context.get_exec_stream(),
+    )
+    .unwrap();
+    // Test path: take ownership of the memory trace holder's unified cap so we
+    // can pass it as a separate parameter to `schedule_gpu_whir_fold_with_sources`
+    // without conflicting with the function's `&mut` borrow of the trace holder
+    // itself (the function does not consult `memory_trace_holder.unified_device_cap`
+    // — `prove()` sources it from `memory_transfer` instead).
+    let memory_unified_device_cap_for_whir = gpu_mem_trace_holder.take_unified_device_cap();
     let mut scheduled_gpu_whir = schedule_gpu_whir_fold_with_sources(
         gpu_mem_trace_holder,
-        memory_base_caps_keepalive,
-        move |dst| dst.copy_from_slice(&mem_polys_claims_for_schedule),
+        &memory_unified_device_cap_for_whir,
         gpu_wit_trace_holder,
-        witness_base_caps_keepalive,
-        move |dst| dst.copy_from_slice(&wit_polys_claims_for_schedule),
         gpu_setup_trace_holder,
-        setup_base_caps_keepalive,
-        move |dst| dst.copy_from_slice(&setup_polys_claims_for_schedule),
-        original_evaluation_point_for_schedule.len(),
-        move |dst| dst.copy_from_slice(&original_evaluation_point_for_schedule),
+        &base_layer_point_device[..original_evaluation_point.len()],
         original_lde_factor,
         move || batching_challenge,
         whir_schedule.whir_steps_schedule.clone(),
@@ -2010,6 +2027,19 @@ fn assert_recursive_whir_oracle_parity_for_supported_path(
         }
     }
     let _ = claim;
+    let mut scheduled_gpu_whir_proof = scheduled_gpu_whir_proof;
+    scheduled_gpu_whir_proof
+        .memory_commitment
+        .evals
+        .copy_from_slice(mem_polys_claims);
+    scheduled_gpu_whir_proof
+        .witness_commitment
+        .evals
+        .copy_from_slice(wit_polys_claims);
+    scheduled_gpu_whir_proof
+        .setup_commitment
+        .evals
+        .copy_from_slice(setup_polys_claims);
     scheduled_gpu_whir_proof
 }
 
@@ -2063,7 +2093,7 @@ fn build_basic_unrolled_async_backward_fixture_from_base(
         transfers
             .setup_transfer
             .trace_holder
-            .get_tree_caps()
+            .read_per_coset_caps_synchronously(&context).unwrap()
             .into_iter(),
         &mut transcript_input,
     );
@@ -2074,7 +2104,7 @@ fn build_basic_unrolled_async_backward_fixture_from_base(
     flatten_merkle_caps_iter_into(
         stage1_output
             .witness_trace_holder
-            .get_tree_caps()
+            .read_per_coset_caps_synchronously(&context).unwrap()
             .into_iter(),
         &mut transcript_input,
     );
@@ -2115,7 +2145,7 @@ fn build_basic_unrolled_async_backward_fixture_from_base(
     .unwrap();
     eprintln!("async-backward-from-base: forward pass scheduled");
     let gpu_transcript_handoff = gpu_forward_output
-        .schedule_transcript_handoff(true, &context)
+        .schedule_transcript_handoff(true, None, &context)
         .unwrap();
     context.get_exec_stream().synchronize().unwrap();
     eprintln!("async-backward-from-base: transcript handoff ready");
@@ -3783,7 +3813,7 @@ fn run_memory_workflow_input_parity_test<const FAMILY_IDX: u8>(
     context.get_h2d_stream().synchronize().unwrap();
 
     let cpu_setup_caps = stage1_caps_from_tree(&setup_commitment.tree, subcap_size);
-    let gpu_setup_caps = gpu_setup_transfer.trace_holder.get_tree_caps();
+    let gpu_setup_caps = gpu_setup_transfer.trace_holder.read_per_coset_caps_synchronously(&context).unwrap();
     assert_eq!(
         gpu_setup_caps, cpu_setup_caps,
         "{family_label} setup caps diverged"
@@ -3892,7 +3922,7 @@ fn run_memory_workflow_input_parity_test<const FAMILY_IDX: u8>(
     }
 
     let cpu_witness_caps = stage1_caps_from_tree(&wit_oracle.tree, subcap_size);
-    let gpu_witness_caps = stage1_output.witness_trace_holder.get_tree_caps();
+    let gpu_witness_caps = stage1_output.witness_trace_holder.read_per_coset_caps_synchronously(&context).unwrap();
     if gpu_witness_caps != cpu_witness_caps {
         let first_mismatch = describe_first_trace_holder_column_mismatch(
             &stage1_output.witness_trace_holder,
@@ -4046,7 +4076,7 @@ fn run_memory_workflow_input_parity_test<const FAMILY_IDX: u8>(
     )
     .unwrap();
     let gpu_transcript_handoff = gpu_forward_output
-        .schedule_transcript_handoff(true, &context)
+        .schedule_transcript_handoff(true, None, &context)
         .unwrap();
     context.get_exec_stream().synchronize().unwrap();
     let gpu_final_explicit_evaluations = gpu_transcript_handoff.final_explicit_evaluations();
@@ -5146,7 +5176,7 @@ fn forward_to_backward_handoff_releases_forward_scratch() {
         transfers
             .setup_transfer
             .trace_holder
-            .get_tree_caps()
+            .read_per_coset_caps_synchronously(&context).unwrap()
             .into_iter(),
         &mut transcript_input,
     );
@@ -5157,7 +5187,7 @@ fn forward_to_backward_handoff_releases_forward_scratch() {
     flatten_merkle_caps_iter_into(
         stage1_output
             .witness_trace_holder
-            .get_tree_caps()
+            .read_per_coset_caps_synchronously(&context).unwrap()
             .into_iter(),
         &mut transcript_input,
     );
@@ -5512,7 +5542,7 @@ fn run_basic_unrolled_workflow_input_parity_test() {
     context.get_h2d_stream().synchronize().unwrap();
 
     let cpu_setup_caps = stage1_caps_from_tree(&setup_commitment.tree, subcap_size);
-    let gpu_setup_caps = gpu_setup_transfer.trace_holder.get_tree_caps();
+    let gpu_setup_caps = gpu_setup_transfer.trace_holder.read_per_coset_caps_synchronously(&context).unwrap();
     assert_eq!(gpu_setup_caps, cpu_setup_caps, "setup caps diverged");
 
     let h_decoder_table = witness_gen_data
@@ -5597,7 +5627,7 @@ fn run_basic_unrolled_workflow_input_parity_test() {
     }
 
     let cpu_witness_caps = stage1_caps_from_tree(&wit_oracle.tree, subcap_size);
-    let gpu_witness_caps = stage1_output.witness_trace_holder.get_tree_caps();
+    let gpu_witness_caps = stage1_output.witness_trace_holder.read_per_coset_caps_synchronously(&context).unwrap();
     assert_eq!(gpu_witness_caps, cpu_witness_caps, "witness caps diverged");
 
     assert_generic_family_mapping_contract(
@@ -5790,7 +5820,7 @@ fn run_basic_unrolled_workflow_input_parity_test() {
         )
         .unwrap();
         let gpu_transcript_handoff = gpu_forward_output
-            .schedule_transcript_handoff(true, &context)
+            .schedule_transcript_handoff(true, None, &context)
             .unwrap();
         context.get_exec_stream().synchronize().unwrap();
         (gpu_forward_output, gpu_transcript_handoff)
@@ -6015,7 +6045,7 @@ fn run_jump_branch_slt_workflow_input_parity_test() {
     context.get_h2d_stream().synchronize().unwrap();
 
     let cpu_setup_caps = stage1_caps_from_tree(&setup_commitment.tree, subcap_size);
-    let gpu_setup_caps = gpu_setup_transfer.trace_holder.get_tree_caps();
+    let gpu_setup_caps = gpu_setup_transfer.trace_holder.read_per_coset_caps_synchronously(&context).unwrap();
     assert_eq!(gpu_setup_caps, cpu_setup_caps, "setup caps diverged");
 
     let h_decoder_table = witness_gen_data
@@ -6100,7 +6130,7 @@ fn run_jump_branch_slt_workflow_input_parity_test() {
     }
 
     let cpu_witness_caps = stage1_caps_from_tree(&wit_oracle.tree, subcap_size);
-    let gpu_witness_caps = stage1_output.witness_trace_holder.get_tree_caps();
+    let gpu_witness_caps = stage1_output.witness_trace_holder.read_per_coset_caps_synchronously(&context).unwrap();
     assert_eq!(gpu_witness_caps, cpu_witness_caps, "witness caps diverged");
 
     assert_generic_family_mapping_contract(
@@ -6293,7 +6323,7 @@ fn run_jump_branch_slt_workflow_input_parity_test() {
         )
         .unwrap();
         let gpu_transcript_handoff = gpu_forward_output
-            .schedule_transcript_handoff(true, &context)
+            .schedule_transcript_handoff(true, None, &context)
             .unwrap();
         context.get_exec_stream().synchronize().unwrap();
         (gpu_forward_output, gpu_transcript_handoff)
@@ -6777,7 +6807,7 @@ fn run_shift_binop_cached_lookup_parity_test() {
     )
     .unwrap();
     let gpu_transcript_handoff = gpu_forward_output
-        .schedule_transcript_handoff(true, &context)
+        .schedule_transcript_handoff(true, None, &context)
         .unwrap();
     context.get_exec_stream().synchronize().unwrap();
     let gpu_final_explicit_evaluations = gpu_transcript_handoff.final_explicit_evaluations();
@@ -7079,7 +7109,7 @@ fn run_basic_unrolled_stagewise_parity_test() {
         &worker,
     );
 
-    let trace_holder_caps = gpu_setup_transfer.trace_holder.get_tree_caps();
+    let trace_holder_caps = gpu_setup_transfer.trace_holder.read_per_coset_caps_synchronously(&context).unwrap();
     let setup_caps = stage1_caps_from_tree(&setup_commitment.tree, subcap_size);
     assert_eq!(trace_holder_caps, setup_caps);
     let h_decoder_table = witness_gen_data
@@ -7137,13 +7167,13 @@ fn run_basic_unrolled_stagewise_parity_test() {
 
     let memory_caps = stage1_caps_from_tree(&mem_oracle.tree, subcap_size);
     assert_eq!(
-        stage1_output.memory_trace_holder.get_tree_caps(),
+        stage1_output.memory_trace_holder.read_per_coset_caps_synchronously(&context).unwrap(),
         memory_caps
     );
 
     let witness_caps = stage1_caps_from_tree(&wit_oracle.tree, subcap_size);
     assert_eq!(
-        stage1_output.witness_trace_holder.get_tree_caps(),
+        stage1_output.witness_trace_holder.read_per_coset_caps_synchronously(&context).unwrap(),
         witness_caps
     );
 
@@ -7266,7 +7296,7 @@ fn run_basic_unrolled_stagewise_parity_test() {
         )
         .unwrap();
         let gpu_transcript_handoff = gpu_forward_output
-            .schedule_transcript_handoff(true, &context)
+            .schedule_transcript_handoff(true, None, &context)
             .unwrap();
         context.get_exec_stream().synchronize().unwrap();
         (gpu_forward_output, gpu_transcript_handoff)
@@ -7643,48 +7673,106 @@ fn run_basic_unrolled_stagewise_parity_test() {
         .unwrap()
     };
 
-    assert_eq!(gpu_base_claims.completed_claims, cpu_base_layer_claims);
     assert_eq!(
-        gpu_base_claims.extra_evaluations_from_caching_relations,
-        cpu_extra_evaluations_from_caching_relations
+        gpu_base_claims.mem_polys_claims.as_ref(),
+        cpu_mem_polys_claims.as_slice(),
     );
     assert_eq!(
-        gpu_base_claims.extra_evaluations_transcript_batches,
-        cpu_extra_evaluations_transcript_batches
+        gpu_base_claims.wit_polys_claims.as_ref(),
+        cpu_wit_polys_claims.as_slice(),
     );
-    assert_eq!(gpu_base_claims.mem_polys_claims, cpu_mem_polys_claims);
-    assert_eq!(gpu_base_claims.wit_polys_claims, cpu_wit_polys_claims);
-    assert_eq!(gpu_base_claims.setup_polys_claims, cpu_setup_polys_claims);
-
-    for i in 0..add_sub_circuit.memory_layout.total_width {
+    assert_eq!(
+        gpu_base_claims.setup_polys_claims.as_ref(),
+        cpu_setup_polys_claims.as_slice(),
+    );
+    // Virtual setup claims: the GPU snapshot stores these as a fixed-length
+    // tuple matching `VIRTUAL_SETUP_ADDRESSES`; the CPU side merged them into
+    // the `cpu_base_layer_claims` BTreeMap. Look them up by address for the
+    // comparison.
+    let virtual_setup_claim_address = [
+        GKRAddress::VirtualSetup(VirtualSetupPoly::RangeCheck16Bits),
+        GKRAddress::VirtualSetup(VirtualSetupPoly::RangeCheckTimestamp),
+        GKRAddress::VirtualSetup(VirtualSetupPoly::InitsAndTeardownsLow),
+        GKRAddress::VirtualSetup(VirtualSetupPoly::InitsAndTeardownsHigh),
+    ];
+    for (i, addr) in virtual_setup_claim_address.iter().enumerate() {
         assert_eq!(
-            gpu_base_claims.claim_for_address(GKRAddress::BaseLayerMemory(i)),
-            Some(cpu_mem_polys_claims[i]),
+            gpu_base_claims.virtual_setup_claims[i],
+            cpu_base_layer_claims[addr],
         );
     }
+    // Extras SoA must match the CPU-built BTreeMap (BTreeMap iteration is
+    // sorted by GKRAddress; the SoA preserves that ordering).
+    let cpu_extras_pairs: Vec<(GKRAddress, E4)> = cpu_extra_evaluations_from_caching_relations
+        .iter()
+        .map(|(addr, value)| (*addr, *value))
+        .collect();
+    let gpu_extras_pairs: Vec<(GKRAddress, E4)> = gpu_base_claims
+        .extra_evaluations_addresses
+        .iter()
+        .copied()
+        .zip(gpu_base_claims.extra_evaluations_values.iter().copied())
+        .collect();
+    assert_eq!(gpu_extras_pairs, cpu_extras_pairs);
+    let cpu_transcript_batch_values: Vec<E4> = cpu_extra_evaluations_transcript_batches
+        .iter()
+        .flatten()
+        .copied()
+        .collect();
+    assert_eq!(
+        gpu_base_claims.extra_evaluations_values.as_ref(),
+        cpu_transcript_batch_values.as_slice(),
+    );
+
+    for i in 0..add_sub_circuit.memory_layout.total_width {
+        assert_eq!(gpu_base_claims.mem_polys_claims[i], cpu_mem_polys_claims[i]);
+    }
     for i in 0..add_sub_circuit.witness_layout.total_width {
-        assert_eq!(
-            gpu_base_claims.claim_for_address(GKRAddress::BaseLayerWitness(i)),
-            Some(cpu_wit_polys_claims[i]),
-        );
+        assert_eq!(gpu_base_claims.wit_polys_claims[i], cpu_wit_polys_claims[i]);
     }
     for i in 0..setup.hypercube_evals.len() {
         assert_eq!(
-            gpu_base_claims.claim_for_address(GKRAddress::Setup(i)),
-            Some(cpu_setup_polys_claims[i]),
+            gpu_base_claims.setup_polys_claims[i],
+            cpu_setup_polys_claims[i],
         );
     }
 
     let mut gpu_seed_after_base_layer_claims = gpu_backward_execution.updated_seed;
-    for transcript_input in gpu_base_claims.extra_evaluations_transcript_batches.iter() {
-        commit_field_els::<BF, E4>(&mut gpu_seed_after_base_layer_claims, &transcript_input);
+    if !gpu_base_claims.extra_evaluations_values.is_empty() {
+        commit_field_els::<BF, E4>(
+            &mut gpu_seed_after_base_layer_claims,
+            &gpu_base_claims.extra_evaluations_values,
+        );
     }
     assert_eq!(gpu_seed_after_base_layer_claims, seed);
 
     drop(preprocessed_generic_lookup);
-    gpu_backward_execution
-        .claims_for_layers
-        .insert(0, gpu_base_claims.completed_claims.clone());
+    // Reconstruct the BTreeMap shape that downstream CPU sumcheck/WHIR setup
+    // expects: layer-1 incoming claims (already present) ∪ virtual-setup
+    // claims ∪ caching-relations extras. The new GPU SoA snapshot keeps
+    // these as parallel arrays + a fixed-length tuple, so we splice them
+    // back into the BTreeMap here for the parity downstream.
+    {
+        let layer_0_claims = gpu_backward_execution
+            .claims_for_layers
+            .get_mut(&0)
+            .expect("backward main-layer scheduler must populate layer-0 claims");
+        for (addr, value) in virtual_setup_claim_address
+            .iter()
+            .copied()
+            .zip(gpu_base_claims.virtual_setup_claims.iter().copied())
+        {
+            layer_0_claims.entry(addr).or_insert(value);
+        }
+        for (addr, value) in gpu_base_claims
+            .extra_evaluations_addresses
+            .iter()
+            .copied()
+            .zip(gpu_base_claims.extra_evaluations_values.iter().copied())
+        {
+            layer_0_claims.insert(addr, value);
+        }
+    }
 
     drop(gkr_storage);
 
@@ -7733,11 +7821,11 @@ fn run_basic_unrolled_stagewise_parity_test() {
         let _range = scoped_range(None, "test.cpu.whir_fold");
         whir_fold(
             mem_oracle,
-            gpu_base_claims.mem_polys_claims.clone(),
+            gpu_base_claims.mem_polys_claims.to_vec(),
             wit_oracle,
-            gpu_base_claims.wit_polys_claims.clone(),
+            gpu_base_claims.wit_polys_claims.to_vec(),
             &setup_commitment,
-            gpu_base_claims.setup_polys_claims.clone(),
+            gpu_base_claims.setup_polys_claims.to_vec(),
             base_layer_z.clone(),
             whir_schedule.base_lde_factor,
             whir_batching_challenge,
@@ -7996,7 +8084,7 @@ fn standalone_inits_and_teardowns_gpu_workflow_matches_cpu() {
             panic!("standalone init/teardown stage1 memory trace mismatch: {mismatch}");
         }
         assert_eq!(
-            stage1_output.memory_trace_holder.get_tree_caps(),
+            stage1_output.memory_trace_holder.read_per_coset_caps_synchronously(&context).unwrap(),
             cpu_memory_caps,
             "standalone init/teardown memory caps diverged"
         );
@@ -8021,7 +8109,7 @@ fn standalone_inits_and_teardowns_gpu_workflow_matches_cpu() {
         let mut gpu_transcript_input = Vec::new();
         gpu_transcript_input.extend_from_slice(&canonical_top_bits);
         external_challenges.flatten_into_buffer(&mut gpu_transcript_input);
-        for cap in stage1_output.memory_trace_holder.get_tree_caps().iter() {
+        for cap in stage1_output.memory_trace_holder.read_per_coset_caps_synchronously(&context).unwrap().iter() {
             for digest in cap.cap.iter() {
                 gpu_transcript_input.extend_from_slice(digest);
             }
@@ -8132,7 +8220,7 @@ fn standalone_inits_and_teardowns_gpu_workflow_matches_cpu() {
         )
         .unwrap();
         let gpu_transcript_handoff = gpu_forward_output
-            .schedule_transcript_handoff(true, &context)
+            .schedule_transcript_handoff(true, None, &context)
             .unwrap();
         context.get_exec_stream().synchronize().unwrap();
         assert_eq!(
@@ -8988,7 +9076,7 @@ fn assert_delegation_workflow_matches_cpu_inner<W, O, F>(
     context.get_h2d_stream().synchronize().unwrap();
 
     let cpu_setup_caps = stage1_caps_from_tree(&setup_commitment.tree, subcap_size);
-    let gpu_setup_caps = gpu_setup_transfer.trace_holder.get_tree_caps();
+    let gpu_setup_caps = gpu_setup_transfer.trace_holder.read_per_coset_caps_synchronously(&context).unwrap();
     assert_eq!(
         gpu_setup_caps, cpu_setup_caps,
         "{label}: setup caps diverged"
@@ -9048,7 +9136,7 @@ fn assert_delegation_workflow_matches_cpu_inner<W, O, F>(
     }
 
     let cpu_witness_caps = stage1_caps_from_tree(&wit_oracle.tree, subcap_size);
-    let gpu_witness_caps = stage1_output.witness_trace_holder.get_tree_caps();
+    let gpu_witness_caps = stage1_output.witness_trace_holder.read_per_coset_caps_synchronously(&context).unwrap();
     if gpu_witness_caps != cpu_witness_caps {
         let first_mismatch = describe_first_trace_holder_column_mismatch(
             &stage1_output.witness_trace_holder,
@@ -9259,7 +9347,7 @@ fn assert_delegation_workflow_matches_cpu_inner<W, O, F>(
         )
         .unwrap();
         let gpu_transcript_handoff = gpu_forward_output
-            .schedule_transcript_handoff(true, &context)
+            .schedule_transcript_handoff(true, None, &context)
             .unwrap();
         context.get_exec_stream().synchronize().unwrap();
         (gpu_forward_output, gpu_transcript_handoff)

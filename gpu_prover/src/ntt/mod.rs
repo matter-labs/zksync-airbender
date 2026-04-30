@@ -226,7 +226,6 @@ pub(crate) fn hypercube_coeffs_to_evals_impl(
     };
 
     Ok(())
-
 }
 
 pub(crate) fn hypercube_coeffs_natural_to_natural_evals(

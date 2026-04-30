@@ -18,15 +18,13 @@ use super::{GpuBaseFieldPoly, GpuGKRStorage};
 use crate::allocator::tracker::AllocationPlacement;
 use crate::ops::blake2s::Digest;
 use crate::primitives::callbacks::Callbacks;
-use crate::primitives::context::{DeviceAllocation, HostAllocation, ProverContext};
+use crate::primitives::context::{DeviceAllocation, ProverContext};
 use crate::primitives::device_tracing::Range;
 use crate::primitives::field::{BF, E4};
-use crate::primitives::static_host::{
-    alloc_static_pinned_box_from_slice, alloc_static_pinned_box_uninit, StaticPinnedBox,
-};
+use crate::primitives::static_host::{alloc_static_pinned_box_uninit, StaticPinnedBox};
 use crate::primitives::transfer::Transfer;
 use crate::primitives::utils::{get_grid_block_dims_for_threads_count, WARP_SIZE};
-use crate::prover::trace_holder::{allocate_tree_caps, TraceHolder, TreesCacheMode, TreesHolder};
+use crate::prover::trace_holder::{TraceHolder, TreesCacheMode, TreesHolder};
 use cs::tables::TableType;
 use prover::gkr::prover::setup::GKRSetup as CpuGKRSetup;
 
@@ -38,13 +36,22 @@ pub(crate) struct GpuGKRSetupTransfer<'a> {
     pub(crate) transfer: Transfer<'a>,
 }
 
+impl<'a> GpuGKRSetupTransfer<'a> {
+    /// Convenience accessor for the unified device cap that
+    /// `schedule_transfer` H2Ds into. Used by `prove()` to D2D the cap into
+    /// the initial-transcript input range.
+    pub(crate) fn unified_device_cap(&self) -> &DeviceAllocation<Digest> {
+        self.trace_holder.unified_device_cap()
+    }
+}
+
 pub(crate) struct GpuGKRSetupTransferHostKeepalive<'a> {
     _transfer_callbacks: Callbacks<'a>,
 }
 
 impl<'a> GpuGKRSetupTransfer<'a> {
     pub(crate) fn new(host: Arc<GpuGKRSetupHost>, context: &ProverContext) -> CudaResult<Self> {
-        let trace_holder = TraceHolder::<BF>::new_without_cosets(
+        let mut trace_holder = TraceHolder::<BF>::new_without_cosets(
             host.log_domain_size,
             host.log_lde_factor,
             host.log_rows_per_leaf,
@@ -53,6 +60,12 @@ impl<'a> GpuGKRSetupTransfer<'a> {
             TreesCacheMode::CachePartial,
             context,
         )?;
+        // Unified device cap is allocated up front so the pre-prove H2D in
+        // `schedule_transfer` has a stable destination. Length matches the
+        // host-side `unified_tree_cap` that was built during precomputation.
+        let cap_size = 1usize << host.log_tree_cap_size;
+        let unified_cap = context.alloc::<Digest>(cap_size, AllocationPlacement::BestFit)?;
+        assert!(trace_holder.unified_device_cap.replace(unified_cap).is_none());
         let transfer = Transfer::new()?;
         transfer.record_allocated(context)?;
         Ok(Self {
@@ -82,7 +95,16 @@ impl<'a> GpuGKRSetupTransfer<'a> {
                 .expect("setup transfers require partial-tree caching");
             memory_copy_async(dst_tree, &src_tree[..], stream)?;
         }
-        self.schedule_tree_caps_clone(context)?;
+        // H2D the unified host cap directly into the device unified cap on
+        // h2d_stream — gated by the same `Transfer::record_transferred` fence
+        // as the polynomials and partial trees above. Replaces the legacy
+        // per-coset host-pinned `tree_caps` clone callback path.
+        let unified_dst = self
+            .trace_holder
+            .unified_device_cap
+            .as_mut()
+            .expect("setup transfer must have allocated the unified device cap");
+        memory_copy_async(unified_dst, &self.host.unified_tree_cap[..], stream)?;
         self.transfer.record_transferred(context)
     }
 
@@ -193,30 +215,6 @@ impl<'a> GpuGKRSetupTransfer<'a> {
         )
     }
 
-    fn schedule_tree_caps_clone(&mut self, context: &ProverContext) -> CudaResult<()> {
-        let host = Arc::clone(&self.host);
-        let mut tree_caps =
-            allocate_tree_caps(host.log_lde_factor, host.log_tree_cap_size, context);
-        let tree_cap_accessors = tree_caps
-            .iter_mut()
-            .map(HostAllocation::get_mut_accessor)
-            .collect::<Vec<_>>();
-        self.transfer.callbacks.schedule(
-            move || unsafe {
-                // SAFETY: the callback owns raw accessors into `tree_caps`, and those host
-                // allocations are kept alive by the returned `trace_holder` keepalive until all
-                // exec-stream users have been scheduled. Queuing the copy on exec_stream preserves
-                // the contract's stream-ordered host lifetime semantics for pooled tree-cap
-                // buffers.
-                for (src, dst) in host.tree_caps.iter().zip(tree_cap_accessors.iter()) {
-                    dst.get_mut().copy_from_slice(&src[..]);
-                }
-            },
-            context.get_exec_stream(),
-        )?;
-        assert!(self.trace_holder.tree_caps.replace(tree_caps).is_none());
-        Ok(())
-    }
 }
 
 pub(crate) fn schedule_forward_setup_for_shape<E>(
@@ -502,6 +500,34 @@ impl<E> GpuGKRForwardSetup<E> {
             _marker: PhantomData,
         }
     }
+
+    /// Variant of [`Self::into_host_keepalive`] that hands the
+    /// `d_lookup_challenges` device buffer back to the caller instead of
+    /// dropping it. The forward pass no longer reads it once this is called,
+    /// so it can be repurposed as the lookup-and-constraint device input for
+    /// `schedule_execute_backward_workflow_from_shared_state` — saves the
+    /// otherwise-required separate allocation + D2D from the post-forward
+    /// transcript squeeze (Opp. 3 of the pre-WHIR copy elimination plan).
+    pub(crate) fn into_host_keepalive_taking_lookup_challenges(
+        self,
+    ) -> (GpuGKRForwardSetupHostKeepalive<E>, DeviceAllocation<E>) {
+        let Self {
+            _tracing_ranges,
+            _callbacks,
+            d_lookup_challenges,
+            device_decoder_lookup_fill_value: _,
+            _device_lookup_alpha_powers: _,
+            generic_lookup: _,
+        } = self;
+        (
+            GpuGKRForwardSetupHostKeepalive {
+                _tracing_ranges,
+                _callbacks,
+                _marker: PhantomData,
+            },
+            d_lookup_challenges,
+        )
+    }
 }
 
 pub(super) fn flatten_setup_columns_into_pinned_buffer(
@@ -525,7 +551,7 @@ pub(super) fn precompute_partial_tree_cache(
     log_tree_cap_size: u32,
     columns_count: usize,
     context: &ProverContext,
-) -> CudaResult<(Vec<StaticPinnedBox<Digest>>, Vec<StaticPinnedBox<Digest>>)> {
+) -> CudaResult<(Vec<StaticPinnedBox<Digest>>, StaticPinnedBox<Digest>)> {
     let mut trace_holder = TraceHolder::<BF>::new(
         log_domain_size,
         log_lde_factor,
@@ -548,16 +574,20 @@ pub(super) fn precompute_partial_tree_cache(
         _ => unreachable!("host setup precomputation always caches partial trees"),
     };
 
+    // D2H the unified device cap directly into a pinned host buffer suitable
+    // for the pre-prove H2D in `schedule_transfer`. Synchronization happens
+    // here because precomputation is a one-shot scheduling-time operation,
+    // not part of `prove()`'s hot path.
+    let cap_size = 1usize << log_tree_cap_size;
+    let mut unified_tree_cap = alloc_static_pinned_box_uninit::<Digest>(cap_size)?;
+    memory_copy_async(
+        &mut unified_tree_cap[..],
+        trace_holder.unified_device_cap(),
+        context.get_exec_stream(),
+    )?;
     context.get_exec_stream().synchronize()?;
-    let tree_caps = trace_holder
-        .tree_caps
-        .as_ref()
-        .expect("setup commit must populate tree caps")
-        .iter()
-        .map(|src_cap| copy_host_allocation(src_cap, context))
-        .collect();
 
-    Ok((partial_trees, tree_caps))
+    Ok((partial_trees, unified_tree_cap))
 }
 
 fn copy_partial_trees_to_pinned_host(
@@ -573,20 +603,13 @@ fn copy_partial_trees_to_pinned_host(
     Ok(result)
 }
 
-fn copy_host_allocation<T: Copy>(
-    source: &HostAllocation<[T]>,
-    _: &ProverContext,
-) -> StaticPinnedBox<T> {
-    alloc_static_pinned_box_from_slice(unsafe { source.get_accessor().get() })
-        .expect("static setup host copies must fit in pinned host memory")
-}
-
 #[cfg(test)]
 mod tests {
     use std::alloc::Global;
     use std::ops::DerefMut;
     use std::sync::Arc;
 
+    use crate::primitives::context::HostAllocation;
     use cs::definitions::VirtualSetupPoly;
     use era_cudart::memory::memory_copy_async;
     use field::{FieldExtension, PrimeField};
@@ -645,15 +668,16 @@ mod tests {
         }
     }
 
-    fn stage1_caps_from_host_allocations<S: AsRef<[Digest]>>(
-        caps: &[S],
+    fn stage1_caps_from_unified_host_cap(
+        unified_cap: &[Digest],
         log_lde_factor: u32,
     ) -> Vec<MerkleTreeCapVarLength> {
-        (0..(1usize << log_lde_factor))
-            .map(|stage1_pos| {
-                let natural_coset_index = bitreverse_index(stage1_pos, log_lde_factor);
-                let cap = caps[natural_coset_index].as_ref().to_vec();
-                MerkleTreeCapVarLength { cap }
+        let lde_factor = 1usize << log_lde_factor;
+        debug_assert_eq!(unified_cap.len() % lde_factor, 0);
+        let per_coset = unified_cap.len() / lde_factor;
+        (0..lde_factor)
+            .map(|stage1_pos| MerkleTreeCapVarLength {
+                cap: unified_cap[stage1_pos * per_coset..(stage1_pos + 1) * per_coset].to_vec(),
             })
             .collect_vec()
     }
@@ -840,7 +864,7 @@ mod tests {
         })
         .collect_vec();
         assert_eq!(
-            stage1_caps_from_host_allocations(&host.tree_caps, log_lde_factor),
+            stage1_caps_from_unified_host_cap(&host.unified_tree_cap[..], log_lde_factor),
             setup_caps
         );
     }
@@ -942,8 +966,13 @@ mod tests {
             unsafe { fresh_queries.merkle_paths.get_accessor().get() }
         );
         assert_eq!(
-            transfer.trace_holder.get_tree_caps(),
-            fresh_holder.get_tree_caps()
+            transfer
+                .trace_holder
+                .read_per_coset_caps_synchronously(&context)
+                .unwrap(),
+            fresh_holder
+                .read_per_coset_caps_synchronously(&context)
+                .unwrap()
         );
     }
 
