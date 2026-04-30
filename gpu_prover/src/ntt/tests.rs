@@ -14,8 +14,7 @@ use field::{Field, PrimeField};
 use prover::gkr::whir::hypercube_to_monomial::{
     multivariate_coeffs_into_hypercube_evals, multivariate_hypercube_evals_into_coeffs,
 };
-use rand::rngs::StdRng;
-use rand::{Rng, SeedableRng};
+use rand::Rng;
 use serial_test::serial;
 use worker::Worker;
 
@@ -28,11 +27,7 @@ use super::{
 };
 use crate::allocator::tracker::AllocationPlacement;
 use crate::device_context::DeviceContext;
-use crate::device_structures::{
-    DeviceMatrixChunk, DeviceMatrixChunkImpl, DeviceMatrixChunkMut, DeviceMatrixChunkMutImpl,
-};
-use crate::ops::bit_reverse::bit_reverse_in_place;
-use crate::primitives::context::DeviceProperties;
+use crate::device_structures::{DeviceMatrixChunk, DeviceMatrixChunkMut};
 use crate::primitives::context::{ProverContext, ProverContextConfig};
 use crate::primitives::field::BF;
 

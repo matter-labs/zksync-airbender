@@ -1,20 +1,19 @@
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
-use era_cudart::slice::DeviceSlice;
+use fft::bitreverse_enumeration_inplace;
 use field::{Field, FieldExtension};
 use prover::merkle_trees::MerkleTreeCapVarLength;
 use prover::utils::{extension_field_from_base_coeffs, extension_field_into_base_coeffs};
 
 use crate::allocator::tracker::AllocationPlacement;
-use crate::ops::bit_reverse::bit_reverse_in_place;
 use crate::ops::blake2s::Digest;
 use crate::primitives::callbacks::Callbacks;
 use crate::primitives::context::{HostAllocation, ProverContext, UnsafeAccessor};
-use crate::primitives::device_structures::{DeviceMatrix, DeviceMatrixChunkMut, DeviceMatrixMut};
+use crate::primitives::device_structures::{DeviceMatrix, DeviceMatrixChunkMut, DeviceMatrixImpl};
 use crate::primitives::field::{BF, E4};
 use crate::primitives::static_host::alloc_static_pinned_box_from_slice;
 use crate::prover::trace_holder::{TraceHolder, TreesCacheMode, PARTIAL_TREE_REDUCTION_LAYERS};
-use crate::prover::whir_kernels::{pack_rows_for_whir_leaves, serialize_whir_e4_columns};
+use crate::prover::whir_kernels::pack_rows_for_whir_leaves;
 
 const EXT4_DEGREE: usize = <E4 as FieldExtension<BF>>::DEGREE;
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -100,6 +99,19 @@ impl GpuWhirScheduledExtensionQuery {
     }
 }
 
+pub(crate) fn e4_coeffs_to_vectorized(coeffs: &[E4]) -> Vec<BF> {
+    let trace_len = coeffs.len();
+    let mut vectorized_coeffs = vec![BF::default(); 4 * trace_len];
+    for i in 0..trace_len {
+        let coeff = coeffs[i];
+        let bf_coeffs = [coeff.c0.c0, coeff.c0.c1, coeff.c1.c0, coeff.c1.c1];
+        for j in 0..4 {
+            vectorized_coeffs[i + j * trace_len] = bf_coeffs[j];
+        }
+    }
+    vectorized_coeffs
+}
+
 impl GpuWhirExtensionOracle {
     fn recursive_tree_cache_mode(
         total_leaf_count_log2: u32,
@@ -119,13 +131,21 @@ impl GpuWhirExtensionOracle {
         tree_cap_size: usize,
         context: &ProverContext,
     ) -> CudaResult<Self> {
-        let mut monomial_coeffs_device =
-            context.alloc(monomial_coeffs.len(), AllocationPlacement::BestFit)?;
+        let trace_len = monomial_coeffs.len();
+        let mut bitreversed_monomial_coeffs = monomial_coeffs.to_vec();
+        bitreverse_enumeration_inplace(&mut bitreversed_monomial_coeffs);
+        let vectorized_monomial_coeffs = e4_coeffs_to_vectorized(&bitreversed_monomial_coeffs);
+        let mut monomial_coeffs_device_alloc = context.alloc(
+            vectorized_monomial_coeffs.len(),
+            AllocationPlacement::BestFit,
+        )?;
         let stream = context.get_exec_stream();
-        let host = alloc_static_pinned_box_from_slice(monomial_coeffs)?;
-        memory_copy_async(&mut monomial_coeffs_device, &host[..], stream)?;
+        let host = alloc_static_pinned_box_from_slice(&vectorized_monomial_coeffs[..])?;
+        memory_copy_async(&mut monomial_coeffs_device_alloc, &host[..], stream)?;
+        let monomial_coeffs_device = DeviceMatrix::new(&monomial_coeffs_device_alloc, trace_len);
         Self::from_device_monomial_coeffs(
             &monomial_coeffs_device,
+            trace_len,
             lde_factor,
             values_per_leaf,
             tree_cap_size,
@@ -134,7 +154,8 @@ impl GpuWhirExtensionOracle {
     }
 
     pub(crate) fn from_device_monomial_coeffs(
-        monomial_coeffs: &DeviceSlice<E4>,
+        monomial_coeffs: &impl DeviceMatrixImpl<BF>,
+        trace_len: usize,
         lde_factor: usize,
         values_per_leaf: usize,
         tree_cap_size: usize,
@@ -142,6 +163,7 @@ impl GpuWhirExtensionOracle {
     ) -> CudaResult<Self> {
         Self::from_device_monomial_coeffs_impl(
             monomial_coeffs,
+            trace_len,
             lde_factor,
             values_per_leaf,
             tree_cap_size,
@@ -151,7 +173,8 @@ impl GpuWhirExtensionOracle {
     }
 
     pub(crate) fn schedule_from_device_monomial_coeffs(
-        monomial_coeffs: &DeviceSlice<E4>,
+        monomial_coeffs: &impl DeviceMatrixImpl<BF>,
+        trace_len: usize,
         lde_factor: usize,
         values_per_leaf: usize,
         tree_cap_size: usize,
@@ -159,6 +182,7 @@ impl GpuWhirExtensionOracle {
     ) -> CudaResult<Self> {
         Self::from_device_monomial_coeffs_impl(
             monomial_coeffs,
+            trace_len,
             lde_factor,
             values_per_leaf,
             tree_cap_size,
@@ -168,15 +192,16 @@ impl GpuWhirExtensionOracle {
     }
 
     fn from_device_monomial_coeffs_impl(
-        monomial_coeffs: &DeviceSlice<E4>,
+        monomial_coeffs: &impl DeviceMatrixImpl<BF>,
+        trace_len: usize,
         lde_factor: usize,
         values_per_leaf: usize,
         tree_cap_size: usize,
         context: &ProverContext,
         synchronize_at_end: bool,
     ) -> CudaResult<Self> {
-        assert!(!monomial_coeffs.is_empty());
-        assert!(monomial_coeffs.len().is_power_of_two());
+        assert!(!monomial_coeffs.slice().is_empty());
+        assert!(monomial_coeffs.slice().len().is_power_of_two());
         assert!(lde_factor.is_power_of_two());
         assert!(values_per_leaf.is_power_of_two());
         assert!(tree_cap_size.is_power_of_two());
@@ -185,7 +210,7 @@ impl GpuWhirExtensionOracle {
             "recursive WHIR oracles require LDE factor > 1"
         );
 
-        let trace_len = monomial_coeffs.len();
+        // let trace_len = monomial_coeffs.len();
         let trace_len_log2 = trace_len.trailing_zeros() as usize;
         let log_lde_factor = lde_factor.trailing_zeros() as u32;
         let log_values_per_leaf = values_per_leaf.trailing_zeros() as u32;
@@ -197,15 +222,15 @@ impl GpuWhirExtensionOracle {
         let trees_cache_mode =
             Self::recursive_tree_cache_mode(total_leaf_count_log2, log_tree_cap_size);
 
-        let mut serialized_coeffs_device =
-            context.alloc(trace_len * EXT4_DEGREE, AllocationPlacement::BestFit)?;
-        let stream = context.get_exec_stream();
-        serialize_whir_e4_columns(monomial_coeffs, &mut serialized_coeffs_device, stream)?;
-        {
-            let mut coeffs_matrix = DeviceMatrixMut::new(&mut serialized_coeffs_device, trace_len);
-            bit_reverse_in_place(&mut coeffs_matrix, stream)?;
-        }
+        // let mut serialized_coeffs_device =
+        //     context.alloc(trace_len * EXT4_DEGREE, AllocationPlacement::BestFit)?;
+        // serialize_whir_e4_columns(monomial_coeffs, &mut serialized_coeffs_device, stream)?;
+        // {
+        //     let mut coeffs_matrix = DeviceMatrixMut::new(&mut serialized_coeffs_device, trace_len);
+        //     bit_reverse_in_place(&mut coeffs_matrix, stream)?;
+        // }
 
+        let stream = context.get_exec_stream();
         let mut trace_holder = TraceHolder::new(
             total_leaf_count_log2,
             0,
@@ -218,11 +243,14 @@ impl GpuWhirExtensionOracle {
         let mut natural_coset_values =
             context.alloc(trace_len * EXT4_DEGREE, AllocationPlacement::BestFit)?;
 
+        let monomial_coeffs_slice = monomial_coeffs.slice();
+        let monomial_coeffs_stride = monomial_coeffs.stride();
         for coset_index in 0..lde_factor {
             for base_column in 0..EXT4_DEGREE {
-                let column_start = base_column * trace_len;
-                let src = &serialized_coeffs_device[column_start..column_start + trace_len];
-                let dst = &mut natural_coset_values[column_start..column_start + trace_len];
+                let src_column_start = base_column * monomial_coeffs_stride;
+                let dst_column_start = base_column * trace_len;
+                let src = &monomial_coeffs_slice[src_column_start..src_column_start + trace_len];
+                let dst = &mut natural_coset_values[dst_column_start..dst_column_start + trace_len];
                 crate::ntt::bitreversed_coeffs_to_natural_coset(
                     src,
                     dst,
@@ -236,10 +264,10 @@ impl GpuWhirExtensionOracle {
             let packed_trace = trace_holder.get_uninit_coset_evaluations_mut(0);
             let stage1_coset_index = bitreverse_index(coset_index, log_lde_factor);
             let mut packed_matrix = DeviceMatrixChunkMut::new(
-                packed_trace,
-                packed_leaf_count << log_lde_factor,
-                stage1_coset_index * packed_leaf_count,
-                packed_leaf_count,
+                packed_trace,                           // slice
+                packed_leaf_count << log_lde_factor,    // stride
+                stage1_coset_index * packed_leaf_count, // offset
+                packed_leaf_count,                      // rows
             );
             pack_rows_for_whir_leaves(
                 &natural_matrix,
@@ -701,22 +729,30 @@ pub(crate) mod tests {
         let twiddles = Twiddles::<BF, Global>::new(monomial_coeffs.len(), &worker);
         let cpu =
             cpu_extension_oracle_from_monomial_form(&monomial_coeffs, &twiddles, 4, 2, 4, &worker);
+        let trace_len = monomial_coeffs.len();
 
+        let mut bitreversed_monomial_coeffs = monomial_coeffs.to_vec();
+        bitreverse_enumeration_inplace(&mut bitreversed_monomial_coeffs);
+        let monomial_coeffs_vectorized =
+            super::e4_coeffs_to_vectorized(&bitreversed_monomial_coeffs);
         let mut monomial_coeffs_device = context
             .alloc(
-                monomial_coeffs.len(),
+                trace_len * super::EXT4_DEGREE,
                 crate::allocator::tracker::AllocationPlacement::BestFit,
             )
             .unwrap();
         memory_copy_async(
             &mut monomial_coeffs_device,
-            &monomial_coeffs,
+            &monomial_coeffs_vectorized,
             context.get_exec_stream(),
         )
         .unwrap();
+        let monomial_coeffs_device_matrix =
+            super::DeviceMatrix::new(&monomial_coeffs_device, trace_len);
 
         let mut gpu = GpuWhirExtensionOracle::schedule_from_device_monomial_coeffs(
-            &monomial_coeffs_device,
+            &monomial_coeffs_device_matrix,
+            trace_len,
             4,
             2,
             4,
