@@ -45,7 +45,7 @@ fn generate_proof(
     type CountersT = DelegationsAndFamiliesCounters;
 
     let trace_len: usize = 1 << TRACE_LEN_LOG2;
-    let tree_cap_size = 32;
+    let whir_schedule = WhirSchedule::default_for_tests_80_bits_24();
     let worker = Worker::new_with_num_threads(8);
 
     let binary = std::fs::read("../riscv_transpiler/examples/keccak_f1600/app.bin").unwrap();
@@ -227,12 +227,10 @@ fn generate_proof(
         &twiddles,
         2,
         1,
-        tree_cap_size,
+        whir_schedule.cap_size,
         trace_len.trailing_zeros() as usize,
         &worker,
     );
-
-    let whir_schedule = WhirSchedule::default_for_tests_80_bits_24();
 
     println!("Proving with corrupted witness");
     let now = std::time::Instant::now();

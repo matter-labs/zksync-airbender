@@ -1,9 +1,9 @@
 use proc_macro2::TokenStream;
 use quote::quote;
 
-use crate::mersenne_wrapper::MersenneWrapper;
+use crate::field_wrapper::FieldWrapper;
 
-pub fn generate_transcript_helpers<MW: MersenneWrapper>() -> TokenStream {
+pub fn generate_transcript_helpers<MW: FieldWrapper>() -> TokenStream {
     let field_struct = MW::field_struct();
     let quartic_struct = MW::quartic_struct();
 

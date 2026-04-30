@@ -1,12 +1,12 @@
 use proc_macro2::TokenStream;
 use quote::quote;
 
-use crate::mersenne_wrapper::MersenneWrapper;
+use crate::field_wrapper::FieldWrapper;
 use prover::cs::gkr_compiler::OutputType;
 
 use super::GKROutputGroupInfo;
 
-pub fn generate_dim_reducing_compute_claim<MW: MersenneWrapper>(
+pub fn generate_dim_reducing_compute_claim<MW: FieldWrapper>(
     output_groups: &[GKROutputGroupInfo],
 ) -> TokenStream {
     let quartic_one = MW::quartic_one();
@@ -98,7 +98,7 @@ pub fn generate_dim_reducing_compute_claim<MW: MersenneWrapper>(
     }
 }
 
-pub fn generate_dim_reducing_final_step_accumulator<MW: MersenneWrapper>(
+pub fn generate_dim_reducing_final_step_accumulator<MW: FieldWrapper>(
     output_groups: &[GKROutputGroupInfo],
 ) -> TokenStream {
     let quartic_zero = MW::quartic_zero();

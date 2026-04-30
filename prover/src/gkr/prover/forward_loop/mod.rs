@@ -215,7 +215,11 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
         .iter()
         .chain(layer.gates_with_external_connections.iter())
     {
-        assert_eq!(gate.output_layer, expected_output_layer);
+        assert_eq!(
+            gate.output_layer, expected_output_layer,
+            "Unexpected output layer for gate {:?}",
+            gate
+        );
 
         // println!("Should evaluate {:?}", &gate.enforced_relation);
 

@@ -1,7 +1,7 @@
 use proc_macro2::TokenStream;
 use quote::quote;
 
-pub trait MersenneWrapper {
+pub trait FieldWrapper {
     fn field_struct() -> TokenStream;
     fn complex_struct() -> TokenStream;
     fn quartic_struct() -> TokenStream;
@@ -19,6 +19,8 @@ pub trait MersenneWrapper {
     fn sub_assign_base(a: TokenStream, b: TokenStream) -> TokenStream;
     fn mul_assign_by_base(a: TokenStream, b: TokenStream) -> TokenStream;
 
+    fn double(a: TokenStream) -> TokenStream;
+    fn square(a: TokenStream) -> TokenStream;
     fn negate(a: TokenStream) -> TokenStream;
 
     /// Convert a raw u32 word to a base field element (from NDS).
@@ -44,7 +46,7 @@ pub trait MersenneWrapper {
 
 pub struct DefaultBabyBearField;
 
-impl MersenneWrapper for DefaultBabyBearField {
+impl FieldWrapper for DefaultBabyBearField {
     fn field_struct() -> TokenStream {
         quote! { BabyBearField }
     }
@@ -97,6 +99,14 @@ impl MersenneWrapper for DefaultBabyBearField {
         quote! { field_ops::mul_assign_by_base(&mut #a, & #b) }
     }
 
+    fn double(a: TokenStream) -> TokenStream {
+        quote! { field_ops::double(&mut #a) }
+    }
+
+    fn square(a: TokenStream) -> TokenStream {
+        quote! { field_ops::square(&mut #a) }
+    }
+
     fn negate(a: TokenStream) -> TokenStream {
         quote! { field_ops::negate(&mut #a) }
     }
@@ -139,7 +149,7 @@ impl MersenneWrapper for DefaultBabyBearField {
 
 pub struct DefaultMersenne31Field;
 
-impl MersenneWrapper for DefaultMersenne31Field {
+impl FieldWrapper for DefaultMersenne31Field {
     fn field_struct() -> TokenStream {
         quote! { Mersenne31Field }
     }
@@ -190,6 +200,14 @@ impl MersenneWrapper for DefaultMersenne31Field {
 
     fn mul_assign_by_base(a: TokenStream, b: TokenStream) -> TokenStream {
         quote! { field_ops::mul_assign_by_base(&mut #a, & #b) }
+    }
+
+    fn double(a: TokenStream) -> TokenStream {
+        quote! { field_ops::double(&mut #a) }
+    }
+
+    fn square(a: TokenStream) -> TokenStream {
+        quote! { field_ops::square(&mut #a) }
     }
 
     fn negate(a: TokenStream) -> TokenStream {

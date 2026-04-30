@@ -1,7 +1,7 @@
 use proc_macro2::TokenStream;
 use quote::quote;
 
-use crate::mersenne_wrapper::MersenneWrapper;
+use crate::field_wrapper::FieldWrapper;
 use prover::cs::definitions::gkr::NoFieldVectorLookupRelation;
 use prover::cs::definitions::gkr::RamWordRepresentation;
 use prover::cs::definitions::GKRAddress;
@@ -24,7 +24,7 @@ use verifier_common::gkr::SimpleGateType;
 use super::addr_to_idx;
 use super::coeff_to_internal_repr;
 
-pub fn generate_eval_helpers<MW: MersenneWrapper>() -> TokenStream {
+pub fn generate_eval_helpers<MW: FieldWrapper>() -> TokenStream {
     let field_struct = MW::field_struct();
     let quartic_struct = MW::quartic_struct();
     let quartic_zero = MW::quartic_zero();
@@ -243,7 +243,7 @@ pub fn generate_eval_helpers<MW: MersenneWrapper>() -> TokenStream {
     }
 }
 
-fn emit_linear_relation_eval<MW: MersenneWrapper, F: PrimeField>(
+fn emit_linear_relation_eval<MW: FieldWrapper, F: PrimeField>(
     rel: &prover::cs::definitions::gkr::NoFieldLinearRelation,
     var_name: &str,
     input_sorted_addrs: &[GKRAddress],
@@ -271,7 +271,7 @@ fn emit_linear_relation_eval<MW: MersenneWrapper, F: PrimeField>(
     }
 }
 
-fn emit_vector_lookup_eval<MW: MersenneWrapper, F: PrimeField>(
+fn emit_vector_lookup_eval<MW: FieldWrapper, F: PrimeField>(
     rel: &NoFieldVectorLookupRelation,
     var_name: &str,
     input_sorted_addrs: &[GKRAddress],
@@ -313,7 +313,7 @@ fn emit_vector_lookup_eval<MW: MersenneWrapper, F: PrimeField>(
     }
 }
 
-fn emit_single_output_gate<MW: MersenneWrapper>(
+fn emit_single_output_gate<MW: FieldWrapper>(
     body: &mut TokenStream,
     mul_batch: &TokenStream,
     val_computation: TokenStream,
@@ -641,7 +641,7 @@ fn emit_memory_expression_eval<F: PrimeField>(
     }
 }
 
-pub fn generate_layer_compute_claim<MW: MersenneWrapper>(
+pub fn generate_layer_compute_claim<MW: FieldWrapper>(
     layer: &GKRLayerDescription,
     layer_idx: usize,
     output_sorted_addrs: &[GKRAddress],
@@ -837,7 +837,7 @@ fn emit_simple_gate(
     simple_group.push(desc);
 }
 
-fn generate_simple_gate_loop<MW: MersenneWrapper>(
+fn generate_simple_gate_loop<MW: FieldWrapper>(
     descs: &[(SimpleGateType, [usize; 4])],
 ) -> TokenStream {
     let field_one = MW::field_one();
@@ -1064,7 +1064,7 @@ fn generate_simple_gate_loop<MW: MersenneWrapper>(
     }
 }
 
-fn emit_single_output_value<MW: MersenneWrapper, F: PrimeField>(
+fn emit_single_output_value<MW: FieldWrapper, F: PrimeField>(
     gate: &prover::cs::gkr_compiler::GateArtifacts,
     input_sorted_addrs: &[GKRAddress],
 ) -> Option<TokenStream> {
@@ -1113,7 +1113,7 @@ fn emit_single_output_value<MW: MersenneWrapper, F: PrimeField>(
     }
 }
 
-fn emit_dual_output_for_relation<MW: MersenneWrapper, F: PrimeField>(
+fn emit_dual_output_for_relation<MW: FieldWrapper, F: PrimeField>(
     body: &mut TokenStream,
     mul_batch: &TokenStream,
     gate: &prover::cs::gkr_compiler::GateArtifacts,
@@ -1254,7 +1254,7 @@ fn emit_dual_output_for_relation<MW: MersenneWrapper, F: PrimeField>(
     }
 }
 
-fn emit_inits_teardowns<MW: MersenneWrapper, F: PrimeField>(
+fn emit_inits_teardowns<MW: FieldWrapper, F: PrimeField>(
     body: &mut TokenStream,
     mul_batch: &TokenStream,
     gate: &prover::cs::gkr_compiler::GateArtifacts,
@@ -1273,6 +1273,12 @@ fn emit_inits_teardowns<MW: MersenneWrapper, F: PrimeField>(
 
     let setup_lo_idx = addr_to_idx(&setup[0], input_sorted_addrs);
     let setup_hi_idx = addr_to_idx(&setup[1], input_sorted_addrs);
+
+    let mul_t_base = MW::mul_assign_by_base(quote! { t }, quote! { base });
+    let add_result_t = MW::add_assign(quote! { result }, quote! { t });
+    let add_result_ram = MW::add_assign_base(quote! { result }, quote! { ram_constant_el });
+    let add_addr_set = MW::add_assign_base(quote! { addr_hi }, quote! { set_field });
+    let mul_t_addr = MW::mul_assign_by_base(quote! { t }, quote! { addr_hi });
 
     let mut val_comp = TokenStream::new();
 
@@ -1306,23 +1312,27 @@ fn emit_inits_teardowns<MW: MersenneWrapper, F: PrimeField>(
                 quote! {
                     {
                         let mut t = linearization_challenges[#PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
-                        field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(#ts_lo_idx)[j]);
-                        field_ops::add_assign(&mut result, &t);
+                        let base = evals.get_unchecked(#ts_lo_idx)[j];
+                        #mul_t_base;
+                        #add_result_t;
                     }
                     {
                         let mut t = linearization_challenges[#PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX];
-                        field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(#ts_hi_idx)[j]);
-                        field_ops::add_assign(&mut result, &t);
+                        let base = evals.get_unchecked(#ts_hi_idx)[j];
+                        #mul_t_base;
+                        #add_result_t;
                     }
                     {
                         let mut t = linearization_challenges[#PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX];
-                        field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(#val_lo_idx)[j]);
-                        field_ops::add_assign(&mut result, &t);
+                        let base = evals.get_unchecked(#val_lo_idx)[j];
+                        #mul_t_base;
+                        #add_result_t;
                     }
                     {
                         let mut t = linearization_challenges[#PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX];
-                        field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(#val_hi_idx)[j]);
-                        field_ops::add_assign(&mut result, &t);
+                        let base = evals.get_unchecked(#val_hi_idx)[j];
+                        #mul_t_base;
+                        #add_result_t;
                     }
                 }
             }
@@ -1333,11 +1343,13 @@ fn emit_inits_teardowns<MW: MersenneWrapper, F: PrimeField>(
         val_comp.extend(quote! {
             let mut #var = {
                 let mut result = permutation_argument_additive_part;
-                field_ops::add_assign_base(&mut result, &#field_struct_local::from_reduced_raw_repr(#ram_constant));
+                let ram_constant_el = #field_struct_local::from_reduced_raw_repr(#ram_constant);
+                #add_result_ram;
                 {
                     let mut t = linearization_challenges[#PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
-                    field_ops::mul_assign_by_base(&mut t, &evals.get_unchecked(#setup_lo_idx)[j]);
-                    field_ops::add_assign(&mut result, &t);
+                    let base = evals.get_unchecked(#setup_lo_idx)[j];
+                    #mul_t_base;
+                    #add_result_t;
                 }
                 {
                     let mut t = linearization_challenges[#PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
@@ -1345,10 +1357,10 @@ fn emit_inits_teardowns<MW: MersenneWrapper, F: PrimeField>(
                     let set_bits = (#set_idx_val as u32) << address_high_bits_shift;
                     if set_bits != 0 {
                         let set_field = #field_struct_local::from_u32_unchecked(set_bits);
-                        field_ops::add_assign_base(&mut addr_hi, &set_field);
+                        #add_addr_set;
                     }
-                    field_ops::mul_assign_by_base(&mut t, &addr_hi);
-                    field_ops::add_assign(&mut result, &t);
+                    #mul_t_addr;
+                    #add_result_t;
                 }
                 #ts_val_terms
                 result
@@ -1361,7 +1373,7 @@ fn emit_inits_teardowns<MW: MersenneWrapper, F: PrimeField>(
     emit_single_output_gate::<MW>(body, mul_batch, val_comp);
 }
 
-pub fn generate_layer_final_step_accumulator<MW: MersenneWrapper, F: PrimeField>(
+pub fn generate_layer_final_step_accumulator<MW: FieldWrapper, F: PrimeField>(
     layer: &GKRLayerDescription,
     layer_idx: usize,
     input_sorted_addrs: &[GKRAddress],
@@ -1481,7 +1493,7 @@ pub fn generate_layer_final_step_accumulator<MW: MersenneWrapper, F: PrimeField>
     }
 }
 
-fn generate_two_output_body<MW: MersenneWrapper>(
+fn generate_two_output_body<MW: FieldWrapper>(
     body: &mut TokenStream,
     mul_batch: &TokenStream,
     setup_vars: TokenStream,

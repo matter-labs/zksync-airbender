@@ -319,10 +319,9 @@ impl GraphHolder for GKRGraph {
     }
 
     fn add_enforced_relation(&mut self, relation: NoFieldGKRRelation, output_layer: usize) {
-        let entry = self
-            .enforced_relations
-            .entry(output_layer)
-            .or_insert(vec![]);
+        assert!(output_layer > 0);
+        let input_layer = output_layer - 1;
+        let entry = self.enforced_relations.entry(input_layer).or_insert(vec![]);
         entry.push(relation);
     }
 
