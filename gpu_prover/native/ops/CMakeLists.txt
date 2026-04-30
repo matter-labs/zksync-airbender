@@ -3,6 +3,7 @@ target_sources(gpu_prover_native PRIVATE
         batch_inv.cuh
         bit_reverse.cu
         blake2s.cu
+        gkr_initial_inner_products.cu
         powers.cu
         simple.cu
         transpose.cu

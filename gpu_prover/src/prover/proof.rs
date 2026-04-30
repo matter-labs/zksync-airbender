@@ -20,9 +20,6 @@ use crate::allocator::tracker::AllocationPlacement;
 use crate::circuit_type::CircuitType;
 use crate::ops::blake2s::Digest;
 use crate::ops::blake2s::STATE_SIZE;
-use crate::ops::cub::device_reduce::{get_reduce_temp_storage_bytes, reduce, ReduceOperation};
-use crate::ops::cub::CUB_TEMP_STORAGE_EXTRA_ALIGNMENT_LOG2;
-use crate::ops::simple::mul;
 use crate::primitives::callbacks::Callbacks;
 use crate::primitives::context::{
     DeviceAllocation, HostAllocation, ProverContext, SchedulerHostAllocation, UnsafeAccessor,
@@ -33,16 +30,14 @@ use crate::primitives::device_tracing::Range;
 use crate::primitives::field::{BF, E4};
 use crate::prover::decoder::DecoderTableTransfer;
 use crate::prover::gkr::backward::{
-    apply_base_layer_extra_evaluations_to_workflow_state, clone_backward_claims_for_layer,
-    current_backward_seed, fill_backward_claim_point_for_layer,
+    apply_base_layer_extra_evaluations_to_workflow_state, current_backward_seed,
     make_deferred_backward_workflow_state, ClaimBufferLayout, GpuGKRBackwardHostKeepalive,
 };
 use crate::prover::gkr::backward_kernels::{
     eq_group_tables_len, launch_build_eq_values_from_point,
 };
 use crate::prover::gkr::base_layer_claims::{
-    clone_base_layer_extra_evaluations_from_caching_relations, fill_mem_polys_claims,
-    fill_setup_polys_claims, fill_wit_polys_claims,
+    clone_base_layer_extra_evaluations_from_caching_relations,
     schedule_prepare_base_layer_claims_with_sources, GpuGKRBaseLayerClaimsScheduledExecution,
     GpuGKRBaseLayerTailOutput,
 };
@@ -69,10 +64,22 @@ struct GpuGKRProofJobKeepalive<'a> {
     _backward: GpuGKRBackwardHostKeepalive<BF, E4>,
     _base_layer_claims: GpuGKRBaseLayerClaimsScheduledExecution<E4>,
     _whir: GpuWhirFoldScheduledExecution,
-    /// Pinned host staging buffer that backs the single h2d_stream H2D used to upload
-    /// canonical_top_bits ++ external_challenges ++ flattened_memory_caps for the initial
-    /// transcript. Held here so the allocation outlives the H2D copy on h2d_stream.
-    _initial_transcript_host_blob: HostAllocation<[u32]>,
+    /// Pinned host staging buffers backing the two h2d_stream H2Ds that upload
+    /// the initial-transcript pre-setup chunk (canonical_top_bits ++
+    /// external_challenges) and the flattened memory caps directly into the
+    /// final `d_transcript_input` positions. Held here so the allocations
+    /// outlive the H2D copies on h2d_stream.
+    _initial_transcript_pre_setup_host: HostAllocation<[u32]>,
+    _initial_transcript_memory_caps_host: HostAllocation<[u32]>,
+    /// SchedulerHostAllocator-backed pointer tables consumed by the cap-gather
+    /// kernel and the initial inner-product kernel. SchedulerHostAllocator
+    /// requires the handle to outlive every H2D reading it (per the contract:
+    /// "attach to a keepalive that outlives all in-flight prove() work"); the
+    /// proof-job keepalive is dropped only after `is_finished_event.synchronize()`
+    /// in `finish()`.
+    _setup_cap_gather_host_ptrs: Option<SchedulerHostAllocation<[u64]>>,
+    _witness_cap_gather_host_ptrs: Option<SchedulerHostAllocation<[u64]>>,
+    _initial_inner_product_host_ptrs: SchedulerHostAllocation<[u64]>,
     /// Pinned host mirror of the device-resident proof slab (Phase 4). Populated
     /// by the terminal D2H; read by the single assembly callback.
     #[allow(dead_code)]
@@ -327,9 +334,9 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
     //     (canonical_top_bits ++ external_challenges ++ setup_caps ++ memory_caps ++ witness_caps)
     //     as contiguous device u32s after stage 1 finishes. Setup and witness caps are D2D-copied
     //     from their on-device tree buffers in bit-reversed LDE position order.
-    //  3. Apply the "seed trick": carve the first STATE_SIZE u32 words of `d_transcript_input`
-    //     as a `d_seed` then `transcript_commit(d_seed, rest)`. This computes a single
-    //     `Blake2s(full_input)` which matches CPU `Transcript::commit_initial`.
+    //  3. `transcript_commit_initial(d_seed, d_transcript_input)` → `Blake2s(full_input)` from
+    //     the IV in a single kernel launch (no D2D, no per-prefix `transcript_commit`).
+    //     Matches CPU `Transcript::commit_initial`.
     //  4. `transcript_squeeze(d_seed, d_lookup_challenges)` → 3 lookup challenges on device.
     //  5. D2H seed and lookup-challenges into existing host pinned slots for downstream
     //     host-side callbacks (backward workflow state population reads them back).
@@ -345,19 +352,50 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
         .sum::<usize>();
     let memory_log_lde_factor = setup_geometry.log_lde_factor;
     let pre_setup_len = canonical_top_bits_len + external_challenges_u32_len;
-    let bucket2_len = pre_setup_len + memory_caps_total_u32;
+    // Setup and witness caps share `setup_geometry.log_tree_cap_size` (stage1 builds
+    // both holders from `setup_geometry`, see stage1.rs:185-194), so the cap-bytes
+    // total is `(1 << log_tree_cap_size) * BLAKE2S_DIGEST_SIZE_U32_WORDS` per layer.
+    // Setup caps are 0 when the setup transfer is absent (synthetic-setup path).
+    let setup_caps_total_u32 = if setup_transfer.is_some() {
+        (1usize << setup_geometry.log_tree_cap_size) * BLAKE2S_DIGEST_SIZE_U32_WORDS
+    } else {
+        0
+    };
+    let witness_caps_total_u32 =
+        (1usize << setup_geometry.log_tree_cap_size) * BLAKE2S_DIGEST_SIZE_U32_WORDS;
+    let total_transcript_len =
+        pre_setup_len + setup_caps_total_u32 + memory_caps_total_u32 + witness_caps_total_u32;
+
+    let offset_pre_setup = 0usize;
+    let offset_setup = offset_pre_setup + pre_setup_len;
+    let offset_memory = offset_setup + setup_caps_total_u32;
+    let offset_witness = offset_memory + memory_caps_total_u32;
+    debug_assert_eq!(
+        offset_witness + witness_caps_total_u32,
+        total_transcript_len
+    );
+    assert!(
+        total_transcript_len > 0,
+        "transcript input must be non-empty for commit_initial",
+    );
 
     // -------------- Step 1: h2d_stream consolidation (BEFORE stage 1) --------------
-    // Pack canonical_top_bits ++ external_challenges ++ flattened_memory_caps into one pinned
-    // HostAllocation, then a single H2D into `d_bucket2`. Scheduling this before stage 1's
-    // kernels are queued on exec_stream keeps `e_alloc`'s captured stream position empty, so
-    // h2d_stream's wait on it is effectively a no-op and packing + H2D run concurrently with
-    // stage 1 compute on the GPU. Two-fence pattern per `docs/gpu_scheduling_contract.md#h2d-copies`.
+    // Pack canonical_top_bits ++ external_challenges into one pinned chunk and
+    // flattened_memory_caps into another, then schedule two H2Ds directly into the
+    // final `d_transcript_input` positions. No `d_bucket2` and no D2Ds — the data
+    // arrives already at its destination offset (Opp. 1). Scheduling this before
+    // stage 1's kernels are queued on exec_stream keeps `e_alloc`'s captured stream
+    // position empty, so h2d_stream's wait on it is effectively a no-op and packing
+    // + H2D run concurrently with stage 1 compute on the GPU. Two-fence pattern per
+    // `docs/gpu_scheduling_contract.md#h2d-copies`.
     let h2d_stream = context.get_h2d_stream();
-    let mut bucket2_host = unsafe { context.alloc_host_uninit_slice::<u32>(bucket2_len) };
-    let bucket2_host_write_accessor = bucket2_host.get_mut_accessor();
-    let mut d_bucket2: DeviceAllocation<u32> =
-        context.alloc(bucket2_len, AllocationPlacement::BestFit)?;
+    let mut d_transcript_input: DeviceAllocation<u32> =
+        context.alloc(total_transcript_len, AllocationPlacement::BestFit)?;
+    let mut pre_setup_host = unsafe { context.alloc_host_uninit_slice::<u32>(pre_setup_len) };
+    let pre_setup_host_write_accessor = pre_setup_host.get_mut_accessor();
+    let mut memory_caps_host =
+        unsafe { context.alloc_host_uninit_slice::<u32>(memory_caps_total_u32) };
+    let memory_caps_host_write_accessor = memory_caps_host.get_mut_accessor();
     let external_challenges_for_h2d = external_challenges.clone();
     let memory_tree_caps_for_h2d: Vec<Vec<Digest>> = memory_tree_caps
         .iter()
@@ -370,7 +408,7 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
 
     callbacks.schedule(
         move || unsafe {
-            let dst = bucket2_host_write_accessor.get_mut();
+            let dst = pre_setup_host_write_accessor.get_mut();
             let mut offset = 0usize;
             dst[offset..offset + canonical_top_bits_len].copy_from_slice(&canonical_top_bits);
             offset += canonical_top_bits_len;
@@ -379,6 +417,14 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
             assert_eq!(ext_buf.len(), external_challenges_u32_len);
             dst[offset..offset + external_challenges_u32_len].copy_from_slice(&ext_buf);
             offset += external_challenges_u32_len;
+            assert_eq!(offset, pre_setup_len);
+        },
+        h2d_stream,
+    )?;
+    callbacks.schedule(
+        move || unsafe {
+            let dst = memory_caps_host_write_accessor.get_mut();
+            let mut offset = 0usize;
             // memory caps in bit-reversed LDE position order, matching CPU flatten_tree_caps.
             let lde_factor = 1usize << memory_log_lde_factor;
             for stage1_pos in 0..lde_factor {
@@ -389,15 +435,24 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
                     offset += BLAKE2S_DIGEST_SIZE_U32_WORDS;
                 }
             }
-            assert_eq!(offset, bucket2_len);
+            assert_eq!(offset, memory_caps_total_u32);
         },
         h2d_stream,
     )?;
-    memory_copy_async(&mut d_bucket2, &bucket2_host, h2d_stream)?;
+    memory_copy_async(
+        &mut d_transcript_input[offset_pre_setup..offset_pre_setup + pre_setup_len],
+        &pre_setup_host,
+        h2d_stream,
+    )?;
+    memory_copy_async(
+        &mut d_transcript_input[offset_memory..offset_memory + memory_caps_total_u32],
+        &memory_caps_host,
+        h2d_stream,
+    )?;
 
     // `e_xfer` records "h2d H2D complete". The exec-stream wait on it is deferred until just
-    // before the first D2D that reads `d_bucket2` (after stage 1), so stage 1 compute isn't
-    // artificially serialized behind the transfer.
+    // before the post-stage-1 D2Ds populate `d_transcript_input[setup/witness]` ranges, so
+    // stage 1 compute isn't artificially serialized behind the transfer.
     let e_xfer = CudaEvent::create_with_flags(CudaEventCreateFlags::DISABLE_TIMING)?;
     e_xfer.record(h2d_stream)?;
 
@@ -455,64 +510,85 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
 
     let witness_log_lde_factor = stage1_output.witness_trace_holder.log_lde_factor;
     let witness_base_caps_keepalive = stage1_output.witness_trace_holder.take_tree_caps_host();
-
-    // Sizes that depend on stage1 output (witness tree caps).
-    let setup_caps_total_u32 = setup_transfer
-        .as_ref()
-        .map(|setup_transfer| {
-            setup_transfer
-                .host
-                .tree_caps
-                .iter()
-                .map(|cap| cap.len() * BLAKE2S_DIGEST_SIZE_U32_WORDS)
-                .sum::<usize>()
-        })
-        .unwrap_or(0);
-    let witness_caps_total_u32 = witness_base_caps_keepalive
-        .iter()
-        .map(|cap| unsafe { cap.get_accessor().get().len() } * BLAKE2S_DIGEST_SIZE_U32_WORDS)
-        .sum::<usize>();
-
-    let total_transcript_len =
-        pre_setup_len + setup_caps_total_u32 + memory_caps_total_u32 + witness_caps_total_u32;
-
-    // Offsets inside `d_transcript_input`.
-    let offset_pre_setup = 0usize;
-    let offset_setup = offset_pre_setup + pre_setup_len;
-    let offset_memory = offset_setup + setup_caps_total_u32;
-    let offset_witness = offset_memory + memory_caps_total_u32;
     debug_assert_eq!(
-        offset_witness + witness_caps_total_u32,
-        total_transcript_len
-    );
-    assert!(
-        total_transcript_len >= STATE_SIZE,
-        "transcript input must have at least STATE_SIZE words for the commit_initial seed trick",
+        witness_base_caps_keepalive
+            .iter()
+            .map(|cap| unsafe { cap.get_accessor().get().len() } * BLAKE2S_DIGEST_SIZE_U32_WORDS)
+            .sum::<usize>(),
+        witness_caps_total_u32,
+        "stage1 witness cap geometry must match the structurally-derived witness_caps_total_u32",
     );
 
-    // Exec must not read `d_bucket2` until the h2d_stream H2D has completed. Placing the wait
-    // here (after stage 1 is queued) means stage 1 and the h2d transfer run concurrently; the
-    // wait is only effective at the D2D copies below.
+    // Build the proof slab layout structurally (no forward output required) and
+    // allocate the slab now — placing it before forward keeps it at a stable,
+    // bottom-of-pool offset across the whole prove() invocation. Per-layer
+    // backward kernels and base-layer claim writes target slab offsets
+    // computed from this layout. After forward returns we re-derive the layout
+    // from `forward_output.dimension_reducing_inputs` + the storage-aware
+    // address collection and assert equivalence in debug builds.
+    let proof_layout_setup_columns_count = setup_transfer
+        .as_ref()
+        .map_or(0, |s| s.trace_holder.columns_count);
+    let memory_layer_geometry = GpuGKRTraceGeometry {
+        log_domain_size: stage1_output.memory_trace_holder.log_domain_size,
+        log_lde_factor: stage1_output.memory_trace_holder.log_lde_factor,
+        log_rows_per_leaf: stage1_output.memory_trace_holder.log_rows_per_leaf,
+        log_tree_cap_size: stage1_output.memory_trace_holder.log_tree_cap_size,
+    };
+    let witness_layer_geometry = GpuGKRTraceGeometry {
+        log_domain_size: stage1_output.witness_trace_holder.log_domain_size,
+        log_lde_factor: stage1_output.witness_trace_holder.log_lde_factor,
+        log_rows_per_leaf: stage1_output.witness_trace_holder.log_rows_per_leaf,
+        log_tree_cap_size: stage1_output.witness_trace_holder.log_tree_cap_size,
+    };
+    let proof_layout_inputs_structural =
+        crate::prover::proof_layout::build_proof_layout_inputs_structural::<E4>(
+            &compiled_circuit,
+            &external_challenges,
+            &whir_schedule,
+            final_trace_size_log_2,
+            crate::prover::proof_layout::ProofLayoutBaseLayerGeometry::from_geometry(
+                memory_layer_geometry,
+                compiled_circuit.memory_layout.total_width,
+            ),
+            crate::prover::proof_layout::ProofLayoutBaseLayerGeometry::from_geometry(
+                witness_layer_geometry,
+                compiled_circuit.witness_layout.total_width,
+            ),
+            crate::prover::proof_layout::ProofLayoutBaseLayerGeometry::from_geometry(
+                setup_geometry,
+                proof_layout_setup_columns_count,
+            ),
+        );
+    let proof_layout =
+        crate::prover::proof_layout::ProofLayout::new(&proof_layout_inputs_structural);
+    let proof_slab: Option<DeviceAllocation<u8>> = if proof_layout.total_bytes > 0 {
+        let slab = context.alloc::<u8>(proof_layout.total_bytes, AllocationPlacement::Bottom)?;
+        debug_assert_eq!(
+            slab.as_ptr() as usize & 0xF,
+            0,
+            "proof slab base pointer must be 16-byte aligned for ProofLayout typed casts",
+        );
+        Some(slab)
+    } else {
+        None
+    };
+
+    // Exec must not read the h2d-populated `d_transcript_input[pre_setup]` and
+    // `d_transcript_input[memory]` ranges until the h2d_stream H2Ds have completed.
+    // Placing the wait here (after stage 1 is queued) means stage 1 and the h2d
+    // transfers run concurrently; the wait only fences the post-stage-1 D2Ds and
+    // the seed-trick commit below.
     stream.wait_event(&e_xfer, CudaStreamWaitEventFlags::DEFAULT)?;
 
-    // -------------- Step 2: materialize d_transcript_input on exec_stream --------------
-    let mut d_transcript_input: DeviceAllocation<u32> =
-        context.alloc(total_transcript_len, AllocationPlacement::BestFit)?;
-
-    // D2D: pre_setup_len words from d_bucket2[0..pre_setup_len] → d_transcript_input[0..]
-    memory_copy_async(
-        &mut d_transcript_input[offset_pre_setup..offset_pre_setup + pre_setup_len],
-        &d_bucket2[0..pre_setup_len],
-        stream,
-    )?;
-    // D2D: memory caps from d_bucket2[pre_setup_len..bucket2_len] → d_transcript_input[offset_memory..]
-    memory_copy_async(
-        &mut d_transcript_input[offset_memory..offset_memory + memory_caps_total_u32],
-        &d_bucket2[pre_setup_len..bucket2_len],
-        stream,
-    )?;
-    // D2D: setup caps from the on-device trace_holder trees.
-    if setup_caps_total_u32 > 0 {
+    // -------------- Step 2: fill setup/witness caps into d_transcript_input on exec_stream --------------
+    // Pack the per-coset cap source pointers (in bit-reversed LDE position order) into one
+    // pinned host table per source via `SchedulerHostAllocator` (the data — device pointer
+    // values for already-allocated tree cap regions — is scheduling-time-known and immutable),
+    // H2D the table, and gather all cosets in a single kernel launch. The host pointer tables
+    // are threaded into `GpuGKRProofJobKeepalive` so they outlive every in-flight H2D in the
+    // job, per the SchedulerHostAllocator lifetime rule.
+    let setup_cap_gather_host_ptrs = if setup_caps_total_u32 > 0 {
         let setup_transfer_ref = setup_transfer
             .as_ref()
             .expect("setup_caps_total_u32 > 0 requires a setup transfer");
@@ -527,7 +603,8 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
                 panic!("setup trace holder must cache trees for transcript cap extraction")
             }
         };
-        let mut running_offset = offset_setup;
+        let mut src_ptrs: Vec<u64> = Vec::with_capacity(lde_factor);
+        let mut cap_words_per_coset = 0usize;
         for stage1_pos in 0..lde_factor {
             let natural_coset_index =
                 stage1_pos.reverse_bits() >> (usize::BITS - setup_log_lde_factor);
@@ -535,21 +612,36 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
                 &trees[natural_coset_index][..],
                 log_subtree_cap_size,
             );
-            let cap_u32_len = cap_digests.len() * BLAKE2S_DIGEST_SIZE_U32_WORDS;
             // SAFETY: Digest is [u32; STATE_SIZE] — same layout as contiguous u32 array of
             // `cap_digests.len() * STATE_SIZE` words.
             let cap_u32 = unsafe { cap_digests.transmute::<u32>() };
-            memory_copy_async(
-                &mut d_transcript_input[running_offset..running_offset + cap_u32_len],
-                cap_u32,
-                stream,
-            )?;
-            running_offset += cap_u32_len;
+            let cap_u32_len = cap_u32.len();
+            if cap_words_per_coset == 0 {
+                cap_words_per_coset = cap_u32_len;
+            } else {
+                debug_assert_eq!(cap_words_per_coset, cap_u32_len);
+            }
+            src_ptrs.push(cap_u32.as_ptr() as u64);
         }
-        debug_assert_eq!(running_offset, offset_setup + setup_caps_total_u32);
-    }
-    // D2D: witness caps from the stage1 witness_trace_holder trees, in bit-reversed order.
-    if witness_caps_total_u32 > 0 {
+        debug_assert_eq!(lde_factor * cap_words_per_coset, setup_caps_total_u32);
+        let host_ptrs = context.scheduler_host_from_slice(&src_ptrs)?;
+        let mut device_ptrs: DeviceAllocation<u64> =
+            context.alloc(lde_factor, AllocationPlacement::BestFit)?;
+        memory_copy_async(&mut device_ptrs, &host_ptrs, stream)?;
+        crate::ops::blake2s::gather_tree_caps(
+            &device_ptrs,
+            &mut d_transcript_input[offset_setup..offset_setup + setup_caps_total_u32],
+            cap_words_per_coset as u32,
+            stream,
+        )?;
+        // device_ptrs drops at end of this if-block — pool-backed lifetime is
+        // scheduled-not-completed (the gather kernel has been scheduled).
+        drop(device_ptrs);
+        Some(host_ptrs)
+    } else {
+        None
+    };
+    let witness_cap_gather_host_ptrs = if witness_caps_total_u32 > 0 {
         let witness_log_tree_cap_size = stage1_output.witness_trace_holder.log_tree_cap_size;
         let log_subtree_cap_size = witness_log_tree_cap_size - witness_log_lde_factor;
         let lde_factor = 1usize << witness_log_lde_factor;
@@ -560,7 +652,8 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
                 panic!("witness trace holder must cache trees for transcript cap extraction")
             }
         };
-        let mut running_offset = offset_witness;
+        let mut src_ptrs: Vec<u64> = Vec::with_capacity(lde_factor);
+        let mut cap_words_per_coset = 0usize;
         for stage1_pos in 0..lde_factor {
             let natural_coset_index =
                 stage1_pos.reverse_bits() >> (usize::BITS - witness_log_lde_factor);
@@ -568,45 +661,57 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
                 &trees[natural_coset_index][..],
                 log_subtree_cap_size,
             );
-            let cap_u32_len = cap_digests.len() * BLAKE2S_DIGEST_SIZE_U32_WORDS;
             let cap_u32 = unsafe { cap_digests.transmute::<u32>() };
-            memory_copy_async(
-                &mut d_transcript_input[running_offset..running_offset + cap_u32_len],
-                cap_u32,
-                stream,
-            )?;
-            running_offset += cap_u32_len;
+            let cap_u32_len = cap_u32.len();
+            if cap_words_per_coset == 0 {
+                cap_words_per_coset = cap_u32_len;
+            } else {
+                debug_assert_eq!(cap_words_per_coset, cap_u32_len);
+            }
+            src_ptrs.push(cap_u32.as_ptr() as u64);
         }
-        debug_assert_eq!(running_offset, offset_witness + witness_caps_total_u32);
-    }
+        debug_assert_eq!(lde_factor * cap_words_per_coset, witness_caps_total_u32);
+        let host_ptrs = context.scheduler_host_from_slice(&src_ptrs)?;
+        let mut device_ptrs: DeviceAllocation<u64> =
+            context.alloc(lde_factor, AllocationPlacement::BestFit)?;
+        memory_copy_async(&mut device_ptrs, &host_ptrs, stream)?;
+        crate::ops::blake2s::gather_tree_caps(
+            &device_ptrs,
+            &mut d_transcript_input[offset_witness..offset_witness + witness_caps_total_u32],
+            cap_words_per_coset as u32,
+            stream,
+        )?;
+        drop(device_ptrs);
+        Some(host_ptrs)
+    } else {
+        None
+    };
 
     // -------------- Step 3: device-side commit_initial + draw 3 lookup challenges --------------
-    // Seed trick: d_seed := d_transcript_input[0..STATE_SIZE], then commit the remainder.
-    // That produces Blake2s(full_input), matching CPU `Transcript::commit_initial`.
+    // `commit_initial(input)` = Blake2s(input) from the IV — single kernel launch with no
+    // prior-seed input (no D2D from `d_transcript_input[0..STATE_SIZE]`, no separate
+    // `transcript_commit` call).
     let mut d_seed: DeviceAllocation<u32> =
         context.alloc(STATE_SIZE, AllocationPlacement::BestFit)?;
-    memory_copy_async(&mut d_seed, &d_transcript_input[0..STATE_SIZE], stream)?;
-    crate::ops::blake2s::transcript_commit(
+    crate::ops::blake2s::transcript_commit_initial(
         &mut d_seed,
-        &d_transcript_input[STATE_SIZE..total_transcript_len],
+        &d_transcript_input[..total_transcript_len],
         stream,
     )?;
 
     // 2 E4 lookup challenges in Montgomery form, drawn via the device-side Fiat-Shamir path
     // (mirrors host `draw_random_field_els::<BF, E4>(seed, 2)` with `from_raw_repr_with_reduction`).
+    // The same buffer feeds forward (consumed by `schedule_forward_setup`) and backward
+    // (extracted via `into_host_keepalive_taking_lookup_challenges` after forward) — no
+    // separate `d_lookup_challenges_for_backward` allocation or D2D (Opp. 3).
     let mut d_lookup_challenges: DeviceAllocation<E4> =
         context.alloc(2, AllocationPlacement::BestFit)?;
     crate::ops::blake2s::transcript_squeeze_e4(&mut d_seed, &mut d_lookup_challenges, stream)?;
-    let mut d_lookup_challenges_for_backward: DeviceAllocation<E4> =
-        context.alloc(2, AllocationPlacement::BestFit)?;
-    memory_copy_async(
-        &mut d_lookup_challenges_for_backward,
-        &d_lookup_challenges,
-        stream,
-    )?;
 
-    // `d_bucket2` and `d_transcript_input` can be dropped: exec_stream has queued all reads.
-    drop(d_bucket2);
+    // `d_transcript_input` can be dropped: exec_stream has queued all reads. The cap-gather
+    // host pointer tables are SchedulerHostAllocations that must outlive every in-flight H2D
+    // (the gather kernel has been scheduled, but its DMA-read of the host table may not have
+    // completed yet) — they're threaded into the proof-job keepalive below.
     drop(d_transcript_input);
 
     let mut forward_setup = if let Some(setup_transfer) = setup_transfer.as_ref() {
@@ -634,122 +739,84 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
     )?;
     let post_forward_handoff_range = Range::new("gkr.proof.post_forward_handoff")?;
     post_forward_handoff_range.start(stream)?;
-    let transcript_handoff = forward_output.schedule_transcript_handoff(false, context)?;
+    // Opp. 4b: route the per-poly forward pack writes directly into the slab's
+    // `output_evaluations` block, eliminating the standalone
+    // `device_flat_evaluations` allocation and the prior Phase-2b contiguous
+    // D2D copy. The slab layout allocates `output_evaluations[ot] = {read_set,
+    // write_set}` in BTreeMap key order with `FIELD_ALIGN == size_of::<E4>()
+    // == 16`, matching the order the per-poly D2Ds inside the handoff use.
+    let handoff_slab_dst: Option<(*mut E4, usize)> = proof_slab.as_ref().and_then(|slab| {
+        let first_layout = proof_layout.output_evaluations.values().next()?;
+        let total_e4: usize = proof_layout
+            .output_evaluations
+            .values()
+            .map(|layout| {
+                (layout.read_set.end - layout.read_set.start
+                    + layout.write_set.end - layout.write_set.start)
+                    / std::mem::size_of::<E4>()
+            })
+            .sum();
+        if total_e4 == 0 {
+            return None;
+        }
+        let dst_start = first_layout.read_set.start;
+        // SAFETY: `output_evaluations` is laid out contiguously starting at
+        // `dst_start` for `total_e4 * 16` bytes, 16-byte aligned, and disjoint
+        // from every other slab field.
+        let ptr = unsafe { (slab.as_ptr() as *mut u8).add(dst_start) } as *mut E4;
+        Some((ptr, total_e4))
+    });
+    let transcript_handoff =
+        forward_output.schedule_transcript_handoff(false, handoff_slab_dst, context)?;
     let initial_layer_for_sumcheck = forward_output.initial_layer_for_sumcheck;
     let output_layer_for_sumcheck =
         forward_output.dimension_reducing_inputs[&initial_layer_for_sumcheck].clone();
 
-    // Device-resident proof image: allocate one `DeviceAllocation<u8>` sized by
-    // `ProofLayout`. Phases 2b/3/4 rewire per-layer and WHIR kernel writes into
-    // slab offsets via `ProofLayout` accessors; Phase 4 adds the single terminal
-    // D2H + host-side parse.
-    //
-    // Allocation happens here because `build_proof_layout_inputs` reads
-    // `forward_output.dimension_reducing_inputs` to populate per-layer
-    // `final_step_eval_addresses`, and that field is still borrowable until
-    // `.into_dimension_reducing_backward_state()` consumes `forward_output`
-    // below. All base-layer Merkle geometry is available: memory + witness
-    // share `setup_geometry` (stage1.rs:181-194); setup columns come from
-    // `setup_transfer.trace_holder` or default to 0 for the
-    // setup-transfer-less path (whir_fold.rs:1846 guard).
-    let proof_layout_setup_columns_count = setup_transfer
-        .as_ref()
-        .map_or(0, |s| s.trace_holder.columns_count);
-    let main_layer_input_addresses_per_layer =
-        crate::prover::gkr::backward::collect_main_layer_input_addresses_per_layer::<E4>(
-            &compiled_circuit,
-            &external_challenges,
-            &forward_output.storage,
-        );
-    // Per-layer geometry for the slab — witness/memory may have different
-    // `log_lde_factor` / `log_tree_cap_size` than setup, so pass the actual
-    // trace-holder geometry for each base layer rather than reusing
-    // `setup_geometry`.
-    let memory_layer_geometry = GpuGKRTraceGeometry {
-        log_domain_size: stage1_output.memory_trace_holder.log_domain_size,
-        log_lde_factor: stage1_output.memory_trace_holder.log_lde_factor,
-        log_rows_per_leaf: stage1_output.memory_trace_holder.log_rows_per_leaf,
-        log_tree_cap_size: stage1_output.memory_trace_holder.log_tree_cap_size,
-    };
-    let witness_layer_geometry = GpuGKRTraceGeometry {
-        log_domain_size: stage1_output.witness_trace_holder.log_domain_size,
-        log_lde_factor: stage1_output.witness_trace_holder.log_lde_factor,
-        log_rows_per_leaf: stage1_output.witness_trace_holder.log_rows_per_leaf,
-        log_tree_cap_size: stage1_output.witness_trace_holder.log_tree_cap_size,
-    };
-    let proof_layout_inputs = crate::prover::proof_layout::build_proof_layout_inputs(
-        &compiled_circuit,
-        &whir_schedule,
-        final_trace_size_log_2,
-        &forward_output.dimension_reducing_inputs,
-        &main_layer_input_addresses_per_layer,
-        crate::prover::proof_layout::ProofLayoutBaseLayerGeometry::from_geometry(
-            memory_layer_geometry,
-            compiled_circuit.memory_layout.total_width,
-        ),
-        crate::prover::proof_layout::ProofLayoutBaseLayerGeometry::from_geometry(
-            witness_layer_geometry,
-            compiled_circuit.witness_layout.total_width,
-        ),
-        crate::prover::proof_layout::ProofLayoutBaseLayerGeometry::from_geometry(
-            setup_geometry,
-            proof_layout_setup_columns_count,
-        ),
-    );
-    let proof_layout = crate::prover::proof_layout::ProofLayout::new(&proof_layout_inputs);
-    let proof_slab: Option<DeviceAllocation<u8>> = if proof_layout.total_bytes > 0 {
-        let slab = context.alloc::<u8>(proof_layout.total_bytes, AllocationPlacement::Bottom)?;
+    // Regression-guard: re-derive the layout from `forward_output` and assert it
+    // matches the structurally-derived layout we already used to size the slab.
+    // The structural derivation must match every dim-reducing layer's IO map
+    // and every main-layer's input address set; if it diverges, the slab is
+    // mis-sized and writes overflow.
+    #[cfg(debug_assertions)]
+    {
+        let main_layer_input_addresses_per_layer_storage_aware =
+            crate::prover::gkr::backward::collect_main_layer_input_addresses_per_layer::<E4>(
+                &compiled_circuit,
+                &external_challenges,
+                &forward_output.storage,
+            );
+        let proof_layout_inputs_storage_aware =
+            crate::prover::proof_layout::build_proof_layout_inputs(
+                &compiled_circuit,
+                &whir_schedule,
+                final_trace_size_log_2,
+                &forward_output.dimension_reducing_inputs,
+                &main_layer_input_addresses_per_layer_storage_aware,
+                crate::prover::proof_layout::ProofLayoutBaseLayerGeometry::from_geometry(
+                    memory_layer_geometry,
+                    compiled_circuit.memory_layout.total_width,
+                ),
+                crate::prover::proof_layout::ProofLayoutBaseLayerGeometry::from_geometry(
+                    witness_layer_geometry,
+                    compiled_circuit.witness_layout.total_width,
+                ),
+                crate::prover::proof_layout::ProofLayoutBaseLayerGeometry::from_geometry(
+                    setup_geometry,
+                    proof_layout_setup_columns_count,
+                ),
+            );
+        let proof_layout_storage_aware =
+            crate::prover::proof_layout::ProofLayout::new(&proof_layout_inputs_storage_aware);
         debug_assert_eq!(
-            slab.as_ptr() as usize & 0xF,
-            0,
-            "proof slab base pointer must be 16-byte aligned for ProofLayout typed casts",
+            proof_layout.total_bytes, proof_layout_storage_aware.total_bytes,
+            "structural and storage-aware proof layouts disagree on total_bytes",
         );
-        Some(slab)
-    } else {
-        None
-    };
-
-    // Phase 2b: D2D-copy per-OutputType reduced-output polynomials from the
-    // packed forward-handoff flat buffer into the slab's `output_evaluations`
-    // ranges. `transcript_handoff.device_flat_evaluations()` packs the polys
-    // in BTreeMap iteration order of `dimension_reducing_inputs[..initial..]`
-    // as `[read, write]` per OutputType (forward.rs:129-167); the slab layout
-    // allocates `output_evaluations[ot] = {read_set, write_set}` in
-    // BTreeMap key order of `compiled_circuit.global_output_map`, matching
-    // this order exactly. Phase 4 will source `final_explicit_evaluations`
-    // from the slab via the terminal D2H and retire the flat buffer.
-    if let Some(slab) = proof_slab.as_ref() {
-        let device_flat = transcript_handoff.device_flat_evaluations();
-        let reduced_poly_len = 1usize << final_trace_size_log_2;
-        let mut flat_offset = 0usize;
-        for (&output_type, _) in output_layer_for_sumcheck.iter() {
-            for half in 0..2usize {
-                let (dst_ptr, dst_len) = unsafe {
-                    if half == 0 {
-                        proof_layout.output_evaluations_read_device_mut(
-                            slab.as_ptr() as *mut u8,
-                            output_type,
-                        )
-                    } else {
-                        proof_layout.output_evaluations_write_device_mut(
-                            slab.as_ptr() as *mut u8,
-                            output_type,
-                        )
-                    }
-                };
-                debug_assert_eq!(dst_len, reduced_poly_len);
-                // SAFETY: dst_ptr is inside the live `slab` allocation at a
-                // 16-byte-aligned offset, and ranges for distinct OutputTypes
-                // + halves are disjoint by construction of `ProofLayout`.
-                let dst =
-                    unsafe { era_cudart::slice::DeviceSlice::from_raw_parts_mut(dst_ptr, dst_len) };
-                let src = &device_flat[flat_offset..flat_offset + reduced_poly_len];
-                memory_copy_async(dst, src, stream)?;
-                flat_offset += reduced_poly_len;
-            }
-        }
-        debug_assert_eq!(flat_offset, device_flat.len());
     }
+
+    // Opp. 4b: the per-poly D2Ds inside `schedule_transcript_handoff` already
+    // landed every reduced-output polynomial in its final slab home —
+    // `slab.output_evaluations[ot] = {read_set, write_set}` matches the
+    // packing order of those D2Ds. No separate Phase-2b D2D needed.
 
     // Device post-forward transcript: absorb flattened explicit evaluations into d_seed and
     // squeeze the evaluation point + batching challenge. Replaces the previous host pair
@@ -779,7 +846,8 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
     // `initial_d_claim_point_and_batching` (claim_point + batching challenge, matching
     // the `round_scratch.claim_point` layout); `d_seed` threads through as `device_seed`.
     let backward_state = forward_output.into_dimension_reducing_backward_state();
-    let forward_setup_keepalive = forward_setup.into_host_keepalive();
+    let (forward_setup_keepalive, d_lookup_challenges_for_backward) =
+        forward_setup.into_host_keepalive_taking_lookup_challenges();
     let top_layer_claim_layout = top_layer_claim_layout(&output_layer_for_sumcheck);
     let num_top_claims = top_layer_claim_layout.len();
     let mut initial_d_claims: DeviceAllocation<E4> =
@@ -808,38 +876,46 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
         poly_len,
         context,
     )?;
-    let mut init_mul_temp: DeviceAllocation<E4> =
-        context.alloc(poly_len, AllocationPlacement::Top)?;
-    let init_reduce_temp_bytes =
-        get_reduce_temp_storage_bytes::<E4>(ReduceOperation::Sum, poly_len as i32)?;
-    let mut init_reduce_temp: DeviceAllocation<u8> = context
-        .alloc_with_extra_alignment::<u8, CUB_TEMP_STORAGE_EXTRA_ALIGNMENT_LOG2>(
-        init_reduce_temp_bytes,
-        AllocationPlacement::Top,
-    )?;
-    {
+    // Build a slot-ordered table of poly start pointers (one per top-layer claim)
+    // via `SchedulerHostAllocator` (the pointer values are scheduling-time-known —
+    // `device_flat_evaluations` is already allocated; only the offset per slot
+    // varies) and run a single fused inner-product kernel that writes all 8 claims
+    // into `initial_d_claims` in one launch. Replaces the prior `mul + cub::reduce`
+    // pair per (poly, slot) — 8 mul + 8 reduce launches and a `poly_len`-sized
+    // temp buffer + cub temp — with one launch and zero temp allocations.
+    let initial_inner_product_host_ptrs = {
         let device_flat_evaluations = transcript_handoff.device_flat_evaluations();
+        let device_flat_base = device_flat_evaluations.as_ptr();
+        let mut poly_ptrs_by_slot: Vec<u64> = vec![0u64; num_top_claims];
         let mut poly_idx = 0usize;
         for (_output_type, reduced_io) in output_layer_for_sumcheck.iter() {
             for half in 0..2 {
                 let address = reduced_io.output[half];
                 let slot = top_layer_claim_layout.claim_idx(&address) as usize;
-                let poly_chunk =
-                    DeviceVectorChunk::new(device_flat_evaluations, poly_idx * poly_len, poly_len);
-                let eq_chunk = DeviceVectorChunk::new(&eq_values_for_init, 0, poly_len);
-                let mut temp_chunk = DeviceVectorChunkMut::new(&mut init_mul_temp, 0, poly_len);
-                mul(&poly_chunk, &eq_chunk, &mut temp_chunk, stream)?;
-                reduce(
-                    ReduceOperation::Sum,
-                    &mut init_reduce_temp,
-                    &temp_chunk,
-                    &mut initial_d_claims[slot],
-                    stream,
-                )?;
+                // SAFETY: device_flat_evaluations covers num_top_claims * poly_len E4 elements,
+                // arranged in iteration order; pointer arithmetic stays within that range.
+                let poly_ptr = unsafe { device_flat_base.add(poly_idx * poly_len) };
+                poly_ptrs_by_slot[slot] = poly_ptr as u64;
                 poly_idx += 1;
             }
         }
-    }
+        let host_poly_ptrs = context.scheduler_host_from_slice(&poly_ptrs_by_slot)?;
+        let mut device_poly_ptrs: DeviceAllocation<u64> =
+            context.alloc(num_top_claims, AllocationPlacement::BestFit)?;
+        memory_copy_async(&mut device_poly_ptrs, &host_poly_ptrs, stream)?;
+        crate::ops::gkr_initial_inner_products::initial_inner_product_e4(
+            &device_poly_ptrs,
+            &eq_values_for_init,
+            poly_len as u32,
+            &mut initial_d_claims,
+            stream,
+        )?;
+        // device_poly_ptrs drops here — pool-backed lifetime is scheduled-not-completed
+        // (the inner-product kernel reading it has been scheduled). host_poly_ptrs is a
+        // SchedulerHostAllocation; threaded into the proof-job keepalive below.
+        drop(device_poly_ptrs);
+        host_poly_ptrs
+    };
 
     // No host mirror of the initial claims / evaluation_point / batching / seed / lookup
     // challenges is needed on the hot path: backward consumes them as device buffers, and
@@ -877,21 +953,23 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
     let mut base_layer_claims_scheduled = schedule_prepare_base_layer_claims_with_sources(
         compiled_circuit.layers[0].clone(),
         backward_scheduled.final_device_claim_point(),
-        {
-            let backward_shared_state = backward_shared_state;
-            move || clone_backward_claims_for_layer(backward_shared_state, 0)
-        },
+        // Layer-1 incoming claim addresses are schedule-time-known (the
+        // `ClaimBufferLayout` built when backward staged its final claims),
+        // so the base-layer extras plan is built at schedule time without
+        // waiting for the backward post-handoff callback to materialize a
+        // host BTreeMap.
+        backward_scheduled.final_claim_addresses(),
         // Mirror the caching-relations extras into backward state at the end of
         // the deferred aggregation callback. This fold of the former separate
         // apply-extras callback removes one host callback from the
         // post_backward → pre-WHIR window.
         {
             let backward_shared_state = backward_shared_state;
-            move |result: &GpuGKRBaseLayerTailOutput<E4>| {
+            move |result: &GpuGKRBaseLayerTailOutput<E4>| unsafe {
                 apply_base_layer_extra_evaluations_to_workflow_state(
                     backward_shared_state,
-                    &result.extra_evaluations_from_caching_relations,
-                    &result.extra_evaluations_transcript_batches,
+                    result.extra_evaluations_addresses.get(),
+                    result.extra_evaluations_values.get(),
                 );
             }
         },
@@ -954,29 +1032,11 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
         schedule_gpu_whir_fold_with_sources(
             &mut stage1_output.memory_trace_holder,
             memory_tree_caps_owned_for_whir,
-            {
-                let base_layer_claims_shared_state = base_layer_claims_shared_state;
-                move |dst| fill_mem_polys_claims(base_layer_claims_shared_state, dst)
-            },
             &mut stage1_output.witness_trace_holder,
             witness_base_caps_keepalive,
-            {
-                let base_layer_claims_shared_state = base_layer_claims_shared_state;
-                move |dst| fill_wit_polys_claims(base_layer_claims_shared_state, dst)
-            },
             &mut setup_transfer.trace_holder,
             setup_base_caps_keepalive,
-            {
-                let base_layer_claims_shared_state = base_layer_claims_shared_state;
-                move |dst| fill_setup_polys_claims(base_layer_claims_shared_state, dst)
-            },
-            compiled_circuit.trace_len.trailing_zeros() as usize,
-            {
-                let backward_shared_state = backward_shared_state;
-                move |dst| {
-                    fill_backward_claim_point_for_layer(backward_shared_state, 0, dst);
-                }
-            },
+            backward_scheduled.final_device_claim_point(),
             whir_schedule.base_lde_factor,
             {
                 let backward_shared_state = backward_shared_state;
@@ -1016,29 +1076,11 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
         schedule_gpu_whir_fold_with_sources(
             &mut stage1_output.memory_trace_holder,
             memory_tree_caps_owned_for_whir,
-            {
-                let base_layer_claims_shared_state = base_layer_claims_shared_state;
-                move |dst| fill_mem_polys_claims(base_layer_claims_shared_state, dst)
-            },
             &mut stage1_output.witness_trace_holder,
             witness_base_caps_keepalive,
-            {
-                let base_layer_claims_shared_state = base_layer_claims_shared_state;
-                move |dst| fill_wit_polys_claims(base_layer_claims_shared_state, dst)
-            },
             setup_trace_holder,
             setup_base_caps_keepalive,
-            {
-                let base_layer_claims_shared_state = base_layer_claims_shared_state;
-                move |dst| fill_setup_polys_claims(base_layer_claims_shared_state, dst)
-            },
-            compiled_circuit.trace_len.trailing_zeros() as usize,
-            {
-                let backward_shared_state = backward_shared_state;
-                move |dst| {
-                    fill_backward_claim_point_for_layer(backward_shared_state, 0, dst);
-                }
-            },
+            backward_scheduled.final_device_claim_point(),
             whir_schedule.base_lde_factor,
             {
                 let backward_shared_state = backward_shared_state;
@@ -1155,7 +1197,11 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
             _backward: backward_keepalive,
             _base_layer_claims: base_layer_claims_scheduled,
             _whir: whir_scheduled,
-            _initial_transcript_host_blob: bucket2_host,
+            _initial_transcript_pre_setup_host: pre_setup_host,
+            _initial_transcript_memory_caps_host: memory_caps_host,
+            _setup_cap_gather_host_ptrs: setup_cap_gather_host_ptrs,
+            _witness_cap_gather_host_ptrs: witness_cap_gather_host_ptrs,
+            _initial_inner_product_host_ptrs: initial_inner_product_host_ptrs,
             _proof_host_mirror: proof_host_mirror,
             _proof_slab: proof_slab,
         },

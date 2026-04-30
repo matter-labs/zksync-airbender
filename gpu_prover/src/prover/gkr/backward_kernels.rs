@@ -577,6 +577,29 @@ pub(crate) struct GpuGKRDimensionReducingSumcheckLayerPlan<B, E> {
     pub(super) round2_batch_template: Option<GpuGKRDimensionReducingRound2Batch<E>>,
     pub(super) round3_batch_templates: Vec<GpuGKRDimensionReducingRound3BatchTemplate<E>>,
     pub(super) round_scratch: GpuGKRDimensionReducingRoundScratch<E>,
+    /// When set, `batch_challenge_base_ptr()` returns this raw pointer instead
+    /// of `round_scratch.claim_point.as_ptr().add(folding_steps)`. The
+    /// workflow_state path uses this to point at the orchestrator-owned
+    /// `device_claim_point_in[folding_steps]` so the per-layer
+    /// `round_scratch.claim_point` D2D is no longer needed.
+    pub(super) batch_challenge_base_override_ptr: Option<*const E>,
+}
+
+// SAFETY: `batch_challenge_base_override_ptr` only stores a raw pointer into a
+// device allocation that the caller keeps alive for the full duration of any
+// scheduled stream op consuming this layer plan. The pointer is never
+// dereferenced from Rust — it is only forwarded to kernel arguments.
+unsafe impl<B, E> Send for GpuGKRDimensionReducingSumcheckLayerPlan<B, E>
+where
+    B: Send,
+    E: Send,
+{
+}
+unsafe impl<B, E> Sync for GpuGKRDimensionReducingSumcheckLayerPlan<B, E>
+where
+    B: Sync,
+    E: Sync,
+{
 }
 
 pub(crate) struct GpuGKRDimensionReducingBackwardState<B, E> {
@@ -739,6 +762,11 @@ pub(crate) struct GpuGKRDimensionReducingScheduledLayerExecution<B, E: FieldExte
     #[allow(dead_code)]
     pub(super) final_readback: ScheduledDimensionReducingFinalReadback<E>,
     pub(super) shared_state: Box<ScheduledDimensionReducingLayerExecutionState<E>>,
+    /// SchedulerHostAllocator-backed pointer table used by the per-address
+    /// gather kernel. Per the contract, must outlive every in-flight H2D —
+    /// threaded into the host keepalive that survives `is_finished_event.synchronize()`.
+    #[allow(dead_code)]
+    pub(super) gather_host_ptrs: Option<SchedulerHostAllocation<[u64]>>,
     /// Device-resident Fiat-Shamir seed passed in by the caller, consumed by
     /// this layer's per-round + end-of-layer transcript work, and returned
     /// via `.take()` for the next backward layer scheduler to reuse. `None`
@@ -815,8 +843,6 @@ pub(crate) struct GpuGKRMainLayerSumcheckLayerPlan<E> {
         Option<SchedulerHostAllocation<[crate::ops::eval_recipes::GpuPrefactorTerm]>>,
     /// Device buffer for eval_recipes output (delegation L0 round 0 only; others write to __constant__).
     pub(super) flat_coeff_device_buf: Option<DeviceAllocation<E>>,
-    /// Device buffer for 4 challenge scalars fed to eval_recipes.
-    pub(super) flat_challenges_buf: Option<DeviceAllocation<E>>,
     /// Whether round 0 uses __constant__ for coefficients (false only for delegation L0).
     pub(super) flat_use_constant: bool,
     /// Flat continuation plan for rounds 1+ (shared term arrays + per-step source tables).
@@ -856,7 +882,20 @@ pub(crate) struct GpuGKRMainLayerSumcheckLayerPlan<E> {
     /// Keeps pinned-staging callbacks alive for recipe H2D copies scheduled at prepare time.
     /// Moved into `GpuGKRMainLayerScheduledLayerExecution` during `schedule_execute_*`.
     pub(super) recipe_upload_callbacks: Callbacks<'static>,
+    /// When set, `batch_challenge_base_ptr()` returns this raw pointer instead
+    /// of `round_scratch.claim_point.as_ptr().add(folding_steps)`. The
+    /// workflow_state path uses this to point at the orchestrator-owned
+    /// `device_claim_point_in[folding_steps]` so the per-layer
+    /// `round_scratch.claim_point` D2D is no longer needed.
+    pub(super) batch_challenge_base_override_ptr: Option<*const E>,
 }
+
+// SAFETY: `batch_challenge_base_override_ptr` only stores a raw pointer into a
+// device allocation that the caller keeps alive for the full duration of any
+// scheduled stream op consuming this layer plan. The pointer is never
+// dereferenced from Rust — it is only forwarded to kernel arguments.
+unsafe impl<E> Send for GpuGKRMainLayerSumcheckLayerPlan<E> where E: Send {}
+unsafe impl<E> Sync for GpuGKRMainLayerSumcheckLayerPlan<E> where E: Sync {}
 
 impl<E: Copy + Field> GpuGKRMainLayerKernelPlan<E> {
     pub(crate) fn auxiliary_challenge_summary(&self) -> Option<E> {
@@ -940,6 +979,10 @@ pub(crate) struct GpuGKRMainLayerScheduledLayerExecution<E: FieldExtension<BF> +
     pub(super) device_claims_for_next_layer: Option<DeviceAllocation<E>>,
     /// Explicit address order of `device_claims_for_next_layer`.
     pub(super) claim_layout_for_next_layer: Option<ClaimBufferLayout>,
+    /// SchedulerHostAllocator-backed pointer table used by the per-address
+    /// gather kernel. See dim-reducing twin for lifetime rationale.
+    #[allow(dead_code)]
+    pub(super) gather_host_ptrs: Option<SchedulerHostAllocation<[u64]>>,
 }
 
 pub(crate) struct ScheduledBackwardWorkflowState<E: FieldExtension<BF> + Field> {
@@ -973,7 +1016,6 @@ pub(crate) struct GpuGKRBackwardScheduledExecution<B, E: FieldExtension<BF> + Fi
     pub(super) initial_callbacks: Callbacks<'static>,
     pub(super) final_device_seed: Option<DeviceAllocation<u32>>,
     pub(super) final_device_claim_point_and_batching: Option<DeviceAllocation<E>>,
-    pub(super) final_device_claims: Option<DeviceAllocation<E>>,
     pub(super) final_claim_layout: Option<ClaimBufferLayout>,
     // Pinned host buffers populated by `schedule_post_backward_handoff`'s D2H. The
     // host callback that mirrors them into `ScheduledBackwardWorkflowState` reads
@@ -986,8 +1028,6 @@ pub(crate) struct GpuGKRBackwardScheduledExecution<B, E: FieldExtension<BF> + Fi
     #[allow(dead_code)]
     pub(super) final_claim_point_and_batching_host:
         Option<crate::primitives::context::HostAllocation<[E]>>,
-    #[allow(dead_code)]
-    pub(super) final_claims_host: Option<crate::primitives::context::HostAllocation<[E]>>,
 }
 
 pub(crate) struct GpuGKRDimensionReducingHostKeepalive<B, E: FieldExtension<BF> + Field> {
@@ -1007,6 +1047,8 @@ pub(crate) struct GpuGKRDimensionReducingHostKeepalive<B, E: FieldExtension<BF> 
     pub(super) final_readback: ScheduledDimensionReducingFinalReadback<E>,
     #[allow(dead_code)]
     pub(super) shared_state: Box<ScheduledDimensionReducingLayerExecutionState<E>>,
+    #[allow(dead_code)]
+    pub(super) gather_host_ptrs: Option<SchedulerHostAllocation<[u64]>>,
 }
 
 pub(crate) struct GpuGKRMainLayerHostKeepalive<E: FieldExtension<BF> + Field> {
@@ -1042,6 +1084,8 @@ pub(crate) struct GpuGKRMainLayerHostKeepalive<E: FieldExtension<BF> + Field> {
         Option<SchedulerHostAllocation<[crate::ops::eval_recipes::GpuPrefactorTerm]>>,
     #[allow(dead_code)]
     pub(super) shared_state: Box<ScheduledMainLayerExecutionState<E>>,
+    #[allow(dead_code)]
+    pub(super) gather_host_ptrs: Option<SchedulerHostAllocation<[u64]>>,
 }
 
 pub(crate) struct GpuGKRBackwardHostKeepalive<B, E: FieldExtension<BF> + Field> {
@@ -1060,16 +1104,12 @@ pub(crate) struct GpuGKRBackwardHostKeepalive<B, E: FieldExtension<BF> + Field> 
     #[allow(dead_code)]
     pub(super) final_device_claim_point_and_batching: Option<DeviceAllocation<E>>,
     #[allow(dead_code)]
-    pub(super) final_device_claims: Option<DeviceAllocation<E>>,
-    #[allow(dead_code)]
     pub(super) final_claim_layout: Option<ClaimBufferLayout>,
     #[allow(dead_code)]
     pub(super) final_seed_host: Option<crate::primitives::context::HostAllocation<[u32]>>,
     #[allow(dead_code)]
     pub(super) final_claim_point_and_batching_host:
         Option<crate::primitives::context::HostAllocation<[E]>>,
-    #[allow(dead_code)]
-    pub(super) final_claims_host: Option<crate::primitives::context::HostAllocation<[E]>>,
 }
 
 impl<E> ScheduledBackwardWorkflowState<E>
@@ -1308,37 +1348,29 @@ where
 
 pub(crate) fn apply_base_layer_extra_evaluations_to_workflow_state<E>(
     shared_state: ScheduledBackwardWorkflowStateHandle<E>,
-    extra_evaluations_from_caching_relations: &BTreeMap<GKRAddress, E>,
-    extra_evaluations_transcript_batches: &[Vec<E>],
+    extra_evaluations_addresses: &[GKRAddress],
+    extra_evaluations_values: &[E],
 ) where
     E: FieldExtension<BF> + Field + Copy,
     [(); E::DEGREE]: Sized,
 {
-    if extra_evaluations_from_caching_relations.is_empty() {
+    debug_assert_eq!(
+        extra_evaluations_addresses.len(),
+        extra_evaluations_values.len(),
+    );
+    if extra_evaluations_addresses.is_empty() {
         return;
     }
 
+    // The only durable side-effect production needs is committing the extras
+    // values into the rolling transcript seed; downstream WHIR setup reads
+    // the seed via `current_backward_seed`. The historical extends of
+    // `claims_for_layers[0]` and `current_claims` are dead in production
+    // (`mirror_layer_to_host` is false on the prove path, so the per-layer
+    // claim BTreeMap is never populated, and `current_claims` is no longer
+    // mirrored across the post-backward boundary).
     let state = unsafe { shared_state.get_mut() };
-    for transcript_input in extra_evaluations_transcript_batches.iter() {
-        commit_field_els::<BF, E>(&mut state.seed, transcript_input);
-    }
-
-    {
-        let layer_0_claims = state
-            .claims_for_layers
-            .get_mut(&0)
-            .expect("missing layer-0 claims before base-layer transcript update");
-        layer_0_claims.extend(
-            extra_evaluations_from_caching_relations
-                .iter()
-                .map(|(address, value)| (*address, *value)),
-        );
-    }
-    state.current_claims.extend(
-        extra_evaluations_from_caching_relations
-            .iter()
-            .map(|(address, value)| (*address, *value)),
-    );
+    commit_field_els::<BF, E>(&mut state.seed, extra_evaluations_values);
 }
 
 pub(crate) fn take_backward_execution_from_shared_state<E>(

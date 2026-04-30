@@ -3553,10 +3553,13 @@ cuda_kernel_declaration!(
     )
 );
 
-// Eval recipes kernel for continuation coefficients
+// Eval recipes kernel for continuation coefficients. Each challenge is read
+// from its own device pointer (mirrors the round-0 kernel signature).
 cuda_kernel_signature_arguments_and_function!(
     GpuFlatContEvalRecipes<T>,
-    challenges: *const T,
+    batch_base: *const T,
+    lookup_mul: *const T,
+    lookup_add: *const T,
     recipes: *const GpuRecipeHeader,
     terms: *const GpuPrefactorTerm,
     coefficients: *mut T,
@@ -3565,7 +3568,9 @@ cuda_kernel_signature_arguments_and_function!(
 
 cuda_kernel_declaration!(
     ab_gkr_flat_continuation_eval_recipes_e4_kernel(
-        challenges: *const E4,
+        batch_base: *const E4,
+        lookup_mul: *const E4,
+        lookup_add: *const E4,
         recipes: *const GpuRecipeHeader,
         terms: *const GpuPrefactorTerm,
         coefficients: *mut E4,
@@ -3651,7 +3656,9 @@ pub(super) fn get_constant_continuation_coefficients_device_ptr() -> *mut E4 {
 // ---------------------------------------------------------------------------
 
 pub(super) fn eval_continuation_recipes_e4(
-    challenges: *const E4,
+    batch_base: *const E4,
+    lookup_mul: *const E4,
+    lookup_add: *const E4,
     recipes: &era_cudart::slice::DeviceSlice<GpuRecipeHeader>,
     terms: &era_cudart::slice::DeviceSlice<GpuPrefactorTerm>,
     coefficients: *mut E4,
@@ -3668,7 +3675,9 @@ pub(super) fn eval_continuation_recipes_e4(
         get_grid_block_dims_for_threads_count(WARP_SIZE * 4, num_recipes as u32);
     let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
     let args = GpuFlatContEvalRecipesArguments::new(
-        challenges,
+        batch_base,
+        lookup_mul,
+        lookup_add,
         recipes.as_ptr(),
         terms.as_ptr(),
         coefficients,
