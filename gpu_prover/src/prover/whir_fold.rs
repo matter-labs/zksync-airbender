@@ -24,15 +24,11 @@ use prover::utils::extension_field_from_base_coeffs;
 use worker::Worker;
 
 use crate::allocator::tracker::AllocationPlacement;
-use crate::ntt::{
-    hypercube_coeffs_bitrev_to_bitrev_evals, natural_evals_to_bitreversed_coeffs,
-    natural_evals_to_bitreversed_monomials,
-};
-use crate::ops::bit_reverse::{bit_reverse, bit_reverse_in_place};
+use crate::ntt::{hypercube_coeffs_bitrev_to_bitrev_evals, natural_evals_to_bitreversed_monomials};
 use crate::ops::blake2s::{Digest, STATE_SIZE};
 use crate::ops::cub::device_reduce::{get_reduce_temp_storage_bytes, reduce, ReduceOperation};
 use crate::ops::cub::CUB_TEMP_STORAGE_EXTRA_ALIGNMENT_LOG2;
-use crate::ops::powers::{get_powers_by_ref, get_powers_by_val};
+use crate::ops::powers::get_powers_by_val;
 use crate::ops::simple::{add, add_into_y, mul, mul_into_x, set_to_zero};
 use crate::ops::transpose::transpose;
 use crate::primitives::callbacks::Callbacks;
@@ -53,8 +49,8 @@ use crate::prover::proof_layout::ProofLayout;
 use crate::prover::trace_holder::{get_tree_caps, TraceHolder};
 use crate::prover::whir::{e4_coeffs_to_vectorized, GpuWhirExtensionOracle, GpuWhirExtensionQuery};
 use crate::prover::whir_kernels::{
-    accumulate_whir_base_columns, deserialize_whir_e4_columns, pack_rows_for_whir_leaves,
-    partially_evaluate_monomials_by_ref, serialize_whir_e4_columns, whir_fold_split_half_in_place,
+    accumulate_whir_base_columns, deserialize_whir_e4_columns, partially_evaluate_monomials_by_ref,
+    serialize_whir_e4_columns, whir_fold_split_half_in_place,
     whir_fold_split_half_in_place_vectorized,
 };
 
@@ -1376,7 +1372,6 @@ fn initialize_batched_forms_impl(
         stream,
         context.get_device_properties(),
     )?;
-    // TODO: remove after writing hypercube kernel
     // bit_reverse_in_place(&mut state.sumchecked_poly_monomial_form, stream)?;
     // deserialize_whir_e4_columns(
     //     &serialized,
@@ -1384,10 +1379,10 @@ fn initialize_batched_forms_impl(
     //     stream,
     // )?;
     let monomials_slice = state.sumchecked_poly_monomial_form.slice();
-    // TODO: remove after writing hypercube kernel
     let mut bf_scratch = context.alloc(trace_len, AllocationPlacement::BestFit)?;
     for column in 0..EXT4_DEGREE {
         let src = &monomials_slice[column * trace_len..(column + 1) * trace_len];
+        // Interestingly, both work (I think because addition is commutative).
         // hypercube_coeffs_natural_to_natural_evals(
         hypercube_coeffs_bitrev_to_bitrev_evals(
             src,
@@ -1400,7 +1395,6 @@ fn initialize_batched_forms_impl(
     }
     // {
     //     // let mut evals_matrix = DeviceMatrixMut::new(&mut serialized, trace_len);
-    //     // TODO: remove after writing hypercube kernel
     //     // bit_reverse_in_place(&mut evals_matrix, stream)?;
     // }
     deserialize_whir_e4_columns(
@@ -1408,7 +1402,6 @@ fn initialize_batched_forms_impl(
         &mut state.sumchecked_poly_evaluation_form[..trace_len],
         stream,
     )?;
-    // TODO: remove after writing hypercube kernel
     // bit_reverse_in_place(&mut state.sumchecked_poly_monomial_form, stream)?;
 
     Ok([
@@ -1551,7 +1544,6 @@ fn schedule_initialize_batched_forms(
         stream,
         context.get_device_properties(),
     )?;
-    // TODO: remove after writing hypercube kernel
     // bit_reverse_in_place(&mut state.sumchecked_poly_monomial_form, stream)?;
     // deserialize_whir_e4_columns(
     //     &serialized,
@@ -1563,6 +1555,7 @@ fn schedule_initialize_batched_forms(
     let mut bf_scratch = context.alloc(trace_len, AllocationPlacement::BestFit)?;
     for column in 0..EXT4_DEGREE {
         let src = &monomials_slice[column * trace_len..(column + 1) * trace_len];
+        // Interestingly, both work (I think because addition is commutative).
         // hypercube_coeffs_natural_to_natural_evals(
         hypercube_coeffs_bitrev_to_bitrev_evals(
             src,
@@ -1575,7 +1568,6 @@ fn schedule_initialize_batched_forms(
     }
     // {
     //     // let mut evals_matrix = DeviceMatrixMut::new(&mut serialized, trace_len);
-    //     // TODO: remove after writing hypercube kernel
     //     // bit_reverse_in_place(&mut evals_matrix, stream)?;
     // }
     deserialize_whir_e4_columns(
@@ -1583,7 +1575,6 @@ fn schedule_initialize_batched_forms(
         &mut state.sumchecked_poly_evaluation_form[..trace_len],
         stream,
     )?;
-    // TODO: remove after writing hypercube kernel
     // bit_reverse_in_place(&mut state.sumchecked_poly_monomial_form, stream)?;
 
     Ok(())

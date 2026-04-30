@@ -118,4 +118,4 @@ template <memory::st_modifier ST_MODIFIER> using vectorized_e4_matrix_setter = v
 template <memory::ld_modifier LD_MODIFIER, memory::st_modifier ST_MODIFIER>
 using vectorized_e4_matrix_getter_setter = vectorized_matrix_getter_setter<LD_MODIFIER, ST_MODIFIER, 4>;
 
-} // namespace airbender::vectorized
+} // namespace airbender::primitives::vectorized
