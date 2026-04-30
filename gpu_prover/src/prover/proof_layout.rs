@@ -470,6 +470,56 @@ pub(crate) fn build_proof_layout_inputs(
     }
 }
 
+/// Structural variant of [`build_proof_layout_inputs`] that derives every input
+/// from the compiled circuit + WHIR schedule + base-layer geometries — no
+/// forward-pass output required. Used by `prove()` to size the proof slab
+/// before `schedule_forward_pass` runs.
+///
+/// Internally:
+/// * `dimension_reducing_inputs` is reproduced by
+///   [`crate::prover::gkr::backward::derive_dimension_reducing_inputs_structural`]
+///   (address-assignment rules match `schedule_dimension_reduction_forward`).
+/// * `main_layer_input_addresses_per_layer` is reproduced by
+///   [`crate::prover::gkr::backward::collect_main_layer_input_addresses_per_layer_structural`]
+///   (storage-aware version's address set is invariant of which kernel-kind
+///   branch is taken — see that function's doc).
+pub(crate) fn build_proof_layout_inputs_structural<E>(
+    compiled_circuit: &GKRCircuitArtifact<BF>,
+    external_challenges: &prover::gkr::prover::GKRExternalChallenges<BF, E>,
+    whir_schedule: &WhirSchedule,
+    final_trace_size_log_2: usize,
+    memory_geometry: ProofLayoutBaseLayerGeometry,
+    witness_geometry: ProofLayoutBaseLayerGeometry,
+    setup_geometry: ProofLayoutBaseLayerGeometry,
+) -> ProofLayoutInputs
+where
+    E: field::Field + field::FieldExtension<BF>,
+{
+    let initial_trace_size_log_2 = compiled_circuit.trace_len.trailing_zeros() as usize;
+    let dim_reducing_inputs =
+        crate::prover::gkr::backward::derive_dimension_reducing_inputs_structural(
+            compiled_circuit.layers.len(),
+            &compiled_circuit.global_output_map,
+            initial_trace_size_log_2,
+            final_trace_size_log_2,
+        );
+    let main_layer_addresses =
+        crate::prover::gkr::backward::collect_main_layer_input_addresses_per_layer_structural::<E>(
+            compiled_circuit,
+            external_challenges,
+        );
+    build_proof_layout_inputs(
+        compiled_circuit,
+        whir_schedule,
+        final_trace_size_log_2,
+        &dim_reducing_inputs,
+        &main_layer_addresses,
+        memory_geometry,
+        witness_geometry,
+        setup_geometry,
+    )
+}
+
 impl ProofLayout {
     pub(crate) fn new(inputs: &ProofLayoutInputs) -> Self {
         let mut cur = 0usize;
