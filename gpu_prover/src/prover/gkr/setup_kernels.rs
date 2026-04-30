@@ -19,15 +19,13 @@ use super::{GpuBaseFieldPoly, GpuGKRStorage};
 use crate::allocator::tracker::AllocationPlacement;
 use crate::ops::blake2s::Digest;
 use crate::primitives::callbacks::Callbacks;
-use crate::primitives::context::{DeviceAllocation, HostAllocation, ProverContext};
+use crate::primitives::context::{DeviceAllocation, ProverContext};
 use crate::primitives::device_tracing::Range;
 use crate::primitives::field::{BF, E4};
-use crate::primitives::static_host::{
-    alloc_static_pinned_box_from_slice, alloc_static_pinned_box_uninit, StaticPinnedBox,
-};
+use crate::primitives::static_host::StaticPinnedBox;
 use crate::primitives::transfer::Transfer;
 use crate::primitives::utils::{get_grid_block_dims_for_threads_count, WARP_SIZE};
-use crate::prover::trace_holder::{allocate_tree_caps, TraceHolder, TreesCacheMode, TreesHolder};
+use crate::prover::trace_holder::{TraceHolder, TreesCacheMode, TreesHolder};
 use prover::gkr::prover::setup::GKRSetup as CpuGKRSetup;
 
 pub(super) const GKR_FORWARD_SETUP_GENERIC_LOOKUP_MAX_COLUMNS: usize = 10;
@@ -36,7 +34,11 @@ pub(super) const GKR_FORWARD_SETUP_THREADS_PER_BLOCK: u32 = WARP_SIZE * 4;
 pub(crate) struct GpuGKRSetupHost {
     pub(crate) raw_hypercube_evals: StaticPinnedBox<BF>,
     pub(crate) partial_trees: Vec<StaticPinnedBox<Digest>>,
-    pub(crate) tree_caps: Vec<StaticPinnedBox<Digest>>,
+    /// Single contiguous Merkle cap of length `1 << log_tree_cap_size`, stored
+    /// in canonical bit-reversed coset order so a single H2D fills the device
+    /// unified cap directly. Replaces the legacy per-coset `tree_caps` host
+    /// pool.
+    pub(crate) unified_tree_cap: StaticPinnedBox<Digest>,
     pub(crate) trace_len: usize,
     pub(crate) log_domain_size: u32,
     pub(crate) columns_count: usize,
@@ -67,7 +69,7 @@ impl GpuGKRSetupHost {
 
         let raw_hypercube_evals =
             flatten_setup_columns_into_pinned_buffer(setup, columns_count, trace_len)?;
-        let (partial_trees, tree_caps) = precompute_partial_tree_cache(
+        let (partial_trees, unified_tree_cap) = precompute_partial_tree_cache(
             &raw_hypercube_evals,
             log_domain_size,
             log_lde_factor,
@@ -80,7 +82,7 @@ impl GpuGKRSetupHost {
         Ok(Self {
             raw_hypercube_evals,
             partial_trees,
-            tree_caps,
+            unified_tree_cap,
             trace_len,
             log_domain_size,
             columns_count,

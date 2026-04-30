@@ -3,6 +3,7 @@
 pub(crate) mod decoder;
 pub(crate) mod gkr;
 pub(crate) mod memory;
+pub(crate) mod memory_transfer;
 mod pow;
 pub(crate) mod proof;
 pub(crate) mod proof_layout;
