@@ -66,22 +66,46 @@ const PROVE_BIGINT: bool = true;
 const PROVE_KECCAK: bool = true;
 const PROVE_INITS_AND_TEARDOWNS: bool = true;
 
+pub use crate::definitions::SecurityLevel;
+
+fn whir_schedule_for(trace_len_bits: usize, level: SecurityLevel) -> WhirSchedule {
+    match (trace_len_bits, level) {
+        (20, SecurityLevel::Sec80) => WhirSchedule::default_for_tests_80_bits_20(),
+        (22, SecurityLevel::Sec80) => WhirSchedule::default_for_tests_80_bits_22(),
+        (24, SecurityLevel::Sec80) => WhirSchedule::default_for_tests_80_bits_24(),
+        (20, SecurityLevel::Sec100) => WhirSchedule::default_for_tests_100_bits_20(),
+        (22, SecurityLevel::Sec100) => WhirSchedule::default_for_tests_100_bits_22(),
+        (24, SecurityLevel::Sec100) => WhirSchedule::default_for_tests_100_bits_24(),
+        _ => panic!(
+            "no schedule for (trace_len_bits={}, level={:?})",
+            trace_len_bits, level
+        ),
+    }
+}
+
 #[test]
-fn gkr_run_basic_unrolled_test() {
-    gkr_run_basic_unrolled_test_impl(None, None);
+fn gkr_run_basic_unrolled_test_sec_80() {
+    gkr_run_basic_unrolled_test_impl(SecurityLevel::Sec80, None, None);
+}
+
+#[test]
+fn gkr_run_basic_unrolled_test_sec_100() {
+    gkr_run_basic_unrolled_test_impl(SecurityLevel::Sec100, None, None);
 }
 
 pub fn gkr_run_basic_unrolled_test_impl(
+    level: SecurityLevel,
     maybe_gpu_unrolled_comparison_hook: Option<Box<dyn Fn()>>,
     maybe_gpu_delegation_comparison_hook: Option<Box<dyn Fn()>>,
 ) {
+    let proof_suffix = level.dir_suffix();
+    let whir_schedule = whir_schedule_for(24, level);
     use riscv_transpiler::ir::*;
     use riscv_transpiler::vm::*;
 
     type CountersT = DelegationsAndFamiliesCounters;
 
     let trace_len: usize = 1 << TRACE_LEN_LOG2;
-    let whir_schedule = WhirSchedule::default_for_tests_80_bits_24();
 
     // let worker = Worker::new_with_num_threads(1);
     let worker = Worker::new_with_num_threads(8);
@@ -436,7 +460,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
             //     None
             // };
 
-            let whir_schedule = WhirSchedule::default_for_tests_80_bits_24();
+            let whir_schedule = whir_schedule_for(24, level);
 
             println!("Trying to prove");
 
@@ -465,7 +489,13 @@ pub fn gkr_run_basic_unrolled_test_impl(
                 assert_eq!(proof.grand_product_accumulator_computed, BabyBearExt4::ONE);
             }
 
-            serialize_to_file(&proof, "test_proofs/add_sub_lui_auipc_mop_gkr_proof.json");
+            serialize_to_file(
+                &proof,
+                &format!(
+                    "test_proofs/add_sub_lui_auipc_mop_{}_gkr_proof.json",
+                    proof_suffix
+                ),
+            );
 
             // serialize_to_file_if_not_gpu_comparison(
             //     &proof,
@@ -628,7 +658,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
             //     None
             // };
 
-            let whir_schedule = WhirSchedule::default_for_tests_80_bits_24();
+            let whir_schedule = whir_schedule_for(24, level);
 
             println!("Trying to prove");
 
@@ -657,7 +687,13 @@ pub fn gkr_run_basic_unrolled_test_impl(
                 assert_eq!(proof.grand_product_accumulator_computed, BabyBearExt4::ONE);
             }
 
-            serialize_to_file(&proof, "test_proofs/jump_branch_slt_gkr_proof.json");
+            serialize_to_file(
+                &proof,
+                &format!(
+                    "test_proofs/jump_branch_slt_{}_gkr_proof.json",
+                    proof_suffix
+                ),
+            );
 
             // serialize_to_file_if_not_gpu_comparison(
             //     &proof,
@@ -822,7 +858,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
             //     None
             // };
 
-            let whir_schedule = WhirSchedule::default_for_tests_80_bits_24();
+            let whir_schedule = whir_schedule_for(24, level);
 
             println!("Trying to prove");
 
@@ -851,7 +887,10 @@ pub fn gkr_run_basic_unrolled_test_impl(
                 assert_eq!(proof.grand_product_accumulator_computed, BabyBearExt4::ONE);
             }
 
-            serialize_to_file(&proof, "test_proofs/shift_binop_gkr_proof.json");
+            serialize_to_file(
+                &proof,
+                &format!("test_proofs/shift_binop_{}_gkr_proof.json", proof_suffix),
+            );
 
             // serialize_to_file_if_not_gpu_comparison(
             //     &proof,
@@ -1007,7 +1046,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
             //     None
             // };
 
-            let whir_schedule = WhirSchedule::default_for_tests_80_bits_24();
+            let whir_schedule = whir_schedule_for(24, level);
 
             println!("Trying to prove");
 
@@ -1213,7 +1252,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
 
             println!("Trying to prove");
 
-            let whir_schedule = WhirSchedule::default_for_tests_80_bits_24();
+            let whir_schedule = whir_schedule_for(24, level);
 
             let now = std::time::Instant::now();
             let proof =
@@ -1239,7 +1278,10 @@ pub fn gkr_run_basic_unrolled_test_impl(
                 assert_eq!(proof.grand_product_accumulator_computed, BabyBearExt4::ONE);
             }
 
-            serialize_to_file(&proof, "test_proofs/mem_word_only_gkr_proof.json");
+            serialize_to_file(
+                &proof,
+                &format!("test_proofs/mem_word_only_{}_gkr_proof.json", proof_suffix),
+            );
 
             // assert!(proof.delegation_argument_accumulator.is_none());
 
@@ -1410,7 +1452,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
 
             println!("Trying to prove");
 
-            let whir_schedule = WhirSchedule::default_for_tests_80_bits_24();
+            let whir_schedule = whir_schedule_for(24, level);
 
             let now = std::time::Instant::now();
             let proof =
@@ -1436,7 +1478,13 @@ pub fn gkr_run_basic_unrolled_test_impl(
                 assert_eq!(proof.grand_product_accumulator_computed, BabyBearExt4::ONE);
             }
 
-            serialize_to_file(&proof, "test_proofs/mem_subword_only_gkr_proof.json");
+            serialize_to_file(
+                &proof,
+                &format!(
+                    "test_proofs/mem_subword_only_{}_gkr_proof.json",
+                    proof_suffix
+                ),
+            );
 
             // assert!(proof.delegation_argument_accumulator.is_none());
 
@@ -1539,7 +1587,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
             //     None
             // };
 
-            let whir_schedule = WhirSchedule::default_for_tests_80_bits_24();
+            let whir_schedule = whir_schedule_for(24, level);
 
             println!("Trying to prove");
 
@@ -1573,7 +1621,13 @@ pub fn gkr_run_basic_unrolled_test_impl(
                 assert_eq!(proof.grand_product_accumulator_computed, BabyBearExt4::ONE);
             }
 
-            serialize_to_file(&proof, "test_proofs/inits_and_teardowns_gkr_proof.json");
+            serialize_to_file(
+                &proof,
+                &format!(
+                    "test_proofs/inits_and_teardowns_{}_gkr_proof.json",
+                    proof_suffix
+                ),
+            );
 
             // serialize_to_file_if_not_gpu_comparison(
             //     &proof,
@@ -1729,7 +1783,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
             //     None
             // };
 
-            let whir_schedule = WhirSchedule::default_for_tests_80_bits_20();
+            let whir_schedule = whir_schedule_for(20, level);
 
             println!("Trying to prove");
 
@@ -1760,7 +1814,10 @@ pub fn gkr_run_basic_unrolled_test_impl(
 
             serialize_to_file(
                 &proof,
-                "test_proofs/blake2_with_extended_control_gkr_proof.json",
+                &format!(
+                    "test_proofs/blake2_with_extended_control_{}_gkr_proof.json",
+                    proof_suffix
+                ),
             );
 
             permutation_argument_accumulator.mul_assign(&proof.grand_product_accumulator_computed);
@@ -1893,7 +1950,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
             //     None
             // };
 
-            let whir_schedule = WhirSchedule::default_for_tests_80_bits_22();
+            let whir_schedule = whir_schedule_for(22, level);
 
             println!("Trying to prove");
 
@@ -1924,7 +1981,10 @@ pub fn gkr_run_basic_unrolled_test_impl(
 
             serialize_to_file(
                 &proof,
-                "test_proofs/bigint_with_extended_control_gkr_proof.json",
+                &format!(
+                    "test_proofs/bigint_with_extended_control_{}_gkr_proof.json",
+                    proof_suffix
+                ),
             );
 
             permutation_argument_accumulator.mul_assign(&proof.grand_product_accumulator_computed);
@@ -2056,7 +2116,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
             //     None
             // };
 
-            let whir_schedule = WhirSchedule::default_for_tests_80_bits_22();
+            let whir_schedule = whir_schedule_for(22, level);
 
             println!("Trying to prove");
 
@@ -2085,7 +2145,13 @@ pub fn gkr_run_basic_unrolled_test_impl(
                 assert_eq!(proof.grand_product_accumulator_computed, BabyBearExt4::ONE);
             }
 
-            serialize_to_file(&proof, "test_proofs/keccak_special5_gkr_proof.json");
+            serialize_to_file(
+                &proof,
+                &format!(
+                    "test_proofs/keccak_special5_{}_gkr_proof.json",
+                    proof_suffix
+                ),
+            );
 
             permutation_argument_accumulator.mul_assign(&proof.grand_product_accumulator_computed);
         }

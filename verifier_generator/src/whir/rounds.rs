@@ -3,8 +3,8 @@ use std::collections::BTreeMap;
 use proc_macro2::TokenStream;
 use quote::quote;
 
-use crate::gkr::{OracleInfo, OracleType};
 use crate::field_wrapper::FieldWrapper;
+use crate::gkr::{OracleInfo, OracleType};
 use prover::gkr::prover::WhirSchedule;
 
 /// Compute draw_words for a given number of queries and query index bits.

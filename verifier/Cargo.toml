@@ -17,7 +17,6 @@ verifier_common = { workspace = true , default-features = false }
 [features]
 security_80 = ["verifier_common/security_80"]
 security_100 = ["verifier_common/security_100"]
-worst_case_config_generation = ["verifier_common/worst_case_config_generation"]
 blake2_with_compression = ["verifier_common/blake2_with_compression"]
 blake2_g_function = ["verifier_common/blake2_g_function"]
 mop_extension = ["verifier_common/mop_extension"]
