@@ -3,9 +3,7 @@ use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::CudaStream;
 use itertools::Itertools;
-use prover::definitions::Transcript;
 use prover::merkle_trees::MerkleTreeCapVarLength;
-use prover::transcript::Seed;
 
 use crate::allocator::tracker::AllocationPlacement;
 use crate::ntt::{
@@ -72,7 +70,13 @@ pub(crate) struct TraceHolder<T> {
     cosets_materialized: bool,
     pub(crate) cosets: CosetsHolder<T>,
     pub(crate) trees: TreesHolder,
-    pub(crate) tree_caps: Option<Vec<HostAllocation<[Digest]>>>,
+    /// Device-resident, contiguous Merkle cap of length `1 << log_tree_cap_size`,
+    /// laid out in canonical bit-reversed coset order (`stage1_pos = 0..lde_factor`,
+    /// reading from `coset[bitreverse(stage1_pos)]`). Populated by `commit_all`
+    /// (or by a pre-prove H2D from a precomputed host source for the setup/memory
+    /// holders that bypass `commit_all`). Replaces the legacy per-coset
+    /// host-pinned `tree_caps` keepalive.
+    pub(crate) unified_device_cap: Option<DeviceAllocation<Digest>>,
 }
 
 impl<T> TraceHolder<T> {
@@ -121,7 +125,7 @@ impl<T> TraceHolder<T> {
             cosets_materialized: false,
             cosets,
             trees,
-            tree_caps: None,
+            unified_device_cap: None,
         })
     }
 
@@ -166,41 +170,57 @@ impl<T> TraceHolder<T> {
             cosets_materialized: false,
             cosets: CosetsHolder::None(std::marker::PhantomData),
             trees,
-            tree_caps: None,
+            unified_device_cap: None,
         })
     }
 
-    pub(crate) fn get_tree_caps_accessors(&self) -> Vec<UnsafeAccessor<[Digest]>> {
-        self.tree_caps
+    /// Returns the device-resident unified Merkle cap. Populated by `commit_all`
+    /// or by a pre-prove H2D from a precomputed host source.
+    pub(crate) fn unified_device_cap(&self) -> &DeviceAllocation<Digest> {
+        self.unified_device_cap
             .as_ref()
-            .expect("tree caps must be materialized before access")
-            .iter()
-            .map(HostAllocation::get_accessor)
-            .collect_vec()
+            .expect("unified device cap must be materialized before access")
     }
 
-    pub(crate) fn get_tree_caps(&self) -> Vec<MerkleTreeCapVarLength> {
-        let tree_caps_accessors = self.get_tree_caps_accessors();
-        get_tree_caps_for_accessors(&tree_caps_accessors, self.log_lde_factor)
-    }
-
-    pub(crate) fn take_tree_caps_host(&mut self) -> Vec<HostAllocation<[Digest]>> {
-        self.tree_caps
+    pub(crate) fn take_unified_device_cap(&mut self) -> DeviceAllocation<Digest> {
+        self.unified_device_cap
             .take()
-            .expect("tree caps must be materialized before keepalive extraction")
+            .expect("unified device cap must be materialized before keepalive extraction")
     }
 
-    #[allow(dead_code)] // Preserved for transcript-commit flows mirrored from gpu_prover_old.
-    fn flatten_tree_caps(&self) -> Vec<u32> {
-        let tree_caps_accessors = self.get_tree_caps_accessors();
-        flatten_tree_caps_for_accessors(&tree_caps_accessors, self.log_lde_factor)
+    /// Reads the unified device cap back to host and returns it as a single
+    /// `MerkleTreeCapVarLength`. Performs an exec-stream synchronize, so it is
+    /// only meant for tests / one-shot helpers, not for the `prove()` hot path.
+    pub(crate) fn read_full_cap_synchronously(
+        &self,
+        context: &ProverContext,
+    ) -> CudaResult<MerkleTreeCapVarLength> {
+        let device_cap = self.unified_device_cap();
+        let cap_size = device_cap.len();
+        debug_assert_eq!(cap_size, 1usize << self.log_tree_cap_size);
+        let stream = context.get_exec_stream();
+        let mut host = vec![Digest::default(); cap_size];
+        memory_copy_async(host.as_mut_slice(), device_cap, stream)?;
+        stream.synchronize()?;
+        Ok(MerkleTreeCapVarLength { cap: host })
     }
 
-    #[allow(dead_code)] // Preserved for transcript-commit flows mirrored from gpu_prover_old.
-    pub(crate) fn get_update_seed_fn(&self, seed: &mut HostAllocation<Seed>) -> impl Fn() {
-        let seed_accessor = seed.get_mut_accessor();
-        let input = self.flatten_tree_caps();
-        move || unsafe { Transcript::commit_with_seed(seed_accessor.get_mut(), &input) }
+    /// Reads the unified device cap back to host and chops it into the legacy
+    /// per-coset `MerkleTreeCapVarLength` shape. Used by tests that compare
+    /// against CPU caps produced per-coset. Performs a host synchronize.
+    pub(crate) fn read_per_coset_caps_synchronously(
+        &self,
+        context: &ProverContext,
+    ) -> CudaResult<Vec<MerkleTreeCapVarLength>> {
+        let lde_factor = 1usize << self.log_lde_factor;
+        let full = self.read_full_cap_synchronously(context)?.cap;
+        debug_assert_eq!(full.len() % lde_factor, 0);
+        let per_coset = full.len() / lde_factor;
+        Ok((0..lde_factor)
+            .map(|stage1_pos| MerkleTreeCapVarLength {
+                cap: full[stage1_pos * per_coset..(stage1_pos + 1) * per_coset].to_vec(),
+            })
+            .collect_vec())
     }
 
     pub(crate) fn get_hypercube_evals(&self) -> &DeviceSlice<T> {
@@ -408,8 +428,21 @@ impl TraceHolder<BF> {
             )?;
             &mut tree_top
         };
-        let caps = &mut self.tree_caps.as_mut().unwrap()[coset_index];
-        transfer_tree_cap(tree, caps, log_lde_factor, log_tree_cap_size, stream)?;
+        // Per-coset D2D into this coset's slice of the unified device cap, in
+        // canonical bit-reversed coset order. `coset_index` is the natural coset
+        // index (the one used to index into `cosets`/`trees`), and each per-coset
+        // commit owns a disjoint slot in the unified cap so no cross-coset
+        // coordination is needed.
+        let log_subtree_cap_size = log_tree_cap_size - log_lde_factor;
+        let per_coset_cap_size = 1usize << log_subtree_cap_size;
+        let stage1_pos = bitreverse_index(coset_index, log_lde_factor);
+        let unified_cap = self
+            .unified_device_cap
+            .as_mut()
+            .expect("commit_all must allocate unified_device_cap before per-coset commit");
+        let dst = &mut unified_cap[stage1_pos * per_coset_cap_size..(stage1_pos + 1) * per_coset_cap_size];
+        let src = merkle_tree_cap(tree, log_subtree_cap_size);
+        memory_copy_async(dst, src, stream)?;
         match &mut self.trees {
             TreesHolder::Full(trees) => trees.insert(coset_index, tree_top),
             TreesHolder::Partial(trees) => {
@@ -422,8 +455,10 @@ impl TraceHolder<BF> {
 
     pub(crate) fn commit_all(&mut self, context: &ProverContext) -> CudaResult<()> {
         self.ensure_cosets_materialized(context)?;
-        let tree_caps = allocate_tree_caps(self.log_lde_factor, self.log_tree_cap_size, context);
-        assert!(self.tree_caps.replace(tree_caps).is_none());
+        let cap_size = 1usize << self.log_tree_cap_size;
+        let unified_cap: DeviceAllocation<Digest> =
+            context.alloc(cap_size, AllocationPlacement::BestFit)?;
+        assert!(self.unified_device_cap.replace(unified_cap).is_none());
         for coset_index in 0..(1usize << self.log_lde_factor) {
             self.commit_and_transfer_tree_caps(coset_index, context)?;
         }
@@ -659,21 +694,6 @@ pub(crate) fn allocate_trees(
     Ok(result)
 }
 
-pub(crate) fn allocate_tree_caps(
-    log_lde_factor: u32,
-    log_tree_cap_size: u32,
-    context: &ProverContext,
-) -> Vec<HostAllocation<[Digest]>> {
-    let lde_factor = 1 << log_lde_factor;
-    let log_coset_tree_cap_size = log_tree_cap_size - log_lde_factor;
-    let coset_tree_cap_size = 1 << log_coset_tree_cap_size;
-    let mut result = Vec::with_capacity(lde_factor);
-    for _ in 0..lde_factor {
-        result.push(unsafe { context.alloc_host_uninit_slice(coset_tree_cap_size) });
-    }
-    result
-}
-
 pub(crate) fn commit_trace(
     lde: &DeviceSlice<BF>,
     tree: &mut DeviceSlice<Digest>,
@@ -739,80 +759,12 @@ pub(crate) fn commit_trace_with_partial_tree(
     build_merkle_tree_nodes(values, tree_bottom, bottom_layers_count, stream)
 }
 
-pub(crate) fn transfer_tree_cap(
-    tree: &DeviceSlice<Digest>,
-    cap: &mut HostAllocation<[Digest]>,
-    log_lde_factor: u32,
-    log_tree_cap_size: u32,
-    stream: &CudaStream,
-) -> CudaResult<()> {
-    let log_subtree_cap_size = log_tree_cap_size - log_lde_factor;
-    let d_cap = merkle_tree_cap(tree, log_subtree_cap_size);
-    memory_copy_async(unsafe { cap.get_mut_accessor().get_mut() }, d_cap, stream)
-}
-
-fn bitreverse_index(index: usize, num_bits: u32) -> usize {
+pub(crate) fn bitreverse_index(index: usize, num_bits: u32) -> usize {
     if num_bits == 0 {
         0
     } else {
         index.reverse_bits() >> (usize::BITS - num_bits)
     }
-}
-
-#[allow(dead_code)] // Preserved for transcript-commit flows mirrored from gpu_prover_old.
-fn flatten_tree_caps_for_accessors(
-    accessors: &[UnsafeAccessor<[Digest]>],
-    log_lde_factor: u32,
-) -> Vec<u32> {
-    let lde_factor = 1usize << log_lde_factor;
-    assert_eq!(accessors.len(), lde_factor);
-    let mut result = Vec::with_capacity(
-        accessors
-            .iter()
-            .map(|accessor| unsafe {
-                accessor.get().len() * core::mem::size_of::<Digest>() / core::mem::size_of::<u32>()
-            })
-            .sum(),
-    );
-    for stage1_pos in 0..lde_factor {
-        let natural_coset_index = bitreverse_index(stage1_pos, log_lde_factor);
-        for digest in unsafe { accessors[natural_coset_index].get() }.iter() {
-            result.extend_from_slice(digest);
-        }
-    }
-
-    result
-}
-
-#[allow(dead_code)] // Preserved for transcript-commit flows mirrored from gpu_prover_old.
-pub(crate) fn flatten_tree_caps(
-    accessors: &[UnsafeAccessor<[Digest]>],
-    log_lde_factor: u32,
-) -> Vec<u32> {
-    flatten_tree_caps_for_accessors(accessors, log_lde_factor)
-}
-
-pub(crate) fn get_tree_caps_for_accessors(
-    accessors: &[UnsafeAccessor<[Digest]>],
-    log_lde_factor: u32,
-) -> Vec<MerkleTreeCapVarLength> {
-    let lde_factor = 1usize << log_lde_factor;
-    assert_eq!(accessors.len(), lde_factor);
-    (0..lde_factor)
-        .map(|stage1_pos| {
-            let natural_coset_index = bitreverse_index(stage1_pos, log_lde_factor);
-            let cap = unsafe { accessors[natural_coset_index].get().to_vec() };
-            MerkleTreeCapVarLength { cap }
-        })
-        .collect_vec()
-}
-
-#[allow(dead_code)] // Preserved for transcript-commit flows mirrored from gpu_prover_old.
-pub(crate) fn get_tree_caps(
-    accessors: &[UnsafeAccessor<[Digest]>],
-    log_lde_factor: u32,
-) -> Vec<MerkleTreeCapVarLength> {
-    get_tree_caps_for_accessors(accessors, log_lde_factor)
 }
 
 #[cfg(test)]
@@ -1062,7 +1014,9 @@ mod test {
         trace_holder.commit_all(&context).unwrap();
         context.get_exec_stream().synchronize().unwrap();
 
-        let gpu_caps = trace_holder.get_tree_caps();
+        let gpu_caps = trace_holder
+            .read_per_coset_caps_synchronously(&context)
+            .unwrap();
         let cpu_caps = stage1_caps_from_cpu_cosets(
             &cpu_cosets,
             domain_size,
@@ -1286,7 +1240,9 @@ mod test {
             none.merkle_paths.get_accessor().get()
         });
 
-        let stage1_caps = full_holder.get_tree_caps();
+        let stage1_caps = full_holder
+            .read_per_coset_caps_synchronously(&context)
+            .unwrap();
         let cpu_caps = stage1_caps_from_cpu_cosets(
             &cpu_cosets,
             domain_size,
