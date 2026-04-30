@@ -27,10 +27,12 @@ pub struct GpuPrefactorTerm {
     pub power: u32,
 }
 
-// challenges layout: [batch_base, lookup_mul, lookup_add, constraint_batch]
+// Each challenge is read from its own device pointer.
 cuda_kernel_signature_arguments_and_function!(
     EvalRecipesE4,
-    challenges: *const E4,
+    batch_base: *const E4,
+    lookup_mul: *const E4,
+    lookup_add: *const E4,
     recipes: *const GpuRecipeHeader,
     terms: *const GpuPrefactorTerm,
     coefficients: *mut E4,
@@ -39,7 +41,9 @@ cuda_kernel_signature_arguments_and_function!(
 
 cuda_kernel_declaration!(
     ab_gkr_flat_round0_eval_recipes_e4_kernel(
-        challenges: *const E4,
+        batch_base: *const E4,
+        lookup_mul: *const E4,
+        lookup_add: *const E4,
         recipes: *const GpuRecipeHeader,
         terms: *const GpuPrefactorTerm,
         coefficients: *mut E4,
@@ -47,15 +51,17 @@ cuda_kernel_declaration!(
     )
 );
 
-/// Launch the eval_recipes kernel.
-///
-/// `challenges` must point to a device buffer of 4 E4 values:
-/// `[batch_base, lookup_mul, lookup_add, constraint_batch]`.
+/// Launch the eval_recipes kernel. Each challenge is read from its own
+/// 1-element device pointer (`batch_base`, `lookup_mul`, `lookup_add`),
+/// eliminating the need for a packed 3-element challenges scratch buffer
+/// and the two D2D copies that populated it.
 ///
 /// `coefficients` is the output buffer (can point to `__constant__` symbol
 /// address or a regular device allocation).
 pub fn eval_recipes_e4(
-    challenges: *const E4,
+    batch_base: *const E4,
+    lookup_mul: *const E4,
+    lookup_add: *const E4,
     recipes: &DeviceSlice<GpuRecipeHeader>,
     terms: &DeviceSlice<GpuPrefactorTerm>,
     coefficients: *mut E4,
@@ -70,7 +76,9 @@ pub fn eval_recipes_e4(
         get_grid_block_dims_for_threads_count(WARP_SIZE * 4, num_recipes as u32);
     let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
     let args = EvalRecipesE4Arguments::new(
-        challenges,
+        batch_base,
+        lookup_mul,
+        lookup_add,
         recipes.as_ptr(),
         terms.as_ptr(),
         coefficients,

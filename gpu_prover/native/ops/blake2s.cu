@@ -384,6 +384,91 @@ EXTERN __global__ void ab_blake2s_pow_kernel(const u64 *seed, const u32 bits_cou
 // round-trips.
 // ---------------------------------------------------------------------------
 
+// Gather Merkle-tree cap regions from N source buffers into one contiguous destination, in the
+// order given by `src_ptrs`. Each block handles one coset; threads stripe the per-coset copy.
+// `src_ptrs[i]` is a u64 carrying the device pointer to coset i's cap region
+// (cap_words_per_coset u32s). The kernel reinterprets it as `const u32 *` on device.
+// dst[i*cap_words_per_coset .. (i+1)*cap_words_per_coset] receives that coset's data.
+EXTERN __global__ void ab_gather_tree_caps_kernel(const unsigned long long *src_ptrs, u32 *dst,
+                                                  const unsigned cap_words_per_coset,
+                                                  const unsigned coset_count) {
+  const unsigned coset_idx = blockIdx.x;
+  if (coset_idx >= coset_count)
+    return;
+  const u32 *src = reinterpret_cast<const u32 *>(src_ptrs[coset_idx]);
+  u32 *coset_dst = dst + coset_idx * cap_words_per_coset;
+  for (unsigned i = threadIdx.x; i < cap_words_per_coset; i += blockDim.x) {
+    coset_dst[i] = src[i];
+  }
+}
+
+// Gather E4 evaluations from N source buffers (one per address) into one
+// contiguous destination, in the order given by src_ptrs. Each block handles
+// one address; threads stripe the per-address copy. src_ptrs[i] is a u64
+// carrying the device pointer to address i's `elements_per_addr` E4 values.
+// dst[i*elements_per_addr .. (i+1)*elements_per_addr] receives that
+// address's data. Internally copies `elements_per_addr * 4` u32 words per
+// address (each E4 is 16 bytes / 4 u32 words). Replaces the per-address
+// `memory_copy_async` loop in the backward schedulers with a single launch.
+EXTERN __global__ void ab_gather_e_addresses_kernel(const unsigned long long *src_ptrs, u32 *dst,
+                                                    const unsigned elements_per_addr,
+                                                    const unsigned num_addresses) {
+  const unsigned addr_idx = blockIdx.x;
+  if (addr_idx >= num_addresses)
+    return;
+  const u32 *src = reinterpret_cast<const u32 *>(src_ptrs[addr_idx]);
+  const unsigned words_per_addr = elements_per_addr * 4u;
+  u32 *addr_dst = dst + addr_idx * words_per_addr;
+  for (unsigned i = threadIdx.x; i < words_per_addr; i += blockDim.x) {
+    addr_dst[i] = src[i];
+  }
+}
+
+// commit_initial: seed_out = Blake2s(input). Mirrors host `Transcript::commit_initial(input)` —
+// no prior seed; the entire `input` block is absorbed from the IV.
+// seed_out: STATE_SIZE u32 words, written with the resulting seed.
+// input:    input_len u32 words to absorb.
+EXTERN __global__ void ab_transcript_commit_initial_kernel(u32 *seed_out, const u32 *input, const unsigned input_len) {
+  u32 state[STATE_SIZE];
+  initialize(state);
+  u32 t = 0;
+  u32 block[BLOCK_SIZE];
+#pragma unroll
+  for (unsigned i = 0; i < BLOCK_SIZE; i++)
+    block[i] = 0;
+
+  unsigned block_offset = 0;
+  unsigned remaining = input_len;
+  const u32 *src = input;
+
+  while (remaining > 0) {
+    const unsigned space = BLOCK_SIZE - block_offset;
+    const unsigned n = remaining < space ? remaining : space;
+    for (unsigned i = 0; i < n; i++)
+      block[block_offset + i] = src[i];
+    block_offset += n;
+    src += n;
+    remaining -= n;
+
+    if (block_offset == BLOCK_SIZE && remaining > 0) {
+      compress<false>(state, t, block, BLOCK_SIZE);
+#pragma unroll
+      for (unsigned i = 0; i < BLOCK_SIZE; i++)
+        block[i] = 0;
+      block_offset = 0;
+    }
+  }
+
+  // Zero-pad and finalize.
+  for (unsigned i = block_offset; i < BLOCK_SIZE; i++)
+    block[i] = 0;
+  compress<true>(state, t, block, block_offset);
+
+#pragma unroll
+  for (unsigned i = 0; i < STATE_SIZE; i++)
+    seed_out[i] = state[i];
+}
+
 // commit_with_seed: new_seed = Blake2s(old_seed || input).
 // seed_io: STATE_SIZE u32 words, read then overwritten with the new seed.
 // input:   input_len u32 words to absorb after the seed.
