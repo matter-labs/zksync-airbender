@@ -30,27 +30,27 @@
     344384,
     344384,
     344384,
-    344640,
-    344640,
-    344640,
-    344640,
-    344640,
-    344640,
-    344640,
-    344640,
-    344640,
-    344640,
-    344640,
-    344640,
-    344640,
-    344640,
-    344640,
-    344640,
-    344640,
-    344640
+    344896,
+    344896,
+    344896,
+    344896,
+    344896,
+    344896,
+    344896,
+    344896,
+    344896,
+    344896,
+    344896,
+    344896,
+    344896,
+    344896,
+    344896,
+    344896,
+    344896,
+    344896
   ],
-  "total_tables_size": 344640,
-  "offset_for_decoder_table": 344640,
+  "total_tables_size": 344896,
+  "offset_for_decoder_table": 344896,
   "has_decoder_lookup": false,
   "layers": [
     {
@@ -1477,6 +1477,12 @@
                 "columns": [
                   {
                     "linear_terms": [
+                      [
+                        256,
+                        {
+                          "BaseLayerMemory": 52
+                        }
+                      ],
                       [
                         1,
                         {
@@ -7480,6 +7486,12 @@
         {
           "linear_terms": [
             [
+              256,
+              {
+                "BaseLayerMemory": 52
+              }
+            ],
+            [
               1,
               {
                 "BaseLayerMemory": 48
@@ -9671,11 +9683,11 @@
     "41": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::37",
     "42": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::37",
     "43": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::116",
-    "44": "Variable at cs/src/cs/circuit_impl.rs::1118",
-    "45": "Variable at cs/src/cs/circuit_impl.rs::1118",
+    "44": "Variable at cs/src/cs/circuit_impl.rs::1163",
+    "45": "Variable at cs/src/cs/circuit_impl.rs::1163",
     "46": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::116",
-    "47": "Variable at cs/src/cs/circuit_impl.rs::1118",
-    "48": "Variable at cs/src/cs/circuit_impl.rs::1118",
+    "47": "Variable at cs/src/cs/circuit_impl.rs::1163",
+    "48": "Variable at cs/src/cs/circuit_impl.rs::1163",
     "49": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::205",
     "50": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::207",
     "51": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::214",
@@ -9684,32 +9696,32 @@
     "54": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::214",
     "55": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::302",
     "56": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::303",
-    "57": "Variable at cs/src/cs/circuit_impl.rs::1118",
-    "58": "Variable at cs/src/cs/circuit_impl.rs::1118",
-    "59": "Variable at cs/src/cs/circuit_impl.rs::1118",
+    "57": "Variable at cs/src/cs/circuit_impl.rs::1163",
+    "58": "Variable at cs/src/cs/circuit_impl.rs::1163",
+    "59": "Variable at cs/src/cs/circuit_impl.rs::1163",
     "60": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::302",
     "61": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::303",
-    "62": "Variable at cs/src/cs/circuit_impl.rs::1118",
-    "63": "Variable at cs/src/cs/circuit_impl.rs::1118",
-    "64": "Variable at cs/src/cs/circuit_impl.rs::1118",
+    "62": "Variable at cs/src/cs/circuit_impl.rs::1163",
+    "63": "Variable at cs/src/cs/circuit_impl.rs::1163",
+    "64": "Variable at cs/src/cs/circuit_impl.rs::1163",
     "65": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::444",
     "66": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::444",
     "67": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::446",
     "68": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::446",
     "69": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::451",
     "70": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::451",
-    "71": "Variable at cs/src/cs/circuit_impl.rs::1118",
-    "72": "Variable at cs/src/cs/circuit_impl.rs::1118",
-    "73": "Variable at cs/src/cs/circuit_impl.rs::1118",
-    "74": "Variable at cs/src/cs/circuit_impl.rs::1118",
+    "71": "Variable at cs/src/cs/circuit_impl.rs::1163",
+    "72": "Variable at cs/src/cs/circuit_impl.rs::1163",
+    "73": "Variable at cs/src/cs/circuit_impl.rs::1163",
+    "74": "Variable at cs/src/cs/circuit_impl.rs::1163",
     "75": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::562",
     "76": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::564",
     "77": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::571",
     "78": "Variable at cs/src/gkr_circuits/delegation/blake2_round_with_extended_control/g_function.rs::571",
-    "79": "Variable at cs/src/cs/circuit_impl.rs::1118",
-    "80": "Variable at cs/src/cs/circuit_impl.rs::1118",
-    "81": "Variable at cs/src/cs/circuit_impl.rs::1118",
-    "82": "Variable at cs/src/cs/circuit_impl.rs::1118",
+    "79": "Variable at cs/src/cs/circuit_impl.rs::1163",
+    "80": "Variable at cs/src/cs/circuit_impl.rs::1163",
+    "81": "Variable at cs/src/cs/circuit_impl.rs::1163",
+    "82": "Variable at cs/src/cs/circuit_impl.rs::1163",
     "83": "ram or indirect query 0, register read_ts[0]",
     "84": "ram or indirect query 0, register read_ts[1]",
     "85": "indirect access query 0, register acccess interm ts borrow",

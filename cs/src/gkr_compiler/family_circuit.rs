@@ -1016,7 +1016,7 @@ impl<F: PrimeField> GKRCompiler<F> {
             }
         }
 
-        dbg!(&graph.base_layer_witness);
+        // dbg!(&graph.base_layer_witness);
 
         GKRCircuitArtifact {
             trace_len,

@@ -712,6 +712,12 @@ pub(crate) fn parse_shuffle_ram_accesses<F: PrimeField>(
                     panic!("Duplicate entry {:?} in read set", to_read);
                 }
             }
+
+            // if is_register == false && address == 71302656 {
+            //     // dbg!(trace_row);
+            //     dbg!(access_idx);
+            //     dbg!(read_ts);
+            // }
         }
     }
 }
@@ -863,6 +869,13 @@ pub(crate) fn parse_delegation_ram_accesses<F: PrimeField>(
                 dbg!(access_idx);
                 panic!("Duplicate entry {:?} in read set", to_read);
             }
+
+            // if is_register == false && address == 71302656 {
+            //     dbg!(_row);
+            //     // dbg!(trace_row);
+            //     dbg!(access_idx);
+            //     dbg!(read_ts);
+            // }
         }
     }
 }

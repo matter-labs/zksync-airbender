@@ -768,15 +768,38 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
                 )),
             );
 
-            let value_fn = move |placer: &mut Self::WitnessPlacer| {
-                let value =
-                    placer.get_oracle_u32(Placeholder::DelegationRegisterReadValue(register_index));
-                placer.assign_u32_from_u16_parts([read_low, read_high], &value);
-            };
-            self.set_values(value_fn);
+            if Self::ASSUME_MEMORY_VALUES_ASSIGNED {
+                let value_fn = move |placer: &mut Self::WitnessPlacer| {
+                    placer.assume_assigned(read_low);
+                    placer.assume_assigned(read_high);
+                };
+                self.set_values(value_fn);
+            } else {
+                let value_fn = move |placer: &mut Self::WitnessPlacer| {
+                    let value = placer
+                        .get_oracle_u32(Placeholder::DelegationRegisterReadValue(register_index));
+                    placer.assign_u32_from_u16_parts([read_low, read_high], &value);
+                };
+                self.set_values(value_fn);
+            }
 
             let write_low = self.add_named_variable(&format!("{} write[0]", name));
             let write_high = self.add_named_variable(&format!("{} write[0]", name));
+
+            if Self::ASSUME_MEMORY_VALUES_ASSIGNED {
+                let value_fn = move |placer: &mut Self::WitnessPlacer| {
+                    placer.assume_assigned(write_low);
+                    placer.assume_assigned(write_high);
+                };
+                self.set_values(value_fn);
+            } else {
+                let value_fn = move |placer: &mut Self::WitnessPlacer| {
+                    let value = placer
+                        .get_oracle_u32(Placeholder::DelegationRegisterWriteValue(register_index));
+                    placer.assign_u32_from_u16_parts([write_low, write_high], &value);
+                };
+                self.set_values(value_fn);
+            }
 
             RegisterAccessType::Write {
                 read_value: [read_low, read_high],
@@ -801,12 +824,20 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
                 )),
             );
 
-            let value_fn = move |placer: &mut Self::WitnessPlacer| {
-                let value =
-                    placer.get_oracle_u32(Placeholder::DelegationRegisterReadValue(register_index));
-                placer.assign_u32_from_u16_parts([read_low, read_high], &value);
-            };
-            self.set_values(value_fn);
+            if Self::ASSUME_MEMORY_VALUES_ASSIGNED {
+                let value_fn = move |placer: &mut Self::WitnessPlacer| {
+                    placer.assume_assigned(read_low);
+                    placer.assume_assigned(read_high);
+                };
+                self.set_values(value_fn);
+            } else {
+                let value_fn = move |placer: &mut Self::WitnessPlacer| {
+                    let value = placer
+                        .get_oracle_u32(Placeholder::DelegationRegisterReadValue(register_index));
+                    placer.assign_u32_from_u16_parts([read_low, read_high], &value);
+                };
+                self.set_values(value_fn);
+            }
 
             RegisterAccessType::Read {
                 read_value: [read_low, read_high],
@@ -861,7 +892,12 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
                     );
 
                     // it was not used in other accesses, so it needs an oracle value
-                    if Self::ASSUME_MEMORY_VALUES_ASSIGNED == false {
+                    if Self::ASSUME_MEMORY_VALUES_ASSIGNED {
+                        let value_fn = move |placer: &mut Self::WitnessPlacer| {
+                            placer.assume_assigned(var);
+                        };
+                        self.set_values(value_fn);
+                    } else {
                         let value_fn = move |placer: &mut Self::WitnessPlacer| {
                             let value = placer.get_oracle_u16(
                                 Placeholder::DelegationIndirectAccessVariableOffset {
@@ -869,11 +905,6 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
                                 },
                             );
                             placer.assign_u16(var, &value);
-                        };
-                        self.set_values(value_fn);
-                    } else {
-                        let value_fn = move |placer: &mut Self::WitnessPlacer| {
-                            placer.assume_assigned(var);
                         };
                         self.set_values(value_fn);
                     }
@@ -922,14 +953,23 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
                     )),
                 );
 
-                let value_fn = move |placer: &mut Self::WitnessPlacer| {
-                    let value = placer.get_oracle_u32(Placeholder::DelegationIndirectReadValue {
-                        register_index,
-                        word_index: indirect_access_idx,
-                    });
-                    placer.assign_u32_from_u16_parts([read_low, read_high], &value);
-                };
-                self.set_values(value_fn);
+                if Self::ASSUME_MEMORY_VALUES_ASSIGNED {
+                    let value_fn = move |placer: &mut Self::WitnessPlacer| {
+                        placer.assume_assigned(read_low);
+                        placer.assume_assigned(read_high);
+                    };
+                    self.set_values(value_fn);
+                } else {
+                    let value_fn = move |placer: &mut Self::WitnessPlacer| {
+                        let value =
+                            placer.get_oracle_u32(Placeholder::DelegationIndirectReadValue {
+                                register_index,
+                                word_index: indirect_access_idx,
+                            });
+                        placer.assign_u32_from_u16_parts([read_low, read_high], &value);
+                    };
+                    self.set_values(value_fn);
+                }
 
                 let write_low = self.add_named_variable(&format!(
                     "{} indirect access {} write[0]",

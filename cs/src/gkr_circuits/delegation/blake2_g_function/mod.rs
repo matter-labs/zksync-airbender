@@ -49,7 +49,7 @@ pub fn blake2_g_function_table_driver_fn<F: PrimeField>(table_driver: &mut Table
 pub fn define_blake2_g_function_delegation_circuit<F: PrimeField, CS: Circuit<F>>(
     cs: &mut CS,
 ) -> [[Variable; 2]; BLAKE2S_G_FUNCTION_X10_NUM_WRITES] {
-    let (_execute, _invocation_timestamp) =
+    let (execute, _invocation_timestamp) =
         cs.allocate_delegation_state(BLAKE2S_G_FUNCTION_DELEGATION_CSR_REGISTER as u16);
 
     // we do not expect any variable offsets, so we allocate all register and indirect reads/writes right away
@@ -99,19 +99,48 @@ pub fn define_blake2_g_function_delegation_circuit<F: PrimeField, CS: Circuit<F>
     let [x11_offset_0, x_11_offset_1] =
         std::array::from_fn(|i| cs.add_named_variable(&format!("x11 offset {}", i)));
 
-    cs.set_variables_from_lookup_constrained(
-        &[LookupInput::Variable(x12_vars[0])],
-        &[
-            x12_write_vars[0],
-            x10_offset_0,
-            x10_offset_1,
-            x10_offset_2,
-            x_10_offset_3,
-            x11_offset_0,
-            x_11_offset_1,
-        ],
-        LookupQueryTableType::Constant(TableType::BlakeGFunctionControlLookup),
-    );
+    // note: for simplicity - our logical input also includes execute flag, so we just degrade to 0 in padding
+    let input_constraint = Constraint::empty()
+        + Term::from(x12_vars[0])
+        + Term::from((
+            F::from_u32_unchecked(1 << BLAKE2S_G_FUNCTION_NUM_CONTROL_REGISTER_BITS),
+            execute,
+        ));
+    if CS::ASSUME_MEMORY_VALUES_ASSIGNED {
+        let mut inputs = vec![LookupInput::from(input_constraint)];
+        inputs.extend(
+            [
+                x12_write_vars[0],
+                x10_offset_0,
+                x10_offset_1,
+                x10_offset_2,
+                x_10_offset_3,
+                x11_offset_0,
+                x_11_offset_1,
+            ]
+            .map(|el| LookupInput::Variable(el)),
+        );
+        let inputs: [_; TOTAL_TABLE_WIDTH] = inputs.try_into().unwrap();
+        cs.enforce_lookup_tuple_for_fixed_table(
+            &inputs.map(|el| LookupInput::from(el)),
+            TableType::BlakeGFunctionControlLookup,
+            false,
+        );
+    } else {
+        cs.set_variables_from_lookup_constrained(
+            &[LookupInput::from(input_constraint)],
+            &[
+                x12_write_vars[0],
+                x10_offset_0,
+                x10_offset_1,
+                x10_offset_2,
+                x_10_offset_3,
+                x11_offset_0,
+                x_11_offset_1,
+            ],
+            LookupQueryTableType::Constant(TableType::BlakeGFunctionControlLookup),
+        );
+    }
 
     // NOTE: offsets are in words
     let x10_offsets = [x10_offset_0, x10_offset_1, x10_offset_2, x_10_offset_3];

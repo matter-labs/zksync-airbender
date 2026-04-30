@@ -1132,7 +1132,7 @@
       "Integer": {
         "WrappingShr": {
           "lhs": {
-            "U32SubExpression": 11
+            "U32SubExpression": 18
           },
           "magnitude": 8
         }
@@ -1232,8 +1232,32 @@
     },
     {
       "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U32SubExpression": 11
+          },
+          "magnitude": 8
+        }
+      }
+    },
+    {
+      "Integer": {
+        "TruncateFromU32": {
+          "U32SubExpression": 96
+        }
+      }
+    },
+    {
+      "Integer": {
+        "TruncateFromU16": {
+          "U16SubExpression": 97
+        }
+      }
+    },
+    {
+      "Integer": {
         "WidenFromU8": {
-          "U8SubExpression": 88
+          "U8SubExpression": 98
         }
       }
     },
@@ -1244,7 +1268,7 @@
             "U16SubExpression": 76
           },
           "rhs": {
-            "U16SubExpression": 96
+            "U16SubExpression": 99
           }
         }
       }
@@ -1252,7 +1276,7 @@
     {
       "Integer": {
         "WidenFromU16": {
-          "U16SubExpression": 97
+          "U16SubExpression": 100
         }
       }
     },
@@ -1260,7 +1284,7 @@
       "Integer": {
         "WrappingShl": {
           "lhs": {
-            "U32SubExpression": 98
+            "U32SubExpression": 101
           },
           "magnitude": 8
         }
@@ -1273,7 +1297,7 @@
             "U32SubExpression": 95
           },
           "rhs": {
-            "U32SubExpression": 99
+            "U32SubExpression": 102
           }
         }
       }
@@ -1294,7 +1318,7 @@
       "Integer": {
         "Select": {
           "selector": {
-            "SubExpression": 101
+            "SubExpression": 104
           },
           "if_true": {
             "U32SubExpression": 23
@@ -1308,14 +1332,14 @@
     {
       "Integer": {
         "TruncateFromU32": {
-          "U32SubExpression": 102
+          "U32SubExpression": 105
         }
       }
     },
     {
       "Integer": {
         "WidenFromU16": {
-          "U16SubExpression": 103
+          "U16SubExpression": 106
         }
       }
     },
@@ -1323,10 +1347,10 @@
       "Integer": {
         "WrappingAdd": {
           "lhs": {
-            "U32SubExpression": 100
+            "U32SubExpression": 103
           },
           "rhs": {
-            "U32SubExpression": 104
+            "U32SubExpression": 107
           }
         }
       }
@@ -1350,13 +1374,13 @@
       "Integer": {
         "Select": {
           "selector": {
-            "SubExpression": 101
+            "SubExpression": 104
           },
           "if_true": {
             "U32SubExpression": 18
           },
           "if_false": {
-            "U32SubExpression": 106
+            "U32SubExpression": 109
           }
         }
       }
@@ -1364,14 +1388,14 @@
     {
       "Integer": {
         "TruncateFromU32": {
-          "U32SubExpression": 107
+          "U32SubExpression": 110
         }
       }
     },
     {
       "Integer": {
         "WidenFromU16": {
-          "U16SubExpression": 108
+          "U16SubExpression": 111
         }
       }
     },
@@ -1379,10 +1403,10 @@
       "Integer": {
         "WrappingSub": {
           "lhs": {
-            "U32SubExpression": 105
+            "U32SubExpression": 108
           },
           "rhs": {
-            "U32SubExpression": 109
+            "U32SubExpression": 112
           }
         }
       }
@@ -1391,7 +1415,7 @@
       "Integer": {
         "WrappingShr": {
           "lhs": {
-            "U32SubExpression": 110
+            "U32SubExpression": 113
           },
           "magnitude": 16
         }
@@ -1400,7 +1424,7 @@
     {
       "Integer": {
         "TruncateFromU32": {
-          "U32SubExpression": 111
+          "U32SubExpression": 114
         }
       }
     },
@@ -1409,7 +1433,7 @@
         "into_variable": 41,
         "source_subexpr": {
           "U16": {
-            "U16SubExpression": 112
+            "U16SubExpression": 115
           }
         },
         "condition_subexpr_idx": null
@@ -1422,7 +1446,7 @@
             "U16SubExpression": 91
           },
           "rhs": {
-            "U16SubExpression": 96
+            "U16SubExpression": 99
           }
         }
       }
@@ -1430,7 +1454,7 @@
     {
       "Integer": {
         "WidenFromU16": {
-          "U16SubExpression": 114
+          "U16SubExpression": 117
         }
       }
     },
@@ -1441,7 +1465,7 @@
             "U32SubExpression": 12
           },
           "rhs": {
-            "U32SubExpression": 115
+            "U32SubExpression": 118
           }
         }
       }
@@ -1457,7 +1481,7 @@
       "Integer": {
         "MulLow": {
           "lhs": {
-            "U16SubExpression": 117
+            "U16SubExpression": 120
           },
           "rhs": {
             "U16SubExpression": 79
@@ -1468,7 +1492,7 @@
     {
       "Integer": {
         "WidenFromU16": {
-          "U16SubExpression": 118
+          "U16SubExpression": 121
         }
       }
     },
@@ -1476,10 +1500,10 @@
       "Integer": {
         "WrappingAdd": {
           "lhs": {
-            "U32SubExpression": 116
+            "U32SubExpression": 119
           },
           "rhs": {
-            "U32SubExpression": 119
+            "U32SubExpression": 122
           }
         }
       }
@@ -1497,21 +1521,21 @@
     {
       "Integer": {
         "TruncateFromU32": {
-          "U32SubExpression": 121
+          "U32SubExpression": 124
         }
       }
     },
     {
       "Integer": {
         "TruncateFromU16": {
-          "U16SubExpression": 122
+          "U16SubExpression": 125
         }
       }
     },
     {
       "Integer": {
         "WidenFromU8": {
-          "U8SubExpression": 123
+          "U8SubExpression": 126
         }
       }
     },
@@ -1522,7 +1546,7 @@
             "U16SubExpression": 76
           },
           "rhs": {
-            "U16SubExpression": 124
+            "U16SubExpression": 127
           }
         }
       }
@@ -1530,7 +1554,7 @@
     {
       "Integer": {
         "WidenFromU16": {
-          "U16SubExpression": 125
+          "U16SubExpression": 128
         }
       }
     },
@@ -1538,10 +1562,10 @@
       "Integer": {
         "WrappingAdd": {
           "lhs": {
-            "U32SubExpression": 120
+            "U32SubExpression": 123
           },
           "rhs": {
-            "U32SubExpression": 126
+            "U32SubExpression": 129
           }
         }
       }
@@ -1551,30 +1575,6 @@
         "WrappingShr": {
           "lhs": {
             "U32SubExpression": 29
-          },
-          "magnitude": 24
-        }
-      }
-    },
-    {
-      "Integer": {
-        "TruncateFromU32": {
-          "U32SubExpression": 128
-        }
-      }
-    },
-    {
-      "Integer": {
-        "TruncateFromU16": {
-          "U16SubExpression": 129
-        }
-      }
-    },
-    {
-      "Integer": {
-        "WrappingShr": {
-          "lhs": {
-            "U32SubExpression": 35
           },
           "magnitude": 24
         }
@@ -1598,7 +1598,7 @@
       "Integer": {
         "WrappingShr": {
           "lhs": {
-            "U32SubExpression": 11
+            "U32SubExpression": 35
           },
           "magnitude": 24
         }
@@ -1620,12 +1620,36 @@
     },
     {
       "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U32SubExpression": 18
+          },
+          "magnitude": 24
+        }
+      }
+    },
+    {
+      "Integer": {
+        "TruncateFromU32": {
+          "U32SubExpression": 137
+        }
+      }
+    },
+    {
+      "Integer": {
+        "TruncateFromU16": {
+          "U16SubExpression": 138
+        }
+      }
+    },
+    {
+      "Integer": {
         "Select": {
           "selector": {
             "SubExpression": 38
           },
           "if_true": {
-            "U8SubExpression": 136
+            "U8SubExpression": 139
           },
           "if_false": {
             "U8SubExpression": 41
@@ -1640,10 +1664,10 @@
             "SubExpression": 2
           },
           "if_true": {
-            "U8SubExpression": 133
+            "U8SubExpression": 136
           },
           "if_false": {
-            "U8SubExpression": 137
+            "U8SubExpression": 140
           }
         }
       }
@@ -1655,10 +1679,10 @@
             "SubExpression": 3
           },
           "if_true": {
-            "U8SubExpression": 130
+            "U8SubExpression": 133
           },
           "if_false": {
-            "U8SubExpression": 138
+            "U8SubExpression": 141
           }
         }
       }
@@ -1666,7 +1690,7 @@
     {
       "Integer": {
         "WidenFromU8": {
-          "U8SubExpression": 139
+          "U8SubExpression": 142
         }
       }
     },
@@ -1674,7 +1698,7 @@
       "Integer": {
         "MulLow": {
           "lhs": {
-            "U16SubExpression": 140
+            "U16SubExpression": 143
           },
           "rhs": {
             "U16SubExpression": 79
@@ -1685,7 +1709,7 @@
     {
       "Integer": {
         "WidenFromU16": {
-          "U16SubExpression": 141
+          "U16SubExpression": 144
         }
       }
     },
@@ -1693,7 +1717,7 @@
       "Integer": {
         "WrappingShl": {
           "lhs": {
-            "U32SubExpression": 142
+            "U32SubExpression": 145
           },
           "magnitude": 8
         }
@@ -1703,18 +1727,42 @@
       "Integer": {
         "WrappingAdd": {
           "lhs": {
-            "U32SubExpression": 127
+            "U32SubExpression": 130
           },
           "rhs": {
-            "U32SubExpression": 143
+            "U32SubExpression": 146
           }
         }
       }
     },
     {
       "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U32SubExpression": 11
+          },
+          "magnitude": 24
+        }
+      }
+    },
+    {
+      "Integer": {
+        "TruncateFromU32": {
+          "U32SubExpression": 148
+        }
+      }
+    },
+    {
+      "Integer": {
+        "TruncateFromU16": {
+          "U16SubExpression": 149
+        }
+      }
+    },
+    {
+      "Integer": {
         "WidenFromU8": {
-          "U8SubExpression": 136
+          "U8SubExpression": 150
         }
       }
     },
@@ -1725,7 +1773,7 @@
             "U16SubExpression": 76
           },
           "rhs": {
-            "U16SubExpression": 145
+            "U16SubExpression": 151
           }
         }
       }
@@ -1733,7 +1781,7 @@
     {
       "Integer": {
         "WidenFromU16": {
-          "U16SubExpression": 146
+          "U16SubExpression": 152
         }
       }
     },
@@ -1741,7 +1789,7 @@
       "Integer": {
         "WrappingShl": {
           "lhs": {
-            "U32SubExpression": 147
+            "U32SubExpression": 153
           },
           "magnitude": 8
         }
@@ -1751,10 +1799,10 @@
       "Integer": {
         "WrappingAdd": {
           "lhs": {
-            "U32SubExpression": 144
+            "U32SubExpression": 147
           },
           "rhs": {
-            "U32SubExpression": 148
+            "U32SubExpression": 154
           }
         }
       }
@@ -1763,10 +1811,10 @@
       "Integer": {
         "MulLow": {
           "lhs": {
-            "U16SubExpression": 117
+            "U16SubExpression": 120
           },
           "rhs": {
-            "U16SubExpression": 96
+            "U16SubExpression": 99
           }
         }
       }
@@ -1774,7 +1822,7 @@
     {
       "Integer": {
         "WidenFromU16": {
-          "U16SubExpression": 150
+          "U16SubExpression": 156
         }
       }
     },
@@ -1782,7 +1830,7 @@
       "Integer": {
         "WrappingShl": {
           "lhs": {
-            "U32SubExpression": 151
+            "U32SubExpression": 157
           },
           "magnitude": 8
         }
@@ -1792,10 +1840,10 @@
       "Integer": {
         "WrappingAdd": {
           "lhs": {
-            "U32SubExpression": 149
+            "U32SubExpression": 155
           },
           "rhs": {
-            "U32SubExpression": 152
+            "U32SubExpression": 158
           }
         }
       }
@@ -1807,7 +1855,7 @@
             "U16SubExpression": 91
           },
           "rhs": {
-            "U16SubExpression": 124
+            "U16SubExpression": 127
           }
         }
       }
@@ -1815,7 +1863,7 @@
     {
       "Integer": {
         "WidenFromU16": {
-          "U16SubExpression": 154
+          "U16SubExpression": 160
         }
       }
     },
@@ -1823,43 +1871,9 @@
       "Integer": {
         "WrappingShl": {
           "lhs": {
-            "U32SubExpression": 155
+            "U32SubExpression": 161
           },
           "magnitude": 8
-        }
-      }
-    },
-    {
-      "Integer": {
-        "WrappingAdd": {
-          "lhs": {
-            "U32SubExpression": 153
-          },
-          "rhs": {
-            "U32SubExpression": 156
-          }
-        }
-      }
-    },
-    {
-      "Integer": {
-        "WrappingShr": {
-          "lhs": {
-            "U32SubExpression": 102
-          },
-          "magnitude": 16
-        }
-      }
-    },
-    {
-      "Integer": {
-        "WrappingAdd": {
-          "lhs": {
-            "U32SubExpression": 157
-          },
-          "rhs": {
-            "U32SubExpression": 158
-          }
         }
       }
     },
@@ -1870,7 +1884,7 @@
             "U32SubExpression": 159
           },
           "rhs": {
-            "U32SubExpression": 111
+            "U32SubExpression": 162
           }
         }
       }
@@ -1879,7 +1893,41 @@
       "Integer": {
         "WrappingShr": {
           "lhs": {
-            "U32SubExpression": 107
+            "U32SubExpression": 105
+          },
+          "magnitude": 16
+        }
+      }
+    },
+    {
+      "Integer": {
+        "WrappingAdd": {
+          "lhs": {
+            "U32SubExpression": 163
+          },
+          "rhs": {
+            "U32SubExpression": 164
+          }
+        }
+      }
+    },
+    {
+      "Integer": {
+        "WrappingAdd": {
+          "lhs": {
+            "U32SubExpression": 165
+          },
+          "rhs": {
+            "U32SubExpression": 114
+          }
+        }
+      }
+    },
+    {
+      "Integer": {
+        "WrappingShr": {
+          "lhs": {
+            "U32SubExpression": 110
           },
           "magnitude": 16
         }
@@ -1889,66 +1937,7 @@
       "Integer": {
         "WrappingSub": {
           "lhs": {
-            "U32SubExpression": 160
-          },
-          "rhs": {
-            "U32SubExpression": 161
-          }
-        }
-      }
-    },
-    {
-      "Integer": {
-        "WrappingShr": {
-          "lhs": {
-            "U32SubExpression": 162
-          },
-          "magnitude": 16
-        }
-      }
-    },
-    {
-      "Integer": {
-        "TruncateFromU32": {
-          "U32SubExpression": 163
-        }
-      }
-    },
-    {
-      "WriteVariable": {
-        "into_variable": 42,
-        "source_subexpr": {
-          "U16": {
-            "U16SubExpression": 164
-          }
-        },
-        "condition_subexpr_idx": null
-      }
-    },
-    {
-      "Integer": {
-        "MulLow": {
-          "lhs": {
-            "U16SubExpression": 140
-          },
-          "rhs": {
-            "U16SubExpression": 96
-          }
-        }
-      }
-    },
-    {
-      "Integer": {
-        "WidenFromU16": {
-          "U16SubExpression": 166
-        }
-      }
-    },
-    {
-      "Integer": {
-        "WrappingAdd": {
-          "lhs": {
-            "U32SubExpression": 12
+            "U32SubExpression": 166
           },
           "rhs": {
             "U32SubExpression": 167
@@ -1958,43 +1947,40 @@
     },
     {
       "Integer": {
-        "MulLow": {
-          "lhs": {
-            "U16SubExpression": 117
-          },
-          "rhs": {
-            "U16SubExpression": 124
-          }
-        }
-      }
-    },
-    {
-      "Integer": {
-        "WidenFromU16": {
-          "U16SubExpression": 169
-        }
-      }
-    },
-    {
-      "Integer": {
-        "WrappingAdd": {
+        "WrappingShr": {
           "lhs": {
             "U32SubExpression": 168
           },
-          "rhs": {
-            "U32SubExpression": 170
-          }
+          "magnitude": 16
         }
+      }
+    },
+    {
+      "Integer": {
+        "TruncateFromU32": {
+          "U32SubExpression": 169
+        }
+      }
+    },
+    {
+      "WriteVariable": {
+        "into_variable": 42,
+        "source_subexpr": {
+          "U16": {
+            "U16SubExpression": 170
+          }
+        },
+        "condition_subexpr_idx": null
       }
     },
     {
       "Integer": {
         "MulLow": {
           "lhs": {
-            "U16SubExpression": 91
+            "U16SubExpression": 143
           },
           "rhs": {
-            "U16SubExpression": 145
+            "U16SubExpression": 99
           }
         }
       }
@@ -2010,7 +1996,7 @@
       "Integer": {
         "WrappingAdd": {
           "lhs": {
-            "U32SubExpression": 171
+            "U32SubExpression": 12
           },
           "rhs": {
             "U32SubExpression": 173
@@ -2022,10 +2008,10 @@
       "Integer": {
         "MulLow": {
           "lhs": {
-            "U16SubExpression": 140
+            "U16SubExpression": 120
           },
           "rhs": {
-            "U16SubExpression": 124
+            "U16SubExpression": 127
           }
         }
       }
@@ -2039,9 +2025,71 @@
     },
     {
       "Integer": {
+        "WrappingAdd": {
+          "lhs": {
+            "U32SubExpression": 174
+          },
+          "rhs": {
+            "U32SubExpression": 176
+          }
+        }
+      }
+    },
+    {
+      "Integer": {
+        "MulLow": {
+          "lhs": {
+            "U16SubExpression": 91
+          },
+          "rhs": {
+            "U16SubExpression": 151
+          }
+        }
+      }
+    },
+    {
+      "Integer": {
+        "WidenFromU16": {
+          "U16SubExpression": 178
+        }
+      }
+    },
+    {
+      "Integer": {
+        "WrappingAdd": {
+          "lhs": {
+            "U32SubExpression": 177
+          },
+          "rhs": {
+            "U32SubExpression": 179
+          }
+        }
+      }
+    },
+    {
+      "Integer": {
+        "MulLow": {
+          "lhs": {
+            "U16SubExpression": 143
+          },
+          "rhs": {
+            "U16SubExpression": 127
+          }
+        }
+      }
+    },
+    {
+      "Integer": {
+        "WidenFromU16": {
+          "U16SubExpression": 181
+        }
+      }
+    },
+    {
+      "Integer": {
         "WrappingShl": {
           "lhs": {
-            "U32SubExpression": 176
+            "U32SubExpression": 182
           },
           "magnitude": 8
         }
@@ -2051,10 +2099,10 @@
       "Integer": {
         "WrappingAdd": {
           "lhs": {
-            "U32SubExpression": 174
+            "U32SubExpression": 180
           },
           "rhs": {
-            "U32SubExpression": 177
+            "U32SubExpression": 183
           }
         }
       }
@@ -2063,10 +2111,10 @@
       "Integer": {
         "WrappingAdd": {
           "lhs": {
-            "U32SubExpression": 178
+            "U32SubExpression": 184
           },
           "rhs": {
-            "U32SubExpression": 177
+            "U32SubExpression": 183
           }
         }
       }
@@ -2075,10 +2123,10 @@
       "Integer": {
         "WrappingAdd": {
           "lhs": {
-            "U32SubExpression": 179
+            "U32SubExpression": 185
           },
           "rhs": {
-            "U32SubExpression": 163
+            "U32SubExpression": 169
           }
         }
       }
@@ -2101,14 +2149,14 @@
     {
       "Integer": {
         "TruncateFromU32": {
-          "U32SubExpression": 181
+          "U32SubExpression": 187
         }
       }
     },
     {
       "Integer": {
         "WidenFromU16": {
-          "U16SubExpression": 182
+          "U16SubExpression": 188
         }
       }
     },
@@ -2116,10 +2164,10 @@
       "Integer": {
         "WrappingSub": {
           "lhs": {
-            "U32SubExpression": 180
+            "U32SubExpression": 186
           },
           "rhs": {
-            "U32SubExpression": 183
+            "U32SubExpression": 189
           }
         }
       }
@@ -2128,7 +2176,7 @@
       "Integer": {
         "WrappingShr": {
           "lhs": {
-            "U32SubExpression": 184
+            "U32SubExpression": 190
           },
           "magnitude": 16
         }
@@ -2137,7 +2185,7 @@
     {
       "Integer": {
         "TruncateFromU32": {
-          "U32SubExpression": 185
+          "U32SubExpression": 191
         }
       }
     },
@@ -2146,7 +2194,7 @@
         "into_variable": 43,
         "source_subexpr": {
           "U16": {
-            "U16SubExpression": 186
+            "U16SubExpression": 192
           }
         },
         "condition_subexpr_idx": null

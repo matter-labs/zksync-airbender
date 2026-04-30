@@ -143,10 +143,10 @@ pub(crate) fn blake2_g_function_call<C: Counters, R: RAM>(
                 BLAKE2S_EXTENDED_STATE_WIDTH_IN_U32_WORDS] =
                 [const { MaybeUninit::uninit() }; BLAKE2S_EXTENDED_STATE_WIDTH_IN_U32_WORDS];
 
-            let mut addr = x10;
+            let state_base_addr = x10;
             for i in 0..BLAKE2S_EXTENDED_STATE_WIDTH_IN_U32_WORDS {
-                let (ts, value) = ram.read_word(addr, artificial_read_timestamp);
-                addr += 4;
+                let state_word_addr = state_base_addr + (core::mem::size_of::<u32>() * i) as u32;
+                let (ts, value) = ram.read_word(state_word_addr, artificial_read_timestamp);
 
                 blake_state_full[i].write(value);
                 blake_state_initial_timestamps[i].write(ts);
@@ -162,10 +162,10 @@ pub(crate) fn blake2_g_function_call<C: Counters, R: RAM>(
                 BLAKE2S_BLOCK_SIZE_U32_WORDS] =
                 [const { MaybeUninit::uninit() }; BLAKE2S_BLOCK_SIZE_U32_WORDS];
 
-            let mut addr = x11;
+            let input_base_addr = x11;
             for i in 0..BLAKE2S_BLOCK_SIZE_U32_WORDS {
-                let (ts, value) = ram.read_word(addr, artificial_read_timestamp);
-                addr += 4;
+                let input_word_addr = input_base_addr + (core::mem::size_of::<u32>() * i) as u32;
+                let (ts, value) = ram.read_word(input_word_addr, artificial_read_timestamp);
 
                 input[i].write(value);
                 input_initial_timestamps[i].write(ts);
@@ -182,8 +182,13 @@ pub(crate) fn blake2_g_function_call<C: Counters, R: RAM>(
                 let write_ts = current_timestamp | 3;
 
                 let updated_control_flow = {
+                    let mut next_counter = g_function_call_idx + 1;
+                    // counter wraps to 0
+                    if next_counter >= num_invocations {
+                        next_counter = 0;
+                    }
                     let updated_x12 = (control_bitmask << BLAKE2S_G_FUNCTION_COUNTER_BITS)
-                        | ((g_function_call_idx + 1) as u32);
+                        | (next_counter as u32);
 
                     updated_x12
                 };

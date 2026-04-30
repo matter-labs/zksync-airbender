@@ -56,9 +56,9 @@ const RAM_BOUND_WORDS: usize = RAM_BOUND_BYTES / core::mem::size_of::<u32>();
 const CHECK_MEMORY_PERMUTATION_ONLY: bool = false;
 const PROVE_EMPTY: bool = true;
 
-const PROVE_ADD_SUB: bool = false;
-const PROVE_JUMP_BRANCH: bool = false;
-const PROVE_SHIFTS_BINOPS: bool = false;
+const PROVE_ADD_SUB: bool = true;
+const PROVE_JUMP_BRANCH: bool = true;
+const PROVE_SHIFTS_BINOPS: bool = true;
 const PROVE_MUL_DIV: bool = true;
 const PROVE_MEM_WORD: bool = true;
 const PROVE_MEM_SUBWORD: bool = true;
@@ -912,6 +912,8 @@ pub fn gkr_run_basic_unrolled_test_impl(
         let mut table_driver = TableDriver::<BabyBearField>::new();
         cs::gkr_circuits::mul_div::mul_div_table_driver_fn::<_, false>(&mut table_driver);
 
+        dbg!(table_driver.total_tables_len);
+
         let num_calls = counters.get_calls_to_circuit_family::<CIRCUIT_TYPE>();
         dbg!(num_calls);
 
@@ -953,9 +955,9 @@ pub fn gkr_run_basic_unrolled_test_impl(
             default_pc_value_in_padding: 4,
         };
 
-        let row = 0;
-        dbg!(oracle.inner[row]);
-        dbg!(oracle.decoder_table[(oracle.inner[row].opcode_data.initial_pc / 4) as usize]);
+        // let row = 0;
+        // dbg!(oracle.inner[row]);
+        // dbg!(oracle.decoder_table[(oracle.inner[row].opcode_data.initial_pc / 4) as usize]);
 
         let is_empty = oracle.inner.is_empty();
 
@@ -2102,7 +2104,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
     }
 
     if PROVE_BLAKE_G_FUNCTION {
-        println!("Will try to prove Blake delegation");
+        println!("Will try to prove Blake G-function delegation");
 
         let circuit: GKRCircuitArtifact<BabyBearField> = if USE_GKR_WITH_CACHES {
             deserialize_from_file("../cs/compiled_circuits/blake2_g_function_layout_gkr.json")
@@ -2154,6 +2156,9 @@ pub fn gkr_run_basic_unrolled_test_impl(
             cycle_data: &buffer,
             marker: core::marker::PhantomData,
         };
+
+        // let row = 79;
+        // dbg!(oracle.cycle_data[row]);
 
         let is_empty = oracle.cycle_data.is_empty();
 
