@@ -3414,11 +3414,12 @@ pub(crate) fn debug_build_initial_state_for_test(
     )?;
 
     let monomials_vectorized = copy_back(state.sumchecked_poly_monomial_form.slice(), context);
-    let monomials = vectorized_to_e4_coeffs(
+    let mut monomials = vectorized_to_e4_coeffs(
         &monomials_vectorized,
         state.original_trace_len,
         state.current_len,
     );
+    bitreverse_enumeration_inplace(&mut monomials);
 
     Ok((
         batch_challenges,
@@ -3626,11 +3627,12 @@ pub(crate) fn debug_initial_round_checkpoint_for_test(
     )?;
     context.get_exec_stream().synchronize()?;
     let folded_monomial_form_vectorized = folded_monomial_form_host.to_vec();
-    let folded_monomial_form = vectorized_to_e4_coeffs(
+    let mut folded_monomial_form = vectorized_to_e4_coeffs(
         &folded_monomial_form_vectorized,
         state.original_trace_len,
         state.current_len,
     );
+    bitreverse_enumeration_inplace(&mut folded_monomial_form);
 
     let oracle = GpuWhirExtensionOracle::from_device_monomial_coeffs(
         &state.sumchecked_poly_monomial_form,
@@ -3716,13 +3718,14 @@ pub(crate) fn debug_apply_initial_fold_challenge_for_test(
         context.get_exec_stream(),
     )?;
     context.get_exec_stream().synchronize()?;
-    let monomials = host.to_vec();
-    let monomials_vectorized = vectorized_to_e4_coeffs(
-        &monomials,
+    let monomials_vectorized = host.to_vec();
+    let mut monomials = vectorized_to_e4_coeffs(
+        &monomials_vectorized,
         debug_state.state.original_trace_len,
         debug_state.state.current_len,
     );
-    Ok(monomials_vectorized)
+    bitreverse_enumeration_inplace(&mut monomials);
+    Ok(monomials)
 }
 
 #[cfg(test)]
