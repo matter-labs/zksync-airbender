@@ -1938,15 +1938,11 @@ fn schedule_accumulate_eq_sample_in_place_device(
 pub(crate) fn schedule_gpu_whir_fold_with_sources(
     memory_trace_holder: &mut TraceHolder<BF>,
     memory_base_caps_keepalive: Vec<SchedulerHostAllocation<[Digest]>>,
-    fill_mem_polys_claims: impl Fn(&mut [E4]) + Send + Sync + 'static,
     witness_trace_holder: &mut TraceHolder<BF>,
     witness_base_caps_keepalive: Vec<HostAllocation<[Digest]>>,
-    fill_wit_polys_claims: impl Fn(&mut [E4]) + Send + Sync + 'static,
     setup_trace_holder: &mut TraceHolder<BF>,
     setup_base_caps_keepalive: Vec<HostAllocation<[Digest]>>,
-    fill_setup_polys_claims: impl Fn(&mut [E4]) + Send + Sync + 'static,
-    base_layer_point_len: usize,
-    fill_base_layer_point: impl Fn(&mut [E4]) + Send + Sync + 'static,
+    base_layer_point_device: &DeviceSlice<E4>,
     original_lde_factor: usize,
     batching_challenge_source: impl Fn() -> E4 + Send + Sync + 'static,
     whir_steps_schedule: Vec<usize>,
@@ -2210,15 +2206,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         },
         stream,
     )?;
-    let mut base_layer_point_host =
-        unsafe { context.alloc_host_uninit_slice(base_layer_point_len) };
-    let base_layer_point_accessor = base_layer_point_host.get_mut_accessor();
-    start_callbacks.schedule(
-        move || unsafe {
-            fill_base_layer_point(base_layer_point_accessor.get_mut());
-        },
-        stream,
-    )?;
+    let base_layer_point_len = base_layer_point_device.len();
     start_callbacks.schedule(
         {
             let shared_state = shared_state_handle;
@@ -2245,9 +2233,6 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
                     &setup_caps_accessors,
                     setup_log_lde_factor,
                 );
-                fill_wit_polys_claims(&mut proof.witness_commitment.evals);
-                fill_mem_polys_claims(&mut proof.memory_commitment.evals);
-                fill_setup_polys_claims(&mut proof.setup_commitment.evals);
             }
         },
         stream,
@@ -2274,7 +2259,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
 
     memory_copy_async(
         &mut state.point_pows[..base_layer_point_len],
-        &base_layer_point_host,
+        base_layer_point_device,
         stream,
     )?;
     launch_build_eq_values_from_point(
@@ -3297,71 +3282,6 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         _final_callbacks: final_callbacks,
         shared_state,
     })
-}
-
-pub(crate) fn gpu_whir_fold_supported_path(
-    memory_trace_holder: &mut TraceHolder<BF>,
-    mem_polys_claims: Vec<E4>,
-    witness_trace_holder: &mut TraceHolder<BF>,
-    wit_polys_claims: Vec<E4>,
-    setup_trace_holder: &mut TraceHolder<BF>,
-    setup_polys_claims: Vec<E4>,
-    original_evaluation_point: Vec<E4>,
-    original_lde_factor: usize,
-    batching_challenge: E4,
-    whir_steps_schedule: Vec<usize>,
-    whir_queries_schedule: Vec<usize>,
-    whir_steps_lde_factors: Vec<usize>,
-    whir_pow_schedule: Vec<u32>,
-    mut transcript_seed: Seed,
-    tree_cap_size: usize,
-    trace_len_log2: usize,
-    proof_slab: Option<&DeviceAllocation<u8>>,
-    proof_layout: &ProofLayout,
-    _worker: &Worker,
-    context: &ProverContext,
-) -> CudaResult<WhirPolyCommitProof<BF, E4, DefaultTreeConstructor>> {
-    // Stage memory caps in the scheduler-host pinned pool to match the prove() path,
-    // so per-coset H2Ds and the host callback both see pinned source memory.
-    let memory_base_caps_keepalive: Vec<SchedulerHostAllocation<[Digest]>> = memory_trace_holder
-        .take_tree_caps_host()
-        .into_iter()
-        .map(|alloc| context.scheduler_host_from_slice(unsafe { alloc.get_accessor().get() }))
-        .collect::<CudaResult<Vec<_>>>()?;
-    let witness_base_caps_keepalive = witness_trace_holder.take_tree_caps_host();
-    let setup_base_caps_keepalive = setup_trace_holder.take_tree_caps_host();
-    let mem_polys_claims_for_source = mem_polys_claims.clone();
-    let wit_polys_claims_for_source = wit_polys_claims.clone();
-    let setup_polys_claims_for_source = setup_polys_claims.clone();
-    let original_evaluation_point_len = original_evaluation_point.len();
-
-    schedule_gpu_whir_fold_with_sources(
-        memory_trace_holder,
-        memory_base_caps_keepalive,
-        move |dst| dst.copy_from_slice(&mem_polys_claims_for_source),
-        witness_trace_holder,
-        witness_base_caps_keepalive,
-        move |dst| dst.copy_from_slice(&wit_polys_claims_for_source),
-        setup_trace_holder,
-        setup_base_caps_keepalive,
-        move |dst| dst.copy_from_slice(&setup_polys_claims_for_source),
-        original_evaluation_point_len,
-        move |dst| dst.copy_from_slice(&original_evaluation_point),
-        original_lde_factor,
-        move || batching_challenge,
-        whir_steps_schedule,
-        whir_queries_schedule,
-        whir_steps_lde_factors,
-        whir_pow_schedule,
-        move || transcript_seed.clone(),
-        tree_cap_size,
-        trace_len_log2,
-        proof_slab,
-        proof_layout,
-        None,
-        context,
-    )?
-    .wait(context)
 }
 
 #[cfg(test)]
