@@ -22,6 +22,7 @@ use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
 use era_cudart::memory::memory_copy_async;
 use era_cudart::paste::paste;
 use era_cudart::result::CudaResult;
+use era_cudart::slice::DeviceSlice;
 use era_cudart::{cuda_kernel_declaration, cuda_kernel_signature_arguments_and_function};
 use field::{Field, FieldExtension, PrimeField};
 use prover::gkr::high_bits_offset_for_inits_and_teardowns;
@@ -55,11 +56,24 @@ pub(crate) struct GpuGKRForwardOutput<B, E> {
 pub(crate) struct GpuGKRTranscriptHandoff<E> {
     _tracing_ranges: Vec<Range>,
     explicit_evaluations: BTreeMap<OutputType, [HostAllocation<[E]>; 2]>,
-    /// Device-resident flat copy of the host evaluations, packed in the same iteration order
-    /// as [`flatten_final_explicit_evaluations`] so that `transcript_commit` on this buffer
-    /// is byte-identical to host `commit_field_els` on the flattened host vector.
-    device_flat_evaluations: DeviceAllocation<E>,
+    /// Owned fallback for the packed flat evaluations buffer (test paths
+    /// that don't supply a slab destination). When `None`, the data lives
+    /// in the slab subslice supplied to `schedule_transcript_handoff` —
+    /// held alive by `_proof_slab` keepalive in `prove()` for the full
+    /// post-forward + backward + WHIR pipeline.
+    device_flat_evaluations_owned: Option<DeviceAllocation<E>>,
+    /// Raw (ptr, len) into the packed flat evaluations buffer — either the
+    /// slab subslice or the owned fallback above. Used to construct
+    /// `&DeviceSlice<E>` views on demand.
+    flat_ptr: *const E,
+    flat_len: usize,
 }
+
+// SAFETY: the only non-Send/Sync field is `flat_ptr`, which points into either
+// `device_flat_evaluations_owned` (kept alive by this same struct) or into the
+// proof slab (kept alive by the proof-job keepalive that owns this struct).
+unsafe impl<E: Send> Send for GpuGKRTranscriptHandoff<E> {}
+unsafe impl<E: Sync> Sync for GpuGKRTranscriptHandoff<E> {}
 
 impl<E: Copy> GpuGKRTranscriptHandoff<E> {
     pub(crate) fn explicit_evaluation_accessors(
@@ -76,8 +90,14 @@ impl<E: Copy> GpuGKRTranscriptHandoff<E> {
             .collect()
     }
 
-    pub(crate) fn device_flat_evaluations(&self) -> &DeviceAllocation<E> {
-        &self.device_flat_evaluations
+    /// View over the packed flat evaluations buffer. Either points into the
+    /// proof slab (production) or into the owned fallback allocation (tests).
+    pub(crate) fn device_flat_evaluations(&self) -> &DeviceSlice<E> {
+        // SAFETY: `flat_ptr` + `flat_len` describe a valid contiguous E
+        // region — backed either by `device_flat_evaluations_owned` (a field
+        // of `&self`) or by the proof slab (held by the keepalive that owns
+        // `self`). The returned slice borrow is bounded by `&self`.
+        unsafe { DeviceSlice::from_raw_parts(self.flat_ptr, self.flat_len) }
     }
 
     pub(crate) fn final_explicit_evaluations(&self) -> BTreeMap<OutputType, [Vec<E>; 2]> {
@@ -127,6 +147,16 @@ impl<B, E: Copy> GpuGKRForwardOutput<B, E> {
     pub(crate) fn schedule_transcript_handoff(
         &self,
         with_host_readback: bool,
+        // Opp. 4b: when `Some`, the per-poly D2D pack writes directly into
+        // this slab subslice (the slab's `output_evaluations` block). The
+        // standalone `device_flat_evaluations` allocation is skipped, and
+        // the prior contiguous-D2D Phase-2b copy in `prove()` is gone — the
+        // data lands in its final slab home as part of this handoff. The
+        // caller must size `dst_slab` to exactly the total flat length
+        // (sum of reduced-output poly lengths in BTreeMap iteration order).
+        // When `None`, the handoff allocates an owned fallback buffer (test
+        // paths that don't allocate the slab pre-forward).
+        dst_slab: Option<(*mut E, usize)>,
         context: &ProverContext,
     ) -> CudaResult<GpuGKRTranscriptHandoff<E>> {
         let tracing_ranges = Vec::new();
@@ -153,8 +183,19 @@ impl<B, E: Copy> GpuGKRForwardOutput<B, E> {
             }
             address_pairs.push((*output_type, [first_addr, second_addr]));
         }
-        let mut device_flat_evaluations: DeviceAllocation<E> =
-            context.alloc(flat_total_len, AllocationPlacement::BestFit)?;
+        let (device_flat_evaluations_owned, flat_ptr): (Option<DeviceAllocation<E>>, *const E) =
+            if let Some((slab_ptr, slab_len)) = dst_slab {
+                assert_eq!(
+                    slab_len, flat_total_len,
+                    "slab dst length must match the total flat evaluations length",
+                );
+                (None, slab_ptr as *const E)
+            } else {
+                let alloc: DeviceAllocation<E> =
+                    context.alloc(flat_total_len.max(1), AllocationPlacement::BestFit)?;
+                let ptr = alloc.as_ptr();
+                (Some(alloc), ptr)
+            };
         let stream = context.get_exec_stream();
         let mut explicit_evaluations = BTreeMap::new();
         let mut flat_offset = 0usize;
@@ -171,11 +212,18 @@ impl<B, E: Copy> GpuGKRForwardOutput<B, E> {
                     .expect("reduced extension poly must still be present");
                 let src = poly.as_device_slice();
                 let len = src.len();
-                memory_copy_async(
-                    &mut device_flat_evaluations[flat_offset..flat_offset + len],
-                    src,
-                    stream,
-                )?;
+                // SAFETY: `flat_ptr + flat_offset .. flat_ptr + flat_offset + len`
+                // is in-bounds for the slab/fallback buffer (`flat_total_len`
+                // covers the sum of all per-poly lengths above). The destination
+                // is held alive across this scheduling call by either `_proof_slab`
+                // keepalive (slab) or `device_flat_evaluations_owned` (fallback).
+                let dst = unsafe {
+                    DeviceSlice::from_raw_parts_mut(
+                        (flat_ptr as *mut E).add(flat_offset),
+                        len,
+                    )
+                };
+                memory_copy_async(dst, src, stream)?;
                 flat_offset += len;
             }
         }
@@ -184,7 +232,9 @@ impl<B, E: Copy> GpuGKRForwardOutput<B, E> {
         Ok(GpuGKRTranscriptHandoff {
             _tracing_ranges: tracing_ranges,
             explicit_evaluations,
-            device_flat_evaluations,
+            device_flat_evaluations_owned,
+            flat_ptr,
+            flat_len: flat_total_len,
         })
     }
 }
