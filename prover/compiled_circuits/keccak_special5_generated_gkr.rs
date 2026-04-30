@@ -1,5 +1,5 @@
 #[allow(unused_variables)]
-fn eval_fn_3<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyBearField, W> + 'b>(
+fn eval_fn_2<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyBearField, W> + 'b>(
     witness_proxy: &'a mut P,
 ) where
     W::Field: Copy,
@@ -44,12 +44,7 @@ fn eval_fn_3<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyB
     );
 }
 #[allow(unused_variables)]
-fn eval_fn_17<
-    'a,
-    'b: 'a,
-    W: WitnessTypeSet<BabyBearField>,
-    P: WitnessProxy<BabyBearField, W> + 'b,
->(
+fn eval_fn_3<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyBearField, W> + 'b>(
     witness_proxy: &'a mut P,
 ) where
     W::Field: Copy,
@@ -122,12 +117,7 @@ fn eval_fn_17<
 }
 #[allow(unused_variables)]
 #[inline(always)]
-fn eval_fn_18<
-    'a,
-    'b: 'a,
-    W: WitnessTypeSet<BabyBearField>,
-    P: WitnessProxy<BabyBearField, W> + 'b,
->(
+fn eval_fn_4<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyBearField, W> + 'b>(
     witness_proxy: &'a mut P,
 ) where
     W::Field: Copy,
@@ -146,12 +136,7 @@ fn eval_fn_18<
 }
 #[allow(unused_variables)]
 #[inline(always)]
-fn eval_fn_19<
-    'a,
-    'b: 'a,
-    W: WitnessTypeSet<BabyBearField>,
-    P: WitnessProxy<BabyBearField, W> + 'b,
->(
+fn eval_fn_5<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyBearField, W> + 'b>(
     witness_proxy: &'a mut P,
 ) where
     W::Field: Copy,
@@ -170,12 +155,7 @@ fn eval_fn_19<
 }
 #[allow(unused_variables)]
 #[inline(always)]
-fn eval_fn_20<
-    'a,
-    'b: 'a,
-    W: WitnessTypeSet<BabyBearField>,
-    P: WitnessProxy<BabyBearField, W> + 'b,
->(
+fn eval_fn_6<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyBearField, W> + 'b>(
     witness_proxy: &'a mut P,
 ) where
     W::Field: Copy,
@@ -194,12 +174,7 @@ fn eval_fn_20<
 }
 #[allow(unused_variables)]
 #[inline(always)]
-fn eval_fn_21<
-    'a,
-    'b: 'a,
-    W: WitnessTypeSet<BabyBearField>,
-    P: WitnessProxy<BabyBearField, W> + 'b,
->(
+fn eval_fn_7<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyBearField, W> + 'b>(
     witness_proxy: &'a mut P,
 ) where
     W::Field: Copy,
@@ -218,12 +193,7 @@ fn eval_fn_21<
 }
 #[allow(unused_variables)]
 #[inline(always)]
-fn eval_fn_22<
-    'a,
-    'b: 'a,
-    W: WitnessTypeSet<BabyBearField>,
-    P: WitnessProxy<BabyBearField, W> + 'b,
->(
+fn eval_fn_8<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyBearField, W> + 'b>(
     witness_proxy: &'a mut P,
 ) where
     W::Field: Copy,
@@ -241,12 +211,7 @@ fn eval_fn_22<
     witness_proxy.set_witness_place(21usize, v_3);
 }
 #[allow(unused_variables)]
-fn eval_fn_23<
-    'a,
-    'b: 'a,
-    W: WitnessTypeSet<BabyBearField>,
-    P: WitnessProxy<BabyBearField, W> + 'b,
->(
+fn eval_fn_9<'a, 'b: 'a, W: WitnessTypeSet<BabyBearField>, P: WitnessProxy<BabyBearField, W> + 'b>(
     witness_proxy: &'a mut P,
 ) where
     W::Field: Copy,
@@ -289,7 +254,7 @@ fn eval_fn_23<
 }
 #[allow(unused_variables)]
 #[inline(always)]
-fn eval_fn_24<
+fn eval_fn_10<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -313,7 +278,7 @@ fn eval_fn_24<
 }
 #[allow(unused_variables)]
 #[inline(always)]
-fn eval_fn_25<
+fn eval_fn_11<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -337,7 +302,7 @@ fn eval_fn_25<
 }
 #[allow(unused_variables)]
 #[inline(always)]
-fn eval_fn_26<
+fn eval_fn_12<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -361,7 +326,7 @@ fn eval_fn_26<
 }
 #[allow(unused_variables)]
 #[inline(always)]
-fn eval_fn_27<
+fn eval_fn_13<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -384,7 +349,7 @@ fn eval_fn_27<
     witness_proxy.set_witness_place(26usize, v_3);
 }
 #[allow(unused_variables)]
-fn eval_fn_28<
+fn eval_fn_14<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -4770,7 +4735,7 @@ fn eval_fn_28<
     witness_proxy.set_witness_place(158usize, v_4319);
 }
 #[allow(unused_variables)]
-fn eval_fn_29<
+fn eval_fn_15<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -4819,7 +4784,7 @@ fn eval_fn_29<
     let v_24 = witness_proxy.lookup_enforce::<3usize>(&[v_7, v_8, v_9], v_23, 1usize);
 }
 #[allow(unused_variables)]
-fn eval_fn_30<
+fn eval_fn_16<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -4868,7 +4833,7 @@ fn eval_fn_30<
     let v_24 = witness_proxy.lookup_enforce::<3usize>(&[v_7, v_8, v_9], v_23, 2usize);
 }
 #[allow(unused_variables)]
-fn eval_fn_31<
+fn eval_fn_17<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -4917,7 +4882,7 @@ fn eval_fn_31<
     let v_24 = witness_proxy.lookup_enforce::<3usize>(&[v_7, v_8, v_9], v_23, 3usize);
 }
 #[allow(unused_variables)]
-fn eval_fn_32<
+fn eval_fn_18<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -4966,7 +4931,7 @@ fn eval_fn_32<
     let v_24 = witness_proxy.lookup_enforce::<3usize>(&[v_7, v_8, v_9], v_23, 4usize);
 }
 #[allow(unused_variables)]
-fn eval_fn_33<
+fn eval_fn_19<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -5015,7 +4980,7 @@ fn eval_fn_33<
     let v_24 = witness_proxy.lookup_enforce::<3usize>(&[v_7, v_8, v_9], v_23, 5usize);
 }
 #[allow(unused_variables)]
-fn eval_fn_34<
+fn eval_fn_20<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -5064,7 +5029,7 @@ fn eval_fn_34<
     let v_24 = witness_proxy.lookup_enforce::<3usize>(&[v_7, v_8, v_9], v_23, 6usize);
 }
 #[allow(unused_variables)]
-fn eval_fn_35<
+fn eval_fn_21<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -5113,7 +5078,7 @@ fn eval_fn_35<
     let v_24 = witness_proxy.lookup_enforce::<3usize>(&[v_7, v_8, v_9], v_23, 7usize);
 }
 #[allow(unused_variables)]
-fn eval_fn_36<
+fn eval_fn_22<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -5162,7 +5127,7 @@ fn eval_fn_36<
     let v_24 = witness_proxy.lookup_enforce::<3usize>(&[v_7, v_8, v_9], v_23, 8usize);
 }
 #[allow(unused_variables)]
-fn eval_fn_37<
+fn eval_fn_23<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -5210,7 +5175,7 @@ fn eval_fn_37<
     let v_23 = witness_proxy.lookup_enforce::<3usize>(&[v_7, v_8, v_9], v_22, 9usize);
 }
 #[allow(unused_variables)]
-fn eval_fn_38<
+fn eval_fn_24<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -5258,7 +5223,7 @@ fn eval_fn_38<
     let v_23 = witness_proxy.lookup_enforce::<3usize>(&[v_7, v_8, v_9], v_22, 10usize);
 }
 #[allow(unused_variables)]
-fn eval_fn_39<
+fn eval_fn_25<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -5306,7 +5271,7 @@ fn eval_fn_39<
     let v_23 = witness_proxy.lookup_enforce::<3usize>(&[v_7, v_8, v_9], v_22, 11usize);
 }
 #[allow(unused_variables)]
-fn eval_fn_40<
+fn eval_fn_26<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -5354,7 +5319,7 @@ fn eval_fn_40<
     let v_23 = witness_proxy.lookup_enforce::<3usize>(&[v_7, v_8, v_9], v_22, 12usize);
 }
 #[allow(unused_variables)]
-fn eval_fn_41<
+fn eval_fn_27<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -5402,7 +5367,7 @@ fn eval_fn_41<
     let v_23 = witness_proxy.lookup_enforce::<3usize>(&[v_7, v_8, v_9], v_22, 13usize);
 }
 #[allow(unused_variables)]
-fn eval_fn_42<
+fn eval_fn_28<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -5450,7 +5415,7 @@ fn eval_fn_42<
     let v_23 = witness_proxy.lookup_enforce::<3usize>(&[v_7, v_8, v_9], v_22, 14usize);
 }
 #[allow(unused_variables)]
-fn eval_fn_43<
+fn eval_fn_29<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -5498,7 +5463,7 @@ fn eval_fn_43<
     let v_23 = witness_proxy.lookup_enforce::<3usize>(&[v_7, v_8, v_9], v_22, 15usize);
 }
 #[allow(unused_variables)]
-fn eval_fn_44<
+fn eval_fn_30<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -5546,7 +5511,7 @@ fn eval_fn_44<
     let v_23 = witness_proxy.lookup_enforce::<3usize>(&[v_7, v_8, v_9], v_22, 16usize);
 }
 #[allow(unused_variables)]
-fn eval_fn_45<
+fn eval_fn_31<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -5594,7 +5559,7 @@ fn eval_fn_45<
     let v_23 = witness_proxy.lookup_enforce::<3usize>(&[v_7, v_8, v_9], v_22, 17usize);
 }
 #[allow(unused_variables)]
-fn eval_fn_46<
+fn eval_fn_32<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -5642,7 +5607,7 @@ fn eval_fn_46<
     let v_23 = witness_proxy.lookup_enforce::<3usize>(&[v_7, v_8, v_9], v_22, 18usize);
 }
 #[allow(unused_variables)]
-fn eval_fn_47<
+fn eval_fn_33<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -5690,7 +5655,7 @@ fn eval_fn_47<
     let v_23 = witness_proxy.lookup_enforce::<3usize>(&[v_7, v_8, v_9], v_22, 19usize);
 }
 #[allow(unused_variables)]
-fn eval_fn_48<
+fn eval_fn_34<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -5738,7 +5703,7 @@ fn eval_fn_48<
     let v_23 = witness_proxy.lookup_enforce::<3usize>(&[v_7, v_8, v_9], v_22, 20usize);
 }
 #[allow(unused_variables)]
-fn eval_fn_49<
+fn eval_fn_35<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -5786,7 +5751,7 @@ fn eval_fn_49<
     let v_23 = witness_proxy.lookup_enforce::<3usize>(&[v_7, v_8, v_9], v_22, 21usize);
 }
 #[allow(unused_variables)]
-fn eval_fn_50<
+fn eval_fn_36<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -5834,7 +5799,7 @@ fn eval_fn_50<
     let v_23 = witness_proxy.lookup_enforce::<3usize>(&[v_7, v_8, v_9], v_22, 22usize);
 }
 #[allow(unused_variables)]
-fn eval_fn_51<
+fn eval_fn_37<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -5882,7 +5847,7 @@ fn eval_fn_51<
     let v_23 = witness_proxy.lookup_enforce::<3usize>(&[v_7, v_8, v_9], v_22, 23usize);
 }
 #[allow(unused_variables)]
-fn eval_fn_52<
+fn eval_fn_38<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -5930,7 +5895,7 @@ fn eval_fn_52<
     let v_23 = witness_proxy.lookup_enforce::<3usize>(&[v_7, v_8, v_9], v_22, 24usize);
 }
 #[allow(unused_variables)]
-fn eval_fn_53<
+fn eval_fn_39<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -5978,7 +5943,7 @@ fn eval_fn_53<
     let v_23 = witness_proxy.lookup_enforce::<3usize>(&[v_7, v_8, v_9], v_22, 25usize);
 }
 #[allow(unused_variables)]
-fn eval_fn_54<
+fn eval_fn_40<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -6026,7 +5991,7 @@ fn eval_fn_54<
     let v_23 = witness_proxy.lookup_enforce::<3usize>(&[v_7, v_8, v_9], v_22, 26usize);
 }
 #[allow(unused_variables)]
-fn eval_fn_55<
+fn eval_fn_41<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -6074,7 +6039,7 @@ fn eval_fn_55<
     let v_23 = witness_proxy.lookup_enforce::<3usize>(&[v_7, v_8, v_9], v_22, 27usize);
 }
 #[allow(unused_variables)]
-fn eval_fn_56<
+fn eval_fn_42<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -6122,7 +6087,7 @@ fn eval_fn_56<
     let v_23 = witness_proxy.lookup_enforce::<3usize>(&[v_7, v_8, v_9], v_22, 28usize);
 }
 #[allow(unused_variables)]
-fn eval_fn_57<
+fn eval_fn_43<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -6170,7 +6135,7 @@ fn eval_fn_57<
     let v_23 = witness_proxy.lookup_enforce::<3usize>(&[v_7, v_8, v_9], v_22, 29usize);
 }
 #[allow(unused_variables)]
-fn eval_fn_58<
+fn eval_fn_44<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -6218,7 +6183,7 @@ fn eval_fn_58<
     let v_23 = witness_proxy.lookup_enforce::<3usize>(&[v_7, v_8, v_9], v_22, 30usize);
 }
 #[allow(unused_variables)]
-fn eval_fn_59<
+fn eval_fn_45<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -6266,7 +6231,7 @@ fn eval_fn_59<
     let v_23 = witness_proxy.lookup_enforce::<3usize>(&[v_7, v_8, v_9], v_22, 31usize);
 }
 #[allow(unused_variables)]
-fn eval_fn_60<
+fn eval_fn_46<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -6314,7 +6279,7 @@ fn eval_fn_60<
     let v_23 = witness_proxy.lookup_enforce::<3usize>(&[v_7, v_8, v_9], v_22, 32usize);
 }
 #[allow(unused_variables)]
-fn eval_fn_61<
+fn eval_fn_47<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -6361,7 +6326,7 @@ fn eval_fn_61<
     let v_22 = witness_proxy.lookup_enforce::<3usize>(&[v_7, v_8, v_9], v_21, 33usize);
 }
 #[allow(unused_variables)]
-fn eval_fn_62<
+fn eval_fn_48<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -6408,7 +6373,7 @@ fn eval_fn_62<
     let v_22 = witness_proxy.lookup_enforce::<3usize>(&[v_7, v_8, v_9], v_21, 34usize);
 }
 #[allow(unused_variables)]
-fn eval_fn_63<
+fn eval_fn_49<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -6455,7 +6420,7 @@ fn eval_fn_63<
     let v_22 = witness_proxy.lookup_enforce::<3usize>(&[v_7, v_8, v_9], v_21, 35usize);
 }
 #[allow(unused_variables)]
-fn eval_fn_64<
+fn eval_fn_50<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -6502,7 +6467,7 @@ fn eval_fn_64<
     let v_22 = witness_proxy.lookup_enforce::<3usize>(&[v_7, v_8, v_9], v_21, 36usize);
 }
 #[allow(unused_variables)]
-fn eval_fn_65<
+fn eval_fn_51<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -6549,7 +6514,7 @@ fn eval_fn_65<
     let v_22 = witness_proxy.lookup_enforce::<3usize>(&[v_7, v_8, v_9], v_21, 37usize);
 }
 #[allow(unused_variables)]
-fn eval_fn_66<
+fn eval_fn_52<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -6596,7 +6561,7 @@ fn eval_fn_66<
     let v_22 = witness_proxy.lookup_enforce::<3usize>(&[v_7, v_8, v_9], v_21, 38usize);
 }
 #[allow(unused_variables)]
-fn eval_fn_67<
+fn eval_fn_53<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -6643,7 +6608,7 @@ fn eval_fn_67<
     let v_22 = witness_proxy.lookup_enforce::<3usize>(&[v_7, v_8, v_9], v_21, 39usize);
 }
 #[allow(unused_variables)]
-fn eval_fn_68<
+fn eval_fn_54<
     'a,
     'b: 'a,
     W: WitnessTypeSet<BabyBearField>,
@@ -6705,7 +6670,21 @@ pub fn evaluate_witness_fn<
     W::U8: Copy,
     W::I32: Copy,
 {
+    eval_fn_2(witness_proxy);
     eval_fn_3(witness_proxy);
+    eval_fn_4(witness_proxy);
+    eval_fn_5(witness_proxy);
+    eval_fn_6(witness_proxy);
+    eval_fn_7(witness_proxy);
+    eval_fn_8(witness_proxy);
+    eval_fn_9(witness_proxy);
+    eval_fn_10(witness_proxy);
+    eval_fn_11(witness_proxy);
+    eval_fn_12(witness_proxy);
+    eval_fn_13(witness_proxy);
+    eval_fn_14(witness_proxy);
+    eval_fn_15(witness_proxy);
+    eval_fn_16(witness_proxy);
     eval_fn_17(witness_proxy);
     eval_fn_18(witness_proxy);
     eval_fn_19(witness_proxy);
@@ -6744,18 +6723,4 @@ pub fn evaluate_witness_fn<
     eval_fn_52(witness_proxy);
     eval_fn_53(witness_proxy);
     eval_fn_54(witness_proxy);
-    eval_fn_55(witness_proxy);
-    eval_fn_56(witness_proxy);
-    eval_fn_57(witness_proxy);
-    eval_fn_58(witness_proxy);
-    eval_fn_59(witness_proxy);
-    eval_fn_60(witness_proxy);
-    eval_fn_61(witness_proxy);
-    eval_fn_62(witness_proxy);
-    eval_fn_63(witness_proxy);
-    eval_fn_64(witness_proxy);
-    eval_fn_65(witness_proxy);
-    eval_fn_66(witness_proxy);
-    eval_fn_67(witness_proxy);
-    eval_fn_68(witness_proxy);
 }
