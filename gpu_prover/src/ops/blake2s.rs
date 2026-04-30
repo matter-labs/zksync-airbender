@@ -427,6 +427,31 @@ pub fn merkle_tree_cap(values: &DeviceSlice<DG>, log_tree_cap_size: u32) -> &Dev
 cuda_kernel!(Blake2SPow, ab_blake2s_pow_kernel(seed: *const u32, bits_count: u32, max_nonce: u64, result: *mut u64));
 
 cuda_kernel!(
+    GatherTreeCaps,
+    ab_gather_tree_caps_kernel(
+        src_ptrs: *const u64,
+        dst: *mut u32,
+        cap_words_per_coset: u32,
+        coset_count: u32
+    )
+);
+
+cuda_kernel!(
+    GatherEAddresses,
+    ab_gather_e_addresses_kernel(
+        src_ptrs: *const u64,
+        dst: *mut u32,
+        elements_per_addr: u32,
+        num_addresses: u32
+    )
+);
+
+cuda_kernel!(
+    TranscriptCommitInitial,
+    ab_transcript_commit_initial_kernel(seed_out: *mut u32, input: *const u32, input_len: u32)
+);
+
+cuda_kernel!(
     TranscriptCommit,
     ab_transcript_commit_kernel(seed_io: *mut u32, input: *const u32, input_len: u32)
 );
@@ -440,6 +465,90 @@ cuda_kernel!(
     TranscriptSqueezeE4,
     ab_transcript_squeeze_e4_kernel(seed_io: *mut u32, output_e4: *mut E4, count: u32)
 );
+
+/// Gather `coset_count` cap regions, each `cap_words_per_coset` u32 words long, from the
+/// device pointers in `src_ptrs` (each entry is a u64-encoded device pointer) into
+/// `dst[0..coset_count*cap_words_per_coset]`. The caller orders `src_ptrs` to match the
+/// desired output coset sequence (typically bit-reversed against the natural LDE order).
+/// Replaces a per-coset `memory_copy_async` loop with one kernel launch.
+pub fn gather_tree_caps(
+    src_ptrs: &DeviceSlice<u64>,
+    dst: &mut DeviceSlice<u32>,
+    cap_words_per_coset: u32,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    let coset_count = src_ptrs.len();
+    assert!(coset_count > 0);
+    assert!(coset_count <= u32::MAX as usize);
+    assert!(cap_words_per_coset > 0);
+    assert_eq!(
+        dst.len(),
+        coset_count * cap_words_per_coset as usize,
+        "gather_tree_caps dst length must match coset_count * cap_words_per_coset",
+    );
+    let threads_per_block = std::cmp::min(cap_words_per_coset, 256u32);
+    let config = CudaLaunchConfig::basic(coset_count as u32, threads_per_block, stream);
+    let args = GatherTreeCapsArguments::new(
+        src_ptrs.as_ptr(),
+        dst.as_mut_ptr(),
+        cap_words_per_coset,
+        coset_count as u32,
+    );
+    GatherTreeCapsFunction::default().launch(&config, &args)
+}
+
+/// Gather `num_addresses` E4 evaluation regions (each `elements_per_addr` E4
+/// values long) from the device pointers in `src_ptrs` into the contiguous
+/// `dst[0..num_addresses*elements_per_addr]`. The caller orders `src_ptrs` to
+/// match the desired output address sequence (typically the BTreeMap key
+/// order of the per-layer transcript inputs). Replaces the per-address
+/// `memory_copy_async` loop in the backward schedulers with a single launch.
+pub fn gather_e_addresses(
+    src_ptrs: &DeviceSlice<u64>,
+    dst: &mut DeviceSlice<E4>,
+    elements_per_addr: u32,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    let num_addresses = src_ptrs.len();
+    assert!(num_addresses > 0);
+    assert!(num_addresses <= u32::MAX as usize);
+    assert!(elements_per_addr > 0);
+    assert_eq!(
+        dst.len(),
+        num_addresses * elements_per_addr as usize,
+        "gather_e_addresses dst length must match num_addresses * elements_per_addr",
+    );
+    // Each E4 = 4 u32 words; cap thread count to a reasonable warp multiple.
+    let words_per_addr = elements_per_addr.saturating_mul(4);
+    let threads_per_block = std::cmp::min(words_per_addr, 64u32);
+    let config = CudaLaunchConfig::basic(num_addresses as u32, threads_per_block, stream);
+    let args = GatherEAddressesArguments::new(
+        src_ptrs.as_ptr(),
+        dst.as_mut_ptr() as *mut u32,
+        elements_per_addr,
+        num_addresses as u32,
+    );
+    GatherEAddressesFunction::default().launch(&config, &args)
+}
+
+/// Device-side `Transcript::commit_initial`: computes `seed = Blake2s(input)` from the IV.
+///
+/// `seed` must be exactly `STATE_SIZE` u32 words. Written.
+/// `input` contains the field-element data to absorb (entire transcript prefix).
+pub fn transcript_commit_initial(
+    seed: &mut DeviceSlice<u32>,
+    input: &DeviceSlice<u32>,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    assert_eq!(seed.len(), STATE_SIZE);
+    let seed_ptr = seed.as_mut_ptr();
+    let input_ptr = input.as_ptr();
+    let input_len = input.len();
+    assert!(input_len <= u32::MAX as usize);
+    let config = CudaLaunchConfig::basic(1u32, 1u32, stream);
+    let args = TranscriptCommitInitialArguments::new(seed_ptr, input_ptr, input_len as u32);
+    TranscriptCommitInitialFunction::default().launch(&config, &args)
+}
 
 /// Device-side `commit_with_seed`: computes `new_seed = Blake2s(old_seed || input)`.
 ///
@@ -1243,6 +1352,24 @@ mod tests {
         h_result
     }
 
+    /// Helper: run device-side transcript_commit_initial and return the resulting seed.
+    fn device_commit_initial(input: &[u32]) -> [u32; STATE_SIZE] {
+        let stream = CudaStream::default();
+        let mut d_seed = DeviceAllocation::alloc(STATE_SIZE).unwrap();
+        let mut d_input = DeviceAllocation::alloc(input.len()).unwrap();
+        memory_copy_async(&mut d_input, input, &stream).unwrap();
+        super::transcript_commit_initial(&mut d_seed, &d_input, &stream).unwrap();
+        let mut h_result = [0u32; STATE_SIZE];
+        memory_copy_async(&mut h_result[..], &d_seed, &stream).unwrap();
+        stream.synchronize().unwrap();
+        h_result
+    }
+
+    /// Helper: run host-side commit_initial and return the resulting seed.
+    fn host_commit_initial(input: &[u32]) -> [u32; STATE_SIZE] {
+        Blake2sTranscript::commit_initial(input).0
+    }
+
     /// Helper: run host-side commit_with_seed and return the resulting seed.
     fn host_commit(seed: &[u32; STATE_SIZE], input: &[u32]) -> [u32; STATE_SIZE] {
         let mut s = Seed(*seed);
@@ -1306,6 +1433,133 @@ mod tests {
                 actual, expected,
                 "commit mismatch for input_len={input_len}"
             );
+        }
+    }
+
+    #[test]
+    fn transcript_commit_initial_parity_small() {
+        // 4 words — fits inside one block with padding.
+        let input: Vec<u32> = (10..14).collect();
+        assert_eq!(device_commit_initial(&input), host_commit_initial(&input));
+    }
+
+    #[test]
+    fn transcript_commit_initial_parity_exact_block() {
+        // 16 words — exactly one full block.
+        let input: Vec<u32> = (0..BLOCK_SIZE as u32).collect();
+        assert_eq!(device_commit_initial(&input), host_commit_initial(&input));
+    }
+
+    #[test]
+    fn transcript_commit_initial_parity_two_blocks() {
+        // 20 words — two blocks (16 + 4).
+        let input: Vec<u32> = (100..120).collect();
+        assert_eq!(device_commit_initial(&input), host_commit_initial(&input));
+    }
+
+    #[test]
+    fn transcript_commit_initial_parity_randomized() {
+        let mut rng = rand::rng();
+        for input_len in [
+            1, 4, 7, 8, 12, 15, 16, 17, 20, 24, 31, 32, 48, 64, 100, 128, 200, 256, 500, 1024,
+        ] {
+            let input: Vec<u32> = (0..input_len).map(|_| rng.random()).collect();
+            let expected = host_commit_initial(&input);
+            let actual = device_commit_initial(&input);
+            assert_eq!(
+                actual, expected,
+                "commit_initial mismatch for input_len={input_len}"
+            );
+        }
+    }
+
+    #[test]
+    fn gather_tree_caps_parity() {
+        let stream = CudaStream::default();
+        // Pretend each "tree" is just `cap_words_per_coset` words; gather expects u64-encoded
+        // device pointers to the cap region of each tree.
+        for &(cap_words_per_coset, coset_count) in
+            &[(8usize, 1usize), (16, 2), (32, 4), (64, 8), (256, 4)]
+        {
+            // Pre-fill each per-coset source with a distinct pattern to verify the gather order.
+            let mut d_sources: Vec<DeviceAllocation<u32>> = (0..coset_count)
+                .map(|_| DeviceAllocation::alloc(cap_words_per_coset).unwrap())
+                .collect();
+            let mut h_sources: Vec<Vec<u32>> = Vec::with_capacity(coset_count);
+            for (i, d) in d_sources.iter_mut().enumerate() {
+                let pattern: Vec<u32> = (0..cap_words_per_coset)
+                    .map(|j| ((i as u32) << 24) | (j as u32))
+                    .collect();
+                memory_copy_async(d, &pattern[..], &stream).unwrap();
+                h_sources.push(pattern);
+            }
+            let src_ptrs: Vec<u64> = d_sources.iter().map(|d| d.as_ptr() as u64).collect();
+            let mut d_ptr_table: DeviceAllocation<u64> =
+                DeviceAllocation::alloc(coset_count).unwrap();
+            memory_copy_async(&mut d_ptr_table, &src_ptrs[..], &stream).unwrap();
+            let mut d_dst: DeviceAllocation<u32> =
+                DeviceAllocation::alloc(coset_count * cap_words_per_coset).unwrap();
+            super::gather_tree_caps(&d_ptr_table, &mut d_dst, cap_words_per_coset as u32, &stream)
+                .unwrap();
+            let mut h_dst: Vec<u32> = vec![0u32; coset_count * cap_words_per_coset];
+            memory_copy_async(&mut h_dst[..], &d_dst, &stream).unwrap();
+            stream.synchronize().unwrap();
+            for (coset_idx, expected) in h_sources.iter().enumerate() {
+                let actual =
+                    &h_dst[coset_idx * cap_words_per_coset..(coset_idx + 1) * cap_words_per_coset];
+                assert_eq!(
+                    actual, &expected[..],
+                    "gather mismatch for coset {coset_idx} (cap_words={cap_words_per_coset}, count={coset_count})"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn gather_e_addresses_parity() {
+        let stream = CudaStream::default();
+        // Each address holds `elements_per_addr` E4 values; the kernel copies
+        // them into a contiguous destination in `src_ptrs` order.
+        for &(elements_per_addr, num_addresses) in
+            &[(1usize, 1usize), (2, 1), (4, 1), (2, 5), (4, 8), (8, 16)]
+        {
+            let mut d_sources: Vec<DeviceAllocation<u32>> = (0..num_addresses)
+                .map(|_| DeviceAllocation::alloc(elements_per_addr * 4).unwrap())
+                .collect();
+            let mut h_sources: Vec<Vec<u32>> = Vec::with_capacity(num_addresses);
+            for (i, d) in d_sources.iter_mut().enumerate() {
+                let pattern: Vec<u32> = (0..elements_per_addr * 4)
+                    .map(|j| ((i as u32) << 24) | (j as u32))
+                    .collect();
+                memory_copy_async(d, &pattern[..], &stream).unwrap();
+                h_sources.push(pattern);
+            }
+            let src_ptrs: Vec<u64> = d_sources.iter().map(|d| d.as_ptr() as u64).collect();
+            let mut d_ptr_table: DeviceAllocation<u64> =
+                DeviceAllocation::alloc(num_addresses).unwrap();
+            memory_copy_async(&mut d_ptr_table, &src_ptrs[..], &stream).unwrap();
+            let mut d_dst: DeviceAllocation<E4> =
+                DeviceAllocation::alloc(num_addresses * elements_per_addr).unwrap();
+            super::gather_e_addresses(
+                &d_ptr_table,
+                &mut d_dst,
+                elements_per_addr as u32,
+                &stream,
+            )
+            .unwrap();
+            let mut h_dst_words: Vec<u32> = vec![0u32; num_addresses * elements_per_addr * 4];
+            let d_dst_as_u32 = unsafe { d_dst.transmute::<u32>() };
+            memory_copy_async(&mut h_dst_words[..], d_dst_as_u32, &stream).unwrap();
+            stream.synchronize().unwrap();
+            for (addr_idx, expected) in h_sources.iter().enumerate() {
+                let words_per_addr = elements_per_addr * 4;
+                let actual = &h_dst_words
+                    [addr_idx * words_per_addr..(addr_idx + 1) * words_per_addr];
+                assert_eq!(
+                    actual, &expected[..],
+                    "gather mismatch for address {addr_idx} (elements_per_addr={elements_per_addr}, num_addresses={num_addresses})"
+                );
+            }
         }
     }
 

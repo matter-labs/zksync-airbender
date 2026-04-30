@@ -502,6 +502,34 @@ impl<E> GpuGKRForwardSetup<E> {
             _marker: PhantomData,
         }
     }
+
+    /// Variant of [`Self::into_host_keepalive`] that hands the
+    /// `d_lookup_challenges` device buffer back to the caller instead of
+    /// dropping it. The forward pass no longer reads it once this is called,
+    /// so it can be repurposed as the lookup-and-constraint device input for
+    /// `schedule_execute_backward_workflow_from_shared_state` — saves the
+    /// otherwise-required separate allocation + D2D from the post-forward
+    /// transcript squeeze (Opp. 3 of the pre-WHIR copy elimination plan).
+    pub(crate) fn into_host_keepalive_taking_lookup_challenges(
+        self,
+    ) -> (GpuGKRForwardSetupHostKeepalive<E>, DeviceAllocation<E>) {
+        let Self {
+            _tracing_ranges,
+            _callbacks,
+            d_lookup_challenges,
+            device_decoder_lookup_fill_value: _,
+            _device_lookup_alpha_powers: _,
+            generic_lookup: _,
+        } = self;
+        (
+            GpuGKRForwardSetupHostKeepalive {
+                _tracing_ranges,
+                _callbacks,
+                _marker: PhantomData,
+            },
+            d_lookup_challenges,
+        )
+    }
 }
 
 pub(super) fn flatten_setup_columns_into_pinned_buffer(
