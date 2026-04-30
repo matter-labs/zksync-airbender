@@ -7,10 +7,7 @@ use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::CudaStream;
 use era_cudart_sys::{cudaFuncSetAttribute, CudaFuncAttribute};
 
-use super::{
-    bitreversed_coeffs_to_natural_coset, hypercube_evals_natural_to_bitreversed_coeffs,
-    MIN_LOG_N_FOR_MULTISTAGE_KERNELS,
-};
+use super::{hypercube_evals_natural_to_bitreversed_coeffs, MIN_LOG_N_FOR_MULTISTAGE_KERNELS};
 
 use crate::device_structures::{
     DeviceMatrixChunk, DeviceMatrixChunkImpl, DeviceMatrixChunkMut, DeviceMatrixChunkMutImpl,
@@ -18,7 +15,6 @@ use crate::device_structures::{
 };
 use crate::field::BaseField;
 use crate::primitives::context::DeviceProperties;
-use crate::primitives::device_context::OMEGA_LOG_ORDER;
 use crate::utils::GetChunksCount;
 
 use std::mem::size_of;
@@ -41,6 +37,13 @@ strided_tiles_stages!(ab_hypercube_evals_to_monomials_first_10_stages_kernel);
 // 3-pass evals to monomials
 strided_tiles_stages!(ab_hypercube_evals_to_monomials_nonfinal_8_stages_kernel);
 
+// // 2-pass monomials to evals
+// strided_tiles_stages!(ab_hypercube_monomials_to_evals_first_9_stages_kernel);
+// strided_tiles_stages!(ab_hypercube_monomials_to_evals_first_10_stages_kernel);
+//
+// // 3-pass monomials to evals
+// strided_tiles_stages!(ab_hypercube_monomials_to_evals_nonfinal_8_stages_kernel);
+
 cuda_kernel!(
     EvalsToMonomialsFinal,
     hypercube_evals_to_monomials_final,
@@ -58,6 +61,21 @@ hypercube_evals_to_monomials_final!(ab_hypercube_evals_to_monomials_final_5_stag
 hypercube_evals_to_monomials_final!(ab_hypercube_evals_to_monomials_final_6_stages_kernel);
 hypercube_evals_to_monomials_final!(ab_hypercube_evals_to_monomials_final_7_stages_kernel);
 hypercube_evals_to_monomials_final!(ab_hypercube_evals_to_monomials_final_8_stages_kernel);
+
+// // 2-pass monomials to evals
+// hypercube_monomials_to_evals_final!(ab_hypercube_monomials_to_evals_last_14_stages_kernel);
+//
+// // 3-pass monomials to evals
+// hypercube_monomials_to_evals_final!(ab_hypercube_monomials_to_evals_final_5_stages_kernel);
+// hypercube_monomials_to_evals_final!(ab_hypercube_monomials_to_evals_final_6_stages_kernel);
+// hypercube_monomials_to_evals_final!(ab_hypercube_monomials_to_evals_final_7_stages_kernel);
+// hypercube_monomials_to_evals_final!(ab_hypercube_monomials_to_evals_final_8_stages_kernel);
+
+// #[derive(PartialEq)]
+// enum Direction {
+//     EvalsToMonomials,
+//     MonomialsToEvals,
+// }
 
 pub(crate) fn hypercube_evals_to_monomials_3_pass(
     inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
@@ -257,7 +275,7 @@ pub(crate) fn hypercube_evals_to_monomials_2_pass(
 }
 
 #[allow(unused)]
-pub fn hypercube_natural_evals_to_bitreversed_monomials(
+pub fn hypercube_X1_MSB_evals_to_X1_MSB_monomials(
     inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
     outputs_matrix: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),
     log_n: usize,
