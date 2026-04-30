@@ -7,7 +7,10 @@ use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::CudaStream;
 use era_cudart_sys::{cudaFuncSetAttribute, CudaFuncAttribute};
 
-use super::{bitreversed_coeffs_to_natural_coset, MIN_LOG_N_FOR_MULTISTAGE_KERNELS};
+use super::{
+    bitreversed_coeffs_to_natural_coset, natural_evals_to_bitreversed_coeffs,
+    MIN_LOG_N_FOR_MULTISTAGE_KERNELS,
+};
 
 use crate::device_structures::{
     DeviceMatrixChunk, DeviceMatrixChunkImpl, DeviceMatrixChunkMut, DeviceMatrixChunkMutImpl,
@@ -536,6 +539,32 @@ pub fn natural_evals_to_bitreversed_monomials(
     stream: &CudaStream,
     device_properties: &DeviceProperties,
 ) -> CudaResult<()> {
+    if log_n < MIN_LOG_N_FOR_MULTISTAGE_KERNELS {
+        // Fallback (uses 1 stage at a time kernels)
+        assert!(
+            !transposed_monomials,
+            "fallback path does not support transposed monomials",
+        );
+        let cols = inputs_matrix.cols();
+        let rows = inputs_matrix.rows();
+        assert_eq!(cols, outputs_matrix.cols());
+        assert_eq!(rows, outputs_matrix.rows());
+        let inputs_stride = inputs_matrix.stride();
+        let outputs_stride = outputs_matrix.stride();
+        let inputs_offset = inputs_matrix.offset();
+        let outputs_offset = outputs_matrix.offset();
+        let inputs_slice = &(inputs_matrix.slice())[inputs_offset..];
+        let outputs_slice = &mut (outputs_matrix.slice_mut())[outputs_offset..];
+        for col in 0..cols {
+            natural_evals_to_bitreversed_coeffs(
+                &inputs_slice[col * inputs_stride..col * inputs_stride + rows],
+                &mut outputs_slice[col * outputs_stride..col * outputs_stride + rows],
+                log_n,
+                stream,
+            )?;
+        }
+        return Ok(());
+    }
     // Quick and dirty heuristic: use 3-pass if one column fits in L2, 2-pass otherwise
     let l2_bytes = device_properties.l2_cache_size_bytes;
     let column_bytes = (1 << log_n) * size_of::<BF>();
