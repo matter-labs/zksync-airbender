@@ -32,6 +32,14 @@ pub(crate) struct GpuWhirExtensionOracle {
     packed_leaf_count: usize,
 }
 
+/// Holds the retired oracle's trace holder (and therefore its unified device
+/// cap) alive on a downstream keepalive vector so scheduled D2H or D2D ops
+/// reading the cap remain valid until `prove()`'s `is_finished_event`
+/// completes.
+pub(crate) struct GpuWhirExtensionOracleKeepalive {
+    _trace_holder: TraceHolder<BF>,
+}
+
 pub(crate) struct GpuWhirScheduledExtensionQuery {
     pub(crate) index: usize,
     pub(crate) coset_index: usize,
@@ -258,11 +266,12 @@ impl GpuWhirExtensionOracle {
         })
     }
 
-    pub(crate) fn get_tree_cap(&self) -> MerkleTreeCapVarLength {
-        self.trace_holder
-            .get_tree_caps()
-            .pop()
-            .expect("whir oracle must materialize at least one tree cap")
+    /// Reads back the unified device cap synchronously and returns it as a
+    /// single-coset `MerkleTreeCapVarLength`. Test-only helper — production
+    /// paths should consume the cap as `unified_device_cap()` and avoid
+    /// host blocking.
+    pub(crate) fn get_tree_cap(&self, context: &ProverContext) -> CudaResult<MerkleTreeCapVarLength> {
+        self.trace_holder.read_full_cap_synchronously(context)
     }
 
     pub(crate) fn lde_factor(&self) -> usize {
@@ -277,15 +286,20 @@ impl GpuWhirExtensionOracle {
         self.packed_leaf_count
     }
 
-    pub(crate) fn tree_cap_accessors(&self) -> Vec<UnsafeAccessor<[Digest]>> {
-        self.trace_holder.get_tree_caps_accessors()
+    /// Reference to the oracle's device-resident unified Merkle cap. WHIR
+    /// intermediate oracles are constructed with `log_lde_factor = 0`, so
+    /// this is the single per-coset cap.
+    pub(crate) fn unified_device_cap(&self) -> &crate::primitives::context::DeviceAllocation<Digest> {
+        self.trace_holder.unified_device_cap()
     }
 
-    pub(crate) fn into_host_tree_caps(self) -> Vec<HostAllocation<[Digest]>> {
-        let Self {
-            mut trace_holder, ..
-        } = self;
-        trace_holder.take_tree_caps_host()
+    /// Hands the oracle's device unified cap (with the trace holder that
+    /// owns it) to the caller as a keepalive. Used by query-emitting paths
+    /// that retire the oracle but still need its cap to survive scheduled
+    /// downstream reads.
+    pub(crate) fn into_host_keepalive(self) -> GpuWhirExtensionOracleKeepalive {
+        let Self { trace_holder, .. } = self;
+        GpuWhirExtensionOracleKeepalive { _trace_holder: trace_holder }
     }
 
     pub(crate) fn query_for_folded_index(
@@ -616,7 +630,7 @@ pub(crate) mod tests {
         }
 
         assert_eq!(
-            gpu.get_tree_cap(),
+            gpu.get_tree_cap(&context).unwrap(),
             <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<BF>>::get_cap(&cpu.tree)
         );
 
@@ -712,7 +726,7 @@ pub(crate) mod tests {
         context.get_exec_stream().synchronize().unwrap();
 
         assert_eq!(
-            gpu.get_tree_cap(),
+            gpu.get_tree_cap(&context).unwrap(),
             <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<BF>>::get_cap(&cpu.tree)
         );
 

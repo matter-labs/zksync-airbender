@@ -1,10 +1,11 @@
+use crate::ops::blake2s::Digest;
 use crate::primitives::callbacks::Callbacks;
 use crate::primitives::circuit_type::{CircuitType, UnrolledCircuitType};
 use crate::primitives::context::{ProverContext, UnsafeMutAccessor};
 use crate::primitives::device_structures::DeviceMatrixMut;
 use crate::primitives::device_tracing::Range;
 use crate::primitives::field::BF;
-use crate::prover::trace_holder::{get_tree_caps_for_accessors, TraceHolder, TreesCacheMode};
+use crate::prover::trace_holder::{bitreverse_index, TraceHolder, TreesCacheMode};
 use crate::prover::tracing_data::{
     DelegationTracingDataDevice, TracingDataDevice, UnrolledTracingDataDevice,
 };
@@ -15,6 +16,7 @@ use crate::witness::memory_unrolled::{
 use crate::witness::trace_unrolled::ExecutorFamilyDecoderData;
 use cs::gkr_compiler::GKRCircuitArtifact;
 use era_cudart::event::{CudaEvent, CudaEventCreateFlags};
+use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 use prover::merkle_trees::MerkleTreeCapVarLength;
@@ -141,18 +143,40 @@ pub(crate) fn commit_memory<'a>(
     }
     let _ = evaluations;
     memory_holder.commit_all(context)?;
-    let src_tree_cap_accessors = memory_holder.get_tree_caps_accessors();
+    // Schedule a D2H of the unified device cap into a pinned host buffer; the
+    // callback below slices that single contiguous cap into per-coset
+    // `MerkleTreeCapVarLength` entries (canonical bit-reversed coset order).
     let log_lde = memory_holder.log_lde_factor;
+    let lde_factor = 1usize << log_lde;
+    let cap_size = 1usize << log_tree_cap_size;
+    let mut cap_host = unsafe { context.alloc_host_uninit_slice::<Digest>(cap_size) };
+    memory_copy_async(&mut cap_host, memory_holder.unified_device_cap(), stream)?;
+    let cap_host_accessor = cap_host.get_accessor();
     let mut tree_caps = Box::new(None);
     let dst_tree_caps_accessor = UnsafeMutAccessor::new(tree_caps.as_mut());
     let transform_tree_caps_fn = move || unsafe {
-        let tree_caps = get_tree_caps_for_accessors(&src_tree_cap_accessors, log_lde);
+        let unified = cap_host_accessor.get();
+        debug_assert_eq!(unified.len() % lde_factor, 0);
+        let per_coset = unified.len() / lde_factor;
+        // Repack the unified cap (bit-reversed coset order) back into the
+        // natural per-coset shape that `MemoryCommitmentJob`'s callers expect.
+        let mut per_coset_caps: Vec<MerkleTreeCapVarLength> =
+            (0..lde_factor).map(|_| MerkleTreeCapVarLength { cap: Vec::new() }).collect();
+        for stage1_pos in 0..lde_factor {
+            let natural_coset_index = bitreverse_index(stage1_pos, log_lde);
+            per_coset_caps[natural_coset_index].cap =
+                unified[stage1_pos * per_coset..(stage1_pos + 1) * per_coset].to_vec();
+        }
         assert!(dst_tree_caps_accessor
             .get_mut()
-            .replace(tree_caps)
+            .replace(per_coset_caps)
             .is_none());
     };
     callbacks.schedule(transform_tree_caps_fn, stream)?;
+    // `cap_host` (pool-backed pinned host buffer) drops at end of this function;
+    // the callback above has already been scheduled, so the contract's
+    // scheduled-not-completed lifetime rule is satisfied.
+    drop(cap_host);
     range.end(stream)?;
     let is_finished_event = CudaEvent::create_with_flags(CudaEventCreateFlags::DISABLE_TIMING)?;
     is_finished_event.record(stream)?;

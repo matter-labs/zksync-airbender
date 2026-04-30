@@ -18,14 +18,12 @@ use prover::transcript::Seed;
 
 use crate::allocator::tracker::AllocationPlacement;
 use crate::circuit_type::CircuitType;
-use crate::ops::blake2s::Digest;
 use crate::ops::blake2s::STATE_SIZE;
 use crate::primitives::callbacks::Callbacks;
 use crate::primitives::context::{
     DeviceAllocation, HostAllocation, ProverContext, SchedulerHostAllocation, UnsafeAccessor,
     UnsafeMutAccessor,
 };
-use crate::primitives::device_structures::{DeviceVectorChunk, DeviceVectorChunkMut};
 use crate::primitives::device_tracing::Range;
 use crate::primitives::field::{BF, E4};
 use crate::prover::decoder::DecoderTableTransfer;
@@ -47,6 +45,7 @@ use crate::prover::gkr::setup::{
     GpuGKRSetupTransferHostKeepalive,
 };
 use crate::prover::gkr::stage1::{GpuGKRStage1Keepalive, GpuGKRStage1Output, GpuGKRTraceGeometry};
+use crate::prover::memory_transfer::{GpuGKRMemoryTransfer, GpuGKRMemoryTransferHostKeepalive};
 use crate::prover::trace_holder::{
     allocate_trees, TraceHolder, TreesCacheMode, TreesHolder, PARTIAL_TREE_REDUCTION_LAYERS,
 };
@@ -55,30 +54,26 @@ use crate::prover::tracing_data::TracingDataTransfer;
 use crate::prover::whir_fold::{
     schedule_gpu_whir_fold_with_sources, take_scheduled_whir_proof, GpuWhirFoldScheduledExecution,
 };
-use prover::merkle_trees::MerkleTreeCapVarLength;
 
 struct GpuGKRProofJobKeepalive<'a> {
     _stage1: GpuGKRStage1Keepalive,
     _setup: Option<GpuGKRSetupTransferHostKeepalive<'a>>,
+    _memory: GpuGKRMemoryTransferHostKeepalive<'a>,
     _forward_setup: GpuGKRForwardSetupHostKeepalive<E4>,
     _backward: GpuGKRBackwardHostKeepalive<BF, E4>,
     _base_layer_claims: GpuGKRBaseLayerClaimsScheduledExecution<E4>,
     _whir: GpuWhirFoldScheduledExecution,
-    /// Pinned host staging buffers backing the two h2d_stream H2Ds that upload
-    /// the initial-transcript pre-setup chunk (canonical_top_bits ++
-    /// external_challenges) and the flattened memory caps directly into the
-    /// final `d_transcript_input` positions. Held here so the allocations
-    /// outlive the H2D copies on h2d_stream.
+    /// Pinned host staging buffer backing the h2d_stream H2D that uploads the
+    /// initial-transcript pre-setup chunk (canonical_top_bits ++
+    /// external_challenges) directly into the final `d_transcript_input`
+    /// positions. Held here so the allocation outlives the H2D copy on
+    /// h2d_stream.
     _initial_transcript_pre_setup_host: HostAllocation<[u32]>,
-    _initial_transcript_memory_caps_host: HostAllocation<[u32]>,
-    /// SchedulerHostAllocator-backed pointer tables consumed by the cap-gather
-    /// kernel and the initial inner-product kernel. SchedulerHostAllocator
-    /// requires the handle to outlive every H2D reading it (per the contract:
-    /// "attach to a keepalive that outlives all in-flight prove() work"); the
-    /// proof-job keepalive is dropped only after `is_finished_event.synchronize()`
-    /// in `finish()`.
-    _setup_cap_gather_host_ptrs: Option<SchedulerHostAllocation<[u64]>>,
-    _witness_cap_gather_host_ptrs: Option<SchedulerHostAllocation<[u64]>>,
+    /// SchedulerHostAllocator-backed pointer table consumed by the initial
+    /// inner-product kernel. SchedulerHostAllocator requires the handle to
+    /// outlive every H2D reading it (per the contract: "attach to a keepalive
+    /// that outlives all in-flight prove() work"); the proof-job keepalive is
+    /// dropped only after `is_finished_event.synchronize()` in `finish()`.
     _initial_inner_product_host_ptrs: SchedulerHostAllocation<[u64]>,
     /// Pinned host mirror of the device-resident proof slab (Phase 4). Populated
     /// by the terminal D2H; read by the single assembly callback.
@@ -280,7 +275,7 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
     // TODO(init-teardown-port): restore once path is re-enabled.
     // inits_and_teardowns_transfer: Option<InitsAndTeardownsTransfer<'a, A>>,
     mut tracing_data_transfer: TracingDataTransfer<'a, A>,
-    memory_tree_caps: &[MerkleTreeCapVarLength],
+    memory_transfer: GpuGKRMemoryTransfer<'a>,
     context: &ProverContext,
 ) -> CudaResult<GpuGKRProofJob<'a>> {
     if let Some(setup_transfer) = setup_transfer.as_ref() {
@@ -296,6 +291,9 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
     //         .ensure_transferred(context)?;
     // }
     tracing_data_transfer.transfer.ensure_transferred(context)?;
+    // Memory cap H2D was scheduled pre-prove on h2d_stream; the D2D into the
+    // transcript input slot below needs the H2D to be visible on exec_stream.
+    memory_transfer.ensure_transferred(context)?;
 
     let stream = context.get_exec_stream();
     let mut callbacks = Callbacks::new();
@@ -346,11 +344,12 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
     let canonical_top_bits = canonical_inits_and_teardowns_top_bits(&compiled_circuit);
     let canonical_top_bits_len = canonical_top_bits.len();
     let external_challenges_u32_len = (NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES + 1) * 4;
-    let memory_caps_total_u32 = memory_tree_caps
-        .iter()
-        .map(|c| c.cap.len() * BLAKE2S_DIGEST_SIZE_U32_WORDS)
-        .sum::<usize>();
-    let memory_log_lde_factor = setup_geometry.log_lde_factor;
+    debug_assert_eq!(
+        memory_transfer.host.log_lde_factor, setup_geometry.log_lde_factor,
+        "memory transfer log_lde_factor must match setup geometry",
+    );
+    let memory_caps_total_u32 =
+        (1usize << memory_transfer.host.log_tree_cap_size) * BLAKE2S_DIGEST_SIZE_U32_WORDS;
     let pre_setup_len = canonical_top_bits_len + external_challenges_u32_len;
     // Setup and witness caps share `setup_geometry.log_tree_cap_size` (stage1 builds
     // both holders from `setup_geometry`, see stage1.rs:185-194), so the cap-bytes
@@ -379,11 +378,13 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
         "transcript input must be non-empty for commit_initial",
     );
 
-    // -------------- Step 1: h2d_stream consolidation (BEFORE stage 1) --------------
-    // Pack canonical_top_bits ++ external_challenges into one pinned chunk and
-    // flattened_memory_caps into another, then schedule two H2Ds directly into the
-    // final `d_transcript_input` positions. No `d_bucket2` and no D2Ds — the data
-    // arrives already at its destination offset (Opp. 1). Scheduling this before
+    // -------------- Step 1: h2d_stream pre-setup pack (BEFORE stage 1) --------------
+    // Setup, memory and witness caps are now sourced from on-device unified caps
+    // (setup/memory: pre-prove H2Ds gated by their `Transfer::transferred` events;
+    // witness: the unified cap is assembled into `witness_trace_holder.unified_device_cap`
+    // by stage 1's per-coset commits). The only h2d_stream copy left in this region
+    // is `pre_setup_host` (canonical_top_bits ++ external_challenges) — that data is
+    // computed at prove() entry and is not yet on device. Scheduling this before
     // stage 1's kernels are queued on exec_stream keeps `e_alloc`'s captured stream
     // position empty, so h2d_stream's wait on it is effectively a no-op and packing
     // + H2D run concurrently with stage 1 compute on the GPU. Two-fence pattern per
@@ -393,14 +394,7 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
         context.alloc(total_transcript_len, AllocationPlacement::BestFit)?;
     let mut pre_setup_host = unsafe { context.alloc_host_uninit_slice::<u32>(pre_setup_len) };
     let pre_setup_host_write_accessor = pre_setup_host.get_mut_accessor();
-    let mut memory_caps_host =
-        unsafe { context.alloc_host_uninit_slice::<u32>(memory_caps_total_u32) };
-    let memory_caps_host_write_accessor = memory_caps_host.get_mut_accessor();
     let external_challenges_for_h2d = external_challenges.clone();
-    let memory_tree_caps_for_h2d: Vec<Vec<Digest>> = memory_tree_caps
-        .iter()
-        .map(|c| c.cap.clone())
-        .collect::<Vec<_>>();
 
     let e_alloc = CudaEvent::create_with_flags(CudaEventCreateFlags::DISABLE_TIMING)?;
     e_alloc.record(stream)?;
@@ -421,38 +415,16 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
         },
         h2d_stream,
     )?;
-    callbacks.schedule(
-        move || unsafe {
-            let dst = memory_caps_host_write_accessor.get_mut();
-            let mut offset = 0usize;
-            // memory caps in bit-reversed LDE position order, matching CPU flatten_tree_caps.
-            let lde_factor = 1usize << memory_log_lde_factor;
-            for stage1_pos in 0..lde_factor {
-                let natural_coset_index =
-                    stage1_pos.reverse_bits() >> (usize::BITS - memory_log_lde_factor);
-                for digest in memory_tree_caps_for_h2d[natural_coset_index].iter() {
-                    dst[offset..offset + BLAKE2S_DIGEST_SIZE_U32_WORDS].copy_from_slice(digest);
-                    offset += BLAKE2S_DIGEST_SIZE_U32_WORDS;
-                }
-            }
-            assert_eq!(offset, memory_caps_total_u32);
-        },
-        h2d_stream,
-    )?;
     memory_copy_async(
         &mut d_transcript_input[offset_pre_setup..offset_pre_setup + pre_setup_len],
         &pre_setup_host,
         h2d_stream,
     )?;
-    memory_copy_async(
-        &mut d_transcript_input[offset_memory..offset_memory + memory_caps_total_u32],
-        &memory_caps_host,
-        h2d_stream,
-    )?;
 
-    // `e_xfer` records "h2d H2D complete". The exec-stream wait on it is deferred until just
-    // before the post-stage-1 D2Ds populate `d_transcript_input[setup/witness]` ranges, so
-    // stage 1 compute isn't artificially serialized behind the transfer.
+    // `e_xfer` records "pre-setup H2D complete". The exec-stream wait on it is
+    // deferred until just before `transcript_commit_initial` reads
+    // `d_transcript_input[pre_setup ..]`, so stage 1 compute isn't artificially
+    // serialized behind the (tiny) pre-setup pack.
     let e_xfer = CudaEvent::create_with_flags(CudaEventCreateFlags::DISABLE_TIMING)?;
     e_xfer.record(h2d_stream)?;
 
@@ -494,29 +466,15 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
         None
     };
     debug_assert_eq!(
-        stage1_output.memory_trace_holder.log_lde_factor, memory_log_lde_factor,
-        "memory trace holder LDE factor must match setup geometry used for the h2d pack",
+        stage1_output.memory_trace_holder.log_lde_factor, memory_transfer.host.log_lde_factor,
+        "memory trace holder LDE factor must match the memory transfer geometry",
     );
 
-    // Memory tree caps come from the caller as plain heap Vecs. Stage them in the
-    // scheduler-host pinned pool so the per-coset H2D into the slab and the host
-    // callback that mirrors them into `proof.memory_commitment.cap` both read pinned
-    // memory — pageable sources would otherwise force `cudaMemcpyAsync` to fall back
-    // to a synchronous staged copy.
-    let memory_tree_caps_owned_for_whir: Vec<SchedulerHostAllocation<[Digest]>> = memory_tree_caps
-        .iter()
-        .map(|c| context.scheduler_host_from_slice(&c.cap))
-        .collect::<CudaResult<Vec<_>>>()?;
-
-    let witness_log_lde_factor = stage1_output.witness_trace_holder.log_lde_factor;
-    let witness_base_caps_keepalive = stage1_output.witness_trace_holder.take_tree_caps_host();
     debug_assert_eq!(
-        witness_base_caps_keepalive
-            .iter()
-            .map(|cap| unsafe { cap.get_accessor().get().len() } * BLAKE2S_DIGEST_SIZE_U32_WORDS)
-            .sum::<usize>(),
+        stage1_output.witness_trace_holder.unified_device_cap().len()
+            * BLAKE2S_DIGEST_SIZE_U32_WORDS,
         witness_caps_total_u32,
-        "stage1 witness cap geometry must match the structurally-derived witness_caps_total_u32",
+        "stage1 witness unified cap size must match the structurally-derived witness_caps_total_u32",
     );
 
     // Build the proof slab layout structurally (no forward output required) and
@@ -574,118 +532,67 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
         None
     };
 
-    // Exec must not read the h2d-populated `d_transcript_input[pre_setup]` and
-    // `d_transcript_input[memory]` ranges until the h2d_stream H2Ds have completed.
-    // Placing the wait here (after stage 1 is queued) means stage 1 and the h2d
-    // transfers run concurrently; the wait only fences the post-stage-1 D2Ds and
-    // the seed-trick commit below.
+    // Exec must not read the h2d-populated `d_transcript_input[pre_setup]` range
+    // until the h2d_stream H2D has completed. Placing the wait here (after stage 1
+    // is queued) means stage 1 and the pre-setup pack run concurrently; the wait
+    // only fences the cap D2Ds and the seed-trick commit below.
     stream.wait_event(&e_xfer, CudaStreamWaitEventFlags::DEFAULT)?;
 
-    // -------------- Step 2: fill setup/witness caps into d_transcript_input on exec_stream --------------
-    // Pack the per-coset cap source pointers (in bit-reversed LDE position order) into one
-    // pinned host table per source via `SchedulerHostAllocator` (the data — device pointer
-    // values for already-allocated tree cap regions — is scheduling-time-known and immutable),
-    // H2D the table, and gather all cosets in a single kernel launch. The host pointer tables
-    // are threaded into `GpuGKRProofJobKeepalive` so they outlive every in-flight H2D in the
-    // job, per the SchedulerHostAllocator lifetime rule.
-    let setup_cap_gather_host_ptrs = if setup_caps_total_u32 > 0 {
+    // -------------- Step 2: D2D the three unified caps into d_transcript_input --------------
+    // Setup and memory caps were H2D'd pre-prove on h2d_stream into their
+    // respective `unified_device_cap`s; the witness unified cap was assembled by
+    // stage 1's per-coset commits on exec_stream. Each source becomes a single
+    // D2D into its `d_transcript_input` range — no per-coset pointer table, no
+    // gather kernel, no per-coset H2D inside `prove()`.
+    if setup_caps_total_u32 > 0 {
         let setup_transfer_ref = setup_transfer
             .as_ref()
             .expect("setup_caps_total_u32 > 0 requires a setup transfer");
-        let setup_log_lde_factor = setup_transfer_ref.host.log_lde_factor;
-        let setup_log_tree_cap_size = setup_transfer_ref.host.log_tree_cap_size;
-        let log_subtree_cap_size = setup_log_tree_cap_size - setup_log_lde_factor;
-        let lde_factor = 1usize << setup_log_lde_factor;
-        let trees = match &setup_transfer_ref.trace_holder.trees {
-            crate::prover::trace_holder::TreesHolder::Partial(trees)
-            | crate::prover::trace_holder::TreesHolder::Full(trees) => trees,
-            crate::prover::trace_holder::TreesHolder::None => {
-                panic!("setup trace holder must cache trees for transcript cap extraction")
-            }
+        // The setup unified-cap H2D ran on h2d_stream pre-prove and is fenced by
+        // `setup_transfer.transfer.transferred`. `prove()` already serialized
+        // exec_stream behind that event via `setup_transfer.ensure_transferred`
+        // at the top of this function, so the D2D below sees the final cap.
+        let src_u32 = unsafe {
+            setup_transfer_ref
+                .unified_device_cap()
+                .transmute::<u32>()
         };
-        let mut src_ptrs: Vec<u64> = Vec::with_capacity(lde_factor);
-        let mut cap_words_per_coset = 0usize;
-        for stage1_pos in 0..lde_factor {
-            let natural_coset_index =
-                stage1_pos.reverse_bits() >> (usize::BITS - setup_log_lde_factor);
-            let cap_digests = crate::ops::blake2s::merkle_tree_cap(
-                &trees[natural_coset_index][..],
-                log_subtree_cap_size,
-            );
-            // SAFETY: Digest is [u32; STATE_SIZE] — same layout as contiguous u32 array of
-            // `cap_digests.len() * STATE_SIZE` words.
-            let cap_u32 = unsafe { cap_digests.transmute::<u32>() };
-            let cap_u32_len = cap_u32.len();
-            if cap_words_per_coset == 0 {
-                cap_words_per_coset = cap_u32_len;
-            } else {
-                debug_assert_eq!(cap_words_per_coset, cap_u32_len);
-            }
-            src_ptrs.push(cap_u32.as_ptr() as u64);
-        }
-        debug_assert_eq!(lde_factor * cap_words_per_coset, setup_caps_total_u32);
-        let host_ptrs = context.scheduler_host_from_slice(&src_ptrs)?;
-        let mut device_ptrs: DeviceAllocation<u64> =
-            context.alloc(lde_factor, AllocationPlacement::BestFit)?;
-        memory_copy_async(&mut device_ptrs, &host_ptrs, stream)?;
-        crate::ops::blake2s::gather_tree_caps(
-            &device_ptrs,
+        debug_assert_eq!(src_u32.len(), setup_caps_total_u32);
+        memory_copy_async(
             &mut d_transcript_input[offset_setup..offset_setup + setup_caps_total_u32],
-            cap_words_per_coset as u32,
+            src_u32,
             stream,
         )?;
-        // device_ptrs drops at end of this if-block — pool-backed lifetime is
-        // scheduled-not-completed (the gather kernel has been scheduled).
-        drop(device_ptrs);
-        Some(host_ptrs)
-    } else {
-        None
-    };
-    let witness_cap_gather_host_ptrs = if witness_caps_total_u32 > 0 {
-        let witness_log_tree_cap_size = stage1_output.witness_trace_holder.log_tree_cap_size;
-        let log_subtree_cap_size = witness_log_tree_cap_size - witness_log_lde_factor;
-        let lde_factor = 1usize << witness_log_lde_factor;
-        let trees = match &stage1_output.witness_trace_holder.trees {
-            crate::prover::trace_holder::TreesHolder::Partial(trees)
-            | crate::prover::trace_holder::TreesHolder::Full(trees) => trees,
-            crate::prover::trace_holder::TreesHolder::None => {
-                panic!("witness trace holder must cache trees for transcript cap extraction")
-            }
+    }
+    {
+        // Memory unified-cap H2D ran on h2d_stream pre-prove and is fenced by
+        // `memory_transfer.transfer.transferred`. The
+        // `memory_transfer.ensure_transferred(context)?` call near the top of
+        // `prove()` already records the exec-stream wait on that event.
+        let src_u32 = unsafe { memory_transfer.unified_device_cap().transmute::<u32>() };
+        debug_assert_eq!(src_u32.len(), memory_caps_total_u32);
+        memory_copy_async(
+            &mut d_transcript_input[offset_memory..offset_memory + memory_caps_total_u32],
+            src_u32,
+            stream,
+        )?;
+    }
+    {
+        // Witness unified cap was assembled inside stage 1 on exec_stream — same
+        // stream as the D2D below, so no event fence is needed.
+        let src_u32 = unsafe {
+            stage1_output
+                .witness_trace_holder
+                .unified_device_cap()
+                .transmute::<u32>()
         };
-        let mut src_ptrs: Vec<u64> = Vec::with_capacity(lde_factor);
-        let mut cap_words_per_coset = 0usize;
-        for stage1_pos in 0..lde_factor {
-            let natural_coset_index =
-                stage1_pos.reverse_bits() >> (usize::BITS - witness_log_lde_factor);
-            let cap_digests = crate::ops::blake2s::merkle_tree_cap(
-                &trees[natural_coset_index][..],
-                log_subtree_cap_size,
-            );
-            let cap_u32 = unsafe { cap_digests.transmute::<u32>() };
-            let cap_u32_len = cap_u32.len();
-            if cap_words_per_coset == 0 {
-                cap_words_per_coset = cap_u32_len;
-            } else {
-                debug_assert_eq!(cap_words_per_coset, cap_u32_len);
-            }
-            src_ptrs.push(cap_u32.as_ptr() as u64);
-        }
-        debug_assert_eq!(lde_factor * cap_words_per_coset, witness_caps_total_u32);
-        let host_ptrs = context.scheduler_host_from_slice(&src_ptrs)?;
-        let mut device_ptrs: DeviceAllocation<u64> =
-            context.alloc(lde_factor, AllocationPlacement::BestFit)?;
-        memory_copy_async(&mut device_ptrs, &host_ptrs, stream)?;
-        crate::ops::blake2s::gather_tree_caps(
-            &device_ptrs,
+        debug_assert_eq!(src_u32.len(), witness_caps_total_u32);
+        memory_copy_async(
             &mut d_transcript_input[offset_witness..offset_witness + witness_caps_total_u32],
-            cap_words_per_coset as u32,
+            src_u32,
             stream,
         )?;
-        drop(device_ptrs);
-        Some(host_ptrs)
-    } else {
-        None
-    };
+    }
 
     // -------------- Step 3: device-side commit_initial + draw 3 lookup challenges --------------
     // `commit_initial(input)` = Blake2s(input) from the IV — single kernel launch with no
@@ -1027,59 +934,19 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
     ranges.push(post_backward_handoff_range);
     callbacks.extend(post_backward_callbacks);
 
-    let mut whir_scheduled = if let Some(setup_transfer) = setup_transfer.as_mut() {
-        let setup_base_caps_keepalive = setup_transfer.trace_holder.take_tree_caps_host();
-        schedule_gpu_whir_fold_with_sources(
-            &mut stage1_output.memory_trace_holder,
-            memory_tree_caps_owned_for_whir,
-            &mut stage1_output.witness_trace_holder,
-            witness_base_caps_keepalive,
-            &mut setup_transfer.trace_holder,
-            setup_base_caps_keepalive,
-            backward_scheduled.final_device_claim_point(),
-            whir_schedule.base_lde_factor,
-            {
-                let backward_shared_state = backward_shared_state;
-                move || {
-                    let mut seed = current_backward_seed(backward_shared_state);
-                    draw_random_field_els::<BF, E4>(&mut seed, 1)[0]
-                }
-            },
-            whir_schedule.whir_steps_schedule.clone(),
-            whir_schedule.whir_queries_schedule.clone(),
-            whir_schedule.whir_steps_lde_factors.clone(),
-            whir_schedule.whir_pow_schedule.clone(),
-            {
-                let backward_shared_state = backward_shared_state;
-                move || {
-                    let mut seed = current_backward_seed(backward_shared_state);
-                    let _whir_batching_challenge = draw_random_field_els::<BF, E4>(&mut seed, 1);
-                    seed
-                }
-            },
-            whir_schedule.cap_size,
-            compiled_circuit.trace_len.trailing_zeros() as usize,
-            proof_slab.as_ref(),
-            &proof_layout,
-            Some(base_layer_claims_scheduled.take_pending_aggregation()),
-            context,
-        )?
-    } else {
-        let setup_trace_holder = synthetic_setup_trace_holder
-            .as_mut()
-            .expect("setup-less proof path must materialize a synthetic setup holder");
-        let setup_base_caps_keepalive = if setup_trace_holder.columns_count > 0 {
-            setup_trace_holder.take_tree_caps_host()
+    let mut whir_scheduled = {
+        let setup_trace_holder = if let Some(setup_transfer) = setup_transfer.as_mut() {
+            &mut setup_transfer.trace_holder
         } else {
-            Vec::new()
+            synthetic_setup_trace_holder
+                .as_mut()
+                .expect("setup-less proof path must materialize a synthetic setup holder")
         };
         schedule_gpu_whir_fold_with_sources(
             &mut stage1_output.memory_trace_holder,
-            memory_tree_caps_owned_for_whir,
+            memory_transfer.unified_device_cap(),
             &mut stage1_output.witness_trace_holder,
-            witness_base_caps_keepalive,
             setup_trace_holder,
-            setup_base_caps_keepalive,
             backward_scheduled.final_device_claim_point(),
             whir_schedule.base_lde_factor,
             {
@@ -1113,6 +980,7 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
 
     let backward_keepalive = backward_scheduled.into_host_keepalive();
     let setup_keepalive = setup_transfer.map(GpuGKRSetupTransfer::into_host_keepalive);
+    let memory_keepalive = memory_transfer.into_host_keepalive();
 
     // Terminal D2H of the whole proof slab into a pinned host mirror, scheduled
     // after all slab-write work above. The mirror drives the single host-side
@@ -1193,14 +1061,12 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
         keepalive: GpuGKRProofJobKeepalive {
             _stage1: stage1_output.into_keepalive(),
             _setup: setup_keepalive,
+            _memory: memory_keepalive,
             _forward_setup: forward_setup_keepalive,
             _backward: backward_keepalive,
             _base_layer_claims: base_layer_claims_scheduled,
             _whir: whir_scheduled,
             _initial_transcript_pre_setup_host: pre_setup_host,
-            _initial_transcript_memory_caps_host: memory_caps_host,
-            _setup_cap_gather_host_ptrs: setup_cap_gather_host_ptrs,
-            _witness_cap_gather_host_ptrs: witness_cap_gather_host_ptrs,
             _initial_inner_product_host_ptrs: initial_inner_product_host_ptrs,
             _proof_host_mirror: proof_host_mirror,
             _proof_slab: proof_slab,
@@ -1220,7 +1086,7 @@ pub(crate) fn prove_with_transfer_scheduling<'a, A: GoodAllocator + 'a>(
     // TODO(init-teardown-port): restore once path is re-enabled.
     // mut inits_and_teardowns_transfer: Option<InitsAndTeardownsTransfer<'a, A>>,
     mut tracing_data_transfer: TracingDataTransfer<'a, A>,
-    memory_tree_caps: &[MerkleTreeCapVarLength],
+    mut memory_transfer: GpuGKRMemoryTransfer<'a>,
     context: &ProverContext,
 ) -> CudaResult<GpuGKRProofJob<'a>> {
     let h2d_stream = context.get_h2d_stream();
@@ -1237,6 +1103,7 @@ pub(crate) fn prove_with_transfer_scheduling<'a, A: GoodAllocator + 'a>(
     //     inits_and_teardowns_transfer.schedule_transfer(context)?;
     // }
     tracing_data_transfer.schedule_transfer(context)?;
+    memory_transfer.schedule_transfer(context)?;
     transfer_range.end(h2d_stream)?;
 
     let mut proof_job = prove(
@@ -1249,7 +1116,7 @@ pub(crate) fn prove_with_transfer_scheduling<'a, A: GoodAllocator + 'a>(
         decoder_transfer,
         // TODO(init-teardown-port): restore `inits_and_teardowns_transfer,` arg.
         tracing_data_transfer,
-        memory_tree_caps,
+        memory_transfer,
         context,
     )?;
     proof_job.ranges.insert(0, transfer_range);
