@@ -613,8 +613,14 @@ fn recycle_snapshots<T: TracingType>(
     results: Sender<WorkerResult<A>>,
 ) {
     for snapshot in snapshots {
-        let Snapshot { index, trace, .. } = snapshot;
+        let Snapshot {
+            index,
+            trace,
+            trace_ranges,
+            ..
+        } = snapshot;
         free_trace_chunks.send(trace).unwrap();
+        drop(trace_ranges);
         results.send(WorkerResult::SnapshotReplayed(index)).unwrap();
     }
 }
