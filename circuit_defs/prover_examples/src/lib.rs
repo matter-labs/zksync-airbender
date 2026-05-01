@@ -15,9 +15,14 @@ pub mod unrolled;
 
 pub const LDE_FACTOR_LOG2: usize = 1;
 pub const NUM_FOLDINGS: usize = 5; // same for all circuits we use here
-pub const SECURITY_CONFIG: verifier_common::SizedProofSecurityConfig<NUM_FOLDINGS> =
-    verifier_common::SizedProofSecurityConfig::<NUM_FOLDINGS>::worst_case_config();
-pub const MEMORY_DELEGATION_POW_BITS: usize = verifier_common::MEMORY_DELEGATION_POW_BITS;
+
+// The prover examples always know the fixed FRI folding schedule up front,
+// so a marker-selected proof configuration is enough to avoid any crate-global
+// security singleton.
+fn proof_security_config<S: verifier_common::SecurityConfig<NUM_FOLDINGS>>(
+) -> prover::prover_stages::ProofSecurityConfig {
+    S::CONFIG.for_prover()
+}
 
 #[cfg(not(feature = "precheck_satisfied"))]
 const PRECHECK_SATISFIED: bool = false;

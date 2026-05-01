@@ -4,6 +4,33 @@
 #![feature(generic_const_exprs)]
 #![no_main]
 
+#[cfg(all(feature = "security_80", feature = "security_100"))]
+compile_error!("enable exactly one security selector: `security_80` or `security_100`");
+#[cfg(all(not(feature = "security_80"), not(feature = "security_100")))]
+compile_error!("enable exactly one security selector: `security_80` or `security_100`");
+
+// =============================================================================
+// Compiled Security Dispatch
+// =============================================================================
+//
+// The recursive verifier payloads are still selected by artifact name, so the CSR
+// witness format does not carry a runtime security selector yet. Keep that external
+// contract intact here by compiling one artifact per security level while routing
+// every workload through the migrated explicit-security verifier entrypoints.
+macro_rules! dispatch_compiled_security {
+    ($security_80:expr, $security_100:expr $(,)?) => {{
+        #[cfg(feature = "security_80")]
+        {
+            $security_80
+        }
+
+        #[cfg(feature = "security_100")]
+        {
+            $security_100
+        }
+    }};
+}
+
 #[no_mangle]
 extern "C" fn eh_personality() {}
 
@@ -162,7 +189,6 @@ fn print_panic(_info: &core::panic::PanicInfo) {
 #[cfg(feature = "verifier_tests")]
 unsafe fn workload() -> ! {
     use core::mem::MaybeUninit;
-    use verifier::verify;
     use verifier::ProofPublicInputs;
 
     use verifier::verifier_common::ProofOutput;
@@ -172,7 +198,12 @@ unsafe fn workload() -> ! {
         unsafe { MaybeUninit::uninit().assume_init() };
     let mut state_variables = ProofPublicInputs::uninit();
 
-    unsafe { verify(&mut proof_output, &mut state_variables) };
+    unsafe {
+        dispatch_compiled_security!(
+            verifier::verify_80(&mut proof_output, &mut state_variables),
+            verifier::verify_100(&mut proof_output, &mut state_variables),
+        )
+    };
 
     let mut output = [0u32; 16];
     for i in 0..16 {
@@ -203,15 +234,27 @@ unsafe fn workload() -> ! {
 
 #[cfg(feature = "recursion_in_unrolled_layer")]
 unsafe fn workload() -> ! {
-    let output =
-        full_statement_verifier::unrolled_proof_statement::verify_base_or_recursion_unrolled_circuits();
+    let output = dispatch_compiled_security!(
+        full_statement_verifier::unrolled_proof_statement::verify_base_or_recursion_unrolled_circuits(
+            full_statement_verifier::verifier_common::SecurityModel::Security80,
+        ),
+        full_statement_verifier::unrolled_proof_statement::verify_base_or_recursion_unrolled_circuits(
+            full_statement_verifier::verifier_common::SecurityModel::Security100,
+        ),
+    );
     riscv_common::zksync_os_finish_success_extended(&output);
 }
 
 #[cfg(feature = "recursion_in_unified_layer")]
 unsafe fn workload() -> ! {
-    let output =
-        full_statement_verifier::unified_circuit_statement::verify_unrolled_or_unified_circuit_recursion_layer();
+    let output = dispatch_compiled_security!(
+        full_statement_verifier::unified_circuit_statement::verify_unrolled_or_unified_circuit_recursion_layer(
+            full_statement_verifier::verifier_common::SecurityModel::Security80,
+        ),
+        full_statement_verifier::unified_circuit_statement::verify_unrolled_or_unified_circuit_recursion_layer(
+            full_statement_verifier::verifier_common::SecurityModel::Security100,
+        ),
+    );
     riscv_common::zksync_os_finish_success_extended(&output);
 }
 

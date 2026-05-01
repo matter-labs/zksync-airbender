@@ -1,12 +1,19 @@
 use super::*;
 use crate::concrete::VERIFIER_COMPILED_LAYOUT;
 
-pub(crate) unsafe fn precompute_for_consistency_checks(
-    skeleton: &ProofSkeletonInstance,
+pub(crate) unsafe fn precompute_for_consistency_checks<S>(
+    skeleton: &ProofSkeletonInstance<S>,
     deep_poly_alpha: &Mersenne31Quartic,
     powers_of_deep_quotient_challenge: &mut [Mersenne31Quartic;
              NUM_OPENINGS_AT_Z + NUM_OPENINGS_AT_Z_OMEGA],
-) -> (Mersenne31Quartic, Mersenne31Quartic) {
+) -> (Mersenne31Quartic, Mersenne31Quartic)
+where
+    S: verifier_common::SecurityConfig<NUM_FRI_STEPS>,
+    [(); Geometry::<S>::TOTAL_FRI_ORACLES_PATHS_LENGTH]:,
+    [(); Geometry::<S>::TOTAL_FRI_LEAFS_SIZES]:,
+    [(); Geometry::<S>::NUM_FRI_STEPS_WITH_ORACLES]:,
+    [(); Geometry::<S>::LAST_FRI_STEP_LEAFS_TOTAL_SIZE_PER_COSET]:,
+{
     let mut precompute_with_evals_at_z = Mersenne31Quartic::ZERO;
     let mut precompute_with_evals_at_z_omega = Mersenne31Quartic::ZERO;
     let mut current = Mersenne31Quartic::ONE;
@@ -31,11 +38,18 @@ pub(crate) unsafe fn precompute_for_consistency_checks(
     (precompute_with_evals_at_z, precompute_with_evals_at_z_omega)
 }
 
-pub(crate) unsafe fn precompute_for_consistency_checks_with_fma(
-    skeleton: &ProofSkeletonInstance,
+pub(crate) unsafe fn precompute_for_consistency_checks_with_fma<S>(
+    skeleton: &ProofSkeletonInstance<S>,
     deep_poly_alpha: &Mersenne31Quartic,
     extra_factor_for_accumulation_at_z_omega: &mut Mersenne31Quartic,
-) -> (Mersenne31Quartic, Mersenne31Quartic) {
+) -> (Mersenne31Quartic, Mersenne31Quartic)
+where
+    S: verifier_common::SecurityConfig<NUM_FRI_STEPS>,
+    [(); Geometry::<S>::TOTAL_FRI_ORACLES_PATHS_LENGTH]:,
+    [(); Geometry::<S>::TOTAL_FRI_LEAFS_SIZES]:,
+    [(); Geometry::<S>::NUM_FRI_STEPS_WITH_ORACLES]:,
+    [(); Geometry::<S>::LAST_FRI_STEP_LEAFS_TOTAL_SIZE_PER_COSET]:,
+{
     // here we should inverse the Horner rule (walk backwards)
     let num_evals_at_z = skeleton.openings_at_z.len();
 
@@ -75,17 +89,24 @@ pub(crate) unsafe fn precompute_for_consistency_checks_with_fma(
     (precompute_with_evals_at_z, precompute_with_evals_at_z_omega)
 }
 
-pub(crate) unsafe fn accumulate_over_row_for_consistency_check(
+pub(crate) unsafe fn accumulate_over_row_for_consistency_check<S>(
     precompute_with_evals_at_z: Mersenne31Quartic,
     precompute_with_evals_at_z_omega: Mersenne31Quartic,
-    query: &QueryValuesInstance,
+    query: &QueryValuesInstance<S>,
     powers_of_deep_quotient_challenge: &[Mersenne31Quartic;
          NUM_OPENINGS_AT_Z + NUM_OPENINGS_AT_Z_OMEGA],
     divisor_for_z: &Mersenne31Quartic,
     divisor_for_z_omega: &Mersenne31Quartic,
     tau_in_domain_by_half: &Mersenne31Complex,
     tau_in_domain_by_half_inversed: &Mersenne31Complex,
-) -> Mersenne31Quartic {
+) -> Mersenne31Quartic
+where
+    S: verifier_common::SecurityConfig<NUM_FRI_STEPS>,
+    [(); Geometry::<S>::TOTAL_FRI_ORACLES_PATHS_LENGTH]:,
+    [(); Geometry::<S>::TOTAL_FRI_LEAFS_SIZES]:,
+    [(); Geometry::<S>::NUM_FRI_STEPS_WITH_ORACLES]:,
+    [(); Geometry::<S>::LAST_FRI_STEP_LEAFS_TOTAL_SIZE_PER_COSET]:,
+{
     // now we can do consistency check
     let mut accumulated_at_z = Mersenne31Quartic::ZERO;
 
@@ -203,17 +224,24 @@ pub(crate) unsafe fn accumulate_over_row_for_consistency_check(
     expected_value
 }
 
-pub(crate) unsafe fn accumulate_over_row_for_consistency_check_with_fma(
+pub(crate) unsafe fn accumulate_over_row_for_consistency_check_with_fma<S>(
     precompute_with_evals_at_z: Mersenne31Quartic,
     precompute_with_evals_at_z_omega: Mersenne31Quartic,
-    query: &QueryValuesInstance,
+    query: &QueryValuesInstance<S>,
     deep_poly_alpha: &Mersenne31Quartic,
     extra_factor_for_accumulation_at_z_omega: &Mersenne31Quartic,
     divisor_for_z: &Mersenne31Quartic,
     divisor_for_z_omega: &Mersenne31Quartic,
     tau_in_domain_by_half: &Mersenne31Complex,
     tau_in_domain_by_half_inversed: &Mersenne31Complex,
-) -> Mersenne31Quartic {
+) -> Mersenne31Quartic
+where
+    S: verifier_common::SecurityConfig<NUM_FRI_STEPS>,
+    [(); Geometry::<S>::TOTAL_FRI_ORACLES_PATHS_LENGTH]:,
+    [(); Geometry::<S>::TOTAL_FRI_LEAFS_SIZES]:,
+    [(); Geometry::<S>::NUM_FRI_STEPS_WITH_ORACLES]:,
+    [(); Geometry::<S>::LAST_FRI_STEP_LEAFS_TOTAL_SIZE_PER_COSET]:,
+{
     assert!(Mersenne31Quartic::CAN_PROJECT_FROM_BASE);
 
     // now we can do consistency check

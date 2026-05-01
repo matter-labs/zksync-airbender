@@ -20,7 +20,7 @@ log = { workspace = true }
 serde = { workspace = true }
 sha3 = { workspace = true }
 serde_json = "*"
-full_statement_verifier = { path = "../full_statement_verifier", default-features = false }
+full_statement_verifier = { path = "../full_statement_verifier", default-features = false, features = ["verifiers", "replace_csr", "security_80", "security_100"] }
 prover_examples = { path = "../circuit_defs/prover_examples", default-features = false, optional = true }
 
 prover = { workspace = true, optional = true, features = ["prover"] }
@@ -33,30 +33,6 @@ prover_examples = { path = "../circuit_defs/prover_examples" }
 serial_test = "3"
 
 [features]
-security_80 = [
-    "verifier_common/security_80",
-    "full_statement_verifier/security_80",
-    "prover_examples/security_80",
-    "gpu_prover?/security_80",
-]
-security_100 = [
-    "verifier_common/security_100",
-    "full_statement_verifier/security_100",
-    "prover_examples/security_100",
-    "gpu_prover?/security_100",
-]
-verifier_80 = [
-    "security_80",
-    "full_statement_verifier/verifiers",
-    "full_statement_verifier/replace_csr",
-    "prover_examples/verifiers",
-]
-verifier_100 = [
-    "security_100",
-    "full_statement_verifier/verifiers",
-    "full_statement_verifier/replace_csr",
-    "prover_examples/verifiers",
-]
 prover = ["prover_examples"]
 verifier_binaries = []
 # Will evaluate quotient on main domain for debug
@@ -64,6 +40,6 @@ debug_satisfiable = ["prover_examples/debug_satisfiable"]
 # Will perform satisfiability tests on witness
 precheck_satisfied = ["prover_examples/precheck_satisfied"]
 # debug = ["prover_examples/precheck_satisfied", "prover_examples/debug_satisfiable"]
-default = ["verifier_80", "prover"]
+default = ["prover"]
 # default = ["prover"]
 gpu_prover = ["prover", "dep:prover", "dep:gpu_prover"]

@@ -58,7 +58,7 @@ unified_verifier_only = [
 ]
 unified_verifier_only_security_80 = [
     "unified_verifier_only",
-    "verifier_common/security_80", 
+    "verifier_common/security_80",
     "blake2_with_compression_verifier/security_80",
     "unified_reduced_machine_verifier/security_80"
 ]

@@ -7,6 +7,8 @@ fn main() {}
 mod tests {
     #![expect(unused_variables)] // TODO: Remove unused variables
 
+    const SECURITY: verifier_common::SecurityModel = verifier_common::SecurityModel::Security80;
+
     use execution_utils::setups::prover::prover_stages::unrolled_prover::UnrolledModeProof;
     use execution_utils::setups::prover::prover_stages::Proof;
     use execution_utils::setups::prover::worker::Worker;
@@ -32,6 +34,21 @@ mod tests {
     use std::fs::File;
     use std::io::{Read, Write};
     use std::path::Path;
+    use verifier_common::security_80::Security80Marker;
+    type TestExecutionProver = ExecutionProver<Security80Marker>;
+
+    // These tests intentionally stay on the 80-bit fixture path for now.
+    fn execution_prover(configuration: ExecutionProverConfiguration) -> TestExecutionProver {
+        assert_eq!(SECURITY, verifier_common::SecurityModel::Security80);
+        ExecutionProver::<Security80Marker>::with_configuration_80(configuration)
+    }
+
+    fn recursion_artifact_path(
+        recursion: execution_utils::RecursionLayer,
+        artifact: execution_utils::RecursionArtifact,
+    ) -> &'static str {
+        execution_utils::recursion_artifact_path(SECURITY, recursion, artifact)
+    }
 
     #[test]
     fn prove_single_block() {
@@ -78,7 +95,7 @@ mod tests {
             host_allocators_per_device_count: 128,
             ..Default::default()
         };
-        let mut prover = ExecutionProver::with_configuration(configuration);
+        let mut prover = execution_prover(configuration);
         prover.add_binary(
             0,
             ExecutionKind::Unrolled,
@@ -132,6 +149,7 @@ mod tests {
             ..Default::default()
         };
         let prover = UnrolledProver::new(
+            SECURITY,
             &app_path.to_string(),
             configuration,
             UnrolledProverLevel::RecursionUnified,
@@ -174,7 +192,7 @@ mod tests {
         //     .unwrap();
         println!("Computing proof");
 
-        let mut prover = ExecutionProver::with_configuration(Default::default());
+        let mut prover = execution_prover(Default::default());
         prover.add_binary(
             0,
             ExecutionKind::Unrolled,
@@ -234,7 +252,7 @@ mod tests {
         }
         println!("Verifying GPU proof...");
         let result = execution_utils::unrolled::verify_unrolled_layer_proof(
-            &gpu_proof, &setup, &layouts, true,
+            &gpu_proof, &setup, &layouts, true, SECURITY,
         )
         .expect("is valid proof");
         assert_eq!(result.iter().all(|el| *el == 0), false);
@@ -265,18 +283,24 @@ mod tests {
         );
         let source = QuasiUARTSource::new_with_reads(witness);
 
-        let (binary, binary_u32) = read_binary(Path::new(
-            "../tools/verifier/recursion_in_unrolled_layer.bin",
-        ));
-        let (padded_binary, padded_binary_u32) = read_and_pad_binary(Path::new(
-            "../tools/verifier/recursion_in_unrolled_layer.bin",
-        ));
-        let (text, text_u32) = read_binary(Path::new(
-            "../tools/verifier/recursion_in_unrolled_layer.text",
-        ));
-        let (padded_text, padded_text_u32) = read_and_pad_binary(Path::new(
-            "../tools/verifier/recursion_in_unrolled_layer.text",
-        ));
+        let (binary, binary_u32) = read_binary(Path::new(recursion_artifact_path(
+            execution_utils::RecursionLayer::Unrolled,
+            execution_utils::RecursionArtifact::Bin,
+        )));
+        let (padded_binary, padded_binary_u32) =
+            read_and_pad_binary(Path::new(recursion_artifact_path(
+                execution_utils::RecursionLayer::Unrolled,
+                execution_utils::RecursionArtifact::Bin,
+            )));
+        let (text, text_u32) = read_binary(Path::new(recursion_artifact_path(
+            execution_utils::RecursionLayer::Unrolled,
+            execution_utils::RecursionArtifact::Txt,
+        )));
+        let (padded_text, padded_text_u32) =
+            read_and_pad_binary(Path::new(recursion_artifact_path(
+                execution_utils::RecursionLayer::Unrolled,
+                execution_utils::RecursionArtifact::Txt,
+            )));
 
         info!("Computing setup");
         let setup = execution_utils::unrolled::compute_setup_for_machine_configuration::<
@@ -296,7 +320,7 @@ mod tests {
         )
         .unwrap();
 
-        let mut prover = ExecutionProver::with_configuration(Default::default());
+        let mut prover = execution_prover(Default::default());
         prover.add_binary(
             0,
             ExecutionKind::Unrolled,
@@ -369,7 +393,7 @@ mod tests {
 
         println!("Verifying GPU proof...");
         let result = execution_utils::unrolled::verify_unrolled_layer_proof(
-            &gpu_proof, &setup, &layouts, false,
+            &gpu_proof, &setup, &layouts, false, SECURITY,
         )
         .expect("is valid proof");
         assert_eq!(result.iter().all(|el| *el == 0), false);
@@ -403,18 +427,24 @@ mod tests {
         );
         let source = QuasiUARTSource::new_with_reads(witness);
 
-        let (binary, binary_u32) = read_binary(Path::new(
-            "../tools/verifier/recursion_in_unified_layer.bin",
-        ));
-        let (padded_binary, padded_binary_u32) = read_and_pad_binary(Path::new(
-            "../tools/verifier/recursion_in_unified_layer.bin",
-        ));
-        let (text, text_u32) = read_binary(Path::new(
-            "../tools/verifier/recursion_in_unified_layer.text",
-        ));
-        let (padded_text, padded_text_u32) = read_and_pad_binary(Path::new(
-            "../tools/verifier/recursion_in_unified_layer.text",
-        ));
+        let (binary, binary_u32) = read_binary(Path::new(recursion_artifact_path(
+            execution_utils::RecursionLayer::Unified,
+            execution_utils::RecursionArtifact::Bin,
+        )));
+        let (padded_binary, padded_binary_u32) =
+            read_and_pad_binary(Path::new(recursion_artifact_path(
+                execution_utils::RecursionLayer::Unified,
+                execution_utils::RecursionArtifact::Bin,
+            )));
+        let (text, text_u32) = read_binary(Path::new(recursion_artifact_path(
+            execution_utils::RecursionLayer::Unified,
+            execution_utils::RecursionArtifact::Txt,
+        )));
+        let (padded_text, padded_text_u32) =
+            read_and_pad_binary(Path::new(recursion_artifact_path(
+                execution_utils::RecursionLayer::Unified,
+                execution_utils::RecursionArtifact::Txt,
+            )));
 
         println!("Computing setup");
         let setup =
@@ -437,7 +467,7 @@ mod tests {
 
         println!("Computing proof");
 
-        let mut prover = ExecutionProver::with_configuration(Default::default());
+        let mut prover = execution_prover(Default::default());
         prover.add_binary(
             0,
             ExecutionKind::Unified,
@@ -484,6 +514,7 @@ mod tests {
             source,
             1 << 30,
             &worker,
+            SECURITY,
         );
 
         cpu_proof.recursion_chain_hash = Some(hash_chain);
@@ -518,7 +549,7 @@ mod tests {
 
         println!("Verifying GPU proof...");
         let result = execution_utils::unified_circuit::verify_proof_in_unified_layer(
-            &gpu_proof, &setup, &layouts, false,
+            &gpu_proof, &setup, &layouts, false, SECURITY,
         )
         .expect("is valid proof");
         assert_eq!(result.iter().all(|el| *el == 0), false);
@@ -553,18 +584,24 @@ mod tests {
         );
         let source = QuasiUARTSource::new_with_reads(witness);
 
-        let (binary, binary_u32) = read_binary(Path::new(
-            "../tools/verifier/recursion_in_unified_layer.bin",
-        ));
-        let (padded_binary, padded_binary_u32) = read_and_pad_binary(Path::new(
-            "../tools/verifier/recursion_in_unified_layer.bin",
-        ));
-        let (text, text_u32) = read_binary(Path::new(
-            "../tools/verifier/recursion_in_unified_layer.text",
-        ));
-        let (padded_text, padded_text_u32) = read_and_pad_binary(Path::new(
-            "../tools/verifier/recursion_in_unified_layer.text",
-        ));
+        let (binary, binary_u32) = read_binary(Path::new(recursion_artifact_path(
+            execution_utils::RecursionLayer::Unified,
+            execution_utils::RecursionArtifact::Bin,
+        )));
+        let (padded_binary, padded_binary_u32) =
+            read_and_pad_binary(Path::new(recursion_artifact_path(
+                execution_utils::RecursionLayer::Unified,
+                execution_utils::RecursionArtifact::Bin,
+            )));
+        let (text, text_u32) = read_binary(Path::new(recursion_artifact_path(
+            execution_utils::RecursionLayer::Unified,
+            execution_utils::RecursionArtifact::Txt,
+        )));
+        let (padded_text, padded_text_u32) =
+            read_and_pad_binary(Path::new(recursion_artifact_path(
+                execution_utils::RecursionLayer::Unified,
+                execution_utils::RecursionArtifact::Txt,
+            )));
 
         println!("Computing setup");
         let setup =
@@ -584,7 +621,7 @@ mod tests {
 
         println!("Computing proof");
 
-        let mut prover = ExecutionProver::with_configuration(Default::default());
+        let mut prover = execution_prover(Default::default());
         prover.add_binary(
             0,
             ExecutionKind::Unified,
@@ -631,6 +668,7 @@ mod tests {
             source,
             1 << 30,
             &worker,
+            SECURITY,
         );
 
         cpu_proof.recursion_chain_hash = Some(hash_chain);
@@ -662,7 +700,7 @@ mod tests {
 
         println!("Verifying GPU proof...");
         let result = execution_utils::unified_circuit::verify_proof_in_unified_layer(
-            &gpu_proof, &setup, &layouts, false,
+            &gpu_proof, &setup, &layouts, false, SECURITY,
         )
         .expect("is valid proof");
         assert_eq!(result.iter().all(|el| *el == 0), false);
