@@ -307,12 +307,12 @@ pub fn flatten_proof_into_responses_for_unrolled_recursion(
     responses
 }
 
-#[cfg(any(feature = "verifier_80", feature = "verifier_100"))]
 pub fn verify_unrolled_layer_proof(
     proof: &UnrolledProgramProof,
     setup: &UnrolledProgramSetup,
     compiled_layouts: &CompiledCircuitsSet,
     is_base_layer: bool,
+    security: verifier_common::SecurityModel,
 ) -> Result<[u32; 16], ()> {
     for (k, v) in proof.circuit_families_proofs.iter() {
         println!("{} proofs for family {}", v.len(), k);
@@ -333,7 +333,7 @@ pub fn verify_unrolled_layer_proof(
             let it = responses.into_iter();
             prover::nd_source_std::set_iterator(it);
 
-            let regs = full_statement_verifier::unrolled_proof_statement::verify_base_or_recursion_unrolled_circuits();
+            let regs = full_statement_verifier::unrolled_proof_statement::verify_base_or_recursion_unrolled_circuits(security);
 
             regs
         }).map_err(|_| ());
@@ -350,7 +350,7 @@ pub fn verify_unrolled_layer_proof(
                 let it = responses.into_iter();
                 prover::nd_source_std::set_iterator(it);
 
-                let regs = full_statement_verifier::unrolled_proof_statement::verify_base_or_recursion_unrolled_circuits();
+                let regs = full_statement_verifier::unrolled_proof_statement::verify_base_or_recursion_unrolled_circuits(security);
 
                 regs
             })
@@ -371,6 +371,7 @@ pub fn prove_unrolled_for_machine_configuration_into_program_proof<C: MachineCon
     non_determinism: impl riscv_transpiler::vm::NonDeterminismCSRSource,
     ram_bound: usize,
     worker: &prover::worker::Worker,
+    security: verifier_common::SecurityModel,
 ) -> UnrolledProgramProof {
     use riscv_transpiler::common_constants::ROM_WORD_SIZE;
 
@@ -384,6 +385,7 @@ pub fn prove_unrolled_for_machine_configuration_into_program_proof<C: MachineCon
         non_determinism,
         ram_bound,
         &worker,
+        security,
     );
 
     let (
@@ -418,6 +420,7 @@ pub fn prove_unrolled_with_replayer_for_machine_configuration<C: MachineConfig>(
     non_determinism: impl riscv_transpiler::vm::NonDeterminismCSRSource,
     ram_bound: usize,
     worker: &prover::worker::Worker,
+    security: verifier_common::SecurityModel,
 ) -> (
     BTreeMap<u8, Vec<UnrolledModeProof>>,
     Vec<UnrolledModeProof>,
@@ -452,21 +455,42 @@ pub fn prove_unrolled_with_replayer_for_machine_configuration<C: MachineConfig>(
         register_final_state,
         (final_pc, final_timestamp),
         pow_challenge,
-    ) = prover_examples::unrolled::prove_unrolled_execution_with_replayer::<
-        C,
-        Global,
-        ROM_SECOND_WORD_BITS,
-    >(
-        cycles_bound,
-        &binary_image,
-        &text_section,
-        non_determinism,
-        &families_precomps,
-        &inits_and_teardowns_precomps,
-        &delegation_precomputations,
-        ram_bound,
-        worker,
-    );
+    ) = match security {
+        verifier_common::SecurityModel::Security80 => {
+            prover_examples::unrolled::prove_unrolled_execution_with_replayer_80::<
+                C,
+                Global,
+                ROM_SECOND_WORD_BITS,
+            >(
+                cycles_bound,
+                &binary_image,
+                &text_section,
+                non_determinism,
+                &families_precomps,
+                &inits_and_teardowns_precomps,
+                &delegation_precomputations,
+                ram_bound,
+                worker,
+            )
+        }
+        verifier_common::SecurityModel::Security100 => {
+            prover_examples::unrolled::prove_unrolled_execution_with_replayer_100::<
+                C,
+                Global,
+                ROM_SECOND_WORD_BITS,
+            >(
+                cycles_bound,
+                &binary_image,
+                &text_section,
+                non_determinism,
+                &families_precomps,
+                &inits_and_teardowns_precomps,
+                &delegation_precomputations,
+                ram_bound,
+                worker,
+            )
+        }
+    };
 
     (
         main_proofs,
@@ -478,11 +502,12 @@ pub fn prove_unrolled_with_replayer_for_machine_configuration<C: MachineConfig>(
     )
 }
 
-#[cfg(all(any(feature = "verifier_80", feature = "verifier_100"), test))]
+#[cfg(test)]
 mod test {
     use test_utils::skip_if_ci;
 
     use super::*;
+    use crate::{recursion_artifact_path, RecursionArtifact, RecursionLayer};
     use std::path::Path;
 
     use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
@@ -509,6 +534,16 @@ mod test {
         }
     }
 
+    fn load_recursion_program(
+        security: verifier_common::SecurityModel,
+        recursion: RecursionLayer,
+    ) -> TestProgram {
+        load_test_program(
+            recursion_artifact_path(security, recursion, RecursionArtifact::Bin),
+            recursion_artifact_path(security, recursion, RecursionArtifact::Txt),
+        )
+    }
+
     fn prepare_unrolled_program<C: MachineConfig>(
         program: &TestProgram,
     ) -> (UnrolledProgramSetup, CompiledCircuitsSet) {
@@ -530,6 +565,7 @@ mod test {
         non_determinism_source: impl riscv_transpiler::vm::NonDeterminismCSRSource,
         ram_bound: usize,
         worker: &prover::worker::Worker,
+        security: verifier_common::SecurityModel,
     ) -> UnrolledProgramProof {
         prove_unrolled_for_machine_configuration_into_program_proof::<C>(
             &program.binary_image_u32,
@@ -538,6 +574,7 @@ mod test {
             non_determinism_source,
             ram_bound,
             worker,
+            security,
         )
     }
 
@@ -546,9 +583,16 @@ mod test {
         program_setup: &UnrolledProgramSetup,
         compiled_layouts: &CompiledCircuitsSet,
         is_base_layer: bool,
+        security: verifier_common::SecurityModel,
     ) -> [u32; 16] {
-        verify_unrolled_layer_proof(proof, program_setup, compiled_layouts, is_base_layer)
-            .expect("proof should verify")
+        verify_unrolled_layer_proof(
+            proof,
+            program_setup,
+            compiled_layouts,
+            is_base_layer,
+            security,
+        )
+        .expect("proof should verify")
     }
 
     fn expected_base_layer_output(
@@ -583,15 +627,22 @@ mod test {
 
         let (program_setup, compiled_layouts) =
             prepare_unrolled_program::<IMStandardIsaConfigWithUnsignedMulDiv>(&program);
+        let security = verifier_common::SecurityModel::Security80;
         let program_proof = prove_unrolled_test_program::<IMStandardIsaConfigWithUnsignedMulDiv>(
             &program,
             cycles_bound,
             non_determinism_source,
             ram_bound,
             &worker,
+            security,
         );
-        let output =
-            verify_unrolled_test_program(&program_proof, &program_setup, &compiled_layouts, true);
+        let output = verify_unrolled_test_program(
+            &program_proof,
+            &program_setup,
+            &compiled_layouts,
+            true,
+            security,
+        );
 
         assert_eq!(
             output,
@@ -618,15 +669,22 @@ mod test {
 
         let (program_setup, compiled_layouts) =
             prepare_unrolled_program::<IMStandardIsaConfigWithUnsignedMulDiv>(&program);
+        let security = verifier_common::SecurityModel::Security80;
         let program_proof = prove_unrolled_test_program::<IMStandardIsaConfigWithUnsignedMulDiv>(
             &program,
             cycles_bound,
             non_determinism_source,
             ram_bound,
             &worker,
+            security,
         );
-        let output =
-            verify_unrolled_test_program(&program_proof, &program_setup, &compiled_layouts, true);
+        let output = verify_unrolled_test_program(
+            &program_proof,
+            &program_setup,
+            &compiled_layouts,
+            true,
+            security,
+        );
 
         assert_eq!(
             output,
@@ -652,12 +710,14 @@ mod test {
 
         let (program_setup, compiled_layouts) =
             prepare_unrolled_program::<IMStandardIsaConfigWithUnsignedMulDiv>(&program);
+        let security = verifier_common::SecurityModel::Security80;
         let program_proof = prove_unrolled_test_program::<IMStandardIsaConfigWithUnsignedMulDiv>(
             &program,
             cycles_bound,
             non_determinism_source,
             ram_bound,
             &worker,
+            security,
         );
 
         let bigint_proofs = program_proof
@@ -688,15 +748,22 @@ mod test {
 
         let (program_setup, compiled_layouts) =
             prepare_unrolled_program::<IMStandardIsaConfigWithUnsignedMulDiv>(&program);
+        let security = verifier_common::SecurityModel::Security80;
         let program_proof = prove_unrolled_test_program::<IMStandardIsaConfigWithUnsignedMulDiv>(
             &program,
             cycles_bound,
             non_determinism_source,
             ram_bound,
             &worker,
+            security,
         );
-        let output =
-            verify_unrolled_test_program(&program_proof, &program_setup, &compiled_layouts, true);
+        let output = verify_unrolled_test_program(
+            &program_proof,
+            &program_setup,
+            &compiled_layouts,
+            true,
+            security,
+        );
 
         assert_eq!(
             output,
@@ -723,20 +790,19 @@ mod test {
 
         let (base_program_setup, base_compiled_layouts) =
             prepare_unrolled_program::<IMStandardIsaConfigWithUnsignedMulDiv>(&base_program);
+        let security = verifier_common::SecurityModel::Security80;
         let base_program_proof = prove_unrolled_test_program::<IMStandardIsaConfigWithUnsignedMulDiv>(
             &base_program,
             base_cycles_bound,
             base_non_determinism_source,
             base_ram_bound,
             &worker,
+            security,
         );
 
         // Then feed that proof into the checked-in recursion verifier binary and prove
         // that program through the same replayer/transpiler path used by the current stack.
-        let recursion_program = load_test_program(
-            "../tools/verifier/recursion_in_unrolled_layer.bin",
-            "../tools/verifier/recursion_in_unrolled_layer.text",
-        );
+        let recursion_program = load_recursion_program(security, RecursionLayer::Unrolled);
         let recursion_cycles_bound = 1 << 26;
         let recursion_ram_bound = 1 << 30;
         let recursion_input = flatten_proof_into_responses_for_unrolled_recursion(
@@ -754,6 +820,7 @@ mod test {
             &base_program_setup,
             &base_compiled_layouts,
             true,
+            security,
         );
         let (previous_chain_hash, previous_chain_preimage) =
             UnrolledProgramSetup::begin_recursion_chain(&base_program_setup.end_params);
@@ -770,6 +837,7 @@ mod test {
                 recursion_non_determinism_source,
                 recursion_ram_bound,
                 &worker,
+                security,
             );
         recursion_program_proof.recursion_chain_hash = Some(previous_chain_hash);
         recursion_program_proof.recursion_chain_preimage = Some(previous_chain_preimage);
@@ -779,6 +847,7 @@ mod test {
             &recursion_program_setup,
             &recursion_compiled_layouts,
             false,
+            security,
         );
 
         let mut expected_result = expected_base_output;

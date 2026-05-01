@@ -7,16 +7,42 @@ use crate::statement_common::{
 use common_constants::{INITIAL_PC, INITIAL_TIMESTAMP};
 use verifier_common::{cs::definitions::split_timestamp, DefaultNonDeterminismSource};
 
-pub const REDUCED_UNIFIED_CIRCUIT_VERIFIER_PTR: VerifierFunctionPointer<
+// ==============================================================================
+// Security-Aware Unified Verifier Dispatch
+// ==============================================================================
+//
+// Unified recursion only has one main verifier crate, so the migration here is
+// just an explicit runtime branch that selects the already-migrated child
+// verifier wrapper matching the requested proof security.
+
+pub const REDUCED_UNIFIED_CIRCUIT_VERIFIER_PTR_80: VerifierFunctionPointer<
     CAP_SIZE,
     NUM_COSETS,
     1,
     1,
     0,
     1,
-> = unified_reduced_machine_verifier::verify;
+> = unified_reduced_machine_verifier::verify_80;
+pub const REDUCED_UNIFIED_CIRCUIT_VERIFIER_PTR_100: VerifierFunctionPointer<
+    CAP_SIZE,
+    NUM_COSETS,
+    1,
+    1,
+    0,
+    1,
+> = unified_reduced_machine_verifier::verify_100;
 pub const REDUCED_UNIFIED_CIRCUIT_CAPACITY: u32 =
     (unified_reduced_machine_verifier::concrete::size_constants::TRACE_LEN - 1) as u32;
+
+#[inline(always)]
+pub const fn reduced_unified_circuit_verifier_ptr(
+    security: verifier_common::SecurityModel,
+) -> VerifierFunctionPointer<CAP_SIZE, NUM_COSETS, NUM_DELEGATION_CHALLENGES, 1, 0, 1> {
+    match security {
+        verifier_common::SecurityModel::Security80 => REDUCED_UNIFIED_CIRCUIT_VERIFIER_PTR_80,
+        verifier_common::SecurityModel::Security100 => REDUCED_UNIFIED_CIRCUIT_VERIFIER_PTR_100,
+    }
+}
 
 /// Unified circuit inherits PC + timestamp permutation technique from unrolled ones,
 /// but also keeps inits and teardowns in the one an only circuit
@@ -39,6 +65,7 @@ pub unsafe fn verify_unified_circuit_statement<const BASE_LAYER: bool>(
         &[MerkleTreeCap<CAP_SIZE>; NUM_COSETS],
         VerifierFunctionPointer<CAP_SIZE, NUM_COSETS, NUM_DELEGATION_CHALLENGES, 0, 0, 0>,
     )],
+    security: verifier_common::SecurityModel,
 ) -> [u32; 16] {
     // we should in parallel verify proofs, and drag along the transcript to assert equality of challenges
     let mut transcript = Blake2sBufferingTranscript::new();
@@ -264,10 +291,12 @@ pub unsafe fn verify_unified_circuit_statement<const BASE_LAYER: bool>(
     let pow_challenge_high = verifier_common::DefaultNonDeterminismSource::read_word();
     let pow_challenge = (pow_challenge_high as u64) << 32 | (pow_challenge_low as u64);
 
+    let memory_delegation_pow_bits = security.memory_delegation_pow_bits();
+
     let expected_challenges =
         ExternalChallenges::draw_from_transcript_seed_with_delegation_and_state_permutation(
             memory_seed,
-            MEMORY_DELEGATION_POW_BITS,
+            memory_delegation_pow_bits,
             pow_challenge,
         );
 
@@ -411,19 +440,24 @@ pub unsafe fn verify_unified_circuit_statement<const BASE_LAYER: bool>(
     output
 }
 
-pub fn verify_unified_circuit_recursion_layer() -> [u32; 16] {
+pub fn verify_unified_circuit_recursion_layer(
+    security: verifier_common::SecurityModel,
+) -> [u32; 16] {
     unsafe {
         let main_setup = read_setups::<DefaultNonDeterminismSource, 1>();
         verify_unified_circuit_statement::<false>(
             &main_setup[0],
             REDUCED_UNIFIED_CIRCUIT_CAPACITY,
-            REDUCED_UNIFIED_CIRCUIT_VERIFIER_PTR,
-            RECURSION_LAYER_CIRCUITS_VERIFICATION_PARAMETERS,
+            reduced_unified_circuit_verifier_ptr(security),
+            recursion_layer_circuits_verification_parameters(security),
+            security,
         )
     }
 }
 
-pub fn verify_unrolled_or_unified_circuit_recursion_layer() -> [u32; 16] {
+pub fn verify_unrolled_or_unified_circuit_recursion_layer(
+    security: verifier_common::SecurityModel,
+) -> [u32; 16] {
     // we just branch
     let op_type = DefaultNonDeterminismSource::read_word();
     use crate::definitions::*;
@@ -431,7 +465,7 @@ pub fn verify_unrolled_or_unified_circuit_recursion_layer() -> [u32; 16] {
         OP_VERIFY_UNROLLED_RECURSION_LAYER_IN_UNIFIED_CIRCUIT => {
             #[cfg(feature = "verifiers")]
             {
-                crate::unrolled_proof_statement::verify_unrolled_recursion_layer()
+                crate::unrolled_proof_statement::verify_unrolled_recursion_layer(security)
             }
             #[cfg(not(feature = "verifiers"))]
             {
@@ -439,7 +473,7 @@ pub fn verify_unrolled_or_unified_circuit_recursion_layer() -> [u32; 16] {
             }
         }
         OP_VERIFY_UNIFIED_RECURSION_LAYER_IN_UNIFIED_CIRCUIT => {
-            verify_unified_circuit_recursion_layer()
+            verify_unified_circuit_recursion_layer(security)
         }
         _ => {
             panic!("Unknown op");

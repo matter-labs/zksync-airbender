@@ -4,23 +4,21 @@
 
 ## Build
 
-Default build (`security_80`, verification included):
+Default build:
 
 ```bash
 cargo build -p cli
 ```
 
-Build with `security_100`:
-
-```bash
-cargo build -p cli --no-default-features --features security_100
-```
+The default CLI build supports both 80-bit and 100-bit security.
 
 Build with GPU proving support:
 
 ```bash
-cargo build -p cli --features gpu
+cargo build -p cli --features "gpu"
 ```
+
+The proof security level is selected at runtime with `--security-level 80|100`.
 
 ## Commands
 
@@ -42,6 +40,7 @@ Base layer proof on CPU:
 ```bash
 cargo run --release -p cli -- prove \
   --bin examples/basic_fibonacci/app.bin \
+  --security-level 80 \
   --target base \
   --backend cpu \
   --output-dir output \
@@ -53,6 +52,7 @@ Recursion-unified proof on CPU (`recursion-unified` is the default target):
 ```bash
 cargo run --release -p cli -- prove \
   --bin examples/basic_fibonacci/app.bin \
+  --security-level 80 \
   --backend cpu \
   --output-dir output \
   --output-file proof.json
@@ -61,8 +61,9 @@ cargo run --release -p cli -- prove \
 Base layer proof on GPU:
 
 ```bash
-cargo run --release -p cli --features gpu -- prove \
+cargo run --release -p cli --features "gpu" -- prove \
   --bin examples/basic_fibonacci/app.bin \
+  --security-level 80 \
   --target base \
   --backend gpu \
   --output-dir output \
@@ -80,7 +81,7 @@ cargo run --release -p cli -- \
 
 Verification checks:
 
-- security level compatibility (`artifact.security_level` vs build features),
+- security level consistency inside the artifact and the selected recursion layer,
 - program hash binding (`program_bin_keccak`, `program_text_keccak`),
 - recursion chain hash consistency (for recursion targets),
 - proof validity in the selected layer.
@@ -93,6 +94,7 @@ and only then continue into recursion:
 ```bash
 cargo run --release -p cli -- prove \
   --bin examples/basic_fibonacci/app.bin \
+  --security-level 80 \
   --target base \
   --output-dir output \
   --output-file base.json
@@ -118,6 +120,7 @@ cargo run --release -p cli -- verify \
 ```bash
 cargo run --release -p cli -- prove-batch \
   --bin examples/basic_fibonacci/app.bin \
+  --security-level 80 \
   --input-file input/a.hex \
   --input-file input/b.hex \
   --input-type hex \

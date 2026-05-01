@@ -7,7 +7,7 @@ use clap::{Parser, Subcommand, ValueEnum};
 use cli_lib::prover_utils::{
     default_backend_for_build, deserialize_from_file, serialize_to_file, u32_from_hex_string,
     CpuConfig, GpuConfig, ProgramProver, ProgramProverConfig, ProgramSource, ProofArtifact,
-    ProofTarget, ProverBackend,
+    ProofTarget, ProverBackend, SecurityLevel,
 };
 use execution_utils::setups::read_binary;
 use reqwest::blocking::Client;
@@ -73,6 +73,8 @@ enum Commands {
         bin: String,
         #[arg(long)]
         text: Option<String>,
+        #[arg(long, value_enum, default_value = "80")]
+        security_level: SecurityLevel,
         #[clap(flatten)]
         input: InputConfig,
         #[arg(long, default_value = "output")]
@@ -102,6 +104,8 @@ enum Commands {
         bin: String,
         #[arg(long)]
         text: Option<String>,
+        #[arg(long, value_enum, default_value = "80")]
+        security_level: SecurityLevel,
         #[arg(long)]
         input_file: Vec<String>,
         #[arg(long, value_enum, default_value = "hex")]
@@ -241,6 +245,7 @@ fn parse_input_data(
 }
 
 fn make_prover_config(
+    security_level: SecurityLevel,
     target: ProofTarget,
     backend: Option<ProverBackend>,
     cpu_cycles_bound: usize,
@@ -249,6 +254,7 @@ fn make_prover_config(
     gpu_replay_threads: usize,
 ) -> ProgramProverConfig {
     ProgramProverConfig {
+        security_level,
         target,
         backend: backend.unwrap_or_else(default_backend_for_build),
         cpu: CpuConfig {
@@ -284,6 +290,7 @@ fn main() {
         Commands::Prove {
             bin,
             text,
+            security_level,
             input,
             output_dir,
             output_file,
@@ -301,6 +308,7 @@ fn main() {
 
             let source = ProgramSource::from_paths(bin, text);
             let prover_config = make_prover_config(
+                security_level,
                 target,
                 backend,
                 cpu_cycles_bound,
@@ -320,6 +328,7 @@ fn main() {
         Commands::ProveBatch {
             bin,
             text,
+            security_level,
             input_file,
             input_type,
             output_dir,
@@ -333,6 +342,7 @@ fn main() {
         } => {
             let source = ProgramSource::from_paths(bin, text);
             let prover_config = make_prover_config(
+                security_level,
                 target,
                 backend,
                 cpu_cycles_bound,
@@ -391,7 +401,9 @@ fn main() {
         } => {
             let input_artifact: ProofArtifact = deserialize_from_file(&proof);
             let source = ProgramSource::from_paths(bin, text);
+            // Continuation inherits the security schedule from the persisted artifact.
             let prover_config = make_prover_config(
+                input_artifact.security_level,
                 target,
                 Some(ProverBackend::Cpu),
                 cpu_cycles_bound,

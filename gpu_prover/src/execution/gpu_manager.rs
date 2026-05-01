@@ -9,15 +9,18 @@ use crossbeam_utils::thread::{scope, Scope};
 use itertools::Itertools;
 use log::{error, info, trace};
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::marker::PhantomData;
 use std::process::exit;
 use std::thread;
+use verifier_common::SecurityMarker;
 
-pub struct GpuManager {
+pub struct GpuManager<S: SecurityMarker> {
     wait_group: Option<WaitGroup>,
     batches_sender: Option<Sender<GpuWorkBatch>>,
+    marker: PhantomData<S>,
 }
 
-impl GpuManager {
+impl<S: SecurityMarker> GpuManager<S> {
     pub fn new(
         initialized_wait_group: WaitGroup, // wait group is a synchronization mechanism to signal that all GPU workers are initialized and ready to process requests
         prover_context_config: ProverContextConfig,
@@ -28,7 +31,7 @@ impl GpuManager {
         let wait_group_clone = wait_group.clone();
         thread::spawn(move || {
             let result = scope(|s| {
-                gpu_manager(
+                gpu_manager::<S>(
                     initialized_wait_group,
                     prover_context_config,
                     batches_receiver,
@@ -45,6 +48,7 @@ impl GpuManager {
         Self {
             wait_group: Some(wait_group),
             batches_sender: Some(batches_sender),
+            marker: PhantomData,
         }
     }
 
@@ -53,7 +57,7 @@ impl GpuManager {
     }
 }
 
-impl Drop for GpuManager {
+impl<S: SecurityMarker> Drop for GpuManager<S> {
     fn drop(&mut self) {
         drop(self.batches_sender.take().unwrap());
         trace!("GPU_MANAGER waiting for all workers to finish");
@@ -61,7 +65,7 @@ impl Drop for GpuManager {
         trace!("GPU_MANAGER all workers finished");
     }
 }
-fn gpu_manager(
+fn gpu_manager<S: SecurityMarker>(
     initialized_wait_group: WaitGroup,
     prover_context_config: ProverContextConfig,
     batches_receiver: Receiver<GpuWorkBatch>,
@@ -79,7 +83,7 @@ fn gpu_manager(
         worker_senders.push(request_sender);
         worker_receivers.push(result_receiver);
         worker_queues.push(VecDeque::from([None, None]));
-        let gpu_worker_func = get_gpu_worker_func(
+        let gpu_worker_func = get_gpu_worker_func::<S>(
             device_id,
             prover_context_config,
             worker_initialized_sender.clone(),

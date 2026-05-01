@@ -19,6 +19,9 @@ pub mod unrolled_proof_statement;
 #[cfg(any(feature = "verifiers", feature = "unified_verifier_only"))]
 pub mod statement_common;
 
+#[cfg(test)]
+mod tests;
+
 #[cfg(any(feature = "verifiers", feature = "unified_verifier_only"))]
 mod verifier_imports {
     pub(super) use super::constants::*;
@@ -52,7 +55,10 @@ pub const MAX_CYCLES: u64 = const {
     max_cycles
 };
 
-pub const MEMORY_DELEGATION_POW_BITS: usize = verifier_common::MEMORY_DELEGATION_POW_BITS;
+pub const MEMORY_DELEGATION_POW_BITS_80: usize =
+    verifier_common::security_80::MEMORY_DELEGATION_POW_BITS;
+pub const MEMORY_DELEGATION_POW_BITS_100: usize =
+    verifier_common::security_100::MEMORY_DELEGATION_POW_BITS;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct InitAndTeardownTuple {
