@@ -1,5 +1,6 @@
 use crate::allocator::host::ConcurrentStaticHostAllocator;
 
+pub mod cpu_pipeline_model;
 mod cpu_worker;
 mod gpu_manager;
 mod gpu_worker;

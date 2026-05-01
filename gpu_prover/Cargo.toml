@@ -66,3 +66,7 @@ harness = false
 [[bench]]
 name = "other"
 harness = false
+
+[[bench]]
+name = "cpu_pipeline"
+harness = false

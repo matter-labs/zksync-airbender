@@ -216,6 +216,7 @@ pub(crate) fn run_replayer<T: TracingType>(
             &mut tracer,
         );
         let elapsed = instant.elapsed();
+        drop(tracer);
         free_trace_chunks.send(trace).unwrap();
         assert_eq!(state.pc, final_state.pc);
         assert_eq!(state.timestamp, final_state.timestamp);
@@ -236,7 +237,7 @@ pub(crate) fn run_replayer<T: TracingType>(
     trace!("BATCH[{batch_id}] REPLAYER[{worker_id}] finished");
 }
 
-fn collect_inits_and_teardowns(
+pub(super) fn collect_inits_and_teardowns(
     holder: &mut MemoryHolder,
     worker: &Worker,
 ) -> Vec<Vec<LazyInitAndTeardown>> {
@@ -283,7 +284,7 @@ fn collect_inits_and_teardowns(
     chunks
 }
 
-fn get_inits_and_teardowns_chunks(
+pub(super) fn get_inits_and_teardowns_chunks(
     values: Vec<Vec<LazyInitAndTeardown>>,
     partition_size: usize,
     free_allocators: Receiver<A>,
