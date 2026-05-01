@@ -38,6 +38,11 @@ pub enum CpuPipelineMode {
     /// Run JIT simulation, snapshot production, trace-range allocation, and init/teardown
     /// collection. Snapshots are recycled without replaying instructions.
     SimulationOnly,
+    /// Prototype upper-bound mode: replay normal VM rows, but skip materializing delegation rows.
+    ///
+    /// TODO(codex): If this shows a meaningful win, replace this benchmark-only shortcut with
+    /// actual direct delegation trace emission from the JIT simulator path.
+    FullWithoutDelegationReplay,
     /// Run the full CPU producer side used by GPU proving: simulation, replay, trace-row
     /// materialization, and init/teardown collection. GPU work is replaced by a null sink.
     Full,
@@ -295,7 +300,9 @@ impl CpuPipelineModel {
                     )
                 });
             }
-            CpuPipelineMode::Full => {
+            CpuPipelineMode::Full | CpuPipelineMode::FullWithoutDelegationReplay => {
+                let skip_delegation_trace_rows =
+                    self.config.mode == CpuPipelineMode::FullWithoutDelegationReplay;
                 for worker_id in 0..self.config.replay_worker_threads_count {
                     let instruction_tape = self.instruction_tape.clone();
                     let snapshot_receiver = snapshot_receiver.clone();
@@ -313,6 +320,7 @@ impl CpuPipelineModel {
                             work_results_sender,
                             abort,
                             timings,
+                            skip_delegation_trace_rows,
                         )
                     });
                 }
@@ -398,7 +406,10 @@ fn validate_config(config: CpuPipelineModelConfig) {
         config.memory_holders_count > 0,
         "CPU pipeline model needs at least one memory holder"
     );
-    if config.mode == CpuPipelineMode::Full {
+    if matches!(
+        config.mode,
+        CpuPipelineMode::Full | CpuPipelineMode::FullWithoutDelegationReplay
+    ) {
         assert!(
             config.replay_worker_threads_count > 0,
             "full CPU pipeline mode needs at least one replay worker"
@@ -555,6 +566,7 @@ fn run_replayer_for_model<T: TracingType>(
     results: Sender<WorkerResult<A>>,
     abort: Arc<AtomicBool>,
     timings: Arc<Mutex<CpuPipelineTimings>>,
+    skip_delegation_trace_rows: bool,
 ) {
     let mut total_elapsed = Duration::default();
     let mut total_cycles = 0usize;
@@ -582,7 +594,11 @@ fn run_replayer_for_model<T: TracingType>(
             chunks: &mut [(&trace.values[..trace_len], &trace.timestamps[..trace_len])],
         };
         let mut nd = QuasiUARTSource::new_with_reads(vec![]);
-        let mut tracer = T::Tracer::new(trace_ranges);
+        let mut tracer = if skip_delegation_trace_rows {
+            T::Tracer::new_without_delegations(trace_ranges)
+        } else {
+            T::Tracer::new(trace_ranges)
+        };
         let instant = Instant::now();
         ReplayerVM::<T::Counters>::replay_basic_unrolled(
             &mut state,

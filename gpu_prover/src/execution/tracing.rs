@@ -145,9 +145,17 @@ pub(crate) trait Tracer: WitnessTracer {
     type Ranges: DataTraceRanges + Send;
 
     fn new(trace_ranges: Self::Ranges) -> Self;
+
+    fn new_without_delegations(trace_ranges: Self::Ranges) -> Self
+    where
+        Self: Sized,
+    {
+        Self::new(trace_ranges)
+    }
 }
 
 pub(crate) struct SplitTracer {
+    trace_delegations: bool,
     blake_calls: TracerRanges<Blake2sRoundFunctionDelegationWitness>,
     bigint_calls: TracerRanges<BigintDelegationWitness>,
     keccak_calls: TracerRanges<KeccakSpecial5DelegationWitness>,
@@ -164,6 +172,7 @@ impl Tracer for SplitTracer {
 
     fn new(trace_ranges: Self::Ranges) -> Self {
         Self {
+            trace_delegations: true,
             blake_calls: TracerRanges::new(trace_ranges.blake_calls),
             bigint_calls: TracerRanges::new(trace_ranges.bigint_calls),
             keccak_calls: TracerRanges::new(trace_ranges.keccak_calls),
@@ -175,6 +184,12 @@ impl Tracer for SplitTracer {
             subword_size_mem_family: TracerRanges::new(trace_ranges.subword_size_mem_family),
         }
     }
+
+    fn new_without_delegations(trace_ranges: Self::Ranges) -> Self {
+        let mut tracer = Self::new(trace_ranges);
+        tracer.trace_delegations = false;
+        tracer
+    }
 }
 
 impl WitnessTracer for SplitTracer {
@@ -185,7 +200,7 @@ impl WitnessTracer for SplitTracer {
 
     #[inline(always)]
     fn needs_tracing_data_for_delegation_type<const DELEGATION_TYPE: u16>(&self) -> bool {
-        true
+        self.trace_delegations
     }
 
     #[inline(always)]
@@ -240,6 +255,9 @@ impl WitnessTracer for SplitTracer {
             VARIABLE_OFFSETS,
         >,
     ) {
+        if !self.trace_delegations {
+            return;
+        }
         unsafe {
             if const { DELEGATION_TYPE == BLAKE2S_DELEGATION_CSR_REGISTER as u16 } {
                 self.blake_calls.write_type_unchecked(data)
@@ -255,6 +273,7 @@ impl WitnessTracer for SplitTracer {
 }
 
 pub(crate) struct UnifiedTracer {
+    trace_delegations: bool,
     blake_calls: TracerRanges<Blake2sRoundFunctionDelegationWitness>,
     bigint_calls: TracerRanges<BigintDelegationWitness>,
     keccak_calls: TracerRanges<KeccakSpecial5DelegationWitness>,
@@ -266,11 +285,18 @@ impl Tracer for UnifiedTracer {
 
     fn new(trace_ranges: Self::Ranges) -> Self {
         Self {
+            trace_delegations: true,
             blake_calls: TracerRanges::new(trace_ranges.blake_calls),
             bigint_calls: TracerRanges::new(trace_ranges.bigint_calls),
             keccak_calls: TracerRanges::new(trace_ranges.keccak_calls),
             cycles: TracerRanges::new(trace_ranges.cycles),
         }
+    }
+
+    fn new_without_delegations(trace_ranges: Self::Ranges) -> Self {
+        let mut tracer = Self::new(trace_ranges);
+        tracer.trace_delegations = false;
+        tracer
     }
 }
 
@@ -282,7 +308,7 @@ impl WitnessTracer for UnifiedTracer {
 
     #[inline(always)]
     fn needs_tracing_data_for_delegation_type<const DELEGATION_TYPE: u16>(&self) -> bool {
-        true
+        self.trace_delegations
     }
 
     #[inline(always)]
@@ -323,6 +349,9 @@ impl WitnessTracer for UnifiedTracer {
             VARIABLE_OFFSETS,
         >,
     ) {
+        if !self.trace_delegations {
+            return;
+        }
         unsafe {
             if const { DELEGATION_TYPE == BLAKE2S_DELEGATION_CSR_REGISTER as u16 } {
                 self.blake_calls.write_type_unchecked(data)

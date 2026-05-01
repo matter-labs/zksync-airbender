@@ -39,8 +39,10 @@ unsafe impl<I: ContextImpl> Sync for JittedCode<I> {}
 
 // On the stack we will have a structure that will allows us to pass in a single pointer all the global machine state.
 
-// We need to maintain extra information, that are counters of circuit families and delegations - those are also saved in 128-bit vector registers.
-// We need at most 6 circuit families and 3 delegation types, and we assume u32 counters at most in realistic scenarios. So we reserve xmm8 and xmm9
+// We need to maintain extra information, that are counters of circuit families and delegations.
+// The hot circuit-family counters live in xmm8-xmm13 while JIT code is executing, and are
+// materialized into MachineState before callbacks can observe them. The colder delegation
+// counters remain memory-backed because they are only touched around delegation calls.
 
 // Timestamps of registers will be held on the stack, as well as a pointer to the non-determinism servant. We will later on restructure
 // RAM and non-determinism traits to use separate "memory peek" trait, that only allows to view values, but not affect them or timestamps
@@ -51,7 +53,8 @@ unsafe impl<I: ContextImpl> Sync for JittedCode<I> {}
 
 // The prologue saves all callee-saved registers
 // This allows us to use all but rbp and rsp
-// Using rbp would mess with debuggers
+// RBP is available for a hot guest register as long as we save and restore the
+// caller's value manually instead of using it as a frame pointer.
 // Using rsp would cause signal handlers to write to some random location
 // instead of the stack.
 macro_rules! prologue {
@@ -59,8 +62,6 @@ macro_rules! prologue {
         dynasm!($ops
             // stack is 8 mod 16 here
             ; push rbp
-            ; mov rbp, rsp
-
             ; push rbx
             ; push r12
             ; push r13
@@ -83,9 +84,22 @@ macro_rules! epilogue {
             ; pop r13
             ; pop r12
             ; pop rbx
-            ; leave // movs RBP into RSP, and pops RBP
+            ; pop rbp
 
             ; ret
+        )
+    };
+}
+
+macro_rules! initialize_lazy_counter_increment {
+    ($ops:ident) => {
+        dynasm!($ops
+            // XMM3 is free because x12-x15 are mapped to host GPRs. Keep a
+            // [1, 0] vector around so hot counter increments stay register-only
+            // while preserving timestamp data packed into the high counter lanes.
+            ; pcmpeqd xmm3, xmm3
+            ; psrlq xmm3, 63
+            ; psrldq xmm3, 8
         )
     };
 }
@@ -179,6 +193,7 @@ macro_rules! save_machine_state {
             ; movdqu [rdx + 112], xmm7
 
             // Save RV registers that are mapped into X86 GPRs (x9-x15)
+            ; mov [rdx + (2 * 4 as i32)], ebp // x2 -> RBP
             ; mov [rdx + (9 * 4 as i32)], ebx // x9 -> RBX
             ; mov [rdx + (10 * 4 as i32)], r10d // x10 -> R10
             ; mov [rdx + (11 * 4 as i32)], r11d // x11 -> R11
@@ -189,7 +204,17 @@ macro_rules! save_machine_state {
 
             // put current timestamp (without assumptions about mod 4)
             ; mov [rdx + (MachineState::TIMESTAMP_OFFSET as i32)], r8
-        )
+
+            // Lazy hot counters are authoritative in XMMs during normal execution.
+            // Materialize them whenever MachineState becomes visible to Rust code.
+            ; movq [rdx + (MachineState::COUNTERS_OFFSET as i32) + 8 * 0], xmm8
+            ; movq [rdx + (MachineState::COUNTERS_OFFSET as i32) + 8 * 1], xmm9
+            ; movq [rdx + (MachineState::COUNTERS_OFFSET as i32) + 8 * 2], xmm10
+            ; movq [rdx + (MachineState::COUNTERS_OFFSET as i32) + 8 * 3], xmm11
+            ; movq [rdx + (MachineState::COUNTERS_OFFSET as i32) + 8 * 4], xmm12
+            ; movq [rdx + (MachineState::COUNTERS_OFFSET as i32) + 8 * 5], xmm13
+        );
+        materialize_lazy_register_timestamps(&mut $ops);
     }
 }
 
@@ -213,6 +238,7 @@ macro_rules! update_machine_state_post_call {
             ; mov r8, [rdx + (MachineState::TIMESTAMP_OFFSET as i32)]
 
             // Restore RV registers that are mapped into X86 GPRs (x9-x15)
+            ; mov ebp, [rdx + (2 * 4 as i32)]  // x2 -> RBP
             ; mov ebx, [rdx + (9 * 4 as i32)]  // x9 -> RBX
             ; mov r10d, [rdx + (10 * 4 as i32)]  // x10 -> R10
             ; mov r11d, [rdx + (11 * 4 as i32)]  // x11 -> R11
@@ -229,11 +255,93 @@ macro_rules! update_machine_state_post_call {
             ; movdqu xmm5, [rdx + 80]
             ; movdqu xmm6, [rdx + 96]
             ; movdqu xmm7, [rdx + 112]
+
+            ; movq xmm8, [rdx + (MachineState::COUNTERS_OFFSET as i32) + 8 * 0]
+            ; movq xmm9, [rdx + (MachineState::COUNTERS_OFFSET as i32) + 8 * 1]
+            ; movq xmm10, [rdx + (MachineState::COUNTERS_OFFSET as i32) + 8 * 2]
+            ; movq xmm11, [rdx + (MachineState::COUNTERS_OFFSET as i32) + 8 * 3]
+            ; movq xmm12, [rdx + (MachineState::COUNTERS_OFFSET as i32) + 8 * 4]
+            ; movq xmm13, [rdx + (MachineState::COUNTERS_OFFSET as i32) + 8 * 5]
+        );
+        reload_lazy_register_timestamps(&mut $ops);
+        dynasm!($ops
+            ;; initialize_lazy_counter_increment!($ops)
         )
     }
 }
 
 const SCRATCH_REGISTER: u8 = x64::Rq::RCX as u8;
+const LAZY_COUNTER_XMM_BASE: u8 = x64::Rx::XMM8 as u8;
+const LAZY_REGISTER_TIMESTAMP_REGISTERS: [u32; 10] = [0, 10, 11, 12, 2, 13, 14, 15, 8, 9];
+
+fn lazy_register_timestamp_location(register: u32) -> Option<(u8, i8)> {
+    use x64::Rx::*;
+
+    Some(match register {
+        0 => (XMM8 as u8, 1),
+        10 => (XMM9 as u8, 1),
+        11 => (XMM10 as u8, 1),
+        12 => (XMM11 as u8, 1),
+        2 => (XMM12 as u8, 1),
+        13 => (XMM13 as u8, 1),
+        14 => (XMM14 as u8, 0),
+        15 => (XMM14 as u8, 1),
+        8 => (XMM15 as u8, 0),
+        9 => (XMM15 as u8, 1),
+        _ => return None,
+    })
+}
+
+fn touch_register_timestamp(ops: &mut x64::Assembler, register: u32) {
+    assert!(register < 32);
+
+    if let Some((xmm_register, lane)) = lazy_register_timestamp_location(register) {
+        dynasm!(ops
+            ; pinsrq Rx(xmm_register), r8, lane
+        );
+    } else {
+        let offset = 8 * (register as i32) + MachineState::REGISTER_TIMESTAMPS_OFFSET as i32;
+        dynasm!(ops
+            ; mov [rsp + offset], r8
+        );
+    }
+}
+
+fn materialize_lazy_register_timestamps(ops: &mut x64::Assembler) {
+    for register in LAZY_REGISTER_TIMESTAMP_REGISTERS {
+        let (xmm_register, lane) = lazy_register_timestamp_location(register)
+            .expect("lazy timestamp register must be mapped");
+        let offset = 8 * (register as i32) + MachineState::REGISTER_TIMESTAMPS_OFFSET as i32;
+
+        if lane == 0 {
+            dynasm!(ops
+                ; movq [rdx + offset], Rx(xmm_register)
+            );
+        } else {
+            dynasm!(ops
+                ; pextrq [rdx + offset], Rx(xmm_register), lane
+            );
+        }
+    }
+}
+
+fn reload_lazy_register_timestamps(ops: &mut x64::Assembler) {
+    for register in LAZY_REGISTER_TIMESTAMP_REGISTERS {
+        let (xmm_register, lane) = lazy_register_timestamp_location(register)
+            .expect("lazy timestamp register must be mapped");
+        let offset = 8 * (register as i32) + MachineState::REGISTER_TIMESTAMPS_OFFSET as i32;
+
+        if lane == 0 {
+            dynasm!(ops
+                ; movq Rx(xmm_register), [rdx + offset]
+            );
+        } else {
+            dynasm!(ops
+                ; pinsrq Rx(xmm_register), [rdx + offset], lane
+            );
+        }
+    }
+}
 
 fn rv_to_gpr(x: u32) -> Option<u8> {
     use x64::Rq::*;
@@ -241,6 +349,7 @@ fn rv_to_gpr(x: u32) -> Option<u8> {
 
     Some(
         (match x {
+            2 => RBP,
             9 => RBX,
             10 => R10,
             11 => R11,
@@ -431,17 +540,158 @@ macro_rules! check_to_save_trace {
     };
 }
 
+const MAX_DEFERRED_TRACE_CHECK_EVENTS: usize = MAX_TRACE_CHUNK_LEN - TRACE_CHUNK_LEN;
+
+fn compute_trace_fast_block_starts(program: &[u32]) -> Vec<bool> {
+    let mut block_starts = vec![false; program.len()];
+    if block_starts.is_empty() {
+        return block_starts;
+    }
+    block_starts[0] = true;
+
+    let mark = |block_starts: &mut [bool], index: usize| {
+        if let Some(slot) = block_starts.get_mut(index) {
+            *slot = true;
+        }
+    };
+
+    for (i, &raw_instruction) in program.iter().enumerate() {
+        let pc = (i as u32) * 4;
+        let Ok(instruction) = riscv_decode::decode(raw_instruction) else {
+            mark(&mut block_starts, i);
+            mark(&mut block_starts, i + 1);
+            continue;
+        };
+
+        match instruction {
+            Instruction::Jal(parts) => {
+                mark(&mut block_starts, i);
+                mark(&mut block_starts, i + 1);
+
+                let jump_target = pc as i32 + sign_extend::<21>(parts.imm());
+                if jump_target >= 0 && jump_target % 4 == 0 {
+                    mark(&mut block_starts, (jump_target / 4) as usize);
+                }
+            }
+            Instruction::Jalr(parts) => {
+                mark(&mut block_starts, i);
+                mark(&mut block_starts, i + 1);
+
+                if parts.rs1() == 0 {
+                    let jump_target = sign_extend::<12>(parts.imm()) & !1;
+                    if jump_target >= 0 && jump_target % 4 == 0 {
+                        mark(&mut block_starts, (jump_target / 4) as usize);
+                    }
+                } else if let Some(&previous_instruction) =
+                    i.checked_sub(1).and_then(|j| program.get(j))
+                {
+                    mark_static_jalr_pair_target(
+                        &mut block_starts,
+                        previous_instruction,
+                        raw_instruction,
+                        (i - 1) as u32 * 4,
+                    );
+                }
+            }
+            Instruction::Beq(parts)
+            | Instruction::Bne(parts)
+            | Instruction::Blt(parts)
+            | Instruction::Bltu(parts)
+            | Instruction::Bge(parts)
+            | Instruction::Bgeu(parts) => {
+                mark(&mut block_starts, i);
+                mark(&mut block_starts, i + 1);
+
+                let jump_target = pc as i32 + sign_extend::<13>(parts.imm());
+                if jump_target >= 0 && jump_target % 4 == 0 {
+                    mark(&mut block_starts, (jump_target / 4) as usize);
+                }
+            }
+            Instruction::Csrrw(_) => {
+                // CSR callbacks can expose MachineState or mutate trace length.
+                // Keep them as single-instruction boundaries.
+                mark(&mut block_starts, i);
+                mark(&mut block_starts, i + 1);
+            }
+            _ => {}
+        }
+    }
+
+    block_starts
+}
+
+fn mark_static_jalr_pair_target(
+    block_starts: &mut [bool],
+    previous_instruction: u32,
+    jalr_instruction: u32,
+    previous_pc: u32,
+) {
+    use crate::ir::get_rd_bits;
+
+    let Ok(previous) = riscv_decode::decode(previous_instruction) else {
+        return;
+    };
+    let Ok(Instruction::Jalr(jalr)) = riscv_decode::decode(jalr_instruction) else {
+        return;
+    };
+
+    let rs1 = jalr.rs1();
+    let low = sign_extend::<12>(jalr.imm());
+    let target = match previous {
+        Instruction::Auipc(parts) if get_rd_bits(previous_instruction) == rs1 as u8 => {
+            previous_pc as i32 + parts.imm() as i32 + low
+        }
+        Instruction::Lui(parts) if get_rd_bits(previous_instruction) == rs1 as u8 => {
+            parts.imm() as i32 + low
+        }
+        Instruction::Addi(parts)
+            if get_rd_bits(previous_instruction) == rs1 as u8 && parts.rs1() == 0 =>
+        {
+            sign_extend::<12>(parts.imm()) + low
+        }
+        _ => return,
+    } & !1;
+
+    if target >= 0 && target % 4 == 0 {
+        if let Some(slot) = block_starts.get_mut((target / 4) as usize) {
+            *slot = true;
+        }
+    }
+}
+
 fn record_circuit_type(ops: &mut x64::Assembler, circuit_type: CounterType, by: u16) {
     assert!(by > 0);
     let x = circuit_type as u8;
+    let offset = 8 * (x as i32) + MachineState::COUNTERS_OFFSET as i32;
+
+    if x <= CounterType::MemSubword as u8 {
+        let counter_xmm = LAZY_COUNTER_XMM_BASE + x;
+
+        if by == 1 {
+            dynasm!(ops
+                ; paddq Rx(counter_xmm), xmm3
+            );
+        } else {
+            // Multi-cycle bumps only happen around delegation-style CSR instructions.
+            // Materialize through MachineState here instead of adding another scalar
+            // scratch-register convention to every normal instruction path.
+            dynasm!(ops
+                ; movq [rsp + offset], Rx(counter_xmm)
+                ; add QWORD [rsp + offset], by as i32
+                ; pinsrq Rx(counter_xmm), [rsp + offset], 0
+            );
+        }
+
+        return;
+    }
 
     if by == 1 {
         dynasm!(ops
-            ; inc QWORD [rsp + 8 * (x as i32) + (MachineState::COUNTERS_OFFSET as i32)]
+            ; inc QWORD [rsp + offset]
         );
     } else {
         dynasm!(ops
-            ; add QWORD [rsp + 8 * (x as i32) + (MachineState::COUNTERS_OFFSET as i32)], by as i32
+            ; add QWORD [rsp + offset], by as i32
         );
     }
 }
@@ -450,15 +700,15 @@ macro_rules! pre_bump_timestamp_and_touch {
     ($ops:ident, $d:expr, $r:expr) => {
         dynasm!($ops
             ; add r8, $d
-            ; mov [rsp + 8*($r as i32) + (MachineState::REGISTER_TIMESTAMPS_OFFSET as i32)], r8
         );
+        touch_register_timestamp(&mut $ops, $r as u32);
     };
 }
 
 macro_rules! touch_register_and_increment_timestamp {
     ($ops:ident, $r:expr) => {
+        touch_register_timestamp(&mut $ops, $r as u32);
         dynasm!($ops
-            ; mov [rsp + 8*($r as i32) + (MachineState::REGISTER_TIMESTAMPS_OFFSET as i32)], r8
             ; inc r8
         );
     };
@@ -466,8 +716,8 @@ macro_rules! touch_register_and_increment_timestamp {
 
 macro_rules! touch_register_and_bump_timestamp {
     ($ops:ident, $r:expr, $d:expr) => {
+        touch_register_timestamp(&mut $ops, $r as u32);
         dynasm!($ops
-            ; mov [rsp + 8*($r as i32) + (MachineState::REGISTER_TIMESTAMPS_OFFSET as i32)], r8
             ; add r8, $d
         );
     };
@@ -515,6 +765,32 @@ macro_rules! machine_state_store_pc {
     };
 }
 
+fn finish_deferred_trace_events(ops: &mut x64::Assembler, pending_events: &mut usize, pc: u32) {
+    if *pending_events == 0 {
+        return;
+    }
+
+    dynasm!(ops
+        ;; check_to_save_trace!(ops, pc)
+    );
+    *pending_events = 0;
+}
+
+fn record_deferred_trace_event(ops: &mut x64::Assembler, pending_events: &mut usize, pc: u32) {
+    dynasm!(ops
+        ; inc r9
+    );
+
+    *pending_events += 1;
+    assert!(*pending_events <= MAX_DEFERRED_TRACE_CHECK_EVENTS);
+
+    // TraceChunk has bounded overflow room. Once a straight-line run consumes
+    // that room, run the usual rare flush check before deferring more checks.
+    if *pending_events == MAX_DEFERRED_TRACE_CHECK_EVENTS {
+        finish_deferred_trace_events(ops, pending_events, pc);
+    }
+}
+
 macro_rules! emit_early_exit {
     ($ops:ident, $pc:expr, $bound:expr) => {
         dynasm!($ops
@@ -546,6 +822,8 @@ impl<I: ContextImpl> JittedCode<I> {
             ; ->start:
             ;; prologue!(ops)
             ; vzeroall
+            ;; initialize_lazy_counter_increment!(ops)
+            ; xor rbp, rbp
             ; xor rbx, rbx
             ; xor r10, r10
             ; xor r11, r11
@@ -579,6 +857,8 @@ impl<I: ContextImpl> JittedCode<I> {
         let instruction_labels = (0..program.len())
             .map(|_| ops.new_dynamic_label())
             .collect::<Vec<_>>();
+        let trace_fast_block_starts = compute_trace_fast_block_starts(program);
+        let mut pending_trace_events = 0usize;
 
         // Jump target array for Jalr - we will create them upfront, but track which are meaningful
         // Records the position of each RISC-V instruction relative to the start
@@ -597,6 +877,10 @@ impl<I: ContextImpl> JittedCode<I> {
         while i < program.len() {
             let raw_instruction = program[i];
             let pc = i as u32 * 4;
+
+            if trace_fast_block_starts[i] {
+                finish_deferred_trace_events(&mut ops, &mut pending_trace_events, pc);
+            }
 
             dynasm!(ops
                 ; => instruction_labels[i]
@@ -1255,7 +1539,7 @@ impl<I: ContextImpl> JittedCode<I> {
                 // NOTE: ONLY issue snapshotting after store!
                 if issue_snapshot {
                     let pc_for_trace = pc + 4;
-                    increment_trace!(ops, pc_for_trace);
+                    record_deferred_trace_event(&mut ops, &mut pending_trace_events, pc_for_trace);
                 }
 
                 i += 1;
@@ -1434,19 +1718,35 @@ impl<I: ContextImpl> JittedCode<I> {
                     // RDX is potentially taken by value, so can not use it
                     touch_register_and_increment_timestamp!(ops, parts.rs1());
                     touch_register_and_increment_timestamp!(ops, parts.rs2());
-                    dynasm!(ops
-                        // this sequence of operations is: read old value and timestamp, save it, write new value and timestamp
-                        ; push rbp
-                        ; mov ebp, DWORD [rsi + 4 * rax] // load old word(!) value into RAX
-                        ; mov BYTE [rsi + Rq(SCRATCH_REGISTER)], Rb(value) // store new value - just enough bytes
-                        ; push rdx
-                        ; mov rdx, [rsi + (MemoryHolder::TIMESTAMPS_OFFSET as i32) + 8 * rax] // read timestamp
-                        ; mov [rsi + (MemoryHolder::TIMESTAMPS_OFFSET as i32) + 8 * rax], r8 // update timestamp
-                        ; mov [rdi + r9 * 4], ebp // write old value into trace
-                        ; mov [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], rdx // write timestamp value into trace
-                        ; pop rdx
-                        ; pop rbp
-                    );
+                    if value == x64::Rq::RBP as u8 {
+                        dynasm!(ops
+                            // RBP carries guest x2, so keep it intact when x2 is the value
+                            // being stored. RAX is no longer needed after timestamp updates.
+                            ; mov edx, DWORD [rsi + 4 * rax] // load old word(!) value into RDX
+                            ; mov BYTE [rsi + Rq(SCRATCH_REGISTER)], Rb(value) // store new value - just enough bytes
+                            ; push rdx
+                            ; mov rdx, [rsi + (MemoryHolder::TIMESTAMPS_OFFSET as i32) + 8 * rax] // read timestamp
+                            ; mov [rsi + (MemoryHolder::TIMESTAMPS_OFFSET as i32) + 8 * rax], r8 // update timestamp
+                            ; mov eax, [rsp] // recover old word value from the stack
+                            ; mov [rdi + r9 * 4], eax // write old value into trace
+                            ; mov [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], rdx // write timestamp value into trace
+                            ; pop rdx
+                        );
+                    } else {
+                        dynasm!(ops
+                            // this sequence of operations is: read old value and timestamp, save it, write new value and timestamp
+                            ; push rbp
+                            ; mov ebp, DWORD [rsi + 4 * rax] // load old word(!) value into RAX
+                            ; mov BYTE [rsi + Rq(SCRATCH_REGISTER)], Rb(value) // store new value - just enough bytes
+                            ; push rdx
+                            ; mov rdx, [rsi + (MemoryHolder::TIMESTAMPS_OFFSET as i32) + 8 * rax] // read timestamp
+                            ; mov [rsi + (MemoryHolder::TIMESTAMPS_OFFSET as i32) + 8 * rax], r8 // update timestamp
+                            ; mov [rdi + r9 * 4], ebp // write old value into trace
+                            ; mov [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], rdx // write timestamp value into trace
+                            ; pop rdx
+                            ; pop rbp
+                        );
+                    }
                     bump_timestamp!(ops, 2);
                     record_circuit_type(&mut ops, CounterType::MemSubword, 1);
                     issue_snapshot = true;
@@ -1466,19 +1766,35 @@ impl<I: ContextImpl> JittedCode<I> {
                     // RDX is potentially taken by value, so can not use it
                     touch_register_and_increment_timestamp!(ops, parts.rs1());
                     touch_register_and_increment_timestamp!(ops, parts.rs2());
-                    dynasm!(ops
-                        // this sequence of operations is: read old value and timestamp, save it, write new value and timestamp
-                        ; push rbp
-                        ; mov ebp, DWORD [rsi + 4 * rax] // load old word(!) value into RAX
-                        ; mov WORD [rsi + Rq(SCRATCH_REGISTER)], Rw(value) // store new value - just enough bytes
-                        ; push rdx
-                        ; mov rdx, [rsi + (MemoryHolder::TIMESTAMPS_OFFSET as i32) + 8 * rax] // read timestamp
-                        ; mov [rsi + (MemoryHolder::TIMESTAMPS_OFFSET as i32) + 8 * rax], r8 // update timestamp
-                        ; mov [rdi + r9 * 4], ebp // write old value into trace
-                        ; mov [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], rdx // write timestamp value into trace
-                        ; pop rdx
-                        ; pop rbp
-                    );
+                    if value == x64::Rq::RBP as u8 {
+                        dynasm!(ops
+                            // RBP carries guest x2, so keep it intact when x2 is the value
+                            // being stored. RAX is no longer needed after timestamp updates.
+                            ; mov edx, DWORD [rsi + 4 * rax] // load old word(!) value into RDX
+                            ; mov WORD [rsi + Rq(SCRATCH_REGISTER)], Rw(value) // store new value - just enough bytes
+                            ; push rdx
+                            ; mov rdx, [rsi + (MemoryHolder::TIMESTAMPS_OFFSET as i32) + 8 * rax] // read timestamp
+                            ; mov [rsi + (MemoryHolder::TIMESTAMPS_OFFSET as i32) + 8 * rax], r8 // update timestamp
+                            ; mov eax, [rsp] // recover old word value from the stack
+                            ; mov [rdi + r9 * 4], eax // write old value into trace
+                            ; mov [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], rdx // write timestamp value into trace
+                            ; pop rdx
+                        );
+                    } else {
+                        dynasm!(ops
+                            // this sequence of operations is: read old value and timestamp, save it, write new value and timestamp
+                            ; push rbp
+                            ; mov ebp, DWORD [rsi + 4 * rax] // load old word(!) value into RAX
+                            ; mov WORD [rsi + Rq(SCRATCH_REGISTER)], Rw(value) // store new value - just enough bytes
+                            ; push rdx
+                            ; mov rdx, [rsi + (MemoryHolder::TIMESTAMPS_OFFSET as i32) + 8 * rax] // read timestamp
+                            ; mov [rsi + (MemoryHolder::TIMESTAMPS_OFFSET as i32) + 8 * rax], r8 // update timestamp
+                            ; mov [rdi + r9 * 4], ebp // write old value into trace
+                            ; mov [rdi + r9 * 8 + (TraceChunk::TIMESTAMPS_OFFSET as i32)], rdx // write timestamp value into trace
+                            ; pop rdx
+                            ; pop rbp
+                        );
+                    }
                     bump_timestamp!(ops, 2);
                     record_circuit_type(&mut ops, CounterType::MemSubword, 1);
                     issue_snapshot = true;
@@ -1636,6 +1952,11 @@ impl<I: ContextImpl> JittedCode<I> {
                                 3072 => {
                                     assert_eq!(raw_instruction, 0xc0001073);
                                     // csrrw x0, cycle, x0 is a canonical panic
+                                    finish_deferred_trace_events(
+                                        &mut ops,
+                                        &mut pending_trace_events,
+                                        pc,
+                                    );
                                     emit_execution_panic!(ops, pc);
                                     i += 1;
                                     continue;
@@ -1695,6 +2016,7 @@ impl<I: ContextImpl> JittedCode<I> {
                     // decoded-but-unsupported instructions such as fence-family ops,
                     // still gets compiled so dead code does not block proving setup,
                     // but any reachable unsupported opcode aborts at runtime.
+                    finish_deferred_trace_events(&mut ops, &mut pending_trace_events, pc);
                     emit_execution_panic!(ops, pc);
                     i += 1;
                     continue;
@@ -1704,10 +2026,16 @@ impl<I: ContextImpl> JittedCode<I> {
             // NOTE: again, all snapshotting should only happen after stores (mainly due to CSSRW for non-determinism)
             if issue_snapshot {
                 let pc_for_trace = pc + 4;
-                increment_trace!(ops, pc_for_trace);
+                record_deferred_trace_event(&mut ops, &mut pending_trace_events, pc_for_trace);
             }
         }
         assert_eq!(i, program.len());
+
+        finish_deferred_trace_events(
+            &mut ops,
+            &mut pending_trace_events,
+            (program.len() as u32) * 4,
+        );
 
         // if we even come here without exit condition - it's an error
         emit_runtime_error!(ops);

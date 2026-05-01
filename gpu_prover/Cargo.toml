@@ -57,6 +57,7 @@ env_logger = "0.11"
 era_criterion_cuda = "0.2"
 criterion = "0.5"
 serial_test = "3"
+bincode = { version = "2" }
 
 [[bench]]
 name = "blake2s"
