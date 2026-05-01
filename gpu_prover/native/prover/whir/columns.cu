@@ -33,19 +33,37 @@ EXTERN __global__ void ab_deserialize_whir_e4_columns_kernel(const bf *src, e4 *
   store<e4, st_modifier::cs>(dst, e4(coeffs), gid);
 }
 
-EXTERN __global__ void ab_accumulate_whir_base_columns_e4_kernel(const bf *values, const unsigned stride, const e4 *weights, const unsigned cols, e4 *result,
-                                                                 const unsigned rows) {
+constexpr unsigned TRACE_CHUNKS = 3;
+
+struct BaseColumnsBatchingMetadata {
+  const bf *values[TRACE_CHUNKS];
+  const e4 *weights[TRACE_CHUNKS];
+  const unsigned cols[TRACE_CHUNKS];
+  const unsigned strides[TRACE_CHUNKS];
+  e4 *result;
+  const unsigned rows;
+}
+
+EXTERN __global__ void ab_accumulate_whir_base_columns_e4_kernel(const BaseColumnsBatchingMetadata metadata) {
+  const unsigned rows = metadata.rows;
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
   if (gid >= rows)
     return;
 
-  e4 acc = load<e4, ld_modifier::cs>(result, gid);
-  for (unsigned col = 0; col < cols; ++col) {
-    const bf value = load<bf, ld_modifier::cs>(values, col * stride + gid);
-    const e4 weight = load<e4, ld_modifier::cs>(weights, col);
-    acc = e4::fma(weight, value, acc);
+  e4 acc{e4::zero()};
+  for (unsigned i = 0; i < TRACE_CHUNKS; i++) {
+    const bf *values = metadata.values[i];
+    const e4 *weights = metadata.weights[i];
+    const unsigned cols = metadata.cols[i];
+    const unsigned stride = metadata.strides[i];
+    for (unsigned col = 0; col < cols; ++col) {
+      const bf value = load<bf, ld_modifier::cs>(values, col * stride + gid);
+      const e4 weight = load<e4, ld_modifier::cs>(weights, col);
+      acc = e4::fma(weight, value, acc);
+    }
   }
-  store<e4, st_modifier::cs>(result, acc, gid);
+
+  store<e4, st_modifier::cs>(metadata.result, acc, gid);
 }
 
 } // namespace airbender::prover::whir

@@ -1133,10 +1133,10 @@ fn build_initial_batched_main_domain_poly_device_impl(
     setup_weights: &[E4],
     result: &mut DeviceSlice<E4>,
     mut upload_weights: impl FnMut(&mut DeviceSlice<E4>, &[E4], &ProverContext) -> CudaResult<()>,
+    use_hypercube_evals: bool,
     context: &ProverContext,
 ) -> CudaResult<Vec<DeviceAllocation<E4>>> {
     let stream = context.get_exec_stream();
-    set_to_zero(result, stream)?;
     let mut weight_buffers = Vec::with_capacity(3);
 
     for (trace_holder, weights) in [
@@ -1153,7 +1153,12 @@ fn build_initial_batched_main_domain_poly_device_impl(
         );
         let mut device_weights = context.alloc(weights.len(), AllocationPlacement::BestFit)?;
         upload_weights(&mut device_weights, weights, context)?;
-        let values = DeviceMatrix::new(trace_holder.get_evaluations(), result.len());
+        let values = if use_hypercube_evals {
+            // TODO: Ask Robert: prefer raw_hypercube_backing here?
+            DeviceMatrix::new(trace_holder.get_hypercube_evals(), result.len())
+        } else {
+            DeviceMatrix::new(trace_holder.get_evaluations(), result.len())
+        };
         accumulate_whir_base_columns(&values, &device_weights, result, stream)?;
         weight_buffers.push(device_weights);
     }
