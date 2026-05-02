@@ -11,12 +11,14 @@ use cli_lib::prover_utils::{
 };
 
 use cli_lib::vk::generate_vk;
+use core::panic;
 use execution_utils::{
-    generate_constants_for_binary, Machine, ProgramProof, RecursionStrategy,
-    VerifierCircuitsIdentifiers,
+    generate_constants_for_binary, generate_oracle_data_from_metadata_and_proof_list, Machine,
+    ProgramProof, ProofList, ProofMetadata, RecursionStrategy, VerifierCircuitsIdentifiers,
 };
 use reqwest::blocking::Client;
 use serde_json::Value;
+use std::io::Read;
 use std::path::Path;
 use std::{fs, io::Write, iter};
 
@@ -207,6 +209,14 @@ enum Commands {
         #[arg(long, value_enum, default_value = "use-reduced-log23-machine")]
         mode: RecursionStrategy,
     },
+
+    /// Take multiple proofs from files (and some other data) and combine into a single file that can be fed as input.
+    PrepareInputs {
+        #[arg(long, num_args = 1..)]
+        inputs: Vec<String>,
+        #[arg(long)]
+        output_file: String,
+    },
 }
 
 fn fetch_data_from_json_rpc(url: &str) -> Result<Option<String>, reqwest::Error> {
@@ -393,7 +403,17 @@ fn main() {
             first_metadata,
             second_metadata,
             output_file,
-        } => flatten_two(first_metadata, second_metadata, output_file),
+        } => prepare_inputs(
+            &vec![
+                format!(
+                    "{}",
+                    VerifierCircuitsIdentifiers::CombinedRecursionLayers as u32
+                ),
+                first_metadata.clone(),
+                second_metadata.clone(),
+            ],
+            output_file,
+        ),
         Commands::GenerateConstants {
             bin,
             universal_verifier,
@@ -411,6 +431,12 @@ fn main() {
 
             println!("End params: {:?}", end_params);
             println!("Aux values: {:?}", aux_values);
+        }
+        Commands::PrepareInputs {
+            inputs,
+            output_file,
+        } => {
+            prepare_inputs(inputs, output_file);
         }
     }
 }
@@ -572,22 +598,6 @@ fn flatten_all(input_metadata: &String, output_file: &String) {
     u32_to_file(output_file, &oracle);
 }
 
-fn flatten_two(first_metadata: &String, second_metadata: &String, output_file: &String) {
-    let (metadata, mut oracle) = generate_oracle_data_from_metadata(first_metadata);
-    let (metadata2, oracle2) = generate_oracle_data_from_metadata(second_metadata);
-
-    oracle.extend(oracle2);
-    assert!(metadata.reduced_proof_count > 0);
-    assert!(metadata2.reduced_proof_count > 0);
-
-    oracle.insert(
-        0,
-        VerifierCircuitsIdentifiers::CombinedRecursionLayers as u32,
-    );
-
-    u32_to_file(output_file, &oracle);
-}
-
 #[cfg(feature = "include_verifiers")]
 fn verify_all(metadata_path: &String) {
     let (metadata, oracle_data) = generate_oracle_data_from_metadata(metadata_path);
@@ -741,4 +751,51 @@ fn run_binary(
             }
         }
     }
+}
+
+// Takes multiple inputs - either numbers or files with ProofMetadata or ProgramProof.
+pub fn prepare_inputs(inputs: &Vec<String>, output_file: &String) {
+    let mut all_data = vec![];
+    for input in inputs {
+        // If input is a number, add it directly.
+        if let Ok(num) = input.parse::<u32>() {
+            all_data.push(num);
+            continue;
+        }
+        // Otherwise, treat it as a file name.
+        // First check if file exists
+        if !Path::new(input).exists() {
+            panic!("Input file {} does not exist", input);
+        }
+
+        // Try to decode as ProofMetadata first.
+
+        let mut src = std::fs::File::open(input).expect(&format!("{input}"));
+        // read file to string
+        let mut contents = String::new();
+        src.read_to_string(&mut contents)
+            .expect("Failed to read file");
+
+        if let Ok(metadata) = serde_json::from_str::<ProofMetadata>(&contents) {
+            let parent = Path::new(input).parent().unwrap();
+            println!("Guessing parent to be {:?}", parent);
+
+            let proof_list =
+                ProofList::load_from_directory(&parent.to_str().unwrap().to_string(), &metadata);
+            let oracle_data =
+                generate_oracle_data_from_metadata_and_proof_list(&metadata, &proof_list);
+            all_data.extend(oracle_data);
+        } else if let Ok(program_proof) = serde_json::from_str::<ProgramProof>(&contents) {
+            let (metadata, proof_list) = program_proof.to_metadata_and_proof_list();
+            let oracle_data =
+                generate_oracle_data_from_metadata_and_proof_list(&metadata, &proof_list);
+            all_data.extend(oracle_data);
+        } else {
+            panic!(
+                "Failed to parse input {} as either a number, ProofMetadata or ProgramProof",
+                input
+            );
+        }
+    }
+    u32_to_file(output_file, &all_data);
 }

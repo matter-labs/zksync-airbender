@@ -115,3 +115,14 @@ You can use the '--until' flag in the 'prove' command to have the system run it 
 
 Please see recursion.sh file in the main repo, if you want to do recursion manually.
 
+## Flattening
+
+Sometimes, you need to take multiple proofs, and join them together (for example for trying to bind two FRI proofs into one).
+
+CLI tool offers `prepare-inputs` method, that you can use, to merge u32 values and json files with proofs (both in program proof format and metadata format).
+
+```shell
+cargo run --release -- prepare-inputs --inputs 4  /tmp/proof_1.json /tmp/proof_2.json --output-file /tmp/merged
+```
+
+Such file, can be later used to feed as 'input' to another program.
