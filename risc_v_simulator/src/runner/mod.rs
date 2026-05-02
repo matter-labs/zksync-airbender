@@ -4,11 +4,13 @@ use crate::abstractions::memory::MemorySource;
 use crate::abstractions::memory::VectorMemoryImpl;
 use crate::abstractions::non_determinism::NonDeterminismCSRSource;
 use crate::abstractions::non_determinism::QuasiUARTSource;
+use crate::alternative_simulator;
 use crate::cycle::state::RiscV32MachineV1;
 use crate::cycle::state::StateTracer;
 use crate::cycle::IMStandardIsaConfig;
 use crate::cycle::MachineConfig;
 use crate::mmu::NoMMU;
+use crate::run_alternative_simulator;
 use crate::setup::BaselineWithND;
 use crate::setup::DefaultSetup;
 use crate::sim::BinarySource;
@@ -67,6 +69,12 @@ pub fn run_simple_with_entry_point_and_non_determimism_source_for_config<
     let mut sim = Simulator::<_, C>::new(config, setup);
 
     sim.run(|_, _| {}, |_, _| {})
+
+    /* let program = read_bin(&config.bin_path)
+    .into_iter()
+    .array_chunks()
+    .map(u32::from_le_bytes)
+    .collect::<Vec<_>>(); */
 }
 
 pub fn run_simple_for_num_cycles<S: NonDeterminismCSRSource<VectorMemoryImpl>, C: MachineConfig>(

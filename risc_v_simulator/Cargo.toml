@@ -25,6 +25,10 @@ rand = { workspace = true, features = ["std", "thread_rng", "std_rng"]}
 ruint = { version = "1.15", optional = true, default-features = false }
 serde = { workspace = true }
 
+# for compiling RISC-V
+dynasmrt = "3.2"
+riscv-decode = "0.2"
+
 [dev-dependencies]
 lib-rv32-asm = {git = "https://github.com/shamatar/lib-rv32.git" }
 

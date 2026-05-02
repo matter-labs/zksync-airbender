@@ -2,7 +2,7 @@ use std::fmt::Debug;
 
 use crate::abstractions::non_determinism::NonDeterminismCSRSource;
 use crate::abstractions::*;
-use crate::cycle::state::RiscV32State;
+use crate::cycle::state::NUM_REGISTERS;
 use crate::cycle::status_registers::TrapReason;
 use crate::mmu::MMUImplementation;
 
@@ -12,18 +12,15 @@ pub trait CustomCSRProcessor: 'static + Clone + Debug {
         M: MemorySource,
         TR: Tracer<C>,
         ND: NonDeterminismCSRSource<M>,
-        MMU: MMUImplementation<M, TR, C>,
         C: MachineConfig,
     >(
         &mut self,
-        state: &mut RiscV32State<C>,
+        registers: &mut [u32; NUM_REGISTERS],
         memory_source: &mut M,
         non_determinism_source: &mut ND,
         tracer: &mut TR,
-        mmu: &mut MMU,
         csr_index: u32,
         rs1_value: u32,
-        zimm: u32,
         ret_val: &mut u32,
         trap: &mut TrapReason,
     );
@@ -31,18 +28,15 @@ pub trait CustomCSRProcessor: 'static + Clone + Debug {
         M: MemorySource,
         TR: Tracer<C>,
         ND: NonDeterminismCSRSource<M>,
-        MMU: MMUImplementation<M, TR, C>,
         C: MachineConfig,
     >(
         &mut self,
-        state: &mut RiscV32State<C>,
+        registers: &mut [u32; NUM_REGISTERS],
         memory_source: &mut M,
         non_determinism_source: &mut ND,
         tracer: &mut TR,
-        mmu: &mut MMU,
         csr_index: u32,
         rs1_value: u32,
-        zimm: u32,
         trap: &mut TrapReason,
     );
 }
@@ -56,18 +50,15 @@ impl CustomCSRProcessor for NoExtraCSRs {
         M: MemorySource,
         TR: Tracer<C>,
         ND: NonDeterminismCSRSource<M>,
-        MMU: MMUImplementation<M, TR, C>,
         C: MachineConfig,
     >(
         &mut self,
-        _state: &mut RiscV32State<C>,
+        _registers: &mut [u32; NUM_REGISTERS],
         _memory_source: &mut M,
         _non_determinism_source: &mut ND,
         _tracer: &mut TR,
-        _mmu: &mut MMU,
         _csr_index: u32,
         _rs1_value: u32,
-        _zimm: u32,
         ret_val: &mut u32,
         trap: &mut TrapReason,
     ) {
@@ -80,18 +71,15 @@ impl CustomCSRProcessor for NoExtraCSRs {
         M: MemorySource,
         TR: Tracer<C>,
         ND: NonDeterminismCSRSource<M>,
-        MMU: MMUImplementation<M, TR, C>,
         C: MachineConfig,
     >(
         &mut self,
-        _state: &mut RiscV32State<C>,
+        _registers: &mut [u32; NUM_REGISTERS],
         _memory_source: &mut M,
         _non_determinism_source: &mut ND,
         _tracer: &mut TR,
-        _mmu: &mut MMU,
         _csr_index: u32,
         _rs1_value: u32,
-        _zimm: u32,
         trap: &mut TrapReason,
     ) {
         *trap = TrapReason::IllegalInstruction;

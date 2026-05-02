@@ -4,6 +4,7 @@
 #![feature(iter_array_chunks)]
 
 pub mod abstractions;
+mod alternative_simulator;
 pub mod cycle;
 pub mod mmio;
 pub mod mmu;
@@ -14,6 +15,8 @@ pub mod utils;
 
 #[cfg(feature = "delegation")]
 pub mod delegations;
+
+pub use alternative_simulator::run_alternative_simulator;
 
 #[cfg(test)]
 mod tests;
