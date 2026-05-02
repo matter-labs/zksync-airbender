@@ -1,3 +1,4 @@
+use log::info;
 use std::{collections::VecDeque, ffi::CString};
 
 use super::*;
@@ -37,7 +38,7 @@ impl MMIOSource for QuasiUART {
                 let mut buffer = std::mem::replace(&mut self.buffer, vec![]);
                 buffer.truncate(idx + 1);
                 let c_string = CString::from_vec_with_nul(buffer).unwrap();
-                println!("UART: `{}`", c_string.to_string_lossy());
+                info!("UART: `{}`", c_string.to_string_lossy());
                 break;
             }
         }

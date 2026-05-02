@@ -1,3 +1,4 @@
+use log::{debug, info};
 use std::path::Path;
 
 use crate::abstractions::memory::MemorySource;
@@ -132,7 +133,7 @@ pub fn run_simulator_with_traces_for_config<C: MachineConfig>(
     let exec = sim.run(
         |_, _| {},
         |sim, cycle| {
-            println!(
+            info!(
                 "mtvec: {:?}",
                 sim.machine.state.machine_mode_trap_data.setup.tvec
             );
@@ -144,13 +145,13 @@ pub fn run_simulator_with_traces_for_config<C: MachineConfig>(
 }
 
 fn read_bin<P: AsRef<Path>>(path: P) -> Vec<u8> {
-    dbg!(path.as_ref());
+    debug!("path.as_ref() = \"{}\"", path.as_ref().display());
     let mut file = std::fs::File::open(path).expect("must open provided file");
     let mut buffer = vec![];
     std::io::Read::read_to_end(&mut file, &mut buffer).expect("must read the file");
 
     assert_eq!(buffer.len() % 4, 0);
-    dbg!(buffer.len() / 4);
+    debug!("buffer.len() / 4 = {}", buffer.len() / 4);
 
     buffer
 }

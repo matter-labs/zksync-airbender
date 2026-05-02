@@ -3,6 +3,7 @@ use crate::{
     cycle::{state::RiscV32ObservableState, MachineConfig},
     sim::RiscV32MachineSetup,
 };
+use log::info;
 use std::{
     collections::HashMap,
     hash::Hasher,
@@ -279,7 +280,7 @@ impl Profiler {
     }
 
     pub(crate) fn print_stats(&self) {
-        println!("{:#?}", self.stats);
+        info!("{:#?}", self.stats);
     }
 }
 
@@ -381,17 +382,17 @@ impl SymbolInfo {
             .expect("Frame info should've been created on frame loading.")
             .to(|x| {
                 if x.is_tracked {
-                    println!("is_traceable:");
-                    println!("address: 0x{:08x}", address);
-                    println!("address: {}", address);
-                    println!("{:#?}", x);
+                    info!("is_traceable:");
+                    info!("address: 0x{:08x}", address);
+                    info!("address: {}", address);
+                    info!("{:#?}", x);
                     tracked = true;
                 }
                 address >= x.prologue_end && address < x.epilogue_begin
             });
 
         if tracked {
-            println!("r {}", r);
+            info!("r {}", r);
         }
 
         r
@@ -420,12 +421,12 @@ impl SymbolInfo {
             gimli::DW_TAG_formal_parameter => "DW_TAG_formal_parameter".to_owned(),
             otherwise => format!("{:x?}", otherwise),
         };
-        println!("tag {:?}", tag_n);
+        info!("tag {:?}", tag_n);
 
         let mut attrs = die.attrs();
 
         while let Ok(Some(attr)) = attrs.next() {
-            println!("   {:x?} -> {:x?}", attr.name(), attr.value());
+            info!("   {:x?} -> {:x?}", attr.name(), attr.value());
 
             match attr.name() {
                 gimli::DW_AT_linkage_name | gimli::DW_AT_name => {
@@ -434,7 +435,7 @@ impl SymbolInfo {
                     match n {
                         gimli::AttributeValue::DebugStrRef(n) => {
                             let s = dw.string(n).unwrap();
-                            println!("      value: {}", s.to_string_lossy());
+                            info!("      value: {}", s.to_string_lossy());
                         }
                         _ => {}
                     }
@@ -442,11 +443,11 @@ impl SymbolInfo {
 
                 gimli::DW_AT_frame_base => match attr.value() {
                     gimli::AttributeValue::Exprloc(ex) => {
-                        println!("expr decode");
+                        info!("expr decode");
                         let mut ops = ex.operations(unit.encoding());
 
                         while let Ok(Some(op)) = ops.next() {
-                            println!("op: {:?}", op);
+                            info!("op: {:?}", op);
                         }
                     }
                     _ => {}
@@ -460,7 +461,7 @@ impl SymbolInfo {
                         let mut attrs = die2.attrs();
 
                         while let Ok(Some(attr)) = attrs.next() {
-                            println!("      {:x?} -> {:x?}", attr.name(), attr.value());
+                            info!("      {:x?} -> {:x?}", attr.name(), attr.value());
 
                             match attr.name() {
                                 gimli::DW_AT_linkage_name | gimli::DW_AT_name => {
@@ -469,7 +470,7 @@ impl SymbolInfo {
                                     match n {
                                         gimli::AttributeValue::DebugStrRef(n) => {
                                             let s = dw.string(n).unwrap();
-                                            println!("         value: {}", s.to_string_lossy());
+                                            info!("         value: {}", s.to_string_lossy());
                                         }
                                         _ => {}
                                     }
@@ -493,7 +494,7 @@ impl SymbolInfo {
 
         for s in sequences {
             if address >= s.start && address < s.end {
-                println!("found seq: {:x} -> {:x}", s.start, s.end);
+                info!("found seq: {:x} -> {:x}", s.start, s.end);
 
                 let mut sm = line_program.resume_from(&s);
 
@@ -502,7 +503,7 @@ impl SymbolInfo {
                         Some(r) => r.get(),
                         None => 0,
                     };
-                    println!(
+                    info!(
                         "row addr {:08x}, line {}, stmt {}, prol_end {}, epi_start {},",
                         r.address(),
                         line_num,
@@ -653,7 +654,7 @@ impl SymbolInfo {
                             };
 
                             if tracked {
-                                println!("{:#?}", r);
+                                info!("{:#?}", r);
                             }
 
                             return r;

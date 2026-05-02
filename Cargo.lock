@@ -2524,6 +2524,7 @@ dependencies = [
  "field",
  "inferno",
  "lib-rv32-asm",
+ "log",
  "memmap2",
  "object 0.37.3",
  "poseidon2",

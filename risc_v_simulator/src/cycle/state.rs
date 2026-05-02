@@ -1,3 +1,4 @@
+use log::info;
 use std::collections::HashMap;
 use std::hint::unreachable_unchecked;
 
@@ -142,7 +143,7 @@ pub fn output_opcode_stats() {
         keys.sort();
         for key in keys.into_iter() {
             let value = OPCODES_COUNTER.with_borrow(|el| el[key]);
-            println!("Opcode {}: used {} times", key, value);
+            info!("Opcode {}: used {} times", key, value);
         }
     }
 }
@@ -584,7 +585,7 @@ impl<Config: MachineConfig> RiscV32State<Config> {
 
         let current_privilege_mode = self.extra_flags.get_current_mode();
         let mut pc = self.observable.pc;
-        // println!("PC = 0x{:08x}", pc);
+        // info!("PC = 0x{:08x}", pc);
         let mut ret_val: u32 = 0;
         let mut trap = TrapReason::NoTrap;
         let mut instr: u32 = 0;
@@ -746,7 +747,7 @@ impl<Config: MachineConfig> RiscV32State<Config> {
 
                     let virtual_address = rs1.wrapping_add(imm);
 
-                    // println!("Load into x{:02} from 0x{:08x} at PC = 0x{:08x}", rd, virtual_address, pc);
+                    // info!("Load into x{:02} from 0x{:08x} at PC = 0x{:08x}", rd, virtual_address, pc);
 
                     // we formally access it once, but most likely full memory access
                     // will be abstracted away into external interface hiding memory translation too
@@ -848,7 +849,7 @@ impl<Config: MachineConfig> RiscV32State<Config> {
                     // it's S-type, that has no RD, so set it to x0
                     rd = 0;
 
-                    // println!("Store of x{:02} = 0x{:08x} into 0x{:08x} at PC = 0x{:08x}", STypeOpcode::rs2(instr), rs2, virtual_address, pc);
+                    // info!("Store of x{:02} = 0x{:08x} into 0x{:08x} at PC = 0x{:08x}", STypeOpcode::rs2(instr), rs2, virtual_address, pc);
 
                     // store operand rs2
 
@@ -1194,7 +1195,7 @@ impl<Config: MachineConfig> RiscV32State<Config> {
                                 }
                                 csr => {
                                     assert!(Config::ALLOWED_DELEGATION_CSRS.contains(&csr), "Machine {:?} is not configured to support CSR number {} at pc 0x{:08x}", Config::default(), csr, pc);
-                                    // println!("Custom CSR = 0x{:04x} READ at cycle {}", csr_number, proc_cycle);
+                                    // info!("Custom CSR = 0x{:04x} READ at cycle {}", csr_number, proc_cycle);
                                     csr_processor.process_read(self, memory_source, non_determinism_source, tracer, mmu, csr_number, rs1, rs1_as_imm, &mut ret_val, &mut trap);
                                     if trap.is_a_trap() {
                                         break 'cycle_block;
@@ -1250,7 +1251,7 @@ impl<Config: MachineConfig> RiscV32State<Config> {
                                     assert!(Config::ALLOWED_DELEGATION_CSRS.contains(&csr), "Machine {:?} is not configured to support CSR number {}", Config::default(), csr);
                                     Self::add_delegation(csr);
                                     // let t = CSR_COUNTER.fetch_add(1, std::sync::atomic::Ordering::AcqRel);
-                                    // println!("Custom CSR = 0x{:04x} WRITE at cycle {}, total: {}", csr_number, proc_cycle, t + 1);
+                                    // info!("Custom CSR = 0x{:04x} WRITE at cycle {}, total: {}", csr_number, proc_cycle, t + 1);
                                     csr_processor.process_write(self, memory_source, non_determinism_source, tracer, mmu, csr_number, rs1, rs1_as_imm, &mut trap);
                                     if trap.is_a_trap() {
                                         break 'cycle_block;
@@ -1304,7 +1305,7 @@ impl<Config: MachineConfig> RiscV32State<Config> {
                                 }
                                 csr => {
                                     assert!(Config::ALLOWED_DELEGATION_CSRS.contains(&csr), "Machine {:?} is not configured to support CSR number {}", Config::default(), csr);
-                                    // println!("Custom CSR = 0x{:04x} READ at cycle {}", csr_number, proc_cycle);
+                                    // info!("Custom CSR = 0x{:04x} READ at cycle {}", csr_number, proc_cycle);
                                     csr_processor.process_read(self, memory_source, non_determinism_source, tracer, mmu, csr_number, rs1, rs1_as_imm, &mut ret_val, &mut trap);
                                     if trap.is_a_trap() {
                                         break 'cycle_block;
@@ -1391,7 +1392,7 @@ impl<Config: MachineConfig> RiscV32State<Config> {
                         // rd = 0;
                         // // mainly we support WFI, MRET, ECALL and EBREAK
                         // if csr_number == 0x105 {
-                        //     println!("WFI: proc_cycle: {:?}, pc = {}, opcode = 0x{:08x}", proc_cycle, pc, instr);
+                        //     info!("WFI: proc_cycle: {:?}, pc = {}, opcode = 0x{:08x}", proc_cycle, pc, instr);
                         //     self.extra_flags.set_wait_for_interrupt_bit();
                         //     self.pc = pc.wrapping_add(4u32);
                         //     return;
@@ -1490,7 +1491,7 @@ impl<Config: MachineConfig> RiscV32State<Config> {
 
             // If there was a trap, do NOT allow register writeback.
             debug_assert_eq!(trap, TrapReason::NoTrap);
-            // println!("Set x{:02} = 0x{:08x}", rd, ret_val);
+            // info!("Set x{:02} = 0x{:08x}", rd, ret_val);
             self.set_register(rd, ret_val, tracer);
 
             // traps below will update PC themself, so it only happens if we have NO trap
@@ -1499,7 +1500,7 @@ impl<Config: MachineConfig> RiscV32State<Config> {
 
         // Handle traps and interrupts.
         if trap.is_a_trap() {
-            println!("trap: {:?}, pc: {:08x}, instr: {:08x}", trap, pc, instr);
+            info!("trap: {:?}, pc: {:08x}, instr: {:08x}", trap, pc, instr);
 
             if Config::HANDLE_EXCEPTIONS == false {
                 panic!("Simulator encountered an exception");
@@ -1515,7 +1516,7 @@ impl<Config: MachineConfig> RiscV32State<Config> {
                     // TODO: here we have a freedom of what to put into tval. We place opcode value now, because PC will be placed into EPC below
                     self.machine_mode_trap_data.handling.tval = instr;
                 }
-                // println!("Trapping at pc = 0x{:08x} into PC = 0x{:08x}. MECP is set to 0x{:08x}", pc, self.machine_mode_trap_data.setup.tvec, pc);
+                // info!("Trapping at pc = 0x{:08x} into PC = 0x{:08x}. MECP is set to 0x{:08x}", pc, self.machine_mode_trap_data.setup.tvec, pc);
                 // self.pretty_dump();
                 // self.stack_dump(memory, mmu);
 
@@ -1546,11 +1547,11 @@ impl<Config: MachineConfig> RiscV32State<Config> {
         tracer.at_cycle_end(&*self);
 
         //let trap = trap.as_register_value();
-        //println!("end of cycle: PC = 0x{:08x}, trap = 0x{:08x}, interrupt = {:?}", self.pc, trap, trap & INTERRUPT_MASK != 0);
+        //info!("end of cycle: PC = 0x{:08x}, trap = 0x{:08x}, interrupt = {:?}", self.pc, trap, trap & INTERRUPT_MASK != 0);
     }
 
     pub fn pretty_dump(&self) {
-        println!(
+        info!(
             "PC = 0x{:08x}, RA = 0x{:08x}, SP = 0x{:08x}, GP = 0x{:08x}",
             self.observable.pc,
             self.observable.registers[1],
@@ -1567,7 +1568,7 @@ impl<Config: MachineConfig> RiscV32State<Config> {
             for (idx, reg) in chunk.iter() {
                 print!("x{:02} = 0x{:08x}, ", idx, reg);
             }
-            println!("");
+            info!("");
         }
     }
 }

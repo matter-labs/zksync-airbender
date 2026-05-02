@@ -1,3 +1,5 @@
+use log::info;
+
 // there is no interpretation of methods here, it's just read/write and that's all
 pub trait NonDeterminismCSRSource<M: MemorySource + ?Sized> {
     const SHOULD_MOCK_READS_BEFORE_WRITES: bool = true;
@@ -105,7 +107,7 @@ impl QuasiUARTSourceState {
                 }
                 if remaining_words.unwrap() == 0 {
                     let buffer = std::mem::replace(buffer, Vec::new());
-                    println!("UART: `{}`", String::from_utf8_lossy(&buffer));
+                    info!("UART: `{}`", String::from_utf8_lossy(&buffer));
                     *self = QuasiUARTSourceState::Ready;
                 }
             }

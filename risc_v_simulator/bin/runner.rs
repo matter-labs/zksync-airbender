@@ -1,3 +1,4 @@
+use log::info;
 use risc_v_simulator::{runner::run_simple_simulator, sim::SimulatorConfig};
 
 pub fn main() {
@@ -5,7 +6,7 @@ pub fn main() {
     // dbg!(&args);
     // assert_eq!(args.len(), 2);
     // let path = &args[1];
-    println!("ZK RISC-V simulator is starting");
+    info!("ZK RISC-V simulator is starting");
 
     let path = "../zksync-os/zksync_os/app.bin";
     let path_sym = "../zksync-os/zksync_os/app.elf";

@@ -1,3 +1,4 @@
+use log::{debug, info};
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
 
@@ -99,7 +100,7 @@ where
             if self.machine.state().pc == previous_pc {
                 end_of_execution_reached = true;
                 cycles = cycle;
-                println!("Took {} cycles to finish", cycle);
+                info!("Took {} cycles to finish", cycle);
                 break;
             }
             previous_pc = self.machine.state().pc;
@@ -116,7 +117,7 @@ where
         let exec_time = now.elapsed();
 
         if let Some(profiler) = self.profiler.as_mut() {
-            println!("Profiler begins execution");
+            info!("Profiler begins execution");
             profiler.print_stats();
             profiler.write_stacktrace();
         }
@@ -189,13 +190,13 @@ pub enum BinarySource<'a> {
 impl<'a> BinarySource<'a> {
     pub fn to_iter(&self) -> Box<dyn Iterator<Item = u8> + 'a> {
         fn read_bin<P: AsRef<Path>>(path: P) -> Vec<u8> {
-            dbg!(path.as_ref());
+            debug!("path.as_ref() = \"{}\"", path.as_ref().display());
             let mut file = std::fs::File::open(path).expect("must open provided file");
             let mut buffer = vec![];
             std::io::Read::read_to_end(&mut file, &mut buffer).expect("must read the file");
 
             assert_eq!(buffer.len() % 4, 0);
-            dbg!(buffer.len() / 4);
+            debug!("buffer.len() / 4 = {}", buffer.len() / 4);
 
             buffer
         }
