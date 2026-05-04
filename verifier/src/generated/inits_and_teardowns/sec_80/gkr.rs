@@ -2104,6 +2104,55 @@ unsafe fn dim_reducing_final_step_accumulator(
     }
     acc
 }
+#[doc = " Closed-form eval of VirtualSetup(InitsAndTeardownsLow/High) at `state.prev_point`."]
+#[doc = " Low half = bits [2..16) of the address (top 2 bits zeroed); high half = the high 10 address bits."]
+#[doc = " Source: prover/src/gkr/virtual_polys/inits_and_teardowns.rs."]
+#[doc = " The `prev_claims` indices are positions in this layer's merged target_addrs (regular + cache-input extras, BTreeSet-sorted),"]
+#[doc = " which is also the layout used by `INITIAL_WHIR_CLAIM_INDICES`."]
+#[inline(always)]
+fn check_virtual_setup_inits_and_teardowns<E: ErrorCreator>(
+    state: &LayerState<BabyBearExt4, GKR_ROUNDS, GKR_ADDRS>,
+) -> Result<(), E::Error> {
+    unsafe {
+        let pt = state.prev_point.get_unchecked(..24usize);
+        let mut low_eval: BabyBearExt4 = BabyBearExt4::ZERO;
+        {
+            let mut prefactor: BabyBearField = BabyBearField::ONE;
+            let mut wb: usize = 0;
+            while wb < 2usize {
+                field_ops::double(&mut prefactor);
+                wb += 1;
+            }
+            let mut k: usize = 0;
+            while k < 14usize {
+                let mut t = *pt.get_unchecked(24usize - 1 - k);
+                field_ops::mul_assign_by_base(&mut t, &prefactor);
+                field_ops::add_assign(&mut low_eval, &t);
+                field_ops::double(&mut prefactor);
+                k += 1;
+            }
+        }
+        let mut high_eval: BabyBearExt4 = BabyBearExt4::ZERO;
+        {
+            let mut prefactor: BabyBearField = BabyBearField::ONE;
+            let mut k: usize = 0;
+            while k < 24usize - 14usize {
+                let mut t = *pt.get_unchecked(24usize - 1 - 14usize - k);
+                field_ops::mul_assign_by_base(&mut t, &prefactor);
+                field_ops::add_assign(&mut high_eval, &t);
+                field_ops::double(&mut prefactor);
+                k += 1;
+            }
+        }
+        if low_eval != *state.prev_claims.get_unchecked(64usize) {
+            return Err(E::gkr_virtual_setup_eval_mismatch(64usize));
+        }
+        if high_eval != *state.prev_claims.get_unchecked(65usize) {
+            return Err(E::gkr_virtual_setup_eval_mismatch(65usize));
+        }
+    }
+    Ok(())
+}
 #[allow(unused_variables, unused_mut, unused_unsafe)]
 pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
     external_challenges: &GKRExternalChallenges<BabyBearField, BabyBearExt4>,
@@ -3722,52 +3771,13 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
             permutation_read_product = read_product;
             permutation_write_product = write_product;
         }
-        unsafe {
-            let pt = state.prev_point.get_unchecked(..24usize);
-            let mut low_eval: BabyBearExt4 = BabyBearExt4::ZERO;
-            {
-                let mut prefactor: BabyBearField = BabyBearField::ONE;
-                let mut wb: usize = 0;
-                while wb < 2usize {
-                    field_ops::double(&mut prefactor);
-                    wb += 1;
-                }
-                let mut k: usize = 0;
-                while k < 14usize {
-                    let mut t = *pt.get_unchecked(24usize - 1 - k);
-                    field_ops::mul_assign_by_base(&mut t, &prefactor);
-                    field_ops::add_assign(&mut low_eval, &t);
-                    field_ops::double(&mut prefactor);
-                    k += 1;
-                }
-            }
-            let mut high_eval: BabyBearExt4 = BabyBearExt4::ZERO;
-            {
-                let mut prefactor: BabyBearField = BabyBearField::ONE;
-                let mut k: usize = 0;
-                while k < 24usize - 14usize {
-                    let mut t = *pt.get_unchecked(24usize - 1 - 14usize - k);
-                    field_ops::mul_assign_by_base(&mut t, &prefactor);
-                    field_ops::add_assign(&mut high_eval, &t);
-                    field_ops::double(&mut prefactor);
-                    k += 1;
-                }
-            }
-            if low_eval != *state.prev_claims.get_unchecked(64usize) {
-                return Err(E::gkr_virtual_setup_eval_mismatch(64usize));
-            }
-            if high_eval != *state.prev_claims.get_unchecked(65usize) {
-                return Err(E::gkr_virtual_setup_eval_mismatch(65usize));
-            }
-        }
+        check_virtual_setup_inits_and_teardowns::<E>(&state)?;
         Ok(GKRVerifierOutput {
             base_layer_claims: state.prev_claims,
-            base_layer_addrs: LAYER_0_SORTED_ADDRS,
             evaluation_point: state.prev_point,
             evaluation_point_len: state.prev_point_len,
             permutation_read_product,
             permutation_write_product,
-            additional_base_layer_openings: BASE_LAYER_ADDITIONAL_OPENINGS,
             whir_batching_challenge: state.batching_challenge,
         })
     }

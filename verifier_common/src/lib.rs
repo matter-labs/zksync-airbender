@@ -157,7 +157,7 @@ pub trait ConcreteVerifierImpl<
             PADDING_WORDS,
         >,
         transcript_state: &mut ::transcript::TranscriptState,
-    ) -> Result<GKRVerifierOutput<'static, EE, ROUNDS, ADDRS>, E::Error>;
+    ) -> Result<GKRVerifierOutput<EE, ROUNDS, ADDRS>, E::Error>;
     fn verify_whir<I: NonDeterminismSource, E: ErrorCreator>(
         initial_transcript: &InitialGKRTranscript<
             EE,

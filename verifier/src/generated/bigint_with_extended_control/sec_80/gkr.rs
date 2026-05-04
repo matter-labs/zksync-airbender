@@ -8386,6 +8386,72 @@ unsafe fn dim_reducing_final_step_accumulator(
     }
     acc
 }
+#[doc = " Closed-form eval of VirtualSetup(RangeCheck16Bits) at `state.prev_point` (lower 16 bits free, top bits forced to zero)."]
+#[doc = " Source: prover/src/gkr/virtual_polys/range_check.rs."]
+#[doc = " The `prev_claims` index is the position in this layer's merged target_addrs (regular + cache-input extras, BTreeSet-sorted),"]
+#[doc = " which is also the layout used by `INITIAL_WHIR_CLAIM_INDICES`."]
+#[inline(always)]
+fn check_virtual_setup_range_check_16bits<E: ErrorCreator>(
+    state: &LayerState<BabyBearExt4, GKR_ROUNDS, GKR_ADDRS>,
+) -> Result<(), E::Error> {
+    unsafe {
+        let pt = state.prev_point.get_unchecked(..22usize);
+        let mut result: BabyBearExt4 = BabyBearExt4::ZERO;
+        let mut prefactor: BabyBearField = BabyBearField::ONE;
+        let mut k: usize = 0;
+        while k < 16usize {
+            let mut t = *pt.get_unchecked(22usize - 1 - k);
+            field_ops::mul_assign_by_base(&mut t, &prefactor);
+            field_ops::add_assign(&mut result, &t);
+            field_ops::double(&mut prefactor);
+            k += 1;
+        }
+        while k < 22usize {
+            let mut t: BabyBearExt4 = BabyBearExt4::ONE;
+            let p = pt.get_unchecked(22usize - 1 - k);
+            field_ops::sub_assign(&mut t, &*p);
+            field_ops::mul_assign(&mut result, &t);
+            k += 1;
+        }
+        if result != *state.prev_claims.get_unchecked(261usize) {
+            return Err(E::gkr_virtual_setup_eval_mismatch(261usize));
+        }
+    }
+    Ok(())
+}
+#[doc = " Closed-form eval of VirtualSetup(RangeCheckTimestamp) at `state.prev_point` (lower 19 bits free, top bits forced to zero)."]
+#[doc = " Source: prover/src/gkr/virtual_polys/range_check.rs."]
+#[doc = " The `prev_claims` index is the position in this layer's merged target_addrs (regular + cache-input extras, BTreeSet-sorted),"]
+#[doc = " which is also the layout used by `INITIAL_WHIR_CLAIM_INDICES`."]
+#[inline(always)]
+fn check_virtual_setup_range_check_timestamp<E: ErrorCreator>(
+    state: &LayerState<BabyBearExt4, GKR_ROUNDS, GKR_ADDRS>,
+) -> Result<(), E::Error> {
+    unsafe {
+        let pt = state.prev_point.get_unchecked(..22usize);
+        let mut result: BabyBearExt4 = BabyBearExt4::ZERO;
+        let mut prefactor: BabyBearField = BabyBearField::ONE;
+        let mut k: usize = 0;
+        while k < 19usize {
+            let mut t = *pt.get_unchecked(22usize - 1 - k);
+            field_ops::mul_assign_by_base(&mut t, &prefactor);
+            field_ops::add_assign(&mut result, &t);
+            field_ops::double(&mut prefactor);
+            k += 1;
+        }
+        while k < 22usize {
+            let mut t: BabyBearExt4 = BabyBearExt4::ONE;
+            let p = pt.get_unchecked(22usize - 1 - k);
+            field_ops::sub_assign(&mut t, &*p);
+            field_ops::mul_assign(&mut result, &t);
+            k += 1;
+        }
+        if result != *state.prev_claims.get_unchecked(262usize) {
+            return Err(E::gkr_virtual_setup_eval_mismatch(262usize));
+        }
+    }
+    Ok(())
+}
 #[allow(unused_variables, unused_mut, unused_unsafe)]
 pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
     external_challenges: &GKRExternalChallenges<BabyBearField, BabyBearExt4>,
@@ -10822,60 +10888,14 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
                 return Err(E::gkr_lookup_identity_failed(2usize));
             }
         }
-        unsafe {
-            let pt = state.prev_point.get_unchecked(..22usize);
-            let mut result: BabyBearExt4 = BabyBearExt4::ZERO;
-            let mut prefactor: BabyBearField = BabyBearField::ONE;
-            let mut k: usize = 0;
-            while k < 16usize {
-                let mut t = *pt.get_unchecked(22usize - 1 - k);
-                field_ops::mul_assign_by_base(&mut t, &prefactor);
-                field_ops::add_assign(&mut result, &t);
-                field_ops::double(&mut prefactor);
-                k += 1;
-            }
-            while k < 22usize {
-                let mut t: BabyBearExt4 = BabyBearExt4::ONE;
-                let p = pt.get_unchecked(22usize - 1 - k);
-                field_ops::sub_assign(&mut t, &*p);
-                field_ops::mul_assign(&mut result, &t);
-                k += 1;
-            }
-            if result != *state.prev_claims.get_unchecked(261usize) {
-                return Err(E::gkr_virtual_setup_eval_mismatch(261usize));
-            }
-        }
-        unsafe {
-            let pt = state.prev_point.get_unchecked(..22usize);
-            let mut result: BabyBearExt4 = BabyBearExt4::ZERO;
-            let mut prefactor: BabyBearField = BabyBearField::ONE;
-            let mut k: usize = 0;
-            while k < 19usize {
-                let mut t = *pt.get_unchecked(22usize - 1 - k);
-                field_ops::mul_assign_by_base(&mut t, &prefactor);
-                field_ops::add_assign(&mut result, &t);
-                field_ops::double(&mut prefactor);
-                k += 1;
-            }
-            while k < 22usize {
-                let mut t: BabyBearExt4 = BabyBearExt4::ONE;
-                let p = pt.get_unchecked(22usize - 1 - k);
-                field_ops::sub_assign(&mut t, &*p);
-                field_ops::mul_assign(&mut result, &t);
-                k += 1;
-            }
-            if result != *state.prev_claims.get_unchecked(262usize) {
-                return Err(E::gkr_virtual_setup_eval_mismatch(262usize));
-            }
-        }
+        check_virtual_setup_range_check_16bits::<E>(&state)?;
+        check_virtual_setup_range_check_timestamp::<E>(&state)?;
         Ok(GKRVerifierOutput {
             base_layer_claims: state.prev_claims,
-            base_layer_addrs: LAYER_0_SORTED_ADDRS,
             evaluation_point: state.prev_point,
             evaluation_point_len: state.prev_point_len,
             permutation_read_product,
             permutation_write_product,
-            additional_base_layer_openings: BASE_LAYER_ADDITIONAL_OPENINGS,
             whir_batching_challenge: state.batching_challenge,
         })
     }
