@@ -25,6 +25,8 @@ jobs:
       - name: Setup
         run: |
           rustup set profile minimal
+      - name: Add riscv target
+        run: rustup target add riscv32im-unknown-none-elf
       - name: Install cargo-binutils
         run: cargo install cargo-binutils --locked
       - name: Compile
