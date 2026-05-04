@@ -76,43 +76,35 @@ pub fn deserialize_whir_e4_columns(
     DeserializeWhirE4ColumnsFunction(ab_deserialize_whir_e4_columns_kernel).launch(&config, &args)
 }
 
-cuda_kernel_signature_arguments_and_function!(
-    AccumulateWhirBaseColumns,
-    values: *const BF,
-    stride: u32,
-    weights: *const E4,
-    cols: u32,
-    result: *mut E4,
-    rows: u32,
-);
-
-cuda_kernel_declaration!(
-    ab_accumulate_whir_base_columns_e4_kernel(
-        values: *const BF,
-        stride: u32,
-        weights: *const E4,
-        cols: u32,
-        result: *mut E4,
-        rows: u32,
-        is_first: bool,
-    )
-);
-
 const TRACE_CHUNKS: usize = 3;
 
 #[repr(C)]
 struct BaseColumnsBatchingMetadata {
-    values: [*const BF; TRACE_CHUNKS];
-    weights: [*const E4; TRACE_CHUNKS];
-    cols: [u32; TRACE_CHUNKS];
-    strides: [u32; TRACE_CHUNKS];
+    values: [*const BF; TRACE_CHUNKS],
+    weights: [*const E4; TRACE_CHUNKS],
+    cols: [u32; TRACE_CHUNKS],
+    strides: [u32; TRACE_CHUNKS],
+    result: *mut E4,
+    rows: u32,
 }
 
+cuda_kernel_signature_arguments_and_function!(
+    AccumulateWhirBaseColumns,
+    metadata: BaseColumnsBatchingMetadata,
+);
+
+cuda_kernel_declaration!(
+    ab_accumulate_whir_base_columns_e4_kernel(metadata: BaseColumnsBatchingMetadata)
+);
+
 pub fn accumulate_whir_base_columns(
-    values: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
-    weights: &DeviceSlice<E4>,
+    memory_values: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
+    witness_values: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
+    setup_values: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
+    memory_weights: &DeviceSlice<E4>,
+    witness_weights: &DeviceSlice<E4>,
+    setup_weights: &DeviceSlice<E4>,
     result: &mut DeviceSlice<E4>,
-    is_first: bool,
     stream: &CudaStream,
 ) -> CudaResult<()> {
     assert_eq!(memory_values.cols(), memory_weights.len());
@@ -128,7 +120,7 @@ pub fn accumulate_whir_base_columns(
     assert!(setup_values.rows() <= u32::MAX as usize);
     assert!(setup_values.cols() <= u32::MAX as usize);
     let values = [
-        memory_values.as_ptr(), 
+        memory_values.as_ptr(),
         witness_values.as_ptr(),
         setup_values.as_ptr(),
     ];
@@ -138,15 +130,15 @@ pub fn accumulate_whir_base_columns(
         setup_weights.as_ptr(),
     ];
     let cols = [
-        memory_values.cols() as u32, 
+        memory_values.cols() as u32,
         witness_values.cols() as u32,
         setup_values.cols() as u32,
-    ]; 
-    let cols = [
-        memory_values.stride() as u32, 
+    ];
+    let strides = [
+        memory_values.stride() as u32,
         witness_values.stride() as u32,
         setup_values.stride() as u32,
-    ]; 
+    ];
     let result = result.as_mut_ptr();
     let rows = memory_values.rows() as u32;
     let metadata = BaseColumnsBatchingMetadata {

@@ -42,7 +42,7 @@ struct BaseColumnsBatchingMetadata {
   const unsigned strides[TRACE_CHUNKS];
   e4 *result;
   const unsigned rows;
-}
+};
 
 EXTERN __global__ void ab_accumulate_whir_base_columns_e4_kernel(const BaseColumnsBatchingMetadata metadata) {
   const unsigned rows = metadata.rows;
@@ -50,7 +50,7 @@ EXTERN __global__ void ab_accumulate_whir_base_columns_e4_kernel(const BaseColum
   if (gid >= rows)
     return;
 
-  e4 acc{e4::zero()};
+  e4 acc{e4::ZERO()};
   for (unsigned i = 0; i < TRACE_CHUNKS; i++) {
     const bf *values = metadata.values[i];
     const e4 *weights = metadata.weights[i];

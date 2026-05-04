@@ -1124,6 +1124,26 @@ fn fold_coset(
     }
 }
 
+fn get_base_columns<'a>(
+    trace_holder: &'a TraceHolder<BF>,
+    rows: usize,
+    use_hypercube_evals: bool,
+) -> DeviceMatrix<'a, BF> {
+    let values = if use_hypercube_evals {
+        // TODO: Ask Robert: prefer raw_hypercube_backing here?
+        DeviceMatrix::new(trace_holder.get_hypercube_evals(), rows)
+    } else {
+        assert!(
+            trace_holder.are_cosets_materialized(),
+            "{} {}",
+            "Tried to build WHIR initial state from coset 0, ",
+            "but cosets are not materialized",
+        );
+        DeviceMatrix::new(trace_holder.get_evaluations(), rows)
+    };
+    values
+}
+
 fn build_initial_batched_main_domain_poly_device_impl(
     memory_trace_holder: &TraceHolder<BF>,
     memory_weights: &[E4],
@@ -1133,35 +1153,46 @@ fn build_initial_batched_main_domain_poly_device_impl(
     setup_weights: &[E4],
     result: &mut DeviceSlice<E4>,
     mut upload_weights: impl FnMut(&mut DeviceSlice<E4>, &[E4], &ProverContext) -> CudaResult<()>,
-    use_hypercube_evals: bool,
     context: &ProverContext,
 ) -> CudaResult<Vec<DeviceAllocation<E4>>> {
     let stream = context.get_exec_stream();
     let mut weight_buffers = Vec::with_capacity(3);
 
-    for (trace_holder, weights) in [
-        (memory_trace_holder, memory_weights),
-        (witness_trace_holder, witness_weights),
-        (setup_trace_holder, setup_weights),
-    ] {
-        if weights.is_empty() {
-            continue;
-        }
-        assert!(
-            trace_holder.are_cosets_materialized(),
-            "WHIR initial state requires materialized main-domain cosets",
-        );
-        let mut device_weights = context.alloc(weights.len(), AllocationPlacement::BestFit)?;
-        upload_weights(&mut device_weights, weights, context)?;
-        let values = if use_hypercube_evals {
-            // TODO: Ask Robert: prefer raw_hypercube_backing here?
-            DeviceMatrix::new(trace_holder.get_hypercube_evals(), result.len())
-        } else {
-            DeviceMatrix::new(trace_holder.get_evaluations(), result.len())
-        };
-        accumulate_whir_base_columns(&values, &device_weights, result, stream)?;
-        weight_buffers.push(device_weights);
-    }
+    assert!(memory_weights.len() > 0);
+    assert!(witness_weights.len() > 0);
+    assert!(setup_weights.len() > 0);
+
+    let mut device_memory_weights =
+        context.alloc(memory_weights.len(), AllocationPlacement::BestFit)?;
+    let mut device_witness_weights =
+        context.alloc(witness_weights.len(), AllocationPlacement::BestFit)?;
+    let mut device_setup_weights =
+        context.alloc(setup_weights.len(), AllocationPlacement::BestFit)?;
+
+    upload_weights(&mut device_memory_weights, memory_weights, context)?;
+    upload_weights(&mut device_witness_weights, witness_weights, context)?;
+    upload_weights(&mut device_setup_weights, setup_weights, context)?;
+
+    let use_hypercube_evals = false;
+    let rows = result.len();
+    let memory_values = get_base_columns(memory_trace_holder, rows, use_hypercube_evals);
+    let witness_values = get_base_columns(witness_trace_holder, rows, use_hypercube_evals);
+    let setup_values = get_base_columns(setup_trace_holder, rows, use_hypercube_evals);
+
+    accumulate_whir_base_columns(
+        &memory_values,
+        &witness_values,
+        &setup_values,
+        &device_memory_weights,
+        &device_witness_weights,
+        &device_setup_weights,
+        result,
+        stream,
+    )?;
+
+    weight_buffers.push(device_memory_weights);
+    weight_buffers.push(device_witness_weights);
+    weight_buffers.push(device_setup_weights);
 
     Ok(weight_buffers)
 }
@@ -1411,34 +1442,32 @@ fn schedule_initialize_batched_forms(
         context.alloc(total_base_oracles, AllocationPlacement::BestFit)?;
     memory_copy_async(&mut challenge_powers_device, &challenge_powers_host, stream)?;
 
-    set_to_zero(&mut state.sumchecked_poly_evaluation_form, stream)?;
-    let mut offset = 0usize;
-    for (trace_holder, weights_len) in [
-        (memory_trace_holder, mem_polys_claims_len),
-        (witness_trace_holder, wit_polys_claims_len),
-        (setup_trace_holder, setup_polys_claims_len),
-    ] {
-        if weights_len == 0 {
-            continue;
-        }
-        assert!(
-            trace_holder.are_cosets_materialized(),
-            "WHIR initial state requires materialized main-domain cosets",
-        );
-        let values = DeviceMatrix::new(
-            trace_holder.get_evaluations(),
-            state.sumchecked_poly_evaluation_form.len(),
-        );
-        // TODO: Make vectorized accumulator for this
-        accumulate_whir_base_columns(
-            &values,
-            &challenge_powers_device[offset..offset + weights_len],
-            &mut state.sumchecked_poly_evaluation_form,
-            stream,
-        )?;
-        offset += weights_len;
-    }
-    debug_assert_eq!(offset, total_base_oracles);
+    assert!(mem_polys_claims_len > 0);
+    assert!(wit_polys_claims_len > 0);
+    assert!(setup_polys_claims_len > 0);
+
+    let challenge_powers_device_slice = &mut challenge_powers_device[..];
+    let (device_memory_weights, rest) =
+        challenge_powers_device_slice.split_at_mut(mem_polys_claims_len);
+    let (device_witness_weights, device_setup_weights) = rest.split_at_mut(wit_polys_claims_len);
+    assert_eq!(device_setup_weights.len(), setup_polys_claims_len);
+
+    let use_hypercube_evals = false;
+    let rows = state.sumchecked_poly_evaluation_form.len();
+    let memory_values = get_base_columns(memory_trace_holder, rows, use_hypercube_evals);
+    let witness_values = get_base_columns(witness_trace_holder, rows, use_hypercube_evals);
+    let setup_values = get_base_columns(setup_trace_holder, rows, use_hypercube_evals);
+
+    accumulate_whir_base_columns(
+        &memory_values,
+        &witness_values,
+        &setup_values,
+        &device_memory_weights,
+        &device_witness_weights,
+        &device_setup_weights,
+        &mut state.sumchecked_poly_evaluation_form,
+        stream,
+    )?;
 
     let mut serialized = context.alloc(trace_len * EXT4_DEGREE, AllocationPlacement::BestFit)?;
     serialize_whir_e4_columns(
@@ -1961,9 +1990,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
     };
     let witness_cap_size = witness_unified_device_cap.len();
     let memory_cap_size = memory_unified_device_cap.len();
-    let setup_cap_size = setup_unified_device_cap
-        .as_ref()
-        .map_or(0, |cap| cap.len());
+    let setup_cap_size = setup_unified_device_cap.as_ref().map_or(0, |cap| cap.len());
     let scheduled_proof = WhirPolyCommitProof {
         witness_commitment: WhirBaseLayerCommitmentAndQueries {
             commitment: WhirCommitment {
