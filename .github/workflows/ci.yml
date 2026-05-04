@@ -25,6 +25,8 @@ jobs:
       - name: Setup
         run: |
           rustup set profile minimal
+      - name: Install cargo-binutils
+        run: cargo install cargo-binutils --locked
       - name: Compile
         run: cargo build --verbose
       - name: Unit tests (CI)
@@ -165,6 +167,22 @@ jobs:
           components: miri
       - name: Run Miri tests
         run: cargo miri test -p riscv_transpiler -- miri_
+  
+  # Examples that are tests themselves should be run explicitly
+  example-tests:
+    name: riscv-examples
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+      - name: Build CLI
+        run: cargo build --release -p cli
+      - name: Run keccak_f1600 test on RISC-V
+        run: ./target/release/cli run -b examples/keccak/app.bin --text examples/keccak/app.text --cycles 1000000 --expected-results 0,0,0,0,0,0,0,0
+      - name: Run bigint test on RISC-V
+        run: ./target/release/cli run -b examples/bigint_with_control/app.bin --text examples/bigint_with_control/app.text --cycles 1000000 --expected-results 0,0,0,0,0,0,0,0
 
   # Keep branch protection tied to one stable check name even as the
   # underlying CI fan-out changes over time.
@@ -180,6 +198,7 @@ jobs:
       - build_cli
       - cli_smoke_verify
       - miri
+      - example-tests
     steps:
       - name: Decide on PR checks
         uses: re-actors/alls-green@05ac9388f0aebcb5727afa17fcccfecd6f8ec5fe # v1.2.2
