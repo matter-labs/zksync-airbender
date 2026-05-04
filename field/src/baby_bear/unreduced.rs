@@ -1,6 +1,7 @@
 use crate::baby_bear::base::BabyBearField;
+use crate::baby_bear::ext2::BabyBearExt2;
 use crate::baby_bear::ext4::BabyBearExt4;
-use crate::field::{FieldExtension, UnreducedAccumulator};
+use crate::field::UnreducedAccumulator;
 
 #[derive(Clone, Copy, Debug)]
 #[repr(transparent)]
@@ -10,11 +11,18 @@ impl BabyBearRawProductSum {
     pub const ZERO: Self = Self(0);
 
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
+    pub fn from_product(a: BabyBearField, b: BabyBearField) -> Self {
+        let raw = (a.0 as u64).wrapping_mul(b.0 as u64);
+        Self(raw as u128)
+    }
+
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     pub fn add_assign_product(&mut self, a: BabyBearField, b: BabyBearField) {
         let raw = (a.0 as u64).wrapping_mul(b.0 as u64);
         self.0 = self.0.wrapping_add(raw as u128);
     }
 
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     pub fn finalize(self) -> BabyBearField {
         debug_assert!(self.0 < (1u128 << 127));
 
@@ -41,32 +49,50 @@ impl BabyBearExt4RawProductSum {
     pub const ZERO: Self = Self { lanes: [0; 4] };
 
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
+    pub fn from_base_times_ext(a: BabyBearField, c: BabyBearExt4) -> Self {
+        let a = a.0 as u64;
+        let coeffs = [c.c0.c0.0, c.c0.c1.0, c.c1.c0.0, c.c1.c1.0];
+        Self {
+            lanes: [
+                a.wrapping_mul(coeffs[0] as u64) as u128,
+                a.wrapping_mul(coeffs[1] as u64) as u128,
+                a.wrapping_mul(coeffs[2] as u64) as u128,
+                a.wrapping_mul(coeffs[3] as u64) as u128,
+            ],
+        }
+    }
+
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     pub fn add_assign_base_times_ext(&mut self, a: BabyBearField, c: BabyBearExt4) {
-        let coeffs = <BabyBearExt4 as FieldExtension<BabyBearField>>::into_coeffs(c);
+        let coeffs = [c.c0.c0.0, c.c0.c1.0, c.c1.c0.0, c.c1.c1.0];
         for k in 0..4 {
-            let raw = (a.0 as u64).wrapping_mul(coeffs[k].0 as u64);
+            let raw = (a.0 as u64).wrapping_mul(coeffs[k] as u64);
             self.lanes[k] = self.lanes[k].wrapping_add(raw as u128);
         }
     }
 
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     pub fn add_assign_ext(&mut self, e: BabyBearExt4) {
-        let coeffs = <BabyBearExt4 as FieldExtension<BabyBearField>>::into_coeffs(e);
+        let coeffs = [e.c0.c0.0, e.c0.c1.0, e.c1.c0.0, e.c1.c1.0];
         for k in 0..4 {
-            let delta = (coeffs[k].0 as u128) << 32;
+            let delta = (coeffs[k] as u128) << 32;
             self.lanes[k] = self.lanes[k].wrapping_add(delta);
         }
     }
 
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     pub fn finalize(self) -> BabyBearExt4 {
         let [l0, l1, l2, l3] = self.lanes;
-        let coeffs = [
-            BabyBearRawProductSum(l0).finalize(),
-            BabyBearRawProductSum(l1).finalize(),
-            BabyBearRawProductSum(l2).finalize(),
-            BabyBearRawProductSum(l3).finalize(),
-        ];
-        <BabyBearExt4 as FieldExtension<BabyBearField>>::from_coeffs(coeffs)
+        BabyBearExt4 {
+            c0: BabyBearExt2 {
+                c0: BabyBearRawProductSum(l0).finalize(),
+                c1: BabyBearRawProductSum(l1).finalize(),
+            },
+            c1: BabyBearExt2 {
+                c0: BabyBearRawProductSum(l2).finalize(),
+                c1: BabyBearRawProductSum(l3).finalize(),
+            },
+        }
     }
 }
 
@@ -102,7 +128,7 @@ fn mont_reduce_step(x: u128) -> u128 {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::field::Field;
+    use crate::field::{Field, FieldExtension};
     use proptest::prelude::*;
 
     fn arb_babybear() -> impl Strategy<Value = BabyBearField> {
