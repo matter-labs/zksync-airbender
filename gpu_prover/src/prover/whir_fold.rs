@@ -1314,37 +1314,24 @@ fn initialize_batched_forms_impl(
         stream,
         context.get_device_properties(),
     )?;
-    // bit_reverse_in_place(&mut state.sumchecked_poly_monomial_form, stream)?;
-    // deserialize_whir_e4_columns(
-    //     &serialized,
-    //     &mut state.sumchecked_poly_monomial_form[..trace_len],
-    //     stream,
-    // )?;
     let monomials_slice = state.sumchecked_poly_monomial_form.slice();
-    let mut bf_scratch = context.alloc(trace_len, AllocationPlacement::BestFit)?;
     for column in 0..EXT4_DEGREE {
         let src = &monomials_slice[column * trace_len..(column + 1) * trace_len];
+        let dst = &mut serialized[column * trace_len..(column + 1) * trace_len];
         // Interestingly, both work (I think because addition is commutative).
         // hypercube_coeffs_natural_to_natural_evals(
         hypercube_coeffs_bitrev_to_bitrev_evals(
             src,
-            &mut bf_scratch,
+            dst,
             trace_len.trailing_zeros() as usize,
             stream,
         )?;
-        let dst = &mut serialized[column * trace_len..(column + 1) * trace_len];
-        memory_copy_async(dst, &bf_scratch, stream)?;
     }
-    // {
-    //     // let mut evals_matrix = DeviceMatrixMut::new(&mut serialized, trace_len);
-    //     // bit_reverse_in_place(&mut evals_matrix, stream)?;
-    // }
     deserialize_whir_e4_columns(
         &serialized,
         &mut state.sumchecked_poly_evaluation_form[..trace_len],
         stream,
     )?;
-    // bit_reverse_in_place(&mut state.sumchecked_poly_monomial_form, stream)?;
 
     Ok([
         memory_weights.to_vec(),
@@ -1484,38 +1471,24 @@ fn schedule_initialize_batched_forms(
         stream,
         context.get_device_properties(),
     )?;
-    // bit_reverse_in_place(&mut state.sumchecked_poly_monomial_form, stream)?;
-    // deserialize_whir_e4_columns(
-    //     &serialized,
-    //     &mut state.sumchecked_poly_monomial_form[..trace_len],
-    //     stream,
-    // )?;
     let monomials_slice = state.sumchecked_poly_monomial_form.slice();
-    // TODO: remove after writing hypercube kernel
-    let mut bf_scratch = context.alloc(trace_len, AllocationPlacement::BestFit)?;
     for column in 0..EXT4_DEGREE {
         let src = &monomials_slice[column * trace_len..(column + 1) * trace_len];
+        let dst = &mut serialized[column * trace_len..(column + 1) * trace_len];
         // Interestingly, both work (I think because addition is commutative).
         // hypercube_coeffs_natural_to_natural_evals(
         hypercube_coeffs_bitrev_to_bitrev_evals(
             src,
-            &mut bf_scratch,
+            dst,
             trace_len.trailing_zeros() as usize,
             stream,
         )?;
-        let dst = &mut serialized[column * trace_len..(column + 1) * trace_len];
-        memory_copy_async(dst, &bf_scratch, stream)?;
     }
-    // {
-    //     // let mut evals_matrix = DeviceMatrixMut::new(&mut serialized, trace_len);
-    //     // bit_reverse_in_place(&mut evals_matrix, stream)?;
-    // }
     deserialize_whir_e4_columns(
         &serialized,
         &mut state.sumchecked_poly_evaluation_form[..trace_len],
         stream,
     )?;
-    // bit_reverse_in_place(&mut state.sumchecked_poly_monomial_form, stream)?;
 
     Ok(())
 }
