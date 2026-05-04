@@ -23,8 +23,9 @@ use std::ffi::CStr;
 use std::ops::Deref;
 use std::process::exit;
 use std::{env, mem};
+use verifier_common::SecurityMarker;
 
-pub fn get_gpu_worker_func(
+pub fn get_gpu_worker_func<S: SecurityMarker>(
     device_id: i32,
     prover_context_config: ProverContextConfig,
     is_initialized: Sender<()>,
@@ -32,7 +33,7 @@ pub fn get_gpu_worker_func(
     results: Sender<Option<GpuWorkResult<A>>>,
 ) -> impl FnOnce() + Send + 'static {
     move || {
-        let result = gpu_worker(
+        let result = gpu_worker::<S>(
             device_id,
             prover_context_config,
             is_initialized,
@@ -51,7 +52,7 @@ enum JobType<'a> {
     Proof(ProofJob<'a>),
 }
 
-fn gpu_worker(
+fn gpu_worker<S: SecurityMarker>(
     device_id: i32,
     prover_context_config: ProverContextConfig,
     is_initialized: Sender<()>,
@@ -238,7 +239,7 @@ fn gpu_worker(
                         CircuitType::Delegation(delegation) => Some(delegation as u16),
                         CircuitType::Unrolled(_) => None,
                     };
-                    let security_config = circuit_type.get_security_config();
+                    let security_config = circuit_type.get_security_config_for::<S>();
                     trace!("BATCH[{batch_id}] GPU_WORKER[{device_id}] producing proof for circuit {circuit_type:?}[{sequence_id}]");
                     let job = prove(
                         circuit_type,

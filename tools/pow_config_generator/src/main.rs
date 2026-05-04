@@ -17,8 +17,8 @@ fn main() {
     let max_number_of_cycles =
         verifier_common::cs::one_row_compiler::MAX_NUMBER_OF_CYCLES.leading_zeros() as usize;
 
-    let pow_bits_for_queries_for_80 = verifier_common::POW_BITS_FOR_80_SECURITY_BITS;
-    let pow_bits_for_queries_for_100 = verifier_common::POW_BITS_FOR_100_SECURITY_BITS;
+    let pow_bits_for_queries_for_80 = verifier_common::security_80::POW_BITS;
+    let pow_bits_for_queries_for_100 = verifier_common::security_100::POW_BITS;
 
     let max_trace_len_log2 = *[
         blake2_with_compression_verifier::concrete::size_constants::TRACE_LEN_LOG2,
@@ -542,9 +542,9 @@ fn generate_pow_config_worst_constants(
         const NUM_QUERIES_FOR_100_SECURITY_BITS: usize = #num_queries_for_100;
 
         impl<const NUM_FOLDINGS: usize> SizedProofSecurityConfig<NUM_FOLDINGS> {
-            pub const fn worst_case_config() -> Self {
-                if cfg!(feature = "security_80") {
-                    SizedProofSecurityConfig {
+            pub const fn worst_case_config(security: crate::SecurityModel) -> Self {
+                match security {
+                    crate::SecurityModel::Security80 => SizedProofSecurityConfig {
                         lookup_pow_bits: LOOKUP_POW_BITS_FOR_80_SECURITY_BITS as u32,
                         quotient_alpha_pow_bits: QUOTIENT_ALPHA_POW_BITS_FOR_80_SECURITY_BITS as u32,
                         quotient_z_pow_bits: QUOTIENT_Z_POW_BITS_FOR_80_SECURITY_BITS as u32,
@@ -553,9 +553,8 @@ fn generate_pow_config_worst_constants(
                             NUM_FOLDINGS],
                         fri_queries_pow_bits: FRI_QUERIES_POW_BITS_FOR_80_SECURITY_BITS as u32,
                         num_queries: NUM_QUERIES_FOR_80_SECURITY_BITS,
-                    }
-                } else if cfg!(feature = "security_100") {
-                    SizedProofSecurityConfig {
+                    },
+                    crate::SecurityModel::Security100 => SizedProofSecurityConfig {
                         lookup_pow_bits: LOOKUP_POW_BITS_FOR_100_SECURITY_BITS as u32,
                         quotient_alpha_pow_bits: QUOTIENT_ALPHA_POW_BITS_FOR_100_SECURITY_BITS as u32,
                         quotient_z_pow_bits: QUOTIENT_Z_POW_BITS_FOR_100_SECURITY_BITS as u32,
@@ -565,8 +564,6 @@ fn generate_pow_config_worst_constants(
                         fri_queries_pow_bits: FRI_QUERIES_POW_BITS_FOR_100_SECURITY_BITS as u32,
                         num_queries: NUM_QUERIES_FOR_100_SECURITY_BITS,
                     }
-                } else {
-                    panic!("No security level selected");
                 }
             }
         }

@@ -1,8 +1,8 @@
 # Airbender VM Configuration
 #
 # Generated with https://github.com/matter-labs/zksync-airbender/tree/dev/tools/pow_config_generator
-# Created: 2026-02-24
-# Commit:  9595d1be08a79e97b845600ccd8a0363c571f69c
+# Created: 2026-04-20
+# Commit:  b4817570fc43da8d789846d48719478122701037
 
 # Airbender has a layered proving architecture:
 # - Base layer: proves correct execution of the base program.

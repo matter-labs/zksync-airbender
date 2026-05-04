@@ -15,6 +15,7 @@ pub fn caps_flattened(caps: &'_ [MerkleTreeCap<CAP_SIZE>; NUM_COSETS]) -> &'_ [u
     }
 }
 
+#[derive(Clone, Copy, Debug)]
 #[repr(usize)]
 pub enum VerificationFunctionPointer {
     UnrolledNoDelegation(VerifierFunctionPointer<CAP_SIZE, NUM_COSETS, 0, 0, 0, 1>),
@@ -30,22 +31,45 @@ pub const MAX_MEMORY_CELLS_TO_INIT: u32 = const {
     max_cells
 };
 
-pub const ADD_SUB_LUI_AUIPC_MOP_VERIFIER_PTR: VerificationFunctionPointer =
-    VerificationFunctionPointer::UnrolledNoDelegation(add_sub_lui_auipc_mop_verifier::verify);
-pub const JUMP_BRANCH_SLT_VERIFIER_PTR: VerificationFunctionPointer =
-    VerificationFunctionPointer::UnrolledNoDelegation(jump_branch_slt_verifier::verify);
-pub const LOAD_STORE_SUBWORD_ONLY_VERIFIER_PTR: VerificationFunctionPointer =
-    VerificationFunctionPointer::UnrolledNoDelegation(load_store_subword_only_verifier::verify);
-pub const LOAD_STORE_WORD_ONLY_VERIFIER_PTR: VerificationFunctionPointer =
-    VerificationFunctionPointer::UnrolledNoDelegation(load_store_word_only_verifier::verify);
-pub const MUL_DIV_VERIFIER_PTR: VerificationFunctionPointer =
-    VerificationFunctionPointer::UnrolledNoDelegation(mul_div_verifier::verify);
-pub const MUL_DIV_UNSIGNED_VERIFIER_PTR: VerificationFunctionPointer =
-    VerificationFunctionPointer::UnrolledNoDelegation(mul_div_unsigned_verifier::verify);
-pub const SHIFT_BINARY_CSR_VERIFIER_PTR: VerificationFunctionPointer =
-    VerificationFunctionPointer::UnrolledWithDelegation(shift_binary_csr_verifier::verify);
+// ==============================================================================
+// Security-Aware Unrolled Verifier Dispatch
+// ==============================================================================
+//
+// This crate stitches together proofs produced by many verifier crates. The
+// integration-layer migration therefore keeps the stitching logic intact and
+// swaps the child verifier function pointers to the matching `verify_80` or
+// `verify_100` entrypoint before verification starts.
 
-pub const FULL_MACHINE_UNROLLED_CIRCUITS_VERIFICATION_PARAMETERS: &[(
+pub const ADD_SUB_LUI_AUIPC_MOP_VERIFIER_PTR_80: VerificationFunctionPointer =
+    VerificationFunctionPointer::UnrolledNoDelegation(add_sub_lui_auipc_mop_verifier::verify_80);
+pub const ADD_SUB_LUI_AUIPC_MOP_VERIFIER_PTR_100: VerificationFunctionPointer =
+    VerificationFunctionPointer::UnrolledNoDelegation(add_sub_lui_auipc_mop_verifier::verify_100);
+pub const JUMP_BRANCH_SLT_VERIFIER_PTR_80: VerificationFunctionPointer =
+    VerificationFunctionPointer::UnrolledNoDelegation(jump_branch_slt_verifier::verify_80);
+pub const JUMP_BRANCH_SLT_VERIFIER_PTR_100: VerificationFunctionPointer =
+    VerificationFunctionPointer::UnrolledNoDelegation(jump_branch_slt_verifier::verify_100);
+pub const LOAD_STORE_SUBWORD_ONLY_VERIFIER_PTR_80: VerificationFunctionPointer =
+    VerificationFunctionPointer::UnrolledNoDelegation(load_store_subword_only_verifier::verify_80);
+pub const LOAD_STORE_SUBWORD_ONLY_VERIFIER_PTR_100: VerificationFunctionPointer =
+    VerificationFunctionPointer::UnrolledNoDelegation(load_store_subword_only_verifier::verify_100);
+pub const LOAD_STORE_WORD_ONLY_VERIFIER_PTR_80: VerificationFunctionPointer =
+    VerificationFunctionPointer::UnrolledNoDelegation(load_store_word_only_verifier::verify_80);
+pub const LOAD_STORE_WORD_ONLY_VERIFIER_PTR_100: VerificationFunctionPointer =
+    VerificationFunctionPointer::UnrolledNoDelegation(load_store_word_only_verifier::verify_100);
+pub const MUL_DIV_VERIFIER_PTR_80: VerificationFunctionPointer =
+    VerificationFunctionPointer::UnrolledNoDelegation(mul_div_verifier::verify_80);
+pub const MUL_DIV_VERIFIER_PTR_100: VerificationFunctionPointer =
+    VerificationFunctionPointer::UnrolledNoDelegation(mul_div_verifier::verify_100);
+pub const MUL_DIV_UNSIGNED_VERIFIER_PTR_80: VerificationFunctionPointer =
+    VerificationFunctionPointer::UnrolledNoDelegation(mul_div_unsigned_verifier::verify_80);
+pub const MUL_DIV_UNSIGNED_VERIFIER_PTR_100: VerificationFunctionPointer =
+    VerificationFunctionPointer::UnrolledNoDelegation(mul_div_unsigned_verifier::verify_100);
+pub const SHIFT_BINARY_CSR_VERIFIER_PTR_80: VerificationFunctionPointer =
+    VerificationFunctionPointer::UnrolledWithDelegation(shift_binary_csr_verifier::verify_80);
+pub const SHIFT_BINARY_CSR_VERIFIER_PTR_100: VerificationFunctionPointer =
+    VerificationFunctionPointer::UnrolledWithDelegation(shift_binary_csr_verifier::verify_100);
+
+pub const FULL_MACHINE_UNROLLED_CIRCUITS_VERIFICATION_PARAMETERS_80: &[(
     u32, // family
     u32, // capacity
     VerificationFunctionPointer,
@@ -53,39 +77,76 @@ pub const FULL_MACHINE_UNROLLED_CIRCUITS_VERIFICATION_PARAMETERS: &[(
     (
         common_constants::circuit_families::ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX as u32,
         (add_sub_lui_auipc_mop_verifier::concrete::size_constants::TRACE_LEN - 1) as u32,
-        ADD_SUB_LUI_AUIPC_MOP_VERIFIER_PTR,
+        ADD_SUB_LUI_AUIPC_MOP_VERIFIER_PTR_80,
     ),
     (
         common_constants::circuit_families::JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX as u32,
         (jump_branch_slt_verifier::concrete::size_constants::TRACE_LEN - 1) as u32,
-        JUMP_BRANCH_SLT_VERIFIER_PTR,
+        JUMP_BRANCH_SLT_VERIFIER_PTR_80,
     ),
     (
         common_constants::circuit_families::SHIFT_BINARY_CSR_CIRCUIT_FAMILY_IDX as u32,
         (shift_binary_csr_verifier::concrete::size_constants::TRACE_LEN - 1) as u32,
-        SHIFT_BINARY_CSR_VERIFIER_PTR,
+        SHIFT_BINARY_CSR_VERIFIER_PTR_80,
     ),
     (
         common_constants::circuit_families::MUL_DIV_CIRCUIT_FAMILY_IDX as u32,
         (mul_div_verifier::concrete::size_constants::TRACE_LEN - 1) as u32,
-        MUL_DIV_VERIFIER_PTR,
+        MUL_DIV_VERIFIER_PTR_80,
     ),
     (
         common_constants::circuit_families::LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX as u32,
         (load_store_word_only_verifier::concrete::size_constants::TRACE_LEN - 1) as u32,
-        LOAD_STORE_WORD_ONLY_VERIFIER_PTR,
+        LOAD_STORE_WORD_ONLY_VERIFIER_PTR_80,
     ),
     (
         common_constants::circuit_families::LOAD_STORE_SUBWORD_ONLY_CIRCUIT_FAMILY_IDX as u32,
         (load_store_subword_only_verifier::concrete::size_constants::TRACE_LEN - 1) as u32,
-        LOAD_STORE_SUBWORD_ONLY_VERIFIER_PTR,
+        LOAD_STORE_SUBWORD_ONLY_VERIFIER_PTR_80,
+    ),
+];
+
+pub const FULL_MACHINE_UNROLLED_CIRCUITS_VERIFICATION_PARAMETERS_100: &[(
+    u32, // family
+    u32, // capacity
+    VerificationFunctionPointer,
+)] = &[
+    (
+        common_constants::circuit_families::ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX as u32,
+        (add_sub_lui_auipc_mop_verifier::concrete::size_constants::TRACE_LEN - 1) as u32,
+        ADD_SUB_LUI_AUIPC_MOP_VERIFIER_PTR_100,
+    ),
+    (
+        common_constants::circuit_families::JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX as u32,
+        (jump_branch_slt_verifier::concrete::size_constants::TRACE_LEN - 1) as u32,
+        JUMP_BRANCH_SLT_VERIFIER_PTR_100,
+    ),
+    (
+        common_constants::circuit_families::SHIFT_BINARY_CSR_CIRCUIT_FAMILY_IDX as u32,
+        (shift_binary_csr_verifier::concrete::size_constants::TRACE_LEN - 1) as u32,
+        SHIFT_BINARY_CSR_VERIFIER_PTR_100,
+    ),
+    (
+        common_constants::circuit_families::MUL_DIV_CIRCUIT_FAMILY_IDX as u32,
+        (mul_div_verifier::concrete::size_constants::TRACE_LEN - 1) as u32,
+        MUL_DIV_VERIFIER_PTR_100,
+    ),
+    (
+        common_constants::circuit_families::LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX as u32,
+        (load_store_word_only_verifier::concrete::size_constants::TRACE_LEN - 1) as u32,
+        LOAD_STORE_WORD_ONLY_VERIFIER_PTR_100,
+    ),
+    (
+        common_constants::circuit_families::LOAD_STORE_SUBWORD_ONLY_CIRCUIT_FAMILY_IDX as u32,
+        (load_store_subword_only_verifier::concrete::size_constants::TRACE_LEN - 1) as u32,
+        LOAD_STORE_SUBWORD_ONLY_VERIFIER_PTR_100,
     ),
 ];
 
 pub const FULL_MACHINE_NUM_UNROLLED_CIRCUITS: usize =
-    const { FULL_MACHINE_UNROLLED_CIRCUITS_VERIFICATION_PARAMETERS.len() };
+    const { FULL_MACHINE_UNROLLED_CIRCUITS_VERIFICATION_PARAMETERS_80.len() };
 
-pub const FULL_UNSIGNED_MACHINE_UNROLLED_CIRCUITS_VERIFICATION_PARAMETERS: &[(
+pub const FULL_UNSIGNED_MACHINE_UNROLLED_CIRCUITS_VERIFICATION_PARAMETERS_80: &[(
     u32, // family
     u32, // capacity
     VerificationFunctionPointer,
@@ -93,39 +154,36 @@ pub const FULL_UNSIGNED_MACHINE_UNROLLED_CIRCUITS_VERIFICATION_PARAMETERS: &[(
     (
         common_constants::circuit_families::ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX as u32,
         (add_sub_lui_auipc_mop_verifier::concrete::size_constants::TRACE_LEN - 1) as u32,
-        ADD_SUB_LUI_AUIPC_MOP_VERIFIER_PTR,
+        ADD_SUB_LUI_AUIPC_MOP_VERIFIER_PTR_80,
     ),
     (
         common_constants::circuit_families::JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX as u32,
         (jump_branch_slt_verifier::concrete::size_constants::TRACE_LEN - 1) as u32,
-        JUMP_BRANCH_SLT_VERIFIER_PTR,
+        JUMP_BRANCH_SLT_VERIFIER_PTR_80,
     ),
     (
         common_constants::circuit_families::SHIFT_BINARY_CSR_CIRCUIT_FAMILY_IDX as u32,
         (shift_binary_csr_verifier::concrete::size_constants::TRACE_LEN - 1) as u32,
-        SHIFT_BINARY_CSR_VERIFIER_PTR,
+        SHIFT_BINARY_CSR_VERIFIER_PTR_80,
     ),
     (
         common_constants::circuit_families::MUL_DIV_CIRCUIT_FAMILY_IDX as u32,
         (mul_div_unsigned_verifier::concrete::size_constants::TRACE_LEN - 1) as u32,
-        MUL_DIV_UNSIGNED_VERIFIER_PTR,
+        MUL_DIV_UNSIGNED_VERIFIER_PTR_80,
     ),
     (
         common_constants::circuit_families::LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX as u32,
         (load_store_word_only_verifier::concrete::size_constants::TRACE_LEN - 1) as u32,
-        LOAD_STORE_WORD_ONLY_VERIFIER_PTR,
+        LOAD_STORE_WORD_ONLY_VERIFIER_PTR_80,
     ),
     (
         common_constants::circuit_families::LOAD_STORE_SUBWORD_ONLY_CIRCUIT_FAMILY_IDX as u32,
         (load_store_subword_only_verifier::concrete::size_constants::TRACE_LEN - 1) as u32,
-        LOAD_STORE_SUBWORD_ONLY_VERIFIER_PTR,
+        LOAD_STORE_SUBWORD_ONLY_VERIFIER_PTR_80,
     ),
 ];
 
-pub const FULL_UNSIGNED_MACHINE_NUM_UNROLLED_CIRCUITS: usize =
-    const { FULL_UNSIGNED_MACHINE_UNROLLED_CIRCUITS_VERIFICATION_PARAMETERS.len() };
-
-pub const RECURSION_WORD_ONLY_UNSIGNED_MACHINE_UNROLLED_CIRCUITS_VERIFICATION_PARAMETERS: &[(
+pub const FULL_UNSIGNED_MACHINE_UNROLLED_CIRCUITS_VERIFICATION_PARAMETERS_100: &[(
     u32, // family
     u32, // capacity
     VerificationFunctionPointer,
@@ -133,35 +191,170 @@ pub const RECURSION_WORD_ONLY_UNSIGNED_MACHINE_UNROLLED_CIRCUITS_VERIFICATION_PA
     (
         common_constants::circuit_families::ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX as u32,
         (add_sub_lui_auipc_mop_verifier::concrete::size_constants::TRACE_LEN - 1) as u32,
-        ADD_SUB_LUI_AUIPC_MOP_VERIFIER_PTR,
+        ADD_SUB_LUI_AUIPC_MOP_VERIFIER_PTR_100,
     ),
     (
         common_constants::circuit_families::JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX as u32,
         (jump_branch_slt_verifier::concrete::size_constants::TRACE_LEN - 1) as u32,
-        JUMP_BRANCH_SLT_VERIFIER_PTR,
+        JUMP_BRANCH_SLT_VERIFIER_PTR_100,
     ),
     (
         common_constants::circuit_families::SHIFT_BINARY_CSR_CIRCUIT_FAMILY_IDX as u32,
         (shift_binary_csr_verifier::concrete::size_constants::TRACE_LEN - 1) as u32,
-        SHIFT_BINARY_CSR_VERIFIER_PTR,
+        SHIFT_BINARY_CSR_VERIFIER_PTR_100,
+    ),
+    (
+        common_constants::circuit_families::MUL_DIV_CIRCUIT_FAMILY_IDX as u32,
+        (mul_div_unsigned_verifier::concrete::size_constants::TRACE_LEN - 1) as u32,
+        MUL_DIV_UNSIGNED_VERIFIER_PTR_100,
     ),
     (
         common_constants::circuit_families::LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX as u32,
         (load_store_word_only_verifier::concrete::size_constants::TRACE_LEN - 1) as u32,
-        LOAD_STORE_WORD_ONLY_VERIFIER_PTR,
+        LOAD_STORE_WORD_ONLY_VERIFIER_PTR_100,
+    ),
+    (
+        common_constants::circuit_families::LOAD_STORE_SUBWORD_ONLY_CIRCUIT_FAMILY_IDX as u32,
+        (load_store_subword_only_verifier::concrete::size_constants::TRACE_LEN - 1) as u32,
+        LOAD_STORE_SUBWORD_ONLY_VERIFIER_PTR_100,
     ),
 ];
 
-pub const RECURSION_WORD_ONLY_UNSIGNED_MACHINE_NUM_UNROLLED_CIRCUITS: usize =
-    const { RECURSION_WORD_ONLY_UNSIGNED_MACHINE_UNROLLED_CIRCUITS_VERIFICATION_PARAMETERS.len() };
+pub const FULL_UNSIGNED_MACHINE_NUM_UNROLLED_CIRCUITS: usize =
+    const { FULL_UNSIGNED_MACHINE_UNROLLED_CIRCUITS_VERIFICATION_PARAMETERS_80.len() };
 
-pub const INITS_AND_TEARDOWNS_VERIFIER_PTR: VerifierFunctionPointer<
+pub const RECURSION_WORD_ONLY_UNSIGNED_MACHINE_UNROLLED_CIRCUITS_VERIFICATION_PARAMETERS_80: &[(
+    u32, // family
+    u32, // capacity
+    VerificationFunctionPointer,
+)] = &[
+    (
+        common_constants::circuit_families::ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX as u32,
+        (add_sub_lui_auipc_mop_verifier::concrete::size_constants::TRACE_LEN - 1) as u32,
+        ADD_SUB_LUI_AUIPC_MOP_VERIFIER_PTR_80,
+    ),
+    (
+        common_constants::circuit_families::JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX as u32,
+        (jump_branch_slt_verifier::concrete::size_constants::TRACE_LEN - 1) as u32,
+        JUMP_BRANCH_SLT_VERIFIER_PTR_80,
+    ),
+    (
+        common_constants::circuit_families::SHIFT_BINARY_CSR_CIRCUIT_FAMILY_IDX as u32,
+        (shift_binary_csr_verifier::concrete::size_constants::TRACE_LEN - 1) as u32,
+        SHIFT_BINARY_CSR_VERIFIER_PTR_80,
+    ),
+    (
+        common_constants::circuit_families::LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX as u32,
+        (load_store_word_only_verifier::concrete::size_constants::TRACE_LEN - 1) as u32,
+        LOAD_STORE_WORD_ONLY_VERIFIER_PTR_80,
+    ),
+];
+
+pub const RECURSION_WORD_ONLY_UNSIGNED_MACHINE_UNROLLED_CIRCUITS_VERIFICATION_PARAMETERS_100:
+    &[(
+        u32, // family
+        u32, // capacity
+        VerificationFunctionPointer,
+    )] = &[
+    (
+        common_constants::circuit_families::ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX as u32,
+        (add_sub_lui_auipc_mop_verifier::concrete::size_constants::TRACE_LEN - 1) as u32,
+        ADD_SUB_LUI_AUIPC_MOP_VERIFIER_PTR_100,
+    ),
+    (
+        common_constants::circuit_families::JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX as u32,
+        (jump_branch_slt_verifier::concrete::size_constants::TRACE_LEN - 1) as u32,
+        JUMP_BRANCH_SLT_VERIFIER_PTR_100,
+    ),
+    (
+        common_constants::circuit_families::SHIFT_BINARY_CSR_CIRCUIT_FAMILY_IDX as u32,
+        (shift_binary_csr_verifier::concrete::size_constants::TRACE_LEN - 1) as u32,
+        SHIFT_BINARY_CSR_VERIFIER_PTR_100,
+    ),
+    (
+        common_constants::circuit_families::LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX as u32,
+        (load_store_word_only_verifier::concrete::size_constants::TRACE_LEN - 1) as u32,
+        LOAD_STORE_WORD_ONLY_VERIFIER_PTR_100,
+    ),
+];
+
+pub const RECURSION_WORD_ONLY_UNSIGNED_MACHINE_NUM_UNROLLED_CIRCUITS: usize = const {
+    RECURSION_WORD_ONLY_UNSIGNED_MACHINE_UNROLLED_CIRCUITS_VERIFICATION_PARAMETERS_80.len()
+};
+
+pub const INITS_AND_TEARDOWNS_VERIFIER_PTR_80: VerifierFunctionPointer<
     CAP_SIZE,
     NUM_COSETS,
     0,
     { inits_and_teardowns_verifier::concrete::size_constants::NUM_AUX_BOUNDARY_VALUES },
     0,
-> = inits_and_teardowns_verifier::verify;
+> = inits_and_teardowns_verifier::verify_80;
+
+pub const INITS_AND_TEARDOWNS_VERIFIER_PTR_100: VerifierFunctionPointer<
+    CAP_SIZE,
+    NUM_COSETS,
+    0,
+    { inits_and_teardowns_verifier::concrete::size_constants::NUM_AUX_BOUNDARY_VALUES },
+    0,
+> = inits_and_teardowns_verifier::verify_100;
+
+#[inline(always)]
+pub const fn full_machine_unrolled_circuits_verification_parameters(
+    security: verifier_common::SecurityModel,
+) -> &'static [(u32, u32, VerificationFunctionPointer)] {
+    match security {
+        verifier_common::SecurityModel::Security80 => {
+            FULL_MACHINE_UNROLLED_CIRCUITS_VERIFICATION_PARAMETERS_80
+        }
+        verifier_common::SecurityModel::Security100 => {
+            FULL_MACHINE_UNROLLED_CIRCUITS_VERIFICATION_PARAMETERS_100
+        }
+    }
+}
+
+#[inline(always)]
+pub const fn full_unsigned_machine_unrolled_circuits_verification_parameters(
+    security: verifier_common::SecurityModel,
+) -> &'static [(u32, u32, VerificationFunctionPointer)] {
+    match security {
+        verifier_common::SecurityModel::Security80 => {
+            FULL_UNSIGNED_MACHINE_UNROLLED_CIRCUITS_VERIFICATION_PARAMETERS_80
+        }
+        verifier_common::SecurityModel::Security100 => {
+            FULL_UNSIGNED_MACHINE_UNROLLED_CIRCUITS_VERIFICATION_PARAMETERS_100
+        }
+    }
+}
+
+#[inline(always)]
+pub const fn recursion_word_only_unsigned_machine_unrolled_circuits_verification_parameters(
+    security: verifier_common::SecurityModel,
+) -> &'static [(u32, u32, VerificationFunctionPointer)] {
+    match security {
+        verifier_common::SecurityModel::Security80 => {
+            RECURSION_WORD_ONLY_UNSIGNED_MACHINE_UNROLLED_CIRCUITS_VERIFICATION_PARAMETERS_80
+        }
+        verifier_common::SecurityModel::Security100 => {
+            RECURSION_WORD_ONLY_UNSIGNED_MACHINE_UNROLLED_CIRCUITS_VERIFICATION_PARAMETERS_100
+        }
+    }
+}
+
+#[inline(always)]
+pub const fn inits_and_teardowns_verifier_ptr(
+    security: verifier_common::SecurityModel,
+) -> VerifierFunctionPointer<
+    CAP_SIZE,
+    NUM_COSETS,
+    0,
+    { inits_and_teardowns_verifier::concrete::size_constants::NUM_AUX_BOUNDARY_VALUES },
+    0,
+> {
+    match security {
+        verifier_common::SecurityModel::Security80 => INITS_AND_TEARDOWNS_VERIFIER_PTR_80,
+        verifier_common::SecurityModel::Security100 => INITS_AND_TEARDOWNS_VERIFIER_PTR_100,
+    }
+}
 
 /// If we recurse over user's program -> we must provide expected final PC,
 /// and setup caps (that encode the program itself!),
@@ -187,6 +380,7 @@ pub unsafe fn verify_full_statement_for_unrolled_circuits<
         &[MerkleTreeCap<CAP_SIZE>; NUM_COSETS],
         VerifierFunctionPointer<CAP_SIZE, NUM_COSETS, NUM_DELEGATION_CHALLENGES, 0, 0, 0>,
     )],
+    security_model: verifier_common::SecurityModel,
 ) -> [u32; 16] {
     assert_eq!(
         circuits_families_setups.len(),
@@ -576,10 +770,12 @@ pub unsafe fn verify_full_statement_for_unrolled_circuits<
     let pow_challenge_high = verifier_common::DefaultNonDeterminismSource::read_word();
     let pow_challenge = (pow_challenge_high as u64) << 32 | (pow_challenge_low as u64);
 
+    let memory_delegation_pow_bits = security_model.memory_delegation_pow_bits();
+
     let expected_challenges =
         ExternalChallenges::draw_from_transcript_seed_with_delegation_and_state_permutation(
             memory_seed,
-            MEMORY_DELEGATION_POW_BITS,
+            memory_delegation_pow_bits,
             pow_challenge,
         );
 
@@ -732,7 +928,7 @@ pub unsafe fn verify_full_statement_for_unrolled_circuits<
     output
 }
 
-pub fn verify_unrolled_base_layer() -> [u32; 16] {
+pub fn verify_unrolled_base_layer(security: verifier_common::SecurityModel) -> [u32; 16] {
     unsafe {
         let circuits_setups = read_setups::<
             DefaultNonDeterminismSource,
@@ -745,17 +941,18 @@ pub fn verify_unrolled_base_layer() -> [u32; 16] {
             { inits_and_teardowns_verifier::concrete::size_constants::NUM_AUX_BOUNDARY_VALUES },
         >(
             &circuits_setups_refs,
-            &FULL_UNSIGNED_MACHINE_UNROLLED_CIRCUITS_VERIFICATION_PARAMETERS,
+            full_unsigned_machine_unrolled_circuits_verification_parameters(security),
             (
                 &inits_and_teardowns_setups[0],
-                INITS_AND_TEARDOWNS_VERIFIER_PTR,
+                inits_and_teardowns_verifier_ptr(security),
             ),
-            BASE_LAYER_DELEGATION_CIRCUITS_VERIFICATION_PARAMETERS,
+            base_layer_delegation_circuits_verification_parameters(security),
+            security,
         )
     }
 }
 
-pub fn verify_unrolled_recursion_layer() -> [u32; 16] {
+pub fn verify_unrolled_recursion_layer(security: verifier_common::SecurityModel) -> [u32; 16] {
     unsafe {
         let circuits_setups = read_setups::<
             DefaultNonDeterminismSource,
@@ -768,23 +965,28 @@ pub fn verify_unrolled_recursion_layer() -> [u32; 16] {
             { inits_and_teardowns_verifier::concrete::size_constants::NUM_AUX_BOUNDARY_VALUES },
         >(
             &circuits_setups_refs,
-            &RECURSION_WORD_ONLY_UNSIGNED_MACHINE_UNROLLED_CIRCUITS_VERIFICATION_PARAMETERS,
+            recursion_word_only_unsigned_machine_unrolled_circuits_verification_parameters(
+                security,
+            ),
             (
                 &inits_and_teardowns_setups[0],
-                INITS_AND_TEARDOWNS_VERIFIER_PTR,
+                inits_and_teardowns_verifier_ptr(security),
             ),
-            RECURSION_LAYER_CIRCUITS_VERIFICATION_PARAMETERS,
+            recursion_layer_circuits_verification_parameters(security),
+            security,
         )
     }
 }
 
-pub fn verify_base_or_recursion_unrolled_circuits() -> [u32; 16] {
+pub fn verify_base_or_recursion_unrolled_circuits(
+    security: verifier_common::SecurityModel,
+) -> [u32; 16] {
     // we just branch
     let op_type = DefaultNonDeterminismSource::read_word();
     use crate::definitions::*;
     match op_type {
-        OP_VERIFY_BASE_LAYER_IN_UNROLLED_CIRCUITS => verify_unrolled_base_layer(),
-        OP_VERIFY_RECURSIVE_LAYER_IN_UNROLLED_CIRCUITS => verify_unrolled_recursion_layer(),
+        OP_VERIFY_BASE_LAYER_IN_UNROLLED_CIRCUITS => verify_unrolled_base_layer(security),
+        OP_VERIFY_RECURSIVE_LAYER_IN_UNROLLED_CIRCUITS => verify_unrolled_recursion_layer(security),
         _ => {
             panic!("Unknown op");
         }

@@ -20,7 +20,7 @@ artifact_names=(
   "recursion_in_unified_layer_security_100_bits"
 )
 
-# Determine feature set based on artifact name
+# Determine the workload plus the tool-local security selector for an artifact name.
 detect_features() {
   local name="$1"
 
@@ -50,7 +50,8 @@ remove_build_artifacts() {
   rm -f "${prefix}.bin" "${prefix}.elf" "${prefix}.text"
 }
 
-# Build artifacts with the provided set of features and save with provided name
+# Build artifacts with the provided set of features and save with provided name.
+# The security feature only selects which explicit verifier wrapper this tool calls.
 build_artifacts() {
   local features="$1"
   local name="$2"
