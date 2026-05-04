@@ -3309,6 +3309,7 @@ pub(crate) fn debug_build_initial_batched_evals_for_test(
     setup_trace_holder: &TraceHolder<BF>,
     setup_polys_claims: &[E4],
     batching_challenge: E4,
+    use_hypercube_evals: bool,
     context: &ProverContext,
 ) -> CudaResult<Vec<E4>> {
     fn copy_back(values: &DeviceSlice<E4>, context: &ProverContext) -> Vec<E4> {
@@ -3345,6 +3346,7 @@ pub(crate) fn debug_build_initial_batched_evals_for_test(
         witness_weights,
         setup_trace_holder,
         setup_weights,
+        use_hypercube_evals,
         &mut state.sumchecked_poly_evaluation_form,
         context,
     )?;
