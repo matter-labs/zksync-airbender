@@ -29,7 +29,7 @@ use crate::ops::blake2s::{Digest, STATE_SIZE};
 use crate::ops::cub::device_reduce::{get_reduce_temp_storage_bytes, reduce, ReduceOperation};
 use crate::ops::cub::CUB_TEMP_STORAGE_EXTRA_ALIGNMENT_LOG2;
 use crate::ops::powers::get_powers_by_val;
-use crate::ops::simple::{add, add_into_y, mul, mul_into_x, set_to_zero};
+use crate::ops::simple::{add, add_into_y, mul, mul_into_x};
 use crate::ops::transpose::transpose;
 use crate::primitives::callbacks::Callbacks;
 use crate::primitives::context::{
