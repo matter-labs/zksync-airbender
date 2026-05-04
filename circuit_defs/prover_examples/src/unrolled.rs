@@ -39,7 +39,7 @@ use trace_and_split::FinalRegisterValue;
 use trace_and_split::ENTRY_POINT;
 use verifier_common::security_100::Security100Marker;
 use verifier_common::security_80::Security80Marker;
-use verifier_common::{SecurityConfig, SecurityMarker};
+use verifier_common::SecurityConfig;
 
 pub fn prove_unrolled_execution_with_replayer_80<
     C: MachineConfig,

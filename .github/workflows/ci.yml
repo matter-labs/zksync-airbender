@@ -25,8 +25,8 @@ jobs:
       - name: Setup
         run: |
           rustup set profile minimal
-      - name: Add riscv target
-        run: rustup target add riscv32im-unknown-none-elf
+          rustup target add riscv32im-unknown-none-elf
+          rustup component add llvm-tools
       - name: Install cargo-binutils
         run: cargo install cargo-binutils --locked
       - name: Compile
@@ -165,6 +165,7 @@ jobs:
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
+          rustflags: ""
       - name: Build CLI
         run: cargo build --release -p cli
       - name: Run keccak_f1600 test on RISC-V
