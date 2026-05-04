@@ -44,7 +44,7 @@ use crate::prover::tracing_data::{
 use crate::prover::whir::GpuWhirExtensionOracle;
 use crate::prover::whir_fold::{
     clone_scheduled_whir_pre_pow_seeds, debug_apply_initial_fold_challenge_for_test,
-    debug_build_initial_batched_main_domain_poly_for_test, debug_build_initial_fold_state_for_test,
+    debug_build_initial_batched_evals_for_test, debug_build_initial_fold_state_for_test,
     debug_build_initial_state_for_test, debug_build_initial_state_snapshots_for_test,
     debug_initial_round_checkpoint_for_test, schedule_gpu_whir_fold_with_sources,
     take_scheduled_whir_proof,
@@ -1348,7 +1348,7 @@ fn assert_recursive_whir_oracle_parity_for_supported_path(
         }
     }
 
-    let gpu_batched_poly_on_main_domain = debug_build_initial_batched_main_domain_poly_for_test(
+    let gpu_batched_poly_on_main_domain = debug_build_initial_batched_evals_for_test(
         gpu_mem_trace_holder,
         mem_polys_claims,
         gpu_wit_trace_holder,
@@ -1947,6 +1947,7 @@ fn assert_recursive_whir_oracle_parity_for_supported_path(
         move || scheduled_transcript_seed,
         whir_schedule.cap_size,
         trace_len_log2,
+        true, // use_hypercube_evals_for_batching
         None,
         &whir_proof_layout,
         None,

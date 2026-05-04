@@ -970,6 +970,7 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
             },
             whir_schedule.cap_size,
             compiled_circuit.trace_len.trailing_zeros() as usize,
+            true, // use_hypercube_evals_for_batching
             proof_slab.as_ref(),
             &proof_layout,
             Some(base_layer_claims_scheduled.take_pending_aggregation()),
