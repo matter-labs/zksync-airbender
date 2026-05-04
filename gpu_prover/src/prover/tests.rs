@@ -1349,19 +1349,25 @@ fn assert_recursive_whir_oracle_parity_for_supported_path(
     }
 
     let use_hypercube_evals_for_batching = true;
-    let gpu_batched_poly_on_main_domain = debug_build_initial_batched_evals_for_test(
-        gpu_mem_trace_holder,
-        mem_polys_claims,
-        gpu_wit_trace_holder,
-        wit_polys_claims,
-        gpu_setup_trace_holder,
-        setup_polys_claims,
-        batching_challenge,
-        use_hypercube_evals_for_batching,
-        context,
-    )
-    .unwrap();
-    assert_eq!(gpu_batched_poly_on_main_domain, batched_poly_on_main_domain);
+    // CPU initially creates batched evals from coset 0 evaluations rather than
+    // hypercube evaluations, so we only compare if the GPU also does the former.
+    // (Later on, we'll compare the monomial forms unconditionally,
+    // because they should always match.)
+    if !use_hypercube_evals_for_batching {
+        let gpu_batched_poly_on_main_domain = debug_build_initial_batched_evals_for_test(
+            gpu_mem_trace_holder,
+            mem_polys_claims,
+            gpu_wit_trace_holder,
+            wit_polys_claims,
+            gpu_setup_trace_holder,
+            setup_polys_claims,
+            batching_challenge,
+            use_hypercube_evals_for_batching,
+            context,
+        )
+        .unwrap();
+        assert_eq!(gpu_batched_poly_on_main_domain, batched_poly_on_main_domain);
+    }
     let mut sumchecked_poly_monomial_form =
         compute_column_major_monomial_form_from_main_domain_owned_for_test(
             batched_poly_on_main_domain,
