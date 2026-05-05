@@ -402,22 +402,35 @@ EXTERN __global__ void ab_gather_tree_caps_kernel(const unsigned long long *src_
   }
 }
 
+// Mirror of `GpuGatherEAddressesDesc` in gpu_prover/src/ops/blake2s.rs.
+// Holds the per-launch source-pointer table inline as kernel-arg data —
+// replaces the prior per-launch H2D of the pointer table.
+constexpr unsigned GKR_GATHER_MAX_ADDRESSES = 1280;
+
+struct gpu_gather_e_addresses_desc {
+  u32 num_addresses;
+  u32 elements_per_addr;
+  unsigned long long src_ptrs[GKR_GATHER_MAX_ADDRESSES];
+};
+
+static_assert(sizeof(gpu_gather_e_addresses_desc) <= 32u * 1024u,
+              "gpu_gather_e_addresses_desc must fit under the 32 KB inline kernel-arg ceiling");
+
 // Gather E4 evaluations from N source buffers (one per address) into one
-// contiguous destination, in the order given by src_ptrs. Each block handles
-// one address; threads stripe the per-address copy. src_ptrs[i] is a u64
-// carrying the device pointer to address i's `elements_per_addr` E4 values.
-// dst[i*elements_per_addr .. (i+1)*elements_per_addr] receives that
-// address's data. Internally copies `elements_per_addr * 4` u32 words per
-// address (each E4 is 16 bytes / 4 u32 words). Replaces the per-address
+// contiguous destination, in the order given by desc.src_ptrs. Each block
+// handles one address; threads stripe the per-address copy. desc.src_ptrs[i]
+// is a u64 carrying the device pointer to address i's `elements_per_addr`
+// E4 values. dst[i*elements_per_addr .. (i+1)*elements_per_addr] receives
+// that address's data. Internally copies `elements_per_addr * 4` u32 words
+// per address (each E4 is 16 bytes / 4 u32 words). Replaces the per-address
 // `memory_copy_async` loop in the backward schedulers with a single launch.
-EXTERN __global__ void ab_gather_e_addresses_kernel(const unsigned long long *src_ptrs, u32 *dst,
-                                                    const unsigned elements_per_addr,
-                                                    const unsigned num_addresses) {
+EXTERN __global__ void ab_gather_e_addresses_kernel(__grid_constant__ const gpu_gather_e_addresses_desc desc,
+                                                    u32 *dst) {
   const unsigned addr_idx = blockIdx.x;
-  if (addr_idx >= num_addresses)
+  if (addr_idx >= desc.num_addresses)
     return;
-  const u32 *src = reinterpret_cast<const u32 *>(src_ptrs[addr_idx]);
-  const unsigned words_per_addr = elements_per_addr * 4u;
+  const u32 *src = reinterpret_cast<const u32 *>(desc.src_ptrs[addr_idx]);
+  const unsigned words_per_addr = desc.elements_per_addr * 4u;
   u32 *addr_dst = dst + addr_idx * words_per_addr;
   for (unsigned i = threadIdx.x; i < words_per_addr; i += blockDim.x) {
     addr_dst[i] = src[i];
@@ -913,15 +926,30 @@ EXTERN __global__ void ab_backward_new_claims_linear_kernel(const e4 *last_evals
   new_claims_out[idx] = e4_lerp(v0, v1, r);
 }
 
-EXTERN __global__ void ab_build_combined_claim_kernel(const e4 *claims, const e4 *batching, const u32 *desc, const unsigned num_terms, e4 *claim_out,
-                                                      e4 *eq_prefactor_out) {
+// Mirror of `GpuCombinedClaimDesc` in gpu_prover/src/ops/blake2s.rs. Holds
+// the per-layer `(exp, claim_idx)` descriptor pairs for `build_combined_claim`
+// inline as kernel-arg data — replaces the prior device-buffer + per-layer H2D.
+constexpr unsigned GKR_COMBINED_CLAIM_MAX_PAIRS = 1024;
+
+struct gpu_combined_claim_desc {
+  u32 num_terms;
+  u32 _pad;
+  u32 entries[2 * GKR_COMBINED_CLAIM_MAX_PAIRS];
+};
+
+static_assert(sizeof(gpu_combined_claim_desc) <= 32u * 1024u,
+              "gpu_combined_claim_desc must fit under the 32 KB inline kernel-arg ceiling");
+
+EXTERN __global__ void ab_build_combined_claim_kernel(const e4 *claims, const e4 *batching,
+                                                      __grid_constant__ const gpu_combined_claim_desc desc,
+                                                      e4 *claim_out, e4 *eq_prefactor_out) {
   if (threadIdx.x != 0 || blockIdx.x != 0)
     return;
   const e4 b = *batching;
   e4 result = e4::ZERO();
-  for (unsigned i = 0; i < num_terms; i++) {
-    const unsigned exp = desc[2u * i];
-    const unsigned idx = desc[2u * i + 1u];
+  for (unsigned i = 0; i < desc.num_terms; i++) {
+    const unsigned exp = desc.entries[2u * i];
+    const unsigned idx = desc.entries[2u * i + 1u];
     e4 pow = e4::ONE();
     for (unsigned j = 0; j < exp; j++)
       pow = e4::mul(pow, b);
