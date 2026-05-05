@@ -91,8 +91,7 @@ impl<'a> GpuGKRMemoryTransfer<'a> {
         context: &ProverContext,
     ) -> CudaResult<Self> {
         let cap_size = 1usize << host.log_tree_cap_size;
-        let unified_device_cap =
-            context.alloc::<Digest>(cap_size, AllocationPlacement::BestFit)?;
+        let unified_device_cap = context.alloc::<Digest>(cap_size, AllocationPlacement::BestFit)?;
         let transfer = Transfer::new()?;
         transfer.record_allocated(context)?;
         Ok(Self {

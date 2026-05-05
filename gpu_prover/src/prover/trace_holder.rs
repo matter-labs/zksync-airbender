@@ -440,7 +440,8 @@ impl TraceHolder<BF> {
             .unified_device_cap
             .as_mut()
             .expect("commit_all must allocate unified_device_cap before per-coset commit");
-        let dst = &mut unified_cap[stage1_pos * per_coset_cap_size..(stage1_pos + 1) * per_coset_cap_size];
+        let dst = &mut unified_cap
+            [stage1_pos * per_coset_cap_size..(stage1_pos + 1) * per_coset_cap_size];
         let src = merkle_tree_cap(tree, log_subtree_cap_size);
         memory_copy_async(dst, src, stream)?;
         match &mut self.trees {

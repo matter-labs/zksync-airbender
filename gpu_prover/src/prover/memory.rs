@@ -160,8 +160,9 @@ pub(crate) fn commit_memory<'a>(
         let per_coset = unified.len() / lde_factor;
         // Repack the unified cap (bit-reversed coset order) back into the
         // natural per-coset shape that `MemoryCommitmentJob`'s callers expect.
-        let mut per_coset_caps: Vec<MerkleTreeCapVarLength> =
-            (0..lde_factor).map(|_| MerkleTreeCapVarLength { cap: Vec::new() }).collect();
+        let mut per_coset_caps: Vec<MerkleTreeCapVarLength> = (0..lde_factor)
+            .map(|_| MerkleTreeCapVarLength { cap: Vec::new() })
+            .collect();
         for stage1_pos in 0..lde_factor {
             let natural_coset_index = bitreverse_index(stage1_pos, log_lde);
             per_coset_caps[natural_coset_index].cap =

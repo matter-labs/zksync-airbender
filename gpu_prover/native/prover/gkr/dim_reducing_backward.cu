@@ -49,30 +49,23 @@ namespace airbender::prover::gkr {
                                                                                           const unsigned chunk_cols, const unsigned blocks_count) {            \
     gkr_trace_holder_block_partials(raw_values, eq_values, block_partials, trace_len, column_start, chunk_cols, blocks_count);                                 \
   }                                                                                                                                                            \
-  EXTERN __global__ void ab_gkr_dim_reducing_round0_batched_##arg_t##_kernel(const __grid_constant__ gkr_dim_reducing_round0_batch<arg_t> batch,               \
-                                                                             const unsigned acc_size) {                                                        \
-    gkr_dim_reducing_round0_batched(batch, acc_size);                                                                                                          \
+  EXTERN __global__ void ab_gkr_dim_reducing_round0_batched_compact_##arg_t##_kernel(                                                                          \
+      const __grid_constant__ gkr_dim_reducing_round0_batch_compact<arg_t> batch, const unsigned acc_size) {                                                   \
+    gkr_dim_reducing_round0_batched_compact(batch, acc_size);                                                                                                  \
   }                                                                                                                                                            \
-  EXTERN __global__ void ab_gkr_dim_reducing_round1_batched_##arg_t##_kernel(const __grid_constant__ gkr_dim_reducing_round1_batch<arg_t> batch,               \
-                                                                             const unsigned acc_size) {                                                        \
+  EXTERN __global__ void ab_gkr_dim_reducing_round1_batched_compact_##arg_t##_kernel(                                                                          \
+      const __grid_constant__ gkr_dim_reducing_continuation_batch_compact<arg_t> batch, const unsigned acc_size) {                                             \
     if (batch.explicit_form)                                                                                                                                   \
-      gkr_dim_reducing_continuation_batched<arg_t, true>(batch, acc_size);                                                                                     \
+      gkr_dim_reducing_round1_batched_compact_inner<arg_t, true>(batch, acc_size);                                                                             \
     else                                                                                                                                                       \
-      gkr_dim_reducing_continuation_batched<arg_t, false>(batch, acc_size);                                                                                    \
+      gkr_dim_reducing_round1_batched_compact_inner<arg_t, false>(batch, acc_size);                                                                            \
   }                                                                                                                                                            \
-  EXTERN __global__ void ab_gkr_dim_reducing_round2_batched_##arg_t##_kernel(const __grid_constant__ gkr_dim_reducing_round2_batch<arg_t> batch,               \
-                                                                             const unsigned acc_size) {                                                        \
+  EXTERN __global__ void ab_gkr_dim_reducing_continuation_batched_compact_##arg_t##_kernel(                                                                    \
+      const __grid_constant__ gkr_dim_reducing_continuation_batch_compact<arg_t> batch, const unsigned acc_size, const unsigned step) {                        \
     if (batch.explicit_form)                                                                                                                                   \
-      gkr_dim_reducing_continuation_batched<arg_t, true>(batch, acc_size);                                                                                     \
+      gkr_dim_reducing_continuation_batched_compact_inner<arg_t, true>(batch, acc_size, step);                                                                 \
     else                                                                                                                                                       \
-      gkr_dim_reducing_continuation_batched<arg_t, false>(batch, acc_size);                                                                                    \
-  }                                                                                                                                                            \
-  EXTERN __global__ void ab_gkr_dim_reducing_round3_batched_##arg_t##_kernel(const __grid_constant__ gkr_dim_reducing_round3_batch<arg_t> batch,               \
-                                                                             const unsigned acc_size) {                                                        \
-    if (batch.explicit_form)                                                                                                                                   \
-      gkr_dim_reducing_continuation_batched<arg_t, true>(batch, acc_size);                                                                                     \
-    else                                                                                                                                                       \
-      gkr_dim_reducing_continuation_batched<arg_t, false>(batch, acc_size);                                                                                    \
+      gkr_dim_reducing_continuation_batched_compact_inner<arg_t, false>(batch, acc_size, step);                                                                \
   }
 
 GKR_DIM_REDUCING_KERNELS(e4);
