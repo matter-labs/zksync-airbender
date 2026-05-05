@@ -252,7 +252,7 @@ where
     offsets
 }
 
-pub(crate) trait ProofSkeletonInstanceExt<S>
+pub trait ProofSkeletonInstanceExt<S>
 where
     S: verifier_common::SecurityConfig<NUM_FRI_STEPS>,
     [(); Geometry::<S>::NUM_FRI_STEPS_WITH_ORACLES]:,
@@ -273,7 +273,7 @@ where
     fn transcript_elements_monomial_coefficients(&self) -> &[u32];
 }
 
-pub(crate) trait QueryValuesInstanceExt<S>: Sized
+pub trait QueryValuesInstanceExt<S>: Sized
 where
     S: verifier_common::SecurityConfig<NUM_FRI_STEPS>,
     [(); Geometry::<S>::TOTAL_FRI_ORACLES_PATHS_LENGTH]:,
