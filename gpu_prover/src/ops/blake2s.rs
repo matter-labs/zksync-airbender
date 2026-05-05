@@ -436,14 +436,46 @@ cuda_kernel!(
     )
 );
 
+/// Maximum source addresses the `gather_e_addresses` kernel-arg descriptor
+/// can hold. See [`crate::prover::gkr::gkr_address_audit::GKR_GATHER_MAX_ADDRESSES`]
+/// for the rationale; the audit panics if any future circuit exceeds this.
+pub const GKR_GATHER_MAX_ADDRESSES: usize = 1280;
+
+/// Kernel-arg descriptor for `gather_e_addresses`. Replaces the previous
+/// per-launch H2D of the source-pointer table: the descriptor is now passed
+/// by value as `__grid_constant__` data.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct GpuGatherEAddressesDesc {
+    /// Number of populated entries in `src_ptrs`.
+    pub num_addresses: u32,
+    /// Number of E4 elements gathered per source address.
+    pub elements_per_addr: u32,
+    /// Source device pointers (one per address). Each is treated as a
+    /// `const u32 *` referring to `elements_per_addr * 4` u32 words.
+    pub src_ptrs: [u64; GKR_GATHER_MAX_ADDRESSES],
+}
+
+impl Default for GpuGatherEAddressesDesc {
+    fn default() -> Self {
+        Self {
+            num_addresses: 0,
+            elements_per_addr: 0,
+            src_ptrs: [0u64; GKR_GATHER_MAX_ADDRESSES],
+        }
+    }
+}
+
+const _: () = {
+    assert!(
+        std::mem::size_of::<GpuGatherEAddressesDesc>() <= 32 * 1024,
+        "GpuGatherEAddressesDesc must fit under the 32 KB inline kernel-arg ceiling"
+    );
+};
+
 cuda_kernel!(
     GatherEAddresses,
-    ab_gather_e_addresses_kernel(
-        src_ptrs: *const u64,
-        dst: *mut u32,
-        elements_per_addr: u32,
-        num_addresses: u32
-    )
+    ab_gather_e_addresses_kernel(desc: GpuGatherEAddressesDesc, dst: *mut u32)
 );
 
 cuda_kernel!(
@@ -497,37 +529,43 @@ pub fn gather_tree_caps(
     GatherTreeCapsFunction::default().launch(&config, &args)
 }
 
-/// Gather `num_addresses` E4 evaluation regions (each `elements_per_addr` E4
-/// values long) from the device pointers in `src_ptrs` into the contiguous
-/// `dst[0..num_addresses*elements_per_addr]`. The caller orders `src_ptrs` to
-/// match the desired output address sequence (typically the BTreeMap key
-/// order of the per-layer transcript inputs). Replaces the per-address
-/// `memory_copy_async` loop in the backward schedulers with a single launch.
+/// Gather `src_ptrs.len()` E4 evaluation regions (each `elements_per_addr`
+/// E4 values long) from the device pointers in `src_ptrs` into the contiguous
+/// `dst[0..src_ptrs.len()*elements_per_addr]`. The caller orders `src_ptrs`
+/// (host slice) to match the desired output address sequence (typically the
+/// BTreeMap key order of the per-layer transcript inputs). The pointer table
+/// is passed by value as kernel-arg data; production callers must respect
+/// `GKR_GATHER_MAX_ADDRESSES`.
 pub fn gather_e_addresses(
-    src_ptrs: &DeviceSlice<u64>,
+    src_ptrs: &[u64],
     dst: &mut DeviceSlice<E4>,
     elements_per_addr: u32,
     stream: &CudaStream,
 ) -> CudaResult<()> {
     let num_addresses = src_ptrs.len();
     assert!(num_addresses > 0);
-    assert!(num_addresses <= u32::MAX as usize);
     assert!(elements_per_addr > 0);
+    assert!(
+        num_addresses <= GKR_GATHER_MAX_ADDRESSES,
+        "gather descriptor has {} addresses; exceeds GKR_GATHER_MAX_ADDRESSES = {}. \
+         Raise the constant in gkr_address_audit.rs after re-running the audit.",
+        num_addresses,
+        GKR_GATHER_MAX_ADDRESSES,
+    );
     assert_eq!(
         dst.len(),
         num_addresses * elements_per_addr as usize,
         "gather_e_addresses dst length must match num_addresses * elements_per_addr",
     );
+    let mut desc = GpuGatherEAddressesDesc::default();
+    desc.num_addresses = num_addresses as u32;
+    desc.elements_per_addr = elements_per_addr;
+    desc.src_ptrs[..num_addresses].copy_from_slice(src_ptrs);
     // Each E4 = 4 u32 words; cap thread count to a reasonable warp multiple.
     let words_per_addr = elements_per_addr.saturating_mul(4);
     let threads_per_block = std::cmp::min(words_per_addr, 64u32);
     let config = CudaLaunchConfig::basic(num_addresses as u32, threads_per_block, stream);
-    let args = GatherEAddressesArguments::new(
-        src_ptrs.as_ptr(),
-        dst.as_mut_ptr() as *mut u32,
-        elements_per_addr,
-        num_addresses as u32,
-    );
+    let args = GatherEAddressesArguments::new(desc, dst.as_mut_ptr() as *mut u32);
     GatherEAddressesFunction::default().launch(&config, &args)
 }
 
@@ -794,22 +832,62 @@ pub fn backward_new_claims_linear(
     BackwardNewClaimsLinearFunction::default().launch(&config, &args)
 }
 
+/// Maximum `(batch_challenge_offset, claim_idx)` pairs the
+/// `build_combined_claim` kernel-arg descriptor can hold.
+/// See [`crate::prover::gkr::gkr_address_audit::GKR_COMBINED_CLAIM_MAX_PAIRS`]
+/// for the rationale; the audit panics if any future circuit exceeds this.
+pub const GKR_COMBINED_CLAIM_MAX_PAIRS: usize = 1024;
+
+/// Kernel-arg descriptor for `build_combined_claim`. Replaces the previous
+/// device-buffer + per-layer H2D path: the descriptor is now passed by value
+/// as `__grid_constant__` data, eliminating ~700 B / layer of per-proof H2D.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct GpuCombinedClaimDesc {
+    /// Number of `(exp, idx)` pairs populated in `entries`.
+    pub num_terms: u32,
+    /// Reserved padding to keep `entries` aligned at offset 8.
+    pub _pad: u32,
+    /// Flattened `(exp_0, idx_0, exp_1, idx_1, ...)` pairs.
+    pub entries: [u32; GKR_COMBINED_CLAIM_MAX_PAIRS * 2],
+}
+
+impl Default for GpuCombinedClaimDesc {
+    fn default() -> Self {
+        Self {
+            num_terms: 0,
+            _pad: 0,
+            entries: [0u32; GKR_COMBINED_CLAIM_MAX_PAIRS * 2],
+        }
+    }
+}
+
+const _: () = {
+    assert!(
+        std::mem::size_of::<GpuCombinedClaimDesc>() <= 32 * 1024,
+        "GpuCombinedClaimDesc must fit under the 32 KB inline kernel-arg ceiling"
+    );
+};
+
 cuda_kernel!(
     BuildCombinedClaim,
     ab_build_combined_claim_kernel(
         claims: *const E4,
         batching: *const E4,
-        desc: *const u32,
-        num_terms: u32,
+        desc: GpuCombinedClaimDesc,
         claim_out: *mut E4,
         eq_prefactor_out: *mut E4,
     )
 );
 
+/// Builds the per-layer combined claim on device. `desc_pairs` is a host slice
+/// of `(exp, claim_idx)` u32 pairs (flattened: `[exp_0, idx_0, exp_1, idx_1, ...]`).
+/// Panics if `desc_pairs.len() / 2 > GKR_COMBINED_CLAIM_MAX_PAIRS` — production
+/// callers must respect the audit-locked ceiling.
 pub fn build_combined_claim(
     claims: &DeviceSlice<E4>,
     batching: &DeviceSlice<E4>,
-    desc: &DeviceSlice<u32>,
+    desc_pairs: &[u32],
     claim_out: &mut DeviceSlice<E4>,
     eq_prefactor_out: &mut DeviceSlice<E4>,
     stream: &CudaStream,
@@ -818,17 +896,26 @@ pub fn build_combined_claim(
     assert_eq!(claim_out.len(), 1);
     assert_eq!(eq_prefactor_out.len(), 1);
     assert_eq!(
-        desc.len() % 2,
+        desc_pairs.len() % 2,
         0,
         "combined-claim descriptor must be `(exponent, claim_idx)` pairs",
     );
-    let num_terms = (desc.len() / 2) as u32;
+    let num_pairs = desc_pairs.len() / 2;
+    assert!(
+        num_pairs <= GKR_COMBINED_CLAIM_MAX_PAIRS,
+        "combined-claim descriptor has {} pairs; exceeds GKR_COMBINED_CLAIM_MAX_PAIRS = {}. \
+         Raise the constant in gkr_address_audit.rs after re-running the audit.",
+        num_pairs,
+        GKR_COMBINED_CLAIM_MAX_PAIRS,
+    );
+    let mut desc = GpuCombinedClaimDesc::default();
+    desc.num_terms = num_pairs as u32;
+    desc.entries[..desc_pairs.len()].copy_from_slice(desc_pairs);
     let config = CudaLaunchConfig::basic(1u32, 1u32, stream);
     let args = BuildCombinedClaimArguments::new(
         claims.as_ptr(),
         batching.as_ptr(),
-        desc.as_ptr(),
-        num_terms,
+        desc,
         claim_out.as_mut_ptr(),
         eq_prefactor_out.as_mut_ptr(),
     );
@@ -1499,8 +1586,13 @@ mod tests {
             memory_copy_async(&mut d_ptr_table, &src_ptrs[..], &stream).unwrap();
             let mut d_dst: DeviceAllocation<u32> =
                 DeviceAllocation::alloc(coset_count * cap_words_per_coset).unwrap();
-            super::gather_tree_caps(&d_ptr_table, &mut d_dst, cap_words_per_coset as u32, &stream)
-                .unwrap();
+            super::gather_tree_caps(
+                &d_ptr_table,
+                &mut d_dst,
+                cap_words_per_coset as u32,
+                &stream,
+            )
+            .unwrap();
             let mut h_dst: Vec<u32> = vec![0u32; coset_count * cap_words_per_coset];
             memory_copy_async(&mut h_dst[..], &d_dst, &stream).unwrap();
             stream.synchronize().unwrap();
@@ -1535,26 +1627,18 @@ mod tests {
                 h_sources.push(pattern);
             }
             let src_ptrs: Vec<u64> = d_sources.iter().map(|d| d.as_ptr() as u64).collect();
-            let mut d_ptr_table: DeviceAllocation<u64> =
-                DeviceAllocation::alloc(num_addresses).unwrap();
-            memory_copy_async(&mut d_ptr_table, &src_ptrs[..], &stream).unwrap();
             let mut d_dst: DeviceAllocation<E4> =
                 DeviceAllocation::alloc(num_addresses * elements_per_addr).unwrap();
-            super::gather_e_addresses(
-                &d_ptr_table,
-                &mut d_dst,
-                elements_per_addr as u32,
-                &stream,
-            )
-            .unwrap();
+            super::gather_e_addresses(&src_ptrs[..], &mut d_dst, elements_per_addr as u32, &stream)
+                .unwrap();
             let mut h_dst_words: Vec<u32> = vec![0u32; num_addresses * elements_per_addr * 4];
             let d_dst_as_u32 = unsafe { d_dst.transmute::<u32>() };
             memory_copy_async(&mut h_dst_words[..], d_dst_as_u32, &stream).unwrap();
             stream.synchronize().unwrap();
             for (addr_idx, expected) in h_sources.iter().enumerate() {
                 let words_per_addr = elements_per_addr * 4;
-                let actual = &h_dst_words
-                    [addr_idx * words_per_addr..(addr_idx + 1) * words_per_addr];
+                let actual =
+                    &h_dst_words[addr_idx * words_per_addr..(addr_idx + 1) * words_per_addr];
                 assert_eq!(
                     actual, &expected[..],
                     "gather mismatch for address {addr_idx} (elements_per_addr={elements_per_addr}, num_addresses={num_addresses})"
@@ -2390,17 +2474,12 @@ mod tests {
         let mut d_batching: DeviceAllocation<E4> = DeviceAllocation::alloc(1).unwrap();
         memory_copy_async(&mut d_batching, &[batching], &stream).unwrap();
         let desc_flat: Vec<u32> = exp_idx.iter().flat_map(|(exp, idx)| [*exp, *idx]).collect();
-        let mut d_desc: DeviceAllocation<u32> =
-            DeviceAllocation::alloc(desc_flat.len().max(1)).unwrap();
-        if !desc_flat.is_empty() {
-            memory_copy_async(&mut d_desc, &desc_flat[..], &stream).unwrap();
-        }
         let mut d_claim_out: DeviceAllocation<E4> = DeviceAllocation::alloc(1).unwrap();
         let mut d_eq_out: DeviceAllocation<E4> = DeviceAllocation::alloc(1).unwrap();
         super::build_combined_claim(
             &d_claims,
             &d_batching,
-            &d_desc[..desc_flat.len()],
+            &desc_flat,
             &mut d_claim_out,
             &mut d_eq_out,
             &stream,

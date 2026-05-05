@@ -51,6 +51,38 @@ struct flat_round0_static_desc {
   u32 num_c1_linear;
 };
 
+// Phase C compact mirror of `flat_round0_static_desc`. Source pointers
+// collapse to u16 packed references (`is_virtual<<15 | ptr_idx<<11 | poly_idx`,
+// 4-bit ptr_idx, 11-bit poly_idx),
+// resolved via the per-launch `tables` block (`bases` / `log2_stride`).
+// Term tables (`c0_bf`, `c1_bf_bf`, ...) are unchanged — they already use u16
+// indices into `sources[]`. Mirror of
+// `gpu_prover::prover::gkr::backward_flat_compact::GpuFlatRound0StaticDescCompact`.
+struct flat_round0_static_desc_compact {
+  gkr_dim_reducing_tables tables;
+
+  gkr_source_record sources[FLAT_ROUND0_MAX_SOURCES];
+  u32 num_sources;
+
+  flat_c0_ref c0_bf[FLAT_ROUND0_MAX_C0_BF];
+  u32 num_c0_bf;
+  flat_c0_ref c0_ext[FLAT_ROUND0_MAX_C0_EXT];
+  u32 num_c0_ext;
+
+  flat_c1_pair c1_bf_bf[FLAT_ROUND0_MAX_C1_BF_BF];
+  u32 num_c1_bf_bf;
+  flat_c1_pair c1_e4_e4[FLAT_ROUND0_MAX_C1_E4_E4];
+  u32 num_c1_e4_e4;
+  flat_c1_pair c1_bf_e4[FLAT_ROUND0_MAX_C1_BF_E4];
+  u32 num_c1_bf_e4;
+
+  flat_c0_ref c1_linear[FLAT_ROUND0_MAX_C1_LINEAR];
+  u32 num_c1_linear;
+};
+
+static_assert(sizeof(flat_round0_static_desc_compact) <= 32 * 1024,
+              "flat_round0_static_desc_compact exceeds the 32 KB cudaLaunchKernelExC inline ceiling");
+
 // --- Load helpers ---
 
 // Source loads use ca (cache in L1 and L2) — sources are reused across terms
@@ -73,6 +105,52 @@ template <typename E> DEVICE_FORCEINLINE E flat_load_ext_value(const void *src, 
 template <typename E> DEVICE_FORCEINLINE E flat_load_ext_delta(const void *src, const unsigned gid, const unsigned acc_size) {
   const E f0 = flat_load_ext_value<E>(src, gid);
   const E f1 = flat_load_ext_value<E>(src, gid + acc_size);
+  return E::sub(f1, f0);
+}
+
+// --- Compact load helpers (Phase C u16 source encoding) ---
+//
+// Each `packed` u16 is one entry of `desc.sources[]`. Layout:
+//   bit 15      : is_virtual (1 = virtual base-field source)
+//   bits 14..11 : ptr_idx (4 bits, 16 slots) into `tables.bases` / `tables.log2_stride`
+//   bits 10..0  : poly_idx (11 bits, max 2048) (real path) OR low 3 bits = `gkr_base_source_kind`
+// `log2_stride` is in element units (matches the Rust storage layout's
+// per-poly element stride; see Phase B notes in `common.cuh`).
+
+DEVICE_FORCEINLINE bf flat_load_bf_value_compact(const gkr_dim_reducing_tables &tables, const gkr_source_record record, const unsigned gid) {
+  if ((record.src & 0x8000u) != 0) {
+    const auto kind = static_cast<gkr_base_source_kind>(record.src & 0x7u);
+    return gkr_virtual_base_value(kind, gid);
+  }
+  const u16 packed = record.src;
+  const u32 ptr_idx = (packed >> 11) & 0xFu;
+  const u32 poly_idx = packed & 0x07FFu;
+  const u8 *base_u8 = tables.bases[ptr_idx];
+  const u32 log2_stride = tables.log2_stride[ptr_idx];
+  const bf *poly = reinterpret_cast<const bf *>(base_u8) + (static_cast<size_t>(poly_idx) << log2_stride);
+  return load<bf, ld_modifier::ca>(poly, gid);
+}
+
+DEVICE_FORCEINLINE bf flat_load_bf_delta_compact(const gkr_dim_reducing_tables &tables, const gkr_source_record record, const unsigned gid, const unsigned acc_size) {
+  return bf::sub(flat_load_bf_value_compact(tables, record, gid + acc_size), flat_load_bf_value_compact(tables, record, gid));
+}
+
+template <typename E> DEVICE_FORCEINLINE E flat_load_ext_value_compact(const gkr_dim_reducing_tables &tables, const gkr_source_record record, const unsigned gid) {
+  // Extension-field sources never use the virtual encoding (only base-field
+  // sources can be virtual). The encoder emits the real path for ext sources.
+  const u16 packed = record.src;
+  const u32 ptr_idx = (packed >> 11) & 0xFu;
+  const u32 poly_idx = packed & 0x07FFu;
+  const u8 *base_u8 = tables.bases[ptr_idx];
+  const u32 log2_stride = tables.log2_stride[ptr_idx];
+  const E *poly = reinterpret_cast<const E *>(base_u8) + (static_cast<size_t>(poly_idx) << log2_stride);
+  return load<E, ld_modifier::ca>(poly, gid);
+}
+
+template <typename E>
+DEVICE_FORCEINLINE E flat_load_ext_delta_compact(const gkr_dim_reducing_tables &tables, const gkr_source_record record, const unsigned gid, const unsigned acc_size) {
+  const E f0 = flat_load_ext_value_compact<E>(tables, record, gid);
+  const E f1 = flat_load_ext_value_compact<E>(tables, record, gid + acc_size);
   return E::sub(f1, f0);
 }
 
@@ -181,6 +259,76 @@ DEVICE_FORCEINLINE void flat_round0_compute_constant(const flat_round0_static_de
                                                      const unsigned acc_size, const unsigned gid) {
   coeff_loader_round0_constant loader{};
   flat_round0_compute_impl<E>(desc, loader, eq_values, contributions, acc_size, gid);
+}
+
+// --- Phase C compact compute path ---
+//
+// Same algebra as `flat_round0_compute_impl`, but every `desc.sources[idx]`
+// dereference goes through `desc.tables` via `flat_load_*_compact` instead
+// of directly dereferencing a raw pointer.
+
+template <typename E, typename CoeffLoader>
+DEVICE_FORCEINLINE void flat_round0_compute_compact_impl(const flat_round0_static_desc_compact &desc, CoeffLoader coeff_loader,
+                                                          const E *__restrict__ eq_values, E *__restrict__ contributions,
+                                                          const unsigned acc_size, const unsigned gid) {
+  E c0 = E::ZERO();
+
+  for (unsigned i = 0; i < desc.num_c0_bf; i++) {
+    const bf val = flat_load_bf_value_compact(desc.tables, desc.sources[desc.c0_bf[i].source_idx], gid);
+    c0 = E::fma(coeff_loader(), val, c0);
+  }
+
+  for (unsigned i = 0; i < desc.num_c0_ext; i++) {
+    const E val = flat_load_ext_value_compact<E>(desc.tables, desc.sources[desc.c0_ext[i].source_idx], gid);
+    c0 = E::fma(coeff_loader(), val, c0);
+  }
+
+  E c1 = E::ZERO();
+
+  for (unsigned i = 0; i < desc.num_c1_bf_bf; i++) {
+    const auto &t = desc.c1_bf_bf[i];
+    const bf a = flat_load_bf_delta_compact(desc.tables, desc.sources[t.source_a], gid, acc_size);
+    const bf b = flat_load_bf_delta_compact(desc.tables, desc.sources[t.source_b], gid, acc_size);
+    c1 = E::fma(coeff_loader(), bf::mul(a, b), c1);
+  }
+
+  for (unsigned i = 0; i < desc.num_c1_e4_e4; i++) {
+    const auto &t = desc.c1_e4_e4[i];
+    const E a = flat_load_ext_delta_compact<E>(desc.tables, desc.sources[t.source_a], gid, acc_size);
+    const E b = flat_load_ext_delta_compact<E>(desc.tables, desc.sources[t.source_b], gid, acc_size);
+    c1 = E::fma(coeff_loader(), E::mul(a, b), c1);
+  }
+
+  for (unsigned i = 0; i < desc.num_c1_bf_e4; i++) {
+    const auto &t = desc.c1_bf_e4[i];
+    const bf a = flat_load_bf_delta_compact(desc.tables, desc.sources[t.source_a], gid, acc_size);
+    const E b = flat_load_ext_delta_compact<E>(desc.tables, desc.sources[t.source_b], gid, acc_size);
+    c1 = E::fma(coeff_loader(), E::mul(b, a), c1);
+  }
+
+  for (unsigned i = 0; i < desc.num_c1_linear; i++) {
+    const bf d = flat_load_bf_delta_compact(desc.tables, desc.sources[desc.c1_linear[i].source_idx], gid, acc_size);
+    c1 = E::fma(coeff_loader(), d, c1);
+  }
+
+  const E eq = load<E, ld_modifier::cs>(eq_values, gid);
+  store<E, st_modifier::cs>(contributions, E::mul(c0, eq), gid);
+  store<E, st_modifier::cs>(contributions + acc_size, E::mul(c1, eq), gid);
+}
+
+template <typename E>
+DEVICE_FORCEINLINE void flat_round0_compute_compact(const flat_round0_static_desc_compact &desc, const E *__restrict__ coefficients,
+                                                    const E *__restrict__ eq_values, E *__restrict__ contributions,
+                                                    const unsigned acc_size, const unsigned gid) {
+  coeff_loader_ptr<E> loader{coefficients};
+  flat_round0_compute_compact_impl(desc, loader, eq_values, contributions, acc_size, gid);
+}
+
+template <typename E>
+DEVICE_FORCEINLINE void flat_round0_compute_constant_compact(const flat_round0_static_desc_compact &desc, const E *__restrict__ eq_values,
+                                                              E *__restrict__ contributions, const unsigned acc_size, const unsigned gid) {
+  coeff_loader_round0_constant loader{};
+  flat_round0_compute_compact_impl<E>(desc, loader, eq_values, contributions, acc_size, gid);
 }
 
 } // namespace airbender::prover::gkr

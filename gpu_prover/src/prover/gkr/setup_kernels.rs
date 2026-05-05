@@ -118,6 +118,27 @@ pub(super) fn bind_trace_holder_columns_into_storage<E>(
             GpuBaseFieldPoly::from_arc(backing.clone(), column * trace_len, trace_len),
         );
     }
+    // Register the trace holder Arc as the consolidated per-class backing for
+    // this layer-0 slot. Phase A's storage layout uses `poly_idx == column
+    // index` for trace-holder-aligned slots, so the layout-driven lookup
+    // `bases[class] + (poly_idx << log2_stride)` resolves to the same column
+    // pointer that the per-poly views above hand out. Subsequent layout-aware
+    // consumers (Phase B kernel encoding, `allocate_base_view`) can now read
+    // the trace holder backing through the unified `base_class_backings`
+    // path.
+    if trace_holder.columns_count > 0 {
+        let class = crate::prover::gkr::gkr_address_audit::classify(&make_address(0), 0);
+        if storage.layers.is_empty() {
+            storage
+                .layers
+                .resize_with(1, crate::prover::gkr::GpuGKRLayerSource::default);
+        }
+        let prev = storage.layers[0].base_class_backings.insert(class, backing);
+        assert!(
+            prev.is_none(),
+            "trace holder backing already registered for layer 0 class {class:?}"
+        );
+    }
 }
 
 #[repr(C)]

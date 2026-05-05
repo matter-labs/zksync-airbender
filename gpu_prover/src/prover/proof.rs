@@ -64,17 +64,13 @@ struct GpuGKRProofJobKeepalive<'a> {
     _base_layer_claims: GpuGKRBaseLayerClaimsScheduledExecution<E4>,
     _whir: GpuWhirFoldScheduledExecution,
     /// Pinned host staging buffer backing the h2d_stream H2D that uploads the
-    /// initial-transcript pre-setup chunk (canonical_top_bits ++
-    /// external_challenges) directly into the final `d_transcript_input`
-    /// positions. Held here so the allocation outlives the H2D copy on
-    /// h2d_stream.
-    _initial_transcript_pre_setup_host: HostAllocation<[u32]>,
-    /// SchedulerHostAllocator-backed pointer table consumed by the initial
-    /// inner-product kernel. SchedulerHostAllocator requires the handle to
-    /// outlive every H2D reading it (per the contract: "attach to a keepalive
-    /// that outlives all in-flight prove() work"); the proof-job keepalive is
-    /// dropped only after `is_finished_event.synchronize()` in `finish()`.
-    _initial_inner_product_host_ptrs: SchedulerHostAllocation<[u64]>,
+    /// canonical top-bits prefix into the final `d_transcript_input`.
+    _initial_transcript_canonical_top_bits_host: HostAllocation<[u32]>,
+    /// Pinned host staging buffer and durable device buffer for the seven
+    /// external challenges. The device buffer is the source of truth for both
+    /// the transcript input span and GKR flat immediate evaluation.
+    _external_challenges_host: HostAllocation<[E4]>,
+    _external_challenges_device: DeviceAllocation<E4>,
     /// Pinned host mirror of the device-resident proof slab (Phase 4). Populated
     /// by the terminal D2H; read by the single assembly callback.
     #[allow(dead_code)]
@@ -324,10 +320,11 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
     // Initial Fiat-Shamir transcript: moved off exec_stream entirely.
     //
     // Pipeline:
-    //  1. h2d_stream: pack canonical_top_bits ++ external_challenges ++ flattened memory caps
-    //     into one pinned HostAllocation, then one H2D into `d_bucket2`. This is scheduled
-    //     *before* stage 1 is queued on exec_stream, so `e_alloc` captures an empty exec_stream
-    //     position and h2d_stream can run concurrently with stage 1 GPU compute.
+    //  1. h2d_stream: upload canonical_top_bits into `d_transcript_input` and
+    //     external_challenges into a durable aligned 7-E4 device buffer. This is
+    //     scheduled *before* stage 1 is queued on exec_stream, so `e_alloc`
+    //     captures an empty exec_stream position and h2d_stream can run
+    //     concurrently with stage 1 GPU compute.
     //  2. exec_stream: assemble the full flat transcript input `d_transcript_input`
     //     (canonical_top_bits ++ external_challenges ++ setup_caps ++ memory_caps ++ witness_caps)
     //     as contiguous device u32s after stage 1 finishes. Setup and witness caps are D2D-copied
@@ -383,8 +380,8 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
     // (setup/memory: pre-prove H2Ds gated by their `Transfer::transferred` events;
     // witness: the unified cap is assembled into `witness_trace_holder.unified_device_cap`
     // by stage 1's per-coset commits). The only h2d_stream copy left in this region
-    // is `pre_setup_host` (canonical_top_bits ++ external_challenges) — that data is
-    // computed at prove() entry and is not yet on device. Scheduling this before
+    // is canonical_top_bits plus the durable external-challenges buffer — that
+    // data is computed at prove() entry and is not yet on device. Scheduling this before
     // stage 1's kernels are queued on exec_stream keeps `e_alloc`'s captured stream
     // position empty, so h2d_stream's wait on it is effectively a no-op and packing
     // + H2D run concurrently with stage 1 compute on the GPU. Two-fence pattern per
@@ -392,9 +389,18 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
     let h2d_stream = context.get_h2d_stream();
     let mut d_transcript_input: DeviceAllocation<u32> =
         context.alloc(total_transcript_len, AllocationPlacement::BestFit)?;
-    let mut pre_setup_host = unsafe { context.alloc_host_uninit_slice::<u32>(pre_setup_len) };
-    let pre_setup_host_write_accessor = pre_setup_host.get_mut_accessor();
+    let mut canonical_top_bits_host =
+        unsafe { context.alloc_host_uninit_slice::<u32>(canonical_top_bits_len.max(1)) };
+    let canonical_top_bits_host_write_accessor = canonical_top_bits_host.get_mut_accessor();
+    let mut external_challenges_host = unsafe {
+        context.alloc_host_uninit_slice::<E4>(NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES + 1)
+    };
+    let external_challenges_host_write_accessor = external_challenges_host.get_mut_accessor();
     let external_challenges_for_h2d = external_challenges.clone();
+    let mut d_external_challenges_e4: DeviceAllocation<E4> = context.alloc(
+        NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES + 1,
+        AllocationPlacement::BestFit,
+    )?;
 
     let e_alloc = CudaEvent::create_with_flags(CudaEventCreateFlags::DISABLE_TIMING)?;
     e_alloc.record(stream)?;
@@ -402,22 +408,27 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
 
     callbacks.schedule(
         move || unsafe {
-            let dst = pre_setup_host_write_accessor.get_mut();
-            let mut offset = 0usize;
-            dst[offset..offset + canonical_top_bits_len].copy_from_slice(&canonical_top_bits);
-            offset += canonical_top_bits_len;
-            let mut ext_buf: Vec<u32> = Vec::with_capacity(external_challenges_u32_len);
-            external_challenges_for_h2d.flatten_into_buffer(&mut ext_buf);
-            assert_eq!(ext_buf.len(), external_challenges_u32_len);
-            dst[offset..offset + external_challenges_u32_len].copy_from_slice(&ext_buf);
-            offset += external_challenges_u32_len;
-            assert_eq!(offset, pre_setup_len);
+            canonical_top_bits_host_write_accessor.get_mut()[..canonical_top_bits_len]
+                .copy_from_slice(&canonical_top_bits);
+            let dst = external_challenges_host_write_accessor.get_mut();
+            dst[..NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES].copy_from_slice(
+                &external_challenges_for_h2d.permutation_argument_linearization_challenges,
+            );
+            dst[NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES] =
+                external_challenges_for_h2d.permutation_argument_additive_part;
         },
         h2d_stream,
     )?;
+    if canonical_top_bits_len > 0 {
+        memory_copy_async(
+            &mut d_transcript_input[offset_pre_setup..offset_pre_setup + canonical_top_bits_len],
+            &canonical_top_bits_host,
+            h2d_stream,
+        )?;
+    }
     memory_copy_async(
-        &mut d_transcript_input[offset_pre_setup..offset_pre_setup + pre_setup_len],
-        &pre_setup_host,
+        &mut d_external_challenges_e4,
+        &external_challenges_host,
         h2d_stream,
     )?;
 
@@ -538,7 +549,18 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
     // only fences the cap D2Ds and the seed-trick commit below.
     stream.wait_event(&e_xfer, CudaStreamWaitEventFlags::DEFAULT)?;
 
-    // -------------- Step 2: D2D the three unified caps into d_transcript_input --------------
+    {
+        let external_u32 = unsafe { d_external_challenges_e4.transmute::<u32>() };
+        debug_assert_eq!(external_u32.len(), external_challenges_u32_len);
+        memory_copy_async(
+            &mut d_transcript_input
+                [canonical_top_bits_len..canonical_top_bits_len + external_challenges_u32_len],
+            external_u32,
+            stream,
+        )?;
+    }
+
+    // -------------- Step 2: D2D external challenges and the three unified caps into d_transcript_input --------------
     // Setup and memory caps were H2D'd pre-prove on h2d_stream into their
     // respective `unified_device_cap`s; the witness unified cap was assembled by
     // stage 1's per-coset commits on exec_stream. Each source becomes a single
@@ -552,11 +574,7 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
         // `setup_transfer.transfer.transferred`. `prove()` already serialized
         // exec_stream behind that event via `setup_transfer.ensure_transferred`
         // at the top of this function, so the D2D below sees the final cap.
-        let src_u32 = unsafe {
-            setup_transfer_ref
-                .unified_device_cap()
-                .transmute::<u32>()
-        };
+        let src_u32 = unsafe { setup_transfer_ref.unified_device_cap().transmute::<u32>() };
         debug_assert_eq!(src_u32.len(), setup_caps_total_u32);
         memory_copy_async(
             &mut d_transcript_input[offset_setup..offset_setup + setup_caps_total_u32],
@@ -658,8 +676,8 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
             .output_evaluations
             .values()
             .map(|layout| {
-                (layout.read_set.end - layout.read_set.start
-                    + layout.write_set.end - layout.write_set.start)
+                (layout.read_set.end - layout.read_set.start + layout.write_set.end
+                    - layout.write_set.start)
                     / std::mem::size_of::<E4>()
             })
             .sum();
@@ -783,45 +801,39 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
         poly_len,
         context,
     )?;
-    // Build a slot-ordered table of poly start pointers (one per top-layer claim)
-    // via `SchedulerHostAllocator` (the pointer values are scheduling-time-known —
-    // `device_flat_evaluations` is already allocated; only the offset per slot
-    // varies) and run a single fused inner-product kernel that writes all 8 claims
-    // into `initial_d_claims` in one launch. Replaces the prior `mul + cub::reduce`
-    // pair per (poly, slot) — 8 mul + 8 reduce launches and a `poly_len`-sized
-    // temp buffer + cub temp — with one launch and zero temp allocations.
-    let initial_inner_product_host_ptrs = {
+    // Top-layer polys are written into `device_flat_evaluations` in iteration
+    // order (BTreeMap-by-OutputType, 2 polys per OutputType). The slot order
+    // from `top_layer_claim_layout` sorts the same address set by
+    // (layer, offset), where offsets come from
+    // `derive_dimension_reducing_inputs_structural` in the *same* iteration
+    // order. Both orderings collapse to OutputType-ordinal × half-index, so
+    // `slot == poly_idx` for every poly — no pointer table needed; the kernel
+    // computes its own per-block pointer from `polys_base + i * poly_len`.
+    // The `assert!` below pins the invariant in production builds.
+    {
         let device_flat_evaluations = transcript_handoff.device_flat_evaluations();
-        let device_flat_base = device_flat_evaluations.as_ptr();
-        let mut poly_ptrs_by_slot: Vec<u64> = vec![0u64; num_top_claims];
         let mut poly_idx = 0usize;
         for (_output_type, reduced_io) in output_layer_for_sumcheck.iter() {
             for half in 0..2 {
                 let address = reduced_io.output[half];
                 let slot = top_layer_claim_layout.claim_idx(&address) as usize;
-                // SAFETY: device_flat_evaluations covers num_top_claims * poly_len E4 elements,
-                // arranged in iteration order; pointer arithmetic stays within that range.
-                let poly_ptr = unsafe { device_flat_base.add(poly_idx * poly_len) };
-                poly_ptrs_by_slot[slot] = poly_ptr as u64;
+                assert_eq!(
+                    slot, poly_idx,
+                    "top-layer claim layout slot order must match BTreeMap iteration order \
+                     (slot={slot}, poly_idx={poly_idx}); the kernel relies on this identity \
+                     permutation to derive each poly's base pointer from polys_base + i * poly_len",
+                );
                 poly_idx += 1;
             }
         }
-        let host_poly_ptrs = context.scheduler_host_from_slice(&poly_ptrs_by_slot)?;
-        let mut device_poly_ptrs: DeviceAllocation<u64> =
-            context.alloc(num_top_claims, AllocationPlacement::BestFit)?;
-        memory_copy_async(&mut device_poly_ptrs, &host_poly_ptrs, stream)?;
         crate::ops::gkr_initial_inner_products::initial_inner_product_e4(
-            &device_poly_ptrs,
+            device_flat_evaluations.as_ptr(),
+            num_top_claims,
             &eq_values_for_init,
             poly_len as u32,
             &mut initial_d_claims,
             stream,
         )?;
-        // device_poly_ptrs drops here — pool-backed lifetime is scheduled-not-completed
-        // (the inner-product kernel reading it has been scheduled). host_poly_ptrs is a
-        // SchedulerHostAllocation; threaded into the proof-job keepalive below.
-        drop(device_poly_ptrs);
-        host_poly_ptrs
     };
 
     // No host mirror of the initial claims / evaluation_point / batching / seed / lookup
@@ -837,6 +849,7 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
         .schedule_execute_backward_workflow_from_shared_state(
             compiled_circuit.clone(),
             external_challenges.clone(),
+            d_external_challenges_e4.as_ptr(),
             backward_shared_state,
             d_seed,
             d_evaluation_point_and_batching,
@@ -1066,8 +1079,9 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
             _backward: backward_keepalive,
             _base_layer_claims: base_layer_claims_scheduled,
             _whir: whir_scheduled,
-            _initial_transcript_pre_setup_host: pre_setup_host,
-            _initial_inner_product_host_ptrs: initial_inner_product_host_ptrs,
+            _initial_transcript_canonical_top_bits_host: canonical_top_bits_host,
+            _external_challenges_host: external_challenges_host,
+            _external_challenges_device: d_external_challenges_e4,
             _proof_host_mirror: proof_host_mirror,
             _proof_slab: proof_slab,
         },
