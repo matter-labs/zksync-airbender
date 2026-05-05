@@ -71,6 +71,7 @@ pub struct CpuPipelineModelConfig {
     pub memory_holders_count: usize,
     pub trace_chunks_count_override: Option<usize>,
     pub use_dedicated_pipeline_threads: bool,
+    pub replay_segment_cycle_limit: Option<usize>,
 }
 
 impl Default for CpuPipelineModelConfig {
@@ -87,6 +88,7 @@ impl Default for CpuPipelineModelConfig {
             memory_holders_count: 1,
             trace_chunks_count_override: None,
             use_dedicated_pipeline_threads: false,
+            replay_segment_cycle_limit: None,
         }
     }
 }
@@ -215,10 +217,10 @@ impl CpuPipelineModel {
         let timer = Instant::now();
         let mut report = match self.config.execution_kind {
             ExecutionKind::Unrolled => {
-                self.run_for_tracing_type::<SplitTracingType>(nondeterminism)
+                self.run_for_selected_tracing_type::<SplitTracingType>(nondeterminism)
             }
             ExecutionKind::Unified => {
-                self.run_for_tracing_type::<UnifiedTracingType>(nondeterminism)
+                self.run_for_selected_tracing_type::<UnifiedTracingType>(nondeterminism)
             }
         };
         report.timings.total_wall = timer.elapsed();
@@ -229,7 +231,18 @@ impl CpuPipelineModel {
         report
     }
 
-    fn run_for_tracing_type<T: TracingType + 'static>(
+    fn run_for_selected_tracing_type<T: TracingType + 'static>(
+        &self,
+        nondeterminism: Vec<u32>,
+    ) -> CpuPipelineModelReport {
+        if self.config.replay_segment_cycle_limit.is_some() {
+            self.run_for_tracing_type::<T, true>(nondeterminism)
+        } else {
+            self.run_for_tracing_type::<T, false>(nondeterminism)
+        }
+    }
+
+    fn run_for_tracing_type<T: TracingType + 'static, const SEGMENTED_REPLAY: bool>(
         &self,
         nondeterminism: Vec<u32>,
     ) -> CpuPipelineModelReport {
@@ -245,6 +258,7 @@ impl CpuPipelineModel {
         {
             let machine_type = self.config.machine_type;
             let cycles_bound = self.config.cycles_bound;
+            let replay_segment_cycle_limit = self.config.replay_segment_cycle_limit;
             let trace_chunks_count = trace_chunks_count(&self.config);
             let memory_holders_cache = self.memory_holders_cache.clone();
             let trace_chunks_cache = self.trace_chunks_cache.clone();
@@ -297,7 +311,7 @@ impl CpuPipelineModel {
                         }
                     }
                     let free_trace_chunks_receiver_clone = free_trace_chunks_receiver.clone();
-                    run_simulator_for_model::<T>(
+                    run_simulator_for_model::<T, SEGMENTED_REPLAY>(
                         batch_id,
                         machine_type,
                         binary_image,
@@ -314,6 +328,7 @@ impl CpuPipelineModel {
                         abort,
                         &worker,
                         timings,
+                        replay_segment_cycle_limit,
                     );
                     sync_profiling::lock(
                         memory_holders_cache.as_ref(),
@@ -536,6 +551,12 @@ fn validate_config(config: CpuPipelineModelConfig) {
             "CPU pipeline model needs at least two trace chunks"
         );
     }
+    if let Some(replay_segment_cycle_limit) = config.replay_segment_cycle_limit {
+        assert_ne!(
+            replay_segment_cycle_limit, 0,
+            "segmented replay cycle limit must be non-zero"
+        );
+    }
     if matches!(
         config.mode,
         CpuPipelineMode::Full | CpuPipelineMode::FullWithoutDelegationReplay
@@ -561,7 +582,7 @@ fn trace_chunks_count(config: &CpuPipelineModelConfig) -> usize {
         .max(2)
 }
 
-fn run_simulator_for_model<T: TracingType + 'static>(
+fn run_simulator_for_model<T: TracingType + 'static, const SEGMENTED_REPLAY: bool>(
     batch_id: u64,
     machine_type: MachineType,
     binary_image: impl Deref<Target = impl Deref<Target = [u32]>>,
@@ -578,9 +599,10 @@ fn run_simulator_for_model<T: TracingType + 'static>(
     abort: Arc<AtomicBool>,
     worker: &Worker,
     timings: Arc<Mutex<CpuPipelineTimings>>,
+    replay_segment_cycle_limit: Option<usize>,
 ) {
     trace!("BATCH[{batch_id}] SIMULATOR started");
-    let runner = SimulationRunner::<_, T>::new(
+    let runner = SimulationRunner::<_, T, SEGMENTED_REPLAY>::new_with_replay_segment_cycle_limit(
         batch_id,
         machine_type,
         non_determinism_source,
@@ -590,6 +612,7 @@ fn run_simulator_for_model<T: TracingType + 'static>(
         results,
         free_allocators.clone(),
         abort,
+        replay_segment_cycle_limit,
     );
 
     let instant = Instant::now();
@@ -770,60 +793,58 @@ fn run_replayer_for_model<T: TracingType>(
             trace_ranges,
         } = snapshot;
         if is_aborted {
-            let trace =
-                sync_profiling::measure_exclusive(SyncMetric::ReplayerRecycleSnapshot, || {
-                    drop(trace_ranges);
-                    trace
-                });
-            sync_profiling::measure(SyncMetric::FreeTraceChunksSend, || {
-                free_trace_chunks.send(trace)
-            })
-            .unwrap();
+            sync_profiling::measure_exclusive(SyncMetric::ReplayerRecycleSnapshot, || {
+                drop(trace_ranges);
+                trace.recycle(&free_trace_chunks);
+            });
             continue;
         }
+        let segment_index = trace.segment_index();
+        let segments_count = trace.segments_count();
         let (trace, elapsed) =
             sync_profiling::measure_exclusive(SyncMetric::ReplayerProcessSnapshot, || {
-                let trace_len = trace.len as usize;
                 let mut state = initial_state.into();
                 let final_state: State<T::Counters> = final_state.into();
-                let mut ram = ReplayerMemChunks {
-                    chunks: &mut [(&trace.values[..trace_len], &trace.timestamps[..trace_len])],
-                };
-                let mut nd = QuasiUARTSource::new_with_reads(vec![]);
-                let mut tracer = if skip_delegation_trace_rows {
-                    T::Tracer::new_without_delegations(trace_ranges)
-                } else {
-                    T::Tracer::new(trace_ranges)
-                };
                 let instant = Instant::now();
-                ReplayerVM::<T::Counters>::replay_basic_unrolled(
-                    &mut state,
-                    &mut ram,
-                    tape.deref(),
-                    &mut nd,
-                    cycles_count,
-                    &mut tracer,
-                );
+                {
+                    let (trace_values, trace_timestamps) = trace.range();
+                    let mut ram = ReplayerMemChunks {
+                        chunks: &mut [(trace_values, trace_timestamps)],
+                    };
+                    let mut nd = QuasiUARTSource::new_with_reads(vec![]);
+                    let mut tracer = if skip_delegation_trace_rows {
+                        T::Tracer::new_without_delegations(trace_ranges)
+                    } else {
+                        T::Tracer::new(trace_ranges)
+                    };
+                    ReplayerVM::<T::Counters>::replay_basic_unrolled(
+                        &mut state,
+                        &mut ram,
+                        tape.deref(),
+                        &mut nd,
+                        cycles_count,
+                        &mut tracer,
+                    );
+                    drop(tracer);
+                }
                 let elapsed = instant.elapsed();
-                drop(tracer);
                 assert_eq!(state.pc, final_state.pc);
                 assert_eq!(state.timestamp, final_state.timestamp);
                 assert_eq!(state.registers, final_state.registers);
                 (trace, elapsed)
             });
-        sync_profiling::measure(SyncMetric::FreeTraceChunksSend, || {
-            free_trace_chunks.send(trace)
-        })
-        .unwrap();
+        let snapshot_complete = trace.recycle(&free_trace_chunks);
         total_elapsed += elapsed;
         total_cycles += cycles_count;
         let elapsed_ms = elapsed.as_secs_f64() * 1000.0;
         let mhz = (cycles_count as f64) / (elapsed_ms * 1000.0);
-        trace!("BATCH[{batch_id}] REPLAYER[{worker_id}] processed SNAPSHOT[{index}] with {cycles_count} cycles in {elapsed_ms:.3} ms @ {mhz:.3} MHz");
-        sync_profiling::measure(SyncMetric::WorkResultsSend, || {
-            results.send(WorkerResult::SnapshotReplayed(index))
-        })
-        .unwrap();
+        trace!("BATCH[{batch_id}] REPLAYER[{worker_id}] processed SNAPSHOT[{index}] SEGMENT[{segment_index}/{segments_count}] with {cycles_count} cycles in {elapsed_ms:.3} ms @ {mhz:.3} MHz");
+        if snapshot_complete {
+            sync_profiling::measure(SyncMetric::WorkResultsSend, || {
+                results.send(WorkerResult::SnapshotReplayed(index))
+            })
+            .unwrap();
+        }
     }
     let elapsed_ms = total_elapsed.as_secs_f64() * 1000.0;
     let mhz = (total_cycles as f64) / (elapsed_ms * 1000.0);
@@ -853,16 +874,15 @@ fn recycle_snapshots<T: TracingType>(
             trace_ranges,
             ..
         } = snapshot;
-        let result =
+        let snapshot_complete =
             sync_profiling::measure_exclusive(SyncMetric::SnapshotRecyclerProcessSnapshot, || {
                 drop(trace_ranges);
-                WorkerResult::SnapshotReplayed(index)
+                trace.recycle(&free_trace_chunks)
             });
-        sync_profiling::measure(SyncMetric::FreeTraceChunksSend, || {
-            free_trace_chunks.send(trace)
-        })
-        .unwrap();
-        sync_profiling::measure(SyncMetric::WorkResultsSend, || results.send(result)).unwrap();
+        if snapshot_complete {
+            let result = WorkerResult::SnapshotReplayed(index);
+            sync_profiling::measure(SyncMetric::WorkResultsSend, || results.send(result)).unwrap();
+        }
     }
 }
 

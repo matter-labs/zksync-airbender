@@ -142,9 +142,15 @@ pub struct TraceChunk {
 }
 
 pub trait ContextImpl {
+    const ENABLE_REPLAY_SEGMENT_CHECKS: bool = false;
+
     fn read_nondeterminism(&mut self) -> u32;
 
     fn write_nondeterminism(&mut self, value: u32, memory: &RamImage);
+
+    fn replay_segment_timestamp_bound(&self) -> TimestampScalar {
+        TimestampScalar::MAX
+    }
 
     fn receive_trace(
         &mut self,

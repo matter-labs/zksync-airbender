@@ -13,6 +13,7 @@ use riscv_transpiler::jit::{
     Context, ContextImpl, JittedCode, MachineState, MemoryHolder, RamImage, TraceChunk,
 };
 use setups::read_binary;
+use std::env;
 use std::path::PathBuf;
 use std::ptr::NonNull;
 use std::time::{Duration, Instant};
@@ -236,8 +237,17 @@ fn ethereum_block_model_config(
         // 384 x 64 MiB matches the default production reserve for one job and one GPU.
         host_allocators_count: ETHEREUM_BLOCK_HOST_ALLOCATORS,
         memory_holders_count: 1,
+        replay_segment_cycle_limit: env_optional_usize("ZKSYNC_REPLAY_SEGMENT_CYCLES"),
         ..Default::default()
     }
+}
+
+fn env_optional_usize(name: &str) -> Option<usize> {
+    env::var(name).ok().map(|value| {
+        value
+            .parse()
+            .expect("numeric environment value should parse")
+    })
 }
 
 fn bench_ethereum_block(c: &mut Criterion) {
@@ -289,9 +299,7 @@ fn bench_ethereum_block_jit(c: &mut Criterion) {
     let nondeterminism = ethereum_block_nondeterminism();
     let runner = JittedCode::<JitBenchmarkContext>::preprocess_bytecode(&input.text_section, None);
     let mut memory: Box<MemoryHolder> = unsafe { Box::new_zeroed().assume_init() };
-    let mut context = Context {
-        implementation: JitBenchmarkContext::new(nondeterminism),
-    };
+    let mut context = Context::new(JitBenchmarkContext::new(nondeterminism));
 
     // The measured loop resets only words touched by a representative run. This
     // keeps the benchmark focused on JIT execution instead of the 3 GiB memory image.

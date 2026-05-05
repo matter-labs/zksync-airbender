@@ -816,7 +816,7 @@ fn test_perf_with_trace_keeping() {
 
     let mut implementation = PreallocatedSnapshots::<1024, _>::new_in(Global, &mut source);
     let initial_chunk = implementation.initial_snapshot();
-    let mut context = Context { implementation };
+    let mut context = Context::new(implementation);
     let mut memory: Box<MemoryHolder> = unsafe {
         let mut memory: Box<MemoryHolder> = Box::new_zeroed().assume_init();
 
@@ -854,7 +854,7 @@ fn test_replayer_over_jit() {
 
     let mut implementation = PreallocatedSnapshots::<1024, _>::new_in(Global, &mut source);
     let initial_chunk = implementation.initial_snapshot();
-    let mut context = Context { implementation };
+    let mut context = Context::new(implementation);
     let mut memory: Box<MemoryHolder> = unsafe {
         let mut memory: Box<MemoryHolder> = Box::new_zeroed().assume_init();
 

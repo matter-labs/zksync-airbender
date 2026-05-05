@@ -32,6 +32,7 @@ fn main() {
     let host_allocators = env_usize("ZKSYNC_HOST_ALLOCATORS", 384);
     let trace_chunks_count_override = env_optional_usize("ZKSYNC_TRACE_CHUNKS");
     let use_dedicated_pipeline_threads = env_bool("ZKSYNC_DEDICATED_PIPELINE_THREADS");
+    let replay_segment_cycle_limit = env_optional_usize("ZKSYNC_REPLAY_SEGMENT_CYCLES");
     let mode = env_mode();
 
     eprintln!("loading input from {}", artifacts_dir.display());
@@ -45,10 +46,13 @@ fn main() {
             .0;
 
     eprintln!(
-        "initializing CPU pipeline model: mode={mode:?}, replay_threads={replay_threads}, host_allocators={host_allocators}, trace_chunks={}, dedicated_pipeline_threads={use_dedicated_pipeline_threads}",
+        "initializing CPU pipeline model: mode={mode:?}, replay_threads={replay_threads}, host_allocators={host_allocators}, trace_chunks={}, dedicated_pipeline_threads={use_dedicated_pipeline_threads}, replay_segment_cycles={}",
         trace_chunks_count_override
             .map(|value| value.to_string())
-            .unwrap_or_else(|| "default".to_string())
+            .unwrap_or_else(|| "default".to_string()),
+        replay_segment_cycle_limit
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "off".to_string()),
     );
     let model = CpuPipelineModel::new(
         CpuPipelineModelConfig {
@@ -61,6 +65,7 @@ fn main() {
             memory_holders_count: 1,
             trace_chunks_count_override,
             use_dedicated_pipeline_threads,
+            replay_segment_cycle_limit,
             ..Default::default()
         },
         CpuPipelineModelInput {
@@ -74,7 +79,7 @@ fn main() {
         let report = model.run(nondeterminism.clone());
         eprintln!("finished profiled run {run_index}");
         println!(
-            "run={} mode={:?} replay_threads={} trace_chunks={} dedicated_pipeline_threads={} cycles={} snapshots={} finalized={} total={:.3}ms simulator={:.3}ms replay_cpu_sum={:.3}ms init_scan={:.3}ms init_partition={:.3}ms",
+            "run={} mode={:?} replay_threads={} trace_chunks={} dedicated_pipeline_threads={} replay_segment_cycles={} cycles={} snapshots={} finalized={} total={:.3}ms simulator={:.3}ms replay_cpu_sum={:.3}ms init_scan={:.3}ms init_partition={:.3}ms",
             run_index,
             report.mode,
             replay_threads,
@@ -82,6 +87,9 @@ fn main() {
                 .map(|value| value.to_string())
                 .unwrap_or_else(|| "default".to_string()),
             use_dedicated_pipeline_threads,
+            replay_segment_cycle_limit
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "off".to_string()),
             report.cycles,
             report.snapshots_produced,
             report.snapshots_finalized,

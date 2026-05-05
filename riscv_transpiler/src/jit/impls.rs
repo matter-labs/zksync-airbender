@@ -1,3 +1,4 @@
+use std::mem::offset_of;
 use std::ptr::NonNull;
 
 use super::*;
@@ -518,19 +519,33 @@ macro_rules! print_registers {
 }
 
 macro_rules! increment_trace {
-    ($ops:ident, $pc:expr) => {
+    ($ops:ident, $pc:expr, $replay_segment_bound_offset:expr) => {
         dynasm!($ops
             ; inc r9
-            ;; check_to_save_trace!($ops, $pc)
+            ;; check_to_save_trace!($ops, $pc, $replay_segment_bound_offset)
         );
     };
 }
 
 macro_rules! check_to_save_trace {
-    ($ops:ident, $pc:expr) => {
+    ($ops:ident, $pc:expr, $replay_segment_bound_offset:expr) => {
         dynasm!($ops
             ; cmp r9, TRACE_CHUNK_LEN as _
-            ; jl >skip
+            ; jge >save
+        );
+        if let Some(replay_segment_bound_offset) = $replay_segment_bound_offset {
+            dynasm!($ops
+                ; mov rax, [rsp + (MachineState::CONTEXT_PTR_OFFSET as i32)]
+                ; cmp r8, [rax + (replay_segment_bound_offset as i32)]
+                ; jl >skip
+            );
+        } else {
+            dynasm!($ops
+                ; jmp >skip
+            );
+        }
+        dynasm!($ops
+            ; save:
             ; mov [rdi + (TraceChunk::LEN_OFFSET as i32)], r9 // save length
             ;; machine_state_store_pc!($ops, rsp, $pc)
             ; mov rdx, rsp // machine state
@@ -765,18 +780,28 @@ macro_rules! machine_state_store_pc {
     };
 }
 
-fn finish_deferred_trace_events(ops: &mut x64::Assembler, pending_events: &mut usize, pc: u32) {
+fn finish_deferred_trace_events(
+    ops: &mut x64::Assembler,
+    pending_events: &mut usize,
+    pc: u32,
+    replay_segment_bound_offset: Option<usize>,
+) {
     if *pending_events == 0 {
         return;
     }
 
     dynasm!(ops
-        ;; check_to_save_trace!(ops, pc)
+        ;; check_to_save_trace!(ops, pc, replay_segment_bound_offset)
     );
     *pending_events = 0;
 }
 
-fn record_deferred_trace_event(ops: &mut x64::Assembler, pending_events: &mut usize, pc: u32) {
+fn record_deferred_trace_event(
+    ops: &mut x64::Assembler,
+    pending_events: &mut usize,
+    pc: u32,
+    replay_segment_bound_offset: Option<usize>,
+) {
     dynasm!(ops
         ; inc r9
     );
@@ -787,7 +812,7 @@ fn record_deferred_trace_event(ops: &mut x64::Assembler, pending_events: &mut us
     // TraceChunk has bounded overflow room. Once a straight-line run consumes
     // that room, run the usual rare flush check before deferring more checks.
     if *pending_events == MAX_DEFERRED_TRACE_CHECK_EVENTS {
-        finish_deferred_trace_events(ops, pending_events, pc);
+        finish_deferred_trace_events(ops, pending_events, pc, replay_segment_bound_offset);
     }
 }
 
@@ -859,6 +884,8 @@ impl<I: ContextImpl> JittedCode<I> {
             .collect::<Vec<_>>();
         let trace_fast_block_starts = compute_trace_fast_block_starts(program);
         let mut pending_trace_events = 0usize;
+        let replay_segment_bound_offset = I::ENABLE_REPLAY_SEGMENT_CHECKS
+            .then_some(Context::<I>::REPLAY_SEGMENT_TIMESTAMP_BOUND_OFFSET);
 
         // Jump target array for Jalr - we will create them upfront, but track which are meaningful
         // Records the position of each RISC-V instruction relative to the start
@@ -879,7 +906,12 @@ impl<I: ContextImpl> JittedCode<I> {
             let pc = i as u32 * 4;
 
             if trace_fast_block_starts[i] {
-                finish_deferred_trace_events(&mut ops, &mut pending_trace_events, pc);
+                finish_deferred_trace_events(
+                    &mut ops,
+                    &mut pending_trace_events,
+                    pc,
+                    replay_segment_bound_offset,
+                );
             }
 
             dynasm!(ops
@@ -1539,7 +1571,12 @@ impl<I: ContextImpl> JittedCode<I> {
                 // NOTE: ONLY issue snapshotting after store!
                 if issue_snapshot {
                     let pc_for_trace = pc + 4;
-                    record_deferred_trace_event(&mut ops, &mut pending_trace_events, pc_for_trace);
+                    record_deferred_trace_event(
+                        &mut ops,
+                        &mut pending_trace_events,
+                        pc_for_trace,
+                        replay_segment_bound_offset,
+                    );
                 }
 
                 i += 1;
@@ -1956,6 +1993,7 @@ impl<I: ContextImpl> JittedCode<I> {
                                         &mut ops,
                                         &mut pending_trace_events,
                                         pc,
+                                        replay_segment_bound_offset,
                                     );
                                     emit_execution_panic!(ops, pc);
                                     i += 1;
@@ -2000,7 +2038,7 @@ impl<I: ContextImpl> JittedCode<I> {
                                 // read snapshot length back into register
                                 ; mov r9, [rdi + (TraceChunk::LEN_OFFSET as i32)]
                                 // and check if we should save
-                                ;; check_to_save_trace!(ops, pc_for_trace)
+                                ;; check_to_save_trace!(ops, pc_for_trace, replay_segment_bound_offset)
                             );
 
                             // delegation implementations are themselves responsible to call trace finalizers
@@ -2016,7 +2054,12 @@ impl<I: ContextImpl> JittedCode<I> {
                     // decoded-but-unsupported instructions such as fence-family ops,
                     // still gets compiled so dead code does not block proving setup,
                     // but any reachable unsupported opcode aborts at runtime.
-                    finish_deferred_trace_events(&mut ops, &mut pending_trace_events, pc);
+                    finish_deferred_trace_events(
+                        &mut ops,
+                        &mut pending_trace_events,
+                        pc,
+                        replay_segment_bound_offset,
+                    );
                     emit_execution_panic!(ops, pc);
                     i += 1;
                     continue;
@@ -2026,7 +2069,12 @@ impl<I: ContextImpl> JittedCode<I> {
             // NOTE: again, all snapshotting should only happen after stores (mainly due to CSSRW for non-determinism)
             if issue_snapshot {
                 let pc_for_trace = pc + 4;
-                record_deferred_trace_event(&mut ops, &mut pending_trace_events, pc_for_trace);
+                record_deferred_trace_event(
+                    &mut ops,
+                    &mut pending_trace_events,
+                    pc_for_trace,
+                    replay_segment_bound_offset,
+                );
             }
         }
         assert_eq!(i, program.len());
@@ -2035,6 +2083,7 @@ impl<I: ContextImpl> JittedCode<I> {
             &mut ops,
             &mut pending_trace_events,
             (program.len() as u32) * 4,
+            replay_segment_bound_offset,
         );
 
         // if we even come here without exit condition - it's an error
@@ -2160,13 +2209,11 @@ impl<N: NonDeterminismCSRSource> JittedCode<DefaultContextImpl<'_, N>> {
         initial_memory: &[u32],
         cycles_bound: Option<u32>,
     ) -> (MachineState, Box<MemoryHolder>) {
-        let mut context = Context::<DefaultContextImpl<'_, N>> {
-            implementation: DefaultContextImpl {
-                non_determinism_source,
-                trace_len: 0,
-                final_state: None,
-            },
-        };
+        let mut context = Context::new(DefaultContextImpl {
+            non_determinism_source,
+            trace_len: 0,
+            final_state: None,
+        });
 
         let mut memory: Box<MemoryHolder> = unsafe {
             // let mut memory: Box<MemoryHolder> = Box::new_uninit().assume_init();
@@ -2217,9 +2264,7 @@ impl<N: NonDeterminismCSRSource> JittedCode<DefaultContextImpl<'_, N>> {
         initial_memory: &[u32],
         cycles_bound: Option<u32>,
     ) -> (MachineState, Box<MemoryHolder>, Box<TraceChunk>) {
-        let mut context = Context::<DefaultContextImpl<'_, N>> {
-            implementation: DefaultContextImpl::new(non_determinism_source),
-        };
+        let mut context = Context::new(DefaultContextImpl::new(non_determinism_source));
 
         let mut memory: Box<MemoryHolder> = unsafe {
             // let mut memory: Box<MemoryHolder> = Box::new_uninit().assume_init();
@@ -2292,10 +2337,22 @@ extern "sysv64" fn process_csr<const CSR_NUMBER: u32>(
 
 #[repr(C)]
 pub struct Context<I: ContextImpl> {
+    replay_segment_timestamp_bound: TimestampScalar,
     pub implementation: I,
 }
 
 impl<I: ContextImpl> Context<I> {
+    const REPLAY_SEGMENT_TIMESTAMP_BOUND_OFFSET: usize =
+        offset_of!(Self, replay_segment_timestamp_bound);
+
+    pub fn new(implementation: I) -> Self {
+        let replay_segment_timestamp_bound = implementation.replay_segment_timestamp_bound();
+        Self {
+            replay_segment_timestamp_bound,
+            implementation,
+        }
+    }
+
     extern "sysv64" fn read_nondeterminism(&mut self) -> u32 {
         self.implementation.read_nondeterminism()
     }
@@ -2309,8 +2366,11 @@ impl<I: ContextImpl> Context<I> {
         trace_piece: NonNull<TraceChunk>,
         machine_state: &MachineState,
     ) -> NonNull<TraceChunk> {
-        self.implementation
-            .receive_trace(trace_piece, machine_state)
+        let trace_piece = self
+            .implementation
+            .receive_trace(trace_piece, machine_state);
+        self.replay_segment_timestamp_bound = self.implementation.replay_segment_timestamp_bound();
+        trace_piece
     }
 
     extern "sysv64" fn receive_final_trace_piece(
@@ -2328,6 +2388,10 @@ impl<I: ContextImpl> Context<I> {
 
     pub fn final_state_ref(&'_ self) -> Option<&'_ MachineState> {
         self.implementation.final_state_ref()
+    }
+
+    pub fn into_implementation(self) -> I {
+        self.implementation
     }
 }
 

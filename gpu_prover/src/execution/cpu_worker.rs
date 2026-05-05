@@ -202,54 +202,52 @@ pub(crate) fn run_replayer<T: TracingType>(
             trace_ranges,
         } = snapshot;
         if is_aborted {
-            let trace =
-                sync_profiling::measure_exclusive(SyncMetric::ReplayerRecycleSnapshot, || {
-                    drop(trace_ranges);
-                    trace
-                });
-            sync_profiling::measure(SyncMetric::FreeTraceChunksSend, || {
-                free_trace_chunks.send(trace)
-            })
-            .unwrap();
+            sync_profiling::measure_exclusive(SyncMetric::ReplayerRecycleSnapshot, || {
+                drop(trace_ranges);
+                trace.recycle(&free_trace_chunks);
+            });
             continue;
         }
+        let segment_index = trace.segment_index();
+        let segments_count = trace.segments_count();
         let (trace, elapsed) =
             sync_profiling::measure_exclusive(SyncMetric::ReplayerProcessSnapshot, || {
-                let trace_len = trace.len as usize;
                 let mut state = initial_state.into();
                 let final_state: State<T::Counters> = final_state.into();
-                let mut ram = ReplayerMemChunks {
-                    chunks: &mut [(&trace.values[..trace_len], &trace.timestamps[..trace_len])],
-                };
-                let mut nd = QuasiUARTSource::new_with_reads(vec![]);
-                let mut tracer = T::Tracer::new(trace_ranges);
                 let instant = Instant::now();
-                ReplayerVM::<T::Counters>::replay_basic_unrolled(
-                    &mut state,
-                    &mut ram,
-                    tape.deref(),
-                    &mut nd,
-                    cycles_count,
-                    &mut tracer,
-                );
+                {
+                    let (trace_values, trace_timestamps) = trace.range();
+                    let mut ram = ReplayerMemChunks {
+                        chunks: &mut [(trace_values, trace_timestamps)],
+                    };
+                    let mut nd = QuasiUARTSource::new_with_reads(vec![]);
+                    let mut tracer = T::Tracer::new(trace_ranges);
+                    ReplayerVM::<T::Counters>::replay_basic_unrolled(
+                        &mut state,
+                        &mut ram,
+                        tape.deref(),
+                        &mut nd,
+                        cycles_count,
+                        &mut tracer,
+                    );
+                    drop(tracer);
+                }
                 let elapsed = instant.elapsed();
-                drop(tracer);
                 assert_eq!(state.pc, final_state.pc);
                 assert_eq!(state.timestamp, final_state.timestamp);
                 assert_eq!(state.registers, final_state.registers);
                 (trace, elapsed)
             });
-        sync_profiling::measure(SyncMetric::FreeTraceChunksSend, || {
-            free_trace_chunks.send(trace)
-        })
-        .unwrap();
+        let snapshot_complete = trace.recycle(&free_trace_chunks);
         total_elapsed += elapsed;
         total_cycles += cycles_count;
         let elapsed_ms = elapsed.as_secs_f64() * 1000.0;
         let mhz = (cycles_count as f64) / (elapsed_ms * 1000.0);
-        trace!("BATCH[{batch_id}] REPLAYER[{worker_id}] processed SNAPSHOT[{index}] with {cycles_count} cycles in {elapsed_ms:.3} ms @ {mhz:.3} MHz");
-        let result = WorkerResult::SnapshotReplayed(index);
-        sync_profiling::measure(SyncMetric::WorkResultsSend, || results.send(result)).unwrap()
+        trace!("BATCH[{batch_id}] REPLAYER[{worker_id}] processed SNAPSHOT[{index}] SEGMENT[{segment_index}/{segments_count}] with {cycles_count} cycles in {elapsed_ms:.3} ms @ {mhz:.3} MHz");
+        if snapshot_complete {
+            let result = WorkerResult::SnapshotReplayed(index);
+            sync_profiling::measure(SyncMetric::WorkResultsSend, || results.send(result)).unwrap()
+        }
     }
     let elapsed_ms = total_elapsed.as_secs_f64() * 1000.0;
     let mhz = (total_cycles as f64) / (elapsed_ms * 1000.0);
