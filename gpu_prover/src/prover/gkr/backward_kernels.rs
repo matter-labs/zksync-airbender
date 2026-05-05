@@ -29,6 +29,7 @@ use super::{
 };
 use crate::allocator::tracker::AllocationPlacement;
 use crate::ops::cub::device_reduce::{reduce, Reduce, ReduceOperation};
+use crate::ops::immediate_factors::ImmediateFactorRecipeStructural;
 use crate::ops::simple::{mul_into_y, BinaryOp, Mul};
 use crate::primitives::callbacks::Callbacks;
 use crate::primitives::context::{
@@ -160,7 +161,6 @@ impl GpuGKRMainLayerKernelKind {
 }
 
 pub(super) const GKR_BACKWARD_MAX_KERNELS_PER_LAYER: usize = 64;
-pub(super) const MAX_INLINE_ROUND_BATCH_BYTES: usize = 12 * 1024;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u32)]
@@ -176,19 +176,21 @@ impl GpuGKRMainLayerBatchRecordMode {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[repr(C)]
 pub(crate) struct GpuGKRMainLayerConstraintQuadraticTerm<E> {
     pub(crate) lhs: u32,
     pub(crate) rhs: u32,
     pub(crate) challenge: E,
+    pub(crate) immediate_recipe: ImmediateFactorRecipeStructural,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[repr(C)]
 pub(crate) struct GpuGKRMainLayerConstraintLinearTerm<E> {
     pub(crate) input: u32,
     pub(crate) challenge: E,
+    pub(crate) immediate_recipe: ImmediateFactorRecipeStructural,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -196,6 +198,7 @@ pub(crate) struct GpuGKRMainLayerConstraintHostMetadata<E> {
     pub(crate) quadratic_terms: Vec<GpuGKRMainLayerConstraintQuadraticTerm<E>>,
     pub(crate) linear_terms: Vec<GpuGKRMainLayerConstraintLinearTerm<E>>,
     pub(crate) constant_offset: E,
+    pub(crate) constant_offset_recipe: ImmediateFactorRecipeStructural,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -254,90 +257,115 @@ pub(super) struct GpuGKRMainLayerKernelBlueprint<E> {
     pub(super) constraint_metadata_source: Option<GpuGKRMainLayerConstraintMetadataSource<E>>,
 }
 
-#[repr(C)]
-#[derive(Clone, Copy)]
-pub(super) struct GpuGKRMainLayerPayloadRange {
-    pub(super) offset: u32,
-    pub(super) count: u32,
-}
-
-impl Default for GpuGKRMainLayerPayloadRange {
-    fn default() -> Self {
-        Self {
-            offset: 0,
-            count: 0,
-        }
-    }
-}
-
 #[derive(Clone, Debug)]
 pub(super) struct GpuGKRMainLayerRound3HostDescriptors<E: Copy> {
     pub(super) step: usize,
     pub(super) descriptors: GpuSumcheckRound3AndBeyondHostLaunchDescriptors<E>,
 }
 
+// ---------------------------------------------------------------------------
+// Compact dim-reducing descriptor types. Each source record carries two u16s:
+// one for the source pointer/index and one for the cache pointer/index. Both
+// halves resolve against the same per-launch `bases` / `log2_stride` tables.
+// ---------------------------------------------------------------------------
+
+/// Pessimistic upper bound on the per-launch u16 source list. Sized from the
+/// Phase 0 measured worst-case (`FLAT_ROUND0_MAX_SOURCES = 1280`,
+/// `gkr_address_audit.rs`) — re-anchor in Phase D once dim-reducing-specific
+/// measurement says this can be tightened.
+pub(crate) const GKR_DIM_REDUCING_INLINE_U16_BUDGET: usize = 1280;
+
+/// Number of per-launch base-pointer slots. Phase 0 measured up to 5
+/// distinct address classes per layer (8-slot static taxonomy in
+/// `gkr_address_audit.rs`). Bumped to 16 because Phase C round 1/2 main-layer
+/// flat-path launches use one slot per *backing* (not per class): up to 4
+/// base read backings, 4 base cache backings, 1-3 ext read backings, and
+/// 1 ext cache backing — easily 10+ distinct Arcs per launch. 16 leaves
+/// comfortable headroom; the 4-bit `ptr_idx` field in every u16 source
+/// encoding is sized to match.
+pub(crate) const GKR_DIM_REDUCING_BASE_SLOTS: usize = 16;
+
+/// `(offset, count)` over the `inline_payload[GpuGKRSourceRecord]` array.
+/// 4 B per range record.
 #[repr(C)]
-#[derive(Clone, Copy)]
-pub(super) struct GpuGKRDimensionReducingRound0BatchRecord {
-    pub(super) kind: u32,
-    pub(super) _reserved0: u32,
-    pub(super) extension_inputs: GpuGKRMainLayerPayloadRange,
-    pub(super) extension_outputs: GpuGKRMainLayerPayloadRange,
-    pub(super) batch_challenge_offset: u32,
-    pub(super) batch_challenge_count: u32,
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct PayloadRange16 {
+    pub(crate) offset: u16,
+    pub(crate) count: u16,
 }
 
-impl Default for GpuGKRDimensionReducingRound0BatchRecord {
+/// One dim-reducing record (kernel-batch entry). 16 B with two PayloadRange16
+/// slots, a u32 kind, and u16 batch-challenge metadata.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct GpuGKRDimensionReducingBatchRecordCompact {
+    pub(crate) kind: u32,
+    pub(crate) inputs: PayloadRange16,
+    pub(crate) outputs: PayloadRange16,
+    pub(crate) batch_challenge_offset: u16,
+    pub(crate) batch_challenge_count: u16,
+}
+
+/// Per-launch pointer + stride tables.
+/// `bases[ptr_idx]` is the base of slot `ptr_idx`'s allocation;
+/// `log2_stride[ptr_idx]` is the per-poly stride exponent (decode:
+/// `element_addr = bases[ptr_idx] + (poly_idx << log2_stride[ptr_idx])`).
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub(crate) struct GpuGKRDimensionReducingTables {
+    pub(crate) bases: [*const u8; GKR_DIM_REDUCING_BASE_SLOTS],
+    pub(crate) log2_stride: [u32; GKR_DIM_REDUCING_BASE_SLOTS],
+}
+
+impl Default for GpuGKRDimensionReducingTables {
     fn default() -> Self {
         Self {
-            kind: GpuGKRDimensionReducingKernelKind::Pairwise.as_u32(),
-            _reserved0: 0,
-            extension_inputs: GpuGKRMainLayerPayloadRange::default(),
-            extension_outputs: GpuGKRMainLayerPayloadRange::default(),
-            batch_challenge_offset: 0,
-            batch_challenge_count: 0,
+            bases: [null(); GKR_DIM_REDUCING_BASE_SLOTS],
+            log2_stride: [0; GKR_DIM_REDUCING_BASE_SLOTS],
         }
     }
 }
 
+// SAFETY: holds raw device pointers — safe to send across threads.
+unsafe impl Send for GpuGKRDimensionReducingTables {}
+unsafe impl Sync for GpuGKRDimensionReducingTables {}
+
 #[repr(C)]
-#[derive(Clone, Copy)]
-pub(super) struct GpuGKRDimensionReducingContinuationBatchRecord {
-    pub(super) kind: u32,
-    pub(super) _reserved0: u32,
-    pub(super) extension_inputs: GpuGKRMainLayerPayloadRange,
-    pub(super) batch_challenge_offset: u32,
-    pub(super) batch_challenge_count: u32,
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct GpuGKRSourceRecord {
+    pub(crate) src: u16,
+    pub(crate) cache: u16,
 }
 
-impl Default for GpuGKRDimensionReducingContinuationBatchRecord {
-    fn default() -> Self {
-        Self {
-            kind: GpuGKRDimensionReducingKernelKind::Pairwise.as_u32(),
-            _reserved0: 0,
-            extension_inputs: GpuGKRMainLayerPayloadRange::default(),
-            batch_challenge_offset: 0,
-            batch_challenge_count: 0,
-        }
+impl GpuGKRSourceRecord {
+    pub(crate) const fn source_only(src: u16) -> Self {
+        Self { src, cache: 0 }
+    }
+
+    pub(crate) const fn new(src: u16, cache: u16) -> Self {
+        Self { src, cache }
     }
 }
 
+/// Compact replacement for `GpuGKRDimensionReducingRound0Batch<E>`.
+/// ~3.7 KB by-value kernel-arg footprint.
 #[repr(C)]
 #[derive(Clone, Copy)]
-pub(crate) struct GpuGKRDimensionReducingRound0Batch<E> {
-    pub(super) record_count: u32,
-    pub(super) _reserved0: u32,
-    pub(super) _reserved1: u32,
-    pub(super) _reserved2: u32,
-    pub(super) eq_values: *const E,
-    pub(super) batch_challenge_base: *const E,
-    pub(super) contributions: *mut E,
-    pub(super) records:
-        [GpuGKRDimensionReducingRound0BatchRecord; GKR_BACKWARD_MAX_KERNELS_PER_LAYER],
-    pub(super) inline_payload: [u8; MAX_INLINE_ROUND_BATCH_BYTES],
+pub(crate) struct GpuGKRDimensionReducingRound0BatchCompact<E> {
+    pub(crate) record_count: u32,
+    pub(crate) _reserved0: u32,
+    pub(crate) _reserved1: u32,
+    pub(crate) _reserved2: u32,
+    pub(crate) eq_values: *const E,
+    pub(crate) batch_challenge_base: *const E,
+    pub(crate) contributions: *mut E,
+    pub(crate) tables: GpuGKRDimensionReducingTables,
+    pub(crate) records:
+        [GpuGKRDimensionReducingBatchRecordCompact; GKR_BACKWARD_MAX_KERNELS_PER_LAYER],
+    pub(crate) inline_payload: [GpuGKRSourceRecord; GKR_DIM_REDUCING_INLINE_U16_BUDGET],
 }
 
-impl<E: Field> Default for GpuGKRDimensionReducingRound0Batch<E> {
+impl<E: Field> Default for GpuGKRDimensionReducingRound0BatchCompact<E> {
     fn default() -> Self {
         Self {
             record_count: 0,
@@ -347,108 +375,39 @@ impl<E: Field> Default for GpuGKRDimensionReducingRound0Batch<E> {
             eq_values: null(),
             batch_challenge_base: null(),
             contributions: null_mut(),
-            records: [GpuGKRDimensionReducingRound0BatchRecord::default();
+            tables: GpuGKRDimensionReducingTables::default(),
+            records: [GpuGKRDimensionReducingBatchRecordCompact::default();
                 GKR_BACKWARD_MAX_KERNELS_PER_LAYER],
-            inline_payload: [0; MAX_INLINE_ROUND_BATCH_BYTES],
+            inline_payload: [GpuGKRSourceRecord::default(); GKR_DIM_REDUCING_INLINE_U16_BUDGET],
         }
     }
 }
 
+/// Compact replacement for `GpuGKRDimensionReducingRound{1,2,3}Batch<E>`.
+/// Continuation rounds drop the `outputs` payload range (per-record reads
+/// only) but otherwise share the round-0 layout. The kernel infers
+/// `previous_layer_start` / `this_layer_start` / sizes from the per-launch
+/// `step` plus the `bases` / `log2_stride` tables.
 #[repr(C)]
 #[derive(Clone, Copy)]
-pub(crate) struct GpuGKRDimensionReducingRound1Batch<E> {
-    pub(super) record_count: u32,
-    pub(super) _reserved0: u32,
-    pub(super) _reserved1: u32,
-    pub(super) _reserved2: u32,
-    pub(super) eq_values: *const E,
-    pub(super) batch_challenge_base: *const E,
-    pub(super) folding_challenge: *const E,
-    pub(super) contributions: *mut E,
-    pub(super) explicit_form: bool,
-    pub(super) _padding: [u8; 7],
-    pub(super) records:
-        [GpuGKRDimensionReducingContinuationBatchRecord; GKR_BACKWARD_MAX_KERNELS_PER_LAYER],
-    pub(super) inline_payload: [u8; MAX_INLINE_ROUND_BATCH_BYTES],
+pub(crate) struct GpuGKRDimensionReducingContinuationBatchCompact<E> {
+    pub(crate) record_count: u32,
+    pub(crate) _reserved0: u32,
+    pub(crate) _reserved1: u32,
+    pub(crate) _reserved2: u32,
+    pub(crate) eq_values: *const E,
+    pub(crate) batch_challenge_base: *const E,
+    pub(crate) folding_challenge: *const E,
+    pub(crate) contributions: *mut E,
+    pub(crate) explicit_form: bool,
+    pub(crate) _padding: [u8; 7],
+    pub(crate) tables: GpuGKRDimensionReducingTables,
+    pub(crate) records:
+        [GpuGKRDimensionReducingBatchRecordCompact; GKR_BACKWARD_MAX_KERNELS_PER_LAYER],
+    pub(crate) inline_payload: [GpuGKRSourceRecord; GKR_DIM_REDUCING_INLINE_U16_BUDGET],
 }
 
-impl<E: Field> Default for GpuGKRDimensionReducingRound1Batch<E> {
-    fn default() -> Self {
-        Self {
-            record_count: 0,
-            _reserved0: 0,
-            _reserved1: 0,
-            _reserved2: 0,
-            eq_values: null(),
-            batch_challenge_base: null(),
-            folding_challenge: null(),
-            contributions: null_mut(),
-            explicit_form: false,
-            _padding: [0; 7],
-            records: [GpuGKRDimensionReducingContinuationBatchRecord::default();
-                GKR_BACKWARD_MAX_KERNELS_PER_LAYER],
-            inline_payload: [0; MAX_INLINE_ROUND_BATCH_BYTES],
-        }
-    }
-}
-
-#[repr(C)]
-#[derive(Clone, Copy)]
-pub(crate) struct GpuGKRDimensionReducingRound2Batch<E> {
-    pub(super) record_count: u32,
-    pub(super) _reserved0: u32,
-    pub(super) _reserved1: u32,
-    pub(super) _reserved2: u32,
-    pub(super) eq_values: *const E,
-    pub(super) batch_challenge_base: *const E,
-    pub(super) folding_challenge: *const E,
-    pub(super) contributions: *mut E,
-    pub(super) explicit_form: bool,
-    pub(super) _padding: [u8; 7],
-    pub(super) records:
-        [GpuGKRDimensionReducingContinuationBatchRecord; GKR_BACKWARD_MAX_KERNELS_PER_LAYER],
-    pub(super) inline_payload: [u8; MAX_INLINE_ROUND_BATCH_BYTES],
-}
-
-impl<E: Field> Default for GpuGKRDimensionReducingRound2Batch<E> {
-    fn default() -> Self {
-        Self {
-            record_count: 0,
-            _reserved0: 0,
-            _reserved1: 0,
-            _reserved2: 0,
-            eq_values: null(),
-            batch_challenge_base: null(),
-            folding_challenge: null(),
-            contributions: null_mut(),
-            explicit_form: false,
-            _padding: [0; 7],
-            records: [GpuGKRDimensionReducingContinuationBatchRecord::default();
-                GKR_BACKWARD_MAX_KERNELS_PER_LAYER],
-            inline_payload: [0; MAX_INLINE_ROUND_BATCH_BYTES],
-        }
-    }
-}
-
-#[repr(C)]
-#[derive(Clone, Copy)]
-pub(crate) struct GpuGKRDimensionReducingRound3Batch<E> {
-    pub(super) record_count: u32,
-    pub(super) _reserved0: u32,
-    pub(super) _reserved1: u32,
-    pub(super) _reserved2: u32,
-    pub(super) eq_values: *const E,
-    pub(super) batch_challenge_base: *const E,
-    pub(super) folding_challenge: *const E,
-    pub(super) contributions: *mut E,
-    pub(super) explicit_form: bool,
-    pub(super) _padding: [u8; 7],
-    pub(super) records:
-        [GpuGKRDimensionReducingContinuationBatchRecord; GKR_BACKWARD_MAX_KERNELS_PER_LAYER],
-    pub(super) inline_payload: [u8; MAX_INLINE_ROUND_BATCH_BYTES],
-}
-
-impl<E: Field> Default for GpuGKRDimensionReducingRound3Batch<E> {
+impl<E: Field> Default for GpuGKRDimensionReducingContinuationBatchCompact<E> {
     fn default() -> Self {
         Self {
             record_count: 0,
@@ -461,80 +420,50 @@ impl<E: Field> Default for GpuGKRDimensionReducingRound3Batch<E> {
             contributions: null_mut(),
             explicit_form: false,
             _padding: [0; 7],
-            records: [GpuGKRDimensionReducingContinuationBatchRecord::default();
+            tables: GpuGKRDimensionReducingTables::default(),
+            records: [GpuGKRDimensionReducingBatchRecordCompact::default();
                 GKR_BACKWARD_MAX_KERNELS_PER_LAYER],
-            inline_payload: [0; MAX_INLINE_ROUND_BATCH_BYTES],
+            inline_payload: [GpuGKRSourceRecord::default(); GKR_DIM_REDUCING_INLINE_U16_BUDGET],
         }
     }
 }
 
-#[derive(Clone, Debug)]
-pub(super) struct GpuGKRDimensionReducingRound3HostDescriptors<E: Copy> {
-    pub(super) step: usize,
-    pub(super) descriptors: GpuSumcheckRound3AndBeyondHostLaunchDescriptors<E>,
+/// `(first_access, ptr_idx, poly_idx)` packed into a u16 source descriptor.
+/// `first_access` is bit 15 (cheapest single-bit test on the GPU);
+/// `ptr_idx` is bits 14..11 (4 bits, 16 slots); `poly_idx` is bits 10..0
+/// (11 bits, up to 2048 polys per slot — Phase 0 measured max 646).
+#[inline]
+pub(crate) const fn pack_source_u16(first_access: bool, ptr_idx: u8, poly_idx: u16) -> u16 {
+    let fa = if first_access { 1u16 << 15 } else { 0 };
+    let p = ((ptr_idx as u16) & 0xF) << 11;
+    let q = poly_idx & 0x07FF;
+    fa | p | q
 }
 
-#[derive(Clone)]
-pub(super) struct GpuGKRDimensionReducingRound3BatchTemplate<E> {
-    pub(super) step: usize,
-    pub(super) batch: GpuGKRDimensionReducingRound3Batch<E>,
+#[inline]
+pub(crate) const fn unpack_source_u16(packed: u16) -> (bool, u8, u16) {
+    let first_access = packed & (1 << 15) != 0;
+    let ptr_idx = ((packed >> 11) & 0xF) as u8;
+    let poly_idx = packed & 0x07FF;
+    (first_access, ptr_idx, poly_idx)
 }
 
-pub(super) struct InlinePayloadBuilder {
-    pub(super) bytes: [u8; MAX_INLINE_ROUND_BATCH_BYTES],
-    pub(super) len: usize,
+/// Cache half of a dual source record. Bit 15 is normally reserved and kept
+/// clear; flat base virtual sources use it as a local discriminator because
+/// their source half carries `first_access` plus a virtual source kind rather
+/// than a real source pointer.
+#[inline]
+pub(crate) const fn pack_cache_u16(ptr_idx: u8, poly_idx: u16) -> u16 {
+    let p = ((ptr_idx as u16) & 0xF) << 11;
+    let q = poly_idx & 0x07FF;
+    p | q
 }
 
-impl InlinePayloadBuilder {
-    pub(super) fn new() -> Self {
-        Self {
-            bytes: [0; MAX_INLINE_ROUND_BATCH_BYTES],
-            len: 0,
-        }
-    }
-
-    pub(super) fn mark(&self) -> usize {
-        self.len
-    }
-
-    pub(super) fn restore(&mut self, mark: usize) {
-        self.len = mark;
-    }
-
-    pub(super) fn try_push_copy<T: Copy>(
-        &mut self,
-        values: &[T],
-    ) -> Option<GpuGKRMainLayerPayloadRange> {
-        if values.is_empty() {
-            return Some(GpuGKRMainLayerPayloadRange::default());
-        }
-        let start = align_up(self.len, align_of::<T>());
-        let bytes = as_bytes(values);
-        let end = start.checked_add(bytes.len())?;
-        if end > self.bytes.len() {
-            return None;
-        }
-        self.bytes[start..end].copy_from_slice(bytes);
-        self.len = end;
-        Some(GpuGKRMainLayerPayloadRange {
-            offset: start as u32,
-            count: values.len() as u32,
-        })
-    }
-
-    pub(super) fn into_bytes(self) -> [u8; MAX_INLINE_ROUND_BATCH_BYTES] {
-        self.bytes
-    }
-}
-
-pub(super) fn align_up(value: usize, align: usize) -> usize {
-    debug_assert!(align.is_power_of_two());
-    (value + (align - 1)) & !(align - 1)
-}
-
-pub(super) fn as_bytes<T: Copy>(values: &[T]) -> &[u8] {
-    // SAFETY: `T: Copy` and the returned byte slice has the same lifetime as the input slice.
-    unsafe { slice::from_raw_parts(values.as_ptr().cast::<u8>(), std::mem::size_of_val(values)) }
+#[inline]
+pub(crate) const fn unpack_cache_u16(packed: u16) -> (u8, u16) {
+    let ptr_idx = ((packed >> 11) & 0xF) as u8;
+    let poly_idx = packed & 0x07FF;
+    (ptr_idx, poly_idx)
 }
 
 #[derive(Clone, Debug)]
@@ -571,11 +500,12 @@ pub(crate) struct GpuGKRDimensionReducingSumcheckLayerPlan<B, E> {
     pub(crate) folding_steps: usize,
     pub(super) batch_challenge_base: Option<E>,
     pub(super) kernel_plans: Vec<GpuGKRDimensionReducingKernelPlan<B, E>>,
-    pub(super) round0_descriptors: Vec<GpuSumcheckRound0LaunchDescriptors<B, E>>,
-    pub(super) round0_batch_template: GpuGKRDimensionReducingRound0Batch<E>,
-    pub(super) round1_batch_template: GpuGKRDimensionReducingRound1Batch<E>,
-    pub(super) round2_batch_template: Option<GpuGKRDimensionReducingRound2Batch<E>>,
-    pub(super) round3_batch_templates: Vec<GpuGKRDimensionReducingRound3BatchTemplate<E>>,
+    pub(super) round0_batch_template_compact: GpuGKRDimensionReducingRound0BatchCompact<E>,
+    pub(super) round1_batch_template_compact: GpuGKRDimensionReducingContinuationBatchCompact<E>,
+    /// Single descriptor reused for every continuation step >= 2. The kernel
+    /// derives per-step folding-buffer offsets from `step + acc_size`.
+    pub(super) continuation_batch_template_compact:
+        GpuGKRDimensionReducingContinuationBatchCompact<E>,
     pub(super) round_scratch: GpuGKRDimensionReducingRoundScratch<E>,
     /// When set, `batch_challenge_base_ptr()` returns this raw pointer instead
     /// of `round_scratch.claim_point.as_ptr().add(folding_steps)`. The
@@ -752,8 +682,6 @@ pub(crate) struct GpuGKRDimensionReducingScheduledLayerExecution<B, E: FieldExte
     // Keeps layer-start callbacks alive until the stream consumes them.
     pub(super) start_callbacks: Callbacks<'static>,
     #[allow(dead_code)]
-    pub(super) combined_claim_desc_upload: Option<ScheduledUpload<u32>>,
-    #[allow(dead_code)]
     pub(super) round_challenge_storage: Option<ScheduledChallengeStorage<E>>,
     #[allow(dead_code)]
     pub(super) round_challenge_buffers: Vec<ScheduledChallengeBuffer<E>>,
@@ -762,11 +690,6 @@ pub(crate) struct GpuGKRDimensionReducingScheduledLayerExecution<B, E: FieldExte
     #[allow(dead_code)]
     pub(super) final_readback: ScheduledDimensionReducingFinalReadback<E>,
     pub(super) shared_state: Box<ScheduledDimensionReducingLayerExecutionState<E>>,
-    /// SchedulerHostAllocator-backed pointer table used by the per-address
-    /// gather kernel. Per the contract, must outlive every in-flight H2D —
-    /// threaded into the host keepalive that survives `is_finished_event.synchronize()`.
-    #[allow(dead_code)]
-    pub(super) gather_host_ptrs: Option<SchedulerHostAllocation<[u64]>>,
     /// Device-resident Fiat-Shamir seed passed in by the caller, consumed by
     /// this layer's per-round + end-of-layer transcript work, and returned
     /// via `.take()` for the next backward layer scheduler to reuse. `None`
@@ -827,60 +750,46 @@ pub(crate) struct GpuGKRMainLayerSumcheckLayerPlan<E> {
     pub(super) batch_challenge_base: Option<E>,
     pub(super) lookup_multiplicative_challenge: E,
     pub(super) lookup_additive_challenge: E,
+    pub(super) external_challenges_flat: Vec<E>,
     pub(super) kernel_plans: Vec<GpuGKRMainLayerKernelPlan<E>>,
     pub(super) round0_descriptors: Vec<GpuSumcheckRound0LaunchDescriptors<BF, E>>,
-    pub(super) flat_round0_template: Option<super::backward_flat::FlatRound0BuildPlan<E>>,
-    /// Device allocations for compiled recipe headers and terms (uploaded once at prepare time).
-    pub(super) flat_recipe_headers:
-        Option<DeviceAllocation<crate::ops::eval_recipes::GpuRecipeHeader>>,
-    pub(super) flat_recipe_terms:
-        Option<DeviceAllocation<crate::ops::eval_recipes::GpuPrefactorTerm>>,
-    #[allow(dead_code)]
-    pub(super) flat_recipe_headers_host:
-        Option<SchedulerHostAllocation<[crate::ops::eval_recipes::GpuRecipeHeader]>>,
-    #[allow(dead_code)]
-    pub(super) flat_recipe_terms_host:
-        Option<SchedulerHostAllocation<[crate::ops::eval_recipes::GpuPrefactorTerm]>>,
+    /// Phase C compact flat round-0 descriptor. Built at prepare time from
+    /// the (transient) legacy `FlatRound0BuildPlan`; only the compact form
+    /// survives onto the plan struct. Consumed by
+    /// `launch_main_round0_flat_constant_compact`.
+    pub(super) flat_round0_template_compact:
+        Option<super::backward_flat_compact::FlatRound0BuildPlanCompact<E>>,
+    /// Inline eval-recipes descriptor passed by value to each round-0 launch.
+    pub(super) flat_recipe_desc: Option<Box<crate::ops::eval_recipes::GpuFlatRecipeEvalDesc>>,
+    pub(super) flat_recipe_count: usize,
     /// Device buffer for eval_recipes output (delegation L0 round 0 only; others write to __constant__).
     pub(super) flat_coeff_device_buf: Option<DeviceAllocation<E>>,
     /// Whether round 0 uses __constant__ for coefficients (false only for delegation L0).
     pub(super) flat_use_constant: bool,
     /// Flat continuation plan for rounds 1+ (shared term arrays + per-step source tables).
     pub(super) flat_continuation_plan: Option<super::backward_flat::FlatContinuationBuildPlan<E>>,
-    /// Per-step static descriptions for flat round 3+ kernels (intermediate for building unified descs).
-    pub(super) flat_continuation_descs: Vec<(
+    /// Inline eval-recipes descriptor passed by value to each continuation launch.
+    pub(super) flat_cont_recipe_desc: Option<Box<crate::ops::eval_recipes::GpuFlatRecipeEvalDesc>>,
+    pub(super) flat_cont_recipe_count: usize,
+    /// Phase C continuation compact descriptors (per step). Built at prepare
+    /// time from the transient legacy unified descriptors and converted; only
+    /// the compact form survives onto the plan. Consumed by
+    /// `launch_main_round3_flat_constant_unified_compact`.
+    pub(super) flat_continuation_unified_descs_compact: Vec<(
         usize,
-        Box<super::backward_flat::GpuFlatContinuationStaticDesc>,
+        Box<super::backward_flat_compact::GpuFlatContinuationUnifiedDescCompact>,
     )>,
-    /// Device allocations for continuation recipe headers and terms.
-    pub(super) flat_cont_recipe_headers:
-        Option<DeviceAllocation<crate::ops::eval_recipes::GpuRecipeHeader>>,
-    pub(super) flat_cont_recipe_terms:
-        Option<DeviceAllocation<crate::ops::eval_recipes::GpuPrefactorTerm>>,
-    #[allow(dead_code)]
-    pub(super) flat_cont_recipe_headers_host:
-        Option<SchedulerHostAllocation<[crate::ops::eval_recipes::GpuRecipeHeader]>>,
-    #[allow(dead_code)]
-    pub(super) flat_cont_recipe_terms_host:
-        Option<SchedulerHostAllocation<[crate::ops::eval_recipes::GpuPrefactorTerm]>>,
-    /// Static description for flat round 1 kernel (intermediate for building unified desc).
-    pub(super) flat_round1_desc: Option<Box<super::backward_flat::GpuFlatRound1StaticDesc>>,
-    /// Combined descriptor for the unified round 1 kernel (sources + mixed terms).
-    pub(super) flat_round1_unified_desc:
-        Option<Box<super::backward_flat::GpuFlatRound1UnifiedDesc>>,
-    /// Static description for flat round 2 kernel (intermediate for building unified desc).
-    pub(super) flat_round2_desc: Option<Box<super::backward_flat::GpuFlatRound2StaticDesc>>,
-    /// Combined descriptor for the unified round 2 kernel (sources + mixed terms).
-    pub(super) flat_round2_unified_desc:
-        Option<Box<super::backward_flat::GpuFlatRound2UnifiedDesc>>,
-    /// Per-step unified descriptors for flat round 3+ kernels (tiled warp-split).
-    pub(super) flat_continuation_unified_descs: Vec<(
-        usize,
-        Box<super::backward_flat::GpuFlatContinuationUnifiedDesc>,
-    )>,
+    /// Phase C round 1 compact descriptor. Built at prepare time from the
+    /// transient legacy `GpuFlatRound1UnifiedDesc`. Consumed by
+    /// `launch_main_round1_flat_constant_compact_unified_compact`.
+    pub(super) flat_round1_unified_desc_compact:
+        Option<Box<super::backward_flat_compact::GpuFlatRound1UnifiedDescCompact>>,
+    /// Phase C round 2 compact descriptor. Built at prepare time from the
+    /// transient legacy `GpuFlatRound2UnifiedDesc`.
+    pub(super) flat_round2_unified_desc_compact:
+        Option<Box<super::backward_flat_compact::GpuFlatRound2UnifiedDescCompact>>,
     pub(super) round_scratch: GpuGKRMainLayerRoundScratch<E>,
-    /// Keeps pinned-staging callbacks alive for recipe H2D copies scheduled at prepare time.
-    /// Moved into `GpuGKRMainLayerScheduledLayerExecution` during `schedule_execute_*`.
+    /// Legacy keepalive slot for scheduling callbacks unrelated to inline recipe descriptors.
     pub(super) recipe_upload_callbacks: Callbacks<'static>,
     /// When set, `batch_challenge_base_ptr()` returns this raw pointer instead
     /// of `round_scratch.claim_point.as_ptr().add(folding_steps)`. The
@@ -939,8 +848,6 @@ pub(crate) struct GpuGKRMainLayerScheduledLayerExecution<E: FieldExtension<BF> +
     #[allow(dead_code)]
     pub(super) start_callbacks: Callbacks<'static>,
     #[allow(dead_code)]
-    pub(super) combined_claim_desc_upload: Option<ScheduledUpload<u32>>,
-    #[allow(dead_code)]
     pub(super) batch_challenge_storage: ScheduledChallengeStorage<E>,
     #[allow(dead_code)]
     pub(super) batch_challenge_buffer: ScheduledChallengeBuffer<E>,
@@ -956,18 +863,6 @@ pub(crate) struct GpuGKRMainLayerScheduledLayerExecution<E: FieldExtension<BF> +
     pub(super) flat_coeff_callbacks: Callbacks<'static>,
     #[allow(dead_code)]
     pub(super) recipe_upload_callbacks: Callbacks<'static>,
-    #[allow(dead_code)]
-    pub(super) flat_recipe_headers_host:
-        Option<SchedulerHostAllocation<[crate::ops::eval_recipes::GpuRecipeHeader]>>,
-    #[allow(dead_code)]
-    pub(super) flat_recipe_terms_host:
-        Option<SchedulerHostAllocation<[crate::ops::eval_recipes::GpuPrefactorTerm]>>,
-    #[allow(dead_code)]
-    pub(super) flat_cont_recipe_headers_host:
-        Option<SchedulerHostAllocation<[crate::ops::eval_recipes::GpuRecipeHeader]>>,
-    #[allow(dead_code)]
-    pub(super) flat_cont_recipe_terms_host:
-        Option<SchedulerHostAllocation<[crate::ops::eval_recipes::GpuPrefactorTerm]>>,
     pub(super) shared_state: Box<ScheduledMainLayerExecutionState<E>>,
     /// Device-resident Fiat-Shamir seed (see dim-reducing twin). Taken by the
     /// orchestrator to thread into the next backward layer.
@@ -979,10 +874,6 @@ pub(crate) struct GpuGKRMainLayerScheduledLayerExecution<E: FieldExtension<BF> +
     pub(super) device_claims_for_next_layer: Option<DeviceAllocation<E>>,
     /// Explicit address order of `device_claims_for_next_layer`.
     pub(super) claim_layout_for_next_layer: Option<ClaimBufferLayout>,
-    /// SchedulerHostAllocator-backed pointer table used by the per-address
-    /// gather kernel. See dim-reducing twin for lifetime rationale.
-    #[allow(dead_code)]
-    pub(super) gather_host_ptrs: Option<SchedulerHostAllocation<[u64]>>,
 }
 
 pub(crate) struct ScheduledBackwardWorkflowState<E: FieldExtension<BF> + Field> {
@@ -1014,6 +905,8 @@ pub(crate) struct GpuGKRBackwardScheduledExecution<B, E: FieldExtension<BF> + Fi
     #[allow(dead_code)]
     // Keeps test-path initial-staging callbacks alive until the stream consumes them.
     pub(super) initial_callbacks: Callbacks<'static>,
+    #[allow(dead_code)]
+    pub(super) external_challenges_device_keepalive: Option<DeviceAllocation<E>>,
     pub(super) final_device_seed: Option<DeviceAllocation<u32>>,
     pub(super) final_device_claim_point_and_batching: Option<DeviceAllocation<E>>,
     pub(super) final_claim_layout: Option<ClaimBufferLayout>,
@@ -1036,8 +929,6 @@ pub(crate) struct GpuGKRDimensionReducingHostKeepalive<B, E: FieldExtension<BF> 
     #[allow(dead_code)]
     pub(super) start_callbacks: Callbacks<'static>,
     #[allow(dead_code)]
-    pub(super) combined_claim_desc_upload: Option<HostScheduledUpload<u32>>,
-    #[allow(dead_code)]
     pub(super) round_challenge_storage: Option<HostScheduledChallengeStorage<E>>,
     #[allow(dead_code)]
     pub(super) _phantom: std::marker::PhantomData<B>,
@@ -1047,8 +938,6 @@ pub(crate) struct GpuGKRDimensionReducingHostKeepalive<B, E: FieldExtension<BF> 
     pub(super) final_readback: ScheduledDimensionReducingFinalReadback<E>,
     #[allow(dead_code)]
     pub(super) shared_state: Box<ScheduledDimensionReducingLayerExecutionState<E>>,
-    #[allow(dead_code)]
-    pub(super) gather_host_ptrs: Option<SchedulerHostAllocation<[u64]>>,
 }
 
 pub(crate) struct GpuGKRMainLayerHostKeepalive<E: FieldExtension<BF> + Field> {
@@ -1056,8 +945,6 @@ pub(crate) struct GpuGKRMainLayerHostKeepalive<E: FieldExtension<BF> + Field> {
     pub(super) tracing_ranges: Vec<Range>,
     #[allow(dead_code)]
     pub(super) start_callbacks: Callbacks<'static>,
-    #[allow(dead_code)]
-    pub(super) combined_claim_desc_upload: Option<HostScheduledUpload<u32>>,
     #[allow(dead_code)]
     pub(super) batch_challenge_storage: HostScheduledChallengeStorage<E>,
     #[allow(dead_code)]
@@ -1071,21 +958,7 @@ pub(crate) struct GpuGKRMainLayerHostKeepalive<E: FieldExtension<BF> + Field> {
     #[allow(dead_code)]
     pub(super) recipe_upload_callbacks: Callbacks<'static>,
     #[allow(dead_code)]
-    pub(super) flat_recipe_headers_host:
-        Option<SchedulerHostAllocation<[crate::ops::eval_recipes::GpuRecipeHeader]>>,
-    #[allow(dead_code)]
-    pub(super) flat_recipe_terms_host:
-        Option<SchedulerHostAllocation<[crate::ops::eval_recipes::GpuPrefactorTerm]>>,
-    #[allow(dead_code)]
-    pub(super) flat_cont_recipe_headers_host:
-        Option<SchedulerHostAllocation<[crate::ops::eval_recipes::GpuRecipeHeader]>>,
-    #[allow(dead_code)]
-    pub(super) flat_cont_recipe_terms_host:
-        Option<SchedulerHostAllocation<[crate::ops::eval_recipes::GpuPrefactorTerm]>>,
-    #[allow(dead_code)]
     pub(super) shared_state: Box<ScheduledMainLayerExecutionState<E>>,
-    #[allow(dead_code)]
-    pub(super) gather_host_ptrs: Option<SchedulerHostAllocation<[u64]>>,
 }
 
 pub(crate) struct GpuGKRBackwardHostKeepalive<B, E: FieldExtension<BF> + Field> {
@@ -1099,6 +972,8 @@ pub(crate) struct GpuGKRBackwardHostKeepalive<B, E: FieldExtension<BF> + Field> 
     pub(super) shared_state: Box<ScheduledBackwardWorkflowState<E>>,
     #[allow(dead_code)]
     pub(super) initial_callbacks: Callbacks<'static>,
+    #[allow(dead_code)]
+    pub(super) external_challenges_device_keepalive: Option<DeviceAllocation<E>>,
     #[allow(dead_code)]
     pub(super) final_device_seed: Option<DeviceAllocation<u32>>,
     #[allow(dead_code)]
@@ -1517,31 +1392,6 @@ pub(super) fn schedule_callback_populated_upload<'a, T: Copy + 'a>(
     })
 }
 
-/// Upload a per-layer combined-claim `(exp, claim_idx)` descriptor via the
-/// scheduler-host pinned H2D path. `desc_pairs` is pure compiled-circuit static, so it is safe to
-/// write on the scheduling thread before enqueue and then treat as immutable.
-pub(super) fn schedule_combined_claim_desc_upload(
-    context: &ProverContext,
-    desc_pairs: Vec<u32>,
-) -> CudaResult<ScheduledUpload<u32>> {
-    // Always allocate at least one element so downstream `.device[..]`
-    // indexing has a valid pointer even in the degenerate zero-term case.
-    let desc_len = desc_pairs.len();
-    let mut device = context.alloc(desc_len.max(1), AllocationPlacement::Top)?;
-    let scheduler_host = if desc_len == 0 {
-        None
-    } else {
-        let host = context.scheduler_host_from_slice(&desc_pairs)?;
-        memory_copy_async(&mut device[..desc_len], &host, context.get_exec_stream())?;
-        Some(host)
-    };
-    Ok(ScheduledUpload {
-        callbacks: Callbacks::new(),
-        device,
-        scheduler_host,
-    })
-}
-
 pub(super) fn field_pow<E: Field>(base: E, exponent: usize) -> E {
     let mut result = E::ONE;
     for _ in 0..exponent {
@@ -1654,27 +1504,22 @@ cuda_kernel_signature_arguments_and_function!(
 );
 
 cuda_kernel_signature_arguments_and_function!(
-    GpuDimensionReducingRound0Batched<T>,
-    batch: GpuGKRDimensionReducingRound0Batch<T>,
+    GpuDimensionReducingRound0BatchedCompact<T>,
+    batch: GpuGKRDimensionReducingRound0BatchCompact<T>,
     acc_size: u32,
 );
 
 cuda_kernel_signature_arguments_and_function!(
-    GpuDimensionReducingRound1Batched<T>,
-    batch: GpuGKRDimensionReducingRound1Batch<T>,
+    GpuDimensionReducingRound1BatchedCompact<T>,
+    batch: GpuGKRDimensionReducingContinuationBatchCompact<T>,
     acc_size: u32,
 );
 
 cuda_kernel_signature_arguments_and_function!(
-    GpuDimensionReducingRound2Batched<T>,
-    batch: GpuGKRDimensionReducingRound2Batch<T>,
+    GpuDimensionReducingContinuationBatchedCompact<T>,
+    batch: GpuGKRDimensionReducingContinuationBatchCompact<T>,
     acc_size: u32,
-);
-
-cuda_kernel_signature_arguments_and_function!(
-    GpuDimensionReducingRound3Batched<T>,
-    batch: GpuGKRDimensionReducingRound3Batch<T>,
-    acc_size: u32,
+    step: u32,
 );
 
 pub(crate) trait GpuDimensionReducingKernelSet: Reduce + Copy + Sized {
@@ -1690,10 +1535,11 @@ pub(crate) trait GpuDimensionReducingKernelSet: Reduce + Copy + Sized {
         GpuDimensionReducingBuildEqValuesFromGroupTablesSignature<Self>;
     const FOLD_EQ_VALUES: GpuDimensionReducingFoldEqValuesSignature<Self>;
     const TRACE_HOLDER_BLOCK_PARTIALS: GpuDimensionReducingTraceHolderBlockPartialsSignature<Self>;
-    const ROUND0_BATCHED: GpuDimensionReducingRound0BatchedSignature<Self>;
-    const ROUND1_BATCHED: GpuDimensionReducingRound1BatchedSignature<Self>;
-    const ROUND2_BATCHED: GpuDimensionReducingRound2BatchedSignature<Self>;
-    const ROUND3_BATCHED: GpuDimensionReducingRound3BatchedSignature<Self>;
+    const ROUND0_BATCHED_COMPACT: GpuDimensionReducingRound0BatchedCompactSignature<Self>;
+    const ROUND1_BATCHED_COMPACT: GpuDimensionReducingRound1BatchedCompactSignature<Self>;
+    const CONTINUATION_BATCHED_COMPACT: GpuDimensionReducingContinuationBatchedCompactSignature<
+        Self,
+    >;
 }
 
 macro_rules! gkr_dim_reducing_kernels {
@@ -1778,27 +1624,22 @@ macro_rules! gkr_dim_reducing_kernels {
                 )
             );
             cuda_kernel_declaration!(
-                [<ab_gkr_dim_reducing_round0_batched_ $type:lower _kernel>](
-                    batch: GpuGKRDimensionReducingRound0Batch<$type>,
+                [<ab_gkr_dim_reducing_round0_batched_compact_ $type:lower _kernel>](
+                    batch: GpuGKRDimensionReducingRound0BatchCompact<$type>,
                     acc_size: u32,
                 )
             );
             cuda_kernel_declaration!(
-                [<ab_gkr_dim_reducing_round1_batched_ $type:lower _kernel>](
-                    batch: GpuGKRDimensionReducingRound1Batch<$type>,
+                [<ab_gkr_dim_reducing_round1_batched_compact_ $type:lower _kernel>](
+                    batch: GpuGKRDimensionReducingContinuationBatchCompact<$type>,
                     acc_size: u32,
                 )
             );
             cuda_kernel_declaration!(
-                [<ab_gkr_dim_reducing_round2_batched_ $type:lower _kernel>](
-                    batch: GpuGKRDimensionReducingRound2Batch<$type>,
+                [<ab_gkr_dim_reducing_continuation_batched_compact_ $type:lower _kernel>](
+                    batch: GpuGKRDimensionReducingContinuationBatchCompact<$type>,
                     acc_size: u32,
-                )
-            );
-            cuda_kernel_declaration!(
-                [<ab_gkr_dim_reducing_round3_batched_ $type:lower _kernel>](
-                    batch: GpuGKRDimensionReducingRound3Batch<$type>,
-                    acc_size: u32,
+                    step: u32,
                 )
             );
 
@@ -1821,14 +1662,12 @@ macro_rules! gkr_dim_reducing_kernels {
                     [<ab_gkr_dim_reducing_fold_eq_values_ $type:lower _kernel>];
                 const TRACE_HOLDER_BLOCK_PARTIALS: GpuDimensionReducingTraceHolderBlockPartialsSignature<Self> =
                     [<ab_gkr_dim_reducing_trace_holder_block_partials_ $type:lower _kernel>];
-                const ROUND0_BATCHED: GpuDimensionReducingRound0BatchedSignature<Self> =
-                    [<ab_gkr_dim_reducing_round0_batched_ $type:lower _kernel>];
-                const ROUND1_BATCHED: GpuDimensionReducingRound1BatchedSignature<Self> =
-                    [<ab_gkr_dim_reducing_round1_batched_ $type:lower _kernel>];
-                const ROUND2_BATCHED: GpuDimensionReducingRound2BatchedSignature<Self> =
-                    [<ab_gkr_dim_reducing_round2_batched_ $type:lower _kernel>];
-                const ROUND3_BATCHED: GpuDimensionReducingRound3BatchedSignature<Self> =
-                    [<ab_gkr_dim_reducing_round3_batched_ $type:lower _kernel>];
+                const ROUND0_BATCHED_COMPACT: GpuDimensionReducingRound0BatchedCompactSignature<Self> =
+                    [<ab_gkr_dim_reducing_round0_batched_compact_ $type:lower _kernel>];
+                const ROUND1_BATCHED_COMPACT: GpuDimensionReducingRound1BatchedCompactSignature<Self> =
+                    [<ab_gkr_dim_reducing_round1_batched_compact_ $type:lower _kernel>];
+                const CONTINUATION_BATCHED_COMPACT: GpuDimensionReducingContinuationBatchedCompactSignature<Self> =
+                    [<ab_gkr_dim_reducing_continuation_batched_compact_ $type:lower _kernel>];
             }
         }
     };
@@ -1985,44 +1824,48 @@ pub(super) fn launch_lookup_continuation<E: GpuDimensionReducingKernelSet>(
     GpuDimensionReducingLookupContinuationFunction(E::LOOKUP_CONTINUATION).launch(&config, &args)
 }
 
-pub(super) fn launch_dim_reducing_round0_batched<E: GpuDimensionReducingKernelSet + Field>(
-    batch: &GpuGKRDimensionReducingRound0Batch<E>,
+pub(super) fn launch_dim_reducing_round0_batched_compact<
+    E: GpuDimensionReducingKernelSet + Field,
+>(
+    batch: &GpuGKRDimensionReducingRound0BatchCompact<E>,
     acc_size: usize,
     context: &ProverContext,
 ) -> CudaResult<()> {
     let config = gkr_dim_reducing_launch_config(acc_size as u32, context);
-    let args = GpuDimensionReducingRound0BatchedArguments::new(*batch, acc_size as u32);
-    GpuDimensionReducingRound0BatchedFunction(E::ROUND0_BATCHED).launch(&config, &args)
+    let args = GpuDimensionReducingRound0BatchedCompactArguments::new(*batch, acc_size as u32);
+    GpuDimensionReducingRound0BatchedCompactFunction(E::ROUND0_BATCHED_COMPACT)
+        .launch(&config, &args)
 }
 
-pub(super) fn launch_dim_reducing_round1_batched<E: GpuDimensionReducingKernelSet + Field>(
-    batch: &GpuGKRDimensionReducingRound1Batch<E>,
+pub(super) fn launch_dim_reducing_round1_batched_compact<
+    E: GpuDimensionReducingKernelSet + Field,
+>(
+    batch: &GpuGKRDimensionReducingContinuationBatchCompact<E>,
     acc_size: usize,
     context: &ProverContext,
 ) -> CudaResult<()> {
     let config = gkr_dim_reducing_launch_config(acc_size as u32, context);
-    let args = GpuDimensionReducingRound1BatchedArguments::new(*batch, acc_size as u32);
-    GpuDimensionReducingRound1BatchedFunction(E::ROUND1_BATCHED).launch(&config, &args)
+    let args = GpuDimensionReducingRound1BatchedCompactArguments::new(*batch, acc_size as u32);
+    GpuDimensionReducingRound1BatchedCompactFunction(E::ROUND1_BATCHED_COMPACT)
+        .launch(&config, &args)
 }
 
-pub(super) fn launch_dim_reducing_round2_batched<E: GpuDimensionReducingKernelSet + Field>(
-    batch: &GpuGKRDimensionReducingRound2Batch<E>,
+pub(super) fn launch_dim_reducing_continuation_batched_compact<
+    E: GpuDimensionReducingKernelSet + Field,
+>(
+    batch: &GpuGKRDimensionReducingContinuationBatchCompact<E>,
     acc_size: usize,
+    step: usize,
     context: &ProverContext,
 ) -> CudaResult<()> {
     let config = gkr_dim_reducing_launch_config(acc_size as u32, context);
-    let args = GpuDimensionReducingRound2BatchedArguments::new(*batch, acc_size as u32);
-    GpuDimensionReducingRound2BatchedFunction(E::ROUND2_BATCHED).launch(&config, &args)
-}
-
-pub(super) fn launch_dim_reducing_round3_batched<E: GpuDimensionReducingKernelSet + Field>(
-    batch: &GpuGKRDimensionReducingRound3Batch<E>,
-    acc_size: usize,
-    context: &ProverContext,
-) -> CudaResult<()> {
-    let config = gkr_dim_reducing_launch_config(acc_size as u32, context);
-    let args = GpuDimensionReducingRound3BatchedArguments::new(*batch, acc_size as u32);
-    GpuDimensionReducingRound3BatchedFunction(E::ROUND3_BATCHED).launch(&config, &args)
+    let args = GpuDimensionReducingContinuationBatchedCompactArguments::new(
+        *batch,
+        acc_size as u32,
+        step as u32,
+    );
+    GpuDimensionReducingContinuationBatchedCompactFunction(E::CONTINUATION_BATCHED_COMPACT)
+        .launch(&config, &args)
 }
 
 pub(crate) fn launch_build_eq_values_from_point<E: GpuDimensionReducingKernelSet>(
@@ -2208,4 +2051,69 @@ where
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod compact_descriptor_tests {
+    use std::mem::size_of;
+
+    use super::*;
+    use crate::primitives::field::E4;
+    use crate::prover::gkr::gkr_address_audit::{
+        KERNEL_ARG_HARD_CEILING_BYTES, KERNEL_ARG_SOFT_TARGET_BYTES,
+    };
+
+    #[test]
+    fn pack_source_u16_round_trips() {
+        for first_access in [false, true] {
+            for ptr_idx in 0u8..(GKR_DIM_REDUCING_BASE_SLOTS as u8) {
+                for &poly_idx in &[0u16, 1, 2, 17, 255, 1024, 0x07FF] {
+                    let packed = pack_source_u16(first_access, ptr_idx, poly_idx);
+                    let (fa, p, q) = unpack_source_u16(packed);
+                    assert_eq!(fa, first_access);
+                    assert_eq!(p, ptr_idx);
+                    assert_eq!(q, poly_idx);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn pack_source_u16_layout_bits() {
+        // bit 15 = first_access, bits 14..11 = ptr_idx (4 bits, 16 slots),
+        // bits 10..0 = poly_idx (11 bits, max 2048).
+        assert_eq!(pack_source_u16(false, 0, 0), 0);
+        assert_eq!(pack_source_u16(true, 0, 0), 0x8000);
+        assert_eq!(pack_source_u16(false, 0xF, 0), 0x7800);
+        assert_eq!(pack_source_u16(false, 0, 0x07FF), 0x07FF);
+        assert_eq!(pack_source_u16(true, 0xF, 0x07FF), 0xFFFF);
+    }
+
+    #[test]
+    fn compact_descriptor_sizes_under_kernel_arg_ceiling() {
+        let r0 = size_of::<GpuGKRDimensionReducingRound0BatchCompact<E4>>();
+        let cont = size_of::<GpuGKRDimensionReducingContinuationBatchCompact<E4>>();
+        // Both must fit comfortably under the soft 16 KB target (and well
+        // under the 32 KB hard ceiling enforced by `cudaLaunchKernelExC`).
+        assert!(
+            r0 <= KERNEL_ARG_SOFT_TARGET_BYTES,
+            "round0 compact = {r0} B exceeds soft target {KERNEL_ARG_SOFT_TARGET_BYTES}"
+        );
+        assert!(
+            cont <= KERNEL_ARG_SOFT_TARGET_BYTES,
+            "continuation compact = {cont} B exceeds soft target {KERNEL_ARG_SOFT_TARGET_BYTES}"
+        );
+        assert!(r0 < KERNEL_ARG_HARD_CEILING_BYTES);
+        assert!(cont < KERNEL_ARG_HARD_CEILING_BYTES);
+    }
+
+    #[test]
+    fn compact_record_is_16_bytes() {
+        // Audit's projected post-compaction footprint depends on this size.
+        assert_eq!(
+            size_of::<GpuGKRDimensionReducingBatchRecordCompact>(),
+            16,
+            "compact batch record size drift breaks Phase 0 size projection"
+        );
+    }
 }
