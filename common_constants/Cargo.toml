@@ -10,3 +10,10 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
+
+[target.'cfg(target_arch = "riscv32")'.dependencies]
+seq-macro = { workspace = true }
+
+[dev-dependencies]
+insta = { workspace = true }
+tempfile = { workspace = true }
