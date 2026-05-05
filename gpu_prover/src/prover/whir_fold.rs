@@ -1956,9 +1956,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
     };
     let witness_cap_size = witness_unified_device_cap.len();
     let memory_cap_size = memory_unified_device_cap.len();
-    let setup_cap_size = setup_unified_device_cap
-        .as_ref()
-        .map_or(0, |cap| cap.len());
+    let setup_cap_size = setup_unified_device_cap.as_ref().map_or(0, |cap| cap.len());
     let scheduled_proof = WhirPolyCommitProof {
         witness_commitment: WhirBaseLayerCommitmentAndQueries {
             commitment: WhirCommitment {

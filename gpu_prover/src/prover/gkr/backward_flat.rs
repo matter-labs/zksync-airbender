@@ -13,15 +13,22 @@ use era_cudart::result::CudaResult;
 use era_cudart::{cuda_kernel_declaration, cuda_kernel_signature_arguments_and_function};
 use field::{Field, PrimeField};
 
+use crate::ops::immediate_factors::{ImmediateFactorInterner, ImmediateFactorRecipeStructural};
 use crate::primitives::context::ProverContext;
 use crate::primitives::field::E4;
 
+use super::backward_flat_compact::{
+    build_backing_ranges, pack_flat_round0_source_real, pack_flat_round0_source_virtual,
+    resolve_backing_for_pointer, BackingRange, FlatRound0BuildPlanCompact,
+    GpuFlatRound0StaticDescCompact,
+};
 use super::backward_kernels::{
     gkr_dim_reducing_launch_config, GpuGKRMainLayerConstraintMetadataSource,
-    GpuGKRMainLayerConstraintTemplate, GpuGKRMainLayerKernelKind,
+    GpuGKRMainLayerConstraintTemplate, GpuGKRMainLayerKernelKind, GKR_DIM_REDUCING_BASE_SLOTS,
 };
 use super::{
-    GpuBaseFieldPolySource, GpuExtensionFieldPolyInitialSource, GpuSumcheckRound0LaunchDescriptors,
+    GpuBaseFieldPolySource, GpuExtensionFieldPolyInitialSource, GpuGKRStorage,
+    GpuSumcheckRound0LaunchDescriptors,
 };
 use crate::primitives::field::BF;
 
@@ -74,174 +81,6 @@ pub(super) struct GpuFlatUnifiedTerm {
     pub(super) coeff_idx: u16,
 }
 
-/// Combined descriptor for the unified round 1 kernel: sources + mixed terms
-/// with per-tile fold/compute metadata.
-/// Passed as a single __grid_constant__. Must match CUDA `flat_round1_unified_desc`.
-#[repr(C)]
-#[derive(Clone, Copy)]
-pub(super) struct GpuFlatRound1UnifiedDesc {
-    pub(super) base_sources: [GpuFlatBaseAfterOneSourceEntry; FLAT_CONT_MAX_BASE_SOURCES],
-    pub(super) num_base_sources: u32,
-    pub(super) ext_sources: [GpuFlatContinuingSourceEntry; FLAT_CONT_MAX_EXT_SOURCES],
-    pub(super) num_ext_sources: u32,
-    pub(super) terms: [GpuFlatUnifiedTerm; FLAT_CONT_UNIFIED_MAX_TERMS],
-    pub(super) num_terms: u32,
-    // Tile metadata
-    pub(super) num_constant_terms: u32,
-    pub(super) num_tiles: u32,
-    pub(super) tile_term_offsets: [u16; FLAT_CONT_UNIFIED_MAX_TILES + 1],
-    pub(super) tile_fold_offsets: [u16; FLAT_CONT_UNIFIED_MAX_TILES + 1],
-    pub(super) fold_sources: [u16; FLAT_CONT_UNIFIED_MAX_FOLD_SOURCES],
-}
-
-impl Default for GpuFlatRound1UnifiedDesc {
-    fn default() -> Self {
-        Self {
-            base_sources: [GpuFlatBaseAfterOneSourceEntry::default(); FLAT_CONT_MAX_BASE_SOURCES],
-            num_base_sources: 0,
-            ext_sources: [GpuFlatContinuingSourceEntry::default(); FLAT_CONT_MAX_EXT_SOURCES],
-            num_ext_sources: 0,
-            terms: [GpuFlatUnifiedTerm::default(); FLAT_CONT_UNIFIED_MAX_TERMS],
-            num_terms: 0,
-            num_constant_terms: 0,
-            num_tiles: 0,
-            tile_term_offsets: [0u16; FLAT_CONT_UNIFIED_MAX_TILES + 1],
-            tile_fold_offsets: [0u16; FLAT_CONT_UNIFIED_MAX_TILES + 1],
-            fold_sources: [0u16; FLAT_CONT_UNIFIED_MAX_FOLD_SOURCES],
-        }
-    }
-}
-
-unsafe impl Send for GpuFlatRound1UnifiedDesc {}
-unsafe impl Sync for GpuFlatRound1UnifiedDesc {}
-
-/// Combined descriptor for the unified continuation kernel (rounds 3+):
-/// single source array + mixed terms with per-tile fold/compute metadata.
-/// Must match CUDA `flat_continuation_unified_desc`.
-#[repr(C)]
-#[derive(Clone, Copy)]
-pub(super) struct GpuFlatContinuationUnifiedDesc {
-    pub(super) sources: [GpuFlatContinuingSourceEntry; FLAT_CONT_MAX_SOURCES],
-    pub(super) num_sources: u32,
-    pub(super) terms: [GpuFlatUnifiedTerm; FLAT_CONT_UNIFIED_MAX_TERMS],
-    pub(super) num_terms: u32,
-    pub(super) num_constant_terms: u32,
-    pub(super) num_tiles: u32,
-    pub(super) tile_term_offsets: [u16; FLAT_CONT_UNIFIED_MAX_TILES + 1],
-    pub(super) tile_fold_offsets: [u16; FLAT_CONT_UNIFIED_MAX_TILES + 1],
-    pub(super) fold_sources: [u16; FLAT_CONT_UNIFIED_MAX_FOLD_SOURCES],
-}
-
-impl Default for GpuFlatContinuationUnifiedDesc {
-    fn default() -> Self {
-        Self {
-            sources: [GpuFlatContinuingSourceEntry::default(); FLAT_CONT_MAX_SOURCES],
-            num_sources: 0,
-            terms: [GpuFlatUnifiedTerm::default(); FLAT_CONT_UNIFIED_MAX_TERMS],
-            num_terms: 0,
-            num_constant_terms: 0,
-            num_tiles: 0,
-            tile_term_offsets: [0u16; FLAT_CONT_UNIFIED_MAX_TILES + 1],
-            tile_fold_offsets: [0u16; FLAT_CONT_UNIFIED_MAX_TILES + 1],
-            fold_sources: [0u16; FLAT_CONT_UNIFIED_MAX_FOLD_SOURCES],
-        }
-    }
-}
-
-unsafe impl Send for GpuFlatContinuationUnifiedDesc {}
-unsafe impl Sync for GpuFlatContinuationUnifiedDesc {}
-
-/// Combined descriptor for the unified round 2 kernel: base_after_two + ext
-/// sources + mixed terms with per-tile fold/compute metadata.
-/// Must match CUDA `flat_round2_unified_desc`.
-#[repr(C)]
-#[derive(Clone, Copy)]
-pub(super) struct GpuFlatRound2UnifiedDesc {
-    pub(super) base_sources: [GpuFlatBaseAfterTwoSourceEntry; FLAT_CONT_MAX_BASE_SOURCES],
-    pub(super) num_base_sources: u32,
-    pub(super) ext_sources: [GpuFlatContinuingSourceEntry; FLAT_CONT_MAX_EXT_SOURCES],
-    pub(super) num_ext_sources: u32,
-    pub(super) terms: [GpuFlatUnifiedTerm; FLAT_CONT_UNIFIED_MAX_TERMS],
-    pub(super) num_terms: u32,
-    pub(super) num_constant_terms: u32,
-    pub(super) num_tiles: u32,
-    pub(super) tile_term_offsets: [u16; FLAT_CONT_UNIFIED_MAX_TILES + 1],
-    pub(super) tile_fold_offsets: [u16; FLAT_CONT_UNIFIED_MAX_TILES + 1],
-    pub(super) fold_sources: [u16; FLAT_CONT_UNIFIED_MAX_FOLD_SOURCES],
-}
-
-impl Default for GpuFlatRound2UnifiedDesc {
-    fn default() -> Self {
-        Self {
-            base_sources: [GpuFlatBaseAfterTwoSourceEntry::default(); FLAT_CONT_MAX_BASE_SOURCES],
-            num_base_sources: 0,
-            ext_sources: [GpuFlatContinuingSourceEntry::default(); FLAT_CONT_MAX_EXT_SOURCES],
-            num_ext_sources: 0,
-            terms: [GpuFlatUnifiedTerm::default(); FLAT_CONT_UNIFIED_MAX_TERMS],
-            num_terms: 0,
-            num_constant_terms: 0,
-            num_tiles: 0,
-            tile_term_offsets: [0u16; FLAT_CONT_UNIFIED_MAX_TILES + 1],
-            tile_fold_offsets: [0u16; FLAT_CONT_UNIFIED_MAX_TILES + 1],
-            fold_sources: [0u16; FLAT_CONT_UNIFIED_MAX_FOLD_SOURCES],
-        }
-    }
-}
-
-unsafe impl Send for GpuFlatRound2UnifiedDesc {}
-unsafe impl Sync for GpuFlatRound2UnifiedDesc {}
-
-/// Static structural description for the flat round 0 kernel.
-/// Sources are encoded as raw pointers: real device pointers for memory-backed
-/// sources, low-bit-tagged null pointers for virtual sources (kind in bits 0..2).
-/// Coefficients live in a separate device allocation (challenge-dependent).
-/// Passed as `__grid_constant__`.
-#[repr(C)]
-#[derive(Clone, Copy)]
-pub(super) struct GpuFlatRound0StaticDesc {
-    pub(super) sources: [*const u8; FLAT_ROUND0_MAX_SOURCES],
-    pub(super) num_sources: u32,
-
-    pub(super) c0_bf: [GpuFlatC0Ref; FLAT_ROUND0_MAX_C0_BF],
-    pub(super) num_c0_bf: u32,
-    pub(super) c0_ext: [GpuFlatC0Ref; FLAT_ROUND0_MAX_C0_EXT],
-    pub(super) num_c0_ext: u32,
-
-    pub(super) c1_bf_bf: [GpuFlatC1Pair; FLAT_ROUND0_MAX_C1_BF_BF],
-    pub(super) num_c1_bf_bf: u32,
-    pub(super) c1_e4_e4: [GpuFlatC1Pair; FLAT_ROUND0_MAX_C1_E4_E4],
-    pub(super) num_c1_e4_e4: u32,
-    pub(super) c1_bf_e4: [GpuFlatC1Pair; FLAT_ROUND0_MAX_C1_BF_E4],
-    pub(super) num_c1_bf_e4: u32,
-
-    pub(super) c1_linear: [GpuFlatC0Ref; FLAT_ROUND0_MAX_C1_LINEAR],
-    pub(super) num_c1_linear: u32,
-}
-
-unsafe impl Send for GpuFlatRound0StaticDesc {}
-unsafe impl Sync for GpuFlatRound0StaticDesc {}
-
-impl Default for GpuFlatRound0StaticDesc {
-    fn default() -> Self {
-        Self {
-            sources: [std::ptr::null(); FLAT_ROUND0_MAX_SOURCES],
-            num_sources: 0,
-            c0_bf: [GpuFlatC0Ref::default(); FLAT_ROUND0_MAX_C0_BF],
-            num_c0_bf: 0,
-            c0_ext: [GpuFlatC0Ref::default(); FLAT_ROUND0_MAX_C0_EXT],
-            num_c0_ext: 0,
-            c1_bf_bf: [GpuFlatC1Pair::default(); FLAT_ROUND0_MAX_C1_BF_BF],
-            num_c1_bf_bf: 0,
-            c1_e4_e4: [GpuFlatC1Pair::default(); FLAT_ROUND0_MAX_C1_E4_E4],
-            num_c1_e4_e4: 0,
-            c1_bf_e4: [GpuFlatC1Pair::default(); FLAT_ROUND0_MAX_C1_BF_E4],
-            num_c1_bf_e4: 0,
-            c1_linear: [GpuFlatC0Ref::default(); FLAT_ROUND0_MAX_C1_LINEAR],
-            num_c1_linear: 0,
-        }
-    }
-}
-
 // ---------------------------------------------------------------------------
 // Coefficient recipes
 // ---------------------------------------------------------------------------
@@ -260,7 +99,33 @@ pub(super) struct CoefficientRecipe<E> {
     pub(super) batch_power: u32,
     pub(super) negate: bool,
     /// Product factor known at build time (default: E::ONE).
+    ///
+    /// TODO(perf): for many gates this carries a cs-side `u32` coefficient
+    /// promoted via `E::from_base(BF::from_u32_with_reduction(coeff))` (see
+    /// `build_single_max_quadratic_constraint_inputs_and_metadata` and the
+    /// other `*_inputs_and_metadata` helpers in `backward.rs`). Storing the
+    /// value as `E` forces every `c1_bf_bf` evaluation in round 0 (and the
+    /// continuation equivalents) to do `E * BF * BF` (~4 base muls on Ext4)
+    /// per row when the structurally correct shape is `BF * BF * BF` (~1
+    /// base mul) accumulated in BF and lifted to E once per gate via the
+    /// gate's `batch_power = α^k` factor. Three structural fixes are viable
+    /// (none change c1_bf_bf row counts):
+    ///   1. `immediate_factor: ImmediateFactor::Base(BF) | Ext(E)` sum-type
+    ///      with a parallel BF table the kernel reads when the BF variant is
+    ///      selected.
+    ///   2. Partition c1_bf_bf into `c1_bf_bf_bf` (pure-BF coefficient) +
+    ///      existing `c1_bf_bf` (mixed/E coefficient). New term type, but
+    ///      each BF row's coefficient shrinks from 16 B to 4 B — descriptor-
+    ///      bytes win on top of the compute win.
+    ///   3. Defer the BF→E lift entirely: keep `immediate_factor: BF` and let
+    ///      the kernel pick the right multiplication width based on a single
+    ///      discriminator bit; the result genuinely lives in E only after the
+    ///      `batch_power` multiplication.
+    /// Out of scope for Phase D ceiling tightening (this is a per-row cost
+    /// optimization, not a row-count change). Deferred-form templates that
+    /// carry real verifier challenges via `prefactors` must remain E.
     pub(super) immediate_factor: E,
+    pub(super) immediate_recipe: ImmediateFactorRecipeStructural,
     /// 0..2 additional challenge prefactors evaluated at runtime.
     pub(super) prefactors: Vec<Vec<GpuGKRMainLayerConstraintChallengeTerm>>,
 }
@@ -288,18 +153,22 @@ pub(super) fn resolve_coefficient<E: Field + field::FieldExtension<BF>>(
     coeff
 }
 
+fn immediate_recipe_with_negation(
+    recipe: &ImmediateFactorRecipeStructural,
+    negate: bool,
+) -> ImmediateFactorRecipeStructural {
+    if negate {
+        recipe.negated()
+    } else {
+        recipe.clone()
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Build plan: static desc + recipes, produced at prepare time
 // ---------------------------------------------------------------------------
 
-/// Complete build plan for the flat round 0 kernel.
-/// Built at prepare time; recipes resolved at schedule time.
-pub(super) struct FlatRound0BuildPlan<E> {
-    pub(super) static_desc: Box<GpuFlatRound0StaticDesc>,
-    pub(super) recipes: Vec<CoefficientRecipe<E>>,
-}
-
-impl<E: Field + field::FieldExtension<BF>> FlatRound0BuildPlan<E> {
+impl<E: Field + field::FieldExtension<BF>> FlatRound0BuildPlanCompact<E> {
     pub(super) fn total_coefficients(&self) -> usize {
         self.recipes.len()
     }
@@ -342,10 +211,18 @@ use crate::primitives::utils::{
 pub(in crate::prover) fn configure_flat_kernel_cache_preference() {
     static ONCE: std::sync::Once = std::sync::Once::new();
     ONCE.call_once(|| {
+        use super::backward_flat_compact::{
+            ab_gkr_main_round0_flat_compact_e4_kernel,
+            ab_gkr_main_round0_flat_constant_compact_e4_kernel,
+            ab_gkr_main_round1_flat_constant_compact_unified_compact_e4_kernel,
+            ab_gkr_main_round2_flat_constant_compact_unified_compact_e4_kernel,
+            ab_gkr_main_round3_flat_constant_explicit_unified_compact_e4_kernel,
+            ab_gkr_main_round3_flat_constant_unified_compact_e4_kernel,
+        };
         // Kernels with zero shared memory → 0% carveout → maximize L1.
         let no_smem_kernels: &[*const std::ffi::c_void] = &[
-            ab_gkr_main_round0_flat_e4_kernel as *const std::ffi::c_void,
-            ab_gkr_main_round0_flat_constant_e4_kernel as *const std::ffi::c_void,
+            ab_gkr_main_round0_flat_compact_e4_kernel as *const std::ffi::c_void,
+            ab_gkr_main_round0_flat_constant_compact_e4_kernel as *const std::ffi::c_void,
         ];
         for &kernel in no_smem_kernels {
             set_shared_carveout(kernel, 0);
@@ -357,108 +234,18 @@ pub(in crate::prover) fn configure_flat_kernel_cache_preference() {
         let pool_bytes = smem_pool_bytes_per_sm();
         let block_size = 128i32; // all unified tiled kernels use 128 threads
         for kernel in [
-            ab_gkr_main_round1_flat_constant_compact_unified_e4_kernel as *const std::ffi::c_void,
-            ab_gkr_main_round3_flat_constant_compact_unified_e4_kernel as *const std::ffi::c_void,
-            ab_gkr_main_round3_flat_constant_explicit_unified_e4_kernel as *const std::ffi::c_void,
-            ab_gkr_main_round2_flat_constant_compact_unified_e4_kernel as *const std::ffi::c_void,
+            ab_gkr_main_round1_flat_constant_compact_unified_compact_e4_kernel
+                as *const std::ffi::c_void,
+            ab_gkr_main_round3_flat_constant_unified_compact_e4_kernel as *const std::ffi::c_void,
+            ab_gkr_main_round3_flat_constant_explicit_unified_compact_e4_kernel
+                as *const std::ffi::c_void,
+            ab_gkr_main_round2_flat_constant_compact_unified_compact_e4_kernel
+                as *const std::ffi::c_void,
         ] {
             let pct = compute_minimal_carveout(kernel, block_size, pool_bytes);
             set_shared_carveout(kernel, pct);
         }
     });
-}
-
-cuda_kernel_signature_arguments_and_function!(
-    GpuGKRMainRound0Flat<T>,
-    static_desc: GpuFlatRound0StaticDesc,
-    coefficients: *const T,
-    eq_values: *const T,
-    contributions: *mut T,
-    acc_size: u32,
-);
-
-cuda_kernel_declaration!(
-    ab_gkr_main_round0_flat_e4_kernel(
-        static_desc: GpuFlatRound0StaticDesc,
-        coefficients: *const E4,
-        eq_values: *const E4,
-        contributions: *mut E4,
-        acc_size: u32,
-    )
-);
-
-pub(super) trait GpuFlatRound0KernelSet: Field {
-    const MAIN_ROUND0_FLAT: GpuGKRMainRound0FlatSignature<Self>;
-}
-
-impl GpuFlatRound0KernelSet for E4 {
-    const MAIN_ROUND0_FLAT: GpuGKRMainRound0FlatSignature<Self> = ab_gkr_main_round0_flat_e4_kernel;
-}
-
-pub(super) fn launch_main_round0_flat<E: GpuFlatRound0KernelSet>(
-    static_desc: &GpuFlatRound0StaticDesc,
-    coefficients: *const E,
-    eq_values: *const E,
-    contributions: *mut E,
-    acc_size: u32,
-    context: &ProverContext,
-) -> CudaResult<()> {
-    let config = gkr_dim_reducing_launch_config(acc_size, context);
-    let args = GpuGKRMainRound0FlatArguments::new(
-        *static_desc,
-        coefficients,
-        eq_values,
-        contributions,
-        acc_size,
-    );
-    GpuGKRMainRound0FlatFunction(E::MAIN_ROUND0_FLAT).launch(&config, &args)
-}
-
-// ---------------------------------------------------------------------------
-// Constant-path kernel (reads coefficients from __constant__ symbol)
-// ---------------------------------------------------------------------------
-
-cuda_kernel_signature_arguments_and_function!(
-    GpuGKRMainRound0FlatConstant<T>,
-    static_desc: GpuFlatRound0StaticDesc,
-    eq_values: *const T,
-    contributions: *mut T,
-    acc_size: u32,
-);
-
-cuda_kernel_declaration!(
-    ab_gkr_main_round0_flat_constant_e4_kernel(
-        static_desc: GpuFlatRound0StaticDesc,
-        eq_values: *const E4,
-        contributions: *mut E4,
-        acc_size: u32,
-    )
-);
-
-pub(super) trait GpuFlatRound0ConstantKernelSet: Field {
-    const MAIN_ROUND0_FLAT_CONSTANT: GpuGKRMainRound0FlatConstantSignature<Self>;
-}
-
-impl GpuFlatRound0ConstantKernelSet for E4 {
-    const MAIN_ROUND0_FLAT_CONSTANT: GpuGKRMainRound0FlatConstantSignature<Self> =
-        ab_gkr_main_round0_flat_constant_e4_kernel;
-}
-
-pub(super) fn launch_main_round0_flat_constant<E: GpuFlatRound0ConstantKernelSet>(
-    static_desc: &GpuFlatRound0StaticDesc,
-    eq_values: *const E,
-    contributions: *mut E,
-    acc_size: u32,
-    context: &ProverContext,
-) -> CudaResult<()> {
-    let config = gkr_dim_reducing_launch_config(acc_size, context);
-    let args = GpuGKRMainRound0FlatConstantArguments::new(
-        *static_desc,
-        eq_values,
-        contributions,
-        acc_size,
-    );
-    GpuGKRMainRound0FlatConstantFunction(E::MAIN_ROUND0_FLAT_CONSTANT).launch(&config, &args)
 }
 
 // ---------------------------------------------------------------------------
@@ -494,76 +281,129 @@ pub(super) fn get_constant_coefficients_device_ptr() -> *mut E4 {
 // ---------------------------------------------------------------------------
 
 use super::backward_kernels::GpuGKRMainLayerDeferredChallengeSource;
-use crate::ops::eval_recipes::{GpuPrefactorTerm, GpuRecipeHeader};
+use crate::ops::eval_recipes::{
+    GpuFlatRecipeEvalDesc, GpuPrefactorTerm, GpuRecipeHeader, FLAT_IMMEDIATE_MAX_MONOMIALS,
+    FLAT_IMMEDIATE_MAX_RECIPES, FLAT_RECIPE_MAX_HEADERS, FLAT_RECIPE_MAX_TERMS,
+};
 
 /// Compiled recipe buffer ready for device upload.
 pub(super) struct CompiledRecipeBuffers {
-    pub(super) headers: Vec<GpuRecipeHeader>,
-    pub(super) terms: Vec<GpuPrefactorTerm>,
+    pub(super) desc: Box<GpuFlatRecipeEvalDesc>,
+    pub(super) num_recipes: usize,
+    pub(super) num_terms: usize,
+    pub(super) num_immediate_recipes: usize,
+    pub(super) num_immediate_monomials: usize,
 }
 
 /// Compile `CoefficientRecipe` entries into the device-side format.
 pub(super) fn compile_recipes_for_device<E: Field + field::FieldExtension<BF>>(
     recipes: &[CoefficientRecipe<E>],
 ) -> CompiledRecipeBuffers {
-    let mut headers = Vec::with_capacity(recipes.len());
+    assert!(
+        recipes.len() <= FLAT_RECIPE_MAX_HEADERS,
+        "flat recipe count {} exceeds cap {}",
+        recipes.len(),
+        FLAT_RECIPE_MAX_HEADERS
+    );
+    let mut desc = Box::<GpuFlatRecipeEvalDesc>::default();
     let mut terms = Vec::new();
+    let mut immediate_interner = ImmediateFactorInterner::new();
 
-    for recipe in recipes {
-        let mut immediate = recipe.immediate_factor;
-        if recipe.negate {
-            Field::negate(&mut immediate);
-        }
-
-        let terms_offset = terms.len() as u32;
-        let mut group_counts = [0u16; 2];
+    for (idx, recipe) in recipes.iter().enumerate() {
+        assert!(
+            recipe.batch_power <= u16::MAX as u32,
+            "flat recipe batch power {} exceeds u16",
+            recipe.batch_power
+        );
+        let terms_offset = terms.len();
+        assert!(
+            terms_offset <= u16::MAX as usize,
+            "flat recipe terms offset {} exceeds u16",
+            terms_offset
+        );
+        let mut group_counts = [0u8; 2];
 
         for (g, group) in recipe.prefactors.iter().enumerate() {
             assert!(g < 2, "at most 2 prefactor groups per recipe");
-            group_counts[g] = group.len() as u16;
+            assert!(
+                group.len() <= u8::MAX as usize,
+                "flat recipe prefactor group has too many terms"
+            );
+            group_counts[g] = group.len() as u8;
             for term in group {
                 let source = match term.source {
-                    GpuGKRMainLayerDeferredChallengeSource::LookupMultiplicative => 0u32,
-                    GpuGKRMainLayerDeferredChallengeSource::LookupAdditive => 1u32,
+                    GpuGKRMainLayerDeferredChallengeSource::LookupMultiplicative => 0u8,
+                    GpuGKRMainLayerDeferredChallengeSource::LookupAdditive => 1u8,
                 };
+                assert!(
+                    term.power <= u8::MAX as u32,
+                    "flat recipe prefactor power {} exceeds u8",
+                    term.power
+                );
                 terms.push(GpuPrefactorTerm {
                     coeff: term.coeff,
                     source,
-                    power: term.power,
+                    power: term.power as u8,
+                    _pad: 0,
                 });
             }
         }
+        assert!(
+            terms.len() <= FLAT_RECIPE_MAX_TERMS,
+            "flat recipe term count {} exceeds cap {}",
+            terms.len(),
+            FLAT_RECIPE_MAX_TERMS
+        );
 
-        // Cast E → E4 for the device struct.
-        // SAFETY: E is always E4 in practice (the only impl of GpuFlatRound0KernelSet).
-        let immediate_e4: E4 = unsafe { std::mem::transmute_copy(&immediate) };
+        let immediate_recipe = if recipe.negate {
+            recipe.immediate_recipe.negated()
+        } else {
+            recipe.immediate_recipe.clone()
+        };
+        let immediate_idx = immediate_interner.intern(immediate_recipe);
 
-        headers.push(GpuRecipeHeader {
-            batch_power: recipe.batch_power,
-            immediate_factor: immediate_e4,
-            num_groups: recipe.prefactors.len() as u16,
-            group_counts,
-            terms_offset,
-        });
+        desc.headers[idx] = GpuRecipeHeader {
+            batch_power: recipe.batch_power as u16,
+            group_count_0: group_counts[0],
+            group_count_1: group_counts[1],
+            terms_offset: terms_offset as u16,
+            immediate_idx,
+        };
     }
 
-    CompiledRecipeBuffers { headers, terms }
+    let (immediate_headers, immediate_monomials) = immediate_interner.materialize();
+    assert!(
+        immediate_headers.len() <= FLAT_IMMEDIATE_MAX_RECIPES,
+        "flat immediate recipe count {} exceeds cap {}",
+        immediate_headers.len(),
+        FLAT_IMMEDIATE_MAX_RECIPES
+    );
+    assert!(
+        immediate_monomials.len() <= FLAT_IMMEDIATE_MAX_MONOMIALS,
+        "flat immediate monomial count {} exceeds cap {}",
+        immediate_monomials.len(),
+        FLAT_IMMEDIATE_MAX_MONOMIALS
+    );
+    desc.terms[..terms.len()].copy_from_slice(&terms);
+    desc.immediate_recipes[..immediate_headers.len()].copy_from_slice(&immediate_headers);
+    desc.immediate_monomials[..immediate_monomials.len()].copy_from_slice(&immediate_monomials);
+
+    CompiledRecipeBuffers {
+        desc,
+        num_recipes: recipes.len(),
+        num_terms: terms.len(),
+        num_immediate_recipes: immediate_headers.len(),
+        num_immediate_monomials: immediate_monomials.len(),
+    }
 }
 
 // ---------------------------------------------------------------------------
-// Source table builder
+// Source table builder (compact: emits u16-packed (slot, poly_idx) per source
+// directly via the storage's per-(layer, class) consolidated backings)
 // ---------------------------------------------------------------------------
 
-/// Source deduplication key — just the encoded pointer value.
-/// Virtual sources get different "pointer" values (low-bit tags on null),
-/// so they naturally deduplicate correctly.
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
-enum SourceKey {
-    Ptr(usize),
-}
-
-pub(super) struct FlatDescriptionBuilder<E> {
-    desc: Box<GpuFlatRound0StaticDesc>,
+pub(super) struct FlatDescriptionBuilder<'s, E: Field> {
+    desc: Box<GpuFlatRound0StaticDescCompact>,
     // Per-tier recipe Vecs — concatenated in tier order in finish().
     recipes_c0_bf: Vec<CoefficientRecipe<E>>,
     recipes_c0_ext: Vec<CoefficientRecipe<E>>,
@@ -571,13 +411,27 @@ pub(super) struct FlatDescriptionBuilder<E> {
     recipes_c1_e4_e4: Vec<CoefficientRecipe<E>>,
     recipes_c1_bf_e4: Vec<CoefficientRecipe<E>>,
     recipes_c1_linear: Vec<CoefficientRecipe<E>>,
-    source_map: HashMap<SourceKey, u32>,
+    /// Dedup: maps the packed `u16` source representation to the index in
+    /// `desc.sources[]` where it was first emitted. Identical references
+    /// (same virtual kind, or same `(slot, poly_idx)`) collapse to one entry.
+    source_map: HashMap<u16, u32>,
+    // Compact-source resolution state:
+    /// Per-launch slot table: distinct backing base pointers seen, in
+    /// first-appearance order. Mirrored into `desc.tables.bases` /
+    /// `desc.tables.log2_stride` as new slots are assigned.
+    backing_slot: HashMap<usize, u8>,
+    next_slot: u8,
+    /// Pre-computed byte ranges of every `(layer, class)` consolidated
+    /// backing in `storage`. `add_*_source` looks each raw poly pointer
+    /// up here to recover `(base, log2_stride, poly_idx)`.
+    ranges: Vec<BackingRange>,
+    _storage: std::marker::PhantomData<&'s ()>,
 }
 
-impl<E: Field> FlatDescriptionBuilder<E> {
-    pub(super) fn new() -> Self {
+impl<'s, E: Field> FlatDescriptionBuilder<'s, E> {
+    pub(super) fn new(storage: &'s GpuGKRStorage<BF, E>) -> Self {
         Self {
-            desc: Box::new(GpuFlatRound0StaticDesc::default()),
+            desc: Box::new(GpuFlatRound0StaticDescCompact::default()),
             recipes_c0_bf: Vec::new(),
             recipes_c0_ext: Vec::new(),
             recipes_c1_bf_bf: Vec::new(),
@@ -585,46 +439,86 @@ impl<E: Field> FlatDescriptionBuilder<E> {
             recipes_c1_bf_e4: Vec::new(),
             recipes_c1_linear: Vec::new(),
             source_map: HashMap::new(),
+            backing_slot: HashMap::with_capacity(GKR_DIM_REDUCING_BASE_SLOTS),
+            next_slot: 0,
+            ranges: build_backing_ranges(storage),
+            _storage: std::marker::PhantomData,
         }
+    }
+
+    /// Resolve `(base, log2_stride)` to a slot in `desc.tables`, allocating a
+    /// new slot on first appearance. Panics if the static slot count is
+    /// exceeded (Phase 0 confirms ≤ 5 distinct classes per launch).
+    fn assign_slot(&mut self, base: *const u8, log2_stride: u32) -> u8 {
+        let key = base as usize;
+        if let Some(&s) = self.backing_slot.get(&key) {
+            return s;
+        }
+        let s = self.next_slot;
+        assert!(
+            (s as usize) < GKR_DIM_REDUCING_BASE_SLOTS,
+            "flat round0: distinct backing count exceeds {GKR_DIM_REDUCING_BASE_SLOTS}",
+        );
+        self.backing_slot.insert(key, s);
+        self.desc.tables.bases[s as usize] = base;
+        self.desc.tables.log2_stride[s as usize] = log2_stride;
+        self.next_slot += 1;
+        s
+    }
+
+    /// Insert a packed source into the source table, deduping against
+    /// previous entries that produce the same `u16`.
+    fn intern_source(&mut self, packed: u16) -> u32 {
+        if let Some(&idx) = self.source_map.get(&packed) {
+            return idx;
+        }
+        let idx = self.desc.num_sources;
+        assert!(
+            (idx as usize) < FLAT_ROUND0_MAX_SOURCES,
+            "flat round0: source table overflow ({idx} >= {FLAT_ROUND0_MAX_SOURCES})",
+        );
+        self.desc.sources[idx as usize] =
+            super::backward_kernels::GpuGKRSourceRecord::source_only(packed);
+        self.desc.num_sources = idx + 1;
+        self.source_map.insert(packed, idx);
+        idx
     }
 
     pub(super) fn add_bf_source<B>(&mut self, src: &GpuBaseFieldPolySource<B>) -> u32 {
-        // Encode virtual sources as low-bit-tagged null pointers.
-        let encoded_ptr = if src.source_kind as u32 >= 2 {
-            // Virtual source: encode kind in low bits of null pointer
-            src.source_kind as u32 as usize as *const u8
+        let packed = if src.source_kind as u32 >= 2 {
+            // Virtual base-field source (range-check, inits/teardowns): the
+            // kind discriminant fully identifies it; round 0 has no
+            // folding-cache mate, so bit 15 doubles as the virtual flag.
+            pack_flat_round0_source_virtual(src.source_kind as u8)
         } else {
-            src.start as *const u8
+            // Real consolidated poly. Resolve the raw start pointer back to
+            // its `(base, log2_stride, poly_idx)` via the storage range map.
+            let raw = src.start as *const u8;
+            let (base, log2_stride, poly_idx) = resolve_backing_for_pointer(&self.ranges, raw)
+                .unwrap_or_else(|| {
+                    panic!(
+                        "flat round0: source pointer {raw:?} does not fall \
+                         within any consolidated storage backing",
+                    )
+                });
+            let slot = self.assign_slot(base, log2_stride);
+            pack_flat_round0_source_real(slot, poly_idx)
         };
-        let key = SourceKey::Ptr(encoded_ptr as usize);
-        if let Some(&idx) = self.source_map.get(&key) {
-            return idx;
-        }
-        let idx = self.desc.num_sources;
-        assert!(
-            (idx as usize) < FLAT_ROUND0_MAX_SOURCES,
-            "flat round0: source table overflow ({idx} >= {FLAT_ROUND0_MAX_SOURCES})",
-        );
-        self.desc.sources[idx as usize] = encoded_ptr;
-        self.desc.num_sources = idx + 1;
-        self.source_map.insert(key, idx);
-        idx
+        self.intern_source(packed)
     }
 
     pub(super) fn add_ext_source(&mut self, src: &GpuExtensionFieldPolyInitialSource<E>) -> u32 {
-        let key = SourceKey::Ptr(src.start as usize);
-        if let Some(&idx) = self.source_map.get(&key) {
-            return idx;
-        }
-        let idx = self.desc.num_sources;
-        assert!(
-            (idx as usize) < FLAT_ROUND0_MAX_SOURCES,
-            "flat round0: source table overflow ({idx} >= {FLAT_ROUND0_MAX_SOURCES})",
-        );
-        self.desc.sources[idx as usize] = src.start as *const u8;
-        self.desc.num_sources = idx + 1;
-        self.source_map.insert(key, idx);
-        idx
+        let raw = src.start as *const u8;
+        let (base, log2_stride, poly_idx) = resolve_backing_for_pointer(&self.ranges, raw)
+            .unwrap_or_else(|| {
+                panic!(
+                    "flat round0: ext source pointer {raw:?} does not fall \
+                     within any consolidated storage backing",
+                )
+            });
+        let slot = self.assign_slot(base, log2_stride);
+        let packed = pack_flat_round0_source_real(slot, poly_idx);
+        self.intern_source(packed)
     }
 
     // --- Term pushers ---
@@ -719,7 +613,7 @@ impl<E: Field> FlatDescriptionBuilder<E> {
         self.recipes_c1_linear.push(recipe);
     }
 
-    pub(super) fn finish(self) -> FlatRound0BuildPlan<E> {
+    pub(super) fn finish(self) -> FlatRound0BuildPlanCompact<E> {
         // Concatenate recipes in tier order to match kernel's *coeff++ traversal.
         let mut recipes = self.recipes_c0_bf;
         recipes.extend(self.recipes_c0_ext);
@@ -727,7 +621,7 @@ impl<E: Field> FlatDescriptionBuilder<E> {
         recipes.extend(self.recipes_c1_e4_e4);
         recipes.extend(self.recipes_c1_bf_e4);
         recipes.extend(self.recipes_c1_linear);
-        FlatRound0BuildPlan {
+        FlatRound0BuildPlanCompact {
             static_desc: self.desc,
             recipes,
         }
@@ -750,11 +644,14 @@ pub(super) struct PreparedGateForFlatPlan<'a, E> {
     pub(super) constraint_source: Option<&'a GpuGKRMainLayerConstraintMetadataSource<E>>,
 }
 
-/// Build the flat plan from prepared gates.
-pub(super) fn build_flat_round0_plan<E: Field>(
+/// Build the flat plan from prepared gates. The returned plan carries the
+/// compact `(slot, poly_idx)` source encoding directly — no separate
+/// post-processing pass.
+pub(super) fn build_flat_round0_plan<'s, E: Field>(
     gates: &[PreparedGateForFlatPlan<'_, E>],
-) -> FlatRound0BuildPlan<E> {
-    let mut b = FlatDescriptionBuilder::<E>::new();
+    storage: &'s GpuGKRStorage<BF, E>,
+) -> FlatRound0BuildPlanCompact<E> {
+    let mut b = FlatDescriptionBuilder::<'s, E>::new(storage);
 
     for gate in gates {
         let r0 = gate.round0;
@@ -767,6 +664,7 @@ pub(super) fn build_flat_round0_plan<E: Field>(
                 batch_power: p0,
                 negate: false,
                 immediate_factor: E::ONE,
+                immediate_recipe: ImmediateFactorRecipeStructural::one(),
                 prefactors: vec![],
             }
         };
@@ -775,6 +673,7 @@ pub(super) fn build_flat_round0_plan<E: Field>(
                 batch_power: p1,
                 negate: false,
                 immediate_factor: E::ONE,
+                immediate_recipe: ImmediateFactorRecipeStructural::one(),
                 prefactors: vec![],
             }
         };
@@ -783,6 +682,7 @@ pub(super) fn build_flat_round0_plan<E: Field>(
                 batch_power: p0,
                 negate: true,
                 immediate_factor: E::ONE,
+                immediate_recipe: ImmediateFactorRecipeStructural::one(),
                 prefactors: vec![],
             }
         };
@@ -1032,7 +932,7 @@ pub(super) fn build_flat_round0_plan<E: Field>(
 /// Emit c1 terms for gates that use quadratic constraint metadata directly.
 /// c1 += β * Σ (constraint_quad[i].challenge * Δ(lhs) * Δ(rhs))
 fn emit_constraint_gate<E: Field>(
-    b: &mut FlatDescriptionBuilder<E>,
+    b: &mut FlatDescriptionBuilder<'_, E>,
     gate: &PreparedGateForFlatPlan<'_, E>,
     r0: &GpuSumcheckRound0LaunchDescriptors<BF, E>,
     batch_power: u32,
@@ -1049,6 +949,7 @@ fn emit_constraint_gate<E: Field>(
                         batch_power,
                         negate: false,
                         immediate_factor: E::ONE,
+                        immediate_recipe: ImmediateFactorRecipeStructural::one(),
                         prefactors: vec![qt.challenge_terms.clone()],
                     },
                 );
@@ -1065,6 +966,7 @@ fn emit_constraint_gate<E: Field>(
                         batch_power,
                         negate: false,
                         immediate_factor: qt.challenge,
+                        immediate_recipe: qt.immediate_recipe.clone(),
                         prefactors: vec![],
                     },
                 );
@@ -1076,7 +978,7 @@ fn emit_constraint_gate<E: Field>(
 
 /// Emit c1 terms for cross-product gates: c1 += β * (Σ aᵢΔᵢ)(Σ bⱼΔⱼ)
 fn emit_cross_product_gate<E: Field>(
-    b: &mut FlatDescriptionBuilder<E>,
+    b: &mut FlatDescriptionBuilder<'_, E>,
     gate: &PreparedGateForFlatPlan<'_, E>,
     r0: &GpuSumcheckRound0LaunchDescriptors<BF, E>,
     batch_power: u32,
@@ -1104,6 +1006,7 @@ fn emit_cross_product_gate<E: Field>(
                             batch_power,
                             negate: false,
                             immediate_factor: E::ONE,
+                            immediate_recipe: ImmediateFactorRecipeStructural::one(),
                             prefactors: vec![
                                 qt.challenge_terms.clone(),
                                 lt.challenge_terms.clone(),
@@ -1129,6 +1032,7 @@ fn emit_cross_product_gate<E: Field>(
                     );
                     let mut coeff = qt.challenge;
                     coeff.mul_assign(&lt.challenge);
+                    let recipe = qt.immediate_recipe.mul(&lt.immediate_recipe);
                     b.push_c1_bf_bf(
                         lhs,
                         rhs,
@@ -1136,6 +1040,7 @@ fn emit_cross_product_gate<E: Field>(
                             batch_power,
                             negate: false,
                             immediate_factor: coeff,
+                            immediate_recipe: recipe,
                             prefactors: vec![],
                         },
                     );
@@ -1148,7 +1053,7 @@ fn emit_cross_product_gate<E: Field>(
 
 /// Emit c1 terms for Materialize gates: c1 += β * Σ (lt.challenge * Δ(input))
 fn emit_materialize_gate<E: Field>(
-    b: &mut FlatDescriptionBuilder<E>,
+    b: &mut FlatDescriptionBuilder<'_, E>,
     gate: &PreparedGateForFlatPlan<'_, E>,
     r0: &GpuSumcheckRound0LaunchDescriptors<BF, E>,
     batch_power: u32,
@@ -1168,6 +1073,7 @@ fn emit_materialize_gate<E: Field>(
                         batch_power,
                         negate: false,
                         immediate_factor: E::ONE,
+                        immediate_recipe: ImmediateFactorRecipeStructural::one(),
                         prefactors: vec![lt.challenge_terms.clone()],
                     },
                 );
@@ -1186,6 +1092,7 @@ fn emit_materialize_gate<E: Field>(
                         batch_power,
                         negate: false,
                         immediate_factor: lt.challenge,
+                        immediate_recipe: lt.immediate_recipe.clone(),
                         prefactors: vec![],
                     },
                 );
@@ -1199,7 +1106,7 @@ fn emit_materialize_gate<E: Field>(
 /// where cached_src is bf and linear_form terms produce bf deltas.
 /// `use_linear_terms`: true = iterate linear_terms, false = iterate quadratic_terms
 fn emit_single_times_linear_form<E: Field>(
-    b: &mut FlatDescriptionBuilder<E>,
+    b: &mut FlatDescriptionBuilder<'_, E>,
     gate: &PreparedGateForFlatPlan<'_, E>,
     r0: &GpuSumcheckRound0LaunchDescriptors<BF, E>,
     cached_src: u32,
@@ -1242,8 +1149,10 @@ fn emit_single_times_linear_form<E: Field>(
                         &r0.base_field_inputs[lt.input as usize + base_input_offset],
                     );
                     let mut coeff = lt.challenge;
+                    let mut recipe = lt.immediate_recipe.clone();
                     if negate {
                         Field::negate(&mut coeff);
+                        recipe = recipe.negated();
                     }
                     b.push_c1_bf_bf(
                         cached_src,
@@ -1252,6 +1161,7 @@ fn emit_single_times_linear_form<E: Field>(
                             batch_power,
                             negate: false,
                             immediate_factor: coeff,
+                            immediate_recipe: recipe,
                             prefactors: vec![],
                         },
                     );
@@ -1264,8 +1174,10 @@ fn emit_single_times_linear_form<E: Field>(
                     let form_src =
                         b.add_bf_source(&r0.base_field_inputs[qt.lhs as usize + base_input_offset]);
                     let mut coeff = qt.challenge;
+                    let mut recipe = qt.immediate_recipe.clone();
                     if negate {
                         Field::negate(&mut coeff);
+                        recipe = recipe.negated();
                     }
                     b.push_c1_bf_bf(
                         cached_src,
@@ -1274,6 +1186,7 @@ fn emit_single_times_linear_form<E: Field>(
                             batch_power,
                             negate: false,
                             immediate_factor: coeff,
+                            immediate_recipe: recipe,
                             prefactors: vec![],
                         },
                     );
@@ -1285,7 +1198,7 @@ fn emit_single_times_linear_form<E: Field>(
 }
 
 fn emit_single_times_linear_form_deferred_linear<E: Field>(
-    b: &mut FlatDescriptionBuilder<E>,
+    b: &mut FlatDescriptionBuilder<'_, E>,
     tmpl: &GpuGKRMainLayerConstraintTemplate,
     r0: &GpuSumcheckRound0LaunchDescriptors<BF, E>,
     cached_src: u32,
@@ -1306,6 +1219,7 @@ fn emit_single_times_linear_form_deferred_linear<E: Field>(
                 batch_power,
                 negate,
                 immediate_factor: E::ONE,
+                immediate_recipe: ImmediateFactorRecipeStructural::one(),
                 prefactors: vec![lt.challenge_terms.clone()],
             },
         );
@@ -1313,7 +1227,7 @@ fn emit_single_times_linear_form_deferred_linear<E: Field>(
 }
 
 fn emit_single_times_linear_form_deferred_quad<E: Field>(
-    b: &mut FlatDescriptionBuilder<E>,
+    b: &mut FlatDescriptionBuilder<'_, E>,
     tmpl: &GpuGKRMainLayerConstraintTemplate,
     r0: &GpuSumcheckRound0LaunchDescriptors<BF, E>,
     cached_src: u32,
@@ -1333,6 +1247,7 @@ fn emit_single_times_linear_form_deferred_quad<E: Field>(
                 batch_power,
                 negate,
                 immediate_factor: E::ONE,
+                immediate_recipe: ImmediateFactorRecipeStructural::one(),
                 prefactors: vec![qt.challenge_terms.clone()],
             },
         );
@@ -1341,7 +1256,7 @@ fn emit_single_times_linear_form_deferred_quad<E: Field>(
 
 /// Emit terms: β * Σ(linear_form_terms_j · Δⱼ_bf) * Δ(ext_src)
 fn emit_linear_form_times_ext<E: Field>(
-    b: &mut FlatDescriptionBuilder<E>,
+    b: &mut FlatDescriptionBuilder<'_, E>,
     gate: &PreparedGateForFlatPlan<'_, E>,
     r0: &GpuSumcheckRound0LaunchDescriptors<BF, E>,
     ext_src: u32,
@@ -1364,6 +1279,7 @@ fn emit_linear_form_times_ext<E: Field>(
                         batch_power,
                         negate,
                         immediate_factor: E::ONE,
+                        immediate_recipe: ImmediateFactorRecipeStructural::one(),
                         prefactors: vec![lt.challenge_terms.clone()],
                     },
                 );
@@ -1377,8 +1293,10 @@ fn emit_linear_form_times_ext<E: Field>(
                 let bf_src =
                     b.add_bf_source(&r0.base_field_inputs[lt.input as usize + base_input_offset]);
                 let mut coeff = lt.challenge;
+                let mut recipe = lt.immediate_recipe.clone();
                 if negate {
                     Field::negate(&mut coeff);
+                    recipe = recipe.negated();
                 }
                 b.push_c1_bf_e4(
                     bf_src,
@@ -1387,6 +1305,7 @@ fn emit_linear_form_times_ext<E: Field>(
                         batch_power,
                         negate: false,
                         immediate_factor: coeff,
+                        immediate_recipe: recipe,
                         prefactors: vec![],
                     },
                 );
@@ -1451,39 +1370,38 @@ impl Default for GpuFlatContinuingSourceEntry {
     }
 }
 
-/// Static structural description for the flat continuation kernels (rounds 1+).
-/// Passed as `__grid_constant__`.
-#[repr(C)]
-#[derive(Clone, Copy)]
-pub(super) struct GpuFlatContinuationStaticDesc {
-    pub(super) sources: [GpuFlatContinuingSourceEntry; FLAT_CONT_MAX_SOURCES],
+/// Term-only structural description shared across all continuation sumcheck
+/// steps. The sources array used to live here too (alongside `num_sources`)
+/// in the legacy `GpuFlatContinuationStaticDesc`, but per-step source data
+/// is now passed separately to the compact builder, so the term-only form
+/// is enough for `FlatContinuationBuildPlan`.
+#[derive(Clone)]
+pub(super) struct FlatContinuationTermDesc {
     pub(super) num_sources: u32,
 
-    pub(super) c0_only_linear: [GpuFlatC0Ref; FLAT_CONT_MAX_C0_ONLY_LINEAR],
+    pub(super) c0_only_linear: Box<[GpuFlatC0Ref; FLAT_CONT_MAX_C0_ONLY_LINEAR]>,
     pub(super) num_c0_only_linear: u32,
 
-    pub(super) unified_quadratic: [GpuFlatC1Pair; FLAT_CONT_MAX_UNIFIED_QUADRATIC],
+    pub(super) unified_quadratic: Box<[GpuFlatC1Pair; FLAT_CONT_MAX_UNIFIED_QUADRATIC]>,
     pub(super) num_unified_quadratic: u32,
 
-    pub(super) unified_linear: [GpuFlatC0Ref; FLAT_CONT_MAX_UNIFIED_LINEAR],
+    pub(super) unified_linear: Box<[GpuFlatC0Ref; FLAT_CONT_MAX_UNIFIED_LINEAR]>,
     pub(super) num_unified_linear: u32,
 
     pub(super) num_constants: u32,
 }
 
-unsafe impl Send for GpuFlatContinuationStaticDesc {}
-unsafe impl Sync for GpuFlatContinuationStaticDesc {}
-
-impl Default for GpuFlatContinuationStaticDesc {
+impl Default for FlatContinuationTermDesc {
     fn default() -> Self {
         Self {
-            sources: [GpuFlatContinuingSourceEntry::default(); FLAT_CONT_MAX_SOURCES],
             num_sources: 0,
-            c0_only_linear: [GpuFlatC0Ref::default(); FLAT_CONT_MAX_C0_ONLY_LINEAR],
+            c0_only_linear: Box::new([GpuFlatC0Ref::default(); FLAT_CONT_MAX_C0_ONLY_LINEAR]),
             num_c0_only_linear: 0,
-            unified_quadratic: [GpuFlatC1Pair::default(); FLAT_CONT_MAX_UNIFIED_QUADRATIC],
+            unified_quadratic: Box::new(
+                [GpuFlatC1Pair::default(); FLAT_CONT_MAX_UNIFIED_QUADRATIC],
+            ),
             num_unified_quadratic: 0,
-            unified_linear: [GpuFlatC0Ref::default(); FLAT_CONT_MAX_UNIFIED_LINEAR],
+            unified_linear: Box::new([GpuFlatC0Ref::default(); FLAT_CONT_MAX_UNIFIED_LINEAR]),
             num_unified_linear: 0,
             num_constants: 0,
         }
@@ -1498,7 +1416,7 @@ impl Default for GpuFlatContinuationStaticDesc {
 /// `term_desc` holds the shared term arrays (same for all steps).
 /// Source entries are populated per step from prepared storage.
 pub(super) struct FlatContinuationBuildPlan<E> {
-    pub(super) term_desc: Box<GpuFlatContinuationStaticDesc>,
+    pub(super) term_desc: FlatContinuationTermDesc,
     pub(super) recipes: Vec<CoefficientRecipe<E>>,
     /// One entry per unique source: records the first (gate_idx, is_ext, input_idx)
     /// that mapped to a source table index. Used to populate per-step source entries.
@@ -1565,7 +1483,8 @@ struct ContinuationSourceKey {
 }
 
 pub(super) struct FlatContinuationDescriptionBuilder<E> {
-    desc: Box<GpuFlatContinuationStaticDesc>,
+    desc: FlatContinuationTermDesc,
+    num_sources: u32,
     recipes_constants: Vec<CoefficientRecipe<E>>,
     recipes_c0_only: Vec<CoefficientRecipe<E>>,
     recipes_quadratic: Vec<CoefficientRecipe<E>>,
@@ -1577,7 +1496,8 @@ pub(super) struct FlatContinuationDescriptionBuilder<E> {
 impl<E: Field> FlatContinuationDescriptionBuilder<E> {
     pub(super) fn new() -> Self {
         Self {
-            desc: Box::new(GpuFlatContinuationStaticDesc::default()),
+            desc: FlatContinuationTermDesc::default(),
+            num_sources: 0,
             recipes_constants: Vec::new(),
             recipes_c0_only: Vec::new(),
             recipes_quadratic: Vec::new(),
@@ -1600,12 +1520,12 @@ impl<E: Field> FlatContinuationDescriptionBuilder<E> {
         if let Some(&idx) = self.source_map.get(&key) {
             return idx;
         }
-        let idx = self.desc.num_sources;
+        let idx = self.num_sources;
         assert!(
             (idx as usize) < FLAT_CONT_MAX_SOURCES,
             "flat continuation: source table overflow ({idx} >= {FLAT_CONT_MAX_SOURCES})",
         );
-        self.desc.num_sources = idx + 1;
+        self.num_sources = idx + 1;
         self.source_map.insert(key, idx);
         self.source_assignments.push(ContinuationSourceAssignment {
             gate_idx,
@@ -1682,8 +1602,10 @@ impl<E: Field> FlatContinuationDescriptionBuilder<E> {
         recipes.extend(self.recipes_c0_only);
         recipes.extend(self.recipes_quadratic);
         recipes.extend(self.recipes_linear);
+        let mut term_desc = self.desc;
+        term_desc.num_sources = self.num_sources;
         FlatContinuationBuildPlan {
-            term_desc: self.desc,
+            term_desc,
             recipes,
             source_assignments: self.source_assignments,
         }
@@ -1758,574 +1680,6 @@ impl<E: Field> FlatContinuationDescriptionBuilder<E> {
     }
 }
 
-/// Build the unified tiled descriptor for the round 1 kernel.
-/// Reads remapped source indices from the round 1 desc, builds unified terms
-/// sorted by source-group tile key, then extracts tile boundaries and per-tile
-/// fold lists.
-pub(super) fn build_unified_tiled_desc<E>(
-    round1_desc: &GpuFlatRound1StaticDesc,
-    plan: &FlatContinuationBuildPlan<E>,
-) -> Box<GpuFlatRound1UnifiedDesc> {
-    use std::collections::HashSet;
-
-    const GROUP_SIZE: u16 = FLAT_CONT_UNIFIED_SOURCE_GROUP_SIZE as u16;
-    let group = |idx: u16| (idx & !FLAT_CONT_EXT_SOURCE_BIT) / GROUP_SIZE;
-
-    let tile_key = |t: &GpuFlatUnifiedTerm| -> (u16, u16) {
-        match t.term_type {
-            TERM_TYPE_CONSTANT => (0, 0),
-            TERM_TYPE_C0_ONLY_LINEAR | TERM_TYPE_UNIFIED_LINEAR => {
-                let g = group(t.source_a);
-                (g + 1, g + 1)
-            }
-            TERM_TYPE_UNIFIED_QUADRATIC => {
-                let g0 = group(t.source_a);
-                let g1 = group(t.source_b);
-                (g0.min(g1) + 1, g0.max(g1) + 1)
-            }
-            _ => unreachable!(),
-        }
-    };
-
-    // --- Step 1: Build unified terms from round1 desc (remapped source indices) ---
-    let td = &plan.term_desc;
-    let coeff_base_constants = 0u16;
-    let coeff_base_c0_only = coeff_base_constants + td.num_constants as u16;
-    let coeff_base_quadratic = coeff_base_c0_only + td.num_c0_only_linear as u16;
-    let coeff_base_linear = coeff_base_quadratic + td.num_unified_quadratic as u16;
-
-    let total_terms = td.num_constants as usize
-        + td.num_c0_only_linear as usize
-        + td.num_unified_quadratic as usize
-        + td.num_unified_linear as usize;
-    assert!(
-        total_terms <= FLAT_CONT_UNIFIED_MAX_TERMS,
-        "unified terms overflow: {total_terms} > {FLAT_CONT_UNIFIED_MAX_TERMS}",
-    );
-
-    let mut terms = Vec::with_capacity(total_terms);
-    for i in 0..td.num_constants as u16 {
-        terms.push(GpuFlatUnifiedTerm {
-            source_a: 0,
-            source_b: 0,
-            term_type: TERM_TYPE_CONSTANT,
-            coeff_idx: coeff_base_constants + i,
-        });
-    }
-    for i in 0..round1_desc.num_c0_only_linear as u16 {
-        terms.push(GpuFlatUnifiedTerm {
-            source_a: round1_desc.c0_only_linear[i as usize].source_idx,
-            source_b: 0,
-            term_type: TERM_TYPE_C0_ONLY_LINEAR,
-            coeff_idx: coeff_base_c0_only + i,
-        });
-    }
-    for i in 0..round1_desc.num_unified_quadratic as u16 {
-        let t = round1_desc.unified_quadratic[i as usize];
-        terms.push(GpuFlatUnifiedTerm {
-            source_a: t.source_a,
-            source_b: t.source_b,
-            term_type: TERM_TYPE_UNIFIED_QUADRATIC,
-            coeff_idx: coeff_base_quadratic + i,
-        });
-    }
-    for i in 0..round1_desc.num_unified_linear as u16 {
-        terms.push(GpuFlatUnifiedTerm {
-            source_a: round1_desc.unified_linear[i as usize].source_idx,
-            source_b: 0,
-            term_type: TERM_TYPE_UNIFIED_LINEAR,
-            coeff_idx: coeff_base_linear + i,
-        });
-    }
-
-    // Sort by tile key so constants come first, then terms are grouped by tile.
-    terms.sort_by(|a, b| {
-        tile_key(a)
-            .cmp(&tile_key(b))
-            .then(a.term_type.cmp(&b.term_type))
-            .then(a.source_a.cmp(&b.source_a))
-            .then(a.source_b.cmp(&b.source_b))
-    });
-
-    // --- Step 2: Identify tile boundaries ---
-    let num_constant_terms = terms
-        .iter()
-        .take_while(|t| t.term_type == TERM_TYPE_CONSTANT)
-        .count();
-
-    let mut tile_boundaries = Vec::new(); // (start, end) index pairs in `terms`
-    if num_constant_terms < terms.len() {
-        let mut current_key = tile_key(&terms[num_constant_terms]);
-        let mut tile_start = num_constant_terms;
-        for i in (num_constant_terms + 1)..terms.len() {
-            let key = tile_key(&terms[i]);
-            if key != current_key {
-                tile_boundaries.push((tile_start, i));
-                current_key = key;
-                tile_start = i;
-            }
-        }
-        tile_boundaries.push((tile_start, terms.len()));
-    }
-
-    let num_tiles = tile_boundaries.len();
-    assert!(
-        num_tiles <= FLAT_CONT_UNIFIED_MAX_TILES,
-        "unified tiles overflow: {num_tiles} > {FLAT_CONT_UNIFIED_MAX_TILES}",
-    );
-
-    // --- Step 3: Build per-tile fold lists ---
-    let mut fold_sources: Vec<u16> = Vec::new();
-    let mut tile_term_offsets = Vec::with_capacity(num_tiles + 1);
-    let mut tile_fold_offsets = Vec::with_capacity(num_tiles + 1);
-    let mut folded: HashSet<u16> = HashSet::new();
-
-    // Helper: check if a source needs first-time folding.
-    let needs_folding = |src_idx: u16| -> bool {
-        if src_idx & FLAT_CONT_EXT_SOURCE_BIT != 0 {
-            let raw = (src_idx & !FLAT_CONT_EXT_SOURCE_BIT) as usize;
-            !round1_desc.ext_sources[raw].previous_layer_start.is_null()
-        } else {
-            round1_desc.base_sources[src_idx as usize].first_access
-        }
-    };
-
-    for &(tile_start, tile_end) in &tile_boundaries {
-        tile_term_offsets.push(tile_start as u16);
-        tile_fold_offsets.push(fold_sources.len() as u16);
-
-        // Collect unique sources referenced by this tile's terms.
-        let mut tile_sources: Vec<u16> = Vec::new();
-        for t in &terms[tile_start..tile_end] {
-            match t.term_type {
-                TERM_TYPE_C0_ONLY_LINEAR | TERM_TYPE_UNIFIED_LINEAR => {
-                    tile_sources.push(t.source_a);
-                }
-                TERM_TYPE_UNIFIED_QUADRATIC => {
-                    tile_sources.push(t.source_a);
-                    tile_sources.push(t.source_b);
-                }
-                _ => {}
-            }
-        }
-        tile_sources.sort_unstable();
-        tile_sources.dedup();
-
-        // Add sources that need folding and haven't been assigned yet.
-        for src in tile_sources {
-            if !folded.contains(&src) && needs_folding(src) {
-                fold_sources.push(src);
-                folded.insert(src);
-            }
-        }
-    }
-    // Sentinel entries for the last tile.
-    tile_term_offsets.push(terms.len() as u16);
-    tile_fold_offsets.push(fold_sources.len() as u16);
-
-    assert!(
-        fold_sources.len() <= FLAT_CONT_UNIFIED_MAX_FOLD_SOURCES,
-        "unified fold_sources overflow: {} > {FLAT_CONT_UNIFIED_MAX_FOLD_SOURCES}",
-        fold_sources.len(),
-    );
-
-    // --- Step 4: Populate descriptor ---
-    let mut desc = Box::new(GpuFlatRound1UnifiedDesc::default());
-
-    // Copy source arrays from round1 desc.
-    let nb = round1_desc.num_base_sources as usize;
-    desc.base_sources[..nb].copy_from_slice(&round1_desc.base_sources[..nb]);
-    desc.num_base_sources = round1_desc.num_base_sources;
-
-    let ne = round1_desc.num_ext_sources as usize;
-    desc.ext_sources[..ne].copy_from_slice(&round1_desc.ext_sources[..ne]);
-    desc.num_ext_sources = round1_desc.num_ext_sources;
-
-    // Copy unified terms.
-    desc.terms[..terms.len()].copy_from_slice(&terms);
-    desc.num_terms = terms.len() as u32;
-
-    // Tile metadata.
-    desc.num_constant_terms = num_constant_terms as u32;
-    desc.num_tiles = num_tiles as u32;
-    desc.tile_term_offsets[..tile_term_offsets.len()].copy_from_slice(&tile_term_offsets);
-    desc.tile_fold_offsets[..tile_fold_offsets.len()].copy_from_slice(&tile_fold_offsets);
-    desc.fold_sources[..fold_sources.len()].copy_from_slice(&fold_sources);
-
-    desc
-}
-
-/// Build a tiled unified descriptor for continuation rounds (3+) from a
-/// `GpuFlatContinuationStaticDesc`. Simpler than round 1: no base/ext split,
-/// source indices are plain 0..num_sources.
-pub(super) fn build_continuation_tiled_desc(
-    static_desc: &GpuFlatContinuationStaticDesc,
-    plan: &FlatContinuationBuildPlan<impl Copy>,
-) -> Box<GpuFlatContinuationUnifiedDesc> {
-    use std::collections::HashSet;
-
-    const GROUP_SIZE: u16 = FLAT_CONT_UNIFIED_SOURCE_GROUP_SIZE as u16;
-    let group = |idx: u16| idx / GROUP_SIZE;
-
-    let tile_key = |t: &GpuFlatUnifiedTerm| -> (u16, u16) {
-        match t.term_type {
-            TERM_TYPE_CONSTANT => (0, 0),
-            TERM_TYPE_C0_ONLY_LINEAR | TERM_TYPE_UNIFIED_LINEAR => {
-                let g = group(t.source_a);
-                (g + 1, g + 1)
-            }
-            TERM_TYPE_UNIFIED_QUADRATIC => {
-                let g0 = group(t.source_a);
-                let g1 = group(t.source_b);
-                (g0.min(g1) + 1, g0.max(g1) + 1)
-            }
-            _ => unreachable!(),
-        }
-    };
-
-    // --- Step 1: Build unified terms from the static desc ---
-    let td = &plan.term_desc;
-    let coeff_base_constants = 0u16;
-    let coeff_base_c0_only = coeff_base_constants + td.num_constants as u16;
-    let coeff_base_quadratic = coeff_base_c0_only + td.num_c0_only_linear as u16;
-    let coeff_base_linear = coeff_base_quadratic + td.num_unified_quadratic as u16;
-
-    let total_terms = td.num_constants as usize
-        + td.num_c0_only_linear as usize
-        + td.num_unified_quadratic as usize
-        + td.num_unified_linear as usize;
-    assert!(
-        total_terms <= FLAT_CONT_UNIFIED_MAX_TERMS,
-        "continuation unified terms overflow: {total_terms} > {FLAT_CONT_UNIFIED_MAX_TERMS}",
-    );
-
-    let mut terms = Vec::with_capacity(total_terms);
-    for i in 0..td.num_constants as u16 {
-        terms.push(GpuFlatUnifiedTerm {
-            source_a: 0,
-            source_b: 0,
-            term_type: TERM_TYPE_CONSTANT,
-            coeff_idx: coeff_base_constants + i,
-        });
-    }
-    for i in 0..static_desc.num_c0_only_linear as u16 {
-        terms.push(GpuFlatUnifiedTerm {
-            source_a: static_desc.c0_only_linear[i as usize].source_idx,
-            source_b: 0,
-            term_type: TERM_TYPE_C0_ONLY_LINEAR,
-            coeff_idx: coeff_base_c0_only + i,
-        });
-    }
-    for i in 0..static_desc.num_unified_quadratic as u16 {
-        let t = static_desc.unified_quadratic[i as usize];
-        terms.push(GpuFlatUnifiedTerm {
-            source_a: t.source_a,
-            source_b: t.source_b,
-            term_type: TERM_TYPE_UNIFIED_QUADRATIC,
-            coeff_idx: coeff_base_quadratic + i,
-        });
-    }
-    for i in 0..static_desc.num_unified_linear as u16 {
-        terms.push(GpuFlatUnifiedTerm {
-            source_a: static_desc.unified_linear[i as usize].source_idx,
-            source_b: 0,
-            term_type: TERM_TYPE_UNIFIED_LINEAR,
-            coeff_idx: coeff_base_linear + i,
-        });
-    }
-
-    // Sort by tile key so constants come first, then terms are grouped by tile.
-    terms.sort_by(|a, b| {
-        tile_key(a)
-            .cmp(&tile_key(b))
-            .then(a.term_type.cmp(&b.term_type))
-            .then(a.source_a.cmp(&b.source_a))
-            .then(a.source_b.cmp(&b.source_b))
-    });
-
-    // --- Step 2: Identify tile boundaries ---
-    let num_constant_terms = terms
-        .iter()
-        .take_while(|t| t.term_type == TERM_TYPE_CONSTANT)
-        .count();
-
-    let mut tile_boundaries = Vec::new();
-    if num_constant_terms < terms.len() {
-        let mut current_key = tile_key(&terms[num_constant_terms]);
-        let mut tile_start = num_constant_terms;
-        for i in (num_constant_terms + 1)..terms.len() {
-            let key = tile_key(&terms[i]);
-            if key != current_key {
-                tile_boundaries.push((tile_start, i));
-                current_key = key;
-                tile_start = i;
-            }
-        }
-        tile_boundaries.push((tile_start, terms.len()));
-    }
-
-    let num_tiles = tile_boundaries.len();
-    assert!(
-        num_tiles <= FLAT_CONT_UNIFIED_MAX_TILES,
-        "continuation unified tiles overflow: {num_tiles} > {FLAT_CONT_UNIFIED_MAX_TILES}",
-    );
-
-    // --- Step 3: Build per-tile fold lists ---
-    let mut fold_sources: Vec<u16> = Vec::new();
-    let mut tile_term_offsets = Vec::with_capacity(num_tiles + 1);
-    let mut tile_fold_offsets = Vec::with_capacity(num_tiles + 1);
-    let mut folded: HashSet<u16> = HashSet::new();
-
-    let needs_folding = |src_idx: u16| -> bool {
-        !static_desc.sources[src_idx as usize]
-            .previous_layer_start
-            .is_null()
-    };
-
-    for &(tile_start, tile_end) in &tile_boundaries {
-        tile_term_offsets.push(tile_start as u16);
-        tile_fold_offsets.push(fold_sources.len() as u16);
-
-        let mut tile_sources: Vec<u16> = Vec::new();
-        for t in &terms[tile_start..tile_end] {
-            match t.term_type {
-                TERM_TYPE_C0_ONLY_LINEAR | TERM_TYPE_UNIFIED_LINEAR => {
-                    tile_sources.push(t.source_a);
-                }
-                TERM_TYPE_UNIFIED_QUADRATIC => {
-                    tile_sources.push(t.source_a);
-                    tile_sources.push(t.source_b);
-                }
-                _ => {}
-            }
-        }
-        tile_sources.sort_unstable();
-        tile_sources.dedup();
-
-        for src in tile_sources {
-            if !folded.contains(&src) && needs_folding(src) {
-                fold_sources.push(src);
-                folded.insert(src);
-            }
-        }
-    }
-    tile_term_offsets.push(terms.len() as u16);
-    tile_fold_offsets.push(fold_sources.len() as u16);
-
-    assert!(
-        fold_sources.len() <= FLAT_CONT_UNIFIED_MAX_FOLD_SOURCES,
-        "continuation unified fold_sources overflow: {} > {FLAT_CONT_UNIFIED_MAX_FOLD_SOURCES}",
-        fold_sources.len(),
-    );
-
-    // --- Step 4: Populate descriptor ---
-    let mut desc = Box::new(GpuFlatContinuationUnifiedDesc::default());
-
-    let ns = static_desc.num_sources as usize;
-    desc.sources[..ns].copy_from_slice(&static_desc.sources[..ns]);
-    desc.num_sources = static_desc.num_sources;
-
-    desc.terms[..terms.len()].copy_from_slice(&terms);
-    desc.num_terms = terms.len() as u32;
-
-    desc.num_constant_terms = num_constant_terms as u32;
-    desc.num_tiles = num_tiles as u32;
-    desc.tile_term_offsets[..tile_term_offsets.len()].copy_from_slice(&tile_term_offsets);
-    desc.tile_fold_offsets[..tile_fold_offsets.len()].copy_from_slice(&tile_fold_offsets);
-    desc.fold_sources[..fold_sources.len()].copy_from_slice(&fold_sources);
-
-    desc
-}
-
-/// Build a tiled unified descriptor for round 2 from a `GpuFlatRound2StaticDesc`.
-/// Same algorithm as round 1's `build_unified_tiled_desc` but with
-/// `gkr_base_after_two_source` base entries. Source index encoding uses
-/// `FLAT_CONT_EXT_SOURCE_BIT` for ext sources, same as round 1.
-pub(super) fn build_round2_tiled_desc<E>(
-    round2_desc: &GpuFlatRound2StaticDesc,
-    plan: &FlatContinuationBuildPlan<E>,
-) -> Box<GpuFlatRound2UnifiedDesc> {
-    use std::collections::HashSet;
-
-    const GROUP_SIZE: u16 = FLAT_CONT_UNIFIED_SOURCE_GROUP_SIZE as u16;
-    let group = |idx: u16| (idx & !FLAT_CONT_EXT_SOURCE_BIT) / GROUP_SIZE;
-
-    let tile_key = |t: &GpuFlatUnifiedTerm| -> (u16, u16) {
-        match t.term_type {
-            TERM_TYPE_CONSTANT => (0, 0),
-            TERM_TYPE_C0_ONLY_LINEAR | TERM_TYPE_UNIFIED_LINEAR => {
-                let g = group(t.source_a);
-                (g + 1, g + 1)
-            }
-            TERM_TYPE_UNIFIED_QUADRATIC => {
-                let g0 = group(t.source_a);
-                let g1 = group(t.source_b);
-                (g0.min(g1) + 1, g0.max(g1) + 1)
-            }
-            _ => unreachable!(),
-        }
-    };
-
-    // --- Step 1: Build unified terms from round2 desc ---
-    let td = &plan.term_desc;
-    let coeff_base_constants = 0u16;
-    let coeff_base_c0_only = coeff_base_constants + td.num_constants as u16;
-    let coeff_base_quadratic = coeff_base_c0_only + td.num_c0_only_linear as u16;
-    let coeff_base_linear = coeff_base_quadratic + td.num_unified_quadratic as u16;
-
-    let total_terms = td.num_constants as usize
-        + td.num_c0_only_linear as usize
-        + td.num_unified_quadratic as usize
-        + td.num_unified_linear as usize;
-    assert!(
-        total_terms <= FLAT_CONT_UNIFIED_MAX_TERMS,
-        "round2 unified terms overflow: {total_terms} > {FLAT_CONT_UNIFIED_MAX_TERMS}",
-    );
-
-    let mut terms = Vec::with_capacity(total_terms);
-    for i in 0..td.num_constants as u16 {
-        terms.push(GpuFlatUnifiedTerm {
-            source_a: 0,
-            source_b: 0,
-            term_type: TERM_TYPE_CONSTANT,
-            coeff_idx: coeff_base_constants + i,
-        });
-    }
-    for i in 0..round2_desc.num_c0_only_linear as u16 {
-        terms.push(GpuFlatUnifiedTerm {
-            source_a: round2_desc.c0_only_linear[i as usize].source_idx,
-            source_b: 0,
-            term_type: TERM_TYPE_C0_ONLY_LINEAR,
-            coeff_idx: coeff_base_c0_only + i,
-        });
-    }
-    for i in 0..round2_desc.num_unified_quadratic as u16 {
-        let t = round2_desc.unified_quadratic[i as usize];
-        terms.push(GpuFlatUnifiedTerm {
-            source_a: t.source_a,
-            source_b: t.source_b,
-            term_type: TERM_TYPE_UNIFIED_QUADRATIC,
-            coeff_idx: coeff_base_quadratic + i,
-        });
-    }
-    for i in 0..round2_desc.num_unified_linear as u16 {
-        terms.push(GpuFlatUnifiedTerm {
-            source_a: round2_desc.unified_linear[i as usize].source_idx,
-            source_b: 0,
-            term_type: TERM_TYPE_UNIFIED_LINEAR,
-            coeff_idx: coeff_base_linear + i,
-        });
-    }
-
-    terms.sort_by(|a, b| {
-        tile_key(a)
-            .cmp(&tile_key(b))
-            .then(a.term_type.cmp(&b.term_type))
-            .then(a.source_a.cmp(&b.source_a))
-            .then(a.source_b.cmp(&b.source_b))
-    });
-
-    // --- Step 2: Identify tile boundaries ---
-    let num_constant_terms = terms
-        .iter()
-        .take_while(|t| t.term_type == TERM_TYPE_CONSTANT)
-        .count();
-
-    let mut tile_boundaries = Vec::new();
-    if num_constant_terms < terms.len() {
-        let mut current_key = tile_key(&terms[num_constant_terms]);
-        let mut tile_start = num_constant_terms;
-        for i in (num_constant_terms + 1)..terms.len() {
-            let key = tile_key(&terms[i]);
-            if key != current_key {
-                tile_boundaries.push((tile_start, i));
-                current_key = key;
-                tile_start = i;
-            }
-        }
-        tile_boundaries.push((tile_start, terms.len()));
-    }
-
-    let num_tiles = tile_boundaries.len();
-    assert!(
-        num_tiles <= FLAT_CONT_UNIFIED_MAX_TILES,
-        "round2 unified tiles overflow: {num_tiles} > {FLAT_CONT_UNIFIED_MAX_TILES}",
-    );
-
-    // --- Step 3: Build per-tile fold lists ---
-    let mut fold_sources: Vec<u16> = Vec::new();
-    let mut tile_term_offsets = Vec::with_capacity(num_tiles + 1);
-    let mut tile_fold_offsets = Vec::with_capacity(num_tiles + 1);
-    let mut folded: HashSet<u16> = HashSet::new();
-
-    let needs_folding = |src_idx: u16| -> bool {
-        if src_idx & FLAT_CONT_EXT_SOURCE_BIT != 0 {
-            let raw = (src_idx & !FLAT_CONT_EXT_SOURCE_BIT) as usize;
-            !round2_desc.ext_sources[raw].previous_layer_start.is_null()
-        } else {
-            round2_desc.base_sources[src_idx as usize].first_access
-        }
-    };
-
-    for &(tile_start, tile_end) in &tile_boundaries {
-        tile_term_offsets.push(tile_start as u16);
-        tile_fold_offsets.push(fold_sources.len() as u16);
-
-        let mut tile_sources: Vec<u16> = Vec::new();
-        for t in &terms[tile_start..tile_end] {
-            match t.term_type {
-                TERM_TYPE_C0_ONLY_LINEAR | TERM_TYPE_UNIFIED_LINEAR => {
-                    tile_sources.push(t.source_a);
-                }
-                TERM_TYPE_UNIFIED_QUADRATIC => {
-                    tile_sources.push(t.source_a);
-                    tile_sources.push(t.source_b);
-                }
-                _ => {}
-            }
-        }
-        tile_sources.sort_unstable();
-        tile_sources.dedup();
-
-        for src in tile_sources {
-            if !folded.contains(&src) && needs_folding(src) {
-                fold_sources.push(src);
-                folded.insert(src);
-            }
-        }
-    }
-    tile_term_offsets.push(terms.len() as u16);
-    tile_fold_offsets.push(fold_sources.len() as u16);
-
-    assert!(
-        fold_sources.len() <= FLAT_CONT_UNIFIED_MAX_FOLD_SOURCES,
-        "round2 unified fold_sources overflow: {} > {FLAT_CONT_UNIFIED_MAX_FOLD_SOURCES}",
-        fold_sources.len(),
-    );
-
-    // --- Step 4: Populate descriptor ---
-    let mut desc = Box::new(GpuFlatRound2UnifiedDesc::default());
-
-    let nb = round2_desc.num_base_sources as usize;
-    desc.base_sources[..nb].copy_from_slice(&round2_desc.base_sources[..nb]);
-    desc.num_base_sources = round2_desc.num_base_sources;
-
-    let ne = round2_desc.num_ext_sources as usize;
-    desc.ext_sources[..ne].copy_from_slice(&round2_desc.ext_sources[..ne]);
-    desc.num_ext_sources = round2_desc.num_ext_sources;
-
-    desc.terms[..terms.len()].copy_from_slice(&terms);
-    desc.num_terms = terms.len() as u32;
-
-    desc.num_constant_terms = num_constant_terms as u32;
-    desc.num_tiles = num_tiles as u32;
-    desc.tile_term_offsets[..tile_term_offsets.len()].copy_from_slice(&tile_term_offsets);
-    desc.tile_fold_offsets[..tile_fold_offsets.len()].copy_from_slice(&tile_fold_offsets);
-    desc.fold_sources[..fold_sources.len()].copy_from_slice(&fold_sources);
-
-    desc
-}
-
 // ---------------------------------------------------------------------------
 // Gate decomposition for continuation rounds
 // ---------------------------------------------------------------------------
@@ -2359,6 +1713,7 @@ pub(super) fn build_flat_continuation_plan<E: Field>(
                 batch_power: p0,
                 negate: false,
                 immediate_factor: E::ONE,
+                immediate_recipe: ImmediateFactorRecipeStructural::one(),
                 prefactors: vec![],
             }
         };
@@ -2367,6 +1722,7 @@ pub(super) fn build_flat_continuation_plan<E: Field>(
                 batch_power: p1,
                 negate: false,
                 immediate_factor: E::ONE,
+                immediate_recipe: ImmediateFactorRecipeStructural::one(),
                 prefactors: vec![],
             }
         };
@@ -2375,6 +1731,7 @@ pub(super) fn build_flat_continuation_plan<E: Field>(
                 batch_power: p0,
                 negate: true,
                 immediate_factor: E::ONE,
+                immediate_recipe: ImmediateFactorRecipeStructural::one(),
                 prefactors: vec![],
             }
         };
@@ -2390,6 +1747,7 @@ pub(super) fn build_flat_continuation_plan<E: Field>(
                 batch_power: p0,
                 negate: false,
                 immediate_factor: E::ONE,
+                immediate_recipe: ImmediateFactorRecipeStructural::one(),
                 prefactors: vec![gamma_term(coeff, power)],
             }
         };
@@ -2398,6 +1756,7 @@ pub(super) fn build_flat_continuation_plan<E: Field>(
                 batch_power: p1,
                 negate: false,
                 immediate_factor: E::ONE,
+                immediate_recipe: ImmediateFactorRecipeStructural::one(),
                 prefactors: vec![gamma_term(coeff, power)],
             }
         };
@@ -2406,6 +1765,7 @@ pub(super) fn build_flat_continuation_plan<E: Field>(
                 batch_power: p0,
                 negate: true,
                 immediate_factor: E::ONE,
+                immediate_recipe: ImmediateFactorRecipeStructural::one(),
                 prefactors: vec![gamma_term(coeff, power)],
             }
         };
@@ -2702,6 +2062,7 @@ fn emit_continuation_constraint_gate<E: Field>(
                         batch_power,
                         negate: false,
                         immediate_factor: E::ONE,
+                        immediate_recipe: ImmediateFactorRecipeStructural::one(),
                         prefactors: vec![qt.challenge_terms.clone()],
                     },
                 );
@@ -2723,6 +2084,7 @@ fn emit_continuation_constraint_gate<E: Field>(
                         batch_power,
                         negate: false,
                         immediate_factor: E::ONE,
+                        immediate_recipe: ImmediateFactorRecipeStructural::one(),
                         prefactors: vec![lt.challenge_terms.clone()],
                     },
                 );
@@ -2741,6 +2103,7 @@ fn emit_continuation_constraint_gate<E: Field>(
                             batch_power,
                             negate: false,
                             immediate_factor: E::ONE,
+                            immediate_recipe: ImmediateFactorRecipeStructural::one(),
                             prefactors: vec![lt.challenge_terms.clone()],
                         });
                     }
@@ -2751,6 +2114,7 @@ fn emit_continuation_constraint_gate<E: Field>(
                     batch_power,
                     negate: false,
                     immediate_factor: E::ONE,
+                    immediate_recipe: ImmediateFactorRecipeStructural::one(),
                     prefactors: vec![tmpl.constant_terms.clone()],
                 });
             }
@@ -2776,6 +2140,7 @@ fn emit_continuation_constraint_gate<E: Field>(
                         batch_power,
                         negate: false,
                         immediate_factor: qt.challenge,
+                        immediate_recipe: qt.immediate_recipe.clone(),
                         prefactors: vec![],
                     },
                 );
@@ -2796,6 +2161,7 @@ fn emit_continuation_constraint_gate<E: Field>(
                         batch_power,
                         negate: false,
                         immediate_factor: lt.challenge,
+                        immediate_recipe: lt.immediate_recipe.clone(),
                         prefactors: vec![],
                     },
                 );
@@ -2807,6 +2173,7 @@ fn emit_continuation_constraint_gate<E: Field>(
                         batch_power,
                         negate: false,
                         immediate_factor: lt.challenge,
+                        immediate_recipe: lt.immediate_recipe.clone(),
                         prefactors: vec![],
                     });
                 }
@@ -2816,6 +2183,7 @@ fn emit_continuation_constraint_gate<E: Field>(
                     batch_power,
                     negate: false,
                     immediate_factor: meta.constant_offset,
+                    immediate_recipe: meta.constant_offset_recipe.clone(),
                     prefactors: vec![],
                 });
             }
@@ -2874,6 +2242,7 @@ fn emit_continuation_cross_product_gate<E: Field>(
                             batch_power,
                             negate: false,
                             immediate_factor: E::ONE,
+                            immediate_recipe: ImmediateFactorRecipeStructural::one(),
                             prefactors: vec![
                                 qt.challenge_terms.clone(),
                                 lt.challenge_terms.clone(),
@@ -2888,6 +2257,7 @@ fn emit_continuation_cross_product_gate<E: Field>(
                             batch_power,
                             negate: false,
                             immediate_factor: E::ONE,
+                            immediate_recipe: ImmediateFactorRecipeStructural::one(),
                             prefactors: vec![qt.challenge_terms.clone(), lc.clone()],
                         },
                     );
@@ -2909,6 +2279,7 @@ fn emit_continuation_cross_product_gate<E: Field>(
                             batch_power,
                             negate: false,
                             immediate_factor: E::ONE,
+                            immediate_recipe: ImmediateFactorRecipeStructural::one(),
                             prefactors: vec![lt.challenge_terms.clone(), qc.clone()],
                         },
                     );
@@ -2921,6 +2292,7 @@ fn emit_continuation_cross_product_gate<E: Field>(
                         batch_power,
                         negate: false,
                         immediate_factor: E::ONE,
+                        immediate_recipe: ImmediateFactorRecipeStructural::one(),
                         prefactors: vec![qc.clone(), lc.clone()],
                     });
                 }
@@ -2931,7 +2303,7 @@ fn emit_continuation_cross_product_gate<E: Field>(
             let mut quad_consts = Vec::new();
             for qt in &meta.quadratic_terms {
                 if qt.lhs == NO_CACHE_LINEAR_FORM_CONSTANT_SENTINEL {
-                    quad_consts.push(qt.challenge);
+                    quad_consts.push((qt.challenge, qt.immediate_recipe.clone()));
                 } else {
                     quad_terms.push(qt);
                 }
@@ -2940,7 +2312,7 @@ fn emit_continuation_cross_product_gate<E: Field>(
             let mut lin_consts = Vec::new();
             for lt in &meta.linear_terms {
                 if lt.input == NO_CACHE_LINEAR_FORM_CONSTANT_SENTINEL {
-                    lin_consts.push(lt.challenge);
+                    lin_consts.push((lt.challenge, lt.immediate_recipe.clone()));
                 } else {
                     lin_terms.push(lt);
                 }
@@ -2963,6 +2335,7 @@ fn emit_continuation_cross_product_gate<E: Field>(
                     );
                     let mut coeff = qt.challenge;
                     coeff.mul_assign(&lt.challenge);
+                    let recipe = qt.immediate_recipe.mul(&lt.immediate_recipe);
                     b.push_unified_quadratic(
                         lhs,
                         rhs,
@@ -2970,19 +2343,22 @@ fn emit_continuation_cross_product_gate<E: Field>(
                             batch_power,
                             negate: false,
                             immediate_factor: coeff,
+                            immediate_recipe: recipe,
                             prefactors: vec![],
                         },
                     );
                 }
-                for lc in &lin_consts {
+                for (lc, lc_recipe) in &lin_consts {
                     let mut coeff = qt.challenge;
                     coeff.mul_assign(lc);
+                    let recipe = qt.immediate_recipe.mul(lc_recipe);
                     b.push_c0_only_linear(
                         lhs,
                         CoefficientRecipe {
                             batch_power,
                             negate: false,
                             immediate_factor: coeff,
+                            immediate_recipe: recipe,
                             prefactors: vec![],
                         },
                     );
@@ -2997,29 +2373,33 @@ fn emit_continuation_cross_product_gate<E: Field>(
                     false,
                     lt.input as usize + base_input_offset,
                 );
-                for qc in &quad_consts {
+                for (qc, qc_recipe) in &quad_consts {
                     let mut coeff = lt.challenge;
                     coeff.mul_assign(qc);
+                    let recipe = lt.immediate_recipe.mul(qc_recipe);
                     b.push_c0_only_linear(
                         rhs,
                         CoefficientRecipe {
                             batch_power,
                             negate: false,
                             immediate_factor: coeff,
+                            immediate_recipe: recipe,
                             prefactors: vec![],
                         },
                     );
                 }
             }
 
-            for qc in &quad_consts {
-                for lc in &lin_consts {
+            for (qc, qc_recipe) in &quad_consts {
+                for (lc, lc_recipe) in &lin_consts {
                     let mut coeff = *qc;
                     coeff.mul_assign(lc);
+                    let recipe = qc_recipe.mul(lc_recipe);
                     b.push_constant(CoefficientRecipe {
                         batch_power,
                         negate: false,
                         immediate_factor: coeff,
+                        immediate_recipe: recipe,
                         prefactors: vec![],
                     });
                 }
@@ -3044,6 +2424,7 @@ fn emit_continuation_materialize_gate<E: Field>(
                         batch_power,
                         negate: false,
                         immediate_factor: E::ONE,
+                        immediate_recipe: ImmediateFactorRecipeStructural::one(),
                         prefactors: vec![lt.challenge_terms.clone()],
                     });
                     continue;
@@ -3061,6 +2442,7 @@ fn emit_continuation_materialize_gate<E: Field>(
                         batch_power,
                         negate: false,
                         immediate_factor: E::ONE,
+                        immediate_recipe: ImmediateFactorRecipeStructural::one(),
                         prefactors: vec![lt.challenge_terms.clone()],
                     },
                 );
@@ -3073,6 +2455,7 @@ fn emit_continuation_materialize_gate<E: Field>(
                         batch_power,
                         negate: false,
                         immediate_factor: lt.challenge,
+                        immediate_recipe: lt.immediate_recipe.clone(),
                         prefactors: vec![],
                     });
                     continue;
@@ -3090,6 +2473,7 @@ fn emit_continuation_materialize_gate<E: Field>(
                         batch_power,
                         negate: false,
                         immediate_factor: lt.challenge,
+                        immediate_recipe: lt.immediate_recipe.clone(),
                         prefactors: vec![],
                     },
                 );
@@ -3121,6 +2505,7 @@ fn emit_continuation_single_times_linear_form<E: Field>(
                                 batch_power,
                                 negate,
                                 immediate_factor: E::ONE,
+                                immediate_recipe: ImmediateFactorRecipeStructural::one(),
                                 prefactors: vec![lt.challenge_terms.clone()],
                             },
                         );
@@ -3140,6 +2525,7 @@ fn emit_continuation_single_times_linear_form<E: Field>(
                             batch_power,
                             negate,
                             immediate_factor: E::ONE,
+                            immediate_recipe: ImmediateFactorRecipeStructural::one(),
                             prefactors: vec![lt.challenge_terms.clone()],
                         },
                     );
@@ -3153,6 +2539,7 @@ fn emit_continuation_single_times_linear_form<E: Field>(
                                 batch_power,
                                 negate,
                                 immediate_factor: E::ONE,
+                                immediate_recipe: ImmediateFactorRecipeStructural::one(),
                                 prefactors: vec![qt.challenge_terms.clone()],
                             },
                         );
@@ -3172,6 +2559,7 @@ fn emit_continuation_single_times_linear_form<E: Field>(
                             batch_power,
                             negate,
                             immediate_factor: E::ONE,
+                            immediate_recipe: ImmediateFactorRecipeStructural::one(),
                             prefactors: vec![qt.challenge_terms.clone()],
                         },
                     );
@@ -3183,6 +2571,7 @@ fn emit_continuation_single_times_linear_form<E: Field>(
                 for lt in &meta.linear_terms {
                     if lt.input == NO_CACHE_LINEAR_FORM_CONSTANT_SENTINEL {
                         let mut coeff = lt.challenge;
+                        let recipe = immediate_recipe_with_negation(&lt.immediate_recipe, negate);
                         if negate {
                             Field::negate(&mut coeff);
                         }
@@ -3192,6 +2581,7 @@ fn emit_continuation_single_times_linear_form<E: Field>(
                                 batch_power,
                                 negate: false,
                                 immediate_factor: coeff,
+                                immediate_recipe: recipe,
                                 prefactors: vec![],
                             },
                         );
@@ -3205,6 +2595,7 @@ fn emit_continuation_single_times_linear_form<E: Field>(
                         lt.input as usize + base_input_offset,
                     );
                     let mut coeff = lt.challenge;
+                    let recipe = immediate_recipe_with_negation(&lt.immediate_recipe, negate);
                     if negate {
                         Field::negate(&mut coeff);
                     }
@@ -3215,6 +2606,7 @@ fn emit_continuation_single_times_linear_form<E: Field>(
                             batch_power,
                             negate: false,
                             immediate_factor: coeff,
+                            immediate_recipe: recipe,
                             prefactors: vec![],
                         },
                     );
@@ -3223,6 +2615,7 @@ fn emit_continuation_single_times_linear_form<E: Field>(
                 for qt in &meta.quadratic_terms {
                     if qt.lhs == NO_CACHE_LINEAR_FORM_CONSTANT_SENTINEL {
                         let mut coeff = qt.challenge;
+                        let recipe = immediate_recipe_with_negation(&qt.immediate_recipe, negate);
                         if negate {
                             Field::negate(&mut coeff);
                         }
@@ -3232,6 +2625,7 @@ fn emit_continuation_single_times_linear_form<E: Field>(
                                 batch_power,
                                 negate: false,
                                 immediate_factor: coeff,
+                                immediate_recipe: recipe,
                                 prefactors: vec![],
                             },
                         );
@@ -3245,6 +2639,7 @@ fn emit_continuation_single_times_linear_form<E: Field>(
                         qt.lhs as usize + base_input_offset,
                     );
                     let mut coeff = qt.challenge;
+                    let recipe = immediate_recipe_with_negation(&qt.immediate_recipe, negate);
                     if negate {
                         Field::negate(&mut coeff);
                     }
@@ -3255,6 +2650,7 @@ fn emit_continuation_single_times_linear_form<E: Field>(
                             batch_power,
                             negate: false,
                             immediate_factor: coeff,
+                            immediate_recipe: recipe,
                             prefactors: vec![],
                         },
                     );
@@ -3283,6 +2679,7 @@ fn emit_continuation_linear_form<E: Field>(
                             batch_power,
                             negate,
                             immediate_factor: E::ONE,
+                            immediate_recipe: ImmediateFactorRecipeStructural::one(),
                             prefactors: vec![lt.challenge_terms.clone()],
                         });
                         continue;
@@ -3300,6 +2697,7 @@ fn emit_continuation_linear_form<E: Field>(
                             batch_power,
                             negate,
                             immediate_factor: E::ONE,
+                            immediate_recipe: ImmediateFactorRecipeStructural::one(),
                             prefactors: vec![lt.challenge_terms.clone()],
                         },
                     );
@@ -3311,6 +2709,7 @@ fn emit_continuation_linear_form<E: Field>(
                             batch_power,
                             negate,
                             immediate_factor: E::ONE,
+                            immediate_recipe: ImmediateFactorRecipeStructural::one(),
                             prefactors: vec![qt.challenge_terms.clone()],
                         });
                         continue;
@@ -3328,6 +2727,7 @@ fn emit_continuation_linear_form<E: Field>(
                             batch_power,
                             negate,
                             immediate_factor: E::ONE,
+                            immediate_recipe: ImmediateFactorRecipeStructural::one(),
                             prefactors: vec![qt.challenge_terms.clone()],
                         },
                     );
@@ -3339,6 +2739,7 @@ fn emit_continuation_linear_form<E: Field>(
                 for lt in &meta.linear_terms {
                     if lt.input == NO_CACHE_LINEAR_FORM_CONSTANT_SENTINEL {
                         let mut coeff = lt.challenge;
+                        let recipe = immediate_recipe_with_negation(&lt.immediate_recipe, negate);
                         if negate {
                             Field::negate(&mut coeff);
                         }
@@ -3346,6 +2747,7 @@ fn emit_continuation_linear_form<E: Field>(
                             batch_power,
                             negate: false,
                             immediate_factor: coeff,
+                            immediate_recipe: recipe,
                             prefactors: vec![],
                         });
                         continue;
@@ -3358,6 +2760,7 @@ fn emit_continuation_linear_form<E: Field>(
                         lt.input as usize + base_input_offset,
                     );
                     let mut coeff = lt.challenge;
+                    let recipe = immediate_recipe_with_negation(&lt.immediate_recipe, negate);
                     if negate {
                         Field::negate(&mut coeff);
                     }
@@ -3367,6 +2770,7 @@ fn emit_continuation_linear_form<E: Field>(
                             batch_power,
                             negate: false,
                             immediate_factor: coeff,
+                            immediate_recipe: recipe,
                             prefactors: vec![],
                         },
                     );
@@ -3375,6 +2779,7 @@ fn emit_continuation_linear_form<E: Field>(
                 for qt in &meta.quadratic_terms {
                     if qt.lhs == NO_CACHE_LINEAR_FORM_CONSTANT_SENTINEL {
                         let mut coeff = qt.challenge;
+                        let recipe = immediate_recipe_with_negation(&qt.immediate_recipe, negate);
                         if negate {
                             Field::negate(&mut coeff);
                         }
@@ -3382,6 +2787,7 @@ fn emit_continuation_linear_form<E: Field>(
                             batch_power,
                             negate: false,
                             immediate_factor: coeff,
+                            immediate_recipe: recipe,
                             prefactors: vec![],
                         });
                         continue;
@@ -3394,6 +2800,7 @@ fn emit_continuation_linear_form<E: Field>(
                         qt.lhs as usize + base_input_offset,
                     );
                     let mut coeff = qt.challenge;
+                    let recipe = immediate_recipe_with_negation(&qt.immediate_recipe, negate);
                     if negate {
                         Field::negate(&mut coeff);
                     }
@@ -3403,6 +2810,7 @@ fn emit_continuation_linear_form<E: Field>(
                             batch_power,
                             negate: false,
                             immediate_factor: coeff,
+                            immediate_recipe: recipe,
                             prefactors: vec![],
                         },
                     );
@@ -3432,6 +2840,7 @@ fn emit_continuation_linear_form_times_ext<E: Field>(
                             batch_power,
                             negate,
                             immediate_factor: E::ONE,
+                            immediate_recipe: ImmediateFactorRecipeStructural::one(),
                             prefactors: vec![lt.challenge_terms.clone()],
                         },
                     );
@@ -3451,6 +2860,7 @@ fn emit_continuation_linear_form_times_ext<E: Field>(
                         batch_power,
                         negate,
                         immediate_factor: E::ONE,
+                        immediate_recipe: ImmediateFactorRecipeStructural::one(),
                         prefactors: vec![lt.challenge_terms.clone()],
                     },
                 );
@@ -3460,6 +2870,7 @@ fn emit_continuation_linear_form_times_ext<E: Field>(
             for lt in &meta.linear_terms {
                 if lt.input == NO_CACHE_LINEAR_FORM_CONSTANT_SENTINEL {
                     let mut coeff = lt.challenge;
+                    let recipe = immediate_recipe_with_negation(&lt.immediate_recipe, negate);
                     if negate {
                         Field::negate(&mut coeff);
                     }
@@ -3469,6 +2880,7 @@ fn emit_continuation_linear_form_times_ext<E: Field>(
                             batch_power,
                             negate: false,
                             immediate_factor: coeff,
+                            immediate_recipe: recipe,
                             prefactors: vec![],
                         },
                     );
@@ -3482,6 +2894,7 @@ fn emit_continuation_linear_form_times_ext<E: Field>(
                     lt.input as usize + base_input_offset,
                 );
                 let mut coeff = lt.challenge;
+                let recipe = immediate_recipe_with_negation(&lt.immediate_recipe, negate);
                 if negate {
                     Field::negate(&mut coeff);
                 }
@@ -3492,6 +2905,7 @@ fn emit_continuation_linear_form_times_ext<E: Field>(
                         batch_power,
                         negate: false,
                         immediate_factor: coeff,
+                        immediate_recipe: recipe,
                         prefactors: vec![],
                     },
                 );
@@ -3505,54 +2919,6 @@ fn emit_continuation_linear_form_times_ext<E: Field>(
 // Continuation kernel declarations and launch
 // ---------------------------------------------------------------------------
 
-// Round 3+ unified tiled compact: reads coefficients from __constant__
-cuda_kernel_signature_arguments_and_function!(
-    GpuGKRMainRound3FlatConstantCompactUnified<T>,
-    desc: GpuFlatContinuationUnifiedDesc,
-    folding_challenge: *const T,
-    fold_stride: u32,
-    next_layer_size: u32,
-    eq_values: *const T,
-    contributions: *mut T,
-    acc_size: u32,
-);
-
-cuda_kernel_declaration!(
-    ab_gkr_main_round3_flat_constant_compact_unified_e4_kernel(
-        desc: GpuFlatContinuationUnifiedDesc,
-        folding_challenge: *const E4,
-        fold_stride: u32,
-        next_layer_size: u32,
-        eq_values: *const E4,
-        contributions: *mut E4,
-        acc_size: u32,
-    )
-);
-
-// Round 3+ unified tiled explicit
-cuda_kernel_signature_arguments_and_function!(
-    GpuGKRMainRound3FlatConstantExplicitUnified<T>,
-    desc: GpuFlatContinuationUnifiedDesc,
-    folding_challenge: *const T,
-    fold_stride: u32,
-    next_layer_size: u32,
-    eq_values: *const T,
-    contributions: *mut T,
-    acc_size: u32,
-);
-
-cuda_kernel_declaration!(
-    ab_gkr_main_round3_flat_constant_explicit_unified_e4_kernel(
-        desc: GpuFlatContinuationUnifiedDesc,
-        folding_challenge: *const E4,
-        fold_stride: u32,
-        next_layer_size: u32,
-        eq_values: *const E4,
-        contributions: *mut E4,
-        acc_size: u32,
-    )
-);
-
 // Eval recipes kernel for continuation coefficients. Each challenge is read
 // from its own device pointer (mirrors the round-0 kernel signature).
 cuda_kernel_signature_arguments_and_function!(
@@ -3560,8 +2926,8 @@ cuda_kernel_signature_arguments_and_function!(
     batch_base: *const T,
     lookup_mul: *const T,
     lookup_add: *const T,
-    recipes: *const GpuRecipeHeader,
-    terms: *const GpuPrefactorTerm,
+    ext_challenges: *const T,
+    desc: GpuFlatRecipeEvalDesc,
     coefficients: *mut T,
     num_recipes: u32,
 );
@@ -3571,8 +2937,8 @@ cuda_kernel_declaration!(
         batch_base: *const E4,
         lookup_mul: *const E4,
         lookup_add: *const E4,
-        recipes: *const GpuRecipeHeader,
-        terms: *const GpuPrefactorTerm,
+        ext_challenges: *const E4,
+        desc: GpuFlatRecipeEvalDesc,
         coefficients: *mut E4,
         num_recipes: u32,
     )
@@ -3581,52 +2947,6 @@ cuda_kernel_declaration!(
 // ---------------------------------------------------------------------------
 // Launch functions
 // ---------------------------------------------------------------------------
-
-pub(super) fn launch_main_round3_flat_constant_unified(
-    desc: &GpuFlatContinuationUnifiedDesc,
-    folding_challenge: *const E4,
-    fold_stride: u32,
-    next_layer_size: u32,
-    eq_values: *const E4,
-    contributions: *mut E4,
-    acc_size: u32,
-    explicit_form: bool,
-    context: &ProverContext,
-) -> CudaResult<()> {
-    use era_cudart::execution::CudaLaunchConfig;
-    let block_dim = 128u32;
-    let grid_dim = (acc_size + 31) / 32;
-    let config = CudaLaunchConfig::basic(grid_dim, block_dim, context.get_exec_stream());
-    if explicit_form {
-        let args = GpuGKRMainRound3FlatConstantExplicitUnifiedArguments::new(
-            *desc,
-            folding_challenge,
-            fold_stride,
-            next_layer_size,
-            eq_values,
-            contributions,
-            acc_size,
-        );
-        GpuGKRMainRound3FlatConstantExplicitUnifiedFunction(
-            ab_gkr_main_round3_flat_constant_explicit_unified_e4_kernel,
-        )
-        .launch(&config, &args)
-    } else {
-        let args = GpuGKRMainRound3FlatConstantCompactUnifiedArguments::new(
-            *desc,
-            folding_challenge,
-            fold_stride,
-            next_layer_size,
-            eq_values,
-            contributions,
-            acc_size,
-        );
-        GpuGKRMainRound3FlatConstantCompactUnifiedFunction(
-            ab_gkr_main_round3_flat_constant_compact_unified_e4_kernel,
-        )
-        .launch(&config, &args)
-    }
-}
 
 // ---------------------------------------------------------------------------
 // __constant__ symbol address for continuation coefficients
@@ -3659,15 +2979,15 @@ pub(super) fn eval_continuation_recipes_e4(
     batch_base: *const E4,
     lookup_mul: *const E4,
     lookup_add: *const E4,
-    recipes: &era_cudart::slice::DeviceSlice<GpuRecipeHeader>,
-    terms: &era_cudart::slice::DeviceSlice<GpuPrefactorTerm>,
+    ext_challenges: *const E4,
+    desc: &GpuFlatRecipeEvalDesc,
+    num_recipes: usize,
     coefficients: *mut E4,
     stream: &era_cudart::stream::CudaStream,
 ) -> CudaResult<()> {
     use crate::primitives::utils::{get_grid_block_dims_for_threads_count, WARP_SIZE};
     use era_cudart::execution::CudaLaunchConfig;
 
-    let num_recipes = recipes.len();
     if num_recipes == 0 {
         return Ok(());
     }
@@ -3678,8 +2998,8 @@ pub(super) fn eval_continuation_recipes_e4(
         batch_base,
         lookup_mul,
         lookup_add,
-        recipes.as_ptr(),
-        terms.as_ptr(),
+        ext_challenges,
+        *desc,
         coefficients,
         num_recipes as u32,
     );
@@ -3721,41 +3041,37 @@ impl Default for GpuFlatBaseAfterOneSourceEntry {
     }
 }
 
-/// Round 1 static description: mixed base_after_one + continuing sources.
-#[repr(C)]
-#[derive(Clone, Copy)]
-pub(super) struct GpuFlatRound1StaticDesc {
-    pub(super) base_sources: [GpuFlatBaseAfterOneSourceEntry; FLAT_CONT_MAX_BASE_SOURCES],
+/// Round 1 fused-source data: split base/ext arrays produced from the
+/// continuation plan's source assignments, plus an `idx_remap` that maps
+/// the plan's flat source-table index to the round-1 tagged index
+/// (`FLAT_CONT_EXT_SOURCE_BIT` set for ext entries).
+///
+/// Replaces the legacy `GpuFlatRound1StaticDesc`: term arrays now live in
+/// `plan.term_desc` and the compact builder applies `idx_remap` inline as
+/// it constructs compact term records.
+pub(super) struct Round1FusedSources {
+    pub(super) base_sources: Box<[GpuFlatBaseAfterOneSourceEntry; FLAT_CONT_MAX_BASE_SOURCES]>,
     pub(super) num_base_sources: u32,
-    pub(super) ext_sources: [GpuFlatContinuingSourceEntry; FLAT_CONT_MAX_EXT_SOURCES],
+    pub(super) ext_sources: Box<[GpuFlatContinuingSourceEntry; FLAT_CONT_MAX_EXT_SOURCES]>,
     pub(super) num_ext_sources: u32,
-
-    pub(super) c0_only_linear: [GpuFlatC0Ref; FLAT_CONT_MAX_C0_ONLY_LINEAR],
-    pub(super) num_c0_only_linear: u32,
-    pub(super) unified_quadratic: [GpuFlatC1Pair; FLAT_CONT_MAX_UNIFIED_QUADRATIC],
-    pub(super) num_unified_quadratic: u32,
-    pub(super) unified_linear: [GpuFlatC0Ref; FLAT_CONT_MAX_UNIFIED_LINEAR],
-    pub(super) num_unified_linear: u32,
-    pub(super) num_constants: u32,
+    pub(super) idx_remap: Vec<u16>,
 }
 
-unsafe impl Send for GpuFlatRound1StaticDesc {}
-unsafe impl Sync for GpuFlatRound1StaticDesc {}
+unsafe impl Send for Round1FusedSources {}
+unsafe impl Sync for Round1FusedSources {}
 
-impl Default for GpuFlatRound1StaticDesc {
+impl Default for Round1FusedSources {
     fn default() -> Self {
         Self {
-            base_sources: [GpuFlatBaseAfterOneSourceEntry::default(); FLAT_CONT_MAX_BASE_SOURCES],
+            base_sources: Box::new(
+                [GpuFlatBaseAfterOneSourceEntry::default(); FLAT_CONT_MAX_BASE_SOURCES],
+            ),
             num_base_sources: 0,
-            ext_sources: [GpuFlatContinuingSourceEntry::default(); FLAT_CONT_MAX_EXT_SOURCES],
+            ext_sources: Box::new(
+                [GpuFlatContinuingSourceEntry::default(); FLAT_CONT_MAX_EXT_SOURCES],
+            ),
             num_ext_sources: 0,
-            c0_only_linear: [GpuFlatC0Ref::default(); FLAT_CONT_MAX_C0_ONLY_LINEAR],
-            num_c0_only_linear: 0,
-            unified_quadratic: [GpuFlatC1Pair::default(); FLAT_CONT_MAX_UNIFIED_QUADRATIC],
-            num_unified_quadratic: 0,
-            unified_linear: [GpuFlatC0Ref::default(); FLAT_CONT_MAX_UNIFIED_LINEAR],
-            num_unified_linear: 0,
-            num_constants: 0,
+            idx_remap: Vec::new(),
         }
     }
 }
@@ -3794,156 +3110,36 @@ impl Default for GpuFlatBaseAfterTwoSourceEntry {
     }
 }
 
-/// Round 2 static description: mixed base_after_two + continuing sources.
-#[repr(C)]
-#[derive(Clone, Copy)]
-pub(super) struct GpuFlatRound2StaticDesc {
-    pub(super) base_sources: [GpuFlatBaseAfterTwoSourceEntry; FLAT_CONT_MAX_BASE_SOURCES],
+/// Round 2 fused-source data: split base/ext arrays produced from the
+/// continuation plan's source assignments, plus an `idx_remap` that maps
+/// the plan's flat source-table index to the round-2 tagged index
+/// (`FLAT_CONT_EXT_SOURCE_BIT` set for ext entries). Mirrors
+/// `Round1FusedSources` with the round-2 base-source entry shape.
+pub(super) struct Round2FusedSources {
+    pub(super) base_sources: Box<[GpuFlatBaseAfterTwoSourceEntry; FLAT_CONT_MAX_BASE_SOURCES]>,
     pub(super) num_base_sources: u32,
-    pub(super) ext_sources: [GpuFlatContinuingSourceEntry; FLAT_CONT_MAX_EXT_SOURCES],
+    pub(super) ext_sources: Box<[GpuFlatContinuingSourceEntry; FLAT_CONT_MAX_EXT_SOURCES]>,
     pub(super) num_ext_sources: u32,
-
-    pub(super) c0_only_linear: [GpuFlatC0Ref; FLAT_CONT_MAX_C0_ONLY_LINEAR],
-    pub(super) num_c0_only_linear: u32,
-    pub(super) unified_quadratic: [GpuFlatC1Pair; FLAT_CONT_MAX_UNIFIED_QUADRATIC],
-    pub(super) num_unified_quadratic: u32,
-    pub(super) unified_linear: [GpuFlatC0Ref; FLAT_CONT_MAX_UNIFIED_LINEAR],
-    pub(super) num_unified_linear: u32,
-    pub(super) num_constants: u32,
+    pub(super) idx_remap: Vec<u16>,
 }
 
-unsafe impl Send for GpuFlatRound2StaticDesc {}
-unsafe impl Sync for GpuFlatRound2StaticDesc {}
+unsafe impl Send for Round2FusedSources {}
+unsafe impl Sync for Round2FusedSources {}
 
-impl Default for GpuFlatRound2StaticDesc {
+impl Default for Round2FusedSources {
     fn default() -> Self {
         Self {
-            base_sources: [GpuFlatBaseAfterTwoSourceEntry::default(); FLAT_CONT_MAX_BASE_SOURCES],
+            base_sources: Box::new(
+                [GpuFlatBaseAfterTwoSourceEntry::default(); FLAT_CONT_MAX_BASE_SOURCES],
+            ),
             num_base_sources: 0,
-            ext_sources: [GpuFlatContinuingSourceEntry::default(); FLAT_CONT_MAX_EXT_SOURCES],
+            ext_sources: Box::new(
+                [GpuFlatContinuingSourceEntry::default(); FLAT_CONT_MAX_EXT_SOURCES],
+            ),
             num_ext_sources: 0,
-            c0_only_linear: [GpuFlatC0Ref::default(); FLAT_CONT_MAX_C0_ONLY_LINEAR],
-            num_c0_only_linear: 0,
-            unified_quadratic: [GpuFlatC1Pair::default(); FLAT_CONT_MAX_UNIFIED_QUADRATIC],
-            num_unified_quadratic: 0,
-            unified_linear: [GpuFlatC0Ref::default(); FLAT_CONT_MAX_UNIFIED_LINEAR],
-            num_unified_linear: 0,
-            num_constants: 0,
+            idx_remap: Vec::new(),
         }
     }
-}
-
-// ===========================================================================
-// Round 1 unified-term kernel
-// ===========================================================================
-
-cuda_kernel_signature_arguments_and_function!(
-    GpuGKRMainRound1FlatConstantCompactUnified<T>,
-    desc: GpuFlatRound1UnifiedDesc,
-    folding_challenge: *const T,
-    fold_stride: u32,
-    next_layer_size: u32,
-    eq_values: *const T,
-    contributions: *mut T,
-    acc_size: u32,
-);
-
-cuda_kernel_declaration!(
-    ab_gkr_main_round1_flat_constant_compact_unified_e4_kernel(
-        desc: GpuFlatRound1UnifiedDesc,
-        folding_challenge: *const E4,
-        fold_stride: u32,
-        next_layer_size: u32,
-        eq_values: *const E4,
-        contributions: *mut E4,
-        acc_size: u32,
-    )
-);
-
-pub(super) fn launch_main_round1_flat_constant_unified(
-    desc: &GpuFlatRound1UnifiedDesc,
-    folding_challenge: *const E4,
-    fold_stride: u32,
-    next_layer_size: u32,
-    eq_values: *const E4,
-    contributions: *mut E4,
-    acc_size: u32,
-    context: &ProverContext,
-) -> CudaResult<()> {
-    use era_cudart::execution::CudaLaunchConfig;
-    let block_dim = 128u32;
-    let grid_dim = (acc_size + 31) / 32;
-    let config = CudaLaunchConfig::basic(grid_dim, block_dim, context.get_exec_stream());
-    let args = GpuGKRMainRound1FlatConstantCompactUnifiedArguments::new(
-        *desc,
-        folding_challenge,
-        fold_stride,
-        next_layer_size,
-        eq_values,
-        contributions,
-        acc_size,
-    );
-    GpuGKRMainRound1FlatConstantCompactUnifiedFunction(
-        ab_gkr_main_round1_flat_constant_compact_unified_e4_kernel,
-    )
-    .launch(&config, &args)
-}
-
-// ===========================================================================
-// Round 2 unified tiled kernel
-// ===========================================================================
-
-// Round 2 unified tiled compact
-cuda_kernel_signature_arguments_and_function!(
-    GpuGKRMainRound2FlatConstantCompactUnified<T>,
-    desc: GpuFlatRound2UnifiedDesc,
-    folding_challenges: *const T,
-    fold_stride: u32,
-    next_layer_size: u32,
-    eq_values: *const T,
-    contributions: *mut T,
-    acc_size: u32,
-);
-
-cuda_kernel_declaration!(
-    ab_gkr_main_round2_flat_constant_compact_unified_e4_kernel(
-        desc: GpuFlatRound2UnifiedDesc,
-        folding_challenges: *const E4,
-        fold_stride: u32,
-        next_layer_size: u32,
-        eq_values: *const E4,
-        contributions: *mut E4,
-        acc_size: u32,
-    )
-);
-
-pub(super) fn launch_main_round2_flat_constant_unified(
-    desc: &GpuFlatRound2UnifiedDesc,
-    folding_challenges: *const E4,
-    fold_stride: u32,
-    next_layer_size: u32,
-    eq_values: *const E4,
-    contributions: *mut E4,
-    acc_size: u32,
-    context: &ProverContext,
-) -> CudaResult<()> {
-    use era_cudart::execution::CudaLaunchConfig;
-    let block_dim = 128u32;
-    let grid_dim = (acc_size + 31) / 32;
-    let config = CudaLaunchConfig::basic(grid_dim, block_dim, context.get_exec_stream());
-    let args = GpuGKRMainRound2FlatConstantCompactUnifiedArguments::new(
-        *desc,
-        folding_challenges,
-        fold_stride,
-        next_layer_size,
-        eq_values,
-        contributions,
-        acc_size,
-    );
-    GpuGKRMainRound2FlatConstantCompactUnifiedFunction(
-        ab_gkr_main_round2_flat_constant_compact_unified_e4_kernel,
-    )
-    .launch(&config, &args)
 }
 
 #[cfg(test)]
@@ -4022,636 +3218,12 @@ mod tests {
         }
     }
 
-    struct Round1BaseCpu {
-        values: Vec<BF>,
-        base_layer_half_size: usize,
-        next_layer_size: usize,
-    }
-
-    struct Round2BaseCpu {
-        values: Vec<BF>,
-        base_layer_half_size: usize,
-        base_quarter_size: usize,
-        next_layer_size: usize,
-    }
-
-    struct ExtCpu {
-        values: Vec<E4>,
-    }
-
-    fn fold_ext_value(values: &[E4], fold_stride: usize, idx: usize, challenge: E4) -> E4 {
-        let f0 = values[idx];
-        let f1 = values[fold_stride + idx];
-        let mut diff = f1;
-        diff.sub_assign(&f0);
-        let mut result = challenge;
-        result.mul_assign(&diff);
-        result.add_assign(&f0);
-        result
-    }
-
-    fn load_ext_pair(
-        values: &[E4],
-        fold_stride: usize,
-        next_layer_size: usize,
-        gid: usize,
-        challenge: E4,
-        explicit: bool,
-    ) -> (E4, E4) {
-        let f0 = fold_ext_value(values, fold_stride, gid, challenge);
-        let f1 = fold_ext_value(values, fold_stride, next_layer_size + gid, challenge);
-        if explicit {
-            (f0, f1)
-        } else {
-            let mut delta = f1;
-            delta.sub_assign(&f0);
-            (f0, delta)
-        }
-    }
-
-    fn base_after_one_value(
-        values: &[BF],
-        base_layer_half_size: usize,
-        idx: usize,
-        challenge: E4,
-    ) -> E4 {
-        let f0 = values[idx];
-        let f1 = values[base_layer_half_size + idx];
-        let mut diff = f1;
-        diff.sub_assign(&f0);
-        let mut result = challenge;
-        result.mul_assign_by_base(&diff);
-        result.add_assign_base(&f0);
-        result
-    }
-
-    fn load_base_after_one_pair(
-        values: &[BF],
-        base_layer_half_size: usize,
-        next_layer_size: usize,
-        gid: usize,
-        challenge: E4,
-        explicit: bool,
-    ) -> (E4, E4) {
-        let f0 = base_after_one_value(values, base_layer_half_size, gid, challenge);
-        let f1 = base_after_one_value(
-            values,
-            base_layer_half_size,
-            next_layer_size + gid,
-            challenge,
-        );
-        if explicit {
-            (f0, f1)
-        } else {
-            let mut delta = f1;
-            delta.sub_assign(&f0);
-            (f0, delta)
-        }
-    }
-
-    fn base_after_two_value(
-        values: &[BF],
-        base_layer_half_size: usize,
-        base_quarter_size: usize,
-        idx: usize,
-        first_challenge: E4,
-        second_challenge: E4,
-    ) -> E4 {
-        let f00 = values[idx];
-        let f01 = values[base_layer_half_size + idx];
-        let f10 = values[base_quarter_size + idx];
-        let f11 = values[base_layer_half_size + base_quarter_size + idx];
-
-        let mut c01 = f01;
-        c01.sub_assign(&f00);
-        let mut c10 = f10;
-        c10.sub_assign(&f00);
-        let mut c11 = f00;
-        c11.sub_assign(&f01);
-        c11.sub_assign(&f10);
-        c11.add_assign(&f11);
-
-        let mut result = first_challenge;
-        result.mul_assign_by_base(&c01);
-        let mut term = second_challenge;
-        term.mul_assign_by_base(&c10);
-        result.add_assign(&term);
-        let mut combined = first_challenge;
-        combined.mul_assign(&second_challenge);
-        combined.mul_assign_by_base(&c11);
-        result.add_assign(&combined);
-        result.add_assign_base(&f00);
-        result
-    }
-
-    fn load_base_after_two_pair(
-        values: &[BF],
-        base_layer_half_size: usize,
-        base_quarter_size: usize,
-        next_layer_size: usize,
-        gid: usize,
-        first_challenge: E4,
-        second_challenge: E4,
-        explicit: bool,
-    ) -> (E4, E4) {
-        let f0 = base_after_two_value(
-            values,
-            base_layer_half_size,
-            base_quarter_size,
-            gid,
-            first_challenge,
-            second_challenge,
-        );
-        let f1 = base_after_two_value(
-            values,
-            base_layer_half_size,
-            base_quarter_size,
-            next_layer_size + gid,
-            first_challenge,
-            second_challenge,
-        );
-        if explicit {
-            (f0, f1)
-        } else {
-            let mut delta = f1;
-            delta.sub_assign(&f0);
-            (f0, delta)
-        }
-    }
-
-    fn eval_round1_cpu(
-        desc: &GpuFlatRound1StaticDesc,
-        coeffs: &[E4],
-        base_sources: &[Round1BaseCpu],
-        ext_sources: &[ExtCpu],
-        folding_challenge: E4,
-        fold_stride: usize,
-        next_layer_size: usize,
-        eq_values: &[E4],
-        acc_size: usize,
-        explicit: bool,
-    ) -> Vec<E4> {
-        let mut output = vec![E4::ZERO; acc_size * 2];
-        for gid in 0..acc_size {
-            let mut c0 = E4::ZERO;
-            let mut c1 = E4::ZERO;
-            let mut coeff_idx = 0usize;
-
-            for _ in 0..desc.num_constants as usize {
-                let k = coeffs[coeff_idx];
-                coeff_idx += 1;
-                c0.add_assign(&k);
-                if explicit {
-                    c1.add_assign(&k);
-                }
-            }
-
-            for i in 0..desc.num_c0_only_linear as usize {
-                let source_idx = desc.c0_only_linear[i].source_idx;
-                let (f0, f1) = if source_idx & FLAT_CONT_EXT_SOURCE_BIT != 0 {
-                    let idx = (source_idx & !FLAT_CONT_EXT_SOURCE_BIT) as usize;
-                    load_ext_pair(
-                        &ext_sources[idx].values,
-                        fold_stride,
-                        next_layer_size,
-                        gid,
-                        folding_challenge,
-                        explicit,
-                    )
-                } else {
-                    let idx = source_idx as usize;
-                    let src = &base_sources[idx];
-                    load_base_after_one_pair(
-                        &src.values,
-                        src.base_layer_half_size,
-                        src.next_layer_size,
-                        gid,
-                        folding_challenge,
-                        explicit,
-                    )
-                };
-                let k = coeffs[coeff_idx];
-                coeff_idx += 1;
-                let mut term0 = k;
-                term0.mul_assign(&f0);
-                c0.add_assign(&term0);
-                if explicit {
-                    let mut term1 = k;
-                    term1.mul_assign(&f1);
-                    c1.add_assign(&term1);
-                }
-            }
-
-            for i in 0..desc.num_unified_quadratic as usize {
-                let t = desc.unified_quadratic[i];
-                let (a0, a1) = if t.source_a & FLAT_CONT_EXT_SOURCE_BIT != 0 {
-                    let idx = (t.source_a & !FLAT_CONT_EXT_SOURCE_BIT) as usize;
-                    load_ext_pair(
-                        &ext_sources[idx].values,
-                        fold_stride,
-                        next_layer_size,
-                        gid,
-                        folding_challenge,
-                        explicit,
-                    )
-                } else {
-                    let idx = t.source_a as usize;
-                    let src = &base_sources[idx];
-                    load_base_after_one_pair(
-                        &src.values,
-                        src.base_layer_half_size,
-                        src.next_layer_size,
-                        gid,
-                        folding_challenge,
-                        explicit,
-                    )
-                };
-                let (b0, b1) = if t.source_b & FLAT_CONT_EXT_SOURCE_BIT != 0 {
-                    let idx = (t.source_b & !FLAT_CONT_EXT_SOURCE_BIT) as usize;
-                    load_ext_pair(
-                        &ext_sources[idx].values,
-                        fold_stride,
-                        next_layer_size,
-                        gid,
-                        folding_challenge,
-                        explicit,
-                    )
-                } else {
-                    let idx = t.source_b as usize;
-                    let src = &base_sources[idx];
-                    load_base_after_one_pair(
-                        &src.values,
-                        src.base_layer_half_size,
-                        src.next_layer_size,
-                        gid,
-                        folding_challenge,
-                        explicit,
-                    )
-                };
-                let k = coeffs[coeff_idx];
-                coeff_idx += 1;
-                let mut prod0 = a0;
-                prod0.mul_assign(&b0);
-                let mut term0 = k;
-                term0.mul_assign(&prod0);
-                c0.add_assign(&term0);
-                let mut prod1 = a1;
-                prod1.mul_assign(&b1);
-                let mut term1 = k;
-                term1.mul_assign(&prod1);
-                c1.add_assign(&term1);
-            }
-
-            for i in 0..desc.num_unified_linear as usize {
-                let source_idx = desc.unified_linear[i].source_idx;
-                let (f0, f1) = if source_idx & FLAT_CONT_EXT_SOURCE_BIT != 0 {
-                    let idx = (source_idx & !FLAT_CONT_EXT_SOURCE_BIT) as usize;
-                    load_ext_pair(
-                        &ext_sources[idx].values,
-                        fold_stride,
-                        next_layer_size,
-                        gid,
-                        folding_challenge,
-                        explicit,
-                    )
-                } else {
-                    let idx = source_idx as usize;
-                    let src = &base_sources[idx];
-                    load_base_after_one_pair(
-                        &src.values,
-                        src.base_layer_half_size,
-                        src.next_layer_size,
-                        gid,
-                        folding_challenge,
-                        explicit,
-                    )
-                };
-                let k = coeffs[coeff_idx];
-                coeff_idx += 1;
-                let mut term0 = k;
-                term0.mul_assign(&f0);
-                c0.add_assign(&term0);
-                let mut term1 = k;
-                term1.mul_assign(&f1);
-                c1.add_assign(&term1);
-            }
-
-            let mut out0 = c0;
-            out0.mul_assign(&eq_values[gid]);
-            let mut out1 = c1;
-            out1.mul_assign(&eq_values[gid]);
-            output[gid] = out0;
-            output[acc_size + gid] = out1;
-        }
-        output
-    }
-
-    fn eval_round2_cpu(
-        desc: &GpuFlatRound2StaticDesc,
-        coeffs: &[E4],
-        base_sources: &[Round2BaseCpu],
-        ext_sources: &[ExtCpu],
-        first_challenge: E4,
-        second_challenge: E4,
-        fold_stride: usize,
-        next_layer_size: usize,
-        eq_values: &[E4],
-        acc_size: usize,
-        explicit: bool,
-    ) -> Vec<E4> {
-        let mut output = vec![E4::ZERO; acc_size * 2];
-        for gid in 0..acc_size {
-            let mut c0 = E4::ZERO;
-            let mut c1 = E4::ZERO;
-            let mut coeff_idx = 0usize;
-
-            for _ in 0..desc.num_constants as usize {
-                let k = coeffs[coeff_idx];
-                coeff_idx += 1;
-                c0.add_assign(&k);
-                if explicit {
-                    c1.add_assign(&k);
-                }
-            }
-
-            for i in 0..desc.num_c0_only_linear as usize {
-                let source_idx = desc.c0_only_linear[i].source_idx;
-                let (f0, f1) = if source_idx & FLAT_CONT_EXT_SOURCE_BIT != 0 {
-                    let idx = (source_idx & !FLAT_CONT_EXT_SOURCE_BIT) as usize;
-                    load_ext_pair(
-                        &ext_sources[idx].values,
-                        fold_stride,
-                        next_layer_size,
-                        gid,
-                        second_challenge,
-                        explicit,
-                    )
-                } else {
-                    let idx = source_idx as usize;
-                    let src = &base_sources[idx];
-                    load_base_after_two_pair(
-                        &src.values,
-                        src.base_layer_half_size,
-                        src.base_quarter_size,
-                        src.next_layer_size,
-                        gid,
-                        first_challenge,
-                        second_challenge,
-                        explicit,
-                    )
-                };
-                let k = coeffs[coeff_idx];
-                coeff_idx += 1;
-                let mut term0 = k;
-                term0.mul_assign(&f0);
-                c0.add_assign(&term0);
-                if explicit {
-                    let mut term1 = k;
-                    term1.mul_assign(&f1);
-                    c1.add_assign(&term1);
-                }
-            }
-
-            for i in 0..desc.num_unified_quadratic as usize {
-                let t = desc.unified_quadratic[i];
-                let (a0, a1) = if t.source_a & FLAT_CONT_EXT_SOURCE_BIT != 0 {
-                    let idx = (t.source_a & !FLAT_CONT_EXT_SOURCE_BIT) as usize;
-                    load_ext_pair(
-                        &ext_sources[idx].values,
-                        fold_stride,
-                        next_layer_size,
-                        gid,
-                        second_challenge,
-                        explicit,
-                    )
-                } else {
-                    let idx = t.source_a as usize;
-                    let src = &base_sources[idx];
-                    load_base_after_two_pair(
-                        &src.values,
-                        src.base_layer_half_size,
-                        src.base_quarter_size,
-                        src.next_layer_size,
-                        gid,
-                        first_challenge,
-                        second_challenge,
-                        explicit,
-                    )
-                };
-                let (b0, b1) = if t.source_b & FLAT_CONT_EXT_SOURCE_BIT != 0 {
-                    let idx = (t.source_b & !FLAT_CONT_EXT_SOURCE_BIT) as usize;
-                    load_ext_pair(
-                        &ext_sources[idx].values,
-                        fold_stride,
-                        next_layer_size,
-                        gid,
-                        second_challenge,
-                        explicit,
-                    )
-                } else {
-                    let idx = t.source_b as usize;
-                    let src = &base_sources[idx];
-                    load_base_after_two_pair(
-                        &src.values,
-                        src.base_layer_half_size,
-                        src.base_quarter_size,
-                        src.next_layer_size,
-                        gid,
-                        first_challenge,
-                        second_challenge,
-                        explicit,
-                    )
-                };
-                let k = coeffs[coeff_idx];
-                coeff_idx += 1;
-                let mut prod0 = a0;
-                prod0.mul_assign(&b0);
-                let mut term0 = k;
-                term0.mul_assign(&prod0);
-                c0.add_assign(&term0);
-                let mut prod1 = a1;
-                prod1.mul_assign(&b1);
-                let mut term1 = k;
-                term1.mul_assign(&prod1);
-                c1.add_assign(&term1);
-            }
-
-            for i in 0..desc.num_unified_linear as usize {
-                let source_idx = desc.unified_linear[i].source_idx;
-                let (f0, f1) = if source_idx & FLAT_CONT_EXT_SOURCE_BIT != 0 {
-                    let idx = (source_idx & !FLAT_CONT_EXT_SOURCE_BIT) as usize;
-                    load_ext_pair(
-                        &ext_sources[idx].values,
-                        fold_stride,
-                        next_layer_size,
-                        gid,
-                        second_challenge,
-                        explicit,
-                    )
-                } else {
-                    let idx = source_idx as usize;
-                    let src = &base_sources[idx];
-                    load_base_after_two_pair(
-                        &src.values,
-                        src.base_layer_half_size,
-                        src.base_quarter_size,
-                        src.next_layer_size,
-                        gid,
-                        first_challenge,
-                        second_challenge,
-                        explicit,
-                    )
-                };
-                let k = coeffs[coeff_idx];
-                coeff_idx += 1;
-                let mut term0 = k;
-                term0.mul_assign(&f0);
-                c0.add_assign(&term0);
-                let mut term1 = k;
-                term1.mul_assign(&f1);
-                c1.add_assign(&term1);
-            }
-
-            let mut out0 = c0;
-            out0.mul_assign(&eq_values[gid]);
-            let mut out1 = c1;
-            out1.mul_assign(&eq_values[gid]);
-            output[gid] = out0;
-            output[acc_size + gid] = out1;
-        }
-        output
-    }
-
-    fn eval_round3_cpu(
-        desc: &GpuFlatContinuationStaticDesc,
-        coeffs: &[E4],
-        sources: &[ExtCpu],
-        folding_challenge: E4,
-        fold_stride: usize,
-        next_layer_size: usize,
-        eq_values: &[E4],
-        acc_size: usize,
-        explicit: bool,
-    ) -> Vec<E4> {
-        let mut output = vec![E4::ZERO; acc_size * 2];
-        for gid in 0..acc_size {
-            let mut c0 = E4::ZERO;
-            let mut c1 = E4::ZERO;
-            let mut coeff_idx = 0usize;
-
-            for _ in 0..desc.num_constants as usize {
-                let k = coeffs[coeff_idx];
-                coeff_idx += 1;
-                c0.add_assign(&k);
-                if explicit {
-                    c1.add_assign(&k);
-                }
-            }
-
-            for i in 0..desc.num_c0_only_linear as usize {
-                let idx = desc.c0_only_linear[i].source_idx as usize;
-                let (f0, f1) = load_ext_pair(
-                    &sources[idx].values,
-                    fold_stride,
-                    next_layer_size,
-                    gid,
-                    folding_challenge,
-                    explicit,
-                );
-                let k = coeffs[coeff_idx];
-                coeff_idx += 1;
-                let mut term0 = k;
-                term0.mul_assign(&f0);
-                c0.add_assign(&term0);
-                if explicit {
-                    let mut term1 = k;
-                    term1.mul_assign(&f1);
-                    c1.add_assign(&term1);
-                }
-            }
-
-            for i in 0..desc.num_unified_quadratic as usize {
-                let t = desc.unified_quadratic[i];
-                let (a0, a1) = load_ext_pair(
-                    &sources[t.source_a as usize].values,
-                    fold_stride,
-                    next_layer_size,
-                    gid,
-                    folding_challenge,
-                    explicit,
-                );
-                let (b0, b1) = load_ext_pair(
-                    &sources[t.source_b as usize].values,
-                    fold_stride,
-                    next_layer_size,
-                    gid,
-                    folding_challenge,
-                    explicit,
-                );
-                let k = coeffs[coeff_idx];
-                coeff_idx += 1;
-                let mut prod0 = a0;
-                prod0.mul_assign(&b0);
-                let mut term0 = k;
-                term0.mul_assign(&prod0);
-                c0.add_assign(&term0);
-                let mut prod1 = a1;
-                prod1.mul_assign(&b1);
-                let mut term1 = k;
-                term1.mul_assign(&prod1);
-                c1.add_assign(&term1);
-            }
-
-            for i in 0..desc.num_unified_linear as usize {
-                let idx = desc.unified_linear[i].source_idx as usize;
-                let (f0, f1) = load_ext_pair(
-                    &sources[idx].values,
-                    fold_stride,
-                    next_layer_size,
-                    gid,
-                    folding_challenge,
-                    explicit,
-                );
-                let k = coeffs[coeff_idx];
-                coeff_idx += 1;
-                let mut term0 = k;
-                term0.mul_assign(&f0);
-                c0.add_assign(&term0);
-                let mut term1 = k;
-                term1.mul_assign(&f1);
-                c1.add_assign(&term1);
-            }
-
-            let mut out0 = c0;
-            out0.mul_assign(&eq_values[gid]);
-            let mut out1 = c1;
-            out1.mul_assign(&eq_values[gid]);
-            output[gid] = out0;
-            output[acc_size + gid] = out1;
-        }
-        output
-    }
-
     fn build_round1_desc_from_plan(
         plan: &FlatContinuationBuildPlan<E4>,
         base_sources: &[Vec<GpuFlatBaseAfterOneSourceEntry>],
         ext_sources: &[Vec<GpuFlatContinuingSourceEntry>],
-    ) -> GpuFlatRound1StaticDesc {
-        let mut desc = GpuFlatRound1StaticDesc::default();
-        desc.c0_only_linear[..plan.term_desc.num_c0_only_linear as usize].copy_from_slice(
-            &plan.term_desc.c0_only_linear[..plan.term_desc.num_c0_only_linear as usize],
-        );
-        desc.num_c0_only_linear = plan.term_desc.num_c0_only_linear;
-        desc.unified_quadratic[..plan.term_desc.num_unified_quadratic as usize].copy_from_slice(
-            &plan.term_desc.unified_quadratic[..plan.term_desc.num_unified_quadratic as usize],
-        );
-        desc.num_unified_quadratic = plan.term_desc.num_unified_quadratic;
-        desc.unified_linear[..plan.term_desc.num_unified_linear as usize].copy_from_slice(
-            &plan.term_desc.unified_linear[..plan.term_desc.num_unified_linear as usize],
-        );
-        desc.num_unified_linear = plan.term_desc.num_unified_linear;
-        desc.num_constants = plan.term_desc.num_constants;
-
+    ) -> Round1FusedSources {
+        let mut desc = Round1FusedSources::default();
         let mut base_count = 0u32;
         let mut ext_count = 0u32;
         const UNASSIGNED: u16 = u16::MAX;
@@ -4678,22 +3250,7 @@ mod tests {
         }
         desc.num_base_sources = base_count;
         desc.num_ext_sources = ext_count;
-
-        for i in 0..desc.num_c0_only_linear as usize {
-            desc.c0_only_linear[i].source_idx =
-                idx_remap[desc.c0_only_linear[i].source_idx as usize];
-        }
-        for i in 0..desc.num_unified_quadratic as usize {
-            desc.unified_quadratic[i].source_a =
-                idx_remap[desc.unified_quadratic[i].source_a as usize];
-            desc.unified_quadratic[i].source_b =
-                idx_remap[desc.unified_quadratic[i].source_b as usize];
-        }
-        for i in 0..desc.num_unified_linear as usize {
-            desc.unified_linear[i].source_idx =
-                idx_remap[desc.unified_linear[i].source_idx as usize];
-        }
-
+        desc.idx_remap = idx_remap;
         desc
     }
 
@@ -4701,22 +3258,8 @@ mod tests {
         plan: &FlatContinuationBuildPlan<E4>,
         base_sources: &[Vec<GpuFlatBaseAfterTwoSourceEntry>],
         ext_sources: &[Vec<GpuFlatContinuingSourceEntry>],
-    ) -> GpuFlatRound2StaticDesc {
-        let mut desc = GpuFlatRound2StaticDesc::default();
-        desc.c0_only_linear[..plan.term_desc.num_c0_only_linear as usize].copy_from_slice(
-            &plan.term_desc.c0_only_linear[..plan.term_desc.num_c0_only_linear as usize],
-        );
-        desc.num_c0_only_linear = plan.term_desc.num_c0_only_linear;
-        desc.unified_quadratic[..plan.term_desc.num_unified_quadratic as usize].copy_from_slice(
-            &plan.term_desc.unified_quadratic[..plan.term_desc.num_unified_quadratic as usize],
-        );
-        desc.num_unified_quadratic = plan.term_desc.num_unified_quadratic;
-        desc.unified_linear[..plan.term_desc.num_unified_linear as usize].copy_from_slice(
-            &plan.term_desc.unified_linear[..plan.term_desc.num_unified_linear as usize],
-        );
-        desc.num_unified_linear = plan.term_desc.num_unified_linear;
-        desc.num_constants = plan.term_desc.num_constants;
-
+    ) -> Round2FusedSources {
+        let mut desc = Round2FusedSources::default();
         let mut base_count = 0u32;
         let mut ext_count = 0u32;
         const UNASSIGNED: u16 = u16::MAX;
@@ -4743,22 +3286,7 @@ mod tests {
         }
         desc.num_base_sources = base_count;
         desc.num_ext_sources = ext_count;
-
-        for i in 0..desc.num_c0_only_linear as usize {
-            desc.c0_only_linear[i].source_idx =
-                idx_remap[desc.c0_only_linear[i].source_idx as usize];
-        }
-        for i in 0..desc.num_unified_quadratic as usize {
-            desc.unified_quadratic[i].source_a =
-                idx_remap[desc.unified_quadratic[i].source_a as usize];
-            desc.unified_quadratic[i].source_b =
-                idx_remap[desc.unified_quadratic[i].source_b as usize];
-        }
-        for i in 0..desc.num_unified_linear as usize {
-            desc.unified_linear[i].source_idx =
-                idx_remap[desc.unified_linear[i].source_idx as usize];
-        }
-
+        desc.idx_remap = idx_remap;
         desc
     }
 
@@ -4792,11 +3320,10 @@ mod tests {
         let desc = build_round1_desc_from_plan(&plan, &base_sources, &ext_sources);
         assert_eq!(desc.num_base_sources, 1);
         assert_eq!(desc.num_ext_sources, 1);
-        let quad = desc.unified_quadratic[0];
-        assert_eq!(quad.source_a & FLAT_CONT_EXT_SOURCE_BIT, 0);
-        assert_ne!(quad.source_b & FLAT_CONT_EXT_SOURCE_BIT, 0);
-        let lin = desc.c0_only_linear[0].source_idx;
-        assert_eq!(lin & FLAT_CONT_EXT_SOURCE_BIT, 0);
+        // 2 continuation sources (one base, one ext) map to {0, FLAT_CONT_EXT_SOURCE_BIT}.
+        let mut tags: Vec<u16> = desc.idx_remap.clone();
+        tags.sort();
+        assert_eq!(tags, vec![0u16, FLAT_CONT_EXT_SOURCE_BIT]);
     }
 
     #[test]
@@ -4830,178 +3357,18 @@ mod tests {
         let desc = build_round2_desc_from_plan(&plan, &base_sources, &ext_sources);
         assert_eq!(desc.num_base_sources, 1);
         assert_eq!(desc.num_ext_sources, 1);
-        let quad = desc.unified_quadratic[0];
-        assert_eq!(quad.source_a & FLAT_CONT_EXT_SOURCE_BIT, 0);
-        assert_ne!(quad.source_b & FLAT_CONT_EXT_SOURCE_BIT, 0);
-        let lin = desc.c0_only_linear[0].source_idx;
-        assert_eq!(lin & FLAT_CONT_EXT_SOURCE_BIT, 0);
+        // 2 continuation sources (one base, one ext) map to {0, FLAT_CONT_EXT_SOURCE_BIT}.
+        let mut tags: Vec<u16> = desc.idx_remap.clone();
+        tags.sort();
+        assert_eq!(tags, vec![0u16, FLAT_CONT_EXT_SOURCE_BIT]);
     }
 
-    /// Test the flat kernel with a BaseCopy gate using a Resolved recipe.
-    #[test]
-    #[cfg(not(no_cuda))]
-    #[serial]
-    fn flat_round0_base_copy_matches_cpu() {
-        let context = make_test_context(64, 8);
-        let acc_size = 2usize;
-        let output_values: Vec<BF> = (0..4).map(|i| BF::new(100 + i)).collect();
-        let batch_challenge = sample_ext(200);
-        let claim_challenge = sample_ext(60);
-
-        let output_dev = alloc_and_copy(&context, &output_values);
-        let eq = {
-            let mut one_minus = E4::ONE;
-            one_minus.sub_assign(&claim_challenge);
-            [one_minus, claim_challenge]
-        };
-        let eq_dev = alloc_and_copy(&context, &eq);
-        let mut contributions: DeviceAllocation<E4> = context
-            .alloc(acc_size * 2, AllocationPlacement::Top)
-            .unwrap();
-
-        // Build plan with a Resolved recipe (test path)
-        let mut b = FlatDescriptionBuilder::new();
-        let out = b.add_bf_source(&GpuBaseFieldPolySource {
-            start: output_dev.as_ptr(),
-            next_layer_size: acc_size,
-            source_kind: GpuBaseFieldSourceKind::Real,
-        });
-        b.push_c0_bf(
-            out,
-            CoefficientRecipe {
-                batch_power: 0,
-                negate: false,
-                immediate_factor: batch_challenge,
-                prefactors: vec![],
-            },
-        );
-        let plan = b.finish();
-
-        let coeffs = plan.resolve_all(E4::ONE, E4::ZERO, E4::ZERO);
-        let coeffs_dev = alloc_and_copy(&context, &coeffs);
-
-        launch_main_round0_flat(
-            &plan.static_desc,
-            coeffs_dev.as_ptr(),
-            eq_dev.as_ptr(),
-            contributions.as_mut_ptr(),
-            acc_size as u32,
-            &context,
-        )
-        .unwrap();
-
-        let actual = read_device(&context, &contributions, acc_size * 2);
-
-        // CPU reference: c0 = batch_challenge * output[gid] * eq[gid], c1 = 0
-        let mut expected = Vec::new();
-        for gid in 0..acc_size {
-            let mut c0 = batch_challenge;
-            c0.mul_assign_by_base(&output_values[gid]);
-            c0.mul_assign(&eq[gid]);
-            expected.push(c0);
-        }
-        for _ in 0..acc_size {
-            expected.push(E4::ZERO);
-        }
-
-        assert_eq!(actual, expected, "flat round0 BaseCopy mismatch");
-    }
-
-    /// Test the flat kernel with a Product gate using Deferred recipes + resolve.
-    #[test]
-    #[cfg(not(no_cuda))]
-    #[serial]
-    fn flat_round0_product_deferred_matches_cpu() {
-        let context = make_test_context(64, 8);
-        let acc_size = 2usize;
-
-        let input0: Vec<E4> = (0..4).map(|i| sample_ext(10 + i * 10)).collect();
-        let input1: Vec<E4> = (0..4).map(|i| sample_ext(50 + i * 10)).collect();
-        let output: Vec<E4> = (0..4).map(|i| sample_ext(90 + i * 10)).collect();
-
-        let input0_dev = alloc_and_copy(&context, &input0);
-        let input1_dev = alloc_and_copy(&context, &input1);
-        let output_dev = alloc_and_copy(&context, &output);
-
-        let batch_challenge_base = sample_ext(300);
-        let claim_challenge = sample_ext(200);
-
-        let eq = {
-            let mut one_minus = E4::ONE;
-            one_minus.sub_assign(&claim_challenge);
-            [one_minus, claim_challenge]
-        };
-        let eq_dev = alloc_and_copy(&context, &eq);
-        let mut contributions: DeviceAllocation<E4> = context
-            .alloc(acc_size * 2, AllocationPlacement::Top)
-            .unwrap();
-
-        // Build plan using build_flat_round0_plan (Deferred recipes)
-        let r0_desc = GpuSumcheckRound0LaunchDescriptors {
-            base_field_inputs: vec![],
-            extension_field_inputs: vec![
-                GpuExtensionFieldPolyInitialSource {
-                    start: input0_dev.as_ptr(),
-                    next_layer_size: acc_size,
-                },
-                GpuExtensionFieldPolyInitialSource {
-                    start: input1_dev.as_ptr(),
-                    next_layer_size: acc_size,
-                },
-            ],
-            base_field_outputs: vec![],
-            extension_field_outputs: vec![GpuExtensionFieldPolyInitialSource {
-                start: output_dev.as_ptr(),
-                next_layer_size: acc_size,
-            }],
-        };
-        let gate = PreparedGateForFlatPlan {
-            kind: GpuGKRMainLayerKernelKind::Product,
-            round0: &r0_desc,
-            batch_challenge_power_offset: 0,
-            constraint_source: None,
-        };
-        let plan = build_flat_round0_plan(&[gate]);
-
-        // Resolve: batch_power=0 → base^0 = 1
-        let coeffs = plan.resolve_all(batch_challenge_base, E4::ZERO, E4::ZERO);
-        let coeffs_dev = alloc_and_copy(&context, &coeffs);
-
-        launch_main_round0_flat(
-            &plan.static_desc,
-            coeffs_dev.as_ptr(),
-            eq_dev.as_ptr(),
-            contributions.as_mut_ptr(),
-            acc_size as u32,
-            &context,
-        )
-        .unwrap();
-
-        let actual = read_device(&context, &contributions, acc_size * 2);
-
-        // CPU: batch_challenge = base.pow(0) = ONE
-        let bc = E4::ONE;
-        let mut expected = Vec::new();
-        for gid in 0..acc_size {
-            let mut c0 = bc;
-            c0.mul_assign(&output[gid]);
-            c0.mul_assign(&eq[gid]);
-            expected.push(c0);
-        }
-        for gid in 0..acc_size {
-            let mut delta_a = input0[gid + acc_size];
-            delta_a.sub_assign(&input0[gid]);
-            let mut delta_b = input1[gid + acc_size];
-            delta_b.sub_assign(&input1[gid]);
-            let mut c1 = bc;
-            c1.mul_assign(&delta_a);
-            c1.mul_assign(&delta_b);
-            c1.mul_assign(&eq[gid]);
-            expected.push(c1);
-        }
-
-        assert_eq!(actual, expected, "flat round0 Product deferred mismatch");
-    }
+    // Legacy GPU unit tests for the round-0 kernel
+    // (`flat_round0_base_copy_matches_cpu`,
+    // `flat_round0_product_deferred_matches_cpu`) were deleted with the
+    // legacy launcher. End-to-end coverage of the same gate kinds runs
+    // through the compact-path stagewise/multi-schedule parity tests
+    // (`run_basic_unrolled_*`).
 
     #[test]
     #[cfg(not(no_cuda))]
@@ -5060,9 +3427,9 @@ mod tests {
         );
         assert_eq!(round1_desc.num_base_sources, 1);
         assert_eq!(round1_desc.num_ext_sources, 1);
-        let quad = round1_desc.unified_quadratic[0];
-        assert_eq!(quad.source_a & FLAT_CONT_EXT_SOURCE_BIT, 0);
-        assert_ne!(quad.source_b & FLAT_CONT_EXT_SOURCE_BIT, 0);
+        let mut round1_tags: Vec<u16> = round1_desc.idx_remap.clone();
+        round1_tags.sort();
+        assert_eq!(round1_tags, vec![0u16, FLAT_CONT_EXT_SOURCE_BIT]);
 
         let base_values2: Vec<BF> = (0..16).map(|i| BF::new(15 + i)).collect();
         let base_input_dev2 = alloc_and_copy(&context, &base_values2);
@@ -5086,9 +3453,9 @@ mod tests {
         );
         assert_eq!(round2_desc.num_base_sources, 1);
         assert_eq!(round2_desc.num_ext_sources, 1);
-        let quad2 = round2_desc.unified_quadratic[0];
-        assert_eq!(quad2.source_a & FLAT_CONT_EXT_SOURCE_BIT, 0);
-        assert_ne!(quad2.source_b & FLAT_CONT_EXT_SOURCE_BIT, 0);
+        let mut round2_tags: Vec<u16> = round2_desc.idx_remap.clone();
+        round2_tags.sort();
+        assert_eq!(round2_tags, vec![0u16, FLAT_CONT_EXT_SOURCE_BIT]);
     }
 }
 
@@ -5124,7 +3491,7 @@ fn fmt_recipe<E: std::fmt::Debug>(recipe: &CoefficientRecipe<E>) -> String {
 /// Called from `prepare_layer_from_blueprints` when `GPU_PROVER_DUMP_FLAT_PLAN` is set.
 pub(super) fn dump_flat_round1_plan<E: Field + field::FieldExtension<BF> + std::fmt::Debug>(
     layer_idx: usize,
-    round1_desc: Option<&GpuFlatRound1StaticDesc>,
+    round1_desc: Option<&Round1FusedSources>,
     continuation_plan: Option<&FlatContinuationBuildPlan<E>>,
     kernel_plans: &[super::backward_kernels::GpuGKRMainLayerKernelPlan<E>],
 ) {

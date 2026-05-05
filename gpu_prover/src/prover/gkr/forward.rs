@@ -36,11 +36,11 @@ use super::transform::normalize_compiled_circuit_for_gpu;
 use super::{GpuBaseFieldPoly, GpuBaseFieldSourceKind, GpuExtensionFieldPoly, GpuGKRStorage};
 use crate::allocator::tracker::AllocationPlacement;
 use crate::ops::simple::{
-    add_into_y, mul_into_y, set_by_ref, set_by_val, sub_into_x, Add, BinaryOp, Mul, SetByRef,
+    add_into_y, mul, mul_into_y, set_by_ref, set_by_val, sub_into_x, Add, BinaryOp, Mul, SetByRef,
     SetByVal, Sub,
 };
 use crate::primitives::context::{DeviceAllocation, HostAllocation, ProverContext, UnsafeAccessor};
-use crate::primitives::device_structures::DeviceVectorChunk;
+use crate::primitives::device_structures::{DeviceMatrixChunkMutImpl, DeviceVectorChunk};
 use crate::primitives::device_tracing::Range;
 use crate::primitives::field::{BF, E4};
 use crate::primitives::utils::{get_grid_block_dims_for_threads_count, WARP_SIZE};
@@ -218,10 +218,7 @@ impl<B, E: Copy> GpuGKRForwardOutput<B, E> {
                 // is held alive across this scheduling call by either `_proof_slab`
                 // keepalive (slab) or `device_flat_evaluations_owned` (fallback).
                 let dst = unsafe {
-                    DeviceSlice::from_raw_parts_mut(
-                        (flat_ptr as *mut E).add(flat_offset),
-                        len,
-                    )
+                    DeviceSlice::from_raw_parts_mut((flat_ptr as *mut E).add(flat_offset), len)
                 };
                 memory_copy_async(dst, src, stream)?;
                 flat_offset += len;
@@ -311,6 +308,13 @@ where
         &stage1.witness_trace_holder,
         context,
     )?;
+    let storage_layout = std::sync::Arc::new(
+        crate::prover::gkr::storage_layout::GpuGKRStorageLayout::from_artifact_with_tower(
+            &compiled_circuit,
+            final_trace_size_log_2,
+        ),
+    );
+    storage.set_layout(storage_layout);
 
     if usage.last_generic_mapping_layer.is_none() {
         stage1.lookup_mappings.release_generic_family();
@@ -598,23 +602,29 @@ where
                     .decoder_mapping()
                     .expect("decoder mapping must be present for decoder lookup relation")
             };
-            let mut dst = alloc_ext(trace_len, context)?;
-            let ext_output = dst.as_mut_ptr();
-            outputs.push((*output, GpuExtensionFieldPoly::new(dst)));
+            // Allocate via the consolidated layout-driven path so the
+            // resulting view shares its backing with sibling
+            // `MaterializedVectorLookupInput` outputs at this layer. The
+            // mutable borrow must complete before we read back from storage
+            // for the decoder-mask lookup below.
+            let dst_view = storage.allocate_ext_view(expected_output_layer, *output, context)?;
+            let ext_output = dst_view.as_mut_ptr();
+            let decoder_mask = if is_decoder_lookup {
+                storage
+                    .get_base_layer(
+                        decoder_predicate_address
+                            .expect("decoder lookup requires a decoder predicate column"),
+                    )
+                    .as_ptr()
+            } else {
+                null()
+            };
+            outputs.push((*output, dst_view));
             *descriptor = GpuGKRForwardCacheDescriptor {
                 kind: GpuGKRForwardCacheKind::VectorizedLookup,
                 mapping: mapping.as_ptr(),
                 generic_lookup,
-                decoder_mask: if is_decoder_lookup {
-                    storage
-                        .get_base_layer(
-                            decoder_predicate_address
-                                .expect("decoder lookup requires a decoder predicate column"),
-                        )
-                        .as_ptr()
-                } else {
-                    null()
-                },
+                decoder_mask,
                 decoder_fill_value: if is_decoder_lookup {
                     forward_setup.decoder_lookup_fill_value_device().as_ptr()
                 } else {
@@ -658,25 +668,27 @@ where
             _ => continue,
         };
         assert_eq!(gate.output_layer, expected_output_layer);
-        let mut dst = alloc_base(trace_len, context)?;
+        let dst_view = storage.allocate_base_view(expected_output_layer, *output, context)?;
+        assert_eq!(dst_view.len(), trace_len);
+        // SAFETY: dst_view was just allocated for this gate's output slot;
+        // no other clone of this view is scheduled to write before this loop's
+        // ops (set_by_val + scale_and_add) complete.
+        let mut dst_chunk = unsafe { dst_view.as_mut_chunk_unchecked() };
         set_by_val(
             BF::from_u32_unchecked(input.constant),
-            dst.deref_mut(),
+            &mut dst_chunk,
             context.get_exec_stream(),
         )?;
         for (coeff, address) in input.linear_terms.iter() {
             scale_and_add_base_column_in_place(
-                &mut dst,
+                &mut dst_chunk,
                 storage.get_base_layer(*address),
                 BF::from_u32_unchecked(*coeff),
                 context,
             )?;
         }
-        storage.insert_base_field_at_layer(
-            expected_output_layer,
-            *output,
-            GpuBaseFieldPoly::new(dst),
-        );
+        drop(dst_chunk);
+        storage.insert_base_field_at_layer(expected_output_layer, *output, dst_view);
     }
 
     Ok(())
@@ -801,7 +813,7 @@ fn build_flat_forward_plan<E>(
     lowered_gates: &[cs::gkr_compiler::GateArtifacts],
     lowered_gates_with_external_connections: &[cs::gkr_compiler::GateArtifacts],
     scratch_space_mapping: &BTreeMap<GKRAddress, usize>,
-    storage: &GpuGKRStorage<BF, E>,
+    storage: &mut GpuGKRStorage<BF, E>,
     external_challenges: &GKRExternalChallenges<BF, E>,
     lookup_additive_challenge: *const E,
     trace_len: usize,
@@ -845,9 +857,10 @@ where
             | NoFieldGKRRelation::TrivialProduct { input, output } => {
                 let lhs = storage.get_ext_poly(input[0]).as_ptr();
                 let rhs = storage.get_ext_poly(input[1]).as_ptr();
-                let mut dst = alloc_ext(trace_len, context)?;
-                let dst_ptr = dst.as_mut_ptr();
-                computed_extension_outputs.push((*output, GpuExtensionFieldPoly::new(dst)));
+                let dst_view =
+                    storage.allocate_ext_view(expected_output_layer, *output, context)?;
+                let dst_ptr = dst_view.as_mut_ptr();
+                computed_extension_outputs.push((*output, dst_view));
                 let src_a = builder.add_src(lhs as *const u8);
                 let src_b = builder.add_src(rhs as *const u8);
                 let i = builder.desc.num_products as usize;
@@ -869,9 +882,10 @@ where
             } => {
                 let input_ptr = storage.get_ext_poly(*input).as_ptr();
                 let mask_ptr = storage.get_base_layer(*mask).as_ptr();
-                let mut dst = alloc_ext(trace_len, context)?;
-                let dst_ptr = dst.as_mut_ptr();
-                computed_extension_outputs.push((*output, GpuExtensionFieldPoly::new(dst)));
+                let dst_view =
+                    storage.allocate_ext_view(expected_output_layer, *output, context)?;
+                let dst_ptr = dst_view.as_mut_ptr();
+                computed_extension_outputs.push((*output, dst_view));
                 let src_mask = builder.add_src(mask_ptr as *const u8);
                 let src_input = builder.add_src(input_ptr as *const u8);
                 let i = builder.desc.num_masks as usize;
@@ -889,12 +903,14 @@ where
             NoFieldGKRRelation::AggregateLookupRationalPair { input, output } => {
                 let [a, b] = input[0].map(|addr| storage.get_ext_poly(addr).as_ptr());
                 let [c, d] = input[1].map(|addr| storage.get_ext_poly(addr).as_ptr());
-                let mut num = alloc_ext(trace_len, context)?;
-                let mut den = alloc_ext(trace_len, context)?;
-                let num_ptr = num.as_mut_ptr();
-                let den_ptr = den.as_mut_ptr();
-                computed_extension_outputs.push((output[0], GpuExtensionFieldPoly::new(num)));
-                computed_extension_outputs.push((output[1], GpuExtensionFieldPoly::new(den)));
+                let num_view =
+                    storage.allocate_ext_view(expected_output_layer, output[0], context)?;
+                let den_view =
+                    storage.allocate_ext_view(expected_output_layer, output[1], context)?;
+                let num_ptr = num_view.as_mut_ptr();
+                let den_ptr = den_view.as_mut_ptr();
+                computed_extension_outputs.push((output[0], num_view));
+                computed_extension_outputs.push((output[1], den_view));
                 let src_a = builder.add_src(a as *const u8);
                 let src_b = builder.add_src(b as *const u8);
                 let src_c = builder.add_src(c as *const u8);
@@ -923,12 +939,14 @@ where
                 let b = storage.get_ext_poly(input[1]).as_ptr();
                 let c = storage.get_base_layer(setup[0]).as_ptr();
                 let d = storage.get_ext_poly(setup[1]).as_ptr();
-                let mut num = alloc_ext(trace_len, context)?;
-                let mut den = alloc_ext(trace_len, context)?;
-                let num_ptr = num.as_mut_ptr();
-                let den_ptr = den.as_mut_ptr();
-                computed_extension_outputs.push((output[0], GpuExtensionFieldPoly::new(num)));
-                computed_extension_outputs.push((output[1], GpuExtensionFieldPoly::new(den)));
+                let num_view =
+                    storage.allocate_ext_view(expected_output_layer, output[0], context)?;
+                let den_view =
+                    storage.allocate_ext_view(expected_output_layer, output[1], context)?;
+                let num_ptr = num_view.as_mut_ptr();
+                let den_ptr = den_view.as_mut_ptr();
+                computed_extension_outputs.push((output[0], num_view));
+                computed_extension_outputs.push((output[1], den_view));
                 let src_a = builder.add_src(a as *const u8);
                 let src_b = builder.add_src(b as *const u8);
                 let src_c = builder.add_src(c as *const u8);
@@ -951,12 +969,14 @@ where
             NoFieldGKRRelation::LookupPairFromMaterializedBaseInputs { input, output } => {
                 let lhs = storage.get_base_layer(input[0]).as_ptr();
                 let rhs = storage.get_base_layer(input[1]).as_ptr();
-                let mut num = alloc_ext(trace_len, context)?;
-                let mut den = alloc_ext(trace_len, context)?;
-                let num_ptr = num.as_mut_ptr();
-                let den_ptr = den.as_mut_ptr();
-                computed_extension_outputs.push((output[0], GpuExtensionFieldPoly::new(num)));
-                computed_extension_outputs.push((output[1], GpuExtensionFieldPoly::new(den)));
+                let num_view =
+                    storage.allocate_ext_view(expected_output_layer, output[0], context)?;
+                let den_view =
+                    storage.allocate_ext_view(expected_output_layer, output[1], context)?;
+                let num_ptr = num_view.as_mut_ptr();
+                let den_ptr = den_view.as_mut_ptr();
+                computed_extension_outputs.push((output[0], num_view));
+                computed_extension_outputs.push((output[1], den_view));
                 let src_b = builder.add_src(lhs as *const u8);
                 let src_d = builder.add_src(rhs as *const u8);
                 let i = builder.desc.num_bf_pairs as usize;
@@ -976,12 +996,14 @@ where
             | NoFieldGKRRelation::LookupPairFromCachedVectorInputs { input, output } => {
                 let lhs = storage.get_ext_poly(input[0]).as_ptr();
                 let rhs = storage.get_ext_poly(input[1]).as_ptr();
-                let mut num = alloc_ext(trace_len, context)?;
-                let mut den = alloc_ext(trace_len, context)?;
-                let num_ptr = num.as_mut_ptr();
-                let den_ptr = den.as_mut_ptr();
-                computed_extension_outputs.push((output[0], GpuExtensionFieldPoly::new(num)));
-                computed_extension_outputs.push((output[1], GpuExtensionFieldPoly::new(den)));
+                let num_view =
+                    storage.allocate_ext_view(expected_output_layer, output[0], context)?;
+                let den_view =
+                    storage.allocate_ext_view(expected_output_layer, output[1], context)?;
+                let num_ptr = num_view.as_mut_ptr();
+                let den_ptr = den_view.as_mut_ptr();
+                computed_extension_outputs.push((output[0], num_view));
+                computed_extension_outputs.push((output[1], den_view));
                 let src_b = builder.add_src(lhs as *const u8);
                 let src_d = builder.add_src(rhs as *const u8);
                 let i = builder.desc.num_e4_pairs as usize;
@@ -1010,12 +1032,14 @@ where
                     } else {
                         storage.get_base_layer(setup[1]).as_ptr() as *const u8
                     };
-                let mut num = alloc_ext(trace_len, context)?;
-                let mut den = alloc_ext(trace_len, context)?;
-                let num_ptr = num.as_mut_ptr();
-                let den_ptr = den.as_mut_ptr();
-                computed_extension_outputs.push((output[0], GpuExtensionFieldPoly::new(num)));
-                computed_extension_outputs.push((output[1], GpuExtensionFieldPoly::new(den)));
+                let num_view =
+                    storage.allocate_ext_view(expected_output_layer, output[0], context)?;
+                let den_view =
+                    storage.allocate_ext_view(expected_output_layer, output[1], context)?;
+                let num_ptr = num_view.as_mut_ptr();
+                let den_ptr = den_view.as_mut_ptr();
+                computed_extension_outputs.push((output[0], num_view));
+                computed_extension_outputs.push((output[1], den_view));
                 let src_b = builder.add_src(b as *const u8);
                 let src_c = builder.add_src(c as *const u8);
                 let src_d = builder.add_src(d_ptr);
@@ -1042,12 +1066,14 @@ where
                 let b = storage.get_ext_poly(*input).as_ptr();
                 let c = storage.get_base_layer(setup[0]).as_ptr();
                 let d = storage.get_ext_poly(setup[1]).as_ptr();
-                let mut num = alloc_ext(trace_len, context)?;
-                let mut den = alloc_ext(trace_len, context)?;
-                let num_ptr = num.as_mut_ptr();
-                let den_ptr = den.as_mut_ptr();
-                computed_extension_outputs.push((output[0], GpuExtensionFieldPoly::new(num)));
-                computed_extension_outputs.push((output[1], GpuExtensionFieldPoly::new(den)));
+                let num_view =
+                    storage.allocate_ext_view(expected_output_layer, output[0], context)?;
+                let den_view =
+                    storage.allocate_ext_view(expected_output_layer, output[1], context)?;
+                let num_ptr = num_view.as_mut_ptr();
+                let den_ptr = den_view.as_mut_ptr();
+                computed_extension_outputs.push((output[0], num_view));
+                computed_extension_outputs.push((output[1], den_view));
                 let src_b = builder.add_src(b as *const u8);
                 let src_c = builder.add_src(c as *const u8);
                 let src_d = builder.add_src(d as *const u8);
@@ -1073,12 +1099,14 @@ where
             } => {
                 let [a, b] = input.map(|addr| storage.get_ext_poly(addr).as_ptr());
                 let remainder = storage.get_base_layer(*remainder).as_ptr();
-                let mut num = alloc_ext(trace_len, context)?;
-                let mut den = alloc_ext(trace_len, context)?;
-                let num_ptr = num.as_mut_ptr();
-                let den_ptr = den.as_mut_ptr();
-                computed_extension_outputs.push((output[0], GpuExtensionFieldPoly::new(num)));
-                computed_extension_outputs.push((output[1], GpuExtensionFieldPoly::new(den)));
+                let num_view =
+                    storage.allocate_ext_view(expected_output_layer, output[0], context)?;
+                let den_view =
+                    storage.allocate_ext_view(expected_output_layer, output[1], context)?;
+                let num_ptr = num_view.as_mut_ptr();
+                let den_ptr = den_view.as_mut_ptr();
+                computed_extension_outputs.push((output[0], num_view));
+                computed_extension_outputs.push((output[1], den_view));
                 let src_a = builder.add_src(a as *const u8);
                 let src_b = builder.add_src(b as *const u8);
                 let src_d = builder.add_src(remainder as *const u8);
@@ -1104,12 +1132,14 @@ where
             } => {
                 let [a, b] = input.map(|addr| storage.get_ext_poly(addr).as_ptr());
                 let remainder = storage.get_ext_poly(*remainder).as_ptr();
-                let mut num = alloc_ext(trace_len, context)?;
-                let mut den = alloc_ext(trace_len, context)?;
-                let num_ptr = num.as_mut_ptr();
-                let den_ptr = den.as_mut_ptr();
-                computed_extension_outputs.push((output[0], GpuExtensionFieldPoly::new(num)));
-                computed_extension_outputs.push((output[1], GpuExtensionFieldPoly::new(den)));
+                let num_view =
+                    storage.allocate_ext_view(expected_output_layer, output[0], context)?;
+                let den_view =
+                    storage.allocate_ext_view(expected_output_layer, output[1], context)?;
+                let num_ptr = num_view.as_mut_ptr();
+                let den_ptr = den_view.as_mut_ptr();
+                computed_extension_outputs.push((output[0], num_view));
+                computed_extension_outputs.push((output[1], den_view));
                 let src_a = builder.add_src(a as *const u8);
                 let src_b = builder.add_src(b as *const u8);
                 let src_d = builder.add_src(remainder as *const u8);
@@ -1174,8 +1204,11 @@ where
                 output,
                 set_idxes,
             } => {
-                let dst = materialize_inits_and_teardowns_initial_pair(
+                let dst_view =
+                    storage.allocate_ext_view(expected_output_layer, *output, context)?;
+                materialize_inits_and_teardowns_initial_pair_into(
                     storage,
+                    &dst_view,
                     timestamp_and_value,
                     *setup,
                     set_idxes.map(|idx| idx as u32),
@@ -1184,7 +1217,7 @@ where
                     trace_len,
                     context,
                 )?;
-                computed_extension_outputs.push((*output, GpuExtensionFieldPoly::new(dst)));
+                computed_extension_outputs.push((*output, dst_view));
             }
             NoFieldGKRRelation::InitialGrandProductWithoutCaches { .. }
             | NoFieldGKRRelation::MaterializeGrandProductTermExpression { .. } => {
@@ -1406,8 +1439,8 @@ where
             };
             let setup_source_kind = GpuBaseFieldSourceKind::from_address(setup_address)
                 .expect("single-column lookup setup must be virtual");
-            let mut dst = alloc_base(trace_len, context)?;
-            let base_output = dst.as_mut_ptr();
+            let dst_view = storage.allocate_base_view(layer_idx, address, context)?;
+            let base_output = dst_view.as_mut_ptr();
             Ok((
                 GpuGKRForwardCacheDescriptor {
                     kind: GpuGKRForwardCacheKind::SingleColumnLookup,
@@ -1417,7 +1450,7 @@ where
                     base_output,
                     ..GpuGKRForwardCacheDescriptor::default()
                 },
-                LoweredCacheRelationOutput::Base(GpuBaseFieldPoly::new(dst)),
+                LoweredCacheRelationOutput::Base(dst_view),
             ))
         }
         NoFieldGKRCacheRelation::VectorizedLookup(rel) => {
@@ -1430,23 +1463,24 @@ where
                     .decoder_mapping()
                     .expect("decoder mapping must be present for decoder lookup relation")
             };
-            let mut dst = alloc_ext(trace_len, context)?;
-            let ext_output = dst.as_mut_ptr();
+            let dst_view = storage.allocate_ext_view(layer_idx, address, context)?;
+            let ext_output = dst_view.as_mut_ptr();
+            let decoder_mask = if is_decoder_lookup {
+                storage
+                    .get_base_layer(
+                        decoder_predicate_address
+                            .expect("decoder lookup requires a decoder predicate column"),
+                    )
+                    .as_ptr()
+            } else {
+                null()
+            };
             Ok((
                 GpuGKRForwardCacheDescriptor {
                     kind: GpuGKRForwardCacheKind::VectorizedLookup,
                     mapping: mapping.as_ptr(),
                     generic_lookup,
-                    decoder_mask: if is_decoder_lookup {
-                        storage
-                            .get_base_layer(
-                                decoder_predicate_address
-                                    .expect("decoder lookup requires a decoder predicate column"),
-                            )
-                            .as_ptr()
-                    } else {
-                        null()
-                    },
+                    decoder_mask,
                     decoder_fill_value: if is_decoder_lookup {
                         forward_setup.decoder_lookup_fill_value_device().as_ptr()
                     } else {
@@ -1455,12 +1489,12 @@ where
                     ext_output,
                     ..GpuGKRForwardCacheDescriptor::default()
                 },
-                LoweredCacheRelationOutput::Ext(GpuExtensionFieldPoly::new(dst)),
+                LoweredCacheRelationOutput::Ext(dst_view),
             ))
         }
         NoFieldGKRCacheRelation::VectorizedLookupSetup(_) => {
-            let mut dst = alloc_ext(trace_len, context)?;
-            let ext_output = dst.as_mut_ptr();
+            let dst_view = storage.allocate_ext_view(layer_idx, address, context)?;
+            let ext_output = dst_view.as_mut_ptr();
             Ok((
                 GpuGKRForwardCacheDescriptor {
                     kind: GpuGKRForwardCacheKind::VectorizedLookupSetup,
@@ -1469,12 +1503,12 @@ where
                     generic_lookup_len: forward_setup.generic_lookup_len() as u32,
                     ..GpuGKRForwardCacheDescriptor::default()
                 },
-                LoweredCacheRelationOutput::Ext(GpuExtensionFieldPoly::new(dst)),
+                LoweredCacheRelationOutput::Ext(dst_view),
             ))
         }
         NoFieldGKRCacheRelation::MemoryTuple(rel) => {
-            let mut dst = alloc_ext(trace_len, context)?;
-            let ext_output = dst.as_mut_ptr();
+            let dst_view = storage.allocate_ext_view(layer_idx, address, context)?;
+            let ext_output = dst_view.as_mut_ptr();
             let mut descriptor = GpuGKRForwardCacheDescriptor {
                 kind: GpuGKRForwardCacheKind::MemoryTuple,
                 ext_output,
@@ -1699,10 +1733,7 @@ where
                 push_memory_tuple_linear_term(&mut descriptor, input, challenge);
             }
 
-            Ok((
-                descriptor,
-                LoweredCacheRelationOutput::Ext(GpuExtensionFieldPoly::new(dst)),
-            ))
+            Ok((descriptor, LoweredCacheRelationOutput::Ext(dst_view)))
         }
     }
 }
@@ -2012,15 +2043,20 @@ where
     }
 }
 
+// Tower outputs are routed through the consolidated per-(tower-layer, class)
+// backings populated by `GpuGKRStorageLayout::from_artifact_with_tower`. Each
+// view returned by `storage.allocate_ext_view` is sized to the round's
+// `output_trace_len` (the layout's per-layer `log2_stride` halves each round).
 fn lower_dimension_reducing_forward_round<E>(
     layer_inputs: &BTreeMap<OutputType, Vec<GKRAddress>>,
     current_layer_idx: usize,
     output_trace_len: usize,
-    storage: &GpuGKRStorage<BF, E>,
+    storage: &mut GpuGKRStorage<BF, E>,
     context: &ProverContext,
 ) -> CudaResult<LoweredDimReducingForwardRound<E>>
 where
     E: FieldExtension<BF> + Field,
+    E: 'static,
 {
     let output_layer = current_layer_idx + 1;
     let mut output_idx = 0usize;
@@ -2039,22 +2075,32 @@ where
             OutputType::PermutationProduct => {
                 let mut outputs = [GKRAddress::placeholder(); 2];
                 for (idx, input) in inputs.into_iter().enumerate() {
-                    let source = storage.try_get_ext_poly(input).unwrap_or_else(|| {
-                        panic!("missing dimension reduction input poly for {:?}", input)
-                    });
+                    let input_start_ptr = storage
+                        .try_get_ext_poly(input)
+                        .unwrap_or_else(|| {
+                            panic!("missing dimension reduction input poly for {:?}", input)
+                        })
+                        .as_ptr();
                     let output = GKRAddress::InnerLayer {
                         layer: output_layer,
                         offset: output_idx,
                     };
                     output_idx += 1;
-                    let mut reduced = alloc_ext(output_trace_len, context)?;
+                    let reduced = storage.allocate_ext_view(output_layer, output, context)?;
+                    assert_eq!(
+                        reduced.len(),
+                        output_trace_len,
+                        "tower layer {output_layer} layout stride implies len {} but round expects {}",
+                        reduced.len(),
+                        output_trace_len,
+                    );
                     let output_ptr = reduced.as_mut_ptr();
                     slot_initial_inputs.push(LoweredSlotInitialInput::PairwiseProduct {
-                        input: source.as_ptr(),
+                        input: input_start_ptr,
                     });
                     slot_output_types.push(*arg_type);
                     slot_outputs.push(LoweredSlotOutput::PairwiseProduct { output: output_ptr });
-                    computed_extension_outputs.push((output, GpuExtensionFieldPoly::new(reduced)));
+                    computed_extension_outputs.push((output, reduced));
                     outputs[idx] = output;
                 }
                 layer_description.insert(
@@ -2066,18 +2112,24 @@ where
                 );
             }
             OutputType::Lookup16Bits | OutputType::LookupTimestamps | OutputType::GenericLookup => {
-                let num = storage.try_get_ext_poly(inputs[0]).unwrap_or_else(|| {
-                    panic!(
-                        "missing lookup reduction numerator poly for {:?}",
-                        inputs[0]
-                    )
-                });
-                let den = storage.try_get_ext_poly(inputs[1]).unwrap_or_else(|| {
-                    panic!(
-                        "missing lookup reduction denominator poly for {:?}",
-                        inputs[1]
-                    )
-                });
+                let num_ptr = storage
+                    .try_get_ext_poly(inputs[0])
+                    .unwrap_or_else(|| {
+                        panic!(
+                            "missing lookup reduction numerator poly for {:?}",
+                            inputs[0]
+                        )
+                    })
+                    .as_ptr();
+                let den_ptr = storage
+                    .try_get_ext_poly(inputs[1])
+                    .unwrap_or_else(|| {
+                        panic!(
+                            "missing lookup reduction denominator poly for {:?}",
+                            inputs[1]
+                        )
+                    })
+                    .as_ptr();
                 let new_num = GKRAddress::InnerLayer {
                     layer: output_layer,
                     offset: output_idx,
@@ -2088,21 +2140,23 @@ where
                     offset: output_idx,
                 };
                 output_idx += 1;
-                let mut reduced_num = alloc_ext(output_trace_len, context)?;
-                let mut reduced_den = alloc_ext(output_trace_len, context)?;
-                let num_ptr = reduced_num.as_mut_ptr();
-                let den_ptr = reduced_den.as_mut_ptr();
+                let reduced_num = storage.allocate_ext_view(output_layer, new_num, context)?;
+                let reduced_den = storage.allocate_ext_view(output_layer, new_den, context)?;
+                assert_eq!(reduced_num.len(), output_trace_len);
+                assert_eq!(reduced_den.len(), output_trace_len);
+                let out_num_ptr = reduced_num.as_mut_ptr();
+                let out_den_ptr = reduced_den.as_mut_ptr();
                 slot_initial_inputs.push(LoweredSlotInitialInput::LookupPair {
-                    num: num.as_ptr(),
-                    den: den.as_ptr(),
+                    num: num_ptr,
+                    den: den_ptr,
                 });
                 slot_output_types.push(*arg_type);
                 slot_outputs.push(LoweredSlotOutput::LookupPair {
-                    output_num: num_ptr,
-                    output_den: den_ptr,
+                    output_num: out_num_ptr,
+                    output_den: out_den_ptr,
                 });
-                computed_extension_outputs.push((new_num, GpuExtensionFieldPoly::new(reduced_num)));
-                computed_extension_outputs.push((new_den, GpuExtensionFieldPoly::new(reduced_den)));
+                computed_extension_outputs.push((new_num, reduced_num));
+                computed_extension_outputs.push((new_den, reduced_den));
                 layer_description.insert(
                     *arg_type,
                     DimensionReducingInputOutput {
@@ -2113,7 +2167,6 @@ where
             }
         }
     }
-
     Ok(LoweredDimReducingForwardRound {
         slot_initial_inputs,
         slot_output_types,
@@ -2271,8 +2324,9 @@ where
     Ok(dst)
 }
 
-fn materialize_inits_and_teardowns_initial_pair<E>(
+fn materialize_inits_and_teardowns_initial_pair_into<E>(
     storage: &GpuGKRStorage<BF, E>,
+    dst: &GpuExtensionFieldPoly<E>,
     timestamp_and_value: &InitsOrTeardownsTimestampAndValue,
     setup: [GKRAddress; 2],
     address_high_bits: [u32; 2],
@@ -2280,13 +2334,18 @@ fn materialize_inits_and_teardowns_initial_pair<E>(
     external_challenges: &GKRExternalChallenges<BF, E>,
     trace_len: usize,
     context: &ProverContext,
-) -> CudaResult<DeviceAllocation<E>>
+) -> CudaResult<()>
 where
     E: Field + FieldExtension<BF> + GpuGKRVirtualBaseAccumKernelSet + SetByVal,
     Add: BinaryOp<E, E, E>,
     Mul: BinaryOp<BF, E, E>,
     Mul: BinaryOp<E, E, E>,
 {
+    assert_eq!(
+        dst.len(),
+        trace_len,
+        "InitsOrTeardownsInitialPair destination view must span trace_len"
+    );
     let lhs_timestamps_and_values = match timestamp_and_value {
         InitsOrTeardownsTimestampAndValue::Init => None,
         InitsOrTeardownsTimestampAndValue::Teardown {
@@ -2320,14 +2379,17 @@ where
     );
     let lhs =
         materialize_linear_base_combination(storage, &lhs_terms, lhs_constant, trace_len, context)?;
-    let mut rhs =
+    let rhs =
         materialize_linear_base_combination(storage, &rhs_terms, rhs_constant, trace_len, context)?;
-    mul_into_y(
+    // SAFETY: `dst` was just allocated for this consumer; no other clone of
+    // this view is scheduled to write before the mul completes.
+    let mut dst_chunk = unsafe { dst.as_mut_chunk_unchecked() };
+    mul(
         &DeviceVectorChunk::new(&lhs, 0, trace_len),
-        rhs.deref_mut(),
+        &DeviceVectorChunk::new(&rhs, 0, trace_len),
+        &mut dst_chunk,
         context.get_exec_stream(),
-    )?;
-    Ok(rhs)
+    )
 }
 
 fn scale_and_add_base_column<E>(
@@ -2355,13 +2417,14 @@ where
     )
 }
 
-fn scale_and_add_base_column_in_place(
-    dst: &mut DeviceAllocation<BF>,
+fn scale_and_add_base_column_in_place<D>(
+    dst: &mut D,
     source: &GpuBaseFieldPoly<BF>,
     scalar: BF,
     context: &ProverContext,
 ) -> CudaResult<()>
 where
+    D: DeviceMatrixChunkMutImpl<BF> + ?Sized,
     Add: BinaryOp<BF, BF, BF>,
     Mul: BinaryOp<BF, BF, BF>,
 {
@@ -2374,7 +2437,7 @@ where
     )?;
     add_into_y(
         &DeviceVectorChunk::new(&weighted, 0, source.len()),
-        dst.deref_mut(),
+        dst,
         context.get_exec_stream(),
     )
 }
@@ -2749,8 +2812,14 @@ mod tests {
             upload_base_poly(&value_high, &context),
         );
 
-        let init_output = materialize_inits_and_teardowns_initial_pair(
+        let init_output = GpuExtensionFieldPoly::<E4>::new(
+            context
+                .alloc(trace_len, AllocationPlacement::BestFit)
+                .unwrap(),
+        );
+        materialize_inits_and_teardowns_initial_pair_into(
             &storage,
+            &init_output,
             &InitsOrTeardownsTimestampAndValue::Init,
             setup,
             address_high_bits,
@@ -2760,8 +2829,14 @@ mod tests {
             &context,
         )
         .unwrap();
-        let teardown_output = materialize_inits_and_teardowns_initial_pair(
+        let teardown_output = GpuExtensionFieldPoly::<E4>::new(
+            context
+                .alloc(trace_len, AllocationPlacement::BestFit)
+                .unwrap(),
+        );
+        materialize_inits_and_teardowns_initial_pair_into(
             &storage,
+            &teardown_output,
             &InitsOrTeardownsTimestampAndValue::Teardown {
                 lhs_timestamp: [0, 1],
                 lhs_value: [2, 3],
@@ -2836,8 +2911,6 @@ mod tests {
             })
             .collect::<Vec<_>>();
 
-        let init_output = GpuExtensionFieldPoly::new(init_output);
-        let teardown_output = GpuExtensionFieldPoly::new(teardown_output);
         assert_eq!(read_ext_poly(&init_output, &context), expected_init);
         assert_eq!(read_ext_poly(&teardown_output, &context), expected_teardown);
     }
@@ -2965,7 +3038,7 @@ mod tests {
             &layer.gates,
             &layer.gates_with_external_connections,
             &BTreeMap::new(),
-            &storage,
+            &mut storage,
             &external_challenges,
             forward_setup.lookup_additive_part_device().as_ptr(),
             trace_len,

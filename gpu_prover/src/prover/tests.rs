@@ -555,8 +555,10 @@ impl BasicUnrolledFixture {
                 self.gpu_setup_host.log_tree_cap_size,
             )?,
         );
-        let memory_transfer =
-            crate::prover::memory_transfer::GpuGKRMemoryTransfer::new(memory_transfer_host, context)?;
+        let memory_transfer = crate::prover::memory_transfer::GpuGKRMemoryTransfer::new(
+            memory_transfer_host,
+            context,
+        )?;
 
         Ok(BasicUnrolledTransfers {
             setup_transfer,
@@ -2093,7 +2095,8 @@ fn build_basic_unrolled_async_backward_fixture_from_base(
         transfers
             .setup_transfer
             .trace_holder
-            .read_per_coset_caps_synchronously(&context).unwrap()
+            .read_per_coset_caps_synchronously(&context)
+            .unwrap()
             .into_iter(),
         &mut transcript_input,
     );
@@ -2104,7 +2107,8 @@ fn build_basic_unrolled_async_backward_fixture_from_base(
     flatten_merkle_caps_iter_into(
         stage1_output
             .witness_trace_holder
-            .read_per_coset_caps_synchronously(&context).unwrap()
+            .read_per_coset_caps_synchronously(&context)
+            .unwrap()
             .into_iter(),
         &mut transcript_input,
     );
@@ -2335,6 +2339,7 @@ fn expected_single_max_quadratic_constraint_inputs_and_metadata<E: Field + Field
     for (lhs, rhs_terms) in relation.quadratic_terms.iter() {
         let lhs_idx = remap_expected_constraint_input(&mut mapping, &mut inputs, *lhs);
         for (coeff, rhs) in rhs_terms.iter() {
+            let coeff_bf = BF::from_u32_with_reduction(*coeff);
             let rhs_idx = if *lhs == *rhs {
                 lhs_idx
             } else {
@@ -2344,18 +2349,27 @@ fn expected_single_max_quadratic_constraint_inputs_and_metadata<E: Field + Field
                 crate::prover::gkr::backward::GpuGKRMainLayerConstraintQuadraticTerm {
                     lhs: lhs_idx as u32,
                     rhs: rhs_idx as u32,
-                    challenge: E::from_base(BF::from_u32_with_reduction(*coeff)),
+                    challenge: E::from_base(coeff_bf),
+                    immediate_recipe:
+                        crate::ops::immediate_factors::ImmediateFactorRecipeStructural::from_base(
+                            coeff_bf,
+                        ),
                 },
             );
         }
     }
 
     for (coeff, input) in relation.linear_terms.iter() {
+        let coeff_bf = BF::from_u32_with_reduction(*coeff);
         let input_idx = remap_expected_constraint_input(&mut mapping, &mut inputs, *input);
         linear_terms.push(
             crate::prover::gkr::backward::GpuGKRMainLayerConstraintLinearTerm {
                 input: input_idx as u32,
-                challenge: E::from_base(BF::from_u32_with_reduction(*coeff)),
+                challenge: E::from_base(coeff_bf),
+                immediate_recipe:
+                    crate::ops::immediate_factors::ImmediateFactorRecipeStructural::from_base(
+                        coeff_bf,
+                    ),
             },
         );
     }
@@ -2384,11 +2398,16 @@ fn expected_linear_base_kernel_inputs_and_metadata<E: Field + FieldExtension<BF>
     let mut linear_terms = Vec::new();
 
     for (coeff, input) in relation.linear_terms.iter() {
+        let coeff_bf = BF::from_u32_with_reduction(*coeff);
         let input_idx = remap_expected_constraint_input(&mut mapping, &mut inputs, *input);
         linear_terms.push(
             crate::prover::gkr::backward::GpuGKRMainLayerConstraintLinearTerm {
                 input: input_idx as u32,
-                challenge: E::from_base(BF::from_u32_with_reduction(*coeff)),
+                challenge: E::from_base(coeff_bf),
+                immediate_recipe:
+                    crate::ops::immediate_factors::ImmediateFactorRecipeStructural::from_base(
+                        coeff_bf,
+                    ),
             },
         );
     }
@@ -2872,52 +2891,6 @@ pub(crate) fn expected_main_layer_kernel_specs_for_test<E: Field + FieldExtensio
     }
 
     specs
-}
-
-fn assert_dimension_reducing_layer_plan_for_test<E: Field + std::fmt::Debug>(
-    layer_plan: &GpuGKRDimensionReducingSumcheckLayerPlan<BF, E>,
-    storage: &GpuGKRStorage<BF, E>,
-    expected_specs: &[(GKRInputs, Vec<E>)],
-) {
-    assert_eq!(layer_plan.kernel_plans().len(), expected_specs.len());
-    assert_eq!(layer_plan.round0_descriptors().len(), expected_specs.len());
-
-    for (idx, (expected_inputs, expected_batch_challenges)) in expected_specs.iter().enumerate() {
-        let kernel_plan = &layer_plan.kernel_plans()[idx];
-        assert_eq!(&kernel_plan.inputs, expected_inputs);
-        assert_eq!(&kernel_plan.batch_challenges, expected_batch_challenges);
-
-        let round0 = &layer_plan.round0_descriptors()[idx];
-        let ext_inputs = &round0.extension_field_inputs;
-        let ext_outputs = &round0.extension_field_outputs;
-        let base_inputs = &round0.base_field_inputs;
-        let base_outputs = &round0.base_field_outputs;
-
-        assert!(base_inputs.is_empty());
-        assert!(base_outputs.is_empty());
-        assert_eq!(ext_inputs.len(), expected_inputs.inputs_in_extension.len());
-        assert_eq!(
-            ext_outputs.len(),
-            expected_inputs.outputs_in_extension.len()
-        );
-
-        for (descriptor, address) in ext_inputs
-            .iter()
-            .zip(expected_inputs.inputs_in_extension.iter())
-        {
-            let poly = storage.get_ext_poly(*address);
-            assert_eq!(descriptor.start, poly.as_ptr());
-            assert_eq!(descriptor.next_layer_size, poly.len() / 2);
-        }
-        for (descriptor, address) in ext_outputs
-            .iter()
-            .zip(expected_inputs.outputs_in_extension.iter())
-        {
-            let poly = storage.get_ext_poly(*address);
-            assert_eq!(descriptor.start, poly.as_ptr());
-            assert_eq!(descriptor.next_layer_size, poly.len() / 2);
-        }
-    }
 }
 
 fn assert_main_layer_plan_for_test<E: Field + std::fmt::Debug>(
@@ -3813,7 +3786,10 @@ fn run_memory_workflow_input_parity_test<const FAMILY_IDX: u8>(
     context.get_h2d_stream().synchronize().unwrap();
 
     let cpu_setup_caps = stage1_caps_from_tree(&setup_commitment.tree, subcap_size);
-    let gpu_setup_caps = gpu_setup_transfer.trace_holder.read_per_coset_caps_synchronously(&context).unwrap();
+    let gpu_setup_caps = gpu_setup_transfer
+        .trace_holder
+        .read_per_coset_caps_synchronously(&context)
+        .unwrap();
     assert_eq!(
         gpu_setup_caps, cpu_setup_caps,
         "{family_label} setup caps diverged"
@@ -3922,7 +3898,10 @@ fn run_memory_workflow_input_parity_test<const FAMILY_IDX: u8>(
     }
 
     let cpu_witness_caps = stage1_caps_from_tree(&wit_oracle.tree, subcap_size);
-    let gpu_witness_caps = stage1_output.witness_trace_holder.read_per_coset_caps_synchronously(&context).unwrap();
+    let gpu_witness_caps = stage1_output
+        .witness_trace_holder
+        .read_per_coset_caps_synchronously(&context)
+        .unwrap();
     if gpu_witness_caps != cpu_witness_caps {
         let first_mismatch = describe_first_trace_holder_column_mismatch(
             &stage1_output.witness_trace_holder,
@@ -4794,6 +4773,25 @@ fn run_basic_unrolled_first_main_layer_static_vs_dynamic_execution_test() {
             shared_state_handle,
         )
         .unwrap();
+    let mut external_challenges_flat = fixture_static
+        .external_challenges
+        .permutation_argument_linearization_challenges
+        .to_vec();
+    external_challenges_flat.push(
+        fixture_static
+            .external_challenges
+            .permutation_argument_additive_part,
+    );
+    let mut device_external_challenges = fixture_static
+        .context
+        .alloc(external_challenges_flat.len(), AllocationPlacement::BestFit)
+        .unwrap();
+    memory_copy_async(
+        &mut device_external_challenges,
+        &external_challenges_flat,
+        fixture_static.context.get_exec_stream(),
+    )
+    .unwrap();
     let main_proof_layout = ProofLayout::new(&placeholder_inputs_for_prove());
     let static_scheduled = static_plan
         .schedule_execute_main_layer_from_workflow_state(
@@ -4803,6 +4801,7 @@ fn run_basic_unrolled_first_main_layer_static_vs_dynamic_execution_test() {
             shared_device_claims,
             &shared_claim_layout,
             device_lookup_and_constraint.as_ptr(),
+            device_external_challenges.as_ptr(),
             None,
             &main_proof_layout,
             0,
@@ -5007,6 +5006,25 @@ fn run_basic_unrolled_main_layers_static_vs_dynamic_execution_test() {
                 shared_state_handle,
             )
             .unwrap();
+        let mut external_challenges_flat = fixture_static
+            .external_challenges
+            .permutation_argument_linearization_challenges
+            .to_vec();
+        external_challenges_flat.push(
+            fixture_static
+                .external_challenges
+                .permutation_argument_additive_part,
+        );
+        let mut device_external_challenges = fixture_static
+            .context
+            .alloc(external_challenges_flat.len(), AllocationPlacement::BestFit)
+            .unwrap();
+        memory_copy_async(
+            &mut device_external_challenges,
+            &external_challenges_flat,
+            fixture_static.context.get_exec_stream(),
+        )
+        .unwrap();
         let main_proof_layout = ProofLayout::new(&placeholder_inputs_for_prove());
         let static_scheduled = static_plan
             .schedule_execute_main_layer_from_workflow_state(
@@ -5016,6 +5034,7 @@ fn run_basic_unrolled_main_layers_static_vs_dynamic_execution_test() {
                 shared_device_claims,
                 &shared_claim_layout,
                 device_lookup_and_constraint.as_ptr(),
+                device_external_challenges.as_ptr(),
                 None,
                 &main_proof_layout,
                 0,
@@ -5176,7 +5195,8 @@ fn forward_to_backward_handoff_releases_forward_scratch() {
         transfers
             .setup_transfer
             .trace_holder
-            .read_per_coset_caps_synchronously(&context).unwrap()
+            .read_per_coset_caps_synchronously(&context)
+            .unwrap()
             .into_iter(),
         &mut transcript_input,
     );
@@ -5187,7 +5207,8 @@ fn forward_to_backward_handoff_releases_forward_scratch() {
     flatten_merkle_caps_iter_into(
         stage1_output
             .witness_trace_holder
-            .read_per_coset_caps_synchronously(&context).unwrap()
+            .read_per_coset_caps_synchronously(&context)
+            .unwrap()
             .into_iter(),
         &mut transcript_input,
     );
@@ -5542,7 +5563,10 @@ fn run_basic_unrolled_workflow_input_parity_test() {
     context.get_h2d_stream().synchronize().unwrap();
 
     let cpu_setup_caps = stage1_caps_from_tree(&setup_commitment.tree, subcap_size);
-    let gpu_setup_caps = gpu_setup_transfer.trace_holder.read_per_coset_caps_synchronously(&context).unwrap();
+    let gpu_setup_caps = gpu_setup_transfer
+        .trace_holder
+        .read_per_coset_caps_synchronously(&context)
+        .unwrap();
     assert_eq!(gpu_setup_caps, cpu_setup_caps, "setup caps diverged");
 
     let h_decoder_table = witness_gen_data
@@ -5627,7 +5651,10 @@ fn run_basic_unrolled_workflow_input_parity_test() {
     }
 
     let cpu_witness_caps = stage1_caps_from_tree(&wit_oracle.tree, subcap_size);
-    let gpu_witness_caps = stage1_output.witness_trace_holder.read_per_coset_caps_synchronously(&context).unwrap();
+    let gpu_witness_caps = stage1_output
+        .witness_trace_holder
+        .read_per_coset_caps_synchronously(&context)
+        .unwrap();
     assert_eq!(gpu_witness_caps, cpu_witness_caps, "witness caps diverged");
 
     assert_generic_family_mapping_contract(
@@ -6045,7 +6072,10 @@ fn run_jump_branch_slt_workflow_input_parity_test() {
     context.get_h2d_stream().synchronize().unwrap();
 
     let cpu_setup_caps = stage1_caps_from_tree(&setup_commitment.tree, subcap_size);
-    let gpu_setup_caps = gpu_setup_transfer.trace_holder.read_per_coset_caps_synchronously(&context).unwrap();
+    let gpu_setup_caps = gpu_setup_transfer
+        .trace_holder
+        .read_per_coset_caps_synchronously(&context)
+        .unwrap();
     assert_eq!(gpu_setup_caps, cpu_setup_caps, "setup caps diverged");
 
     let h_decoder_table = witness_gen_data
@@ -6130,7 +6160,10 @@ fn run_jump_branch_slt_workflow_input_parity_test() {
     }
 
     let cpu_witness_caps = stage1_caps_from_tree(&wit_oracle.tree, subcap_size);
-    let gpu_witness_caps = stage1_output.witness_trace_holder.read_per_coset_caps_synchronously(&context).unwrap();
+    let gpu_witness_caps = stage1_output
+        .witness_trace_holder
+        .read_per_coset_caps_synchronously(&context)
+        .unwrap();
     assert_eq!(gpu_witness_caps, cpu_witness_caps, "witness caps diverged");
 
     assert_generic_family_mapping_contract(
@@ -7109,7 +7142,10 @@ fn run_basic_unrolled_stagewise_parity_test() {
         &worker,
     );
 
-    let trace_holder_caps = gpu_setup_transfer.trace_holder.read_per_coset_caps_synchronously(&context).unwrap();
+    let trace_holder_caps = gpu_setup_transfer
+        .trace_holder
+        .read_per_coset_caps_synchronously(&context)
+        .unwrap();
     let setup_caps = stage1_caps_from_tree(&setup_commitment.tree, subcap_size);
     assert_eq!(trace_holder_caps, setup_caps);
     let h_decoder_table = witness_gen_data
@@ -7167,13 +7203,19 @@ fn run_basic_unrolled_stagewise_parity_test() {
 
     let memory_caps = stage1_caps_from_tree(&mem_oracle.tree, subcap_size);
     assert_eq!(
-        stage1_output.memory_trace_holder.read_per_coset_caps_synchronously(&context).unwrap(),
+        stage1_output
+            .memory_trace_holder
+            .read_per_coset_caps_synchronously(&context)
+            .unwrap(),
         memory_caps
     );
 
     let witness_caps = stage1_caps_from_tree(&wit_oracle.tree, subcap_size);
     assert_eq!(
-        stage1_output.witness_trace_holder.read_per_coset_caps_synchronously(&context).unwrap(),
+        stage1_output
+            .witness_trace_holder
+            .read_per_coset_caps_synchronously(&context)
+            .unwrap(),
         witness_caps
     );
 
@@ -9076,7 +9118,10 @@ fn assert_delegation_workflow_matches_cpu_inner<W, O, F>(
     context.get_h2d_stream().synchronize().unwrap();
 
     let cpu_setup_caps = stage1_caps_from_tree(&setup_commitment.tree, subcap_size);
-    let gpu_setup_caps = gpu_setup_transfer.trace_holder.read_per_coset_caps_synchronously(&context).unwrap();
+    let gpu_setup_caps = gpu_setup_transfer
+        .trace_holder
+        .read_per_coset_caps_synchronously(&context)
+        .unwrap();
     assert_eq!(
         gpu_setup_caps, cpu_setup_caps,
         "{label}: setup caps diverged"
@@ -9136,7 +9181,10 @@ fn assert_delegation_workflow_matches_cpu_inner<W, O, F>(
     }
 
     let cpu_witness_caps = stage1_caps_from_tree(&wit_oracle.tree, subcap_size);
-    let gpu_witness_caps = stage1_output.witness_trace_holder.read_per_coset_caps_synchronously(&context).unwrap();
+    let gpu_witness_caps = stage1_output
+        .witness_trace_holder
+        .read_per_coset_caps_synchronously(&context)
+        .unwrap();
     if gpu_witness_caps != cpu_witness_caps {
         let first_mismatch = describe_first_trace_holder_column_mismatch(
             &stage1_output.witness_trace_holder,

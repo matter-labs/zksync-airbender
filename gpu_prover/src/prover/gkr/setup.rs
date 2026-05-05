@@ -65,7 +65,10 @@ impl<'a> GpuGKRSetupTransfer<'a> {
         // host-side `unified_tree_cap` that was built during precomputation.
         let cap_size = 1usize << host.log_tree_cap_size;
         let unified_cap = context.alloc::<Digest>(cap_size, AllocationPlacement::BestFit)?;
-        assert!(trace_holder.unified_device_cap.replace(unified_cap).is_none());
+        assert!(trace_holder
+            .unified_device_cap
+            .replace(unified_cap)
+            .is_none());
         let transfer = Transfer::new()?;
         transfer.record_allocated(context)?;
         Ok(Self {
@@ -214,7 +217,6 @@ impl<'a> GpuGKRSetupTransfer<'a> {
             context,
         )
     }
-
 }
 
 pub(crate) fn schedule_forward_setup_for_shape<E>(

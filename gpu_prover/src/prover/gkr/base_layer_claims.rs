@@ -127,9 +127,9 @@ impl DenseSource {
             GKRAddress::BaseLayerMemory(offset) => DenseSource::Memory(offset),
             GKRAddress::BaseLayerWitness(offset) => DenseSource::Witness(offset),
             GKRAddress::Setup(offset) => DenseSource::Setup(offset),
-            other => panic!(
-                "unsupported dense source address {other:?} for cached relation dependency",
-            ),
+            other => {
+                panic!("unsupported dense source address {other:?} for cached relation dependency",)
+            }
         }
     }
 }
@@ -152,8 +152,7 @@ impl<E> BaseLayerExtrasPlan<E> {
         initial_addresses: &[GKRAddress],
         context: &ProverContext,
     ) -> Self {
-        let mut already_present: BTreeSet<GKRAddress> =
-            initial_addresses.iter().copied().collect();
+        let mut already_present: BTreeSet<GKRAddress> = initial_addresses.iter().copied().collect();
         already_present.extend(VIRTUAL_SETUP_ADDRESSES.iter().copied());
         let mut missing: BTreeSet<GKRAddress> = BTreeSet::new();
         for (cached_addr, relation) in layer_desc.cached_relations.iter() {
@@ -540,9 +539,8 @@ where
     }
     let slab_claims_dst = |kind: WhirBaseLayerKind| -> Option<(*mut E, usize)> {
         proof_slab.map(|slab| {
-            let (ptr, len) = unsafe {
-                proof_layout.whir_base_evals_device_mut(slab.as_ptr() as *mut u8, kind)
-            };
+            let (ptr, len) =
+                unsafe { proof_layout.whir_base_evals_device_mut(slab.as_ptr() as *mut u8, kind) };
             (ptr as *mut E, len)
         })
     };
@@ -585,14 +583,12 @@ where
     // dense offsets.
     let mut extras_plan = BaseLayerExtrasPlan::<E>::new(&layer_desc, initial_addresses, context);
     drop(layer_desc);
-    let extras_addresses_accessor =
-        crate::primitives::context::UnsafeAccessor::<[GKRAddress]>::new(
-            extras_plan.addresses.as_ref(),
-        );
-    let extras_sources_accessor =
-        crate::primitives::context::UnsafeAccessor::<[DenseSource]>::new(
-            extras_plan.sources.as_ref(),
-        );
+    let extras_addresses_accessor = crate::primitives::context::UnsafeAccessor::<[GKRAddress]>::new(
+        extras_plan.addresses.as_ref(),
+    );
+    let extras_sources_accessor = crate::primitives::context::UnsafeAccessor::<[DenseSource]>::new(
+        extras_plan.sources.as_ref(),
+    );
     let extras_values_mut_accessor = extras_plan.values.get_mut_accessor();
     let extras_values_accessor = extras_plan.values.get_accessor();
     let shared_state_for_callback = shared_state_handle;
@@ -874,7 +870,10 @@ mod tests {
         assert_eq!(output.virtual_setup_claims[2], expected_inits_low);
         assert_eq!(output.virtual_setup_claims[3], expected_inits_high);
         assert_eq!(output.mem_polys_claims.as_ref(), expected_memory.as_slice());
-        assert_eq!(output.wit_polys_claims.as_ref(), expected_witness.as_slice());
+        assert_eq!(
+            output.wit_polys_claims.as_ref(),
+            expected_witness.as_slice()
+        );
         assert_eq!(
             output.setup_polys_claims.as_ref(),
             expected_setup.as_slice(),
