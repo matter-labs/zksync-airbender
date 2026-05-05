@@ -1,8 +1,4 @@
 #![no_std]
-#![cfg_attr(
-    all(feature = "verifier_stats", not(target_arch = "riscv32")),
-    feature(thread_local)
-)]
 
 pub mod circuit_families;
 pub mod delegation_types;

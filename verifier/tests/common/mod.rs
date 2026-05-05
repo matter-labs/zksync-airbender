@@ -165,7 +165,7 @@ pub fn print_stats_log(circuit_name: &str) {
         print_header();
     }
 
-    let log = verifier_common::stats::STATS_LOG.borrow();
+    let log = verifier_common::stats::STATS_LOG.with_borrow(|log| log.clone());
     println!(
         "\n=== {} stats log ({} entries) ===",
         circuit_name,
