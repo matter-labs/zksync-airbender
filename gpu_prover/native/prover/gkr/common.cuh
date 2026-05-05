@@ -57,7 +57,6 @@ template <typename E> struct gkr_ext_continuing_source {
 };
 
 static constexpr unsigned GKR_BACKWARD_MAX_KERNELS_PER_LAYER = 64;
-static constexpr unsigned GKR_BACKWARD_MAX_INLINE_ROUND_BATCH_BYTES = 12 * 1024;
 static constexpr unsigned GKR_DIM_REDUCING_FORWARD_TOWER_LOG_BLOCK = 8;
 static constexpr unsigned GKR_DIM_REDUCING_FORWARD_TOWER_BLOCK = 1u << GKR_DIM_REDUCING_FORWARD_TOWER_LOG_BLOCK;
 static constexpr unsigned GKR_DIM_REDUCING_FORWARD_TOWER_MAX_ROUNDS = GKR_DIM_REDUCING_FORWARD_TOWER_LOG_BLOCK;
@@ -71,17 +70,6 @@ static constexpr unsigned GKR_EQ_GROUP_TABLE_LEN = 1u << GKR_EQ_GROUP_SIZE;
 static constexpr unsigned GKR_EQ_CHUNK_SIZE = 2;
 static constexpr unsigned GKR_EQ_CHUNK_TABLE_LEN = 1u << GKR_EQ_CHUNK_SIZE;
 static constexpr unsigned GKR_EQ_MAX_CHUNKS_PER_GROUP = GKR_EQ_GROUP_SIZE / GKR_EQ_CHUNK_SIZE;
-
-struct gkr_main_payload_range {
-  u32 offset;
-  u32 count;
-};
-
-template <typename T, typename Batch> DEVICE_FORCEINLINE const T *gkr_main_batch_payload_ptr(const Batch &batch, const gkr_main_payload_range &range) {
-  if (range.count == 0)
-    return nullptr;
-  return reinterpret_cast<const T *>(batch.inline_payload + range.offset);
-}
 
 template <typename E> DEVICE_FORCEINLINE const E *gkr_main_batch_challenges(const E *batch_challenge_base, const u32 offset, const u32 count, E (&storage)[2]) {
   storage[0] = E::ZERO();
@@ -101,24 +89,48 @@ enum gkr_dim_reducing_kernel_kind : u32 {
   GKR_DIM_REDUCING_LOOKUP = 1,
 };
 
-struct gkr_dim_reducing_round0_batch_record {
+// ---------------------------------------------------------------------------
+// Phase B compact descriptor types — mirror of
+// `gpu_prover/src/prover/gkr/backward_kernels.rs` compact structs. Each
+// per-source u16 in `inline_payload` encodes
+// `(first_access << 15) | (ptr_idx << 11) | poly_idx` (4-bit ptr_idx,
+// 11-bit poly_idx); the kernel resolves the source pointer via
+// `tables.bases` / `tables.log2_stride`.
+// ---------------------------------------------------------------------------
+
+constexpr unsigned GKR_DIM_REDUCING_INLINE_U16_BUDGET = 1280;
+// Bumped 8 -> 16 to accommodate Phase C round 1/2 main-layer flat-path
+// launches that need one slot per *backing* (read + cache for both base and
+// ext). 4-bit ptr_idx in every u16 source encoding is sized to match.
+constexpr unsigned GKR_DIM_REDUCING_BASE_SLOTS = 16;
+
+struct gkr_dim_reducing_payload_range_16 {
+  u16 offset;
+  u16 count;
+};
+
+struct gkr_dim_reducing_batch_record_compact {
   u32 kind;
-  u32 reserved0;
-  gkr_main_payload_range extension_inputs;
-  gkr_main_payload_range extension_outputs;
-  u32 batch_challenge_offset;
-  u32 batch_challenge_count;
+  gkr_dim_reducing_payload_range_16 inputs;
+  gkr_dim_reducing_payload_range_16 outputs;
+  u16 batch_challenge_offset;
+  u16 batch_challenge_count;
 };
 
-struct gkr_dim_reducing_continuation_batch_record {
-  u32 kind;
-  u32 reserved0;
-  gkr_main_payload_range extension_inputs;
-  u32 batch_challenge_offset;
-  u32 batch_challenge_count;
+static_assert(sizeof(gkr_dim_reducing_batch_record_compact) == 16,
+              "compact batch record must be 16 B (Phase 0 audit invariant)");
+
+struct gkr_dim_reducing_tables {
+  const u8 *bases[GKR_DIM_REDUCING_BASE_SLOTS];
+  u32 log2_stride[GKR_DIM_REDUCING_BASE_SLOTS];
 };
 
-template <typename E> struct gkr_dim_reducing_round0_batch {
+struct gkr_source_record {
+  u16 src;
+  u16 cache;
+};
+
+template <typename E> struct gkr_dim_reducing_round0_batch_compact {
   u32 record_count;
   u32 reserved0;
   u32 reserved1;
@@ -126,26 +138,12 @@ template <typename E> struct gkr_dim_reducing_round0_batch {
   const E *eq_values;
   const E *batch_challenge_base;
   E *contributions;
-  gkr_dim_reducing_round0_batch_record records[GKR_BACKWARD_MAX_KERNELS_PER_LAYER];
-  u8 inline_payload[GKR_BACKWARD_MAX_INLINE_ROUND_BATCH_BYTES];
+  gkr_dim_reducing_tables tables;
+  gkr_dim_reducing_batch_record_compact records[GKR_BACKWARD_MAX_KERNELS_PER_LAYER];
+  gkr_source_record inline_payload[GKR_DIM_REDUCING_INLINE_U16_BUDGET];
 };
 
-template <typename E> struct gkr_dim_reducing_round1_batch {
-  u32 record_count;
-  u32 reserved0;
-  u32 reserved1;
-  u32 reserved2;
-  const E *eq_values;
-  const E *batch_challenge_base;
-  const E *folding_challenge;
-  E *contributions;
-  bool explicit_form;
-  u8 padding[7];
-  gkr_dim_reducing_continuation_batch_record records[GKR_BACKWARD_MAX_KERNELS_PER_LAYER];
-  u8 inline_payload[GKR_BACKWARD_MAX_INLINE_ROUND_BATCH_BYTES];
-};
-
-template <typename E> struct gkr_dim_reducing_round2_batch {
+template <typename E> struct gkr_dim_reducing_continuation_batch_compact {
   u32 record_count;
   u32 reserved0;
   u32 reserved1;
@@ -156,24 +154,24 @@ template <typename E> struct gkr_dim_reducing_round2_batch {
   E *contributions;
   bool explicit_form;
   u8 padding[7];
-  gkr_dim_reducing_continuation_batch_record records[GKR_BACKWARD_MAX_KERNELS_PER_LAYER];
-  u8 inline_payload[GKR_BACKWARD_MAX_INLINE_ROUND_BATCH_BYTES];
+  gkr_dim_reducing_tables tables;
+  gkr_dim_reducing_batch_record_compact records[GKR_BACKWARD_MAX_KERNELS_PER_LAYER];
+  gkr_source_record inline_payload[GKR_DIM_REDUCING_INLINE_U16_BUDGET];
 };
 
-template <typename E> struct gkr_dim_reducing_round3_batch {
-  u32 record_count;
-  u32 reserved0;
-  u32 reserved1;
-  u32 reserved2;
-  const E *eq_values;
-  const E *batch_challenge_base;
-  const E *folding_challenge;
-  E *contributions;
-  bool explicit_form;
-  u8 padding[7];
-  gkr_dim_reducing_continuation_batch_record records[GKR_BACKWARD_MAX_KERNELS_PER_LAYER];
-  u8 inline_payload[GKR_BACKWARD_MAX_INLINE_ROUND_BATCH_BYTES];
-};
+DEVICE_FORCEINLINE void unpack_dim_reducing_source_u16(u16 packed, bool &first_access, u32 &ptr_idx,
+                                                       u32 &poly_idx) {
+  // bit 15 = first_access, bits 14..11 = ptr_idx (4 bits, 16 slots),
+  // bits 10..0 = poly_idx (11 bits, max 2048).
+  first_access = (packed & 0x8000u) != 0;
+  ptr_idx = (packed >> 11) & 0xFu;
+  poly_idx = packed & 0x07FFu;
+}
+
+DEVICE_FORCEINLINE void unpack_dim_reducing_cache_u16(u16 packed, u32 &ptr_idx, u32 &poly_idx) {
+  ptr_idx = (packed >> 11) & 0xFu;
+  poly_idx = packed & 0x07FFu;
+}
 
 constexpr unsigned GKR_FORWARD_CACHE_MEMORY_LINEAR_TERMS = 8;
 
@@ -1066,7 +1064,43 @@ DEVICE_FORCEINLINE void gkr_forward_setup_generic_lookup(const gkr_forward_setup
   store<E, st_modifier::cs>(batch.output, value, gid);
 }
 
-template <typename E> DEVICE_FORCEINLINE void gkr_dim_reducing_round0_batched(const gkr_dim_reducing_round0_batch<E> &batch, const unsigned acc_size) {
+// Phase B compact-path round-0 decoder. Walks `inline_payload` u16 source
+// descriptors and resolves each to a poly start via the per-launch
+// `bases` / `log2_stride` tables. Round 0's `next_layer_size` is
+// uniformly `acc_size` for every input/output (all polys at one layer
+// share the same trace_len), so no per-source size metadata is needed.
+// `log2_stride` is the **element-count** stride (matches the Rust storage
+// layout's per-poly element stride; see `GpuGKRStorageLayout::log2_stride`).
+// We re-interpret the byte base as `const E *` and advance by element index,
+// so the unit matches the Rust side regardless of `sizeof(E)`.
+//
+// Round 0 inputs sit one layer above the output layer (input size = 2 *
+// output_size = 2 * trace_len_after_reduction = 4 * acc_size), so the input
+// poly's `next_layer_size = input_size / 2 = 2 * acc_size`. The kernel's
+// `gkr_get_initial_delta` is only called on inputs; outputs are read via
+// `gkr_get_initial_value` (which ignores `next_layer_size`), so this
+// uniform setting is correct for both input and output sources at round 0.
+template <typename E>
+DEVICE_FORCEINLINE gkr_ext_initial_source<E> gkr_resolve_dim_reducing_initial_source(const gkr_dim_reducing_tables &tables, const gkr_source_record record,
+                                                                                      const unsigned acc_size) {
+  bool first_access;
+  u32 ptr_idx;
+  u32 poly_idx;
+  unpack_dim_reducing_source_u16(record.src, first_access, ptr_idx, poly_idx);
+  const E *base_e = reinterpret_cast<const E *>(tables.bases[ptr_idx]);
+  const u32 log2_stride = tables.log2_stride[ptr_idx];
+  const E *start = base_e + (static_cast<size_t>(poly_idx) << log2_stride);
+  return gkr_ext_initial_source<E>{start, 2u * acc_size};
+}
+
+// Maximum inputs / outputs read by a dim-reducing kernel-kind. Pairwise
+// uses (1 input, 1 output); Lookup uses (2 inputs, 2 outputs). Sized to
+// the lookup case so the stack array never overflows.
+constexpr unsigned GKR_DIM_REDUCING_MAX_INPUTS_PER_RECORD = 2;
+constexpr unsigned GKR_DIM_REDUCING_MAX_OUTPUTS_PER_RECORD = 2;
+
+template <typename E>
+DEVICE_FORCEINLINE void gkr_dim_reducing_round0_batched_compact(const gkr_dim_reducing_round0_batch_compact<E> &batch, const unsigned acc_size) {
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
   if (gid >= acc_size)
     return;
@@ -1075,8 +1109,14 @@ template <typename E> DEVICE_FORCEINLINE void gkr_dim_reducing_round0_batched(co
   E total1 = E::ZERO();
   for (unsigned i = 0; i < batch.record_count; ++i) {
     const auto &record = batch.records[i];
-    const auto *inputs = gkr_main_batch_payload_ptr<gkr_ext_initial_source<E>>(batch, record.extension_inputs);
-    const auto *outputs = gkr_main_batch_payload_ptr<gkr_ext_initial_source<E>>(batch, record.extension_outputs);
+    gkr_ext_initial_source<E> inputs[GKR_DIM_REDUCING_MAX_INPUTS_PER_RECORD];
+    gkr_ext_initial_source<E> outputs[GKR_DIM_REDUCING_MAX_OUTPUTS_PER_RECORD];
+    for (unsigned k = 0; k < record.inputs.count; ++k) {
+      inputs[k] = gkr_resolve_dim_reducing_initial_source<E>(batch.tables, batch.inline_payload[record.inputs.offset + k], acc_size);
+    }
+    for (unsigned k = 0; k < record.outputs.count; ++k) {
+      outputs[k] = gkr_resolve_dim_reducing_initial_source<E>(batch.tables, batch.inline_payload[record.outputs.offset + k], acc_size);
+    }
     E batch_challenge_storage[2];
     const E *batch_challenges =
         gkr_main_batch_challenges(batch.batch_challenge_base, record.batch_challenge_offset, record.batch_challenge_count, batch_challenge_storage);
@@ -1101,8 +1141,37 @@ template <typename E> DEVICE_FORCEINLINE void gkr_dim_reducing_round0_batched(co
   store<E, st_modifier::cs>(batch.contributions + acc_size, E::mul(total1, eq), gid);
 }
 
-template <typename E, bool EXPLICIT_FORM, typename Batch>
-DEVICE_FORCEINLINE void gkr_dim_reducing_continuation_batched(const Batch &batch, const unsigned acc_size) {
+// Round-1 (sumcheck step 1) source resolver. The u16 encodes the GKR ext
+// storage slot of the original input poly; `previous_layer_start` is that
+// poly's start, and `this_layer_start` is the matching folding-buffer slot
+// from the record's cache half. this_layer_size and
+// next_layer_size at step 1 are uniformly `2 * acc_size` and `acc_size`.
+template <typename E>
+DEVICE_FORCEINLINE gkr_ext_continuing_source<E> gkr_resolve_dim_reducing_round1_source(const gkr_dim_reducing_tables &tables, const gkr_source_record record,
+                                                                                       const unsigned acc_size) {
+  bool first_access;
+  u32 ptr_idx;
+  u32 poly_idx;
+  unpack_dim_reducing_source_u16(record.src, first_access, ptr_idx, poly_idx);
+  const E *poly_base = reinterpret_cast<const E *>(tables.bases[ptr_idx]);
+  const u32 poly_log2_stride = tables.log2_stride[ptr_idx];
+  const E *previous = poly_base + (static_cast<size_t>(poly_idx) << poly_log2_stride);
+  u32 buffer_slot;
+  u32 buffer_poly_idx;
+  unpack_dim_reducing_cache_u16(record.cache, buffer_slot, buffer_poly_idx);
+  E *buffer_base = reinterpret_cast<E *>(const_cast<u8 *>(tables.bases[buffer_slot]));
+  const u32 buffer_log2_stride = tables.log2_stride[buffer_slot];
+  E *this_layer = buffer_base + (static_cast<size_t>(buffer_poly_idx) << buffer_log2_stride);
+  // At sumcheck step 1, `this_layer_size` is the f0/f1 stride within the
+  // previous (= original input) poly, which is `poly_size / 2 = 4 * acc_size`
+  // (input size at step 1 = 8 * acc_size since acc_size = trace_len_after_reduction/4).
+  // `next_layer_size` is the produced fold's stride = `this_layer_size / 2 = 2 * acc_size`.
+  return gkr_ext_continuing_source<E>{previous, this_layer, 4u * acc_size, 2u * acc_size, first_access};
+}
+
+template <typename E, bool EXPLICIT_FORM>
+DEVICE_FORCEINLINE void gkr_dim_reducing_round1_batched_compact_inner(const gkr_dim_reducing_continuation_batch_compact<E> &batch,
+                                                                      const unsigned acc_size) {
   const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
   if (gid >= acc_size)
     return;
@@ -1111,7 +1180,79 @@ DEVICE_FORCEINLINE void gkr_dim_reducing_continuation_batched(const Batch &batch
   E total1 = E::ZERO();
   for (unsigned i = 0; i < batch.record_count; ++i) {
     const auto &record = batch.records[i];
-    const auto *inputs = gkr_main_batch_payload_ptr<gkr_ext_continuing_source<E>>(batch, record.extension_inputs);
+    gkr_ext_continuing_source<E> inputs[GKR_DIM_REDUCING_MAX_INPUTS_PER_RECORD];
+    for (unsigned k = 0; k < record.inputs.count; ++k) {
+      inputs[k] = gkr_resolve_dim_reducing_round1_source<E>(batch.tables, batch.inline_payload[record.inputs.offset + k], acc_size);
+    }
+    E batch_challenge_storage[2];
+    const E *batch_challenges =
+        gkr_main_batch_challenges(batch.batch_challenge_base, record.batch_challenge_offset, record.batch_challenge_count, batch_challenge_storage);
+    E c0;
+    E c1;
+    switch (record.kind) {
+    case GKR_DIM_REDUCING_PAIRWISE:
+      gkr_pairwise_continuation_values<E, EXPLICIT_FORM>(inputs, batch.folding_challenge, batch_challenges, gid, c0, c1);
+      break;
+    case GKR_DIM_REDUCING_LOOKUP:
+      gkr_lookup_continuation_values<E, EXPLICIT_FORM>(inputs, batch.folding_challenge, batch_challenges, gid, c0, c1);
+      break;
+    default:
+      return;
+    }
+    total0 = E::add(total0, c0);
+    total1 = E::add(total1, c1);
+  }
+
+  const E eq = load<E, ld_modifier::cs>(batch.eq_values, gid);
+  store<E, st_modifier::cs>(batch.contributions, E::mul(total0, eq), gid);
+  store<E, st_modifier::cs>(batch.contributions + acc_size, E::mul(total1, eq), gid);
+}
+
+// Continuation (sumcheck step >= 2) source resolver. The u16 encodes the
+// folding-buffer slot directly (the host has set up bases[ptr_idx] to the
+// consolidated folding backing's start). At step N >= 2:
+//   per_poly_size = (1 << (N+1)) * acc_size   (uniform for all polys)
+//   previous_offset_in_E = ((1 << (N+1)) - 8) * acc_size   // step 2 → 0
+//   this_offset_in_E     = ((1 << (N+1)) - 4) * acc_size   // step 2 → 4*acc
+//   this_layer_size = 2 * acc_size, next_layer_size = acc_size
+template <typename E>
+DEVICE_FORCEINLINE gkr_ext_continuing_source<E> gkr_resolve_dim_reducing_continuation_source(const gkr_dim_reducing_tables &tables, const gkr_source_record record,
+                                                                                              const unsigned acc_size, const unsigned step) {
+  bool first_access;
+  u32 ptr_idx;
+  u32 poly_idx;
+  unpack_dim_reducing_source_u16(record.src, first_access, ptr_idx, poly_idx);
+  E *buffer_base = reinterpret_cast<E *>(const_cast<u8 *>(tables.bases[ptr_idx]));
+  const u32 buffer_log2_stride = tables.log2_stride[ptr_idx];
+  E *buffer_start = buffer_base + (static_cast<size_t>(poly_idx) << buffer_log2_stride);
+  // Mirrors the legacy `pointer_for_sumcheck_continuation` cumulative offsets.
+  // At step k >= 2 (in acc_size units, where size_after_one_fold = 2^(k+1) * acc_size):
+  //   previous_offset = sum_{i=0..k-3} size_after_one_fold/2^i = (2^(k+2) - 16) * acc_size
+  //   this_offset     = previous_offset + size_after_one_fold/2^(k-2) = (2^(k+2) - 8) * acc_size
+  const unsigned shifted = 1u << (step + 2);
+  const E *previous = buffer_start + static_cast<size_t>(shifted - 16u) * acc_size;
+  E *this_layer = buffer_start + static_cast<size_t>(shifted - 8u) * acc_size;
+  // At step k >= 2, `this_layer_size = 4 * acc_size` (the f0/f1 stride within
+  // the previous-layer span = trace_len_after_reduction >> (k-1) = 4 * acc_size_at_step_k);
+  // `next_layer_size = this_layer_size / 2 = 2 * acc_size`.
+  return gkr_ext_continuing_source<E>{previous, this_layer, 4u * acc_size, 2u * acc_size, first_access};
+}
+
+template <typename E, bool EXPLICIT_FORM>
+DEVICE_FORCEINLINE void gkr_dim_reducing_continuation_batched_compact_inner(const gkr_dim_reducing_continuation_batch_compact<E> &batch,
+                                                                             const unsigned acc_size, const unsigned step) {
+  const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
+  if (gid >= acc_size)
+    return;
+
+  E total0 = E::ZERO();
+  E total1 = E::ZERO();
+  for (unsigned i = 0; i < batch.record_count; ++i) {
+    const auto &record = batch.records[i];
+    gkr_ext_continuing_source<E> inputs[GKR_DIM_REDUCING_MAX_INPUTS_PER_RECORD];
+    for (unsigned k = 0; k < record.inputs.count; ++k) {
+      inputs[k] = gkr_resolve_dim_reducing_continuation_source<E>(batch.tables, batch.inline_payload[record.inputs.offset + k], acc_size, step);
+    }
     E batch_challenge_storage[2];
     const E *batch_challenges =
         gkr_main_batch_challenges(batch.batch_challenge_base, record.batch_challenge_offset, record.batch_challenge_count, batch_challenge_storage);
