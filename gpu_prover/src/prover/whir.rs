@@ -298,7 +298,10 @@ impl GpuWhirExtensionOracle {
     /// single-coset `MerkleTreeCapVarLength`. Test-only helper — production
     /// paths should consume the cap as `unified_device_cap()` and avoid
     /// host blocking.
-    pub(crate) fn get_tree_cap(&self, context: &ProverContext) -> CudaResult<MerkleTreeCapVarLength> {
+    pub(crate) fn get_tree_cap(
+        &self,
+        context: &ProverContext,
+    ) -> CudaResult<MerkleTreeCapVarLength> {
         self.trace_holder.read_full_cap_synchronously(context)
     }
 
@@ -317,7 +320,9 @@ impl GpuWhirExtensionOracle {
     /// Reference to the oracle's device-resident unified Merkle cap. WHIR
     /// intermediate oracles are constructed with `log_lde_factor = 0`, so
     /// this is the single per-coset cap.
-    pub(crate) fn unified_device_cap(&self) -> &crate::primitives::context::DeviceAllocation<Digest> {
+    pub(crate) fn unified_device_cap(
+        &self,
+    ) -> &crate::primitives::context::DeviceAllocation<Digest> {
         self.trace_holder.unified_device_cap()
     }
 
@@ -327,7 +332,9 @@ impl GpuWhirExtensionOracle {
     /// downstream reads.
     pub(crate) fn into_host_keepalive(self) -> GpuWhirExtensionOracleKeepalive {
         let Self { trace_holder, .. } = self;
-        GpuWhirExtensionOracleKeepalive { _trace_holder: trace_holder }
+        GpuWhirExtensionOracleKeepalive {
+            _trace_holder: trace_holder,
+        }
     }
 
     pub(crate) fn query_for_folded_index(
