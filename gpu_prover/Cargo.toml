@@ -45,6 +45,7 @@ log_gpu_mem_usage = []
 log_gpu_stages_timings = []
 security_80 = ["verifier_common/security_80"]
 security_100 = ["verifier_common/security_100"]
+sync_profiling = []
 
 [dev-dependencies]
 # execution_utils = { workspace = true }
@@ -58,6 +59,7 @@ era_criterion_cuda = "0.2"
 criterion = "0.5"
 serial_test = "3"
 bincode = { version = "2" }
+tracing-subscriber = { version = "0.3.23", features = ["env-filter", "fmt", "tracing-log"] }
 
 [[bench]]
 name = "blake2s"

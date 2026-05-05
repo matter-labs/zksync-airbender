@@ -8,6 +8,7 @@ use crate::machine_type::MachineType;
 use crate::prover::tracing_data::{
     DelegationTracingDataHostSource, TracingDataHost, UnrolledTracingDataHost,
 };
+use crate::sync_profiling::{self, SyncMetric};
 use crate::witness::trace::ChunkedTraceHolder;
 use crossbeam_channel::{Receiver, Sender};
 use cs::definitions::{
@@ -432,7 +433,10 @@ impl<T: TracingDataProducerType> TracingDataProducer<T> {
             let next_circuit_index = next_circuit_boundary / cycles_per_circuit;
             assert_eq!(next_circuit_index, self.current_circuit_index + 1);
             if self.chunks.back().map_or(true, |v| v.len() == v.capacity()) {
-                let allocator = self.free_allocators.recv().unwrap();
+                let allocator = sync_profiling::measure(SyncMetric::FreeAllocatorsRecv, || {
+                    self.free_allocators.recv()
+                })
+                .unwrap();
                 let capacity = allocator.capacity() / size_of::<T>();
                 let chunk = Arc::new(Vec::with_capacity_in(capacity, allocator));
                 self.chunks.push_back(chunk)
@@ -477,7 +481,7 @@ impl<T: TracingDataProducerType> TracingDataProducer<T> {
             participating_snapshot_indexes,
         };
         let result = WorkerResult::TracingData(data);
-        self.results.send(result).unwrap();
+        sync_profiling::measure(SyncMetric::WorkResultsSend, || self.results.send(result)).unwrap();
     }
 
     pub fn finalize(mut self) {

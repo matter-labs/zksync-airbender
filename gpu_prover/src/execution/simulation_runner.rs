@@ -2,6 +2,7 @@ use crate::execution::messages::WorkerResult;
 use crate::execution::tracing::{DataTraceRanges, TracingDataProducers, TracingType};
 use crate::execution::A;
 use crate::machine_type::MachineType;
+use crate::sync_profiling::{self, SyncMetric};
 use crossbeam_channel::{Receiver, Sender};
 use cs::definitions::{INITIAL_TIMESTAMP, TIMESTAMP_STEP};
 use era_cudart::memory::{CudaHostAllocFlags, CudaHostRegisterFlags, HostAllocation};
@@ -217,7 +218,11 @@ impl<ND: NonDeterminismCSRSource + Send + 'static, T: TracingType + 'static>
     ) -> Self {
         let batch_id = self.batch_id;
         let jitted_code = {
-            let mut guard = jit_cache.lock().unwrap();
+            let mut guard = sync_profiling::lock(
+                jit_cache.as_ref(),
+                SyncMetric::JitCacheLockWait,
+                SyncMetric::JitCacheLockHold,
+            );
             let entry = guard.get::<Arc<JittedCode<Self>>>();
             if let Some(entry) = entry {
                 entry.clone()
@@ -233,10 +238,10 @@ impl<ND: NonDeterminismCSRSource + Send + 'static, T: TracingType + 'static>
         let binary_image_len = binary_image.len();
         memory_holder.memory[..binary_image_len].copy_from_slice(&binary_image);
         memory_holder.memory[binary_image_len..ROM_WORD_SIZE].fill(0);
-        let mut trace = self
-            .free_trace_chunks_receiver
-            .recv()
-            .expect("must receive a trace chunk for simulation");
+        let mut trace = sync_profiling::measure(SyncMetric::FreeTraceChunksRecv, || {
+            self.free_trace_chunks_receiver.recv()
+        })
+        .expect("must receive a trace chunk for simulation");
         trace.chunk.len = 0;
         let trace_ref = unsafe { NonNull::new_unchecked(trace.chunk.as_mut()) };
         self.trace = Some(trace);
@@ -249,7 +254,10 @@ impl<ND: NonDeterminismCSRSource + Send + 'static, T: TracingType + 'static>
             implementation: mut runner,
         } = context;
         if let Some(trace) = runner.trace.take() {
-            runner.free_trace_chunks_sender.send(trace).unwrap();
+            sync_profiling::measure(SyncMetric::FreeTraceChunksSend, || {
+                runner.free_trace_chunks_sender.send(trace)
+            })
+            .unwrap();
         }
         if !runner.is_aborted {
             let final_timestamp = runner.state.timestamp;
@@ -264,6 +272,7 @@ impl<ND: NonDeterminismCSRSource + Send + 'static, T: TracingType + 'static>
     }
 
     fn process_trace(&mut self, machine_state: &MachineState, elapsed: Duration) {
+        sync_profiling::record(SyncMetric::SimulatorExecuteTraceChunk, elapsed);
         if self.is_aborted {
             return;
         }
@@ -282,7 +291,9 @@ impl<ND: NonDeterminismCSRSource + Send + 'static, T: TracingType + 'static>
         let mhz = (cycles_count as f64) / (elapsed_ms * 1000.0);
         trace!("BATCH[{batch_id}] SIMULATOR produced SNAPSHOT[{snapshot_index}] with {cycles_count} cycles in {elapsed_ms:.3} ms @ {mhz:.3} MHz");
         if self.abort.load(std::sync::atomic::Ordering::Relaxed) {
-            self.tracing_data_producers.take().unwrap().finalize();
+            sync_profiling::measure_exclusive(SyncMetric::SimulatorFinalizeTracingData, || {
+                self.tracing_data_producers.take().unwrap().finalize();
+            });
             assert!(self.snapshots.take().is_some());
             assert!(self.results.take().is_some());
             let timestamp_diff = timestamp - INITIAL_TIMESTAMP;
@@ -296,34 +307,43 @@ impl<ND: NonDeterminismCSRSource + Send + 'static, T: TracingType + 'static>
         }
         let trace = self.trace.take().unwrap();
         let result = WorkerResult::SnapshotProduced;
-        self.results.as_ref().unwrap().send(result).unwrap();
-        let counters_diff = machine_state
-            .counters
-            .iter()
-            .zip_eq(initial_state.counters.iter())
-            .map(|(a, b)| a - b)
-            .collect_array::<MAX_NUM_COUNTERS>()
-            .unwrap();
-        let expected_cycles = counters_diff.iter().take(6).sum::<u64>() as usize;
-        assert_eq!(expected_cycles, cycles_count);
-        let trace_ranges = self
-            .tracing_data_producers
-            .as_mut()
-            .unwrap()
-            .process_snapshot(
-                snapshot_index,
-                &initial_state.counters,
-                &machine_state.counters,
-            );
-        let snapshot = Snapshot {
-            index: snapshot_index,
-            cycles_count,
-            initial_state,
-            trace,
-            final_state,
-            trace_ranges,
-        };
-        self.snapshots.as_ref().unwrap().send(snapshot).unwrap();
+        sync_profiling::measure(SyncMetric::WorkResultsSend, || {
+            self.results.as_ref().unwrap().send(result)
+        })
+        .unwrap();
+        let snapshot =
+            sync_profiling::measure_exclusive(SyncMetric::SimulatorPrepareSnapshot, || {
+                let counters_diff = machine_state
+                    .counters
+                    .iter()
+                    .zip_eq(initial_state.counters.iter())
+                    .map(|(a, b)| a - b)
+                    .collect_array::<MAX_NUM_COUNTERS>()
+                    .unwrap();
+                let expected_cycles = counters_diff.iter().take(6).sum::<u64>() as usize;
+                assert_eq!(expected_cycles, cycles_count);
+                let trace_ranges = self
+                    .tracing_data_producers
+                    .as_mut()
+                    .unwrap()
+                    .process_snapshot(
+                        snapshot_index,
+                        &initial_state.counters,
+                        &machine_state.counters,
+                    );
+                Snapshot {
+                    index: snapshot_index,
+                    cycles_count,
+                    initial_state,
+                    trace,
+                    final_state,
+                    trace_ranges,
+                }
+            });
+        sync_profiling::measure(SyncMetric::SnapshotsSend, || {
+            self.snapshots.as_ref().unwrap().send(snapshot)
+        })
+        .unwrap();
     }
 }
 
@@ -353,7 +373,10 @@ impl<ND: NonDeterminismCSRSource + Send + 'static, T: TracingType> ContextImpl
         assert_eq!(argument_ptr, current_ptr);
         self.process_trace(machine_state, elapsed);
         if self.trace.is_none() {
-            let trace = self.free_trace_chunks_receiver.recv().unwrap();
+            let trace = sync_profiling::measure(SyncMetric::FreeTraceChunksRecv, || {
+                self.free_trace_chunks_receiver.recv()
+            })
+            .unwrap();
             self.trace = Some(trace);
         }
         self.trace.as_mut().unwrap().chunk.len = 0;
@@ -377,7 +400,9 @@ impl<ND: NonDeterminismCSRSource + Send + 'static, T: TracingType> ContextImpl
         assert_eq!(argument_ptr, current_ptr);
         self.process_trace(machine_state, elapsed);
         if !self.is_aborted {
-            self.tracing_data_producers.take().unwrap().finalize();
+            sync_profiling::measure_exclusive(SyncMetric::SimulatorFinalizeTracingData, || {
+                self.tracing_data_producers.take().unwrap().finalize();
+            });
         }
     }
 

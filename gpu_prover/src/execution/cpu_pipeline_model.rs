@@ -11,11 +11,13 @@ use crate::machine_type::MachineType;
 use crate::prover::tracing_data::{
     DelegationTracingDataHost, TracingDataHost, UnrolledTracingDataHost,
 };
+use crate::sync_profiling::{self, SyncMetric};
 use crate::witness::trace_unrolled::ShuffleRamInitsAndTeardownsHost;
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use cs::definitions::TimestampScalar;
 use era_cudart::memory::{CudaHostAllocFlags, HostAllocation};
 use itertools::Itertools;
+use log::{debug, trace};
 use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
 use riscv_transpiler::ir::{
     preprocess_bytecode, FullMachineDecoderConfig, FullUnsignedMachineDecoderConfig,
@@ -28,6 +30,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::ops::Deref;
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
+use std::thread;
 use std::time::{Duration, Instant};
 use type_map::concurrent::TypeMap;
 use worker::Worker;
@@ -66,6 +69,8 @@ pub struct CpuPipelineModelConfig {
     pub host_allocator_backing_allocation_size: usize,
     pub host_allocators_count: usize,
     pub memory_holders_count: usize,
+    pub trace_chunks_count_override: Option<usize>,
+    pub use_dedicated_pipeline_threads: bool,
 }
 
 impl Default for CpuPipelineModelConfig {
@@ -80,6 +85,8 @@ impl Default for CpuPipelineModelConfig {
             host_allocator_backing_allocation_size: 1 << 26,
             host_allocators_count: 128,
             memory_holders_count: 1,
+            trace_chunks_count_override: None,
+            use_dedicated_pipeline_threads: false,
         }
     }
 }
@@ -118,6 +125,8 @@ pub struct CpuPipelineModelReport {
     pub host_payloads_produced: usize,
     pub replayed_cycles: u64,
     pub timings: CpuPipelineTimings,
+    #[cfg(feature = "sync_profiling")]
+    pub sync_profile: Vec<sync_profiling::SyncMetricSnapshot>,
 }
 
 /// Reusable CPU-only model for benchmarking the host work required by GPU proving.
@@ -198,6 +207,11 @@ impl CpuPipelineModel {
 
     /// Run one benchmark iteration with the supplied nondeterminism tape.
     pub fn run(&self, nondeterminism: Vec<u32>) -> CpuPipelineModelReport {
+        // The sync profiler is intentionally scoped to one model run. This keeps Criterion and
+        // ad-hoc reports easy to compare while the prototype remains single-run oriented.
+        #[cfg(feature = "sync_profiling")]
+        sync_profiling::reset();
+
         let timer = Instant::now();
         let mut report = match self.config.execution_kind {
             ExecutionKind::Unrolled => {
@@ -208,6 +222,10 @@ impl CpuPipelineModel {
             }
         };
         report.timings.total_wall = timer.elapsed();
+        #[cfg(feature = "sync_profiling")]
+        {
+            report.sync_profile = sync_profiling::snapshot();
+        }
         report
     }
 
@@ -221,6 +239,8 @@ impl CpuPipelineModel {
         let abort = Arc::new(AtomicBool::new(false));
         let timings = Arc::new(Mutex::new(CpuPipelineTimings::default()));
         let batch_id = 0;
+        let mut dedicated_threads = Vec::new();
+        let use_dedicated_pipeline_threads = self.config.use_dedicated_pipeline_threads;
 
         {
             let machine_type = self.config.machine_type;
@@ -239,52 +259,87 @@ impl CpuPipelineModel {
             let timings = timings.clone();
             let source = QuasiUARTSource::new_with_reads(nondeterminism);
 
-            self.worker.pool.spawn(move || {
-                // The benchmark reuses the same model across tight Criterion iterations.
-                // Keep the result channel open until the simulator-owned caches are restored,
-                // otherwise `run()` can return while the next iteration still sees empty caches.
-                let cache_restoration_barrier = work_results_sender.clone();
-                let mut memory_holder = {
-                    let mut cache = memory_holders_cache.lock().unwrap();
-                    cache
-                        .pop()
-                        .expect("CPU pipeline model should have a cached memory holder")
-                };
-                {
-                    let mut cache = trace_chunks_cache.lock().unwrap();
-                    let chunks = cache
-                        .pop()
-                        .expect("CPU pipeline model should have cached trace chunks");
-                    assert_eq!(chunks.len(), trace_chunks_count);
-                    for chunk in chunks {
-                        free_trace_chunks_sender.send(chunk).unwrap();
+            spawn_pipeline_task(
+                &self.worker,
+                &mut dedicated_threads,
+                use_dedicated_pipeline_threads,
+                "cpu-pipeline-simulator",
+                move || {
+                    // The benchmark reuses the same model across tight Criterion iterations.
+                    // Keep the result channel open until the simulator-owned caches are restored,
+                    // otherwise `run()` can return while the next iteration still sees empty caches.
+                    let cache_restoration_barrier = work_results_sender.clone();
+                    let mut memory_holder = {
+                        let mut cache = sync_profiling::lock(
+                            memory_holders_cache.as_ref(),
+                            SyncMetric::CpuModelMemoryHoldersCacheLockWait,
+                            SyncMetric::CpuModelMemoryHoldersCacheLockHold,
+                        );
+                        cache
+                            .pop()
+                            .expect("CPU pipeline model should have a cached memory holder")
+                    };
+                    {
+                        let mut cache = sync_profiling::lock(
+                            trace_chunks_cache.as_ref(),
+                            SyncMetric::CpuModelTraceChunksCacheLockWait,
+                            SyncMetric::CpuModelTraceChunksCacheLockHold,
+                        );
+                        let chunks = cache
+                            .pop()
+                            .expect("CPU pipeline model should have cached trace chunks");
+                        assert_eq!(chunks.len(), trace_chunks_count);
+                        for chunk in chunks {
+                            sync_profiling::measure(SyncMetric::FreeTraceChunksSend, || {
+                                free_trace_chunks_sender.send(chunk)
+                            })
+                            .unwrap();
+                        }
                     }
-                }
-                let free_trace_chunks_receiver_clone = free_trace_chunks_receiver.clone();
-                run_simulator_for_model::<T>(
-                    batch_id,
-                    machine_type,
-                    binary_image,
-                    text_section,
-                    cycles_bound,
-                    jit_cache,
-                    &mut memory_holder,
-                    source,
-                    free_trace_chunks_sender,
-                    free_trace_chunks_receiver,
-                    snapshot_sender,
-                    work_results_sender,
-                    free_allocators_receiver,
-                    abort,
-                    &worker,
-                    timings,
-                );
-                memory_holders_cache.lock().unwrap().push(memory_holder);
-                let trace_chunks = free_trace_chunks_receiver_clone.iter().collect_vec();
-                assert_eq!(trace_chunks.len(), trace_chunks_count);
-                trace_chunks_cache.lock().unwrap().push(trace_chunks);
-                drop(cache_restoration_barrier);
-            });
+                    let free_trace_chunks_receiver_clone = free_trace_chunks_receiver.clone();
+                    run_simulator_for_model::<T>(
+                        batch_id,
+                        machine_type,
+                        binary_image,
+                        text_section,
+                        cycles_bound,
+                        jit_cache,
+                        &mut memory_holder,
+                        source,
+                        free_trace_chunks_sender,
+                        free_trace_chunks_receiver,
+                        snapshot_sender,
+                        work_results_sender,
+                        free_allocators_receiver,
+                        abort,
+                        &worker,
+                        timings,
+                    );
+                    sync_profiling::lock(
+                        memory_holders_cache.as_ref(),
+                        SyncMetric::CpuModelMemoryHoldersCacheLockWait,
+                        SyncMetric::CpuModelMemoryHoldersCacheLockHold,
+                    )
+                    .push(memory_holder);
+                    let mut trace_chunks = Vec::with_capacity(trace_chunks_count);
+                    for _ in 0..trace_chunks_count {
+                        let chunk = sync_profiling::measure(
+                            SyncMetric::CpuModelTraceChunksCacheRestoreRecv,
+                            || free_trace_chunks_receiver_clone.recv(),
+                        )
+                        .expect("CPU pipeline model should recover all cached trace chunks");
+                        trace_chunks.push(chunk);
+                    }
+                    assert_eq!(trace_chunks.len(), trace_chunks_count);
+                    sync_profiling::lock(
+                        trace_chunks_cache.as_ref(),
+                        SyncMetric::CpuModelTraceChunksCacheLockWait,
+                        SyncMetric::CpuModelTraceChunksCacheLockHold,
+                    )
+                    .push(trace_chunks);
+                    drop(cache_restoration_barrier);
+                },
+            );
         }
 
         match self.config.mode {
@@ -292,13 +347,19 @@ impl CpuPipelineModel {
                 let snapshot_receiver = snapshot_receiver.clone();
                 let free_trace_chunks_sender = free_trace_chunks_sender.clone();
                 let work_results_sender = work_results_sender.clone();
-                self.worker.pool.spawn(move || {
-                    recycle_snapshots::<T>(
-                        snapshot_receiver,
-                        free_trace_chunks_sender,
-                        work_results_sender,
-                    )
-                });
+                spawn_pipeline_task(
+                    &self.worker,
+                    &mut dedicated_threads,
+                    use_dedicated_pipeline_threads,
+                    "cpu-pipeline-snapshot-recycler",
+                    move || {
+                        recycle_snapshots::<T>(
+                            snapshot_receiver,
+                            free_trace_chunks_sender,
+                            work_results_sender,
+                        )
+                    },
+                );
             }
             CpuPipelineMode::Full | CpuPipelineMode::FullWithoutDelegationReplay => {
                 let skip_delegation_trace_rows =
@@ -310,19 +371,25 @@ impl CpuPipelineModel {
                     let work_results_sender = work_results_sender.clone();
                     let abort = abort.clone();
                     let timings = timings.clone();
-                    self.worker.pool.spawn(move || {
-                        run_replayer_for_model::<T>(
-                            batch_id,
-                            worker_id,
-                            instruction_tape,
-                            snapshot_receiver,
-                            free_trace_chunks_sender,
-                            work_results_sender,
-                            abort,
-                            timings,
-                            skip_delegation_trace_rows,
-                        )
-                    });
+                    spawn_pipeline_task(
+                        &self.worker,
+                        &mut dedicated_threads,
+                        use_dedicated_pipeline_threads,
+                        format!("cpu-pipeline-replayer-{worker_id}"),
+                        move || {
+                            run_replayer_for_model::<T>(
+                                batch_id,
+                                worker_id,
+                                instruction_tape,
+                                snapshot_receiver,
+                                free_trace_chunks_sender,
+                                work_results_sender,
+                                abort,
+                                timings,
+                                skip_delegation_trace_rows,
+                            )
+                        },
+                    );
                 }
             }
         }
@@ -340,38 +407,64 @@ impl CpuPipelineModel {
         let mut tracing_data_keys_by_snapshot =
             BTreeMap::<usize, BTreeSet<(CircuitType, usize)>>::new();
 
-        for result in work_results_receiver {
+        while let Ok(result) =
+            sync_profiling::measure(SyncMetric::WorkResultsRecv, || work_results_receiver.recv())
+        {
             match result {
                 WorkerResult::SnapshotProduced => {
                     report.snapshots_produced += 1;
                 }
                 WorkerResult::InitsAndTeardownsData(data) => {
-                    report.host_payloads_produced += 1;
-                    consume_inits_and_teardowns(data, &self.free_allocators_sender, &mut report);
+                    sync_profiling::measure_exclusive(
+                        SyncMetric::CpuModelHandleInitsAndTeardowns,
+                        || {
+                            report.host_payloads_produced += 1;
+                            consume_inits_and_teardowns(
+                                data,
+                                &self.free_allocators_sender,
+                                &mut report,
+                            );
+                        },
+                    );
                 }
                 WorkerResult::TracingData(data) => {
-                    report.host_payloads_produced += 1;
-                    record_tracing_data_metrics(&data, &mut report);
-                    hold_or_release_tracing_data(
-                        data,
-                        &processed_snapshots,
-                        &mut pending_tracing_data,
-                        &mut tracing_data_keys_by_snapshot,
-                        &self.free_allocators_sender,
+                    sync_profiling::measure_exclusive(
+                        SyncMetric::CpuModelHandleTracingData,
+                        || {
+                            report.host_payloads_produced += 1;
+                            record_tracing_data_metrics(&data, &mut report);
+                            hold_or_release_tracing_data(
+                                data,
+                                &processed_snapshots,
+                                &mut pending_tracing_data,
+                                &mut tracing_data_keys_by_snapshot,
+                                &self.free_allocators_sender,
+                            );
+                        },
                     );
                 }
                 WorkerResult::SimulationResult(result) => {
-                    consume_simulation_result(result, &mut report);
+                    sync_profiling::measure_exclusive(
+                        SyncMetric::CpuModelHandleSimulationResult,
+                        || {
+                            consume_simulation_result(result, &mut report);
+                        },
+                    );
                 }
                 WorkerResult::SnapshotReplayed(index) => {
-                    report.snapshots_finalized += 1;
-                    processed_snapshots.insert(index);
-                    release_ready_tracing_data(
-                        index,
-                        &processed_snapshots,
-                        &mut pending_tracing_data,
-                        &mut tracing_data_keys_by_snapshot,
-                        &self.free_allocators_sender,
+                    sync_profiling::measure_exclusive(
+                        SyncMetric::CpuModelHandleSnapshotReplayed,
+                        || {
+                            report.snapshots_finalized += 1;
+                            processed_snapshots.insert(index);
+                            release_ready_tracing_data(
+                                index,
+                                &processed_snapshots,
+                                &mut pending_tracing_data,
+                                &mut tracing_data_keys_by_snapshot,
+                                &self.free_allocators_sender,
+                            );
+                        },
                     );
                 }
                 WorkerResult::GpuWorkResult(_) => {
@@ -384,10 +477,41 @@ impl CpuPipelineModel {
             pending_tracing_data.is_empty(),
             "all tracing data should be releasable once snapshots are finalized"
         );
+        for handle in dedicated_threads {
+            handle
+                .join()
+                .expect("dedicated CPU pipeline thread should not panic");
+        }
 
-        report.timings = timings.lock().unwrap().clone();
+        report.timings = sync_profiling::lock(
+            timings.as_ref(),
+            SyncMetric::CpuModelTimingsLockWait,
+            SyncMetric::CpuModelTimingsLockHold,
+        )
+        .clone();
         report.replayed_cycles = report.timings.replayed_cycles;
         report
+    }
+}
+
+fn spawn_pipeline_task(
+    worker: &Worker,
+    dedicated_threads: &mut Vec<thread::JoinHandle<()>>,
+    use_dedicated_pipeline_threads: bool,
+    name: impl Into<String>,
+    task: impl FnOnce() + Send + 'static,
+) {
+    // This is intentionally a benchmark-only switch. It lets us check whether long-lived
+    // simulator/replayer actors should stop occupying Rayon worker threads that are also used
+    // for short parallel compute phases such as init/teardown scanning.
+    if use_dedicated_pipeline_threads {
+        let handle = thread::Builder::new()
+            .name(name.into())
+            .spawn(task)
+            .expect("dedicated CPU pipeline thread should spawn");
+        dedicated_threads.push(handle);
+    } else {
+        worker.pool.spawn(task);
     }
 }
 
@@ -406,6 +530,12 @@ fn validate_config(config: CpuPipelineModelConfig) {
         config.memory_holders_count > 0,
         "CPU pipeline model needs at least one memory holder"
     );
+    if let Some(trace_chunks_count) = config.trace_chunks_count_override {
+        assert!(
+            trace_chunks_count >= 2,
+            "CPU pipeline model needs at least two trace chunks"
+        );
+    }
     if matches!(
         config.mode,
         CpuPipelineMode::Full | CpuPipelineMode::FullWithoutDelegationReplay
@@ -425,7 +555,10 @@ fn validate_config(config: CpuPipelineModelConfig) {
 }
 
 fn trace_chunks_count(config: &CpuPipelineModelConfig) -> usize {
-    (config.replay_worker_threads_count * 2).max(2)
+    config
+        .trace_chunks_count_override
+        .unwrap_or_else(|| config.replay_worker_threads_count * 2)
+        .max(2)
 }
 
 fn run_simulator_for_model<T: TracingType + 'static>(
@@ -446,6 +579,7 @@ fn run_simulator_for_model<T: TracingType + 'static>(
     worker: &Worker,
     timings: Arc<Mutex<CpuPipelineTimings>>,
 ) {
+    trace!("BATCH[{batch_id}] SIMULATOR started");
     let runner = SimulationRunner::<_, T>::new(
         batch_id,
         machine_type,
@@ -466,7 +600,12 @@ fn run_simulator_for_model<T: TracingType + 'static>(
         jit_cache,
         memory_holder,
     );
-    timings.lock().unwrap().simulator_wall += instant.elapsed();
+    sync_profiling::lock(
+        timings.as_ref(),
+        SyncMetric::CpuModelTimingsLockWait,
+        SyncMetric::CpuModelTimingsLockHold,
+    )
+    .simulator_wall += instant.elapsed();
 
     let SimulationRunner {
         batch_id: _,
@@ -478,62 +617,99 @@ fn run_simulator_for_model<T: TracingType + 'static>(
     } = runner;
     let should_abort = abort.load(std::sync::atomic::Ordering::Relaxed);
     if should_abort {
+        trace!("BATCH[{batch_id}] SIMULATOR resetting memory due to abort");
         MemoryHolder::reset(&mut memory_holder.holder);
+        trace!("BATCH[{batch_id}] SIMULATOR finished");
         return;
     }
 
     assert!(!is_aborted);
     let results = results.unwrap();
     let instant = Instant::now();
-    let inits_and_teardowns = collect_inits_and_teardowns(memory_holder, worker);
-    timings.lock().unwrap().init_teardown_scan += instant.elapsed();
+    let inits_and_teardowns =
+        sync_profiling::measure_exclusive(SyncMetric::CpuModelCollectInitsAndTeardowns, || {
+            collect_inits_and_teardowns(memory_holder, worker)
+        });
+    let elapsed = instant.elapsed();
+    let elapsed_ms = elapsed.as_secs_f64() * 1000.0;
+    let count = inits_and_teardowns.iter().map(|v| v.len()).sum::<usize>();
+    trace!("BATCH[{batch_id}] SIMULATOR collected INITS_AND_TEARDOWNS with {count} entries in {elapsed_ms:.3} ms");
+    sync_profiling::lock(
+        timings.as_ref(),
+        SyncMetric::CpuModelTimingsLockWait,
+        SyncMetric::CpuModelTimingsLockHold,
+    )
+    .init_teardown_scan += elapsed;
 
     let instant = Instant::now();
-    let (circuit_type, per_circuit_count, sequence_id_offset) = if T::IS_SPLIT {
-        let per_circuit_count = setups::inits_and_teardowns::NUM_INIT_AND_TEARDOWN_SETS
-            * setups::inits_and_teardowns::NUM_CYCLES;
-        (UnrolledCircuitType::InitsAndTeardowns, per_circuit_count, 0)
-    } else {
-        let per_circuit_count = setups::unified_reduced_machine::NUM_CYCLES;
-        let timestamp_diff =
-            state.timestamp - riscv_transpiler::common_constants::INITIAL_TIMESTAMP;
-        assert!(timestamp_diff.is_multiple_of(riscv_transpiler::common_constants::TIMESTAMP_STEP));
-        let total_cycles =
-            (timestamp_diff / riscv_transpiler::common_constants::TIMESTAMP_STEP) as usize;
-        let count = inits_and_teardowns.iter().map(|v| v.len()).sum::<usize>();
-        let empty_cycles = total_cycles - count;
-        let empty_circuits = empty_cycles / per_circuit_count;
-        for sequence_id in 0..empty_circuits {
-            let data = InitsAndTeardownsData {
-                circuit_type: CircuitType::Unrolled(UnrolledCircuitType::Unified),
-                sequence_id,
-                inits_and_teardowns: None,
-            };
-            results
-                .send(WorkerResult::InitsAndTeardownsData(data))
+    sync_profiling::measure_exclusive(SyncMetric::CpuModelPartitionInitsAndTeardowns, || {
+        let mut chunk_started_at = Instant::now();
+        let (circuit_type, per_circuit_count, sequence_id_offset) = if T::IS_SPLIT {
+            let per_circuit_count = setups::inits_and_teardowns::NUM_INIT_AND_TEARDOWN_SETS
+                * setups::inits_and_teardowns::NUM_CYCLES;
+            (UnrolledCircuitType::InitsAndTeardowns, per_circuit_count, 0)
+        } else {
+            let per_circuit_count = setups::unified_reduced_machine::NUM_CYCLES;
+            let timestamp_diff =
+                state.timestamp - riscv_transpiler::common_constants::INITIAL_TIMESTAMP;
+            assert!(
+                timestamp_diff.is_multiple_of(riscv_transpiler::common_constants::TIMESTAMP_STEP)
+            );
+            let total_cycles =
+                (timestamp_diff / riscv_transpiler::common_constants::TIMESTAMP_STEP) as usize;
+            let count = inits_and_teardowns.iter().map(|v| v.len()).sum::<usize>();
+            let empty_cycles = total_cycles - count;
+            let empty_circuits = empty_cycles / per_circuit_count;
+            for sequence_id in 0..empty_circuits {
+                let data = InitsAndTeardownsData {
+                    circuit_type: CircuitType::Unrolled(UnrolledCircuitType::Unified),
+                    sequence_id,
+                    inits_and_teardowns: None,
+                };
+                sync_profiling::measure(SyncMetric::WorkResultsSend, || {
+                    results.send(WorkerResult::InitsAndTeardownsData(data))
+                })
                 .unwrap();
-        }
-        (
-            UnrolledCircuitType::Unified,
-            per_circuit_count,
-            empty_circuits,
-        )
-    };
-    let circuit_type = CircuitType::Unrolled(circuit_type);
-    for (sequence_id, inits_and_teardowns_data) in
-        get_inits_and_teardowns_chunks(inits_and_teardowns, per_circuit_count, free_allocators)
-            .enumerate()
-    {
-        let data = InitsAndTeardownsData {
-            circuit_type,
-            sequence_id: sequence_id + sequence_id_offset,
-            inits_and_teardowns: Some(inits_and_teardowns_data),
+            }
+            (
+                UnrolledCircuitType::Unified,
+                per_circuit_count,
+                empty_circuits,
+            )
         };
-        results
-            .send(WorkerResult::InitsAndTeardownsData(data))
+        let circuit_type = CircuitType::Unrolled(circuit_type);
+        for (sequence_id, inits_and_teardowns_data) in
+            get_inits_and_teardowns_chunks(inits_and_teardowns, per_circuit_count, free_allocators)
+                .enumerate()
+        {
+            let sequence_id = sequence_id + sequence_id_offset;
+            let count = inits_and_teardowns_data
+                .chunks
+                .iter()
+                .map(|c| c.len())
+                .sum::<usize>();
+            let elapsed = chunk_started_at.elapsed();
+            let elapsed_ms = elapsed.as_secs_f64() * 1000.0;
+            trace!("BATCH[{batch_id}] SIMULATOR produced INITS_AND_TEARDOWNS[{sequence_id}] with {count} entries in {elapsed_ms:.3} ms");
+            let data = InitsAndTeardownsData {
+                circuit_type,
+                sequence_id,
+                inits_and_teardowns: Some(inits_and_teardowns_data),
+            };
+            sync_profiling::measure(SyncMetric::WorkResultsSend, || {
+                results.send(WorkerResult::InitsAndTeardownsData(data))
+            })
             .unwrap();
-    }
-    timings.lock().unwrap().init_teardown_partition += instant.elapsed();
+            chunk_started_at = Instant::now();
+        }
+    });
+    let elapsed = instant.elapsed();
+    sync_profiling::lock(
+        timings.as_ref(),
+        SyncMetric::CpuModelTimingsLockWait,
+        SyncMetric::CpuModelTimingsLockHold,
+    )
+    .init_teardown_partition += elapsed;
 
     let final_register_values = state
         .registers
@@ -552,14 +728,16 @@ fn run_simulator_for_model<T: TracingType + 'static>(
         final_pc: state.pc,
         final_timestamp: state.timestamp,
     };
-    results
-        .send(WorkerResult::SimulationResult(simulation_result))
-        .unwrap();
+    sync_profiling::measure(SyncMetric::WorkResultsSend, || {
+        results.send(WorkerResult::SimulationResult(simulation_result))
+    })
+    .unwrap();
+    trace!("BATCH[{batch_id}] SIMULATOR finished");
 }
 
 fn run_replayer_for_model<T: TracingType>(
-    _batch_id: u64,
-    _worker_id: usize,
+    batch_id: u64,
+    worker_id: usize,
     tape: impl Deref<Target = impl InstructionTape>,
     snapshots: Receiver<Snapshot<T::Ranges>>,
     free_trace_chunks: Sender<LockedBoxedTraceChunk>,
@@ -568,12 +746,20 @@ fn run_replayer_for_model<T: TracingType>(
     timings: Arc<Mutex<CpuPipelineTimings>>,
     skip_delegation_trace_rows: bool,
 ) {
+    trace!("BATCH[{batch_id}] REPLAYER[{worker_id}] started");
     let mut total_elapsed = Duration::default();
     let mut total_cycles = 0usize;
     let mut is_aborted = false;
-    for snapshot in snapshots {
+    while let Ok(snapshot) = sync_profiling::measure(SyncMetric::SnapshotsRecv, || snapshots.recv())
+    {
         if !is_aborted && abort.load(std::sync::atomic::Ordering::Relaxed) {
+            debug!("BATCH[{batch_id}] REPLAYER[{worker_id}] aborting");
             is_aborted = true;
+            if total_cycles != 0 {
+                let elapsed_ms = total_elapsed.as_secs_f64() * 1000.0;
+                let mhz = (total_cycles as f64) / (elapsed_ms * 1000.0);
+                debug!("BATCH[{batch_id}] REPLAYER[{worker_id}] aborted replay after {total_cycles} cycles in {elapsed_ms:.3} ms @ {mhz:.3} MHz");
+            }
         }
         let Snapshot {
             index,
@@ -584,41 +770,72 @@ fn run_replayer_for_model<T: TracingType>(
             trace_ranges,
         } = snapshot;
         if is_aborted {
-            free_trace_chunks.send(trace).unwrap();
+            let trace =
+                sync_profiling::measure_exclusive(SyncMetric::ReplayerRecycleSnapshot, || {
+                    drop(trace_ranges);
+                    trace
+                });
+            sync_profiling::measure(SyncMetric::FreeTraceChunksSend, || {
+                free_trace_chunks.send(trace)
+            })
+            .unwrap();
             continue;
         }
-        let trace_len = trace.len as usize;
-        let mut state = initial_state.into();
-        let final_state: State<T::Counters> = final_state.into();
-        let mut ram = ReplayerMemChunks {
-            chunks: &mut [(&trace.values[..trace_len], &trace.timestamps[..trace_len])],
-        };
-        let mut nd = QuasiUARTSource::new_with_reads(vec![]);
-        let mut tracer = if skip_delegation_trace_rows {
-            T::Tracer::new_without_delegations(trace_ranges)
-        } else {
-            T::Tracer::new(trace_ranges)
-        };
-        let instant = Instant::now();
-        ReplayerVM::<T::Counters>::replay_basic_unrolled(
-            &mut state,
-            &mut ram,
-            tape.deref(),
-            &mut nd,
-            cycles_count,
-            &mut tracer,
-        );
-        let elapsed = instant.elapsed();
-        drop(tracer);
-        free_trace_chunks.send(trace).unwrap();
-        assert_eq!(state.pc, final_state.pc);
-        assert_eq!(state.timestamp, final_state.timestamp);
-        assert_eq!(state.registers, final_state.registers);
+        let (trace, elapsed) =
+            sync_profiling::measure_exclusive(SyncMetric::ReplayerProcessSnapshot, || {
+                let trace_len = trace.len as usize;
+                let mut state = initial_state.into();
+                let final_state: State<T::Counters> = final_state.into();
+                let mut ram = ReplayerMemChunks {
+                    chunks: &mut [(&trace.values[..trace_len], &trace.timestamps[..trace_len])],
+                };
+                let mut nd = QuasiUARTSource::new_with_reads(vec![]);
+                let mut tracer = if skip_delegation_trace_rows {
+                    T::Tracer::new_without_delegations(trace_ranges)
+                } else {
+                    T::Tracer::new(trace_ranges)
+                };
+                let instant = Instant::now();
+                ReplayerVM::<T::Counters>::replay_basic_unrolled(
+                    &mut state,
+                    &mut ram,
+                    tape.deref(),
+                    &mut nd,
+                    cycles_count,
+                    &mut tracer,
+                );
+                let elapsed = instant.elapsed();
+                drop(tracer);
+                assert_eq!(state.pc, final_state.pc);
+                assert_eq!(state.timestamp, final_state.timestamp);
+                assert_eq!(state.registers, final_state.registers);
+                (trace, elapsed)
+            });
+        sync_profiling::measure(SyncMetric::FreeTraceChunksSend, || {
+            free_trace_chunks.send(trace)
+        })
+        .unwrap();
         total_elapsed += elapsed;
         total_cycles += cycles_count;
-        results.send(WorkerResult::SnapshotReplayed(index)).unwrap();
+        let elapsed_ms = elapsed.as_secs_f64() * 1000.0;
+        let mhz = (cycles_count as f64) / (elapsed_ms * 1000.0);
+        trace!("BATCH[{batch_id}] REPLAYER[{worker_id}] processed SNAPSHOT[{index}] with {cycles_count} cycles in {elapsed_ms:.3} ms @ {mhz:.3} MHz");
+        sync_profiling::measure(SyncMetric::WorkResultsSend, || {
+            results.send(WorkerResult::SnapshotReplayed(index))
+        })
+        .unwrap();
     }
-    let mut timings = timings.lock().unwrap();
+    let elapsed_ms = total_elapsed.as_secs_f64() * 1000.0;
+    let mhz = (total_cycles as f64) / (elapsed_ms * 1000.0);
+    if !is_aborted && total_cycles != 0 {
+        debug!("BATCH[{batch_id}] REPLAYER[{worker_id}] replayed {total_cycles} cycles in {elapsed_ms:.3} ms @ {mhz:.3} MHz");
+    }
+    trace!("BATCH[{batch_id}] REPLAYER[{worker_id}] finished");
+    let mut timings = sync_profiling::lock(
+        timings.as_ref(),
+        SyncMetric::CpuModelTimingsLockWait,
+        SyncMetric::CpuModelTimingsLockHold,
+    );
     timings.replay_cpu += total_elapsed;
     timings.replayed_cycles += total_cycles as u64;
 }
@@ -628,16 +845,24 @@ fn recycle_snapshots<T: TracingType>(
     free_trace_chunks: Sender<LockedBoxedTraceChunk>,
     results: Sender<WorkerResult<A>>,
 ) {
-    for snapshot in snapshots {
+    while let Ok(snapshot) = sync_profiling::measure(SyncMetric::SnapshotsRecv, || snapshots.recv())
+    {
         let Snapshot {
             index,
             trace,
             trace_ranges,
             ..
         } = snapshot;
-        free_trace_chunks.send(trace).unwrap();
-        drop(trace_ranges);
-        results.send(WorkerResult::SnapshotReplayed(index)).unwrap();
+        let result =
+            sync_profiling::measure_exclusive(SyncMetric::SnapshotRecyclerProcessSnapshot, || {
+                drop(trace_ranges);
+                WorkerResult::SnapshotReplayed(index)
+            });
+        sync_profiling::measure(SyncMetric::FreeTraceChunksSend, || {
+            free_trace_chunks.send(trace)
+        })
+        .unwrap();
+        sync_profiling::measure(SyncMetric::WorkResultsSend, || results.send(result)).unwrap();
     }
 }
 
@@ -738,12 +963,18 @@ fn free_inits_and_teardowns(
     free_allocators: &Sender<A>,
 ) {
     for allocator in inits_and_teardowns.into_allocators() {
-        free_allocators.send(allocator).unwrap();
+        sync_profiling::measure(SyncMetric::FreeAllocatorsSend, || {
+            free_allocators.send(allocator)
+        })
+        .unwrap();
     }
 }
 
 fn free_tracing_data(tracing_data: TracingDataHost<A>, free_allocators: &Sender<A>) {
     for allocator in tracing_data.into_allocators() {
-        free_allocators.send(allocator).unwrap();
+        sync_profiling::measure(SyncMetric::FreeAllocatorsSend, || {
+            free_allocators.send(allocator)
+        })
+        .unwrap();
     }
 }

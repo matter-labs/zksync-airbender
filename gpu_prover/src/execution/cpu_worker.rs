@@ -7,6 +7,7 @@ use crate::execution::simulation_runner::{
 };
 use crate::execution::tracing::{Tracer, TracingType};
 use crate::machine_type::MachineType;
+use crate::sync_profiling::{self, SyncMetric};
 use crate::witness::trace_unrolled::ShuffleRamInitsAndTeardownsHost;
 use crossbeam_channel::{Receiver, Sender};
 use cs::definitions::TimestampData;
@@ -49,7 +50,11 @@ pub(crate) fn run_simulator<
     worker: &Worker,
 ) {
     trace!("BATCH[{batch_id}] SIMULATOR started");
-    let mut non_determinism_guard = non_determinism.lock().unwrap();
+    let mut non_determinism_guard = sync_profiling::lock(
+        non_determinism.as_ref(),
+        SyncMetric::CpuWorkerNonDeterminismLockWait,
+        SyncMetric::CpuWorkerNonDeterminismLockHold,
+    );
     let non_determinism_source = non_determinism_guard.take().unwrap();
     let runner = SimulationRunner::<_, T>::new(
         batch_id,
@@ -108,7 +113,8 @@ pub(crate) fn run_simulator<
                     inits_and_teardowns: None,
                 };
                 let result = WorkerResult::InitsAndTeardownsData(data);
-                results.send(result).unwrap();
+                sync_profiling::measure(SyncMetric::WorkResultsSend, || results.send(result))
+                    .unwrap();
             }
             (
                 UnrolledCircuitType::Unified,
@@ -136,7 +142,7 @@ pub(crate) fn run_simulator<
                 inits_and_teardowns: Some(inits_and_teardowns_data),
             };
             let result = WorkerResult::InitsAndTeardownsData(data);
-            results.send(result).unwrap();
+            sync_profiling::measure(SyncMetric::WorkResultsSend, || results.send(result)).unwrap();
             instant = Instant::now();
         }
         let final_register_values = state
@@ -155,7 +161,7 @@ pub(crate) fn run_simulator<
             final_timestamp: state.timestamp,
         };
         let result = WorkerResult::SimulationResult(simulation_result);
-        results.send(result).unwrap();
+        sync_profiling::measure(SyncMetric::WorkResultsSend, || results.send(result)).unwrap();
     } else {
         trace!("BATCH[{batch_id}] SIMULATOR resetting memory due to abort");
         MemoryHolder::reset(&mut memory_holder.holder);
@@ -176,7 +182,8 @@ pub(crate) fn run_replayer<T: TracingType>(
     let mut total_elapsed = Duration::default();
     let mut total_cycles = 0;
     let mut is_aborted = false;
-    for snapshot in snapshots {
+    while let Ok(snapshot) = sync_profiling::measure(SyncMetric::SnapshotsRecv, || snapshots.recv())
+    {
         if !is_aborted & abort.load(std::sync::atomic::Ordering::Relaxed) {
             debug!("BATCH[{batch_id}] REPLAYER[{worker_id}] aborting");
             is_aborted = true;
@@ -195,39 +202,54 @@ pub(crate) fn run_replayer<T: TracingType>(
             trace_ranges,
         } = snapshot;
         if is_aborted {
-            free_trace_chunks.send(trace).unwrap();
+            let trace =
+                sync_profiling::measure_exclusive(SyncMetric::ReplayerRecycleSnapshot, || {
+                    drop(trace_ranges);
+                    trace
+                });
+            sync_profiling::measure(SyncMetric::FreeTraceChunksSend, || {
+                free_trace_chunks.send(trace)
+            })
+            .unwrap();
             continue;
         }
-        let trace_len = trace.len as usize;
-        let mut state = initial_state.into();
-        let final_state: State<T::Counters> = final_state.into();
-        let mut ram = ReplayerMemChunks {
-            chunks: &mut [(&trace.values[..trace_len], &trace.timestamps[..trace_len])],
-        };
-        let mut nd = QuasiUARTSource::new_with_reads(vec![]);
-        let mut tracer = T::Tracer::new(trace_ranges);
-        let instant = Instant::now();
-        ReplayerVM::<T::Counters>::replay_basic_unrolled(
-            &mut state,
-            &mut ram,
-            tape.deref(),
-            &mut nd,
-            cycles_count,
-            &mut tracer,
-        );
-        let elapsed = instant.elapsed();
-        drop(tracer);
-        free_trace_chunks.send(trace).unwrap();
-        assert_eq!(state.pc, final_state.pc);
-        assert_eq!(state.timestamp, final_state.timestamp);
-        assert_eq!(state.registers, final_state.registers);
+        let (trace, elapsed) =
+            sync_profiling::measure_exclusive(SyncMetric::ReplayerProcessSnapshot, || {
+                let trace_len = trace.len as usize;
+                let mut state = initial_state.into();
+                let final_state: State<T::Counters> = final_state.into();
+                let mut ram = ReplayerMemChunks {
+                    chunks: &mut [(&trace.values[..trace_len], &trace.timestamps[..trace_len])],
+                };
+                let mut nd = QuasiUARTSource::new_with_reads(vec![]);
+                let mut tracer = T::Tracer::new(trace_ranges);
+                let instant = Instant::now();
+                ReplayerVM::<T::Counters>::replay_basic_unrolled(
+                    &mut state,
+                    &mut ram,
+                    tape.deref(),
+                    &mut nd,
+                    cycles_count,
+                    &mut tracer,
+                );
+                let elapsed = instant.elapsed();
+                drop(tracer);
+                assert_eq!(state.pc, final_state.pc);
+                assert_eq!(state.timestamp, final_state.timestamp);
+                assert_eq!(state.registers, final_state.registers);
+                (trace, elapsed)
+            });
+        sync_profiling::measure(SyncMetric::FreeTraceChunksSend, || {
+            free_trace_chunks.send(trace)
+        })
+        .unwrap();
         total_elapsed += elapsed;
         total_cycles += cycles_count;
         let elapsed_ms = elapsed.as_secs_f64() * 1000.0;
         let mhz = (cycles_count as f64) / (elapsed_ms * 1000.0);
         trace!("BATCH[{batch_id}] REPLAYER[{worker_id}] processed SNAPSHOT[{index}] with {cycles_count} cycles in {elapsed_ms:.3} ms @ {mhz:.3} MHz");
         let result = WorkerResult::SnapshotReplayed(index);
-        results.send(result).unwrap()
+        sync_profiling::measure(SyncMetric::WorkResultsSend, || results.send(result)).unwrap()
     }
     let elapsed_ms = total_elapsed.as_secs_f64() * 1000.0;
     let mhz = (total_cycles as f64) / (elapsed_ms * 1000.0);
@@ -300,7 +322,9 @@ pub(super) fn get_inits_and_teardowns_chunks(
         };
         let mut chunks = vec![];
         while values_count != 0 {
-            let allocator = free_allocators.recv().unwrap();
+            let allocator =
+                sync_profiling::measure(SyncMetric::FreeAllocatorsRecv, || free_allocators.recv())
+                    .unwrap();
             let capacity = allocator.capacity() / size_of::<LazyInitAndTeardown>();
             let count = min(capacity, values_count);
             let mut chunk = Vec::with_capacity_in(count, allocator);

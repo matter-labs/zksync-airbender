@@ -3,6 +3,7 @@ pub mod device;
 pub mod host;
 pub mod tracker;
 
+use crate::sync_profiling::{self, SyncMetric};
 use allocation_data::StaticAllocationData;
 use era_cudart::result::CudaResult;
 use era_cudart_sys::CudaError;
@@ -118,7 +119,12 @@ impl<B: StaticAllocationBackend> InnerStaticAllocatorWrapper<B>
     }
 
     fn execute<R>(&self, f: impl FnOnce(&mut InnerStaticAllocator<B>) -> R) -> R {
-        f(&mut self.lock().unwrap())
+        let mut guard = sync_profiling::lock(
+            self.as_ref(),
+            SyncMetric::ConcurrentAllocatorLockWait,
+            SyncMetric::ConcurrentAllocatorLockHold,
+        );
+        f(&mut guard)
     }
 }
 

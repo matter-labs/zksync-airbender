@@ -27,6 +27,7 @@ pub mod ops_complex;
 pub mod ops_cub;
 pub mod ops_simple;
 pub mod prover;
+pub mod sync_profiling;
 pub mod utils;
 pub mod witness;
 
