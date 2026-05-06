@@ -24,7 +24,7 @@ pub(crate) use ntt::{
 };
 
 mod hypercube;
-pub use hypercube::hypercube_X1_MSB_evals_to_X1_MSB_monomials;
+pub use hypercube::hypercube_x1_msb_evals_to_x1_msb_monomials;
 #[cfg(test)]
 pub(crate) use hypercube::{
     hypercube_evals_to_monomials_2_pass, hypercube_evals_to_monomials_3_pass,
