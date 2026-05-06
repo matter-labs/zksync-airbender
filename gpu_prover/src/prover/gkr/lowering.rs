@@ -321,6 +321,7 @@ mod tests {
                     &[GKRAddress::BaseLayerMemory(99)],
                 )),
             )]),
+            intermediate_layer_width: None,
             gates: vec![GateArtifacts {
                 output_layer: 1,
                 enforced_relation: relation,
