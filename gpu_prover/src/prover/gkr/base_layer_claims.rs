@@ -804,6 +804,7 @@ mod tests {
             layer: 1,
             gates_with_external_connections: Vec::new(),
             cached_relations: BTreeMap::new(),
+            intermediate_layer_width: Some(0),
             gates: Vec::new(),
         };
 
