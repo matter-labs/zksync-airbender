@@ -2,6 +2,8 @@ use std::collections::BTreeMap;
 
 use crate::gkr::{prover::WhirSchedule, whir::proximity_testing_modes::ProximityTestingMode};
 
+pub mod example_configs;
+
 #[derive(Clone, Debug)]
 pub struct ProverConfig {
     pub lde_factor: usize,
@@ -78,8 +80,8 @@ impl CostModel for BlakeHashBabyBearExt4CostModel {
             0 => {
                 unreachable!()
             }
-            rate @ 1..=4 => 128 + (rate as usize) * 32,
-            rate @ 5 => 128 * 2 + (rate as usize) * 32,
+            rate @ 1..=4 => 128 + (1 << rate) * 32,
+            rate @ 5 => 128 * 2 + (1 << rate) * 32,
             _ => usize::MAX,
         }
     }
@@ -100,6 +102,7 @@ pub fn compute_best_prover_config_guess(
     other_rounds_pow_bits: u32,
     min_pow_bits: u32,
     max_lde_factor: usize,
+    max_lde_size_log_2: usize,
     whir_target_security_bits: u32,
     max_whir_explicit_output_size_log_2: usize,
     proximity_testing_mode: &impl ProximityTestingMode,
@@ -139,10 +142,11 @@ pub fn compute_best_prover_config_guess(
 
     let mut candidates = BTreeMap::new();
 
+    assert!(max_lde_size_log_2 >= trace_len_log_2 + base_rate as usize);
     whir_folding_step(
         &mut candidates,
         trace_len_log_2,
-        trace_len_log_2 + base_rate as usize,
+        max_lde_size_log_2,
         other_rounds_pow_bits,
         min_pow_bits,
         max_lde_factor.trailing_zeros() as usize,
@@ -311,7 +315,8 @@ mod test {
             24,
             // 20,
             0,
-            1 << 20,
+            1 << 22,
+            26,
             // 100,
             80,
             DEFAULT_PLAIN_TEXT_POLY_SIZE_LOG2,

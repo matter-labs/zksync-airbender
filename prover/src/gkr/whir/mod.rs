@@ -319,6 +319,14 @@ impl<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field>
                     result.push(value);
                 }
             }
+            32 => {
+                let offsets = offsets_for_leaf_construction::<32>(trace_len);
+                for offset in offsets.iter() {
+                    let i = *offset + index;
+                    let value = self.values_normal_order.column[i];
+                    result.push(value);
+                }
+            }
             a @ _ => {
                 panic!("unsupported: {} values per leaf", a);
             }

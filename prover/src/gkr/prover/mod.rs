@@ -15,6 +15,7 @@ use crate::gkr::prover::setup::GKRSetup;
 use crate::gkr::prover::stages::stage1;
 use crate::gkr::prover::transcript_utils::{commit_field_els, draw_random_field_els};
 use crate::gkr::prover::utils::flatten_merkle_caps_iter_into;
+use crate::gkr::prover_config::ProverConfig;
 use crate::gkr::sumcheck::access_and_fold::{BaseFieldPoly, GKRStorage};
 use crate::gkr::sumcheck::eq_poly::*;
 use crate::gkr::virtual_polys::range_check::materialize_virtual_range_check_setup_poly;
@@ -296,7 +297,7 @@ pub fn prove_configured_with_gkr<
     setup: &GKRSetup<F>,
     setup_commitment: &ColumnMajorBaseOracleForLDE<F, T>,
     twiddles: &Twiddles<F, Global>,
-    whir_schedule: &WhirSchedule,
+    prover_config: &ProverConfig,
     inits_and_teardowns_top_bits: Vec<u32>,
     trace_len: usize,
     worker: &Worker,
@@ -315,13 +316,18 @@ where
         compiled_circuit.memory_layout.teardown_sets.len()
     );
 
+    assert_eq!(
+        prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
+        prover_config.whir_schedule.whir_steps_schedule[0]
+    );
+
     // first we would commit to the witness - WHIR commitment itself is just the same as FRI commitment
     let (mem_oracle, wit_oracle) = stage1::stage1::<F, T>(
         &witness_eval_data,
         twiddles,
-        whir_schedule.base_lde_factor,
-        whir_schedule.whir_steps_schedule[0],
-        whir_schedule.cap_size,
+        prover_config.lde_factor,
+        prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
+        prover_config.cap_size,
         trace_len.trailing_zeros() as usize,
         worker,
     );
@@ -360,6 +366,9 @@ where
     }
 
     let mut seed = Transcript::commit_initial(&transcript_input);
+
+    // TODO
+    assert_eq!(prover_config.lookup_challenges_pow_bits, 0, "TODO");
 
     // now we need to draw prove-local challenges, and in our case it's just a challenge for lookups, and challenge to batch all constraints
     let challenges: Vec<E> = draw_random_field_els(&mut seed, 2);
@@ -445,8 +454,7 @@ where
     ));
 
     // final trace size on which we output the polynomials in plain text
-    use crate::definitions::DEFAULT_PLAIN_TEXT_POLY_SIZE_LOG2;
-    let final_trace_size_log_2 = DEFAULT_PLAIN_TEXT_POLY_SIZE_LOG2;
+    let final_trace_size_log_2 = prover_config.sumcheck_explicit_output_size_log_2;
 
     let (initial_layer_for_sumcheck, dimension_reducing_inputs) =
         dimension_reduction::forward::evaluate_dimension_reduction_forward(
@@ -747,6 +755,12 @@ where
 
     drop(gkr_storage);
 
+    // TODO
+    assert_eq!(
+        prover_config.batched_proximity_check_challenge_pow_bits, 0,
+        "TODO"
+    );
+
     let whir_batching_challenge = draw_random_field_els::<F, E>(&mut seed, 1);
     let whir_batching_challenge = whir_batching_challenge[0];
 
@@ -757,7 +771,7 @@ where
         whir_queries_schedule,
         whir_steps_lde_factors,
         whir_pow_schedule,
-    } = whir_schedule.clone();
+    } = prover_config.whir_schedule.clone();
 
     let whir_proof = whir_fold(
         mem_oracle,
