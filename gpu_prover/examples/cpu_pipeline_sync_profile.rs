@@ -17,7 +17,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 use tracing_subscriber::EnvFilter;
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct ProfileConfig {
     mode: CpuPipelineMode,
     replay_threads: usize,
@@ -242,6 +242,15 @@ fn run_autocheck(
     for (rank, result) in results.iter().take(5).enumerate() {
         print_winner(rank + 1, result);
     }
+    let default_config = default_profile_config(mode, use_dedicated_pipeline_threads);
+    let default_result = results
+        .iter()
+        .find(|result| result.config == default_config)
+        .expect("autocheck matrix should include the default configuration");
+    let best_result = results
+        .first()
+        .expect("autocheck should run at least one config");
+    print_default_result(default_result, best_result);
 }
 
 impl AutocheckResult {
@@ -303,12 +312,48 @@ fn print_winner(rank: usize, result: &AutocheckResult) {
     );
 }
 
+fn print_default_result(default_result: &AutocheckResult, best_result: &AutocheckResult) {
+    let config = default_result.config;
+    let default_avg = millis(default_result.average_total_wall());
+    let best_avg = millis(best_result.average_total_wall());
+    let delta_ms = default_avg - best_avg;
+    let delta_pct = if best_avg == 0.0 {
+        0.0
+    } else {
+        delta_ms * 100.0 / best_avg
+    };
+    println!(
+        "default_config avg_total={default_avg:.3}ms best_total={best_avg:.3}ms delta_vs_best={delta_ms:+.3}ms delta_vs_best_pct={delta_pct:+.2}% runs={} mode={:?} replay_threads={} trace_chunks={} host_allocators={} dedicated_pipeline_threads={} replay_segment_cycles={}",
+        default_result.runs,
+        config.mode,
+        config.replay_threads,
+        format_option(config.trace_chunks_count_override, "default"),
+        config.host_allocators,
+        config.use_dedicated_pipeline_threads,
+        format_option(config.replay_segment_cycle_limit, "off"),
+    );
+}
+
+fn default_profile_config(
+    mode: CpuPipelineMode,
+    use_dedicated_pipeline_threads: bool,
+) -> ProfileConfig {
+    ProfileConfig {
+        mode,
+        replay_threads: 4,
+        host_allocators: 384,
+        trace_chunks_count_override: None,
+        use_dedicated_pipeline_threads,
+        replay_segment_cycle_limit: None,
+    }
+}
+
 fn autocheck_replay_threads_values(max_replay_threads: usize) -> Vec<usize> {
     assert_ne!(
         max_replay_threads, 0,
         "ZKSYNC_REPLAY_THREADS must be non-zero"
     );
-    let mut values = Vec::new();
+    let mut values = vec![4];
     let mut value = 4usize;
     while value <= max_replay_threads {
         values.push(value);
@@ -323,7 +368,7 @@ fn autocheck_host_allocators_values(max_host_allocators: usize) -> Vec<usize> {
         max_host_allocators, 0,
         "ZKSYNC_HOST_ALLOCATORS must be non-zero"
     );
-    let mut values = Vec::new();
+    let mut values = vec![384];
     for value in [384, 512, 768, 1024, 1536, 2048, 3072] {
         if value <= max_host_allocators {
             values.push(value);
