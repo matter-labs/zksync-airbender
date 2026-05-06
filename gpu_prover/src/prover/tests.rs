@@ -44,7 +44,7 @@ use crate::prover::tracing_data::{
 use crate::prover::whir::GpuWhirExtensionOracle;
 use crate::prover::whir_fold::{
     clone_scheduled_whir_pre_pow_seeds, debug_apply_initial_fold_challenge_for_test,
-    debug_build_initial_batched_main_domain_poly_for_test, debug_build_initial_fold_state_for_test,
+    debug_build_initial_batched_evals_for_test, debug_build_initial_fold_state_for_test,
     debug_build_initial_state_for_test, debug_build_initial_state_snapshots_for_test,
     debug_initial_round_checkpoint_for_test, schedule_gpu_whir_fold_with_sources,
     take_scheduled_whir_proof,
@@ -1350,18 +1350,26 @@ fn assert_recursive_whir_oracle_parity_for_supported_path(
         }
     }
 
-    let gpu_batched_poly_on_main_domain = debug_build_initial_batched_main_domain_poly_for_test(
-        gpu_mem_trace_holder,
-        mem_polys_claims,
-        gpu_wit_trace_holder,
-        wit_polys_claims,
-        gpu_setup_trace_holder,
-        setup_polys_claims,
-        batching_challenge,
-        context,
-    )
-    .unwrap();
-    assert_eq!(gpu_batched_poly_on_main_domain, batched_poly_on_main_domain);
+    let use_hypercube_evals_for_batching = true;
+    // CPU initially creates batched evals from coset 0 evaluations rather than
+    // hypercube evaluations, so we only compare if the GPU also does the former.
+    // (Later on, we'll compare the monomial forms unconditionally,
+    // because they should always match.)
+    if !use_hypercube_evals_for_batching {
+        let gpu_batched_poly_on_main_domain = debug_build_initial_batched_evals_for_test(
+            gpu_mem_trace_holder,
+            mem_polys_claims,
+            gpu_wit_trace_holder,
+            wit_polys_claims,
+            gpu_setup_trace_holder,
+            setup_polys_claims,
+            batching_challenge,
+            use_hypercube_evals_for_batching,
+            context,
+        )
+        .unwrap();
+        assert_eq!(gpu_batched_poly_on_main_domain, batched_poly_on_main_domain);
+    }
     let mut sumchecked_poly_monomial_form =
         compute_column_major_monomial_form_from_main_domain_owned_for_test(
             batched_poly_on_main_domain,
@@ -1401,6 +1409,7 @@ fn assert_recursive_whir_oracle_parity_for_supported_path(
             setup_polys_claims,
             original_evaluation_point,
             batching_challenge,
+            use_hypercube_evals_for_batching,
             context,
         )
         .unwrap();
@@ -1416,6 +1425,7 @@ fn assert_recursive_whir_oracle_parity_for_supported_path(
             setup_polys_claims,
             original_evaluation_point,
             batching_challenge,
+            use_hypercube_evals_for_batching,
             context,
         )
         .unwrap();
@@ -1459,6 +1469,7 @@ fn assert_recursive_whir_oracle_parity_for_supported_path(
         setup_polys_claims,
         original_evaluation_point,
         batching_challenge,
+        use_hypercube_evals_for_batching,
         context,
     )
     .unwrap();
@@ -1542,6 +1553,7 @@ fn assert_recursive_whir_oracle_parity_for_supported_path(
         first_lde_factor,
         next_folding_steps,
         whir_schedule.cap_size,
+        use_hypercube_evals_for_batching,
         transcript_seed_before_initial_rounds,
         context,
     )
@@ -1949,6 +1961,7 @@ fn assert_recursive_whir_oracle_parity_for_supported_path(
         move || scheduled_transcript_seed,
         whir_schedule.cap_size,
         trace_len_log2,
+        true, // use_hypercube_evals_for_batching
         None,
         &whir_proof_layout,
         None,
