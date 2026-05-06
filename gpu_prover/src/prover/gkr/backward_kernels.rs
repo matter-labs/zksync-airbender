@@ -1,5 +1,6 @@
 use std::cell::UnsafeCell;
 use std::collections::{BTreeMap, VecDeque};
+use std::ffi::c_void;
 use std::mem::align_of;
 use std::ptr::{null, null_mut};
 use std::slice;
@@ -9,10 +10,11 @@ use cs::gkr_compiler::{GKRLayerDescription, OutputType};
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
 use era_cudart::memory::memory_copy_async;
 use era_cudart::paste::paste;
-use era_cudart::result::CudaResult;
-use era_cudart::slice::{CudaSliceMut, DeviceSlice};
+use era_cudart::result::{CudaResult, CudaResultWrap};
+use era_cudart::slice::{CudaSliceMut, DeviceSlice, DeviceVariable};
 use era_cudart::stream::CudaStream;
 use era_cudart::{cuda_kernel_declaration, cuda_kernel_signature_arguments_and_function};
+use era_cudart_sys::cudaGetSymbolAddress;
 use field::{Field, FieldExtension};
 use prover::gkr::prover::dimension_reduction::forward::DimensionReducingInputOutput;
 use prover::gkr::prover::transcript_utils::commit_field_els;
@@ -161,6 +163,46 @@ impl GpuGKRMainLayerKernelKind {
 }
 
 pub(super) const GKR_BACKWARD_MAX_KERNELS_PER_LAYER: usize = 64;
+// Dim-reducing layers are keyed by OutputType: 2 pairwise records for
+// PermutationProduct plus up to 3 lookup records, consuming 8 challenges.
+pub(super) const GKR_DIM_REDUCING_MAX_RECORDS_PER_LAYER: usize = 5;
+pub(super) const GKR_DIM_REDUCING_BATCH_CHALLENGE_TABLE_LEN: usize = 8;
+
+extern "C" {
+    static ab_gkr_dim_reducing_batch_challenge_table:
+        [E4; GKR_DIM_REDUCING_BATCH_CHALLENGE_TABLE_LEN];
+}
+
+fn get_dim_reducing_batch_challenge_table_device_ptr() -> *mut E4 {
+    let mut ptr: *mut c_void = null_mut();
+    // SAFETY: ab_gkr_dim_reducing_batch_challenge_table is a valid
+    // __constant__ symbol defined in dim_reducing_backward.cu.
+    unsafe {
+        cudaGetSymbolAddress(
+            &mut ptr,
+            &ab_gkr_dim_reducing_batch_challenge_table as *const _ as *const c_void,
+        )
+    }
+    .wrap()
+    .expect("cudaGetSymbolAddress failed for ab_gkr_dim_reducing_batch_challenge_table");
+    ptr as *mut E4
+}
+
+pub(super) fn schedule_dim_reducing_batch_challenge_table_prelude(
+    batch_challenge_base: *const E4,
+    context: &ProverContext,
+) -> CudaResult<()> {
+    let table_ptr = get_dim_reducing_batch_challenge_table_device_ptr();
+    // SAFETY: the symbol storage contains exactly
+    // GKR_DIM_REDUCING_BATCH_CHALLENGE_TABLE_LEN E4 elements.
+    let table = unsafe {
+        DeviceSlice::from_raw_parts_mut(table_ptr, GKR_DIM_REDUCING_BATCH_CHALLENGE_TABLE_LEN)
+    };
+    // SAFETY: the caller passes a device-resident scalar that remains valid
+    // until this stream-ordered prelude and all following kernels are scheduled.
+    let base = unsafe { DeviceVariable::from_raw_parts(batch_challenge_base) };
+    crate::ops::powers::get_powers_by_ref::<E4>(base, 0, false, table, context.get_exec_stream())
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u32)]
@@ -357,11 +399,10 @@ pub(crate) struct GpuGKRDimensionReducingRound0BatchCompact<E> {
     pub(crate) _reserved1: u32,
     pub(crate) _reserved2: u32,
     pub(crate) eq_values: *const E,
-    pub(crate) batch_challenge_base: *const E,
     pub(crate) contributions: *mut E,
     pub(crate) tables: GpuGKRDimensionReducingTables,
     pub(crate) records:
-        [GpuGKRDimensionReducingBatchRecordCompact; GKR_BACKWARD_MAX_KERNELS_PER_LAYER],
+        [GpuGKRDimensionReducingBatchRecordCompact; GKR_DIM_REDUCING_MAX_RECORDS_PER_LAYER],
     pub(crate) inline_payload: [GpuGKRSourceRecord; GKR_DIM_REDUCING_INLINE_U16_BUDGET],
 }
 
@@ -373,11 +414,10 @@ impl<E: Field> Default for GpuGKRDimensionReducingRound0BatchCompact<E> {
             _reserved1: 0,
             _reserved2: 0,
             eq_values: null(),
-            batch_challenge_base: null(),
             contributions: null_mut(),
             tables: GpuGKRDimensionReducingTables::default(),
             records: [GpuGKRDimensionReducingBatchRecordCompact::default();
-                GKR_BACKWARD_MAX_KERNELS_PER_LAYER],
+                GKR_DIM_REDUCING_MAX_RECORDS_PER_LAYER],
             inline_payload: [GpuGKRSourceRecord::default(); GKR_DIM_REDUCING_INLINE_U16_BUDGET],
         }
     }
@@ -396,14 +436,13 @@ pub(crate) struct GpuGKRDimensionReducingContinuationBatchCompact<E> {
     pub(crate) _reserved1: u32,
     pub(crate) _reserved2: u32,
     pub(crate) eq_values: *const E,
-    pub(crate) batch_challenge_base: *const E,
     pub(crate) folding_challenge: *const E,
     pub(crate) contributions: *mut E,
     pub(crate) explicit_form: bool,
     pub(crate) _padding: [u8; 7],
     pub(crate) tables: GpuGKRDimensionReducingTables,
     pub(crate) records:
-        [GpuGKRDimensionReducingBatchRecordCompact; GKR_BACKWARD_MAX_KERNELS_PER_LAYER],
+        [GpuGKRDimensionReducingBatchRecordCompact; GKR_DIM_REDUCING_MAX_RECORDS_PER_LAYER],
     pub(crate) inline_payload: [GpuGKRSourceRecord; GKR_DIM_REDUCING_INLINE_U16_BUDGET],
 }
 
@@ -415,14 +454,13 @@ impl<E: Field> Default for GpuGKRDimensionReducingContinuationBatchCompact<E> {
             _reserved1: 0,
             _reserved2: 0,
             eq_values: null(),
-            batch_challenge_base: null(),
             folding_challenge: null(),
             contributions: null_mut(),
             explicit_form: false,
             _padding: [0; 7],
             tables: GpuGKRDimensionReducingTables::default(),
             records: [GpuGKRDimensionReducingBatchRecordCompact::default();
-                GKR_BACKWARD_MAX_KERNELS_PER_LAYER],
+                GKR_DIM_REDUCING_MAX_RECORDS_PER_LAYER],
             inline_payload: [GpuGKRSourceRecord::default(); GKR_DIM_REDUCING_INLINE_U16_BUDGET],
         }
     }

@@ -1,5 +1,7 @@
 #include "common.cuh"
 
+__device__ __constant__ e4 ab_gkr_dim_reducing_batch_challenge_table[airbender::prover::gkr::GKR_DIM_REDUCING_BATCH_CHALLENGE_TABLE_LEN];
+
 namespace airbender::prover::gkr {
 
 #define GKR_DIM_REDUCING_KERNELS(arg_t)                                                                                                                        \

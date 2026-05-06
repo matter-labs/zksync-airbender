@@ -21,12 +21,12 @@ use std::collections::{BTreeMap, BTreeSet};
 use cs::definitions::GKRAddress;
 use field::Field;
 
-use super::backward_kernels::GKR_BACKWARD_MAX_KERNELS_PER_LAYER;
 use super::backward_kernels::{
     pack_cache_u16, pack_source_u16, DimensionReducingKernelBlueprint,
     GpuGKRDimensionReducingBatchRecordCompact, GpuGKRDimensionReducingContinuationBatchCompact,
     GpuGKRDimensionReducingRound0BatchCompact, GpuGKRDimensionReducingTables, GpuGKRSourceRecord,
     PayloadRange16, GKR_DIM_REDUCING_BASE_SLOTS, GKR_DIM_REDUCING_INLINE_U16_BUDGET,
+    GKR_DIM_REDUCING_MAX_RECORDS_PER_LAYER,
 };
 use super::storage_layout::address_storage_layer;
 use super::GpuGKRStorage;
@@ -194,8 +194,8 @@ fn push_payload_record(
 
 fn check_record_count(blueprints_len: usize) {
     assert!(
-        blueprints_len <= GKR_BACKWARD_MAX_KERNELS_PER_LAYER,
-        "compact dim-reducing encoder: {blueprints_len} blueprints exceeds GKR_BACKWARD_MAX_KERNELS_PER_LAYER={GKR_BACKWARD_MAX_KERNELS_PER_LAYER}",
+        blueprints_len <= GKR_DIM_REDUCING_MAX_RECORDS_PER_LAYER,
+        "compact dim-reducing encoder: {blueprints_len} blueprints exceeds GKR_DIM_REDUCING_MAX_RECORDS_PER_LAYER={GKR_DIM_REDUCING_MAX_RECORDS_PER_LAYER}",
     );
 }
 
@@ -205,8 +205,8 @@ fn check_record_count(blueprints_len: usize) {
 /// `bases[ptr_idx] + (poly_idx << log2_stride[ptr_idx])`.
 ///
 /// Returns the descriptor template with hot pointers (`eq_values`,
-/// `batch_challenge_base`, `contributions`) left null — the launcher fills
-/// these from the round scratch.
+/// `contributions`) left null — the launcher fills these from the round
+/// scratch.
 pub(super) fn build_round0_batch_compact<B, E: Field>(
     blueprints: &[DimensionReducingKernelBlueprint<E>],
     storage: &GpuGKRStorage<B, E>,

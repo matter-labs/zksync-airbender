@@ -57,6 +57,10 @@ template <typename E> struct gkr_ext_continuing_source {
 };
 
 static constexpr unsigned GKR_BACKWARD_MAX_KERNELS_PER_LAYER = 64;
+// Dim-reducing layers are keyed by OutputType: 2 pairwise records for
+// PermutationProduct plus up to 3 lookup records, consuming 8 challenges.
+static constexpr unsigned GKR_DIM_REDUCING_MAX_RECORDS_PER_LAYER = 5;
+static constexpr unsigned GKR_DIM_REDUCING_BATCH_CHALLENGE_TABLE_LEN = 8;
 static constexpr unsigned GKR_DIM_REDUCING_FORWARD_TOWER_LOG_BLOCK = 8;
 static constexpr unsigned GKR_DIM_REDUCING_FORWARD_TOWER_BLOCK = 1u << GKR_DIM_REDUCING_FORWARD_TOWER_LOG_BLOCK;
 static constexpr unsigned GKR_DIM_REDUCING_FORWARD_TOWER_MAX_ROUNDS = GKR_DIM_REDUCING_FORWARD_TOWER_LOG_BLOCK;
@@ -71,23 +75,18 @@ static constexpr unsigned GKR_EQ_CHUNK_SIZE = 2;
 static constexpr unsigned GKR_EQ_CHUNK_TABLE_LEN = 1u << GKR_EQ_CHUNK_SIZE;
 static constexpr unsigned GKR_EQ_MAX_CHUNKS_PER_GROUP = GKR_EQ_GROUP_SIZE / GKR_EQ_CHUNK_SIZE;
 
-template <typename E> DEVICE_FORCEINLINE const E *gkr_main_batch_challenges(const E *batch_challenge_base, const u32 offset, const u32 count, E (&storage)[2]) {
-  storage[0] = E::ZERO();
-  storage[1] = E::ZERO();
-  if (count == 0)
-    return storage;
-  E current = E::pow(*batch_challenge_base, offset);
-  for (u32 i = 0; i < count && i < 2; ++i) {
-    storage[i] = current;
-    current = E::mul(current, *batch_challenge_base);
-  }
-  return storage;
-}
-
 enum gkr_dim_reducing_kernel_kind : u32 {
   GKR_DIM_REDUCING_PAIRWISE = 0,
   GKR_DIM_REDUCING_LOOKUP = 1,
 };
+
+} // namespace airbender::prover::gkr
+
+// __constant__ batch-challenge table for dim-reducing backward compact kernels.
+// Defined in dim_reducing_backward.cu.
+EXTERN __device__ __constant__ e4 ab_gkr_dim_reducing_batch_challenge_table[airbender::prover::gkr::GKR_DIM_REDUCING_BATCH_CHALLENGE_TABLE_LEN];
+
+namespace airbender::prover::gkr {
 
 // ---------------------------------------------------------------------------
 // Phase B compact descriptor types — mirror of
@@ -136,10 +135,9 @@ template <typename E> struct gkr_dim_reducing_round0_batch_compact {
   u32 reserved1;
   u32 reserved2;
   const E *eq_values;
-  const E *batch_challenge_base;
   E *contributions;
   gkr_dim_reducing_tables tables;
-  gkr_dim_reducing_batch_record_compact records[GKR_BACKWARD_MAX_KERNELS_PER_LAYER];
+  gkr_dim_reducing_batch_record_compact records[GKR_DIM_REDUCING_MAX_RECORDS_PER_LAYER];
   gkr_source_record inline_payload[GKR_DIM_REDUCING_INLINE_U16_BUDGET];
 };
 
@@ -149,13 +147,12 @@ template <typename E> struct gkr_dim_reducing_continuation_batch_compact {
   u32 reserved1;
   u32 reserved2;
   const E *eq_values;
-  const E *batch_challenge_base;
   const E *folding_challenge;
   E *contributions;
   bool explicit_form;
   u8 padding[7];
   gkr_dim_reducing_tables tables;
-  gkr_dim_reducing_batch_record_compact records[GKR_BACKWARD_MAX_KERNELS_PER_LAYER];
+  gkr_dim_reducing_batch_record_compact records[GKR_DIM_REDUCING_MAX_RECORDS_PER_LAYER];
   gkr_source_record inline_payload[GKR_DIM_REDUCING_INLINE_U16_BUDGET];
 };
 
@@ -464,10 +461,8 @@ template <typename E> DEVICE_FORCEINLINE void gkr_accumulate_contribution(E *dst
 }
 
 template <typename E>
-DEVICE_FORCEINLINE void gkr_pairwise_round0_values(const gkr_ext_initial_source<E> *inputs, const gkr_ext_initial_source<E> *outputs, const E *batch_challenges,
-                                                   const unsigned gid, E &c0, E &c1) {
-  const E batch_challenge = batch_challenges[0];
-
+DEVICE_FORCEINLINE void gkr_pairwise_round0_values(const gkr_ext_initial_source<E> *inputs, const gkr_ext_initial_source<E> *outputs,
+                                                   const E batch_challenge, const unsigned gid, E &c0, E &c1) {
   const unsigned even_index = gid * 2;
   const unsigned odd_index = even_index + 1;
 
@@ -480,11 +475,8 @@ DEVICE_FORCEINLINE void gkr_pairwise_round0_values(const gkr_ext_initial_source<
 }
 
 template <typename E>
-DEVICE_FORCEINLINE void gkr_lookup_round0_values(const gkr_ext_initial_source<E> *inputs, const gkr_ext_initial_source<E> *outputs, const E *batch_challenges,
-                                                 const unsigned gid, E &c0, E &c1) {
-  const E batch_challenge_0 = batch_challenges[0];
-  const E batch_challenge_1 = batch_challenges[1];
-
+DEVICE_FORCEINLINE void gkr_lookup_round0_values(const gkr_ext_initial_source<E> *inputs, const gkr_ext_initial_source<E> *outputs,
+                                                 const E batch_challenge_0, const E batch_challenge_1, const unsigned gid, E &c0, E &c1) {
   const unsigned even_index = gid * 2;
   const unsigned odd_index = even_index + 1;
 
@@ -504,10 +496,9 @@ DEVICE_FORCEINLINE void gkr_lookup_round0_values(const gkr_ext_initial_source<E>
 }
 
 template <typename E, bool EXPLICIT_FORM>
-DEVICE_FORCEINLINE void gkr_pairwise_continuation_values(const gkr_ext_continuing_source<E> *inputs, const E *folding_challenge, const E *batch_challenges,
+DEVICE_FORCEINLINE void gkr_pairwise_continuation_values(const gkr_ext_continuing_source<E> *inputs, const E *folding_challenge, const E batch_challenge,
                                                          const unsigned gid, E &c0, E &c1) {
   const E current_folding_challenge = folding_challenge[0];
-  const E batch_challenge = batch_challenges[0];
 
   const unsigned even_index = gid * 2;
   const unsigned odd_index = even_index + 1;
@@ -525,11 +516,9 @@ DEVICE_FORCEINLINE void gkr_pairwise_continuation_values(const gkr_ext_continuin
 }
 
 template <typename E, bool EXPLICIT_FORM>
-DEVICE_FORCEINLINE void gkr_lookup_continuation_values(const gkr_ext_continuing_source<E> *inputs, const E *folding_challenge, const E *batch_challenges,
-                                                       const unsigned gid, E &out0, E &out1) {
+DEVICE_FORCEINLINE void gkr_lookup_continuation_values(const gkr_ext_continuing_source<E> *inputs, const E *folding_challenge,
+                                                       const E batch_challenge_0, const E batch_challenge_1, const unsigned gid, E &out0, E &out1) {
   const E current_folding_challenge = folding_challenge[0];
-  const E batch_challenge_0 = batch_challenges[0];
-  const E batch_challenge_1 = batch_challenges[1];
 
   const unsigned even_index = gid * 2;
   const unsigned odd_index = even_index + 1;
@@ -564,7 +553,7 @@ DEVICE_FORCEINLINE void gkr_pairwise_round0(const gkr_ext_initial_source<E> *inp
     return;
   E c0;
   E c1;
-  gkr_pairwise_round0_values(inputs, outputs, batch_challenges, gid, c0, c1);
+  gkr_pairwise_round0_values(inputs, outputs, batch_challenges[0], gid, c0, c1);
   gkr_accumulate_contribution(contributions, gid, acc_size, c0, c1);
 }
 
@@ -576,7 +565,7 @@ DEVICE_FORCEINLINE void gkr_lookup_round0(const gkr_ext_initial_source<E> *input
     return;
   E c0;
   E c1;
-  gkr_lookup_round0_values(inputs, outputs, batch_challenges, gid, c0, c1);
+  gkr_lookup_round0_values(inputs, outputs, batch_challenges[0], batch_challenges[1], gid, c0, c1);
   gkr_accumulate_contribution(contributions, gid, acc_size, c0, c1);
 }
 
@@ -588,7 +577,7 @@ DEVICE_FORCEINLINE void gkr_pairwise_continuation(const gkr_ext_continuing_sourc
     return;
   E c0;
   E c1;
-  gkr_pairwise_continuation_values<E, EXPLICIT_FORM>(inputs, folding_challenge, batch_challenges, gid, c0, c1);
+  gkr_pairwise_continuation_values<E, EXPLICIT_FORM>(inputs, folding_challenge, batch_challenges[0], gid, c0, c1);
   gkr_accumulate_contribution(contributions, gid, acc_size, c0, c1);
 }
 
@@ -600,7 +589,7 @@ DEVICE_FORCEINLINE void gkr_lookup_continuation(const gkr_ext_continuing_source<
     return;
   E out0;
   E out1;
-  gkr_lookup_continuation_values<E, EXPLICIT_FORM>(inputs, folding_challenge, batch_challenges, gid, out0, out1);
+  gkr_lookup_continuation_values<E, EXPLICIT_FORM>(inputs, folding_challenge, batch_challenges[0], batch_challenges[1], gid, out0, out1);
   gkr_accumulate_contribution(contributions, gid, acc_size, out0, out1);
 }
 
@@ -1117,17 +1106,15 @@ DEVICE_FORCEINLINE void gkr_dim_reducing_round0_batched_compact(const gkr_dim_re
     for (unsigned k = 0; k < record.outputs.count; ++k) {
       outputs[k] = gkr_resolve_dim_reducing_initial_source<E>(batch.tables, batch.inline_payload[record.outputs.offset + k], acc_size);
     }
-    E batch_challenge_storage[2];
-    const E *batch_challenges =
-        gkr_main_batch_challenges(batch.batch_challenge_base, record.batch_challenge_offset, record.batch_challenge_count, batch_challenge_storage);
     E c0;
     E c1;
     switch (record.kind) {
     case GKR_DIM_REDUCING_PAIRWISE:
-      gkr_pairwise_round0_values(inputs, outputs, batch_challenges, gid, c0, c1);
+      gkr_pairwise_round0_values(inputs, outputs, ::ab_gkr_dim_reducing_batch_challenge_table[record.batch_challenge_offset], gid, c0, c1);
       break;
     case GKR_DIM_REDUCING_LOOKUP:
-      gkr_lookup_round0_values(inputs, outputs, batch_challenges, gid, c0, c1);
+      gkr_lookup_round0_values(inputs, outputs, ::ab_gkr_dim_reducing_batch_challenge_table[record.batch_challenge_offset],
+                               ::ab_gkr_dim_reducing_batch_challenge_table[record.batch_challenge_offset + 1], gid, c0, c1);
       break;
     default:
       return;
@@ -1184,17 +1171,17 @@ DEVICE_FORCEINLINE void gkr_dim_reducing_round1_batched_compact_inner(const gkr_
     for (unsigned k = 0; k < record.inputs.count; ++k) {
       inputs[k] = gkr_resolve_dim_reducing_round1_source<E>(batch.tables, batch.inline_payload[record.inputs.offset + k], acc_size);
     }
-    E batch_challenge_storage[2];
-    const E *batch_challenges =
-        gkr_main_batch_challenges(batch.batch_challenge_base, record.batch_challenge_offset, record.batch_challenge_count, batch_challenge_storage);
     E c0;
     E c1;
     switch (record.kind) {
     case GKR_DIM_REDUCING_PAIRWISE:
-      gkr_pairwise_continuation_values<E, EXPLICIT_FORM>(inputs, batch.folding_challenge, batch_challenges, gid, c0, c1);
+      gkr_pairwise_continuation_values<E, EXPLICIT_FORM>(inputs, batch.folding_challenge,
+                                                         ::ab_gkr_dim_reducing_batch_challenge_table[record.batch_challenge_offset], gid, c0, c1);
       break;
     case GKR_DIM_REDUCING_LOOKUP:
-      gkr_lookup_continuation_values<E, EXPLICIT_FORM>(inputs, batch.folding_challenge, batch_challenges, gid, c0, c1);
+      gkr_lookup_continuation_values<E, EXPLICIT_FORM>(inputs, batch.folding_challenge,
+                                                       ::ab_gkr_dim_reducing_batch_challenge_table[record.batch_challenge_offset],
+                                                       ::ab_gkr_dim_reducing_batch_challenge_table[record.batch_challenge_offset + 1], gid, c0, c1);
       break;
     default:
       return;
@@ -1253,17 +1240,17 @@ DEVICE_FORCEINLINE void gkr_dim_reducing_continuation_batched_compact_inner(cons
     for (unsigned k = 0; k < record.inputs.count; ++k) {
       inputs[k] = gkr_resolve_dim_reducing_continuation_source<E>(batch.tables, batch.inline_payload[record.inputs.offset + k], acc_size, step);
     }
-    E batch_challenge_storage[2];
-    const E *batch_challenges =
-        gkr_main_batch_challenges(batch.batch_challenge_base, record.batch_challenge_offset, record.batch_challenge_count, batch_challenge_storage);
     E c0;
     E c1;
     switch (record.kind) {
     case GKR_DIM_REDUCING_PAIRWISE:
-      gkr_pairwise_continuation_values<E, EXPLICIT_FORM>(inputs, batch.folding_challenge, batch_challenges, gid, c0, c1);
+      gkr_pairwise_continuation_values<E, EXPLICIT_FORM>(inputs, batch.folding_challenge,
+                                                         ::ab_gkr_dim_reducing_batch_challenge_table[record.batch_challenge_offset], gid, c0, c1);
       break;
     case GKR_DIM_REDUCING_LOOKUP:
-      gkr_lookup_continuation_values<E, EXPLICIT_FORM>(inputs, batch.folding_challenge, batch_challenges, gid, c0, c1);
+      gkr_lookup_continuation_values<E, EXPLICIT_FORM>(inputs, batch.folding_challenge,
+                                                       ::ab_gkr_dim_reducing_batch_challenge_table[record.batch_challenge_offset],
+                                                       ::ab_gkr_dim_reducing_batch_challenge_table[record.batch_challenge_offset + 1], gid, c0, c1);
       break;
     default:
       return;

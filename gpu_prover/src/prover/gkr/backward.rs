@@ -3376,10 +3376,20 @@ impl<B: 'static, E: Field + Reduce> GpuGKRDimensionReducingBackwardState<B, E> {
         let folding_steps = trace_len_after_reduction.trailing_zeros() as usize;
         assert!(folding_steps >= 2);
         assert!(
-            blueprints.len() <= GKR_BACKWARD_MAX_KERNELS_PER_LAYER,
+            blueprints.len() <= GKR_DIM_REDUCING_MAX_RECORDS_PER_LAYER,
             "fused dimension-reducing backward supports at most {} kernels per layer, got {}",
-            GKR_BACKWARD_MAX_KERNELS_PER_LAYER,
+            GKR_DIM_REDUCING_MAX_RECORDS_PER_LAYER,
             blueprints.len()
+        );
+        let batch_challenge_count = blueprints
+            .iter()
+            .map(|blueprint| blueprint.batch_challenge_count)
+            .sum::<usize>();
+        assert!(
+            batch_challenge_count <= GKR_DIM_REDUCING_BATCH_CHALLENGE_TABLE_LEN,
+            "fused dimension-reducing backward supports at most {} batch challenges per layer, got {}",
+            GKR_DIM_REDUCING_BATCH_CHALLENGE_TABLE_LEN,
+            batch_challenge_count
         );
 
         // Pre-allocate one consolidated ext-folding backing for this layer so
@@ -4833,7 +4843,6 @@ where
     ) -> CudaResult<()> {
         let mut batch = self.round0_batch_template_compact;
         batch.eq_values = self.round_scratch.eq_values.as_ptr();
-        batch.batch_challenge_base = self.batch_challenge_base_ptr();
         batch.contributions = self.round_scratch.accumulator.as_mut_ptr();
         launch_dim_reducing_round0_batched_compact(&batch, acc_size, context)
     }
@@ -4847,7 +4856,6 @@ where
     ) -> CudaResult<()> {
         let mut batch = self.round1_batch_template_compact;
         batch.eq_values = self.round_scratch.eq_values.as_ptr();
-        batch.batch_challenge_base = self.batch_challenge_base_ptr();
         batch.folding_challenge = folding_challenge.as_ptr();
         batch.contributions = self.round_scratch.accumulator.as_mut_ptr();
         batch.explicit_form = explicit_form;
@@ -4863,7 +4871,6 @@ where
     ) -> CudaResult<()> {
         let mut batch = self.continuation_batch_template_compact;
         batch.eq_values = self.round_scratch.eq_values.as_ptr();
-        batch.batch_challenge_base = self.batch_challenge_base_ptr();
         batch.folding_challenge = folding_challenge.as_ptr();
         batch.contributions = self.round_scratch.accumulator.as_mut_ptr();
         batch.explicit_form = explicit_form;
@@ -4880,7 +4887,6 @@ where
     ) -> CudaResult<()> {
         let mut batch = self.continuation_batch_template_compact;
         batch.eq_values = self.round_scratch.eq_values.as_ptr();
-        batch.batch_challenge_base = self.batch_challenge_base_ptr();
         batch.folding_challenge = folding_challenge.as_ptr();
         batch.contributions = self.round_scratch.accumulator.as_mut_ptr();
         batch.explicit_form = explicit_form;
@@ -5090,6 +5096,10 @@ where
             &mut self.round_scratch.claim_point,
             &claim_point_host,
             context.get_exec_stream(),
+        )?;
+        schedule_dim_reducing_batch_challenge_table_prelude(
+            self.batch_challenge_base_ptr() as *const E4,
+            context,
         )?;
         self.build_round0_eq_values(&eq_pair_values_host, context)?;
         drop(claim_point_host);
@@ -5409,6 +5419,10 @@ where
         );
         self.batch_challenge_base_override_ptr =
             Some(unsafe { device_claim_point_in.as_ptr().add(self.folding_steps) });
+        schedule_dim_reducing_batch_challenge_table_prelude(
+            self.batch_challenge_base_ptr() as *const E4,
+            context,
+        )?;
         // Build `eq_group_tables` + `eq_values` directly from the device
         // claim_point (using coords `[1..folding_steps]` — the suffix that
         // `fill_round0_eq_pair_values` used to expand on host). Replaces the
