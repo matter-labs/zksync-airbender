@@ -67,12 +67,68 @@ pub fn load_binary_from_path(path: &String) -> Vec<u32> {
 }
 
 #[repr(usize)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 pub enum UnrolledProverLevel {
     Base = 0,
     RecursionUnrolled = 1,
     RecursionUnified = 2,
 }
+
+/// Per-level setup data extracted from an `UnrolledProver`.
+///
+/// `setup` and `compiled_layouts` are deterministic functions of the layer's
+/// (binary, text) inputs and the embedded verifier binaries shipped with this
+/// crate, but they are extremely expensive to compute. Caching them lets a
+/// freshly-started prover skip the warm-up.
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+pub struct UnrolledProverLevelSetup {
+    pub setup: UnrolledProgramSetup,
+    pub compiled_layouts: CompiledCircuitsSet,
+}
+
+/// Snapshot of every level's setup data, suitable for serializing to disk and
+/// re-feeding into `UnrolledProver::new_with_cache` on a subsequent run.
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+pub struct UnrolledProverCache {
+    pub security: SecurityModel,
+    pub max_level: UnrolledProverLevel,
+    pub levels: BTreeMap<UnrolledProverLevel, UnrolledProverLevelSetup>,
+}
+
+#[derive(Debug)]
+pub enum UnrolledProverCacheError {
+    SecurityMismatch {
+        cached: SecurityModel,
+        expected: SecurityModel,
+    },
+    MaxLevelTooLow {
+        cached: UnrolledProverLevel,
+        expected: UnrolledProverLevel,
+    },
+    MissingLevel(UnrolledProverLevel),
+}
+
+impl std::fmt::Display for UnrolledProverCacheError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::SecurityMismatch { cached, expected } => write!(
+                f,
+                "setup cache built for {cached:?} cannot serve a {expected:?} prover",
+            ),
+            Self::MaxLevelTooLow { cached, expected } => write!(
+                f,
+                "setup cache supports up to {cached:?} but {expected:?} was requested",
+            ),
+            Self::MissingLevel(level) => {
+                write!(f, "setup cache is missing required level {level:?}")
+            }
+        }
+    }
+}
+
+impl std::error::Error for UnrolledProverCacheError {}
 
 pub struct UnrolledProverLevelData {
     pub binary: Vec<u8>,
@@ -166,6 +222,97 @@ impl UnrolledProver {
         prover_configuration: ExecutionProverConfiguration,
         max_level: UnrolledProverLevel,
     ) -> Self {
+        Self::build_inner(
+            security,
+            path_without_bin,
+            prover_configuration,
+            max_level,
+            None,
+        )
+    }
+
+    /// Build a prover, reusing pre-computed setups from `cache` instead of
+    /// regenerating them. The cache must have been produced by `dump_cache` on
+    /// a prover built with the same security level and binaries; mismatches in
+    /// `security` or insufficient `max_level` coverage are rejected up front.
+    /// Mismatched binaries cannot be detected here and will manifest as a
+    /// proving-time failure — callers are expected to key the on-disk cache
+    /// path on a binary fingerprint.
+    pub fn new_with_cache(
+        security: SecurityModel,
+        path_without_bin: &String,
+        prover_configuration: ExecutionProverConfiguration,
+        max_level: UnrolledProverLevel,
+        cache: &UnrolledProverCache,
+    ) -> Result<Self, UnrolledProverCacheError> {
+        if cache.security != security {
+            return Err(UnrolledProverCacheError::SecurityMismatch {
+                cached: cache.security,
+                expected: security,
+            });
+        }
+        if cache.max_level < max_level {
+            return Err(UnrolledProverCacheError::MaxLevelTooLow {
+                cached: cache.max_level,
+                expected: max_level,
+            });
+        }
+        let required: &[UnrolledProverLevel] = match max_level {
+            UnrolledProverLevel::Base => &[UnrolledProverLevel::Base],
+            UnrolledProverLevel::RecursionUnrolled => &[
+                UnrolledProverLevel::Base,
+                UnrolledProverLevel::RecursionUnrolled,
+            ],
+            UnrolledProverLevel::RecursionUnified => &[
+                UnrolledProverLevel::Base,
+                UnrolledProverLevel::RecursionUnrolled,
+                UnrolledProverLevel::RecursionUnified,
+            ],
+        };
+        for level in required {
+            if !cache.levels.contains_key(level) {
+                return Err(UnrolledProverCacheError::MissingLevel(*level));
+            }
+        }
+        Ok(Self::build_inner(
+            security,
+            path_without_bin,
+            prover_configuration,
+            max_level,
+            Some(cache),
+        ))
+    }
+
+    /// Snapshot per-level setup data so it can be serialized and reloaded via
+    /// `new_with_cache` on a subsequent startup.
+    pub fn dump_cache(&self) -> UnrolledProverCache {
+        let levels = self
+            .level_data
+            .iter()
+            .map(|(&level, data)| {
+                (
+                    level,
+                    UnrolledProverLevelSetup {
+                        setup: data.setup.clone(),
+                        compiled_layouts: data.compiled_layouts.clone(),
+                    },
+                )
+            })
+            .collect();
+        UnrolledProverCache {
+            security: self.prover.security(),
+            max_level: self.max_level,
+            levels,
+        }
+    }
+
+    fn build_inner(
+        security: SecurityModel,
+        path_without_bin: &String,
+        prover_configuration: ExecutionProverConfiguration,
+        max_level: UnrolledProverLevel,
+        cache: Option<&UnrolledProverCache>,
+    ) -> Self {
         let mut prover = match security {
             SecurityModel::Security80 => RuntimeExecutionProver::Security80(ExecutionProver::<
                 Security80Marker,
@@ -191,19 +338,29 @@ impl UnrolledProver {
                 text_u32.clone(),
                 None,
             );
-            info!("Computing base layer setup");
-            let mut padded_binary = binary.clone();
-            pad_bytecode_bytes_for_proving(&mut padded_binary);
-            let mut padded_text = text.clone();
-            pad_bytecode_bytes_for_proving(&mut padded_text);
-            let mut padded_binary_u32 = binary_u32.clone();
-            pad_bytecode_for_proving(&mut padded_binary_u32);
-            let setup = compute_setup_for_machine_configuration::<
-                IMStandardIsaConfigWithUnsignedMulDiv,
-            >(&padded_binary, &padded_text);
-            let compiled_layouts = get_unrolled_circuits_artifacts_for_machine_type::<
-                IMStandardIsaConfigWithUnsignedMulDiv,
-            >(&padded_binary_u32);
+            let (setup, compiled_layouts) =
+                match cache.and_then(|c| c.levels.get(&UnrolledProverLevel::Base)) {
+                    Some(cached) => {
+                        info!("Reusing cached base layer setup");
+                        (cached.setup.clone(), cached.compiled_layouts.clone())
+                    }
+                    None => {
+                        info!("Computing base layer setup");
+                        let mut padded_binary = binary.clone();
+                        pad_bytecode_bytes_for_proving(&mut padded_binary);
+                        let mut padded_text = text.clone();
+                        pad_bytecode_bytes_for_proving(&mut padded_text);
+                        let mut padded_binary_u32 = binary_u32.clone();
+                        pad_bytecode_for_proving(&mut padded_binary_u32);
+                        let setup = compute_setup_for_machine_configuration::<
+                            IMStandardIsaConfigWithUnsignedMulDiv,
+                        >(&padded_binary, &padded_text);
+                        let compiled_layouts = get_unrolled_circuits_artifacts_for_machine_type::<
+                            IMStandardIsaConfigWithUnsignedMulDiv,
+                        >(&padded_binary_u32);
+                        (setup, compiled_layouts)
+                    }
+                };
             let (hash_chain, preimage) =
                 UnrolledProgramSetup::begin_recursion_chain(&setup.end_params);
             let data = UnrolledProverLevelData {
@@ -242,19 +399,29 @@ impl UnrolledProver {
                 text_u32.clone(),
                 None,
             );
-            info!("Computing recursion in unrolled layer setup");
-            let mut padded_binary = binary.clone();
-            pad_bytecode_bytes_for_proving(&mut padded_binary);
-            let mut padded_text = text.clone();
-            pad_bytecode_bytes_for_proving(&mut padded_text);
-            let mut padded_binary_u32 = binary_u32.clone();
-            pad_bytecode_for_proving(&mut padded_binary_u32);
-            let setup = compute_setup_for_machine_configuration::<
-                IWithoutByteAccessIsaConfigWithDelegation,
-            >(&padded_binary, &padded_text);
-            let compiled_layouts = get_unrolled_circuits_artifacts_for_machine_type::<
-                IWithoutByteAccessIsaConfigWithDelegation,
-            >(&padded_binary_u32);
+            let (setup, compiled_layouts) =
+                match cache.and_then(|c| c.levels.get(&UnrolledProverLevel::RecursionUnrolled)) {
+                    Some(cached) => {
+                        info!("Reusing cached recursion-unrolled layer setup");
+                        (cached.setup.clone(), cached.compiled_layouts.clone())
+                    }
+                    None => {
+                        info!("Computing recursion in unrolled layer setup");
+                        let mut padded_binary = binary.clone();
+                        pad_bytecode_bytes_for_proving(&mut padded_binary);
+                        let mut padded_text = text.clone();
+                        pad_bytecode_bytes_for_proving(&mut padded_text);
+                        let mut padded_binary_u32 = binary_u32.clone();
+                        pad_bytecode_for_proving(&mut padded_binary_u32);
+                        let setup = compute_setup_for_machine_configuration::<
+                            IWithoutByteAccessIsaConfigWithDelegation,
+                        >(&padded_binary, &padded_text);
+                        let compiled_layouts = get_unrolled_circuits_artifacts_for_machine_type::<
+                            IWithoutByteAccessIsaConfigWithDelegation,
+                        >(&padded_binary_u32);
+                        (setup, compiled_layouts)
+                    }
+                };
             let previous_level_data = &level_data[&UnrolledProverLevel::Base];
             let (hash_chain, preimage) = UnrolledProgramSetup::continue_recursion_chain(
                 &setup.end_params,
@@ -297,19 +464,29 @@ impl UnrolledProver {
                 text_u32.clone(),
                 None,
             );
-            info!("Computing recursion in unified layer setup");
-            let mut padded_binary = binary.clone();
-            pad_bytecode_bytes_for_proving(&mut padded_binary);
-            let mut padded_text = text.clone();
-            pad_bytecode_bytes_for_proving(&mut padded_text);
-            let mut padded_binary_u32 = binary_u32.clone();
-            pad_bytecode_for_proving(&mut padded_binary_u32);
-            let setup = compute_unified_setup_for_machine_configuration::<
-                IWithoutByteAccessIsaConfigWithDelegation,
-            >(&padded_binary, &padded_text);
-            let compiled_layouts = get_unified_circuit_artifact_for_machine_type::<
-                IWithoutByteAccessIsaConfigWithDelegation,
-            >(&padded_binary_u32);
+            let (setup, compiled_layouts) =
+                match cache.and_then(|c| c.levels.get(&UnrolledProverLevel::RecursionUnified)) {
+                    Some(cached) => {
+                        info!("Reusing cached recursion-unified layer setup");
+                        (cached.setup.clone(), cached.compiled_layouts.clone())
+                    }
+                    None => {
+                        info!("Computing recursion in unified layer setup");
+                        let mut padded_binary = binary.clone();
+                        pad_bytecode_bytes_for_proving(&mut padded_binary);
+                        let mut padded_text = text.clone();
+                        pad_bytecode_bytes_for_proving(&mut padded_text);
+                        let mut padded_binary_u32 = binary_u32.clone();
+                        pad_bytecode_for_proving(&mut padded_binary_u32);
+                        let setup = compute_unified_setup_for_machine_configuration::<
+                            IWithoutByteAccessIsaConfigWithDelegation,
+                        >(&padded_binary, &padded_text);
+                        let compiled_layouts = get_unified_circuit_artifact_for_machine_type::<
+                            IWithoutByteAccessIsaConfigWithDelegation,
+                        >(&padded_binary_u32);
+                        (setup, compiled_layouts)
+                    }
+                };
             let previous_level_data = &level_data[&UnrolledProverLevel::RecursionUnrolled];
             let (hash_chain, preimage) = UnrolledProgramSetup::continue_recursion_chain(
                 &setup.end_params,
