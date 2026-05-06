@@ -102,7 +102,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field, T: ColumnMajorMerkleTreeConstr
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct WhirSchedule {
     pub base_lde_factor: usize,
     pub cap_size: usize,
@@ -113,6 +113,14 @@ pub struct WhirSchedule {
 }
 
 impl WhirSchedule {
+    pub fn total_queries(&self) -> usize {
+        self.whir_queries_schedule.iter().sum()
+    }
+
+    pub fn total_poly_size_reduction(&self) -> usize {
+        self.whir_steps_schedule.iter().sum()
+    }
+
     pub fn default_for_tests_80_bits_20() -> Self {
         let mut new = Self {
             base_lde_factor: 2,

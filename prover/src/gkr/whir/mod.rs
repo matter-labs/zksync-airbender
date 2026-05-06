@@ -85,6 +85,7 @@ use transcript::Seed;
 use worker::{IterableWithGeometry, Worker};
 
 pub mod hypercube_to_monomial;
+pub mod proximity_testing_modes;
 pub mod queries;
 pub mod whir_proof;
 

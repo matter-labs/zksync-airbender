@@ -1,8 +1,8 @@
 use std::io::Write;
 
 use verifier_common::test_circuits::{CircuitData, CIRCUITS};
-use verifier_generator::gkr::GKRGeneratedFiles;
 use verifier_generator::field_wrapper::FieldWrapper;
+use verifier_generator::gkr::GKRGeneratedFiles;
 use verifier_generator::{gkr, utils, whir, DefaultBabyBearField};
 
 fn write_and_fmt(path: &str, content: &proc_macro2::TokenStream) {
