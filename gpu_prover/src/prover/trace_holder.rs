@@ -1,3 +1,4 @@
+use blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS;
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
@@ -12,7 +13,7 @@ use crate::ntt::{
 };
 use crate::ops::blake2s::{
     build_merkle_tree, build_merkle_tree_nodes, gather_leaf_rows, gather_merkle_paths_device,
-    gather_merkle_paths_from_rows, merkle_tree_cap, Digest,
+    gather_merkle_paths_from_rows, gather_tree_caps_inline, merkle_tree_cap, Digest,
 };
 use crate::primitives::context::{DeviceAllocation, HostAllocation, ProverContext, UnsafeAccessor};
 use crate::primitives::device_structures::{DeviceMatrix, DeviceMatrixMut};
@@ -379,11 +380,26 @@ impl TraceHolder<BF> {
         self.materialize_cosets_from_owned_hypercube(context)
     }
 
-    fn commit_and_transfer_tree_caps(
+    /// Commits one coset's per-coset Merkle tree and returns the device pointer
+    /// (cast to `*const u32`) at this coset's cap region. The per-coset D2D
+    /// from cap region into `unified_device_cap` is no longer performed here —
+    /// `commit_all` aggregates every coset's cap region in one
+    /// `gather_tree_caps` kernel launch after every per-coset commit has been
+    /// scheduled.
+    ///
+    /// `none_mode_trees` collects the temporary `tree_top` allocations for
+    /// `TreesHolder::None`, which are otherwise dropped per-coset. Their cap
+    /// region pointers must remain valid until the gather kernel reads them,
+    /// so the caller (`commit_all`) keeps the Vec alive across all per-coset
+    /// commits and through the gather launch. For `Full` and `Partial` modes
+    /// the trees are moved back into `self.trees`, so their lifetimes already
+    /// extend past the gather.
+    fn commit_per_coset_capture_cap_ptr(
         &mut self,
         coset_index: usize,
+        none_mode_trees: &mut Vec<DeviceAllocation<Digest>>,
         context: &ProverContext,
-    ) -> CudaResult<()> {
+    ) -> CudaResult<u64> {
         let log_domain_size = self.log_domain_size;
         let log_lde_factor = self.log_lde_factor;
         let log_rows_per_leaf = self.log_rows_per_leaf;
@@ -402,7 +418,7 @@ impl TraceHolder<BF> {
             ),
         };
         let evaluations = self.get_coset_evaluations(coset_index);
-        let tree = if let Some(tree_bottom) = &mut tree_bottom {
+        if let Some(tree_bottom) = &mut tree_bottom {
             commit_trace_with_partial_tree(
                 evaluations,
                 &mut tree_top,
@@ -414,7 +430,6 @@ impl TraceHolder<BF> {
                 columns_count,
                 stream,
             )?;
-            tree_bottom
         } else {
             commit_trace(
                 evaluations,
@@ -426,32 +441,35 @@ impl TraceHolder<BF> {
                 columns_count,
                 stream,
             )?;
-            &mut tree_top
-        };
-        // Per-coset D2D into this coset's slice of the unified device cap, in
-        // canonical bit-reversed coset order. `coset_index` is the natural coset
-        // index (the one used to index into `cosets`/`trees`), and each per-coset
-        // commit owns a disjoint slot in the unified cap so no cross-coset
-        // coordination is needed.
+        }
         let log_subtree_cap_size = log_tree_cap_size - log_lde_factor;
-        let per_coset_cap_size = 1usize << log_subtree_cap_size;
-        let stage1_pos = bitreverse_index(coset_index, log_lde_factor);
-        let unified_cap = self
-            .unified_device_cap
-            .as_mut()
-            .expect("commit_all must allocate unified_device_cap before per-coset commit");
-        let dst = &mut unified_cap
-            [stage1_pos * per_coset_cap_size..(stage1_pos + 1) * per_coset_cap_size];
-        let src = merkle_tree_cap(tree, log_subtree_cap_size);
-        memory_copy_async(dst, src, stream)?;
+        // For `Partial`, the cap is in `tree_bottom`; otherwise it's in `tree_top`.
+        let cap_slice: &DeviceSlice<Digest> = if let Some(tb) = tree_bottom.as_ref() {
+            merkle_tree_cap(tb, log_subtree_cap_size)
+        } else {
+            merkle_tree_cap(&tree_top, log_subtree_cap_size)
+        };
+        // SAFETY: `Digest` is `[u32; 8]`; reading the cap region as `u32` words
+        // is reinterpreting the same bytes the `gather_tree_caps` kernel will
+        // read. The pointer is captured as a numeric value here; lifetime of
+        // the underlying allocation is enforced by stashing `tree_top` (None
+        // mode) or by `self.trees` (Full / Partial), which outlive the kernel.
+        let cap_ptr = unsafe { cap_slice.transmute::<u32>() }.as_ptr() as u64;
         match &mut self.trees {
             TreesHolder::Full(trees) => trees.insert(coset_index, tree_top),
             TreesHolder::Partial(trees) => {
                 trees.insert(coset_index, tree_bottom.unwrap());
+                // tree_top drops here — temp working buffer in Partial mode.
             }
-            TreesHolder::None => {}
+            TreesHolder::None => {
+                // Stash the temp tree_top so its cap region pointer stays
+                // valid until the gather kernel reads it. Local-Vec lifetime
+                // ≤ caller `commit_all`'s frame, which schedules the gather
+                // before returning.
+                none_mode_trees.push(tree_top);
+            }
         };
-        Ok(())
+        Ok(cap_ptr)
     }
 
     pub(crate) fn commit_all(&mut self, context: &ProverContext) -> CudaResult<()> {
@@ -460,9 +478,49 @@ impl TraceHolder<BF> {
         let unified_cap: DeviceAllocation<Digest> =
             context.alloc(cap_size, AllocationPlacement::BestFit)?;
         assert!(self.unified_device_cap.replace(unified_cap).is_none());
-        for coset_index in 0..(1usize << self.log_lde_factor) {
-            self.commit_and_transfer_tree_caps(coset_index, context)?;
+
+        let lde_factor = 1usize << self.log_lde_factor;
+        let log_subtree_cap_size = self.log_tree_cap_size - self.log_lde_factor;
+        let per_coset_cap_size = 1usize << log_subtree_cap_size;
+
+        // Local owned tree allocations for `TreesHolder::None` commits, kept
+        // alive across all per-coset commits and through the gather launch.
+        // For `Full` and `Partial`, the trees are stored on `self.trees` and
+        // outlive the gather automatically.
+        let mut none_mode_trees: Vec<DeviceAllocation<Digest>> = Vec::new();
+        // Per-coset cap region device pointers, in canonical bit-reversed
+        // coset order — `src_ptrs_host[stage1_pos] = cap_ptr_for(coset_index)`
+        // where `stage1_pos = bitreverse_index(coset_index)`. This matches
+        // the layout the legacy per-coset D2D produced.
+        let mut src_ptrs_host: Vec<u64> = vec![0u64; lde_factor];
+        for coset_index in 0..lde_factor {
+            let cap_ptr =
+                self.commit_per_coset_capture_cap_ptr(coset_index, &mut none_mode_trees, context)?;
+            let stage1_pos = bitreverse_index(coset_index, self.log_lde_factor);
+            src_ptrs_host[stage1_pos] = cap_ptr;
         }
+
+        // Single inline-descriptor kernel launch replaces the per-coset cap
+        // D2Ds. The pointer table rides as `__grid_constant__` kernel-arg
+        // data (see `gather_tree_caps_inline`), so no pre-launch H2D is
+        // needed — `prove()`-time H2Ds would otherwise serialize against
+        // the parallel pre-prove H2Ds uploading the next proof's trace.
+        let stream = context.get_exec_stream();
+        let cap_words_per_coset = (per_coset_cap_size * BLAKE2S_DIGEST_SIZE_U32_WORDS) as u32;
+        let unified_cap = self
+            .unified_device_cap
+            .as_mut()
+            .expect("unified_device_cap was just placed above");
+        // SAFETY: `unified_cap` is `[Digest]`; the gather kernel writes
+        // `lde_factor * cap_words_per_coset` u32 words = `cap_size *
+        // BLAKE2S_DIGEST_SIZE_U32_WORDS` words = the full unified-cap byte
+        // range. The `Digest` (== `[u32; 8]`) and `u32` share alignment.
+        let dst_u32 = unsafe { unified_cap.transmute_mut::<u32>() };
+        gather_tree_caps_inline(&src_ptrs_host, dst_u32, cap_words_per_coset, stream)?;
+
+        // `none_mode_trees` drops at end of scope — its pool free is
+        // exec-stream-ordered after the gather, so it is safe to drop here.
+        drop(none_mode_trees);
         Ok(())
     }
 

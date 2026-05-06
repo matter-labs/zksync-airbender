@@ -436,6 +436,51 @@ cuda_kernel!(
     )
 );
 
+/// Maximum coset count the inline `gather_tree_caps_inline` kernel-arg
+/// descriptor can hold. Sized for headroom — production lde_factor is
+/// typically ≤ 4.
+pub const GKR_GATHER_TREE_CAPS_MAX_COSETS: usize = 32;
+
+/// Kernel-arg descriptor for `gather_tree_caps_inline`. Replaces the runtime
+/// device-resident pointer table that `gather_tree_caps` requires: the
+/// descriptor is passed by value as `__grid_constant__` data so production
+/// callers (e.g. `TraceHolder::commit_all`) avoid the H2D needed to upload
+/// a pointer table — H2Ds in `prove()` would serialize against the parallel
+/// pre-prove H2Ds that upload the next proof's trace.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct GpuGatherTreeCapsDesc {
+    /// Number of populated entries in `src_ptrs`.
+    pub coset_count: u32,
+    /// Number of u32 words gathered per source coset.
+    pub cap_words_per_coset: u32,
+    /// Source device pointers (one per coset). Each is treated as a
+    /// `const u32 *` referring to `cap_words_per_coset` u32 words.
+    pub src_ptrs: [u64; GKR_GATHER_TREE_CAPS_MAX_COSETS],
+}
+
+impl Default for GpuGatherTreeCapsDesc {
+    fn default() -> Self {
+        Self {
+            coset_count: 0,
+            cap_words_per_coset: 0,
+            src_ptrs: [0u64; GKR_GATHER_TREE_CAPS_MAX_COSETS],
+        }
+    }
+}
+
+const _: () = {
+    assert!(
+        std::mem::size_of::<GpuGatherTreeCapsDesc>() <= 32 * 1024,
+        "GpuGatherTreeCapsDesc must fit under the 32 KB inline kernel-arg ceiling"
+    );
+};
+
+cuda_kernel!(
+    GatherTreeCapsInline,
+    ab_gather_tree_caps_inline_kernel(desc: GpuGatherTreeCapsDesc, dst: *mut u32)
+);
+
 /// Maximum source addresses the `gather_e_addresses` kernel-arg descriptor
 /// can hold. See [`crate::prover::gkr::gkr_address_audit::GKR_GATHER_MAX_ADDRESSES`]
 /// for the rationale; the audit panics if any future circuit exceeds this.
@@ -483,6 +528,54 @@ cuda_kernel!(
     ab_transcript_commit_initial_kernel(seed_out: *mut u32, input: *const u32, input_len: u32)
 );
 
+/// Maximum number of input chunks the chunked transcript-commit kernel-arg
+/// descriptor can hold. The pre-WHIR transcript pack feeds 5 chunks
+/// (canonical-top-bits + external_challenges + setup cap + memory cap +
+/// witness cap); 8 leaves headroom without any meaningful kernel-arg cost.
+pub const GKR_CHUNKED_COMMIT_MAX_CHUNKS: usize = 8;
+
+/// Kernel-arg descriptor for `transcript_commit_initial_chunked`. Replaces
+/// the host-side concat-into-`d_transcript_input` pack with a single kernel
+/// launch that streams Blake2s over the logical concatenation of `num_chunks`
+/// device-resident u32 buffers.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct GpuChunkedInputDesc {
+    /// Number of populated entries in `src_ptrs` and `chunk_lens`.
+    pub num_chunks: u32,
+    /// Padding to keep the `u64` array 8-byte aligned across language
+    /// boundaries.
+    pub _pad: u32,
+    /// Source device pointers (one per chunk). Each is treated as a
+    /// `const u32 *` of length `chunk_lens[i]`.
+    pub src_ptrs: [u64; GKR_CHUNKED_COMMIT_MAX_CHUNKS],
+    /// Per-chunk u32 word counts.
+    pub chunk_lens: [u32; GKR_CHUNKED_COMMIT_MAX_CHUNKS],
+}
+
+impl Default for GpuChunkedInputDesc {
+    fn default() -> Self {
+        Self {
+            num_chunks: 0,
+            _pad: 0,
+            src_ptrs: [0u64; GKR_CHUNKED_COMMIT_MAX_CHUNKS],
+            chunk_lens: [0u32; GKR_CHUNKED_COMMIT_MAX_CHUNKS],
+        }
+    }
+}
+
+const _: () = {
+    assert!(
+        std::mem::size_of::<GpuChunkedInputDesc>() <= 32 * 1024,
+        "GpuChunkedInputDesc must fit under the 32 KB inline kernel-arg ceiling"
+    );
+};
+
+cuda_kernel!(
+    TranscriptCommitInitialChunked,
+    ab_transcript_commit_initial_chunked_kernel(desc: GpuChunkedInputDesc, seed_out: *mut u32)
+);
+
 cuda_kernel!(
     TranscriptCommit,
     ab_transcript_commit_kernel(seed_io: *mut u32, input: *const u32, input_len: u32)
@@ -503,6 +596,11 @@ cuda_kernel!(
 /// `dst[0..coset_count*cap_words_per_coset]`. The caller orders `src_ptrs` to match the
 /// desired output coset sequence (typically bit-reversed against the natural LDE order).
 /// Replaces a per-coset `memory_copy_async` loop with one kernel launch.
+///
+/// `src_ptrs` is read from a device-resident buffer at runtime — production
+/// callers in `prove()` should prefer `gather_tree_caps_inline`, which
+/// passes the pointer table inline as `__grid_constant__` kernel-arg data
+/// and avoids the H2D needed to populate a runtime device buffer.
 pub fn gather_tree_caps(
     src_ptrs: &DeviceSlice<u64>,
     dst: &mut DeviceSlice<u32>,
@@ -527,6 +625,45 @@ pub fn gather_tree_caps(
         coset_count as u32,
     );
     GatherTreeCapsFunction::default().launch(&config, &args)
+}
+
+/// Inline-descriptor variant of `gather_tree_caps`. The pointer table rides
+/// as kernel-arg data (`__grid_constant__`) so the caller does not need a
+/// device-resident pointer buffer or its backing H2D.
+///
+/// Used by `TraceHolder::commit_all` so that per-prove cap aggregation does
+/// not introduce an H2D in the proving hot path; H2Ds there serialize
+/// against the parallel pre-prove H2Ds uploading the next proof's trace.
+pub fn gather_tree_caps_inline(
+    src_ptrs: &[u64],
+    dst: &mut DeviceSlice<u32>,
+    cap_words_per_coset: u32,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    let coset_count = src_ptrs.len();
+    assert!(coset_count > 0);
+    assert!(cap_words_per_coset > 0);
+    assert!(
+        coset_count <= GKR_GATHER_TREE_CAPS_MAX_COSETS,
+        "gather_tree_caps descriptor has {} cosets; exceeds GKR_GATHER_TREE_CAPS_MAX_COSETS = {}. \
+         Raise the constant in ops/blake2s.rs (and the matching native constant) if a \
+         future workload needs more.",
+        coset_count,
+        GKR_GATHER_TREE_CAPS_MAX_COSETS,
+    );
+    assert_eq!(
+        dst.len(),
+        coset_count * cap_words_per_coset as usize,
+        "gather_tree_caps_inline dst length must match coset_count * cap_words_per_coset",
+    );
+    let mut desc = GpuGatherTreeCapsDesc::default();
+    desc.coset_count = coset_count as u32;
+    desc.cap_words_per_coset = cap_words_per_coset;
+    desc.src_ptrs[..coset_count].copy_from_slice(src_ptrs);
+    let threads_per_block = std::cmp::min(cap_words_per_coset, 256u32);
+    let config = CudaLaunchConfig::basic(coset_count as u32, threads_per_block, stream);
+    let args = GatherTreeCapsInlineArguments::new(desc, dst.as_mut_ptr());
+    GatherTreeCapsInlineFunction::default().launch(&config, &args)
 }
 
 /// Gather `src_ptrs.len()` E4 evaluation regions (each `elements_per_addr`
@@ -586,6 +723,36 @@ pub fn transcript_commit_initial(
     let config = CudaLaunchConfig::basic(1u32, 1u32, stream);
     let args = TranscriptCommitInitialArguments::new(seed_ptr, input_ptr, input_len as u32);
     TranscriptCommitInitialFunction::default().launch(&config, &args)
+}
+
+/// Chunked variant of [`transcript_commit_initial`]: computes
+/// `seed = Blake2s(chunk_0 || chunk_1 || ... || chunk_{N-1})` from the IV without
+/// requiring the host to first concatenate the chunks into a single contiguous
+/// device buffer. `seed` must be exactly `STATE_SIZE` u32 words; written.
+/// `chunks` are `(device pointer, u32 length)` pairs covering the logical
+/// transcript prefix in order. Producing the same digest as the single-buffer
+/// kernel is covered by `transcript_commit_initial_chunked_parity_*`.
+pub fn transcript_commit_initial_chunked(
+    seed: &mut DeviceSlice<u32>,
+    chunks: &[(*const u32, u32)],
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    assert_eq!(seed.len(), STATE_SIZE);
+    let num_chunks = chunks.len();
+    assert!(
+        num_chunks <= GKR_CHUNKED_COMMIT_MAX_CHUNKS,
+        "transcript_commit_initial_chunked: {num_chunks} chunks exceeds GKR_CHUNKED_COMMIT_MAX_CHUNKS = {GKR_CHUNKED_COMMIT_MAX_CHUNKS}",
+    );
+    let mut desc = GpuChunkedInputDesc::default();
+    desc.num_chunks = num_chunks as u32;
+    for (i, (ptr, len)) in chunks.iter().enumerate() {
+        desc.src_ptrs[i] = *ptr as u64;
+        desc.chunk_lens[i] = *len;
+    }
+    let seed_ptr = seed.as_mut_ptr();
+    let config = CudaLaunchConfig::basic(1u32, 1u32, stream);
+    let args = TranscriptCommitInitialChunkedArguments::new(desc, seed_ptr);
+    TranscriptCommitInitialChunkedFunction::default().launch(&config, &args)
 }
 
 /// Device-side `commit_with_seed`: computes `new_seed = Blake2s(old_seed || input)`.
@@ -1560,6 +1727,118 @@ mod tests {
         }
     }
 
+    /// Helper: run device-side `transcript_commit_initial_chunked` over
+    /// `chunks` (host-resident u32 slices) and return the resulting seed.
+    /// Each chunk is staged into its own device allocation so the kernel
+    /// receives separate source pointers.
+    fn device_commit_initial_chunked(chunks: &[Vec<u32>]) -> [u32; STATE_SIZE] {
+        let stream = CudaStream::default();
+        let mut d_chunks: Vec<DeviceAllocation<u32>> = chunks
+            .iter()
+            .map(|c| DeviceAllocation::alloc(c.len().max(1)).unwrap())
+            .collect();
+        for (d, h) in d_chunks.iter_mut().zip(chunks.iter()) {
+            if !h.is_empty() {
+                memory_copy_async(d, &h[..], &stream).unwrap();
+            }
+        }
+        let chunk_args: Vec<(*const u32, u32)> = d_chunks
+            .iter()
+            .zip(chunks.iter())
+            .map(|(d, h)| (d.as_ptr(), h.len() as u32))
+            .collect();
+        let mut d_seed = DeviceAllocation::alloc(STATE_SIZE).unwrap();
+        super::transcript_commit_initial_chunked(&mut d_seed, &chunk_args, &stream).unwrap();
+        let mut h_seed = [0u32; STATE_SIZE];
+        memory_copy_async(&mut h_seed[..], &d_seed, &stream).unwrap();
+        stream.synchronize().unwrap();
+        h_seed
+    }
+
+    #[test]
+    fn transcript_commit_initial_chunked_parity_single_chunk() {
+        // One chunk only — must equal the single-buffer kernel.
+        let input: Vec<u32> = (10..30).collect();
+        let chunks = vec![input.clone()];
+        assert_eq!(
+            device_commit_initial_chunked(&chunks),
+            host_commit_initial(&input)
+        );
+    }
+
+    #[test]
+    fn transcript_commit_initial_chunked_parity_block_aligned_split() {
+        // Two chunks, split exactly on a block boundary (16 u32 words).
+        let total: Vec<u32> = (0..32).collect();
+        let chunks = vec![total[..16].to_vec(), total[16..].to_vec()];
+        assert_eq!(
+            device_commit_initial_chunked(&chunks),
+            host_commit_initial(&total)
+        );
+    }
+
+    #[test]
+    fn transcript_commit_initial_chunked_parity_mid_block_split() {
+        // Two chunks split mid-block: chunk boundary should not affect the
+        // final digest because Blake2s streams 64-byte (= 16 u32) blocks.
+        let total: Vec<u32> = (0..40).collect();
+        let chunks = vec![total[..7].to_vec(), total[7..].to_vec()];
+        assert_eq!(
+            device_commit_initial_chunked(&chunks),
+            host_commit_initial(&total)
+        );
+    }
+
+    #[test]
+    fn transcript_commit_initial_chunked_parity_five_chunks() {
+        // Five chunks — matches the production transcript pack
+        // (canonical-top-bits + external_challenges + setup + memory + witness).
+        let total: Vec<u32> = (0..200).collect();
+        let chunks = vec![
+            total[..3].to_vec(),
+            total[3..31].to_vec(),
+            total[31..63].to_vec(),
+            total[63..127].to_vec(),
+            total[127..].to_vec(),
+        ];
+        assert_eq!(
+            device_commit_initial_chunked(&chunks),
+            host_commit_initial(&total)
+        );
+    }
+
+    #[test]
+    fn transcript_commit_initial_chunked_parity_randomized() {
+        let mut rng = rand::rng();
+        for total_len in [1usize, 4, 8, 16, 17, 20, 32, 48, 64, 100, 128, 256, 512] {
+            let total: Vec<u32> = (0..total_len).map(|_| rng.random()).collect();
+            // Pick 1..=5 chunk count; partition `total` into that many chunks
+            // with mostly arbitrary boundaries.
+            for num_chunks in [1usize, 2, 3, 5] {
+                if num_chunks > total_len {
+                    continue;
+                }
+                let mut bounds: Vec<usize> = (0..num_chunks - 1)
+                    .map(|_| rng.random_range(1..total_len))
+                    .collect();
+                bounds.sort();
+                let mut chunks = Vec::with_capacity(num_chunks);
+                let mut start = 0usize;
+                for b in bounds {
+                    chunks.push(total[start..b].to_vec());
+                    start = b;
+                }
+                chunks.push(total[start..].to_vec());
+                let actual = device_commit_initial_chunked(&chunks);
+                let expected = host_commit_initial(&total);
+                assert_eq!(
+                    actual, expected,
+                    "chunked commit_initial mismatch for total_len={total_len}, num_chunks={num_chunks}"
+                );
+            }
+        }
+    }
+
     #[test]
     fn gather_tree_caps_parity() {
         let stream = CudaStream::default();
@@ -1602,6 +1881,50 @@ mod tests {
                 assert_eq!(
                     actual, &expected[..],
                     "gather mismatch for coset {coset_idx} (cap_words={cap_words_per_coset}, count={coset_count})"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn gather_tree_caps_inline_parity() {
+        let stream = CudaStream::default();
+        // Mirrors `gather_tree_caps_parity` but exercises the inline-descriptor
+        // variant that production calls — the pointer table rides as
+        // kernel-arg data, no H2D for a runtime pointer buffer.
+        for &(cap_words_per_coset, coset_count) in
+            &[(8usize, 1usize), (16, 2), (32, 4), (64, 8), (256, 4)]
+        {
+            let mut d_sources: Vec<DeviceAllocation<u32>> = (0..coset_count)
+                .map(|_| DeviceAllocation::alloc(cap_words_per_coset).unwrap())
+                .collect();
+            let mut h_sources: Vec<Vec<u32>> = Vec::with_capacity(coset_count);
+            for (i, d) in d_sources.iter_mut().enumerate() {
+                let pattern: Vec<u32> = (0..cap_words_per_coset)
+                    .map(|j| ((i as u32) << 24) | (j as u32))
+                    .collect();
+                memory_copy_async(d, &pattern[..], &stream).unwrap();
+                h_sources.push(pattern);
+            }
+            let src_ptrs: Vec<u64> = d_sources.iter().map(|d| d.as_ptr() as u64).collect();
+            let mut d_dst: DeviceAllocation<u32> =
+                DeviceAllocation::alloc(coset_count * cap_words_per_coset).unwrap();
+            super::gather_tree_caps_inline(
+                &src_ptrs,
+                &mut d_dst,
+                cap_words_per_coset as u32,
+                &stream,
+            )
+            .unwrap();
+            let mut h_dst: Vec<u32> = vec![0u32; coset_count * cap_words_per_coset];
+            memory_copy_async(&mut h_dst[..], &d_dst, &stream).unwrap();
+            stream.synchronize().unwrap();
+            for (coset_idx, expected) in h_sources.iter().enumerate() {
+                let actual =
+                    &h_dst[coset_idx * cap_words_per_coset..(coset_idx + 1) * cap_words_per_coset];
+                assert_eq!(
+                    actual, &expected[..],
+                    "inline gather mismatch for coset {coset_idx} (cap_words={cap_words_per_coset}, count={coset_count})"
                 );
             }
         }

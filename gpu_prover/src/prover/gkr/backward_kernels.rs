@@ -662,6 +662,19 @@ impl<E> ScheduledChallengeStorage<E> {
     pub(super) fn device_accessor(&self) -> UnsafeAccessor<SharedChallengeDevice<E>> {
         UnsafeAccessor::new(self.device.as_ref())
     }
+
+    /// Consume the storage and return the underlying `DeviceAllocation`.
+    /// Use only after every kernel that captured a raw pointer through
+    /// `device_accessor` has been **scheduled** — the returned handle owns
+    /// the same backing memory the captured pointers reference, so dropping
+    /// it later still respects stream-ordered free.
+    pub(super) fn into_device(self) -> DeviceAllocation<E> {
+        let Self {
+            callbacks: _,
+            device,
+        } = self;
+        (*device).device.into_inner()
+    }
 }
 
 pub(super) struct HostScheduledChallengeStorage<E> {
@@ -719,10 +732,6 @@ pub(crate) struct GpuGKRDimensionReducingScheduledLayerExecution<B, E: FieldExte
     #[allow(dead_code)]
     // Keeps layer-start callbacks alive until the stream consumes them.
     pub(super) start_callbacks: Callbacks<'static>,
-    #[allow(dead_code)]
-    pub(super) round_challenge_storage: Option<ScheduledChallengeStorage<E>>,
-    #[allow(dead_code)]
-    pub(super) round_challenge_buffers: Vec<ScheduledChallengeBuffer<E>>,
     #[allow(dead_code)]
     pub(super) reduction_states: Vec<ScheduledDimensionReducingReductionState<E>>,
     #[allow(dead_code)]
@@ -890,10 +899,6 @@ pub(crate) struct GpuGKRMainLayerScheduledLayerExecution<E: FieldExtension<BF> +
     #[allow(dead_code)]
     pub(super) batch_challenge_buffer: ScheduledChallengeBuffer<E>,
     #[allow(dead_code)]
-    pub(super) round_challenge_storage: ScheduledChallengeStorage<E>,
-    #[allow(dead_code)]
-    pub(super) round_challenge_buffers: Vec<ScheduledChallengeBuffer<E>>,
-    #[allow(dead_code)]
     pub(super) reduction_states: Vec<ScheduledDimensionReducingReductionState<E>>,
     #[allow(dead_code)]
     pub(super) final_readback: ScheduledDimensionReducingFinalReadback<E>,
@@ -967,8 +972,6 @@ pub(crate) struct GpuGKRDimensionReducingHostKeepalive<B, E: FieldExtension<BF> 
     #[allow(dead_code)]
     pub(super) start_callbacks: Callbacks<'static>,
     #[allow(dead_code)]
-    pub(super) round_challenge_storage: Option<HostScheduledChallengeStorage<E>>,
-    #[allow(dead_code)]
     pub(super) _phantom: std::marker::PhantomData<B>,
     #[allow(dead_code)]
     pub(super) reduction_states: Vec<ScheduledDimensionReducingReductionState<E>>,
@@ -985,8 +988,6 @@ pub(crate) struct GpuGKRMainLayerHostKeepalive<E: FieldExtension<BF> + Field> {
     pub(super) start_callbacks: Callbacks<'static>,
     #[allow(dead_code)]
     pub(super) batch_challenge_storage: HostScheduledChallengeStorage<E>,
-    #[allow(dead_code)]
-    pub(super) round_challenge_storage: HostScheduledChallengeStorage<E>,
     #[allow(dead_code)]
     pub(super) reduction_states: Vec<ScheduledDimensionReducingReductionState<E>>,
     #[allow(dead_code)]

@@ -64,7 +64,8 @@ struct GpuGKRProofJobKeepalive<'a> {
     _base_layer_claims: GpuGKRBaseLayerClaimsScheduledExecution<E4>,
     _whir: GpuWhirFoldScheduledExecution,
     /// Pinned host staging buffer backing the h2d_stream H2D that uploads the
-    /// canonical top-bits prefix into the final `d_transcript_input`.
+    /// canonical top-bits prefix into the device-resident
+    /// `d_canonical_top_bits` source consumed by `transcript_commit_initial_chunked`.
     _initial_transcript_canonical_top_bits_host: HostAllocation<[u32]>,
     /// Pinned host staging buffer and durable device buffer for the seven
     /// external challenges. The device buffer is the source of truth for both
@@ -347,7 +348,6 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
     );
     let memory_caps_total_u32 =
         (1usize << memory_transfer.host.log_tree_cap_size) * BLAKE2S_DIGEST_SIZE_U32_WORDS;
-    let pre_setup_len = canonical_top_bits_len + external_challenges_u32_len;
     // Setup and witness caps share `setup_geometry.log_tree_cap_size` (stage1 builds
     // both holders from `setup_geometry`, see stage1.rs:185-194), so the cap-bytes
     // total is `(1 << log_tree_cap_size) * BLAKE2S_DIGEST_SIZE_U32_WORDS` per layer.
@@ -359,36 +359,27 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
     };
     let witness_caps_total_u32 =
         (1usize << setup_geometry.log_tree_cap_size) * BLAKE2S_DIGEST_SIZE_U32_WORDS;
-    let total_transcript_len =
-        pre_setup_len + setup_caps_total_u32 + memory_caps_total_u32 + witness_caps_total_u32;
-
-    let offset_pre_setup = 0usize;
-    let offset_setup = offset_pre_setup + pre_setup_len;
-    let offset_memory = offset_setup + setup_caps_total_u32;
-    let offset_witness = offset_memory + memory_caps_total_u32;
-    debug_assert_eq!(
-        offset_witness + witness_caps_total_u32,
-        total_transcript_len
-    );
+    let total_transcript_len = canonical_top_bits_len
+        + external_challenges_u32_len
+        + setup_caps_total_u32
+        + memory_caps_total_u32
+        + witness_caps_total_u32;
     assert!(
         total_transcript_len > 0,
         "transcript input must be non-empty for commit_initial",
     );
 
-    // -------------- Step 1: h2d_stream pre-setup pack (BEFORE stage 1) --------------
-    // Setup, memory and witness caps are now sourced from on-device unified caps
-    // (setup/memory: pre-prove H2Ds gated by their `Transfer::transferred` events;
-    // witness: the unified cap is assembled into `witness_trace_holder.unified_device_cap`
-    // by stage 1's per-coset commits). The only h2d_stream copy left in this region
-    // is canonical_top_bits plus the durable external-challenges buffer — that
-    // data is computed at prove() entry and is not yet on device. Scheduling this before
-    // stage 1's kernels are queued on exec_stream keeps `e_alloc`'s captured stream
-    // position empty, so h2d_stream's wait on it is effectively a no-op and packing
-    // + H2D run concurrently with stage 1 compute on the GPU. Two-fence pattern per
-    // `docs/gpu_scheduling_contract.md#h2d-copies`.
+    // -------------- Step 1: h2d_stream pack of the small device-side sources for the chunked commit --------------
+    // The transcript-input concat is now performed inside the
+    // `transcript_commit_initial_chunked` kernel directly over the existing
+    // device-resident sources (external_challenges + per-holder unified caps).
+    // The only host-origin words still needed on device are canonical_top_bits
+    // (a tiny prefix) and the external-challenges buffer — both H2D'd here on
+    // h2d_stream behind an `e_alloc` fence so packing runs concurrently with
+    // stage 1 compute on exec_stream.
     let h2d_stream = context.get_h2d_stream();
-    let mut d_transcript_input: DeviceAllocation<u32> =
-        context.alloc(total_transcript_len, AllocationPlacement::BestFit)?;
+    let mut d_canonical_top_bits: DeviceAllocation<u32> =
+        context.alloc(canonical_top_bits_len.max(1), AllocationPlacement::BestFit)?;
     let mut canonical_top_bits_host =
         unsafe { context.alloc_host_uninit_slice::<u32>(canonical_top_bits_len.max(1)) };
     let canonical_top_bits_host_write_accessor = canonical_top_bits_host.get_mut_accessor();
@@ -421,7 +412,7 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
     )?;
     if canonical_top_bits_len > 0 {
         memory_copy_async(
-            &mut d_transcript_input[offset_pre_setup..offset_pre_setup + canonical_top_bits_len],
+            &mut d_canonical_top_bits[..canonical_top_bits_len],
             &canonical_top_bits_host,
             h2d_stream,
         )?;
@@ -432,10 +423,10 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
         h2d_stream,
     )?;
 
-    // `e_xfer` records "pre-setup H2D complete". The exec-stream wait on it is
-    // deferred until just before `transcript_commit_initial` reads
-    // `d_transcript_input[pre_setup ..]`, so stage 1 compute isn't artificially
-    // serialized behind the (tiny) pre-setup pack.
+    // `e_xfer` records "pre-prove H2D complete". The exec-stream wait on it is
+    // deferred until just before the chunked transcript-commit kernel reads
+    // canonical_top_bits + external_challenges, so stage 1 compute isn't
+    // artificially serialized behind these tiny copies.
     let e_xfer = CudaEvent::create_with_flags(CudaEventCreateFlags::DISABLE_TIMING)?;
     e_xfer.record(h2d_stream)?;
 
@@ -543,61 +534,49 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
         None
     };
 
-    // Exec must not read the h2d-populated `d_transcript_input[pre_setup]` range
+    // Exec must not read the h2d-populated canonical_top_bits / external_challenges
     // until the h2d_stream H2D has completed. Placing the wait here (after stage 1
-    // is queued) means stage 1 and the pre-setup pack run concurrently; the wait
-    // only fences the cap D2Ds and the seed-trick commit below.
+    // is queued) means stage 1 and the H2D pack run concurrently; the wait only
+    // fences the chunked transcript-commit kernel below.
     stream.wait_event(&e_xfer, CudaStreamWaitEventFlags::DEFAULT)?;
 
+    // -------------- Step 2: device-side chunked commit_initial --------------
+    // `commit_initial(canonical_top_bits || external_challenges || setup_cap ||
+    // memory_cap || witness_cap)` = Blake2s(concat) from the IV, evaluated by a
+    // single chunked kernel launch over the existing device-resident sources.
+    // No `d_transcript_input` allocation and no per-source D2D into a contiguous
+    // pack are needed — the kernel streams the chunks directly. Source lifetimes:
+    //   - canonical_top_bits: `_initial_transcript_canonical_top_bits_host` keepalive.
+    //   - external_challenges: `_external_challenges_device` keepalive.
+    //   - setup unified cap: `setup_transfer` keepalive (pre-prove H2D, fenced by
+    //     `setup_transfer.ensure_transferred` at the top of `prove()`).
+    //   - memory unified cap: `memory_transfer` keepalive (pre-prove H2D, fenced
+    //     by `memory_transfer.ensure_transferred` at the top of `prove()`).
+    //   - witness unified cap: `stage1_output.witness_trace_holder` keepalive
+    //     (assembled in stage 1 on exec_stream — same stream as the kernel below).
+    let mut chunks: Vec<(*const u32, u32)> = Vec::with_capacity(5);
+    if canonical_top_bits_len > 0 {
+        chunks.push((d_canonical_top_bits.as_ptr(), canonical_top_bits_len as u32));
+    }
     {
         let external_u32 = unsafe { d_external_challenges_e4.transmute::<u32>() };
         debug_assert_eq!(external_u32.len(), external_challenges_u32_len);
-        memory_copy_async(
-            &mut d_transcript_input
-                [canonical_top_bits_len..canonical_top_bits_len + external_challenges_u32_len],
-            external_u32,
-            stream,
-        )?;
+        chunks.push((external_u32.as_ptr(), external_challenges_u32_len as u32));
     }
-
-    // -------------- Step 2: D2D external challenges and the three unified caps into d_transcript_input --------------
-    // Setup and memory caps were H2D'd pre-prove on h2d_stream into their
-    // respective `unified_device_cap`s; the witness unified cap was assembled by
-    // stage 1's per-coset commits on exec_stream. Each source becomes a single
-    // D2D into its `d_transcript_input` range — no per-coset pointer table, no
-    // gather kernel, no per-coset H2D inside `prove()`.
     if setup_caps_total_u32 > 0 {
         let setup_transfer_ref = setup_transfer
             .as_ref()
             .expect("setup_caps_total_u32 > 0 requires a setup transfer");
-        // The setup unified-cap H2D ran on h2d_stream pre-prove and is fenced by
-        // `setup_transfer.transfer.transferred`. `prove()` already serialized
-        // exec_stream behind that event via `setup_transfer.ensure_transferred`
-        // at the top of this function, so the D2D below sees the final cap.
         let src_u32 = unsafe { setup_transfer_ref.unified_device_cap().transmute::<u32>() };
         debug_assert_eq!(src_u32.len(), setup_caps_total_u32);
-        memory_copy_async(
-            &mut d_transcript_input[offset_setup..offset_setup + setup_caps_total_u32],
-            src_u32,
-            stream,
-        )?;
+        chunks.push((src_u32.as_ptr(), setup_caps_total_u32 as u32));
     }
     {
-        // Memory unified-cap H2D ran on h2d_stream pre-prove and is fenced by
-        // `memory_transfer.transfer.transferred`. The
-        // `memory_transfer.ensure_transferred(context)?` call near the top of
-        // `prove()` already records the exec-stream wait on that event.
         let src_u32 = unsafe { memory_transfer.unified_device_cap().transmute::<u32>() };
         debug_assert_eq!(src_u32.len(), memory_caps_total_u32);
-        memory_copy_async(
-            &mut d_transcript_input[offset_memory..offset_memory + memory_caps_total_u32],
-            src_u32,
-            stream,
-        )?;
+        chunks.push((src_u32.as_ptr(), memory_caps_total_u32 as u32));
     }
     {
-        // Witness unified cap was assembled inside stage 1 on exec_stream — same
-        // stream as the D2D below, so no event fence is needed.
         let src_u32 = unsafe {
             stage1_output
                 .witness_trace_holder
@@ -605,24 +584,16 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
                 .transmute::<u32>()
         };
         debug_assert_eq!(src_u32.len(), witness_caps_total_u32);
-        memory_copy_async(
-            &mut d_transcript_input[offset_witness..offset_witness + witness_caps_total_u32],
-            src_u32,
-            stream,
-        )?;
+        chunks.push((src_u32.as_ptr(), witness_caps_total_u32 as u32));
     }
-
-    // -------------- Step 3: device-side commit_initial + draw 3 lookup challenges --------------
-    // `commit_initial(input)` = Blake2s(input) from the IV — single kernel launch with no
-    // prior-seed input (no D2D from `d_transcript_input[0..STATE_SIZE]`, no separate
-    // `transcript_commit` call).
     let mut d_seed: DeviceAllocation<u32> =
         context.alloc(STATE_SIZE, AllocationPlacement::BestFit)?;
-    crate::ops::blake2s::transcript_commit_initial(
-        &mut d_seed,
-        &d_transcript_input[..total_transcript_len],
-        stream,
-    )?;
+    crate::ops::blake2s::transcript_commit_initial_chunked(&mut d_seed, &chunks, stream)?;
+    // Chunks have all been scheduled into the kernel; raw pointers are pinned
+    // at scheduling time. Drop the canonical-top-bits device buffer now (its
+    // pool free is exec-stream-ordered after the kernel) — every other source
+    // is held by an outer keepalive.
+    drop(d_canonical_top_bits);
 
     // 2 E4 lookup challenges in Montgomery form, drawn via the device-side Fiat-Shamir path
     // (mirrors host `draw_random_field_els::<BF, E4>(seed, 2)` with `from_raw_repr_with_reduction`).
@@ -632,12 +603,6 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
     let mut d_lookup_challenges: DeviceAllocation<E4> =
         context.alloc(2, AllocationPlacement::BestFit)?;
     crate::ops::blake2s::transcript_squeeze_e4(&mut d_seed, &mut d_lookup_challenges, stream)?;
-
-    // `d_transcript_input` can be dropped: exec_stream has queued all reads. The cap-gather
-    // host pointer tables are SchedulerHostAllocations that must outlive every in-flight H2D
-    // (the gather kernel has been scheduled, but its DMA-read of the host table may not have
-    // completed yet) — they're threaded into the proof-job keepalive below.
-    drop(d_transcript_input);
 
     let mut forward_setup = if let Some(setup_transfer) = setup_transfer.as_ref() {
         setup_transfer.schedule_forward_setup(&compiled_circuit, d_lookup_challenges, context)?
@@ -664,31 +629,24 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
     )?;
     let post_forward_handoff_range = Range::new("gkr.proof.post_forward_handoff")?;
     post_forward_handoff_range.start(stream)?;
-    // Opp. 4b: route the per-poly forward pack writes directly into the slab's
-    // `output_evaluations` block, eliminating the standalone
-    // `device_flat_evaluations` allocation and the prior Phase-2b contiguous
-    // D2D copy. The slab layout allocates `output_evaluations[ot] = {read_set,
-    // write_set}` in BTreeMap key order with `FIELD_ALIGN == size_of::<E4>()
-    // == 16`, matching the order the per-poly D2Ds inside the handoff use.
+    // The reduced-output polys at the initial sumcheck layer share a single
+    // consolidated `Arc<DeviceAllocation<E4>>` populated by the forward
+    // dim-reduction pass in BTreeMap key order × {read, write}. That layout
+    // exactly matches the slab's `output_evaluations` block, so a single
+    // contiguous D2D from the Arc prefix into the block populates every
+    // per-`OutputType` slot in one op. The terminal slab D2H at the end of
+    // `prove()` then mirrors the block back to host as part of the single
+    // batched copy — no per-poly D2H ops, no per-poly host pinned allocs.
     let handoff_slab_dst: Option<(*mut E4, usize)> = proof_slab.as_ref().and_then(|slab| {
-        let first_layout = proof_layout.output_evaluations.values().next()?;
-        let total_e4: usize = proof_layout
-            .output_evaluations
-            .values()
-            .map(|layout| {
-                (layout.read_set.end - layout.read_set.start + layout.write_set.end
-                    - layout.write_set.start)
-                    / std::mem::size_of::<E4>()
-            })
-            .sum();
+        let block = proof_layout.output_evaluations_block()?;
+        let total_e4 = (block.end - block.start) / std::mem::size_of::<E4>();
         if total_e4 == 0 {
             return None;
         }
-        let dst_start = first_layout.read_set.start;
-        // SAFETY: `output_evaluations` is laid out contiguously starting at
-        // `dst_start` for `total_e4 * 16` bytes, 16-byte aligned, and disjoint
-        // from every other slab field.
-        let ptr = unsafe { (slab.as_ptr() as *mut u8).add(dst_start) } as *mut E4;
+        // SAFETY: `output_evaluations` block is laid out contiguously starting
+        // at `block.start`, sized at `total_e4 * size_of::<E4>()`, 16-byte
+        // aligned (FIELD_ALIGN), and disjoint from every other slab field.
+        let ptr = unsafe { (slab.as_ptr() as *mut u8).add(block.start) } as *mut E4;
         Some((ptr, total_e4))
     });
     let transcript_handoff =
@@ -737,11 +695,6 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
             "structural and storage-aware proof layouts disagree on total_bytes",
         );
     }
-
-    // Opp. 4b: the per-poly D2Ds inside `schedule_transcript_handoff` already
-    // landed every reduced-output polynomial in its final slab home —
-    // `slab.output_evaluations[ot] = {read_set, write_set}` matches the
-    // packing order of those D2Ds. No separate Phase-2b D2D needed.
 
     // Device post-forward transcript: absorb flattened explicit evaluations into d_seed and
     // squeeze the evaluation point + batching challenge. Replaces the previous host pair
@@ -1015,8 +968,12 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
             let proof_layout_for_parse = proof_layout.clone();
             move || {
                 // Phase 4: source all device-produced proof fields from the
-                // terminal-D2H'd slab. Base-layer WHIR queries still come from
-                // the host callback path pending the WHIR rewrite.
+                // terminal-D2H'd slab — including `final_explicit_evaluations`,
+                // which the forward transcript handoff D2D'd into the slab's
+                // `output_evaluations` block as part of a single contiguous
+                // copy from the consolidated forward backing Arc. Base-layer
+                // WHIR queries still come from the host callback path pending
+                // the WHIR rewrite.
                 let slab_bytes = unsafe { proof_host_mirror_accessor.get() };
                 let final_explicit_evaluations =
                     proof_layout_for_parse.parse_final_explicit_evaluations(slab_bytes);

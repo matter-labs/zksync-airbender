@@ -5282,11 +5282,11 @@ where
             context.get_exec_stream(),
         )?;
 
+        drop(round_challenge_buffers);
+        drop(round_challenge_storage);
         Ok(GpuGKRDimensionReducingScheduledLayerExecution {
             tracing_ranges: Vec::new(),
             start_callbacks,
-            round_challenge_storage,
-            round_challenge_buffers,
             reduction_states,
             final_readback: {
                 drop(final_evaluations);
@@ -5467,13 +5467,17 @@ where
         }
 
         let mut round_challenge_buffers = Vec::with_capacity(last_step);
-        let round_challenge_storage = if last_step == 0 {
-            None
-        } else {
-            Some(ScheduledChallengeStorage::new(
-                context.alloc(last_step, AllocationPlacement::Top)?,
-            ))
-        };
+        // Hoisted: `device_claim_point_out` holds the next layer's
+        // `[claim_point || batching_challenge]` buffer. Slots `[0..folding_steps - 1]`
+        // are written in-place by the per-round update kernels (replacing
+        // the old `round_challenge_storage` + post-loop D2D pack), and
+        // slots `[folding_steps - 1..folding_steps + 2]` are written by the
+        // post-loop transcript squeeze (replacing the old `d_layer_challenges`
+        // allocation + post-loop D2D pack).
+        let next_claim_point_and_batching_len = self.folding_steps + 2;
+        let claim_point_out_storage = ScheduledChallengeStorage::new(
+            context.alloc(next_claim_point_and_batching_len, AllocationPlacement::Top)?,
+        );
         let mut reduction_states = Vec::with_capacity(last_step);
 
         for step in 0..last_step {
@@ -5513,11 +5517,9 @@ where
             // current (seed, claim, eq_prefactor) state, derives the 4
             // univariate coefficients, commits them to the transcript, extracts
             // the next folding challenge, and folds claim/eq_prefactor — all in
-            // one single-thread kernel. The challenge lands in the packed
-            // storage slot at `step`, ready for the next round's kernel.
-            let storage = round_challenge_storage
-                .as_ref()
-                .expect("round_challenge_storage allocated when last_step > 0");
+            // one single-thread kernel. The challenge lands directly in
+            // `device_claim_point_out[step]`, ready for the next round's
+            // kernel to read and for the next layer to consume.
             let prev_coord_slice = &device_claim_point_in[step..step + 1];
             // SAFETY: `coeffs_buffer_ptr` points either into `proof_slab`
             // (held alive by `_proof_slab` keepalive in `prove()`) or into
@@ -5527,7 +5529,8 @@ where
             // (`coeffs_total_len = last_step * 4`).
             let coeffs_round_slice =
                 unsafe { DeviceSlice::from_raw_parts_mut(coeffs_buffer_ptr.add(step * 4), 4) };
-            let challenge_slice = unsafe { storage.device.slice_mut(step, 1) };
+            let challenge_slice =
+                unsafe { claim_point_out_storage.device.slice_mut(step, 1) };
             E::launch_backward_sumcheck_round_update(
                 &self.round_scratch.reduction_output,
                 prev_coord_slice,
@@ -5542,7 +5545,7 @@ where
             // Record a view over the just-written challenge slot for the next
             // round's kernel to read.
             round_challenge_buffers.push(ScheduledChallengeBuffer {
-                device: storage.device_accessor(),
+                device: claim_point_out_storage.device_accessor(),
                 offset: step,
                 len: 1,
             });
@@ -5663,16 +5666,25 @@ where
         let d_transcript_inputs_u32 = unsafe { transcript_inputs_e_slice.transmute::<u32>() };
         crate::ops::blake2s::transcript_commit(&mut device_seed, d_transcript_inputs_u32, stream)?;
 
-        let mut d_layer_challenges: DeviceAllocation<E> =
-            context.alloc(3, AllocationPlacement::Top)?;
-        // SAFETY: E = E4 in every instantiation; the transmute is a no-op at
-        // the byte level and matches host `draw_random_field_els::<BF, E4>`.
-        let d_layer_challenges_as_e4 = unsafe { d_layer_challenges.transmute_mut::<E4>() };
-        crate::ops::blake2s::transcript_squeeze_e4(
-            &mut device_seed,
-            d_layer_challenges_as_e4,
-            stream,
-        )?;
+        // Squeeze the 3 layer challenges directly into the tail of
+        // `device_claim_point_out` — slots
+        // `[last_step..last_step + 3] = [r_before_last, r_last, next_batching_challenge]`.
+        // SAFETY: `last_step + 3 = folding_steps + 2 = next_claim_point_and_batching_len`,
+        // so the range is in-bounds, and only this scheduling site writes
+        // it (see write-exclusivity below).
+        {
+            let layer_challenges_dst =
+                unsafe { claim_point_out_storage.device.slice_mut(last_step, 3) };
+            // SAFETY: E = E4 in every instantiation; the transmute is a no-op at
+            // the byte level and matches host `draw_random_field_els::<BF, E4>`.
+            let layer_challenges_dst_e4 =
+                unsafe { layer_challenges_dst.transmute_mut::<E4>() };
+            crate::ops::blake2s::transcript_squeeze_e4(
+                &mut device_seed,
+                layer_challenges_dst_e4,
+                stream,
+            )?;
+        }
 
         // Device-side per-address `new_claims` evaluator. Consumes the packed
         // last-round evaluations (4 E per address) and the just-squeezed
@@ -5695,8 +5707,17 @@ where
             };
             let transcript_inputs_e4: &era_cudart::slice::DeviceSlice<E4> =
                 unsafe { transcript_inputs_e_view.transmute::<E4>() };
+            // SAFETY: layer-challenge tail lives at
+            // `claim_point_out[last_step..last_step + 3]`; reading the first
+            // two (`r_before_last`, `r_last`) for the kernel.
+            let challenges_view = unsafe {
+                DeviceSlice::from_raw_parts(
+                    claim_point_out_storage.device.as_ptr(last_step),
+                    2,
+                )
+            };
             let challenges_e4: &era_cudart::slice::DeviceSlice<E4> =
-                unsafe { d_layer_challenges[..2].transmute::<E4>() };
+                unsafe { challenges_view.transmute::<E4>() };
             let new_claims_e4: &mut era_cudart::slice::DeviceSlice<E4> =
                 unsafe { device_new_claims[..num_addresses].transmute_mut::<E4>() };
             crate::ops::blake2s::backward_new_claims_two_var(
@@ -5707,28 +5728,10 @@ where
             )?;
         }
 
-        // Build the NEXT layer's `[claim_point || batching_challenge]` buffer
-        // entirely on device: `folding_challenges (last_step)` from this
-        // layer's `round_challenge_storage` + `d_layer_challenges[0..2]`
-        // (r_before_last, r_last) form the next claim_point; `d_layer_challenges[2]`
-        // is the next batching challenge.
-        let next_claim_point_and_batching_len = self.folding_steps + 2;
-        let mut device_claim_point_out: DeviceAllocation<E> =
-            context.alloc(next_claim_point_and_batching_len, AllocationPlacement::Top)?;
-        if last_step > 0 {
-            let storage = round_challenge_storage
-                .as_ref()
-                .expect("round_challenge_storage allocated when last_step > 0");
-            // SAFETY: `round_challenge_storage` outlives the scheduled D2D;
-            // the destination slice is within the fresh allocation's bounds.
-            let src = unsafe { storage.device.slice_mut(0, last_step) };
-            memory_copy_async(&mut device_claim_point_out[..last_step], &*src, stream)?;
-        }
-        memory_copy_async(
-            &mut device_claim_point_out[last_step..last_step + 3],
-            &d_layer_challenges[..3],
-            stream,
-        )?;
+        // `device_claim_point_out` is already populated in place — slots
+        // `[0..last_step]` by the per-round update kernels and slots
+        // `[last_step..last_step + 3]` by the transcript squeeze. No post-loop
+        // pack copies needed.
 
         let next_claim_layout =
             ClaimBufferLayout::from_addresses(transcript_input_addresses.clone());
@@ -5754,7 +5757,20 @@ where
             let mut layer_challenges_host: HostAllocation<[E]> =
                 unsafe { context.alloc_host_uninit_slice(3) };
             let layer_challenges_accessor = layer_challenges_host.get_accessor();
-            memory_copy_async(&mut layer_challenges_host, &d_layer_challenges, d2h_stream)?;
+            // SAFETY: `[last_step..last_step + 3]` was just written by the
+            // transcript squeeze on `stream` and the d2h_stream waits on
+            // `layer_src_ready` before this read.
+            let layer_challenges_src = unsafe {
+                DeviceSlice::from_raw_parts(
+                    claim_point_out_storage.device.as_ptr(last_step),
+                    3,
+                )
+            };
+            memory_copy_async(
+                &mut layer_challenges_host,
+                layer_challenges_src,
+                d2h_stream,
+            )?;
 
             // Single D2H of device-computed new_claims. Replaces N per-address D2Hs
             // (one per address × 4 E) + the host `evaluate_with_two_variable_eq_ext` loop.
@@ -5782,13 +5798,16 @@ where
                 unsafe { context.alloc_host_uninit_slice(last_step.max(1)) };
             let final_folding_challenges_accessor = final_folding_challenges_host.get_accessor();
             if last_step > 0 {
-                let storage = round_challenge_storage
-                    .as_ref()
-                    .expect("round_challenge_storage allocated when last_step > 0");
-                // SAFETY: the challenge storage buffer lives through the struct we
-                // return; the D2H copy is stream-ordered after all per-round writes.
-                let src = unsafe { storage.device.slice_mut(0, last_step) };
-                memory_copy_async(&mut final_folding_challenges_host, &*src, d2h_stream)?;
+                // SAFETY: `[0..last_step]` are written in-place by the
+                // per-round update kernels. The d2h_stream waits on
+                // `layer_src_ready` before this read.
+                let folding_src = unsafe {
+                    DeviceSlice::from_raw_parts(
+                        claim_point_out_storage.device.as_ptr(0),
+                        last_step,
+                    )
+                };
+                memory_copy_async(&mut final_folding_challenges_host, folding_src, d2h_stream)?;
             }
 
             // Join d2h -> exec: the per-layer D2Hs above are fully scheduled. Exec waits on this
@@ -5875,17 +5894,23 @@ where
         }
 
         drop(fallback_d_layer_transcript_inputs);
-        drop(d_layer_challenges);
         drop(device_claim);
         drop(device_eq_prefactor);
         drop(fallback_device_coeffs);
         drop(device_claim_point_in);
         drop(device_claims_in);
+        // Extract the underlying allocation now that every kernel and D2H
+        // that captured a raw pointer through `claim_point_out_storage`'s
+        // device accessor has been scheduled. Subsequent layers consume it
+        // as a plain `DeviceAllocation` via `device_claim_point_in`.
+        let device_claim_point_out = claim_point_out_storage.into_device();
+        // `round_challenge_buffers`' UnsafeAccessors aliased the now-consumed
+        // storage; the kernels reading them are scheduled. Drop locally so we
+        // don't carry dangling accessors past the function boundary.
+        drop(round_challenge_buffers);
         Ok(GpuGKRDimensionReducingScheduledLayerExecution {
             tracing_ranges,
             start_callbacks: Callbacks::new(),
-            round_challenge_storage,
-            round_challenge_buffers,
             reduction_states,
             final_readback: ScheduledDimensionReducingFinalReadback {
                 callbacks: final_readback_callbacks,
@@ -5906,8 +5931,6 @@ impl<B, E: FieldExtension<BF> + Field> GpuGKRDimensionReducingScheduledLayerExec
         let Self {
             tracing_ranges,
             start_callbacks,
-            round_challenge_storage,
-            round_challenge_buffers: _,
             reduction_states,
             final_readback,
             shared_state,
@@ -5920,8 +5943,6 @@ impl<B, E: FieldExtension<BF> + Field> GpuGKRDimensionReducingScheduledLayerExec
         GpuGKRDimensionReducingHostKeepalive {
             tracing_ranges,
             start_callbacks,
-            round_challenge_storage: round_challenge_storage
-                .map(challenge_storage_into_host_keepalive),
             reduction_states,
             final_readback,
             shared_state,
@@ -6768,13 +6789,13 @@ where
         // until exec_stream actually advances past those launches.
         drop(static_challenges_buf_keepalive);
         drop(static_external_challenges_keepalive);
+        drop(round_challenge_buffers);
+        drop(round_challenge_storage);
         Ok(GpuGKRMainLayerScheduledLayerExecution {
             tracing_ranges: Vec::new(),
             start_callbacks,
             batch_challenge_storage,
             batch_challenge_buffer,
-            round_challenge_storage,
-            round_challenge_buffers,
             reduction_states,
             final_readback: {
                 drop(final_evaluations);
@@ -6888,9 +6909,6 @@ where
             fallback_device_coeffs = Some(alloc);
             ptr
         };
-        let mut device_folding_challenges: DeviceAllocation<E> =
-            context.alloc(last_step, AllocationPlacement::Top)?;
-
         // Consume `[claim_point || batching_challenge]` directly from the
         // orchestrator-owned `device_claim_point_in`; build `eq_group_tables`
         // + `eq_values` from it (offset 1, count folding_steps - 1) — same
@@ -6961,13 +6979,21 @@ where
             context,
         )?;
         let mut round_challenge_buffers = Vec::with_capacity(last_step);
-        let round_challenge_len = (1..=last_step)
-            .map(main_layer_round_challenge_len)
-            .sum::<usize>();
-        let round_challenge_storage = ScheduledChallengeStorage::new(
-            context.alloc(round_challenge_len, AllocationPlacement::Top)?,
+        // Hoisted: `device_claim_point_out` holds the next layer's
+        // `[claim_point || batching_challenge]` buffer. Slots `[0..folding_steps - 1]`
+        // are written in-place by the per-round update kernels; slots
+        // `[folding_steps - 1..folding_steps + 1]` are written by the
+        // post-loop transcript squeeze.
+        //
+        // Round-N kernels read directly from `device_claim_point_out`:
+        // - round 1 reads `[0..1]` (= c_0)
+        // - round 2 reads `[0..2]` (= c_0, c_1) — the prior round's contiguous prefix
+        // - round ≥ 3 reads `[step - 1..step]` (= c_{step - 1}, the just-produced challenge)
+        // No packing buffer or per-round D2D needed.
+        let next_claim_point_and_batching_len = self.folding_steps + 1;
+        let claim_point_out_storage = ScheduledChallengeStorage::new(
+            context.alloc(next_claim_point_and_batching_len, AllocationPlacement::Top)?,
         );
-        let mut next_round_challenge_offset = 0usize;
         let mut reduction_states = Vec::with_capacity(last_step);
 
         for step in 0..last_step {
@@ -7003,8 +7029,8 @@ where
             // Fused per-round update: reads (seed, claim, eq_prefactor) +
             // (e, c) reduction output + prev_coord; writes updated state,
             // pushes the round's 4 coefficients into device_coeffs at
-            // [step*4..step*4+4], and emits the next folding challenge into
-            // device_folding_challenges[step].
+            // [step*4..step*4+4], and emits the next folding challenge
+            // directly into `claim_point_out[step]`.
             let prev_coord_slice = &device_claim_point_in[step..step + 1];
             // SAFETY: see the dim-reducing twin — the coeffs buffer is either
             // a slab subslice (held alive by `_proof_slab` keepalive) or
@@ -7013,7 +7039,8 @@ where
             // in-bounds (`coeffs_total_len = last_step * 4`).
             let coeffs_round_slice =
                 unsafe { DeviceSlice::from_raw_parts_mut(coeffs_buffer_ptr.add(step * 4), 4) };
-            let challenge_slot = &mut device_folding_challenges[step..step + 1];
+            let challenge_slot =
+                unsafe { claim_point_out_storage.device.slice_mut(step, 1) };
             E::launch_backward_sumcheck_round_update(
                 &self.round_scratch.reduction_output,
                 prev_coord_slice,
@@ -7025,35 +7052,20 @@ where
                 stream,
             )?;
 
-            // Populate the packed round_challenge_storage slot expected by the
-            // next round's kernel. Main-layer packing (1/2/1/1/…) means round 2
-            // wants BOTH prior challenges, while rounds 1, 3+ want only the
-            // latest. A D2D copy from device_folding_challenges is cheap and
-            // avoids any host involvement.
+            // Record a view over the slots the next-round kernel will read.
+            // Main-layer packing (1/2/1/1/…) maps onto contiguous slices of
+            // `claim_point_out` because the per-round update writes c_step
+            // at slot `step`.
             let next_round = step + 1;
-            let next_round_len = main_layer_round_challenge_len(next_round);
             let (src_start, src_len) = match next_round {
                 1 => (0, 1),
                 2 => (0, 2),
                 _ => (step, 1),
             };
-            debug_assert_eq!(src_len, next_round_len);
-            let dst_offset = next_round_challenge_offset;
-            // SAFETY: packed storage outlives the queued copy; the destination
-            // range is within bounds (offset + len <= round_challenge_len).
-            let dst_slice = unsafe {
-                round_challenge_storage
-                    .device
-                    .slice_mut(dst_offset, src_len)
-            };
-            let src_slice = &device_folding_challenges[src_start..src_start + src_len];
-            memory_copy_async(dst_slice, src_slice, stream)?;
-            next_round_challenge_offset += src_len;
-
-            // Record a view over the slot the next-round kernel will read.
+            debug_assert_eq!(src_len, main_layer_round_challenge_len(next_round));
             round_challenge_buffers.push(ScheduledChallengeBuffer {
-                device: round_challenge_storage.device_accessor(),
-                offset: dst_offset,
+                device: claim_point_out_storage.device_accessor(),
+                offset: src_start,
                 len: src_len,
             });
 
@@ -7141,15 +7153,23 @@ where
         let d_transcript_inputs_u32 = unsafe { transcript_inputs_e_slice.transmute::<u32>() };
         crate::ops::blake2s::transcript_commit(&mut device_seed, d_transcript_inputs_u32, stream)?;
 
-        let mut d_layer_challenges: DeviceAllocation<E> =
-            context.alloc(2, AllocationPlacement::Top)?;
-        // SAFETY: E = E4 in every instantiation; matches host `draw_random_field_els::<BF, E4>`.
-        let d_layer_challenges_as_e4 = unsafe { d_layer_challenges.transmute_mut::<E4>() };
-        crate::ops::blake2s::transcript_squeeze_e4(
-            &mut device_seed,
-            d_layer_challenges_as_e4,
-            stream,
-        )?;
+        // Squeeze the 2 layer challenges directly into the tail of
+        // `device_claim_point_out` — slots
+        // `[last_step..last_step + 2] = [last_r, next_batching_challenge]`.
+        // SAFETY: `last_step + 2 = folding_steps + 1 = next_claim_point_and_batching_len`,
+        // so the range is in-bounds, and only this scheduling site writes it.
+        {
+            let layer_challenges_dst =
+                unsafe { claim_point_out_storage.device.slice_mut(last_step, 2) };
+            // SAFETY: E = E4 in every instantiation; matches host `draw_random_field_els::<BF, E4>`.
+            let layer_challenges_dst_e4 =
+                unsafe { layer_challenges_dst.transmute_mut::<E4>() };
+            crate::ops::blake2s::transcript_squeeze_e4(
+                &mut device_seed,
+                layer_challenges_dst_e4,
+                stream,
+            )?;
+        }
 
         // Device-side per-address `new_claims` evaluator (main-layer variant:
         // `interpolate_linear(v0, v1, last_r)`). Replaces the host loop inside
@@ -7168,8 +7188,17 @@ where
             };
             let transcript_inputs_e4: &era_cudart::slice::DeviceSlice<E4> =
                 unsafe { transcript_inputs_e_view.transmute::<E4>() };
+            // SAFETY: layer-challenge tail lives at
+            // `claim_point_out[last_step..last_step + 2]`; reading the first
+            // element (`last_r`) for the kernel.
+            let challenges_view = unsafe {
+                DeviceSlice::from_raw_parts(
+                    claim_point_out_storage.device.as_ptr(last_step),
+                    1,
+                )
+            };
             let challenges_e4: &era_cudart::slice::DeviceSlice<E4> =
-                unsafe { d_layer_challenges[..1].transmute::<E4>() };
+                unsafe { challenges_view.transmute::<E4>() };
             let new_claims_e4: &mut era_cudart::slice::DeviceSlice<E4> =
                 unsafe { device_new_claims[..num_addresses].transmute_mut::<E4>() };
             crate::ops::blake2s::backward_new_claims_linear(
@@ -7180,23 +7209,10 @@ where
             )?;
         }
 
-        // Build the NEXT layer's `[claim_point || batching_challenge]` buffer
-        // on device: `device_folding_challenges (last_step)` +
-        // `d_layer_challenges[0]` (last_r) form the next claim_point;
-        // `d_layer_challenges[1]` is the next batching challenge.
-        let next_claim_point_and_batching_len = self.folding_steps + 1;
-        let mut device_claim_point_out: DeviceAllocation<E> =
-            context.alloc(next_claim_point_and_batching_len, AllocationPlacement::Top)?;
-        memory_copy_async(
-            &mut device_claim_point_out[..last_step],
-            &device_folding_challenges[..last_step],
-            stream,
-        )?;
-        memory_copy_async(
-            &mut device_claim_point_out[last_step..last_step + 2],
-            &d_layer_challenges[..2],
-            stream,
-        )?;
+        // `device_claim_point_out` is already populated in place — slots
+        // `[0..last_step]` by the per-round update kernels (folding challenges)
+        // and slots `[last_step..last_step + 2]` by the transcript squeeze
+        // (`last_r`, `next_batching_challenge`). No post-loop pack copies.
 
         let next_claim_layout =
             ClaimBufferLayout::from_addresses(transcript_input_addresses.clone());
@@ -7222,7 +7238,16 @@ where
             let mut layer_challenges_host: HostAllocation<[E]> =
                 unsafe { context.alloc_host_uninit_slice(2) };
             let layer_challenges_accessor = layer_challenges_host.get_accessor();
-            memory_copy_async(&mut layer_challenges_host, &d_layer_challenges, d2h_stream)?;
+            // SAFETY: `[last_step..last_step + 2]` were just written by the
+            // transcript squeeze on `stream`; d2h_stream waits on
+            // `layer_src_ready` before this read.
+            let layer_challenges_src = unsafe {
+                DeviceSlice::from_raw_parts(
+                    claim_point_out_storage.device.as_ptr(last_step),
+                    2,
+                )
+            };
+            memory_copy_async(&mut layer_challenges_host, layer_challenges_src, d2h_stream)?;
 
             // Single D2H of device-computed new_claims.
             let mut new_claims_host: HostAllocation<[E]> =
@@ -7247,9 +7272,17 @@ where
             let mut final_folding_challenges_host: HostAllocation<[E]> =
                 unsafe { context.alloc_host_uninit_slice(last_step) };
             let final_folding_challenges_accessor = final_folding_challenges_host.get_accessor();
+            // SAFETY: `[0..last_step]` were written in-place by the per-round
+            // update kernels.
+            let folding_src = unsafe {
+                DeviceSlice::from_raw_parts(
+                    claim_point_out_storage.device.as_ptr(0),
+                    last_step,
+                )
+            };
             memory_copy_async(
                 &mut final_folding_challenges_host,
-                &device_folding_challenges,
+                folding_src,
                 d2h_stream,
             )?;
 
@@ -7327,20 +7360,22 @@ where
         tracing_ranges.push(layer_range);
 
         drop(fallback_d_layer_transcript_inputs);
-        drop(d_layer_challenges);
         drop(device_claim);
         drop(device_eq_prefactor);
         drop(fallback_device_coeffs);
-        drop(device_folding_challenges);
         drop(device_claim_point_in);
         drop(device_claims_in);
+        // Extract the underlying allocation now that every kernel and D2H
+        // that captured a raw pointer through `claim_point_out_storage`'s
+        // device accessor has been scheduled. Subsequent layers consume it
+        // as a plain `DeviceAllocation` via `device_claim_point_in`.
+        let device_claim_point_out = claim_point_out_storage.into_device();
+        drop(round_challenge_buffers);
         Ok(GpuGKRMainLayerScheduledLayerExecution {
             tracing_ranges,
             start_callbacks: Callbacks::new(),
             batch_challenge_storage,
             batch_challenge_buffer,
-            round_challenge_storage,
-            round_challenge_buffers,
             reduction_states,
             final_readback: ScheduledDimensionReducingFinalReadback {
                 callbacks: final_readback_callbacks,
@@ -7366,9 +7401,7 @@ impl<E: FieldExtension<BF> + Field> GpuGKRMainLayerScheduledLayerExecution<E> {
             tracing_ranges,
             start_callbacks,
             batch_challenge_storage,
-            round_challenge_storage,
             batch_challenge_buffer: _,
-            round_challenge_buffers: _,
             reduction_states,
             final_readback,
             flat_coeff_callbacks,
@@ -7383,7 +7416,6 @@ impl<E: FieldExtension<BF> + Field> GpuGKRMainLayerScheduledLayerExecution<E> {
             tracing_ranges,
             start_callbacks,
             batch_challenge_storage: challenge_storage_into_host_keepalive(batch_challenge_storage),
-            round_challenge_storage: challenge_storage_into_host_keepalive(round_challenge_storage),
             reduction_states,
             final_readback,
             flat_coeff_callbacks,

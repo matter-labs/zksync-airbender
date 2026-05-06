@@ -402,6 +402,41 @@ EXTERN __global__ void ab_gather_tree_caps_kernel(const unsigned long long *src_
   }
 }
 
+// Mirror of `GpuGatherTreeCapsDesc` in gpu_prover/src/ops/blake2s.rs. Holds
+// the per-launch source-pointer table inline as kernel-arg data — replaces
+// the runtime device-resident pointer table that
+// `ab_gather_tree_caps_kernel` reads. The const-descriptor variant exists so
+// the production caller can avoid the H2D needed to populate the pointer
+// table; H2Ds in `prove()` would force ordering against the parallel H2Ds
+// uploading the next proof's trace, so eliminating them is meaningful even
+// for tiny payloads.
+constexpr unsigned GKR_GATHER_TREE_CAPS_MAX_COSETS = 32;
+
+struct gpu_gather_tree_caps_desc {
+  u32 coset_count;
+  u32 cap_words_per_coset;
+  unsigned long long src_ptrs[GKR_GATHER_TREE_CAPS_MAX_COSETS];
+};
+
+static_assert(sizeof(gpu_gather_tree_caps_desc) <= 32u * 1024u,
+              "gpu_gather_tree_caps_desc must fit under the 32 KB inline kernel-arg ceiling");
+
+// Inline-descriptor variant of `ab_gather_tree_caps_kernel`. Layout and
+// semantics match (each block = one coset, threads stripe the cap region),
+// but the source pointer table is read from `__grid_constant__` kernel-arg
+// data instead of a runtime `*src_ptrs` device buffer.
+EXTERN __global__ void ab_gather_tree_caps_inline_kernel(__grid_constant__ const gpu_gather_tree_caps_desc desc,
+                                                         u32 *dst) {
+  const unsigned coset_idx = blockIdx.x;
+  if (coset_idx >= desc.coset_count)
+    return;
+  const u32 *src = reinterpret_cast<const u32 *>(desc.src_ptrs[coset_idx]);
+  u32 *coset_dst = dst + coset_idx * desc.cap_words_per_coset;
+  for (unsigned i = threadIdx.x; i < desc.cap_words_per_coset; i += blockDim.x) {
+    coset_dst[i] = src[i];
+  }
+}
+
 // Mirror of `GpuGatherEAddressesDesc` in gpu_prover/src/ops/blake2s.rs.
 // Holds the per-launch source-pointer table inline as kernel-arg data —
 // replaces the prior per-launch H2D of the pointer table.
@@ -435,6 +470,72 @@ EXTERN __global__ void ab_gather_e_addresses_kernel(__grid_constant__ const gpu_
   for (unsigned i = threadIdx.x; i < words_per_addr; i += blockDim.x) {
     addr_dst[i] = src[i];
   }
+}
+
+// Mirror of `GpuChunkedInputDesc` in gpu_prover/src/ops/blake2s.rs. Holds the
+// per-launch chunk source pointer table inline as kernel-arg data so the
+// chunked-commit kernel reads `num_chunks` contiguous u32 buffers without an
+// auxiliary device allocation. Replaces the host-side concat-into-d_transcript_input
+// pack in `prove()`.
+constexpr unsigned GKR_CHUNKED_COMMIT_MAX_CHUNKS = 8;
+
+struct gpu_chunked_input_desc {
+  u32 num_chunks;
+  u32 _pad;
+  unsigned long long src_ptrs[GKR_CHUNKED_COMMIT_MAX_CHUNKS];
+  u32 chunk_lens[GKR_CHUNKED_COMMIT_MAX_CHUNKS];
+};
+
+// commit_initial_chunked: seed_out = Blake2s(chunk_0 || chunk_1 || ... || chunk_{N-1}).
+// Identical Blake2s state evolution to `ab_transcript_commit_initial_kernel` for
+// the same logical concatenation — Blake2s streams 64-byte (= 16 u32) blocks, so
+// chunk boundaries that fall mid-block are handled transparently.
+EXTERN __global__ void
+ab_transcript_commit_initial_chunked_kernel(__grid_constant__ const gpu_chunked_input_desc desc, u32 *seed_out) {
+  u32 state[STATE_SIZE];
+  initialize(state);
+  u32 t = 0;
+  u32 block[BLOCK_SIZE];
+#pragma unroll
+  for (unsigned i = 0; i < BLOCK_SIZE; i++)
+    block[i] = 0;
+
+  unsigned block_offset = 0;
+  unsigned remaining_total = 0;
+  for (unsigned c = 0; c < desc.num_chunks; c++)
+    remaining_total += desc.chunk_lens[c];
+
+  for (unsigned c = 0; c < desc.num_chunks; c++) {
+    const u32 *src = reinterpret_cast<const u32 *>(desc.src_ptrs[c]);
+    unsigned chunk_remaining = desc.chunk_lens[c];
+    while (chunk_remaining > 0) {
+      const unsigned space = BLOCK_SIZE - block_offset;
+      const unsigned n = chunk_remaining < space ? chunk_remaining : space;
+      for (unsigned i = 0; i < n; i++)
+        block[block_offset + i] = src[i];
+      block_offset += n;
+      src += n;
+      chunk_remaining -= n;
+      remaining_total -= n;
+
+      if (block_offset == BLOCK_SIZE && remaining_total > 0) {
+        compress<false>(state, t, block, BLOCK_SIZE);
+#pragma unroll
+        for (unsigned i = 0; i < BLOCK_SIZE; i++)
+          block[i] = 0;
+        block_offset = 0;
+      }
+    }
+  }
+
+  // Zero-pad and finalize.
+  for (unsigned i = block_offset; i < BLOCK_SIZE; i++)
+    block[i] = 0;
+  compress<true>(state, t, block, block_offset);
+
+#pragma unroll
+  for (unsigned i = 0; i < STATE_SIZE; i++)
+    seed_out[i] = state[i];
 }
 
 // commit_initial: seed_out = Blake2s(input). Mirrors host `Transcript::commit_initial(input)` —
