@@ -228,6 +228,7 @@ pub(crate) fn hypercube_coeffs_to_evals_impl(
     Ok(())
 }
 
+#[allow(unused)]
 pub(crate) fn hypercube_coeffs_natural_to_natural_evals(
     src: &DeviceSlice<BF>,
     dst: &mut DeviceSlice<BF>,
@@ -237,6 +238,7 @@ pub(crate) fn hypercube_coeffs_natural_to_natural_evals(
     hypercube_coeffs_to_evals_impl(src, dst, log_n, false, stream)
 }
 
+#[allow(unused)]
 pub(crate) fn hypercube_coeffs_bitrev_to_bitrev_evals(
     src: &DeviceSlice<BF>,
     dst: &mut DeviceSlice<BF>,

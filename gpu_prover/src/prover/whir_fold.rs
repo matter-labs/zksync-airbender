@@ -25,7 +25,7 @@ use worker::Worker;
 
 use crate::allocator::tracker::AllocationPlacement;
 use crate::ntt::{
-    hypercube_x1_msb_evals_to_x1_msb_monomials, hypercube_coeffs_bitrev_to_bitrev_evals,
+    hypercube_coeffs_bitrev_to_bitrev_evals, hypercube_x1_msb_evals_to_x1_msb_monomials,
     natural_evals_to_bitreversed_monomials,
 };
 use crate::ops::blake2s::{Digest, STATE_SIZE};
@@ -1487,8 +1487,7 @@ fn schedule_initialize_batched_forms(
         get_base_columns(memory_trace_holder, rows, use_hypercube_evals_for_batching);
     let witness_values =
         get_base_columns(witness_trace_holder, rows, use_hypercube_evals_for_batching);
-    let setup_values =
-        get_base_columns(setup_trace_holder, rows, use_hypercube_evals_for_batching);
+    let setup_values = get_base_columns(setup_trace_holder, rows, use_hypercube_evals_for_batching);
 
     accumulate_whir_base_columns(
         &memory_values,
