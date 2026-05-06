@@ -1,3 +1,5 @@
+#![cfg(feature = "security_80")]
+
 #[macro_use]
 mod common;
 
@@ -7,13 +9,14 @@ use verifier_common::errors::VerificationError;
 
 use common::{
     assert_rejects_corrupted_nds, assert_rejects_via_panic, assert_rejects_with_variant,
-    proof_to_nds, VerifyRejection,
+    SecurityLevel, VerifyRejection,
 };
 
 fn test_rejects_garbage_proof(name: &str) {
-    let nds_len = common::load_nds(name).0.len();
+    let nds_len = common::load_nds(name, SecurityLevel::Sec80).0.len();
     assert_rejects_corrupted_nds(
         name,
+        SecurityLevel::Sec80,
         "garbage proof",
         |nds| {
             for i in 0..nds_len {
@@ -25,12 +28,13 @@ fn test_rejects_garbage_proof(name: &str) {
 }
 
 fn test_rejects_corruption_at_fractions(name: &str) {
-    let nds_len = common::load_nds(name).0.len();
+    let nds_len = common::load_nds(name, SecurityLevel::Sec80).0.len();
     for fraction in [0.25, 0.50, 0.75] {
         let label = format!("fraction {:.2}", fraction);
         let idx = (nds_len as f64 * fraction) as usize;
         assert_rejects_corrupted_nds(
             name,
+            SecurityLevel::Sec80,
             &label,
             |nds| nds[idx] ^= 1,
             |r| matches!(r, VerifyRejection::Error(..)),
@@ -39,7 +43,7 @@ fn test_rejects_corruption_at_fractions(name: &str) {
 }
 
 fn test_rejects_corrupted_gkr_region(name: &str) {
-    with_circuit!(name, |m| {
+    with_circuit!(name, SecurityLevel::Sec80, |m| {
         type InitialTranscript = m::constants::ConcreteInitialTranscript;
         let initial_transcript_responses_offset = core::mem::offset_of!(InitialTranscript, _marker)
             - (core::mem::offset_of!(InitialTranscript, setup_caps)
@@ -59,6 +63,7 @@ fn test_rejects_corrupted_gkr_region(name: &str) {
         for &(idx, mask, label) in cases {
             assert_rejects_corrupted_nds(
                 name,
+                SecurityLevel::Sec80,
                 label,
                 |nds| nds[idx] ^= mask,
                 |r| matches!(r, VerifyRejection::Error(..)),
@@ -68,7 +73,7 @@ fn test_rejects_corrupted_gkr_region(name: &str) {
 }
 
 fn test_rejects_corrupted_whir_region(name: &str) {
-    let nds_len = common::load_nds(name).0.len();
+    let nds_len = common::load_nds(name, SecurityLevel::Sec80).0.len();
 
     let cases: &[(usize, &str)] = &[
         (nds_len / 2, "whir_early"),
@@ -79,6 +84,7 @@ fn test_rejects_corrupted_whir_region(name: &str) {
     for &(idx, label) in cases {
         assert_rejects_corrupted_nds(
             name,
+            SecurityLevel::Sec80,
             label,
             |nds| nds[idx] ^= 1,
             |r| matches!(r, VerifyRejection::Error(..)),
@@ -87,14 +93,14 @@ fn test_rejects_corrupted_whir_region(name: &str) {
 }
 
 fn test_rejects_zeroed_regions(name: &str) {
-    with_circuit!(name, |m| {
+    with_circuit!(name, SecurityLevel::Sec80, |m| {
         type InitialTranscript = m::constants::ConcreteInitialTranscript;
         let initial_transcript_responses_offset = core::mem::offset_of!(InitialTranscript, _marker)
             - (core::mem::offset_of!(InitialTranscript, setup_caps)
                 - core::mem::offset_of!(InitialTranscript, external_challenges_flattened));
         let gkr_off = initial_transcript_responses_offset / core::mem::size_of::<u32>();
 
-        let nds_len = common::load_nds(name).0.len();
+        let nds_len = common::load_nds(name, SecurityLevel::Sec80).0.len();
 
         let cases: &[(usize, usize, &str)] = &[
             (gkr_off + 200, 32, "sumcheck_chunk"),
@@ -104,6 +110,7 @@ fn test_rejects_zeroed_regions(name: &str) {
         for &(start, count, label) in cases {
             assert_rejects_corrupted_nds(
                 name,
+                SecurityLevel::Sec80,
                 label,
                 |nds| {
                     let end = (start + count).min(nds.len());
@@ -120,6 +127,7 @@ fn test_rejects_zeroed_regions(name: &str) {
 fn test_rejects_shifted_nds(name: &str) {
     assert_rejects_corrupted_nds(
         name,
+        SecurityLevel::Sec80,
         "shifted by one word",
         |nds| nds.insert(0, 0),
         |r| matches!(r, VerifyRejection::Error(..)),
@@ -127,7 +135,7 @@ fn test_rejects_shifted_nds(name: &str) {
 }
 
 fn test_rejects_corrupted_oracle_caps(name: &str) {
-    with_circuit!(name, |m| {
+    with_circuit!(name, SecurityLevel::Sec80, |m| {
         type InitialTranscript = m::constants::ConcreteInitialTranscript;
         let setup_oracle_commit_offset = core::mem::offset_of!(InitialTranscript, setup_caps);
         let memory_oracle_commit_offset = core::mem::offset_of!(InitialTranscript, memory_caps);
@@ -165,6 +173,7 @@ fn test_rejects_corrupted_oracle_caps(name: &str) {
             let label = format!("oracle_cap_{}", cap_name);
             assert_rejects_corrupted_nds(
                 name,
+                SecurityLevel::Sec80,
                 &label,
                 |nds| nds[offset] ^= 1,
                 |r| {
@@ -181,6 +190,7 @@ fn test_rejects_corrupted_oracle_caps(name: &str) {
 fn test_rejects_truncated_nds(name: &str) {
     assert_rejects_corrupted_nds(
         name,
+        SecurityLevel::Sec80,
         "truncated NDS",
         |nds| {
             let new_len = nds.len() * 9 / 10;
@@ -191,7 +201,7 @@ fn test_rejects_truncated_nds(name: &str) {
 }
 
 fn test_rejects_corrupted_final_monomials(name: &str) {
-    with_circuit!(name, |m| {
+    with_circuit!(name, SecurityLevel::Sec80, |m| {
         // NDS tail: [final_sumcheck_polys | final_monomials | pow_nonce | final_queries]
         // Compute monomials position by working backward from nds_len.
         let final_fold_steps = *m::constants::WHIR_FOLD_STEPS.last().unwrap();
@@ -202,11 +212,12 @@ fn test_rejects_corrupted_final_monomials(name: &str) {
         let queries_words = final_num_queries * (leaf_words + path_words);
         let pow_words = 2;
         let monomial_words = m::constants::FINAL_MONOMIALS_LEN * 4;
-        let nds_len = common::load_nds(name).0.len();
+        let nds_len = common::load_nds(name, SecurityLevel::Sec80).0.len();
         let monomials_end = nds_len - queries_words - pow_words;
         let start = monomials_end - monomial_words;
         assert_rejects_corrupted_nds(
             name,
+            SecurityLevel::Sec80,
             "corrupted final_monomials",
             |nds| {
                 for word in &mut nds[start..monomials_end] {
@@ -224,9 +235,10 @@ fn test_rejects_cross_circuit_nds(name: &str) {
         .find(|c| c.name != name)
         .expect("need at least two circuits");
 
-    let other_nds = other.load_nds().0;
+    let other_nds = other.load_nds_for(SecurityLevel::Sec80).0;
     assert_rejects_corrupted_nds(
         name,
+        SecurityLevel::Sec80,
         &format!("NDS from {}", other.name),
         |nds| {
             nds.clear();
@@ -251,6 +263,7 @@ fn test_rejects_corrupted_init_teardown_bits(name: &str) {
         let label = format!("teardown_top_bit_{}", i);
         assert_rejects_corrupted_nds(
             name,
+            SecurityLevel::Sec80,
             &label,
             |nds| nds[i] ^= 0xFFFF_FFFF,
             |r| matches!(r, VerifyRejection::Error(..)),
@@ -259,7 +272,7 @@ fn test_rejects_corrupted_init_teardown_bits(name: &str) {
 }
 
 fn test_rejects_non_canonical_field_element(name: &str) {
-    with_circuit!(name, |m| {
+    with_circuit!(name, SecurityLevel::Sec80, |m| {
         type InitialTranscript = m::constants::ConcreteInitialTranscript;
         let initial_transcript_responses_offset = core::mem::offset_of!(InitialTranscript, _marker)
             - (core::mem::offset_of!(InitialTranscript, setup_caps)
@@ -268,6 +281,7 @@ fn test_rejects_non_canonical_field_element(name: &str) {
 
         assert_rejects_corrupted_nds(
             name,
+            SecurityLevel::Sec80,
             "non_canonical_field_element",
             |nds| {
                 nds[gkr_off + 4] ^= 0x7800_0001;
@@ -279,32 +293,32 @@ fn test_rejects_non_canonical_field_element(name: &str) {
 
 fn test_rejects_corrupted_ood_sample(name: &str) {
     let circuit_data = common::circuit_by_name(name);
-    let mut proof = circuit_data.proof();
+    let mut proof = circuit_data.proof_for(SecurityLevel::Sec80);
     assert!(
         !proof.whir_proof.ood_samples.is_empty(),
         "{}: proof must have OOD samples",
         name
     );
     proof.whir_proof.ood_samples[0].add_assign(&BabyBearExt4::ONE);
-    assert_rejects_via_panic(name, "corrupted OOD sample", &proof);
+    assert_rejects_via_panic(name, SecurityLevel::Sec80, "corrupted OOD sample", &proof);
 }
 
 fn test_rejects_corrupted_pow_nonce(name: &str) {
     let circuit_data = common::circuit_by_name(name);
-    let mut proof = circuit_data.proof();
+    let mut proof = circuit_data.proof_for(SecurityLevel::Sec80);
     assert!(
         !proof.whir_proof.pow_nonces.is_empty(),
         "{}: proof must have PoW nonces",
         name
     );
     proof.whir_proof.pow_nonces[0] ^= 1;
-    assert_rejects_via_panic(name, "corrupted PoW nonce", &proof);
+    assert_rejects_via_panic(name, SecurityLevel::Sec80, "corrupted PoW nonce", &proof);
 }
 
 #[cfg(not(feature = "no_caches"))]
 fn test_rejects_corrupted_cache_relations(name: &str) {
     let circuit_data = common::circuit_by_name(name);
-    let mut proof = circuit_data.proof();
+    let mut proof = circuit_data.proof_for(SecurityLevel::Sec80);
 
     let base_layer = proof
         .sumcheck_intermediate_values
@@ -325,13 +339,17 @@ fn test_rejects_corrupted_cache_relations(name: &str) {
         .unwrap();
     eval.add_assign(&BabyBearExt4::ONE);
 
-    assert_rejects_with_variant(name, "corrupted cache relation", &proof, |e| {
-        matches!(e, VerificationError::GkrCacheRelationFailed { .. })
-    });
+    assert_rejects_with_variant(
+        name,
+        SecurityLevel::Sec80,
+        "corrupted cache relation",
+        &proof,
+        |e| matches!(e, VerificationError::GkrCacheRelationFailed { .. }),
+    );
 }
 
 macro_rules! generate_corruption_tests {
-    ($($name:ident: $schedule:ident: $layout_suffix:expr),* $(,)?) => {
+    ($($name:ident: $schedule_80:ident: $schedule_100:ident: $layout_suffix:expr),* $(,)?) => {
         $(
             paste::paste! {
                 #[test]

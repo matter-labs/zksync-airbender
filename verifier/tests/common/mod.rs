@@ -12,15 +12,23 @@ use verifier_common::prover::nd_source_std::{set_iterator, ThreadLocalBasedSourc
 pub const VERIFIER_STACK_SIZE: usize = 1 << 27;
 
 macro_rules! define_dispatch {
-    ($($name:ident: $schedule:ident: $layout_suffix:expr),* $(,)?) => {
+    ($($name:ident: $schedule_80:ident: $schedule_100:ident: $layout_suffix:expr),* $(,)?) => {
         macro_rules! with_circuit {
-            ($circuit_name:expr, |$m:ident| $body:expr) => {
-                match $circuit_name {
-                    $(stringify!($name) => {
-                        use verifier::$name as $m;
-                        $body
-                    })*
-                    other => panic!("unknown circuit: {}", other),
+            ($circuit_name:expr, $level:expr, |$m:ident| $body:expr) => {
+                match ($circuit_name, $level) {
+                    $(
+                        #[cfg(feature = "security_80")]
+                        (stringify!($name), $crate::common::SecurityLevel::Sec80) => {
+                            use verifier::$name::sec_80 as $m;
+                            $body
+                        }
+                        #[cfg(feature = "security_100")]
+                        (stringify!($name), $crate::common::SecurityLevel::Sec100) => {
+                            use verifier::$name::sec_100 as $m;
+                            $body
+                        }
+                    )*
+                    (other, _) => panic!("unknown or disabled circuit/level: {}", other),
                 }
             };
         }
@@ -28,12 +36,17 @@ macro_rules! define_dispatch {
 }
 verifier_common::gkr_circuits!(define_dispatch);
 
-pub fn load_nds(name: &str) -> (Vec<u32>, GKRExternalChallenges<BabyBearField, BabyBearExt4>) {
-    circuit_by_name(name).load_nds()
+pub use verifier_common::test_circuits::SecurityLevel;
+
+pub fn load_nds(
+    name: &str,
+    level: SecurityLevel,
+) -> (Vec<u32>, GKRExternalChallenges<BabyBearField, BabyBearExt4>) {
+    circuit_by_name(name).load_nds_for(level)
 }
 
-pub fn binary_paths(name: &str) -> (String, String, String) {
-    circuit_by_name(name).binary_paths()
+pub fn binary_paths(name: &str, level: SecurityLevel) -> (String, String, String) {
+    circuit_by_name(name).binary_paths_for(level)
 }
 
 pub fn circuit_by_name(name: &str) -> &'static CircuitData {
@@ -51,6 +64,7 @@ pub enum VerifyRejection {
 
 pub fn verify_nds(
     name: &str,
+    level: SecurityLevel,
     external_challenges: &GKRExternalChallenges<BabyBearField, BabyBearExt4>,
     nds: Vec<u32>,
 ) -> Result<(), VerifyRejection> {
@@ -63,11 +77,11 @@ pub fn verify_nds(
 
     let outcome: Result<Result<(), VerificationError>, ()> = std::thread::scope(|s| {
         let handle = std::thread::Builder::new()
-            .name(format!("verify_{}", name))
+            .name(format!("verify_{}_{:?}", name, level))
             .stack_size(VERIFIER_STACK_SIZE)
             .spawn_scoped(s, move || {
                 set_iterator(nds.into_iter());
-                with_circuit!(name, |m| {
+                with_circuit!(name, level, |m| {
                     m::verify::<ThreadLocalBasedSource, DebugErrorCreator>(external_challenges)
                         .map(|_| ())
                 })
@@ -95,13 +109,14 @@ pub fn verify_nds(
 
 pub fn assert_rejects_corrupted_nds(
     name: &str,
+    level: SecurityLevel,
     label: &str,
     corrupt: impl FnOnce(&mut Vec<u32>),
     expected: impl FnOnce(&VerifyRejection) -> bool,
 ) {
-    let (mut nds, external_challenges) = load_nds(name);
+    let (mut nds, external_challenges) = load_nds(name, level);
     corrupt(&mut nds);
-    match verify_nds(name, &external_challenges, nds) {
+    match verify_nds(name, level, &external_challenges, nds) {
         Ok(()) => panic!("{}: should reject {}", name, label),
         Err(r) => assert!(
             expected(&r),
@@ -115,6 +130,7 @@ pub fn assert_rejects_corrupted_nds(
 
 pub fn proof_to_nds(
     name: &str,
+    level: SecurityLevel,
     proof: &GKRProof<BabyBearField, BabyBearExt4, DefaultTreeConstructor>,
 ) -> (Vec<u32>, GKRExternalChallenges<BabyBearField, BabyBearExt4>) {
     let circuit_data = circuit_by_name(name);
@@ -125,7 +141,7 @@ pub fn proof_to_nds(
     let nds = flatten_gkr_proof_for_nds::<BabyBearField, BabyBearExt4, DefaultTreeConstructor>(
         proof,
         &compiled,
-        circuit_data.whir_schedule(),
+        circuit_data.whir_schedule_for(level),
         &inits_and_teardowns_top_bits,
     );
     let external_challenges = proof.external_challenges;
@@ -135,12 +151,13 @@ pub fn proof_to_nds(
 
 pub fn assert_rejects_with_variant(
     name: &str,
+    level: SecurityLevel,
     label: &str,
     proof: &GKRProof<BabyBearField, BabyBearExt4, DefaultTreeConstructor>,
     expected: impl FnOnce(&VerificationError) -> bool,
 ) {
-    let (nds, external_challenges) = proof_to_nds(name, proof);
-    match verify_nds(name, &external_challenges, nds) {
+    let (nds, external_challenges) = proof_to_nds(name, level, proof);
+    match verify_nds(name, level, &external_challenges, nds) {
         Ok(()) => panic!("{}: should reject {}", name, label),
         Err(VerifyRejection::Error(e)) => {
             assert!(
@@ -162,11 +179,12 @@ pub fn assert_rejects_with_variant(
 
 pub fn assert_rejects_via_panic(
     name: &str,
+    level: SecurityLevel,
     label: &str,
     proof: &GKRProof<BabyBearField, BabyBearExt4, DefaultTreeConstructor>,
 ) {
-    let (nds, external_challenges) = proof_to_nds(name, proof);
-    match verify_nds(name, &external_challenges, nds) {
+    let (nds, external_challenges) = proof_to_nds(name, level, proof);
+    match verify_nds(name, level, &external_challenges, nds) {
         Ok(()) => panic!("{}: should reject {}", name, label),
         Err(VerifyRejection::Panic(_)) => {}
         Err(VerifyRejection::Error(e)) => {
