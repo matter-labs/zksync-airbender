@@ -2107,8 +2107,8 @@ unsafe fn dim_reducing_final_step_accumulator(
 #[doc = " Closed-form eval of VirtualSetup(InitsAndTeardownsLow/High) at `state.prev_point`."]
 #[doc = " Low half = bits [2..16) of the address (top 2 bits zeroed); high half = the high 10 address bits."]
 #[doc = " Source: prover/src/gkr/virtual_polys/inits_and_teardowns.rs."]
-#[doc = " The `prev_claims` indices are positions in this layer's merged target_addrs (regular + cache-input extras, BTreeSet-sorted),"]
-#[doc = " which is also the layout used by `INITIAL_WHIR_CLAIM_INDICES`."]
+#[doc = " The `prev_claims` indices are positions assigned by the canonical layer-0 layout"]
+#[doc = " (memory cols → witness cols → setup cols → virtual setups → others)`."]
 #[inline(always)]
 fn check_virtual_setup_inits_and_teardowns<E: ErrorCreator>(
     state: &LayerState<BabyBearExt4, GKR_ROUNDS, GKR_ADDRS>,
@@ -3746,11 +3746,49 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
             let next_batching = *draw_buf.get(1);
             *state.prev_point.get_unchecked_mut(fc_len) = last_r;
             fc_len += 1;
-            fold_standard_claims::<66usize, GKR_ADDRS, GKR_EVAL_BUF>(
-                &eval_buf,
-                last_r,
-                &mut state.prev_claims,
-            );
+            let extra_evals = LazyVec::<BabyBearExt4, 0usize>::new();
+            let final_step_evals: &[[BabyBearExt4; 2]] = unsafe { eval_buf.data_as(66usize) };
+            state.prev_claims.clear();
+            {
+                const LAYOUT_KIND: [usize; 66usize] = [
+                    0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize,
+                    0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize,
+                    0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize,
+                    0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize,
+                    0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize,
+                    0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize,
+                    0usize, 0usize, 0usize, 0usize, 0usize, 0usize,
+                ];
+                const LAYOUT_POS: [usize; 66usize] = [
+                    0usize, 1usize, 2usize, 3usize, 4usize, 5usize, 6usize, 7usize, 8usize, 9usize,
+                    10usize, 11usize, 12usize, 13usize, 14usize, 15usize, 16usize, 17usize,
+                    18usize, 19usize, 20usize, 21usize, 22usize, 23usize, 24usize, 25usize,
+                    26usize, 27usize, 28usize, 29usize, 30usize, 31usize, 32usize, 33usize,
+                    34usize, 35usize, 36usize, 37usize, 38usize, 39usize, 40usize, 41usize,
+                    42usize, 43usize, 44usize, 45usize, 46usize, 47usize, 48usize, 49usize,
+                    50usize, 51usize, 52usize, 53usize, 54usize, 55usize, 56usize, 57usize,
+                    58usize, 59usize, 60usize, 61usize, 62usize, 63usize, 64usize, 65usize,
+                ];
+                let mut i = 0usize;
+                while i < 66usize {
+                    let kind = unsafe { *LAYOUT_KIND.get_unchecked(i) };
+                    let pos = unsafe { *LAYOUT_POS.get_unchecked(i) };
+                    let claim: BabyBearExt4 = if kind == 0usize {
+                        let ev = unsafe { final_step_evals.get_unchecked(pos) };
+                        let f0 = ev[0];
+                        let mut diff = ev[1];
+                        field_ops::sub_assign(&mut diff, &f0);
+                        field_ops::mul_assign(&mut diff, &last_r);
+                        field_ops::add_assign(&mut diff, &f0);
+                        diff
+                    } else {
+                        *extra_evals.get(pos)
+                    };
+                    state.prev_claims.push(claim);
+                    i += 1;
+                }
+            }
+            check_virtual_setup_inits_and_teardowns::<E>(&state)?;
             state.batching_challenge = next_batching;
             state.prev_point_len = fc_len;
         }
@@ -3771,7 +3809,6 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
             permutation_read_product = read_product;
             permutation_write_product = write_product;
         }
-        check_virtual_setup_inits_and_teardowns::<E>(&state)?;
         Ok(GKRVerifierOutput {
             base_layer_claims: state.prev_claims,
             evaluation_point: state.prev_point,

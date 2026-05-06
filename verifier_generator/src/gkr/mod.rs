@@ -294,7 +294,7 @@ pub fn generate_gkr_common<MW: FieldWrapper>() -> TokenStream {
 }
 
 fn build_virtual_setup_eval_checks<MW: FieldWrapper>(
-    layer_0_target_addrs: &[GKRAddress],
+    layer_0_layout: &[GKRAddress],
     trace_len_log_2: usize,
 ) -> (TokenStream, TokenStream) {
     let mut helpers = TokenStream::new();
@@ -303,7 +303,7 @@ fn build_virtual_setup_eval_checks<MW: FieldWrapper>(
     let mut its_low_idx: Option<usize> = None;
     let mut its_high_idx: Option<usize> = None;
 
-    for (idx, addr) in layer_0_target_addrs.iter().enumerate() {
+    for (idx, addr) in layer_0_layout.iter().enumerate() {
         let GKRAddress::VirtualSetup(poly) = addr else {
             continue;
         };
@@ -380,8 +380,8 @@ fn emit_range_check_eval_check<MW: FieldWrapper>(
     let helper = quote! {
         #[doc = #summary]
         #[doc = " Source: prover/src/gkr/virtual_polys/range_check.rs."]
-        #[doc = " The `prev_claims` index is the position in this layer's merged target_addrs (regular + cache-input extras, BTreeSet-sorted),"]
-        #[doc = " which is also the layout used by `INITIAL_WHIR_CLAIM_INDICES`."]
+        #[doc = " The `prev_claims` index is the position assigned to this VirtualSetup poly by the"]
+        #[doc = " canonical layer-0 layout (memory cols → witness cols → setup cols → virtual setups → others)."]
         #[inline(always)]
         fn #fn_name<E: ErrorCreator>(
             state: &LayerState<#quartic_struct, GKR_ROUNDS, GKR_ADDRS>,
@@ -446,8 +446,8 @@ fn emit_inits_and_teardowns_eval_check<MW: FieldWrapper>(
         #[doc = " Closed-form eval of VirtualSetup(InitsAndTeardownsLow/High) at `state.prev_point`."]
         #[doc = #halves]
         #[doc = " Source: prover/src/gkr/virtual_polys/inits_and_teardowns.rs."]
-        #[doc = " The `prev_claims` indices are positions in this layer's merged target_addrs (regular + cache-input extras, BTreeSet-sorted),"]
-        #[doc = " which is also the layout used by `INITIAL_WHIR_CLAIM_INDICES`."]
+        #[doc = " The `prev_claims` indices are positions assigned by the canonical layer-0 layout"]
+        #[doc = " (memory cols → witness cols → setup cols → virtual setups → others)`."]
         #[inline(always)]
         fn check_virtual_setup_inits_and_teardowns<E: ErrorCreator>(
             state: &LayerState<#quartic_struct, GKR_ROUNDS, GKR_ADDRS>,
@@ -1100,6 +1100,117 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
         });
     }
 
+    let num_memory_cols = compiled_circuit.memory_layout.total_width;
+    let num_witness_cols = compiled_circuit.witness_layout.total_width;
+    let num_setup_cols = compiled_circuit.generic_lookup_tables_width;
+
+    let (
+        virtual_setup_helpers,
+        virtual_setup_calls,
+        layer_0_layout,
+        layer_0_src_kind,
+        layer_0_src_pos,
+    ) = if standard_sorted_addrs.is_empty() {
+        (
+            TokenStream::new(),
+            TokenStream::new(),
+            Vec::<GKRAddress>::new(),
+            Vec::<usize>::new(),
+            Vec::<usize>::new(),
+        )
+    } else {
+        use std::collections::BTreeSet;
+        let regular_set: BTreeSet<GKRAddress> =
+            standard_sorted_addrs[0].iter().copied().collect();
+        let extra_addrs = collect_extra_addrs_from_cached_relations(
+            &compiled_circuit.layers[0],
+            &standard_sorted_addrs[0],
+        );
+        let mut merged: BTreeSet<GKRAddress> = regular_set;
+        for a in &extra_addrs {
+            merged.insert(*a);
+        }
+
+        let is_oracle_col = |addr: &GKRAddress| {
+            matches!(
+                addr,
+                GKRAddress::BaseLayerMemory(_)
+                    | GKRAddress::BaseLayerWitness(_)
+                    | GKRAddress::Setup(_)
+            )
+        };
+        let is_virtual = |addr: &GKRAddress| matches!(addr, GKRAddress::VirtualSetup(_));
+
+        let mut layout: Vec<GKRAddress> = Vec::with_capacity(merged.len());
+        for i in 0..num_memory_cols {
+            layout.push(GKRAddress::BaseLayerMemory(i));
+        }
+        for i in 0..num_witness_cols {
+            layout.push(GKRAddress::BaseLayerWitness(i));
+        }
+        for i in 0..num_setup_cols {
+            layout.push(GKRAddress::Setup(i));
+        }
+        for addr in merged.iter() {
+            if is_virtual(addr) {
+                layout.push(*addr);
+            }
+        }
+        for addr in merged.iter() {
+            if !is_oracle_col(addr) && !is_virtual(addr) {
+                layout.push(*addr);
+            }
+        }
+
+        for i in 0..num_memory_cols {
+            assert_eq!(layout[i], GKRAddress::BaseLayerMemory(i));
+        }
+        for j in 0..num_witness_cols {
+            assert_eq!(
+                layout[num_memory_cols + j],
+                GKRAddress::BaseLayerWitness(j)
+            );
+        }
+        for k in 0..num_setup_cols {
+            assert_eq!(
+                layout[num_memory_cols + num_witness_cols + k],
+                GKRAddress::Setup(k)
+            );
+        }
+        for addr in standard_sorted_addrs[0].iter().chain(extra_addrs.iter()) {
+            assert!(
+                layout.iter().any(|a| a == addr),
+                "layer-0 layout missing address {:?}",
+                addr
+            );
+        }
+
+        let (helpers, calls) =
+            build_virtual_setup_eval_checks::<MW>(&layout, trace_len_log_2);
+
+        let mut src_kind: Vec<usize> = Vec::with_capacity(layout.len());
+        let mut src_pos: Vec<usize> = Vec::with_capacity(layout.len());
+        for addr in &layout {
+            if let Some(p) = standard_sorted_addrs[0].iter().position(|a| a == addr) {
+                src_kind.push(0);
+                src_pos.push(p);
+            } else if let Some(p) = extra_addrs.iter().position(|a| a == addr) {
+                src_kind.push(1);
+                src_pos.push(p);
+            } else {
+                panic!(
+                    "layer-0 layout entry {:?} is neither a gate input nor a cache extra",
+                    addr
+                );
+            }
+        }
+
+        (helpers, calls, layout, src_kind, src_pos)
+    };
+    layer_functions.extend(virtual_setup_helpers);
+
+    let layer_0_n_extra: usize = layer_0_src_kind.iter().filter(|&&k| k == 1).count();
+
     for config_idx in (0..num_standard_layers).rev() {
         let num_sumcheck_rounds = trace_len_log_2;
         let num_dedup_addrs = standard_sorted_addrs[config_idx].len();
@@ -1107,6 +1218,8 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
         let compute_claim_fn = quote::format_ident!("layer_{}_compute_claim", config_idx);
         let final_step_fn = quote::format_ident!("layer_{}_final_step_accumulator", config_idx);
         let num_regular_rounds = num_sumcheck_rounds - 1;
+
+        let is_layer_0 = config_idx == 0;
 
         let extra_addrs = collect_extra_addrs_from_cached_relations(
             &compiled_circuit.layers[config_idx],
@@ -1124,83 +1237,160 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
             addrs.into_iter().collect()
         };
 
-        let fold_and_extras_code = if num_extra > 0 {
-            let sub = MW::sub_assign(quote! { diff }, quote! { f0 });
-            let mul_r = MW::mul_assign(quote! { diff }, quote! { last_r });
-            let add_f0 = MW::add_assign(quote! { diff }, quote! { f0 });
+        let sub = MW::sub_assign(quote! { diff }, quote! { f0 });
+        let mul_r = MW::mul_assign(quote! { diff }, quote! { last_r });
+        let add_f0 = MW::add_assign(quote! { diff }, quote! { f0 });
 
-            let mut extra_positions: Vec<(usize, usize)> = Vec::new();
-            let mut extra_idx = 0usize;
-            for (merged_idx, addr) in target_addrs.iter().enumerate() {
-                if !regular_set.contains(addr) {
-                    extra_positions.push((merged_idx, extra_idx));
-                    extra_idx += 1;
-                }
-            }
-            let num_merged = target_addrs.len();
-            let num_extra_pos = extra_positions.len();
-            let ep_merged: Vec<usize> = extra_positions.iter().map(|p| p.0).collect();
-            let ep_extra: Vec<usize> = extra_positions.iter().map(|p| p.1).collect();
+        let (fold_and_extras_code, cache_check_code, virtual_setup_calls_emit) = if is_layer_0 {
+            let n_total = layer_0_layout.len();
+            let n_extra = layer_0_n_extra;
+            let layout_kind: Vec<usize> = layer_0_src_kind.clone();
+            let layout_pos: Vec<usize> = layer_0_src_pos.clone();
 
-            quote! {
-                const EXTRA_COMMIT_BUF: usize = {
-                    let total = BLAKE2S_DIGEST_SIZE_U32_WORDS + #num_extra * EXT_DEGREE;
-                    total.div_ceil(BLAKE2S_BLOCK_SIZE_U32_WORDS) * BLAKE2S_BLOCK_SIZE_U32_WORDS
-                };
-                let mut extra_buf = CommitBuf::<EXTRA_COMMIT_BUF>::new();
-                let extra_data_words = #num_extra * EXT_DEGREE;
-                {
-                    let mut i = 0;
-                    while i < extra_data_words {
-                        extra_buf.data_write(i, read_reduced_field_el::<I>());
-                        i += 1;
+            let extra_data_words = n_extra * E::DEGREE;
+            let extra_commit_total = digest_words + extra_data_words;
+            let extra_commit_buf_size = if n_extra > 0 {
+                extra_commit_total.div_ceil(block_words) * block_words
+            } else {
+                0
+            };
+            let read_extras = if n_extra > 0 {
+                quote! {
+                    const EXTRA_COMMIT_BUF: usize = #extra_commit_buf_size;
+                    let mut extra_buf = CommitBuf::<EXTRA_COMMIT_BUF>::new();
+                    let extra_data_words = #n_extra * EXT_DEGREE;
+                    {
+                        let mut i = 0;
+                        while i < extra_data_words {
+                            extra_buf.data_write(i, read_reduced_field_el::<I>());
+                            i += 1;
+                        }
                     }
-                }
-                let mut extra_evals = LazyVec::<#quartic_struct, #num_extra>::new();
-                {
-                    let slice: &[#quartic_struct] = unsafe { extra_buf.data_as(#num_extra) };
-                    for el in slice {
-                        extra_evals.push(*el);
+                    let mut extra_evals = LazyVec::<#quartic_struct, #n_extra>::new();
+                    {
+                        let slice: &[#quartic_struct] = unsafe { extra_buf.data_as(#n_extra) };
+                        for el in slice {
+                            extra_evals.push(*el);
+                        }
                     }
+                    ts.commit(&mut extra_buf, extra_data_words);
                 }
-                ts.commit(&mut extra_buf, extra_data_words);
+            } else {
+                quote! {
+                    let extra_evals = LazyVec::<#quartic_struct, 0usize>::new();
+                }
+            };
+
+            let fold = quote! {
+                #read_extras
                 let final_step_evals: &[[#quartic_struct; 2]] = unsafe { eval_buf.data_as(#num_dedup_addrs) };
                 state.prev_claims.clear();
                 {
-                    const EXTRA_POS: [(usize, usize); #num_extra_pos] = [
-                        #( (#ep_merged, #ep_extra), )*
-                    ];
-                    let mut regular_idx: usize = 0;
-                    let mut ep_idx: usize = 0;
-                    let mut merged_idx: usize = 0;
-                    while merged_idx < #num_merged {
-                        if ep_idx < #num_extra_pos && EXTRA_POS[ep_idx].0 == merged_idx {
-                            state.prev_claims.push(*extra_evals.get(EXTRA_POS[ep_idx].1));
-                            ep_idx += 1;
-                        } else {
-                            let ev = final_step_evals.get_unchecked(regular_idx);
+                    const LAYOUT_KIND: [usize; #n_total] = [#( #layout_kind ),*];
+                    const LAYOUT_POS:  [usize; #n_total] = [#( #layout_pos  ),*];
+                    let mut i = 0usize;
+                    while i < #n_total {
+                        let kind = unsafe { *LAYOUT_KIND.get_unchecked(i) };
+                        let pos = unsafe { *LAYOUT_POS.get_unchecked(i)  };
+                        let claim: #quartic_struct = if kind == 0usize {
+                            let ev = unsafe { final_step_evals.get_unchecked(pos) };
                             let f0 = ev[0];
                             let mut diff = ev[1];
                             #sub; #mul_r; #add_f0;
-                            state.prev_claims.push(diff);
-                            regular_idx += 1;
-                        }
-                        merged_idx += 1;
+                            diff
+                        } else {
+                            *extra_evals.get(pos)
+                        };
+                        state.prev_claims.push(claim);
+                        i += 1;
                     }
                 }
-            }
-        } else {
-            quote! {
-                fold_standard_claims::<#num_dedup_addrs, GKR_ADDRS, GKR_EVAL_BUF>(
-                    &eval_buf, last_r, &mut state.prev_claims);
-            }
-        };
+            };
 
-        let cache_check_code = generate_cache_relation_checks::<MW>(
-            &compiled_circuit.layers[config_idx],
-            &target_addrs,
-            config_idx,
-        );
+            let cache_check = generate_cache_relation_checks::<MW, F>(
+                &compiled_circuit.layers[0],
+                &layer_0_layout,
+                0,
+            );
+
+            (fold, cache_check, virtual_setup_calls.clone())
+        } else {
+            let fold = if num_extra > 0 {
+                let mut extra_positions: Vec<(usize, usize)> = Vec::new();
+                let mut extra_idx = 0usize;
+                for (merged_idx, addr) in target_addrs.iter().enumerate() {
+                    if !regular_set.contains(addr) {
+                        extra_positions.push((merged_idx, extra_idx));
+                        extra_idx += 1;
+                    }
+                }
+                let num_merged = target_addrs.len();
+                let num_extra_pos = extra_positions.len();
+                let ep_merged: Vec<usize> = extra_positions.iter().map(|p| p.0).collect();
+                let ep_extra: Vec<usize> = extra_positions.iter().map(|p| p.1).collect();
+
+                let extra_data_words = num_extra * E::DEGREE;
+                let extra_commit_total = digest_words + extra_data_words;
+                let extra_commit_buf_size = extra_commit_total.div_ceil(block_words) * block_words;
+                quote! {
+                    const EXTRA_COMMIT_BUF: usize = #extra_commit_buf_size;
+                    let mut extra_buf = CommitBuf::<EXTRA_COMMIT_BUF>::new();
+                    let extra_data_words = #num_extra * EXT_DEGREE;
+                    {
+                        let mut i = 0;
+                        while i < extra_data_words {
+                            extra_buf.data_write(i, read_reduced_field_el::<I>());
+                            i += 1;
+                        }
+                    }
+                    let mut extra_evals = LazyVec::<#quartic_struct, #num_extra>::new();
+                    {
+                        let slice: &[#quartic_struct] = unsafe { extra_buf.data_as(#num_extra) };
+                        for el in slice {
+                            extra_evals.push(*el);
+                        }
+                    }
+                    ts.commit(&mut extra_buf, extra_data_words);
+                    let final_step_evals: &[[#quartic_struct; 2]] = unsafe { eval_buf.data_as(#num_dedup_addrs) };
+                    state.prev_claims.clear();
+                    {
+                        const EXTRA_POS: [(usize, usize); #num_extra_pos] = [
+                            #( (#ep_merged, #ep_extra), )*
+                        ];
+                        let mut regular_idx: usize = 0;
+                        let mut ep_idx: usize = 0;
+                        let mut merged_idx: usize = 0;
+                        while merged_idx < #num_merged {
+                            if ep_idx < #num_extra_pos && EXTRA_POS[ep_idx].0 == merged_idx {
+                                state.prev_claims.push(*extra_evals.get(EXTRA_POS[ep_idx].1));
+                                ep_idx += 1;
+                            } else {
+                                let ev = final_step_evals.get_unchecked(regular_idx);
+                                let f0 = ev[0];
+                                let mut diff = ev[1];
+                                #sub; #mul_r; #add_f0;
+                                state.prev_claims.push(diff);
+                                regular_idx += 1;
+                            }
+                            merged_idx += 1;
+                        }
+                    }
+                }
+            } else {
+                quote! {
+                    fold_standard_claims::<#num_dedup_addrs, GKR_ADDRS, GKR_EVAL_BUF>(
+                        &eval_buf, last_r, &mut state.prev_claims);
+                }
+            };
+
+            let cache_check = generate_cache_relation_checks::<MW, F>(
+                &compiled_circuit.layers[config_idx],
+                &target_addrs,
+                config_idx,
+            );
+
+            (fold, cache_check, TokenStream::new())
+        };
 
         main_body.extend(quote! {
             {
@@ -1238,6 +1428,7 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
                 fc_len += 1;
                 #fold_and_extras_code
                 #cache_check_code
+                #virtual_setup_calls_emit
                 state.batching_challenge = next_batching;
                 state.prev_point_len = fc_len;
             }
@@ -1316,24 +1507,6 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
         }
     }
 
-    let (virtual_setup_helpers, virtual_setup_calls) = if standard_sorted_addrs.is_empty() {
-        (TokenStream::new(), TokenStream::new())
-    } else {
-        use std::collections::BTreeSet;
-        let regular: BTreeSet<GKRAddress> = standard_sorted_addrs[0].iter().copied().collect();
-        let extras = collect_extra_addrs_from_cached_relations(
-            &compiled_circuit.layers[0],
-            &standard_sorted_addrs[0],
-        );
-        let mut merged = regular;
-        for a in extras {
-            merged.insert(a);
-        }
-        let layer_0_target_addrs: Vec<GKRAddress> = merged.into_iter().collect();
-        build_virtual_setup_eval_checks::<MW>(&layer_0_target_addrs, trace_len_log_2)
-    };
-    layer_functions.extend(virtual_setup_helpers);
-
     main_body.extend(quote! {
         state.batching_challenge = draw_single_field_el(ts);
 
@@ -1341,8 +1514,6 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
         let mut permutation_write_product: #quartic_struct = #quartic_one;
 
         #output_checks
-
-        #virtual_setup_calls
 
         Ok(GKRVerifierOutput {
             base_layer_claims: state.prev_claims,
@@ -1429,58 +1600,6 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
     let oracle_num_cols: Vec<usize> = oracles.iter().map(|(_, o)| o.num_columns).collect();
     let num_oracles = oracles.len();
 
-    // Mapping from WHIR initial-round column index (in [memory, witness, setup] order) to
-    // the index in GKR's base_layer_claims (which is sorted per target_addrs of layer 0).
-    let initial_whir_claim_indices: Vec<usize> = {
-        let layer_0_target_addrs: Vec<GKRAddress> = {
-            let regular: std::collections::BTreeSet<GKRAddress> =
-                standard_sorted_addrs[0].iter().copied().collect();
-            let extras = collect_extra_addrs_from_cached_relations(
-                &compiled_circuit.layers[0],
-                &standard_sorted_addrs[0],
-            );
-            let mut all = regular;
-            for a in extras {
-                all.insert(a);
-            }
-            all.into_iter().collect()
-        };
-        let position = |addr: &GKRAddress| -> usize {
-            layer_0_target_addrs
-                .iter()
-                .position(|a| a == addr)
-                .unwrap_or_else(|| {
-                    panic!(
-                        "WHIR base-oracle address {:?} not found in layer 0 target_addrs; \
-                         circuits with unopened base oracles are not supported yet",
-                        addr
-                    )
-                })
-        };
-        let mut indices = Vec::with_capacity(total_oracle_cols);
-        for i in 0..oracles
-            .get(&OracleType::Memory)
-            .map(|el| el.num_columns)
-            .unwrap_or(0)
-        {
-            indices.push(position(&GKRAddress::BaseLayerMemory(i)));
-        }
-        for i in 0..oracles
-            .get(&OracleType::Witness)
-            .map(|el| el.num_columns)
-            .unwrap_or(0)
-        {
-            indices.push(position(&GKRAddress::BaseLayerWitness(i)));
-        }
-        for i in 0..oracles
-            .get(&OracleType::Setup)
-            .map(|el| el.num_columns)
-            .unwrap_or(0)
-        {
-            indices.push(position(&GKRAddress::Setup(i)));
-        }
-        indices
-    };
 
     let num_intermediate_oracles = whir_rounds - 1;
     let mut whir_oracle_depths = Vec::with_capacity(num_intermediate_oracles);
@@ -1539,7 +1658,6 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
         pub const TOTAL_ORACLE_COLS: usize = #total_oracle_cols;
         pub const WHIR_ORACLE_DEPTHS: [usize; #num_intermediate_oracles] = [#(#whir_oracle_depths),*];
         pub const WHIR_CAP_WORDS: usize = #whir_cap_words;
-        pub const INITIAL_WHIR_CLAIM_INDICES: [usize; #total_oracle_cols] = [#(#initial_whir_claim_indices),*];
 
         #field_use_stmts
 

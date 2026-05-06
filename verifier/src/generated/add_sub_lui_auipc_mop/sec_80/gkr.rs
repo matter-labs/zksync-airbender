@@ -1906,8 +1906,8 @@ unsafe fn dim_reducing_final_step_accumulator(
 }
 #[doc = " Closed-form eval of VirtualSetup(RangeCheck16Bits) at `state.prev_point` (lower 16 bits free, top bits forced to zero)."]
 #[doc = " Source: prover/src/gkr/virtual_polys/range_check.rs."]
-#[doc = " The `prev_claims` index is the position in this layer's merged target_addrs (regular + cache-input extras, BTreeSet-sorted),"]
-#[doc = " which is also the layout used by `INITIAL_WHIR_CLAIM_INDICES`."]
+#[doc = " The `prev_claims` index is the position assigned to this VirtualSetup poly by the"]
+#[doc = " canonical layer-0 layout (memory cols → witness cols → setup cols → virtual setups → others)."]
 #[inline(always)]
 fn check_virtual_setup_range_check_16bits<E: ErrorCreator>(
     state: &LayerState<BabyBearExt4, GKR_ROUNDS, GKR_ADDRS>,
@@ -1939,8 +1939,8 @@ fn check_virtual_setup_range_check_16bits<E: ErrorCreator>(
 }
 #[doc = " Closed-form eval of VirtualSetup(RangeCheckTimestamp) at `state.prev_point` (lower 19 bits free, top bits forced to zero)."]
 #[doc = " Source: prover/src/gkr/virtual_polys/range_check.rs."]
-#[doc = " The `prev_claims` index is the position in this layer's merged target_addrs (regular + cache-input extras, BTreeSet-sorted),"]
-#[doc = " which is also the layout used by `INITIAL_WHIR_CLAIM_INDICES`."]
+#[doc = " The `prev_claims` index is the position assigned to this VirtualSetup poly by the"]
+#[doc = " canonical layer-0 layout (memory cols → witness cols → setup cols → virtual setups → others)."]
 #[inline(always)]
 fn check_virtual_setup_range_check_timestamp<E: ErrorCreator>(
     state: &LayerState<BabyBearExt4, GKR_ROUNDS, GKR_ADDRS>,
@@ -3670,45 +3670,44 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
             let final_step_evals: &[[BabyBearExt4; 2]] = unsafe { eval_buf.data_as(56usize) };
             state.prev_claims.clear();
             {
-                const EXTRA_POS: [(usize, usize); 17usize] = [
-                    (21usize, 0usize),
-                    (22usize, 1usize),
-                    (25usize, 2usize),
-                    (30usize, 3usize),
-                    (31usize, 4usize),
-                    (32usize, 5usize),
-                    (33usize, 6usize),
-                    (34usize, 7usize),
-                    (35usize, 8usize),
-                    (47usize, 9usize),
-                    (48usize, 10usize),
-                    (49usize, 11usize),
-                    (50usize, 12usize),
-                    (51usize, 13usize),
-                    (52usize, 14usize),
-                    (53usize, 15usize),
-                    (54usize, 16usize),
+                const LAYOUT_KIND: [usize; 73usize] = [
+                    1usize, 1usize, 0usize, 0usize, 1usize, 0usize, 0usize, 0usize, 0usize, 1usize,
+                    1usize, 1usize, 1usize, 1usize, 1usize, 0usize, 0usize, 0usize, 0usize, 0usize,
+                    0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize,
+                    0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize,
+                    0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 1usize, 1usize, 1usize,
+                    1usize, 1usize, 1usize, 1usize, 1usize, 0usize, 0usize, 0usize, 0usize, 0usize,
+                    0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize,
+                    0usize, 0usize, 0usize,
                 ];
-                let mut regular_idx: usize = 0;
-                let mut ep_idx: usize = 0;
-                let mut merged_idx: usize = 0;
-                while merged_idx < 73usize {
-                    if ep_idx < 17usize && EXTRA_POS[ep_idx].0 == merged_idx {
-                        state
-                            .prev_claims
-                            .push(*extra_evals.get(EXTRA_POS[ep_idx].1));
-                        ep_idx += 1;
-                    } else {
-                        let ev = final_step_evals.get_unchecked(regular_idx);
+                const LAYOUT_POS: [usize; 73usize] = [
+                    0usize, 1usize, 21usize, 22usize, 2usize, 23usize, 24usize, 25usize, 26usize,
+                    3usize, 4usize, 5usize, 6usize, 7usize, 8usize, 27usize, 28usize, 29usize,
+                    30usize, 31usize, 32usize, 33usize, 34usize, 35usize, 36usize, 37usize, 0usize,
+                    1usize, 2usize, 3usize, 4usize, 5usize, 6usize, 7usize, 8usize, 9usize,
+                    10usize, 11usize, 12usize, 13usize, 14usize, 15usize, 16usize, 17usize,
+                    18usize, 19usize, 20usize, 9usize, 10usize, 11usize, 12usize, 13usize, 14usize,
+                    15usize, 16usize, 38usize, 39usize, 40usize, 41usize, 42usize, 43usize,
+                    44usize, 45usize, 46usize, 47usize, 48usize, 49usize, 50usize, 51usize,
+                    52usize, 53usize, 54usize, 55usize,
+                ];
+                let mut i = 0usize;
+                while i < 73usize {
+                    let kind = unsafe { *LAYOUT_KIND.get_unchecked(i) };
+                    let pos = unsafe { *LAYOUT_POS.get_unchecked(i) };
+                    let claim: BabyBearExt4 = if kind == 0usize {
+                        let ev = unsafe { final_step_evals.get_unchecked(pos) };
                         let f0 = ev[0];
                         let mut diff = ev[1];
                         field_ops::sub_assign(&mut diff, &f0);
                         field_ops::mul_assign(&mut diff, &last_r);
                         field_ops::add_assign(&mut diff, &f0);
-                        state.prev_claims.push(diff);
-                        regular_idx += 1;
-                    }
-                    merged_idx += 1;
+                        diff
+                    } else {
+                        *extra_evals.get(pos)
+                    };
+                    state.prev_claims.push(claim);
+                    i += 1;
                 }
             }
             {
@@ -3721,24 +3720,24 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
                     (70usize, 133099247u32, 15usize, 3usize),
                 ];
                 const SC_TERMS: [(u32, usize); 18usize] = [
+                    (1744830467u32, 20usize),
+                    (268435454u32, 0usize),
+                    (133099247u32, 41usize),
+                    (1744830467u32, 21usize),
+                    (268435454u32, 1usize),
                     (1744830467u32, 41usize),
-                    (268435454u32, 21usize),
-                    (133099247u32, 15usize),
+                    (1744830467u32, 20usize),
+                    (268435454u32, 5usize),
+                    (133099247u32, 42usize),
+                    (1744830467u32, 21usize),
+                    (268435454u32, 6usize),
                     (1744830467u32, 42usize),
-                    (268435454u32, 22usize),
-                    (1744830467u32, 15usize),
-                    (1744830467u32, 41usize),
-                    (268435454u32, 26usize),
-                    (133099247u32, 16usize),
-                    (1744830467u32, 42usize),
-                    (268435454u32, 27usize),
-                    (1744830467u32, 16usize),
-                    (1744830467u32, 41usize),
-                    (268435454u32, 31usize),
-                    (133099247u32, 17usize),
-                    (1744830467u32, 42usize),
-                    (268435454u32, 32usize),
-                    (1744830467u32, 17usize),
+                    (1744830467u32, 20usize),
+                    (268435454u32, 10usize),
+                    (133099247u32, 43usize),
+                    (1744830467u32, 21usize),
+                    (268435454u32, 11usize),
+                    (1744830467u32, 43usize),
                 ];
                 let mut _sc = 0;
                 while _sc < 6usize {
@@ -3776,21 +3775,21 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
                     (0u32, 7usize, 8usize),
                 ];
                 const VL_TERMS: [(u32, usize); 15usize] = [
-                    (268435454u32, 39usize),
-                    (268435454u32, 40usize),
-                    (268435454u32, 25usize),
-                    (268435454u32, 30usize),
-                    (268435454u32, 35usize),
-                    (268435454u32, 0usize),
-                    (268435454u32, 1usize),
-                    (268435454u32, 2usize),
-                    (536870908u32, 3usize),
-                    (1073741816u32, 4usize),
-                    (134217711u32, 5usize),
-                    (268435422u32, 6usize),
-                    (536870844u32, 7usize),
-                    (1073741688u32, 8usize),
-                    (134217455u32, 9usize),
+                    (268435454u32, 18usize),
+                    (268435454u32, 19usize),
+                    (268435454u32, 4usize),
+                    (268435454u32, 9usize),
+                    (268435454u32, 14usize),
+                    (268435454u32, 26usize),
+                    (268435454u32, 27usize),
+                    (268435454u32, 28usize),
+                    (536870908u32, 29usize),
+                    (1073741816u32, 30usize),
+                    (134217711u32, 31usize),
+                    (268435422u32, 32usize),
+                    (536870844u32, 33usize),
+                    (1073741688u32, 34usize),
+                    (134217455u32, 35usize),
                 ];
                 let mut _vl = 0;
                 while _vl < 1usize {
@@ -3853,6 +3852,8 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
                     _vs += 1;
                 }
             }
+            check_virtual_setup_range_check_16bits::<E>(&state)?;
+            check_virtual_setup_range_check_timestamp::<E>(&state)?;
             state.batching_challenge = next_batching;
             state.prev_point_len = fc_len;
         }
@@ -3921,8 +3922,6 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
                 return Err(E::gkr_lookup_identity_failed(2usize));
             }
         }
-        check_virtual_setup_range_check_16bits::<E>(&state)?;
-        check_virtual_setup_range_check_timestamp::<E>(&state)?;
         Ok(GKRVerifierOutput {
             base_layer_claims: state.prev_claims,
             evaluation_point: state.prev_point,
