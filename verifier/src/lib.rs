@@ -12,8 +12,15 @@ pub use verifier_common::transcript;
 #[path = "generated"]
 mod __generated {
     macro_rules! declare_gkr_modules {
-        ($($name:ident: $schedule:ident: $layout_suffix:expr),* $(,)?) => {
-            $(pub mod $name;)*
+        ($($name:ident: $schedule_80:ident: $schedule_100:ident: $layout_suffix:expr),* $(,)?) => {
+            $(
+                pub mod $name {
+                    #[cfg(feature = "security_80")]
+                    pub mod sec_80;
+                    #[cfg(feature = "security_100")]
+                    pub mod sec_100;
+                }
+            )*
         };
     }
     verifier_common::gkr_circuits!(declare_gkr_modules);

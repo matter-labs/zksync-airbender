@@ -18,11 +18,9 @@ use prover::cs::gkr_compiler::{
     GKRLayerDescription, InitsOrTeardownsTimestampAndValue, NoFieldGKRRelation,
     NoFieldSpecialMemoryContributionRelation,
 };
-use prover::field::PrimeField;
 use verifier_common::gkr::SimpleGateType;
 
 use super::addr_to_idx;
-use super::coeff_to_internal_repr;
 
 pub fn generate_eval_helpers<MW: FieldWrapper>() -> TokenStream {
     let field_struct = MW::field_struct();
@@ -243,7 +241,7 @@ pub fn generate_eval_helpers<MW: FieldWrapper>() -> TokenStream {
     }
 }
 
-fn emit_linear_relation_eval<MW: FieldWrapper, F: PrimeField>(
+fn emit_linear_relation_eval<MW: FieldWrapper>(
     rel: &prover::cs::definitions::gkr::NoFieldLinearRelation,
     var_name: &str,
     input_sorted_addrs: &[GKRAddress],
@@ -254,12 +252,12 @@ fn emit_linear_relation_eval<MW: FieldWrapper, F: PrimeField>(
         proc_macro2::Span::call_site(),
     );
 
-    let const_mont = coeff_to_internal_repr::<F>(rel.constant) as usize;
+    let const_mont = MW::coeff_to_internal_repr(rel.constant) as usize;
     let mut term_idx = Vec::new();
     let mut term_coeff = Vec::new();
     for &(coeff, ref addr) in rel.linear_terms.iter() {
         term_idx.push(addr_to_idx(addr, input_sorted_addrs));
-        term_coeff.push(coeff_to_internal_repr::<F>(coeff) as usize);
+        term_coeff.push(MW::coeff_to_internal_repr(coeff) as usize);
     }
     let num_terms = term_idx.len();
 
@@ -271,7 +269,7 @@ fn emit_linear_relation_eval<MW: FieldWrapper, F: PrimeField>(
     }
 }
 
-fn emit_vector_lookup_eval<MW: FieldWrapper, F: PrimeField>(
+fn emit_vector_lookup_eval<MW: FieldWrapper>(
     rel: &NoFieldVectorLookupRelation,
     var_name: &str,
     input_sorted_addrs: &[GKRAddress],
@@ -292,11 +290,11 @@ fn emit_vector_lookup_eval<MW: FieldWrapper, F: PrimeField>(
     let mut all_term_coeff = Vec::new();
 
     for col in rel.columns.iter().rev() {
-        col_consts.push(coeff_to_internal_repr::<F>(col.constant) as usize);
+        col_consts.push(MW::coeff_to_internal_repr(col.constant) as usize);
         col_counts.push(col.linear_terms.len());
         for &(coeff, ref addr) in col.linear_terms.iter() {
             all_term_idx.push(addr_to_idx(addr, input_sorted_addrs));
-            all_term_coeff.push(coeff_to_internal_repr::<F>(coeff) as usize);
+            all_term_coeff.push(MW::coeff_to_internal_repr(coeff) as usize);
         }
     }
     let num_cols = col_consts.len();
@@ -334,7 +332,7 @@ fn emit_single_output_gate<MW: FieldWrapper>(
     });
 }
 
-fn emit_setup_horner_eval<F: PrimeField>(
+fn emit_setup_horner_eval<MW: FieldWrapper>(
     addrs: &[GKRAddress],
     var_name: &str,
     input_sorted_addrs: &[GKRAddress],
@@ -349,7 +347,7 @@ fn emit_setup_horner_eval<F: PrimeField>(
         proc_macro2::Span::call_site(),
     );
 
-    let one_mont = coeff_to_internal_repr::<F>(1) as usize;
+    let one_mont = MW::coeff_to_internal_repr(1) as usize;
     let mut col_consts = Vec::new();
     let mut col_counts = Vec::new();
     let mut term_idx = Vec::new();
@@ -375,7 +373,7 @@ fn emit_setup_horner_eval<F: PrimeField>(
     }
 }
 
-fn emit_max_quadratic_eval<F: PrimeField>(
+fn emit_max_quadratic_eval<MW: FieldWrapper>(
     input: &prover::cs::gkr_compiler::NoFieldMaxQuadraticGKRRelation,
     var_name: &str,
     input_sorted_addrs: &[GKRAddress],
@@ -386,7 +384,7 @@ fn emit_max_quadratic_eval<F: PrimeField>(
     let qi_name = syn::Ident::new(&format!("{}_QI", prefix), proc_macro2::Span::call_site());
     let ln_name = syn::Ident::new(&format!("{}_LN", prefix), proc_macro2::Span::call_site());
 
-    let constant = coeff_to_internal_repr::<F>(input.constant) as usize;
+    let constant = MW::coeff_to_internal_repr(input.constant) as usize;
 
     let mut quad_outer_idx = Vec::new();
     let mut quad_outer_count = Vec::new();
@@ -398,7 +396,7 @@ fn emit_max_quadratic_eval<F: PrimeField>(
         quad_outer_count.push(inner_terms.len());
         for &(coeff, ref addr_b) in inner_terms.iter() {
             quad_inner_idx.push(addr_to_idx(addr_b, input_sorted_addrs));
-            quad_inner_coeff.push(coeff_to_internal_repr::<F>(coeff) as usize);
+            quad_inner_coeff.push(MW::coeff_to_internal_repr(coeff) as usize);
         }
     }
 
@@ -406,7 +404,7 @@ fn emit_max_quadratic_eval<F: PrimeField>(
     let mut lin_coeff = Vec::new();
     for &(coeff, ref addr) in input.linear_terms.iter() {
         lin_idx.push(addr_to_idx(addr, input_sorted_addrs));
-        lin_coeff.push(coeff_to_internal_repr::<F>(coeff) as usize);
+        lin_coeff.push(MW::coeff_to_internal_repr(coeff) as usize);
     }
 
     let nqo = quad_outer_idx.len();
@@ -421,7 +419,7 @@ fn emit_max_quadratic_eval<F: PrimeField>(
     }
 }
 
-fn emit_memory_expression_eval<F: PrimeField>(
+fn emit_memory_expression_eval<MW: FieldWrapper>(
     rel: &NoFieldSpecialMemoryContributionRelation,
     var_name: &str,
     input_sorted_addrs: &[GKRAddress],
@@ -434,7 +432,7 @@ fn emit_memory_expression_eval<F: PrimeField>(
 
     let blm = |offset: usize| GKRAddress::BaseLayerMemory(offset);
     let idx = |offset: usize| addr_to_idx(&blm(offset), input_sorted_addrs);
-    let mont = |v: u32| coeff_to_internal_repr::<F>(v) as usize;
+    let mont = |v: u32| MW::coeff_to_internal_repr(v) as usize;
 
     let mut ops: Vec<[usize; 6]> = Vec::new();
 
@@ -1064,13 +1062,13 @@ fn generate_simple_gate_loop<MW: FieldWrapper>(
     }
 }
 
-fn emit_single_output_value<MW: FieldWrapper, F: PrimeField>(
+fn emit_single_output_value<MW: FieldWrapper>(
     gate: &prover::cs::gkr_compiler::GateArtifacts,
     input_sorted_addrs: &[GKRAddress],
 ) -> Option<TokenStream> {
     use NoFieldGKRRelation as R;
     match &gate.enforced_relation {
-        R::EnforceSingleMaxQuadraticConstraint { input } => Some(emit_max_quadratic_eval::<F>(
+        R::EnforceSingleMaxQuadraticConstraint { input } => Some(emit_max_quadratic_eval::<MW>(
             input,
             "val",
             input_sorted_addrs,
@@ -1080,40 +1078,40 @@ fn emit_single_output_value<MW: FieldWrapper, F: PrimeField>(
                 "EnforceConstraintsMaxQuadratic is not supported; use individual EnforceSingleMaxQuadraticConstraint gates"
             );
         }
-        R::LinearBaseFieldRelation { input, .. } => Some(emit_linear_relation_eval::<MW, F>(
+        R::LinearBaseFieldRelation { input, .. } => Some(emit_linear_relation_eval::<MW>(
             input,
             "val",
             input_sorted_addrs,
         )),
-        R::MaxQuadratic { input, .. } => Some(emit_max_quadratic_eval::<F>(
+        R::MaxQuadratic { input, .. } => Some(emit_max_quadratic_eval::<MW>(
             input,
             "val",
             input_sorted_addrs,
         )),
-        R::MaterializeSingleLookupInput { input, .. } => Some(emit_linear_relation_eval::<MW, F>(
+        R::MaterializeSingleLookupInput { input, .. } => Some(emit_linear_relation_eval::<MW>(
             &input.input,
             "val",
             input_sorted_addrs,
         )),
-        R::MaterializedVectorLookupInput { input, .. } => Some(emit_vector_lookup_eval::<MW, F>(
+        R::MaterializedVectorLookupInput { input, .. } => Some(emit_vector_lookup_eval::<MW>(
             input,
             "val",
             input_sorted_addrs,
         )),
         R::InitialGrandProductWithoutCaches { input, .. } => {
-            let mem_a = emit_memory_expression_eval::<F>(&input[0], "mem_a", input_sorted_addrs);
-            let mem_b = emit_memory_expression_eval::<F>(&input[1], "mem_b", input_sorted_addrs);
+            let mem_a = emit_memory_expression_eval::<MW>(&input[0], "mem_a", input_sorted_addrs);
+            let mem_b = emit_memory_expression_eval::<MW>(&input[1], "mem_b", input_sorted_addrs);
             let mul_ab = MW::mul_assign(quote! { mem_a }, quote! { mem_b });
             Some(quote! { #mem_a #mem_b #mul_ab; let val = mem_a; })
         }
         R::MaterializeGrandProductTermExpression { input, .. } => Some(
-            emit_memory_expression_eval::<F>(input, "val", input_sorted_addrs),
+            emit_memory_expression_eval::<MW>(input, "val", input_sorted_addrs),
         ),
         _ => None,
     }
 }
 
-fn emit_dual_output_for_relation<MW: FieldWrapper, F: PrimeField>(
+fn emit_dual_output_for_relation<MW: FieldWrapper>(
     body: &mut TokenStream,
     mul_batch: &TokenStream,
     gate: &prover::cs::gkr_compiler::GateArtifacts,
@@ -1143,23 +1141,23 @@ fn emit_dual_output_for_relation<MW: FieldWrapper, F: PrimeField>(
     match &gate.enforced_relation {
         R::LookupPairFromBaseInputs { input, .. } => {
             let comp_a =
-                emit_linear_relation_eval::<MW, F>(&input[0].input, "a_val", input_sorted_addrs);
+                emit_linear_relation_eval::<MW>(&input[0].input, "a_val", input_sorted_addrs);
             let comp_b =
-                emit_linear_relation_eval::<MW, F>(&input[1].input, "b_val", input_sorted_addrs);
+                emit_linear_relation_eval::<MW>(&input[1].input, "b_val", input_sorted_addrs);
             standard_lookup_pair(body, comp_a, comp_b);
             true
         }
         R::LookupPairFromVectorInputs { input, .. } => {
-            let comp_a = emit_vector_lookup_eval::<MW, F>(&input[0], "a_val", input_sorted_addrs);
-            let comp_b = emit_vector_lookup_eval::<MW, F>(&input[1], "b_val", input_sorted_addrs);
+            let comp_a = emit_vector_lookup_eval::<MW>(&input[0], "a_val", input_sorted_addrs);
+            let comp_b = emit_vector_lookup_eval::<MW>(&input[1], "b_val", input_sorted_addrs);
             standard_lookup_pair(body, comp_a, comp_b);
             true
         }
         R::LookupWithDensAndSetupExpressions { input, setup, .. } => {
             let a_idx = addr_to_idx(&input.0, input_sorted_addrs);
             let c_idx = addr_to_idx(&setup.0, input_sorted_addrs);
-            let comp_b = emit_vector_lookup_eval::<MW, F>(&input.1, "b_val", input_sorted_addrs);
-            let comp_d = emit_setup_horner_eval::<F>(&setup.1, "d_val", input_sorted_addrs);
+            let comp_b = emit_vector_lookup_eval::<MW>(&input.1, "b_val", input_sorted_addrs);
+            let comp_d = emit_setup_horner_eval::<MW>(&setup.1, "d_val", input_sorted_addrs);
             let add_gamma_b =
                 MW::add_assign(quote! { b_val }, quote! { lookup_additive_challenge });
             let add_gamma_d =
@@ -1195,7 +1193,7 @@ fn emit_dual_output_for_relation<MW: FieldWrapper, F: PrimeField>(
         } => {
             let a_idx = addr_to_idx(&input[0], input_sorted_addrs);
             let b_idx = addr_to_idx(&input[1], input_sorted_addrs);
-            let comp_c = emit_vector_lookup_eval::<MW, F>(remainder, "c_val", input_sorted_addrs);
+            let comp_c = emit_vector_lookup_eval::<MW>(remainder, "c_val", input_sorted_addrs);
             let add_gamma_c =
                 MW::add_assign(quote! { c_val }, quote! { lookup_additive_challenge });
             generate_two_output_body::<MW>(
@@ -1219,9 +1217,9 @@ fn emit_dual_output_for_relation<MW: FieldWrapper, F: PrimeField>(
             true
         }
         R::LookupFromVectorInputWithSetup { input, setup, .. } => {
-            let comp_a = emit_vector_lookup_eval::<MW, F>(input, "a_val", input_sorted_addrs);
+            let comp_a = emit_vector_lookup_eval::<MW>(input, "a_val", input_sorted_addrs);
             let c_idx = addr_to_idx(&setup.0, input_sorted_addrs);
-            let comp_d = emit_setup_horner_eval::<F>(&setup.1, "d_val", input_sorted_addrs);
+            let comp_d = emit_setup_horner_eval::<MW>(&setup.1, "d_val", input_sorted_addrs);
             let add_gamma_a =
                 MW::add_assign(quote! { a_val }, quote! { lookup_additive_challenge });
             let add_gamma_d =
@@ -1254,7 +1252,7 @@ fn emit_dual_output_for_relation<MW: FieldWrapper, F: PrimeField>(
     }
 }
 
-fn emit_inits_teardowns<MW: FieldWrapper, F: PrimeField>(
+fn emit_inits_teardowns<MW: FieldWrapper>(
     body: &mut TokenStream,
     mul_batch: &TokenStream,
     gate: &prover::cs::gkr_compiler::GateArtifacts,
@@ -1339,7 +1337,7 @@ fn emit_inits_teardowns<MW: FieldWrapper, F: PrimeField>(
         };
 
         let field_struct_local = MW::field_struct();
-        let ram_constant = coeff_to_internal_repr::<F>(1) as u32;
+        let ram_constant = MW::coeff_to_internal_repr(1) as u32;
         val_comp.extend(quote! {
             let mut #var = {
                 let mut result = permutation_argument_additive_part;
@@ -1373,7 +1371,7 @@ fn emit_inits_teardowns<MW: FieldWrapper, F: PrimeField>(
     emit_single_output_gate::<MW>(body, mul_batch, val_comp);
 }
 
-pub fn generate_layer_final_step_accumulator<MW: FieldWrapper, F: PrimeField>(
+pub fn generate_layer_final_step_accumulator<MW: FieldWrapper>(
     layer: &GKRLayerDescription,
     layer_idx: usize,
     input_sorted_addrs: &[GKRAddress],
@@ -1435,7 +1433,7 @@ pub fn generate_layer_final_step_accumulator<MW: FieldWrapper, F: PrimeField>(
             | R::InitialGrandProductWithoutCaches { .. }
             | R::MaterializeGrandProductTermExpression { .. } => {
                 flush_simple(&mut body, &mut simple_group);
-                let val = emit_single_output_value::<MW, F>(gate, input_sorted_addrs)
+                let val = emit_single_output_value::<MW>(gate, input_sorted_addrs)
                     .expect("matched single-output gate must produce value");
                 emit_single_output_gate::<MW>(&mut body, &mul_batch, val);
             }
@@ -1447,7 +1445,7 @@ pub fn generate_layer_final_step_accumulator<MW: FieldWrapper, F: PrimeField>(
             | R::LookupUnbalancedPairWithVectorInputs { .. }
             | R::LookupFromVectorInputWithSetup { .. } => {
                 flush_simple(&mut body, &mut simple_group);
-                emit_dual_output_for_relation::<MW, F>(
+                emit_dual_output_for_relation::<MW>(
                     &mut body,
                     &mul_batch,
                     gate,
@@ -1458,7 +1456,7 @@ pub fn generate_layer_final_step_accumulator<MW: FieldWrapper, F: PrimeField>(
             // Init/teardown — unique structure
             R::InitsOrTeardownsInitialPair { .. } => {
                 flush_simple(&mut body, &mut simple_group);
-                emit_inits_teardowns::<MW, F>(&mut body, &mul_batch, gate, input_sorted_addrs);
+                emit_inits_teardowns::<MW>(&mut body, &mul_batch, gate, input_sorted_addrs);
             }
 
             _ => {

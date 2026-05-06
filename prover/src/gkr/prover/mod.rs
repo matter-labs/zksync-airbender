@@ -210,6 +210,19 @@ impl WhirSchedule {
 
         new
     }
+
+    // TODO(100-bit)
+    pub fn default_for_tests_100_bits_20() -> Self {
+        todo!()
+    }
+
+    pub fn default_for_tests_100_bits_22() -> Self {
+        todo!()
+    }
+
+    pub fn default_for_tests_100_bits_24() -> Self {
+        todo!()
+    }
 }
 
 pub(crate) fn split_destinations<T: Sized>(

@@ -1,22 +1,18 @@
-use cs::definitions::NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES;
 use proc_macro2::TokenStream;
 use quote::{quote, TokenStreamExt};
 use std::collections::BTreeMap;
-use verifier_common::blake2s_u32::{BLAKE2S_BLOCK_SIZE_U32_WORDS, BLAKE2S_DIGEST_SIZE_U32_WORDS};
 
 use crate::field_wrapper::FieldWrapper;
 pub use crate::utils::{
-    addr_to_idx, coeff_to_internal_repr, collect_extra_addrs_from_cached_relations,
-    collect_sorted_unique_addrs, compute_max_pow, transform_gkr_address, BATCHING_CHALLENGE_EXTRA,
-    DIM_REDUCE_EVAL_POINTS, STANDARD_EVAL_POINTS, SUMCHECK_POLY_COEFFS,
+    addr_to_idx, collect_extra_addrs_from_cached_relations, collect_sorted_unique_addrs,
+    compute_max_pow, transform_gkr_address, BATCHING_CHALLENGE_EXTRA, DIM_REDUCE_EVAL_POINTS,
+    STANDARD_EVAL_POINTS, SUMCHECK_POLY_COEFFS,
 };
 use prover::cs::definitions::GKRAddress;
 use prover::cs::gkr_compiler::{
     GKRCircuitArtifact, GKRLayerDescription, NoFieldGKRCacheRelation, OutputType,
 };
-use prover::field::{Field, FieldExtension, PrimeField};
-use prover::gkr::prover::{GKRProof, WhirSchedule};
-use prover::merkle_trees::ColumnMajorMerkleTreeConstructor;
+use prover::gkr::prover::WhirSchedule;
 
 pub mod dim_reducing_layer;
 pub mod standard_layer;
@@ -69,28 +65,6 @@ pub struct GKRGeneratedFiles {
 pub struct GKROutputGroupInfo {
     pub output_type: OutputType,
     pub num_addresses: usize,
-}
-
-fn compute_padding_words(
-    inits_and_teardown_sets: usize,
-    ext_degree: usize,
-    cap_size: usize,
-    memory_commits: usize,
-    witness_commits: usize,
-    setup_commits: usize,
-) -> usize {
-    let mut total_u32_words = 0;
-    total_u32_words += inits_and_teardown_sets;
-    total_u32_words += ext_degree * (NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES + 1);
-    total_u32_words += cap_size
-        * BLAKE2S_DIGEST_SIZE_U32_WORDS
-        * (memory_commits + witness_commits + setup_commits);
-
-    if total_u32_words % BLAKE2S_BLOCK_SIZE_U32_WORDS == 0 {
-        0
-    } else {
-        BLAKE2S_BLOCK_SIZE_U32_WORDS - (total_u32_words % BLAKE2S_BLOCK_SIZE_U32_WORDS)
-    }
 }
 
 pub fn generate_gkr_common<MW: FieldWrapper>() -> TokenStream {
@@ -318,7 +292,7 @@ pub fn generate_gkr_common<MW: FieldWrapper>() -> TokenStream {
     }
 }
 
-fn generate_cache_relation_checks<MW: FieldWrapper, F: PrimeField>(
+fn generate_cache_relation_checks<MW: FieldWrapper>(
     layer: &GKRLayerDescription,
     target_addrs: &[GKRAddress],
     layer_idx: usize,
@@ -360,11 +334,11 @@ fn generate_cache_relation_checks<MW: FieldWrapper, F: PrimeField>(
             } => {
                 let term_start = single_terms.len();
                 for &(coeff, ref addr) in rel.input.linear_terms.iter() {
-                    single_terms.push((coeff_to_internal_repr::<F>(coeff), find_idx(addr)));
+                    single_terms.push((MW::coeff_to_internal_repr(coeff), find_idx(addr)));
                 }
                 single_descs.push((
                     cached_idx,
-                    coeff_to_internal_repr::<F>(rel.input.constant),
+                    MW::coeff_to_internal_repr(rel.input.constant),
                     term_start,
                     rel.input.linear_terms.len(),
                 ));
@@ -374,10 +348,10 @@ fn generate_cache_relation_checks<MW: FieldWrapper, F: PrimeField>(
                 for column in rel.columns.iter() {
                     let t_start = vector_terms.len();
                     for &(coeff, ref addr) in column.linear_terms.iter() {
-                        vector_terms.push((coeff_to_internal_repr::<F>(coeff), find_idx(addr)));
+                        vector_terms.push((MW::coeff_to_internal_repr(coeff), find_idx(addr)));
                     }
                     vector_cols.push((
-                        coeff_to_internal_repr::<F>(column.constant),
+                        MW::coeff_to_internal_repr(column.constant),
                         t_start,
                         column.linear_terms.len(),
                     ));
@@ -413,6 +387,8 @@ fn generate_cache_relation_checks<MW: FieldWrapper, F: PrimeField>(
             quote! { #field_struct::from_reduced_raw_repr(coeff) },
         );
         let add_exp = MW::add_assign(quote! { expected }, quote! { t });
+        let from_base_const =
+            MW::quartic_from_base(quote! { #field_struct::from_reduced_raw_repr(constant) });
 
         checks.extend(quote! {
             {
@@ -425,9 +401,7 @@ fn generate_cache_relation_checks<MW: FieldWrapper, F: PrimeField>(
                 let mut _sc = 0;
                 while _sc < #num_descs {
                     let (cached_idx, constant, term_start, term_count) = SC_DESCS[_sc];
-                    let mut expected: #quartic_struct =
-                        <#quartic_struct as FieldExtension<#field_struct>>::from_base(
-                            #field_struct::from_reduced_raw_repr(constant));
+                    let mut expected: #quartic_struct = #from_base_const;
                     let mut _t = 0;
                     while _t < term_count {
                         let (coeff, dep_idx) = SC_TERMS[term_start + _t];
@@ -469,6 +443,8 @@ fn generate_cache_relation_checks<MW: FieldWrapper, F: PrimeField>(
         let mul_ap = MW::mul_assign(quote! { term }, quote! { alpha_power });
         let add_exp = MW::add_assign(quote! { expected }, quote! { term });
         let mul_alpha = MW::mul_assign(quote! { alpha_power }, quote! { lookup_alpha });
+        let from_base_col_const =
+            MW::quartic_from_base(quote! { #field_struct::from_reduced_raw_repr(col_constant) });
 
         checks.extend(quote! {
             {
@@ -489,9 +465,7 @@ fn generate_cache_relation_checks<MW: FieldWrapper, F: PrimeField>(
                     let mut _c = 0;
                     while _c < col_count {
                         let (col_constant, term_start, term_count) = VL_COLS[col_start + _c];
-                        let mut col_val: #quartic_struct =
-                            <#quartic_struct as FieldExtension<#field_struct>>::from_base(
-                                #field_struct::from_reduced_raw_repr(col_constant));
+                        let mut col_val: #quartic_struct = #from_base_col_const;
                         let mut _t = 0;
                         while _t < term_count {
                             let (coeff, dep_idx) = VL_TERMS[term_start + _t];
@@ -564,16 +538,11 @@ fn generate_cache_relation_checks<MW: FieldWrapper, F: PrimeField>(
 }
 
 #[allow(clippy::needless_range_loop)]
-pub fn generate_gkr_inlined<MW: FieldWrapper, F: PrimeField, E: FieldExtension<F> + Field, T>(
-    compiled_circuit: &GKRCircuitArtifact<F>,
-    proof: &GKRProof<F, E, T>,
+pub fn generate_gkr_inlined<MW: FieldWrapper>(
+    compiled_circuit: &GKRCircuitArtifact<MW::BaseField>,
     sumcheck_output_size_log_2: usize,
     whir_schedule: &WhirSchedule,
-) -> GKRGeneratedFiles
-where
-    T: ColumnMajorMerkleTreeConstructor<F>,
-    [(); E::DEGREE]: Sized,
-{
+) -> GKRGeneratedFiles {
     let num_standard_layers = compiled_circuit.layers.len();
     let trace_len = compiled_circuit.trace_len;
     assert!(trace_len.is_power_of_two());
@@ -724,29 +693,10 @@ where
     let num_witness_commits = (compiled_circuit.witness_layout.total_width > 0) as usize;
     let num_setup_commits = (compiled_circuit.generic_lookup_tables_width > 0) as usize;
 
-    let degree = E::DEGREE;
-    let digest_words = prover::transcript::blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS;
     let num_challenges = sumcheck_output_size_log_2 + BATCHING_CHALLENGE_EXTRA;
-    let draw_buf_capacity = (num_challenges * degree).next_multiple_of(digest_words);
-    let block_words = prover::transcript::blake2s_u32::BLAKE2S_BLOCK_SIZE_U32_WORDS;
-    let dim_reducing_words_per_addr = DIM_REDUCE_EVAL_POINTS * degree;
-    let standard_words_per_addr = STANDARD_EVAL_POINTS * degree;
-    let max_data_words = (max_addrs * dim_reducing_words_per_addr)
-        .max(max_addrs * standard_words_per_addr)
-        .max(max_evals * degree);
-    let total = digest_words + max_data_words;
-    let eval_buf_size = total.div_ceil(block_words) * block_words;
-
-    let commit_buf_total = digest_words + SUMCHECK_POLY_COEFFS * degree;
-    let commit_buf_size = commit_buf_total.div_ceil(block_words) * block_words;
-
-    let evals_commit_total = digest_words + max_evals * degree;
-    let evals_commit_buf_size = evals_commit_total.div_ceil(block_words) * block_words;
-
     let num_teardown_sets = compiled_circuit.memory_layout.teardown_sets.len();
     let num_linearization_challenges =
         ::cs::definitions::NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES;
-    let external_challenges_flattened_size = degree * (num_linearization_challenges + 1);
 
     let trace_len_log2 = compiled_circuit.trace_len.trailing_zeros() as usize;
 
@@ -765,13 +715,11 @@ where
             layer_idx,
             get_output_sorted_addrs(layer_idx),
         ));
-        layer_functions.extend(
-            standard_layer::generate_layer_final_step_accumulator::<MW, F>(
-                &compiled_circuit.layers[layer_idx],
-                layer_idx,
-                &standard_sorted_addrs[layer_idx],
-            ),
-        );
+        layer_functions.extend(standard_layer::generate_layer_final_step_accumulator::<MW>(
+            &compiled_circuit.layers[layer_idx],
+            layer_idx,
+            &standard_sorted_addrs[layer_idx],
+        ));
     }
 
     if num_standard_layers <= initial_layer_for_sumcheck {
@@ -906,11 +854,8 @@ where
     });
 
     for config_idx in (num_standard_layers..initial_layer_for_sumcheck).rev() {
-        let proof_values = proof
-            .sumcheck_intermediate_values
-            .get(&config_idx)
-            .expect("missing sumcheck values");
-        let num_sumcheck_rounds = proof_values.sumcheck_num_rounds;
+        let num_sumcheck_rounds =
+            sumcheck_output_size_log_2 + (initial_layer_for_sumcheck - 1 - config_idx);
         let dim_idx = config_idx - num_standard_layers;
         let num_input_addrs = dim_reducing_sorted_addrs[dim_idx].len();
         let indices_name = quote::format_ident!("DIM_REDUCE_INDICES_{}", config_idx);
@@ -923,7 +868,7 @@ where
                     verify_sumcheck_rounds::<I, E, #num_regular_rounds, GKR_COMMIT_BUF>(
                         ts, initial_claim, &mut state.prev_point, #config_idx)?;
                 let mut fc_len = #num_regular_rounds;
-                let data_words = #num_input_addrs * 4 * <#quartic_struct as FieldExtension<#field_struct>>::DEGREE;
+                let data_words = #num_input_addrs * 4 * EXT_DEGREE;
                 {
                     let mut i = 0;
                     while i < data_words {
@@ -968,11 +913,7 @@ where
     }
 
     for config_idx in (0..num_standard_layers).rev() {
-        let proof_values = proof
-            .sumcheck_intermediate_values
-            .get(&config_idx)
-            .expect("missing sumcheck values");
-        let num_sumcheck_rounds = proof_values.sumcheck_num_rounds;
+        let num_sumcheck_rounds = trace_len_log_2;
         let num_dedup_addrs = standard_sorted_addrs[config_idx].len();
         let num_output_addrs = get_output_sorted_addrs(config_idx).len();
         let compute_claim_fn = quote::format_ident!("layer_{}_compute_claim", config_idx);
@@ -1013,11 +954,11 @@ where
             let ep_merged: Vec<usize> = extra_positions.iter().map(|p| p.0).collect();
             let ep_extra: Vec<usize> = extra_positions.iter().map(|p| p.1).collect();
 
-            let extra_data_words = num_extra * E::DEGREE;
-            let extra_commit_total = digest_words + extra_data_words;
-            let extra_commit_buf_size = extra_commit_total.div_ceil(block_words) * block_words;
             quote! {
-                const EXTRA_COMMIT_BUF: usize = #extra_commit_buf_size;
+                const EXTRA_COMMIT_BUF: usize = {
+                    let total = BLAKE2S_DIGEST_SIZE_U32_WORDS + #num_extra * EXT_DEGREE;
+                    total.div_ceil(BLAKE2S_BLOCK_SIZE_U32_WORDS) * BLAKE2S_BLOCK_SIZE_U32_WORDS
+                };
                 let mut extra_buf = CommitBuf::<EXTRA_COMMIT_BUF>::new();
                 let extra_data_words = #num_extra * EXT_DEGREE;
                 {
@@ -1067,7 +1008,7 @@ where
             }
         };
 
-        let cache_check_code = generate_cache_relation_checks::<MW, F>(
+        let cache_check_code = generate_cache_relation_checks::<MW>(
             &compiled_circuit.layers[config_idx],
             &target_addrs,
             config_idx,
@@ -1080,7 +1021,7 @@ where
                     verify_sumcheck_rounds::<I, E, #num_regular_rounds, GKR_COMMIT_BUF>(
                         ts, initial_claim, &mut state.prev_point, #config_idx)?;
                 let mut fc_len = #num_regular_rounds;
-                let data_words = #num_dedup_addrs * 2 * <#quartic_struct as FieldExtension<#field_struct>>::DEGREE;
+                let data_words = #num_dedup_addrs * 2 * EXT_DEGREE;
                 {
                     let mut i = 0;
                     while i < data_words {
@@ -1238,15 +1179,6 @@ where
     let canonical_depth =
         trace_len_log2 + base_lde_factor_log2 - initial_fold_steps - cap_size_log2;
 
-    let padding_words = compute_padding_words(
-        compiled_circuit.memory_layout.teardown_sets.len(),
-        degree,
-        configured_cap_size,
-        num_memory_commits,
-        num_witness_commits,
-        num_setup_commits,
-    );
-
     let mut oracles = BTreeMap::new();
     {
         // memory
@@ -1359,6 +1291,11 @@ where
 
     let constants = quote! {
         use ::verifier_common::cs::definitions::{GKRAddress, VirtualSetupPoly};
+        use ::verifier_common::blake2s_u32::{
+            BLAKE2S_BLOCK_SIZE_U32_WORDS, BLAKE2S_DIGEST_SIZE_U32_WORDS,
+        };
+        use ::verifier_common::{DIM_REDUCE_EVAL_POINTS, STANDARD_EVAL_POINTS, SUMCHECK_POLY_COEFFS};
+        use super::common::EXT_DEGREE;
 
         // Upper bound on GKR sumcheck rounds for internal buffers
         pub const GKR_ROUNDS: usize = #max_sumcheck_rounds;
@@ -1368,7 +1305,8 @@ where
 
         pub const INIT_AND_TEARDOWN_SETS: usize = #num_teardown_sets;
 
-        pub const EXTERNAL_CHALLENGES_FLATTENED_SIZE: usize = #external_challenges_flattened_size;
+        pub const EXTERNAL_CHALLENGES_FLATTENED_SIZE: usize =
+            EXT_DEGREE * (#num_linearization_challenges + 1);
 
         pub const CAP_SIZE: usize = #configured_cap_size;
 
@@ -1376,13 +1314,37 @@ where
         pub const NUM_WITNESS_COMMITS: usize = #num_witness_commits;
         pub const NUM_SETUP_COMMITS: usize = #num_setup_commits;
 
-        pub const PADDING_WORDS: usize = #padding_words;
+        pub const PADDING_WORDS: usize = {
+            let mut total = #num_teardown_sets;
+            total += EXT_DEGREE
+                * (::verifier_common::cs::definitions::NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES + 1);
+            total += CAP_SIZE
+                * BLAKE2S_DIGEST_SIZE_U32_WORDS
+                * (NUM_MEMORY_COMMITS + NUM_WITNESS_COMMITS + NUM_SETUP_COMMITS);
+            let rem = total % BLAKE2S_BLOCK_SIZE_U32_WORDS;
+            if rem == 0 { 0 } else { BLAKE2S_BLOCK_SIZE_U32_WORDS - rem }
+        };
 
         pub const GKR_MAX_POW: usize = #max_pow;
-        pub const GKR_EVAL_BUF: usize = #eval_buf_size;
-        pub const GKR_COMMIT_BUF: usize = #commit_buf_size;
-        pub const GKR_EVALS_COMMIT_BUF: usize = #evals_commit_buf_size;
-        pub const DRAW_BUF_CAPACITY: usize = #draw_buf_capacity;
+        pub const GKR_EVAL_BUF: usize = {
+            let dim_reducing = #max_addrs * DIM_REDUCE_EVAL_POINTS * EXT_DEGREE;
+            let standard = #max_addrs * STANDARD_EVAL_POINTS * EXT_DEGREE;
+            let evals = #max_evals * EXT_DEGREE;
+            let max_data = if dim_reducing > standard { dim_reducing } else { standard };
+            let max_data = if max_data > evals { max_data } else { evals };
+            let total = BLAKE2S_DIGEST_SIZE_U32_WORDS + max_data;
+            total.div_ceil(BLAKE2S_BLOCK_SIZE_U32_WORDS) * BLAKE2S_BLOCK_SIZE_U32_WORDS
+        };
+        pub const GKR_COMMIT_BUF: usize = {
+            let total = BLAKE2S_DIGEST_SIZE_U32_WORDS + SUMCHECK_POLY_COEFFS * EXT_DEGREE;
+            total.div_ceil(BLAKE2S_BLOCK_SIZE_U32_WORDS) * BLAKE2S_BLOCK_SIZE_U32_WORDS
+        };
+        pub const GKR_EVALS_COMMIT_BUF: usize = {
+            let total = BLAKE2S_DIGEST_SIZE_U32_WORDS + #max_evals * EXT_DEGREE;
+            total.div_ceil(BLAKE2S_BLOCK_SIZE_U32_WORDS) * BLAKE2S_BLOCK_SIZE_U32_WORDS
+        };
+        pub const DRAW_BUF_CAPACITY: usize =
+            (#num_challenges * EXT_DEGREE).next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS);
         #static_data
         pub const BASE_LAYER_ADDITIONAL_OPENINGS: &[GKRAddress] = &[#base_openings_stream];
         pub const WHIR_FOLD_STEPS: [usize; #whir_rounds] = [#(#whir_fold_steps),*];
@@ -1423,6 +1385,9 @@ where
         use ::verifier_common::lazy_vec::LazyVec;
         use ::verifier_common::errors::ErrorCreator;
         use ::verifier_common::structs::{CommitBuf, TranscriptState};
+        use ::verifier_common::blake2s_u32::{
+            BLAKE2S_BLOCK_SIZE_U32_WORDS, BLAKE2S_DIGEST_SIZE_U32_WORDS,
+        };
         use super::common::{
             verify_sumcheck_rounds, verify_final_step_check, fold_standard_claims,
             make_eq_poly, dot_eq, draw_field_els_into, draw_single_field_el,

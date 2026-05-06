@@ -20,7 +20,10 @@ proc-macro2 = "1"
 serde_json = "*"
 
 [features]
+default = ["security_80"]
 no_caches = ["verifier_common/no_caches"]
+security_80 = ["verifier_common/security_80"]
+security_100 = ["verifier_common/security_100"]
 
 [dev-dependencies]
 test_utils = { workspace = true }
