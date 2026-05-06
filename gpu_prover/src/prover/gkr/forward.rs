@@ -2997,6 +2997,7 @@ mod tests {
             layer: 0,
             gates_with_external_connections: Vec::new(),
             cached_relations: BTreeMap::new(),
+            intermediate_layer_width: None,
             gates: vec![
                 GateArtifacts {
                     output_layer: 1,
