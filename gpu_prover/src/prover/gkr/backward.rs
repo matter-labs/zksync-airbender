@@ -4856,10 +4856,14 @@ where
     ) -> CudaResult<()> {
         let mut batch = self.round1_batch_template_compact;
         batch.eq_values = self.round_scratch.eq_values.as_ptr();
-        batch.folding_challenge = folding_challenge.as_ptr();
         batch.contributions = self.round_scratch.accumulator.as_mut_ptr();
         batch.explicit_form = explicit_form;
-        launch_dim_reducing_round1_batched_compact(&batch, acc_size, context)
+        launch_dim_reducing_round1_batched_compact(
+            &batch,
+            folding_challenge.as_ptr(),
+            acc_size,
+            context,
+        )
     }
 
     fn launch_round2_kernels(
@@ -4871,10 +4875,15 @@ where
     ) -> CudaResult<()> {
         let mut batch = self.continuation_batch_template_compact;
         batch.eq_values = self.round_scratch.eq_values.as_ptr();
-        batch.folding_challenge = folding_challenge.as_ptr();
         batch.contributions = self.round_scratch.accumulator.as_mut_ptr();
         batch.explicit_form = explicit_form;
-        launch_dim_reducing_continuation_batched_compact(&batch, acc_size, 2, context)
+        launch_dim_reducing_continuation_batched_compact(
+            &batch,
+            folding_challenge.as_ptr(),
+            acc_size,
+            2,
+            context,
+        )
     }
 
     fn launch_round3_kernels(
@@ -4887,10 +4896,15 @@ where
     ) -> CudaResult<()> {
         let mut batch = self.continuation_batch_template_compact;
         batch.eq_values = self.round_scratch.eq_values.as_ptr();
-        batch.folding_challenge = folding_challenge.as_ptr();
         batch.contributions = self.round_scratch.accumulator.as_mut_ptr();
         batch.explicit_form = explicit_form;
-        launch_dim_reducing_continuation_batched_compact(&batch, acc_size, step, context)
+        launch_dim_reducing_continuation_batched_compact(
+            &batch,
+            folding_challenge.as_ptr(),
+            acc_size,
+            step,
+            context,
+        )
     }
 
     fn schedule_round_coefficients_reduction(

@@ -38,16 +38,6 @@ template <typename B, typename E> struct gkr_base_after_one_source {
   gkr_base_source_kind source_kind;
 };
 
-template <typename B, typename E> struct gkr_base_after_two_source {
-  const B *base_input_start;
-  E *this_layer_cache_start;
-  size_t base_layer_half_size;
-  size_t base_quarter_size;
-  size_t next_layer_size;
-  bool first_access;
-  gkr_base_source_kind source_kind;
-};
-
 template <typename E> struct gkr_ext_continuing_source {
   const E *previous_layer_start;
   E *this_layer_start;
@@ -85,6 +75,8 @@ enum gkr_dim_reducing_kernel_kind : u32 {
 // __constant__ batch-challenge table for dim-reducing backward compact kernels.
 // Defined in dim_reducing_backward.cu.
 EXTERN __device__ __constant__ e4 ab_gkr_dim_reducing_batch_challenge_table[airbender::prover::gkr::GKR_DIM_REDUCING_BATCH_CHALLENGE_TABLE_LEN];
+EXTERN __device__ __constant__ e4 ab_gkr_dim_reducing_round1_challenge[1];
+EXTERN __device__ __constant__ e4 ab_gkr_dim_reducing_continuation_challenge[1];
 
 namespace airbender::prover::gkr {
 
@@ -147,7 +139,6 @@ template <typename E> struct gkr_dim_reducing_continuation_batch_compact {
   u32 reserved1;
   u32 reserved2;
   const E *eq_values;
-  const E *folding_challenge;
   E *contributions;
   bool explicit_form;
   u8 padding[7];
@@ -347,12 +338,6 @@ template <typename E> DEVICE_FORCEINLINE bf gkr_get_base_after_one_bf_value(cons
   return gkr_virtual_base_value(source.source_kind, index);
 }
 
-template <typename E> DEVICE_FORCEINLINE bf gkr_get_base_after_two_bf_value(const gkr_base_after_two_source<bf, E> &source, const unsigned index) {
-  if (source.source_kind == GKR_BASE_SOURCE_REAL)
-    return load<bf, ld_modifier::cs>(source.base_input_start, index);
-  return gkr_virtual_base_value(source.source_kind, index);
-}
-
 template <typename E> DEVICE_FORCEINLINE E gkr_get_initial_value(const gkr_ext_initial_source<E> &source, const unsigned index) {
   return load<E, ld_modifier::cs>(source.start, index);
 }
@@ -394,46 +379,6 @@ DEVICE_FORCEINLINE void gkr_get_base_after_one_points(const gkr_base_after_one_s
                                                       E &f0, E &f1_or_delta) {
   f0 = gkr_get_base_after_one_value(source, first_folding_challenge, index);
   const E f1 = gkr_get_base_after_one_value(source, first_folding_challenge, source.next_layer_size + index);
-  if constexpr (EXPLICIT_FORM) {
-    f1_or_delta = f1;
-  } else {
-    f1_or_delta = E::sub(f1, f0);
-  }
-}
-
-template <typename E>
-DEVICE_FORCEINLINE E gkr_get_base_after_two_value(const gkr_base_after_two_source<bf, E> &source, const E first_folding_challenge,
-                                                  const E second_folding_challenge, const unsigned index) {
-  if (!source.first_access)
-    return load<E, ld_modifier::cs>(source.this_layer_cache_start, index);
-
-  const bf f00 = gkr_get_base_after_two_bf_value(source, index);
-  const bf f01 = gkr_get_base_after_two_bf_value(source, source.base_layer_half_size + index);
-  const bf f10 = gkr_get_base_after_two_bf_value(source, source.base_quarter_size + index);
-  const bf f11 = gkr_get_base_after_two_bf_value(source, source.base_layer_half_size + source.base_quarter_size + index);
-
-  const bf c01 = bf::sub(f01, f00);
-  const bf c10 = bf::sub(f10, f00);
-  bf c11 = f00;
-  c11 = bf::sub(c11, f01);
-  c11 = bf::sub(c11, f10);
-  c11 = bf::add(c11, f11);
-
-  E combined_challenges = E::mul(first_folding_challenge, second_folding_challenge);
-  E result = E::mul(first_folding_challenge, c01);
-  result = E::fma(second_folding_challenge, c10, result);
-  result = E::fma(combined_challenges, c11, result);
-  result = E::add(result, f00);
-
-  store<E, st_modifier::cs>(source.this_layer_cache_start, result, index);
-  return result;
-}
-
-template <typename E, bool EXPLICIT_FORM>
-DEVICE_FORCEINLINE void gkr_get_base_after_two_points(const gkr_base_after_two_source<bf, E> &source, const E first_folding_challenge,
-                                                      const E second_folding_challenge, const unsigned index, E &f0, E &f1_or_delta) {
-  f0 = gkr_get_base_after_two_value(source, first_folding_challenge, second_folding_challenge, index);
-  const E f1 = gkr_get_base_after_two_value(source, first_folding_challenge, second_folding_challenge, source.next_layer_size + index);
   if constexpr (EXPLICIT_FORM) {
     f1_or_delta = f1;
   } else {
@@ -1175,11 +1120,11 @@ DEVICE_FORCEINLINE void gkr_dim_reducing_round1_batched_compact_inner(const gkr_
     E c1;
     switch (record.kind) {
     case GKR_DIM_REDUCING_PAIRWISE:
-      gkr_pairwise_continuation_values<E, EXPLICIT_FORM>(inputs, batch.folding_challenge,
+      gkr_pairwise_continuation_values<E, EXPLICIT_FORM>(inputs, ::ab_gkr_dim_reducing_round1_challenge,
                                                          ::ab_gkr_dim_reducing_batch_challenge_table[record.batch_challenge_offset], gid, c0, c1);
       break;
     case GKR_DIM_REDUCING_LOOKUP:
-      gkr_lookup_continuation_values<E, EXPLICIT_FORM>(inputs, batch.folding_challenge,
+      gkr_lookup_continuation_values<E, EXPLICIT_FORM>(inputs, ::ab_gkr_dim_reducing_round1_challenge,
                                                        ::ab_gkr_dim_reducing_batch_challenge_table[record.batch_challenge_offset],
                                                        ::ab_gkr_dim_reducing_batch_challenge_table[record.batch_challenge_offset + 1], gid, c0, c1);
       break;
@@ -1244,11 +1189,11 @@ DEVICE_FORCEINLINE void gkr_dim_reducing_continuation_batched_compact_inner(cons
     E c1;
     switch (record.kind) {
     case GKR_DIM_REDUCING_PAIRWISE:
-      gkr_pairwise_continuation_values<E, EXPLICIT_FORM>(inputs, batch.folding_challenge,
+      gkr_pairwise_continuation_values<E, EXPLICIT_FORM>(inputs, ::ab_gkr_dim_reducing_continuation_challenge,
                                                          ::ab_gkr_dim_reducing_batch_challenge_table[record.batch_challenge_offset], gid, c0, c1);
       break;
     case GKR_DIM_REDUCING_LOOKUP:
-      gkr_lookup_continuation_values<E, EXPLICIT_FORM>(inputs, batch.folding_challenge,
+      gkr_lookup_continuation_values<E, EXPLICIT_FORM>(inputs, ::ab_gkr_dim_reducing_continuation_challenge,
                                                        ::ab_gkr_dim_reducing_batch_challenge_table[record.batch_challenge_offset],
                                                        ::ab_gkr_dim_reducing_batch_challenge_table[record.batch_challenge_offset + 1], gid, c0, c1);
       break;

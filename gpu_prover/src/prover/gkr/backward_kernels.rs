@@ -41,7 +41,9 @@ use crate::primitives::context::{
 use crate::primitives::device_structures::{DeviceVectorChunk, DeviceVectorChunkMut};
 use crate::primitives::device_tracing::Range;
 use crate::primitives::field::{BF, E4};
-use crate::primitives::utils::{get_grid_block_dims_for_threads_count, WARP_SIZE};
+use crate::primitives::utils::{
+    get_grid_block_dims_for_threads_count, memcpy_to_symbol_from_device_async, WARP_SIZE,
+};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct ClaimBufferLayout {
@@ -436,7 +438,6 @@ pub(crate) struct GpuGKRDimensionReducingContinuationBatchCompact<E> {
     pub(crate) _reserved1: u32,
     pub(crate) _reserved2: u32,
     pub(crate) eq_values: *const E,
-    pub(crate) folding_challenge: *const E,
     pub(crate) contributions: *mut E,
     pub(crate) explicit_form: bool,
     pub(crate) _padding: [u8; 7],
@@ -454,7 +455,6 @@ impl<E: Field> Default for GpuGKRDimensionReducingContinuationBatchCompact<E> {
             _reserved1: 0,
             _reserved2: 0,
             eq_values: null(),
-            folding_challenge: null(),
             contributions: null_mut(),
             explicit_form: false,
             _padding: [0; 7],
@@ -1464,6 +1464,20 @@ pub(super) const GKR_TRACE_HOLDER_PARTIALS_COLUMNS_PER_CHUNK: usize = 4;
 pub(super) const GKR_EQ_GROUP_SIZE: usize = 8;
 pub(super) const GKR_EQ_GROUP_TABLE_LEN: usize = 1 << GKR_EQ_GROUP_SIZE;
 
+extern "C" {
+    static ab_gkr_dim_reducing_round1_challenge: [E4; 1];
+    static ab_gkr_dim_reducing_continuation_challenge: [E4; 1];
+}
+
+#[inline]
+unsafe fn upload_dim_symbol_from_device<T>(
+    symbol: *const c_void,
+    src: *const T,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    memcpy_to_symbol_from_device_async(symbol, src, 1, stream)
+}
+
 cuda_kernel_signature_arguments_and_function!(
     GpuDimensionReducingPairwiseRound0<T>,
     inputs: *const GpuExtensionFieldPolyInitialSource<T>,
@@ -1579,6 +1593,14 @@ pub(crate) trait GpuDimensionReducingKernelSet: Reduce + Copy + Sized {
     const CONTINUATION_BATCHED_COMPACT: GpuDimensionReducingContinuationBatchedCompactSignature<
         Self,
     >;
+    unsafe fn upload_round1_challenge(
+        folding_challenge: *const Self,
+        stream: &CudaStream,
+    ) -> CudaResult<()>;
+    unsafe fn upload_continuation_challenge(
+        folding_challenge: *const Self,
+        stream: &CudaStream,
+    ) -> CudaResult<()>;
 }
 
 macro_rules! gkr_dim_reducing_kernels {
@@ -1707,6 +1729,26 @@ macro_rules! gkr_dim_reducing_kernels {
                     [<ab_gkr_dim_reducing_round1_batched_compact_ $type:lower _kernel>];
                 const CONTINUATION_BATCHED_COMPACT: GpuDimensionReducingContinuationBatchedCompactSignature<Self> =
                     [<ab_gkr_dim_reducing_continuation_batched_compact_ $type:lower _kernel>];
+                unsafe fn upload_round1_challenge(
+                    folding_challenge: *const Self,
+                    stream: &CudaStream,
+                ) -> CudaResult<()> {
+                    upload_dim_symbol_from_device(
+                        &ab_gkr_dim_reducing_round1_challenge as *const _ as *const c_void,
+                        folding_challenge,
+                        stream,
+                    )
+                }
+                unsafe fn upload_continuation_challenge(
+                    folding_challenge: *const Self,
+                    stream: &CudaStream,
+                ) -> CudaResult<()> {
+                    upload_dim_symbol_from_device(
+                        &ab_gkr_dim_reducing_continuation_challenge as *const _ as *const c_void,
+                        folding_challenge,
+                        stream,
+                    )
+                }
             }
         }
     };
@@ -1880,9 +1922,14 @@ pub(super) fn launch_dim_reducing_round1_batched_compact<
     E: GpuDimensionReducingKernelSet + Field,
 >(
     batch: &GpuGKRDimensionReducingContinuationBatchCompact<E>,
+    folding_challenge: *const E,
     acc_size: usize,
     context: &ProverContext,
 ) -> CudaResult<()> {
+    let stream = context.get_exec_stream();
+    // SAFETY: the source is a device pointer ordered on exec_stream; the
+    // symbol is a valid __constant__ e4[1] payload consumed by the kernel.
+    unsafe { E::upload_round1_challenge(folding_challenge, stream)? };
     let config = gkr_dim_reducing_launch_config(acc_size as u32, context);
     let args = GpuDimensionReducingRound1BatchedCompactArguments::new(*batch, acc_size as u32);
     GpuDimensionReducingRound1BatchedCompactFunction(E::ROUND1_BATCHED_COMPACT)
@@ -1893,10 +1940,15 @@ pub(super) fn launch_dim_reducing_continuation_batched_compact<
     E: GpuDimensionReducingKernelSet + Field,
 >(
     batch: &GpuGKRDimensionReducingContinuationBatchCompact<E>,
+    folding_challenge: *const E,
     acc_size: usize,
     step: usize,
     context: &ProverContext,
 ) -> CudaResult<()> {
+    let stream = context.get_exec_stream();
+    // SAFETY: the source is a device pointer ordered on exec_stream; the
+    // symbol is a valid __constant__ e4[1] payload consumed by the kernel.
+    unsafe { E::upload_continuation_challenge(folding_challenge, stream)? };
     let config = gkr_dim_reducing_launch_config(acc_size as u32, context);
     let args = GpuDimensionReducingContinuationBatchedCompactArguments::new(
         *batch,

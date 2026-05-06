@@ -3,6 +3,10 @@
 #include "common.cuh"
 #include "flat_backward.cuh" // flat_c0_ref, flat_c1_pair, coeff_loader_ptr
 
+EXTERN __device__ __constant__ e4 ab_gkr_round1_challenge[1];
+EXTERN __device__ __constant__ e4 ab_gkr_round2_challenges[3];
+EXTERN __device__ __constant__ e4 ab_gkr_round3_challenge[1];
+
 namespace airbender::prover::gkr {
 
 // Maximum coefficient count that fits in __constant__ memory.
@@ -285,14 +289,13 @@ DEVICE_FORCEINLINE E flat_cont_fold_and_load_compact(const flat_continuation_uni
 // Per-tile fold for the compact continuation descriptor.
 template <typename E, unsigned NUM_WARPS>
 DEVICE_FORCEINLINE void flat_cont_tile_fold_compact(const flat_continuation_unified_desc_compact &desc, const unsigned fold_start, const unsigned fold_end,
-                                                     const E &folding_challenge, const unsigned fold_stride, const unsigned next_layer_size, const unsigned gid,
-                                                     const unsigned warp_id) {
+                                                     const unsigned fold_stride, const unsigned next_layer_size, const unsigned gid, const unsigned warp_id) {
   if (fold_start == fold_end)
     return;
   for (unsigned s = fold_start + warp_id; s < fold_end; s += NUM_WARPS) {
     const gkr_source_record record = desc.sources[desc.fold_sources[s]];
-    flat_cont_fold_and_load_compact<E>(desc, record, folding_challenge, fold_stride, gid);
-    flat_cont_fold_and_load_compact<E>(desc, record, folding_challenge, fold_stride, next_layer_size + gid);
+    flat_cont_fold_and_load_compact<E>(desc, record, ::ab_gkr_round3_challenge[0], fold_stride, gid);
+    flat_cont_fold_and_load_compact<E>(desc, record, ::ab_gkr_round3_challenge[0], fold_stride, next_layer_size + gid);
   }
   __syncthreads();
 }
@@ -317,28 +320,8 @@ DEVICE_FORCEINLINE void flat_cont_load_pair_cached_compact(const flat_continuati
   }
 }
 
-// Combined descriptor for the unified round 2 kernel: base_after_two + ext
-// sources + mixed terms with per-tile fold/compute metadata.
-template <typename B, typename E> struct flat_round2_unified_desc {
-  gkr_base_after_two_source<B, E> base_sources[FLAT_CONT_MAX_BASE_SOURCES];
-  u32 num_base_sources;
-
-  flat_continuing_source_entry<E> ext_sources[FLAT_CONT_MAX_EXT_SOURCES];
-  u32 num_ext_sources;
-
-  flat_unified_term terms[FLAT_CONT_UNIFIED_MAX_TERMS];
-  u32 num_terms;
-
-  u32 num_constant_terms;
-  u32 num_tiles;
-  u16 tile_term_offsets[FLAT_CONT_UNIFIED_MAX_TILES + 1];
-  u16 tile_fold_offsets[FLAT_CONT_UNIFIED_MAX_TILES + 1];
-  u16 fold_sources[FLAT_CONT_UNIFIED_MAX_FOLD_SOURCES];
-};
-
-// Phase C compact mirror of `flat_round2_unified_desc<bf, e4>`. Identical
-// shape to round 1 with an extra `base_quarter_size` u32 for the
-// `base_after_two` semantics.
+// Phase C compact round-2 descriptor. Identical shape to round 1 with an
+// extra `base_quarter_size` u32 for the `base_after_two` semantics.
 //
 // Mirror of `gpu_prover::prover::gkr::backward_flat_compact::GpuFlatRound2UnifiedDescCompact`.
 struct flat_round2_unified_desc_compact {
@@ -365,25 +348,6 @@ struct flat_round2_unified_desc_compact {
 
 static_assert(sizeof(flat_round2_unified_desc_compact) <= 32 * 1024,
               "flat_round2_unified_desc_compact exceeds the 32 KB cudaLaunchKernelExC inline ceiling");
-
-// --- Round 2 static description ---
-// Base sources: gkr_base_after_two_source (self-contained, includes fold params).
-
-template <typename B, typename E> struct flat_round2_static_desc {
-  gkr_base_after_two_source<B, E> base_sources[FLAT_CONT_MAX_BASE_SOURCES];
-  u32 num_base_sources;
-
-  flat_continuing_source_entry<E> ext_sources[FLAT_CONT_MAX_EXT_SOURCES];
-  u32 num_ext_sources;
-
-  flat_c0_ref c0_only_linear[FLAT_CONT_MAX_C0_ONLY_LINEAR];
-  u32 num_c0_only_linear;
-  flat_c1_pair unified_quadratic[FLAT_CONT_MAX_UNIFIED_QUADRATIC];
-  u32 num_unified_quadratic;
-  flat_c0_ref unified_linear[FLAT_CONT_MAX_UNIFIED_LINEAR];
-  u32 num_unified_linear;
-  u32 num_constants;
-};
 
 } // namespace airbender::prover::gkr
 
@@ -598,19 +562,18 @@ DEVICE_FORCEINLINE E flat_round1_ext_fold_and_load_compact(const flat_round1_uni
 // via the legacy `FLAT_CONT_EXT_SOURCE_BIT` encoding in `fold_sources`.
 template <typename E, unsigned NUM_WARPS>
 DEVICE_FORCEINLINE void flat_round1_tile_fold_compact(const flat_round1_unified_desc_compact &desc, const unsigned fold_start, const unsigned fold_end,
-                                                       const E &folding_challenge, const unsigned fold_stride, const unsigned next_layer_size, const unsigned gid,
-                                                       const unsigned warp_id) {
+                                                       const unsigned fold_stride, const unsigned next_layer_size, const unsigned gid, const unsigned warp_id) {
   if (fold_start == fold_end)
     return;
   for (unsigned s = fold_start + warp_id; s < fold_end; s += NUM_WARPS) {
     const u16 src_idx = desc.fold_sources[s];
     if (src_idx & FLAT_CONT_EXT_SOURCE_BIT) {
       const gkr_source_record ext_record = desc.ext_sources[src_idx & ~FLAT_CONT_EXT_SOURCE_BIT];
-      flat_round1_ext_fold_and_load_compact<E>(desc, ext_record, folding_challenge, fold_stride, gid);
-      flat_round1_ext_fold_and_load_compact<E>(desc, ext_record, folding_challenge, fold_stride, next_layer_size + gid);
+      flat_round1_ext_fold_and_load_compact<E>(desc, ext_record, ::ab_gkr_round1_challenge[0], fold_stride, gid);
+      flat_round1_ext_fold_and_load_compact<E>(desc, ext_record, ::ab_gkr_round1_challenge[0], fold_stride, next_layer_size + gid);
     } else {
-      flat_round1_get_base_value_compact<E>(desc, src_idx, folding_challenge, gid);
-      flat_round1_get_base_value_compact<E>(desc, src_idx, folding_challenge, next_layer_size + gid);
+      flat_round1_get_base_value_compact<E>(desc, src_idx, ::ab_gkr_round1_challenge[0], gid);
+      flat_round1_get_base_value_compact<E>(desc, src_idx, ::ab_gkr_round1_challenge[0], next_layer_size + gid);
     }
   }
   __syncthreads();
@@ -815,96 +778,6 @@ DEVICE_FORCEINLINE void flat_cont_compute_unified_compact(const flat_continuatio
 }
 
 // ===========================================================================
-// Unified tiled helpers for round 2: base_after_two + ext sources.
-// ===========================================================================
-
-// Per-tile fold for round 2: dispatches on source type bit.
-// Base sources use two-fold, ext sources fold with second challenge only.
-template <typename E, unsigned NUM_WARPS>
-DEVICE_FORCEINLINE void flat_round2_tile_fold(const flat_round2_unified_desc<bf, E> &desc, const unsigned fold_start, const unsigned fold_end,
-                                              const E &first_challenge, const E &second_challenge, const unsigned fold_stride, const unsigned next_layer_size,
-                                              const unsigned gid, const unsigned warp_id) {
-  if (fold_start == fold_end)
-    return;
-  for (unsigned s = fold_start + warp_id; s < fold_end; s += NUM_WARPS) {
-    const u16 src_idx = desc.fold_sources[s];
-    if (src_idx & FLAT_CONT_EXT_SOURCE_BIT) {
-      const auto &entry = desc.ext_sources[src_idx & ~FLAT_CONT_EXT_SOURCE_BIT];
-      flat_cont_fold_and_load(entry, second_challenge, fold_stride, gid);
-      flat_cont_fold_and_load(entry, second_challenge, fold_stride, next_layer_size + gid);
-    } else {
-      const auto &source = desc.base_sources[src_idx];
-      gkr_get_base_after_two_value(source, first_challenge, second_challenge, gid);
-      gkr_get_base_after_two_value(source, first_challenge, second_challenge, next_layer_size + gid);
-    }
-  }
-  __syncthreads();
-}
-
-// Load pair from cache only for round 2 unified desc.
-template <typename E, bool EXPLICIT_FORM>
-DEVICE_FORCEINLINE void flat_round2_load_pair_cached(const flat_round2_unified_desc<bf, E> &desc, const u16 source_idx, const unsigned next_layer_size,
-                                                     const unsigned gid, E &f0, E &f1_or_delta) {
-  const E *cache;
-  if (source_idx & FLAT_CONT_EXT_SOURCE_BIT) {
-    cache = desc.ext_sources[source_idx & ~FLAT_CONT_EXT_SOURCE_BIT].this_layer_cache_start;
-  } else {
-    cache = desc.base_sources[source_idx].this_layer_cache_start;
-  }
-  f0 = load<E, ld_modifier::ca>(cache, gid);
-  const E f1 = load<E, ld_modifier::ca>(cache, next_layer_size + gid);
-  if constexpr (EXPLICIT_FORM) {
-    f1_or_delta = f1;
-  } else {
-    f1_or_delta = E::sub(f1, f0);
-  }
-}
-
-// Process a range of unified terms from cache for round 2. Warp-split with interleaving.
-template <typename E, bool EXPLICIT_FORM, unsigned NUM_WARPS>
-DEVICE_FORCEINLINE void flat_round2_compute_unified(const flat_round2_unified_desc<bf, E> &desc, const unsigned term_start, const unsigned term_end,
-                                                    const unsigned next_layer_size, const unsigned gid, const unsigned warp_id, E &c0, E &c1) {
-  coeff_loader_constant_indexed coeff{};
-
-  for (unsigned i = term_start + warp_id; i < term_end; i += NUM_WARPS) {
-    const flat_unified_term t = desc.terms[i];
-    const E k = coeff(t.coeff_idx);
-
-    switch (t.term_type) {
-    case TERM_TYPE_CONSTANT:
-      c0 = E::add(c0, k);
-      if constexpr (EXPLICIT_FORM)
-        c1 = E::add(c1, k);
-      break;
-    case TERM_TYPE_C0_ONLY_LINEAR: {
-      E f0, f1;
-      flat_round2_load_pair_cached<E, EXPLICIT_FORM>(desc, t.source_a, next_layer_size, gid, f0, f1);
-      c0 = E::fma(k, f0, c0);
-      if constexpr (EXPLICIT_FORM)
-        c1 = E::fma(k, f1, c1);
-      break;
-    }
-    case TERM_TYPE_UNIFIED_QUADRATIC: {
-      E a0, a1;
-      flat_round2_load_pair_cached<E, EXPLICIT_FORM>(desc, t.source_a, next_layer_size, gid, a0, a1);
-      E b0, b1;
-      flat_round2_load_pair_cached<E, EXPLICIT_FORM>(desc, t.source_b, next_layer_size, gid, b0, b1);
-      c0 = E::fma(k, E::mul(a0, b0), c0);
-      c1 = E::fma(k, E::mul(a1, b1), c1);
-      break;
-    }
-    case TERM_TYPE_UNIFIED_LINEAR: {
-      E f0, f1;
-      flat_round2_load_pair_cached<E, EXPLICIT_FORM>(desc, t.source_a, next_layer_size, gid, f0, f1);
-      c0 = E::fma(k, f0, c0);
-      c1 = E::fma(k, f1, c1);
-      break;
-    }
-    }
-  }
-}
-
-// ===========================================================================
 // Phase C compact helpers for round 2: same shape as round 1 with
 // `base_after_two` semantics (two folds, four bf reads per cache write).
 // ===========================================================================
@@ -939,13 +812,10 @@ DEVICE_FORCEINLINE void flat_round2_resolve_base_compact(const flat_round2_unifi
   }
 }
 
-// Mirror of `gkr_get_base_after_two_value`. Folds the bf source quadruple at
-// the base-after-two grid into a single E value and writes to the cache at
-// `index` if `first_access`.
+// Folds the bf source quadruple at the base-after-two grid into a single E
+// value and writes to the cache at `index` if `first_access`.
 template <typename E>
-DEVICE_FORCEINLINE E flat_round2_get_base_value_compact(const flat_round2_unified_desc_compact &desc, const u32 idx,
-                                                         const E first_folding_challenge, const E second_folding_challenge,
-                                                         const unsigned index) {
+DEVICE_FORCEINLINE E flat_round2_get_base_value_compact(const flat_round2_unified_desc_compact &desc, const u32 idx, const unsigned index) {
   gkr_base_source_kind source_kind;
   bool first_access;
   const bf *base_input_start;
@@ -966,10 +836,9 @@ DEVICE_FORCEINLINE E flat_round2_get_base_value_compact(const flat_round2_unifie
   c11 = bf::sub(c11, f10);
   c11 = bf::add(c11, f11);
 
-  E combined_challenges = E::mul(first_folding_challenge, second_folding_challenge);
-  E result = E::mul(first_folding_challenge, c01);
-  result = E::fma(second_folding_challenge, c10, result);
-  result = E::fma(combined_challenges, c11, result);
+  E result = E::mul(::ab_gkr_round2_challenges[0], c01);
+  result = E::fma(::ab_gkr_round2_challenges[1], c10, result);
+  result = E::fma(::ab_gkr_round2_challenges[2], c11, result);
   result = E::add(result, f00);
 
   store<E, st_modifier::cs>(this_layer_cache_start, result, index);
@@ -1017,19 +886,18 @@ DEVICE_FORCEINLINE E flat_round2_ext_fold_and_load_compact(const flat_round2_uni
 
 template <typename E, unsigned NUM_WARPS>
 DEVICE_FORCEINLINE void flat_round2_tile_fold_compact(const flat_round2_unified_desc_compact &desc, const unsigned fold_start, const unsigned fold_end,
-                                                       const E &first_challenge, const E &second_challenge, const unsigned fold_stride,
-                                                       const unsigned next_layer_size, const unsigned gid, const unsigned warp_id) {
+                                                       const unsigned fold_stride, const unsigned next_layer_size, const unsigned gid, const unsigned warp_id) {
   if (fold_start == fold_end)
     return;
   for (unsigned s = fold_start + warp_id; s < fold_end; s += NUM_WARPS) {
     const u16 src_idx = desc.fold_sources[s];
     if (src_idx & FLAT_CONT_EXT_SOURCE_BIT) {
       const gkr_source_record ext_record = desc.ext_sources[src_idx & ~FLAT_CONT_EXT_SOURCE_BIT];
-      flat_round2_ext_fold_and_load_compact<E>(desc, ext_record, second_challenge, fold_stride, next_layer_size, gid);
-      flat_round2_ext_fold_and_load_compact<E>(desc, ext_record, second_challenge, fold_stride, next_layer_size, next_layer_size + gid);
+      flat_round2_ext_fold_and_load_compact<E>(desc, ext_record, ::ab_gkr_round2_challenges[1], fold_stride, next_layer_size, gid);
+      flat_round2_ext_fold_and_load_compact<E>(desc, ext_record, ::ab_gkr_round2_challenges[1], fold_stride, next_layer_size, next_layer_size + gid);
     } else {
-      flat_round2_get_base_value_compact<E>(desc, src_idx, first_challenge, second_challenge, gid);
-      flat_round2_get_base_value_compact<E>(desc, src_idx, first_challenge, second_challenge, next_layer_size + gid);
+      flat_round2_get_base_value_compact<E>(desc, src_idx, gid);
+      flat_round2_get_base_value_compact<E>(desc, src_idx, next_layer_size + gid);
     }
   }
   __syncthreads();
