@@ -277,9 +277,6 @@ impl ProofLayoutBaseLayerGeometry {
 ///
 /// Field-by-field sourcing:
 ///
-/// * `output_evaluations`: `global_output_map` keys × `[read_len, write_len]`
-///   where both lengths equal `1 << final_trace_size_log_2` (the reduced-output
-///   polynomial size at the initial sumcheck layer).
 /// * `backward_layers`: `initial_layer_for_sumcheck` down through main layer 0
 ///   in scheduler (high-to-low) order. `sumcheck_num_rounds` follows the
 ///   dim-reducing chain starting at `final_trace_size_log_2` and incrementing
@@ -331,7 +328,9 @@ pub(crate) fn build_proof_layout_inputs(
     );
 
     // ------------------------------------------------------------------
-    // output_evaluations
+    // output_evaluations: one (read_set, write_set) entry per OutputType.
+    // Both halves have length `1 << final_trace_size_log_2` (the reduced-
+    // output polynomial size at the initial sumcheck layer).
     // ------------------------------------------------------------------
     let reduced_poly_len = 1usize << final_trace_size_log_2;
     let mut output_evaluations = BTreeMap::new();
@@ -531,8 +530,11 @@ impl ProofLayout {
             start..end
         };
 
-        // final_explicit_evaluations, BTreeMap key order (BTreeMap iterates in
-        // key order, matching what the parse will emit).
+        // output_evaluations are laid out first as a single contiguous E4
+        // block in BTreeMap key order × {read, write}. This matches the
+        // packing order produced by the forward dim-reduction pass into the
+        // shared `ThisLayerInnerLayerWrite` backing Arc, so a single
+        // contiguous D2D from that Arc fills the whole block in one op.
         let mut output_evaluations = BTreeMap::new();
         for (&output_type, &[read_len, write_len]) in inputs.output_evaluations.iter() {
             let read_set = alloc(&mut cur, read_len, size_of::<E4>());
@@ -574,6 +576,28 @@ impl ProofLayout {
             whir,
             total_bytes,
         }
+    }
+
+    /// Returns the byte range covering the full `output_evaluations` block —
+    /// concatenation of every `{read_set, write_set}` in BTreeMap iteration
+    /// order. The block is contiguous (every entry's element size equals
+    /// `FIELD_ALIGN`), so a single D2D from the consolidated forward backing
+    /// Arc into this range populates every per-`OutputType` slot at once.
+    pub(crate) fn output_evaluations_block(&self) -> Option<Range<usize>> {
+        let first = self.output_evaluations.values().next()?;
+        let last = self
+            .output_evaluations
+            .values()
+            .next_back()
+            .expect("non-empty map has a last entry");
+        let start = first.read_set.start;
+        let end = last.write_set.end;
+        debug_assert_eq!(
+            (end - start) % size_of::<E4>(),
+            0,
+            "output_evaluations block byte span must be a multiple of E4 size",
+        );
+        Some(start..end)
     }
 
     fn lay_whir(cur: &mut usize, dims: &WhirDims) -> WhirLayout {
@@ -681,30 +705,6 @@ impl ProofLayout {
             "slab range size must be a multiple of element size"
         );
         (ptr, bytes / size_of::<T>())
-    }
-
-    pub(crate) unsafe fn output_evaluations_read_device_mut(
-        &self,
-        slab_base: *mut u8,
-        output_type: OutputType,
-    ) -> (*mut E4, usize) {
-        let layout = self
-            .output_evaluations
-            .get(&output_type)
-            .expect("unknown OutputType in slab layout");
-        Self::device_typed::<E4>(slab_base, &layout.read_set)
-    }
-
-    pub(crate) unsafe fn output_evaluations_write_device_mut(
-        &self,
-        slab_base: *mut u8,
-        output_type: OutputType,
-    ) -> (*mut E4, usize) {
-        let layout = self
-            .output_evaluations
-            .get(&output_type)
-            .expect("unknown OutputType in slab layout");
-        Self::device_typed::<E4>(slab_base, &layout.write_set)
     }
 
     pub(crate) unsafe fn backward_internal_coeffs_device_mut(
@@ -871,6 +871,22 @@ impl ProofLayout {
         }
     }
 
+    pub(crate) fn backward_internal_coeffs_host<'a>(
+        &self,
+        slab: &'a [u8],
+        layer_slot: usize,
+    ) -> &'a [E4] {
+        Self::host_typed::<E4>(slab, &self.backward[layer_slot].internal_round_coefficients)
+    }
+
+    pub(crate) fn backward_final_step_evals_host<'a>(
+        &self,
+        slab: &'a [u8],
+        layer_slot: usize,
+    ) -> &'a [E4] {
+        Self::host_typed::<E4>(slab, &self.backward[layer_slot].final_step_evaluations)
+    }
+
     pub(crate) fn output_evaluations_read_host<'a>(
         &self,
         slab: &'a [u8],
@@ -895,20 +911,28 @@ impl ProofLayout {
         Self::host_typed::<E4>(slab, &layout.write_set)
     }
 
-    pub(crate) fn backward_internal_coeffs_host<'a>(
+    /// Parse `final_explicit_evaluations: BTreeMap<OutputType, [Vec<E4>; 2]>`
+    /// from the D2H'd slab. The forward dim-reduction pass writes every
+    /// reduced-output poly into a single contiguous block in BTreeMap key
+    /// order × {read, write}; one D2D from that block into the slab fills
+    /// the layout, and this parse re-emits the BTreeMap by slicing the
+    /// host-mirrored slab byte-for-byte.
+    pub(crate) fn parse_final_explicit_evaluations(
         &self,
-        slab: &'a [u8],
-        layer_slot: usize,
-    ) -> &'a [E4] {
-        Self::host_typed::<E4>(slab, &self.backward[layer_slot].internal_round_coefficients)
-    }
-
-    pub(crate) fn backward_final_step_evals_host<'a>(
-        &self,
-        slab: &'a [u8],
-        layer_slot: usize,
-    ) -> &'a [E4] {
-        Self::host_typed::<E4>(slab, &self.backward[layer_slot].final_step_evaluations)
+        slab: &[u8],
+    ) -> BTreeMap<OutputType, [Vec<E4>; 2]> {
+        self.output_evaluations
+            .keys()
+            .map(|&output_type| {
+                let read = self
+                    .output_evaluations_read_host(slab, output_type)
+                    .to_vec();
+                let write = self
+                    .output_evaluations_write_host(slab, output_type)
+                    .to_vec();
+                (output_type, [read, write])
+            })
+            .collect()
     }
 
     /// Phase 4: parse every slab-resident WHIR proof field into a fresh
@@ -1011,26 +1035,6 @@ impl ProofLayout {
             pow_nonces,
             final_monomials,
         }
-    }
-
-    /// Phase 4: parse `final_explicit_evaluations:
-    /// BTreeMap<OutputType, [Vec<E4>; 2]>` from the D2H'd slab.
-    pub(crate) fn parse_final_explicit_evaluations(
-        &self,
-        slab: &[u8],
-    ) -> BTreeMap<OutputType, [Vec<E4>; 2]> {
-        self.output_evaluations
-            .keys()
-            .map(|&output_type| {
-                let read = self
-                    .output_evaluations_read_host(slab, output_type)
-                    .to_vec();
-                let write = self
-                    .output_evaluations_write_host(slab, output_type)
-                    .to_vec();
-                (output_type, [read, write])
-            })
-            .collect()
     }
 
     /// Phase 4: parse `sumcheck_intermediate_values: BTreeMap<layer_idx, _>`
@@ -1178,10 +1182,6 @@ mod tests {
     use super::*;
 
     fn sample_inputs() -> ProofLayoutInputs {
-        let mut output_evaluations = BTreeMap::new();
-        output_evaluations.insert(OutputType::PermutationProduct, [2usize, 2usize]);
-        output_evaluations.insert(OutputType::Lookup16Bits, [1usize, 1usize]);
-
         let backward_layers = vec![
             BackwardLayerDims {
                 layer_idx: 8,
@@ -1238,6 +1238,10 @@ mod tests {
             pow_rounds: 3,
             final_monomials_len: 4,
         };
+
+        let mut output_evaluations = BTreeMap::new();
+        output_evaluations.insert(OutputType::PermutationProduct, [2usize, 2usize]);
+        output_evaluations.insert(OutputType::Lookup16Bits, [1usize, 1usize]);
 
         ProofLayoutInputs {
             output_evaluations,
