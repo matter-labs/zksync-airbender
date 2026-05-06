@@ -7,7 +7,7 @@ use prover::merkle_trees::MerkleTreeCapVarLength;
 
 use crate::allocator::tracker::AllocationPlacement;
 use crate::ntt::{
-    bitreversed_monomials_to_natural_evals, hypercube_X1_MSB_evals_to_X1_MSB_monomials,
+    bitreversed_monomials_to_natural_evals, hypercube_x1_msb_evals_to_x1_msb_monomials,
     log_size_supports_transposed_monomials,
 };
 use crate::ops::blake2s::{
@@ -311,7 +311,7 @@ impl TraceHolder<BF> {
         for column in 0..self.columns_count {
             let offset = column * domain_size;
             let source_column = &source[offset..offset + domain_size];
-            hypercube_X1_MSB_evals_to_X1_MSB_monomials(
+            hypercube_x1_msb_evals_to_x1_msb_monomials(
                 source_column,
                 &mut coeff_scratch[0..domain_size],
                 self.log_domain_size as usize,

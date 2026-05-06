@@ -24,12 +24,15 @@ use prover::utils::extension_field_from_base_coeffs;
 use worker::Worker;
 
 use crate::allocator::tracker::AllocationPlacement;
-use crate::ntt::{hypercube_coeffs_bitrev_to_bitrev_evals, natural_evals_to_bitreversed_monomials};
+use crate::ntt::{
+    hypercube_coeffs_bitrev_to_bitrev_evals, hypercube_x1_msb_evals_to_x1_msb_monomials,
+    natural_evals_to_bitreversed_monomials,
+};
 use crate::ops::blake2s::{Digest, STATE_SIZE};
 use crate::ops::cub::device_reduce::{get_reduce_temp_storage_bytes, reduce, ReduceOperation};
 use crate::ops::cub::CUB_TEMP_STORAGE_EXTRA_ALIGNMENT_LOG2;
 use crate::ops::powers::get_powers_by_val;
-use crate::ops::simple::{add, add_into_y, mul, mul_into_x, set_to_zero};
+use crate::ops::simple::{add, add_into_y, mul, mul_into_x};
 use crate::ops::transpose::transpose;
 use crate::primitives::callbacks::Callbacks;
 use crate::primitives::context::{
@@ -1124,88 +1127,184 @@ fn fold_coset(
     }
 }
 
-fn build_initial_batched_main_domain_poly_device_impl(
+fn get_base_columns<'a>(
+    trace_holder: &'a TraceHolder<BF>,
+    rows: usize,
+    use_hypercube_evals: bool,
+) -> DeviceMatrix<'a, BF> {
+    let values = if use_hypercube_evals {
+        // TODO: Ask Robert: prefer raw_hypercube_backing here?
+        DeviceMatrix::new(trace_holder.get_hypercube_evals(), rows)
+    } else {
+        assert!(
+            trace_holder.are_cosets_materialized(),
+            "{} {}",
+            "Tried to build WHIR initial state from coset 0, ",
+            "but cosets are not materialized",
+        );
+        DeviceMatrix::new(trace_holder.get_evaluations(), rows)
+    };
+    values
+}
+
+fn build_initial_batched_evals_device_impl(
     memory_trace_holder: &TraceHolder<BF>,
     memory_weights: &[E4],
     witness_trace_holder: &TraceHolder<BF>,
     witness_weights: &[E4],
     setup_trace_holder: &TraceHolder<BF>,
     setup_weights: &[E4],
+    use_hypercube_evals: bool,
     result: &mut DeviceSlice<E4>,
     mut upload_weights: impl FnMut(&mut DeviceSlice<E4>, &[E4], &ProverContext) -> CudaResult<()>,
     context: &ProverContext,
 ) -> CudaResult<Vec<DeviceAllocation<E4>>> {
     let stream = context.get_exec_stream();
-    set_to_zero(result, stream)?;
     let mut weight_buffers = Vec::with_capacity(3);
 
-    for (trace_holder, weights) in [
-        (memory_trace_holder, memory_weights),
-        (witness_trace_holder, witness_weights),
-        (setup_trace_holder, setup_weights),
-    ] {
-        if weights.is_empty() {
-            continue;
-        }
-        assert!(
-            trace_holder.are_cosets_materialized(),
-            "WHIR initial state requires materialized main-domain cosets",
-        );
-        let mut device_weights = context.alloc(weights.len(), AllocationPlacement::BestFit)?;
-        upload_weights(&mut device_weights, weights, context)?;
-        let values = DeviceMatrix::new(trace_holder.get_evaluations(), result.len());
-        accumulate_whir_base_columns(&values, &device_weights, result, stream)?;
-        weight_buffers.push(device_weights);
-    }
+    assert!(memory_weights.len() > 0);
+    assert!(witness_weights.len() > 0);
+    assert!(setup_weights.len() > 0);
+
+    let mut device_memory_weights =
+        context.alloc(memory_weights.len(), AllocationPlacement::BestFit)?;
+    let mut device_witness_weights =
+        context.alloc(witness_weights.len(), AllocationPlacement::BestFit)?;
+    let mut device_setup_weights =
+        context.alloc(setup_weights.len(), AllocationPlacement::BestFit)?;
+
+    upload_weights(&mut device_memory_weights, memory_weights, context)?;
+    upload_weights(&mut device_witness_weights, witness_weights, context)?;
+    upload_weights(&mut device_setup_weights, setup_weights, context)?;
+
+    let rows = result.len();
+    let memory_values = get_base_columns(memory_trace_holder, rows, use_hypercube_evals);
+    let witness_values = get_base_columns(witness_trace_holder, rows, use_hypercube_evals);
+    let setup_values = get_base_columns(setup_trace_holder, rows, use_hypercube_evals);
+
+    accumulate_whir_base_columns(
+        &memory_values,
+        &witness_values,
+        &setup_values,
+        &device_memory_weights,
+        &device_witness_weights,
+        &device_setup_weights,
+        result,
+        stream,
+    )?;
+
+    weight_buffers.push(device_memory_weights);
+    weight_buffers.push(device_witness_weights);
+    weight_buffers.push(device_setup_weights);
 
     Ok(weight_buffers)
 }
 
-fn build_initial_batched_main_domain_poly_device(
+fn build_initial_batched_evals_device(
     memory_trace_holder: &TraceHolder<BF>,
     memory_weights: &[E4],
     witness_trace_holder: &TraceHolder<BF>,
     witness_weights: &[E4],
     setup_trace_holder: &TraceHolder<BF>,
     setup_weights: &[E4],
+    use_hypercube_evals: bool,
     result: &mut DeviceSlice<E4>,
     context: &ProverContext,
 ) -> CudaResult<Vec<DeviceAllocation<E4>>> {
-    build_initial_batched_main_domain_poly_device_impl(
+    build_initial_batched_evals_device_impl(
         memory_trace_holder,
         memory_weights,
         witness_trace_holder,
         witness_weights,
         setup_trace_holder,
         setup_weights,
+        use_hypercube_evals,
         result,
         |dst, values, context| copy_small_to_device(dst, values, context),
         context,
     )
 }
 
-fn schedule_build_initial_batched_main_domain_poly_device(
+fn schedule_build_initial_batched_evals_device(
     memory_trace_holder: &TraceHolder<BF>,
     memory_weights: &[E4],
     witness_trace_holder: &TraceHolder<BF>,
     witness_weights: &[E4],
     setup_trace_holder: &TraceHolder<BF>,
     setup_weights: &[E4],
+    use_hypercube_evals: bool,
     result: &mut DeviceSlice<E4>,
     callbacks: &mut Callbacks<'static>,
     context: &ProverContext,
 ) -> CudaResult<Vec<DeviceAllocation<E4>>> {
-    build_initial_batched_main_domain_poly_device_impl(
+    build_initial_batched_evals_device_impl(
         memory_trace_holder,
         memory_weights,
         witness_trace_holder,
         witness_weights,
         setup_trace_holder,
         setup_weights,
+        use_hypercube_evals,
         result,
         |dst, values, context| schedule_copy_small_to_device(dst, values, callbacks, context),
         context,
     )
+}
+
+// Also initializes evaluation form if use_hypercube_evals_for_batching was false.
+fn initialize_batched_monomial_form(
+    log_domain_size: usize,
+    use_hypercube_evals_for_batching: bool,
+    state: &mut GpuWhirState,
+    context: &ProverContext,
+) -> CudaResult<()> {
+    let trace_len = 1 << log_domain_size;
+    let mut vectorized_scratch =
+        context.alloc(trace_len * EXT4_DEGREE, AllocationPlacement::BestFit)?;
+    let stream = context.get_exec_stream();
+    serialize_whir_e4_columns(
+        &state.sumchecked_poly_evaluation_form[..trace_len],
+        &mut vectorized_scratch,
+        stream,
+    )?;
+    let vectorized_batched_evals_matrix = DeviceMatrix::new(&vectorized_scratch, trace_len);
+
+    if use_hypercube_evals_for_batching {
+        hypercube_x1_msb_evals_to_x1_msb_monomials(
+            &vectorized_batched_evals_matrix,
+            &mut state.sumchecked_poly_monomial_form,
+            log_domain_size,
+            false, // transpsoed_monomials,
+            stream,
+            context.get_device_properties(),
+        )?;
+        // If we're in this branch, it means state.sumchecked_poly_evaluation_form was
+        // directly created by batching base hypercube evaluation columns, so we're done.
+    } else {
+        natural_evals_to_bitreversed_monomials(
+            &vectorized_batched_evals_matrix,
+            &mut state.sumchecked_poly_monomial_form,
+            log_domain_size,
+            false, // transposed_monomials
+            stream,
+            context.get_device_properties(),
+        )?;
+        let monomials_slice = state.sumchecked_poly_monomial_form.slice();
+        for column in 0..EXT4_DEGREE {
+            let src = &monomials_slice[column * trace_len..(column + 1) * trace_len];
+            let dst = &mut vectorized_scratch[column * trace_len..(column + 1) * trace_len];
+            // Interestingly, both work (I think because addition is commutative).
+            // hypercube_coeffs_natural_to_natural_evals(
+            hypercube_coeffs_bitrev_to_bitrev_evals(src, dst, log_domain_size, stream)?;
+        }
+        deserialize_whir_e4_columns(
+            &vectorized_scratch,
+            &mut state.sumchecked_poly_evaluation_form[..trace_len],
+            stream,
+        )?;
+    }
+
+    Ok(())
 }
 
 fn initialize_batched_forms_impl(
@@ -1216,6 +1315,7 @@ fn initialize_batched_forms_impl(
     wit_polys_claims_len: usize,
     setup_polys_claims_len: usize,
     batching_challenge: E4,
+    use_hypercube_evals_for_batching: bool,
     state: &mut GpuWhirState,
     mut build_initial_form: impl FnMut(
         &TraceHolder<BF>,
@@ -1224,6 +1324,7 @@ fn initialize_batched_forms_impl(
         &[E4],
         &TraceHolder<BF>,
         &[E4],
+        bool,
         &mut DeviceSlice<E4>,
         &ProverContext,
     ) -> CudaResult<Vec<DeviceAllocation<E4>>>,
@@ -1258,57 +1359,17 @@ fn initialize_batched_forms_impl(
         witness_weights,
         setup_trace_holder,
         setup_weights,
+        use_hypercube_evals_for_batching,
         &mut state.sumchecked_poly_evaluation_form,
         context,
     )?;
 
-    let mut serialized = context.alloc(trace_len * EXT4_DEGREE, AllocationPlacement::BestFit)?;
-    let stream = context.get_exec_stream();
-    serialize_whir_e4_columns(
-        &state.sumchecked_poly_evaluation_form[..trace_len],
-        &mut serialized,
-        stream,
+    initialize_batched_monomial_form(
+        memory_trace_holder.log_domain_size as usize,
+        use_hypercube_evals_for_batching,
+        state,
+        context,
     )?;
-    let main_domain_evals_matrix = DeviceMatrix::new(&serialized, trace_len);
-    natural_evals_to_bitreversed_monomials(
-        &main_domain_evals_matrix,
-        &mut state.sumchecked_poly_monomial_form,
-        witness_trace_holder.log_domain_size as usize,
-        false, // transposed_monomials
-        stream,
-        context.get_device_properties(),
-    )?;
-    // bit_reverse_in_place(&mut state.sumchecked_poly_monomial_form, stream)?;
-    // deserialize_whir_e4_columns(
-    //     &serialized,
-    //     &mut state.sumchecked_poly_monomial_form[..trace_len],
-    //     stream,
-    // )?;
-    let monomials_slice = state.sumchecked_poly_monomial_form.slice();
-    let mut bf_scratch = context.alloc(trace_len, AllocationPlacement::BestFit)?;
-    for column in 0..EXT4_DEGREE {
-        let src = &monomials_slice[column * trace_len..(column + 1) * trace_len];
-        // Interestingly, both work (I think because addition is commutative).
-        // hypercube_coeffs_natural_to_natural_evals(
-        hypercube_coeffs_bitrev_to_bitrev_evals(
-            src,
-            &mut bf_scratch,
-            trace_len.trailing_zeros() as usize,
-            stream,
-        )?;
-        let dst = &mut serialized[column * trace_len..(column + 1) * trace_len];
-        memory_copy_async(dst, &bf_scratch, stream)?;
-    }
-    // {
-    //     // let mut evals_matrix = DeviceMatrixMut::new(&mut serialized, trace_len);
-    //     // bit_reverse_in_place(&mut evals_matrix, stream)?;
-    // }
-    deserialize_whir_e4_columns(
-        &serialized,
-        &mut state.sumchecked_poly_evaluation_form[..trace_len],
-        stream,
-    )?;
-    // bit_reverse_in_place(&mut state.sumchecked_poly_monomial_form, stream)?;
 
     Ok([
         memory_weights.to_vec(),
@@ -1325,6 +1386,7 @@ fn initialize_batched_forms(
     wit_polys_claims_len: usize,
     setup_polys_claims_len: usize,
     batching_challenge: E4,
+    use_hypercube_evals_for_batching: bool,
     state: &mut GpuWhirState,
     context: &ProverContext,
 ) -> CudaResult<[Vec<E4>; 3]> {
@@ -1336,6 +1398,7 @@ fn initialize_batched_forms(
         wit_polys_claims_len,
         setup_polys_claims_len,
         batching_challenge,
+        use_hypercube_evals_for_batching,
         state,
         |memory_trace_holder,
          memory_weights,
@@ -1343,15 +1406,17 @@ fn initialize_batched_forms(
          witness_weights,
          setup_trace_holder,
          setup_weights,
+         use_hypercube_evals_for_batching,
          result,
          context| {
-            build_initial_batched_main_domain_poly_device(
+            build_initial_batched_evals_device(
                 memory_trace_holder,
                 memory_weights,
                 witness_trace_holder,
                 witness_weights,
                 setup_trace_holder,
                 setup_weights,
+                use_hypercube_evals_for_batching,
                 result,
                 context,
             )
@@ -1368,6 +1433,7 @@ fn schedule_initialize_batched_forms(
     wit_polys_claims_len: usize,
     setup_polys_claims_len: usize,
     batching_challenge_source: impl Fn() -> E4 + Send + Sync + 'static,
+    use_hypercube_evals_for_batching: bool,
     state: &mut GpuWhirState,
     callbacks: &mut Callbacks<'static>,
     context: &ProverContext,
@@ -1406,82 +1472,40 @@ fn schedule_initialize_batched_forms(
         context.alloc(total_base_oracles, AllocationPlacement::BestFit)?;
     memory_copy_async(&mut challenge_powers_device, &challenge_powers_host, stream)?;
 
-    set_to_zero(&mut state.sumchecked_poly_evaluation_form, stream)?;
-    let mut offset = 0usize;
-    for (trace_holder, weights_len) in [
-        (memory_trace_holder, mem_polys_claims_len),
-        (witness_trace_holder, wit_polys_claims_len),
-        (setup_trace_holder, setup_polys_claims_len),
-    ] {
-        if weights_len == 0 {
-            continue;
-        }
-        assert!(
-            trace_holder.are_cosets_materialized(),
-            "WHIR initial state requires materialized main-domain cosets",
-        );
-        let values = DeviceMatrix::new(
-            trace_holder.get_evaluations(),
-            state.sumchecked_poly_evaluation_form.len(),
-        );
-        // TODO: Make vectorized accumulator for this
-        accumulate_whir_base_columns(
-            &values,
-            &challenge_powers_device[offset..offset + weights_len],
-            &mut state.sumchecked_poly_evaluation_form,
-            stream,
-        )?;
-        offset += weights_len;
-    }
-    debug_assert_eq!(offset, total_base_oracles);
+    assert!(mem_polys_claims_len > 0);
+    assert!(wit_polys_claims_len > 0);
+    assert!(setup_polys_claims_len > 0);
 
-    let mut serialized = context.alloc(trace_len * EXT4_DEGREE, AllocationPlacement::BestFit)?;
-    serialize_whir_e4_columns(
-        &state.sumchecked_poly_evaluation_form[..trace_len],
-        &mut serialized,
+    let challenge_powers_device_slice = &mut challenge_powers_device[..];
+    let (device_memory_weights, rest) =
+        challenge_powers_device_slice.split_at_mut(mem_polys_claims_len);
+    let (device_witness_weights, device_setup_weights) = rest.split_at_mut(wit_polys_claims_len);
+    assert_eq!(device_setup_weights.len(), setup_polys_claims_len);
+
+    let rows = state.sumchecked_poly_evaluation_form.len();
+    let memory_values =
+        get_base_columns(memory_trace_holder, rows, use_hypercube_evals_for_batching);
+    let witness_values =
+        get_base_columns(witness_trace_holder, rows, use_hypercube_evals_for_batching);
+    let setup_values = get_base_columns(setup_trace_holder, rows, use_hypercube_evals_for_batching);
+
+    accumulate_whir_base_columns(
+        &memory_values,
+        &witness_values,
+        &setup_values,
+        &device_memory_weights,
+        &device_witness_weights,
+        &device_setup_weights,
+        &mut state.sumchecked_poly_evaluation_form,
         stream,
     )?;
-    let main_domain_evals_matrix = DeviceMatrix::new(&serialized, trace_len);
-    natural_evals_to_bitreversed_monomials(
-        &main_domain_evals_matrix,
-        &mut state.sumchecked_poly_monomial_form,
-        witness_trace_holder.log_domain_size as usize,
-        false, // transposed_monomials
-        stream,
-        context.get_device_properties(),
+
+    initialize_batched_monomial_form(
+        memory_trace_holder.log_domain_size as usize,
+        use_hypercube_evals_for_batching,
+        state,
+        context,
     )?;
-    // bit_reverse_in_place(&mut state.sumchecked_poly_monomial_form, stream)?;
-    // deserialize_whir_e4_columns(
-    //     &serialized,
-    //     &mut state.sumchecked_poly_monomial_form[..trace_len],
-    //     stream,
-    // )?;
-    let monomials_slice = state.sumchecked_poly_monomial_form.slice();
-    // TODO: remove after writing hypercube kernel
-    let mut bf_scratch = context.alloc(trace_len, AllocationPlacement::BestFit)?;
-    for column in 0..EXT4_DEGREE {
-        let src = &monomials_slice[column * trace_len..(column + 1) * trace_len];
-        // Interestingly, both work (I think because addition is commutative).
-        // hypercube_coeffs_natural_to_natural_evals(
-        hypercube_coeffs_bitrev_to_bitrev_evals(
-            src,
-            &mut bf_scratch,
-            trace_len.trailing_zeros() as usize,
-            stream,
-        )?;
-        let dst = &mut serialized[column * trace_len..(column + 1) * trace_len];
-        memory_copy_async(dst, &bf_scratch, stream)?;
-    }
-    // {
-    //     // let mut evals_matrix = DeviceMatrixMut::new(&mut serialized, trace_len);
-    //     // bit_reverse_in_place(&mut evals_matrix, stream)?;
-    // }
-    deserialize_whir_e4_columns(
-        &serialized,
-        &mut state.sumchecked_poly_evaluation_form[..trace_len],
-        stream,
-    )?;
-    // bit_reverse_in_place(&mut state.sumchecked_poly_monomial_form, stream)?;
 
     Ok(())
 }
@@ -1495,6 +1519,7 @@ fn build_initial_state(
     setup_polys_claims: &[E4],
     original_evaluation_point: &[E4],
     batching_challenge: E4,
+    use_hypercube_evals_for_batching: bool,
     state: &mut GpuWhirState,
     context: &ProverContext,
 ) -> CudaResult<([Vec<E4>; 3], E4)> {
@@ -1512,6 +1537,7 @@ fn build_initial_state(
         wit_polys_claims.len(),
         setup_polys_claims.len(),
         batching_challenge,
+        use_hypercube_evals_for_batching,
         state,
         context,
     )?;
@@ -1856,6 +1882,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
     seed_source: impl Fn() -> Seed + Send + Sync + 'static,
     tree_cap_size: usize,
     trace_len_log2: usize,
+    use_hypercube_evals_for_batching: bool,
     // Phase 3: slab + layout thread through so WHIR sub-phases can route
     // proof fields (`pow_nonces` today; caps, evals, queries, ood_samples,
     // sumcheck_polys, final_monomials in follow-up commits) into slab
@@ -2149,6 +2176,7 @@ pub(crate) fn schedule_gpu_whir_fold_with_sources(
         witness_trace_holder.columns_count,
         setup_trace_holder.columns_count,
         batching_challenge_source,
+        use_hypercube_evals_for_batching,
         &mut state,
         &mut start_callbacks,
         context,
@@ -3228,6 +3256,7 @@ pub(crate) fn debug_build_initial_state_for_test(
     setup_polys_claims: &[E4],
     original_evaluation_point: &[E4],
     batching_challenge: E4,
+    use_hypercube_evals_for_batching: bool,
     context: &ProverContext,
 ) -> CudaResult<([Vec<E4>; 3], E4, Vec<E4>, Vec<E4>, Vec<E4>)> {
     fn copy_back<T: Clone>(values: &DeviceSlice<T>, context: &ProverContext) -> Vec<T> {
@@ -3248,6 +3277,7 @@ pub(crate) fn debug_build_initial_state_for_test(
         setup_polys_claims,
         original_evaluation_point,
         batching_challenge,
+        use_hypercube_evals_for_batching,
         &mut state,
         context,
     )?;
@@ -3270,7 +3300,7 @@ pub(crate) fn debug_build_initial_state_for_test(
 }
 
 #[cfg(test)]
-pub(crate) fn debug_build_initial_batched_main_domain_poly_for_test(
+pub(crate) fn debug_build_initial_batched_evals_for_test(
     memory_trace_holder: &TraceHolder<BF>,
     mem_polys_claims: &[E4],
     witness_trace_holder: &TraceHolder<BF>,
@@ -3278,6 +3308,7 @@ pub(crate) fn debug_build_initial_batched_main_domain_poly_for_test(
     setup_trace_holder: &TraceHolder<BF>,
     setup_polys_claims: &[E4],
     batching_challenge: E4,
+    use_hypercube_evals: bool,
     context: &ProverContext,
 ) -> CudaResult<Vec<E4>> {
     fn copy_back(values: &DeviceSlice<E4>, context: &ProverContext) -> Vec<E4> {
@@ -3307,13 +3338,14 @@ pub(crate) fn debug_build_initial_batched_main_domain_poly_for_test(
     let (witness_weights, setup_weights) = rest.split_at(wit_polys_claims.len());
     debug_assert_eq!(setup_weights.len(), setup_polys_claims.len());
 
-    let _weight_buffers = build_initial_batched_main_domain_poly_device(
+    let _weight_buffers = build_initial_batched_evals_device(
         memory_trace_holder,
         memory_weights,
         witness_trace_holder,
         witness_weights,
         setup_trace_holder,
         setup_weights,
+        use_hypercube_evals,
         &mut state.sumchecked_poly_evaluation_form,
         context,
     )?;
@@ -3333,6 +3365,7 @@ pub(crate) fn debug_build_initial_state_snapshots_for_test(
     setup_polys_claims: &[E4],
     original_evaluation_point: &[E4],
     batching_challenge: E4,
+    use_hypercube_evals_for_batching: bool,
     context: &ProverContext,
 ) -> CudaResult<(Vec<E4>, Vec<E4>)> {
     fn copy_back(values: &DeviceSlice<E4>, context: &ProverContext) -> Vec<E4> {
@@ -3352,6 +3385,7 @@ pub(crate) fn debug_build_initial_state_snapshots_for_test(
         wit_polys_claims.len(),
         setup_polys_claims.len(),
         batching_challenge,
+        use_hypercube_evals_for_batching,
         &mut state,
         context,
     )?;
@@ -3423,6 +3457,7 @@ pub(crate) fn debug_initial_round_checkpoint_for_test(
     first_recursive_lde_factor: usize,
     next_folding_steps: usize,
     tree_cap_size: usize,
+    use_hypercube_evals_for_batching: bool,
     transcript_seed: Seed,
     context: &ProverContext,
 ) -> CudaResult<DebugInitialWhirRoundCheckpoint> {
@@ -3438,6 +3473,7 @@ pub(crate) fn debug_initial_round_checkpoint_for_test(
         setup_polys_claims,
         original_evaluation_point,
         batching_challenge,
+        use_hypercube_evals_for_batching,
         &mut state,
         context,
     )?;
@@ -3519,6 +3555,7 @@ pub(crate) fn debug_build_initial_fold_state_for_test(
     setup_polys_claims: &[E4],
     original_evaluation_point: &[E4],
     batching_challenge: E4,
+    use_hypercube_evals_for_batching: bool,
     context: &ProverContext,
 ) -> CudaResult<DebugWhirInitialFoldState> {
     let trace_len = 1usize << memory_trace_holder.log_domain_size;
@@ -3532,6 +3569,7 @@ pub(crate) fn debug_build_initial_fold_state_for_test(
         setup_polys_claims,
         original_evaluation_point,
         batching_challenge,
+        use_hypercube_evals_for_batching,
         &mut state,
         context,
     )?;
@@ -4200,7 +4238,11 @@ mod tests {
     }
 
     #[cfg(not(no_cuda))]
-    fn run_whir_initial_state_matches_cpu(log_count: usize, is_large: bool) {
+    fn run_whir_initial_state_matches_cpu(
+        log_count: usize,
+        use_hypercube_evals_for_batching: bool,
+        is_large: bool,
+    ) {
         let context = if is_large {
             make_test_context(64 * 1024, 1024)
         } else {
@@ -4258,6 +4300,7 @@ mod tests {
             &setup_polys_claims,
             &original_evaluation_point,
             batching_challenge,
+            use_hypercube_evals_for_batching,
             &mut state,
             &context,
         )
@@ -4349,16 +4392,31 @@ mod tests {
     #[test]
     #[cfg(not(no_cuda))]
     #[serial]
-    fn whir_initial_state_matches_cpu_small() {
-        run_whir_initial_state_matches_cpu(3, false);
+    fn whir_initial_state_matches_cpu_use_coset_0_for_batching_small() {
+        run_whir_initial_state_matches_cpu(3, false, false);
     }
 
     #[test]
     #[cfg(not(no_cuda))]
     #[serial]
     #[ignore]
-    fn whir_initial_state_matches_cpu_large() {
-        run_whir_initial_state_matches_cpu(MIN_LOG_N_FOR_MULTISTAGE_KERNELS + 1, true);
+    fn whir_initial_state_matches_cpu_use_coset_0_for_batching_large() {
+        run_whir_initial_state_matches_cpu(MIN_LOG_N_FOR_MULTISTAGE_KERNELS + 1, false, true);
+    }
+
+    #[test]
+    #[cfg(not(no_cuda))]
+    #[serial]
+    fn whir_initial_state_matches_cpu_use_hypercube_evals_for_batching_small() {
+        run_whir_initial_state_matches_cpu(3, true, false);
+    }
+
+    #[test]
+    #[cfg(not(no_cuda))]
+    #[serial]
+    #[ignore]
+    fn whir_initial_state_matches_cpu_use_hypercube_evals_for_batching_large() {
+        run_whir_initial_state_matches_cpu(MIN_LOG_N_FOR_MULTISTAGE_KERNELS + 1, true, true);
     }
 
     #[test]

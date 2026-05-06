@@ -701,7 +701,7 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
     // matches the structurally-derived layout we already used to size the slab.
     // The structural derivation must match every dim-reducing layer's IO map
     // and every main-layer's input address set; if it diverges, the slab is
-    // mis-sized and writes overflow.
+    // improperly sized and writes overflow.
     #[cfg(debug_assertions)]
     {
         let main_layer_input_addresses_per_layer_storage_aware =
@@ -983,6 +983,7 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
             },
             whir_schedule.cap_size,
             compiled_circuit.trace_len.trailing_zeros() as usize,
+            true, // use_hypercube_evals_for_batching
             proof_slab.as_ref(),
             &proof_layout,
             Some(base_layer_claims_scheduled.take_pending_aggregation()),

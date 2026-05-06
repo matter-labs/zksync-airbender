@@ -275,7 +275,7 @@ pub(crate) fn hypercube_evals_to_monomials_2_pass(
 }
 
 #[allow(unused)]
-pub fn hypercube_X1_MSB_evals_to_X1_MSB_monomials(
+pub fn hypercube_x1_msb_evals_to_x1_msb_monomials(
     inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
     outputs_matrix: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),
     log_n: usize,
