@@ -64,6 +64,24 @@ pub unsafe fn memcpy_to_symbol_async<T>(
     .wrap()
 }
 
+#[allow(clippy::missing_safety_doc)]
+pub unsafe fn memcpy_to_symbol_from_device_async<T>(
+    symbol: *const c_void,
+    src: *const T,
+    count: usize,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    cudaMemcpyToSymbolAsync(
+        symbol,
+        src as *const c_void,
+        size_of::<T>() * count,
+        0,
+        CudaMemoryCopyKind::DeviceToDevice,
+        stream.into(),
+    )
+    .wrap()
+}
+
 // #[inline(always)]
 // #[allow(dead_code)]
 // pub fn bitreverse_index(n: usize, l: usize) -> usize {
