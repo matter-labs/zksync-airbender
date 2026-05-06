@@ -60,6 +60,7 @@ fn main() {
     let trace_chunks_count_override = env_optional_usize("ZKSYNC_TRACE_CHUNKS");
     let use_dedicated_pipeline_threads = env_bool("ZKSYNC_DEDICATED_PIPELINE_THREADS");
     let replay_segment_cycle_limit = env_optional_usize("ZKSYNC_REPLAY_SEGMENT_CYCLES");
+    let autocheck_n_configs = env_optional_usize("ZKSYNC_AUTOCHECK_N_CONFIGS");
     let mode = env_mode();
 
     eprintln!("loading input from {}", artifacts_dir.display());
@@ -81,6 +82,7 @@ fn main() {
             trace_chunks_count_override,
             use_dedicated_pipeline_threads,
             replay_segment_cycle_limit,
+            autocheck_n_configs,
             CpuPipelineModelInput {
                 binary_image,
                 text_section,
@@ -161,6 +163,7 @@ fn run_autocheck(
     max_trace_chunks_count_override: Option<usize>,
     use_dedicated_pipeline_threads: bool,
     max_replay_segment_cycle_limit: Option<usize>,
+    autocheck_n_configs: Option<usize>,
     input: CpuPipelineModelInput,
     nondeterminism: Vec<u32>,
 ) {
@@ -168,73 +171,72 @@ fn run_autocheck(
     let host_allocators_values = autocheck_host_allocators_values(max_host_allocators);
     let trace_chunks_values = autocheck_trace_chunks_values(max_trace_chunks_count_override);
     let replay_segment_values = autocheck_replay_segment_values(max_replay_segment_cycle_limit);
-    let configs_count = replay_threads_values.len()
+    let default_config = default_profile_config(mode, use_dedicated_pipeline_threads);
+    let all_configs = build_autocheck_configs(
+        mode,
+        use_dedicated_pipeline_threads,
+        &replay_threads_values,
+        &host_allocators_values,
+        &trace_chunks_values,
+        &replay_segment_values,
+    );
+    let configs = select_autocheck_configs(all_configs, autocheck_n_configs, default_config);
+    let full_configs_count = replay_threads_values.len()
         * host_allocators_values.len()
         * trace_chunks_values.len()
         * replay_segment_values.len();
+    let configs_count = configs.len();
 
     eprintln!(
-        "starting autocheck: configs={configs_count}, runs_per_config={runs}, replay_threads={replay_threads_values:?}, host_allocators={host_allocators_values:?}, trace_chunks={}, replay_segment_cycles={}",
+        "starting autocheck: configs={configs_count}/{full_configs_count}, runs_per_config={runs}, replay_threads={replay_threads_values:?}, host_allocators={host_allocators_values:?}, trace_chunks={}, replay_segment_cycles={}",
         format_option_list(&trace_chunks_values, "default"),
         format_option_list(&replay_segment_values, "off"),
     );
 
     let mut results = Vec::with_capacity(configs_count);
-    let mut config_index = 0usize;
     let mut global_run_index = 0usize;
-    for replay_threads in replay_threads_values {
-        for host_allocators in host_allocators_values.iter().copied() {
-            for trace_chunks_count_override in trace_chunks_values.iter().copied() {
-                for replay_segment_cycle_limit in replay_segment_values.iter().copied() {
-                    config_index += 1;
-                    let config = ProfileConfig {
-                        mode,
-                        replay_threads,
-                        host_allocators,
-                        trace_chunks_count_override,
-                        use_dedicated_pipeline_threads,
-                        replay_segment_cycle_limit,
-                    };
-                    eprintln!("autocheck config {config_index}/{configs_count}: {config:?}");
-                    let model = CpuPipelineModel::new(
-                        CpuPipelineModelConfig {
-                            execution_kind: ExecutionKind::Unrolled,
-                            machine_type: MachineType::FullUnsigned,
-                            mode,
-                            max_thread_pool_threads: None,
-                            replay_worker_threads_count: replay_threads,
-                            host_allocators_count: host_allocators,
-                            memory_holders_count: 1,
-                            trace_chunks_count_override,
-                            use_dedicated_pipeline_threads,
-                            replay_segment_cycle_limit,
-                            ..Default::default()
-                        },
-                        CpuPipelineModelInput {
-                            binary_image: input.binary_image.clone(),
-                            text_section: input.text_section.clone(),
-                        },
-                    );
+    for (config_index, config) in configs.into_iter().enumerate() {
+        eprintln!(
+            "autocheck config {}/{}: {config:?}",
+            config_index + 1,
+            configs_count
+        );
+        let model = CpuPipelineModel::new(
+            CpuPipelineModelConfig {
+                execution_kind: ExecutionKind::Unrolled,
+                machine_type: MachineType::FullUnsigned,
+                mode,
+                max_thread_pool_threads: None,
+                replay_worker_threads_count: config.replay_threads,
+                host_allocators_count: config.host_allocators,
+                memory_holders_count: 1,
+                trace_chunks_count_override: config.trace_chunks_count_override,
+                use_dedicated_pipeline_threads,
+                replay_segment_cycle_limit: config.replay_segment_cycle_limit,
+                ..Default::default()
+            },
+            CpuPipelineModelInput {
+                binary_image: input.binary_image.clone(),
+                text_section: input.text_section.clone(),
+            },
+        );
 
-                    let mut total_wall = Duration::default();
-                    let mut best_total_wall = Duration::MAX;
-                    for run_index in 0..runs {
-                        let report_run_index = global_run_index;
-                        global_run_index += 1;
-                        let report = model.run(nondeterminism.clone());
-                        total_wall += report.timings.total_wall;
-                        best_total_wall = best_total_wall.min(report.timings.total_wall);
-                        print_autocheck_report(report_run_index, run_index, config, &report);
-                    }
-                    results.push(AutocheckResult {
-                        config,
-                        runs,
-                        total_wall,
-                        best_total_wall,
-                    });
-                }
-            }
+        let mut total_wall = Duration::default();
+        let mut best_total_wall = Duration::MAX;
+        for run_index in 0..runs {
+            let report_run_index = global_run_index;
+            global_run_index += 1;
+            let report = model.run(nondeterminism.clone());
+            total_wall += report.timings.total_wall;
+            best_total_wall = best_total_wall.min(report.timings.total_wall);
+            print_autocheck_report(report_run_index, run_index, config, &report);
         }
+        results.push(AutocheckResult {
+            config,
+            runs,
+            total_wall,
+            best_total_wall,
+        });
     }
 
     results.sort_by_key(|result| result.average_total_wall().as_nanos());
@@ -242,7 +244,6 @@ fn run_autocheck(
     for (rank, result) in results.iter().take(5).enumerate() {
         print_winner(rank + 1, result);
     }
-    let default_config = default_profile_config(mode, use_dedicated_pipeline_threads);
     let default_result = results
         .iter()
         .find(|result| result.config == default_config)
@@ -348,19 +349,139 @@ fn default_profile_config(
     }
 }
 
+fn build_autocheck_configs(
+    mode: CpuPipelineMode,
+    use_dedicated_pipeline_threads: bool,
+    replay_threads_values: &[usize],
+    host_allocators_values: &[usize],
+    trace_chunks_values: &[Option<usize>],
+    replay_segment_values: &[Option<usize>],
+) -> Vec<ProfileConfig> {
+    let mut configs = Vec::new();
+    for replay_threads in replay_threads_values.iter().copied() {
+        for host_allocators in host_allocators_values.iter().copied() {
+            for trace_chunks_count_override in trace_chunks_values.iter().copied() {
+                for replay_segment_cycle_limit in replay_segment_values.iter().copied() {
+                    configs.push(ProfileConfig {
+                        mode,
+                        replay_threads,
+                        host_allocators,
+                        trace_chunks_count_override,
+                        use_dedicated_pipeline_threads,
+                        replay_segment_cycle_limit,
+                    });
+                }
+            }
+        }
+    }
+    configs.sort_by_key(|config| autocheck_config_sort_key(*config));
+    dedup_preserving_order(configs)
+}
+
+fn select_autocheck_configs(
+    configs: Vec<ProfileConfig>,
+    n_configs: Option<usize>,
+    default_config: ProfileConfig,
+) -> Vec<ProfileConfig> {
+    let Some(n_configs) = n_configs else {
+        return configs;
+    };
+    assert_ne!(n_configs, 0, "ZKSYNC_AUTOCHECK_N_CONFIGS must be non-zero");
+    if configs.len() <= n_configs {
+        return configs;
+    }
+    assert!(
+        configs.contains(&default_config),
+        "autocheck matrix should include the default configuration"
+    );
+    if n_configs == 1 {
+        return vec![default_config];
+    }
+
+    // Keep the default baseline in the selected set so the final delta is based on an actual
+    // measured run. The remaining slots are spread across the sorted configuration space.
+    let non_default_configs = configs
+        .into_iter()
+        .filter(|config| *config != default_config)
+        .collect::<Vec<_>>();
+    let mut selected = evenly_spaced_configs(&non_default_configs, n_configs - 1);
+    selected.push(default_config);
+    selected.sort_by_key(|config| autocheck_config_sort_key(*config));
+    selected
+}
+
+fn evenly_spaced_configs(configs: &[ProfileConfig], count: usize) -> Vec<ProfileConfig> {
+    if count == 0 {
+        return Vec::new();
+    }
+    if configs.len() <= count {
+        return configs.to_vec();
+    }
+    if count == 1 {
+        return vec![configs[configs.len() - 1]];
+    }
+
+    let max_index = configs.len() - 1;
+    let max_slot = count - 1;
+    let mut selected = Vec::with_capacity(count);
+    for slot in 0..count {
+        let index = (slot * max_index + max_slot / 2) / max_slot;
+        selected.push(configs[index]);
+    }
+    dedup_preserving_order(selected)
+}
+
+fn autocheck_config_sort_key(config: ProfileConfig) -> (usize, usize, usize, usize, u8, u8) {
+    (
+        config.replay_threads,
+        option_sort_key(config.trace_chunks_count_override),
+        config.host_allocators,
+        option_sort_key(config.replay_segment_cycle_limit),
+        config.use_dedicated_pipeline_threads as u8,
+        mode_sort_key(config.mode),
+    )
+}
+
+fn option_sort_key(value: Option<usize>) -> usize {
+    value.unwrap_or(0)
+}
+
+fn mode_sort_key(mode: CpuPipelineMode) -> u8 {
+    match mode {
+        CpuPipelineMode::SimulationOnly => 0,
+        CpuPipelineMode::FullWithoutDelegationReplay => 1,
+        CpuPipelineMode::Full => 2,
+    }
+}
+
 fn autocheck_replay_threads_values(max_replay_threads: usize) -> Vec<usize> {
     assert_ne!(
         max_replay_threads, 0,
         "ZKSYNC_REPLAY_THREADS must be non-zero"
     );
+    assert!(
+        max_replay_threads >= 4,
+        "ZKSYNC_REPLAY_THREADS must be at least 4 in autocheck mode"
+    );
     let mut values = vec![4];
+    let mut powers = Vec::new();
     let mut value = 4usize;
-    while value <= max_replay_threads {
-        values.push(value);
+    while value < max_replay_threads {
+        powers.push(value);
         value *= 2;
     }
+    values.extend(powers.into_iter().rev().take(2));
     values.push(max_replay_threads);
-    dedup_preserving_order(values)
+    values.sort_unstable();
+    let values = dedup_preserving_order(values);
+    if values.len() <= 4 {
+        values
+    } else {
+        let start = values.len() - 4;
+        let mut clipped = vec![4];
+        clipped.extend_from_slice(&values[start + 1..]);
+        dedup_preserving_order(clipped)
+    }
 }
 
 fn autocheck_host_allocators_values(max_host_allocators: usize) -> Vec<usize> {
