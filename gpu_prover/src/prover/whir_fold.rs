@@ -1279,7 +1279,7 @@ fn initialize_batched_monomial_form(
             context.get_device_properties(),
         )?;
         // If we're in this branch, it means state.sumchecked_poly_evaluation_form was
-        // directly created by batching base hypercube evaluation colums, so we're done.
+        // directly created by batching base hypercube evaluation columns, so we're done.
     } else {
         natural_evals_to_bitreversed_monomials(
             &vectorized_batched_evals_matrix,

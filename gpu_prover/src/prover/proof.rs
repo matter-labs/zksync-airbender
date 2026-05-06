@@ -701,7 +701,7 @@ pub(crate) fn prove<'a, A: GoodAllocator + 'a>(
     // matches the structurally-derived layout we already used to size the slab.
     // The structural derivation must match every dim-reducing layer's IO map
     // and every main-layer's input address set; if it diverges, the slab is
-    // mis-sized and writes overflow.
+    // improperly sized and writes overflow.
     #[cfg(debug_assertions)]
     {
         let main_layer_input_addresses_per_layer_storage_aware =
