@@ -56,24 +56,18 @@ pub(crate) struct GpuGKRForwardOutput<B, E> {
 pub(crate) struct GpuGKRTranscriptHandoff<E> {
     _tracing_ranges: Vec<Range>,
     explicit_evaluations: BTreeMap<OutputType, [HostAllocation<[E]>; 2]>,
-    /// Owned fallback for the packed flat evaluations buffer (test paths
-    /// that don't supply a slab destination). When `None`, the data lives
-    /// in the slab subslice supplied to `schedule_transcript_handoff` —
-    /// held alive by `_proof_slab` keepalive in `prove()` for the full
-    /// post-forward + backward + WHIR pipeline.
-    device_flat_evaluations_owned: Option<DeviceAllocation<E>>,
-    /// Raw (ptr, len) into the packed flat evaluations buffer — either the
-    /// slab subslice or the owned fallback above. Used to construct
-    /// `&DeviceSlice<E>` views on demand.
-    flat_ptr: *const E,
-    flat_len: usize,
+    /// Backing for the packed flat evaluations buffer: the consolidated
+    /// per-`AddressClass` Arc populated by the forward dim-reduction pass.
+    /// All reduced-output polys for the initial sumcheck layer share this
+    /// Arc with `poly_idx == BTreeMap iteration index`, so the first
+    /// `flat_total_len` elements form the same contiguous packing the
+    /// previous slab-D2D loop produced.
+    flat_evaluations_backing: Arc<DeviceAllocation<E>>,
+    /// Number of valid `E` elements at the start of `flat_evaluations_backing`
+    /// — `num_polys * poly_len`, equal to `backing.len()` in the production
+    /// path but sized explicitly to keep the contract local.
+    flat_total_len: usize,
 }
-
-// SAFETY: the only non-Send/Sync field is `flat_ptr`, which points into either
-// `device_flat_evaluations_owned` (kept alive by this same struct) or into the
-// proof slab (kept alive by the proof-job keepalive that owns this struct).
-unsafe impl<E: Send> Send for GpuGKRTranscriptHandoff<E> {}
-unsafe impl<E: Sync> Sync for GpuGKRTranscriptHandoff<E> {}
 
 impl<E: Copy> GpuGKRTranscriptHandoff<E> {
     pub(crate) fn explicit_evaluation_accessors(
@@ -90,14 +84,17 @@ impl<E: Copy> GpuGKRTranscriptHandoff<E> {
             .collect()
     }
 
-    /// View over the packed flat evaluations buffer. Either points into the
-    /// proof slab (production) or into the owned fallback allocation (tests).
+    /// View over the packed flat evaluations buffer (the prefix of the
+    /// shared backing Arc that holds all reduced-output polys for the
+    /// initial sumcheck layer in BTreeMap iteration order).
     pub(crate) fn device_flat_evaluations(&self) -> &DeviceSlice<E> {
-        // SAFETY: `flat_ptr` + `flat_len` describe a valid contiguous E
-        // region — backed either by `device_flat_evaluations_owned` (a field
-        // of `&self`) or by the proof slab (held by the keepalive that owns
-        // `self`). The returned slice borrow is bounded by `&self`.
-        unsafe { DeviceSlice::from_raw_parts(self.flat_ptr, self.flat_len) }
+        &self.flat_evaluations_backing[..self.flat_total_len]
+    }
+
+    pub(crate) fn into_explicit_evaluations(
+        self,
+    ) -> BTreeMap<OutputType, [HostAllocation<[E]>; 2]> {
+        self.explicit_evaluations
     }
 
     pub(crate) fn final_explicit_evaluations(&self) -> BTreeMap<OutputType, [Vec<E>; 2]> {
@@ -134,28 +131,36 @@ impl<E: Copy> GpuGKRTranscriptHandoff<E> {
 }
 
 impl<B, E: Copy> GpuGKRForwardOutput<B, E> {
-    /// Pack the per-`OutputType` reduced output polys into a contiguous device buffer.
+    /// Capture the consolidated backing Arc that holds every reduced-output
+    /// poly at the initial sumcheck layer in BTreeMap iteration order, and
+    /// optionally schedule a contiguous D2D into the proof slab plus per-poly
+    /// D2H readbacks for tests.
     ///
-    /// `with_host_readback`:
-    /// - `false` (hot path): skip per-poly D2H readbacks; `explicit_evaluations` is empty,
-    ///   and only `device_flat_evaluations()` is meaningful. The hot path consumes the
-    ///   flat buffer directly via `transcript_commit` / `transcript_squeeze` and the
-    ///   on-device initial-claim computation in `prove()`.
-    /// - `true` (tests): also schedule per-poly D2H readbacks into pinned host slots so
-    ///   `final_explicit_evaluations()` / `flattened_transcript_evaluations()` produce
-    ///   the host-side mirror used to validate against CPU baselines.
+    /// The reduced-output polys are written by the last forward dim-reduction
+    /// round into a single per-`AddressClass` Arc
+    /// (`storage.layers[output_layer].ext_class_backings[ThisLayerInnerLayerWrite]`)
+    /// where `poly_idx == BTreeMap iteration index`. The first
+    /// `num_polys * poly_len` elements of that Arc form the contiguous flat
+    /// evaluations the post-forward transcript-commit and on-device
+    /// initial-claim kernels read; they're exposed via
+    /// `device_flat_evaluations()` without a per-poly pack.
+    ///
+    /// `dst_slab`: when `Some`, schedule one contiguous D2D from the backing
+    /// Arc prefix into the slab's `output_evaluations` block. The terminal
+    /// slab D2H at the end of `prove()` then carries the data back to host as
+    /// part of the single batched mirror copy — no extra D2H ops, no extra
+    /// host pinned allocations. The caller must size `dst_slab` to exactly
+    /// `flat_total_len` `E` elements.
+    ///
+    /// `with_host_readback`: when `true`, schedule per-poly D2Hs into pinned
+    /// host slots so `final_explicit_evaluations()` /
+    /// `flattened_transcript_evaluations()` produce the host-side mirror used
+    /// by tests. Production passes `false` — `prove()`'s assembly callback
+    /// reads `final_explicit_evaluations` from the slab mirror via
+    /// `ProofLayout::parse_final_explicit_evaluations`.
     pub(crate) fn schedule_transcript_handoff(
         &self,
         with_host_readback: bool,
-        // Opp. 4b: when `Some`, the per-poly D2D pack writes directly into
-        // this slab subslice (the slab's `output_evaluations` block). The
-        // standalone `device_flat_evaluations` allocation is skipped, and
-        // the prior contiguous-D2D Phase-2b copy in `prove()` is gone — the
-        // data lands in its final slab home as part of this handoff. The
-        // caller must size `dst_slab` to exactly the total flat length
-        // (sum of reduced-output poly lengths in BTreeMap iteration order).
-        // When `None`, the handoff allocates an owned fallback buffer (test
-        // paths that don't allocate the slab pre-forward).
         dst_slab: Option<(*mut E, usize)>,
         context: &ProverContext,
     ) -> CudaResult<GpuGKRTranscriptHandoff<E>> {
@@ -164,9 +169,21 @@ impl<B, E: Copy> GpuGKRForwardOutput<B, E> {
             .dimension_reducing_inputs
             .get(&self.initial_layer_for_sumcheck)
             .expect("reduced outputs for initial sumcheck layer must exist");
-        // First pass: resolve addresses + compute total size for the packed device flat buffer.
-        let mut address_pairs: Vec<(OutputType, [GKRAddress; 2])> =
-            Vec::with_capacity(reduced_outputs.len());
+
+        let output_layer = self.initial_layer_for_sumcheck + 1;
+        let class = super::gkr_address_audit::AddressClass::ThisLayerInnerLayerWrite;
+        let flat_evaluations_backing: Arc<DeviceAllocation<E>> = Arc::clone(
+            self.storage
+                .layers
+                .get(output_layer)
+                .and_then(|layer| layer.ext_class_backings.get(&class))
+                .expect(
+                    "consolidated backing Arc for reduced-output polys must exist after the \
+                     forward dim-reduction pass",
+                ),
+        );
+
+        let mut explicit_evaluations = BTreeMap::new();
         let mut flat_total_len = 0usize;
         for (output_type, reduced_io) in reduced_outputs.iter() {
             let [first_addr, second_addr]: [GKRAddress; 2] = reduced_io
@@ -181,57 +198,49 @@ impl<B, E: Copy> GpuGKRForwardOutput<B, E> {
                     .unwrap_or_else(|| panic!("missing reduced extension poly for {:?}", addr));
                 flat_total_len += poly.len();
             }
-            address_pairs.push((*output_type, [first_addr, second_addr]));
-        }
-        let (device_flat_evaluations_owned, flat_ptr): (Option<DeviceAllocation<E>>, *const E) =
-            if let Some((slab_ptr, slab_len)) = dst_slab {
-                assert_eq!(
-                    slab_len, flat_total_len,
-                    "slab dst length must match the total flat evaluations length",
-                );
-                (None, slab_ptr as *const E)
-            } else {
-                let alloc: DeviceAllocation<E> =
-                    context.alloc(flat_total_len.max(1), AllocationPlacement::BestFit)?;
-                let ptr = alloc.as_ptr();
-                (Some(alloc), ptr)
-            };
-        let stream = context.get_exec_stream();
-        let mut explicit_evaluations = BTreeMap::new();
-        let mut flat_offset = 0usize;
-        for (output_type, [first_addr, second_addr]) in address_pairs {
             if with_host_readback {
                 let first = schedule_ext_poly_readback(&self.storage, first_addr, context)?;
                 let second = schedule_ext_poly_readback(&self.storage, second_addr, context)?;
-                explicit_evaluations.insert(output_type, [first, second]);
-            }
-            for addr in [first_addr, second_addr] {
-                let poly = self
-                    .storage
-                    .try_get_ext_poly(addr)
-                    .expect("reduced extension poly must still be present");
-                let src = poly.as_device_slice();
-                let len = src.len();
-                // SAFETY: `flat_ptr + flat_offset .. flat_ptr + flat_offset + len`
-                // is in-bounds for the slab/fallback buffer (`flat_total_len`
-                // covers the sum of all per-poly lengths above). The destination
-                // is held alive across this scheduling call by either `_proof_slab`
-                // keepalive (slab) or `device_flat_evaluations_owned` (fallback).
-                let dst = unsafe {
-                    DeviceSlice::from_raw_parts_mut((flat_ptr as *mut E).add(flat_offset), len)
-                };
-                memory_copy_async(dst, src, stream)?;
-                flat_offset += len;
+                explicit_evaluations.insert(*output_type, [first, second]);
             }
         }
-        debug_assert_eq!(flat_offset, flat_total_len);
+        debug_assert_eq!(
+            flat_total_len,
+            flat_evaluations_backing.len(),
+            "consolidated backing length must match the sum of reduced-output poly lengths"
+        );
+
+        // One contiguous D2D from the backing Arc prefix into the slab's
+        // `output_evaluations` block — the source is already laid out in
+        // BTreeMap key order × {read, write} (see `allocate_ext_view` in
+        // `gkr/mod.rs` and `append_tower_layers` in `gkr/storage_layout.rs`),
+        // matching the slab block layout produced by `ProofLayout::new`.
+        if let Some((slab_ptr, slab_len)) = dst_slab {
+            assert_eq!(
+                slab_len, flat_total_len,
+                "slab dst length must match the total flat evaluations length",
+            );
+            // SAFETY: `slab_ptr + flat_total_len` is in-bounds for the slab's
+            // `output_evaluations` block (sized at layout time). The slab is
+            // kept alive across this scheduling call by the proof job's
+            // `_proof_slab` keepalive; the source backing Arc is held by this
+            // same handoff via `flat_evaluations_backing` and rides into the
+            // backward state past every consumer.
+            let dst = unsafe {
+                era_cudart::slice::DeviceSlice::from_raw_parts_mut(slab_ptr, flat_total_len)
+            };
+            memory_copy_async(
+                dst,
+                &flat_evaluations_backing[..flat_total_len],
+                context.get_exec_stream(),
+            )?;
+        }
 
         Ok(GpuGKRTranscriptHandoff {
             _tracing_ranges: tracing_ranges,
             explicit_evaluations,
-            device_flat_evaluations_owned,
-            flat_ptr,
-            flat_len: flat_total_len,
+            flat_evaluations_backing,
+            flat_total_len,
         })
     }
 }
