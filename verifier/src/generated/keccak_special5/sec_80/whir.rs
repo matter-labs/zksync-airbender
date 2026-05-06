@@ -21,8 +21,8 @@ use verifier_common::whir::{
 };
 const INITIAL_VALUES_PER_LEAF: usize = 2usize;
 const INITIAL_QUERY_INDEX_BITS: usize = 22usize;
-const INITIAL_NUM_QUERIES: usize = 68usize;
-const INITIAL_POW_BITS: u32 = 24u32;
+const INITIAL_NUM_QUERIES: usize = 63usize;
+const INITIAL_POW_BITS: u32 = 28u32;
 const INITIAL_DRAW_WORDS: usize = 48usize;
 const INITIAL_RS_DOMAIN_LOG2: usize = 23usize;
 const HASH_BUF_SIZE: usize = 352usize;
@@ -189,24 +189,22 @@ use super::common::{
     compute_high_powers_offsets, ext_from_raw_word_slice, EXT_DEGREE, MAX_HIGH_POWERS,
 };
 use verifier_common::whir::{hash_leaf_data_into_state, verify_merkle_path};
-pub const NUM_INTERNAL_ROUNDS: usize = 4usize;
-const INTERNAL_QUERY_INDEX_BITS: [usize; NUM_INTERNAL_ROUNDS] =
-    [20usize, 19usize, 16usize, 12usize];
-const INTERNAL_NUM_COSETS: [usize; NUM_INTERNAL_ROUNDS] = [8usize, 64usize, 128usize, 128usize];
-const INTERNAL_NUM_COSETS_LOG2: [usize; NUM_INTERNAL_ROUNDS] = [3usize, 6usize, 7usize, 7usize];
-const INTERNAL_COSET_TREE_SIZE: [usize; NUM_INTERNAL_ROUNDS] =
-    [131072usize, 8192usize, 512usize, 32usize];
-const INTERNAL_RS_DOMAIN_LOG2: [usize; NUM_INTERNAL_ROUNDS] = [24usize, 23usize, 20usize, 16usize];
-const MAX_INTERNAL_FOLD_STEPS: usize = 4usize;
-const MAX_INTERNAL_VALUES_PER_LEAF: usize = 16usize;
+pub const NUM_INTERNAL_ROUNDS: usize = 3usize;
+const INTERNAL_QUERY_INDEX_BITS: [usize; NUM_INTERNAL_ROUNDS] = [21usize, 21usize, 21usize];
+const INTERNAL_NUM_COSETS: [usize; NUM_INTERNAL_ROUNDS] = [32usize, 1024usize, 32768usize];
+const INTERNAL_NUM_COSETS_LOG2: [usize; NUM_INTERNAL_ROUNDS] = [5usize, 10usize, 15usize];
+const INTERNAL_COSET_TREE_SIZE: [usize; NUM_INTERNAL_ROUNDS] = [65536usize, 2048usize, 64usize];
+const INTERNAL_RS_DOMAIN_LOG2: [usize; NUM_INTERNAL_ROUNDS] = [26usize, 26usize, 26usize];
+const MAX_INTERNAL_FOLD_STEPS: usize = 5usize;
+const MAX_INTERNAL_VALUES_PER_LEAF: usize = 32usize;
 const MAX_INTERNAL_LEAF_EXT_WORDS: usize = MAX_INTERNAL_VALUES_PER_LEAF * EXT_DEGREE;
 const INTERNAL_HASH_BUF_SIZE: usize = MAX_INTERNAL_LEAF_EXT_WORDS
     .div_ceil(BLAKE2S_BLOCK_SIZE_U32_WORDS)
     * BLAKE2S_BLOCK_SIZE_U32_WORDS;
-const MAX_INTERNAL_FOLD_BUF_HALF: usize = 8usize;
-const MAX_INTERNAL_NUM_QUERIES: usize = 23usize;
+const MAX_INTERNAL_FOLD_BUF_HALF: usize = 16usize;
+const MAX_INTERNAL_NUM_QUERIES: usize = 14usize;
 const MAX_INTERNAL_DRAW_WORDS: usize = 16usize;
-const INTERNAL_DRAW_WORDS: [usize; NUM_INTERNAL_ROUNDS] = [16usize, 16usize, 8usize, 8usize];
+const INTERNAL_DRAW_WORDS: [usize; NUM_INTERNAL_ROUNDS] = [16usize, 8usize, 8usize];
 pub fn verify_internal_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
     ts: &mut TranscriptState,
     hash_buf: &mut AlignedArray64<MaybeUninit<u32>, WHIR_HASH_BUF_SIZE>,
@@ -340,21 +338,21 @@ pub fn verify_internal_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
         Ok((claim, intermediate_cap))
     }
 }
-const FINAL_FOLD_STEPS: usize = 2usize;
-const FINAL_NUM_QUERIES: usize = 10usize;
-const FINAL_VALUES_PER_LEAF: usize = 4usize;
+const FINAL_FOLD_STEPS: usize = 5usize;
+const FINAL_NUM_QUERIES: usize = 3usize;
+const FINAL_VALUES_PER_LEAF: usize = 32usize;
 const FINAL_LEAF_EXT_WORDS: usize = FINAL_VALUES_PER_LEAF * EXT_DEGREE;
 const FINAL_HASH_BUF_SIZE: usize =
     FINAL_LEAF_EXT_WORDS.div_ceil(BLAKE2S_BLOCK_SIZE_U32_WORDS) * BLAKE2S_BLOCK_SIZE_U32_WORDS;
-const FINAL_FOLD_BUF_HALF: usize = 2usize;
-const FINAL_QUERY_INDEX_BITS: usize = 10usize;
-const FINAL_RS_DOMAIN_LOG2: usize = 12usize;
-const FINAL_NUM_COSETS: usize = 128usize;
-const FINAL_NUM_COSETS_LOG2: usize = 7usize;
-const FINAL_COSET_TREE_SIZE: usize = 8usize;
+const FINAL_FOLD_BUF_HALF: usize = 16usize;
+const FINAL_QUERY_INDEX_BITS: usize = 20usize;
+const FINAL_RS_DOMAIN_LOG2: usize = 25usize;
+const FINAL_NUM_COSETS: usize = 524288usize;
+const FINAL_NUM_COSETS_LOG2: usize = 19usize;
+const FINAL_COSET_TREE_SIZE: usize = 2usize;
 const FINAL_DRAW_WORDS: usize = 8usize;
-const FINAL_POW_BITS: u32 = 24u32;
-const FINAL_ORACLE_DEPTH_IDX: usize = 4usize;
+const FINAL_POW_BITS: u32 = 23u32;
+const FINAL_ORACLE_DEPTH_IDX: usize = 3usize;
 pub fn verify_final_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
     ts: &mut TranscriptState,
     hash_buf: &mut AlignedArray64<MaybeUninit<u32>, WHIR_HASH_BUF_SIZE>,

@@ -12,7 +12,7 @@ pub use verifier_common::transcript;
 #[path = "generated"]
 mod __generated {
     macro_rules! declare_gkr_modules {
-        ($($name:ident: $schedule_80:ident: $schedule_100:ident: $layout_suffix:expr),* $(,)?) => {
+        ($($name:ident; $trace_len_log_2:expr; $layout_suffix:expr),* $(,)?) => {
             $(
                 pub mod $name {
                     #[cfg(feature = "security_80")]

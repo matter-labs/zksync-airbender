@@ -4,6 +4,7 @@ use field::baby_bear::base::BabyBearField;
 use field::baby_bear::ext4::BabyBearExt4;
 use prover::definitions::GKRExternalChallenges;
 use prover::gkr::prover::{GKRProof, WhirSchedule};
+use prover::gkr::prover_config::ProverConfig;
 use prover::merkle_trees::DefaultTreeConstructor;
 
 use crate::cs::gkr_compiler::GKRCircuitArtifact;
@@ -12,15 +13,13 @@ use crate::gkr::flatten::flatten_gkr_proof_for_nds;
 const REPO_ROOT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/..");
 
 macro_rules! make_circuits {
-    ($($name:ident: $schedule_fn_80:ident: $schedule_fn_100:ident: $layout_suffix:expr),* $(,)?) => {
+    ($($name:ident; $trace_len_log_2:expr; $layout_suffix:expr),* $(,)?) => {
         vec![$(CircuitData {
             name: stringify!($name),
             layout_suffix: $layout_suffix,
-            whir_schedule_init: [
-                WhirSchedule::$schedule_fn_80,
-                WhirSchedule::$schedule_fn_100,
-            ],
-            whir_schedule_cache: [OnceLock::new(), OnceLock::new()],
+            trace_len_log_2: $trace_len_log_2,
+            security_levels: [SecurityLevel::Sec80, SecurityLevel::Sec100],
+            prover_configs_cache: [OnceLock::new(), OnceLock::new()],
             nds_cache: [OnceLock::new(), OnceLock::new()],
         }),*]
     };
@@ -35,16 +34,22 @@ const NUM_SECURITY_LEVELS: usize = 2;
 pub struct CircuitData {
     pub name: &'static str,
     pub layout_suffix: &'static str,
-    whir_schedule_init: [fn() -> WhirSchedule; NUM_SECURITY_LEVELS],
-    whir_schedule_cache: [OnceLock<WhirSchedule>; NUM_SECURITY_LEVELS],
+    pub trace_len_log_2: usize,
+    security_levels: [SecurityLevel; NUM_SECURITY_LEVELS],
+    prover_configs_cache: [OnceLock<ProverConfig>; NUM_SECURITY_LEVELS],
     nds_cache: [OnceLock<(Vec<u32>, GKRExternalChallenges<BabyBearField, BabyBearExt4>)>;
         NUM_SECURITY_LEVELS],
 }
 
 impl CircuitData {
+    pub fn prover_config_for(&self, level: SecurityLevel) -> &ProverConfig {
+        let idx = level as usize;
+        self.prover_configs_cache[idx].get_or_init(|| prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(self.trace_len_log_2, level))
+    }
+
     pub fn whir_schedule_for(&self, level: SecurityLevel) -> &WhirSchedule {
         let idx = level as usize;
-        self.whir_schedule_cache[idx].get_or_init(self.whir_schedule_init[idx])
+        &self.prover_configs_cache[idx].get_or_init(|| prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(self.trace_len_log_2, level)).whir_schedule
     }
 
     pub fn proof_path_for(&self, level: SecurityLevel) -> String {

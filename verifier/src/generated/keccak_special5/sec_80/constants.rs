@@ -684,16 +684,16 @@ pub const LAYER_0_SORTED_ADDRS: &[GKRAddress] = &[
     },
 ];
 pub const BASE_LAYER_ADDITIONAL_OPENINGS: &[GKRAddress] = &[];
-pub const WHIR_FOLD_STEPS: [usize; 6usize] = [1usize, 4usize, 4usize, 4usize, 4usize, 2usize];
-pub const WHIR_QUERIES: [usize; 6usize] = [68usize, 23usize, 12usize, 10usize, 10usize, 10usize];
-pub const WHIR_POW_BITS: [u32; 6usize] = [24u32, 24u32, 24u32, 24u32, 24u32, 24u32];
-pub const MAX_POW_ENTRIES: usize = 128usize;
-pub const FINAL_MONOMIALS_LEN: usize = 8usize;
+pub const WHIR_FOLD_STEPS: [usize; 5usize] = [1usize, 5usize, 5usize, 5usize, 5usize];
+pub const WHIR_QUERIES: [usize; 5usize] = [63usize, 14usize, 6usize, 4usize, 3usize];
+pub const WHIR_POW_BITS: [u32; 5usize] = [28u32, 20u32, 20u32, 20u32, 23u32];
+pub const MAX_POW_ENTRIES: usize = 91usize;
+pub const FINAL_MONOMIALS_LEN: usize = 2usize;
 pub const NUM_ORACLES: usize = 3usize;
 pub const ORACLE_NUM_COLS: [usize; 3usize] = [91usize, 175usize, 8usize];
 pub const ORACLE_DEPTHS: [usize; 3usize] = [18usize, 18usize, 18usize];
 pub const TOTAL_ORACLE_COLS: usize = 274usize;
-pub const WHIR_ORACLE_DEPTHS: [usize; 5usize] = [16usize, 15usize, 12usize, 8usize, 6usize];
+pub const WHIR_ORACLE_DEPTHS: [usize; 4usize] = [17usize, 17usize, 17usize, 16usize];
 pub const WHIR_CAP_WORDS: usize = 128usize;
 pub const INITIAL_WHIR_CLAIM_INDICES: [usize; 274usize] = [
     175usize, 176usize, 177usize, 178usize, 179usize, 180usize, 181usize, 182usize, 183usize,

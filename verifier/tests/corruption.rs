@@ -349,7 +349,7 @@ fn test_rejects_corrupted_cache_relations(name: &str) {
 }
 
 macro_rules! generate_corruption_tests {
-    ($($name:ident: $schedule_80:ident: $schedule_100:ident: $layout_suffix:expr),* $(,)?) => {
+    ($($name:ident; $trace_len_log_2:expr; $layout_suffix:expr),* $(,)?) => {
         $(
             paste::paste! {
                 #[test]
