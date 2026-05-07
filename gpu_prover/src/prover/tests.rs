@@ -168,6 +168,8 @@ const BASIC_UNROLLED_CPU_PARITY_BINARY_PATH: &str =
 const BASIC_UNROLLED_CPU_PARITY_TEXT_PATH: &str = "riscv_transpiler/examples/keccak_f1600/app.text";
 const BASIC_UNROLLED_ADD_SUB_LAYOUT_PATH: &str =
     "cs/compiled_circuits/add_sub_lui_auipc_mop_preprocessed_layout_gkr.json";
+const BASIC_UNROLLED_ADD_SUB_NO_CACHES_LAYOUT_PATH: &str =
+    "cs/compiled_circuits/add_sub_lui_auipc_mop_preprocessed_layout_no_caches_gkr.json";
 
 fn test_artifact_path(relative_path: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -636,6 +638,7 @@ impl BasicUnrolledProofFixture {
 struct BasicUnrolledFixtureBuildConfig<'a> {
     binary_path: &'a str,
     text_path: &'a str,
+    layout_path: &'a str,
     non_determinism_reads: &'a [u32],
     compute_cpu_reference: bool,
     device_allocator_block_log_size: u32,
@@ -723,7 +726,7 @@ fn prepare_basic_unrolled_fixture(
     );
 
     let compiled_circuit: GKRCircuitArtifact<BF> =
-        deserialize_json_for_test(BASIC_UNROLLED_ADD_SUB_LAYOUT_PATH);
+        deserialize_json_for_test(build_config.layout_path);
 
     let num_calls =
         counters.get_calls_to_circuit_family::<ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX>();
@@ -962,6 +965,7 @@ pub(crate) fn prepare_basic_unrolled_proof_fixture() -> BasicUnrolledProofFixtur
         prepare_basic_unrolled_fixture(BasicUnrolledFixtureBuildConfig {
             binary_path: BASIC_UNROLLED_CPU_PARITY_BINARY_PATH,
             text_path: BASIC_UNROLLED_CPU_PARITY_TEXT_PATH,
+            layout_path: BASIC_UNROLLED_ADD_SUB_LAYOUT_PATH,
             non_determinism_reads: &[15, 1],
             compute_cpu_reference: true,
             device_allocator_block_log_size: default_fixture_device_allocator_block_log_size(),
@@ -978,6 +982,7 @@ fn prepare_basic_unrolled_profiling_fixture() -> BasicUnrolledFixture {
         prepare_basic_unrolled_fixture(BasicUnrolledFixtureBuildConfig {
             binary_path: "examples/basic_fibonacci/app.bin",
             text_path: "examples/basic_fibonacci/app.text",
+            layout_path: BASIC_UNROLLED_ADD_SUB_LAYOUT_PATH,
             non_determinism_reads: &[],
             compute_cpu_reference: false,
             device_allocator_block_log_size: default_fixture_device_allocator_block_log_size(),
@@ -2256,6 +2261,7 @@ pub(crate) fn prepare_basic_unrolled_async_backward_fixture(
         prepare_basic_unrolled_fixture(BasicUnrolledFixtureBuildConfig {
             binary_path: BASIC_UNROLLED_CPU_PARITY_BINARY_PATH,
             text_path: BASIC_UNROLLED_CPU_PARITY_TEXT_PATH,
+            layout_path: BASIC_UNROLLED_ADD_SUB_LAYOUT_PATH,
             non_determinism_reads: &[15, 1],
             compute_cpu_reference: false,
             device_allocator_block_log_size: default_fixture_device_allocator_block_log_size(),
@@ -4685,6 +4691,7 @@ fn forward_to_backward_handoff_releases_forward_scratch() {
         prepare_basic_unrolled_fixture(BasicUnrolledFixtureBuildConfig {
             binary_path: BASIC_UNROLLED_CPU_PARITY_BINARY_PATH,
             text_path: BASIC_UNROLLED_CPU_PARITY_TEXT_PATH,
+            layout_path: BASIC_UNROLLED_ADD_SUB_LAYOUT_PATH,
             non_determinism_reads: &[15, 1],
             compute_cpu_reference: false,
             device_allocator_block_log_size: default_fixture_device_allocator_block_log_size(),
@@ -4799,6 +4806,28 @@ fn run_basic_unrolled_test() {
         "prove() should return before the scheduled proof completes"
     );
 
+    let (gpu_proof, _proof_time_ms) = proof_job.finish().unwrap();
+    assert_gkr_proof_eq_for_test(&gpu_proof, &fixture.expected_cpu_proof);
+}
+
+#[test]
+#[serial]
+fn run_basic_unrolled_no_caches_test() {
+    let (base, expected_cpu_proof) =
+        prepare_basic_unrolled_fixture(BasicUnrolledFixtureBuildConfig {
+            binary_path: BASIC_UNROLLED_CPU_PARITY_BINARY_PATH,
+            text_path: BASIC_UNROLLED_CPU_PARITY_TEXT_PATH,
+            layout_path: BASIC_UNROLLED_ADD_SUB_NO_CACHES_LAYOUT_PATH,
+            non_determinism_reads: &[15, 1],
+            compute_cpu_reference: true,
+            device_allocator_block_log_size: default_fixture_device_allocator_block_log_size(),
+        });
+    let fixture = BasicUnrolledProofFixture {
+        base,
+        expected_cpu_proof: expected_cpu_proof
+            .expect("no-caches proof fixture must include the CPU reference proof"),
+    };
+    let proof_job = fixture.schedule_prove().unwrap();
     let (gpu_proof, _proof_time_ms) = proof_job.finish().unwrap();
     assert_gkr_proof_eq_for_test(&gpu_proof, &fixture.expected_cpu_proof);
 }

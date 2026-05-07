@@ -172,7 +172,7 @@ pub(super) const MEMORY_TUPLE_VALUE_HIGH_TERM: usize = 6;
 pub(super) const MEMORY_TUPLE_VALUE_HIGH_EXTRA_TERM: usize = 7;
 
 pub(super) struct FlatForwardPlan<E> {
-    pub(super) desc: Box<GpuFlatForwardStaticDesc<E>>,
+    pub(super) descs: Vec<Box<GpuFlatForwardStaticDesc<E>>>,
     pub(super) computed_extension_outputs: Vec<(GKRAddress, GpuExtensionFieldPoly<E>)>,
     pub(super) aliased_base_outputs: Vec<(GKRAddress, GpuBaseFieldPoly<BF>)>,
     pub(super) aliased_extension_outputs: Vec<(GKRAddress, GpuExtensionFieldPoly<E>)>,
@@ -589,16 +589,15 @@ pub(super) fn gkr_forward_launch_config(
 }
 
 // ---------------------------------------------------------------------------
-// Flat forward kernel (Phase 1 skeleton — not yet wired in)
+// Flat forward kernel descriptors
 // ---------------------------------------------------------------------------
 //
 // Mirrors `flat_forward_static_desc<E>` in native/prover/gkr/flat_forward.cuh.
-// The Rust lowering that populates these descriptors will be added in Phase 2
-// (new file `forward_flat.rs`); for now the types just need to exist so the
-// kernel binding and launch path compile.
+// The forward scheduler populates these descriptors directly and chunks them
+// when any per-category array would exceed the grid-constant budget.
 
 pub(super) const FLAT_FWD_MAX_SOURCES: usize = 256;
-pub(super) const FLAT_FWD_MAX_PER_CATEGORY: usize = 64;
+pub(super) const FLAT_FWD_MAX_PER_CATEGORY: usize = 16;
 
 #[repr(C)]
 #[derive(Debug, Default)]
@@ -780,6 +779,186 @@ impl<E> Clone for GpuFlatFwdE4UnbalancedEntry<E> {
     }
 }
 
+#[repr(C)]
+#[derive(Debug, Default)]
+pub(super) struct GpuFlatFwdMappedBfPairEntry<E> {
+    pub(super) mapping_b: *const u32,
+    pub(super) mapping_d: *const u32,
+    pub(super) num: *mut E,
+    pub(super) den: *mut E,
+}
+
+impl<E> Copy for GpuFlatFwdMappedBfPairEntry<E> {}
+
+impl<E> Clone for GpuFlatFwdMappedBfPairEntry<E> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+#[repr(C)]
+#[derive(Debug, Default)]
+pub(super) struct GpuFlatFwdMappedE4PairEntry<E> {
+    pub(super) mapping_b: *const u32,
+    pub(super) mapping_d: *const u32,
+    pub(super) generic_lookup: *const E,
+    pub(super) num: *mut E,
+    pub(super) den: *mut E,
+}
+
+impl<E> Copy for GpuFlatFwdMappedE4PairEntry<E> {}
+
+impl<E> Clone for GpuFlatFwdMappedE4PairEntry<E> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+#[repr(C)]
+#[derive(Debug, Default)]
+pub(super) struct GpuFlatFwdMappedCachedDensEntry<E> {
+    pub(super) mapping_b: *const u32,
+    pub(super) generic_lookup: *const E,
+    pub(super) decoder_mask: *const BF,
+    pub(super) decoder_fill_value: *const E,
+    pub(super) src_a: u16,
+    pub(super) src_c: u16,
+    pub(super) generic_lookup_len: u32,
+    pub(super) _pad: u32,
+    pub(super) num: *mut E,
+    pub(super) den: *mut E,
+}
+
+impl<E> Copy for GpuFlatFwdMappedCachedDensEntry<E> {}
+
+impl<E> Clone for GpuFlatFwdMappedCachedDensEntry<E> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+#[repr(C)]
+#[derive(Debug, Default)]
+pub(super) struct GpuFlatFwdMappedE4MinusMultEntry<E> {
+    pub(super) mapping_b: *const u32,
+    pub(super) generic_lookup: *const E,
+    pub(super) src_c: u16,
+    pub(super) _pad: u16,
+    pub(super) generic_lookup_len: u32,
+    pub(super) num: *mut E,
+    pub(super) den: *mut E,
+}
+
+impl<E> Copy for GpuFlatFwdMappedE4MinusMultEntry<E> {}
+
+impl<E> Clone for GpuFlatFwdMappedE4MinusMultEntry<E> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+#[repr(C)]
+#[derive(Debug, Default)]
+pub(super) struct GpuFlatFwdMappedE4UnbalancedEntry<E> {
+    pub(super) src_a: u16,
+    pub(super) src_b: u16,
+    pub(super) _pad: u32,
+    pub(super) mapping_d: *const u32,
+    pub(super) generic_lookup: *const E,
+    pub(super) num: *mut E,
+    pub(super) den: *mut E,
+}
+
+impl<E> Copy for GpuFlatFwdMappedE4UnbalancedEntry<E> {}
+
+impl<E> Clone for GpuFlatFwdMappedE4UnbalancedEntry<E> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+#[repr(C)]
+#[derive(Debug)]
+pub(super) struct GpuFlatFwdMemoryExpr<E> {
+    pub(super) address_space_kind: GpuGKRForwardCacheAddressSpaceKind,
+    pub(super) address_space_ptr: *const BF,
+    pub(super) address_space_constant: BF,
+    pub(super) constant_term: E,
+    pub(super) linear_inputs: [*const BF; MEMORY_TUPLE_LINEAR_TERMS],
+    pub(super) linear_challenges: [E; MEMORY_TUPLE_LINEAR_TERMS],
+}
+
+impl<E: Field> Default for GpuFlatFwdMemoryExpr<E> {
+    fn default() -> Self {
+        Self {
+            address_space_kind: GpuGKRForwardCacheAddressSpaceKind::Empty,
+            address_space_ptr: null(),
+            address_space_constant: BF::ZERO,
+            constant_term: E::ZERO,
+            linear_inputs: [null(); MEMORY_TUPLE_LINEAR_TERMS],
+            linear_challenges: [E::ZERO; MEMORY_TUPLE_LINEAR_TERMS],
+        }
+    }
+}
+
+impl<E: Copy> Copy for GpuFlatFwdMemoryExpr<E> {}
+
+impl<E: Copy> Clone for GpuFlatFwdMemoryExpr<E> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+#[repr(C)]
+#[derive(Debug)]
+pub(super) struct GpuFlatFwdMemoryProductEntry<E> {
+    pub(super) lhs: GpuFlatFwdMemoryExpr<E>,
+    pub(super) rhs: GpuFlatFwdMemoryExpr<E>,
+    pub(super) dst: *mut E,
+}
+
+impl<E: Field> Default for GpuFlatFwdMemoryProductEntry<E> {
+    fn default() -> Self {
+        Self {
+            lhs: GpuFlatFwdMemoryExpr::default(),
+            rhs: GpuFlatFwdMemoryExpr::default(),
+            dst: null::<E>().cast_mut(),
+        }
+    }
+}
+
+impl<E: Copy> Copy for GpuFlatFwdMemoryProductEntry<E> {}
+
+impl<E: Copy> Clone for GpuFlatFwdMemoryProductEntry<E> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+#[repr(C)]
+#[derive(Debug)]
+pub(super) struct GpuFlatFwdMemoryMaterializeEntry<E> {
+    pub(super) expr: GpuFlatFwdMemoryExpr<E>,
+    pub(super) dst: *mut E,
+}
+
+impl<E: Field> Default for GpuFlatFwdMemoryMaterializeEntry<E> {
+    fn default() -> Self {
+        Self {
+            expr: GpuFlatFwdMemoryExpr::default(),
+            dst: null::<E>().cast_mut(),
+        }
+    }
+}
+
+impl<E: Copy> Copy for GpuFlatFwdMemoryMaterializeEntry<E> {}
+
+impl<E: Copy> Clone for GpuFlatFwdMemoryMaterializeEntry<E> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
 /// Static description for the flat forward kernel.
 ///
 /// Mirrors `flat_forward_static_desc<E>` in native/prover/gkr/flat_forward.cuh.
@@ -820,11 +999,36 @@ pub(super) struct GpuFlatForwardStaticDesc<E> {
 
     pub(super) e4_unbalanceds: [GpuFlatFwdE4UnbalancedEntry<E>; FLAT_FWD_MAX_PER_CATEGORY],
     pub(super) num_e4_unbalanceds: u32,
+
+    pub(super) mapped_bf_pairs: [GpuFlatFwdMappedBfPairEntry<E>; FLAT_FWD_MAX_PER_CATEGORY],
+    pub(super) num_mapped_bf_pairs: u32,
+
+    pub(super) mapped_e4_pairs: [GpuFlatFwdMappedE4PairEntry<E>; FLAT_FWD_MAX_PER_CATEGORY],
+    pub(super) num_mapped_e4_pairs: u32,
+
+    pub(super) mapped_cached_denses:
+        [GpuFlatFwdMappedCachedDensEntry<E>; FLAT_FWD_MAX_PER_CATEGORY],
+    pub(super) num_mapped_cached_denses: u32,
+
+    pub(super) mapped_e4_minus_mults:
+        [GpuFlatFwdMappedE4MinusMultEntry<E>; FLAT_FWD_MAX_PER_CATEGORY],
+    pub(super) num_mapped_e4_minus_mults: u32,
+
+    pub(super) mapped_e4_unbalanceds:
+        [GpuFlatFwdMappedE4UnbalancedEntry<E>; FLAT_FWD_MAX_PER_CATEGORY],
+    pub(super) num_mapped_e4_unbalanceds: u32,
+
+    pub(super) memory_products: [GpuFlatFwdMemoryProductEntry<E>; FLAT_FWD_MAX_PER_CATEGORY],
+    pub(super) num_memory_products: u32,
+
+    pub(super) memory_materializes:
+        [GpuFlatFwdMemoryMaterializeEntry<E>; FLAT_FWD_MAX_PER_CATEGORY],
+    pub(super) num_memory_materializes: u32,
 }
 
 // The descriptor contains only POD data (pointers, indices, counts). Raw
-// pointers aren't auto-Send/Sync; safety is the caller's responsibility — the
-// Rust lowering (Phase 2) ensures source pointers outlive the kernel launch.
+// pointers aren't auto-Send/Sync; safety is the caller's responsibility: the
+// forward scheduler ensures source pointers outlive the kernel launch.
 unsafe impl<E> Send for GpuFlatForwardStaticDesc<E> {}
 unsafe impl<E> Sync for GpuFlatForwardStaticDesc<E> {}
 
@@ -836,7 +1040,7 @@ impl<E: Copy> Clone for GpuFlatForwardStaticDesc<E> {
     }
 }
 
-impl<E> Default for GpuFlatForwardStaticDesc<E> {
+impl<E: Field> Default for GpuFlatForwardStaticDesc<E> {
     fn default() -> Self {
         Self {
             sources: [null::<u8>(); FLAT_FWD_MAX_SOURCES],
@@ -921,6 +1125,60 @@ impl<E> Default for GpuFlatForwardStaticDesc<E> {
                 den: null::<E>().cast_mut(),
             }),
             num_e4_unbalanceds: 0,
+            mapped_bf_pairs: std::array::from_fn(|_| GpuFlatFwdMappedBfPairEntry {
+                mapping_b: null(),
+                mapping_d: null(),
+                num: null::<E>().cast_mut(),
+                den: null::<E>().cast_mut(),
+            }),
+            num_mapped_bf_pairs: 0,
+            mapped_e4_pairs: std::array::from_fn(|_| GpuFlatFwdMappedE4PairEntry {
+                mapping_b: null(),
+                mapping_d: null(),
+                generic_lookup: null(),
+                num: null::<E>().cast_mut(),
+                den: null::<E>().cast_mut(),
+            }),
+            num_mapped_e4_pairs: 0,
+            mapped_cached_denses: std::array::from_fn(|_| GpuFlatFwdMappedCachedDensEntry {
+                mapping_b: null(),
+                generic_lookup: null(),
+                decoder_mask: null(),
+                decoder_fill_value: null(),
+                src_a: 0,
+                src_c: 0,
+                generic_lookup_len: 0,
+                _pad: 0,
+                num: null::<E>().cast_mut(),
+                den: null::<E>().cast_mut(),
+            }),
+            num_mapped_cached_denses: 0,
+            mapped_e4_minus_mults: std::array::from_fn(|_| GpuFlatFwdMappedE4MinusMultEntry {
+                mapping_b: null(),
+                generic_lookup: null(),
+                src_c: 0,
+                _pad: 0,
+                generic_lookup_len: 0,
+                num: null::<E>().cast_mut(),
+                den: null::<E>().cast_mut(),
+            }),
+            num_mapped_e4_minus_mults: 0,
+            mapped_e4_unbalanceds: std::array::from_fn(|_| GpuFlatFwdMappedE4UnbalancedEntry {
+                src_a: 0,
+                src_b: 0,
+                _pad: 0,
+                mapping_d: null(),
+                generic_lookup: null(),
+                num: null::<E>().cast_mut(),
+                den: null::<E>().cast_mut(),
+            }),
+            num_mapped_e4_unbalanceds: 0,
+            memory_products: std::array::from_fn(|_| GpuFlatFwdMemoryProductEntry::default()),
+            num_memory_products: 0,
+            memory_materializes: std::array::from_fn(|_| {
+                GpuFlatFwdMemoryMaterializeEntry::default()
+            }),
+            num_memory_materializes: 0,
         }
     }
 }
@@ -980,5 +1238,12 @@ pub(super) fn flat_desc_has_work<E>(desc: &GpuFlatForwardStaticDesc<E>) -> bool 
         | desc.num_e4_minus_mults
         | desc.num_bf_unbalanceds
         | desc.num_e4_unbalanceds
+        | desc.num_mapped_bf_pairs
+        | desc.num_mapped_e4_pairs
+        | desc.num_mapped_cached_denses
+        | desc.num_mapped_e4_minus_mults
+        | desc.num_mapped_e4_unbalanceds
+        | desc.num_memory_products
+        | desc.num_memory_materializes
         != 0
 }

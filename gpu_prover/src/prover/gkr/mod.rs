@@ -9,7 +9,6 @@ pub(crate) mod base_layer_claims;
 pub(crate) mod forward;
 pub(crate) mod forward_kernels;
 pub(crate) mod gkr_address_audit;
-pub(crate) mod lowering;
 pub(crate) mod setup;
 pub(crate) mod setup_kernels;
 pub(crate) mod stage1;

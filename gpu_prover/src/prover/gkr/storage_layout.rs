@@ -787,6 +787,71 @@ mod tests {
         );
     }
 
+    #[test]
+    fn no_caches_artifacts_use_only_gpu_forward_supported_variants() {
+        use cs::gkr_compiler::NoFieldGKRRelation as R;
+
+        let dir = compiled_circuit_dir();
+        let mut covered = 0;
+        for basename in CIRCUIT_BASENAMES {
+            let path = dir.join(format!("{basename}_layout_no_caches_gkr.json"));
+            let Some(artifact) = load_artifact(&path) else {
+                continue;
+            };
+            covered += 1;
+            for (layer_idx, layer) in artifact.layers.iter().enumerate() {
+                for gate in layer
+                    .gates
+                    .iter()
+                    .chain(layer.gates_with_external_connections.iter())
+                {
+                    match &gate.enforced_relation {
+                        R::CopyInBaseField { .. }
+                        | R::CopyInExtensionField { .. }
+                        | R::LinearBaseFieldRelation { .. }
+                        | R::EnforceSingleMaxQuadraticConstraint { .. }
+                        | R::InitialGrandProductFromCaches { .. }
+                        | R::InitialGrandProductWithoutCaches { .. }
+                        | R::MaterializeGrandProductTermExpression { .. }
+                        | R::TrivialProduct { .. }
+                        | R::MaskIntoIdentityProduct { .. }
+                        | R::MaterializeSingleLookupInput { .. }
+                        | R::MaterializedVectorLookupInput { .. }
+                        | R::LookupWithCachedDensAndSetup { .. }
+                        | R::LookupWithDensAndSetupExpressions { .. }
+                        | R::LookupPairFromBaseInputs { .. }
+                        | R::LookupPairFromMaterializedBaseInputs { .. }
+                        | R::LookupFromMaterializedBaseInputWithSetup { .. }
+                        | R::LookupUnbalancedPairWithMaterializedBaseInputs { .. }
+                        | R::LookupPairFromVectorInputs { .. }
+                        | R::LookupPairFromMaterializedVectorInputs { .. }
+                        | R::LookupPairFromCachedVectorInputs { .. }
+                        | R::LookupFromVectorInputWithSetup { .. }
+                        | R::LookupFromMaterializedVectorInputWithSetup { .. }
+                        | R::LookupUnbalancedPairWithVectorInputs { .. }
+                        | R::LookupUnbalancedPairWithMaterializedVectorInputs { .. }
+                        | R::AggregateLookupRationalPair { .. }
+                        | R::InitsOrTeardownsInitialPair { .. } => {}
+                        R::MaxQuadratic { output, .. } => {
+                            assert!(
+                                artifact.scratch_space_mapping.contains_key(output),
+                                "{basename} layer {layer_idx}: non-scratch-backed MaxQuadratic output {output:?} requires direct GPU support"
+                            );
+                        }
+                        R::EnforceConstraintsMaxQuadratic { .. }
+                        | R::UnbalancedGrandProductWithCache { .. } => {
+                            panic!(
+                                "{basename} layer {layer_idx}: no-cache artifact uses unsupported GPU forward relation {:?}",
+                                gate.enforced_relation
+                            );
+                        }
+                    }
+                }
+            }
+        }
+        assert!(covered > 0, "expected at least one no-cache artifact");
+    }
+
     /// Builds a small hand-crafted layout: layer 0 holds 2 base polys (slot
     /// `ThisLayerInnerLayerWrite`) + 2 ext polys (slot `ThisLayerCachedWrite`),
     /// trace_len 4. Used by `consolidated_views_share_backing_and_offset` to

@@ -16,7 +16,8 @@ use cs::definitions::{
 use cs::gkr_compiler::{
     CompiledAddressSpaceRelationStrict, CompiledAddressStrict, CompiledMemoryTimestamp,
     GKRCircuitArtifact, GKRLayerDescription, InitsOrTeardownsTimestampAndValue,
-    NoFieldGKRCacheRelation, NoFieldGKRRelation, OutputType,
+    NoFieldGKRCacheRelation, NoFieldGKRRelation, NoFieldSpecialMemoryContributionRelation,
+    OutputType,
 };
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
 use era_cudart::memory::memory_copy_async;
@@ -426,31 +427,7 @@ where
 {
     let stream = context.get_exec_stream();
     hydrate_scratch_space_layer(layer_idx, compiled_circuit, stage1, storage);
-    // Phase 3.2: decompose InitialGrandProductWithoutCaches and
-    // MaterializeGrandProductTermExpression gates into MemoryTuple cache
-    // relations plus lightweight follow-ups (InitialGrandProductFromCaches /
-    // Copy). The synthesized cache relations merge into this layer's cache
-    // batch; the lowered gate list replaces layer.gates / _with_external_connections
-    // for the rest of the scheduler.
-    let grand_product_plan =
-        super::lowering::LayerNoCacheLoweringPlan::grand_product_only(layer_idx, layer);
-    let merged_cached_relations = if grand_product_plan.internal_helper_relations.is_empty() {
-        None
-    } else {
-        let mut merged = layer.cached_relations.clone();
-        for (address, relation) in &grand_product_plan.internal_helper_relations {
-            let previous = merged.insert(*address, relation.clone());
-            assert!(
-                previous.is_none(),
-                "grand-product helper address {:?} collides with existing cache relation",
-                address
-            );
-        }
-        Some(merged)
-    };
-    let cached_relations_ref = merged_cached_relations
-        .as_ref()
-        .unwrap_or(&layer.cached_relations);
+    let cached_relations_ref = &layer.cached_relations;
     if cached_relations_ref.is_empty() {
         schedule_cache_relations(
             layer_idx,
@@ -505,16 +482,21 @@ where
     )?;
     let plan = build_flat_forward_plan(
         layer_idx,
-        &grand_product_plan.lowered_gates,
-        &grand_product_plan.lowered_gates_with_external_connections,
+        &layer.gates,
+        &layer.gates_with_external_connections,
+        stage1,
+        forward_setup,
+        decoder_predicate_address,
         &compiled_circuit.scratch_space_mapping,
         storage,
         external_challenges,
         trace_len,
         context,
     )?;
-    if super::forward_kernels::flat_desc_has_work(&plan.desc) {
-        super::forward_kernels::launch_flat_forward_layer(&plan.desc, trace_len, context)?;
+    for desc in plan.descs.iter() {
+        if super::forward_kernels::flat_desc_has_work(desc) {
+            super::forward_kernels::launch_flat_forward_layer(desc, trace_len, context)?;
+        }
     }
     commit_flat_forward_plan(expected_output_layer, storage, plan);
     gates_range.end(stream)?;
@@ -538,7 +520,7 @@ fn assert_forward_no_cache_layer_invariants(
             assert_eq!(
                 Some(input.0),
                 decoder_predicate_address,
-                "GPU no-cache decoder lowering expects the decoder predicate input"
+                "GPU no-cache decoder dispatch expects the decoder predicate input"
             );
         }
     }
@@ -769,27 +751,76 @@ fn single_column_lookup_mapping_ptr(
     }
 }
 
-struct FlatBuilder<'a, E> {
-    desc: &'a mut GpuFlatForwardStaticDesc<E>,
+struct FlatBuilder<E> {
+    descs: Vec<Box<GpuFlatForwardStaticDesc<E>>>,
     src_map: std::collections::HashMap<usize, u16>,
 }
 
-impl<E> FlatBuilder<'_, E> {
+impl<E: Field> FlatBuilder<E> {
+    fn new() -> Self {
+        Self {
+            descs: vec![Box::new(GpuFlatForwardStaticDesc::default())],
+            src_map: std::collections::HashMap::new(),
+        }
+    }
+
+    fn desc(&self) -> &GpuFlatForwardStaticDesc<E> {
+        self.descs
+            .last()
+            .expect("flat forward builder always has a descriptor")
+    }
+
+    fn desc_mut(&mut self) -> &mut GpuFlatForwardStaticDesc<E> {
+        self.descs
+            .last_mut()
+            .expect("flat forward builder always has a descriptor")
+    }
+
+    fn rotate(&mut self) {
+        if !super::forward_kernels::flat_desc_has_work(self.desc()) {
+            self.src_map.clear();
+            return;
+        }
+        self.descs
+            .push(Box::new(GpuFlatForwardStaticDesc::default()));
+        self.src_map.clear();
+    }
+
+    fn ensure_sources_capacity(&mut self, additional: usize) {
+        if self.desc().num_sources as usize + additional > FLAT_FWD_MAX_SOURCES {
+            self.rotate();
+        }
+    }
+
+    fn ensure_category_capacity(&mut self, count: u32) {
+        if count as usize >= FLAT_FWD_MAX_PER_CATEGORY {
+            self.rotate();
+        }
+    }
+
     fn add_src(&mut self, ptr: *const u8) -> u16 {
         let key = ptr as usize;
         if let Some(&idx) = self.src_map.get(&key) {
             return idx;
         }
-        let idx = self.desc.num_sources;
+        self.ensure_sources_capacity(1);
+        let idx = self.desc().num_sources;
         assert!(
             (idx as usize) < FLAT_FWD_MAX_SOURCES,
             "flat forward: source table overflow ({idx} >= {FLAT_FWD_MAX_SOURCES})"
         );
-        self.desc.sources[idx as usize] = ptr;
-        self.desc.num_sources = idx + 1;
+        self.desc_mut().sources[idx as usize] = ptr;
+        self.desc_mut().num_sources = idx + 1;
         let idx = idx as u16;
         self.src_map.insert(key, idx);
         idx
+    }
+
+    fn into_descs(self) -> Vec<Box<GpuFlatForwardStaticDesc<E>>> {
+        self.descs
+            .into_iter()
+            .filter(|desc| super::forward_kernels::flat_desc_has_work(desc))
+            .collect()
     }
 }
 
@@ -801,8 +832,11 @@ fn encode_virtual_source(kind: GpuBaseFieldSourceKind) -> *const u8 {
 
 fn build_flat_forward_plan<E>(
     layer_idx: usize,
-    lowered_gates: &[cs::gkr_compiler::GateArtifacts],
-    lowered_gates_with_external_connections: &[cs::gkr_compiler::GateArtifacts],
+    gates: &[cs::gkr_compiler::GateArtifacts],
+    gates_with_external_connections: &[cs::gkr_compiler::GateArtifacts],
+    stage1: &GpuGKRStage1Output,
+    forward_setup: &GpuGKRForwardSetup<E>,
+    decoder_predicate_address: Option<GKRAddress>,
     scratch_space_mapping: &BTreeMap<GKRAddress, usize>,
     storage: &mut GpuGKRStorage<BF, E>,
     external_challenges: &GKRExternalChallenges<BF, E>,
@@ -817,20 +851,13 @@ where
 {
     let expected_output_layer = layer_idx + 1;
 
-    let mut desc: Box<GpuFlatForwardStaticDesc<E>> = Box::new(GpuFlatForwardStaticDesc::default());
-    let mut builder = FlatBuilder {
-        desc: &mut desc,
-        src_map: std::collections::HashMap::new(),
-    };
+    let mut builder = FlatBuilder::new();
 
     let mut computed_extension_outputs = Vec::new();
     let mut aliased_base_outputs = Vec::new();
     let mut aliased_extension_outputs = Vec::new();
 
-    for gate in lowered_gates
-        .iter()
-        .chain(lowered_gates_with_external_connections.iter())
-    {
+    for gate in gates.iter().chain(gates_with_external_connections.iter()) {
         assert_eq!(gate.output_layer, expected_output_layer);
         match &gate.enforced_relation {
             NoFieldGKRRelation::CopyInBaseField { input, output }
@@ -850,19 +877,21 @@ where
                     storage.allocate_ext_view(expected_output_layer, *output, context)?;
                 let dst_ptr = dst_view.as_mut_ptr();
                 computed_extension_outputs.push((*output, dst_view));
+                builder.ensure_category_capacity(builder.desc().num_products);
+                builder.ensure_sources_capacity(2);
                 let src_a = builder.add_src(lhs as *const u8);
                 let src_b = builder.add_src(rhs as *const u8);
-                let i = builder.desc.num_products as usize;
+                let i = builder.desc_mut().num_products as usize;
                 assert!(
                     i < FLAT_FWD_MAX_PER_CATEGORY,
                     "flat forward: products overflow"
                 );
-                builder.desc.products[i] = GpuFlatFwdProductEntry {
+                builder.desc_mut().products[i] = GpuFlatFwdProductEntry {
                     src_a,
                     src_b,
                     dst: dst_ptr,
                 };
-                builder.desc.num_products = (i + 1) as u32;
+                builder.desc_mut().num_products = (i + 1) as u32;
             }
             NoFieldGKRRelation::MaskIntoIdentityProduct {
                 input,
@@ -875,19 +904,21 @@ where
                     storage.allocate_ext_view(expected_output_layer, *output, context)?;
                 let dst_ptr = dst_view.as_mut_ptr();
                 computed_extension_outputs.push((*output, dst_view));
+                builder.ensure_category_capacity(builder.desc().num_masks);
+                builder.ensure_sources_capacity(2);
                 let src_mask = builder.add_src(mask_ptr as *const u8);
                 let src_input = builder.add_src(input_ptr as *const u8);
-                let i = builder.desc.num_masks as usize;
+                let i = builder.desc_mut().num_masks as usize;
                 assert!(
                     i < FLAT_FWD_MAX_PER_CATEGORY,
                     "flat forward: masks overflow"
                 );
-                builder.desc.masks[i] = GpuFlatFwdMaskEntry {
+                builder.desc_mut().masks[i] = GpuFlatFwdMaskEntry {
                     src_mask,
                     src_input,
                     dst: dst_ptr,
                 };
-                builder.desc.num_masks = (i + 1) as u32;
+                builder.desc_mut().num_masks = (i + 1) as u32;
             }
             NoFieldGKRRelation::AggregateLookupRationalPair { input, output } => {
                 let [a, b] = input[0].map(|addr| storage.get_ext_poly(addr).as_ptr());
@@ -900,16 +931,18 @@ where
                 let den_ptr = den_view.as_mut_ptr();
                 computed_extension_outputs.push((output[0], num_view));
                 computed_extension_outputs.push((output[1], den_view));
+                builder.ensure_category_capacity(builder.desc().num_lookup4s);
+                builder.ensure_sources_capacity(4);
                 let src_a = builder.add_src(a as *const u8);
                 let src_b = builder.add_src(b as *const u8);
                 let src_c = builder.add_src(c as *const u8);
                 let src_d = builder.add_src(d as *const u8);
-                let i = builder.desc.num_lookup4s as usize;
+                let i = builder.desc_mut().num_lookup4s as usize;
                 assert!(
                     i < FLAT_FWD_MAX_PER_CATEGORY,
                     "flat forward: lookup4s overflow"
                 );
-                builder.desc.lookup4s[i] = GpuFlatFwdLookup4Entry {
+                builder.desc_mut().lookup4s[i] = GpuFlatFwdLookup4Entry {
                     src_a,
                     src_b,
                     src_c,
@@ -917,7 +950,7 @@ where
                     num: num_ptr,
                     den: den_ptr,
                 };
-                builder.desc.num_lookup4s = (i + 1) as u32;
+                builder.desc_mut().num_lookup4s = (i + 1) as u32;
             }
             NoFieldGKRRelation::LookupWithCachedDensAndSetup {
                 input,
@@ -936,16 +969,18 @@ where
                 let den_ptr = den_view.as_mut_ptr();
                 computed_extension_outputs.push((output[0], num_view));
                 computed_extension_outputs.push((output[1], den_view));
+                builder.ensure_category_capacity(builder.desc().num_cached_denses);
+                builder.ensure_sources_capacity(4);
                 let src_a = builder.add_src(a as *const u8);
                 let src_b = builder.add_src(b as *const u8);
                 let src_c = builder.add_src(c as *const u8);
                 let src_d = builder.add_src(d as *const u8);
-                let i = builder.desc.num_cached_denses as usize;
+                let i = builder.desc_mut().num_cached_denses as usize;
                 assert!(
                     i < FLAT_FWD_MAX_PER_CATEGORY,
                     "flat forward: cached_denses overflow"
                 );
-                builder.desc.cached_denses[i] = GpuFlatFwdCachedDensEntry {
+                builder.desc_mut().cached_denses[i] = GpuFlatFwdCachedDensEntry {
                     src_a,
                     src_b,
                     src_c,
@@ -953,7 +988,7 @@ where
                     num: num_ptr,
                     den: den_ptr,
                 };
-                builder.desc.num_cached_denses = (i + 1) as u32;
+                builder.desc_mut().num_cached_denses = (i + 1) as u32;
             }
             NoFieldGKRRelation::LookupPairFromMaterializedBaseInputs { input, output } => {
                 let lhs = storage.get_base_layer(input[0]).as_ptr();
@@ -966,20 +1001,22 @@ where
                 let den_ptr = den_view.as_mut_ptr();
                 computed_extension_outputs.push((output[0], num_view));
                 computed_extension_outputs.push((output[1], den_view));
+                builder.ensure_category_capacity(builder.desc().num_bf_pairs);
+                builder.ensure_sources_capacity(2);
                 let src_b = builder.add_src(lhs as *const u8);
                 let src_d = builder.add_src(rhs as *const u8);
-                let i = builder.desc.num_bf_pairs as usize;
+                let i = builder.desc_mut().num_bf_pairs as usize;
                 assert!(
                     i < FLAT_FWD_MAX_PER_CATEGORY,
                     "flat forward: bf_pairs overflow"
                 );
-                builder.desc.bf_pairs[i] = GpuFlatFwdBfPairEntry {
+                builder.desc_mut().bf_pairs[i] = GpuFlatFwdBfPairEntry {
                     src_b,
                     src_d,
                     num: num_ptr,
                     den: den_ptr,
                 };
-                builder.desc.num_bf_pairs = (i + 1) as u32;
+                builder.desc_mut().num_bf_pairs = (i + 1) as u32;
             }
             NoFieldGKRRelation::LookupPairFromMaterializedVectorInputs { input, output }
             | NoFieldGKRRelation::LookupPairFromCachedVectorInputs { input, output } => {
@@ -993,20 +1030,22 @@ where
                 let den_ptr = den_view.as_mut_ptr();
                 computed_extension_outputs.push((output[0], num_view));
                 computed_extension_outputs.push((output[1], den_view));
+                builder.ensure_category_capacity(builder.desc().num_e4_pairs);
+                builder.ensure_sources_capacity(2);
                 let src_b = builder.add_src(lhs as *const u8);
                 let src_d = builder.add_src(rhs as *const u8);
-                let i = builder.desc.num_e4_pairs as usize;
+                let i = builder.desc_mut().num_e4_pairs as usize;
                 assert!(
                     i < FLAT_FWD_MAX_PER_CATEGORY,
                     "flat forward: e4_pairs overflow"
                 );
-                builder.desc.e4_pairs[i] = GpuFlatFwdE4PairEntry {
+                builder.desc_mut().e4_pairs[i] = GpuFlatFwdE4PairEntry {
                     src_b,
                     src_d,
                     num: num_ptr,
                     den: den_ptr,
                 };
-                builder.desc.num_e4_pairs = (i + 1) as u32;
+                builder.desc_mut().num_e4_pairs = (i + 1) as u32;
             }
             NoFieldGKRRelation::LookupFromMaterializedBaseInputWithSetup {
                 input,
@@ -1029,15 +1068,17 @@ where
                 let den_ptr = den_view.as_mut_ptr();
                 computed_extension_outputs.push((output[0], num_view));
                 computed_extension_outputs.push((output[1], den_view));
+                builder.ensure_category_capacity(builder.desc().num_bf_minus_mults);
+                builder.ensure_sources_capacity(3);
                 let src_b = builder.add_src(b as *const u8);
                 let src_c = builder.add_src(c as *const u8);
                 let src_d = builder.add_src(d_ptr);
-                let i = builder.desc.num_bf_minus_mults as usize;
+                let i = builder.desc_mut().num_bf_minus_mults as usize;
                 assert!(
                     i < FLAT_FWD_MAX_PER_CATEGORY,
                     "flat forward: bf_minus_mults overflow"
                 );
-                builder.desc.bf_minus_mults[i] = GpuFlatFwdBfMinusMultEntry {
+                builder.desc_mut().bf_minus_mults[i] = GpuFlatFwdBfMinusMultEntry {
                     src_b,
                     src_c,
                     src_d,
@@ -1045,7 +1086,7 @@ where
                     num: num_ptr,
                     den: den_ptr,
                 };
-                builder.desc.num_bf_minus_mults = (i + 1) as u32;
+                builder.desc_mut().num_bf_minus_mults = (i + 1) as u32;
             }
             NoFieldGKRRelation::LookupFromMaterializedVectorInputWithSetup {
                 input,
@@ -1063,15 +1104,17 @@ where
                 let den_ptr = den_view.as_mut_ptr();
                 computed_extension_outputs.push((output[0], num_view));
                 computed_extension_outputs.push((output[1], den_view));
+                builder.ensure_category_capacity(builder.desc().num_e4_minus_mults);
+                builder.ensure_sources_capacity(3);
                 let src_b = builder.add_src(b as *const u8);
                 let src_c = builder.add_src(c as *const u8);
                 let src_d = builder.add_src(d as *const u8);
-                let i = builder.desc.num_e4_minus_mults as usize;
+                let i = builder.desc_mut().num_e4_minus_mults as usize;
                 assert!(
                     i < FLAT_FWD_MAX_PER_CATEGORY,
                     "flat forward: e4_minus_mults overflow"
                 );
-                builder.desc.e4_minus_mults[i] = GpuFlatFwdE4MinusMultEntry {
+                builder.desc_mut().e4_minus_mults[i] = GpuFlatFwdE4MinusMultEntry {
                     src_b,
                     src_c,
                     src_d,
@@ -1079,7 +1122,7 @@ where
                     num: num_ptr,
                     den: den_ptr,
                 };
-                builder.desc.num_e4_minus_mults = (i + 1) as u32;
+                builder.desc_mut().num_e4_minus_mults = (i + 1) as u32;
             }
             NoFieldGKRRelation::LookupUnbalancedPairWithMaterializedBaseInputs {
                 input,
@@ -1096,15 +1139,17 @@ where
                 let den_ptr = den_view.as_mut_ptr();
                 computed_extension_outputs.push((output[0], num_view));
                 computed_extension_outputs.push((output[1], den_view));
+                builder.ensure_category_capacity(builder.desc().num_bf_unbalanceds);
+                builder.ensure_sources_capacity(3);
                 let src_a = builder.add_src(a as *const u8);
                 let src_b = builder.add_src(b as *const u8);
                 let src_d = builder.add_src(remainder as *const u8);
-                let i = builder.desc.num_bf_unbalanceds as usize;
+                let i = builder.desc_mut().num_bf_unbalanceds as usize;
                 assert!(
                     i < FLAT_FWD_MAX_PER_CATEGORY,
                     "flat forward: bf_unbalanceds overflow"
                 );
-                builder.desc.bf_unbalanceds[i] = GpuFlatFwdBfUnbalancedEntry {
+                builder.desc_mut().bf_unbalanceds[i] = GpuFlatFwdBfUnbalancedEntry {
                     src_a,
                     src_b,
                     src_d,
@@ -1112,7 +1157,7 @@ where
                     num: num_ptr,
                     den: den_ptr,
                 };
-                builder.desc.num_bf_unbalanceds = (i + 1) as u32;
+                builder.desc_mut().num_bf_unbalanceds = (i + 1) as u32;
             }
             NoFieldGKRRelation::LookupUnbalancedPairWithMaterializedVectorInputs {
                 input,
@@ -1129,15 +1174,17 @@ where
                 let den_ptr = den_view.as_mut_ptr();
                 computed_extension_outputs.push((output[0], num_view));
                 computed_extension_outputs.push((output[1], den_view));
+                builder.ensure_category_capacity(builder.desc().num_e4_unbalanceds);
+                builder.ensure_sources_capacity(3);
                 let src_a = builder.add_src(a as *const u8);
                 let src_b = builder.add_src(b as *const u8);
                 let src_d = builder.add_src(remainder as *const u8);
-                let i = builder.desc.num_e4_unbalanceds as usize;
+                let i = builder.desc_mut().num_e4_unbalanceds as usize;
                 assert!(
                     i < FLAT_FWD_MAX_PER_CATEGORY,
                     "flat forward: e4_unbalanceds overflow"
                 );
-                builder.desc.e4_unbalanceds[i] = GpuFlatFwdE4UnbalancedEntry {
+                builder.desc_mut().e4_unbalanceds[i] = GpuFlatFwdE4UnbalancedEntry {
                     src_a,
                     src_b,
                     src_d,
@@ -1145,27 +1192,211 @@ where
                     num: num_ptr,
                     den: den_ptr,
                 };
-                builder.desc.num_e4_unbalanceds = (i + 1) as u32;
+                builder.desc_mut().num_e4_unbalanceds = (i + 1) as u32;
+            }
+            NoFieldGKRRelation::LookupPairFromBaseInputs {
+                input,
+                output,
+                range_check_width,
+            } => {
+                builder.ensure_category_capacity(builder.desc().num_mapped_bf_pairs);
+                let mapping_b =
+                    single_column_lookup_mapping_ptr(stage1, &input[0], *range_check_width);
+                let mapping_d =
+                    single_column_lookup_mapping_ptr(stage1, &input[1], *range_check_width);
+                let num_view =
+                    storage.allocate_ext_view(expected_output_layer, output[0], context)?;
+                let den_view =
+                    storage.allocate_ext_view(expected_output_layer, output[1], context)?;
+                let num_ptr = num_view.as_mut_ptr();
+                let den_ptr = den_view.as_mut_ptr();
+                computed_extension_outputs.push((output[0], num_view));
+                computed_extension_outputs.push((output[1], den_view));
+                let i = builder.desc().num_mapped_bf_pairs as usize;
+                builder.desc_mut().mapped_bf_pairs[i] = GpuFlatFwdMappedBfPairEntry {
+                    mapping_b,
+                    mapping_d,
+                    num: num_ptr,
+                    den: den_ptr,
+                };
+                builder.desc_mut().num_mapped_bf_pairs = (i + 1) as u32;
+            }
+            NoFieldGKRRelation::LookupPairFromVectorInputs { input, output } => {
+                builder.ensure_category_capacity(builder.desc().num_mapped_e4_pairs);
+                let mapping_b = vector_lookup_mapping_ptr(stage1, &input[0]);
+                let mapping_d = vector_lookup_mapping_ptr(stage1, &input[1]);
+                let generic_lookup = forward_setup.generic_lookup().as_ptr();
+                let num_view =
+                    storage.allocate_ext_view(expected_output_layer, output[0], context)?;
+                let den_view =
+                    storage.allocate_ext_view(expected_output_layer, output[1], context)?;
+                let num_ptr = num_view.as_mut_ptr();
+                let den_ptr = den_view.as_mut_ptr();
+                computed_extension_outputs.push((output[0], num_view));
+                computed_extension_outputs.push((output[1], den_view));
+                let i = builder.desc().num_mapped_e4_pairs as usize;
+                builder.desc_mut().mapped_e4_pairs[i] = GpuFlatFwdMappedE4PairEntry {
+                    mapping_b,
+                    mapping_d,
+                    generic_lookup,
+                    num: num_ptr,
+                    den: den_ptr,
+                };
+                builder.desc_mut().num_mapped_e4_pairs = (i + 1) as u32;
+            }
+            NoFieldGKRRelation::LookupWithDensAndSetupExpressions {
+                input,
+                setup,
+                output,
+            } => {
+                assert_eq!(
+                    Some(input.0),
+                    decoder_predicate_address,
+                    "GPU no-cache decoder lookup expects the decoder predicate input"
+                );
+                builder.ensure_category_capacity(builder.desc().num_mapped_cached_denses);
+                builder.ensure_sources_capacity(2);
+                let mapping_b = vector_lookup_mapping_ptr(stage1, &input.1);
+                let generic_lookup = forward_setup.generic_lookup().as_ptr();
+                let decoder_mask = storage.get_base_layer(input.0).as_ptr();
+                let decoder_fill_value = forward_setup.decoder_lookup_fill_value_device().as_ptr();
+                let a = storage.get_base_layer(input.0).as_ptr();
+                let c = storage.get_base_layer(setup.0).as_ptr();
+                let num_view =
+                    storage.allocate_ext_view(expected_output_layer, output[0], context)?;
+                let den_view =
+                    storage.allocate_ext_view(expected_output_layer, output[1], context)?;
+                let num_ptr = num_view.as_mut_ptr();
+                let den_ptr = den_view.as_mut_ptr();
+                computed_extension_outputs.push((output[0], num_view));
+                computed_extension_outputs.push((output[1], den_view));
+                let src_a = builder.add_src(a as *const u8);
+                let src_c = builder.add_src(c as *const u8);
+                let i = builder.desc().num_mapped_cached_denses as usize;
+                builder.desc_mut().mapped_cached_denses[i] = GpuFlatFwdMappedCachedDensEntry {
+                    mapping_b,
+                    generic_lookup,
+                    decoder_mask,
+                    decoder_fill_value,
+                    src_a,
+                    src_c,
+                    generic_lookup_len: forward_setup.generic_lookup_len() as u32,
+                    _pad: 0,
+                    num: num_ptr,
+                    den: den_ptr,
+                };
+                builder.desc_mut().num_mapped_cached_denses = (i + 1) as u32;
+            }
+            NoFieldGKRRelation::LookupFromVectorInputWithSetup {
+                input,
+                setup,
+                output,
+            } => {
+                builder.ensure_category_capacity(builder.desc().num_mapped_e4_minus_mults);
+                builder.ensure_sources_capacity(1);
+                let mapping_b = vector_lookup_mapping_ptr(stage1, input);
+                let generic_lookup = forward_setup.generic_lookup().as_ptr();
+                let c = storage.get_base_layer(setup.0).as_ptr();
+                let num_view =
+                    storage.allocate_ext_view(expected_output_layer, output[0], context)?;
+                let den_view =
+                    storage.allocate_ext_view(expected_output_layer, output[1], context)?;
+                let num_ptr = num_view.as_mut_ptr();
+                let den_ptr = den_view.as_mut_ptr();
+                computed_extension_outputs.push((output[0], num_view));
+                computed_extension_outputs.push((output[1], den_view));
+                let src_c = builder.add_src(c as *const u8);
+                let i = builder.desc().num_mapped_e4_minus_mults as usize;
+                builder.desc_mut().mapped_e4_minus_mults[i] = GpuFlatFwdMappedE4MinusMultEntry {
+                    mapping_b,
+                    generic_lookup,
+                    src_c,
+                    _pad: 0,
+                    generic_lookup_len: forward_setup.generic_lookup_len() as u32,
+                    num: num_ptr,
+                    den: den_ptr,
+                };
+                builder.desc_mut().num_mapped_e4_minus_mults = (i + 1) as u32;
+            }
+            NoFieldGKRRelation::LookupUnbalancedPairWithVectorInputs {
+                input,
+                remainder,
+                output,
+            } => {
+                builder.ensure_category_capacity(builder.desc().num_mapped_e4_unbalanceds);
+                builder.ensure_sources_capacity(2);
+                let [a, b] = input.map(|addr| storage.get_ext_poly(addr).as_ptr());
+                let mapping_d = vector_lookup_mapping_ptr(stage1, remainder);
+                let generic_lookup = forward_setup.generic_lookup().as_ptr();
+                let num_view =
+                    storage.allocate_ext_view(expected_output_layer, output[0], context)?;
+                let den_view =
+                    storage.allocate_ext_view(expected_output_layer, output[1], context)?;
+                let num_ptr = num_view.as_mut_ptr();
+                let den_ptr = den_view.as_mut_ptr();
+                computed_extension_outputs.push((output[0], num_view));
+                computed_extension_outputs.push((output[1], den_view));
+                let src_a = builder.add_src(a as *const u8);
+                let src_b = builder.add_src(b as *const u8);
+                let i = builder.desc().num_mapped_e4_unbalanceds as usize;
+                builder.desc_mut().mapped_e4_unbalanceds[i] = GpuFlatFwdMappedE4UnbalancedEntry {
+                    src_a,
+                    src_b,
+                    _pad: 0,
+                    mapping_d,
+                    generic_lookup,
+                    num: num_ptr,
+                    den: den_ptr,
+                };
+                builder.desc_mut().num_mapped_e4_unbalanceds = (i + 1) as u32;
+            }
+            NoFieldGKRRelation::InitialGrandProductWithoutCaches { input, output } => {
+                builder.ensure_category_capacity(builder.desc().num_memory_products);
+                let dst_view =
+                    storage.allocate_ext_view(expected_output_layer, *output, context)?;
+                let dst_ptr = dst_view.as_mut_ptr();
+                computed_extension_outputs.push((*output, dst_view));
+                let lhs = build_memory_expr(&input[0], storage, external_challenges);
+                let rhs = build_memory_expr(&input[1], storage, external_challenges);
+                let i = builder.desc().num_memory_products as usize;
+                builder.desc_mut().memory_products[i] = GpuFlatFwdMemoryProductEntry {
+                    lhs,
+                    rhs,
+                    dst: dst_ptr,
+                };
+                builder.desc_mut().num_memory_products = (i + 1) as u32;
+            }
+            NoFieldGKRRelation::MaterializeGrandProductTermExpression { input, output } => {
+                builder.ensure_category_capacity(builder.desc().num_memory_materializes);
+                let dst_view =
+                    storage.allocate_ext_view(expected_output_layer, *output, context)?;
+                let dst_ptr = dst_view.as_mut_ptr();
+                computed_extension_outputs.push((*output, dst_view));
+                let expr = build_memory_expr(input, storage, external_challenges);
+                let i = builder.desc().num_memory_materializes as usize;
+                builder.desc_mut().memory_materializes[i] =
+                    GpuFlatFwdMemoryMaterializeEntry { expr, dst: dst_ptr };
+                builder.desc_mut().num_memory_materializes = (i + 1) as u32;
             }
             NoFieldGKRRelation::EnforceConstraintsMaxQuadratic { .. } => {}
             NoFieldGKRRelation::MaterializedVectorLookupInput { output, .. } => {
                 assert!(
                     storage.try_get_ext_poly(*output).is_some(),
-                    "materialized vector lookup output {:?} must be precomputed before gate lowering",
+                    "materialized vector lookup output {:?} must be precomputed before forward dispatch",
                     output
                 );
             }
             NoFieldGKRRelation::MaterializeSingleLookupInput { output, .. } => {
                 assert!(
                     storage.try_get_base_poly(*output).is_some(),
-                    "materialized single lookup output {:?} must be precomputed before gate lowering",
+                    "materialized single lookup output {:?} must be precomputed before forward dispatch",
                     output
                 );
             }
             NoFieldGKRRelation::LinearBaseFieldRelation { output, .. } => {
                 assert!(
                     storage.try_get_base_poly(*output).is_some(),
-                    "materialized linear base output {:?} must be precomputed before gate lowering",
+                    "materialized linear base output {:?} must be precomputed before forward dispatch",
                     output
                 );
             }
@@ -1173,20 +1404,6 @@ where
                 if scratch_space_mapping.contains_key(output)
                     || storage.try_get_base_poly(*output).is_some() => {}
             NoFieldGKRRelation::EnforceSingleMaxQuadraticConstraint { .. } => {}
-            NoFieldGKRRelation::LookupPairFromBaseInputs { .. }
-            | NoFieldGKRRelation::LookupWithDensAndSetupExpressions { .. }
-            | NoFieldGKRRelation::LookupPairFromVectorInputs { .. }
-            | NoFieldGKRRelation::LookupFromVectorInputWithSetup { .. }
-            | NoFieldGKRRelation::LookupUnbalancedPairWithVectorInputs { .. } => {
-                // Mapping-based lookup relations only appear in uncached GKR
-                // layouts (`*_no_caches_gkr.json`); gpu_prover exclusively
-                // consumes cached layouts, where these are pre-materialized
-                // into the direct-source categories above.
-                unreachable!(
-                    "mapping-based GKR relation unexpected in cached layout: {:?}",
-                    gate.enforced_relation
-                )
-            }
             NoFieldGKRRelation::InitsOrTeardownsInitialPair {
                 timestamp_and_value,
                 setup,
@@ -1208,13 +1425,6 @@ where
                 )?;
                 computed_extension_outputs.push((*output, dst_view));
             }
-            NoFieldGKRRelation::InitialGrandProductWithoutCaches { .. }
-            | NoFieldGKRRelation::MaterializeGrandProductTermExpression { .. } => {
-                unreachable!(
-                    "grand-product gates must be decomposed by \
-                     LayerNoCacheLoweringPlan::grand_product_only before lowering"
-                )
-            }
             NoFieldGKRRelation::MaxQuadratic { .. }
             | NoFieldGKRRelation::UnbalancedGrandProductWithCache { .. } => {
                 unimplemented!(
@@ -1226,7 +1436,7 @@ where
     }
 
     Ok(FlatForwardPlan {
-        desc,
+        descs: builder.into_descs(),
         computed_extension_outputs,
         aliased_base_outputs,
         aliased_extension_outputs,
@@ -1239,7 +1449,7 @@ fn commit_flat_forward_plan<E>(
     plan: FlatForwardPlan<E>,
 ) {
     let FlatForwardPlan {
-        desc: _,
+        descs: _,
         computed_extension_outputs,
         aliased_base_outputs,
         aliased_extension_outputs,
@@ -1366,6 +1576,260 @@ fn push_memory_tuple_linear_term<E: Field>(
         .position(|ptr| ptr.is_null())
         .expect("GPU memory tuple linear terms exceeded fixed descriptor capacity");
     add_memory_tuple_linear_term(descriptor, term_idx, input, challenge);
+}
+
+fn add_memory_expr_linear_term<E: Field>(
+    expr: &mut GpuFlatFwdMemoryExpr<E>,
+    term_idx: usize,
+    input: *const BF,
+    challenge: E,
+) {
+    expr.linear_inputs[term_idx] = input;
+    expr.linear_challenges[term_idx] = challenge;
+}
+
+fn push_memory_expr_linear_term<E: Field>(
+    expr: &mut GpuFlatFwdMemoryExpr<E>,
+    input: *const BF,
+    challenge: E,
+) {
+    let term_idx = expr
+        .linear_inputs
+        .iter()
+        .position(|ptr| ptr.is_null())
+        .expect("GPU memory tuple linear terms exceeded fixed descriptor capacity");
+    add_memory_expr_linear_term(expr, term_idx, input, challenge);
+}
+
+fn build_memory_expr<E>(
+    rel: &NoFieldSpecialMemoryContributionRelation,
+    storage: &GpuGKRStorage<BF, E>,
+    external_challenges: &GKRExternalChallenges<BF, E>,
+) -> GpuFlatFwdMemoryExpr<E>
+where
+    E: Field + FieldExtension<BF>,
+{
+    let mut expr = GpuFlatFwdMemoryExpr {
+        constant_term: external_challenges.permutation_argument_additive_part,
+        ..GpuFlatFwdMemoryExpr::default()
+    };
+    let mut deferred_low_dynamic_term: Option<(*const BF, E)> = None;
+
+    match rel.address_space {
+        CompiledAddressSpaceRelationStrict::Constant(c) => {
+            expr.address_space_kind = GpuGKRForwardCacheAddressSpaceKind::Constant;
+            expr.address_space_constant = BF::from_u32_unchecked(c);
+        }
+        CompiledAddressSpaceRelationStrict::IsRegister(offset) => {
+            expr.address_space_kind = GpuGKRForwardCacheAddressSpaceKind::Not;
+            expr.address_space_ptr = storage
+                .get_base_layer(GKRAddress::BaseLayerMemory(offset))
+                .as_ptr();
+        }
+        CompiledAddressSpaceRelationStrict::IsRam(offset) => {
+            expr.address_space_kind = GpuGKRForwardCacheAddressSpaceKind::Is;
+            expr.address_space_ptr = storage
+                .get_base_layer(GKRAddress::BaseLayerMemory(offset))
+                .as_ptr();
+        }
+    }
+
+    match &rel.address {
+        CompiledAddressStrict::ConstantU16(c) => {
+            let mut contribution = external_challenges
+                .permutation_argument_linearization_challenges
+                [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
+            contribution.mul_assign_by_base(&BF::from_u32_unchecked(*c as u32));
+            expr.constant_term.add_assign(&contribution);
+        }
+        CompiledAddressStrict::Constant(c) => {
+            let mut contribution = external_challenges
+                .permutation_argument_linearization_challenges
+                [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
+            contribution.mul_assign_by_base(&BF::from_u32_unchecked(*c));
+            expr.constant_term.add_assign(&contribution);
+        }
+        CompiledAddressStrict::U16Space(offset) => {
+            add_memory_expr_linear_term(
+                &mut expr,
+                MEMORY_TUPLE_ADDRESS_LOW_TERM,
+                storage
+                    .get_base_layer(GKRAddress::BaseLayerMemory(*offset))
+                    .as_ptr(),
+                external_challenges.permutation_argument_linearization_challenges
+                    [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX],
+            );
+        }
+        CompiledAddressStrict::U32Space([low, high]) => {
+            add_memory_expr_linear_term(
+                &mut expr,
+                MEMORY_TUPLE_ADDRESS_LOW_TERM,
+                storage
+                    .get_base_layer(GKRAddress::BaseLayerMemory(*low))
+                    .as_ptr(),
+                external_challenges.permutation_argument_linearization_challenges
+                    [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX],
+            );
+            add_memory_expr_linear_term(
+                &mut expr,
+                MEMORY_TUPLE_ADDRESS_HIGH_TERM,
+                storage
+                    .get_base_layer(GKRAddress::BaseLayerMemory(*high))
+                    .as_ptr(),
+                external_challenges.permutation_argument_linearization_challenges
+                    [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX],
+            );
+        }
+        CompiledAddressStrict::U32SpaceSpecialIndirect {
+            low_base,
+            low_dynamic_offset,
+            low_offset,
+            high,
+        } => {
+            let low_challenge = external_challenges.permutation_argument_linearization_challenges
+                [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX];
+            let high_challenge = external_challenges.permutation_argument_linearization_challenges
+                [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
+            if *low_offset != 0 {
+                let mut contribution = low_challenge;
+                contribution.mul_assign_by_base(&BF::from_u32_unchecked(*low_offset));
+                expr.constant_term.add_assign(&contribution);
+            }
+            add_memory_expr_linear_term(
+                &mut expr,
+                MEMORY_TUPLE_ADDRESS_LOW_TERM,
+                storage
+                    .get_base_layer(GKRAddress::BaseLayerMemory(*low_base))
+                    .as_ptr(),
+                low_challenge,
+            );
+            if let Some((multiplier, dynamic_offset)) = *low_dynamic_offset {
+                let mut challenge = low_challenge;
+                challenge.mul_assign_by_base(&BF::from_u32_unchecked(multiplier as u32));
+                deferred_low_dynamic_term = Some((
+                    storage
+                        .get_base_layer(GKRAddress::BaseLayerMemory(dynamic_offset))
+                        .as_ptr(),
+                    challenge,
+                ));
+            }
+            add_memory_expr_linear_term(
+                &mut expr,
+                MEMORY_TUPLE_ADDRESS_HIGH_TERM,
+                storage
+                    .get_base_layer(GKRAddress::BaseLayerMemory(*high))
+                    .as_ptr(),
+                high_challenge,
+            );
+        }
+        CompiledAddressStrict::U32SpaceGeneric(..) => {
+            unimplemented!(
+                "unsupported GPU memory tuple address relation: {:?}",
+                rel.address
+            )
+        }
+    }
+
+    match &rel.timestamp {
+        CompiledMemoryTimestamp::Zero => {}
+        CompiledMemoryTimestamp::Normal(timestamp) => {
+            add_memory_expr_linear_term(
+                &mut expr,
+                MEMORY_TUPLE_TIMESTAMP_LOW_TERM,
+                storage
+                    .get_base_layer(GKRAddress::BaseLayerMemory(timestamp[0]))
+                    .as_ptr(),
+                external_challenges.permutation_argument_linearization_challenges
+                    [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX],
+            );
+            if rel.timestamp_offset != 0 {
+                let mut contribution = external_challenges
+                    .permutation_argument_linearization_challenges
+                    [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX];
+                contribution.mul_assign_by_base(&BF::from_u32_unchecked(rel.timestamp_offset));
+                expr.constant_term.add_assign(&contribution);
+            }
+            add_memory_expr_linear_term(
+                &mut expr,
+                MEMORY_TUPLE_TIMESTAMP_HIGH_TERM,
+                storage
+                    .get_base_layer(GKRAddress::BaseLayerMemory(timestamp[1]))
+                    .as_ptr(),
+                external_challenges.permutation_argument_linearization_challenges
+                    [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX],
+            );
+        }
+    }
+
+    match rel.value {
+        RamWordRepresentation::Zero => {}
+        RamWordRepresentation::U16Limbs(read_value) => {
+            add_memory_expr_linear_term(
+                &mut expr,
+                MEMORY_TUPLE_VALUE_LOW_TERM,
+                storage
+                    .get_base_layer(GKRAddress::BaseLayerMemory(read_value[0]))
+                    .as_ptr(),
+                external_challenges.permutation_argument_linearization_challenges
+                    [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX],
+            );
+            add_memory_expr_linear_term(
+                &mut expr,
+                MEMORY_TUPLE_VALUE_HIGH_TERM,
+                storage
+                    .get_base_layer(GKRAddress::BaseLayerMemory(read_value[1]))
+                    .as_ptr(),
+                external_challenges.permutation_argument_linearization_challenges
+                    [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX],
+            );
+        }
+        RamWordRepresentation::U8Limbs(read_value_bytes) => {
+            let byte_shift = BF::from_u32_unchecked(1 << 8);
+            for (challenge_idx, low_term_idx, high_term_idx, low_offset, high_offset) in [
+                (
+                    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX,
+                    MEMORY_TUPLE_VALUE_LOW_TERM,
+                    MEMORY_TUPLE_VALUE_LOW_EXTRA_TERM,
+                    read_value_bytes[0],
+                    read_value_bytes[1],
+                ),
+                (
+                    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX,
+                    MEMORY_TUPLE_VALUE_HIGH_TERM,
+                    MEMORY_TUPLE_VALUE_HIGH_EXTRA_TERM,
+                    read_value_bytes[2],
+                    read_value_bytes[3],
+                ),
+            ] {
+                let challenge = external_challenges.permutation_argument_linearization_challenges
+                    [challenge_idx];
+                add_memory_expr_linear_term(
+                    &mut expr,
+                    low_term_idx,
+                    storage
+                        .get_base_layer(GKRAddress::BaseLayerMemory(low_offset))
+                        .as_ptr(),
+                    challenge,
+                );
+                let mut shifted_challenge = challenge;
+                shifted_challenge.mul_assign_by_base(&byte_shift);
+                add_memory_expr_linear_term(
+                    &mut expr,
+                    high_term_idx,
+                    storage
+                        .get_base_layer(GKRAddress::BaseLayerMemory(high_offset))
+                        .as_ptr(),
+                    shifted_challenge,
+                );
+            }
+        }
+    }
+
+    if let Some((input, challenge)) = deferred_low_dynamic_term {
+        push_memory_expr_linear_term(&mut expr, input, challenge);
+    }
+
+    expr
 }
 
 enum LoweredCacheRelationOutput<E> {
@@ -2562,6 +3026,52 @@ mod tests {
         host
     }
 
+    fn attach_test_ext_output_layout(
+        storage: &mut GpuGKRStorage<BF, E4>,
+        trace_len: usize,
+        output_layer: usize,
+        outputs: &[GKRAddress],
+    ) {
+        use crate::prover::gkr::gkr_address_audit::AddressClass;
+        use crate::prover::gkr::storage_layout::{
+            FieldType, GpuGKRLayerLayout, GpuGKRStorageLayout, StorageSlot,
+        };
+
+        assert!(trace_len.is_power_of_two());
+        let log2_stride = trace_len.trailing_zeros();
+        let mut layers = vec![GpuGKRLayerLayout::default(); output_layer + 1];
+        let mut index = BTreeMap::new();
+        for (poly_idx, output) in outputs.iter().enumerate() {
+            index.insert(
+                *output,
+                (
+                    AddressClass::ThisLayerInnerLayerWrite,
+                    FieldType::Ext,
+                    poly_idx as u32,
+                ),
+            );
+        }
+        let mut slot_poly_counts = BTreeMap::new();
+        slot_poly_counts.insert(
+            StorageSlot {
+                class: AddressClass::ThisLayerInnerLayerWrite,
+                field: FieldType::Ext,
+            },
+            outputs.len() as u32,
+        );
+        layers[output_layer] = GpuGKRLayerLayout {
+            index,
+            slot_poly_counts,
+            log2_stride,
+        };
+        storage.set_layout(Arc::new(GpuGKRStorageLayout {
+            trace_len,
+            artifact_log2_stride: log2_stride,
+            layers,
+            aliases: BTreeMap::new(),
+        }));
+    }
+
     fn empty_constraints() -> NoFieldMaxQuadraticConstraintsGKRRelation {
         NoFieldMaxQuadraticConstraintsGKRRelation {
             quadratic_terms: Vec::new().into_boxed_slice(),
@@ -2630,6 +3140,214 @@ mod tests {
         }
 
         (reduced_num, reduced_den)
+    }
+
+    fn vector_lookup_relation(
+        lookup_set_index: usize,
+    ) -> cs::definitions::gkr::NoFieldVectorLookupRelation {
+        cs::definitions::gkr::NoFieldVectorLookupRelation {
+            columns: Box::new([]),
+            lookup_set_index,
+        }
+    }
+
+    fn add_base(mut value: E4, base: BF) -> E4 {
+        value.add_assign_base(&base);
+        value
+    }
+
+    fn add_scaled_base(mut value: E4, challenge: E4, base: BF) -> E4 {
+        let mut contribution = challenge;
+        contribution.mul_assign_by_base(&base);
+        value.add_assign(&contribution);
+        value
+    }
+
+    fn shifted(value: E4, gamma: E4) -> E4 {
+        let mut shifted = value;
+        shifted.add_assign(&gamma);
+        shifted
+    }
+
+    fn expected_lookup_ext_pair(b: E4, d: E4, gamma: E4) -> (E4, E4) {
+        let shifted_b = shifted(b, gamma);
+        let shifted_d = shifted(d, gamma);
+        let mut num = shifted_b;
+        num.add_assign(&shifted_d);
+        let mut den = shifted_b;
+        den.mul_assign(&shifted_d);
+        (num, den)
+    }
+
+    fn expected_lookup_minus_multiplicity(b: E4, c: BF, d: E4, gamma: E4) -> (E4, E4) {
+        let shifted_b = shifted(b, gamma);
+        let shifted_d = shifted(d, gamma);
+        let mut c_shifted_b = shifted_b;
+        c_shifted_b.mul_assign_by_base(&c);
+        let mut num = shifted_d;
+        num.sub_assign(&c_shifted_b);
+        let mut den = shifted_b;
+        den.mul_assign(&shifted_d);
+        (num, den)
+    }
+
+    fn expected_lookup_cached_dens_and_setup(a: BF, b: E4, c: BF, d: E4, gamma: E4) -> (E4, E4) {
+        let shifted_b = shifted(b, gamma);
+        let shifted_d = shifted(d, gamma);
+        let mut lhs = shifted_d;
+        lhs.mul_assign_by_base(&a);
+        let mut rhs = shifted_b;
+        rhs.mul_assign_by_base(&c);
+        lhs.sub_assign(&rhs);
+        let mut den = shifted_b;
+        den.mul_assign(&shifted_d);
+        (lhs, den)
+    }
+
+    fn expected_lookup_unbalanced(d: E4, a: E4, b: E4, gamma: E4) -> (E4, E4) {
+        let shifted_d = shifted(d, gamma);
+        let mut num = a;
+        num.mul_assign(&shifted_d);
+        num.add_assign(&b);
+        let mut den = b;
+        den.mul_assign(&shifted_d);
+        (num, den)
+    }
+
+    fn expected_memory_expr(
+        rel: &NoFieldSpecialMemoryContributionRelation,
+        memory_columns: &[Vec<BF>],
+        row: usize,
+        external_challenges: &GKRExternalChallenges<BF, E4>,
+    ) -> E4 {
+        let mut value = external_challenges.permutation_argument_additive_part;
+        match rel.address_space {
+            CompiledAddressSpaceRelationStrict::Constant(c) => {
+                value = add_base(value, BF::from_u32_unchecked(c));
+            }
+            CompiledAddressSpaceRelationStrict::IsRam(offset) => {
+                value = add_base(value, memory_columns[offset][row]);
+            }
+            CompiledAddressSpaceRelationStrict::IsRegister(offset) => {
+                let mut is_register = BF::ONE;
+                is_register.sub_assign(&memory_columns[offset][row]);
+                value = add_base(value, is_register);
+            }
+        }
+
+        match &rel.address {
+            CompiledAddressStrict::ConstantU16(c) => {
+                value = add_scaled_base(
+                    value,
+                    external_challenges.permutation_argument_linearization_challenges
+                        [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX],
+                    BF::from_u32_unchecked(*c as u32),
+                );
+            }
+            CompiledAddressStrict::Constant(c) => {
+                value = add_scaled_base(
+                    value,
+                    external_challenges.permutation_argument_linearization_challenges
+                        [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX],
+                    BF::from_u32_unchecked(*c),
+                );
+            }
+            CompiledAddressStrict::U16Space(offset) => {
+                value = add_scaled_base(
+                    value,
+                    external_challenges.permutation_argument_linearization_challenges
+                        [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX],
+                    memory_columns[*offset][row],
+                );
+            }
+            CompiledAddressStrict::U32Space([low, high]) => {
+                value = add_scaled_base(
+                    value,
+                    external_challenges.permutation_argument_linearization_challenges
+                        [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX],
+                    memory_columns[*low][row],
+                );
+                value = add_scaled_base(
+                    value,
+                    external_challenges.permutation_argument_linearization_challenges
+                        [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX],
+                    memory_columns[*high][row],
+                );
+            }
+            CompiledAddressStrict::U32SpaceSpecialIndirect { .. }
+            | CompiledAddressStrict::U32SpaceGeneric(..) => {
+                unreachable!("not used by this flat-forward test")
+            }
+        }
+
+        match rel.timestamp {
+            CompiledMemoryTimestamp::Zero => {}
+            CompiledMemoryTimestamp::Normal(timestamp) => {
+                value = add_scaled_base(
+                    value,
+                    external_challenges.permutation_argument_linearization_challenges
+                        [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX],
+                    memory_columns[timestamp[0]][row],
+                );
+                if rel.timestamp_offset != 0 {
+                    value = add_scaled_base(
+                        value,
+                        external_challenges.permutation_argument_linearization_challenges
+                            [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX],
+                        BF::from_u32_unchecked(rel.timestamp_offset),
+                    );
+                }
+                value = add_scaled_base(
+                    value,
+                    external_challenges.permutation_argument_linearization_challenges
+                        [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX],
+                    memory_columns[timestamp[1]][row],
+                );
+            }
+        }
+
+        match rel.value {
+            RamWordRepresentation::Zero => {}
+            RamWordRepresentation::U16Limbs(limbs) => {
+                value = add_scaled_base(
+                    value,
+                    external_challenges.permutation_argument_linearization_challenges
+                        [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX],
+                    memory_columns[limbs[0]][row],
+                );
+                value = add_scaled_base(
+                    value,
+                    external_challenges.permutation_argument_linearization_challenges
+                        [PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX],
+                    memory_columns[limbs[1]][row],
+                );
+            }
+            RamWordRepresentation::U8Limbs(bytes) => {
+                let byte_shift = BF::from_u32_unchecked(1 << 8);
+                for (challenge_idx, low_offset, high_offset) in [
+                    (
+                        PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX,
+                        bytes[0],
+                        bytes[1],
+                    ),
+                    (
+                        PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX,
+                        bytes[2],
+                        bytes[3],
+                    ),
+                ] {
+                    let challenge = external_challenges
+                        .permutation_argument_linearization_challenges[challenge_idx];
+                    value = add_scaled_base(value, challenge, memory_columns[low_offset][row]);
+                    let mut shifted_challenge = challenge;
+                    shifted_challenge.mul_assign_by_base(&byte_shift);
+                    value =
+                        add_scaled_base(value, shifted_challenge, memory_columns[high_offset][row]);
+                }
+            }
+        }
+
+        value
     }
 
     fn expected_init_value(
@@ -2944,7 +3662,7 @@ mod tests {
 
     #[test]
     #[serial]
-    fn forward_layer_lowering_and_launch_match_expected_outputs() {
+    fn forward_layer_dispatch_and_launch_match_expected_outputs() {
         let context = make_test_context(256, 32);
         let trace_len = 8;
         let copy_input = GKRAddress::BaseLayerMemory(0);
@@ -3010,6 +3728,12 @@ mod tests {
             product_rhs,
             upload_ext_poly(&product_rhs_values, &context),
         );
+        attach_test_ext_output_layout(
+            &mut storage,
+            trace_len,
+            1,
+            &[product_output, lookup_num_output, lookup_den_output],
+        );
 
         let mut lookup_additive_device = context.alloc(1, AllocationPlacement::BestFit).unwrap();
         set_by_val(
@@ -3065,6 +3789,9 @@ mod tests {
             0,
             &layer.gates,
             &layer.gates_with_external_connections,
+            &stage1,
+            &forward_setup,
+            None,
             &BTreeMap::new(),
             &mut storage,
             &external_challenges,
@@ -3072,10 +3799,12 @@ mod tests {
             &context,
         )
         .unwrap();
-        super::super::forward_kernels::launch_flat_forward_layer::<E4>(
-            &plan.desc, trace_len, &context,
-        )
-        .unwrap();
+        for desc in plan.descs.iter() {
+            super::super::forward_kernels::launch_flat_forward_layer::<E4>(
+                desc, trace_len, &context,
+            )
+            .unwrap();
+        }
         commit_flat_forward_plan(1, &mut storage, plan);
         context.get_exec_stream().synchronize().unwrap();
 
@@ -3124,6 +3853,332 @@ mod tests {
         assert_eq!(
             read_ext_poly(storage.get_ext_poly(lookup_den_output), &context),
             expected_lookup_den
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn direct_no_cache_flat_forward_variants_match_expected_outputs() {
+        let context = make_test_context(512, 64);
+        let trace_len = 8;
+        let gamma = sample_ext(700);
+        let decoder_fill = sample_ext(800);
+        let generic_lookup = (0..trace_len)
+            .map(|idx| sample_ext(100 + idx as u32))
+            .collect::<Vec<_>>();
+        let mapping_0 = [0, 1, 2, 3, 4, 5, 6, 7];
+        let mapping_1 = [7, 6, 5, 4, 3, 2, 1, 0];
+        let mapping_2 = [1, 3, 5, 7, 0, 2, 4, 6];
+        let mapping_3 = [2, 2, 3, 3, 4, 4, 5, 5];
+        let decoder_mapping = [0, 1, 2, 3, 4, 5, 6, 7];
+        let stage1 = GpuGKRStage1Output::with_lookup_mappings_for_tests(
+            &context,
+            trace_len,
+            &[&mapping_0, &mapping_1, &mapping_2, &mapping_3],
+            Some(&decoder_mapping),
+            &[],
+            &[],
+        )
+        .unwrap();
+        let forward_setup = GpuGKRForwardSetup::for_test_generic_lookup(
+            &context,
+            gamma,
+            &generic_lookup,
+            decoder_fill,
+        )
+        .unwrap();
+
+        let mut storage = GpuGKRStorage::<BF, E4>::default();
+        let memory_columns = (0..8)
+            .map(|column| {
+                (0..trace_len)
+                    .map(|row| BF::new((column * 17 + row + 1) as u32))
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>();
+        for (column_idx, values) in memory_columns.iter().enumerate() {
+            storage.insert_base_field_at_layer(
+                0,
+                GKRAddress::BaseLayerMemory(column_idx),
+                upload_base_poly(values, &context),
+            );
+        }
+
+        let decoder_predicate = GKRAddress::BaseLayerMemory(8);
+        let decoder_predicate_values = [1, 0, 1, 0, 1, 0, 1, 0].map(BF::new);
+        storage.insert_base_field_at_layer(
+            0,
+            decoder_predicate,
+            upload_base_poly(&decoder_predicate_values, &context),
+        );
+
+        let dense_setup_multiplicity = GKRAddress::BaseLayerMemory(6);
+        let vector_setup_multiplicity = GKRAddress::BaseLayerMemory(7);
+        let unbalanced_a = GKRAddress::InnerLayer {
+            layer: 0,
+            offset: 0,
+        };
+        let unbalanced_b = GKRAddress::InnerLayer {
+            layer: 0,
+            offset: 1,
+        };
+        let unbalanced_a_values = (0..trace_len)
+            .map(|idx| sample_ext(300 + idx as u32))
+            .collect::<Vec<_>>();
+        let unbalanced_b_values = (0..trace_len)
+            .map(|idx| sample_ext(400 + idx as u32))
+            .collect::<Vec<_>>();
+        storage.insert_extension_at_layer(
+            0,
+            unbalanced_a,
+            upload_ext_poly(&unbalanced_a_values, &context),
+        );
+        storage.insert_extension_at_layer(
+            0,
+            unbalanced_b,
+            upload_ext_poly(&unbalanced_b_values, &context),
+        );
+
+        let out = |offset| GKRAddress::InnerLayer { layer: 1, offset };
+        let pair_num = out(0);
+        let pair_den = out(1);
+        let dense_num = out(2);
+        let dense_den = out(3);
+        let minus_num = out(4);
+        let minus_den = out(5);
+        let unbalanced_num = out(6);
+        let unbalanced_den = out(7);
+        let memory_product_output = out(8);
+        let memory_materialize_output = out(9);
+        attach_test_ext_output_layout(
+            &mut storage,
+            trace_len,
+            1,
+            &[
+                pair_num,
+                pair_den,
+                dense_num,
+                dense_den,
+                minus_num,
+                minus_den,
+                unbalanced_num,
+                unbalanced_den,
+                memory_product_output,
+                memory_materialize_output,
+            ],
+        );
+
+        let rel_a = NoFieldSpecialMemoryContributionRelation {
+            address_space: CompiledAddressSpaceRelationStrict::Constant(7),
+            address: CompiledAddressStrict::U16Space(0),
+            timestamp: CompiledMemoryTimestamp::Normal([1, 2]),
+            value: RamWordRepresentation::U16Limbs([3, 4]),
+            timestamp_offset: 5,
+        };
+        let rel_b = NoFieldSpecialMemoryContributionRelation {
+            address_space: CompiledAddressSpaceRelationStrict::IsRam(5),
+            address: CompiledAddressStrict::U32Space([0, 1]),
+            timestamp: CompiledMemoryTimestamp::Zero,
+            value: RamWordRepresentation::U8Limbs([0, 1, 2, 3]),
+            timestamp_offset: 0,
+        };
+
+        let layer = GKRLayerDescription {
+            layer: 0,
+            gates_with_external_connections: Vec::new(),
+            cached_relations: BTreeMap::new(),
+            intermediate_layer_width: None,
+            gates: vec![
+                GateArtifacts {
+                    output_layer: 1,
+                    enforced_relation: NoFieldGKRRelation::LookupPairFromVectorInputs {
+                        input: [vector_lookup_relation(0), vector_lookup_relation(1)],
+                        output: [pair_num, pair_den],
+                    },
+                },
+                GateArtifacts {
+                    output_layer: 1,
+                    enforced_relation: NoFieldGKRRelation::LookupWithDensAndSetupExpressions {
+                        input: (
+                            decoder_predicate,
+                            vector_lookup_relation(DECODER_LOOKUP_FORMAL_SET_INDEX),
+                        ),
+                        setup: (
+                            dense_setup_multiplicity,
+                            Box::new([GKRAddress::placeholder()]),
+                        ),
+                        output: [dense_num, dense_den],
+                    },
+                },
+                GateArtifacts {
+                    output_layer: 1,
+                    enforced_relation: NoFieldGKRRelation::LookupFromVectorInputWithSetup {
+                        input: vector_lookup_relation(2),
+                        setup: (
+                            vector_setup_multiplicity,
+                            Box::new([GKRAddress::placeholder()]),
+                        ),
+                        output: [minus_num, minus_den],
+                    },
+                },
+                GateArtifacts {
+                    output_layer: 1,
+                    enforced_relation: NoFieldGKRRelation::LookupUnbalancedPairWithVectorInputs {
+                        input: [unbalanced_a, unbalanced_b],
+                        remainder: vector_lookup_relation(3),
+                        output: [unbalanced_num, unbalanced_den],
+                    },
+                },
+                GateArtifacts {
+                    output_layer: 1,
+                    enforced_relation: NoFieldGKRRelation::InitialGrandProductWithoutCaches {
+                        input: [rel_a.clone(), rel_b.clone()],
+                        output: memory_product_output,
+                    },
+                },
+                GateArtifacts {
+                    output_layer: 1,
+                    enforced_relation: NoFieldGKRRelation::MaterializeGrandProductTermExpression {
+                        input: rel_a.clone(),
+                        output: memory_materialize_output,
+                    },
+                },
+            ],
+        };
+        let external_challenges = sample_external_challenges(900);
+
+        let plan = build_flat_forward_plan::<E4>(
+            0,
+            &layer.gates,
+            &layer.gates_with_external_connections,
+            &stage1,
+            &forward_setup,
+            Some(decoder_predicate),
+            &BTreeMap::new(),
+            &mut storage,
+            &external_challenges,
+            trace_len,
+            &context,
+        )
+        .unwrap();
+        assert_eq!(plan.descs.len(), 1);
+        let desc = &plan.descs[0];
+        assert_eq!(desc.num_mapped_e4_pairs, 1);
+        assert_eq!(desc.num_mapped_cached_denses, 1);
+        assert_eq!(desc.num_mapped_e4_minus_mults, 1);
+        assert_eq!(desc.num_mapped_e4_unbalanceds, 1);
+        assert_eq!(desc.num_memory_products, 1);
+        assert_eq!(desc.num_memory_materializes, 1);
+
+        for desc in plan.descs.iter() {
+            super::super::forward_kernels::launch_flat_forward_layer::<E4>(
+                desc, trace_len, &context,
+            )
+            .unwrap();
+        }
+        commit_flat_forward_plan(1, &mut storage, plan);
+        context.get_exec_stream().synchronize().unwrap();
+
+        let mut expected_pair_num = Vec::with_capacity(trace_len);
+        let mut expected_pair_den = Vec::with_capacity(trace_len);
+        let mut expected_dense_num = Vec::with_capacity(trace_len);
+        let mut expected_dense_den = Vec::with_capacity(trace_len);
+        let mut expected_minus_num = Vec::with_capacity(trace_len);
+        let mut expected_minus_den = Vec::with_capacity(trace_len);
+        let mut expected_unbalanced_num = Vec::with_capacity(trace_len);
+        let mut expected_unbalanced_den = Vec::with_capacity(trace_len);
+        let mut expected_memory_product = Vec::with_capacity(trace_len);
+        let mut expected_memory_materialize = Vec::with_capacity(trace_len);
+
+        for row in 0..trace_len {
+            let (num, den) = expected_lookup_ext_pair(
+                generic_lookup[mapping_0[row] as usize],
+                generic_lookup[mapping_1[row] as usize],
+                gamma,
+            );
+            expected_pair_num.push(num);
+            expected_pair_den.push(den);
+
+            let decoder_value = if decoder_predicate_values[row] == BF::ZERO {
+                decoder_fill
+            } else {
+                generic_lookup[decoder_mapping[row] as usize]
+            };
+            let (num, den) = expected_lookup_cached_dens_and_setup(
+                decoder_predicate_values[row],
+                decoder_value,
+                memory_columns[dense_setup_multiplicity.offset()][row],
+                generic_lookup[row],
+                gamma,
+            );
+            expected_dense_num.push(num);
+            expected_dense_den.push(den);
+
+            let (num, den) = expected_lookup_minus_multiplicity(
+                generic_lookup[mapping_2[row] as usize],
+                memory_columns[vector_setup_multiplicity.offset()][row],
+                generic_lookup[row],
+                gamma,
+            );
+            expected_minus_num.push(num);
+            expected_minus_den.push(den);
+
+            let (num, den) = expected_lookup_unbalanced(
+                generic_lookup[mapping_3[row] as usize],
+                unbalanced_a_values[row],
+                unbalanced_b_values[row],
+                gamma,
+            );
+            expected_unbalanced_num.push(num);
+            expected_unbalanced_den.push(den);
+
+            let lhs = expected_memory_expr(&rel_a, &memory_columns, row, &external_challenges);
+            let rhs = expected_memory_expr(&rel_b, &memory_columns, row, &external_challenges);
+            let mut product = lhs;
+            product.mul_assign(&rhs);
+            expected_memory_product.push(product);
+            expected_memory_materialize.push(lhs);
+        }
+
+        assert_eq!(
+            read_ext_poly(storage.get_ext_poly(pair_num), &context),
+            expected_pair_num
+        );
+        assert_eq!(
+            read_ext_poly(storage.get_ext_poly(pair_den), &context),
+            expected_pair_den
+        );
+        assert_eq!(
+            read_ext_poly(storage.get_ext_poly(dense_num), &context),
+            expected_dense_num
+        );
+        assert_eq!(
+            read_ext_poly(storage.get_ext_poly(dense_den), &context),
+            expected_dense_den
+        );
+        assert_eq!(
+            read_ext_poly(storage.get_ext_poly(minus_num), &context),
+            expected_minus_num
+        );
+        assert_eq!(
+            read_ext_poly(storage.get_ext_poly(minus_den), &context),
+            expected_minus_den
+        );
+        assert_eq!(
+            read_ext_poly(storage.get_ext_poly(unbalanced_num), &context),
+            expected_unbalanced_num
+        );
+        assert_eq!(
+            read_ext_poly(storage.get_ext_poly(unbalanced_den), &context),
+            expected_unbalanced_den
+        );
+        assert_eq!(
+            read_ext_poly(storage.get_ext_poly(memory_product_output), &context),
+            expected_memory_product
+        );
+        assert_eq!(
+            read_ext_poly(storage.get_ext_poly(memory_materialize_output), &context),
+            expected_memory_materialize
         );
     }
 

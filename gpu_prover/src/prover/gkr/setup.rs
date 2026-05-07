@@ -516,6 +516,57 @@ impl<E> GpuGKRForwardSetup<E> {
     }
 }
 
+#[cfg(test)]
+impl GpuGKRForwardSetup<E4> {
+    pub(crate) fn for_test_generic_lookup(
+        context: &ProverContext,
+        lookup_additive_challenge: E4,
+        generic_lookup_values: &[E4],
+        decoder_lookup_fill_value: E4,
+    ) -> CudaResult<Self> {
+        let mut d_lookup_challenges = context.alloc(3, AllocationPlacement::BestFit)?;
+        memory_copy_async(
+            &mut d_lookup_challenges,
+            &[E4::ONE, lookup_additive_challenge, E4::ZERO][..],
+            context.get_exec_stream(),
+        )?;
+        super::forward_kernels::schedule_lookup_gamma_consts_prelude(
+            d_lookup_challenges[1..2].as_ptr(),
+            context,
+        )?;
+
+        let mut device_decoder_lookup_fill_value =
+            context.alloc::<E4>(1, AllocationPlacement::BestFit)?;
+        memory_copy_async(
+            &mut device_decoder_lookup_fill_value,
+            &[decoder_lookup_fill_value],
+            context.get_exec_stream(),
+        )?;
+
+        let generic_lookup = if generic_lookup_values.is_empty() {
+            None
+        } else {
+            let mut device =
+                context.alloc::<E4>(generic_lookup_values.len(), AllocationPlacement::BestFit)?;
+            memory_copy_async(
+                &mut device,
+                generic_lookup_values,
+                context.get_exec_stream(),
+            )?;
+            Some(device)
+        };
+        context.get_exec_stream().synchronize()?;
+
+        Ok(Self {
+            _tracing_ranges: Vec::new(),
+            _callbacks: Callbacks::new(),
+            d_lookup_challenges,
+            device_decoder_lookup_fill_value,
+            generic_lookup,
+        })
+    }
+}
+
 pub(super) fn flatten_setup_columns_into_pinned_buffer(
     setup: &CpuGKRSetup<BF>,
     columns_count: usize,
