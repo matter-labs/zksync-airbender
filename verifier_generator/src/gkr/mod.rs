@@ -4,9 +4,8 @@ use std::collections::BTreeMap;
 
 use crate::field_wrapper::FieldWrapper;
 pub use crate::utils::{
-    addr_to_idx, coeff_to_internal_repr, collect_extra_addrs_from_cached_relations,
-    collect_sorted_unique_addrs, BATCHING_CHALLENGE_EXTRA, DIM_REDUCE_EVAL_POINTS,
-    STANDARD_EVAL_POINTS, SUMCHECK_POLY_COEFFS,
+    addr_to_idx, collect_extra_addrs_from_cached_relations, collect_sorted_unique_addrs,
+    BATCHING_CHALLENGE_EXTRA, DIM_REDUCE_EVAL_POINTS, STANDARD_EVAL_POINTS, SUMCHECK_POLY_COEFFS,
 };
 use prover::common_constants::TIMESTAMP_COLUMNS_NUM_BITS;
 use prover::cs::definitions::{GKRAddress, VirtualSetupPoly};
@@ -506,7 +505,7 @@ fn emit_inits_and_teardowns_eval_check<MW: FieldWrapper>(
     (helper, call)
 }
 
-fn generate_cache_relation_checks<MW: FieldWrapper, F: PrimeField>(
+fn generate_cache_relation_checks<MW: FieldWrapper>(
     layer: &GKRLayerDescription,
     target_addrs: &[GKRAddress],
     layer_idx: usize,
@@ -1272,16 +1271,12 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
             let layout_kind: Vec<usize> = layer_0_src_kind.clone();
             let layout_pos: Vec<usize> = layer_0_src_pos.clone();
 
-            let extra_data_words = n_extra * E::DEGREE;
-            let extra_commit_total = digest_words + extra_data_words;
-            let extra_commit_buf_size = if n_extra > 0 {
-                extra_commit_total.div_ceil(block_words) * block_words
-            } else {
-                0
-            };
             let read_extras = if n_extra > 0 {
                 quote! {
-                    const EXTRA_COMMIT_BUF: usize = #extra_commit_buf_size;
+                    const EXTRA_COMMIT_BUF: usize = {
+                        let total = BLAKE2S_DIGEST_SIZE_U32_WORDS + #n_extra * EXT_DEGREE;
+                        total.div_ceil(BLAKE2S_BLOCK_SIZE_U32_WORDS) * BLAKE2S_BLOCK_SIZE_U32_WORDS
+                    };
                     let mut extra_buf = CommitBuf::<EXTRA_COMMIT_BUF>::new();
                     let extra_data_words = #n_extra * EXT_DEGREE;
                     {
@@ -1332,7 +1327,7 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
                 }
             };
 
-            let cache_check = generate_cache_relation_checks::<MW, F>(
+            let cache_check = generate_cache_relation_checks::<MW>(
                 &compiled_circuit.layers[0],
                 &layer_0_layout,
                 0,
@@ -1354,11 +1349,11 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
                 let ep_merged: Vec<usize> = extra_positions.iter().map(|p| p.0).collect();
                 let ep_extra: Vec<usize> = extra_positions.iter().map(|p| p.1).collect();
 
-                let extra_data_words = num_extra * E::DEGREE;
-                let extra_commit_total = digest_words + extra_data_words;
-                let extra_commit_buf_size = extra_commit_total.div_ceil(block_words) * block_words;
                 quote! {
-                    const EXTRA_COMMIT_BUF: usize = #extra_commit_buf_size;
+                    const EXTRA_COMMIT_BUF: usize = {
+                        let total = BLAKE2S_DIGEST_SIZE_U32_WORDS + #num_extra * EXT_DEGREE;
+                        total.div_ceil(BLAKE2S_BLOCK_SIZE_U32_WORDS) * BLAKE2S_BLOCK_SIZE_U32_WORDS
+                    };
                     let mut extra_buf = CommitBuf::<EXTRA_COMMIT_BUF>::new();
                     let extra_data_words = #num_extra * EXT_DEGREE;
                     {
@@ -1408,7 +1403,7 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
                 }
             };
 
-            let cache_check = generate_cache_relation_checks::<MW, F>(
+            let cache_check = generate_cache_relation_checks::<MW>(
                 &compiled_circuit.layers[config_idx],
                 &target_addrs,
                 config_idx,
@@ -1639,6 +1634,12 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
     }
 
     let constants = quote! {
+        use ::verifier_common::blake2s_u32::{
+            BLAKE2S_BLOCK_SIZE_U32_WORDS, BLAKE2S_DIGEST_SIZE_U32_WORDS,
+        };
+        use ::verifier_common::{DIM_REDUCE_EVAL_POINTS, STANDARD_EVAL_POINTS, SUMCHECK_POLY_COEFFS};
+        use super::common::EXT_DEGREE;
+
         // Upper bound on GKR sumcheck rounds for internal buffers
         pub const GKR_ROUNDS: usize = #max_sumcheck_rounds;
 
@@ -1667,10 +1668,25 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
             if rem == 0 { 0 } else { BLAKE2S_BLOCK_SIZE_U32_WORDS - rem }
         };
 
-        pub const GKR_EVAL_BUF: usize = #eval_buf_size;
-        pub const GKR_COMMIT_BUF: usize = #commit_buf_size;
-        pub const GKR_EVALS_COMMIT_BUF: usize = #evals_commit_buf_size;
-        pub const DRAW_BUF_CAPACITY: usize = #draw_buf_capacity;
+        pub const GKR_EVAL_BUF: usize = {
+            let dim_reducing = #max_addrs * DIM_REDUCE_EVAL_POINTS * EXT_DEGREE;
+            let standard = #max_addrs * STANDARD_EVAL_POINTS * EXT_DEGREE;
+            let evals = #max_evals * EXT_DEGREE;
+            let max_data = if dim_reducing > standard { dim_reducing } else { standard };
+            let max_data = if max_data > evals { max_data } else { evals };
+            let total = BLAKE2S_DIGEST_SIZE_U32_WORDS + max_data;
+            total.div_ceil(BLAKE2S_BLOCK_SIZE_U32_WORDS) * BLAKE2S_BLOCK_SIZE_U32_WORDS
+        };
+        pub const GKR_COMMIT_BUF: usize = {
+            let total = BLAKE2S_DIGEST_SIZE_U32_WORDS + SUMCHECK_POLY_COEFFS * EXT_DEGREE;
+            total.div_ceil(BLAKE2S_BLOCK_SIZE_U32_WORDS) * BLAKE2S_BLOCK_SIZE_U32_WORDS
+        };
+        pub const GKR_EVALS_COMMIT_BUF: usize = {
+            let total = BLAKE2S_DIGEST_SIZE_U32_WORDS + #max_evals * EXT_DEGREE;
+            total.div_ceil(BLAKE2S_BLOCK_SIZE_U32_WORDS) * BLAKE2S_BLOCK_SIZE_U32_WORDS
+        };
+        pub const DRAW_BUF_CAPACITY: usize =
+            (#num_challenges * EXT_DEGREE).next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS);
         pub const WHIR_FOLD_STEPS: [usize; #whir_rounds] = [#(#whir_fold_steps),*];
         pub const WHIR_QUERIES: [usize; #whir_rounds] = [#(#whir_queries),*];
         pub const WHIR_POW_BITS: [u32; #whir_rounds] = [#(#whir_pow_bits),*];
