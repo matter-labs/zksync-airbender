@@ -2,6 +2,8 @@
 
 #include "common.cuh"
 
+EXTERN __device__ __constant__ e4 ab_gkr_lookup_gamma_consts[3];
+
 // Flat forward layer kernel.
 //
 // Instead of a switch on gate kind, this compiles every gate in the layer
@@ -25,6 +27,12 @@
 // the direct-source categories below.
 
 namespace airbender::prover::gkr {
+
+DEVICE_FORCEINLINE e4 lookup_gamma() { return ::ab_gkr_lookup_gamma_consts[0]; }
+
+DEVICE_FORCEINLINE e4 lookup_gamma_sq() { return ::ab_gkr_lookup_gamma_consts[1]; }
+
+DEVICE_FORCEINLINE e4 lookup_two_gamma() { return ::ab_gkr_lookup_gamma_consts[2]; }
 
 // ---------------------------------------------------------------------------
 // Sizing
@@ -146,10 +154,6 @@ template <typename E> struct flat_forward_static_desc {
   const void *sources[FLAT_FWD_MAX_SOURCES];
   u32 num_sources;
 
-  // Lookup additive challenge (gamma). May be null iff no lookup-category
-  // entries are populated.
-  const E *gamma;
-
   flat_fwd_product_entry<E> products[FLAT_FWD_MAX_PER_CATEGORY];
   u32 num_products;
 
@@ -241,8 +245,13 @@ template <typename E> DEVICE_FORCEINLINE void flat_forward_compute(const flat_fo
   const bool has_lookup_with_gamma = desc.num_bf_pairs || desc.num_e4_pairs || desc.num_cached_denses || desc.num_bf_minus_mults || desc.num_e4_minus_mults ||
                                      desc.num_bf_unbalanceds || desc.num_e4_unbalanceds;
   E gamma = E::ZERO();
-  if (has_lookup_with_gamma)
-    gamma = load<E, ld_modifier::ca>(desc.gamma, 0);
+  E gamma_sq = E::ZERO();
+  E two_gamma = E::ZERO();
+  if (has_lookup_with_gamma) {
+    gamma = lookup_gamma();
+    gamma_sq = lookup_gamma_sq();
+    two_gamma = lookup_two_gamma();
+  }
 
   // LOOKUP_BASE_PAIR: bf b, bf d -> (num, den).
   for (unsigned i = 0; i < desc.num_bf_pairs; i++) {
@@ -250,7 +259,7 @@ template <typename E> DEVICE_FORCEINLINE void flat_forward_compute(const flat_fo
     const bf b = flat_fwd_load_bf(desc.sources[t.src_b], gid);
     const bf d = flat_fwd_load_bf(desc.sources[t.src_d], gid);
     E num, den;
-    gkr_eval_lookup_base_pair(b, d, gamma, num, den);
+    gkr_eval_lookup_base_pair_v2(b, d, gamma, gamma_sq, two_gamma, num, den);
     store<E, st_modifier::cs>(t.num, num, gid);
     store<E, st_modifier::cs>(t.den, den, gid);
   }
@@ -286,7 +295,7 @@ template <typename E> DEVICE_FORCEINLINE void flat_forward_compute(const flat_fo
     const bf c = flat_fwd_load_bf(desc.sources[t.src_c], gid);
     const bf d = flat_fwd_load_bf(desc.sources[t.src_d], gid);
     E num, den;
-    gkr_eval_lookup_base_minus_multiplicity(b, c, d, gamma, num, den);
+    gkr_eval_lookup_base_minus_multiplicity_v2(b, c, d, gamma, gamma_sq, num, den);
     store<E, st_modifier::cs>(t.num, num, gid);
     store<E, st_modifier::cs>(t.den, den, gid);
   }
