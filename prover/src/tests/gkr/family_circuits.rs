@@ -2364,7 +2364,13 @@ pub fn gkr_run_basic_unrolled_test_impl(
                 assert_eq!(proof.grand_product_accumulator_computed, BabyBearExt4::ONE);
             }
 
-            serialize_to_file(&proof, "test_proofs/blake2_g_function_gkr_proof.json");
+            serialize_to_file(
+                &proof,
+                &format!(
+                    "test_proofs/blake2_g_function_{}_gkr_proof.json",
+                    proof_suffix
+                ),
+            );
 
             permutation_argument_accumulator.mul_assign(&proof.grand_product_accumulator_computed);
         }

@@ -481,7 +481,7 @@ mod test {
     }
 
     #[test]
-    fn gen_for_unrolled_gkr_tests() {
+    fn gen_for_gkr() {
         skip_if_ci!();
         use ::field::baby_bear::base::BabyBearField;
 

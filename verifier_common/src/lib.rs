@@ -6,15 +6,16 @@
 macro_rules! gkr_circuits {
     ($callback:ident) => {
         $callback! {
-            add_sub_lui_auipc_mop; 24 ; "_preprocessed_layout",
-            jump_branch_slt; 24 ; "_preprocessed_layout",
-            shift_binop; 24 ; "_preprocessed_layout",
-            mem_word_only; 24 ; "_preprocessed_layout",
-            mem_subword_only; 24 ; "_preprocessed_layout",
+            add_sub_lui_auipc_mop; 24 ; "_layout",
+            jump_branch_slt; 24 ; "_layout",
+            shift_binop; 24 ; "_layout",
+            mem_word_only; 24 ; "_layout",
+            mem_subword_only; 24 ; "_layout",
             bigint_with_extended_control; 22 ; "_layout",
             blake2_with_extended_control; 20 ; "_layout",
             keccak_special5; 22 ; "_layout",
-            inits_and_teardowns; 24 ; "_preprocessed_layout",
+            blake2_g_function; 22 ; "_layout",
+            inits_and_teardowns; 24 ; "_layout",
         }
     };
 }
