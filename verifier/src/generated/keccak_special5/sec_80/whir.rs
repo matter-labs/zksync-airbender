@@ -190,11 +190,11 @@ use super::common::{
 };
 use verifier_common::whir::{hash_leaf_data_into_state, verify_merkle_path};
 pub const NUM_INTERNAL_ROUNDS: usize = 3usize;
-const INTERNAL_QUERY_INDEX_BITS: [usize; NUM_INTERNAL_ROUNDS] = [21usize, 21usize, 21usize];
-const INTERNAL_NUM_COSETS: [usize; NUM_INTERNAL_ROUNDS] = [32usize, 1024usize, 32768usize];
-const INTERNAL_NUM_COSETS_LOG2: [usize; NUM_INTERNAL_ROUNDS] = [5usize, 10usize, 15usize];
+const INTERNAL_QUERY_INDEX_BITS: [usize; NUM_INTERNAL_ROUNDS] = [22usize, 22usize, 21usize];
+const INTERNAL_NUM_COSETS: [usize; NUM_INTERNAL_ROUNDS] = [64usize, 2048usize, 32768usize];
+const INTERNAL_NUM_COSETS_LOG2: [usize; NUM_INTERNAL_ROUNDS] = [6usize, 11usize, 15usize];
 const INTERNAL_COSET_TREE_SIZE: [usize; NUM_INTERNAL_ROUNDS] = [65536usize, 2048usize, 64usize];
-const INTERNAL_RS_DOMAIN_LOG2: [usize; NUM_INTERNAL_ROUNDS] = [26usize, 26usize, 26usize];
+const INTERNAL_RS_DOMAIN_LOG2: [usize; NUM_INTERNAL_ROUNDS] = [27usize, 27usize, 26usize];
 const MAX_INTERNAL_FOLD_STEPS: usize = 5usize;
 const MAX_INTERNAL_VALUES_PER_LEAF: usize = 32usize;
 const MAX_INTERNAL_LEAF_EXT_WORDS: usize = MAX_INTERNAL_VALUES_PER_LEAF * EXT_DEGREE;
@@ -202,7 +202,7 @@ const INTERNAL_HASH_BUF_SIZE: usize = MAX_INTERNAL_LEAF_EXT_WORDS
     .div_ceil(BLAKE2S_BLOCK_SIZE_U32_WORDS)
     * BLAKE2S_BLOCK_SIZE_U32_WORDS;
 const MAX_INTERNAL_FOLD_BUF_HALF: usize = 16usize;
-const MAX_INTERNAL_NUM_QUERIES: usize = 14usize;
+const MAX_INTERNAL_NUM_QUERIES: usize = 11usize;
 const MAX_INTERNAL_DRAW_WORDS: usize = 16usize;
 const INTERNAL_DRAW_WORDS: [usize; NUM_INTERNAL_ROUNDS] = [16usize, 8usize, 8usize];
 pub fn verify_internal_whir_round<I: NonDeterminismSource, E: ErrorCreator>(

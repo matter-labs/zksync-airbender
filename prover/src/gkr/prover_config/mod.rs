@@ -210,7 +210,7 @@ fn whir_folding_step(
             .map(|(k, _v)| *k)
             .unwrap_or(usize::MAX);
         if total_cost < min_cost {
-            println!("Inserting {:?} at with the cost {}", path, total_cost);
+            println!("Inserting {:?} with the cost {}", path, total_cost);
             candidates.insert(total_cost, path.clone());
         }
     }
@@ -304,7 +304,7 @@ mod test {
     #[test]
     fn test_try_compute_some_config() {
         let prover_config = compute_best_prover_config_guess(
-            24,
+            20,
             DEFAULT_LDE_FACTOR,
             DEFAULT_CAP_SIZE,
             2,
@@ -316,7 +316,7 @@ mod test {
             // 20,
             0,
             1 << 22,
-            26,
+            27,
             // 100,
             80,
             DEFAULT_PLAIN_TEXT_POLY_SIZE_LOG2,

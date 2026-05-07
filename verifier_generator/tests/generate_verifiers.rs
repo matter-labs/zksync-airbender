@@ -83,7 +83,9 @@ fn generate_gkr_verifier<MW: FieldWrapper<BaseField = BabyBearField>>(
 
     let files = gkr::generate_gkr_inlined::<MW>(
         &compiled_circuit,
-        circuit.prover_config_for(level).sumcheck_explicit_output_size_log_2,
+        circuit
+            .prover_config_for(level)
+            .sumcheck_explicit_output_size_log_2,
         circuit.whir_schedule_for(level),
     );
 
