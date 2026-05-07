@@ -31,20 +31,20 @@ use super::backward_flat::{
 };
 use super::backward_kernels::{
     gkr_dim_reducing_launch_config, pack_cache_u16, pack_source_u16, GpuGKRDimensionReducingTables,
-    GpuGKRSourceRecord, GKR_DIM_REDUCING_BASE_SLOTS,
+    GpuGKRSourceRecord, GKR_BACKWARD_MAX_TRACE_LEN_LOG2, GKR_DIM_REDUCING_BASE_SLOTS,
 };
 use super::GpuBaseFieldSourceKind;
 use super::GpuGKRStorage;
-use crate::allocator::tracker::AllocationPlacement;
 use crate::primitives::context::ProverContext;
 use crate::primitives::field::{BF, E4};
-use crate::primitives::utils::memcpy_to_symbol_from_device_async;
 use era_cudart::cuda_kernel_declaration;
 use era_cudart::execution::KernelFunction;
-use era_cudart::result::CudaResult;
-use era_cudart::stream::CudaStream;
+use era_cudart::result::{CudaResult, CudaResultWrap};
+use era_cudart_sys::cudaGetSymbolAddress;
 use field::Field;
 use std::ffi::c_void;
+use std::ptr::null_mut;
+use std::sync::OnceLock;
 
 /// Hard ceiling: kernel arguments must fit in `cudaLaunchKernelExC`'s 32 KB
 /// inline parameter area. Any descriptor whose size exceeds this fails the
@@ -54,6 +54,10 @@ pub(super) const KERNEL_ARG_HARD_CEILING_BYTES: usize = 32 * 1024;
 /// Soft target: keep descriptors under 16 KB for headroom against future
 /// table growth without re-bumping back into H2D territory.
 pub(super) const KERNEL_ARG_SOFT_TARGET_BYTES: usize = 16 * 1024;
+/// Main-layer next-layer state stores `(folding_steps - 1)` per-round
+/// challenges plus 2 transcript-squeezed values: `[folding_challenges,
+/// last_r, next_batching]`.
+pub(super) const MAX_MAIN_LAYER_CLAIM_POINT_LEN: usize = GKR_BACKWARD_MAX_TRACE_LEN_LOG2 + 1;
 
 // ---------------------------------------------------------------------------
 // u16 source encoding (round 0)
@@ -1208,19 +1212,46 @@ pub(super) fn build_flat_continuation_unified_desc_compact<E: Field>(
 // carry over unchanged.
 
 extern "C" {
-    static ab_gkr_round1_challenge: [E4; 1];
     static ab_gkr_round2_challenges: [E4; 3];
-    static ab_gkr_round3_challenge: [E4; 1];
+    static ab_gkr_main_layer_claim_point: [E4; MAX_MAIN_LAYER_CLAIM_POINT_LEN];
 }
 
-#[inline]
-unsafe fn upload_e4_symbol_from_device<T>(
-    symbol: *const c_void,
-    src: *const T,
-    count: usize,
-    stream: &CudaStream,
-) -> CudaResult<()> {
-    memcpy_to_symbol_from_device_async(symbol, src, count, stream)
+pub(super) fn get_main_layer_claim_point_device_ptr() -> *mut E4 {
+    static PTR: OnceLock<usize> = OnceLock::new();
+    let ptr = *PTR.get_or_init(|| {
+        let mut p: *mut c_void = null_mut();
+        // SAFETY: ab_gkr_main_layer_claim_point is a valid __constant__ symbol
+        // defined in main_backward_round1_flat_warp_split.cu.
+        unsafe {
+            cudaGetSymbolAddress(
+                &mut p,
+                &ab_gkr_main_layer_claim_point as *const _ as *const c_void,
+            )
+        }
+        .wrap()
+        .expect("cudaGetSymbolAddress failed for ab_gkr_main_layer_claim_point");
+        p as usize
+    });
+    ptr as *mut E4
+}
+
+fn get_round2_challenges_device_ptr() -> *mut E4 {
+    static PTR: OnceLock<usize> = OnceLock::new();
+    let ptr = *PTR.get_or_init(|| {
+        let mut p: *mut c_void = null_mut();
+        // SAFETY: ab_gkr_round2_challenges is a valid __constant__ e4[3]
+        // symbol defined in main_backward_round2_flat_warp_split.cu.
+        unsafe {
+            cudaGetSymbolAddress(
+                &mut p,
+                &ab_gkr_round2_challenges as *const _ as *const c_void,
+            )
+        }
+        .wrap()
+        .expect("cudaGetSymbolAddress failed for ab_gkr_round2_challenges");
+        p as usize
+    });
+    ptr as *mut E4
 }
 
 era_cudart::cuda_kernel_signature_arguments_and_function!(
@@ -1228,6 +1259,7 @@ era_cudart::cuda_kernel_signature_arguments_and_function!(
     desc: GpuFlatContinuationUnifiedDescCompact,
     fold_stride: u32,
     next_layer_size: u32,
+    folding_challenge_slot: u32,
     eq_values: *const T,
     contributions: *mut T,
     acc_size: u32,
@@ -1238,6 +1270,7 @@ cuda_kernel_declaration!(pub(super)
         desc: GpuFlatContinuationUnifiedDescCompact,
         fold_stride: u32,
         next_layer_size: u32,
+        folding_challenge_slot: u32,
         eq_values: *const E4,
         contributions: *mut E4,
         acc_size: u32,
@@ -1249,6 +1282,7 @@ cuda_kernel_declaration!(pub(super)
         desc: GpuFlatContinuationUnifiedDescCompact,
         fold_stride: u32,
         next_layer_size: u32,
+        folding_challenge_slot: u32,
         eq_values: *const E4,
         contributions: *mut E4,
         acc_size: u32,
@@ -1260,10 +1294,6 @@ pub(super) trait GpuFlatRound3UnifiedCompactKernelSet: Field {
         GpuGKRMainRound3FlatConstantUnifiedCompactSignature<Self>;
     const MAIN_ROUND3_FLAT_CONSTANT_EXPLICIT_UNIFIED_COMPACT:
         GpuGKRMainRound3FlatConstantUnifiedCompactSignature<Self>;
-    unsafe fn upload_round3_challenge(
-        folding_challenge: *const Self,
-        stream: &CudaStream,
-    ) -> CudaResult<()>;
 }
 
 impl GpuFlatRound3UnifiedCompactKernelSet for E4 {
@@ -1273,26 +1303,16 @@ impl GpuFlatRound3UnifiedCompactKernelSet for E4 {
     const MAIN_ROUND3_FLAT_CONSTANT_EXPLICIT_UNIFIED_COMPACT:
         GpuGKRMainRound3FlatConstantUnifiedCompactSignature<Self> =
         ab_gkr_main_round3_flat_constant_explicit_unified_compact_e4_kernel;
-    unsafe fn upload_round3_challenge(
-        folding_challenge: *const Self,
-        stream: &CudaStream,
-    ) -> CudaResult<()> {
-        upload_e4_symbol_from_device(
-            &ab_gkr_round3_challenge as *const _ as *const c_void,
-            folding_challenge,
-            1,
-            stream,
-        )
-    }
 }
 
 pub(super) fn launch_main_round3_flat_constant_unified_compact<
     E: GpuFlatRound3UnifiedCompactKernelSet,
 >(
     desc: &GpuFlatContinuationUnifiedDescCompact,
-    folding_challenge: *const E,
+    _folding_challenge: *const E,
     fold_stride: u32,
     next_layer_size: u32,
+    folding_challenge_slot: u32,
     eq_values: *const E,
     contributions: *mut E,
     acc_size: u32,
@@ -1303,14 +1323,12 @@ pub(super) fn launch_main_round3_flat_constant_unified_compact<
     let block_dim = 128u32;
     let grid_dim = (acc_size + 31) / 32;
     let stream = context.get_exec_stream();
-    // SAFETY: the symbol is a valid __constant__ e4[1] and the source is a
-    // device pointer to the current folding challenge, ordered on exec_stream.
-    unsafe { E::upload_round3_challenge(folding_challenge, stream)? };
     let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
     let args = GpuGKRMainRound3FlatConstantUnifiedCompactArguments::new(
         *desc,
         fold_stride,
         next_layer_size,
+        folding_challenge_slot,
         eq_values,
         contributions,
         acc_size,
@@ -1351,34 +1369,19 @@ cuda_kernel_declaration!(pub(super)
 pub(super) trait GpuFlatRound1UnifiedCompactKernelSet: Field {
     const MAIN_ROUND1_FLAT_CONSTANT_COMPACT_UNIFIED_COMPACT:
         GpuGKRMainRound1FlatConstantCompactUnifiedCompactSignature<Self>;
-    unsafe fn upload_round1_challenge(
-        folding_challenge: *const Self,
-        stream: &CudaStream,
-    ) -> CudaResult<()>;
 }
 
 impl GpuFlatRound1UnifiedCompactKernelSet for E4 {
     const MAIN_ROUND1_FLAT_CONSTANT_COMPACT_UNIFIED_COMPACT:
         GpuGKRMainRound1FlatConstantCompactUnifiedCompactSignature<Self> =
         ab_gkr_main_round1_flat_constant_compact_unified_compact_e4_kernel;
-    unsafe fn upload_round1_challenge(
-        folding_challenge: *const Self,
-        stream: &CudaStream,
-    ) -> CudaResult<()> {
-        upload_e4_symbol_from_device(
-            &ab_gkr_round1_challenge as *const _ as *const c_void,
-            folding_challenge,
-            1,
-            stream,
-        )
-    }
 }
 
 pub(super) fn launch_main_round1_flat_constant_compact_unified_compact<
     E: GpuFlatRound1UnifiedCompactKernelSet,
 >(
     desc: &GpuFlatRound1UnifiedDescCompact,
-    folding_challenge: *const E,
+    _folding_challenge: *const E,
     fold_stride: u32,
     next_layer_size: u32,
     eq_values: *const E,
@@ -1390,9 +1393,6 @@ pub(super) fn launch_main_round1_flat_constant_compact_unified_compact<
     let block_dim = 128u32;
     let grid_dim = (acc_size + 31) / 32;
     let stream = context.get_exec_stream();
-    // SAFETY: the symbol is a valid __constant__ e4[1] and the source is a
-    // device pointer to the current folding challenge, ordered on exec_stream.
-    unsafe { E::upload_round1_challenge(folding_challenge, stream)? };
     let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
     let args = GpuGKRMainRound1FlatConstantCompactUnifiedCompactArguments::new(
         *desc,
@@ -1450,8 +1450,6 @@ pub(super) trait GpuFlatRound2UnifiedCompactKernelSet: Field {
     const MAIN_ROUND2_FLAT_CONSTANT_COMPACT_UNIFIED_COMPACT:
         GpuGKRMainRound2FlatConstantCompactUnifiedCompactSignature<Self>;
     const ROUND2_CHALLENGES_PRELUDE: GpuGKRRound2ChallengesPreludeSignature<Self>;
-    unsafe fn upload_round2_challenges(staging: *const Self, stream: &CudaStream)
-        -> CudaResult<()>;
 }
 
 impl GpuFlatRound2UnifiedCompactKernelSet for E4 {
@@ -1460,17 +1458,6 @@ impl GpuFlatRound2UnifiedCompactKernelSet for E4 {
         ab_gkr_main_round2_flat_constant_compact_unified_compact_e4_kernel;
     const ROUND2_CHALLENGES_PRELUDE: GpuGKRRound2ChallengesPreludeSignature<Self> =
         ab_gkr_round2_challenges_prelude;
-    unsafe fn upload_round2_challenges(
-        staging: *const Self,
-        stream: &CudaStream,
-    ) -> CudaResult<()> {
-        upload_e4_symbol_from_device(
-            &ab_gkr_round2_challenges as *const _ as *const c_void,
-            staging,
-            3,
-            stream,
-        )
-    }
 }
 
 pub(super) fn launch_main_round2_flat_constant_compact_unified_compact<
@@ -1489,15 +1476,13 @@ pub(super) fn launch_main_round2_flat_constant_compact_unified_compact<
     let block_dim = 128u32;
     let grid_dim = (acc_size + 31) / 32;
     let stream = context.get_exec_stream();
-    let mut staging = context.alloc(3, AllocationPlacement::BestFit)?;
     let prelude_config = CudaLaunchConfig::basic(1, 1, stream);
-    let prelude_args =
-        GpuGKRRound2ChallengesPreludeArguments::new(folding_challenges, staging.as_mut_ptr());
+    let prelude_args = GpuGKRRound2ChallengesPreludeArguments::new(
+        folding_challenges,
+        get_round2_challenges_device_ptr() as *mut E,
+    );
     GpuGKRRound2ChallengesPreludeFunction(E::ROUND2_CHALLENGES_PRELUDE)
         .launch(&prelude_config, &prelude_args)?;
-    // SAFETY: the symbol is a valid __constant__ e4[3] and `staging` contains
-    // [first, second, first * second], produced by the preceding exec-stream kernel.
-    unsafe { E::upload_round2_challenges(staging.as_ptr(), stream)? };
 
     let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
     let args = GpuGKRMainRound2FlatConstantCompactUnifiedCompactArguments::new(
