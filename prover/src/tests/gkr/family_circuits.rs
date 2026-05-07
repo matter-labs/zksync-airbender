@@ -3,7 +3,7 @@ use crate::definitions::produce_initial_permutation_product_contribution;
 use crate::gkr::prover::prove_configured_with_gkr;
 use crate::gkr::prover::setup::GKRSetup;
 use crate::gkr::prover::GKRExternalChallenges;
-use crate::gkr::prover::WhirSchedule;
+use crate::gkr::prover_config::example_configs;
 use crate::gkr::witness_gen::delegation_circuits::evaluate_gkr_memory_witness_for_delegation_circuit;
 use crate::gkr::witness_gen::delegation_circuits::evaluate_gkr_witness_for_delegation_circuit;
 use crate::gkr::witness_gen::family_circuits::evaluate_gkr_memory_witness_for_executor_family;
@@ -68,21 +68,6 @@ const PROVE_INITS_AND_TEARDOWNS: bool = true;
 
 pub use crate::definitions::SecurityLevel;
 
-fn whir_schedule_for(trace_len_bits: usize, level: SecurityLevel) -> WhirSchedule {
-    match (trace_len_bits, level) {
-        (20, SecurityLevel::Sec80) => WhirSchedule::default_for_tests_80_bits_20(),
-        (22, SecurityLevel::Sec80) => WhirSchedule::default_for_tests_80_bits_22(),
-        (24, SecurityLevel::Sec80) => WhirSchedule::default_for_tests_80_bits_24(),
-        (20, SecurityLevel::Sec100) => WhirSchedule::default_for_tests_100_bits_20(),
-        (22, SecurityLevel::Sec100) => WhirSchedule::default_for_tests_100_bits_22(),
-        (24, SecurityLevel::Sec100) => WhirSchedule::default_for_tests_100_bits_24(),
-        _ => panic!(
-            "no schedule for (trace_len_bits={}, level={:?})",
-            trace_len_bits, level
-        ),
-    }
-}
-
 #[test]
 fn gkr_run_basic_unrolled_test_sec_80() {
     gkr_run_basic_unrolled_test_impl(SecurityLevel::Sec80, None, None);
@@ -99,7 +84,6 @@ pub fn gkr_run_basic_unrolled_test_impl(
     maybe_gpu_delegation_comparison_hook: Option<Box<dyn Fn()>>,
 ) {
     let proof_suffix = level.dir_suffix();
-    let whir_schedule = whir_schedule_for(24, level);
     use riscv_transpiler::ir::*;
     use riscv_transpiler::vm::*;
 
@@ -439,6 +423,12 @@ pub fn gkr_run_basic_unrolled_test_impl(
             // let is_satisfied = check_satisfied(&add_sub_circuit, &full_trace);
             // assert!(is_satisfied);
 
+            let prover_config =
+                example_configs::config_for_security_level_under_pessimistic_conjecture(
+                    trace_len.trailing_zeros() as usize,
+                    level,
+                );
+
             println!("Preparing twiddles");
             let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, &worker);
             println!("Preparing setup");
@@ -447,9 +437,9 @@ pub fn gkr_run_basic_unrolled_test_impl(
 
             let setup_commitment = setup.commit(
                 &twiddles,
-                2,
-                1,
-                whir_schedule.cap_size,
+                prover_config.lde_factor,
+                prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
+                prover_config.cap_size,
                 trace_len.trailing_zeros() as usize,
                 &worker,
             );
@@ -459,8 +449,6 @@ pub fn gkr_run_basic_unrolled_test_impl(
             // } else {
             //     None
             // };
-
-            let whir_schedule = whir_schedule_for(24, level);
 
             println!("Trying to prove");
 
@@ -473,7 +461,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
                     &setup,
                     &setup_commitment,
                     &twiddles,
-                    &whir_schedule,
+                    &prover_config,
                     Vec::new(),
                     trace_len,
                     &worker,
@@ -637,6 +625,12 @@ pub fn gkr_run_basic_unrolled_test_impl(
             // let is_satisfied = check_satisfied(&circuit, &full_trace);
             // assert!(is_satisfied);
 
+            let prover_config =
+                example_configs::config_for_security_level_under_pessimistic_conjecture(
+                    trace_len.trailing_zeros() as usize,
+                    level,
+                );
+
             println!("Preparing twiddles");
             let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, &worker);
             println!("Preparing setup");
@@ -645,9 +639,9 @@ pub fn gkr_run_basic_unrolled_test_impl(
 
             let setup_commitment = setup.commit(
                 &twiddles,
-                2,
-                1,
-                whir_schedule.cap_size,
+                prover_config.lde_factor,
+                prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
+                prover_config.cap_size,
                 trace_len.trailing_zeros() as usize,
                 &worker,
             );
@@ -657,8 +651,6 @@ pub fn gkr_run_basic_unrolled_test_impl(
             // } else {
             //     None
             // };
-
-            let whir_schedule = whir_schedule_for(24, level);
 
             println!("Trying to prove");
 
@@ -671,7 +663,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
                     &setup,
                     &setup_commitment,
                     &twiddles,
-                    &whir_schedule,
+                    &prover_config,
                     Vec::new(),
                     trace_len,
                     &worker,
@@ -837,6 +829,12 @@ pub fn gkr_run_basic_unrolled_test_impl(
             // let is_satisfied = check_satisfied(&circuit, &full_trace);
             // assert!(is_satisfied);
 
+            let prover_config =
+                example_configs::config_for_security_level_under_pessimistic_conjecture(
+                    trace_len.trailing_zeros() as usize,
+                    level,
+                );
+
             println!("Preparing twiddles");
             let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, &worker);
             println!("Preparing setup");
@@ -845,9 +843,9 @@ pub fn gkr_run_basic_unrolled_test_impl(
 
             let setup_commitment = setup.commit(
                 &twiddles,
-                2,
-                1,
-                whir_schedule.cap_size,
+                prover_config.lde_factor,
+                prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
+                prover_config.cap_size,
                 trace_len.trailing_zeros() as usize,
                 &worker,
             );
@@ -857,8 +855,6 @@ pub fn gkr_run_basic_unrolled_test_impl(
             // } else {
             //     None
             // };
-
-            let whir_schedule = whir_schedule_for(24, level);
 
             println!("Trying to prove");
 
@@ -871,7 +867,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
                     &setup,
                     &setup_commitment,
                     &twiddles,
-                    &whir_schedule,
+                    &prover_config,
                     Vec::new(),
                     trace_len,
                     &worker,
@@ -1025,6 +1021,12 @@ pub fn gkr_run_basic_unrolled_test_impl(
             // let is_satisfied = check_satisfied(&add_sub_circuit, &full_trace);
             // assert!(is_satisfied);
 
+            let prover_config =
+                example_configs::config_for_security_level_under_pessimistic_conjecture(
+                    trace_len.trailing_zeros() as usize,
+                    level,
+                );
+
             println!("Preparing twiddles");
             let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, &worker);
             println!("Preparing setup");
@@ -1033,9 +1035,9 @@ pub fn gkr_run_basic_unrolled_test_impl(
 
             let setup_commitment = setup.commit(
                 &twiddles,
-                2,
-                1,
-                whir_schedule.cap_size,
+                prover_config.lde_factor,
+                prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
+                prover_config.cap_size,
                 trace_len.trailing_zeros() as usize,
                 &worker,
             );
@@ -1045,8 +1047,6 @@ pub fn gkr_run_basic_unrolled_test_impl(
             // } else {
             //     None
             // };
-
-            let whir_schedule = whir_schedule_for(24, level);
 
             println!("Trying to prove");
 
@@ -1059,7 +1059,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
                     &setup,
                     &setup_commitment,
                     &twiddles,
-                    &whir_schedule,
+                    &prover_config,
                     Vec::new(),
                     trace_len,
                     &worker,
@@ -1075,7 +1075,13 @@ pub fn gkr_run_basic_unrolled_test_impl(
                 assert_eq!(proof.grand_product_accumulator_computed, BabyBearExt4::ONE);
             }
 
-            serialize_to_file(&proof, "test_proofs/unsigned_mul_div_gkr_proof.json");
+            serialize_to_file(
+                &proof,
+                &format!(
+                    "test_proofs/unsigned_mul_div_{}_gkr_proof.json",
+                    proof_suffix
+                ),
+            );
 
             // serialize_to_file_if_not_gpu_comparison(
             //     &proof,
@@ -1228,6 +1234,12 @@ pub fn gkr_run_basic_unrolled_test_impl(
             // let is_satisfied = check_satisfied(&circuit, &full_trace);
             // assert!(is_satisfied);
 
+            let prover_config =
+                example_configs::config_for_security_level_under_pessimistic_conjecture(
+                    trace_len.trailing_zeros() as usize,
+                    level,
+                );
+
             println!("Preparing twiddles");
             let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, &worker);
             println!("Preparing setup");
@@ -1237,9 +1249,9 @@ pub fn gkr_run_basic_unrolled_test_impl(
 
             let setup_commitment = setup.commit(
                 &twiddles,
-                2,
-                1,
-                whir_schedule.cap_size,
+                prover_config.lde_factor,
+                prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
+                prover_config.cap_size,
                 trace_len.trailing_zeros() as usize,
                 &worker,
             );
@@ -1252,8 +1264,6 @@ pub fn gkr_run_basic_unrolled_test_impl(
 
             println!("Trying to prove");
 
-            let whir_schedule = whir_schedule_for(24, level);
-
             let now = std::time::Instant::now();
             let proof =
                 prove_configured_with_gkr::<BabyBearField, BabyBearExt4, DefaultTreeConstructor>(
@@ -1263,7 +1273,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
                     &setup,
                     &setup_commitment,
                     &twiddles,
-                    &whir_schedule,
+                    &prover_config,
                     Vec::new(),
                     trace_len,
                     &worker,
@@ -1429,6 +1439,12 @@ pub fn gkr_run_basic_unrolled_test_impl(
             // let is_satisfied = check_satisfied(&circuit, &full_trace);
             // assert!(is_satisfied);
 
+            let prover_config =
+                example_configs::config_for_security_level_under_pessimistic_conjecture(
+                    trace_len.trailing_zeros() as usize,
+                    level,
+                );
+
             println!("Preparing twiddles");
             let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, &worker);
 
@@ -1437,9 +1453,9 @@ pub fn gkr_run_basic_unrolled_test_impl(
 
             let setup_commitment = setup.commit(
                 &twiddles,
-                2,
-                1,
-                whir_schedule.cap_size,
+                prover_config.lde_factor,
+                prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
+                prover_config.cap_size,
                 trace_len.trailing_zeros() as usize,
                 &worker,
             );
@@ -1452,8 +1468,6 @@ pub fn gkr_run_basic_unrolled_test_impl(
 
             println!("Trying to prove");
 
-            let whir_schedule = whir_schedule_for(24, level);
-
             let now = std::time::Instant::now();
             let proof =
                 prove_configured_with_gkr::<BabyBearField, BabyBearExt4, DefaultTreeConstructor>(
@@ -1463,7 +1477,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
                     &setup,
                     &setup_commitment,
                     &twiddles,
-                    &whir_schedule,
+                    &prover_config,
                     Vec::new(),
                     trace_len,
                     &worker,
@@ -1567,6 +1581,12 @@ pub fn gkr_run_basic_unrolled_test_impl(
             // let is_satisfied = check_satisfied(&circuit, &full_trace);
             // assert!(is_satisfied);
 
+            let prover_config =
+                example_configs::config_for_security_level_under_pessimistic_conjecture(
+                    trace_len.trailing_zeros() as usize,
+                    level,
+                );
+
             println!("Preparing twiddles");
             let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, &worker);
             println!("Preparing setup");
@@ -1574,9 +1594,9 @@ pub fn gkr_run_basic_unrolled_test_impl(
 
             let setup_commitment = setup.commit(
                 &twiddles,
-                2,
-                1,
-                whir_schedule.cap_size,
+                prover_config.lde_factor,
+                prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
+                prover_config.cap_size,
                 trace_len.trailing_zeros() as usize,
                 &worker,
             );
@@ -1586,8 +1606,6 @@ pub fn gkr_run_basic_unrolled_test_impl(
             // } else {
             //     None
             // };
-
-            let whir_schedule = whir_schedule_for(24, level);
 
             println!("Trying to prove");
 
@@ -1605,7 +1623,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
                     &setup,
                     &setup_commitment,
                     &twiddles,
-                    &whir_schedule,
+                    &prover_config,
                     inits_and_teardowns_top_bits,
                     trace_len,
                     &worker,
@@ -1762,6 +1780,12 @@ pub fn gkr_run_basic_unrolled_test_impl(
             // let is_satisfied = check_satisfied(&circuit, &full_trace);
             // assert!(is_satisfied);
 
+            let prover_config =
+                example_configs::config_for_security_level_under_pessimistic_conjecture(
+                    BLAKE_NUM_DELEGATION_CYCLES.trailing_zeros() as usize,
+                    level,
+                );
+
             println!("Preparing twiddles");
             let twiddles: Twiddles<_, Global> = Twiddles::new(BLAKE_NUM_DELEGATION_CYCLES, &worker);
             println!("Preparing setup");
@@ -1770,9 +1794,9 @@ pub fn gkr_run_basic_unrolled_test_impl(
 
             let setup_commitment = setup.commit(
                 &twiddles,
-                2,
-                1,
-                whir_schedule.cap_size,
+                prover_config.lde_factor,
+                prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
+                prover_config.cap_size,
                 BLAKE_NUM_DELEGATION_CYCLES.trailing_zeros() as usize,
                 &worker,
             );
@@ -1782,8 +1806,6 @@ pub fn gkr_run_basic_unrolled_test_impl(
             // } else {
             //     None
             // };
-
-            let whir_schedule = whir_schedule_for(20, level);
 
             println!("Trying to prove");
 
@@ -1796,7 +1818,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
                     &setup,
                     &setup_commitment,
                     &twiddles,
-                    &whir_schedule,
+                    &prover_config,
                     Vec::new(),
                     BLAKE_NUM_DELEGATION_CYCLES,
                     &worker,
@@ -1928,6 +1950,12 @@ pub fn gkr_run_basic_unrolled_test_impl(
             // let is_satisfied = check_satisfied(&circuit, &full_trace);
             // assert!(is_satisfied);
 
+            let prover_config =
+                example_configs::config_for_security_level_under_pessimistic_conjecture(
+                    BIGINT_NUM_DELEGATION_CYCLES.trailing_zeros() as usize,
+                    level,
+                );
+
             println!("Preparing twiddles");
             let twiddles: Twiddles<_, Global> =
                 Twiddles::new(BIGINT_NUM_DELEGATION_CYCLES, &worker);
@@ -1937,9 +1965,9 @@ pub fn gkr_run_basic_unrolled_test_impl(
 
             let setup_commitment = setup.commit(
                 &twiddles,
-                2,
-                1,
-                whir_schedule.cap_size,
+                prover_config.lde_factor,
+                prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
+                prover_config.cap_size,
                 BIGINT_NUM_DELEGATION_CYCLES.trailing_zeros() as usize,
                 &worker,
             );
@@ -1949,8 +1977,6 @@ pub fn gkr_run_basic_unrolled_test_impl(
             // } else {
             //     None
             // };
-
-            let whir_schedule = whir_schedule_for(22, level);
 
             println!("Trying to prove");
 
@@ -1963,7 +1989,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
                     &setup,
                     &setup_commitment,
                     &twiddles,
-                    &whir_schedule,
+                    &prover_config,
                     Vec::new(),
                     BIGINT_NUM_DELEGATION_CYCLES,
                     &worker,
@@ -2094,6 +2120,12 @@ pub fn gkr_run_basic_unrolled_test_impl(
             // let is_satisfied = check_satisfied(&circuit, &full_trace);
             // assert!(is_satisfied);
 
+            let prover_config =
+                example_configs::config_for_security_level_under_pessimistic_conjecture(
+                    KECCAK_NUM_DELEGATION_CYCLES.trailing_zeros() as usize,
+                    level,
+                );
+
             println!("Preparing twiddles");
             let twiddles: Twiddles<_, Global> =
                 Twiddles::new(KECCAK_NUM_DELEGATION_CYCLES, &worker);
@@ -2103,9 +2135,9 @@ pub fn gkr_run_basic_unrolled_test_impl(
 
             let setup_commitment = setup.commit(
                 &twiddles,
-                2,
-                1,
-                whir_schedule.cap_size,
+                prover_config.lde_factor,
+                prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
+                prover_config.cap_size,
                 KECCAK_NUM_DELEGATION_CYCLES.trailing_zeros() as usize,
                 &worker,
             );
@@ -2115,8 +2147,6 @@ pub fn gkr_run_basic_unrolled_test_impl(
             // } else {
             //     None
             // };
-
-            let whir_schedule = whir_schedule_for(22, level);
 
             println!("Trying to prove");
 
@@ -2129,7 +2159,7 @@ pub fn gkr_run_basic_unrolled_test_impl(
                     &setup,
                     &setup_commitment,
                     &twiddles,
-                    &whir_schedule,
+                    &prover_config,
                     Vec::new(),
                     KECCAK_NUM_DELEGATION_CYCLES,
                     &worker,

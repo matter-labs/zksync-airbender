@@ -575,7 +575,7 @@ pub fn fold_coset(
         unsafe { *buf_b.get_unchecked(0) }
     }
 }
-pub const MAX_HIGH_POWERS: usize = 8usize;
+pub const MAX_HIGH_POWERS: usize = 16usize;
 #[inline(always)]
 pub fn bitreverse_inplace<T: Copy>(arr: &mut [T]) {
     let n = arr.len();

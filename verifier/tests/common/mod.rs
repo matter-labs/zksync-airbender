@@ -12,18 +12,18 @@ use verifier_common::prover::nd_source_std::{set_iterator, ThreadLocalBasedSourc
 pub const VERIFIER_STACK_SIZE: usize = 1 << 27;
 
 macro_rules! define_dispatch {
-    ($($name:ident: $schedule_80:ident: $schedule_100:ident: $layout_suffix:expr),* $(,)?) => {
+    ($($name:ident; $trace_len_log_2:expr; $layout_suffix:expr),* $(,)?) => {
         macro_rules! with_circuit {
             ($circuit_name:expr, $level:expr, |$m:ident| $body:expr) => {
                 match ($circuit_name, $level) {
                     $(
                         #[cfg(feature = "security_80")]
-                        (stringify!($name), $crate::common::SecurityLevel::Sec80) => {
+                        (stringify!($name), ::prover::definitions::SecurityLevel::Sec80) => {
                             use verifier::$name::sec_80 as $m;
                             $body
                         }
                         #[cfg(feature = "security_100")]
-                        (stringify!($name), $crate::common::SecurityLevel::Sec100) => {
+                        (stringify!($name), ::prover::definitions::SecurityLevel::Sec100) => {
                             use verifier::$name::sec_100 as $m;
                             $body
                         }
