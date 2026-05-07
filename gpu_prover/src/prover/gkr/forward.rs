@@ -255,6 +255,7 @@ where
         + GpuGKRVirtualBaseAccumKernelSet
         + GpuGKRDimensionReducingForwardTowerKernelSet
         + super::forward_kernels::GpuGKRFlatForwardKernelSet,
+    E: super::forward_kernels::GpuGKRLookupGammaConstsPreludeKernelSet,
     Add: BinaryOp<E, E, E>,
     Add: BinaryOp<BF, E, E>,
     Add: BinaryOp<E, BF, E>,
@@ -313,6 +314,11 @@ where
     if usage.last_generic_lookup_layer.is_none() {
         forward_setup.release_generic_lookup();
     }
+
+    E::schedule_lookup_gamma_consts_prelude(
+        forward_setup.lookup_additive_part_device().as_ptr(),
+        context,
+    )?;
 
     for (layer_idx, layer) in compiled_circuit.layers.iter().enumerate() {
         let layer_range = Range::new(format!("gkr.forward.layer.{layer_idx}"))?;
@@ -504,7 +510,6 @@ where
         &compiled_circuit.scratch_space_mapping,
         storage,
         external_challenges,
-        forward_setup.lookup_additive_part_device().as_ptr(),
         trace_len,
         context,
     )?;
@@ -801,7 +806,6 @@ fn build_flat_forward_plan<E>(
     scratch_space_mapping: &BTreeMap<GKRAddress, usize>,
     storage: &mut GpuGKRStorage<BF, E>,
     external_challenges: &GKRExternalChallenges<BF, E>,
-    lookup_additive_challenge: *const E,
     trace_len: usize,
     context: &ProverContext,
 ) -> CudaResult<FlatForwardPlan<E>>
@@ -814,7 +818,6 @@ where
     let expected_output_layer = layer_idx + 1;
 
     let mut desc: Box<GpuFlatForwardStaticDesc<E>> = Box::new(GpuFlatForwardStaticDesc::default());
-    desc.gamma = lookup_additive_challenge;
     let mut builder = FlatBuilder {
         desc: &mut desc,
         src_map: std::collections::HashMap::new(),
@@ -2581,6 +2584,11 @@ mod tests {
             context.get_exec_stream(),
         )
         .unwrap();
+        super::super::forward_kernels::schedule_lookup_gamma_consts_prelude(
+            d_lookup_challenges[1..2].as_ptr(),
+            context,
+        )
+        .unwrap();
         crate::prover::gkr::setup::schedule_forward_setup_for_shape::<E4>(
             None,
             trace_len,
@@ -3060,7 +3068,6 @@ mod tests {
             &BTreeMap::new(),
             &mut storage,
             &external_challenges,
-            forward_setup.lookup_additive_part_device().as_ptr(),
             trace_len,
             &context,
         )
